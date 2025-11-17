@@ -1,0 +1,173 @@
+# Ingress Configuration for Home Assistant
+# Use this configuration if you want to access Home Assistant via a domain name
+# with SSL/TLS encryption
+#
+# PREREQUISITES:
+# 1. Ingress controller installed (nginx, traefik, etc.)
+# 2. cert-manager installed (for automatic SSL certificates)
+# 3. DNS configured to point to your cluster
+#
+# USAGE:
+# helm install home-assistant pajikos/home-assistant \
+#   --namespace home-assistant \
+#   -f values.yaml \
+#   -f ingress-values.yaml
+
+# ============================================================================
+# Service Configuration - Use ClusterIP with Ingress
+# ============================================================================
+service:
+  main:
+    enabled: true
+    type: ClusterIP  # Changed from LoadBalancer
+    ports:
+      http:
+        port: 8123
+
+# ============================================================================
+# Ingress Configuration
+# ============================================================================
+ingress:
+  main:
+    enabled: true
+
+    # Ingress class name (depends on your controller)
+    className: nginx  # or "traefik", "haproxy", etc.
+
+    annotations:
+      # For cert-manager with Let's Encrypt
+      cert-manager.io/cluster-issuer: "letsencrypt-prod"
+
+      # NGINX specific annotations
+      nginx.ingress.kubernetes.io/backend-protocol: "HTTP"
+      nginx.ingress.kubernetes.io/proxy-body-size: "0"  # Allow large file uploads
+      nginx.ingress.kubernetes.io/websocket-services: "home-assistant"  # Enable websockets
+
+      # Traefik specific annotations (uncomment if using Traefik)
+      # traefik.ingress.kubernetes.io/router.entrypoints: websecure
+      # traefik.ingress.kubernetes.io/router.tls: "true"
+
+    hosts:
+      - host: home.example.com  # <-- UPDATE THIS to your domain
+        paths:
+          - path: /
+            pathType: Prefix
+            service:
+              name: home-assistant
+              port: 8123
+
+    # TLS configuration
+    tls:
+      - secretName: home-assistant-tls
+        hosts:
+          - home.example.com  # <-- UPDATE THIS to match your domain
+
+# ============================================================================
+# Home Assistant Configuration - Required for Reverse Proxy
+# ============================================================================
+config:
+  http:
+    # Required when behind a reverse proxy
+    use_x_forwarded_for: true
+    trusted_proxies:
+      # Add your cluster's network CIDRs
+      - 10.42.0.0/16  # <-- UPDATE: k3s default pod CIDR
+      - 10.43.0.0/16  # <-- UPDATE: k3s default service CIDR
+      - 172.16.0.0/12 # Docker bridge network (if applicable)
+
+      # If you know your ingress controller's IP, add it:
+      # - 10.43.123.45/32
+
+      # For external reverse proxies (like Cloudflare):
+      # - 173.245.48.0/20
+      # - 103.21.244.0/22
+      # - 103.22.200.0/22
+      # - 103.31.4.0/22
+      # - 141.101.64.0/18
+      # - 108.162.192.0/18
+      # - 190.93.240.0/20
+      # - 188.114.96.0/20
+      # - 197.234.240.0/22
+      # - 198.41.128.0/17
+      # - 162.158.0.0/15
+      # - 104.16.0.0/13
+      # - 104.24.0.0/14
+      # - 172.64.0.0/13
+
+# ============================================================================
+# Alternative: Traefik IngressRoute (CRD)
+# ============================================================================
+# If using Traefik with CRDs, you may prefer IngressRoute over Ingress.
+# Disable the ingress above and create a separate file:
+#
+# apiVersion: traefik.containo.us/v1alpha1
+# kind: IngressRoute
+# metadata:
+#   name: home-assistant
+#   namespace: home-assistant
+# spec:
+#   entryPoints:
+#     - websecure
+#   routes:
+#     - match: Host(`home.example.com`)
+#       kind: Rule
+#       services:
+#         - name: home-assistant
+#           port: 8123
+#   tls:
+#     certResolver: letsencrypt
+
+# ============================================================================
+# cert-manager ClusterIssuer Example
+# ============================================================================
+# You need a ClusterIssuer for automatic SSL certificates.
+# Apply this separately (not part of Helm chart):
+#
+# apiVersion: cert-manager.io/v1
+# kind: ClusterIssuer
+# metadata:
+#   name: letsencrypt-prod
+# spec:
+#   acme:
+#     server: https://acme-v02.api.letsencrypt.org/directory
+#     email: your-email@example.com  # <-- UPDATE THIS
+#     privateKeySecretRef:
+#       name: letsencrypt-prod
+#     solvers:
+#       - http01:
+#           ingress:
+#             class: nginx
+
+# ============================================================================
+# Finding Your Cluster Network CIDRs
+# ============================================================================
+#
+# For k3s:
+#   kubectl cluster-info dump | grep -m 1 service-cluster-ip-range
+#   kubectl cluster-info dump | grep -m 1 cluster-cidr
+#
+# For standard Kubernetes:
+#   kubectl cluster-info dump | grep -E 'service-cluster-ip-range|cluster-cidr'
+#
+# Or check your CNI config (Calico, Flannel, etc.)
+#
+# ============================================================================
+# Troubleshooting
+# ============================================================================
+#
+# 1. "Unable to connect" or "401 Unauthorized":
+#    - Check trusted_proxies includes your ingress controller IP
+#    - Verify use_x_forwarded_for is set to true
+#
+# 2. SSL certificate not working:
+#    - Check cert-manager logs: kubectl logs -n cert-manager deploy/cert-manager
+#    - Check certificate status: kubectl describe certificate -n home-assistant
+#    - Verify DNS points to your cluster
+#
+# 3. Websocket errors in browser console:
+#    - Ensure nginx.ingress.kubernetes.io/websocket-services annotation is set
+#    - Check if your ingress controller supports websockets
+#
+# 4. Check ingress status:
+#    kubectl get ingress -n home-assistant
+#    kubectl describe ingress -n home-assistant home-assistant

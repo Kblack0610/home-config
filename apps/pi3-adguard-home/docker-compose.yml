@@ -1,0 +1,33 @@
+version: "3.8"
+
+services:
+  adguard-home:
+    image: adguard/adguardhome:latest
+    container_name: adguard-home
+    restart: unless-stopped
+    ports:
+      # DNS ports
+      - "53:53/tcp"
+      - "53:53/udp"
+      # Admin panel (initial setup on 3000, then 80)
+      - "3000:3000/tcp"
+      - "80:80/tcp"
+      # HTTPS / DNS-over-HTTPS
+      - "443:443/tcp"
+      # DNS-over-TLS
+      - "853:853/tcp"
+      # DNS-over-QUIC
+      - "853:853/udp"
+    volumes:
+      - ./data/conf:/opt/adguardhome/conf
+      - ./data/work:/opt/adguardhome/work
+      - /etc/localtime:/etc/localtime:ro
+    # Required for binding to port 53
+    cap_add:
+      - NET_ADMIN
+    networks:
+      - adguard-net
+
+networks:
+  adguard-net:
+    driver: bridge

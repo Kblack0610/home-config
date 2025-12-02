@@ -1,0 +1,69 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: nginx-proxy-manager
+  namespace: nginx-proxy-manager
+  labels:
+    app.kubernetes.io/name: nginx-proxy-manager
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: nginx-proxy-manager
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: nginx-proxy-manager
+    spec:
+      containers:
+        - name: nginx-proxy-manager
+          image: jc21/nginx-proxy-manager:latest
+          ports:
+            - name: http
+              containerPort: 80
+              protocol: TCP
+            - name: https
+              containerPort: 443
+              protocol: TCP
+            - name: admin
+              containerPort: 81
+              protocol: TCP
+          volumeMounts:
+            - name: data
+              mountPath: /data
+            - name: letsencrypt
+              mountPath: /etc/letsencrypt
+            - name: localtime
+              mountPath: /etc/localtime
+              readOnly: true
+          resources:
+            requests:
+              memory: "128Mi"
+              cpu: "100m"
+            limits:
+              memory: "512Mi"
+              cpu: "500m"
+          livenessProbe:
+            httpGet:
+              path: /
+              port: 81
+            initialDelaySeconds: 60
+            periodSeconds: 30
+          readinessProbe:
+            httpGet:
+              path: /
+              port: 81
+            initialDelaySeconds: 30
+            periodSeconds: 10
+      volumes:
+        - name: data
+          persistentVolumeClaim:
+            claimName: nginx-proxy-manager-data
+        - name: letsencrypt
+          persistentVolumeClaim:
+            claimName: nginx-proxy-manager-letsencrypt
+        - name: localtime
+          hostPath:
+            path: /etc/localtime

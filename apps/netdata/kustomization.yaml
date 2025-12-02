@@ -1,0 +1,21 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+metadata:
+  name: netdata
+
+namespace: netdata
+
+# Common labels applied to all resources
+labels:
+  - pairs:
+      app.kubernetes.io/name: netdata
+      app.kubernetes.io/part-of: monitoring
+    includeSelectors: true
+
+resources:
+  - namespace.yaml
+  - rbac.yaml
+  - configmap.yaml
+  - daemonset.yaml
+  - service.yaml

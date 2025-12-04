@@ -74,3 +74,26 @@
   Want me to update the deployment to add Netdata Cloud claiming, or set up the self-hosted parent architecture?
 
 
+---
+
+Sign out to switch user it's giving me these instructions. but I dont' see this file on my master cluster or agents?
+
+● That's because Netdata is running inside the container, not on the host. Let me get the session ID from inside one of the pods:
+
+● Bash(kubectl -n netdata exec $(kubectl -n netdata get pods -o jsonpath='{.items[0].metadata.name}') -- cat
+      /var/lib/netdata/netdata_random_session_id 2>/dev/null ||…)
+  ⎿  7c9c625b-6886-44ab-8087-72833eee4f3c
+     /var/lib/netdata/bearer_tokens
+     /var/lib/netdata/netdata_random_session_id
+
+● Here's your session ID:
+
+  7c9c625b-6886-44ab-8087-72833eee4f3c
+
+  Paste that into the Netdata Cloud field. This will connect your first node.
+
+  Note: Each pod has its own session ID. After you connect the first one through the web UI, Netdata Cloud will give you a claim
+  token. Then we can update the DaemonSet to automatically claim all nodes with that token - that way you won't need to do this
+  manually for each of the 6 Pis.
+
+

@@ -1,0 +1,46 @@
+# Traefik Middleware configurations
+# These can be referenced by Ingress annotations
+---
+apiVersion: traefik.io/v1alpha1
+kind: Middleware
+metadata:
+  name: redirect-https
+  namespace: kube-system
+spec:
+  redirectScheme:
+    scheme: https
+    permanent: true
+---
+apiVersion: traefik.io/v1alpha1
+kind: Middleware
+metadata:
+  name: secure-headers
+  namespace: kube-system
+spec:
+  headers:
+    frameDeny: true
+    browserXssFilter: true
+    contentTypeNosniff: true
+    referrerPolicy: "strict-origin-when-cross-origin"
+---
+apiVersion: traefik.io/v1alpha1
+kind: Middleware
+metadata:
+  name: rate-limit
+  namespace: kube-system
+spec:
+  rateLimit:
+    average: 100
+    burst: 50
+---
+# Middleware chain for secure apps
+apiVersion: traefik.io/v1alpha1
+kind: Middleware
+metadata:
+  name: secure-chain
+  namespace: kube-system
+spec:
+  chain:
+    middlewares:
+      - name: redirect-https
+      - name: secure-headers

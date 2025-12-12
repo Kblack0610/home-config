@@ -29,8 +29,16 @@ mod config {
     pub const MQTT_BROKER: &str = env!("MQTT_BROKER");
     pub const MQTT_PORT: u16 = 1883;
     pub const DEBOUNCE_MS: u64 = 50;
+
+    // MQTT Topics
     pub const STATE_TOPIC: &str = "home/switch/livingroom/state";
     pub const COMMAND_TOPIC: &str = "home/switch/livingroom/set";
+    pub const AVAILABILITY_TOPIC: &str = "home/switch/livingroom/available";
+
+    // Home Assistant Discovery
+    pub const HA_DISCOVERY_PREFIX: &str = "homeassistant";
+    pub const DEVICE_ID: &str = "esp32_switch_livingroom";
+    pub const DEVICE_NAME: &str = "Living Room Switch";
 }
 
 // Global state - shared between tasks
@@ -123,9 +131,13 @@ async fn main(spawner: Spawner) -> ! {
             Ok(()) => {
                 info!("TCP connected to MQTT broker!");
 
-                // Send MQTT CONNECT packet
+                // Send MQTT CONNECT packet with Last Will Testament for availability
                 let client_id = b"esp32-switch";
-                let connect_packet = build_mqtt_connect(client_id);
+                let connect_packet = build_mqtt_connect_with_lwt(
+                    client_id,
+                    config::AVAILABILITY_TOPIC,
+                    b"offline",
+                );
 
                 if socket.write_all(&connect_packet).await.is_err() {
                     error!("Failed to send CONNECT");
@@ -145,6 +157,22 @@ async fn main(spawner: Spawner) -> ! {
                     continue;
                 }
                 info!("MQTT connected successfully!");
+
+                // Publish Home Assistant discovery config
+                let discovery_topic = ha_discovery_topic();
+                let discovery_payload = build_ha_discovery_payload();
+                let discovery_packet = build_mqtt_publish(&discovery_topic, &discovery_payload);
+                if socket.write_all(&discovery_packet).await.is_err() {
+                    warn!("Failed to publish HA discovery");
+                }
+                info!("Published Home Assistant discovery config");
+
+                // Publish availability = online
+                let avail_packet = build_mqtt_publish(config::AVAILABILITY_TOPIC, b"online");
+                if socket.write_all(&avail_packet).await.is_err() {
+                    warn!("Failed to publish availability");
+                }
+                info!("Published availability: online");
 
                 // Subscribe to command topic
                 let subscribe_packet = build_mqtt_subscribe(config::COMMAND_TOPIC, 1);
@@ -326,6 +354,7 @@ async fn relay_task(mut relay: Output<'static>) {
 }
 
 // Build a minimal MQTT v3.1.1 CONNECT packet
+#[allow(dead_code)]
 fn build_mqtt_connect(client_id: &[u8]) -> heapless::Vec<u8, 64> {
     let mut packet = heapless::Vec::new();
 
@@ -356,14 +385,71 @@ fn build_mqtt_connect(client_id: &[u8]) -> heapless::Vec<u8, 64> {
     packet
 }
 
+// Build MQTT CONNECT packet with Last Will and Testament (LWT)
+fn build_mqtt_connect_with_lwt(
+    client_id: &[u8],
+    will_topic: &str,
+    will_message: &[u8],
+) -> heapless::Vec<u8, 128> {
+    let mut packet = heapless::Vec::new();
+
+    let remaining_len = 10
+        + 2 + client_id.len()     // client ID
+        + 2 + will_topic.len()    // will topic
+        + 2 + will_message.len(); // will message
+
+    let _ = packet.push(0x10); // CONNECT packet type
+    let _ = packet.push(remaining_len as u8);
+
+    // Protocol name "MQTT"
+    let _ = packet.push(0x00);
+    let _ = packet.push(0x04);
+    let _ = packet.extend_from_slice(b"MQTT");
+
+    // Protocol level (4 = MQTT 3.1.1)
+    let _ = packet.push(0x04);
+
+    // Connect flags: Clean session (0x02) + Will flag (0x04) + Will retain (0x20)
+    let _ = packet.push(0x26);
+
+    // Keep alive (60 seconds)
+    let _ = packet.push(0x00);
+    let _ = packet.push(0x3C);
+
+    // Client ID
+    let _ = packet.push(0x00);
+    let _ = packet.push(client_id.len() as u8);
+    let _ = packet.extend_from_slice(client_id);
+
+    // Will topic
+    let _ = packet.push(0x00);
+    let _ = packet.push(will_topic.len() as u8);
+    let _ = packet.extend_from_slice(will_topic.as_bytes());
+
+    // Will message
+    let _ = packet.push(0x00);
+    let _ = packet.push(will_message.len() as u8);
+    let _ = packet.extend_from_slice(will_message);
+
+    packet
+}
+
 // Build a minimal MQTT PUBLISH packet (QoS 0)
-fn build_mqtt_publish(topic: &str, payload: &[u8]) -> heapless::Vec<u8, 128> {
+fn build_mqtt_publish(topic: &str, payload: &[u8]) -> heapless::Vec<u8, 640> {
     let mut packet = heapless::Vec::new();
 
     let remaining_len = 2 + topic.len() + payload.len();
 
     let _ = packet.push(0x30); // PUBLISH packet type
-    let _ = packet.push(remaining_len as u8);
+
+    // Encode remaining length (can be multi-byte for larger packets)
+    if remaining_len < 128 {
+        let _ = packet.push(remaining_len as u8);
+    } else {
+        // Two-byte encoding for lengths 128-16383
+        let _ = packet.push((remaining_len % 128) as u8 | 0x80);
+        let _ = packet.push((remaining_len / 128) as u8);
+    }
 
     // Topic
     let _ = packet.push(0x00);
@@ -476,6 +562,45 @@ fn handle_mqtt_command(topic: &str, payload: &str) {
             info!("Command received: setting switch to {}", if state { "ON" } else { "OFF" });
         }
     }
+}
+
+// Build Home Assistant MQTT Discovery topic
+fn ha_discovery_topic() -> heapless::String<128> {
+    let mut topic = heapless::String::new();
+    let _ = core::fmt::write(
+        &mut topic,
+        format_args!(
+            "{}/switch/{}/config",
+            config::HA_DISCOVERY_PREFIX,
+            config::DEVICE_ID
+        ),
+    );
+    topic
+}
+
+// Build Home Assistant MQTT Discovery payload (JSON)
+fn build_ha_discovery_payload() -> heapless::Vec<u8, 512> {
+    let mut payload = heapless::Vec::new();
+
+    // Build JSON manually to avoid serde dependency
+    let _ = payload.extend_from_slice(br#"{"name":""#);
+    let _ = payload.extend_from_slice(config::DEVICE_NAME.as_bytes());
+    let _ = payload.extend_from_slice(br#"","state_topic":""#);
+    let _ = payload.extend_from_slice(config::STATE_TOPIC.as_bytes());
+    let _ = payload.extend_from_slice(br#"","command_topic":""#);
+    let _ = payload.extend_from_slice(config::COMMAND_TOPIC.as_bytes());
+    let _ = payload.extend_from_slice(br#"","availability_topic":""#);
+    let _ = payload.extend_from_slice(config::AVAILABILITY_TOPIC.as_bytes());
+    let _ = payload.extend_from_slice(br#"","payload_on":"ON","payload_off":"OFF""#);
+    let _ = payload.extend_from_slice(br#","unique_id":""#);
+    let _ = payload.extend_from_slice(config::DEVICE_ID.as_bytes());
+    let _ = payload.extend_from_slice(br#"","device":{"identifiers":[""#);
+    let _ = payload.extend_from_slice(config::DEVICE_ID.as_bytes());
+    let _ = payload.extend_from_slice(br#""],"name":""#);
+    let _ = payload.extend_from_slice(config::DEVICE_NAME.as_bytes());
+    let _ = payload.extend_from_slice(br#"","model":"ESP32 DIY Switch","manufacturer":"DIY"}}"#);
+
+    payload
 }
 
 fn parse_ip(s: &str) -> Option<Ipv4Address> {

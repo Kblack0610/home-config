@@ -9,9 +9,10 @@ This guide walks you through setting up a new ESP32 device with the smart switch
 3. [Hardware Wiring](#hardware-wiring)
 4. [Configuration](#configuration)
 5. [Building and Flashing](#building-and-flashing)
-6. [Home Assistant Integration](#home-assistant-integration)
-7. [Adding Multiple Switches](#adding-multiple-switches)
-8. [Troubleshooting](#troubleshooting)
+6. [Docker Development](#docker-development)
+7. [Home Assistant Integration](#home-assistant-integration)
+8. [Adding Multiple Switches](#adding-multiple-switches)
+9. [Troubleshooting](#troubleshooting)
 
 ---
 
@@ -83,6 +84,24 @@ rustc --version
 espflash --version
 # Should show: espflash 3.x.x
 ```
+
+### Alternative: Docker-Based Development
+
+If you prefer not to install the ESP32 toolchain globally, use Docker for a reproducible environment:
+
+```bash
+# 1. Install Docker and Docker Compose
+# https://docs.docker.com/get-docker/
+
+# 2. Configure your settings
+cp .env.example .env
+# Edit .env with your WiFi and MQTT settings
+
+# 3. Build using Docker
+./docker-build.sh build
+```
+
+See [Docker Development](#docker-development) section below for full details.
 
 ### Step 4: Clone/Navigate to Project
 
@@ -248,6 +267,125 @@ espflash flash target/xtensa-esp32-none-elf/release/smart-switch
 
 # Monitor only
 espflash monitor
+```
+
+---
+
+## Docker Development
+
+Docker provides a reproducible development environment without installing the ESP32 toolchain on your host system.
+
+### Prerequisites
+
+- Docker Engine 20.10+
+- Docker Compose v2
+- USB access for flashing (Linux: add user to `dialout` group)
+
+### Quick Start with Docker
+
+```bash
+# 1. Configure environment
+cp .env.example .env
+# Edit .env with your WiFi/MQTT settings
+
+# 2. Build firmware
+./docker-build.sh build
+
+# 3. Flash to ESP32 (requires espflash on host)
+./docker-build.sh flash
+```
+
+### Docker Commands
+
+| Command | Description |
+|---------|-------------|
+| `./docker-build.sh build` | Build Docker image and compile firmware |
+| `./docker-build.sh flash` | Build and flash to connected ESP32 |
+| `./docker-build.sh shell` | Open interactive shell in container |
+| `./docker-build.sh image` | Build/rebuild Docker image only |
+| `./docker-build.sh help` | Show help message |
+
+### VS Code Dev Container
+
+For the best development experience, use VS Code with the Dev Containers extension:
+
+1. Install [VS Code](https://code.visualstudio.com/)
+2. Install the [Dev Containers extension](https://marketplace.visualstudio.com/items?itemName=ms-vscode-remote.remote-containers)
+3. Open this project folder in VS Code
+4. Click "Reopen in Container" when prompted (or use Command Palette: `Dev Containers: Reopen in Container`)
+
+The container includes:
+- Pre-configured ESP32 Rust toolchain
+- rust-analyzer with ESP32 target
+- espflash for firmware deployment
+- All necessary development tools
+
+### Docker Files Overview
+
+```
+smart-switch/
+├── Dockerfile              # ESP32 Rust development image
+├── docker-compose.yml      # Container configuration
+├── docker-build.sh         # Build helper script
+└── .devcontainer/
+    └── devcontainer.json   # VS Code Dev Container config
+```
+
+### Flashing from Docker
+
+The Docker container builds the firmware, but flashing requires USB access. Two options:
+
+**Option 1: Flash from host (recommended)**
+```bash
+# Build in Docker, flash from host
+./docker-build.sh build
+
+# Install espflash on host if needed
+cargo install espflash
+
+# Flash manually
+espflash flash target/xtensa-esp32-none-elf/release/smart-switch --monitor
+```
+
+**Option 2: USB passthrough (Linux only)**
+
+Edit `docker-compose.yml` to enable device access:
+```yaml
+services:
+  esp32-dev:
+    # ... existing config ...
+    devices:
+      - /dev/ttyUSB0:/dev/ttyUSB0
+    privileged: true
+```
+
+Then flash from inside the container:
+```bash
+./docker-build.sh shell
+# Inside container:
+espflash flash target/xtensa-esp32-none-elf/release/smart-switch --monitor
+```
+
+### Troubleshooting Docker
+
+**Docker build fails**
+```bash
+# Rebuild image from scratch
+docker-compose build --no-cache
+```
+
+**Permission denied on serial port**
+```bash
+# Add user to dialout group (Linux)
+sudo usermod -a -G dialout $USER
+# Log out and back in
+```
+
+**Volume mount issues**
+```bash
+# Clean up Docker volumes
+docker-compose down -v
+docker volume prune
 ```
 
 ---
@@ -436,9 +574,14 @@ cp .env.example .env
 │    GPIO2  - Relay output                                 │
 │    GPIO4  - Status LED                                   │
 ├──────────────────────────────────────────────────────────┤
-│  BUILD COMMANDS:                                          │
+│  BUILD COMMANDS (native):                                 │
 │    ./build.sh         - Build only                       │
 │    ./build.sh flash   - Build and flash                  │
 │    ./build.sh monitor - Serial monitor                   │
+├──────────────────────────────────────────────────────────┤
+│  BUILD COMMANDS (Docker):                                 │
+│    ./docker-build.sh build  - Build in container         │
+│    ./docker-build.sh flash  - Build and flash            │
+│    ./docker-build.sh shell  - Interactive shell          │
 └──────────────────────────────────────────────────────────┘
 ```

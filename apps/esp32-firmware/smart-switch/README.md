@@ -14,6 +14,8 @@ A Rust-based smart switch firmware for ESP32, designed as an alternative to ESPH
 
 ## Quick Start
 
+### Option A: Native Toolchain
+
 ```bash
 # 1. Install ESP32 toolchain (one-time setup)
 cargo install espup espflash
@@ -26,6 +28,18 @@ cp .env.example .env
 
 # 3. Build and flash
 ./build.sh flash
+```
+
+### Option B: Docker (no toolchain installation needed)
+
+```bash
+# 1. Configure
+cp .env.example .env
+# Edit .env with your WiFi and MQTT settings
+
+# 2. Build and flash
+./docker-build.sh build
+./docker-build.sh flash
 ```
 
 **For detailed setup instructions, see [docs/SETUP.md](docs/SETUP.md)**
@@ -74,10 +88,15 @@ Edit `src/config.rs` for device-specific settings (device name, topics, etc.)
 smart-switch/
 ├── Cargo.toml          # Rust dependencies
 ├── build.sh            # Build/flash helper script
+├── docker-build.sh     # Docker build script
+├── Dockerfile          # ESP32 dev environment
+├── docker-compose.yml  # Container config
 ├── .env.example        # Environment template
 ├── README.md           # This file
 ├── docs/
 │   └── SETUP.md        # Detailed setup guide
+├── .devcontainer/
+│   └── devcontainer.json  # VS Code dev container
 └── src/
     ├── config.rs       # Configuration constants
     └── bin/
@@ -87,6 +106,7 @@ smart-switch/
 ## Documentation
 
 - **[Setup Guide](docs/SETUP.md)** - Complete setup instructions for new devices
+- **[Docker Development](docs/SETUP.md#docker-development)** - Building with Docker
 - **[Configuration](docs/SETUP.md#configuration)** - How to customize settings
 - **[Multiple Devices](docs/SETUP.md#adding-multiple-switches)** - Setting up additional switches
 - **[Troubleshooting](docs/SETUP.md#troubleshooting)** - Common issues and solutions

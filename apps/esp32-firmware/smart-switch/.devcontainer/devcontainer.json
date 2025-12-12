@@ -1,0 +1,45 @@
+{
+  "name": "ESP32 Smart Switch Dev",
+  "build": {
+    "dockerfile": "../Dockerfile",
+    "context": ".."
+  },
+  "workspaceFolder": "/workspace",
+  "workspaceMount": "source=${localWorkspaceFolder},target=/workspace,type=bind,consistency=cached",
+
+  "mounts": [
+    "source=esp32-cargo-cache,target=/usr/local/cargo/registry,type=volume",
+    "source=esp32-cargo-git,target=/usr/local/cargo/git,type=volume"
+  ],
+
+  "containerEnv": {
+    "WIFI_SSID": "${localEnv:WIFI_SSID}",
+    "WIFI_PASSWORD": "${localEnv:WIFI_PASSWORD}",
+    "MQTT_BROKER": "${localEnv:MQTT_BROKER}"
+  },
+
+  "customizations": {
+    "vscode": {
+      "extensions": [
+        "rust-lang.rust-analyzer",
+        "tamasfe.even-better-toml",
+        "serayuzgur.crates",
+        "vadimcn.vscode-lldb",
+        "probe-rs.probe-rs-debugger"
+      ],
+      "settings": {
+        "rust-analyzer.cargo.target": "xtensa-esp32-none-elf",
+        "rust-analyzer.checkOnSave.allTargets": false,
+        "editor.formatOnSave": true
+      }
+    }
+  },
+
+  "runArgs": [
+    "--privileged"
+  ],
+
+  "postCreateCommand": "echo 'ESP32 development environment ready! Run: cargo build --release'",
+
+  "remoteUser": "root"
+}

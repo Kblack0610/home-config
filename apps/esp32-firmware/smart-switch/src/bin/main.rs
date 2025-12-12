@@ -29,11 +29,14 @@ mod config {
     pub const MQTT_BROKER: &str = env!("MQTT_BROKER");
     pub const MQTT_PORT: u16 = 1883;
     pub const DEBOUNCE_MS: u64 = 50;
+    pub const STATE_TOPIC: &str = "home/switch/livingroom/state";
+    pub const COMMAND_TOPIC: &str = "home/switch/livingroom/set";
 }
 
 // Global state - shared between tasks
 static SWITCH_STATE: AtomicBool = AtomicBool::new(false);
 static STATE_CHANGED: AtomicBool = AtomicBool::new(false);
+static PUBLISH_REQUESTED: AtomicBool = AtomicBool::new(false);
 
 esp_bootloader_esp_idf::esp_app_desc!();
 
@@ -124,39 +127,87 @@ async fn main(spawner: Spawner) -> ! {
                 let client_id = b"esp32-switch";
                 let connect_packet = build_mqtt_connect(client_id);
 
-                match socket.write_all(&connect_packet).await {
-                    Ok(()) => {
-                        info!("MQTT CONNECT sent");
+                if socket.write_all(&connect_packet).await.is_err() {
+                    error!("Failed to send CONNECT");
+                    continue;
+                }
+                info!("MQTT CONNECT sent");
 
-                        // Read CONNACK response
-                        let mut buf = [0u8; 4];
-                        match socket.read_exact(&mut buf).await {
-                            Ok(()) => {
-                                if buf[0] == 0x20 && buf[3] == 0x00 {
-                                    info!("MQTT connected successfully!");
+                // Read CONNACK response
+                let mut buf = [0u8; 4];
+                if socket.read_exact(&mut buf).await.is_err() {
+                    error!("Failed to read CONNACK");
+                    continue;
+                }
 
-                                    // Main MQTT loop - publish state periodically
-                                    loop {
-                                        let state = if SWITCH_STATE.load(Ordering::SeqCst) { "ON" } else { "OFF" };
-                                        let topic = "home/switch/livingroom/state";
-                                        let publish = build_mqtt_publish(topic, state.as_bytes());
+                if buf[0] != 0x20 || buf[3] != 0x00 {
+                    error!("MQTT CONNACK failed: {:02x} {:02x}", buf[2], buf[3]);
+                    continue;
+                }
+                info!("MQTT connected successfully!");
 
-                                        if socket.write_all(&publish).await.is_err() {
-                                            warn!("MQTT publish failed, reconnecting...");
-                                            break;
-                                        }
+                // Subscribe to command topic
+                let subscribe_packet = build_mqtt_subscribe(config::COMMAND_TOPIC, 1);
+                if socket.write_all(&subscribe_packet).await.is_err() {
+                    error!("Failed to send SUBSCRIBE");
+                    continue;
+                }
+                info!("Subscribed to {}", config::COMMAND_TOPIC);
 
-                                        info!("Published: {} = {}", topic, state);
-                                        Timer::after(Duration::from_secs(5)).await;
-                                    }
-                                } else {
-                                    error!("MQTT CONNACK failed: {:02x} {:02x}", buf[2], buf[3]);
-                                }
+                // Read SUBACK response
+                let mut suback_buf = [0u8; 5];
+                if socket.read_exact(&mut suback_buf).await.is_err() {
+                    warn!("Failed to read SUBACK, continuing anyway...");
+                }
+
+                // Publish initial state
+                PUBLISH_REQUESTED.store(true, Ordering::SeqCst);
+
+                // Main MQTT loop - handle incoming messages and publish state changes
+                let mut read_buf = [0u8; 256];
+                let mut last_publish = Instant::now();
+
+                loop {
+                    // Check if we need to publish state
+                    let should_publish = PUBLISH_REQUESTED.swap(false, Ordering::SeqCst)
+                        || last_publish.elapsed() > Duration::from_secs(30);
+
+                    if should_publish {
+                        let state = if SWITCH_STATE.load(Ordering::SeqCst) { "ON" } else { "OFF" };
+                        let publish = build_mqtt_publish(config::STATE_TOPIC, state.as_bytes());
+
+                        if socket.write_all(&publish).await.is_err() {
+                            warn!("MQTT publish failed, reconnecting...");
+                            break;
+                        }
+
+                        info!("Published: {} = {}", config::STATE_TOPIC, state);
+                        last_publish = Instant::now();
+                    }
+
+                    // Try to read incoming messages (non-blocking check with short timeout)
+                    socket.set_timeout(Some(Duration::from_millis(100)));
+                    match socket.read(&mut read_buf).await {
+                        Ok(0) => {
+                            // Connection closed
+                            warn!("MQTT connection closed");
+                            break;
+                        }
+                        Ok(n) => {
+                            // Process received MQTT packet
+                            if let Some((topic, payload)) = parse_mqtt_publish(&read_buf[..n]) {
+                                info!("Received: {} = {}", topic, payload);
+                                handle_mqtt_command(topic, payload);
                             }
-                            Err(_) => error!("Failed to read CONNACK"),
+                        }
+                        Err(_) => {
+                            // Timeout or error - just continue polling
                         }
                     }
-                    Err(_) => error!("Failed to send CONNECT"),
+                    socket.set_timeout(Some(Duration::from_secs(10)));
+
+                    // Small delay to prevent busy loop
+                    Timer::after(Duration::from_millis(50)).await;
                 }
             }
             Err(_) => {
@@ -323,6 +374,108 @@ fn build_mqtt_publish(topic: &str, payload: &[u8]) -> heapless::Vec<u8, 128> {
     let _ = packet.extend_from_slice(payload);
 
     packet
+}
+
+// Build a minimal MQTT SUBSCRIBE packet (QoS 0)
+fn build_mqtt_subscribe(topic: &str, packet_id: u16) -> heapless::Vec<u8, 128> {
+    let mut packet = heapless::Vec::new();
+
+    let remaining_len = 2 + 2 + topic.len() + 1; // packet_id + topic_len + topic + qos
+
+    let _ = packet.push(0x82); // SUBSCRIBE packet type with QoS 1 flag
+    let _ = packet.push(remaining_len as u8);
+
+    // Packet identifier
+    let _ = packet.push((packet_id >> 8) as u8);
+    let _ = packet.push(packet_id as u8);
+
+    // Topic filter
+    let _ = packet.push(0x00);
+    let _ = packet.push(topic.len() as u8);
+    let _ = packet.extend_from_slice(topic.as_bytes());
+
+    // Requested QoS (0)
+    let _ = packet.push(0x00);
+
+    packet
+}
+
+// Parse an incoming MQTT PUBLISH packet, returns (topic, payload) if valid
+fn parse_mqtt_publish(data: &[u8]) -> Option<(&str, &str)> {
+    if data.is_empty() {
+        return None;
+    }
+
+    // Check if this is a PUBLISH packet (0x30-0x3F)
+    let packet_type = data[0] & 0xF0;
+    if packet_type != 0x30 {
+        return None;
+    }
+
+    if data.len() < 4 {
+        return None;
+    }
+
+    // Get remaining length (simple single-byte for now)
+    let remaining_len = data[1] as usize;
+    if data.len() < 2 + remaining_len {
+        return None;
+    }
+
+    // Get topic length
+    let topic_len = ((data[2] as usize) << 8) | (data[3] as usize);
+    if data.len() < 4 + topic_len {
+        return None;
+    }
+
+    // Extract topic
+    let topic = core::str::from_utf8(&data[4..4 + topic_len]).ok()?;
+
+    // Extract payload (everything after topic, accounting for QoS packet ID if present)
+    let qos = (data[0] >> 1) & 0x03;
+    let payload_start = if qos > 0 {
+        4 + topic_len + 2 // Skip 2-byte packet identifier for QoS 1/2
+    } else {
+        4 + topic_len
+    };
+
+    if payload_start > 2 + remaining_len {
+        return None;
+    }
+
+    let payload = core::str::from_utf8(&data[payload_start..2 + remaining_len]).ok()?;
+
+    Some((topic, payload))
+}
+
+// Handle incoming MQTT commands
+fn handle_mqtt_command(topic: &str, payload: &str) {
+    // Check if this is for our command topic
+    if topic != config::COMMAND_TOPIC {
+        return;
+    }
+
+    let payload_upper = payload.trim();
+
+    let new_state = match payload_upper {
+        "ON" | "on" | "1" | "true" | "TRUE" => Some(true),
+        "OFF" | "off" | "0" | "false" | "FALSE" => Some(false),
+        "TOGGLE" | "toggle" => Some(!SWITCH_STATE.load(Ordering::SeqCst)),
+        _ => {
+            warn!("Unknown command payload: {}", payload);
+            None
+        }
+    };
+
+    if let Some(state) = new_state {
+        let current = SWITCH_STATE.load(Ordering::SeqCst);
+        if state != current {
+            SWITCH_STATE.store(state, Ordering::SeqCst);
+            STATE_CHANGED.store(true, Ordering::SeqCst);
+            PUBLISH_REQUESTED.store(true, Ordering::SeqCst);
+            info!("Command received: setting switch to {}", if state { "ON" } else { "OFF" });
+        }
+    }
 }
 
 fn parse_ip(s: &str) -> Option<Ipv4Address> {

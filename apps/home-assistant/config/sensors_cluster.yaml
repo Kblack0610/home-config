@@ -1,0 +1,225 @@
+# K3s Cluster Monitoring Sensors
+# Pulls data from Netdata running on each node
+# Add to configuration.yaml: sensor: !include sensors_cluster.yaml
+
+# ============================================
+# NODE: raspberrypi (Control Plane) - 192.168.1.20
+# ============================================
+- platform: rest
+  name: "Node 1 CPU"
+  resource: "http://192.168.1.20:19999/api/v1/data?chart=system.cpu&points=1&format=json&options=abs"
+  value_template: "{{ ((value_json.data[0][6] | float) + (value_json.data[0][7] | float)) | round(1) }}"
+  unit_of_measurement: "%"
+  scan_interval: 30
+  json_attributes_path: "$.data[0]"
+
+- platform: rest
+  name: "Node 1 RAM"
+  resource: "http://192.168.1.20:19999/api/v1/data?chart=system.ram&points=1&format=json"
+  value_template: >-
+    {% set used = value_json.data[0][1] | float %}
+    {% set buffers = value_json.data[0][2] | float %}
+    {% set cached = value_json.data[0][4] | float %}
+    {% set free = value_json.data[0][3] | float %}
+    {% set total = used + buffers + cached + free %}
+    {{ ((used / total) * 100) | round(1) }}
+  unit_of_measurement: "%"
+  scan_interval: 30
+
+- platform: rest
+  name: "Node 1 Disk"
+  resource: "http://192.168.1.20:19999/api/v1/data?chart=disk_space._&points=1&format=json"
+  value_template: >-
+    {% set avail = value_json.data[0][1] | float %}
+    {% set used = value_json.data[0][2] | float %}
+    {% set reserved = value_json.data[0][3] | float %}
+    {% set total = avail + used + reserved %}
+    {{ ((used / total) * 100) | round(1) if total > 0 else 0 }}
+  unit_of_measurement: "%"
+  scan_interval: 60
+
+# ============================================
+# NODE: raspberrypi-23a7710c - 192.168.1.21
+# ============================================
+- platform: rest
+  name: "Node 2 CPU"
+  resource: "http://192.168.1.21:19999/api/v1/data?chart=system.cpu&points=1&format=json&options=abs"
+  value_template: "{{ ((value_json.data[0][6] | float) + (value_json.data[0][7] | float)) | round(1) }}"
+  unit_of_measurement: "%"
+  scan_interval: 30
+
+- platform: rest
+  name: "Node 2 RAM"
+  resource: "http://192.168.1.21:19999/api/v1/data?chart=system.ram&points=1&format=json"
+  value_template: >-
+    {% set used = value_json.data[0][1] | float %}
+    {% set buffers = value_json.data[0][2] | float %}
+    {% set cached = value_json.data[0][4] | float %}
+    {% set free = value_json.data[0][3] | float %}
+    {% set total = used + buffers + cached + free %}
+    {{ ((used / total) * 100) | round(1) }}
+  unit_of_measurement: "%"
+  scan_interval: 30
+
+- platform: rest
+  name: "Node 2 Disk"
+  resource: "http://192.168.1.21:19999/api/v1/data?chart=disk_space._&points=1&format=json"
+  value_template: >-
+    {% set avail = value_json.data[0][1] | float %}
+    {% set used = value_json.data[0][2] | float %}
+    {% set reserved = value_json.data[0][3] | float %}
+    {% set total = avail + used + reserved %}
+    {{ ((used / total) * 100) | round(1) if total > 0 else 0 }}
+  unit_of_measurement: "%"
+  scan_interval: 60
+
+# ============================================
+# NODE: raspberrypi-e3a771f1 - 192.168.1.22
+# ============================================
+- platform: rest
+  name: "Node 3 CPU"
+  resource: "http://192.168.1.22:19999/api/v1/data?chart=system.cpu&points=1&format=json&options=abs"
+  value_template: "{{ ((value_json.data[0][6] | float) + (value_json.data[0][7] | float)) | round(1) }}"
+  unit_of_measurement: "%"
+  scan_interval: 30
+
+- platform: rest
+  name: "Node 3 RAM"
+  resource: "http://192.168.1.22:19999/api/v1/data?chart=system.ram&points=1&format=json"
+  value_template: >-
+    {% set used = value_json.data[0][1] | float %}
+    {% set buffers = value_json.data[0][2] | float %}
+    {% set cached = value_json.data[0][4] | float %}
+    {% set free = value_json.data[0][3] | float %}
+    {% set total = used + buffers + cached + free %}
+    {{ ((used / total) * 100) | round(1) }}
+  unit_of_measurement: "%"
+  scan_interval: 30
+
+- platform: rest
+  name: "Node 3 Disk"
+  resource: "http://192.168.1.22:19999/api/v1/data?chart=disk_space._&points=1&format=json"
+  value_template: >-
+    {% set avail = value_json.data[0][1] | float %}
+    {% set used = value_json.data[0][2] | float %}
+    {% set reserved = value_json.data[0][3] | float %}
+    {% set total = avail + used + reserved %}
+    {{ ((used / total) * 100) | round(1) if total > 0 else 0 }}
+  unit_of_measurement: "%"
+  scan_interval: 60
+
+# ============================================
+# NODE: raspberrypi-771be84c - 192.168.1.23
+# ============================================
+- platform: rest
+  name: "Node 4 CPU"
+  resource: "http://192.168.1.23:19999/api/v1/data?chart=system.cpu&points=1&format=json&options=abs"
+  value_template: "{{ ((value_json.data[0][6] | float) + (value_json.data[0][7] | float)) | round(1) }}"
+  unit_of_measurement: "%"
+  scan_interval: 30
+
+- platform: rest
+  name: "Node 4 RAM"
+  resource: "http://192.168.1.23:19999/api/v1/data?chart=system.ram&points=1&format=json"
+  value_template: >-
+    {% set used = value_json.data[0][1] | float %}
+    {% set buffers = value_json.data[0][2] | float %}
+    {% set cached = value_json.data[0][4] | float %}
+    {% set free = value_json.data[0][3] | float %}
+    {% set total = used + buffers + cached + free %}
+    {{ ((used / total) * 100) | round(1) }}
+  unit_of_measurement: "%"
+  scan_interval: 30
+
+- platform: rest
+  name: "Node 4 Disk"
+  resource: "http://192.168.1.23:19999/api/v1/data?chart=disk_space._&points=1&format=json"
+  value_template: >-
+    {% set avail = value_json.data[0][1] | float %}
+    {% set used = value_json.data[0][2] | float %}
+    {% set reserved = value_json.data[0][3] | float %}
+    {% set total = avail + used + reserved %}
+    {{ ((used / total) * 100) | round(1) if total > 0 else 0 }}
+  unit_of_measurement: "%"
+  scan_interval: 60
+
+# ============================================
+# NODE: raspberrypi-b814834e (Traefik) - 192.168.1.124
+# ============================================
+- platform: rest
+  name: "Node 5 CPU"
+  resource: "http://192.168.1.124:19999/api/v1/data?chart=system.cpu&points=1&format=json&options=abs"
+  value_template: "{{ ((value_json.data[0][6] | float) + (value_json.data[0][7] | float)) | round(1) }}"
+  unit_of_measurement: "%"
+  scan_interval: 30
+
+- platform: rest
+  name: "Node 5 RAM"
+  resource: "http://192.168.1.124:19999/api/v1/data?chart=system.ram&points=1&format=json"
+  value_template: >-
+    {% set used = value_json.data[0][1] | float %}
+    {% set buffers = value_json.data[0][2] | float %}
+    {% set cached = value_json.data[0][4] | float %}
+    {% set free = value_json.data[0][3] | float %}
+    {% set total = used + buffers + cached + free %}
+    {{ ((used / total) * 100) | round(1) }}
+  unit_of_measurement: "%"
+  scan_interval: 30
+
+- platform: rest
+  name: "Node 5 Disk"
+  resource: "http://192.168.1.124:19999/api/v1/data?chart=disk_space._&points=1&format=json"
+  value_template: >-
+    {% set avail = value_json.data[0][1] | float %}
+    {% set used = value_json.data[0][2] | float %}
+    {% set reserved = value_json.data[0][3] | float %}
+    {% set total = avail + used + reserved %}
+    {{ ((used / total) * 100) | round(1) if total > 0 else 0 }}
+  unit_of_measurement: "%"
+  scan_interval: 60
+
+# ============================================
+# CLUSTER AVERAGES (Template Sensors)
+# ============================================
+- platform: template
+  sensors:
+    cluster_cpu_average:
+      friendly_name: "Cluster CPU Average"
+      unit_of_measurement: "%"
+      value_template: >-
+        {% set nodes = [
+          states('sensor.node_1_cpu') | float(0),
+          states('sensor.node_2_cpu') | float(0),
+          states('sensor.node_3_cpu') | float(0),
+          states('sensor.node_4_cpu') | float(0),
+          states('sensor.node_5_cpu') | float(0)
+        ] %}
+        {% set valid = nodes | select('gt', 0) | list %}
+        {{ (valid | sum / valid | length) | round(1) if valid | length > 0 else 0 }}
+
+    cluster_ram_average:
+      friendly_name: "Cluster RAM Average"
+      unit_of_measurement: "%"
+      value_template: >-
+        {% set nodes = [
+          states('sensor.node_1_ram') | float(0),
+          states('sensor.node_2_ram') | float(0),
+          states('sensor.node_3_ram') | float(0),
+          states('sensor.node_4_ram') | float(0),
+          states('sensor.node_5_ram') | float(0)
+        ] %}
+        {% set valid = nodes | select('gt', 0) | list %}
+        {{ (valid | sum / valid | length) | round(1) if valid | length > 0 else 0 }}
+
+    cluster_nodes_online:
+      friendly_name: "Cluster Nodes Online"
+      unit_of_measurement: "nodes"
+      value_template: >-
+        {% set nodes = [
+          states('sensor.node_1_cpu'),
+          states('sensor.node_2_cpu'),
+          states('sensor.node_3_cpu'),
+          states('sensor.node_4_cpu'),
+          states('sensor.node_5_cpu')
+        ] %}
+        {{ nodes | reject('in', ['unknown', 'unavailable']) | list | length }}

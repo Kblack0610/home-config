@@ -17,6 +17,31 @@ spec:
       labels:
         app.kubernetes.io/name: home-assistant
     spec:
+      initContainers:
+        # Copy sensor configs from ConfigMap to PVC (only if they don't exist)
+        - name: copy-cluster-config
+          image: busybox:latest
+          command:
+            - sh
+            - -c
+            - |
+              # Copy sensor configs if they don't exist
+              if [ ! -f /config/sensors_cluster.yaml ]; then
+                echo "Copying sensors_cluster.yaml..."
+                cp /configmap/sensors_cluster.yaml /config/
+              fi
+              if [ ! -f /config/sensors_pods.yaml ]; then
+                echo "Copying sensors_pods.yaml..."
+                cp /configmap/sensors_pods.yaml /config/
+              fi
+              # Show what's in config
+              echo "Config files:"
+              ls -la /config/*.yaml 2>/dev/null || echo "No yaml files yet"
+          volumeMounts:
+            - name: config
+              mountPath: /config
+            - name: cluster-config
+              mountPath: /configmap
       containers:
         - name: home-assistant
           image: ghcr.io/home-assistant/home-assistant:stable
@@ -56,3 +81,6 @@ spec:
         - name: localtime
           hostPath:
             path: /etc/localtime
+        - name: cluster-config
+          configMap:
+            name: home-assistant-cluster-config

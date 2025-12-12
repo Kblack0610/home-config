@@ -1,0 +1,188 @@
+# K3s Cluster Monitoring Dashboard
+#
+# To use:
+# 1. Go to HA Dashboard > Edit Dashboard > Raw Configuration Editor
+# 2. Add this as a new view, or create via UI using these cards
+#
+# Alternatively, add to ui-lovelace.yaml:
+#   views:
+#     - !include lovelace_cluster.yaml
+
+title: K3s Cluster
+path: cluster
+icon: mdi:kubernetes
+badges: []
+cards:
+  # ============================================
+  # CLUSTER OVERVIEW
+  # ============================================
+  - type: vertical-stack
+    cards:
+      - type: markdown
+        content: |
+          ## K3s Cluster Health
+          **Nodes Online:** {{ states('sensor.cluster_nodes_online') }}/5
+
+      - type: horizontal-stack
+        cards:
+          - type: gauge
+            entity: sensor.cluster_cpu_average
+            name: Cluster CPU
+            min: 0
+            max: 100
+            severity:
+              green: 0
+              yellow: 60
+              red: 80
+
+          - type: gauge
+            entity: sensor.cluster_ram_average
+            name: Cluster RAM
+            min: 0
+            max: 100
+            severity:
+              green: 0
+              yellow: 70
+              red: 85
+
+  # ============================================
+  # NODE STATUS GRID
+  # ============================================
+  - type: vertical-stack
+    cards:
+      - type: markdown
+        content: "## Nodes"
+
+      - type: glance
+        title: CPU Usage
+        show_name: true
+        show_state: true
+        columns: 5
+        entities:
+          - entity: sensor.node_1_cpu
+            name: Pi-20
+          - entity: sensor.node_2_cpu
+            name: Pi-21
+          - entity: sensor.node_3_cpu
+            name: Pi-22
+          - entity: sensor.node_4_cpu
+            name: Pi-23
+          - entity: sensor.node_5_cpu
+            name: Pi-124
+
+      - type: glance
+        title: RAM Usage
+        show_name: true
+        show_state: true
+        columns: 5
+        entities:
+          - entity: sensor.node_1_ram
+            name: Pi-20
+          - entity: sensor.node_2_ram
+            name: Pi-21
+          - entity: sensor.node_3_ram
+            name: Pi-22
+          - entity: sensor.node_4_ram
+            name: Pi-23
+          - entity: sensor.node_5_ram
+            name: Pi-124
+
+      - type: glance
+        title: Disk Usage
+        show_name: true
+        show_state: true
+        columns: 5
+        entities:
+          - entity: sensor.node_1_disk
+            name: Pi-20
+          - entity: sensor.node_2_disk
+            name: Pi-21
+          - entity: sensor.node_3_disk
+            name: Pi-22
+          - entity: sensor.node_4_disk
+            name: Pi-23
+          - entity: sensor.node_5_disk
+            name: Pi-124
+
+  # ============================================
+  # NODE HISTORY GRAPHS
+  # ============================================
+  - type: history-graph
+    title: Node CPU History (24h)
+    hours_to_show: 24
+    entities:
+      - entity: sensor.node_1_cpu
+        name: Control Plane
+      - entity: sensor.node_2_cpu
+        name: Worker 1
+      - entity: sensor.node_3_cpu
+        name: Worker 2
+      - entity: sensor.node_4_cpu
+        name: Worker 3
+      - entity: sensor.node_5_cpu
+        name: Worker 4
+
+  - type: history-graph
+    title: Node RAM History (24h)
+    hours_to_show: 24
+    entities:
+      - entity: sensor.node_1_ram
+        name: Control Plane
+      - entity: sensor.node_2_ram
+        name: Worker 1
+      - entity: sensor.node_3_ram
+        name: Worker 2
+      - entity: sensor.node_4_ram
+        name: Worker 3
+      - entity: sensor.node_5_ram
+        name: Worker 4
+
+  # ============================================
+  # KEY SERVICES
+  # ============================================
+  - type: vertical-stack
+    cards:
+      - type: markdown
+        content: "## Services"
+
+      - type: entities
+        title: Core Services
+        entities:
+          - entity: sensor.ha_container_cpu
+            name: Home Assistant
+            icon: mdi:home-assistant
+          - entity: sensor.ha_container_ram
+            name: HA Memory
+            icon: mdi:memory
+          - entity: sensor.traefik_cpu
+            name: Traefik (Ingress)
+            icon: mdi:router
+          - entity: sensor.traefik_ram
+            name: Traefik Memory
+            icon: mdi:memory
+          - entity: sensor.cloudflared_cpu
+            name: Cloudflare Tunnel
+            icon: mdi:cloud
+
+      - type: entities
+        title: Kubernetes
+        entities:
+          - entity: sensor.k3s_server_cpu
+            name: K3s Server
+            icon: mdi:kubernetes
+          - entity: sensor.k3s_server_ram
+            name: K3s Memory
+            icon: mdi:memory
+          - entity: sensor.containerd_cpu
+            name: Containerd
+            icon: mdi:docker
+
+  # ============================================
+  # QUICK LINKS
+  # ============================================
+  - type: markdown
+    content: |
+      ## Quick Links
+      - [Netdata (Node 1)](http://192.168.1.20:19999)
+      - [Traefik Dashboard](http://192.168.1.124:9000/dashboard/)
+      - [Registry](http://192.168.1.20:30500)

@@ -31,6 +31,10 @@ static SWITCH_STATE: AtomicBool = AtomicBool::new(false);
 static STATE_CHANGED: AtomicBool = AtomicBool::new(false);
 static PUBLISH_REQUESTED: AtomicBool = AtomicBool::new(false);
 
+// Connection status - for status LED
+static WIFI_CONNECTED: AtomicBool = AtomicBool::new(false);
+static MQTT_CONNECTED: AtomicBool = AtomicBool::new(false);
+
 esp_bootloader_esp_idf::esp_app_desc!();
 
 // Network stack resources
@@ -53,6 +57,7 @@ async fn main(spawner: Spawner) -> ! {
     // Initialize GPIO
     let relay = Output::new(peripherals.GPIO2, Level::Low, OutputConfig::default());
     let button = Input::new(peripherals.GPIO0, InputConfig::default().with_pull(Pull::Up));
+    let status_led = Output::new(peripherals.GPIO4, Level::Low, OutputConfig::default());
 
     // Initialize Wi-Fi
     let radio_init = RADIO_INIT.init(esp_radio::init().expect("Failed to initialize radio"));
@@ -73,11 +78,13 @@ async fn main(spawner: Spawner) -> ! {
     spawner.spawn(net_task(runner)).ok();
     spawner.spawn(button_task(button)).ok();
     spawner.spawn(relay_task(relay)).ok();
+    spawner.spawn(status_led_task(status_led)).ok();
 
     // Wait for WiFi connection
     info!("Waiting for WiFi connection...");
     loop {
         if stack.is_link_up() {
+            WIFI_CONNECTED.store(true, Ordering::SeqCst);
             break;
         }
         Timer::after(Duration::from_millis(500)).await;
@@ -99,6 +106,9 @@ async fn main(spawner: Spawner) -> ! {
     let mut tx_buffer = [0u8; 1024];
 
     loop {
+        // Reset MQTT status at start of each connection attempt
+        MQTT_CONNECTED.store(false, Ordering::SeqCst);
+
         // Report state changes
         if STATE_CHANGED.swap(false, Ordering::SeqCst) {
             let state = if SWITCH_STATE.load(Ordering::SeqCst) { "ON" } else { "OFF" };
@@ -141,6 +151,7 @@ async fn main(spawner: Spawner) -> ! {
                     continue;
                 }
                 info!("MQTT connected successfully!");
+                MQTT_CONNECTED.store(true, Ordering::SeqCst);
 
                 // Publish Home Assistant discovery config
                 let discovery_topic = ha_discovery_topic();
@@ -334,6 +345,37 @@ async fn relay_task(mut relay: Output<'static>) {
         }
 
         Timer::after(Duration::from_millis(50)).await;
+    }
+}
+
+// Status LED task - indicates connection state via blink patterns
+// - Fast blink (100ms): WiFi connecting
+// - Slow blink (500ms): WiFi connected, MQTT connecting
+// - Solid on: Fully connected (WiFi + MQTT)
+// - Off: Starting up
+#[embassy_executor::task]
+async fn status_led_task(mut led: Output<'static>) {
+    loop {
+        let wifi = WIFI_CONNECTED.load(Ordering::SeqCst);
+        let mqtt = MQTT_CONNECTED.load(Ordering::SeqCst);
+
+        if wifi && mqtt {
+            // Fully connected - solid on
+            led.set_high();
+            Timer::after(Duration::from_millis(200)).await;
+        } else if wifi {
+            // WiFi connected, MQTT connecting - slow blink
+            led.set_high();
+            Timer::after(Duration::from_millis(500)).await;
+            led.set_low();
+            Timer::after(Duration::from_millis(500)).await;
+        } else {
+            // WiFi connecting - fast blink
+            led.set_high();
+            Timer::after(Duration::from_millis(100)).await;
+            led.set_low();
+            Timer::after(Duration::from_millis(100)).await;
+        }
     }
 }
 

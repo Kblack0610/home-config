@@ -22,24 +22,9 @@ use esp_radio::wifi::{WifiController, WifiDevice};
 use static_cell::StaticCell;
 use {esp_backtrace as _, esp_println as _};
 
-// Configuration - set via environment variables at compile time
-mod config {
-    pub const WIFI_SSID: &str = env!("WIFI_SSID");
-    pub const WIFI_PASSWORD: &str = env!("WIFI_PASSWORD");
-    pub const MQTT_BROKER: &str = env!("MQTT_BROKER");
-    pub const MQTT_PORT: u16 = 1883;
-    pub const DEBOUNCE_MS: u64 = 50;
-
-    // MQTT Topics
-    pub const STATE_TOPIC: &str = "home/switch/livingroom/state";
-    pub const COMMAND_TOPIC: &str = "home/switch/livingroom/set";
-    pub const AVAILABILITY_TOPIC: &str = "home/switch/livingroom/available";
-
-    // Home Assistant Discovery
-    pub const HA_DISCOVERY_PREFIX: &str = "homeassistant";
-    pub const DEVICE_ID: &str = "esp32_switch_livingroom";
-    pub const DEVICE_NAME: &str = "Living Room Switch";
-}
+// Configuration module - edit src/config.rs to customize
+#[path = "../config.rs"]
+mod config;
 
 // Global state - shared between tasks
 static SWITCH_STATE: AtomicBool = AtomicBool::new(false);

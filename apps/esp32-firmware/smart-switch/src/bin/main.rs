@@ -117,9 +117,8 @@ async fn main(spawner: Spawner) -> ! {
                 info!("TCP connected to MQTT broker!");
 
                 // Send MQTT CONNECT packet with Last Will Testament for availability
-                let client_id = b"esp32-switch";
                 let connect_packet = build_mqtt_connect_with_lwt(
-                    client_id,
+                    config::MQTT_CLIENT_ID.as_bytes(),
                     config::AVAILABILITY_TOPIC,
                     b"offline",
                 );

@@ -21,8 +21,11 @@ pub const DEVICE_ID: &str = "esp32_switch_livingroom";
 pub const DEVICE_NAME: &str = "Living Room Switch";
 
 // GPIO Configuration
-pub const RELAY_PIN: u8 = 2;   // GPIO2 - Relay control
-pub const BUTTON_PIN: u8 = 0;  // GPIO0 - Physical button (boot button on most boards)
+// Note: esp_hal uses type-safe GPIO access. To change pins, update both:
+// - These constants (for documentation)
+// - The peripheral references in main.rs (e.g., peripherals.GPIO2)
+pub const RELAY_PIN: u8 = 2;   // GPIO2 - Relay control (mapped to peripherals.GPIO2)
+pub const BUTTON_PIN: u8 = 0;  // GPIO0 - Physical button (mapped to peripherals.GPIO0)
 pub const LED_PIN: u8 = 2;     // GPIO2 - Built-in LED (same as relay for simple boards)
 
 // Timing

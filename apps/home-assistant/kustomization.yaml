@@ -9,4 +9,4 @@ resources:
   - configmap-cluster.yaml
   - deployment.yaml
   - service.yaml
-  - ingress.yaml
+  - ingressroute.yaml

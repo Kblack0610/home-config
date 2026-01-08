@@ -10,7 +10,7 @@ metadata:
 spec:
   rules:
     # Local access via AdGuard DNS rewrite
-    - host: homeassistant.home.lan
+    - host: homeassistant.local
       http:
         paths:
           - path: /

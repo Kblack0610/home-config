@@ -6,8 +6,12 @@ metadata:
   labels:
     app.kubernetes.io/name: home-assistant
   annotations:
-    traefik.ingress.kubernetes.io/router.entrypoints: web,websecure
+    kubernetes.io/ingress.class: nginx
+    nginx.ingress.kubernetes.io/proxy-read-timeout: "3600"
+    nginx.ingress.kubernetes.io/proxy-send-timeout: "3600"
+    nginx.ingress.kubernetes.io/websocket-services: "home-assistant"
 spec:
+  ingressClassName: nginx
   rules:
     # Local access via AdGuard DNS rewrite
     - host: homeassistant.local

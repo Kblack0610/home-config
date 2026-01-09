@@ -4,99 +4,67 @@ This document describes the Model Context Protocol (MCP) servers configured for 
 
 ## Overview
 
-MCP servers allow AI assistants (like Claude) to interact directly with your infrastructure. The `.mcp.json` file in this repository configures two servers:
+MCP servers allow AI assistants (like Claude) to interact directly with your infrastructure. The `.mcp.json` file in this repository configures five servers:
 
-1. **Kubernetes MCP** - Direct cluster management and monitoring
-2. **Home Assistant MCP** - Smart home control and sensor data
+| Server | Purpose |
+|--------|---------|
+| **kubernetes** | Cluster management, pods, logs, deployments |
+| **home-assistant** | Smart home control, sensors, automations |
+| **ssh** | Direct shell access to cluster nodes |
+| **prometheus** | Metrics queries and analysis |
+| **grafana** | Dashboard management and visualization |
 
 ## Prerequisites
 
-### For Kubernetes MCP
-- Node.js 18+ (for `npx`)
-- `kubectl` configured with cluster access
-- Kubeconfig at `~/.kube/config`
+### General
+- Node.js 18+ (for `npx` commands)
+- Docker (for Prometheus MCP)
 
-### For Home Assistant MCP
-- Python 3.10+ with `uv` installed
-- Home Assistant instance running
-- Long-lived access token from Home Assistant
+### Per-Server Requirements
 
-## Configuration
+| Server | Requirements |
+|--------|-------------|
+| kubernetes | `kubectl` configured, `~/.kube/config` |
+| home-assistant | Python 3.10+, `uv` installed, HA token |
+| ssh | SSH client, `~/.ssh/config` configured |
+| prometheus | Docker, Prometheus instance running |
+| grafana | Grafana 9.0+, service account token |
 
-### Environment Variables
+## Environment Variables
 
-Set these environment variables before using the MCP servers:
+Create a `.env` file or export these variables:
 
 ```bash
-# Home Assistant (required for home-assistant MCP)
+# Home Assistant
 export HOMEASSISTANT_URL="http://homeassistant.local:8123"
 export HOMEASSISTANT_TOKEN="your-long-lived-access-token"
+
+# Prometheus (if deployed)
+export PROMETHEUS_URL="http://prometheus.local:9090"
+
+# Grafana (if deployed)
+export GRAFANA_URL="http://grafana.local:3000"
+export GRAFANA_SERVICE_ACCOUNT_TOKEN="your-service-account-token"
 ```
 
-To get a Home Assistant token:
-1. Go to your Home Assistant instance
-2. Click your profile (bottom left)
-3. Scroll to "Long-Lived Access Tokens"
-4. Click "Create Token"
-5. Copy and save the token securely
+---
 
-### Using with Claude Code
+## Server Details
 
-The `.mcp.json` file is automatically detected by Claude Code when working in this repository. Simply run `claude` from the repo root.
-
-### Using with Claude Desktop
-
-Copy the server configurations to your Claude Desktop config:
-
-**Linux:** `~/.config/Claude/claude_desktop_config.json`
-**macOS:** `~/Library/Application Support/Claude/claude_desktop_config.json`
-**Windows:** `%APPDATA%\Claude\claude_desktop_config.json`
-
-```json
-{
-  "mcpServers": {
-    "kubernetes": {
-      "command": "npx",
-      "args": ["-y", "kubernetes-mcp-server@latest"]
-    },
-    "home-assistant": {
-      "command": "uvx",
-      "args": ["ha-mcp"],
-      "env": {
-        "HOMEASSISTANT_URL": "http://homeassistant.local:8123",
-        "HOMEASSISTANT_TOKEN": "your-token-here"
-      }
-    }
-  }
-}
-```
-
-## Kubernetes MCP Server
+### 1. Kubernetes MCP
 
 **Source:** [containers/kubernetes-mcp-server](https://github.com/containers/kubernetes-mcp-server)
 
-### Capabilities
-
-| Toolset | Description |
-|---------|-------------|
-| `config` | Manage kubeconfig, list/switch contexts |
-| `core` | Pod management, events, namespaces, logs |
-| `helm` | Helm chart operations |
-
-### Example Commands
-
-Once configured, Claude can:
-- List pods across namespaces
-- Check deployment status
+**Capabilities:**
+- List/describe pods, deployments, services, configmaps
 - View logs from any pod
-- Describe resources
-- Watch events
+- Check events and resource status
 - Switch between cluster contexts
+- Helm chart operations
 
-### Advanced Options
-
+**Advanced Options:**
 ```bash
-# Read-only mode (safer for production)
+# Read-only mode
 npx kubernetes-mcp-server@latest --read-only
 
 # Disable destructive operations
@@ -106,68 +74,217 @@ npx kubernetes-mcp-server@latest --disable-destructive
 npx kubernetes-mcp-server@latest --toolsets=core,config
 ```
 
-## Home Assistant MCP Server
+---
+
+### 2. Home Assistant MCP
 
 **Source:** [homeassistant-ai/ha-mcp](https://github.com/homeassistant-ai/ha-mcp)
 
-### Capabilities
-
-- Query entity states (sensors, switches, lights, etc.)
+**Capabilities:**
+- Query entity states (sensors, switches, lights)
 - Control devices
-- Execute Home Assistant services
+- Execute HA services
 - Manage automations
-- View system status
-- Access history and statistics
+- View history and statistics
 
-### Example Use Cases
+**Getting a Token:**
+1. Go to Home Assistant → Profile (bottom left)
+2. Scroll to "Long-Lived Access Tokens"
+3. Click "Create Token"
+4. Copy and store securely
 
-Once configured, Claude can:
-- "What's the current temperature in the living room?"
-- "Turn off all lights in the bedroom"
-- "Show me the cluster CPU usage from Netdata sensors"
-- "List all automations that are currently disabled"
+---
+
+### 3. SSH MCP
+
+**Source:** [AiondaDotCom/mcp-ssh](https://github.com/AiondaDotCom/mcp-ssh)
+
+**Capabilities:**
+- Execute commands on remote hosts
+- File transfers via SCP
+- Auto-discovers hosts from `~/.ssh/config`
+- Supports SSH key authentication
+
+**Requirements:**
+- SSH client in PATH
+- `~/.ssh/config` with your hosts configured
+- SSH keys set up for passwordless auth
+
+**Example `~/.ssh/config`:**
+```
+Host pi-master
+    HostName 192.168.1.100
+    User pi
+    IdentityFile ~/.ssh/id_rsa
+
+Host pi-worker1
+    HostName 192.168.1.101
+    User pi
+    IdentityFile ~/.ssh/id_rsa
+```
+
+**Environment Variables:**
+- `MCP_SILENT=true` - Disable debug output (default)
+- `MCP_SILENT=false` - Enable debug logging
+
+---
+
+### 4. Prometheus MCP
+
+**Source:** [pab1it0/prometheus-mcp-server](https://github.com/pab1it0/prometheus-mcp-server)
+
+**Capabilities:**
+- Query metrics using PromQL
+- Analyze performance data
+- Natural language metric queries
+- Alert status checking
+
+**Environment Variables:**
+| Variable | Purpose | Required |
+|----------|---------|----------|
+| `PROMETHEUS_URL` | Server endpoint | Yes |
+| `PROMETHEUS_USERNAME` | Basic auth user | No |
+| `PROMETHEUS_PASSWORD` | Basic auth password | No |
+| `PROMETHEUS_TOKEN` | Bearer token | No |
+
+**Note:** Requires Docker. If you don't have Prometheus yet, consider deploying it via:
+```bash
+kubectl apply -f infrastructure/prometheus/  # (if you add it)
+```
+
+---
+
+### 5. Grafana MCP
+
+**Source:** [grafana/mcp-grafana](https://github.com/grafana/mcp-grafana)
+
+**Capabilities:**
+- Query dashboards
+- Create/modify panels
+- Execute datasource queries
+- Manage alerts
+- View annotations
+
+**Creating a Service Account Token:**
+1. Go to Grafana → Administration → Service Accounts
+2. Create a new service account
+3. Add a token to the service account
+4. Assign "Editor" role (or custom RBAC)
+5. Copy the token
+
+**Advanced Options:**
+```bash
+# Read-only mode
+npx mcp-grafana@latest --disable-write
+
+# Disable admin operations
+npx mcp-grafana@latest --disable-admin
+```
+
+---
+
+## Usage
+
+### With Claude Code
+
+The `.mcp.json` file is automatically detected when running `claude` from this repo directory.
+
+### With Claude Desktop
+
+Copy configurations to your Claude Desktop config:
+
+**Linux:** `~/.config/Claude/claude_desktop_config.json`
+**macOS:** `~/Library/Application Support/Claude/claude_desktop_config.json`
+**Windows:** `%APPDATA%\Claude\claude_desktop_config.json`
+
+---
 
 ## Security Considerations
 
 ### Kubernetes
-- The MCP server uses your existing kubeconfig credentials
-- Consider using `--read-only` for monitoring-only access
-- Use `--disable-destructive` to prevent accidental deletions
+- Uses your existing kubeconfig credentials
+- Consider `--read-only` for monitoring-only access
+- Use `--disable-destructive` to prevent deletions
 
 ### Home Assistant
-- Store your token in environment variables, not in config files
-- Create a dedicated user/token with limited permissions if desired
-- The token grants full API access to Home Assistant
+- Store token in environment variables, not config files
+- Create dedicated user/token with limited permissions if desired
+- Token grants full API access
+
+### SSH
+- Uses your existing SSH keys and config
+- Only hosts in `~/.ssh/config` are accessible
+- Consider restricting which hosts are configured
+
+### Prometheus/Grafana
+- Use service accounts with minimal required permissions
+- Consider read-only tokens for monitoring
+- Don't commit tokens to git
+
+---
+
+## Adding New Services
+
+If you deploy additional observability tools, consider these MCP servers:
+
+| Service | MCP Server |
+|---------|-----------|
+| Loki (logs) | [grafana/loki-mcp](https://github.com/grafana/loki-mcp) |
+| Tempo (traces) | [grafana/tempo-mcp-server](https://github.com/grafana/tempo-mcp-server) |
+| Alertmanager | [ntk148v/alertmanager-mcp-server](https://github.com/ntk148v/alertmanager-mcp-server) |
+
+---
 
 ## Troubleshooting
 
 ### Kubernetes MCP not connecting
+```bash
+# Verify kubeconfig
+kubectl cluster-info
 
-1. Verify kubeconfig: `kubectl cluster-info`
-2. Check Node.js version: `node --version` (need 18+)
-3. Test manually: `npx kubernetes-mcp-server@latest`
+# Test manually
+npx kubernetes-mcp-server@latest
+```
 
 ### Home Assistant MCP not connecting
+```bash
+# Test HA API
+curl -H "Authorization: Bearer $HOMEASSISTANT_TOKEN" \
+  "$HOMEASSISTANT_URL/api/"
+```
 
-1. Verify HA is accessible: `curl $HOMEASSISTANT_URL/api/`
-2. Test token: `curl -H "Authorization: Bearer $HOMEASSISTANT_TOKEN" $HOMEASSISTANT_URL/api/`
-3. Check Python/uv: `uv --version`
+### SSH MCP not finding hosts
+```bash
+# Verify SSH config
+cat ~/.ssh/config
 
-## Alternative MCP Servers
+# Test SSH manually
+ssh pi-master hostname
+```
 
-Other options if needed:
+### Prometheus MCP not connecting
+```bash
+# Test Prometheus API
+curl "$PROMETHEUS_URL/api/v1/status/config"
 
-### Kubernetes Alternatives
-- [alexei-led/k8s-mcp-server](https://github.com/alexei-led/k8s-mcp-server) - Includes Helm, Istio, ArgoCD support
-- [AWS EKS MCP](https://docs.aws.amazon.com/eks/latest/userguide/eks-mcp-introduction.html) - For EKS clusters
+# Check Docker
+docker run --rm ghcr.io/pab1it0/prometheus-mcp-server:latest --help
+```
 
-### Home Assistant Alternatives
-- [allenporter/mcp-server-home-assistant](https://github.com/allenporter/mcp-server-home-assistant) - Being merged into HA Core
-- Built-in HA MCP Server integration (HA 2025.2+)
+### Grafana MCP not connecting
+```bash
+# Test Grafana API
+curl -H "Authorization: Bearer $GRAFANA_SERVICE_ACCOUNT_TOKEN" \
+  "$GRAFANA_URL/api/org"
+```
+
+---
 
 ## References
 
 - [Model Context Protocol Specification](https://modelcontextprotocol.io/)
-- [Kubernetes MCP Server Docs](https://github.com/containers/kubernetes-mcp-server)
-- [Home Assistant MCP Docs](https://github.com/homeassistant-ai/ha-mcp)
-- [Home Assistant API Docs](https://developers.home-assistant.io/docs/api/rest/)
+- [Kubernetes MCP Server](https://github.com/containers/kubernetes-mcp-server)
+- [Home Assistant MCP](https://github.com/homeassistant-ai/ha-mcp)
+- [SSH MCP](https://github.com/AiondaDotCom/mcp-ssh)
+- [Prometheus MCP Server](https://github.com/pab1it0/prometheus-mcp-server)
+- [Grafana MCP Server](https://github.com/grafana/mcp-grafana)

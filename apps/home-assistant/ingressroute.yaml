@@ -8,7 +8,7 @@ spec:
     - web
   routes:
     - kind: Rule
-      match: Host(`homeassistant.local`)
+      match: Host(`homeassistant.home.lan`) || Host(`homeassistant.local`)
       services:
         - name: home-assistant
           port: 8123

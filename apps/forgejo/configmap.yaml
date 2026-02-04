@@ -1,0 +1,52 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: forgejo-config
+  namespace: forgejo
+  labels:
+    app.kubernetes.io/name: forgejo
+data:
+  app.ini: |
+    APP_NAME = Forgejo Git Server
+    RUN_MODE = prod
+
+    [server]
+    DOMAIN = git.blackk.dev
+    SSH_DOMAIN = git.blackk.dev
+    ROOT_URL = https://git.blackk.dev/
+    HTTP_PORT = 3000
+    SSH_PORT = 22
+    START_SSH_SERVER = true
+    SSH_LISTEN_PORT = 22
+    DISABLE_SSH = false
+    OFFLINE_MODE = false
+
+    [database]
+    DB_TYPE = sqlite3
+    PATH = /data/gitea/gitea.db
+
+    [repository]
+    ROOT = /data/git/repositories
+
+    [security]
+    INSTALL_LOCK = false  # Set to true after initial setup
+
+    [service]
+    DISABLE_REGISTRATION = true
+    REQUIRE_SIGNIN_VIEW = true
+    DEFAULT_KEEP_EMAIL_PRIVATE = true
+    ENABLE_NOTIFY_MAIL = false
+
+    [openid]
+    ENABLE_OPENID_SIGNIN = false
+    ENABLE_OPENID_SIGNUP = false
+
+    [session]
+    PROVIDER = file
+
+    [log]
+    MODE = console
+    LEVEL = Info
+
+    [other]
+    SHOW_FOOTER_VERSION = true

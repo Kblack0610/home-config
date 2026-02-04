@@ -1,0 +1,39 @@
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: forgejo
+  namespace: forgejo
+  labels:
+    app.kubernetes.io/name: forgejo
+  annotations:
+    kubernetes.io/ingress.class: traefik
+    cert-manager.io/cluster-issuer: letsencrypt
+    traefik.ingress.kubernetes.io/router.entrypoints: web,websecure
+spec:
+  tls:
+    - hosts:
+        - git.blackk.dev
+      secretName: forgejo-tls
+  rules:
+    # External access
+    - host: git.blackk.dev
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: forgejo-http
+                port:
+                  number: 3000
+    # Local access
+    - host: git.home.lan
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: forgejo-http
+                port:
+                  number: 3000

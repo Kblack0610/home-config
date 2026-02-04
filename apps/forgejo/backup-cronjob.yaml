@@ -1,0 +1,58 @@
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: forgejo-backup
+  namespace: forgejo
+  labels:
+    app.kubernetes.io/name: forgejo
+spec:
+  schedule: "0 3 * * *"  # Daily at 3 AM
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 1
+  jobTemplate:
+    spec:
+      template:
+        spec:
+          containers:
+            - name: backup
+              image: alpine:latest
+              command:
+                - /bin/sh
+                - -c
+                - |
+                  apk add --no-cache tar gzip sqlite
+                  TIMESTAMP=$(date +%Y%m%d-%H%M%S)
+
+                  echo "Starting Forgejo backup at $TIMESTAMP"
+
+                  # Full backup of /data directory
+                  tar -czf /backup/forgejo-full-$TIMESTAMP.tar.gz -C /data .
+
+                  # Separate SQLite DB backup for quick restore
+                  if [ -f /data/gitea/gitea.db ]; then
+                    cp /data/gitea/gitea.db /backup/forgejo-db-$TIMESTAMP.db
+                    gzip /backup/forgejo-db-$TIMESTAMP.db
+                  fi
+
+                  # Keep only last 30 backups
+                  ls -t /backup/forgejo-full-*.tar.gz | tail -n +31 | xargs -r rm
+                  ls -t /backup/forgejo-db-*.db.gz | tail -n +31 | xargs -r rm
+
+                  echo "Backup complete: forgejo-full-$TIMESTAMP.tar.gz"
+                  echo "Backup size:"
+                  ls -lh /backup/forgejo-full-$TIMESTAMP.tar.gz
+              volumeMounts:
+                - name: data
+                  mountPath: /data
+                  readOnly: true
+                - name: backup
+                  mountPath: /backup
+          restartPolicy: OnFailure
+          volumes:
+            - name: data
+              persistentVolumeClaim:
+                claimName: forgejo-data
+            - name: backup
+              hostPath:
+                path: /var/backups/forgejo
+                type: DirectoryOrCreate

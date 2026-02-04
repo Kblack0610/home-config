@@ -37,6 +37,15 @@
         "GRAFANA_URL": "${GRAFANA_URL}",
         "GRAFANA_SERVICE_ACCOUNT_TOKEN": "${GRAFANA_SERVICE_ACCOUNT_TOKEN}"
       }
+    },
+    "digitalocean": {
+      "type": "stdio",
+      "command": "npx",
+      "args": [
+        "-y",
+        "@digitalocean/mcp"
+      ],
+      "env": {}
     }
   }
 }

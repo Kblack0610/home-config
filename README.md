@@ -4,6 +4,8 @@ Configuration for home automation services including Home Assistant and Frigate.
 
 ## Contents
 
+- **[infrastructure.md](./infrastructure.md)** - Master infrastructure status document (clusters, apps, health)
+
 - **[home-assistant/](./home-assistant/)** - Home Assistant deployment on Kubernetes
   - Helm-based installation with multiple configuration options
   - Support for USB devices (Zigbee/Z-Wave)

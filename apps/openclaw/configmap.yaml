@@ -1,0 +1,52 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: openclaw-config
+  namespace: openclaw
+  labels:
+    app.kubernetes.io/name: openclaw
+data:
+  openclaw.json: |
+    {
+      "agents": {
+        "defaults": {
+          "model": { "primary": "litellm/code" }
+        }
+      },
+      "models": {
+        "mode": "merge",
+        "providers": {
+          "litellm": {
+            "baseUrl": "http://litellm.ai-gateway.svc.cluster.local:4000/v1",
+            "apiKey": "${LITELLM_API_KEY}",
+            "api": "openai-completions",
+            "models": [
+              {
+                "id": "code",
+                "name": "Code (Qwen Coder 32B via LiteLLM)",
+                "contextWindow": 128000,
+                "maxTokens": 32000
+              },
+              {
+                "id": "smart",
+                "name": "Smart (Llama 3.3 70B via LiteLLM)",
+                "contextWindow": 128000,
+                "maxTokens": 32000
+              },
+              {
+                "id": "fast",
+                "name": "Fast (Qwen Coder 7B via LiteLLM)",
+                "contextWindow": 128000,
+                "maxTokens": 32000
+              },
+              {
+                "id": "reasoning",
+                "name": "Reasoning (DeepSeek R1 70B via LiteLLM)",
+                "contextWindow": 128000,
+                "maxTokens": 32000
+              }
+            ]
+          }
+        }
+      }
+    }

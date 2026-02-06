@@ -1,0 +1,61 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: litellm-config
+  namespace: ai-gateway
+  labels:
+    app.kubernetes.io/name: litellm
+data:
+  config.yaml: |
+    model_list:
+      # Coding + tool calling (primary)
+      - model_name: qwen-coder-32b
+        litellm_params:
+          model: ollama_chat/qwen2.5-coder:32b-instruct
+          api_base: http://192.168.1.4:11434
+          stream: true
+
+      # Chain-of-thought reasoning
+      - model_name: deepseek-r1-70b
+        litellm_params:
+          model: ollama_chat/deepseek-r1:70b
+          api_base: http://192.168.1.4:11434
+
+      # General purpose
+      - model_name: llama-3.3-70b
+        litellm_params:
+          model: ollama_chat/llama3.3:70b
+          api_base: http://192.168.1.4:11434
+
+      # Fast/light tasks
+      - model_name: qwen-coder-7b
+        litellm_params:
+          model: ollama_chat/qwen2.5-coder:7b-instruct
+          api_base: http://192.168.1.4:11434
+
+      # Cloud fallback (uncomment + add API key secret to enable)
+      # - model_name: claude-fallback
+      #   litellm_params:
+      #     model: anthropic/claude-sonnet-4-20250514
+      #     api_key: os.environ/ANTHROPIC_API_KEY
+
+    router_settings:
+      model_group_alias:
+        "code": "qwen-coder-32b"
+        "smart": "llama-3.3-70b"
+        "fast": "qwen-coder-7b"
+        "reasoning": "deepseek-r1-70b"
+        "default": "qwen-coder-32b"
+        # OpenAI name aliases (for tools that hardcode these)
+        "gpt-4": "llama-3.3-70b"
+        "gpt-4o": "qwen-coder-32b"
+        "gpt-3.5-turbo": "qwen-coder-7b"
+      routing_strategy: "simple-shuffle"
+      timeout: 600
+
+    litellm_settings:
+      drop_params: true
+      request_timeout: 600
+
+    general_settings:
+      master_key: os.environ/LITELLM_MASTER_KEY

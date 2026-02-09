@@ -9,10 +9,10 @@ metadata:
 spec:
   tls:
     - hosts:
-        - finance.blackk.dev
+        - finance.blackk.lan
       secretName: actual-budget-tls
   rules:
-    - host: finance.blackk.dev
+    - host: finance.blackk.lan
       http:
         paths:
           - path: /

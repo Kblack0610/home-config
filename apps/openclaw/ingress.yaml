@@ -8,7 +8,7 @@ metadata:
     cert-manager.io/cluster-issuer: letsencrypt
 spec:
   rules:
-    - host: openclaw.blackk.dev
+    - host: openclaw.blackk.lan
       http:
         paths:
           - path: /
@@ -20,5 +20,5 @@ spec:
                   number: 18789
   tls:
     - hosts:
-        - openclaw.blackk.dev
+        - openclaw.blackk.lan
       secretName: openclaw-tls

@@ -12,11 +12,11 @@ metadata:
 spec:
   tls:
     - hosts:
-        - git.blackk.dev
+        - git.blackk.lan
       secretName: forgejo-tls
   rules:
     # External access
-    - host: git.blackk.dev
+    - host: git.blackk.lan
       http:
         paths:
           - path: /

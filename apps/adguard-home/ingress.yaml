@@ -8,7 +8,7 @@ metadata:
     cert-manager.io/cluster-issuer: letsencrypt
 spec:
   rules:
-    - host: adguard.blackk.dev
+    - host: adguard.blackk.lan
       http:
         paths:
           - path: /
@@ -20,5 +20,5 @@ spec:
                   number: 3000
   tls:
     - hosts:
-        - adguard.blackk.dev
+        - adguard.blackk.lan
       secretName: adguard-home-tls

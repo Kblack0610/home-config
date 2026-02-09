@@ -1,24 +1,24 @@
 apiVersion: networking.k8s.io/v1
 kind: Ingress
 metadata:
-  name: home-assistant
-  namespace: home-assistant
+  name: netdata
+  namespace: netdata
   annotations:
     kubernetes.io/ingress.class: traefik
     cert-manager.io/cluster-issuer: letsencrypt
 spec:
   rules:
-    - host: home.blackk.dev
+    - host: netdata.blackk.dev
       http:
         paths:
           - path: /
             pathType: Prefix
             backend:
               service:
-                name: home-assistant
+                name: netdata
                 port:
-                  number: 8123
+                  number: 19999
   tls:
     - hosts:
-        - home.blackk.dev
-      secretName: home-assistant-tls
+        - netdata.blackk.dev
+      secretName: netdata-tls

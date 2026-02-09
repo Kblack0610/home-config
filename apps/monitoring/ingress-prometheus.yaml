@@ -1,24 +1,24 @@
 apiVersion: networking.k8s.io/v1
 kind: Ingress
 metadata:
-  name: home-assistant
-  namespace: home-assistant
+  name: prometheus
+  namespace: monitoring
   annotations:
     kubernetes.io/ingress.class: traefik
     cert-manager.io/cluster-issuer: letsencrypt
 spec:
   rules:
-    - host: home.blackk.dev
+    - host: prometheus.blackk.dev
       http:
         paths:
           - path: /
             pathType: Prefix
             backend:
               service:
-                name: home-assistant
+                name: kube-prometheus-stack-prometheus
                 port:
-                  number: 8123
+                  number: 9090
   tls:
     - hosts:
-        - home.blackk.dev
-      secretName: home-assistant-tls
+        - prometheus.blackk.dev
+      secretName: prometheus-tls

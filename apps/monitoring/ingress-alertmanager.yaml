@@ -1,24 +1,24 @@
 apiVersion: networking.k8s.io/v1
 kind: Ingress
 metadata:
-  name: home-assistant
-  namespace: home-assistant
+  name: alertmanager
+  namespace: monitoring
   annotations:
     kubernetes.io/ingress.class: traefik
     cert-manager.io/cluster-issuer: letsencrypt
 spec:
   rules:
-    - host: home.blackk.dev
+    - host: alertmanager.blackk.dev
       http:
         paths:
           - path: /
             pathType: Prefix
             backend:
               service:
-                name: home-assistant
+                name: kube-prometheus-stack-alertmanager
                 port:
-                  number: 8123
+                  number: 9093
   tls:
     - hosts:
-        - home.blackk.dev
-      secretName: home-assistant-tls
+        - alertmanager.blackk.dev
+      secretName: alertmanager-tls

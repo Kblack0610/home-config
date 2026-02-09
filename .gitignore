@@ -1,0 +1,5 @@
+
+# Local credentials file - never commit
+credentials.local.md
+*.credentials
+.secrets/

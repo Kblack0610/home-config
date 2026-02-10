@@ -1,0 +1,101 @@
+# Tailscale Subnet Router
+# This container runs a Tailscale client that advertises K8s subnets
+# to the Headscale tailnet, allowing remote devices to access cluster services
+
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: tailscale-subnet-router
+  namespace: headscale
+  labels:
+    app.kubernetes.io/name: tailscale-subnet-router
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: tailscale-subnet-router
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: tailscale-subnet-router
+    spec:
+      serviceAccountName: tailscale-subnet-router
+      containers:
+        - name: tailscale
+          image: tailscale/tailscale:v1.74.1
+          imagePullPolicy: IfNotPresent
+          env:
+            - name: TS_AUTHKEY
+              valueFrom:
+                secretKeyRef:
+                  name: tailscale-auth
+                  key: TS_AUTHKEY
+            - name: TS_KUBE_SECRET
+              value: tailscale-state
+            - name: TS_USERSPACE
+              value: "true"
+            - name: TS_STATE_DIR
+              value: /var/lib/tailscale
+            - name: TS_EXTRA_ARGS
+              value: "--login-server=https://headscale.blackk.lan --advertise-routes=10.42.0.0/16,10.43.0.0/16 --accept-dns=false"
+          securityContext:
+            capabilities:
+              add:
+                - NET_ADMIN
+          volumeMounts:
+            - name: state
+              mountPath: /var/lib/tailscale
+          resources:
+            requests:
+              cpu: 10m
+              memory: 64Mi
+            limits:
+              cpu: 200m
+              memory: 128Mi
+      volumes:
+        - name: state
+          emptyDir: {}
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: tailscale-subnet-router
+  namespace: headscale
+---
+# Secret for Tailscale auth key (to be populated)
+# Generate preauth key in Headscale: headscale preauthkeys create --user subnet-router --reusable --expiration 365d
+apiVersion: v1
+kind: Secret
+metadata:
+  name: tailscale-auth
+  namespace: headscale
+  labels:
+    app.kubernetes.io/name: tailscale-subnet-router
+type: Opaque
+stringData:
+  TS_AUTHKEY: "YOUR_PREAUTH_KEY_HERE"
+---
+# RBAC for Tailscale to manage its state secret
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: tailscale-subnet-router
+  namespace: headscale
+rules:
+  - apiGroups: [""]
+    resources: ["secrets"]
+    verbs: ["create", "get", "update", "patch"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: tailscale-subnet-router
+  namespace: headscale
+subjects:
+  - kind: ServiceAccount
+    name: tailscale-subnet-router
+    namespace: headscale
+roleRef:
+  kind: Role
+  name: tailscale-subnet-router
+  apiGroup: rbac.authorization.k8s.io

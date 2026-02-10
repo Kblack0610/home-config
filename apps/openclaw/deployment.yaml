@@ -28,8 +28,22 @@ spec:
             - sh
             - -c
             - |
-              cp /etc/openclaw-config/openclaw.json /home/node/.openclaw/openclaw.json
-              echo "Config copied to PVC"
+              set -e
+              sed -e "s|\${OPENCLAW_GATEWAY_TOKEN}|${OPENCLAW_GATEWAY_TOKEN}|g" \
+                  -e "s|\${LITELLM_API_KEY}|${LITELLM_API_KEY}|g" \
+                  /etc/openclaw-config/openclaw.json > /home/node/.openclaw/openclaw.json
+              echo "Config with substituted secrets copied to PVC"
+          env:
+            - name: OPENCLAW_GATEWAY_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: openclaw-secrets
+                  key: OPENCLAW_GATEWAY_TOKEN
+            - name: LITELLM_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: openclaw-secrets
+                  key: LITELLM_API_KEY
           volumeMounts:
             - name: config
               mountPath: /etc/openclaw-config

@@ -1,0 +1,60 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: headscale
+  namespace: headscale
+  labels:
+    app.kubernetes.io/name: headscale
+spec:
+  type: ClusterIP
+  ports:
+    - name: http
+      port: 8080
+      targetPort: http
+      protocol: TCP
+    - name: grpc
+      port: 50443
+      targetPort: grpc
+      protocol: TCP
+    - name: metrics
+      port: 9090
+      targetPort: metrics
+      protocol: TCP
+  selector:
+    app.kubernetes.io/name: headscale
+---
+# Headscale UI service (web admin interface)
+apiVersion: v1
+kind: Service
+metadata:
+  name: headscale-ui
+  namespace: headscale
+  labels:
+    app.kubernetes.io/name: headscale-ui
+spec:
+  type: ClusterIP
+  ports:
+    - name: http
+      port: 80
+      targetPort: 8080
+      protocol: TCP
+  selector:
+    app.kubernetes.io/name: headscale
+---
+# LoadBalancer for DERP/STUN (UDP must be exposed externally for NAT traversal)
+apiVersion: v1
+kind: Service
+metadata:
+  name: headscale-derp
+  namespace: headscale
+  labels:
+    app.kubernetes.io/name: headscale
+spec:
+  type: LoadBalancer
+  ports:
+    - name: stun
+      port: 3478
+      targetPort: stun
+      protocol: UDP
+  selector:
+    app.kubernetes.io/name: headscale

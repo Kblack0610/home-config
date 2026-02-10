@@ -1,0 +1,108 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: headscale-config
+  namespace: headscale
+  labels:
+    app.kubernetes.io/name: headscale
+data:
+  config.yaml: |
+    # Headscale configuration
+    # https://github.com/juanfont/headscale/blob/main/config-example.yaml
+
+    server_url: https://headscale.blackk.lan
+    listen_addr: 0.0.0.0:8080
+    metrics_listen_addr: 0.0.0.0:9090
+    grpc_listen_addr: 0.0.0.0:50443
+    grpc_allow_insecure: false
+
+    # IP allocation for tailnet clients
+    prefixes:
+      v4: 100.64.0.0/10
+      v6: fd7a:115c:a1e0::/48
+
+    # Allocate sequential IPs
+    prefixes_allocation: sequential
+
+    # Database configuration
+    database:
+      type: sqlite
+      sqlite:
+        path: /var/lib/headscale/db.sqlite
+
+    # Disable automatic updates check
+    disable_check_updates: true
+
+    # Ephemeral node inactivity timeout
+    ephemeral_node_inactivity_timeout: 30m
+
+    # DNS configuration - MagicDNS for all tailnet devices
+    dns:
+      magic_dns: true
+      base_domain: tail.blackk.lan
+      nameservers:
+        global:
+          - 10.43.199.233  # AdGuard ClusterIP
+      extra_records:
+        - name: home.blackk.lan
+          type: A
+          value: 10.43.43.204  # Traefik ClusterIP
+        - name: grafana.blackk.lan
+          type: A
+          value: 10.43.43.204
+        - name: openclaw.blackk.lan
+          type: A
+          value: 10.43.43.204
+        - name: llm.blackk.lan
+          type: A
+          value: 10.43.43.204
+        - name: finance.blackk.lan
+          type: A
+          value: 10.43.43.204
+        - name: prometheus.blackk.lan
+          type: A
+          value: 10.43.43.204
+        - name: alertmanager.blackk.lan
+          type: A
+          value: 10.43.43.204
+        - name: netdata.blackk.lan
+          type: A
+          value: 10.43.43.204
+        - name: adguard.blackk.lan
+          type: A
+          value: 10.43.43.204
+
+    # Embedded DERP relay server for NAT traversal
+    derp:
+      server:
+        enabled: true
+        region_id: 900
+        region_code: home
+        region_name: Home DERP
+        stun_listen_addr: 0.0.0.0:3478
+        private_key_path: /var/lib/headscale/derp_server_private.key
+        automatically_add_embedded_derp_region: true
+        ipv4: 192.168.1.124
+        ipv6: ""
+      urls:
+        - https://controlplane.tailscale.com/derpmap/default
+      paths: []
+      auto_update_enabled: true
+      update_frequency: 24h
+
+    # Logging
+    log:
+      format: text
+      level: info
+
+    # Policy/ACL (permissive by default)
+    policy:
+      mode: file
+      path: ""
+
+    # Node update check interval
+    node_update_check_interval: 10s
+
+    # Unix socket for CLI (optional)
+    unix_socket: /var/run/headscale/headscale.sock
+    unix_socket_permission: "0770"

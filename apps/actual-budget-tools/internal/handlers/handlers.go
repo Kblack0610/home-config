@@ -58,9 +58,9 @@ func (h *Handler) Subscriptions(w http.ResponseWriter, r *http.Request) {
 
 // ScanSubscriptions scans transactions for subscriptions
 func (h *Handler) ScanSubscriptions(w http.ResponseWriter, r *http.Request) {
-	// Fetch last 12 months of transactions from all accounts
+	// Fetch last 2 years of transactions to detect yearly subscriptions
 	endDate := time.Now()
-	startDate := endDate.AddDate(-1, 0, 0) // 1 year ago
+	startDate := endDate.AddDate(-2, 0, 0) // 2 years ago
 
 	transactions, err := h.client.GetAllTransactions(startDate, endDate)
 	if err != nil {

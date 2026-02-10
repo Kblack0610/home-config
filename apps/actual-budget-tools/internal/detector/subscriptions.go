@@ -12,15 +12,17 @@ import (
 
 // Detector analyzes transactions for recurring patterns
 type Detector struct {
-	minOccurrences int
-	tolerance      float64 // Percentage tolerance for amount matching
+	minOccurrences       int
+	minOccurrencesYearly int     // Lower threshold for yearly patterns
+	tolerance            float64 // Percentage tolerance for amount matching
 }
 
 // NewDetector creates a subscription detector
 func NewDetector() *Detector {
 	return &Detector{
-		minOccurrences: 3,  // At least 3 occurrences to be considered recurring
-		tolerance:      0.02, // 2% tolerance for amount differences
+		minOccurrences:       2,    // At least 2 occurrences for weekly/monthly
+		minOccurrencesYearly: 2,    // Only 2 needed for yearly (2 years of data)
+		tolerance:            0.20, // 20% tolerance for amount differences (covers price changes, prorations)
 	}
 }
 
@@ -44,15 +46,33 @@ func (d *Detector) DetectSubscriptions(transactions []models.Transaction) []mode
 	var subscriptions []models.DetectedSubscription
 
 	for _, group := range groups {
-		if len(group.transactions) < d.minOccurrences {
+		// Use lower threshold initially to catch yearly patterns
+		if len(group.transactions) < d.minOccurrencesYearly {
 			continue
 		}
 
 		// Analyze the pattern
 		sub := d.analyzePattern(group)
-		if sub != nil && sub.Confidence >= 0.5 {
-			subscriptions = append(subscriptions, *sub)
+		if sub == nil {
+			continue
 		}
+		if sub.Confidence < 0.5 {
+			continue
+		}
+
+		// Apply frequency-specific occurrence requirements
+		if sub.Frequency == "yearly" {
+			if sub.OccurrenceCount < d.minOccurrencesYearly {
+				continue
+			}
+		} else {
+			// Weekly/monthly require more occurrences
+			if sub.OccurrenceCount < d.minOccurrences {
+				continue
+			}
+		}
+
+		subscriptions = append(subscriptions, *sub)
 	}
 
 	// Sort by confidence (descending) then by occurrence count
@@ -120,11 +140,14 @@ func (d *Detector) analyzePattern(group transactionGroup) *models.DetectedSubscr
 		return txs[i].Date.Before(txs[j].Date)
 	})
 
-	// Calculate intervals between transactions
+	// Calculate intervals between transactions (filtering out same-day duplicates)
 	var intervals []float64
 	for i := 1; i < len(txs); i++ {
 		days := txs[i].Date.Sub(txs[i-1].Date).Hours() / 24
-		intervals = append(intervals, days)
+		// Skip 0-day intervals (same-day transactions are likely duplicates or multiple services)
+		if days >= 1 {
+			intervals = append(intervals, days)
+		}
 	}
 
 	if len(intervals) == 0 {

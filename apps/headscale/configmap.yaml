@@ -30,6 +30,10 @@ data:
       sqlite:
         path: /var/lib/headscale/db.sqlite
 
+    # Noise protocol private key (required for Tailscale v2)
+    noise:
+      private_key_path: /var/lib/headscale/noise_private.key
+
     # Disable automatic updates check
     disable_check_updates: true
 

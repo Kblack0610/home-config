@@ -17,6 +17,27 @@ spec:
       labels:
         app.kubernetes.io/name: headscale
     spec:
+      initContainers:
+        - name: init-keys
+          image: busybox:latest
+          command:
+            - sh
+            - -c
+            - |
+              set -e
+              # Write noise key with required 'privkey:' prefix
+              echo "privkey:${HEADSCALE_NOISE_PRIVATE_KEY}" > /var/lib/headscale/noise_private.key
+              chmod 600 /var/lib/headscale/noise_private.key
+              echo "Noise key written to /var/lib/headscale/noise_private.key"
+          env:
+            - name: HEADSCALE_NOISE_PRIVATE_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: headscale-secrets
+                  key: HEADSCALE_NOISE_PRIVATE_KEY
+          volumeMounts:
+            - name: data
+              mountPath: /var/lib/headscale
       containers:
         - name: headscale
           image: headscale/headscale:0.23.0
@@ -37,13 +58,6 @@ spec:
             - name: stun
               containerPort: 3478
               protocol: UDP
-          env:
-            - name: HEADSCALE_NOISE_PRIVATE_KEY
-              valueFrom:
-                secretKeyRef:
-                  name: headscale-secrets
-                  key: HEADSCALE_NOISE_PRIVATE_KEY
-                  optional: true
           volumeMounts:
             - name: config
               mountPath: /etc/headscale
@@ -85,11 +99,13 @@ spec:
           imagePullPolicy: IfNotPresent
           ports:
             - name: ui
-              containerPort: 8080
+              containerPort: 8443
               protocol: TCP
           env:
             - name: HEADSCALE_URL
               value: "http://localhost:8080"
+            - name: PORT
+              value: "8443"
           resources:
             requests:
               cpu: 10m

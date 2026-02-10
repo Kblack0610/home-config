@@ -37,7 +37,7 @@ spec:
             - name: TS_STATE_DIR
               value: /var/lib/tailscale
             - name: TS_EXTRA_ARGS
-              value: "--login-server=https://headscale.blackk.lan --advertise-routes=10.42.0.0/16,10.43.0.0/16 --accept-dns=false"
+              value: "--login-server=http://headscale.headscale.svc.cluster.local:8080 --advertise-routes=10.42.0.0/16,10.43.0.0/16 --accept-dns=false"
           securityContext:
             capabilities:
               add:
@@ -73,7 +73,7 @@ metadata:
     app.kubernetes.io/name: tailscale-subnet-router
 type: Opaque
 stringData:
-  TS_AUTHKEY: "YOUR_PREAUTH_KEY_HERE"
+  TS_AUTHKEY: "c2c48f8f883633d3937f103ad97726d097fb2242e3b44b8f"
 ---
 # RBAC for Tailscale to manage its state secret
 apiVersion: rbac.authorization.k8s.io/v1

@@ -3,3 +3,4 @@
 credentials.local.md
 *.credentials
 .secrets/
+apps/headscale/secret.local.yaml

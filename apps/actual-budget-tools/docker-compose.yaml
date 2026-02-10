@@ -9,12 +9,16 @@ services:
       - "8080:8080"
     environment:
       - ACTUAL_SERVER_URL=${ACTUAL_SERVER_URL:-http://actual-budget:5006}
+      - ACTUAL_API_URL=http://actual-http-api:5007
+      - ACTUAL_API_KEY=${ACTUAL_API_KEY:-tools-api-key}
       - ACTUAL_PASSWORD=${ACTUAL_PASSWORD:-}
       - ACTUAL_BUDGET_ID=${ACTUAL_BUDGET_ID:-}
       - DATABASE_PATH=/data/tools.db
       - LISTEN_ADDR=:8080
     volumes:
       - tools-data:/data
+    depends_on:
+      - actual-http-api
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:8080/health"]
@@ -22,6 +26,19 @@ services:
       timeout: 10s
       retries: 3
       start_period: 10s
+
+  # REST API bridge for Actual Budget
+  actual-http-api:
+    image: jhonderson/actual-http-api:26.2.0
+    ports:
+      - "5007:5007"
+    environment:
+      - ACTUAL_SERVER_URL=${ACTUAL_SERVER_URL:-http://actual-budget:5006}
+      - ACTUAL_SERVER_PASSWORD=${ACTUAL_PASSWORD:-}
+      - API_KEY=${ACTUAL_API_KEY:-tools-api-key}
+    volumes:
+      - api-data:/data
+    restart: unless-stopped
 
   # Optional: Run Actual Budget locally for development
   # Uncomment if you want to run Actual Budget alongside the tools
@@ -35,4 +52,5 @@ services:
 
 volumes:
   tools-data:
+  api-data:
   # actual-data:

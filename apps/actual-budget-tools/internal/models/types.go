@@ -51,6 +51,8 @@ type Schedule struct {
 // Config holds application configuration
 type Config struct {
 	ActualServerURL string
+	ActualAPIURL    string // URL for actual-http-api REST bridge
+	ActualAPIKey    string // API key for actual-http-api
 	ActualPassword  string
 	ActualBudgetID  string
 	DatabasePath    string

@@ -19,6 +19,7 @@ func main() {
 
 	log.Printf("Starting Actual Budget Tools")
 	log.Printf("Actual Server URL: %s", cfg.ActualServerURL)
+	log.Printf("Actual API URL: %s", cfg.ActualAPIURL)
 	log.Printf("Database Path: %s", cfg.DatabasePath)
 
 	// Initialize store
@@ -28,10 +29,16 @@ func main() {
 	}
 	defer db.Close()
 
-	// Initialize Actual Budget client
-	client := actual.NewClient(cfg.ActualServerURL, cfg.ActualPassword, cfg.ActualBudgetID)
+	// Initialize Actual Budget client with REST API bridge
+	client := actual.NewClientWithAPI(
+		cfg.ActualServerURL,
+		cfg.ActualAPIURL,
+		cfg.ActualAPIKey,
+		cfg.ActualPassword,
+		cfg.ActualBudgetID,
+	)
 
-	// Test connection
+	// Test connection to Actual Budget server
 	if err := client.HealthCheck(); err != nil {
 		log.Printf("Warning: Could not connect to Actual Budget server: %v", err)
 	} else {
@@ -72,6 +79,8 @@ func main() {
 func loadConfig() models.Config {
 	return models.Config{
 		ActualServerURL: getEnv("ACTUAL_SERVER_URL", "http://localhost:5006"),
+		ActualAPIURL:    getEnv("ACTUAL_API_URL", "http://localhost:5007"),
+		ActualAPIKey:    getEnv("ACTUAL_API_KEY", ""),
 		ActualPassword:  getEnv("ACTUAL_PASSWORD", ""),
 		ActualBudgetID:  getEnv("ACTUAL_BUDGET_ID", ""),
 		DatabasePath:    getEnv("DATABASE_PATH", "./data/tools.db"),

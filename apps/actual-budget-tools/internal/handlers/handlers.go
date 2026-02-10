@@ -58,11 +58,11 @@ func (h *Handler) Subscriptions(w http.ResponseWriter, r *http.Request) {
 
 // ScanSubscriptions scans transactions for subscriptions
 func (h *Handler) ScanSubscriptions(w http.ResponseWriter, r *http.Request) {
-	// Fetch last 12 months of transactions
+	// Fetch last 12 months of transactions from all accounts
 	endDate := time.Now()
 	startDate := endDate.AddDate(-1, 0, 0) // 1 year ago
 
-	transactions, err := h.client.GetTransactions("", startDate, endDate)
+	transactions, err := h.client.GetAllTransactions(startDate, endDate)
 	if err != nil {
 		log.Printf("Error fetching transactions: %v", err)
 		templates.Alert("error", "Failed to fetch transactions: "+err.Error()).Render(r.Context(), w)

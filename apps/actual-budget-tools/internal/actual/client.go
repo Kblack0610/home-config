@@ -14,6 +14,8 @@ import (
 // Client handles communication with Actual Budget server
 type Client struct {
 	baseURL    string
+	apiURL     string // URL for actual-http-api REST bridge
+	apiKey     string // API key for actual-http-api
 	password   string
 	budgetID   string
 	httpClient *http.Client
@@ -24,6 +26,20 @@ type Client struct {
 func NewClient(baseURL, password, budgetID string) *Client {
 	return &Client{
 		baseURL:  baseURL,
+		password: password,
+		budgetID: budgetID,
+		httpClient: &http.Client{
+			Timeout: 30 * time.Second,
+		},
+	}
+}
+
+// NewClientWithAPI creates a new Actual Budget API client with REST bridge support
+func NewClientWithAPI(baseURL, apiURL, apiKey, password, budgetID string) *Client {
+	return &Client{
+		baseURL:  baseURL,
+		apiURL:   apiURL,
+		apiKey:   apiKey,
 		password: password,
 		budgetID: budgetID,
 		httpClient: &http.Client{
@@ -95,78 +111,150 @@ type RawTransaction struct {
 	Cleared    bool    `json:"cleared"`
 }
 
-// GetTransactions fetches transactions from Actual Budget
-// Note: This is a simplified version - the actual API may require
-// using the sync protocol. We may need to adjust based on testing.
-func (c *Client) GetTransactions(accountID string, startDate, endDate time.Time) ([]models.Transaction, error) {
-	if c.token == "" {
-		if err := c.Login(); err != nil {
-			return nil, fmt.Errorf("auto-login failed: %w", err)
-		}
+// Account represents an Actual Budget account
+type Account struct {
+	ID        string `json:"id"`
+	Name      string `json:"name"`
+	Type      string `json:"type"`
+	OffBudget bool   `json:"offbudget"`
+	Closed    bool   `json:"closed"`
+}
+
+// GetAccounts fetches all accounts from Actual Budget via REST bridge
+func (c *Client) GetAccounts() ([]Account, error) {
+	if c.apiURL == "" {
+		return nil, fmt.Errorf("REST API bridge URL not configured")
 	}
 
-	// Build query for transactions
-	// Actual Budget uses a query language for fetching data
-	query := map[string]interface{}{
-		"query": map[string]interface{}{
-			"transactions": map[string]interface{}{
-				"$filter": map[string]interface{}{
-					"date": map[string]interface{}{
-						"$gte": startDate.Format("2006-01-02"),
-						"$lte": endDate.Format("2006-01-02"),
-					},
-				},
-				"$select": []string{"id", "account", "date", "amount", "payee_name", "payee", "category", "notes", "cleared"},
-			},
-		},
-	}
-
-	body, err := json.Marshal(query)
-	if err != nil {
-		return nil, fmt.Errorf("marshal query: %w", err)
-	}
-
-	req, err := http.NewRequest("POST", c.baseURL+"/api/query", bytes.NewReader(body))
+	url := fmt.Sprintf("%s/v1/budgets/%s/accounts", c.apiURL, c.budgetID)
+	req, err := http.NewRequest("GET", url, nil)
 	if err != nil {
 		return nil, fmt.Errorf("create request: %w", err)
 	}
-	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("X-ACTUAL-TOKEN", c.token)
+	req.Header.Set("X-API-KEY", c.apiKey)
 
 	resp, err := c.httpClient.Do(req)
 	if err != nil {
-		return nil, fmt.Errorf("query request failed: %w", err)
+		return nil, fmt.Errorf("request failed: %w", err)
 	}
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
 		body, _ := io.ReadAll(resp.Body)
-		return nil, fmt.Errorf("query failed: %s - %s", resp.Status, string(body))
+		return nil, fmt.Errorf("get accounts failed: %s - %s", resp.Status, string(body))
 	}
 
-	var queryResp TransactionsResponse
-	if err := json.NewDecoder(resp.Body).Decode(&queryResp); err != nil {
+	// Response is wrapped in {"data": [...]}
+	var respData struct {
+		Data []Account `json:"data"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&respData); err != nil {
 		return nil, fmt.Errorf("decode response: %w", err)
 	}
 
-	// Convert raw transactions to our model
-	transactions := make([]models.Transaction, 0, len(queryResp.Data.Transactions))
-	for _, raw := range queryResp.Data.Transactions {
+	return respData.Data, nil
+}
+
+// APITransaction as returned by actual-http-api
+type APITransaction struct {
+	ID            string `json:"id"`
+	Account       string `json:"account"`
+	Date          string `json:"date"`
+	Amount        int64  `json:"amount"`
+	PayeeName     string `json:"payee_name"`
+	Payee         string `json:"payee"`
+	Category      string `json:"category"`
+	Notes         string `json:"notes"`
+	Cleared       bool   `json:"cleared"`
+	Reconciled    bool   `json:"reconciled"`
+	TransferID    string `json:"transfer_id"`
+	SortOrder     int64  `json:"sort_order"`
+	ImportedPayee string `json:"imported_payee"`
+}
+
+// GetTransactions fetches transactions from Actual Budget via REST bridge
+func (c *Client) GetTransactions(accountID string, startDate, endDate time.Time) ([]models.Transaction, error) {
+	if c.apiURL == "" {
+		return nil, fmt.Errorf("REST API bridge URL not configured")
+	}
+
+	// Build URL with query parameters
+	// Note: actual-http-api uses 'since_date' parameter
+	url := fmt.Sprintf("%s/v1/budgets/%s/accounts/%s/transactions?since_date=%s",
+		c.apiURL, c.budgetID, accountID,
+		startDate.Format("2006-01-02"))
+
+	req, err := http.NewRequest("GET", url, nil)
+	if err != nil {
+		return nil, fmt.Errorf("create request: %w", err)
+	}
+	req.Header.Set("X-API-KEY", c.apiKey)
+
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("request failed: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		return nil, fmt.Errorf("get transactions failed: %s - %s", resp.Status, string(body))
+	}
+
+	// Response is wrapped in {"data": [...]}
+	var respData struct {
+		Data []APITransaction `json:"data"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&respData); err != nil {
+		return nil, fmt.Errorf("decode response: %w", err)
+	}
+	apiTxns := respData.Data
+
+	// Convert API transactions to our model
+	transactions := make([]models.Transaction, 0, len(apiTxns))
+	for _, raw := range apiTxns {
 		date, _ := time.Parse("2006-01-02", raw.Date)
+		// Use imported_payee if payee_name is empty
+		payeeName := raw.PayeeName
+		if payeeName == "" {
+			payeeName = raw.ImportedPayee
+		}
 		transactions = append(transactions, models.Transaction{
 			ID:        raw.ID,
-			AccountID: raw.AccountID,
+			AccountID: raw.Account,
 			Date:      date,
 			Amount:    raw.Amount,
-			Payee:     raw.PayeeName,
-			PayeeID:   raw.PayeeID,
-			Category:  raw.CategoryID,
+			Payee:     payeeName,
+			PayeeID:   raw.Payee,
+			Category:  raw.Category,
 			Notes:     raw.Notes,
 			Cleared:   raw.Cleared,
 		})
 	}
 
 	return transactions, nil
+}
+
+// GetAllTransactions fetches transactions from all accounts
+func (c *Client) GetAllTransactions(startDate, endDate time.Time) ([]models.Transaction, error) {
+	accounts, err := c.GetAccounts()
+	if err != nil {
+		return nil, fmt.Errorf("get accounts: %w", err)
+	}
+
+	var allTransactions []models.Transaction
+	for _, account := range accounts {
+		if account.Closed {
+			continue
+		}
+		txns, err := c.GetTransactions(account.ID, startDate, endDate)
+		if err != nil {
+			return nil, fmt.Errorf("get transactions for account %s: %w", account.Name, err)
+		}
+		allTransactions = append(allTransactions, txns...)
+	}
+
+	return allTransactions, nil
 }
 
 // CreateSchedule creates a new schedule in Actual Budget

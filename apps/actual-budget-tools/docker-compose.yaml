@@ -1,0 +1,38 @@
+version: '3.8'
+
+services:
+  actual-budget-tools:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    ports:
+      - "8080:8080"
+    environment:
+      - ACTUAL_SERVER_URL=${ACTUAL_SERVER_URL:-http://actual-budget:5006}
+      - ACTUAL_PASSWORD=${ACTUAL_PASSWORD:-}
+      - ACTUAL_BUDGET_ID=${ACTUAL_BUDGET_ID:-}
+      - DATABASE_PATH=/data/tools.db
+      - LISTEN_ADDR=:8080
+    volumes:
+      - tools-data:/data
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:8080/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+
+  # Optional: Run Actual Budget locally for development
+  # Uncomment if you want to run Actual Budget alongside the tools
+  # actual-budget:
+  #   image: actualbudget/actual-server:latest
+  #   ports:
+  #     - "5006:5006"
+  #   volumes:
+  #     - actual-data:/data
+  #   restart: unless-stopped
+
+volumes:
+  tools-data:
+  # actual-data:

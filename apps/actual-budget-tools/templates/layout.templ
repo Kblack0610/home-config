@@ -1,0 +1,61 @@
+package templates
+
+import "fmt"
+
+templ Layout(title string) {
+	<!DOCTYPE html>
+	<html lang="en">
+	<head>
+		<meta charset="UTF-8"/>
+		<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+		<title>{ title } - Actual Budget Tools</title>
+		<script src="https://unpkg.com/htmx.org@1.9.10"></script>
+		<script src="https://cdn.tailwindcss.com"></script>
+		<style>
+			.htmx-indicator { opacity: 0; transition: opacity 200ms ease-in; }
+			.htmx-request .htmx-indicator { opacity: 1; }
+			.htmx-request.htmx-indicator { opacity: 1; }
+		</style>
+	</head>
+	<body class="bg-gray-100 min-h-screen">
+		<nav class="bg-indigo-600 text-white shadow-lg">
+			<div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+				<div class="flex items-center justify-between h-16">
+					<div class="flex items-center">
+						<a href="/" class="font-bold text-xl">Actual Budget Tools</a>
+					</div>
+					<div class="flex space-x-4">
+						<a href="/" class="px-3 py-2 rounded-md text-sm font-medium hover:bg-indigo-500">Dashboard</a>
+						<a href="/subscriptions" class="px-3 py-2 rounded-md text-sm font-medium hover:bg-indigo-500">Subscriptions</a>
+						<a href="/review" class="px-3 py-2 rounded-md text-sm font-medium hover:bg-indigo-500">Review Queue</a>
+					</div>
+				</div>
+			</div>
+		</nav>
+		<main class="max-w-7xl mx-auto py-6 sm:px-6 lg:px-8">
+			{ children... }
+		</main>
+	</body>
+	</html>
+}
+
+templ Alert(alertType, message string) {
+	<div class={ "rounded-md p-4 mb-4", templ.KV("bg-green-50 text-green-800", alertType == "success"), templ.KV("bg-red-50 text-red-800", alertType == "error"), templ.KV("bg-yellow-50 text-yellow-800", alertType == "warning") }>
+		<p>{ message }</p>
+	</div>
+}
+
+templ Spinner() {
+	<svg class="animate-spin h-5 w-5 text-indigo-600" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+		<circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+		<path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+	</svg>
+}
+
+func formatAmount(cents int64) string {
+	dollars := float64(cents) / 100
+	if dollars < 0 {
+		dollars = -dollars
+	}
+	return fmt.Sprintf("$%.2f", dollars)
+}

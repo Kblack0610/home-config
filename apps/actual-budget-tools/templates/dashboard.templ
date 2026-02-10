@@ -1,0 +1,62 @@
+package templates
+
+import (
+	"fmt"
+	"github.com/kblack0610/actual-budget-tools/internal/store"
+)
+
+templ Dashboard(stats *store.Stats, serverStatus string) {
+	@Layout("Dashboard") {
+		<div class="px-4 py-6 sm:px-0">
+			<h1 class="text-3xl font-bold text-gray-900 mb-8">Dashboard</h1>
+
+			<!-- Server Status -->
+			<div class="bg-white shadow rounded-lg p-6 mb-6">
+				<h2 class="text-lg font-semibold text-gray-900 mb-4">Actual Budget Server</h2>
+				<div class="flex items-center">
+					if serverStatus == "connected" {
+						<span class="h-3 w-3 rounded-full bg-green-500 mr-2"></span>
+						<span class="text-green-700">Connected</span>
+					} else {
+						<span class="h-3 w-3 rounded-full bg-red-500 mr-2"></span>
+						<span class="text-red-700">{ serverStatus }</span>
+					}
+				</div>
+			</div>
+
+			<!-- Stats Cards -->
+			<div class="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">
+				@StatCard("Pending Review", stats.Pending, "bg-yellow-500")
+				@StatCard("Approved", stats.Approved, "bg-green-500")
+				@StatCard("Rejected", stats.Rejected, "bg-red-500")
+				@StatCard("Total Detected", stats.Total, "bg-indigo-500")
+			</div>
+
+			<!-- Quick Actions -->
+			<div class="bg-white shadow rounded-lg p-6">
+				<h2 class="text-lg font-semibold text-gray-900 mb-4">Quick Actions</h2>
+				<div class="flex flex-wrap gap-4">
+					<a href="/subscriptions" class="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-indigo-600 hover:bg-indigo-700">
+						Scan for Subscriptions
+					</a>
+					<a href="/review?status=pending" class="inline-flex items-center px-4 py-2 border border-gray-300 text-sm font-medium rounded-md shadow-sm text-gray-700 bg-white hover:bg-gray-50">
+						Review Pending Items ({ fmt.Sprintf("%d", stats.Pending) })
+					</a>
+				</div>
+			</div>
+		</div>
+	}
+}
+
+templ StatCard(label string, value int, colorClass string) {
+	<div class="bg-white shadow rounded-lg p-6">
+		<div class="flex items-center">
+			<div class={ "flex-shrink-0 p-3 rounded-md", colorClass }>
+				<span class="text-white text-2xl font-bold">{ fmt.Sprintf("%d", value) }</span>
+			</div>
+			<div class="ml-4">
+				<p class="text-sm font-medium text-gray-500">{ label }</p>
+			</div>
+		</div>
+	</div>
+}

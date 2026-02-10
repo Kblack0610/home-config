@@ -1,0 +1,27 @@
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: actual-budget-tools
+  namespace: actual-budget
+  annotations:
+    cert-manager.io/cluster-issuer: letsencrypt-prod
+    # If using Traefik
+    traefik.ingress.kubernetes.io/router.entrypoints: websecure
+    traefik.ingress.kubernetes.io/router.tls: "true"
+spec:
+  ingressClassName: traefik
+  tls:
+    - hosts:
+        - finance-tools.blackk.dev
+      secretName: finance-tools-tls
+  rules:
+    - host: finance-tools.blackk.dev
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: actual-budget-tools
+                port:
+                  number: 80

@@ -1,0 +1,4 @@
+[     346ms] [WARNING] react-i18next:: It seems you are still using the old wait option, you may migrate to the new useSuspense behaviour. @ http://localhost:8080/login.4108e7f1f04c4ed4c115.js:1
+[ 8134842ms] [ERROR] Error @ http://localhost:8080/login.4108e7f1f04c4ed4c115.js:1
+[ 8141848ms] [ERROR] Error @ http://localhost:8080/login.4108e7f1f04c4ed4c115.js:1
+[ 8149153ms] [ERROR] Error @ http://localhost:8080/login.4108e7f1f04c4ed4c115.js:1

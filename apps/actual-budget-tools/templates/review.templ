@@ -1,0 +1,139 @@
+package templates
+
+import (
+	"fmt"
+	"github.com/kblack0610/actual-budget-tools/internal/models"
+)
+
+templ Review(items []models.ReviewItem, currentStatus string) {
+	@Layout("Review Queue") {
+		<div class="px-4 py-6 sm:px-0">
+			<div class="flex justify-between items-center mb-8">
+				<h1 class="text-3xl font-bold text-gray-900">Review Queue</h1>
+			</div>
+
+			<!-- Status Filter Tabs -->
+			<div class="border-b border-gray-200 mb-6">
+				<nav class="-mb-px flex space-x-8">
+					@FilterTab("All", "all", currentStatus)
+					@FilterTab("Pending", "pending", currentStatus)
+					@FilterTab("Approved", "approved", currentStatus)
+					@FilterTab("Rejected", "rejected", currentStatus)
+				</nav>
+			</div>
+
+			<div class="bg-white shadow rounded-lg">
+				<div class="px-4 py-5 sm:p-6" id="review-list">
+					if len(items) == 0 {
+						<div class="text-center py-12">
+							<svg class="mx-auto h-12 w-12 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+								<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"/>
+							</svg>
+							<h3 class="mt-2 text-sm font-medium text-gray-900">No items in queue</h3>
+							<p class="mt-1 text-sm text-gray-500">Scan for subscriptions to add items to the review queue.</p>
+							<a href="/subscriptions" class="mt-4 inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-indigo-600 hover:bg-indigo-700">
+								Go to Subscriptions
+							</a>
+						</div>
+					} else {
+						@ReviewList(items)
+					}
+				</div>
+			</div>
+		</div>
+	}
+}
+
+templ FilterTab(label, value, currentStatus string) {
+	<a
+		href={ templ.SafeURL("/review?status=" + value) }
+		class={ "whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm", templ.KV("border-indigo-500 text-indigo-600", currentStatus == value), templ.KV("border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300", currentStatus != value) }
+	>
+		{ label }
+	</a>
+}
+
+templ ReviewList(items []models.ReviewItem) {
+	<div class="overflow-x-auto">
+		<table class="min-w-full divide-y divide-gray-200">
+			<thead class="bg-gray-50">
+				<tr>
+					<th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Subscription</th>
+					<th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Amount</th>
+					<th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Frequency</th>
+					<th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
+					<th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Actions</th>
+				</tr>
+			</thead>
+			<tbody class="bg-white divide-y divide-gray-200" id="review-items">
+				for _, item := range items {
+					@ReviewRow(item)
+				}
+			</tbody>
+		</table>
+	</div>
+}
+
+templ ReviewRow(item models.ReviewItem) {
+	<tr id={ fmt.Sprintf("review-item-%d", item.ID) }>
+		<td class="px-6 py-4 whitespace-nowrap">
+			<div class="text-sm font-medium text-gray-900">{ item.Subscription.Payee }</div>
+			<div class="text-sm text-gray-500">{ fmt.Sprintf("%d occurrences", item.Subscription.OccurrenceCount) }</div>
+		</td>
+		<td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+			{ formatAmount(item.Subscription.Amount) }
+		</td>
+		<td class="px-6 py-4 whitespace-nowrap">
+			<span class={ "px-2 inline-flex text-xs leading-5 font-semibold rounded-full", templ.KV("bg-blue-100 text-blue-800", item.Subscription.Frequency == "monthly"), templ.KV("bg-purple-100 text-purple-800", item.Subscription.Frequency == "yearly"), templ.KV("bg-green-100 text-green-800", item.Subscription.Frequency == "weekly") }>
+				{ item.Subscription.Frequency }
+			</span>
+		</td>
+		<td class="px-6 py-4 whitespace-nowrap">
+			@StatusBadge(item.Status)
+		</td>
+		<td class="px-6 py-4 whitespace-nowrap text-sm">
+			if item.Status == "pending" {
+				<div class="flex space-x-2">
+					<button
+						hx-post={ fmt.Sprintf("/review/%d/approve", item.ID) }
+						hx-target={ fmt.Sprintf("#review-item-%d", item.ID) }
+						hx-swap="outerHTML"
+						hx-indicator={ fmt.Sprintf("#spinner-%d", item.ID) }
+						class="inline-flex items-center px-3 py-1 border border-transparent text-xs font-medium rounded-md text-white bg-green-600 hover:bg-green-700"
+					>
+						<span id={ fmt.Sprintf("spinner-%d", item.ID) } class="htmx-indicator mr-1">
+							@Spinner()
+						</span>
+						Approve & Create Schedule
+					</button>
+					<button
+						hx-post={ fmt.Sprintf("/review/%d/reject", item.ID) }
+						hx-target={ fmt.Sprintf("#review-item-%d", item.ID) }
+						hx-swap="outerHTML"
+						class="inline-flex items-center px-3 py-1 border border-gray-300 text-xs font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50"
+					>
+						Reject
+					</button>
+				</div>
+			} else if item.Status == "approved" && item.ScheduleID != nil {
+				<span class="text-green-600 text-xs">Schedule created</span>
+			}
+		</td>
+	</tr>
+}
+
+templ StatusBadge(status string) {
+	if status == "pending" {
+		<span class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-yellow-100 text-yellow-800">
+			Pending
+		</span>
+	} else if status == "approved" {
+		<span class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-green-100 text-green-800">
+			Approved
+		</span>
+	} else if status == "rejected" {
+		<span class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-red-100 text-red-800">
+			Rejected
+		</span>
+	}
+}

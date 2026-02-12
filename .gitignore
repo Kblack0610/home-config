@@ -1,6 +1,43 @@
+# ===================
+# Secrets & Credentials
+# ===================
 
-# Local credentials file - never commit
+# Local credentials - never commit
 credentials.local.md
 *.credentials
 .secrets/
-apps/headscale/secret.local.yaml
+
+# Environment files with secrets
+.env
+.env.local
+.env.*.local
+*.env
+!*.env.example
+
+# Kubernetes secrets with real values
+*.local.yaml
+secret.local.yaml
+**/secret.local.yaml
+
+# ===================
+# IDE & Editor
+# ===================
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# ===================
+# OS Generated
+# ===================
+.DS_Store
+Thumbs.db
+
+# ===================
+# Build Artifacts
+# ===================
+target/
+node_modules/
+__pycache__/
+*.pyc

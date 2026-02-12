@@ -13,7 +13,7 @@ data:
         "auth": {
           "token": "${OPENCLAW_GATEWAY_TOKEN}"
         },
-        "trustedProxies": ["10.42.0.0/16", "10.43.0.0/16"]
+        "trustedProxies": ["10.42.0.0/16", "10.43.0.0/16", "192.168.1.0/24", "127.0.0.1", "10.42.1.67", "10.42.7.0"]
       },
       "agents": {
         "defaults": {

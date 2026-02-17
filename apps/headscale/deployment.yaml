@@ -99,13 +99,11 @@ spec:
           imagePullPolicy: IfNotPresent
           ports:
             - name: ui
-              containerPort: 8443
+              containerPort: 80
               protocol: TCP
           env:
             - name: HEADSCALE_URL
               value: "http://localhost:8080"
-            - name: PORT
-              value: "8443"
           resources:
             requests:
               cpu: 10m

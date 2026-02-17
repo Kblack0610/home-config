@@ -5,10 +5,10 @@ metadata:
   namespace: ai-gateway
   annotations:
     kubernetes.io/ingress.class: traefik
-    cert-manager.io/cluster-issuer: letsencrypt
+    cert-manager.io/cluster-issuer: letsencrypt-dns
 spec:
   rules:
-    - host: llm.blackk.lan
+    - host: llm.home.kennethblack.me
       http:
         paths:
           - path: /
@@ -20,5 +20,5 @@ spec:
                   number: 4000
   tls:
     - hosts:
-        - llm.blackk.lan
+        - llm.home.kennethblack.me
       secretName: litellm-tls

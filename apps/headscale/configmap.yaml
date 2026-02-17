@@ -10,7 +10,7 @@ data:
     # Headscale configuration
     # https://github.com/juanfont/headscale/blob/main/config-example.yaml
 
-    server_url: https://headscale.blackk.lan
+    server_url: https://headscale.home.kennethblack.me
     listen_addr: 0.0.0.0:8080
     metrics_listen_addr: 0.0.0.0:9090
     grpc_listen_addr: 0.0.0.0:50443
@@ -43,36 +43,36 @@ data:
     # DNS configuration - MagicDNS for all tailnet devices
     dns:
       magic_dns: true
-      base_domain: tail.blackk.lan
+      base_domain: tail.home.kennethblack.me
       nameservers:
         global:
           - 10.43.199.233  # AdGuard ClusterIP
       extra_records:
-        - name: home.blackk.lan
+        - name: hass.home.kennethblack.me
           type: A
           value: 10.43.43.204  # Traefik ClusterIP
-        - name: grafana.blackk.lan
+        - name: grafana.home.kennethblack.me
           type: A
           value: 10.43.43.204
-        - name: openclaw.blackk.lan
+        - name: openclaw.home.kennethblack.me
           type: A
           value: 10.43.43.204
-        - name: llm.blackk.lan
+        - name: llm.home.kennethblack.me
           type: A
           value: 10.43.43.204
-        - name: finance.blackk.lan
+        - name: finance.home.kennethblack.me
           type: A
           value: 10.43.43.204
-        - name: prometheus.blackk.lan
+        - name: prometheus.home.kennethblack.me
           type: A
           value: 10.43.43.204
-        - name: alertmanager.blackk.lan
+        - name: alertmanager.home.kennethblack.me
           type: A
           value: 10.43.43.204
-        - name: netdata.blackk.lan
+        - name: netdata.home.kennethblack.me
           type: A
           value: 10.43.43.204
-        - name: adguard.blackk.lan
+        - name: adguard.home.kennethblack.me
           type: A
           value: 10.43.43.204
 

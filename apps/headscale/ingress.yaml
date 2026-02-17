@@ -7,15 +7,15 @@ metadata:
     app.kubernetes.io/name: headscale
   annotations:
     kubernetes.io/ingress.class: traefik
-    cert-manager.io/cluster-issuer: letsencrypt
+    cert-manager.io/cluster-issuer: letsencrypt-dns
     traefik.ingress.kubernetes.io/router.middlewares: ""
 spec:
   tls:
     - hosts:
-        - headscale.blackk.lan
+        - headscale.home.kennethblack.me
       secretName: headscale-tls
   rules:
-    - host: headscale.blackk.lan
+    - host: headscale.home.kennethblack.me
       http:
         paths:
           - path: /
@@ -36,14 +36,14 @@ metadata:
     app.kubernetes.io/name: headscale-ui
   annotations:
     kubernetes.io/ingress.class: traefik
-    cert-manager.io/cluster-issuer: letsencrypt
+    cert-manager.io/cluster-issuer: letsencrypt-dns
 spec:
   tls:
     - hosts:
-        - headscale-ui.blackk.lan
+        - headscale-ui.home.kennethblack.me
       secretName: headscale-ui-tls
   rules:
-    - host: headscale-ui.blackk.lan
+    - host: headscale-ui.home.kennethblack.me
       http:
         paths:
           - path: /

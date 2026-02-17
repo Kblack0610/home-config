@@ -5,10 +5,10 @@ metadata:
   namespace: monitoring
   annotations:
     kubernetes.io/ingress.class: traefik
-    cert-manager.io/cluster-issuer: letsencrypt
+    cert-manager.io/cluster-issuer: letsencrypt-dns
 spec:
   rules:
-    - host: prometheus.blackk.lan
+    - host: prometheus.home.kennethblack.me
       http:
         paths:
           - path: /
@@ -20,5 +20,5 @@ spec:
                   number: 9090
   tls:
     - hosts:
-        - prometheus.blackk.lan
+        - prometheus.home.kennethblack.me
       secretName: prometheus-tls

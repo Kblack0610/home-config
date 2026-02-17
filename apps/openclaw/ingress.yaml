@@ -5,10 +5,10 @@ metadata:
   namespace: openclaw
   annotations:
     kubernetes.io/ingress.class: traefik
-    cert-manager.io/cluster-issuer: letsencrypt
+    cert-manager.io/cluster-issuer: letsencrypt-dns
 spec:
   rules:
-    - host: openclaw.blackk.lan
+    - host: openclaw.home.kennethblack.me
       http:
         paths:
           - path: /
@@ -20,5 +20,5 @@ spec:
                   number: 18789
   tls:
     - hosts:
-        - openclaw.blackk.lan
+        - openclaw.home.kennethblack.me
       secretName: openclaw-tls

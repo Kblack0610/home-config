@@ -9,8 +9,8 @@ This guide covers the deployment and administration of Headscale, a self-hosted 
 │                    k3s Cluster (home-k3s)                   │
 ├─────────────────────────────────────────────────────────────┤
 │  Headscale (control server)                                 │
-│  ├── Web UI: https://headscale-ui.blackk.lan               │
-│  ├── API: https://headscale.blackk.lan                     │
+│  ├── Web UI: https://headscale-ui.home.kennethblack.me     │
+│  ├── API: https://headscale.home.kennethblack.me           │
 │  └── DERP/STUN: UDP 3478 (NAT traversal)                   │
 │                                                             │
 │  Subnet Router                                              │
@@ -22,7 +22,7 @@ This guide covers the deployment and administration of Headscale, a self-hosted 
 ┌─────────────────────────────────────────────────────────────┐
 │  Remote Devices (phone, laptop, etc.)                       │
 │  - Tailscale client connects to Headscale                   │
-│  - MagicDNS: *.blackk.lan → cluster services               │
+│  - MagicDNS: *.home.kennethblack.me → cluster services     │
 │  - Full access to K8s services without CA imports           │
 └─────────────────────────────────────────────────────────────┘
 ```
@@ -30,7 +30,7 @@ This guide covers the deployment and administration of Headscale, a self-hosted 
 ## Prerequisites
 
 - k3s cluster with Traefik ingress
-- cert-manager with `letsencrypt` ClusterIssuer
+- cert-manager with `letsencrypt-dns` ClusterIssuer (DNS-01 via Cloudflare)
 - AdGuard Home for DNS (optional but recommended)
 
 ## Initial Deployment
@@ -72,7 +72,7 @@ kubectl --context home-k3s get svc -n headscale
 kubectl --context home-k3s get ingress -n headscale
 
 # Health check
-curl -k https://headscale.blackk.lan/health
+curl -k https://headscale.home.kennethblack.me/health
 ```
 
 ## User & Device Management
@@ -134,12 +134,12 @@ kubectl --context home-k3s exec -n headscale deployment/headscale -c headscale -
 
 2. Connect to Headscale:
    ```bash
-   tailscale up --login-server=https://headscale.blackk.lan --authkey=YOUR_PREAUTH_KEY
+   tailscale up --login-server=https://headscale.home.kennethblack.me --authkey=YOUR_PREAUTH_KEY
    ```
 
 3. Or without pre-auth key (manual approval):
    ```bash
-   tailscale up --login-server=https://headscale.blackk.lan
+   tailscale up --login-server=https://headscale.home.kennethblack.me
    ```
    Then register the node on the server:
    ```bash
@@ -155,7 +155,7 @@ kubectl --context home-k3s exec -n headscale deployment/headscale -c headscale -
 
 3. Tap "Log in" then scroll down and tap "Use an alternate server"
 
-4. Enter: `https://headscale.blackk.lan`
+4. Enter: `https://headscale.home.kennethblack.me`
 
 5. You'll get a registration URL. Run this on your server:
    ```bash
@@ -208,7 +208,7 @@ kubectl --context home-k3s exec -n headscale deployment/headscale -c headscale -
 
 The Headscale UI provides a web interface for basic administration:
 
-- URL: https://headscale-ui.blackk.lan
+- URL: https://headscale-ui.home.kennethblack.me
 - Requires API key for authentication
 
 Generate an API key:
@@ -222,15 +222,15 @@ kubectl --context home-k3s exec -n headscale deployment/headscale -c headscale -
 ### MagicDNS
 
 Headscale provides MagicDNS for devices on the tailnet:
-- Base domain: `tail.blackk.lan`
-- Each device gets: `hostname.tail.blackk.lan`
+- Base domain: `tail.home.kennethblack.me`
+- Each device gets: `hostname.tail.home.kennethblack.me`
 
 ### Internal Service DNS
 
-The Headscale config includes extra DNS records pointing `*.blackk.lan` to the Traefik ingress, so tailnet devices can access:
-- home.blackk.lan
-- grafana.blackk.lan
-- openclaw.blackk.lan
+The Headscale config includes extra DNS records pointing `*.home.kennethblack.me` to the Traefik ingress, so tailnet devices can access:
+- hass.home.kennethblack.me
+- grafana.home.kennethblack.me
+- openclaw.home.kennethblack.me
 - etc.
 
 ### AdGuard Integration
@@ -257,12 +257,12 @@ The embedded DERP server helps devices behind NAT connect:
 
 ```bash
 # Check if DERP is responding
-curl -k https://headscale.blackk.lan/derp
+curl -k https://headscale.home.kennethblack.me/derp
 ```
 
 ### Device Can't Connect
 
-1. Verify Headscale is healthy: `curl -k https://headscale.blackk.lan/health`
+1. Verify Headscale is healthy: `curl -k https://headscale.home.kennethblack.me/health`
 2. Check pre-auth key hasn't expired
 3. Ensure firewall allows UDP 3478 for STUN
 
@@ -275,7 +275,7 @@ curl -k https://headscale.blackk.lan/derp
 
 ### Certificate Issues
 
-The ingress uses cert-manager with the `letsencrypt` ClusterIssuer (actually a self-signed CA). For devices on the tailnet, this works because traffic goes through the WireGuard tunnel and terminates at Traefik.
+The ingress uses cert-manager with the `letsencrypt-dns` ClusterIssuer for valid Let's Encrypt certificates via DNS-01 challenge with Cloudflare. This provides trusted TLS certificates that work without any CA imports.
 
 ## Backup & Recovery
 

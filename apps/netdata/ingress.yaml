@@ -5,10 +5,10 @@ metadata:
   namespace: netdata
   annotations:
     kubernetes.io/ingress.class: traefik
-    cert-manager.io/cluster-issuer: letsencrypt
+    cert-manager.io/cluster-issuer: letsencrypt-dns
 spec:
   rules:
-    - host: netdata.blackk.lan
+    - host: netdata.home.kennethblack.me
       http:
         paths:
           - path: /
@@ -20,5 +20,5 @@ spec:
                   number: 19999
   tls:
     - hosts:
-        - netdata.blackk.lan
+        - netdata.home.kennethblack.me
       secretName: netdata-tls

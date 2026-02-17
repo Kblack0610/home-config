@@ -5,10 +5,10 @@ metadata:
   namespace: home-assistant
   annotations:
     kubernetes.io/ingress.class: traefik
-    cert-manager.io/cluster-issuer: letsencrypt
+    cert-manager.io/cluster-issuer: letsencrypt-dns
 spec:
   rules:
-    - host: home.blackk.lan
+    - host: hass.home.kennethblack.me
       http:
         paths:
           - path: /
@@ -20,5 +20,5 @@ spec:
                   number: 8123
   tls:
     - hosts:
-        - home.blackk.lan
+        - hass.home.kennethblack.me
       secretName: home-assistant-tls

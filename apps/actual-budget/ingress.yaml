@@ -5,14 +5,14 @@ metadata:
   namespace: actual-budget
   annotations:
     kubernetes.io/ingress.class: traefik
-    cert-manager.io/cluster-issuer: letsencrypt
+    cert-manager.io/cluster-issuer: letsencrypt-dns
 spec:
   tls:
     - hosts:
-        - finance.blackk.lan
+        - finance.home.kennethblack.me
       secretName: actual-budget-tls
   rules:
-    - host: finance.blackk.lan
+    - host: finance.home.kennethblack.me
       http:
         paths:
           - path: /

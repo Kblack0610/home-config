@@ -5,10 +5,10 @@ metadata:
   namespace: adguard-home
   annotations:
     kubernetes.io/ingress.class: traefik
-    cert-manager.io/cluster-issuer: letsencrypt
+    cert-manager.io/cluster-issuer: letsencrypt-dns
 spec:
   rules:
-    - host: adguard.blackk.lan
+    - host: adguard.home.kennethblack.me
       http:
         paths:
           - path: /
@@ -17,8 +17,8 @@ spec:
               service:
                 name: adguard-home-web
                 port:
-                  number: 3000
+                  number: 80
   tls:
     - hosts:
-        - adguard.blackk.lan
+        - adguard.home.kennethblack.me
       secretName: adguard-home-tls

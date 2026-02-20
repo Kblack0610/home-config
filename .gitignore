@@ -41,3 +41,8 @@ target/
 node_modules/
 __pycache__/
 *.pyc
+
+# ===================
+# Tool-generated
+# ===================
+.playwright-mcp/

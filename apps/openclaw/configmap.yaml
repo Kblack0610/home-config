@@ -10,9 +10,7 @@ data:
     {
       "gateway": {
         "mode": "local",
-        "auth": {
-          "token": "${OPENCLAW_GATEWAY_TOKEN}"
-        },
+        "auth": {},
         "controlUi": {
           "allowInsecureAuth": true
         },

@@ -67,36 +67,63 @@ Configuration and deployment manifests for a home Kubernetes cluster running on 
 |---------|------|-------------|
 | [ESP32 Firmware](./apps/esp32-firmware/) | Dev | Smart switch firmware for ESP32 |
 
-## Quick Start
+## Deployment
+
+### GitOps with Flux CD (Recommended)
+
+This repository uses [Flux CD](https://fluxcd.io/) for automated GitOps deployments:
+
+```bash
+# Changes deploy automatically when pushed to git
+git add apps/home-assistant/
+git commit -m "feat: update home-assistant config"
+git push  # Flux applies changes within 10 minutes
+
+# Force immediate deployment
+flux reconcile kustomization apps --with-source
+```
+
+See [docs/gitops.md](./docs/gitops.md) for setup instructions and troubleshooting.
+
+### Manual Deployment
+
+For initial setup or troubleshooting:
+
+```bash
+# Kubernetes services (using Kustomize)
+kubectl apply -k apps/home-assistant/
+
+# Docker Compose services
+cd apps/frigate && docker-compose up -d
+```
 
 ### Prerequisites
 
 - K3s cluster running on your nodes
 - `kubectl` configured to access your cluster
+- [Flux CLI](https://fluxcd.io/flux/installation/) for GitOps
 - Docker and Docker Compose for standalone services
-
-### Deploy a Kubernetes Service
-
-```bash
-# Example: Deploy Home Assistant
-cd apps/home-assistant
-kubectl apply -f namespace.yaml
-kubectl apply -f .
-```
-
-### Deploy a Docker Compose Service
-
-```bash
-# Example: Deploy Frigate
-cd apps/frigate
-docker-compose up -d
-```
 
 ## Configuration
 
 ### Secrets Management
 
-**Never commit secrets to git.** Use one of these approaches:
+Secrets are encrypted with [SOPS](https://github.com/getsops/sops) using Age encryption, allowing them to be safely committed to git.
+
+```bash
+# Encrypt a secret (safe to commit after encryption)
+sops --encrypt --in-place apps/home-assistant/secret.yaml
+
+# Edit an encrypted secret (decrypts in editor, re-encrypts on save)
+sops apps/home-assistant/secret.yaml
+
+# View decrypted content
+sops --decrypt apps/home-assistant/secret.yaml
+```
+
+Flux automatically decrypts secrets during deployment. See [docs/gitops.md](./docs/gitops.md) for SOPS setup.
+
+**Legacy approach** (for non-GitOps services):
 
 1. **Local secret files**: Copy `*.example` files and fill in values
    ```bash
@@ -104,14 +131,11 @@ docker-compose up -d
    # Edit .env with your values
    ```
 
-2. **Kubernetes secrets**: Use `secret.yaml` templates
+2. **Unencrypted K8s secrets**: For development only
    ```bash
    cp secret.yaml secret.local.yaml
-   # Edit secret.local.yaml with real values
    kubectl apply -f secret.local.yaml
    ```
-
-3. **Sealed Secrets**: For GitOps workflows (recommended for production)
 
 ### Environment Files
 
@@ -124,10 +148,12 @@ docker-compose up -d
 
 ## Documentation
 
+- [GitOps Guide](./docs/gitops.md) - Flux CD setup, deployment workflow, troubleshooting
 - [Infrastructure Status](./infrastructure.md) - Cluster health and service status
 - [Home Assistant Docs](https://www.home-assistant.io/docs/)
 - [Frigate Docs](https://docs.frigate.video/)
 - [K3s Docs](https://docs.k3s.io/)
+- [Flux CD Docs](https://fluxcd.io/flux/)
 
 ## Security Notes
 

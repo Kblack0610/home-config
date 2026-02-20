@@ -1,0 +1,8 @@
+# Kustomization for home-k3s cluster
+# Lists all Flux resources to apply for this cluster
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+resources:
+  # Flux Kustomizations (pointers to app directories)
+  - apps.yaml

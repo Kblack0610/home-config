@@ -1,0 +1,8 @@
+# SOPS configuration for encrypting Kubernetes secrets
+# See: https://github.com/getsops/sops
+
+creation_rules:
+  # Encrypt only the 'data' and 'stringData' fields in Kubernetes secrets
+  - path_regex: .*secret.*\.yaml$
+    encrypted_regex: ^(data|stringData)$
+    age: age138x34tdqulknsj967wjv9urg9ucxtpkep2apzjmthta3xtjgvpgsm8k3a0

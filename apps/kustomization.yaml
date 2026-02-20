@@ -1,0 +1,30 @@
+# Root kustomization for all Kubernetes apps
+# Flux will apply all resources listed here
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+resources:
+  # Core infrastructure
+  - cert-manager
+
+  # Applications (home-k3s cluster)
+  - adguard-home
+  - headscale
+  - home-assistant
+  - litellm
+  - monitoring
+  - netdata
+  - openclaw
+  # - nginx-proxy-manager  # Uncomment when ready
+
+  # Applications (do-nyc3-prod cluster)
+  # Note: These will only deploy if cluster context matches
+  # - actual-budget
+  # - forgejo
+
+# Excluded from GitOps (Docker Compose or non-K8s):
+# - actual-budget-tools (Docker Compose)
+# - esp32-firmware (embedded firmware, not K8s)
+# - frigate (Docker Compose on standalone Pi)
+# - home-assistant-old (legacy, deprecated)
+# - pi3-adguard-home (Docker Compose on Pi3)

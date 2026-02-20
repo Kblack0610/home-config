@@ -11,7 +11,7 @@ data:
       # Coding + tool calling (primary)
       - model_name: qwen-coder-32b
         litellm_params:
-          model: ollama_chat/qwen2.5-coder:32b-instruct
+          model: ollama_chat/qwen3-coder:30b
           api_base: http://192.168.1.4:11434
           stream: true
 
@@ -24,20 +24,14 @@ data:
       # General purpose
       - model_name: llama-3.3-70b
         litellm_params:
-          model: ollama_chat/llama3.3:70b
+          model: ollama_chat/llama3.1:70b
           api_base: http://192.168.1.4:11434
 
       # Fast/light tasks
       - model_name: qwen-coder-7b
         litellm_params:
-          model: ollama_chat/qwen2.5-coder:7b-instruct
+          model: ollama_chat/llama3.1:8b
           api_base: http://192.168.1.4:11434
-
-      # Cloud fallback (uncomment + add API key secret to enable)
-      # - model_name: claude-fallback
-      #   litellm_params:
-      #     model: anthropic/claude-sonnet-4-20250514
-      #     api_key: os.environ/ANTHROPIC_API_KEY
 
     router_settings:
       model_group_alias:

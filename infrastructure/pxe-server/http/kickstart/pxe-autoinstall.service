@@ -1,0 +1,24 @@
+[Unit]
+Description=PXE Automated CachyOS Installation
+Documentation=https://github.com/kblack0610/.dotfiles
+After=network-online.target
+Wants=network-online.target
+ConditionKernelCommandLine=pxe_autoinstall=1
+ConditionPathExists=/run/archiso
+
+[Service]
+Type=oneshot
+RemainAfterExit=no
+ExecStart=/bin/bash -c '\
+    PXE_SERVER=$(sed "s/.*pxe_server=\\([^ ]*\\).*/\\1/" /proc/cmdline); \
+    echo "PXE autoinstall: fetching disk-install.sh from $PXE_SERVER"; \
+    curl -sfL "http://$PXE_SERVER:9080/kickstart/disk-install.sh" \
+        -o /tmp/disk-install.sh && \
+    chmod +x /tmp/disk-install.sh && \
+    /tmp/disk-install.sh'
+StandardOutput=journal+console
+StandardError=journal+console
+TimeoutStartSec=3600
+
+[Install]
+WantedBy=multi-user.target

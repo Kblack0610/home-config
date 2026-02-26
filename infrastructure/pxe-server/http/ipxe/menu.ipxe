@@ -1,0 +1,212 @@
+#!ipxe
+#
+# PXE Boot Menu - CachyOS Network Installation
+#
+# This script is served via HTTP and provides the main boot menu.
+# It handles downloading the kernel/initrd and booting with the
+# appropriate parameters for automated or manual installation.
+#
+
+# =============================================================================
+# Configuration
+# =============================================================================
+
+# Server settings
+# Hardcode PXE server IP since next-server may resolve to the router
+set pxe-server 192.168.1.2
+set http-root http://${pxe-server}:9080
+
+# Retry settings
+set retry-count 3
+set retry-delay 2
+
+# Installation defaults
+set dryrun 0
+set disk auto
+set force 0
+
+# =============================================================================
+# Main Menu
+# =============================================================================
+
+:start
+menu CachyOS Network Boot
+item --gap --             ========================================
+item --gap --             CachyOS Installation Options
+item --gap --             ========================================
+item cachyos-desktop      [1] Desktop - Full (Hyprland + Sunshine)
+item cachyos-laptop       [2] Laptop - Optimized (no Sunshine)
+item cachyos-headless     [3] Server - Headless (SSH only)
+item cachyos-manual       [4] Manual - Interactive archiso
+item cachyos-dryrun       [5] Dry Run - Test autoinstall (no disk writes)
+item --gap --             ----------------------------------------
+item --gap --             Utilities
+item --gap --             ----------------------------------------
+item memtest              [M] Memory Test (memtest86+)
+item shell                [S] iPXE Shell
+item localboot            [L] Boot from Local Disk
+item reboot               [R] Reboot
+item --gap --             ========================================
+choose --timeout 10000 --default localboot selected || goto localboot
+goto ${selected}
+
+# =============================================================================
+# CachyOS Boot Options
+# =============================================================================
+
+:cachyos-desktop
+echo
+echo Selected: CachyOS Desktop (Full Installation)
+echo Profile includes: Hyprland, Sunshine streaming, full development tools
+echo
+set profile desktop
+set autoinstall 1
+set force 1
+goto cachyos-boot
+
+:cachyos-laptop
+echo
+echo Selected: CachyOS Laptop (Optimized)
+echo Profile includes: Hyprland, battery optimization, no Sunshine
+echo
+set profile laptop
+set autoinstall 1
+set force 1
+goto cachyos-boot
+
+:cachyos-headless
+echo
+echo Selected: CachyOS Headless (Server)
+echo Profile includes: SSH, Docker, minimal packages
+echo
+set profile headless
+set autoinstall 1
+set force 1
+goto cachyos-boot
+
+:cachyos-manual
+echo
+echo Selected: CachyOS Manual Installation
+echo You will be dropped into the live environment to install manually.
+echo
+set profile manual
+set autoinstall 0
+goto cachyos-boot
+
+:cachyos-dryrun
+echo
+echo Selected: CachyOS Dry Run (no disk writes)
+echo Autoinstall will run but skip all destructive operations.
+echo Check /tmp/autoinstall.log for results.
+echo
+set profile desktop
+set autoinstall 1
+set dryrun 1
+goto cachyos-boot
+
+# =============================================================================
+# CachyOS Boot Process
+# =============================================================================
+
+:cachyos-boot
+echo
+echo ============================================
+echo  Booting CachyOS
+echo ============================================
+echo  Server:      ${pxe-server}
+echo  Profile:     ${profile}
+echo  Auto-install: ${autoinstall}
+echo  Dry-run:     ${dryrun}
+echo  Disk:        ${disk}
+echo ============================================
+echo
+
+echo Downloading kernel...
+kernel ${http-root}/cachyos/vmlinuz-linux-cachyos || goto kernel-failed
+
+echo Downloading initramfs...
+initrd ${http-root}/cachyos/initramfs-linux-cachyos.img || goto initrd-failed
+
+echo Configuring boot parameters...
+imgargs vmlinuz-linux-cachyos \
+    archisobasedir=cachyos \
+    archiso_http_srv=${http-root}/ \
+    ip=dhcp \
+    cow_spacesize=4G \
+    copytoram=n \
+    pxe_server=${pxe-server} \
+    pxe_profile=${profile} \
+    pxe_autoinstall=${autoinstall} \
+    pxe_dryrun=${dryrun} \
+    pxe_disk=${disk} \
+    pxe_force=${force}
+
+echo
+echo Booting CachyOS...
+echo (The root filesystem will be fetched over HTTP)
+echo
+boot || goto boot-failed
+
+# =============================================================================
+# Error Handlers
+# =============================================================================
+
+:kernel-failed
+echo
+echo ERROR: Failed to download kernel!
+echo URL: ${http-root}/cachyos/vmlinuz-linux-cachyos
+echo
+echo Make sure CachyOS images are prepared:
+echo   pxe-server prepare
+echo
+prompt Press any key to return to menu...
+goto start
+
+:initrd-failed
+echo
+echo ERROR: Failed to download initramfs!
+echo URL: ${http-root}/cachyos/initramfs-linux-cachyos.img
+echo
+prompt Press any key to return to menu...
+goto start
+
+:boot-failed
+echo
+echo ERROR: Failed to boot!
+echo
+echo This could mean:
+echo   - The kernel/initramfs are corrupted
+echo   - Insufficient memory
+echo   - Hardware incompatibility
+echo
+prompt Press any key to return to menu...
+goto start
+
+# =============================================================================
+# Utilities
+# =============================================================================
+
+:memtest
+echo Booting memtest86+...
+chain ${http-root}/utils/memtest86+.efi || echo Memtest not available
+prompt Press any key to return to menu...
+goto start
+
+:shell
+echo
+echo iPXE Shell - Type 'help' for commands, 'exit' to return
+echo Useful commands:
+echo   ifstat      - Show network interface stats
+echo   route       - Show routing table
+echo   dhcp        - Re-acquire DHCP lease
+echo   ping <ip>   - Test connectivity
+echo
+shell
+goto start
+
+:localboot
+echo Booting from local disk...
+exit 1
+
+:reboot
+reboot

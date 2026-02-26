@@ -1,0 +1,17 @@
+# Downloaded ISO images (large files)
+images/*.iso
+images/*.iso.sig
+
+# Extracted boot files (downloaded by prepare-images.sh)
+http/cachyos/vmlinuz-*
+http/cachyos/initramfs-*
+http/cachyos/airootfs.sfs
+http/cachyos/*.sig
+
+# Runtime files
+*.pid
+*.log
+
+# Keep directory structure
+!images/.gitkeep
+!http/cachyos/.gitkeep

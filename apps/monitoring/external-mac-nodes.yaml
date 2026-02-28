@@ -1,0 +1,54 @@
+# External Mac machines monitored via node_exporter (port 9100)
+# These are not K8s nodes — they run native macOS workloads
+# Mac Studio M3 Ultra (192.168.1.4): Ollama LLM inference, GitHub Actions runner
+# Mac Mini M1 (192.168.1.7): GitHub Actions runner (iOS builds)
+
+apiVersion: v1
+kind: Service
+metadata:
+  name: mac-nodes
+  namespace: monitoring
+  labels:
+    app.kubernetes.io/name: mac-nodes
+    app.kubernetes.io/part-of: monitoring
+spec:
+  type: ClusterIP
+  clusterIP: None
+  ports:
+    - name: metrics
+      port: 9100
+      targetPort: 9100
+---
+apiVersion: v1
+kind: Endpoints
+metadata:
+  name: mac-nodes
+  namespace: monitoring
+  labels:
+    app.kubernetes.io/name: mac-nodes
+subsets:
+  - addresses:
+      - ip: 192.168.1.4
+      - ip: 192.168.1.7
+    ports:
+      - name: metrics
+        port: 9100
+---
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: mac-nodes
+  namespace: monitoring
+  labels:
+    app.kubernetes.io/name: mac-nodes
+spec:
+  endpoints:
+    - port: metrics
+      interval: 30s
+      scrapeTimeout: 10s
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: mac-nodes
+  namespaceSelector:
+    matchNames:
+      - monitoring

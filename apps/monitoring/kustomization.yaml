@@ -4,3 +4,4 @@ resources:
   - ingress-grafana.yaml
   - ingress-prometheus.yaml
   - ingress-alertmanager.yaml
+  - external-mac-nodes.yaml

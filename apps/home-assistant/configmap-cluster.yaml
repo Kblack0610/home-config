@@ -173,6 +173,62 @@ data:
       unit_of_measurement: "%"
       scan_interval: 60
 
+    # ============================================
+    # MAC MACHINES (Apple Silicon - node_exporter via Prometheus)
+    # ============================================
+
+    # Mac Studio M3 Ultra - 192.168.1.4 (Ollama, GH Actions runner)
+    - platform: rest
+      name: "Mac Studio CPU"
+      resource: "http://kube-prometheus-stack-prometheus.monitoring.svc:9090/api/v1/query?query=100-(avg(rate(node_cpu_seconds_total%7Binstance%3D%22192.168.1.4%3A9100%22%2Cmode%3D%22idle%22%7D%5B2m%5D))*100)"
+      value_template: "{{ value_json.data.result[0].value[1] | float | round(1) }}"
+      unit_of_measurement: "%"
+      scan_interval: 30
+
+    - platform: rest
+      name: "Mac Studio RAM"
+      resource: "http://kube-prometheus-stack-prometheus.monitoring.svc:9090/api/v1/query?query=(1-node_memory_free_bytes%7Binstance%3D%22192.168.1.4%3A9100%22%7D/node_memory_total_bytes%7Binstance%3D%22192.168.1.4%3A9100%22%7D)*100"
+      value_template: "{{ value_json.data.result[0].value[1] | float | round(1) }}"
+      unit_of_measurement: "%"
+      scan_interval: 30
+
+    - platform: rest
+      name: "Mac Studio Disk"
+      resource: "http://kube-prometheus-stack-prometheus.monitoring.svc:9090/api/v1/query?query=(1-node_filesystem_avail_bytes%7Binstance%3D%22192.168.1.4%3A9100%22%2Cmountpoint%3D%22%2F%22%7D/node_filesystem_size_bytes%7Binstance%3D%22192.168.1.4%3A9100%22%2Cmountpoint%3D%22%2F%22%7D)*100"
+      value_template: "{{ value_json.data.result[0].value[1] | float | round(1) }}"
+      unit_of_measurement: "%"
+      scan_interval: 60
+
+    # Mac Mini M1 - 192.168.1.7 (GH Actions runner, iOS builds)
+    - platform: rest
+      name: "Mac Mini CPU"
+      resource: "http://kube-prometheus-stack-prometheus.monitoring.svc:9090/api/v1/query?query=100-(avg(rate(node_cpu_seconds_total%7Binstance%3D%22192.168.1.7%3A9100%22%2Cmode%3D%22idle%22%7D%5B2m%5D))*100)"
+      value_template: "{{ value_json.data.result[0].value[1] | float | round(1) }}"
+      unit_of_measurement: "%"
+      scan_interval: 30
+
+    - platform: rest
+      name: "Mac Mini RAM"
+      resource: "http://kube-prometheus-stack-prometheus.monitoring.svc:9090/api/v1/query?query=(1-node_memory_free_bytes%7Binstance%3D%22192.168.1.7%3A9100%22%7D/node_memory_total_bytes%7Binstance%3D%22192.168.1.7%3A9100%22%7D)*100"
+      value_template: "{{ value_json.data.result[0].value[1] | float | round(1) }}"
+      unit_of_measurement: "%"
+      scan_interval: 30
+
+    - platform: rest
+      name: "Mac Mini Disk"
+      resource: "http://kube-prometheus-stack-prometheus.monitoring.svc:9090/api/v1/query?query=(1-node_filesystem_avail_bytes%7Binstance%3D%22192.168.1.7%3A9100%22%2Cmountpoint%3D%22%2F%22%7D/node_filesystem_size_bytes%7Binstance%3D%22192.168.1.7%3A9100%22%2Cmountpoint%3D%22%2F%22%7D)*100"
+      value_template: "{{ value_json.data.result[0].value[1] | float | round(1) }}"
+      unit_of_measurement: "%"
+      scan_interval: 60
+
+    # Ollama Status (Mac Studio only)
+    - platform: rest
+      name: "Ollama Status"
+      resource: "http://192.168.1.4:11434/api/tags"
+      value_template: "{{ value_json.models | length }}"
+      unit_of_measurement: "models"
+      scan_interval: 60
+
     # K3s System (Always Stable)
     - platform: rest
       name: "K3s Server CPU"
@@ -238,6 +294,31 @@ data:
               states('sensor.node_5_cpu')
             ] %}
             {{ nodes | reject('in', ['unknown', 'unavailable']) | list | length }}
+
+        mac_machines_online:
+          friendly_name: "Mac Machines Online"
+          unit_of_measurement: "nodes"
+          value_template: >-
+            {% set macs = [
+              states('sensor.mac_studio_cpu'),
+              states('sensor.mac_mini_cpu')
+            ] %}
+            {{ macs | reject('in', ['unknown', 'unavailable']) | list | length }}
+
+        homelab_total_nodes:
+          friendly_name: "Homelab Total Nodes"
+          unit_of_measurement: "nodes"
+          value_template: >-
+            {% set all = [
+              states('sensor.node_1_cpu'),
+              states('sensor.node_2_cpu'),
+              states('sensor.node_3_cpu'),
+              states('sensor.node_4_cpu'),
+              states('sensor.node_5_cpu'),
+              states('sensor.mac_studio_cpu'),
+              states('sensor.mac_mini_cpu')
+            ] %}
+            {{ all | reject('in', ['unknown', 'unavailable']) | list | length }}
 
   # ============================================
   # POD/APP MONITORING (Requires update after pod restarts)

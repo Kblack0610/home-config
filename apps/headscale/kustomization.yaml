@@ -6,7 +6,7 @@ namespace: headscale
 resources:
   - namespace.yaml
   - configmap.yaml
-  - secret.yaml
+  - secret.local.yaml
   - pvc.yaml
   - deployment.yaml
   - service.yaml

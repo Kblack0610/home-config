@@ -13,7 +13,6 @@ resources:
   - home-assistant
   - litellm
   - monitoring
-  - netdata
   - openclaw
   # - nginx-proxy-manager  # Uncomment when ready
 

@@ -1,5 +1,5 @@
 # K3s Cluster Monitoring Sensors
-# Pulls data from Netdata running on each node
+# Pulls data from Prometheus (kube-prometheus-stack)
 # Add to configuration.yaml: sensor: !include sensors_cluster.yaml
 
 # ============================================
@@ -7,34 +7,22 @@
 # ============================================
 - platform: rest
   name: "Node 1 CPU"
-  resource: "http://192.168.1.20:19999/api/v1/data?chart=system.cpu&points=1&format=json&options=abs"
-  value_template: "{{ ((value_json.data[0][6] | float) + (value_json.data[0][7] | float)) | round(1) }}"
+  resource: "http://kube-prometheus-stack-prometheus.monitoring.svc:9090/api/v1/query?query=100-(avg by(instance)(rate(node_cpu_seconds_total%7Binstance%3D%22192.168.1.20%3A9100%22%2Cmode%3D%22idle%22%7D%5B2m%5D))*100)"
+  value_template: "{{ value_json.data.result[0].value[1] | float | round(1) }}"
   unit_of_measurement: "%"
   scan_interval: 30
-  json_attributes_path: "$.data[0]"
 
 - platform: rest
   name: "Node 1 RAM"
-  resource: "http://192.168.1.20:19999/api/v1/data?chart=system.ram&points=1&format=json"
-  value_template: >-
-    {% set used = value_json.data[0][1] | float %}
-    {% set buffers = value_json.data[0][2] | float %}
-    {% set cached = value_json.data[0][4] | float %}
-    {% set free = value_json.data[0][3] | float %}
-    {% set total = used + buffers + cached + free %}
-    {{ ((used / total) * 100) | round(1) }}
+  resource: "http://kube-prometheus-stack-prometheus.monitoring.svc:9090/api/v1/query?query=(1-node_memory_MemAvailable_bytes%7Binstance%3D%22192.168.1.20%3A9100%22%7D/node_memory_MemTotal_bytes%7Binstance%3D%22192.168.1.20%3A9100%22%7D)*100"
+  value_template: "{{ value_json.data.result[0].value[1] | float | round(1) }}"
   unit_of_measurement: "%"
   scan_interval: 30
 
 - platform: rest
   name: "Node 1 Disk"
-  resource: "http://192.168.1.20:19999/api/v1/data?chart=disk_space._&points=1&format=json"
-  value_template: >-
-    {% set avail = value_json.data[0][1] | float %}
-    {% set used = value_json.data[0][2] | float %}
-    {% set reserved = value_json.data[0][3] | float %}
-    {% set total = avail + used + reserved %}
-    {{ ((used / total) * 100) | round(1) if total > 0 else 0 }}
+  resource: "http://kube-prometheus-stack-prometheus.monitoring.svc:9090/api/v1/query?query=(1-node_filesystem_avail_bytes%7Binstance%3D%22192.168.1.20%3A9100%22%2Cmountpoint%3D%22%2F%22%2Cfstype!%3D%22tmpfs%22%7D/node_filesystem_size_bytes%7Binstance%3D%22192.168.1.20%3A9100%22%2Cmountpoint%3D%22%2F%22%2Cfstype!%3D%22tmpfs%22%7D)*100"
+  value_template: "{{ value_json.data.result[0].value[1] | float | round(1) }}"
   unit_of_measurement: "%"
   scan_interval: 60
 
@@ -43,33 +31,22 @@
 # ============================================
 - platform: rest
   name: "Node 2 CPU"
-  resource: "http://192.168.1.21:19999/api/v1/data?chart=system.cpu&points=1&format=json&options=abs"
-  value_template: "{{ ((value_json.data[0][6] | float) + (value_json.data[0][7] | float)) | round(1) }}"
+  resource: "http://kube-prometheus-stack-prometheus.monitoring.svc:9090/api/v1/query?query=100-(avg by(instance)(rate(node_cpu_seconds_total%7Binstance%3D%22192.168.1.21%3A9100%22%2Cmode%3D%22idle%22%7D%5B2m%5D))*100)"
+  value_template: "{{ value_json.data.result[0].value[1] | float | round(1) }}"
   unit_of_measurement: "%"
   scan_interval: 30
 
 - platform: rest
   name: "Node 2 RAM"
-  resource: "http://192.168.1.21:19999/api/v1/data?chart=system.ram&points=1&format=json"
-  value_template: >-
-    {% set used = value_json.data[0][1] | float %}
-    {% set buffers = value_json.data[0][2] | float %}
-    {% set cached = value_json.data[0][4] | float %}
-    {% set free = value_json.data[0][3] | float %}
-    {% set total = used + buffers + cached + free %}
-    {{ ((used / total) * 100) | round(1) }}
+  resource: "http://kube-prometheus-stack-prometheus.monitoring.svc:9090/api/v1/query?query=(1-node_memory_MemAvailable_bytes%7Binstance%3D%22192.168.1.21%3A9100%22%7D/node_memory_MemTotal_bytes%7Binstance%3D%22192.168.1.21%3A9100%22%7D)*100"
+  value_template: "{{ value_json.data.result[0].value[1] | float | round(1) }}"
   unit_of_measurement: "%"
   scan_interval: 30
 
 - platform: rest
   name: "Node 2 Disk"
-  resource: "http://192.168.1.21:19999/api/v1/data?chart=disk_space._&points=1&format=json"
-  value_template: >-
-    {% set avail = value_json.data[0][1] | float %}
-    {% set used = value_json.data[0][2] | float %}
-    {% set reserved = value_json.data[0][3] | float %}
-    {% set total = avail + used + reserved %}
-    {{ ((used / total) * 100) | round(1) if total > 0 else 0 }}
+  resource: "http://kube-prometheus-stack-prometheus.monitoring.svc:9090/api/v1/query?query=(1-node_filesystem_avail_bytes%7Binstance%3D%22192.168.1.21%3A9100%22%2Cmountpoint%3D%22%2F%22%2Cfstype!%3D%22tmpfs%22%7D/node_filesystem_size_bytes%7Binstance%3D%22192.168.1.21%3A9100%22%2Cmountpoint%3D%22%2F%22%2Cfstype!%3D%22tmpfs%22%7D)*100"
+  value_template: "{{ value_json.data.result[0].value[1] | float | round(1) }}"
   unit_of_measurement: "%"
   scan_interval: 60
 
@@ -78,33 +55,22 @@
 # ============================================
 - platform: rest
   name: "Node 3 CPU"
-  resource: "http://192.168.1.22:19999/api/v1/data?chart=system.cpu&points=1&format=json&options=abs"
-  value_template: "{{ ((value_json.data[0][6] | float) + (value_json.data[0][7] | float)) | round(1) }}"
+  resource: "http://kube-prometheus-stack-prometheus.monitoring.svc:9090/api/v1/query?query=100-(avg by(instance)(rate(node_cpu_seconds_total%7Binstance%3D%22192.168.1.22%3A9100%22%2Cmode%3D%22idle%22%7D%5B2m%5D))*100)"
+  value_template: "{{ value_json.data.result[0].value[1] | float | round(1) }}"
   unit_of_measurement: "%"
   scan_interval: 30
 
 - platform: rest
   name: "Node 3 RAM"
-  resource: "http://192.168.1.22:19999/api/v1/data?chart=system.ram&points=1&format=json"
-  value_template: >-
-    {% set used = value_json.data[0][1] | float %}
-    {% set buffers = value_json.data[0][2] | float %}
-    {% set cached = value_json.data[0][4] | float %}
-    {% set free = value_json.data[0][3] | float %}
-    {% set total = used + buffers + cached + free %}
-    {{ ((used / total) * 100) | round(1) }}
+  resource: "http://kube-prometheus-stack-prometheus.monitoring.svc:9090/api/v1/query?query=(1-node_memory_MemAvailable_bytes%7Binstance%3D%22192.168.1.22%3A9100%22%7D/node_memory_MemTotal_bytes%7Binstance%3D%22192.168.1.22%3A9100%22%7D)*100"
+  value_template: "{{ value_json.data.result[0].value[1] | float | round(1) }}"
   unit_of_measurement: "%"
   scan_interval: 30
 
 - platform: rest
   name: "Node 3 Disk"
-  resource: "http://192.168.1.22:19999/api/v1/data?chart=disk_space._&points=1&format=json"
-  value_template: >-
-    {% set avail = value_json.data[0][1] | float %}
-    {% set used = value_json.data[0][2] | float %}
-    {% set reserved = value_json.data[0][3] | float %}
-    {% set total = avail + used + reserved %}
-    {{ ((used / total) * 100) | round(1) if total > 0 else 0 }}
+  resource: "http://kube-prometheus-stack-prometheus.monitoring.svc:9090/api/v1/query?query=(1-node_filesystem_avail_bytes%7Binstance%3D%22192.168.1.22%3A9100%22%2Cmountpoint%3D%22%2F%22%2Cfstype!%3D%22tmpfs%22%7D/node_filesystem_size_bytes%7Binstance%3D%22192.168.1.22%3A9100%22%2Cmountpoint%3D%22%2F%22%2Cfstype!%3D%22tmpfs%22%7D)*100"
+  value_template: "{{ value_json.data.result[0].value[1] | float | round(1) }}"
   unit_of_measurement: "%"
   scan_interval: 60
 
@@ -113,33 +79,22 @@
 # ============================================
 - platform: rest
   name: "Node 4 CPU"
-  resource: "http://192.168.1.23:19999/api/v1/data?chart=system.cpu&points=1&format=json&options=abs"
-  value_template: "{{ ((value_json.data[0][6] | float) + (value_json.data[0][7] | float)) | round(1) }}"
+  resource: "http://kube-prometheus-stack-prometheus.monitoring.svc:9090/api/v1/query?query=100-(avg by(instance)(rate(node_cpu_seconds_total%7Binstance%3D%22192.168.1.23%3A9100%22%2Cmode%3D%22idle%22%7D%5B2m%5D))*100)"
+  value_template: "{{ value_json.data.result[0].value[1] | float | round(1) }}"
   unit_of_measurement: "%"
   scan_interval: 30
 
 - platform: rest
   name: "Node 4 RAM"
-  resource: "http://192.168.1.23:19999/api/v1/data?chart=system.ram&points=1&format=json"
-  value_template: >-
-    {% set used = value_json.data[0][1] | float %}
-    {% set buffers = value_json.data[0][2] | float %}
-    {% set cached = value_json.data[0][4] | float %}
-    {% set free = value_json.data[0][3] | float %}
-    {% set total = used + buffers + cached + free %}
-    {{ ((used / total) * 100) | round(1) }}
+  resource: "http://kube-prometheus-stack-prometheus.monitoring.svc:9090/api/v1/query?query=(1-node_memory_MemAvailable_bytes%7Binstance%3D%22192.168.1.23%3A9100%22%7D/node_memory_MemTotal_bytes%7Binstance%3D%22192.168.1.23%3A9100%22%7D)*100"
+  value_template: "{{ value_json.data.result[0].value[1] | float | round(1) }}"
   unit_of_measurement: "%"
   scan_interval: 30
 
 - platform: rest
   name: "Node 4 Disk"
-  resource: "http://192.168.1.23:19999/api/v1/data?chart=disk_space._&points=1&format=json"
-  value_template: >-
-    {% set avail = value_json.data[0][1] | float %}
-    {% set used = value_json.data[0][2] | float %}
-    {% set reserved = value_json.data[0][3] | float %}
-    {% set total = avail + used + reserved %}
-    {{ ((used / total) * 100) | round(1) if total > 0 else 0 }}
+  resource: "http://kube-prometheus-stack-prometheus.monitoring.svc:9090/api/v1/query?query=(1-node_filesystem_avail_bytes%7Binstance%3D%22192.168.1.23%3A9100%22%2Cmountpoint%3D%22%2F%22%2Cfstype!%3D%22tmpfs%22%7D/node_filesystem_size_bytes%7Binstance%3D%22192.168.1.23%3A9100%22%2Cmountpoint%3D%22%2F%22%2Cfstype!%3D%22tmpfs%22%7D)*100"
+  value_template: "{{ value_json.data.result[0].value[1] | float | round(1) }}"
   unit_of_measurement: "%"
   scan_interval: 60
 
@@ -148,33 +103,22 @@
 # ============================================
 - platform: rest
   name: "Node 5 CPU"
-  resource: "http://192.168.1.124:19999/api/v1/data?chart=system.cpu&points=1&format=json&options=abs"
-  value_template: "{{ ((value_json.data[0][6] | float) + (value_json.data[0][7] | float)) | round(1) }}"
+  resource: "http://kube-prometheus-stack-prometheus.monitoring.svc:9090/api/v1/query?query=100-(avg by(instance)(rate(node_cpu_seconds_total%7Binstance%3D%22192.168.1.124%3A9100%22%2Cmode%3D%22idle%22%7D%5B2m%5D))*100)"
+  value_template: "{{ value_json.data.result[0].value[1] | float | round(1) }}"
   unit_of_measurement: "%"
   scan_interval: 30
 
 - platform: rest
   name: "Node 5 RAM"
-  resource: "http://192.168.1.124:19999/api/v1/data?chart=system.ram&points=1&format=json"
-  value_template: >-
-    {% set used = value_json.data[0][1] | float %}
-    {% set buffers = value_json.data[0][2] | float %}
-    {% set cached = value_json.data[0][4] | float %}
-    {% set free = value_json.data[0][3] | float %}
-    {% set total = used + buffers + cached + free %}
-    {{ ((used / total) * 100) | round(1) }}
+  resource: "http://kube-prometheus-stack-prometheus.monitoring.svc:9090/api/v1/query?query=(1-node_memory_MemAvailable_bytes%7Binstance%3D%22192.168.1.124%3A9100%22%7D/node_memory_MemTotal_bytes%7Binstance%3D%22192.168.1.124%3A9100%22%7D)*100"
+  value_template: "{{ value_json.data.result[0].value[1] | float | round(1) }}"
   unit_of_measurement: "%"
   scan_interval: 30
 
 - platform: rest
   name: "Node 5 Disk"
-  resource: "http://192.168.1.124:19999/api/v1/data?chart=disk_space._&points=1&format=json"
-  value_template: >-
-    {% set avail = value_json.data[0][1] | float %}
-    {% set used = value_json.data[0][2] | float %}
-    {% set reserved = value_json.data[0][3] | float %}
-    {% set total = avail + used + reserved %}
-    {{ ((used / total) * 100) | round(1) if total > 0 else 0 }}
+  resource: "http://kube-prometheus-stack-prometheus.monitoring.svc:9090/api/v1/query?query=(1-node_filesystem_avail_bytes%7Binstance%3D%22192.168.1.124%3A9100%22%2Cmountpoint%3D%22%2F%22%2Cfstype!%3D%22tmpfs%22%7D/node_filesystem_size_bytes%7Binstance%3D%22192.168.1.124%3A9100%22%2Cmountpoint%3D%22%2F%22%2Cfstype!%3D%22tmpfs%22%7D)*100"
+  value_template: "{{ value_json.data.result[0].value[1] | float | round(1) }}"
   unit_of_measurement: "%"
   scan_interval: 60
 

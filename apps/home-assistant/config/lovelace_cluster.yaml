@@ -164,19 +164,6 @@ cards:
             name: Cloudflare Tunnel
             icon: mdi:cloud
 
-      - type: entities
-        title: Kubernetes
-        entities:
-          - entity: sensor.k3s_server_cpu
-            name: K3s Server
-            icon: mdi:kubernetes
-          - entity: sensor.k3s_server_ram
-            name: K3s Memory
-            icon: mdi:memory
-          - entity: sensor.containerd_cpu
-            name: Containerd
-            icon: mdi:docker
-
   # ============================================
   # MAC MACHINES (Apple Silicon)
   # ============================================
@@ -239,7 +226,7 @@ cards:
   - type: markdown
     content: |
       ## Quick Links
-      - [Netdata (Node 1)](http://192.168.1.20:19999)
+      - [Grafana](http://kube-prometheus-stack-grafana.monitoring.svc/)
       - [Traefik Dashboard](http://192.168.1.124:9000/dashboard/)
       - [Registry](http://192.168.1.20:30500)
       - [Mac Studio Metrics](http://192.168.1.4:9100/metrics)

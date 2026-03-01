@@ -1,6 +1,6 @@
 # infrastructure status
 
-> **last updated:** 2026-02-28
+> **last updated:** 2026-03-01
 > **updated by:** kblack0610
 > **repo:** home-config
 
@@ -8,7 +8,7 @@
 
 | environment | provider | nodes | apps | health | issues |
 |-------------|----------|------:|-----:|--------|-------:|
-| home-k3s | Raspberry Pi + CachyOS (local) | 8 | 10 | degraded | 4 |
+| home-k3s | Raspberry Pi + CachyOS (local) | 8 | 9 | degraded | 3 |
 | do-nyc3-prod | DigitalOcean (managed) | 2 | 7 | healthy | 0 |
 | mac-machines | Apple Silicon (local) | 2 | 3 | healthy | 0 |
 | standalone | Docker Compose / embedded | 3 | 3 | healthy | 0 |
@@ -20,11 +20,10 @@
 | home-k3s | pick-a-number | pick-a-number-api | ImagePullBackOff | 69d | low |
 | home-k3s | portfolio | portfolio-web | ErrImageNeverPull | 66d | low |
 | home-k3s | adguard-home | svclb-adguard-* (x5) | Pending (no schedulable node) | 54d | medium |
-| home-k3s | netdata | netdata-* (x1) | Pending | 63d | low |
 | home-k3s | monitoring | prometheus-node-exporter (x1) | Pending | 53d | low |
 
 > Issues 1-2 are abandoned projects with stale/missing images. Consider deleting the namespaces.
-> Issues 3-5 are DaemonSet/LoadBalancer pods that cannot schedule on all nodes (expected on resource-constrained Pi cluster).
+> Issues 3-4 are DaemonSet/LoadBalancer pods that cannot schedule on all nodes (expected on resource-constrained Pi cluster).
 
 ---
 
@@ -39,7 +38,7 @@
 | nodes | 6x Raspberry Pi |
 | cni | Flannel (K3s default) |
 | ingress | Traefik |
-| monitoring | Netdata (DaemonSet) + kube-prometheus-stack |
+| monitoring | kube-prometheus-stack (Prometheus + Grafana + node_exporter) |
 | avg cpu | 1-3% per node |
 | avg memory | 18-42% per node |
 
@@ -64,7 +63,6 @@
 | history-time | History-Time app (PostgreSQL) | active |
 | headscale | Tailscale VPN (self-hosted) | suspended |
 | monitoring | Prometheus / Grafana / AlertManager | active |
-| netdata | Per-node system monitoring | active |
 | registry | Docker container registry | active |
 | pick-a-number | Abandoned game app | stale |
 | portfolio | Abandoned portfolio site | stale |
@@ -124,7 +122,6 @@
 | PlaceMyParents Web | home-k3s | apps | Helm | active |
 | PlaceMyParents DB | home-k3s | apps | StatefulSet | active |
 | History-Time DB | home-k3s | history-time | StatefulSet | active |
-| Netdata | home-k3s | netdata | DaemonSet | active (5/6) |
 | Docker Registry | home-k3s | registry | Deployment | active |
 | Prometheus | home-k3s | monitoring | StatefulSet | active |
 | Grafana | home-k3s | monitoring | Deployment | active |
@@ -211,7 +208,6 @@ kubectl create job --from=cronjob/forgejo-backup manual-backup-$(date +%s) -n fo
 | Prometheus | home-k3s | Metrics collection |
 | Grafana | home-k3s | Dashboards |
 | AlertManager | home-k3s | Alert routing |
-| Netdata | home-k3s | Per-node real-time metrics (DaemonSet) |
 | node_exporter | mac-machines | CPU/RAM/Disk metrics (Homebrew service) |
 | Prometheus | do-nyc3-prod | Metrics collection |
 | Grafana | do-nyc3-prod | Dashboards |

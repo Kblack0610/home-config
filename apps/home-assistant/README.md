@@ -25,13 +25,13 @@ Add DNS rewrite in AdGuard Home (Pi 3) at **Filters → DNS Rewrites**:
 
 ┌─────────────────────────────────────────────────────────────────┐
 │ Cluster Monitoring                                               │
-│   HA Pod → Netdata API (each node:19999) → REST Sensors         │
+│   HA Pod → Prometheus API (monitoring.svc:9090) → REST Sensors   │
 └─────────────────────────────────────────────────────────────────┘
 ```
 
 ## Features
 
-### Cluster Monitoring (via Netdata)
+### Cluster Monitoring (via Prometheus)
 
 | Metric | Description |
 |--------|-------------|
@@ -40,9 +40,7 @@ Add DNS rewrite in AdGuard Home (Pi 3) at **Filters → DNS Rewrites**:
 | Node Disk | Disk usage per node |
 | Cluster Average | Average CPU/RAM across all nodes |
 | Node Health | Count of online nodes |
-| K3s Server | Control plane resource usage |
-| Containerd | Container runtime metrics |
-| Pod Metrics | CPU for key pods (PlaceMyParents, Cloudflared, Traefik, etc.) |
+| Pod Metrics | CPU/RAM for key pods via cAdvisor (PlaceMyParents, Cloudflared, Traefik, etc.) |
 
 ### Smart Home Capabilities
 
@@ -113,19 +111,11 @@ http:
 
 ### Adding Cluster Monitoring Sensors
 
-The `configmap-cluster.yaml` contains REST sensors that pull from Netdata. To include them in HA:
+The `configmap-cluster.yaml` contains REST sensors that pull from Prometheus. To include them in HA:
 
 ```yaml
 # In configuration.yaml
 sensor: !include sensors_cluster.yaml
-```
-
-### Pod Chart Names in Netdata
-
-Pod metrics use Netdata chart names that include pod IDs (e.g., `cgroup_k8s_pod_abc123`). These change when pods restart. Use the helper script to find current names:
-
-```bash
-./scripts/update-pod-sensors.sh
 ```
 
 ## Troubleshooting
@@ -157,7 +147,7 @@ kubectl rollout restart deployment home-assistant -n home-assistant
 
 | Service | Purpose |
 |---------|---------|
-| Netdata | Metrics source (DaemonSet on all nodes) |
+| Prometheus | Metrics source (kube-prometheus-stack) |
 | Traefik | Ingress controller |
 | AdGuard Home | DNS server (on Pi 3) |
 | Frigate | NVR for cameras |

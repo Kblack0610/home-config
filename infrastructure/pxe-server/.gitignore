@@ -6,6 +6,8 @@ images/*.iso.sig
 http/cachyos/vmlinuz-*
 http/cachyos/initramfs-*
 http/cachyos/airootfs.sfs
+http/cachyos/airootfs.sfs.orig
+http/cachyos/x86_64/
 http/cachyos/*.sig
 
 # Runtime files

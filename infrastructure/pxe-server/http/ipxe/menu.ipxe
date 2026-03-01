@@ -37,8 +37,9 @@ item --gap --             ========================================
 item cachyos-desktop      [1] Desktop - Full (Hyprland + Sunshine)
 item cachyos-laptop       [2] Laptop - Optimized (no Sunshine)
 item cachyos-headless     [3] Server - Headless (SSH only)
-item cachyos-manual       [4] Manual - Interactive archiso
-item cachyos-dryrun       [5] Dry Run - Test autoinstall (no disk writes)
+item cachyos-cluster      [4] Cluster - k3s Worker Node
+item cachyos-manual       [5] Manual - Interactive archiso
+item cachyos-dryrun       [6] Dry Run - Test autoinstall (no disk writes)
 item --gap --             ----------------------------------------
 item --gap --             Utilities
 item --gap --             ----------------------------------------
@@ -80,6 +81,16 @@ echo Selected: CachyOS Headless (Server)
 echo Profile includes: SSH, Docker, minimal packages
 echo
 set profile headless
+set autoinstall 1
+set force 1
+goto cachyos-boot
+
+:cachyos-cluster
+echo
+echo Selected: CachyOS Cluster Node (k3s Worker)
+echo Profile includes: SSH, k3s agent, minimal packages
+echo
+set profile cluster
 set autoinstall 1
 set force 1
 goto cachyos-boot

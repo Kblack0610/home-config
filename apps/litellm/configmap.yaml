@@ -10,32 +10,47 @@ data:
     model_list:
       - model_name: code
         litellm_params:
-          model: ollama_chat/qwen3-coder:30b
-          api_base: http://192.168.1.4:11434
+          model: openai/qwen3-coder:480b
+          api_base: http://192.168.1.4:11434/v1
           stream: true
+          api_key: "ollama"
+        model_info:
+          supports_function_calling: true
 
       - model_name: smart
         litellm_params:
-          model: ollama_chat/llama3.1:70b
-          api_base: http://192.168.1.4:11434
+          model: openai/qwen3:235b-a22b-instruct-2507-q8_0
+          api_base: http://192.168.1.4:11434/v1
+          stream: true
+          api_key: "ollama"
+        model_info:
+          supports_function_calling: true
 
       - model_name: fast
         litellm_params:
-          model: ollama_chat/llama3.1:8b
-          api_base: http://192.168.1.4:11434
+          model: openai/mistral-large:123b-instruct-2411-fp16
+          api_base: http://192.168.1.4:11434/v1
+          stream: true
+          api_key: "ollama"
+        model_info:
+          supports_function_calling: true
 
       - model_name: reasoning
         litellm_params:
-          model: ollama_chat/deepseek-r1:70b
-          api_base: http://192.168.1.4:11434
+          model: openai/deepseek-v3.1:671b
+          api_base: http://192.168.1.4:11434/v1
+          stream: false
+          api_key: "ollama"
+        model_info:
+          supports_function_calling: true
 
     router_settings:
       routing_strategy: "simple-shuffle"
-      timeout: 600
+      timeout: 900
 
     litellm_settings:
       drop_params: true
-      request_timeout: 600
+      request_timeout: 900
 
     general_settings:
       master_key: os.environ/LITELLM_MASTER_KEY

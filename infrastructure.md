@@ -1,6 +1,6 @@
 # infrastructure status
 
-> **last updated:** 2026-02-04
+> **last updated:** 2026-02-28
 > **updated by:** kblack0610
 > **repo:** home-config
 
@@ -8,8 +8,9 @@
 
 | environment | provider | nodes | apps | health | issues |
 |-------------|----------|------:|-----:|--------|-------:|
-| home-k3s | Raspberry Pi (local) | 6 | 10 | degraded | 5 |
+| home-k3s | Raspberry Pi + CachyOS (local) | 8 | 10 | degraded | 4 |
 | do-nyc3-prod | DigitalOcean (managed) | 2 | 7 | healthy | 0 |
+| mac-machines | Apple Silicon (local) | 2 | 3 | healthy | 0 |
 | standalone | Docker Compose / embedded | 3 | 3 | healthy | 0 |
 
 ## known issues
@@ -61,6 +62,7 @@
 | apps | PlaceMyParents (API + Web + DB) | active |
 | home-assistant | Smart home hub | active |
 | history-time | History-Time app (PostgreSQL) | active |
+| headscale | Tailscale VPN (self-hosted) | suspended |
 | monitoring | Prometheus / Grafana / AlertManager | active |
 | netdata | Per-node system monitoring | active |
 | registry | Docker container registry | active |
@@ -136,6 +138,31 @@
 | Frigate NVR | standalone | -- | Docker Compose | active |
 | Pi3 AdGuard Home | standalone | -- | Docker Compose | active |
 | ESP32 Smart Switch | standalone | -- | Embedded (Rust) | active |
+| GitHub Actions Runner | mac-machines | -- | LaunchDaemon | active |
+| Ollama LLM Inference | mac-machines | -- | Native | active |
+| node_exporter | mac-machines | -- | Homebrew service | active |
+
+---
+
+### mac-machines (apple silicon)
+
+| property | value |
+|----------|-------|
+| machines | Mac Studio M3 Ultra (512GB), Mac Mini M1 (16GB) |
+| purpose | iOS builds, Expo, GitHub Actions CI/CD, LLM inference |
+| monitoring | node_exporter (port 9100) → Prometheus (ServiceMonitor) → Grafana / HA |
+| not in K3s | Native macOS workloads only (K3s is Linux-only) |
+
+#### nodes
+
+| machine | chip | ram | ip | hostname | role |
+|---------|------|-----|-----|----------|------|
+| Mac Studio | M3 Ultra | 512 GB | 192.168.1.4 | mac-studio | Ollama, iOS builds, GH Actions runner |
+| Mac Mini | M1 | 16 GB | 192.168.1.7 | pc-home-m1-mini | iOS builds, Expo, GH Actions runner |
+
+#### setup docs
+
+See [Mac Machines Setup Guide](docs/mac-machines.md) for full provisioning instructions.
 
 ---
 
@@ -185,6 +212,7 @@ kubectl create job --from=cronjob/forgejo-backup manual-backup-$(date +%s) -n fo
 | Grafana | home-k3s | Dashboards |
 | AlertManager | home-k3s | Alert routing |
 | Netdata | home-k3s | Per-node real-time metrics (DaemonSet) |
+| node_exporter | mac-machines | CPU/RAM/Disk metrics (Homebrew service) |
 | Prometheus | do-nyc3-prod | Metrics collection |
 | Grafana | do-nyc3-prod | Dashboards |
 | AlertManager | do-nyc3-prod | Alert routing |
@@ -217,6 +245,7 @@ kubectl create job --from=cronjob/forgejo-backup manual-backup-$(date +%s) -n fo
 |----------|------|
 | Project overview | `README.md` |
 | Infrastructure status | `infrastructure.md` |
+| Mac machines guide | `docs/mac-machines.md` |
 | Finance stack | `docs/finance-stack.md` |
 | MCP servers guide | `docs/MCP-SERVERS.md` |
 

@@ -8,9 +8,9 @@
 #   views:
 #     - !include lovelace_cluster.yaml
 
-title: K3s Cluster
+title: Homelab
 path: cluster
-icon: mdi:kubernetes
+icon: mdi:server-network
 badges: []
 cards:
   # ============================================
@@ -20,8 +20,8 @@ cards:
     cards:
       - type: markdown
         content: |
-          ## K3s Cluster Health
-          **Nodes Online:** {{ states('sensor.cluster_nodes_online') }}/5
+          ## Homelab Health
+          **K3s Nodes:** {{ states('sensor.cluster_nodes_online') }}/5 | **Macs:** {{ states('sensor.mac_machines_online') }}/2 | **Total:** {{ states('sensor.homelab_total_nodes') }}/7
 
       - type: horizontal-stack
         cards:
@@ -178,6 +178,62 @@ cards:
             icon: mdi:docker
 
   # ============================================
+  # MAC MACHINES (Apple Silicon)
+  # ============================================
+  - type: vertical-stack
+    cards:
+      - type: markdown
+        content: |
+          ## Mac Machines
+          **Online:** {{ states('sensor.mac_machines_online') }}/2
+
+      - type: glance
+        title: CPU Usage
+        show_name: true
+        show_state: true
+        columns: 2
+        entities:
+          - entity: sensor.mac_studio_cpu
+            name: M3 Ultra
+            icon: mdi:apple
+          - entity: sensor.mac_mini_cpu
+            name: M1 Mini
+            icon: mdi:apple
+
+      - type: glance
+        title: RAM Usage
+        show_name: true
+        show_state: true
+        columns: 2
+        entities:
+          - entity: sensor.mac_studio_ram
+            name: M3 Ultra (512GB)
+            icon: mdi:memory
+          - entity: sensor.mac_mini_ram
+            name: M1 Mini (16GB)
+            icon: mdi:memory
+
+      - type: glance
+        title: Disk Usage
+        show_name: true
+        show_state: true
+        columns: 2
+        entities:
+          - entity: sensor.mac_studio_disk
+            name: M3 Ultra
+            icon: mdi:harddisk
+          - entity: sensor.mac_mini_disk
+            name: M1 Mini
+            icon: mdi:harddisk
+
+      - type: entities
+        title: Services
+        entities:
+          - entity: sensor.ollama_status
+            name: Ollama Models Loaded
+            icon: mdi:brain
+
+  # ============================================
   # QUICK LINKS
   # ============================================
   - type: markdown
@@ -186,3 +242,6 @@ cards:
       - [Netdata (Node 1)](http://192.168.1.20:19999)
       - [Traefik Dashboard](http://192.168.1.124:9000/dashboard/)
       - [Registry](http://192.168.1.20:30500)
+      - [Mac Studio Metrics](http://192.168.1.4:9100/metrics)
+      - [Mac Mini Metrics](http://192.168.1.7:9100/metrics)
+      - [Ollama API](http://192.168.1.4:11434)

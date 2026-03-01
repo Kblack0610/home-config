@@ -35,26 +35,26 @@ data:
             "models": [
               {
                 "id": "code",
-                "name": "Code (Qwen Coder 32B via LiteLLM)",
-                "contextWindow": 128000,
+                "name": "Code (Qwen3 Coder 480B via LiteLLM)",
+                "contextWindow": 256000,
                 "maxTokens": 32000
               },
               {
                 "id": "smart",
-                "name": "Smart (Llama 3.3 70B via LiteLLM)",
-                "contextWindow": 128000,
+                "name": "Smart (Qwen3 235B Q8 via LiteLLM)",
+                "contextWindow": 256000,
                 "maxTokens": 32000
               },
               {
                 "id": "fast",
-                "name": "Fast (Qwen Coder 7B via LiteLLM)",
+                "name": "Fast (Mistral Large 123B FP16 via LiteLLM)",
                 "contextWindow": 128000,
                 "maxTokens": 32000
               },
               {
                 "id": "reasoning",
-                "name": "Reasoning (DeepSeek R1 70B via LiteLLM)",
-                "contextWindow": 128000,
+                "name": "Reasoning (DeepSeek V3.1 671B via LiteLLM)",
+                "contextWindow": 160000,
                 "maxTokens": 32000
               }
             ]

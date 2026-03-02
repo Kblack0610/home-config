@@ -13,7 +13,7 @@ resources:
   - home-assistant
   - litellm
   - monitoring
-  - openclaw
+  # - openclaw  # Disabled — high CPU usage (~1.7 cores)
   # - nginx-proxy-manager  # Uncomment when ready
 
   # Applications (do-nyc3-prod cluster)

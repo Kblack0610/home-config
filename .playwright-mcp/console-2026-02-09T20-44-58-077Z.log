@@ -1,4 +1,0 @@
-[     375ms] [WARNING] react-i18next:: It seems you are still using the old wait option, you may migrate to the new useSuspense behaviour. @ http://192.168.1.23:30497/login.4108e7f1f04c4ed4c115.js:1
-[     408ms] [WARNING] [JavaScript Warning: "Password fields present on an insecure (http://) page. This is a security risk that allows user login credentials to be stolen." {file: "http://192.168.1.23:30497/login.html" line: 0}] @ http://192.168.1.23:30497/login.html:0
-[ 1969831ms] [ERROR] Error @ http://192.168.1.23:30497/login.4108e7f1f04c4ed4c115.js:1
-[ 1974121ms] [ERROR] Error @ http://192.168.1.23:30497/login.4108e7f1f04c4ed4c115.js:1

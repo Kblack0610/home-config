@@ -110,7 +110,6 @@ nslookup homeassistant.home.lan
 | `homeassistant.home.lan` | `192.168.1.124` | Home Assistant |
 | `frigate.home.lan` | `192.168.1.124` | Frigate NVR |
 | `grafana.home.lan` | `192.168.1.124` | Grafana |
-| `netdata.home.lan` | `192.168.1.124` | Netdata |
 
 ### For Non-Kubernetes Services
 

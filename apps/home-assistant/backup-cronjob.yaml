@@ -1,0 +1,41 @@
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: home-assistant-backup
+  namespace: home-assistant
+spec:
+  schedule: "0 2 * * *"  # Daily at 2 AM
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 1
+  jobTemplate:
+    spec:
+      template:
+        spec:
+          containers:
+            - name: backup
+              image: alpine:latest
+              command:
+                - /bin/sh
+                - -c
+                - |
+                  apk add --no-cache tar gzip
+                  TIMESTAMP=$(date +%Y%m%d-%H%M%S)
+                  tar -czf /backup/home-assistant-$TIMESTAMP.tar.gz -C /data .
+                  # Keep only last 30 backups
+                  ls -t /backup/home-assistant-*.tar.gz | tail -n +31 | xargs -r rm
+                  echo "Backup complete: home-assistant-$TIMESTAMP.tar.gz"
+              volumeMounts:
+                - name: data
+                  mountPath: /data
+                  readOnly: true
+                - name: backup
+                  mountPath: /backup
+          restartPolicy: OnFailure
+          volumes:
+            - name: data
+              persistentVolumeClaim:
+                claimName: home-assistant-config
+            - name: backup
+              hostPath:
+                path: /var/backups/home-assistant
+                type: DirectoryOrCreate

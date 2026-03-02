@@ -51,8 +51,7 @@ Configuration and deployment manifests for a home Kubernetes cluster running on 
 
 | Service | Type | Port(s) | Description |
 |---------|------|---------|-------------|
-| [Netdata](./apps/netdata/) | K8s | 19999 | Real-time system monitoring |
-| [Monitoring Stack](./apps/monitoring/) | K8s | Various | Prometheus, Grafana, etc. |
+| [Monitoring Stack](./apps/monitoring/) | K8s | Various | Prometheus, Grafana, node_exporter |
 
 ### Infrastructure
 

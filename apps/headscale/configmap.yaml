@@ -69,9 +69,6 @@ data:
         - name: alertmanager.home.kennethblack.me
           type: A
           value: 10.43.43.204
-        - name: netdata.home.kennethblack.me
-          type: A
-          value: 10.43.43.204
         - name: adguard.home.kennethblack.me
           type: A
           value: 10.43.43.204

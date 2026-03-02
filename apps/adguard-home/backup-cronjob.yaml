@@ -1,0 +1,41 @@
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: adguard-home-backup
+  namespace: adguard-home
+spec:
+  schedule: "0 2 * * *"  # Daily at 2 AM
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 1
+  jobTemplate:
+    spec:
+      template:
+        spec:
+          containers:
+            - name: backup
+              image: alpine:latest
+              command:
+                - /bin/sh
+                - -c
+                - |
+                  apk add --no-cache tar gzip
+                  TIMESTAMP=$(date +%Y%m%d-%H%M%S)
+                  tar -czf /backup/adguard-config-$TIMESTAMP.tar.gz -C /data .
+                  # Keep only last 30 backups
+                  ls -t /backup/adguard-config-*.tar.gz | tail -n +31 | xargs -r rm
+                  echo "Backup complete: adguard-config-$TIMESTAMP.tar.gz"
+              volumeMounts:
+                - name: data
+                  mountPath: /data
+                  readOnly: true
+                - name: backup
+                  mountPath: /backup
+          restartPolicy: OnFailure
+          volumes:
+            - name: data
+              persistentVolumeClaim:
+                claimName: adguard-home-config
+            - name: backup
+              hostPath:
+                path: /var/backups/adguard-home
+                type: DirectoryOrCreate

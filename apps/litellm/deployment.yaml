@@ -20,6 +20,12 @@ spec:
       containers:
         - name: litellm
           image: ghcr.io/berriai/litellm:main-stable
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: false
+            capabilities:
+              drop:
+                - ALL
           args:
             - "--config"
             - "/etc/litellm/config.yaml"

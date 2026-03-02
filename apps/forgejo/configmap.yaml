@@ -29,7 +29,7 @@ data:
     ROOT = /data/git/repositories
 
     [security]
-    INSTALL_LOCK = false  # Set to true after initial setup
+    INSTALL_LOCK = true
 
     [service]
     DISABLE_REGISTRATION = true

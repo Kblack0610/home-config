@@ -26,11 +26,11 @@ spec:
     kind: ClusterIssuer
     group: cert-manager.io
 ---
-# CA Issuer - this is what ingresses will use (aliased as "letsencrypt" for compatibility)
+# CA Issuer - this is what ingresses reference via cert-manager.io/cluster-issuer annotation
 apiVersion: cert-manager.io/v1
 kind: ClusterIssuer
 metadata:
-  name: letsencrypt
+  name: letsencrypt-dns
 spec:
   ca:
     secretName: blackk-lan-ca-secret

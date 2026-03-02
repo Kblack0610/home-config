@@ -38,46 +38,36 @@
   unit_of_measurement: "MB"
   scan_interval: 30
 
-# Cloudflare Tunnel
-- platform: rest
-  name: "Cloudflared CPU"
-  resource: "http://kube-prometheus-stack-prometheus.monitoring.svc:9090/api/v1/query?query=sum(rate(container_cpu_usage_seconds_total%7Bnamespace%3D%22apps%22%2Cpod%3D~%22cloudflared.*%22%2Ccontainer!%3D%22%22%7D%5B2m%5D))*100"
-  value_template: "{{ value_json.data.result[0].value[1] | float | round(2) }}"
-  unit_of_measurement: "%"
-  scan_interval: 30
-
 # ============================================
-# PLACEMYPARENTS
+# OTHER ACTIVE SERVICES
 # ============================================
 
+# AdGuard Home (DNS)
 - platform: rest
-  name: "PlaceMyParents API CPU"
-  resource: "http://kube-prometheus-stack-prometheus.monitoring.svc:9090/api/v1/query?query=sum(rate(container_cpu_usage_seconds_total%7Bnamespace%3D%22apps%22%2Cpod%3D~%22placemyparents-api.*%22%2Ccontainer!%3D%22%22%7D%5B2m%5D))*100"
+  name: "AdGuard CPU"
+  resource: "http://kube-prometheus-stack-prometheus.monitoring.svc:9090/api/v1/query?query=sum(rate(container_cpu_usage_seconds_total%7Bnamespace%3D%22adguard-home%22%2Cpod%3D~%22adguard-home.*%22%2Ccontainer!%3D%22%22%7D%5B2m%5D))*100"
   value_template: "{{ value_json.data.result[0].value[1] | float | round(2) }}"
   unit_of_measurement: "%"
   scan_interval: 30
 
 - platform: rest
-  name: "PlaceMyParents Web CPU"
-  resource: "http://kube-prometheus-stack-prometheus.monitoring.svc:9090/api/v1/query?query=sum(rate(container_cpu_usage_seconds_total%7Bnamespace%3D%22apps%22%2Cpod%3D~%22placemyparents-web.*%22%2Ccontainer!%3D%22%22%7D%5B2m%5D))*100"
+  name: "AdGuard RAM"
+  resource: "http://kube-prometheus-stack-prometheus.monitoring.svc:9090/api/v1/query?query=sum(container_memory_working_set_bytes%7Bnamespace%3D%22adguard-home%22%2Cpod%3D~%22adguard-home.*%22%2Ccontainer!%3D%22%22%7D)/1024/1024"
+  value_template: "{{ value_json.data.result[0].value[1] | float | round(1) }}"
+  unit_of_measurement: "MB"
+  scan_interval: 30
+
+# LiteLLM (AI Gateway)
+- platform: rest
+  name: "LiteLLM CPU"
+  resource: "http://kube-prometheus-stack-prometheus.monitoring.svc:9090/api/v1/query?query=sum(rate(container_cpu_usage_seconds_total%7Bnamespace%3D%22ai-gateway%22%2Cpod%3D~%22litellm.*%22%2Ccontainer!%3D%22%22%7D%5B2m%5D))*100"
   value_template: "{{ value_json.data.result[0].value[1] | float | round(2) }}"
   unit_of_measurement: "%"
   scan_interval: 30
 
 - platform: rest
-  name: "PlaceMyParents DB CPU"
-  resource: "http://kube-prometheus-stack-prometheus.monitoring.svc:9090/api/v1/query?query=sum(rate(container_cpu_usage_seconds_total%7Bnamespace%3D%22apps%22%2Cpod%3D~%22placemyparents-postgres.*%22%2Ccontainer!%3D%22%22%7D%5B2m%5D))*100"
-  value_template: "{{ value_json.data.result[0].value[1] | float | round(2) }}"
-  unit_of_measurement: "%"
-  scan_interval: 30
-
-# ============================================
-# OTHER SERVICES
-# ============================================
-
-- platform: rest
-  name: "Registry CPU"
-  resource: "http://kube-prometheus-stack-prometheus.monitoring.svc:9090/api/v1/query?query=sum(rate(container_cpu_usage_seconds_total%7Bnamespace%3D%22registry%22%2Cpod%3D~%22registry.*%22%2Ccontainer!%3D%22%22%7D%5B2m%5D))*100"
-  value_template: "{{ value_json.data.result[0].value[1] | float | round(2) }}"
-  unit_of_measurement: "%"
+  name: "LiteLLM RAM"
+  resource: "http://kube-prometheus-stack-prometheus.monitoring.svc:9090/api/v1/query?query=sum(container_memory_working_set_bytes%7Bnamespace%3D%22ai-gateway%22%2Cpod%3D~%22litellm.*%22%2Ccontainer!%3D%22%22%7D)/1024/1024"
+  value_template: "{{ value_json.data.result[0].value[1] | float | round(1) }}"
+  unit_of_measurement: "MB"
   scan_interval: 30

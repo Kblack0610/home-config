@@ -62,18 +62,7 @@ metadata:
   name: tailscale-subnet-router
   namespace: headscale
 ---
-# Secret for Tailscale auth key (to be populated)
-# Generate preauth key in Headscale: headscale preauthkeys create --user subnet-router --reusable --expiration 365d
-apiVersion: v1
-kind: Secret
-metadata:
-  name: tailscale-auth
-  namespace: headscale
-  labels:
-    app.kubernetes.io/name: tailscale-subnet-router
-type: Opaque
-stringData:
-  TS_AUTHKEY: "c2c48f8f883633d3937f103ad97726d097fb2242e3b44b8f"
+# Secret moved to tailscale-secret.yaml (SOPS-encrypted)
 ---
 # RBAC for Tailscale to manage its state secret
 apiVersion: rbac.authorization.k8s.io/v1

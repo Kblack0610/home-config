@@ -13,9 +13,6 @@ resources:
   - home-assistant
   - litellm
   - monitoring
-  # - openclaw  # Disabled — high CPU usage (~1.7 cores)
-  # - nginx-proxy-manager  # Uncomment when ready
-
   # Applications (do-nyc3-prod cluster)
   # Note: These will only deploy if cluster context matches
   # - actual-budget
@@ -25,5 +22,4 @@ resources:
 # - actual-budget-tools (Docker Compose)
 # - esp32-firmware (embedded firmware, not K8s)
 # - frigate (Docker Compose on standalone Pi)
-# - home-assistant-old (legacy, deprecated)
 # - pi3-adguard-home (Docker Compose on Pi3)

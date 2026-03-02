@@ -35,12 +35,17 @@ secret.local.yaml
 Thumbs.db
 
 # ===================
-# Build Artifacts
+# Build Artifacts & Binaries
 # ===================
 target/
 node_modules/
 __pycache__/
 *.pyc
+
+# Go binaries and SQLite DBs (actual-budget-tools)
+apps/actual-budget-tools/actual-budget-tools
+apps/actual-budget-tools/bin/
+apps/actual-budget-tools/data/tools.db
 
 # ===================
 # Tool-generated

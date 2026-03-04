@@ -10,3 +10,4 @@ resources:
   - service.yaml
   - ingress.yaml
   - backup-cronjob.yaml
+  - backup-nas-secret.yaml

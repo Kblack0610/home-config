@@ -62,8 +62,8 @@ fetch_k8s_data() {
     local ctx="$1"
     local tmpdir="$2"
 
-    # Get nodes (name, status, roles, age)
-    kubectl --context "$ctx" get nodes \
+    # Get nodes with -o wide for INTERNAL-IP (field 6)
+    kubectl --context "$ctx" get nodes -o wide \
         --no-headers \
         --request-timeout="${KUBECTL_TIMEOUT}s" \
         > "$tmpdir/${ctx}.nodes" 2>/dev/null || true
@@ -73,6 +73,90 @@ fetch_k8s_data() {
         --no-headers \
         --request-timeout="${KUBECTL_TIMEOUT}s" \
         > "$tmpdir/${ctx}.top" 2>/dev/null || true
+
+    # Scrape node_exporter metrics from each node for temperature
+    if [[ -s "$tmpdir/${ctx}.nodes" ]]; then
+        local ne_pids=()
+        while read -r name _status _roles _age _ver nodeip _rest; do
+            if [[ -n "$nodeip" && "$nodeip" != "<none>" ]]; then
+                curl -s --connect-timeout 2 --max-time 5 \
+                    "http://${nodeip}:9100/metrics" \
+                    > "$tmpdir/ne.${ctx}.${name}.metrics" 2>/dev/null &
+                ne_pids+=($!)
+            fi
+        done < "$tmpdir/${ctx}.nodes"
+        for pid in "${ne_pids[@]}"; do
+            wait "$pid" 2>/dev/null || true
+        done
+    fi
+}
+
+parse_node_temp() {
+    local metrics_file="$1"
+    if [[ ! -s "$metrics_file" ]]; then
+        echo "-"
+        return
+    fi
+    awk '
+    # RPi: node_thermal_zone_temp{type="cpu-thermal"}
+    /^node_thermal_zone_temp\{.*type="cpu-thermal"/ { rpi = $2 }
+
+    # Collect chip names: node_hwmon_chip_names{chip="hwmonN"} = "chipname"
+    # The metric value is 1 but the label carries the chip id
+    /^node_hwmon_chip_names\{/ {
+        match($0, /chip="([^"]+)"/, c)
+        match($0, /chip_name="([^"]+)"/, cn)
+        if (c[1] && cn[1]) chips[c[1]] = cn[1]
+    }
+
+    # Collect sensor labels: node_hwmon_sensor_label{chip="hwmonN",sensor="tempN"} = "LabelName"
+    # Encoded as node_hwmon_sensor_label{...label="..."...} value
+    /^node_hwmon_sensor_label\{/ {
+        match($0, /chip="([^"]+)"/, c)
+        match($0, /sensor="([^"]+)"/, s)
+        match($0, /label="([^"]+)"/, l)
+        if (c[1] && s[1] && l[1]) labels[c[1] SUBSEP s[1]] = l[1]
+    }
+
+    # Collect temp values: node_hwmon_temp_celsius{chip="hwmonN",sensor="tempN"} value
+    /^node_hwmon_temp_celsius\{/ {
+        match($0, /chip="([^"]+)"/, c)
+        match($0, /sensor="([^"]+)"/, s)
+        if (c[1] && s[1]) temps[c[1] SUBSEP s[1]] = $2
+    }
+
+    END {
+        # Priority 1: RPi thermal zone
+        if (rpi+0 > 0) { printf "%dC", rpi; exit }
+
+        # Priority 2: coretemp "Package id 0"
+        # Priority 3: k10temp "Tctl"
+        for (cs in chips) {
+            cname = chips[cs]
+            if (cname == "coretemp") {
+                for (key in labels) {
+                    if (index(key, cs SUBSEP) == 1 && labels[key] == "Package id 0") {
+                        split(key, parts, SUBSEP)
+                        val = temps[key]
+                        if (val+0 > 0) { printf "%dC", val; exit }
+                    }
+                }
+            }
+        }
+        for (cs in chips) {
+            cname = chips[cs]
+            if (cname == "k10temp") {
+                for (key in labels) {
+                    if (index(key, cs SUBSEP) == 1 && labels[key] == "Tctl") {
+                        val = temps[key]
+                        if (val+0 > 0) { printf "%dC", val; exit }
+                    }
+                }
+            }
+        }
+        print "-"
+    }
+    ' "$metrics_file"
 }
 
 parse_k8s_nodes() {
@@ -98,8 +182,8 @@ parse_k8s_nodes() {
         done < "$top_file"
     fi
 
-    # Parse nodes
-    while read -r name status roles age _rest; do
+    # Parse nodes (-o wide: name status roles age version internal-ip ...)
+    while read -r name status roles age _ver nodeip _rest; do
         local cpu="${cpu_map[$name]:-"-"}"
         local mem="${mem_map[$name]:-"-"}"
 
@@ -112,13 +196,16 @@ parse_k8s_nodes() {
 
         # Normalize status
         local up="UP"
+        local temp="-"
         if [[ "$status" != "Ready" ]]; then
             up="DOWN"
             cpu="-"
             mem="-"
+        else
+            temp=$(parse_node_temp "$tmpdir/ne.${ctx}.${name}.metrics")
         fi
 
-        echo "${up}|${name}|${roles}|${cpu}|${mem}|${age}"
+        echo "${up}|${name}|${roles}|${cpu}|${mem}|${temp}|${age}"
     done < "$nodes_file"
 }
 
@@ -142,7 +229,7 @@ parse_mac_metrics() {
     local metrics_file="$tmpdir/mac.${name}.metrics"
 
     if [[ ! -s "$metrics_file" ]]; then
-        echo "DOWN|${name}|${ip}|-|-|-"
+        echo "DOWN|${name}|${ip}|-|-|-|-"
         return
     fi
 
@@ -173,15 +260,32 @@ parse_mac_metrics() {
         END { if (size > 0) printf "%d%%", (size - avail) * 100 / size; else print "-" }
     ' "$metrics_file" 2>/dev/null)
 
-    echo "UP|${name}|${ip}|${cpu_pct}|${mem_pct}|${disk_pct}"
+    echo "UP|${name}|${ip}|${cpu_pct}|${mem_pct}|${disk_pct}|-"
 }
 
 # =============================================================================
 # Local workstation helpers (reads /proc and df directly)
 # =============================================================================
 
+get_local_cpu_temp() {
+    local hwmon_dir name
+    for hwmon_dir in /sys/class/hwmon/hwmon*/; do
+        [[ -f "${hwmon_dir}name" ]] || continue
+        name=$(<"${hwmon_dir}name")
+        if [[ "$name" == "k10temp" || "$name" == "coretemp" ]]; then
+            if [[ -f "${hwmon_dir}temp1_input" ]]; then
+                local millideg
+                millideg=$(<"${hwmon_dir}temp1_input")
+                echo "$(( millideg / 1000 ))C"
+                return
+            fi
+        fi
+    done
+    echo "-"
+}
+
 get_local_metrics() {
-    local cpu_pct mem_pct disk_pct
+    local cpu_pct mem_pct disk_pct temp
     local hostname
     hostname=$(hostname)
 
@@ -205,7 +309,10 @@ get_local_metrics() {
     # Disk: root filesystem
     disk_pct=$(df / | awk 'NR==2 { gsub(/%/,"",$5); printf "%d%%", $5 }')
 
-    echo "UP|${hostname}|${cpu_pct}|${mem_pct}|${disk_pct}"
+    # Temperature
+    temp=$(get_local_cpu_temp)
+
+    echo "UP|${hostname}|${cpu_pct}|${mem_pct}|${disk_pct}|${temp}"
 }
 
 # =============================================================================
@@ -224,19 +331,19 @@ print_cluster_header() {
     local label="$2"
     echo ""
     echo -e " ${BOLD}CLUSTER: ${ctx} (${label})${NC}"
-    echo -e " ${DIM}──────────────────────────────────────────────────────────────────${NC}"
-    printf "  ${BOLD}%-6s  %-24s %-8s %5s  %5s  %5s${NC}\n" "STATUS" "NODE" "ROLE" "CPU" "MEM" "AGE"
+    echo -e " ${DIM}────────────────────────────────────────────────────────────────────────${NC}"
+    printf "  ${BOLD}%-6s  %-24s %-11s %5s  %5s  %5s  %5s${NC}\n" "STATUS" "NODE" "ROLE" "CPU" "MEM" "TEMP" "AGE"
 }
 
 print_mac_header() {
     echo ""
     echo -e " ${BOLD}MAC MACHINES (external)${NC}"
-    echo -e " ${DIM}──────────────────────────────────────────────────────────────────${NC}"
-    printf "  ${BOLD}%-6s  %-24s %-16s %5s  %5s  %5s${NC}\n" "STATUS" "MACHINE" "IP" "CPU" "MEM" "DISK"
+    echo -e " ${DIM}────────────────────────────────────────────────────────────────────────${NC}"
+    printf "  ${BOLD}%-6s  %-24s %-16s %5s  %5s  %5s  %5s${NC}\n" "STATUS" "MACHINE" "IP" "CPU" "MEM" "DISK" "TEMP"
 }
 
 print_node_row() {
-    local status="$1" name="$2" role="$3" cpu="$4" mem="$5" age="$6"
+    local status="$1" name="$2" role="$3" cpu="$4" mem="$5" temp="$6" age="$7"
 
     local status_icon status_color status_text
     if [[ "$status" == "UP" ]]; then
@@ -249,12 +356,12 @@ print_node_row() {
         status_text="DOWN"
     fi
 
-    printf "  ${status_icon} ${status_color}%4s${NC}  %-24s %-8s %5s  %5s  %5s\n" \
-        "$status_text" "$name" "$role" "$cpu" "$mem" "$age"
+    printf "  ${status_icon} ${status_color}%4s${NC}  %-24s %-11s %5s  %5s  %5s  %5s\n" \
+        "$status_text" "$name" "$role" "$cpu" "$mem" "$temp" "$age"
 }
 
 print_mac_row() {
-    local status="$1" name="$2" ip="$3" cpu="$4" mem="$5" disk="$6"
+    local status="$1" name="$2" ip="$3" cpu="$4" mem="$5" disk="$6" temp="$7"
 
     local status_icon status_color status_text
     if [[ "$status" == "UP" ]]; then
@@ -267,19 +374,19 @@ print_mac_row() {
         status_text="DOWN"
     fi
 
-    printf "  ${status_icon} ${status_color}%4s${NC}  %-24s %-16s %5s  %5s  %5s\n" \
-        "$status_text" "$name" "$ip" "$cpu" "$mem" "$disk"
+    printf "  ${status_icon} ${status_color}%4s${NC}  %-24s %-16s %5s  %5s  %5s  %5s\n" \
+        "$status_text" "$name" "$ip" "$cpu" "$mem" "$disk" "$temp"
 }
 
 print_local_header() {
     echo ""
     echo -e " ${BOLD}LOCAL WORKSTATION${NC}"
-    echo -e " ${DIM}──────────────────────────────────────────────────────────────────${NC}"
-    printf "  ${BOLD}%-6s  %-24s %5s  %5s  %5s${NC}\n" "STATUS" "HOSTNAME" "CPU" "MEM" "DISK"
+    echo -e " ${DIM}────────────────────────────────────────────────────────────────────────${NC}"
+    printf "  ${BOLD}%-6s  %-24s %5s  %5s  %5s  %5s${NC}\n" "STATUS" "HOSTNAME" "CPU" "MEM" "DISK" "TEMP"
 }
 
 print_local_row() {
-    local status="$1" name="$2" cpu="$3" mem="$4" disk="$5"
+    local status="$1" name="$2" cpu="$3" mem="$4" disk="$5" temp="$6"
 
     local status_icon status_color status_text
     if [[ "$status" == "UP" ]]; then
@@ -292,8 +399,8 @@ print_local_row() {
         status_text="DOWN"
     fi
 
-    printf "  ${status_icon} ${status_color}%4s${NC}  %-24s %5s  %5s  %5s\n" \
-        "$status_text" "$name" "$cpu" "$mem" "$disk"
+    printf "  ${status_icon} ${status_color}%4s${NC}  %-24s %5s  %5s  %5s  %5s\n" \
+        "$status_text" "$name" "$cpu" "$mem" "$disk" "$temp"
 }
 
 print_summary() {
@@ -352,8 +459,8 @@ cmd_nodes() {
         if [[ "$node_data" == "UNREACHABLE" ]]; then
             echo -e "  ${YELLOW}Context unreachable${NC}"
         else
-            while IFS='|' read -r status name role cpu mem age; do
-                print_node_row "$status" "$name" "$role" "$cpu" "$mem" "$age"
+            while IFS='|' read -r status name role cpu mem temp age; do
+                print_node_row "$status" "$name" "$role" "$cpu" "$mem" "$temp" "$age"
                 total=$((total + 1))
                 if [[ "$status" == "UP" ]]; then
                     healthy=$((healthy + 1))
@@ -373,8 +480,8 @@ cmd_nodes() {
         local mac_data
         mac_data=$(parse_mac_metrics "$mac_name" "$mac_ip" "$TMPDIR_INFRA")
 
-        IFS='|' read -r status name ip cpu mem disk <<< "$mac_data"
-        print_mac_row "$status" "$name" "$ip" "$cpu" "$mem" "$disk"
+        IFS='|' read -r status name ip cpu mem disk temp <<< "$mac_data"
+        print_mac_row "$status" "$name" "$ip" "$cpu" "$mem" "$disk" "$temp"
         total=$((total + 1))
         if [[ "$status" == "UP" ]]; then
             healthy=$((healthy + 1))
@@ -387,8 +494,8 @@ cmd_nodes() {
     print_local_header
     local local_data
     local_data=$(get_local_metrics)
-    IFS='|' read -r status name cpu mem disk <<< "$local_data"
-    print_local_row "$status" "$name" "$cpu" "$mem" "$disk"
+    IFS='|' read -r status name cpu mem disk temp <<< "$local_data"
+    print_local_row "$status" "$name" "$cpu" "$mem" "$disk" "$temp"
     total=$((total + 1))
     healthy=$((healthy + 1))
 

@@ -14,6 +14,7 @@ resources:
   - litellm
   - monitoring
   - nas
+  - sops-backup-rbac
   # Applications (do-nyc3-prod cluster)
   # Note: These will only deploy if cluster context matches
   # - actual-budget

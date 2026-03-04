@@ -1,0 +1,27 @@
+---
+# Role in flux-system that can only read the sops-age secret
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: sops-age-reader
+  namespace: flux-system
+rules:
+  - apiGroups: [""]
+    resources: ["secrets"]
+    resourceNames: ["sops-age"]
+    verbs: ["get"]
+---
+# Cross-namespace RoleBinding: nas/sops-backup-sa -> flux-system/sops-age-reader
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: sops-backup-binding
+  namespace: flux-system
+subjects:
+  - kind: ServiceAccount
+    name: sops-backup-sa
+    namespace: nas
+roleRef:
+  kind: Role
+  name: sops-age-reader
+  apiGroup: rbac.authorization.k8s.io

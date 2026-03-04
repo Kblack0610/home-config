@@ -1,0 +1,41 @@
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: sops-key-backup
+  namespace: nas
+spec:
+  schedule: "0 4 * * 0"  # Sunday at 4 AM (weekly)
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 1
+  jobTemplate:
+    spec:
+      template:
+        spec:
+          serviceAccountName: sops-backup-sa
+          nodeSelector:
+            storage.role/nas: "true"
+          containers:
+            - name: sops-backup
+              image: bitnami/kubectl:latest
+              command:
+                - /bin/sh
+                - -c
+                - |
+                  TIMESTAMP=$(date +%Y%m%d-%H%M%S)
+                  BACKUP_DIR="/nas-backups/sops"
+                  mkdir -p "$BACKUP_DIR"
+                  # Extract sops-age secret from flux-system namespace
+                  kubectl get secret sops-age -n flux-system -o yaml > "$BACKUP_DIR/sops-age-$TIMESTAMP.yaml"
+                  echo "SOPS key backup complete: sops-age-$TIMESTAMP.yaml"
+                  # Keep only last 4 copies (monthly rotation)
+                  ls -t "$BACKUP_DIR"/sops-age-*.yaml | tail -n +5 | xargs -r rm
+                  echo "Retention cleanup done, kept last 4 copies"
+              volumeMounts:
+                - name: nas-backups
+                  mountPath: /nas-backups
+          restartPolicy: OnFailure
+          volumes:
+            - name: nas-backups
+              hostPath:
+                path: /mnt/nas/private/backups/home-k3s
+                type: DirectoryOrCreate

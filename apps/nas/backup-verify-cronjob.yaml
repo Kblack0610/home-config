@@ -1,0 +1,97 @@
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: nas-backup-verify
+  namespace: nas
+spec:
+  schedule: "0 6 * * 1"  # Monday at 6 AM (weekly)
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 1
+  jobTemplate:
+    spec:
+      template:
+        spec:
+          nodeSelector:
+            storage.role/nas: "true"
+          containers:
+            - name: verify
+              image: alpine:latest
+              command:
+                - /bin/sh
+                - -c
+                - |
+                  apk add --no-cache gzip
+                  BACKUP_ROOT="/nas-backups"
+                  MANIFEST="/nas-private/backups/manifest.log"
+                  ERRORS=0
+                  REPORT="=== Backup Verification Report $(date -Iseconds) ==="
+
+                  # Check each app directory for recent backups (< 48h old)
+                  for APP in home-assistant adguard-home litellm; do
+                    APP_DIR="$BACKUP_ROOT/$APP"
+                    if [ ! -d "$APP_DIR" ]; then
+                      REPORT="$REPORT\nFAIL: $APP — backup directory missing"
+                      ERRORS=$((ERRORS + 1))
+                      continue
+                    fi
+
+                    LATEST=$(ls -t "$APP_DIR"/*.tar.gz 2>/dev/null | head -1)
+                    if [ -z "$LATEST" ]; then
+                      REPORT="$REPORT\nFAIL: $APP — no backup files found"
+                      ERRORS=$((ERRORS + 1))
+                      continue
+                    fi
+
+                    # Check age (48h = 172800 seconds)
+                    AGE=$(( $(date +%s) - $(stat -c %Y "$LATEST") ))
+                    if [ "$AGE" -gt 172800 ]; then
+                      REPORT="$REPORT\nFAIL: $APP — latest backup is $(( AGE / 3600 ))h old (> 48h): $(basename "$LATEST")"
+                      ERRORS=$((ERRORS + 1))
+                    else
+                      REPORT="$REPORT\nOK: $APP — latest backup $(basename "$LATEST") ($(( AGE / 3600 ))h ago)"
+                    fi
+
+                    # Validate tar.gz integrity
+                    if ! gzip -t "$LATEST" 2>/dev/null; then
+                      REPORT="$REPORT\nFAIL: $APP — latest backup is corrupt: $(basename "$LATEST")"
+                      ERRORS=$((ERRORS + 1))
+                    fi
+                  done
+
+                  # Check SOPS key backup exists
+                  SOPS_DIR="$BACKUP_ROOT/sops"
+                  if [ -d "$SOPS_DIR" ] && ls "$SOPS_DIR"/sops-age-*.yaml >/dev/null 2>&1; then
+                    SOPS_LATEST=$(ls -t "$SOPS_DIR"/sops-age-*.yaml | head -1)
+                    SOPS_AGE=$(( $(date +%s) - $(stat -c %Y "$SOPS_LATEST") ))
+                    REPORT="$REPORT\nOK: sops — key backup exists ($(( SOPS_AGE / 86400 ))d ago)"
+                  else
+                    REPORT="$REPORT\nFAIL: sops — no key backup found"
+                    ERRORS=$((ERRORS + 1))
+                  fi
+
+                  REPORT="$REPORT\n--- $ERRORS error(s) ---"
+
+                  # Print report
+                  printf '%b\n' "$REPORT"
+
+                  # Append to manifest log
+                  mkdir -p "$(dirname "$MANIFEST")"
+                  printf '%b\n' "$REPORT" >> "$MANIFEST"
+
+                  # Exit non-zero on failures (triggers failed Job for alerting)
+                  [ "$ERRORS" -eq 0 ] || exit 1
+              volumeMounts:
+                - name: nas-backups
+                  mountPath: /nas-backups
+                - name: nas-private
+                  mountPath: /nas-private
+          restartPolicy: OnFailure
+          volumes:
+            - name: nas-backups
+              hostPath:
+                path: /mnt/nas/private/backups/home-k3s
+                type: DirectoryOrCreate
+            - name: nas-private
+              hostPath:
+                path: /mnt/nas/private
+                type: DirectoryOrCreate

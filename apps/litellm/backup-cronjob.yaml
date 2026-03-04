@@ -1,8 +1,8 @@
 apiVersion: batch/v1
 kind: CronJob
 metadata:
-  name: home-assistant-backup
-  namespace: home-assistant
+  name: litellm-backup
+  namespace: ai-gateway
 spec:
   schedule: "0 2 * * *"  # Daily at 2 AM
   successfulJobsHistoryLimit: 3
@@ -26,14 +26,14 @@ spec:
                 - |
                   apk add --no-cache tar gzip samba-client
                   TIMESTAMP=$(date +%Y%m%d-%H%M%S)
-                  BACKUP_FILE="home-assistant-$TIMESTAMP.tar.gz"
+                  BACKUP_FILE="litellm-$TIMESTAMP.tar.gz"
                   tar -czf /backup/$BACKUP_FILE -C /data .
                   # Keep only last 30 local backups
-                  ls -t /backup/home-assistant-*.tar.gz | tail -n +31 | xargs -r rm
+                  ls -t /backup/litellm-*.tar.gz | tail -n +31 | xargs -r rm
                   echo "Local backup complete: $BACKUP_FILE"
                   # Upload to NAS (best-effort — local backup still succeeds if NAS is down)
                   smbclient //nas.nas.svc.cluster.local/private -U "nas%${NAS_SMB_PASSWORD}" -c \
-                    "mkdir backups; cd backups; mkdir home-k3s; cd home-k3s; mkdir home-assistant; cd home-assistant; put /backup/$BACKUP_FILE" \
+                    "mkdir backups; cd backups; mkdir home-k3s; cd home-k3s; mkdir litellm; cd litellm; put /backup/$BACKUP_FILE" \
                     && echo "NAS copy OK: $BACKUP_FILE" \
                     || echo "WARN: NAS copy failed, local backup still available"
               volumeMounts:
@@ -46,8 +46,8 @@ spec:
           volumes:
             - name: data
               persistentVolumeClaim:
-                claimName: home-assistant-config
+                claimName: litellm-data
             - name: backup
               hostPath:
-                path: /var/backups/home-assistant
+                path: /var/backups/litellm
                 type: DirectoryOrCreate

@@ -11,3 +11,4 @@ resources:
   - service.yaml
   - ingressroute.yaml
   - backup-cronjob.yaml
+  - backup-nas-secret.yaml

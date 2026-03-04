@@ -1,0 +1,48 @@
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: nas-backup-cleanup
+  namespace: nas
+spec:
+  schedule: "0 5 * * 0"  # Sunday at 5 AM (weekly)
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 1
+  jobTemplate:
+    spec:
+      template:
+        spec:
+          nodeSelector:
+            storage.role/nas: "true"
+          containers:
+            - name: cleanup
+              image: alpine:latest
+              command:
+                - /bin/sh
+                - -c
+                - |
+                  BACKUP_ROOT="/nas-backups"
+                  KEEP=14
+
+                  for APP_DIR in "$BACKUP_ROOT"/*/; do
+                    APP=$(basename "$APP_DIR")
+                    # Skip sops — has its own retention (4 copies)
+                    [ "$APP" = "sops" ] && continue
+                    COUNT=$(ls -1 "$APP_DIR"/*.tar.gz 2>/dev/null | wc -l)
+                    if [ "$COUNT" -gt "$KEEP" ]; then
+                      REMOVE=$((COUNT - KEEP))
+                      echo "Pruning $REMOVE old backups from $APP (keeping $KEEP)"
+                      ls -t "$APP_DIR"/*.tar.gz | tail -n +"$((KEEP + 1))" | xargs -r rm
+                    else
+                      echo "$APP: $COUNT backups, nothing to prune"
+                    fi
+                  done
+                  echo "NAS backup cleanup complete"
+              volumeMounts:
+                - name: nas-backups
+                  mountPath: /nas-backups
+          restartPolicy: OnFailure
+          volumes:
+            - name: nas-backups
+              hostPath:
+                path: /mnt/nas/private/backups/home-k3s
+                type: DirectoryOrCreate

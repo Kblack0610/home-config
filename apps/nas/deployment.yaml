@@ -1,0 +1,114 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: nas
+  namespace: nas
+  labels:
+    app.kubernetes.io/name: nas
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: nas
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: nas
+    spec:
+      hostNetwork: true
+      dnsPolicy: ClusterFirstWithHostNet
+      nodeSelector:
+        storage.role/nas: "true"
+      containers:
+        - name: samba
+          image: ghcr.io/servercontainers/samba:latest
+          env:
+            # SMB user "nas" with password from Secret
+            - name: ACCOUNT_nas
+              valueFrom:
+                secretKeyRef:
+                  name: nas-credentials
+                  key: smb-password
+            # Disable container Avahi (host already runs avahi-daemon)
+            # Discovery handled via AdGuard DNS rewrite instead
+            - name: AVAHI_DISABLE
+              value: "true"
+            # Public share - guest accessible, macOS-friendly
+            - name: SAMBA_VOLUME_CONFIG_public
+              value: >-
+                [public];
+                path=/shares/public;
+                browsable=yes;
+                writable=yes;
+                guest ok=yes;
+                force user=root;
+                vfs objects=fruit streams_xattr;
+                fruit:metadata=stream;
+                fruit:model=TimeCapsule6,116;
+                fruit:nfs_aces=no
+            # Private share - requires nas user auth
+            - name: SAMBA_VOLUME_CONFIG_private
+              value: >-
+                [private];
+                path=/shares/private;
+                browsable=yes;
+                writable=yes;
+                guest ok=no;
+                valid users=nas;
+                force user=root;
+                vfs objects=fruit streams_xattr;
+                fruit:metadata=stream;
+                fruit:model=TimeCapsule6,116;
+                fruit:nfs_aces=no
+          ports:
+            - name: smb
+              containerPort: 445
+              protocol: TCP
+          volumeMounts:
+            - name: public
+              mountPath: /shares/public
+            - name: private
+              mountPath: /shares/private
+            - name: localtime
+              mountPath: /etc/localtime
+              readOnly: true
+          resources:
+            requests:
+              memory: "64Mi"
+              cpu: "50m"
+            limits:
+              memory: "256Mi"
+              cpu: "500m"
+          livenessProbe:
+            exec:
+              command:
+                - smbclient
+                - "-N"
+                - "-L"
+                - "//localhost"
+            initialDelaySeconds: 30
+            periodSeconds: 60
+            failureThreshold: 3
+          readinessProbe:
+            exec:
+              command:
+                - smbclient
+                - "-N"
+                - "-L"
+                - "//localhost"
+            initialDelaySeconds: 10
+            periodSeconds: 30
+      volumes:
+        - name: public
+          hostPath:
+            path: /mnt/nas/public
+            type: DirectoryOrCreate
+        - name: private
+          hostPath:
+            path: /mnt/nas/private
+            type: DirectoryOrCreate
+        - name: localtime
+          hostPath:
+            path: /etc/localtime

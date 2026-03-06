@@ -8,11 +8,11 @@ resources:
   - cert-manager
 
   # Applications (home-k3s cluster)
-  - adguard-home
   - headscale
   - home-assistant
   - litellm
   - monitoring
+  - mosquitto
   - nas
   - sops-backup-rbac
   # Applications (do-nyc3-prod cluster)

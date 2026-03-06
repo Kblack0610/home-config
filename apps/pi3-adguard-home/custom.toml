@@ -1,0 +1,22 @@
+# Raspberry Pi OS first-boot configuration
+# Place this file on the boot partition (FAT32) after flashing
+# The Pi will apply these settings on first boot and delete the file
+config_version = 1
+
+[system]
+hostname = "pi3-adguard"
+
+[user]
+name = "kblack0610"
+# Default password: "changeme" — change after first login with `passwd`
+password = "$5$skLz0KriZYsVRmcG$Hh5O/gFmApP9Y.XeUYVHK1uOMt3g9PeRiLOKwKPOFb7"
+password_encrypted = true
+
+[ssh]
+enabled = true
+password_authentication = false
+authorized_keys = [ "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIM6yTlK3GCzXC2+njcPtTucjwxb53Sb0+JT+TuTD78Jh kblack0610@gmail.com" ]
+
+[locale]
+keymap = "us"
+timezone = "America/New_York"

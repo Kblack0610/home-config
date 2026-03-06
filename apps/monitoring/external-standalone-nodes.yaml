@@ -1,0 +1,52 @@
+# Standalone devices monitored via node_exporter (port 9100)
+# These are not K8s nodes — they run Docker Compose workloads
+# Pi3 AdGuard (192.168.1.193): Network-wide DNS + ad-blocking
+
+apiVersion: v1
+kind: Service
+metadata:
+  name: standalone-nodes
+  namespace: monitoring
+  labels:
+    app.kubernetes.io/name: standalone-nodes
+    app.kubernetes.io/part-of: monitoring
+spec:
+  type: ClusterIP
+  clusterIP: None
+  ports:
+    - name: metrics
+      port: 9100
+      targetPort: 9100
+---
+apiVersion: v1
+kind: Endpoints
+metadata:
+  name: standalone-nodes
+  namespace: monitoring
+  labels:
+    app.kubernetes.io/name: standalone-nodes
+subsets:
+  - addresses:
+      - ip: 192.168.1.193
+    ports:
+      - name: metrics
+        port: 9100
+---
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: standalone-nodes
+  namespace: monitoring
+  labels:
+    app.kubernetes.io/name: standalone-nodes
+spec:
+  endpoints:
+    - port: metrics
+      interval: 30s
+      scrapeTimeout: 10s
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: standalone-nodes
+  namespaceSelector:
+    matchNames:
+      - monitoring

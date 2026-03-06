@@ -13,7 +13,6 @@ NAS backup location: `/mnt/nas/private/backups/home-k3s/{app}/`
 | CronJob | Schedule | Namespace | NAS Path |
 |---------|----------|-----------|----------|
 | `home-assistant-backup` | Daily 2 AM | home-assistant | `home-k3s/home-assistant/` |
-| `adguard-home-backup` | Daily 2 AM | adguard-home | `home-k3s/adguard-home/` |
 | `litellm-backup` | Daily 2 AM | ai-gateway | `home-k3s/litellm/` |
 | `sops-key-backup` | Sunday 4 AM | nas | `home-k3s/sops/` |
 | `nas-backup-cleanup` | Sunday 5 AM | nas | N/A (prunes old backups) |
@@ -34,9 +33,6 @@ Trigger a backup immediately for any app:
 ```sh
 # Home Assistant
 kubectl --context home-k3s create job --from=cronjob/home-assistant-backup manual-backup-$(date +%s) -n home-assistant
-
-# AdGuard Home
-kubectl --context home-k3s create job --from=cronjob/adguard-home-backup manual-backup-$(date +%s) -n adguard-home
 
 # LiteLLM
 kubectl --context home-k3s create job --from=cronjob/litellm-backup manual-backup-$(date +%s) -n ai-gateway
@@ -70,15 +66,6 @@ kubectl --context home-k3s run restore --rm -it --image=alpine \
 # 4. Scale back up
 kubectl --context home-k3s scale deployment home-assistant -n home-assistant --replicas=1
 ```
-
-### Restore AdGuard Home
-
-Same procedure as Home Assistant, substituting:
-- Namespace: `adguard-home`
-- Deployment: `adguard-home`
-- PVC: `adguard-home-config`
-- NAS path: `home-k3s/adguard-home/`
-- Local path: `/var/backups/adguard-home/`
 
 ### Restore LiteLLM
 
@@ -118,7 +105,6 @@ ssh pc-home-asus-laptop 'for d in /mnt/nas/private/backups/home-k3s/*/; do echo 
 
 # Check local backups on each node
 ssh raspberrypi 'ls -lt /var/backups/home-assistant/ | head -3'
-ssh raspberrypi-771be84c 'ls -lt /var/backups/adguard-home/ | head -3'
 
 # Check CronJob status
 kubectl --context home-k3s get cronjobs -A | grep backup

@@ -8,7 +8,7 @@
 
 | environment | provider | nodes | apps | health | issues |
 |-------------|----------|------:|-----:|--------|-------:|
-| home-k3s | Raspberry Pi + CachyOS (local) | 8 | 9 | degraded | 3 |
+| home-k3s | Raspberry Pi + CachyOS (local) | 8 | 8 | degraded | 2 |
 | do-nyc3-prod | DigitalOcean (managed) | 2 | 7 | healthy | 0 |
 | mac-machines | Apple Silicon (local) | 2 | 3 | healthy | 0 |
 | standalone | Docker Compose / embedded | 3 | 3 | healthy | 0 |
@@ -19,11 +19,10 @@
 |---------|-----------|----------|-------|----:|----------|
 | home-k3s | pick-a-number | pick-a-number-api | ImagePullBackOff | 69d | low |
 | home-k3s | portfolio | portfolio-web | ErrImageNeverPull | 66d | low |
-| home-k3s | adguard-home | svclb-adguard-* (x5) | Pending (no schedulable node) | 54d | medium |
 | home-k3s | monitoring | prometheus-node-exporter (x1) | Pending | 53d | low |
 
 > Issues 1-2 are abandoned projects with stale/missing images. Consider deleting the namespaces.
-> Issues 3-4 are DaemonSet/LoadBalancer pods that cannot schedule on all nodes (expected on resource-constrained Pi cluster).
+> Issue 3 is a DaemonSet pod that cannot schedule on all nodes (expected on resource-constrained Pi cluster).
 
 ---
 
@@ -57,7 +56,6 @@
 
 | namespace | purpose | status |
 |-----------|---------|--------|
-| adguard-home | DNS filtering | active |
 | apps | PlaceMyParents (API + Web + DB) | active |
 | home-assistant | Smart home hub | active |
 | history-time | History-Time app (PostgreSQL) | active |
@@ -116,7 +114,6 @@
 
 | app | cluster | namespace | type | status |
 |-----|---------|-----------|------|--------|
-| AdGuard Home | home-k3s | adguard-home | Deployment | active |
 | Home Assistant | home-k3s | home-assistant | Deployment | active |
 | PlaceMyParents API | home-k3s | apps | Helm | active |
 | PlaceMyParents Web | home-k3s | apps | Helm | active |
@@ -230,7 +227,7 @@ kubectl create job --from=cronjob/forgejo-backup manual-backup-$(date +%s) -n fo
 
 | cluster | cni | ingress | dns |
 |---------|-----|---------|-----|
-| home-k3s | Flannel | Traefik | AdGuard Home (K8s + Pi3) |
+| home-k3s | Flannel | Traefik | AdGuard Home (Pi3 standalone) |
 | do-nyc3-prod | Cilium | NGINX | DigitalOcean managed |
 
 ---

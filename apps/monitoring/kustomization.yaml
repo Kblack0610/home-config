@@ -6,4 +6,6 @@ resources:
   - ingress-prometheus.yaml
   - ingress-alertmanager.yaml
   - external-mac-nodes.yaml
+  - external-standalone-nodes.yaml
+  - external-iot-nodes.yaml
   - dashboards

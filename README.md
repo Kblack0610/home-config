@@ -22,8 +22,7 @@ Configuration and deployment manifests for a home Kubernetes cluster running on 
 
 | Service | Type | Port(s) | Description |
 |---------|------|---------|-------------|
-| [AdGuard Home](./apps/adguard-home/) | K8s | 53, 80, 443, 853 | DNS server with ad blocking |
-| [AdGuard Home (Pi3)](./apps/pi3-adguard-home/) | Docker | 53, 80, 443, 853 | Backup DNS on dedicated Pi |
+| [AdGuard Home (Pi3)](./apps/pi3-adguard-home/) | Docker | 53, 80, 443, 853 | DNS server with ad blocking (dedicated Pi) |
 | [Nginx Proxy Manager](./apps/nginx-proxy-manager/) | K8s | 80, 81, 443 | Reverse proxy with GUI |
 | [Headscale](./apps/headscale/) | K8s | 8080, 3478/UDP | Self-hosted Tailscale control server |
 

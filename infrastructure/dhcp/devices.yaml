@@ -1,0 +1,170 @@
+# =============================================================================
+# DHCP Static Lease Inventory — Single Source of Truth
+# =============================================================================
+# Managed by: infrastructure/dhcp/dhcp.sh
+# Router: OpenWRT at 192.168.1.1 (dnsmasq + UCI)
+# Subnet: 192.168.1.0/24
+# Bootstrapped from router on 2026-03-05
+# =============================================================================
+
+network:
+  subnet: "192.168.1.0/24"
+  gateway: "192.168.1.1"
+  router_host: "192.168.1.1"
+  router_user: "root"
+
+# IP Range Allocation
+# .1-.9     infrastructure  Router, switches, APs
+# .10-.29   servers         K3s nodes, NAS, bare-metal
+# .30-.49   workstations    Desktops, laptops
+# .50-.79   mobile          Phones, tablets
+# .80-.119  iot             Smart home, ESP32, cameras
+# .120-.139 media           TVs, streaming, speakers
+# .140-.159 guest           Temporary devices
+# .160-.254 dynamic         DHCP pool (unmanaged)
+
+ranges:
+  infrastructure: { start: 1, end: 9 }
+  servers: { start: 10, end: 29 }
+  workstations: { start: 30, end: 49 }
+  mobile: { start: 50, end: 79 }
+  iot: { start: 80, end: 119 }
+  media: { start: 120, end: 139 }
+  guest: { start: 140, end: 159 }
+  dynamic: { start: 160, end: 254 }
+
+devices:
+  # --- Infrastructure (.1-.9) ------------------------------------------------
+  - hostname: openwrt
+    mac: ""
+    ip: "192.168.1.1"
+    category: infrastructure
+    managed: false
+
+  - hostname: pc-home-cachy-main
+    mac: "9C:6B:00:35:B9:7C"
+    ip: "192.168.1.2"
+    category: workstations
+    range_exception: true
+
+  - hostname: pc-laptop-cachy
+    mac: "E8:65:38:0C:44:1F"
+    ip: "192.168.1.3"
+    category: workstations
+    range_exception: true
+
+  - hostname: mac-home-m3-lan
+    mac: "1C:1D:D3:DE:7D:80"
+    ip: "192.168.1.4"
+    category: workstations
+    range_exception: true
+
+  - hostname: mac-home-m3-wan
+    mac: "46:F4:A9:CF:6E:7D"
+    ip: "192.168.1.5"
+    category: workstations
+    range_exception: true
+
+  - hostname: pc-mac-m1
+    mac: "72:4F:F3:91:60:3E"
+    ip: "192.168.1.6"
+    category: workstations
+    range_exception: true
+
+  - hostname: pc-home-m1-mini
+    mac: "14:98:77:3A:CB:D7"
+    ip: "192.168.1.7"
+    category: workstations
+    range_exception: true
+
+  - hostname: tl-sg108e-network-switch-8
+    mac: "0C:EF:15:05:E9:FA"
+    ip: "192.168.1.52"
+    category: infrastructure
+    range_exception: true
+
+  # --- Servers (.10-.29) — K3s cluster ----------------------------------------
+  - hostname: pi5-master-lan
+    mac: "D8:3A:DD:D9:A8:38"
+    ip: "192.168.1.20"
+    category: servers
+
+  - hostname: pi5-worker1-lan
+    mac: "2C:CF:67:36:09:5F"
+    ip: "192.168.1.21"
+    category: servers
+
+  - hostname: pi5-worker2-lan
+    mac: "2C:CF:67:36:08:BD"
+    ip: "192.168.1.22"
+    category: servers
+
+  - hostname: pi5-worker3-lan
+    mac: "88:A2:9E:0D:34:48"
+    ip: "192.168.1.23"
+    category: servers
+
+  - hostname: pi4-worker4-lan
+    mac: "D8:3A:DD:63:86:D3"
+    ip: "192.168.1.24"
+    category: servers
+
+  - hostname: pi4-worker5-lan
+    mac: "D8:3A:DD:63:88:E7"
+    ip: "192.168.1.25"
+    category: servers
+
+  # --- Mobile (.50-.79) — Phones, tablets ------------------------------------
+  - hostname: pixel-10-pro-fold
+    mac: "1E:ED:3B:4E:2D:1E"
+    ip: "192.168.1.10"
+    category: mobile
+    range_exception: true
+
+  - hostname: kenneth-s-s22
+    mac: "6E:88:8A:32:9B:FE"
+    ip: "192.168.1.11"
+    category: mobile
+    range_exception: true
+
+  - hostname: kenneth-s-s21
+    mac: "6E:0B:44:31:F0:3D"
+    ip: "192.168.1.12"
+    category: mobile
+    range_exception: true
+
+  - hostname: kenneth-s-z-fold5
+    mac: "F2:54:F8:21:CF:9A"
+    ip: "192.168.1.13"
+    category: mobile
+    range_exception: true
+
+  # --- IoT (.80-.119) --------------------------------------------------------
+  - hostname: brothers-printer
+    mac: "AC:F2:3C:AD:09:EA"
+    ip: "192.168.1.50"
+    category: iot
+    range_exception: true
+
+  - hostname: neptune-3d-printer
+    mac: "7E:B3:26:27:EF:03"
+    ip: "192.168.1.51"
+    category: iot
+    range_exception: true
+
+  - hostname: rv30-vacuum
+    mac: "3C:64:CF:DE:14:B7"
+    ip: "192.168.1.53"
+    category: iot
+    range_exception: true
+
+  - hostname: unknown-46d37d
+    mac: "4A:12:96:46:D3:7D"
+    ip: "192.168.1.113"
+    category: iot
+
+  # --- Dynamic / Unknown -----------------------------------------------------
+  - hostname: unknown-37233e
+    mac: "2A:64:1F:37:23:3E"
+    ip: "192.168.1.213"
+    category: dynamic

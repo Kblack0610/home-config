@@ -35,7 +35,7 @@ log_warning() { echo -e "${YELLOW}[WARN]${NC} $*" >&2; }
 # Configuration
 # =============================================================================
 
-K8S_CONTEXTS=("home-k3s|local" "do-nyc3-prod|DigitalOcean")
+K8S_CONTEXTS=("home-k3s|local" "do-nyc3-placemyparents-k8s-prod|DigitalOcean")
 
 MAC_MACHINES=(
     "mac-studio|192.168.1.4"
@@ -43,6 +43,8 @@ MAC_MACHINES=(
 )
 
 KUBECTL_TIMEOUT=5
+SHOW_TEMP=false
+SHOW_ALL=false
 
 # Temp directory for parallel data collection
 TMPDIR_INFRA=""
@@ -74,8 +76,8 @@ fetch_k8s_data() {
         --request-timeout="${KUBECTL_TIMEOUT}s" \
         > "$tmpdir/${ctx}.top" 2>/dev/null || true
 
-    # Scrape node_exporter metrics from each node for temperature
-    if [[ -s "$tmpdir/${ctx}.nodes" ]]; then
+    # Scrape node_exporter metrics from each node for temperature (only with --temp)
+    if [[ "$SHOW_TEMP" == true && -s "$tmpdir/${ctx}.nodes" ]]; then
         local ne_pids=()
         while read -r name _status _roles _age _ver nodeip _rest; do
             if [[ -n "$nodeip" && "$nodeip" != "<none>" ]]; then
@@ -201,7 +203,7 @@ parse_k8s_nodes() {
             up="DOWN"
             cpu="-"
             mem="-"
-        else
+        elif [[ "$SHOW_TEMP" == true ]]; then
             temp=$(parse_node_temp "$tmpdir/ne.${ctx}.${name}.metrics")
         fi
 
@@ -309,8 +311,12 @@ get_local_metrics() {
     # Disk: root filesystem
     disk_pct=$(df / | awk 'NR==2 { gsub(/%/,"",$5); printf "%d%%", $5 }')
 
-    # Temperature
-    temp=$(get_local_cpu_temp)
+    # Temperature (only with --temp)
+    if [[ "$SHOW_TEMP" == true ]]; then
+        temp=$(get_local_cpu_temp)
+    else
+        temp="-"
+    fi
 
     echo "UP|${hostname}|${cpu_pct}|${mem_pct}|${disk_pct}|${temp}"
 }
@@ -331,15 +337,25 @@ print_cluster_header() {
     local label="$2"
     echo ""
     echo -e " ${BOLD}CLUSTER: ${ctx} (${label})${NC}"
-    echo -e " ${DIM}────────────────────────────────────────────────────────────────────────${NC}"
-    printf "  ${BOLD}%-6s  %-24s %-11s %5s  %5s  %5s  %5s${NC}\n" "STATUS" "NODE" "ROLE" "CPU" "MEM" "TEMP" "AGE"
+    if [[ "$SHOW_TEMP" == true ]]; then
+        echo -e " ${DIM}────────────────────────────────────────────────────────────────────────${NC}"
+        printf "  ${BOLD}%-6s  %-24s %-11s %5s  %5s  %5s  %5s${NC}\n" "STATUS" "NODE" "ROLE" "CPU" "MEM" "TEMP" "AGE"
+    else
+        echo -e " ${DIM}──────────────────────────────────────────────────────────────────${NC}"
+        printf "  ${BOLD}%-6s  %-24s %-11s %5s  %5s  %5s${NC}\n" "STATUS" "NODE" "ROLE" "CPU" "MEM" "AGE"
+    fi
 }
 
 print_mac_header() {
     echo ""
     echo -e " ${BOLD}MAC MACHINES (external)${NC}"
-    echo -e " ${DIM}────────────────────────────────────────────────────────────────────────${NC}"
-    printf "  ${BOLD}%-6s  %-24s %-16s %5s  %5s  %5s  %5s${NC}\n" "STATUS" "MACHINE" "IP" "CPU" "MEM" "DISK" "TEMP"
+    if [[ "$SHOW_TEMP" == true ]]; then
+        echo -e " ${DIM}────────────────────────────────────────────────────────────────────────${NC}"
+        printf "  ${BOLD}%-6s  %-24s %-16s %5s  %5s  %5s  %5s${NC}\n" "STATUS" "MACHINE" "IP" "CPU" "MEM" "DISK" "TEMP"
+    else
+        echo -e " ${DIM}──────────────────────────────────────────────────────────────────${NC}"
+        printf "  ${BOLD}%-6s  %-24s %-16s %5s  %5s  %5s${NC}\n" "STATUS" "MACHINE" "IP" "CPU" "MEM" "DISK"
+    fi
 }
 
 print_node_row() {
@@ -356,8 +372,13 @@ print_node_row() {
         status_text="DOWN"
     fi
 
-    printf "  ${status_icon} ${status_color}%4s${NC}  %-24s %-11s %5s  %5s  %5s  %5s\n" \
-        "$status_text" "$name" "$role" "$cpu" "$mem" "$temp" "$age"
+    if [[ "$SHOW_TEMP" == true ]]; then
+        printf "  ${status_icon} ${status_color}%4s${NC}  %-24s %-11s %5s  %5s  %5s  %5s\n" \
+            "$status_text" "$name" "$role" "$cpu" "$mem" "$temp" "$age"
+    else
+        printf "  ${status_icon} ${status_color}%4s${NC}  %-24s %-11s %5s  %5s  %5s\n" \
+            "$status_text" "$name" "$role" "$cpu" "$mem" "$age"
+    fi
 }
 
 print_mac_row() {
@@ -374,15 +395,25 @@ print_mac_row() {
         status_text="DOWN"
     fi
 
-    printf "  ${status_icon} ${status_color}%4s${NC}  %-24s %-16s %5s  %5s  %5s  %5s\n" \
-        "$status_text" "$name" "$ip" "$cpu" "$mem" "$disk" "$temp"
+    if [[ "$SHOW_TEMP" == true ]]; then
+        printf "  ${status_icon} ${status_color}%4s${NC}  %-24s %-16s %5s  %5s  %5s  %5s\n" \
+            "$status_text" "$name" "$ip" "$cpu" "$mem" "$disk" "$temp"
+    else
+        printf "  ${status_icon} ${status_color}%4s${NC}  %-24s %-16s %5s  %5s  %5s\n" \
+            "$status_text" "$name" "$ip" "$cpu" "$mem" "$disk"
+    fi
 }
 
 print_local_header() {
     echo ""
     echo -e " ${BOLD}LOCAL WORKSTATION${NC}"
-    echo -e " ${DIM}────────────────────────────────────────────────────────────────────────${NC}"
-    printf "  ${BOLD}%-6s  %-24s %5s  %5s  %5s  %5s${NC}\n" "STATUS" "HOSTNAME" "CPU" "MEM" "DISK" "TEMP"
+    if [[ "$SHOW_TEMP" == true ]]; then
+        echo -e " ${DIM}────────────────────────────────────────────────────────────────────────${NC}"
+        printf "  ${BOLD}%-6s  %-24s %5s  %5s  %5s  %5s${NC}\n" "STATUS" "HOSTNAME" "CPU" "MEM" "DISK" "TEMP"
+    else
+        echo -e " ${DIM}──────────────────────────────────────────────────────────────────${NC}"
+        printf "  ${BOLD}%-6s  %-24s %5s  %5s  %5s${NC}\n" "STATUS" "HOSTNAME" "CPU" "MEM" "DISK"
+    fi
 }
 
 print_local_row() {
@@ -399,8 +430,13 @@ print_local_row() {
         status_text="DOWN"
     fi
 
-    printf "  ${status_icon} ${status_color}%4s${NC}  %-24s %5s  %5s  %5s  %5s\n" \
-        "$status_text" "$name" "$cpu" "$mem" "$disk" "$temp"
+    if [[ "$SHOW_TEMP" == true ]]; then
+        printf "  ${status_icon} ${status_color}%4s${NC}  %-24s %5s  %5s  %5s  %5s\n" \
+            "$status_text" "$name" "$cpu" "$mem" "$disk" "$temp"
+    else
+        printf "  ${status_icon} ${status_color}%4s${NC}  %-24s %5s  %5s  %5s\n" \
+            "$status_text" "$name" "$cpu" "$mem" "$disk"
+    fi
 }
 
 print_summary() {
@@ -426,6 +462,10 @@ cmd_nodes() {
 
     for entry in "${K8S_CONTEXTS[@]}"; do
         local ctx="${entry%%|*}"
+        local label="${entry##*|}"
+        if [[ "$SHOW_ALL" != true && "$label" != "local" ]]; then
+            continue
+        fi
         fetch_k8s_data "$ctx" "$TMPDIR_INFRA" &
         pids+=($!)
     done
@@ -450,6 +490,10 @@ cmd_nodes() {
     for entry in "${K8S_CONTEXTS[@]}"; do
         local ctx="${entry%%|*}"
         local label="${entry##*|}"
+
+        if [[ "$SHOW_ALL" != true && "$label" != "local" ]]; then
+            continue
+        fi
 
         print_cluster_header "$ctx" "$label"
 
@@ -507,20 +551,26 @@ cmd_help() {
 infra — Homelab device/node health CLI
 
 USAGE:
-    infra [command]
+    infra [command] [options]
 
 COMMANDS:
     nodes    Show all devices and their health (default)
     help     Show this help message
 
+OPTIONS:
+    --all,  -a   Include remote clusters (e.g. DigitalOcean)
+    --temp, -t   Include CPU temperature column (slower, scrapes node_exporter)
+
 EXAMPLES:
-    infra            # show all devices
-    infra nodes      # same thing
+    infra            # show local devices only
+    infra --all      # include remote clusters
+    infra --temp     # include temperature readings
     infra help       # show this help
 
 DATA SOURCES:
     Kubernetes nodes   kubectl get nodes / top nodes (per context)
     Mac machines       node_exporter metrics via HTTP (:9100)
+    Temperature        node_exporter :9100 / /sys/class/hwmon (with --temp)
 EOF
 }
 
@@ -528,12 +578,22 @@ EOF
 # Main
 # =============================================================================
 
-case "${1:-nodes}" in
-    nodes)          cmd_nodes ;;
-    help|--help|-h) cmd_help ;;
-    *)
-        log_error "Unknown command: $1"
-        cmd_help
-        exit 1
-        ;;
+cmd="nodes"
+for arg in "$@"; do
+    case "$arg" in
+        --temp|-t) SHOW_TEMP=true ;;
+        --all|-a) SHOW_ALL=true ;;
+        help|--help|-h) cmd="help" ;;
+        nodes) cmd="nodes" ;;
+        *)
+            log_error "Unknown argument: $arg"
+            cmd_help
+            exit 1
+            ;;
+    esac
+done
+
+case "$cmd" in
+    nodes) cmd_nodes ;;
+    help)  cmd_help ;;
 esac

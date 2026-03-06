@@ -13,6 +13,7 @@ resources:
   - litellm
   - monitoring
   - mosquitto
+  - mqtt2prom
   - nas
   - sops-backup-rbac
   # Applications (do-nyc3-prod cluster)

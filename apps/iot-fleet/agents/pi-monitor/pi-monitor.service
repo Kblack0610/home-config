@@ -1,0 +1,16 @@
+[Unit]
+Description=Pi Monitor - IoT Fleet Health Agent
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+ExecStart=/usr/local/bin/pi-monitor
+Restart=always
+RestartSec=5
+User=pi-monitor
+Group=pi-monitor
+Environment=RUST_LOG=info
+
+[Install]
+WantedBy=multi-user.target

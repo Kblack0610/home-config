@@ -1,0 +1,16 @@
+[workspace]
+resolver = "2"
+members = [
+    "crates/mqtt-proto",
+    "crates/ha-discovery",
+    "crates/device-metrics",
+    "crates/device-config",
+    "agents/pi-monitor",
+    "agents/mqtt2prom",
+    # firmware members are excluded - they use different toolchains
+    # build them individually: cd firmware/esp32-switch && cargo build
+]
+
+[workspace.package]
+edition = "2024"
+license = "MIT"

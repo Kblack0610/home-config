@@ -1,0 +1,13 @@
+[package]
+name = "pi-monitor"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+device-metrics = { path = "../../crates/device-metrics", features = ["std"] }
+device-config = { path = "../../crates/device-config" }
+tiny_http = "0.12"
+rumqttc = "0.24"
+tokio = { version = "1", features = ["rt", "macros", "time", "sync"] }
+serde = { version = "1", features = ["derive"] }
+toml = "0.8"

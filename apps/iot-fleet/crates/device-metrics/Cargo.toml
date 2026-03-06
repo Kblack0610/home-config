@@ -1,0 +1,11 @@
+[package]
+name = "device-metrics"
+version = "0.1.0"
+edition.workspace = true
+
+[features]
+default = []
+std = []
+
+[dependencies]
+heapless = "0.8"

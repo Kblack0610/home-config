@@ -1,0 +1,49 @@
+# Pi Zero IoT nodes - monitored via pi-monitor agent (port 9200)
+apiVersion: v1
+kind: Service
+metadata:
+  name: iot-pi-nodes
+  namespace: monitoring
+  labels:
+    app.kubernetes.io/name: iot-pi-nodes
+spec:
+  type: ClusterIP
+  clusterIP: None
+  ports:
+    - name: metrics
+      port: 9200
+      targetPort: 9200
+---
+apiVersion: v1
+kind: Endpoints
+metadata:
+  name: iot-pi-nodes
+  namespace: monitoring
+subsets:
+  - addresses:
+      # Pi Zero devices - update IPs as devices are provisioned
+      - ip: 192.168.1.80
+      - ip: 192.168.1.81
+      - ip: 192.168.1.82
+    ports:
+      - name: metrics
+        port: 9200
+---
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: iot-pi-nodes
+  namespace: monitoring
+  labels:
+    app.kubernetes.io/name: iot-pi-nodes
+spec:
+  endpoints:
+    - port: metrics
+      interval: 30s
+      scrapeTimeout: 10s
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: iot-pi-nodes
+  namespaceSelector:
+    matchNames:
+      - monitoring

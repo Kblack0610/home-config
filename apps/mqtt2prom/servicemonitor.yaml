@@ -1,0 +1,18 @@
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: mqtt2prom
+  namespace: mqtt2prom
+  labels:
+    app.kubernetes.io/name: mqtt2prom
+spec:
+  endpoints:
+    - port: metrics
+      interval: 30s
+      scrapeTimeout: 10s
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: mqtt2prom
+  namespaceSelector:
+    matchNames:
+      - mqtt2prom

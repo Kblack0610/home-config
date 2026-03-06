@@ -21,3 +21,6 @@ configMapGenerator:
   - name: grafana-dashboard-homelab-all-devices
     files:
       - homelab-all-devices.json
+  - name: grafana-dashboard-iot-fleet-devices
+    files:
+      - iot-fleet-devices.json

@@ -45,6 +45,8 @@ MAC_MACHINES=(
 KUBECTL_TIMEOUT=5
 SHOW_TEMP=false
 SHOW_ALL=false
+SHOW_AGE=false
+SHOW_DISK=false
 
 # Temp directory for parallel data collection
 TMPDIR_INFRA=""
@@ -55,6 +57,25 @@ cleanup() {
     fi
 }
 trap cleanup EXIT
+
+# =============================================================================
+# Utility helpers
+# =============================================================================
+
+format_uptime_age() {
+    local seconds="${1%.*}"  # strip decimal if present
+    if [[ -z "$seconds" || "$seconds" == "-" ]]; then
+        echo "-"
+        return
+    fi
+    local days=$(( seconds / 86400 ))
+    if [[ "$days" -ge 1 ]]; then
+        echo "${days}d"
+    else
+        local hours=$(( seconds / 3600 ))
+        echo "${hours}h"
+    fi
+}
 
 # =============================================================================
 # Kubernetes helpers
@@ -76,8 +97,8 @@ fetch_k8s_data() {
         --request-timeout="${KUBECTL_TIMEOUT}s" \
         > "$tmpdir/${ctx}.top" 2>/dev/null || true
 
-    # Scrape node_exporter metrics from each node for temperature (only with --temp)
-    if [[ "$SHOW_TEMP" == true && -s "$tmpdir/${ctx}.nodes" ]]; then
+    # Scrape node_exporter metrics from each node (only when --disk or --temp)
+    if [[ ("$SHOW_DISK" == true || "$SHOW_TEMP" == true) && -s "$tmpdir/${ctx}.nodes" ]]; then
         local ne_pids=()
         while read -r name _status _roles _age _ver nodeip _rest; do
             if [[ -n "$nodeip" && "$nodeip" != "<none>" ]]; then
@@ -161,6 +182,34 @@ parse_node_temp() {
     ' "$metrics_file"
 }
 
+parse_node_disk() {
+    local metrics_file="$1"
+    if [[ ! -s "$metrics_file" ]]; then
+        echo "-"
+        return
+    fi
+    awk '
+        /^node_filesystem_size_bytes\{.*mountpoint="\/"[,}]/  { if (!size) size = $2 }
+        /^node_filesystem_avail_bytes\{.*mountpoint="\/"[,}]/ { if (!avail) avail = $2 }
+        END { if (size > 0) printf "%d%%", (size - avail) * 100 / size; else print "-" }
+    ' "$metrics_file"
+}
+
+parse_node_uptime() {
+    local metrics_file="$1"
+    if [[ ! -s "$metrics_file" ]]; then
+        echo "-"
+        return
+    fi
+    local uptime_secs
+    uptime_secs=$(awk '
+        /^node_time_seconds /      { time = $2 }
+        /^node_boot_time_seconds / { boot = $2 }
+        END { if (time > 0 && boot > 0) printf "%d", time - boot; else print "-" }
+    ' "$metrics_file")
+    format_uptime_age "$uptime_secs"
+}
+
 parse_k8s_nodes() {
     local ctx="$1"
     local tmpdir="$2"
@@ -188,6 +237,7 @@ parse_k8s_nodes() {
     while read -r name status roles age _ver nodeip _rest; do
         local cpu="${cpu_map[$name]:-"-"}"
         local mem="${mem_map[$name]:-"-"}"
+        local metrics_file="$tmpdir/ne.${ctx}.${name}.metrics"
 
         # Normalize roles
         if [[ "$roles" == *"control-plane"* ]] || [[ "$roles" == *"master"* ]]; then
@@ -199,15 +249,22 @@ parse_k8s_nodes() {
         # Normalize status
         local up="UP"
         local temp="-"
+        local disk="-"
+        local node_age="$age"
         if [[ "$status" != "Ready" ]]; then
             up="DOWN"
             cpu="-"
             mem="-"
-        elif [[ "$SHOW_TEMP" == true ]]; then
-            temp=$(parse_node_temp "$tmpdir/ne.${ctx}.${name}.metrics")
+        else
+            if [[ "$SHOW_DISK" == true ]]; then
+                disk=$(parse_node_disk "$metrics_file")
+            fi
+            if [[ "$SHOW_TEMP" == true ]]; then
+                temp=$(parse_node_temp "$metrics_file")
+            fi
         fi
 
-        echo "${up}|${name}|${roles}|${cpu}|${mem}|${temp}|${age}"
+        echo "${up}|${name}|${roles}|${cpu}|${mem}|${disk}|${temp}|${node_age}"
     done < "$nodes_file"
 }
 
@@ -231,7 +288,7 @@ parse_mac_metrics() {
     local metrics_file="$tmpdir/mac.${name}.metrics"
 
     if [[ ! -s "$metrics_file" ]]; then
-        echo "DOWN|${name}|${ip}|-|-|-|-"
+        echo "DOWN|${name}|${ip}|-|-|-|-|-"
         return
     fi
 
@@ -262,7 +319,11 @@ parse_mac_metrics() {
         END { if (size > 0) printf "%d%%", (size - avail) * 100 / size; else print "-" }
     ' "$metrics_file" 2>/dev/null)
 
-    echo "UP|${name}|${ip}|${cpu_pct}|${mem_pct}|${disk_pct}|-"
+    # Uptime/age from boot time
+    local age="-"
+    age=$(parse_node_uptime "$metrics_file")
+
+    echo "UP|${name}|${ip}|${cpu_pct}|${mem_pct}|${disk_pct}|-|${age}"
 }
 
 # =============================================================================
@@ -287,7 +348,7 @@ get_local_cpu_temp() {
 }
 
 get_local_metrics() {
-    local cpu_pct mem_pct disk_pct temp
+    local cpu_pct mem_pct disk_pct temp age
     local hostname
     hostname=$(hostname)
 
@@ -318,7 +379,12 @@ get_local_metrics() {
         temp="-"
     fi
 
-    echo "UP|${hostname}|${cpu_pct}|${mem_pct}|${disk_pct}|${temp}"
+    # Uptime/age from /proc/uptime
+    local uptime_secs
+    uptime_secs=$(awk '{ printf "%d", $1 }' /proc/uptime)
+    age=$(format_uptime_age "$uptime_secs")
+
+    echo "UP|${hostname}|${cpu_pct}|${mem_pct}|${disk_pct}|${temp}|${age}"
 }
 
 # =============================================================================
@@ -332,57 +398,105 @@ print_header() {
     echo -e " ${BOLD}Homelab Devices${NC}                                    ${DIM}${timestamp}${NC}"
 }
 
+# Build separator line of given length
+_separator() {
+    local len="$1"
+    local sep=""
+    for (( i=0; i<len; i++ )); do sep+="─"; done
+    echo -e " ${DIM}${sep}${NC}"
+}
+
 print_cluster_header() {
     local ctx="$1"
     local label="$2"
     echo ""
     echo -e " ${BOLD}CLUSTER: ${ctx} (${label})${NC}"
-    if [[ "$SHOW_TEMP" == true ]]; then
-        echo -e " ${DIM}────────────────────────────────────────────────────────────────────────${NC}"
-        printf "  ${BOLD}%-6s  %-24s %-11s %5s  %5s  %5s  %5s${NC}\n" "STATUS" "NODE" "ROLE" "CPU" "MEM" "TEMP" "AGE"
-    else
-        echo -e " ${DIM}──────────────────────────────────────────────────────────────────${NC}"
-        printf "  ${BOLD}%-6s  %-24s %-11s %5s  %5s  %5s${NC}\n" "STATUS" "NODE" "ROLE" "CPU" "MEM" "AGE"
+
+    local fmt="  ${BOLD}%-6s  %-24s %-11s %5s  %5s"
+    local sep_len=59
+    local -a cols=("STATUS" "NODE" "ROLE" "CPU" "MEM")
+
+    if [[ "$SHOW_DISK" == true ]]; then
+        fmt+="  %5s"
+        sep_len=$((sep_len + 7))
+        cols+=("DISK")
     fi
+    if [[ "$SHOW_TEMP" == true ]]; then
+        fmt+="  %5s"
+        sep_len=$((sep_len + 7))
+        cols+=("TEMP")
+    fi
+    # AGE is always shown for cluster (free from kubectl)
+    fmt+="  %5s"
+    sep_len=$((sep_len + 7))
+    cols+=("AGE")
+
+    fmt+="${NC}\n"
+
+    _separator "$sep_len"
+    printf "$fmt" "${cols[@]}"
+}
+
+print_node_row() {
+    local status="$1" name="$2" role="$3" cpu="$4" mem="$5" disk="$6" temp="$7" age="$8"
+
+    local status_icon status_color status_text
+    if [[ "$status" == "UP" ]]; then
+        status_icon="${GREEN}●${NC}"
+        status_color="${GREEN}"
+        status_text="UP"
+    else
+        status_icon="${RED}●${NC}"
+        status_color="${RED}"
+        status_text="DOWN"
+    fi
+
+    local fmt="  ${status_icon} ${status_color}%4s${NC}  %-24s %-11s %5s  %5s"
+    local -a vals=("$status_text" "$name" "$role" "$cpu" "$mem")
+
+    if [[ "$SHOW_DISK" == true ]]; then
+        fmt+="  %5s"
+        vals+=("$disk")
+    fi
+    if [[ "$SHOW_TEMP" == true ]]; then
+        fmt+="  %5s"
+        vals+=("$temp")
+    fi
+    # AGE always shown for cluster
+    fmt+="  %5s"
+    vals+=("$age")
+
+    fmt+="\n"
+
+    printf "$fmt" "${vals[@]}"
 }
 
 print_mac_header() {
     echo ""
     echo -e " ${BOLD}MAC MACHINES (external)${NC}"
-    if [[ "$SHOW_TEMP" == true ]]; then
-        echo -e " ${DIM}────────────────────────────────────────────────────────────────────────${NC}"
-        printf "  ${BOLD}%-6s  %-24s %-16s %5s  %5s  %5s  %5s${NC}\n" "STATUS" "MACHINE" "IP" "CPU" "MEM" "DISK" "TEMP"
-    else
-        echo -e " ${DIM}──────────────────────────────────────────────────────────────────${NC}"
-        printf "  ${BOLD}%-6s  %-24s %-16s %5s  %5s  %5s${NC}\n" "STATUS" "MACHINE" "IP" "CPU" "MEM" "DISK"
-    fi
-}
 
-print_node_row() {
-    local status="$1" name="$2" role="$3" cpu="$4" mem="$5" temp="$6" age="$7"
-
-    local status_icon status_color status_text
-    if [[ "$status" == "UP" ]]; then
-        status_icon="${GREEN}●${NC}"
-        status_color="${GREEN}"
-        status_text="UP"
-    else
-        status_icon="${RED}●${NC}"
-        status_color="${RED}"
-        status_text="DOWN"
-    fi
+    local fmt="  ${BOLD}%-6s  %-24s %-16s %5s  %5s  %5s"
+    local sep_len=71
+    local -a cols=("STATUS" "MACHINE" "IP" "CPU" "MEM" "DISK")
 
     if [[ "$SHOW_TEMP" == true ]]; then
-        printf "  ${status_icon} ${status_color}%4s${NC}  %-24s %-11s %5s  %5s  %5s  %5s\n" \
-            "$status_text" "$name" "$role" "$cpu" "$mem" "$temp" "$age"
-    else
-        printf "  ${status_icon} ${status_color}%4s${NC}  %-24s %-11s %5s  %5s  %5s\n" \
-            "$status_text" "$name" "$role" "$cpu" "$mem" "$age"
+        fmt+="  %5s"
+        sep_len=$((sep_len + 7))
+        cols+=("TEMP")
     fi
+    if [[ "$SHOW_AGE" == true ]]; then
+        fmt+="  %5s"
+        sep_len=$((sep_len + 7))
+        cols+=("AGE")
+    fi
+    fmt+="${NC}\n"
+
+    _separator "$sep_len"
+    printf "$fmt" "${cols[@]}"
 }
 
 print_mac_row() {
-    local status="$1" name="$2" ip="$3" cpu="$4" mem="$5" disk="$6" temp="$7"
+    local status="$1" name="$2" ip="$3" cpu="$4" mem="$5" disk="$6" temp="$7" age="$8"
 
     local status_icon status_color status_text
     if [[ "$status" == "UP" ]]; then
@@ -395,29 +509,48 @@ print_mac_row() {
         status_text="DOWN"
     fi
 
+    local fmt="  ${status_icon} ${status_color}%4s${NC}  %-24s %-16s %5s  %5s  %5s"
+    local -a vals=("$status_text" "$name" "$ip" "$cpu" "$mem" "$disk")
+
     if [[ "$SHOW_TEMP" == true ]]; then
-        printf "  ${status_icon} ${status_color}%4s${NC}  %-24s %-16s %5s  %5s  %5s  %5s\n" \
-            "$status_text" "$name" "$ip" "$cpu" "$mem" "$disk" "$temp"
-    else
-        printf "  ${status_icon} ${status_color}%4s${NC}  %-24s %-16s %5s  %5s  %5s\n" \
-            "$status_text" "$name" "$ip" "$cpu" "$mem" "$disk"
+        fmt+="  %5s"
+        vals+=("$temp")
     fi
+    if [[ "$SHOW_AGE" == true ]]; then
+        fmt+="  %5s"
+        vals+=("$age")
+    fi
+    fmt+="\n"
+
+    printf "$fmt" "${vals[@]}"
 }
 
 print_local_header() {
     echo ""
     echo -e " ${BOLD}LOCAL WORKSTATION${NC}"
+
+    local fmt="  ${BOLD}%-6s  %-24s %5s  %5s  %5s"
+    local sep_len=54
+    local -a cols=("STATUS" "HOSTNAME" "CPU" "MEM" "DISK")
+
     if [[ "$SHOW_TEMP" == true ]]; then
-        echo -e " ${DIM}────────────────────────────────────────────────────────────────────────${NC}"
-        printf "  ${BOLD}%-6s  %-24s %5s  %5s  %5s  %5s${NC}\n" "STATUS" "HOSTNAME" "CPU" "MEM" "DISK" "TEMP"
-    else
-        echo -e " ${DIM}──────────────────────────────────────────────────────────────────${NC}"
-        printf "  ${BOLD}%-6s  %-24s %5s  %5s  %5s${NC}\n" "STATUS" "HOSTNAME" "CPU" "MEM" "DISK"
+        fmt+="  %5s"
+        sep_len=$((sep_len + 7))
+        cols+=("TEMP")
     fi
+    if [[ "$SHOW_AGE" == true ]]; then
+        fmt+="  %5s"
+        sep_len=$((sep_len + 7))
+        cols+=("AGE")
+    fi
+    fmt+="${NC}\n"
+
+    _separator "$sep_len"
+    printf "$fmt" "${cols[@]}"
 }
 
 print_local_row() {
-    local status="$1" name="$2" cpu="$3" mem="$4" disk="$5" temp="$6"
+    local status="$1" name="$2" cpu="$3" mem="$4" disk="$5" temp="$6" age="$7"
 
     local status_icon status_color status_text
     if [[ "$status" == "UP" ]]; then
@@ -430,13 +563,20 @@ print_local_row() {
         status_text="DOWN"
     fi
 
+    local fmt="  ${status_icon} ${status_color}%4s${NC}  %-24s %5s  %5s  %5s"
+    local -a vals=("$status_text" "$name" "$cpu" "$mem" "$disk")
+
     if [[ "$SHOW_TEMP" == true ]]; then
-        printf "  ${status_icon} ${status_color}%4s${NC}  %-24s %5s  %5s  %5s  %5s\n" \
-            "$status_text" "$name" "$cpu" "$mem" "$disk" "$temp"
-    else
-        printf "  ${status_icon} ${status_color}%4s${NC}  %-24s %5s  %5s  %5s\n" \
-            "$status_text" "$name" "$cpu" "$mem" "$disk"
+        fmt+="  %5s"
+        vals+=("$temp")
     fi
+    if [[ "$SHOW_AGE" == true ]]; then
+        fmt+="  %5s"
+        vals+=("$age")
+    fi
+    fmt+="\n"
+
+    printf "$fmt" "${vals[@]}"
 }
 
 print_summary() {
@@ -503,8 +643,8 @@ cmd_nodes() {
         if [[ "$node_data" == "UNREACHABLE" ]]; then
             echo -e "  ${YELLOW}Context unreachable${NC}"
         else
-            while IFS='|' read -r status name role cpu mem temp age; do
-                print_node_row "$status" "$name" "$role" "$cpu" "$mem" "$temp" "$age"
+            while IFS='|' read -r status name role cpu mem disk temp age; do
+                print_node_row "$status" "$name" "$role" "$cpu" "$mem" "$disk" "$temp" "$age"
                 total=$((total + 1))
                 if [[ "$status" == "UP" ]]; then
                     healthy=$((healthy + 1))
@@ -524,8 +664,8 @@ cmd_nodes() {
         local mac_data
         mac_data=$(parse_mac_metrics "$mac_name" "$mac_ip" "$TMPDIR_INFRA")
 
-        IFS='|' read -r status name ip cpu mem disk temp <<< "$mac_data"
-        print_mac_row "$status" "$name" "$ip" "$cpu" "$mem" "$disk" "$temp"
+        IFS='|' read -r status name ip cpu mem disk temp age <<< "$mac_data"
+        print_mac_row "$status" "$name" "$ip" "$cpu" "$mem" "$disk" "$temp" "$age"
         total=$((total + 1))
         if [[ "$status" == "UP" ]]; then
             healthy=$((healthy + 1))
@@ -538,8 +678,8 @@ cmd_nodes() {
     print_local_header
     local local_data
     local_data=$(get_local_metrics)
-    IFS='|' read -r status name cpu mem disk temp <<< "$local_data"
-    print_local_row "$status" "$name" "$cpu" "$mem" "$disk" "$temp"
+    IFS='|' read -r status name cpu mem disk temp age <<< "$local_data"
+    print_local_row "$status" "$name" "$cpu" "$mem" "$disk" "$temp" "$age"
     total=$((total + 1))
     healthy=$((healthy + 1))
 
@@ -559,18 +699,24 @@ COMMANDS:
 
 OPTIONS:
     --all,  -a   Include remote clusters (e.g. DigitalOcean)
+    --disk, -d   Include disk column for cluster nodes (slower, scrapes node_exporter)
     --temp, -t   Include CPU temperature column (slower, scrapes node_exporter)
+    --age,  -g   Include uptime/age column for Mac and local devices
 
 EXAMPLES:
-    infra            # show local devices only
+    infra            # show local devices only (cluster: CPU/MEM/AGE, others: CPU/MEM/DISK)
     infra --all      # include remote clusters
+    infra --disk     # add disk usage for cluster nodes
     infra --temp     # include temperature readings
+    infra --age      # include uptime/age for Mac and local
     infra help       # show this help
 
 DATA SOURCES:
     Kubernetes nodes   kubectl get nodes / top nodes (per context)
     Mac machines       node_exporter metrics via HTTP (:9100)
+    Disk (K8s nodes)   node_exporter :9100 (root filesystem)
     Temperature        node_exporter :9100 / /sys/class/hwmon (with --temp)
+    Age/Uptime         kubectl age (K8s), node_boot_time (Mac), /proc/uptime (local)
 EOF
 }
 
@@ -583,6 +729,8 @@ for arg in "$@"; do
     case "$arg" in
         --temp|-t) SHOW_TEMP=true ;;
         --all|-a) SHOW_ALL=true ;;
+        --age|-g) SHOW_AGE=true ;;
+        --disk|-d) SHOW_DISK=true ;;
         help|--help|-h) cmd="help" ;;
         nodes) cmd="nodes" ;;
         *)

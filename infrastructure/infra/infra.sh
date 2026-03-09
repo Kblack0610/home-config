@@ -42,6 +42,15 @@ MAC_MACHINES=(
     "mac-mini-m1|192.168.1.7"
 )
 
+# Android devices: "serial|friendly-name"
+# Run `adb devices -l` to get serials. Unknown serials auto-detect name.
+ANDROID_DEVICES=(
+    "R3CR40W97CN|s21"
+    "R3CW30A55DB|zfold5"
+    # "SERIAL|pixel-fold"
+    # "SERIAL|s22"
+)
+
 KUBECTL_TIMEOUT=5
 SHOW_TEMP=false
 SHOW_ALL=false
@@ -324,6 +333,201 @@ parse_mac_metrics() {
     age=$(parse_node_uptime "$metrics_file")
 
     echo "UP|${name}|${ip}|${cpu_pct}|${mem_pct}|${disk_pct}|-|${age}"
+}
+
+# =============================================================================
+# Android device helpers
+# =============================================================================
+
+# Resolve friendly name: config lookup → marketing name → model → serial
+resolve_android_name() {
+    local serial="$1"
+    local tmpdir="$2"
+
+    # Check config array for friendly name
+    for entry in "${ANDROID_DEVICES[@]}"; do
+        local cfg_serial="${entry%%|*}"
+        local cfg_name="${entry##*|}"
+        if [[ "$cfg_serial" == "$serial" ]]; then
+            echo "$cfg_name"
+            return
+        fi
+    done
+
+    # Try marketing name from metrics file
+    local metrics_file="$tmpdir/adb.${serial}.metrics"
+    if [[ -s "$metrics_file" ]]; then
+        local mkt_name
+        mkt_name=$(grep '^MARKETING_NAME=' "$metrics_file" 2>/dev/null | cut -d= -f2-)
+        if [[ -n "$mkt_name" ]]; then
+            echo "$mkt_name"
+            return
+        fi
+        local model
+        model=$(grep '^MODEL=' "$metrics_file" 2>/dev/null | cut -d= -f2-)
+        if [[ -n "$model" ]]; then
+            echo "$model"
+            return
+        fi
+    fi
+
+    echo "$serial"
+}
+
+# Fetch metrics for a single Android device (runs in background)
+fetch_android_metrics() {
+    local serial="$1"
+    local tmpdir="$2"
+    local outfile="$tmpdir/adb.${serial}.metrics"
+
+    # Batched getprop + battery in a single adb shell call (~100ms)
+    adb -s "$serial" shell '
+        echo "MODEL=$(getprop ro.product.model)"
+        mkt="$(getprop ro.product.marketname)"
+        [ -z "$mkt" ] && mkt="$(getprop ro.config.marketing_name)"
+        [ -z "$mkt" ] && mkt="$(settings get global device_name 2>/dev/null)"
+        [ "$mkt" = "null" ] && mkt=""
+        echo "MARKETING_NAME=$mkt"
+        echo "ANDROID_VER=$(getprop ro.build.version.release)"
+        dumpsys battery 2>/dev/null | head -20 | while IFS= read -r line; do
+            case "$line" in
+                *"  level: "*)       echo "BATTERY_LEVEL=${line##*: }" ;;
+                *"  temperature: "*) echo "BATTERY_TEMP=${line##*: }" ;;
+            esac
+        done
+    ' > "$outfile" 2>/dev/null || true
+
+    # Strip carriage returns
+    if [[ -s "$outfile" ]]; then
+        sed -i 's/\r//g' "$outfile"
+    fi
+
+    # Optional: storage (only with --disk)
+    if [[ "$SHOW_DISK" == true ]]; then
+        adb -s "$serial" shell 'df /data 2>/dev/null | tail -1' \
+            > "$tmpdir/adb.${serial}.storage" 2>/dev/null || true
+        sed -i 's/\r//g' "$tmpdir/adb.${serial}.storage" 2>/dev/null || true
+    fi
+}
+
+# Discover devices and launch parallel metric collection
+fetch_android_devices() {
+    local tmpdir="$1"
+
+    command -v adb &>/dev/null || return 0
+
+    # Get raw device list
+    local adb_output
+    adb_output=$(adb devices 2>/dev/null) || return 0
+
+    local device_pids=()
+    local found_any=false
+
+    while IFS=$'\t' read -r serial status; do
+        [[ -z "$serial" || "$serial" == "List"* || "$serial" == "" ]] && continue
+        found_any=true
+        echo "${serial}|${status}" >> "$tmpdir/adb.devices"
+        if [[ "$status" == "device" ]]; then
+            fetch_android_metrics "$serial" "$tmpdir" &
+            device_pids+=($!)
+        fi
+    done <<< "$adb_output"
+
+    for pid in "${device_pids[@]}"; do
+        wait "$pid" 2>/dev/null || true
+    done
+}
+
+# Parse collected metrics into pipe-delimited row
+parse_android_metrics() {
+    local serial="$1"
+    local status="$2"
+    local tmpdir="$3"
+
+    local device_status="DOWN"
+    local name model battery android_ver storage
+
+    if [[ "$status" == "device" ]]; then
+        device_status="UP"
+    elif [[ "$status" == "unauthorized" ]]; then
+        device_status="UNAUTH"
+    fi
+
+    name=$(resolve_android_name "$serial" "$tmpdir")
+
+    if [[ "$device_status" == "UP" ]]; then
+        local metrics_file="$tmpdir/adb.${serial}.metrics"
+        if [[ -s "$metrics_file" ]]; then
+            model=$(grep '^MODEL=' "$metrics_file" | head -1 | cut -d= -f2-)
+            battery=$(grep '^BATTERY_LEVEL=' "$metrics_file" | head -1 | cut -d= -f2-)
+            android_ver=$(grep '^ANDROID_VER=' "$metrics_file" | head -1 | cut -d= -f2-)
+        fi
+
+        # Storage (only with --disk)
+        if [[ "$SHOW_DISK" == true ]]; then
+            local storage_file="$tmpdir/adb.${serial}.storage"
+            if [[ -s "$storage_file" ]]; then
+                storage=$(awk '{ gsub(/%/,"",$5); if ($2+0>0) printf "%d%%", ($3/$2)*100 }' "$storage_file" 2>/dev/null)
+            fi
+        fi
+
+        [[ -n "$battery" ]] && battery="${battery}%"
+    fi
+
+    echo "${device_status}|${name:-$serial}|${model:--}|${battery:--}|${android_ver:--}|${storage:--}"
+}
+
+print_android_header() {
+    echo ""
+    echo -e " ${BOLD}ANDROID DEVICES (adb)${NC}"
+
+    local fmt="  ${BOLD}%-6s  %-24s %-16s %5s  %7s"
+    local sep_len=63
+    local -a cols=("STATUS" "DEVICE" "MODEL" "BAT" "ANDROID")
+
+    if [[ "$SHOW_DISK" == true ]]; then
+        fmt+="  %5s"
+        sep_len=$((sep_len + 7))
+        cols+=("STORE")
+    fi
+    fmt+="${NC}\n"
+
+    _separator "$sep_len"
+    printf "$fmt" "${cols[@]}"
+}
+
+print_android_row() {
+    local status="$1" name="$2" model="$3" battery="$4" android="$5" storage="$6"
+
+    local status_icon status_color status_text
+    case "$status" in
+        UP)
+            status_icon="${GREEN}●${NC}"
+            status_color="${GREEN}"
+            status_text="UP"
+            ;;
+        UNAUTH)
+            status_icon="${YELLOW}●${NC}"
+            status_color="${YELLOW}"
+            status_text="AUTH"
+            ;;
+        *)
+            status_icon="${RED}●${NC}"
+            status_color="${RED}"
+            status_text="DOWN"
+            ;;
+    esac
+
+    local fmt="  ${status_icon} ${status_color}%4s${NC}  %-24s %-16s %5s  %7s"
+    local -a vals=("$status_text" "$name" "$model" "$battery" "$android")
+
+    if [[ "$SHOW_DISK" == true ]]; then
+        fmt+="  %5s"
+        vals+=("$storage")
+    fi
+    fmt+="\n"
+
+    printf "$fmt" "${vals[@]}"
 }
 
 # =============================================================================
@@ -617,6 +821,9 @@ cmd_nodes() {
         pids+=($!)
     done
 
+    fetch_android_devices "$TMPDIR_INFRA" &
+    pids+=($!)
+
     # Wait for all background jobs
     for pid in "${pids[@]}"; do
         wait "$pid" 2>/dev/null || true
@@ -674,6 +881,23 @@ cmd_nodes() {
         fi
     done
 
+    # Android devices (only if adb found and devices file exists)
+    if [[ -s "$TMPDIR_INFRA/adb.devices" ]]; then
+        print_android_header
+        while IFS='|' read -r serial dev_status; do
+            local android_data
+            android_data=$(parse_android_metrics "$serial" "$dev_status" "$TMPDIR_INFRA")
+            IFS='|' read -r a_status a_name a_model a_battery a_android a_storage <<< "$android_data"
+            print_android_row "$a_status" "$a_name" "$a_model" "$a_battery" "$a_android" "$a_storage"
+            total=$((total + 1))
+            if [[ "$a_status" == "UP" ]]; then
+                healthy=$((healthy + 1))
+            else
+                down=$((down + 1))
+            fi
+        done < "$TMPDIR_INFRA/adb.devices"
+    fi
+
     # Local workstation
     print_local_header
     local local_data
@@ -699,14 +923,14 @@ COMMANDS:
 
 OPTIONS:
     --all,  -a   Include remote clusters (e.g. DigitalOcean)
-    --disk, -d   Include disk column for cluster nodes (slower, scrapes node_exporter)
+    --disk, -d   Include disk/storage column (cluster nodes, Android /data)
     --temp, -t   Include CPU temperature column (slower, scrapes node_exporter)
     --age,  -g   Include uptime/age column for Mac and local devices
 
 EXAMPLES:
     infra            # show local devices only (cluster: CPU/MEM/AGE, others: CPU/MEM/DISK)
     infra --all      # include remote clusters
-    infra --disk     # add disk usage for cluster nodes
+    infra --disk     # add disk usage for cluster nodes and Android storage
     infra --temp     # include temperature readings
     infra --age      # include uptime/age for Mac and local
     infra help       # show this help
@@ -714,6 +938,7 @@ EXAMPLES:
 DATA SOURCES:
     Kubernetes nodes   kubectl get nodes / top nodes (per context)
     Mac machines       node_exporter metrics via HTTP (:9100)
+    Android devices    adb shell getprop / dumpsys battery / df (auto-discovered)
     Disk (K8s nodes)   node_exporter :9100 (root filesystem)
     Temperature        node_exporter :9100 / /sys/class/hwmon (with --temp)
     Age/Uptime         kubectl age (K8s), node_boot_time (Mac), /proc/uptime (local)

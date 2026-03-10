@@ -42,6 +42,12 @@ MAC_MACHINES=(
     "mac-mini-m1|192.168.1.7"
 )
 
+# Standalone devices (Linux boxes not in K8s): "name|ip"
+# Uses node_exporter on :9100 for metrics, falls back to ping for UP/DOWN.
+STANDALONE_DEVICES=(
+    "pi3-adguard|192.168.1.193"
+)
+
 # Android devices: "serial|friendly-name"
 # Run `adb devices -l` to get serials. Unknown serials auto-detect name.
 ANDROID_DEVICES=(
@@ -333,6 +339,27 @@ parse_mac_metrics() {
     age=$(parse_node_uptime "$metrics_file")
 
     echo "UP|${name}|${ip}|${cpu_pct}|${mem_pct}|${disk_pct}|-|${age}"
+}
+
+# =============================================================================
+# Standalone device helpers (Linux boxes not in K8s)
+# =============================================================================
+
+# Reuses mac fetch (node_exporter :9100). Adds ping fallback for UP/DOWN.
+parse_standalone_metrics() {
+    local name="$1" ip="$2" tmpdir="$3"
+    local result
+    result=$(parse_mac_metrics "$name" "$ip" "$tmpdir")
+
+    # If node_exporter is unreachable, try ping to distinguish "up without
+    # node_exporter" from "actually down"
+    if [[ "$result" == DOWN* ]]; then
+        if ping -c 1 -W 2 "$ip" &>/dev/null; then
+            echo "UP|${name}|${ip}|-|-|-|-|-"
+            return
+        fi
+    fi
+    echo "$result"
 }
 
 # =============================================================================
@@ -729,6 +756,30 @@ print_mac_row() {
     printf "$fmt" "${vals[@]}"
 }
 
+print_standalone_header() {
+    echo ""
+    echo -e " ${BOLD}STANDALONE DEVICES (ping/node_exporter)${NC}"
+
+    local fmt="  ${BOLD}%-6s  %-24s %-16s %5s  %5s  %5s"
+    local sep_len=71
+    local -a cols=("STATUS" "DEVICE" "IP" "CPU" "MEM" "DISK")
+
+    if [[ "$SHOW_TEMP" == true ]]; then
+        fmt+="  %5s"
+        sep_len=$((sep_len + 7))
+        cols+=("TEMP")
+    fi
+    if [[ "$SHOW_AGE" == true ]]; then
+        fmt+="  %5s"
+        sep_len=$((sep_len + 7))
+        cols+=("AGE")
+    fi
+    fmt+="${NC}\n"
+
+    _separator "$sep_len"
+    printf "$fmt" "${cols[@]}"
+}
+
 print_local_header() {
     echo ""
     echo -e " ${BOLD}LOCAL WORKSTATION${NC}"
@@ -821,6 +872,13 @@ cmd_nodes() {
         pids+=($!)
     done
 
+    for entry in "${STANDALONE_DEVICES[@]}"; do
+        local sd_name="${entry%%|*}"
+        local sd_ip="${entry##*|}"
+        fetch_mac_metrics "$sd_name" "$sd_ip" "$TMPDIR_INFRA" &
+        pids+=($!)
+    done
+
     fetch_android_devices "$TMPDIR_INFRA" &
     pids+=($!)
 
@@ -872,6 +930,25 @@ cmd_nodes() {
         mac_data=$(parse_mac_metrics "$mac_name" "$mac_ip" "$TMPDIR_INFRA")
 
         IFS='|' read -r status name ip cpu mem disk temp age <<< "$mac_data"
+        print_mac_row "$status" "$name" "$ip" "$cpu" "$mem" "$disk" "$temp" "$age"
+        total=$((total + 1))
+        if [[ "$status" == "UP" ]]; then
+            healthy=$((healthy + 1))
+        else
+            down=$((down + 1))
+        fi
+    done
+
+    # Standalone devices
+    print_standalone_header
+    for entry in "${STANDALONE_DEVICES[@]}"; do
+        local sd_name="${entry%%|*}"
+        local sd_ip="${entry##*|}"
+
+        local sd_data
+        sd_data=$(parse_standalone_metrics "$sd_name" "$sd_ip" "$TMPDIR_INFRA")
+
+        IFS='|' read -r status name ip cpu mem disk temp age <<< "$sd_data"
         print_mac_row "$status" "$name" "$ip" "$cpu" "$mem" "$disk" "$temp" "$age"
         total=$((total + 1))
         if [[ "$status" == "UP" ]]; then

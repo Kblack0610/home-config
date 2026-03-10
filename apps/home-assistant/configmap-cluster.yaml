@@ -166,11 +166,33 @@ data:
       unit_of_measurement: "%"
       scan_interval: 60
 
-    # Ollama Status (Mac Studio only)
+    # Ollama Status (Mac Studio - fallback)
     - platform: rest
       name: "Ollama Status"
       resource: "http://192.168.1.4:11434/api/tags"
       value_template: "{{ value_json.models | length }}"
+      unit_of_measurement: "models"
+      scan_interval: 60
+
+    # MLX LM Servers (Mac Studio - primary inference)
+    - platform: rest
+      name: "MLX Code Server"
+      resource: "http://192.168.1.4:8080/v1/models"
+      value_template: "{{ value_json.data | length }}"
+      unit_of_measurement: "models"
+      scan_interval: 60
+
+    - platform: rest
+      name: "MLX Smart Server"
+      resource: "http://192.168.1.4:8081/v1/models"
+      value_template: "{{ value_json.data | length }}"
+      unit_of_measurement: "models"
+      scan_interval: 60
+
+    - platform: rest
+      name: "MLX Reasoning Server"
+      resource: "http://192.168.1.4:8082/v1/models"
+      value_template: "{{ value_json.data | length }}"
       unit_of_measurement: "models"
       scan_interval: 60
 

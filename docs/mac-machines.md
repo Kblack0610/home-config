@@ -6,7 +6,7 @@ Dedicated macOS machines on the home LAN for iOS builds, Expo, and GitHub Action
 
 | Machine | Chip | RAM | IP | Hostname | Role |
 |---------|------|-----|-----|----------|------|
-| Mac Studio | M3 Ultra | 512 GB | 192.168.1.4 | mac-studio | LLM inference (Ollama), iOS builds, GitHub Actions runner |
+| Mac Studio | M3 Ultra | 512 GB | 192.168.1.4 | mac-studio | LLM inference (MLX), Ollama fallback, iOS builds, GitHub Actions runner |
 | Mac Mini | M1 | 16 GB | 192.168.1.7 | pc-home-m1-mini | iOS builds, Expo, GitHub Actions runner |
 
 ## Purpose
@@ -20,6 +20,37 @@ These machines run **native macOS workloads** that can't run in containers or on
 - **GitHub Actions self-hosted runners** - CI/CD for mobile builds
 
 They are **not** part of the K3s cluster (K3s is Linux-only). The Pi cluster handles containerized workloads; Macs handle Apple-native workloads.
+
+## LLM Inference (Mac Studio)
+
+The Mac Studio runs three `mlx_lm.server` instances as launchd services for local LLM inference:
+
+| Service | Model | Port | Launchd Label |
+|---------|-------|------|---------------|
+| Code | mlx-community/Qwen3-Coder-Next-4bit | 8080 | com.mlx-lm.code |
+| Smart | mlx-community/Qwen3-235B-A22B-4bit-DWQ | 8081 | com.mlx-lm.smart |
+| Reasoning | mlx-community/DeepSeek-R1-Distill-Qwen-32B-MLX-4Bit | 8082 | com.mlx-lm.reasoning |
+
+- **Python venv:** `~/mlx-env`
+- **Logs:** `/tmp/mlx-lm-{code,smart,reasoning}.log`
+- **Ollama fallback:** Still installed, available on port 11434
+
+### Management
+
+```bash
+# Stop/start a service
+launchctl stop com.mlx-lm.code
+launchctl start com.mlx-lm.code
+
+# Check all MLX services
+launchctl list | grep mlx
+
+# View logs
+tail -f /tmp/mlx-lm-code.log
+
+# Verify API
+curl http://192.168.1.4:8080/v1/models
+```
 
 ## Initial Setup (New Mac)
 

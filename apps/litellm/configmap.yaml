@@ -10,37 +10,28 @@ data:
     model_list:
       - model_name: code
         litellm_params:
-          model: openai/qwen3-coder:480b
-          api_base: http://192.168.1.4:11434/v1
+          model: openai/mlx-community/Qwen3-Coder-Next-4bit
+          api_base: http://192.168.1.4:8080/v1
           stream: true
-          api_key: "ollama"
+          api_key: "mlx"
         model_info:
           supports_function_calling: true
 
       - model_name: smart
         litellm_params:
-          model: openai/qwen3:235b-a22b-instruct-2507-q8_0
-          api_base: http://192.168.1.4:11434/v1
+          model: openai/mlx-community/Qwen3-235B-A22B-4bit-DWQ
+          api_base: http://192.168.1.4:8081/v1
           stream: true
-          api_key: "ollama"
-        model_info:
-          supports_function_calling: true
-
-      - model_name: fast
-        litellm_params:
-          model: openai/mistral-large:123b-instruct-2411-fp16
-          api_base: http://192.168.1.4:11434/v1
-          stream: true
-          api_key: "ollama"
+          api_key: "mlx"
         model_info:
           supports_function_calling: true
 
       - model_name: reasoning
         litellm_params:
-          model: openai/deepseek-v3.1:671b
-          api_base: http://192.168.1.4:11434/v1
+          model: openai/mlx-community/DeepSeek-R1-Distill-Qwen-32B-MLX-4Bit
+          api_base: http://192.168.1.4:8082/v1
           stream: false
-          api_key: "ollama"
+          api_key: "mlx"
         model_info:
           supports_function_calling: true
 

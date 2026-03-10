@@ -214,11 +214,20 @@ cards:
             icon: mdi:harddisk
 
       - type: entities
-        title: Services
+        title: LLM Inference (MLX)
         entities:
-          - entity: sensor.ollama_status
-            name: Ollama Models Loaded
+          - entity: sensor.mlx_code_server
+            name: MLX Code (Qwen3-Coder)
+            icon: mdi:code-braces
+          - entity: sensor.mlx_smart_server
+            name: MLX Smart (Qwen3-235B)
             icon: mdi:brain
+          - entity: sensor.mlx_reasoning_server
+            name: MLX Reasoning (DeepSeek-R1)
+            icon: mdi:head-cog
+          - entity: sensor.ollama_status
+            name: Ollama Fallback
+            icon: mdi:backup-restore
 
   # ============================================
   # QUICK LINKS
@@ -231,4 +240,7 @@ cards:
       - [Registry](http://192.168.1.20:30500)
       - [Mac Studio Metrics](http://192.168.1.4:9100/metrics)
       - [Mac Mini Metrics](http://192.168.1.7:9100/metrics)
-      - [Ollama API](http://192.168.1.4:11434)
+      - [MLX Code API](http://192.168.1.4:8080/v1/models)
+      - [MLX Smart API](http://192.168.1.4:8081/v1/models)
+      - [MLX Reasoning API](http://192.168.1.4:8082/v1/models)
+      - [Ollama Fallback](http://192.168.1.4:11434)

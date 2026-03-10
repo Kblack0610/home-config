@@ -48,6 +48,11 @@ apps/actual-budget-tools/bin/
 apps/actual-budget-tools/data/tools.db
 
 # ===================
+# DHCP backups (UCI snapshots)
+# ===================
+infrastructure/dhcp/backups/*.uci
+
+# ===================
 # Tool-generated
 # ===================
 .playwright-mcp/

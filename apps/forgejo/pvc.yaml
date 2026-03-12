@@ -8,7 +8,7 @@ metadata:
 spec:
   accessModes:
     - ReadWriteOnce
-  storageClassName: do-block-storage  # DigitalOcean block storage
+  storageClassName: local-path
   resources:
     requests:
       storage: 20Gi

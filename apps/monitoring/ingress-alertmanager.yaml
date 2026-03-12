@@ -6,10 +6,9 @@ metadata:
   annotations:
     kubernetes.io/ingress.class: traefik
     cert-manager.io/cluster-issuer: letsencrypt-dns
-    traefik.ingress.kubernetes.io/router.middlewares: monitoring-local-network-only@kubernetescrd
 spec:
   rules:
-    - host: alertmanager.home.kennethblack.me
+    - host: alertmanager.kblab.me
       http:
         paths:
           - path: /
@@ -21,5 +20,5 @@ spec:
                   number: 9093
   tls:
     - hosts:
-        - alertmanager.home.kennethblack.me
+        - alertmanager.kblab.me
       secretName: alertmanager-tls

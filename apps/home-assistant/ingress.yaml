@@ -8,7 +8,7 @@ metadata:
     cert-manager.io/cluster-issuer: letsencrypt-dns
 spec:
   rules:
-    - host: hass.home.kennethblack.me
+    - host: hass.kblab.me
       http:
         paths:
           - path: /
@@ -20,5 +20,5 @@ spec:
                   number: 8123
   tls:
     - hosts:
-        - hass.home.kennethblack.me
+        - hass.kblab.me
       secretName: home-assistant-tls

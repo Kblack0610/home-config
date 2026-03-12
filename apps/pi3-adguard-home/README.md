@@ -14,7 +14,7 @@ Local DNS server with ad-blocking for the home network. Works alongside Cloudfla
 ┌─────────────────────────────────────────────────────────────────────────┐
 │ LOCAL ACCESS (from home network) - FASTER, NO INTERNET REQUIRED         │
 │                                                                         │
-│   app.home.lan → AdGuard (Pi3) → Traefik (192.168.1.124) → K8s Service  │
+│   app.kblab.me → AdGuard (Pi3) → Traefik (192.168.1.124) → K8s Service  │
 └─────────────────────────────────────────────────────────────────────────┘
 ```
 
@@ -51,8 +51,7 @@ Already configured (migrated from cluster). Current rewrites:
 
 | Domain | Answer |
 |--------|--------|
-| `*.home.kennethblack.me` | `192.168.1.124` |
-| `*.blackk.lan` | `192.168.1.124` |
+| `*.kblab.me` | `192.168.1.124` |
 
 To add more: **Filters → DNS Rewrites** in the AdGuard web UI.
 
@@ -66,7 +65,7 @@ To change: **Settings → DNS Settings → Upstream DNS servers**.
 
 ### 5. Configure OpenWrt Router
 
-This is what makes all devices on the network use AdGuard for DNS.
+This is what makes all devices on the network resolve private `*.kblab.me` names through AdGuard while still using OpenWrt as their DNS server.
 
 #### Option A: SSH (recommended)
 
@@ -78,9 +77,8 @@ uci set dhcp.@dnsmasq[0].noresolv='1'
 uci delete dhcp.@dnsmasq[0].server 2>/dev/null
 uci add_list dhcp.@dnsmasq[0].server='192.168.1.193'
 
-# Tell DHCP clients to use Pi3 as their DNS server directly
+# Keep clients using the router as DNS
 uci delete dhcp.lan.dhcp_option 2>/dev/null
-uci add_list dhcp.lan.dhcp_option='6,192.168.1.193'
 
 # Apply
 uci commit dhcp
@@ -90,8 +88,8 @@ uci commit dhcp
 > **What each command does:**
 > - `noresolv='1'` — stops dnsmasq from reading `/etc/resolv.conf` (ISP DNS)
 > - `server='192.168.1.193'` — dnsmasq forwards all queries to AdGuard
-> - `dhcp_option='6,192.168.1.193'` — DHCP tells clients to use AdGuard directly
-> - Both are needed: the first handles the router itself, the second handles all other devices
+> - removing `dhcp.lan.dhcp_option` keeps clients using OpenWrt as their DNS server
+> - the intended path is: client -> OpenWrt (`192.168.1.1`) -> AdGuard (`192.168.1.193`)
 
 #### Option B: LuCI web interface
 
@@ -99,7 +97,7 @@ uci commit dhcp
 2. Under **DNS forwardings**, add: `192.168.1.193`
 3. Check **Ignore resolv file** (prevents ISP DNS fallback)
 4. Go to **Network → Interfaces → LAN → DHCP Server → Advanced Settings**
-5. Add DHCP Option: `6,192.168.1.193`
+5. Remove any DHCP Option `6,192.168.1.193` if it exists
 6. **Save & Apply**
 
 #### Static IP reservation (important!)
@@ -128,9 +126,9 @@ Or via LuCI: **Network → DHCP and DNS → Static Leases** → Add entry.
 ```bash
 # From any device on the network (after DHCP renewal)
 nslookup google.com
-# Should show 192.168.1.193 as the server
+# Should show 192.168.1.1 as the server
 
-nslookup grafana.home.kennethblack.me
+nslookup grafana.kblab.me
 # Should return: 192.168.1.124
 
 # Force DHCP renewal if devices still use old DNS
@@ -143,14 +141,14 @@ nslookup grafana.home.kennethblack.me
 
 ### For Kubernetes Apps (via Traefik)
 
-All `*.home.kennethblack.me` and `*.blackk.lan` domains resolve to Traefik (`192.168.1.124`):
+All `*.kblab.me` domains resolve to Traefik (`192.168.1.124`):
 
 | Local Domain | Service |
 |--------------|---------|
-| `homeassistant.home.kennethblack.me` | Home Assistant |
-| `grafana.home.kennethblack.me` | Grafana |
-| `prometheus.home.kennethblack.me` | Prometheus |
-| `alertmanager.home.kennethblack.me` | AlertManager |
+| `hass.kblab.me` | Home Assistant |
+| `grafana.kblab.me` | Grafana |
+| `prometheus.kblab.me` | Prometheus |
+| `alertmanager.kblab.me` | AlertManager |
 
 ### For Non-Kubernetes Services (add manually)
 
@@ -211,7 +209,7 @@ docker compose ps
 dig @192.168.1.193 google.com
 
 # Check rewrite is working
-dig @192.168.1.193 homeassistant.home.lan
+dig @192.168.1.193 hass.kblab.me
 ```
 
 ### Devices not using new DNS
@@ -229,7 +227,7 @@ This setup complements your existing Cloudflare Tunnel:
 | Access Type | Domain | Route |
 |-------------|--------|-------|
 | **External** | `app.blacknbrownstudios.com` | Internet → Cloudflare → Tunnel → K8s |
-| **Local** | `app.home.lan` | LAN → AdGuard → Traefik → K8s |
+| **Local** | `app.kblab.me` | LAN → AdGuard → Traefik → K8s |
 
 Benefits of local access:
 - **Faster** - No internet round-trip

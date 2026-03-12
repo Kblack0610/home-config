@@ -12,10 +12,10 @@ metadata:
 spec:
   tls:
     - hosts:
-        - git.home.kennethblack.me
+        - git.kblab.me
       secretName: forgejo-tls
   rules:
-    - host: git.home.kennethblack.me
+    - host: git.kblab.me
       http:
         paths:
           - path: /

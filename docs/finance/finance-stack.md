@@ -11,7 +11,7 @@ This document covers the self-hosted finance tools deployed in this home lab, re
 ### Actual Budget (Personal Finance)
 
 **Status:** ✅ Deployed
-**URL:** https://finance.blackk.dev
+**URL:** https://finance.kblab.me
 **Namespace:** `actual-budget`
 
 Actual Budget is a local-first personal finance application focused on envelope budgeting.
@@ -41,7 +41,7 @@ Actual Budget is a local-first personal finance application focused on envelope 
 
 #### Setup Steps
 
-1. Access https://finance.blackk.dev
+1. Access https://finance.kblab.me
 2. Create a new budget file
 3. Set a server password
 4. Configure SimpleFIN:
@@ -209,7 +209,7 @@ database: MySQL/MariaDB or PostgreSQL
 ### Phase 1: Personal Finance ✅ COMPLETE
 
 - [x] Deploy Actual Budget
-- [x] Configure ingress (finance.blackk.dev)
+- [x] Configure ingress (finance.kblab.me)
 - [x] Set up automated backups
 - [ ] Configure SimpleFIN bank sync
 - [ ] Import existing accounts
@@ -219,7 +219,7 @@ database: MySQL/MariaDB or PostgreSQL
 
 - [ ] Choose tool (Invoice Ninja recommended)
 - [ ] Deploy to k3s cluster
-- [ ] Configure domain (invoice.blackk.dev or biz.blackk.dev)
+- [ ] Configure domain (invoice.kblab.me or biz.kblab.me)
 - [ ] Set up client database
 - [ ] Import Deel payment history
 - [ ] Configure expense categories for taxes
@@ -239,7 +239,7 @@ database: MySQL/MariaDB or PostgreSQL
 
 | Service | URL | Namespace | Purpose |
 |---------|-----|-----------|---------|
-| Actual Budget | finance.blackk.dev | actual-budget | Personal finance |
+| Actual Budget | finance.kblab.me | actual-budget | Personal finance |
 
 ### Useful Commands
 

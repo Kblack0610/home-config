@@ -12,10 +12,10 @@ spec:
   ingressClassName: traefik
   tls:
     - hosts:
-        - finance-tools.blackk.dev
+        - finance-tools.kblab.me
       secretName: finance-tools-tls
   rules:
-    - host: finance-tools.blackk.dev
+    - host: finance-tools.kblab.me
       http:
         paths:
           - path: /

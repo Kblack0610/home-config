@@ -36,14 +36,14 @@ Create a `.env` file or export these variables:
 
 ```bash
 # Home Assistant
-export HOMEASSISTANT_URL="http://homeassistant.local:8123"
+export HOMEASSISTANT_URL="https://hass.kblab.me"
 export HOMEASSISTANT_TOKEN="your-long-lived-access-token"
 
 # Prometheus (if deployed)
-export PROMETHEUS_URL="http://prometheus.local:9090"
+export PROMETHEUS_URL="https://prometheus.kblab.me"
 
 # Grafana (if deployed)
-export GRAFANA_URL="http://grafana.local:3000"
+export GRAFANA_URL="https://grafana.kblab.me"
 export GRAFANA_SERVICE_ACCOUNT_TOKEN="your-service-account-token"
 ```
 

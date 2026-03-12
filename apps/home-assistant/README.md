@@ -6,13 +6,13 @@ Home Assistant deployment for the home K3s cluster with cluster monitoring capab
 
 | Method | URL |
 |--------|-----|
-| Local (via AdGuard DNS) | `http://homeassistant.home.lan` |
+| Canonical | `https://hass.kblab.me` |
 | Port Forward | `kubectl port-forward -n home-assistant svc/home-assistant 8123:8123` then `http://localhost:8123` |
 
-### DNS Setup (Required for local access)
+### DNS Setup
 
 Add DNS rewrite in AdGuard Home (Pi 3) at **Filters → DNS Rewrites**:
-- Domain: `homeassistant.home.lan`
+- Domain: `hass.kblab.me`
 - Answer: `192.168.1.124`
 
 ## Architecture
@@ -120,11 +120,11 @@ sensor: !include sensors_cluster.yaml
 
 ## Troubleshooting
 
-### Can't access via homeassistant.home.lan
+### Can't access via hass.kblab.me
 
 1. Check DNS rewrite exists in AdGuard
 2. Verify your device uses AdGuard as DNS
-3. Test with: `nslookup homeassistant.home.lan`
+3. Test with: `nslookup hass.kblab.me`
 
 ### 400 Bad Request
 

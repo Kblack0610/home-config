@@ -12,7 +12,7 @@ Self-hosted personal finance application with automated bank syncing.
 |----------|---------|
 | Deployment | Actual Budget server container |
 | Service | ClusterIP service on port 80 |
-| IngressRoute | Traefik ingress at `finance.blackk.dev` |
+| Ingress | Traefik ingress at `finance.kblab.me` |
 | PVC | 5Gi persistent storage for budget data |
 | CronJob | Daily backups at 3 AM (30-day retention) |
 
@@ -34,7 +34,7 @@ kubectl port-forward -n actual-budget svc/actual-budget 5006:80
 
 ## Access
 
-- **URL**: https://finance.blackk.dev
+- **URL**: https://finance.kblab.me
 - **Port Forward**: http://localhost:5006 (if needed during setup)
 
 ## Initial Setup
@@ -113,7 +113,7 @@ Actual Budget has companion mobile apps that sync with your self-hosted server:
 - iOS: App Store
 - Android: Play Store
 
-Configure them with your server URL: `https://finance.blackk.dev`
+Configure them with your server URL: `https://finance.kblab.me`
 
 ## Resources
 

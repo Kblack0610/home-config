@@ -8,7 +8,7 @@ metadata:
     cert-manager.io/cluster-issuer: letsencrypt-dns
 spec:
   rules:
-    - host: llm.home.kennethblack.me
+    - host: llm.kblab.me
       http:
         paths:
           - path: /
@@ -20,5 +20,5 @@ spec:
                   number: 4000
   tls:
     - hosts:
-        - llm.home.kennethblack.me
+        - llm.kblab.me
       secretName: litellm-tls

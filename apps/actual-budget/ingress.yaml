@@ -9,10 +9,10 @@ metadata:
 spec:
   tls:
     - hosts:
-        - finance.home.kennethblack.me
+        - finance.kblab.me
       secretName: actual-budget-tls
   rules:
-    - host: finance.home.kennethblack.me
+    - host: finance.kblab.me
       http:
         paths:
           - path: /

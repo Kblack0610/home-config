@@ -6,10 +6,9 @@ metadata:
   annotations:
     kubernetes.io/ingress.class: traefik
     cert-manager.io/cluster-issuer: letsencrypt-dns
-    traefik.ingress.kubernetes.io/router.middlewares: monitoring-local-network-only@kubernetescrd
 spec:
   rules:
-    - host: grafana.home.kennethblack.me
+    - host: grafana.kblab.me
       http:
         paths:
           - path: /
@@ -21,5 +20,5 @@ spec:
                   number: 80
   tls:
     - hosts:
-        - grafana.home.kennethblack.me
+        - grafana.kblab.me
       secretName: grafana-tls

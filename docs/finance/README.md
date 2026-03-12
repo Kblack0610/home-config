@@ -19,12 +19,12 @@ kubectl port-forward -n actual-budget svc/actual-budget 5006:80 --context home-k
 # Then open: http://localhost:5006
 ```
 
-**Intended URL:** https://finance.blackk.dev (requires DNS rewrite in AdGuard)
+**Intended URL:** https://finance.kblab.me
 
 ## DNS Setup Required
 
 Add DNS rewrite in AdGuard Home:
-- Domain: `finance.blackk.dev`
+- Domain: `finance.kblab.me`
 - Answer: `192.168.1.124` (or any Traefik ingress IP)
 
 ## Documentation

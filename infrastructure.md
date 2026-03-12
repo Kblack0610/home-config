@@ -8,8 +8,8 @@
 
 | environment | provider | nodes | apps | health | issues |
 |-------------|----------|------:|-----:|--------|-------:|
-| home-k3s | Raspberry Pi + CachyOS (local) | 8 | 8 | degraded | 2 |
-| do-nyc3-prod | DigitalOcean (managed) | 2 | 7 | healthy | 0 |
+| home-k3s | Raspberry Pi + CachyOS (local) | 8 | 10 | degraded | 2 |
+| do-nyc3-prod | DigitalOcean (managed) | 2 | 4 | healthy | 0 |
 | mac-machines | Apple Silicon (local) | 2 | 3 | healthy | 0 |
 | standalone | Docker Compose / embedded | 3 | 3 | healthy | 0 |
 
@@ -56,7 +56,9 @@
 
 | namespace | purpose | status |
 |-----------|---------|--------|
+| actual-budget | Personal finance (Actual Budget) | active |
 | apps | PlaceMyParents (API + Web + DB) | active |
+| forgejo | Git hosting (Forgejo) | active |
 | home-assistant | Smart home hub | active |
 | history-time | History-Time app (PostgreSQL) | active |
 | headscale | Tailscale VPN (self-hosted) | suspended |
@@ -93,9 +95,6 @@
 
 | namespace | purpose | status |
 |-----------|---------|--------|
-| actual-budget | Personal finance (Actual Budget) | active |
-| ai-services | SearXNG search engine | active |
-| forgejo | Git hosting (Forgejo) | active |
 | ingress-nginx | NGINX Ingress Controller | active |
 | monitoring | Prometheus / Grafana / AlertManager | active |
 | placemyparents | PlaceMyParents (API + Web) | active |
@@ -118,13 +117,12 @@
 | PlaceMyParents API | home-k3s | apps | Helm | active |
 | PlaceMyParents Web | home-k3s | apps | Helm | active |
 | PlaceMyParents DB | home-k3s | apps | StatefulSet | active |
+| Actual Budget | home-k3s | actual-budget | Deployment | active |
 | History-Time DB | home-k3s | history-time | StatefulSet | active |
 | Docker Registry | home-k3s | registry | Deployment | active |
+| Forgejo | home-k3s | forgejo | Deployment | active |
 | Prometheus | home-k3s | monitoring | StatefulSet | active |
 | Grafana | home-k3s | monitoring | Deployment | active |
-| Actual Budget | do-nyc3-prod | actual-budget | Deployment | active |
-| Forgejo | do-nyc3-prod | forgejo | Deployment | active |
-| SearXNG | do-nyc3-prod | ai-services | Deployment | active |
 | PlaceMyParents API | do-nyc3-prod | placemyparents | Deployment | active |
 | PlaceMyParents Web | do-nyc3-prod | placemyparents | Deployment | active |
 | Prometheus | do-nyc3-prod | monitoring | StatefulSet | active |
@@ -166,16 +164,16 @@ See [Mac Machines Setup Guide](docs/mac-machines.md) for full provisioning instr
 
 | domain | service | cluster | tls |
 |--------|---------|---------|-----|
-| finance.blackk.dev | Actual Budget | do-nyc3-prod | Let's Encrypt |
-| git.blackk.dev | Forgejo | do-nyc3-prod | Let's Encrypt |
+| finance.kblab.me | Actual Budget | home-k3s | Let's Encrypt |
+| git.kblab.me | Forgejo | home-k3s | Let's Encrypt |
 
 ### internal / LAN
 
 | hostname | service | cluster | notes |
 |----------|---------|---------|-------|
-| homeassistant.home.lan | Home Assistant | home-k3s | Traefik IngressRoute |
-| homeassistant.local | Home Assistant | home-k3s | Traefik IngressRoute |
-| git.home.lan | Forgejo | do-nyc3-prod | NGINX Ingress |
+| hass.kblab.me | Home Assistant | home-k3s | Traefik Ingress |
+| grafana.kblab.me | Grafana | home-k3s | Traefik Ingress |
+| prometheus.kblab.me | Prometheus | home-k3s | Traefik Ingress |
 
 ---
 

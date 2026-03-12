@@ -12,10 +12,10 @@ metadata:
 spec:
   tls:
     - hosts:
-        - headscale.home.kennethblack.me
+        - headscale.kblab.me
       secretName: headscale-tls
   rules:
-    - host: headscale.home.kennethblack.me
+    - host: headscale.kblab.me
       http:
         paths:
           - path: /
@@ -40,10 +40,10 @@ metadata:
 spec:
   tls:
     - hosts:
-        - headscale-ui.home.kennethblack.me
+        - headscale-ui.kblab.me
       secretName: headscale-ui-tls
   rules:
-    - host: headscale-ui.home.kennethblack.me
+    - host: headscale-ui.kblab.me
       http:
         paths:
           - path: /

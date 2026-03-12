@@ -31,7 +31,7 @@ A Go-based companion service for [Actual Budget](https://actualbudget.org/) that
 
 3. **Set environment variables**:
    ```bash
-   export ACTUAL_SERVER_URL="https://finance.blackk.dev"
+   export ACTUAL_SERVER_URL="https://finance.kblab.me"
    export ACTUAL_PASSWORD="your-server-password"
    export ACTUAL_BUDGET_ID="your-budget-sync-id"
    ```
@@ -47,7 +47,7 @@ A Go-based companion service for [Actual Budget](https://actualbudget.org/) that
 
 1. **Create `.env` file**:
    ```bash
-   ACTUAL_SERVER_URL=https://finance.blackk.dev
+   ACTUAL_SERVER_URL=https://finance.kblab.me
    ACTUAL_PASSWORD=your-password
    ACTUAL_BUDGET_ID=your-budget-id
    ```
@@ -74,7 +74,7 @@ A Go-based companion service for [Actual Budget](https://actualbudget.org/) that
    kubectl apply -k k8s/
    ```
 
-4. **Access the UI**: https://finance-tools.blackk.dev
+4. **Access the UI**: https://finance-tools.kblab.me
 
 ## Configuration
 

@@ -8,7 +8,7 @@ metadata:
 spec:
   replicas: 1
   strategy:
-    type: Recreate  # Important for single-instance apps with PVCs
+    type: Recreate
   selector:
     matchLabels:
       app.kubernetes.io/name: home-assistant
@@ -18,30 +18,34 @@ spec:
         app.kubernetes.io/name: home-assistant
     spec:
       initContainers:
-        # Copy sensor configs from ConfigMap to PVC (only if they don't exist)
-        - name: copy-cluster-config
-          image: busybox:latest
+        - name: sync-managed-config
+          image: busybox:1.36
           command:
             - sh
             - -c
             - |
-              # Copy sensor configs if they don't exist
-              if [ ! -f /config/sensors_cluster.yaml ]; then
-                echo "Copying sensors_cluster.yaml..."
-                cp /configmap/sensors_cluster.yaml /config/
-              fi
-              if [ ! -f /config/sensors_pods.yaml ]; then
-                echo "Copying sensors_pods.yaml..."
-                cp /configmap/sensors_pods.yaml /config/
-              fi
-              # Show what's in config
-              echo "Config files:"
-              ls -la /config/*.yaml 2>/dev/null || echo "No yaml files yet"
+              set -eu
+              mkdir -p /config/packages /config/dashboards
+
+              cp /managed-config/configuration.yaml /config/configuration.yaml
+              cp /managed-config/automations.yaml /config/automations.yaml
+              cp /managed-config/scripts.yaml /config/scripts.yaml
+              cp /managed-config/scenes.yaml /config/scenes.yaml
+              cp /managed-config/ui-lovelace.yaml /config/ui-lovelace.yaml
+
+              cp /managed-config/package_cluster_metrics.yaml /config/packages/cluster_metrics.yaml
+              cp /managed-config/package_service_metrics.yaml /config/packages/service_metrics.yaml
+              cp /managed-config/package_homelab_endpoints.yaml /config/packages/homelab_endpoints.yaml
+              cp /managed-config/package_derived_metrics.yaml /config/packages/derived_metrics.yaml
+
+              cp /managed-config/dashboard_overview.yaml /config/dashboards/overview.yaml
+              cp /managed-config/dashboard_ops.yaml /config/dashboards/ops.yaml
+              cp /managed-config/dashboard_admin.yaml /config/dashboards/admin.yaml
           volumeMounts:
             - name: config
               mountPath: /config
-            - name: cluster-config
-              mountPath: /configmap
+            - name: managed-config
+              mountPath: /managed-config
       containers:
         - name: home-assistant
           image: ghcr.io/home-assistant/home-assistant:stable
@@ -86,6 +90,6 @@ spec:
         - name: localtime
           hostPath:
             path: /etc/localtime
-        - name: cluster-config
+        - name: managed-config
           configMap:
-            name: home-assistant-cluster-config
+            name: home-assistant-managed-config

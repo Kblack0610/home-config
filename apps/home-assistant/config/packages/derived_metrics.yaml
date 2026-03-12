@@ -1,0 +1,54 @@
+template:
+  - sensor:
+      - name: Cluster CPU Average
+        unique_id: cluster_cpu_average
+        unit_of_measurement: "%"
+        state: >-
+          {% set nodes = [
+            states('sensor.node_1_cpu') | float(0),
+            states('sensor.node_2_cpu') | float(0),
+            states('sensor.node_3_cpu') | float(0),
+            states('sensor.node_4_cpu') | float(0),
+            states('sensor.node_5_cpu') | float(0)
+          ] %}
+          {% set valid = nodes | select('gt', 0) | list %}
+          {{ (valid | sum / valid | length) | round(1) if valid | length > 0 else 0 }}
+      - name: Cluster RAM Average
+        unique_id: cluster_ram_average
+        unit_of_measurement: "%"
+        state: >-
+          {% set nodes = [
+            states('sensor.node_1_ram') | float(0),
+            states('sensor.node_2_ram') | float(0),
+            states('sensor.node_3_ram') | float(0),
+            states('sensor.node_4_ram') | float(0),
+            states('sensor.node_5_ram') | float(0)
+          ] %}
+          {% set valid = nodes | select('gt', 0) | list %}
+          {{ (valid | sum / valid | length) | round(1) if valid | length > 0 else 0 }}
+      - name: Cluster Nodes Online
+        unique_id: cluster_nodes_online
+        unit_of_measurement: "nodes"
+        state: >-
+          {% set nodes = [
+            states('sensor.node_1_cpu'),
+            states('sensor.node_2_cpu'),
+            states('sensor.node_3_cpu'),
+            states('sensor.node_4_cpu'),
+            states('sensor.node_5_cpu')
+          ] %}
+          {{ nodes | reject('in', ['unknown', 'unavailable']) | list | length }}
+      - name: Mac Machines Online
+        unique_id: mac_machines_online
+        unit_of_measurement: "nodes"
+        state: >-
+          {% set macs = [
+            states('sensor.mac_studio_cpu'),
+            states('sensor.mac_mini_cpu')
+          ] %}
+          {{ macs | reject('in', ['unknown', 'unavailable']) | list | length }}
+      - name: Homelab Total Nodes
+        unique_id: homelab_total_nodes
+        unit_of_measurement: "nodes"
+        state: >-
+          {{ states('sensor.cluster_nodes_online') | int(0) + states('sensor.mac_machines_online') | int(0) }}

@@ -1,28 +1,22 @@
-# Home Assistant Configuration
-# Loads default set of integrations. Do not remove.
 default_config:
 
-# Load frontend themes from the themes folder
-frontend:
-  themes: !include_dir_merge_named themes
+homeassistant:
+  packages: !include_dir_named packages
 
-# Automation, scripts, scenes
+http:
+  use_x_forwarded_for: true
+  trusted_proxies:
+    - 10.42.0.0/16
+    - 10.43.0.0/16
+    - 192.168.1.0/24
+
+lovelace:
+  mode: yaml
+
 automation: !include automations.yaml
 script: !include scripts.yaml
 scene: !include scenes.yaml
 
-# ============================================
-# K3S CLUSTER MONITORING
-# ============================================
-# Sensors for cluster nodes (CPU, RAM, Disk)
-sensor cluster_nodes: !include sensors_cluster.yaml
-
-# Sensors for individual pods/containers
-sensor pods: !include sensors_pods.yaml
-
-# ============================================
-# LOGGING (Optional - reduce verbosity)
-# ============================================
 logger:
   default: warning
   logs:

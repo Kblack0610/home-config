@@ -3,10 +3,8 @@ kind: Ingress
 metadata:
   name: home-assistant
   namespace: home-assistant
-  annotations:
-    kubernetes.io/ingress.class: traefik
-    cert-manager.io/cluster-issuer: letsencrypt-dns
 spec:
+  ingressClassName: nginx
   rules:
     - host: hass.kblab.me
       http:
@@ -18,7 +16,3 @@ spec:
                 name: home-assistant
                 port:
                   number: 8123
-  tls:
-    - hosts:
-        - hass.kblab.me
-      secretName: home-assistant-tls

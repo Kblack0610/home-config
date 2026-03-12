@@ -3,12 +3,27 @@ kind: Kustomization
 
 namespace: home-assistant
 
+configMapGenerator:
+  - name: home-assistant-managed-config
+    files:
+      - configuration.yaml=config/configuration.yaml
+      - automations.yaml=config/automations.yaml
+      - scripts.yaml=config/scripts.yaml
+      - scenes.yaml=config/scenes.yaml
+      - ui-lovelace.yaml=config/ui-lovelace.yaml
+      - package_cluster_metrics.yaml=config/packages/cluster_metrics.yaml
+      - package_service_metrics.yaml=config/packages/service_metrics.yaml
+      - package_homelab_endpoints.yaml=config/packages/homelab_endpoints.yaml
+      - package_derived_metrics.yaml=config/packages/derived_metrics.yaml
+      - dashboard_overview.yaml=config/dashboards/overview.yaml
+      - dashboard_ops.yaml=config/dashboards/ops.yaml
+      - dashboard_admin.yaml=config/dashboards/admin.yaml
+
 resources:
   - namespace.yaml
   - pvc.yaml
-  - configmap-cluster.yaml
   - deployment.yaml
   - service.yaml
-  - ingressroute.yaml
+  - ingress.yaml
   - backup-cronjob.yaml
   - backup-nas-secret.yaml

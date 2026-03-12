@@ -1,0 +1,73 @@
+rest:
+  - resource: "http://kube-prometheus-stack-prometheus.monitoring.svc:9090/api/v1/query?query=sum(rate(container_cpu_usage_seconds_total%7Bnamespace%3D%22home-assistant%22%2Cpod%3D~%22home-assistant.*%22%2Ccontainer!%3D%22%22%7D%5B2m%5D))*100"
+    scan_interval: 30
+    sensor:
+      - name: HA Container CPU
+        unique_id: ha_container_cpu
+        unit_of_measurement: "%"
+        value_template: >-
+          {% if value_json.data.result | count > 0 %}
+            {{ value_json.data.result[0].value[1] | float(0) | round(2) }}
+          {% else %}
+            unknown
+          {% endif %}
+  - resource: "http://kube-prometheus-stack-prometheus.monitoring.svc:9090/api/v1/query?query=sum(container_memory_working_set_bytes%7Bnamespace%3D%22home-assistant%22%2Cpod%3D~%22home-assistant.*%22%2Ccontainer!%3D%22%22%7D)/1024/1024"
+    scan_interval: 30
+    sensor:
+      - name: HA Container RAM
+        unique_id: ha_container_ram
+        unit_of_measurement: "MB"
+        value_template: >-
+          {% if value_json.data.result | count > 0 %}
+            {{ value_json.data.result[0].value[1] | float(0) | round(1) }}
+          {% else %}
+            unknown
+          {% endif %}
+  - resource: "http://kube-prometheus-stack-prometheus.monitoring.svc:9090/api/v1/query?query=sum(rate(container_cpu_usage_seconds_total%7Bnamespace%3D%22kube-system%22%2Cpod%3D~%22traefik.*%22%2Ccontainer!%3D%22%22%7D%5B2m%5D))*100"
+    scan_interval: 30
+    sensor:
+      - name: Traefik CPU
+        unique_id: traefik_cpu
+        unit_of_measurement: "%"
+        value_template: >-
+          {% if value_json.data.result | count > 0 %}
+            {{ value_json.data.result[0].value[1] | float(0) | round(2) }}
+          {% else %}
+            unknown
+          {% endif %}
+  - resource: "http://kube-prometheus-stack-prometheus.monitoring.svc:9090/api/v1/query?query=sum(container_memory_working_set_bytes%7Bnamespace%3D%22kube-system%22%2Cpod%3D~%22traefik.*%22%2Ccontainer!%3D%22%22%7D)/1024/1024"
+    scan_interval: 30
+    sensor:
+      - name: Traefik RAM
+        unique_id: traefik_ram
+        unit_of_measurement: "MB"
+        value_template: >-
+          {% if value_json.data.result | count > 0 %}
+            {{ value_json.data.result[0].value[1] | float(0) | round(1) }}
+          {% else %}
+            unknown
+          {% endif %}
+  - resource: "http://kube-prometheus-stack-prometheus.monitoring.svc:9090/api/v1/query?query=sum(rate(container_cpu_usage_seconds_total%7Bnamespace%3D%22ai-gateway%22%2Cpod%3D~%22litellm.*%22%2Ccontainer!%3D%22%22%7D%5B2m%5D))*100"
+    scan_interval: 30
+    sensor:
+      - name: LiteLLM CPU
+        unique_id: litellm_cpu
+        unit_of_measurement: "%"
+        value_template: >-
+          {% if value_json.data.result | count > 0 %}
+            {{ value_json.data.result[0].value[1] | float(0) | round(2) }}
+          {% else %}
+            unknown
+          {% endif %}
+  - resource: "http://kube-prometheus-stack-prometheus.monitoring.svc:9090/api/v1/query?query=sum(container_memory_working_set_bytes%7Bnamespace%3D%22ai-gateway%22%2Cpod%3D~%22litellm.*%22%2Ccontainer!%3D%22%22%7D)/1024/1024"
+    scan_interval: 30
+    sensor:
+      - name: LiteLLM RAM
+        unique_id: litellm_ram
+        unit_of_measurement: "MB"
+        value_template: >-
+          {% if value_json.data.result | count > 0 %}
+            {{ value_json.data.result[0].value[1] | float(0) | round(1) }}
+          {% else %}
+            unknown
+          {% endif %}

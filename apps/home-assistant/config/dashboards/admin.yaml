@@ -1,0 +1,64 @@
+title: Admin
+path: admin
+icon: mdi:cog
+type: sections
+max_columns: 3
+sections:
+  - type: grid
+    cards:
+      - type: heading
+        heading: Links
+        icon: mdi:open-in-new
+      - type: button
+        name: Grafana
+        icon: mdi:chart-box
+        tap_action:
+          action: url
+          url_path: https://grafana.kblab.me
+      - type: button
+        name: Traefik
+        icon: mdi:router-network
+        tap_action:
+          action: url
+          url_path: https://traefik.kblab.me/dashboard/
+      - type: button
+        name: Gatus
+        icon: mdi:heart-pulse
+        tap_action:
+          action: url
+          url_path: https://gatus.kblab.me
+      - type: button
+        name: Prometheus
+        icon: mdi:chart-timeline-variant
+        tap_action:
+          action: url
+          url_path: https://prometheus.kblab.me
+
+  - type: grid
+    cards:
+      - type: heading
+        heading: Endpoints
+        icon: mdi:api
+      - type: entities
+        title: Model APIs
+        show_header_toggle: false
+        entities:
+          - entity: sensor.mlx_code_server
+            name: MLX Code
+          - entity: sensor.mlx_smart_server
+            name: MLX Smart
+          - entity: sensor.mlx_reasoning_server
+            name: MLX Reasoning
+          - entity: sensor.ollama_status
+            name: Ollama
+
+  - type: grid
+    cards:
+      - type: heading
+        heading: Notes
+        icon: mdi:text-box-outline
+      - type: markdown
+        content: |
+          Use this view for maintenance links and low-frequency checks.
+
+          Deep historical analysis belongs in Grafana rather than Home Assistant.

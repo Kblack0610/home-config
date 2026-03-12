@@ -1,0 +1,90 @@
+title: Overview
+path: overview
+icon: mdi:view-dashboard
+type: sections
+max_columns: 3
+sections:
+  - type: grid
+    cards:
+      - type: heading
+        heading: Homelab
+        icon: mdi:server-network
+      - type: tile
+        entity: sensor.cluster_nodes_online
+        name: K3s Nodes
+      - type: tile
+        entity: sensor.mac_machines_online
+        name: Macs
+      - type: tile
+        entity: sensor.homelab_total_nodes
+        name: Total Nodes
+      - type: gauge
+        entity: sensor.cluster_cpu_average
+        name: Cluster CPU
+        min: 0
+        max: 100
+        severity:
+          green: 0
+          yellow: 60
+          red: 80
+      - type: gauge
+        entity: sensor.cluster_ram_average
+        name: Cluster RAM
+        min: 0
+        max: 100
+        severity:
+          green: 0
+          yellow: 70
+          red: 85
+
+  - type: grid
+    cards:
+      - type: heading
+        heading: Core Services
+        icon: mdi:application-cog
+      - type: entities
+        title: Runtime
+        show_header_toggle: false
+        entities:
+          - entity: sensor.ha_container_cpu
+            name: Home Assistant CPU
+          - entity: sensor.ha_container_ram
+            name: Home Assistant RAM
+          - entity: sensor.traefik_cpu
+            name: Traefik CPU
+          - entity: sensor.traefik_ram
+            name: Traefik RAM
+          - entity: sensor.litellm_cpu
+            name: LiteLLM CPU
+          - entity: sensor.litellm_ram
+            name: LiteLLM RAM
+
+  - type: grid
+    cards:
+      - type: heading
+        heading: Macs and AI
+        icon: mdi:laptop
+      - type: entities
+        title: Apple Silicon
+        show_header_toggle: false
+        entities:
+          - entity: sensor.mac_studio_cpu
+            name: Mac Studio CPU
+          - entity: sensor.mac_studio_ram
+            name: Mac Studio RAM
+          - entity: sensor.mac_mini_cpu
+            name: Mac Mini CPU
+          - entity: sensor.mac_mini_ram
+            name: Mac Mini RAM
+      - type: entities
+        title: Model Endpoints
+        show_header_toggle: false
+        entities:
+          - entity: sensor.mlx_code_server
+            name: MLX Code
+          - entity: sensor.mlx_smart_server
+            name: MLX Smart
+          - entity: sensor.mlx_reasoning_server
+            name: MLX Reasoning
+          - entity: sensor.ollama_status
+            name: Ollama Fallback

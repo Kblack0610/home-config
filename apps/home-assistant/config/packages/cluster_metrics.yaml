@@ -1,0 +1,185 @@
+rest:
+  - resource: "http://kube-prometheus-stack-prometheus.monitoring.svc:9090/api/v1/query?query=100-(avg%20by(instance)(rate(node_cpu_seconds_total%7Binstance%3D%22192.168.1.20%3A9100%22%2Cmode%3D%22idle%22%7D%5B2m%5D))*100)"
+    scan_interval: 30
+    sensor:
+      - name: Node 1 CPU
+        unique_id: node_1_cpu
+        unit_of_measurement: "%"
+        value_template: >-
+          {% if value_json.data.result | count > 0 %}
+            {{ value_json.data.result[0].value[1] | float(0) | round(1) }}
+          {% else %}
+            unknown
+          {% endif %}
+  - resource: "http://kube-prometheus-stack-prometheus.monitoring.svc:9090/api/v1/query?query=(1-node_memory_MemAvailable_bytes%7Binstance%3D%22192.168.1.20%3A9100%22%7D/node_memory_MemTotal_bytes%7Binstance%3D%22192.168.1.20%3A9100%22%7D)*100"
+    scan_interval: 30
+    sensor:
+      - name: Node 1 RAM
+        unique_id: node_1_ram
+        unit_of_measurement: "%"
+        value_template: >-
+          {% if value_json.data.result | count > 0 %}
+            {{ value_json.data.result[0].value[1] | float(0) | round(1) }}
+          {% else %}
+            unknown
+          {% endif %}
+  - resource: "http://kube-prometheus-stack-prometheus.monitoring.svc:9090/api/v1/query?query=(1-node_filesystem_avail_bytes%7Binstance%3D%22192.168.1.20%3A9100%22%2Cmountpoint%3D%22%2F%22%2Cfstype!%3D%22tmpfs%22%7D/node_filesystem_size_bytes%7Binstance%3D%22192.168.1.20%3A9100%22%2Cmountpoint%3D%22%2F%22%2Cfstype!%3D%22tmpfs%22%7D)*100"
+    scan_interval: 60
+    sensor:
+      - name: Node 1 Disk
+        unique_id: node_1_disk
+        unit_of_measurement: "%"
+        value_template: >-
+          {% if value_json.data.result | count > 0 %}
+            {{ value_json.data.result[0].value[1] | float(0) | round(1) }}
+          {% else %}
+            unknown
+          {% endif %}
+
+  - resource: "http://kube-prometheus-stack-prometheus.monitoring.svc:9090/api/v1/query?query=100-(avg%20by(instance)(rate(node_cpu_seconds_total%7Binstance%3D%22192.168.1.21%3A9100%22%2Cmode%3D%22idle%22%7D%5B2m%5D))*100)"
+    scan_interval: 30
+    sensor:
+      - name: Node 2 CPU
+        unique_id: node_2_cpu
+        unit_of_measurement: "%"
+        value_template: >-
+          {% if value_json.data.result | count > 0 %}
+            {{ value_json.data.result[0].value[1] | float(0) | round(1) }}
+          {% else %}
+            unknown
+          {% endif %}
+  - resource: "http://kube-prometheus-stack-prometheus.monitoring.svc:9090/api/v1/query?query=(1-node_memory_MemAvailable_bytes%7Binstance%3D%22192.168.1.21%3A9100%22%7D/node_memory_MemTotal_bytes%7Binstance%3D%22192.168.1.21%3A9100%22%7D)*100"
+    scan_interval: 30
+    sensor:
+      - name: Node 2 RAM
+        unique_id: node_2_ram
+        unit_of_measurement: "%"
+        value_template: >-
+          {% if value_json.data.result | count > 0 %}
+            {{ value_json.data.result[0].value[1] | float(0) | round(1) }}
+          {% else %}
+            unknown
+          {% endif %}
+  - resource: "http://kube-prometheus-stack-prometheus.monitoring.svc:9090/api/v1/query?query=(1-node_filesystem_avail_bytes%7Binstance%3D%22192.168.1.21%3A9100%22%2Cmountpoint%3D%22%2F%22%2Cfstype!%3D%22tmpfs%22%7D/node_filesystem_size_bytes%7Binstance%3D%22192.168.1.21%3A9100%22%2Cmountpoint%3D%22%2F%22%2Cfstype!%3D%22tmpfs%22%7D)*100"
+    scan_interval: 60
+    sensor:
+      - name: Node 2 Disk
+        unique_id: node_2_disk
+        unit_of_measurement: "%"
+        value_template: >-
+          {% if value_json.data.result | count > 0 %}
+            {{ value_json.data.result[0].value[1] | float(0) | round(1) }}
+          {% else %}
+            unknown
+          {% endif %}
+
+  - resource: "http://kube-prometheus-stack-prometheus.monitoring.svc:9090/api/v1/query?query=100-(avg%20by(instance)(rate(node_cpu_seconds_total%7Binstance%3D%22192.168.1.22%3A9100%22%2Cmode%3D%22idle%22%7D%5B2m%5D))*100)"
+    scan_interval: 30
+    sensor:
+      - name: Node 3 CPU
+        unique_id: node_3_cpu
+        unit_of_measurement: "%"
+        value_template: >-
+          {% if value_json.data.result | count > 0 %}
+            {{ value_json.data.result[0].value[1] | float(0) | round(1) }}
+          {% else %}
+            unknown
+          {% endif %}
+  - resource: "http://kube-prometheus-stack-prometheus.monitoring.svc:9090/api/v1/query?query=(1-node_memory_MemAvailable_bytes%7Binstance%3D%22192.168.1.22%3A9100%22%7D/node_memory_MemTotal_bytes%7Binstance%3D%22192.168.1.22%3A9100%22%7D)*100"
+    scan_interval: 30
+    sensor:
+      - name: Node 3 RAM
+        unique_id: node_3_ram
+        unit_of_measurement: "%"
+        value_template: >-
+          {% if value_json.data.result | count > 0 %}
+            {{ value_json.data.result[0].value[1] | float(0) | round(1) }}
+          {% else %}
+            unknown
+          {% endif %}
+  - resource: "http://kube-prometheus-stack-prometheus.monitoring.svc:9090/api/v1/query?query=(1-node_filesystem_avail_bytes%7Binstance%3D%22192.168.1.22%3A9100%22%2Cmountpoint%3D%22%2F%22%2Cfstype!%3D%22tmpfs%22%7D/node_filesystem_size_bytes%7Binstance%3D%22192.168.1.22%3A9100%22%2Cmountpoint%3D%22%2F%22%2Cfstype!%3D%22tmpfs%22%7D)*100"
+    scan_interval: 60
+    sensor:
+      - name: Node 3 Disk
+        unique_id: node_3_disk
+        unit_of_measurement: "%"
+        value_template: >-
+          {% if value_json.data.result | count > 0 %}
+            {{ value_json.data.result[0].value[1] | float(0) | round(1) }}
+          {% else %}
+            unknown
+          {% endif %}
+
+  - resource: "http://kube-prometheus-stack-prometheus.monitoring.svc:9090/api/v1/query?query=100-(avg%20by(instance)(rate(node_cpu_seconds_total%7Binstance%3D%22192.168.1.23%3A9100%22%2Cmode%3D%22idle%22%7D%5B2m%5D))*100)"
+    scan_interval: 30
+    sensor:
+      - name: Node 4 CPU
+        unique_id: node_4_cpu
+        unit_of_measurement: "%"
+        value_template: >-
+          {% if value_json.data.result | count > 0 %}
+            {{ value_json.data.result[0].value[1] | float(0) | round(1) }}
+          {% else %}
+            unknown
+          {% endif %}
+  - resource: "http://kube-prometheus-stack-prometheus.monitoring.svc:9090/api/v1/query?query=(1-node_memory_MemAvailable_bytes%7Binstance%3D%22192.168.1.23%3A9100%22%7D/node_memory_MemTotal_bytes%7Binstance%3D%22192.168.1.23%3A9100%22%7D)*100"
+    scan_interval: 30
+    sensor:
+      - name: Node 4 RAM
+        unique_id: node_4_ram
+        unit_of_measurement: "%"
+        value_template: >-
+          {% if value_json.data.result | count > 0 %}
+            {{ value_json.data.result[0].value[1] | float(0) | round(1) }}
+          {% else %}
+            unknown
+          {% endif %}
+  - resource: "http://kube-prometheus-stack-prometheus.monitoring.svc:9090/api/v1/query?query=(1-node_filesystem_avail_bytes%7Binstance%3D%22192.168.1.23%3A9100%22%2Cmountpoint%3D%22%2F%22%2Cfstype!%3D%22tmpfs%22%7D/node_filesystem_size_bytes%7Binstance%3D%22192.168.1.23%3A9100%22%2Cmountpoint%3D%22%2F%22%2Cfstype!%3D%22tmpfs%22%7D)*100"
+    scan_interval: 60
+    sensor:
+      - name: Node 4 Disk
+        unique_id: node_4_disk
+        unit_of_measurement: "%"
+        value_template: >-
+          {% if value_json.data.result | count > 0 %}
+            {{ value_json.data.result[0].value[1] | float(0) | round(1) }}
+          {% else %}
+            unknown
+          {% endif %}
+
+  - resource: "http://kube-prometheus-stack-prometheus.monitoring.svc:9090/api/v1/query?query=100-(avg%20by(instance)(rate(node_cpu_seconds_total%7Binstance%3D%22192.168.1.124%3A9100%22%2Cmode%3D%22idle%22%7D%5B2m%5D))*100)"
+    scan_interval: 30
+    sensor:
+      - name: Node 5 CPU
+        unique_id: node_5_cpu
+        unit_of_measurement: "%"
+        value_template: >-
+          {% if value_json.data.result | count > 0 %}
+            {{ value_json.data.result[0].value[1] | float(0) | round(1) }}
+          {% else %}
+            unknown
+          {% endif %}
+  - resource: "http://kube-prometheus-stack-prometheus.monitoring.svc:9090/api/v1/query?query=(1-node_memory_MemAvailable_bytes%7Binstance%3D%22192.168.1.124%3A9100%22%7D/node_memory_MemTotal_bytes%7Binstance%3D%22192.168.1.124%3A9100%22%7D)*100"
+    scan_interval: 30
+    sensor:
+      - name: Node 5 RAM
+        unique_id: node_5_ram
+        unit_of_measurement: "%"
+        value_template: >-
+          {% if value_json.data.result | count > 0 %}
+            {{ value_json.data.result[0].value[1] | float(0) | round(1) }}
+          {% else %}
+            unknown
+          {% endif %}
+  - resource: "http://kube-prometheus-stack-prometheus.monitoring.svc:9090/api/v1/query?query=(1-node_filesystem_avail_bytes%7Binstance%3D%22192.168.1.124%3A9100%22%2Cmountpoint%3D%22%2F%22%2Cfstype!%3D%22tmpfs%22%7D/node_filesystem_size_bytes%7Binstance%3D%22192.168.1.124%3A9100%22%2Cmountpoint%3D%22%2F%22%2Cfstype!%3D%22tmpfs%22%7D)*100"
+    scan_interval: 60
+    sensor:
+      - name: Node 5 Disk
+        unique_id: node_5_disk
+        unit_of_measurement: "%"
+        value_template: >-
+          {% if value_json.data.result | count > 0 %}
+            {{ value_json.data.result[0].value[1] | float(0) | round(1) }}
+          {% else %}
+            unknown
+          {% endif %}

@@ -1,0 +1,123 @@
+rest:
+  - resource: "http://kube-prometheus-stack-prometheus.monitoring.svc:9090/api/v1/query?query=100-(avg(rate(node_cpu_seconds_total%7Binstance%3D%22192.168.1.4%3A9100%22%2Cmode%3D%22idle%22%7D%5B2m%5D))*100)"
+    scan_interval: 30
+    sensor:
+      - name: Mac Studio CPU
+        unique_id: mac_studio_cpu
+        unit_of_measurement: "%"
+        value_template: >-
+          {% if value_json.data.result | count > 0 %}
+            {{ value_json.data.result[0].value[1] | float(0) | round(1) }}
+          {% else %}
+            unknown
+          {% endif %}
+  - resource: "http://kube-prometheus-stack-prometheus.monitoring.svc:9090/api/v1/query?query=(1-node_memory_free_bytes%7Binstance%3D%22192.168.1.4%3A9100%22%7D/node_memory_total_bytes%7Binstance%3D%22192.168.1.4%3A9100%22%7D)*100"
+    scan_interval: 30
+    sensor:
+      - name: Mac Studio RAM
+        unique_id: mac_studio_ram
+        unit_of_measurement: "%"
+        value_template: >-
+          {% if value_json.data.result | count > 0 %}
+            {{ value_json.data.result[0].value[1] | float(0) | round(1) }}
+          {% else %}
+            unknown
+          {% endif %}
+  - resource: "http://kube-prometheus-stack-prometheus.monitoring.svc:9090/api/v1/query?query=(1-node_filesystem_avail_bytes%7Binstance%3D%22192.168.1.4%3A9100%22%2Cmountpoint%3D%22%2F%22%7D/node_filesystem_size_bytes%7Binstance%3D%22192.168.1.4%3A9100%22%2Cmountpoint%3D%22%2F%22%7D)*100"
+    scan_interval: 60
+    sensor:
+      - name: Mac Studio Disk
+        unique_id: mac_studio_disk
+        unit_of_measurement: "%"
+        value_template: >-
+          {% if value_json.data.result | count > 0 %}
+            {{ value_json.data.result[0].value[1] | float(0) | round(1) }}
+          {% else %}
+            unknown
+          {% endif %}
+
+  - resource: "http://kube-prometheus-stack-prometheus.monitoring.svc:9090/api/v1/query?query=100-(avg(rate(node_cpu_seconds_total%7Binstance%3D%22192.168.1.7%3A9100%22%2Cmode%3D%22idle%22%7D%5B2m%5D))*100)"
+    scan_interval: 30
+    sensor:
+      - name: Mac Mini CPU
+        unique_id: mac_mini_cpu
+        unit_of_measurement: "%"
+        value_template: >-
+          {% if value_json.data.result | count > 0 %}
+            {{ value_json.data.result[0].value[1] | float(0) | round(1) }}
+          {% else %}
+            unknown
+          {% endif %}
+  - resource: "http://kube-prometheus-stack-prometheus.monitoring.svc:9090/api/v1/query?query=(1-node_memory_free_bytes%7Binstance%3D%22192.168.1.7%3A9100%22%7D/node_memory_total_bytes%7Binstance%3D%22192.168.1.7%3A9100%22%7D)*100"
+    scan_interval: 30
+    sensor:
+      - name: Mac Mini RAM
+        unique_id: mac_mini_ram
+        unit_of_measurement: "%"
+        value_template: >-
+          {% if value_json.data.result | count > 0 %}
+            {{ value_json.data.result[0].value[1] | float(0) | round(1) }}
+          {% else %}
+            unknown
+          {% endif %}
+  - resource: "http://kube-prometheus-stack-prometheus.monitoring.svc:9090/api/v1/query?query=(1-node_filesystem_avail_bytes%7Binstance%3D%22192.168.1.7%3A9100%22%2Cmountpoint%3D%22%2F%22%7D/node_filesystem_size_bytes%7Binstance%3D%22192.168.1.7%3A9100%22%2Cmountpoint%3D%22%2F%22%7D)*100"
+    scan_interval: 60
+    sensor:
+      - name: Mac Mini Disk
+        unique_id: mac_mini_disk
+        unit_of_measurement: "%"
+        value_template: >-
+          {% if value_json.data.result | count > 0 %}
+            {{ value_json.data.result[0].value[1] | float(0) | round(1) }}
+          {% else %}
+            unknown
+          {% endif %}
+
+  - resource: "http://192.168.1.4:11434/api/tags"
+    scan_interval: 60
+    sensor:
+      - name: Ollama Status
+        unique_id: ollama_status
+        unit_of_measurement: "models"
+        value_template: >-
+          {% if value_json.models is defined %}
+            {{ value_json.models | count }}
+          {% else %}
+            unknown
+          {% endif %}
+  - resource: "http://192.168.1.4:8080/v1/models"
+    scan_interval: 60
+    sensor:
+      - name: MLX Code Server
+        unique_id: mlx_code_server
+        unit_of_measurement: "models"
+        value_template: >-
+          {% if value_json.data is defined %}
+            {{ value_json.data | count }}
+          {% else %}
+            unknown
+          {% endif %}
+  - resource: "http://192.168.1.4:8081/v1/models"
+    scan_interval: 60
+    sensor:
+      - name: MLX Smart Server
+        unique_id: mlx_smart_server
+        unit_of_measurement: "models"
+        value_template: >-
+          {% if value_json.data is defined %}
+            {{ value_json.data | count }}
+          {% else %}
+            unknown
+          {% endif %}
+  - resource: "http://192.168.1.4:8082/v1/models"
+    scan_interval: 60
+    sensor:
+      - name: MLX Reasoning Server
+        unique_id: mlx_reasoning_server
+        unit_of_measurement: "models"
+        value_template: >-
+          {% if value_json.data is defined %}
+            {{ value_json.data | count }}
+          {% else %}
+            unknown
+          {% endif %}

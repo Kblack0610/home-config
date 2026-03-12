@@ -1,6 +1,6 @@
 # Home Assistant on K3s
 
-Home Assistant deployment for the home K3s cluster with cluster monitoring capabilities.
+Home Assistant deployment for the home K3s cluster with Git-managed dashboards and homelab monitoring.
 
 ## Access
 
@@ -29,57 +29,41 @@ Add DNS rewrite in AdGuard Home (Pi 3) at **Filters → DNS Rewrites**:
 └─────────────────────────────────────────────────────────────────┘
 ```
 
+## Layout
+
+Repo-managed Home Assistant files live under `apps/home-assistant/config/`:
+
+- `configuration.yaml`: base HA config, proxies, Lovelace mode
+- `packages/`: Prometheus-backed REST sensors and derived template sensors
+- `ui-lovelace.yaml`: default dashboard definition
+- `dashboards/`: retained views (`Overview`, `Ops`, `Admin`)
+- `automations.yaml`, `scripts.yaml`, `scenes.yaml`: checked-in defaults so a fresh PVC can boot cleanly
+
+These files are bundled into a generated ConfigMap and synced into the HA PVC on each rollout. Runtime state such as `.storage` stays on the PVC and is not repo-managed.
+
 ## Features
 
-### Cluster Monitoring (via Prometheus)
-
-| Metric | Description |
-|--------|-------------|
-| Node CPU | CPU usage per node (Nodes 1-5) |
-| Node RAM | Memory usage per node |
-| Node Disk | Disk usage per node |
-| Cluster Average | Average CPU/RAM across all nodes |
-| Node Health | Count of online nodes |
-| Pod Metrics | CPU/RAM for key pods via cAdvisor (PlaceMyParents, Cloudflared, Traefik, etc.) |
-
-### Smart Home Capabilities
-
-| Category | Features |
-|----------|----------|
-| **Lighting** | Zigbee/Z-Wave lights, schedules, motion triggers |
-| **Climate** | Thermostat control, temperature automations |
-| **Presence** | Phone tracking, door sensors, geofencing |
-| **Voice** | Alexa, Google Home integration |
-| **Cameras** | Frigate NVR integration (configured) |
-| **Notifications** | Push alerts to phone for any event |
-| **Energy** | Smart plug monitoring, solar tracking |
-| **Media** | TV, speaker, streaming device control |
-| **Security** | Door/window sensors, locks, alarms |
-
-### Homelab-Specific Use Cases
+### Homelab Monitoring
 
 | Use Case | Description |
 |----------|-------------|
-| Cluster alerts | Notification when node offline >5 min |
-| Dashboard display | Wall tablet showing cluster status |
-| Wake-on-LAN | Start servers remotely |
-| UPS monitoring | Graceful shutdown on power loss |
-| Backup alerts | Notify on backup completion/failure |
-| Network status | Monitor router/switch health |
+| Cluster status | CPU, RAM, and disk sensors for nodes 1-5 |
+| Service health | Home Assistant, Traefik, and LiteLLM container metrics |
+| Mac monitoring | Mac Studio and Mac Mini node exporter metrics |
+| AI endpoints | MLX model endpoints and Ollama fallback model counts |
+| Dashboard cleanup | Retains only `Overview`, `Ops`, and `Admin` views |
 
 ## Deployment
 
 ```bash
-# Deploy all resources
+# Render locally
+kubectl kustomize apps/home-assistant
+
+# Deploy all resources directly
 kubectl apply -k apps/home-assistant/
 
-# Or apply individually
-kubectl apply -f apps/home-assistant/namespace.yaml
-kubectl apply -f apps/home-assistant/pvc.yaml
-kubectl apply -f apps/home-assistant/configmap-cluster.yaml
-kubectl apply -f apps/home-assistant/deployment.yaml
-kubectl apply -f apps/home-assistant/service.yaml
-kubectl apply -f apps/home-assistant/ingressroute.yaml
+# Render the Flux entrypoint used by the live cluster
+kubectl kustomize infra/flux/apps/prod
 ```
 
 ## Files
@@ -88,10 +72,10 @@ kubectl apply -f apps/home-assistant/ingressroute.yaml
 |------|---------|
 | `namespace.yaml` | Creates `home-assistant` namespace |
 | `pvc.yaml` | Persistent volume for HA config |
-| `deployment.yaml` | Main HA deployment with init container |
+| `deployment.yaml` | Main HA deployment with managed config sync init container |
 | `service.yaml` | ClusterIP service on port 8123 |
 | `ingressroute.yaml` | Traefik IngressRoute for local access |
-| `configmap-cluster.yaml` | Cluster monitoring sensor configurations |
+| `kustomization.yaml` | Generates the managed config ConfigMap from checked-in files |
 
 ## Configuration
 
@@ -109,13 +93,20 @@ http:
     - 192.168.1.0/24  # Local network
 ```
 
-### Adding Cluster Monitoring Sensors
+### Managed Config Sync
 
-The `configmap-cluster.yaml` contains REST sensors that pull from Prometheus. To include them in HA:
+The deployment copies repo-managed files into `/config` on every rollout:
 
 ```yaml
-# In configuration.yaml
-sensor: !include sensors_cluster.yaml
+# Base config
+/config/configuration.yaml
+
+# Package files
+/config/packages/*.yaml
+
+# Dashboard files
+/config/ui-lovelace.yaml
+/config/dashboards/*.yaml
 ```
 
 ## Troubleshooting
@@ -135,6 +126,7 @@ Add `trusted_proxies` to HA configuration (see above).
 ```bash
 kubectl get pods -n home-assistant
 kubectl logs -n home-assistant -l app.kubernetes.io/name=home-assistant
+kubectl logs -n home-assistant deploy/home-assistant -c sync-managed-config
 ```
 
 ### Restart Home Assistant

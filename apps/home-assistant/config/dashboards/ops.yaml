@@ -1,0 +1,105 @@
+title: Ops
+path: ops
+icon: mdi:server
+type: sections
+max_columns: 3
+sections:
+  - type: grid
+    cards:
+      - type: heading
+        heading: Cluster Nodes
+        icon: mdi:raspberry-pi
+      - type: entities
+        title: CPU
+        show_header_toggle: false
+        entities:
+          - entity: sensor.node_1_cpu
+            name: Pi-20
+          - entity: sensor.node_2_cpu
+            name: Pi-21
+          - entity: sensor.node_3_cpu
+            name: Pi-22
+          - entity: sensor.node_4_cpu
+            name: Pi-23
+          - entity: sensor.node_5_cpu
+            name: Pi-124
+      - type: entities
+        title: RAM
+        show_header_toggle: false
+        entities:
+          - entity: sensor.node_1_ram
+            name: Pi-20
+          - entity: sensor.node_2_ram
+            name: Pi-21
+          - entity: sensor.node_3_ram
+            name: Pi-22
+          - entity: sensor.node_4_ram
+            name: Pi-23
+          - entity: sensor.node_5_ram
+            name: Pi-124
+      - type: entities
+        title: Disk
+        show_header_toggle: false
+        entities:
+          - entity: sensor.node_1_disk
+            name: Pi-20
+          - entity: sensor.node_2_disk
+            name: Pi-21
+          - entity: sensor.node_3_disk
+            name: Pi-22
+          - entity: sensor.node_4_disk
+            name: Pi-23
+          - entity: sensor.node_5_disk
+            name: Pi-124
+
+  - type: grid
+    cards:
+      - type: heading
+        heading: Macs
+        icon: mdi:desktop-tower-monitor
+      - type: entities
+        title: Mac Studio
+        show_header_toggle: false
+        entities:
+          - entity: sensor.mac_studio_cpu
+            name: CPU
+          - entity: sensor.mac_studio_ram
+            name: RAM
+          - entity: sensor.mac_studio_disk
+            name: Disk
+      - type: entities
+        title: Mac Mini
+        show_header_toggle: false
+        entities:
+          - entity: sensor.mac_mini_cpu
+            name: CPU
+          - entity: sensor.mac_mini_ram
+            name: RAM
+          - entity: sensor.mac_mini_disk
+            name: Disk
+
+  - type: grid
+    cards:
+      - type: heading
+        heading: Service Detail
+        icon: mdi:chart-line
+      - type: entities
+        title: Container Memory
+        show_header_toggle: false
+        entities:
+          - entity: sensor.ha_container_ram
+            name: Home Assistant
+          - entity: sensor.traefik_ram
+            name: Traefik
+          - entity: sensor.litellm_ram
+            name: LiteLLM
+      - type: entities
+        title: Container CPU
+        show_header_toggle: false
+        entities:
+          - entity: sensor.ha_container_cpu
+            name: Home Assistant
+          - entity: sensor.traefik_cpu
+            name: Traefik
+          - entity: sensor.litellm_cpu
+            name: LiteLLM

@@ -6,7 +6,7 @@ metadata:
   labels:
     app.kubernetes.io/name: headscale
 spec:
-  replicas: 0  # Suspended — noise key issue, no LAN impact
+  replicas: 1
   selector:
     matchLabels:
       app.kubernetes.io/name: headscale

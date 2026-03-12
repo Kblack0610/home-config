@@ -1,0 +1,161 @@
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: homelab-app-health
+  namespace: monitoring
+  labels:
+    app.kubernetes.io/name: homelab-app-health
+    app.kubernetes.io/part-of: monitoring
+spec:
+  groups:
+    - name: homelab-app-health.recording
+      interval: 1m
+      rules:
+        - record: homelab_app_ready_ratio
+          expr: |
+            label_join(
+              label_replace(
+                clamp_max(
+                  kube_deployment_status_replicas_available{namespace!~"kube-system|flux-system"}
+                  / clamp_min(kube_deployment_spec_replicas{namespace!~"kube-system|flux-system"}, 1),
+                  1
+                ),
+                "workload",
+                "$1",
+                "deployment",
+                "(.*)"
+              ),
+              "app_id",
+              "/",
+              "namespace",
+              "workload"
+            )
+          labels:
+            platform: k8s
+            workload_type: deployment
+        - record: homelab_app_ready_ratio
+          expr: |
+            label_join(
+              label_replace(
+                clamp_max(
+                  kube_statefulset_status_replicas_ready{namespace!~"kube-system|flux-system"}
+                  / clamp_min(kube_statefulset_replicas{namespace!~"kube-system|flux-system"}, 1),
+                  1
+                ),
+                "workload",
+                "$1",
+                "statefulset",
+                "(.*)"
+              ),
+              "app_id",
+              "/",
+              "namespace",
+              "workload"
+            )
+          labels:
+            platform: k8s
+            workload_type: statefulset
+        - record: homelab_app_restarts_1h
+          expr: |
+            label_join(
+              sum by (namespace, workload) (
+                label_replace(
+                  increase(kube_pod_container_status_restarts_total{namespace!~"kube-system|flux-system", container!="POD"}[1h])
+                  * on (namespace, pod) group_left(owner_name)
+                    kube_pod_owner{owner_kind="ReplicaSet"},
+                  "replicaset",
+                  "$1",
+                  "owner_name",
+                  "(.*)"
+                )
+                * on (namespace, replicaset) group_left(workload)
+                  label_replace(
+                    kube_replicaset_owner{owner_kind="Deployment"},
+                    "workload",
+                    "$1",
+                    "owner_name",
+                    "(.*)"
+                  )
+              ),
+              "app_id",
+              "/",
+              "namespace",
+              "workload"
+            )
+          labels:
+            platform: k8s
+            workload_type: deployment
+        - record: homelab_app_restarts_1h
+          expr: |
+            label_join(
+              sum by (namespace, workload) (
+                label_replace(
+                  increase(kube_pod_container_status_restarts_total{namespace!~"kube-system|flux-system", container!="POD"}[1h])
+                  * on (namespace, pod) group_left(owner_name)
+                    kube_pod_owner{owner_kind="StatefulSet"},
+                  "workload",
+                  "$1",
+                  "owner_name",
+                  "(.*)"
+                )
+              ),
+              "app_id",
+              "/",
+              "namespace",
+              "workload"
+            )
+          labels:
+            platform: k8s
+            workload_type: statefulset
+        - record: homelab_app_health_score
+          expr: |
+            clamp_min(
+              clamp_max(
+                (homelab_app_ready_ratio * 100) - (homelab_app_restarts_1h * 10),
+                100
+              ),
+              0
+            )
+        - record: homelab_app_health_state
+          expr: |
+            (
+              2 * ((homelab_app_ready_ratio >= bool 1) * (homelab_app_restarts_1h < bool 3))
+            )
+            +
+            (
+              1 * (
+                ((homelab_app_ready_ratio > bool 0) * (homelab_app_ready_ratio < bool 1))
+                or
+                ((homelab_app_ready_ratio > bool 0) * (homelab_app_restarts_1h >= bool 3))
+              )
+            )
+    - name: homelab-app-health.alerts
+      interval: 1m
+      rules:
+        - alert: HomelabAppDown
+          expr: homelab_app_health_state == 0
+          for: 10m
+          labels:
+            severity: warning
+            category: app-health
+          annotations:
+            summary: "App down: {{ $labels.namespace }}/{{ $labels.workload }}"
+            description: "{{ $labels.workload_type }} {{ $labels.namespace }}/{{ $labels.workload }} has had zero ready capacity for at least 10 minutes."
+        - alert: HomelabAppDegraded
+          expr: homelab_app_health_state == 1
+          for: 15m
+          labels:
+            severity: warning
+            category: app-health
+          annotations:
+            summary: "App degraded: {{ $labels.namespace }}/{{ $labels.workload }}"
+            description: "{{ $labels.workload_type }} {{ $labels.namespace }}/{{ $labels.workload }} is partially ready or restarting too often."
+        - alert: HomelabAppRestartSpike
+          expr: (homelab_app_restarts_1h >= 5) and on (app_id) (homelab_app_ready_ratio > 0)
+          for: 15m
+          labels:
+            severity: info
+            category: app-health
+          annotations:
+            summary: "Restart spike: {{ $labels.namespace }}/{{ $labels.workload }}"
+            description: "{{ $labels.workload_type }} {{ $labels.namespace }}/{{ $labels.workload }} restarted {{ printf \"%.0f\" $value }} times in the last hour."

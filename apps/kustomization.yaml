@@ -8,6 +8,9 @@ resources:
   - cert-manager
 
   # Applications (home-k3s cluster)
+  - actual-budget
+  - forgejo
+  - gatus
   - headscale
   - home-assistant
   - litellm
@@ -16,10 +19,6 @@ resources:
   - mqtt2prom
   - nas
   - sops-backup-rbac
-  # Applications (do-nyc3-prod cluster)
-  # Note: These will only deploy if cluster context matches
-  # - actual-budget
-  # - forgejo
 
 # Excluded from GitOps (Docker Compose or non-K8s):
 # - actual-budget-tools (Docker Compose)

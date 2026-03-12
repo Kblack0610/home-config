@@ -82,24 +82,18 @@ spec:
               memory: "256Mi"
               cpu: "500m"
           livenessProbe:
-            exec:
-              command:
-                - smbclient
-                - "-N"
-                - "-L"
-                - "//localhost"
+            tcpSocket:
+              port: 445
             initialDelaySeconds: 30
             periodSeconds: 60
+            timeoutSeconds: 5
             failureThreshold: 3
           readinessProbe:
-            exec:
-              command:
-                - smbclient
-                - "-N"
-                - "-L"
-                - "//localhost"
+            tcpSocket:
+              port: 445
             initialDelaySeconds: 10
             periodSeconds: 30
+            timeoutSeconds: 5
       volumes:
         - name: public
           hostPath:

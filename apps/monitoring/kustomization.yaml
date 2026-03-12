@@ -5,6 +5,7 @@ resources:
   - ingress-grafana.yaml
   - ingress-prometheus.yaml
   - ingress-alertmanager.yaml
+  - prometheus-rules-app-health.yaml
   - external-mac-nodes.yaml
   - external-standalone-nodes.yaml
   - external-iot-nodes.yaml

@@ -10,7 +10,7 @@ metadata:
   labels:
     app.kubernetes.io/name: tailscale-subnet-router
 spec:
-  replicas: 0  # Suspended — depends on headscale
+  replicas: 1
   selector:
     matchLabels:
       app.kubernetes.io/name: tailscale-subnet-router
@@ -19,6 +19,13 @@ spec:
       labels:
         app.kubernetes.io/name: tailscale-subnet-router
     spec:
+      affinity:
+        nodeAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            nodeSelectorTerms:
+              - matchExpressions:
+                  - key: node-role.kubernetes.io/workstation
+                    operator: DoesNotExist
       serviceAccountName: tailscale-subnet-router
       containers:
         - name: tailscale

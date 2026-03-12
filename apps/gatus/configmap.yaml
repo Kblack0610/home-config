@@ -1,0 +1,226 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: gatus-config
+  namespace: gatus
+  labels:
+    app.kubernetes.io/name: gatus
+data:
+  config.yaml: |
+    storage:
+      type: sqlite
+      path: /data/gatus.db
+
+    ui:
+      title: KB Lab Status
+      header: KB Lab Infrastructure
+
+    endpoints:
+      # --- home-k3s services ---
+      - name: Home Assistant
+        group: home-k3s
+        url: "http://home-assistant.home-assistant.svc:8123/"
+        interval: 60s
+        conditions:
+          - "[STATUS] < 500"
+
+      - name: LiteLLM
+        group: home-k3s
+        url: "http://litellm.ai-gateway.svc:4000/health/readiness"
+        interval: 60s
+        conditions:
+          - "[STATUS] == 200"
+
+      - name: Headscale
+        group: home-k3s
+        url: "http://headscale.headscale.svc:8080/health"
+        interval: 60s
+        conditions:
+          - "[STATUS] == 200"
+
+      - name: Headscale UI
+        group: home-k3s
+        url: "http://headscale-ui.headscale.svc:80/"
+        interval: 60s
+        conditions:
+          - "[STATUS] < 500"
+
+      - name: Mosquitto
+        group: home-k3s
+        url: "tcp://mosquitto.mosquitto.svc:1883"
+        interval: 60s
+        conditions:
+          - "[CONNECTED] == true"
+
+      - name: MQTT2Prom
+        group: home-k3s
+        url: "http://mqtt2prom.mqtt2prom.svc:9201/metrics"
+        interval: 60s
+        conditions:
+          - "[STATUS] == 200"
+
+      - name: NAS (SMB)
+        group: home-k3s
+        url: "tcp://nas.nas.svc:445"
+        interval: 120s
+        conditions:
+          - "[CONNECTED] == true"
+
+      # --- apps ---
+      - name: Actual Budget
+        group: apps
+        url: "http://actual-budget.actual-budget.svc:80/"
+        interval: 60s
+        conditions:
+          - "[STATUS] < 500"
+
+      - name: OpenClaw
+        group: apps
+        url: "http://openclaw.openclaw.svc:18789/"
+        interval: 60s
+        conditions:
+          - "[STATUS] < 500"
+
+      - name: PlaceMyParents API
+        group: apps
+        url: "http://placemyparents-api.apps.svc:3004/"
+        interval: 60s
+        conditions:
+          - "[STATUS] < 500"
+
+      - name: PlaceMyParents Web
+        group: apps
+        url: "http://placemyparents-web.apps.svc:3006/"
+        interval: 60s
+        conditions:
+          - "[STATUS] < 500"
+
+      - name: Container Registry
+        group: apps
+        url: "http://registry.registry.svc:5000/v2/"
+        interval: 120s
+        conditions:
+          - "[STATUS] < 500"
+
+      # --- databases ---
+      - name: PlaceMyParents DB
+        group: databases
+        url: "tcp://placemyparents-postgres.apps.svc:5432"
+        interval: 120s
+        conditions:
+          - "[CONNECTED] == true"
+
+      - name: History Time DB
+        group: databases
+        url: "tcp://history-time-postgres.history-time.svc:5432"
+        interval: 120s
+        conditions:
+          - "[CONNECTED] == true"
+
+      # --- monitoring ---
+      - name: Grafana
+        group: monitoring
+        url: "http://kube-prometheus-stack-grafana.monitoring.svc:80/api/health"
+        interval: 60s
+        conditions:
+          - "[STATUS] == 200"
+
+      - name: Prometheus
+        group: monitoring
+        url: "http://kube-prometheus-stack-prometheus.monitoring.svc:9090/-/healthy"
+        interval: 60s
+        conditions:
+          - "[STATUS] == 200"
+
+      - name: AlertManager
+        group: monitoring
+        url: "http://kube-prometheus-stack-alertmanager.monitoring.svc:9093/-/healthy"
+        interval: 60s
+        conditions:
+          - "[STATUS] == 200"
+
+      # --- standalone ---
+      - name: AdGuard Home
+        group: standalone
+        url: "http://192.168.1.193:80"
+        interval: 120s
+        conditions:
+          - "[STATUS] < 500"
+
+      - name: AdGuard DNS
+        group: standalone
+        url: "192.168.1.193"
+        dns:
+          query-name: "google.com"
+          query-type: "A"
+        interval: 120s
+        conditions:
+          - "[DNS_RCODE] == NOERROR"
+
+      # --- mac-machines ---
+      - name: Mac Studio
+        group: mac-machines
+        url: "http://192.168.1.4:9100/metrics"
+        interval: 120s
+        conditions:
+          - "[STATUS] == 200"
+
+      - name: Mac Mini
+        group: mac-machines
+        url: "http://192.168.1.7:9100/metrics"
+        interval: 120s
+        conditions:
+          - "[STATUS] == 200"
+
+      # --- iot-fleet ---
+      - name: Pi Zero 1
+        group: iot-fleet
+        url: "http://192.168.1.80:9200/metrics"
+        interval: 120s
+        conditions:
+          - "[STATUS] == 200"
+
+      - name: Pi Zero 2
+        group: iot-fleet
+        url: "http://192.168.1.81:9200/metrics"
+        interval: 120s
+        conditions:
+          - "[STATUS] == 200"
+
+      - name: Pi Zero 3
+        group: iot-fleet
+        url: "http://192.168.1.82:9200/metrics"
+        interval: 120s
+        conditions:
+          - "[STATUS] == 200"
+
+      # --- ingress (external HTTPS) ---
+      - name: hass.kblab.me
+        group: ingress
+        url: "https://hass.kblab.me"
+        interval: 300s
+        client:
+          insecure: true
+        conditions:
+          - "[STATUS] < 500"
+          - "[CERTIFICATE_EXPIRATION] > 720h"
+
+      - name: llm.kblab.me
+        group: ingress
+        url: "https://llm.kblab.me"
+        interval: 300s
+        client:
+          insecure: true
+        conditions:
+          - "[STATUS] < 500"
+          - "[CERTIFICATE_EXPIRATION] > 720h"
+
+      - name: grafana.kblab.me
+        group: ingress
+        url: "https://grafana.kblab.me"
+        interval: 300s
+        client:
+          insecure: true
+        conditions:
+          - "[STATUS] < 500"
+          - "[CERTIFICATE_EXPIRATION] > 720h"

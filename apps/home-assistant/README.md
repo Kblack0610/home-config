@@ -109,6 +109,12 @@ The deployment copies repo-managed files into `/config` on every rollout:
 /config/dashboards/*.yaml
 ```
 
+### Storage
+
+The local `home-k3s` deployment uses the K3s `local-path` storage class for the
+Home Assistant PVC. The DigitalOcean `do-block-storage` class is only used in
+the separate cloud cluster.
+
 ## Troubleshooting
 
 ### Can't access via hass.kblab.me

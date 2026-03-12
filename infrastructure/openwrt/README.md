@@ -84,12 +84,12 @@ The intended steady state is:
 prune: false
 
 redirects:
-  - name: "HTTPS-to-ingress-nginx"
+  - name: "HTTPS-to-Traefik"
     src: "wan"
     dest: "lan"
     proto: "tcp"
     src_dport: "443"
-    dest_ip: "209.38.61.219"
+    dest_ip: "192.168.1.124"
     dest_port: "443"
     enabled: true
 ```

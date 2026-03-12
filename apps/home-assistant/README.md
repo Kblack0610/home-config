@@ -13,14 +13,14 @@ Home Assistant deployment for the home K3s cluster with Git-managed dashboards a
 
 Add DNS rewrite in AdGuard Home (Pi 3) at **Filters → DNS Rewrites**:
 - Domain: `hass.kblab.me`
-- Answer: `209.38.61.219`
+- Answer: `192.168.1.124`
 
 ## Architecture
 
 ```
 ┌─────────────────────────────────────────────────────────────────┐
 │ Local Access                                                     │
-│   Browser → AdGuard DNS → ingress-nginx (209.38.61.219) → HA Pod │
+│   Browser → AdGuard DNS → Traefik (192.168.1.124) → HA Pod       │
 └─────────────────────────────────────────────────────────────────┘
 
 ┌─────────────────────────────────────────────────────────────────┐
@@ -74,24 +74,22 @@ kubectl kustomize infra/flux/apps/prod
 | `pvc.yaml` | Persistent volume for HA config |
 | `deployment.yaml` | Main HA deployment with managed config sync init container |
 | `service.yaml` | ClusterIP service on port 8123 |
-| `ingress.yaml` | nginx Ingress for local access |
+| `ingress.yaml` | Traefik-routed Ingress for local access |
 | `kustomization.yaml` | Generates the managed config ConfigMap from checked-in files |
 
 ## Configuration
 
 ### Trusted Proxies
 
-Home Assistant requires `trusted_proxies` config to work behind ingress-nginx:
+Home Assistant requires `trusted_proxies` config to work behind Traefik on K3s:
 
 ```yaml
 # In /config/configuration.yaml (inside the pod)
 http:
   use_x_forwarded_for: true
   trusted_proxies:
-    - 10.244.0.0/16    # Cilium pod network
-    - 10.245.0.0/16    # K8s service network
-    - 10.42.0.0/16    # K8s pod network
-    - 10.43.0.0/16    # K8s service network
+    - 10.42.0.0/16    # K3s pod network
+    - 10.43.0.0/16    # K3s service network
     - 192.168.1.0/24  # Local network
 ```
 
@@ -142,6 +140,6 @@ kubectl rollout restart deployment home-assistant -n home-assistant
 | Service | Purpose |
 |---------|---------|
 | Prometheus | Metrics source (kube-prometheus-stack) |
-| ingress-nginx | Ingress controller |
+| Traefik | Ingress controller |
 | AdGuard Home | DNS server (on Pi 3) |
 | Frigate | NVR for cameras |

@@ -36,7 +36,7 @@
 | distribution | K3s |
 | nodes | 6x Raspberry Pi |
 | cni | Flannel (K3s default) |
-| ingress | Traefik |
+| ingress | Traefik v3.3.2 |
 | monitoring | kube-prometheus-stack (Prometheus + Grafana + node_exporter) |
 | avg cpu | 1-3% per node |
 | avg memory | 18-42% per node |
@@ -159,6 +159,16 @@ See [Mac Machines Setup Guide](docs/mac-machines.md) for full provisioning instr
 ---
 
 ## external access
+
+### ingress split
+
+The repository uses two ingress controllers in two different environments:
+
+- `home-k3s`: Traefik on the local network path behind `192.168.1.124`
+- `do-nyc3-prod`: nginx ingress inside the DigitalOcean cluster
+
+`*.kblab.me` local DNS rewrites should continue to target the Traefik endpoint on `192.168.1.124`
+unless a specific hostname is intentionally migrated.
 
 ### public domains
 

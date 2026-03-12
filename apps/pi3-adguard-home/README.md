@@ -14,7 +14,7 @@ Local DNS server with ad-blocking for the home network. Works alongside Cloudfla
 ┌─────────────────────────────────────────────────────────────────────────┐
 │ LOCAL ACCESS (from home network) - FASTER, NO INTERNET REQUIRED         │
 │                                                                         │
-│   app.kblab.me → AdGuard (Pi3) → Traefik (192.168.1.124) → K8s Service  │
+│   app.kblab.me → AdGuard (Pi3) → ingress-nginx (209.38.61.219) → K8s    │
 └─────────────────────────────────────────────────────────────────────────┘
 ```
 
@@ -51,11 +51,16 @@ Already configured (migrated from cluster). Current rewrites:
 
 | Domain | Answer |
 |--------|--------|
-| `*.kblab.me` | `192.168.1.124` |
+| `*.kblab.me` | `209.38.61.219` |
 
 To add more: **Filters → DNS Rewrites** in the AdGuard web UI.
 
-> **Note:** All domains point to Traefik's LoadBalancer IP. Traefik routes based on hostname.
+> **Note:** All domains point to the cluster ingress LoadBalancer IP. nginx routes based on hostname.
+>
+> On DigitalOcean this IP usually stays stable for the lifetime of the `ingress-nginx-controller`
+> `LoadBalancer` Service, but it can change if that Service or the cloud load balancer is recreated.
+> If you need a hard-stable target, reserve and attach a static IP / managed load balancer on the
+> ingress service instead of relying on the current assigned IP.
 
 ### 4. Configure Upstream DNS
 
@@ -129,7 +134,7 @@ nslookup google.com
 # Should show 192.168.1.1 as the server
 
 nslookup grafana.kblab.me
-# Should return: 192.168.1.124
+# Should return: 209.38.61.219
 
 # Force DHCP renewal if devices still use old DNS
 # macOS:  sudo ipconfig set en0 DHCP
@@ -139,9 +144,9 @@ nslookup grafana.kblab.me
 
 ## DNS Rewrite Examples
 
-### For Kubernetes Apps (via Traefik)
+### For Kubernetes Apps (via ingress-nginx)
 
-All `*.kblab.me` domains resolve to Traefik (`192.168.1.124`):
+All `*.kblab.me` domains resolve to the cluster ingress (`209.38.61.219`):
 
 | Local Domain | Service |
 |--------------|---------|
@@ -227,7 +232,7 @@ This setup complements your existing Cloudflare Tunnel:
 | Access Type | Domain | Route |
 |-------------|--------|-------|
 | **External** | `app.blacknbrownstudios.com` | Internet → Cloudflare → Tunnel → K8s |
-| **Local** | `app.kblab.me` | LAN → AdGuard → Traefik → K8s |
+| **Local** | `app.kblab.me` | LAN → AdGuard → ingress-nginx → K8s |
 
 Benefits of local access:
 - **Faster** - No internet round-trip

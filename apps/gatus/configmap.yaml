@@ -74,6 +74,27 @@ data:
         conditions:
           - "[STATUS] < 500"
 
+      - name: Forgejo
+        group: apps
+        url: "http://forgejo-http.forgejo.svc:3000/"
+        interval: 60s
+        conditions:
+          - "[STATUS] < 500"
+
+      - name: Forgejo SSH
+        group: apps
+        url: "tcp://forgejo-ssh.forgejo.svc:22"
+        interval: 60s
+        conditions:
+          - "[CONNECTED] == true"
+
+      - name: Gatus
+        group: apps
+        url: "http://gatus.gatus.svc:8080/"
+        interval: 60s
+        conditions:
+          - "[STATUS] < 500"
+
       - name: OpenClaw
         group: apps
         url: "http://openclaw.openclaw.svc:18789/"
@@ -218,6 +239,76 @@ data:
       - name: grafana.kblab.me
         group: ingress
         url: "https://grafana.kblab.me"
+        interval: 300s
+        client:
+          insecure: true
+        conditions:
+          - "[STATUS] < 500"
+          - "[CERTIFICATE_EXPIRATION] > 720h"
+
+      - name: prometheus.kblab.me
+        group: ingress
+        url: "https://prometheus.kblab.me"
+        interval: 300s
+        client:
+          insecure: true
+        conditions:
+          - "[STATUS] < 500"
+          - "[CERTIFICATE_EXPIRATION] > 720h"
+
+      - name: alertmanager.kblab.me
+        group: ingress
+        url: "https://alertmanager.kblab.me"
+        interval: 300s
+        client:
+          insecure: true
+        conditions:
+          - "[STATUS] < 500"
+          - "[CERTIFICATE_EXPIRATION] > 720h"
+
+      - name: finance.kblab.me
+        group: ingress
+        url: "https://finance.kblab.me"
+        interval: 300s
+        client:
+          insecure: true
+        conditions:
+          - "[STATUS] < 500"
+          - "[CERTIFICATE_EXPIRATION] > 720h"
+
+      - name: git.kblab.me
+        group: ingress
+        url: "https://git.kblab.me"
+        interval: 300s
+        client:
+          insecure: true
+        conditions:
+          - "[STATUS] < 500"
+          - "[CERTIFICATE_EXPIRATION] > 720h"
+
+      - name: status.kblab.me
+        group: ingress
+        url: "https://status.kblab.me"
+        interval: 300s
+        client:
+          insecure: true
+        conditions:
+          - "[STATUS] < 500"
+          - "[CERTIFICATE_EXPIRATION] > 720h"
+
+      - name: headscale.kblab.me
+        group: ingress
+        url: "https://headscale.kblab.me/health"
+        interval: 300s
+        client:
+          insecure: true
+        conditions:
+          - "[STATUS] == 200"
+          - "[CERTIFICATE_EXPIRATION] > 720h"
+
+      - name: headscale-ui.kblab.me
+        group: ingress
+        url: "https://headscale-ui.kblab.me"
         interval: 300s
         client:
           insecure: true

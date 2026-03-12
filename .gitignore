@@ -51,8 +51,11 @@ apps/actual-budget-tools/data/tools.db
 # DHCP backups (UCI snapshots)
 # ===================
 infrastructure/dhcp/backups/*.uci
+infrastructure/openwrt/backups/*.uci
 
 # ===================
 # Tool-generated
 # ===================
 .playwright-mcp/
+.serena/
+apps/pi3-adguard-home/.cache/

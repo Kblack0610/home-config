@@ -62,6 +62,7 @@ SHOW_TEMP=false
 SHOW_ALL=false
 SHOW_AGE=false
 SHOW_DISK=false
+DHCP_DEVICES_FILE="${SCRIPT_DIR}/../dhcp/devices.yaml"
 
 # Temp directory for parallel data collection
 TMPDIR_INFRA=""
@@ -127,6 +128,37 @@ fetch_k8s_data() {
             wait "$pid" 2>/dev/null || true
         done
     fi
+}
+
+fetch_apps_data() {
+    local ctx="$1"
+    local tmpdir="$2"
+
+    kubectl --context "$ctx" get deploy,statefulset,daemonset,replicaset -A -o json \
+        --request-timeout="${KUBECTL_TIMEOUT}s" \
+        > "$tmpdir/${ctx}.apps.workloads.json" 2>/dev/null || true
+
+    kubectl --context "$ctx" get pods -A -o json \
+        --request-timeout="${KUBECTL_TIMEOUT}s" \
+        > "$tmpdir/${ctx}.apps.pods.json" 2>/dev/null || true
+
+    kubectl --context "$ctx" get svc -A -o json \
+        --request-timeout="${KUBECTL_TIMEOUT}s" \
+        > "$tmpdir/${ctx}.apps.services.json" 2>/dev/null || true
+
+    kubectl --context "$ctx" get ingress -A -o json \
+        --request-timeout="${KUBECTL_TIMEOUT}s" \
+        > "$tmpdir/${ctx}.apps.ingress.json" 2>/dev/null || true
+
+    if ! kubectl --context "$ctx" get ingressroute -A -o json \
+        --request-timeout="${KUBECTL_TIMEOUT}s" \
+        > "$tmpdir/${ctx}.apps.ingressroutes.json" 2>/dev/null; then
+        echo '{"items":[]}' > "$tmpdir/${ctx}.apps.ingressroutes.json"
+    fi
+
+    kubectl --context "$ctx" get nodes -o json \
+        --request-timeout="${KUBECTL_TIMEOUT}s" \
+        > "$tmpdir/${ctx}.apps.nodes.json" 2>/dev/null || true
 }
 
 parse_node_temp() {
@@ -281,6 +313,280 @@ parse_k8s_nodes() {
 
         echo "${up}|${name}|${roles}|${cpu}|${mem}|${disk}|${temp}|${node_age}"
     done < "$nodes_file"
+}
+
+parse_apps_context() {
+    local ctx="$1"
+    local tmpdir="$2"
+    local workloads_file="$tmpdir/${ctx}.apps.workloads.json"
+    local pods_file="$tmpdir/${ctx}.apps.pods.json"
+    local services_file="$tmpdir/${ctx}.apps.services.json"
+    local ingress_file="$tmpdir/${ctx}.apps.ingress.json"
+    local ingressroutes_file="$tmpdir/${ctx}.apps.ingressroutes.json"
+    local nodes_file="$tmpdir/${ctx}.apps.nodes.json"
+
+    if [[ ! -s "$workloads_file" || ! -s "$pods_file" || ! -s "$services_file" || ! -s "$nodes_file" ]]; then
+        echo "UNREACHABLE"
+        return
+    fi
+
+    python3 - "$ctx" "$workloads_file" "$pods_file" "$services_file" "$ingress_file" "$ingressroutes_file" "$nodes_file" <<'PY'
+import json
+import re
+import sys
+from collections import defaultdict
+
+
+def load_json(path):
+    try:
+        with open(path, "r", encoding="utf-8") as fh:
+            return json.load(fh)
+    except Exception:
+        return {"items": []}
+
+
+def compact(values, limit=2):
+    cleaned = []
+    seen = set()
+    for value in values:
+        if value in (None, "", "<none>"):
+            continue
+        if value not in seen:
+            cleaned.append(str(value))
+            seen.add(value)
+    if not cleaned:
+        return "-"
+    if len(cleaned) <= limit:
+        return ",".join(cleaned)
+    return ",".join(cleaned[:limit]) + f",+{len(cleaned) - limit}"
+
+
+def owners_for_pod(pod, deployments, replica_to_owner):
+    refs = pod.get("metadata", {}).get("ownerReferences", []) or []
+    if not refs:
+        return None
+
+    ref = refs[0]
+    kind = ref.get("kind")
+    name = ref.get("name")
+    namespace = pod.get("metadata", {}).get("namespace", "")
+
+    if kind in {"StatefulSet", "DaemonSet"}:
+        return (namespace, kind, name)
+
+    if kind == "ReplicaSet":
+        owner = replica_to_owner.get((namespace, name))
+        if owner:
+            return owner
+
+        if namespace in deployments:
+            candidates = [dep for dep in deployments[namespace] if name.startswith(dep + "-")]
+            if candidates:
+                candidates.sort(key=len, reverse=True)
+                return (namespace, "Deployment", candidates[0])
+
+    return None
+
+
+def parse_hosts(match):
+    hosts = []
+    for segment in re.findall(r"Host\(([^)]*)\)", match or ""):
+        for token in segment.split(","):
+            token = token.strip().strip("`'\"")
+            if token:
+                hosts.append(token)
+    return hosts
+
+
+ctx = sys.argv[1]
+workloads = load_json(sys.argv[2]).get("items", [])
+pods = load_json(sys.argv[3]).get("items", [])
+services = load_json(sys.argv[4]).get("items", [])
+ingresses = load_json(sys.argv[5]).get("items", [])
+ingressroutes = load_json(sys.argv[6]).get("items", [])
+nodes = load_json(sys.argv[7]).get("items", [])
+
+node_ips = {}
+for node in nodes:
+    name = node.get("metadata", {}).get("name")
+    ip = None
+    for addr in node.get("status", {}).get("addresses", []) or []:
+        if addr.get("type") == "InternalIP":
+            ip = addr.get("address")
+            break
+    if not ip:
+        for addr in node.get("status", {}).get("addresses", []) or []:
+            if addr.get("type") == "ExternalIP":
+                ip = addr.get("address")
+                break
+    if name:
+        node_ips[name] = ip
+
+deployments = defaultdict(list)
+replica_to_owner = {}
+workload_rows = []
+workload_selectors = {}
+
+for item in workloads:
+    meta = item.get("metadata", {})
+    namespace = meta.get("namespace", "")
+    name = meta.get("name", "")
+    kind = item.get("kind", "")
+
+    if kind == "ReplicaSet":
+        refs = meta.get("ownerReferences", []) or []
+        if refs and refs[0].get("kind") == "Deployment":
+            replica_to_owner[(namespace, name)] = (namespace, "Deployment", refs[0].get("name"))
+        continue
+
+    if kind == "DaemonSet" and name.startswith("svclb-"):
+        continue
+
+    if kind == "Deployment":
+        deployments[namespace].append(name)
+
+    selector = item.get("spec", {}).get("selector", {}).get("matchLabels", {}) or {}
+    workload_selectors[(namespace, kind, name)] = selector
+    workload_rows.append(item)
+
+pods_by_owner = defaultdict(list)
+for pod in pods:
+    owner = owners_for_pod(pod, deployments, replica_to_owner)
+    if owner:
+        pods_by_owner[owner].append(pod)
+
+service_matches = defaultdict(list)
+service_names = defaultdict(set)
+for svc in services:
+    meta = svc.get("metadata", {})
+    namespace = meta.get("namespace", "")
+    svc_name = meta.get("name", "")
+    selector = svc.get("spec", {}).get("selector", {}) or {}
+    if not selector:
+        continue
+
+    for key, workload_selector in workload_selectors.items():
+        wk_namespace, _wk_kind, _wk_name = key
+        if wk_namespace != namespace or not workload_selector:
+            continue
+        if all(workload_selector.get(k) == v for k, v in selector.items()):
+            spec = svc.get("spec", {})
+            ports = []
+            node_ports = []
+            for port in spec.get("ports", []) or []:
+                target = port.get("port")
+                proto = port.get("protocol", "TCP")
+                ports.append(f"{target}/{proto}")
+                if port.get("nodePort"):
+                    node_ports.append(str(port["nodePort"]))
+
+            lb_ips = []
+            for entry in svc.get("status", {}).get("loadBalancer", {}).get("ingress", []) or []:
+                if entry.get("ip"):
+                    lb_ips.append(entry["ip"])
+                elif entry.get("hostname"):
+                    lb_ips.append(entry["hostname"])
+
+            svc_cluster_ip = spec.get("clusterIP")
+            service_matches[key].append(
+                {
+                    "name": svc_name,
+                    "cluster_ip": svc_cluster_ip,
+                    "ports": ports,
+                    "external_ips": list(spec.get("externalIPs", []) or []) + lb_ips,
+                    "node_ports": node_ports,
+                }
+            )
+            service_names[key].add(svc_name)
+
+hosts_by_workload = defaultdict(list)
+for ingress in ingresses:
+    namespace = ingress.get("metadata", {}).get("namespace", "")
+    rules = ingress.get("spec", {}).get("rules", []) or []
+    paths = []
+    for rule in rules:
+        host = rule.get("host")
+        if host:
+            paths.append(host)
+        for path in rule.get("http", {}).get("paths", []) or []:
+            backend = path.get("backend", {}).get("service", {}).get("name")
+            if not backend:
+                continue
+            for key, names in service_names.items():
+                if key[0] == namespace and backend in names:
+                    if host:
+                        hosts_by_workload[key].append(host)
+
+for ingressroute in ingressroutes:
+    namespace = ingressroute.get("metadata", {}).get("namespace", "")
+    for route in ingressroute.get("spec", {}).get("routes", []) or []:
+        hosts = parse_hosts(route.get("match", ""))
+        services_for_route = route.get("services", []) or []
+        for route_service in services_for_route:
+            backend = route_service.get("name")
+            if not backend:
+                continue
+            for key, names in service_names.items():
+                if key[0] == namespace and backend in names:
+                    hosts_by_workload[key].extend(hosts)
+
+rows = []
+for item in workload_rows:
+    meta = item.get("metadata", {})
+    namespace = meta.get("namespace", "")
+    name = meta.get("name", "")
+    kind = item.get("kind", "")
+    key = (namespace, kind, name)
+    pods_for_workload = pods_by_owner.get(key, [])
+
+    nodes_for_workload = []
+    pod_ips = []
+    for pod in pods_for_workload:
+        status = pod.get("status", {}).get("phase")
+        if status not in {"Running", "Pending"}:
+            continue
+        node_name = pod.get("spec", {}).get("nodeName")
+        if node_name:
+            node_ip = node_ips.get(node_name)
+            nodes_for_workload.append(f"{node_name}({node_ip})" if node_ip else node_name)
+        pod_ip = pod.get("status", {}).get("podIP")
+        if pod_ip:
+            pod_ips.append(pod_ip)
+
+    svc_entries = service_matches.get(key, [])
+    service_values = []
+    external_values = []
+    for svc in svc_entries:
+        ports = ",".join(svc["ports"]) if svc["ports"] else "-"
+        cluster_ip = svc["cluster_ip"] if svc["cluster_ip"] and svc["cluster_ip"] != "None" else "-"
+        service_values.append(f"{svc['name']}@{cluster_ip}:{ports}")
+        external_values.extend(svc["external_ips"])
+        external_values.extend([f"nodeport:{port}" for port in svc["node_ports"]])
+
+    status = item.get("status", {})
+    if kind == "DaemonSet":
+        ready = f"{status.get('numberReady', 0)}/{status.get('desiredNumberScheduled', 0)}"
+    else:
+        desired = status.get("replicas", 0)
+        ready = f"{status.get('readyReplicas', 0)}/{desired}"
+
+    rows.append(
+        (
+            namespace,
+            name,
+            kind,
+            ready,
+            compact(nodes_for_workload),
+            compact(pod_ips),
+            compact(service_values),
+            compact(external_values),
+            compact(hosts_by_workload.get(key, [])),
+        )
+    )
+
+for row in sorted(rows):
+    print("|".join(row))
+PY
 }
 
 # =============================================================================
@@ -845,6 +1151,57 @@ print_summary() {
     echo ""
 }
 
+truncate_text() {
+    local text="$1"
+    local max_len="$2"
+
+    if [[ "${#text}" -le "$max_len" ]]; then
+        printf "%s" "$text"
+        return
+    fi
+
+    if [[ "$max_len" -le 3 ]]; then
+        printf "%.*s" "$max_len" "$text"
+        return
+    fi
+
+    printf "%s..." "${text:0:$((max_len - 3))}"
+}
+
+print_apps_header() {
+    local ctx="$1"
+    local label="$2"
+
+    echo ""
+    echo -e " ${BOLD}CLUSTER APPS: ${ctx} (${label})${NC}"
+    _separator 166
+    printf "  ${BOLD}%-16s %-28s %-11s %-7s %-28s %-16s %-26s %-16s %-20s${NC}\n" \
+        "NAMESPACE" "APP" "KIND" "READY" "NODES" "POD IPS" "SERVICE" "EXTERNAL" "HOSTS"
+}
+
+print_app_row() {
+    local namespace="$1"
+    local app="$2"
+    local kind="$3"
+    local ready="$4"
+    local nodes="$5"
+    local pod_ips="$6"
+    local service="$7"
+    local external="$8"
+    local hosts="$9"
+
+    printf "  %-16s %-28s %-11s %-7s %-28s %-16s %-26s %-16s %-20s\n" \
+        "$(truncate_text "$namespace" 16)" \
+        "$(truncate_text "$app" 28)" \
+        "$(truncate_text "$kind" 11)" \
+        "$(truncate_text "$ready" 7)" \
+        "$(truncate_text "$nodes" 28)" \
+        "$(truncate_text "$pod_ips" 16)" \
+        "$(truncate_text "$service" 26)" \
+        "$(truncate_text "$external" 16)" \
+        "$(truncate_text "$hosts" 20)"
+}
+
 # =============================================================================
 # Commands
 # =============================================================================
@@ -987,6 +1344,63 @@ cmd_nodes() {
     print_summary "$total" "$healthy" "$down"
 }
 
+cmd_apps() {
+    TMPDIR_INFRA=$(mktemp -d)
+
+    local pids=()
+    for entry in "${K8S_CONTEXTS[@]}"; do
+        local ctx="${entry%%|*}"
+        local label="${entry##*|}"
+
+        if [[ "$SHOW_ALL" != true && "$label" != "local" ]]; then
+            continue
+        fi
+
+        fetch_apps_data "$ctx" "$TMPDIR_INFRA" &
+        pids+=($!)
+    done
+
+    for pid in "${pids[@]}"; do
+        wait "$pid" 2>/dev/null || true
+    done
+
+    print_header
+
+    local total_apps=0
+    for entry in "${K8S_CONTEXTS[@]}"; do
+        local ctx="${entry%%|*}"
+        local label="${entry##*|}"
+
+        if [[ "$SHOW_ALL" != true && "$label" != "local" ]]; then
+            continue
+        fi
+
+        print_apps_header "$ctx" "$label"
+
+        local app_data
+        app_data=$(parse_apps_context "$ctx" "$TMPDIR_INFRA")
+        if [[ "$app_data" == "UNREACHABLE" ]]; then
+            echo -e "  ${YELLOW}Context unreachable${NC}"
+            continue
+        fi
+
+        local cluster_count=0
+        while IFS='|' read -r namespace app kind ready nodes pod_ips service external hosts; do
+            [[ -z "$namespace" ]] && continue
+            print_app_row "$namespace" "$app" "$kind" "$ready" "$nodes" "$pod_ips" "$service" "$external" "$hosts"
+            cluster_count=$((cluster_count + 1))
+            total_apps=$((total_apps + 1))
+        done <<< "$app_data"
+
+        echo ""
+        echo "  Apps: $cluster_count"
+    done
+
+    echo ""
+    echo " Summary: ${total_apps} workloads"
+    echo ""
+}
+
 cmd_help() {
     cat <<'EOF'
 infra — Homelab device/node health CLI
@@ -996,6 +1410,7 @@ USAGE:
 
 COMMANDS:
     nodes    Show all devices and their health (default)
+    apps     Show Kubernetes apps, host nodes, and exposure details
     help     Show this help message
 
 OPTIONS:
@@ -1006,7 +1421,9 @@ OPTIONS:
 
 EXAMPLES:
     infra            # show local devices only (cluster: CPU/MEM/AGE, others: CPU/MEM/DISK)
+    infra apps       # show live Kubernetes app inventory for local contexts
     infra --all      # include remote clusters
+    infra apps --all # include remote clusters in app inventory
     infra --disk     # add disk usage for cluster nodes and Android storage
     infra --temp     # include temperature readings
     infra --age      # include uptime/age for Mac and local
@@ -1014,6 +1431,7 @@ EXAMPLES:
 
 DATA SOURCES:
     Kubernetes nodes   kubectl get nodes / top nodes (per context)
+    Kubernetes apps    kubectl get deploy,statefulset,daemonset,replicaset,pods,svc,ingress
     Mac machines       node_exporter metrics via HTTP (:9100)
     Android devices    adb shell getprop / dumpsys battery / df (auto-discovered)
     Disk (K8s nodes)   node_exporter :9100 (root filesystem)
@@ -1035,6 +1453,7 @@ for arg in "$@"; do
         --disk|-d) SHOW_DISK=true ;;
         help|--help|-h) cmd="help" ;;
         nodes) cmd="nodes" ;;
+        apps) cmd="apps" ;;
         *)
             log_error "Unknown argument: $arg"
             cmd_help
@@ -1045,5 +1464,6 @@ done
 
 case "$cmd" in
     nodes) cmd_nodes ;;
+    apps)  cmd_apps ;;
     help)  cmd_help ;;
 esac

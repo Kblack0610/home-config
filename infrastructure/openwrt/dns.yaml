@@ -1,0 +1,7 @@
+dnsmasq:
+  noresolv: true
+  server:
+    - "192.168.1.193"
+
+lan:
+  dhcp_option: []

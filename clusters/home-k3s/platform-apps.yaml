@@ -1,0 +1,18 @@
+---
+# Flux Kustomization for platform-owned apps deployed to home-k3s
+# Currently: binks-agent (AI chat service at binks.chat)
+apiVersion: kustomize.toolkit.fluxcd.io/v1
+kind: Kustomization
+metadata:
+  name: platform-apps
+  namespace: flux-system
+spec:
+  interval: 10m
+  retryInterval: 2m
+  timeout: 5m
+  sourceRef:
+    kind: GitRepository
+    name: platform-apps
+  path: infra/flux/apps/home/binks-agent
+  prune: true
+  wait: true

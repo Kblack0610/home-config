@@ -1,172 +1,85 @@
 # Home Infrastructure Configuration
 
-Configuration and deployment manifests for a home Kubernetes cluster running on Raspberry Pi nodes, plus standalone Docker Compose services.
+Configuration and runbooks for a mixed home infrastructure estate:
 
-## Architecture
+- `home-k3s`: Raspberry Pi K3s cluster managed with Flux CD
+- `do-nyc3-prod`: DigitalOcean Kubernetes workloads
+- `mac-machines`: native macOS hosts for CI/CD and local inference
+- `standalone`: Docker Compose and embedded services outside Kubernetes
 
-- **Cluster**: K3s on Raspberry Pi nodes
-- **Ingress**: Traefik (built into K3s)
-- **DNS**: AdGuard Home
-- **Reverse Proxy**: Nginx Proxy Manager (for non-Ingress services)
+This repository is primarily organized for maintainers. Use it to find manifests, understand operational boundaries, and follow the linked runbooks for setup, backup, and troubleshooting.
 
-## Services
+## Start Here
 
-### Smart Home
+| Task | Use |
+|------|-----|
+| Understand current cluster health and exposed services | [infrastructure.md](./infrastructure.md) |
+| Find the right runbook | [docs/README.md](./docs/README.md) |
+| Make a GitOps-managed change | [docs/gitops.md](./docs/gitops.md) |
+| Verify backups or restore data | [docs/backup-runbook.md](./docs/backup-runbook.md) |
+| Work on a specific service | `apps/<service>/README.md` when present, then inspect the manifests in that directory |
 
-| Service | Type | Port(s) | Description |
-|---------|------|---------|-------------|
-| [Home Assistant](./apps/home-assistant/) | K8s | 8123 | Smart home automation hub |
-| [Frigate](./apps/frigate/) | Docker | 5000 | NVR with AI object detection |
+## Repository Layout
 
-### Networking & DNS
+| Path | Purpose |
+|------|---------|
+| `apps/` | Application manifests and standalone service definitions |
+| `clusters/` | Flux entrypoints and cluster-specific reconciliation state |
+| `docs/` | Task-oriented runbooks and reference guides |
+| `infra/` | Shared Flux infrastructure configuration |
+| `infrastructure/` | Infrastructure-specific manifests and non-app runbooks |
+| `infrastructure.md` | Current environment inventory, health, access, and backup summary |
 
-| Service | Type | Port(s) | Description |
-|---------|------|---------|-------------|
-| [AdGuard Home (Pi3)](./apps/pi3-adguard-home/) | Docker | 53, 80, 443, 853 | DNS server with ad blocking (dedicated Pi) |
-| [Nginx Proxy Manager](./apps/nginx-proxy-manager/) | K8s | 80, 81, 443 | Reverse proxy with GUI |
-| [Headscale](./apps/headscale/) | K8s | 8080, 3478/UDP | Self-hosted Tailscale control server |
+## Common Maintainer Workflows
 
-### Development & Git
-
-| Service | Type | Port(s) | Description |
-|---------|------|---------|-------------|
-| [Forgejo](./apps/forgejo/) | K8s | 3000, 22 | Self-hosted Git forge (Gitea fork) |
-
-### AI & LLM
-
-| Service | Type | Port(s) | Description |
-|---------|------|---------|-------------|
-| [LiteLLM](./apps/litellm/) | K8s | 4000 | LLM API gateway/proxy |
-| [OpenClaw](./apps/openclaw/) | K8s | 18789, 18790 | AI model interface |
-
-### Finance
-
-| Service | Type | Port(s) | Description |
-|---------|------|---------|-------------|
-| [Actual Budget](./apps/actual-budget/) | K8s | 80 (→5006) | Personal finance/budgeting |
-| [Actual Budget Tools](./apps/actual-budget-tools/) | K8s/Docker | 8080, 5007 | API tools for Actual Budget |
-
-### Monitoring
-
-| Service | Type | Port(s) | Description |
-|---------|------|---------|-------------|
-| [Monitoring Stack](./apps/monitoring/) | K8s | Various | Prometheus, Grafana, node_exporter |
-
-### Infrastructure
-
-| Service | Type | Port(s) | Description |
-|---------|------|---------|-------------|
-| [Traefik](./infrastructure/traefik/) | K8s | 9000 | Ingress controller dashboard |
-| [Cert Manager](./apps/cert-manager/) | K8s | - | TLS certificate automation |
-
-### IoT & Embedded
-
-| Service | Type | Description |
-|---------|------|-------------|
-| [ESP32 Firmware](./apps/esp32-firmware/) | Dev | Smart switch firmware for ESP32 |
-
-## Deployment
-
-### GitOps with Flux CD (Recommended)
-
-This repository uses [Flux CD](https://fluxcd.io/) for automated GitOps deployments:
+### Reconcile a GitOps change
 
 ```bash
-# Changes deploy automatically when pushed to git
-git add apps/home-assistant/
-git commit -m "feat: update home-assistant config"
-git push  # Flux applies changes within 10 minutes
+git add apps/<service>/
+git commit -m "feat: update <service>"
+git push
 
-# Force immediate deployment
 flux reconcile kustomization apps --with-source
 ```
 
-See [docs/gitops.md](./docs/gitops.md) for setup instructions and troubleshooting.
-
-### Manual Deployment
-
-For initial setup or troubleshooting:
+### Inspect Flux health
 
 ```bash
-# Kubernetes services (using Kustomize)
-kubectl apply -k apps/home-assistant/
-
-# Docker Compose services
-cd apps/frigate && docker-compose up -d
+flux get all -A
+flux get kustomization apps
+flux logs -f
 ```
 
-### Prerequisites
-
-- K3s cluster running on your nodes
-- `kubectl` configured to access your cluster
-- [Flux CLI](https://fluxcd.io/flux/installation/) for GitOps
-- Docker and Docker Compose for standalone services
-
-## Configuration
-
-### Secrets Management
-
-Secrets are encrypted with [SOPS](https://github.com/getsops/sops) using Age encryption, allowing them to be safely committed to git.
+### Work with encrypted secrets
 
 ```bash
-# Encrypt a secret (safe to commit after encryption)
-sops --encrypt --in-place apps/home-assistant/secret.yaml
-
-# Edit an encrypted secret (decrypts in editor, re-encrypts on save)
-sops apps/home-assistant/secret.yaml
-
-# View decrypted content
-sops --decrypt apps/home-assistant/secret.yaml
+sops --encrypt --in-place apps/<service>/secret.yaml
+sops apps/<service>/secret.yaml
+sops --decrypt apps/<service>/secret.yaml
 ```
 
-Flux automatically decrypts secrets during deployment. See [docs/gitops.md](./docs/gitops.md) for SOPS setup.
+## Service Areas
 
-**Legacy approach** (for non-GitOps services):
+These directories are the most relevant operational entrypoints in the repo:
 
-1. **Local secret files**: Copy `*.example` files and fill in values
-   ```bash
-   cp .env.example .env
-   # Edit .env with your values
-   ```
+| Area | Key directories |
+|------|-----------------|
+| Smart home | [apps/home-assistant](./apps/home-assistant/), [apps/frigate](./apps/frigate/) |
+| Networking and remote access | [apps/pi3-adguard-home](./apps/pi3-adguard-home/), [apps/headscale](./apps/headscale/), [infrastructure/traefik](./infrastructure/traefik/) |
+| Developer platform | [apps/forgejo](./apps/forgejo/), [apps/litellm](./apps/litellm/), [apps/monitoring](./apps/monitoring/) |
+| Finance | [apps/actual-budget](./apps/actual-budget/), [apps/actual-budget-tools](./apps/actual-budget-tools/), [docs/finance](./docs/finance/) |
+| Embedded and IoT | [apps/esp32-firmware](./apps/esp32-firmware/), [docs/mcp-server.md](./docs/mcp-server.md) |
 
-2. **Unencrypted K8s secrets**: For development only
-   ```bash
-   cp secret.yaml secret.local.yaml
-   kubectl apply -f secret.local.yaml
-   ```
+## Documentation Map
 
-### Environment Files
+- [docs/README.md](./docs/README.md) organizes the runbooks by task.
+- [docs/gitops.md](./docs/gitops.md) covers Flux, SOPS, and reconciliation workflow.
+- [docs/backup-runbook.md](./docs/backup-runbook.md) covers backup schedules, manual verification, and restore procedures.
+- [docs/mac-machines.md](./docs/mac-machines.md) covers the Apple Silicon hosts used for CI/CD and local inference.
+- [docs/headscale-setup.md](./docs/headscale-setup.md) covers Headscale client and subnet-router setup details beyond the service README.
 
-| File Pattern | Purpose | Git Status |
-|--------------|---------|------------|
-| `.env.example` | Template with placeholder values | Tracked |
-| `.env` | Real values for local use | **Ignored** |
-| `secret.yaml` | K8s secret template | Tracked |
-| `secret.local.yaml` | K8s secret with real values | **Ignored** |
+## Safety Notes
 
-## Documentation
-
-- [GitOps Guide](./docs/gitops.md) - Flux CD setup, deployment workflow, troubleshooting
-- [Infrastructure Status](./infrastructure.md) - Cluster health and service status
-- [Home Assistant Docs](https://www.home-assistant.io/docs/)
-- [Frigate Docs](https://docs.frigate.video/)
-- [K3s Docs](https://docs.k3s.io/)
-- [Flux CD Docs](https://fluxcd.io/flux/)
-
-## Security Notes
-
-This repository is designed to be safe for public hosting:
-
-- All secrets use `.example` templates with placeholder values
-- Real credentials go in `.local` files which are git-ignored
-- No hardcoded passwords, API keys, or private keys
-- Internal IPs and hostnames in docs are for reference only
-
-**Before making public**, ensure:
-1. No `.env` files are tracked (`git status`)
-2. Git history is clean of secrets (`git log -p | grep -i password`)
-3. All `*.local.*` files are in `.gitignore`
-
-## License
-
-Personal infrastructure configuration - use as reference at your own risk.
+- Secrets belong in encrypted `secret.sops.yaml` files or ignored local files such as `secret.local.yaml` and `.env`.
+- Do not commit decrypted credentials, API tokens, or machine-specific runtime state.
+- Internal IPs and hostnames appear in this repository as operational references for the homelab environment.

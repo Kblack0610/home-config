@@ -1,107 +1,74 @@
 # GitOps with Flux CD
 
-This repository uses [Flux CD](https://fluxcd.io/) for GitOps-based continuous deployment to Kubernetes clusters.
+Use this guide when you need to deploy manifest changes, inspect reconciliation state, manage encrypted secrets, or recover from a bad commit.
+
+## Start Here
+
+| Task | Command or section |
+|------|--------------------|
+| Reconcile the main apps kustomization now | `flux reconcile kustomization apps --with-source` |
+| See overall Flux health | `flux get all -A` |
+| Watch controller logs | `flux logs -f` |
+| Encrypt or edit a secret | `sops --encrypt --in-place <file>` or `sops <file>` |
+| Roll back a bad change | Revert in git, push, then reconcile |
 
 ## Overview
 
+This repository uses Flux CD to reconcile cluster state from git. Secrets are committed in encrypted form with SOPS and decrypted in-cluster with Age keys.
+
 | Component | Purpose |
 |-----------|---------|
-| **Flux CD** | GitOps operator - watches this repo and applies changes to clusters |
-| **SOPS + Age** | Secret encryption - secrets are encrypted in git, decrypted at deploy time |
-| **Kustomize** | Configuration management - already used for all apps |
+| Flux CD | Watches this repo and applies Kubernetes changes |
+| SOPS + Age | Encrypts secrets for safe storage in git |
+| Kustomize | Defines application and infrastructure composition |
 
-## Architecture
+## Repository Shape
 
-```
-┌─────────────────┐     push      ┌─────────────────┐
-│   Developer     │──────────────▶│     GitHub      │
-│   (you)         │               │   home-config   │
-└─────────────────┘               └────────┬────────┘
-                                           │
-                                    pull (every 10m)
-                                           │
-                        ┌──────────────────┴──────────────────┐
-                        ▼                                     ▼
-              ┌─────────────────┐                   ┌─────────────────┐
-              │   home-k3s      │                   │  do-nyc3-prod   │
-              │   (Pi cluster)  │                   │  (DigitalOcean) │
-              │                 │                   │                 │
-              │  ┌───────────┐  │                   │  ┌───────────┐  │
-              │  │   Flux    │  │                   │  │   Flux    │  │
-              │  │ Controller│  │                   │  │ Controller│  │
-              │  └─────┬─────┘  │                   │  └─────┬─────┘  │
-              │        │        │                   │        │        │
-              │   applies to    │                   │   applies to    │
-              │        ▼        │                   │        ▼        │
-              │  ┌───────────┐  │                   │  ┌───────────┐  │
-              │  │   Apps    │  │                   │  │   Apps    │  │
-              │  └───────────┘  │                   │  └───────────┘  │
-              └─────────────────┘                   └─────────────────┘
-```
-
-## Directory Structure
-
-```
+```text
 home-config/
-├── apps/                         # Application manifests
-│   ├── home-assistant/
-│   ├── adguard-home/
-│   └── ...
-├── clusters/                     # Flux entry points per cluster
-│   ├── home-k3s/
-│   │   ├── flux-system/          # Flux components (auto-managed)
-│   │   └── apps.yaml             # Kustomization pointing to apps/
-│   └── do-nyc3-prod/
-│       ├── flux-system/
-│       └── apps.yaml
-├── infrastructure/               # Shared infrastructure (Traefik, etc.)
-└── .sops.yaml                    # SOPS encryption rules
+├── apps/            # Application manifests
+├── clusters/        # Flux entrypoints per cluster
+├── infra/           # Shared Flux infrastructure configuration
+├── infrastructure/  # Supporting infra manifests and docs
+└── .sops.yaml       # Encryption rules
 ```
 
 ## Prerequisites
 
-Install required tools:
+Install the required CLIs before using this workflow:
 
 ```bash
-# Flux CLI
-curl -s https://fluxcd.io/install.sh | sudo bash
+# Arch Linux
+sudo pacman -S fluxcd sops age
 
-# age (encryption)
-sudo pacman -S age   # Arch Linux
-# or: brew install age  # macOS
-
-# sops (secret management)
-sudo pacman -S sops  # Arch Linux
-# or: brew install sops  # macOS
+# macOS
+brew install fluxcd/tap/fluxcd sops age
 ```
+
+You also need:
+
+- `kubectl` configured for the target cluster
+- access to the Age private key used for SOPS decryption
+- git push access to the repository that Flux watches
 
 ## Initial Setup
 
-### 1. Generate Age Key
+### 1. Generate or install the Age key
 
 ```bash
-# Create directory for keys
 mkdir -p ~/.config/sops/age
-
-# Generate new key pair
 age-keygen -o ~/.config/sops/age/keys.txt
-
-# Note the public key (needed for .sops.yaml)
 grep "public key" ~/.config/sops/age/keys.txt
 ```
 
-**Important:** Back up `~/.config/sops/age/keys.txt` securely. Without this key, encrypted secrets cannot be decrypted.
+Back up `~/.config/sops/age/keys.txt` securely. Without it, committed secrets cannot be decrypted locally.
 
 ### 2. Bootstrap Flux
 
 ```bash
-# Set GitHub token (needs repo permissions)
 export GITHUB_TOKEN=<your-personal-access-token>
-
-# Switch to target cluster
 kubectl config use-context home-k3s
 
-# Bootstrap Flux
 flux bootstrap github \
   --owner=<github-username> \
   --repository=home-config \
@@ -110,13 +77,7 @@ flux bootstrap github \
   --personal
 ```
 
-This will:
-- Install Flux components in the cluster
-- Create a deploy key in your GitHub repo
-- Create `clusters/home-k3s/flux-system/` directory
-- Start reconciling the cluster state with git
-
-### 3. Add SOPS Decryption Key to Cluster
+### 3. Add the SOPS key to the cluster
 
 ```bash
 kubectl create secret generic sops-age \
@@ -124,144 +85,91 @@ kubectl create secret generic sops-age \
   --from-file=age.agekey=$HOME/.config/sops/age/keys.txt
 ```
 
-## Day-to-Day Usage
+## Day-to-Day Workflow
 
-### Deploying Changes
+### Deploy a change
 
-1. Edit manifests in `apps/<service>/`
-2. Commit and push to GitHub
-3. Wait for Flux to reconcile (up to 10 minutes) or force reconciliation:
+1. Edit the manifests under `apps/`, `infra/`, or `infrastructure/`.
+2. Commit and push.
+3. Wait for Flux to reconcile, or force it:
 
 ```bash
 flux reconcile kustomization apps --with-source
 ```
 
-### Checking Status
+### Check status
 
 ```bash
-# Overview of all Flux resources
 flux get all -A
-
-# Check specific app
 flux get kustomization apps
-
-# Watch reconciliation logs
+flux get sources git
 flux logs -f
-
-# Check for failed reconciliations
-flux get kustomizations --all-namespaces | grep -v "Applied"
 ```
 
-### Encrypting Secrets
-
-Before committing secrets to git, encrypt them:
+### Work with secrets
 
 ```bash
-# Encrypt a secret file
+# Encrypt a plain secret file in place
 sops --encrypt --in-place apps/home-assistant/secret.yaml
 
-# Edit an encrypted secret (opens decrypted in editor)
+# Edit an encrypted secret
 sops apps/home-assistant/secret.yaml
 
-# View decrypted content
+# View decrypted contents
 sops --decrypt apps/home-assistant/secret.yaml
 ```
 
-### Rolling Back
+### Roll back a bad change
 
 ```bash
-# Revert a change in git
-git revert HEAD
+git revert <commit>
 git push
-
-# Flux will automatically apply the reverted state
-
-# Or force immediate reconciliation
 flux reconcile kustomization apps --with-source
 ```
 
-### Suspending Reconciliation
-
-Temporarily stop Flux from applying changes:
+### Suspend and resume reconciliation
 
 ```bash
-# Suspend
 flux suspend kustomization apps
-
-# Resume
 flux resume kustomization apps
 ```
 
 ## Troubleshooting
 
-### Flux not reconciling
+### Flux is not reconciling
 
 ```bash
-# Check Flux controller logs
 kubectl -n flux-system logs deployment/kustomize-controller
-
-# Check GitRepository status
 flux get sources git
-
-# Force re-sync from git
 flux reconcile source git flux-system
 ```
 
-### Secret decryption failing
+### A secret fails to decrypt
 
 ```bash
-# Verify SOPS key exists
 kubectl -n flux-system get secret sops-age
-
-# Check kustomize-controller logs for SOPS errors
 kubectl -n flux-system logs deployment/kustomize-controller | grep -i sops
+```
 
-# Re-create SOPS secret if needed
+If the key secret is missing or wrong:
+
+```bash
 kubectl delete secret sops-age -n flux-system
 kubectl create secret generic sops-age \
   --namespace=flux-system \
   --from-file=age.agekey=$HOME/.config/sops/age/keys.txt
 ```
 
-### Drift detection
-
-To see what Flux would change without applying:
+### A kustomization is stuck or unhealthy
 
 ```bash
-flux diff kustomization apps
+flux get kustomizations --all-namespaces
+kubectl describe kustomization apps -n flux-system
+kubectl get events -A --sort-by=.lastTimestamp | tail -30
 ```
 
-### Manual override (emergency)
+## Related Docs
 
-If you need to bypass GitOps temporarily:
-
-```bash
-# Suspend Flux
-flux suspend kustomization apps
-
-# Make manual changes
-kubectl apply -f emergency-fix.yaml
-
-# Resume when ready
-flux resume kustomization apps
-```
-
-## Uninstalling Flux
-
-If you need to remove Flux:
-
-```bash
-# Uninstall from cluster
-flux uninstall
-
-# Remove Flux directory from repo
-rm -rf clusters/home-k3s/flux-system/
-git commit -m "chore: remove Flux"
-git push
-```
-
-## References
-
-- [Flux Documentation](https://fluxcd.io/flux/)
-- [SOPS with Flux](https://fluxcd.io/flux/guides/mozilla-sops/)
-- [Flux Troubleshooting](https://fluxcd.io/flux/cheatsheets/troubleshooting/)
+- [README.md](../README.md)
+- [backup-runbook.md](./backup-runbook.md)
+- [../infrastructure.md](../infrastructure.md)

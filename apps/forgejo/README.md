@@ -10,7 +10,7 @@ Self-hosted Git forge running in the `forgejo` namespace, exposed at `git.kblab.
 | `configmap.yaml` | Forgejo application config |
 | `deployment.yaml` | Main Forgejo workload |
 | `service-http.yaml` | HTTP service on port `3000` |
-| `service-ssh.yaml` | SSH service on port `22` |
+| `service-ssh.yaml` | In-cluster SSH service on port `22` |
 | `ingress.yaml` | TLS ingress for `git.kblab.me` |
 | `pvc.yaml` | Persistent Forgejo data volume |
 | `backup-cronjob.yaml` | Daily backup job for full data and SQLite snapshots |
@@ -42,6 +42,7 @@ Ingress and services:
 - Web UI: `https://git.kblab.me`
 - In-cluster HTTP service: `forgejo-http:3000`
 - In-cluster SSH service: `forgejo-ssh:22`
+- External Git-over-SSH is intentionally disabled so node SSH on port `22` remains available
 
 ## Backup Notes
 

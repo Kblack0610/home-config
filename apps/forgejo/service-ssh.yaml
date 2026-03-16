@@ -6,7 +6,7 @@ metadata:
   labels:
     app.kubernetes.io/name: forgejo
 spec:
-  type: LoadBalancer  # k3s servicelb will assign IP
+  type: ClusterIP
   selector:
     app.kubernetes.io/name: forgejo
   ports:

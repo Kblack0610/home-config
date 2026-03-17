@@ -15,8 +15,6 @@ resources:
   - home-assistant
   - litellm
   - monitoring
-  - mosquitto
-  - mqtt2prom
   - nas
   - sops-backup-rbac
 

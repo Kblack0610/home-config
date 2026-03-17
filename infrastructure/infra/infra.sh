@@ -621,15 +621,32 @@ parse_mac_metrics() {
         END { if (total > 0) printf "%d%%", 100 - (idle * 100 / total); else print "-" }
     ' "$metrics_file" 2>/dev/null)
 
-    # Memory: macOS uses node_memory_total_bytes / node_memory_free_bytes
-    # Linux uses node_memory_MemTotal_bytes / node_memory_MemAvailable_bytes
+    # Memory:
+    # - Linux: use MemAvailable for "real" pressure-aware usage
+    # - macOS: node_exporter exposes free/inactive/purgeable separately. Using
+    #   only free bytes dramatically overstates usage versus Activity Monitor.
+    #   Exclude inactive + purgeable so the default view stays fast and closer
+    #   to reclaimable-vs-working-set semantics.
     local mem_pct="-"
     mem_pct=$(awk '
         /^node_memory_MemTotal_bytes /     { total = $2 }
         /^node_memory_MemAvailable_bytes / { avail = $2 }
-        /^node_memory_total_bytes /        { total = $2 }
-        /^node_memory_free_bytes /         { avail = $2 }
-        END { if (total > 0) printf "%d%%", (total - avail) * 100 / total; else print "-" }
+        /^node_memory_total_bytes /        { mac_total = $2 }
+        /^node_memory_free_bytes /         { mac_free = $2 }
+        /^node_memory_inactive_bytes /     { mac_inactive = $2 }
+        /^node_memory_purgeable_bytes /    { mac_purgeable = $2 }
+        END {
+            if (total > 0) {
+                printf "%d%%", (total - avail) * 100 / total
+            } else if (mac_total > 0) {
+                reclaimable = mac_free + mac_inactive + mac_purgeable
+                used = mac_total - reclaimable
+                if (used < 0) used = 0
+                printf "%d%%", used * 100 / mac_total
+            } else {
+                print "-"
+            }
+        }
     ' "$metrics_file" 2>/dev/null)
 
     # Disk: root filesystem (handles scientific notation via awk)

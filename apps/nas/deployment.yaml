@@ -33,7 +33,7 @@ spec:
                   name: nas-credentials
                   key: smb-password
             # Keep discovery out of the container. Finder access should use
-            # smb://nas.home.lan, and any future discovery work belongs on the host.
+            # smb://nas.lan, and any future discovery work belongs on the host.
             - name: AVAHI_DISABLE
               value: "true"
             # Public share - guest accessible, macOS-friendly

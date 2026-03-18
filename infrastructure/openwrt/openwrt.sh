@@ -113,6 +113,17 @@ import json
 import sys
 
 data = json.loads(sys.argv[1])
+domains = []
+for item in data.get("domains", []) or []:
+    if not item:
+        continue
+    domains.append(
+        {
+            "name": str(item.get("name", "")).strip(),
+            "ip": str(item.get("ip", "")).strip(),
+        }
+    )
+domains.sort(key=lambda item: (item["name"], item["ip"]))
 result = {
     "dnsmasq": {
         "noresolv": bool(((data.get("dnsmasq") or {}).get("noresolv", False))),
@@ -121,6 +132,7 @@ result = {
     "lan": {
         "dhcp_option": list((data.get("lan") or {}).get("dhcp_option", []) or []),
     },
+    "domains": domains,
 }
 json.dump(result, sys.stdout, sort_keys=True)
 PY
@@ -167,6 +179,9 @@ import sys
 dnsmasq = {"noresolv": False, "server": []}
 lan_dns_options = []
 other_lan_options = []
+domain_sections = set()
+domain_names = {}
+domain_ips = {}
 
 for raw_line in sys.argv[1].splitlines():
     line = raw_line.strip()
@@ -174,7 +189,10 @@ for raw_line in sys.argv[1].splitlines():
         continue
     key, value = line.split("=", 1)
     value = value.strip().strip("'")
-    if key == "dhcp.@dnsmasq[0].noresolv":
+    if key.startswith("dhcp.") and key.endswith("=domain"):
+        section = key[len("dhcp.") : -len("=domain")]
+        domain_sections.add(section)
+    elif key == "dhcp.@dnsmasq[0].noresolv":
         dnsmasq["noresolv"] = value in {"1", "true", "on", "yes"}
     elif key == "dhcp.@dnsmasq[0].server":
         dnsmasq["server"].append(value)
@@ -183,6 +201,19 @@ for raw_line in sys.argv[1].splitlines():
             lan_dns_options.append(value)
         else:
             other_lan_options.append(value)
+    elif key.startswith("dhcp.") and key.endswith(".name"):
+        section = key[len("dhcp.") : -len(".name")]
+        domain_names[section] = value
+    elif key.startswith("dhcp.") and key.endswith(".ip"):
+        section = key[len("dhcp.") : -len(".ip")]
+        domain_ips[section] = value
+
+domains = []
+for section in sorted(domain_sections):
+    name = domain_names.get(section, "").strip()
+    ip = domain_ips.get(section, "").strip()
+    if name and ip:
+        domains.append({"name": name, "ip": ip})
 
 result = {
     "dnsmasq": dnsmasq,
@@ -190,6 +221,7 @@ result = {
         "dhcp_option": lan_dns_options,
         "other_dhcp_option": other_lan_options,
     },
+    "domains": domains,
 }
 json.dump(result, sys.stdout, sort_keys=True)
 PY
@@ -283,6 +315,15 @@ if current_lan != desired_lan:
         "field": "lan.dhcp_option",
         "current": current_lan,
         "desired": desired_lan,
+    })
+
+current_domains = current.get("domains", [])
+desired_domains = desired.get("domains", [])
+if current_domains != desired_domains:
+    changes.append({
+        "field": "domains",
+        "current": current_domains,
+        "desired": desired_domains,
     })
 
 json.dump({"changes": changes, "in_sync": len(changes) == 0}, sys.stdout, sort_keys=True)
@@ -439,6 +480,16 @@ for option in merged_lan_options:
         "uci add_list dhcp.lan.dhcp_option={}".format(shlex.quote(str(option)))
     )
 
+commands.append("while uci -q delete dhcp.@domain[0]; do :; done")
+for domain in desired.get("domains", []):
+    commands.append("uci add dhcp domain")
+    commands.append(
+        "uci set dhcp.@domain[-1].name={}".format(shlex.quote(str(domain["name"])))
+    )
+    commands.append(
+        "uci set dhcp.@domain[-1].ip={}".format(shlex.quote(str(domain["ip"])))
+    )
+
 commands.append("uci commit dhcp")
 commands.append("/etc/init.d/dnsmasq restart")
 
@@ -546,6 +597,23 @@ for option in dns["lan"]["dhcp_option"]:
     if not re.match(r"^6,", option):
         error(f"lan.dhcp_option must be DNS option 6 entries only: {option}")
 
+seen_domains = set()
+for item in dns.get("domains", []):
+    name = item["name"].strip()
+    ip = item["ip"].strip()
+    if not name:
+        error("domains entry missing name")
+        continue
+    if name in seen_domains:
+        error(f"duplicate domain name: {name}")
+    seen_domains.add(name)
+    if not re.match(r"^[A-Za-z0-9.-]+$", name):
+        error(f"invalid domain name: {name}")
+    try:
+        ipaddress.ip_address(ip)
+    except ValueError:
+        error(f"invalid domain IP for {name}: {ip}")
+
 seen = set()
 for item in firewall["redirects"]:
     name = item["name"].strip()
@@ -597,6 +665,7 @@ data = {
     "lan": {
         "dhcp_option": current["lan"]["dhcp_option"],
     },
+    "domains": current.get("domains", []),
 }
 
 with open(path, "w", encoding="utf-8") as fh:
@@ -815,6 +884,7 @@ cmd_status() {
     echo -e "  Router reachable: ${GREEN}yes${NC}"
     echo -e "  DNS upstreams: $(echo "$dns_current" | jq -r '.dnsmasq.server | join(", ") // "-"')"
     echo -e "  LAN DNS options: $(echo "$dns_current" | jq -r '.lan.dhcp_option | join(", ") // "-"')"
+    echo -e "  Static DNS aliases: $(echo "$dns_current" | jq -r '(.domains // []) | map("\(.name)=\(.ip)") | join(", ") // "-"')"
     echo -e "  Redirects on router: $(echo "$fw_current" | jq '.redirects | length')"
     echo -e "  DNS in sync: $(echo "$dns_diff" | jq -r '.in_sync')"
     echo -e "  Firewall in sync: $(echo "$fw_diff" | jq -r '.in_sync')"
@@ -842,6 +912,7 @@ NOTES:
       * dhcp.@dnsmasq[0].noresolv
       * dhcp.@dnsmasq[0].server
       * DNS-related dhcp.lan.dhcp_option entries (option 6)
+      * Static dhcp domain aliases declared in dns.yaml
     - Static DHCP hosts remain managed by the separate 'dhcp' CLI.
     - Firewall sync manages redirect entries keyed by redirect name.
 EOF

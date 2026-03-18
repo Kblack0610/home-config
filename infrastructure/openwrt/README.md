@@ -77,6 +77,7 @@ The intended steady state is:
 - clients use OpenWrt as DNS (`192.168.1.1`)
 - OpenWrt forwards upstream DNS to AdGuard (`192.168.1.193`)
 - AdGuard serves the `*.kblab.me` private rewrites
+- OpenWrt serves any static `.lan` aliases declared in `dns.yaml`
 
 ## Firewall Redirect Example
 

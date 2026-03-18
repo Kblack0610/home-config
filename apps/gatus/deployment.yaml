@@ -18,6 +18,7 @@ spec:
         app.kubernetes.io/name: gatus
     spec:
       nodeSelector:
+        kubernetes.io/hostname: asus-laptop
         storage.role/nas: "true"
       containers:
         - name: gatus

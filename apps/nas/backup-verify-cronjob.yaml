@@ -12,6 +12,7 @@ spec:
       template:
         spec:
           nodeSelector:
+            kubernetes.io/hostname: asus-laptop
             storage.role/nas: "true"
           containers:
             - name: verify

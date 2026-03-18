@@ -114,6 +114,12 @@ devices:
     ip: "192.168.1.25"
     category: servers
 
+  - hostname: asus-laptop
+    mac: "04:42:1A:D1:65:F8"
+    ip: "192.168.1.152"
+    category: workstations
+    range_exception: true
+
   # --- Mobile (.50-.79) — Phones, tablets ------------------------------------
   - hostname: pixel-10-pro-fold
     mac: "1E:ED:3B:4E:2D:1E"

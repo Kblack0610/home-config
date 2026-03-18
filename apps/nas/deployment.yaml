@@ -20,6 +20,7 @@ spec:
       hostNetwork: true
       dnsPolicy: ClusterFirstWithHostNet
       nodeSelector:
+        kubernetes.io/hostname: asus-laptop
         storage.role/nas: "true"
       containers:
         - name: samba
@@ -31,8 +32,8 @@ spec:
                 secretKeyRef:
                   name: nas-credentials
                   key: smb-password
-            # Disable container Avahi (host already runs avahi-daemon)
-            # Discovery handled via AdGuard DNS rewrite instead
+            # Keep discovery out of the container. Finder access should use
+            # smb://nas.home.lan, and any future discovery work belongs on the host.
             - name: AVAHI_DISABLE
               value: "true"
             # Public share - guest accessible, macOS-friendly

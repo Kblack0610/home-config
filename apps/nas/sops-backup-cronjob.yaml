@@ -13,6 +13,7 @@ spec:
         spec:
           serviceAccountName: sops-backup-sa
           nodeSelector:
+            kubernetes.io/hostname: asus-laptop
             storage.role/nas: "true"
           containers:
             - name: sops-backup

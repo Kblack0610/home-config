@@ -19,6 +19,7 @@ K3s app backups run on schedule via CronJobs. Each backup writes a local archive
 
 - Local storage root: `/var/backups/{app}/`
 - NAS backup root: `/mnt/nas/private/backups/home-k3s/{app}/`
+- Current NAS host: `asus-laptop` (`192.168.1.152`) via `hostNetwork`; move `/mnt/nas` data before changing the pinned NAS node in Git.
 
 ## Backup Schedule
 

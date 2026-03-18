@@ -157,7 +157,7 @@ All `*.kblab.me` domains resolve to the home-cluster Traefik endpoint (`192.168.
 | Local Domain | Points To | Service |
 |--------------|-----------|---------|
 | `router.home.lan` | `192.168.1.1` | OpenWrt Router |
-| `nas.home.lan` | `192.168.1.10` | NAS |
+| `nas.home.lan` | `192.168.1.152` | NAS (`asus-laptop` for now; update when the NAS migrates) |
 
 ## Maintenance
 

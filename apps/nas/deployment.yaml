@@ -32,10 +32,10 @@ spec:
                 secretKeyRef:
                   name: nas-credentials
                   key: smb-password
-            # Keep discovery out of the container. Finder access should use
-            # smb://nas.lan, and any future discovery work belongs on the host.
-            - name: AVAHI_DISABLE
-              value: "true"
+            # Advertise the NAS over Bonjour so Finder and network browsers can
+            # discover it without manually typing smb://nas.lan.
+            - name: AVAHI_NAME
+              value: "nas"
             # Public share - guest accessible, macOS-friendly
             - name: SAMBA_VOLUME_CONFIG_public
               value: >-

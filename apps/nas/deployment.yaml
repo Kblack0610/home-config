@@ -36,6 +36,8 @@ spec:
             # discover it without manually typing smb://nas.lan.
             - name: AVAHI_NAME
               value: "nas"
+            - name: AVAHI_INTERFACES
+              value: "enp4s0"
             # Public share - guest accessible, macOS-friendly
             - name: SAMBA_VOLUME_CONFIG_public
               value: >-

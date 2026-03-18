@@ -189,8 +189,8 @@ for raw_line in sys.argv[1].splitlines():
         continue
     key, value = line.split("=", 1)
     value = value.strip().strip("'")
-    if key.startswith("dhcp.") and key.endswith("=domain"):
-        section = key[len("dhcp.") : -len("=domain")]
+    if key.startswith("dhcp.") and value == "domain":
+        section = key[len("dhcp.") :]
         domain_sections.add(section)
     elif key == "dhcp.@dnsmasq[0].noresolv":
         dnsmasq["noresolv"] = value in {"1", "true", "on", "yes"}

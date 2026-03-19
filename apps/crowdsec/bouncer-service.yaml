@@ -1,0 +1,17 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: crowdsec-bouncer
+  namespace: crowdsec
+  labels:
+    app.kubernetes.io/name: crowdsec-bouncer
+    app.kubernetes.io/component: bouncer
+spec:
+  type: ClusterIP
+  selector:
+    app.kubernetes.io/name: crowdsec-bouncer
+  ports:
+    - name: http
+      port: 8080
+      targetPort: http
+      protocol: TCP

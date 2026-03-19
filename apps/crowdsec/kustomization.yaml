@@ -1,0 +1,11 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+resources:
+  - namespace.yaml
+  - helmrepository.yaml
+  - helmrelease.yaml
+  - secret.yaml
+  - bouncer-deployment.yaml
+  - bouncer-service.yaml
+  - middleware.yaml

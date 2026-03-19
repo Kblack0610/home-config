@@ -1,0 +1,17 @@
+# HelmChartConfig patches the K3s-managed Traefik HelmChart
+# Enables access logs (stdout) for CrowdSec log ingestion
+# and preserves real client IPs through the LoadBalancer
+apiVersion: helm.cattle.io/v1
+kind: HelmChartConfig
+metadata:
+  name: traefik
+  namespace: kube-system
+spec:
+  valuesContent: |-
+    logs:
+      access:
+        enabled: true
+        format: json
+    service:
+      spec:
+        externalTrafficPolicy: Local

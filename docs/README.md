@@ -33,6 +33,7 @@ Start with the service README in its manifest directory when you are editing or 
 | LiteLLM | [../apps/litellm/README.md](../apps/litellm/README.md) |
 | Forgejo | [../apps/forgejo/README.md](../apps/forgejo/README.md) |
 | Monitoring | [../apps/monitoring/README.md](../apps/monitoring/README.md) |
+| NAS | [../apps/nas/README.md](../apps/nas/README.md) |
 | Pi3 AdGuard Home | [../apps/pi3-adguard-home/README.md](../apps/pi3-adguard-home/README.md) |
 | Actual Budget | [../apps/actual-budget/README.md](../apps/actual-budget/README.md) |
 | Actual Budget Tools | [../apps/actual-budget-tools/README.md](../apps/actual-budget-tools/README.md) |

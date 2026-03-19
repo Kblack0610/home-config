@@ -14,9 +14,14 @@ resources:
   - gatus
   - headscale
   - home-assistant
+  - jellyfin
   - litellm
   - monitoring
   - nas
+  - prowlarr
+  - qbittorrent
+  - radarr
+  - sonarr
   - sops-backup-rbac
 
 # Excluded from GitOps (Docker Compose or non-K8s):

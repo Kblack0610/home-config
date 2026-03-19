@@ -47,6 +47,7 @@ This is the primary advantage over fail2ban. Everything else runs locally.
 | File | Purpose |
 |------|---------|
 | `namespace.yaml` | `crowdsec` namespace |
+| `helmchartconfig.yaml` | Enables Traefik access logs + `externalTrafficPolicy: Local` (applied to kube-system) |
 | `helmrepository.yaml` | Flux source for CrowdSec Helm charts |
 | `helmrelease.yaml` | CrowdSec engine (LAPI + agent DaemonSet) |
 | `bouncer-deployment.yaml` | Forward-auth bouncer container |
@@ -58,7 +59,6 @@ This is the primary advantage over fail2ban. Everything else runs locally.
 
 | File | Change |
 |------|--------|
-| `infrastructure/traefik/helmchartconfig.yaml` | Enables Traefik access logs + `externalTrafficPolicy: Local` |
 | `apps/actual-budget/ingress.yaml` | Middleware annotation for finance.kblab.me |
 | `apps/forgejo/ingress.yaml` | Middleware annotation for git.kblab.me |
 

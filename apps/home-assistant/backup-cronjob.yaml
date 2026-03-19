@@ -33,7 +33,7 @@ spec:
                   echo "Local backup complete: $BACKUP_FILE"
                   # Upload to NAS (best-effort — local backup still succeeds if NAS is down)
                   smbclient //nas.nas.svc.cluster.local/private -U "nas%${NAS_SMB_PASSWORD}" -c \
-                    "mkdir backups; cd backups; mkdir home-k3s; cd home-k3s; mkdir home-assistant; cd home-assistant; put /backup/$BACKUP_FILE" \
+                    "mkdir backups; cd backups; mkdir home-k3s; cd home-k3s; mkdir home-assistant; cd home-assistant; put /backup/$BACKUP_FILE $BACKUP_FILE" \
                     && echo "NAS copy OK: $BACKUP_FILE" \
                     || echo "WARN: NAS copy failed, local backup still available"
               volumeMounts:

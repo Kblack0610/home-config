@@ -66,6 +66,20 @@ data:
         conditions:
           - "[CONNECTED] == true"
 
+      - name: CrowdSec LAPI
+        group: home-k3s
+        url: "http://crowdsec-service.crowdsec.svc:8080/health"
+        interval: 60s
+        conditions:
+          - "[STATUS] == 200"
+
+      - name: CrowdSec Bouncer
+        group: home-k3s
+        url: "http://crowdsec-bouncer.crowdsec.svc:8080/api/v1/ping"
+        interval: 60s
+        conditions:
+          - "[STATUS] == 200"
+
       # --- apps ---
       - name: Actual Budget
         group: apps

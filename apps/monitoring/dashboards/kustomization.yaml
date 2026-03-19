@@ -27,3 +27,6 @@ configMapGenerator:
   - name: grafana-dashboard-homelab-app-health
     files:
       - homelab-app-health.json
+  - name: grafana-dashboard-nas-disk-health
+    files:
+      - nas-disk-health.json

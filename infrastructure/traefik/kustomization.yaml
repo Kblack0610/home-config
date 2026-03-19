@@ -3,4 +3,3 @@ kind: Kustomization
 
 resources:
   - middlewares.yaml
-  - helmchartconfig.yaml

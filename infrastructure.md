@@ -1,6 +1,6 @@
 # infrastructure status
 
-> **last updated:** 2026-03-01
+> **last updated:** 2026-03-19
 > **updated by:** kblack0610
 > **repo:** home-config
 
@@ -8,7 +8,7 @@
 
 | environment | provider | nodes | apps | health | issues |
 |-------------|----------|------:|-----:|--------|-------:|
-| home-k3s | Raspberry Pi + CachyOS (local) | 8 | 10 | degraded | 2 |
+| home-k3s | Raspberry Pi + CachyOS (local) | 8 | 11 | degraded | 2 |
 | do-nyc3-prod | DigitalOcean (managed) | 2 | 4 | healthy | 0 |
 | mac-machines | Apple Silicon (local) | 2 | 3 | healthy | 0 |
 | standalone | Docker Compose / embedded | 3 | 3 | healthy | 0 |
@@ -63,6 +63,7 @@
 | history-time | History-Time app (PostgreSQL) | active |
 | headscale | Tailscale VPN (self-hosted) | suspended |
 | monitoring | Prometheus / Grafana / AlertManager | active |
+| crowdsec | CrowdSec IPS (LAPI + bouncer) | active |
 | registry | Docker container registry | active |
 | pick-a-number | Abandoned game app | stale |
 | portfolio | Abandoned portfolio site | stale |
@@ -74,6 +75,7 @@
 | kube-prometheus-stack | monitoring | v0.87.1 |
 | placemyparents-api | apps | v0.1.0 |
 | placemyparents-web | apps | v1.0.0 |
+| crowdsec | crowdsec | crowdsec/crowdsec |
 | traefik | kube-system | v3.3.2 |
 | traefik-crd | kube-system | v3.3.2 |
 
@@ -123,6 +125,7 @@
 | Forgejo | home-k3s | forgejo | Deployment | active |
 | Prometheus | home-k3s | monitoring | StatefulSet | active |
 | Grafana | home-k3s | monitoring | Deployment | active |
+| CrowdSec | home-k3s | crowdsec | HelmRelease | active |
 | PlaceMyParents API | do-nyc3-prod | placemyparents | Deployment | active |
 | PlaceMyParents Web | do-nyc3-prod | placemyparents | Deployment | active |
 | Prometheus | do-nyc3-prod | monitoring | StatefulSet | active |
@@ -177,6 +180,8 @@ unless a specific hostname is intentionally migrated.
 | finance.kblab.me | Actual Budget | home-k3s | Let's Encrypt |
 | git.kblab.me | Forgejo | home-k3s | Let's Encrypt |
 
+> Public ingresses are protected by the CrowdSec bouncer Traefik middleware (`crowdsec-bouncer@kubernetescrd`).
+
 ### internal / LAN
 
 | hostname | service | cluster | notes |
@@ -213,6 +218,8 @@ kubectl create job --from=cronjob/forgejo-backup manual-backup-$(date +%s) -n fo
 | Prometheus | home-k3s | Metrics collection |
 | Grafana | home-k3s | Dashboards |
 | AlertManager | home-k3s | Alert routing |
+| CrowdSec | home-k3s | Intrusion prevention (LAPI + bouncer) |
+| Gatus | home-k3s | Uptime / health checks |
 | node_exporter | mac-machines | CPU/RAM/Disk metrics (Homebrew service) |
 | Prometheus | do-nyc3-prod | Metrics collection |
 | Grafana | do-nyc3-prod | Dashboards |

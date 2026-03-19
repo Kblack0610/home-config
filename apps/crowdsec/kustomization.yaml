@@ -3,6 +3,7 @@ kind: Kustomization
 
 resources:
   - namespace.yaml
+  - helmchartconfig.yaml
   - helmrepository.yaml
   - helmrelease.yaml
   - secret.yaml

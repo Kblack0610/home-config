@@ -9,4 +9,5 @@ resources:
   - external-mac-nodes.yaml
   - external-standalone-nodes.yaml
   - external-iot-nodes.yaml
+  - external-smartctl-exporter.yaml
   - dashboards

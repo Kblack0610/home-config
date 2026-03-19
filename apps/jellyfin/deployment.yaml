@@ -1,0 +1,79 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: jellyfin
+  namespace: jellyfin
+  labels:
+    app.kubernetes.io/name: jellyfin
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: jellyfin
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: jellyfin
+    spec:
+      nodeSelector:
+        kubernetes.io/hostname: asus-laptop
+        storage.role/nas: "true"
+      securityContext:
+        supplementalGroups:
+          - 987   # render
+          - 983   # video
+      containers:
+        - name: jellyfin
+          image: jellyfin/jellyfin:10.10.7
+          ports:
+            - name: http
+              containerPort: 8096
+          volumeMounts:
+            - name: config
+              mountPath: /config
+            - name: media
+              mountPath: /media
+              readOnly: true
+            - name: dri
+              mountPath: /dev/dri
+            - name: localtime
+              mountPath: /etc/localtime
+              readOnly: true
+          resources:
+            requests:
+              memory: "256Mi"
+              cpu: "200m"
+            limits:
+              memory: "4Gi"
+              cpu: "4000m"
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 8096
+            initialDelaySeconds: 30
+            periodSeconds: 30
+            failureThreshold: 3
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 8096
+            initialDelaySeconds: 10
+            periodSeconds: 10
+      volumes:
+        - name: config
+          hostPath:
+            path: /mnt/media/app-config/jellyfin
+            type: DirectoryOrCreate
+        - name: media
+          hostPath:
+            path: /mnt/media/library
+            type: DirectoryOrCreate
+        - name: dri
+          hostPath:
+            path: /dev/dri
+            type: Directory
+        - name: localtime
+          hostPath:
+            path: /etc/localtime

@@ -8,6 +8,7 @@ Use this index to find the right document by task instead of scanning the repo t
 |------|----------|-------|
 | Check environment health, inventory, ingress, backups | [../infrastructure.md](../infrastructure.md) | Live-ish reference document for current state |
 | Deploy or troubleshoot GitOps changes | [gitops.md](./gitops.md) | Flux, SOPS, reconciliation, rollback |
+| Add or remove an app from the cluster | [app-lifecycle.md](./app-lifecycle.md) | Step-by-step checklists, common pitfalls |
 | Verify backups or run a restore | [backup-runbook.md](./backup-runbook.md) | Backup schedules, manual triggers, restore flows |
 
 ## Environment and Platform Guides
@@ -35,6 +36,7 @@ Start with the service README in its manifest directory when you are editing or 
 | Pi3 AdGuard Home | [../apps/pi3-adguard-home/README.md](../apps/pi3-adguard-home/README.md) |
 | Actual Budget | [../apps/actual-budget/README.md](../apps/actual-budget/README.md) |
 | Actual Budget Tools | [../apps/actual-budget-tools/README.md](../apps/actual-budget-tools/README.md) |
+| CrowdSec | [../apps/crowdsec/README.md](../apps/crowdsec/README.md) |
 | Traefik | [../infrastructure/traefik/README.md](../infrastructure/traefik/README.md) |
 
 ## Documentation Conventions

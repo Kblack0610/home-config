@@ -13,7 +13,7 @@ See [gitops.md](./gitops.md) for Flux workflow details.
   - Use `*.kblab.me` domain
   - Annotations: `kubernetes.io/ingress.class: traefik`, `cert-manager.io/cluster-issuer: letsencrypt-dns`
   - For public services: add CrowdSec bouncer middleware annotation (`crowdsec-bouncer@kubernetescrd`)
-  - DNS: add Cloudflare record (public) or AdGuard DNS rewrite (internal)
+  - DNS: internal `*.kblab.me` is handled by the AdGuard wildcard rewrite (no action needed). For public services: add a Cloudflare DNS record.
 - [ ] **Status monitoring** — add endpoint(s) to `apps/gatus/configmap.yaml`
 - [ ] **Infrastructure inventory** — update `infrastructure.md` (namespaces, service directory, helm releases, domains)
 - [ ] **Documentation** — create `apps/<name>/README.md`, add to `docs/README.md` index

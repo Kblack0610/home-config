@@ -1,0 +1,1241 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: orcaslicer-profiles
+  namespace: orcaslicer
+  labels:
+    app.kubernetes.io/name: orcaslicer
+data:
+  # Main OrcaSlicer config - marks first-run wizard as complete,
+  # registers Neptune 4 Pro via Moonraker, and selects OpenNeptune presets
+  orcaslicer.conf: |
+    {
+        "access_code": {
+            "192.168.1.51": "88888888"
+        },
+        "app": {
+            "allow_abnormal_storage": false,
+            "allow_ip_resolve": true,
+            "ams_sync_match_full_use_color_dist": false,
+            "angle_defletion": "0.5",
+            "auto_arrange": true,
+            "auto_calculate": true,
+            "auto_calculate_flush": "all",
+            "auto_calculate_when_filament_change": true,
+            "auto_perspective": false,
+            "auto_slice_after_change": false,
+            "auto_slice_change_delay_seconds": "1",
+            "backup_interval": "10",
+            "backup_switch": true,
+            "camera_navigation_style": "0",
+            "camera_orbit_mult": "1.0",
+            "check_stable_update_only": false,
+            "curr_bed_type": "3",
+            "dark_color_mode": "0",
+            "default_page": "0",
+            "developer_mode": false,
+            "download_path": "/config",
+            "drc_bits": "0",
+            "drop_project_action": true,
+            "enable_append_color_by_sync_ams": true,
+            "enable_high_low_temp_mixed_printing": false,
+            "enable_merge_color_by_sync_ams": false,
+            "enable_multi_machine": false,
+            "enable_ssl_for_ftp": true,
+            "enable_ssl_for_mqtt": true,
+            "enable_step_mesh_setting": true,
+            "export_sources_full_pathnames": false,
+            "filaments_area_preferred_count": "10",
+            "flush_multiplier": "0.300000",
+            "group_filament_presets": "1",
+            "ignore_ext_filament_in_filament_map": false,
+            "installed_networking": false,
+            "internal_developer_mode": false,
+            "iot_environment": "3",
+            "is_split_compound": false,
+            "keyboard_supported": "none/alt/control/shift",
+            "language": "en_US",
+            "last_export_path": "/prints",
+            "linear_defletion": "0.003",
+            "log_severity_level": "warning",
+            "max_recent_count": "18",
+            "max_send": "3",
+            "mouse_supported": "mouse left/mouse middle/mouse right",
+            "mouse_wheel": "0",
+            "move_view": "none/mouse left",
+            "network_plugin_version": "01.10.01.01",
+            "open_device_tab_post_upload": false,
+            "pop_up_filament_map_dialog": false,
+            "precise_control": "none/mouse left",
+            "prefered_filament_map_mode": "Auto For Flush",
+            "preset_folder": "",
+            "privacy_version": "00.00.00.00",
+            "project_load_behaviour": "ask_when_relevant",
+            "region": "North America",
+            "remember_printer_config": true,
+            "reverse_mouse_wheel_zoom": false,
+            "rotate_view": "none/mouse left",
+            "save_preset_choise": "1",
+            "sending_interval": "5",
+            "seq_top_layer_only": "1",
+            "show_3d_navigator": true,
+            "show_axes": true,
+            "show_build_edgets": false,
+            "show_canvas_zoom_button": true,
+            "show_daily_tips": true,
+            "show_gcode_window": true,
+            "show_hints": true,
+            "show_home_page": true,
+            "show_labels": false,
+            "show_model_mesh": false,
+            "show_model_shadow": true,
+            "show_outline": false,
+            "show_overhang": false,
+            "show_plate_gridlines": true,
+            "show_printable_box": true,
+            "show_splash_screen": true,
+            "single_instance": false,
+            "stealth_mode": true,
+            "swap_mouse_buttons": false,
+            "sync_ams_filament_mode": "0",
+            "sync_system_preset": true,
+            "sync_user_preset": false,
+            "toolkit_size": "100",
+            "units": "0",
+            "use_encrypted_token_file": true,
+            "use_free_camera": false,
+            "use_inches": "0",
+            "use_perspective_camera": true,
+            "user_mode": "simple",
+            "version": "01.10.01.50",
+            "zoom_to_mouse": false,
+            "zoom_view": "none/mouse left"
+        },
+        "arrange": {
+            "min_object_distance_fff": "2"
+        },
+        "filaments": [
+            "Generic PETG @Elegoo"
+        ],
+        "firstguide": {
+            "finish": true
+        },
+        "header": "OrcaSlicer 2.3.2",
+        "local_machines": {
+            "192.168.1.51": {
+                "dev_ip": "192.168.1.51",
+                "dev_name": "Elegoo Neptune 4 Pro",
+                "printer_type": "Elegoo-Neptune-4-Pro"
+            }
+        },
+        "models": [
+            {
+                "model": "Elegoo Neptune 4 Pro",
+                "nozzle_diameter": "0.4",
+                "vendor": "Elegoo"
+            }
+        ],
+        "orca_presets": [
+            {
+                "curr_bed_type": "3",
+                "extruder_ams_count": "1#0|4#0,1#0|4#0",
+                "filament": "Elegoo Generic PLA-OpenNept4une",
+                "filament_color_types": "1",
+                "filament_colors": "#26A69A",
+                "filament_multi_colors": "#26A69A",
+                "flush_multiplier": "0.300000",
+                "flush_volumes_matrix": "0.000000",
+                "flush_volumes_vector": "140.000000|140.000000",
+                "machine": "Elegoo Neptune 4 Pro (0.4 nozzle)-OpenNept4une",
+                "process": "0.20mm Standard @Elegoo Neptune4Pro (0.4 nozzle)"
+            }
+        ],
+        "presets": {
+            "filaments": null,
+            "machine": "Elegoo Neptune 4 Pro (0.4 nozzle)-OpenNept4une"
+        },
+        "print": {
+            "bed_leveling": "1",
+            "flow_cali": "1",
+            "timelapse": "1"
+        },
+        "recent": {
+            "last_opened_folder": "/prints",
+            "printhost_path": "",
+            "settings_folder": "/prints"
+        },
+        "user_access_code": {
+            "192.168.1.51": "88888888"
+        }
+    }
+
+  # --- Machine Profile ---
+  machine-neptune4pro.json: |
+    {
+        "before_layer_change_gcode": "",
+        "default_filament_profile": [
+            "Elegoo Generic PLA @0.4 nozzle"
+        ],
+        "deretraction_speed": [
+            "30"
+        ],
+        "from": "User",
+        "inherits": "Elegoo Neptune 4 Pro (0.4 nozzle)",
+        "machine_end_gcode": "PRINT_END",
+        "machine_max_acceleration_e": [
+            "2000"
+        ],
+        "machine_max_acceleration_extruding": [
+            "3000"
+        ],
+        "machine_max_acceleration_retracting": [
+            "3000"
+        ],
+        "machine_max_acceleration_travel": [
+            "20000"
+        ],
+        "machine_max_acceleration_x": [
+            "3000"
+        ],
+        "machine_max_acceleration_y": [
+            "3000"
+        ],
+        "machine_max_acceleration_z": [
+            "120"
+        ],
+        "machine_max_jerk_e": [
+            "7"
+        ],
+        "machine_max_jerk_x": [
+            "8"
+        ],
+        "machine_max_jerk_y": [
+            "8"
+        ],
+        "machine_max_jerk_z": [
+            "0.6",
+            "0.6"
+        ],
+        "machine_max_speed_e": [
+            "45"
+        ],
+        "machine_max_speed_x": [
+            "250"
+        ],
+        "machine_max_speed_y": [
+            "250"
+        ],
+        "machine_max_speed_z": [
+            "8"
+        ],
+        "machine_start_gcode": ";Nozzle diameter = [nozzle_diameter]\n;Filament type = [filament_type]\n;Filament name = [filament_vendor] \n;Filament weight = [filament_density]\nPRINT_START BED_TEMP=[hot_plate_temp_initial_layer] EXTRUDER_TEMP=[nozzle_temperature_initial_layer] AREA_START={first_layer_print_min[0]},{first_layer_print_min[1]} AREA_END={first_layer_print_max[0]},{first_layer_print_max[1]} BED_HEAT_SOAK_MINUTES=0 BED_MESH=adaptive",
+        "manual_filament_change": "1",
+        "max_layer_height": [
+            "0.3"
+        ],
+        "name": "Elegoo Neptune 4 Pro (0.4 nozzle)-OpenNept4une",
+        "nozzle_height": "4",
+        "nozzle_type": [
+            "undefine"
+        ],
+        "print_host": "192.168.1.51",
+        "printable_area": [
+            "0x0",
+            "235x0",
+            "235x235",
+            "0x235"
+        ],
+        "printer_agent": "moonraker",
+        "printer_extruder_id": [
+            "1"
+        ],
+        "printer_extruder_variant": [
+            "Direct Drive Standard"
+        ],
+        "printer_settings_id": "Elegoo Neptune 4 Pro (0.4 nozzle)-OpenNept4une",
+        "printer_structure": "corexy",
+        "retract_before_wipe": [
+            "0%"
+        ],
+        "retract_when_changing_layer": [
+            "0"
+        ],
+        "retraction_length": [
+            "0.3"
+        ],
+        "retraction_minimum_travel": [
+            "2"
+        ],
+        "retraction_speed": [
+            "40"
+        ],
+        "thumbnails": "160x160/PNG",
+        "use_firmware_retraction": "1",
+        "version": "1.9.0.2",
+        "wipe": [
+            "0"
+        ],
+        "wipe_distance": [
+            "0"
+        ],
+        "z_hop": [
+            "0.3"
+        ],
+        "z_hop_types": [
+            "Auto Lift"
+        ]
+    }
+
+  machine-neptune4pro.info: |
+    sync_info = update
+    user_id =
+    setting_id =
+    base_id = GM001
+    updated_time = 1774438539
+
+  # --- Filament Profiles ---
+  filament-pla.json: |
+    {
+        "activate_air_filtration": [
+            "0"
+        ],
+        "activate_chamber_temp_control": [
+            "0"
+        ],
+        "adaptive_pressure_advance": [
+            "0"
+        ],
+        "adaptive_pressure_advance_bridges": [
+            "0"
+        ],
+        "adaptive_pressure_advance_model": [
+            "0,0,0\n0,0,0"
+        ],
+        "adaptive_pressure_advance_overhangs": [
+            "0"
+        ],
+        "additional_cooling_fan_speed": [
+            "70"
+        ],
+        "chamber_temperature": [
+            "0"
+        ],
+        "close_fan_the_first_x_layers": [
+            "1"
+        ],
+        "compatible_printers": [
+            "Elegoo Neptune 0.4 nozzle",
+            "Elegoo Neptune X 0.4 nozzle",
+            "Elegoo Neptune 2 0.4 nozzle",
+            "Elegoo Neptune 2S 0.4 nozzle",
+            "Elegoo Neptune 2D 0.4 nozzle",
+            "Elegoo Neptune 3 0.4 nozzle",
+            "Elegoo Neptune 3 Pro 0.4 nozzle",
+            "Elegoo Neptune 3 Plus 0.4 nozzle",
+            "Elegoo Neptune 3 Max 0.4 nozzle",
+            "Elegoo Neptune 4 (0.2 nozzle)",
+            "Elegoo Neptune 4 (0.4 nozzle)",
+            "Elegoo Neptune 4 (0.6 nozzle)",
+            "Elegoo Neptune 4 (0.8 nozzle)",
+            "Elegoo Neptune 4 Max (0.2 nozzle)",
+            "Elegoo Neptune 4 Max (0.4 nozzle)",
+            "Elegoo Neptune 4 Max (0.6 nozzle)",
+            "Elegoo Neptune 4 Max (0.8 nozzle)",
+            "Elegoo Neptune 4 Pro (0.2 nozzle)",
+            "Elegoo Neptune 4 Pro (0.4 nozzle)",
+            "Elegoo Neptune 4 Pro (0.6 nozzle)",
+            "Elegoo Neptune 4 Pro (0.8 nozzle)"
+        ],
+        "compatible_printers_condition": "",
+        "compatible_prints": [],
+        "compatible_prints_condition": "",
+        "complete_print_exhaust_fan_speed": [
+            "70"
+        ],
+        "cool_plate_temp": [
+            "35"
+        ],
+        "cool_plate_temp_initial_layer": [
+            "35"
+        ],
+        "default_filament_colour": [
+            ""
+        ],
+        "dont_slow_down_outer_wall": [
+            "0"
+        ],
+        "during_print_exhaust_fan_speed": [
+            "70"
+        ],
+        "enable_overhang_bridge_fan": [
+            "1"
+        ],
+        "enable_pressure_advance": [
+            "0"
+        ],
+        "eng_plate_temp": [
+            "0"
+        ],
+        "eng_plate_temp_initial_layer": [
+            "0"
+        ],
+        "fan_cooling_layer_time": [
+            "100"
+        ],
+        "fan_max_speed": [
+            "50"
+        ],
+        "fan_min_speed": [
+            "50"
+        ],
+        "filament_adaptive_volumetric_speed": [
+            "0"
+        ],
+        "filament_adhesiveness_category": [
+            "0"
+        ],
+        "filament_change_length": [
+            "10"
+        ],
+        "filament_cooling_final_speed": [
+            "3.4"
+        ],
+        "filament_cooling_initial_speed": [
+            "2.2"
+        ],
+        "filament_cooling_moves": [
+            "4"
+        ],
+        "filament_cost": [
+            "20"
+        ],
+        "filament_density": [
+            "1.24"
+        ],
+        "filament_deretraction_speed": [
+            "30"
+        ],
+        "filament_diameter": [
+            "1.75"
+        ],
+        "filament_end_gcode": [
+            "; filament end gcode\n"
+        ],
+        "filament_extruder_variant": [
+            "Direct Drive Standard"
+        ],
+        "filament_flow_ratio": [
+            "0.98"
+        ],
+        "filament_flush_temp": [
+            "0"
+        ],
+        "filament_flush_volumetric_speed": [
+            "0"
+        ],
+        "filament_ironing_flow": [
+            "nil"
+        ],
+        "filament_ironing_inset": [
+            "nil"
+        ],
+        "filament_ironing_spacing": [
+            "nil"
+        ],
+        "filament_ironing_speed": [
+            "nil"
+        ],
+        "filament_is_support": [
+            "0"
+        ],
+        "filament_loading_speed": [
+            "28"
+        ],
+        "filament_loading_speed_start": [
+            "3"
+        ],
+        "filament_long_retractions_when_cut": [
+            "nil"
+        ],
+        "filament_max_volumetric_speed": [
+            "12"
+        ],
+        "filament_minimal_purge_on_wipe_tower": [
+            "15"
+        ],
+        "filament_multitool_ramming": [
+            "0"
+        ],
+        "filament_multitool_ramming_flow": [
+            "10"
+        ],
+        "filament_multitool_ramming_volume": [
+            "10"
+        ],
+        "filament_notes": [
+            ""
+        ],
+        "filament_printable": [
+            "3"
+        ],
+        "filament_ramming_parameters": [
+            "120 100 6.6 6.8 7.2 7.6 7.9 8.2 8.7 9.4 9.9 10.0| 0.05 6.6 0.45 6.8 0.95 7.8 1.45 8.3 1.95 9.7 2.45 10 2.95 7.6 3.45 7.6 3.95 7.6 4.45 7.6 4.95 7.6"
+        ],
+        "filament_retract_before_wipe": [
+            "nil"
+        ],
+        "filament_retract_lift_above": [
+            "nil"
+        ],
+        "filament_retract_lift_below": [
+            "nil"
+        ],
+        "filament_retract_lift_enforce": [
+            "nil"
+        ],
+        "filament_retract_restart_extra": [
+            "0"
+        ],
+        "filament_retract_when_changing_layer": [
+            "nil"
+        ],
+        "filament_retraction_distances_when_cut": [
+            "nil"
+        ],
+        "filament_retraction_length": [
+            "0.3"
+        ],
+        "filament_retraction_minimum_travel": [
+            "nil"
+        ],
+        "filament_retraction_speed": [
+            "40"
+        ],
+        "filament_settings_id": [
+            "Elegoo Generic PLA-OpenNept4une"
+        ],
+        "filament_shrink": [
+            "100%"
+        ],
+        "filament_shrinkage_compensation_z": [
+            "100%"
+        ],
+        "filament_soluble": [
+            "0"
+        ],
+        "filament_stamping_distance": [
+            "0"
+        ],
+        "filament_stamping_loading_speed": [
+            "0"
+        ],
+        "filament_start_gcode": [
+            "; filament start gcode\nSET_RETRACTION RETRACT_LENGTH=[filament_retraction_length] RETRACT_SPEED=[filament_retraction_speed] UNRETRACT_EXTRA_LENGTH=[retract_restart_extra] UNRETRACT_SPEED=[filament_deretraction_speed]\nSET_PRESSURE_ADVANCE ADVANCE=0.02725 SMOOTH_TIME=0.02"
+        ],
+        "filament_toolchange_delay": [
+            "0"
+        ],
+        "filament_tower_interface_pre_extrusion_dist": [
+            "10"
+        ],
+        "filament_tower_interface_pre_extrusion_length": [
+            "0"
+        ],
+        "filament_tower_interface_print_temp": [
+            "-1"
+        ],
+        "filament_tower_interface_purge_volume": [
+            "20"
+        ],
+        "filament_tower_ironing_area": [
+            "4"
+        ],
+        "filament_type": [
+            "PLA"
+        ],
+        "filament_unloading_speed": [
+            "90"
+        ],
+        "filament_unloading_speed_start": [
+            "100"
+        ],
+        "filament_vendor": [
+            "Generic"
+        ],
+        "filament_wipe": [
+            "nil"
+        ],
+        "filament_wipe_distance": [
+            "nil"
+        ],
+        "filament_z_hop": [
+            "nil"
+        ],
+        "filament_z_hop_types": [
+            "nil"
+        ],
+        "from": "User",
+        "full_fan_speed_layer": [
+            "5"
+        ],
+        "hot_plate_temp": [
+            "55"
+        ],
+        "hot_plate_temp_initial_layer": [
+            "55"
+        ],
+        "idle_temperature": [
+            "0"
+        ],
+        "inherits": "Elegoo Generic PLA",
+        "internal_bridge_fan_speed": [
+            "-1"
+        ],
+        "ironing_fan_speed": [
+            "-1"
+        ],
+        "long_retractions_when_ec": [
+            "0"
+        ],
+        "name": "Elegoo Generic PLA-OpenNept4une",
+        "nozzle_temperature": [
+            "210"
+        ],
+        "nozzle_temperature_initial_layer": [
+            "220"
+        ],
+        "nozzle_temperature_range_high": [
+            "230"
+        ],
+        "nozzle_temperature_range_low": [
+            "190"
+        ],
+        "overhang_fan_speed": [
+            "100"
+        ],
+        "overhang_fan_threshold": [
+            "50%"
+        ],
+        "pellet_flow_coefficient": [
+            "0.4157"
+        ],
+        "pressure_advance": [
+            "0"
+        ],
+        "reduce_fan_stop_start_freq": [
+            "1"
+        ],
+        "required_nozzle_HRC": [
+            "3"
+        ],
+        "retraction_distances_when_ec": [
+            "10"
+        ],
+        "slow_down_for_layer_cooling": [
+            "0"
+        ],
+        "slow_down_layer_time": [
+            "4"
+        ],
+        "slow_down_min_speed": [
+            "10"
+        ],
+        "supertack_plate_temp": [
+            "45"
+        ],
+        "supertack_plate_temp_initial_layer": [
+            "45"
+        ],
+        "support_material_interface_fan_speed": [
+            "-1"
+        ],
+        "temperature_vitrification": [
+            "45"
+        ],
+        "textured_cool_plate_temp": [
+            "40"
+        ],
+        "textured_cool_plate_temp_initial_layer": [
+            "40"
+        ],
+        "textured_plate_temp": [
+            "55"
+        ],
+        "textured_plate_temp_initial_layer": [
+            "55"
+        ],
+        "version": "1.9.0.2",
+        "volumetric_speed_coefficients": [
+            ""
+        ]
+    }
+
+  filament-pla.info: |
+    sync_info =
+    user_id =
+    setting_id =
+    base_id =
+    updated_time = 1774438539
+
+  filament-petg.json: |
+    {
+        "activate_air_filtration": [
+            "0"
+        ],
+        "activate_chamber_temp_control": [
+            "0"
+        ],
+        "adaptive_pressure_advance": [
+            "0"
+        ],
+        "adaptive_pressure_advance_bridges": [
+            "0"
+        ],
+        "adaptive_pressure_advance_model": [
+            "0,0,0\n0,0,0"
+        ],
+        "adaptive_pressure_advance_overhangs": [
+            "0"
+        ],
+        "additional_cooling_fan_speed": [
+            "0"
+        ],
+        "chamber_temperature": [
+            "0"
+        ],
+        "close_fan_the_first_x_layers": [
+            "3"
+        ],
+        "compatible_printers": [
+            "Elegoo Neptune 0.4 nozzle",
+            "Elegoo Neptune X 0.4 nozzle",
+            "Elegoo Neptune 2 0.4 nozzle",
+            "Elegoo Neptune 2S 0.4 nozzle",
+            "Elegoo Neptune 2D 0.4 nozzle",
+            "Elegoo Neptune 3 0.4 nozzle",
+            "Elegoo Neptune 3 Pro 0.4 nozzle",
+            "Elegoo Neptune 3 Plus 0.4 nozzle",
+            "Elegoo Neptune 3 Max 0.4 nozzle",
+            "Elegoo Neptune 4 (0.2 nozzle)",
+            "Elegoo Neptune 4 (0.4 nozzle)",
+            "Elegoo Neptune 4 (0.6 nozzle)",
+            "Elegoo Neptune 4 (0.8 nozzle)",
+            "Elegoo Neptune 4 Max (0.2 nozzle)",
+            "Elegoo Neptune 4 Max (0.4 nozzle)",
+            "Elegoo Neptune 4 Max (0.6 nozzle)",
+            "Elegoo Neptune 4 Max (0.8 nozzle)",
+            "Elegoo Neptune 4 Pro (0.2 nozzle)",
+            "Elegoo Neptune 4 Pro (0.4 nozzle)",
+            "Elegoo Neptune 4 Pro (0.6 nozzle)",
+            "Elegoo Neptune 4 Pro (0.8 nozzle)"
+        ],
+        "compatible_printers_condition": "",
+        "compatible_prints": [],
+        "compatible_prints_condition": "",
+        "complete_print_exhaust_fan_speed": [
+            "70"
+        ],
+        "cool_plate_temp": [
+            "60"
+        ],
+        "cool_plate_temp_initial_layer": [
+            "60"
+        ],
+        "default_filament_colour": [
+            ""
+        ],
+        "dont_slow_down_outer_wall": [
+            "0"
+        ],
+        "during_print_exhaust_fan_speed": [
+            "70"
+        ],
+        "enable_overhang_bridge_fan": [
+            "1"
+        ],
+        "enable_pressure_advance": [
+            "0"
+        ],
+        "eng_plate_temp": [
+            "0"
+        ],
+        "eng_plate_temp_initial_layer": [
+            "0"
+        ],
+        "fan_cooling_layer_time": [
+            "20"
+        ],
+        "fan_max_speed": [
+            "100"
+        ],
+        "fan_min_speed": [
+            "20"
+        ],
+        "filament_adaptive_volumetric_speed": [
+            "0"
+        ],
+        "filament_adhesiveness_category": [
+            "0"
+        ],
+        "filament_change_length": [
+            "10"
+        ],
+        "filament_cooling_final_speed": [
+            "3.4"
+        ],
+        "filament_cooling_initial_speed": [
+            "2.2"
+        ],
+        "filament_cooling_moves": [
+            "4"
+        ],
+        "filament_cost": [
+            "30"
+        ],
+        "filament_density": [
+            "1.27"
+        ],
+        "filament_deretraction_speed": [
+            "25"
+        ],
+        "filament_diameter": [
+            "1.75"
+        ],
+        "filament_end_gcode": [
+            "; filament end gcode\n"
+        ],
+        "filament_extruder_variant": [
+            "Direct Drive Standard"
+        ],
+        "filament_flow_ratio": [
+            "0.98"
+        ],
+        "filament_flush_temp": [
+            "0"
+        ],
+        "filament_flush_volumetric_speed": [
+            "0"
+        ],
+        "filament_ironing_flow": [
+            "nil"
+        ],
+        "filament_ironing_inset": [
+            "nil"
+        ],
+        "filament_ironing_spacing": [
+            "nil"
+        ],
+        "filament_ironing_speed": [
+            "nil"
+        ],
+        "filament_is_support": [
+            "0"
+        ],
+        "filament_loading_speed": [
+            "28"
+        ],
+        "filament_loading_speed_start": [
+            "3"
+        ],
+        "filament_long_retractions_when_cut": [
+            "nil"
+        ],
+        "filament_max_volumetric_speed": [
+            "10"
+        ],
+        "filament_minimal_purge_on_wipe_tower": [
+            "15"
+        ],
+        "filament_multitool_ramming": [
+            "0"
+        ],
+        "filament_multitool_ramming_flow": [
+            "10"
+        ],
+        "filament_multitool_ramming_volume": [
+            "10"
+        ],
+        "filament_notes": [
+            ""
+        ],
+        "filament_printable": [
+            "3"
+        ],
+        "filament_ramming_parameters": [
+            "120 100 6.6 6.8 7.2 7.6 7.9 8.2 8.7 9.4 9.9 10.0| 0.05 6.6 0.45 6.8 0.95 7.8 1.45 8.3 1.95 9.7 2.45 10 2.95 7.6 3.45 7.6 3.95 7.6 4.45 7.6 4.95 7.6"
+        ],
+        "filament_retract_before_wipe": [
+            "nil"
+        ],
+        "filament_retract_lift_above": [
+            "nil"
+        ],
+        "filament_retract_lift_below": [
+            "nil"
+        ],
+        "filament_retract_lift_enforce": [
+            "nil"
+        ],
+        "filament_retract_restart_extra": [
+            "0"
+        ],
+        "filament_retract_when_changing_layer": [
+            "nil"
+        ],
+        "filament_retraction_distances_when_cut": [
+            "nil"
+        ],
+        "filament_retraction_length": [
+            "2.5"
+        ],
+        "filament_retraction_minimum_travel": [
+            "nil"
+        ],
+        "filament_retraction_speed": [
+            "30"
+        ],
+        "filament_settings_id": [
+            "Elegoo Generic PETG-OpenNept4une"
+        ],
+        "filament_shrink": [
+            "100%"
+        ],
+        "filament_shrinkage_compensation_z": [
+            "100%"
+        ],
+        "filament_soluble": [
+            "0"
+        ],
+        "filament_stamping_distance": [
+            "0"
+        ],
+        "filament_stamping_loading_speed": [
+            "0"
+        ],
+        "filament_start_gcode": [
+            "; filament start gcode\nSET_RETRACTION RETRACT_LENGTH=[filament_retraction_length] RETRACT_SPEED=[filament_retraction_speed] UNRETRACT_EXTRA_LENGTH=[retract_restart_extra] UNRETRACT_SPEED=[filament_deretraction_speed]\nSET_PRESSURE_ADVANCE ADVANCE=0.04 SMOOTH_TIME=0.02"
+        ],
+        "filament_toolchange_delay": [
+            "0"
+        ],
+        "filament_tower_interface_pre_extrusion_dist": [
+            "10"
+        ],
+        "filament_tower_interface_pre_extrusion_length": [
+            "0"
+        ],
+        "filament_tower_interface_print_temp": [
+            "-1"
+        ],
+        "filament_tower_interface_purge_volume": [
+            "20"
+        ],
+        "filament_tower_ironing_area": [
+            "4"
+        ],
+        "filament_type": [
+            "PETG"
+        ],
+        "filament_unloading_speed": [
+            "90"
+        ],
+        "filament_unloading_speed_start": [
+            "100"
+        ],
+        "filament_vendor": [
+            "Generic"
+        ],
+        "filament_wipe": [
+            "nil"
+        ],
+        "filament_wipe_distance": [
+            "nil"
+        ],
+        "filament_z_hop": [
+            "nil"
+        ],
+        "filament_z_hop_types": [
+            "nil"
+        ],
+        "from": "User",
+        "full_fan_speed_layer": [
+            "5"
+        ],
+        "hot_plate_temp": [
+            "80"
+        ],
+        "hot_plate_temp_initial_layer": [
+            "80"
+        ],
+        "idle_temperature": [
+            "0"
+        ],
+        "inherits": "Elegoo Generic PETG",
+        "internal_bridge_fan_speed": [
+            "-1"
+        ],
+        "ironing_fan_speed": [
+            "-1"
+        ],
+        "long_retractions_when_ec": [
+            "0"
+        ],
+        "name": "Elegoo Generic PETG-OpenNept4une",
+        "nozzle_temperature": [
+            "255"
+        ],
+        "nozzle_temperature_initial_layer": [
+            "255"
+        ],
+        "nozzle_temperature_range_high": [
+            "260"
+        ],
+        "nozzle_temperature_range_low": [
+            "230"
+        ],
+        "overhang_fan_speed": [
+            "100"
+        ],
+        "overhang_fan_threshold": [
+            "95%"
+        ],
+        "pellet_flow_coefficient": [
+            "0.4157"
+        ],
+        "pressure_advance": [
+            "0"
+        ],
+        "reduce_fan_stop_start_freq": [
+            "1"
+        ],
+        "required_nozzle_HRC": [
+            "3"
+        ],
+        "retraction_distances_when_ec": [
+            "10"
+        ],
+        "slow_down_for_layer_cooling": [
+            "0"
+        ],
+        "slow_down_layer_time": [
+            "8"
+        ],
+        "slow_down_min_speed": [
+            "10"
+        ],
+        "supertack_plate_temp": [
+            "70"
+        ],
+        "supertack_plate_temp_initial_layer": [
+            "70"
+        ],
+        "support_material_interface_fan_speed": [
+            "-1"
+        ],
+        "temperature_vitrification": [
+            "70"
+        ],
+        "textured_cool_plate_temp": [
+            "40"
+        ],
+        "textured_cool_plate_temp_initial_layer": [
+            "40"
+        ],
+        "textured_plate_temp": [
+            "80"
+        ],
+        "textured_plate_temp_initial_layer": [
+            "80"
+        ],
+        "version": "1.9.0.2",
+        "volumetric_speed_coefficients": [
+            ""
+        ]
+    }
+
+  filament-petg.info: |
+    sync_info =
+    user_id =
+    setting_id =
+    base_id =
+    updated_time = 1774438539
+
+  # --- Print Process Profiles ---
+  process-standard.json: |
+    {
+        "accel_to_decel_enable": "0",
+        "bottom_shell_layers": "4",
+        "bridge_speed": "50",
+        "brim_width": "4",
+        "default_acceleration": "3000",
+        "default_jerk": "5",
+        "elefant_foot_compensation": "0",
+        "filename_format": "{input_filename_base}_{print_time}_{filament_type[0]}_{layer_height}mm.gcode",
+        "from": "User",
+        "gap_infill_speed": "45",
+        "independent_support_layer_height": "0",
+        "infill_anchor": "2.7",
+        "infill_anchor_max": "10",
+        "infill_jerk": "5",
+        "inherits": "0.20mm Standard @Elegoo Neptune4Pro (0.4 nozzle)",
+        "initial_layer_acceleration": "500",
+        "initial_layer_infill_speed": "100",
+        "initial_layer_jerk": "5",
+        "initial_layer_line_width": "0.5",
+        "initial_layer_min_bead_width": "80%",
+        "initial_layer_print_height": "0.28",
+        "initial_layer_speed": "95",
+        "initial_layer_travel_speed": "80%",
+        "inner_wall_jerk": "5",
+        "inner_wall_speed": "165",
+        "internal_bridge_speed": "50",
+        "internal_solid_infill_speed": "165",
+        "max_travel_detour_distance": "2",
+        "minimum_sparse_infill_area": "15",
+        "name": "0.20mm Standard @Elegoo Neptune4Pro (0.4 nozzle)-OpenNept4une",
+        "outer_wall_jerk": "5",
+        "outer_wall_speed": "165",
+        "overhang_reverse": "1",
+        "overhang_reverse_internal_only": "1",
+        "overhang_reverse_threshold": "0%",
+        "print_extruder_id": [
+            "1"
+        ],
+        "print_extruder_variant": [
+            "Direct Drive Standard"
+        ],
+        "print_settings_id": "0.20mm Standard @Elegoo Neptune4Pro (0.4 nozzle)-OpenNept4une",
+        "raft_first_layer_expansion": "3",
+        "reduce_crossing_wall": "1",
+        "reduce_infill_retraction": "0",
+        "resolution": "0.0125",
+        "seam_gap": "0",
+        "seam_slope_conditional": "1",
+        "seam_slope_min_length": "10",
+        "seam_slope_type": "external",
+        "skirt_distance": "6",
+        "skirt_height": "1",
+        "skirt_loops": "2",
+        "slow_down_layers": "2",
+        "small_area_infill_flow_compensation": "1",
+        "small_perimeter_speed": "0",
+        "sparse_infill_pattern": "cubic",
+        "sparse_infill_speed": "165",
+        "support_base_pattern_spacing": "2.5",
+        "support_critical_regions_only": "1",
+        "support_interface_bottom_layers": "3",
+        "support_interface_pattern": "rectilinear",
+        "support_interface_spacing": "0.5",
+        "support_interface_top_layers": "3",
+        "support_line_width": "0.4",
+        "support_on_build_plate_only": "1",
+        "support_remove_small_overhang": "0",
+        "support_speed": "185",
+        "support_style": "snug",
+        "support_threshold_angle": "35",
+        "top_shell_layers": "5",
+        "top_surface_acceleration": "3000",
+        "top_surface_jerk": "5",
+        "top_surface_line_width": "0.4",
+        "top_surface_speed": "165",
+        "travel_acceleration": "3000",
+        "travel_jerk": "5",
+        "travel_speed": "250",
+        "version": "1.9.0.2"
+    }
+
+  process-standard.info: |
+    sync_info =
+    user_id =
+    setting_id =
+    base_id = GP004
+    updated_time = 1774438539
+
+  process-petg.json: |
+    {
+        "accel_to_decel_enable": "0",
+        "bottom_shell_layers": "4",
+        "bridge_speed": "50",
+        "brim_width": "4",
+        "default_acceleration": "3000",
+        "default_jerk": "5",
+        "elefant_foot_compensation": "0",
+        "filename_format": "{input_filename_base}_{print_time}_{filament_type[0]}_{layer_height}mm.gcode",
+        "from": "User",
+        "gap_infill_speed": "45",
+        "independent_support_layer_height": "0",
+        "infill_anchor": "2.7",
+        "infill_anchor_max": "10",
+        "infill_jerk": "5",
+        "inherits": "0.20mm Standard @Elegoo Neptune4Pro (0.4 nozzle)",
+        "initial_layer_acceleration": "500",
+        "initial_layer_infill_speed": "50",
+        "initial_layer_jerk": "5",
+        "initial_layer_line_width": "0.5",
+        "initial_layer_min_bead_width": "80%",
+        "initial_layer_print_height": "0.28",
+        "initial_layer_travel_speed": "80%",
+        "inner_wall_jerk": "5",
+        "inner_wall_speed": "100",
+        "internal_bridge_speed": "50",
+        "internal_solid_infill_speed": "100",
+        "max_travel_detour_distance": "2",
+        "minimum_sparse_infill_area": "15",
+        "name": "0.20mm PETG @Elegoo Neptune4Pro (0.4 nozzle)-OpenNept4une",
+        "outer_wall_jerk": "5",
+        "outer_wall_speed": "80",
+        "overhang_reverse": "1",
+        "overhang_reverse_internal_only": "1",
+        "overhang_reverse_threshold": "0%",
+        "print_extruder_id": [
+            "1"
+        ],
+        "print_extruder_variant": [
+            "Direct Drive Standard"
+        ],
+        "print_settings_id": "0.20mm PETG @Elegoo Neptune4Pro (0.4 nozzle)-OpenNept4une",
+        "raft_first_layer_expansion": "3",
+        "reduce_crossing_wall": "1",
+        "reduce_infill_retraction": "0",
+        "resolution": "0.0125",
+        "seam_gap": "0",
+        "seam_slope_conditional": "1",
+        "seam_slope_min_length": "10",
+        "seam_slope_type": "external",
+        "skirt_distance": "6",
+        "skirt_height": "1",
+        "skirt_loops": "2",
+        "slow_down_layers": "2",
+        "small_area_infill_flow_compensation": "1",
+        "small_perimeter_speed": "0",
+        "sparse_infill_pattern": "cubic",
+        "sparse_infill_speed": "100",
+        "support_base_pattern_spacing": "2.5",
+        "support_critical_regions_only": "1",
+        "support_interface_bottom_layers": "3",
+        "support_interface_pattern": "rectilinear",
+        "support_interface_spacing": "0.5",
+        "support_interface_top_layers": "3",
+        "support_line_width": "0.4",
+        "support_on_build_plate_only": "1",
+        "support_remove_small_overhang": "0",
+        "support_speed": "100",
+        "support_style": "snug",
+        "support_threshold_angle": "35",
+        "top_shell_layers": "5",
+        "top_surface_acceleration": "3000",
+        "top_surface_jerk": "5",
+        "top_surface_line_width": "0.4",
+        "top_surface_speed": "80",
+        "travel_acceleration": "3000",
+        "travel_jerk": "5",
+        "travel_speed": "200",
+        "version": "1.9.0.2"
+    }
+
+  process-petg.info: |
+    sync_info =
+    user_id =
+    setting_id =
+    base_id = GP004
+    updated_time = 1774438539

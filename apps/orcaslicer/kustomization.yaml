@@ -5,6 +5,7 @@ namespace: orcaslicer
 
 resources:
   - namespace.yaml
+  - configmap-profiles.yaml
   - deployment.yaml
   - service.yaml
   - ingress.yaml

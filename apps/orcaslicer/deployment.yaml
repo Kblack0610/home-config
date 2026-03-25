@@ -20,6 +20,44 @@ spec:
       nodeSelector:
         kubernetes.io/hostname: asus-laptop
         storage.role/nas: "true"
+      initContainers:
+        - name: seed-config
+          image: busybox:1.37
+          command:
+            - /bin/sh
+            - -c
+            - |
+              CONFIG_DIR="/config/.config/OrcaSlicer"
+              if [ -f "$CONFIG_DIR/OrcaSlicer.conf" ]; then
+                echo "OrcaSlicer config already exists, skipping seed."
+                exit 0
+              fi
+              echo "Seeding OrcaSlicer config from ConfigMap..."
+              mkdir -p "$CONFIG_DIR/user/default/machine"
+              mkdir -p "$CONFIG_DIR/user/default/filament"
+              mkdir -p "$CONFIG_DIR/user/default/process"
+              # Main config (marks first-run wizard complete)
+              cp /seed/orcaslicer.conf "$CONFIG_DIR/OrcaSlicer.conf"
+              # Machine profile
+              cp /seed/machine-neptune4pro.json "$CONFIG_DIR/user/default/machine/Elegoo Neptune 4 Pro (0.4 nozzle)-OpenNept4une.json"
+              cp /seed/machine-neptune4pro.info "$CONFIG_DIR/user/default/machine/Elegoo Neptune 4 Pro (0.4 nozzle)-OpenNept4une.info"
+              # Filament profiles
+              cp /seed/filament-pla.json "$CONFIG_DIR/user/default/filament/Elegoo Generic PLA-OpenNept4une.json"
+              cp /seed/filament-pla.info "$CONFIG_DIR/user/default/filament/Elegoo Generic PLA-OpenNept4une.info"
+              cp /seed/filament-petg.json "$CONFIG_DIR/user/default/filament/Elegoo Generic PETG-OpenNept4une.json"
+              cp /seed/filament-petg.info "$CONFIG_DIR/user/default/filament/Elegoo Generic PETG-OpenNept4une.info"
+              # Print process profiles
+              cp /seed/process-standard.json "$CONFIG_DIR/user/default/process/0.20mm Standard @Elegoo Neptune4Pro (0.4 nozzle)-OpenNept4une.json"
+              cp /seed/process-standard.info "$CONFIG_DIR/user/default/process/0.20mm Standard @Elegoo Neptune4Pro (0.4 nozzle)-OpenNept4une.info"
+              cp /seed/process-petg.json "$CONFIG_DIR/user/default/process/0.20mm PETG @Elegoo Neptune4Pro (0.4 nozzle)-OpenNept4une.json"
+              cp /seed/process-petg.info "$CONFIG_DIR/user/default/process/0.20mm PETG @Elegoo Neptune4Pro (0.4 nozzle)-OpenNept4une.info"
+              echo "Config seeding complete."
+          volumeMounts:
+            - name: config
+              mountPath: /config
+            - name: profiles
+              mountPath: /seed
+              readOnly: true
       containers:
         - name: orcaslicer
           image: lscr.io/linuxserver/orcaslicer:v2.3.2-ls9
@@ -76,6 +114,9 @@ spec:
           emptyDir:
             medium: Memory
             sizeLimit: 1Gi
+        - name: profiles
+          configMap:
+            name: orcaslicer-profiles
         - name: localtime
           hostPath:
             path: /etc/localtime

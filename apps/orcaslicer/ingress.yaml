@@ -1,0 +1,27 @@
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: orcaslicer
+  namespace: orcaslicer
+  labels:
+    app.kubernetes.io/name: orcaslicer
+  annotations:
+    kubernetes.io/ingress.class: traefik
+    cert-manager.io/cluster-issuer: letsencrypt-dns
+spec:
+  ingressClassName: traefik
+  tls:
+    - hosts:
+        - slicer.kblab.me
+      secretName: orcaslicer-tls
+  rules:
+    - host: slicer.kblab.me
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: orcaslicer
+                port:
+                  number: 80

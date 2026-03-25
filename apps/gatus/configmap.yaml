@@ -109,6 +109,13 @@ data:
         conditions:
           - "[STATUS] < 500"
 
+      - name: OrcaSlicer
+        group: apps
+        url: "http://orcaslicer.orcaslicer.svc:80/"
+        interval: 60s
+        conditions:
+          - "[STATUS] < 500"
+
       - name: OpenClaw
         group: apps
         url: "http://openclaw.openclaw.svc:18789/"
@@ -303,6 +310,16 @@ data:
       - name: status.kblab.me
         group: ingress
         url: "https://status.kblab.me"
+        interval: 300s
+        client:
+          insecure: true
+        conditions:
+          - "[STATUS] < 500"
+          - "[CERTIFICATE_EXPIRATION] > 720h"
+
+      - name: slicer.kblab.me
+        group: ingress
+        url: "https://slicer.kblab.me"
         interval: 300s
         client:
           insecure: true

@@ -18,29 +18,6 @@ spec:
         app.kubernetes.io/name: home-assistant
     spec:
       initContainers:
-        - name: install-hacs
-          image: alpine:3.20
-          command:
-            - sh
-            - -c
-            - |
-              set -eu
-              TARGET="/config/custom_components/hacs"
-              if [ -d "$TARGET" ]; then
-                echo "HACS already installed, skipping"
-                exit 0
-              fi
-              apk add --no-cache wget unzip
-              mkdir -p /config/custom_components
-              wget -q -O /tmp/hacs.zip \
-                "https://github.com/hacs/integration/releases/latest/download/hacs.zip"
-              mkdir -p "$TARGET"
-              unzip -q /tmp/hacs.zip -d "$TARGET"
-              rm /tmp/hacs.zip
-              echo "HACS installed to $TARGET"
-          volumeMounts:
-            - name: config
-              mountPath: /config
         - name: sync-managed-config
           image: busybox:1.36
           command:

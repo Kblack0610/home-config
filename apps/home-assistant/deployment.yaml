@@ -34,10 +34,10 @@ spec:
               fi
               apk add --no-cache wget unzip
               rm -rf "$TARGET"
-              mkdir -p /config/custom_components
+              mkdir -p "$TARGET"
               wget -q -O /tmp/bambu_lab.zip \
                 "https://github.com/greghesp/ha-bambulab/releases/download/$VERSION/bambu_lab.zip"
-              unzip -o -q /tmp/bambu_lab.zip -d /config/custom_components/
+              unzip -o -q /tmp/bambu_lab.zip -d "$TARGET"
               echo "$VERSION" > "$MARKER"
               rm /tmp/bambu_lab.zip
               echo "bambu_lab $VERSION installed"

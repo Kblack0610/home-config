@@ -1,0 +1,64 @@
+# Elegoo Neptune 3D Printer — Moonraker REST sensors
+# Polls OpenNept4une (Klipper + Moonraker) at 192.168.1.51:7125
+
+rest:
+  # ── Temperatures (5s poll) ──
+  - resource: "http://192.168.1.51:7125/printer/objects/query?extruder=temperature,target&heater_bed=temperature,target"
+    scan_interval: 5
+    sensor:
+      - name: Neptune Extruder Temp
+        unique_id: neptune_extruder_temp
+        unit_of_measurement: "\xB0C"
+        device_class: temperature
+        value_template: >-
+          {{ value_json.result.status.extruder.temperature | float(0) | round(1) }}
+      - name: Neptune Extruder Target
+        unique_id: neptune_extruder_target
+        unit_of_measurement: "\xB0C"
+        device_class: temperature
+        value_template: >-
+          {{ value_json.result.status.extruder.target | float(0) | round(1) }}
+      - name: Neptune Bed Temp
+        unique_id: neptune_bed_temp
+        unit_of_measurement: "\xB0C"
+        device_class: temperature
+        value_template: >-
+          {{ value_json.result.status.heater_bed.temperature | float(0) | round(1) }}
+      - name: Neptune Bed Target
+        unique_id: neptune_bed_target
+        unit_of_measurement: "\xB0C"
+        device_class: temperature
+        value_template: >-
+          {{ value_json.result.status.heater_bed.target | float(0) | round(1) }}
+
+  # ── Print status (10s poll) ──
+  - resource: "http://192.168.1.51:7125/printer/objects/query?print_stats=state,filename,print_duration,total_duration&virtual_sdcard=progress,is_active&display_status=progress,message"
+    scan_interval: 10
+    sensor:
+      - name: Neptune Print State
+        unique_id: neptune_print_state
+        value_template: >-
+          {{ value_json.result.status.print_stats.state | default('unknown') }}
+      - name: Neptune Print Progress
+        unique_id: neptune_print_progress
+        unit_of_measurement: "%"
+        value_template: >-
+          {{ (value_json.result.status.virtual_sdcard.progress | float(0) * 100) | round(1) }}
+      - name: Neptune Current File
+        unique_id: neptune_current_file
+        value_template: >-
+          {{ value_json.result.status.print_stats.filename | default('') }}
+      - name: Neptune Print Duration
+        unique_id: neptune_print_duration
+        value_template: >-
+          {% set d = value_json.result.status.print_stats.print_duration | int(0) %}
+          {{ '%02d:%02d:%02d' | format(d // 3600, (d % 3600) // 60, d % 60) }}
+
+  # ── Printer info (60s poll) ──
+  - resource: "http://192.168.1.51:7125/printer/info"
+    scan_interval: 60
+    sensor:
+      - name: Neptune Printer Status
+        unique_id: neptune_printer_status
+        value_template: >-
+          {{ value_json.result.state | default('unknown') }}

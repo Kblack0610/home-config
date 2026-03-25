@@ -36,10 +36,12 @@ Repo-managed Home Assistant files live under `apps/home-assistant/config/`:
 - `configuration.yaml`: base HA config, proxies, Lovelace mode
 - `packages/`: Prometheus-backed REST sensors and derived template sensors
 - `ui-lovelace.yaml`: default dashboard definition
-- `dashboards/`: retained views (`Overview`, `Ops`, `Admin`)
+- `dashboards/`: retained views (`Overview`, `Ops`, `Admin`, `3D Printing`)
 - `automations.yaml`, `scripts.yaml`, `scenes.yaml`: checked-in defaults so a fresh PVC can boot cleanly
 
 These files are bundled into a generated ConfigMap and synced into the HA PVC on each rollout. Runtime state such as `.storage` stays on the PVC and is not repo-managed.
+
+Custom components (e.g. `ha-bambulab`) are installed via init containers with pinned versions. Integration config entries are seeded from K8s Secrets into `.storage/core.config_entries` on first boot.
 
 ## Features
 
@@ -51,7 +53,14 @@ These files are bundled into a generated ConfigMap and synced into the HA PVC on
 | Service health | Home Assistant, Traefik, and LiteLLM container metrics |
 | Mac monitoring | Mac Studio and Mac Mini node exporter metrics |
 | AI endpoints | MLX model endpoints and Ollama fallback model counts |
-| Dashboard cleanup | Retains only `Overview`, `Ops`, and `Admin` views |
+
+### 3D Printer Monitoring
+
+| Use Case | Description |
+|----------|-------------|
+| Neptune (Moonraker) | REST sensors polling Moonraker API at 192.168.1.51 — temps, progress, print state |
+| Bambu A1 (ha-bambulab) | Custom component installed via init container, config seeded from K8s Secret |
+| Dashboard | Dedicated `3D Printing` view with status, progress gauges, and temperature cards |
 
 ## Deployment
 
@@ -138,6 +147,23 @@ kubectl logs -n home-assistant deploy/home-assistant -c sync-managed-config
 ```bash
 kubectl rollout restart deployment home-assistant -n home-assistant
 ```
+
+## Code-First Policy
+
+All Home Assistant changes are managed through this git repository. No manual UI configuration.
+
+- **Dashboards**: YAML-mode Lovelace, defined in `config/dashboards/`
+- **Sensors**: REST platform in `config/packages/` — no config-flow integrations for new sensors
+- **Custom components**: Installed via init containers with pinned versions, not HACS
+- **Integration config**: Seeded into `.storage/core.config_entries` from K8s Secrets on first boot
+- **Credentials**: Stored in SOPS-encrypted K8s Secrets (age key)
+- **Runtime state**: `.storage/` persists on PVC — the only non-git-managed state
+
+When adding a new device or integration:
+1. Prefer HA's built-in REST/MQTT/template platforms (100% YAML)
+2. If a custom component is required, add an init container to download a pinned release
+3. Seed the config entry from a K8s Secret if the integration is config-flow-only
+4. Never install HACS or use the HA UI for configuration
 
 ## Related Services
 

@@ -18,6 +18,32 @@ spec:
         app.kubernetes.io/name: home-assistant
     spec:
       initContainers:
+        - name: install-bambu-lab
+          image: alpine:3.20
+          command:
+            - sh
+            - -c
+            - |
+              set -eu
+              VERSION="v2.2.21"
+              TARGET="/config/custom_components/bambu_lab"
+              MARKER="$TARGET/.version"
+              if [ -f "$MARKER" ] && [ "$(cat "$MARKER")" = "$VERSION" ]; then
+                echo "bambu_lab $VERSION already installed, skipping"
+                exit 0
+              fi
+              apk add --no-cache wget unzip
+              rm -rf "$TARGET"
+              mkdir -p /config/custom_components
+              wget -q -O /tmp/bambu_lab.zip \
+                "https://github.com/greghesp/ha-bambulab/releases/download/$VERSION/bambu_lab.zip"
+              unzip -q /tmp/bambu_lab.zip -d /config/custom_components/
+              echo "$VERSION" > "$MARKER"
+              rm /tmp/bambu_lab.zip
+              echo "bambu_lab $VERSION installed"
+          volumeMounts:
+            - name: config
+              mountPath: /config
         - name: sync-managed-config
           image: busybox:1.36
           command:
@@ -37,6 +63,7 @@ spec:
               cp /managed-config/package_service_metrics.yaml /config/packages/service_metrics.yaml
               cp /managed-config/package_homelab_endpoints.yaml /config/packages/homelab_endpoints.yaml
               cp /managed-config/package_derived_metrics.yaml /config/packages/derived_metrics.yaml
+              cp /managed-config/package_printing_neptune.yaml /config/packages/printing_neptune.yaml
 
               cp /managed-config/dashboard_overview.yaml /config/dashboards/overview.yaml
               cp /managed-config/dashboard_ops.yaml /config/dashboards/ops.yaml
@@ -47,6 +74,99 @@ spec:
               mountPath: /config
             - name: managed-config
               mountPath: /managed-config
+        - name: seed-integrations
+          image: ghcr.io/home-assistant/home-assistant:stable
+          command:
+            - python3
+            - -c
+            - |
+              import json, os, uuid
+              from datetime import datetime, timezone
+
+              CONFIG_FILE = "/config/.storage/core.config_entries"
+              DOMAIN = "bambu_lab"
+
+              serial = os.environ.get("BAMBU_SERIAL", "").upper()
+              host = os.environ.get("BAMBU_HOST", "")
+              access_code = os.environ.get("BAMBU_ACCESS_CODE", "")
+
+              if not all([serial, host, access_code]):
+                  print("WARN: Bambu credentials not set, skipping config seeding")
+                  exit(0)
+
+              os.makedirs(os.path.dirname(CONFIG_FILE), exist_ok=True)
+
+              if os.path.exists(CONFIG_FILE):
+                  with open(CONFIG_FILE) as f:
+                      store = json.load(f)
+              else:
+                  store = {"version": 1, "minor_version": 4, "key": "core.config_entries", "data": {"entries": []}}
+
+              for entry in store["data"]["entries"]:
+                  if entry.get("domain") == DOMAIN and entry.get("data", {}).get("serial") == serial:
+                      print(f"Config entry for {DOMAIN} serial={serial} already exists, skipping")
+                      exit(0)
+
+              now = datetime.now(timezone.utc).isoformat()
+              entry = {
+                  "created_at": now,
+                  "data": {
+                      "device_type": "A1",
+                      "serial": serial,
+                  },
+                  "disabled_by": None,
+                  "discovery_keys": {},
+                  "domain": DOMAIN,
+                  "entry_id": uuid.uuid4().hex,
+                  "minor_version": 1,
+                  "modified_at": now,
+                  "options": {
+                      "region": "",
+                      "email": "",
+                      "username": "",
+                      "name": f"A1-{serial}",
+                      "host": host,
+                      "local_mqtt": True,
+                      "auth_token": "",
+                      "access_code": access_code,
+                      "print_cache_count": 100,
+                      "timelapse_cache_count": 1,
+                      "usage_hours": 0.0,
+                      "disable_ssl_verify": False,
+                      "enable_firmware_update": False,
+                      "force_ip": False,
+                  },
+                  "pref_disable_new_entities": False,
+                  "pref_disable_polling": False,
+                  "source": "user",
+                  "title": serial,
+                  "unique_id": None,
+                  "version": 2,
+              }
+
+              store["data"]["entries"].append(entry)
+              with open(CONFIG_FILE, "w") as f:
+                  json.dump(store, f, indent=2)
+              print(f"Seeded {DOMAIN} config entry for serial={serial}")
+          env:
+            - name: BAMBU_SERIAL
+              valueFrom:
+                secretKeyRef:
+                  name: bambu-a1-credentials
+                  key: serial
+            - name: BAMBU_HOST
+              valueFrom:
+                secretKeyRef:
+                  name: bambu-a1-credentials
+                  key: host
+            - name: BAMBU_ACCESS_CODE
+              valueFrom:
+                secretKeyRef:
+                  name: bambu-a1-credentials
+                  key: access-code
+          volumeMounts:
+            - name: config
+              mountPath: /config
       containers:
         - name: home-assistant
           image: ghcr.io/home-assistant/home-assistant:stable

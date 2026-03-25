@@ -15,6 +15,7 @@ configMapGenerator:
       - package_service_metrics.yaml=config/packages/service_metrics.yaml
       - package_homelab_endpoints.yaml=config/packages/homelab_endpoints.yaml
       - package_derived_metrics.yaml=config/packages/derived_metrics.yaml
+      - package_printing_neptune.yaml=config/packages/printing_neptune.yaml
       - dashboard_overview.yaml=config/dashboards/overview.yaml
       - dashboard_ops.yaml=config/dashboards/ops.yaml
       - dashboard_admin.yaml=config/dashboards/admin.yaml
@@ -28,3 +29,4 @@ resources:
   - ingress.yaml
   - backup-cronjob.yaml
   - backup-nas-secret.yaml
+  - bambu-a1-secret.yaml

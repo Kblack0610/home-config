@@ -8,4 +8,5 @@ resources:
   - configmap-profiles.yaml
   - deployment.yaml
   - service.yaml
+  - tlsoption.yaml
   - ingress.yaml

@@ -68,6 +68,12 @@ spec:
               value: "0"
             - name: TZ
               value: America/Los_Angeles
+            - name: LIBGL_ALWAYS_SOFTWARE
+              value: "1"
+            - name: WEBKIT_DISABLE_COMPOSITING_MODE
+              value: "1"
+            - name: GALLIUM_DRIVER
+              value: "llvmpipe"
           ports:
             - name: http
               containerPort: 3000

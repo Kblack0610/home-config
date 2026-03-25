@@ -1,0 +1,102 @@
+title: 3D Printing
+path: printing
+icon: mdi:printer-3d
+type: sections
+max_columns: 3
+sections:
+  # ── Printer Status ──
+  - type: grid
+    cards:
+      - type: heading
+        heading: Printer Status
+        icon: mdi:printer-3d
+      - type: tile
+        entity: sensor.bambu_a1_print_status
+        name: Bambu A1
+        icon: mdi:printer-3d-nozzle
+      - type: tile
+        entity: sensor.elegoo_neptune_current_print_state
+        name: Elegoo Neptune
+        icon: mdi:printer-3d-nozzle
+
+  # ── Active Print ──
+  - type: grid
+    cards:
+      - type: heading
+        heading: Active Print
+        icon: mdi:progress-clock
+      - type: gauge
+        entity: sensor.bambu_a1_print_progress
+        name: Bambu A1 Progress
+        min: 0
+        max: 100
+        severity:
+          green: 0
+          yellow: 75
+          red: 95
+      - type: gauge
+        entity: sensor.elegoo_neptune_print_progress
+        name: Neptune Progress
+        min: 0
+        max: 100
+        severity:
+          green: 0
+          yellow: 75
+          red: 95
+      - type: entities
+        title: Print Details
+        show_header_toggle: false
+        entities:
+          - entity: sensor.bambu_a1_current_stage
+            name: Bambu A1 Stage
+          - entity: sensor.bambu_a1_remaining_time
+            name: Bambu A1 Time Left
+          - entity: sensor.elegoo_neptune_print_duration
+            name: Neptune Duration
+          - entity: sensor.elegoo_neptune_print_eta
+            name: Neptune ETA
+
+  # ── Temperatures ──
+  - type: grid
+    cards:
+      - type: heading
+        heading: Temperatures
+        icon: mdi:thermometer
+      - type: entities
+        title: Bambu A1
+        show_header_toggle: false
+        entities:
+          - entity: sensor.bambu_a1_nozzle_temperature
+            name: Nozzle
+          - entity: sensor.bambu_a1_bed_temperature
+            name: Bed
+          - entity: sensor.bambu_a1_nozzle_target_temperature
+            name: Nozzle Target
+          - entity: sensor.bambu_a1_bed_target_temperature
+            name: Bed Target
+      - type: entities
+        title: Elegoo Neptune
+        show_header_toggle: false
+        entities:
+          - entity: sensor.elegoo_neptune_extruder_temperature
+            name: Nozzle
+          - entity: sensor.elegoo_neptune_bed_temperature
+            name: Bed
+          - entity: sensor.elegoo_neptune_extruder_target
+            name: Nozzle Target
+          - entity: sensor.elegoo_neptune_bed_target
+            name: Bed Target
+
+  # ── Controls ──
+  - type: grid
+    cards:
+      - type: heading
+        heading: Controls
+        icon: mdi:gamepad-variant
+      - type: markdown
+        content: |
+          Printer controls are available through each printer's native interface.
+          - **Bambu A1**: Bambu Handy app or printer touchscreen
+          - **Elegoo Neptune**: Mainsail/Fluidd at [http://192.168.1.51](http://192.168.1.51)
+
+          Pause/resume/stop button cards can be added here after integration setup.

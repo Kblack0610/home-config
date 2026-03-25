@@ -18,6 +18,7 @@ configMapGenerator:
       - dashboard_overview.yaml=config/dashboards/overview.yaml
       - dashboard_ops.yaml=config/dashboards/ops.yaml
       - dashboard_admin.yaml=config/dashboards/admin.yaml
+      - dashboard_printing.yaml=config/dashboards/printing.yaml
 
 resources:
   - namespace.yaml

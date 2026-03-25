@@ -3,3 +3,4 @@ views:
   - !include dashboards/overview.yaml
   - !include dashboards/ops.yaml
   - !include dashboards/admin.yaml
+  - !include dashboards/printing.yaml

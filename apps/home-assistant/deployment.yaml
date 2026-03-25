@@ -37,7 +37,7 @@ spec:
               mkdir -p /config/custom_components
               wget -q -O /tmp/bambu_lab.zip \
                 "https://github.com/greghesp/ha-bambulab/releases/download/$VERSION/bambu_lab.zip"
-              unzip -q /tmp/bambu_lab.zip -d /config/custom_components/
+              unzip -o -q /tmp/bambu_lab.zip -d /config/custom_components/
               echo "$VERSION" > "$MARKER"
               rm /tmp/bambu_lab.zip
               echo "bambu_lab $VERSION installed"

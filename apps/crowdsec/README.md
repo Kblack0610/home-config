@@ -115,4 +115,3 @@ kubectl --context home-k3s rollout restart -n crowdsec deploy/crowdsec-lapi depl
 - **Phase 2**: Prometheus ServiceMonitor + Grafana dashboard
 - **Phase 3**: OpenWrt firewall bouncer (block at the router level)
 - **Phase 4**: CrowdSec AppSec/WAF for virtual patching
-- **Phase 5**: Extend to do-nyc3-prod cluster

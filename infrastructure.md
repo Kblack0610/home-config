@@ -9,7 +9,6 @@
 | environment | provider | nodes | apps | health | issues |
 |-------------|----------|------:|-----:|--------|-------:|
 | home-k3s | Raspberry Pi + CachyOS (local) | 8 | 12 | degraded | 2 |
-| do-nyc3-prod | DigitalOcean (managed) | 2 | 4 | healthy | 0 |
 | mac-machines | Apple Silicon (local) | 2 | 3 | healthy | 0 |
 | standalone | Docker Compose / embedded | 3 | 3 | healthy | 0 |
 
@@ -82,34 +81,6 @@
 
 ---
 
-### do-nyc3-placemyparents-k8s-prod (digitalocean)
-
-| property | value |
-|----------|-------|
-| api server | `https://828479fe-...k8s.ondigitalocean.com` |
-| distribution | DOKS (managed) |
-| nodes | 2 (worker-pool-pd3fd, worker-pool-pd3fv) |
-| cni | Cilium (with Hubble) |
-| csi | DigitalOcean CSI |
-| ingress | NGINX Ingress Controller v1.8.1 |
-| monitoring | kube-prometheus-stack |
-
-#### namespaces
-
-| namespace | purpose | status |
-|-----------|---------|--------|
-| ingress-nginx | NGINX Ingress Controller | active |
-| monitoring | Prometheus / Grafana / AlertManager | active |
-| placemyparents | PlaceMyParents (API + Web) | active |
-
-#### helm releases
-
-| release | namespace | chart version |
-|---------|-----------|---------------|
-| kube-prometheus-stack | monitoring | v0.87.1 |
-
----
-
 ## applications
 
 ### service directory
@@ -128,10 +99,6 @@
 | Grafana | home-k3s | monitoring | Deployment | active |
 | CrowdSec | home-k3s | crowdsec | HelmRelease | active |
 | OrcaSlicer | home-k3s | orcaslicer | Deployment | active |
-| PlaceMyParents API | do-nyc3-prod | placemyparents | Deployment | active |
-| PlaceMyParents Web | do-nyc3-prod | placemyparents | Deployment | active |
-| Prometheus | do-nyc3-prod | monitoring | StatefulSet | active |
-| Grafana | do-nyc3-prod | monitoring | Deployment | active |
 | Frigate NVR | standalone | -- | Docker Compose | active |
 | Pi3 AdGuard Home | standalone | -- | Docker Compose | active |
 | ESP32 Smart Switch | standalone | -- | Embedded (Rust) | active |
@@ -165,15 +132,9 @@ See [Mac Machines Setup Guide](docs/mac-machines.md) for full provisioning instr
 
 ## external access
 
-### ingress split
+### ingress
 
-The repository uses two ingress controllers in two different environments:
-
-- `home-k3s`: Traefik on the local network path behind `192.168.1.124`
-- `do-nyc3-prod`: nginx ingress inside the DigitalOcean cluster
-
-`*.kblab.me` local DNS rewrites should continue to target the Traefik endpoint on `192.168.1.124`
-unless a specific hostname is intentionally migrated.
+Traefik on the local network path behind `192.168.1.124`. All `*.kblab.me` local DNS rewrites target this endpoint via AdGuard Home wildcard rewrite.
 
 ### public domains
 
@@ -224,9 +185,6 @@ kubectl create job --from=cronjob/forgejo-backup manual-backup-$(date +%s) -n fo
 | CrowdSec | home-k3s | Intrusion prevention (LAPI + bouncer) |
 | Gatus | home-k3s | Uptime / health checks |
 | node_exporter | mac-machines | CPU/RAM/Disk metrics (Homebrew service) |
-| Prometheus | do-nyc3-prod | Metrics collection |
-| Grafana | do-nyc3-prod | Dashboards |
-| AlertManager | do-nyc3-prod | Alert routing |
 
 ### mcp integrations
 
@@ -237,7 +195,6 @@ kubectl create job --from=cronjob/forgejo-backup manual-backup-$(date +%s) -n fo
 | ssh | Node shell access via AI agent |
 | prometheus | Metric queries via AI agent |
 | grafana | Dashboard management via AI agent |
-| digitalocean | Cloud resource management via AI agent |
 
 ---
 
@@ -246,7 +203,6 @@ kubectl create job --from=cronjob/forgejo-backup manual-backup-$(date +%s) -n fo
 | cluster | cni | ingress | dns |
 |---------|-----|---------|-----|
 | home-k3s | Flannel | Traefik | AdGuard Home (Pi3 standalone) |
-| do-nyc3-prod | Cilium | NGINX | DigitalOcean managed |
 
 ---
 

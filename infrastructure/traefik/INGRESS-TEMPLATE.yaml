@@ -43,8 +43,7 @@ spec:
 # ADDING EXTERNAL ACCESS (via Cloudflare Tunnel)
 # =============================================================================
 #
-# For external access, update your Cloudflare Tunnel config in:
-#   ~/dev/BlackNBrownStudios/platform/infra/local-staging/
+# For external access, update your Cloudflare Tunnel config.
 #
 # Add to Terraform:
 #   ingress {

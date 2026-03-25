@@ -12,7 +12,7 @@
 #
 # Domain Strategy:
 #   - LOCAL access:    <app>.home.lan        (via AdGuard DNS rewrite)
-#   - EXTERNAL access: <app>.blacknbrownstudios.com (via Cloudflare Tunnel)
+#   - EXTERNAL access: <app>.kblab.me (via Cloudflare Tunnel, for public services)
 #
 # =============================================================================
 
@@ -47,7 +47,7 @@ spec:
 #
 # Add to Terraform:
 #   ingress {
-#     hostname = "<APP_NAME>.blacknbrownstudios.com"
+#     hostname = "<APP_NAME>.kblab.me"
 #     service  = "http://<SERVICE_NAME>.<NAMESPACE>.svc.cluster.local:<PORT>"
 #   }
 #

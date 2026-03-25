@@ -8,7 +8,7 @@ Local DNS server with ad-blocking for the home network. Works alongside Cloudfla
 ┌─────────────────────────────────────────────────────────────────────────┐
 │ EXTERNAL ACCESS (from internet)                                         │
 │                                                                         │
-│   app.blacknbrownstudios.com → Cloudflare Tunnel → K8s Service          │
+│   app.kblab.me → Cloudflare Tunnel → K8s Service (public domains)       │
 └─────────────────────────────────────────────────────────────────────────┘
 
 ┌─────────────────────────────────────────────────────────────────────────┐
@@ -55,9 +55,8 @@ Already configured (migrated from cluster). Current rewrites:
 
 To add more: **Filters → DNS Rewrites** in the AdGuard web UI.
 
-> **Note:** For the home cluster, all local `*.kblab.me` domains point to the local Traefik endpoint
-> at `192.168.1.124`. The DigitalOcean cluster uses a separate nginx ingress and should not be used
-> for the local wildcard rewrite unless you intentionally migrate hosts there.
+> **Note:** All local `*.kblab.me` domains point to the local Traefik endpoint at `192.168.1.124`
+> via the wildcard DNS rewrite. No per-service rewrite needed.
 
 ### 4. Configure Upstream DNS
 
@@ -228,7 +227,7 @@ This setup complements your existing Cloudflare Tunnel:
 
 | Access Type | Domain | Route |
 |-------------|--------|-------|
-| **External** | `app.blacknbrownstudios.com` | Internet → Cloudflare → Tunnel → K8s |
+| **External** | `app.kblab.me` (public) | Internet → Cloudflare → Tunnel → K8s |
 | **Local** | `app.kblab.me` | LAN → AdGuard → Traefik → home-k3s |
 
 Benefits of local access:

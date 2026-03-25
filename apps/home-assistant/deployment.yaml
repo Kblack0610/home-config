@@ -139,10 +139,16 @@ spec:
                   "pref_disable_new_entities": False,
                   "pref_disable_polling": False,
                   "source": "user",
+                  "subentries": {},
                   "title": serial,
                   "unique_id": None,
                   "version": 2,
               }
+
+              # Ensure all existing entries also have subentries key
+              for e in store["data"]["entries"]:
+                  if "subentries" not in e:
+                      e["subentries"] = {}
 
               store["data"]["entries"].append(entry)
               with open(CONFIG_FILE, "w") as f:

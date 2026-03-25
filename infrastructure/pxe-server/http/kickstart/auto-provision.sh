@@ -296,6 +296,32 @@ enable_services() {
 }
 
 # =============================================================================
+# NAS Mounts
+# =============================================================================
+
+setup_nas_mounts() {
+    log_section "Setting Up NAS Automounts"
+
+    local nas_script_url="http://$PXE_SERVER:9080/kickstart/common/nas-mounts.sh"
+
+    log "Fetching NAS mount script from $nas_script_url..."
+
+    if curl -sLf "$nas_script_url" -o /tmp/nas-mounts.sh 2>/dev/null; then
+        chmod +x /tmp/nas-mounts.sh
+        log "Running NAS mount setup..."
+
+        INSTALL_ROOT="${INSTALL_ROOT:-}" \
+        NAS_PASSWORD="${NAS_PASSWORD:-}" \
+            bash /tmp/nas-mounts.sh
+
+        rm -f /tmp/nas-mounts.sh
+        log_success "NAS automounts configured"
+    else
+        log_warning "NAS mount script not available at $nas_script_url, skipping"
+    fi
+}
+
+# =============================================================================
 # Cleanup & Finalization
 # =============================================================================
 
@@ -350,6 +376,7 @@ main() {
     setup_dotfiles
     apply_profile
     enable_services
+    setup_nas_mounts
     finalize
 
     log_section "Provisioning Complete!"

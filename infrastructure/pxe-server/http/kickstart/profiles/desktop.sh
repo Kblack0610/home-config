@@ -33,6 +33,9 @@ DESKTOP_PACKAGES=(
     # Streaming
     sunshine
 
+    # Network filesystems
+    cifs-utils
+
     # Utilities
     btop
     lazygit

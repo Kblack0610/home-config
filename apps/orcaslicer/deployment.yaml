@@ -89,11 +89,13 @@ spec:
               memory: "4Gi"
               cpu: "4000m"
           livenessProbe:
-            httpGet:
-              path: /
-              port: 3000
+            exec:
+              command:
+                - /bin/sh
+                - -c
+                - "pgrep -x orcaslicer_main > /dev/null"
             initialDelaySeconds: 60
-            periodSeconds: 30
+            periodSeconds: 15
             failureThreshold: 3
           readinessProbe:
             httpGet:

@@ -6,7 +6,3 @@ kind: Kustomization
 resources:
   # Flux Kustomizations (pointers to app directories)
   - apps.yaml
-  # Platform repo as second Flux source (binks-agent + future platform apps)
-  - platform-source.yaml
-  - platform-apps.yaml
-  - platform-repo-auth-secret.yaml

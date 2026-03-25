@@ -3,7 +3,6 @@
 Configuration and runbooks for a mixed home infrastructure estate:
 
 - `home-k3s`: Raspberry Pi K3s cluster managed with Flux CD
-- `do-nyc3-prod`: DigitalOcean Kubernetes workloads
 - `mac-machines`: native macOS hosts for CI/CD and local inference
 - `standalone`: Docker Compose and embedded services outside Kubernetes
 

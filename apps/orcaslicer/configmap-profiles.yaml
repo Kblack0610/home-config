@@ -131,7 +131,7 @@ data:
             "192.168.1.55": {
                 "dev_ip": "192.168.1.55",
                 "dev_name": "Bambu Lab A1",
-                "printer_type": "C13",
+                "printer_type": "N2S",
                 "dev_access_code": "20393920",
                 "dev_connection_type": "lan",
                 "serial_number": "03900D5B1110644"

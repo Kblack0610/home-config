@@ -41,6 +41,9 @@ spec:
               # Machine profile
               cp /seed/machine-neptune4pro.json "$CONFIG_DIR/user/default/machine/Elegoo Neptune 4 Pro (0.4 nozzle)-OpenNept4une.json"
               cp /seed/machine-neptune4pro.info "$CONFIG_DIR/user/default/machine/Elegoo Neptune 4 Pro (0.4 nozzle)-OpenNept4une.info"
+              # Bambu A1 machine profile
+              cp /seed/machine-bambu-a1.json "$CONFIG_DIR/user/default/machine/Bambu Lab A1 (0.4 nozzle)-LAN.json"
+              cp /seed/machine-bambu-a1.info "$CONFIG_DIR/user/default/machine/Bambu Lab A1 (0.4 nozzle)-LAN.info"
               # Filament profiles
               cp /seed/filament-pla.json "$CONFIG_DIR/user/default/filament/Elegoo Generic PLA-OpenNept4une.json"
               cp /seed/filament-pla.info "$CONFIG_DIR/user/default/filament/Elegoo Generic PLA-OpenNept4une.info"

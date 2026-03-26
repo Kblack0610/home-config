@@ -154,7 +154,7 @@ devices:
 
   - hostname: neptune-3d-printer
     mac: "7E:B3:26:27:EF:03"
-    ip: "192.168.1.51"
+    ip: "192.168.1.54"
     category: iot
     range_exception: true
 

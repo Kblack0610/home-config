@@ -11,8 +11,8 @@ data:
   orcaslicer.conf: |
     {
         "access_code": {
-            "192.168.1.51": "88888888",
-            "192.168.1.166": "20393920"
+            "192.168.1.54": "88888888",
+            "192.168.1.55": "20393920"
         },
         "app": {
             "allow_abnormal_storage": false,
@@ -123,13 +123,13 @@ data:
         },
         "header": "OrcaSlicer 2.3.2",
         "local_machines": {
-            "192.168.1.51": {
-                "dev_ip": "192.168.1.51",
+            "192.168.1.54": {
+                "dev_ip": "192.168.1.54",
                 "dev_name": "Elegoo Neptune 4 Pro",
                 "printer_type": "Elegoo-Neptune-4-Pro"
             },
-            "192.168.1.166": {
-                "dev_ip": "192.168.1.166",
+            "192.168.1.55": {
+                "dev_ip": "192.168.1.55",
                 "dev_name": "Bambu Lab A1",
                 "printer_type": "C13",
                 "dev_access_code": "20393920",
@@ -179,8 +179,8 @@ data:
             "settings_folder": "/prints"
         },
         "user_access_code": {
-            "192.168.1.51": "88888888",
-            "192.168.1.166": "20393920"
+            "192.168.1.54": "88888888",
+            "192.168.1.55": "20393920"
         }
     }
 
@@ -253,7 +253,7 @@ data:
         "nozzle_type": [
             "undefine"
         ],
-        "print_host": "192.168.1.51",
+        "print_host": "192.168.1.54",
         "printable_area": [
             "0x0",
             "235x0",

@@ -102,7 +102,7 @@ spec:
               command:
                 - /bin/sh
                 - -c
-                - "pgrep -x orcaslicer_main > /dev/null"
+                - "pgrep -x orcaslicer_main > /dev/null && DISPLAY=:1 timeout 3 xdotool getactivewindow > /dev/null 2>&1"
             initialDelaySeconds: 60
             periodSeconds: 15
             failureThreshold: 3

@@ -1,6 +1,6 @@
 # infrastructure status
 
-> **last updated:** 2026-03-25
+> **last updated:** 2026-03-30
 > **updated by:** kblack0610
 > **repo:** home-config
 
@@ -8,7 +8,7 @@
 
 | environment | provider | nodes | apps | health | issues |
 |-------------|----------|------:|-----:|--------|-------:|
-| home-k3s | Raspberry Pi + CachyOS (local) | 8 | 12 | degraded | 2 |
+| home-k3s | Raspberry Pi + CachyOS (local) | 9 | 15 | degraded | 1 |
 | mac-machines | Apple Silicon (local) | 2 | 3 | healthy | 0 |
 | standalone | Docker Compose / embedded | 3 | 3 | healthy | 0 |
 
@@ -16,12 +16,9 @@
 
 | cluster | namespace | resource | issue | age | priority |
 |---------|-----------|----------|-------|----:|----------|
-| home-k3s | pick-a-number | pick-a-number-api | ImagePullBackOff | 69d | low |
-| home-k3s | portfolio | portfolio-web | ErrImageNeverPull | 66d | low |
 | home-k3s | monitoring | prometheus-node-exporter (x1) | Pending | 53d | low |
 
-> Issues 1-2 are abandoned projects with stale/missing images. Consider deleting the namespaces.
-> Issue 3 is a DaemonSet pod that cannot schedule on all nodes (expected on resource-constrained Pi cluster).
+> Issue is a DaemonSet pod that cannot schedule on all nodes (expected on resource-constrained Pi cluster).
 
 ---
 
@@ -64,9 +61,10 @@
 | monitoring | Prometheus / Grafana / AlertManager | active |
 | crowdsec | CrowdSec IPS (LAPI + bouncer) | active |
 | orcaslicer | 3D printer slicer (OrcaSlicer) | active |
+| portfolio | Kenneth Black portfolio (kennethblack.me) | active |
+| bnb-studios | BNB Studios site (blacknbrownstudios.com) | active |
+| black-dev | kblack.dev personal site | active |
 | registry | Docker container registry | active |
-| pick-a-number | Abandoned game app | stale |
-| portfolio | Abandoned portfolio site | stale |
 
 #### helm releases
 
@@ -99,6 +97,9 @@
 | Grafana | home-k3s | monitoring | Deployment | active |
 | CrowdSec | home-k3s | crowdsec | HelmRelease | active |
 | OrcaSlicer | home-k3s | orcaslicer | Deployment | active |
+| Kenneth Black Portfolio | home-k3s | portfolio | Deployment | active |
+| BNB Studios | home-k3s | bnb-studios | Deployment | active |
+| kblack.dev | home-k3s | black-dev | Deployment | active |
 | Frigate NVR | standalone | -- | Docker Compose | active |
 | Pi3 AdGuard Home | standalone | -- | Docker Compose | active |
 | ESP32 Smart Switch | standalone | -- | Embedded (Rust) | active |
@@ -138,12 +139,16 @@ Traefik on the local network path behind `192.168.1.124`. All `*.kblab.me` local
 
 ### public domains
 
-| domain | service | cluster | tls |
-|--------|---------|---------|-----|
-| finance.kblab.me | Actual Budget | home-k3s | Let's Encrypt |
-| git.kblab.me | Forgejo | home-k3s | Let's Encrypt |
+| domain | service | cluster | tls | routing |
+|--------|---------|---------|-----|---------|
+| kennethblack.me | Portfolio | home-k3s | Let's Encrypt | Cloudflare tunnel → Traefik |
+| blacknbrownstudios.com | BNB Studios | home-k3s | Let's Encrypt | Cloudflare tunnel → Traefik |
+| kblack.dev | kblack.dev | home-k3s | Let's Encrypt | Cloudflare tunnel → Traefik |
+| finance.kblab.me | Actual Budget | home-k3s | Let's Encrypt | Direct Traefik |
+| git.kblab.me | Forgejo | home-k3s | Let's Encrypt | Direct Traefik |
 
 > Public ingresses are protected by the CrowdSec bouncer Traefik middleware (`crowdsec-bouncer@kubernetescrd`).
+> Public sites (kennethblack.me, blacknbrownstudios.com, kblack.dev) route through a Cloudflare tunnel (`cloudflared-public-sites` in the `apps` namespace).
 
 ### internal / LAN
 
@@ -203,6 +208,22 @@ kubectl create job --from=cronjob/forgejo-backup manual-backup-$(date +%s) -n fo
 | cluster | cni | ingress | dns |
 |---------|-----|---------|-----|
 | home-k3s | Flannel | Traefik | AdGuard Home (Pi3 standalone) |
+
+---
+
+## repo separation: home-config vs bnb/platform
+
+All K8s manifests deployed to the **home-k3s cluster** live in this repo (`home-config`), managed by Flux with `prune: true`. This includes public-facing sites like `kennethblack.me` even though their application source code lives in `bnb/platform`.
+
+| concern | repo | why |
+|---------|------|-----|
+| K8s manifests (all cluster services) | `home-config` | Single Flux source of truth, self-healing via `prune: true` |
+| Cloudflare tunnel Terraform | `bnb/platform` | Tunnel provisioning is infrastructure owned by the platform team |
+| Application source code | `bnb/platform` | App code, Dockerfiles, build pipelines |
+| Container images | Local registry (`192.168.1.20:30500`) | Built from `bnb/platform`, pushed to local registry, consumed by home-config manifests |
+| DigitalOcean deployments | `bnb/platform` | DO App Platform specs for production apps |
+
+**Key rule:** If it runs on home-k3s, the manifest lives in `home-config`. If it runs on DigitalOcean, the manifest lives in `bnb/platform`. Cloudflare tunnel config (Terraform) stays in `bnb/platform` since it bridges external DNS to the cluster.
 
 ---
 

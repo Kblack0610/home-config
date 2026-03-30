@@ -25,6 +25,11 @@ resources:
   - sonarr
   - sops-backup-rbac
 
+  # Public sites (Cloudflare tunnel → Traefik → service)
+  - portfolio
+  - bnb-studios
+  - black-dev
+
 # Excluded from GitOps (Docker Compose or non-K8s):
 # - actual-budget-tools (Docker Compose)
 # - esp32-firmware (embedded firmware, not K8s)

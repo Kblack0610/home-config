@@ -1,0 +1,44 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: black-dev-web
+  labels:
+    app: black-dev-web
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: black-dev-web
+  template:
+    metadata:
+      labels:
+        app: black-dev-web
+    spec:
+      containers:
+        - name: black-dev-web
+          image: 192.168.1.20:30500/black-dev:v1.0.0
+          imagePullPolicy: Always
+          ports:
+            - containerPort: 80
+              name: http
+          resources:
+            requests:
+              memory: "64Mi"
+              cpu: "10m"
+            limits:
+              memory: "128Mi"
+              cpu: "100m"
+          livenessProbe:
+            httpGet:
+              path: /
+              port: 80
+            initialDelaySeconds: 10
+            periodSeconds: 30
+            timeoutSeconds: 5
+          readinessProbe:
+            httpGet:
+              path: /
+              port: 80
+            initialDelaySeconds: 5
+            periodSeconds: 10
+            timeoutSeconds: 5

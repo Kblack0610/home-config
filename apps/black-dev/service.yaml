@@ -1,0 +1,15 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: black-dev-web
+  labels:
+    app: black-dev-web
+spec:
+  selector:
+    app: black-dev-web
+  ports:
+    - protocol: TCP
+      port: 80
+      targetPort: 80
+      name: http
+  type: ClusterIP

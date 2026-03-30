@@ -1,0 +1,36 @@
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: black-dev-web
+  labels:
+    app: black-dev-web
+  annotations:
+    cert-manager.io/cluster-issuer: letsencrypt-dns
+spec:
+  ingressClassName: traefik
+  tls:
+    - hosts:
+        - kblack.dev
+        - www.kblack.dev
+      secretName: black-dev-tls
+  rules:
+    - host: kblack.dev
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: black-dev-web
+                port:
+                  number: 80
+    - host: www.kblack.dev
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: black-dev-web
+                port:
+                  number: 80

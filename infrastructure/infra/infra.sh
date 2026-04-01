@@ -114,8 +114,8 @@ fetch_k8s_data() {
         --request-timeout="${KUBECTL_TIMEOUT}s" \
         > "$tmpdir/${ctx}.top" 2>/dev/null || true
 
-    # Scrape node_exporter metrics from each node (only when --disk or --temp)
-    if [[ ("$SHOW_DISK" == true || "$SHOW_TEMP" == true) && -s "$tmpdir/${ctx}.nodes" ]]; then
+    # Scrape node_exporter metrics from each node (when --disk, --temp, or --gpu)
+    if [[ ("$SHOW_DISK" == true || "$SHOW_TEMP" == true || "$SHOW_GPU" == true) && -s "$tmpdir/${ctx}.nodes" ]]; then
         local ne_pids=()
         while read -r name _status _roles _age _ver nodeip _rest; do
             if [[ -n "$nodeip" && "$nodeip" != "<none>" ]]; then
@@ -130,21 +130,6 @@ fetch_k8s_data() {
         done
     fi
 
-    # Scrape intel-gpu-exporter metrics (port 9101, only when --gpu)
-    if [[ "$SHOW_GPU" == true && -s "$tmpdir/${ctx}.nodes" ]]; then
-        local gpu_pids=()
-        while read -r name _status _roles _age _ver nodeip _rest; do
-            if [[ -n "$nodeip" && "$nodeip" != "<none>" ]]; then
-                curl -s --connect-timeout 2 --max-time 5 \
-                    "http://${nodeip}:9101/metrics" \
-                    > "$tmpdir/gpu.${ctx}.${name}.metrics" 2>/dev/null &
-                gpu_pids+=($!)
-            fi
-        done < "$tmpdir/${ctx}.nodes"
-        for pid in "${gpu_pids[@]}"; do
-            wait "$pid" 2>/dev/null || true
-        done
-    fi
 }
 
 fetch_apps_data() {
@@ -280,8 +265,16 @@ parse_node_gpu() {
         echo "-"
         return
     fi
+    # node_exporter --collector.drm exposes node_drm_gpu_busy_percent per card.
+    # Take the max across all cards on this node.
     local result
-    result=$(awk '/^gpumon_engine_usage\{.*engine="Render\/3D"/ { printf "%d%%", $2; found=1; exit } END { if (!found) print "-" }' "$metrics_file")
+    result=$(awk '/^node_drm_gpu_busy_percent\{/ {
+        val = $2 + 0
+        if (val > max) max = val
+        found = 1
+    } END {
+        if (found) printf "%d%%", max; else print "-"
+    }' "$metrics_file")
     echo "$result"
 }
 
@@ -339,7 +332,7 @@ parse_k8s_nodes() {
                 temp=$(parse_node_temp "$metrics_file")
             fi
             if [[ "$SHOW_GPU" == true ]]; then
-                gpu=$(parse_node_gpu "$tmpdir/gpu.${ctx}.${name}.metrics")
+                gpu=$(parse_node_gpu "$metrics_file")
             fi
         fi
 
@@ -1538,7 +1531,7 @@ DATA SOURCES:
     Android devices    adb shell getprop / dumpsys battery / df (auto-discovered)
     Disk (K8s nodes)   node_exporter :9100 (root filesystem)
     Temperature        node_exporter :9100 / /sys/class/hwmon (with --temp)
-    GPU (K8s nodes)    intel-gpu-exporter :9101 (with --gpu)
+    GPU (K8s nodes)    node_exporter :9100 --collector.drm (AMD gpu_busy_percent)
     GPU (local)        /sys/class/drm gpu_busy_percent (AMD) / nvidia-smi (NVIDIA)
     Age/Uptime         kubectl age (K8s), node_boot_time (Mac), /proc/uptime (local)
 EOF

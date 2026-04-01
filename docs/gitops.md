@@ -85,6 +85,15 @@ kubectl create secret generic sops-age \
   --from-file=age.agekey=$HOME/.config/sops/age/keys.txt
 ```
 
+## Golden Rule
+
+**Never `kubectl apply` Flux-managed resources directly.** All changes to `apps/` must go through git: commit, push, then let Flux reconcile. Direct `kubectl apply` creates drift that Flux will silently overwrite on the next reconciliation cycle, or worse, causes conflicts that block reconciliation entirely.
+
+The only valid uses of `kubectl apply` are:
+- **Initial Flux bootstrap** (before Flux is running)
+- **Resources outside Flux's watch path** (`infrastructure/` is not reconciled — see [app-lifecycle.md](./app-lifecycle.md))
+- **Emergency recovery** when Flux itself is broken (suspend reconciliation first with `flux suspend kustomization apps`)
+
 ## Day-to-Day Workflow
 
 ### Deploy a change

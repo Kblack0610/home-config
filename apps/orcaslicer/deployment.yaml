@@ -17,6 +17,10 @@ spec:
       labels:
         app.kubernetes.io/name: orcaslicer
     spec:
+      securityContext:
+        supplementalGroups:
+          - 987   # render
+          - 983   # video
       nodeSelector:
         kubernetes.io/hostname: asus-laptop
         storage.role/nas: "true"
@@ -71,12 +75,12 @@ spec:
               value: "0"
             - name: TZ
               value: America/Los_Angeles
+            - name: DRINODE
+              value: "/dev/dri/renderD128"
             - name: LIBGL_ALWAYS_SOFTWARE
-              value: "1"
-            - name: WEBKIT_DISABLE_COMPOSITING_MODE
-              value: "1"
+              value: "0"
             - name: GALLIUM_DRIVER
-              value: "llvmpipe"
+              value: ""
           ports:
             - name: http
               containerPort: 3000
@@ -87,9 +91,13 @@ spec:
               mountPath: /prints
             - name: shm
               mountPath: /dev/shm
+            - name: dri
+              mountPath: /dev/dri
             - name: localtime
               mountPath: /etc/localtime
               readOnly: true
+          securityContext:
+            privileged: true
           resources:
             requests:
               memory: "256Mi"
@@ -102,7 +110,7 @@ spec:
               command:
                 - /bin/sh
                 - -c
-                - "pgrep -x orcaslicer_main > /dev/null && DISPLAY=:1 timeout 3 xdotool getactivewindow > /dev/null 2>&1"
+                - "pgrep -x orcaslicer_main > /dev/null"
             initialDelaySeconds: 60
             periodSeconds: 15
             failureThreshold: 3
@@ -128,6 +136,10 @@ spec:
         - name: profiles
           configMap:
             name: orcaslicer-profiles
+        - name: dri
+          hostPath:
+            path: /dev/dri
+            type: Directory
         - name: localtime
           hostPath:
             path: /etc/localtime

@@ -266,13 +266,24 @@ parse_node_gpu() {
         return
     fi
     # node_exporter --collector.drm exposes node_drm_gpu_busy_percent per card.
-    # Take the max across all cards on this node.
+    # Only count cards with actual VRAM (filters out RPi vc4 and virtual DRM devices).
     local result
-    result=$(awk '/^node_drm_gpu_busy_percent\{/ {
-        val = $2 + 0
-        if (val > max) max = val
-        found = 1
-    } END {
+    result=$(awk '
+    /^node_drm_memory_vram_size_bytes\{/ {
+        match($0, /card="([^"]+)"/, c)
+        if (c[1] && $2 + 0 > 0) real_gpu[c[1]] = 1
+    }
+    /^node_drm_gpu_busy_percent\{/ {
+        match($0, /card="([^"]+)"/, c)
+        if (c[1]) busy[c[1]] = $2 + 0
+    }
+    END {
+        for (card in real_gpu) {
+            if (card in busy) {
+                if (busy[card] > max) max = busy[card]
+                found = 1
+            }
+        }
         if (found) printf "%d%%", max; else print "-"
     }' "$metrics_file")
     echo "$result"
@@ -1105,6 +1116,11 @@ print_mac_header() {
         sep_len=$((sep_len + 7))
         cols+=("TEMP")
     fi
+    if [[ "$SHOW_GPU" == true ]]; then
+        fmt+="  %5s"
+        sep_len=$((sep_len + 7))
+        cols+=("GPU")
+    fi
     if [[ "$SHOW_AGE" == true ]]; then
         fmt+="  %5s"
         sep_len=$((sep_len + 7))
@@ -1137,6 +1153,10 @@ print_mac_row() {
         fmt+="  %5s"
         vals+=("$temp")
     fi
+    if [[ "$SHOW_GPU" == true ]]; then
+        fmt+="  %5s"
+        vals+=("-")
+    fi
     if [[ "$SHOW_AGE" == true ]]; then
         fmt+="  %5s"
         vals+=("$age")
@@ -1158,6 +1178,11 @@ print_standalone_header() {
         fmt+="  %5s"
         sep_len=$((sep_len + 7))
         cols+=("TEMP")
+    fi
+    if [[ "$SHOW_GPU" == true ]]; then
+        fmt+="  %5s"
+        sep_len=$((sep_len + 7))
+        cols+=("GPU")
     fi
     if [[ "$SHOW_AGE" == true ]]; then
         fmt+="  %5s"

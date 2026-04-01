@@ -21,7 +21,7 @@ spec:
         - name: intel-gpu-exporter
           image: ghcr.io/clambin/intel-gpu-exporter:0.6.1
           args:
-            - --addr=:9101
+            - -prom.addr=:9101
           ports:
             - name: metrics
               containerPort: 9101

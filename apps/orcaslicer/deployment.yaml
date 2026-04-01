@@ -81,6 +81,10 @@ spec:
               value: "0"
             - name: GALLIUM_DRIVER
               value: ""
+            - name: WEBKIT_DISABLE_COMPOSITING_MODE
+              value: "1"
+            - name: WEBKIT_DISABLE_DMABUF_RENDERER
+              value: "1"
           ports:
             - name: http
               containerPort: 3000

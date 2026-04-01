@@ -62,6 +62,7 @@ SHOW_TEMP=false
 SHOW_ALL=false
 SHOW_AGE=false
 SHOW_DISK=false
+SHOW_GPU=false
 DHCP_DEVICES_FILE="${SCRIPT_DIR}/../dhcp/devices.yaml"
 
 # Temp directory for parallel data collection
@@ -125,6 +126,22 @@ fetch_k8s_data() {
             fi
         done < "$tmpdir/${ctx}.nodes"
         for pid in "${ne_pids[@]}"; do
+            wait "$pid" 2>/dev/null || true
+        done
+    fi
+
+    # Scrape intel-gpu-exporter metrics (port 9101, only when --gpu)
+    if [[ "$SHOW_GPU" == true && -s "$tmpdir/${ctx}.nodes" ]]; then
+        local gpu_pids=()
+        while read -r name _status _roles _age _ver nodeip _rest; do
+            if [[ -n "$nodeip" && "$nodeip" != "<none>" ]]; then
+                curl -s --connect-timeout 2 --max-time 5 \
+                    "http://${nodeip}:9101/metrics" \
+                    > "$tmpdir/gpu.${ctx}.${name}.metrics" 2>/dev/null &
+                gpu_pids+=($!)
+            fi
+        done < "$tmpdir/${ctx}.nodes"
+        for pid in "${gpu_pids[@]}"; do
             wait "$pid" 2>/dev/null || true
         done
     fi
@@ -257,6 +274,17 @@ parse_node_uptime() {
     format_uptime_age "$uptime_secs"
 }
 
+parse_node_gpu() {
+    local metrics_file="$1"
+    if [[ ! -s "$metrics_file" ]]; then
+        echo "-"
+        return
+    fi
+    local result
+    result=$(awk '/^gpumon_engine_usage\{.*engine="Render\/3D"/ { printf "%d%%", $2; found=1; exit } END { if (!found) print "-" }' "$metrics_file")
+    echo "$result"
+}
+
 parse_k8s_nodes() {
     local ctx="$1"
     local tmpdir="$2"
@@ -297,6 +325,7 @@ parse_k8s_nodes() {
         local up="UP"
         local temp="-"
         local disk="-"
+        local gpu="-"
         local node_age="$age"
         if [[ "$status" != "Ready" ]]; then
             up="DOWN"
@@ -309,9 +338,12 @@ parse_k8s_nodes() {
             if [[ "$SHOW_TEMP" == true ]]; then
                 temp=$(parse_node_temp "$metrics_file")
             fi
+            if [[ "$SHOW_GPU" == true ]]; then
+                gpu=$(parse_node_gpu "$tmpdir/gpu.${ctx}.${name}.metrics")
+            fi
         fi
 
-        echo "${up}|${name}|${roles}|${cpu}|${mem}|${disk}|${temp}|${node_age}"
+        echo "${up}|${name}|${roles}|${cpu}|${mem}|${disk}|${temp}|${node_age}|${gpu}"
     done < "$nodes_file"
 }
 
@@ -901,8 +933,34 @@ get_local_cpu_temp() {
     echo "-"
 }
 
+get_local_gpu() {
+    local max_busy=0 found=false
+    # AMD GPUs: read gpu_busy_percent from sysfs
+    for f in /sys/class/drm/card*/device/gpu_busy_percent; do
+        [[ -f "$f" ]] || continue
+        local val
+        val=$(<"$f")
+        found=true
+        (( val > max_busy )) && max_busy=$val
+    done
+    # NVIDIA: nvidia-smi
+    if command -v nvidia-smi &>/dev/null; then
+        local nv
+        nv=$(nvidia-smi --query-gpu=utilization.gpu --format=csv,noheader,nounits 2>/dev/null | head -1)
+        if [[ -n "$nv" && "$nv" =~ ^[0-9]+$ ]]; then
+            found=true
+            (( nv > max_busy )) && max_busy=$nv
+        fi
+    fi
+    if [[ "$found" == true ]]; then
+        echo "${max_busy}%"
+    else
+        echo "-"
+    fi
+}
+
 get_local_metrics() {
-    local cpu_pct mem_pct disk_pct temp age
+    local cpu_pct mem_pct disk_pct temp gpu age
     local hostname
     hostname=$(hostname)
 
@@ -933,12 +991,19 @@ get_local_metrics() {
         temp="-"
     fi
 
+    # GPU (only with --gpu)
+    if [[ "$SHOW_GPU" == true ]]; then
+        gpu=$(get_local_gpu)
+    else
+        gpu="-"
+    fi
+
     # Uptime/age from /proc/uptime
     local uptime_secs
     uptime_secs=$(awk '{ printf "%d", $1 }' /proc/uptime)
     age=$(format_uptime_age "$uptime_secs")
 
-    echo "UP|${hostname}|${cpu_pct}|${mem_pct}|${disk_pct}|${temp}|${age}"
+    echo "UP|${hostname}|${cpu_pct}|${mem_pct}|${disk_pct}|${temp}|${gpu}|${age}"
 }
 
 # =============================================================================
@@ -980,6 +1045,11 @@ print_cluster_header() {
         sep_len=$((sep_len + 7))
         cols+=("TEMP")
     fi
+    if [[ "$SHOW_GPU" == true ]]; then
+        fmt+="  %5s"
+        sep_len=$((sep_len + 7))
+        cols+=("GPU")
+    fi
     # AGE is always shown for cluster (free from kubectl)
     fmt+="  %5s"
     sep_len=$((sep_len + 7))
@@ -992,7 +1062,7 @@ print_cluster_header() {
 }
 
 print_node_row() {
-    local status="$1" name="$2" role="$3" cpu="$4" mem="$5" disk="$6" temp="$7" age="$8"
+    local status="$1" name="$2" role="$3" cpu="$4" mem="$5" disk="$6" temp="$7" age="$8" gpu="$9"
 
     local status_icon status_color status_text
     if [[ "$status" == "UP" ]]; then
@@ -1015,6 +1085,10 @@ print_node_row() {
     if [[ "$SHOW_TEMP" == true ]]; then
         fmt+="  %5s"
         vals+=("$temp")
+    fi
+    if [[ "$SHOW_GPU" == true ]]; then
+        fmt+="  %5s"
+        vals+=("$gpu")
     fi
     # AGE always shown for cluster
     fmt+="  %5s"
@@ -1116,6 +1190,11 @@ print_local_header() {
         sep_len=$((sep_len + 7))
         cols+=("TEMP")
     fi
+    if [[ "$SHOW_GPU" == true ]]; then
+        fmt+="  %5s"
+        sep_len=$((sep_len + 7))
+        cols+=("GPU")
+    fi
     if [[ "$SHOW_AGE" == true ]]; then
         fmt+="  %5s"
         sep_len=$((sep_len + 7))
@@ -1128,7 +1207,7 @@ print_local_header() {
 }
 
 print_local_row() {
-    local status="$1" name="$2" cpu="$3" mem="$4" disk="$5" temp="$6" age="$7"
+    local status="$1" name="$2" cpu="$3" mem="$4" disk="$5" temp="$6" gpu="$7" age="$8"
 
     local status_icon status_color status_text
     if [[ "$status" == "UP" ]]; then
@@ -1147,6 +1226,10 @@ print_local_row() {
     if [[ "$SHOW_TEMP" == true ]]; then
         fmt+="  %5s"
         vals+=("$temp")
+    fi
+    if [[ "$SHOW_GPU" == true ]]; then
+        fmt+="  %5s"
+        vals+=("$gpu")
     fi
     if [[ "$SHOW_AGE" == true ]]; then
         fmt+="  %5s"
@@ -1282,8 +1365,8 @@ cmd_nodes() {
         if [[ "$node_data" == "UNREACHABLE" ]]; then
             echo -e "  ${YELLOW}Context unreachable${NC}"
         else
-            while IFS='|' read -r status name role cpu mem disk temp age; do
-                print_node_row "$status" "$name" "$role" "$cpu" "$mem" "$disk" "$temp" "$age"
+            while IFS='|' read -r status name role cpu mem disk temp age gpu; do
+                print_node_row "$status" "$name" "$role" "$cpu" "$mem" "$disk" "$temp" "$age" "$gpu"
                 total=$((total + 1))
                 if [[ "$status" == "UP" ]]; then
                     healthy=$((healthy + 1))
@@ -1353,8 +1436,8 @@ cmd_nodes() {
     print_local_header
     local local_data
     local_data=$(get_local_metrics)
-    IFS='|' read -r status name cpu mem disk temp age <<< "$local_data"
-    print_local_row "$status" "$name" "$cpu" "$mem" "$disk" "$temp" "$age"
+    IFS='|' read -r status name cpu mem disk temp gpu age <<< "$local_data"
+    print_local_row "$status" "$name" "$cpu" "$mem" "$disk" "$temp" "$gpu" "$age"
     total=$((total + 1))
     healthy=$((healthy + 1))
 
@@ -1434,6 +1517,7 @@ OPTIONS:
     --all,  -a   Include remote clusters (e.g. DigitalOcean)
     --disk, -d   Include disk/storage column (cluster nodes, Android /data)
     --temp, -t   Include CPU temperature column (slower, scrapes node_exporter)
+    --gpu,  -G   Include GPU utilization column (Intel via :9101, AMD/NVIDIA via sysfs)
     --age,  -g   Include uptime/age column for Mac and local devices
 
 EXAMPLES:
@@ -1443,6 +1527,7 @@ EXAMPLES:
     infra apps --all # include remote clusters in app inventory
     infra --disk     # add disk usage for cluster nodes and Android storage
     infra --temp     # include temperature readings
+    infra --gpu      # include GPU utilization (Intel iGPU, AMD, NVIDIA)
     infra --age      # include uptime/age for Mac and local
     infra help       # show this help
 
@@ -1453,6 +1538,8 @@ DATA SOURCES:
     Android devices    adb shell getprop / dumpsys battery / df (auto-discovered)
     Disk (K8s nodes)   node_exporter :9100 (root filesystem)
     Temperature        node_exporter :9100 / /sys/class/hwmon (with --temp)
+    GPU (K8s nodes)    intel-gpu-exporter :9101 (with --gpu)
+    GPU (local)        /sys/class/drm gpu_busy_percent (AMD) / nvidia-smi (NVIDIA)
     Age/Uptime         kubectl age (K8s), node_boot_time (Mac), /proc/uptime (local)
 EOF
 }
@@ -1468,6 +1555,7 @@ for arg in "$@"; do
         --all|-a) SHOW_ALL=true ;;
         --age|-g) SHOW_AGE=true ;;
         --disk|-d) SHOW_DISK=true ;;
+        --gpu|-G) SHOW_GPU=true ;;
         help|--help|-h) cmd="help" ;;
         nodes) cmd="nodes" ;;
         apps) cmd="apps" ;;

@@ -1,0 +1,79 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: immich-server
+  namespace: immich
+  labels:
+    app.kubernetes.io/name: immich
+    app.kubernetes.io/component: server
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: immich
+      app.kubernetes.io/component: server
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: immich
+        app.kubernetes.io/component: server
+    spec:
+      nodeSelector:
+        kubernetes.io/hostname: asus-laptop
+        storage.role/nas: "true"
+      containers:
+        - name: server
+          image: ghcr.io/immich-app/immich-server:release
+          ports:
+            - name: http
+              containerPort: 2283
+          envFrom:
+            - configMapRef:
+                name: immich-config
+          env:
+            - name: DB_USERNAME
+              valueFrom:
+                secretKeyRef:
+                  name: immich-secret
+                  key: DB_USERNAME
+            - name: DB_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: immich-secret
+                  key: DB_PASSWORD
+          volumeMounts:
+            - name: upload
+              mountPath: /usr/src/app/upload
+            - name: localtime
+              mountPath: /etc/localtime
+              readOnly: true
+          resources:
+            requests:
+              memory: "256Mi"
+              cpu: "200m"
+            limits:
+              memory: "2Gi"
+              cpu: "2000m"
+          livenessProbe:
+            httpGet:
+              path: /api/server/ping
+              port: 2283
+            initialDelaySeconds: 30
+            periodSeconds: 30
+            failureThreshold: 3
+          readinessProbe:
+            httpGet:
+              path: /api/server/ping
+              port: 2283
+            initialDelaySeconds: 10
+            periodSeconds: 10
+      volumes:
+        - name: upload
+          hostPath:
+            path: /mnt/nas/private/immich/upload
+            type: DirectoryOrCreate
+        - name: localtime
+          hostPath:
+            path: /etc/localtime

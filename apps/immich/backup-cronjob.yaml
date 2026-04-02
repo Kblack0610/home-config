@@ -1,0 +1,55 @@
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: immich-backup
+  namespace: immich
+spec:
+  schedule: "0 3 * * *"  # Daily at 3 AM
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 1
+  jobTemplate:
+    spec:
+      template:
+        spec:
+          nodeSelector:
+            kubernetes.io/hostname: asus-laptop
+            storage.role/nas: "true"
+          containers:
+            - name: backup
+              image: alpine:latest
+              env:
+                - name: PGPASSWORD
+                  valueFrom:
+                    secretKeyRef:
+                      name: immich-secret
+                      key: DB_PASSWORD
+                - name: NAS_SMB_PASSWORD
+                  valueFrom:
+                    secretKeyRef:
+                      name: backup-nas-credentials
+                      key: smb-password
+              command:
+                - /bin/sh
+                - -c
+                - |
+                  apk add --no-cache postgresql16-client gzip samba-client
+                  TIMESTAMP=$(date +%Y%m%d-%H%M%S)
+                  BACKUP_FILE="immich-$TIMESTAMP.sql.gz"
+                  pg_dump -h immich-postgres -U immich -d immich | gzip > /backup/$BACKUP_FILE
+                  # Keep only last 30 local backups
+                  ls -t /backup/immich-*.sql.gz | tail -n +31 | xargs -r rm
+                  echo "Local backup complete: $BACKUP_FILE"
+                  # Upload to NAS (best-effort — local backup still succeeds if NAS is down)
+                  smbclient //nas.nas.svc.cluster.local/private -U "nas%${NAS_SMB_PASSWORD}" -c \
+                    "mkdir backups; cd backups; mkdir home-k3s; cd home-k3s; mkdir immich; cd immich; put /backup/$BACKUP_FILE $BACKUP_FILE" \
+                    && echo "NAS copy OK: $BACKUP_FILE" \
+                    || echo "WARN: NAS copy failed, local backup still available"
+              volumeMounts:
+                - name: backup
+                  mountPath: /backup
+          restartPolicy: OnFailure
+          volumes:
+            - name: backup
+              hostPath:
+                path: /var/backups/immich
+                type: DirectoryOrCreate

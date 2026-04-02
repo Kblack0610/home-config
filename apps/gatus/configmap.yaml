@@ -80,6 +80,20 @@ data:
         conditions:
           - "[STATUS] == 200"
 
+      - name: Immich
+        group: home-k3s
+        url: "http://immich-server.immich.svc:2283/api/server/ping"
+        interval: 60s
+        conditions:
+          - "[STATUS] == 200"
+
+      - name: Immich ML
+        group: home-k3s
+        url: "http://immich-ml.immich.svc:3003/ping"
+        interval: 120s
+        conditions:
+          - "[STATUS] == 200"
+
       # --- apps ---
       - name: Actual Budget
         group: apps
@@ -340,6 +354,16 @@ data:
       - name: headscale-ui.kblab.me
         group: ingress
         url: "https://headscale-ui.kblab.me"
+        interval: 300s
+        client:
+          insecure: true
+        conditions:
+          - "[STATUS] < 500"
+          - "[CERTIFICATE_EXPIRATION] > 720h"
+
+      - name: photos.kblab.me
+        group: ingress
+        url: "https://photos.kblab.me"
         interval: 300s
         client:
           insecure: true

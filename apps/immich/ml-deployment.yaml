@@ -55,19 +55,29 @@ spec:
             limits:
               memory: "6Gi"
               cpu: "4000m"
+          startupProbe:
+            httpGet:
+              path: /ping
+              port: 3003
+            # allow up to 10 min for first ROCm model load + HIP kernel JIT
+            initialDelaySeconds: 30
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 60
           livenessProbe:
             httpGet:
               path: /ping
               port: 3003
-            initialDelaySeconds: 120
             periodSeconds: 30
-            failureThreshold: 3
+            timeoutSeconds: 10
+            failureThreshold: 5
           readinessProbe:
             httpGet:
               path: /ping
               port: 3003
-            initialDelaySeconds: 60
             periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 3
       volumes:
         - name: cache
           hostPath:

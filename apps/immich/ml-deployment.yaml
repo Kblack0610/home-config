@@ -23,24 +23,35 @@ spec:
       nodeSelector:
         kubernetes.io/hostname: asus-laptop
         storage.role/nas: "true"
+      securityContext:
+        supplementalGroups:
+          - 987   # render
+          - 983   # video
       containers:
         - name: machine-learning
-          image: ghcr.io/immich-app/immich-machine-learning:release
+          image: ghcr.io/immich-app/immich-machine-learning:release-rocm
           ports:
             - name: http
               containerPort: 3003
+          env:
+            - name: HSA_OVERRIDE_GFX_VERSION
+              value: "10.3.0"   # Navi 22 (gfx1031) reports as gfx1030
           volumeMounts:
             - name: cache
               mountPath: /cache
             - name: localtime
               mountPath: /etc/localtime
               readOnly: true
+            - name: dri
+              mountPath: /dev/dri
+            - name: kfd
+              mountPath: /dev/kfd
           resources:
             requests:
-              memory: "512Mi"
-              cpu: "200m"
+              memory: "1Gi"
+              cpu: "500m"
             limits:
-              memory: "4Gi"
+              memory: "6Gi"
               cpu: "4000m"
           livenessProbe:
             httpGet:
@@ -63,3 +74,11 @@ spec:
         - name: localtime
           hostPath:
             path: /etc/localtime
+        - name: dri
+          hostPath:
+            path: /dev/dri
+            type: Directory
+        - name: kfd
+          hostPath:
+            path: /dev/kfd
+            type: CharDevice

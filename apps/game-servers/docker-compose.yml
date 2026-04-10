@@ -1,0 +1,49 @@
+# HP Desktop (pc-home-cachy-main, 192.168.1.2)
+# Primary: runs the Go registry + game server 1.
+#
+# Usage: ./deploy.sh  (or manually: docker compose up -d --build)
+
+services:
+  registry:
+    build:
+      context: ./registry
+      dockerfile: Dockerfile
+    ports:
+      - "8080:8080"
+    environment:
+      PORT: "8080"
+      DB_PATH: "/data/registry.db"
+      SERVER_TOKEN: "${SERVER_TOKEN}"
+      STALE_AFTER_SEC: "45"
+      REAP_AFTER_SEC: "90"
+      RATE_LIMIT_PER_SEC: "10"
+    volumes:
+      - registry-data:/data
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://localhost:8080/api/v1/health"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+
+  game-server-1:
+    build:
+      context: .
+      dockerfile: Dockerfile.server
+    ports:
+      - "7770:7770/udp"
+    environment:
+      REGISTRY_URL: "http://registry:8080"
+      SERVER_TOKEN: "${SERVER_TOKEN}"
+      SERVER_NAME: "Home HP Server 1"
+      SERVER_PORT: "7770"
+      MAX_PLAYERS: "8"
+      REGION: "home"
+      SERVER_ADDRESS: "192.168.1.2"
+    depends_on:
+      registry:
+        condition: service_healthy
+    restart: unless-stopped
+
+volumes:
+  registry-data:

@@ -1,0 +1,26 @@
+FROM ubuntu:22.04
+
+ARG DEBIAN_FRONTEND=noninteractive
+
+RUN apt-get update && \
+    apt-get install -y ca-certificates && \
+    apt-get clean && \
+    update-ca-certificates
+
+COPY Builds/LinuxServer /root/build/
+
+WORKDIR /root/
+
+RUN chmod +x /root/build/ServerBuild
+
+EXPOSE 7770/udp
+EXPOSE 7771/udp
+
+ENTRYPOINT /root/build/ServerBuild -batchmode -nographics \
+    -registryUrl "$REGISTRY_URL" \
+    -serverToken "$SERVER_TOKEN" \
+    -serverName "$SERVER_NAME" \
+    -port "$SERVER_PORT" \
+    -maxPlayers "$MAX_PLAYERS" \
+    -region "$REGION" \
+    -serverAddress "$SERVER_ADDRESS"

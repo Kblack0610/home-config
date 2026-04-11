@@ -38,6 +38,8 @@ spec:
           env:
             - name: HSA_OVERRIDE_GFX_VERSION
               value: "10.3.0"   # Navi 22 (gfx1031) reports as gfx1030
+            - name: ORT_MIGRAPHX_CACHE_PATH
+              value: "/cache/migraphx"   # persist compiled MIGraphX programs across restarts
           volumeMounts:
             - name: cache
               mountPath: /cache
@@ -53,7 +55,7 @@ spec:
               memory: "1Gi"
               cpu: "500m"
             limits:
-              memory: "6Gi"
+              memory: "12Gi"   # MIGraphX graph-level compilation is memory-intensive
               cpu: "4000m"
           startupProbe:
             httpGet:

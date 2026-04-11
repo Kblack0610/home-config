@@ -96,12 +96,22 @@ spec:
             - name: shm
               mountPath: /dev/shm
             - name: dri
-              mountPath: /dev/dri/renderD128
+              mountPath: /dev/dri
             - name: localtime
               mountPath: /etc/localtime
               readOnly: true
           securityContext:
             privileged: true
+          lifecycle:
+            postStart:
+              exec:
+                # Privileged containers get all host devices auto-populated into
+                # the container's /dev tmpfs. Remove the iGPU nodes so Mesa only
+                # enumerates the Radeon Navi 22 dGPU at renderD128.
+                command:
+                  - /bin/sh
+                  - -c
+                  - "rm -f /dev/dri/renderD129 /dev/dri/card2 || true"
           resources:
             requests:
               memory: "256Mi"
@@ -142,8 +152,8 @@ spec:
             name: orcaslicer-profiles
         - name: dri
           hostPath:
-            path: /dev/dri/renderD128
-            type: CharDevice
+            path: /dev/dri
+            type: Directory
         - name: localtime
           hostPath:
             path: /etc/localtime

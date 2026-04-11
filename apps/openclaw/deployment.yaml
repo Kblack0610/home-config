@@ -42,6 +42,8 @@ spec:
         - name: openclaw
           image: ghcr.io/openclaw/openclaw:latest
           imagePullPolicy: IfNotPresent
+          command:
+            - openclaw
           args:
             - gateway
             - run

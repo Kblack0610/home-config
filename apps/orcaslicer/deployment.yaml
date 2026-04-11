@@ -96,7 +96,7 @@ spec:
             - name: shm
               mountPath: /dev/shm
             - name: dri
-              mountPath: /dev/dri
+              mountPath: /dev/dri/renderD128
             - name: localtime
               mountPath: /etc/localtime
               readOnly: true
@@ -142,8 +142,8 @@ spec:
             name: orcaslicer-profiles
         - name: dri
           hostPath:
-            path: /dev/dri
-            type: Directory
+            path: /dev/dri/renderD128
+            type: CharDevice
         - name: localtime
           hostPath:
             path: /etc/localtime

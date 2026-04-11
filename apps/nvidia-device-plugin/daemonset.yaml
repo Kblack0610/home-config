@@ -21,6 +21,10 @@ spec:
       # DaemonSet has zero pods and is a no-op.
       nodeSelector:
         nvidia.com/gpu.present: "true"
+      # Use k3s's auto-registered nvidia RuntimeClass so the plugin can see
+      # GPUs via the nvidia-container-runtime (required — the default runc
+      # doesn't inject NVML libraries and the plugin reports "No devices").
+      runtimeClassName: nvidia
       tolerations:
         - key: nvidia.com/gpu
           operator: Exists

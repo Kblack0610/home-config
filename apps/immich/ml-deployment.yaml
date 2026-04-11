@@ -66,20 +66,23 @@ spec:
             periodSeconds: 10
             timeoutSeconds: 5
             failureThreshold: 60
+          # MIGraphX compilations can block the thread pool for minutes at a time
+          # (buffalo_l recognition + detection + PP-OCRv5 recognition/detection +
+          # ViT-B-32 all compile on first demand). Probes must tolerate that.
           livenessProbe:
             httpGet:
               path: /ping
               port: 3003
-            periodSeconds: 30
-            timeoutSeconds: 10
-            failureThreshold: 5
+            periodSeconds: 60
+            timeoutSeconds: 30
+            failureThreshold: 10
           readinessProbe:
             httpGet:
               path: /ping
               port: 3003
-            periodSeconds: 10
-            timeoutSeconds: 5
-            failureThreshold: 3
+            periodSeconds: 30
+            timeoutSeconds: 15
+            failureThreshold: 10
       volumes:
         - name: cache
           hostPath:

@@ -8,7 +8,7 @@
 
 | environment | provider | nodes | apps | health | issues |
 |-------------|----------|------:|-----:|--------|-------:|
-| home-k3s | Raspberry Pi + CachyOS (local) | 9 | 15 | degraded | 1 |
+| home-k3s | Raspberry Pi + CachyOS (local) | 9 | 16 | degraded | 1 |
 | mac-machines | Apple Silicon (local) | 2 | 3 | healthy | 0 |
 | standalone | Docker Compose / embedded | 3 | 3 | healthy | 0 |
 
@@ -60,6 +60,7 @@
 | headscale | Tailscale VPN (self-hosted) | suspended |
 | monitoring | Prometheus / Grafana / AlertManager | active |
 | crowdsec | CrowdSec IPS (LAPI + bouncer) | active |
+| openclaw | OpenClaw gateway and Control UI | active |
 | orcaslicer | 3D printer slicer (OrcaSlicer) | active |
 | portfolio | Kenneth Black portfolio (kennethblack.me) | active |
 | bnb-studios | BNB Studios site (blacknbrownstudios.com) | active |
@@ -96,6 +97,7 @@
 | Prometheus | home-k3s | monitoring | StatefulSet | active |
 | Grafana | home-k3s | monitoring | Deployment | active |
 | CrowdSec | home-k3s | crowdsec | HelmRelease | active |
+| OpenClaw | home-k3s | openclaw | Deployment | active |
 | OrcaSlicer | home-k3s | orcaslicer | Deployment | active |
 | Kenneth Black Portfolio | home-k3s | portfolio | Deployment | active |
 | BNB Studios | home-k3s | bnb-studios | Deployment | active |
@@ -156,6 +158,7 @@ Traefik on the local network path behind `192.168.1.124`. All `*.kblab.me` local
 |----------|---------|---------|-------|
 | hass.kblab.me | Home Assistant | home-k3s | Traefik Ingress |
 | grafana.kblab.me | Grafana | home-k3s | Traefik Ingress |
+| openclaw.kblab.me | OpenClaw | home-k3s | Traefik Ingress |
 | prometheus.kblab.me | Prometheus | home-k3s | Traefik Ingress |
 | slicer.kblab.me | OrcaSlicer | home-k3s | Traefik Ingress |
 

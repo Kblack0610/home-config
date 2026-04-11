@@ -20,6 +20,7 @@ resources:
   - monitoring
   - nas
   - nvidia-device-plugin
+  - openclaw
   - orcaslicer
   - prowlarr
   - qbittorrent

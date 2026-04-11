@@ -1,0 +1,224 @@
+# kube-prometheus-stack Helm values
+#
+# This release is managed by plain Helm (NOT Flux). To apply changes:
+#   helm upgrade kube-prometheus-stack prometheus-community/kube-prometheus-stack \
+#     -n monitoring --version 80.4.1 -f apps/monitoring/helm-values.yaml
+#
+# Keep this file in sync with what's actually deployed. Changes here do NOT
+# auto-apply via Flux.
+additionalPrometheusRulesMap:
+  rule-name:
+    groups:
+      - name: node-alerts
+        rules:
+          - alert: HighNodeCPU
+            annotations:
+              description: CPU usage is above 80% for more than 5 minutes
+              summary: High CPU usage on {{ $labels.instance }}
+            expr: 100 - (avg by(instance) (irate(node_cpu_seconds_total{mode="idle"}[5m])) * 100) > 80
+            for: 5m
+            labels:
+              severity: warning
+          - alert: HighNodeMemory
+            annotations:
+              description: Memory usage is above 85% for more than 5 minutes
+              summary: High memory usage on {{ $labels.instance }}
+            expr: (1 - (node_memory_MemAvailable_bytes / node_memory_MemTotal_bytes)) * 100 > 85
+            for: 5m
+            labels:
+              severity: warning
+          - alert: NodeDiskSpaceLow
+            annotations:
+              description: Disk usage is above 85%
+              summary: Disk space low on {{ $labels.instance }}
+            expr: (1 - (node_filesystem_avail_bytes{fstype!~"tmpfs|overlay"} / node_filesystem_size_bytes{fstype!~"tmpfs|overlay"})) * 100 > 85
+            for: 5m
+            labels:
+              severity: warning
+
+alertmanager:
+  enabled: true
+  alertmanagerSpec:
+    nodeSelector:
+      kubernetes.io/arch: amd64
+    resources:
+      limits:
+        cpu: 200m
+        memory: 128Mi
+      requests:
+        cpu: 50m
+        memory: 64Mi
+    storage:
+      volumeClaimTemplate:
+        spec:
+          accessModes:
+            - ReadWriteOnce
+          resources:
+            requests:
+              storage: 1Gi
+          storageClassName: local-path
+  service:
+    nodePort: 30093
+    type: NodePort
+
+coreDns:
+  enabled: true
+  service:
+    selector:
+      k8s-app: kube-dns
+
+defaultRules:
+  create: true
+  rules:
+    alertmanager: true
+    configReloaders: true
+    general: true
+    k8s: true
+    kubeApiserverAvailability: false
+    kubeApiserverBurnrate: false
+    kubeApiserverHistogram: false
+    kubeApiserverSlos: false
+    kubePrometheusGeneral: true
+    kubePrometheusNodeRecording: true
+    kubeScheduler: false
+    kubeStateMetrics: true
+    kubernetesApps: true
+    kubernetesResources: true
+    kubernetesStorage: true
+    kubernetesSystem: true
+    network: true
+    node: true
+    nodeExporterAlerting: true
+    nodeExporterRecording: true
+    prometheus: true
+    prometheusOperator: true
+
+grafana:
+  enabled: true
+  adminPassword: admin
+  defaultDashboardsEnabled: true
+  defaultDashboardsTimezone: America/Los_Angeles
+  initChownData:
+    enabled: false
+  nodeSelector:
+    kubernetes.io/arch: amd64
+  persistence:
+    enabled: true
+    size: 2Gi
+    storageClassName: local-path
+  additionalDataSources:
+    - access: proxy
+      isDefault: false
+      name: Loki
+      type: loki
+      url: http://loki:3100
+  resources:
+    limits:
+      cpu: 500m
+      memory: 512Mi
+    requests:
+      cpu: 100m
+      memory: 128Mi
+  service:
+    nodePort: 30300
+    type: NodePort
+  # Sidecars watch all configmaps/secrets cluster-wide; 256Mi was not enough
+  # and both containers were OOMKilled ~1,700 times each before the bump.
+  sidecar:
+    resources:
+      limits:
+        cpu: 50m
+        memory: 512Mi
+      requests:
+        cpu: 5m
+        memory: 128Mi
+    dashboards:
+      resources:
+        limits:
+          cpu: 50m
+          memory: 512Mi
+        requests:
+          cpu: 5m
+          memory: 128Mi
+    datasources:
+      resources:
+        limits:
+          cpu: 50m
+          memory: 512Mi
+        requests:
+          cpu: 5m
+          memory: 128Mi
+
+kubeControllerManager:
+  enabled: false
+kubeEtcd:
+  enabled: false
+kubeProxy:
+  enabled: false
+kubeScheduler:
+  enabled: false
+
+kubeStateMetrics:
+  enabled: true
+  resources:
+    limits:
+      cpu: 200m
+      memory: 128Mi
+    requests:
+      cpu: 50m
+      memory: 64Mi
+
+nodeExporter:
+  enabled: true
+  resources:
+    limits:
+      cpu: 200m
+      memory: 64Mi
+    requests:
+      cpu: 50m
+      memory: 32Mi
+
+prometheus:
+  enabled: true
+  prometheusSpec:
+    evaluationInterval: 30s
+    nodeSelector:
+      kubernetes.io/arch: amd64
+    podMonitorSelectorNilUsesHelmValues: false
+    serviceMonitorSelectorNilUsesHelmValues: false
+    scrapeInterval: 30s
+    retention: 7d
+    retentionSize: 5GB
+    resources:
+      limits:
+        cpu: 1000m
+        memory: 1Gi
+      requests:
+        cpu: 200m
+        memory: 512Mi
+    storageSpec:
+      volumeClaimTemplate:
+        spec:
+          accessModes:
+            - ReadWriteOnce
+          resources:
+            requests:
+              storage: 10Gi
+          storageClassName: local-path
+  service:
+    nodePort: 30090
+    type: NodePort
+
+# NOTE: The previous release had `prometheus-node-exporter.extraArgs: ["" ]`
+# which caused the node-exporter pod on raspberrypi (control-plane) to crash
+# 2,456 times with "unexpected , try --help". Left empty here to omit extra args.
+prometheus-node-exporter: {}
+
+prometheusOperator:
+  resources:
+    limits:
+      cpu: 400m
+      memory: 256Mi
+    requests:
+      cpu: 100m
+      memory: 128Mi

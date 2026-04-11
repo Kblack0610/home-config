@@ -322,6 +322,32 @@ setup_nas_mounts() {
 }
 
 # =============================================================================
+# NVIDIA GPU Setup (auto-runs on NVIDIA-equipped nodes)
+# =============================================================================
+
+setup_nvidia_gpu() {
+    log_section "Setting Up NVIDIA GPU (if present)"
+
+    local nvidia_script_url="http://$PXE_SERVER:9080/kickstart/common/nvidia-gpu.sh"
+
+    log "Fetching NVIDIA setup script from $nvidia_script_url..."
+
+    if curl -sLf "$nvidia_script_url" -o /tmp/nvidia-gpu.sh 2>/dev/null; then
+        chmod +x /tmp/nvidia-gpu.sh
+        log "Running NVIDIA setup (script self-skips on non-NVIDIA nodes)..."
+
+        INSTALL_ROOT="${INSTALL_ROOT:-}" \
+        NVIDIA_SKIP_REBOOT="1" \
+            bash /tmp/nvidia-gpu.sh
+
+        rm -f /tmp/nvidia-gpu.sh
+        log_success "NVIDIA GPU setup step complete"
+    else
+        log_warning "NVIDIA GPU script not available at $nvidia_script_url, skipping"
+    fi
+}
+
+# =============================================================================
 # Cleanup & Finalization
 # =============================================================================
 
@@ -377,6 +403,7 @@ main() {
     apply_profile
     enable_services
     setup_nas_mounts
+    setup_nvidia_gpu
     finalize
 
     log_section "Provisioning Complete!"

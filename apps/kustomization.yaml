@@ -19,6 +19,7 @@ resources:
   - litellm
   - monitoring
   - nas
+  - nvidia-device-plugin
   - orcaslicer
   - prowlarr
   - qbittorrent

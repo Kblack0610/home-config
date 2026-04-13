@@ -141,6 +141,18 @@ data:
             "openai-codex/gpt-5.4": {
               "alias": "codex-latest"
             },
+            "openai-codex/gpt-5.4-mini": {
+              "alias": "codex-mini-latest"
+            },
+            "openai-codex/gpt-5.3-codex": {
+              "alias": "codex-5.3"
+            },
+            "openai-codex/gpt-5.3-codex-spark": {
+              "alias": "codex-spark"
+            },
+            "openai-codex/gpt-5.1-codex-max": {
+              "alias": "codex-max"
+            },
             "openai-codex/gpt-5.1-codex-mini": {
               "alias": "codex-mini"
             }
@@ -157,7 +169,7 @@ data:
           "compaction": {
             "mode": "safeguard"
           },
-          "thinkingDefault": "low",
+          "thinkingDefault": "medium",
           "timeoutSeconds": 600,
           "sandbox": {
             "mode": "off"

@@ -30,6 +30,10 @@ spec:
             - name: WEB_ENABLE_AUTH
               value: "false"
           volumeMounts:
+            - name: comfyui-args
+              mountPath: /etc/comfyui_args.conf
+              subPath: comfyui_args.conf
+              readOnly: true
             - name: models
               mountPath: /opt/ComfyUI/models
             - name: output
@@ -69,6 +73,9 @@ spec:
             timeoutSeconds: 5
             failureThreshold: 3
       volumes:
+        - name: comfyui-args
+          configMap:
+            name: comfyui-args
         - name: models
           hostPath:
             path: /mnt/comfyui/storage

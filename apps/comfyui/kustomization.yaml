@@ -5,6 +5,7 @@ namespace: comfyui
 
 resources:
   - namespace.yaml
+  - configmap-args.yaml
   - deployment.yaml
   - service.yaml
   - ingress.yaml

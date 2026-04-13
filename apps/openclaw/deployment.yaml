@@ -22,13 +22,20 @@ spec:
       initContainers:
         - name: bootstrap-config
           image: busybox:1.36.1
+          env:
+            - name: LITELLM_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: openclaw-secrets
+                  key: LITELLM_API_KEY
           command:
             - sh
             - -c
             - |
               set -eu
               mkdir -p /data/workspace /data/logs
-              cp /bootstrap/openclaw.json /data/openclaw.json
+              sed "s|\${LITELLM_API_KEY}|${LITELLM_API_KEY}|g" \
+                /bootstrap/openclaw.json > /data/openclaw.json
               if [ ! -f /data/workspace/AGENTS.md ]; then
                 cp /bootstrap/AGENTS.md /data/workspace/AGENTS.md
               fi
@@ -61,6 +68,11 @@ spec:
                 secretKeyRef:
                   name: openclaw-secrets
                   key: OPENCLAW_GATEWAY_TOKEN
+            - name: LITELLM_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: openclaw-secrets
+                  key: LITELLM_API_KEY
           ports:
             - name: http
               containerPort: 18789

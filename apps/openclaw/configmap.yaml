@@ -80,6 +80,37 @@ data:
                 "maxTokens": 16384
               }
             ]
+          },
+          "litellm": {
+            "baseUrl": "http://litellm.ai-gateway.svc.cluster.local:4000/v1",
+            "apiKey": "${LITELLM_API_KEY}",
+            "api": "openai-completions",
+            "models": [
+              {
+                "id": "code",
+                "name": "Code (via LiteLLM)",
+                "reasoning": false,
+                "input": ["text"],
+                "contextWindow": 128000,
+                "maxTokens": 32768
+              },
+              {
+                "id": "smart",
+                "name": "Smart (via LiteLLM)",
+                "reasoning": true,
+                "input": ["text"],
+                "contextWindow": 128000,
+                "maxTokens": 32768
+              },
+              {
+                "id": "reasoning",
+                "name": "Reasoning (via LiteLLM)",
+                "reasoning": true,
+                "input": ["text"],
+                "contextWindow": 128000,
+                "maxTokens": 32768
+              }
+            ]
           }
         }
       },

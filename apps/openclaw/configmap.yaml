@@ -118,20 +118,38 @@ data:
         "defaults": {
           "models": {
             "mlx-code/mlx-community/Qwen3-Coder-Next-4bit": {
-              "alias": "code"
+              "alias": "mlx-code"
             },
             "mlx-smart/mlx-community/Qwen3-235B-A22B-4bit-DWQ": {
-              "alias": "smart"
+              "alias": "mlx-smart"
             },
             "mlx-reasoning/mlx-community/DeepSeek-R1-Distill-Qwen-32B-MLX-4Bit": {
-              "alias": "reasoning"
+              "alias": "mlx-reasoning"
+            },
+            "litellm/code": {
+              "alias": "litellm-code"
+            },
+            "litellm/smart": {
+              "alias": "litellm-smart"
+            },
+            "litellm/reasoning": {
+              "alias": "litellm-reasoning"
+            },
+            "openai-codex/gpt-5.2-codex": {
+              "alias": "codex"
+            },
+            "openai-codex/gpt-5.4": {
+              "alias": "codex-latest"
+            },
+            "openai-codex/gpt-5.1-codex-mini": {
+              "alias": "codex-mini"
             }
           },
           "model": {
-            "primary": "mlx-smart/mlx-community/Qwen3-235B-A22B-4bit-DWQ",
+            "primary": "openai-codex/gpt-5.2-codex",
             "fallbacks": [
-              "mlx-code/mlx-community/Qwen3-Coder-Next-4bit",
-              "mlx-reasoning/mlx-community/DeepSeek-R1-Distill-Qwen-32B-MLX-4Bit"
+              "mlx-smart/mlx-community/Qwen3-235B-A22B-4bit-DWQ",
+              "litellm/smart"
             ]
           },
           "workspace": "~/.openclaw/workspace",

@@ -9,6 +9,7 @@ resources:
 
   # Applications (home-k3s cluster)
   - actual-budget
+  - comfyui
   - crowdsec
   - forgejo
   - gatus

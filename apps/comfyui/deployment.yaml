@@ -1,0 +1,91 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: comfyui
+  namespace: comfyui
+  labels:
+    app.kubernetes.io/name: comfyui
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: comfyui
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: comfyui
+    spec:
+      runtimeClassName: nvidia
+      nodeSelector:
+        nvidia.com/gpu.present: "true"
+      containers:
+        - name: comfyui
+          image: ghcr.io/ai-dock/comfyui:latest-cuda
+          ports:
+            - name: http
+              containerPort: 8188
+          env:
+            - name: DIRECT_ADDRESS
+              value: "0.0.0.0"
+            - name: COMFYUI_PORT_HOST
+              value: "8188"
+            - name: WEB_ENABLE_AUTH
+              value: "false"
+          volumeMounts:
+            - name: models
+              mountPath: /opt/ComfyUI/models
+            - name: output
+              mountPath: /opt/ComfyUI/output
+            - name: custom-nodes
+              mountPath: /opt/ComfyUI/custom_nodes
+            - name: shm
+              mountPath: /dev/shm
+          resources:
+            requests:
+              memory: "4Gi"
+              cpu: "1000m"
+            limits:
+              memory: "16Gi"
+              cpu: "8000m"
+              nvidia.com/gpu: "1"
+          startupProbe:
+            httpGet:
+              path: /
+              port: 8188
+            initialDelaySeconds: 30
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 120   # 20 min for first-boot setup + model init
+          livenessProbe:
+            httpGet:
+              path: /
+              port: 8188
+            periodSeconds: 60
+            timeoutSeconds: 10
+            failureThreshold: 5
+          readinessProbe:
+            httpGet:
+              path: /
+              port: 8188
+            periodSeconds: 15
+            timeoutSeconds: 5
+            failureThreshold: 3
+      volumes:
+        - name: models
+          hostPath:
+            path: /mnt/comfyui/storage
+            type: DirectoryOrCreate
+        - name: output
+          hostPath:
+            path: /mnt/comfyui/output
+            type: DirectoryOrCreate
+        - name: custom-nodes
+          hostPath:
+            path: /mnt/comfyui/custom_nodes
+            type: DirectoryOrCreate
+        - name: shm
+          emptyDir:
+            medium: Memory
+            sizeLimit: 4Gi

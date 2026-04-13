@@ -25,12 +25,8 @@ spec:
           image: ghcr.io/ai-dock/comfyui:latest-cuda
           ports:
             - name: http
-              containerPort: 8188
+              containerPort: 18188   # ai-dock runs ComfyUI on 18188 internally
           env:
-            - name: DIRECT_ADDRESS
-              value: "0.0.0.0"
-            - name: COMFYUI_PORT_HOST
-              value: "8188"
             - name: WEB_ENABLE_AUTH
               value: "false"
           volumeMounts:
@@ -53,7 +49,7 @@ spec:
           startupProbe:
             httpGet:
               path: /
-              port: 8188
+              port: 18188
             initialDelaySeconds: 30
             periodSeconds: 10
             timeoutSeconds: 5
@@ -61,14 +57,14 @@ spec:
           livenessProbe:
             httpGet:
               path: /
-              port: 8188
+              port: 18188
             periodSeconds: 60
             timeoutSeconds: 10
             failureThreshold: 5
           readinessProbe:
             httpGet:
               path: /
-              port: 8188
+              port: 18188
             periodSeconds: 15
             timeoutSeconds: 5
             failureThreshold: 3

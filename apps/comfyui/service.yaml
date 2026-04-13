@@ -10,6 +10,6 @@ spec:
     app.kubernetes.io/name: comfyui
   ports:
     - port: 80
-      targetPort: 8188
+      targetPort: 18188
       name: http
   type: ClusterIP

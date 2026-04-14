@@ -87,24 +87,24 @@ data:
             "api": "openai-completions",
             "models": [
               {
-                "id": "code",
-                "name": "Code (via LiteLLM)",
+                "id": "mlx-community/Qwen3-Coder-Next-4bit",
+                "name": "Qwen3 Coder Next 4bit (via LiteLLM)",
                 "reasoning": false,
                 "input": ["text"],
                 "contextWindow": 128000,
                 "maxTokens": 32768
               },
               {
-                "id": "smart",
-                "name": "Smart (via LiteLLM)",
+                "id": "mlx-community/Qwen3-235B-A22B-4bit-DWQ",
+                "name": "Qwen3 235B A22B 4bit DWQ (via LiteLLM)",
                 "reasoning": true,
                 "input": ["text"],
                 "contextWindow": 128000,
                 "maxTokens": 32768
               },
               {
-                "id": "reasoning",
-                "name": "Reasoning (via LiteLLM)",
+                "id": "mlx-community/DeepSeek-R1-Distill-Qwen-32B-MLX-4Bit",
+                "name": "DeepSeek R1 Distill Qwen 32B 4bit (via LiteLLM)",
                 "reasoning": true,
                 "input": ["text"],
                 "contextWindow": 128000,
@@ -126,13 +126,13 @@ data:
             "mlx-reasoning/mlx-community/DeepSeek-R1-Distill-Qwen-32B-MLX-4Bit": {
               "alias": "mlx-reasoning"
             },
-            "litellm/code": {
+            "litellm/mlx-community/Qwen3-Coder-Next-4bit": {
               "alias": "litellm-code"
             },
-            "litellm/smart": {
+            "litellm/mlx-community/Qwen3-235B-A22B-4bit-DWQ": {
               "alias": "litellm-smart"
             },
-            "litellm/reasoning": {
+            "litellm/mlx-community/DeepSeek-R1-Distill-Qwen-32B-MLX-4Bit": {
               "alias": "litellm-reasoning"
             },
             "openai-codex/gpt-5.2-codex": {

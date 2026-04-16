@@ -44,6 +44,20 @@ data:
     [session]
     PROVIDER = file
 
+    [actions]
+    ENABLED = true
+    DEFAULT_ACTIONS_URL = https://data.forgejo.org
+
+    [packages]
+    ENABLED = true
+
+    [mirror]
+    ENABLED = true
+
+    [cron.update_mirrors]
+    ENABLED = true
+    SCHEDULE = @every 10m
+
     [log]
     MODE = console
     LEVEL = Info

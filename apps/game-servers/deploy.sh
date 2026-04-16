@@ -22,7 +22,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 HP_HOST="${HP_HOST:-hp-game}"
 THINKPAD_HOST="${THINKPAD_HOST:-thinkpad-game}"
 REMOTE_DIR="game-servers"
-REGISTRY_SRC="${REGISTRY_SRC:-/home/kblack0610/dev/bnb/games/engine/unity-core/infrastructure/registry}"
+REGISTRY_SRC="${REGISTRY_SRC:-/home/kblack0610/dev/bnb/games/bnb-game-servers/registry}"
 BUILD_DIR="${BUILD_DIR:-/home/kblack0610/dev/bnb/games/dodginballs_root/dodginballs/Builds/LinuxServer}"
 
 RED='\033[0;31m'

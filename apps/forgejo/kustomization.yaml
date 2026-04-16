@@ -12,9 +12,6 @@ resources:
   - service-ssh.yaml
   - ingress.yaml
   - backup-cronjob.yaml
-  # Runner — uncomment after obtaining registration token from Forgejo admin UI
-  # and encrypting runner-secret.yaml with SOPS:
-  #   sops --encrypt --in-place apps/forgejo/runner-secret.yaml
-  # - runner-config-cm.yaml
-  # - runner-secret.yaml
-  # - runner-deployment.yaml
+  - runner-config-cm.yaml
+  - runner-secret.yaml
+  - runner-deployment.yaml

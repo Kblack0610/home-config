@@ -17,6 +17,16 @@ spec:
       labels:
         app.kubernetes.io/name: forgejo
     spec:
+      initContainers:
+        - name: config-seed
+          image: codeberg.org/forgejo/forgejo:14.0.4
+          command: ["sh", "-c", "mkdir -p /data/gitea/conf && cp /etc/gitea/app.ini /data/gitea/conf/app.ini"]
+          volumeMounts:
+            - name: data
+              mountPath: /data
+            - name: config
+              mountPath: /etc/gitea/app.ini
+              subPath: app.ini
       containers:
         - name: forgejo
           image: codeberg.org/forgejo/forgejo:14.0.4

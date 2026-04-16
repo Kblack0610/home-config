@@ -14,11 +14,12 @@ data:
       capacity: 2
       timeout: 3h
       labels:
-        - "docker:docker://node:22-bookworm"
+        - "docker:docker://docker:27"
         - "linux-amd64:host"
     container:
-      network: bridge
+      network: host
       privileged: false
+      docker_host: tcp://localhost:2375
       options:
       valid_volumes: []
     host:

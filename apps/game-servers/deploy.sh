@@ -6,10 +6,18 @@ set -euo pipefail
 # Primary (HP):      registry + game server 1  → 192.168.1.2
 # Secondary (Thinkpad): game server 2 only     → 192.168.1.3
 #
+# Images are pulled from the Forgejo container registry at git.kblab.me:
+#   - git.kblab.me/kblack0610/bnb-game-servers/registry:<tag>
+#   - git.kblab.me/kblack0610/bnb-game-servers/dodginballs-server:<tag>
+#
+# Built by CI in the bnb-game-servers and dodginballs repos on tag push.
+# This script only rsyncs compose manifests + .env and runs docker compose.
+#
 # Prerequisites:
 #   - SSH access configured (hp-game, thinkpad-game in ~/.ssh/config)
 #   - Docker + Docker Compose installed on target machines
-#   - A fresh DodginBalls Linux server build at $BUILD_DIR
+#   - Target machines docker-logged-in to git.kblab.me
+#     (run: echo "$TOKEN" | docker login git.kblab.me -u kblack0610 --password-stdin)
 #   - .env file in this directory (copy from .env.example)
 #
 # Usage:
@@ -22,8 +30,6 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 HP_HOST="${HP_HOST:-hp-game}"
 THINKPAD_HOST="${THINKPAD_HOST:-thinkpad-game}"
 REMOTE_DIR="game-servers"
-REGISTRY_SRC="${REGISTRY_SRC:-/home/kblack0610/dev/bnb/games/bnb-game-servers/registry}"
-BUILD_DIR="${BUILD_DIR:-/home/kblack0610/dev/bnb/games/dodginballs_root/dodginballs/Builds/LinuxServer}"
 
 RED='\033[0;31m'
 GREEN='\033[0;32m'
@@ -38,37 +44,22 @@ if [ ! -f "$SCRIPT_DIR/.env" ]; then
     exit 1
 fi
 
-if [ ! -d "$BUILD_DIR" ]; then
-    echo -e "${RED}ERROR: No Linux server build found at $BUILD_DIR${NC}"
-    echo "Build one first: bash dodginballs/scripts/builds/build-linux-server.sh --fast"
-    exit 1
-fi
-
 deploy_hp() {
     echo -e "${BLUE}==> Deploying to HP ($HP_HOST)${NC}"
 
     # Ensure remote directory exists
-    ssh "$HP_HOST" "mkdir -p $REMOTE_DIR/registry $REMOTE_DIR/Builds/LinuxServer"
+    ssh "$HP_HOST" "mkdir -p $REMOTE_DIR"
 
-    # Sync registry source
-    echo -e "${GREEN}  Syncing registry...${NC}"
-    rsync -az --delete "$REGISTRY_SRC/" "${HP_HOST}:${REMOTE_DIR}/registry/"
-
-    # Sync compose files + env + Dockerfile
+    # Sync compose file + env
     echo -e "${GREEN}  Syncing compose files...${NC}"
     rsync -az \
         "$SCRIPT_DIR/docker-compose.yml" \
-        "$SCRIPT_DIR/Dockerfile.server" \
         "$SCRIPT_DIR/.env" \
         "${HP_HOST}:${REMOTE_DIR}/"
 
-    # Sync game server binary
-    echo -e "${GREEN}  Syncing game server build ($(du -sh "$BUILD_DIR" | cut -f1))...${NC}"
-    rsync -az --delete "$BUILD_DIR/" "${HP_HOST}:${REMOTE_DIR}/Builds/LinuxServer/"
-
-    # Start services
-    echo -e "${GREEN}  Starting registry + game-server-1...${NC}"
-    ssh "$HP_HOST" "cd $REMOTE_DIR && docker compose up -d --build"
+    # Pull latest images + restart
+    echo -e "${GREEN}  Pulling images and starting registry + game-server-1...${NC}"
+    ssh "$HP_HOST" "cd $REMOTE_DIR && docker compose pull && docker compose up -d"
 
     # Verify
     sleep 5
@@ -82,23 +73,18 @@ deploy_thinkpad() {
     echo -e "${BLUE}==> Deploying to Thinkpad ($THINKPAD_HOST)${NC}"
 
     # Ensure remote directory exists
-    ssh "$THINKPAD_HOST" "mkdir -p $REMOTE_DIR/Builds/LinuxServer"
+    ssh "$THINKPAD_HOST" "mkdir -p $REMOTE_DIR"
 
-    # Sync compose file + env + Dockerfile
+    # Sync compose file + env
     echo -e "${GREEN}  Syncing compose files...${NC}"
     rsync -az \
         "$SCRIPT_DIR/docker-compose.server2.yml" \
-        "$SCRIPT_DIR/Dockerfile.server" \
         "$SCRIPT_DIR/.env" \
         "${THINKPAD_HOST}:${REMOTE_DIR}/"
 
-    # Sync game server binary
-    echo -e "${GREEN}  Syncing game server build ($(du -sh "$BUILD_DIR" | cut -f1))...${NC}"
-    rsync -az --delete "$BUILD_DIR/" "${THINKPAD_HOST}:${REMOTE_DIR}/Builds/LinuxServer/"
-
-    # Start services
-    echo -e "${GREEN}  Starting game-server-2...${NC}"
-    ssh "$THINKPAD_HOST" "cd $REMOTE_DIR && docker compose -f docker-compose.server2.yml up -d --build"
+    # Pull latest images + restart
+    echo -e "${GREEN}  Pulling image and starting game-server-2...${NC}"
+    ssh "$THINKPAD_HOST" "cd $REMOTE_DIR && docker compose -f docker-compose.server2.yml pull && docker compose -f docker-compose.server2.yml up -d"
 
     echo -e "${GREEN}==> Thinkpad deploy complete${NC}"
 }

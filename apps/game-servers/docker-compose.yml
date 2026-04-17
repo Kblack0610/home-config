@@ -1,13 +1,15 @@
 # HP Desktop (pc-home-cachy-main, 192.168.1.2)
 # Primary: runs the Go registry + game server 1.
 #
-# Usage: ./deploy.sh  (or manually: docker compose up -d --build)
+# Images are pulled from the Forgejo container registry at git.kblab.me,
+# built by CI in the bnb-game-servers and dodginballs repos. See
+# ../../README.md or ~/.agent/plans/engine/forgejo-ci.md for the pipeline.
+#
+# Usage: ./deploy.sh  (or manually: docker compose pull && docker compose up -d)
 
 services:
   registry:
-    build:
-      context: ./registry
-      dockerfile: Dockerfile
+    image: git.kblab.me/kblack0610/bnb-game-servers/registry:${REGISTRY_IMAGE_TAG:-latest}
     ports:
       - "8080:8080"
     environment:
@@ -27,9 +29,7 @@ services:
       retries: 3
 
   game-server-1:
-    build:
-      context: .
-      dockerfile: Dockerfile.server
+    image: git.kblab.me/kblack0610/bnb-game-servers/dodginballs-server:${SERVER_IMAGE_TAG:-latest}
     ports:
       - "7770:7770/udp"
     environment:

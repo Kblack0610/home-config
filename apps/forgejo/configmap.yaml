@@ -33,7 +33,10 @@ data:
 
     [service]
     DISABLE_REGISTRATION = true
-    REQUIRE_SIGNIN_VIEW = true
+    # Forgejo is only reachable at 192.168.1.124 (private RFC1918 / VPN).
+    # Disabling signin-view-required lets VPN users browse public repos and
+    # pull public container images anonymously. No public-internet exposure.
+    REQUIRE_SIGNIN_VIEW = false
     DEFAULT_KEEP_EMAIL_PRIVATE = true
     ENABLE_NOTIFY_MAIL = false
 
@@ -56,7 +59,10 @@ data:
 
     [cron.update_mirrors]
     ENABLED = true
-    SCHEDULE = @every 10m
+    # 1-minute pull interval: we trigger Forgejo Actions builds via
+    # mirrored tag events from GitHub (see DodginBalls pipeline).
+    # Well under GitHub API rate limits for the handful of repos mirrored.
+    SCHEDULE = @every 1m
 
     [log]
     MODE = console

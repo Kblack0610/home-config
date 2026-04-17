@@ -14,9 +14,11 @@ spec:
       labels:
         app: bnb-studios-web
     spec:
+      imagePullSecrets:
+        - name: forgejo-registry
       containers:
         - name: bnb-studios-web
-          image: 192.168.1.20:30500/bnb-studios:v1.0.0
+          image: git.kblab.me/kblack0610/bnb-studios:v1.0.0
           imagePullPolicy: Always
           ports:
             - containerPort: 80

@@ -14,9 +14,11 @@ spec:
       labels:
         app: black-dev-web
     spec:
+      imagePullSecrets:
+        - name: forgejo-registry
       containers:
         - name: black-dev-web
-          image: 192.168.1.20:30500/black-dev:v1.0.0
+          image: git.kblab.me/kblack0610/black-dev:v1.0.0
           imagePullPolicy: Always
           ports:
             - containerPort: 80

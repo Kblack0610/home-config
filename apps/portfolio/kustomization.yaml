@@ -5,6 +5,7 @@ namespace: portfolio
 
 resources:
   - namespace.yaml
+  - registry-secret.yaml
   - deployment.yaml
   - service.yaml
   - ingress.yaml

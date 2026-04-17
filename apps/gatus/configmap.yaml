@@ -151,9 +151,9 @@ data:
         conditions:
           - "[STATUS] < 500"
 
-      - name: Container Registry
+      - name: Forgejo Registry
         group: apps
-        url: "http://registry.registry.svc:5000/v2/"
+        url: "http://forgejo-http.forgejo.svc:3000/v2/"
         interval: 120s
         conditions:
           - "[STATUS] < 500"

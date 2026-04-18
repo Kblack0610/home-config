@@ -64,6 +64,15 @@ data:
     # Well under GitHub API rate limits for the handful of repos mirrored.
     SCHEDULE = @every 1m
 
+    [git.timeout]
+    # Large Unity repos (e.g., DodginBalls) need a long initial-clone budget.
+    # Default is 600s which times out on the first mirror migration.
+    MIGRATE = 3600
+    MIRROR = 1800
+    CLONE = 1800
+    PULL = 1800
+    GC = 60
+
     [log]
     MODE = console
     LEVEL = Info

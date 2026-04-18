@@ -48,11 +48,13 @@ spec:
               subPath: app.ini
           resources:
             requests:
-              memory: "128Mi"
+              memory: "256Mi"
               cpu: "50m"
             limits:
-              memory: "1Gi"
-              cpu: "1000m"
+              # Cloning large Unity repos (DodginBalls) runs git index-pack which
+              # exceeds 1Gi mid-clone and OOMKills the pod. 4Gi gives headroom.
+              memory: "4Gi"
+              cpu: "2000m"
           livenessProbe:
             httpGet:
               path: /api/healthz

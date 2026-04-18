@@ -56,10 +56,9 @@ data:
 
     [mirror]
     ENABLED = true
-
-    [repository.mirror]
     # Allow per-repo mirror intervals as low as 1m (default MIN_INTERVAL is 10m).
     # Matches cron.update_mirrors.SCHEDULE for near-realtime tag sync.
+    # Note: section is [mirror], NOT [repository.mirror] (which Forgejo ignores here).
     MIN_INTERVAL = 1m
 
     [cron.update_mirrors]

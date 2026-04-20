@@ -1,9 +1,9 @@
 # Elegoo Neptune 3D Printer — Moonraker REST sensors
-# Polls OpenNept4une (Klipper + Moonraker) at 192.168.1.51:7125
+# Polls OpenNept4une through the in-cluster neptune service.
 
 rest:
   # ── Temperatures (5s poll) ──
-  - resource: "http://192.168.1.51:7125/printer/objects/query?extruder=temperature,target&heater_bed=temperature,target"
+  - resource: "http://neptune.neptune.svc.cluster.local:7125/printer/objects/query?extruder=temperature,target&heater_bed=temperature,target"
     scan_interval: 5
     sensor:
       - name: Neptune Extruder Temp
@@ -32,7 +32,7 @@ rest:
           {{ value_json.result.status.heater_bed.target | float(0) | round(1) }}
 
   # ── Print status (10s poll) ──
-  - resource: "http://192.168.1.51:7125/printer/objects/query?print_stats=state,filename,print_duration,total_duration&virtual_sdcard=progress,is_active&display_status=progress,message"
+  - resource: "http://neptune.neptune.svc.cluster.local:7125/printer/objects/query?print_stats=state,filename,print_duration,total_duration&virtual_sdcard=progress,is_active&display_status=progress,message"
     scan_interval: 10
     sensor:
       - name: Neptune Print State
@@ -55,7 +55,7 @@ rest:
           {{ '%02d:%02d:%02d' | format(d // 3600, (d % 3600) // 60, d % 60) }}
 
   # ── Printer info (60s poll) ──
-  - resource: "http://192.168.1.51:7125/printer/info"
+  - resource: "http://neptune.neptune.svc.cluster.local:7125/printer/info"
     scan_interval: 60
     sensor:
       - name: Neptune Printer Status

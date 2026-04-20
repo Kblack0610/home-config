@@ -58,7 +58,7 @@ Custom components (e.g. `ha-bambulab`) are installed via init containers with pi
 
 | Use Case | Description |
 |----------|-------------|
-| Neptune (Moonraker) | REST sensors polling Moonraker API at 192.168.1.51 — temps, progress, print state |
+| Neptune (Moonraker) | REST sensors polling Moonraker through the in-cluster `neptune` service — temps, progress, print state |
 | Bambu A1 (ha-bambulab) | Custom component installed via init container, config seeded from K8s Secret |
 | Dashboard | Dedicated `3D Printing` view with status, progress gauges, and temperature cards |
 

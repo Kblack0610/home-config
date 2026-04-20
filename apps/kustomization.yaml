@@ -20,6 +20,7 @@ resources:
   - litellm
   - monitoring
   - nas
+  - neptune
   - nvidia-device-plugin
   - openclaw
   - orcaslicer

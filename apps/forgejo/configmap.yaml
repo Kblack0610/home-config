@@ -20,6 +20,13 @@ data:
     SSH_LISTEN_PORT = 22
     DISABLE_SSH = false
     OFFLINE_MODE = false
+    LFS_START_SERVER = true
+    LFS_JWT_SECRET = Aei8uMUYs3o7DMM6ti-RB9lL-h7aH23KpCi4z_AYBQQ
+    LFS_HTTP_AUTH_EXPIRY = 20m
+
+    [lfs]
+    PATH = /data/git/lfs
+    STORAGE_TYPE = local
 
     [database]
     DB_TYPE = sqlite3

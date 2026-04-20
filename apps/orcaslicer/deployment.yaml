@@ -75,8 +75,28 @@ spec:
               value: "0"
             - name: TZ
               value: America/Los_Angeles
+            - name: TITLE
+              value: OrcaSlicer
+            - name: NO_GAMEPAD
+              value: "true"
             - name: DRINODE
               value: "/dev/dri/renderD128"
+            - name: SELKIES_FRAMERATE
+              value: "30"
+            - name: SELKIES_IS_MANUAL_RESOLUTION_MODE
+              value: "true"
+            - name: SELKIES_MANUAL_WIDTH
+              value: "1280"
+            - name: SELKIES_MANUAL_HEIGHT
+              value: "720"
+            - name: SELKIES_USE_CSS_SCALING
+              value: "true"
+            - name: SELKIES_AUDIO_ENABLED
+              value: "false"
+            - name: SELKIES_MICROPHONE_ENABLED
+              value: "false"
+            - name: SELKIES_SECOND_SCREEN
+              value: "false"
             - name: LIBGL_ALWAYS_SOFTWARE
               value: "0"
             - name: GALLIUM_DRIVER

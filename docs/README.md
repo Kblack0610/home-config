@@ -9,7 +9,10 @@ Use this index to find the right document by task instead of scanning the repo t
 | Check environment health, inventory, ingress, backups | [../infrastructure.md](../infrastructure.md) | Live-ish reference document for current state |
 | Deploy or troubleshoot GitOps changes | [gitops.md](./gitops.md) | Flux, SOPS, reconciliation, rollback |
 | Add or remove an app from the cluster | [app-lifecycle.md](./app-lifecycle.md) | Step-by-step checklists, common pitfalls |
+| Manage bare-metal host services (systemd, launchd, OpenWRT) | [ansible.md](./ansible.md) | Ansible inventory, vault, Semaphore UI, phase roadmap |
+| See what runs where (cluster vs bare-metal) | [homelab-catalog.md](./homelab-catalog.md) | One-page service → host → runtime → manager table |
 | Verify backups or run a restore | [backup-runbook.md](./backup-runbook.md) | Backup schedules, manual triggers, restore flows |
+| Inspect or edit files inside a running pod | [container-access.md](./container-access.md) | `kubectl debug` with nvim, cp round-trip, GitOps caveat |
 
 ## Environment and Platform Guides
 
@@ -38,7 +41,9 @@ Start with the service README in its manifest directory when you are editing or 
 | Actual Budget | [../apps/actual-budget/README.md](../apps/actual-budget/README.md) |
 | Actual Budget Tools | [../apps/actual-budget-tools/README.md](../apps/actual-budget-tools/README.md) |
 | CrowdSec | [../apps/crowdsec/README.md](../apps/crowdsec/README.md) |
+| Semaphore UI | [../apps/semaphore/README.md](../apps/semaphore/README.md) |
 | Traefik | [../infrastructure/traefik/README.md](../infrastructure/traefik/README.md) |
+| Ansible (host layer) | [../ansible/README.md](../ansible/README.md) |
 
 ## Documentation Conventions
 

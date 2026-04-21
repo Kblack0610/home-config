@@ -1,0 +1,122 @@
+---
+- name: Assert GitHub PAT is available from vault
+  ansible.builtin.assert:
+    that:
+      - vault_github_pat is defined
+      - vault_github_pat | length > 10
+      - not (vault_github_pat is match('^ghp_REPLACE_ME'))
+    fail_msg: >-
+      vault_github_pat is missing or still the placeholder. Create
+      group_vars/linux_bare_metal/vault.yml with a real PAT (scope: repo) and
+      encrypt it via `ansible-vault encrypt`.
+
+- name: Install system packages
+  community.general.pacman:
+    name: "{{ gh_runner_system_packages }}"
+    state: present
+    update_cache: true
+
+- name: Ensure docker daemon is enabled and running
+  ansible.builtin.systemd:
+    name: docker.service
+    enabled: true
+    state: started
+
+- name: Create runner group
+  ansible.builtin.group:
+    name: "{{ gh_runner_group }}"
+    system: true
+    state: present
+
+- name: Create runner user
+  ansible.builtin.user:
+    name: "{{ gh_runner_user }}"
+    group: "{{ gh_runner_group }}"
+    groups: [docker]
+    append: true
+    home: "{{ gh_runner_home }}"
+    shell: /bin/bash
+    system: true
+    create_home: true
+
+- name: Ensure runner home and work dirs exist
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: directory
+    owner: "{{ gh_runner_user }}"
+    group: "{{ gh_runner_group }}"
+    mode: "0750"
+  loop:
+    - "{{ gh_runner_home }}"
+    - "{{ gh_runner_home }}/{{ gh_runner_work_dir }}"
+
+- name: Download runner tarball
+  ansible.builtin.get_url:
+    url: "{{ gh_runner_tarball_url }}"
+    dest: "/tmp/{{ gh_runner_tarball }}"
+    checksum: "sha256:{{ gh_runner_tarball_sha256 }}"
+    mode: "0644"
+  register: runner_tarball_download
+
+- name: Extract runner tarball into runner home
+  ansible.builtin.unarchive:
+    src: "/tmp/{{ gh_runner_tarball }}"
+    dest: "{{ gh_runner_home }}"
+    remote_src: true
+    owner: "{{ gh_runner_user }}"
+    group: "{{ gh_runner_group }}"
+    creates: "{{ gh_runner_home }}/config.sh"
+
+# Ephemeral registration token (valid ~1 hour), fetched from the GitHub API
+# using the long-lived PAT. Mirrors the curl in platform/tools/register-mac-runner.sh.
+- name: Fetch ephemeral runner registration token from GitHub
+  ansible.builtin.uri:
+    url: "https://api.github.com/repos/{{ gh_runner_owner }}/{{ gh_runner_repo }}/actions/runners/registration-token"
+    method: POST
+    headers:
+      Accept: application/vnd.github+json
+      Authorization: "Bearer {{ vault_github_pat }}"
+      X-GitHub-Api-Version: "2022-11-28"
+    status_code: 201
+    return_content: true
+  register: gh_registration_token
+  when: not (ansible_check_mode)
+  changed_when: false
+  no_log: true
+
+- name: Configure runner (idempotent via .runner marker)
+  become: true
+  become_user: "{{ gh_runner_user }}"
+  ansible.builtin.command:
+    argv:
+      - "{{ gh_runner_home }}/config.sh"
+      - --unattended
+      - --replace
+      - --url
+      - "{{ gh_runner_url }}"
+      - --token
+      - "{{ gh_registration_token.json.token }}"
+      - --name
+      - "{{ gh_runner_name }}"
+      - --labels
+      - "{{ gh_runner_labels | join(',') }}"
+      - --work
+      - "{{ gh_runner_work_dir }}"
+    chdir: "{{ gh_runner_home }}"
+    creates: "{{ gh_runner_home }}/.runner"
+  when: not (ansible_check_mode)
+  no_log: true
+
+- name: Install systemd unit for runner
+  ansible.builtin.template:
+    src: actions.runner.service.j2
+    dest: "/etc/systemd/system/actions.runner.{{ gh_runner_name }}.service"
+    mode: "0644"
+  notify: restart github actions runner
+
+- name: Enable and start the runner
+  ansible.builtin.systemd:
+    name: "actions.runner.{{ gh_runner_name }}.service"
+    enabled: true
+    state: started
+    daemon_reload: true

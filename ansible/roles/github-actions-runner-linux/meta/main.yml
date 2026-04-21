@@ -1,0 +1,20 @@
+---
+galaxy_info:
+  role_name: github_actions_runner_linux
+  author: home-config
+  description: >-
+    Install and register a GitHub Actions self-hosted runner on a Linux host
+    (CachyOS/Arch). Mirrors platform/tools/setup-mac-runner.sh +
+    register-mac-runner.sh for the Linux side.
+  license: MIT
+  min_ansible_version: "2.14"
+  platforms:
+    - name: ArchLinux
+      versions:
+        - rolling
+  galaxy_tags:
+    - ci
+    - github
+    - actions
+    - runner
+dependencies: []

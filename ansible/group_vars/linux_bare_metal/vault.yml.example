@@ -1,0 +1,22 @@
+---
+# Example of the encrypted vault file for linux_bare_metal hosts.
+#
+# Real file path: ansible/group_vars/linux_bare_metal/vault.yml (gitignored,
+# encrypted with ansible-vault).
+#
+# Create it with:
+#   cd ansible
+#   ansible-vault create group_vars/linux_bare_metal/vault.yml
+#
+# Or encrypt this example in place:
+#   cp group_vars/linux_bare_metal/vault.yml.example \
+#      group_vars/linux_bare_metal/vault.yml
+#   $EDITOR group_vars/linux_bare_metal/vault.yml   # fill in real values
+#   ansible-vault encrypt group_vars/linux_bare_metal/vault.yml
+#
+# The vault password lives in ~/.ansible-vault-pass (gitignored on workstation).
+
+# GitHub PAT with `repo` scope, used to fetch a short-lived runner
+# registration token at play time. Same requirement as
+# platform/tools/register-mac-runner.sh.
+vault_github_pat: ghp_REPLACE_ME

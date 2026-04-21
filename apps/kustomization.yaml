@@ -28,6 +28,7 @@ resources:
   - prowlarr
   - qbittorrent
   - radarr
+  - semaphore
   - sonarr
   - sops-backup-rbac
 

@@ -1,0 +1,43 @@
+---
+# Target repo for the runner. Single-repo runners; change to org-scoped later if needed.
+gh_runner_owner: BlackNBrownStudios
+gh_runner_repo: platform
+gh_runner_url: "https://github.com/{{ gh_runner_owner }}/{{ gh_runner_repo }}"
+
+# Pin the runner release. Bump deliberately (not automatically) — the runner
+# binary self-updates in-place at runtime, but a clean re-provision uses this
+# pinned tarball.
+gh_runner_version: "2.320.0"
+gh_runner_arch: x64
+gh_runner_tarball: "actions-runner-linux-{{ gh_runner_arch }}-{{ gh_runner_version }}.tar.gz"
+gh_runner_tarball_url: "https://github.com/actions/runner/releases/download/v{{ gh_runner_version }}/{{ gh_runner_tarball }}"
+# sha256 for v2.320.0 linux-x64. Fetched from:
+#   curl -sL https://github.com/actions/runner/releases/download/v2.320.0/actions-runner-linux-x64-2.320.0.tar.gz | sha256sum
+gh_runner_tarball_sha256: "93ac1b7ce743ee85b5d386f5c1787385ef07b3d7c728ff66ce0d3813d5f46900"
+
+# Host-side paths and identities.
+gh_runner_user: actions-runner
+gh_runner_group: actions-runner
+gh_runner_home: /var/lib/actions-runner
+gh_runner_work_dir: _work
+
+# Runner identity. Name defaults to hostname so re-running on a different host
+# doesn't collide.
+gh_runner_name: "{{ inventory_hostname }}-linux"
+gh_runner_labels:
+  - self-hosted
+  - linux
+  - x64
+  - docker
+
+# System packages mirroring what platform/tools/setup-mac-runner.sh installs on
+# Mac (node@20, pnpm, jq) plus Linux-specific extras.
+gh_runner_system_packages:
+  - docker
+  - docker-buildx
+  - git
+  - git-lfs
+  - jq
+  - nodejs-lts-iron
+  - pnpm
+  - curl

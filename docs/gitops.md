@@ -22,6 +22,30 @@ This repository uses Flux CD to reconcile cluster state from git. Secrets are co
 | SOPS + Age | Encrypts secrets for safe storage in git |
 | Kustomize | Defines application and infrastructure composition |
 
+## Layer split: PXE / Ansible / Flux
+
+Flux only manages what runs inside the k3s cluster. Two other tools own the rest:
+
+| Layer | Tool | Owns | Source |
+|-------|------|------|--------|
+| Day 0: cold boot | **PXE** | Netboot image + kickstart: OS + SSH pubkey on bare-metal | `infrastructure/pxe-server/` |
+| Day 1+: below kubelet / off-cluster | **Ansible** | systemd units, launchd plists, brew packages, OpenWRT config, future k3s agent install | `ansible/` — see [ansible.md](./ansible.md) |
+| Day 1+: inside the cluster | **Flux** | Kubernetes workloads | `apps/`, `clusters/`, this doc |
+
+```
+PXE (once per host) ──SSH──▶ Ansible (idempotent, on-demand) ───▶ Flux (continuous reconcile)
+                              │                                   │
+                              ▼                                   ▼
+                         host-OS services                   k3s workloads
+```
+
+Rule of thumb:
+- Edit `apps/<name>/*.yaml` → commit, push, Flux reconciles.
+- Edit `ansible/roles/<name>/**` → commit, push, run `ansible-playbook` (locally or via Semaphore at `semaphore.kblab.me`).
+- Edit `infrastructure/pxe-server/**` → commit, push, re-run `infrastructure/pxe-server/install.sh` when bootstrapping a new host.
+
+For a service-by-service view of which layer owns which workload, see [homelab-catalog.md](./homelab-catalog.md).
+
 ## Repository Shape
 
 ```text

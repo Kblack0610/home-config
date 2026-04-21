@@ -1,0 +1,22 @@
+[Unit]
+Description=GitHub Actions self-hosted runner ({{ gh_runner_name }})
+After=network-online.target docker.service
+Wants=network-online.target
+Requires=docker.service
+
+[Service]
+Type=simple
+User={{ gh_runner_user }}
+Group={{ gh_runner_group }}
+WorkingDirectory={{ gh_runner_home }}
+ExecStart={{ gh_runner_home }}/run.sh
+Restart=always
+RestartSec=5
+KillMode=process
+KillSignal=SIGTERM
+TimeoutStopSec=5min
+# The runner binary self-updates in-place; don't lock the exec file.
+ReadWritePaths={{ gh_runner_home }}
+
+[Install]
+WantedBy=multi-user.target

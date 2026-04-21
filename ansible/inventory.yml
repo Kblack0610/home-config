@@ -1,0 +1,71 @@
+---
+# Ansible inventory for home-config bare-metal hosts.
+#
+# Layers:
+#   - PXE:     cold-boot OS install (unchanged)
+#   - Ansible: this file — everything below the kubelet, plus non-k3s hosts
+#   - Flux:    k3s workloads (unchanged)
+#
+# IP truth lives in infrastructure/dhcp/devices.yaml, but k3s nodes assigned
+# post-devices.yaml (thinkcentre, hp-victus) are sourced from `kubectl get nodes`.
+# Update both files when adding a host.
+
+all:
+  vars:
+    # Default SSH user on Linux hosts provisioned via PXE (matches the
+    # workstation account that PXE kickstart seeds with the key).
+    ansible_user: kblack0610
+
+  children:
+    linux_bare_metal:
+      hosts:
+        thinkcentre:
+          ansible_host: 192.168.1.100
+        hp-victus:
+          ansible_host: 192.168.1.243
+        # asus-laptop is reachable only on a non-standard port historically and
+        # has no stable SSH alias (see lessons 2026-04-01). Kept listed but not
+        # targeted by Phase A — manage via kubectl until SSH is normalised.
+        asus-laptop:
+          ansible_host: 192.168.1.152
+          ansible_port: 2222
+          unreachable: true
+
+    macos_hosts:
+      hosts:
+        mac-studio:
+          ansible_host: 192.168.1.4
+          ansible_user: kblack0610
+        mac-mini:
+          ansible_host: 192.168.1.7
+          ansible_user: kennethblack
+
+    pi_k3s:
+      hosts:
+        pi5-master:
+          ansible_host: 192.168.1.20
+          k3s_role: server
+        # pi5-worker1 currently rejects key-based auth from this workstation
+        # (keyfile mismatch? investigate before Phase B). Left in inventory
+        # for completeness but will fail until SSH key is propagated.
+        pi5-worker1:
+          ansible_host: 192.168.1.21
+          k3s_role: agent
+        pi5-worker2:
+          ansible_host: 192.168.1.22
+          k3s_role: agent
+        pi5-worker3:
+          ansible_host: 192.168.1.23
+          k3s_role: agent
+        pi4-worker4:
+          ansible_host: 192.168.1.24
+          k3s_role: agent
+        pi4-worker5:
+          ansible_host: 192.168.1.124
+          k3s_role: agent
+
+    openwrt:
+      hosts:
+        openwrt-router:
+          ansible_host: 192.168.1.1
+          ansible_user: root

@@ -1,0 +1,9 @@
+# Encrypted ansible-vault files (group_vars/**/vault.yml) ARE committed — the
+# encryption protects them. Only runtime artifacts and local state below.
+*.retry
+.vault_pass
+collections/ansible_collections/
+# Failsafe: if someone accidentally creates a plaintext vault with a common
+# name, don't ship it.
+group_vars/**/vault.plain.yml
+group_vars/**/*.unencrypted.yml

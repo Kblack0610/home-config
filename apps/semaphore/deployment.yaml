@@ -23,7 +23,10 @@ spec:
         fsGroup: 1001
       containers:
         - name: semaphore
-          image: semaphoreui/semaphore:v2.11.2
+          # The -ansible variant ships ansible-playbook on PATH, which Semaphore
+          # shells out to when running tasks. The plain tag would need us to
+          # install ansible ourselves via an init container.
+          image: semaphoreui/semaphore:v2.17.37-ansible2.16.5
           imagePullPolicy: IfNotPresent
           ports:
             - name: http

@@ -13,7 +13,7 @@ Web UI for running Ansible playbooks against bare-metal hosts defined in `ansibl
 | `namespace.yaml` | `semaphore` namespace |
 | `pvc.yaml` | `semaphore-data` PVC for BoltDB + workspace |
 | `secret.yaml` | Admin creds and access-key encryption (SOPS-encrypted in git) |
-| `deployment.yaml` | `semaphoreui/semaphore:v2.11.2`, SQLite DB on PVC |
+| `deployment.yaml` | `semaphoreui/semaphore:v2.17.37-ansible2.16.5`, SQLite DB on PVC |
 | `service.yaml` | ClusterIP on :80 → targetPort 3000 |
 | `ingress.yaml` | Traefik → `semaphore.kblab.me`, LAN allowlist middleware |
 

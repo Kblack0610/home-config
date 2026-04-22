@@ -73,11 +73,40 @@ kubectl -n semaphore get pods
 
 # Tail app logs
 kubectl -n semaphore logs deploy/semaphore -f
-
-# Reset admin password (pod will read from env at next start)
-# Edit secret.yaml via SOPS, commit, Flux reconciles, then:
-kubectl -n semaphore rollout restart deploy/semaphore
 ```
+
+### Rotate the admin password
+
+**Important:** `SEMAPHORE_ADMIN_PASSWORD` env var only seeds the admin
+user **on first boot when the admin does not yet exist**. Once the admin
+row is in SQLite, Semaphore logs `Welcome back, admin! (a user with this
+username/email is already set up..)` and ignores the env var. Editing
+the SOPS secret + rolling out the pod is therefore *not enough* to
+rotate the password — you must also reset it in the DB.
+
+The idiomatic fix:
+
+```bash
+# 1. Edit the SOPS secret so git and the pod env stay in sync.
+sops apps/semaphore/secret.yaml        # edit SEMAPHORE_ADMIN_PASSWORD
+git add apps/semaphore/secret.yaml && git commit -m "chore(semaphore): rotate admin password" && git push
+flux --context home-k3s reconcile kustomization apps --with-source
+
+# 2. Force-reset the DB password to match, via Semaphore's own CLI.
+#    (pod already has the new env; this command writes it into SQLite.)
+NEW_PW=$(sops --decrypt apps/semaphore/secret.yaml | awk '/SEMAPHORE_ADMIN_PASSWORD/ {print $2}')
+kubectl --context home-k3s -n semaphore exec deploy/semaphore -- \
+  semaphore user change-by-login --login admin --password "$NEW_PW" --config /etc/semaphore/config.json
+
+# 3. Verify
+curl -sk -X POST https://semaphore.kblab.me/api/auth/login \
+  -H "Content-Type: application/json" \
+  -d "{\"auth\":\"admin\",\"password\":\"$NEW_PW\"}" -w "HTTP %{http_code}\n"
+# expect HTTP 204
+```
+
+No pod restart needed — `semaphore user change-by-login` writes directly to the
+SQLite DB which the running pod reads on next login attempt.
 
 ## Upgrade
 

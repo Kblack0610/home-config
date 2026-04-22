@@ -86,4 +86,8 @@ spec:
             - name: secrets
               secret:
                 secretName: ansible-runner-secrets
-                defaultMode: 0400
+                # 0444 so non-root image users (e.g. semaphoreui image runs as
+                # uid 1001) can read the mount. We immediately `install -m 0600`
+                # into the pod-local ~/.ssh/id_ed25519, and the secret volume
+                # is tmpfs anyway — defense-in-depth not weakened materially.
+                defaultMode: 0444

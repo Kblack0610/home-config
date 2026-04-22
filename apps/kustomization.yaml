@@ -9,6 +9,7 @@ resources:
 
   # Applications (home-k3s cluster)
   - actual-budget
+  - ansible-runner
   - comfyui
   - crowdsec
   - forgejo
@@ -28,7 +29,6 @@ resources:
   - prowlarr
   - qbittorrent
   - radarr
-  - semaphore
   - sonarr
   - sops-backup-rbac
 

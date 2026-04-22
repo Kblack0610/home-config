@@ -1,0 +1,89 @@
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: convergence-check
+  namespace: ansible-runner
+  labels:
+    app.kubernetes.io/name: ansible-runner
+    app.kubernetes.io/component: convergence-check
+spec:
+  # 04:00 daily. Dry-run with --check --diff, so drift is surfaced in logs
+  # without changing state. Use `kubectl create job --from=cronjob/...` to
+  # trigger an ad-hoc run. For an actual apply (no --check), see README.md.
+  schedule: "0 4 * * *"
+  timeZone: "America/Los_Angeles"
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 5
+  jobTemplate:
+    spec:
+      backoffLimit: 1
+      ttlSecondsAfterFinished: 604800  # 7 days
+      template:
+        metadata:
+          labels:
+            app.kubernetes.io/name: ansible-runner
+            app.kubernetes.io/component: convergence-check
+        spec:
+          restartPolicy: Never
+          initContainers:
+            - name: clone-repo
+              image: alpine/git:2.47.0
+              command:
+                - sh
+                - -c
+                - |
+                  set -eu
+                  git clone --depth=1 --branch=master \
+                    https://github.com/Kblack0610/home-config /workspace
+                  git -C /workspace rev-parse HEAD > /workspace/.revision
+                  cat /workspace/.revision
+              volumeMounts:
+                - name: workspace
+                  mountPath: /workspace
+          containers:
+            - name: ansible
+              # The semaphore image variant bundles ansible-playbook + collections.
+              # Alternatives: cytopia/ansible, alpine/ansible. Swap freely.
+              image: semaphoreui/semaphore:v2.17.37-ansible2.16.5
+              command:
+                - sh
+                - -c
+                - |
+                  set -euo pipefail
+                  echo "--- Running against home-config revision: $(cat /workspace/.revision) ---"
+                  mkdir -p ~/.ssh
+                  install -m 0600 /secrets/ssh-privkey ~/.ssh/id_ed25519
+                  ssh-keyscan -H 192.168.1.100 2>/dev/null >> ~/.ssh/known_hosts
+                  chmod 644 ~/.ssh/known_hosts
+                  export ANSIBLE_VAULT_PASSWORD_FILE=/secrets/ansible-vault-pass
+                  cd /workspace/ansible
+                  ansible-galaxy collection install -r requirements.yml --force
+                  exec ansible-playbook playbooks/site.yml \
+                    --limit thinkcentre \
+                    --check --diff
+              env:
+                - name: ANSIBLE_HOST_KEY_CHECKING
+                  value: "False"
+                - name: ANSIBLE_STDOUT_CALLBACK
+                  value: "default"
+              volumeMounts:
+                - name: workspace
+                  mountPath: /workspace
+                - name: secrets
+                  mountPath: /secrets
+                  readOnly: true
+              resources:
+                requests:
+                  cpu: "50m"
+                  memory: "128Mi"
+                limits:
+                  cpu: "500m"
+                  memory: "512Mi"
+          volumes:
+            - name: workspace
+              emptyDir: {}
+            - name: secrets
+              secret:
+                secretName: ansible-runner-secrets
+                defaultMode: 0400

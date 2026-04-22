@@ -41,7 +41,7 @@ Start with the service README in its manifest directory when you are editing or 
 | Actual Budget | [../apps/actual-budget/README.md](../apps/actual-budget/README.md) |
 | Actual Budget Tools | [../apps/actual-budget-tools/README.md](../apps/actual-budget-tools/README.md) |
 | CrowdSec | [../apps/crowdsec/README.md](../apps/crowdsec/README.md) |
-| Semaphore UI | [../apps/semaphore/README.md](../apps/semaphore/README.md) |
+| Ansible Runner (CronJob) | [../apps/ansible-runner/README.md](../apps/ansible-runner/README.md) |
 | Traefik | [../infrastructure/traefik/README.md](../infrastructure/traefik/README.md) |
 | Ansible (host layer) | [../ansible/README.md](../ansible/README.md) |
 

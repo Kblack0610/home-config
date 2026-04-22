@@ -28,7 +28,7 @@ spec:
           restartPolicy: Never
           initContainers:
             - name: clone-repo
-              image: alpine/git:2.47.0
+              image: alpine/git:v2.52.0
               command:
                 - sh
                 - -c

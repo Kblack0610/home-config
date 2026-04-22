@@ -36,7 +36,7 @@ One-page index of services and their management plane. Use this to answer "where
 | **Provisioning** | | | | |
 | PXE server | pc-home-cachy-main (workstation) | scripts | `infrastructure/pxe-server/install.sh` | `infrastructure/pxe-server/` |
 | Flux bootstrap | k3s cluster | k3s pod (`flux-system` ns) | one-time `flux bootstrap`, then self-hosted | `clusters/home-k3s/flux-system/` |
-| Ansible | workstation / Semaphore pod | (runs from) | git in this repo | `ansible/` |
+| Ansible | workstation / `ansible-runner` CronJob | (runs from) | git in this repo | `ansible/` |
 
 ## Management layers at a glance
 

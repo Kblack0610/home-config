@@ -46,6 +46,12 @@ spec:
               # The semaphore image variant bundles ansible-playbook + collections.
               # Alternatives: cytopia/ansible, alpine/ansible. Swap freely.
               image: semaphoreui/semaphore:v2.17.37-ansible2.16.5
+              securityContext:
+                # Ephemeral Job container. Running as root keeps things simple:
+                # writes to the cloned /workspace, installs galaxy collections,
+                # reads the secret-mounted SSH key. No long-running exposure.
+                runAsUser: 0
+                runAsGroup: 0
               command:
                 - sh
                 - -c

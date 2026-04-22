@@ -41,7 +41,7 @@ PXE (once per host) ──SSH──▶ Ansible (idempotent, on-demand) ───
 
 Rule of thumb:
 - Edit `apps/<name>/*.yaml` → commit, push, Flux reconciles.
-- Edit `ansible/roles/<name>/**` → commit, push, run `ansible-playbook` (locally or via Semaphore at `semaphore.kblab.me`).
+- Edit `ansible/roles/<name>/**` → commit, push. Either run `ansible-playbook` locally or let the `apps/ansible-runner/` CronJob surface drift at 04:00 daily (see `apps/ansible-runner/README.md` for ad-hoc triggers).
 - Edit `infrastructure/pxe-server/**` → commit, push, re-run `infrastructure/pxe-server/install.sh` when bootstrapping a new host.
 
 For a service-by-service view of which layer owns which workload, see [homelab-catalog.md](./homelab-catalog.md).

@@ -77,6 +77,12 @@ ansible-playbook playbooks/site.yml --limit thinkcentre --tags runner
 
 Everything else (k3s agent install, macOS launchd, OpenWRT config push, DHCP reservations) is a later phase — see the plan file referenced in `docs/gitops.md`.
 
-## Run history / web UI
+## Run history / scheduled runs
 
-Semaphore UI at [https://semaphore.kblab.me](https://semaphore.kblab.me) (Flux-managed under `apps/semaphore/`) is the web surface for triggered playbook runs with stored logs. Point Semaphore at this repository's `ansible/` directory as a project.
+`apps/ansible-runner/` is a Flux-managed CronJob that runs `ansible-playbook --check --diff --limit thinkcentre` daily at 04:00 against this repo's master branch, logging drift without mutating state. Trigger ad-hoc dry-runs with:
+
+```bash
+kubectl -n ansible-runner create job --from=cronjob/convergence-check convergence-$(date +%s)
+```
+
+Run history: `kubectl -n ansible-runner get jobs --sort-by=.metadata.creationTimestamp`. Full workflow in `apps/ansible-runner/README.md`. No web UI — we explicitly chose k8s-native over Semaphore to avoid the 8-step manual project bootstrap.

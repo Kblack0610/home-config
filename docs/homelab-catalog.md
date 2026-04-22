@@ -16,7 +16,7 @@ One-page index of services and their management plane. Use this to answer "where
 | NAS (Samba) | asus-laptop | k3s pod | Flux | `apps/nas/` |
 | Neptune proxy (Fluidd) | — | k3s Service+Endpoints | Flux | `apps/neptune/` |
 | Portfolio / bnb-studios / black-dev | any pi | k3s pod | Flux | `apps/{portfolio,bnb-studios,black-dev}/` |
-| Semaphore UI (Ansible run history) | any pi | k3s pod | Flux | `apps/semaphore/` |
+| Ansible Runner (CronJob, drift detection) | any k8s node | k8s CronJob | Flux | `apps/ansible-runner/` |
 | **Bare-metal (non-cluster) services** | | | | |
 | MLX code server | mac-studio | launchd `com.mlx-lm.code` | SSH + brew (→ Ansible Phase D) | `docs/mac-machines.md` |
 | MLX smart server | mac-studio | launchd `com.mlx-lm.smart` | SSH + brew (→ Ansible Phase D) | `docs/mac-machines.md` |

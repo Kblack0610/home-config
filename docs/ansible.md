@@ -56,9 +56,11 @@ ansible-vault encrypt group_vars/linux_bare_metal/vault.yml
 
 Encrypted vault files are committed; plaintext and the password file are gitignored.
 
-## Web UI: Semaphore
+## Scheduled runs + run history: `ansible-runner` CronJob
 
-[https://semaphore.kblab.me](https://semaphore.kblab.me) (LAN only). Point it at this repo's `ansible/` directory as a project. Stored run logs, ad-hoc re-runs, per-team credentials. Setup: `apps/semaphore/README.md`.
+No web UI — we deliberately rejected Semaphore (bootstrapping projects/keys/inventories via its REST API is more plumbing than the tool is worth for a single-user homelab). Instead, `apps/ansible-runner/` ships a Flux-managed CronJob that runs `ansible-playbook --check --diff` at 04:00 daily against thinkcentre, logs drift, and does not mutate state.
+
+Ad-hoc runs via `kubectl create job --from=cronjob/convergence-check`. Run history lives in `kubectl -n ansible-runner get jobs` + `kubectl logs`. Full workflow: `apps/ansible-runner/README.md`.
 
 ## Adding a new role
 
@@ -89,7 +91,7 @@ Running services show up in the Grafana dashboard **Homelab: Bare-metal services
 
 | Phase | Scope |
 |-------|-------|
-| **A (current)** | `github-actions-runner-linux` on thinkcentre. Ansible skeleton. Semaphore UI. Runner picks up Linux jobs **only after** a `platform` workflow is migrated to `runs-on: [self-hosted, linux, x64]` — the runner comes up online but idle until then. |
+| **A (current)** | `github-actions-runner-linux` on thinkcentre. Ansible skeleton. `ansible-runner` CronJob for drift detection. Runner picks up Linux jobs **only after** a `platform` workflow is migrated to `runs-on: [self-hosted, linux, x64]` — the runner comes up online but idle until then. |
 | B | Move k3s agent install out of PXE kickstart into an `k3s-agent` role. Optionally add a Unity / game-ci runner role on top of Phase A. |
 | C | Port `infrastructure/{openwrt,dhcp}/*.sh` to Ansible roles. |
 | D | macOS roles: `launchd-mlx-services`, `github-actions-runner-mac`, `brew-common`, `node-exporter-mac`. Retire `docs/mac-machines.md` setup steps. |

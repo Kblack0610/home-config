@@ -15,11 +15,12 @@
       - _effective_gh_runner_pat | length > 10
       - not (_effective_gh_runner_pat is match('^ghp_REPLACE_ME'))
     fail_msg: >-
-      No usable GitHub PAT. Either set `vault_github_pat` in
+      No usable GitHub PAT. Either set vault_github_pat in
       group_vars/linux_bare_metal/vault.yml (platform-scoped, default), OR
-      pass `gh_runner_pat: "{{ vault_github_<name>_pat }}"` via playbook vars
-      for a per-repo runner. Both values must be `repo`-scoped PATs encrypted
-      via `ansible-vault encrypt`.
+      pass gh_runner_pat via playbook vars referencing a repo-specific vault
+      variable (e.g. vault_github_dodginballs_pat) for a per-repo runner.
+      Both values must be `repo`-scoped PATs encrypted via `ansible-vault
+      encrypt`.
 
 - name: Install system packages
   community.general.pacman:

@@ -10,7 +10,7 @@
 # Future phases will add roles here (k3s-agent, launchd-mlx, openwrt-config, etc.).
 
 - name: Bootstrap — ensure Python is installed so Ansible modules can run
-  hosts: thinkcentre
+  hosts: thinkcentre:hp-victus
   become: true
   gather_facts: false
   tasks:
@@ -54,23 +54,25 @@
 #     - role: k3s-agent
 #       tags: [k3s]
 
-# dodginballs runner on asus-laptop — DEFERRED: flip asus-laptop's
-# `unreachable: true` in inventory.yml AND set vault_github_dodginballs_pat in
-# group_vars/linux_bare_metal/vault.yml before uncommenting. Re-uses the same
-# github-actions-runner-linux role via gh_runner_pat override (see role
-# tasks/main.yml and defaults/main.yml). Binds to BlackNBrownStudios/dodginballs
-# with label `unity` so the game-ci Unity 6 build workflow lands here when thinkcentre
-# is too slow (thinkcentre = 16 GB, asus-laptop = 64 GB).
+# dodginballs Unity runner — PRIMARY: hp-victus (32 GB, Arch, k3s node with
+# ComfyUI+Prometheus+OpenClaw running but idle). Uses the github-actions-runner-linux
+# role with gh_runner_pat override (different repo than thinkcentre's platform binding).
+# Labels include 'unity' so the dodginballs release workflow (runs-on: [self-hosted, unity])
+# lands here. asus-laptop will join the pool when it comes online (flip its
+# unreachable flag + re-run the playbook).
 #
-# - name: dodginballs Unity runner (asus-laptop)
-#   hosts: asus-laptop
-#   become: true
-#   gather_facts: true
-#   roles:
-#     - role: github-actions-runner-linux
-#       vars:
-#         gh_runner_repo: dodginballs
-#         gh_runner_name: "{{ inventory_hostname }}-unity"
-#         gh_runner_labels: [self-hosted, linux, x64, unity]
-#         gh_runner_pat: "{{ vault_github_dodginballs_pat }}"
-#       tags: [runner, ci, dodginballs]
+# thinkcentre-unity is INTENTIONALLY not in this host list — its systemd unit is
+# stopped + disabled (manual save, not decommission). Bring it back with
+# `ssh thinkcentre 'sudo systemctl enable --now actions.runner.thinkcentre-unity'`.
+- name: dodginballs Unity runner (hp-victus primary)
+  hosts: hp-victus
+  become: true
+  gather_facts: true
+  roles:
+    - role: github-actions-runner-linux
+      vars:
+        gh_runner_repo: dodginballs
+        gh_runner_name: "{{ inventory_hostname }}-unity"
+        gh_runner_labels: [self-hosted, linux, x64, unity]
+        gh_runner_pat: "{{ vault_github_dodginballs_pat }}"
+      tags: [runner, ci, dodginballs]

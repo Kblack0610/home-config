@@ -86,5 +86,3 @@ sections:
             name: MLX Smart
           - entity: sensor.mlx_reasoning_server
             name: MLX Reasoning
-          - entity: sensor.ollama_status
-            name: Ollama Fallback

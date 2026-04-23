@@ -6,7 +6,7 @@ Dedicated macOS machines on the home LAN for iOS builds, Expo, and GitHub Action
 
 | Machine | Chip | RAM | IP | Hostname | Role |
 |---------|------|-----|-----|----------|------|
-| Mac Studio | M3 Ultra | 512 GB | 192.168.1.4 | mac-studio | LLM inference (MLX), Ollama fallback, iOS builds, GitHub Actions runner |
+| Mac Studio | M3 Ultra | 512 GB | 192.168.1.4 | mac-studio | LLM inference (MLX), iOS builds, GitHub Actions runner |
 | Mac Mini | M1 | 16 GB | 192.168.1.7 | pc-home-m1-mini | iOS builds, Expo, GitHub Actions runner |
 
 ## Purpose
@@ -33,7 +33,6 @@ The Mac Studio runs three `mlx_lm.server` instances as launchd services for loca
 
 - **Python venv:** `~/mlx-env`
 - **Logs:** `/tmp/mlx-lm-{code,smart,reasoning}.log`
-- **Ollama fallback:** Still installed, available on port 11434
 
 ### Management
 

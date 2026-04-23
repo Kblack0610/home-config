@@ -141,9 +141,8 @@ Partial graph — focuses on the dependencies an agent is most likely to hit dur
 litellm (in-cluster, hp-victus)
   ├── mac-studio:8080  (MLX code — launchd on mac-studio)
   ├── mac-studio:8081  (MLX smart)
-  ├── mac-studio:8082  (MLX reasoning)
-  └── mac-studio:11434 (Ollama fallback)
-       (these four are bare-metal services; see ansible/roles/launchd-mlx-services/ + ansible/roles/ollama/)
+  └── mac-studio:8082  (MLX reasoning)
+       (these three are bare-metal services; see ansible/roles/launchd-mlx-services/)
 
 home-assistant → mosquitto (MQTT broker, in-cluster)
                 → mqtt2prom → monitoring (Prometheus)
@@ -173,10 +172,10 @@ Gatus (`apps/gatus/`) monitors every endpoint in this graph — the Gatus config
 
 | Component | What goes down immediately | What stays up |
 |-----------|----------------------------|---------------|
-| `pi5-master` (k3s server) | Every k3s pod on every node — no scheduler, no API | All bare-metal services: MLX, Ollama, Mac runners, thinkcentre Linux runner. OpenWRT DHCP/DNS. AdGuard Pi3. Frigate. |
+| `pi5-master` (k3s server) | Every k3s pod on every node — no scheduler, no API | All bare-metal services: MLX, Mac runners, thinkcentre Linux runner. OpenWRT DHCP/DNS. AdGuard Pi3. Frigate. |
 | OpenWRT router (192.168.1.1) | DHCP new-client onboarding, DNS resolution via the router's dnsmasq | Static IPs keep routing LAN-to-LAN. External internet is gone (OpenWRT is the gateway). AdGuard Pi3 keeps answering for clients that hit it directly. |
 | AdGuard Home (pi3, 192.168.1.193) | `*.kblab.me` resolution from any client | Everything else — OpenWRT falls back through its own dnsmasq |
-| mac-studio | MLX inference (all three models) + Ollama fallback | LiteLLM still serves — but every request that routes to a MLX upstream 500s |
+| mac-studio | MLX inference (all three models) | LiteLLM still serves — but every request that routes to a MLX upstream 500s |
 | NAS (asus-laptop pod) | Actual Budget backup jobs, Jellyfin media, Immich library | Home Assistant (no NAS dep), Forgejo (backups queue, app keeps running) |
 | cloudflared-public-sites pod | Public HTTPS access to `kennethblack.me`, `blacknbrownstudios.com`, `kblack.dev`, `binks.chat` | LAN access (via AdGuard rewrite path) still works for non-public services |
 | Traefik | Every ingress, LAN and public | Everything that doesn't need HTTPS ingress (node_exporter on :9100, mosquitto on :1883) |

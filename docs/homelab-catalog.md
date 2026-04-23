@@ -20,7 +20,6 @@ One-page index of services and their management plane. Use this to answer "where
 | MLX code server | mac-studio | launchd `com.mlx-lm.code` | Ansible role authored, unbound → SSH + brew today | `ansible/roles/launchd-mlx-services/` ; `docs/mac-machines.md` |
 | MLX smart server | mac-studio | launchd `com.mlx-lm.smart` | Ansible role authored, unbound → SSH + brew today | `ansible/roles/launchd-mlx-services/` ; `docs/mac-machines.md` |
 | MLX reasoning server | mac-studio | launchd `com.mlx-lm.reasoning` | Ansible role authored, unbound → SSH + brew today | `ansible/roles/launchd-mlx-services/` ; `docs/mac-machines.md` |
-| Ollama (fallback) | mac-studio | brew services | Ansible role authored, unbound → SSH + brew today | `ansible/roles/ollama/` ; `docs/mac-machines.md` |
 | GitHub Actions runner (macOS) | mac-studio, mac-mini | LaunchAgent | Ansible role authored, unbound → `platform/tools/setup-mac-runner.sh` today | `ansible/roles/github-actions-runner-mac/` |
 | node_exporter (macOS) | mac-studio, mac-mini | brew services (port 9100) | Ansible role authored, unbound → manual brew today | `ansible/roles/node-exporter-mac/` |
 | Homebrew baseline | mac-studio, mac-mini | user-scoped brew install | Ansible role authored, unbound → `install.sh` today | `ansible/roles/brew-common/` |

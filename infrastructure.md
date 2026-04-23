@@ -124,7 +124,7 @@
 
 | machine | chip | ram | ip | hostname | role |
 |---------|------|-----|-----|----------|------|
-| Mac Studio | M3 Ultra | 512 GB | 192.168.1.4 | mac-studio | MLX inference, Ollama fallback, iOS builds, GH Actions runner |
+| Mac Studio | M3 Ultra | 512 GB | 192.168.1.4 | mac-studio | MLX inference, iOS builds, GH Actions runner |
 | Mac Mini | M1 | 16 GB | 192.168.1.7 | pc-home-m1-mini | iOS builds, Expo, GH Actions runner |
 
 #### setup docs

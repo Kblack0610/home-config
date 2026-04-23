@@ -1,8 +1,0 @@
----
-# Homebrew cask or formula name. `ollama` ships as a formula.
-ollama_formula: ollama
-ollama_service_name: ollama
-
-# Default port (matches docs/mac-machines.md:36 — "Ollama fallback, port 11434").
-# Only used for the post-install probe.
-ollama_port: 11434

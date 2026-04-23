@@ -4,6 +4,12 @@ gh_runner_owner: BlackNBrownStudios
 gh_runner_repo: platform
 gh_runner_url: "https://github.com/{{ gh_runner_owner }}/{{ gh_runner_repo }}"
 
+# PAT override — per-play, for hosts that register against a DIFFERENT repo
+# than the default `vault_github_pat` covers (e.g. dodginballs). Undefined by
+# default; the role falls back to `vault_github_pat` when unset. See role
+# tasks/main.yml for the resolution logic.
+# gh_runner_pat: "{{ vault_github_<repo>_pat }}"
+
 # Pin the runner release. Bump deliberately (not automatically) — the runner
 # binary self-updates in-place at runtime, but a clean re-provision uses this
 # pinned tarball.

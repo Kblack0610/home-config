@@ -1,0 +1,11 @@
+---
+# Source-of-truth YAMLs. Unchanged from infrastructure/openwrt/ so the
+# bash script and this role consume the same declarative inputs during
+# migration.
+openwrt_config_dns_file: "{{ playbook_dir }}/../../infrastructure/openwrt/dns.yaml"
+openwrt_config_firewall_file: "{{ playbook_dir }}/../../infrastructure/openwrt/firewall.yaml"
+
+# Commit UCI changes at the end of the play. Stays false until the
+# porting PR is beyond skeleton and has been exercised against a
+# throwaway OpenWRT target.
+openwrt_config_commit: false

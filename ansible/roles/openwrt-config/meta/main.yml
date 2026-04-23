@@ -1,0 +1,20 @@
+---
+galaxy_info:
+  role_name: openwrt_config
+  author: home-config
+  description: >-
+    Manages non-DHCP OpenWRT config (dnsmasq rewrites, firewall rules,
+    zones) from the declarative YAMLs under infrastructure/openwrt/.
+    Phase C.2 port of openwrt.sh. DRAFT — read-only today.
+  license: MIT
+  min_ansible_version: "2.14"
+  platforms:
+    - name: OpenWrt
+      versions:
+        - all
+  galaxy_tags:
+    - openwrt
+    - networking
+    - firewall
+    - dns
+dependencies: []

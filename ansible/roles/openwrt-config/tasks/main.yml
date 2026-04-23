@@ -1,0 +1,37 @@
+---
+# Phase C.2 skeleton — port of infrastructure/openwrt/openwrt.sh (946 lines).
+#
+# DRAFT. The bash script covers dnsmasq rewrites (dns.yaml), firewall
+# port-forwards (firewall.yaml), and wholesale config rendering. Porting
+# those to UCI-mutating Ansible tasks is a network-blast-radius change
+# and is not safe to do unattended.
+#
+# This skeleton only LOADS the YAMLs and reports the declared state.
+# No UCI writes.
+
+- name: Load DNS inventory from dns.yaml
+  ansible.builtin.include_vars:
+    file: "{{ openwrt_config_dns_file }}"
+    name: openwrt_dns
+
+- name: Load firewall inventory from firewall.yaml
+  ansible.builtin.include_vars:
+    file: "{{ openwrt_config_firewall_file }}"
+    name: openwrt_firewall
+
+- name: Report planned DNS rewrites (skeleton — read-only)
+  ansible.builtin.debug:
+    msg: "{{ item.name }} → {{ item.ip }}"
+  loop: "{{ openwrt_dns.domains | default([]) }}"
+  loop_control:
+    label: "{{ item.name }}"
+  changed_when: false
+
+- name: Report planned firewall redirects (skeleton — read-only)
+  ansible.builtin.debug:
+    msg: "{{ item | to_nice_yaml }}"
+  loop: "{{ openwrt_firewall.redirects | default([]) }}"
+  loop_control:
+    index_var: idx
+    label: "redirect[{{ idx }}]"
+  changed_when: false

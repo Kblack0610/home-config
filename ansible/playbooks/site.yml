@@ -33,6 +33,15 @@
     - role: github-actions-runner-linux
       tags: [runner, ci]
 
+- name: macOS baseline + monitoring (safe Phase D roles)
+  hosts: macos_hosts
+  gather_facts: true
+  roles:
+    - role: brew-common
+      tags: [brew, mac]
+    - role: node-exporter-mac
+      tags: [monitoring, mac]
+
 # Phase B: k3s-agent role is AUTHORED but not bound. Applying it against
 # running cluster nodes reinstalls k3s — the user enables this binding when
 # they are ready to converge the fleet (set vault_k3s_token first).

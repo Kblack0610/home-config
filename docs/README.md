@@ -7,6 +7,7 @@ Use this index to find the right document by task instead of scanning the repo t
 | Task | Document | Notes |
 |------|----------|-------|
 | Check environment health, inventory, ingress, backups | [../infrastructure.md](../infrastructure.md) | Live-ish reference document for current state |
+| Trace a request or failure through all three layers | [architecture.md](./architecture.md) | Worked examples, GPU wiring, consumer map, failure domains, DR sequence |
 | Deploy or troubleshoot GitOps changes | [gitops.md](./gitops.md) | Flux, SOPS, reconciliation, rollback |
 | Add or remove an app from the cluster | [app-lifecycle.md](./app-lifecycle.md) | Step-by-step checklists, common pitfalls |
 | Manage bare-metal host services (systemd, launchd, OpenWRT) | [ansible.md](./ansible.md) | Ansible inventory, vault, `ansible-runner` CronJob, phase roadmap |

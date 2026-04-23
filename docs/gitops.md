@@ -44,7 +44,7 @@ Rule of thumb:
 - Edit `ansible/roles/<name>/**` → commit, push. Either run `ansible-playbook` locally or let the `apps/ansible-runner/` CronJob surface drift at 04:00 daily (see `apps/ansible-runner/README.md` for ad-hoc triggers).
 - Edit `infrastructure/pxe-server/**` → commit, push, re-run `infrastructure/pxe-server/install.sh` when bootstrapping a new host.
 
-For a service-by-service view of which layer owns which workload, see [homelab-catalog.md](./homelab-catalog.md).
+For a service-by-service view of which layer owns which workload, see [homelab-catalog.md](./homelab-catalog.md). For cross-layer worked examples (public request, DHCP lease, new node), failure domains, and the full cluster DR sequence, see [architecture.md](./architecture.md).
 
 ## Repository Shape
 
@@ -108,6 +108,16 @@ kubectl create secret generic sops-age \
   --namespace=flux-system \
   --from-file=age.agekey=$HOME/.config/sops/age/keys.txt
 ```
+
+### Onboarding a new operator or new machine
+
+The Age key at `~/.config/sops/age/keys.txt` is the **only** way to decrypt secrets committed to this repo. If a new operator or a new workstation needs access:
+
+1. Copy the existing key from a trusted workstation to the new one at the same path, mode `0600`.
+2. If the new operator gets their own key instead, add their public key to `.sops.yaml` (`creation_rules[].age:`) and re-encrypt every SOPS file so the new recipient can decrypt — `sops updatekeys <file>` handles this per file.
+3. Without the key, `flux bootstrap` still succeeds but SOPS-encrypted Kustomizations fail to decrypt and Flux reports `sops: file is not a valid sops file`.
+
+Back the key up **offline** (hardware token, paper, encrypted external drive). Losing it forfeits every encrypted secret in git history — they are not recoverable from the cluster because the cluster's copy came from this same key.
 
 ## Golden Rule
 

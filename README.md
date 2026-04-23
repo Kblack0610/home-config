@@ -13,6 +13,7 @@ This repository is primarily organized for maintainers. Use it to find manifests
 | Task | Use |
 |------|-----|
 | Understand current cluster health and exposed services | [infrastructure.md](./infrastructure.md) |
+| Trace a request or failure across PXE / Ansible / Flux | [docs/architecture.md](./docs/architecture.md) |
 | Find the right runbook | [docs/README.md](./docs/README.md) |
 | Make a GitOps-managed change | [docs/gitops.md](./docs/gitops.md) |
 | Verify backups or restore data | [docs/backup-runbook.md](./docs/backup-runbook.md) |

@@ -10,16 +10,18 @@ gh_runner_url: "https://github.com/{{ gh_runner_owner }}/{{ gh_runner_repo }}"
 # tasks/main.yml for the resolution logic.
 # gh_runner_pat: "{{ vault_github_<repo>_pat }}"
 
-# Pin the runner release. Bump deliberately (not automatically) — the runner
-# binary self-updates in-place at runtime, but a clean re-provision uses this
-# pinned tarball.
-gh_runner_version: "2.320.0"
+# Pin the runner release to GitHub's current required minimum. If this is stale
+# by the time the role runs, the runner self-updates on first start — BUT that
+# self-update can race the first job dispatch (stale listener accepts a job
+# against updated-on-disk binary → no worker spawns → stuck). Keep in sync:
+#   gh api /repos/actions/runner/releases/latest --jq .tag_name
+gh_runner_version: "2.334.0"
 gh_runner_arch: x64
 gh_runner_tarball: "actions-runner-linux-{{ gh_runner_arch }}-{{ gh_runner_version }}.tar.gz"
 gh_runner_tarball_url: "https://github.com/actions/runner/releases/download/v{{ gh_runner_version }}/{{ gh_runner_tarball }}"
-# sha256 for v2.320.0 linux-x64. Fetched from:
-#   curl -sL https://github.com/actions/runner/releases/download/v2.320.0/actions-runner-linux-x64-2.320.0.tar.gz | sha256sum
-gh_runner_tarball_sha256: "93ac1b7ce743ee85b5d386f5c1787385ef07b3d7c728ff66ce0d3813d5f46900"
+# sha256 for v2.334.0 linux-x64. Fetched from:
+#   curl -sL https://github.com/actions/runner/releases/download/v2.334.0/actions-runner-linux-x64-2.334.0.tar.gz | sha256sum
+gh_runner_tarball_sha256: "048024cd2c848eb6f14d5646d56c13a4def2ae7ee3ad12122bee960c56f3d271"
 
 # Host-side paths and identities.
 gh_runner_user: actions-runner

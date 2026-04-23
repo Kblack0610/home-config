@@ -1,6 +1,6 @@
 # brew-common
 
-Installs Homebrew (if missing) and a small baseline of CLI packages on macOS. Designed to be a prerequisite for every other macOS role (`node-exporter-mac`, `launchd-mlx-services`, `github-actions-runner-mac`, `ollama`).
+Installs Homebrew (if missing) and a small baseline of CLI packages on macOS. Designed to be a prerequisite for every other macOS role (`node-exporter-mac`, `launchd-mlx-services`, `github-actions-runner-mac`).
 
 ## What it does
 
@@ -27,11 +27,12 @@ brew_extra_packages:
   - fd
 ```
 
-`host_vars/mac-studio.yml` (Intel host example would override `brew_prefix`):
+`host_vars/mac-studio.yml`:
 
 ```yaml
 brew_extra_packages:
-  - ollama   # but use the dedicated `ollama` role — this is just an example
+  - gh
+  - ffmpeg
 ```
 
 ## Verify

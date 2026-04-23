@@ -1,6 +1,6 @@
 # External Mac machines monitored via node_exporter (port 9100)
 # These are not K8s nodes — they run native macOS workloads
-# Mac Studio M3 Ultra (192.168.1.4): MLX LLM inference (Ollama fallback), GitHub Actions runner
+# Mac Studio M3 Ultra (192.168.1.4): MLX LLM inference, GitHub Actions runner
 # Mac Mini M1 (192.168.1.7): GitHub Actions runner (iOS builds)
 
 apiVersion: v1

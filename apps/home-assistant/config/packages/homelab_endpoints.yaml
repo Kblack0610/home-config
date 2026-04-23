@@ -73,18 +73,6 @@ rest:
             unknown
           {% endif %}
 
-  - resource: "http://192.168.1.4:11434/api/tags"
-    scan_interval: 60
-    sensor:
-      - name: Ollama Status
-        unique_id: ollama_status
-        unit_of_measurement: "models"
-        value_template: >-
-          {% if value_json.models is defined %}
-            {{ value_json.models | count }}
-          {% else %}
-            unknown
-          {% endif %}
   - resource: "http://192.168.1.4:8080/v1/models"
     scan_interval: 60
     sensor:

@@ -162,8 +162,13 @@ public apps behind the public Cloudflare tunnel:
        → Traefik → target Service
 
 LAN apps behind AdGuard rewrite (*.kblab.me → 192.168.1.124):
-  hass, grafana, prometheus, openclaw, slicer, finance, git, neptune, homepage, gatus, ...
+  hass, grafana, prometheus, openclaw, slicer, finance, git, neptune, gatus, ...
        → Traefik → target Service
+
+Apex redirect (kblab.me → HA Launcher):
+  kblab.me → Traefik → home-assistant-apex Ingress
+       → `kblab-apex-redirect` Middleware (RedirectRegex)
+       → 307 → https://hass.kblab.me/lovelace/launcher
 ```
 
 Gatus (`apps/gatus/`) monitors every endpoint in this graph — the Gatus configmap is the concrete enumeration of "what depends on what network-reachability-wise."

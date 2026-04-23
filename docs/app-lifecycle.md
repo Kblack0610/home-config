@@ -14,7 +14,8 @@ See [gitops.md](./gitops.md) for Flux workflow details.
   - Annotations: `kubernetes.io/ingress.class: traefik`, `cert-manager.io/cluster-issuer: letsencrypt-dns`
   - For public services: add CrowdSec bouncer middleware annotation (`crowdsec-bouncer@kubernetescrd`)
   - DNS: internal `*.kblab.me` is handled by the AdGuard wildcard rewrite (no action needed). For public services: add a Cloudflare DNS record.
-- [ ] **Status monitoring** — add endpoint(s) to `apps/gatus/configmap.yaml`
+- [ ] **Status monitoring** — for ingress endpoints, run `./scripts/gen-gatus-ingress-checks.py` (auto-updates between the `BEGIN_GENERATED_INGRESS` / `END_GENERATED_INGRESS` markers in `apps/gatus/configmap.yaml`). Opt out per Ingress with `gatus.kblab.me/monitor: "false"`. For non-ingress endpoints (TCP, DNS, internal services), add manually above the generated block.
+- [ ] **Launcher tile** — run `./scripts/gen-ha-launcher.py` to add the app to the HA Launcher dashboard at `kblab.me` (auto-groups by namespace, falls back to `mdi:application` icon). Opt out per Ingress with `homepage.kblab.me/launcher: "false"`. Extend the namespace→group and host→icon maps in the script when a new namespace lands.
 - [ ] **Infrastructure inventory** — update `infrastructure.md` (namespaces, service directory, helm releases, domains)
 - [ ] **Documentation** — create `apps/<name>/README.md`, add to `docs/README.md` index
 - [ ] **Commit, push, reconcile** — `flux reconcile kustomization apps --with-source`
@@ -24,7 +25,8 @@ See [gitops.md](./gitops.md) for Flux workflow details.
 
 - [ ] Remove directory from `apps/kustomization.yaml`
 - [ ] Delete the `apps/<name>/` directory
-- [ ] Remove Gatus endpoints from `apps/gatus/configmap.yaml`
+- [ ] Regenerate status checks — run `./scripts/gen-gatus-ingress-checks.py` (drops the removed ingresses). Delete any non-ingress entries manually.
+- [ ] Regenerate launcher — run `./scripts/gen-ha-launcher.py` (drops the removed tiles)
 - [ ] Update `infrastructure.md`
 - [ ] Remove from `docs/README.md`
 - [ ] Commit, push, reconcile — Flux prune will delete cluster resources

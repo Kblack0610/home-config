@@ -4,10 +4,10 @@
     name: "{{ node_exporter_formula }}"
     state: present
 
-- name: Ensure node_exporter brew service is running
+- name: Ensure node_exporter brew service is loaded and running
   community.general.homebrew_services:
     name: "{{ node_exporter_service_name }}"
-    state: started
+    state: present
 
 - name: Verify node_exporter is serving metrics
   ansible.builtin.uri:

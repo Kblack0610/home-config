@@ -1,0 +1,22 @@
+---
+- name: Install node_exporter via Homebrew
+  community.general.homebrew:
+    name: "{{ node_exporter_formula }}"
+    state: present
+
+- name: Ensure node_exporter brew service is running
+  community.general.homebrew_services:
+    name: "{{ node_exporter_service_name }}"
+    state: started
+
+- name: Verify node_exporter is serving metrics
+  ansible.builtin.uri:
+    url: "http://localhost:{{ node_exporter_port }}/metrics"
+    return_content: false
+    status_code: 200
+  register: node_exporter_probe
+  retries: 5
+  delay: 2
+  until: node_exporter_probe.status == 200
+  when: not ansible_check_mode
+  changed_when: false

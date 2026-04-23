@@ -1,0 +1,11 @@
+---
+# Homebrew package name. `node_exporter` is the official formula.
+node_exporter_formula: node_exporter
+
+# `brew services` manages the LaunchAgent. On macOS this runs as the
+# current user (not as root) — no extra escalation required.
+node_exporter_service_name: node_exporter
+
+# Port for Prometheus scraping. Must match
+# apps/monitoring/external-mac-nodes.yaml.
+node_exporter_port: 9100

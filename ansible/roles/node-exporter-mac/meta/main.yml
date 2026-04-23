@@ -1,0 +1,20 @@
+---
+galaxy_info:
+  role_name: node_exporter_mac
+  author: home-config
+  description: >-
+    Install Prometheus node_exporter via Homebrew on macOS hosts and manage
+    it as a brew service. Scraped by the in-cluster Prometheus via
+    apps/monitoring/external-mac-nodes.yaml.
+  license: MIT
+  min_ansible_version: "2.14"
+  platforms:
+    - name: MacOSX
+      versions:
+        - all
+  galaxy_tags:
+    - monitoring
+    - prometheus
+    - nodeexporter
+    - macos
+dependencies: []

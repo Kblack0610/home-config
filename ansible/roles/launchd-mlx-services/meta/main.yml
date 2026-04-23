@@ -1,0 +1,21 @@
+---
+galaxy_info:
+  role_name: launchd_mlx_services
+  author: home-config
+  description: >-
+    Manages MLX inference LaunchAgent plists on mac-studio. Templates
+    per-service plists into ~/Library/LaunchAgents and reloads only
+    services whose plist changed. Does not create the Python venv —
+    see docs/mac-machines.md.
+  license: MIT
+  min_ansible_version: "2.14"
+  platforms:
+    - name: MacOSX
+      versions:
+        - all
+  galaxy_tags:
+    - macos
+    - launchd
+    - mlx
+    - llm
+dependencies: []

@@ -1,0 +1,15 @@
+---
+# Example of the encrypted vault file for macos_hosts.
+#
+# Real file path: ansible/group_vars/macos_hosts/vault.yml (gitignored,
+# encrypted with ansible-vault).
+#
+# Create it with:
+#   cd ansible
+#   ansible-vault create group_vars/macos_hosts/vault.yml
+
+# GitHub PAT with `repo` scope, used by the github-actions-runner-mac
+# role to fetch a short-lived runner registration token. Can share the
+# same PAT as linux_bare_metal — if you do, define it in a shared group
+# (e.g. group_vars/all/vault.yml) instead.
+vault_github_pat: ghp_REPLACE_ME

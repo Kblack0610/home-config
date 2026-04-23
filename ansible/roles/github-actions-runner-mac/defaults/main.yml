@@ -1,0 +1,29 @@
+---
+# Target repo, mirroring github-actions-runner-linux. Single-repo runners
+# today; switch to org-scoped by updating these two plus the API URL.
+gh_runner_mac_owner: BlackNBrownStudios
+gh_runner_mac_repo: platform
+gh_runner_mac_url: "https://github.com/{{ gh_runner_mac_owner }}/{{ gh_runner_mac_repo }}"
+
+# Pin the runner release. Matches the Linux role's pinned version so the
+# fleet runs a consistent actions-runner. Bump deliberately.
+gh_runner_mac_version: "2.320.0"
+gh_runner_mac_arch: arm64  # Both mac-studio (M3 Ultra) and mac-mini (M1) are Apple Silicon.
+gh_runner_mac_tarball: "actions-runner-osx-{{ gh_runner_mac_arch }}-{{ gh_runner_mac_version }}.tar.gz"
+gh_runner_mac_tarball_url: "https://github.com/actions/runner/releases/download/v{{ gh_runner_mac_version }}/{{ gh_runner_mac_tarball }}"
+# sha256 fetched via:
+#   curl -sL https://github.com/actions/runner/releases/download/v2.320.0/actions-runner-osx-arm64-2.320.0.tar.gz | sha256sum
+gh_runner_mac_tarball_sha256: "14e2600c07ad76a1c9f6d9e498edf14f1c63f7f7f8d55de0653e450f64caa854"
+
+# Runner install dir (user-scoped, no root needed for LaunchAgent mode).
+# `svc.sh install` on macOS creates a per-user LaunchAgent at
+# ~/Library/LaunchAgents/actions.runner.<owner>-<repo>.<name>.plist.
+gh_runner_mac_home: "{{ ansible_env.HOME }}/actions-runner"
+
+# Runner identity. Default name = hostname so re-running on a different
+# host doesn't collide with an existing registration.
+gh_runner_mac_name: "{{ inventory_hostname }}-mac"
+gh_runner_mac_labels:
+  - self-hosted
+  - macOS
+  - "{{ gh_runner_mac_arch }}"

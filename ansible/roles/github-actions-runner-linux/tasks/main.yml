@@ -1,14 +1,25 @@
 ---
-- name: Assert GitHub PAT is available from vault
+# Resolve the effective PAT. Most hosts use the shared `vault_github_pat`
+# (platform-scoped). A per-play override via `gh_runner_pat` lets a second
+# playbook register a runner against a DIFFERENT repo (e.g. dodginballs)
+# with a separately-scoped PAT — without leaking either across repos.
+- name: Resolve GitHub PAT for this runner binding
+  ansible.builtin.set_fact:
+    _effective_gh_runner_pat: "{{ gh_runner_pat | default(vault_github_pat | default('')) }}"
+  no_log: true
+
+- name: Assert GitHub PAT is available
   ansible.builtin.assert:
     that:
-      - vault_github_pat is defined
-      - vault_github_pat | length > 10
-      - not (vault_github_pat is match('^ghp_REPLACE_ME'))
+      - _effective_gh_runner_pat is defined
+      - _effective_gh_runner_pat | length > 10
+      - not (_effective_gh_runner_pat is match('^ghp_REPLACE_ME'))
     fail_msg: >-
-      vault_github_pat is missing or still the placeholder. Create
-      group_vars/linux_bare_metal/vault.yml with a real PAT (scope: repo) and
-      encrypt it via `ansible-vault encrypt`.
+      No usable GitHub PAT. Either set `vault_github_pat` in
+      group_vars/linux_bare_metal/vault.yml (platform-scoped, default), OR
+      pass `gh_runner_pat: "{{ vault_github_<name>_pat }}"` via playbook vars
+      for a per-repo runner. Both values must be `repo`-scoped PATs encrypted
+      via `ansible-vault encrypt`.
 
 - name: Install system packages
   community.general.pacman:
@@ -75,7 +86,7 @@
     method: POST
     headers:
       Accept: application/vnd.github+json
-      Authorization: "Bearer {{ vault_github_pat }}"
+      Authorization: "Bearer {{ _effective_gh_runner_pat }}"
       X-GitHub-Api-Version: "2022-11-28"
     status_code: 201
     return_content: true

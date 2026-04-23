@@ -20,3 +20,9 @@
 # registration token at play time. Same requirement as
 # platform/tools/register-mac-runner.sh.
 vault_github_pat: ghp_REPLACE_ME
+
+# Second PAT, scoped to BlackNBrownStudios/dodginballs. Used by the
+# dodginballs-runner play (site.yml) to register the asus-laptop as a
+# `unity`-labeled self-hosted runner on the dodginballs repo. Kept
+# separate from vault_github_pat so rotation is per-repo.
+vault_github_dodginballs_pat: ghp_REPLACE_ME_DODGINBALLS

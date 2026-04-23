@@ -53,3 +53,24 @@
 #   roles:
 #     - role: k3s-agent
 #       tags: [k3s]
+
+# dodginballs runner on asus-laptop — DEFERRED: flip asus-laptop's
+# `unreachable: true` in inventory.yml AND set vault_github_dodginballs_pat in
+# group_vars/linux_bare_metal/vault.yml before uncommenting. Re-uses the same
+# github-actions-runner-linux role via gh_runner_pat override (see role
+# tasks/main.yml and defaults/main.yml). Binds to BlackNBrownStudios/dodginballs
+# with label `unity` so the game-ci Unity 6 build workflow lands here when thinkcentre
+# is too slow (thinkcentre = 16 GB, asus-laptop = 64 GB).
+#
+# - name: dodginballs Unity runner (asus-laptop)
+#   hosts: asus-laptop
+#   become: true
+#   gather_facts: true
+#   roles:
+#     - role: github-actions-runner-linux
+#       vars:
+#         gh_runner_repo: dodginballs
+#         gh_runner_name: "{{ inventory_hostname }}-unity"
+#         gh_runner_labels: [self-hosted, linux, x64, unity]
+#         gh_runner_pat: "{{ vault_github_dodginballs_pat }}"
+#       tags: [runner, ci, dodginballs]

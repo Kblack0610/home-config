@@ -20,6 +20,7 @@ configMapGenerator:
       - dashboard_ops.yaml=config/dashboards/ops.yaml
       - dashboard_admin.yaml=config/dashboards/admin.yaml
       - dashboard_printing.yaml=config/dashboards/printing.yaml
+      - dashboard_launcher.yaml=config/dashboards/launcher.yaml
 
 resources:
   - namespace.yaml
@@ -27,6 +28,8 @@ resources:
   - deployment.yaml
   - service.yaml
   - ingress.yaml
+  - ingress-apex.yaml
+  - middleware-apex-redirect.yaml
   - backup-cronjob.yaml
   - backup-nas-secret.yaml
   - bambu-a1-secret.yaml

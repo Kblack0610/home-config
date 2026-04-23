@@ -1,0 +1,10 @@
+apiVersion: traefik.io/v1alpha1
+kind: Middleware
+metadata:
+  name: kblab-apex-redirect
+  namespace: home-assistant
+spec:
+  redirectRegex:
+    regex: "^https?://kblab\\.me/?.*"
+    replacement: "https://hass.kblab.me/lovelace/launcher"
+    permanent: false

@@ -1,0 +1,22 @@
+---
+galaxy_info:
+  role_name: k3s_agent
+  author: home-config
+  description: >-
+    Install a k3s node (agent or server) joining the home-k3s cluster.
+    Phase B extraction of the k3s install logic from
+    infrastructure/pxe-server/http/kickstart/profiles/cluster.sh.
+  license: MIT
+  min_ansible_version: "2.14"
+  platforms:
+    - name: ArchLinux
+      versions:
+        - all
+    - name: Debian
+      versions:
+        - all
+  galaxy_tags:
+    - k3s
+    - kubernetes
+    - cluster
+dependencies: []

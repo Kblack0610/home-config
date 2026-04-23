@@ -1,0 +1,36 @@
+---
+# Upstream installer. The k3s project serves a self-pinning shell installer
+# that reads INSTALL_K3S_* and K3S_* env vars. We keep `stable` as the channel
+# default to mirror what `infrastructure/pxe-server/http/kickstart/profiles/cluster.sh`
+# does today (it calls the installer with no version pin → stable channel).
+k3s_install_url: https://get.k3s.io
+k3s_install_channel: stable
+
+# Pin a specific version like v1.30.5+k3s1 via host_vars to lock the fleet.
+# Leave empty to follow the channel.
+k3s_install_version: ""
+
+# Cluster topology. `k3s_role` is set per-host in inventory.yml (server | agent).
+# The default here is `agent` because the server is a single pi5-master and the
+# rest of the fleet joins as agents.
+k3s_role: agent
+
+# Default server endpoint. `pi5-master` per ansible/inventory.yml.
+# Override in group_vars or host_vars when introducing a second control plane.
+k3s_url: "https://192.168.1.20:6443"
+
+# Node-token the installer validates against the control-plane. Comes from the
+# vault — create ansible/group_vars/{linux_bare_metal,pi_k3s}/vault.yml with
+# `vault_k3s_token: <token>` (the server prints it to /var/lib/rancher/k3s/server/node-token).
+k3s_token: "{{ vault_k3s_token }}"
+
+# Extra install-time flags passed to the installer. Kept empty by default so
+# the role matches cluster.sh semantics exactly. Typical overrides:
+#   k3s_extra_args:
+#     - --node-label=gpu=nvidia
+#     - --flannel-iface=eth0
+k3s_extra_args: []
+
+# Marker file the installer drops once it has finished. Used for idempotency
+# so re-running the role is a no-op on already-joined nodes.
+k3s_binary_path: /usr/local/bin/k3s

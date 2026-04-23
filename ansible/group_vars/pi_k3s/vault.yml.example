@@ -1,0 +1,15 @@
+---
+# Example of the encrypted vault file for pi_k3s hosts.
+#
+# Real file path: ansible/group_vars/pi_k3s/vault.yml (gitignored,
+# encrypted with ansible-vault).
+#
+# Create it with:
+#   cd ansible
+#   ansible-vault create group_vars/pi_k3s/vault.yml
+#
+# The vault password lives in ~/.ansible-vault-pass (gitignored on workstation).
+
+# k3s node-token, read from the server with:
+#   ssh pi5-master 'sudo cat /var/lib/rancher/k3s/server/node-token'
+vault_k3s_token: REPLACE_ME_WITH_REAL_NODE_TOKEN

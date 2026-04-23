@@ -1,0 +1,20 @@
+---
+galaxy_info:
+  role_name: openwrt_dhcp
+  author: home-config
+  description: >-
+    Manages static DHCP leases on OpenWRT from the devices.yaml inventory.
+    Phase C.1 port of infrastructure/dhcp/dhcp.sh. DRAFT — only reads
+    the inventory and reports planned changes today; UCI writes are
+    intentionally not implemented until the porting PR is complete.
+  license: MIT
+  min_ansible_version: "2.14"
+  platforms:
+    - name: OpenWrt
+      versions:
+        - all
+  galaxy_tags:
+    - openwrt
+    - dhcp
+    - networking
+dependencies: []

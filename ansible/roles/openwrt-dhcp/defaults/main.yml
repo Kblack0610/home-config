@@ -1,0 +1,8 @@
+---
+# Source-of-truth YAML for static DHCP leases. Kept at its existing path
+# so the bash script and this role read the same file during migration.
+openwrt_dhcp_devices_file: "{{ playbook_dir }}/../../infrastructure/dhcp/devices.yaml"
+
+# Commit UCI changes at the end of the play. Set to false for the first
+# few dry-runs against a live router until you trust the diff output.
+openwrt_dhcp_commit: false

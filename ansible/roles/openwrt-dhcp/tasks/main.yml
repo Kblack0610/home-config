@@ -1,0 +1,43 @@
+---
+# Phase C.1 skeleton — port of infrastructure/dhcp/dhcp.sh (782 lines).
+#
+# DRAFT. This role does NOT yet replicate the full dhcp.sh feature set.
+# The bash script's `bootstrap`, `validate`, `diff`, `sync`, `discover`,
+# and `status` commands cover behaviors (backup, divergence detection,
+# live-router discovery) that need careful one-by-one porting against a
+# live OpenWRT 192.168.1.1 with the user present — a bad UCI commit
+# locks the LAN.
+#
+# See README.md for the porting plan.
+
+- name: Load device inventory from devices.yaml (source of truth)
+  ansible.builtin.include_vars:
+    file: "{{ openwrt_dhcp_devices_file }}"
+    name: openwrt_dhcp
+
+- name: Filter to managed devices with a MAC address
+  ansible.builtin.set_fact:
+    openwrt_dhcp_managed: >-
+      {{
+        openwrt_dhcp.devices
+        | selectattr('mac', 'defined')
+        | selectattr('mac', 'ne', '')
+        | rejectattr('managed', 'equalto', false)
+        | list
+      }}
+
+- name: Report device count (dry-run safe)
+  ansible.builtin.debug:
+    msg: "Will manage {{ openwrt_dhcp_managed | length }} static DHCP leases."
+
+# TODO(phase-c.1): The real implementation reads existing leases via
+# `uci show dhcp` over SSH, diffs against openwrt_dhcp_managed, and only
+# writes the delta. For this skeleton we stop here and let the user
+# inspect the debug output before any UCI commands ever run.
+- name: Emit planned changes (skeleton — no UCI writes yet)
+  ansible.builtin.debug:
+    msg: "{{ item.hostname }} → {{ item.ip }} ({{ item.mac }})"
+  loop: "{{ openwrt_dhcp_managed }}"
+  loop_control:
+    label: "{{ item.hostname }}"
+  changed_when: false

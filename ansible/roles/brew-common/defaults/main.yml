@@ -1,0 +1,28 @@
+---
+# Path where Homebrew lives on Apple Silicon. Intel Macs use /usr/local.
+# Override in host_vars for an Intel host.
+brew_prefix: /opt/homebrew
+brew_binary: "{{ brew_prefix }}/bin/brew"
+
+# Upstream installer URL. Only used when brew_binary is missing.
+brew_install_url: https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh
+
+# Baseline packages installed on every macOS host. Deliberately small —
+# extend via brew_extra_packages in host_vars / group_vars, don't bloat the
+# default list. `node_exporter` is intentionally managed by the
+# node-exporter-mac role, not here.
+brew_common_packages:
+  - git
+  - curl
+  - wget
+  - jq
+  - coreutils
+
+# Extra packages, empty by default. Typical override:
+#   brew_extra_packages: [neovim, gh, ripgrep]
+brew_extra_packages: []
+
+# macOS `defaults write` settings (sleep, FileVault, auto-login, key repeat,
+# Spotlight) are intentionally NOT applied by this role. Those are
+# blast-radius-sensitive system changes and will land in a follow-up
+# `macos-defaults` role. See docs/mac-machines.md:111-122 for the target set.

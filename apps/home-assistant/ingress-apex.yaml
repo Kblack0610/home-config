@@ -1,17 +1,21 @@
 apiVersion: networking.k8s.io/v1
 kind: Ingress
 metadata:
-  name: homepage
-  namespace: homepage
-  labels:
-    app.kubernetes.io/name: homepage
+  name: home-assistant-apex
+  namespace: home-assistant
   annotations:
     kubernetes.io/ingress.class: traefik
     cert-manager.io/cluster-issuer: letsencrypt-dns
     traefik.ingress.kubernetes.io/router.entrypoints: web,websecure
-    traefik.ingress.kubernetes.io/router.middlewares: crowdsec-crowdsec-bouncer@kubernetescrd
-    gethomepage.dev/enabled: "false"
+    traefik.ingress.kubernetes.io/router.middlewares: home-assistant-kblab-apex-redirect@kubernetescrd
+    homepage.kblab.me/launcher: "false"
+    gatus.kblab.me/monitor: "false"
 spec:
+  ingressClassName: traefik
+  tls:
+    - hosts:
+        - kblab.me
+      secretName: kblab-apex-tls
   rules:
     - host: kblab.me
       http:
@@ -20,10 +24,6 @@ spec:
             pathType: Prefix
             backend:
               service:
-                name: homepage
+                name: home-assistant
                 port:
-                  number: 3000
-  tls:
-    - hosts:
-        - kblab.me
-      secretName: homepage-tls
+                  number: 8123

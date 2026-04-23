@@ -69,6 +69,7 @@ spec:
               cp /managed-config/dashboard_ops.yaml /config/dashboards/ops.yaml
               cp /managed-config/dashboard_admin.yaml /config/dashboards/admin.yaml
               cp /managed-config/dashboard_printing.yaml /config/dashboards/printing.yaml
+              cp /managed-config/dashboard_launcher.yaml /config/dashboards/launcher.yaml
           volumeMounts:
             - name: config
               mountPath: /config

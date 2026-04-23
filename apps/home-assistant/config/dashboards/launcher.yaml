@@ -1,0 +1,296 @@
+title: Launcher
+path: launcher
+icon: mdi:rocket-launch
+type: sections
+max_columns: 4
+sections:
+# BEGIN_GENERATED_LAUNCHER (regenerate via scripts/gen-ha-launcher.py)
+  - type: grid
+    cards:
+      - type: heading
+        heading: AI
+        icon: mdi:robot
+      - type: tile
+        entity: sun.sun
+        name: Comfyui
+        icon: mdi:image-multiple
+        tap_action:
+          action: url
+          url_path: https://comfyui.kblab.me
+        hide_state: true
+      - type: tile
+        entity: sun.sun
+        name: Llm
+        icon: mdi:robot
+        tap_action:
+          action: url
+          url_path: https://llm.kblab.me
+        hide_state: true
+      - type: tile
+        entity: sun.sun
+        name: Openclaw
+        icon: mdi:robot-industrial
+        tap_action:
+          action: url
+          url_path: https://openclaw.kblab.me
+        hide_state: true
+  - type: grid
+    cards:
+      - type: heading
+        heading: Dev
+        icon: mdi:code-braces
+      - type: tile
+        entity: sun.sun
+        name: Git
+        icon: mdi:git
+        tap_action:
+          action: url
+          url_path: https://git.kblab.me
+        hide_state: true
+  - type: grid
+    cards:
+      - type: heading
+        heading: Finance
+        icon: mdi:cash
+      - type: tile
+        entity: sun.sun
+        name: Finance
+        icon: mdi:cash-multiple
+        tap_action:
+          action: url
+          url_path: https://finance.kblab.me
+        hide_state: true
+  - type: grid
+    cards:
+      - type: heading
+        heading: Home
+        icon: mdi:home
+      - type: tile
+        entity: sun.sun
+        name: Hass
+        icon: mdi:home-assistant
+        tap_action:
+          action: url
+          url_path: https://hass.kblab.me
+        hide_state: true
+  - type: grid
+    cards:
+      - type: heading
+        heading: Media
+        icon: mdi:multimedia
+      - type: tile
+        entity: sun.sun
+        name: Jellyfin
+        icon: mdi:jellyfin
+        tap_action:
+          action: url
+          url_path: https://jellyfin.kblab.me
+        hide_state: true
+      - type: tile
+        entity: sun.sun
+        name: Photos
+        icon: mdi:image
+        tap_action:
+          action: url
+          url_path: https://photos.kblab.me
+        hide_state: true
+      - type: tile
+        entity: sun.sun
+        name: Prowlarr
+        icon: mdi:magnify
+        tap_action:
+          action: url
+          url_path: https://prowlarr.kblab.me
+        hide_state: true
+      - type: tile
+        entity: sun.sun
+        name: Radarr
+        icon: mdi:movie
+        tap_action:
+          action: url
+          url_path: https://radarr.kblab.me
+        hide_state: true
+      - type: tile
+        entity: sun.sun
+        name: Sonarr
+        icon: mdi:television-classic
+        tap_action:
+          action: url
+          url_path: https://sonarr.kblab.me
+        hide_state: true
+  - type: grid
+    cards:
+      - type: heading
+        heading: Ops
+        icon: mdi:tools
+      - type: tile
+        entity: sun.sun
+        name: Alertmanager
+        icon: mdi:bell-alert
+        tap_action:
+          action: url
+          url_path: https://alertmanager.kblab.me
+        hide_state: true
+      - type: tile
+        entity: sun.sun
+        name: Grafana
+        icon: mdi:chart-bar
+        tap_action:
+          action: url
+          url_path: https://grafana.kblab.me
+        hide_state: true
+      - type: tile
+        entity: sun.sun
+        name: Headscale Ui
+        icon: mdi:vpn
+        tap_action:
+          action: url
+          url_path: https://headscale-ui.kblab.me
+        hide_state: true
+      - type: tile
+        entity: sun.sun
+        name: Headscale
+        icon: mdi:vpn
+        tap_action:
+          action: url
+          url_path: https://headscale.kblab.me
+        hide_state: true
+      - type: tile
+        entity: sun.sun
+        name: Prometheus
+        icon: mdi:chart-line
+        tap_action:
+          action: url
+          url_path: https://prometheus.kblab.me
+        hide_state: true
+      - type: tile
+        entity: sun.sun
+        name: Status
+        icon: mdi:heart-pulse
+        tap_action:
+          action: url
+          url_path: https://status.kblab.me
+        hide_state: true
+  - type: grid
+    cards:
+      - type: heading
+        heading: Printing
+        icon: mdi:printer-3d
+      - type: tile
+        entity: sun.sun
+        name: Neptune
+        icon: mdi:printer-3d
+        tap_action:
+          action: url
+          url_path: https://neptune.kblab.me
+        hide_state: true
+      - type: tile
+        entity: sun.sun
+        name: Slicer
+        icon: mdi:printer-3d-nozzle
+        tap_action:
+          action: url
+          url_path: https://slicer.kblab.me
+        hide_state: true
+  - type: grid
+    cards:
+      - type: heading
+        heading: Bare Metal
+        icon: mdi:server-network
+      - type: tile
+        entity: sun.sun
+        name: Asus Laptop
+        icon: mdi:laptop
+        tap_action:
+          action: url
+          url_path: http://192.168.1.152:9100/metrics
+        hide_state: true
+      - type: tile
+        entity: sun.sun
+        name: HP Victus
+        icon: mdi:server
+        tap_action:
+          action: url
+          url_path: http://192.168.1.243:9100/metrics
+        hide_state: true
+      - type: tile
+        entity: sun.sun
+        name: Mac Mini
+        icon: mdi:apple
+        tap_action:
+          action: url
+          url_path: http://192.168.1.7:9100/metrics
+        hide_state: true
+      - type: tile
+        entity: sun.sun
+        name: Mac Studio
+        icon: mdi:apple
+        tap_action:
+          action: url
+          url_path: http://192.168.1.4:9100/metrics
+        hide_state: true
+      - type: tile
+        entity: sun.sun
+        name: OpenWrt
+        icon: mdi:router-wireless
+        tap_action:
+          action: url
+          url_path: http://192.168.1.1/
+        hide_state: true
+      - type: tile
+        entity: sun.sun
+        name: Pi4 Worker4
+        icon: mdi:raspberry-pi
+        tap_action:
+          action: url
+          url_path: http://192.168.1.24:9100/metrics
+        hide_state: true
+      - type: tile
+        entity: sun.sun
+        name: Pi4 Worker5
+        icon: mdi:raspberry-pi
+        tap_action:
+          action: url
+          url_path: http://192.168.1.124:9100/metrics
+        hide_state: true
+      - type: tile
+        entity: sun.sun
+        name: Pi5 Master
+        icon: mdi:raspberry-pi
+        tap_action:
+          action: url
+          url_path: http://192.168.1.20:9100/metrics
+        hide_state: true
+      - type: tile
+        entity: sun.sun
+        name: Pi5 Worker1
+        icon: mdi:raspberry-pi
+        tap_action:
+          action: url
+          url_path: http://192.168.1.21:9100/metrics
+        hide_state: true
+      - type: tile
+        entity: sun.sun
+        name: Pi5 Worker2
+        icon: mdi:raspberry-pi
+        tap_action:
+          action: url
+          url_path: http://192.168.1.22:9100/metrics
+        hide_state: true
+      - type: tile
+        entity: sun.sun
+        name: Pi5 Worker3
+        icon: mdi:raspberry-pi
+        tap_action:
+          action: url
+          url_path: http://192.168.1.23:9100/metrics
+        hide_state: true
+      - type: tile
+        entity: sun.sun
+        name: Thinkcentre
+        icon: mdi:server
+        tap_action:
+          action: url
+          url_path: http://192.168.1.100:9100/metrics
+        hide_state: true
+# END_GENERATED_LAUNCHER

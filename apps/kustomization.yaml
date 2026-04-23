@@ -16,7 +16,6 @@ resources:
   - gatus
   - headscale
   - home-assistant
-  - homepage
   - immich
   - jellyfin
   - litellm

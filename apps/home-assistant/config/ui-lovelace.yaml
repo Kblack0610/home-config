@@ -1,5 +1,6 @@
 title: Homelab
 views:
+  - !include dashboards/launcher.yaml
   - !include dashboards/overview.yaml
   - !include dashboards/ops.yaml
   - !include dashboards/admin.yaml

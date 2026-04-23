@@ -87,11 +87,33 @@ Verification pattern for every role:
 
 Running services show up in the Grafana dashboard **Homelab: Bare-metal services** via `node_systemd_unit_state`. `apps/monitoring/helm-values.yaml` enables `--collector.systemd` with an allowlist regex — bump the regex when a new role introduces a new tracked unit.
 
+## `github-actions-runner-linux` role — per-repo PAT override
+
+The role defaults to `vault_github_pat` (platform-scoped) but accepts a `gh_runner_pat` override in playbook vars so a second binding can register a runner against a DIFFERENT repo with a separately-scoped PAT. Example from `playbooks/site.yml`:
+
+```yaml
+- name: dodginballs Unity runner (hp-victus primary)
+  hosts: hp-victus
+  become: true
+  roles:
+    - role: github-actions-runner-linux
+      vars:
+        gh_runner_repo: dodginballs
+        gh_runner_name: "{{ inventory_hostname }}-unity"
+        gh_runner_labels: [self-hosted, linux, x64, unity]
+        gh_runner_pat: "{{ vault_github_dodginballs_pat }}"   # separate from vault_github_pat
+      tags: [runner, ci, dodginballs]
+```
+
+The role's `Resolve GitHub PAT for this runner binding` task prefers `gh_runner_pat` and falls back to `vault_github_pat` when unset — so thinkcentre's existing `platform` binding keeps working with zero changes.
+
+Single host can run multiple runners against multiple repos by repeating the role with different vars + a unique `gh_runner_name`. The role uses `--replace` on `config.sh` so re-runs are idempotent.
+
 ## Phase roadmap
 
 | Phase | Scope |
 |-------|-------|
-| **A (current)** | `github-actions-runner-linux` on thinkcentre. Ansible skeleton. `ansible-runner` CronJob for drift detection. Runner picks up Linux jobs **only after** a `platform` workflow is migrated to `runs-on: [self-hosted, linux, x64]` — the runner comes up online but idle until then. |
+| **A (current)** | `github-actions-runner-linux` bound to two hosts: **thinkcentre** for `BlackNBrownStudios/platform` (labels `docker`) and **hp-victus** for `BlackNBrownStudios/dodginballs` (labels `unity`, Unity 6 game-ci builds). Ansible skeleton in place. `ansible-runner` CronJob at 04:00 daily for drift detection. A third binding for `asus-laptop` is staged but gated behind its `unreachable: true` inventory flag — bring asus-laptop online + flip the flag + run `ansible-playbook --limit asus-laptop --tags dodginballs` to register it as a second `unity`-labeled runner (co-pool with hp-victus). Thinkcentre's dodginballs runner exists but is stopped + disabled — historical, kept as a manual fallback. |
 | **B (authored, unbound)** | `k3s-agent` role extracted from the PXE kickstart (`infrastructure/pxe-server/http/kickstart/profiles/cluster.sh:64-84`). Role is present at `ansible/roles/k3s-agent/` and lint-clean, but the `site.yml` binding is commented out — applying it against a running cluster node reinvokes the k3s installer. Enable by uncommenting the role block in `site.yml` and seeding `vault_k3s_token` in `group_vars/{linux_bare_metal,pi_k3s}/vault.yml`. The inline install in `cluster.sh` stays during the transition. |
 | C | Port `infrastructure/{openwrt,dhcp}/*.sh` to Ansible roles. |
 | D | macOS roles: `launchd-mlx-services`, `github-actions-runner-mac`, `brew-common`, `node-exporter-mac`. Retire `docs/mac-machines.md` setup steps. |

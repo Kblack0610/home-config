@@ -1,0 +1,20 @@
+---
+galaxy_info:
+  role_name: brew_common
+  author: home-config
+  description: >-
+    Installs Homebrew (if missing) and a baseline set of CLI packages on
+    macOS. Host / group-specific additions go through brew_extra_packages.
+    Destructive macOS defaults (sleep, FileVault, auto-login) are
+    intentionally out of scope — see docs/mac-machines.md.
+  license: MIT
+  min_ansible_version: "2.14"
+  platforms:
+    - name: MacOSX
+      versions:
+        - all
+  galaxy_tags:
+    - macos
+    - homebrew
+    - bootstrap
+dependencies: []

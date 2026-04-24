@@ -153,7 +153,7 @@ apps requiring NAS (backups / media):
   - actual-budget → nas Samba share
   - forgejo → nas (backups)
   - immich → nas (library storage)
-  - jellyfin, radarr, sonarr, qbittorrent → nas (media)
+  - jellyfin → nas (media)
 (nas itself runs as a k3s pod on asus-laptop per apps/nas/)
 
 public apps behind the public Cloudflare tunnel:

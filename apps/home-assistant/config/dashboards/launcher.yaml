@@ -94,30 +94,6 @@ sections:
           action: url
           url_path: https://photos.kblab.me
         hide_state: true
-      - type: tile
-        entity: sun.sun
-        name: Prowlarr
-        icon: mdi:magnify
-        tap_action:
-          action: url
-          url_path: https://prowlarr.kblab.me
-        hide_state: true
-      - type: tile
-        entity: sun.sun
-        name: Radarr
-        icon: mdi:movie
-        tap_action:
-          action: url
-          url_path: https://radarr.kblab.me
-        hide_state: true
-      - type: tile
-        entity: sun.sun
-        name: Sonarr
-        icon: mdi:television-classic
-        tap_action:
-          action: url
-          url_path: https://sonarr.kblab.me
-        hide_state: true
   - type: grid
     cards:
       - type: heading

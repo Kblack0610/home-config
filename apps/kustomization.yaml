@@ -25,10 +25,6 @@ resources:
   - nvidia-device-plugin
   - openclaw
   - orcaslicer
-  - prowlarr
-  - qbittorrent
-  - radarr
-  - sonarr
   - sops-backup-rbac
 
   # Public sites (Cloudflare tunnel → Traefik → service)

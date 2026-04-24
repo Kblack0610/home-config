@@ -12,4 +12,4 @@ resources:
 
 images:
   - name: git.kblab.me/kblack0610/portfolio
-    newTag: v1.6.0
+    newTag: v1.6.1

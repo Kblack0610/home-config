@@ -53,11 +53,7 @@ NAMESPACE_GROUP = {
     "neptune": "Printing",
     "openclaw": "AI",
     "orcaslicer": "Printing",
-    "prowlarr": "Media",
-    "qbittorrent": "Media",
-    "radarr": "Media",
     "semaphore": "Ops",
-    "sonarr": "Media",
 }
 
 # Host -> icon. Fallback is mdi:application.
@@ -82,11 +78,7 @@ HOST_ICON = {
     "openclaw": "mdi:robot-industrial",
     "photos": "mdi:image",
     "prometheus": "mdi:chart-line",
-    "prowlarr": "mdi:magnify",
-    "qbittorrent": "mdi:download",
-    "radarr": "mdi:movie",
     "slicer": "mdi:printer-3d-nozzle",
-    "sonarr": "mdi:television-classic",
     "status": "mdi:heart-pulse",
 }
 

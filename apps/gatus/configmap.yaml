@@ -395,39 +395,9 @@ data:
           - "[STATUS] < 500"
           - "[CERTIFICATE_EXPIRATION] > 720h"
 
-      - name: prowlarr.kblab.me
-        group: ingress
-        url: "https://prowlarr.kblab.me"
-        interval: 300s
-        client:
-          insecure: true
-        conditions:
-          - "[STATUS] < 500"
-          - "[CERTIFICATE_EXPIRATION] > 720h"
-
-      - name: radarr.kblab.me
-        group: ingress
-        url: "https://radarr.kblab.me"
-        interval: 300s
-        client:
-          insecure: true
-        conditions:
-          - "[STATUS] < 500"
-          - "[CERTIFICATE_EXPIRATION] > 720h"
-
       - name: slicer.kblab.me
         group: ingress
         url: "https://slicer.kblab.me"
-        interval: 300s
-        client:
-          insecure: true
-        conditions:
-          - "[STATUS] < 500"
-          - "[CERTIFICATE_EXPIRATION] > 720h"
-
-      - name: sonarr.kblab.me
-        group: ingress
-        url: "https://sonarr.kblab.me"
         interval: 300s
         client:
           insecure: true

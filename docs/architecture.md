@@ -133,6 +133,22 @@ Two different paths for two different GPU ecosystems:
 
 Consequence: GPU-aware apps on `hp-victus` look like normal k8s GPU workloads. GPU-aware apps on `asus-laptop` look like privileged pods with hostname pinning. An agent debugging "Immich's GPU isn't being used" should NOT grep for device plugins — should check that the pod is running privileged and scheduled on `asus-laptop`.
 
+## Storage
+
+Three patterns coexist. The decision tree for new apps lives in `docs/app-lifecycle.md`; the model itself:
+
+| Pattern | When to use | Example | Mechanics |
+|---|---|---|---|
+| `PVC` + `storageClassName: local-path` | **Default for app state** (databases, indexes, configs, uploads) | `apps/forgejo/pvc.yaml` (20Gi), `apps/qdrant/pvc.yaml` (5Gi), `apps/karakeep/pvc.yaml` (20Gi + 5Gi) | k3s built-in local-path-provisioner creates a PV under `/var/lib/rancher/k3s/storage/` on whichever node first schedules the pod, then pins the PV there via node affinity. Subsequent pods follow automatically. No `nodeSelector` required, no host-side `mkdir`. RWO; one node at a time. |
+| `hostPath: /mnt/nas/...` | Data the user wants to reach over SMB from outside the cluster (Finder, etc.) | `apps/immich/server-deployment.yaml` (`/mnt/nas/private/immich/upload`), `apps/gatus/deployment.yaml` (`/mnt/nas/private/gatus`) | The path is a real directory on `asus-laptop`'s local disk. The `apps/nas/` Samba pod (also on `asus-laptop`, with `hostNetwork: true`) re-exports `/mnt/nas/{public,private}` over SMB on the LAN. Same physical bytes — Samba is a view, not a separate device. |
+| `hostPath: /etc/localtime`, `/dev/dri`, etc. | **Host resources only** (timezone file, GPU/USB devices, tmpfs sockets) | every deployment that needs a stable wall clock; AMD-GPU apps on `asus-laptop` (privileged pods) | Tied to host inode/device — not interchangeable with PVCs. |
+
+**There is no NFS/Longhorn/Ceph in this cluster.** Apps are pinned to local disk by virtue of either the local-path PV's node affinity or a `hostPath` that only exists on one node. If a stateful pod is rescheduled and the storage stays put, k3s pulls it back to the storage's node — that's the design.
+
+**The "NAS" is a Samba pod, not a storage class.** `apps/nas/deployment.yaml` mounts `/mnt/nas/{public,private}` (hostPath on `asus-laptop`) and exports them over SMB at `nas.lan` for LAN clients. No app should mount the NAS *as a PV* — apps either (a) put their data directly under `/mnt/nas/private/<app>` via hostPath when they want it user-accessible, or (b) use a normal local-path PVC and have their backup CronJob `smbclient`-push to the NAS share. Pattern (a) couples the app to a specific node forever; pattern (b) is the modern default.
+
+**Backup destinations.** Per-app backup CronJobs write to `/mnt/<app>` PVC sources (read-only) and tar to `/var/backups/<app>` hostPath on the storage node. Optional second hop: `smbclient` push from `/var/backups/...` to the in-cluster Samba pod's `private` share, then NAS-level backups (`apps/nas/sops-backup-cronjob.yaml`) push offsite. `apps/immich/backup-cronjob.yaml:34-46` is the canonical "two-hop" example; `apps/forgejo/backup-cronjob.yaml` and `apps/karakeep/backup-cronjob.yaml` stop at one hop.
+
 ## Consumer / depends-on map
 
 Partial graph — focuses on the dependencies an agent is most likely to hit during debugging:

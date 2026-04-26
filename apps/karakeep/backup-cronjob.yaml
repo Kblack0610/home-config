@@ -1,0 +1,54 @@
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: karakeep-backup
+  namespace: karakeep
+  labels:
+    app.kubernetes.io/name: karakeep
+spec:
+  schedule: "0 3 * * *"  # Daily at 3 AM
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 1
+  jobTemplate:
+    spec:
+      template:
+        spec:
+          containers:
+            - name: backup
+              image: alpine:latest
+              command:
+                - /bin/sh
+                - -c
+                - |
+                  set -eu
+                  apk add --no-cache tar gzip
+                  TIMESTAMP=$(date +%Y%m%d-%H%M%S)
+                  tar -czf /backup/karakeep-$TIMESTAMP.tar.gz \
+                    -C /data . \
+                    -C / meilisearch
+                  # Keep only last 30 backups
+                  ls -t /backup/karakeep-*.tar.gz | tail -n +31 | xargs -r rm
+                  echo "Backup complete: karakeep-$TIMESTAMP.tar.gz"
+              volumeMounts:
+                - name: data
+                  mountPath: /data
+                  readOnly: true
+                - name: meilisearch
+                  mountPath: /meilisearch
+                  readOnly: true
+                - name: backup
+                  mountPath: /backup
+          restartPolicy: OnFailure
+          volumes:
+            - name: data
+              persistentVolumeClaim:
+                claimName: karakeep-data
+                readOnly: true
+            - name: meilisearch
+              persistentVolumeClaim:
+                claimName: karakeep-meilisearch
+                readOnly: true
+            - name: backup
+              hostPath:
+                path: /var/backups/karakeep
+                type: DirectoryOrCreate

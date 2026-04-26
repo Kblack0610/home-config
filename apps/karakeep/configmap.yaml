@@ -1,0 +1,32 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: karakeep-config
+  namespace: karakeep
+  labels:
+    app.kubernetes.io/name: karakeep
+data:
+  DATA_DIR: /data
+  NEXTAUTH_URL: https://karakeep.kblab.me
+  MEILI_ADDR: http://karakeep-meilisearch:7700
+  BROWSER_WEB_URL: http://karakeep-chrome:9222
+  PORT: "3000"
+  LOG_LEVEL: notice
+  DB_WAL_MODE: "true"
+  DISABLE_NEW_RELEASE_CHECK: "true"
+  DISABLE_SIGNUPS: "false"
+  CRAWLER_STORE_SCREENSHOT: "true"
+  CRAWLER_STORE_PDF: "false"
+  MAX_ASSET_SIZE_MB: "50"
+  TZ: America/New_York
+  # AI tagging routed via in-cluster LiteLLM (apps/litellm)
+  OPENAI_BASE_URL: http://litellm.ai-gateway.svc.cluster.local:4000/v1
+  INFERENCE_TEXT_MODEL: gpt-4o-mini
+  INFERENCE_IMAGE_MODEL: gpt-4o-mini
+  EMBEDDING_TEXT_MODEL: text-embedding-3-small
+  # AI tagging is OFF until OPENAI_API_KEY is populated in secret.yaml.
+  # To enable: `sops edit apps/karakeep/secret.yaml` and add OPENAI_API_KEY
+  # (use the same LITELLM_MASTER_KEY value from ai-gateway/litellm-secrets),
+  # then flip the toggle below to "true".
+  INFERENCE_ENABLE_AUTO_TAGGING: "false"
+  INFERENCE_ENABLE_AUTO_SUMMARIZATION: "false"

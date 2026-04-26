@@ -9,6 +9,12 @@ See [gitops.md](./gitops.md) for Flux workflow details.
 - [ ] **Register in Flux** — add entry to `apps/kustomization.yaml` (alphabetical order)
 - [ ] **All resources go in `apps/`** — Flux only watches `./apps` (defined in `clusters/home-k3s/apps.yaml`). The `infrastructure/` directory is NOT reconciled by Flux; anything placed there requires manual `kubectl apply`.
 - [ ] **Secrets** — use SOPS encryption. File must match `.*secret.*\.yaml$`. Encrypt with `sops -e -i <file>`. Flux decrypts automatically via the `sops-age` secret.
+- [ ] **Storage** (see `docs/architecture.md` Storage section for the full model):
+  - **Default**: `PersistentVolumeClaim` with `storageClassName: local-path`. Reference patterns: `apps/forgejo/pvc.yaml` (20Gi), `apps/qdrant/pvc.yaml` (5Gi), `apps/karakeep/pvc.yaml` (multi-PVC). No `nodeSelector` needed — the local-path provisioner pins the PV to whichever node first schedules the pod.
+  - **Use `hostPath: /mnt/nas/private/<app>` only** when the user needs to reach the data over SMB from a non-cluster client (e.g., Finder browsing the photo library). This couples the pod to `asus-laptop` permanently. Examples: `apps/immich/` upload dir, `apps/gatus/` data.
+  - **Use `hostPath: /etc/localtime`, `/dev/...`, etc.** for host-resource passthrough — never for app state.
+  - **Don't introduce NFS/Longhorn/Ceph.** No app uses them; the convention is local-path-per-node.
+  - **Backups**: daily CronJob mounts the data PVC `readOnly`, tars to `/var/backups/<app>` hostPath, keeps last 30. Optional second hop: `smbclient` push to the in-cluster `nas` Samba pod (`apps/immich/backup-cronjob.yaml:34-46` is the canonical two-hop example).
 - [ ] **Ingress** (if exposing via Traefik):
   - Use `*.kblab.me` domain
   - Annotations: `kubernetes.io/ingress.class: traefik`, `cert-manager.io/cluster-issuer: letsencrypt-dns`

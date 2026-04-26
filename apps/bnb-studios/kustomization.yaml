@@ -9,3 +9,7 @@ resources:
   - deployment.yaml
   - service.yaml
   - ingress.yaml
+
+images:
+  - name: git.kblab.me/kblack0610/bnb-studios
+    newTag: v1.0.0

@@ -44,11 +44,17 @@ data:
       # Embedding model used by apps/mem0/ for memory ingest + retrieval.
       # 768-dim output; mem0 writes vectors into the pgvector store at
       # apps/postgres/.
+      #
+      # encoding_format pinned to "float" because mlx-openai-server's
+      # Pydantic validator rejects null encoding_format (LiteLLM sends
+      # null by default; mlx-openai-server expects literal "float" or
+      # "base64").
       - model_name: nomicai-modernbert-embed-base-4bit
         litellm_params:
           model: openai/mlx-community/nomicai-modernbert-embed-base-4bit
           api_base: http://192.168.1.4:8090/v1
           api_key: "mlx"
+          encoding_format: "float"
         model_info:
           mode: embedding
 

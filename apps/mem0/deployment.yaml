@@ -17,14 +17,13 @@ spec:
       labels:
         app.kubernetes.io/name: mem0
     spec:
-      # mem0/mem0-api-server:latest publishes only an arm64 manifest as
-      # of 2026-04, so this deployment is pinned to an arm64 node. The
-      # Pi 5s have plenty of headroom for a Python REST app — actual LLM
-      # inference happens on Mac Studio via LiteLLM, mem0 just orchestrates
-      # REST + Postgres calls. If/when upstream ships a multi-arch image,
-      # drop this nodeSelector.
-      nodeSelector:
-        kubernetes.io/arch: arm64
+      # Image is built from upstream mem0ai/mem0/server/ on amd64 and
+      # pushed to the in-cluster Forgejo registry. See:
+      #   apps/mem0/README.md "Rebuilding the image" for the bump
+      #   procedure.
+      # No nodeSelector — runs on any amd64 node.
+      imagePullSecrets:
+        - name: forgejo-registry
       # Run alembic migrations against APP_DB_NAME before the API server
       # starts. Mirrors the upstream dev compose pattern (which prepends
       # `alembic upgrade head` to the uvicorn command). Init container
@@ -32,14 +31,10 @@ spec:
       # baked in.
       initContainers:
         - name: alembic-upgrade
-          image: mem0/mem0-api-server:latest
+          image: git.kblab.me/kblack0610/mem0-server:ece7ff6
           imagePullPolicy: IfNotPresent
           workingDir: /app
-          # `python -m alembic` rather than `alembic` because the published
-          # image doesn't expose the alembic CLI script in $PATH (image is
-          # ~90MB, scripts/console_entry_points were stripped). The Python
-          # package is installed and importable.
-          command: ["python", "-m", "alembic", "upgrade", "head"]
+          command: ["alembic", "upgrade", "head"]
           envFrom:
             - configMapRef:
                 name: mem0-config
@@ -54,7 +49,7 @@ spec:
               cpu: "500m"
       containers:
         - name: mem0
-          image: mem0/mem0-api-server:latest
+          image: git.kblab.me/kblack0610/mem0-server:ece7ff6
           imagePullPolicy: IfNotPresent
           securityContext:
             allowPrivilegeEscalation: false
@@ -83,9 +78,8 @@ spec:
             limits:
               memory: "1Gi"
               cpu: "500m"
-          # mem0-api-server doesn't ship a dedicated /health endpoint;
-          # `/docs` (FastAPI auto-docs) is what upstream's `make health`
-          # uses as a liveness signal. Returns 200 once uvicorn is up.
+          # FastAPI's auto /docs returns 200 once uvicorn is up — that's
+          # what upstream's `make health` uses too.
           livenessProbe:
             httpGet:
               path: /docs

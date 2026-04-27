@@ -20,6 +20,7 @@ resources:
   - jellyfin
   - karakeep
   - litellm
+  - mem0
   - monitoring
   - nas
   - neptune

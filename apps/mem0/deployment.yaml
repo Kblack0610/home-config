@@ -31,7 +31,7 @@ spec:
       # baked in.
       initContainers:
         - name: alembic-upgrade
-          image: git.kblab.me/kblack0610/mem0-server:ece7ff6
+          image: git.kblab.me/kblack0610/mem0-server:ece7ff6-libpq
           imagePullPolicy: IfNotPresent
           workingDir: /app
           command: ["alembic", "upgrade", "head"]
@@ -49,7 +49,7 @@ spec:
               cpu: "500m"
       containers:
         - name: mem0
-          image: git.kblab.me/kblack0610/mem0-server:ece7ff6
+          image: git.kblab.me/kblack0610/mem0-server:ece7ff6-libpq
           imagePullPolicy: IfNotPresent
           securityContext:
             allowPrivilegeEscalation: false

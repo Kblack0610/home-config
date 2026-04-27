@@ -8,7 +8,7 @@ Replaces what was previously two roles + an Ollama LaunchAgent: `launchd-mlx-ser
 
 ## What this role does
 
-1. Asserts the `~/mlx-oai-env` venv exists and `mlx-openai-server` is installed inside it.
+1. Asserts the `~/mlx-env` venv exists and `mlx-openai-server` is installed inside it.
 2. Renders the server's YAML config (model list, port, log level) to `~/.config/mlx-server/config.yaml`.
 3. Renders a single per-user LaunchAgent plist to `~/Library/LaunchAgents/com.mlx-server.plist`.
 4. `launchctl bootout`+`bootstrap` if either file changed.
@@ -21,22 +21,22 @@ Replaces what was previously two roles + an Ollama LaunchAgent: `launchd-mlx-ser
 
 ## One-time mac-studio setup
 
-The venv is `~/mlx-oai-env` (Python 3.12 — newer `mlx-openai-server` caps at `<3.13`). Once the legacy `~/mlx-env` is retired, the path can be renamed `~/mlx-oai-env` → `~/mlx-env` as a follow-up; this role's `mlx_venv_path` default just needs the matching update.
+The venv is `~/mlx-env` (Python 3.12 — newer `mlx-openai-server` caps at `<3.13`). Once the legacy `~/mlx-env` is retired, the path can be renamed `~/mlx-env` → `~/mlx-env` as a follow-up; this role's `mlx_venv_path` default just needs the matching update.
 
 ```bash
 # 1. Create the venv (skip if it already exists)
-ssh mac-studio '/opt/homebrew/bin/python3.12 -m venv ~/mlx-oai-env'
+ssh mac-studio '/opt/homebrew/bin/python3.12 -m venv ~/mlx-env'
 
 # 2. Install the server (transitively brings mlx-lm + mlx-vlm + mlx-embeddings)
-ssh mac-studio '~/mlx-oai-env/bin/pip install -U mlx-openai-server'
+ssh mac-studio '~/mlx-env/bin/pip install -U mlx-openai-server'
 
 # 3. Pre-warm model weights. The chat models are likely already cached
 #    from the legacy setup; the embedding model is small (~250 MB).
 ssh mac-studio bash -lc "
-  ~/mlx-oai-env/bin/hf download mlx-community/Qwen3-Coder-Next-4bit
-  ~/mlx-oai-env/bin/hf download mlx-community/Qwen3-235B-A22B-4bit-DWQ
-  ~/mlx-oai-env/bin/hf download mlx-community/DeepSeek-R1-Distill-Qwen-32B-MLX-4Bit
-  ~/mlx-oai-env/bin/hf download mlx-community/nomicai-modernbert-embed-base-4bit
+  ~/mlx-env/bin/hf download mlx-community/Qwen3-Coder-Next-4bit
+  ~/mlx-env/bin/hf download mlx-community/Qwen3-235B-A22B-4bit-DWQ
+  ~/mlx-env/bin/hf download mlx-community/DeepSeek-R1-Distill-Qwen-32B-MLX-4Bit
+  ~/mlx-env/bin/hf download mlx-community/nomicai-modernbert-embed-base-4bit
 "
 ```
 

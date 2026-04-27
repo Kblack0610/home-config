@@ -17,14 +17,12 @@
 # Python venv that ships mlx-openai-server. Created out-of-band — see
 # README. Missing venv == role assertion fails fast.
 #
-# Why ~/mlx-oai-env and not ~/mlx-env: the legacy launchd-mlx-services
-# pinned mlx-lm 0.30.7 + transformers 5.3.0 inside ~/mlx-env.
-# mlx-openai-server 1.8.0 transitively pulls newer mlx-lm/transformers.
-# Separate venv kept the new server isolated until the legacy services
-# were retired in this same migration. Once the legacy plists are gone,
-# ~/mlx-env can be deleted entirely; renaming ~/mlx-oai-env → ~/mlx-env
-# is a clean follow-up.
-mlx_venv_path: "{{ ansible_env.HOME }}/mlx-oai-env"
+# History: during the soak this lived in ~/mlx-oai-env, separate from the
+# legacy ~/mlx-env that was pinning mlx-lm 0.30.7 + transformers 5.3.0
+# under the retired launchd-mlx-services. After the legacy plists were
+# removed and the legacy venv deleted, the venv was rebuilt at the
+# canonical ~/mlx-env path with mlx-openai-server installed in it.
+mlx_venv_path: "{{ ansible_env.HOME }}/mlx-env"
 mlx_python_bin: "{{ mlx_venv_path }}/bin/python3"
 mlx_server_bin: "{{ mlx_venv_path }}/bin/mlx-openai-server"
 

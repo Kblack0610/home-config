@@ -7,11 +7,17 @@ metadata:
     app.kubernetes.io/name: litellm
 data:
   config.yaml: |
+    # All upstream models served by the single mlx-server on Mac Studio
+    # at 192.168.1.4:8090 (managed by ansible/roles/launchd-mlx-server/).
+    # Replaces the legacy multi-port layout (8080/8081/8082 chat +
+    # 11434 Ollama embedding). Add a new model_list entry here whenever
+    # mlx_models in the role's defaults gains an entry; api_base is
+    # always 192.168.1.4:8090/v1.
     model_list:
       - model_name: mlx-community/Qwen3-Coder-Next-4bit
         litellm_params:
           model: openai/mlx-community/Qwen3-Coder-Next-4bit
-          api_base: http://192.168.1.4:8080/v1
+          api_base: http://192.168.1.4:8090/v1
           stream: true
           api_key: "mlx"
         model_info:
@@ -20,7 +26,7 @@ data:
       - model_name: mlx-community/Qwen3-235B-A22B-4bit-DWQ
         litellm_params:
           model: openai/mlx-community/Qwen3-235B-A22B-4bit-DWQ
-          api_base: http://192.168.1.4:8081/v1
+          api_base: http://192.168.1.4:8090/v1
           stream: true
           api_key: "mlx"
         model_info:
@@ -29,29 +35,20 @@ data:
       - model_name: mlx-community/DeepSeek-R1-Distill-Qwen-32B-MLX-4Bit
         litellm_params:
           model: openai/mlx-community/DeepSeek-R1-Distill-Qwen-32B-MLX-4Bit
-          api_base: http://192.168.1.4:8082/v1
+          api_base: http://192.168.1.4:8090/v1
           stream: false
           api_key: "mlx"
         model_info:
           supports_function_calling: true
 
       # Embedding model used by apps/mem0/ for memory ingest + retrieval.
-      # Served by Ollama on Mac Studio at :11434 (default port; the
-      # com.ollama.serve LaunchAgent at ~/Library/LaunchAgents/ on
-      # mac-studio binds 0.0.0.0:11434). 768-dim output; mem0 writes
-      # vectors into the pgvector store at apps/postgres/.
-      #
-      # Why Ollama and not mlx-openai-server: mlx-community has not
-      # converted nomic-embed-text-v1.5 to MLX (only the unrelated
-      # nomicai-modernbert-embed-base family exists). When/if mlx-community
-      # ships a 768-dim nomic-v1.5 conversion, swap api_base to :8090 and
-      # add the model to ansible/roles/launchd-mlx-openai-server/defaults
-      # to consolidate.
-      - model_name: nomic-embed-text-v1.5
+      # 768-dim output; mem0 writes vectors into the pgvector store at
+      # apps/postgres/.
+      - model_name: nomicai-modernbert-embed-base-4bit
         litellm_params:
-          model: openai/nomic-embed-text:v1.5
-          api_base: http://192.168.1.4:11434/v1
-          api_key: "ollama"
+          model: openai/mlx-community/nomicai-modernbert-embed-base-4bit
+          api_base: http://192.168.1.4:8090/v1
+          api_key: "mlx"
         model_info:
           mode: embedding
 

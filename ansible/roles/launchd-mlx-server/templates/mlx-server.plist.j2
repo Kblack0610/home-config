@@ -3,19 +3,14 @@
 <plist version="1.0">
 <dict>
     <key>Label</key>
-    <string>{{ item.label }}</string>
+    <string>{{ mlx_label }}</string>
 
     <key>ProgramArguments</key>
     <array>
-        <string>{{ mlx_python_bin }}</string>
-        <string>-m</string>
-        <string>mlx_lm.server</string>
-        <string>--model</string>
-        <string>{{ item.model }}</string>
-        <string>--port</string>
-        <string>{{ item.port }}</string>
-        <string>--host</string>
-        <string>0.0.0.0</string>
+        <string>{{ mlx_server_bin }}</string>
+        <string>launch</string>
+        <string>--config</string>
+        <string>{{ mlx_config_path }}</string>
     </array>
 
     <key>RunAtLoad</key>
@@ -25,10 +20,10 @@
     <true/>
 
     <key>StandardOutPath</key>
-    <string>{{ mlx_log_dir }}/{{ item.label | replace('com.', '') | replace('.', '-') }}.log</string>
+    <string>{{ mlx_log_dir }}/{{ mlx_label | replace('com.', '') | replace('.', '-') }}.log</string>
 
     <key>StandardErrorPath</key>
-    <string>{{ mlx_log_dir }}/{{ item.label | replace('com.', '') | replace('.', '-') }}.log</string>
+    <string>{{ mlx_log_dir }}/{{ mlx_label | replace('com.', '') | replace('.', '-') }}.log</string>
 
     <key>WorkingDirectory</key>
     <string>{{ ansible_env.HOME }}</string>

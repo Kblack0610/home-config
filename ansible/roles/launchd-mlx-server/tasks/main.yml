@@ -1,0 +1,68 @@
+---
+- name: Stat the MLX venv python (role does not create the venv)
+  ansible.builtin.stat:
+    path: "{{ mlx_python_bin }}"
+  register: mlx_python_stat
+
+- name: Assert MLX venv exists with mlx-openai-server installed
+  ansible.builtin.assert:
+    that:
+      - mlx_python_stat.stat.exists
+    fail_msg: >-
+      MLX venv python not found at {{ mlx_python_bin }}. Create it
+      first per the role README (Python 3.12 — newer mlx-openai-server
+      versions cap at <3.13):
+        /opt/homebrew/bin/python3.12 -m venv {{ mlx_venv_path }}
+        {{ mlx_venv_path }}/bin/pip install -U mlx-openai-server
+      This role only manages the launchd plist + server config; it does
+      not own the venv.
+
+- name: Stat the mlx-openai-server entry point
+  ansible.builtin.stat:
+    path: "{{ mlx_server_bin }}"
+  register: mlx_server_stat
+
+- name: Assert mlx-openai-server binary is on PATH inside the venv
+  ansible.builtin.assert:
+    that:
+      - mlx_server_stat.stat.exists
+    fail_msg: >-
+      {{ mlx_server_bin }} not found. Run inside the venv:
+        {{ mlx_venv_path }}/bin/pip install -U mlx-openai-server
+
+- name: Ensure config directory exists
+  ansible.builtin.file:
+    path: "{{ mlx_config_dir }}"
+    state: directory
+    mode: "0755"
+
+- name: Render mlx-server config
+  ansible.builtin.template:
+    src: config.yaml.j2
+    dest: "{{ mlx_config_path }}"
+    mode: "0644"
+  register: mlx_config_result
+
+- name: Ensure LaunchAgents directory exists
+  ansible.builtin.file:
+    path: "{{ mlx_launchagents_dir }}"
+    state: directory
+    mode: "0755"
+
+- name: Render mlx-server LaunchAgent plist
+  ansible.builtin.template:
+    src: mlx-server.plist.j2
+    dest: "{{ mlx_launchagents_dir }}/{{ mlx_label }}.plist"
+    mode: "0644"
+  register: mlx_plist_result
+
+# Reload the agent if either the plist or the config changed.
+# Reloading interrupts in-flight inference, so only do it on real diffs.
+- name: Reload mlx-server LaunchAgent if plist or config changed
+  ansible.builtin.shell: |
+    launchctl bootout gui/$(id -u)/{{ mlx_label }} 2>/dev/null || true
+    launchctl bootstrap gui/$(id -u) {{ mlx_launchagents_dir }}/{{ mlx_label }}.plist
+  when:
+    - not ansible_check_mode
+    - (mlx_plist_result.changed | default(false)) or (mlx_config_result.changed | default(false))
+  changed_when: true

@@ -30,7 +30,7 @@ data:
   # apps/litellm/configmap.yaml (model_name field).
   OPENAI_BASE_URL: http://litellm.ai-gateway.svc.cluster.local:4000/v1
   MEM0_DEFAULT_LLM_MODEL: mlx-community/Qwen3-Coder-Next-4bit
-  MEM0_DEFAULT_EMBEDDER_MODEL: nomic-embed-text-v1.5
+  MEM0_DEFAULT_EMBEDDER_MODEL: nomicai-modernbert-embed-base-4bit
 
   # --- Auth ---
   # Acceptable for this deployment because the ingress is restricted to

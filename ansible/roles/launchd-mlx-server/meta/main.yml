@@ -1,0 +1,23 @@
+---
+galaxy_info:
+  role_name: launchd_mlx_openai_server
+  author: home-config
+  description: >-
+    Manages a single `mlx-openai-server` (cubist38) launchd service on
+    mac-studio that serves LLMs, VLMs, and embeddings from one
+    OpenAI-compatible endpoint. Replaces the four-service layout
+    (launchd-mlx-services + launchd-ollama-embeddings). Does not create
+    the Python venv — see this role's README.
+  license: MIT
+  min_ansible_version: "2.14"
+  platforms:
+    - name: MacOSX
+      versions:
+        - all
+  galaxy_tags:
+    - macos
+    - launchd
+    - mlx
+    - llm
+    - openai
+dependencies: []

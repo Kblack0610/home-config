@@ -1,0 +1,41 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: postgres-init
+  namespace: databases
+  labels:
+    app.kubernetes.io/name: postgres
+data:
+  # docker-entrypoint-initdb.d scripts run on FIRST BOOT ONLY (when the
+  # data directory is empty). Subsequent restarts skip them. To onboard
+  # a new app post-bootstrap: `kubectl -n databases exec -it
+  # deploy/postgres -- psql -U postgres` and run the equivalent SQL by
+  # hand (mirror what 10-mem0.sh does for the new app).
+  #
+  # Per-app passwords come from the postgres-secrets Secret (envFrom in
+  # the deployment), so the .sh wrapper here can read them as env vars
+  # and template them into the SQL safely (no plaintext-in-yaml).
+
+  10-mem0.sh: |
+    #!/bin/bash
+    set -euo pipefail
+    # mem0-api-server uses TWO databases on the same Postgres instance:
+    #   mem0      → pgvector memory store     (POSTGRES_DB)
+    #   mem0_app  → SQLAlchemy app metadata   (APP_DB_NAME, has alembic migrations)
+    # Both owned by the `mem0` role. pgvector extension is per-database;
+    # mem0_app does NOT need it. Alembic creates/migrates mem0_app's schema
+    # on first deploy of apps/mem0/ via an init container.
+    psql -v ON_ERROR_STOP=1 --username "$POSTGRES_USER" --dbname "$POSTGRES_DB" <<-EOSQL
+      CREATE ROLE mem0 LOGIN PASSWORD '${POSTGRES_MEM0_PASSWORD}';
+      CREATE DATABASE mem0 OWNER mem0;
+      CREATE DATABASE mem0_app OWNER mem0;
+    EOSQL
+    psql -v ON_ERROR_STOP=1 --username "$POSTGRES_USER" --dbname mem0 <<-EOSQL
+      CREATE EXTENSION IF NOT EXISTS vector;
+      GRANT ALL PRIVILEGES ON DATABASE mem0 TO mem0;
+      GRANT ALL PRIVILEGES ON SCHEMA public TO mem0;
+    EOSQL
+    psql -v ON_ERROR_STOP=1 --username "$POSTGRES_USER" --dbname mem0_app <<-EOSQL
+      GRANT ALL PRIVILEGES ON DATABASE mem0_app TO mem0;
+      GRANT ALL PRIVILEGES ON SCHEMA public TO mem0;
+    EOSQL

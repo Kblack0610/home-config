@@ -1,0 +1,94 @@
+---
+# launchd-mlx-server role defaults.
+#
+# Single LaunchAgent serving every model the cluster needs from one
+# OpenAI-shaped REST endpoint. Replaces the 3-service legacy
+# launchd-mlx-services + Ollama embedding combo.
+#
+# About the upstream package name (mlx-openai-server): the "openai" refers
+# to API SHAPE compatibility (/v1/chat/completions, /v1/embeddings) — not
+# the OpenAI vendor. Everything we own (role, launchd label, config dir,
+# variable prefix) drops that prefix to avoid the muscle-memory confusion.
+#
+# The role does NOT create the Python venv. That is a one-time manual
+# setup per mac (see this role's README), matching the existing
+# precedent in `launchd-mlx-services/`.
+
+# Python venv that ships mlx-openai-server. Created out-of-band — see
+# README. Missing venv == role assertion fails fast.
+#
+# Why ~/mlx-oai-env and not ~/mlx-env: the legacy launchd-mlx-services
+# pinned mlx-lm 0.30.7 + transformers 5.3.0 inside ~/mlx-env.
+# mlx-openai-server 1.8.0 transitively pulls newer mlx-lm/transformers.
+# Separate venv kept the new server isolated until the legacy services
+# were retired in this same migration. Once the legacy plists are gone,
+# ~/mlx-env can be deleted entirely; renaming ~/mlx-oai-env → ~/mlx-env
+# is a clean follow-up.
+mlx_venv_path: "{{ ansible_env.HOME }}/mlx-oai-env"
+mlx_python_bin: "{{ mlx_venv_path }}/bin/python3"
+mlx_server_bin: "{{ mlx_venv_path }}/bin/mlx-openai-server"
+
+# Per-user LaunchAgent directory — GPU/Metal context belongs to the login
+# user, so per-user (gui/$(id -u)) is the right scope.
+mlx_launchagents_dir: "{{ ansible_env.HOME }}/Library/LaunchAgents"
+
+# stdout/stderr destination. Survive-process-only logs in /tmp.
+mlx_log_dir: /tmp
+
+# Service identity. Single label, single port.
+mlx_label: com.mlx-server
+mlx_host: "0.0.0.0"
+mlx_port: 8090
+
+# Where the rendered server config lives. mlx-openai-server is launched
+# with `--config <path>`; we keep it in ~/.config so it sits with the
+# user's other tool configs and survives a venv rebuild.
+mlx_config_dir: "{{ ansible_env.HOME }}/.config/mlx-server"
+mlx_config_path: "{{ mlx_config_dir }}/config.yaml"
+
+mlx_log_level: INFO
+
+# Model matrix served from the single process. Each entry maps directly to
+# one item in the rendered YAML's `models:` list. Pinning is the default
+# (omitting `on_demand` keeps the model resident); set `on_demand: true`
+# on any entry that should idle-evict.
+#
+# served_model_name is the id LiteLLM uses in its routes (apps/litellm/
+# configmap.yaml `model:` field). Keep it in sync.
+#
+# Memory budget on mac-studio M3 Ultra (512 GB):
+#   Qwen3-Coder-Next-4bit       ~45 GB
+#   Qwen3-235B-A22B-4bit-DWQ   ~133 GB
+#   DeepSeek-R1-Distill-32B     ~20 GB
+#   modernbert-embed-base        ~250 MB
+#                              --------
+#                              ~198 GB resident, ~314 GB headroom
+#
+# Models DEFERRED until weights finish downloading (HF rate limits
+# unauthenticated requests):
+#   - mlx-community/Qwen3.6-35B-A3B-4bit (download stalled, 2/4 shards)
+#   - mlx-community/GLM-5-4bit (~199 GB; GLM-5.1 has no public 4-bit
+#     conversion yet — only bf16 at ~1.5 TB)
+#   - mlx-community/GLM-4.6V-Flash-4bit (vision; not yet downloaded)
+# Add them back here when their weights are local AND mlx-openai-server
+# is verified loading them.
+mlx_models:
+  - served_model_name: mlx-community/Qwen3-Coder-Next-4bit
+    model_path: mlx-community/Qwen3-Coder-Next-4bit
+    model_type: lm
+
+  - served_model_name: mlx-community/Qwen3-235B-A22B-4bit-DWQ
+    model_path: mlx-community/Qwen3-235B-A22B-4bit-DWQ
+    model_type: lm
+
+  - served_model_name: mlx-community/DeepSeek-R1-Distill-Qwen-32B-MLX-4Bit
+    model_path: mlx-community/DeepSeek-R1-Distill-Qwen-32B-MLX-4Bit
+    model_type: lm
+
+  # Embedding endpoint that replaces the (now removed) Ollama LaunchAgent
+  # on :11434. 768-dim output, matches what mem0's pgvector store at
+  # apps/postgres/ is provisioned for. Verified loading + serving via a
+  # foreground smoke test before this entry was committed.
+  - served_model_name: mlx-community/nomicai-modernbert-embed-base-4bit
+    model_path: mlx-community/nomicai-modernbert-embed-base-4bit
+    model_type: embeddings

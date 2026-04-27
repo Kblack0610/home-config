@@ -20,12 +20,14 @@ resources:
   - jellyfin
   - karakeep
   - litellm
+  - mem0
   - monitoring
   - nas
   - neptune
   - nvidia-device-plugin
   - openclaw
   - orcaslicer
+  - postgres
   - sops-backup-rbac
 
   # Public sites (Cloudflare tunnel → Traefik → service)

@@ -17,6 +17,14 @@ spec:
       labels:
         app.kubernetes.io/name: mem0
     spec:
+      # mem0/mem0-api-server:latest publishes only an arm64 manifest as
+      # of 2026-04, so this deployment is pinned to an arm64 node. The
+      # Pi 5s have plenty of headroom for a Python REST app — actual LLM
+      # inference happens on Mac Studio via LiteLLM, mem0 just orchestrates
+      # REST + Postgres calls. If/when upstream ships a multi-arch image,
+      # drop this nodeSelector.
+      nodeSelector:
+        kubernetes.io/arch: arm64
       # Run alembic migrations against APP_DB_NAME before the API server
       # starts. Mirrors the upstream dev compose pattern (which prepends
       # `alembic upgrade head` to the uvicorn command). Init container
@@ -27,7 +35,11 @@ spec:
           image: mem0/mem0-api-server:latest
           imagePullPolicy: IfNotPresent
           workingDir: /app
-          command: ["alembic", "upgrade", "head"]
+          # `python -m alembic` rather than `alembic` because the published
+          # image doesn't expose the alembic CLI script in $PATH (image is
+          # ~90MB, scripts/console_entry_points were stripped). The Python
+          # package is installed and importable.
+          command: ["python", "-m", "alembic", "upgrade", "head"]
           envFrom:
             - configMapRef:
                 name: mem0-config

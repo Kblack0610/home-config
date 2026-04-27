@@ -17,6 +17,14 @@ spec:
       labels:
         app.kubernetes.io/name: postgres
     spec:
+      # fsGroup tells kubelet to chown the mounted PVC volumes to gid 999
+      # (the postgres group inside the official postgres image). Without
+      # this, local-path-provisioner creates the hostPath as root and the
+      # postgres entrypoint's chown to its uid 999 fails with "Operation
+      # not permitted" because the container's capabilities are scoped to
+      # the running uid. fsGroup sidesteps the chown entirely.
+      securityContext:
+        fsGroup: 999
       containers:
         - name: postgres
           # pgvector ships an official image based on Postgres + the
@@ -25,12 +33,11 @@ spec:
           # ignore it.
           image: pgvector/pgvector:0.8.2-pg17-trixie
           imagePullPolicy: IfNotPresent
-          securityContext:
-            allowPrivilegeEscalation: false
-            readOnlyRootFilesystem: false
-            capabilities:
-              drop:
-                - ALL
+          # Note: NO container-level securityContext capability drop here.
+          # The postgres entrypoint script needs CHOWN/FOWNER/SETUID/SETGID
+          # to drop privileges to the postgres user before starting the DB
+          # daemon. Stripping capabilities breaks the entrypoint with
+          # "Operation not permitted" on /var/run/postgresql + the data dir.
           ports:
             - name: postgres
               containerPort: 5432

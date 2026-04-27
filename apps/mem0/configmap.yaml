@@ -1,0 +1,47 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: mem0-config
+  namespace: memory
+  labels:
+    app.kubernetes.io/name: mem0
+data:
+  # mem0-api-server is env-var driven (no YAML config file). Non-secret
+  # values live here; secrets live in `mem0-secrets`. The deployment uses
+  # `envFrom: configMapRef + secretRef` so both are merged into the pod
+  # env at startup.
+
+  # --- Postgres ---
+  # Vector store + app metadata both live on the shared cluster Postgres
+  # at apps/postgres/. POSTGRES_DB is the pgvector database; APP_DB_NAME
+  # is the SQLAlchemy alembic-managed app metadata DB.
+  POSTGRES_HOST: postgres.databases.svc.cluster.local
+  POSTGRES_PORT: "5432"
+  POSTGRES_DB: mem0
+  POSTGRES_USER: mem0
+  POSTGRES_COLLECTION_NAME: mem0_memories
+  APP_DB_NAME: mem0_app
+
+  # --- LLM + embedder routing ---
+  # mem0-api-server uses the openai SDK; setting OPENAI_BASE_URL routes
+  # all chat + embedding calls through the in-cluster LiteLLM gateway,
+  # which fronts the local MLX models on Mac Studio. No third-party API
+  # keys leave the cluster. The model names here MUST match entries in
+  # apps/litellm/configmap.yaml (model_name field).
+  OPENAI_BASE_URL: http://litellm.ai-gateway.svc.cluster.local:4000/v1
+  MEM0_DEFAULT_LLM_MODEL: mlx-community/Qwen3-Coder-Next-4bit
+  MEM0_DEFAULT_EMBEDDER_MODEL: nomic-embed-text-v1.5
+
+  # --- Auth ---
+  # Acceptable for this deployment because the ingress is restricted to
+  # RFC1918 + Tailscale via the monitoring-local-network-only Traefik
+  # middleware. To enable auth later, flip this to "false" and run the
+  # `mem0 auth setup` wizard against the dashboard ingress (or use
+  # ADMIN_API_KEY for headless bootstrap).
+  AUTH_DISABLED: "true"
+
+  # --- Misc ---
+  DASHBOARD_URL: https://mem0.kblab.me
+  HISTORY_DB_PATH: /app/history/history.db
+  MEM0_TELEMETRY: "false"
+  REQUEST_LOG_RETENTION_DAYS: "30"

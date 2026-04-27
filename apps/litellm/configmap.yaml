@@ -35,6 +35,20 @@ data:
         model_info:
           supports_function_calling: true
 
+      # Embedding model used by apps/mem0/ for memory ingest + retrieval.
+      # Currently served by mlx-openai-server (cubist38) on Mac Studio
+      # via the launchd-mlx-openai-server Ansible role on :8090. The
+      # legacy Ollama LaunchAgent on :8083 was removed when that role
+      # took over. nomic-embed-text-v1.5 outputs 768-dim vectors; mem0
+      # writes them into the pgvector store at apps/postgres/.
+      - model_name: nomic-embed-text-v1.5
+        litellm_params:
+          model: openai/nomic-embed-text-v1.5
+          api_base: http://192.168.1.4:8090/v1
+          api_key: "mlx"
+        model_info:
+          mode: embedding
+
     router_settings:
       routing_strategy: "simple-shuffle"
       timeout: 900

@@ -76,3 +76,19 @@
         gh_runner_labels: [self-hosted, linux, x64, unity]
         gh_runner_pat: "{{ vault_github_dodginballs_pat }}"
       tags: [runner, ci, dodginballs]
+
+# Mac Studio consolidated MLX gateway — single mlx-openai-server (cubist38)
+# process serving LLMs, VLMs, and embeddings from one OpenAI-compatible
+# endpoint at :8090. Replaces the legacy three-service layout
+# (`launchd-mlx-services` role on 8080/8081/8082). Stays on a
+# non-conflicting port during the migration soak — both stacks coexist
+# until apps/litellm/configmap.yaml is cut over and the legacy role is
+# retired (see role README). Embedding gap (previously bridged by a
+# stand-alone Ollama LaunchAgent on :8083, now removed) is served by
+# this same mlx-openai-server process.
+- name: Mac Studio MLX gateway (mlx-openai-server via launchd)
+  hosts: mac-studio
+  gather_facts: true
+  roles:
+    - role: launchd-mlx-openai-server
+      tags: [mlx-openai, mac, llm]

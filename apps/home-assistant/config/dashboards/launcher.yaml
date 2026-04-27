@@ -37,6 +37,19 @@ sections:
   - type: grid
     cards:
       - type: heading
+        heading: Apps
+        icon: mdi:apps
+      - type: tile
+        entity: sun.sun
+        name: Karakeep
+        icon: mdi:bookmark-multiple
+        tap_action:
+          action: url
+          url_path: https://karakeep.kblab.me
+        hide_state: true
+  - type: grid
+    cards:
+      - type: heading
         heading: Dev
         icon: mdi:code-braces
       - type: tile

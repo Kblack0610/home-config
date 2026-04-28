@@ -1,15 +1,19 @@
 name: openclaw-image
 
+# KNOWN-BROKEN — manual triggers only. The dind-on-bridge network hangs on
+# apt-get update inside Dockerfile RUN steps (nested NAT issue). Until
+# fixed, build locally and push manually:
+#
+#   docker login git.kblab.me -u kblack0610
+#   DOCKER_BUILDKIT=0 docker build apps/openclaw \
+#     -t git.kblab.me/kblack0610/openclaw:latest \
+#     -t git.kblab.me/kblack0610/openclaw:$(date +%Y%m%d)
+#   docker push git.kblab.me/kblack0610/openclaw:latest
+#   kubectl -n openclaw delete pod -l app.kubernetes.io/name=openclaw
+#
+# Auto-triggers (push, cron) are disabled to avoid wasting runner cycles.
 on:
   workflow_dispatch:
-  push:
-    branches: [master]
-    paths:
-      - apps/openclaw/Dockerfile
-      - .forgejo/workflows/openclaw-image.yaml
-  schedule:
-    # Sunday 07:00 UTC — pick up upstream `:latest` digest changes weekly.
-    - cron: '0 7 * * 0'
 
 jobs:
   build:

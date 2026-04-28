@@ -18,7 +18,23 @@ The ingress is restricted to RFC1918 and loopback source ranges via the shared `
 | `deployment.yaml` | OpenClaw gateway workload |
 | `service.yaml` | ClusterIP service on port `18789` |
 | `ingress.yaml` | TLS ingress for `openclaw.kblab.me` |
-| `Dockerfile` | Custom image overlay (`gh`, `jq`, `rg`, `tmux`, `opencode`) on top of `ghcr.io/openclaw/openclaw:latest` to unlock bundled skills. Built by `.forgejo/workflows/openclaw-image.yaml` and pushed to `git.kblab.me/kblack0610/openclaw:latest`. |
+| `Dockerfile` | Custom image overlay (`gh`, `jq`, `rg`, `tmux`, `opencode`) on top of `ghcr.io/openclaw/openclaw:latest` to unlock bundled skills. **Built locally and pushed manually** — see the rebuild block below. The Forgejo Actions workflow at `.forgejo/workflows/openclaw-image.yaml` is checked in but currently broken (dind-on-bridge NAT hangs apt-get); it's kept for future fix. |
+
+## Rebuild the overlay
+
+After upstream openclaw bumps a tag, or after editing the Dockerfile:
+
+```bash
+docker login git.kblab.me -u kblack0610
+DOCKER_BUILDKIT=0 docker build apps/openclaw \
+  -t git.kblab.me/kblack0610/openclaw:latest \
+  -t git.kblab.me/kblack0610/openclaw:$(date +%Y%m%d)
+docker push git.kblab.me/kblack0610/openclaw:latest
+kubectl -n openclaw delete pod -l app.kubernetes.io/name=openclaw
+kubectl -n openclaw exec deploy/openclaw -- openclaw skills check | head -15
+```
+
+`DOCKER_BUILDKIT=0` is required — the modern buildx-driven build doesn't run RUN containers on host network and apt-get hangs.
 
 ## Verify
 

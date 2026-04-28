@@ -38,9 +38,15 @@ jobs:
           SHORT_SHA="$(echo "${{ github.sha }}" | cut -c1-7)"
           DATE="$(date -u +%Y%m%d)"
           IMAGE=git.kblab.me/kblack0610/openclaw
-          docker buildx create --use --name overlay-builder || true
-          docker buildx build apps/openclaw \
+          # Plain `docker build` runs in the dind daemon directly. We avoided
+          # `docker buildx` because its child buildkit container lands on
+          # dind's bridge network and can't reach external apt/npm mirrors
+          # (apt-get update hangs inside the RUN). dind itself uses the
+          # runner pod's host network and resolves fine.
+          docker build apps/openclaw \
             --tag "$IMAGE:latest" \
             --tag "$IMAGE:sha-$SHORT_SHA" \
-            --tag "$IMAGE:$DATE" \
-            --push
+            --tag "$IMAGE:$DATE"
+          docker push "$IMAGE:latest"
+          docker push "$IMAGE:sha-$SHORT_SHA"
+          docker push "$IMAGE:$DATE"

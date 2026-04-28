@@ -19,4 +19,13 @@ models:
 {% if m.default_max_tokens is defined %}
     default_max_tokens: {{ m.default_max_tokens }}
 {% endif %}
+{% if m.enable_auto_tool_choice is defined %}
+    enable_auto_tool_choice: {{ m.enable_auto_tool_choice | string | lower }}
+{% endif %}
+{% if m.tool_call_parser is defined %}
+    tool_call_parser: {{ m.tool_call_parser }}
+{% endif %}
+{% if m.reasoning_parser is defined %}
+    reasoning_parser: {{ m.reasoning_parser }}
+{% endif %}
 {% endfor %}

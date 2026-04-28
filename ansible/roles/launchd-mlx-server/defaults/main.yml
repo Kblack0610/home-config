@@ -106,10 +106,18 @@ mlx_huggingface_token_path: "{{ ansible_env.HOME }}/.cache/huggingface/token"
 #   - Embedding (modernbert-embed-base): nomic-family ModernBERT, 768
 #     dim — matches mem0's pgvector schema, confirmed loading via
 #     foreground smoke test before commit.
+# Parser registry (from mlx-openai-server's app/parsers/__init__.py
+# REASONING_PARSER_MAP + TOOL_PARSER_MAP). Without these, models emit
+# raw <tool_call>...</tool_call> and <think>...</think> tokens as plain
+# text instead of structured `tool_calls` / `reasoning_content` fields,
+# which breaks every agent integration (Codex, Aider, OpenWebUI, etc.).
 mlx_models:
   - served_model_name: mlx-community/Qwen3-Coder-Next-4bit
     model_path: mlx-community/Qwen3-Coder-Next-4bit
     model_type: lm
+    enable_auto_tool_choice: true
+    tool_call_parser: qwen3_coder    # FunctionParameterToolParser
+    reasoning_parser: qwen3_moe      # Qwen3MoEReasoningParser (Hermes-style <think>)
 
   # Smart slot — on_demand to fit alongside the other models in 512 GB.
   # First request after idle eviction pays a ~5–10 min cold-load; warm
@@ -120,6 +128,9 @@ mlx_models:
     model_type: lm
     on_demand: true
     on_demand_idle_timeout: 1800  # 30 min
+    enable_auto_tool_choice: true
+    tool_call_parser: glm4_moe       # GLM4MoEToolParser
+    reasoning_parser: glm4_moe       # GLM4MoEReasoningParser
 
   # Reasoning slot. Served as `lm` (text) — see why-these-specific-picks
   # above. Switch to `multimodal` once mlx-openai-server's VLM handler
@@ -128,6 +139,9 @@ mlx_models:
   - served_model_name: mlx-community/Qwen3.6-35B-A3B-4bit
     model_path: mlx-community/Qwen3.6-35B-A3B-4bit
     model_type: lm
+    enable_auto_tool_choice: true
+    tool_call_parser: qwen3_moe      # HermesToolParser (Qwen3 MoE format)
+    reasoning_parser: qwen3_5        # Qwen35ReasoningParser
 
   # Embedding endpoint that replaces the (now removed) Ollama LaunchAgent
   # on :11434. 768-dim output, matches what mem0's pgvector store at

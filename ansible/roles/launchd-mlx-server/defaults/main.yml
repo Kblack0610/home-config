@@ -46,6 +46,15 @@ mlx_config_path: "{{ mlx_config_dir }}/config.yaml"
 
 mlx_log_level: INFO
 
+# HuggingFace Read token. Dropped to ~/.cache/huggingface/token (mode
+# 0600) so first-time model downloads on this host don't hit the
+# unauthenticated rate cap. Real value lives in
+# group_vars/macos_hosts/vault.yml as `vault_huggingface_token`,
+# encrypted with ansible-vault. The role refuses to apply if the token
+# is missing or still the placeholder.
+mlx_huggingface_token: "{{ vault_huggingface_token | default('') }}"
+mlx_huggingface_token_path: "{{ ansible_env.HOME }}/.cache/huggingface/token"
+
 # Model matrix served from the single process. Each entry maps directly to
 # one item in the rendered YAML's `models:` list. Pinning is the default
 # (omitting `on_demand` keeps the model resident); set `on_demand: true`
@@ -57,11 +66,10 @@ mlx_log_level: INFO
 # Memory budget on mac-studio M3 Ultra (512 GB):
 #   Pinned (always resident):
 #     Qwen3-Coder-Next-4bit         ~45 GB   (code slot)
-#     Qwen3.6-35B-A3B-4bit          ~20 GB   (reasoning slot)
-#     GLM-4.6V-Flash-4bit            ~7 GB   (vision slot)
+#     Qwen3.6-35B-A3B-4bit          ~20 GB   (reasoning slot, text)
 #     modernbert-embed-base-4bit  ~250 MB    (embedding slot)
 #                                  --------
-#                                  ~72 GB pinned, ~440 GB headroom for KV
+#                                  ~65 GB pinned, ~447 GB headroom for KV
 #                                  cache + OS + GitHub Actions runner
 #
 #   on_demand (loaded on first request, evicted after idle timeout):
@@ -74,16 +82,27 @@ mlx_log_level: INFO
 #                                  inference is full-speed afterward.
 #
 # Why these specific picks:
-#   - Coder (kept Qwen3-Coder-Next-4bit): hybrid attention + MoE w/ 3 B
+#   - Coder (Qwen3-Coder-Next-4bit): hybrid attention + MoE w/ 3 B
 #     active params, fastest-path coder; no need to upgrade.
 #   - Smart (GLM-5-4bit): Z.ai's 2026-02 flagship, MIT-licensed, 200K
 #     context, #1 on Artificial Analysis among open weights. 4-bit quant
 #     of the 744 B-param MoE; GLM-5.1 has no public 4-bit MLX conversion
 #     yet (only bf16 at ~1.5 TB).
-#   - Reasoning (Qwen3.6-35B-A3B-4bit): unified reasoning + native
-#     thinking-budget control; replaces the Jan-2025 DeepSeek-R1-Distill.
-#   - Vision (GLM-4.6V-Flash-4bit): paired with the GLM family for
-#     consistent vision/text behaviour.
+#   - Reasoning (Qwen3.6-35B-A3B-4bit): unified VLM
+#     (pipeline_tag: image-text-to-text) — but served here as
+#     `model_type: lm` until mlx-openai-server's multimodal handler is
+#     fixed. With model_type: multimodal (1.7.1 + 1.8.0 both tested) the
+#     handler raises `RuntimeError: There is no Stream(gpu, 0) in current
+#     thread` at mlx_vlm.py:620 on every request, text or image. Bug
+#     reproduces against any VLM (GLM-4.6V-Flash and Qwen3.6 both fail
+#     identically), so it's a worker-thread GPU context bug in
+#     mlx-openai-server, not model-specific. Effect of `lm` here: text
+#     prompts work as expected; image_url content parts are silently
+#     ignored. Re-enable multimodal once upstream ships a fix or we
+#     switch to a different VLM serving stack (mlx_vlm.server, vllm-mlx,
+#     omlx). Tracker: cubist38/mlx-openai-server.
+#     GLM-4.6V-Flash-4bit was dropped from the line-up entirely — same
+#     bug, no extra value over Qwen3.6 once the bug is fixed.
 #   - Embedding (modernbert-embed-base): nomic-family ModernBERT, 768
 #     dim — matches mem0's pgvector schema, confirmed loading via
 #     foreground smoke test before commit.
@@ -102,13 +121,13 @@ mlx_models:
     on_demand: true
     on_demand_idle_timeout: 1800  # 30 min
 
+  # Reasoning slot. Served as `lm` (text) — see why-these-specific-picks
+  # above. Switch to `multimodal` once mlx-openai-server's VLM handler
+  # GPU-thread bug is fixed; Qwen3.6 is unified VL and will accept
+  # image_url content parts then.
   - served_model_name: mlx-community/Qwen3.6-35B-A3B-4bit
     model_path: mlx-community/Qwen3.6-35B-A3B-4bit
     model_type: lm
-
-  - served_model_name: mlx-community/GLM-4.6V-Flash-4bit
-    model_path: mlx-community/GLM-4.6V-Flash-4bit
-    model_type: multimodal
 
   # Embedding endpoint that replaces the (now removed) Ollama LaunchAgent
   # on :11434. 768-dim output, matches what mem0's pgvector store at

@@ -30,6 +30,32 @@
       {{ mlx_server_bin }} not found. Run inside the venv:
         {{ mlx_venv_path }}/bin/pip install -U mlx-openai-server
 
+- name: Assert HuggingFace token is set (decrypted from vault)
+  ansible.builtin.assert:
+    that:
+      - mlx_huggingface_token | length > 10
+      - not (mlx_huggingface_token is match('^REPLACE_ME'))
+    fail_msg: >-
+      mlx_huggingface_token is missing or still a placeholder. Add
+      `vault_huggingface_token: <hf_token>` to
+      group_vars/macos_hosts/vault.yml (encrypted with `ansible-vault`)
+      so first-time model downloads on this host bypass the
+      unauthenticated rate cap. Get a Read-scope token at
+      https://huggingface.co/settings/tokens.
+
+- name: Ensure HuggingFace cache directory exists
+  ansible.builtin.file:
+    path: "{{ mlx_huggingface_token_path | dirname }}"
+    state: directory
+    mode: "0700"
+
+- name: Drop HuggingFace token to ~/.cache/huggingface/token
+  ansible.builtin.copy:
+    content: "{{ mlx_huggingface_token }}\n"
+    dest: "{{ mlx_huggingface_token_path }}"
+    mode: "0600"
+  no_log: true
+
 - name: Ensure config directory exists
   ansible.builtin.file:
     path: "{{ mlx_config_dir }}"
@@ -58,9 +84,22 @@
 
 # Reload the agent if either the plist or the config changed.
 # Reloading interrupts in-flight inference, so only do it on real diffs.
+#
+# launchctl race: `bootout` returns immediately but the kernel needs a
+# beat to actually tear the service down. An immediate `bootstrap`
+# fails with `5: Input/output error`. The wait-loop polls `launchctl
+# print` until the service is fully gone (or 30 s elapses) before
+# bootstrapping, so the role is safe to apply repeatedly.
 - name: Reload mlx-server LaunchAgent if plist or config changed
   ansible.builtin.shell: |
+    set -e
     launchctl bootout gui/$(id -u)/{{ mlx_label }} 2>/dev/null || true
+    for i in $(seq 1 30); do
+      if ! launchctl print gui/$(id -u)/{{ mlx_label }} >/dev/null 2>&1; then
+        break
+      fi
+      sleep 1
+    done
     launchctl bootstrap gui/$(id -u) {{ mlx_launchagents_dir }}/{{ mlx_label }}.plist
   when:
     - not ansible_check_mode

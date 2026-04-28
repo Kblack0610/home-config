@@ -48,17 +48,14 @@ data:
         model_info:
           supports_function_calling: true
 
-      # Vision slot — GLM-4.6V Flash, paired with the GLM family for
-      # consistent vision/text behaviour. 4-bit, ~7 GB resident.
-      - model_name: mlx-community/GLM-4.6V-Flash-4bit
-        litellm_params:
-          model: openai/mlx-community/GLM-4.6V-Flash-4bit
-          api_base: http://192.168.1.4:8090/v1
-          stream: true
-          api_key: "mlx"
-        model_info:
-          supports_vision: true
-          supports_function_calling: true
+      # No vision-input route currently. Original plan exposed
+      # GLM-4.6V-Flash-4bit (and briefly Qwen3.6 as multimodal), but
+      # mlx-openai-server 1.7.1 + 1.8.0 both hit a `RuntimeError: There
+      # is no Stream(gpu, 0) in current thread` bug at mlx_vlm.py:620
+      # against any multimodal handler — bug is upstream and worker-
+      # thread-related, not model-specific. Re-add a vision route here
+      # once the upstream fix lands or we move to mlx_vlm.server /
+      # vllm-mlx / omlx as the VLM serving stack.
 
       # Embedding model used by apps/mem0/ for memory ingest + retrieval.
       # 768-dim output; mem0 writes vectors into the pgvector store at

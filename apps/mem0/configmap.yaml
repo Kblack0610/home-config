@@ -29,8 +29,8 @@ data:
   # keys leave the cluster. The model names here MUST match entries in
   # apps/litellm/configmap.yaml (model_name field).
   OPENAI_BASE_URL: http://litellm.ai-gateway.svc.cluster.local:4000/v1
-  MEM0_DEFAULT_LLM_MODEL: mlx-community/Qwen3-Coder-Next-4bit
-  MEM0_DEFAULT_EMBEDDER_MODEL: nomicai-modernbert-embed-base-4bit
+  MEM0_DEFAULT_LLM_MODEL: "code (Qwen3-Coder-Next-4bit)"
+  MEM0_DEFAULT_EMBEDDER_MODEL: "embedding (modernbert-embed-base-4bit)"
 
   # --- Auth ---
   # Acceptable for this deployment because the ingress is restricted to

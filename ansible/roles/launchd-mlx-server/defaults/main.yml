@@ -65,11 +65,12 @@ mlx_huggingface_token_path: "{{ ansible_env.HOME }}/.cache/huggingface/token"
 #
 # Memory budget on mac-studio M3 Ultra (512 GB):
 #   Pinned (always resident):
-#     Qwen3-Coder-Next-4bit         ~45 GB   (code slot)
-#     Qwen3.6-35B-A3B-4bit          ~20 GB   (reasoning slot, text)
-#     modernbert-embed-base-4bit  ~250 MB    (embedding slot)
+#     Qwen3-Coder-Next-4bit          ~45 GB  (code slot)
+#     Qwen3.6-35B-A3B-4bit (mlx)     ~20 GB  (reasoning slot, mlx-community)
+#     Qwen3.6-35B-A3B-UD-4bit (UD)   ~20 GB  (reasoning-ud, Unsloth Dynamic)
+#     modernbert-embed-base-4bit   ~250 MB   (embedding slot)
 #                                  --------
-#                                  ~65 GB pinned, ~447 GB headroom for KV
+#                                  ~85 GB pinned, ~427 GB headroom for KV
 #                                  cache + OS + GitHub Actions runner
 #
 #   on_demand (loaded on first request, evicted after idle timeout):
@@ -106,13 +107,24 @@ mlx_huggingface_token_path: "{{ ansible_env.HOME }}/.cache/huggingface/token"
 #   - Embedding (modernbert-embed-base): nomic-family ModernBERT, 768
 #     dim — matches mem0's pgvector schema, confirmed loading via
 #     foreground smoke test before commit.
+# Naming convention for served_model_name:
+#   `<category> (<short-model-name>)` — category prefix for routing,
+#   model name in parens for at-a-glance identification when listing
+#   models or comparing variants. Multiple models can share a category
+#   (e.g. `reasoning` mlx-community vs `reasoning-ud` Unsloth Dynamic
+#   quant) so we can A/B-test alternatives without renaming consumers.
+#   Spaces + parens are JSON-safe; OpenAI clients pass the string
+#   verbatim in the request body. The `model_path` is unchanged from
+#   the canonical HuggingFace path so weights resolve from the same HF
+#   cache location.
+#
 # Parser registry (from mlx-openai-server's app/parsers/__init__.py
 # REASONING_PARSER_MAP + TOOL_PARSER_MAP). Without these, models emit
 # raw <tool_call>...</tool_call> and <think>...</think> tokens as plain
 # text instead of structured `tool_calls` / `reasoning_content` fields,
 # which breaks every agent integration (Codex, Aider, OpenWebUI, etc.).
 mlx_models:
-  - served_model_name: mlx-community/Qwen3-Coder-Next-4bit
+  - served_model_name: "code (Qwen3-Coder-Next-4bit)"
     model_path: mlx-community/Qwen3-Coder-Next-4bit
     model_type: lm
     enable_auto_tool_choice: true
@@ -123,7 +135,7 @@ mlx_models:
   # First request after idle eviction pays a ~5–10 min cold-load; warm
   # inference is full-speed. Increase on_demand_idle_timeout if your
   # usage pattern has gaps longer than ~30 min between heavy queries.
-  - served_model_name: mlx-community/GLM-5-4bit
+  - served_model_name: "smart (GLM-5-4bit)"
     model_path: mlx-community/GLM-5-4bit
     model_type: lm
     on_demand: true
@@ -132,21 +144,33 @@ mlx_models:
     tool_call_parser: glm4_moe       # GLM4MoEToolParser
     reasoning_parser: glm4_moe       # GLM4MoEReasoningParser
 
-  # Reasoning slot. Served as `lm` (text) — see why-these-specific-picks
-  # above. Switch to `multimodal` once mlx-openai-server's VLM handler
-  # GPU-thread bug is fixed; Qwen3.6 is unified VL and will accept
-  # image_url content parts then.
-  - served_model_name: mlx-community/Qwen3.6-35B-A3B-4bit
+  # Reasoning slot — mlx-community quant. Served as `lm` (text) — see
+  # why-these-specific-picks above. Switch to `multimodal` once
+  # mlx-openai-server's VLM handler GPU-thread bug is fixed.
+  - served_model_name: "reasoning (Qwen3.6-35B-A3B-4bit)"
     model_path: mlx-community/Qwen3.6-35B-A3B-4bit
     model_type: lm
     enable_auto_tool_choice: true
     tool_call_parser: qwen3_moe      # HermesToolParser (Qwen3 MoE format)
     reasoning_parser: qwen3_5        # Qwen35ReasoningParser
 
+  # Reasoning slot — Unsloth Dynamic quant alternative for A/B testing.
+  # Same Qwen3.6-35B-A3B base model, but Unsloth's UD quantization is
+  # tuned for tool-call parsing (better nested-object support) and a
+  # `developer` role for agentic coding. ~20 GB on disk; pins easily
+  # alongside the mlx-community variant. Apache-2.0.
+  # https://huggingface.co/unsloth/Qwen3.6-35B-A3B-UD-MLX-4bit
+  - served_model_name: "reasoning-ud (Qwen3.6-35B-A3B-UD-4bit)"
+    model_path: unsloth/Qwen3.6-35B-A3B-UD-MLX-4bit
+    model_type: lm
+    enable_auto_tool_choice: true
+    tool_call_parser: qwen3_moe
+    reasoning_parser: qwen3_5
+
   # Embedding endpoint that replaces the (now removed) Ollama LaunchAgent
   # on :11434. 768-dim output, matches what mem0's pgvector store at
   # apps/postgres/ is provisioned for. Verified loading + serving via a
   # foreground smoke test before this entry was committed.
-  - served_model_name: mlx-community/nomicai-modernbert-embed-base-4bit
+  - served_model_name: "embedding (modernbert-embed-base-4bit)"
     model_path: mlx-community/nomicai-modernbert-embed-base-4bit
     model_type: embeddings

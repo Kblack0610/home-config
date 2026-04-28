@@ -14,9 +14,14 @@ data:
     # mlx_models in the role's defaults gains an entry; api_base is
     # always 192.168.1.4:8090/v1.
     model_list:
-      - model_name: mlx-community/Qwen3-Coder-Next-4bit
+      # Naming: `<category> (<Model-Name>)` — category prefix lets agents
+      # route by purpose (code/reasoning/smart/embedding); the parens'd
+      # model name shows what's actually serving so we can compare
+      # variants when testing. The `model:` field passes the same string
+      # through to mlx-server as `served_model_name`.
+      - model_name: "code (Qwen3-Coder-Next-4bit)"
         litellm_params:
-          model: openai/mlx-community/Qwen3-Coder-Next-4bit
+          model: "openai/code (Qwen3-Coder-Next-4bit)"
           api_base: http://192.168.1.4:8090/v1
           stream: true
           api_key: "mlx"
@@ -27,9 +32,9 @@ data:
       # on_demand in mlx-server (390 GB cannot be pinned alongside the
       # other models on the 512 GB box); first request after eviction
       # pays a 5–10 min cold-load. timeout bumped accordingly.
-      - model_name: mlx-community/GLM-5-4bit
+      - model_name: "smart (GLM-5-4bit)"
         litellm_params:
-          model: openai/mlx-community/GLM-5-4bit
+          model: "openai/smart (GLM-5-4bit)"
           api_base: http://192.168.1.4:8090/v1
           stream: true
           api_key: "mlx"
@@ -37,11 +42,22 @@ data:
         model_info:
           supports_function_calling: true
 
-      # Reasoning slot — Qwen3.6 with native thinking-budget control.
-      # Replaces the older DeepSeek-R1-Distill-Qwen-32B.
-      - model_name: mlx-community/Qwen3.6-35B-A3B-4bit
+      # Reasoning slot — Qwen3.6 mlx-community quant, thinking model.
+      - model_name: "reasoning (Qwen3.6-35B-A3B-4bit)"
         litellm_params:
-          model: openai/mlx-community/Qwen3.6-35B-A3B-4bit
+          model: "openai/reasoning (Qwen3.6-35B-A3B-4bit)"
+          api_base: http://192.168.1.4:8090/v1
+          stream: true
+          api_key: "mlx"
+        model_info:
+          supports_function_calling: true
+
+      # Reasoning slot — Unsloth Dynamic alternative for A/B testing.
+      # Same Qwen3.6-35B-A3B base, Unsloth's UD quant has improved
+      # tool-call parsing for nested objects.
+      - model_name: "reasoning-ud (Qwen3.6-35B-A3B-UD-4bit)"
+        litellm_params:
+          model: "openai/reasoning-ud (Qwen3.6-35B-A3B-UD-4bit)"
           api_base: http://192.168.1.4:8090/v1
           stream: true
           api_key: "mlx"
@@ -65,9 +81,9 @@ data:
       # Pydantic validator rejects null encoding_format (LiteLLM sends
       # null by default; mlx-openai-server expects literal "float" or
       # "base64").
-      - model_name: nomicai-modernbert-embed-base-4bit
+      - model_name: "embedding (modernbert-embed-base-4bit)"
         litellm_params:
-          model: openai/mlx-community/nomicai-modernbert-embed-base-4bit
+          model: "openai/embedding (modernbert-embed-base-4bit)"
           api_base: http://192.168.1.4:8090/v1
           api_key: "mlx"
           encoding_format: "float"

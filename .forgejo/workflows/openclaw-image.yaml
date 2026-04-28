@@ -16,6 +16,10 @@ jobs:
     runs-on: docker
     container:
       image: docker:27
+    env:
+      # The runner's DinD sidecar exposes the docker daemon on localhost:2375
+      # (apps/forgejo/runner-config-cm.yaml: `docker_host: tcp://localhost:2375`).
+      DOCKER_HOST: tcp://localhost:2375
     steps:
       - name: Install build deps
         run: apk add --no-cache git nodejs

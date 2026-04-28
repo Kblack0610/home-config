@@ -19,6 +19,8 @@ spec:
     spec:
       securityContext:
         fsGroup: 1000
+      imagePullSecrets:
+        - name: forgejo-registry
       initContainers:
         - name: bootstrap-config
           image: busybox:1.36.1

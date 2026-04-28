@@ -7,8 +7,14 @@ resources:
   - namespace.yaml
   - configmap.yaml
   - secret.yaml
+  - registry-secret.yaml
   - pvc.yaml
   - deployment.yaml
   - service.yaml
   - ingress.yaml
+
+images:
+  - name: ghcr.io/openclaw/openclaw
+    newName: git.kblab.me/kblack0610/openclaw
+    newTag: latest
 

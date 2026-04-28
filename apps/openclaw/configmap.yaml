@@ -212,10 +212,13 @@ data:
        file paths, repeating questions, contradicting earlier statements),
        say so and write a short "Context refresh" summary covering the goal,
        what's done, what's left, and the active constraints. Then continue.
-    5. **Use MCP servers, do not reinvent.** `filesystem` is wired in (workspace
-       read/write/list). Prefer it over shelling out for the same capability.
-       `git` and `fetch` MCP servers are not yet wired (their reference
-       implementations require `uvx` which isn't in the openclaw image — TODO).
+    5. **Tool preference order.** Native OpenClaw tools (`read`, `write`,
+       `bash`, `browser`) > skills (`openclaw skills list` for what's ready,
+       includes `coding-agent`, `github`, `gh-issues`, `session-logs`, `tmux`,
+       `browser-automation`, etc.) > MCP servers. Reach for MCPs only when
+       nothing else covers the need. The `filesystem` MCP is currently wired
+       as a fallback; after `coding-agent` lands it likely becomes redundant
+       with the native bash/read/write tools.
 
     ## Known limits
 

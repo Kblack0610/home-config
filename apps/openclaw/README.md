@@ -13,10 +13,12 @@ The ingress is restricted to RFC1918 and loopback source ranges via the shared `
 | `kustomization.yaml` | Reconciles the namespace, config, secret, storage, app, service, and ingress |
 | `configmap.yaml` | Gateway config and seeded workspace `AGENTS.md` |
 | `secret.yaml` | SOPS-encrypted gateway token for Control UI auth |
+| `registry-secret.yaml` | SOPS-encrypted pull credentials for `git.kblab.me` (overlay image) |
 | `pvc.yaml` | Persistent volume for OpenClaw state |
 | `deployment.yaml` | OpenClaw gateway workload |
 | `service.yaml` | ClusterIP service on port `18789` |
 | `ingress.yaml` | TLS ingress for `openclaw.kblab.me` |
+| `Dockerfile` | Custom image overlay (`gh`, `jq`, `rg`, `tmux`, `opencode`) on top of `ghcr.io/openclaw/openclaw:latest` to unlock bundled skills. Built by `.forgejo/workflows/openclaw-image.yaml` and pushed to `git.kblab.me/kblack0610/openclaw:latest`. |
 
 ## Verify
 

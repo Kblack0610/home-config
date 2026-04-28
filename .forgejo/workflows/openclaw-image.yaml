@@ -1,0 +1,42 @@
+name: openclaw-image
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [master]
+    paths:
+      - apps/openclaw/Dockerfile
+      - .forgejo/workflows/openclaw-image.yaml
+  schedule:
+    # Sunday 07:00 UTC — pick up upstream `:latest` digest changes weekly.
+    - cron: '0 7 * * 0'
+
+jobs:
+  build:
+    runs-on: docker
+    container:
+      image: docker:27
+    steps:
+      - name: Install build deps
+        run: apk add --no-cache git nodejs
+
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Log in to git.kblab.me registry
+        run: |
+          echo "${{ secrets.GITHUB_TOKEN }}" \
+            | docker login git.kblab.me -u "${{ github.actor }}" --password-stdin
+
+      - name: Build and push
+        run: |
+          set -eu
+          SHORT_SHA="$(echo "${{ github.sha }}" | cut -c1-7)"
+          DATE="$(date -u +%Y%m%d)"
+          IMAGE=git.kblab.me/kblack0610/openclaw
+          docker buildx create --use --name overlay-builder || true
+          docker buildx build apps/openclaw \
+            --tag "$IMAGE:latest" \
+            --tag "$IMAGE:sha-$SHORT_SHA" \
+            --tag "$IMAGE:$DATE" \
+            --push

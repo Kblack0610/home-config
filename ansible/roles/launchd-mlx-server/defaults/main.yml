@@ -55,33 +55,60 @@ mlx_log_level: INFO
 # configmap.yaml `model:` field). Keep it in sync.
 #
 # Memory budget on mac-studio M3 Ultra (512 GB):
-#   Qwen3-Coder-Next-4bit       ~45 GB
-#   Qwen3-235B-A22B-4bit-DWQ   ~133 GB
-#   DeepSeek-R1-Distill-32B     ~20 GB
-#   modernbert-embed-base        ~250 MB
-#                              --------
-#                              ~198 GB resident, ~314 GB headroom
+#   Pinned (always resident):
+#     Qwen3-Coder-Next-4bit         ~45 GB   (code slot)
+#     Qwen3.6-35B-A3B-4bit          ~20 GB   (reasoning slot)
+#     GLM-4.6V-Flash-4bit            ~7 GB   (vision slot)
+#     modernbert-embed-base-4bit  ~250 MB    (embedding slot)
+#                                  --------
+#                                  ~72 GB pinned, ~440 GB headroom for KV
+#                                  cache + OS + GitHub Actions runner
 #
-# Models DEFERRED until weights finish downloading (HF rate limits
-# unauthenticated requests):
-#   - mlx-community/Qwen3.6-35B-A3B-4bit (download stalled, 2/4 shards)
-#   - mlx-community/GLM-5-4bit (~199 GB; GLM-5.1 has no public 4-bit
-#     conversion yet — only bf16 at ~1.5 TB)
-#   - mlx-community/GLM-4.6V-Flash-4bit (vision; not yet downloaded)
-# Add them back here when their weights are local AND mlx-openai-server
-# is verified loading them.
+#   on_demand (loaded on first request, evicted after idle timeout):
+#     GLM-5-4bit                  ~390 GB   (smart slot, flagship)
+#                                  Z.ai 2026-02-11 release. Cannot pin
+#                                  alongside the others — would leave
+#                                  only ~50 GB for KV/OS, which crashes
+#                                  under load. Cold-load takes ~5–10 min
+#                                  on first call after eviction; warm
+#                                  inference is full-speed afterward.
+#
+# Why these specific picks:
+#   - Coder (kept Qwen3-Coder-Next-4bit): hybrid attention + MoE w/ 3 B
+#     active params, fastest-path coder; no need to upgrade.
+#   - Smart (GLM-5-4bit): Z.ai's 2026-02 flagship, MIT-licensed, 200K
+#     context, #1 on Artificial Analysis among open weights. 4-bit quant
+#     of the 744 B-param MoE; GLM-5.1 has no public 4-bit MLX conversion
+#     yet (only bf16 at ~1.5 TB).
+#   - Reasoning (Qwen3.6-35B-A3B-4bit): unified reasoning + native
+#     thinking-budget control; replaces the Jan-2025 DeepSeek-R1-Distill.
+#   - Vision (GLM-4.6V-Flash-4bit): paired with the GLM family for
+#     consistent vision/text behaviour.
+#   - Embedding (modernbert-embed-base): nomic-family ModernBERT, 768
+#     dim — matches mem0's pgvector schema, confirmed loading via
+#     foreground smoke test before commit.
 mlx_models:
   - served_model_name: mlx-community/Qwen3-Coder-Next-4bit
     model_path: mlx-community/Qwen3-Coder-Next-4bit
     model_type: lm
 
-  - served_model_name: mlx-community/Qwen3-235B-A22B-4bit-DWQ
-    model_path: mlx-community/Qwen3-235B-A22B-4bit-DWQ
+  # Smart slot — on_demand to fit alongside the other models in 512 GB.
+  # First request after idle eviction pays a ~5–10 min cold-load; warm
+  # inference is full-speed. Increase on_demand_idle_timeout if your
+  # usage pattern has gaps longer than ~30 min between heavy queries.
+  - served_model_name: mlx-community/GLM-5-4bit
+    model_path: mlx-community/GLM-5-4bit
+    model_type: lm
+    on_demand: true
+    on_demand_idle_timeout: 1800  # 30 min
+
+  - served_model_name: mlx-community/Qwen3.6-35B-A3B-4bit
+    model_path: mlx-community/Qwen3.6-35B-A3B-4bit
     model_type: lm
 
-  - served_model_name: mlx-community/DeepSeek-R1-Distill-Qwen-32B-MLX-4Bit
-    model_path: mlx-community/DeepSeek-R1-Distill-Qwen-32B-MLX-4Bit
-    model_type: lm
+  - served_model_name: mlx-community/GLM-4.6V-Flash-4bit
+    model_path: mlx-community/GLM-4.6V-Flash-4bit
+    model_type: multimodal
 
   # Embedding endpoint that replaces the (now removed) Ollama LaunchAgent
   # on :11434. 768-dim output, matches what mem0's pgvector store at

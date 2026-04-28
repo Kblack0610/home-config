@@ -51,6 +51,29 @@ spec:
         - name: mem0
           image: git.kblab.me/kblack0610/mem0-server:ece7ff6-libpq
           imagePullPolicy: IfNotPresent
+          # Patch upstream mem0 v2.0.1 pgvector ranking bug before launching
+          # uvicorn. pgvector.search() returns cosine distance as `score`,
+          # but score_and_rank() treats `score` as similarity (sorts
+          # reverse=True), so the LEAST-similar memories rank first. Convert
+          # distance→similarity (`1.0 - r[1]`). Same fix the TypeScript SDK
+          # already received in upstream PR #4944; the Python equivalent is
+          # not yet upstream. Drop this command override + restore the
+          # image's default CMD once the Python fix lands and we bump the
+          # image tag.
+          # The sed range `/ORDER BY distance/,/return \[OutputData/` scopes
+          # the substitution to search() only, leaving keyword_search()'s
+          # ts_rank score (already-similarity) untouched. The grep gate
+          # fails the container if the patch silently misses (e.g., upstream
+          # rewrote the line) instead of running with broken ranking.
+          command: ["/bin/sh", "-c"]
+          args:
+            - |
+              set -e
+              F=/usr/local/lib/python3.12/site-packages/mem0/vector_stores/pgvector.py
+              sed -i '/ORDER BY distance/,/return \[OutputData/{s/score=float(r\[1\])/score=float(1.0 - r[1])/}' "$F"
+              grep -q 'score=float(1.0 - r\[1\])' "$F" || { echo "ERROR: mem0 pgvector rank-fix patch did not apply — upstream may have changed pgvector.py" >&2; exit 1; }
+              echo "mem0 pgvector rank-fix patch applied"
+              exec uvicorn main:app --host 0.0.0.0 --port 8000
           securityContext:
             allowPrivilegeEscalation: false
             readOnlyRootFilesystem: false

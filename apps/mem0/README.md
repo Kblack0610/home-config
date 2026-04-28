@@ -104,6 +104,20 @@ After this deployment is healthy, the `~/.claude/skills/mem0-ops/SKILL.md` skill
 
 mem0's durable state is the Postgres data (vector store + app metadata) — backed up via the shared `apps/postgres/` (CronJob to be added). The `history.db` on this app's PVC is replaceable; not critical to back up.
 
+## Upstream patches applied at runtime
+
+The deployment's container `command:` wraps the upstream image's CMD with a
+single `sed` patch before launching uvicorn. The patches are visible in
+`deployment.yaml`; this section explains *why*.
+
+| # | Patch | Reason | Drop when |
+|---|-------|--------|-----------|
+| 1 | `pgvector.py` line 251: `score=float(r[1])` → `score=float(1.0 - r[1])` | mem0 v2.0.1's pgvector backend returns cosine **distance** as the `score` field, but `score_and_rank` (used by `/search`) treats `score` as similarity and sorts `reverse=True`. Without this fix, the LEAST-similar memories rank first — exact-text matches end up dead last. The TS SDK was fixed in upstream PR [#4944](https://github.com/mem0ai/mem0/pull/4944); the Python equivalent is not yet upstream. | A new image tag containing the Python equivalent of #4944 lands. Then drop `command:` + `args:` from `deployment.yaml`, restoring the image's default CMD. |
+
+The container fails fast (`grep -q ... || exit 1`) if a future image bump
+silently breaks the patch (e.g., upstream rewrites the line) — better than
+running with broken ranking.
+
 ## Switching auth on later
 
 When you want auth (e.g., adding more devices to the network, broader Tailscale exposure):

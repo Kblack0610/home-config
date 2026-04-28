@@ -19,14 +19,13 @@ data:
   CRAWLER_STORE_PDF: "false"
   MAX_ASSET_SIZE_MB: "50"
   TZ: America/New_York
-  # AI tagging routed via in-cluster LiteLLM (apps/litellm)
+  # AI tagging routed via in-cluster LiteLLM (apps/litellm). Model slot names
+  # must match apps/litellm/configmap.yaml model_list entries verbatim
+  # (spaces/parens included). INFERENCE_IMAGE_MODEL omitted: no vision route
+  # in LiteLLM yet — see apps/litellm/configmap.yaml lines 67-74 (mlx-vlm
+  # Stream(gpu,0) bug). Restore once a VLM model_list entry exists.
   OPENAI_BASE_URL: http://litellm.ai-gateway.svc.cluster.local:4000/v1
-  INFERENCE_TEXT_MODEL: gpt-4o-mini
-  INFERENCE_IMAGE_MODEL: gpt-4o-mini
-  EMBEDDING_TEXT_MODEL: text-embedding-3-small
-  # AI tagging is OFF until OPENAI_API_KEY is populated in secret.yaml.
-  # To enable: `sops edit apps/karakeep/secret.yaml` and add OPENAI_API_KEY
-  # (use the same LITELLM_MASTER_KEY value from ai-gateway/litellm-secrets),
-  # then flip the toggle below to "true".
-  INFERENCE_ENABLE_AUTO_TAGGING: "false"
-  INFERENCE_ENABLE_AUTO_SUMMARIZATION: "false"
+  INFERENCE_TEXT_MODEL: "code (Qwen3-Coder-Next-4bit)"
+  EMBEDDING_TEXT_MODEL: "embedding (modernbert-embed-base-4bit)"
+  INFERENCE_ENABLE_AUTO_TAGGING: "true"
+  INFERENCE_ENABLE_AUTO_SUMMARIZATION: "true"

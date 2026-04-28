@@ -38,11 +38,12 @@ jobs:
           SHORT_SHA="$(echo "${{ github.sha }}" | cut -c1-7)"
           DATE="$(date -u +%Y%m%d)"
           IMAGE=git.kblab.me/kblack0610/openclaw
-          # Plain `docker build` runs in the dind daemon directly. We avoided
-          # `docker buildx` because its child buildkit container lands on
-          # dind's bridge network and can't reach external apt/npm mirrors
-          # (apt-get update hangs inside the RUN). dind itself uses the
-          # runner pod's host network and resolves fine.
+          # Disable buildkit and use legacy builder. buildx (default in
+          # docker 27) spawns a buildkit child container on dind's bridge
+          # network with no outbound NAT, so apt-get inside RUN hangs.
+          # The legacy DOCKER_BUILDKIT=0 builder runs RUN containers on
+          # dind's default bridge which DOES NAT correctly.
+          export DOCKER_BUILDKIT=0
           docker build apps/openclaw \
             --tag "$IMAGE:latest" \
             --tag "$IMAGE:sha-$SHORT_SHA" \

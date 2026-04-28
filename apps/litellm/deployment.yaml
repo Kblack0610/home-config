@@ -20,6 +20,7 @@ spec:
       containers:
         - name: litellm
           image: ghcr.io/berriai/litellm:main-stable
+          imagePullPolicy: Always
           securityContext:
             allowPrivilegeEscalation: false
             readOnlyRootFilesystem: false

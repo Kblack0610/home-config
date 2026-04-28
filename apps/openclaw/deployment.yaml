@@ -48,7 +48,7 @@ spec:
       containers:
         - name: openclaw
           image: ghcr.io/openclaw/openclaw:latest
-          imagePullPolicy: IfNotPresent
+          imagePullPolicy: Always
           command:
             - openclaw
           args:

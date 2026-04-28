@@ -74,6 +74,14 @@ data:
           api_base: http://192.168.1.4:8090/v1
           api_key: "mlx"
           encoding_format: "float"
+          # Per-model drop_params overrides the global litellm_settings.drop_params
+          # for this entry's pre-validation chain. mem0's openai embedder always
+          # passes `dimensions` regardless of config; LiteLLM's text-embedding-3
+          # validator rejects it before the global drop_params runs.
+          # additional_drop_params explicitly drops the `dimensions` field
+          # before validation, letting the request reach mlx-openai-server.
+          drop_params: true
+          additional_drop_params: ["dimensions"]
         model_info:
           mode: embedding
 

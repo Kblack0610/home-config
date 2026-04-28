@@ -68,9 +68,10 @@ mlx_huggingface_token_path: "{{ ansible_env.HOME }}/.cache/huggingface/token"
 #     Qwen3-Coder-Next-4bit          ~45 GB  (code slot)
 #     Qwen3.6-35B-A3B-4bit (mlx)     ~20 GB  (reasoning slot, mlx-community)
 #     Qwen3.6-35B-A3B-UD-4bit (UD)   ~20 GB  (reasoning-ud, Unsloth Dynamic)
+#     Qwen3-4B-Instruct-2507-4bit     ~3 GB  (fast slot, latency-sensitive)
 #     modernbert-embed-base-4bit   ~250 MB   (embedding slot)
 #                                  --------
-#                                  ~85 GB pinned, ~427 GB headroom for KV
+#                                  ~88 GB pinned, ~424 GB headroom for KV
 #                                  cache + OS + GitHub Actions runner
 #
 #   on_demand (loaded on first request, evicted after idle timeout):
@@ -166,6 +167,19 @@ mlx_models:
     enable_auto_tool_choice: true
     tool_call_parser: qwen3_moe
     reasoning_parser: qwen3_5
+
+  # Fast slot — small dense Qwen3 4B Instruct (non-thinking, 2507 release)
+  # for latency-sensitive workloads where a frontier model is overkill.
+  # First consumer: apps/karakeep/ INFERENCE_TEXT_MODEL — bookmark tagging
+  # is a tiny extraction task, frontier-class models took ~10–15 s per
+  # bookmark and this drops it under a second. ~3 GB resident, pins
+  # trivially in the headroom. No tool/reasoning parsers — Karakeep uses
+  # plain chat completion; add parsers if a future consumer needs tool
+  # calls on this slot. Apache-2.0.
+  # https://huggingface.co/mlx-community/Qwen3-4B-Instruct-2507-4bit
+  - served_model_name: "fast (Qwen3-4B)"
+    model_path: mlx-community/Qwen3-4B-Instruct-2507-4bit
+    model_type: lm
 
   # Embedding endpoint that replaces the (now removed) Ollama LaunchAgent
   # on :11434. 768-dim output, matches what mem0's pgvector store at

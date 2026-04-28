@@ -73,6 +73,19 @@ data:
       # once the upstream fix lands or we move to mlx_vlm.server /
       # vllm-mlx / omlx as the VLM serving stack.
 
+      # Fast slot — small dense Qwen3 4B Instruct on the Mac Studio,
+      # for latency-sensitive workloads where a frontier model is
+      # overkill. First consumer: apps/karakeep/ INFERENCE_TEXT_MODEL
+      # (bookmark tagging — sub-second response vs ~10s on `code`).
+      # Pinned in mlx-server (ansible/roles/launchd-mlx-server/
+      # defaults/main.yml).
+      - model_name: "fast (Qwen3-4B)"
+        litellm_params:
+          model: "openai/fast (Qwen3-4B)"
+          api_base: http://192.168.1.4:8090/v1
+          stream: true
+          api_key: "mlx"
+
       # Embedding model used by apps/mem0/ for memory ingest + retrieval.
       # 768-dim output; mem0 writes vectors into the pgvector store at
       # apps/postgres/.

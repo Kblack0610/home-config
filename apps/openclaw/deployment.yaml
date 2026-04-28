@@ -34,8 +34,25 @@ spec:
             - |
               set -eu
               mkdir -p /data/workspace /data/logs
-              sed "s|\${LITELLM_API_KEY}|${LITELLM_API_KEY}|g" \
-                /bootstrap/openclaw.json > /data/openclaw.json
+              # Hash-gated reseed: only overwrite openclaw.json when the
+              # bootstrap source has actually changed. OpenClaw rewrites the
+              # file at runtime (adds plugins.entries.* / meta.lastTouchedAt),
+              # so an unconditional sed-overwrite on every restart kept
+              # generating openclaw.json.clobbered.<ts> files and wiping
+              # runtime-managed keys.
+              SRC_HASH=$(sha256sum /bootstrap/openclaw.json | awk '{print $1}')
+              APPLIED_HASH_FILE=/data/.openclaw-bootstrap-hash
+              APPLIED_HASH=""
+              [ -f "$APPLIED_HASH_FILE" ] && APPLIED_HASH=$(cat "$APPLIED_HASH_FILE")
+              if [ ! -f /data/openclaw.json ] || [ "$APPLIED_HASH" != "$SRC_HASH" ]; then
+                if [ -f /data/openclaw.json ]; then
+                  TS=$(date -u +%Y-%m-%dT%H-%M-%SZ)
+                  cp /data/openclaw.json /data/openclaw.json.bak-bootstrap-$TS
+                fi
+                sed "s|\${LITELLM_API_KEY}|${LITELLM_API_KEY}|g" \
+                  /bootstrap/openclaw.json > /data/openclaw.json
+                printf '%s' "$SRC_HASH" > "$APPLIED_HASH_FILE"
+              fi
               if [ ! -f /data/workspace/AGENTS.md ]; then
                 cp /bootstrap/AGENTS.md /data/workspace/AGENTS.md
               fi

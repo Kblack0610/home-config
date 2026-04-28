@@ -24,34 +24,42 @@ data:
             "api": "openai-completions",
             "models": [
               {
-                "id": "mlx-community/Qwen3-Coder-Next-4bit",
-                "name": "Qwen3 Coder Next 4bit (via LiteLLM)",
+                "id": "code (Qwen3-Coder-Next-4bit)",
+                "name": "code — Qwen3-Coder-Next 4bit",
                 "reasoning": false,
-                "input": ["text"],
+                "input": [
+                  "text"
+                ],
                 "contextWindow": 128000,
                 "maxTokens": 32768
               },
               {
-                "id": "mlx-community/Qwen3.6-35B-A3B-4bit",
-                "name": "Qwen3.6 35B A3B 4bit (via LiteLLM)",
+                "id": "reasoning (Qwen3.6-35B-A3B-4bit)",
+                "name": "reasoning — Qwen3.6-35B-A3B 4bit (mlx-community)",
                 "reasoning": true,
-                "input": ["text"],
+                "input": [
+                  "text"
+                ],
                 "contextWindow": 128000,
                 "maxTokens": 32768
               },
               {
-                "id": "mlx-community/GLM-5-4bit",
-                "name": "GLM-5 4bit (via LiteLLM)",
+                "id": "reasoning-ud (Qwen3.6-35B-A3B-UD-4bit)",
+                "name": "reasoning — Qwen3.6-35B-A3B-UD 4bit (Unsloth Dynamic)",
                 "reasoning": true,
-                "input": ["text"],
+                "input": [
+                  "text"
+                ],
                 "contextWindow": 128000,
                 "maxTokens": 32768
               },
               {
-                "id": "mlx-community/GLM-4.6V-Flash-4bit",
-                "name": "GLM-4.6V Flash 4bit Vision (via LiteLLM)",
-                "reasoning": false,
-                "input": ["text", "image"],
+                "id": "smart (GLM-5-4bit)",
+                "name": "smart — GLM-5 4bit (on-demand, ~5–10 min cold-load)",
+                "reasoning": true,
+                "input": [
+                  "text"
+                ],
                 "contextWindow": 128000,
                 "maxTokens": 32768
               }
@@ -59,27 +67,39 @@ data:
           }
         }
       },
+      "mcp": {
+        "servers": {
+          "filesystem": {
+            "command": "npx",
+            "args": [
+              "-y",
+              "@modelcontextprotocol/server-filesystem",
+              "/home/node/.openclaw/workspace"
+            ]
+          }
+        }
+      },
       "agents": {
         "defaults": {
           "models": {
-            "litellm/mlx-community/Qwen3-Coder-Next-4bit": {
+            "litellm/code (Qwen3-Coder-Next-4bit)": {
               "alias": "litellm-code"
             },
-            "litellm/mlx-community/Qwen3.6-35B-A3B-4bit": {
-              "alias": "litellm-smart"
-            },
-            "litellm/mlx-community/GLM-5-4bit": {
+            "litellm/reasoning (Qwen3.6-35B-A3B-4bit)": {
               "alias": "litellm-reasoning"
             },
-            "litellm/mlx-community/GLM-4.6V-Flash-4bit": {
-              "alias": "litellm-vision"
+            "litellm/reasoning-ud (Qwen3.6-35B-A3B-UD-4bit)": {
+              "alias": "litellm-reasoning-ud"
+            },
+            "litellm/smart (GLM-5-4bit)": {
+              "alias": "litellm-smart"
             }
           },
           "model": {
-            "primary": "litellm/mlx-community/Qwen3-Coder-Next-4bit",
+            "primary": "litellm/code (Qwen3-Coder-Next-4bit)",
             "fallbacks": [
-              "litellm/mlx-community/Qwen3.6-35B-A3B-4bit",
-              "litellm/mlx-community/GLM-5-4bit"
+              "litellm/reasoning (Qwen3.6-35B-A3B-4bit)",
+              "litellm/smart (GLM-5-4bit)"
             ]
           },
           "workspace": "~/.openclaw/workspace",
@@ -100,10 +120,10 @@ data:
             "name": "Home OpenClaw",
             "workspace": "~/.openclaw/workspace",
             "model": {
-              "primary": "litellm/mlx-community/Qwen3-Coder-Next-4bit",
+              "primary": "litellm/code (Qwen3-Coder-Next-4bit)",
               "fallbacks": [
-                "litellm/mlx-community/Qwen3.6-35B-A3B-4bit",
-                "litellm/mlx-community/GLM-5-4bit"
+                "litellm/reasoning (Qwen3.6-35B-A3B-4bit)",
+                "litellm/smart (GLM-5-4bit)"
               ]
             }
           }
@@ -143,6 +163,13 @@ data:
             "https://openclaw.kblab.me"
           ]
         }
+      },
+      "plugins": {
+        "entries": {
+          "litellm": {
+            "enabled": true
+          }
+        }
       }
     }
   AGENTS.md: |
@@ -150,11 +177,48 @@ data:
 
     This OpenClaw instance runs on the `home-k3s` cluster for LAN-only access at `openclaw.kblab.me`.
 
-    All inference is routed through the in-cluster LiteLLM gateway, which proxies to the MLX backends on the Mac Studio:
-    - `litellm-code` for coding tasks (Qwen3-Coder-Next-4bit) — default primary
-    - `litellm-smart` for general reasoning (Qwen3.6-35B-A3B-4bit)
-    - `litellm-reasoning` for explicit deep reasoning (GLM-5-4bit)
-    - `litellm-vision` for image+text inputs (GLM-4.6V-Flash-4bit)
+    All inference is routed through the in-cluster LiteLLM gateway, which proxies to the single mlx-server on Mac Studio. Aliases follow the
+    `category (Model-Name)` naming convention so the model is visible in the route name:
+    - `litellm-code` → `code (Qwen3-Coder-Next-4bit)` — default primary, agentic coding + tool calls
+    - `litellm-reasoning` → `reasoning (Qwen3.6-35B-A3B-4bit)` — mlx-community quant, thinking model
+    - `litellm-reasoning-ud` → `reasoning-ud (Qwen3.6-35B-A3B-UD-4bit)` — Unsloth Dynamic alternative for A/B testing
+    - `litellm-smart` → `smart (GLM-5-4bit)` — Z.ai flagship 744B, on-demand (cold-loads ~5–10 min on first call)
+
+    Vision-input slot is currently parked — mlx-openai-server's multimodal handler hits a GPU-thread bug.
 
     Treat this workspace as durable cluster state. Avoid destructive changes unless explicitly requested.
+
+    ## Operating loop (self-healing on long sessions)
+
+    Local MLX models lose coherence past ~32–64k effective context even when the
+    advertised window is 128k. Run the loop below to stay productive across
+    long sessions:
+
+    1. **Plan before you build.** First turn on a non-trivial task: write a 3–7
+       step plan and the expected verification command. No edits until the plan
+       is on the table.
+    2. **Verify after every edit batch.** After each tool-call run that wrote
+       or changed files, immediately invoke the smallest credible check
+       (compile, lint, unit test, `kubectl --dry-run`, schema validate). Treat
+       the check output as part of the next turn's input, not as decoration.
+    3. **Retry on tool errors before escalating.** If a tool call returns a
+       parse / argument / shell error, retry once with corrected inputs in the
+       same turn. If it fails twice, stop and ask, do not loop.
+    4. **Compact loudly.** When you notice your own context drifting (forgetting
+       file paths, repeating questions, contradicting earlier statements),
+       say so and write a short "Context refresh" summary covering the goal,
+       what's done, what's left, and the active constraints. Then continue.
+    5. **Use MCP servers, do not reinvent.** `filesystem` is wired in (workspace
+       read/write/list). Prefer it over shelling out for the same capability.
+       `git` and `fetch` MCP servers are not yet wired (their reference
+       implementations require `uvx` which isn't in the openclaw image — TODO).
+
+    ## Known limits
+
+    - One mlx-server endpoint serves all models, so parallel sub-agent fan-out
+      serializes. Plan sequentially.
+    - GLM-5 cold-load is 5–10 minutes on first call after idle. Don't time out.
+    - Tool-call format quirks on Qwen3-Coder-Next: if a tool result comes back
+      malformed, restate the tool args explicitly in the next turn instead of
+      retrying the same call.
 

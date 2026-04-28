@@ -40,19 +40,11 @@ spec:
                 cp /bootstrap/AGENTS.md /data/workspace/AGENTS.md
               fi
               chown -R 1000:1000 /data
-              cp /codex-seed/auth.json /codex-home/auth.json
-              chmod 600 /codex-home/auth.json
-              chown 1000:1000 /codex-home/auth.json
           volumeMounts:
             - name: data
               mountPath: /data
             - name: bootstrap
               mountPath: /bootstrap
-            - name: codex-seed
-              mountPath: /codex-seed
-              readOnly: true
-            - name: codex-home
-              mountPath: /codex-home
       containers:
         - name: openclaw
           image: ghcr.io/openclaw/openclaw:latest
@@ -88,8 +80,6 @@ spec:
           volumeMounts:
             - name: data
               mountPath: /home/node/.openclaw
-            - name: codex-home
-              mountPath: /home/node/.codex
           resources:
             requests:
               cpu: "250m"
@@ -114,10 +104,4 @@ spec:
         - name: bootstrap
           configMap:
             name: openclaw-config
-        - name: codex-seed
-          secret:
-            secretName: openclaw-codex-auth
-            defaultMode: 0400
-        - name: codex-home
-          emptyDir: {}
 

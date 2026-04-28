@@ -18,69 +18,6 @@ data:
       "models": {
         "mode": "merge",
         "providers": {
-          "mlx-code": {
-            "baseUrl": "http://192.168.1.4:8080/v1",
-            "apiKey": "local",
-            "api": "openai-completions",
-            "models": [
-              {
-                "id": "mlx-community/Qwen3-Coder-Next-4bit",
-                "name": "Qwen3 Coder Next 4bit",
-                "reasoning": false,
-                "input": ["text"],
-                "cost": {
-                  "input": 0,
-                  "output": 0,
-                  "cacheRead": 0,
-                  "cacheWrite": 0
-                },
-                "contextWindow": 128000,
-                "maxTokens": 32768
-              }
-            ]
-          },
-          "mlx-smart": {
-            "baseUrl": "http://192.168.1.4:8081/v1",
-            "apiKey": "local",
-            "api": "openai-completions",
-            "models": [
-              {
-                "id": "mlx-community/Qwen3-235B-A22B-4bit-DWQ",
-                "name": "Qwen3 235B A22B 4bit DWQ",
-                "reasoning": true,
-                "input": ["text"],
-                "cost": {
-                  "input": 0,
-                  "output": 0,
-                  "cacheRead": 0,
-                  "cacheWrite": 0
-                },
-                "contextWindow": 128000,
-                "maxTokens": 32768
-              }
-            ]
-          },
-          "mlx-reasoning": {
-            "baseUrl": "http://192.168.1.4:8082/v1",
-            "apiKey": "local",
-            "api": "openai-completions",
-            "models": [
-              {
-                "id": "mlx-community/DeepSeek-R1-Distill-Qwen-32B-MLX-4Bit",
-                "name": "DeepSeek R1 Distill Qwen 32B MLX 4Bit",
-                "reasoning": true,
-                "input": ["text"],
-                "cost": {
-                  "input": 0,
-                  "output": 0,
-                  "cacheRead": 0,
-                  "cacheWrite": 0
-                },
-                "contextWindow": 64000,
-                "maxTokens": 16384
-              }
-            ]
-          },
           "litellm": {
             "baseUrl": "http://litellm.ai-gateway.svc.cluster.local:4000/v1",
             "apiKey": "${LITELLM_API_KEY}",
@@ -95,18 +32,26 @@ data:
                 "maxTokens": 32768
               },
               {
-                "id": "mlx-community/Qwen3-235B-A22B-4bit-DWQ",
-                "name": "Qwen3 235B A22B 4bit DWQ (via LiteLLM)",
+                "id": "mlx-community/Qwen3.6-35B-A3B-4bit",
+                "name": "Qwen3.6 35B A3B 4bit (via LiteLLM)",
                 "reasoning": true,
                 "input": ["text"],
                 "contextWindow": 128000,
                 "maxTokens": 32768
               },
               {
-                "id": "mlx-community/DeepSeek-R1-Distill-Qwen-32B-MLX-4Bit",
-                "name": "DeepSeek R1 Distill Qwen 32B 4bit (via LiteLLM)",
+                "id": "mlx-community/GLM-5-4bit",
+                "name": "GLM-5 4bit (via LiteLLM)",
                 "reasoning": true,
                 "input": ["text"],
+                "contextWindow": 128000,
+                "maxTokens": 32768
+              },
+              {
+                "id": "mlx-community/GLM-4.6V-Flash-4bit",
+                "name": "GLM-4.6V Flash 4bit Vision (via LiteLLM)",
+                "reasoning": false,
+                "input": ["text", "image"],
                 "contextWindow": 128000,
                 "maxTokens": 32768
               }
@@ -117,51 +62,24 @@ data:
       "agents": {
         "defaults": {
           "models": {
-            "mlx-code/mlx-community/Qwen3-Coder-Next-4bit": {
-              "alias": "mlx-code"
-            },
-            "mlx-smart/mlx-community/Qwen3-235B-A22B-4bit-DWQ": {
-              "alias": "mlx-smart"
-            },
-            "mlx-reasoning/mlx-community/DeepSeek-R1-Distill-Qwen-32B-MLX-4Bit": {
-              "alias": "mlx-reasoning"
-            },
             "litellm/mlx-community/Qwen3-Coder-Next-4bit": {
               "alias": "litellm-code"
             },
-            "litellm/mlx-community/Qwen3-235B-A22B-4bit-DWQ": {
+            "litellm/mlx-community/Qwen3.6-35B-A3B-4bit": {
               "alias": "litellm-smart"
             },
-            "litellm/mlx-community/DeepSeek-R1-Distill-Qwen-32B-MLX-4Bit": {
+            "litellm/mlx-community/GLM-5-4bit": {
               "alias": "litellm-reasoning"
             },
-            "openai-codex/gpt-5.2-codex": {
-              "alias": "codex"
-            },
-            "openai-codex/gpt-5.4": {
-              "alias": "codex-latest"
-            },
-            "openai-codex/gpt-5.4-mini": {
-              "alias": "codex-mini-latest"
-            },
-            "openai-codex/gpt-5.3-codex": {
-              "alias": "codex-5.3"
-            },
-            "openai-codex/gpt-5.3-codex-spark": {
-              "alias": "codex-spark"
-            },
-            "openai-codex/gpt-5.1-codex-max": {
-              "alias": "codex-max"
-            },
-            "openai-codex/gpt-5.1-codex-mini": {
-              "alias": "codex-mini"
+            "litellm/mlx-community/GLM-4.6V-Flash-4bit": {
+              "alias": "litellm-vision"
             }
           },
           "model": {
-            "primary": "openai-codex/gpt-5.2-codex",
+            "primary": "litellm/mlx-community/Qwen3-Coder-Next-4bit",
             "fallbacks": [
-              "mlx-smart/mlx-community/Qwen3-235B-A22B-4bit-DWQ",
-              "litellm/smart"
+              "litellm/mlx-community/Qwen3.6-35B-A3B-4bit",
+              "litellm/mlx-community/GLM-5-4bit"
             ]
           },
           "workspace": "~/.openclaw/workspace",
@@ -182,9 +100,10 @@ data:
             "name": "Home OpenClaw",
             "workspace": "~/.openclaw/workspace",
             "model": {
-              "primary": "mlx-smart/mlx-community/Qwen3-235B-A22B-4bit-DWQ",
+              "primary": "litellm/mlx-community/Qwen3-Coder-Next-4bit",
               "fallbacks": [
-                "mlx-code/mlx-community/Qwen3-Coder-Next-4bit"
+                "litellm/mlx-community/Qwen3.6-35B-A3B-4bit",
+                "litellm/mlx-community/GLM-5-4bit"
               ]
             }
           }
@@ -231,10 +150,11 @@ data:
 
     This OpenClaw instance runs on the `home-k3s` cluster for LAN-only access at `openclaw.kblab.me`.
 
-    Prefer the local MLX-backed providers on the Mac Studio for inference:
-    - `smart` for general reasoning
-    - `code` for coding tasks
-    - `reasoning` when explicit deep reasoning is needed
+    All inference is routed through the in-cluster LiteLLM gateway, which proxies to the MLX backends on the Mac Studio:
+    - `litellm-code` for coding tasks (Qwen3-Coder-Next-4bit) — default primary
+    - `litellm-smart` for general reasoning (Qwen3.6-35B-A3B-4bit)
+    - `litellm-reasoning` for explicit deep reasoning (GLM-5-4bit)
+    - `litellm-vision` for image+text inputs (GLM-4.6V-Flash-4bit)
 
     Treat this workspace as durable cluster state. Avoid destructive changes unless explicitly requested.
 

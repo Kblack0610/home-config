@@ -7,7 +7,6 @@ resources:
   - namespace.yaml
   - configmap.yaml
   - secret.yaml
-  - codex-auth-secret.yaml
   - pvc.yaml
   - deployment.yaml
   - service.yaml

@@ -2,7 +2,7 @@
 
 OpenClaw gateway deployment in the `openclaw` namespace, exposed internally through Traefik at `openclaw.kblab.me`.
 
-The gateway keeps its durable state on a PVC and uses the same MLX-backed model endpoints as the local workstation setup on the Mac Studio (`192.168.1.4`).
+The gateway keeps its durable state on a PVC and routes all inference through the in-cluster LiteLLM gateway (`litellm.ai-gateway.svc.cluster.local:4000`), which fronts the MLX backends on the Mac Studio (`192.168.1.4`).
 
 The ingress is restricted to RFC1918 and loopback source ranges via the shared `monitoring/local-network-only` Traefik middleware.
 

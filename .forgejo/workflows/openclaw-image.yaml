@@ -29,7 +29,10 @@ jobs:
 
       - name: Log in to git.kblab.me registry
         run: |
-          echo "${{ secrets.GITHUB_TOKEN }}" \
+          # The auto-injected GITHUB_TOKEN lacks `write:package` scope, so
+          # docker push returns "unauthorized: reqPackageAccess". Use the
+          # repo-scoped REGISTRY_TOKEN secret (user PAT with package write).
+          echo "${{ secrets.REGISTRY_TOKEN }}" \
             | docker login git.kblab.me -u "${{ github.actor }}" --password-stdin
 
       - name: Build and push

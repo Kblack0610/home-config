@@ -57,6 +57,11 @@ spec:
           image: docker:27-dind
           securityContext:
             privileged: true
+          # Allow push to the in-cluster Forgejo registry without TLS,
+          # so workflows can bypass Traefik's per-layer ingress timeout
+          # on multi-GB image pushes (see .forgejo/workflows/openclaw-image.yaml).
+          args:
+            - --insecure-registry=forgejo-http.forgejo.svc.cluster.local:3000
           env:
             - name: DOCKER_TLS_CERTDIR
               value: ""

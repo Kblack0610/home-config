@@ -27,30 +27,35 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Log in to git.kblab.me registry
+      - name: Log in to in-cluster Forgejo registry
         run: |
+          # Push direct to the in-cluster Forgejo service (skip Traefik).
+          # Public path through `git.kblab.me` 504s on multi-GB layer uploads
+          # at the ingress timeout. The in-cluster service is the same
+          # backend — image becomes available at the public name once stored.
           # The auto-injected GITHUB_TOKEN lacks `write:package` scope, so
-          # docker push returns "unauthorized: reqPackageAccess". Use the
-          # repo-scoped REGISTRY_TOKEN secret (user PAT with package write).
+          # we use REGISTRY_TOKEN (user PAT with package write).
           echo "${{ secrets.REGISTRY_TOKEN }}" \
-            | docker login git.kblab.me -u "${{ github.actor }}" --password-stdin
+            | docker login forgejo-http.forgejo.svc.cluster.local:3000 \
+                -u "${{ github.actor }}" --password-stdin
 
       - name: Build and push
         run: |
           set -eu
           SHORT_SHA="$(echo "${{ github.sha }}" | cut -c1-7)"
           DATE="$(date -u +%Y%m%d)"
-          IMAGE=git.kblab.me/kblack0610/openclaw
+          # Tag with the in-cluster registry name for pushing; the Forgejo
+          # registry indexes by `<owner>/<image>` regardless of hostname,
+          # so the image is also pullable as git.kblab.me/kblack0610/openclaw.
+          PUSH=forgejo-http.forgejo.svc.cluster.local:3000/kblack0610/openclaw
           # Disable buildkit and use legacy builder. buildx (default in
           # docker 27) spawns a buildkit child container on dind's bridge
           # network with no outbound NAT, so apt-get inside RUN hangs.
-          # The legacy DOCKER_BUILDKIT=0 builder runs RUN containers on
-          # dind's default bridge which DOES NAT correctly.
           export DOCKER_BUILDKIT=0
           docker build apps/openclaw \
-            --tag "$IMAGE:latest" \
-            --tag "$IMAGE:sha-$SHORT_SHA" \
-            --tag "$IMAGE:$DATE"
-          docker push "$IMAGE:latest"
-          docker push "$IMAGE:sha-$SHORT_SHA"
-          docker push "$IMAGE:$DATE"
+            --tag "$PUSH:latest" \
+            --tag "$PUSH:sha-$SHORT_SHA" \
+            --tag "$PUSH:$DATE"
+          docker push "$PUSH:latest"
+          docker push "$PUSH:sha-$SHORT_SHA"
+          docker push "$PUSH:$DATE"

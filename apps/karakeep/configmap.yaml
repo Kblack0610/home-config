@@ -25,7 +25,7 @@ data:
   # in LiteLLM yet — see apps/litellm/configmap.yaml lines 67-74 (mlx-vlm
   # Stream(gpu,0) bug). Restore once a VLM model_list entry exists.
   OPENAI_BASE_URL: http://litellm.ai-gateway.svc.cluster.local:4000/v1
-  INFERENCE_TEXT_MODEL: "code (Qwen3-Coder-Next-4bit)"
+  INFERENCE_TEXT_MODEL: "fast (Qwen3-4B)"
   EMBEDDING_TEXT_MODEL: "embedding (modernbert-embed-base-4bit)"
   INFERENCE_ENABLE_AUTO_TAGGING: "true"
   INFERENCE_ENABLE_AUTO_SUMMARIZATION: "true"

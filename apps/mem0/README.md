@@ -112,7 +112,7 @@ single `sed` patch before launching uvicorn. The patches are visible in
 
 | # | Patch | Reason | Drop when |
 |---|-------|--------|-----------|
-| 1 | `pgvector.py` line 251: `score=float(r[1])` → `score=float(1.0 - r[1])` | mem0 v2.0.1's pgvector backend returns cosine **distance** as the `score` field, but `score_and_rank` (used by `/search`) treats `score` as similarity and sorts `reverse=True`. Without this fix, the LEAST-similar memories rank first — exact-text matches end up dead last. The TS SDK was fixed in upstream PR [#4944](https://github.com/mem0ai/mem0/pull/4944); the Python equivalent is not yet upstream. | A new image tag containing the Python equivalent of #4944 lands. Then drop `command:` + `args:` from `deployment.yaml`, restoring the image's default CMD. |
+| 1 | `pgvector.py` line 251: `score=float(r[1])` → `score=float(1.0 - r[1])` | mem0 v2.0.1's pgvector backend returns cosine **distance** as the `score` field, but `score_and_rank` (used by `/search`) treats `score` as similarity and sorts `reverse=True`. Without this fix, the LEAST-similar memories rank first — exact-text matches end up dead last. The TS SDK was fixed in upstream PR [#4944](https://github.com/mem0ai/mem0/pull/4944); the Python equivalent is open as [#4994](https://github.com/mem0ai/mem0/pull/4994). | A new image tag containing #4994 lands. Then drop `command:` + `args:` from `deployment.yaml`, restoring the image's default CMD. |
 
 The container fails fast (`grep -q ... || exit 1`) if a future image bump
 silently breaks the patch (e.g., upstream rewrites the line) — better than

@@ -56,10 +56,9 @@ spec:
           # but score_and_rank() treats `score` as similarity (sorts
           # reverse=True), so the LEAST-similar memories rank first. Convert
           # distance→similarity (`1.0 - r[1]`). Same fix the TypeScript SDK
-          # already received in upstream PR #4944; the Python equivalent is
-          # not yet upstream. Drop this command override + restore the
-          # image's default CMD once the Python fix lands and we bump the
-          # image tag.
+          # already received in upstream PR #4944; Python equivalent is
+          # open as PR #4994. Drop this command override + restore the
+          # image's default CMD once #4994 lands and we bump the image tag.
           # The sed range `/ORDER BY distance/,/return \[OutputData/` scopes
           # the substitution to search() only, leaving keyword_search()'s
           # ts_rank score (already-similarity) untouched. The grep gate

@@ -42,26 +42,6 @@ data:
                 ],
                 "contextWindow": 128000,
                 "maxTokens": 32768
-              },
-              {
-                "id": "reasoning-ud (Qwen3.6-35B-A3B-UD-4bit)",
-                "name": "reasoning — Qwen3.6-35B-A3B-UD 4bit (Unsloth Dynamic)",
-                "reasoning": true,
-                "input": [
-                  "text"
-                ],
-                "contextWindow": 128000,
-                "maxTokens": 32768
-              },
-              {
-                "id": "smart (GLM-5-4bit)",
-                "name": "smart — GLM-5 4bit (on-demand, ~5–10 min cold-load)",
-                "reasoning": true,
-                "input": [
-                  "text"
-                ],
-                "contextWindow": 128000,
-                "maxTokens": 32768
               }
             ]
           }
@@ -87,19 +67,12 @@ data:
             },
             "litellm/reasoning (Qwen3.6-35B-A3B-4bit)": {
               "alias": "litellm-reasoning"
-            },
-            "litellm/reasoning-ud (Qwen3.6-35B-A3B-UD-4bit)": {
-              "alias": "litellm-reasoning-ud"
-            },
-            "litellm/smart (GLM-5-4bit)": {
-              "alias": "litellm-smart"
             }
           },
           "model": {
             "primary": "litellm/code (Qwen3-Coder-Next-4bit)",
             "fallbacks": [
-              "litellm/reasoning (Qwen3.6-35B-A3B-4bit)",
-              "litellm/smart (GLM-5-4bit)"
+              "litellm/reasoning (Qwen3.6-35B-A3B-4bit)"
             ]
           },
           "workspace": "~/.openclaw/workspace",
@@ -122,8 +95,7 @@ data:
             "model": {
               "primary": "litellm/code (Qwen3-Coder-Next-4bit)",
               "fallbacks": [
-                "litellm/reasoning (Qwen3.6-35B-A3B-4bit)",
-                "litellm/smart (GLM-5-4bit)"
+                "litellm/reasoning (Qwen3.6-35B-A3B-4bit)"
               ]
             }
           }
@@ -185,8 +157,8 @@ data:
     `category (Model-Name)` naming convention so the model is visible in the route name:
     - `litellm-code` → `code (Qwen3-Coder-Next-4bit)` — default primary, agentic coding + tool calls
     - `litellm-reasoning` → `reasoning (Qwen3.6-35B-A3B-4bit)` — mlx-community quant, thinking model
-    - `litellm-reasoning-ud` → `reasoning-ud (Qwen3.6-35B-A3B-UD-4bit)` — Unsloth Dynamic alternative for A/B testing
-    - `litellm-smart` → `smart (GLM-5-4bit)` — Z.ai flagship 744B, on-demand (cold-loads ~5–10 min on first call)
+    - `litellm-fast` → `fast (Qwen3-4B)` — small dense model, latency-sensitive workloads
+    - `litellm-embedding` → `embedding (modernbert-embed-base-4bit)` — 768-dim, mem0 / pgvector
 
     Vision-input slot is currently parked — mlx-openai-server's multimodal handler hits a GPU-thread bug.
 
@@ -224,7 +196,6 @@ data:
 
     - One mlx-server endpoint serves all models, so parallel sub-agent fan-out
       serializes. Plan sequentially.
-    - GLM-5 cold-load is 5–10 minutes on first call after idle. Don't time out.
     - Tool-call format quirks on Qwen3-Coder-Next: if a tool result comes back
       malformed, restate the tool args explicitly in the next turn instead of
       retrying the same call.

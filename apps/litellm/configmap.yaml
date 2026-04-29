@@ -28,36 +28,10 @@ data:
         model_info:
           supports_function_calling: true
 
-      # Smart slot — Z.ai's flagship 744 B-param MoE, MIT-licensed.
-      # on_demand in mlx-server (390 GB cannot be pinned alongside the
-      # other models on the 512 GB box); first request after eviction
-      # pays a 5–10 min cold-load. timeout bumped accordingly.
-      - model_name: "smart (GLM-5-4bit)"
-        litellm_params:
-          model: "openai/smart (GLM-5-4bit)"
-          api_base: http://192.168.1.4:8090/v1
-          stream: true
-          api_key: "mlx"
-          timeout: 1200
-        model_info:
-          supports_function_calling: true
-
       # Reasoning slot — Qwen3.6 mlx-community quant, thinking model.
       - model_name: "reasoning (Qwen3.6-35B-A3B-4bit)"
         litellm_params:
           model: "openai/reasoning (Qwen3.6-35B-A3B-4bit)"
-          api_base: http://192.168.1.4:8090/v1
-          stream: true
-          api_key: "mlx"
-        model_info:
-          supports_function_calling: true
-
-      # Reasoning slot — Unsloth Dynamic alternative for A/B testing.
-      # Same Qwen3.6-35B-A3B base, Unsloth's UD quant has improved
-      # tool-call parsing for nested objects.
-      - model_name: "reasoning-ud (Qwen3.6-35B-A3B-UD-4bit)"
-        litellm_params:
-          model: "openai/reasoning-ud (Qwen3.6-35B-A3B-UD-4bit)"
           api_base: http://192.168.1.4:8090/v1
           stream: true
           api_key: "mlx"

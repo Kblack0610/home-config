@@ -10,6 +10,7 @@ resources:
   # Applications (home-k3s cluster)
   - actual-budget
   - ansible-runner
+  - binks-api
   - comfyui
   - crowdsec
   - forgejo

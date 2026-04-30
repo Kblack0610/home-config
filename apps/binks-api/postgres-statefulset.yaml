@@ -1,0 +1,83 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: binks-postgres
+  namespace: binks-api
+spec:
+  clusterIP: None
+  selector:
+    app: binks-postgres
+  ports:
+    - name: pg
+      port: 5432
+      targetPort: 5432
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: binks-postgres
+  namespace: binks-api
+spec:
+  serviceName: binks-postgres
+  replicas: 1
+  selector:
+    matchLabels:
+      app: binks-postgres
+  template:
+    metadata:
+      labels:
+        app: binks-postgres
+    spec:
+      tolerations:
+        - key: node.cilium.io/agent-not-ready
+          operator: Exists
+          effect: NoSchedule
+      containers:
+        - name: postgres
+          image: postgres:15-alpine
+          ports:
+            - containerPort: 5432
+              name: pg
+          env:
+            - name: POSTGRES_DB
+              value: binks
+            - name: POSTGRES_USER
+              valueFrom:
+                secretKeyRef:
+                  name: binks-postgres-secret
+                  key: username
+            - name: POSTGRES_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: binks-postgres-secret
+                  key: password
+            - name: PGDATA
+              value: /var/lib/postgresql/data/pgdata
+          resources:
+            requests:
+              cpu: 50m
+              memory: 128Mi
+            limits:
+              cpu: 500m
+              memory: 512Mi
+          volumeMounts:
+            - name: data
+              mountPath: /var/lib/postgresql/data
+          readinessProbe:
+            exec:
+              command: ['sh', '-c', 'pg_isready -U "$POSTGRES_USER" -d "$POSTGRES_DB"']
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          livenessProbe:
+            exec:
+              command: ['sh', '-c', 'pg_isready -U "$POSTGRES_USER" -d "$POSTGRES_DB"']
+            initialDelaySeconds: 30
+            periodSeconds: 30
+  volumeClaimTemplates:
+    - metadata:
+        name: data
+      spec:
+        accessModes: ['ReadWriteOnce']
+        resources:
+          requests:
+            storage: 5Gi

@@ -6,6 +6,11 @@ metadata:
   labels:
     app.kubernetes.io/name: litellm-cost-control
     app.kubernetes.io/part-of: monitoring
+    # Required by the kube-prometheus-stack operator's ruleSelector
+    # (matchLabels: release=kube-prometheus-stack). Without this label
+    # the PrometheusRule resource exists in the cluster but Prometheus
+    # silently ignores it.
+    release: kube-prometheus-stack
 spec:
   groups:
     - name: litellm-cost-control.alerts

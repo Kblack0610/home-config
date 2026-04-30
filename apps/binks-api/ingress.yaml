@@ -29,7 +29,7 @@ metadata:
 spec:
   secretName: binks-next-kblab-me-tls
   issuerRef:
-    name: letsencrypt-prod
+    name: letsencrypt-dns
     kind: ClusterIssuer
   commonName: binks-next.kblab.me
   dnsNames:

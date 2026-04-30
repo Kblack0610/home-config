@@ -7,8 +7,12 @@ metadata:
     app.kubernetes.io/name: litellm
 spec:
   endpoints:
+    # Trailing slash on /metrics/ — LiteLLM mounts the prometheus_client
+    # ASGI app at the slash-form, so /metrics returns a 307 redirect
+    # and /metrics/ serves the body directly. Skipping the redirect
+    # halves request count on the scrape path.
     - port: http
-      path: /metrics
+      path: /metrics/
       interval: 30s
       scrapeTimeout: 10s
   selector:

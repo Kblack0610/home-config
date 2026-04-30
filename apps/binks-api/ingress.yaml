@@ -35,6 +35,8 @@ spec:
     - binks-next.kblab.me
 ---
 # Production binks.chat — SPA on /, API + WS on /api and /ws.
+# TLS is terminated by Cloudflare at the edge; the tunnel uses noTLSVerify
+# to talk to Traefik, so no cluster-side cert is needed for binks.chat.
 apiVersion: traefik.io/v1alpha1
 kind: IngressRoute
 metadata:
@@ -59,19 +61,3 @@ spec:
       services:
         - name: binks-chat
           port: 80
-  tls:
-    secretName: binks-chat-tls
----
-apiVersion: cert-manager.io/v1
-kind: Certificate
-metadata:
-  name: binks-chat
-  namespace: binks-api
-spec:
-  secretName: binks-chat-tls
-  issuerRef:
-    name: letsencrypt-dns
-    kind: ClusterIssuer
-  commonName: binks.chat
-  dnsNames:
-    - binks.chat

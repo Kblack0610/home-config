@@ -19,6 +19,12 @@ Rules:
 - Direct `kubectl apply` is only valid for initial Flux bootstrap, resources outside Flux's watch path (`infrastructure/`), or emergency recovery with Flux suspended.
 - See `docs/gitops.md` for the layer boundary and `docs/ansible.md` for the host-layer workflow.
 
+## Secrets & Vault
+
+- **ansible-vault password file**: `~/.ansible-vault-pass` on the workstation (mode 600, gitignored). Used by every `ansible-playbook` invocation against this repo. Set `ANSIBLE_VAULT_PASSWORD_FILE=$HOME/.ansible-vault-pass` in your shell, or pass `--vault-password-file ~/.ansible-vault-pass` per-run. Don't use `--ask-vault-pass` in this repo — the file already exists. Recovery if lost: `sops -d apps/ansible-runner/secret.yaml | grep ansible-vault-pass` (requires `~/.config/sops/age/keys.txt`).
+- **SOPS age key**: `~/.config/sops/age/keys.txt`. Decrypts every `*.sops.yaml` and the in-cluster ansible-runner Secret. Without it, `flux bootstrap` works but SOPS-encrypted Kustomizations fail to decrypt. Full key-rotation procedure in `docs/gitops.md`.
+- **Two SOPS / vault layers, don't confuse them**: SOPS protects in-cluster Secrets via `.sops.yaml` (Flux decrypts at apply time); ansible-vault protects host-OS secrets via `group_vars/<group>/vault.yml` (the workstation/runner decrypts at playbook run time). They share no keys — SOPS uses age, ansible-vault uses the password file. The ansible-runner CronJob bridges them: it stores the ansible-vault password as a SOPS-encrypted Secret so the in-cluster runner can decrypt host vaults at run time.
+
 ## OpenClaw: skills over MCPs
 
 When extending OpenClaw's tool surface, prefer skills (bundled, ClawHub-installed, or authored locally via `skill-creator`) over MCP servers. Skills are first-class in OpenClaw's runtime — bundled with the image, declarative `SKILL.md` prompts, composable with native tools (`read`, `write`, `bash`, `browser`), and discoverable via `openclaw skills`. Many skills only need a CLI binary in the image to become ready (see `apps/openclaw/Dockerfile`).

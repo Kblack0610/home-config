@@ -56,10 +56,14 @@ spec:
               readOnly: true
           resources:
             requests:
-              memory: "512Mi"
+              memory: "768Mi"
               cpu: "100m"
             limits:
-              memory: "1Gi"
+              # Postgres-backed mode adds the Prisma client, spend-tracker
+              # background loop, and budget rescheduler — all materially
+              # heavier than the sqlite path. 1Gi was OOMKilled on first
+              # boot post-DB-wire (exit 137 within ~45s of startup).
+              memory: "2Gi"
               cpu: "500m"
           livenessProbe:
             httpGet:

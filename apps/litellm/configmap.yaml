@@ -92,6 +92,13 @@ data:
     litellm_settings:
       drop_params: true
       request_timeout: 900
+      # Mounts /metrics on port 4000 (same as the API). LiteLLM's
+      # PrometheusLogger emits per-model RPS, latency histograms (p50-p99),
+      # error counters, and token counters — all labeled with `model`.
+      # Single-worker deployment (replicas: 1, no --num_workers), so no
+      # PROMETHEUS_MULTIPROC_DIR setup needed. Scraped by the in-namespace
+      # ServiceMonitor in this directory.
+      callbacks: ["prometheus"]
 
     general_settings:
       master_key: os.environ/LITELLM_MASTER_KEY

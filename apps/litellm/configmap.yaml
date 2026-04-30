@@ -85,6 +85,104 @@ data:
         model_info:
           mode: embedding
 
+      # Paid upstream models routed via Lazer
+      # (proxy.lazertechnologies.com). Naming: `premium (<lazer-model-id>)`
+      # so the prefix mirrors the local-vs-paid split in the user-facing
+      # model picker.
+      #
+      # Three layers of cost control on each entry, each covering a
+      # different failure mode:
+      #   - tpm/rpm:           runaway-loop / stuck-retry caps
+      #   - max_budget:        upstream-side absolute ceiling. Defense in
+      #                        depth: even if every key-level gate fails
+      #                        (master key leak, virtual key with bad
+      #                        allowlist, etc.), the upstream model itself
+      #                        rejects with budget_exceeded once the cap
+      #                        is hit. Sums to a $240/30d ceiling across
+      #                        all 6 paid models.
+      #   - per-virtual-key:   primary control, configured at key-create
+      #                        time via /key/generate (see README).
+      #
+      # Add more models from opencode.json's lazer.models by copying an
+      # entry below and changing the trailing model id + budget tier.
+      - model_name: "premium (claude-sonnet-4.6)"
+        litellm_params:
+          model: "openai/claude-sonnet-4.6"
+          api_base: https://proxy.lazertechnologies.com/v1
+          api_key: os.environ/LAZER_API_KEY
+          tpm: 100000
+          rpm: 60
+          max_budget: 50.00
+          budget_duration: 30d
+        model_info:
+          tags: ["paid", "lazer"]
+          supports_function_calling: true
+
+      - model_name: "premium (claude-opus-4.7)"
+        litellm_params:
+          model: "openai/claude-opus-4.7"
+          api_base: https://proxy.lazertechnologies.com/v1
+          api_key: os.environ/LAZER_API_KEY
+          tpm: 50000
+          rpm: 30
+          max_budget: 30.00
+          budget_duration: 30d
+        model_info:
+          tags: ["paid", "lazer"]
+          supports_function_calling: true
+
+      - model_name: "premium (gpt-5.4)"
+        litellm_params:
+          model: "openai/gpt-5.4"
+          api_base: https://proxy.lazertechnologies.com/v1
+          api_key: os.environ/LAZER_API_KEY
+          tpm: 100000
+          rpm: 60
+          max_budget: 50.00
+          budget_duration: 30d
+        model_info:
+          tags: ["paid", "lazer"]
+          supports_function_calling: true
+
+      - model_name: "premium (gpt-5.3-codex)"
+        litellm_params:
+          model: "openai/gpt-5.3-codex"
+          api_base: https://proxy.lazertechnologies.com/v1
+          api_key: os.environ/LAZER_API_KEY
+          tpm: 100000
+          rpm: 60
+          max_budget: 50.00
+          budget_duration: 30d
+        model_info:
+          tags: ["paid", "lazer"]
+          supports_function_calling: true
+
+      - model_name: "premium (gpt-5.4-mini)"
+        litellm_params:
+          model: "openai/gpt-5.4-mini"
+          api_base: https://proxy.lazertechnologies.com/v1
+          api_key: os.environ/LAZER_API_KEY
+          tpm: 200000
+          rpm: 120
+          max_budget: 30.00
+          budget_duration: 30d
+        model_info:
+          tags: ["paid", "lazer"]
+          supports_function_calling: true
+
+      - model_name: "premium (gemini-3.1-pro)"
+        litellm_params:
+          model: "openai/gemini-3.1-pro"
+          api_base: https://proxy.lazertechnologies.com/v1
+          api_key: os.environ/LAZER_API_KEY
+          tpm: 100000
+          rpm: 60
+          max_budget: 30.00
+          budget_duration: 30d
+        model_info:
+          tags: ["paid", "lazer"]
+          supports_function_calling: true
+
     router_settings:
       routing_strategy: "simple-shuffle"
       timeout: 900
@@ -102,3 +200,13 @@ data:
 
     general_settings:
       master_key: os.environ/LITELLM_MASTER_KEY
+      # Postgres-backed proxy state: virtual keys, per-key/per-model
+      # spend tracking, budgets. DATABASE_URL injected via litellm-db-secrets
+      # (apps/litellm/secret.sops.yaml). store_model_in_db: false keeps the
+      # model_list authoritative in this configmap (git-tracked) — DB only
+      # holds keys/spend/budgets. The rescheduler timings are LiteLLM's
+      # recommended values for the per-key budget reset background loop.
+      database_url: os.environ/DATABASE_URL
+      store_model_in_db: false
+      proxy_budget_rescheduler_min_time: 597
+      proxy_budget_rescheduler_max_time: 605

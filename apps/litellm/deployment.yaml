@@ -36,8 +36,15 @@ spec:
             - name: http
               containerPort: 4000
           envFrom:
+            # litellm-secrets is bootstrapped out-of-band (not in git) and
+            # holds LITELLM_MASTER_KEY. litellm-db-secrets is SOPS-managed
+            # via secret.sops.yaml in this directory and holds DATABASE_URL,
+            # LITELLM_SALT_KEY, UI_USERNAME/PASSWORD, LAZER_API_KEY,
+            # STORE_MODEL_IN_DB. Both are merged into the container env.
             - secretRef:
                 name: litellm-secrets
+            - secretRef:
+                name: litellm-db-secrets
           volumeMounts:
             - name: config
               mountPath: /etc/litellm/config.yaml

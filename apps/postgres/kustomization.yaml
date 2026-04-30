@@ -10,3 +10,4 @@ resources:
   - init-configmap.yaml
   - deployment.yaml
   - service.yaml
+  - litellm-db-bootstrap-job.yaml

@@ -8,6 +8,7 @@ LLM gateway deployment in the `ai-gateway` namespace, exposed through Traefik at
 |------|---------|
 | `kustomization.yaml` | Reconciles the namespace, app, service, ingress, and backup job |
 | `configmap.yaml` | LiteLLM config mounted into the container |
+| `secret.sops.yaml` | SOPS-encrypted `litellm-db-secrets`: DATABASE_URL, salt key, UI creds, Lazer key |
 | `deployment.yaml` | Main gateway workload and health checks |
 | `service.yaml` | Cluster service on port `4000` |
 | `ingress.yaml` | TLS ingress for `llm.kblab.me` |
@@ -15,11 +16,63 @@ LLM gateway deployment in the `ai-gateway` namespace, exposed through Traefik at
 | `backup-cronjob.yaml` | Daily local and NAS backup job |
 | `backup-nas-secret.yaml` | NAS SMB credentials for backup upload |
 
+The litellm tenant role + database in Postgres is provisioned by `apps/postgres/litellm-db-bootstrap-job.yaml` (idempotent psql Job in the `databases` namespace).
+
 ## Configuration and Secrets
 
-- Runtime secrets are loaded from `litellm-secrets` via `envFrom`.
+- `litellm-secrets` (out-of-band, holds `LITELLM_MASTER_KEY`) and `litellm-db-secrets` (SOPS, this directory) are both merged via `envFrom`.
 - Config is mounted from `litellm-config` to `/etc/litellm/config.yaml`.
-- Persistent data is stored on the `litellm-data` PVC and backed up daily.
+- Persistent state for keys/spend/budgets lives in Postgres (`postgres.databases.svc.cluster.local`); the `model_list` stays in `configmap.yaml` (`store_model_in_db: false`).
+
+## Virtual Keys (Cost & Rate Control)
+
+Every consumer of this gateway should hold a *scoped virtual key* — never `LITELLM_MASTER_KEY`. The master key creates/manages keys; runtime traffic uses the scoped keys.
+
+| Key alias | Allowed models | `max_budget` (30d) | `tpm` / `rpm` | Consumer |
+|---|---|---|---|---|
+| `karakeep-tagging` | `fast (Qwen3-4B)` | none (free upstream) | rpm 60 | `apps/karakeep/` |
+| `mem0-embeddings` | `embedding (modernbert-embed-base-4bit)`, `fast (Qwen3-4B)` | none (free upstream) | rpm 120 | `apps/mem0/` |
+| `openclaw-coding` | `code (...)`, `reasoning (...)`, `fast (...)` | none (free upstream) | tpm 100k | `apps/openclaw/` |
+| `opencode-default` | all free local + `premium (claude-sonnet-4.6)` | $50 | tpm 50k, rpm 30 | opencode default mode |
+| `opencode-premium` | all `premium (*)` | $150 | tpm 100k | opencode build/escalation mode |
+
+### Create a key
+
+The LiteLLM admin UI is reachable at `https://llm.kblab.me/ui/` (Tailscale-gated). Log in with `UI_USERNAME` / `UI_PASSWORD` from `litellm-db-secrets`. Or via API:
+
+```bash
+MASTER_KEY=$(kubectl -n ai-gateway get secret litellm-secrets \
+  -o jsonpath='{.data.LITELLM_MASTER_KEY}' | base64 -d)
+
+curl -sX POST https://llm.kblab.me/key/generate \
+  -H "Authorization: Bearer $MASTER_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "key_alias": "opencode-default",
+    "models": ["code (Qwen3-Coder-Next-4bit)", "fast (Qwen3-4B)", "reasoning (Qwen3.6-35B-A3B-4bit)", "premium (claude-sonnet-4.6)"],
+    "max_budget": 50.00,
+    "budget_duration": "30d",
+    "tpm_limit": 50000,
+    "rpm_limit": 30
+  }'
+```
+
+The response contains `"key": "sk-..."` — store this where the consumer can read it. After creation, rotate the consumer's `LITELLM_API_KEY` Secret to this value (or place it in shell env for opencode).
+
+### Inspect / retire
+
+```bash
+# inspect
+curl -s "https://llm.kblab.me/key/info?key=sk-..." -H "Authorization: Bearer $MASTER_KEY"
+
+# spend
+curl -s "https://llm.kblab.me/spend/logs?api_key=sk-..." -H "Authorization: Bearer $MASTER_KEY"
+
+# delete
+curl -sX POST https://llm.kblab.me/key/delete \
+  -H "Authorization: Bearer $MASTER_KEY" \
+  -d '{"keys": ["sk-..."]}'
+```
 
 ## Deploy
 
@@ -47,6 +100,12 @@ Health endpoints used by the deployment:
 - The `litellm-backup` CronJob runs daily at `02:00`.
 - Local backups are written to `/var/backups/litellm` on the node.
 - NAS upload is best-effort and uses SMB credentials from `backup-nas-credentials`.
+
+### Known gap: keys + spend now live in Postgres, not in `/app/data`
+
+Once `general_settings.database_url` is set, virtual keys, per-key budgets, and spend logs move from sqlite (`/app/data/litellm.db`) to the `litellm` database in `postgres.databases.svc.cluster.local`. The current `backup-cronjob.yaml` only protects `/app/data` and so no longer captures the load-bearing data.
+
+`apps/postgres/` does not yet have a backup CronJob (see `apps/postgres/README.md`'s "Backup: Not yet wired"). The PVC + backup CronJob in this directory are kept as a no-op placeholder until that gap is closed; deleting them would mean zero protection for the new key/spend store. Follow-up: add `apps/postgres/backup-cronjob.yaml` (`pg_dump` → NAS), then drop `pvc.yaml`, `backup-cronjob.yaml`, and `backup-nas-secret.yaml` from this directory.
 
 ## Related Docs
 

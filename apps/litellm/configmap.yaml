@@ -85,14 +85,106 @@ data:
         model_info:
           mode: embedding
 
-      # Paid upstream routes have been removed for now. The Lazer proxy
-      # `premium (...)` models lived here through 2026-04-29; they were
-      # cut so the binks.chat model picker only surfaces the local Mac
-      # Studio mlx-server fleet. To add OpenRouter (or any other paid
-      # provider) back, drop entries below this comment using
-      # `cloud (<openrouter-model-id>)` as the model_name and
-      # `os.environ/OPENROUTER_API_KEY` as the api_key, with
-      # `api_base: https://openrouter.ai/api/v1`.
+      # Paid upstream models routed via Lazer
+      # (proxy.lazertechnologies.com). Naming: `premium (<lazer-model-id>)`
+      # so the prefix mirrors the local-vs-paid split in the user-facing
+      # model picker.
+      #
+      # Three layers of cost control on each entry, each covering a
+      # different failure mode:
+      #   - tpm/rpm:           runaway-loop / stuck-retry caps
+      #   - max_budget:        upstream-side absolute ceiling. Defense in
+      #                        depth: even if every key-level gate fails
+      #                        (master key leak, virtual key with bad
+      #                        allowlist, etc.), the upstream model itself
+      #                        rejects with budget_exceeded once the cap
+      #                        is hit. Sums to a $240/30d ceiling across
+      #                        all 6 paid models.
+      #   - per-virtual-key:   primary control, configured at key-create
+      #                        time via /key/generate (see README).
+      #
+      # Lazer routes are gated from binks.chat at runtime via virtual
+      # keys (allowed_models = local-only set). Re-added 2026-04-30
+      # after the 2026-04-29 cut once virtual-key gating was wired up
+      # end-to-end. Internal tools (OpenClaw) use a separate virtual
+      # key with allowed_models = ["all-proxy-models"].
+      - model_name: "premium (claude-sonnet-4.6)"
+        litellm_params:
+          model: "openai/claude-sonnet-4.6"
+          api_base: https://proxy.lazertechnologies.com/v1
+          api_key: os.environ/LAZER_API_KEY
+          tpm: 100000
+          rpm: 60
+          max_budget: 50.00
+          budget_duration: 30d
+        model_info:
+          tags: ["paid", "lazer"]
+          supports_function_calling: true
+
+      - model_name: "premium (claude-opus-4.7)"
+        litellm_params:
+          model: "openai/claude-opus-4.7"
+          api_base: https://proxy.lazertechnologies.com/v1
+          api_key: os.environ/LAZER_API_KEY
+          tpm: 50000
+          rpm: 30
+          max_budget: 30.00
+          budget_duration: 30d
+        model_info:
+          tags: ["paid", "lazer"]
+          supports_function_calling: true
+
+      - model_name: "premium (gpt-5.4)"
+        litellm_params:
+          model: "openai/gpt-5.4"
+          api_base: https://proxy.lazertechnologies.com/v1
+          api_key: os.environ/LAZER_API_KEY
+          tpm: 100000
+          rpm: 60
+          max_budget: 50.00
+          budget_duration: 30d
+        model_info:
+          tags: ["paid", "lazer"]
+          supports_function_calling: true
+
+      - model_name: "premium (gpt-5.3-codex)"
+        litellm_params:
+          model: "openai/gpt-5.3-codex"
+          api_base: https://proxy.lazertechnologies.com/v1
+          api_key: os.environ/LAZER_API_KEY
+          tpm: 100000
+          rpm: 60
+          max_budget: 50.00
+          budget_duration: 30d
+        model_info:
+          tags: ["paid", "lazer"]
+          supports_function_calling: true
+
+      - model_name: "premium (gpt-5.4-mini)"
+        litellm_params:
+          model: "openai/gpt-5.4-mini"
+          api_base: https://proxy.lazertechnologies.com/v1
+          api_key: os.environ/LAZER_API_KEY
+          tpm: 200000
+          rpm: 120
+          max_budget: 30.00
+          budget_duration: 30d
+        model_info:
+          tags: ["paid", "lazer"]
+          supports_function_calling: true
+
+      - model_name: "premium (gemini-3.1-pro)"
+        litellm_params:
+          model: "openai/gemini-3.1-pro"
+          api_base: https://proxy.lazertechnologies.com/v1
+          api_key: os.environ/LAZER_API_KEY
+          tpm: 100000
+          rpm: 60
+          max_budget: 30.00
+          budget_duration: 30d
+        model_info:
+          tags: ["paid", "lazer"]
+          supports_function_calling: true
 
     router_settings:
       routing_strategy: "simple-shuffle"

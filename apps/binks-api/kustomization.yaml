@@ -11,6 +11,7 @@ resources:
   - deployment.yaml
   - binks-chat-deployment.yaml
   - ingress.yaml
+  - servicemonitor.yaml
 
 images:
   - name: git.kblab.me/kblack0610/binks-api

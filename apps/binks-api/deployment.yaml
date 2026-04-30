@@ -3,6 +3,8 @@ kind: Service
 metadata:
   name: binks-api
   namespace: binks-api
+  labels:
+    app: binks-api
 spec:
   selector:
     app: binks-api

@@ -82,9 +82,16 @@
 # endpoint at :8090. Replaces the retired three-service launchd-mlx-services
 # layout (8080/8081/8082) and the standalone Ollama embedding LaunchAgent
 # on :11434.
+#
+# Also runs the powermetrics textfile sampler that feeds Apple Silicon
+# GPU/ANE/CPU power into the existing node_exporter on :9100. Bound only
+# to mac-studio because the mac-mini (iOS builder) doesn't run GPU
+# workloads — the metrics there would always read ~0.
 - name: Mac Studio MLX server (mlx-openai-server via launchd)
   hosts: mac-studio
   gather_facts: true
   roles:
     - role: launchd-mlx-server
       tags: [mlx, mac, llm]
+    - role: launchd-powermetrics-textfile
+      tags: [powermetrics, monitoring, mac]

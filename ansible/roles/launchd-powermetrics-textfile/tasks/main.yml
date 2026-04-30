@@ -1,0 +1,88 @@
+---
+- name: Stat powermetrics binary
+  ansible.builtin.stat:
+    path: "{{ powermetrics_bin }}"
+  register: powermetrics_bin_stat
+
+- name: Assert powermetrics binary exists
+  ansible.builtin.assert:
+    that:
+      - powermetrics_bin_stat.stat.exists
+    fail_msg: >-
+      {{ powermetrics_bin }} not found. powermetrics ships with macOS;
+      this role assumes a stock macOS install.
+
+- name: Stat the system Python (parser dependency, ships with macOS)
+  ansible.builtin.stat:
+    path: "{{ powermetrics_python_bin }}"
+  register: powermetrics_python_stat
+
+- name: Assert system Python is available
+  ansible.builtin.assert:
+    that:
+      - powermetrics_python_stat.stat.exists
+    fail_msg: >-
+      {{ powermetrics_python_bin }} not found. The sampler uses
+      Python's stdlib `plistlib` to parse powermetrics' plist output;
+      this role assumes macOS's system Python is present.
+
+- name: Ensure script directory exists
+  ansible.builtin.file:
+    path: "{{ powermetrics_script_dir }}"
+    state: directory
+    mode: "0755"
+
+- name: Render sample-powermetrics.py
+  ansible.builtin.template:
+    src: sample-powermetrics.py.j2
+    dest: "{{ powermetrics_script_path }}"
+    mode: "0755"
+  register: powermetrics_script_result
+
+# Scoped sudoers entry: the login user can run /usr/bin/powermetrics with
+# no password, nothing else. community.general.sudoers validates the
+# generated file with `visudo -c` before activating, which is safer than
+# `ansible.builtin.copy` to /etc/sudoers.d/ (a malformed copy would lock
+# the user out of sudo entirely). This is the first sudoers user in the
+# repo — pattern reused by future host-side roles that need scoped
+# privilege escalation.
+- name: Install passwordless sudo entry for powermetrics
+  community.general.sudoers:
+    name: "{{ powermetrics_sudoers_name }}"
+    user: "{{ powermetrics_sudoers_user }}"
+    commands: "{{ powermetrics_bin }}"
+    nopassword: true
+    state: present
+    validation: required
+  become: true
+
+- name: Ensure LaunchAgents directory exists
+  ansible.builtin.file:
+    path: "{{ powermetrics_launchagents_dir }}"
+    state: directory
+    mode: "0755"
+
+- name: Render powermetrics LaunchAgent plist
+  ansible.builtin.template:
+    src: com.kblab.powermetrics-textfile.plist.j2
+    dest: "{{ powermetrics_launchagents_dir }}/{{ powermetrics_label }}.plist"
+    mode: "0644"
+  register: powermetrics_plist_result
+
+# Reload only on real diff to avoid interrupting an in-flight sample.
+# Same launchctl bootout/bootstrap dance as launchd-mlx-server.
+- name: Reload powermetrics LaunchAgent if plist or script changed
+  ansible.builtin.shell: |
+    set -e
+    launchctl bootout gui/$(id -u)/{{ powermetrics_label }} 2>/dev/null || true
+    for i in $(seq 1 30); do
+      if ! launchctl print gui/$(id -u)/{{ powermetrics_label }} >/dev/null 2>&1; then
+        break
+      fi
+      sleep 1
+    done
+    launchctl bootstrap gui/$(id -u) {{ powermetrics_launchagents_dir }}/{{ powermetrics_label }}.plist
+  when:
+    - not ansible_check_mode
+    - (powermetrics_plist_result.changed | default(false)) or (powermetrics_script_result.changed | default(false))
+  changed_when: true

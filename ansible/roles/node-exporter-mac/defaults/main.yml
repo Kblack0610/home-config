@@ -2,10 +2,29 @@
 # Homebrew package name. `node_exporter` is the official formula.
 node_exporter_formula: node_exporter
 
-# `brew services` manages the LaunchAgent. On macOS this runs as the
-# current user (not as root) — no extra escalation required.
-node_exporter_service_name: node_exporter
+# Path to the binary inside Homebrew's prefix. Used directly in our
+# rendered LaunchAgent plist (we no longer rely on `brew services` to
+# launch it — see history note in tasks/main.yml).
+node_exporter_bin: /opt/homebrew/bin/node_exporter
 
 # Port for Prometheus scraping. Must match
 # apps/monitoring/external-mac-nodes.yaml.
 node_exporter_port: 9100
+
+# Per-user LaunchAgent — runs as login user, no root required for
+# vanilla node_exporter collectors. Distinct label from brew's
+# homebrew.mxcl.node_exporter so the two never run side-by-side.
+node_exporter_label: com.kblab.node-exporter
+node_exporter_launchagents_dir: "{{ ansible_env.HOME }}/Library/LaunchAgents"
+node_exporter_log_dir: /tmp
+
+# Textfile collector directory. Sampler scripts (e.g. the
+# launchd-powermetrics-textfile role) write *.prom files here and
+# node_exporter serves them on /metrics. The role creates this dir.
+# Owned by the login user; do NOT use a system path that would require
+# root for sampler writes.
+node_exporter_textfile_dir: "{{ ansible_env.HOME }}/.local/share/node_exporter/textfile"
+
+# Brew-managed service name. We disable this in favor of our own plist
+# so we can pass --collector.textfile.directory.
+node_exporter_brew_service_name: node_exporter

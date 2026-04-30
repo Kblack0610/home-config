@@ -1,0 +1,54 @@
+---
+# launchd-powermetrics-textfile role defaults.
+#
+# Apple Silicon GPU/ANE/CPU power metrics for the existing node_exporter
+# textfile collector. Runs `sudo /usr/bin/powermetrics ...` once per
+# interval, parses the plist output via plutil+jq, and atomically writes
+# a *.prom file to the textfile directory the node-exporter-mac role
+# manages. node_exporter then serves those metrics on the existing :9100
+# endpoint and the cluster Prometheus picks them up via the existing
+# ServiceMonitor (apps/monitoring/external-mac-nodes.yaml) — no new
+# port, no new ServiceMonitor, no firewall change.
+#
+# Why textfile collector instead of a third-party sidecar:
+# `oppai/mac-powermetrics-exporter` exists (Go, ~4 stars, ~11 months
+# stale at time of writing) and would also work, but it requires a
+# separate port + ServiceMonitor and adds a low-popularity binary to
+# the supply chain. The parsing logic here is ~50 lines of bash; if it
+# proves brittle across macOS updates, swapping to a sidecar is a
+# trivial follow-up.
+
+# Service identity — distinct label, per-user LaunchAgent. The script
+# itself runs as the login user; powermetrics is escalated to root via
+# the scoped sudoers entry installed by this role.
+powermetrics_label: com.kblab.powermetrics-textfile
+powermetrics_launchagents_dir: "{{ ansible_env.HOME }}/Library/LaunchAgents"
+powermetrics_log_dir: /tmp
+
+# Output goes to the same textfile directory node_exporter reads.
+# Provided by the node-exporter-mac role's defaults; we inherit it.
+# Keep these two values in sync.
+powermetrics_textfile_dir: "{{ ansible_env.HOME }}/.local/share/node_exporter/textfile"
+powermetrics_prom_path: "{{ powermetrics_textfile_dir }}/powermetrics.prom"
+
+# Sampler script destination. Python because powermetrics' plist contains
+# date elements that `plutil -convert json` refuses; plistlib handles them
+# natively and ships with macOS's system Python (/usr/bin/python3).
+powermetrics_script_dir: "{{ ansible_env.HOME }}/.local/bin"
+powermetrics_script_path: "{{ powermetrics_script_dir }}/sample-powermetrics.py"
+powermetrics_python_bin: /usr/bin/python3
+
+# Sample interval (seconds). Prometheus scrapes node_exporter every 30s
+# (apps/monitoring/external-mac-nodes.yaml). 60s sampling means every
+# other scrape returns the same value — acceptable for power/utilization
+# trend lines, and minimizes contention with mlx-server inference on
+# the GPU. Each powermetrics invocation runs for ~1 s.
+powermetrics_interval_seconds: 60
+
+# powermetrics binary (system, not Homebrew). Ships with macOS.
+powermetrics_bin: /usr/bin/powermetrics
+
+# Sudoers user — defaults to the user the playbook is connecting as,
+# which on macos_hosts is the login user.
+powermetrics_sudoers_user: "{{ ansible_user_id }}"
+powermetrics_sudoers_name: powermetrics-textfile

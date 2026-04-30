@@ -1,0 +1,112 @@
+#!/usr/bin/env python3
+"""
+Apple Silicon power/utilization sampler for node_exporter textfile collector.
+Rendered by ansible role launchd-powermetrics-textfile. Do not edit on host.
+
+Runs once per LaunchAgent invocation (StartInterval = {{ powermetrics_interval_seconds }}s).
+Atomically writes {{ powermetrics_prom_path }} so node_exporter never sees a
+half-written file.
+
+Why Python and not bash+plutil+jq: powermetrics' plist output contains
+<date> elements (sample timestamps), and `plutil -convert json` refuses
+plists with non-JSON-compatible types — fails with "Invalid object in
+plist for JSON format". Python's plistlib (stdlib, ships with macOS)
+parses dates natively and we never need to round-trip through JSON.
+"""
+import os
+import plistlib
+import subprocess
+import sys
+import tempfile
+
+POWERMETRICS_BIN = "{{ powermetrics_bin }}"
+PROM_PATH = "{{ powermetrics_prom_path }}"
+
+
+def main() -> int:
+    # Scoped passwordless sudoers entry (community.general.sudoers) lets
+    # the LaunchAgent run powermetrics with -n; no TTY, no password.
+    result = subprocess.run(
+        [
+            "sudo", "-n", POWERMETRICS_BIN,
+            "--samplers", "gpu_power,ane_power,cpu_power",
+            "--sample-count", "1", "-i", "1000",
+            "-f", "plist",
+        ],
+        capture_output=True, check=False,
+    )
+    if result.returncode != 0:
+        sys.stderr.write(
+            f"powermetrics rc={result.returncode}: "
+            f"{result.stderr.decode(errors='replace')[:500]}\n"
+        )
+        return 1
+
+    # powermetrics emits a brief text header before the plist. Strip it.
+    raw = result.stdout
+    xml_start = raw.find(b"<?xml")
+    if xml_start < 0:
+        sys.stderr.write("no <?xml found in powermetrics output\n")
+        return 1
+    d = plistlib.loads(raw[xml_start:])
+
+    # Field paths verified empirically on macOS 26.3 / M3 Ultra. The plist
+    # uses two top-level dicts:
+    #   d["processor"] holds CPU/GPU/ANE *energy* counters and *power*
+    #   readings (mW). d["gpu"] holds frequency, residency, dvfm states.
+    # Power lives under processor.*, NOT gpu.* — keep this in mind if a
+    # future macOS reshuffles things; defaults of 0 keep the metric
+    # populated rather than crashing the sampler on missing keys.
+    p = d.get("processor") or {}
+    g = d.get("gpu") or {}
+
+    # Power values are milliwatts. Convert to watts for the gauge.
+    gpu_w = (p.get("gpu_power") or 0) / 1000.0
+    ane_w = (p.get("ane_power") or 0) / 1000.0
+    cpu_w = (p.get("cpu_power") or 0) / 1000.0
+    combined_w = (p.get("combined_power") or 0) / 1000.0
+
+    # GPU active residency = 1 - idle_ratio. The plist already gives
+    # idle_ratio as a 0..1 float; clamp defensively.
+    idle = g.get("idle_ratio") or 0
+    active = max(0.0, min(1.0, 1.0 - float(idle)))
+
+    content = (
+        "# HELP macos_powermetrics_gpu_power_watts Apple Silicon GPU power draw (watts)\n"
+        "# TYPE macos_powermetrics_gpu_power_watts gauge\n"
+        f"macos_powermetrics_gpu_power_watts {gpu_w:.3f}\n"
+        "# HELP macos_powermetrics_ane_power_watts Apple Neural Engine power draw (watts)\n"
+        "# TYPE macos_powermetrics_ane_power_watts gauge\n"
+        f"macos_powermetrics_ane_power_watts {ane_w:.3f}\n"
+        "# HELP macos_powermetrics_cpu_power_watts CPU package power draw (watts)\n"
+        "# TYPE macos_powermetrics_cpu_power_watts gauge\n"
+        f"macos_powermetrics_cpu_power_watts {cpu_w:.3f}\n"
+        "# HELP macos_powermetrics_combined_power_watts Total SoC (CPU+GPU+ANE+misc) power draw (watts)\n"
+        "# TYPE macos_powermetrics_combined_power_watts gauge\n"
+        f"macos_powermetrics_combined_power_watts {combined_w:.3f}\n"
+        "# HELP macos_powermetrics_gpu_active_residency_ratio GPU HW active residency (0-1, derived from 1 - idle_ratio)\n"
+        "# TYPE macos_powermetrics_gpu_active_residency_ratio gauge\n"
+        f"macos_powermetrics_gpu_active_residency_ratio {active:.4f}\n"
+    )
+
+    # Atomic write: tempfile in same dir + os.replace. node_exporter's
+    # textfile collector reads files at scrape time, so we must never
+    # expose a partial write.
+    prom_dir = os.path.dirname(PROM_PATH)
+    fd, tmp = tempfile.mkstemp(dir=prom_dir, prefix=".powermetrics.", suffix=".tmp")
+    try:
+        with os.fdopen(fd, "w") as f:
+            f.write(content)
+        os.replace(tmp, PROM_PATH)
+    except Exception:
+        try:
+            os.unlink(tmp)
+        except FileNotFoundError:
+            pass
+        raise
+
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

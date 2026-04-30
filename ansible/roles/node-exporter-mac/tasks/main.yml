@@ -4,10 +4,70 @@
     name: "{{ node_exporter_formula }}"
     state: present
 
-- name: Ensure node_exporter brew service is loaded and running
+- name: Stat node_exporter binary
+  ansible.builtin.stat:
+    path: "{{ node_exporter_bin }}"
+  register: node_exporter_stat
+
+- name: Assert node_exporter binary is installed
+  ansible.builtin.assert:
+    that:
+      - node_exporter_stat.stat.exists
+    fail_msg: |
+      node_exporter binary not found at {{ node_exporter_bin }}.
+      Brew formula likely failed to install — check `brew doctor` on this host.
+
+# History: this role previously used `brew services start node_exporter`
+# to manage the LaunchAgent. That works for the default flag set, but
+# can't pass `--collector.textfile.directory`, which is the precondition
+# for sampler roles like launchd-powermetrics-textfile to feed Prom-format
+# files into the existing :9100 scrape. We now render our own plist with
+# a distinct label and explicitly stop the brew-managed service so the
+# two never fight over the port.
+- name: Stop the brew-managed node_exporter LaunchAgent (we own the plist now)
   community.general.homebrew_services:
-    name: "{{ node_exporter_service_name }}"
-    state: present
+    name: "{{ node_exporter_brew_service_name }}"
+    state: absent
+
+- name: Ensure textfile collector directory exists
+  ansible.builtin.file:
+    path: "{{ node_exporter_textfile_dir }}"
+    state: directory
+    mode: "0755"
+
+- name: Ensure LaunchAgents directory exists
+  ansible.builtin.file:
+    path: "{{ node_exporter_launchagents_dir }}"
+    state: directory
+    mode: "0755"
+
+- name: Render node_exporter LaunchAgent plist
+  ansible.builtin.template:
+    src: node-exporter.plist.j2
+    dest: "{{ node_exporter_launchagents_dir }}/{{ node_exporter_label }}.plist"
+    mode: "0644"
+  register: node_exporter_plist_result
+
+# launchctl race: bootout returns immediately but the kernel needs a
+# beat to actually tear down. Polling print until gone before bootstrap,
+# matching the pattern in launchd-mlx-server. ~30s gap in scraping during
+# the swap on first migration; subsequent runs are no-op when plist
+# hasn't changed.
+- name: Reload node_exporter LaunchAgent if plist changed
+  ansible.builtin.shell: |
+    set -e
+    launchctl bootout gui/$(id -u)/{{ node_exporter_label }} 2>/dev/null || true
+    for i in $(seq 1 30); do
+      if ! launchctl print gui/$(id -u)/{{ node_exporter_label }} >/dev/null 2>&1; then
+        break
+      fi
+      sleep 1
+    done
+    launchctl bootstrap gui/$(id -u) {{ node_exporter_launchagents_dir }}/{{ node_exporter_label }}.plist
+  when:
+    - not ansible_check_mode
+    - node_exporter_plist_result.changed | default(false)
+  changed_when: true
 
 - name: Verify node_exporter is serving metrics
   ansible.builtin.uri:
@@ -15,7 +75,7 @@
     return_content: false
     status_code: 200
   register: node_exporter_probe
-  retries: 5
+  retries: 10
   delay: 2
   until: node_exporter_probe.status == 200
   when: not ansible_check_mode

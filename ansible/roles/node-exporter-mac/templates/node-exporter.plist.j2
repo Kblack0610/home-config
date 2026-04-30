@@ -1,0 +1,33 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>{{ node_exporter_label }}</string>
+
+    <key>ProgramArguments</key>
+    <array>
+        <string>{{ node_exporter_bin }}</string>
+        <string>--web.listen-address=:{{ node_exporter_port }}</string>
+        <string>--collector.textfile.directory={{ node_exporter_textfile_dir }}</string>
+    </array>
+
+    <key>RunAtLoad</key>
+    <true/>
+
+    <key>KeepAlive</key>
+    <true/>
+
+    <key>StandardOutPath</key>
+    <string>{{ node_exporter_log_dir }}/{{ node_exporter_label | replace('com.', '') | replace('.', '-') }}.log</string>
+
+    <key>StandardErrorPath</key>
+    <string>{{ node_exporter_log_dir }}/{{ node_exporter_label | replace('com.', '') | replace('.', '-') }}.log</string>
+
+    <key>EnvironmentVariables</key>
+    <dict>
+        <key>PATH</key>
+        <string>/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin</string>
+    </dict>
+</dict>
+</plist>

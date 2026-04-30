@@ -1,0 +1,39 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>{{ powermetrics_label }}</string>
+
+    <key>ProgramArguments</key>
+    <array>
+        <string>{{ powermetrics_python_bin }}</string>
+        <string>{{ powermetrics_script_path }}</string>
+    </array>
+
+    <!--
+      RunAtLoad fires the first sample immediately; StartInterval re-runs
+      every {{ powermetrics_interval_seconds }} seconds. powermetrics itself
+      runs ~1 s per sample, so the LaunchAgent is idle ~98% of the time at
+      a 60 s cadence. KeepAlive intentionally omitted — this is a one-shot
+      per interval, not a long-running daemon.
+    -->
+    <key>RunAtLoad</key>
+    <true/>
+
+    <key>StartInterval</key>
+    <integer>{{ powermetrics_interval_seconds }}</integer>
+
+    <key>StandardOutPath</key>
+    <string>{{ powermetrics_log_dir }}/{{ powermetrics_label | replace('com.', '') | replace('.', '-') }}.log</string>
+
+    <key>StandardErrorPath</key>
+    <string>{{ powermetrics_log_dir }}/{{ powermetrics_label | replace('com.', '') | replace('.', '-') }}.log</string>
+
+    <key>EnvironmentVariables</key>
+    <dict>
+        <key>PATH</key>
+        <string>/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin</string>
+    </dict>
+</dict>
+</plist>

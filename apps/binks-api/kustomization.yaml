@@ -9,6 +9,7 @@ resources:
   - secrets.yaml
   - postgres-statefulset.yaml
   - deployment.yaml
+  - binks-chat-deployment.yaml
   - ingress.yaml
 
 images:

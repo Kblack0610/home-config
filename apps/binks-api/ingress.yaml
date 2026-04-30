@@ -20,7 +20,6 @@ spec:
   tls:
     secretName: binks-next-kblab-me-tls
 ---
-# Cert request — cert-manager fills in the secret named above.
 apiVersion: cert-manager.io/v1
 kind: Certificate
 metadata:
@@ -34,3 +33,45 @@ spec:
   commonName: binks-next.kblab.me
   dnsNames:
     - binks-next.kblab.me
+---
+# Production binks.chat — SPA on /, API + WS on /api and /ws.
+apiVersion: traefik.io/v1alpha1
+kind: IngressRoute
+metadata:
+  name: binks-chat
+  namespace: binks-api
+spec:
+  entryPoints:
+    - websecure
+  routes:
+    - match: Host(`binks.chat`) && PathPrefix(`/api`)
+      kind: Rule
+      services:
+        - name: binks-api
+          port: 80
+    - match: Host(`binks.chat`) && PathPrefix(`/ws`)
+      kind: Rule
+      services:
+        - name: binks-api
+          port: 80
+    - match: Host(`binks.chat`)
+      kind: Rule
+      services:
+        - name: binks-chat
+          port: 80
+  tls:
+    secretName: binks-chat-tls
+---
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: binks-chat
+  namespace: binks-api
+spec:
+  secretName: binks-chat-tls
+  issuerRef:
+    name: letsencrypt-dns
+    kind: ClusterIssuer
+  commonName: binks.chat
+  dnsNames:
+    - binks.chat

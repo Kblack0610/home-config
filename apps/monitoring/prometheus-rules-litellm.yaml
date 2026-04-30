@@ -39,16 +39,17 @@ spec:
 
         # Catches runaway loops — spend > $1.50/min sustained for 10m means
         # >$2k/day burn rate. The threshold is a sanity check on automation,
-        # not a normal-usage cap.
+        # not a normal-usage cap. The expr converts to $/min so the alert
+        # value is directly readable in $/min units.
         - alert: LiteLLMHighSpendRate
-          expr: sum(rate(litellm_spend_metric_total[5m])) by (api_key_alias) > 0.025
+          expr: sum(rate(litellm_spend_metric_total[5m]) * 60) by (api_key_alias) > 1.5
           for: 10m
           labels:
             severity: warning
             category: cost
           annotations:
             summary: "LiteLLM key {{ $labels.api_key_alias }} burning $/min very fast"
-            description: "Key '{{ $labels.api_key_alias }}' is spending at {{ printf \"%.2f\" $value }}$/sec ({{ printf \"%.0f\" (mul $value 60) }}$/min) sustained over 10 minutes. Likely a runaway agent loop or stuck retry."
+            description: "Key '{{ $labels.api_key_alias }}' is spending at {{ printf \"%.2f\" $value }}$/min sustained over 10 minutes. Likely a runaway agent loop or stuck retry."
 
         # Upstream model deployment health. litellm_deployment_state: 0=healthy,
         # 1=partial outage, 2=fully down (LiteLLM circuit-breaker semantic).
@@ -76,4 +77,4 @@ spec:
             category: availability
           annotations:
             summary: "LiteLLM proxy failure rate > 10% for 10m"
-            description: "Across all virtual keys and models, {{ printf \"%.1f\" (mul $value 100) }}% of requests are failing. Check `kubectl -n ai-gateway logs deploy/litellm` for auth, DB, or upstream errors."
+            description: "Across all virtual keys and models, {{ humanizePercentage $value }} of requests are failing. Check `kubectl -n ai-gateway logs deploy/litellm` for auth, DB, or upstream errors."

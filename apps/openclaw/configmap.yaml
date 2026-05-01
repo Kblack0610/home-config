@@ -160,7 +160,6 @@ data:
           "pdfModel": {
             "primary": "litellm/vlm (gemini-3-flash)"
           },
-          "summaryModel": "litellm/fast (Qwen3-4B)",
           "workspace": "~/.openclaw/workspace",
           "userTimezone": "America/Los_Angeles",
           "compaction": {

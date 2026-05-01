@@ -162,8 +162,10 @@ data:
           },
           "workspace": "~/.openclaw/workspace",
           "userTimezone": "America/Los_Angeles",
+          "contextTokens": 200000,
           "compaction": {
-            "mode": "safeguard"
+            "mode": "safeguard",
+            "model": "litellm/fast (Qwen3-4B)"
           },
           "thinkingDefault": "medium",
           "timeoutSeconds": 900,

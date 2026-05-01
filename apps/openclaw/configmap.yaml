@@ -52,6 +52,17 @@ data:
                 ],
                 "contextWindow": 128000,
                 "maxTokens": 32768
+              },
+              {
+                "id": "vlm (gemini-3-flash)",
+                "name": "vlm — Gemini 3 Flash (vision input + PDF, paid)",
+                "reasoning": false,
+                "input": [
+                  "text",
+                  "image"
+                ],
+                "contextWindow": 1000000,
+                "maxTokens": 8192
               }
             ]
           }
@@ -80,13 +91,18 @@ data:
             },
             "litellm/fast (Qwen3-4B)": {
               "alias": "litellm-fast"
+            },
+            "litellm/vlm (gemini-3-flash)": {
+              "alias": "litellm-vlm"
             }
           },
           "model": {
             "primary": "litellm/code (Qwen3-Coder-Next-4bit)",
             "fallbacks": [
               "litellm/reasoning (Qwen3.6-35B-A3B-4bit)"
-            ]
+            ],
+            "image": "litellm/vlm (gemini-3-flash)",
+            "pdf": "litellm/vlm (gemini-3-flash)"
           },
           "workspace": "~/.openclaw/workspace",
           "userTimezone": "America/Los_Angeles",

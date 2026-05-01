@@ -101,8 +101,8 @@ data:
                 "input": [
                   "audio"
                 ],
-                "contextWindow": 0,
-                "maxTokens": 0
+                "contextWindow": 30000,
+                "maxTokens": 4096
               }
             ]
           }

@@ -365,6 +365,28 @@ data:
           - "[STATUS] < 500"
           - "[CERTIFICATE_EXPIRATION] > 720h"
 
+      - name: binks.chat (SPA)
+        group: ingress
+        url: "https://binks.chat"
+        interval: 60s
+        client:
+          insecure: true
+        conditions:
+          - "[STATUS] == 200"
+          - "[BODY] == pat(*Binks Chat*)"
+
+      - name: binks.chat /api/health
+        group: ingress
+        url: "https://binks.chat/api/health"
+        interval: 60s
+        client:
+          insecure: true
+        conditions:
+          - "[STATUS] == 200"
+          - "[BODY].status == ok"
+          - "[BODY].database == true"
+          - "[RESPONSE_TIME] < 2000"
+
       - name: llm.kblab.me
         group: ingress
         url: "https://llm.kblab.me"

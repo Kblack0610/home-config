@@ -63,6 +63,46 @@ data:
                 ],
                 "contextWindow": 1000000,
                 "maxTokens": 8192
+              },
+              {
+                "id": "code (qwen-3-coder)",
+                "name": "code — Qwen3-Coder via deepinfra (paid)",
+                "reasoning": false,
+                "input": [
+                  "text"
+                ],
+                "contextWindow": 128000,
+                "maxTokens": 32768
+              },
+              {
+                "id": "reasoning (deepseek-v4-pro)",
+                "name": "reasoning — DeepSeek V4 Pro via fireworks (paid)",
+                "reasoning": true,
+                "input": [
+                  "text"
+                ],
+                "contextWindow": 128000,
+                "maxTokens": 32768
+              },
+              {
+                "id": "fast (gpt-oss-120b)",
+                "name": "fast — GPT-OSS 120B via cerebras (paid)",
+                "reasoning": false,
+                "input": [
+                  "text"
+                ],
+                "contextWindow": 128000,
+                "maxTokens": 8192
+              },
+              {
+                "id": "stt (whisper-turbo)",
+                "name": "stt — Whisper Turbo via groq (free)",
+                "reasoning": false,
+                "input": [
+                  "audio"
+                ],
+                "contextWindow": 0,
+                "maxTokens": 0
               }
             ]
           }
@@ -94,6 +134,18 @@ data:
             },
             "litellm/vlm (gemini-3-flash)": {
               "alias": "litellm-vlm"
+            },
+            "litellm/code (qwen-3-coder)": {
+              "alias": "litellm-code-paid"
+            },
+            "litellm/reasoning (deepseek-v4-pro)": {
+              "alias": "litellm-reasoning-paid"
+            },
+            "litellm/fast (gpt-oss-120b)": {
+              "alias": "litellm-fast-paid"
+            },
+            "litellm/stt (whisper-turbo)": {
+              "alias": "litellm-stt"
             }
           },
           "model": {

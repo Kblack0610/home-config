@@ -14,11 +14,23 @@ data:
     # mlx_models in the role's defaults gains an entry; api_base is
     # always 192.168.1.4:8090/v1.
     model_list:
-      # Naming: `<category> (<Model-Name>)` — category prefix lets agents
-      # route by purpose (code/reasoning/smart/embedding); the parens'd
-      # model name shows what's actually serving so we can compare
-      # variants when testing. The `model:` field passes the same string
-      # through to mlx-server as `served_model_name`.
+      # Naming convention: `<role> (<Model-Name>)` — role-first.
+      #
+      # Role is the primary axis (code, reasoning, fast, embedding, vlm,
+      # stt, tts, image). Multiple models can share a role; tier (local
+      # vs paid) and modality live in `model_info.tags` and
+      # `model_info.mode`, NOT in the name. Local + paid entries with
+      # the same role sit next to each other for benchmarking; consumers
+      # pick the specific model_id when they want a specific tier.
+      #
+      # `model:` field passes through to upstream — for the Mac Studio
+      # mlx-server it's the served_model_name, for Lazer it's the
+      # provider's model id with `openai/` prefix.
+
+      # ============================================================
+      # Local routes (Mac Studio mlx-server :8090)
+      # ============================================================
+
       - model_name: "code (Qwen3-Coder-Next-4bit)"
         litellm_params:
           model: "openai/code (Qwen3-Coder-Next-4bit)"
@@ -26,9 +38,16 @@ data:
           stream: true
           api_key: "mlx"
         model_info:
+          mode: chat
+          tags: ["local", "mlx"]
+          capabilities:
+            tools: true
+            code: true
+            vision: false
+            reasoning: false
+            json_mode: true
           supports_function_calling: true
 
-      # Reasoning slot — Qwen3.6 mlx-community quant, thinking model.
       - model_name: "reasoning (Qwen3.6-35B-A3B-4bit)"
         litellm_params:
           model: "openai/reasoning (Qwen3.6-35B-A3B-4bit)"
@@ -36,133 +55,83 @@ data:
           stream: true
           api_key: "mlx"
         model_info:
+          mode: chat
+          tags: ["local", "mlx"]
+          capabilities:
+            tools: true
+            code: true
+            vision: false
+            reasoning: true
+            json_mode: true
           supports_function_calling: true
 
-      # No vision-input route currently. Original plan exposed
-      # GLM-4.6V-Flash-4bit (and briefly Qwen3.6 as multimodal), but
-      # mlx-openai-server 1.7.1 + 1.8.0 both hit a `RuntimeError: There
-      # is no Stream(gpu, 0) in current thread` bug at mlx_vlm.py:620
-      # against any multimodal handler — bug is upstream and worker-
-      # thread-related, not model-specific. Re-add a vision route here
-      # once the upstream fix lands or we move to mlx_vlm.server /
-      # vllm-mlx / omlx as the VLM serving stack.
+      # No local vision-input route currently. mlx-openai-server 1.7.1 +
+      # 1.8.0 both hit a `RuntimeError: There is no Stream(gpu, 0) in
+      # current thread` bug at mlx_vlm.py:620 against any multimodal
+      # handler — bug is upstream and worker-thread-related, not
+      # model-specific. Local VLM unblocks once we switch serving stack
+      # to mlx_vlm.server / vllm-mlx / omlx; until then the paid
+      # vlm (gemini-3-flash) entry below covers OpenClaw's image+pdf slots.
 
-      # Fast slot — small dense Qwen3 4B Instruct on the Mac Studio,
-      # for latency-sensitive workloads where a frontier model is
-      # overkill. First consumer: apps/karakeep/ INFERENCE_TEXT_MODEL
-      # (bookmark tagging — sub-second response vs ~10s on `code`).
-      # Pinned in mlx-server (ansible/roles/launchd-mlx-server/
-      # defaults/main.yml).
+      # Fast slot — small dense Qwen3 4B Instruct, latency-sensitive.
+      # First consumer: apps/karakeep/ INFERENCE_TEXT_MODEL.
       - model_name: "fast (Qwen3-4B)"
         litellm_params:
           model: "openai/fast (Qwen3-4B)"
           api_base: http://192.168.1.4:8090/v1
           stream: true
           api_key: "mlx"
+        model_info:
+          mode: chat
+          tags: ["local", "mlx"]
+          capabilities:
+            tools: false
+            code: false
+            vision: false
+            reasoning: false
+            json_mode: true
 
       # Embedding model used by apps/mem0/ for memory ingest + retrieval.
-      # 768-dim output; mem0 writes vectors into the pgvector store at
-      # apps/postgres/.
+      # 768-dim output; mem0 writes vectors into pgvector at apps/postgres/.
       #
       # encoding_format pinned to "float" because mlx-openai-server's
-      # Pydantic validator rejects null encoding_format (LiteLLM sends
-      # null by default; mlx-openai-server expects literal "float" or
-      # "base64").
+      # Pydantic validator rejects null encoding_format. drop_params +
+      # additional_drop_params strip mem0's `dimensions` field that
+      # LiteLLM's text-embedding-3 validator otherwise rejects.
       - model_name: "embedding (modernbert-embed-base-4bit)"
         litellm_params:
           model: "openai/embedding (modernbert-embed-base-4bit)"
           api_base: http://192.168.1.4:8090/v1
           api_key: "mlx"
           encoding_format: "float"
-          # Per-model drop_params overrides the global litellm_settings.drop_params
-          # for this entry's pre-validation chain. mem0's openai embedder always
-          # passes `dimensions` regardless of config; LiteLLM's text-embedding-3
-          # validator rejects it before the global drop_params runs.
-          # additional_drop_params explicitly drops the `dimensions` field
-          # before validation, letting the request reach mlx-openai-server.
           drop_params: true
           additional_drop_params: ["dimensions"]
         model_info:
           mode: embedding
+          tags: ["local", "mlx"]
 
-      # Paid upstream models routed via Lazer
-      # (proxy.lazertechnologies.com). Naming: `premium (<lazer-model-id>)`
-      # so the prefix mirrors the local-vs-paid split in the user-facing
-      # model picker.
+      # ============================================================
+      # Paid routes via Lazer (proxy.lazertechnologies.com)
+      # ============================================================
+      # Cost-effective picks from Lazer's catalog (2026-04-30). $250/mo
+      # budget; per-route max_budget caps sum to ~$100/30d total ceiling
+      # under typical usage.
       #
-      # Three layers of cost control on each entry, each covering a
-      # different failure mode:
+      # Three layers of cost control per entry:
       #   - tpm/rpm:           runaway-loop / stuck-retry caps
-      #   - max_budget:        upstream-side absolute ceiling. Defense in
-      #                        depth: even if every key-level gate fails
-      #                        (master key leak, virtual key with bad
-      #                        allowlist, etc.), the upstream model itself
-      #                        rejects with budget_exceeded once the cap
-      #                        is hit. Sums to a $240/30d ceiling across
-      #                        all 6 paid models.
-      #   - per-virtual-key:   primary control, configured at key-create
-      #                        time via /key/generate (see README).
-      #
-      # Lazer routes are gated from binks.chat at runtime via virtual
-      # keys (allowed_models = local-only set). Re-added 2026-04-30
-      # after the 2026-04-29 cut once virtual-key gating was wired up
-      # end-to-end. Internal tools (OpenClaw) use a separate virtual
-      # key with allowed_models = ["all-proxy-models"].
-      - model_name: "premium (claude-sonnet-4.6)"
-        litellm_params:
-          model: "openai/claude-sonnet-4.6"
-          api_base: https://proxy.lazertechnologies.com/v1
-          api_key: os.environ/LAZER_API_KEY
-          tpm: 100000
-          rpm: 60
-          max_budget: 50.00
-          budget_duration: 30d
-        model_info:
-          tags: ["paid", "lazer"]
-          supports_function_calling: true
+      #   - max_budget:        upstream-side absolute ceiling per route
+      #   - per-virtual-key:   primary control via /key/generate
+      #                        allowed_models. binks-api + mem0 use the
+      #                        `local-only` key (no paid access);
+      #                        OpenClaw uses `internal-tools` (all-proxy);
+      #                        Karakeep gets its own `karakeep` key
+      #                        (fast + embedding only).
 
-      - model_name: "premium (claude-opus-4.7)"
+      # code paid — qwen-3-coder via deepinfra. Cheapest coder option,
+      # same family as local Qwen3-Coder-Next so prompts transfer.
+      - model_name: "code (qwen-3-coder)"
         litellm_params:
-          model: "openai/claude-opus-4.7"
-          api_base: https://proxy.lazertechnologies.com/v1
-          api_key: os.environ/LAZER_API_KEY
-          tpm: 50000
-          rpm: 30
-          max_budget: 30.00
-          budget_duration: 30d
-        model_info:
-          tags: ["paid", "lazer"]
-          supports_function_calling: true
-
-      - model_name: "premium (gpt-5.4)"
-        litellm_params:
-          model: "openai/gpt-5.4"
-          api_base: https://proxy.lazertechnologies.com/v1
-          api_key: os.environ/LAZER_API_KEY
-          tpm: 100000
-          rpm: 60
-          max_budget: 50.00
-          budget_duration: 30d
-        model_info:
-          tags: ["paid", "lazer"]
-          supports_function_calling: true
-
-      - model_name: "premium (gpt-5.3-codex)"
-        litellm_params:
-          model: "openai/gpt-5.3-codex"
-          api_base: https://proxy.lazertechnologies.com/v1
-          api_key: os.environ/LAZER_API_KEY
-          tpm: 100000
-          rpm: 60
-          max_budget: 50.00
-          budget_duration: 30d
-        model_info:
-          tags: ["paid", "lazer"]
-          supports_function_calling: true
-
-      - model_name: "premium (gpt-5.4-mini)"
-        litellm_params:
-          model: "openai/gpt-5.4-mini"
+          model: "openai/qwen-3-coder"
           api_base: https://proxy.lazertechnologies.com/v1
           api_key: os.environ/LAZER_API_KEY
           tpm: 200000
@@ -170,12 +139,21 @@ data:
           max_budget: 30.00
           budget_duration: 30d
         model_info:
+          mode: chat
           tags: ["paid", "lazer"]
+          capabilities:
+            tools: true
+            code: true
+            vision: false
+            reasoning: false
+            json_mode: true
           supports_function_calling: true
 
-      - model_name: "premium (gemini-3.1-pro)"
+      # reasoning paid — deepseek-v4-pro via fireworks. Explicit reasoning
+      # model with thinking mode.
+      - model_name: "reasoning (deepseek-v4-pro)"
         litellm_params:
-          model: "openai/gemini-3.1-pro"
+          model: "openai/deepseek-v4-pro"
           api_base: https://proxy.lazertechnologies.com/v1
           api_key: os.environ/LAZER_API_KEY
           tpm: 100000
@@ -183,8 +161,73 @@ data:
           max_budget: 30.00
           budget_duration: 30d
         model_info:
+          mode: chat
           tags: ["paid", "lazer"]
+          capabilities:
+            tools: true
+            code: true
+            vision: false
+            reasoning: true
+            json_mode: true
           supports_function_calling: true
+
+      # fast paid — gpt-oss-120b via cerebras. Cerebras inference is
+      # genuinely fast (sub-second p50). Pairs with local fast (Qwen3-4B).
+      - model_name: "fast (gpt-oss-120b)"
+        litellm_params:
+          model: "openai/gpt-oss-120b"
+          api_base: https://proxy.lazertechnologies.com/v1
+          api_key: os.environ/LAZER_API_KEY
+          tpm: 500000
+          rpm: 240
+          max_budget: 20.00
+          budget_duration: 30d
+        model_info:
+          mode: chat
+          tags: ["paid", "lazer"]
+          capabilities:
+            tools: true
+            code: false
+            vision: false
+            reasoning: false
+            json_mode: true
+
+      # vlm paid — gemini-3-flash. First VLM route in the gateway
+      # (no local equivalent until mlx_vlm bug is sorted). Maps to
+      # OpenClaw's image + pdf slots. Image-capable, cheap.
+      - model_name: "vlm (gemini-3-flash)"
+        litellm_params:
+          model: "openai/gemini-3-flash"
+          api_base: https://proxy.lazertechnologies.com/v1
+          api_key: os.environ/LAZER_API_KEY
+          tpm: 100000
+          rpm: 60
+          max_budget: 20.00
+          budget_duration: 30d
+        model_info:
+          mode: chat
+          tags: ["paid", "lazer"]
+          capabilities:
+            tools: true
+            code: false
+            vision: true
+            reasoning: false
+            json_mode: true
+
+      # stt paid — whisper-turbo via groq. Free ($0/$0). No active consumer
+      # but exposed for future voice-input use cases.
+      - model_name: "stt (whisper-turbo)"
+        litellm_params:
+          model: "openai/whisper-turbo"
+          api_base: https://proxy.lazertechnologies.com/v1
+          api_key: os.environ/LAZER_API_KEY
+          tpm: 1000000
+          rpm: 600
+        model_info:
+          mode: audio_transcription
+          tags: ["paid", "lazer", "free"]
+          capabilities:
+            audio: true
 
     router_settings:
       routing_strategy: "simple-shuffle"

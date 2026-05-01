@@ -100,9 +100,13 @@ data:
             "primary": "litellm/code (Qwen3-Coder-Next-4bit)",
             "fallbacks": [
               "litellm/reasoning (Qwen3.6-35B-A3B-4bit)"
-            ],
-            "image": "litellm/vlm (gemini-3-flash)",
-            "pdf": "litellm/vlm (gemini-3-flash)"
+            ]
+          },
+          "imageModel": {
+            "primary": "litellm/vlm (gemini-3-flash)"
+          },
+          "pdfModel": {
+            "primary": "litellm/vlm (gemini-3-flash)"
           },
           "workspace": "~/.openclaw/workspace",
           "userTimezone": "America/Los_Angeles",

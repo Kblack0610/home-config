@@ -30,8 +30,8 @@ data:
                 "input": [
                   "text"
                 ],
-                "contextWindow": 128000,
-                "maxTokens": 32768
+                "contextWindow": 256000,
+                "maxTokens": 65536
               },
               {
                 "id": "reasoning (Qwen3.6-35B-A3B-4bit)",
@@ -40,8 +40,8 @@ data:
                 "input": [
                   "text"
                 ],
-                "contextWindow": 128000,
-                "maxTokens": 32768
+                "contextWindow": 256000,
+                "maxTokens": 65536
               },
               {
                 "id": "fast (Qwen3-4B)",
@@ -51,7 +51,7 @@ data:
                   "text"
                 ],
                 "contextWindow": 128000,
-                "maxTokens": 32768
+                "maxTokens": 16384
               },
               {
                 "id": "vlm (gemini-3-flash)",
@@ -62,7 +62,7 @@ data:
                   "image"
                 ],
                 "contextWindow": 1000000,
-                "maxTokens": 8192
+                "maxTokens": 65536
               },
               {
                 "id": "code (qwen-3-coder)",
@@ -71,8 +71,8 @@ data:
                 "input": [
                   "text"
                 ],
-                "contextWindow": 128000,
-                "maxTokens": 32768
+                "contextWindow": 256000,
+                "maxTokens": 65536
               },
               {
                 "id": "reasoning (deepseek-v4-pro)",
@@ -82,7 +82,7 @@ data:
                   "text"
                 ],
                 "contextWindow": 128000,
-                "maxTokens": 32768
+                "maxTokens": 65536
               },
               {
                 "id": "fast (gpt-oss-120b)",
@@ -92,7 +92,7 @@ data:
                   "text"
                 ],
                 "contextWindow": 128000,
-                "maxTokens": 8192
+                "maxTokens": 32768
               },
               {
                 "id": "stt (whisper-turbo)",
@@ -160,13 +160,14 @@ data:
           "pdfModel": {
             "primary": "litellm/vlm (gemini-3-flash)"
           },
+          "summaryModel": "litellm/fast (Qwen3-4B)",
           "workspace": "~/.openclaw/workspace",
           "userTimezone": "America/Los_Angeles",
           "compaction": {
             "mode": "safeguard"
           },
           "thinkingDefault": "medium",
-          "timeoutSeconds": 600,
+          "timeoutSeconds": 900,
           "sandbox": {
             "mode": "off"
           }
@@ -180,7 +181,9 @@ data:
             "model": {
               "primary": "litellm/code (Qwen3-Coder-Next-4bit)",
               "fallbacks": [
-                "litellm/reasoning (Qwen3.6-35B-A3B-4bit)"
+                "litellm/reasoning (Qwen3.6-35B-A3B-4bit)",
+                "litellm/code (qwen-3-coder)",
+                "litellm/reasoning (deepseek-v4-pro)"
               ]
             }
           }

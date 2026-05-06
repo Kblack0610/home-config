@@ -84,6 +84,13 @@ data:
     PULL = 1800
     GC = 60
 
+    [webhook]
+    # Allow LAN-side webhook targets (e.g., notes-sync-bridge.kblab.me at
+    # 192.168.1.124) in addition to public hosts. Forgejo's default
+    # ALLOWED_HOST_LIST = `external` rejects RFC1918, which trips the
+    # in-cluster ~/.notes sync fan-out.
+    ALLOWED_HOST_LIST = private,external
+
     [log]
     MODE = console
     LEVEL = Info

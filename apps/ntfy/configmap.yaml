@@ -1,0 +1,23 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: ntfy-server-config
+  namespace: ntfy
+  labels:
+    app.kubernetes.io/name: ntfy
+data:
+  server.yml: |
+    base-url: "https://ntfy.kblab.me"
+    listen-http: ":80"
+    behind-proxy: true
+    cache-file: "/var/cache/ntfy/cache.db"
+    cache-duration: "12h"
+    attachment-cache-dir: "/var/cache/ntfy/attachments"
+    auth-file: "/var/lib/ntfy/user.db"
+    # No auth on the broker. Topic name is the access token; combined with
+    # the LAN-only ingress middleware, only Tailscale-reachable clients can
+    # subscribe. The bridge publishes via the in-cluster Service, never
+    # through the public ingress.
+    auth-default-access: "read-write"
+    behavior-since-time: true
+    web-root: disable

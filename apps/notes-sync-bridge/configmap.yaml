@@ -1,0 +1,126 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: notes-sync-bridge-script
+  namespace: notes-sync-bridge
+  labels:
+    app.kubernetes.io/name: notes-sync-bridge
+data:
+  bridge.py: |
+    """
+    Forgejo push webhook -> mosquitto + ntfy fan-out.
+
+    Verifies HMAC-SHA256 of the request body against FORGEJO_HMAC_SECRET, then:
+      1. publishes to mosquitto topic notes/sync/needed (via mosquitto_pub binary)
+      2. POSTs to ntfy on the notes-sync topic (via urllib)
+
+    Subscribers ignore the body and just run notes-sync on any message.
+    """
+    import hmac
+    import hashlib
+    import json
+    import logging
+    import os
+    import subprocess
+    import urllib.request
+    from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+
+    logging.basicConfig(
+        level=logging.INFO,
+        format="%(asctime)s %(levelname)s %(message)s",
+    )
+    log = logging.getLogger("bridge")
+
+    HMAC_SECRET = os.environ["FORGEJO_HMAC_SECRET"].encode()
+    MQTT_HOST = os.environ.get("MQTT_HOST", "mosquitto.mosquitto.svc.cluster.local")
+    MQTT_PORT = os.environ.get("MQTT_PORT", "1883")
+    MQTT_TOPIC = os.environ.get("MQTT_TOPIC", "notes/sync/needed")
+    NTFY_URL = os.environ.get("NTFY_URL", "http://ntfy.ntfy.svc.cluster.local/notes-sync")
+    LISTEN_PORT = int(os.environ.get("LISTEN_PORT", "8080"))
+
+
+    def verify_signature(body: bytes, headers) -> bool:
+        # Forgejo sends both X-Forgejo-Signature and (for compat) X-Gitea-Signature.
+        sig = headers.get("X-Forgejo-Signature") or headers.get("X-Gitea-Signature") or ""
+        expected = hmac.new(HMAC_SECRET, body, hashlib.sha256).hexdigest()
+        return hmac.compare_digest(sig, expected)
+
+
+    def fan_out(ref: str) -> None:
+        # MQTT
+        try:
+            subprocess.run(
+                [
+                    "mosquitto_pub",
+                    "-h", MQTT_HOST,
+                    "-p", MQTT_PORT,
+                    "-t", MQTT_TOPIC,
+                    "-m", ref,
+                    "-q", "1",
+                ],
+                check=True,
+                timeout=5,
+                capture_output=True,
+            )
+            log.info("mqtt: published ref=%s topic=%s", ref, MQTT_TOPIC)
+        except Exception as exc:
+            log.warning("mqtt: publish failed: %s", exc)
+
+        # ntfy
+        try:
+            req = urllib.request.Request(
+                NTFY_URL,
+                data=ref.encode(),
+                method="POST",
+                headers={
+                    "Title": "notes synced",
+                    "Tags": "books",
+                    "Priority": "low",
+                },
+            )
+            with urllib.request.urlopen(req, timeout=5) as resp:
+                log.info("ntfy: published ref=%s status=%s", ref, resp.status)
+        except Exception as exc:
+            log.warning("ntfy: publish failed: %s", exc)
+
+
+    class Handler(BaseHTTPRequestHandler):
+        def log_message(self, fmt, *args):
+            log.info("%s - " + fmt, self.client_address[0], *args)
+
+        def _respond(self, status: int, body: bytes = b"") -> None:
+            self.send_response(status)
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            if body:
+                self.wfile.write(body)
+
+        def do_GET(self):
+            if self.path == "/health":
+                self._respond(200, b"ok")
+                return
+            self._respond(404)
+
+        def do_POST(self):
+            if self.path != "/hook":
+                self._respond(404)
+                return
+            length = int(self.headers.get("Content-Length", "0"))
+            body = self.rfile.read(length) if length else b""
+            if not verify_signature(body, self.headers):
+                log.warning("hook: signature mismatch from %s", self.client_address[0])
+                self._respond(401, b"invalid signature")
+                return
+            try:
+                payload = json.loads(body or b"{}")
+                ref = payload.get("ref", "")
+            except Exception:
+                ref = ""
+            log.info("hook: accepted ref=%r", ref)
+            fan_out(ref)
+            self._respond(200, b"ok")
+
+
+    if __name__ == "__main__":
+        log.info("bridge listening on :%d (mqtt=%s, ntfy=%s)", LISTEN_PORT, MQTT_HOST, NTFY_URL)
+        ThreadingHTTPServer(("0.0.0.0", LISTEN_PORT), Handler).serve_forever()

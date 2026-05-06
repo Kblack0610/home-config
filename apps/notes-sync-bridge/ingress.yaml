@@ -1,0 +1,28 @@
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: notes-sync-bridge
+  namespace: notes-sync-bridge
+  annotations:
+    kubernetes.io/ingress.class: traefik
+    cert-manager.io/cluster-issuer: letsencrypt-dns
+    # Internal-only — Forgejo and the bridge are both in-cluster, but
+    # exposing this on the public internet would let anyone hammer the
+    # endpoint even with HMAC verification. Restrict to LAN/Tailscale.
+    traefik.ingress.kubernetes.io/router.middlewares: monitoring-local-network-only@kubernetescrd
+spec:
+  rules:
+    - host: notes-sync-bridge.kblab.me
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: notes-sync-bridge
+                port:
+                  number: 80
+  tls:
+    - hosts:
+        - notes-sync-bridge.kblab.me
+      secretName: notes-sync-bridge-tls

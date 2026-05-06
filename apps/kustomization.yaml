@@ -23,8 +23,11 @@ resources:
   - litellm
   - mem0
   - monitoring
+  - mosquitto
   - nas
   - neptune
+  - notes-sync-bridge
+  - ntfy
   - nvidia-device-plugin
   - openclaw
   - orcaslicer

@@ -47,7 +47,10 @@ data:
 
 
     def fan_out(ref: str) -> None:
-        # MQTT
+        # MQTT — JSON payload so kpetremann/mqtt-exporter (which silently drops
+        # non-JSON) counts each push and emits mqtt_<topic>_event metrics.
+        # Subscribers don't read the body, so the change is backwards-compatible.
+        payload = json.dumps({"ref": ref, "event": 1})
         try:
             subprocess.run(
                 [
@@ -55,7 +58,7 @@ data:
                     "-h", MQTT_HOST,
                     "-p", MQTT_PORT,
                     "-t", MQTT_TOPIC,
-                    "-m", ref,
+                    "-m", payload,
                     "-q", "1",
                 ],
                 check=True,

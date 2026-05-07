@@ -24,6 +24,7 @@ resources:
   - mem0
   - monitoring
   - mosquitto
+  - mqtt2prom
   - nas
   - neptune
   - notes-sync-bridge

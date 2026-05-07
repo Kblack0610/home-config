@@ -19,35 +19,44 @@ spec:
     spec:
       containers:
         - name: mqtt2prom
-          image: ghcr.io/kblack0610/mqtt2prom:latest
+          # kpetremann/mqtt-exporter — public, configless. Subscribes to a
+          # topic glob (default #), counts messages per topic, parses JSON
+          # payloads into per-key gauges. Good fit for IoT visibility +
+          # confirming notes-sync traffic without per-metric config.
+          image: ghcr.io/kpetremann/mqtt-exporter:1.5
+          imagePullPolicy: IfNotPresent
           env:
-            - name: MQTT_HOST
+            - name: MQTT_ADDRESS
               value: "mosquitto.mosquitto.svc.cluster.local"
             - name: MQTT_PORT
               value: "1883"
-            - name: HTTP_PORT
-              value: "9201"
+            - name: MQTT_TOPIC
+              value: "#"
+            - name: PROMETHEUS_PORT
+              value: "9000"
+            - name: LOG_LEVEL
+              value: "INFO"
           ports:
             - name: metrics
-              containerPort: 9201
+              containerPort: 9000
               protocol: TCP
           resources:
             requests:
-              memory: "16Mi"
+              memory: "32Mi"
               cpu: "25m"
             limits:
-              memory: "64Mi"
-              cpu: "100m"
+              memory: "128Mi"
+              cpu: "200m"
           livenessProbe:
             tcpSocket:
-              port: 9201
-            initialDelaySeconds: 5
+              port: 9000
+            initialDelaySeconds: 10
             periodSeconds: 30
             failureThreshold: 3
           readinessProbe:
             httpGet:
-              path: /metrics
-              port: 9201
+              path: /
+              port: 9000
             initialDelaySeconds: 5
             periodSeconds: 10
           securityContext:

@@ -11,6 +11,6 @@ spec:
     app.kubernetes.io/name: mqtt2prom
   ports:
     - name: metrics
-      port: 9201
-      targetPort: 9201
+      port: 9000
+      targetPort: 9000
       protocol: TCP

@@ -39,6 +39,7 @@ resources:
   - portfolio
   - bnb-studios
   - black-dev
+  - placemyparents-preview
 
 # Excluded from GitOps (Docker Compose or non-K8s):
 # - actual-budget-tools (Docker Compose)

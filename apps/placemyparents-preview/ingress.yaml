@@ -1,0 +1,37 @@
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: placemyparents-preview
+  namespace: placemyparents-preview
+  labels:
+    app: placemyparents-preview
+  annotations:
+    cert-manager.io/cluster-issuer: letsencrypt-dns
+spec:
+  ingressClassName: traefik
+  tls:
+    - hosts:
+        - pmp.preview.kblab.me
+        - api.pmp.preview.kblab.me
+      secretName: placemyparents-preview-tls
+  rules:
+    - host: pmp.preview.kblab.me
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: placemyparents-web
+                port:
+                  number: 80
+    - host: api.pmp.preview.kblab.me
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: placemyparents-api
+                port:
+                  number: 80

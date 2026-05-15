@@ -11,7 +11,7 @@ spec:
   ports:
     - name: http
       port: 80
-      targetPort: 3006
+      targetPort: 3200
 ---
 apiVersion: apps/v1
 kind: Deployment
@@ -47,7 +47,7 @@ spec:
           imagePullPolicy: Always
           ports:
             - name: http
-              containerPort: 3006
+              containerPort: 3200
           env:
             # Next.js runtime mode — distinct from the API's NODE_ENV.
             - name: NODE_ENV

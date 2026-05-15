@@ -75,17 +75,19 @@ spec:
             limits:
               cpu: 500m
               memory: 512Mi
+          # Next.js doesn't expose /api/health in this app — use root.
+          # Root returns 200 from Next's SSR layer; for a deeper liveness
+          # signal we could add a /api/health route in the web app later.
           readinessProbe:
             httpGet:
-              path: /api/health
+              path: /
               port: http
-            initialDelaySeconds: 10
+            initialDelaySeconds: 15
             periodSeconds: 10
-            timeoutSeconds: 3
+            timeoutSeconds: 5
           livenessProbe:
-            httpGet:
-              path: /api/health
+            tcpSocket:
               port: http
-            initialDelaySeconds: 30
-            periodSeconds: 15
+            initialDelaySeconds: 60
+            periodSeconds: 30
             timeoutSeconds: 5

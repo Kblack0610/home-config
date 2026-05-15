@@ -74,9 +74,12 @@ spec:
             requests:
               memory: "256Mi"
               cpu: "100m"
+            # placemyparents-api builds pnpm install + tsup + Playwright
+            # in a multi-stage Dockerfile — 2Gi got OOMKilled. 6Gi has
+            # ample headroom on asus-laptop (64GB physical, ~13% used).
             limits:
-              memory: "2Gi"
-              cpu: "2000m"
+              memory: "6Gi"
+              cpu: "4000m"
       volumes:
         - name: runner-config
           configMap:

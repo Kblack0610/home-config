@@ -17,6 +17,6 @@ resources:
 # via `awk`, then commits the bump back to home-config@master.
 images:
   - name: git.kblab.me/kblack0610/placemyparents-api
-    newTag: latest
+    newTag: pre-7111c40
   - name: git.kblab.me/kblack0610/placemyparents-web
-    newTag: latest
+    newTag: pre-7111c40

@@ -1,0 +1,22 @@
+apiVersion: cert-manager.io/v1
+kind: ClusterIssuer
+metadata:
+  name: letsencrypt-dns
+spec:
+  acme:
+    email: kenneth@kennethblack.me
+    privateKeySecretRef:
+      name: letsencrypt-dns-account-key
+    server: https://acme-v02.api.letsencrypt.org/directory
+    solvers:
+      - dns01:
+          cloudflare:
+            apiTokenSecretRef:
+              key: api-token
+              name: cloudflare-api-token
+        selector:
+          dnsZones:
+            - kennethblack.me
+            - kblab.me
+            - binks.chat
+            - blacknbrownstudios.com

@@ -4,3 +4,4 @@ kind: Kustomization
 resources:
   - namespace.yaml
   - selfsigned-issuer.yaml
+  - letsencrypt-dns-issuer.yaml

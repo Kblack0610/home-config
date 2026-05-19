@@ -11,11 +11,11 @@ spec:
   ingressClassName: traefik
   tls:
     - hosts:
-        - pmp.preview.blacknbrownstudios.com
-        - api.pmp.preview.blacknbrownstudios.com
+        - placemyparents.blacknbrownstudios.com
+        - placemyparents-api.blacknbrownstudios.com
       secretName: placemyparents-preview-tls
   rules:
-    - host: pmp.preview.blacknbrownstudios.com
+    - host: placemyparents.blacknbrownstudios.com
       http:
         paths:
           - path: /
@@ -25,7 +25,7 @@ spec:
                 name: placemyparents-web
                 port:
                   number: 80
-    - host: api.pmp.preview.blacknbrownstudios.com
+    - host: placemyparents-api.blacknbrownstudios.com
       http:
         paths:
           - path: /

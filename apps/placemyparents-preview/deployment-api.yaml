@@ -62,6 +62,11 @@ spec:
               value: 'true'
             - name: FRONTEND_URL
               value: https://placemyparents.blacknbrownstudios.com
+            # Public API URL — used by the OAuth strategy to compute the callback URL.
+            # Must match the hostname registered as an "Authorized redirect URI" in
+            # the Google Cloud Console OAuth 2.0 Client (and the Apple Service ID).
+            - name: API_URL
+              value: https://placemyparents-api.blacknbrownstudios.com
             - name: SQUARE_ENVIRONMENT
               value: sandbox
             - name: SPACES_ENDPOINT
@@ -99,6 +104,22 @@ spec:
                 secretKeyRef:
                   name: placemyparents-preview-secrets
                   key: square-location-id
+                  optional: true
+            # Google OAuth — optional. Populate google-client-id /
+            # google-client-secret in placemyparents-preview-secrets to enable.
+            # Register https://placemyparents-api.blacknbrownstudios.com/api/v1/auth/google/callback
+            # as an Authorized redirect URI in the Google Cloud Console OAuth client.
+            - name: GOOGLE_CLIENT_ID
+              valueFrom:
+                secretKeyRef:
+                  name: placemyparents-preview-secrets
+                  key: google-client-id
+                  optional: true
+            - name: GOOGLE_CLIENT_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: placemyparents-preview-secrets
+                  key: google-client-secret
                   optional: true
             - name: SPACES_ACCESS_KEY_ID
               valueFrom:

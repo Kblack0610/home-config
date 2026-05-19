@@ -61,7 +61,7 @@ spec:
             - name: RUN_MIGRATIONS
               value: 'true'
             - name: FRONTEND_URL
-              value: https://pmp.preview.kblab.me
+              value: https://placemyparents.blacknbrownstudios.com
             - name: SQUARE_ENVIRONMENT
               value: sandbox
             - name: SPACES_ENDPOINT

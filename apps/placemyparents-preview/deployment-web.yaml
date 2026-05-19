@@ -53,7 +53,7 @@ spec:
             - name: NODE_ENV
               value: production
             - name: NEXT_PUBLIC_API_URL
-              value: https://api.pmp.preview.kblab.me
+              value: https://placemyparents-api.blacknbrownstudios.com
             - name: NEXT_PUBLIC_SQUARE_ENVIRONMENT
               value: sandbox
             - name: NEXT_PUBLIC_SQUARE_APPLICATION_ID

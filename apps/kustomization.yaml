@@ -11,6 +11,7 @@ resources:
   - actual-budget
   - ansible-runner
   - binks-api
+  - cloudflared-public-sites
   - comfyui
   - crowdsec
   - forgejo

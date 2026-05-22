@@ -1,0 +1,79 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: microbin
+  namespace: microbin
+  labels:
+    app.kubernetes.io/name: microbin
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: microbin
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: microbin
+    spec:
+      containers:
+        - name: microbin
+          image: danielszabo99/microbin:2.1.0
+          imagePullPolicy: IfNotPresent
+          ports:
+            - name: http
+              containerPort: 8080
+          env:
+            - name: MICROBIN_PORT
+              value: "8080"
+            - name: MICROBIN_BIND
+              value: "0.0.0.0"
+            - name: MICROBIN_DATA_DIR
+              value: "/data"
+            - name: MICROBIN_PUBLIC_PATH
+              value: "https://scratch.kblab.me"
+            - name: MICROBIN_HASH_IDS
+              value: "true"
+            - name: MICROBIN_QR
+              value: "true"
+            - name: MICROBIN_WIDE
+              value: "true"
+            - name: MICROBIN_ENABLE_BURN_AFTER
+              value: "true"
+            - name: MICROBIN_DISABLE_TELEMETRY
+              value: "true"
+            - name: MICROBIN_DISABLE_UPDATE_CHECKING
+              value: "true"
+            - name: MICROBIN_GC_DAYS
+              value: "365"
+            - name: MICROBIN_DEFAULT_EXPIRY
+              value: "1week"
+            - name: MICROBIN_MAX_EXPIRY
+              value: "never"
+          volumeMounts:
+            - name: data
+              mountPath: /data
+          resources:
+            requests:
+              cpu: "10m"
+              memory: "32Mi"
+            limits:
+              cpu: "500m"
+              memory: "256Mi"
+          livenessProbe:
+            httpGet:
+              path: /
+              port: 8080
+            initialDelaySeconds: 15
+            periodSeconds: 30
+          readinessProbe:
+            httpGet:
+              path: /
+              port: 8080
+            initialDelaySeconds: 5
+            periodSeconds: 10
+      volumes:
+        - name: data
+          persistentVolumeClaim:
+            claimName: microbin-data

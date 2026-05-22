@@ -8,7 +8,6 @@ One-page index of services and their management plane. Use this to answer "where
 | Home Assistant | any pi | k3s pod | Flux | `apps/home-assistant/` |
 | Forgejo + runner | thinkcentre | k3s pod (DinD) | Flux | `apps/forgejo/` |
 | LiteLLM | hp-victus | k3s pod (NVIDIA) | Flux | `apps/litellm/` |
-| ComfyUI | hp-victus | k3s pod (NVIDIA) | Flux | `apps/comfyui/` |
 | Immich | asus-laptop | k3s pod (AMD ROCm) | Flux | `apps/immich/` |
 | OrcaSlicer | asus-laptop | k3s pod (AMD GPU) | Flux | `apps/orcaslicer/` |
 | OpenClaw | hp-victus | k3s pod | Flux | `apps/openclaw/` |

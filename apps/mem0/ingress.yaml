@@ -6,7 +6,7 @@ metadata:
   annotations:
     kubernetes.io/ingress.class: traefik
     cert-manager.io/cluster-issuer: letsencrypt-dns
-    # LAN/VPN-only — same middleware used by openclaw, comfyui, neptune.
+    # LAN/VPN-only — same middleware used by openclaw, neptune.
     # Restricts source IPs to RFC1918 ranges (10/8, 172.16/12, 192.168/16).
     # Tailscale tailnet hits via the LAN-side route, so this also covers
     # tailnet devices that have a LAN-routable address.

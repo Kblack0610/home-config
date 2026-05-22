@@ -12,7 +12,6 @@ resources:
   - ansible-runner
   - binks-api
   - cloudflared-public-sites
-  - comfyui
   - crowdsec
   - forgejo
   - gatus

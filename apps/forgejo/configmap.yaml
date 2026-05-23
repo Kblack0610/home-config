@@ -11,9 +11,15 @@ data:
     RUN_MODE = prod
 
     [server]
-    DOMAIN = git.kblab.me
+    # Canonical public URL — served via Cloudflare Tunnel for VDIs and other
+    # devices without LAN/Tailscale access. Internal users on Tailscale can
+    # still reach Forgejo at https://git.kblab.me (192.168.1.124) but will
+    # see a "different URL" warning banner because of this canonical setting.
+    DOMAIN = git.kennethblack.me
+    # SSH stays on the internal hostname — Cloudflare Tunnel cannot proxy SSH,
+    # so the only working `git clone ssh://` path is from LAN/Tailscale.
     SSH_DOMAIN = git.kblab.me
-    ROOT_URL = https://git.kblab.me/
+    ROOT_URL = https://git.kennethblack.me/
     HTTP_PORT = 3000
     SSH_PORT = 22
     START_SSH_SERVER = false

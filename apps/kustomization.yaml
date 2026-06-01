@@ -13,6 +13,7 @@ resources:
   - binks-api
   - cloudflared-public-sites
   - crowdsec
+  - flux-audit
   - forgejo
   - gatus
   - headscale

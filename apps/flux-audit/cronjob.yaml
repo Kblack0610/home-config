@@ -1,0 +1,58 @@
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: flux-audit
+  namespace: flux-audit
+spec:
+  schedule: "0 9 * * *"  # 09:00 UTC = 02:00 PST nightly
+  timeZone: "Etc/UTC"
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 1
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      backoffLimit: 1
+      template:
+        spec:
+          serviceAccountName: flux-audit
+          restartPolicy: OnFailure
+          containers:
+            - name: audit
+              image: alpine/k8s:1.34.4
+              resources:
+                requests:
+                  cpu: 50m
+                  memory: 64Mi
+                limits:
+                  cpu: 200m
+                  memory: 128Mi
+              env:
+                - name: NTFY_TOPIC
+                  value: "https://ntfy.kblab.me/flux-audit"
+              command: ["/bin/sh", "-c"]
+              args:
+                - |
+                  set -eu
+                  apk add --no-cache python3 curl >/dev/null
+                  OUTPUT=$(python3 /scripts/audit.py 2>&1 || true)
+                  if [ -n "$OUTPUT" ] && echo "$OUTPUT" | grep -q '/'; then
+                    echo "ORPHANS DETECTED:"
+                    echo "$OUTPUT"
+                    curl -sf -X POST "$NTFY_TOPIC" \
+                      -H "Title: Flux audit: orphan resources in home-k3s" \
+                      -H "Priority: default" \
+                      -H "Tags: warning,kubernetes" \
+                      -d "$OUTPUT" || echo "ntfy notify failed (non-fatal)"
+                    exit 1
+                  else
+                    echo "0 orphan resources detected"
+                    exit 0
+                  fi
+              volumeMounts:
+                - name: script
+                  mountPath: /scripts
+          volumes:
+            - name: script
+              configMap:
+                name: flux-audit-script
+                defaultMode: 0755

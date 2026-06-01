@@ -59,3 +59,13 @@ infrastructure/openwrt/backups/*.uci
 .playwright-mcp/
 .serena/
 apps/pi3-adguard-home/.cache/
+
+# ===================
+# Screenshots / debug artifacts at repo root (allow under docs/images/)
+# Workflow tools (LLMs, screen-grab utilities) tend to drop *.png in $CWD.
+# ===================
+/*.png
+/*.jpg
+/*.jpeg
+/*.gif
+/*.webp

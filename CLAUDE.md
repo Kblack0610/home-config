@@ -2,6 +2,12 @@
 
 Inherits shared rules from `~/CLAUDE.md`. The following are specific to this repository.
 
+## Canonical Remote — forgejo only
+
+This repo has two remotes: `forgejo` (canonical, Flux watches it) and `origin` (passive github mirror). **Always push to forgejo, never origin** — github is auto-mirrored on every push to master by `.forgejo/workflows/mirror-to-github.yaml`. Full doc: `docs/gitops.md#canonical-remote`.
+
+If forgejo push fails with HTTPS-credential errors on Linux, the helper config probably defaults to `osxkeychain`. Fix once: `git config --global --add credential.https://git.kblab.me.helper store` (uses the existing token in `~/.git-credentials`).
+
 ## Deployment Model
 
 Three layers own different parts of the lifecycle. Route work to the right tool before touching files:

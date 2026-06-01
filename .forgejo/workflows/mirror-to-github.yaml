@@ -1,0 +1,40 @@
+name: mirror-to-github
+
+# Forgejo (git.kennethblack.me / git.kblab.me) is the canonical remote.
+# Flux watches it; humans push to it. Github is a passive disaster-recovery
+# mirror. This workflow keeps github up-to-date on every push to master so
+# nobody has to do it manually and the two refs never drift.
+#
+# Required Forgejo Actions secret:
+#   - GITHUB_MIRROR_TOKEN: github classic PAT with `repo` scope, restricted to
+#     the Kblack0610/home-config mirror repo. Generated at
+#     https://github.com/settings/tokens and stored at
+#     https://git.kennethblack.me/kblack0610/home-config/settings/actions/secrets.
+
+on:
+  push:
+    branches:
+      - master
+  workflow_dispatch:
+
+jobs:
+  mirror:
+    runs-on: docker
+    container:
+      image: alpine/git:2.45.2
+    steps:
+      - name: Clone full history from Forgejo
+        run: |
+          git clone --mirror "${{ github.server_url }}/${{ github.repository }}.git" repo.git
+
+      - name: Push to github mirror
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_MIRROR_TOKEN }}
+        run: |
+          cd repo.git
+          # --mirror would also delete refs we don't want to touch (PR refs, tags
+          # from other forks). Push only branches + tags explicitly.
+          git push --prune --force \
+            "https://x-access-token:${GITHUB_TOKEN}@github.com/Kblack0610/home-config.git" \
+            'refs/heads/*:refs/heads/*' \
+            'refs/tags/*:refs/tags/*'

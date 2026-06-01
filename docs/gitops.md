@@ -46,6 +46,43 @@ Rule of thumb:
 
 For a service-by-service view of which layer owns which workload, see [homelab-catalog.md](./homelab-catalog.md). For cross-layer worked examples (public request, DHCP lease, new node), failure domains, and the full cluster DR sequence, see [architecture.md](./architecture.md).
 
+## Canonical Remote
+
+This repo has two remotes that must stay in lockstep:
+
+| Remote | URL | Role |
+|--------|-----|------|
+| **forgejo** | `https://git.kennethblack.me/kblack0610/home-config` (or `git.kblab.me` for LAN) | **Canonical.** Flux watches this. Humans and agents push here. |
+| origin | `git@github.com:Kblack0610/home-config.git` | Passive disaster-recovery mirror. **Never push to it directly.** |
+
+Forgejo mirrors itself to github on every push to master via `.forgejo/workflows/mirror-to-github.yaml`. The two refs should diverge for at most one workflow run (~30s). If they ever diverge longer than that, the mirror workflow is broken or the secret expired — see the next section.
+
+### One-time setup for mirroring
+
+The mirror workflow needs a github PAT stored as a Forgejo Actions secret:
+
+1. Generate a github classic PAT at https://github.com/settings/tokens with `repo` scope, scoped to the `Kblack0610/home-config` mirror.
+2. Add it as `GITHUB_MIRROR_TOKEN` at https://git.kennethblack.me/kblack0610/home-config/settings/actions/secrets.
+3. The next push to master triggers the workflow; verify at https://git.kennethblack.me/kblack0610/home-config/actions.
+
+### Local clone setup
+
+When cloning fresh on a workstation:
+
+```bash
+git clone https://git.kennethblack.me/kblack0610/home-config.git
+cd home-config
+git remote add origin git@github.com:Kblack0610/home-config.git    # mirror, never push
+```
+
+To verify divergence between forgejo and origin at any time:
+
+```bash
+diff <(git ls-remote forgejo master | cut -f1) \
+     <(git ls-remote origin master | cut -f1)
+# Expect: no output. If different, the mirror workflow is stalled.
+```
+
 ## Repository Shape
 
 ```text

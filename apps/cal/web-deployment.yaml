@@ -1,0 +1,84 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: cal-web
+  namespace: cal
+  labels:
+    app.kubernetes.io/name: cal
+    app.kubernetes.io/component: web
+spec:
+  replicas: 1
+  strategy:
+    # Cal.com is single-replica with one Postgres backing it; Recreate avoids
+    # two web pods racing on Prisma migrations during rollouts.
+    type: Recreate
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: cal
+      app.kubernetes.io/component: web
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: cal
+        app.kubernetes.io/component: web
+    spec:
+      containers:
+        - name: web
+          # cal.diy is a code fork of cal.com but does not publish a separate
+          # Docker image (calcom/cal.diy on Docker Hub has zero tags). For
+          # personal self-hosting the upstream calcom/cal.com image is what
+          # the docs point at; enterprise/team features sit behind feature
+          # flags and licensing checks that NEXT_PUBLIC_LICENSE_CONSENT=agree
+          # plus the absence of a license key keeps disabled.
+          image: docker.io/calcom/cal.com:v6.2.0
+          imagePullPolicy: IfNotPresent
+          ports:
+            - name: http
+              containerPort: 3000
+          envFrom:
+            - configMapRef:
+                name: cal-config
+            - secretRef:
+                name: cal-secret
+          volumeMounts:
+            - name: data
+              mountPath: /calcom/.next/cache
+            - name: localtime
+              mountPath: /etc/localtime
+              readOnly: true
+          resources:
+            # Cal.com is a Next.js + Prisma + tRPC monorepo build; cold-start
+            # comfortably uses ~1Gi. Limits sized for a single-user lab; bump
+            # if multi-org is ever enabled (it isn't, by design).
+            requests:
+              memory: "1Gi"
+              cpu: "250m"
+            limits:
+              memory: "4Gi"
+              cpu: "2000m"
+          # The image entrypoint runs `prisma migrate deploy` before starting
+          # Next.js, so probes need a long initialDelay to ride out cold
+          # migration runs after image bumps. tcpSocket avoids assuming a
+          # specific health endpoint exists across versions.
+          startupProbe:
+            tcpSocket:
+              port: 3000
+            initialDelaySeconds: 30
+            periodSeconds: 10
+            failureThreshold: 30
+          readinessProbe:
+            tcpSocket:
+              port: 3000
+            periodSeconds: 10
+          livenessProbe:
+            tcpSocket:
+              port: 3000
+            periodSeconds: 30
+            failureThreshold: 3
+      volumes:
+        - name: data
+          persistentVolumeClaim:
+            claimName: cal-data
+        - name: localtime
+          hostPath:
+            path: /etc/localtime

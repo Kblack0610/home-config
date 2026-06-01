@@ -1,0 +1,30 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: cal-config
+  namespace: cal
+  labels:
+    app.kubernetes.io/name: cal
+data:
+  # Public URLs — Cal.com uses these for OAuth callbacks, magic links, and
+  # Next.js asset URLs. Must match the ingress host exactly.
+  NEXT_PUBLIC_WEBAPP_URL: https://cal.kennethblack.me
+  NEXTAUTH_URL: https://cal.kennethblack.me
+
+  # License consent: required by the cal.com Docker image entrypoint. We use
+  # the upstream calcom/cal.com image (cal.diy doesn't publish its own image,
+  # only a code fork). For personal self-hosting without enterprise/team
+  # features this consent is the AGPLv3 acknowledgement.
+  NEXT_PUBLIC_LICENSE_CONSENT: "agree"
+
+  # Disable cal.com's outbound telemetry / new-version pings.
+  CALCOM_TELEMETRY_DISABLED: "1"
+  NEXT_TELEMETRY_DISABLED: "1"
+
+  # SMTP via Gmail. Username + app-password live in cal-secret.
+  EMAIL_FROM: cal@kennethblack.me
+  EMAIL_FROM_NAME: "Kenneth Black"
+  EMAIL_SERVER_HOST: smtp.gmail.com
+  EMAIL_SERVER_PORT: "587"
+
+  TZ: America/New_York

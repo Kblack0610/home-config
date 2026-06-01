@@ -1,0 +1,27 @@
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: cal
+  namespace: cal
+  labels:
+    app.kubernetes.io/name: cal
+  annotations:
+    cert-manager.io/cluster-issuer: letsencrypt-dns
+    traefik.ingress.kubernetes.io/router.entrypoints: web,websecure
+spec:
+  ingressClassName: traefik
+  tls:
+    - hosts:
+        - cal.kennethblack.me
+      secretName: cal-tls
+  rules:
+    - host: cal.kennethblack.me
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: cal-web
+                port:
+                  number: 80

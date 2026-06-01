@@ -12,14 +12,6 @@ sections:
         icon: mdi:robot
       - type: tile
         entity: sun.sun
-        name: Comfyui
-        icon: mdi:image-multiple
-        tap_action:
-          action: url
-          url_path: https://comfyui.kblab.me
-        hide_state: true
-      - type: tile
-        entity: sun.sun
         name: Llm
         icon: mdi:robot
         tap_action:

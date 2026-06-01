@@ -125,7 +125,7 @@ Two different paths for two different GPU ecosystems:
 | Aspect | NVIDIA path | AMD path |
 |--------|-------------|----------|
 | Nodes | `hp-victus` | `asus-laptop` |
-| Apps | `comfyui`, `litellm`, `openclaw` | `immich`, `orcaslicer` |
+| Apps | `litellm`, `openclaw` | `immich`, `orcaslicer` |
 | Device plugin | `apps/nvidia-device-plugin/daemonset.yaml` (targets `nvidia.com/gpu.present: "true"`) | **None** — no AMD device plugin exists |
 | Pod access | Standard k8s resource request: `nvidia.com/gpu: "1"` + `runtimeClassName: nvidia` + `nodeSelector: nvidia.com/gpu.present` | Privileged pod + host `/dev` passthrough. Explicitly documented in `apps/orcaslicer/deployment.yaml` comments: "Privileged containers get all host devices auto-populated into the container's /dev tmpfs" |
 | Runtime | `nvidia-container-runtime` (auto-registered `nvidia` RuntimeClass by k3s) | Default containerd runtime + privileged mode |

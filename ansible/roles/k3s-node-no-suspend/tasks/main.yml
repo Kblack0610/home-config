@@ -1,0 +1,46 @@
+---
+# Disable laptop suspend/lid-close behaviors on k3s nodes that happen to be
+# laptops (hp-victus, asus-laptop). Without this, closing the lid suspends
+# the kubelet, which silently takes the node out of the cluster — exactly
+# the failure that bit the 2026-05 home-k3s outage where hp-victus went
+# NotReady for two weeks (lid closed accidentally during another task).
+
+- name: Configure systemd-logind to ignore lid-close + other sleep triggers
+  ansible.builtin.copy:
+    dest: /etc/systemd/logind.conf.d/k3s-no-suspend.conf
+    mode: "0644"
+    owner: root
+    group: root
+    content: |
+      # Managed by Ansible role k3s-node-no-suspend.
+      # k3s agents on laptops must NOT suspend — doing so silently removes
+      # the node from the cluster. See ansible/roles/k3s-node-no-suspend/.
+      [Login]
+      HandleLidSwitch=ignore
+      HandleLidSwitchDocked=ignore
+      HandleLidSwitchExternalPower=ignore
+      HandleSuspendKey=ignore
+      HandleHibernateKey=ignore
+      IdleAction=ignore
+  notify: Restart systemd-logind
+
+- name: Mask sleep/suspend/hibernate/hybrid-sleep systemd targets
+  ansible.builtin.systemd_service:
+    name: "{{ item }}"
+    masked: true
+    enabled: false
+    state: stopped
+  loop:
+    - sleep.target
+    - suspend.target
+    - hibernate.target
+    - hybrid-sleep.target
+
+- name: Verify logind config landed
+  ansible.builtin.command: systemctl show systemd-logind --property=HandleLidSwitch,HandleSuspendKey,IdleAction
+  register: logind_state
+  changed_when: false
+  failed_when: >
+    'HandleLidSwitch=ignore' not in logind_state.stdout
+    or 'HandleSuspendKey=ignore' not in logind_state.stdout
+    or 'IdleAction=ignore' not in logind_state.stdout

@@ -25,6 +25,17 @@
       ansible.builtin.raw: pacman -Sy --noconfirm --needed python
       when: (python3_check.rc | default(1)) != 0
 
+- name: Disable lid-close / suspend on laptop k3s nodes
+  # See ansible/roles/k3s-node-no-suspend/README.md — without this, closing
+  # a laptop lid removes the node from the cluster (the 2026-05 hp-victus
+  # incident took 4 workloads offline for ~2 weeks).
+  hosts: hp-victus:asus-laptop
+  become: true
+  gather_facts: true
+  roles:
+    - role: k3s-node-no-suspend
+      tags: [no-suspend, k3s]
+
 - name: GitHub Actions self-hosted runners (Linux bare metal)
   hosts: thinkcentre
   become: true

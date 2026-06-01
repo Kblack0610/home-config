@@ -21,6 +21,19 @@ This is the canonical list. If you add a non-Flux directory under `apps/`, add a
 |-----------|--------------|-----------------|
 | `apps/cal/` | Requires manual prereqs before Flux can apply cleanly: DNS record for `cal.kennethblack.me`, generated secret material (`NEXTAUTH_SECRET`, `CALENDSO_ENCRYPTION_KEY`, Gmail app password), database role on the shared Postgres in `databases` ns | Follow [`docs/runbooks/cal-com-setup.md`](runbooks/cal-com-setup.md). Final step is adding `- cal` to `apps/kustomization.yaml`. |
 
+## Runtime-managed secrets (not in git, by design)
+
+Some cluster Secrets are deliberately NOT under Flux because they're populated and mutated by the runtime — committing them to git would either expose sensitive state (auth keys, account-keys) or get clobbered on every reconcile when the controller regenerates them.
+
+| Secret | Namespace | Why excluded |
+|--------|-----------|--------------|
+| `tailscale-state` | `headscale` | Tailnet machine keys, persisted by the tailscale CLI in the pod. Mutates on every node-rotate / re-auth. Backed up out-of-band via `apps/nas/sops-key-backup` cronjob if needed for DR. |
+| `letsencrypt-dns-account-key` | `cert-manager` | ACME account private key, generated once by cert-manager on first issuance. Persists across restarts via the secret; recreating it triggers re-acceptance of LetsEncrypt terms but is otherwise harmless. Not sensitive enough to be in git, not stable enough to want to be in git. |
+| `cert-manager-webhook-ca` | `cert-manager` | Internal CA for the admission webhook, rotated by cert-manager itself. Auto-managed. |
+| `*-tls` (cert-manager-issued) | various | Per-Ingress TLS certs auto-issued from `letsencrypt-dns` ClusterIssuer. Filenames like `forgejo-tls`, `git-kennethblack-me-tls`, `placemyparents-preview-tls`. Owned by the Certificate CRD; never put these in git. |
+| `sh.helm.release.v1.*` | helm-installed ns (e.g. `crowdsec`, `monitoring`) | Helm 3 stores release state as Secrets. These are owned by Helm/HelmRelease, not Flux Kustomizations. |
+| `kube-prometheus-stack-{admission,grafana,alertmanager-...}` | `monitoring` | Owned by the kube-prometheus-stack chart's HelmRelease. |
+
 ## Auditing drift
 
 ```bash

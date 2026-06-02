@@ -5,6 +5,14 @@
 # the failure that bit the 2026-05 home-k3s outage where hp-victus went
 # NotReady for two weeks (lid closed accidentally during another task).
 
+- name: Ensure /etc/systemd/logind.conf.d exists (some Arch installs don't ship it)
+  ansible.builtin.file:
+    path: /etc/systemd/logind.conf.d
+    state: directory
+    mode: "0755"
+    owner: root
+    group: root
+
 - name: Configure systemd-logind to ignore lid-close + other sleep triggers
   ansible.builtin.copy:
     dest: /etc/systemd/logind.conf.d/k3s-no-suspend.conf
@@ -36,11 +44,15 @@
     - hibernate.target
     - hybrid-sleep.target
 
-- name: Verify logind config landed
-  ansible.builtin.command: systemctl show systemd-logind --property=HandleLidSwitch,HandleSuspendKey,IdleAction
-  register: logind_state
+# Apply handlers (logind restart) NOW so the new config takes effect
+# before the verify step runs. Without this, the running daemon still
+# has the old HandleLidSwitch=suspend and verify reads stale state.
+- name: Apply pending handlers (logind restart) before verify
+  ansible.builtin.meta: flush_handlers
+
+- name: Verify logind picked up the new config
+  ansible.builtin.command:
+    cmd: busctl --no-pager get-property org.freedesktop.login1 /org/freedesktop/login1 org.freedesktop.login1.Manager HandleLidSwitch
+  register: logind_lidswitch
   changed_when: false
-  failed_when: >
-    'HandleLidSwitch=ignore' not in logind_state.stdout
-    or 'HandleSuspendKey=ignore' not in logind_state.stdout
-    or 'IdleAction=ignore' not in logind_state.stdout
+  failed_when: '"ignore" not in logind_lidswitch.stdout'

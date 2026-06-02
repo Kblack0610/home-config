@@ -5,11 +5,20 @@ name: mirror-to-github
 # mirror. This workflow keeps github up-to-date on every push to master so
 # nobody has to do it manually and the two refs never drift.
 #
-# Required Forgejo Actions secret:
-#   - GITHUB_MIRROR_TOKEN: github classic PAT with `repo` scope, restricted to
-#     the Kblack0610/home-config mirror repo. Generated at
-#     https://github.com/settings/tokens and stored at
-#     https://git.kennethblack.me/kblack0610/home-config/settings/actions/secrets.
+# Auth: github SSH deploy key, NOT a PAT. Deploy keys are scoped to a single
+# repo and don't expire — strictly narrower blast radius than a PAT.
+#
+# One-time setup:
+#   1. Generate a fresh keypair locally:
+#        ssh-keygen -t ed25519 -f /tmp/home-config-mirror -N '' -C 'forgejo-mirror'
+#   2. Add the PUBLIC key (/tmp/home-config-mirror.pub) as a deploy key on
+#      https://github.com/Kblack0610/home-config/settings/keys with
+#      "Allow write access" checked.
+#   3. Store the PRIVATE key (/tmp/home-config-mirror, full file contents
+#      including BEGIN/END lines) as a Forgejo Actions secret named
+#      GITHUB_MIRROR_DEPLOY_KEY at
+#      https://git.kennethblack.me/kblack0610/home-config/settings/actions/secrets.
+#   4. Delete the local copies: `shred -u /tmp/home-config-mirror*`.
 
 on:
   push:
@@ -23,18 +32,33 @@ jobs:
     container:
       image: alpine/git:2.45.2
     steps:
+      - name: Install openssh-client
+        run: apk add --no-cache openssh-client
+
+      - name: Load github deploy key into ssh-agent
+        env:
+          DEPLOY_KEY: ${{ secrets.GITHUB_MIRROR_DEPLOY_KEY }}
+        run: |
+          mkdir -p ~/.ssh && chmod 700 ~/.ssh
+          # Trust github's host key non-interactively.
+          ssh-keyscan -t rsa,ed25519 github.com >> ~/.ssh/known_hosts 2>/dev/null
+          # Write key to disk with strict perms (ssh-agent isn't reliable across
+          # exec'd alpine shells; an on-disk identity is simpler).
+          umask 077
+          printf '%s\n' "$DEPLOY_KEY" > ~/.ssh/id_ed25519
+          chmod 600 ~/.ssh/id_ed25519
+          ssh -o BatchMode=yes -T git@github.com 2>&1 | head -1 || true
+
       - name: Clone full history from Forgejo
         run: |
           git clone --mirror "${{ github.server_url }}/${{ github.repository }}.git" repo.git
 
-      - name: Push to github mirror
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_MIRROR_TOKEN }}
+      - name: Push to github mirror via SSH
         run: |
           cd repo.git
-          # --mirror would also delete refs we don't want to touch (PR refs, tags
-          # from other forks). Push only branches + tags explicitly.
+          # --mirror would also delete PR refs and tags from other forks. Push
+          # only branches + tags explicitly.
           git push --prune --force \
-            "https://x-access-token:${GITHUB_TOKEN}@github.com/Kblack0610/home-config.git" \
+            "git@github.com:Kblack0610/home-config.git" \
             'refs/heads/*:refs/heads/*' \
             'refs/tags/*:refs/tags/*'

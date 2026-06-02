@@ -55,15 +55,34 @@ This repo has two remotes that must stay in lockstep:
 | **forgejo** | `https://git.kennethblack.me/kblack0610/home-config` (or `git.kblab.me` for LAN) | **Canonical.** Flux watches this. Humans and agents push here. |
 | origin | `git@github.com:Kblack0610/home-config.git` | Passive disaster-recovery mirror. **Never push to it directly.** |
 
-Forgejo mirrors itself to github on every push to master via `.forgejo/workflows/mirror-to-github.yaml`. The two refs should diverge for at most one workflow run (~30s). If they ever diverge longer than that, the mirror workflow is broken or the secret expired — see the next section.
+Forgejo mirrors itself to github on every push to master via `.forgejo/workflows/mirror-to-github.yaml`. The two refs should diverge for at most one workflow run (~30s). If they ever diverge longer than that, the mirror workflow is broken or the deploy key was revoked — see the next section.
 
 ### One-time setup for mirroring
 
-The mirror workflow needs a github PAT stored as a Forgejo Actions secret:
+The mirror workflow authenticates to github via a **deploy key** (SSH), NOT a PAT. Deploy keys are scoped to one repo, don't expire, and have a strictly narrower blast radius than any PAT.
 
-1. Generate a github classic PAT at https://github.com/settings/tokens with `repo` scope, scoped to the `Kblack0610/home-config` mirror.
-2. Add it as `GITHUB_MIRROR_TOKEN` at https://git.kennethblack.me/kblack0610/home-config/settings/actions/secrets.
-3. The next push to master triggers the workflow; verify at https://git.kennethblack.me/kblack0610/home-config/actions.
+```bash
+# 1. Generate an ed25519 keypair (no passphrase — Forgejo Actions will read it):
+ssh-keygen -t ed25519 -f /tmp/home-config-mirror -N '' -C 'forgejo-mirror'
+
+# 2. Upload the PUBLIC key to github:
+#    https://github.com/Kblack0610/home-config/settings/keys → "Add deploy key"
+#    Paste contents of /tmp/home-config-mirror.pub.
+#    CHECK "Allow write access" (default is read-only).
+
+# 3. Upload the PRIVATE key to Forgejo as an Actions secret:
+#    https://git.kennethblack.me/kblack0610/home-config/settings/actions/secrets
+#    Name: GITHUB_MIRROR_DEPLOY_KEY
+#    Value: contents of /tmp/home-config-mirror (the file WITHOUT .pub),
+#    including the -----BEGIN OPENSSH PRIVATE KEY----- header.
+
+# 4. Delete the local copies:
+shred -u /tmp/home-config-mirror /tmp/home-config-mirror.pub
+```
+
+The next push to master triggers the workflow; verify at https://git.kennethblack.me/kblack0610/home-config/actions. The first successful run confirms the deploy key works; subsequent runs are silent.
+
+If you ever need to rotate: revoke the github deploy key, re-run steps 1-4. The key isn't tied to any user account so it can't be used to access anything else even if compromised.
 
 ### Local clone setup
 

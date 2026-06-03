@@ -32,3 +32,6 @@
     enabled: true
     state: started
     daemon_reload: true
+  # See server.yml for the rationale — package not installed in check mode
+  # means systemd unit doesn't exist yet. Same pattern as roles/k3s-agent.
+  when: not ansible_check_mode

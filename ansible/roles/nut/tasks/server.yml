@@ -123,15 +123,23 @@
     enabled: true
     state: started
     daemon_reload: true
+  # In --check mode the NUT packages aren't actually installed, so the
+  # templated nut-driver@.service unit file doesn't exist yet and systemd
+  # fails to look it up. Skip the start/enable in check mode — config-file
+  # diffs still render, which is what the dry-run is for. Same pattern as
+  # roles/k3s-agent/tasks/main.yml.
+  when: not ansible_check_mode
 
 - name: Enable + start nut-server
   ansible.builtin.systemd:
     name: nut-server.service
     enabled: true
     state: started
+  when: not ansible_check_mode
 
 - name: Enable + start nut-monitor
   ansible.builtin.systemd:
     name: nut-monitor.service
     enabled: true
     state: started
+  when: not ansible_check_mode

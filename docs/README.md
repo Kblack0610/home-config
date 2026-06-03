@@ -14,6 +14,7 @@ Use this index to find the right document by task instead of scanning the repo t
 | See what runs where (cluster vs bare-metal) | [homelab-catalog.md](./homelab-catalog.md) | One-page service → host → runtime → manager table |
 | Verify backups or run a restore | [backup-runbook.md](./backup-runbook.md) | Backup schedules, manual triggers, restore flows |
 | Inspect or edit files inside a running pod | [container-access.md](./container-access.md) | `kubectl debug` with nvim, cp round-trip, GitOps caveat |
+| Reach a bare-metal node when SSH is broken (key mismatch, re-bootstrap) | [host-access.md](./host-access.md) | Four-naming-systems table, `kubectl debug node/...` escape hatch, SSH key re-bootstrap recipe |
 
 ## Environment and Platform Guides
 

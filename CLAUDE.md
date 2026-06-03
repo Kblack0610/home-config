@@ -41,17 +41,23 @@ Rules:
 
 ### Host access naming (gotcha)
 
-Bare-metal hosts have **two different names** that look identical but resolve in different contexts. Get this wrong and `ssh pi5-master` returns `Could not resolve hostname`:
+Bare-metal Pis have **four different names** for the same box, each resolved by a different system. Get the wrong one and your command goes nowhere:
 
 | Where | Name shape | Example | Resolved by |
 |-------|-----------|---------|-------------|
 | `ansible/inventory.yml` `--limit` | bare alias | `pi5-master`, `pi5-worker2`, `pi4-worker4` | Ansible only — **not** DNS-resolvable |
 | `ssh`, `kubectl`, `curl`, `nc`, etc. | DHCP name | `pi5-master-lan`, `pi5-worker2-lan` | OpenWRT dnsmasq via `infrastructure/dhcp/devices.yaml` |
+| `kubectl get nodes`, `kubectl debug node/...` | k8s node name | `raspberrypi`, `raspberrypi-e3a771f1` | OS hostname (Pis kept default `raspberrypi[-suffix]`) |
 | Always works | IP | `192.168.1.20` (master), `.21–.24, .124` (workers) | — |
 
 Macs use SSH-config aliases (`m1`, `mac-studio`) instead — see `docs/mac-machines.md`. The `-lan` suffix is a Pi/x86 convention only.
 
-Rule of thumb: in a runbook or shell command, use `-lan` or the IP. The bare alias is only valid as an `ansible-playbook --limit` target.
+Rule of thumb:
+- runbook or shell command → use `-lan` or IP
+- ansible `--limit` → bare alias
+- `kubectl debug node/...` (the SSH-broken escape hatch) → k8s node name from `kubectl get nodes`
+
+Full mapping table + the `kubectl debug node/<name> --profile=sysadmin -- chroot /host` recipe for fixing dead-SSH nodes lives in [`docs/host-access.md`](./docs/host-access.md).
 
 ## Secrets & Vault
 

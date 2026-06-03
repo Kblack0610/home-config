@@ -61,9 +61,6 @@ all:
         pi5-master:
           ansible_host: 192.168.1.20
           k3s_role: server
-        # pi5-worker1 currently rejects key-based auth from this workstation
-        # (keyfile mismatch? investigate before Phase B). Left in inventory
-        # for completeness but will fail until SSH key is propagated.
         pi5-worker1:
           ansible_host: 192.168.1.21
           k3s_role: agent
@@ -86,18 +83,15 @@ all:
           ansible_host: 192.168.1.1
           ansible_user: root
 
-    # NUT (Network UPS Tools) groups. The single CyberPower CP1500PFCLCD plugs
+    # NUT (Network UPS Tools) groups. The single CyberPower CP1500PFCLCDa plugs
     # into pi5-master via USB; pi5-master runs upsd + upsmon-primary and every
     # other Pi runs upsmon-secondary to honour the FSD broadcast.
-    #
-    # pi5-worker1 is intentionally absent — SSH key auth from this workstation
-    # is broken (see linux_bare_metal note above). Add it here once SSH is
-    # propagated; until then it shuts down ungracefully on grid loss.
     nut_server:
       hosts:
         pi5-master:
     nut_clients:
       hosts:
+        pi5-worker1:
         pi5-worker2:
         pi5-worker3:
         pi4-worker4:

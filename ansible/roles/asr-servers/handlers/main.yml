@@ -1,0 +1,23 @@
+---
+- name: reload user systemd
+  ansible.builtin.systemd_service:
+    daemon_reload: true
+    scope: user
+  environment:
+    XDG_RUNTIME_DIR: "/run/user/{{ asr_uid }}"
+
+- name: restart parakeet-asr
+  ansible.builtin.systemd_service:
+    name: parakeet-asr.service
+    scope: user
+    state: restarted
+  environment:
+    XDG_RUNTIME_DIR: "/run/user/{{ asr_uid }}"
+
+- name: restart whisper-asr
+  ansible.builtin.systemd_service:
+    name: whisper-asr.service
+    scope: user
+    state: restarted
+  environment:
+    XDG_RUNTIME_DIR: "/run/user/{{ asr_uid }}"

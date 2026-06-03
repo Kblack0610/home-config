@@ -1,0 +1,22 @@
+---
+galaxy_info:
+  role_name: asr_servers
+  author: home-config
+  description: >-
+    Provision local speech-to-text daemons for the gungan dictation client on a
+    CachyOS/Arch workstation: a Parakeet TDT 0.6B ONNX server (sherpa-onnx,
+    never hallucinates on silence) and a VAD-hardened whisper.cpp-server
+    fallback, both as systemd --user services exposing an HTTP transcription API.
+  license: MIT
+  min_ansible_version: "2.14"
+  platforms:
+    - name: ArchLinux
+      versions:
+        - rolling
+  galaxy_tags:
+    - asr
+    - speech
+    - ml
+    - dictation
+    - whisper
+dependencies: []

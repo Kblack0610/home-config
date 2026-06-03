@@ -39,6 +39,14 @@ all:
           ansible_port: 2222
           unreachable: true
 
+    # This workstation, managed over a local connection (no SSH). Hosts the
+    # gungan dictation ASR daemons (see roles/asr-servers).
+    desktop_workstations:
+      hosts:
+        cachyos-x8664-main:
+          ansible_connection: local
+          ansible_python_interpreter: /usr/bin/python3
+
     macos_hosts:
       hosts:
         mac-studio:

@@ -1,0 +1,61 @@
+---
+# asr-servers — local speech-to-text daemons for the gungan dictation client.
+# Two systemd --user services exposing OpenAI-style HTTP transcription:
+#   parakeet-asr  (:8771) — Parakeet TDT 0.6B ONNX, never hallucinates on silence
+#   whisper-asr   (:8772) — whisper.cpp-server, VAD-hardened fallback
+
+# Run as the desktop user (local connection). Overridden from facts at runtime.
+asr_user: "{{ ansible_user_id }}"
+asr_uid: "{{ ansible_user_uid }}"
+asr_home: "{{ ansible_facts['user_dir'] | default(lookup('env', 'HOME')) }}"
+
+# System packages the daemons + client need.
+asr_system_packages:
+  - jq
+  - curl
+  - ffmpeg
+
+# --- Parakeet (ONNX / sherpa-onnx) -------------------------------------------
+asr_base: "{{ asr_home }}/.local/share/asr"
+asr_venv: "{{ asr_base }}/parakeet-venv"
+asr_python_version: "3.12"
+asr_uv_bin: "{{ asr_home }}/.local/bin/uv"
+parakeet_pip_packages:
+  - sherpa-onnx
+  - fastapi
+  - uvicorn
+  - python-multipart
+  - numpy
+  - soundfile
+parakeet_model_name: sherpa-onnx-nemo-parakeet-tdt-0.6b-v2-int8
+parakeet_model_dir: "{{ asr_base }}/models/{{ parakeet_model_name }}"
+parakeet_model_url: "https://github.com/k2-fsa/sherpa-onnx/releases/download/asr-models/{{ parakeet_model_name }}.tar.bz2"
+# Optional integrity pin for the model tarball ('' = skip, rely on `creates` guard).
+parakeet_model_sha256: ""
+parakeet_host: 127.0.0.1
+parakeet_port: 8771
+parakeet_threads: 4
+
+# --- whisper.cpp-server (fallback) -------------------------------------------
+whisper_src: "{{ asr_home }}/src/whisper.cpp"
+whisper_server_bin: "{{ whisper_src }}/build/bin/whisper-server"
+whisper_repo: "https://github.com/ggml-org/whisper.cpp"
+whisper_ref: "v1.8.6"
+whisper_build_packages:
+  - base-devel
+  - cmake
+  - git
+whisper_model: "{{ asr_home }}/.local/share/whisper-models/ggml-large-v3-turbo.bin"
+whisper_host: 127.0.0.1
+whisper_port: 8772
+whisper_threads: 12
+
+# Silero VAD model (shared by whisper-asr daemon and gungan's local-cli fallback).
+vad_model: "{{ asr_home }}/.local/share/whisper-models/ggml-silero-v5.1.2.bin"
+vad_model_url: "https://huggingface.co/ggml-org/whisper-vad/resolve/main/ggml-silero-v5.1.2.bin"
+vad_model_sha256: "29940d98d42b91fbd05ce489f3ecf7c72f0a42f027e4875919a28fb4c04ea2cf"
+# VAD tuning for short push-to-talk dictation (min-speech low so quick words survive).
+vad_threshold: "0.5"
+vad_min_speech_ms: "100"
+vad_min_silence_ms: "100"
+vad_speech_pad_ms: "60"

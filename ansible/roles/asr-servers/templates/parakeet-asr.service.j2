@@ -1,0 +1,17 @@
+[Unit]
+Description=Parakeet ONNX ASR daemon (gungan dictation backend)
+Documentation=https://github.com/k2-fsa/sherpa-onnx
+After=network.target
+
+[Service]
+Type=simple
+Environment=ASR_MODEL_DIR={{ parakeet_model_dir }}
+Environment=ASR_HOST={{ parakeet_host }}
+Environment=ASR_PORT={{ parakeet_port }}
+Environment=ASR_THREADS={{ parakeet_threads }}
+ExecStart={{ asr_venv }}/bin/python {{ asr_base }}/parakeet_server.py
+Restart=on-failure
+RestartSec=3
+
+[Install]
+WantedBy=default.target

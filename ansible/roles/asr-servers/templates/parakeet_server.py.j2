@@ -1,0 +1,73 @@
+#!/usr/bin/env python3
+"""Minimal OpenAI-compatible ASR server backed by sherpa-onnx Parakeet (TDT, ONNX).
+
+Exposes POST /v1/audio/transcriptions (multipart 'file') -> {"text": ...}.
+Parakeet is a transducer trained on silence->empty, so silent/non-speech audio
+returns "" instead of a hallucinated phrase. Runs CPU-only by default.
+
+Config via env:
+  ASR_MODEL_DIR   dir with encoder/decoder/joiner.int8.onnx + tokens.txt
+  ASR_HOST        bind host (default 127.0.0.1)
+  ASR_PORT        bind port (default 8771)
+  ASR_THREADS     onnx threads (default 4)
+"""
+import io
+import os
+
+import numpy as np
+import sherpa_onnx
+import soundfile as sf
+import uvicorn
+from fastapi import FastAPI, File, UploadFile
+from fastapi.responses import JSONResponse
+
+MODEL_DIR = os.environ.get("ASR_MODEL_DIR", "").rstrip("/")
+HOST = os.environ.get("ASR_HOST", "127.0.0.1")
+PORT = int(os.environ.get("ASR_PORT", "8771"))
+THREADS = int(os.environ.get("ASR_THREADS", "4"))
+
+if not MODEL_DIR or not os.path.isdir(MODEL_DIR):
+    raise SystemExit(f"ASR_MODEL_DIR not set or missing: {MODEL_DIR!r}")
+
+recognizer = sherpa_onnx.OfflineRecognizer.from_transducer(
+    encoder=f"{MODEL_DIR}/encoder.int8.onnx",
+    decoder=f"{MODEL_DIR}/decoder.int8.onnx",
+    joiner=f"{MODEL_DIR}/joiner.int8.onnx",
+    tokens=f"{MODEL_DIR}/tokens.txt",
+    num_threads=THREADS,
+    model_type="nemo_transducer",
+)
+
+app = FastAPI(title="parakeet-asr")
+
+
+@app.get("/health")
+def health():
+    return {"status": "ok", "model": os.path.basename(MODEL_DIR), "engine": "parakeet"}
+
+
+def _transcribe(raw: bytes) -> str:
+    # soundfile reads WAV/FLAC/OGG; pw-record gives 16k mono s16 WAV.
+    data, sr = sf.read(io.BytesIO(raw), dtype="float32", always_2d=True)
+    samples = data.mean(axis=1)  # downmix to mono
+    stream = recognizer.create_stream()
+    stream.accept_waveform(sr, samples)  # sherpa resamples internally if needed
+    recognizer.decode_stream(stream)
+    return stream.result.text.strip()
+
+
+@app.post("/v1/audio/transcriptions")
+async def transcriptions(file: UploadFile = File(...)):
+    text = _transcribe(await file.read())
+    return JSONResponse({"text": text})
+
+
+# Also accept the bare /inference path (whisper.cpp-server compatibility).
+@app.post("/inference")
+async def inference(file: UploadFile = File(...)):
+    text = _transcribe(await file.read())
+    return JSONResponse({"text": text})
+
+
+if __name__ == "__main__":
+    uvicorn.run(app, host=HOST, port=PORT, log_level="warning")

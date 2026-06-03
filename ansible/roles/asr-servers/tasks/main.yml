@@ -1,0 +1,164 @@
+---
+# Provision two local --user ASR daemons for the gungan dictation client.
+# Idempotent: model downloads + venv + whisper build are all guarded.
+
+- name: Install system packages (client + daemon runtime)
+  community.general.pacman:
+    name: "{{ asr_system_packages }}"
+    state: present
+    update_cache: true
+  become: true
+
+# --- Parakeet ONNX daemon ----------------------------------------------------
+- name: Ensure asr directories exist
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: directory
+    mode: "0755"
+  loop:
+    - "{{ asr_base }}"
+    - "{{ asr_base }}/models"
+
+- name: Assert uv is installed
+  ansible.builtin.stat:
+    path: "{{ asr_uv_bin }}"
+  register: _uv_stat
+
+- name: Fail if uv is missing
+  ansible.builtin.assert:
+    that: _uv_stat.stat.exists
+    fail_msg: >-
+      uv not found at {{ asr_uv_bin }}. Install it first:
+      curl -LsSf https://astral.sh/uv/install.sh | sh
+
+- name: Create Parakeet venv (pinned Python {{ asr_python_version }})
+  ansible.builtin.command:
+    argv:
+      - "{{ asr_uv_bin }}"
+      - venv
+      - --python
+      - "{{ asr_python_version }}"
+      - "{{ asr_venv }}"
+    creates: "{{ asr_venv }}/bin/python"
+
+- name: Install Parakeet Python dependencies
+  ansible.builtin.command:
+    argv: "{{ [asr_uv_bin, 'pip', 'install', '--python', asr_venv + '/bin/python'] + parakeet_pip_packages }}"
+  register: _pip_result
+  changed_when: "'Installed' in _pip_result.stdout or 'Installed' in _pip_result.stderr"
+
+- name: Download Parakeet ONNX model bundle
+  ansible.builtin.get_url:
+    url: "{{ parakeet_model_url }}"
+    dest: "/tmp/{{ parakeet_model_name }}.tar.bz2"
+    checksum: "{{ ('sha256:' + parakeet_model_sha256) if parakeet_model_sha256 else omit }}"
+    mode: "0644"
+  when: not (parakeet_model_dir + '/encoder.int8.onnx') is exists
+
+- name: Extract Parakeet model
+  ansible.builtin.unarchive:
+    src: "/tmp/{{ parakeet_model_name }}.tar.bz2"
+    dest: "{{ asr_base }}/models"
+    remote_src: true
+    creates: "{{ parakeet_model_dir }}/encoder.int8.onnx"
+
+- name: Install Parakeet server shim
+  ansible.builtin.template:
+    src: parakeet_server.py.j2
+    dest: "{{ asr_base }}/parakeet_server.py"
+    mode: "0755"
+  notify: restart parakeet-asr
+
+# --- whisper.cpp-server daemon ----------------------------------------------
+- name: Ensure whisper-models directory exists
+  ansible.builtin.file:
+    path: "{{ vad_model | dirname }}"
+    state: directory
+    mode: "0755"
+
+- name: Download Silero VAD model
+  ansible.builtin.get_url:
+    url: "{{ vad_model_url }}"
+    dest: "{{ vad_model }}"
+    checksum: "sha256:{{ vad_model_sha256 }}"
+    mode: "0644"
+
+- name: Assert whisper transcription model is present
+  ansible.builtin.stat:
+    path: "{{ whisper_model }}"
+  register: _wmodel
+- name: Fail if whisper model missing
+  ansible.builtin.assert:
+    that: _wmodel.stat.exists
+    fail_msg: >-
+      Whisper model not found at {{ whisper_model }}. Fetch it, e.g.:
+      {{ whisper_src }}/models/download-ggml-model.sh large-v3-turbo
+
+- name: Check for whisper-server binary
+  ansible.builtin.stat:
+    path: "{{ whisper_server_bin }}"
+  register: _ws
+
+- name: Build whisper-server from source (only when missing)
+  when: not _ws.stat.exists
+  block:
+    - name: Install whisper build dependencies
+      community.general.pacman:
+        name: "{{ whisper_build_packages }}"
+        state: present
+      become: true
+    - name: Clone whisper.cpp
+      ansible.builtin.git:
+        repo: "{{ whisper_repo }}"
+        dest: "{{ whisper_src }}"
+        version: "{{ whisper_ref }}"
+        depth: 1
+    - name: Configure whisper.cpp build
+      ansible.builtin.command:
+        cmd: "cmake -B build -DCMAKE_BUILD_TYPE=Release"
+        chdir: "{{ whisper_src }}"
+        creates: "{{ whisper_src }}/build/CMakeCache.txt"
+    - name: Build whisper-server target
+      ansible.builtin.command:
+        cmd: "cmake --build build --target whisper-server -j"
+        chdir: "{{ whisper_src }}"
+        creates: "{{ whisper_server_bin }}"
+
+# --- systemd --user services -------------------------------------------------
+- name: Enable lingering so user services run without an active login
+  ansible.builtin.command:
+    cmd: "loginctl enable-linger {{ asr_user }}"
+    creates: "/var/lib/systemd/linger/{{ asr_user }}"
+  become: true
+
+- name: Ensure user systemd directory exists
+  ansible.builtin.file:
+    path: "{{ asr_home }}/.config/systemd/user"
+    state: directory
+    mode: "0755"
+
+- name: Install ASR systemd --user units
+  ansible.builtin.template:
+    src: "{{ item }}.j2"
+    dest: "{{ asr_home }}/.config/systemd/user/{{ item }}"
+    mode: "0644"
+  loop:
+    - parakeet-asr.service
+    - whisper-asr.service
+  notify:
+    - reload user systemd
+    - restart parakeet-asr
+    - restart whisper-asr
+
+- name: Enable and start ASR --user services
+  ansible.builtin.systemd_service:
+    name: "{{ item }}"
+    scope: user
+    enabled: true
+    state: started
+    daemon_reload: true
+  environment:
+    XDG_RUNTIME_DIR: "/run/user/{{ asr_uid }}"
+  loop:
+    - parakeet-asr.service
+    - whisper-asr.service

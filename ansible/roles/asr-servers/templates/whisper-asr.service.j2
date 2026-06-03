@@ -1,0 +1,22 @@
+[Unit]
+Description=whisper.cpp-server ASR daemon (gungan fallback backend, VAD-hardened)
+Documentation=https://github.com/ggml-org/whisper.cpp
+After=network.target
+
+[Service]
+Type=simple
+ExecStart={{ whisper_server_bin }} \
+    --host {{ whisper_host }} --port {{ whisper_port }} \
+    -m {{ whisper_model }} \
+    --vad --vad-model {{ vad_model }} \
+    --vad-threshold {{ vad_threshold }} \
+    --vad-min-speech-duration-ms {{ vad_min_speech_ms }} \
+    --vad-min-silence-duration-ms {{ vad_min_silence_ms }} \
+    --vad-speech-pad-ms {{ vad_speech_pad_ms }} \
+    --suppress-nst --entropy-thold 2.6 --logprob-thold -1.0 \
+    -nt -l en -t {{ whisper_threads }}
+Restart=on-failure
+RestartSec=3
+
+[Install]
+WantedBy=default.target

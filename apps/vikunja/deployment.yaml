@@ -37,9 +37,9 @@ spec:
               value: "/db/vikunja.db"
             - name: VIKUNJA_FILES_BASEPATH
               value: "/db/files"
-            # Disable after the admin account is created, then re-reconcile.
+            # Single-user automation instance; admin account already created.
             - name: VIKUNJA_SERVICE_ENABLEREGISTRATION
-              value: "true"
+              value: "false"
             - name: VIKUNJA_SERVICE_JWTSECRET
               valueFrom:
                 secretKeyRef:

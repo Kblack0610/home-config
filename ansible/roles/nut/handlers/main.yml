@@ -1,10 +1,17 @@
 ---
+# All handlers gated on `not ansible_check_mode` for the same reason as the
+# enable/start tasks: in --check mode the NUT packages aren't really installed,
+# so the systemd units don't exist on disk and the systemd module fails to
+# look them up. We still want the config-file diffs to render in check mode,
+# but the handlers themselves can't usefully run there.
+
 - name: Restart nut-server
   ansible.builtin.systemd:
     name: nut-server.service
     state: restarted
     daemon_reload: true
   listen: restart nut-server
+  when: not ansible_check_mode
 
 - name: Restart nut-monitor
   ansible.builtin.systemd:
@@ -12,6 +19,7 @@
     state: restarted
     daemon_reload: true
   listen: restart nut-monitor
+  when: not ansible_check_mode
 
 - name: Restart nut-driver
   ansible.builtin.systemd:
@@ -21,3 +29,4 @@
     state: restarted
     daemon_reload: true
   listen: restart nut-driver
+  when: not ansible_check_mode

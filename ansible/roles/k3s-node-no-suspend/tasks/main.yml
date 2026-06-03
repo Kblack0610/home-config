@@ -44,15 +44,51 @@
     - hibernate.target
     - hybrid-sleep.target
 
-# Apply handlers (logind restart) NOW so the new config takes effect
-# before the verify step runs. Without this, the running daemon still
-# has the old HandleLidSwitch=suspend and verify reads stale state.
-- name: Apply pending handlers (logind restart) before verify
+# Apply handlers (logind reload) NOW so the new config takes effect before
+# the convergence check runs. Without this the running daemon still has the
+# old HandleLidSwitch=suspend on first apply.
+- name: Apply pending handlers before live-state check
   ansible.builtin.meta: flush_handlers
 
-- name: Verify logind picked up the new config
+# Idempotent convergence check: query live DBus state for every property the
+# dropin sets, and if any haven't taken effect (e.g. on a rerun where the
+# dropin file was already there but logind was never reloaded — Ansible
+# handlers only fire on `changed`, not `ok`), SIGHUP logind to pick them up.
+# This makes the role properly self-healing: running it always lands the
+# cluster in the desired state, even if a previous run partially landed.
+- name: Read live logind state for each managed property
   ansible.builtin.command:
-    cmd: busctl --no-pager get-property org.freedesktop.login1 /org/freedesktop/login1 org.freedesktop.login1.Manager HandleLidSwitch
-  register: logind_lidswitch
+    cmd: >-
+      busctl --no-pager get-property org.freedesktop.login1
+      /org/freedesktop/login1 org.freedesktop.login1.Manager {{ item }}
+  register: logind_props
   changed_when: false
-  failed_when: '"ignore" not in logind_lidswitch.stdout'
+  loop:
+    - HandleLidSwitch
+    - HandleLidSwitchDocked
+    - HandleLidSwitchExternalPower
+    - HandleSuspendKey
+    - HandleHibernateKey
+    - IdleAction
+
+- name: Reload logind if live state hasn't converged with on-disk config
+  ansible.builtin.systemd_service:
+    name: systemd-logind
+    state: reloaded
+  when: logind_props.results | map(attribute='stdout') | select('match', '.*ignore.*') | list | length < (logind_props.results | length)
+
+- name: Final verify — all managed properties live as 'ignore'
+  ansible.builtin.command:
+    cmd: >-
+      busctl --no-pager get-property org.freedesktop.login1
+      /org/freedesktop/login1 org.freedesktop.login1.Manager {{ item }}
+  register: logind_final
+  changed_when: false
+  failed_when: '"ignore" not in logind_final.stdout'
+  loop:
+    - HandleLidSwitch
+    - HandleLidSwitchDocked
+    - HandleLidSwitchExternalPower
+    - HandleSuspendKey
+    - HandleHibernateKey
+    - IdleAction

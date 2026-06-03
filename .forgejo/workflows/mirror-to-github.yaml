@@ -16,8 +16,9 @@ name: mirror-to-github
 #      "Allow write access" checked.
 #   3. Store the PRIVATE key (/tmp/home-config-mirror, full file contents
 #      including BEGIN/END lines) as a Forgejo Actions secret named
-#      GITHUB_MIRROR_DEPLOY_KEY at
+#      MIRROR_DEPLOY_KEY at
 #      https://git.kennethblack.me/kblack0610/home-config/settings/actions/secrets.
+#      (Forgejo rejects secret names starting with `GITHUB_` — reserved.)
 #   4. Delete the local copies: `shred -u /tmp/home-config-mirror*`.
 
 on:
@@ -37,7 +38,7 @@ jobs:
 
       - name: Load github deploy key into ssh-agent
         env:
-          DEPLOY_KEY: ${{ secrets.GITHUB_MIRROR_DEPLOY_KEY }}
+          DEPLOY_KEY: ${{ secrets.MIRROR_DEPLOY_KEY }}
         run: |
           mkdir -p ~/.ssh && chmod 700 ~/.ssh
           # Trust github's host key non-interactively.

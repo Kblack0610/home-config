@@ -72,7 +72,7 @@ ssh-keygen -t ed25519 -f /tmp/home-config-mirror -N '' -C 'forgejo-mirror'
 
 # 3. Upload the PRIVATE key to Forgejo as an Actions secret:
 #    https://git.kennethblack.me/kblack0610/home-config/settings/actions/secrets
-#    Name: GITHUB_MIRROR_DEPLOY_KEY
+#    Name: MIRROR_DEPLOY_KEY  (Forgejo rejects names starting with GITHUB_)
 #    Value: contents of /tmp/home-config-mirror (the file WITHOUT .pub),
 #    including the -----BEGIN OPENSSH PRIVATE KEY----- header.
 

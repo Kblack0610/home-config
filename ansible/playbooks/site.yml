@@ -88,6 +88,29 @@
         gh_runner_pat: "{{ vault_github_dodginballs_pat }}"
       tags: [runner, ci, dodginballs]
 
+# Network UPS Tools (NUT) — single CyberPower CP1500PFCLCD plugged into
+# pi5-master drives a graceful shutdown of the whole k3s fleet when grid
+# power fails. The primary (server) runs upsd + upsmon-primary; every
+# secondary (client) runs upsmon and halts on FSD broadcast.
+#
+# pi5-worker1 is intentionally NOT in nut_clients — see inventory note.
+# Verify with `upsc cyberpower` on pi5-master after first apply.
+- name: NUT primary (UPS server on pi5-master)
+  hosts: nut_server
+  become: true
+  gather_facts: true
+  roles:
+    - role: nut
+      tags: [nut, nut-server, ups]
+
+- name: NUT secondaries (Pi workers)
+  hosts: nut_clients
+  become: true
+  gather_facts: true
+  roles:
+    - role: nut
+      tags: [nut, nut-client, ups]
+
 # Mac Studio MLX server — single mlx-openai-server (cubist38) process
 # serving chat, vision, and embedding models from one OpenAI-compatible
 # endpoint at :8090. Replaces the retired three-service launchd-mlx-services

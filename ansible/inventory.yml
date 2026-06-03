@@ -10,6 +10,14 @@
 # post-devices.yaml (thinkcentre, hp-victus) are sourced from `kubectl get nodes`.
 # Update both files when adding a host.
 
+#
+# IMPORTANT: the short names below (pi5-master, pi5-worker2, etc.) are
+# **Ansible inventory aliases only**. They work with `ansible-playbook --limit`
+# because Ansible looks them up in this file, but they are NOT DNS-resolvable.
+# For ad-hoc `ssh`, `kubectl`, `curl`, etc., use the DHCP-assigned LAN name
+# (`pi5-master-lan`, `pi5-worker2-lan`, ...) or the IP. The LAN names come
+# from `infrastructure/dhcp/devices.yaml` via OpenWRT's dnsmasq.
+
 all:
   vars:
     # Default SSH user on Linux hosts provisioned via PXE (matches the
@@ -69,3 +77,20 @@ all:
         openwrt-router:
           ansible_host: 192.168.1.1
           ansible_user: root
+
+    # NUT (Network UPS Tools) groups. The single CyberPower CP1500PFCLCD plugs
+    # into pi5-master via USB; pi5-master runs upsd + upsmon-primary and every
+    # other Pi runs upsmon-secondary to honour the FSD broadcast.
+    #
+    # pi5-worker1 is intentionally absent — SSH key auth from this workstation
+    # is broken (see linux_bare_metal note above). Add it here once SSH is
+    # propagated; until then it shuts down ungracefully on grid loss.
+    nut_server:
+      hosts:
+        pi5-master:
+    nut_clients:
+      hosts:
+        pi5-worker2:
+        pi5-worker3:
+        pi4-worker4:
+        pi4-worker5:

@@ -1,0 +1,11 @@
+# {{ ansible_managed }}
+# Managed by ansible/roles/nut. Do not edit by hand.
+#
+# Driver definition for the USB-attached UPS. `port = auto` lets usbhid-ups
+# enumerate the first matching device; with only one UPS on the bus this is
+# unambiguous.
+
+[{{ nut_ups_name }}]
+    driver = {{ nut_ups_driver }}
+    port = {{ nut_ups_port }}
+    desc = "{{ nut_ups_description }}"

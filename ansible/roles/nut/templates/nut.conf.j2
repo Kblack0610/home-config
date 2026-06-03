@@ -1,0 +1,6 @@
+# {{ ansible_managed }}
+# Managed by ansible/roles/nut. Do not edit by hand.
+#
+# netserver: this host runs upsd + drivers (plus upsmon-primary).
+# netclient: this host runs upsmon only and talks to a remote upsd.
+MODE={{ 'netserver' if nut_role == 'server' else 'netclient' }}

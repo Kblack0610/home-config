@@ -1,0 +1,68 @@
+#!/bin/sh
+# {{ ansible_managed }}
+# Managed by ansible/roles/nut. Do not edit by hand.
+#
+# Runs on the NUT primary (pi5-master) when the ONBATT settling timer
+# expires or LOWBATT fires. Order:
+#   1. Suspend Flux so it doesn't fight pod evictions during the shutdown.
+#   2. Cordon every node so nothing new schedules.
+#   3. Broadcast FSD via `upsmon -c fsd` — each secondary then runs its own
+#      worker-shutdown.sh, which stops k3s-agent cleanly before halting.
+#   4. The primary's own upsmon then runs its SHUTDOWNCMD (`shutdown -h +0`)
+#      after FINALDELAY, and NUT sends `killpower` to the UPS so the outlets
+#      cut after the OS is down.
+#
+# Best-effort throughout: a failure in suspend/cordon must NOT block the FSD,
+# because the alternative (battery runs out before shutdown starts) is worse.
+
+set -u
+
+REASON="${1:-unknown}"
+LOG_TAG="nut-cluster-shutdown"
+KUBECTL="{{ nut_kubectl_cmd | default('') }}"
+KUBECONFIG_PATH="{{ nut_kubeconfig }}"
+FLUX_BIN="/usr/local/bin/flux"
+SUSPEND_FLUX={{ 'true' if nut_graceful_flux_suspend else 'false' }}
+
+log() { logger -t "${LOG_TAG}" -p daemon.notice "$*"; }
+
+log "starting graceful cluster shutdown (reason=${REASON})"
+
+# --- 1. Flux suspend ---------------------------------------------------------
+if [ "${SUSPEND_FLUX}" = "true" ] && [ -x "${FLUX_BIN}" ]; then
+    log "suspending Flux kustomizations"
+    KUBECONFIG="${KUBECONFIG_PATH}" "${FLUX_BIN}" suspend kustomization --all \
+        >/dev/null 2>&1 \
+        && log "flux suspend ok" \
+        || log "WARN: flux suspend failed; proceeding"
+else
+    log "flux suspend skipped (binary missing or disabled)"
+fi
+
+# --- 2. Cordon every node ----------------------------------------------------
+if [ -n "${KUBECTL}" ] && [ -r "${KUBECONFIG_PATH}" ]; then
+    log "cordoning all nodes"
+    NODES=$(KUBECONFIG="${KUBECONFIG_PATH}" ${KUBECTL} get nodes -o name 2>/dev/null || true)
+    for n in ${NODES}; do
+        KUBECONFIG="${KUBECONFIG_PATH}" ${KUBECTL} cordon "${n}" \
+            >/dev/null 2>&1 \
+            && log "cordon ${n} ok" \
+            || log "WARN: cordon ${n} failed"
+    done
+else
+    log "cordon skipped (no kubectl or unreadable kubeconfig)"
+fi
+
+# Give Flux + scheduler a moment to settle.
+sleep 5
+
+# --- 3. Broadcast FSD --------------------------------------------------------
+log "broadcasting FSD via upsmon"
+if /usr/sbin/upsmon -c fsd; then
+    log "FSD broadcast ok — workers will halt shortly"
+else
+    log "ERROR: upsmon -c fsd failed; falling back to local shutdown"
+    /sbin/shutdown -h +0 "NUT cluster-graceful fallback"
+fi
+
+exit 0

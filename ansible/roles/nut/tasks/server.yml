@@ -1,0 +1,137 @@
+---
+- name: Detect the flux binary on the master (used by graceful shutdown script)
+  ansible.builtin.stat:
+    path: /usr/local/bin/flux
+  register: nut_flux_stat
+
+- name: Detect the kubectl binary on the master
+  ansible.builtin.stat:
+    path: /usr/local/bin/kubectl
+  register: nut_kubectl_stat
+
+- name: Probe for k3s-bundled kubectl if /usr/local/bin/kubectl missing
+  ansible.builtin.stat:
+    path: /usr/local/bin/k3s
+  register: nut_k3s_stat
+  when: not nut_kubectl_stat.stat.exists
+
+- name: Resolve kubectl invocation for the cluster-graceful script
+  ansible.builtin.set_fact:
+    nut_kubectl_cmd: >-
+      {{ '/usr/local/bin/kubectl' if nut_kubectl_stat.stat.exists
+         else ('/usr/local/bin/k3s kubectl' if (nut_k3s_stat.stat.exists | default(false))
+         else '') }}
+
+- name: Warn if neither kubectl nor k3s binary was found on the master
+  ansible.builtin.debug:
+    msg: >-
+      Neither kubectl nor k3s found on {{ inventory_hostname }} — the
+      cluster-graceful shutdown script will skip the cordon step.
+  when: nut_kubectl_cmd | length == 0
+
+- name: Render ups.conf (driver definition)
+  ansible.builtin.template:
+    src: ups.conf.j2
+    dest: /etc/nut/ups.conf
+    owner: root
+    group: nut
+    mode: "0640"
+  notify: restart nut-driver
+
+- name: Render upsd.conf (listener bind)
+  ansible.builtin.template:
+    src: upsd.conf.j2
+    dest: /etc/nut/upsd.conf
+    owner: root
+    group: nut
+    mode: "0640"
+  notify: restart nut-server
+
+- name: Render upsd.users (network credentials)
+  ansible.builtin.template:
+    src: upsd.users.j2
+    dest: /etc/nut/upsd.users
+    owner: root
+    group: nut
+    mode: "0640"
+  no_log: true
+  notify: restart nut-server
+
+- name: Render upsmon.conf (primary)
+  ansible.builtin.template:
+    src: upsmon.server.conf.j2
+    dest: /etc/nut/upsmon.conf
+    owner: root
+    group: nut
+    mode: "0640"
+  no_log: true
+  notify: restart nut-monitor
+
+- name: Render nut.conf (netserver mode)
+  ansible.builtin.template:
+    src: nut.conf.j2
+    dest: /etc/nut/nut.conf
+    owner: root
+    group: nut
+    mode: "0640"
+  notify: restart nut-server
+
+- name: Render upssched.conf (event timers)
+  ansible.builtin.template:
+    src: upssched.conf.j2
+    dest: /etc/nut/upssched.conf
+    owner: root
+    group: nut
+    mode: "0640"
+  notify: restart nut-monitor
+
+- name: Install notifycmd shim (upsmon -> upssched bridge)
+  ansible.builtin.template:
+    src: notifycmd.sh.j2
+    dest: /etc/nut/notifycmd.sh
+    owner: root
+    group: nut
+    mode: "0750"
+
+- name: Install upssched-cmd dispatcher
+  ansible.builtin.template:
+    src: upssched-cmd.j2
+    dest: /etc/nut/upssched-cmd
+    owner: root
+    group: nut
+    mode: "0750"
+
+- name: Install cluster-graceful-shutdown.sh
+  ansible.builtin.template:
+    src: cluster-graceful-shutdown.sh.j2
+    dest: /etc/nut/cluster-graceful-shutdown.sh
+    owner: root
+    group: nut
+    mode: "0750"
+
+- name: Ensure /var/run/nut exists for upssched socket
+  ansible.builtin.file:
+    path: /var/run/nut
+    state: directory
+    owner: nut
+    group: nut
+    mode: "0770"
+
+- name: Enable + start nut-driver
+  ansible.builtin.systemd:
+    name: "nut-driver@{{ nut_ups_name }}.service"
+    enabled: true
+    state: started
+    daemon_reload: true
+
+- name: Enable + start nut-server
+  ansible.builtin.systemd:
+    name: nut-server.service
+    enabled: true
+    state: started
+
+- name: Enable + start nut-monitor
+  ansible.builtin.systemd:
+    name: nut-monitor.service
+    enabled: true
+    state: started

@@ -1,0 +1,41 @@
+# {{ ansible_managed }}
+# Managed by ansible/roles/nut. Do not edit by hand.
+#
+# upsmon-primary on {{ inventory_hostname }} ({{ ansible_host | default(inventory_hostname) }}).
+#
+# This monitor:
+#   - Watches the local UPS via the local upsd.
+#   - Is allowed to initiate FSD (Forced ShutDown) — primary role.
+#   - Forwards ONBATT / ONLINE / LOWBATT events to upssched via NOTIFYCMD,
+#     where a settling timer decides whether to run the cluster-graceful
+#     shutdown script.
+
+MONITOR {{ nut_ups_name }}@localhost 1 {{ nut_upsmon_user }} {{ nut_upsmon_password }} primary
+
+MINSUPPLIES 1
+SHUTDOWNCMD "/sbin/shutdown -h +0 'NUT initiated shutdown (primary)'"
+NOTIFYCMD /etc/nut/notifycmd.sh
+
+POLLFREQ 5
+POLLFREQALERT 5
+HOSTSYNC 30
+DEADTIME 15
+POWERDOWNFLAG /etc/killpower
+
+# Events: forward the ones we care about to upssched via NOTIFYCMD. SYSLOG so
+# /var/log/syslog records the event for the post-mortem. WALL kept off for the
+# noisy events (POLL etc.) to keep journalctl clean.
+NOTIFYFLAG ONLINE   SYSLOG+EXEC
+NOTIFYFLAG ONBATT   SYSLOG+WALL+EXEC
+NOTIFYFLAG LOWBATT  SYSLOG+WALL+EXEC
+NOTIFYFLAG FSD      SYSLOG+WALL+EXEC
+NOTIFYFLAG COMMOK   SYSLOG+EXEC
+NOTIFYFLAG COMMBAD  SYSLOG+WALL+EXEC
+NOTIFYFLAG SHUTDOWN SYSLOG+WALL+EXEC
+NOTIFYFLAG REPLBATT SYSLOG+WALL
+NOTIFYFLAG NOCOMM   SYSLOG+WALL
+NOTIFYFLAG NOPARENT SYSLOG
+
+RBWARNTIME 43200
+NOCOMMWARNTIME 300
+FINALDELAY 5

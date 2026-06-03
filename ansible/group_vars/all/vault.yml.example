@@ -1,0 +1,20 @@
+---
+# Example of the global encrypted vault.
+#
+# Real file path: ansible/group_vars/all/vault.yml (encrypted with
+# ansible-vault, committed to git in encrypted form).
+#
+# Create + encrypt it:
+#   cd ansible
+#   cp group_vars/all/vault.yml.example group_vars/all/vault.yml
+#   $EDITOR group_vars/all/vault.yml          # fill in real values
+#   ansible-vault encrypt group_vars/all/vault.yml
+#
+# The vault password lives in ~/.ansible-vault-pass (gitignored on workstation).
+
+# NUT (Network UPS Tools) — shared between the upsd users file on the primary
+# (pi5-master) and every secondary's MONITOR line. ≥12 chars. Doubles as the
+# authentication token between upsd and remote upsmon processes — anyone who
+# can reach :3493 with this password can issue FSD, so treat it like a
+# privileged credential.
+vault_nut_upsmon_password: REPLACE_ME_WITH_STRONG_RANDOM_PASSWORD

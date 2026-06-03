@@ -1,0 +1,12 @@
+# {{ ansible_managed }}
+# Managed by ansible/roles/nut. Do not edit by hand.
+#
+# Network credentials clients use to authenticate against upsd.
+# - 'upsmon primary' grants the right to issue FSD and watch the UPS.
+#   The role's primary uses these creds locally; secondaries on workers
+#   present them remotely. NUT accepts the legacy 'master'/'slave' spelling
+#   too — we use the modern names.
+
+[{{ nut_upsmon_user }}]
+    password = {{ nut_upsmon_password }}
+    upsmon primary

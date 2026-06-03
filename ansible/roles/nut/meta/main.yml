@@ -1,0 +1,29 @@
+---
+galaxy_info:
+  role_name: nut
+  author: kblack0610
+  description: >-
+    Network UPS Tools (NUT) primary + secondary setup for the home-k3s
+    fleet. The primary runs upsd against a USB-attached CyberPower UPS;
+    secondaries watch the network and shut k3s-agent down gracefully on
+    FSD broadcast.
+  license: MIT
+  min_ansible_version: "2.14"
+  platforms:
+    - name: Debian
+      versions:
+        - bookworm
+        - trixie
+    - name: Ubuntu
+      versions:
+        - jammy
+        - noble
+    - name: ArchARM
+      versions:
+        - any
+  galaxy_tags:
+    - homelab
+    - ups
+    - nut
+    - k3s
+dependencies: []

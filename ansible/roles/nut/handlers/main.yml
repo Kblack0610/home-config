@@ -1,0 +1,23 @@
+---
+- name: Restart nut-server
+  ansible.builtin.systemd:
+    name: nut-server.service
+    state: restarted
+    daemon_reload: true
+  listen: restart nut-server
+
+- name: Restart nut-monitor
+  ansible.builtin.systemd:
+    name: nut-monitor.service
+    state: restarted
+    daemon_reload: true
+  listen: restart nut-monitor
+
+- name: Restart nut-driver
+  ansible.builtin.systemd:
+    # nut-driver@.service is templated per-UPS; the role passes the instance
+    # name from nut_ups_name.
+    name: "nut-driver@{{ nut_ups_name }}.service"
+    state: restarted
+    daemon_reload: true
+  listen: restart nut-driver

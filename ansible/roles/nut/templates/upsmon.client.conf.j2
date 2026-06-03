@@ -1,0 +1,31 @@
+# {{ ansible_managed }}
+# Managed by ansible/roles/nut. Do not edit by hand.
+#
+# upsmon-secondary on {{ inventory_hostname }} ({{ ansible_host | default(inventory_hostname) }}).
+#
+# Talks to upsd on the NUT server. On FSD broadcast, runs worker-shutdown.sh
+# which stops k3s-agent gracefully before halting.
+
+MONITOR {{ nut_ups_name }}@{{ nut_server_host }} 1 {{ nut_upsmon_user }} {{ nut_upsmon_password }} secondary
+
+MINSUPPLIES 1
+SHUTDOWNCMD "/etc/nut/worker-shutdown.sh"
+
+POLLFREQ 5
+POLLFREQALERT 5
+HOSTSYNC 30
+DEADTIME 15
+
+NOTIFYFLAG ONLINE   SYSLOG
+NOTIFYFLAG ONBATT   SYSLOG+WALL
+NOTIFYFLAG LOWBATT  SYSLOG+WALL
+NOTIFYFLAG FSD      SYSLOG+WALL
+NOTIFYFLAG COMMBAD  SYSLOG+WALL
+NOTIFYFLAG COMMOK   SYSLOG
+NOTIFYFLAG SHUTDOWN SYSLOG+WALL
+NOTIFYFLAG REPLBATT SYSLOG+WALL
+NOTIFYFLAG NOCOMM   SYSLOG+WALL
+
+RBWARNTIME 43200
+NOCOMMWARNTIME 300
+FINALDELAY 5

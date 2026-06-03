@@ -1,0 +1,10 @@
+#!/bin/sh
+# {{ ansible_managed }}
+# Managed by ansible/roles/nut. Do not edit by hand.
+#
+# upsmon hands us $NOTIFYTYPE in argv[1] and the human-readable message in $1.
+# We forward the event name to upssched, which decides what (if anything)
+# to do based on upssched.conf.
+
+logger -t nut-notifycmd -p daemon.notice "event=${NOTIFYTYPE} msg=$*"
+exec /usr/sbin/upssched

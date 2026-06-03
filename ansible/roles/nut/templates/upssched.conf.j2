@@ -1,0 +1,26 @@
+# {{ ansible_managed }}
+# Managed by ansible/roles/nut. Do not edit by hand.
+#
+# upssched receives forwarded events from upsmon (via /etc/nut/notifycmd.sh)
+# and runs timers / commands in response. The key behaviour here is the
+# ONBATT settling timer: power must be out for {{ nut_onbatt_settle_seconds }}s
+# before we commit to a full cluster shutdown. A blip restores ONLINE, the
+# timer is cancelled, and nothing happens.
+
+CMDSCRIPT /etc/nut/upssched-cmd
+PIPEFN /var/run/nut/upssched.pipe
+LOCKFN /var/run/nut/upssched.lock
+
+# ONBATT: start the settling timer. If it expires we run the graceful path.
+AT ONBATT  * START-TIMER onbatt-settle {{ nut_onbatt_settle_seconds }}
+
+# ONLINE: power restored — cancel the timer. No shutdown.
+AT ONLINE  * CANCEL-TIMER onbatt-settle
+
+# LOWBATT: jump straight to the graceful path regardless of the timer.
+AT LOWBATT * EXECUTE early-shutdown
+
+# COMMBAD: lose contact with upsd — log + warn but don't shut down (could be
+# a transient network blip).
+AT COMMBAD * EXECUTE commbad-warn
+AT COMMOK  * EXECUTE commok-clear

@@ -1,0 +1,7 @@
+# {{ ansible_managed }}
+# Managed by ansible/roles/nut. Do not edit by hand.
+#
+# Network listener for upsd. The home LAN is trusted; if you split a
+# management VLAN later, replace 0.0.0.0 with that interface's address.
+
+LISTEN {{ nut_listen_address }} {{ nut_listen_port }}

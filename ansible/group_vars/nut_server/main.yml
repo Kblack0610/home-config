@@ -1,0 +1,3 @@
+---
+# Variables for the NUT primary (pi5-master).
+nut_role: server

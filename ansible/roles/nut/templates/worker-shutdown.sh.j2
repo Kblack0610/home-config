@@ -1,0 +1,29 @@
+#!/bin/sh
+# {{ ansible_managed }}
+# Managed by ansible/roles/nut. Do not edit by hand.
+#
+# upsmon-secondary SHUTDOWNCMD on {{ inventory_hostname }}.
+# Invoked by upsmon when FSD is received from the primary. Goal: stop
+# k3s-agent so pods receive a graceful SIGTERM with their
+# terminationGracePeriodSeconds before the kernel halts.
+
+set -u
+
+LOG_TAG="nut-worker-shutdown"
+log() { logger -t "${LOG_TAG}" -p daemon.notice "$*"; }
+
+log "FSD received — stopping k3s-agent before halt"
+
+# Stop k3s-agent if it's running. `systemctl stop` honours the unit's
+# TimeoutStopSec (k3s default = 90s). If the unit isn't installed, this
+# returns non-zero — we ignore so the halt still proceeds.
+if systemctl is-active --quiet k3s-agent 2>/dev/null; then
+    timeout 60 systemctl stop k3s-agent \
+        && log "k3s-agent stopped" \
+        || log "WARN: k3s-agent stop timed out or failed"
+else
+    log "k3s-agent not active; nothing to stop"
+fi
+
+log "halting"
+exec /sbin/shutdown -h +0 "NUT FSD"

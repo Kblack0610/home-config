@@ -1,0 +1,36 @@
+---
+- name: Assert nut_role is set to a known value
+  ansible.builtin.assert:
+    that:
+      - nut_role in ['server', 'client']
+    fail_msg: >-
+      nut_role must be 'server' or 'client' (got: {{ nut_role | default('<unset>') }}).
+      Set it in group_vars/nut_server or group_vars/nut_clients.
+
+- name: Assert upsmon password is provided by the vault
+  ansible.builtin.assert:
+    that:
+      - nut_upsmon_password is defined
+      - nut_upsmon_password | length >= 12
+      - not (nut_upsmon_password is match('^REPLACE_ME'))
+    fail_msg: >-
+      vault_nut_upsmon_password is missing, too short (<12 chars), or still the
+      placeholder. Create it in group_vars/all/vault.yml encrypted with
+      `ansible-vault encrypt`. See docs/nut-ups.md.
+
+- name: Install NUT packages
+  ansible.builtin.package:
+    name: "{{ nut_packages }}"
+    state: present
+  vars:
+    nut_packages: >-
+      {{ ['nut', 'nut-client', 'nut-server', 'usbutils']
+         if nut_role == 'server' else ['nut-client'] }}
+
+- name: Include server tasks
+  ansible.builtin.include_tasks: server.yml
+  when: nut_role == 'server'
+
+- name: Include client tasks
+  ansible.builtin.include_tasks: client.yml
+  when: nut_role == 'client'

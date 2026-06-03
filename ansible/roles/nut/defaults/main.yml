@@ -1,0 +1,45 @@
+---
+# Role: nut
+#
+# Variables here are safe defaults. Override per-group via group_vars/nut_server
+# and group_vars/nut_clients, or per-host in inventory.
+
+# 'server' | 'client'. The server runs upsd + drives the USB UPS; clients
+# only run upsmon and shut down on FSD.
+nut_role: client
+
+# Identity of the UPS instance — must match the section name in ups.conf and
+# the @host suffix clients use ('cyberpower@pi5-master').
+nut_ups_name: cyberpower
+nut_ups_driver: usbhid-ups
+nut_ups_port: auto
+# Matches the Product string the device reports over USB HID (see dmesg).
+# The hardware-rev suffix 'a' is what shows up on this unit; older revs report
+# the bare name. The label is cosmetic — driver selection is by VID:PID.
+nut_ups_description: "CyberPower CP1500PFCLCDa"
+
+# Server bind. 0.0.0.0 listens on every interface — the home LAN is trusted
+# enough for this. If you carve a separate management VLAN later, tighten.
+nut_listen_address: 0.0.0.0
+nut_listen_port: 3493
+
+# upsmon principal that clients authenticate with. The password lives in
+# vault_nut_upsmon_password (ansible-vault, group_vars/all/vault.yml).
+nut_upsmon_user: upsmon
+nut_upsmon_password: "{{ vault_nut_upsmon_password }}"
+
+# Network address the clients connect to. Inventory-derived so it tracks
+# pi5-master's static lease.
+nut_server_host: "{{ hostvars['pi5-master'].ansible_host }}"
+
+# Shutdown thresholds (server-side). Settling timer fires N seconds after
+# ONBATT before the cluster-graceful script runs. Tune so a 30s brownout
+# doesn't trigger a full shutdown.
+nut_onbatt_settle_seconds: 60
+
+# Whether the graceful shutdown should call `flux suspend`. Set false if the
+# flux binary isn't on the master's PATH (the role probes for it anyway).
+nut_graceful_flux_suspend: true
+
+# Kubeconfig the cluster-graceful script uses to cordon nodes.
+nut_kubeconfig: /etc/rancher/k3s/k3s.yaml

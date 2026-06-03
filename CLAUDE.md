@@ -39,6 +39,20 @@ Rules:
 - Direct `kubectl apply` is only valid for initial Flux bootstrap, resources outside Flux's watch path (`infrastructure/`), or emergency recovery with Flux suspended.
 - See `docs/gitops.md` for the layer boundary and `docs/ansible.md` for the host-layer workflow.
 
+### Host access naming (gotcha)
+
+Bare-metal hosts have **two different names** that look identical but resolve in different contexts. Get this wrong and `ssh pi5-master` returns `Could not resolve hostname`:
+
+| Where | Name shape | Example | Resolved by |
+|-------|-----------|---------|-------------|
+| `ansible/inventory.yml` `--limit` | bare alias | `pi5-master`, `pi5-worker2`, `pi4-worker4` | Ansible only — **not** DNS-resolvable |
+| `ssh`, `kubectl`, `curl`, `nc`, etc. | DHCP name | `pi5-master-lan`, `pi5-worker2-lan` | OpenWRT dnsmasq via `infrastructure/dhcp/devices.yaml` |
+| Always works | IP | `192.168.1.20` (master), `.21–.24, .124` (workers) | — |
+
+Macs use SSH-config aliases (`m1`, `mac-studio`) instead — see `docs/mac-machines.md`. The `-lan` suffix is a Pi/x86 convention only.
+
+Rule of thumb: in a runbook or shell command, use `-lan` or the IP. The bare alias is only valid as an `ansible-playbook --limit` target.
+
 ## Secrets & Vault
 
 - **ansible-vault password file**: `~/.ansible-vault-pass` on the workstation (mode 600, gitignored). Used by every `ansible-playbook` invocation against this repo. Set `ANSIBLE_VAULT_PASSWORD_FILE=$HOME/.ansible-vault-pass` in your shell, or pass `--vault-password-file ~/.ansible-vault-pass` per-run. Don't use `--ask-vault-pass` in this repo — the file already exists. Recovery if lost: `sops -d apps/ansible-runner/secret.yaml | grep ansible-vault-pass` (requires `~/.config/sops/age/keys.txt`).

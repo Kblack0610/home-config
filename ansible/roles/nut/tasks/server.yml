@@ -117,6 +117,25 @@
     group: nut
     mode: "0770"
 
+- name: Re-apply udev rules so the nut package's USB ownership rule fires for the already-plugged UPS
+  # The nut package ships /lib/udev/rules.d/62-nut-usbups.rules which sets
+  # GROUP="nut" on matching USB devices. But udev only evaluates rules on
+  # device events — if the UPS was plugged in BEFORE the package install
+  # (almost always the case on first-time setup), the device node stays
+  # root:root and `nut-driver@.service` fails with "libusb1: Could not open
+  # any HID devices: insufficient permissions on everything". Triggering a
+  # synthetic 'change' event makes udev re-evaluate against the live device,
+  # which fires the freshly-installed rule and the chown happens. Cheap and
+  # idempotent — running it on every play is fine.
+  ansible.builtin.command:
+    argv:
+      - udevadm
+      - trigger
+      - --action=change
+      - --subsystem-match=usb
+  changed_when: false
+  when: not ansible_check_mode
+
 - name: Enable + start nut-driver
   ansible.builtin.systemd:
     name: "nut-driver@{{ nut_ups_name }}.service"

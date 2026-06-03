@@ -57,32 +57,53 @@ This repo has two remotes that must stay in lockstep:
 
 Forgejo mirrors itself to github on every push to master via `.forgejo/workflows/mirror-to-github.yaml`. The two refs should diverge for at most one workflow run (~30s). If they ever diverge longer than that, the mirror workflow is broken or the deploy key was revoked — see the next section.
 
-### One-time setup for mirroring
+### Mirror status — currently configured
 
 The mirror workflow authenticates to github via a **deploy key** (SSH), NOT a PAT. Deploy keys are scoped to one repo, don't expire, and have a strictly narrower blast radius than any PAT.
 
+| Component | Where | Identifier |
+|---|---|---|
+| Github deploy key (public half) | https://github.com/Kblack0610/home-config/settings/keys | title `forgejo-mirror`, write access, id `153348332` (subject to change on rotation) |
+| Forgejo Actions secret (private half) | https://git.kennethblack.me/kblack0610/home-config/settings/actions/secrets | `MIRROR_DEPLOY_KEY` |
+| Workflow | `.forgejo/workflows/mirror-to-github.yaml` | runs on every push to master |
+| Verify it's working | `diff <(git ls-remote forgejo master) <(git ls-remote origin master)` | empty output = healthy |
+| Inspect runs | https://git.kennethblack.me/kblack0610/home-config/actions | look for `mirror-to-github` |
+
+The first successful run confirms the deploy key works; subsequent runs are silent unless they fail.
+
+### Rotating the mirror deploy key
+
+If the key is suspected of leaking, do this on the workstation (no web UI needed):
+
 ```bash
-# 1. Generate an ed25519 keypair (no passphrase — Forgejo Actions will read it):
+# 1. Delete the existing github deploy key (find the id at the URL above, or via gh):
+OLD_ID=$(gh api repos/Kblack0610/home-config/keys --jq '.[] | select(.title=="forgejo-mirror") | .id')
+gh api -X DELETE repos/Kblack0610/home-config/keys/"$OLD_ID"
+
+# 2. Generate a fresh keypair (ephemeral location):
 ssh-keygen -t ed25519 -f /tmp/home-config-mirror -N '' -C 'forgejo-mirror'
 
-# 2. Upload the PUBLIC key to github:
-#    https://github.com/Kblack0610/home-config/settings/keys → "Add deploy key"
-#    Paste contents of /tmp/home-config-mirror.pub.
-#    CHECK "Allow write access" (default is read-only).
+# 3. Upload the new public key as a deploy key with write access:
+gh api repos/Kblack0610/home-config/keys \
+  -f title='forgejo-mirror' \
+  -f key="$(cat /tmp/home-config-mirror.pub)" \
+  -F read_only=false
 
-# 3. Upload the PRIVATE key to Forgejo as an Actions secret:
-#    https://git.kennethblack.me/kblack0610/home-config/settings/actions/secrets
-#    Name: MIRROR_DEPLOY_KEY  (Forgejo rejects names starting with GITHUB_)
-#    Value: contents of /tmp/home-config-mirror (the file WITHOUT .pub),
-#    including the -----BEGIN OPENSSH PRIVATE KEY----- header.
+# 4. Replace the Forgejo Actions secret:
+TOKEN=$(grep kblab.me ~/.git-credentials | sed 's|.*://[^:]*:\([^@]*\)@.*|\1|')
+curl -X PUT \
+  -H "Authorization: token $TOKEN" \
+  -H "Content-Type: application/json" \
+  -d "$(jq -n --arg data "$(cat /tmp/home-config-mirror)" '{data: $data}')" \
+  "https://git.kblab.me/api/v1/repos/kblack0610/home-config/actions/secrets/MIRROR_DEPLOY_KEY"
 
-# 4. Delete the local copies:
+# 5. Shred local copies:
 shred -u /tmp/home-config-mirror /tmp/home-config-mirror.pub
+
+# 6. Trigger a push (any commit on master) to confirm the new key works.
 ```
 
-The next push to master triggers the workflow; verify at https://git.kennethblack.me/kblack0610/home-config/actions. The first successful run confirms the deploy key works; subsequent runs are silent.
-
-If you ever need to rotate: revoke the github deploy key, re-run steps 1-4. The key isn't tied to any user account so it can't be used to access anything else even if compromised.
+Manual web-UI alternative if `gh` / `curl` aren't available: same four logical steps via https://github.com/Kblack0610/home-config/settings/keys and https://git.kennethblack.me/kblack0610/home-config/settings/actions/secrets. Note: Forgejo rejects secret names starting with `GITHUB_` (reserved prefix that collides with the built-in github-actions context variables), which is why this secret is named `MIRROR_DEPLOY_KEY` rather than the more descriptive `GITHUB_MIRROR_DEPLOY_KEY`.
 
 ### Local clone setup
 

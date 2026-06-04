@@ -16,6 +16,9 @@ One-page index of services and their management plane. Use this to answer "where
 | Portfolio / bnb-studios / black-dev | any pi | k3s pod | Flux | `apps/{portfolio,bnb-studios,black-dev}/` |
 | Ansible Runner (CronJob, drift detection) | any k8s node | k8s CronJob | Flux | `apps/ansible-runner/` |
 | **Bare-metal (non-cluster) services** | | | | |
+| NUT primary (UPS server, USB-attached CyberPower CP1500PFCLCDa) | pi5-master | systemd `nut-driver@cyberpower`, `nut-server`, `nut-monitor` | Ansible (this repo) | `ansible/roles/nut/` ; `docs/nut-ups.md` |
+| NUT secondaries (graceful shutdown on FSD broadcast) | pi5-worker{1..3}, pi4-worker{4,5} | systemd `nut-monitor` | Ansible (this repo) | `ansible/roles/nut/` ; `docs/nut-ups.md` |
+| Laptop no-suspend (lid-close stays-online) | hp-victus, asus-laptop | systemd-logind dropin | Ansible (this repo) | `ansible/roles/k3s-node-no-suspend/` |
 | MLX code server | mac-studio | launchd `com.mlx-lm.code` | Ansible role authored, unbound → SSH + brew today | `ansible/roles/launchd-mlx-services/` ; `docs/mac-machines.md` |
 | MLX smart server | mac-studio | launchd `com.mlx-lm.smart` | Ansible role authored, unbound → SSH + brew today | `ansible/roles/launchd-mlx-services/` ; `docs/mac-machines.md` |
 | MLX reasoning server | mac-studio | launchd `com.mlx-lm.reasoning` | Ansible role authored, unbound → SSH + brew today | `ansible/roles/launchd-mlx-services/` ; `docs/mac-machines.md` |

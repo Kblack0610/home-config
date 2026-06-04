@@ -201,6 +201,8 @@ Gatus (`apps/gatus/`) monitors every endpoint in this graph — the Gatus config
 | cloudflared-public-sites pod | Public HTTPS access to `kennethblack.me`, `blacknbrownstudios.com`, `kblack.dev`, `binks.chat` | LAN access (via AdGuard rewrite path) still works for non-public services |
 | Traefik | Every ingress, LAN and public | Everything that doesn't need HTTPS ingress (node_exporter on :9100, mosquitto on :1883) |
 | Flux itself | Zero immediate impact on running workloads; new deploys + reconciliation just don't happen until recovered | Everything currently running |
+| Grid power | UPS holds the cluster up. After 60s on-battery (settling timer), NUT broadcasts FSD: master suspends Flux + cordons nodes, workers stop `k3s-agent` cleanly so pods get SIGTERM with their `terminationGracePeriodSeconds`, then everything halts and the UPS kills its outlets. Runtime budget ~25 min at idle, less under load. See `docs/nut-ups.md`. | Anything not on the UPS (the workstation, the printer, the NAS spinner) keeps running on grid until grid returns. |
+| UPS itself (battery dies, USB cable yanked, `nut-driver@cyberpower` flatlines) | Loss of graceful-shutdown coverage. Grid is still live → cluster keeps running normally, but next power event becomes a hard crash. Detect via `upsc cyberpower` empty/erroring on pi5-master or `systemctl is-active nut-driver@cyberpower` failing. | Everything — this is a silent-degradation failure mode, not an outage. |
 
 ## Cluster DR — rebuild from nothing
 

@@ -1,0 +1,60 @@
+title: Voice
+path: voice
+icon: mdi:cast-audio-variant
+type: sections
+max_columns: 3
+sections:
+  # ── Discovered cast devices ──
+  - type: grid
+    cards:
+      - type: heading
+        heading: Cast Devices
+        icon: mdi:cast-audio
+      - type: markdown
+        content: >
+          Auto-discovered via mDNS. Each Nest Hub / Mini / Audio /
+          Chromecast on the LAN appears as a `media_player.*` entity after
+          first boot. Add specific entity tiles below once names are known
+          (Settings → Devices → Cast).
+      - type: entities
+        title: Media players
+        show_header_toggle: false
+        state_color: true
+        entities:
+          # Populate after first discovery. Examples:
+          # - media_player.office_nest_mini
+          # - media_player.living_room_nest_hub
+          # - media_player.kitchen_chromecast
+
+  # ── Quick announce ──
+  - type: grid
+    cards:
+      - type: heading
+        heading: Quick Announce
+        icon: mdi:bullhorn
+      - type: entities
+        show_header_toggle: false
+        entities:
+          - entity: input_text.voice_announce_message
+          - entity: input_select.voice_announce_language
+      - type: button
+        name: Announce to all cast devices
+        icon: mdi:bullhorn-variant
+        tap_action:
+          action: call-service
+          service: script.tts_announce_all_cast
+          data:
+            message: "{{ states('input_text.voice_announce_message') }}"
+            language: "{{ states('input_select.voice_announce_language') }}"
+
+  # ── Test pad ──
+  - type: grid
+    cards:
+      - type: heading
+        heading: Test
+        icon: mdi:test-tube
+      - type: markdown
+        content: >
+          From **Developer Tools → Services**, call `script.tts_announce`
+          with `target: media_player.<your_device>` and
+          `message: "hello world"` to confirm a specific device works.

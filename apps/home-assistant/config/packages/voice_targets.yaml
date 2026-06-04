@@ -1,0 +1,81 @@
+# Voice targets — Cast + TTS to Google Home / Nest / Chromecast devices.
+#
+# The `cast` integration is bundled in default_config: and auto-discovers
+# Google Cast endpoints on the LAN via mDNS. Each discovered device shows up
+# as a `media_player.*` entity. This package wires the TTS engine and a
+# reusable announce script that any dashboard / automation can call.
+
+tts:
+  - platform: google_translate
+    service_name: google_say
+    language: en
+
+input_text:
+  voice_announce_message:
+    name: Announce message
+    initial: "Homelab announcement"
+    max: 240
+
+input_select:
+  voice_announce_language:
+    name: Language
+    options:
+      - en
+      - es
+      - es-419
+    initial: en
+    icon: mdi:translate
+
+script:
+  tts_announce:
+    alias: TTS Announce
+    description: Speak a message on a specific media_player (cast device).
+    mode: parallel
+    max: 10
+    fields:
+      target:
+        description: media_player entity_id to speak on (e.g. media_player.office_nest_mini).
+        example: media_player.office_nest_mini
+        required: true
+      message:
+        description: What to say.
+        example: "Cluster reconcile complete."
+        required: true
+      language:
+        description: TTS language code.
+        example: en
+        default: en
+    sequence:
+      - service: tts.google_translate_say
+        target:
+          entity_id: "{{ target }}"
+        data:
+          message: "{{ message }}"
+          language: "{{ language | default('en') }}"
+
+  tts_announce_all_cast:
+    alias: TTS Announce — all cast devices
+    description: Speak a message on every discovered cast media_player at once.
+    mode: parallel
+    max: 5
+    fields:
+      message:
+        description: What to say.
+        required: true
+      language:
+        description: TTS language code.
+        default: en
+    sequence:
+      - variables:
+          cast_targets: >-
+            {{ states.media_player
+               | selectattr('attributes.device_class', 'undefined')
+               | map(attribute='entity_id')
+               | select('match', 'media_player\\..*')
+               | list }}
+      - service: tts.google_translate_say
+        target:
+          entity_id: "{{ cast_targets }}"
+        data:
+          message: "{{ message }}"
+          language: "{{ language | default('en') }}"

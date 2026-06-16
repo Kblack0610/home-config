@@ -22,7 +22,7 @@ spec:
       # seeding (the CLI can't seed before the server creates the auth-file).
       containers:
         - name: ntfy
-          image: binwiederhier/ntfy:v2.11.0
+          image: binwiederhier/ntfy:v2.24.0
           imagePullPolicy: IfNotPresent
           args:
             - serve

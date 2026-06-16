@@ -31,6 +31,7 @@ resources:
   - neptune
   - notes-sync-bridge
   - ntfy
+  - ntfy-public
   - nvidia-device-plugin
   - openclaw
   - orcaslicer

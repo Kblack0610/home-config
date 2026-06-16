@@ -24,7 +24,13 @@ gh_runner_tarball_sha256: "93ac1b7ce743ee85b5d386f5c1787385ef07b3d7c728ff66ce0d3
 # Host-side paths and identities.
 gh_runner_user: actions-runner
 gh_runner_group: actions-runner
-gh_runner_home: /var/lib/actions-runner
+# Base dir shared by all runner instances on a host (and the runner user's
+# $HOME). Each runner gets its OWN install dir under here, keyed on its name,
+# so one host can run multiple runners without colliding on config.sh /
+# .runner / _work. e.g. hp-victus runs both the platform `*-linux` runner and
+# the dodginballs `*-unity` runner — different names → different dirs.
+gh_runner_base: /var/lib/actions-runner
+gh_runner_home: "{{ gh_runner_base }}/{{ gh_runner_name }}"
 gh_runner_work_dir: _work
 
 # Runner identity. Name defaults to hostname so re-running on a different host

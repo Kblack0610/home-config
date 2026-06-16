@@ -9,6 +9,7 @@ resources:
 
   # Applications (home-k3s cluster)
   - actual-budget
+  - alloy
   - ansible-runner
   - binks-api
   - cloudflared-public-sites
@@ -22,6 +23,7 @@ resources:
   - jellyfin
   - karakeep
   - litellm
+  - loki
   - mem0
   - minio
   - monitoring

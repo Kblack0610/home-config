@@ -7,6 +7,7 @@ resources:
   - ingress-alertmanager.yaml
   - prometheus-rules-app-health.yaml
   - prometheus-rules-litellm.yaml
+  - prometheus-rules-node-health.yaml
   - external-mac-nodes.yaml
   - external-standalone-nodes.yaml
   - external-iot-nodes.yaml

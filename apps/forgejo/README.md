@@ -16,7 +16,7 @@ and repository mirroring enabled.
 | `ingress.yaml` | TLS ingress for `git.kblab.me` |
 | `pvc.yaml` | Persistent Forgejo data volume |
 | `backup-cronjob.yaml` | Daily backup job for full data and SQLite snapshots |
-| `runner-deployment.yaml` | Forgejo Runner + DinD sidecar (on thinkcentre) |
+| `runner-deployment.yaml` | Forgejo Runner + DinD sidecar (any amd64 workstation node) |
 | `runner-config-cm.yaml` | Runner config with `docker` + `linux-amd64` labels |
 | `runner-secret.yaml` | SOPS-encrypted instance-level runner registration token |
 
@@ -47,8 +47,25 @@ Key config sections:
 
 ## Runner
 
-A single instance-level runner serves all repos on the Forgejo instance. It runs
-on `thinkcentre` with a Docker-in-Docker sidecar for container-based CI workflows.
+Instance-level runners serve all repos on the Forgejo instance, each with a
+Docker-in-Docker sidecar for container-based CI workflows.
+
+It runs **2 concurrent replicas, not pinned to a single host**:
+`runner-deployment.yaml` schedules pods on amd64 workstation nodes
+(`node-role.kubernetes.io/workstation`, currently thinkcentre / hp-victus /
+asus-laptop) and a soft `podAntiAffinity` spreads them across different nodes. If
+one node dies (e.g. a power outage), the other replica is already live on another
+box — instant failover instead of the ~5-min eviction gap a single replica would
+suffer on a hard node death. One dead box can no longer block CI. Each pod
+registers under its own pod name (`--name "$POD_NAME"` via the downward API),
+which is mandatory with more than one replica — otherwise both would register as
+`forgejo-runner` and collide.
+
+> **Stale runners after a reschedule:** when a pod lands on a new node it
+> re-registers under its new pod name, so the Forgejo admin runner list (Site
+> Administration → Actions → Runners) may show offline `forgejo-runner-*` entries
+> from previous pods. These are cosmetic — offline runners pick up no jobs —
+> delete them from the admin UI when convenient.
 
 Generate a new registration token (if needed):
 

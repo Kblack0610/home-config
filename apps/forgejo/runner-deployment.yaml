@@ -6,7 +6,12 @@ metadata:
   labels:
     app.kubernetes.io/name: forgejo-runner
 spec:
-  replicas: 1
+  # Two concurrent runners (was: 1, pinned to thinkcentre via nodeSelector). When
+  # a workstation node dies (e.g. the power outage that froze a release), the other
+  # replica is already live on a different box — instant failover, not the ~5-min
+  # eviction-timeout gap a single replica would suffer on a hard node death. The
+  # podAntiAffinity below keeps the two pods on different nodes.
+  replicas: 2
   selector:
     matchLabels:
       app.kubernetes.io/name: forgejo-runner
@@ -15,8 +20,27 @@ spec:
       labels:
         app.kubernetes.io/name: forgejo-runner
     spec:
-      nodeSelector:
-        kubernetes.io/hostname: thinkcentre
+      affinity:
+        # Schedule only on amd64 workstation nodes (thinkcentre/hp-victus/
+        # asus-laptop). DinD needs amd64 + privileged + 6Gi, which the arm64 Pis
+        # can't satisfy, so the workstation role label is the correct gate.
+        nodeAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            nodeSelectorTerms:
+              - matchExpressions:
+                  - key: node-role.kubernetes.io/workstation
+                    operator: Exists
+        # Spread the two replicas across different nodes for real redundancy.
+        # Soft (preferred) so a single live workstation node still runs both
+        # rather than leaving a replica Pending.
+        podAntiAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+            - weight: 100
+              podAffinityTerm:
+                topologyKey: kubernetes.io/hostname
+                labelSelector:
+                  matchLabels:
+                    app.kubernetes.io/name: forgejo-runner
       containers:
         - name: runner
           image: code.forgejo.org/forgejo/runner:6.3.1
@@ -27,10 +51,16 @@ spec:
               forgejo-runner register \
                 --instance https://git.kblab.me \
                 --token "$FORGEJO_RUNNER_REGISTRATION_TOKEN" \
-                --name forgejo-runner \
+                --name "$POD_NAME" \
                 --no-interactive && \
               forgejo-runner daemon --config /etc/forgejo-runner/config.yaml
           env:
+            # Unique per-pod runner name (the pod name) — mandatory with >1
+            # replica, otherwise both register as "forgejo-runner" and collide.
+            - name: POD_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.name
             - name: FORGEJO_RUNNER_REGISTRATION_TOKEN
               valueFrom:
                 secretKeyRef:

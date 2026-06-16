@@ -1,0 +1,43 @@
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: homelab-node-health
+  namespace: monitoring
+  labels:
+    app.kubernetes.io/name: homelab-node-health
+    app.kubernetes.io/part-of: monitoring
+spec:
+  groups:
+    - name: homelab-node-health.alerts
+      rules:
+        # A monitored machine stopped responding to node-exporter scrapes. Covers
+        # k3s nodes (job=node-exporter, the DaemonSet), Macs (mac-nodes), and the
+        # standalone Pi3 (standalone-nodes). This is the alert that would have
+        # paged on the thinkcentre power outage. iot-pi-nodes (sleepy Pi Zeros)
+        # are intentionally excluded to avoid false pages.
+        - alert: NodeDown
+          expr: up{job=~"node-exporter|mac-nodes|standalone-nodes"} == 0
+          for: 2m
+          labels:
+            severity: critical
+            category: node-health
+          annotations:
+            summary: "Node down: {{ $labels.instance }} ({{ $labels.job }})"
+            description: >-
+              node-exporter target {{ $labels.instance }} (job {{ $labels.job }})
+              has been unreachable for 2m — the host may be powered off, crashed,
+              or off the network.
+        # The whole node-exporter scrape job vanished — Prometheus lost its
+        # targets, or every k3s node-exporter is gone. Monitoring is blind.
+        - alert: NodeExporterAbsent
+          expr: absent(up{job="node-exporter"})
+          for: 5m
+          labels:
+            severity: critical
+            category: node-health
+          annotations:
+            summary: "node-exporter scrape job is absent"
+            description: >-
+              No node-exporter (DaemonSet) targets are being scraped at all.
+              Prometheus may have lost its scrape config, or the DaemonSet is
+              down cluster-wide — node-down detection is currently blind.

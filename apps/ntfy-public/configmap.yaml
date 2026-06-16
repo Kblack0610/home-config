@@ -14,17 +14,22 @@ data:
     cache-duration: "12h"
     attachment-cache-dir: "/var/cache/ntfy/attachments"
     auth-file: "/var/lib/ntfy/user.db"
-    # Public broker. Unlike the private ntfy instance (apps/ntfy/, which relies
-    # on the LAN-only ingress middleware and has NO app-layer auth), this one is
-    # reachable from the open internet via the Cloudflare tunnel, so access is
-    # enforced in ntfy itself:
-    #   - auth-default-access deny-all  → nothing is open by default
-    #   - everyone gets read-only on the `ship` topic (seeded in the init container)
-    #   - the `publisher` user gets read-write on `ship` (CI + weekly digest publish)
-    # The teammate subscribes anonymously (read-only); only the publisher (our own
-    # self-hosted credential) can post. No third-party SaaS key anywhere.
+    # Public broker on the open internet (via the Cloudflare tunnel). Unlike the
+    # private apps/ntfy instance (LAN-only, no app-layer auth), access here is
+    # enforced inside ntfy, declaratively (GitOps-friendly: no CLI seeding, no
+    # chicken-and-egg with the auth-file):
+    #   - deny-all by default
+    #   - everyone (anonymous) gets read-only on the ship topic
+    #   - the publisher user gets read-write on ship (CI + weekly digest)
+    # The password below is a one-way bcrypt hash (safe in git); the plaintext
+    # lives only in the GitHub secret NTFY_SHIP_PASS for CI Basic auth. The
+    # teammate subscribes anonymously and needs no account or token.
     auth-default-access: "deny-all"
+    auth-users:
+      - "publisher:$2a$10$sJ4wmL.MgB7RbhbdB.syoOUOx.esBwFpK0RR7BHJYxL8rpp9JUqNy:user"
+    auth-access:
+      - "publisher:ship:rw"
+      - "everyone:ship:ro"
     behavior-since-time: true
-    # Serve the ntfy web app so https://ship.blacknbrownstudios.com renders as a
-    # browsable feed page (the private instance disables this).
+    # Serve the ntfy web app so the URL renders as a browsable feed page.
     web-root: "app"

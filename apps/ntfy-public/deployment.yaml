@@ -17,37 +17,9 @@ spec:
       labels:
         app.kubernetes.io/name: ntfy-public
     spec:
-      # Seed access control into the auth-file before the server starts.
-      # Idempotent: safe to re-run on every pod start (handles password rotation).
-      initContainers:
-        - name: seed-access
-          image: binwiederhier/ntfy:v2.11.0
-          command:
-            - /bin/sh
-            - -c
-            - |
-              set -eu
-              # Anonymous read-only on the public broadcast topic.
-              ntfy access everyone ship read-only
-              # Publisher user (read-write on `ship`); used by CI + weekly digest.
-              # `user add` fails if the user already exists — tolerate it, then
-              # force the password to match the secret so rotation works.
-              NTFY_PASSWORD="$NTFY_PUBLISHER_PASSWORD" ntfy user add --role=user publisher 2>/dev/null || true
-              NTFY_PASSWORD="$NTFY_PUBLISHER_PASSWORD" ntfy user change-pass publisher
-              ntfy access publisher ship read-write
-          env:
-            - name: NTFY_PUBLISHER_PASSWORD
-              valueFrom:
-                secretKeyRef:
-                  name: ntfy-public-publisher
-                  key: password
-          volumeMounts:
-            - name: data
-              mountPath: /var/lib/ntfy
-              subPath: lib
-            - name: config
-              mountPath: /etc/ntfy
-              readOnly: true
+      # Access control is declared in the ConfigMap (auth-users + auth-access),
+      # so ntfy provisions the publisher user + ACL on startup — no init-container
+      # seeding (the CLI can't seed before the server creates the auth-file).
       containers:
         - name: ntfy
           image: binwiederhier/ntfy:v2.11.0

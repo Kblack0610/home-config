@@ -27,9 +27,10 @@ isolates the public surface completely:
 - `everyone` → **read-only** on `ship` (anyone with the link can subscribe; no account).
 - `publisher` user → **read-write** on `ship` (CI + weekly digest publish, Basic auth).
 
-The publisher credential is **self-hosted and fully ours** (SOPS-encrypted in
-`secret.yaml`, mirrored into the platform repo's GitHub secret `NTFY_SHIP_PASS`). No
-third-party SaaS key anywhere; the teammate needs nothing.
+The publisher credential is **self-hosted and fully ours**: a one-way **bcrypt hash**
+in `configmap.yaml` (safe to keep in git — it can't be reversed to the password), with the
+plaintext living only in the platform repo's GitHub secret `NTFY_SHIP_PASS` for CI Basic
+auth. No third-party SaaS key anywhere; the teammate needs nothing.
 
 ## How a teammate subscribes (one-time, ~2 min)
 
@@ -39,27 +40,32 @@ third-party SaaS key anywhere; the teammate needs nothing.
 3. Done — release news pushes to their phone. (Or just bookmark
    https://ship.blacknbrownstudios.com/ship in a browser.)
 
-## One-time setup checklist (operator)
+## One-time setup (operator) — DONE
 
-- [ ] **Cloudflare tunnel** — add a public hostname `ship.blacknbrownstudios.com` →
-  `https://traefik...` (same target as the other public sites) in the Cloudflare Zero Trust
-  dashboard. The tunnel (`apps/cloudflared-public-sites/`) is token/remote-managed, so this
-  routing lives in Cloudflare, not in git. This also creates the DNS CNAME.
-- [ ] **GitHub secrets** on `BlackNBrownStudios/platform`: `NTFY_SHIP_PASS` (the publisher
-  password, same value as `secret.yaml`) and optionally `NTFY_SHIP_USER` (defaults to
-  `publisher`).
-- [ ] Merge → Flux reconciles → cert issues via `letsencrypt-dns`.
+- [x] **Cloudflare tunnel** — public hostname `ship.blacknbrownstudios.com` →
+  `https://traefik.kube-system.svc.cluster.local:443` added to the `public-sites-homelab`
+  tunnel (config v8) via the Cloudflare API, plus the proxied `ship` CNAME DNS record. The
+  tunnel is token/remote-managed, so this routing lives in Cloudflare, not in git.
+- [x] **GitHub secrets** on `BlackNBrownStudios/platform`: `NTFY_SHIP_PASS` (publisher
+  plaintext password) + `NTFY_SHIP_USER=publisher`.
+- [x] Forgejo `master` reconciled by Flux → cert issues via `letsencrypt-dns`.
+
+**To rotate the publisher password:** generate a new password, bcrypt-hash it
+(`htpasswd -bnBC 10 "" <pw>`, normalize `$2y$`→`$2a$`), update `auth-users` in
+`configmap.yaml`, and update the `NTFY_SHIP_PASS` GitHub secret to the new plaintext.
 
 ## Access model details
 
-Seeded idempotently by the deployment's init container on every pod start (handles password
-rotation):
+Declared in `configmap.yaml` — ntfy provisions these into the auth-file on startup
+(no CLI seeding, no init container):
 
-```sh
-ntfy access everyone ship read-only
-NTFY_PASSWORD="$NTFY_PUBLISHER_PASSWORD" ntfy user add --role=user publisher || true
-NTFY_PASSWORD="$NTFY_PUBLISHER_PASSWORD" ntfy user change-pass publisher
-ntfy access publisher ship read-write
+```yaml
+auth-default-access: "deny-all"
+auth-users:
+  - "publisher:<bcrypt-hash>:user"
+auth-access:
+  - "publisher:ship:rw"   # CI + weekly digest publish (Basic auth)
+  - "everyone:ship:ro"    # anonymous subscribe — what the teammate uses
 ```
 
 ## Verification
@@ -76,4 +82,5 @@ curl -u "publisher:<password>" -d "test from operator" https://ship.blacknbrowns
 ## Backups
 
 Skipped, same rationale as `apps/ntfy/`: the PVC holds a 12h cache + the auth-file. The
-auth-file is reseeded from `secret.yaml` on every pod start, so its loss is self-healing.
+auth-file is reprovisioned from the `configmap.yaml` declarative `auth-users`/`auth-access`
+on every pod start, so its loss is self-healing.

@@ -15,8 +15,13 @@ spec:
       labels:
         app.kubernetes.io/name: forgejo-runner
     spec:
+      # Run on any amd64 workstation node (asus-laptop / hp-victus / thinkcentre),
+      # not a single hostname — so a single node power-loss can't take down preview
+      # CI/releases (root cause of the 2026-06-15 thinkcentre outage). dind needs
+      # amd64 + resources, so the arm64 Pis are excluded via the workstation role
+      # label. Runner volumes are all emptyDir, so it's free to move between nodes.
       nodeSelector:
-        kubernetes.io/hostname: thinkcentre
+        node-role.kubernetes.io/workstation: "true"
       containers:
         - name: runner
           image: code.forgejo.org/forgejo/runner:6.3.1

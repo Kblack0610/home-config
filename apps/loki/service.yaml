@@ -1,0 +1,21 @@
+apiVersion: v1
+kind: Service
+metadata:
+  # MUST be named "loki" in the monitoring namespace — Grafana's datasource is
+  # pre-wired to http://loki:3100 (apps/monitoring/helm-values.yaml), and Grafana
+  # runs in this namespace, so the unqualified name resolves here.
+  name: loki
+  namespace: monitoring
+  labels:
+    app.kubernetes.io/name: loki
+spec:
+  type: ClusterIP
+  selector:
+    app.kubernetes.io/name: loki
+  ports:
+    - name: http
+      port: 3100
+      targetPort: 3100
+    - name: grpc
+      port: 9095
+      targetPort: 9095

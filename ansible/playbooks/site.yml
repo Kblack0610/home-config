@@ -48,8 +48,14 @@
     - role: k3s-node-no-suspend
       tags: [no-suspend, k3s]
 
+# Two hosts run a [self-hosted, linux] runner so a single dead box (e.g. the
+# thinkcentre power-outage that froze a release) can never block CI again. The
+# role names each runner {{ inventory_hostname }}-linux, so thinkcentre-linux
+# and hp-victus-linux register independently with no collision. asus-laptop is
+# intentionally excluded while it's unreachable:true (port 2222) in inventory —
+# add it here once its SSH is normalized for 3-way redundancy.
 - name: GitHub Actions self-hosted runners (Linux bare metal)
-  hosts: thinkcentre
+  hosts: thinkcentre:hp-victus
   become: true
   gather_facts: true
   roles:

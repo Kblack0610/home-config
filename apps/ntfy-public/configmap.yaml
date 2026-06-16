@@ -1,0 +1,30 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: ntfy-public-server-config
+  namespace: ntfy-public
+  labels:
+    app.kubernetes.io/name: ntfy-public
+data:
+  server.yml: |
+    base-url: "https://ship.blacknbrownstudios.com"
+    listen-http: ":80"
+    behind-proxy: true
+    cache-file: "/var/cache/ntfy/cache.db"
+    cache-duration: "12h"
+    attachment-cache-dir: "/var/cache/ntfy/attachments"
+    auth-file: "/var/lib/ntfy/user.db"
+    # Public broker. Unlike the private ntfy instance (apps/ntfy/, which relies
+    # on the LAN-only ingress middleware and has NO app-layer auth), this one is
+    # reachable from the open internet via the Cloudflare tunnel, so access is
+    # enforced in ntfy itself:
+    #   - auth-default-access deny-all  → nothing is open by default
+    #   - everyone gets read-only on the `ship` topic (seeded in the init container)
+    #   - the `publisher` user gets read-write on `ship` (CI + weekly digest publish)
+    # The teammate subscribes anonymously (read-only); only the publisher (our own
+    # self-hosted credential) can post. No third-party SaaS key anywhere.
+    auth-default-access: "deny-all"
+    behavior-since-time: true
+    # Serve the ntfy web app so https://ship.blacknbrownstudios.com renders as a
+    # browsable feed page (the private instance disables this).
+    web-root: "app"

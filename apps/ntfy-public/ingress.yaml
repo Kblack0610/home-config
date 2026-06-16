@@ -1,0 +1,32 @@
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: ntfy-public
+  namespace: ntfy-public
+  labels:
+    app.kubernetes.io/name: ntfy-public
+  annotations:
+    cert-manager.io/cluster-issuer: letsencrypt-dns
+    # NOTE: intentionally NO monitoring-local-network-only middleware here.
+    # This host is reached from the open internet via the Cloudflare tunnel.
+    # Access is enforced inside ntfy (deny-all default + per-topic ACL), not at
+    # the network layer. The Cloudflare-tunnel public-hostname mapping for
+    # ship.blacknbrownstudios.com → traefik must be added in the Cloudflare
+    # Zero Trust dashboard (the tunnel is token/remote-managed).
+spec:
+  ingressClassName: traefik
+  tls:
+    - hosts:
+        - ship.blacknbrownstudios.com
+      secretName: ntfy-public-tls
+  rules:
+    - host: ship.blacknbrownstudios.com
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: ntfy-public
+                port:
+                  number: 80

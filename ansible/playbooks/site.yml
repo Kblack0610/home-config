@@ -22,7 +22,7 @@
       tags: [asr, ml, dictation]
 
 - name: Bootstrap — ensure Python is installed so Ansible modules can run
-  hosts: thinkcentre:hp-victus
+  hosts: thinkcentre
   become: true
   gather_facts: false
   tasks:
@@ -48,14 +48,12 @@
     - role: k3s-node-no-suspend
       tags: [no-suspend, k3s]
 
-# Two hosts run a [self-hosted, linux] runner so a single dead box (e.g. the
-# thinkcentre power-outage that froze a release) can never block CI again. The
-# role names each runner {{ inventory_hostname }}-linux, so thinkcentre-linux
-# and hp-victus-linux register independently with no collision. asus-laptop is
-# intentionally excluded while it's unreachable:true (port 2222) in inventory —
-# add it here once its SSH is normalized for 3-way redundancy.
+# Direction: Forgejo Actions = primary in-cluster CI (resilient, replicas:2).
+# GitHub Actions self-hosted = thinkcentre only, for jobs that need LAN access
+# (e.g. preview-smoke, vikunja-close-on-merge). The BNB release gate moves to
+# ubuntu-latest (platform #833) so a dead thinkcentre can't block releases.
 - name: GitHub Actions self-hosted runners (Linux bare metal)
-  hosts: thinkcentre:hp-victus
+  hosts: thinkcentre
   become: true
   gather_facts: true
   roles:

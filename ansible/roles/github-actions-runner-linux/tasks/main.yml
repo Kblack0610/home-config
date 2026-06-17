@@ -40,16 +40,13 @@
     system: true
     state: present
 
-# The runner user's $HOME is the shared BASE dir (not the per-instance home),
-# so a second runner play on the same host doesn't flap the user's home dir.
-# Each instance's files live under {{ gh_runner_base }}/{{ gh_runner_name }}.
 - name: Create runner user
   ansible.builtin.user:
     name: "{{ gh_runner_user }}"
     group: "{{ gh_runner_group }}"
     groups: [docker]
     append: true
-    home: "{{ gh_runner_base }}"
+    home: "{{ gh_runner_home }}"
     shell: /bin/bash
     system: true
     create_home: true

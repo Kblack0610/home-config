@@ -17,8 +17,7 @@ The previous iteration of this app shipped its own custom MCP server bridging Cl
 | `namespace.yaml` | `memory` namespace |
 | `configmap.yaml` | Non-secret env (Postgres host, OpenAI base URL, LLM/embedder model names, AUTH_DISABLED) |
 | `secret.yaml.template` | SOPS-encryption template (POSTGRES_PASSWORD, OPENAI_API_KEY, JWT_SECRET, ADMIN_API_KEY) |
-| `pvc.yaml` | 1Gi local-path PVC for `history.db` |
-| `deployment.yaml` | mem0-api-server with init container running `alembic upgrade head` |
+| `deployment.yaml` | mem0-api-server with init container running `alembic upgrade head`; `/app/history` is an `emptyDir` (disposable) so the pod is never node-pinned |
 | `service.yaml` | ClusterIP `:8000` |
 | `ingress.yaml` | TLS at `mem0.kblab.me`, restricted to RFC1918 |
 | `kustomization.yaml` | Roll-up (excludes secret until encrypted file exists) |
@@ -102,7 +101,7 @@ After this deployment is healthy, the `~/.claude/skills/mem0-ops/SKILL.md` skill
 
 ## Backup
 
-mem0's durable state is the Postgres data (vector store + app metadata) — backed up via the shared `apps/postgres/` (CronJob to be added). The `history.db` on this app's PVC is replaceable; not critical to back up.
+mem0's durable state is the Postgres data (vector store + app metadata) — backed up via the shared `apps/postgres/` (CronJob to be added). The `history.db` lives on an `emptyDir` (resets on pod restart); it's a replaceable change-audit log, not critical to back up.
 
 ## Upstream patches applied at runtime
 

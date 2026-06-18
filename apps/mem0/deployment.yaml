@@ -21,7 +21,10 @@ spec:
       # pushed to the in-cluster Forgejo registry. See:
       #   apps/mem0/README.md "Rebuilding the image" for the bump
       #   procedure.
-      # No nodeSelector — runs on any amd64 node.
+      # amd64-only image. Enforce arch so the scheduler can't place the pod
+      # on an arm64 node now that it's no longer pinned by a node-local PVC.
+      nodeSelector:
+        kubernetes.io/arch: amd64
       imagePullSecrets:
         - name: forgejo-registry
       # Run alembic migrations against APP_DB_NAME before the API server
@@ -116,9 +119,13 @@ spec:
             initialDelaySeconds: 30
             periodSeconds: 10
       volumes:
+        # history.db is mem0's disposable change-audit log. The actual memories
+        # live in the shared cluster Postgres (see configmap POSTGRES_*), so this
+        # volume holds nothing that must survive a restart. emptyDir keeps the pod
+        # un-pinned: a node death just reschedules it. (Was a local-path PVC
+        # pinned to one node, which stranded mem0 when thinkcentre died 2026-06.)
         - name: history
-          persistentVolumeClaim:
-            claimName: mem0-history
+          emptyDir: {}
         - name: localtime
           hostPath:
             path: /etc/localtime

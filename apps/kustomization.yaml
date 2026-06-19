@@ -47,6 +47,7 @@ resources:
   - bnb-studios
   - black-dev
   - placemyparents-preview
+  - scratch
 
 # Directories under apps/ that are NOT Flux-managed are documented in
 # docs/excluded-from-flux.md. The doc lists each one with its runtime, deploy

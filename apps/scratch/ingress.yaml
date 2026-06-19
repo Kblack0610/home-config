@@ -1,0 +1,30 @@
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: scratch
+  namespace: scratch
+  annotations:
+    cert-manager.io/cluster-issuer: letsencrypt-dns
+    # NOTE: intentionally NO monitoring-local-network-only middleware. This host
+    # is reached from the open internet via the Cloudflare tunnel. Access is
+    # enforced INSIDE MicroBin (HTTP basic auth on the whole instance), not at
+    # the network layer. The Cloudflare-tunnel public-hostname mapping for
+    # scratch.kennethblack.me → traefik is managed via the cloudflared-public-sites
+    # tunnel (see apps/scratch/README.md).
+spec:
+  ingressClassName: traefik
+  tls:
+    - hosts:
+        - scratch.kennethblack.me
+      secretName: scratch-tls
+  rules:
+    - host: scratch.kennethblack.me
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: scratch
+                port:
+                  number: 80

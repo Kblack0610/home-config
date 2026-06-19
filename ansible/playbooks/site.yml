@@ -6,7 +6,8 @@
 #   ansible-playbook playbooks/site.yml --limit thinkcentre
 #   ansible-playbook playbooks/site.yml --limit thinkcentre --check --diff
 #
-# Phase A binds only the GitHub Actions runner role to thinkcentre.
+# The github-actions-runner-linux role is now bound only to hp-victus (dodginballs
+# Unity runner); the thinkcentre platform runner was decommissioned 2026-06-18.
 # Future phases will add roles here (k3s-agent, launchd-mlx, openwrt-config, etc.).
 
 - name: Local ASR dictation daemons (Parakeet + whisper.cpp) on this workstation
@@ -48,17 +49,15 @@
     - role: k3s-node-no-suspend
       tags: [no-suspend, k3s]
 
-# Direction: Forgejo Actions = primary in-cluster CI (resilient, replicas:2).
-# GitHub Actions self-hosted = thinkcentre only, for jobs that need LAN access
-# (e.g. preview-smoke, vikunja-close-on-merge). The BNB release gate moves to
-# ubuntu-latest (platform #833) so a dead thinkcentre can't block releases.
-- name: GitHub Actions self-hosted runners (Linux bare metal)
-  hosts: thinkcentre
-  become: true
-  gather_facts: true
-  roles:
-    - role: github-actions-runner-linux
-      tags: [runner, ci]
+# DECOMMISSIONED 2026-06-18: the thinkcentre platform [self-hosted, linux] runner
+# is gone. platform #833 moved the release gate to ubuntu-latest, and #854/#856
+# moved preview-smoke + vikunja-close-on-merge to ubuntu-latest (Vikunja reached
+# over its public host instead of LAN). No GitHub workflow targets
+# [self-hosted, linux] anymore, so this binding was removed and the runner
+# deregistered from BlackNBrownStudios/platform. CI is now: Forgejo Actions =
+# primary in-cluster (resilient, replicas:2) + github-hosted cloud for the rest.
+# The github-actions-runner-linux role is KEPT — the dodginballs Unity runner
+# (hp-victus, below) still uses it.
 
 - name: macOS baseline + monitoring (safe Phase D roles)
   hosts: macos_hosts

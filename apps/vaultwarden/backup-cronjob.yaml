@@ -1,0 +1,60 @@
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: vaultwarden-backup
+  namespace: vaultwarden
+spec:
+  schedule: "0 3 * * *"  # Daily at 3 AM
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 1
+  jobTemplate:
+    spec:
+      template:
+        spec:
+          # No nodeSelector: the job co-locates with the local-path PVC (RWO,
+          # same node as the app pod) so it can read /data. The NAS push is
+          # network-based (//nas.nas.svc.cluster.local), so it works from any
+          # node the PVC happens to live on.
+          securityContext:
+            fsGroup: 1000
+          containers:
+            - name: backup
+              image: alpine:latest
+              env:
+                - name: NAS_SMB_PASSWORD
+                  valueFrom:
+                    secretKeyRef:
+                      name: backup-nas-credentials
+                      key: smb-password
+              command:
+                - /bin/sh
+                - -c
+                - |
+                  apk add --no-cache tar gzip samba-client
+                  TIMESTAMP=$(date +%Y%m%d-%H%M%S)
+                  BACKUP_FILE="vaultwarden-$TIMESTAMP.tar.gz"
+                  # Snapshot the whole /data dir (SQLite db + attachments + keys)
+                  tar -czf /backup/$BACKUP_FILE -C /data .
+                  # Keep only last 30 local backups
+                  ls -t /backup/vaultwarden-*.tar.gz | tail -n +31 | xargs -r rm
+                  echo "Local backup complete: $BACKUP_FILE"
+                  # Upload to NAS (best-effort — local backup still succeeds if NAS is down)
+                  smbclient //nas.nas.svc.cluster.local/private -U "nas%${NAS_SMB_PASSWORD}" -c \
+                    "mkdir backups; cd backups; mkdir home-k3s; cd home-k3s; mkdir vaultwarden; cd vaultwarden; put /backup/$BACKUP_FILE $BACKUP_FILE" \
+                    && echo "NAS copy OK: $BACKUP_FILE" \
+                    || echo "WARN: NAS copy failed, local backup still available"
+              volumeMounts:
+                - name: data
+                  mountPath: /data
+                  readOnly: true
+                - name: backup
+                  mountPath: /backup
+          restartPolicy: OnFailure
+          volumes:
+            - name: data
+              persistentVolumeClaim:
+                claimName: vaultwarden-data
+            - name: backup
+              hostPath:
+                path: /var/backups/vaultwarden
+                type: DirectoryOrCreate

@@ -78,6 +78,9 @@ data:
         - name: ntfy.kblab.me
           type: A
           value: 10.43.43.204
+        - name: vault.kblab.me
+          type: A
+          value: 10.43.43.204
 
     # Embedded DERP relay server for NAT traversal
     derp:

@@ -39,6 +39,7 @@ resources:
   - orcaslicer
   - postgres
   - sops-backup-rbac
+  - vaultwarden
   - vikunja
 
   # Public sites (Cloudflare tunnel → Traefik → service)

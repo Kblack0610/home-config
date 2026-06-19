@@ -1,0 +1,100 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: scratch
+  namespace: scratch
+  labels:
+    app.kubernetes.io/name: scratch
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: scratch
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: scratch
+    spec:
+      containers:
+        - name: microbin
+          image: danielszabo99/microbin:2.1.0
+          imagePullPolicy: IfNotPresent
+          ports:
+            - name: http
+              containerPort: 8080
+          env:
+            - name: MICROBIN_PORT
+              value: "8080"
+            - name: MICROBIN_BIND
+              value: "0.0.0.0"
+            - name: MICROBIN_DATA_DIR
+              value: "/data"
+            - name: MICROBIN_PUBLIC_PATH
+              value: "https://scratch.kennethblack.me"
+            - name: MICROBIN_HASH_IDS
+              value: "true"
+            - name: MICROBIN_QR
+              value: "true"
+            - name: MICROBIN_WIDE
+              value: "true"
+            # --- Retention model (see README) -------------------------------
+            # Sensitive-by-default: a fresh paste expires in 1 hour unless you
+            # bump it. Burn-after-reading is the one-shot mode for keys.
+            - name: MICROBIN_ENABLE_BURN_AFTER
+              value: "true"
+            - name: MICROBIN_DEFAULT_EXPIRY
+              value: "1hour"
+            - name: MICROBIN_MAX_EXPIRY
+              value: "never"
+            - name: MICROBIN_GC_DAYS
+              value: "365"
+            # --- Auth: the shared "key" gates the whole box -----------------
+            # Username is non-secret; password + admin password load from the
+            # mounted SOPS secret via MicroBin's file:// support.
+            - name: MICROBIN_BASIC_AUTH_USERNAME
+              value: "scratch"
+            - name: MICROBIN_BASIC_AUTH_PASSWORD
+              value: "file:///secrets/basic-auth-password"
+            - name: MICROBIN_ADMIN_USERNAME
+              value: "admin"
+            - name: MICROBIN_ADMIN_PASSWORD
+              value: "file:///secrets/admin-password"
+            - name: MICROBIN_DISABLE_TELEMETRY
+              value: "true"
+            - name: MICROBIN_DISABLE_UPDATE_CHECKING
+              value: "true"
+          volumeMounts:
+            - name: data
+              mountPath: /data
+            - name: auth
+              mountPath: /secrets
+              readOnly: true
+          resources:
+            requests:
+              cpu: "10m"
+              memory: "32Mi"
+            limits:
+              cpu: "500m"
+              memory: "256Mi"
+          # TCP probes (not HTTP): basic auth makes every HTTP path return 401,
+          # which an httpGet probe would read as failure and crash-loop the pod.
+          # A listening port is a sufficient liveness/readiness signal here.
+          livenessProbe:
+            tcpSocket:
+              port: 8080
+            initialDelaySeconds: 15
+            periodSeconds: 30
+          readinessProbe:
+            tcpSocket:
+              port: 8080
+            initialDelaySeconds: 5
+            periodSeconds: 10
+      volumes:
+        - name: data
+          persistentVolumeClaim:
+            claimName: scratch-data
+        - name: auth
+          secret:
+            secretName: scratch-auth

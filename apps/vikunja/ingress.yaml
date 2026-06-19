@@ -6,36 +6,14 @@ metadata:
   annotations:
     kubernetes.io/ingress.class: traefik
     cert-manager.io/cluster-issuer: letsencrypt-dns
-    # CrowdSec bouncer guards BOTH the LAN and the public host. The public
-    # host (tasks.kennethblack.me) is internet-facing via the public-sites
-    # Cloudflare tunnel; Vikunja's own login (registration disabled) is the
-    # auth boundary, CrowdSec is the bot/abuse layer in front of it.
     traefik.ingress.kubernetes.io/router.middlewares: crowdsec-crowdsec-bouncer@kubernetescrd
 spec:
   tls:
     - hosts:
         - vikunja.kblab.me
       secretName: vikunja-tls
-    # Public, auth-gated host so github.com-hosted CI runners can reach the
-    # Vikunja API (vikunja-close-on-merge / preview-smoke). Routed in via the
-    # cloudflared-public-sites tunnel (route declared in bnb/platform
-    # infra/public-sites-tunnel). cert auto-provisions — kennethblack.me is in
-    # the letsencrypt-dns issuer zone list.
-    - hosts:
-        - tasks.kennethblack.me
-      secretName: vikunja-public-tls
   rules:
     - host: vikunja.kblab.me
-      http:
-        paths:
-          - path: /
-            pathType: Prefix
-            backend:
-              service:
-                name: vikunja
-                port:
-                  number: 80
-    - host: tasks.kennethblack.me
       http:
         paths:
           - path: /

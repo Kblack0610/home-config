@@ -34,10 +34,10 @@ spec:
               value: "https://vault.kblab.me"
             - name: ROCKET_PORT
               value: "8080"
-            # TEMPORARY: signups opened to create the owner account. Revert to
-            # "false" immediately after the owner registers (see README).
+            # Registration closed. The owner account is created via the /admin
+            # page (invited emails bypass this gate), so signups stay off.
             - name: SIGNUPS_ALLOWED
-              value: "true"
+              value: "false"
             # Mobile push relay disabled — clients poll instead. See README.
             - name: PUSH_ENABLED
               value: "false"

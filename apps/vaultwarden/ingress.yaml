@@ -1,0 +1,31 @@
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: vaultwarden
+  namespace: vaultwarden
+  annotations:
+    kubernetes.io/ingress.class: traefik
+    cert-manager.io/cluster-issuer: letsencrypt-dns
+    # LAN/Tailscale-only: the local-network-only middleware rejects requests
+    # whose source is outside the home LAN range. Tailnet devices hit via the
+    # LAN-side route, so this also covers phones/laptops on Tailscale.
+    # NOTE: a password vault must NOT carry the crowdsec/public bouncer — there
+    # is deliberately NO Cloudflare tunnel route for this host, so it stays off
+    # the public internet entirely.
+    traefik.ingress.kubernetes.io/router.middlewares: monitoring-local-network-only@kubernetescrd
+spec:
+  rules:
+    - host: vault.kblab.me
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: vaultwarden
+                port:
+                  number: 80
+  tls:
+    - hosts:
+        - vault.kblab.me
+      secretName: vaultwarden-tls

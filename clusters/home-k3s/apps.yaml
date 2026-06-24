@@ -14,14 +14,21 @@ spec:
     kind: GitRepository
     name: flux-system
   path: ./apps
-  prune: true  # Remove resources that are no longer in git
-  wait: true   # Wait for resources to be ready
+  prune: true   # Remove resources that are no longer in git
+  # wait: false (NOT true) on purpose. `wait: true` blocks the ENTIRE apps
+  # reconciliation until EVERY resource is healthy — so a single unhealthy app
+  # (e.g. ntfy stuck Pending because its local-path PVC is stranded on a powered-
+  # off node) wedges ALL deploys cluster-wide. With wait:false, Flux still
+  # applies everything and still gates on the explicit healthChecks below
+  # (home-assistant), but one sick app no longer holds the whole pipeline hostage.
+  # History: 2026-06 a dead `thinkcentre` node wedged apps for 9 days this way.
+  wait: false
   # SOPS decryption for encrypted secrets
   decryption:
     provider: sops
     secretRef:
       name: sops-age
-  # Health checks
+  # Gate the reconciliation on this one critical app only (not the whole cluster).
   healthChecks:
     - apiVersion: apps/v1
       kind: Deployment

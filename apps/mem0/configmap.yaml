@@ -33,12 +33,17 @@ data:
   MEM0_DEFAULT_EMBEDDER_MODEL: "embedding (modernbert-embed-base-4bit)"
 
   # --- Auth ---
-  # Acceptable for this deployment because the ingress is restricted to
-  # RFC1918 + Tailscale via the monitoring-local-network-only Traefik
-  # middleware. To enable auth later, flip this to "false" and run the
-  # `mem0 auth setup` wizard against the dashboard ingress (or use
-  # ADMIN_API_KEY for headless bootstrap).
-  AUTH_DISABLED: "true"
+  # App-layer auth is ON: every request must carry `Authorization: Bearer <token>`
+  # (ADMIN_API_KEY from mem0-secrets, injected via envFrom: secretRef). This is the
+  # SECOND of two independent layers guarding the public host mem0.kennethblack.me
+  # (the first is Cloudflare Access at the edge — see ingress-public.yaml + README).
+  # It is a global server flag, so it also gates the LAN host mem0.kblab.me.
+  #
+  # ROLLOUT ORDER (single global flag — flipping this breaks any caller not yet
+  # sending the header): land caller updates FIRST (mem0-ops skill, agentctl
+  # nightly-sync — sending a bearer token while auth is still disabled is harmless),
+  # THEN push this flip. See README.md "Rollout order".
+  AUTH_DISABLED: "false"
 
   # --- Misc ---
   DASHBOARD_URL: https://mem0.kblab.me

@@ -20,7 +20,8 @@ The previous iteration of this app shipped its own custom MCP server bridging Cl
 | `pvc.yaml` | 1Gi local-path PVC for `history.db` |
 | `deployment.yaml` | mem0-api-server with init container running `alembic upgrade head` |
 | `service.yaml` | ClusterIP `:8000` |
-| `ingress.yaml` | TLS at `mem0.kblab.me`, restricted to RFC1918 |
+| `ingress.yaml` | TLS at `mem0.kblab.me` (LAN/tailnet), restricted to RFC1918 |
+| `ingress-public.yaml` | TLS at `mem0.kennethblack.me` (public, off-LAN) via the Cloudflare tunnel; gated by Cloudflare Access + mem0 native auth |
 | `kustomization.yaml` | Roll-up (excludes secret until encrypted file exists) |
 
 ## Dependencies (deploy order)
@@ -72,17 +73,22 @@ curl -X POST http://localhost:8000/configure \
   -d '{"version": "v1.1"}'            # configure endpoint
 ```
 
-End-to-end memory round-trip (with AUTH_DISABLED=true; once auth is on, add `Authorization: Bearer <ADMIN_API_KEY>`):
+End-to-end memory round-trip. Auth is ON (`AUTH_DISABLED=false`), so every call
+needs the bearer token (the port-forward bypasses the ingress but NOT mem0's own
+auth). Without the header expect 401/403:
 
 ```bash
+TOKEN=$(sops -d apps/mem0/secret.yaml | awk '/ADMIN_API_KEY:/ {print $2}')
+
 curl -X POST http://localhost:8000/memories \
+  -H "Authorization: Bearer $TOKEN" \
   -H "Content-Type: application/json" \
   -d '{
     "messages": [{"role": "user", "content": "I prefer shell+neovim over Obsidian for notes."}],
     "user_id": "kblack0610"
   }'
 
-curl "http://localhost:8000/memories?user_id=kblack0610"
+curl -H "Authorization: Bearer $TOKEN" "http://localhost:8000/memories?user_id=kblack0610"
 ```
 
 ## Verify against the running cluster Postgres
@@ -118,11 +124,65 @@ The container fails fast (`grep -q ... || exit 1`) if a future image bump
 silently breaks the patch (e.g., upstream rewrites the line) — better than
 running with broken ranking.
 
-## Switching auth on later
+## Access model (two hosts, two auth layers)
 
-When you want auth (e.g., adding more devices to the network, broader Tailscale exposure):
+mem0 is one store reachable on two hosts, with `AUTH_DISABLED=false` so a bearer
+token (`ADMIN_API_KEY`) is required on **both**:
 
-1. Edit `apps/mem0/configmap.yaml`: set `AUTH_DISABLED: "false"`.
-2. Commit + push + reconcile + restart pod.
-3. Hit the dashboard at `https://mem0.kblab.me` and run the setup wizard, OR use the held `ADMIN_API_KEY` for headless registration via `scripts/seed.sh` upstream.
-4. Update the `mem0-ops` skill to include `Authorization: Bearer <api-key>` in its curl examples.
+| Host | Reach | Layer 1 (edge) | Layer 2 (app) |
+|------|-------|----------------|---------------|
+| `mem0.kblab.me` | LAN + Tailscale only | Traefik RFC1918 IP allowlist (`ingress.yaml`) | bearer token |
+| `mem0.kennethblack.me` | public internet | Cloudflare Access (`ingress-public.yaml` + handoff below) | bearer token |
+
+**Why a public host at all:** corporate-MDM laptops typically block VPN clients, so
+Tailscale can't reach them. The public host covers "any device I own" — corp
+laptops (browser SSO via Cloudflare Access), phones, and headless agents (CF Access
+service token). The LAN host stays the fast path for in-cluster + tailnet callers.
+
+**Why the IP allowlist is NOT on the public ingress:** public traffic arrives via
+the in-cluster `cloudflared` pod, whose source IP is RFC1918 — the allowlist would
+pass *all* tunnel traffic, so it provides zero protection there. Authn on that path
+is Cloudflare Access (edge) + mem0's own token (app). See the comment block in
+`ingress-public.yaml`.
+
+### Cloudflare handoff (bnb/platform — NOT in this repo)
+
+Per `infrastructure.md`, tunnel routing + Cloudflare config live in `bnb/platform`.
+Two pieces are required before `mem0.kennethblack.me` resolves:
+
+1. **Tunnel route** — add to the `cloudflared-public-sites` tunnel config:
+   ```hcl
+   ingress {
+     hostname = "mem0.kennethblack.me"
+     service  = "https://traefik.kube-system.svc.cluster.local:443"
+     # mirror the existing public-sites entries (kennethblack.me, cal.kennethblack.me);
+     # routing via Traefik keeps the secure-headers + rate-limit middlewares in play.
+   }
+   ```
+   Then `terraform apply && ./deploy-to-k3s.sh`. Ensure a proxied CNAME
+   `mem0.kennethblack.me → <tunnel>` exists (Cloudflare-managed).
+
+2. **Cloudflare Access (Zero Trust) self-hosted application** on
+   `mem0.kennethblack.me`, with one policy allowing **either**:
+   - `email == <your email>` (SSO — browser login from corp devices, no VPN), **OR**
+   - a **service token** (create one, e.g. `mem0-agents`) — headless agents send
+     `CF-Access-Client-Id` / `CF-Access-Client-Secret` headers.
+
+   Store the service-token id/secret wherever agents read env from; the `mem0-ops`
+   skill documents the header usage.
+
+## Rollout order (avoid a self-inflicted outage)
+
+`AUTH_DISABLED` is a single global flag — flipping it to `false` immediately
+requires a token on the LAN host too, so any caller not yet sending one breaks.
+Land changes in this order (sending a bearer token while auth is still disabled is
+harmless, which is what makes a zero-downtime path possible):
+
+1. **Callers first** — `mem0-ops` skill + `agentctl-nightly-sync` already send
+   `Authorization: Bearer $MEM0_API_KEY` (token decrypted from `secret.yaml` at
+   runtime). These are dotfiles changes; they take effect without a deploy.
+2. **Public ingress** (`ingress-public.yaml`) — inert until the tunnel route exists,
+   so safe to push anytime.
+3. **Cloudflare handoff** — tunnel route + CF Access app (above).
+4. **Flip last** — push the `AUTH_DISABLED: "false"` configmap change; Flux
+   reconciles and the pod picks up the requirement. Verify with the round-trip above.

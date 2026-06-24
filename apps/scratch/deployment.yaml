@@ -51,16 +51,25 @@ spec:
             - name: MICROBIN_GC_DAYS
               value: "365"
             # --- Auth: the shared "key" gates the whole box -----------------
-            # Username is non-secret; password + admin password load from the
-            # mounted SOPS secret via MicroBin's file:// support.
+            # Username is non-secret; passwords are injected straight from the
+            # SOPS secret via secretKeyRef. NOTE: do NOT use MicroBin's file://
+            # prefix here — image 2.1.0 does not resolve it for the basic-auth
+            # password (it compares the literal "file://..." string), which
+            # silently breaks login. secretKeyRef is the correct path.
             - name: MICROBIN_BASIC_AUTH_USERNAME
               value: "scratch"
             - name: MICROBIN_BASIC_AUTH_PASSWORD
-              value: "file:///secrets/basic-auth-password"
+              valueFrom:
+                secretKeyRef:
+                  name: scratch-auth
+                  key: basic-auth-password
             - name: MICROBIN_ADMIN_USERNAME
               value: "admin"
             - name: MICROBIN_ADMIN_PASSWORD
-              value: "file:///secrets/admin-password"
+              valueFrom:
+                secretKeyRef:
+                  name: scratch-auth
+                  key: admin-password
             - name: MICROBIN_DISABLE_TELEMETRY
               value: "true"
             - name: MICROBIN_DISABLE_UPDATE_CHECKING
@@ -68,9 +77,6 @@ spec:
           volumeMounts:
             - name: data
               mountPath: /data
-            - name: auth
-              mountPath: /secrets
-              readOnly: true
           resources:
             requests:
               cpu: "10m"
@@ -95,6 +101,3 @@ spec:
         - name: data
           persistentVolumeClaim:
             claimName: scratch-data
-        - name: auth
-          secret:
-            secretName: scratch-auth

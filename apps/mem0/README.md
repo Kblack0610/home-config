@@ -21,6 +21,7 @@ The previous iteration of this app shipped its own custom MCP server bridging Cl
 | `service.yaml` | ClusterIP `:8000` |
 | `ingress.yaml` | TLS at `mem0.kblab.me` (LAN/tailnet), restricted to RFC1918 |
 | `ingress-public.yaml` | TLS at `mem0.kennethblack.me` (public, off-LAN) via the Cloudflare tunnel; gated by Cloudflare Access + mem0 native auth |
+| `client-credentials.secret.yaml` | SOPS-encrypted caller creds (API key + admin login). **Not deployed** (absent from kustomization) — decrypted at runtime by the mem0-ops skill / nightly-sync |
 | `kustomization.yaml` | Roll-up (excludes secret until encrypted file exists) |
 
 ## Dependencies (deploy order)
@@ -73,21 +74,22 @@ curl -X POST http://localhost:8000/configure \
 ```
 
 End-to-end memory round-trip. Auth is ON (`AUTH_DISABLED=false`), so every call
-needs the bearer token (the port-forward bypasses the ingress but NOT mem0's own
-auth). Without the header expect 401/403:
+needs the API key in the **`X-API-Key`** header (the port-forward bypasses the
+ingress but NOT mem0's own auth). Without it expect 401:
 
 ```bash
-TOKEN=$(sops -d apps/mem0/secret.yaml | awk '/ADMIN_API_KEY:/ {print $2}')
+# The request credential is the minted API key (m0sk_…), NOT ADMIN_API_KEY.
+KEY=$(sops -d apps/mem0/client-credentials.secret.yaml | awk '/MEM0_API_KEY:/ {print $2}' | tr -d '"')
 
 curl -X POST http://localhost:8000/memories \
-  -H "Authorization: Bearer $TOKEN" \
+  -H "X-API-Key: $KEY" \
   -H "Content-Type: application/json" \
   -d '{
     "messages": [{"role": "user", "content": "I prefer shell+neovim over Obsidian for notes."}],
     "user_id": "kblack0610"
   }'
 
-curl -H "Authorization: Bearer $TOKEN" "http://localhost:8000/memories?user_id=kblack0610"
+curl -H "X-API-Key: $KEY" "http://localhost:8000/memories?user_id=kblack0610"
 ```
 
 ## Verify against the running cluster Postgres
@@ -125,13 +127,37 @@ running with broken ranking.
 
 ## Access model (two hosts, two auth layers)
 
-mem0 is one store reachable on two hosts, with `AUTH_DISABLED=false` so a bearer
-token (`ADMIN_API_KEY`) is required on **both**:
+mem0 is one store reachable on two hosts, with `AUTH_DISABLED=false` so an API key
+in the **`X-API-Key`** header is required on **both**:
 
 | Host | Reach | Layer 1 (edge) | Layer 2 (app) |
 |------|-------|----------------|---------------|
-| `mem0.kblab.me` | LAN + Tailscale only | Traefik RFC1918 IP allowlist (`ingress.yaml`) | bearer token |
-| `mem0.kennethblack.me` | public internet | Cloudflare Access (`ingress-public.yaml` + handoff below) | bearer token |
+| `mem0.kblab.me` | LAN + Tailscale only | Traefik RFC1918 IP allowlist (`ingress.yaml`) | `X-API-Key` |
+| `mem0.kennethblack.me` | public internet | Cloudflare Access (`ingress-public.yaml` + handoff below) | `X-API-Key` |
+
+### Auth model + admin bootstrap (IMPORTANT — not "ADMIN_API_KEY as bearer")
+
+mem0-api-server has a real user/JWT/api-key system. `ADMIN_API_KEY` and `JWT_SECRET`
+in `secret.yaml` are **server-side bootstrap material**, NOT the request credential.
+The credential callers send is an **API key** (`m0sk_…`) in the **`X-API-Key`**
+header. Bootstrap (done 2026-06-23; admin user `hughlio912@gmail.com`):
+
+```bash
+B=http://localhost:8000   # via: kubectl --context home-k3s -n memory port-forward svc/mem0 8000:8000
+# 1. register first user (open while GET /auth/setup-status -> needsSetup:true; becomes admin)
+curl -X POST $B/auth/register -H 'Content-Type: application/json' \
+  -d '{"name":"Kenneth","email":"<email>","password":"<pw>"}'
+# 2. login -> JWT
+JWT=$(curl -s -X POST $B/auth/login -H 'Content-Type: application/json' \
+  -d '{"email":"<email>","password":"<pw>"}' | jq -r .access_token)
+# 3. mint a durable API key (note: field is "label"; key returned once, in .key)
+curl -X POST $B/api-keys -H "Authorization: Bearer $JWT" \
+  -H 'Content-Type: application/json' -d '{"label":"headless-callers"}'
+```
+
+The minted key + admin login live in **`client-credentials.secret.yaml`** (SOPS,
+not deployed). To re-mint: login with the stored email/password, repeat step 3.
+Manage keys at the dashboard (`https://mem0.kblab.me`) or via `GET/DELETE /api-keys`.
 
 **Why a public host at all:** corporate-MDM laptops typically block VPN clients, so
 Tailscale can't reach them. The public host covers "any device I own" — corp
@@ -177,9 +203,9 @@ requires a token on the LAN host too, so any caller not yet sending one breaks.
 Land changes in this order (sending a bearer token while auth is still disabled is
 harmless, which is what makes a zero-downtime path possible):
 
-1. **Callers first** — `mem0-ops` skill + `agentctl-nightly-sync` already send
-   `Authorization: Bearer $MEM0_API_KEY` (token decrypted from `secret.yaml` at
-   runtime). These are dotfiles changes; they take effect without a deploy.
+1. **Callers first** — `mem0-ops` skill + `agentctl-nightly-sync` send the API key
+   in `X-API-Key` (decrypted from `client-credentials.secret.yaml` at runtime).
+   These are dotfiles changes; they take effect without a deploy.
 2. **Public ingress** (`ingress-public.yaml`) — inert until the tunnel route exists,
    so safe to push anytime.
 3. **Cloudflare handoff** — tunnel route + CF Access app (above).

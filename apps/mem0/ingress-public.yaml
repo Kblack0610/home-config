@@ -1,0 +1,51 @@
+# Public ingress for mem0 — reachable from OUTSIDE the LAN/tailnet.
+#
+# This is the off-LAN companion to ingress.yaml (mem0.kblab.me, RFC1918-only).
+# Traffic path:  client → Cloudflare edge (TLS + Cloudflare Access) →
+#                cloudflared-public-sites tunnel → Traefik (this Ingress) → mem0.
+#
+# AUTH MODEL — two independent layers (see README.md "Access model"):
+#   1. Cloudflare Access (edge): a Zero-Trust app on mem0.kennethblack.me gates
+#      every request before it reaches the cluster — SSO for browsers, service
+#      token for headless agents. Configured in bnb/platform (Terraform) + the
+#      Cloudflare dashboard, NOT here.
+#   2. mem0 native auth (app): AUTH_DISABLED=false in configmap.yaml requires an
+#      Authorization: Bearer <token> at the app itself.
+#
+# NOTE: the monitoring-local-network-only IP allowlist used by ingress.yaml is
+# deliberately NOT applied here — it would be useless on this path (the
+# cloudflared pod's source IP is RFC1918, so the allowlist passes all tunnel
+# traffic). Authn on this path comes from Cloudflare Access + mem0's own token.
+#
+# This Ingress is inert until the bnb/platform tunnel route for
+# mem0.kennethblack.me exists; adding it ahead of that route is safe.
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: mem0-public
+  namespace: memory
+  labels:
+    app.kubernetes.io/name: mem0
+  annotations:
+    cert-manager.io/cluster-issuer: letsencrypt-dns
+    traefik.ingress.kubernetes.io/router.entrypoints: web,websecure
+    # secure-headers + rate-limit (defined in infrastructure/traefik/middlewares.yaml,
+    # namespace kube-system). A single comma-separated value — one annotation key only.
+    traefik.ingress.kubernetes.io/router.middlewares: kube-system-secure-headers@kubernetescrd,kube-system-rate-limit@kubernetescrd
+spec:
+  ingressClassName: traefik
+  tls:
+    - hosts:
+        - mem0.kennethblack.me
+      secretName: mem0-public-tls
+  rules:
+    - host: mem0.kennethblack.me
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: mem0
+                port:
+                  number: 8000

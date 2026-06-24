@@ -16,6 +16,10 @@ Browser prompts for it. For scripts: `curl -u scratch:<key> https://scratch.kenn
 An `admin` user (separate password, also in `secret.yaml`) can manage/delete
 any paste.
 
+Both passwords are injected into the container via `secretKeyRef` (not MicroBin's
+`file://` prefix — image `2.1.0` does not resolve `file://` for the basic-auth
+password and silently rejects every login if you use it).
+
 ## Retention model — pick a mode per paste
 
 The box is **sensitive-by-default**: a new paste expires in **1 hour** unless

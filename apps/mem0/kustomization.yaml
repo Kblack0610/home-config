@@ -12,3 +12,4 @@ resources:
   - service.yaml
   - ingress.yaml
   - ingress-public.yaml
+  - middleware.yaml

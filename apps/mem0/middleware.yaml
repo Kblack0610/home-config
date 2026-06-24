@@ -1,0 +1,32 @@
+# Traefik middlewares for the PUBLIC mem0 ingress (mem0.kennethblack.me).
+#
+# Defined here (namespace `memory`, Flux-managed, deployed with the app) rather
+# than referencing infrastructure/traefik/middlewares.yaml — those live in
+# kube-system but are NOT applied to this cluster (infrastructure/ is not in
+# Flux's watch path), so referencing them yields a missing-middleware router
+# error → Traefik 404. Self-contained here = the reference is always valid.
+#
+# Referenced by ingress-public.yaml as:
+#   memory-mem0-secure-headers@kubernetescrd,memory-mem0-ratelimit@kubernetescrd
+---
+apiVersion: traefik.io/v1alpha1
+kind: Middleware
+metadata:
+  name: mem0-secure-headers
+  namespace: memory
+spec:
+  headers:
+    frameDeny: true
+    browserXssFilter: true
+    contentTypeNosniff: true
+    referrerPolicy: "strict-origin-when-cross-origin"
+---
+apiVersion: traefik.io/v1alpha1
+kind: Middleware
+metadata:
+  name: mem0-ratelimit
+  namespace: memory
+spec:
+  rateLimit:
+    average: 100
+    burst: 50

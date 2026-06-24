@@ -111,6 +111,54 @@ data:
           tags: ["local", "mlx"]
 
       # ============================================================
+      # Cloud free-tier routes via Google Gemini (native gemini/ provider)
+      # ============================================================
+      # Added 2026-06 as the fallback tier between Lazer (paid, default for
+      # chat) and Mac Studio (local, last resort). Gemini is the only
+      # embedding option that is NOT the (frequently-offline) Mac Studio —
+      # Lazer's catalog has no embedding model. Free tier; key in
+      # secret.sops.yaml (litellm-db-secrets) as GEMINI_API_KEY.
+
+      # fast cloud — gemini-2.0-flash. Chat fallback for the Lazer `fast`
+      # route. NOTE: this Gemini key currently has free-tier generateContent
+      # quota = 0 (embeddings work, chat does not), so this route 429s until
+      # billing/quota is enabled. Kept defined so it activates automatically
+      # once quota exists; Lazer remains the working chat default.
+      - model_name: "fast (gemini-2.0-flash)"
+        litellm_params:
+          model: "gemini/gemini-2.0-flash"
+          api_key: os.environ/GEMINI_API_KEY
+        model_info:
+          mode: chat
+          tags: ["cloud", "gemini", "free"]
+          capabilities:
+            tools: true
+            code: false
+            vision: true
+            reasoning: false
+            json_mode: true
+
+      # embedding cloud — gemini-embedding-001 forced to 768 dims
+      # (output_dimensionality), matching the local modernbert embedder, so
+      # it writes into the SAME pgvector column (apps/mem0/, vector(768)) with
+      # no table rebuild. Primary embedder while Mac Studio is offline; falls
+      # back to local modernbert. (text-embedding-004 is retired.)
+      # Native gemini/ provider — honors output_dimensionality so the vector is
+      # forced to 768 dims, matching the pgvector column (apps/mem0/,
+      # vector(768)). NOTE: the OpenAI-compatible Google endpoint
+      # (openai/ + .../v1beta/openai) ignores `dimensions` and returns gemini's
+      # default 3072 → "different vector dimensions 768 and 3072" on insert, so
+      # it must NOT be used here. `dimensions: 768` maps to outputDimensionality.
+      - model_name: "embedding (gemini-001)"
+        litellm_params:
+          model: "gemini/gemini-embedding-001"
+          api_key: os.environ/GEMINI_API_KEY
+          dimensions: 768
+        model_info:
+          mode: embedding
+          tags: ["cloud", "gemini", "free"]
+
+      # ============================================================
       # Paid routes via Lazer (proxy.lazertechnologies.com)
       # ============================================================
       # Cost-effective picks from Lazer's catalog (2026-04-30). $250/mo
@@ -232,6 +280,18 @@ data:
     router_settings:
       routing_strategy: "simple-shuffle"
       timeout: 900
+      # Failover chains (LiteLLM tries the listed models in order when the
+      # primary errors/times out). mem0 points its LLM at the Lazer `fast`
+      # route and its embedder at Gemini; these chains add resilience:
+      #   chat:      Lazer fast  -> Gemini flash -> Mac Studio fast
+      #   embedding: Gemini 004  -> Mac Studio modernbert
+      fallbacks:
+        - {"fast (gpt-oss-120b)": ["fast (gemini-2.0-flash)", "fast (Qwen3-4B)"]}
+        - {"fast (gemini-2.0-flash)": ["fast (Qwen3-4B)"]}
+        # NOTE: no embedding fallback to modernbert — Mac Studio is offline,
+        # so falling back to it turns any transient Gemini hiccup into a hard
+        # 500 (+30s) and masks the real error. Re-add once Mac Studio is back:
+        #   - {"embedding (gemini-001)": ["embedding (modernbert-embed-base-4bit)"]}
 
     litellm_settings:
       drop_params: true

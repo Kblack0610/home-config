@@ -29,8 +29,13 @@ data:
   # keys leave the cluster. The model names here MUST match entries in
   # apps/litellm/configmap.yaml (model_name field).
   OPENAI_BASE_URL: http://litellm.ai-gateway.svc.cluster.local:4000/v1
-  MEM0_DEFAULT_LLM_MODEL: "code (Qwen3-Coder-Next-4bit)"
-  MEM0_DEFAULT_EMBEDDER_MODEL: "embedding (modernbert-embed-base-4bit)"
+  # LLM = Lazer `fast` (default); LiteLLM router falls back to Gemini flash
+  # then Mac Studio. Embedder = Gemini text-embedding-004 (768-dim, matches
+  # the pgvector column) since Lazer has no embedder and Mac Studio is often
+  # offline; falls back to local modernbert. Fallback chains live in
+  # apps/litellm/configmap.yaml router_settings.fallbacks.
+  MEM0_DEFAULT_LLM_MODEL: "fast (gpt-oss-120b)"
+  MEM0_DEFAULT_EMBEDDER_MODEL: "embedding (gemini-001)"
 
   # --- Auth ---
   # App-layer auth is ON: every request must carry an API key in the `X-API-Key`

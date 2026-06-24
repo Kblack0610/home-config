@@ -29,9 +29,10 @@ metadata:
   annotations:
     cert-manager.io/cluster-issuer: letsencrypt-dns
     traefik.ingress.kubernetes.io/router.entrypoints: web,websecure
-    # secure-headers + rate-limit (defined in infrastructure/traefik/middlewares.yaml,
-    # namespace kube-system). A single comma-separated value — one annotation key only.
-    traefik.ingress.kubernetes.io/router.middlewares: kube-system-secure-headers@kubernetescrd,kube-system-rate-limit@kubernetescrd
+    # secure-headers + rate-limit, defined in middleware.yaml (namespace `memory`,
+    # deployed with this app — NOT the kube-system ones, which aren't applied to
+    # this cluster). One annotation key only; comma-separated value.
+    traefik.ingress.kubernetes.io/router.middlewares: memory-mem0-secure-headers@kubernetescrd,memory-mem0-ratelimit@kubernetescrd
 spec:
   ingressClassName: traefik
   tls:

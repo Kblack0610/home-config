@@ -20,6 +20,7 @@ resources:
   - headscale
   - home-assistant
   - immich
+  - immich-kiosk
   - jellyfin
   - karakeep
   - litellm

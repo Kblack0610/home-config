@@ -1,0 +1,62 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: immich-kiosk
+  namespace: immich-kiosk
+  labels:
+    app.kubernetes.io/name: immich-kiosk
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: immich-kiosk
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: immich-kiosk
+    spec:
+      containers:
+        - name: immich-kiosk
+          # Open-source Immich slideshow front-end. Serves a kiosk/screensaver
+          # URL the wall-panel tablets point at (e.g. ?disable_ui=true&album=<id>).
+          # Pinned; bump deliberately. Tag confirmed to exist on ghcr.
+          image: ghcr.io/damongolding/immich-kiosk:0.39.3
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop:
+                - ALL
+          ports:
+            - name: http
+              containerPort: 3000
+              protocol: TCP
+          env:
+            # Internal cluster DNS for the existing Immich server (port 80 → 2283).
+            - name: KIOSK_IMMICH_URL
+              value: "http://immich-server.immich.svc.cluster.local"
+            - name: KIOSK_IMMICH_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: immich-kiosk-secret
+                  key: api-key
+            - name: TZ
+              value: "America/New_York"
+          resources:
+            requests:
+              memory: "64Mi"
+              cpu: "25m"
+            limits:
+              memory: "256Mi"
+              cpu: "500m"
+          # TCP probe — independent of Immich reachability / API-key validity,
+          # so a placeholder key or transient Immich blip never NotReady-loops.
+          readinessProbe:
+            tcpSocket:
+              port: 3000
+            initialDelaySeconds: 10
+            periodSeconds: 10
+          livenessProbe:
+            tcpSocket:
+              port: 3000
+            initialDelaySeconds: 30
+            periodSeconds: 30

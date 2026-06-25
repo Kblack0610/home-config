@@ -1,0 +1,28 @@
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: immich-kiosk
+  namespace: immich-kiosk
+  annotations:
+    kubernetes.io/ingress.class: traefik
+    cert-manager.io/cluster-issuer: letsencrypt-dns
+    # LAN/Tailscale only — this is a wall-panel screensaver source, never public.
+    traefik.ingress.kubernetes.io/router.middlewares: monitoring-local-network-only@kubernetescrd
+    # Not a clickable service — keep it out of the auto-generated HA launcher.
+    homepage.kblab.me/launcher: "false"
+spec:
+  rules:
+    - host: immich-kiosk.kblab.me
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: immich-kiosk
+                port:
+                  number: 3000
+  tls:
+    - hosts:
+        - immich-kiosk.kblab.me
+      secretName: immich-kiosk-tls

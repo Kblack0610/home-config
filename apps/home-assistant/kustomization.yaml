@@ -23,6 +23,7 @@ configMapGenerator:
       - dashboard_printing.yaml=config/dashboards/printing.yaml
       - dashboard_launcher.yaml=config/dashboards/launcher.yaml
       - dashboard_voice.yaml=config/dashboards/voice.yaml
+      - dashboard_wall.yaml=config/dashboards/wall.yaml
 
 resources:
   - namespace.yaml

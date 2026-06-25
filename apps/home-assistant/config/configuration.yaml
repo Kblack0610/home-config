@@ -13,9 +13,8 @@ http:
 lovelace:
   mode: yaml
   # YAML mode hides the UI Resources registry, so vendored custom cards MUST be
-  # declared here. Files are downloaded by the `install-lovelace-cards` init
-  # container into /config/www/community → served by HA at /local/community.
-  resource_mode: yaml
+  # declared directly here. Files are downloaded by the `install-lovelace-cards`
+  # init container into /config/www/community → served by HA at /local/community.
   resources:
     - url: /local/community/mushroom/mushroom.js
       type: module

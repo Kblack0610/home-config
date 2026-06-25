@@ -44,6 +44,64 @@ spec:
           volumeMounts:
             - name: config
               mountPath: /config
+        # Vendor pinned Lovelace custom cards + browser_mod for the wall-panel
+        # dashboards (we don't run HACS; everything is git-pinned + reproducible).
+        # RESILIENT BY DESIGN: `set -u` (not -e) and a final `exit 0` so a failed
+        # download NEVER blocks HA from starting; the success marker is only
+        # written when ALL downloads succeed, so a partial failure retries on the
+        # next restart. Bump VERSION to force a re-vendor.
+        - name: install-lovelace-cards
+          image: alpine:3.20
+          command:
+            - sh
+            - -c
+            - |
+              set -u
+              VERSION="2026-06-25-1"
+              WWW="/config/www/community"
+              MARKER="$WWW/.version"
+              if [ -f "$MARKER" ] && [ "$(cat "$MARKER")" = "$VERSION" ]; then
+                echo "lovelace cards $VERSION already vendored, skipping"
+                exit 0
+              fi
+              apk add --no-cache wget tar >/dev/null
+              mkdir -p "$WWW" /config/custom_components
+              FAIL=0
+              dl() {  # dl <url> <dest>
+                mkdir -p "$(dirname "$2")"
+                if wget -q -O "$2" "$1"; then
+                  echo "ok    $2"
+                else
+                  echo "WARN  failed: $1"; rm -f "$2"; FAIL=$((FAIL+1))
+                fi
+              }
+              dl "https://github.com/piitaya/lovelace-mushroom/releases/download/v5.1.1/mushroom.js"                 "$WWW/mushroom/mushroom.js"
+              dl "https://github.com/custom-cards/button-card/releases/download/v7.0.1/button-card.js"              "$WWW/button-card/button-card.js"
+              dl "https://raw.githubusercontent.com/Clooos/Bubble-Card/v3.2.3/dist/bubble-card.js"                  "$WWW/bubble-card/bubble-card.js"
+              dl "https://raw.githubusercontent.com/thomasloven/lovelace-auto-entities/v1.16.1/auto-entities.js"    "$WWW/auto-entities/auto-entities.js"
+              dl "https://raw.githubusercontent.com/thomasloven/lovelace-card-mod/v4.2.1/card-mod.js"               "$WWW/card-mod/card-mod.js"
+              dl "https://github.com/kalkih/mini-graph-card/releases/download/v0.13.0/mini-graph-card-bundle.js"    "$WWW/mini-graph-card/mini-graph-card-bundle.js"
+              dl "https://github.com/NemesisRE/kiosk-mode/releases/download/v14.0.0/kiosk-mode.js"                  "$WWW/kiosk-mode/kiosk-mode.js"
+              # browser_mod is a Python custom_component (frontend bundled); install the dir.
+              if wget -q -O /tmp/bm.tgz "https://github.com/thomasloven/hass-browser_mod/archive/refs/tags/v2.13.5.tar.gz"; then
+                tar -xzf /tmp/bm.tgz -C /tmp
+                rm -rf /config/custom_components/browser_mod
+                cp -r /tmp/hass-browser_mod-2.13.5/custom_components/browser_mod /config/custom_components/browser_mod
+                rm -rf /tmp/bm.tgz /tmp/hass-browser_mod-2.13.5
+                echo "ok    browser_mod"
+              else
+                echo "WARN  failed: browser_mod"; FAIL=$((FAIL+1))
+              fi
+              if [ "$FAIL" -eq 0 ]; then
+                echo "$VERSION" > "$MARKER"
+                echo "all lovelace cards vendored ($VERSION)"
+              else
+                echo "WARN: $FAIL download(s) failed; no marker written, will retry next start"
+              fi
+              exit 0
+          volumeMounts:
+            - name: config
+              mountPath: /config
         - name: sync-managed-config
           image: busybox:1.36
           command:
@@ -72,6 +130,7 @@ spec:
               cp /managed-config/dashboard_printing.yaml /config/dashboards/printing.yaml
               cp /managed-config/dashboard_launcher.yaml /config/dashboards/launcher.yaml
               cp /managed-config/dashboard_voice.yaml /config/dashboards/voice.yaml
+              cp /managed-config/dashboard_wall.yaml /config/dashboards/wall.yaml
           volumeMounts:
             - name: config
               mountPath: /config

@@ -12,6 +12,38 @@ http:
 
 lovelace:
   mode: yaml
+  # YAML mode hides the UI Resources registry, so vendored custom cards MUST be
+  # declared here. Files are downloaded by the `install-lovelace-cards` init
+  # container into /config/www/community → served by HA at /local/community.
+  resource_mode: yaml
+  resources:
+    - url: /local/community/mushroom/mushroom.js
+      type: module
+    - url: /local/community/button-card/button-card.js
+      type: module
+    - url: /local/community/bubble-card/bubble-card.js
+      type: module
+    - url: /local/community/auto-entities/auto-entities.js
+      type: module
+    - url: /local/community/mini-graph-card/mini-graph-card-bundle.js
+      type: module
+    - url: /local/community/kiosk-mode/kiosk-mode.js
+      type: module
+  # Second YAML dashboard (the default "Homelab" stays at /lovelace). The key
+  # must contain a hyphen. Reached at /wall-panels; the wall tablets load this.
+  dashboards:
+    wall-panels:
+      mode: yaml
+      filename: dashboards/wall.yaml
+      title: Wall
+      icon: mdi:tablet-dashboard
+      show_in_sidebar: true
+
+# card-mod must load as a frontend module (not just a Lovelace resource) so it
+# also styles more-info dialogs. Merges with the frontend from default_config.
+frontend:
+  extra_module_url:
+    - /local/community/card-mod/card-mod.js
 
 automation: !include automations.yaml
 script: !include scripts.yaml

@@ -18,34 +18,29 @@ kiosk_mode:
   non_admin_settings:
     kiosk: true
 
-# ── Rotating-photo screensaver (lovelace-wallpanel) ────────────────────────
-# image_url MUST carry ?t=${timestamp}: newer wallpanel caches a static URL
-# forever, so the cache-buster is what makes immich-kiosk hand back a NEW random
-# photo each cycle. HTTPS host (HA is HTTPS → http would be mixed-content blocked).
-# The big clock/date is wallpanel's built-in info box (no weather dependency), so
-# the screensaver looks right immediately, before Met.no is added.
+# ── Photo screensaver (lovelace-wallpanel → immich-kiosk full page) ─────────
+# wallpanel provides the screensaver trigger (idle, fullscreen, keep-awake,
+# tap-dismiss); the CONTENT is immich-kiosk's full page, embedded via wallpanel's
+# `iframe+` URL mode. That gives immich-kiosk's NATIVE clock/date + image-metadata
+# overlays and automatic side-by-side PORTRAIT PAIRING (KIOSK_LAYOUT=splitview,
+# configured on the immich-kiosk deployment). ?disable_ui hides kiosk's nav chrome
+# only (the show_* overlays stay). content_interaction lets taps reach the page.
+# wallpanel's own info-box clock is disabled here (kiosk draws its own).
 wallpanel:
   enabled: true
   fullscreen: true
   hide_toolbar: true
   hide_sidebar: true
   idle_time: 20
-  display_time: 45
-  crossfade_time: 3
   # Keep the display awake while the dashboard/screensaver is open (browser Wake
-  # Lock API). 24h re-acquired on activity → effectively always-on while viewing.
-  # For a permanently mounted tablet, also set the OS/kiosk-app keep-awake (see
-  # docs/wall-panels.md) — browser wake lock alone can drop on backgrounding.
+  # Lock API). For a mounted tablet, also set OS/kiosk keep-awake (docs/wall-panels.md).
   keep_screen_on_time: 86400
   show_progress_bar: false
-  image_url: 'https://immich-kiosk.kblab.me/image?t=${timestamp}'
-  image_fit_landscape: cover
-  image_fit_portrait: contain
+  image_url: 'iframe+https://immich-kiosk.kblab.me/?disable_ui=true'
+  content_interaction: true
   style:
     wallpanel-screensaver-info-box:
-      font-size: 9vh
-      color: '#ffffff'
-      text-shadow: '0 2px 10px rgba(0,0,0,0.7)'
+      display: none
 
 views:
   # ───────────────────────────── HOME / GLANCE ─────────────────────────────

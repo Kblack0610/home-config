@@ -41,6 +41,23 @@ spec:
                   key: api-key
             - name: TZ
               value: "America/New_York"
+            # ── Modern photo-frame look (Phase 1.6) ──────────────────────────
+            # splitview pairs two PORTRAIT photos side-by-side (landscape/square
+            # fall back to single); clock/date + image metadata overlay on top;
+            # cross-fade transitions. Weather overlay is added later via a
+            # config.yaml (needs an OpenWeatherMap key) — see docs/wall-panels.md.
+            - { name: KIOSK_LAYOUT, value: "splitview" }
+            - { name: KIOSK_SHOW_TIME, value: "true" }
+            - { name: KIOSK_TIME_FORMAT, value: "12" }
+            - { name: KIOSK_SHOW_DATE, value: "true" }
+            - { name: KIOSK_SHOW_IMAGE_DATE, value: "true" }
+            - { name: KIOSK_SHOW_IMAGE_LOCATION, value: "true" }
+            - { name: KIOSK_SHOW_ALBUM_NAME, value: "true" }
+            - { name: KIOSK_TRANSITION, value: "cross-fade" }
+            - { name: KIOSK_CROSS_FADE_TRANSITION_DURATION, value: "2" }
+            - { name: KIOSK_DURATION, value: "30" }
+            - { name: KIOSK_IMAGE_FIT, value: "cover" }
+            - { name: KIOSK_BACKGROUND_BLUR, value: "false" }
           resources:
             requests:
               memory: "64Mi"

@@ -32,6 +32,11 @@ wallpanel:
   idle_time: 20
   display_time: 45
   crossfade_time: 3
+  # Keep the display awake while the dashboard/screensaver is open (browser Wake
+  # Lock API). 24h re-acquired on activity → effectively always-on while viewing.
+  # For a permanently mounted tablet, also set the OS/kiosk-app keep-awake (see
+  # docs/wall-panels.md) — browser wake lock alone can drop on backgrounding.
+  keep_screen_on_time: 86400
   show_progress_bar: false
   image_url: 'https://immich-kiosk.kblab.me/image?t=${timestamp}'
   image_fit_landscape: cover
@@ -82,6 +87,14 @@ views:
                 icon_color: blue
                 content: "{{ states('sensor.cluster_nodes_online') }}/{{ states('sensor.homelab_total_nodes') }}"
                 tap_action: { action: navigate, navigation_path: /wall-panels/ops }
+              - type: template
+                icon: mdi:play-box-multiple
+                content: Media
+                tap_action: { action: navigate, navigation_path: /wall-panels/media }
+              - type: template
+                icon: mdi:cog
+                content: Admin
+                tap_action: { action: navigate, navigation_path: /wall-panels/admin }
               - type: entity
                 entity: sun.sun
                 icon: mdi:white-balance-sunny
@@ -325,3 +338,123 @@ views:
       - type: iframe
         url: 'https://immich-kiosk.kblab.me?disable_ui=true'
         aspect_ratio: 100%
+
+  # ──────────────────────────────── MEDIA ──────────────────────────────────
+  # Jellyfin: the "Open Jellyfin" button works now (web UI). For in-HA control,
+  # add the Jellyfin integration (Settings → Devices → Add Integration → Jellyfin
+  # → jellyfin.kblab.me + API key) — it creates media_player entities per active
+  # session. For playback ON the tablet, install Findroid (Amazon Appstore / F-Droid).
+  - title: Media
+    path: media
+    icon: mdi:play-box-multiple
+    type: sections
+    max_columns: 3
+    sections:
+      - type: grid
+        cards:
+          - type: custom:bubble-card
+            card_type: button
+            button_type: name
+            name: Home
+            icon: mdi:home
+            tap_action: { action: navigate, navigation_path: /wall-panels/home }
+          - type: heading
+            heading: Jellyfin
+            heading_style: title
+          - type: custom:mushroom-template-card
+            primary: Open Jellyfin
+            secondary: Browse & play the library
+            icon: mdi:jellyfish
+            icon_color: purple
+            tap_action: { action: url, url_path: 'https://jellyfin.kblab.me' }
+          - type: markdown
+            content: >
+              **In-HA control** needs the Jellyfin integration added
+              (Settings → Devices → Add Integration → Jellyfin). **Playback on this
+              tablet**: install Findroid. HA acts as the remote / now-playing.
+      - type: grid
+        cards:
+          - type: heading
+            heading: Players
+            heading_style: title
+          - type: custom:auto-entities
+            show_empty: false
+            card_param: cards
+            card:
+              type: grid
+              columns: 1
+              square: false
+            filter:
+              include:
+                - domain: media_player
+                  options:
+                    type: custom:mushroom-media-player-card
+                    media_controls: [play_pause, next]
+                    volume_controls: [volume_buttons]
+            sort: { method: friendly_name }
+
+  # ──────────────────────────────── ADMIN ──────────────────────────────────
+  # Quick links + system controls. NOTE: visibility is NOT security — this view
+  # is shown to everyone for now. Real protection comes in Phase 5: family/guest
+  # become NON-ADMIN HA users, so the restart/update actions below are rejected
+  # server-side for them regardless of what the UI shows. A PIN popup (cosmetic)
+  # + per-profile `visible:` gating land then too.
+  - title: Admin
+    path: admin
+    icon: mdi:cog
+    type: sections
+    max_columns: 3
+    sections:
+      - type: grid
+        cards:
+          - type: custom:bubble-card
+            card_type: button
+            button_type: name
+            name: Home
+            icon: mdi:home
+            tap_action: { action: navigate, navigation_path: /wall-panels/home }
+          - type: heading
+            heading: Links
+            heading_style: title
+          - type: custom:mushroom-chips-card
+            chips:
+              - type: template
+                icon: mdi:chart-areaspline
+                content: Grafana
+                tap_action: { action: url, url_path: 'https://grafana.kblab.me' }
+              - type: template
+                icon: mdi:fire
+                content: Prometheus
+                tap_action: { action: url, url_path: 'https://prometheus.kblab.me' }
+              - type: template
+                icon: mdi:git
+                content: Forgejo
+                tap_action: { action: url, url_path: 'https://git.kblab.me' }
+              - type: template
+                icon: mdi:check-all
+                content: Vikunja
+                tap_action: { action: url, url_path: 'https://vikunja.kblab.me' }
+      - type: grid
+        cards:
+          - type: heading
+            heading: System
+            heading_style: title
+          - type: custom:auto-entities
+            show_empty: false
+            card:
+              type: entities
+              title: Updates
+            filter:
+              include:
+                - domain: update
+            sort: { method: friendly_name }
+          - type: custom:mushroom-template-card
+            primary: Restart Home Assistant
+            secondary: Admin only
+            icon: mdi:restart
+            icon_color: red
+            tap_action:
+              action: call-service
+              service: homeassistant.restart
+              confirmation:
+                text: Restart Home Assistant now?

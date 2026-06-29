@@ -15,6 +15,7 @@ resources:
   - blackbox-exporter
   - cloudflared-public-sites
   - crowdsec
+  - external-dns
   - flux-audit
   - forgejo
   - gatus

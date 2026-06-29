@@ -29,6 +29,11 @@ spec:
             - --source=ingress
             - --provider=cloudflare
             - --cloudflare-proxied
+            # Point every managed record at the public-sites tunnel (CNAME),
+            # NOT the Ingress's LAN LoadBalancer IP (192.168.1.243 — which
+            # Cloudflare rejects for a proxied record). All public hostnames on
+            # this homelab egress through this one tunnel.
+            - --default-targets=ae1da648-4f55-4361-8ff2-320b55be6ac4.cfargotunnel.com
             # Scope: only manage records under these zones. Add more zones here
             # (one flag each) as public sites move onto the tunnel.
             - --domain-filter=kennethblack.me

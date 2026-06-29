@@ -12,6 +12,7 @@ resources:
   - alloy
   - ansible-runner
   - binks-api
+  - blackbox-exporter
   - cloudflared-public-sites
   - crowdsec
   - flux-audit

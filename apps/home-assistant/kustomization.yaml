@@ -17,6 +17,7 @@ configMapGenerator:
       - package_derived_metrics.yaml=config/packages/derived_metrics.yaml
       - package_printing_neptune.yaml=config/packages/printing_neptune.yaml
       - package_voice_targets.yaml=config/packages/voice_targets.yaml
+      - package_site_status.yaml=config/packages/site_status.yaml
       - dashboard_overview.yaml=config/dashboards/overview.yaml
       - dashboard_ops.yaml=config/dashboards/ops.yaml
       - dashboard_admin.yaml=config/dashboards/admin.yaml

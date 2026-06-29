@@ -123,6 +123,7 @@ spec:
               cp /managed-config/package_derived_metrics.yaml /config/packages/derived_metrics.yaml
               cp /managed-config/package_printing_neptune.yaml /config/packages/printing_neptune.yaml
               cp /managed-config/package_voice_targets.yaml /config/packages/voice_targets.yaml
+              cp /managed-config/package_site_status.yaml /config/packages/site_status.yaml
 
               cp /managed-config/dashboard_overview.yaml /config/dashboards/overview.yaml
               cp /managed-config/dashboard_ops.yaml /config/dashboards/ops.yaml

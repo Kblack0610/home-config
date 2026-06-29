@@ -293,7 +293,7 @@ def render_probe_block(tiles: list[dict]) -> str:
     """Render the BEGIN/END_GENERATED_TARGETS region for probe-sites.yaml."""
     lines = [
         f"{PROBE_INDENT}{PROBE_BEGIN} (regenerate via scripts/gen-ha-launcher.py)",
-        f"{PROBE_INDENT}targets:",
+        f"{PROBE_INDENT}static:",
     ]
     for tile in sorted(tiles, key=lambda t: t["host"]):
         lines.append(f"{PROBE_INDENT}  - {tile['url']}")

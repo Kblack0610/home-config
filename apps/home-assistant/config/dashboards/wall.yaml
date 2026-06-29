@@ -1,19 +1,46 @@
 # ─────────────────────────────────────────────────────────────────────────
-# Wall-panel dashboard (Phase 5.5) — loaded by the kitchen + secondary tablets.
-# Custom cards are vendored by the `install-lovelace-cards` init container and
-# declared in configuration.yaml. This dashboard is intentionally empty-safe:
-# control sections use `auto-entities`, so they render fine now (few entities)
-# and fill in automatically as Zigbee/ESPHome devices land (Phase 5).
+# Wall-panel dashboard (Phase 5.5 / 1.5) — the kitchen + secondary tablets.
+# Custom cards vendored by the `install-lovelace-cards` init container.
 #
-# Profiles × views: wall tablets log in as NON-ADMIN users → kiosk-mode hides
-# the header/sidebar. Admin (Kenneth) keeps full chrome; ?disable_km also exits.
-# Per-view `visible:` profile-gating is added in Phase 5 once the HA users exist.
+# Nest-Hub experience: after `idle_time`s of no touch, lovelace-wallpanel fades
+# into a fullscreen slideshow of random Immich photos (via the immich-kiosk
+# /image endpoint) with a big clock/date overlay — tap to return. While active,
+# the Home view is a glanceable hub (clock+weather, status chips, homelab/printer
+# tiles, announce, cast media). Empty-safe: device sections use auto-entities and
+# fill in as Zigbee/ESPHome land (Phase 5).
+#
+# Profiles × views: wall tablets log in as NON-ADMIN users → kiosk-mode hides the
+# header/sidebar. Admin keeps full chrome; ?disable_km exits. ?kiosk previews it.
 # ─────────────────────────────────────────────────────────────────────────
 title: Wall
 
 kiosk_mode:
   non_admin_settings:
     kiosk: true
+
+# ── Rotating-photo screensaver (lovelace-wallpanel) ────────────────────────
+# image_url MUST carry ?t=${timestamp}: newer wallpanel caches a static URL
+# forever, so the cache-buster is what makes immich-kiosk hand back a NEW random
+# photo each cycle. HTTPS host (HA is HTTPS → http would be mixed-content blocked).
+# The big clock/date is wallpanel's built-in info box (no weather dependency), so
+# the screensaver looks right immediately, before Met.no is added.
+wallpanel:
+  enabled: true
+  fullscreen: true
+  hide_toolbar: true
+  hide_sidebar: true
+  idle_time: 20
+  display_time: 45
+  crossfade_time: 3
+  show_progress_bar: false
+  image_url: 'https://immich-kiosk.kblab.me/image?t=${timestamp}'
+  image_fit_landscape: cover
+  image_fit_portrait: contain
+  style:
+    wallpanel-screensaver-info-box:
+      font-size: 9vh
+      color: '#ffffff'
+      text-shadow: '0 2px 10px rgba(0,0,0,0.7)'
 
 views:
   # ───────────────────────────── HOME / GLANCE ─────────────────────────────
@@ -25,14 +52,7 @@ views:
     sections:
       - type: grid
         cards:
-          - type: custom:bubble-card
-            card_type: button
-            button_type: name
-            name: Controls
-            icon: mdi:tune
-            tap_action:
-              action: navigate
-              navigation_path: /wall-panels/control
+          # Always-works greeting hero (renders regardless of integrations).
           - type: custom:mushroom-template-card
             primary: >-
               {{ ['Good morning','Good afternoon','Good evening'][0 if now().hour < 12 else 1 if now().hour < 18 else 2] }}
@@ -40,19 +60,53 @@ views:
             icon: mdi:tablet-dashboard
             icon_color: blue
             multiline_secondary: true
-            tap_action:
-              action: none
+            tap_action: { action: none }
+          # Clock + multi-day forecast hero. Needs the Met.no integration added
+          # (Settings → Devices → Add Integration → Met.no) → weather.forecast_home.
+          - type: custom:clock-weather-card
+            entity: weather.forecast_home
+            forecast_rows: 4
           - type: custom:mushroom-chips-card
+            alignment: center
             chips:
-              - type: entity
-                entity: sun.sun
-                icon: mdi:white-balance-sunny
+              - type: template
+                icon: mdi:tune
+                content: Controls
+                tap_action: { action: navigate, navigation_path: /wall-panels/control }
               - type: template
                 icon: mdi:image-multiple
                 content: Photos
-                tap_action:
-                  action: url
-                  url_path: http://immich-kiosk.kblab.me?disable_ui=true
+                tap_action: { action: url, url_path: 'https://immich-kiosk.kblab.me?disable_ui=true' }
+              - type: template
+                icon: mdi:server-network
+                icon_color: blue
+                content: "{{ states('sensor.cluster_nodes_online') }}/{{ states('sensor.homelab_total_nodes') }}"
+              - type: entity
+                entity: sun.sun
+                icon: mdi:white-balance-sunny
+      - type: grid
+        cards:
+          - type: heading
+            heading: Homelab
+            heading_style: title
+          - type: custom:mushroom-template-card
+            primary: Cluster
+            secondary: "{{ states('sensor.cluster_nodes_online') }} nodes · CPU {{ states('sensor.cluster_cpu_average') }}%"
+            icon: mdi:kubernetes
+            icon_color: "{{ 'green' if states('sensor.cluster_cpu_average')|float(0) < 80 else 'orange' }}"
+            tap_action: { action: navigate, navigation_path: /lovelace/ops }
+          - type: custom:mushroom-template-card
+            primary: Bambu A1
+            secondary: "{{ states('sensor.bambu_a1_print_status') }} · {{ states('sensor.bambu_a1_print_progress') }}%"
+            icon: mdi:printer-3d-nozzle
+            icon_color: "{{ 'blue' if states('sensor.bambu_a1_print_status') not in ['idle','offline','unavailable'] else 'green' }}"
+            tap_action: { action: navigate, navigation_path: /lovelace/printing }
+          - type: custom:mushroom-template-card
+            primary: Neptune
+            secondary: "{{ states('sensor.neptune_printer_status') }} · {{ states('sensor.neptune_print_progress') }}%"
+            icon: mdi:printer-3d
+            icon_color: amber
+            tap_action: { action: navigate, navigation_path: /lovelace/printing }
       - type: grid
         cards:
           - type: heading
@@ -80,13 +134,18 @@ views:
             heading_style: title
           - type: custom:auto-entities
             show_empty: false
+            card_param: cards
             card:
-              type: entities
-              title: Cast devices
-              state_color: true
+              type: grid
+              columns: 1
+              square: false
             filter:
               include:
                 - domain: media_player
+                  options:
+                    type: custom:mushroom-media-player-card
+                    media_controls: [play_pause, next]
+                    volume_controls: [volume_buttons]
             sort:
               method: friendly_name
 

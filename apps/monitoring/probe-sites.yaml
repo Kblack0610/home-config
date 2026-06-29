@@ -1,6 +1,6 @@
 # blackbox-exporter Probe for all public + private site URLs.
 #
-# The `targets` list below is GENERATED from apps/*/ingress*.yaml by
+# The `static` target list below is GENERATED from apps/*/ingress*.yaml by
 # scripts/gen-ha-launcher.py (same source as the HA launcher + status sensors).
 # Edit ingresses + rerun the script; do not hand-edit the target list.
 #
@@ -24,7 +24,7 @@ spec:
   targets:
     staticConfig:
       # BEGIN_GENERATED_TARGETS (regenerate via scripts/gen-ha-launcher.py)
-      targets:
+      static:
         - https://alertmanager.kblab.me
         - https://binks-next.kblab.me
         - https://binks.chat

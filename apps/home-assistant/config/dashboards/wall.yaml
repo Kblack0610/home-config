@@ -351,6 +351,17 @@ views:
               include:
                 - { attributes: { device_class: battery }, state: "< 30" }
             sort: { method: state, numeric: true }
+      # Live Grafana board (Homelab / All Devices) embedded in kiosk mode.
+      # Requires grafana.ini allow_embedding + anonymous Viewer (set in
+      # apps/monitoring/helm-values.yaml). Grafana is LAN-only.
+      - type: grid
+        cards:
+          - type: heading
+            heading: Graphs
+            heading_style: title
+          - type: iframe
+            url: 'https://grafana.kblab.me/d/k8s-homelab-devices/homelab-all-devices?kiosk&theme=dark&refresh=30s&from=now-6h&to=now'
+            aspect_ratio: 90%
 
   # ──────────────────────────────── PHOTOS ─────────────────────────────────
   # Full-screen Immich slideshow as a dedicated tab (separate from the idle

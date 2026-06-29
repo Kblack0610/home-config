@@ -138,6 +138,16 @@ grafana:
   adminPassword: admin
   defaultDashboardsEnabled: true
   defaultDashboardsTimezone: America/Los_Angeles
+  # Allow Grafana to be iframe-embedded (HA wall-panel Ops view) and let LAN
+  # viewers see dashboards without logging in. Grafana is LAN/Tailscale-only
+  # (grafana.kblab.me local-network middleware + NodePort), so anonymous is
+  # scoped to Viewer (read-only); the admin password still gates editing.
+  grafana.ini:
+    security:
+      allow_embedding: true
+    auth.anonymous:
+      enabled: true
+      org_role: Viewer
   initChownData:
     enabled: false
   nodeSelector:

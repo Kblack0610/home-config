@@ -28,6 +28,11 @@ lovelace:
       type: module
     - url: /local/community/kiosk-mode/kiosk-mode.js
       type: module
+    # Nest-Hub photo layer (Phase 1.5): rotating-photo screensaver + clock/weather hero.
+    - url: /local/community/wallpanel/wallpanel.js?v=4.65.1
+      type: module
+    - url: /local/community/clock-weather-card/clock-weather-card.js?v=2.9.3
+      type: module
   # Second YAML dashboard (the default "Homelab" stays at /lovelace). The key
   # must contain a hyphen. Reached at /wall-panels; the wall tablets load this.
   dashboards:

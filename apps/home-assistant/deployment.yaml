@@ -57,7 +57,7 @@ spec:
             - -c
             - |
               set -u
-              VERSION="2026-06-25-1"
+              VERSION="2026-06-29-1"
               WWW="/config/www/community"
               MARKER="$WWW/.version"
               if [ -f "$MARKER" ] && [ "$(cat "$MARKER")" = "$VERSION" ]; then
@@ -82,6 +82,9 @@ spec:
               dl "https://raw.githubusercontent.com/thomasloven/lovelace-card-mod/v4.2.1/card-mod.js"               "$WWW/card-mod/card-mod.js"
               dl "https://github.com/kalkih/mini-graph-card/releases/download/v0.13.0/mini-graph-card-bundle.js"    "$WWW/mini-graph-card/mini-graph-card-bundle.js"
               dl "https://github.com/NemesisRE/kiosk-mode/releases/download/v14.0.0/kiosk-mode.js"                  "$WWW/kiosk-mode/kiosk-mode.js"
+              # Phase 1.5 — Nest-Hub photo layer: wallpanel (rotating-photo screensaver) + clock-weather hero.
+              dl "https://github.com/j-a-n/lovelace-wallpanel/releases/download/v4.65.1/wallpanel.js"              "$WWW/wallpanel/wallpanel.js"
+              dl "https://github.com/pkissling/clock-weather-card/releases/download/v2.9.3/clock-weather-card.js"  "$WWW/clock-weather-card/clock-weather-card.js"
               # browser_mod is a Python custom_component (frontend bundled); install the dir.
               if wget -q -O /tmp/bm.tgz "https://github.com/thomasloven/hass-browser_mod/archive/refs/tags/v2.13.5.tar.gz"; then
                 tar -xzf /tmp/bm.tgz -C /tmp

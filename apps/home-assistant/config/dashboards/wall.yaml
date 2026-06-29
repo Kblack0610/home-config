@@ -76,11 +76,12 @@ views:
               - type: template
                 icon: mdi:image-multiple
                 content: Photos
-                tap_action: { action: url, url_path: 'https://immich-kiosk.kblab.me?disable_ui=true' }
+                tap_action: { action: navigate, navigation_path: /wall-panels/photos }
               - type: template
                 icon: mdi:server-network
                 icon_color: blue
                 content: "{{ states('sensor.cluster_nodes_online') }}/{{ states('sensor.homelab_total_nodes') }}"
+                tap_action: { action: navigate, navigation_path: /wall-panels/ops }
               - type: entity
                 entity: sun.sun
                 icon: mdi:white-balance-sunny
@@ -208,3 +209,119 @@ views:
               Controls populate automatically as devices are added (Phase 5 —
               Zigbee / ESPHome). This view uses `auto-entities`, so new lights,
               switches, fans, scenes and scripts appear here with no edits.
+
+  # ────────────────────────────── OPS / FLEET ──────────────────────────────
+  # Glanceable homelab + device-fleet status from existing sensors. Offline /
+  # low-battery rosters use auto-entities (empty-safe) and auto-populate as
+  # iot-fleet ESP32/Pi devices register over MQTT. Heavier bits (embedded
+  # Grafana, prometheus integration, watchman, ntfy alerting) are a follow-up.
+  - title: Ops
+    path: ops
+    icon: mdi:server-network
+    type: sections
+    max_columns: 3
+    sections:
+      - type: grid
+        cards:
+          - type: custom:bubble-card
+            card_type: button
+            button_type: name
+            name: Home
+            icon: mdi:home
+            tap_action: { action: navigate, navigation_path: /wall-panels/home }
+          - type: heading
+            heading: Cluster
+            heading_style: title
+          - type: custom:mushroom-template-card
+            primary: Nodes online
+            secondary: "{{ states('sensor.cluster_nodes_online') }} / {{ states('sensor.homelab_total_nodes') }}"
+            icon: mdi:kubernetes
+            icon_color: "{{ 'green' if states('sensor.cluster_nodes_online') == states('sensor.homelab_total_nodes') else 'orange' }}"
+          - type: custom:mushroom-template-card
+            primary: Cluster CPU
+            secondary: "{{ states('sensor.cluster_cpu_average') }}%"
+            icon: mdi:cpu-64-bit
+            icon_color: "{{ 'green' if states('sensor.cluster_cpu_average')|float(0) < 80 else 'orange' }}"
+          - type: custom:mushroom-template-card
+            primary: Cluster RAM
+            secondary: "{{ states('sensor.cluster_ram_average') }}%"
+            icon: mdi:memory
+            icon_color: "{{ 'green' if states('sensor.cluster_ram_average')|float(0) < 85 else 'orange' }}"
+          - type: custom:mushroom-template-card
+            primary: Macs online
+            secondary: "{{ states('sensor.mac_machines_online') }}"
+            icon: mdi:apple
+            icon_color: blue
+      - type: grid
+        cards:
+          - type: heading
+            heading: Node load
+            heading_style: title
+          - type: custom:mini-graph-card
+            name: Node CPU
+            hours_to_show: 12
+            points_per_hour: 4
+            line_width: 2
+            entities:
+              - { entity: sensor.node_1_cpu, name: n1 }
+              - { entity: sensor.node_2_cpu, name: n2 }
+              - { entity: sensor.node_3_cpu, name: n3 }
+              - { entity: sensor.node_4_cpu, name: n4 }
+              - { entity: sensor.node_5_cpu, name: n5 }
+      - type: grid
+        cards:
+          - type: heading
+            heading: Printers
+            heading_style: title
+          - type: custom:mushroom-template-card
+            primary: Bambu A1
+            secondary: "{{ states('sensor.bambu_a1_print_status') }} · {{ states('sensor.bambu_a1_print_progress') }}%"
+            icon: mdi:printer-3d-nozzle
+            icon_color: "{{ 'blue' if states('sensor.bambu_a1_print_status') not in ['idle','offline','unavailable'] else 'green' }}"
+          - type: custom:mushroom-template-card
+            primary: Neptune
+            secondary: "{{ states('sensor.neptune_printer_status') }} · {{ states('sensor.neptune_print_progress') }}%"
+            icon: mdi:printer-3d
+            icon_color: amber
+      - type: grid
+        cards:
+          - type: heading
+            heading: Fleet health
+            heading_style: title
+          # Offline roster — auto-populates as iot-fleet/MQTT devices register.
+          - type: custom:auto-entities
+            show_empty: false
+            card:
+              type: entities
+              title: Offline / unavailable
+              state_color: true
+            filter:
+              include:
+                - { state: unavailable }
+                - { state: unknown }
+              exclude:
+                - entity_id: "*weather*"
+                - entity_id: "sun.*"
+            sort: { method: friendly_name }
+          # Low-battery roster (battery-powered fleet devices).
+          - type: custom:auto-entities
+            show_empty: false
+            card:
+              type: entities
+              title: Low battery
+            filter:
+              include:
+                - { attributes: { device_class: battery }, state: "< 30" }
+            sort: { method: state, numeric: true }
+
+  # ──────────────────────────────── PHOTOS ─────────────────────────────────
+  # Full-screen Immich slideshow as a dedicated tab (separate from the idle
+  # screensaver). Served by the immich-kiosk app (no auth on LAN).
+  - title: Photos
+    path: photos
+    icon: mdi:image-multiple
+    panel: true
+    cards:
+      - type: iframe
+        url: 'https://immich-kiosk.kblab.me?disable_ui=true'
+        aspect_ratio: 100%

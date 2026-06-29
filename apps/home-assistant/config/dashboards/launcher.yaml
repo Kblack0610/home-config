@@ -8,171 +8,291 @@ sections:
   - type: grid
     cards:
       - type: heading
+        heading: Public
+        icon: mdi:earth
+      - type: tile
+        entity: binary_sensor.binks_chat
+        name: binks.chat
+        icon: mdi:chat
+        tap_action:
+          action: url
+          url_path: https://binks.chat
+      - type: tile
+        entity: binary_sensor.blacknbrownstudios_com
+        name: blacknbrownstudios.com
+        icon: mdi:palette
+        tap_action:
+          action: url
+          url_path: https://blacknbrownstudios.com
+      - type: tile
+        entity: binary_sensor.cal_kennethblack_me
+        name: cal.kennethblack.me
+        icon: mdi:calendar
+        tap_action:
+          action: url
+          url_path: https://cal.kennethblack.me
+      - type: tile
+        entity: binary_sensor.kblack_dev
+        name: kblack.dev
+        icon: mdi:code-tags
+        tap_action:
+          action: url
+          url_path: https://kblack.dev
+      - type: tile
+        entity: binary_sensor.kennethblack_me
+        name: kennethblack.me
+        icon: mdi:account-box
+        tap_action:
+          action: url
+          url_path: https://kennethblack.me
+      - type: tile
+        entity: binary_sensor.mem0_kennethblack_me
+        name: mem0.kennethblack.me
+        icon: mdi:web
+        tap_action:
+          action: url
+          url_path: https://mem0.kennethblack.me
+      - type: tile
+        entity: binary_sensor.placemyparents_api_blacknbrownstudios_com
+        name: placemyparents-api.blacknbrownstudios.com
+        icon: mdi:api
+        tap_action:
+          action: url
+          url_path: https://placemyparents-api.blacknbrownstudios.com
+      - type: tile
+        entity: binary_sensor.placemyparents_blacknbrownstudios_com
+        name: placemyparents.blacknbrownstudios.com
+        icon: mdi:account-group
+        tap_action:
+          action: url
+          url_path: https://placemyparents.blacknbrownstudios.com
+      - type: tile
+        entity: binary_sensor.scratch_kennethblack_me
+        name: scratch.kennethblack.me
+        icon: mdi:web
+        tap_action:
+          action: url
+          url_path: https://scratch.kennethblack.me
+      - type: tile
+        entity: binary_sensor.ship_blacknbrownstudios_com
+        name: ship.blacknbrownstudios.com
+        icon: mdi:web
+        tap_action:
+          action: url
+          url_path: https://ship.blacknbrownstudios.com
+  - type: grid
+    cards:
+      - type: heading
         heading: AI
         icon: mdi:robot
       - type: tile
-        entity: sun.sun
+        entity: binary_sensor.binks_next_kblab_me
+        name: Binks Next
+        icon: mdi:application
+        tap_action:
+          action: url
+          url_path: https://binks-next.kblab.me
+      - type: tile
+        entity: binary_sensor.llm_kblab_me
         name: Llm
         icon: mdi:robot
         tap_action:
           action: url
           url_path: https://llm.kblab.me
-        hide_state: true
       - type: tile
-        entity: sun.sun
+        entity: binary_sensor.openclaw_kblab_me
         name: Openclaw
         icon: mdi:robot-industrial
         tap_action:
           action: url
           url_path: https://openclaw.kblab.me
-        hide_state: true
   - type: grid
     cards:
       - type: heading
         heading: Apps
         icon: mdi:apps
       - type: tile
-        entity: sun.sun
+        entity: binary_sensor.karakeep_kblab_me
         name: Karakeep
         icon: mdi:bookmark-multiple
         tap_action:
           action: url
           url_path: https://karakeep.kblab.me
-        hide_state: true
   - type: grid
     cards:
       - type: heading
         heading: Dev
         icon: mdi:code-braces
       - type: tile
-        entity: sun.sun
+        entity: binary_sensor.git_kblab_me
         name: Git
         icon: mdi:git
         tap_action:
           action: url
           url_path: https://git.kblab.me
-        hide_state: true
   - type: grid
     cards:
       - type: heading
         heading: Finance
         icon: mdi:cash
       - type: tile
-        entity: sun.sun
+        entity: binary_sensor.finance_kblab_me
         name: Finance
         icon: mdi:cash-multiple
         tap_action:
           action: url
           url_path: https://finance.kblab.me
-        hide_state: true
   - type: grid
     cards:
       - type: heading
         heading: Home
         icon: mdi:home
       - type: tile
-        entity: sun.sun
+        entity: binary_sensor.hass_kblab_me
         name: Hass
         icon: mdi:home-assistant
         tap_action:
           action: url
           url_path: https://hass.kblab.me
-        hide_state: true
   - type: grid
     cards:
       - type: heading
         heading: Media
         icon: mdi:multimedia
       - type: tile
-        entity: sun.sun
+        entity: binary_sensor.jellyfin_kblab_me
         name: Jellyfin
         icon: mdi:jellyfin
         tap_action:
           action: url
           url_path: https://jellyfin.kblab.me
-        hide_state: true
       - type: tile
-        entity: sun.sun
+        entity: binary_sensor.photos_kblab_me
         name: Photos
         icon: mdi:image
         tap_action:
           action: url
           url_path: https://photos.kblab.me
-        hide_state: true
   - type: grid
     cards:
       - type: heading
         heading: Ops
         icon: mdi:tools
       - type: tile
-        entity: sun.sun
+        entity: binary_sensor.alertmanager_kblab_me
         name: Alertmanager
         icon: mdi:bell-alert
         tap_action:
           action: url
           url_path: https://alertmanager.kblab.me
-        hide_state: true
       - type: tile
-        entity: sun.sun
+        entity: binary_sensor.grafana_kblab_me
         name: Grafana
         icon: mdi:chart-bar
         tap_action:
           action: url
           url_path: https://grafana.kblab.me
-        hide_state: true
       - type: tile
-        entity: sun.sun
+        entity: binary_sensor.headscale_ui_kblab_me
         name: Headscale Ui
         icon: mdi:vpn
         tap_action:
           action: url
           url_path: https://headscale-ui.kblab.me
-        hide_state: true
       - type: tile
-        entity: sun.sun
+        entity: binary_sensor.headscale_kblab_me
         name: Headscale
         icon: mdi:vpn
         tap_action:
           action: url
           url_path: https://headscale.kblab.me
-        hide_state: true
       - type: tile
-        entity: sun.sun
+        entity: binary_sensor.prometheus_kblab_me
         name: Prometheus
         icon: mdi:chart-line
         tap_action:
           action: url
           url_path: https://prometheus.kblab.me
-        hide_state: true
       - type: tile
-        entity: sun.sun
+        entity: binary_sensor.status_kblab_me
         name: Status
         icon: mdi:heart-pulse
         tap_action:
           action: url
           url_path: https://status.kblab.me
-        hide_state: true
+  - type: grid
+    cards:
+      - type: heading
+        heading: Other
+        icon: mdi:application
+      - type: tile
+        entity: binary_sensor.mem0_kblab_me
+        name: Mem0
+        icon: mdi:application
+        tap_action:
+          action: url
+          url_path: https://mem0.kblab.me
+      - type: tile
+        entity: binary_sensor.minio_kblab_me
+        name: Minio
+        icon: mdi:application
+        tap_action:
+          action: url
+          url_path: https://minio.kblab.me
+      - type: tile
+        entity: binary_sensor.notes_sync_bridge_kblab_me
+        name: Notes Sync Bridge
+        icon: mdi:application
+        tap_action:
+          action: url
+          url_path: https://notes-sync-bridge.kblab.me
+      - type: tile
+        entity: binary_sensor.ntfy_kblab_me
+        name: Ntfy
+        icon: mdi:application
+        tap_action:
+          action: url
+          url_path: https://ntfy.kblab.me
+      - type: tile
+        entity: binary_sensor.s3_kblab_me
+        name: S3
+        icon: mdi:application
+        tap_action:
+          action: url
+          url_path: https://s3.kblab.me
+      - type: tile
+        entity: binary_sensor.vault_kblab_me
+        name: Vault
+        icon: mdi:application
+        tap_action:
+          action: url
+          url_path: https://vault.kblab.me
+      - type: tile
+        entity: binary_sensor.vikunja_kblab_me
+        name: Vikunja
+        icon: mdi:application
+        tap_action:
+          action: url
+          url_path: https://vikunja.kblab.me
   - type: grid
     cards:
       - type: heading
         heading: Printing
         icon: mdi:printer-3d
       - type: tile
-        entity: sun.sun
+        entity: binary_sensor.neptune_kblab_me
         name: Neptune
         icon: mdi:printer-3d
         tap_action:
           action: url
           url_path: https://neptune.kblab.me
-        hide_state: true
       - type: tile
-        entity: sun.sun
+        entity: binary_sensor.slicer_kblab_me
         name: Slicer
         icon: mdi:printer-3d-nozzle
         tap_action:
           action: url
           url_path: https://slicer.kblab.me
-        hide_state: true
   - type: grid
     cards:
       - type: heading

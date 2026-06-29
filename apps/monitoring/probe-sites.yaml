@@ -1,0 +1,62 @@
+# blackbox-exporter Probe for all public + private site URLs.
+#
+# The `targets` list below is GENERATED from apps/*/ingress*.yaml by
+# scripts/gen-ha-launcher.py (same source as the HA launcher + status sensors).
+# Edit ingresses + rerun the script; do not hand-edit the target list.
+#
+# The `release: kube-prometheus-stack` label is required: the operator's default
+# probeSelector (probeSelectorNilUsesHelmValues is unset -> true) only picks up
+# Probes carrying the Helm release label. Prometheus then scrapes blackbox once
+# per target, exposing probe_success{instance="https://<host>"}.
+apiVersion: monitoring.coreos.com/v1
+kind: Probe
+metadata:
+  name: sites
+  namespace: monitoring
+  labels:
+    release: kube-prometheus-stack
+spec:
+  jobName: blackbox-sites
+  interval: 60s
+  module: http_up
+  prober:
+    url: blackbox-exporter.monitoring.svc.cluster.local:9115
+  targets:
+    staticConfig:
+      # BEGIN_GENERATED_TARGETS (regenerate via scripts/gen-ha-launcher.py)
+      targets:
+        - https://alertmanager.kblab.me
+        - https://binks-next.kblab.me
+        - https://binks.chat
+        - https://blacknbrownstudios.com
+        - https://cal.kennethblack.me
+        - https://finance.kblab.me
+        - https://git.kblab.me
+        - https://grafana.kblab.me
+        - https://hass.kblab.me
+        - https://headscale-ui.kblab.me
+        - https://headscale.kblab.me
+        - https://jellyfin.kblab.me
+        - https://karakeep.kblab.me
+        - https://kblack.dev
+        - https://kennethblack.me
+        - https://llm.kblab.me
+        - https://mem0.kblab.me
+        - https://mem0.kennethblack.me
+        - https://minio.kblab.me
+        - https://neptune.kblab.me
+        - https://notes-sync-bridge.kblab.me
+        - https://ntfy.kblab.me
+        - https://openclaw.kblab.me
+        - https://photos.kblab.me
+        - https://placemyparents-api.blacknbrownstudios.com
+        - https://placemyparents.blacknbrownstudios.com
+        - https://prometheus.kblab.me
+        - https://s3.kblab.me
+        - https://scratch.kennethblack.me
+        - https://ship.blacknbrownstudios.com
+        - https://slicer.kblab.me
+        - https://status.kblab.me
+        - https://vault.kblab.me
+        - https://vikunja.kblab.me
+      # END_GENERATED_TARGETS

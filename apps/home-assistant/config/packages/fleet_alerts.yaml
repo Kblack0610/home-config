@@ -1,0 +1,64 @@
+# Fleet / service-down alerting → ntfy.
+# Consumes the connectivity binary_sensors generated in site_status.yaml
+# (binary_sensor.<host>_kblab_me, device_class: connectivity; on=up, off=down)
+# and pushes a notification when one or more services have been down for a few
+# minutes, plus an all-clear when they recover. ntfy needs no auth (the topic IS
+# the token) — subscribe to the `homelab-alerts` topic in the ntfy app to receive.
+rest_command:
+  ntfy_homelab:
+    url: "http://ntfy.ntfy.svc.cluster.local/homelab-alerts"
+    method: POST
+    content_type: "text/plain"
+    payload: "{{ message }}"
+    headers:
+      Title: "{{ title | default('Homelab') }}"
+      Priority: "{{ priority | default('default') }}"
+      Tags: "{{ tags | default('warning') }}"
+
+# Helper: count + names of currently-down connectivity sensors.
+template:
+  - sensor:
+      - name: "Services down count"
+        unique_id: services_down_count
+        state: >-
+          {{ states.binary_sensor
+             | selectattr('attributes.device_class', 'eq', 'connectivity')
+             | selectattr('state', 'eq', 'off') | list | count }}
+        icon: mdi:server-network-off
+
+automation:
+  - id: fleet_service_down_notify
+    alias: "Fleet: service(s) down → ntfy"
+    mode: single
+    trigger:
+      - platform: numeric_state
+        entity_id: sensor.services_down_count
+        above: 0
+        for: "00:03:00"
+    action:
+      - service: rest_command.ntfy_homelab
+        data:
+          title: "⚠️ Service down"
+          priority: "high"
+          tags: "rotating_light"
+          message: >-
+            {{ states('sensor.services_down_count') }} down:
+            {{ states.binary_sensor
+               | selectattr('attributes.device_class', 'eq', 'connectivity')
+               | selectattr('state', 'eq', 'off')
+               | map(attribute='name') | join(', ') }}
+
+  - id: fleet_service_recovered_notify
+    alias: "Fleet: all services recovered → ntfy"
+    mode: single
+    trigger:
+      - platform: numeric_state
+        entity_id: sensor.services_down_count
+        below: 1
+        for: "00:02:00"
+    action:
+      - service: rest_command.ntfy_homelab
+        data:
+          title: "✅ All services up"
+          tags: "white_check_mark"
+          message: "All monitored services recovered."

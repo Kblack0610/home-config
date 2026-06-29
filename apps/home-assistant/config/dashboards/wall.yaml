@@ -299,6 +299,31 @@ views:
       - type: grid
         cards:
           - type: heading
+            heading: Services
+            heading_style: title
+          - type: custom:mushroom-template-card
+            primary: Services
+            secondary: >-
+              {{ (states.binary_sensor | selectattr('attributes.device_class','eq','connectivity') | selectattr('state','eq','on') | list | count) }} up ·
+              {{ states('sensor.services_down_count') }} down
+            icon: mdi:lan-connect
+            icon_color: "{{ 'red' if states('sensor.services_down_count')|int(0) > 0 else 'green' }}"
+          # Only renders when something is actually down (show_empty:false).
+          - type: custom:auto-entities
+            show_empty: false
+            card:
+              type: entities
+              title: Down
+              state_color: true
+            filter:
+              include:
+                - domain: binary_sensor
+                  attributes: { device_class: connectivity }
+                  state: "off"
+            sort: { method: friendly_name }
+      - type: grid
+        cards:
+          - type: heading
             heading: Fleet health
             heading_style: title
           # Offline roster — auto-populates as iot-fleet/MQTT devices register.

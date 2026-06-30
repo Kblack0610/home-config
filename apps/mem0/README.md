@@ -170,24 +170,18 @@ pass *all* tunnel traffic, so it provides zero protection there. Authn on that p
 is Cloudflare Access (edge) + mem0's own token (app). See the comment block in
 `ingress-public.yaml`.
 
-### Cloudflare handoff (bnb/platform — NOT in this repo)
+### Public routing + DNS (automatic)
 
-Per `infrastructure.md`, tunnel routing + Cloudflare config live in `bnb/platform`.
-Two pieces are required before `mem0.kennethblack.me` resolves:
+Routing and DNS are handled by the standard flow — see
+**[`../../docs/public-sites.md`](../../docs/public-sites.md)** (canonical reference). The
+`ingress-public.yaml` here is all that's required: external-dns creates the proxied CNAME
+`mem0.kennethblack.me → tunnel` and the tunnel's single wildcard catch-all forwards it to
+Traefik. **No per-host tunnel route, no Terraform, no Cloudflare token** — the old
+"add an ingress rule + `terraform apply`" handoff is retired.
 
-1. **Tunnel route** — add to the `cloudflared-public-sites` tunnel config:
-   ```hcl
-   ingress {
-     hostname = "mem0.kennethblack.me"
-     service  = "https://traefik.kube-system.svc.cluster.local:443"
-     # mirror the existing public-sites entries (kennethblack.me, cal.kennethblack.me);
-     # routing via Traefik keeps the secure-headers + rate-limit middlewares in play.
-   }
-   ```
-   Then `terraform apply && ./deploy-to-k3s.sh`. Ensure a proxied CNAME
-   `mem0.kennethblack.me → <tunnel>` exists (Cloudflare-managed).
+The one mem0-specific edge piece is auth:
 
-2. **Cloudflare Access (Zero Trust) self-hosted application** on
+**Cloudflare Access (Zero Trust) self-hosted application** on
    `mem0.kennethblack.me`, with one policy allowing **either**:
    - `email == <your email>` (SSO — browser login from corp devices, no VPN), **OR**
    - a **service token** (create one, e.g. `mem0-agents`) — headless agents send

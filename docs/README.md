@@ -9,6 +9,7 @@ Use this index to find the right document by task instead of scanning the repo t
 | Check environment health, inventory, ingress, backups | [../infrastructure.md](../infrastructure.md) | Live-ish reference document for current state |
 | Trace a request or failure through all three layers | [architecture.md](./architecture.md) | Worked examples, GPU wiring, consumer map, failure domains, DR sequence |
 | Deploy or troubleshoot GitOps changes | [gitops.md](./gitops.md) | Flux, SOPS, reconciliation, rollback |
+| **Put a site on the public internet** | [public-sites.md](./public-sites.md) | **Canonical.** Add an Ingress + push — external-dns + the single-wildcard tunnel do the rest. No tunnel edit, no token |
 | Add or remove an app from the cluster | [app-lifecycle.md](./app-lifecycle.md) | Step-by-step checklists, common pitfalls |
 | Manage bare-metal host services (systemd, launchd, OpenWRT) | [ansible.md](./ansible.md) | Ansible inventory, vault, `ansible-runner` CronJob, phase roadmap |
 | See what runs where (cluster vs bare-metal) | [homelab-catalog.md](./homelab-catalog.md) | One-page service → host → runtime → manager table |

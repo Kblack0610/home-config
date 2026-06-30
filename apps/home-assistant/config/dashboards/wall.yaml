@@ -76,6 +76,10 @@ views:
                 content: Controls
                 tap_action: { action: navigate, navigation_path: /wall-panels/control }
               - type: template
+                icon: mdi:robot-vacuum
+                content: Devices
+                tap_action: { action: navigate, navigation_path: /wall-panels/devices }
+              - type: template
                 icon: mdi:image-multiple
                 content: Photos
                 tap_action: { action: navigate, navigation_path: /wall-panels/photos }
@@ -219,6 +223,74 @@ views:
               Controls populate automatically as devices are added (Phase 5 —
               Zigbee / ESPHome). This view uses `auto-entities`, so new lights,
               switches, fans, scenes and scripts appear here with no edits.
+
+  # ────────────────────────────── DEVICES ──────────────────────────────────
+  # Self-contained device control for the wall tablet (no navigating off the
+  # kiosk to the main dashboard). Robot vacuum first; add more device sections
+  # here as Zigbee/ESPHome land.
+  - title: Devices
+    path: devices
+    icon: mdi:robot-vacuum
+    type: sections
+    max_columns: 3
+    sections:
+      - type: grid
+        cards:
+          - type: custom:bubble-card
+            card_type: button
+            button_type: name
+            name: Home
+            icon: mdi:home
+            tap_action: { action: navigate, navigation_path: /wall-panels/home }
+          - type: heading
+            heading: Robot Vacuum
+            heading_style: title
+          - type: custom:mushroom-template-card
+            primary: TapoVacuumMop
+            secondary: >-
+              {{ states('sensor.tapovacuummop_status') }} ·
+              {{ states('sensor.tapovacuummop_battery') }}%
+            icon: mdi:robot-vacuum
+            icon_color: >-
+              {{ 'red' if states('sensor.tapovacuummop_error') not in ['Ok','unknown','unavailable']
+                 else 'green' if states('vacuum.tapovacuummop') == 'docked' else 'blue' }}
+          - type: tile
+            entity: vacuum.tapovacuummop
+            name: Controls
+            features:
+              - type: vacuum-commands
+                commands: [start_pause, stop, return_home, locate]
+      - type: grid
+        cards:
+          - type: heading
+            heading: Live Map
+            heading_style: title
+          - type: picture-entity
+            entity: camera.tapovacuummop_map
+            camera_image: camera.tapovacuummop_map
+            show_state: false
+            show_name: false
+            aspect_ratio: "1:1"
+      - type: grid
+        cards:
+          - type: heading
+            heading: Maintenance
+            heading_style: title
+          - type: entities
+            show_header_toggle: false
+            entities:
+              - entity: sensor.tapovacuummop_main_brush_remaining
+                name: Main Brush
+              - entity: sensor.tapovacuummop_side_brush_remaining
+                name: Side Brush
+              - entity: sensor.tapovacuummop_filter_remaining
+                name: Filter
+              - entity: sensor.tapovacuummop_sensor_remaining
+                name: Sensors
+              - entity: sensor.tapovacuummop_charge_contacts_remaining
+                name: Charge Contacts
+              - entity: sensor.tapovacuummop_error
+                name: Error State
 
   # ────────────────────────────── OPS / FLEET ──────────────────────────────
   # Glanceable homelab + device-fleet status from existing sensors. Offline /

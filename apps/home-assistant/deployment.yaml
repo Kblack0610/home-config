@@ -150,6 +150,13 @@ spec:
               set -eu
               mkdir -p /config/packages /config/dashboards
 
+              # Make this sync AUTHORITATIVE: packages/ and dashboards/ contain
+              # ONLY git-managed files, so prune them first. Without this, `cp`
+              # leaves orphans behind when a package/dashboard is removed from
+              # git — and HA keeps loading the stale file (e.g. a dropped package
+              # erroring on every start). Pruning makes the PVC match git exactly.
+              rm -f /config/packages/*.yaml /config/dashboards/*.yaml
+
               cp /managed-config/configuration.yaml /config/configuration.yaml
               cp /managed-config/automations.yaml /config/automations.yaml
               cp /managed-config/scripts.yaml /config/scripts.yaml

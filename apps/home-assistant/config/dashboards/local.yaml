@@ -77,10 +77,15 @@ sections:
       - type: tile
         entity: sensor.surf_wave_height
         name: Wave height
-      - type: tile
-        entity: sensor.san_diego_tides
-        name: Tide
+      # Graceful while NOAA is unreachable (REST sensor has no entity until its
+      # first successful poll) — shows "Awaiting NOAA…" instead of a dead tile.
+      - type: custom:mushroom-template-card
+        primary: Next tide
+        secondary: >-
+          {% set t = states('sensor.san_diego_tides') %}
+          {{ 'Awaiting NOAA…' if t in ['unknown','unavailable',''] else t }}
         icon: mdi:wave
+        icon_color: cyan
       - type: custom:mini-graph-card
         name: Swell height (24h)
         hours_to_show: 24

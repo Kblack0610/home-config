@@ -1,10 +1,13 @@
 # Wall Panels (Home Assistant kiosk tablets)
 
 Turns a wall-mounted Android tablet into a Nest-Hub-style home panel: a polished
-HA dashboard that, when idle, fades into a full-screen slideshow of Immich photos.
+HA dashboard that, when idle, fades into a full-screen Immich photo frame — with a
+clock/date + photo metadata overlay and automatic side-by-side **portrait pairing**.
 
 - **Dashboard:** `https://hass.kblab.me/wall-panels` (LAN/Tailscale only)
-- **Views:** Home (glance) · Control · Ops/Fleet · Photos · Media · Admin
+- **Views:** Home (glance) · Control · Devices · Ops/Fleet · Photos · Media · Admin
+- **Screensaver:** lovelace-wallpanel embeds immich-kiosk's full page via `iframe+` (idle/keep-awake
+  from wallpanel; clock + metadata + `KIOSK_LAYOUT=splitview` portrait pairing from immich-kiosk).
 - **Photo source:** `apps/immich-kiosk` (`immich-kiosk.kblab.me`) → your Immich library
 - **Dashboard source:** `apps/home-assistant/config/dashboards/wall.yaml` (code-first, Flux-deployed)
 
@@ -65,11 +68,20 @@ Lenovo tablets (M9/M11). (FireOS is not supported — see plan.)
    ```
    Skip this for a quick setup; the home-app + immersive settings already give a solid kiosk.
 5. **Log in** to HA as the panel's profile (see §4). The webview keeps the session.
+6. **Change the FreeKiosk PIN.** FreeKiosk ships a **default settings/exit PIN of `1234`** —
+   that's the code that unlocks settings / exits the kiosk. **Change it** (FreeKiosk →
+   Settings → Security/PIN) to your own, or anyone can walk up and exit the kiosk into Android.
 
 > Built-in screensaver alternative: FreeKiosk also has a **web-page screensaver mode** you
-> can point at `https://immich-kiosk.kblab.me?disable_ui=true`. We instead drive the
-> screensaver *inside* the dashboard (wallpanel), so you don't need it — but it's there if
-> you ever want the photos even on a non-HA page.
+> can point at `https://immich-kiosk.kblab.me` (NOT `?disable_ui=true` — that hides the clock/
+> metadata overlays). We instead drive the screensaver *inside* the dashboard (wallpanel), so
+> you don't need it — but it's there if you ever want the photos even on a non-HA page.
+
+> **Picking up dashboard changes on the tablet:** the webview caches the dashboard. After a
+> dashboard/screensaver change is deployed, the tablet keeps the old one until you **hard-refresh**
+> (pull-to-refresh, or FreeKiosk → reload, or clear the FreeKiosk webview cache / restart the app).
+> Symptom of a stale tablet: HA logs `frontend.wallpanel ... Failed to play media .../image?t=...`
+> (the old single-image screensaver URL). A refresh switches it to the current immich-kiosk frame.
 
 ---
 

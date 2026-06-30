@@ -49,7 +49,8 @@ rest:
   # (NOAA `date=today` covers the current day, so late-night the "next" briefly
   # reads unknown until midnight — acceptable.)
   - resource: "https://api.tidesandcurrents.noaa.gov/api/prod/datagetter?station=9410170&product=predictions&datum=MLLW&time_zone=lst_ldt&interval=hilo&units=english&format=json&date=today"
-    scan_interval: 21600   # 6h — daily hi/lo predictions are static
+    scan_interval: 3600   # 1h — predictions are static, but poll hourly so the
+                          # sensor self-heals within ~1h of a NOAA outage clearing
     sensor:
       - name: "San Diego Tides"
         unique_id: san_diego_tides

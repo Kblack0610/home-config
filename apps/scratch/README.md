@@ -7,14 +7,20 @@ quick cross-machine notes and ferrying snippets/keys between boxes. Runs
 ## Access
 
 HTTP basic auth gates the **entire** instance — there is no anonymous read.
+It's a deliberately dead-simple shared login you can hand to anyone:
 
 - **Username:** `scratch`
-- **Password:** the shared key (stored SOPS-encrypted in `secret.yaml`)
+- **Password:** `scratch`
 
-Browser prompts for it. For scripts: `curl -u scratch:<key> https://scratch.kennethblack.me/...`.
+Same word for both — nothing to remember, nothing per-user. The password is
+stored SOPS-encrypted in `secret.yaml` (`basic-auth-password`).
 
-An `admin` user (separate password, also in `secret.yaml`) can manage/delete
-any paste.
+Browser prompts once and remembers it. For scripts:
+`curl -u scratch:scratch https://scratch.kennethblack.me/...`.
+
+A separate `admin` user (its own password in `secret.yaml`, **not** shared) can
+manage/delete any paste — keep that one private so shared users can't purge the
+store.
 
 Both passwords are injected into the container via `secretKeyRef` (not MicroBin's
 `file://` prefix — image `2.1.0` does not resolve `file://` for the basic-auth

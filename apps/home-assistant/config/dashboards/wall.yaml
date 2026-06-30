@@ -23,9 +23,11 @@ kiosk_mode:
 # tap-dismiss); the CONTENT is immich-kiosk's full page, embedded via wallpanel's
 # `iframe+` URL mode. That gives immich-kiosk's NATIVE clock/date + image-metadata
 # overlays and automatic side-by-side PORTRAIT PAIRING (KIOSK_LAYOUT=splitview,
-# configured on the immich-kiosk deployment). ?disable_ui hides kiosk's nav chrome
-# only (the show_* overlays stay). content_interaction lets taps reach the page.
-# wallpanel's own info-box clock is disabled here (kiosk draws its own).
+# configured on the immich-kiosk deployment). NOTE: do NOT add ?disable_ui=true —
+# verified via Playwright that it ALSO hides the clock/date/metadata overlays
+# (not just nav chrome). kiosk's nav menu is hover/tap-activated → invisible on a
+# wall tablet. content_interaction lets taps reach the page; wallpanel's own
+# info-box clock is disabled here (kiosk draws its own).
 wallpanel:
   enabled: true
   fullscreen: true
@@ -36,7 +38,7 @@ wallpanel:
   # Lock API). For a mounted tablet, also set OS/kiosk keep-awake (docs/wall-panels.md).
   keep_screen_on_time: 86400
   show_progress_bar: false
-  image_url: 'iframe+https://immich-kiosk.kblab.me/?disable_ui=true'
+  image_url: 'iframe+https://immich-kiosk.kblab.me/'
   content_interaction: true
   style:
     wallpanel-screensaver-info-box:

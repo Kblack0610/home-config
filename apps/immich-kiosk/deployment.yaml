@@ -77,3 +77,12 @@ spec:
               port: 3000
             initialDelaySeconds: 30
             periodSeconds: 30
+          volumeMounts:
+            # SOPS weather config → /config/config.yaml (viper searches ./config/).
+            - name: kiosk-config
+              mountPath: /config
+              readOnly: true
+      volumes:
+        - name: kiosk-config
+          secret:
+            secretName: immich-kiosk-config

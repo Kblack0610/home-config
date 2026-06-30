@@ -11,6 +11,7 @@ resources:
   - service-http.yaml
   - service-ssh.yaml
   - ingress.yaml
+  - ingress-public.yaml
   - backup-cronjob.yaml
   - runner-config-cm.yaml
   - runner-secret.yaml

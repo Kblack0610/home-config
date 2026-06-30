@@ -1,0 +1,40 @@
+# Public ingress for Forgejo — reachable from OUTSIDE the LAN/tailnet.
+#
+# Off-LAN companion to ingress.yaml (git.kblab.me, LAN-only). Traffic path:
+#   client → Cloudflare edge (TLS) → cloudflared-public-sites tunnel (wildcard
+#   catch-all) → Traefik (this Ingress) → forgejo-http:3000.
+#
+# This replaces the old DIRECT tunnel route (git.kennethblack.me → forgejo-http
+# :3000), which bypassed Traefik. Routing now lives here in Git like every other
+# public site — see docs/public-sites.md for the one-and-only add-a-site flow.
+#
+# crowdsec bouncer middleware is kept so the public git endpoint stays behind the
+# same WAF as the LAN one.
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: forgejo-public
+  namespace: forgejo
+  labels:
+    app.kubernetes.io/name: forgejo
+  annotations:
+    cert-manager.io/cluster-issuer: letsencrypt-dns
+    traefik.ingress.kubernetes.io/router.entrypoints: web,websecure
+    traefik.ingress.kubernetes.io/router.middlewares: crowdsec-crowdsec-bouncer@kubernetescrd
+spec:
+  ingressClassName: traefik
+  tls:
+    - hosts:
+        - git.kennethblack.me
+      secretName: git-kennethblack-tls
+  rules:
+    - host: git.kennethblack.me
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: forgejo-http
+                port:
+                  number: 3000

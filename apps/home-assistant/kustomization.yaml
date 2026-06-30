@@ -38,3 +38,4 @@ resources:
   - backup-cronjob.yaml
   - backup-nas-secret.yaml
   - bambu-a1-secret.yaml
+  - tapo-rv30-secret.yaml

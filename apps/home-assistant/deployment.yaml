@@ -44,6 +44,42 @@ spec:
           volumeMounts:
             - name: config
               mountPath: /config
+        # Tapo RV30 robot vacuum: local-only (TPAP/SPAKE2+) reverse-engineered
+        # integration. No release .zip asset exists, so we pull the tag source
+        # tarball and copy out the custom_components/tapo_rv30 dir. RESILIENT:
+        # `set -u` + final `exit 0` so a failed download never blocks HA boot;
+        # the marker is written only on success, so a failure retries next start.
+        - name: install-tapo-rv30
+          image: alpine:3.20
+          command:
+            - sh
+            - -c
+            - |
+              set -u
+              VERSION="v0.3.0"
+              TARGET="/config/custom_components/tapo_rv30"
+              MARKER="$TARGET/.version"
+              if [ -f "$MARKER" ] && [ "$(cat "$MARKER")" = "$VERSION" ]; then
+                echo "tapo_rv30 $VERSION already installed, skipping"
+                exit 0
+              fi
+              apk add --no-cache wget tar >/dev/null
+              mkdir -p /config/custom_components
+              if wget -q -O /tmp/rv30.tgz \
+                  "https://github.com/epg-pers/tapo-rv30-ha/archive/refs/tags/$VERSION.tar.gz"; then
+                rm -rf "$TARGET"; mkdir -p "$TARGET"
+                tar -xzf /tmp/rv30.tgz -C /tmp
+                cp -r /tmp/tapo-rv30-ha-*/custom_components/tapo_rv30/. "$TARGET/"
+                rm -rf /tmp/rv30.tgz /tmp/tapo-rv30-ha-*
+                echo "$VERSION" > "$MARKER"
+                echo "tapo_rv30 $VERSION installed"
+              else
+                echo "WARN: tapo_rv30 download failed; no marker written, will retry next start"
+              fi
+              exit 0
+          volumeMounts:
+            - name: config
+              mountPath: /config
         # Vendor pinned Lovelace custom cards + browser_mod for the wall-panel
         # dashboards (we don't run HACS; everything is git-pinned + reproducible).
         # RESILIENT BY DESIGN: `set -u` (not -e) and a final `exit 0` so a failed
@@ -243,6 +279,89 @@ spec:
                 secretKeyRef:
                   name: bambu-a1-credentials
                   key: access-code
+          volumeMounts:
+            - name: config
+              mountPath: /config
+        # Seed the tapo_rv30 config entry (the integration is config-flow-only).
+        # Schema mirrors custom_components/tapo_rv30/config_flow.py @ v0.3.0:
+        # entry.data = {host, username, password}; unique_id = host; VERSION = 1.
+        - name: seed-tapo-rv30
+          image: ghcr.io/home-assistant/home-assistant:stable
+          command:
+            - python3
+            - -c
+            - |
+              import json, os, uuid
+              from datetime import datetime, timezone
+
+              CONFIG_FILE = "/config/.storage/core.config_entries"
+              DOMAIN = "tapo_rv30"
+
+              host = os.environ.get("RV30_HOST", "")
+              username = os.environ.get("RV30_USERNAME", "")
+              password = os.environ.get("RV30_PASSWORD", "")
+
+              if not all([host, username, password]):
+                  print("WARN: RV30 credentials not set, skipping config seeding")
+                  exit(0)
+
+              os.makedirs(os.path.dirname(CONFIG_FILE), exist_ok=True)
+
+              if os.path.exists(CONFIG_FILE):
+                  with open(CONFIG_FILE) as f:
+                      store = json.load(f)
+              else:
+                  store = {"version": 1, "minor_version": 4, "key": "core.config_entries", "data": {"entries": []}}
+
+              for entry in store["data"]["entries"]:
+                  if entry.get("domain") == DOMAIN and entry.get("data", {}).get("host") == host:
+                      print(f"Config entry for {DOMAIN} host={host} already exists, skipping")
+                      exit(0)
+
+              now = datetime.now(timezone.utc).isoformat()
+              entry = {
+                  "created_at": now,
+                  "data": {
+                      "host": host,
+                      "username": username,
+                      "password": password,
+                  },
+                  "disabled_by": None,
+                  "discovery_keys": {},
+                  "domain": DOMAIN,
+                  "entry_id": uuid.uuid4().hex,
+                  "minor_version": 1,
+                  "modified_at": now,
+                  "options": {},
+                  "pref_disable_new_entities": False,
+                  "pref_disable_polling": False,
+                  "source": "user",
+                  "subentries": {},
+                  "title": f"Tapo RV30 ({host})",
+                  "unique_id": host,
+                  "version": 1,
+              }
+
+              store["data"]["entries"].append(entry)
+              with open(CONFIG_FILE, "w") as f:
+                  json.dump(store, f, indent=2)
+              print(f"Seeded {DOMAIN} config entry for host={host}")
+          env:
+            - name: RV30_HOST
+              valueFrom:
+                secretKeyRef:
+                  name: tapo-rv30-credentials
+                  key: host
+            - name: RV30_USERNAME
+              valueFrom:
+                secretKeyRef:
+                  name: tapo-rv30-credentials
+                  key: username
+            - name: RV30_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: tapo-rv30-credentials
+                  key: password
           volumeMounts:
             - name: config
               mountPath: /config

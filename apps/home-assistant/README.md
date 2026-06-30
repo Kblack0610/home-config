@@ -83,6 +83,14 @@ Flux picks up the ConfigMap change → deployment hash rotates → pod rolls →
 | Bambu A1 (ha-bambulab) | Custom component installed via init container, config seeded from K8s Secret |
 | Dashboard | Dedicated `3D Printing` view with status, progress gauges, and temperature cards |
 
+### Robot Vacuum (Tapo RV30)
+
+| Use Case | Description |
+|----------|-------------|
+| Tapo RV30 (`tapo_rv30`) | Local-only (TPAP/SPAKE2+) reverse-engineered custom component ([`epg-pers/tapo-rv30-ha`](https://github.com/epg-pers/tapo-rv30-ha) pinned at `v0.3.0`), installed via the `install-tapo-rv30` init container, config seeded from K8s Secret by `seed-tapo-rv30`. Exposes a `vacuum.*` entity (start/pause/stop/dock), fan-speed / water-level / clean-passes selectors, battery + error + consumable sensors, a live map image, and the `tapo_rv30.clean_rooms` service for per-room cleaning. |
+| Credentials | `tapo-rv30-secret.yaml` (SOPS) — `host` (RV30 LAN IP), `username` + `password` (TP-Link account). Runtime is LAN-only; the account creds are only used in the SPAKE2+ handshake. |
+| ⚠️ Firmware | This integration speaks the **TPAP/SPAKE2+** protocol on port `4433` — the scheme firmware `1.3.x` *switched to*, so it targets current firmware (confirmed through `1.3.2`; this RV is on `1.3.3`). What `1.3.x` broke is the **official `tplink`** integration's older protocol, which we deliberately don't use. The real risk is a *future* firmware that changes the protocol again — disable auto-update to stay on a known-good build. Fallback: Matter (start/stop/dock only, no room cleaning). |
+
 ## Deployment
 
 ```bash

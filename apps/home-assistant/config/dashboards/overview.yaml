@@ -86,3 +86,32 @@ sections:
             name: MLX Smart
           - entity: sensor.mlx_reasoning_server
             name: MLX Reasoning
+
+  - type: grid
+    cards:
+      - type: heading
+        heading: Robot Vacuum
+        icon: mdi:robot-vacuum
+      # Quick controls here; tap the tile/map to open the full /vacuum view.
+      - type: tile
+        entity: vacuum.tapovacuummop
+        name: Robot Vacuum
+        features:
+          - type: vacuum-commands
+            commands:
+              - start_pause
+              - stop
+              - return_home
+        tap_action:
+          action: navigate
+          navigation_path: /lovelace/vacuum
+      - type: picture-entity
+        entity: camera.tapovacuummop_map
+        camera_image: camera.tapovacuummop_map
+        name: Map
+        show_state: false
+        tap_action:
+          action: navigate
+          navigation_path: /lovelace/vacuum
+        hold_action:
+          action: more-info

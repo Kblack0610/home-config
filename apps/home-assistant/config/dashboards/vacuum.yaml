@@ -1,0 +1,95 @@
+title: Vacuum
+path: vacuum
+icon: mdi:robot-vacuum
+type: sections
+max_columns: 3
+sections:
+  - type: grid
+    cards:
+      - type: heading
+        heading: Robot Vacuum
+        icon: mdi:robot-vacuum
+      - type: tile
+        entity: vacuum.tapovacuummop
+        name: TapoVacuumMop
+        features:
+          - type: vacuum-commands
+            commands:
+              - start_pause
+              - stop
+              - return_home
+              - locate
+      - type: tile
+        entity: sensor.tapovacuummop_status
+        name: Status
+      - type: tile
+        entity: sensor.tapovacuummop_battery
+        name: Battery
+
+  - type: grid
+    cards:
+      - type: heading
+        heading: Live Map
+        icon: mdi:map-marker-radius
+      - type: picture-entity
+        entity: camera.tapovacuummop_map
+        camera_image: camera.tapovacuummop_map
+        show_state: false
+        show_name: false
+        aspect_ratio: "1:1"
+
+  - type: grid
+    cards:
+      - type: heading
+        heading: Clean a Room
+        icon: mdi:floor-plan
+      # One button per NAMED room on the current map (MainMap). Only "Study Room"
+      # is named today; name the rest in the Tapo app, then re-run
+      # `tapo_vacuum.py rooms` and add a button each. Whole-house cleaning is the
+      # Start command on the tile above.
+      - type: button
+        name: Study Room
+        icon: mdi:broom
+        tap_action:
+          action: perform-action
+          perform_action: tapo_rv30.clean_rooms
+          data:
+            entity_id: vacuum.tapovacuummop
+            rooms:
+              - Study Room
+
+  - type: grid
+    cards:
+      - type: heading
+        heading: Cleaning Settings
+        icon: mdi:tune
+      - type: entities
+        show_header_toggle: false
+        entities:
+          - entity: select.tapovacuummop_water_level
+            name: Water Level
+          - entity: select.tapovacuummop_clean_passes
+            name: Clean Passes
+          - entity: sensor.tapovacuummop_last_clean_area
+            name: Last Clean Area
+
+  - type: grid
+    cards:
+      - type: heading
+        heading: Maintenance
+        icon: mdi:wrench
+      - type: entities
+        show_header_toggle: false
+        entities:
+          - entity: sensor.tapovacuummop_main_brush_remaining
+            name: Main Brush
+          - entity: sensor.tapovacuummop_side_brush_remaining
+            name: Side Brush
+          - entity: sensor.tapovacuummop_filter_remaining
+            name: Filter
+          - entity: sensor.tapovacuummop_sensor_remaining
+            name: Sensors
+          - entity: sensor.tapovacuummop_charge_contacts_remaining
+            name: Charge Contacts
+          - entity: sensor.tapovacuummop_error
+            name: Error State

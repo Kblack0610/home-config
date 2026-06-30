@@ -169,6 +169,7 @@ spec:
               cp /managed-config/dashboard_ops.yaml /config/dashboards/ops.yaml
               cp /managed-config/dashboard_admin.yaml /config/dashboards/admin.yaml
               cp /managed-config/dashboard_printing.yaml /config/dashboards/printing.yaml
+              cp /managed-config/dashboard_vacuum.yaml /config/dashboards/vacuum.yaml
               cp /managed-config/dashboard_launcher.yaml /config/dashboards/launcher.yaml
               cp /managed-config/dashboard_voice.yaml /config/dashboards/voice.yaml
               cp /managed-config/dashboard_wall.yaml /config/dashboards/wall.yaml

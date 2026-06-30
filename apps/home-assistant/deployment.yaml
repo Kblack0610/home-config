@@ -164,7 +164,6 @@ spec:
               cp /managed-config/package_voice_targets.yaml /config/packages/voice_targets.yaml
               cp /managed-config/package_site_status.yaml /config/packages/site_status.yaml
               cp /managed-config/package_fleet_alerts.yaml /config/packages/fleet_alerts.yaml
-              cp /managed-config/package_geo_feeds.yaml /config/packages/geo_feeds.yaml
 
               cp /managed-config/dashboard_overview.yaml /config/dashboards/overview.yaml
               cp /managed-config/dashboard_local.yaml /config/dashboards/local.yaml
@@ -365,6 +364,81 @@ spec:
                 secretKeyRef:
                   name: tapo-rv30-credentials
                   key: password
+          volumeMounts:
+            - name: config
+              mountPath: /config
+        # Seed a geo_json_events config entry → public markers on the Map (USGS
+        # earthquakes near home). The integration is config-flow-only (no YAML
+        # platform), so we seed it like Bambu/Tapo. Schema mirrors
+        # geo_json_events/config_flow.py: data = {url, latitude, longitude,
+        # radius(km)}; VERSION = 1. Home coords are read from HA's OWN runtime
+        # config (.storage/core.config) so precise coordinates never live in git
+        # (this repo mirrors to GitHub). Idempotent: keyed on domain + feed url.
+        - name: seed-geo-feeds
+          image: ghcr.io/home-assistant/home-assistant:stable
+          command:
+            - python3
+            - -c
+            - |
+              import json, os, uuid
+              from datetime import datetime, timezone
+
+              ENTRIES = "/config/.storage/core.config_entries"
+              CORE = "/config/.storage/core.config"
+              DOMAIN = "geo_json_events"
+              URL = "https://earthquake.usgs.gov/earthquakes/feed/v1.0/summary/2.5_week.geojson"
+              RADIUS_KM = 500.0
+              TITLE = "USGS Earthquakes M2.5+ (week)"
+
+              # Home coords from HA's runtime config — keeps them out of git.
+              try:
+                  with open(CORE) as f:
+                      core = json.load(f)
+                  lat = core["data"]["latitude"]
+                  lon = core["data"]["longitude"]
+              except Exception as e:
+                  print(f"WARN: could not read home coords ({e}); skipping geo feed seed")
+                  exit(0)
+
+              if not os.path.exists(ENTRIES):
+                  print("WARN: core.config_entries missing; skipping (HA not initialised yet)")
+                  exit(0)
+
+              with open(ENTRIES) as f:
+                  store = json.load(f)
+              entries = store["data"]["entries"]
+
+              for e in entries:
+                  if e.get("domain") == DOMAIN and e.get("data", {}).get("url") == URL:
+                      print(f"{DOMAIN} entry for feed already exists, skipping")
+                      exit(0)
+
+              # HA is strict on load — ensure existing entries carry subentries.
+              for e in entries:
+                  e.setdefault("subentries", {})
+
+              now = datetime.now(timezone.utc).isoformat()
+              entries.append({
+                  "created_at": now,
+                  "data": {"url": URL, "latitude": lat, "longitude": lon, "radius": RADIUS_KM},
+                  "disabled_by": None,
+                  "discovery_keys": {},
+                  "domain": DOMAIN,
+                  "entry_id": uuid.uuid4().hex,
+                  "minor_version": 1,
+                  "modified_at": now,
+                  "options": {},
+                  "pref_disable_new_entities": False,
+                  "pref_disable_polling": False,
+                  "source": "user",
+                  "subentries": {},
+                  "title": TITLE,
+                  "unique_id": None,
+                  "version": 1,
+              })
+              with open(ENTRIES, "w") as f:
+                  json.dump(store, f, indent=2)
+              print(f"Seeded {DOMAIN} feed entry centered on home")
           volumeMounts:
             - name: config
               mountPath: /config

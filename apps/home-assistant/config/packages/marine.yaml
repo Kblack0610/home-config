@@ -40,13 +40,28 @@ rest:
         state_class: measurement
         icon: mdi:timer-outline
 
-# TIDES: NOAA CO-OPS via the built-in noaa_tides YAML sensor platform (no key).
-# Station 9410170 = San Diego (Broadway Pier), the closest tide station.
-# State = tide trend (e.g. "Falling, Low tide at ...") with high/low-tide
-# time + height attributes surfaced on the dashboard.
-sensor:
-  - platform: noaa_tides
-    name: San Diego Tides
-    station_id: "9410170"
-    time_zone: lst_ldt
-    unit_system: english
+  # TIDES: NOAA CO-OPS predictions as a RESILIENT REST sensor (no key).
+  # Station 9410170 = San Diego (Broadway Pier). Deliberately NOT the built-in
+  # `noaa_tides` integration: that validates the station at setup and fails
+  # PERMANENTLY (until an HA restart) if NOAA's API is down at boot. A REST
+  # sensor instead just goes `unavailable` on an outage and self-heals on the
+  # next poll. State = next hi/lo tide; today's full schedule is in attributes.
+  # (NOAA `date=today` covers the current day, so late-night the "next" briefly
+  # reads unknown until midnight — acceptable.)
+  - resource: "https://api.tidesandcurrents.noaa.gov/api/prod/datagetter?station=9410170&product=predictions&datum=MLLW&time_zone=lst_ldt&interval=hilo&units=english&format=json&date=today"
+    scan_interval: 21600   # 6h — daily hi/lo predictions are static
+    sensor:
+      - name: "San Diego Tides"
+        unique_id: san_diego_tides
+        icon: mdi:wave
+        value_template: >-
+          {% set preds = value_json.predictions | default([], true) %}
+          {% set ns = namespace(next=none) %}
+          {% for p in preds %}
+            {% if ns.next is none and as_timestamp(strptime(p.t, '%Y-%m-%d %H:%M')) > as_timestamp(now()) %}
+              {% set ns.next = p %}
+            {% endif %}
+          {% endfor %}
+          {% if ns.next is not none %}{{ 'High' if ns.next.type == 'H' else 'Low' }} {{ '%.1f'|format(ns.next.v|float(0)) }} ft @ {{ as_timestamp(strptime(ns.next.t, '%Y-%m-%d %H:%M')) | timestamp_custom('%-I:%M %p') }}{% else %}unknown{% endif %}
+        json_attributes:
+          - predictions

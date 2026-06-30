@@ -1,0 +1,14 @@
+# Public geo_location feeds — give the built-in Map (and the Local dashboard's
+# map card) live markers with ZERO accounts/keys. Centered on HA's home coords
+# (San Diego) within `radius` km. This is what turns the previously-empty Map
+# panel into something useful even before any phone/device_tracker is attached.
+#
+# `geo_json_events` is a generic, low-maintenance YAML platform: point it at any
+# GeoJSON feed and it drops a transient geo_location.* entity per feature. We use
+# the USGS earthquakes feed (M2.5+, past week) — Southern California is seismically
+# busy, so there's almost always a marker to render and prove the map works.
+geo_location:
+  - platform: geo_json_events
+    url: "https://earthquake.usgs.gov/earthquakes/feed/v1.0/summary/2.5_week.geojson"
+    radius: 500          # km from home
+    scan_interval: 300   # 5 min; the feed itself updates ~every minute

@@ -26,7 +26,13 @@ spec:
         - name: external-dns
           image: registry.k8s.io/external-dns/external-dns:v0.15.0
           args:
+            # Standard Ingresses AND Traefik IngressRoute CRDs (traefik-proxy).
+            # traefik-proxy is needed for binks.chat, which is an IngressRoute
+            # with edge TLS, not a standard Ingress. --traefik-disable-legacy
+            # avoids watching the dead traefik.containo.us group (we use traefik.io).
             - --source=ingress
+            - --source=traefik-proxy
+            - --traefik-disable-legacy
             - --provider=cloudflare
             - --cloudflare-proxied
             # Point every managed record at the public-sites tunnel (CNAME),
@@ -34,9 +40,13 @@ spec:
             # Cloudflare rejects for a proxied record). All public hostnames on
             # this homelab egress through this one tunnel.
             - --default-targets=ae1da648-4f55-4361-8ff2-320b55be6ac4.cfargotunnel.com
-            # Scope: only manage records under these zones. Add more zones here
-            # (one flag each) as public sites move onto the tunnel.
+            # external-dns is the SOLE source of truth for public DNS across all
+            # four public zones (derived from Ingress/IngressRoute). Terraform
+            # manages no DNS. See docs/public-sites.md.
             - --domain-filter=kennethblack.me
+            - --domain-filter=blacknbrownstudios.com
+            - --domain-filter=binks.chat
+            - --domain-filter=kblack.dev
             # Safety with the Terraform-managed tunnel/root records:
             # upsert-only never DELETES a record, and the TXT registry +
             # owner-id means external-dns only touches records IT created.

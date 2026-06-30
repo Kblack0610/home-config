@@ -1,8 +1,9 @@
 # ─────────────────────────────────────────────────────────────────────────
 # Local / Life view — the lifestyle + local-info layer (weather, map, radar).
 # Wave 1 is intentionally built from BUILT-IN cards only (no vendored JS, no
-# accounts/keys) so it's low-maintenance. Later waves add calendar/concerts
-# (Wave 2) and surf/tide/cams (Wave 3) — San Diego coast, so those are relevant.
+# accounts/keys) so it's low-maintenance. Wave 3 adds surf/tide (Open-Meteo +
+# NOAA, packages/marine.yaml) + public beach-cam links. Wave 2 (calendar/
+# concerts) is still pending a calendar connection.
 #
 # The Map card is the answer to "our Map tab does nothing": it plots the home
 # zone, the person (live once the HA Companion app is attached), and public
@@ -56,3 +57,73 @@ sections:
       - type: iframe
         url: "https://embed.windy.com/embed2.html?lat=32.72&lon=-117.16&detailLat=32.72&detailLon=-117.16&zoom=8&level=surface&overlay=radar&menu=&message=true&marker=&calendar=now&pressure=&type=map&location=coordinates&detail=&metricWind=default&metricTemp=default&radarRange=-1"
         aspect_ratio: "75%"
+
+  # ── Wave 3: Surf & tide (Open-Meteo Marine + NOAA, packages/marine.yaml) ──
+  - type: grid
+    cards:
+      - type: heading
+        heading: Surf & tide
+        icon: mdi:surfing
+      - type: tile
+        entity: sensor.surf_swell_height
+        name: Swell
+        icon: mdi:waves
+      - type: tile
+        entity: sensor.surf_swell_period
+        name: Period
+      - type: tile
+        entity: sensor.surf_swell_direction
+        name: Direction
+      - type: tile
+        entity: sensor.surf_wave_height
+        name: Wave height
+      - type: tile
+        entity: sensor.san_diego_tides
+        name: Tide
+        icon: mdi:wave
+      - type: custom:mini-graph-card
+        name: Swell height (24h)
+        hours_to_show: 24
+        points_per_hour: 2
+        line_width: 2
+        entities:
+          - entity: sensor.surf_swell_height
+            name: swell
+      # Embedded Windy waves/swell map (frames cleanly), centered on the SD coast.
+      - type: iframe
+        url: "https://embed.windy.com/embed2.html?lat=32.72&lon=-117.25&detailLat=32.72&detailLon=-117.25&zoom=8&level=surface&overlay=waves&menu=&message=true&marker=&calendar=now&pressure=&type=map&location=coordinates&detail=&metricWind=default&metricTemp=default&radarRange=-1"
+        aspect_ratio: "75%"
+
+  # ── Wave 3: Public beach & surf cams ──────────────────────────────────────
+  # These cam pages block iframe embedding (X-Frame-Options), so they're TAP-TO-
+  # OPEN links (guaranteed to work, zero maintenance) rather than broken embeds.
+  # Tell me a favorite and I'll embed whatever that specific feed supports.
+  - type: grid
+    cards:
+      - type: heading
+        heading: Beach & surf cams
+        icon: mdi:cctv
+      - type: custom:mushroom-template-card
+        primary: La Jolla Shores
+        secondary: Marine Room live cam
+        icon: mdi:video
+        icon_color: blue
+        tap_action: { action: url, url_path: "https://www.marineroom.com/beach-cam/" }
+      - type: custom:mushroom-template-card
+        primary: Pacific Beach
+        secondary: Pacific Terrace boardwalk cam
+        icon: mdi:video
+        icon_color: cyan
+        tap_action: { action: url, url_path: "https://www.pacificterrace.com/pacific-beach-webcam/" }
+      - type: custom:mushroom-template-card
+        primary: Ocean Beach
+        secondary: Skyline / OB Pier cam
+        icon: mdi:video
+        icon_color: teal
+        tap_action: { action: url, url_path: "https://www.skylinewebcams.com/en/webcam/united-states/california/san-diego/ocean-beach.html" }
+      - type: custom:mushroom-template-card
+        primary: Ocean Beach Pier
+        secondary: Surfline surf cam & report
+        icon: mdi:surfing
+        icon_color: indigo
+        tap_action: { action: url, url_path: "https://www.surfline.com/surf-report/ocean-beach/5842041f4e65fad6a770883f" }

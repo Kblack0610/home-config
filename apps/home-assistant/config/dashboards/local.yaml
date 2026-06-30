@@ -6,7 +6,8 @@
 #
 # The Map card is the answer to "our Map tab does nothing": it plots the home
 # zone, the person (live once the HA Companion app is attached), and public
-# geo_location feeds (USGS earthquakes) from packages/geo_feeds.yaml.
+# geo_location feeds (USGS earthquakes) — seeded as a geo_json_events config
+# entry by the `seed-geo-feeds` init container in deployment.yaml.
 # ─────────────────────────────────────────────────────────────────────────
 title: Local
 path: local
@@ -49,8 +50,9 @@ sections:
       - type: heading
         heading: Rain radar
         icon: mdi:radar
-      # Built-in iframe card → Windy radar centered on San Diego. No vendored
-      # card to keep pinned; swap to a vendored weather-radar-card later if wanted.
+      # Built-in iframe card → Windy radar centered on the San Diego city
+      # centroid (public coordinate, NOT home-derived). No vendored card to keep
+      # pinned; swap to a vendored weather-radar-card later if wanted.
       - type: iframe
-        url: "https://embed.windy.com/embed2.html?lat=32.738&lon=-117.164&detailLat=32.738&detailLon=-117.164&zoom=8&level=surface&overlay=radar&menu=&message=true&marker=&calendar=now&pressure=&type=map&location=coordinates&detail=&metricWind=default&metricTemp=default&radarRange=-1"
+        url: "https://embed.windy.com/embed2.html?lat=32.72&lon=-117.16&detailLat=32.72&detailLon=-117.16&zoom=8&level=surface&overlay=radar&menu=&message=true&marker=&calendar=now&pressure=&type=map&location=coordinates&detail=&metricWind=default&metricTemp=default&radarRange=-1"
         aspect_ratio: "75%"

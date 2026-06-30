@@ -307,8 +307,8 @@ views:
   # ─────────────────────────────── LOCAL ───────────────────────────────────
   # Self-contained local-info tab for the wall tablet (no navigating off the
   # kiosk). Map plots home + person (live once the HA Companion app is attached)
-  # + public geo_location feeds (USGS quakes, packages/geo_feeds.yaml); plus a
-  # live rain-radar. The richer version (with hourly forecast) lives on the main
+  # + public geo_location feeds (USGS quakes, seeded geo_json_events entry); plus
+  # a live rain-radar. The richer version (with hourly forecast) lives on the main
   # dashboard at /lovelace/local. Wave 2/3 add calendar/concerts + surf/tide/cams.
   - title: Local
     path: local
@@ -341,7 +341,7 @@ views:
             heading: Rain radar
             heading_style: title
           - type: iframe
-            url: "https://embed.windy.com/embed2.html?lat=32.738&lon=-117.164&detailLat=32.738&detailLon=-117.164&zoom=8&level=surface&overlay=radar&menu=&message=true&marker=&calendar=now&pressure=&type=map&location=coordinates&detail=&metricWind=default&metricTemp=default&radarRange=-1"
+            url: "https://embed.windy.com/embed2.html?lat=32.72&lon=-117.16&detailLat=32.72&detailLon=-117.16&zoom=8&level=surface&overlay=radar&menu=&message=true&marker=&calendar=now&pressure=&type=map&location=coordinates&detail=&metricWind=default&metricTemp=default&radarRange=-1"
             aspect_ratio: "100%"
 
   # ────────────────────────────── OPS / FLEET ──────────────────────────────

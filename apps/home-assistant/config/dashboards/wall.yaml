@@ -343,6 +343,25 @@ views:
           - type: iframe
             url: "https://embed.windy.com/embed2.html?lat=32.72&lon=-117.16&detailLat=32.72&detailLon=-117.16&zoom=8&level=surface&overlay=radar&menu=&message=true&marker=&calendar=now&pressure=&type=map&location=coordinates&detail=&metricWind=default&metricTemp=default&radarRange=-1"
             aspect_ratio: "100%"
+      - type: grid
+        cards:
+          - type: heading
+            heading: Surf & tide
+            heading_style: title
+          - type: custom:mushroom-template-card
+            primary: Swell
+            secondary: >-
+              {% set h = states('sensor.surf_swell_height') %}
+              {{ 'Offline' if h in ['unknown','unavailable',''] else h ~ ' ft @ ' ~ states('sensor.surf_swell_period') ~ 's' }}
+            icon: mdi:waves
+            icon_color: blue
+          - type: custom:mushroom-template-card
+            primary: Tide
+            secondary: >-
+              {% set t = states('sensor.san_diego_tides') %}
+              {{ 'Offline' if t in ['unknown','unavailable',''] else t }}
+            icon: mdi:wave
+            icon_color: cyan
 
   # ────────────────────────────── OPS / FLEET ──────────────────────────────
   # Glanceable homelab + device-fleet status from existing sensors. Offline /

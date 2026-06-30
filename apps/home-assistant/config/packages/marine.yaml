@@ -1,0 +1,52 @@
+# Wave 3 — Surf & tide data for the Local dashboard (San Diego coast).
+# Low-maintenance by design: free public APIs, no keys, matching the existing
+# REST-sensor pattern in packages/site_status.yaml.
+#
+# SURF: Open-Meteo Marine API (free, no key). The query point is offshore
+# Point Loma / Ocean Beach (public ocean coords, not home) — the API snaps to
+# the nearest marine grid cell, so it must sit in the water or it returns null.
+# `length_unit=imperial` → feet; periods in seconds, directions in degrees.
+rest:
+  - resource: "https://marine-api.open-meteo.com/v1/marine?latitude=32.75&longitude=-117.27&current=wave_height,wave_period,wave_direction,swell_wave_height,swell_wave_period,swell_wave_direction&length_unit=imperial&timezone=America%2FLos_Angeles"
+    scan_interval: 1800   # 30 min — marine model updates hourly
+    sensor:
+      - name: "Surf Swell Height"
+        unique_id: surf_swell_height
+        value_template: "{{ value_json.current.swell_wave_height }}"
+        unit_of_measurement: "ft"
+        state_class: measurement
+        icon: mdi:waves
+      - name: "Surf Swell Period"
+        unique_id: surf_swell_period
+        value_template: "{{ value_json.current.swell_wave_period }}"
+        unit_of_measurement: "s"
+        state_class: measurement
+        icon: mdi:timer-outline
+      - name: "Surf Swell Direction"
+        unique_id: surf_swell_direction
+        value_template: "{{ value_json.current.swell_wave_direction }}"
+        unit_of_measurement: "°"
+        icon: mdi:compass-outline
+      - name: "Surf Wave Height"
+        unique_id: surf_wave_height
+        value_template: "{{ value_json.current.wave_height }}"
+        unit_of_measurement: "ft"
+        state_class: measurement
+        icon: mdi:waves
+      - name: "Surf Wave Period"
+        unique_id: surf_wave_period
+        value_template: "{{ value_json.current.wave_period }}"
+        unit_of_measurement: "s"
+        state_class: measurement
+        icon: mdi:timer-outline
+
+# TIDES: NOAA CO-OPS via the built-in noaa_tides YAML sensor platform (no key).
+# Station 9410170 = San Diego (Broadway Pier), the closest tide station.
+# State = tide trend (e.g. "Falling, Low tide at ...") with high/low-tide
+# time + height attributes surfaced on the dashboard.
+sensor:
+  - platform: noaa_tides
+    name: San Diego Tides
+    station_id: "9410170"
+    time_zone: lst_ldt
+    unit_system: english

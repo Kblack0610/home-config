@@ -54,11 +54,10 @@ commit, and Flux rolls it. Then `kubectl -n scratch rollout restart deploy/scrat
 ## Public exposure (Cloudflare tunnel)
 
 Unlike LAN services, this drops the `monitoring-local-network-only` middleware.
-Reachability from the internet is via the `cloudflared-public-sites` tunnel
-(`apps/cloudflared-public-sites/`). The public-hostname route
-`scratch.kennethblack.me → https://traefik` is configured on the tunnel
-(same target as the other public sites). The tunnel is token/remote-managed, so
-that mapping lives in Cloudflare, not in this repo.
+Reachability is the standard flow — see **[`docs/public-sites.md`](../../docs/public-sites.md)**
+(canonical reference): this Ingress is all that's needed. external-dns creates the proxied
+CNAME and the tunnel's single wildcard catch-all forwards every host to Traefik. No per-host
+tunnel route, no DNS record, no Cloudflare token.
 
 ## Storage
 

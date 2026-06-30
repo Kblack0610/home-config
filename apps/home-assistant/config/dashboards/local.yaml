@@ -1,0 +1,56 @@
+# ─────────────────────────────────────────────────────────────────────────
+# Local / Life view — the lifestyle + local-info layer (weather, map, radar).
+# Wave 1 is intentionally built from BUILT-IN cards only (no vendored JS, no
+# accounts/keys) so it's low-maintenance. Later waves add calendar/concerts
+# (Wave 2) and surf/tide/cams (Wave 3) — San Diego coast, so those are relevant.
+#
+# The Map card is the answer to "our Map tab does nothing": it plots the home
+# zone, the person (live once the HA Companion app is attached), and public
+# geo_location feeds (USGS earthquakes) from packages/geo_feeds.yaml.
+# ─────────────────────────────────────────────────────────────────────────
+title: Local
+path: local
+icon: mdi:map-marker-radius
+type: sections
+max_columns: 3
+sections:
+  - type: grid
+    cards:
+      - type: heading
+        heading: Weather
+        icon: mdi:weather-partly-cloudy
+      - type: weather-forecast
+        entity: weather.forecast_home
+        name: San Diego
+        forecast_type: daily
+        show_current: true
+      - type: weather-forecast
+        entity: weather.forecast_home
+        forecast_type: hourly
+        show_current: false
+        name: Hourly
+
+  - type: grid
+    cards:
+      - type: heading
+        heading: Map
+        icon: mdi:map
+      - type: map
+        default_zoom: 9
+        aspect_ratio: "16:9"
+        geo_location_sources:
+          - geo_json_events
+        entities:
+          - entity: person.kblack0610
+          - entity: zone.home
+
+  - type: grid
+    cards:
+      - type: heading
+        heading: Rain radar
+        icon: mdi:radar
+      # Built-in iframe card → Windy radar centered on San Diego. No vendored
+      # card to keep pinned; swap to a vendored weather-radar-card later if wanted.
+      - type: iframe
+        url: "https://embed.windy.com/embed2.html?lat=32.738&lon=-117.164&detailLat=32.738&detailLon=-117.164&zoom=8&level=surface&overlay=radar&menu=&message=true&marker=&calendar=now&pressure=&type=map&location=coordinates&detail=&metricWind=default&metricTemp=default&radarRange=-1"
+        aspect_ratio: "75%"

@@ -44,3 +44,4 @@ resources:
   - tapo-rv30-secret.yaml
   - localtuya-secret.yaml
   - calendars-secret.yaml
+  - litellm-assist-secret.yaml

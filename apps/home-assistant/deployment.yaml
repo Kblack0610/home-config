@@ -118,6 +118,43 @@ spec:
           volumeMounts:
             - name: config
               mountPath: /config
+        # Binks assistant — Extended OpenAI Conversation (jekalmin), pinned to 1.1.0,
+        # the last release compatible with HA 2025.11 (2.x needs HA >=2026.3; 1.1.0
+        # requires openai~=2.2.0 which HA 2025.11 already bundles, so no runtime pip).
+        # Gives a conversation agent that can target our LiteLLM base_url. RESILIENT:
+        # set -u + final exit 0 so a failed download never blocks HA boot; marker
+        # written only on success so a failure retries next start.
+        - name: install-extended-openai-conversation
+          image: alpine:3.20
+          command:
+            - sh
+            - -c
+            - |
+              set -u
+              VERSION="1.1.0"
+              TARGET="/config/custom_components/extended_openai_conversation"
+              MARKER="$TARGET/.version"
+              if [ -f "$MARKER" ] && [ "$(cat "$MARKER")" = "$VERSION" ]; then
+                echo "extended_openai_conversation $VERSION already installed, skipping"
+                exit 0
+              fi
+              apk add --no-cache wget tar >/dev/null
+              mkdir -p /config/custom_components
+              if wget -q -O /tmp/eoc.tgz \
+                  "https://github.com/jekalmin/extended_openai_conversation/archive/refs/tags/$VERSION.tar.gz"; then
+                rm -rf "$TARGET"; mkdir -p "$TARGET"
+                tar -xzf /tmp/eoc.tgz -C /tmp
+                cp -r /tmp/extended_openai_conversation-*/custom_components/extended_openai_conversation/. "$TARGET/"
+                rm -rf /tmp/eoc.tgz /tmp/extended_openai_conversation-*
+                echo "$VERSION" > "$MARKER"
+                echo "extended_openai_conversation $VERSION installed"
+              else
+                echo "WARN: extended_openai_conversation download failed; no marker, will retry next start"
+              fi
+              exit 0
+          volumeMounts:
+            - name: config
+              mountPath: /config
         # Vendor pinned Lovelace custom cards + browser_mod for the wall-panel
         # dashboards (we don't run HACS; everything is git-pinned + reproducible).
         # RESILIENT BY DESIGN: `set -u` (not -e) and a final `exit 0` so a failed
@@ -712,6 +749,220 @@ spec:
                   name: home-assistant-calendars
                   key: feeds-json
                   optional: true
+          volumeMounts:
+            - name: config
+              mountPath: /config
+        # Seed the Binks conversation agent (extended_openai_conversation is
+        # config-flow-only). Idempotent on domain. It uses the LEGACY conversation
+        # agent API, so its agent_id IS this config entry_id (the pipeline seed
+        # below looks it up). Model + persona live in options; skip_authentication
+        # keeps HA boot independent of LiteLLM being reachable at that instant.
+        - name: seed-binks-conversation
+          image: ghcr.io/home-assistant/home-assistant:stable
+          command:
+            - python3
+            - -c
+            - |
+              import json, os, uuid
+              from datetime import datetime, timezone
+
+              ENTRIES = "/config/.storage/core.config_entries"
+              DOMAIN = "extended_openai_conversation"
+
+              api_key = os.environ.get("LITELLM_ASSIST_KEY", "").strip()
+              if not api_key:
+                  print("WARN: LITELLM_ASSIST_KEY not set; skipping Binks conversation seed")
+                  exit(0)
+
+              os.makedirs(os.path.dirname(ENTRIES), exist_ok=True)
+              if os.path.exists(ENTRIES):
+                  with open(ENTRIES) as f:
+                      store = json.load(f)
+              else:
+                  store = {"version": 1, "minor_version": 4, "key": "core.config_entries", "data": {"entries": []}}
+              entries = store["data"]["entries"]
+              for e in entries:
+                  e.setdefault("subentries", {})
+
+              for e in entries:
+                  if e.get("domain") == DOMAIN:
+                      print("Binks conversation entry already exists, skipping")
+                      exit(0)
+
+              prompt = (
+                  'You are "Binks", the voice of this Home Assistant smart home. '
+                  'Speak in short, warm, natural sentences — one or two at most, meant to be read aloud. '
+                  'Helpful, a touch playful, never verbose.\n\n'
+                  'Current time: {{now()}}\n\n'
+                  'You can see and control these exposed devices:\n'
+                  '```csv\n'
+                  'entity_id,name,state,aliases\n'
+                  '{% for entity in exposed_entities -%}\n'
+                  "{{ entity.entity_id }},{{ entity.name }},{{ entity.state }},{{ entity.aliases | join('/') }}\n"
+                  '{% endfor -%}\n'
+                  '```\n\n'
+                  'Rules:\n'
+                  '- To perform an action, call the execute_services function with the correct domain, service '
+                  'and entity_id from the list above. Act on clear commands without asking for confirmation.\n'
+                  '- Call execute_services only for a requested action, never just to read state (states are above).\n'
+                  '- If a request is ambiguous or the device is not listed, say so briefly instead of guessing.\n'
+                  '- Keep every reply short enough to speak aloud.'
+              )
+
+              now = datetime.now(timezone.utc).isoformat()
+              entries.append({
+                  "created_at": now,
+                  "data": {
+                      "api_key": api_key,
+                      "base_url": "http://litellm.ai-gateway.svc.cluster.local:4000/v1",
+                      "skip_authentication": True,
+                      "name": "Binks",
+                  },
+                  "disabled_by": None,
+                  "discovery_keys": {},
+                  "domain": DOMAIN,
+                  "entry_id": uuid.uuid4().hex,
+                  "minor_version": 1,
+                  "modified_at": now,
+                  "options": {
+                      "chat_model": "vlm (gemini-3-flash)",
+                      "max_tokens": 500,
+                      "temperature": 0.4,
+                      "top_p": 1,
+                      "use_tools": True,
+                      "max_function_calls_per_conversation": 3,
+                      "prompt": prompt,
+                  },
+                  "pref_disable_new_entities": False,
+                  "pref_disable_polling": False,
+                  "source": "user",
+                  "subentries": {},
+                  "title": "Binks",
+                  "unique_id": None,
+                  "version": 1,
+              })
+              with open(ENTRIES, "w") as f:
+                  json.dump(store, f, indent=2)
+              print("Seeded Binks conversation agent (extended_openai_conversation)")
+          env:
+            - name: LITELLM_ASSIST_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: litellm-assist-credentials
+                  key: api-key
+          volumeMounts:
+            - name: config
+              mountPath: /config
+        # Expose a conservative, action-only set of entities to the Assist
+        # "conversation" assistant so Binks can control them. Reads the entity
+        # registry; allow-lists actionable domains (deliberately NOT lock/alarm).
+        # Idempotent + non-destructive: only sets entities that have no existing
+        # conversation decision, so a user un-expose in the UI is never overridden.
+        - name: seed-binks-expose
+          image: ghcr.io/home-assistant/home-assistant:stable
+          command:
+            - python3
+            - -c
+            - |
+              import json, os
+
+              REG = "/config/.storage/core.entity_registry"
+              EXP = "/config/.storage/homeassistant.exposed_entities"
+              ALLOW = {"light", "switch", "scene", "script", "fan", "cover",
+                       "climate", "media_player", "vacuum", "input_boolean"}
+
+              if not os.path.exists(REG):
+                  print("WARN: entity registry missing (fresh install?); skipping expose seed")
+                  exit(0)
+              with open(REG) as f:
+                  reg = json.load(f)
+              wanted = [e["entity_id"] for e in reg["data"]["entities"]
+                        if e["entity_id"].split(".")[0] in ALLOW
+                        and not e.get("hidden_by") and not e.get("disabled_by")]
+
+              if os.path.exists(EXP):
+                  with open(EXP) as f:
+                      store = json.load(f)
+              else:
+                  store = {"version": 1, "minor_version": 1, "key": "homeassistant.exposed_entities",
+                           "data": {"assistants": {}, "exposed_entities": {}}}
+              ee = store["data"].setdefault("exposed_entities", {})
+
+              added = 0
+              for eid in wanted:
+                  node = ee.setdefault(eid, {"assistants": {}})
+                  assistants = node.setdefault("assistants", {})
+                  if "conversation" not in assistants:
+                      assistants["conversation"] = {"should_expose": True}
+                      added += 1
+              if added:
+                  with open(EXP, "w") as f:
+                      json.dump(store, f, indent=2)
+              print(f"Assist exposure seed done (+{added} newly exposed, {len(wanted)} candidates)")
+          volumeMounts:
+            - name: config
+              mountPath: /config
+        # Seed a "Binks" Assist pipeline whose conversation engine is the Binks
+        # agent (agent_id = the extended_openai_conversation entry_id, looked up
+        # here) and make it the preferred pipeline. Stage 1 is chat-only, so
+        # stt/tts/wake stay null; later stages patch stt_engine/tts_engine/
+        # wake_word on this SAME pipeline (existing values are preserved on
+        # re-run). Idempotent on pipeline name "Binks". The prior "Home Assistant"
+        # pipeline is kept in items so it stays selectable.
+        - name: seed-binks-pipeline
+          image: ghcr.io/home-assistant/home-assistant:stable
+          command:
+            - python3
+            - -c
+            - |
+              import json, os, uuid
+
+              ENTRIES = "/config/.storage/core.config_entries"
+              PIPE = "/config/.storage/assist_pipeline.pipelines"
+
+              if not os.path.exists(ENTRIES):
+                  print("WARN: core.config_entries missing; skipping pipeline seed")
+                  exit(0)
+              with open(ENTRIES) as f:
+                  entries = json.load(f)["data"]["entries"]
+              agent_id = next((e["entry_id"] for e in entries
+                               if e.get("domain") == "extended_openai_conversation"), None)
+              if not agent_id:
+                  print("WARN: Binks conversation entry not found; skipping pipeline seed")
+                  exit(0)
+
+              if os.path.exists(PIPE):
+                  with open(PIPE) as f:
+                      store = json.load(f)
+              else:
+                  store = {"version": 1, "minor_version": 2, "key": "assist_pipeline.pipelines",
+                           "data": {"items": [], "preferred_item": None}}
+              items = store["data"]["items"]
+
+              binks = next((p for p in items if p.get("name") == "Binks"), None)
+              if binks is None:
+                  binks = {"id": uuid.uuid4().hex, "name": "Binks"}
+                  items.append(binks)
+                  print("Created Binks pipeline")
+              else:
+                  print("Binks pipeline exists; refreshing conversation engine")
+              binks.update({
+                  "conversation_engine": agent_id,
+                  "conversation_language": "en",
+                  "language": "en",
+                  "stt_engine": binks.get("stt_engine"),
+                  "stt_language": binks.get("stt_language"),
+                  "tts_engine": binks.get("tts_engine"),
+                  "tts_language": binks.get("tts_language"),
+                  "tts_voice": binks.get("tts_voice"),
+                  "wake_word_entity": binks.get("wake_word_entity"),
+                  "wake_word_id": binks.get("wake_word_id"),
+                  "prefer_local_intents": False,
+              })
+              store["data"]["preferred_item"] = binks["id"]
+              with open(PIPE, "w") as f:
+                  json.dump(store, f, indent=2)
+              print(f"Binks pipeline preferred (agent={agent_id})")
           volumeMounts:
             - name: config
               mountPath: /config

@@ -32,6 +32,21 @@ sections:
         show_current: false
         name: Hourly
 
+  # ── Wave 2: What's on — read-only iCal feeds via Remote Calendar ──────────
+  # Seeded by the `seed-remote-calendars` init container. US Holidays is the
+  # public starter feed; add your tailored concert feed (Songkick .ics) and
+  # your own calendar's iCal via the home-assistant-calendars secret, then add
+  # the new calendar.<name> entities to the list below.
+  - type: grid
+    cards:
+      - type: heading
+        heading: What's on
+        icon: mdi:calendar
+      - type: calendar
+        initial_view: listWeek
+        entities:
+          - calendar.us_holidays
+
   - type: grid
     cards:
       - type: heading

@@ -40,16 +40,14 @@ spec:
             # Cloudflare rejects for a proxied record). All public hostnames on
             # this homelab egress through this one tunnel.
             - --default-targets=ae1da648-4f55-4361-8ff2-320b55be6ac4.cfargotunnel.com
-            # external-dns is the SOLE source of truth for public DNS across all
-            # four public zones (derived from Ingress/IngressRoute). Terraform
-            # manages no DNS. See docs/public-sites.md.
-            - --domain-filter=kennethblack.me
-            - --domain-filter=blacknbrownstudios.com
-            - --domain-filter=binks.chat
-            - --domain-filter=kblack.dev
-            # Safety with the Terraform-managed tunnel/root records:
-            # upsert-only never DELETES a record, and the TXT registry +
-            # owner-id means external-dns only touches records IT created.
+            # NO --domain-filter: external-dns is the SOLE source of truth for
+            # public DNS and manages EVERY Cloudflare zone in the account
+            # (derived from Ingress/IngressRoute). This makes a brand-new domain
+            # zero-touch — add the CF zone + a Traefik Ingress + push, nothing
+            # else. Terraform manages no DNS. See docs/public-sites.md.
+            # Safety: upsert-only never DELETES; the TXT registry + owner-id mean
+            # external-dns only ever touches records IT created from an Ingress —
+            # zones with no matching Ingress are left completely untouched.
             - --policy=upsert-only
             - --registry=txt
             - --txt-owner-id=home-k3s

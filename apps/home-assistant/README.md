@@ -91,6 +91,14 @@ Flux picks up the ConfigMap change → deployment hash rotates → pod rolls →
 | Credentials | `tapo-rv30-secret.yaml` (SOPS) — `host` (RV30 LAN IP), `username` + `password` (TP-Link account). Runtime is LAN-only; the account creds are only used in the SPAKE2+ handshake. |
 | ⚠️ Firmware | This integration speaks the **TPAP/SPAKE2+** protocol on port `4433` — the scheme firmware `1.3.x` *switched to*, so it targets current firmware (confirmed through `1.3.2`; this RV is on `1.3.3`). What `1.3.x` broke is the **official `tplink`** integration's older protocol, which we deliberately don't use. The real risk is a *future* firmware that changes the protocol again — disable auto-update to stay on a known-good build. Fallback: Matter (start/stop/dock only, no room cleaning). |
 
+### Litter Box (Fumoi / LocalTuya)
+
+| Use Case | Description |
+|----------|-------------|
+| Fumoi "Cat Litter Box M4" (`localtuya`) | Generic **Tuya** device controlled fully on-LAN via **LocalTuya** ([`xZetsubou/hass-localtuya`](https://github.com/xZetsubou/hass-localtuya) pinned `2025.11.0`), installed via the `install-localtuya` init container. Discovered: Tuya category `msp`, protocol **v3.5**, IP `192.168.1.215`. Exposes `switch` (power), `select` (work mode), `button` (start / manual-clean), `number` (clean delay), and status/counter sensors. |
+| Credentials | `localtuya-secret.yaml` (SOPS) — `device-id`, `local-key`, `host`, `protocol-version`. Extracted via the reusable Tuya recipe in [`docs/smart-home-control.md`](../../docs/smart-home-control.md); keys stay LAN-only after discovery. |
+| ⚠️ Config entry | Unlike Bambu/Tapo (flat 3-field entries), LocalTuya's entry is a **nested, versioned (v1→v4) structure with a per-DP entity map**. It is **not** blind-seeded — the `seed-localtuya` step is added + verified against the installed component (Phase 2), not shipped untested. Until then the component is installed but dormant (no entry = no-op). |
+
 ## Deployment
 
 ```bash

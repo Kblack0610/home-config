@@ -80,6 +80,44 @@ spec:
           volumeMounts:
             - name: config
               mountPath: /config
+        # LocalTuya (xZetsubou fork): fully-local control of Tuya WiFi devices
+        # (e.g. the Fumoi litter box) — no cloud in the control path. No release
+        # .zip asset, so pull the tag source tarball and copy custom_components/
+        # localtuya. RESILIENT: `set -u` + final `exit 0` so a failed download
+        # never blocks HA boot; the marker is written only on success → retries
+        # next start. The device config entry is seeded separately (see the
+        # LocalTuya section in docs/smart-home-control.md).
+        - name: install-localtuya
+          image: alpine:3.20
+          command:
+            - sh
+            - -c
+            - |
+              set -u
+              VERSION="2025.11.0"
+              TARGET="/config/custom_components/localtuya"
+              MARKER="$TARGET/.version"
+              if [ -f "$MARKER" ] && [ "$(cat "$MARKER")" = "$VERSION" ]; then
+                echo "localtuya $VERSION already installed, skipping"
+                exit 0
+              fi
+              apk add --no-cache wget tar >/dev/null
+              mkdir -p /config/custom_components
+              if wget -q -O /tmp/lt.tgz \
+                  "https://github.com/xZetsubou/hass-localtuya/archive/refs/tags/$VERSION.tar.gz"; then
+                rm -rf "$TARGET"; mkdir -p "$TARGET"
+                tar -xzf /tmp/lt.tgz -C /tmp
+                cp -r /tmp/hass-localtuya-*/custom_components/localtuya/. "$TARGET/"
+                rm -rf /tmp/lt.tgz /tmp/hass-localtuya-*
+                echo "$VERSION" > "$MARKER"
+                echo "localtuya $VERSION installed"
+              else
+                echo "WARN: localtuya download failed; no marker written, will retry next start"
+              fi
+              exit 0
+          volumeMounts:
+            - name: config
+              mountPath: /config
         # Vendor pinned Lovelace custom cards + browser_mod for the wall-panel
         # dashboards (we don't run HACS; everything is git-pinned + reproducible).
         # RESILIENT BY DESIGN: `set -u` (not -e) and a final `exit 0` so a failed

@@ -46,7 +46,7 @@ script:
         example: en
         default: en
     sequence:
-      - service: tts.google_translate_say
+      - service: tts.google_say
         target:
           entity_id: "{{ target }}"
         data:
@@ -73,7 +73,7 @@ script:
                | map(attribute='entity_id')
                | select('match', 'media_player\\..*')
                | list }}
-      - service: tts.google_translate_say
+      - service: tts.google_say
         target:
           entity_id: "{{ cast_targets }}"
         data:

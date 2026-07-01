@@ -626,6 +626,95 @@ spec:
           volumeMounts:
             - name: config
               mountPath: /config
+        # Seed remote_calendar config entries → read-only iCal feeds on the
+        # dashboard ("what's on": concerts, events, holidays). Config-flow-only,
+        # so seed like the others. It's resilient (retries via ConfigEntryNotReady
+        # if a feed is briefly unreachable). Baseline = the PUBLIC US Holidays feed
+        # (safe in git). PRIVATE feeds (a Songkick personal concert .ics, your own
+        # calendar's secret iCal) come from an OPTIONAL SOPS secret as a JSON array
+        # HA_REMOTE_CALENDARS_JSON=[{"name":..,"url":..}] so their tokens never
+        # enter git. Idempotent: keyed on domain + feed url.
+        - name: seed-remote-calendars
+          image: ghcr.io/home-assistant/home-assistant:stable
+          command:
+            - python3
+            - -c
+            - |
+              import json, os, uuid
+              from datetime import datetime, timezone
+
+              ENTRIES = "/config/.storage/core.config_entries"
+              DOMAIN = "remote_calendar"
+
+              feeds = [{
+                  "name": "US Holidays",
+                  "url": "https://calendar.google.com/calendar/ical/en.usa%23holiday%40group.v.calendar.google.com/public/basic.ics",
+              }]
+              extra = os.environ.get("HA_REMOTE_CALENDARS_JSON", "").strip()
+              if extra:
+                  try:
+                      feeds += json.loads(extra)
+                  except Exception as e:
+                      print(f"WARN: bad HA_REMOTE_CALENDARS_JSON ({e}); ignoring")
+
+              if not os.path.exists(ENTRIES):
+                  print("WARN: core.config_entries missing; skipping")
+                  exit(0)
+
+              with open(ENTRIES) as f:
+                  store = json.load(f)
+              entries = store["data"]["entries"]
+              for e in entries:
+                  e.setdefault("subentries", {})
+
+              existing = {e.get("data", {}).get("url") for e in entries if e.get("domain") == DOMAIN}
+              now = datetime.now(timezone.utc).isoformat()
+              added = 0
+              for feed in feeds:
+                  url = (feed.get("url") or "").strip()
+                  name = (feed.get("name") or "").strip()
+                  if not url or not name:
+                      continue
+                  if url.startswith("webcal://"):
+                      url = "https://" + url[len("webcal://"):]
+                  if url in existing:
+                      print(f"remote_calendar '{name}' already exists, skipping")
+                      continue
+                  entries.append({
+                      "created_at": now,
+                      "data": {"calendar_name": name, "url": url},
+                      "disabled_by": None,
+                      "discovery_keys": {},
+                      "domain": DOMAIN,
+                      "entry_id": uuid.uuid4().hex,
+                      "minor_version": 1,
+                      "modified_at": now,
+                      "options": {},
+                      "pref_disable_new_entities": False,
+                      "pref_disable_polling": False,
+                      "source": "user",
+                      "subentries": {},
+                      "title": name,
+                      "unique_id": None,
+                      "version": 1,
+                  })
+                  existing.add(url)
+                  added += 1
+                  print(f"Seeded remote_calendar '{name}'")
+              if added:
+                  with open(ENTRIES, "w") as f:
+                      json.dump(store, f, indent=2)
+              print(f"remote_calendar seed done (+{added})")
+          env:
+            - name: HA_REMOTE_CALENDARS_JSON
+              valueFrom:
+                secretKeyRef:
+                  name: home-assistant-calendars
+                  key: feeds-json
+                  optional: true
+          volumeMounts:
+            - name: config
+              mountPath: /config
       containers:
         - name: home-assistant
           image: ghcr.io/home-assistant/home-assistant:stable

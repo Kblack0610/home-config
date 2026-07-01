@@ -488,6 +488,144 @@ spec:
           volumeMounts:
             - name: config
               mountPath: /config
+        # Seed the LocalTuya hub config entry (domain "localtuya", ENTRIES_VERSION
+        # = 4) for the Fumoi litter box. no_cloud=True → fully local. GOTCHA:
+        # localtuya/__init__.py reads region/client_id/client_secret/user_id
+        # UNCONDITIONALLY (before the no_cloud branch), so those keys must exist
+        # (empty) even for a local-only entry — omit them and setup KeyErrors.
+        # Entities: DP1-5 are confirmed writable controls (types verified vs the
+        # Tuya cloud schema); DP6/7/8/9/110 are read-only sensors with PROVISIONAL
+        # labels (confirm semantics via a live clean cycle, then relabel).
+        # manual_clean + factory_reset are omitted (unknown/destructive DP id).
+        # Idempotent on domain. Seed schema mirrors custom_components/localtuya
+        # config_flow.py @ 2025.11.0 (per-platform flow_schema required keys).
+        - name: seed-localtuya
+          image: ghcr.io/home-assistant/home-assistant:stable
+          command:
+            - python3
+            - -c
+            - |
+              import json, os, uuid
+              from datetime import datetime, timezone
+
+              CONFIG_FILE = "/config/.storage/core.config_entries"
+              DOMAIN = "localtuya"
+
+              device_id = os.environ.get("LT_DEVICE_ID", "")
+              local_key = os.environ.get("LT_LOCAL_KEY", "")
+              host = os.environ.get("LT_HOST", "")
+              protocol = os.environ.get("LT_PROTOCOL", "3.3")
+              name = os.environ.get("LT_NAME", "Tuya Device")
+
+              if not all([device_id, local_key, host]):
+                  print("WARN: LocalTuya credentials not set, skipping config seeding")
+                  raise SystemExit(0)
+              if not os.path.exists(CONFIG_FILE):
+                  print("WARN: core.config_entries missing; HA not initialised yet, skipping")
+                  raise SystemExit(0)
+
+              with open(CONFIG_FILE) as f:
+                  store = json.load(f)
+              entries = store["data"]["entries"]
+
+              for e in entries:
+                  if e.get("domain") == DOMAIN:
+                      print(f"{DOMAIN} entry already exists, skipping")
+                      raise SystemExit(0)
+
+              # HA is strict on load — ensure existing entries carry subentries.
+              for e in entries:
+                  e.setdefault("subentries", {})
+
+              def ent(dp, platform, fname, **extra):
+                  d = {"platform": platform, "id": dp, "friendly_name": fname,
+                       "entity_category": "None"}
+                  d.update(extra)
+                  return d
+
+              entities = [
+                  ent("1", "switch", "Power",
+                      restore_on_reconnect=False, is_passive_entity=False),
+                  ent("2", "select", "Mode",
+                      select_options={"auto_clean": "Auto clean", "manual_clean": "Manual clean"},
+                      restore_on_reconnect=False, is_passive_entity=False),
+                  ent("3", "button", "Start Clean"),
+                  ent("4", "switch", "Auto Clean",
+                      restore_on_reconnect=False, is_passive_entity=False),
+                  ent("5", "number", "Clean Delay",
+                      min_value=1.0, max_value=60.0, step_size=1.0, unit_of_measurement="min"),
+                  ent("8", "sensor", "Litter Level"),
+                  ent("6", "sensor", "Counter A"),
+                  ent("7", "sensor", "Counter B"),
+                  ent("9", "binary_sensor", "Bin Full", state_on="true"),
+                  ent("110", "sensor", "Status"),
+              ]
+
+              device = {
+                  "friendly_name": name,
+                  "host": host,
+                  "device_id": device_id,
+                  "local_key": local_key,
+                  "protocol_version": protocol,
+                  "enable_debug": False,
+                  "entities": entities,
+              }
+
+              now = datetime.now(timezone.utc).isoformat()
+              entries.append({
+                  "created_at": now,
+                  "data": {
+                      "region": "us", "client_id": "", "client_secret": "", "user_id": "",
+                      "no_cloud": True,
+                      "devices": {device_id: device},
+                  },
+                  "disabled_by": None,
+                  "discovery_keys": {},
+                  "domain": DOMAIN,
+                  "entry_id": uuid.uuid4().hex,
+                  "minor_version": 1,
+                  "modified_at": now,
+                  "options": {},
+                  "pref_disable_new_entities": False,
+                  "pref_disable_polling": False,
+                  "source": "user",
+                  "subentries": {},
+                  "title": name,
+                  "unique_id": None,
+                  "version": 4,
+              })
+              with open(CONFIG_FILE, "w") as f:
+                  json.dump(store, f, indent=2)
+              print(f"Seeded {DOMAIN} entry with {len(entities)} entities for {name}")
+          env:
+            - name: LT_DEVICE_ID
+              valueFrom:
+                secretKeyRef:
+                  name: localtuya-litterbox-credentials
+                  key: device-id
+            - name: LT_LOCAL_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: localtuya-litterbox-credentials
+                  key: local-key
+            - name: LT_HOST
+              valueFrom:
+                secretKeyRef:
+                  name: localtuya-litterbox-credentials
+                  key: host
+            - name: LT_PROTOCOL
+              valueFrom:
+                secretKeyRef:
+                  name: localtuya-litterbox-credentials
+                  key: protocol-version
+            - name: LT_NAME
+              valueFrom:
+                secretKeyRef:
+                  name: localtuya-litterbox-credentials
+                  key: friendly-name
+          volumeMounts:
+            - name: config
+              mountPath: /config
       containers:
         - name: home-assistant
           image: ghcr.io/home-assistant/home-assistant:stable

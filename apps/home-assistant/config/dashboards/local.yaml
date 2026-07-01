@@ -45,6 +45,7 @@ sections:
       - type: calendar
         initial_view: listWeek
         entities:
+          - calendar.songkick_concerts
           - calendar.us_holidays
 
   - type: grid

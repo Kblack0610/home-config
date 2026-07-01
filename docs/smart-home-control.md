@@ -203,9 +203,20 @@ from live values — confirm on bring-up by triggering a clean and re-polling):
    following the `rv30-vacuum` entry.
 5. Wall dashboard auto-populates (`switch`/`select`/`sensor`/`button` already filtered).
 
-**Verify:** entities appear in HA Settings → Devices; toggling `switch.*` flips DP 1 on re-poll;
-the Start/Manual-clean button runs a cycle (status DP 110 changes); **control works with the
-internet down** (LocalTuya is on-LAN — the whole point).
+**✅ DONE + live-verified 2026-07-01** (PRs #72 install, #74 seed). All 10 entities report real
+device values over LAN via the HA API — e.g. `number.cat_litter_box_clean_delay=6`,
+`sensor.cat_litter_box_status=Cat_into`, `sensor.cat_litter_box_litter_level=42` — each matching
+the original DP poll, confirming on-LAN read (no cloud). Seed authored against `config_flow.py`
+@ 2025.11.0 + validated locally before shipping.
+
+**Gotchas captured for future LocalTuya seeds:**
+- `__init__.py` reads `region`/`client_id`/`client_secret`/`user_id` **unconditionally** → include
+  them (empty) in the hub entry even for `no_cloud`, or setup `KeyError`s.
+- Entry `version` must equal `ENTRIES_VERSION` (4 @ 2025.11.0); per-platform required keys:
+  switch/select need `restore_on_reconnect`+`is_passive_entity`; number needs `max_value`+`step_size`;
+  binary_sensor needs `state_on`; each entity needs `platform`/`id`/`friendly_name`/`entity_category`.
+- **Still TODO:** DP 6/7/8/9/110 sensor labels are provisional — trigger one clean cycle and re-poll
+  to confirm semantics, then relabel. `manual_clean`/`factory_reset` DP ids unknown → left out.
 
 ---
 

@@ -25,10 +25,12 @@ configMapGenerator:
       - dashboard_ops.yaml=config/dashboards/ops.yaml
       - dashboard_admin.yaml=config/dashboards/admin.yaml
       - dashboard_printing.yaml=config/dashboards/printing.yaml
-      - dashboard_vacuum.yaml=config/dashboards/vacuum.yaml
       - dashboard_launcher.yaml=config/dashboards/launcher.yaml
       - dashboard_voice.yaml=config/dashboards/voice.yaml
       - dashboard_wall.yaml=config/dashboards/wall.yaml
+      - dashboard_devices.yaml=config/dashboards/devices.yaml
+      - dashboard_device_vacuum.yaml=config/dashboards/device_vacuum.yaml
+      - dashboard_device_litterbox.yaml=config/dashboards/device_litterbox.yaml
 
 resources:
   - namespace.yaml

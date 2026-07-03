@@ -1,6 +1,10 @@
+# Device detail subview (Tapo RV30). subview:true → hidden from the tab bar,
+# reached from the Devices hub with an automatic back button. Content migrated
+# from the old standalone vacuum.yaml tab.
 title: Vacuum
-path: vacuum
+path: device-vacuum
 icon: mdi:robot-vacuum
+subview: true
 type: sections
 max_columns: 3
 sections:

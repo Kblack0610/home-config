@@ -175,25 +175,30 @@ project linked so LocalTuya auto-refreshes it). The Tuya project's free trial ca
 scratchpad `devices_full.json`, mode 600). Tuya creds in rbw entry **`tuya-iot`**.
 
 **DP → entity map** — **corrected 2026-07-03** against the authoritative Tuya cloud device
-spec (`GET /v1.0/devices/{id}/specifications` for functions/status + shadow properties for the
-custom 100-range codes). The original guesses (Counter A/B, Litter Level, Bin Full) were wrong:
+spec (`GET /v1.0/devices/{id}/specifications` + shadow properties) **and a live button-by-button
+correlation** (polled raw DPs via `tinytuya` while pressing each app control). The original
+guesses (Counter A/B, Litter Level, Bin Full) were wrong, and the correlation then killed two
+more phantoms (Power, Work State) and revealed the Light controls:
 
-| DP | Tuya code (authoritative) | → entity | note |
-|----|---------------------------|----------|------|
-| 1 | `switch` | `switch` "Power" | reads `false` while the unit runs → likely auto-run enable, not mains — confirm live |
-| 2 | `work_mode` (`auto_clean`/`manual_clean`) | `select` "Mode" | |
-| 3 | `start` | `button` "Start Clean" | |
-| 4 | `auto_clean` | `switch` "Auto Clean" | |
+| DP | Tuya code | → entity | note (live-correlated) |
+|----|-----------|----------|------------------------|
+| 2 | `work_mode` (`auto_clean`/`manual_clean`) | `select` "Mode" | toggled → DP2 moved ✓ |
+| 9 | `manual_clean` (writable bool) | `button` "Clean" | **the app's "Clean" fires DP9** (not DP3) |
+| 3 | `start` | `button` "Start" | spec function; not observed moving — kept under its code name |
+| 4 | `auto_clean` | `switch` "Auto Clean" | spec function |
 | 5 | `delay_clean_time` (1–60 min) | `number` "Clean Delay" | |
-| 6 | `cat_weight` (scale 1 → raw ÷10) | `sensor` "Cat Weight" | **was mislabelled "Counter A"** |
-| 7 | `excretion_times_day` (unit `times`) | `sensor` "Excretions Per Day" | **was "Counter B"** |
-| 8 | `excretion_time_day` (0–600) | `sensor` "Excretion Time Daily" | **was "Litter Level" — NOT a litter level; no litter-level DP exists** |
-| 9 | `manual_clean` (writable bool) | `button` "Manual Clean" | **was "Bin Full" binary_sensor — no bin-full DP exists** |
-| 103 | `use_time` | `sensor` "Use Time" | newly exposed |
-| 108 | `work_state` (enum) | `sensor` "Work State" | the real runtime state; enum codes unlabeled — correlate live |
-| 110 | `data_identification` (enum, `Cat_into`) | `sensor` "Status" | cat-presence status |
+| 102 | `doorbell_song` (enum) | `select` "Light Color" | **LIGHT colour** — cycled white/red/greed(green)/blue/purple on the Light control |
+| 107 | `bright_value` | `number` "Light Brightness" | **LIGHT brightness** — moved 200→174→180→100 with the Light control |
+| 6 | `cat_weight` (scale 1 → raw ÷10) | `sensor` "Cat Weight" | was "Counter A" |
+| 7 | `excretion_times_day` (unit `times`) | `sensor` "Excretions Per Day" | was "Counter B" |
+| 8 | `excretion_time_day` (0–600) | `sensor` "Excretion Time Daily" | was "Litter Level" — no litter-level DP exists |
+| 103 | `use_time` | `sensor` "Use Time" | |
+| 109 | `battery_state` (enum) | `sensor` "Trigger Source" | **not battery** — reads `Auto` vs `App` (who started the cycle) |
+| 110 | `data_identification` (enum) | `sensor` "Status" | **the real status**: `Cat_into` → `Cleaning` → `Clean_Pause` |
+| ~~1~~ | ~~`switch`~~ | **dropped** | **no power DP** — the unit just plugs in; DP1 never moved (dead generic-template code) |
+| ~~108~~ | ~~`work_state`~~ | **dropped** | stayed static at `8` even mid-clean → noise, not the runtime state (DP110 is) |
 | 23 | `factory_reset` | — | omitted (destructive) |
-| 102/105/106/107/109 | `doorbell_song`/`relay_status`/`flow_set`/`bright_value`/`battery_state` | — | unmapped (whitelabel/generic codes, unclear relevance) |
+| 105/106 | `relay_status`/`flow_set` | — | unmapped (internal; `relay_status` flips 2↔3 during a clean) |
 
 **Implementation steps** (same shape as `ha-bambulab` / `tapo-rv30-ha`):
 
@@ -234,9 +239,17 @@ corrected DP table above.
   corrected map needs the version gate — bump `SEED_VERSION`; the init container drops the old
   entry and purges its `core.entity_registry` rows (both `entities` + `deleted_entities`) so stale
   slugs regenerate cleanly.
-- **Still TODO (needs the physical box):** DP1 `switch` reads `false` while the unit runs — confirm
-  whether it's mains power or an auto-run enable. Map the DP108 `work_state` / DP110
-  `data_identification` **enum codes** by toggling in Smart Life and re-polling.
+- **Correlate the spec against the physical device, not just its cloud schema.** The generic
+  Tuya template lists functions the unit doesn't use (`switch` = phantom power) and gives useless
+  names to the ones it does (`doorbell_song` is really the light colour). A 10-min live pass —
+  poll raw DPs with `tinytuya` (`d.set_socketPersistent(True)` + `d.receive()`) while pressing
+  each app control, log the deltas — resolved every ambiguity: DP9 = Clean, DP102/107 = light
+  colour/brightness, DP110 = the real status enum (`Cat_into`/`Cleaning`/`Clean_Pause`), and
+  proved DP1/DP108 are dead. Monitor recipe lives in the session scratchpad.
+- **Enum values observed** (record for future relabels): DP110 `data_identification` =
+  `Cat_into`, `Cleaning`, `Clean_Pause` (+ presumably `Empty`/idle states not yet seen);
+  DP102 light colour = `white`/`red`/`greed`(=green, firmware typo)/`blue`/`purple`;
+  DP109 `battery_state` = `Auto`/`App` (trigger source).
 
 ---
 

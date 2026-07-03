@@ -1,8 +1,9 @@
 # Device detail subview — Fumoi litter box (LocalTuya). subview:true → hidden
 # from the tab bar, reached from the Devices hub. Entities seeded by the
 # seed-localtuya init container (see docs/smart-home-control.md). DP labels are
-# authoritative from the Tuya cloud device spec (cat_weight / excretion_* /
-# manual_clean / work_state), not the earlier provisional guesses.
+# from the Tuya cloud spec + a live button-by-button correlation (2026-07-03):
+# DP9 = Clean, DP102/107 = light colour/brightness, DP110 = real Status. There
+# is no power DP (the unit just plugs in) and DP108 work_state was static noise.
 title: Litter Box
 path: device-litterbox
 icon: mdi:cat
@@ -13,20 +14,17 @@ sections:
   - type: grid
     cards:
       - type: heading
-        heading: Litter Box
+        heading: Controls
         icon: mdi:cat
       - type: tile
-        entity: switch.cat_litter_box_power
-        name: Power
+        entity: button.cat_litter_box_clean
+        name: Clean
+      - type: tile
+        entity: button.cat_litter_box_start
+        name: Start
       - type: tile
         entity: switch.cat_litter_box_auto_clean
         name: Auto Clean
-      - type: tile
-        entity: button.cat_litter_box_start_clean
-        name: Start Clean
-      - type: tile
-        entity: button.cat_litter_box_manual_clean
-        name: Manual Clean
       - type: tile
         entity: select.cat_litter_box_mode
         name: Mode
@@ -40,14 +38,29 @@ sections:
   - type: grid
     cards:
       - type: heading
+        heading: Light
+        icon: mdi:lightbulb
+      - type: tile
+        entity: select.cat_litter_box_light_color
+        name: Color
+      - type: tile
+        entity: number.cat_litter_box_light_brightness
+        name: Brightness
+        features:
+          - type: numeric-input
+            style: buttons
+
+  - type: grid
+    cards:
+      - type: heading
         heading: Status
         icon: mdi:information-outline
       - type: tile
         entity: sensor.cat_litter_box_status
         name: Status
       - type: tile
-        entity: sensor.cat_litter_box_work_state
-        name: Work State
+        entity: sensor.cat_litter_box_trigger_source
+        name: Trigger Source
       - type: tile
         entity: sensor.cat_litter_box_use_time
         name: Use Time

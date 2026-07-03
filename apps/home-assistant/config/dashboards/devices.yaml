@@ -33,10 +33,10 @@ sections:
         primary: Litter Box
         secondary: >-
           {{ states('sensor.cat_litter_box_status') }} ·
-          {{ states('sensor.cat_litter_box_work_state') }} ·
           {{ states('sensor.cat_litter_box_excretions_per_day') }} today
         icon: mdi:cat
         icon_color: >-
-          {{ 'blue' if is_state('switch.cat_litter_box_power','on') else 'disabled' }}
+          {{ 'green' if is_state('sensor.cat_litter_box_status','Cleaning')
+             else 'orange' if is_state('sensor.cat_litter_box_status','Cat_into') else 'blue' }}
         multiline_secondary: true
         tap_action: { action: navigate, navigation_path: /lovelace/device-litterbox }

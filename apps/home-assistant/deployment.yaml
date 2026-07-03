@@ -607,7 +607,7 @@ spec:
               # Version-gated (re)seed. Bump SEED_VERSION whenever the entity map
               # below changes; the marker file makes it idempotent yet lets a
               # corrected map replace a previously-seeded one on the next restart.
-              SEED_VERSION = "litterbox-remap-2026-07-03"
+              SEED_VERSION = "litterbox-lightcontrols-2026-07-03"
               MARKER = "/config/.localtuya_seed_version"
               REGISTRY = "/config/.storage/core.entity_registry"
 
@@ -645,29 +645,37 @@ spec:
                   d.update(extra)
                   return d
 
-              # DP map authoritative from the Tuya cloud device specification
-              # (functions + status, category msp) — see docs/smart-home-control.md.
-              # DP1 switch / DP4 auto_clean are the Tuya-defined codes; DP6/7/8 are
-              # cat_weight / excretion counts (NOT litter level); DP9 is the
-              # manual_clean command (a button, not a bin sensor). DP108 work_state
-              # and DP103 use_time are the real runtime status DPs.
+              # DP map — authoritative Tuya spec + a LIVE button-by-button correlation
+              # (2026-07-03, see docs/smart-home-control.md). Findings that reshaped it:
+              #   * DP1 `switch` is a DEAD code — the unit has no power button (just plugs
+              #     in) and DP1 never moved during the whole session → NOT exposed.
+              #   * DP9 `manual_clean` is the app's "Clean" button (fired on Clean press).
+              #   * DP102 `doorbell_song` is the LIGHT COLOUR; DP107 `bright_value` is the
+              #     LIGHT BRIGHTNESS (both cycled while using the Light control).
+              #   * DP110 `data_identification` is the REAL status (Cat_into→Cleaning→
+              #     Clean_Pause); DP108 `work_state` stayed static at 8 → dropped as noise.
+              #   * DP109 `battery_state` = trigger source (Auto vs App), not battery.
               entities = [
-                  ent("1", "switch", "Power",
-                      restore_on_reconnect=False, is_passive_entity=False),
                   ent("2", "select", "Mode",
                       select_options={"auto_clean": "Auto clean", "manual_clean": "Manual clean"},
                       restore_on_reconnect=False, is_passive_entity=False),
-                  ent("3", "button", "Start Clean"),
+                  ent("9", "button", "Clean"),
+                  ent("3", "button", "Start"),
                   ent("4", "switch", "Auto Clean",
                       restore_on_reconnect=False, is_passive_entity=False),
-                  ent("9", "button", "Manual Clean"),
                   ent("5", "number", "Clean Delay",
                       min_value=1.0, max_value=60.0, step_size=1.0, unit_of_measurement="min"),
+                  ent("102", "select", "Light Color",
+                      select_options={"white": "White", "red": "Red", "greed": "Green",
+                                      "blue": "Blue", "purple": "Purple"},
+                      restore_on_reconnect=False, is_passive_entity=False),
+                  ent("107", "number", "Light Brightness",
+                      min_value=10.0, max_value=255.0, step_size=1.0),
                   ent("6", "sensor", "Cat Weight"),
                   ent("7", "sensor", "Excretions Per Day"),
                   ent("8", "sensor", "Excretion Time Daily"),
                   ent("103", "sensor", "Use Time"),
-                  ent("108", "sensor", "Work State"),
+                  ent("109", "sensor", "Trigger Source"),
                   ent("110", "sensor", "Status"),
               ]
 

@@ -174,21 +174,26 @@ project linked so LocalTuya auto-refreshes it). The Tuya project's free trial ca
 3.5**. `device_id` + `local_key` captured (durable home = a SOPS secret; transient copy in the
 scratchpad `devices_full.json`, mode 600). Tuya creds in rbw entry **`tuya-iot`**.
 
-**DP → entity map** (writable codes confirmed from the cloud schema; read-only DPs inferred
-from live values — confirm on bring-up by triggering a clean and re-polling):
+**DP → entity map** — **corrected 2026-07-03** against the authoritative Tuya cloud device
+spec (`GET /v1.0/devices/{id}/specifications` for functions/status + shadow properties for the
+custom 100-range codes). The original guesses (Counter A/B, Litter Level, Bin Full) were wrong:
 
-| DP | Code / meaning | → entity |
-|----|----------------|----------|
-| 1 | `switch` (power) | `switch` |
-| 2 | `work_mode` (`auto_clean`/`manual_clean`) | `select` |
-| 3 | `start` | `button` |
-| 4 | `auto_clean` | `switch` |
-| 5 | `delay_clean_time` (1–60 min) | `number` |
-| 6 / 7 / 8 | counters (123 / 0 / 42) | `sensor` (cycle count / litter level % — confirm) |
-| 9 | bin-full / fault? | `binary_sensor` (confirm) |
-| 110 | status (`Cat_into`) | `sensor` |
-| 102 | `white` (LED colour) | optional `select` |
-| `manual_clean`, `factory_reset` | momentary commands | `button` (write-only) |
+| DP | Tuya code (authoritative) | → entity | note |
+|----|---------------------------|----------|------|
+| 1 | `switch` | `switch` "Power" | reads `false` while the unit runs → likely auto-run enable, not mains — confirm live |
+| 2 | `work_mode` (`auto_clean`/`manual_clean`) | `select` "Mode" | |
+| 3 | `start` | `button` "Start Clean" | |
+| 4 | `auto_clean` | `switch` "Auto Clean" | |
+| 5 | `delay_clean_time` (1–60 min) | `number` "Clean Delay" | |
+| 6 | `cat_weight` (scale 1 → raw ÷10) | `sensor` "Cat Weight" | **was mislabelled "Counter A"** |
+| 7 | `excretion_times_day` (unit `times`) | `sensor` "Excretions Per Day" | **was "Counter B"** |
+| 8 | `excretion_time_day` (0–600) | `sensor` "Excretion Time Daily" | **was "Litter Level" — NOT a litter level; no litter-level DP exists** |
+| 9 | `manual_clean` (writable bool) | `button` "Manual Clean" | **was "Bin Full" binary_sensor — no bin-full DP exists** |
+| 103 | `use_time` | `sensor` "Use Time" | newly exposed |
+| 108 | `work_state` (enum) | `sensor` "Work State" | the real runtime state; enum codes unlabeled — correlate live |
+| 110 | `data_identification` (enum, `Cat_into`) | `sensor` "Status" | cat-presence status |
+| 23 | `factory_reset` | — | omitted (destructive) |
+| 102/105/106/107/109 | `doorbell_song`/`relay_status`/`flow_set`/`bright_value`/`battery_state` | — | unmapped (whitelabel/generic codes, unclear relevance) |
 
 **Implementation steps** (same shape as `ha-bambulab` / `tapo-rv30-ha`):
 
@@ -203,11 +208,17 @@ from live values — confirm on bring-up by triggering a clean and re-polling):
    following the `rv30-vacuum` entry.
 5. Wall dashboard auto-populates (`switch`/`select`/`sensor`/`button` already filtered).
 
-**✅ DONE + live-verified 2026-07-01** (PRs #72 install, #74 seed). All 10 entities report real
-device values over LAN via the HA API — e.g. `number.cat_litter_box_clean_delay=6`,
-`sensor.cat_litter_box_status=Cat_into`, `sensor.cat_litter_box_litter_level=42` — each matching
-the original DP poll, confirming on-LAN read (no cloud). Seed authored against `config_flow.py`
-@ 2025.11.0 + validated locally before shipping.
+**✅ DONE + live-verified 2026-07-01** (PRs #72 install, #74 seed). All entities report real
+device values over LAN via the HA API — each matching a direct `tinytuya` DP poll, confirming
+on-LAN read (no cloud). Seed authored against `config_flow.py` @ 2025.11.0 + validated locally.
+
+**🔧 DP labels corrected 2026-07-03.** The 2026-07-01 seed shipped with *provisional* read-only
+labels that turned out wrong — HA faithfully mirrored the device, but "Litter Level 42%",
+"Counter A/B" and "Bin Full" were guesses. Cross-checking the **Tuya cloud device spec** proved
+DP8 = `excretion_time_day` (no litter-level DP exists), DP6 = `cat_weight`, DP9 = `manual_clean`
+command (no bin-full DP), and surfaced the real `work_state`/`use_time` DPs. Re-seeded via the
+version-gated `SEED_VERSION` mechanism (drops the stale entry + purges its registry rows). See the
+corrected DP table above.
 
 **Gotchas captured for future LocalTuya seeds:**
 - `__init__.py` reads `region`/`client_id`/`client_secret`/`user_id` **unconditionally** → include
@@ -215,8 +226,17 @@ the original DP poll, confirming on-LAN read (no cloud). Seed authored against `
 - Entry `version` must equal `ENTRIES_VERSION` (4 @ 2025.11.0); per-platform required keys:
   switch/select need `restore_on_reconnect`+`is_passive_entity`; number needs `max_value`+`step_size`;
   binary_sensor needs `state_on`; each entity needs `platform`/`id`/`friendly_name`/`entity_category`.
-- **Still TODO:** DP 6/7/8/9/110 sensor labels are provisional — trigger one clean cycle and re-poll
-  to confirm semantics, then relabel. `manual_clean`/`factory_reset` DP ids unknown → left out.
+- **Don't trust live values as label proof** — HA mirroring the device does NOT mean the *labels*
+  are right. The 2026-07-01 seed's provisional labels were wrong even though every entity read
+  correctly. Verify DP semantics against the **Tuya cloud spec** (`/v1.0/devices/{id}/specifications`
+  + shadow properties), not by eyeballing values.
+- **Re-seeding an existing entry:** the seed skips if a `localtuya` entry already exists, so a
+  corrected map needs the version gate — bump `SEED_VERSION`; the init container drops the old
+  entry and purges its `core.entity_registry` rows (both `entities` + `deleted_entities`) so stale
+  slugs regenerate cleanly.
+- **Still TODO (needs the physical box):** DP1 `switch` reads `false` while the unit runs — confirm
+  whether it's mains power or an auto-run enable. Map the DP108 `work_state` / DP110
+  `data_identification` **enum codes** by toggling in Smart Life and re-polling.
 
 ---
 

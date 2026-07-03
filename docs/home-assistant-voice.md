@@ -9,7 +9,7 @@ Built and shipped in stages so each layer is tested in isolation.
 | 0 | Fix broken cast TTS announcements (`tts.google_say`) | ✅ shipped (PR #77) |
 | 1 | **Text chat** — Binks conversation agent + home control | ✅ shipped |
 | 2 | **Press-to-talk voice** — STT via LiteLLM whisper + Google TTS | ✅ shipped |
-| 3 | **"Hey Binks" wake word** — server owww + mic satellite | ⏳ planned (needs hardware) |
+| 3 | **Wake word** — server openWakeWord + Wyoming; `okay_nabu` validated, `hey_binks` = training follow-up | ◑ server side shipped |
 
 Everything is code-first: custom components are vendored by `install-*` init containers
 and config entries are written by idempotent `seed-*` init containers (see
@@ -144,11 +144,49 @@ Notes / knobs:
 - Verified out of band (2026-07): `POST …/v1/audio/transcriptions` with the scoped key +
   `model=stt (whisper-turbo)` returns `200` + `{"text": …}` for a spoken WAV.
 
-## Stage 3 — "hey binks" wake word (planned, needs hardware)
+## Stage 3 — wake word (server side shipped; `hey_binks` model is the follow-up)
 
-New Flux app `apps/openwakeword/` (`wyoming-openwakeword`, port 10400) with a trained
-`hey_binks.tflite`, wired via the built-in **Wyoming** integration; pipeline seed gains
-`wake_word_entity`/`wake_word_id`. The server only *detects* — always-listening requires
-a streaming mic **satellite** (an **M5 Atom Echo ~$13** streaming to server-side owww is
-the cheapest path to a custom word; the Companion app can't do custom wake words).
-Validate first with a built-in word (`ok_nabu`) before swapping in `hey_binks`.
+### Why a wake word needs *something* holding the mic open
+
+openWakeWord **detects** a wake word inside an audio stream — it does not capture audio.
+Something must keep a mic open 24/7 and stream it to the server. Three options here, two
+of which use the **wall tablet's own mic, no extra hardware**:
+
+- **Tablet browser (try first).** HA's frontend can stream the tablet mic to the
+  server-side detector — and because detection is server-side, **it supports the custom
+  "hey binks" word**. Caveat: a browser only listens while the tab is focused with mic
+  permission; screen-sleep / kiosk / wallpanel screensaver can suspend the tab and drop
+  the mic, so 24/7 reliability depends on the kiosk setup.
+- **HA Companion app (Android).** Rock-solid on-device wake word, but only **3 fixed
+  words** (Okay Nabu / Hey Jarvis / Hey Mycroft) — it *cannot* do a custom "hey binks".
+- **Dedicated satellite** (M5 Atom Echo ~$13 / Pi). Most reliable; supports custom words.
+  The *robust* option, not the only one.
+
+The server-side detector below is needed for **all three** — the tablet browser streams
+to it exactly like a satellite would.
+
+### What shipped
+
+- New Flux app **`apps/openwakeword/`** — `rhasspy/wyoming-openwakeword:2.1.0` (amd64),
+  Wyoming protocol on TCP `10400`, in the `home-assistant` namespace. `args:` only
+  (`--custom-model-dir /custom …`); built-in words are baked in, offline.
+- `seed-wyoming-openwakeword` init container — seeds the **Wyoming** config entry
+  `{host: wyoming-openwakeword.home-assistant.svc.cluster.local, port: 10400}`. Boot-safe
+  (`setup_retry` if the service isn't up yet). Creates entity **`wake_word.openwakeword`**.
+- `seed-binks-pipeline` now sets `wake_word_entity: wake_word.openwakeword`,
+  `wake_word_id: okay_nabu` on the Binks pipeline — the path validated with the built-in
+  **"okay nabu"** word.
+
+### Finishing "hey binks"
+
+1. **Train `hey_binks.tflite`** (openWakeWord notebook, Piper samples, ~1 hr, English;
+   `.tflite` only). Name it exactly `hey_binks.tflite` → id `hey_binks`.
+2. **Ship it into `/custom`** in `apps/openwakeword/deployment.yaml` (ConfigMap
+   `binaryData` if < 1 MiB, else a download initContainer into the `custom-models` volume).
+3. **Flip `wake_word_id`** from `okay_nabu` to `hey_binks` in `seed-binks-pipeline`.
+4. **Point a mic at it:** enable Assist wake word in the tablet browser
+   (Settings → Voice assistants → the tablet's Assist), or connect a satellite. Say the
+   word → HA logs a wake event → Binks listens, transcribes, acts, and replies.
+
+Tuning: raise `--threshold` (fewer false triggers) / `--trigger-level` if it fires too
+eagerly or misses.

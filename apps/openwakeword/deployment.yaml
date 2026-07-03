@@ -1,0 +1,79 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: wyoming-openwakeword
+  namespace: home-assistant
+  labels:
+    app.kubernetes.io/name: wyoming-openwakeword
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: wyoming-openwakeword
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: wyoming-openwakeword
+    spec:
+      # tflite melspectrogram/embedding on CPU — keep it off the Pis. The image
+      # is multi-arch but we pin amd64 for consistent latency.
+      nodeSelector:
+        kubernetes.io/arch: amd64
+      containers:
+        - name: wyoming-openwakeword
+          image: rhasspy/wyoming-openwakeword:2.1.0
+          # DO NOT set `command:` — the image entrypoint (docker_run.sh) already
+          # binds `tcp://0.0.0.0:10400`; these args are appended. Built-in words
+          # (okay_nabu, hey_jarvis, alexa, hey_mycroft, hey_rhasspy) + the shared
+          # melspectrogram/embedding models are baked into the wheel (offline).
+          # Custom words = *.tflite dropped into /custom; the model id is the
+          # filename stem (so `hey_binks.tflite` → wake_word_id `hey_binks`).
+          args:
+            - --custom-model-dir
+            - /custom
+            - --threshold
+            - "0.5"
+            - --trigger-level
+            - "1"
+            - --debug
+          ports:
+            - name: wyoming
+              containerPort: 10400
+              protocol: TCP
+          volumeMounts:
+            - name: custom-models
+              mountPath: /custom
+          resources:
+            requests:
+              cpu: "100m"
+              memory: "200Mi"
+            limits:
+              cpu: "1"
+              memory: "512Mi"
+          # Wyoming is a raw TCP protocol (no HTTP) — probe the socket.
+          readinessProbe:
+            tcpSocket:
+              port: 10400
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          livenessProbe:
+            tcpSocket:
+              port: 10400
+            initialDelaySeconds: 15
+            periodSeconds: 30
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop:
+                - ALL
+      volumes:
+        # Empty for now → only the built-in wake words load, which is enough to
+        # validate the wake path end-to-end (with "okay nabu"). To add the custom
+        # "hey binks" word: train hey_binks.tflite (see README) and ship it here
+        # — either a ConfigMap with binaryData (if < 1 MiB) mounted at /custom, or
+        # a download initContainer into this dir — then flip the pipeline
+        # wake_word_id to `hey_binks`.
+        - name: custom-models
+          emptyDir: {}

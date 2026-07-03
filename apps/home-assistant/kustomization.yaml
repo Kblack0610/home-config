@@ -24,13 +24,14 @@ configMapGenerator:
       - dashboard_local.yaml=config/dashboards/local.yaml
       - dashboard_ops.yaml=config/dashboards/ops.yaml
       - dashboard_admin.yaml=config/dashboards/admin.yaml
-      - dashboard_printing.yaml=config/dashboards/printing.yaml
       - dashboard_launcher.yaml=config/dashboards/launcher.yaml
-      - dashboard_voice.yaml=config/dashboards/voice.yaml
       - dashboard_wall.yaml=config/dashboards/wall.yaml
       - dashboard_devices.yaml=config/dashboards/devices.yaml
       - dashboard_device_vacuum.yaml=config/dashboards/device_vacuum.yaml
       - dashboard_device_litterbox.yaml=config/dashboards/device_litterbox.yaml
+      - dashboard_device_bambu.yaml=config/dashboards/device_bambu.yaml
+      - dashboard_device_neptune.yaml=config/dashboards/device_neptune.yaml
+      - dashboard_device_speakers.yaml=config/dashboards/device_speakers.yaml
 
 resources:
   - namespace.yaml

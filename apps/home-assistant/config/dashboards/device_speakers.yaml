@@ -1,32 +1,31 @@
-title: Voice
-path: voice
+# Device detail subview — Speakers / Cast (mDNS-discovered media players + TTS).
+# subview:true → hidden from the tab bar, reached from the Devices hub. Migrated
+# from the old voice.yaml tab; the media-player list now auto-populates.
+title: Speakers
+path: device-speakers
 icon: mdi:cast-audio-variant
+subview: true
 type: sections
 max_columns: 3
 sections:
-  # ── Discovered cast devices ──
   - type: grid
     cards:
       - type: heading
         heading: Cast Devices
         icon: mdi:cast-audio
-      - type: markdown
-        content: >
-          Auto-discovered via mDNS. Each Nest Hub / Mini / Audio /
-          Chromecast on the LAN appears as a `media_player.*` entity after
-          first boot. Add specific entity tiles below once names are known
-          (Settings → Devices → Cast).
-      - type: entities
-        title: Media players
-        show_header_toggle: false
-        state_color: true
-        entities:
-          # Populate after first discovery. Examples:
-          # - media_player.office_nest_mini
-          # - media_player.living_room_nest_hub
-          # - media_player.kitchen_chromecast
+      # Auto-populates as Nest Hub / Mini / Audio / Chromecast appear on the LAN.
+      - type: custom:auto-entities
+        show_empty: false
+        card:
+          type: entities
+          title: Media players
+          state_color: true
+        filter:
+          include:
+            - domain: media_player
+        sort:
+          method: friendly_name
 
-  # ── Quick announce ──
   - type: grid
     cards:
       - type: heading
@@ -47,7 +46,6 @@ sections:
             message: "{{ states('input_text.voice_announce_message') }}"
             language: "{{ states('input_select.voice_announce_language') }}"
 
-  # ── Test pad ──
   - type: grid
     cards:
       - type: heading

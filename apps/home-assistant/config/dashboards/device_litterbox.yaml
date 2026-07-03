@@ -1,8 +1,8 @@
 # Device detail subview — Fumoi litter box (LocalTuya). subview:true → hidden
 # from the tab bar, reached from the Devices hub. Entities seeded by the
-# seed-localtuya init container (see docs/smart-home-control.md). The read-only
-# sensor labels (Litter Level / Counter A/B / Bin Full) are provisional pending
-# a live clean-cycle confirmation of DP semantics.
+# seed-localtuya init container (see docs/smart-home-control.md). DP labels are
+# authoritative from the Tuya cloud device spec (cat_weight / excretion_* /
+# manual_clean / work_state), not the earlier provisional guesses.
 title: Litter Box
 path: device-litterbox
 icon: mdi:cat
@@ -25,6 +25,9 @@ sections:
         entity: button.cat_litter_box_start_clean
         name: Start Clean
       - type: tile
+        entity: button.cat_litter_box_manual_clean
+        name: Manual Clean
+      - type: tile
         entity: select.cat_litter_box_mode
         name: Mode
       - type: tile
@@ -43,21 +46,23 @@ sections:
         entity: sensor.cat_litter_box_status
         name: Status
       - type: tile
-        entity: sensor.cat_litter_box_litter_level
-        name: Litter Level
+        entity: sensor.cat_litter_box_work_state
+        name: Work State
       - type: tile
-        entity: binary_sensor.cat_litter_box_bin_full
-        name: Bin Full
+        entity: sensor.cat_litter_box_use_time
+        name: Use Time
 
   - type: grid
     cards:
       - type: heading
-        heading: Counters
-        icon: mdi:counter
+        heading: Cat Metrics
+        icon: mdi:cat
       - type: entities
         show_header_toggle: false
         entities:
-          - entity: sensor.cat_litter_box_counter_a
-            name: Counter A
-          - entity: sensor.cat_litter_box_counter_b
-            name: Counter B
+          - entity: sensor.cat_litter_box_cat_weight
+            name: Cat Weight (raw ×0.1)
+          - entity: sensor.cat_litter_box_excretions_per_day
+            name: Excretions / Day
+          - entity: sensor.cat_litter_box_excretion_time_daily
+            name: Excretion Time (Daily)

@@ -604,14 +604,40 @@ spec:
                   store = json.load(f)
               entries = store["data"]["entries"]
 
-              for e in entries:
-                  if e.get("domain") == DOMAIN:
-                      print(f"{DOMAIN} entry already exists, skipping")
-                      raise SystemExit(0)
+              # Version-gated (re)seed. Bump SEED_VERSION whenever the entity map
+              # below changes; the marker file makes it idempotent yet lets a
+              # corrected map replace a previously-seeded one on the next restart.
+              SEED_VERSION = "litterbox-remap-2026-07-03"
+              MARKER = "/config/.localtuya_seed_version"
+              REGISTRY = "/config/.storage/core.entity_registry"
+
+              if os.path.exists(MARKER):
+                  with open(MARKER) as mf:
+                      if mf.read().strip() == SEED_VERSION:
+                          print(f"LocalTuya seed already at {SEED_VERSION}, skipping")
+                          raise SystemExit(0)
+
+              # Drop any prior localtuya entries so the corrected DP map replaces the
+              # old provisional one, then purge their entity-registry rows so stale
+              # slugs (litter_level / bin_full / counter_*) don't linger.
+              stale_ids = [e["entry_id"] for e in entries if e.get("domain") == DOMAIN]
+              entries[:] = [e for e in entries if e.get("domain") != DOMAIN]
 
               # HA is strict on load — ensure existing entries carry subentries.
               for e in entries:
                   e.setdefault("subentries", {})
+
+              if stale_ids and os.path.exists(REGISTRY):
+                  with open(REGISTRY) as rf:
+                      reg = json.load(rf)
+                  rdata = reg.get("data", {})
+                  for _k in ("entities", "deleted_entities"):
+                      _lst = rdata.get(_k)
+                      if isinstance(_lst, list):
+                          rdata[_k] = [x for x in _lst if x.get("platform") != DOMAIN]
+                  with open(REGISTRY, "w") as rf:
+                      json.dump(reg, rf, indent=2)
+                  print(f"Purged stale {DOMAIN} entities from registry")
 
               def ent(dp, platform, fname, **extra):
                   d = {"platform": platform, "id": dp, "friendly_name": fname,
@@ -619,6 +645,12 @@ spec:
                   d.update(extra)
                   return d
 
+              # DP map authoritative from the Tuya cloud device specification
+              # (functions + status, category msp) — see docs/smart-home-control.md.
+              # DP1 switch / DP4 auto_clean are the Tuya-defined codes; DP6/7/8 are
+              # cat_weight / excretion counts (NOT litter level); DP9 is the
+              # manual_clean command (a button, not a bin sensor). DP108 work_state
+              # and DP103 use_time are the real runtime status DPs.
               entities = [
                   ent("1", "switch", "Power",
                       restore_on_reconnect=False, is_passive_entity=False),
@@ -628,12 +660,14 @@ spec:
                   ent("3", "button", "Start Clean"),
                   ent("4", "switch", "Auto Clean",
                       restore_on_reconnect=False, is_passive_entity=False),
+                  ent("9", "button", "Manual Clean"),
                   ent("5", "number", "Clean Delay",
                       min_value=1.0, max_value=60.0, step_size=1.0, unit_of_measurement="min"),
-                  ent("8", "sensor", "Litter Level"),
-                  ent("6", "sensor", "Counter A"),
-                  ent("7", "sensor", "Counter B"),
-                  ent("9", "binary_sensor", "Bin Full", state_on="true"),
+                  ent("6", "sensor", "Cat Weight"),
+                  ent("7", "sensor", "Excretions Per Day"),
+                  ent("8", "sensor", "Excretion Time Daily"),
+                  ent("103", "sensor", "Use Time"),
+                  ent("108", "sensor", "Work State"),
                   ent("110", "sensor", "Status"),
               ]
 
@@ -672,6 +706,8 @@ spec:
               })
               with open(CONFIG_FILE, "w") as f:
                   json.dump(store, f, indent=2)
+              with open(MARKER, "w") as f:
+                  f.write(SEED_VERSION)
               print(f"Seeded {DOMAIN} entry with {len(entities)} entities for {name}")
           env:
             - name: LT_DEVICE_ID

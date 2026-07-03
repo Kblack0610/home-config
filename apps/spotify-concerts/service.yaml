@@ -1,0 +1,17 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: spotify-concerts
+  namespace: spotify-concerts
+  labels:
+    app.kubernetes.io/name: spotify-concerts
+spec:
+  selector:
+    app.kubernetes.io/name: spotify-concerts
+  ports:
+    - name: http
+      port: 80
+      targetPort: 8080
+  # ClusterIP only — Home Assistant reaches it in-cluster at
+  # http://spotify-concerts.spotify-concerts.svc.cluster.local/concerts.ics
+  # No ingress: the feed is unauthenticated and only HA needs it.

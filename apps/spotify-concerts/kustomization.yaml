@@ -1,0 +1,17 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+namespace: spotify-concerts
+
+# app.py is shipped as a ConfigMap (hash-suffixed → edits roll the pod). Keeping
+# it a real file means it stays lint/test-able instead of buried in YAML.
+configMapGenerator:
+  - name: spotify-concerts-app
+    files:
+      - app.py
+
+resources:
+  - namespace.yaml
+  - deployment.yaml
+  - service.yaml
+  # - secret.yaml   # add once spotify-concerts-credentials is created (see README)

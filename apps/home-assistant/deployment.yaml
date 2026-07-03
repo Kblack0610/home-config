@@ -686,6 +686,11 @@ spec:
               feeds = [{
                   "name": "US Holidays",
                   "url": "https://calendar.google.com/calendar/ical/en.usa%23holiday%40group.v.calendar.google.com/public/basic.ics",
+              }, {
+                  # In-cluster spotify-concerts bridge → concerts near home for
+                  # your Spotify artists (empty until that app's creds are set).
+                  "name": "Concerts",
+                  "url": "http://spotify-concerts.spotify-concerts.svc.cluster.local/concerts.ics",
               }]
               extra = os.environ.get("HA_REMOTE_CALENDARS_JSON", "").strip()
               if extra:

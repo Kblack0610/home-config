@@ -42,6 +42,7 @@ resources:
   - orcaslicer
   - postgres
   - sops-backup-rbac
+  - spotify-concerts
   - vaultwarden
   - vikunja
 

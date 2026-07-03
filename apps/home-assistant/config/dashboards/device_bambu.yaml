@@ -1,0 +1,57 @@
+# Device detail subview — Bambu A1 3D printer (ha-bambulab). subview:true →
+# hidden from the tab bar, reached from the Devices hub. Migrated from the old
+# combined printing.yaml tab (Bambu half).
+title: Bambu A1
+path: device-bambu
+icon: mdi:printer-3d-nozzle
+subview: true
+type: sections
+max_columns: 3
+sections:
+  - type: grid
+    cards:
+      - type: heading
+        heading: Bambu A1
+        icon: mdi:printer-3d-nozzle
+      - type: tile
+        entity: sensor.bambu_a1_print_status
+        name: Status
+      - type: gauge
+        entity: sensor.bambu_a1_print_progress
+        name: Progress
+        min: 0
+        max: 100
+        severity:
+          green: 0
+          yellow: 75
+          red: 95
+
+  - type: grid
+    cards:
+      - type: heading
+        heading: Active Print
+        icon: mdi:progress-clock
+      - type: entities
+        show_header_toggle: false
+        entities:
+          - entity: sensor.bambu_a1_current_stage
+            name: Stage
+          - entity: sensor.bambu_a1_remaining_time
+            name: Time Left
+
+  - type: grid
+    cards:
+      - type: heading
+        heading: Temperatures
+        icon: mdi:thermometer
+      - type: entities
+        show_header_toggle: false
+        entities:
+          - entity: sensor.bambu_a1_nozzle_temperature
+            name: Nozzle
+          - entity: sensor.bambu_a1_bed_temperature
+            name: Bed
+          - entity: sensor.bambu_a1_nozzle_target_temperature
+            name: Nozzle Target
+          - entity: sensor.bambu_a1_bed_target_temperature
+            name: Bed Target

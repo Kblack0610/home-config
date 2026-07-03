@@ -7,9 +7,10 @@ views:
   - !include dashboards/local.yaml
   - !include dashboards/ops.yaml
   - !include dashboards/admin.yaml
-  - !include dashboards/printing.yaml
-  - !include dashboards/voice.yaml
   # Hidden device-detail subviews (subview: true → not in the tab bar; reached
   # from the Devices hub). Shared with the wall dashboard via the same files.
   - !include dashboards/device_vacuum.yaml
   - !include dashboards/device_litterbox.yaml
+  - !include dashboards/device_bambu.yaml
+  - !include dashboards/device_neptune.yaml
+  - !include dashboards/device_speakers.yaml

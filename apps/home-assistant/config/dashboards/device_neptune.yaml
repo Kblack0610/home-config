@@ -1,0 +1,61 @@
+# Device detail subview — Elegoo Neptune (Moonraker/Klipper REST sensors).
+# subview:true → hidden from the tab bar, reached from the Devices hub.
+# Migrated from the old combined printing.yaml tab (Neptune half).
+title: Elegoo Neptune
+path: device-neptune
+icon: mdi:printer-3d-nozzle
+subview: true
+type: sections
+max_columns: 3
+sections:
+  - type: grid
+    cards:
+      - type: heading
+        heading: Elegoo Neptune
+        icon: mdi:printer-3d-nozzle
+      - type: tile
+        entity: sensor.neptune_print_state
+        name: Print State
+      - type: tile
+        entity: sensor.neptune_printer_status
+        name: Klipper
+        icon: mdi:chip
+      - type: gauge
+        entity: sensor.neptune_print_progress
+        name: Progress
+        min: 0
+        max: 100
+        severity:
+          green: 0
+          yellow: 75
+          red: 95
+
+  - type: grid
+    cards:
+      - type: heading
+        heading: Active Print
+        icon: mdi:progress-clock
+      - type: entities
+        show_header_toggle: false
+        entities:
+          - entity: sensor.neptune_current_file
+            name: File
+          - entity: sensor.neptune_print_duration
+            name: Duration
+
+  - type: grid
+    cards:
+      - type: heading
+        heading: Temperatures
+        icon: mdi:thermometer
+      - type: entities
+        show_header_toggle: false
+        entities:
+          - entity: sensor.neptune_extruder_temp
+            name: Nozzle
+          - entity: sensor.neptune_bed_temp
+            name: Bed
+          - entity: sensor.neptune_extruder_target
+            name: Nozzle Target
+          - entity: sensor.neptune_bed_target
+            name: Bed Target

@@ -1,3 +1,6 @@
+# Overview — a real at-a-glance landing (greeting + top-line system health +
+# a compact device glance). Deep per-service / per-Mac / model-endpoint tables
+# live in Ops; full device controls live in the Devices tab. Keep this lean.
 title: Overview
 path: overview
 icon: mdi:view-dashboard
@@ -6,8 +9,28 @@ max_columns: 3
 sections:
   - type: grid
     cards:
+      - type: custom:mushroom-template-card
+        primary: >-
+          {{ ['Good morning','Good afternoon','Good evening'][0 if now().hour < 12 else 1 if now().hour < 18 else 2] }}
+        secondary: '{{ now().strftime("%A %-d %B · %-I:%M %p") }}'
+        icon: mdi:home-account
+        icon_color: blue
+        multiline_secondary: true
+        tap_action: { action: none }
+      - type: custom:mushroom-chips-card
+        chips:
+          - type: entity
+            entity: sun.sun
+            icon: mdi:white-balance-sunny
+          - type: template
+            icon: mdi:devices
+            content: Devices
+            tap_action: { action: navigate, navigation_path: /lovelace/devices }
+
+  - type: grid
+    cards:
       - type: heading
-        heading: Homelab
+        heading: System Health
         icon: mdi:server-network
       - type: tile
         entity: sensor.cluster_nodes_online
@@ -15,9 +38,6 @@ sections:
       - type: tile
         entity: sensor.mac_machines_online
         name: Macs
-      - type: tile
-        entity: sensor.homelab_total_nodes
-        name: Total Nodes
       - type: gauge
         entity: sensor.cluster_cpu_average
         name: Cluster CPU
@@ -40,80 +60,25 @@ sections:
   - type: grid
     cards:
       - type: heading
-        heading: Core Services
-        icon: mdi:application-cog
-      - type: entities
-        title: Runtime
-        show_header_toggle: false
-        entities:
-          - entity: sensor.ha_container_cpu
-            name: Home Assistant CPU
-          - entity: sensor.ha_container_ram
-            name: Home Assistant RAM
-          - entity: sensor.traefik_cpu
-            name: Traefik CPU
-          - entity: sensor.traefik_ram
-            name: Traefik RAM
-          - entity: sensor.litellm_cpu
-            name: LiteLLM CPU
-          - entity: sensor.litellm_ram
-            name: LiteLLM RAM
-
-  - type: grid
-    cards:
-      - type: heading
-        heading: Macs and AI
-        icon: mdi:laptop
-      - type: entities
-        title: Apple Silicon
-        show_header_toggle: false
-        entities:
-          - entity: sensor.mac_studio_cpu
-            name: Mac Studio CPU
-          - entity: sensor.mac_studio_ram
-            name: Mac Studio RAM
-          - entity: sensor.mac_mini_cpu
-            name: Mac Mini CPU
-          - entity: sensor.mac_mini_ram
-            name: Mac Mini RAM
-      - type: entities
-        title: Model Endpoints
-        show_header_toggle: false
-        entities:
-          - entity: sensor.mlx_code_server
-            name: MLX Code
-          - entity: sensor.mlx_smart_server
-            name: MLX Smart
-          - entity: sensor.mlx_reasoning_server
-            name: MLX Reasoning
-
-  - type: grid
-    cards:
-      - type: heading
-        heading: Robot Vacuum
-        icon: mdi:robot-vacuum
-      # Info-first card — the helpful stuff at a glance. Tap → /vacuum (live map,
-      # per-room buttons, settings, maintenance).
+        heading: Devices
+        icon: mdi:devices
+      # Compact glance — full controls live in the Devices tab / detail pages.
       - type: custom:mushroom-template-card
         primary: Robot Vacuum
         secondary: >-
           {{ states('sensor.tapovacuummop_status') }} ·
-          {{ states('sensor.tapovacuummop_battery') }}% ·
-          last {{ states('sensor.tapovacuummop_last_clean_area') }}
+          {{ states('sensor.tapovacuummop_battery') }}%
         icon: mdi:robot-vacuum
         icon_color: >-
           {{ 'red' if states('sensor.tapovacuummop_error') not in ['Ok','unknown','unavailable']
              else 'green' if states('vacuum.tapovacuummop') == 'docked' else 'blue' }}
-        multiline_secondary: true
         tap_action: { action: navigate, navigation_path: /lovelace/device-vacuum }
-      # Quick controls without leaving Overview.
-      - type: tile
-        entity: vacuum.tapovacuummop
-        name: Quick controls
-        features:
-          - type: vacuum-commands
-            commands:
-              - start_pause
-              - stop
-              - return_home
-        tap_action: { action: navigate, navigation_path: /lovelace/device-vacuum }
+      - type: custom:mushroom-template-card
+        primary: Litter Box
+        secondary: >-
+          {{ states('sensor.cat_litter_box_status') }} ·
+          {{ states('sensor.cat_litter_box_excretions_per_day') }} today
+        icon: mdi:cat
+        icon_color: >-
+          {{ 'orange' if is_state('sensor.cat_litter_box_status','Cat_into') else 'blue' }}
+        tap_action: { action: navigate, navigation_path: /lovelace/device-litterbox }

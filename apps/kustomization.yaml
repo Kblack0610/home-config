@@ -39,6 +39,7 @@ resources:
   - ntfy-public
   - nvidia-device-plugin
   - openclaw
+  - openwakeword
   - orcaslicer
   - postgres
   - sops-backup-rbac

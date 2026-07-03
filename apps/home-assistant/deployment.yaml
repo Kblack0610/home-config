@@ -1021,6 +1021,66 @@ spec:
           volumeMounts:
             - name: config
               mountPath: /config
+        # Stage 3 — seed the Wyoming integration config entry pointing at our
+        # in-cluster wyoming-openwakeword service (apps/openwakeword). Config-flow
+        # only, so seed it like the others. async_setup_entry raises
+        # ConfigEntryNotReady if the service is unreachable → HA boot is safe
+        # (setup_retry) and the wake_word.openwakeword entity appears once it
+        # connects. Idempotent on domain + host.
+        - name: seed-wyoming-openwakeword
+          image: ghcr.io/home-assistant/home-assistant:stable
+          command:
+            - python3
+            - -c
+            - |
+              import json, os, uuid
+              from datetime import datetime, timezone
+
+              ENTRIES = "/config/.storage/core.config_entries"
+              DOMAIN = "wyoming"
+              HOST = "wyoming-openwakeword.home-assistant.svc.cluster.local"
+              PORT = 10400
+
+              os.makedirs(os.path.dirname(ENTRIES), exist_ok=True)
+              if os.path.exists(ENTRIES):
+                  with open(ENTRIES) as f:
+                      store = json.load(f)
+              else:
+                  store = {"version": 1, "minor_version": 4, "key": "core.config_entries", "data": {"entries": []}}
+              entries = store["data"]["entries"]
+              for e in entries:
+                  e.setdefault("subentries", {})
+
+              for e in entries:
+                  if e.get("domain") == DOMAIN and e.get("data", {}).get("host") == HOST:
+                      print("Wyoming (openwakeword) entry already exists, skipping")
+                      exit(0)
+
+              now = datetime.now(timezone.utc).isoformat()
+              entries.append({
+                  "created_at": now,
+                  "data": {"host": HOST, "port": PORT},
+                  "disabled_by": None,
+                  "discovery_keys": {},
+                  "domain": DOMAIN,
+                  "entry_id": uuid.uuid4().hex,
+                  "minor_version": 1,
+                  "modified_at": now,
+                  "options": {},
+                  "pref_disable_new_entities": False,
+                  "pref_disable_polling": False,
+                  "source": "user",
+                  "subentries": {},
+                  "title": "openwakeword",
+                  "unique_id": None,
+                  "version": 1,
+              })
+              with open(ENTRIES, "w") as f:
+                  json.dump(store, f, indent=2)
+              print(f"Seeded Wyoming entry → {HOST}:{PORT} (openwakeword)")
+          volumeMounts:
+            - name: config
+              mountPath: /config
         # Seed a "Binks" Assist pipeline whose conversation engine is the Binks
         # agent (agent_id = the extended_openai_conversation entry_id, looked up
         # here) and make it the preferred pipeline. Stage 1 is chat-only, so
@@ -1086,14 +1146,18 @@ spec:
                   "tts_engine": "tts.google_translate_en_com",
                   "tts_language": "en",
                   "tts_voice": binks.get("tts_voice"),
-                  "wake_word_entity": binks.get("wake_word_entity"),
-                  "wake_word_id": binks.get("wake_word_id"),
+                  # Stage 3 wake word. Validated with the built-in "okay_nabu";
+                  # flip wake_word_id to "hey_binks" once hey_binks.tflite is
+                  # trained and shipped into apps/openwakeword (/custom).
+                  "wake_word_entity": "wake_word.openwakeword",
+                  "wake_word_id": "okay_nabu",
                   "prefer_local_intents": False,
               })
               store["data"]["preferred_item"] = binks["id"]
               with open(PIPE, "w") as f:
                   json.dump(store, f, indent=2)
-              print(f"Binks pipeline preferred (agent={agent_id}, stt={stt_engine}, tts=tts.google_translate_en_com)")
+              print(f"Binks pipeline preferred (agent={agent_id}, stt={stt_engine}, "
+                    f"tts=tts.google_translate_en_com, wake=wake_word.openwakeword/okay_nabu)")
           volumeMounts:
             - name: config
               mountPath: /config

@@ -155,6 +155,42 @@ spec:
           volumeMounts:
             - name: config
               mountPath: /config
+        # Binks voice (Stage 2) — OpenAI-compatible STT (fabio-garavini's
+        # openai_whisper_cloud). Routes speech-to-text through our LiteLLM
+        # `stt (whisper-turbo)` model, so no Wyoming/whisper container is needed.
+        # No PyPI requirements. No GitHub releases exist, so pin a commit SHA for
+        # reproducibility. RESILIENT: set -u + final exit 0; marker on success only.
+        - name: install-openai-whisper-cloud
+          image: alpine:3.20
+          command:
+            - sh
+            - -c
+            - |
+              set -u
+              VERSION="af4abafb47aaaa387e8cdb949fb838026517da6d"  # main @ 2026-07, manifest 1.3.0
+              TARGET="/config/custom_components/openai_whisper_cloud"
+              MARKER="$TARGET/.version"
+              if [ -f "$MARKER" ] && [ "$(cat "$MARKER")" = "$VERSION" ]; then
+                echo "openai_whisper_cloud $VERSION already installed, skipping"
+                exit 0
+              fi
+              apk add --no-cache wget tar >/dev/null
+              mkdir -p /config/custom_components
+              if wget -q -O /tmp/owc.tgz \
+                  "https://github.com/fabio-garavini/ha-openai-whisper-stt-api/archive/$VERSION.tar.gz"; then
+                rm -rf "$TARGET"; mkdir -p "$TARGET"
+                tar -xzf /tmp/owc.tgz -C /tmp
+                cp -r /tmp/ha-openai-whisper-stt-api-*/custom_components/openai_whisper_cloud/. "$TARGET/"
+                rm -rf /tmp/owc.tgz /tmp/ha-openai-whisper-stt-api-*
+                echo "$VERSION" > "$MARKER"
+                echo "openai_whisper_cloud $VERSION installed"
+              else
+                echo "WARN: openai_whisper_cloud download failed; no marker, will retry next start"
+              fi
+              exit 0
+          volumeMounts:
+            - name: config
+              mountPath: /config
         # Vendor pinned Lovelace custom cards + browser_mod for the wall-panel
         # dashboards (we don't run HACS; everything is git-pinned + reproducible).
         # RESILIENT BY DESIGN: `set -u` (not -e) and a final `exit 0` so a failed
@@ -907,6 +943,84 @@ spec:
           volumeMounts:
             - name: config
               mountPath: /config
+        # Stage 2 — seed the openai_whisper_cloud STT config entry in "Custom"
+        # provider mode, pointed at our LiteLLM transcription endpoint. NOTE: for
+        # a custom provider the component uses the URL AS-IS (it does NOT append
+        # /v1/audio/transcriptions), so the URL must be the FULL endpoint. No
+        # network validation happens at entry load, so HA boot stays independent
+        # of LiteLLM. Idempotent on domain. Entity id derives from name → stt.binks_stt.
+        - name: seed-openai-stt
+          image: ghcr.io/home-assistant/home-assistant:stable
+          command:
+            - python3
+            - -c
+            - |
+              import json, os, uuid
+              from datetime import datetime, timezone
+
+              ENTRIES = "/config/.storage/core.config_entries"
+              DOMAIN = "openai_whisper_cloud"
+
+              api_key = os.environ.get("LITELLM_ASSIST_KEY", "").strip()
+              if not api_key:
+                  print("WARN: LITELLM_ASSIST_KEY not set; skipping STT seed")
+                  exit(0)
+
+              os.makedirs(os.path.dirname(ENTRIES), exist_ok=True)
+              if os.path.exists(ENTRIES):
+                  with open(ENTRIES) as f:
+                      store = json.load(f)
+              else:
+                  store = {"version": 1, "minor_version": 4, "key": "core.config_entries", "data": {"entries": []}}
+              entries = store["data"]["entries"]
+              for e in entries:
+                  e.setdefault("subentries", {})
+
+              for e in entries:
+                  if e.get("domain") == DOMAIN:
+                      print("STT entry already exists, skipping")
+                      exit(0)
+
+              now = datetime.now(timezone.utc).isoformat()
+              entries.append({
+                  "created_at": now,
+                  "data": {
+                      "custom_provider": True,
+                      "name": "Binks STT",
+                      "url": "http://litellm.ai-gateway.svc.cluster.local:4000/v1/audio/transcriptions",
+                      "api_key": api_key,
+                  },
+                  "disabled_by": None,
+                  "discovery_keys": {},
+                  "domain": DOMAIN,
+                  "entry_id": uuid.uuid4().hex,
+                  "minor_version": 3,
+                  "modified_at": now,
+                  "options": {
+                      "model": "stt (whisper-turbo)",
+                      "temperature": 0,
+                      "prompt": "",
+                  },
+                  "pref_disable_new_entities": False,
+                  "pref_disable_polling": False,
+                  "source": "user",
+                  "subentries": {},
+                  "title": "Binks STT",
+                  "unique_id": None,
+                  "version": 1,
+              })
+              with open(ENTRIES, "w") as f:
+                  json.dump(store, f, indent=2)
+              print("Seeded Binks STT (openai_whisper_cloud, custom → litellm whisper-turbo)")
+          env:
+            - name: LITELLM_ASSIST_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: litellm-assist-credentials
+                  key: api-key
+          volumeMounts:
+            - name: config
+              mountPath: /config
         # Seed a "Binks" Assist pipeline whose conversation engine is the Binks
         # agent (agent_id = the extended_openai_conversation entry_id, looked up
         # here) and make it the preferred pipeline. Stage 1 is chat-only, so
@@ -936,6 +1050,18 @@ spec:
                   print("WARN: Binks conversation entry not found; skipping pipeline seed")
                   exit(0)
 
+              # Stage 2 STT: the openai_whisper_cloud entity. Resolve its real
+              # entity_id from the registry; fall back to the deterministic id
+              # derived from its name ("Binks STT") on first boot before it exists.
+              stt_engine = "stt.binks_stt"
+              REG = "/config/.storage/core.entity_registry"
+              if os.path.exists(REG):
+                  with open(REG) as f:
+                      for ent in json.load(f)["data"]["entities"]:
+                          if ent.get("platform") == "openai_whisper_cloud":
+                              stt_engine = ent["entity_id"]
+                              break
+
               if os.path.exists(PIPE):
                   with open(PIPE) as f:
                       store = json.load(f)
@@ -955,10 +1081,10 @@ spec:
                   "conversation_engine": agent_id,
                   "conversation_language": "en",
                   "language": "en",
-                  "stt_engine": binks.get("stt_engine"),
-                  "stt_language": binks.get("stt_language"),
-                  "tts_engine": binks.get("tts_engine"),
-                  "tts_language": binks.get("tts_language"),
+                  "stt_engine": stt_engine,
+                  "stt_language": "en",
+                  "tts_engine": "tts.google_translate_en_com",
+                  "tts_language": "en",
                   "tts_voice": binks.get("tts_voice"),
                   "wake_word_entity": binks.get("wake_word_entity"),
                   "wake_word_id": binks.get("wake_word_id"),
@@ -967,7 +1093,7 @@ spec:
               store["data"]["preferred_item"] = binks["id"]
               with open(PIPE, "w") as f:
                   json.dump(store, f, indent=2)
-              print(f"Binks pipeline preferred (agent={agent_id})")
+              print(f"Binks pipeline preferred (agent={agent_id}, stt={stt_engine}, tts=tts.google_translate_en_com)")
           volumeMounts:
             - name: config
               mountPath: /config

@@ -7,8 +7,8 @@ Built and shipped in stages so each layer is tested in isolation.
 | Stage | What | Status |
 |-------|------|--------|
 | 0 | Fix broken cast TTS announcements (`tts.google_say`) | ✅ shipped (PR #77) |
-| 1 | **Text chat** — Binks conversation agent + home control | ✅ this doc |
-| 2 | **Press-to-talk voice** — STT via LiteLLM whisper + Google TTS | ⏳ planned |
+| 1 | **Text chat** — Binks conversation agent + home control | ✅ shipped |
+| 2 | **Press-to-talk voice** — STT via LiteLLM whisper + Google TTS | ✅ shipped |
 | 3 | **"Hey Binks" wake word** — server owww + mic satellite | ⏳ planned (needs hardware) |
 
 Everything is code-first: custom components are vendored by `install-*` init containers
@@ -115,12 +115,34 @@ narrowing it there is safe and persists (the seed won't re-add what you remove).
 
 ---
 
-## Stage 2 — press-to-talk (planned)
+## Stage 2 — press-to-talk (shipped)
 
-Add `install-openai-stt` + `seed-openai-stt` (an OpenAI-compatible STT custom component
-pointed at LiteLLM `stt (whisper-turbo)`), then the pipeline seed gains
-`stt_engine: <stt entity>`, `tts_engine: tts.google_translate_en_com`. Press-to-talk mic
-in the Assist dialog on the wall tablet / companion app — no hardware needed.
+Speech-to-text rides LiteLLM's `stt (whisper-turbo)`; the reply is spoken with the
+existing Google Translate TTS. No new k8s deployment.
+
+Two init containers (`deployment.yaml`) plus a pipeline update:
+
+1. `install-openai-whisper-cloud` — vendors `fabio-garavini/ha-openai-whisper-stt-api`
+   (domain `openai_whisper_cloud`), pinned to a **commit SHA** (no releases exist), no
+   PyPI deps.
+2. `seed-openai-stt` — config entry in **"Custom" provider** mode. **Gotcha:** in custom
+   mode the component uses the URL *as-is* (it does NOT append `/v1/audio/transcriptions`),
+   so the entry URL is the **full endpoint** `…:4000/v1/audio/transcriptions`. `model` =
+   `stt (whisper-turbo)`. No auth check at load → boot stays independent of LiteLLM.
+   Creates entity **`stt.binks_stt`**.
+3. `seed-binks-pipeline` now sets `stt_engine` (resolved from the registry, else
+   `stt.binks_stt`), `stt_language: en`, `tts_engine: tts.google_translate_en_com`,
+   `tts_language: en` on the same Binks pipeline.
+
+**Use it:** open the Assist dialog on the wall tablet or the Companion app and press the
+**mic** button (browser/app mic — no satellite hardware). Say a command → LiteLLM
+whisper transcribes → Binks acts → Google TTS speaks the reply.
+
+Notes / knobs:
+- Google Translate TTS is **non-streaming** (fetches the full clip) — fine, just not
+  chunked. Keep `tts_language: en` to avoid `tts-not-supported`.
+- Verified out of band (2026-07): `POST …/v1/audio/transcriptions` with the scoped key +
+  `model=stt (whisper-turbo)` returns `200` + `{"text": …}` for a spoken WAV.
 
 ## Stage 3 — "hey binks" wake word (planned, needs hardware)
 

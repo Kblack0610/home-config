@@ -1,0 +1,43 @@
+# Devices hub — the main/first tab. A grid of standardized device summary cards
+# (mushroom-template-card: icon + name + state line + state-colored icon), each
+# tapping through to its detail subview (device_<slug>.yaml, subview: true).
+# Add a card here for each new device; the detail file is shared with the wall
+# dashboard via !include. Nav paths are dashboard-absolute (/lovelace/…), so the
+# wall dashboard keeps its own thin hub pointing at /wall-panels/… .
+title: Devices
+path: devices
+icon: mdi:devices
+type: sections
+max_columns: 3
+sections:
+  - type: grid
+    cards:
+      - type: heading
+        heading: Devices
+        icon: mdi:devices
+
+      - type: custom:mushroom-template-card
+        primary: Robot Vacuum
+        secondary: >-
+          {{ states('sensor.tapovacuummop_status') }} ·
+          {{ states('sensor.tapovacuummop_battery') }}% ·
+          last {{ states('sensor.tapovacuummop_last_clean_area') }}
+        icon: mdi:robot-vacuum
+        icon_color: >-
+          {{ 'red' if states('sensor.tapovacuummop_error') not in ['Ok','unknown','unavailable']
+             else 'green' if states('vacuum.tapovacuummop') == 'docked' else 'blue' }}
+        multiline_secondary: true
+        tap_action: { action: navigate, navigation_path: /lovelace/device-vacuum }
+
+      - type: custom:mushroom-template-card
+        primary: Litter Box
+        secondary: >-
+          {{ states('sensor.cat_litter_box_status') }} ·
+          litter {{ states('sensor.cat_litter_box_litter_level') }} ·
+          {{ 'bin full' if is_state('binary_sensor.cat_litter_box_bin_full','on') else 'bin ok' }}
+        icon: mdi:cat
+        icon_color: >-
+          {{ 'red' if is_state('binary_sensor.cat_litter_box_bin_full','on')
+             else 'blue' if is_state('switch.cat_litter_box_power','on') else 'disabled' }}
+        multiline_secondary: true
+        tap_action: { action: navigate, navigation_path: /lovelace/device-litterbox }

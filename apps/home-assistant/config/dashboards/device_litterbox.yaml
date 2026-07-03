@@ -1,0 +1,63 @@
+# Device detail subview — Fumoi litter box (LocalTuya). subview:true → hidden
+# from the tab bar, reached from the Devices hub. Entities seeded by the
+# seed-localtuya init container (see docs/smart-home-control.md). The read-only
+# sensor labels (Litter Level / Counter A/B / Bin Full) are provisional pending
+# a live clean-cycle confirmation of DP semantics.
+title: Litter Box
+path: device-litterbox
+icon: mdi:cat
+subview: true
+type: sections
+max_columns: 3
+sections:
+  - type: grid
+    cards:
+      - type: heading
+        heading: Litter Box
+        icon: mdi:cat
+      - type: tile
+        entity: switch.cat_litter_box_power
+        name: Power
+      - type: tile
+        entity: switch.cat_litter_box_auto_clean
+        name: Auto Clean
+      - type: tile
+        entity: button.cat_litter_box_start_clean
+        name: Start Clean
+      - type: tile
+        entity: select.cat_litter_box_mode
+        name: Mode
+      - type: tile
+        entity: number.cat_litter_box_clean_delay
+        name: Clean Delay
+        features:
+          - type: numeric-input
+            style: buttons
+
+  - type: grid
+    cards:
+      - type: heading
+        heading: Status
+        icon: mdi:information-outline
+      - type: tile
+        entity: sensor.cat_litter_box_status
+        name: Status
+      - type: tile
+        entity: sensor.cat_litter_box_litter_level
+        name: Litter Level
+      - type: tile
+        entity: binary_sensor.cat_litter_box_bin_full
+        name: Bin Full
+
+  - type: grid
+    cards:
+      - type: heading
+        heading: Counters
+        icon: mdi:counter
+      - type: entities
+        show_header_toggle: false
+        entities:
+          - entity: sensor.cat_litter_box_counter_a
+            name: Counter A
+          - entity: sensor.cat_litter_box_counter_b
+            name: Counter B

@@ -105,7 +105,7 @@ sections:
           {{ 'red' if states('sensor.tapovacuummop_error') not in ['Ok','unknown','unavailable']
              else 'green' if states('vacuum.tapovacuummop') == 'docked' else 'blue' }}
         multiline_secondary: true
-        tap_action: { action: navigate, navigation_path: /lovelace/vacuum }
+        tap_action: { action: navigate, navigation_path: /lovelace/device-vacuum }
       # Quick controls without leaving Overview.
       - type: tile
         entity: vacuum.tapovacuummop
@@ -116,4 +116,4 @@ sections:
               - start_pause
               - stop
               - return_home
-        tap_action: { action: navigate, navigation_path: /lovelace/vacuum }
+        tap_action: { action: navigate, navigation_path: /lovelace/device-vacuum }

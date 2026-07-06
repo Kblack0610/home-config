@@ -191,6 +191,43 @@ spec:
           volumeMounts:
             - name: config
               mountPath: /config
+        # Binks voice (Stage 4) — jxlarrea's voice_satellite: a self-hosted custom
+        # Lovelace card + integration that turns a wall tablet into an always-on
+        # voice satellite (in-browser microWakeWord → the Binks Assist pipeline).
+        # The release .zip unpacks FLAT to the contents of the component dir, and
+        # the card JS auto-registers via add_extra_js_url (no lovelace: resources
+        # entry needed). One pip dep (mutagen) is auto-installed by HA at boot.
+        # RESILIENT: set -u + final exit 0; marker on success only.
+        - name: install-voice-satellite
+          image: alpine:3.20
+          command:
+            - sh
+            - -c
+            - |
+              set -u
+              VERSION="2026.6.3"
+              TARGET="/config/custom_components/voice_satellite"
+              MARKER="$TARGET/.version"
+              if [ -f "$MARKER" ] && [ "$(cat "$MARKER")" = "$VERSION" ]; then
+                echo "voice_satellite $VERSION already installed, skipping"
+                exit 0
+              fi
+              apk add --no-cache wget unzip >/dev/null
+              mkdir -p /config/custom_components
+              if wget -q -O /tmp/vs.zip \
+                  "https://github.com/jxlarrea/voice-satellite-card-integration/releases/download/$VERSION/voice-satellite-card.zip"; then
+                rm -rf "$TARGET"; mkdir -p "$TARGET"
+                unzip -o -q /tmp/vs.zip -d "$TARGET"
+                rm /tmp/vs.zip
+                echo "$VERSION" > "$MARKER"
+                echo "voice_satellite $VERSION installed"
+              else
+                echo "WARN: voice_satellite download failed; no marker, will retry next start"
+              fi
+              exit 0
+          volumeMounts:
+            - name: config
+              mountPath: /config
         # Vendor pinned Lovelace custom cards + browser_mod for the wall-panel
         # dashboards (we don't run HACS; everything is git-pinned + reproducible).
         # RESILIENT BY DESIGN: `set -u` (not -e) and a final `exit 0` so a failed
@@ -1206,6 +1243,67 @@ spec:
                   json.dump(store, f, indent=2)
               print(f"Binks pipeline preferred (agent={agent_id}, stt={stt_engine}, "
                     f"tts=tts.google_translate_en_com, wake=wake_word.openwakeword/okay_nabu)")
+          volumeMounts:
+            - name: config
+              mountPath: /config
+        # Stage 4 — seed the voice_satellite config entry (config-flow-only; one
+        # step asking a name). One entry = one satellite device (assist_satellite
+        # + media_player + Pipeline/wake-word select entities). Idempotent on the
+        # slugified unique_id. The per-BROWSER→satellite binding + the select
+        # values (Pipeline=Binks, wake word) are set at runtime (UI / a startup
+        # automation), not here. Schema mirrors config_flow.py @ 2026.6.3:
+        # data={"name": …}, unique_id=name.lower().replace(" ","_"), VERSION=1.
+        - name: seed-voice-satellite
+          image: ghcr.io/home-assistant/home-assistant:stable
+          command:
+            - python3
+            - -c
+            - |
+              import json, os, uuid
+              from datetime import datetime, timezone
+
+              ENTRIES = "/config/.storage/core.config_entries"
+              DOMAIN = "voice_satellite"
+              NAME = "Wall Kitchen"
+              UID = NAME.lower().replace(" ", "_")
+
+              os.makedirs(os.path.dirname(ENTRIES), exist_ok=True)
+              if os.path.exists(ENTRIES):
+                  with open(ENTRIES) as f:
+                      store = json.load(f)
+              else:
+                  store = {"version": 1, "minor_version": 4, "key": "core.config_entries", "data": {"entries": []}}
+              entries = store["data"]["entries"]
+              for e in entries:
+                  e.setdefault("subentries", {})
+
+              for e in entries:
+                  if e.get("domain") == DOMAIN and e.get("unique_id") == UID:
+                      print(f"voice_satellite '{NAME}' already exists, skipping")
+                      exit(0)
+
+              now = datetime.now(timezone.utc).isoformat()
+              entries.append({
+                  "created_at": now,
+                  "data": {"name": NAME},
+                  "disabled_by": None,
+                  "discovery_keys": {},
+                  "domain": DOMAIN,
+                  "entry_id": uuid.uuid4().hex,
+                  "minor_version": 1,
+                  "modified_at": now,
+                  "options": {},
+                  "pref_disable_new_entities": False,
+                  "pref_disable_polling": False,
+                  "source": "user",
+                  "subentries": {},
+                  "title": NAME,
+                  "unique_id": UID,
+                  "version": 1,
+              })
+              with open(ENTRIES, "w") as f:
+                  json.dump(store, f, indent=2)
+              print(f"Seeded voice_satellite '{NAME}' (unique_id={UID})")
           volumeMounts:
             - name: config
               mountPath: /config

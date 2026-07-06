@@ -888,6 +888,124 @@
           "refId": "A"
         }
       ]
+    },
+    {
+      "collapsed": false,
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 57 },
+      "id": 50,
+      "panels": [],
+      "title": "Smart Plugs — Energy (Shelly)",
+      "type": "row"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "description": "Active power per Shelly Plug US Gen4, from the plug's MQTT status/switch:0 snapshot (via mqtt2prom). Auto-includes any new shellyplugusg4-* plug.",
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "palette-classic" },
+          "custom": { "drawStyle": "line", "lineInterpolation": "smooth", "lineWidth": 2, "fillOpacity": 10, "spanNulls": false, "pointSize": 5, "showPoints": "auto" },
+          "unit": "watt"
+        },
+        "overrides": []
+      },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 58 },
+      "id": 51,
+      "options": {
+        "legend": { "calcs": ["lastNotNull", "max"], "displayMode": "table", "placement": "bottom" },
+        "tooltip": { "mode": "multi", "sort": "none" }
+      },
+      "title": "Plug Power (W)",
+      "type": "timeseries",
+      "targets": [
+        {
+          "datasource": { "type": "prometheus", "uid": "${datasource}" },
+          "expr": "label_replace(mqtt_apower{topic=~\"shellyplugusg4-.+_status_switch:0\"}, \"plug\", \"$1\", \"topic\", \"shellyplugusg4-(.+)_status_switch:0\")",
+          "legendFormat": "{{plug}}",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "description": "Cumulative energy per plug (Shelly aenergy.total, watt-hours).",
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "palette-classic" },
+          "custom": { "drawStyle": "line", "lineInterpolation": "smooth", "lineWidth": 2, "fillOpacity": 10, "spanNulls": false, "pointSize": 5, "showPoints": "auto" },
+          "unit": "watth"
+        },
+        "overrides": []
+      },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 58 },
+      "id": 52,
+      "options": {
+        "legend": { "calcs": ["lastNotNull"], "displayMode": "table", "placement": "bottom" },
+        "tooltip": { "mode": "multi", "sort": "none" }
+      },
+      "title": "Plug Cumulative Energy (Wh)",
+      "type": "timeseries",
+      "targets": [
+        {
+          "datasource": { "type": "prometheus", "uid": "${datasource}" },
+          "expr": "label_replace(mqtt_aenergy_total{topic=~\"shellyplugusg4-.+_status_switch:0\"}, \"plug\", \"$1\", \"topic\", \"shellyplugusg4-(.+)_status_switch:0\")",
+          "legendFormat": "{{plug}}",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "palette-classic" },
+          "custom": { "drawStyle": "line", "lineInterpolation": "smooth", "lineWidth": 2, "fillOpacity": 10, "spanNulls": false, "pointSize": 5, "showPoints": "auto" },
+          "unit": "volt"
+        },
+        "overrides": []
+      },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 66 },
+      "id": 53,
+      "options": {
+        "legend": { "calcs": ["lastNotNull"], "displayMode": "table", "placement": "bottom" },
+        "tooltip": { "mode": "multi", "sort": "none" }
+      },
+      "title": "Plug Line Voltage (V)",
+      "type": "timeseries",
+      "targets": [
+        {
+          "datasource": { "type": "prometheus", "uid": "${datasource}" },
+          "expr": "label_replace(mqtt_voltage{topic=~\"shellyplugusg4-.+_status_switch:0\"}, \"plug\", \"$1\", \"topic\", \"shellyplugusg4-(.+)_status_switch:0\")",
+          "legendFormat": "{{plug}}",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "palette-classic" },
+          "custom": { "drawStyle": "line", "lineInterpolation": "smooth", "lineWidth": 2, "fillOpacity": 10, "spanNulls": false, "pointSize": 5, "showPoints": "auto" },
+          "unit": "celsius"
+        },
+        "overrides": []
+      },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 66 },
+      "id": 54,
+      "options": {
+        "legend": { "calcs": ["lastNotNull", "max"], "displayMode": "table", "placement": "bottom" },
+        "tooltip": { "mode": "multi", "sort": "none" }
+      },
+      "title": "Plug Internal Temp (°C)",
+      "type": "timeseries",
+      "targets": [
+        {
+          "datasource": { "type": "prometheus", "uid": "${datasource}" },
+          "expr": "label_replace(mqtt_temperature_tC{topic=~\"shellyplugusg4-.+_status_switch:0\"}, \"plug\", \"$1\", \"topic\", \"shellyplugusg4-(.+)_status_switch:0\")",
+          "legendFormat": "{{plug}}",
+          "refId": "A"
+        }
+      ]
     }
   ],
   "refresh": "30s",

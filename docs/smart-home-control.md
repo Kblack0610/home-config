@@ -1,11 +1,12 @@
 # Smart-Home Outlet / Energy / AC Control — Buildout Runbook
 
-> **Status: HARDWARE PURCHASED / not yet implemented in-cluster.** As of 2026-06-29 the
-> first wave of devices is **bought** (see _Hardware inventory_ below) but **nothing has been
-> wired into the cluster yet** — no MQTT config entry, no dashboard edit, no DHCP lease, no
-> commit. Execute the "Repo integration" steps only once the devices physically arrive and
-> are on the LAN. This doc is the buying + integration guide; later agents should treat the
-> _Device compatibility verdicts_ table as the reusable "is this thing hackable/local?" lookup.
+> **Status: WAVE 1 INTEGRATED (2026-07-06).** The **2× Shelly Plug US Gen4** (native HA
+> integration + MQTT→Grafana) and the **Broadlink RM4 Pro** (native HA integration; IR/RF codes
+> still to be learned) are **wired into the cluster, DHCP-pinned, and live-verified** — see the
+> per-device sections below. Still pending: **Broadlink code-learning** (AC + UFO lamp) and the
+> **Athom ESPHome plugs** (not yet onboarded → they carry the HA MQTT integration seed). This doc
+> is the buying + integration guide; later agents should treat the _Device compatibility verdicts_
+> table as the reusable "is this thing hackable/local?" lookup.
 
 ## Hardware inventory (purchased 2026-06-29)
 
@@ -125,6 +126,7 @@ directly from **how the device talks** — not from the brand.
 | **Kasa HS103 (P4)** | TP-Link local (KLAP) | ⚠️ partial | Works locally via HA **TP-Link** integration, but **NO energy monitoring** (HW lacks it), and newer firmware needs TP-Link cloud creds for KLAP. Fine for plain on/off. For metering use **KP125/KP115/HS110**. |
 | **Third Reality Zigbee Plug** (4-pack, metered) | Zigbee | ✅ (with coordinator) | Great plugs, but **Zigbee** → needs Ethernet **SLZB-06** + Zigbee2MQTT. = the growth path, not a WiFi drop-in. |
 | **Athom plug — Tasmota vs ESPHome** | WiFi (ESP32-C3) | ✅ | **Same hardware**, only the pre-flashed firmware differs; convertible either way. **Tasmota** = web-UI config, MQTT-native, no toolchain. **ESPHome** = YAML config-as-code (commit to repo), tight HA API; add `mqtt:` to feed Grafana. Recommend **ESPHome** for this GitOps repo. |
+| **Shelly Plug US Gen4** (`S4PL-00116US`) | WiFi (own web UI; Gen2+ RPC) | ✅ | UL-listed metered plug. **Native HA `shelly` integration** for control/entities (RPC/WebSocket) — its MQTT is RPC-style so it does **NOT** HA-auto-discover; run MQTT *in parallel* only to feed Grafana. No app/cloud needed (onboard via its `192.168.33.1` AP). Reserve for AC/high-draw loads. **Integrated 2026-07-06** — see section below. |
 | **WOWLUMEN UFO 71" floor lamp** | **433 MHz RF** remote; has state **memory** | ✅ | Not IR — RM4C *Mini* can't; **RM4 Pro (RF)** can (on/off+dim+timer). OR simplest: **smart plug** for on/off — memory means it returns to your preset. Flipper can pre-verify it's fixed-code. |
 | **Dreo tower fan** | **IR** remote (or WiFi on "Smart"/"S" models) | ✅ | Non-smart model → **RM4 Pro (IR)**. "Smart"/WiFi model → **`hass-dreo`** HACS integration (cloud). IR is toggle/stateless → pair a plug for true on/off state. |
 | **Fumoi auto litter box** ("Cat Litter Box M4") | **WiFi — Tuya** (Smart Life app, 2.4 GHz) | ✅ | Generic rebranded **Tuya** device → **LocalTuya** (`xZetsubou` fork), fully on-LAN after key extraction. Discovered 2026-06-30: proto v3.5, 7 writable DPs. See _Tuya local-control recipe_ + _LocalTuya integration_ below. **Do not flash** an appliance — LocalTuya talks to the stock firmware. |
@@ -251,6 +253,60 @@ corrected DP table above.
   DP102 light colour = `white`/`red`/`greed`(=green, firmware typo)/`blue`/`purple`;
   DP109 `battery_state` = `Auto`/`App` (trigger source).
 
+## Shelly Plug US Gen4 integration — native + MQTT (mirror Tapo/Bambu)
+
+**Devices** (2×): model **`S4PL-00116US`**, `gen: 4`, ids `shellyplugusg4-acebe6f28334` (→ DHCP
+`.104`, "Shelly Plug US 1", free) and `shellyplugusg4-acebe6f2a1e8` (→ `.105`, "Shelly Plug US 2",
+on a lamp). Auth disabled. Joined SSID **`BrownDooDoo`** (2.4 GHz).
+
+**Two integrations, on purpose** (Shelly Gen4 MQTT is RPC-style → no HA discovery):
+- **HA control/entities → native `shelly` integration** (local RPC/WebSocket). Seeded as two
+  config entries in `apps/home-assistant/deployment.yaml` (`seed-shelly`). Schema mirrors HA core
+  `shelly/config_flow.py` @ 2026.7: `data = {host, port:80, sleep_period:0, model, gen:4}`,
+  `unique_id = MAC` (UPPERCASE no-colons — matches `mac_address_from_name` and RPC `info[CONF_MAC]`,
+  so the seed does not collide with mDNS auto-discovery), `VERSION=1 MINOR_VERSION=3`. Idempotent on
+  `domain+data.host`. No custom component (core integration); no secret (hosts inlined, nothing secret).
+- **Grafana energy → MQTT** (already enabled on-device, server `192.168.1.20:31883`). The plug
+  publishes JSON to `shellyplugusg4-<mac>/status/switch:0`; `apps/mqtt2prom` (kpetremann/
+  mqtt-exporter, subscribed to `#`) turns it into `mqtt_apower`/`mqtt_voltage`/`mqtt_current`/
+  `mqtt_aenergy_total`/`mqtt_temperature_tC{topic="shellyplugusg4-<mac>_status_switch:0"}` —
+  **zero exporter config**. Grafana panels added to `apps/monitoring/dashboards/iot-fleet-devices.json`
+  (row "Smart Plugs — Energy") via `label_replace(...topic → plug)` so future plugs auto-appear.
+
+**✅ DONE + live-verified 2026-07-06.** Both plugs pinned + on MQTT; toggling published real
+telemetry (7–8 W lamp load); native seed validated against a copy of the live `core.config_entries`
+(idempotent, key-set identical to the loaded `tapo_rv30` entry).
+
+**Gotchas captured:**
+- **Shelly MQTT ≠ HA discovery.** Do not expect HA entities from MQTT for Shelly Gen4 — use the
+  native integration. (Tasmota/ESPHome are the ones that auto-discover.)
+- **A smart plug must sit on an always-hot outlet.** Feeding one from a switched/half-hot outlet
+  cuts its power → it drops off WiFi + MQTT (`online false` LWT) and becomes uncontrollable. Leave
+  any wall switch permanently ON; control the load via the plug's relay.
+- **Power-cycling never wipes WiFi config** — creds live in flash. Unplug/move/replug freely; the
+  plug rejoins its SSID in ~15–30 s (given power + range). An offline plug = no power *or* no signal.
+- **`192.168.33.1` is only the setup AP** — once joined to WiFi the plug drops it and lives at its
+  LAN IP; do MQTT/config over the LAN IP (or the native integration), not the AP.
+
+## Broadlink RM4 Pro integration — native (IR + 433 RF)
+
+**Device:** `BroadLink-Remote-e4-fa-ae`, MAC `34:8E:89:E4:FA:AE`, **devtype `0x520B` = "RM4 pro"**
+(in the bundled `broadlink` lib), DHCP-pinned `.103`. Joined via the Broadlink app (WiFi-onboarding
+only); **firmware update declined** (newer RM4 firmware can lock out the local control HA needs).
+
+**Native `broadlink` integration** — seeded in `apps/home-assistant/deployment.yaml`
+(`seed-broadlink`). Schema mirrors HA core `broadlink/config_flow.py` @ 2026.7:
+`data = {host, mac:"348e89e4faae" (12-hex lower), type:21003 (0x520B), timeout:5}`,
+`unique_id = mac.hex()`, `VERSION=1`. Idempotent on `domain+data.mac`. The device re-authenticates
+at runtime on setup — if `auth()` fails, the unit is cloud-locked → unlock in the Broadlink app.
+
+**⏳ Codes not yet learned.** Next: learn IR (portable AC) + 433 RF (WOWLUMEN UFO lamp) via the
+`broadlink.learn` service — **never the phone app** (app codes are cloud-encrypted, unusable by HA).
+For a proper thermostat card, add **SmartIR** (init container + `climate:` package) with the AC's
+device code. The wall/Devices Climate sections auto-populate once a `climate` entity exists.
+
+**✅ Config entry DONE + device reachable 2026-07-06** (on network, UDP-discoverable, seed validated).
+
 ---
 
 ## Repo integration (execute ONLY after hardware arrives)
@@ -267,9 +323,17 @@ All changes ship through Flux: edit → commit → push to **forgejo** → recon
      `LoadBalancer` on :1883 later for a stable device-facing IP.
    - Seed the MQTT config entry like Bambu/Tapo (config-flow entry from a SOPS secret), per
      `apps/home-assistant/README.md`. Broker is `allow_anonymous true` → no creds initially.
-2. **Devices auto-appear** — Shelly + Tasmota/ESPHome speak HA MQTT discovery, so each plug
-   shows up as `switch` + power/energy `sensor`, and the AC as `climate`, with no manual
-   entity wiring.
+2. **Getting entities into HA — mind the discovery split** (⚠️ corrected 2026-07-06):
+   - **Shelly Gen4 MQTT is RPC-style and emits NO Home-Assistant discovery.** MQTT alone gives
+     you Grafana (via mqtt-exporter) but **zero HA entities**. Use the **native HA Shelly
+     integration** (local RPC/WebSocket) for HA control — seed its config entry like Bambu/Tapo.
+     The plug's MQTT stays on *in parallel* purely to feed Grafana. (This corrects the earlier
+     claim that Shelly auto-appears over MQTT — it does not.)
+   - **Tasmota / ESPHome (Athom) DO speak HA MQTT discovery** → those plugs auto-create
+     `switch` + power/energy `sensor` once HA's MQTT integration is enabled. So "MQTT everything"
+     holds for the Athoms, not the Shellys.
+   - **Broadlink** → native HA Broadlink integration (not MQTT); the AC becomes a `climate`
+     entity via SmartIR once codes are learned.
 3. **Surface on the wall dashboard** — `apps/home-assistant/config/dashboards/wall.yaml`
    Control view already auto-populates `light`/`fan`/`switch` via `auto-entities`. Add a
    `climate` domain filter (ACs) + a small "Energy" section filtering `device_class: power`.
@@ -277,9 +341,11 @@ All changes ship through Flux: edit → commit → push to **forgejo** → recon
 4. **Energy graphs for free** — `apps/mqtt2prom` already scrapes MQTT JSON → Prometheus, so
    per-plug watts land in Grafana automatically. Optionally enable HA's native **Energy
    dashboard** off the plug kWh sensors.
-5. **Static DHCP leases** — add each device to `infrastructure/dhcp/devices.yaml` in the IoT
-   range (`.80–.119`), following the existing `rv30-vacuum` entry. Broadlink needs a reserved
-   IP for its HA integration.
+5. **Static DHCP leases** — ✅ DONE 2026-07-06. Broadlink `.103`, Shellys `.104`/`.105` pinned
+   in `infrastructure/dhcp/devices.yaml` (IoT range). Gotchas: `dhcp.sh` takes flags **before**
+   the command (`./dhcp.sh --force sync`, not `sync --force`); and a reservation only takes effect
+   after the device **renews its lease** (reboot the plug or wait out the lease). Broadlink needs a
+   reserved IP for its HA integration (host-based config entry).
 6. **(Optional) on-brand IR blaster** — build an ESPHome IR blaster matching
    `apps/esp32-firmware` instead of Broadlink; fully local + OTA. Broadlink recommended to
    start (plug-and-play + 433 MHz); graduate to ESPHome per-room later.
@@ -378,4 +444,19 @@ hardware. Not needed for new purchases (buy Shelly/Athom and skip the hack).
 - **Secrets via rbw, never chat.** Tuya Client ID/Secret/UID live in rbw entry `tuya-iot`;
   `device_id`/`local_key` get sealed into a SOPS secret at implementation time. Discovery
   scripts write keys only to mode-600 files.
+- **2026-07-06 — Shelly = native HA integration for control + MQTT only for Grafana; NOT
+  MQTT-for-HA.** WHY: Shelly Gen4's MQTT is RPC-style and emits no HA discovery, so MQTT alone
+  gives zero HA entities. The native `shelly` integration (local RPC/WebSocket) is the only way to
+  get control; the on-device MQTT runs in parallel purely so `mqtt-exporter` → Grafana gets per-plug
+  watts for free. This is why "MQTT everything" holds for the (future) Athom ESPHome plugs but not
+  the Shellys. Corrects the original runbook's "Shelly auto-appears over MQTT" claim.
+- **2026-07-06 — no SOPS secrets for Shelly/Broadlink seeds; hosts/MACs inlined.** WHY: auth is
+  disabled on the plugs and the broker is anonymous, so nothing in these config entries is secret.
+  Inlining in the `seed-*` init containers is simpler than a SOPS secret with no confidential data
+  (revisit if MQTT auth is ever enabled). Deviates from the Bambu/Tapo/LocalTuya secret pattern by
+  design, because those carry real credentials and these don't.
+- **2026-07-06 — HA MQTT integration deferred to the Athom wave.** WHY: it has no consumer yet
+  (Shelly=native, Grafana=independent mqtt-exporter), and hand-seeding MQTT (connection-validated,
+  data/options churn across versions) is fragile. It gets seeded when the Athom ESPHome plugs —
+  which DO speak HA MQTT discovery — are onboarded.
 </content>

@@ -32,6 +32,17 @@ dhcp sync
 | `discover` | Show active DHCP leases not in the inventory |
 | `status` | Summary of inventory vs router state |
 
+> **Gotchas** (learned 2026-07-06):
+> - **Flags go BEFORE the command**: `dhcp --force sync`, not `dhcp sync --force`. The arg parser
+>   stops at the first non-flag token, so a trailing `--force` is ignored — and because of
+>   `set -euo pipefail` the interactive confirm's `read` then fails on non-TTY stdin (exit 1).
+> - **A reservation only takes effect after the device renews its lease.** `sync` restarts
+>   dnsmasq, but a device that already holds a lease keeps its current IP until renewal — reboot
+>   the device (or wait out the lease) to move it onto the pinned IP.
+> - `sync` reconciles the **full** state (adds *and removes*): if `devices.yaml` has drifted from
+>   the router, run `diff` first and reconcile the drift, or `sync` will remove live reservations
+>   that aren't in the file.
+
 ## IP Range Allocation
 
 | Range | Category | Description |

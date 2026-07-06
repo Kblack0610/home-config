@@ -122,3 +122,37 @@ sections:
               - type: entity
                 entity: sensor.neptune_extruder_temp
                 icon: mdi:printer-3d-nozzle-heat
+
+  # ── Smart Plugs & Climate (own section) ──
+  # Shelly Plug US Gen4 toggles + power, and AC climate (Broadlink IR). Uses
+  # auto-entities so the plugs/AC surface here without hard-coding entity IDs,
+  # and any future plug/AC appears automatically. Detailed energy history lives
+  # in Grafana (iot-fleet-devices dashboard) via mqtt2prom.
+  - type: grid
+    cards:
+      - type: heading
+        heading: Smart Plugs & Climate
+        icon: mdi:power-plug
+      - type: custom:auto-entities
+        show_empty: false
+        card_param: cards
+        card:
+          type: grid
+          columns: 2
+          square: false
+        filter:
+          include:
+            - entity_id: switch.shelly*
+              options:
+                type: custom:mushroom-entity-card
+            - domain: climate
+              options:
+                type: custom:mushroom-climate-card
+            - domain: sensor
+              attributes:
+                device_class: power
+              options:
+                type: custom:mushroom-entity-card
+                icon: mdi:flash
+        sort:
+          method: friendly_name

@@ -528,6 +528,154 @@ spec:
           volumeMounts:
             - name: config
               mountPath: /config
+        # Seed the native Shelly config entries for the two Shelly Plug US Gen4
+        # smart plugs. Shelly is a CORE HA integration (no custom-component
+        # install needed) — we use the native integration (local RPC/WebSocket)
+        # for HA control/entities; the plugs ALSO publish MQTT straight to
+        # Mosquitto for Grafana (via mqtt-exporter), independent of HA. Shelly's
+        # MQTT is RPC-style and emits NO HA discovery, so the native integration
+        # is the only way to get HA entities. Schema mirrors HA core
+        # shelly/config_flow.py @ 2026.7: entry.data = {host, port, sleep_period,
+        # model, gen}; unique_id = MAC (uppercase, no colons — matches both the
+        # mDNS name path and RPC info, so no duplicate discovery entry);
+        # VERSION = 1, MINOR_VERSION = 3. Hosts are the pinned DHCP leases
+        # (.104/.105). Idempotent: keyed on domain + data.host.
+        - name: seed-shelly
+          image: ghcr.io/home-assistant/home-assistant:stable
+          command:
+            - python3
+            - -c
+            - |
+              import json, os, uuid
+              from datetime import datetime, timezone
+
+              CONFIG_FILE = "/config/.storage/core.config_entries"
+              DOMAIN = "shelly"
+
+              # (host, unique_id MAC [UPPER, no colons], title)
+              PLUGS = [
+                  ("192.168.1.104", "ACEBE6F28334", "Shelly Plug US 1"),
+                  ("192.168.1.105", "ACEBE6F2A1E8", "Shelly Plug US 2"),
+              ]
+
+              os.makedirs(os.path.dirname(CONFIG_FILE), exist_ok=True)
+
+              if os.path.exists(CONFIG_FILE):
+                  with open(CONFIG_FILE) as f:
+                      store = json.load(f)
+              else:
+                  store = {"version": 1, "minor_version": 4, "key": "core.config_entries", "data": {"entries": []}}
+
+              existing = {
+                  (e.get("domain"), e.get("data", {}).get("host"))
+                  for e in store["data"]["entries"]
+              }
+
+              added = 0
+              for host, mac, title in PLUGS:
+                  if (DOMAIN, host) in existing:
+                      print(f"Config entry for {DOMAIN} host={host} already exists, skipping")
+                      continue
+                  now = datetime.now(timezone.utc).isoformat()
+                  store["data"]["entries"].append({
+                      "created_at": now,
+                      "data": {
+                          "host": host,
+                          "port": 80,
+                          "sleep_period": 0,
+                          "model": "S4PL-00116US",
+                          "gen": 4,
+                      },
+                      "disabled_by": None,
+                      "discovery_keys": {},
+                      "domain": DOMAIN,
+                      "entry_id": uuid.uuid4().hex,
+                      "minor_version": 3,
+                      "modified_at": now,
+                      "options": {},
+                      "pref_disable_new_entities": False,
+                      "pref_disable_polling": False,
+                      "source": "user",
+                      "subentries": {},
+                      "title": title,
+                      "unique_id": mac,
+                      "version": 1,
+                  })
+                  added += 1
+                  print(f"Seeded {DOMAIN} config entry for host={host} mac={mac}")
+
+              if added:
+                  with open(CONFIG_FILE, "w") as f:
+                      json.dump(store, f, indent=2)
+          volumeMounts:
+            - name: config
+              mountPath: /config
+        # Seed the native Broadlink config entry for the RM4 Pro IR/RF blaster.
+        # Broadlink is a CORE HA integration. Schema mirrors HA core
+        # broadlink/config_flow.py @ 2026.7: entry.data = {host, mac (12-hex
+        # lowercase), type (devtype int), timeout}; unique_id = mac hex;
+        # VERSION = 1. devtype 0x520B = "RM4 pro" (in the bundled broadlink lib);
+        # the device re-authenticates at runtime on setup. Host = pinned .103.
+        # Idempotent: keyed on domain + data.mac. Codes are learned later via the
+        # broadlink.learn service (never the phone app — app codes are cloud-encrypted).
+        - name: seed-broadlink
+          image: ghcr.io/home-assistant/home-assistant:stable
+          command:
+            - python3
+            - -c
+            - |
+              import json, os, uuid
+              from datetime import datetime, timezone
+
+              CONFIG_FILE = "/config/.storage/core.config_entries"
+              DOMAIN = "broadlink"
+              HOST = "192.168.1.103"
+              MAC = "348e89e4faae"
+              DEVTYPE = 0x520B  # RM4 pro
+
+              os.makedirs(os.path.dirname(CONFIG_FILE), exist_ok=True)
+
+              if os.path.exists(CONFIG_FILE):
+                  with open(CONFIG_FILE) as f:
+                      store = json.load(f)
+              else:
+                  store = {"version": 1, "minor_version": 4, "key": "core.config_entries", "data": {"entries": []}}
+
+              for entry in store["data"]["entries"]:
+                  if entry.get("domain") == DOMAIN and entry.get("data", {}).get("mac") == MAC:
+                      print(f"Config entry for {DOMAIN} mac={MAC} already exists, skipping")
+                      exit(0)
+
+              now = datetime.now(timezone.utc).isoformat()
+              store["data"]["entries"].append({
+                  "created_at": now,
+                  "data": {
+                      "host": HOST,
+                      "mac": MAC,
+                      "timeout": 5,
+                      "type": DEVTYPE,
+                  },
+                  "disabled_by": None,
+                  "discovery_keys": {},
+                  "domain": DOMAIN,
+                  "entry_id": uuid.uuid4().hex,
+                  "minor_version": 1,
+                  "modified_at": now,
+                  "options": {},
+                  "pref_disable_new_entities": False,
+                  "pref_disable_polling": False,
+                  "source": "user",
+                  "subentries": {},
+                  "title": "Broadlink RM4 Pro",
+                  "unique_id": MAC,
+                  "version": 1,
+              })
+              with open(CONFIG_FILE, "w") as f:
+                  json.dump(store, f, indent=2)
+              print(f"Seeded {DOMAIN} config entry for mac={MAC}")
+          volumeMounts:
+            - name: config
+              mountPath: /config
         # Seed a geo_json_events config entry → public markers on the Map (USGS
         # earthquakes near home). The integration is config-flow-only (no YAML
         # platform), so we seed it like Bambu/Tapo. Schema mirrors

@@ -1,0 +1,64 @@
+# Voice Satellite — "Wall Kitchen" defaults (Binks pipeline), code-first.
+#
+# The voice_satellite integration (Stage 4) creates per-device SELECT/SWITCH
+# entities whose chosen values are runtime state (not config-entry data). This
+# automation pins them on every HA start so the setup is reproducible across
+# restarts / PVC rebuilds — Pipeline 1 = Binks, on-device microWakeWord, a
+# bundled wake word (ok_nabu until hey_binks.tflite is trained in Stage 4B),
+# noise gate + stop-word barge-in on.
+#
+# Entity ids + option strings were read from the live instance after the first
+# boot of the seeded "Wall Kitchen" satellite (unique_id wall_kitchen).
+#
+# NOT covered here (inherent one-time tablet step, like browser_mod's browser id):
+# assigning THIS browser → the Wall Kitchen satellite in the sidebar panel.
+
+automation:
+  - id: voice_satellite_wall_kitchen_defaults
+    alias: "Voice Satellite — Wall Kitchen defaults (Binks)"
+    description: >-
+      Pin the Wall Kitchen satellite to the Binks pipeline + on-device
+      microWakeWord + sane wake defaults. Runs on HA start and whenever the
+      satellite entities (re)appear after the integration finishes setup.
+    mode: single
+    trigger:
+      - platform: homeassistant
+        event: start
+      - platform: state
+        entity_id: select.wall_kitchen_pipeline_1
+        from:
+          - unavailable
+          - unknown
+    condition:
+      - condition: template
+        value_template: >-
+          {{ states('select.wall_kitchen_pipeline_1') not in ['unavailable', 'unknown'] }}
+    action:
+      # Small settle delay so all sibling entities are up on the start-trigger path.
+      - delay: "00:00:05"
+      - service: select.select_option
+        target:
+          entity_id: select.wall_kitchen_pipeline_1
+        data:
+          option: "Binks"
+      - service: select.select_option
+        target:
+          entity_id: select.wall_kitchen_wake_word_detection
+        data:
+          option: "On Device (microWakeWord)"
+      # Stage 4A validation word; flip to "hey_binks" once the model ships (4B).
+      - service: select.select_option
+        target:
+          entity_id: select.wall_kitchen_wake_word_1
+        data:
+          option: "ok_nabu"
+      - service: select.select_option
+        target:
+          entity_id: select.wall_kitchen_wake_word_sensitivity
+        data:
+          option: "Moderately sensitive"
+      - service: switch.turn_on
+        target:
+          entity_id:
+            - switch.wall_kitchen_wake_word_noise_gate
+            - switch.wall_kitchen_stop_word_interruption

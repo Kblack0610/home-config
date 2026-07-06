@@ -320,6 +320,7 @@ spec:
               cp /managed-config/package_site_status.yaml /config/packages/site_status.yaml
               cp /managed-config/package_fleet_alerts.yaml /config/packages/fleet_alerts.yaml
               cp /managed-config/package_marine.yaml /config/packages/marine.yaml
+              cp /managed-config/package_voice_satellite_binks.yaml /config/packages/voice_satellite_binks.yaml
 
               cp /managed-config/dashboard_overview.yaml /config/dashboards/overview.yaml
               cp /managed-config/dashboard_local.yaml /config/dashboards/local.yaml

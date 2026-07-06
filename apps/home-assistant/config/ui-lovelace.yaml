@@ -1,9 +1,9 @@
 title: Homelab
 views:
-  # Devices is the main/first tab (the default /lovelace landing).
+  # Overview (glance) leads the tab bar; Devices is second — matching the wall.
+  - !include dashboards/overview.yaml
   - !include dashboards/devices.yaml
   - !include dashboards/launcher.yaml
-  - !include dashboards/overview.yaml
   - !include dashboards/local.yaml
   - !include dashboards/ops.yaml
   - !include dashboards/admin.yaml

@@ -32,7 +32,7 @@ spec:
             - name: MICROBIN_DATA_DIR
               value: "/data"
             - name: MICROBIN_PUBLIC_PATH
-              value: "https://scratch.kennethblack.me"
+              value: "https://scratch.kblab.me"
             - name: MICROBIN_HASH_IDS
               value: "true"
             - name: MICROBIN_QR
@@ -50,26 +50,14 @@ spec:
               value: "never"
             - name: MICROBIN_GC_DAYS
               value: "365"
-            # --- Auth: the shared "key" gates the whole box -----------------
-            # Username is non-secret; passwords are injected straight from the
-            # SOPS secret via secretKeyRef. NOTE: do NOT use MicroBin's file://
-            # prefix here — image 2.1.0 does not resolve it for the basic-auth
-            # password (it compares the literal "file://..." string), which
-            # silently breaks login. secretKeyRef is the correct path.
-            - name: MICROBIN_BASIC_AUTH_USERNAME
-              value: "scratch"
-            - name: MICROBIN_BASIC_AUTH_PASSWORD
-              valueFrom:
-                secretKeyRef:
-                  name: scratch-auth
-                  key: basic-auth-password
-            - name: MICROBIN_ADMIN_USERNAME
-              value: "admin"
-            - name: MICROBIN_ADMIN_PASSWORD
-              valueFrom:
-                secretKeyRef:
-                  name: scratch-auth
-                  key: admin-password
+            # --- Auth: NONE (removed on purpose) ----------------------------
+            # Basic-auth was ripped out: MicroBin 2.1.0's login is broken — a
+            # wrong password can't be retried (the session cookie sticks and it
+            # never re-prompts), so the box became un-loginnable. The instance
+            # is fully anonymous now. It is NOT exposed to the internet anymore;
+            # reachability is gated at the network layer (LAN/Tailscale only via
+            # the local-network-only middleware in ingress.yaml). The retention
+            # model above (burn / 1-hour default) is the remaining safety net.
             - name: MICROBIN_DISABLE_TELEMETRY
               value: "true"
             - name: MICROBIN_DISABLE_UPDATE_CHECKING
@@ -84,9 +72,9 @@ spec:
             limits:
               cpu: "500m"
               memory: "256Mi"
-          # TCP probes (not HTTP): basic auth makes every HTTP path return 401,
-          # which an httpGet probe would read as failure and crash-loop the pod.
-          # A listening port is a sufficient liveness/readiness signal here.
+          # TCP probes: a listening port is a sufficient liveness/readiness
+          # signal for this throwaway box, and they're robust to any HTTP-level
+          # redirect MicroBin's landing page might return.
           livenessProbe:
             tcpSocket:
               port: 8080

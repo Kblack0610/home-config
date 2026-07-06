@@ -5,20 +5,20 @@ metadata:
   namespace: scratch
   annotations:
     cert-manager.io/cluster-issuer: letsencrypt-dns
-    # NOTE: intentionally NO monitoring-local-network-only middleware. This host
-    # is reached from the open internet via the Cloudflare tunnel. Access is
-    # enforced INSIDE MicroBin (HTTP basic auth on the whole instance), not at
-    # the network layer. The Cloudflare-tunnel public-hostname mapping for
-    # scratch.kennethblack.me → traefik is managed via the cloudflared-public-sites
-    # tunnel (see apps/scratch/README.md).
+    # MicroBin's own auth is gone (its login was broken — see deployment.yaml),
+    # so access is now gated at the network layer instead: LAN/Tailscale only.
+    # The host lives on the private kblab.me zone (not the public kennethblack.me
+    # one) and the local-network-only middleware restricts source ranges, so the
+    # box is no longer reachable from the open internet.
+    traefik.ingress.kubernetes.io/router.middlewares: monitoring-local-network-only@kubernetescrd
 spec:
   ingressClassName: traefik
   tls:
     - hosts:
-        - scratch.kennethblack.me
+        - scratch.kblab.me
       secretName: scratch-tls
   rules:
-    - host: scratch.kennethblack.me
+    - host: scratch.kblab.me
       http:
         paths:
           - path: /

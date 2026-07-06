@@ -9,7 +9,8 @@ Built and shipped in stages so each layer is tested in isolation.
 | 0 | Fix broken cast TTS announcements (`tts.google_say`) | ✅ shipped (PR #77) |
 | 1 | **Text chat** — Binks conversation agent + home control | ✅ shipped |
 | 2 | **Press-to-talk voice** — STT via LiteLLM whisper + Google TTS | ✅ shipped |
-| 3 | **Wake word** — server openWakeWord + Wyoming; `okay_nabu` validated, `hey_binks` = training follow-up | ◑ server side shipped |
+| 3 | **Wake word (server)** — `wyoming-openwakeword` for *hardware* satellites; unused by the tablet card | ◑ server side shipped |
+| 4 | **Wall-tablet wake word** — in-browser `voice_satellite` card → Binks; `ok_nabu` validated, `hey_binks` = training follow-up | ◑ server side shipped |
 
 Everything is code-first: custom components are vendored by `install-*` init containers
 and config entries are written by idempotent `seed-*` init containers (see
@@ -148,22 +149,28 @@ Notes / knobs:
 
 ### Why a wake word needs *something* holding the mic open
 
-openWakeWord **detects** a wake word inside an audio stream — it does not capture audio.
-Something must keep a mic open 24/7 and stream it to the server. Three options here, two
-of which use the **wall tablet's own mic, no extra hardware**:
+A wake word needs (a) a mic held open 24/7 and (b) a program that continuously *listens*.
+A wake engine (openWakeWord / microWakeWord) **detects** the word in an audio stream; it
+doesn't capture audio. A store-bought "satellite" is just a mic + a listener in a box.
 
-- **Tablet browser (try first).** HA's frontend can stream the tablet mic to the
-  server-side detector — and because detection is server-side, **it supports the custom
-  "hey binks" word**. Caveat: a browser only listens while the tab is focused with mic
-  permission; screen-sleep / kiosk / wallpanel screensaver can suspend the tab and drop
-  the mic, so 24/7 reliability depends on the kiosk setup.
+> **Correction (read this):** an earlier version of this doc claimed the **bare tablet
+> browser** could stream to this server-side detector for a custom word. That's **wrong** —
+> **HA's frontend has no browser wake-word feature**; the dashboard mic is push-to-talk
+> only. The way to get a *custom* "hey binks" on the tablet with **no extra hardware** is a
+> **custom Lovelace card that runs the wake engine in-browser** — that's **Stage 4** below,
+> and it makes this server-side `wyoming-openwakeword` **unused by the tablet**.
+
+Options, by what you care about:
+- **Stage 4 — vendored `voice_satellite` card (recommended, no hardware, custom word).**
+  In-browser microWakeWord on the wall tablet → the Binks pipeline. See Stage 4.
 - **HA Companion app (Android).** Rock-solid on-device wake word, but only **3 fixed
-  words** (Okay Nabu / Hey Jarvis / Hey Mycroft) — it *cannot* do a custom "hey binks".
-- **Dedicated satellite** (M5 Atom Echo ~$13 / Pi). Most reliable; supports custom words.
-  The *robust* option, not the only one.
+  words** (Okay Nabu / Hey Jarvis / Hey Mycroft) — *cannot* do a custom "hey binks".
+- **Dedicated satellite** (M5 Atom Echo ~$13 / Pi) streaming to *this* server engine —
+  the robust hardware option for a room with **no** always-on computer.
 
-The server-side detector below is needed for **all three** — the tablet browser streams
-to it exactly like a satellite would.
+The server-side engine below is what a **hardware** satellite (or the card's optional
+"Home Assistant" detection mode) streams to. The Stage-4 card does detection in-browser and
+does **not** use it.
 
 ### What shipped
 
@@ -190,3 +197,94 @@ to it exactly like a satellite would.
 
 Tuning: raise `--threshold` (fewer false triggers) / `--trigger-level` if it fires too
 eagerly or misses.
+
+---
+
+## Stage 4 — hands-free "hey binks" on the wall tablet (no companion app, no hardware)
+
+The Lenovo Tab M11 wall panel becomes an always-on voice satellite via a **self-hosted
+custom Lovelace card**: it holds the tablet mic open, runs **in-browser microWakeWord**,
+and on wake drives the existing **Binks** pipeline (litellm whisper → Binks/gemini → Google
+TTS). Vendored FOSS (`jxlarrea/voice-satellite-card-integration`, MIT) — our own software
+in our own dashboard, not a companion app. Works because the tablet loads
+`https://hass.kblab.me` on a trusted Let's Encrypt cert (a secure context → `getUserMedia`).
+
+### What shipped (server side, code-first)
+
+- **`install-voice-satellite`** init container — unzips the `2026.6.3` release asset FLAT
+  into `/config/custom_components/voice_satellite/` (Python + `frontend/*.js` + `models/` +
+  `sounds/`). The card JS **auto-registers** via `add_extra_js_url` (browser_mod pattern) —
+  **no `lovelace: resources:` entry**, works in YAML mode. One pip dep (`mutagen`)
+  auto-installs at boot.
+- **`seed-voice-satellite`** init container — seeds the config entry `{name: "Wall
+  Kitchen"}` → the satellite **device** + `assist_satellite.wall_kitchen` + 19 entities
+  (Pipeline/wake-word **selects**, gating switches, media_player, …).
+- **`config/packages/voice_satellite_binks.yaml`** — a startup automation that pins the
+  per-device selects on every HA start (reproducible): Pipeline 1 → **Binks**, detection →
+  **On Device (microWakeWord)**, wake word → `ok_nabu` (validation; → `hey_binks` later),
+  sensitivity → moderate, noise-gate + stop-word-interruption **on**.
+
+Detection is 100% in-browser → the Stage-3 `wyoming-openwakeword` server is **not** used by
+this path (it stays for future hardware satellites; retire later if unwanted).
+
+### One-time tablet steps (not git-seedable — inherent per-browser identity)
+
+- Kiosk app: the MIT **FreeKiosk** (`com.freekiosk`, RushB-fr), **v1.2.17+** (that release
+  fixed WebRTC mic). Grant the OS `RECORD_AUDIO` prompt (or pre-grant via Device-Owner/ADB
+  — see the `adb-ops` skill). Enable **Keep-Screen-On** + a black screensaver (avoid true
+  screen-off); **disable URL Rotation / Dashboard auto-return** (they tear down the page +
+  mic). Confirm the installed APK — `docs/wall-panels.md` says `uk.freekiosk`; verify.
+- In the dashboard, open the **Voice Satellite sidebar panel** and assign **this browser →
+  the "Wall Kitchen" satellite** (like browser_mod's browser id).
+
+**Validate 4A:** say **"ok nabu"** at the tablet → wake chime → speak a command → Binks
+acts → spoken reply. Confirms mic-liveness + pipeline + TTS before training a custom word.
+
+### Finishing "hey binks" (Stage 4B — microWakeWord)
+
+1. Train **`hey_binks.tflite`** with the microWakeWord Colab (`kahrendt/microWakeWord`,
+   synthetic Piper-TTS samples, ~1–2 h) → also produces a small `hey_binks.json` (mirror
+   `ok_nabu.json`). **microWakeWord `.tflite` ≠ the openWakeWord `.tflite` used server-side**
+   (different architecture) — train specifically for microWakeWord.
+2. Ship it code-first into the **persistent** `/config/voice_satellite/models/` (commit +
+   ConfigMap `binaryData` copy — a MWW tflite is ~tens of KB), **restart HA** (so
+   `_load_user_custom_models` picks it up).
+3. Flip `select.wall_kitchen_wake_word_1` → `hey_binks` (in the startup package or UI).
+
+**Watch items:** `mutagen` pip at boot (needs pod egress — it has it); FreeKiosk mic
+survival across true screen-off is undocumented (rely on keep-screen-on + black
+screensaver; verify on the M11).
+
+---
+
+## Appendix — Voice input: options & decision record
+
+The one idea that unlocks it: a wake word needs **a mic held open** + **a program that
+listens**. Neither needs special hardware — the engines are pure software. A store-bought
+satellite is just "a mic + a listener in a box" for a room with **no** always-on computer.
+
+| Path | Custom "hey binks"? | Extra hardware? | Our software? | Verdict |
+|---|---|---|---|---|
+| **`voice_satellite` card, on-device microWakeWord** | ✅ (train `.tflite`) | ❌ | ✅ self-hosted FOSS, in-repo | **CHOSEN** (Stage 4) |
+| Same card, on-device **openWakeWord** (`.onnx`) | ✅ (convert oww→onnx) | ❌ | ✅ | Alt; needs WebGPU + conversion |
+| Same card, **vsWakeWord** (WebGPU) | ❌ (no public trainer) | ❌ | ✅ | Best accuracy, only shipped words |
+| Same card, detection = **"Home Assistant"** → server owww | ✅ (server `.tflite`) | ❌ | ✅ | Reuses Stage 3; streams audio continuously → higher latency/less reliable on tablets |
+| **Build the card from scratch** (~600–1200 lines JS) | ✅ | ❌ | ✅✅ bespoke | Rejected — reinvents fragile mic-liveness/audio-framing |
+| **Wyoming satellite on the gungan Linux box** (`cachyos-x8664-main`) | ✅ | ❌ (its mic) | ✅ | Great for the **desk**; mic hears that room only |
+| **HA Companion app** on-device wake | ❌ (3 fixed words) | ❌ | ⚠️ 3rd-party app | Zero-effort "Hey Jarvis" fallback |
+| **ViewAssist Companion App** (Android) | ✅ (its engine) | ❌ | ⚠️ companion app | Works, but a companion app |
+| **StreamAssist + RTSP audio app** → server owww | ✅ | ❌ | ⚠️ | Fiddly, experimental |
+| **M5 Atom Echo (~$13)** → server owww | ✅ | ✅ ($13) | ✅ | Cheapest *hardware* mic for a computer-less room |
+| **Raspberry Pi + mic** | ✅ | ✅ | ✅ | More capable, more setup |
+| **HA Voice PE** | ✅ (firmware build) | ✅ ($$) | ✅ | Nicest hardware; custom word = firmware rebuild |
+
+**Why the "obvious" tablet paths fail for a custom word:** a bare Fully/FreeKiosk page can't
+do wake word — **HA's frontend has no browser wake-word feature** (push-to-talk only); the
+Stage-4 *card* adds the listener. The Companion app listens on-device but only for its **3
+fixed words**.
+
+**Sub-decisions:** wake engine = **FOSS microWakeWord** (offline, no keys) over **Porcupine**
+(proprietary AccessKey + periodic phone-home — wrong for a self-hosted LAN); STT = **litellm
+`stt (whisper-turbo)`** (no new container) over a Wyoming faster-whisper deployment; kiosk =
+MIT **`com.freekiosk`** v1.2.17+ over proprietary Fully Kiosk; and the tablet must load a
+**trusted-HTTPS** URL (`https://hass.kblab.me`) or `getUserMedia` is silently blocked.

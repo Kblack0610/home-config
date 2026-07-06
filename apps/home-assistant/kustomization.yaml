@@ -20,6 +20,7 @@ configMapGenerator:
       - package_site_status.yaml=config/packages/site_status.yaml
       - package_fleet_alerts.yaml=config/packages/fleet_alerts.yaml
       - package_marine.yaml=config/packages/marine.yaml
+      - package_voice_satellite_binks.yaml=config/packages/voice_satellite_binks.yaml
       - dashboard_overview.yaml=config/dashboards/overview.yaml
       - dashboard_local.yaml=config/dashboards/local.yaml
       - dashboard_ops.yaml=config/dashboards/ops.yaml

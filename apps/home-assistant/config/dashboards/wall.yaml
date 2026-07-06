@@ -106,6 +106,38 @@ views:
       - type: grid
         cards:
           - type: heading
+            heading: Devices
+            heading_style: title
+          # At-a-glance device status; tap a chip to open its detail page.
+          - type: custom:mushroom-chips-card
+            alignment: start
+            chips:
+              - type: template
+                icon: mdi:robot-vacuum
+                content: "{{ states('sensor.tapovacuummop_status') }}"
+                icon_color: >-
+                  {{ 'red' if states('sensor.tapovacuummop_error') not in ['Ok','unknown','unavailable']
+                     else 'green' if is_state('vacuum.tapovacuummop','docked') else 'blue' }}
+                tap_action: { action: navigate, navigation_path: /wall-panels/device-vacuum }
+              - type: template
+                icon: mdi:cat
+                content: "{{ states('sensor.cat_litter_box_status') }}"
+                icon_color: "{{ 'orange' if is_state('sensor.cat_litter_box_status','Cat_into') else 'blue' }}"
+                tap_action: { action: navigate, navigation_path: /wall-panels/device-litterbox }
+              - type: template
+                icon: mdi:printer-3d-nozzle
+                content: >-
+                  {% set s = states('sensor.a1_03900d5b1110644_print_status') %}{{ 'off' if s in ['unavailable','unknown'] else s }}
+                icon_color: >-
+                  {{ 'grey' if states('sensor.a1_03900d5b1110644_print_status') in ['unavailable','unknown'] else 'blue' }}
+                tap_action: { action: navigate, navigation_path: /wall-panels/device-bambu }
+              - type: template
+                icon: mdi:cast-audio-variant
+                content: "{{ states.media_player | list | count }} speakers"
+                tap_action: { action: navigate, navigation_path: /wall-panels/device-speakers }
+      - type: grid
+        cards:
+          - type: heading
             heading: Homelab
             heading_style: title
           - type: custom:mushroom-template-card
@@ -134,28 +166,6 @@ views:
               data:
                 message: "{{ states('input_text.voice_announce_message') }}"
                 language: "{{ states('input_select.voice_announce_language') }}"
-      - type: grid
-        cards:
-          - type: heading
-            heading: Speakers & media
-            heading_style: title
-          - type: custom:auto-entities
-            show_empty: false
-            card_param: cards
-            card:
-              type: grid
-              columns: 1
-              square: false
-            filter:
-              include:
-                - domain: media_player
-                  options:
-                    type: custom:mushroom-media-player-card
-                    media_controls: [play_pause, next]
-                    volume_controls: [volume_buttons]
-            sort:
-              method: friendly_name
-
   # ────────────────────────────── DEVICES ──────────────────────────────────
   # Rich device hub (mirrors the main dashboard's Devices tab): each card taps
   # through to its shared detail subview at /wall-panels/device-*, with a chips
@@ -215,9 +225,10 @@ views:
                   - type: entity
                     entity: sensor.cat_litter_box_cat_weight
                     icon: mdi:scale
-                  - type: entity
+                  - type: template
                     entity: sensor.cat_litter_box_excretions_per_day
-                    icon: mdi:counter
+                    icon: mdi:cat
+                    content: "{{ states('sensor.cat_litter_box_excretions_per_day') }}/day"
                   - type: entity
                     entity: sensor.cat_litter_box_use_time
                     icon: mdi:timer-outline

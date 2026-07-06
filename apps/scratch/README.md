@@ -1,30 +1,32 @@
-# scratch — public scratchpad (MicroBin)
+# scratch — LAN scratchpad (MicroBin)
 
-A public, password-gated pastebin at **https://scratch.kennethblack.me** for
-quick cross-machine notes and ferrying snippets/keys between boxes. Runs
+An **anonymous, LAN-only** pastebin at **https://scratch.kblab.me** for quick
+cross-machine notes and ferrying snippets/keys between boxes. Runs
 [MicroBin](https://microbin.eu) `2.1.0`.
 
 ## Access
 
-HTTP basic auth gates the **entire** instance — there is no anonymous read.
-It's a deliberately dead-simple shared login you can hand to anyone:
+**No login.** MicroBin's basic-auth was removed on purpose — image `2.1.0`'s
+login is broken: a wrong password can't be retried (the session cookie sticks
+and the app never re-prompts), which left the box un-loginnable. Rather than
+fight it, auth is gone entirely and protection moved to the network layer.
 
-- **Username:** `scratch`
-- **Password:** `scratch`
+Reachability is **LAN / Tailscale only**:
 
-Same word for both — nothing to remember, nothing per-user. The password is
-stored SOPS-encrypted in `secret.yaml` (`basic-auth-password`).
+- The host lives on the private **`kblab.me`** zone (not the public
+  `kennethblack.me` one), so it isn't published to the open internet.
+- The `monitoring-local-network-only@kubernetescrd` middleware on the Ingress
+  restricts source ranges to RFC1918 + loopback (see
+  `apps/monitoring/middleware-ip-allowlist.yaml`).
 
-Browser prompts once and remembers it. For scripts:
-`curl -u scratch:scratch https://scratch.kennethblack.me/...`.
+Open it in a browser on the LAN, or from scripts:
+`curl https://scratch.kblab.me/...` — no credentials needed.
 
-A separate `admin` user (its own password in `secret.yaml`, **not** shared) can
-manage/delete any paste — keep that one private so shared users can't purge the
-store.
-
-Both passwords are injected into the container via `secretKeyRef` (not MicroBin's
-`file://` prefix — image `2.1.0` does not resolve `file://` for the basic-auth
-password and silently rejects every login if you use it).
+> **Want it public again?** Put the host back on the `kennethblack.me` zone,
+> drop the `local-network-only` middleware in `ingress.yaml`, and set
+> `MICROBIN_PUBLIC_PATH` back. But note MicroBin's own auth is broken, so a
+> public instance would be **fully anonymous to the internet** — front it with
+> an auth proxy (e.g. traefik forward-auth) rather than MicroBin's basic-auth.
 
 ## Retention model — pick a mode per paste
 
@@ -42,22 +44,11 @@ you change the dropdown.
 
 ## Security posture
 
-Public reachability + a single shared password. The real protection is the
-retention discipline: **sensitive → Burn/Ephemeral (self-destructs), only
-non-sensitive → Keep.** If the password ever leaks, only the "Keep" store is
-exposed. TLS is mandatory (cert-manager `letsencrypt-dns`). This is deliberately
-a low-stakes scratch box, not a secrets manager.
-
-To rotate the key: edit `secret.yaml` (decrypt with `sops`, change, re-encrypt),
-commit, and Flux rolls it. Then `kubectl -n scratch rollout restart deploy/scratch`.
-
-## Public exposure (Cloudflare tunnel)
-
-Unlike LAN services, this drops the `monitoring-local-network-only` middleware.
-Reachability is the standard flow — see **[`docs/public-sites.md`](../../docs/public-sites.md)**
-(canonical reference): this Ingress is all that's needed. external-dns creates the proxied
-CNAME and the tunnel's single wildcard catch-all forwards every host to Traefik. No per-host
-tunnel route, no DNS record, no Cloudflare token.
+LAN-only reachability + no login. Since there's no auth, the retention
+discipline is the real safety net: **sensitive → Burn/Ephemeral (self-destructs),
+only non-sensitive → Keep.** TLS is still mandatory (cert-manager
+`letsencrypt-dns`). This is deliberately a low-stakes scratch box, not a secrets
+manager.
 
 ## Storage
 

@@ -154,7 +154,19 @@ devices:
 
   - hostname: neptune-3d-printer
     mac: "7E:B3:26:27:EF:03"
+    ip: "192.168.1.51"
+    category: iot
+    range_exception: true
+
+  - hostname: neptune-3d-wan
+    mac: "00:22:F4:5D:E3:55"
     ip: "192.168.1.54"
+    category: iot
+    range_exception: true
+
+  - hostname: bambu-3d-printer
+    mac: "E8:F6:0A:87:71:B4"
+    ip: "192.168.1.55"
     category: iot
     range_exception: true
 
@@ -168,6 +180,29 @@ devices:
     mac: "4A:12:96:46:D3:7D"
     ip: "192.168.1.113"
     category: iot
+
+  - hostname: broadlink-rm4-pro
+    mac: "34:8E:89:E4:FA:AE"
+    ip: "192.168.1.103"
+    category: iot
+
+  - hostname: shelly-plug-us-1
+    mac: "AC:EB:E6:F2:83:34"
+    ip: "192.168.1.104"
+    category: iot
+
+  - hostname: shelly-plug-us-2
+    mac: "AC:EB:E6:F2:A1:E8"
+    ip: "192.168.1.105"
+    category: iot
+
+  # Fumoi litter box: pinned at its CURRENT .215 so LocalTuya's stored host
+  # doesn't break (moving it would require re-seeding the config entry).
+  - hostname: fumoi-litter-box
+    mac: "20:F1:B2:F4:A0:C4"
+    ip: "192.168.1.215"
+    category: iot
+    range_exception: true
 
   # --- Dynamic / Unknown -----------------------------------------------------
   - hostname: unknown-37233e

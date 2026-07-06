@@ -101,6 +101,23 @@ Flux picks up the ConfigMap change → deployment hash rotates → pod rolls →
 | DP labels | **Corrected 2026-07-03** from the Tuya cloud spec **+ a live button-by-button correlation** (raw `tinytuya` poll while pressing each app control). Fixed the sensor guesses (DP6 `cat_weight`, DP7 `excretion_times_day`, DP8 `excretion_time_day` — **not "Litter Level"**), and the live pass then: proved **DP1 `switch` is a dead code** (no power button — dropped), reassigned **DP9 → the "Clean" button**, mapped **DP102/DP107 to the Light colour/brightness**, dropped **DP108 `work_state`** (static noise), and confirmed **DP110 `data_identification`** is the real status (`Cat_into`/`Cleaning`/`Clean_Pause`). See the DP table in [`docs/smart-home-control.md`](../../docs/smart-home-control.md). |
 | ⚠️ Gotcha | `localtuya/__init__.py` reads `region`/`client_id`/`client_secret`/`user_id` **unconditionally** (before the `no_cloud` branch), so the seed includes those keys empty — omit them and setup `KeyError`s. The generic Tuya schema **lies**: it advertises functions the unit ignores (`switch`) and misnames the ones it uses (`doorbell_song` = light colour) — trust the live correlation over the schema names. `factory_reset` (DP23) is omitted (destructive). |
 
+### Smart Plugs (Shelly Plug US Gen4)
+
+| Use Case | Description |
+|----------|-------------|
+| 2× Shelly Plug US Gen4 (`shelly`) | UL-listed metered WiFi plugs (model `S4PL-00116US`, `gen 4`) on the **native, core HA `shelly` integration** (local RPC/WebSocket) — **no custom component**. Config entries seeded by the `seed-shelly` init container (two entries; schema mirrors HA core `shelly/config_flow.py` @ 2026.7: `data={host,port,sleep_period,model,gen}`, `unique_id=MAC` uppercase-no-colons, `VERSION=1 MINOR_VERSION=3`; idempotent on `domain+data.host`). Expose `switch.*` (relay) + power/voltage/current/energy/temperature `sensor.*`. Pinned DHCP `.104` (free) / `.105` (lamp). |
+| Credentials | **None** — auth is disabled on the plugs, so hosts are inlined in the seed (nothing secret; no SOPS file). |
+| ⚠️ MQTT ≠ HA discovery | Shelly Gen4 MQTT is **RPC-style and emits no HA discovery** — MQTT alone yields zero HA entities, which is why control comes from the native integration. The plugs *also* publish MQTT to Mosquitto (`192.168.1.20:31883`) **in parallel, only** so `apps/mqtt2prom` (mqtt-exporter, subscribes `#`) feeds per-plug watts to Grafana (`iot-fleet-devices` dashboard, "Smart Plugs — Energy" row). See [`docs/smart-home-control.md`](../../docs/smart-home-control.md) for the always-hot-outlet + power-cycle gotchas. |
+
+### IR/RF Blaster (Broadlink RM4 Pro)
+
+| Use Case | Description |
+|----------|-------------|
+| Broadlink RM4 Pro (`broadlink`) | IR + 433 MHz RF blaster on the **native, core HA `broadlink` integration** — **no custom component**. Config entry seeded by `seed-broadlink` (schema mirrors HA core `broadlink/config_flow.py` @ 2026.7: `data={host,mac,type,timeout}`, `type=21003` = devtype `0x520B` "RM4 pro", `unique_id=mac.hex()`, `VERSION=1`; idempotent on `domain+data.mac`). Pinned DHCP `.103`. The device re-authenticates at runtime — if `auth()` fails the unit is cloud-locked (unlock in the Broadlink app). |
+| Credentials | **None** — host/MAC inlined in the seed. |
+| ⏳ Codes | IR (AC) + 433 RF (UFO lamp) codes are learned via the `broadlink.learn` service — **never the phone app** (app codes are cloud-encrypted). A proper AC `climate` entity needs **SmartIR** (init container + `climate:` package) with a device code; the wall/Devices Climate sections auto-populate once it exists. |
+| ⚠️ Firmware | **Decline firmware updates** — newer RM4 firmware can lock out the local control HA needs. |
+
 ## Deployment
 
 ```bash

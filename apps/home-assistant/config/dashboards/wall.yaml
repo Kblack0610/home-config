@@ -343,11 +343,57 @@ views:
                 - domain: script
       - type: grid
         cards:
+          - type: heading
+            heading: Energy
+            heading_style: title
+          - type: custom:auto-entities
+            show_empty: false
+            card_param: cards
+            card:
+              type: grid
+              columns: 2
+              square: false
+            filter:
+              include:
+                - domain: sensor
+                  attributes:
+                    device_class: power
+                  options:
+                    type: custom:mushroom-entity-card
+                    icon: mdi:flash
+                - domain: sensor
+                  attributes:
+                    device_class: energy
+                  options:
+                    type: custom:mushroom-entity-card
+                    icon: mdi:lightning-bolt
+            sort:
+              method: friendly_name
+      - type: grid
+        cards:
+          - type: heading
+            heading: Climate
+            heading_style: title
+          - type: custom:auto-entities
+            show_empty: false
+            card_param: cards
+            card:
+              type: grid
+              columns: 1
+              square: false
+            filter:
+              include:
+                - domain: climate
+                  options:
+                    type: custom:mushroom-climate-card
+      - type: grid
+        cards:
           - type: markdown
             content: >
-              Controls populate automatically as devices are added (Phase 5 —
-              Zigbee / ESPHome). This view uses `auto-entities`, so new lights,
-              switches, fans, scenes and scripts appear here with no edits.
+              Controls populate automatically as devices are added. This view
+              uses `auto-entities`, so new lights, switches, fans, scenes,
+              scripts, energy sensors (Shelly plugs) and climate entities (AC via
+              Broadlink) appear here with no edits.
 
   # ─────────────────────────────── LOCAL ───────────────────────────────────
   # Self-contained local-info tab for the wall tablet (no navigating off the

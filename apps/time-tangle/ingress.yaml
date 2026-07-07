@@ -1,0 +1,31 @@
+# api.time-tangle.com -> time-tangle-api. external-dns derives the proxied
+# Cloudflare CNAME from this Ingress; the public-sites tunnel's wildcard
+# catch-all forwards to Traefik, which host-matches here. TLS via cert-manager
+# DNS-01 (letsencrypt-dns) — requires the CF token to cover the time-tangle.com
+# zone (see docs/public-sites.md).
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: time-tangle-api
+  namespace: time-tangle
+  labels:
+    app: time-tangle-api
+  annotations:
+    cert-manager.io/cluster-issuer: letsencrypt-dns
+spec:
+  ingressClassName: traefik
+  tls:
+    - hosts:
+        - api.time-tangle.com
+      secretName: api-time-tangle-tls
+  rules:
+    - host: api.time-tangle.com
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: time-tangle-api
+                port:
+                  number: 80

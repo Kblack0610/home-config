@@ -44,6 +44,7 @@ resources:
   - postgres
   - sops-backup-rbac
   - spotify-concerts
+  - time-tangle
   - vaultwarden
   - vikunja
 

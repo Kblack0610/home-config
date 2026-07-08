@@ -138,10 +138,10 @@ rejected for non-admins regardless of UI). The PIN popup added later is cosmetic
 
 The **Settings** view (nav chip → `/wall-panels/settings`) lets **any user, including a
 non-admin on the kiosk**, configure each smart plug: its **room**, **name**, **icon**,
-**category**, and whether it counts as a **light**. Tap a plug → an editor popup opens →
-change fields → **Save**. Changes are instant and apply everywhere (the plug dashboards
-regroup by room; voice picks up the new name/area). Plugs start **Unassigned** — nothing is
-placed for you.
+**category**, and whether it counts as a **light**. Tap a plug in the list → it loads into the
+always-visible **Editor** at the top → change fields → **Save**. Changes are instant and apply
+everywhere (the plug dashboards regroup by room; voice picks up the new name/area). Plugs start
+**Unassigned** — nothing is placed for you.
 
 Where the metadata lives — all in HA's **native registries** (the persistent `.storage` "db"),
 so it's the same data HA's own UI would write and it powers native area/voice features:
@@ -158,10 +158,11 @@ How it works (why it needs a helper): HA has **no built-in service to set an ent
 name**, and the native registry editors are **admin-only and hidden in kiosk mode**. So the
 editor calls a small **pyscript** app (`config/pyscript/plug_settings.py`) whose services
 (`pyscript.plug_load` / `pyscript.plug_apply`) run in HA's own context and perform the registry
-writes — callable by a non-admin. The UI is a `browser_mod` popup driven by fixed staging
-helpers in `config/packages/plug_settings.yaml`; the per-plug rows are `custom:button-card`
-because HA core does not template `tap_action` service data (button-card's `[[[ ]]]` JS does,
-so it passes the tapped plug's `entity_id`).
+writes — callable by a non-admin. The UI is an **inline editor**: a fixed set of staging helpers
+in `config/packages/plug_settings.yaml` (no browser_mod dependency). Tapping a plug calls
+`pyscript.plug_load` (fills the helpers); Save calls `pyscript.plug_apply` (writes them back).
+The per-plug rows are `custom:button-card` because HA core does not template `tap_action`
+service data (button-card's `[[[ ]]]` JS does, so it passes the tapped plug's `entity_id`).
 
 > ⚠️ **Security note:** the `pyscript.plug_*` services are a deliberate, **LAN/Tailscale-only**
 > privileged surface — a non-admin can write the registry through them. That's the price of

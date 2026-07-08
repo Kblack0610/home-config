@@ -674,19 +674,21 @@ views:
   # server-side for them regardless of what the UI shows. A PIN popup (cosmetic)
   # + per-profile `visible:` gating land then too.
   # ────────────────────────────── SETTINGS ─────────────────────────────────
-  # User-configurable plug metadata. ANY user (non-admin, on the kiosk) can tap
-  # a plug to set its room, name, icon, category and whether it's a light. The
-  # editor writes HA's native registries via the pyscript plug_settings app
-  # (config/pyscript/plug_settings.py) + browser_mod popup — no admin needed.
-  # Each button uses custom:button-card because HA core does NOT template
+  # User-configurable plug metadata. ANY user (non-admin, on the kiosk) can set
+  # each plug's room, name, icon, category and whether it's a light. Tapping a
+  # plug in the list loads it into the always-visible editor (top); Save writes
+  # HA's native registries via the pyscript plug_settings app
+  # (config/pyscript/plug_settings.py) — no admin, no browser_mod.
+  # The plug list uses custom:button-card because HA core does NOT template
   # tap_action service data; button-card's [[[ ]]] JS does, so it can pass the
-  # tapped plug's entity_id to script.plug_edit_open.
+  # tapped plug's entity_id to pyscript.plug_load.
   - title: Settings
     path: settings
     icon: mdi:home-edit
     type: sections
     max_columns: 2
     sections:
+      # ── Editor (always visible; reflects the plug you tap in the list) ──
       - type: grid
         cards:
           - type: custom:bubble-card
@@ -700,9 +702,48 @@ views:
             heading_style: title
           - type: markdown
             content: >
-              Tap a plug to set its **room**, **name**, **icon**, **category**,
-              and whether it counts as a **light**. Changes save instantly and
-              apply everywhere (dashboards + voice).
+              **Tap a plug below**, then set its **name**, **room**, **icon**,
+              **category**, and whether it counts as a **light** — and press
+              **Save**. Changes apply everywhere (dashboards + voice).
+          - type: custom:mushroom-template-card
+            primary: >-
+              {% set t = states('input_text.plug_edit_target') %}
+              {{ state_attr(t, 'friendly_name') if t not in ['', 'unknown', 'unavailable']
+                 else 'No plug selected' }}
+            secondary: >-
+              {% set t = states('input_text.plug_edit_target') %}
+              {{ 'Room: ' ~ (area_name(t) or 'Unassigned') if t not in ['', 'unknown', 'unavailable']
+                 else 'Tap a plug in the list below' }}
+            icon: >-
+              {% set t = states('input_text.plug_edit_target') %}
+              {{ state_attr(t, 'icon') or 'mdi:power-plug' if t not in ['', 'unknown', 'unavailable']
+                 else 'mdi:cursor-default-click' }}
+            icon_color: blue
+          - type: entities
+            title: Editor
+            state_color: true
+            entities:
+              - entity: input_text.plug_edit_name
+              - entity: input_select.plug_edit_room
+              - entity: input_text.plug_edit_new_room
+              - entity: input_select.plug_edit_category
+              - entity: input_text.plug_edit_icon
+              - entity: input_boolean.plug_edit_is_light
+          - type: custom:mushroom-template-card
+            primary: Save changes
+            secondary: Writes to the selected plug
+            icon: mdi:content-save
+            icon_color: green
+            tap_action:
+              action: call-service
+              service: pyscript.plug_apply
+              data: {}
+      # ── Plug list (tap a plug to load it into the editor above) ──
+      - type: grid
+        cards:
+          - type: heading
+            heading: Plugs
+            heading_style: title
           - type: custom:auto-entities
             show_empty: false
             card_param: cards
@@ -732,11 +773,11 @@ views:
                         var aid = e ? e.area_id : null;
                         if (!aid && e && e.device_id && hass.devices) { aid = (hass.devices[e.device_id]||{}).area_id; }
                         var a = (aid && hass.areas) ? hass.areas[aid] : null;
-                        return (a ? a.name : 'Unassigned') + ' · tap to configure';
+                        return (a ? a.name : 'Unassigned') + ' · tap to edit';
                       ]]]
                     tap_action:
                       action: call-service
-                      service: script.plug_edit_open
+                      service: pyscript.plug_load
                       service_data:
                         entity_id: "[[[ return entity.entity_id ]]]"
             sort:

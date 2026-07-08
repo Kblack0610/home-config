@@ -700,6 +700,8 @@ spec:
               PLUGS = [
                   ("athom-smart-plug-v3-613888", "192.168.1.142", "fc:01:2c:61:38:88", "Athom Plug V3 613888"),
                   ("athom-smart-plug-v3-6043c8", "192.168.1.190", "fc:01:2c:60:43:c8", "Athom Plug V3 6043c8"),
+                  ("athom-smart-plug-v3-6058b8", "192.168.1.153", "fc:01:2c:60:58:b8", "Athom Plug V3 6058b8"),
+                  ("athom-smart-plug-v3-60a188", "192.168.1.233", "fc:01:2c:60:a1:88", "Athom Plug V3 60a188"),
               ]
 
               os.makedirs(os.path.dirname(CONFIG_FILE), exist_ok=True)

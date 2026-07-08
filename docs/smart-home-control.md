@@ -307,6 +307,36 @@ device code. The wall/Devices Climate sections auto-populate once a `climate` en
 
 **✅ Config entry DONE + device reachable 2026-07-06** (on network, UDP-discoverable, seed validated).
 
+## Athom Smart Plug V3 — native ESPHome (+ MQTT integration in the library)
+
+**Device:** `athom-smart-plug-v3-613888` (ESP32-C3), MAC `fc:01:2c:61:38:88`, DHCP-pinned `.142`.
+Onboarded via its captive-portal AP (no app) → `BrownDooDoo`. First of 6.
+
+**Native ESPHome integration** (core; no custom component). Athom V3 ships with the ESPHome
+**native API OPEN** (no encryption), so the entry needs only host/port. Added live via HA's
+config-flow API, then baked into git as `seed-esphome` (`apps/home-assistant/deployment.yaml`) so
+it reproduces on a fresh PVC. Schema @ HA 2026.7: `data={device_name, host, port:6053,
+password:"", noise_psk:""}`, `unique_id = MAC`, `VERSION=1 MINOR_VERSION=1`, `subentries: []`
+(newer list form). Idempotent on `domain+data.host`; extend the `PLUGS` list for the other 5.
+Exposes `switch.*_switch` (relay) + power/voltage/current/energy/power-factor sensors + WiFi/uptime.
+**✅ Live-verified 2026-07-06:** toggled the relay from HA, lamp responded, 4.8 W draw.
+
+**MQTT integration now in the library too** — `seed-mqtt` seeds HA's core MQTT config entry
+(broker = in-cluster `mosquitto.mosquitto.svc.cluster.local:1883`, anonymous; `VERSION=1
+MINOR_VERSION=2`, idempotent on `domain`). This is the modular MQTT capability: any device that
+speaks **HA MQTT discovery** (Tasmota, ESPHome-with-`mqtt:`) auto-appears once this is present.
+Both integration patterns (`seed-esphome` + `seed-mqtt`) now live in git as reusable building blocks.
+
+**Route decision (revisited 2026-07-06):** native ESPHome proved zero-flash and instant, so it's a
+valid alternative to the MQTT route for the Athoms — native = full HA entities + HA Energy dashboard,
+no OTA; MQTT = uniform Grafana but needs an `mqtt:` OTA per plug. Both capabilities exist; pick per
+device. (A plug can even do both: `api:` for HA + `mqtt:` for Grafana.)
+
+**Modular dashboards:** the plug sections on Overview, wall Home, and the Devices hub use
+`auto-entities` filtered on **`entity_id: switch.*plug*`** — which catches Shelly (`shellyplug…`)
+and Athom (`…smart_plug…`) and any future plug, while excluding non-plug switches. New plugs appear
+with **no dashboard edits**. Energy sections filter `device_class: power` for the same reason.
+
 ---
 
 ## Repo integration (execute ONLY after hardware arrives)

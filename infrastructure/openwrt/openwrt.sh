@@ -7,6 +7,7 @@ set -euo pipefail
 # Manages a narrow, high-value subset of OpenWrt config from YAML:
 #   - DNS settings in the dhcp package
 #   - Firewall redirects in the firewall package
+#   - Wireless radio channel/htmode/country (never SSIDs or keys)
 #
 # Static DHCP host entries remain owned by infrastructure/dhcp/dhcp.sh.
 # =============================================================================
@@ -36,6 +37,7 @@ log_warning() { echo -e "${YELLOW}[WARN]${NC} $*" >&2; }
 CONFIG_FILE="${SCRIPT_DIR}/config.yaml"
 DNS_FILE="${SCRIPT_DIR}/dns.yaml"
 FIREWALL_FILE="${SCRIPT_DIR}/firewall.yaml"
+WIRELESS_FILE="${SCRIPT_DIR}/wireless.yaml"
 BACKUP_DIR="${SCRIPT_DIR}/backups"
 
 FORCE=false
@@ -96,7 +98,7 @@ check_ssh() {
 
 ensure_files_exist() {
     local missing=0
-    for path in "$CONFIG_FILE" "$DNS_FILE" "$FIREWALL_FILE"; do
+    for path in "$CONFIG_FILE" "$DNS_FILE" "$FIREWALL_FILE" "$WIRELESS_FILE"; do
         if [[ ! -f "$path" ]]; then
             log_error "Required file not found: $path"
             missing=1
@@ -561,11 +563,12 @@ cmd_validate() {
     log_info "Validating OpenWrt config..."
     ensure_files_exist || return 1
 
-    local dns_json firewall_json
+    local dns_json firewall_json wireless_json
     dns_json=$(normalize_dns_yaml)
     firewall_json=$(normalize_firewall_yaml)
+    wireless_json=$(normalize_wireless_yaml)
 
-    python3 - "$dns_json" "$firewall_json" <<'PY'
+    python3 - "$dns_json" "$firewall_json" "$wireless_json" <<'PY'
 import ipaddress
 import json
 import re
@@ -573,6 +576,7 @@ import sys
 
 dns = json.loads(sys.argv[1])
 firewall = json.loads(sys.argv[2])
+wireless = json.loads(sys.argv[3])
 
 errors = 0
 warnings = 0
@@ -637,6 +641,28 @@ for item in firewall["redirects"]:
         ipaddress.ip_address(item["dest_ip"])
     except ValueError:
         error(f"redirect {name}: invalid dest_ip {item['dest_ip']}")
+
+valid_htmodes = {
+    "NONE", "HT20", "HT40", "VHT20", "VHT40", "VHT80", "VHT160",
+    "HE20", "HE40", "HE80", "HE160",
+}
+for band, entry in wireless.get("radios", {}).items():
+    channel = str(entry.get("channel", ""))
+    if not channel.isdigit():
+        error(f"wireless {band}: channel must be numeric: {channel!r}")
+    else:
+        ch = int(channel)
+        if band == "2g" and not (1 <= ch <= 14):
+            error(f"wireless 2g: channel {ch} out of range 1-14")
+        elif band == "5g" and not (32 <= ch <= 177):
+            error(f"wireless 5g: channel {ch} out of 5GHz range")
+    htmode = entry.get("htmode", "")
+    if htmode and htmode not in valid_htmodes:
+        error(f"wireless {band}: invalid htmode {htmode!r}")
+    if "country" in entry:
+        cc = entry["country"]
+        if not (isinstance(cc, str) and len(cc) == 2 and cc.isalpha()):
+            error(f"wireless {band}: country must be a 2-letter code: {cc!r}")
 
 if errors == 0 and warnings == 0:
     print("\033[0;32m  All checks passed\033[0m")
@@ -709,6 +735,208 @@ with open(path, "w", encoding="utf-8") as fh:
 PY
 }
 
+# --- Wireless subsystem ------------------------------------------------------
+# Manages radio-level channel/htmode/country only. Never wifi-iface (SSIDs/keys).
+
+normalize_wireless_yaml() {
+    local raw
+    raw=$(yaml_file_to_json "$WIRELESS_FILE")
+    python3 - "$raw" <<'PY'
+import json
+import sys
+
+data = json.loads(sys.argv[1])
+radios = {}
+for item in data.get("radios", []) or []:
+    if not item:
+        continue
+    band = str(item.get("band", "")).strip()
+    if not band:
+        continue
+    entry = {
+        "channel": str(item.get("channel", "")).strip(),
+        "htmode": str(item.get("htmode", "")).strip(),
+    }
+    if item.get("country") is not None:
+        entry["country"] = str(item.get("country")).strip()
+    radios[band] = entry
+json.dump({"radios": radios}, sys.stdout, sort_keys=True)
+PY
+}
+
+get_wireless_current_json() {
+    local raw
+    raw=$(router_ssh "uci show wireless" 2>/dev/null)
+    python3 - "$raw" <<'PY'
+import json
+import sys
+
+sections = {}
+order = []
+for raw_line in sys.argv[1].splitlines():
+    line = raw_line.strip()
+    if not line or "=" not in line:
+        continue
+    key, value = line.split("=", 1)
+    value = value.strip().strip("'")
+    if not key.startswith("wireless."):
+        continue
+    rest = key[len("wireless."):]
+    if "." not in rest:
+        # section declaration, e.g. wireless.radio0=wifi-device
+        if rest not in sections:
+            sections[rest] = {}
+            order.append(rest)
+        sections[rest]["__type__"] = value
+    else:
+        sec, opt = rest.split(".", 1)
+        if sec not in sections:
+            sections[sec] = {}
+            order.append(sec)
+        sections[sec][opt] = value
+
+radios = {}
+for sec in order:
+    fields = sections[sec]
+    if fields.get("__type__") != "wifi-device":
+        continue
+    band = str(fields.get("band", "")).strip()
+    if not band:
+        continue
+    radios[band] = {
+        "channel": str(fields.get("channel", "")).strip(),
+        "htmode": str(fields.get("htmode", "")).strip(),
+        "country": str(fields.get("country", "")).strip(),
+        "uci_section": sec,
+    }
+json.dump({"radios": radios}, sys.stdout, sort_keys=True)
+PY
+}
+
+wireless_diff_json() {
+    local current desired
+    current=$(get_wireless_current_json)
+    desired=$(normalize_wireless_yaml)
+    python3 - "$current" "$desired" <<'PY'
+import json
+import sys
+
+current = json.loads(sys.argv[1])["radios"]
+desired = json.loads(sys.argv[2])["radios"]
+
+changes = []
+missing = []
+for band, dentry in desired.items():
+    centry = current.get(band)
+    if not centry:
+        missing.append(band)
+        continue
+    section = centry.get("uci_section", "")
+    for field in ("channel", "htmode", "country"):
+        if field not in dentry:
+            continue
+        cval = centry.get(field, "")
+        dval = dentry[field]
+        if str(cval) != str(dval):
+            changes.append({
+                "band": band,
+                "section": section,
+                "field": field,
+                "current": cval,
+                "desired": dval,
+            })
+
+json.dump(
+    {
+        "changes": changes,
+        "missing": missing,
+        "in_sync": len(changes) == 0 and len(missing) == 0,
+    },
+    sys.stdout,
+    sort_keys=True,
+)
+PY
+}
+
+print_wireless_diff() {
+    local diff_json="$1"
+    local count missing
+    count=$(echo "$diff_json" | jq '.changes | length')
+    missing=$(echo "$diff_json" | jq '.missing | length')
+
+    echo ""
+    echo -e " ${BOLD}Wireless Diff${NC}"
+    echo -e " ${DIM}────────────────────────────────────────────────────${NC}"
+
+    if [[ "$count" -eq 0 && "$missing" -eq 0 ]]; then
+        echo -e "  ${GREEN}Already in sync${NC}"
+        return 0
+    fi
+
+    if [[ "$count" -gt 0 ]]; then
+        echo "$diff_json" | jq -r '.changes[] | "  ~ \(.band).\(.field): \(.current | tostring) -> \(.desired | tostring)"'
+    fi
+    if [[ "$missing" -gt 0 ]]; then
+        echo "$diff_json" | jq -r '.missing[] | "  ! band \(.) not present on router (skipped)"'
+    fi
+}
+
+build_wireless_commands() {
+    local diff_json
+    diff_json=$(wireless_diff_json)
+
+    python3 - "$diff_json" <<'PY'
+import json
+import shlex
+import sys
+
+diff = json.loads(sys.argv[1])
+commands = []
+for change in diff.get("changes", []):
+    commands.append(
+        "uci set wireless.{section}.{field}={value}".format(
+            section=change["section"],
+            field=change["field"],
+            value=shlex.quote(str(change["desired"])),
+        )
+    )
+
+if commands:
+    commands.append("uci commit wireless")
+    commands.append("wifi reload")
+
+print("\n".join(commands))
+PY
+}
+
+write_wireless_yaml_from_router() {
+    local current_json="$1"
+    python3 - "$current_json" "$WIRELESS_FILE" <<'PY'
+import json
+import sys
+import yaml
+
+current = json.loads(sys.argv[1])["radios"]
+path = sys.argv[2]
+
+band_order = {"2g": 0, "5g": 1, "6g": 2}
+radios = []
+for band in sorted(current.keys(), key=lambda b: band_order.get(b, 9)):
+    entry = current[band]
+    item = {
+        "band": band,
+        "channel": entry.get("channel", ""),
+        "htmode": entry.get("htmode", ""),
+    }
+    if entry.get("country"):
+        item["country"] = entry["country"]
+    radios.append(item)
+
+with open(path, "w", encoding="utf-8") as fh:
+    yaml.dump({"radios": radios}, fh, default_flow_style=False, sort_keys=False)
+PY
+}
+
 cmd_bootstrap() {
     local subsystem="${1:-all}"
     check_dependencies
@@ -725,9 +953,15 @@ cmd_bootstrap() {
             write_firewall_yaml_from_router "$(get_firewall_current_json)"
             log_success "Wrote ${FIREWALL_FILE##*/}"
             ;;
+        wireless)
+            log_info "Bootstrapping wireless.yaml from router..."
+            write_wireless_yaml_from_router "$(get_wireless_current_json)"
+            log_success "Wrote ${WIRELESS_FILE##*/}"
+            ;;
         all)
             cmd_bootstrap dns
             cmd_bootstrap firewall
+            cmd_bootstrap wireless
             ;;
         *)
             log_error "Unknown subsystem: $subsystem"
@@ -742,10 +976,13 @@ cmd_export() {
     case "$subsystem" in
         dns)      router_ssh "uci export dhcp" ;;
         firewall) router_ssh "uci export firewall" ;;
+        wireless) router_ssh "uci export wireless" ;;
         all)
             router_ssh "uci export dhcp"
             echo
             router_ssh "uci export firewall"
+            echo
+            router_ssh "uci export wireless"
             ;;
         *)
             log_error "Unknown subsystem: $subsystem"
@@ -767,9 +1004,13 @@ cmd_diff() {
         firewall)
             print_firewall_diff "$(firewall_diff_json)"
             ;;
+        wireless)
+            print_wireless_diff "$(wireless_diff_json)"
+            ;;
         all)
             print_dns_diff "$(dns_diff_json)"
             print_firewall_diff "$(firewall_diff_json)"
+            print_wireless_diff "$(wireless_diff_json)"
             ;;
         *)
             log_error "Unknown subsystem: $subsystem"
@@ -813,9 +1054,27 @@ cmd_sync() {
             fi
             log_success "Firewall sync complete"
             ;;
+        wireless)
+            local wl_diff wl_commands
+            wl_diff=$(wireless_diff_json)
+            print_wireless_diff "$wl_diff"
+            if [[ "$(echo "$wl_diff" | jq -r '.in_sync')" == "true" ]]; then
+                return 0
+            fi
+            log_warning "Applying wireless changes reloads the radios — WiFi will drop briefly."
+            log_warning "A DFS 5GHz channel adds a ~60s radar-check (CAC) before it comes up."
+            confirm_apply "Apply wireless changes?" || { log_warning "Aborted"; return 0; }
+            backup_package wireless
+            wl_commands=$(build_wireless_commands)
+            if [[ -n "$wl_commands" ]]; then
+                echo "$wl_commands" | router_ssh_stdin
+            fi
+            log_success "Wireless sync complete (verify with: openwrt status)"
+            ;;
         all)
             cmd_sync dns
             cmd_sync firewall
+            cmd_sync wireless
             ;;
         *)
             log_error "Unknown subsystem: $subsystem"
@@ -841,6 +1100,7 @@ cmd_restore() {
     case "$(basename "$backup_file")" in
         dhcp-*.uci) package="dhcp" ;;
         firewall-*.uci) package="firewall" ;;
+        wireless-*.uci) package="wireless" ;;
         *)
             log_error "Cannot infer package from backup filename"
             return 1
@@ -852,11 +1112,11 @@ cmd_restore() {
     {
         cat "$backup_file"
         echo "uci commit ${package}"
-        if [[ "$package" == "dhcp" ]]; then
-            echo "/etc/init.d/dnsmasq restart"
-        else
-            echo "/etc/init.d/firewall reload"
-        fi
+        case "$package" in
+            dhcp)     echo "/etc/init.d/dnsmasq restart" ;;
+            firewall) echo "/etc/init.d/firewall reload" ;;
+            wireless) echo "wifi reload" ;;
+        esac
     } | router_ssh_stdin
     log_success "Restore complete"
 }
@@ -875,19 +1135,23 @@ cmd_status() {
         return 1
     fi
 
-    local dns_current fw_current dns_diff fw_diff
+    local dns_current fw_current wl_current dns_diff fw_diff wl_diff
     dns_current=$(get_dns_current_json)
     fw_current=$(get_firewall_current_json)
+    wl_current=$(get_wireless_current_json)
     dns_diff=$(dns_diff_json)
     fw_diff=$(firewall_diff_json)
+    wl_diff=$(wireless_diff_json)
 
     echo -e "  Router reachable: ${GREEN}yes${NC}"
     echo -e "  DNS upstreams: $(echo "$dns_current" | jq -r '.dnsmasq.server | join(", ") // "-"')"
     echo -e "  LAN DNS options: $(echo "$dns_current" | jq -r '.lan.dhcp_option | join(", ") // "-"')"
     echo -e "  Static DNS aliases: $(echo "$dns_current" | jq -r '(.domains // []) | map("\(.name)=\(.ip)") | join(", ") // "-"')"
     echo -e "  Redirects on router: $(echo "$fw_current" | jq '.redirects | length')"
+    echo -e "  Radios: $(echo "$wl_current" | jq -r '.radios | to_entries | map("\(.key)=ch\(.value.channel)/\(.value.htmode)/\(.value.country // "--")") | join(", ") // "-"')"
     echo -e "  DNS in sync: $(echo "$dns_diff" | jq -r '.in_sync')"
     echo -e "  Firewall in sync: $(echo "$fw_diff" | jq -r '.in_sync')"
+    echo -e "  Wireless in sync: $(echo "$wl_diff" | jq -r '.in_sync')"
 }
 
 cmd_help() {
@@ -898,14 +1162,14 @@ USAGE:
     openwrt [--force] <command> [subsystem]
 
 COMMANDS:
-    bootstrap [dns|firewall|all]  Pull current router state into YAML
-    validate                      Validate local YAML config
-    diff [dns|firewall|all]       Show planned changes
-    sync [dns|firewall|all]       Apply YAML config to router
-    export [dns|firewall|all]     Print raw UCI export
-    restore <backup-file>         Restore a saved UCI snapshot
-    status                        Show router summary and sync state
-    help                          Show this help message
+    bootstrap [dns|firewall|wireless|all]  Pull current router state into YAML
+    validate                               Validate local YAML config
+    diff [dns|firewall|wireless|all]       Show planned changes
+    sync [dns|firewall|wireless|all]       Apply YAML config to router
+    export [dns|firewall|wireless|all]     Print raw UCI export
+    restore <backup-file>                  Restore a saved UCI snapshot
+    status                                 Show router summary and sync state
+    help                                   Show this help message
 
 NOTES:
     - DNS sync manages only:
@@ -915,6 +1179,9 @@ NOTES:
       * Static dhcp domain aliases declared in dns.yaml
     - Static DHCP hosts remain managed by the separate 'dhcp' CLI.
     - Firewall sync manages redirect entries keyed by redirect name.
+    - Wireless sync manages per-radio channel/htmode/country only, keyed by band.
+      It NEVER touches SSIDs, keys, or encryption (secrets stay out of git).
+      Applying reloads the radios (brief WiFi drop; DFS 5GHz adds a ~60s CAC).
 EOF
 }
 

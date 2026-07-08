@@ -144,7 +144,13 @@ sections:
           include:
             - entity_id: switch.*plug*
               options:
-                type: custom:mushroom-entity-card
+                type: custom:mushroom-template-card
+                primary: "{{ state_attr(entity, 'friendly_name') or entity }}"
+                secondary: "{{ area_name(entity) or 'Unassigned' }}"
+                icon: "{{ state_attr(entity, 'icon') or 'mdi:power-plug' }}"
+                icon_color: "{{ 'amber' if is_state(entity, 'on') else 'disabled' }}"
+                tap_action:
+                  action: toggle
             - domain: climate
               options:
                 type: custom:mushroom-climate-card

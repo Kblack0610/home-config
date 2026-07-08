@@ -702,6 +702,8 @@ spec:
                   ("athom-smart-plug-v3-6043c8", "192.168.1.190", "fc:01:2c:60:43:c8", "Athom Plug V3 6043c8"),
                   ("athom-smart-plug-v3-6058b8", "192.168.1.153", "fc:01:2c:60:58:b8", "Athom Plug V3 6058b8"),
                   ("athom-smart-plug-v3-60a188", "192.168.1.233", "fc:01:2c:60:a1:88", "Athom Plug V3 60a188"),
+                  ("athom-smart-plug-v3-600fec", "192.168.1.228", "fc:01:2c:60:0f:ec", "Athom Plug V3 600fec"),
+                  ("athom-smart-plug-v3-6027f0", "192.168.1.208", "fc:01:2c:60:27:f0", "Athom Plug V3 6027f0"),
               ]
 
               os.makedirs(os.path.dirname(CONFIG_FILE), exist_ok=True)

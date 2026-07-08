@@ -231,6 +231,18 @@ devices:
     category: iot
     range_exception: true
 
+  - hostname: athom-plug-v3-5
+    mac: "FC:01:2C:60:0F:EC"
+    ip: "192.168.1.228"
+    category: iot
+    range_exception: true
+
+  - hostname: athom-plug-v3-6
+    mac: "FC:01:2C:60:27:F0"
+    ip: "192.168.1.208"
+    category: iot
+    range_exception: true
+
   # --- Dynamic / Unknown -----------------------------------------------------
   - hostname: unknown-37233e
     mac: "2A:64:1F:37:23:3E"

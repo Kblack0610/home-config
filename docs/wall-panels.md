@@ -46,8 +46,21 @@ Also set Settings → Display → **Screen timeout = max**, and disable the lock
 
 ## 2. Full kiosk lockdown (FreeKiosk — open-source)
 For a mounted panel you want it to boot straight into the dashboard, full-screen, with
-no way to wander off into Android. We use **FreeKiosk** (MIT, open-source) on stock-Android
-Lenovo tablets (M9/M11). (FireOS is not supported — see plan.)
+no way to wander off into Android. We use **FreeKiosk** (`com.freekiosk`, MIT, open-source)
+on stock-Android Lenovo tablets (M9/M11). (FireOS is not supported — see plan.)
+
+> **Scriptable (recommended): `scripts/provision-wall-tablet.sh`.** FreeKiosk takes its
+> ENTIRE config via `am start` intent extras, so once the tablet is on ADB (Developer
+> Options → USB debugging, plug in or `adb tcpip`) one command provisions it — grants the
+> mic, keep-awake, start URL, PIN, auto-boot, and optional REST/MQTT — no tapping:
+> ```bash
+> scripts/provision-wall-tablet.sh --name wall-kitchen \
+>   --url https://hass.kblab.me/wall-panels --pin 4321 \
+>   --mqtt-broker mosquitto.kblab.me --mqtt-user hass --mqtt-pass '<pw>'   # MQTT optional
+> # add --apk <path> to install first, --device-owner for true lock-task, --dry-run to preview
+> ```
+> It prints the few unavoidable on-device/HA steps at the end (HA login, satellite
+> assignment, PIN change). The manual walkthrough below documents what it automates.
 
 1. **Install FreeKiosk** — from Google Play (search "FreeKiosk"), or sideload the APK from
    <https://github.com/RushB-fr/freekiosk> / <https://freekiosk.app>.
@@ -64,7 +77,8 @@ Lenovo tablets (M9/M11). (FireOS is not supported — see plan.)
    reset tablet:
    ```bash
    # tablet in dev mode + USB debugging on, connected via adb (see adb-ops skill)
-   adb shell dpm set-device-owner uk.freekiosk/.AdminReceiver   # confirm exact component in app docs
+   # Prereq: ALL accounts removed (Settings → Accounts = none) + SIM out, else this fails.
+   adb shell dpm set-device-owner com.freekiosk/.DeviceAdminReceiver
    ```
    Skip this for a quick setup; the home-app + immersive settings already give a solid kiosk.
 5. **Log in** to HA as the panel's profile (see §4). The webview keeps the session.
@@ -84,6 +98,23 @@ Lenovo tablets (M9/M11). (FireOS is not supported — see plan.)
 > (the old single-image screensaver URL). A refresh switches it to the current immich-kiosk frame.
 
 ---
+
+### Voice satellite (Binks) on the panel
+
+The wall panel doubles as an always-listening **Binks** voice satellite (in-browser
+microWakeWord → the Binks Assist pipeline; see `docs/home-assistant-voice.md` Stage 4). Two
+FreeKiosk-specific things matter:
+
+- **Mic:** FreeKiosk's patched WebView **auto-grants** `getUserMedia` once the OS
+  `RECORD_AUDIO` permission exists (the provision script grants it; no in-app mic toggle).
+  It only works over HTTPS — our `https://hass.kblab.me` (trusted LE cert) qualifies.
+- **Screensaver ⚠️:** a real **screen-off** or a screensaver that **navigates away** from the
+  dashboard tears down the mic stream and the wake word goes deaf. Keep **Keep-Screen-On +
+  screensaver OFF (or Dim-Only)** on a voice panel. (This is why the in-dashboard wallpanel
+  photo screensaver is fine but an OS/screen-off screensaver is not.)
+
+One-time, in HA (per browser, like browser_mod): open the **Voice Satellite** sidebar panel
+→ assign this browser to the **"Wall Kitchen"** satellite. Then say "ok nabu" → Binks.
 
 ## 3. Per-tablet identity (browser_mod)
 Each tablet registers with browser_mod under a stable Browser ID by adding it to the URL once:

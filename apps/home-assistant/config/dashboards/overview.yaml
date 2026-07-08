@@ -83,8 +83,10 @@ sections:
           {{ 'orange' if is_state('sensor.cat_litter_box_status','Cat_into') else 'blue' }}
         tap_action: { action: navigate, navigation_path: /lovelace/device-litterbox }
       # Smart plugs — auto-populates EVERY plug (entity_id switch.*plug* catches
-      # Shelly + Athom + any future one, and excludes non-plug switches). Tap
-      # toggles the relay; live watts live in the Energy views. Modular by design.
+      # Shelly + Athom + any future one, and excludes non-plug switches). Each
+      # card shows the plug's ROOM (its HA area, set from the wall Settings view)
+      # as secondary text. Tap toggles the relay; live watts live in the Energy
+      # views. Modular by design.
       - type: custom:auto-entities
         show_empty: false
         card_param: cards
@@ -96,7 +98,12 @@ sections:
           include:
             - entity_id: switch.*plug*
               options:
-                type: custom:mushroom-entity-card
-                icon: mdi:power-plug
+                type: custom:mushroom-template-card
+                primary: "{{ state_attr(entity, 'friendly_name') or entity }}"
+                secondary: "{{ area_name(entity) or 'Unassigned' }}"
+                icon: "{{ state_attr(entity, 'icon') or 'mdi:power-plug' }}"
+                icon_color: "{{ 'amber' if is_state(entity, 'on') else 'disabled' }}"
+                tap_action:
+                  action: toggle
         sort:
           method: friendly_name

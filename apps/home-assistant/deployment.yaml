@@ -241,7 +241,7 @@ spec:
             - -c
             - |
               set -u
-              VERSION="2026-06-29-1"
+              VERSION="2026-07-08-1"
               WWW="/config/www/community"
               MARKER="$WWW/.version"
               if [ -f "$MARKER" ] && [ "$(cat "$MARKER")" = "$VERSION" ]; then
@@ -279,6 +279,20 @@ spec:
               else
                 echo "WARN  failed: browser_mod"; FAIL=$((FAIL+1))
               fi
+              # pyscript is a Python custom_component: it exposes non-admin-callable
+              # services that write the HA registries (area/name/icon/labels) so any
+              # wall-panel user can configure a plug from the Settings view (HA has
+              # no built-in set-area/set-name service and the native editors are
+              # admin-only + hidden in kiosk). App code lives in /config/pyscript/.
+              if wget -q -O /tmp/ps.tgz "https://github.com/custom-components/pyscript/archive/refs/tags/2.0.1.tar.gz"; then
+                tar -xzf /tmp/ps.tgz -C /tmp
+                rm -rf /config/custom_components/pyscript
+                cp -r /tmp/pyscript-2.0.1/custom_components/pyscript /config/custom_components/pyscript
+                rm -rf /tmp/ps.tgz /tmp/pyscript-2.0.1
+                echo "ok    pyscript"
+              else
+                echo "WARN  failed: pyscript"; FAIL=$((FAIL+1))
+              fi
               if [ "$FAIL" -eq 0 ]; then
                 echo "$VERSION" > "$MARKER"
                 echo "all lovelace cards vendored ($VERSION)"
@@ -296,14 +310,15 @@ spec:
             - -c
             - |
               set -eu
-              mkdir -p /config/packages /config/dashboards
+              mkdir -p /config/packages /config/dashboards /config/pyscript
 
-              # Make this sync AUTHORITATIVE: packages/ and dashboards/ contain
-              # ONLY git-managed files, so prune them first. Without this, `cp`
-              # leaves orphans behind when a package/dashboard is removed from
-              # git — and HA keeps loading the stale file (e.g. a dropped package
-              # erroring on every start). Pruning makes the PVC match git exactly.
-              rm -f /config/packages/*.yaml /config/dashboards/*.yaml
+              # Make this sync AUTHORITATIVE: packages/, dashboards/ and pyscript/
+              # contain ONLY git-managed files, so prune them first. Without this,
+              # `cp` leaves orphans behind when a package/dashboard/app is removed
+              # from git — and HA keeps loading the stale file (e.g. a dropped
+              # package erroring on every start). Pruning makes the PVC match git
+              # exactly.
+              rm -f /config/packages/*.yaml /config/dashboards/*.yaml /config/pyscript/*.py
 
               cp /managed-config/configuration.yaml /config/configuration.yaml
               cp /managed-config/automations.yaml /config/automations.yaml
@@ -321,6 +336,10 @@ spec:
               cp /managed-config/package_fleet_alerts.yaml /config/packages/fleet_alerts.yaml
               cp /managed-config/package_marine.yaml /config/packages/marine.yaml
               cp /managed-config/package_voice_satellite_binks.yaml /config/packages/voice_satellite_binks.yaml
+              cp /managed-config/package_plug_settings.yaml /config/packages/plug_settings.yaml
+
+              # pyscript apps (registry-write services for the plug Settings editor)
+              cp /managed-config/pyscript_plug_settings.py /config/pyscript/plug_settings.py
 
               cp /managed-config/dashboard_overview.yaml /config/dashboards/overview.yaml
               cp /managed-config/dashboard_local.yaml /config/dashboards/local.yaml
@@ -1667,6 +1686,70 @@ spec:
                   with open(ENTRIES, "w") as f:
                       json.dump(store, f, indent=2)
               print(f"switch_as_x seed done (+{added})")
+          volumeMounts:
+            - name: config
+              mountPath: /config
+        # Seed a baseline ROOM palette into core.area_registry so the wall-panel
+        # Settings editor has sensible rooms to pick from on a fresh install and
+        # so the plug dashboards can group by room. Areas are a CORE registry
+        # (no integration). Schema mirrors the live store @ 2025.11 (id = name
+        # slug). Idempotent: an area is added only when its slug is absent, so
+        # rooms a user creates live (or HA's onboarding defaults) are never
+        # touched. We deliberately do NOT assign plugs to rooms here — the whole
+        # point is that any user assigns them live from the Settings view; every
+        # plug starts "Unassigned" until a human places it.
+        - name: seed-areas
+          image: ghcr.io/home-assistant/home-assistant:stable
+          command:
+            - python3
+            - -c
+            - |
+              import json, os, re
+              from datetime import datetime, timezone
+
+              REG = "/config/.storage/core.area_registry"
+              # Baseline home rooms. Add more here or live via the Settings editor.
+              ROOMS = ["Living Room", "Kitchen", "Bedroom", "Office", "Garage", "Bathroom"]
+
+              def slug(name):
+                  return re.sub(r"[^a-z0-9]+", "_", name.lower()).strip("_")
+
+              os.makedirs(os.path.dirname(REG), exist_ok=True)
+              if os.path.exists(REG):
+                  with open(REG) as f:
+                      store = json.load(f)
+              else:
+                  store = {"version": 1, "minor_version": 8, "key": "core.area_registry",
+                           "data": {"areas": []}}
+              areas = store["data"]["areas"]
+              have = {a.get("id") for a in areas}
+
+              now = datetime.now(timezone.utc).isoformat()
+              added = 0
+              for name in ROOMS:
+                  aid = slug(name)
+                  if aid in have:
+                      continue
+                  areas.append({
+                      "aliases": [],
+                      "floor_id": None,
+                      "humidity_entity_id": None,
+                      "icon": None,
+                      "id": aid,
+                      "labels": [],
+                      "name": name,
+                      "picture": None,
+                      "temperature_entity_id": None,
+                      "created_at": now,
+                      "modified_at": now,
+                  })
+                  have.add(aid)
+                  added += 1
+                  print(f"Seeded area '{name}' (id={aid})")
+              if added:
+                  with open(REG, "w") as f:
+                      json.dump(store, f, indent=2)
+              print(f"area seed done (+{added}, {len(areas)} total)")
           volumeMounts:
             - name: config
               mountPath: /config

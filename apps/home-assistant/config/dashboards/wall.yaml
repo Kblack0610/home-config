@@ -97,6 +97,10 @@ views:
                 content: Media
                 tap_action: { action: navigate, navigation_path: /wall-panels/media }
               - type: template
+                icon: mdi:home-edit
+                content: Settings
+                tap_action: { action: navigate, navigation_path: /wall-panels/settings }
+              - type: template
                 icon: mdi:cog
                 content: Admin
                 tap_action: { action: navigate, navigation_path: /wall-panels/admin }
@@ -141,7 +145,9 @@ views:
             heading: Smart Plugs
             heading_style: title
           # Auto-populates every plug (switch.*plug*): Shelly, Athom, future.
-          # Tap toggles the relay; live watts are in the Energy section below.
+          # Each card shows the plug's ROOM (its HA area, set from the Settings
+          # view) as secondary text — "Unassigned" until a user places it. Tap
+          # toggles the relay; live watts are in the Energy section below.
           - type: custom:auto-entities
             show_empty: false
             card_param: cards
@@ -153,8 +159,13 @@ views:
               include:
                 - entity_id: switch.*plug*
                   options:
-                    type: custom:mushroom-entity-card
-                    icon: mdi:power-plug
+                    type: custom:mushroom-template-card
+                    primary: "{{ state_attr(entity, 'friendly_name') or entity }}"
+                    secondary: "{{ area_name(entity) or 'Unassigned' }}"
+                    icon: "{{ state_attr(entity, 'icon') or 'mdi:power-plug' }}"
+                    icon_color: "{{ 'amber' if is_state(entity, 'on') else 'disabled' }}"
+                    tap_action:
+                      action: toggle
             sort:
               method: friendly_name
       - type: grid
@@ -662,6 +673,75 @@ views:
   # become NON-ADMIN HA users, so the restart/update actions below are rejected
   # server-side for them regardless of what the UI shows. A PIN popup (cosmetic)
   # + per-profile `visible:` gating land then too.
+  # ────────────────────────────── SETTINGS ─────────────────────────────────
+  # User-configurable plug metadata. ANY user (non-admin, on the kiosk) can tap
+  # a plug to set its room, name, icon, category and whether it's a light. The
+  # editor writes HA's native registries via the pyscript plug_settings app
+  # (config/pyscript/plug_settings.py) + browser_mod popup — no admin needed.
+  # Each button uses custom:button-card because HA core does NOT template
+  # tap_action service data; button-card's [[[ ]]] JS does, so it can pass the
+  # tapped plug's entity_id to script.plug_edit_open.
+  - title: Settings
+    path: settings
+    icon: mdi:home-edit
+    type: sections
+    max_columns: 2
+    sections:
+      - type: grid
+        cards:
+          - type: custom:bubble-card
+            card_type: button
+            button_type: name
+            name: Home
+            icon: mdi:home
+            tap_action: { action: navigate, navigation_path: /wall-panels/home }
+          - type: heading
+            heading: Plug Settings
+            heading_style: title
+          - type: markdown
+            content: >
+              Tap a plug to set its **room**, **name**, **icon**, **category**,
+              and whether it counts as a **light**. Changes save instantly and
+              apply everywhere (dashboards + voice).
+          - type: custom:auto-entities
+            show_empty: false
+            card_param: cards
+            card:
+              type: grid
+              columns: 1
+              square: false
+            filter:
+              include:
+                - entity_id: switch.*plug*
+                  options:
+                    type: custom:button-card
+                    icon: mdi:power-plug
+                    show_label: true
+                    size: 28px
+                    styles:
+                      card: [{ padding: 12px }]
+                      grid: [{ grid-template-areas: '"i n" "i l"' }, { grid-template-columns: min-content 1fr }]
+                      name: [{ justify-self: start }, { font-weight: bold }]
+                      label: [{ justify-self: start }, { color: var(--secondary-text-color) }]
+                    name: |
+                      [[[ return states[entity.entity_id].attributes.friendly_name || entity.entity_id ]]]
+                    label: |
+                      [[[
+                        var eid = entity.entity_id;
+                        var e = hass.entities ? hass.entities[eid] : null;
+                        var aid = e ? e.area_id : null;
+                        if (!aid && e && e.device_id && hass.devices) { aid = (hass.devices[e.device_id]||{}).area_id; }
+                        var a = (aid && hass.areas) ? hass.areas[aid] : null;
+                        return (a ? a.name : 'Unassigned') + ' · tap to configure';
+                      ]]]
+                    tap_action:
+                      action: call-service
+                      service: script.plug_edit_open
+                      service_data:
+                        entity_id: "[[[ return entity.entity_id ]]]"
+            sort:
+              method: friendly_name
+
   - title: Admin
     path: admin
     icon: mdi:cog

@@ -53,6 +53,15 @@ automation: !include automations.yaml
 script: !include scripts.yaml
 scene: !include scenes.yaml
 
+# pyscript backs the wall-panel plug-settings editor: its app at
+# /config/pyscript/plug_settings.py registers non-admin-callable services that
+# write the HA registries (area / name / icon / labels) and toggle switch_as_x,
+# so any kiosk user can configure a plug. hass_is_global + allow_all_imports let
+# the app import HA's registry helpers. Safe on this LAN/Tailscale-only instance.
+pyscript:
+  allow_all_imports: true
+  hass_is_global: true
+
 logger:
   default: warning
   logs:

@@ -5,7 +5,7 @@ HA dashboard that, when idle, fades into a full-screen Immich photo frame — wi
 clock/date + photo metadata overlay and automatic side-by-side **portrait pairing**.
 
 - **Dashboard:** `https://hass.kblab.me/wall-panels` (LAN/Tailscale only)
-- **Views:** Home (glance) · Control · Devices · Ops/Fleet · Photos · Media · Admin
+- **Views:** Home (glance) · Control · Devices · Ops/Fleet · Photos · Media · Settings · Admin
 - **Screensaver:** lovelace-wallpanel embeds immich-kiosk's full page via `iframe+` (idle/keep-awake
   from wallpanel; clock + metadata + `KIOSK_LAYOUT=splitview` portrait pairing from immich-kiosk).
 - **Photo source:** `apps/immich-kiosk` (`immich-kiosk.kblab.me`) → your Immich library
@@ -131,6 +131,46 @@ This lets later automations target a specific panel (navigate it home on idle, n
 Create users in HA UI → Settings → People/Users. Log each tablet's webview into the intended
 profile. **Real security = the non-admin user** (the Admin view's restart/update actions are
 rejected for non-admins regardless of UI). The PIN popup added later is cosmetic friction only.
+
+---
+
+## 4.5 Plug Settings view (any user configures the home)
+
+The **Settings** view (nav chip → `/wall-panels/settings`) lets **any user, including a
+non-admin on the kiosk**, configure each smart plug: its **room**, **name**, **icon**,
+**category**, and whether it counts as a **light**. Tap a plug → an editor popup opens →
+change fields → **Save**. Changes are instant and apply everywhere (the plug dashboards
+regroup by room; voice picks up the new name/area). Plugs start **Unassigned** — nothing is
+placed for you.
+
+Where the metadata lives — all in HA's **native registries** (the persistent `.storage` "db"),
+so it's the same data HA's own UI would write and it powers native area/voice features:
+
+| Field | Native store |
+|-------|--------------|
+| Room | `core.area_registry` + entity `area_id` |
+| Name | `core.entity_registry` name override |
+| Icon | `core.entity_registry` icon override |
+| Category | `core.label_registry` + entity `labels` |
+| Is-a-light | `switch_as_x` config entry (add/remove) |
+
+How it works (why it needs a helper): HA has **no built-in service to set an entity's area or
+name**, and the native registry editors are **admin-only and hidden in kiosk mode**. So the
+editor calls a small **pyscript** app (`config/pyscript/plug_settings.py`) whose services
+(`pyscript.plug_load` / `pyscript.plug_apply`) run in HA's own context and perform the registry
+writes — callable by a non-admin. The UI is a `browser_mod` popup driven by fixed staging
+helpers in `config/packages/plug_settings.yaml`; the per-plug rows are `custom:button-card`
+because HA core does not template `tap_action` service data (button-card's `[[[ ]]]` JS does,
+so it passes the tapped plug's `entity_id`).
+
+> ⚠️ **Security note:** the `pyscript.plug_*` services are a deliberate, **LAN/Tailscale-only**
+> privileged surface — a non-admin can write the registry through them. That's the price of
+> kiosk-editable metadata; acceptable because the dashboard is not internet-exposed. Do not
+> expose HA publicly without gating these.
+
+Adding rooms: the editor's Room dropdown lists live HA areas; type a new room in **New room
+(optional)** to create it on Save. The baseline palette (Living Room, Kitchen, Bedroom, Office,
+Garage, Bathroom) is seeded idempotently by the `seed-areas` init container.
 
 ---
 

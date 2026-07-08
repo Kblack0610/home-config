@@ -676,6 +676,143 @@ spec:
           volumeMounts:
             - name: config
               mountPath: /config
+        # Seed native ESPHome config entries for the Athom Smart Plug V3 metered
+        # outlets. ESPHome is a CORE HA integration (no custom component). The
+        # Athom V3 ships with the ESPHome native API OPEN (no encryption), so the
+        # entry needs only host/port. Reproduces in git what HA's config flow made
+        # live. Schema mirrors HA core esphome/config_flow.py @ 2026.7:
+        # data={device_name, host, port:6053, password:"", noise_psk:""};
+        # unique_id = MAC (lowercase, colons); VERSION=1 MINOR_VERSION=1.
+        # Idempotent on domain+data.host. Extend PLUGS as the other 5 come online.
+        - name: seed-esphome
+          image: ghcr.io/home-assistant/home-assistant:stable
+          command:
+            - python3
+            - -c
+            - |
+              import json, os, uuid
+              from datetime import datetime, timezone
+
+              CONFIG_FILE = "/config/.storage/core.config_entries"
+              DOMAIN = "esphome"
+
+              # (device_name, host, mac [lowercase, colons], title)
+              PLUGS = [
+                  ("athom-smart-plug-v3-613888", "192.168.1.142", "fc:01:2c:61:38:88", "Athom Plug V3 613888"),
+              ]
+
+              os.makedirs(os.path.dirname(CONFIG_FILE), exist_ok=True)
+
+              if os.path.exists(CONFIG_FILE):
+                  with open(CONFIG_FILE) as f:
+                      store = json.load(f)
+              else:
+                  store = {"version": 1, "minor_version": 4, "key": "core.config_entries", "data": {"entries": []}}
+
+              existing = {
+                  (e.get("domain"), e.get("data", {}).get("host"))
+                  for e in store["data"]["entries"]
+              }
+
+              added = 0
+              for name, host, mac, title in PLUGS:
+                  if (DOMAIN, host) in existing:
+                      print(f"Config entry for {DOMAIN} host={host} already exists, skipping")
+                      continue
+                  now = datetime.now(timezone.utc).isoformat()
+                  store["data"]["entries"].append({
+                      "created_at": now,
+                      "data": {
+                          "device_name": name,
+                          "host": host,
+                          "noise_psk": "",
+                          "password": "",
+                          "port": 6053,
+                      },
+                      "disabled_by": None,
+                      "discovery_keys": {},
+                      "domain": DOMAIN,
+                      "entry_id": uuid.uuid4().hex,
+                      "minor_version": 1,
+                      "modified_at": now,
+                      "options": {"allow_service_calls": False},
+                      "pref_disable_new_entities": False,
+                      "pref_disable_polling": False,
+                      "source": "user",
+                      "subentries": [],
+                      "title": title,
+                      "unique_id": mac,
+                      "version": 1,
+                  })
+                  added += 1
+                  print(f"Seeded {DOMAIN} config entry for host={host} mac={mac}")
+
+              if added:
+                  with open(CONFIG_FILE, "w") as f:
+                      json.dump(store, f, indent=2)
+          volumeMounts:
+            - name: config
+              mountPath: /config
+        # Seed HA's MQTT integration (core) → the broker connection HA needs for
+        # any MQTT-discovery device (Tasmota / ESPHome-with-mqtt / future plugs).
+        # Single instance. Broker = in-cluster Mosquitto (anonymous, allow_anonymous
+        # true). Schema mirrors HA core mqtt/config_flow.py @ 2026.7:
+        # data={broker, port:1883}; unique_id null; VERSION=1 MINOR_VERSION=2.
+        # Idempotent: keyed on domain alone. This is the modular MQTT capability —
+        # devices that speak HA MQTT discovery auto-appear once this is present.
+        - name: seed-mqtt
+          image: ghcr.io/home-assistant/home-assistant:stable
+          command:
+            - python3
+            - -c
+            - |
+              import json, os, uuid
+              from datetime import datetime, timezone
+
+              CONFIG_FILE = "/config/.storage/core.config_entries"
+              DOMAIN = "mqtt"
+
+              os.makedirs(os.path.dirname(CONFIG_FILE), exist_ok=True)
+
+              if os.path.exists(CONFIG_FILE):
+                  with open(CONFIG_FILE) as f:
+                      store = json.load(f)
+              else:
+                  store = {"version": 1, "minor_version": 4, "key": "core.config_entries", "data": {"entries": []}}
+
+              for entry in store["data"]["entries"]:
+                  if entry.get("domain") == DOMAIN:
+                      print(f"Config entry for {DOMAIN} already exists, skipping")
+                      exit(0)
+
+              now = datetime.now(timezone.utc).isoformat()
+              store["data"]["entries"].append({
+                  "created_at": now,
+                  "data": {
+                      "broker": "mosquitto.mosquitto.svc.cluster.local",
+                      "port": 1883,
+                  },
+                  "disabled_by": None,
+                  "discovery_keys": {},
+                  "domain": DOMAIN,
+                  "entry_id": uuid.uuid4().hex,
+                  "minor_version": 2,
+                  "modified_at": now,
+                  "options": {},
+                  "pref_disable_new_entities": False,
+                  "pref_disable_polling": False,
+                  "source": "user",
+                  "subentries": [],
+                  "title": "mosquitto.mosquitto.svc.cluster.local",
+                  "unique_id": None,
+                  "version": 1,
+              })
+              with open(CONFIG_FILE, "w") as f:
+                  json.dump(store, f, indent=2)
+              print(f"Seeded {DOMAIN} config entry")
+          volumeMounts:
+            - name: config
+              mountPath: /config
         # Seed a geo_json_events config entry → public markers on the Map (USGS
         # earthquakes near home). The integration is config-flow-only (no YAML
         # platform), so we seed it like Bambu/Tapo. Schema mirrors

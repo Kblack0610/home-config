@@ -204,6 +204,15 @@ devices:
     category: iot
     range_exception: true
 
+  # Athom Smart Plug V3 #1 — pinned at its CURRENT .142 so the ESPHome config
+  # entry's host stays valid. The full 6-plug batch can consolidate these into a
+  # clean IoT block (.106-.111) in one coordinated pass (git seed + reboot).
+  - hostname: athom-plug-v3-1
+    mac: "FC:01:2C:61:38:88"
+    ip: "192.168.1.142"
+    category: iot
+    range_exception: true
+
   # --- Dynamic / Unknown -----------------------------------------------------
   - hostname: unknown-37233e
     mac: "2A:64:1F:37:23:3E"

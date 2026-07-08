@@ -140,21 +140,23 @@ views:
           - type: heading
             heading: Smart Plugs
             heading_style: title
-          # Tap toggles the relay; secondary shows live power draw.
-          - type: custom:mushroom-template-card
-            entity: switch.shellyplugusg4_acebe6f28334
-            primary: Shelly Plug 1
-            secondary: "{{ states('sensor.shellyplugusg4_acebe6f28334_power') }} W"
-            icon: mdi:power-plug
-            icon_color: "{{ 'green' if is_state('switch.shellyplugusg4_acebe6f28334','on') else 'grey' }}"
-            tap_action: { action: toggle }
-          - type: custom:mushroom-template-card
-            entity: switch.shellyplugusg4_acebe6f2a1e8
-            primary: Shelly Plug 2 (Lamp)
-            secondary: "{{ states('sensor.shellyplugusg4_acebe6f2a1e8_power') }} W"
-            icon: mdi:power-plug
-            icon_color: "{{ 'green' if is_state('switch.shellyplugusg4_acebe6f2a1e8','on') else 'grey' }}"
-            tap_action: { action: toggle }
+          # Auto-populates every plug (switch.*plug*): Shelly, Athom, future.
+          # Tap toggles the relay; live watts are in the Energy section below.
+          - type: custom:auto-entities
+            show_empty: false
+            card_param: cards
+            card:
+              type: grid
+              columns: 2
+              square: false
+            filter:
+              include:
+                - entity_id: switch.*plug*
+                  options:
+                    type: custom:mushroom-entity-card
+                    icon: mdi:power-plug
+            sort:
+              method: friendly_name
       - type: grid
         cards:
           - type: heading

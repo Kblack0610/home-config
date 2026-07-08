@@ -142,7 +142,7 @@ sections:
           square: false
         filter:
           include:
-            - entity_id: switch.shelly*
+            - entity_id: switch.*plug*
               options:
                 type: custom:mushroom-entity-card
             - domain: climate

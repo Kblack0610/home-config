@@ -336,6 +336,16 @@ device. (A plug can even do both: `api:` for HA + `mqtt:` for Grafana.)
 `auto-entities` filtered on **`entity_id: switch.*plug*`** — which catches Shelly (`shellyplug…`)
 and Athom (`…smart_plug…`) and any future plug, while excluding non-plug switches. New plugs appear
 with **no dashboard edits**. Energy sections filter `device_class: power` for the same reason.
+Each plug card shows its **room** (HA area) as secondary text — "Unassigned" until a user places it.
+
+**User-configurable metadata (no hardcoding):** a plug's room/name/icon/category/is-a-light is no
+longer baked into `deployment.yaml` — it lives in HA's **native registries** (area/label/entity
+registry + `switch_as_x`) and is editable by **any user** from the wall **Settings** view
+(`/wall-panels/settings`). The `seed-areas` init container seeds a baseline room palette
+(idempotent, non-destructive); a vendored **pyscript** app performs the non-admin registry writes.
+Full runbook + security note: [`docs/wall-panels.md`](./wall-panels.md#45-plug-settings-view-any-user-configures-the-home).
+The `seed-switch-as-x-lights` list is now just the git **baseline** for is-a-light; users can flip
+any plug live from Settings.
 
 ---
 

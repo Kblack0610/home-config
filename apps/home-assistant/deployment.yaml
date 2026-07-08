@@ -1594,6 +1594,78 @@ spec:
           volumeMounts:
             - name: config
               mountPath: /config
+        # Represent lamp-carrying smart plugs as `light` entities via the built-in
+        # Switch as X helper, so "turn off the lights" (Binks + built-in intents +
+        # lights cards) controls them. A smart plug is a `switch` domain entity;
+        # this wraps it as a light and hides the source switch. Config lives in
+        # entry.OPTIONS (data empty), VERSION 1 / MINOR 3 (mirrors switch_as_x
+        # config_flow @ HA 2025.11). Idempotent on domain + options.entity_id.
+        # The wrapped lights land in core.entity_registry, so seed-binks-expose
+        # exposes them to Binks on the next boot (light domain is allow-listed).
+        - name: seed-switch-as-x-lights
+          image: ghcr.io/home-assistant/home-assistant:stable
+          command:
+            - python3
+            - -c
+            - |
+              import json, os, uuid
+              from datetime import datetime, timezone
+
+              ENTRIES = "/config/.storage/core.config_entries"
+              DOMAIN = "switch_as_x"
+              # Smart plugs that drive lamps → treat as lights ("light as default").
+              # Appliance switches (cat litter, printer camera, etc.) are left alone.
+              PLUGS = [
+                  ("switch.athom_smart_plug_v3_613888_switch", "Athom Plug 613888"),
+                  ("switch.shellyplugusg4_acebe6f28334", "Shelly Plug 1"),
+                  ("switch.shellyplugusg4_acebe6f2a1e8", "Shelly Plug 2 (Lamp)"),
+              ]
+
+              os.makedirs(os.path.dirname(ENTRIES), exist_ok=True)
+              if os.path.exists(ENTRIES):
+                  with open(ENTRIES) as f:
+                      store = json.load(f)
+              else:
+                  store = {"version": 1, "minor_version": 4, "key": "core.config_entries", "data": {"entries": []}}
+              entries = store["data"]["entries"]
+              for e in entries:
+                  e.setdefault("subentries", {})
+
+              have = {e.get("options", {}).get("entity_id") for e in entries if e.get("domain") == DOMAIN}
+              now = datetime.now(timezone.utc).isoformat()
+              added = 0
+              for src, title in PLUGS:
+                  if src in have:
+                      print(f"switch_as_x for {src} exists, skipping")
+                      continue
+                  entries.append({
+                      "created_at": now,
+                      "data": {},
+                      "disabled_by": None,
+                      "discovery_keys": {},
+                      "domain": DOMAIN,
+                      "entry_id": uuid.uuid4().hex,
+                      "minor_version": 3,
+                      "modified_at": now,
+                      "options": {"entity_id": src, "invert": False, "target_domain": "light"},
+                      "pref_disable_new_entities": False,
+                      "pref_disable_polling": False,
+                      "source": "user",
+                      "subentries": {},
+                      "title": title,
+                      "unique_id": None,
+                      "version": 1,
+                  })
+                  have.add(src)
+                  added += 1
+                  print(f"Seeded switch_as_x light for {src} ({title})")
+              if added:
+                  with open(ENTRIES, "w") as f:
+                      json.dump(store, f, indent=2)
+              print(f"switch_as_x seed done (+{added})")
+          volumeMounts:
+            - name: config
+              mountPath: /config
       containers:
         - name: home-assistant
           image: ghcr.io/home-assistant/home-assistant:stable

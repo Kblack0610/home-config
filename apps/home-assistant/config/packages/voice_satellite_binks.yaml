@@ -46,17 +46,13 @@ automation:
           entity_id: select.wall_kitchen_wake_word_detection
         data:
           option: "On Device (microWakeWord)"
-      # Stage 4A validation word; flip to "hey_binks" once the model ships (4B).
-      - service: select.select_option
-        target:
-          entity_id: select.wall_kitchen_wake_word_1
-        data:
-          option: "ok_nabu"
-      - service: select.select_option
-        target:
-          entity_id: select.wall_kitchen_wake_word_sensitivity
-        data:
-          option: "Moderately sensitive"
+      # NOTE: the wake WORD (select.wall_kitchen_wake_word_1) is intentionally NOT
+      # pinned here — pinning it re-forced the value on every browser reconnect,
+      # which blocked picking a word in the UI. It stays user-selectable until the
+      # custom "hey_binks" model ships (Stage 4B), at which point re-add:
+      #   - service: select.select_option
+      #     target: { entity_id: select.wall_kitchen_wake_word_1 }
+      #     data:   { option: "hey_binks" }
       - service: switch.turn_on
         target:
           entity_id:

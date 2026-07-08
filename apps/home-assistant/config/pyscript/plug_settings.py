@@ -43,8 +43,9 @@ CATEGORIES = ["Lamp", "Appliance", "Fan", "Heater", "Printer"]
 
 
 def _area_names():
+    # NB: pyscript does not support generator expressions — use list comps.
     reg = ar.async_get(hass)
-    return sorted(a.name for a in reg.async_list_areas())
+    return sorted([a.name for a in reg.async_list_areas()])
 
 
 @time_trigger("startup")
@@ -89,10 +90,11 @@ def plug_load(entity_id=None):
             if lab and lab.name in CATEGORIES:
                 cur_cat = lab.name
                 break
-    is_light = any(
-        e.options.get("entity_id") == entity_id
-        for e in hass.config_entries.async_entries("switch_as_x")
-    )
+    is_light = False
+    for e in hass.config_entries.async_entries("switch_as_x"):
+        if e.options.get("entity_id") == entity_id:
+            is_light = True
+            break
 
     # Refresh the dropdown option lists (rooms are dynamic) BEFORE selecting.
     rooms = [UNASSIGNED] + _area_names()

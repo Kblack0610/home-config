@@ -1,15 +1,15 @@
 # Plug settings — the editable-UI half of the wall-panel Settings view.
 #
 # A FIXED set of "staging" helpers holds the plug currently being edited, so the
-# editor auto-scales to any number of plugs (only the target pointer changes).
-# The wall Settings view taps a plug -> script.plug_edit_open, which asks the
-# pyscript app (config/pyscript/plug_settings.py) to load the plug's current
-# registry metadata into these helpers and opens a browser_mod popup. Save calls
-# pyscript.plug_apply, which writes the helpers back to HA's native registries.
+# inline editor auto-scales to any number of plugs (only the target pointer
+# changes). On the wall Settings view, tapping a plug calls pyscript.plug_load,
+# which fills these helpers from the plug's current registry metadata; the helpers
+# are rendered as an always-visible editor block; Save calls pyscript.plug_apply,
+# which writes them back to HA's native registries. No browser_mod dependency.
 #
 # input_select options here are just the seed palette; pyscript.plug_load
 # refreshes the Room list from live areas and the Category list from labels each
-# time the editor opens.
+# time a plug is loaded.
 
 input_text:
   plug_edit_target:
@@ -56,47 +56,3 @@ input_boolean:
   plug_edit_is_light:
     name: Treat as a light
     icon: mdi:lightbulb
-
-script:
-  plug_edit_open:
-    alias: Open the plug settings editor
-    description: >-
-      Load a plug's current metadata into the staging helpers and open the
-      editor popup. Called from the wall Settings view with the plug entity_id.
-    mode: restart
-    fields:
-      entity_id:
-        description: The plug switch entity to edit.
-        example: switch.athom_smart_plug_v3_613888_switch
-        required: true
-    sequence:
-      - service: pyscript.plug_load
-        data:
-          entity_id: "{{ entity_id }}"
-      - service: browser_mod.popup
-        data:
-          title: Configure plug
-          dismissable: true
-          content:
-            type: vertical-stack
-            cards:
-              - type: custom:mushroom-template-card
-                primary: "{{ state_attr(entity_id, 'friendly_name') or entity_id }}"
-                secondary: "{{ area_name(entity_id) or 'Unassigned' }}"
-                icon: "{{ state_attr(entity_id, 'icon') or 'mdi:power-plug' }}"
-                icon_color: amber
-              - type: entities
-                entities:
-                  - entity: input_text.plug_edit_name
-                  - entity: input_select.plug_edit_room
-                  - entity: input_text.plug_edit_new_room
-                  - entity: input_select.plug_edit_category
-                  - entity: input_text.plug_edit_icon
-                  - entity: input_boolean.plug_edit_is_light
-          right_button: Save
-          right_button_action:
-            action: call-service
-            service: pyscript.plug_apply
-          left_button: Close
-          left_button_action:
-            action: none

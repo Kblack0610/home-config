@@ -52,6 +52,71 @@ sops --encrypt --in-place apps/immich/secret.yaml
 sops --encrypt --in-place apps/immich/backup-nas-secret.yaml
 ```
 
+## Curation (wall-frame "best of" albums)
+
+`curate.py` + the `immich-curate` CronJob build a per-account **"Wall Best (...)"** album so the
+wall tablets (immich-kiosk) show great family photos instead of the whole library (screenshots,
+memes, documents, receipts). No LLM - it uses signals Immich already has, plus Immich's own CLIP
+smart-search as a soft negative. Runs nightly at 04:00 (after the 03:00 backup).
+
+**Signals** (calibrated 2026-07-08 against the Google-Takeout import, which carries NO camera EXIF
+and NO facial-recognition people):
+- `People/<name>` tags (from the Takeout face groups) - the primary keeper signal (~36% of the
+  library). Prefix is `KEEPER_TAG_PREFIX` (default `People/`).
+- Favorites, star ratings, real-album membership - additional keeper signals (grow over time).
+- GPS + mimetype (HEIC/JPEG vs PNG) - ordering signals.
+- CLIP smart-search for "screenshot / document / meme / receipt" - soft negative (top-N per query;
+  no hard cutoff, because smart-search exposes no score and ranks real photos highly for junk
+  queries). Hard excludes are limited to reliable signals: screenshot-y filename, tiny, extreme
+  aspect. All weights/thresholds are env-tunable (see `curate-cronjob.yaml`).
+
+Assets scoring `>= KEEP_FLOOR` (default 4) go in the album, capped at `TARGET_MAX` (default 8000);
+if an account has too few qualifiers it falls back to the best-scored real photos so the frame is
+never empty. The sync is idempotent (adds new winners, removes ones that no longer qualify).
+
+### One-time setup
+
+1. **Create an API key per account** (read + album write): Immich UI -> Account Settings ->
+   API Keys -> New API Key, as *me* and as *ktnynas@gmail.com*.
+2. **Create the SOPS secret** (kept out of git until it exists, like `apps/spotify-concerts`):
+   ```bash
+   cat > apps/immich/curation-secret.yaml <<'EOF'
+   apiVersion: v1
+   kind: Secret
+   metadata:
+     name: immich-curation-secret
+     namespace: immich
+     labels:
+       app.kubernetes.io/name: immich
+   type: Opaque
+   stringData:
+     ken-api-key: "<KEN_IMMICH_API_KEY>"
+     katie-api-key: "<KATIE_IMMICH_API_KEY>"
+   EOF
+   SOPS_AGE_KEY_FILE=~/.config/sops/age/keys.txt sops --encrypt --in-place apps/immich/curation-secret.yaml
+   ```
+   Then uncomment `- curation-secret.yaml` in `kustomization.yaml`.
+3. **First run as a dry run** (already the manifest default `DRY_RUN=true`): after Flux reconciles,
+   ```bash
+   kubectl -n immich create job --from=cronjob/immich-curate curate-test
+   kubectl -n immich logs -f job/curate-test
+   ```
+   Read the `qualified / hard-junk / winners` tallies; spot-check a few excluded assets in the UI.
+4. **Go live**: set `DRY_RUN=false` in `curate-cronjob.yaml`, commit. Re-run the ad-hoc job; the
+   "Wall Best (...)" albums are created and populated.
+5. **Point the kiosk at them**: grab each album's UUID from its Immich URL
+   (`/albums/<UUID>`), then set in `apps/immich-kiosk/deployment.yaml`:
+   ```yaml
+   - name: KIOSK_ALBUM
+     value: "<WALL_BEST_KEN_UUID>,<WALL_BEST_KATIE_UUID>"
+   ```
+   Both the wallpanel screensaver and the Photos tab inherit it (service-wide env). `KIOSK_ALBUM`
+   takes comma-separated album **UUIDs** (not names).
+
+Retune without a rebuild by editing env on `curate-cronjob.yaml` (e.g. `KEEP_FLOOR`, `TARGET_MAX`,
+`JUNK_TOPN`, `JUNK_QUERIES`, `KEEPER_TAG_PREFIX`). Future "true best" ranking (blur/aesthetic
+scoring) is a separate model job - deliberately out of v1.
+
 ## Troubleshooting
 
 ```bash

@@ -1,0 +1,65 @@
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: immich-curate
+  namespace: immich
+  labels:
+    app.kubernetes.io/name: immich
+spec:
+  schedule: "0 4 * * *"          # 04:00 local, after the 03:00 pg_dump backup
+  timeZone: "America/New_York"
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 1
+  jobTemplate:
+    spec:
+      backoffLimit: 1
+      ttlSecondsAfterFinished: 86400
+      template:
+        metadata:
+          labels:
+            app.kubernetes.io/name: immich
+        spec:
+          restartPolicy: OnFailure
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 1000
+            fsGroup: 1000
+          containers:
+            - name: curate
+              # Pure-stdlib script -> stock python, no pip install (matches
+              # apps/spotify-concerts). Script shipped as a ConfigMap volume.
+              image: docker.io/library/python:3.12-slim
+              command: ["python", "/app/curate.py"]
+              env:
+                - name: IMMICH_URL
+                  value: "http://immich-server"
+                # Flip to "false" after a first in-cluster DRY_RUN pass looks
+                # right (see apps/immich/README.md -> Curation).
+                - name: DRY_RUN
+                  value: "true"
+                - { name: ALBUM_NAME_KEN, value: "Wall Best (Ken)" }
+                - { name: ALBUM_NAME_KATIE, value: "Wall Best (Katie)" }
+                # Per-account keys. optional:true so the CronJob still schedules
+                # before the secret exists / if one account is not configured.
+                - name: IMMICH_KEY_KEN
+                  valueFrom:
+                    secretKeyRef: { name: immich-curation-secret, key: ken-api-key, optional: true }
+                - name: IMMICH_KEY_KATIE
+                  valueFrom:
+                    secretKeyRef: { name: immich-curation-secret, key: katie-api-key, optional: true }
+              securityContext:
+                allowPrivilegeEscalation: false
+                readOnlyRootFilesystem: true
+                capabilities:
+                  drop: ["ALL"]
+              volumeMounts:
+                - name: app
+                  mountPath: /app
+              resources:
+                requests: { cpu: "50m", memory: "128Mi" }
+                limits: { cpu: "500m", memory: "384Mi" }
+          volumes:
+            - name: app
+              configMap:
+                name: immich-curate-app

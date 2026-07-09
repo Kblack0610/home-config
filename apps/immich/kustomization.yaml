@@ -3,6 +3,14 @@ kind: Kustomization
 
 namespace: immich
 
+# curate.py is shipped as a ConfigMap (hash-suffixed -> edits roll the CronJob's
+# next pod). Keeping it a real file means it stays lint/test-able instead of
+# buried in YAML (same pattern as apps/spotify-concerts).
+configMapGenerator:
+  - name: immich-curate-app
+    files:
+      - curate.py
+
 resources:
   - namespace.yaml
   - secret.yaml
@@ -18,3 +26,5 @@ resources:
   - ml-service.yaml
   - ingress.yaml
   - backup-cronjob.yaml
+  - curate-cronjob.yaml
+  # - curation-secret.yaml   # add once immich-curation-secret is created (see README -> Curation)

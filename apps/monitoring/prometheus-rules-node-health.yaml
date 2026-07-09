@@ -41,3 +41,41 @@ spec:
               No node-exporter (DaemonSet) targets are being scraped at all.
               Prometheus may have lost its scrape config, or the DaemonSet is
               down cluster-wide — node-down detection is currently blind.
+        # kubelet raised DiskPressure on a node -> it taints the node and evicts
+        # pods. On 2026-07-09 this took down the whole workload cluster (forgejo
+        # backups filled asus-laptop's root disk). This is the fast, direct signal
+        # for that failure mode. NOTE: in-cluster alerting can itself be evicted
+        # by the pressure it is trying to report (alertmanager runs on a node) —
+        # the out-of-cluster Sentinel watch (~/.agent/watches/home-k3s-node-disk)
+        # is the belt-and-suspenders that survives that case.
+        - alert: NodeDiskPressure
+          expr: kube_node_status_condition{condition="DiskPressure",status="true"} == 1
+          for: 2m
+          labels:
+            severity: critical
+            category: node-health
+          annotations:
+            summary: "DiskPressure on {{ $labels.node }}"
+            description: >-
+              kubelet reports DiskPressure on node {{ $labels.node }} — the node
+              is tainted and pods are being evicted/blocked. Free disk on the
+              node's root filesystem now (check hostPath backups, containerd, logs).
+        # Early warning: root filesystem is filling up, well before kubelet's own
+        # eviction threshold (~10% free) trips DiskPressure. The 2026-07-09 outage
+        # grew ~55G/day for weeks — a 15%-free warning gives ~5 days of lead on the
+        # 1.9T workstation disks. 15% (not 20%) keeps the small Pi SD cards / Mac
+        # system volumes, which idle near 20-25% free, from flapping.
+        - alert: NodeRootFilesystemFillingUp
+          expr: >-
+            (node_filesystem_avail_bytes{mountpoint="/",fstype!~"tmpfs|overlay|ramfs"}
+             / node_filesystem_size_bytes{mountpoint="/",fstype!~"tmpfs|overlay|ramfs"}) < 0.15
+          for: 30m
+          labels:
+            severity: warning
+            category: node-health
+          annotations:
+            summary: "Root fs low on {{ $labels.instance }} ({{ $value | humanizePercentage }} free)"
+            description: >-
+              The root filesystem on {{ $labels.instance }} has under 20% free and
+              has stayed there for 30m. Investigate before it reaches the kubelet
+              DiskPressure threshold and evicts pods.

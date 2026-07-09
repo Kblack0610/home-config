@@ -1,0 +1,98 @@
+---
+# Phase 2 (lockout risk): the IoT firewall zone and policy.
+#   IoT->WAN  allow   (internet; cloud pairing/firmware keep working)
+#   IoT->LAN  block   (compromised IoT cannot reach NAS/laptops/cluster)
+#   LAN->IoT  allow   (HA egresses from a k3s node in the lan zone; stateful
+#                      conntrack covers the return path)
+#   IoT->router  DHCP + DNS only
+#   IoT->broker  one pinhole (Shelly MQTT)
+# Gated behind iot_vlan_firewall_enabled. Apply staged; keep a rollback ready
+# (uci revert firewall && /etc/init.d/firewall restart); recovery via a wired
+# LAN port or boot-time failsafe.
+
+- name: Create the iot firewall zone
+  community.openwrt.uci:
+    command: section
+    config: firewall
+    type: zone
+    find:
+      name: "{{ iot_vlan_iface }}"
+    value:
+      name: "{{ iot_vlan_iface }}"
+      network: "{{ iot_vlan_iface }}"
+      input: REJECT
+      output: ACCEPT
+      forward: REJECT
+    set_find: true
+  when: iot_vlan_firewall_enabled | bool
+  notify:
+    - commit firewall
+    - reload firewall
+
+- name: Allow iot -> wan (internet)
+  community.openwrt.uci:
+    command: section
+    config: firewall
+    type: forwarding
+    find:
+      src: "{{ iot_vlan_iface }}"
+      dest: wan
+    set_find: true
+  when: iot_vlan_firewall_enabled | bool
+  notify:
+    - commit firewall
+    - reload firewall
+
+- name: Allow lan -> iot (trusted LAN + Home Assistant reach devices)
+  community.openwrt.uci:
+    command: section
+    config: firewall
+    type: forwarding
+    find:
+      src: lan
+      dest: "{{ iot_vlan_iface }}"
+    set_find: true
+  when: iot_vlan_firewall_enabled | bool
+  notify:
+    - commit firewall
+    - reload firewall
+
+- name: Allow iot DHCP + DNS to the router (input)
+  community.openwrt.uci:
+    command: section
+    config: firewall
+    type: rule
+    find:
+      name: Allow-IoT-DHCP-DNS
+    value:
+      name: Allow-IoT-DHCP-DNS
+      src: "{{ iot_vlan_iface }}"
+      proto: "tcp udp"
+      dest_port: "53 67 68"
+      target: ACCEPT
+    set_find: true
+  when: iot_vlan_firewall_enabled | bool
+  notify:
+    - commit firewall
+    - reload firewall
+
+- name: Allow iot -> MQTT broker (single pinhole into the LAN)
+  community.openwrt.uci:
+    command: section
+    config: firewall
+    type: rule
+    find:
+      name: Allow-IoT-MQTT
+    value:
+      name: Allow-IoT-MQTT
+      src: "{{ iot_vlan_iface }}"
+      dest: lan
+      dest_ip: "{{ iot_vlan_mqtt_broker_ip }}"
+      dest_port: "{{ iot_vlan_mqtt_broker_port }}"
+      proto: tcp
+      target: ACCEPT
+    set_find: true
+  when: iot_vlan_firewall_enabled | bool
+  notify:
+    - commit firewall
+    - reload firewall

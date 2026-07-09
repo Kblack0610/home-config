@@ -144,3 +144,20 @@
       tags: [mlx, mac, llm]
     - role: launchd-powermetrics-textfile
       tags: [powermetrics, monitoring, mac]
+
+# Phase C (started): OpenWrt router config via the community.openwrt collection
+# (pure-shell uci modules, no Python on the router). This first role isolates
+# the IoT SSID onto its own VLAN. gather_facts: false is REQUIRED - implicit
+# fact-gathering runs Python on the target and fails; community.openwrt.init
+# (tags: always) sets up the shell-module machinery for every phased --tags run.
+# Disruptive steps are gated behind default-false vars (see the role README);
+# ALWAYS run --check --diff first, and apply the firewall phase staged.
+#   ansible-playbook playbooks/site.yml --limit openwrt --check --diff
+- name: OpenWrt router - IoT VLAN isolation
+  hosts: openwrt
+  gather_facts: false
+  roles:
+    - role: community.openwrt.init
+      tags: always
+    - role: openwrt-iot-vlan
+      tags: [openwrt, iot-vlan]

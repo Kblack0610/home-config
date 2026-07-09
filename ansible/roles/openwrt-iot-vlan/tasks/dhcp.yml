@@ -1,0 +1,22 @@
+---
+# Per-interface DHCP pool for the IoT VLAN. Without this the interface comes up
+# but hands out no leases (a common footgun). Clients get the router's iot IP
+# (192.168.20.1) as gateway + DNS, so IoT DNS stays contained to the router's
+# dnsmasq (which forwards upstream) rather than reaching a LAN resolver.
+
+- name: Create the iot DHCP pool
+  community.openwrt.uci:
+    command: section
+    config: dhcp
+    type: dhcp
+    name: "{{ iot_vlan_iface }}"
+    value:
+      interface: "{{ iot_vlan_iface }}"
+      start: "{{ iot_vlan_dhcp_start }}"
+      limit: "{{ iot_vlan_dhcp_limit }}"
+      leasetime: "{{ iot_vlan_dhcp_leasetime }}"
+      dhcpv4: server
+    replace: true
+  notify:
+    - commit dhcp
+    - reload dnsmasq

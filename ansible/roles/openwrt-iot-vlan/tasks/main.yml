@@ -1,0 +1,22 @@
+---
+# openwrt-iot-vlan - phased via tags. See README.md.
+#   phase 1: --tags network,dhcp,wireless_test  (non-disruptive plumbing)
+#   phase 2: --tags firewall                    (lockout risk; staged)
+#   phase 3: --tags migrate                     (move real IoT SSID)
+# Always run with --check --diff first.
+
+- name: Network - br-iot bridge + iot interface
+  ansible.builtin.import_tasks: network.yml
+  tags: [network]
+
+- name: DHCP - iot pool
+  ansible.builtin.import_tasks: dhcp.yml
+  tags: [dhcp]
+
+- name: Wireless - test SSID (phase 1) and IoT SSID migration (phase 3)
+  ansible.builtin.import_tasks: wireless.yml
+  tags: [wireless_test, migrate]
+
+- name: Firewall - iot zone, forwardings, rules (phase 2)
+  ansible.builtin.import_tasks: firewall.yml
+  tags: [firewall]

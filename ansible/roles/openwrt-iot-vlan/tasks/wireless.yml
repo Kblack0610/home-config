@@ -1,0 +1,49 @@
+---
+# Phase 1: a temporary throwaway SSID on the iot network to validate the VLAN
+# plumbing (lease + internet + DNS) before moving any real IoT.
+# Phase 3: move the real IoT SSID (BrownDooDoo) onto the iot network. Same SSID
+# and key, so devices just reconnect and pick up a 192.168.20.x lease.
+
+- name: Assert test SSID key is provided when the test SSID is enabled
+  ansible.builtin.assert:
+    that:
+      - iot_vlan_test_ssid_key | length > 0
+    fail_msg: >-
+      iot_vlan_test_ssid_enabled is true but iot_vlan_test_ssid_key is empty.
+      Set vault_iot_test_ssid_key in group_vars/openwrt/vault.yml.
+  when: iot_vlan_test_ssid_enabled | bool
+
+- name: Create the temporary test SSID on the iot network (phase 1)
+  community.openwrt.uci:
+    command: section
+    config: wireless
+    type: wifi-iface
+    find:
+      ssid: "{{ iot_vlan_test_ssid }}"
+    value:
+      device: "{{ iot_vlan_ssid_radio }}"
+      mode: ap
+      network: "{{ iot_vlan_iface }}"
+      ssid: "{{ iot_vlan_test_ssid }}"
+      encryption: psk2
+      key: "{{ iot_vlan_test_ssid_key }}"
+    set_find: true
+  no_log: true
+  when: iot_vlan_test_ssid_enabled | bool
+  notify:
+    - commit wireless
+    - reload wifi
+
+- name: Move the IoT SSID onto the iot network (phase 3)
+  community.openwrt.uci:
+    command: section
+    config: wireless
+    type: wifi-iface
+    find:
+      ssid: "{{ iot_vlan_ssid }}"
+    value:
+      network: "{{ iot_vlan_iface }}"
+  when: iot_vlan_migrate | bool
+  notify:
+    - commit wireless
+    - reload wifi

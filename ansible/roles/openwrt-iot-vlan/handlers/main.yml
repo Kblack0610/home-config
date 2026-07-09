@@ -1,0 +1,50 @@
+---
+# Commit handlers run first (defined before the reloads), so every uci change is
+# committed before the corresponding service reload. Reloads are gated on
+# `not ansible_check_mode` (a --check run must not restart router services), and
+# we use `reload` (not restart) to avoid dropping the management connection.
+
+- name: commit network
+  community.openwrt.uci:
+    command: commit
+    config: network
+
+- name: commit dhcp
+  community.openwrt.uci:
+    command: commit
+    config: dhcp
+
+- name: commit firewall
+  community.openwrt.uci:
+    command: commit
+    config: firewall
+
+- name: commit wireless
+  community.openwrt.uci:
+    command: commit
+    config: wireless
+
+- name: reload network
+  community.openwrt.service:
+    name: network
+    state: reloaded
+  when: not ansible_check_mode
+
+- name: reload dnsmasq
+  community.openwrt.service:
+    name: dnsmasq
+    state: reloaded
+  when: not ansible_check_mode
+
+- name: reload firewall
+  community.openwrt.service:
+    name: firewall
+    state: reloaded
+  when: not ansible_check_mode
+
+- name: reload wifi
+  community.openwrt.command:
+    argv:
+      - wifi
+      - reload
+  when: not ansible_check_mode

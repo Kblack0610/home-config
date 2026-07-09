@@ -1,0 +1,35 @@
+---
+# Portless software bridge + static interface for the IoT VLAN.
+# Wireless-only: no physical ports (the IoT wifi-iface attaches at runtime).
+# Chosen over bridge-VLAN filtering because Filogic/mt76 has confirmed
+# VLAN-filtering bugs (openwrt#16314/#18576/#14195); a portless bridge avoids them.
+
+- name: Create the br-iot bridge device (no ports)
+  community.openwrt.uci:
+    command: section
+    config: network
+    type: device
+    find:
+      name: "{{ iot_vlan_bridge }}"
+    value:
+      type: bridge
+    set_find: true
+  notify:
+    - commit network
+    - reload network
+
+- name: Create the iot interface (static, on br-iot)
+  community.openwrt.uci:
+    command: section
+    config: network
+    type: interface
+    name: "{{ iot_vlan_iface }}"
+    value:
+      device: "{{ iot_vlan_bridge }}"
+      proto: static
+      ipaddr: "{{ iot_vlan_gateway }}"
+      netmask: "{{ iot_vlan_netmask }}"
+    replace: true
+  notify:
+    - commit network
+    - reload network

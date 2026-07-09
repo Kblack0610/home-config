@@ -1,0 +1,25 @@
+---
+galaxy_info:
+  role_name: openwrt-iot-vlan
+  author: kblack0610
+  description: >-
+    Isolated IoT VLAN on the OpenWrt router: a portless br-iot bridge, its own
+    subnet + DHCP pool, a firewall zone (IoT->WAN allow, IoT->LAN block, LAN->IoT
+    allow, one MQTT pinhole), and moving the IoT SSID onto the VLAN. Uses the
+    community.openwrt pure-shell uci module (no Python on the router). Starts the
+    repo's Phase C OpenWrt-on-Ansible migration.
+  license: MIT
+  min_ansible_version: "2.18"
+  platforms:
+    - name: OpenWrt
+      versions:
+        - any
+  galaxy_tags:
+    - homelab
+    - openwrt
+    - network
+    - vlan
+    - firewall
+# community.openwrt.init is wired in the play (playbooks/site.yml) with
+# tags: always, so it runs even under a tag-filtered phased apply.
+dependencies: []

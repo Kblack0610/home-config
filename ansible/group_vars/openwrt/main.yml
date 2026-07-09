@@ -1,0 +1,12 @@
+---
+# Connection tuning for the OpenWrt router (community.openwrt collection).
+#
+# OpenWrt ships no SFTP server and the shell modules are transferred inline, so
+# force piped transfer to skip the sftp/scp fallback probing (otherwise every
+# task logs a harmless "sftp/scp transfer mechanism failed" warning).
+ansible_ssh_transfer_method: piped
+
+# The router runs no Python; NEVER let Ansible try to auto-discover an
+# interpreter or gather facts the normal way. Facts, if needed, come from
+# community.openwrt.setup. Plays targeting this group must set gather_facts: false.
+ansible_python_interpreter: /bin/false

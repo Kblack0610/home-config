@@ -1,0 +1,47 @@
+---
+# Role: openwrt-iot-vlan
+#
+# Stands up an isolated IoT VLAN on the OpenWrt router (ASUS TUF-AX6000,
+# MediaTek MT7986/Filogic, DSA) using the community.openwrt collection's
+# pure-shell uci module (no Python on the router). See README.md for the
+# phased rollout and the tooling boundary vs infrastructure/openwrt/*.sh.
+#
+# SAFETY: the disruptive steps are gated behind default-false vars so a plain
+# run only creates the non-disruptive br-iot interface + DHCP pool. Flip the
+# gates per phase (see README):
+#   iot_vlan_test_ssid_enabled  -> phase 1 (temporary test SSID)
+#   iot_vlan_firewall_enabled   -> phase 2 (firewall zone; lockout risk)
+#   iot_vlan_migrate            -> phase 3 (move the real IoT SSID onto the VLAN)
+
+# --- Addressing --------------------------------------------------------------
+iot_vlan_bridge: "br-iot"          # portless software bridge (wireless-only)
+iot_vlan_iface: "iot"              # network + dhcp + firewall-zone section name
+iot_vlan_gateway: "192.168.20.1"
+iot_vlan_netmask: "255.255.255.0"
+iot_vlan_dhcp_start: 100
+iot_vlan_dhcp_limit: 150
+iot_vlan_dhcp_leasetime: "12h"
+
+# --- SSID handling -----------------------------------------------------------
+# The existing IoT SSID to move onto the VLAN in phase 3. Radio-level settings
+# (channel/htmode/country) stay owned by infrastructure/openwrt/wireless.yaml;
+# this role only touches the wifi-iface `network` attribute.
+iot_vlan_ssid: "BrownDooDoo"
+iot_vlan_ssid_radio: "radio0"      # 2.4GHz radio the IoT SSID lives on
+
+# Temporary throwaway SSID used in phase 1 to validate the VLAN plumbing before
+# moving real IoT. Key must be supplied via group_vars/openwrt/vault.yml when
+# enabled (asserted in tasks/wireless.yml).
+iot_vlan_test_ssid: "BrownIoT-test"
+iot_vlan_test_ssid_key: ""
+
+# --- MQTT pinhole ------------------------------------------------------------
+# Shelly publishes to the in-cluster Mosquitto NodePort. Athom plugs use the
+# ESPHome API (HA-initiated), so they need no IoT->LAN pinhole.
+iot_vlan_mqtt_broker_ip: "192.168.1.20"
+iot_vlan_mqtt_broker_port: 31883
+
+# --- Phase gates (default off) ----------------------------------------------
+iot_vlan_test_ssid_enabled: false
+iot_vlan_firewall_enabled: false
+iot_vlan_migrate: false

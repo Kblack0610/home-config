@@ -77,9 +77,14 @@ spec:
               value: 0.0.0.0
             - name: DATABASE_SSL
               value: disable
-            # Drives authConfig.frontendUrl -> the API CORS allow-list (see app.ts).
+            # Primary web origin (browser CORS + email links). app.ts reads
+            # WEB_URL directly for the CORS allow-list because the shared config
+            # helper drops this override.
             - name: WEB_URL
               value: https://time-tangle.com
+            # Extra browser origins allowed to call the API (comma-separated).
+            - name: CORS_EXTRA_ORIGINS
+              value: https://www.time-tangle.com
           envFrom:
             - secretRef:
                 name: time-tangle-api-secret

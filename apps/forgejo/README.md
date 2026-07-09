@@ -137,8 +137,9 @@ Endpoints:
 ## Backup Notes
 
 - `forgejo-backup` runs daily at `03:00`
-- Full archives and compressed SQLite backups stored under `/var/backups/forgejo`
-- Retention: newest 30 backups
+- Full archives and compressed SQLite backups stored under `/var/backups/forgejo` (hostPath on asus-laptop's root disk)
+- Retention: newest **7** full backups (~55G each). The job prunes BEFORE writing and aborts if `/backup` has under 100G free, so it can never fill the node.
+- History: on 2026-07-09 a retention of 30 (~1.6TiB of daily fulls) filled asus-laptop's root disk, tripped kubelet DiskPressure, and evicted the entire home-k3s workload cluster for ~6h. Retention was cut to 7 and a prune-first + free-space guard added. Longer-term recovery points belong off-box (MinIO/S3), not on the same disk as the data they protect.
 
 ## Related Docs
 

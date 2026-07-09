@@ -20,27 +20,48 @@ spec:
                 - /bin/sh
                 - -c
                 - |
-                  apk add --no-cache tar gzip sqlite
+                  set -eu
+                  apk add --no-cache tar gzip sqlite coreutils
                   TIMESTAMP=$(date +%Y%m%d-%H%M%S)
 
-                  echo "Starting Forgejo backup at $TIMESTAMP"
+                  # Retain this many daily full backups. Each full is ~55G, and
+                  # these land on asus-laptop's root disk (hostPath /var/backups),
+                  # shared with every local-path PVC + containerd. On 2026-07-09 a
+                  # retention of 30 (~1.6TiB) filled the disk, tripped kubelet
+                  # DiskPressure, and evicted the whole workload cluster. Keep this
+                  # small; recovery points beyond a week belong off-box (MinIO/S3).
+                  KEEP=7
+                  MIN_FREE_GB=100
 
-                  # Full backup of /data directory
+                  echo "Starting Forgejo backup at $TIMESTAMP (keep=$KEEP)"
+
+                  # 1. Prune FIRST so the disk never holds more than KEEP backups.
+                  #    Delete oldest fulls beyond (KEEP-1); the new one below makes KEEP.
+                  ls -t /backup/forgejo-full-*.tar.gz 2>/dev/null | tail -n +$KEEP | xargs -r rm -v
+                  ls -t /backup/forgejo-db-*.db.gz    2>/dev/null | tail -n +$KEEP | xargs -r rm -v
+
+                  # 2. Abort loudly if headroom is still too low, rather than
+                  #    filling the disk and taking the node down again.
+                  FREE_GB=$(df -PBG /backup | awk 'NR==2 {gsub(/G/,"",$4); print $4}')
+                  echo "Free space on /backup: ${FREE_GB}G (need >= ${MIN_FREE_GB}G)"
+                  if [ "$FREE_GB" -lt "$MIN_FREE_GB" ]; then
+                    echo "ABORT: insufficient free space (${FREE_GB}G < ${MIN_FREE_GB}G). Skipping backup to protect the node." >&2
+                    exit 1
+                  fi
+
+                  # 3. Full backup of /data directory
                   tar -czf /backup/forgejo-full-$TIMESTAMP.tar.gz -C /data .
 
-                  # Separate SQLite DB backup for quick restore
+                  # 4. Separate SQLite DB backup for quick restore
                   if [ -f /data/gitea/gitea.db ]; then
                     cp /data/gitea/gitea.db /backup/forgejo-db-$TIMESTAMP.db
                     gzip /backup/forgejo-db-$TIMESTAMP.db
                   fi
 
-                  # Keep only last 30 backups
-                  ls -t /backup/forgejo-full-*.tar.gz | tail -n +31 | xargs -r rm
-                  ls -t /backup/forgejo-db-*.db.gz | tail -n +31 | xargs -r rm
-
                   echo "Backup complete: forgejo-full-$TIMESTAMP.tar.gz"
-                  echo "Backup size:"
                   ls -lh /backup/forgejo-full-$TIMESTAMP.tar.gz
+                  echo "Retained backups:"
+                  ls -lht /backup/forgejo-full-*.tar.gz
               volumeMounts:
                 - name: data
                   mountPath: /data

@@ -10,8 +10,12 @@ resources:
   - postgres.yaml
   - deployment.yaml
   - ingress.yaml
+  - web-deployment.yaml
+  - web-ingress.yaml
   - servicemonitor.yaml
 
 images:
   - name: git.kblab.me/kblack0610/time-tangle-api
     newTag: v1.0.1
+  - name: git.kblab.me/kblack0610/time-tangle-web
+    newTag: v1.0.0

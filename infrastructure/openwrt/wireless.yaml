@@ -1,15 +1,15 @@
 # =============================================================================
-# Wireless radio state — declarative (managed by infrastructure/openwrt/openwrt.sh)
+# Wireless radio state - declarative (managed by infrastructure/openwrt/openwrt.sh)
 # =============================================================================
 # Manages ONLY channel + htmode + country per radio, keyed by band and resolved
 # to the wireless.radioN section by matching that section's `band`.
 #
-# It NEVER touches wifi-iface sections (SSIDs, keys, encryption) — those hold the
+# It NEVER touches wifi-iface sections (SSIDs, keys, encryption): those hold the
 # WiFi PSKs and must not live in git. Keep this file to radio-level RF settings.
 #
 # country=US: the router was on the world domain (country 00), which forbids AP
-# transmit on DFS channels ("no IR"). US is the correct regdomain here and unlocks
-# the empty DFS spectrum (ch 100). Applied to both radios.
+# transmit on DFS channels ("no IR"). US is the correct regdomain here. Applied
+# to both radios.
 # =============================================================================
 
 radios:
@@ -19,6 +19,6 @@ radios:
     country: "US"
 
   - band: "5g"
-    channel: 100      # DFS (UNII-2C), scanned empty; was ch 36 overlapping busy ch 44
-    htmode: "HE80"
+    channel: 149      # non-DFS (UNII-3). Do NOT use a DFS channel here: ch100 wedged
+    htmode: "HE40"    # hostapd on boot (MT7986/mt76 CAC hang). 149/153 ~6 neighbor APs.
     country: "US"

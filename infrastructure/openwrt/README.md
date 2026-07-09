@@ -124,8 +124,8 @@ radios:
     htmode: "HE20"    # never widen 2.4GHz to 40MHz in a crowded band
     country: "US"
   - band: "5g"
-    channel: 100      # DFS (UNII-2C), scanned empty; off the congested 36-48 block
-    htmode: "HE80"
+    channel: 149      # non-DFS (UNII-3); 149/153 ~6 neighbor APs
+    htmode: "HE40"
     country: "US"
 ```
 
@@ -133,17 +133,24 @@ Apply with:
 
 ```bash
 openwrt diff wireless
-openwrt sync wireless   # reloads the radios: brief WiFi drop; DFS adds a ~60s CAC
+openwrt sync wireless   # reloads the radios: brief WiFi drop (non-DFS = no CAC)
 ```
 
 Notes:
-- **`country` matters for DFS.** On the world domain (`country 00`) the AP is
-  forbidden from transmitting on DFS channels (`no IR`). Setting `country: "US"`
-  is the correct regdomain here and unlocks the empty DFS spectrum (ch 100). Verify
-  after a sync: `ssh root@192.168.1.1 'iwinfo phy1-ap0 info'` should report the new
-  channel (a DFS channel appears only after the ~60s radar check passes).
-- If a DFS channel keeps flapping (radar events in `logread`), fall back to a
-  non-DFS channel like `149` / `HE40` by editing `wireless.yaml` and re-syncing.
+- **Do NOT put 5GHz on a DFS channel on this AP.** We tried ch100 (DFS/UNII-2C) for
+  its empty spectrum, but this is an ASUS TUF-AX6000 (MediaTek MT7986 / mt76), and its
+  DFS bring-up wedges hostapd on boot: after a reboot the main hostapd process hangs in
+  `D` state, phy1 reports `HT Mode: NOHT` with no beacon, and 5GHz never comes up while
+  2.4GHz (non-DFS) is fine. A DFS channel needs a ~60s radar Channel-Availability-Check
+  on every bring-up, and that CAC is what hangs. Manual recovery is `wifi up radio1`,
+  but the durable fix is to stay non-DFS. ch149 (UNII-3) has no CAC, so it comes up
+  instantly and survives reboots.
+- **`country` still matters.** The router was on the world domain (`country 00`), which
+  caps channels/power incorrectly; `country: "US"` is the right regdomain. Verify after
+  a sync: `ssh root@192.168.1.1 'iwinfo phy1-ap0 info'` should report `Channel: 149`,
+  `HT Mode: HE40`.
+- If you ever want more width, `149` / `HE80` keeps non-DFS safety but spans the busier
+  149-161 subblock (~16 neighbor APs) instead of the cleaner 149/153 pair.
 
 ### Device → band routing
 

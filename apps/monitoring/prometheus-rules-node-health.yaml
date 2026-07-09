@@ -6,6 +6,12 @@ metadata:
   labels:
     app.kubernetes.io/name: homelab-node-health
     app.kubernetes.io/part-of: monitoring
+    # REQUIRED: the kube-prometheus-stack Prometheus selects PrometheusRules with
+    # ruleSelector matchLabels {release: kube-prometheus-stack}. Without this label
+    # the operator never picks up this file and none of these alerts load — which
+    # is exactly why the 2026-07-09 DiskPressure outage (and any NodeDown before
+    # it) paged no one. Do not remove.
+    release: kube-prometheus-stack
 spec:
   groups:
     - name: homelab-node-health.alerts

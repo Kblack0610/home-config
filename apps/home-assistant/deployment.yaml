@@ -1753,6 +1753,118 @@ spec:
           volumeMounts:
             - name: config
               mountPath: /config
+        # Seed the OFFICIAL `spotify` integration (media_player.spotify). This is
+        # the FIRST OAuth integration seeded here, so it writes TWO storage files:
+        #   1. .storage/application_credentials — the Spotify app client id/secret
+        #      (data.items is a LIST; auth_domain must match the entry's
+        #      auth_implementation).
+        #   2. .storage/core.config_entries — the spotify entry carrying the OAuth
+        #      token. token.expires_at=0 so HA refreshes on boot using the
+        #      refresh_token + client creds (a fresh access token is minted at
+        #      runtime). Format verified vs HA source; seeder logic unit-tested.
+        # Runs only when the OPTIONAL spotify-credentials secret exists (else the
+        # pod boots fine with no Spotify). Mint the refresh token with
+        # spotify-ha-bootstrap.py. Idempotent on domain=="spotify".
+        - name: seed-spotify
+          image: ghcr.io/home-assistant/home-assistant:stable
+          command:
+            - python3
+            - -c
+            - |
+              import json, os, uuid
+              from datetime import datetime, timezone
+
+              STORAGE = "/config/.storage"
+              ENTRIES = f"{STORAGE}/core.config_entries"
+              APPCRED = f"{STORAGE}/application_credentials"
+              DOMAIN = "spotify"
+
+              cid = os.environ.get("SPOTIFY_CLIENT_ID", "").strip()
+              csec = os.environ.get("SPOTIFY_CLIENT_SECRET", "").strip()
+              rt = os.environ.get("SPOTIFY_REFRESH_TOKEN", "").strip()
+              uid = os.environ.get("SPOTIFY_USER_ID", "").strip()
+              name = os.environ.get("SPOTIFY_NAME", "").strip() or "Spotify"
+
+              if not all([cid, csec, rt, uid]):
+                  print("WARN: spotify creds not set, skipping")
+                  raise SystemExit(0)
+
+              SCOPES = ("user-modify-playback-state,user-read-playback-state,"
+                        "user-read-private,playlist-read-private,"
+                        "playlist-read-collaborative,user-library-read,user-top-read,"
+                        "user-read-playback-position,user-read-recently-played,"
+                        "user-follow-read")
+
+              os.makedirs(STORAGE, exist_ok=True)
+
+              # 1) application_credentials (items is a LIST)
+              if os.path.exists(APPCRED):
+                  with open(APPCRED) as f:
+                      ac = json.load(f)
+              else:
+                  ac = {"version": 1, "minor_version": 1,
+                        "key": "application_credentials", "data": {"items": []}}
+              ac.setdefault("data", {}).setdefault("items", [])
+              if any(i.get("domain") == DOMAIN for i in ac["data"]["items"]):
+                  print("application_credentials: spotify already present")
+              else:
+                  ac["data"]["items"].append({
+                      "client_id": cid, "client_secret": csec, "auth_domain": DOMAIN,
+                      "domain": DOMAIN, "name": "Spotify", "id": uuid.uuid4().hex,
+                  })
+                  with open(APPCRED, "w") as f:
+                      json.dump(ac, f, indent=2)
+                  print("seeded application_credentials for spotify")
+
+              # 2) spotify config entry (token.expires_at=0 → refreshed on boot)
+              if os.path.exists(ENTRIES):
+                  with open(ENTRIES) as f:
+                      store = json.load(f)
+              else:
+                  store = {"version": 1, "minor_version": 5,
+                           "key": "core.config_entries", "data": {"entries": []}}
+              for e in store["data"]["entries"]:
+                  e.setdefault("subentries", {})
+              if any(e.get("domain") == DOMAIN for e in store["data"]["entries"]):
+                  print("spotify config entry already present")
+              else:
+                  now = datetime.now(timezone.utc).isoformat()
+                  store["data"]["entries"].append({
+                      "created_at": now,
+                      "data": {
+                          "auth_implementation": DOMAIN,
+                          "token": {
+                              "access_token": "seed", "token_type": "Bearer",
+                              "expires_in": 0, "refresh_token": rt,
+                              "scope": SCOPES, "expires_at": 0,
+                          },
+                          "id": uid,
+                          "name": name,
+                      },
+                      "disabled_by": None, "discovery_keys": {}, "domain": DOMAIN,
+                      "entry_id": uuid.uuid4().hex, "minor_version": 1,
+                      "modified_at": now, "options": {},
+                      "pref_disable_new_entities": False,
+                      "pref_disable_polling": False, "source": "user",
+                      "subentries": {}, "title": name, "unique_id": uid, "version": 1,
+                  })
+                  with open(ENTRIES, "w") as f:
+                      json.dump(store, f, indent=2)
+                  print(f"seeded spotify config entry for user {uid}")
+          env:
+            - name: SPOTIFY_CLIENT_ID
+              valueFrom: { secretKeyRef: { name: spotify-credentials, key: spotify-client-id, optional: true } }
+            - name: SPOTIFY_CLIENT_SECRET
+              valueFrom: { secretKeyRef: { name: spotify-credentials, key: spotify-client-secret, optional: true } }
+            - name: SPOTIFY_REFRESH_TOKEN
+              valueFrom: { secretKeyRef: { name: spotify-credentials, key: spotify-refresh-token, optional: true } }
+            - name: SPOTIFY_USER_ID
+              valueFrom: { secretKeyRef: { name: spotify-credentials, key: spotify-user-id, optional: true } }
+            - name: SPOTIFY_NAME
+              valueFrom: { secretKeyRef: { name: spotify-credentials, key: spotify-name, optional: true } }
+          volumeMounts:
+            - name: config
+              mountPath: /config
       containers:
         - name: home-assistant
           image: ghcr.io/home-assistant/home-assistant:stable

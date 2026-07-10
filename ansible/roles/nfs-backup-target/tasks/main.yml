@@ -1,0 +1,78 @@
+---
+# NFS server that hosts OFF-BOX backups for k3s workloads. Motivating case:
+# forgejo's nightly backup used to write only to a hostPath on its own node
+# (asus-laptop). On 2026-07-09 those backups filled that node's root disk and
+# evicted the whole cluster, AND a same-disk backup is not real DR. This role
+# turns a *different* machine (hp-victus) into an NFS target so the backup job
+# can keep a second copy off the box that produced it.
+
+- name: Install nfs-utils (refresh pacman db first)
+  # community.general.pacman with update_cache does `-Sy` before installing, so
+  # a stale local db (which 404s on since-rebuilt deps like rpcbind) is refreshed
+  # to current versions. This is a scoped refresh of the NFS dependency chain,
+  # not an unattended full `-Syu` (which could disrupt this CI/k3s node).
+  community.general.pacman:
+    name: nfs-utils
+    state: present
+    update_cache: true
+
+- name: Ensure export root exists
+  ansible.builtin.file:
+    path: "{{ nfs_backup_export_path }}"
+    state: directory
+    mode: "0755"
+    owner: root
+    group: root
+
+- name: Ensure per-producer backup subdirs exist
+  ansible.builtin.file:
+    path: "{{ nfs_backup_export_path }}/{{ item }}"
+    state: directory
+    mode: "0755"
+    owner: root
+    group: root
+  loop: "{{ nfs_backup_subdirs }}"
+
+- name: Configure /etc/exports
+  ansible.builtin.copy:
+    dest: /etc/exports
+    mode: "0644"
+    owner: root
+    group: root
+    content: |
+      # Managed by Ansible role nfs-backup-target. Off-box backup target for
+      # k3s workloads (see ansible/roles/nfs-backup-target/).
+      {{ nfs_backup_export_path }} {{ nfs_backup_export_clients }}({{ nfs_backup_export_opts }})
+  notify: Reload NFS exports
+
+- name: Enable and start nfs-server
+  ansible.builtin.systemd_service:
+    name: nfs-server.service
+    enabled: true
+    state: started
+
+# Apply the exports reload now so live state matches on first run.
+- name: Apply pending handlers before verify
+  ansible.builtin.meta: flush_handlers
+
+# Self-healing convergence check: confirm the export is actually live. On a
+# rerun where /etc/exports was unchanged but the daemon lost the export (or was
+# never reloaded), re-run exportfs so the role always lands the desired state.
+- name: Read live NFS exports
+  ansible.builtin.command:
+    cmd: exportfs -s
+  register: nfs_live_exports
+  changed_when: false
+
+- name: Re-apply exports if the path is not live
+  ansible.builtin.command:
+    cmd: exportfs -ra
+  when: nfs_backup_export_path not in nfs_live_exports.stdout
+  changed_when: true
+
+- name: Verify the export is being served
+  ansible.builtin.command:
+    cmd: exportfs -s
+  register: nfs_verify_exports
+  changed_when: false
+  failed_when: nfs_backup_export_path not in nfs_verify_exports.stdout

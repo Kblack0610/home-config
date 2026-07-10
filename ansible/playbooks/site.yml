@@ -118,6 +118,20 @@
         gh_runner_pat: "{{ vault_github_dodginballs_pat }}"
       tags: [runner, ci, dodginballs]
 
+# NFS backup target — hp-victus exports /srv/backups so k3s workloads can keep
+# an OFF-BOX backup copy on a different machine than the one that produced them.
+# Motivating case: forgejo's nightly backup used to write only to a hostPath on
+# its own node (asus-laptop); on 2026-07-09 that filled the node's root disk and
+# evicted the whole cluster. See roles/nfs-backup-target/ and
+# apps/forgejo/backup-cronjob.yaml (the NFS off-box copy step).
+- name: NFS backup target (hp-victus — off-box k3s backups)
+  hosts: hp-victus
+  become: true
+  gather_facts: true
+  roles:
+    - role: nfs-backup-target
+      tags: [nfs, backup]
+
 # Network UPS Tools (NUT) — single CyberPower CP1500PFCLCD plugged into
 # pi5-master drives a graceful shutdown of the whole k3s fleet when grid
 # power fails. The primary (server) runs upsd + upsmon-primary; every

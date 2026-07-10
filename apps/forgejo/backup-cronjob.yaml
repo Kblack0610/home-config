@@ -24,12 +24,13 @@ spec:
                   apk add --no-cache tar gzip sqlite coreutils
                   TIMESTAMP=$(date +%Y%m%d-%H%M%S)
 
-                  # Retain this many daily full backups. Each full is ~55G, and
-                  # these land on asus-laptop's root disk (hostPath /var/backups),
-                  # shared with every local-path PVC + containerd. On 2026-07-09 a
-                  # retention of 30 (~1.6TiB) filled the disk, tripped kubelet
-                  # DiskPressure, and evicted the whole workload cluster. Keep this
-                  # small; recovery points beyond a week belong off-box (MinIO/S3).
+                  # Retain this many daily full backups (~55G each). These land on
+                  # asus-laptop's SECOND disk (hostPath /mnt/backups on nvme1n1p2,
+                  # 1.9T, separate from the k3s root disk). Until 2026-07-09 they
+                  # went to the ROOT disk with retention 30 (~1.6TiB), which filled
+                  # it, tripped kubelet DiskPressure, and evicted the whole cluster.
+                  # A second, off-box copy on hp-victus is made by the companion
+                  # CronJob forgejo-backup-offbox (NFS). This job = local copy only.
                   KEEP=7
                   MIN_FREE_GB=100
 
@@ -75,5 +76,81 @@ spec:
                 claimName: forgejo-data
             - name: backup
               hostPath:
-                path: /var/backups/forgejo
-                type: DirectoryOrCreate
+                # asus-laptop 2nd disk (nvme1n1p2, @backups subvol mounted at
+                # /mnt/backups). type: Directory (NOT DirectoryOrCreate) is
+                # deliberate: if the 2nd disk ever fails to mount, this path
+                # won't exist and the job fails fast, rather than silently
+                # recreating it on the root disk and re-filling the cluster disk.
+                path: /mnt/backups/forgejo
+                type: Directory
+---
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: forgejo-backup-offbox
+  namespace: forgejo
+  labels:
+    app.kubernetes.io/name: forgejo
+spec:
+  schedule: "30 3 * * *"  # 30 min after the local backup (0 3 * * *)
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 2
+  jobTemplate:
+    spec:
+      template:
+        spec:
+          # Must run on asus-laptop: it reads the local backups written by the
+          # primary job to that node's 2nd disk (hostPath). Decoupled from the
+          # primary job so an NFS/hp-victus outage never fails the local backup.
+          nodeSelector:
+            kubernetes.io/hostname: asus-laptop
+          containers:
+            - name: offbox
+              image: alpine:latest
+              command:
+                - /bin/sh
+                - -c
+                - |
+                  set -eu
+                  # Off-box copy of the newest forgejo backup to hp-victus (a
+                  # DIFFERENT machine) over NFS, for real disaster recovery. The
+                  # local copy already exists; this is best-effort second copy.
+                  KEEP_OFFBOX=4   # hp-victus root is smaller (938G, shared w/ CI)
+
+                  NEWEST_FULL=$(ls -t /local/forgejo-full-*.tar.gz 2>/dev/null | head -1 || true)
+                  if [ -z "$NEWEST_FULL" ]; then
+                    echo "No local full backup found in /local - nothing to copy." >&2
+                    exit 1
+                  fi
+                  NEWEST_DB=$(ls -t /local/forgejo-db-*.db.gz 2>/dev/null | head -1 || true)
+
+                  echo "Copying $(basename "$NEWEST_FULL") off-box to hp-victus..."
+                  cp -f "$NEWEST_FULL" /offbox/
+                  [ -n "$NEWEST_DB" ] && cp -f "$NEWEST_DB" /offbox/ || true
+
+                  # Prune off-box to KEEP_OFFBOX newest.
+                  ls -t /offbox/forgejo-full-*.tar.gz 2>/dev/null | tail -n +$((KEEP_OFFBOX+1)) | xargs -r rm -v
+                  ls -t /offbox/forgejo-db-*.db.gz    2>/dev/null | tail -n +$((KEEP_OFFBOX+1)) | xargs -r rm -v
+
+                  echo "Off-box copy complete. On hp-victus:"
+                  ls -lht /offbox/forgejo-full-*.tar.gz
+              volumeMounts:
+                - name: local
+                  mountPath: /local
+                  readOnly: true
+                - name: offbox
+                  mountPath: /offbox
+          restartPolicy: OnFailure
+          volumes:
+            - name: local
+              hostPath:
+                path: /mnt/backups/forgejo
+                type: Directory
+            # Off-box NFS target, served by hp-victus (ansible role
+            # nfs-backup-target). IP not DNS: in-cluster pods resolve via cluster
+            # DNS, which doesn't serve OpenWRT dnsmasq LAN names; hp-victus holds
+            # a DHCP reservation at .243 (infrastructure/dhcp/devices.yaml).
+            - name: offbox
+              nfs:
+                server: 192.168.1.243
+                path: /srv/backups/forgejo

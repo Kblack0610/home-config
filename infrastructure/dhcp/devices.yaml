@@ -120,6 +120,16 @@ devices:
     category: workstations
     range_exception: true
 
+  # hp-victus: k3s workstation node + NFS off-box backup target (exports
+  # /srv/backups, ansible role nfs-backup-target). Pinned so the forgejo
+  # off-box backup NFS mount (apps/forgejo/backup-cronjob.yaml, server .243)
+  # can't break on a DHCP lease change. Keeps its existing .243 lease.
+  - hostname: hp-victus
+    mac: "E0:73:E7:F3:5B:65"
+    ip: "192.168.1.243"
+    category: workstations
+    range_exception: true
+
   # --- Mobile (.50-.79) — Phones, tablets ------------------------------------
   - hostname: pixel-10-pro-fold
     mac: "1E:ED:3B:4E:2D:1E"

@@ -161,3 +161,17 @@
       tags: always
     - role: openwrt-iot-vlan
       tags: [openwrt, iot-vlan]
+
+# Yamaha HS5 desk audio endpoint - Phase 0: bring up a USB balanced interface
+# as the default ALSA sink so the cluster/HA can drive the monitors. Bound to
+# the audio_endpoints group, which is EMPTY until the box is added to the
+# inventory, so this play is a no-op until then (adding the host is the only
+# step). Board-agnostic (Pi OS or Armbian on a Libre/BigTreeTech board).
+# See ansible/roles/audio-endpoint/README.md for the staged roadmap.
+- name: HS5 audio endpoint (USB balanced interface -> default ALSA sink)
+  hosts: audio_endpoints
+  become: true
+  gather_facts: true
+  roles:
+    - role: audio-endpoint
+      tags: [audio, hs5, alsa]

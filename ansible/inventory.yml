@@ -96,3 +96,12 @@ all:
         pi5-worker3:
         pi4-worker4:
         pi4-worker5:
+
+    # HS5 desk audio endpoint(s). See ansible/roles/audio-endpoint/README.md.
+    # Board-agnostic (Raspberry Pi OS, or Armbian on a Libre / BigTreeTech
+    # board). Add the box here once it is flashed and on the LAN, e.g.:
+    #   hs5-desk:
+    #     ansible_host: 192.168.1.NNN   # add a DHCP -lan reservation too
+    # Until then this group is empty and the site.yml play is a safe no-op.
+    audio_endpoints:
+      hosts: {}

@@ -1,0 +1,26 @@
+---
+galaxy_info:
+  role_name: audio_endpoint
+  author: home-config
+  description: >-
+    Provision an always-on box as a home-cluster audio endpoint for a pair of
+    Yamaha HS5 powered monitors. Phase 0 brings up a USB balanced interface as
+    the default ALSA sink (board-agnostic: Raspberry Pi OS or Armbian on a Libre
+    Computer / BigTreeTech board). Later phases layer shairport-sync (AirPlay),
+    Music Assistant, and Snapcast for multi-room synced audio.
+  license: MIT
+  min_ansible_version: "2.14"
+  platforms:
+    - name: Debian
+      versions:
+        - all
+    - name: Ubuntu
+      versions:
+        - all
+  galaxy_tags:
+    - audio
+    - alsa
+    - snapcast
+    - airplay
+    - homeassistant
+dependencies: []

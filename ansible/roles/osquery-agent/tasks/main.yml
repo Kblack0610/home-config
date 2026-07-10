@@ -1,0 +1,36 @@
+---
+# Guard: the enroll secret must exist (generated in Fleet after bootstrap).
+- name: Assert Fleet enroll secret is available
+  ansible.builtin.assert:
+    that:
+      - fleet_enroll_secret is defined
+      - fleet_enroll_secret | length > 8
+      - not (fleet_enroll_secret is match('.*REPLACE_ME.*'))
+    fail_msg: >-
+      vault_fleet_enroll_secret is unset or a placeholder. Deploy apps/fleet,
+      bootstrap the admin at https://{{ fleet_tls_hostname }}, copy the osquery
+      enroll secret, and store it as vault_fleet_enroll_secret in
+      group_vars/<group>/vault.yml (ansible-vault encrypt). See
+      apps/fleet/README.md.
+  no_log: true
+
+# Dispatch by platform. macOS + Debian/RPi are supported; Arch is a documented
+# follow-up (osquery is AUR-only), so we fail loudly rather than silently skip.
+- name: Install + enroll osquery (macOS)
+  ansible.builtin.include_tasks: macos.yml
+  when: ansible_system == 'Darwin'
+
+- name: Install + enroll osquery (Debian / Raspberry Pi OS)
+  ansible.builtin.include_tasks: debian.yml
+  when: ansible_os_family == 'Debian'
+
+- name: Fail clearly on unsupported OS (e.g. Arch/x86)
+  ansible.builtin.fail:
+    msg: >-
+      osquery-agent does not yet support {{ ansible_distribution | default(ansible_system) }}.
+      osquery is not in the Arch official repos (AUR-only); wiring an AUR/fleetd
+      install for thinkcentre/hp-victus/cachyos is a tracked follow-up. Limit
+      this play to macOS + Pi hosts for now.
+  when:
+    - ansible_system != 'Darwin'
+    - ansible_os_family != 'Debian'

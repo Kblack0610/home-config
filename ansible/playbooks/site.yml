@@ -80,6 +80,21 @@
 #     - role: k3s-agent
 #       tags: [k3s]
 
+# Fleet (osquery) agent — AUTHORED but not bound. Enrolls hosts into the
+# self-hosted FleetDM server (apps/fleet, https://fleet.kblab.me) for the
+# cross-OS inventory / live-query pane. Bind only AFTER apps/fleet is deployed
+# and the enroll secret is stored as vault_fleet_enroll_secret (see
+# apps/fleet/README.md + roles/osquery-agent/README.md). Covers macOS + Pi
+# (Debian) hosts; Arch/x86 (thinkcentre/hp-victus/cachyos) is a documented
+# follow-up (osquery is AUR-only). ALWAYS --check --diff a single host first.
+#
+# - name: Fleet osquery agent (macOS + Pi hosts)
+#   hosts: macos_hosts:pi_k3s
+#   gather_facts: true
+#   roles:
+#     - role: osquery-agent
+#       tags: [fleet, osquery]
+
 # dodginballs Unity runner — PRIMARY: hp-victus (32 GB, Arch, k3s node with
 # ComfyUI+Prometheus+OpenClaw running but idle). Uses the github-actions-runner-linux
 # role with gh_runner_pat override (different repo than thinkcentre's platform binding).
@@ -108,7 +123,9 @@
 # power fails. The primary (server) runs upsd + upsmon-primary; every
 # secondary (client) runs upsmon and halts on FSD broadcast.
 #
-# pi5-worker1 is intentionally NOT in nut_clients — see inventory note.
+# All five workers (incl. pi5-worker1) are nut_clients — see inventory.yml.
+# (pi5-worker1's SSH-key auth was fixed and it was added to the group; the old
+# "intentionally excluded" note was stale, cf. docs/nut-ups.md.)
 # Verify with `upsc cyberpower` on pi5-master after first apply.
 - name: NUT primary (UPS server on pi5-master)
   hosts: nut_server

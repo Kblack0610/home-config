@@ -1,0 +1,83 @@
+---
+# macOS: install osquery via the Homebrew cask (as the login user - brew must
+# never run as root), then manage a system LaunchDaemon (osqueryd needs root for
+# most tables) that points osqueryd at our Fleet flagfile.
+- name: Install osquery via Homebrew cask
+  community.general.homebrew_cask:
+    name: "{{ osquery_macos_cask }}"
+    state: present
+
+- name: Stat osqueryd binary
+  ansible.builtin.stat:
+    path: "{{ osquery_macos_bin }}"
+  register: osqueryd_stat
+
+- name: Assert osqueryd binary is installed
+  ansible.builtin.assert:
+    that:
+      - osqueryd_stat.stat.exists
+    fail_msg: >-
+      osqueryd not found at {{ osquery_macos_bin }}. Confirm the cask install
+      path on this host (the osquery pkg symlinks osqueryd into PATH) and set
+      osquery_macos_bin accordingly.
+
+- name: Ensure osquery config dir exists
+  ansible.builtin.file:
+    path: "{{ osquery_macos_config_dir }}"
+    state: directory
+    mode: "0755"
+  become: true
+
+- name: Write Fleet enroll secret (macOS)
+  ansible.builtin.copy:
+    dest: "{{ osquery_macos_config_dir }}/enroll.secret"
+    content: "{{ fleet_enroll_secret }}"
+    mode: "0600"
+  become: true
+  no_log: true
+
+- name: Render osquery Fleet flagfile (macOS)
+  ansible.builtin.template:
+    src: osquery.flags.j2
+    dest: "{{ osquery_macos_config_dir }}/osquery.flags"
+    mode: "0644"
+  become: true
+  vars:
+    osquery_enroll_secret_path: "{{ osquery_macos_config_dir }}/enroll.secret"
+
+- name: Render osqueryd LaunchDaemon plist
+  ansible.builtin.template:
+    src: com.kblab.osquery.plist.j2
+    dest: "{{ osquery_macos_launchdaemons_dir }}/{{ osquery_macos_label }}.plist"
+    owner: root
+    group: wheel
+    mode: "0644"
+  become: true
+  register: osquery_plist_result
+
+# launchctl race: bootout returns before the kernel finishes teardown, so poll
+# print until gone before bootstrap (same pattern as node-exporter-mac).
+- name: Reload osqueryd LaunchDaemon if plist changed
+  ansible.builtin.shell: |
+    set -e
+    launchctl bootout system/{{ osquery_macos_label }} 2>/dev/null || true
+    for i in $(seq 1 30); do
+      if ! launchctl print system/{{ osquery_macos_label }} >/dev/null 2>&1; then
+        break
+      fi
+      sleep 1
+    done
+    launchctl bootstrap system {{ osquery_macos_launchdaemons_dir }}/{{ osquery_macos_label }}.plist
+  become: true
+  when:
+    - not ansible_check_mode
+    - osquery_plist_result.changed | default(false)
+  changed_when: true
+
+- name: Verify osqueryd LaunchDaemon is loaded
+  ansible.builtin.command: "launchctl print system/{{ osquery_macos_label }}"
+  become: true
+  register: osquery_launchctl
+  changed_when: false
+  failed_when: osquery_launchctl.rc != 0
+  when: not ansible_check_mode

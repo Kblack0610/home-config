@@ -1,0 +1,109 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: fleet
+  namespace: fleet
+  labels:
+    app.kubernetes.io/name: fleet
+    app.kubernetes.io/component: server
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: fleet
+      app.kubernetes.io/component: server
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: fleet
+        app.kubernetes.io/component: server
+    spec:
+      # The server is stateless (state lives in MySQL/Redis), so it does NOT
+      # need the fleet.storage/node pin — the scheduler may place it anywhere,
+      # including asus-laptop; only the datastores are kept off it.
+      initContainers:
+        # Run schema migrations before serving. Retries so it tolerates MySQL
+        # still coming up (fleet prepare db does not retry on its own).
+        - name: migrate
+          image: fleetdm/fleet:v4.88.0
+          command: ["/bin/sh", "-c"]
+          args:
+            - |
+              for i in $(seq 1 60); do
+                fleet prepare db --no-prompt=true && exit 0
+                echo "waiting for MySQL / retrying migrations ($i)..."
+                sleep 5
+              done
+              echo "fleet prepare db failed after retries" >&2
+              exit 1
+          env:
+            - name: FLEET_MYSQL_ADDRESS
+              value: "fleet-mysql:3306"
+            - name: FLEET_MYSQL_DATABASE
+              value: "fleet"
+            - name: FLEET_MYSQL_USERNAME
+              value: "fleet"
+            - name: FLEET_MYSQL_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: fleet-secret
+                  key: mysql-password
+      containers:
+        - name: fleet
+          image: fleetdm/fleet:v4.88.0
+          command: ["fleet"]
+          args: ["serve"]
+          ports:
+            - name: http
+              containerPort: 8080
+          env:
+            # --- database ---
+            - name: FLEET_MYSQL_ADDRESS
+              value: "fleet-mysql:3306"
+            - name: FLEET_MYSQL_DATABASE
+              value: "fleet"
+            - name: FLEET_MYSQL_USERNAME
+              value: "fleet"
+            - name: FLEET_MYSQL_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: fleet-secret
+                  key: mysql-password
+            # --- redis ---
+            - name: FLEET_REDIS_ADDRESS
+              value: "fleet-redis:6379"
+            # --- server / TLS ---
+            # Traefik terminates TLS at the ingress; Fleet speaks plain HTTP.
+            - name: FLEET_SERVER_TLS
+              value: "false"
+            # At-rest encryption key for stored secrets (MDM/ABM). Durable.
+            - name: FLEET_SERVER_PRIVATE_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: fleet-secret
+                  key: fleet-server-private-key
+            - name: FLEET_LOGGING_JSON
+              value: "true"
+          resources:
+            requests:
+              memory: "256Mi"
+              cpu: "100m"
+            limits:
+              memory: "768Mi"
+              cpu: "1000m"
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: 8080
+            initialDelaySeconds: 30
+            periodSeconds: 30
+            failureThreshold: 5
+          readinessProbe:
+            httpGet:
+              path: /healthz
+              port: 8080
+            initialDelaySeconds: 15
+            periodSeconds: 10
+            failureThreshold: 6

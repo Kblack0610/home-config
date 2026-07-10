@@ -1,0 +1,42 @@
+---
+# --- Fleet server the agent enrolls into (apps/fleet) ---
+# Hostname only (no scheme). osquery connects over TLS on 443.
+fleet_tls_hostname: fleet.kblab.me
+
+# The osquery enroll secret, generated in the Fleet UI after first-boot bootstrap
+# (see apps/fleet/README.md) and stored as `vault_fleet_enroll_secret` in the
+# relevant group_vars/<group>/vault.yml (ansible-vault). The role asserts it is
+# present and non-placeholder before doing anything.
+fleet_enroll_secret: "{{ vault_fleet_enroll_secret | default('') }}"
+
+# fleet.kblab.me carries a public Let's Encrypt cert (cluster-issuer
+# letsencrypt-dns), so the host's system trust store validates it and we do NOT
+# need to pin a cert. Set this to a path and drop the cert there if you switch
+# Fleet to a private/self-signed CA.
+fleet_tls_server_certs: ""
+
+# osquery config/flag directory (Linux). The Debian package also reads these.
+osquery_config_dir: /etc/osquery
+osquery_enroll_secret_path: "{{ osquery_config_dir }}/enroll.secret"
+osquery_flags_path: "{{ osquery_config_dir }}/osquery.flags"
+
+# How often (seconds) osquery pulls config / reports results from Fleet.
+osquery_config_refresh: 60
+osquery_distributed_interval: 60
+osquery_logger_period: 60
+
+# --- macOS specifics ---
+# osquery is installed via the Homebrew cask. Binary path is a variable because
+# it must be confirmed on first host (the pkg symlinks osqueryd into PATH).
+osquery_macos_cask: osquery
+osquery_macos_bin: /usr/local/bin/osqueryd
+osquery_macos_config_dir: /var/osquery
+osquery_macos_label: com.kblab.osquery
+osquery_macos_launchdaemons_dir: /Library/LaunchDaemons
+
+# --- Debian / Raspberry Pi OS specifics ---
+# Official osquery apt repo (https://osquery.io/downloads). arch is resolved at
+# runtime from ansible_architecture (arm64 on Pis, amd64 on x86 Debian).
+osquery_apt_repo: "deb [arch={{ 'arm64' if ansible_architecture == 'aarch64' else 'amd64' }}] https://pkg.osquery.io/deb deb main"
+osquery_apt_key_url: "https://pkg.osquery.io/deb/pubkey.gpg"
+osquery_apt_keyring: /etc/apt/keyrings/osquery.gpg

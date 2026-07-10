@@ -18,6 +18,8 @@ Three workloads in the `fleet` namespace:
 
 FleetDM requires MySQL 8 + Redis; neither existed in-cluster, so both are deployed here (the shared Postgres does not apply). The server is stateless - all data lives in MySQL/Redis.
 
+> **Storage is interim.** This cluster has no replicated block storage yet (local-path only), so MySQL is node-pinned like every other stateful app - here onto a labelled non-asus node. That trades the asus SPOF for an hp-victus one. The durable fix is Longhorn: `docs/distributed-storage-roadmap.md` makes Fleet its first tenant (Phase 3), after which this pin becomes `storageClassName: longhorn`.
+
 ## Required one-time setup
 
 ### 1. Pick a datastore node (REQUIRED before first deploy)

@@ -21,10 +21,15 @@ spec:
         app.kubernetes.io/name: fleet
         app.kubernetes.io/component: mysql
     spec:
-      # Keep Fleet's datastore OFF asus-laptop (the storage SPOF that hit
-      # DiskPressure on 2026-07-09 and took the cluster down). Label ONE stable
-      # non-asus node:  kubectl label node <name> fleet.storage/node=true
-      # Until that label exists this pod stays Pending by design (never lands on asus).
+      # INTERIM placement. There is no replicated block storage in this cluster
+      # yet (local-path only), so this PVC is node-pinned like every other
+      # stateful app. We pin OFF asus-laptop (the storage SPOF that hit
+      # DiskPressure on 2026-07-09 and took the cluster down) onto a labelled
+      # node:  kubectl label node <non-asus-node> fleet.storage/node=true
+      # Until that label exists this pod stays Pending by design (never asus).
+      # The real fix (Longhorn, so this DB survives + reschedules past a node
+      # loss) is docs/distributed-storage-roadmap.md Phase 3 - Fleet is its first
+      # tenant; at that point drop this nodeSelector for storageClassName: longhorn.
       nodeSelector:
         fleet.storage/node: "true"
       containers:

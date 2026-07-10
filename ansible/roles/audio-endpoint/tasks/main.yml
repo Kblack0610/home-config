@@ -1,0 +1,74 @@
+---
+# Phase 0: install ALSA, find the USB balanced interface, make it the default
+# sink, and (opt-in) play a test tone. Board-agnostic, Debian-family only.
+
+- name: Install ALSA userspace + test tools
+  ansible.builtin.apt:
+    name: "{{ audio_endpoint_packages }}"
+    state: present
+    update_cache: true
+    cache_valid_time: 3600
+  become: true
+
+- name: Enumerate ALSA playback devices
+  ansible.builtin.command: aplay -l
+  register: audio_endpoint_aplay
+  changed_when: false
+  check_mode: false  # Read-only; later tasks need its output even in --check.
+
+- name: Select the first USB playback card line
+  ansible.builtin.set_fact:
+    audio_endpoint_card_line: >-
+      {{ audio_endpoint_aplay.stdout_lines
+         | select('match', '^card \d+:')
+         | select('search', audio_endpoint_card_hint)
+         | list | first | default('') }}
+
+- name: Fail when no matching USB audio card is present
+  ansible.builtin.fail:
+    msg: >-
+      No ALSA playback card matching '{{ audio_endpoint_card_hint }}' in
+      `aplay -l`. Is the USB interface plugged in and powered? Set
+      audio_endpoint_require_card=false to pre-stage the box without it.
+      aplay -l said:
+      {{ audio_endpoint_aplay.stdout }}
+  when:
+    - audio_endpoint_card_line == ''
+    - audio_endpoint_require_card | bool
+
+- name: Extract the ALSA card id (name) and index
+  ansible.builtin.set_fact:
+    # id/name (e.g. "U192k") is stable across reboots; prefer it in asound.conf.
+    audio_endpoint_card_id: "{{ audio_endpoint_card_line | regex_search('^card \\d+:\\s+(\\S+)', '\\1') | first }}"
+    audio_endpoint_card_index: "{{ audio_endpoint_card_line | regex_search('^card (\\d+):', '\\1') | first }}"
+  when: audio_endpoint_card_line != ''
+
+- name: Report the selected interface
+  ansible.builtin.debug:
+    msg: >-
+      Using ALSA card '{{ audio_endpoint_card_id }}'
+      (hw index {{ audio_endpoint_card_index }}) as the default sink.
+  when: audio_endpoint_card_line != ''
+
+- name: Set the USB interface as the default ALSA device
+  ansible.builtin.template:
+    src: asound.conf.j2
+    dest: /etc/asound.conf
+    owner: root
+    group: root
+    mode: "0644"
+  become: true
+  when:
+    - audio_endpoint_set_default_card | bool
+    - audio_endpoint_card_line != ''
+
+- name: Play a verification tone through the interface (opt-in)
+  # -l 1 = one loop then exit (never hangs). speaker-test cycles channels, so a
+  # correctly-cabled HS5 pair plays LEFT then RIGHT - confirms both the sink and
+  # the L/R cabling into the speakers.
+  ansible.builtin.command:
+    cmd: >-
+      speaker-test -D default -c {{ audio_endpoint_test_channels }}
+      -t sine -f {{ audio_endpoint_test_freq }} -l 1
+  changed_when: false
+  when: audio_endpoint_run_speaker_test | bool

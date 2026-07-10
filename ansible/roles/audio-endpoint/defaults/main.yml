@@ -1,0 +1,36 @@
+---
+# audio-endpoint - Phase 0 of the Yamaha HS5 -> home-cluster audio endpoint.
+# Brings up a USB balanced interface as the default ALSA sink on a dedicated,
+# always-on box. Board-agnostic: works on Raspberry Pi OS (a Pi) or Armbian
+# (a Libre Computer or BigTreeTech board) - the only per-board difference is the
+# OS image you flashed, not this role. Later phases add shairport-sync (AirPlay),
+# Music Assistant, and Snapcast on top. See README.md for the full staged plan.
+
+# Debian-family packages for the ALSA userspace + test tools. Pi OS and Armbian
+# are both Debian-derived, so apt + these names cover every supported board.
+audio_endpoint_packages:
+  - alsa-utils
+
+# Substring matched against the `aplay -l` card lines to find the interface.
+# "USB" matches virtually every class-compliant interface (Behringer UMC202HD,
+# Focusrite Scarlett, etc.), so the role does NOT need the exact model to be
+# correct. Override only if the box has more than one USB audio card.
+audio_endpoint_card_hint: "USB"
+
+# Write /etc/asound.conf so the matched card is the system-default sink. The
+# config references the card by its ALSA *id* (name), not its index, so it
+# survives reboots and USB re-enumeration.
+audio_endpoint_set_default_card: true
+
+# Fail the run if no matching card is present (interface unplugged or powered
+# off). Set false to converge the box BEFORE the interface is attached - useful
+# to pre-stage the OS while you wait on the hardware.
+audio_endpoint_require_card: true
+
+# Opt-in: play a short sine tone to verify wiring by ear. Off by default so a
+# normal converge is silent and idempotent. Enable per-run to test:
+#   ansible-playbook playbooks/site.yml --limit hs5-desk \
+#     -e audio_endpoint_run_speaker_test=true
+audio_endpoint_run_speaker_test: false
+audio_endpoint_test_channels: 2
+audio_endpoint_test_freq: 440

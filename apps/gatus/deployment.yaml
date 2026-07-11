@@ -29,6 +29,14 @@ spec:
             capabilities:
               drop:
                 - ALL
+          env:
+            # Shared bearer token for fleet-pulse push endpoints (see configmap external-endpoints).
+            # Gatus substitutes ${FLEET_TOKEN} in its config at load time.
+            - name: FLEET_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: gatus-fleet-token
+                  key: FLEET_TOKEN
           ports:
             - name: http
               containerPort: 8080

@@ -15,6 +15,22 @@ data:
       title: KB Lab Status
       header: KB Lab Infrastructure
 
+    # --- fleet-pulse: push-based liveness heartbeats ---
+    # Each machine POSTs to /api/v1/endpoints/fleet_<name>/external?success=true
+    # with header "Authorization: Bearer ${FLEET_TOKEN}" (see apps/gatus/fleet-token-secret.sops.yaml).
+    # Gatus records the timestamped result; staleness is judged client-side by each
+    # machine's status bar (healthy = success && age < 180s). No server-side auto-expiry.
+    external-endpoints:
+      - name: linux-cachyos
+        group: fleet
+        token: "${FLEET_TOKEN}"
+      - name: mac
+        group: fleet
+        token: "${FLEET_TOKEN}"
+      - name: windows
+        group: fleet
+        token: "${FLEET_TOKEN}"
+
     endpoints:
       # --- home-k3s services ---
       - name: Home Assistant

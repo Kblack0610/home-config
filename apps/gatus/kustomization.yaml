@@ -5,6 +5,7 @@ namespace: gatus
 
 resources:
   - namespace.yaml
+  - fleet-token-secret.sops.yaml
   - configmap.yaml
   - deployment.yaml
   - service.yaml

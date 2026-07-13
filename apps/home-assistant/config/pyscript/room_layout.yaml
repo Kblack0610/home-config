@@ -1,0 +1,40 @@
+# Room layout seed — git-managed INITIAL area (room) assignments.
+#
+# Rooms are HA-native metadata: a room is an area in core.area_registry, and a
+# thing's room is its area_id. This file is the reproducible seed for that; it
+# does NOT replace the registries, it just fills them in on a fresh boot.
+#
+# Applied by room_layout_seed() in pyscript/plug_settings.py on every HA startup
+# (and on-demand via the pyscript.room_layout_seed service). NON-DESTRUCTIVE:
+#   - areas here are created only if missing;
+#   - an entity/device is assigned a room ONLY if it currently has none;
+#   - a name is set ONLY if there is no name override yet.
+# So a manual change via the wall Settings view or the HA UI always wins and is
+# never clobbered on the next restart. To re-seed after a manual change, clear
+# that thing's area in the UI and restart HA (or call the service with
+# force: true to re-apply everything).
+
+# Areas to ensure exist (create-if-missing). Kitchen is seeded empty for now.
+areas:
+  - Office
+  - Bedroom
+  - Kitchen
+  - Living Room
+
+# Smart plugs — entity-level room + name, matching the plug Settings editor's
+# per-entity model. name is the entity_registry name override (optional).
+entities:
+  switch.athom_smart_plug_v3_600fec_switch: { room: Bedroom,     name: Bedroom Light }
+  switch.athom_smart_plug_v3_6027f0_switch: { room: Office,      name: Computer Light Strips }
+  switch.athom_smart_plug_v3_6043c8_switch: { room: Office,      name: UFO Light 1 }
+  switch.athom_smart_plug_v3_6058b8_switch: { room: Living Room, name: Table Light }
+  switch.athom_smart_plug_v3_60a188_switch: { room: Living Room, name: Main Light }
+  switch.athom_smart_plug_v3_613888_switch: { room: Living Room, name: Monkey Light }
+  switch.shellyplugusg4_acebe6f28334:       { room: Office,      name: Office AC }
+  switch.shellyplugusg4_acebe6f2a1e8:       { room: Bedroom,     name: Bedroom AC }
+
+# Multi-entity appliances — whole-device room, resolved from one representative
+# entity_id -> its device (moves all of the device's entities at once).
+devices:
+  vacuum.tapovacuummop:         { room: Living Room }   # Robot Vacuum
+  sensor.cat_litter_box_status: { room: Living Room }   # Litter Box

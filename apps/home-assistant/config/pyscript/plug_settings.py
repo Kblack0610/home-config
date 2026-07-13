@@ -25,6 +25,7 @@ import homeassistant.helpers.entity_registry as er
 import homeassistant.helpers.area_registry as ar
 import homeassistant.helpers.label_registry as lr
 import homeassistant.helpers.device_registry as dr
+import pathlib
 import yaml
 
 # Staging helpers (defined in packages/plug_settings.yaml). A FIXED set, so the
@@ -66,15 +67,6 @@ def plug_settings_reconcile():
     log.info(f"plug_settings: reconcile done (+{created} category labels)")
 
 
-def _read_layout():
-    """Blocking read of the git-managed room-layout seed. Call via task.executor."""
-    try:
-        with open(LAYOUT_PATH) as f:
-            return yaml.safe_load(f) or {}
-    except FileNotFoundError:
-        return {}
-
-
 def _do_room_seed(force):
     """Seed areas + per-entity/-device rooms from room_layout.yaml.
 
@@ -82,9 +74,17 @@ def _do_room_seed(force):
     a name only when there is no override yet — so manual edits (wall Settings
     view / HA UI) always win. force=True re-applies the seed over everything.
     """
-    layout = task.executor(_read_layout)
+    # pathlib.read_text() does its own IO (a real Python method, so it is safe to
+    # call directly — task.executor rejects pyscript-compiled functions). The
+    # seed file is tiny and this runs once at startup.
+    try:
+        raw = pathlib.Path(LAYOUT_PATH).read_text()
+    except FileNotFoundError:
+        log.warning(f"room_layout_seed: {LAYOUT_PATH} missing")
+        return
+    layout = yaml.safe_load(raw) or {}
     if not layout:
-        log.warning(f"room_layout_seed: {LAYOUT_PATH} missing or empty")
+        log.warning(f"room_layout_seed: {LAYOUT_PATH} empty")
         return
 
     area_reg = ar.async_get(hass)

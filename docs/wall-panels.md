@@ -1,13 +1,20 @@
 # Wall Panels (Home Assistant kiosk tablets)
 
 Turns a wall-mounted Android tablet into a Nest-Hub-style home panel: a polished
-HA dashboard that, when idle, fades into a full-screen Immich photo frame — with a
-clock/date + photo metadata overlay and automatic side-by-side **portrait pairing**.
+HA dashboard that, when idle, fades into an Immich photo frame — with a clock/date +
+photo metadata overlay, automatic side-by-side **portrait pairing**, and a translucent
+**control panel** pinned to the right ~36% (weather + homelab/device status + an Expand hint).
 
 - **Dashboard:** `https://hass.kblab.me/wall-panels` (LAN/Tailscale only)
 - **Views:** Home (glance) · Control · Devices · Ops/Fleet · Photos · Media · Settings · Admin
 - **Screensaver:** lovelace-wallpanel embeds immich-kiosk's full page via `iframe+` (idle/keep-awake
-  from wallpanel; clock + metadata + `KIOSK_LAYOUT=splitview` portrait pairing from immich-kiosk).
+  from wallpanel; clock + metadata + `KIOSK_LAYOUT=splitview` portrait pairing from immich-kiosk),
+  with wallpanel's info box repurposed as a right-hand control panel (`wallpanel.cards`).
+- **Expand to full view:** `content_interaction: false` — a single tap ANYWHERE (photos or panel)
+  reliably ends the screensaver and reveals the full Home dashboard. (Previously the screensaver
+  ran `content_interaction: true` over a full-screen kiosk iframe, so taps were swallowed and it
+  "took two clicks" to dismiss.) The panel is therefore glanceable; the real controls are one tap
+  away on Home.
 - **Photo source:** `apps/immich-kiosk` (`immich-kiosk.kblab.me`) → your Immich library
 - **Dashboard source:** `apps/home-assistant/config/dashboards/wall.yaml` (code-first, Flux-deployed)
 
@@ -19,8 +26,9 @@ hands-on per-tablet runbook.
 ## 0. Quick test (any device, no install)
 Open `https://hass.kblab.me/wall-panels` in a browser and log in.
 **Hard-refresh once (Ctrl/Cmd+Shift+R)** so the custom cards load. Wait ~20s without
-touching it → the Immich photo screensaver starts; tap to dismiss. That's the full
-experience minus the OS lockdown.
+touching it → the Immich photo screensaver starts, with the control panel on the right;
+a single tap anywhere reveals the full Home dashboard. That's the full experience minus
+the OS lockdown.
 
 > Admins keep the HA header/sidebar; non-admin profiles get the clean kiosk view
 > (kiosk-mode). To preview the locked look as admin, append `?kiosk`; `?disable_km` exits.

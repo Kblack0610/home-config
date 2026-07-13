@@ -57,53 +57,8 @@ sections:
           yellow: 70
           red: 85
 
+  # Home = rooms. Each room's devices auto-populate from its HA area; the layout
+  # is shared with the wall Home view via dashboards/_rooms_cards.yaml. Full
+  # per-device detail pages live on the Devices tab (chip above).
   - type: grid
-    cards:
-      - type: heading
-        heading: Devices
-        icon: mdi:devices
-      # Compact glance — full controls live in the Devices tab / detail pages.
-      - type: custom:mushroom-template-card
-        primary: Robot Vacuum
-        secondary: >-
-          {{ states('sensor.tapovacuummop_status') }} ·
-          {{ states('sensor.tapovacuummop_battery') }}%
-        icon: mdi:robot-vacuum
-        icon_color: >-
-          {{ 'red' if states('sensor.tapovacuummop_error') not in ['Ok','unknown','unavailable']
-             else 'green' if states('vacuum.tapovacuummop') == 'docked' else 'blue' }}
-        tap_action: { action: navigate, navigation_path: /lovelace/device-vacuum }
-      - type: custom:mushroom-template-card
-        primary: Litter Box
-        secondary: >-
-          {{ states('sensor.cat_litter_box_status') }} ·
-          {{ states('sensor.cat_litter_box_excretions_per_day') }} today
-        icon: mdi:cat
-        icon_color: >-
-          {{ 'orange' if is_state('sensor.cat_litter_box_status','Cat_into') else 'blue' }}
-        tap_action: { action: navigate, navigation_path: /lovelace/device-litterbox }
-      # Smart plugs — auto-populates EVERY plug (entity_id switch.*plug* catches
-      # Shelly + Athom + any future one, and excludes non-plug switches). Each
-      # card shows the plug's ROOM (its HA area, set from the wall Settings view)
-      # as secondary text. Tap toggles the relay; live watts live in the Energy
-      # views. Modular by design.
-      - type: custom:auto-entities
-        show_empty: false
-        card_param: cards
-        card:
-          type: grid
-          columns: 2
-          square: false
-        filter:
-          include:
-            - entity_id: switch.*plug*
-              options:
-                type: custom:mushroom-template-card
-                primary: "{{ state_attr(entity, 'friendly_name') or entity }}"
-                secondary: "{{ area_name(entity) or 'Unassigned' }}"
-                icon: "{{ state_attr(entity, 'icon') or 'mdi:power-plug' }}"
-                icon_color: "{{ 'amber' if is_state(entity, 'on') else 'disabled' }}"
-                tap_action:
-                  action: toggle
-        sort:
-          method: friendly_name
+    cards: !include _rooms_cards.yaml

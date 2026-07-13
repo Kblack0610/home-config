@@ -25,6 +25,7 @@ configMapGenerator:
       - pyscript_plug_settings.py=config/pyscript/plug_settings.py
       - pyscript_room_layout.yaml=config/pyscript/room_layout.yaml
       - dashboard_overview.yaml=config/dashboards/overview.yaml
+      - dashboard_rooms_cards.yaml=config/dashboards/_rooms_cards.yaml
       - dashboard_local.yaml=config/dashboards/local.yaml
       - dashboard_ops.yaml=config/dashboards/ops.yaml
       - dashboard_admin.yaml=config/dashboards/admin.yaml

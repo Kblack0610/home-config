@@ -344,6 +344,8 @@ spec:
               cp /managed-config/pyscript_room_layout.yaml /config/pyscript/room_layout.yaml
 
               cp /managed-config/dashboard_overview.yaml /config/dashboards/overview.yaml
+              # shared room-layout partial, !include'd by overview + wall Home
+              cp /managed-config/dashboard_rooms_cards.yaml /config/dashboards/_rooms_cards.yaml
               cp /managed-config/dashboard_local.yaml /config/dashboards/local.yaml
               cp /managed-config/dashboard_ops.yaml /config/dashboards/ops.yaml
               cp /managed-config/dashboard_admin.yaml /config/dashboards/admin.yaml

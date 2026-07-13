@@ -23,6 +23,7 @@ configMapGenerator:
       - package_voice_satellite_binks.yaml=config/packages/voice_satellite_binks.yaml
       - package_plug_settings.yaml=config/packages/plug_settings.yaml
       - pyscript_plug_settings.py=config/pyscript/plug_settings.py
+      - pyscript_room_layout.yaml=config/pyscript/room_layout.yaml
       - dashboard_overview.yaml=config/dashboards/overview.yaml
       - dashboard_local.yaml=config/dashboards/local.yaml
       - dashboard_ops.yaml=config/dashboards/ops.yaml

@@ -318,7 +318,7 @@ spec:
               # from git — and HA keeps loading the stale file (e.g. a dropped
               # package erroring on every start). Pruning makes the PVC match git
               # exactly.
-              rm -f /config/packages/*.yaml /config/dashboards/*.yaml /config/pyscript/*.py
+              rm -f /config/packages/*.yaml /config/dashboards/*.yaml /config/pyscript/*.py /config/pyscript/*.yaml
 
               cp /managed-config/configuration.yaml /config/configuration.yaml
               cp /managed-config/automations.yaml /config/automations.yaml
@@ -340,6 +340,8 @@ spec:
 
               # pyscript apps (registry-write services for the plug Settings editor)
               cp /managed-config/pyscript_plug_settings.py /config/pyscript/plug_settings.py
+              # room-layout seed data read by pyscript.room_layout_seed on startup
+              cp /managed-config/pyscript_room_layout.yaml /config/pyscript/room_layout.yaml
 
               cp /managed-config/dashboard_overview.yaml /config/dashboards/overview.yaml
               cp /managed-config/dashboard_local.yaml /config/dashboards/local.yaml

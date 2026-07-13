@@ -74,11 +74,11 @@ def _do_room_seed(force):
     a name only when there is no override yet — so manual edits (wall Settings
     view / HA UI) always win. force=True re-applies the seed over everything.
     """
-    # pathlib.read_text() does its own IO (a real Python method, so it is safe to
-    # call directly — task.executor rejects pyscript-compiled functions). The
-    # seed file is tiny and this runs once at startup.
+    # Read off the event loop. task.executor rejects pyscript-compiled functions,
+    # but Path.read_text is a real bound method, so it runs cleanly in the
+    # executor (avoids HA's "blocking call inside the event loop" warning).
     try:
-        raw = pathlib.Path(LAYOUT_PATH).read_text()
+        raw = task.executor(pathlib.Path(LAYOUT_PATH).read_text)
     except FileNotFoundError:
         log.warning(f"room_layout_seed: {LAYOUT_PATH} missing")
         return

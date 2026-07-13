@@ -18,81 +18,60 @@ kiosk_mode:
   non_admin_settings:
     kiosk: true
 
-# ── Split control-panel screensaver (lovelace-wallpanel → immich-kiosk) ─────
-# wallpanel provides the screensaver trigger (idle, fullscreen, keep-awake) and
-# a tap-to-dismiss gesture; the photo CONTENT is immich-kiosk's full page,
-# embedded via wallpanel's `iframe+` URL mode. That keeps immich-kiosk's NATIVE
-# big clock/date + image-metadata overlays and automatic side-by-side PORTRAIT
-# PAIRING (KIOSK_LAYOUT=splitview, on the immich-kiosk deployment).
+# ── Clickable control-panel screensaver (lovelace-wallpanel → immich-kiosk) ──
+# wallpanel provides the screensaver trigger (idle, fullscreen, keep-awake); the
+# photo CONTENT is immich-kiosk's full page via wallpanel's `iframe+` URL mode
+# (keeps kiosk's big clock/date + metadata + splitview portrait pairing).
 #
-# The idle screen is no longer JUST photos: wallpanel's info box is repurposed as
-# a translucent CONTROL PANEL pinned to the right ~36% (weather + homelab/device
-# status + an Expand hint), while photos + kiosk's clock fill the rest.
+# The idle screen is a CLICKABLE panel, not a dead photo: wallpanel's info box is
+# a translucent ROOM QUICK-ACTIONS column pinned right (the shared, area-driven
+# _rooms_cards layout — tap a plug tile to toggle it), plus a "Dashboard" button.
 #
-# INTERACTION (important — fixes the old "have to click twice" pain): with
-# content_interaction:true + a full-screen kiosk iframe, taps were SWALLOWED by
-# the iframe, so a tap never reliably dismissed the screensaver. We set
-# content_interaction:FALSE so ANY tap (photos OR panel) reliably ends the
-# screensaver on the FIRST tap and reveals the full Home dashboard = "full view".
-# The control panel is therefore GLANCEABLE (its cards render but taps expand
-# rather than toggle in place) — the real controls live one tap away on Home.
-# NOTE: do NOT add ?disable_ui=true to the kiosk URL — verified via Playwright
-# that it ALSO hides the clock/date/metadata overlays (not just nav chrome).
+# INTERACTION MODEL (this is the important bit):
+#   - content_interaction: true         → taps reach the panel cards.
+#   - stop_screensaver_on_mouse_click: false / _move: false → a tap TOGGLES the
+#     tile IN PLACE and does NOT drop the screensaver. This is what kills the old
+#     "have to click twice" feel (a tap acts directly instead of first dismissing).
+#   - The ONLY way out is the "Dashboard" button — it `navigate`s, and
+#     stop_screensaver_on_location_change (default true) ends the screensaver and
+#     lands on the full Home dashboard = the "admin ui tap in the corner".
+#   - screensaver_entity: toggling input_boolean.wall_screensaver starts/stops the
+#     frame → the on-dashboard "Screensaver" button + easy testing (idle is 8s).
+# NOTE: do NOT add ?disable_ui=true to the kiosk URL — it also hides kiosk's
+# clock/date/metadata overlays (verified via Playwright), not just nav chrome.
 wallpanel:
   enabled: true
   fullscreen: true
   hide_toolbar: true
   hide_sidebar: true
-  idle_time: 20
+  idle_time: 8
   # Keep the display awake while the dashboard/screensaver is open (browser Wake
   # Lock API). For a mounted tablet, also set OS/kiosk keep-awake (docs/wall-panels.md).
   keep_screen_on_time: 86400
   show_progress_bar: false
   image_url: 'iframe+https://immich-kiosk.kblab.me/'
-  # First tap anywhere dismisses the screensaver → Home (see INTERACTION above).
-  content_interaction: false
-  # Control panel shown over the photos (right-pinned by the style block below).
+  # Clickable panel that stays up on tap; only the Dashboard button exits.
+  content_interaction: true
+  stop_screensaver_on_mouse_click: false
+  stop_screensaver_on_mouse_move: false
+  # On-demand start/stop from a dashboard button (and easy testing).
+  screensaver_entity: input_boolean.wall_screensaver
   cards:
-    # Weather forecast — no clock here (kiosk already draws a big clock over the
-    # photos; a second clock would be redundant).
-    - type: weather-forecast
-      entity: weather.forecast_home
-      forecast_type: daily
-      show_current: true
-      card_mod:
-        style: |
-          ha-card { background: rgba(20,20,22,0.38); border: none; box-shadow: none; backdrop-filter: blur(3px); }
-    # Homelab + device status at a glance (reuses Home-view entities).
-    - type: custom:mushroom-chips-card
-      alignment: center
-      chips:
-        - type: template
-          icon: mdi:server-network
-          icon_color: blue
-          content: "{{ states('sensor.cluster_nodes_online') }}/{{ states('sensor.homelab_total_nodes') }}"
-        - type: template
-          icon: mdi:robot-vacuum
-          content: "{{ states('sensor.tapovacuummop_status') }}"
-        - type: template
-          icon: mdi:cat
-          content: "{{ states('sensor.cat_litter_box_status') }}"
-      card_mod:
-        style: |
-          ha-card { background: transparent; border: none; box-shadow: none; }
-    # Expand affordance — advertises that a tap opens the full dashboard. (Any tap
-    # ends the screensaver → Home, so this is a hint/label, not a special action.)
+    # Corner "admin" tap — the only exit: navigate ends the screensaver → Home.
     - type: custom:mushroom-template-card
-      primary: Full dashboard
-      secondary: Tap anywhere to open
-      icon: mdi:gesture-tap
-      icon_color: amber
+      primary: Dashboard
+      icon: mdi:view-dashboard
+      icon_color: blue
       tap_action: { action: navigate, navigation_path: /wall-panels/home }
       card_mod:
         style: |
-          ha-card { background: rgba(20,20,22,0.38); border: none; box-shadow: none; backdrop-filter: blur(3px); }
+          ha-card { background: rgba(20,20,22,0.42); border: none; box-shadow: none; backdrop-filter: blur(3px); }
+    # Room quick-actions — the SHARED area-driven room layout (one source of truth
+    # with the Home view; tap a plug tile to toggle it). Empty rooms auto-hide.
+    - type: vertical-stack
+      cards: !include _rooms_cards.yaml
   style:
-    # Pin the info box as a translucent right-hand control column (~36% wide,
-    # full height), fading in from the photos. Tune the width/gradient on-tablet.
+    # Translucent right-hand control column, full height. Tune width on-tablet.
     wallpanel-screensaver-info-box:
       position: absolute
       top: '0'
@@ -100,17 +79,24 @@ wallpanel:
       bottom: '0'
       left: auto
       transform: none
-      width: 36%
+      width: 42%
       height: 100%
       margin: '0'
-      padding: 28px
+      padding: 24px
       box-sizing: border-box
       display: flex
       flex-direction: column
-      justify-content: center
-      gap: 14px
+      justify-content: flex-start
+      gap: 12px
       overflow-y: auto
-      background: 'linear-gradient(to right, rgba(0,0,0,0) 0%, rgba(0,0,0,0.5) 26%)'
+      background: 'linear-gradient(to right, rgba(0,0,0,0) 0%, rgba(0,0,0,0.55) 22%)'
+    # Force the card container to a single full-width column (wallpanel defaults it
+    # to a centered grid that can overflow a narrow box → the old "half a card").
+    wallpanel-screensaver-info-box-content:
+      display: block
+      width: 100%
+      max-width: 100%
+      grid-template-columns: none
 
 views:
   # ───────────────────────────── HOME / GLANCE ─────────────────────────────
@@ -155,6 +141,15 @@ views:
                 icon: mdi:image-multiple
                 content: Photos
                 tap_action: { action: navigate, navigation_path: /wall-panels/photos }
+              # Start the photo screensaver on demand (wallpanel binds this entity
+              # via screensaver_entity; it flips back off when the frame stops).
+              - type: template
+                icon: mdi:monitor-screenshot
+                content: Screensaver
+                tap_action:
+                  action: call-service
+                  service: input_boolean.turn_on
+                  target: { entity_id: input_boolean.wall_screensaver }
               - type: template
                 icon: mdi:server-network
                 icon_color: blue
@@ -207,35 +202,11 @@ views:
                 icon: mdi:cast-audio-variant
                 content: "{{ states.media_player | list | count }} speakers"
                 tap_action: { action: navigate, navigation_path: /wall-panels/device-speakers }
+      # Rooms — devices grouped by their HA area. Shared with the Overview home
+      # view via dashboards/_rooms_cards.yaml (one layout, both dashboards). Tap
+      # toggles a plug / opens more-info; live watts are in the Energy section.
       - type: grid
-        cards:
-          - type: heading
-            heading: Smart Plugs
-            heading_style: title
-          # Auto-populates every plug (switch.*plug*): Shelly, Athom, future.
-          # Each card shows the plug's ROOM (its HA area, set from the Settings
-          # view) as secondary text — "Unassigned" until a user places it. Tap
-          # toggles the relay; live watts are in the Energy section below.
-          - type: custom:auto-entities
-            show_empty: false
-            card_param: cards
-            card:
-              type: grid
-              columns: 2
-              square: false
-            filter:
-              include:
-                - entity_id: switch.*plug*
-                  options:
-                    type: custom:mushroom-template-card
-                    primary: "{{ state_attr(entity, 'friendly_name') or entity }}"
-                    secondary: "{{ area_name(entity) or 'Unassigned' }}"
-                    icon: "{{ state_attr(entity, 'icon') or 'mdi:power-plug' }}"
-                    icon_color: "{{ 'amber' if is_state(entity, 'on') else 'disabled' }}"
-                    tap_action:
-                      action: toggle
-            sort:
-              method: friendly_name
+        cards: !include _rooms_cards.yaml
       - type: grid
         cards:
           - type: heading

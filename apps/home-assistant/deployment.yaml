@@ -337,6 +337,7 @@ spec:
               cp /managed-config/package_marine.yaml /config/packages/marine.yaml
               cp /managed-config/package_voice_satellite_binks.yaml /config/packages/voice_satellite_binks.yaml
               cp /managed-config/package_plug_settings.yaml /config/packages/plug_settings.yaml
+              cp /managed-config/package_wall_screensaver.yaml /config/packages/wall_screensaver.yaml
 
               # pyscript apps (registry-write services for the plug Settings editor)
               cp /managed-config/pyscript_plug_settings.py /config/pyscript/plug_settings.py
@@ -344,6 +345,8 @@ spec:
               cp /managed-config/pyscript_room_layout.yaml /config/pyscript/room_layout.yaml
 
               cp /managed-config/dashboard_overview.yaml /config/dashboards/overview.yaml
+              # shared room-layout partial, !include'd by overview + wall Home
+              cp /managed-config/dashboard_rooms_cards.yaml /config/dashboards/_rooms_cards.yaml
               cp /managed-config/dashboard_local.yaml /config/dashboards/local.yaml
               cp /managed-config/dashboard_ops.yaml /config/dashboards/ops.yaml
               cp /managed-config/dashboard_admin.yaml /config/dashboards/admin.yaml

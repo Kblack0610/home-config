@@ -1,0 +1,14 @@
+# Wall screensaver control.
+#
+# An entity that lovelace-wallpanel binds to via `screensaver_entity` (set on the
+# wall dashboard's wallpanel block). Turning it ON starts the photo screensaver
+# on the wall tablets; wallpanel flips it back OFF when the screensaver stops.
+# This gives a dashboard "Screensaver" button and an easy way to test the frame
+# without waiting out the idle timeout.
+#
+# NOTE: one shared boolean drives every tablet at once (fine for now / testing).
+# For per-tablet control, switch to a per-panel entity keyed by BrowserID later.
+input_boolean:
+  wall_screensaver:
+    name: Wall screensaver
+    icon: mdi:image-multiple

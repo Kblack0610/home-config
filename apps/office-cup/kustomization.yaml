@@ -1,0 +1,14 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+namespace: office-cup
+
+resources:
+  - namespace.yaml
+  - registry-secret.yaml
+  - web-deployment.yaml
+  - web-ingress.yaml
+
+images:
+  - name: git.kblab.me/kblack0610/office-cup-web
+    newTag: v0.1.0

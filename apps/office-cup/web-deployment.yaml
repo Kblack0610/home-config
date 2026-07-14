@@ -1,0 +1,80 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: office-cup-web
+  namespace: office-cup
+  labels:
+    app: office-cup-web
+spec:
+  selector:
+    app: office-cup-web
+  ports:
+    - name: http
+      port: 80
+      targetPort: 3600
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: office-cup-web
+  namespace: office-cup
+  labels:
+    app: office-cup-web
+spec:
+  replicas: 1
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: 0
+      maxSurge: 1
+  selector:
+    matchLabels:
+      app: office-cup-web
+  template:
+    metadata:
+      labels:
+        app: office-cup-web
+    spec:
+      # Cilium restart adds a NoSchedule taint on the node; tolerate it so the
+      # pod isn't evicted during a CNI bounce (matches time-tangle-web).
+      tolerations:
+        - key: node.cilium.io/agent-not-ready
+          operator: Exists
+          effect: NoSchedule
+      imagePullSecrets:
+        - name: forgejo-registry
+      containers:
+        - name: office-cup-web
+          image: git.kblab.me/kblack0610/office-cup-web:latest
+          imagePullPolicy: Always
+          ports:
+            - name: http
+              containerPort: 3600
+          env:
+            - name: NODE_ENV
+              value: production
+            - name: PORT
+              value: '3600'
+            - name: HOSTNAME
+              value: 0.0.0.0
+          resources:
+            requests:
+              cpu: 100m
+              memory: 256Mi
+            limits:
+              cpu: 500m
+              memory: 512Mi
+          readinessProbe:
+            httpGet:
+              path: /
+              port: http
+            initialDelaySeconds: 15
+            periodSeconds: 10
+            timeoutSeconds: 5
+          livenessProbe:
+            httpGet:
+              path: /
+              port: http
+            initialDelaySeconds: 30
+            periodSeconds: 30
+            timeoutSeconds: 5

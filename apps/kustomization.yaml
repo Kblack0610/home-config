@@ -54,6 +54,7 @@ resources:
   # Public sites (Cloudflare tunnel → Traefik → service)
   - portfolio
   - bnb-studios
+  - office-cup
   - black-dev
   - placemyparents-preview
   - scratch

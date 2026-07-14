@@ -18,4 +18,4 @@ images:
   - name: git.kblab.me/kblack0610/time-tangle-api
     newTag: v1.0.3
   - name: git.kblab.me/kblack0610/time-tangle-web
-    newTag: v1.0.0
+    newTag: v1.0.1

@@ -22,6 +22,7 @@ resources:
   - gatus
   - headscale
   - headwind-mdm
+  - headwind-fleet-bridge
   - home-assistant
   - immich
   - immich-kiosk

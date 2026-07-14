@@ -1,0 +1,15 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+# Runs in the headwind-mdm namespace so it can reuse headwind-mdm-secret/sql-pass
+# for the read-only devices query. The namespace itself is created by apps/headwind-mdm.
+namespace: headwind-mdm
+
+configMapGenerator:
+  - name: headwind-fleet-bridge-script
+    files:
+      - bridge.py
+
+resources:
+  - secret.sops.yaml
+  - deployment.yaml

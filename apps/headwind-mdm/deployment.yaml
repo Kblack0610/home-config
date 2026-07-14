@@ -97,29 +97,34 @@ spec:
 
           resources:
             requests:
-              memory: "512Mi"
+              memory: "768Mi"
               cpu: "200m"
             limits:
-              # Tomcat + Java; 1 Gi covers normal fleet sizes.
-              memory: "1Gi"
-              cpu: "1000m"
+              # Tomcat + Java + ActiveMQ; 1Gi GC-thrashed under enrollment load
+              # (slow GET / -> liveness timeouts -> crash loop), so 2Gi headroom.
+              memory: "2Gi"
+              cpu: "1500m"
 
           # The entrypoint waits for postgres, then Tomcat starts on 8080.
-          # Give it enough time on first boot (WAR download + DB init).
+          # `GET /` renders the SPA + hits the DB, so it can take several seconds
+          # under load/GC. The default 1s probe timeout was killing a healthy pod;
+          # timeoutSeconds:10 + a longer window keep the JVM from being false-killed.
           livenessProbe:
             httpGet:
               path: /
               port: 8080
-            initialDelaySeconds: 120
+            initialDelaySeconds: 180
             periodSeconds: 30
-            failureThreshold: 5
+            timeoutSeconds: 10
+            failureThreshold: 6
           readinessProbe:
             httpGet:
               path: /
               port: 8080
-            initialDelaySeconds: 60
+            initialDelaySeconds: 45
             periodSeconds: 15
-            failureThreshold: 10
+            timeoutSeconds: 10
+            failureThreshold: 12
 
       volumes:
         - name: work

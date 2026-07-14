@@ -21,6 +21,7 @@ resources:
   - forgejo
   - gatus
   - headscale
+  - headwind-mdm
   - home-assistant
   - immich
   - immich-kiosk

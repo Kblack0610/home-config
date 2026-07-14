@@ -1,0 +1,14 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: headwind-mdm
+  namespace: headwind-mdm
+spec:
+  selector:
+    app: headwind-mdm
+  ports:
+    # Tomcat HTTP port; Traefik terminates TLS at the ingress layer.
+    - name: http
+      port: 80
+      targetPort: 8080
+  type: ClusterIP

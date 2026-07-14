@@ -1,0 +1,33 @@
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: headwind-mdm
+  namespace: headwind-mdm
+  annotations:
+    kubernetes.io/ingress.class: traefik
+    cert-manager.io/cluster-issuer: letsencrypt-dns
+    # LAN/Tailscale-only by default: the wall/kiosk tablets live on the LAN, so
+    # they enroll + sync fine without exposing the Headwind admin panel to the
+    # public internet. There is deliberately NO Cloudflare tunnel route for this
+    # host. To allow OFF-NET enrollment (e.g. a roaming personal phone), swap this
+    # middleware for the crowdsec public bouncer and add a tunnel route:
+    #   traefik.ingress.kubernetes.io/router.middlewares: crowdsec-crowdsec-bouncer@kubernetescrd
+    # (Headscale tailnet clients are 100.64.0.0/10; extend the local-network-only
+    #  CIDR list if you want tailnet admin access.)
+    traefik.ingress.kubernetes.io/router.middlewares: monitoring-local-network-only@kubernetescrd
+spec:
+  tls:
+    - hosts:
+        - mdm.kblab.me
+      secretName: headwind-mdm-tls
+  rules:
+    - host: mdm.kblab.me
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: headwind-mdm
+                port:
+                  number: 80

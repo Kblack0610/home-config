@@ -1,0 +1,13 @@
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: headwind-mdm-work
+  namespace: headwind-mdm
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      # Holds the WAR cache (~60 MB), downloaded launcher APKs, plugins,
+      # and Tomcat logs. 2 Gi is comfortable for a private fleet.
+      storage: 2Gi

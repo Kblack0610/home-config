@@ -1,0 +1,127 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: headwind-mdm
+  namespace: headwind-mdm
+  labels:
+    app: headwind-mdm
+spec:
+  replicas: 1
+  strategy:
+    # Single-writer PVC; Recreate avoids two pods fighting over the work dir.
+    type: Recreate
+  selector:
+    matchLabels:
+      app: headwind-mdm
+  template:
+    metadata:
+      labels:
+        app: headwind-mdm
+    spec:
+      initContainers:
+        # Flux applies the app and the hmdm-db-bootstrap Job with no ordering
+        # guarantee. Block startup until the hmdm role+db actually exist so the
+        # app never crash-loops waiting on a missing role.
+        - name: wait-for-hmdm-db
+          image: pgvector/pgvector:0.8.2-pg17-trixie
+          env:
+            - name: SQL_PASS
+              valueFrom:
+                secretKeyRef:
+                  name: headwind-mdm-secret
+                  key: sql-pass
+          command:
+            - /bin/bash
+            - -c
+            - |
+              until psql "postgresql://hmdm:${SQL_PASS}@postgres.databases.svc.cluster.local:5432/hmdm" -c 'SELECT 1' >/dev/null 2>&1; do
+                echo "waiting for hmdm role+db to be bootstrapped..."; sleep 5
+              done
+              echo "hmdm db reachable"
+      containers:
+        - name: headwind-mdm
+          # Pinned (not :latest) for reproducible deploys. Bump deliberately.
+          # The server WAR is separately pinned via HMDM_URL below.
+          image: headwindmdm/hmdm:0.1.8
+          ports:
+            - name: http
+              containerPort: 8080
+          env:
+            # --- network / TLS ---
+            # Traefik terminates TLS; the container speaks plain HTTP.
+            - name: PROTOCOL
+              value: "http"
+            - name: BASE_DOMAIN
+              value: "mdm.kblab.me"
+            # Skip the built-in letsencrypt cert dance (Traefik owns TLS).
+            - name: HTTPS_LETSENCRYPT
+              value: "false"
+
+            # --- database ---
+            - name: SQL_HOST
+              value: "postgres.databases.svc.cluster.local"
+            - name: SQL_PORT
+              value: "5432"
+            - name: SQL_BASE
+              value: "hmdm"
+            - name: SQL_USER
+              value: "hmdm"
+            - name: SQL_PASS
+              valueFrom:
+                secretKeyRef:
+                  name: headwind-mdm-secret
+                  key: sql-pass
+
+            # --- MDM config ---
+            - name: SHARED_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: headwind-mdm-secret
+                  key: shared-secret
+            - name: ADMIN_EMAIL
+              value: "hughlio912@gmail.com"
+            - name: HMDM_VARIANT
+              value: "os"
+            - name: CLIENT_VERSION
+              value: "6.34"
+            # Pin the WAR version so deploys are reproducible.
+            # Bump this to upgrade Headwind MDM server.
+            - name: HMDM_URL
+              value: "https://h-mdm.com/files/hmdm-5.39.2-os.war"
+            - name: INSTALL_LANGUAGE
+              value: "en"
+
+          volumeMounts:
+            - name: work
+              mountPath: /usr/local/tomcat/work
+
+          resources:
+            requests:
+              memory: "512Mi"
+              cpu: "200m"
+            limits:
+              # Tomcat + Java; 1 Gi covers normal fleet sizes.
+              memory: "1Gi"
+              cpu: "1000m"
+
+          # The entrypoint waits for postgres, then Tomcat starts on 8080.
+          # Give it enough time on first boot (WAR download + DB init).
+          livenessProbe:
+            httpGet:
+              path: /
+              port: 8080
+            initialDelaySeconds: 120
+            periodSeconds: 30
+            failureThreshold: 5
+          readinessProbe:
+            httpGet:
+              path: /
+              port: 8080
+            initialDelaySeconds: 60
+            periodSeconds: 15
+            failureThreshold: 10
+
+      volumes:
+        - name: work
+          persistentVolumeClaim:
+            claimName: headwind-mdm-work

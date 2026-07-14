@@ -12,6 +12,8 @@ One-page index of services and their management plane. Use this to answer "where
 | OrcaSlicer | asus-laptop | k3s pod (AMD GPU) | Flux | `apps/orcaslicer/` |
 | OpenClaw | hp-victus | k3s pod | Flux | `apps/openclaw/` |
 | NAS (Samba) | asus-laptop | k3s pod | Flux | `apps/nas/` |
+| Headwind MDM (Android device mgmt) | any k8s node | k3s pod (Tomcat + shared Postgres) | Flux | `apps/headwind-mdm/` ; `docs/device-fabric.md` |
+| Headwind → gatus fleet bridge | headwind-mdm ns | k3s pod (poller) | Flux | `apps/headwind-fleet-bridge/` ; `docs/device-fabric.md` |
 | Neptune proxy (Fluidd) | — | k3s Service+Endpoints | Flux | `apps/neptune/` |
 | Portfolio / bnb-studios / black-dev | any pi | k3s pod | Flux | `apps/{portfolio,bnb-studios,black-dev}/` |
 | Ansible Runner (CronJob, drift detection) | any k8s node | k8s CronJob | Flux | `apps/ansible-runner/` |

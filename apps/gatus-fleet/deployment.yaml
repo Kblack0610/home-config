@@ -1,22 +1,27 @@
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: gatus
-  namespace: gatus
+  name: gatus-fleet
+  namespace: gatus-fleet
   labels:
-    app.kubernetes.io/name: gatus
+    app.kubernetes.io/name: gatus-fleet
 spec:
   replicas: 1
   strategy:
     type: Recreate
   selector:
     matchLabels:
-      app.kubernetes.io/name: gatus
+      app.kubernetes.io/name: gatus-fleet
   template:
     metadata:
       labels:
-        app.kubernetes.io/name: gatus
+        app.kubernetes.io/name: gatus-fleet
     spec:
+      # Same pin as apps/gatus: the data hostPath lives on the NAS mount, which is
+      # on asus-laptop. KNOWN LIMITATION: this instance therefore cannot report on
+      # the health of the node it runs on - the same trap that let alertmanager be
+      # evicted by the DiskPressure it was supposed to report. The backstop is the
+      # status bars, which go RED when this API is unreachable at all.
       nodeSelector:
         kubernetes.io/hostname: asus-laptop
         storage.role/nas: "true"
@@ -29,9 +34,19 @@ spec:
             capabilities:
               drop:
                 - ALL
-          # No FLEET_TOKEN here any more: this instance has no external-endpoints
-          # to substitute it into. The push endpoints (and the token) moved to
-          # apps/gatus-fleet/ with the machines.
+          env:
+            # Shared bearer token for the push endpoints. Gatus substitutes
+            # ${FLEET_TOKEN} in its config at load time.
+            # FOLLOW-UP: one token authenticates every machine, so any holder can
+            # forge any host's heartbeat. That is tolerable while the holders are
+            # all machines we own; it stops being tolerable now that it also sits
+            # on a corporate laptop and a VDI. Gatus supports a distinct token per
+            # external-endpoint - move to per-device values.
+            - name: FLEET_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: gatus-fleet-token
+                  key: FLEET_TOKEN
           ports:
             - name: http
               containerPort: 8080
@@ -67,10 +82,10 @@ spec:
       volumes:
         - name: config
           configMap:
-            name: gatus-config
+            name: gatus-fleet-config
         - name: data
           hostPath:
-            path: /mnt/nas/private/gatus
+            path: /mnt/nas/private/gatus-fleet
             type: DirectoryOrCreate
         - name: localtime
           hostPath:

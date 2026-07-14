@@ -1,11 +1,11 @@
 #!/usr/bin/env python3
-"""headwind-fleet-bridge - mirror Headwind device liveness into the gatus fleet group.
+"""headwind-fleet-bridge - mirror Headwind device liveness into the gatus fleet.
 
 Android devices managed by Headwind don't push fleet-pulse heartbeats themselves.
 This long-running bridge reads the hmdm `devices` table every INTERVAL seconds and,
 for each device, POSTs a heartbeat to gatus:
-    POST {GATUS_URL}/api/v1/endpoints/fleet_<device>/external?success=<seen-recently>
-so tablets appear in the SAME `fleet` health group as the computers.
+    POST {GATUS_URL}/api/v1/endpoints/{FLEET_GROUP}_<device>/external?success=<seen-recently>
+so tablets land on the SAME fleet surface as the computers.
 
 Design notes:
 - Liveness is judged from Headwind's own `lastupdate` (epoch ms of the device's last
@@ -28,8 +28,14 @@ import psycopg
 
 INTERVAL = int(os.environ.get("INTERVAL", "60"))
 DEVICE_STALE_AFTER = int(os.environ.get("DEVICE_STALE_AFTER", "900"))  # 15 min
-GATUS = os.environ.get("GATUS_URL", "http://gatus.gatus.svc.cluster.local:8080").rstrip("/")
+GATUS = os.environ.get("GATUS_URL", "http://gatus-fleet.gatus-fleet.svc.cluster.local:8080").rstrip("/")
 TOKEN = os.environ.get("FLEET_TOKEN", "")
+# gatus keys are <group>_<name>, so this MUST match the group the tablets are
+# declared under in apps/gatus-fleet/configmap.yaml. Configurable rather than
+# hardcoded: the group moved from `fleet` to `android` when the fleet grew groups
+# (workplace/homelab/k3s/android/iot), and a hardcoded prefix would have silently
+# 404'd every push.
+GROUP = os.environ.get("FLEET_GROUP", "android")
 DRY = os.environ.get("DRY_RUN", "false").lower() == "true"
 HEARTBEAT = "/tmp/alive"
 
@@ -43,7 +49,7 @@ DSN = "host={h} port={p} dbname=hmdm user=hmdm password={pw} connect_timeout=10"
 def gatus_key(number):
     """gatus derives key = <group>_<name>, lowercasing and mapping / _ , . -> -."""
     slug = re.sub(r"[/_,.\s]", "-", number.strip().lower())
-    return "fleet_" + slug
+    return f"{GROUP}_{slug}"
 
 
 def push(number, fresh):

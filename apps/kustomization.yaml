@@ -16,10 +16,10 @@ resources:
   - cloudflared-public-sites
   - crowdsec
   - external-dns
-  - fleet
   - flux-audit
   - forgejo
   - gatus
+  - gatus-fleet
   - headscale
   - headwind-mdm
   - headwind-fleet-bridge

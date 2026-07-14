@@ -1,0 +1,44 @@
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: gatus-fleet
+  namespace: gatus-fleet
+  annotations:
+    kubernetes.io/ingress.class: traefik
+    cert-manager.io/cluster-issuer: letsencrypt-dns
+    # crowdsec, NOT monitoring-local-network-only.
+    #
+    # The ipAllowList middleware is a VERIFIED NO-OP on any *.kblab.me host: this
+    # cluster's Traefik has no forwardedHeaders/trustedIPs config, so ipAllowList
+    # matches the CONNECTING ip - which for anything arriving through the tunnel is
+    # the cloudflared pod at 10.42.x.x, squarely inside its own 10.0.0.0/8 range.
+    # Every tunnel request looks LAN-local to it. Confirmed live: fleet.kblab.me
+    # carried that middleware and still answered HTTP 200 from the Cloudflare edge.
+    # Applying it here would only have bought a false sense of protection.
+    #
+    # crowdsec works because its middleware sets trustForwardHeader: true and
+    # therefore reads the real client IP from X-Forwarded-For. Same choice as
+    # mdm.kblab.me / git.kblab.me / vikunja.kblab.me.
+    #
+    # This host is reachable from the internet - external-dns has no
+    # --domain-filter and the tunnel is a wildcard catch-all, so EVERY *.kblab.me
+    # Ingress is public whether or not that was intended. That is exactly why the
+    # work laptop and the VDI can push to it at all. The dashboard being publicly
+    # READABLE is the accepted trade for now, identical to status.kblab.me today.
+    traefik.ingress.kubernetes.io/router.middlewares: crowdsec-crowdsec-bouncer@kubernetescrd
+spec:
+  rules:
+    - host: fleet.kblab.me
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: gatus-fleet
+                port:
+                  number: 8080
+  tls:
+    - hosts:
+        - fleet.kblab.me
+      secretName: gatus-fleet-tls

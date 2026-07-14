@@ -46,14 +46,20 @@ spec:
                 secretKeyRef:
                   name: headwind-fleet-bridge-secret
                   key: fleet-token
+            # The machines instance (fleet.kblab.me), NOT the apps one. Tablets are
+            # machines; status.kblab.me is for services.
             - name: GATUS_URL
-              value: "http://gatus.gatus.svc.cluster.local:8080"
+              value: "http://gatus-fleet.gatus-fleet.svc.cluster.local:8080"
+            # Must match the tablets' group in apps/gatus-fleet/configmap.yaml -
+            # gatus keys are <group>_<name>, so a mismatch is a silent 404.
+            - name: FLEET_GROUP
+              value: "android"
             - name: INTERVAL
               value: "60"          # < the readers' 180s window, so timestamps stay fresh
             - name: DEVICE_STALE_AFTER
               value: "900"         # device "up" if Headwind saw it < 15 min ago
             - name: DRY_RUN
-              value: "false"       # no devices declared in gatus yet -> pushes 404 harmlessly
+              value: "false"
           volumeMounts:
             - name: script
               mountPath: /app

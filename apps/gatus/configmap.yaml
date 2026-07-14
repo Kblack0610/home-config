@@ -15,28 +15,12 @@ data:
       title: KB Lab Status
       header: KB Lab Infrastructure
 
-    # --- fleet-pulse: push-based liveness heartbeats ---
-    # Each machine POSTs to /api/v1/endpoints/fleet_<name>/external?success=true
-    # with header "Authorization: Bearer ${FLEET_TOKEN}" (see apps/gatus/fleet-token-secret.sops.yaml).
-    # Gatus records the timestamped result; staleness is judged client-side by each
-    # machine's status bar (healthy = success && age < 180s). No server-side auto-expiry.
-    external-endpoints:
-      - name: linux-cachyos
-        group: fleet
-        token: "${FLEET_TOKEN}"
-      - name: mac
-        group: fleet
-        token: "${FLEET_TOKEN}"
-      - name: windows
-        group: fleet
-        token: "${FLEET_TOKEN}"
-      # Android tablets (managed by Headwind). Pushed by apps/headwind-fleet-bridge,
-      # which mirrors each device's Headwind last-sync into a heartbeat. Name = the
-      # Headwind device "number" after gatus's slug rule (lowercase; / _ , . -> -).
-      - name: h0001
-        group: fleet
-        token: "${FLEET_TOKEN}"
-
+    # This instance is APPS. Machines live on fleet.kblab.me (apps/gatus-fleet/).
+    #
+    # The fleet / mac-machines / iot-fleet groups used to be here, which meant
+    # machine liveness was scattered across three groups on the apps dashboard.
+    # They now live on the machines instance, along with the k3s nodes and the work
+    # laptop + VDI that could never be represented here.
     endpoints:
       # --- home-k3s services ---
       - name: Home Assistant
@@ -235,42 +219,9 @@ data:
         conditions:
           - "[DNS_RCODE] == NOERROR"
 
-      # --- mac-machines ---
-      - name: Mac Studio
-        group: mac-machines
-        url: "http://192.168.1.4:9100/metrics"
-        interval: 120s
-        conditions:
-          - "[STATUS] == 200"
-
-      - name: Mac Mini
-        group: mac-machines
-        url: "http://192.168.1.7:9100/metrics"
-        interval: 120s
-        conditions:
-          - "[STATUS] == 200"
-
-      # --- iot-fleet ---
-      - name: Pi Zero 1
-        group: iot-fleet
-        url: "http://192.168.1.80:9200/metrics"
-        interval: 120s
-        conditions:
-          - "[STATUS] == 200"
-
-      - name: Pi Zero 2
-        group: iot-fleet
-        url: "http://192.168.1.81:9200/metrics"
-        interval: 120s
-        conditions:
-          - "[STATUS] == 200"
-
-      - name: Pi Zero 3
-        group: iot-fleet
-        url: "http://192.168.1.82:9200/metrics"
-        interval: 120s
-        conditions:
-          - "[STATUS] == 200"
+      # mac-machines + iot-fleet moved to apps/gatus-fleet/ (fleet.kblab.me).
+      # They are machines, not apps, and they now sit beside the k3s nodes and the
+      # work boxes on one machines-only surface.
 
       # --- ingress (external HTTPS) ---
       # Auto-generated from apps/*/ingress*.yaml.

@@ -30,6 +30,12 @@ data:
       - name: windows
         group: fleet
         token: "${FLEET_TOKEN}"
+      # Android tablets (managed by Headwind). Pushed by apps/headwind-fleet-bridge,
+      # which mirrors each device's Headwind last-sync into a heartbeat. Name = the
+      # Headwind device "number" after gatus's slug rule (lowercase; / _ , . -> -).
+      - name: h0001
+        group: fleet
+        token: "${FLEET_TOKEN}"
 
     endpoints:
       # --- home-k3s services ---

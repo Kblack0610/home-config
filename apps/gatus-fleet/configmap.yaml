@@ -33,11 +33,17 @@ data:
     # not stale, MISSING. That is why the bars count against $FLEET_ROSTER instead
     # of against this list: a never-enrolled machine must show amber, not vanish.
     external-endpoints:
-      # The whole point of this instance. Corporate-managed, off-LAN, unpollable.
-      - name: work-laptop
+      # The whole point of this instance. Corporate-managed, off-LAN, unpollable:
+      # nothing can reach INTO these, so an outbound heartbeat is the only option.
+      #
+      # One key per physical machine, deliberately. The tempting shortcut is a
+      # single `work` endpoint that whichever box is live pushes to - which is
+      # exactly the bug the old `mac` endpoint had (two Macs, one key, each
+      # masking the other's death). Two employers, two machines, two keys.
+      - name: gp-mac         # Gigantic Playground
         group: workplace
         token: "${FLEET_TOKEN}"
-      - name: vdi
+      - name: lazer-machine  # Deloitte VDI
         group: workplace
         token: "${FLEET_TOKEN}"
 

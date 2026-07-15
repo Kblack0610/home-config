@@ -64,7 +64,12 @@ def fetch():
             dt = datetime.strptime(base, "%Y-%m-%dT%H:%M:%S").replace(tzinfo=timezone.utc)
             age = now - dt.timestamp()
         except Exception:
-            age = -1
+            # None, NOT -1. A -1 sentinel is indistinguishable from a genuinely
+            # negative age, and negative ages are REAL here: clocks disagree
+            # across nodes, so a result can legitimately be stamped in the
+            # future. Overloading a numeric sentinel silently swallowed every
+            # last_seen series on a skewed host.
+            age = None
         out[e["name"]] = (e.get("group", ""), bool(last.get("success")), age)
     return out
 
@@ -101,12 +106,16 @@ def render():
             # every machine was demonstrably up. Liveness must not depend on two
             # machines agreeing to the second.
             #
-            # last_seen_seconds is still emitted RAW, negatives and all, so the
-            # skew stays visible instead of being quietly clamped away.
-            up = 1 if (success and -STALE_AFTER < age < STALE_AFTER) else 0
+            # last_seen_seconds is emitted RAW, negatives and all, so the skew
+            # stays visible instead of being quietly clamped away.
+            up = 1 if (success and age is not None and -STALE_AFTER < age < STALE_AFTER) else 0
             L.append(f'fleet_machine_enrolled{{name="{name}",group="{group}"}} 1')
             L.append(f'fleet_machine_up{{name="{name}",group="{group}"}} {up}')
-            if age >= 0:
+            # Emit whenever we HAVE an age - including a negative one. Gating on
+            # age >= 0 dropped this series for every machine on a clock-skewed
+            # host, so the dashboard's "Last seen" column was empty for the whole
+            # fleet while claiming to show it.
+            if age is not None:
                 L.append(f'fleet_machine_last_seen_seconds{{name="{name}",group="{group}"}} {age:.0f}')
         else:
             # group is unknown precisely because gatus has never heard of it.
@@ -118,7 +127,10 @@ def render():
     # visible rather than silent - the same class of bug, one layer up.
     for name, (group, success, age) in sorted(live.items()):
         if name not in ROSTER:
-            up = 1 if (success and -STALE_AFTER < age < STALE_AFTER) else 0
+            # `age is not None` first: None < int raises TypeError in py3, so one
+            # unparseable timestamp here would crash the whole exporter and take
+            # every machine's metrics with it.
+            up = 1 if (success and age is not None and -STALE_AFTER < age < STALE_AFTER) else 0
             L.append(f'fleet_machine_unrostered{{name="{name}",group="{group}"}} {up}')
 
     L.append(f"# HELP fleet_roster_size Machines expected to report")

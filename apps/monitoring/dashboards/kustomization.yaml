@@ -33,3 +33,6 @@ configMapGenerator:
   - name: grafana-dashboard-nas-disk-health
     files:
       - nas-disk-health.json
+  - name: grafana-dashboard-fleet-machines
+    files:
+      - fleet-machines.json

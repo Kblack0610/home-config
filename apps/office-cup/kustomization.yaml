@@ -11,4 +11,4 @@ resources:
 
 images:
   - name: git.kblab.me/kblack0610/office-cup-web
-    newTag: v0.1.0
+    newTag: v0.1.1

@@ -1,0 +1,86 @@
+---
+# Keep every Linux host's clock synced with systemd-timesyncd.
+#
+# Found the hard way: hp-victus was running ~102s behind the rest of the cluster
+# with NO time daemon at all (timesyncd disabled, chronyd/ntpd not even
+# installed), while every other node sat within a second. It surfaced when the
+# fleet-exporter landed on hp-victus and read gatus's results - stamped by
+# asus-laptop's correct clock - as ~54s in the FUTURE, so the entire fleet
+# rendered DOWN. That was the cheap symptom. The expensive ones are TLS
+# validation (certs are time-bound), log ordering across nodes, and Kubernetes
+# lease/token expiry, none of which announce themselves as a clock problem.
+#
+# timesyncd, not chrony: it is already what every healthy node uses
+# (enabled/active on the Pis), it ships with systemd so there is nothing to
+# install, and matching the fleet beats introducing a second time daemon.
+
+- name: Ensure systemd-timesyncd is installed (Arch ships it in systemd; Debian splits it out)
+  ansible.builtin.package:
+    name: systemd-timesyncd
+    state: present
+  # Arch has no separate package - timesyncd is part of systemd - so a missing
+  # package here is expected, not a failure.
+  failed_when: false
+  register: timesyncd_pkg
+
+- name: Enable + start systemd-timesyncd
+  ansible.builtin.systemd:
+    name: systemd-timesyncd
+    enabled: true
+    state: started
+    daemon_reload: true
+
+- name: Turn NTP on via timedatectl
+  # systemctl enable alone is not sufficient: timedatectl set-ntp is what flips
+  # org.freedesktop.timedate1 NTP=yes, and hp-victus showed "NTP service:
+  # inactive" despite the unit existing.
+  ansible.builtin.command: timedatectl set-ntp true
+  register: set_ntp
+  changed_when: false
+  failed_when: false
+
+- name: Read back the CURRENT sync state
+  # Verify the OUTCOME, not that the commands returned 0. Enabling a unit and
+  # having a synchronized clock are different facts, and only the second one is
+  # what we came for.
+  #
+  # check_mode: false - this is read-only, and in --check we still want the real
+  # answer rather than a blank. Same pattern as the bootstrap play in site.yml.
+  ansible.builtin.command: timedatectl show --property=NTPSynchronized --value
+  register: ntp_state
+  changed_when: false
+  check_mode: false
+
+- name: Report current clock state (also the whole point of a --check run)
+  ansible.builtin.debug:
+    msg: >-
+      {{ inventory_hostname }}: NTPSynchronized={{ ntp_state.stdout | trim }}
+      {{ '(already synced)' if (ntp_state.stdout | trim) == 'yes' else '(NOT synced)' }}
+
+# Everything below only makes sense on a REAL run: --check cannot execute
+# `timedatectl set-ntp`, so the clock cannot possibly have synced, and waiting
+# for it would fail 12 times and then trip the fail task below - reporting a
+# broken role rather than a broken clock. A dry run must not invent failures.
+- name: Wait for the clock to actually synchronize
+  # First sync after enabling takes a few seconds; do not declare victory before
+  # the kernel says so.
+  ansible.builtin.command: timedatectl show --property=NTPSynchronized --value
+  register: ntp_wait
+  until: (ntp_wait.stdout | trim) == "yes"
+  retries: 12
+  delay: 5
+  changed_when: false
+  failed_when: false
+  when: not ansible_check_mode
+
+- name: Fail loudly if the clock never synced
+  # A host that silently stays unsynced is exactly the state we are fixing;
+  # completing "successfully" while the clock is still wrong would recreate it.
+  ansible.builtin.fail:
+    msg: >-
+      {{ inventory_hostname }} still reports NTPSynchronized=no after 60s.
+      timesyncd is enabled but cannot reach an NTP server - check that udp/123
+      egress is permitted, and `journalctl -u systemd-timesyncd`.
+  when:
+    - not ansible_check_mode
+    - (ntp_wait.stdout | default('') | trim) != "yes"

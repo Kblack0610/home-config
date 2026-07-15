@@ -85,3 +85,49 @@ spec:
               The root filesystem on {{ $labels.instance }} has under 20% free and
               has stayed there for 30m. Investigate before it reaches the kubelet
               DiskPressure threshold and evicts pods.
+
+        # A node's clock has stopped syncing. Found by accident 2026-07-15:
+        # hp-victus had drifted ~102s behind the cluster with NO time daemon
+        # running at all (timesyncd disabled, chrony/ntpd absent) - and NOTHING
+        # was watching. node_timex_sync_status was already scraped on every node,
+        # it was just never alerted on. It surfaced only because the
+        # fleet-exporter happened to land on that node and read gatus results as
+        # future-dated, rendering the whole fleet DOWN.
+        #
+        # The cheap symptom was a wrong dashboard. The expensive ones do not look
+        # like clock problems when they break: TLS validation (certs are
+        # time-bound), cross-node log ordering, k8s lease/token expiry.
+        #
+        # iot-pi-nodes excluded for the same reason as NodeDown - the Pi Zeros
+        # sleep by design and would page constantly.
+        - alert: NodeClockNotSynchronising
+          expr: node_timex_sync_status{job=~"node-exporter|mac-nodes|standalone-nodes"} == 0
+          for: 15m
+          labels:
+            severity: warning
+            category: node-health
+          annotations:
+            summary: "Clock not syncing on {{ $labels.instance }}"
+            description: >-
+              {{ $labels.instance }} reports node_timex_sync_status=0 - no NTP sync
+              for 15m. Fix with the time-sync ansible role:
+              `cd ansible && ansible-playbook playbooks/site.yml --tags time --limit <host>`.
+              Check `journalctl -u systemd-timesyncd` and udp/123 egress.
+
+        # Drift big enough to break things even if a daemon claims to be syncing.
+        # 60s is far outside NTP's normal correction range and past where TLS and
+        # k8s leases start misbehaving.
+        - alert: NodeClockSkewed
+          expr: >-
+            abs(node_time_seconds{job=~"node-exporter|mac-nodes|standalone-nodes"}
+                - on() group_left() avg(node_time_seconds{job="node-exporter"})) > 60
+          for: 10m
+          labels:
+            severity: warning
+            category: node-health
+          annotations:
+            summary: "Clock skew on {{ $labels.instance }}"
+            description: >-
+              {{ $labels.instance }} disagrees with the cluster's mean clock by
+              more than 60s. hp-victus sat 102s out and it took a dashboard
+              rendering the whole fleet DOWN to notice.

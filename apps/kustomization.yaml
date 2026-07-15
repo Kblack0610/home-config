@@ -16,6 +16,7 @@ resources:
   - cloudflared-public-sites
   - crowdsec
   - external-dns
+  - fleet-exporter
   - flux-audit
   - forgejo
   - gatus

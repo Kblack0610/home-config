@@ -34,9 +34,14 @@ It's already what every healthy node runs (`enabled/active` on the Pis), it ship
 ## Run it
 
 ```bash
+# from ansible/ — ansible.cfg uses RELATIVE paths (inventory = ./inventory.yml,
+# roles_path = ./roles), so running from the repo root finds neither and fails
+# with "No inventory was parsed" + "role not found". See docs/ansible.md.
+cd ansible
+
 # check first, always
-ansible-playbook ansible/playbooks/site.yml --tags time --limit hp-victus --check --diff
-ansible-playbook ansible/playbooks/site.yml --tags time --limit hp-victus
+ansible-playbook playbooks/site.yml --tags time --limit hp-victus --check --diff
+ansible-playbook playbooks/site.yml --tags time --limit hp-victus
 ```
 
 Verify from anywhere, without SSH — node-exporter already exposes it:

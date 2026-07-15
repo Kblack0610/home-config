@@ -38,6 +38,25 @@
       ansible.builtin.raw: pacman -Sy --noconfirm --needed python
       when: (python3_check.rc | default(1)) != 0
 
+- name: Keep Linux host clocks synced (systemd-timesyncd)
+  # See ansible/roles/time-sync/README.md. hp-victus was found ~102s behind the
+  # rest of the cluster with NO time daemon at all, while every other node sat
+  # within a second. It only surfaced because the fleet-exporter landed there and
+  # read gatus results as future-dated, rendering the whole fleet DOWN - but the
+  # real exposure is TLS validation, cross-node log ordering and k8s lease/token
+  # expiry, none of which look like a clock problem when they break.
+  #
+  # Targets the Pis too even though they are already synced: the role is
+  # idempotent there, and a drifting clock should be prevented fleet-wide rather
+  # than fixed per-host after it bites. thinkcentre is excluded - it is no longer
+  # a k3s node (`kubectl get nodes` shows 8, without it).
+  hosts: hp-victus:asus-laptop:pi_k3s
+  become: true
+  gather_facts: true
+  roles:
+    - role: time-sync
+      tags: [time, ntp]
+
 - name: Disable lid-close / suspend on laptop k3s nodes
   # See ansible/roles/k3s-node-no-suspend/README.md — without this, closing
   # a laptop lid removes the node from the cluster (the 2026-05 hp-victus
@@ -80,10 +99,20 @@
 #     - role: k3s-agent
 #       tags: [k3s]
 
-# (FleetDM osquery agent removed 2026-07 — FleetDM was decommissioned in favour
-# of the gatus fleet surface + Headwind for Android; the osquery-agent role and
-# apps/fleet are gone. Device liveness now lives in the gatus `fleet`/gatus-fleet
-# groups; see docs/device-fabric.md.)
+# Fleet (osquery) agent — AUTHORED but not bound. Enrolls hosts into the
+# self-hosted FleetDM server (apps/fleet, https://fleet.kblab.me) for the
+# cross-OS inventory / live-query pane. Bind only AFTER apps/fleet is deployed
+# and the enroll secret is stored as vault_fleet_enroll_secret (see
+# apps/fleet/README.md + roles/osquery-agent/README.md). Covers macOS + Pi
+# (Debian) hosts; Arch/x86 (thinkcentre/hp-victus/cachyos) is a documented
+# follow-up (osquery is AUR-only). ALWAYS --check --diff a single host first.
+#
+# - name: Fleet osquery agent (macOS + Pi hosts)
+#   hosts: macos_hosts:pi_k3s
+#   gather_facts: true
+#   roles:
+#     - role: osquery-agent
+#       tags: [fleet, osquery]
 
 # dodginballs Unity runner — PRIMARY: hp-victus (32 GB, Arch, k3s node with
 # ComfyUI+Prometheus+OpenClaw running but idle). Uses the github-actions-runner-linux

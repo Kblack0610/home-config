@@ -1,0 +1,20 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+# Lives in the gatus-fleet namespace (it is part of the fleet system and reads
+# that gatus over cluster DNS), but its own app dir - same arrangement as
+# headwind-fleet-bridge, which runs in the headwind-mdm namespace. The namespace
+# itself is created by apps/gatus-fleet.
+namespace: gatus-fleet
+
+# Hashed name -> editing exporter.py changes the ConfigMap name -> changes the
+# Deployment -> Flux rolls the pod. Without the hash, a script edit would apply
+# and do nothing until an unrelated restart (see apps/gatus-fleet for the full
+# subPath story).
+configMapGenerator:
+  - name: fleet-exporter-script
+    files:
+      - exporter.py
+
+resources:
+  - deployment.yaml

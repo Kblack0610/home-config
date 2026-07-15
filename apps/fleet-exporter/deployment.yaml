@@ -1,0 +1,119 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: fleet-exporter
+  namespace: gatus-fleet
+  labels:
+    app.kubernetes.io/name: fleet-exporter
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: fleet-exporter
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: fleet-exporter
+    spec:
+      # Same shape as apps/headwind-fleet-bridge: stdlib python from a
+      # configMapGenerator'd script, no build step, no image to publish. This is a
+      # poller doing one HTTP GET per scrape for ~17 machines - Rust would buy
+      # nothing measurable here and would need a container pipeline this repo
+      # doesn't have (pi-monitor is Rust because it runs ON a Pi Zero and ships as
+      # a cross-built binary, not an image).
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 65534
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: exporter
+          image: python:3.12-alpine
+          command: ["python3", "/app/exporter.py"]
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop:
+                - ALL
+          env:
+            # In-cluster: no need to go out through the tunnel and back.
+            - name: GATUS_URL
+              value: "http://gatus-fleet.gatus-fleet.svc.cluster.local:8080"
+            # THE ROSTER - who SHOULD be reporting. Must match FLEET_ROSTER in
+            # ~/.config/fleet-pulse/env, or Grafana and the status bars will
+            # disagree about what the fleet even is. A machine here but absent
+            # from gatus emits enrolled=0, which is the only way "never reported"
+            # becomes visible to Prometheus at all.
+            - name: FLEET_ROSTER
+              value: "gp-mac lazer-machine linux-cachyos windows mac-studio mac-mini pi5-master pi5-worker1 pi5-worker2 pi5-worker3 pi4-worker4 pi4-worker5 asus-laptop hp-victus h0001 h0002 h0003"
+            # Same window the bars use, so the glyph and the dashboard cannot
+            # disagree about "up".
+            - name: FLEET_STALE_AFTER
+              value: "180"
+          ports:
+            - name: metrics
+              containerPort: 9300
+          volumeMounts:
+            - name: script
+              mountPath: /app
+              readOnly: true
+          resources:
+            requests:
+              memory: "24Mi"
+              cpu: "10m"
+            limits:
+              memory: "64Mi"
+              cpu: "100m"
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 9300
+            initialDelaySeconds: 5
+            periodSeconds: 30
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 9300
+            initialDelaySeconds: 2
+            periodSeconds: 10
+      volumes:
+        - name: script
+          configMap:
+            name: fleet-exporter-script
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: fleet-exporter
+  namespace: gatus-fleet
+  labels:
+    app.kubernetes.io/name: fleet-exporter
+spec:
+  selector:
+    app.kubernetes.io/name: fleet-exporter
+  ports:
+    - name: metrics
+      port: 9300
+      targetPort: 9300
+  type: ClusterIP
+---
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: fleet-exporter
+  namespace: gatus-fleet
+  labels:
+    app.kubernetes.io/name: fleet-exporter
+spec:
+  endpoints:
+    - port: metrics
+      path: /metrics
+      interval: 30s
+      scrapeTimeout: 10s
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: fleet-exporter
+  namespaceSelector:
+    matchNames:
+      - gatus-fleet

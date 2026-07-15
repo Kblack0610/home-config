@@ -16,6 +16,17 @@ storage:
   type: sqlite
   path: /data/gatus.db
 
+# Expose /metrics so Prometheus can scrape this and Grafana can render the real
+# fleet view. This is the ONLY source that covers PUSHED machines - node_exporter
+# gives depth for the polled ones (k3s nodes, Macs), but nothing scrapes the work
+# laptop or the VDI, because nothing can reach into them. Gatus is where their
+# liveness exists at all.
+#
+# It also buys ordering: gatus sorts its own groups ALPHABETICALLY (android,
+# homelab, iot, k3s, workplace) with no way to reorder, so "work at the top" is
+# not expressible on this page. In Grafana, panel order is ours.
+metrics: true
+
 ui:
   title: KB Fleet
   header: KB Fleet - every machine
@@ -140,31 +151,15 @@ endpoints:
     conditions:
       - "[STATUS] == 200"
 
-  # IoT. Bespoke Rust pi-monitor (apps/iot-fleet/agents/pi-monitor) on :9200.
+  # IoT (pi-zero-1/2/3, bespoke Rust pi-monitor on :9200) REMOVED for now: all
+  # three are physically down, so they only rendered as three permanent red bars.
+  # They were already excluded from $FLEET_ROSTER (they sleep by design, and
+  # counting them would pin the glyph amber forever - mirroring
+  # prometheus-rules-node-health.yaml, which excludes iot-pi-nodes from NodeDown
+  # "to avoid false pages"), so removing them changes no health signal.
   #
-  # DELIBERATELY NOT IN $FLEET_ROSTER: these Pi Zeros sleep by design, so
-  # counting them would pin the glyph amber forever. This mirrors an existing
-  # decision - apps/monitoring/prometheus-rules-node-health.yaml excludes
-  # iot-pi-nodes from NodeDown "to avoid false pages". Visible here, just not
-  # driving the health glyph.
-  - name: pi-zero-1
-    group: iot
-    url: "http://192.168.1.80:9200/metrics"
-    interval: 120s
-    conditions:
-      - "[STATUS] == 200"
-
-  - name: pi-zero-2
-    group: iot
-    url: "http://192.168.1.81:9200/metrics"
-    interval: 120s
-    conditions:
-      - "[STATUS] == 200"
-
-  - name: pi-zero-3
-    group: iot
-    url: "http://192.168.1.82:9200/metrics"
-    interval: 120s
-    conditions:
-      - "[STATUS] == 200"
+  # To re-add when the Pi Zeros come back: an `endpoints:` entry each, group `iot`,
+  # url http://192.168.1.8{0,1,2}:9200/metrics, interval 120s, [STATUS] == 200.
+  # Prometheus still scrapes them independently via
+  # apps/monitoring/external-iot-nodes.yaml - that is untouched.
 

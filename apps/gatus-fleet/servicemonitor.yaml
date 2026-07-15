@@ -1,0 +1,34 @@
+# Scrape gatus-fleet into Prometheus so Grafana can render the real fleet view.
+#
+# This is the ONLY source of truth for PUSHED machines. node_exporter gives rich
+# depth (cpu/disk/uptime) for the machines we can poll - the k3s nodes and the
+# Macs - but nothing scrapes the work Mac, the VDI or the tablet, because nothing
+# can reach into them. Their liveness exists only here, as the heartbeats they
+# push. So the fleet dashboard joins two sources: gatus for "is it alive at all"
+# (every machine), node_exporter for "and how is it doing" (the reachable ones).
+#
+# No `release: kube-prometheus-stack` label needed: this cluster's Prometheus runs
+# serviceMonitorSelector: {} and serviceMonitorNamespaceSelector: {}, i.e. it
+# selects every ServiceMonitor in every namespace. Verified against the live
+# Prometheus CR, and by iot-pi-nodes being actively scraped without that label.
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: gatus-fleet
+  namespace: gatus-fleet
+  labels:
+    app.kubernetes.io/name: gatus-fleet
+spec:
+  endpoints:
+    # Matches the port NAME on the gatus-fleet Service (8080). Requires
+    # `metrics: true` in config.yaml, or /metrics 404s and this scrapes nothing.
+    - port: http
+      path: /metrics
+      interval: 30s
+      scrapeTimeout: 10s
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: gatus-fleet
+  namespaceSelector:
+    matchNames:
+      - gatus-fleet

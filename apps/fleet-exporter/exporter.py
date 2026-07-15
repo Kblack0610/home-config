@@ -93,7 +93,17 @@ def render():
     for name in ROSTER:
         if name in live:
             group, success, age = live[name]
-            up = 1 if (success and 0 <= age < STALE_AFTER) else 0
+            # Tolerate clock skew in BOTH directions. A negative age means the
+            # result is stamped in the future relative to THIS pod - which does
+            # not mean stale, it means the two clocks disagree. Requiring age >= 0
+            # made the entire fleet read DOWN the first time this landed on a node
+            # whose clock was ~100s behind (hp-victus, NTP not syncing), while
+            # every machine was demonstrably up. Liveness must not depend on two
+            # machines agreeing to the second.
+            #
+            # last_seen_seconds is still emitted RAW, negatives and all, so the
+            # skew stays visible instead of being quietly clamped away.
+            up = 1 if (success and -STALE_AFTER < age < STALE_AFTER) else 0
             L.append(f'fleet_machine_enrolled{{name="{name}",group="{group}"}} 1')
             L.append(f'fleet_machine_up{{name="{name}",group="{group}"}} {up}')
             if age >= 0:
@@ -108,7 +118,7 @@ def render():
     # visible rather than silent - the same class of bug, one layer up.
     for name, (group, success, age) in sorted(live.items()):
         if name not in ROSTER:
-            up = 1 if (success and 0 <= age < STALE_AFTER) else 0
+            up = 1 if (success and -STALE_AFTER < age < STALE_AFTER) else 0
             L.append(f'fleet_machine_unrostered{{name="{name}",group="{group}"}} {up}')
 
     L.append(f"# HELP fleet_roster_size Machines expected to report")

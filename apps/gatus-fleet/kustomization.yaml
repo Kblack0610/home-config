@@ -3,10 +3,25 @@ kind: Kustomization
 
 namespace: gatus-fleet
 
+# GENERATED, not a static ConfigMap. The name carries a content hash, so editing
+# config.yaml changes the ConfigMap NAME -> changes the Deployment -> Flux rolls
+# the pod out. That rollout is the only thing that makes a config change real.
+#
+# Without it, config edits were invisible: the deployment mounts config.yaml with
+# subPath, and Kubernetes NEVER propagates ConfigMap updates into a subPath mount.
+# Flux applied the new ConfigMap, the Deployment was unchanged, nothing rolled
+# out, and the pod served its startup config forever. Not theoretical - adding
+# gp-mac/lazer-machine looked applied (the ConfigMap genuinely contained them)
+# while the running pod 404'd every push from the work Mac. Inspecting the
+# ConfigMap is inspecting the wrong layer.
+configMapGenerator:
+  - name: gatus-fleet-config
+    files:
+      - config.yaml
+
 resources:
   - namespace.yaml
   - fleet-token-secret.sops.yaml
-  - configmap.yaml
   - deployment.yaml
   - service.yaml
   - ingress.yaml

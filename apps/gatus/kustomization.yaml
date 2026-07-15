@@ -3,9 +3,22 @@ kind: Kustomization
 
 namespace: gatus
 
+# GENERATED, not a static ConfigMap - see apps/gatus-fleet/kustomization.yaml for
+# the full story. Short version: config.yaml is mounted with subPath, and
+# Kubernetes never propagates ConfigMap updates into a subPath mount, so a config
+# edit applied cleanly and then did nothing until someone manually restarted the
+# pod. The name hash makes an edit change the Deployment, which makes Flux roll
+# it out.
+#
+# This instance had the same latent bug: every endpoint added here since it was
+# deployed only took effect on the next unrelated restart.
+configMapGenerator:
+  - name: gatus-config
+    files:
+      - config.yaml
+
 resources:
   - namespace.yaml
-  - configmap.yaml
   - deployment.yaml
   - service.yaml
   - ingress.yaml

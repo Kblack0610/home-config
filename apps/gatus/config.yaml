@@ -1,0 +1,434 @@
+storage:
+  type: sqlite
+  path: /data/gatus.db
+
+ui:
+  title: KB Lab Status
+  header: KB Lab Infrastructure
+
+# This instance is APPS. Machines live on fleet.kblab.me (apps/gatus-fleet/).
+#
+# The fleet / mac-machines / iot-fleet groups used to be here, which meant
+# machine liveness was scattered across three groups on the apps dashboard.
+# They now live on the machines instance, along with the k3s nodes and the work
+# laptop + VDI that could never be represented here.
+endpoints:
+  # --- home-k3s services ---
+  - name: Home Assistant
+    group: home-k3s
+    url: "http://home-assistant.home-assistant.svc:8123/"
+    interval: 60s
+    conditions:
+      - "[STATUS] < 500"
+
+  - name: LiteLLM
+    group: home-k3s
+    url: "http://litellm.ai-gateway.svc:4000/health/readiness"
+    interval: 60s
+    conditions:
+      - "[STATUS] == 200"
+
+  - name: Headscale
+    group: home-k3s
+    url: "http://headscale.headscale.svc:8080/health"
+    interval: 60s
+    conditions:
+      - "[STATUS] == 200"
+
+  - name: Headscale UI
+    group: home-k3s
+    url: "http://headscale-ui.headscale.svc:80/"
+    interval: 60s
+    conditions:
+      - "[STATUS] < 500"
+
+  - name: Mosquitto
+    group: home-k3s
+    url: "tcp://mosquitto.mosquitto.svc:1883"
+    interval: 60s
+    conditions:
+      - "[CONNECTED] == true"
+
+  - name: MQTT2Prom
+    group: home-k3s
+    url: "http://mqtt2prom.mqtt2prom.svc:9201/metrics"
+    interval: 60s
+    conditions:
+      - "[STATUS] == 200"
+
+  - name: NAS (SMB)
+    group: home-k3s
+    url: "tcp://nas.nas.svc:445"
+    interval: 120s
+    conditions:
+      - "[CONNECTED] == true"
+
+  - name: CrowdSec LAPI
+    group: home-k3s
+    url: "http://crowdsec-service.crowdsec.svc:8080/health"
+    interval: 60s
+    conditions:
+      - "[STATUS] == 200"
+
+  - name: CrowdSec Bouncer
+    group: home-k3s
+    url: "http://crowdsec-bouncer.crowdsec.svc:8080/api/v1/ping"
+    interval: 60s
+    conditions:
+      - "[STATUS] == 200"
+
+  - name: Immich
+    group: home-k3s
+    url: "http://immich-server.immich.svc/api/server/ping"
+    interval: 60s
+    conditions:
+      - "[STATUS] == 200"
+
+  - name: Immich ML
+    group: home-k3s
+    url: "http://immich-ml.immich.svc:3003/ping"
+    interval: 120s
+    conditions:
+      - "[STATUS] == 200"
+
+  # --- apps ---
+  - name: Actual Budget
+    group: apps
+    url: "http://actual-budget.actual-budget.svc:80/"
+    interval: 60s
+    conditions:
+      - "[STATUS] < 500"
+
+  - name: Forgejo
+    group: apps
+    url: "http://forgejo-http.forgejo.svc:3000/"
+    interval: 60s
+    conditions:
+      - "[STATUS] < 500"
+
+  - name: Forgejo SSH
+    group: apps
+    url: "tcp://forgejo-ssh.forgejo.svc:22"
+    interval: 60s
+    conditions:
+      - "[CONNECTED] == true"
+
+  - name: Gatus
+    group: apps
+    url: "http://gatus.gatus.svc:8080/"
+    interval: 60s
+    conditions:
+      - "[STATUS] < 500"
+
+  - name: OrcaSlicer
+    group: apps
+    url: "http://orcaslicer.orcaslicer.svc:80/"
+    interval: 60s
+    conditions:
+      - "[STATUS] < 500"
+
+  - name: OpenClaw
+    group: apps
+    url: "http://openclaw.openclaw.svc:18789/"
+    interval: 60s
+    conditions:
+      - "[STATUS] < 500"
+
+  - name: PlaceMyParents API
+    group: apps
+    url: "http://placemyparents-api.apps.svc:3004/"
+    interval: 60s
+    conditions:
+      - "[STATUS] < 500"
+
+  - name: PlaceMyParents Web
+    group: apps
+    url: "http://placemyparents-web.apps.svc:3006/"
+    interval: 60s
+    conditions:
+      - "[STATUS] < 500"
+
+  - name: Forgejo Registry
+    group: apps
+    url: "http://forgejo-http.forgejo.svc:3000/v2/"
+    interval: 120s
+    conditions:
+      - "[STATUS] < 500"
+
+  # --- databases ---
+  - name: PlaceMyParents DB
+    group: databases
+    url: "tcp://placemyparents-postgres.apps.svc:5432"
+    interval: 120s
+    conditions:
+      - "[CONNECTED] == true"
+
+  - name: History Time DB
+    group: databases
+    url: "tcp://history-time-postgres.history-time.svc:5432"
+    interval: 120s
+    conditions:
+      - "[CONNECTED] == true"
+
+  # --- monitoring ---
+  - name: Grafana
+    group: monitoring
+    url: "http://kube-prometheus-stack-grafana.monitoring.svc:80/api/health"
+    interval: 60s
+    conditions:
+      - "[STATUS] == 200"
+
+  - name: Prometheus
+    group: monitoring
+    url: "http://kube-prometheus-stack-prometheus.monitoring.svc:9090/-/healthy"
+    interval: 60s
+    conditions:
+      - "[STATUS] == 200"
+
+  - name: AlertManager
+    group: monitoring
+    url: "http://kube-prometheus-stack-alertmanager.monitoring.svc:9093/-/healthy"
+    interval: 60s
+    conditions:
+      - "[STATUS] == 200"
+
+  # --- standalone ---
+  - name: AdGuard Home
+    group: standalone
+    url: "http://192.168.1.193:80"
+    interval: 120s
+    conditions:
+      - "[STATUS] < 500"
+
+  - name: AdGuard DNS
+    group: standalone
+    url: "192.168.1.193"
+    dns:
+      query-name: "google.com"
+      query-type: "A"
+    interval: 120s
+    conditions:
+      - "[DNS_RCODE] == NOERROR"
+
+  # mac-machines + iot-fleet moved to apps/gatus-fleet/ (fleet.kblab.me).
+  # They are machines, not apps, and they now sit beside the k3s nodes and the
+  # work boxes on one machines-only surface.
+
+  # --- ingress (external HTTPS) ---
+  # Auto-generated from apps/*/ingress*.yaml.
+  # Regenerate: ./scripts/gen-gatus-ingress-checks.py
+  # Opt out per Ingress with annotation: gatus.kblab.me/monitor: "false"
+  # BEGIN_GENERATED_INGRESS (regenerate via scripts/gen-gatus-ingress-checks.py)
+  - name: alertmanager.kblab.me
+    group: ingress
+    url: "https://alertmanager.kblab.me"
+    interval: 300s
+    client:
+      insecure: true
+    conditions:
+      - "[STATUS] < 500"
+      - "[CERTIFICATE_EXPIRATION] > 720h"
+
+  - name: blacknbrownstudios.com
+    group: ingress
+    url: "https://blacknbrownstudios.com"
+    interval: 300s
+    client:
+      insecure: true
+    conditions:
+      - "[STATUS] < 500"
+      - "[CERTIFICATE_EXPIRATION] > 720h"
+
+  - name: finance.kblab.me
+    group: ingress
+    url: "https://finance.kblab.me"
+    interval: 300s
+    client:
+      insecure: true
+    conditions:
+      - "[STATUS] < 500"
+      - "[CERTIFICATE_EXPIRATION] > 720h"
+
+  - name: git.kblab.me
+    group: ingress
+    url: "https://git.kblab.me"
+    interval: 300s
+    client:
+      insecure: true
+    conditions:
+      - "[STATUS] < 500"
+      - "[CERTIFICATE_EXPIRATION] > 720h"
+
+  - name: grafana.kblab.me
+    group: ingress
+    url: "https://grafana.kblab.me"
+    interval: 300s
+    client:
+      insecure: true
+    conditions:
+      - "[STATUS] < 500"
+      - "[CERTIFICATE_EXPIRATION] > 720h"
+
+  - name: hass.kblab.me
+    group: ingress
+    url: "https://hass.kblab.me"
+    interval: 300s
+    client:
+      insecure: true
+    conditions:
+      - "[STATUS] < 500"
+      - "[CERTIFICATE_EXPIRATION] > 720h"
+
+  - name: headscale-ui.kblab.me
+    group: ingress
+    url: "https://headscale-ui.kblab.me"
+    interval: 300s
+    client:
+      insecure: true
+    conditions:
+      - "[STATUS] < 500"
+      - "[CERTIFICATE_EXPIRATION] > 720h"
+
+  - name: headscale.kblab.me
+    group: ingress
+    url: "https://headscale.kblab.me"
+    interval: 300s
+    client:
+      insecure: true
+    conditions:
+      - "[STATUS] < 500"
+      - "[CERTIFICATE_EXPIRATION] > 720h"
+
+  - name: jellyfin.kblab.me
+    group: ingress
+    url: "https://jellyfin.kblab.me"
+    interval: 300s
+    client:
+      insecure: true
+    conditions:
+      - "[STATUS] < 500"
+      - "[CERTIFICATE_EXPIRATION] > 720h"
+
+  - name: kblack.dev
+    group: ingress
+    url: "https://kblack.dev"
+    interval: 300s
+    client:
+      insecure: true
+    conditions:
+      - "[STATUS] < 500"
+      - "[CERTIFICATE_EXPIRATION] > 720h"
+
+  - name: kennethblack.me
+    group: ingress
+    url: "https://kennethblack.me"
+    interval: 300s
+    client:
+      insecure: true
+    conditions:
+      - "[STATUS] < 500"
+      - "[CERTIFICATE_EXPIRATION] > 720h"
+
+  - name: binks.chat (SPA)
+    group: ingress
+    url: "https://binks.chat"
+    interval: 60s
+    client:
+      insecure: true
+    conditions:
+      - "[STATUS] == 200"
+      - "[BODY] == pat(*Binks Chat*)"
+
+  - name: binks.chat /api/health
+    group: ingress
+    url: "https://binks.chat/api/health"
+    interval: 60s
+    client:
+      insecure: true
+    conditions:
+      - "[STATUS] == 200"
+      - "[BODY].status == ok"
+      - "[BODY].database == true"
+      - "[RESPONSE_TIME] < 2000"
+
+  - name: llm.kblab.me
+    group: ingress
+    url: "https://llm.kblab.me"
+    interval: 300s
+    client:
+      insecure: true
+    conditions:
+      - "[STATUS] < 500"
+      - "[CERTIFICATE_EXPIRATION] > 720h"
+
+  - name: photos.kblab.me
+    group: ingress
+    url: "https://photos.kblab.me"
+    interval: 300s
+    client:
+      insecure: true
+    conditions:
+      - "[STATUS] < 500"
+      - "[CERTIFICATE_EXPIRATION] > 720h"
+
+  - name: prometheus.kblab.me
+    group: ingress
+    url: "https://prometheus.kblab.me"
+    interval: 300s
+    client:
+      insecure: true
+    conditions:
+      - "[STATUS] < 500"
+      - "[CERTIFICATE_EXPIRATION] > 720h"
+
+  - name: slicer.kblab.me
+    group: ingress
+    url: "https://slicer.kblab.me"
+    interval: 300s
+    client:
+      insecure: true
+    conditions:
+      - "[STATUS] < 500"
+      - "[CERTIFICATE_EXPIRATION] > 720h"
+
+  - name: status.kblab.me
+    group: ingress
+    url: "https://status.kblab.me"
+    interval: 300s
+    client:
+      insecure: true
+    conditions:
+      - "[STATUS] < 500"
+      - "[CERTIFICATE_EXPIRATION] > 720h"
+
+  - name: www.blacknbrownstudios.com
+    group: ingress
+    url: "https://www.blacknbrownstudios.com"
+    interval: 300s
+    client:
+      insecure: true
+    conditions:
+      - "[STATUS] < 500"
+      - "[CERTIFICATE_EXPIRATION] > 720h"
+
+  - name: www.kblack.dev
+    group: ingress
+    url: "https://www.kblack.dev"
+    interval: 300s
+    client:
+      insecure: true
+    conditions:
+      - "[STATUS] < 500"
+      - "[CERTIFICATE_EXPIRATION] > 720h"
+
+  - name: www.kennethblack.me
+    group: ingress
+    url: "https://www.kennethblack.me"
+    interval: 300s
+    client:
+      insecure: true
+    conditions:
+      - "[STATUS] < 500"
+      - "[CERTIFICATE_EXPIRATION] > 720h"
+
+  # END_GENERATED_INGRESS

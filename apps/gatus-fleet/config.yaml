@@ -62,7 +62,13 @@ external-endpoints:
   # Android tablets. They cannot run a cron curl, so apps/headwind-fleet-bridge
   # polls Headwind's devices table and pushes on their behalf. Key is
   # android_<device-number>; the bridge's FLEET_GROUP must match this group.
-  - name: h0001
+  - name: h0001        # Lenovo Tab M11 (TB330)
+    group: android
+    token: "${FLEET_TOKEN}"
+  - name: h0002        # Lenovo Tab M11 (TB336)
+    group: android
+    token: "${FLEET_TOKEN}"
+  - name: h0003        # Lenovo Tab M9 (TB305)
     group: android
     token: "${FLEET_TOKEN}"
 

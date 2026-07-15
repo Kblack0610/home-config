@@ -8,7 +8,7 @@ Consequences:
 
 - **asus-laptop is a single point of failure.** On 2026-07-09 its root disk hit the kubelet DiskPressure threshold, tainted the node, evicted pods, and took the cluster down (forgejo down -> git push + Flux both fail). Root cause + interim fix: memory `project_home_k3s_disk_pressure.md`, PR #108.
 - **Stateful pods cannot reschedule.** If the storage node dies, the PVC dies with it; k3s just pulls the pod back to the (dead) node's affinity.
-- **New stateful apps inherit the problem.** FleetDM's MySQL (`apps/fleet`) is currently pinned to **hp-victus** via a `fleet.storage/node` label purely to keep it *off* asus-laptop. That trades one single-node dependency for another - it is an **interim** measure until this roadmap lands.
+- **New stateful apps inherit the problem.** The shared **Postgres** (`apps/postgres`, namespace `databases`) is node-pinned to keep it *off* asus-laptop, and it is now load-bearing (litellm, headwind-mdm, history-time, ...). That trades one single-node dependency for another - an **interim** measure until this roadmap lands. (Originally this cited FleetDM's MySQL; FleetDM was decommissioned 2026-07.)
 
 Goal: introduce **replicated block storage across the bare-metal nodes** so a stateful PVC survives (and reschedules past) the loss of any one node, and so no single box is the cluster's storage SPOF.
 
@@ -30,7 +30,7 @@ Longhorn replicas want real disks and steady CPU. The 29 GB Pi nodes are poor re
 
 - **Phase 1 - Install (non-disruptive).** Add `apps/longhorn/` (Flux): namespace + HelmRelease pinned to a version, `defaultReplicaCount: 2`, backup target = the MinIO S3 bucket. Do NOT change the default StorageClass yet. Verify the Longhorn UI (LAN-only ingress) shows all intended nodes healthy.
 - **Phase 2 - Tag replica nodes.** Label/taint so replicas live only on the x86 nodes (+ big Pi); small Pis excluded as storage. Confirm scheduling.
-- **Phase 3 - New apps first.** Point **FleetDM's MySQL** PVC at `storageClassName: longhorn` (drop the `fleet.storage/node` pin) as the first real tenant - it is new, low-risk, and already the motivating case. Validate failover: cordon hp-victus, confirm the MySQL pod reschedules onto another replica node and Fleet recovers.
+- **Phase 3 - New apps first.** Point a node-pinned stateful PVC (e.g. the shared **Postgres** in `databases`) at `storageClassName: longhorn` (drop the node pin) as the first real tenant - low-risk and the current motivating case. Validate failover: cordon the pinned node, confirm the pod reschedules onto another replica node and recovers.
 - **Phase 4 - Migrate the heavy apps off asus-laptop.** One at a time, lowest-risk first (gatus, karakeep, then immich/forgejo/postgres), each: scale down -> copy PVC data into a Longhorn volume (backup/restore or `pvmigrate`) -> repoint the manifest -> verify -> back up. Keep the per-app backup CronJobs throughout. `hostPath`/`/mnt/nas` apps need a separate decision (Samba re-export vs Longhorn RWX).
 - **Phase 5 - Flip the default + decommission the SPOF pattern.** Once the heavy apps are on Longhorn, make `longhorn` the default StorageClass, and update `docs/architecture.md` (the "no NFS/Longhorn/Ceph" statement) + the local-path guidance.
 
@@ -46,4 +46,4 @@ Longhorn replicas must flush cleanly on the NUT FSD graceful-shutdown broadcast 
 
 ## Status
 
-Not started. This roadmap was written alongside `apps/fleet` (2026-07), whose hp-victus pin is the interim stand-in for Phase 3. Track as a follow-up epic.
+Not started. This roadmap was written alongside `apps/fleet` (FleetDM, 2026-07), since **decommissioned**; the motivating case is now the node-pinned shared **Postgres** (`databases`). Track as a follow-up epic.

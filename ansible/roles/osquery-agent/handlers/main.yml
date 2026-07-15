@@ -1,6 +1,0 @@
----
-- name: restart osqueryd
-  ansible.builtin.systemd:
-    name: osqueryd
-    state: restarted
-    daemon_reload: true

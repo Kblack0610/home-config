@@ -9,7 +9,7 @@ How every device in the homelab - Linux/Mac/Windows machines, Android wall/kiosk
 - **One shared liveness surface** for everything: the gatus `fleet` group. Every device answers "am I alive?" in the same place, and every machine's status bar renders one health glyph from it.
 - **Management is per-platform and minimal** - only as much as each device type needs. No single heavyweight agent everywhere.
 - **Self-hosted + Google-free.** No SaaS, no Android Enterprise / GMS. Runs on-LAN/Tailnet.
-- **Ideas from FleetDM, not FleetDM.** We wanted a central registry + agents-report-in, not osquery live-query/compliance. FleetDM was trialed and is being decommissioned (see Status).
+- **Ideas from FleetDM, not FleetDM.** We wanted a central registry + agents-report-in, not osquery live-query/compliance. FleetDM was trialed and decommissioned 2026-07 (see Status).
 
 ## The planes
 
@@ -59,7 +59,7 @@ Full detail: `apps/headwind-fleet-bridge/README.md`.
 ## Decisions (the why)
 
 - **Google-free Android** - device-owner + Headwind's own MQTT, never Android Enterprise. Keeps tablets on our infra; the cost is no managed Play Store (apps come as APKs).
-- **Not FleetDM** - its value is osquery inventory/live-query/compliance; we only wanted liveness + light Android MDM. Running it empty wasn't worth the MySQL+Redis. Decommission tracked below.
+- **Not FleetDM** - its value is osquery inventory/live-query/compliance; we only wanted liveness + light Android MDM. Running it empty wasn't worth the MySQL+Redis, so it was decommissioned 2026-07.
 - **Kiosk via app, not MDM** - Headwind Community has no COSU; FreeKiosk gives free device-owner lockdown, so no paid tier needed.
 - **LAN/Tailnet-only** - wall tablets are on-LAN; `monitoring-local-network-only` middleware. A public toggle is documented (crowdsec bouncer) but off; a roaming personal phone would need it or Headscale.
 - **One shared token, per-device endpoints, roster is the denominator** - simple, low-blast-radius, and a never-enrolled device is visible as amber instead of hiding.
@@ -76,9 +76,9 @@ Full detail: `apps/headwind-fleet-bridge/README.md`.
 |-------|-------|
 | fleet-pulse liveness | **live** (Linux pushing; Mac/Windows pushers authored, apply per-host) |
 | gatus `fleet` group | **live** (`linux-cachyos`/`mac`/`windows` declared) |
-| Headwind MDM | **deployed**, LAN-only, awaiting first tablet enrollment |
-| headwind-fleet-bridge | **deployed**, idle until a device syncs |
-| FleetDM | **being decommissioned** (was deployed, empty) - see Phase 4 in the plan |
+| Headwind MDM | **live**, LAN-only, tablets enrolled (Lenovo Tab wall panels) |
+| headwind-fleet-bridge | **live**, mirroring tablet liveness into the fleet group |
+| FleetDM | **decommissioned** (2026-07) - namespace/manifests/osquery-agent role removed; `fleet.kblab.me` now the gatus fleet dashboard |
 
 ## Component map
 

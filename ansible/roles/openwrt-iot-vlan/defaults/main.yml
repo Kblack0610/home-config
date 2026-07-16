@@ -32,7 +32,7 @@ iot_vlan_ssid_radio: "radio0"      # 2.4GHz radio the IoT SSID lives on
 # Temporary throwaway SSID used in phase 1 to validate the VLAN plumbing before
 # moving real IoT. Key must be supplied via group_vars/openwrt/vault.yml when
 # enabled (asserted in tasks/wireless.yml).
-iot_vlan_test_ssid: "BrownIoT-test"
+iot_vlan_test_ssid: "Brown-iot-test"   # one cap + hyphens: minimal shift on touchscreens
 iot_vlan_test_ssid_key: ""
 
 # --- MQTT pinhole ------------------------------------------------------------

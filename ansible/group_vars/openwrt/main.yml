@@ -10,3 +10,20 @@ ansible_ssh_transfer_method: piped
 # interpreter or gather facts the normal way. Facts, if needed, come from
 # community.openwrt.setup. Plays targeting this group must set gather_facts: false.
 ansible_python_interpreter: /bin/false
+
+# --- openwrt-iot-vlan secrets ------------------------------------------------
+# WPA2 PSK for the throwaway IoT test SSID (Brown-iot-test). The PSK itself lives
+# encrypted in group_vars/openwrt/vault.yml; this only maps the vault var onto
+# the role's input so the SSID key never sits in git plaintext.
+iot_vlan_test_ssid_key: "{{ vault_iot_test_ssid_key }}"
+
+# --- openwrt-iot-vlan applied state (this router) ----------------------------
+# The role's phase gates default false (safe default in the abstract). On THIS
+# router phases 1+2 are live, so declare that here: the isolated IoT VLAN
+# (192.168.20.0/24) + its firewall zone + the toggleable Brown-iot-test SSID.
+# A plain `ansible-playbook --limit openwrt` therefore keeps the test net up
+# (idempotent) instead of tearing it down. Flip iot_vlan_test_ssid_enabled to
+# false and re-run --tags wireless_test to take the SSID dark (config is kept).
+# Phase 3 (moving the real IoT SSID onto the VLAN) stays gated off.
+iot_vlan_test_ssid_enabled: true
+iot_vlan_firewall_enabled: true

@@ -13,7 +13,7 @@
       Set vault_iot_test_ssid_key in group_vars/openwrt/vault.yml.
   when: iot_vlan_test_ssid_enabled | bool
 
-- name: Create the temporary test SSID on the iot network (phase 1)
+- name: Create/enable the throwaway test SSID on the iot network (phase 1)
   community.openwrt.uci:
     command: section
     config: wireless
@@ -27,9 +27,41 @@
       ssid: "{{ iot_vlan_test_ssid }}"
       encryption: psk2
       key: "{{ iot_vlan_test_ssid_key }}"
+      disabled: "0"
     set_find: true
   no_log: true
   when: iot_vlan_test_ssid_enabled | bool
+  notify:
+    - commit wireless
+    - reload wifi
+
+# Toggle OFF: re-running with iot_vlan_test_ssid_enabled=false takes the SSID
+# dark but KEEPS the wifi-iface config, so flipping it back on is instant. This
+# is the "easily toggleable" path; for a one-off flip without Ansible use LuCI
+# (Network > Wireless > Disable) or the two-liner in README.md.
+#
+# The lookup guard is REQUIRED: community.openwrt.uci `command: section` with a
+# find that matches nothing APPENDS a new (half-populated) section, so a plain
+# enabled=false run would otherwise litter wireless config with a phantom iface.
+- name: Look up whether the test SSID section already exists
+  community.openwrt.command:
+    cmd: uci show wireless
+  register: _iot_wireless_show
+  changed_when: false
+  check_mode: false
+
+- name: Disable the throwaway test SSID (toggle off, keep config)
+  community.openwrt.uci:
+    command: section
+    config: wireless
+    type: wifi-iface
+    find:
+      ssid: "{{ iot_vlan_test_ssid }}"
+    value:
+      disabled: "1"
+  when:
+    - not (iot_vlan_test_ssid_enabled | bool)
+    - (".ssid='" ~ iot_vlan_test_ssid ~ "'") in _iot_wireless_show.stdout
   notify:
     - commit wireless
     - reload wifi

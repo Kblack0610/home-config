@@ -60,6 +60,38 @@ ansible-playbook playbooks/site.yml --limit openwrt \
   --tags migrate -e iot_vlan_migrate=true --check --diff
 ```
 
+## Toggling the test SSID on/off
+
+Phases 1+2 are applied on this router (declared in `group_vars/openwrt/main.yml`),
+so `Brown-iot-test` (2.4GHz, isolated on `192.168.20.0/24`, internet + LAN-isolated)
+is a persistent, easily-toggleable throwaway net. Three ways to flip it, fastest
+first:
+
+- LuCI (one click): Network > Wireless > the `Brown-iot-test` row > Disable / Enable.
+- Router shell (instant): find the section once with
+  `uci show wireless | grep -B2 Brown-iot-test`, then
+  `ssh root@192.168.1.1 "uci set wireless.@wifi-iface[3].disabled=1; uci commit wireless; wifi reload"`
+  (set `=0` to bring it back). The `@wifi-iface[N]` index can shift if wifi
+  sections are added/removed, so re-check it after any wireless change.
+- Ansible (declarative, keeps config): take it dark and record intent in git via
+  `iot_vlan_test_ssid_enabled`:
+
+  ```bash
+  cd ansible
+  export ANSIBLE_VAULT_PASSWORD_FILE=$HOME/.ansible-vault-pass
+  # off (keeps the wifi-iface, sets disabled=1):
+  ansible-playbook playbooks/site.yml --limit openwrt --tags wireless_test \
+    -e iot_vlan_test_ssid_enabled=false
+  # on:
+  ansible-playbook playbooks/site.yml --limit openwrt --tags wireless_test \
+    -e iot_vlan_test_ssid_enabled=true
+  ```
+
+  The toggle-off path is guarded by a wireless lookup so it only disables an
+  existing section (never appends a phantom half-iface). To change the SSID or
+  password, edit `iot_vlan_test_ssid` (defaults) / `vault_iot_test_ssid_key`
+  (`group_vars/openwrt/vault.yml`) and re-run with `wireless_test`.
+
 ## Rollback / recovery
 
 - Firewall lockout is the #1 risk. Apply staged; keep a second shell ready with

@@ -89,7 +89,12 @@ wallpanel:
       justify-content: flex-start
       gap: 12px
       overflow-y: auto
-      background: 'linear-gradient(to right, rgba(0,0,0,0) 0%, rgba(0,0,0,0.55) 22%)'
+      # Barely-there scrim so the photo shows through the control column; the
+      # room/quick-action cards carry their own backgrounds for legibility.
+      background: 'linear-gradient(to right, rgba(0,0,0,0) 0%, rgba(0,0,0,0.05) 30%)'
+      # Shadow darkens only the text glyphs (headings/labels) so they stay
+      # readable over bright photos WITHOUT a photo-blocking scrim.
+      text-shadow: '0 1px 4px rgba(0,0,0,0.85)'
     # Force the card container to a single full-width column (wallpanel defaults it
     # to a centered grid that can overflow a narrow box → the old "half a card").
     wallpanel-screensaver-info-box-content:

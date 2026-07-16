@@ -50,58 +50,15 @@ wallpanel:
   keep_screen_on_time: 86400
   show_progress_bar: false
   image_url: 'iframe+https://immich-kiosk.kblab.me/'
-  # Clickable panel that stays up on tap; only the Dashboard button exits.
-  content_interaction: true
-  stop_screensaver_on_mouse_click: false
+  # Pure photo frame: no overlay box/cards — the photo fills the screen edge to
+  # edge with nothing on top of it. Tapping ANYWHERE stops the screensaver and
+  # drops to the dashboard (the room quick-actions live on the Home view, which
+  # is what's revealed underneath); idle_time re-arms the frame after 8s.
+  content_interaction: false
+  stop_screensaver_on_mouse_click: true
   stop_screensaver_on_mouse_move: false
   # On-demand start/stop from a dashboard button (and easy testing).
   screensaver_entity: input_boolean.wall_screensaver
-  cards:
-    # Corner "admin" tap — the only exit: navigate ends the screensaver → Home.
-    - type: custom:mushroom-template-card
-      primary: Dashboard
-      icon: mdi:view-dashboard
-      icon_color: blue
-      tap_action: { action: navigate, navigation_path: /wall-panels/home }
-      card_mod:
-        style: |
-          ha-card { background: rgba(20,20,22,0.42); border: none; box-shadow: none; backdrop-filter: blur(3px); }
-    # Room quick-actions — the SHARED area-driven room layout (one source of truth
-    # with the Home view; tap a plug tile to toggle it). Empty rooms auto-hide.
-    - type: vertical-stack
-      cards: !include _rooms_cards.yaml
-  style:
-    # Translucent right-hand control column, full height. Tune width on-tablet.
-    wallpanel-screensaver-info-box:
-      position: absolute
-      top: '0'
-      right: '0'
-      bottom: '0'
-      left: auto
-      transform: none
-      width: 42%
-      height: 100%
-      margin: '0'
-      padding: 24px
-      box-sizing: border-box
-      display: flex
-      flex-direction: column
-      justify-content: flex-start
-      gap: 12px
-      overflow-y: auto
-      # Barely-there scrim so the photo shows through the control column; the
-      # room/quick-action cards carry their own backgrounds for legibility.
-      background: 'linear-gradient(to right, rgba(0,0,0,0) 0%, rgba(0,0,0,0.05) 30%)'
-      # Shadow darkens only the text glyphs (headings/labels) so they stay
-      # readable over bright photos WITHOUT a photo-blocking scrim.
-      text-shadow: '0 1px 4px rgba(0,0,0,0.85)'
-    # Force the card container to a single full-width column (wallpanel defaults it
-    # to a centered grid that can overflow a narrow box → the old "half a card").
-    wallpanel-screensaver-info-box-content:
-      display: block
-      width: 100%
-      max-width: 100%
-      grid-template-columns: none
 
 views:
   # ───────────────────────────── HOME / GLANCE ─────────────────────────────

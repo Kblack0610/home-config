@@ -45,8 +45,12 @@ spec:
             # Show only the "Wall Best (...)" album(s) built nightly by the
             # apps/immich/immich-curate CronJob (family photos, no screenshots),
             # instead of the whole library. Comma-separated album UUIDs.
-            # Katie's album is shared with this kiosk user (kblack0610) so it is
-            # readable by UUID. Add Ken's UUID here once that side is curated.
+            # IMPORTANT: the api-key in immich-kiosk-secret MUST belong to the
+            # account that OWNS these albums (currently Katie / ktnynas). Immich's
+            # /search/random only returns the requesting user's OWN assets, so a
+            # cross-account shared album returns nothing and the kiosk silently
+            # falls back to random-across-the-whole-library (which leaked Ken's
+            # screenshots onto the wall). Keep key-owner == album-owner.
             - { name: KIOSK_ALBUM, value: "d21eaba3-be3d-4717-b607-58b894b28074" }
             # ── Modern photo-frame look (Phase 1.6) ──────────────────────────
             # splitview pairs two PORTRAIT photos side-by-side (landscape/square

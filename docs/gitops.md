@@ -123,6 +123,44 @@ diff <(git ls-remote forgejo master | cut -f1) \
 # Expect: no output. If different, the mirror workflow is stalled.
 ```
 
+### Reverse mirrors: external GitHub repos pulled INTO Forgejo
+
+home-config's own mirror runs forgejo -> github (above). The Forgejo instance ALSO hosts the opposite direction for a few external repos: a **pull mirror** that copies a GitHub repo INTO Forgejo. This is home-infra, not app-repo config, so it is documented here rather than in the app repos.
+
+**Why this exists.** Some repos (e.g. the BNB `platform` monorepo) merge their PRs on GitHub, but their CI needs to reach **LAN-only** home services that a GitHub-hosted runner cannot see: Vikunja at `http://vikunja.vikunja.svc.cluster.local` (ticket close-on-merge), the home-k3s preview environment (preview-smoke), and the Forgejo container registry (image push). Pull-mirroring the repo into Forgejo lets in-cluster Forgejo Actions (the HA runner, `apps/forgejo/runner-deployment.yaml`) run on every synced push and reach those services directly over cluster networking. No Cloudflare tunnel, no public ingress, no token round-trip.
+
+| Direction | Example | Purpose |
+|---|---|---|
+| forgejo -> github (push) | `home-config` -> `github.com/Kblack0610/home-config` | passive DR mirror (above) |
+| github -> forgejo (pull) | `github.com/BlackNBrownStudios/platform` -> `git.kblab.me/kblack0610/platform` | let in-cluster CI reach LAN-only Vikunja / preview env / registry |
+
+The pull mirror is configured **inside Forgejo** (repo DB, set via UI/API), NOT as a file in this repo. Current config for `kblack0610/platform`: `mirror_interval: 5m0s`, `original_url: https://github.com/BlackNBrownStudios/platform.git`. Mirror syncs on this Forgejo DO trigger Actions `push` workflows (confirmed: the `close` and `preview-smoke` workflows fire on every synced push).
+
+**Operational gotcha (this cost a full debugging session -- read before diagnosing "the hook never fires").** A pull mirror is asynchronous: a merge on GitHub lands in Forgejo, and its `push`-triggered workflow runs, **0 to 5 minutes later** (the sync interval). Two traps follow:
+
+1. **An agent that hand-closes a ticket right after merging beats the mirror.** The close-on-merge hook then finds the ticket already done and is invisible. If every ticket is hand-closed at merge time, the hook looks like it "never fires" even though it works. A manually-closed ticket is indistinguishable from an auto-closed one.
+2. **The close workflow is fail-soft** (`continue-on-error` plus `exit 0` on every skip path: no `Vikunja: <id>` line in the commit, token unset, Vikunja unreachable). A green run therefore tells you nothing about whether a ticket was closed. `success` != closed.
+
+**Verify the hook correctly:** merge a PR whose squash body carries a `Vikunja: <id>` line and watch that ticket flip to Done with **nobody touching it**. (The clean proof on 2026-07-15: ticket 575 was deliberately left un-hand-closed; it went Done at `18:44:21Z`, 4 seconds after its Forgejo close-run started at `18:44:17Z` -- the hook did it.)
+
+**Do NOT** conclude "the mirror is missing" from an anonymous 404 on `git.kblab.me/api/v1/repos/search` -- private mirrors are invisible unauthenticated. Diagnose it authenticated:
+
+```bash
+# API token lives in ~/.git-credentials for git.kblab.me (user:token@host).
+USERTOK=$(grep git.kblab.me ~/.git-credentials | sed -E 's#https://([^@]+)@.*#\1#')
+FJ=https://git.kblab.me/api/v1
+
+# Does the mirror exist, and is it fresh?
+curl -s -u "$USERTOK" "$FJ/repos/kblack0610/platform" \
+  | jq '{mirror, mirror_interval, original_url, updated_at}'
+
+# Is the close-on-merge workflow actually running (and on what commits)?
+curl -s -u "$USERTOK" "$FJ/repos/kblack0610/platform/actions/tasks?limit=10" \
+  | jq '.workflow_runs[] | {name, event, status, head_sha, run_started_at}'
+```
+
+Known latent bug in the platform close workflow: it inspects only the single tip commit (`github.sha`). If two PRs each carrying a `Vikunja: <id>` line land inside one 5-minute sync window, only the tip's ticket auto-closes. Fix is to scan the pushed range (`github.event.before..github.sha`). Tracked in the platform repo, not here.
+
 ## Repository Shape
 
 ```text

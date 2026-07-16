@@ -1,0 +1,93 @@
+# Quarterly tax-year export: pulls categorized transactions from the
+# actual-http-api bridge and writes a per-year CSV to the NAS, next to the
+# backups. This is the CPA-handoff artifact.
+#
+# ACTIVATION-GATED: not listed in kustomization.yaml until finance-api-secret.yaml
+# holds the real Actual password + budget-sync-id. Run on-demand once activated:
+#   kubectl --context home-k3s create job --from=cronjob/actual-budget-tax-export \
+#     tax-export-$(date +%s) -n actual-budget
+#
+# NOTE: the jq field paths below match jhonderson/actual-http-api 26.2.0's
+# response shape. Validate the FIRST run's CSV against your real budget and
+# adjust field names if your Actual version differs (see docs/finance/tax-export.md).
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: actual-budget-tax-export
+  namespace: actual-budget
+spec:
+  schedule: "0 4 1 1,4,7,10 *"  # 04:00 on the 1st of Jan/Apr/Jul/Oct
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 1
+  jobTemplate:
+    spec:
+      template:
+        spec:
+          restartPolicy: OnFailure
+          containers:
+            - name: tax-export
+              image: alpine:latest
+              env:
+                - name: API_KEY
+                  valueFrom:
+                    secretKeyRef:
+                      name: finance-api-credentials
+                      key: api-key
+                - name: BUDGET_SYNC_ID
+                  valueFrom:
+                    secretKeyRef:
+                      name: finance-api-credentials
+                      key: budget-sync-id
+                - name: NAS_SMB_PASSWORD
+                  valueFrom:
+                    secretKeyRef:
+                      name: backup-nas-credentials
+                      key: smb-password
+                # Override to export a specific year; defaults to current year.
+                - name: TAX_YEAR
+                  value: ""
+              command:
+                - /bin/sh
+                - -c
+                - |
+                  set -eu
+                  apk add --no-cache curl jq samba-client >/dev/null
+                  API="http://actual-http-api.actual-budget.svc.cluster.local:5007/v1"
+                  SID="$BUDGET_SYNC_ID"
+                  YEAR="${TAX_YEAR:-$(date +%Y)}"
+                  [ -z "$YEAR" ] && YEAR="$(date +%Y)"
+                  SINCE="${YEAR}-01-01"
+                  UNTIL="${YEAR}-12-31"
+                  OUT="/tmp/actual-tax-${YEAR}.csv"
+                  AUTH="x-api-key: ${API_KEY}"
+
+                  # id -> name lookup tables for categories and payees
+                  curl -fsS -H "$AUTH" "$API/budgets/$SID/categories" \
+                    | jq -r '.data[]? | [.id,.name] | @tsv' > /tmp/cats.tsv || true
+                  curl -fsS -H "$AUTH" "$API/budgets/$SID/payees" \
+                    | jq -r '.data[]? | [.id,.name] | @tsv' > /tmp/payees.tsv || true
+                  lookup() { awk -F'\t' -v id="$2" '$1==id{print $2; f=1} END{if(!f)print ""}' "$1"; }
+
+                  echo "date,account,payee,category,amount,notes,cleared" > "$OUT"
+                  curl -fsS -H "$AUTH" "$API/budgets/$SID/accounts" \
+                    | jq -r '.data[]? | [.id,.name] | @tsv' \
+                    | while IFS="$(printf '\t')" read -r AID ANAME; do
+                        curl -fsS -H "$AUTH" "$API/budgets/$SID/accounts/$AID/transactions?since_date=$SINCE" \
+                          | jq -r --arg until "$UNTIL" '.data[]? | select(.date <= $until)
+                              | [.date, (.payee//""), (.category//""), (.amount//0),
+                                 ((.notes//"")|gsub(",";";")), (.cleared//false)] | @tsv' \
+                          | while IFS="$(printf '\t')" read -r D PID CID AMT NOTE CLR; do
+                              PN=$(lookup /tmp/payees.tsv "$PID"); [ -z "$PN" ] && PN="$PID"
+                              CN=$(lookup /tmp/cats.tsv "$CID"); [ -z "$CN" ] && CN="$CID"
+                              DOLLARS=$(awk -v a="$AMT" 'BEGIN{printf "%.2f", a/100}')
+                              echo "$D,\"$ANAME\",\"$PN\",\"$CN\",$DOLLARS,\"$NOTE\",$CLR"
+                            done
+                      done
+                  ROWS=$(( $(wc -l < "$OUT") - 1 ))
+                  echo "Exported $ROWS transactions for tax year $YEAR"
+                  [ "$ROWS" -gt 0 ] || { echo "ERROR: zero rows - check API_KEY / budget-sync-id / bridge"; exit 1; }
+
+                  smbclient //nas.nas.svc.cluster.local/private -U "nas%${NAS_SMB_PASSWORD}" -c \
+                    "mkdir backups; cd backups; mkdir home-k3s; cd home-k3s; mkdir actual-budget; cd actual-budget; mkdir tax-exports; cd tax-exports; put $OUT actual-tax-${YEAR}.csv" \
+                    && echo "NAS copy OK: actual-tax-${YEAR}.csv" \
+                    || echo "WARN: NAS copy failed, CSV is in the pod at $OUT"

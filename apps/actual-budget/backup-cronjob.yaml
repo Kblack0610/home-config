@@ -11,19 +11,40 @@ spec:
     spec:
       template:
         spec:
+          # No nodeSelector: the job co-locates with the local-path PVC (RWO,
+          # same node as the app pod) so it can read /data. The NAS push is
+          # network-based (//nas.nas.svc.cluster.local), so it works from any
+          # node the PVC happens to live on.
+          securityContext:
+            fsGroup: 1000
           containers:
             - name: backup
               image: alpine:latest
+              env:
+                - name: NAS_SMB_PASSWORD
+                  valueFrom:
+                    secretKeyRef:
+                      name: backup-nas-credentials
+                      key: smb-password
               command:
                 - /bin/sh
                 - -c
                 - |
-                  apk add --no-cache tar gzip
+                  apk add --no-cache tar gzip samba-client
                   TIMESTAMP=$(date +%Y%m%d-%H%M%S)
-                  tar -czf /backup/actual-$TIMESTAMP.tar.gz -C /data .
-                  # Keep only last 30 backups
+                  BACKUP_FILE="actual-$TIMESTAMP.tar.gz"
+                  # Snapshot the whole /data dir (SQLite budget files + server-files + blobs)
+                  tar -czf /backup/$BACKUP_FILE -C /data .
+                  # Keep only last 30 local backups
                   ls -t /backup/actual-*.tar.gz | tail -n +31 | xargs -r rm
-                  echo "Backup complete: actual-$TIMESTAMP.tar.gz"
+                  echo "Local backup complete: $BACKUP_FILE"
+                  # Upload to NAS (best-effort — local backup still succeeds if NAS is down).
+                  # This is the durability tier: the local hostPath copy lives on the SAME node
+                  # as the PVC, so the off-box NAS copy is what survives a node loss.
+                  smbclient //nas.nas.svc.cluster.local/private -U "nas%${NAS_SMB_PASSWORD}" -c \
+                    "mkdir backups; cd backups; mkdir home-k3s; cd home-k3s; mkdir actual-budget; cd actual-budget; put /backup/$BACKUP_FILE $BACKUP_FILE" \
+                    && echo "NAS copy OK: $BACKUP_FILE" \
+                    || echo "WARN: NAS copy failed, local backup still available"
               volumeMounts:
                 - name: data
                   mountPath: /data

@@ -59,22 +59,11 @@ A Go-based companion service for [Actual Budget](https://actualbudget.org/) that
 
 3. **Access the UI**: http://localhost:8080
 
-### Kubernetes
+### Kubernetes (retired 2026-07-16)
 
-1. **Update the secret** in `k8s/secret.yaml` with your Actual Budget credentials
+The `k8s/` manifests were removed. They were never wired into Flux (see `docs/excluded-from-flux.md`), never applied, and were non-functional as written (no `ACTUAL_API_URL`/`ACTUAL_API_KEY`, no in-namespace `actual-http-api` bridge, and a plaintext `secret.yaml` that matched the SOPS regex). This tool is supported via Docker Compose above.
 
-2. **Build and push the image**:
-   ```bash
-   docker build -t ghcr.io/kblack0610/actual-budget-tools:latest .
-   docker push ghcr.io/kblack0610/actual-budget-tools:latest
-   ```
-
-3. **Deploy**:
-   ```bash
-   kubectl apply -k k8s/
-   ```
-
-4. **Access the UI**: https://finance-tools.kblab.me
+If you later want it in-cluster, the dependency now exists: the `actual-budget` namespace ships an `actual-http-api` bridge (`apps/actual-budget/actual-http-api-*.yaml`, activation-gated). Point this service at `http://actual-http-api.actual-budget.svc.cluster.local:5007` with a SOPS-encrypted secret (never a plaintext one), and add it to `apps/kustomization.yaml`.
 
 ## Configuration
 

@@ -51,9 +51,9 @@ Actual Budget is a local-first personal finance application focused on envelope 
 
 #### Maintenance
 
-- **Backups**: Automated daily at 3 AM, 30-day retention
-- **Location**: `/var/backups/actual-budget/` on k3s nodes
-- **Manual backup**: `kubectl create job --from=cronjob/actual-budget-backup manual-backup -n actual-budget`
+- **Backups**: Automated daily at 3 AM, 30-day local retention PLUS a best-effort off-box copy to the NAS (`backups/home-k3s/actual-budget/`). The budget SQLite lives on a single-node local-path PVC, so the NAS copy is the durability tier - a node loss no longer takes the data and every backup at once. Verified weekly by `nas-backup-verify`.
+- **Local location**: `/var/backups/actual-budget/` on the node holding the PVC
+- **Manual backup**: `kubectl --context home-k3s create job --from=cronjob/actual-budget-backup manual-backup-$(date +%s) -n actual-budget`
 
 ---
 
@@ -206,14 +206,20 @@ database: MySQL/MariaDB or PostgreSQL
 
 ## Implementation Roadmap
 
-### Phase 1: Personal Finance ✅ COMPLETE
+### Phase 1: Personal Finance (mostly done; two follow-ups)
 
 - [x] Deploy Actual Budget
-- [x] Configure ingress (finance.kblab.me)
-- [x] Set up automated backups
-- [ ] Configure SimpleFIN bank sync
-- [ ] Import existing accounts
-- [ ] Set up budget categories
+- [x] Configure ingress (finance.kblab.me) - live, no port-forward needed
+- [x] Set up automated backups - now with off-box NAS copy + weekly verify
+- [x] Import existing accounts - done; ~2MB budget file with real history
+- [ ] Configure SimpleFIN bank sync - WAS live, went stale 2026-04-13; reconnect: [simplefin-reconnect.md](./simplefin-reconnect.md)
+- [ ] Set up budget categories for taxes - scheme documented in [tax-categories.md](./tax-categories.md); apply in-app
+
+### Phase 1b: Tax readiness (2026-07)
+
+- [x] Tax-category scheme (Schedule C + personal deductible) - [tax-categories.md](./tax-categories.md)
+- [x] Business/personal separation model (single file, category-group separated)
+- [x] Scripted yearly export subsystem (actual-http-api + tax-export CronJob) - built, activation-gated on the Actual password: [tax-export.md](./tax-export.md)
 
 ### Phase 2: Business Finance (Future)
 
@@ -297,3 +303,4 @@ ls -la /var/backups/actual-budget/
 |------|--------|
 | 2026-01-16 | Initial Actual Budget deployment |
 | 2026-01-16 | Documentation created |
+| 2026-07-16 | Audit + remediation: off-box NAS backup + weekly verify; tax-category scheme; business/personal separation model; SimpleFIN reconnect runbook; activation-gated tax-export subsystem (actual-http-api + quarterly CSV); doc truth-up (ingress live, roadmap corrected) |

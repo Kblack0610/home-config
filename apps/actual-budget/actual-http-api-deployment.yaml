@@ -1,0 +1,60 @@
+# REST API bridge for Actual Budget. Wraps the Actual sync protocol in a plain
+# HTTP+JSON API so scripts (the tax-export CronJob, the actual-budget-tools
+# sidecar) can read accounts/transactions without speaking the sync protocol.
+#
+# ACTIVATION-GATED: this is NOT yet listed in kustomization.yaml. It cannot
+# function until finance-api-secret.yaml holds the real Actual server password.
+# To activate: populate the secret (see docs/finance/tax-export.md), then
+# uncomment the three tax-export resources in kustomization.yaml.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: actual-http-api
+  namespace: actual-budget
+  labels:
+    app: actual-http-api
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: actual-http-api
+  template:
+    metadata:
+      labels:
+        app: actual-http-api
+    spec:
+      containers:
+        - name: actual-http-api
+          image: jhonderson/actual-http-api:26.2.0
+          ports:
+            - containerPort: 5007
+          env:
+            # Points at the in-cluster Actual server Service (port 80 -> 5006).
+            - name: ACTUAL_SERVER_URL
+              value: "http://actual-budget.actual-budget.svc.cluster.local"
+            - name: ACTUAL_SERVER_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: finance-api-credentials
+                  key: actual-server-password
+            # Shared bearer key that API clients must present as `x-api-key`.
+            - name: API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: finance-api-credentials
+                  key: api-key
+          volumeMounts:
+            # Ephemeral cache: the bridge downloads the budget file per session.
+            # Safe to lose on restart (it re-downloads from the Actual server).
+            - name: cache
+              mountPath: /data
+          resources:
+            requests:
+              memory: "128Mi"
+              cpu: "50m"
+            limits:
+              memory: "384Mi"
+              cpu: "300m"
+      volumes:
+        - name: cache
+          emptyDir: {}

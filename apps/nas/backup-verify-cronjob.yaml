@@ -28,7 +28,7 @@ spec:
                   REPORT="=== Backup Verification Report $(date -Iseconds) ==="
 
                   # Check each app directory for recent backups (< 48h old)
-                  for APP in home-assistant litellm; do
+                  for APP in home-assistant litellm actual-budget; do
                     APP_DIR="$BACKUP_ROOT/$APP"
                     if [ ! -d "$APP_DIR" ]; then
                       REPORT="$REPORT\nFAIL: $APP — backup directory missing"

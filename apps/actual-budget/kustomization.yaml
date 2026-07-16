@@ -9,4 +9,13 @@ resources:
   - deployment.yaml
   - service.yaml
   - ingress.yaml
+  - backup-nas-secret.yaml
   - backup-cronjob.yaml
+  # Tax-export subsystem (actual-http-api bridge + quarterly CSV export).
+  # ACTIVATION-GATED: uncomment the four lines below AFTER you populate
+  # finance-api-secret.yaml with your real Actual password + budget-sync-id
+  # (`sops apps/actual-budget/finance-api-secret.yaml`). See docs/finance/tax-export.md.
+  # - finance-api-secret.yaml
+  # - actual-http-api-deployment.yaml
+  # - actual-http-api-service.yaml
+  # - tax-export-cronjob.yaml

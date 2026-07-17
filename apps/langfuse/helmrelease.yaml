@@ -18,10 +18,10 @@ spec:
   values:
     langfuse:
       # ----------------------------------------------------------------
-      # Core crypto — stored in langfuse-secrets (secret.sops.yaml)
+      # Core crypto - stored in langfuse-secrets (secret.sops.yaml)
       # NEXTAUTH_SECRET: openssl rand -base64 32
       # SALT:           openssl rand -base64 32
-      # ENCRYPTION_KEY: openssl rand -hex 32  (64 hex chars — NOT base64)
+      # ENCRYPTION_KEY: openssl rand -hex 32  (64 hex chars - NOT base64)
       # ----------------------------------------------------------------
       nextauth:
         url: https://langfuse.kblab.me
@@ -40,25 +40,16 @@ spec:
           name: langfuse-secrets
           key: ENCRYPTION_KEY
 
-      # Seed initial admin — change password on first login
-      initializeDefaultUser:
-        enabled: true
-        email:
-          secretKeyRef:
+      # Inject the rest of langfuse-secrets as env vars.
+      # This covers LANGFUSE_INIT_USER_* for headless seeding
+      # (org, project, API keys, admin user) on first boot.
+      # Docs: langfuse.com/self-hosting/administration/headless-initialization
+      additionalEnvFrom:
+        - secretRef:
             name: langfuse-secrets
-            key: LANGFUSE_INIT_EMAIL
-        password:
-          secretKeyRef:
-            name: langfuse-secrets
-            key: LANGFUSE_INIT_PASSWORD
-        name:
-          secretKeyRef:
-            name: langfuse-secrets
-            key: LANGFUSE_INIT_NAME
 
       # ----------------------------------------------------------------
-      # Ingress — Traefik TLS, LAN/Tailscale only
-      # Service: langfuse-web:http (port 3000) created by the chart
+      # Ingress - Traefik TLS, LAN/Tailscale only
       # ----------------------------------------------------------------
       ingress:
         enabled: true
@@ -76,10 +67,8 @@ spec:
           enabled: true
           secretName: langfuse-tls
 
-      # Web (Next.js UI + API) — amd64 only
+      # Web (Next.js UI + API) - amd64 only (pod.nodeSelector, not top-level)
       web:
-        nodeSelector:
-          kubernetes.io/arch: amd64
         service:
           type: ClusterIP
           port: 3000
@@ -90,11 +79,12 @@ spec:
           limits:
             cpu: "1"
             memory: 1536Mi
+        pod:
+          nodeSelector:
+            kubernetes.io/arch: amd64
 
-      # Worker (background jobs: trace ingestion, exports, evals) — amd64 only
+      # Worker (background jobs: trace ingestion, exports, evals) - amd64 only
       worker:
-        nodeSelector:
-          kubernetes.io/arch: amd64
         resources:
           requests:
             cpu: 200m
@@ -102,6 +92,9 @@ spec:
           limits:
             cpu: "1"
             memory: 1536Mi
+        pod:
+          nodeSelector:
+            kubernetes.io/arch: amd64
 
     # ----------------------------------------------------------------
     # External Postgres (shared cluster Postgres at databases namespace)
@@ -113,16 +106,19 @@ spec:
       deploy: false
       host: postgres.databases.svc.cluster.local
       port: 5432
-      database: langfuse
-      username: langfuse
-      password:
-        secretKeyRef:
-          name: langfuse-secrets
-          key: POSTGRES_PASSWORD
+      auth:
+        username: langfuse
+        database: langfuse
+        # Pull password from langfuse-secrets; secretKeys must match
+        # the actual key name in the Secret (not a Kubernetes key rename).
+        existingSecret: langfuse-secrets
+        secretKeys:
+          userPasswordKey: POSTGRES_PASSWORD
+          adminPasswordKey: POSTGRES_PASSWORD
 
     # ----------------------------------------------------------------
     # External Minio (existing minio.minio.svc.cluster.local:9000)
-    # Bucket `langfuse` must be created before first deploy:
+    # Bucket `langfuse` pre-created:
     #   kubectl -n minio exec deploy/minio -- mc mb /data/langfuse
     # ----------------------------------------------------------------
     s3:
@@ -130,7 +126,7 @@ spec:
       bucket: langfuse
       endpoint: http://minio.minio.svc.cluster.local:9000
       region: us-east-1
-      forcePathStyle: "true"
+      forcePathStyle: true
       accessKeyId:
         secretKeyRef:
           name: langfuse-secrets
@@ -141,13 +137,10 @@ spec:
           key: S3_SECRET_ACCESS_KEY
 
     # ----------------------------------------------------------------
-    # ClickHouse — bundled subchart, single-node without ZooKeeper
+    # ClickHouse - bundled subchart (Bitnami v8.0.5), single-node
     # Required for trace/observation analytics in Langfuse v3.
-    # Default ships 3 replicas @ 2xlarge + 3 ZooKeeper — overridden here.
-    #
-    # If upgrade brings chart validation errors on replicaCount:1
-    # + clusterEnabled:false, consult langfuse-k8s release notes before
-    # bumping the chart version.
+    # Default ships 3 replicas @ 2xlarge + 3 ZooKeeper - overridden.
+    # Password pinned via existingSecret to survive helm upgrades.
     # ----------------------------------------------------------------
     clickhouse:
       deploy: true
@@ -155,6 +148,9 @@ spec:
       replicaCount: 1
       zookeeper:
         enabled: false
+      auth:
+        existingSecret: langfuse-secrets
+        existingSecretKey: CLICKHOUSE_PASSWORD
       nodeSelector:
         kubernetes.io/arch: amd64
       persistence:
@@ -171,8 +167,9 @@ spec:
           memory: 4Gi
 
     # ----------------------------------------------------------------
-    # Redis/Valkey — bundled subchart
-    # noeviction policy is required by Langfuse; chart validates this.
+    # Redis/Valkey - bundled subchart
+    # noeviction policy is already the chart default but stated
+    # explicitly here as a guard against subchart default changes.
     # ----------------------------------------------------------------
     redis:
       deploy: true

@@ -55,6 +55,24 @@ sudo mount -a
 findmnt /mnt/backup-8t/immich  # verify
 ```
 
+### USB autosuspend udev rule (required — install once)
+
+The Seagate Expansion (0bc2:203b) disconnects mid-write under sustained load when Linux's USB autosuspend is enabled. Install this rule on asus-laptop:
+
+```bash
+sudo tee /etc/udev/rules.d/99-seagate-expansion-no-suspend.rules > /dev/null << 'EOF'
+# Disable USB autosuspend for Seagate Expansion SW (0bc2:203b).
+ACTION=="add", SUBSYSTEM=="usb", ATTRS{idVendor}=="0bc2", ATTRS{idProduct}=="203b", TEST=="power/control", ATTR{power/control}="on"
+ACTION=="bind", SUBSYSTEM=="usb", ATTRS{idVendor}=="0bc2", ATTRS{idProduct}=="203b", TEST=="power/autosuspend_delay_ms", ATTR{power/autosuspend_delay_ms}="-1"
+EOF
+sudo udevadm control --reload-rules
+sudo udevadm trigger --subsystem-match=usb
+# Verify:
+cat /sys/bus/usb/devices/4-2/power/control   # expect: on
+```
+
+Without this rule, btrfs will accumulate thousands of write_io_errs, abort its transaction, and force-remount read-only when the drive reconnects. Recovery: unmount all backup-8t mounts, run `btrfs rescue zero-log /dev/sdXY`, then `mount -a`.
+
 Note: `nofail` means an unplugged drive never blocks boot. The `immich-originals-backup` CronJob's mount-safety guard detects an unmounted drive and exits 1 before writing, so you'll see a failed job rather than silently filled root fs.
 
 ## Start Here

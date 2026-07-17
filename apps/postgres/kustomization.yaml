@@ -11,5 +11,6 @@ resources:
   - deployment.yaml
   - service.yaml
   - litellm-db-bootstrap-job.yaml
+  - langfuse-db-bootstrap-job.yaml
   - hmdm-db-secret.sops.yaml
   - hmdm-db-bootstrap-job.yaml

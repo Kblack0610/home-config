@@ -296,13 +296,15 @@ data:
     litellm_settings:
       drop_params: true
       request_timeout: 900
-      # Mounts /metrics on port 4000 (same as the API). LiteLLM's
-      # PrometheusLogger emits per-model RPS, latency histograms (p50-p99),
-      # error counters, and token counters — all labeled with `model`.
-      # Single-worker deployment (replicas: 1, no --num_workers), so no
-      # PROMETHEUS_MULTIPROC_DIR setup needed. Scraped by the in-namespace
-      # ServiceMonitor in this directory.
-      callbacks: ["prometheus"]
+      # Callbacks:
+      #   prometheus     — per-model metrics on /metrics/ (ServiceMonitor in this dir)
+      #   langfuse_otel  — request-level traces to Langfuse at langfuse.kblab.me
+      #                    via OTLP/HTTP. Requires LANGFUSE_PUBLIC_KEY,
+      #                    LANGFUSE_SECRET_KEY, LANGFUSE_OTEL_HOST in the secret.
+      #                    Get pk/sk from https://langfuse.kblab.me/settings/api-keys
+      #                    after Langfuse is up. NOTE: LANGFUSE_OTEL_HOST (not
+      #                    LANGFUSE_HOST) is the correct env var for this callback.
+      callbacks: ["prometheus", "langfuse_otel"]
 
     general_settings:
       master_key: os.environ/LITELLM_MASTER_KEY

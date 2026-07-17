@@ -131,6 +131,14 @@ devices:
     range_exception: true
 
   # --- Mobile (.50-.79) — Phones, tablets ------------------------------------
+  # Wall tablets — Lenovo Tab M11 bedroom panel. MAC is a persistent random MAC
+  # (Android 15 MAC randomization, stable per-SSID). Factory MAC e0:1f:fc:76:74:d3.
+  # To switch to factory MAC: Settings -> Wi-Fi -> BrownDooDoo -> gear -> Privacy -> Use device MAC.
+  - hostname: wall-bedroom
+    mac: "96:24:ef:bd:33:1a"
+    ip: "192.168.1.60"
+    category: mobile
+
   - hostname: pixel-10-pro-fold
     mac: "1E:ED:3B:4E:2D:1E"
     ip: "192.168.1.10"

@@ -19,7 +19,9 @@ photo metadata overlay, automatic side-by-side **portrait pairing**, and a trans
 - **Dashboard source:** `apps/home-assistant/config/dashboards/wall.yaml` (code-first, Flux-deployed)
 
 Hardware decisions, profiles model, and phase plan live in the project plan; this is the
-hands-on per-tablet runbook.
+hands-on per-tablet runbook. For the full reference - requirements table, FreeKiosk
+REST/MQTT control channels, the voice-satellite deep-dive and root cause, fleet inventory,
+and the fleet-update procedure - see [`wall-tablets.md`](./wall-tablets.md).
 
 ---
 
@@ -70,8 +72,10 @@ on stock-Android Lenovo tablets (M9/M11). (FireOS is not supported — see plan.
 > It prints the few unavoidable on-device/HA steps at the end (HA login, satellite
 > assignment, PIN change). The manual walkthrough below documents what it automates.
 
-1. **Install FreeKiosk** — from Google Play (search "FreeKiosk"), or sideload the APK from
-   <https://github.com/RushB-fr/freekiosk> / <https://freekiosk.app>.
+1. **Install FreeKiosk** — sideload the APK (**v1.2.20-beta.4+ REQUIRED for voice**; earlier
+   versions lack `MODIFY_AUDIO_SETTINGS` and the mic is dead — see the voice section and
+   `wall-tablets.md` Section 6) from <https://github.com/RushB-fr/freekiosk/releases>. The
+   pinned APK is kept at `~/.dotfiles/.local/src/android-suite/apks/freekiosk.apk`.
 2. **Start URL:**
    `https://hass.kblab.me/wall-panels/home?kiosk`
    (the `?kiosk` query forces kiosk-mode chrome-hiding regardless of which user logs in.)
@@ -90,9 +94,10 @@ on stock-Android Lenovo tablets (M9/M11). (FireOS is not supported — see plan.
    ```
    Skip this for a quick setup; the home-app + immersive settings already give a solid kiosk.
 5. **Log in** to HA as the panel's profile (see §4). The webview keeps the session.
-6. **Change the FreeKiosk PIN.** FreeKiosk ships a **default settings/exit PIN of `1234`** —
-   that's the code that unlocks settings / exits the kiosk. **Change it** (FreeKiosk →
-   Settings → Security/PIN) to your own, or anyone can walk up and exit the kiosk into Android.
+6. **FreeKiosk PIN.** FreeKiosk ships a default of `1234`, but **our provisioner sets `4321`** —
+   that's the code that unlocks settings / exits the kiosk AND authenticates every `am start`
+   config intent (a wrong PIN makes config intents silently no-op). Change it per tablet if you
+   want, but keep it in sync with what you pass to `--pin`.
 
 > Built-in screensaver alternative: FreeKiosk also has a **web-page screensaver mode** you
 > can point at `https://immich-kiosk.kblab.me` (NOT `?disable_ui=true` — that hides the clock/
@@ -113,9 +118,17 @@ The wall panel doubles as an always-listening **Binks** voice satellite (in-brow
 microWakeWord → the Binks Assist pipeline; see `docs/home-assistant-voice.md` Stage 4). Two
 FreeKiosk-specific things matter:
 
-- **Mic:** FreeKiosk's patched WebView **auto-grants** `getUserMedia` once the OS
-  `RECORD_AUDIO` permission exists (the provision script grants it; no in-app mic toggle).
-  It only works over HTTPS — our `https://hass.kblab.me` (trusted LE cert) qualifies.
+- **Mic ⚠️ REQUIRES FreeKiosk >= 1.2.20-beta.4.** Chromium's WebView needs the host app to
+  declare BOTH `RECORD_AUDIO` **and** `MODIFY_AUDIO_SETTINGS` to select a mic input device.
+  FreeKiosk <= **1.2.19 declares only `RECORD_AUDIO`**, so `getUserMedia` fails with
+  `NotReadableError: could not start audio source` (logcat: `cr_media: Requires
+  MODIFY_AUDIO_SETTINGS ... No audio device` → `chromium: audio_manager_android.cc Unable to
+  select audio device!`). `MODIFY_AUDIO_SETTINGS` is a **manifest** permission — NOT grantable
+  via `pm grant` — so the ONLY fix is the newer APK (1.2.20-beta.4 adds it + intercom 2-way
+  audio). Verified 2026-07-17: 1.2.19 mic fails, 1.2.20 mic works (M9 TB305 + M11 TB336).
+  It also only works over HTTPS — our `https://hass.kblab.me` (trusted LE cert) qualifies.
+  (Diagnose fast: point a panel at a tiny `getUserMedia` test page and read `err.name`;
+  `NotReadableError` = version/permission, `NotAllowedError` = permission-request denied.)
 - **Screensaver ⚠️:** a real **screen-off** or a screensaver that **navigates away** from the
   dashboard tears down the mic stream and the wake word goes deaf. Keep **Keep-Screen-On +
   screensaver OFF (or Dim-Only)** on a voice panel. (This is why the in-dashboard wallpanel

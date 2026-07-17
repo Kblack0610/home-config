@@ -1579,8 +1579,10 @@ spec:
 
               ENTRIES = "/config/.storage/core.config_entries"
               DOMAIN = "voice_satellite"
-              NAME = "Wall Kitchen"
-              UID = NAME.lower().replace(" ", "_")
+              # One satellite per wall panel (room). Add/rename here; idempotent on
+              # unique_id (slug). Browsers pick their room via the Voice Satellite
+              # panel (dashboard Admin -> Voice Room), so tablets can be rotated.
+              NAMES = ["Wall Office", "Wall Living Room", "Wall Bedroom", "Wall Kitchen"]
 
               os.makedirs(os.path.dirname(ENTRIES), exist_ok=True)
               if os.path.exists(ENTRIES):
@@ -1592,33 +1594,38 @@ spec:
               for e in entries:
                   e.setdefault("subentries", {})
 
-              for e in entries:
-                  if e.get("domain") == DOMAIN and e.get("unique_id") == UID:
+              existing = {e.get("unique_id") for e in entries if e.get("domain") == DOMAIN}
+              added = 0
+              for NAME in NAMES:
+                  UID = NAME.lower().replace(" ", "_")
+                  if UID in existing:
                       print(f"voice_satellite '{NAME}' already exists, skipping")
-                      exit(0)
-
-              now = datetime.now(timezone.utc).isoformat()
-              entries.append({
-                  "created_at": now,
-                  "data": {"name": NAME},
-                  "disabled_by": None,
-                  "discovery_keys": {},
-                  "domain": DOMAIN,
-                  "entry_id": uuid.uuid4().hex,
-                  "minor_version": 1,
-                  "modified_at": now,
-                  "options": {},
-                  "pref_disable_new_entities": False,
-                  "pref_disable_polling": False,
-                  "source": "user",
-                  "subentries": {},
-                  "title": NAME,
-                  "unique_id": UID,
-                  "version": 1,
-              })
-              with open(ENTRIES, "w") as f:
-                  json.dump(store, f, indent=2)
-              print(f"Seeded voice_satellite '{NAME}' (unique_id={UID})")
+                      continue
+                  now = datetime.now(timezone.utc).isoformat()
+                  entries.append({
+                      "created_at": now,
+                      "data": {"name": NAME},
+                      "disabled_by": None,
+                      "discovery_keys": {},
+                      "domain": DOMAIN,
+                      "entry_id": uuid.uuid4().hex,
+                      "minor_version": 1,
+                      "modified_at": now,
+                      "options": {},
+                      "pref_disable_new_entities": False,
+                      "pref_disable_polling": False,
+                      "source": "user",
+                      "subentries": {},
+                      "title": NAME,
+                      "unique_id": UID,
+                      "version": 1,
+                  })
+                  added += 1
+                  print(f"Seeded voice_satellite '{NAME}' (unique_id={UID})")
+              if added:
+                  with open(ENTRIES, "w") as f:
+                      json.dump(store, f, indent=2)
+              print(f"voice_satellite seed done: +{added} new")
           volumeMounts:
             - name: config
               mountPath: /config

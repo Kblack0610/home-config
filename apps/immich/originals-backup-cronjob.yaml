@@ -1,0 +1,117 @@
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: immich-originals-backup
+  namespace: immich
+spec:
+  schedule: "30 3 * * *"  # Daily at 3:30 AM (offset from DB dump at 3 AM)
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      template:
+        spec:
+          nodeSelector:
+            kubernetes.io/hostname: asus-laptop
+            storage.role/nas: "true"
+          # Privileged: required for btrfs subvolume snapshot/delete commands
+          securityContext:
+            runAsUser: 0
+          containers:
+            - name: backup
+              image: alpine:latest
+              securityContext:
+                privileged: true
+              command:
+                - /bin/sh
+                - -c
+                - |
+                  apk add --no-cache rsync btrfs-progs
+
+                  # -- Mount-safety guard ------------------------------------------
+                  # If the 8TB USB drive is unplugged the hostPath stubs still exist
+                  # as empty dirs (DirectoryOrCreate). The mountpoint check catches
+                  # this and aborts rather than silently filling the root filesystem.
+                  mountpoint -q /backup-dest || {
+                    echo "ERROR: /mnt/backup-8t/immich is not mounted. Aborting to avoid filling root fs."
+                    exit 1
+                  }
+                  mountpoint -q /backup-db-dest || {
+                    echo "ERROR: /mnt/backup-8t/immich-db is not mounted. Aborting."
+                    exit 1
+                  }
+                  mountpoint -q /snapshots || {
+                    echo "ERROR: /mnt/backup-8t/immich-snapshots is not mounted. Aborting."
+                    exit 1
+                  }
+
+                  TIMESTAMP=$(date +%Y%m%d-%H%M%S)
+                  echo "=== Immich originals backup starting: $TIMESTAMP ==="
+
+                  # -- Step 1: rsync originals (read-only source) ------------------
+                  echo "Syncing originals..."
+                  rsync -aH --delete --stats /source/ /backup-dest/
+                  echo "rsync complete"
+
+                  # -- Step 2: copy latest DB dump to 8TB --------------------------
+                  LATEST_DUMP=$(ls -t /local-backups/immich-*.sql.gz 2>/dev/null | head -1)
+                  if [ -n "$LATEST_DUMP" ]; then
+                    cp "$LATEST_DUMP" /backup-db-dest/
+                    # Keep last 30 DB dumps on the 8TB
+                    ls -t /backup-db-dest/immich-*.sql.gz 2>/dev/null | tail -n +31 | xargs -r rm
+                    echo "DB dump copied: $(basename $LATEST_DUMP)"
+                  else
+                    echo "WARN: no DB dump found in /local-backups — run immich-backup first"
+                  fi
+
+                  # -- Step 3: btrfs read-only snapshot ----------------------------
+                  SNAP_NAME="immich-$TIMESTAMP"
+                  btrfs subvolume snapshot -r /backup-dest "/snapshots/$SNAP_NAME"
+                  echo "Snapshot created: $SNAP_NAME"
+
+                  # -- Step 4: prune old snapshots (keep 14) -----------------------
+                  SNAP_COUNT=$(ls -d /snapshots/immich-* 2>/dev/null | wc -l)
+                  if [ "$SNAP_COUNT" -gt 14 ]; then
+                    REMOVE=$((SNAP_COUNT - 14))
+                    echo "Pruning $REMOVE old snapshots..."
+                    ls -d /snapshots/immich-* | sort | head -n "$REMOVE" | while read SNAP; do
+                      btrfs subvolume delete "$SNAP" && echo "Deleted: $SNAP"
+                    done
+                  fi
+
+                  echo "=== Immich originals backup complete: $TIMESTAMP ==="
+              volumeMounts:
+                - name: source
+                  mountPath: /source
+                  readOnly: true
+                - name: backup-dest
+                  mountPath: /backup-dest
+                - name: backup-db-dest
+                  mountPath: /backup-db-dest
+                - name: snapshots
+                  mountPath: /snapshots
+                - name: local-backups
+                  mountPath: /local-backups
+                  readOnly: true
+          restartPolicy: OnFailure
+          volumes:
+            - name: source
+              hostPath:
+                path: /mnt/nas/private/immich
+                type: Directory
+            - name: backup-dest
+              hostPath:
+                path: /mnt/backup-8t/immich
+                type: DirectoryOrCreate
+            - name: backup-db-dest
+              hostPath:
+                path: /mnt/backup-8t/immich-db
+                type: DirectoryOrCreate
+            - name: snapshots
+              hostPath:
+                path: /mnt/backup-8t/immich-snapshots
+                type: DirectoryOrCreate
+            - name: local-backups
+              hostPath:
+                path: /var/backups/immich
+                type: DirectoryOrCreate

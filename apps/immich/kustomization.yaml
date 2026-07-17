@@ -26,5 +26,6 @@ resources:
   - ml-service.yaml
   - ingress.yaml
   - backup-cronjob.yaml
+  - originals-backup-cronjob.yaml
   - curate-cronjob.yaml
   # - curation-secret.yaml   # add once immich-curation-secret is created (see README -> Curation)

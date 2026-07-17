@@ -28,11 +28,12 @@ spec:
                     APP=$(basename "$APP_DIR")
                     # Skip sops — has its own retention (4 copies)
                     [ "$APP" = "sops" ] && continue
-                    COUNT=$(ls -1 "$APP_DIR"/*.tar.gz 2>/dev/null | wc -l)
+                    # Match .tar.gz (most apps) and .sql.gz (immich DB dumps)
+                    COUNT=$(ls -1 "$APP_DIR"/*.tar.gz "$APP_DIR"/*.sql.gz 2>/dev/null | wc -l)
                     if [ "$COUNT" -gt "$KEEP" ]; then
                       REMOVE=$((COUNT - KEEP))
                       echo "Pruning $REMOVE old backups from $APP (keeping $KEEP)"
-                      ls -t "$APP_DIR"/*.tar.gz | tail -n +"$((KEEP + 1))" | xargs -r rm
+                      ls -t "$APP_DIR"/*.tar.gz "$APP_DIR"/*.sql.gz 2>/dev/null | tail -n +"$((KEEP + 1))" | xargs -r rm
                     else
                       echo "$APP: $COUNT backups, nothing to prune"
                     fi

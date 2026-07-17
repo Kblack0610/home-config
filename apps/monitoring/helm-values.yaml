@@ -221,6 +221,9 @@ nodeExporter:
 prometheus:
   enabled: true
   prometheusSpec:
+    # Allow Alloy (and any other OTLP bridge) to push metrics via remote-write.
+    # Required for the Claude Code OTel pipeline (Phase 2 observability).
+    enableRemoteWriteReceiver: true
     evaluationInterval: 30s
     nodeSelector:
       kubernetes.io/arch: amd64

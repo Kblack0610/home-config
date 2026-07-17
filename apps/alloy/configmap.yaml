@@ -87,3 +87,41 @@ data:
       }
       external_labels = { cluster = "home-k3s" }
     }
+
+    // ---- OTLP receiver (Claude Code telemetry) ------------------------------
+    // Claude Code emits OTel signals to localhost:4317 (grpc) / localhost:4318
+    // (http/protobuf). hostPort in daemonset.yaml binds each Alloy pod to the
+    // node IP, so a Claude Code process on the same node (e.g. asus-laptop)
+    // reaches Alloy at localhost:4317 / localhost:4318 with no extra routing.
+    //
+    // Workstation env required in ~/.zshenv (provisioned via dotfiles/Ansible):
+    //   CLAUDE_CODE_ENABLE_TELEMETRY=1
+    //   OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:4318
+    //   OTEL_EXPORTER_OTLP_PROTOCOL=http/protobuf
+    //   OTEL_METRICS_EXPORTER=otlp
+    //   OTEL_LOGS_EXPORTER=otlp
+    //
+    // Prerequisite: prometheus.prometheusSpec.enableRemoteWriteReceiver: true
+    // must be set in apps/monitoring/helm-values.yaml before metrics flow.
+    otelcol.receiver.otlp "claude_code" {
+      grpc { endpoint = "0.0.0.0:4317" }
+      http { endpoint = "0.0.0.0:4318" }
+      output {
+        metrics = [otelcol.exporter.prometheus.otel.input]
+        logs    = [otelcol.exporter.loki.otel.input]
+      }
+    }
+
+    otelcol.exporter.prometheus "otel" {
+      forward_to = [prometheus.remote_write.otel.receiver]
+    }
+
+    prometheus.remote_write "otel" {
+      endpoint {
+        url = "http://kube-prometheus-stack-prometheus.monitoring.svc.cluster.local:9090/api/v1/write"
+      }
+    }
+
+    otelcol.exporter.loki "otel" {
+      forward_to = [loki.write.default.receiver]
+    }

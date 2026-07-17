@@ -16,6 +16,21 @@ data:
   # the deployment), so the .sh wrapper here can read them as env vars
   # and template them into the SQL safely (no plaintext-in-yaml).
 
+  40-langfuse.sh: |
+    #!/bin/bash
+    set -euo pipefail
+    # Langfuse uses a single Postgres database for transactional data.
+    # ClickHouse handles trace/observation analytics; this DB holds
+    # users, projects, prompts, evals, and Prisma migration state.
+    psql -v ON_ERROR_STOP=1 --username "$POSTGRES_USER" --dbname "$POSTGRES_DB" <<-EOSQL
+      CREATE ROLE langfuse LOGIN PASSWORD '${POSTGRES_LANGFUSE_PASSWORD}';
+      CREATE DATABASE langfuse OWNER langfuse;
+    EOSQL
+    psql -v ON_ERROR_STOP=1 --username "$POSTGRES_USER" --dbname langfuse <<-EOSQL
+      GRANT ALL PRIVILEGES ON DATABASE langfuse TO langfuse;
+      GRANT ALL PRIVILEGES ON SCHEMA public TO langfuse;
+    EOSQL
+
   10-mem0.sh: |
     #!/bin/bash
     set -euo pipefail

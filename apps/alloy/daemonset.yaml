@@ -38,6 +38,16 @@ spec:
           ports:
             - name: http
               containerPort: 12345
+            # OTLP receiver for Claude Code telemetry.
+            # hostPort binds to the node's IP so the workstation process
+            # can reach Alloy at localhost:4317 (grpc) / localhost:4318 (http)
+            # when Claude Code runs on the same node as an Alloy pod.
+            - name: otlp-grpc
+              containerPort: 4317
+              hostPort: 4317
+            - name: otlp-http
+              containerPort: 4318
+              hostPort: 4318
           resources:
             requests:
               memory: "128Mi"

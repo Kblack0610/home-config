@@ -29,6 +29,7 @@ resources:
   - immich-kiosk
   - jellyfin
   - karakeep
+  - langfuse
   - litellm
   - loki
   - mem0

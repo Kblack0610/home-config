@@ -75,26 +75,38 @@ spec:
         resources:
           requests:
             cpu: 200m
-            memory: 512Mi
+            memory: 768Mi
           limits:
             cpu: "1"
-            memory: 1536Mi
+            memory: 2Gi
         pod:
           nodeSelector:
             kubernetes.io/arch: amd64
+          # The langfuse-web image does not size Node's heap to the container
+          # memory limit, so Node's default old-space cap (~768Mi) OOM-kills the
+          # process at boot. Raise it to fit within the 2Gi limit (leaving
+          # headroom for non-heap: buffers, code, stacks).
+          additionalEnv:
+            - name: NODE_OPTIONS
+              value: "--max-old-space-size=1536"
 
-      # Worker (background jobs: trace ingestion, exports, evals) - amd64 only
+      # Worker (background jobs: trace ingestion, exports, evals) - amd64 only.
+      # Same Node heap-sizing fix as web: trace ingestion is memory-heavy and
+      # the image does not size the heap to the container limit.
       worker:
         resources:
           requests:
             cpu: 200m
-            memory: 512Mi
+            memory: 768Mi
           limits:
             cpu: "1"
-            memory: 1536Mi
+            memory: 2Gi
         pod:
           nodeSelector:
             kubernetes.io/arch: amd64
+          additionalEnv:
+            - name: NODE_OPTIONS
+              value: "--max-old-space-size=1536"
 
     # ----------------------------------------------------------------
     # External Postgres (shared cluster Postgres at databases namespace)

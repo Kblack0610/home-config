@@ -26,6 +26,7 @@ spec:
                 - /bin/sh
                 - -c
                 - |
+                  set -e
                   apk add --no-cache rsync btrfs-progs
 
                   # -- Mount-safety guard ------------------------------------------

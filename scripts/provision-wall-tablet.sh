@@ -3,9 +3,17 @@
 # Assistant wall panel + Binks voice satellite — as much as ADB allows, no tapping.
 #
 # FreeKiosk (com.freekiosk, MIT, github.com/RushB-fr/freekiosk) takes its ENTIRE
-# config via `am start` intent extras, and its patched WebView auto-grants the
-# browser mic once the OS RECORD_AUDIO permission exists — so a wall panel that
-# runs the in-browser voice_satellite wake word is fully scriptable.
+# config via `am start` intent extras (auth'd by the --pin; a WRONG pin is silently
+# rejected, applying nothing), so a wall panel is fully scriptable.
+#
+# VOICE MIC REQUIRES FreeKiosk >= 1.2.20-beta.4. Chromium's WebView needs the host
+# app to declare BOTH android.permission.RECORD_AUDIO AND MODIFY_AUDIO_SETTINGS to
+# select a mic input device. FreeKiosk <= 1.2.19 declares only RECORD_AUDIO, so
+# getUserMedia fails with NotReadableError "could not start audio source" (logcat:
+# `cr_media: Requires MODIFY_AUDIO_SETTINGS ... No audio device`). 1.2.20-beta.4 adds
+# MODIFY_AUDIO_SETTINGS (+ intercom 2-way audio). Verified 2026-07-17 on M9 (TB305)
+# and M11 (TB336): 1.2.19 mic fails, 1.2.20 mic works. This is a MANIFEST permission,
+# NOT grantable via `pm grant` (hence the grant below is a no-op on the wrong version).
 #
 # What this does NOT / CANNOT script (printed at the end as a checklist):
 #   - Enabling Developer Options + USB debugging on the tablet (one-time, on-device).
@@ -90,12 +98,13 @@ if [ -n "$APK" ]; then
   echo "==> Installing FreeKiosk from $APK"
   A install -r -g "$APK"
 elif [ "$DRY" != 1 ] && ! adb -s "$SERIAL" shell "pm list packages | grep -q $PKG" 2>/dev/null; then
-  die "FreeKiosk ($PKG) not installed. Sideload the APK from github.com/RushB-fr/freekiosk/releases (v1.2.19+), or pass --apk PATH."
+  die "FreeKiosk ($PKG) not installed. Sideload the APK from github.com/RushB-fr/freekiosk/releases (v1.2.20-beta.4+ REQUIRED for voice mic), or pass --apk PATH."
 fi
 
-# 2. OS-level grants (mic is auto-granted by FreeKiosk's WebView patch once the
-#    runtime RECORD_AUDIO permission exists; the others avoid NotReadableError /
-#    let FreeKiosk self-enable its accessibility + usage-stats features).
+# 2. OS-level grants. RECORD_AUDIO is the runtime mic permission. MODIFY_AUDIO_SETTINGS
+#    is auto-granted at install IF FreeKiosk's manifest declares it (only >= 1.2.20;
+#    the grant call below is a no-op if the manifest lacks it - see header). Both are
+#    required for Chromium WebView getUserMedia to select the mic input device.
 echo "==> Granting permissions (mic, audio, secure settings, usage stats)"
 A shell pm grant "$PKG" android.permission.RECORD_AUDIO || true
 A shell pm grant "$PKG" android.permission.MODIFY_AUDIO_SETTINGS || true

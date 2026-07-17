@@ -841,6 +841,16 @@ views:
             name: Home
             icon: mdi:home
             tap_action: { action: navigate, navigation_path: /wall-panels/home }
+          # Voice Room: pick which room satellite THIS tablet is (per-browser).
+          # Opens the voice_satellite integration panel — set the room + Start,
+          # then use the OS back gesture (or Home above) to return to the dashboard.
+          # This is how you rotate a tablet to a different room.
+          - type: custom:bubble-card
+            card_type: button
+            button_type: name
+            name: Voice Room
+            icon: mdi:microphone-message
+            tap_action: { action: navigate, navigation_path: /voice-satellite }
           - type: heading
             heading: Links
             heading_style: title

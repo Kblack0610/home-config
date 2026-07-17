@@ -1,60 +1,77 @@
-# Voice Satellite — "Wall Kitchen" defaults (Binks pipeline), code-first.
+# Voice Satellite — per-room defaults (Binks pipeline), code-first.
 #
 # The voice_satellite integration (Stage 4) creates per-device SELECT/SWITCH
 # entities whose chosen values are runtime state (not config-entry data). This
 # automation pins them on every HA start so the setup is reproducible across
-# restarts / PVC rebuilds — Pipeline 1 = Binks, on-device microWakeWord, a
-# bundled wake word (ok_nabu until hey_binks.tflite is trained in Stage 4B),
-# noise gate + stop-word barge-in on.
+# restarts / PVC rebuilds — for EVERY seeded room satellite: Pipeline 1 = Binks,
+# on-device microWakeWord, noise gate + stop-word barge-in on.
 #
-# Entity ids + option strings were read from the live instance after the first
-# boot of the seeded "Wall Kitchen" satellite (unique_id wall_kitchen).
+# Rooms are seeded by the `seed-voice-satellite` init container (deployment.yaml).
+# Keep the SLUGS list below in sync with the NAMES there (slug = name.lower with
+# spaces -> underscores). Each seeded satellite exposes:
+#   select.<slug>_pipeline_1, select.<slug>_wake_word_detection,
+#   switch.<slug>_wake_word_noise_gate, switch.<slug>_stop_word_interruption
 #
-# NOT covered here (inherent one-time tablet step, like browser_mod's browser id):
-# assigning THIS browser → the Wall Kitchen satellite in the sidebar panel.
+# NOT covered here (inherent one-time per-tablet step, like browser_mod's browser
+# id): assigning THIS browser -> a room satellite. Do it from the dashboard
+# Admin -> "Voice Room" button (the /voice-satellite panel), or the sidebar panel.
 
 automation:
-  - id: voice_satellite_wall_kitchen_defaults
-    alias: "Voice Satellite — Wall Kitchen defaults (Binks)"
+  - id: voice_satellite_room_defaults
+    alias: "Voice Satellite — per-room defaults (Binks)"
     description: >-
-      Pin the Wall Kitchen satellite to the Binks pipeline + on-device
-      microWakeWord + sane wake defaults. Runs on HA start and whenever the
-      satellite entities (re)appear after the integration finishes setup.
+      Pin every room satellite to the Binks pipeline + on-device microWakeWord +
+      sane wake defaults. Runs on HA start and whenever a satellite's pipeline
+      select (re)appears after the integration finishes setup. Skips any room
+      whose entities are not yet available.
     mode: single
+    max_exceeded: silent
     trigger:
       - platform: homeassistant
         event: start
       - platform: state
-        entity_id: select.wall_kitchen_pipeline_1
+        entity_id:
+          - select.wall_office_pipeline_1
+          - select.wall_living_room_pipeline_1
+          - select.wall_bedroom_pipeline_1
+          - select.wall_kitchen_pipeline_1
         from:
           - unavailable
           - unknown
-    condition:
-      - condition: template
-        value_template: >-
-          {{ states('select.wall_kitchen_pipeline_1') not in ['unavailable', 'unknown'] }}
     action:
-      # Small settle delay so all sibling entities are up on the start-trigger path.
+      # Small settle delay so sibling entities are up on the start-trigger path.
       - delay: "00:00:05"
-      - service: select.select_option
-        target:
-          entity_id: select.wall_kitchen_pipeline_1
-        data:
-          option: "Binks"
-      - service: select.select_option
-        target:
-          entity_id: select.wall_kitchen_wake_word_detection
-        data:
-          option: "On Device (microWakeWord)"
-      # NOTE: the wake WORD (select.wall_kitchen_wake_word_1) is intentionally NOT
-      # pinned here — pinning it re-forced the value on every browser reconnect,
-      # which blocked picking a word in the UI. It stays user-selectable until the
-      # custom "hey_binks" model ships (Stage 4B), at which point re-add:
-      #   - service: select.select_option
-      #     target: { entity_id: select.wall_kitchen_wake_word_1 }
-      #     data:   { option: "hey_binks" }
-      - service: switch.turn_on
-        target:
-          entity_id:
-            - switch.wall_kitchen_wake_word_noise_gate
-            - switch.wall_kitchen_stop_word_interruption
+      - repeat:
+          for_each:
+            - wall_office
+            - wall_living_room
+            - wall_bedroom
+            - wall_kitchen
+          sequence:
+            - if:
+                - condition: template
+                  value_template: >-
+                    {{ states('select.' ~ repeat.item ~ '_pipeline_1') not in ['unavailable', 'unknown'] }}
+              then:
+                - service: select.select_option
+                  target:
+                    entity_id: "select.{{ repeat.item }}_pipeline_1"
+                  data:
+                    option: "Binks"
+                - service: select.select_option
+                  target:
+                    entity_id: "select.{{ repeat.item }}_wake_word_detection"
+                  data:
+                    option: "On Device (microWakeWord)"
+                # NOTE: the wake WORD (select.<slug>_wake_word_1) is intentionally NOT
+                # pinned — pinning re-forces it on every browser reconnect, which blocks
+                # picking a word in the UI. Stays user-selectable until the custom
+                # "hey_binks" model ships (Stage 4B); then add, per room:
+                #   - service: select.select_option
+                #     target: { entity_id: "select.{{ repeat.item }}_wake_word_1" }
+                #     data:   { option: "hey_binks" }
+                - service: switch.turn_on
+                  target:
+                    entity_id:
+                      - "switch.{{ repeat.item }}_wake_word_noise_gate"
+                      - "switch.{{ repeat.item }}_stop_word_interruption"

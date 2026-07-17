@@ -229,11 +229,13 @@ this path (it stays for future hardware satellites; retire later if unwanted).
 
 ### One-time tablet steps (not git-seedable — inherent per-browser identity)
 
-- Kiosk app: the MIT **FreeKiosk** (`com.freekiosk`, RushB-fr), **v1.2.17+** (that release
-  fixed WebRTC mic). Grant the OS `RECORD_AUDIO` prompt (or pre-grant via Device-Owner/ADB
-  — see the `adb-ops` skill). Enable **Keep-Screen-On** + a black screensaver (avoid true
-  screen-off); **disable URL Rotation / Dashboard auto-return** (they tear down the page +
-  mic). Confirm the installed APK — `docs/wall-panels.md` says `uk.freekiosk`; verify.
+- Kiosk app: the MIT **FreeKiosk** (`com.freekiosk`, RushB-fr), **v1.2.20-beta.4+ REQUIRED for
+  voice** (earlier claim of "v1.2.17+ fixed WebRTC mic" was WRONG — 1.2.17-1.2.19 declare only
+  `RECORD_AUDIO`, missing `MODIFY_AUDIO_SETTINGS` that Chromium's WebView also needs to select
+  the mic → `NotReadableError`. 1.2.20-beta.4 adds it + intercom 2-way audio. Verified
+  2026-07-17). Grant `RECORD_AUDIO` via Device-Owner/ADB (`MODIFY_AUDIO_SETTINGS` auto-grants
+  at install ONLY on >= 1.2.20). Enable **Keep-Screen-On** + a black screensaver (avoid true
+  screen-off); **disable URL Rotation / Dashboard auto-return** (they tear down the page + mic).
 - In the dashboard, open the **Voice Satellite sidebar panel** and assign **this browser →
   the "Wall Kitchen" satellite** (like browser_mod's browser id).
 
@@ -286,5 +288,6 @@ fixed words**.
 **Sub-decisions:** wake engine = **FOSS microWakeWord** (offline, no keys) over **Porcupine**
 (proprietary AccessKey + periodic phone-home — wrong for a self-hosted LAN); STT = **litellm
 `stt (whisper-turbo)`** (no new container) over a Wyoming faster-whisper deployment; kiosk =
-MIT **`com.freekiosk`** v1.2.17+ over proprietary Fully Kiosk; and the tablet must load a
-**trusted-HTTPS** URL (`https://hass.kblab.me`) or `getUserMedia` is silently blocked.
+MIT **`com.freekiosk`** v1.2.20-beta.4+ (needs `MODIFY_AUDIO_SETTINGS`, added there) over
+proprietary Fully Kiosk; and the tablet must load a **trusted-HTTPS** URL
+(`https://hass.kblab.me`) or `getUserMedia` is silently blocked.

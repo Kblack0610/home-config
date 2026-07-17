@@ -56,6 +56,25 @@ wallpanel:
   stop_screensaver_on_mouse_move: false
   # On-demand start/stop from a dashboard button (and easy testing).
   screensaver_entity: input_boolean.wall_screensaver
+  # Night mode (22:00 - 07:00): sensor.wall_mode goes to "night" and wallpanel
+  # merges the overrides below, replacing the photo screensaver with a solid-black
+  # screen. The mic / wake-word satellite stays alive (no OS screen-off).
+  # See: apps/home-assistant/config/packages/wall_night_mode.yaml
+  profile_entity: sensor.wall_mode
+  profiles:
+    night:
+      # Longer grace before the screen goes dark.
+      idle_time: 60
+      # No photos at night — blank canvas for the black overlay.
+      show_images: false
+      # After 1 s in screensaver mode, the overlay goes solid #000.
+      black_screen_after_time: 1
+      # Single tap anywhere exits back to the dashboard (no "Dashboard" button needed).
+      content_interaction: false
+      stop_screensaver_on_mouse_click: true
+      stop_screensaver_on_mouse_move: false
+      # Clear the right-hand control column: nothing to show on a black screen.
+      cards: []
   cards:
     # Corner "admin" tap — the only exit: navigate ends the screensaver → Home.
     - type: custom:mushroom-template-card

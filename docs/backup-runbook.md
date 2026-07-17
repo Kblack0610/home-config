@@ -2,6 +2,61 @@
 
 Use this guide to verify scheduled backups, trigger them manually, or restore data for services that back up into local node storage and the NAS.
 
+## 8TB Backup Drive (asus-laptop)
+
+The 8TB Seagate Expansion USB HDD (`/dev/sda`, uuid `99a8c3bb-b1d9-4a78-88de-627b429cd147`, label `backup8t`) is the primary consolidated backup target on asus-laptop. It holds the Immich photo originals plus DB snapshots, with `@media` and `@app-config` subvolumes reserved for Phase 2.
+
+### Drive layout
+
+| Subvolume | Mount | Contents |
+|---|---|---|
+| `@immich` | `/mnt/backup-8t/immich` | rsync mirror of Immich originals (`/mnt/nas/private/immich`) |
+| `@immich-db` | `/mnt/backup-8t/immich-db` | DB dumps copied from `/var/backups/immich` |
+| `@immich-snapshots` | `/mnt/backup-8t/immich-snapshots` | Dated read-only btrfs snapshots (14 retained) |
+| `@media` | `/mnt/backup-8t/media` | Reserved for Phase 2 (media library) |
+| `@app-config` | `/mnt/backup-8t/app-config` | Reserved for Phase 2 (all NAS app-config) |
+
+### Reprovisioning (if drive is reformatted or replaced)
+
+Run on asus-laptop (ssh -p 2222 192.168.1.152):
+
+```bash
+# 1. Wipe + partition
+wipefs -a /dev/sda
+printf "label: gpt\nstart=, size=, type=0FC63DAF-8483-4772-8E79-3D69D8477DE4, name=backup8t\n" | sudo sfdisk /dev/sda
+
+# 2. Format btrfs
+sudo mkfs.btrfs -L backup8t /dev/sda1
+NEW_UUID=$(sudo blkid -s UUID -o value /dev/sda1)
+echo "UUID: $NEW_UUID"
+
+# 3. Create subvolumes
+sudo mkdir -p /mnt/btrfs-top
+sudo mount /dev/sda1 /mnt/btrfs-top
+sudo btrfs subvolume create /mnt/btrfs-top/@immich
+sudo btrfs subvolume create /mnt/btrfs-top/@immich-db
+sudo btrfs subvolume create /mnt/btrfs-top/@immich-snapshots
+sudo btrfs subvolume create /mnt/btrfs-top/@media
+sudo btrfs subvolume create /mnt/btrfs-top/@app-config
+sudo umount /mnt/btrfs-top
+sudo rmdir /mnt/btrfs-top
+
+# 4. Create mount points
+sudo mkdir -p /mnt/backup-8t/{immich,immich-db,immich-snapshots,media,app-config}
+
+# 5. Append to /etc/fstab (replace UUID with $NEW_UUID from step 2)
+# UUID=... /mnt/backup-8t/immich           btrfs noatime,compress=zstd:1,nofail,subvol=@immich           0 0
+# UUID=... /mnt/backup-8t/immich-db        btrfs noatime,compress=zstd:1,nofail,subvol=@immich-db        0 0
+# UUID=... /mnt/backup-8t/immich-snapshots btrfs noatime,compress=zstd:1,nofail,subvol=@immich-snapshots 0 0
+# UUID=... /mnt/backup-8t/media            btrfs noatime,compress=zstd:1,nofail,subvol=@media            0 0
+# UUID=... /mnt/backup-8t/app-config       btrfs noatime,compress=zstd:1,nofail,subvol=@app-config       0 0
+
+sudo mount -a
+findmnt /mnt/backup-8t/immich  # verify
+```
+
+Note: `nofail` means an unplugged drive never blocks boot. The `immich-originals-backup` CronJob's mount-safety guard detects an unmounted drive and exits 1 before writing, so you'll see a failed job rather than silently filled root fs.
+
 ## Start Here
 
 | Task | Command or section |
@@ -23,11 +78,13 @@ K3s app backups run on schedule via CronJobs. Each backup writes a local archive
 
 ## Backup Schedule
 
-| CronJob | Schedule | Namespace | NAS Path |
-|---------|----------|-----------|----------|
-| `home-assistant-backup` | Daily 2 AM | `home-assistant` | `home-k3s/home-assistant/` |
-| `litellm-backup` | Daily 2 AM | `ai-gateway` | `home-k3s/litellm/` |
-| `sops-key-backup` | Sunday 4 AM | `nas` | `home-k3s/sops/` |
+| CronJob | Schedule | Namespace | Target |
+|---------|----------|-----------|--------|
+| `home-assistant-backup` | Daily 2 AM | `home-assistant` | NAS `home-k3s/home-assistant/` |
+| `litellm-backup` | Daily 2 AM | `ai-gateway` | NAS `home-k3s/litellm/` |
+| `immich-backup` | Daily 3 AM | `immich` | `/var/backups/immich` + NAS `home-k3s/immich/` (DB only) |
+| `immich-originals-backup` | Daily 3:30 AM | `immich` | 8TB `/mnt/backup-8t/immich` + snapshots (originals + DB) |
+| `sops-key-backup` | Sunday 4 AM | `nas` | NAS `home-k3s/sops/` |
 | `nas-backup-cleanup` | Sunday 5 AM | `nas` | not applicable |
 | `nas-backup-verify` | Monday 6 AM | `nas` | writes `manifest.log` |
 
@@ -47,6 +104,12 @@ kubectl --context home-k3s create job --from=cronjob/home-assistant-backup manua
 
 # LiteLLM
 kubectl --context home-k3s create job --from=cronjob/litellm-backup manual-backup-$(date +%s) -n ai-gateway
+
+# Immich DB dump (runs first)
+kubectl --context home-k3s create job --from=cronjob/immich-backup manual-backup-$(date +%s) -n immich
+
+# Immich originals + snapshots to 8TB (run after immich-backup so a fresh dump is available)
+kubectl --context home-k3s create job --from=cronjob/immich-originals-backup manual-backup-$(date +%s) -n immich
 
 # SOPS key
 kubectl --context home-k3s create job --from=cronjob/sops-key-backup manual-sops-backup-$(date +%s) -n nas

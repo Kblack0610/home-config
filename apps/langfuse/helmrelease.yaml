@@ -173,6 +173,13 @@ spec:
     # ----------------------------------------------------------------
     redis:
       deploy: true
+      # Password consumed by BOTH the Valkey subchart AND the langfuse
+      # connection-string helper (both read redis.auth.existingSecret).
+      # Without this the chart deploys password-protected Valkey but hands
+      # web a passwordless redis:// string -> WRONGPASS crash loop.
+      auth:
+        existingSecret: langfuse-secrets
+        existingSecretPasswordKey: REDIS_PASSWORD
       primary:
         extraFlags:
           - "--maxmemory-policy noeviction"

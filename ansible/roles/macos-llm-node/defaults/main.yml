@@ -23,6 +23,14 @@ macos_llm_node_remove_brew_packages:
   - cocoapods
   - openjdk@17
 
+# After removing the above, sweep orphaned dependencies (`brew autoremove`) and
+# reclaim old versions + download cache (`brew cleanup`). Both are safe and
+# non-destructive to still-needed formulae. brew_bin is absolute because these
+# run via `command` (no login shell → brew isn't on PATH); Apple Silicon prefix.
+macos_llm_node_brew_bin: /opt/homebrew/bin/brew
+macos_llm_node_brew_autoremove: true
+macos_llm_node_brew_cleanup: true
+
 # --- 2. Filesystem debloat (DESTRUCTIVE, default-false) --------------------
 # Xcode is ~20-40 GB and useless on a box that will never build iOS again.
 # MLX only needs the Command Line Tools (pip wheels + Metal runtime), so after
@@ -41,6 +49,14 @@ macos_llm_node_platform_checkout_path: "{{ ansible_env.HOME }}/dev/bnb/platform"
 # LaunchAgent. Default-false; the mac-studio play opts in.
 macos_llm_node_remove_runner_dir: false
 macos_llm_node_runner_dir: "{{ ansible_env.HOME }}/actions-runner"
+
+# Xcode leftovers: DerivedData, CoreSimulator devices/runtimes, and Xcode
+# caches under ~/Library/Developer. Multi-GB and useless once Xcode is gone;
+# regenerated on demand if Xcode ever returns. Gated on the Xcode-removal var
+# (only meaningful on a box with no Xcode). The system CLT lives at
+# /Library/Developer/CommandLineTools (NOT under ~), so this never touches it.
+macos_llm_node_remove_xcode_caches: true
+macos_llm_node_xcode_caches_path: "{{ ansible_env.HOME }}/Library/Developer"
 
 # --- 3. OS-level debloat toggles (all reversible) -------------------------
 # Default-true on a dedicated LLM node; each is individually flippable and the

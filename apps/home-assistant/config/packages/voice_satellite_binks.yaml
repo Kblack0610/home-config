@@ -63,13 +63,22 @@ automation:
                     entity_id: "select.{{ repeat.item }}_wake_word_detection"
                   data:
                     option: "On Device (microWakeWord)"
-                # NOTE: the wake WORD (select.<slug>_wake_word_1) is intentionally NOT
-                # pinned — pinning re-forces it on every browser reconnect, which blocks
-                # picking a word in the UI. Stays user-selectable until the custom
-                # "hey_binks" model ships (Stage 4B); then add, per room:
-                #   - service: select.select_option
-                #     target: { entity_id: "select.{{ repeat.item }}_wake_word_1" }
-                #     data:   { option: "hey_binks" }
+                # Wake WORD: pin to the custom "binks" microWakeWord model (shipped as
+                # /config/voice_satellite/models/binks.tflite; the engine labels the
+                # option by filename). Guarded so it only sets when "binks" is actually
+                # an available option (the model finished loading) — otherwise a browser
+                # that hasn't discovered the model yet would error. Trained locally on
+                # the RTX 4060 Ti: cutoff ~0.97, ~0.3 false-accepts/hr, ~4% miss rate.
+                - if:
+                    - condition: template
+                      value_template: >-
+                        {{ 'binks' in state_attr('select.' ~ repeat.item ~ '_wake_word_1', 'options') | default([]) }}
+                  then:
+                    - service: select.select_option
+                      target:
+                        entity_id: "select.{{ repeat.item }}_wake_word_1"
+                      data:
+                        option: "binks"
                 - service: switch.turn_on
                   target:
                     entity_id:

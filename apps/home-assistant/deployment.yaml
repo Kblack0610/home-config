@@ -341,6 +341,12 @@ spec:
               cp /managed-config/package_wall_night_mode.yaml /config/packages/wall_night_mode.yaml
               cp /managed-config/package_avr_yamaha.yaml /config/packages/avr_yamaha.yaml
 
+              # Custom microWakeWord model for the in-browser voice satellites.
+              # The engine loads .tflite from /config/voice_satellite/models/ and
+              # exposes the wake word by filename (binks.tflite -> "binks").
+              mkdir -p /config/voice_satellite/models
+              cp /managed-config/voice_satellite_model_binks.tflite /config/voice_satellite/models/binks.tflite
+
               # pyscript apps (registry-write services for the plug Settings editor)
               cp /managed-config/pyscript_plug_settings.py /config/pyscript/plug_settings.py
               # room-layout seed data read by pyscript.room_layout_seed on startup

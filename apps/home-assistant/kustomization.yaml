@@ -27,6 +27,11 @@ configMapGenerator:
       - package_avr_yamaha.yaml=config/packages/avr_yamaha.yaml
       - pyscript_plug_settings.py=config/pyscript/plug_settings.py
       - pyscript_room_layout.yaml=config/pyscript/room_layout.yaml
+      # Custom microWakeWord model (binary). The voice_satellite in-browser engine
+      # loads .tflite files from /config/voice_satellite/models/ and labels the
+      # wake-word option by filename (binks.tflite -> "binks"). kustomize base64s
+      # the binary into the ConfigMap's binaryData automatically.
+      - voice_satellite_model_binks.tflite=config/voice_satellite/models/binks.tflite
       - dashboard_overview.yaml=config/dashboards/overview.yaml
       - dashboard_rooms_cards.yaml=config/dashboards/_rooms_cards.yaml
       - dashboard_local.yaml=config/dashboards/local.yaml

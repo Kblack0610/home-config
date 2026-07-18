@@ -109,6 +109,15 @@ on stock-Android Lenovo tablets (M9/M11). (FireOS is not supported — see plan.
 > (pull-to-refresh, or FreeKiosk → reload, or clear the FreeKiosk webview cache / restart the app).
 > Symptom of a stale tablet: HA logs `frontend.wallpanel ... Failed to play media .../image?t=...`
 > (the old single-image screensaver URL). A refresh switches it to the current immich-kiosk frame.
+>
+> **Intended control channel = FreeKiosk MQTT, not Headwind MDM.** By design, all *runtime*
+> panel control (reload the dashboard, screen on/off, brightness, TTS) rides FreeKiosk's own
+> MQTT/REST channel to HA — Headwind MDM only handles enrollment, app deploy, lockdown, and
+> liveness. See the "Runtime control is FreeKiosk MQTT" decision in `docs/device-fabric.md`.
+> Enable it per tablet with `provision-wall-tablet.sh --mqtt-broker mosquitto.kblab.me ...`,
+> then reload via the FreeKiosk `reload` MQTT entity instead of adb. **Until MQTT is enabled
+> on the mounted tablets** (not yet, as of 2026-07-17), the fallback is `adb force-stop
+> com.freekiosk` + relaunch — see the `wall-tablet-ops` skill for the exact sequence.
 
 ---
 

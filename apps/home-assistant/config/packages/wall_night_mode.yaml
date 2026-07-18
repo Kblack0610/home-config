@@ -1,0 +1,25 @@
+# Wall panel night mode — switches the wallpanel screensaver into a black-screen
+# quiet mode between 22:00 and 07:00.
+#
+# How it works:
+#   This sensor becomes the wallpanel `profile_entity`. When its state is "night",
+#   wallpanel merges the `profiles.night` overrides on top of the base config:
+#     - idle_time bumps to 60 s (longer grace before dimming)
+#     - screensaver goes black after 1 s (no photos, solid #000)
+#     - any tap anywhere exits back to the dashboard
+#   "day" state has no matching profile so the base config is used as-is.
+#
+# The mic (Binks wake word) stays live throughout: wallpanel's in-dashboard
+# screensaver never navigates away or turns the display off at the OS level,
+# so getUserMedia and the assist satellite keep running all night.
+#
+# To widen or shift the window: edit the {% if %} line below and push to forgejo.
+template:
+  - sensor:
+      - name: "Wall mode"
+        unique_id: wall_mode
+        state: >
+          {% set h = now().hour %}
+          {% if h >= 22 or h < 7 %}night{% else %}day{% endif %}
+        icon: >
+          {% if this.state == 'night' %}mdi:weather-night{% else %}mdi:white-balance-sunny{% endif %}

@@ -24,6 +24,7 @@ configMapGenerator:
       - package_plug_settings.yaml=config/packages/plug_settings.yaml
       - package_wall_screensaver.yaml=config/packages/wall_screensaver.yaml
       - package_wall_night_mode.yaml=config/packages/wall_night_mode.yaml
+      - package_avr_yamaha.yaml=config/packages/avr_yamaha.yaml
       - pyscript_plug_settings.py=config/pyscript/plug_settings.py
       - pyscript_room_layout.yaml=config/pyscript/room_layout.yaml
       - dashboard_overview.yaml=config/dashboards/overview.yaml

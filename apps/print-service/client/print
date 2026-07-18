@@ -1,0 +1,106 @@
+#!/usr/bin/env python3
+"""print - CLI for the home 3D-print capability (apps/print-service).
+
+Thin client of the print-service HTTP API. This is the "skill" surface: an agent
+(OpenClaw / Claude Code) drives 3D printing by shelling out to this CLI. The
+scoped print-mcp server is the alternative structured surface for voice.
+
+Endpoint: $PRINT_SERVICE_URL (default https://print.kblab.me). LAN/Tailscale only.
+
+Usage:
+  print printers
+  print slice  <file.stl> [--printer neptune] [--filament pla|petg] [--process standard|fine|draft]
+  print send   <file.stl> [--printer ...] [--filament ...] [--process ...] [--no-start]
+  print status [--printer neptune]
+  print cancel [--printer neptune]
+  (add --json to any command for raw JSON)
+
+<file.stl> is a filename (or subpath) under the NAS 3d-printing share.
+"""
+import argparse
+import json
+import os
+import sys
+import urllib.error
+import urllib.parse
+import urllib.request
+
+BASE = os.environ.get("PRINT_SERVICE_URL", "https://print.kblab.me").rstrip("/")
+
+
+def call(method, path, body=None, timeout=300):
+    data = json.dumps(body).encode() if body is not None else None
+    req = urllib.request.Request(BASE + path, data=data, method=method,
+                                 headers={"Content-Type": "application/json"} if data else {})
+    try:
+        with urllib.request.urlopen(req, timeout=timeout) as r:
+            return r.status, json.load(r)
+    except urllib.error.HTTPError as e:
+        try:
+            return e.code, json.load(e)
+        except Exception:
+            return e.code, {"error": e.read().decode(errors="replace")}
+    except Exception as e:  # noqa: BLE001
+        return 0, {"error": f"{type(e).__name__}: {e}"}
+
+
+def emit(status, obj, as_json):
+    if as_json:
+        print(json.dumps(obj, indent=2))
+    elif "error" in obj:
+        print(f"error: {obj['error']}", file=sys.stderr)
+    else:
+        print(json.dumps(obj) if status else obj)
+    return 0 if 200 <= status < 300 else 1
+
+
+def main(argv=None):
+    # --json is shared so it works before OR after the subcommand.
+    common = argparse.ArgumentParser(add_help=False)
+    common.add_argument("--json", action="store_true", help="raw JSON output")
+
+    p = argparse.ArgumentParser(prog="print", description="home 3D-print capability CLI",
+                                parents=[common])
+    sub = p.add_subparsers(dest="cmd", required=True)
+
+    sub.add_parser("printers", parents=[common], help="list printers + slice options")
+
+    def add_slice_args(sp):
+        sp.add_argument("file", help="STL filename under the NAS 3d-printing share")
+        sp.add_argument("--printer", default="neptune")
+        sp.add_argument("--filament", default="pla")
+        sp.add_argument("--process", default="standard")
+
+    add_slice_args(sub.add_parser("slice", parents=[common], help="slice an STL to gcode"))
+    sp_send = sub.add_parser("send", parents=[common], help="slice + upload to the printer + start")
+    add_slice_args(sp_send)
+    sp_send.add_argument("--no-start", action="store_true", help="upload but do not start the print")
+
+    sub.add_parser("status", parents=[common], help="printer status").add_argument("--printer", default="neptune")
+    sub.add_parser("cancel", parents=[common], help="cancel the current print").add_argument("--printer", default="neptune")
+
+    a = p.parse_args(argv)
+
+    if a.cmd == "printers":
+        return emit(*call("GET", "/printers"), a.json)
+    if a.cmd == "slice":
+        body = {"file": a.file, "printer": a.printer, "filament": a.filament, "process": a.process}
+        if not a.json:
+            print(f"slicing {a.file} ({a.filament}/{a.process}) for {a.printer}...", file=sys.stderr)
+        return emit(*call("POST", "/slice", body), a.json)
+    if a.cmd == "send":
+        body = {"file": a.file, "printer": a.printer, "filament": a.filament,
+                "process": a.process, "start": not a.no_start}
+        if not a.json:
+            act = "slicing + uploading" if a.no_start else "slicing + printing"
+            print(f"{act} {a.file} ({a.filament}/{a.process}) on {a.printer}...", file=sys.stderr)
+        return emit(*call("POST", "/print", body), a.json)
+    if a.cmd == "status":
+        return emit(*call("GET", "/status?printer=" + urllib.parse.quote(a.printer), timeout=20), a.json)
+    if a.cmd == "cancel":
+        return emit(*call("POST", "/cancel", {"printer": a.printer}, timeout=30), a.json)
+    return 1
+
+
+if __name__ == "__main__":
+    sys.exit(main())

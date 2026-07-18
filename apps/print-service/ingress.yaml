@@ -1,0 +1,30 @@
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: print-service
+  namespace: orcaslicer
+  labels:
+    app.kubernetes.io/name: print-service
+  annotations:
+    kubernetes.io/ingress.class: traefik
+    cert-manager.io/cluster-issuer: letsencrypt-dns
+    # LAN/VPN-only — same middleware as mem0/openclaw/neptune. The print API can
+    # start prints and read NAS files, so it must never be publicly reachable.
+    traefik.ingress.kubernetes.io/router.middlewares: monitoring-local-network-only@kubernetescrd
+spec:
+  ingressClassName: traefik
+  rules:
+    - host: print.kblab.me
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: print-service
+                port:
+                  number: 8080
+  tls:
+    - hosts:
+        - print.kblab.me
+      secretName: print-service-tls

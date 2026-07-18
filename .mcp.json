@@ -46,6 +46,18 @@
         "@digitalocean/mcp"
       ],
       "env": {}
+    },
+    "print": {
+      "type": "stdio",
+      "command": "uv",
+      "args": [
+        "run",
+        "--quiet",
+        "${PWD}/apps/print-service/mcp/print_mcp.py"
+      ],
+      "env": {
+        "PRINT_SERVICE_URL": "https://print.kblab.me"
+      }
     }
   }
 }

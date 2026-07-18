@@ -6,6 +6,7 @@ namespace: orcaslicer
 resources:
   - deployment.yaml
   - service.yaml
+  - ingress.yaml
 
 # server.py is shipped as a hashed ConfigMap so any edit rolls the Deployment.
 configMapGenerator:

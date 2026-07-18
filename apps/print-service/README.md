@@ -85,17 +85,29 @@ curl -s -XPOST localhost:8080/print -d '{"file":"corner_lock_lower.stl"}' | jq
 # -> slices, uploads to Moonraker, starts; watch HA sensor.neptune_print_state
 ```
 
+## Clients (the front-door surfaces)
+
+Reachable at `https://print.kblab.me` (LAN/Tailscale-gated ingress). Both are thin
+clients of the API above; set `PRINT_SERVICE_URL` to override (e.g. a port-forward).
+
+- **`client/print`** - CLI, the shell/skill surface an agent shells out to:
+  `print printers` | `print slice <f.stl> [--filament pla|petg] [--process standard|fine|draft]`
+  | `print send <f.stl> [--no-start]` | `print status` | `print cancel`. Add `--json` anywhere.
+- **`mcp/print_mcp.py`** - MCP server (tools: `list_printers`, `slice_model`,
+  `print_model`, `printer_status`, `cancel_print`), the scoped structured surface for
+  Claude Code / OpenClaw / the voice orchestrator. Self-contained `uv run` (PEP 723
+  inline deps, no persistent install). Registered in the repo `.mcp.json` as `print`.
+
 ## Deploy
 
 GitOps only: edit -> commit -> push to **forgejo** -> Flux reconciles (never
-`kubectl apply`). Registered in `apps/kustomization.yaml`.
+`kubectl apply`). Registered in `apps/kustomization.yaml`. The `client/` and `mcp/`
+dirs are plain repo files (not referenced by the kustomization, so Flux ignores them).
 
 ## Follow-ups
 
 - **Live Moonraker dispatch test** once the Neptune is powered on (upload +
   print/start + cancel).
-- **`print` CLI + `print-mcp` MCP server** as thin clients (the CLI becomes an
-  agent skill; the MCP is the scoped, secure surface for voice).
 - **Bambu A1** dispatch via ha-bambulab (FTP + MQTT print-project).
 - **Upload-from-request** (accept an STL in the POST body instead of a NAS
   filename) and a small durable job/queue once the orchestrator drives it.

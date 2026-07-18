@@ -1,0 +1,21 @@
+---
+galaxy_info:
+  role_name: macos_baseline
+  author: home-config
+  description: >-
+    Host persistence baseline for headless macOS build/CI boxes: power
+    policy (auto-restart after power failure, no sleep), SSH authorized_keys
+    sync from the control node, and assertion of the unattended-restart
+    prerequisites (auto-login on, FileVault off).
+  license: MIT
+  min_ansible_version: "2.14"
+  platforms:
+    - name: MacOSX
+      versions:
+        - all
+  galaxy_tags:
+    - macos
+    - power
+    - persistence
+    - ssh
+dependencies: []

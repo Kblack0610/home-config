@@ -1,14 +1,30 @@
 ---
-- name: Assert GitHub PAT is available from vault
+# Registration token comes from one of two sources (gh_runner_mac_token_source):
+#   gh  (default) — mint a short-lived token on the CONTROL NODE via the
+#                   already-authenticated `gh` CLI. No standing secret in the
+#                   repo. Right for workstation applies.
+#   pat           — call the GitHub REST API with vault_github_pat. Needed by
+#                   the in-cluster ansible-runner CronJob, which has no `gh`.
+
+- name: Assert gh CLI is authenticated on the control node (token_source=gh)
+  ansible.builtin.command: gh auth status
+  delegate_to: localhost
+  run_once: true
+  changed_when: false
+  when: gh_runner_mac_token_source == 'gh'
+
+- name: Assert GitHub PAT is available from vault (token_source=pat)
   ansible.builtin.assert:
     that:
       - vault_github_pat is defined
       - vault_github_pat | length > 10
       - not (vault_github_pat is match('^ghp_REPLACE_ME'))
     fail_msg: >-
-      vault_github_pat is missing or still the placeholder. Create
-      group_vars/macos_hosts/vault.yml with a real PAT (scope: repo) and
-      encrypt it via `ansible-vault encrypt`.
+      token_source=pat but vault_github_pat is missing or still the
+      placeholder. Add a real PAT (scope: repo) to
+      group_vars/macos_hosts/vault.yml and encrypt it via `ansible-vault
+      encrypt`, or use the default token_source=gh from a workstation.
+  when: gh_runner_mac_token_source == 'pat'
 
 - name: Ensure runner home dir exists
   ansible.builtin.file:
@@ -30,8 +46,85 @@
     remote_src: true
     creates: "{{ gh_runner_mac_home }}/config.sh"
 
-# Ephemeral registration token (valid ~1 hour).
-- name: Fetch ephemeral runner registration token from GitHub
+# Decide whether (re)registration is needed. A stale .runner marker whose
+# GitHub-side registration has been dropped is exactly our 2026-07-17 case:
+# without force_reregister the marker would make config.sh a no-op and the
+# runner would stay orphaned.
+- name: Detect existing runner marker
+  ansible.builtin.stat:
+    path: "{{ gh_runner_mac_home }}/.runner"
+  register: gh_mac_runner_marker
+
+- name: Decide whether to (re)register the runner
+  ansible.builtin.set_fact:
+    gh_mac_need_register: >-
+      {{ (not gh_mac_runner_marker.stat.exists) or (gh_runner_mac_force_reregister | bool) }}
+
+# Self-heal: tear down any stale local registration so config.sh can run
+# cleanly. Gated on force alone (not on .runner existing): a partially-failed
+# prior run can leave orphan markers like .runner_migrated behind WITHOUT a
+# .runner, which would still trip "already configured". All steps here are
+# idempotent / best-effort, so running them on an already-clean dir is a no-op.
+- name: Force re-register — tear down stale runner registration
+  when:
+    - gh_runner_mac_force_reregister | bool
+    - not ansible_check_mode
+  block:
+    - name: Stop the runner service (best effort)
+      ansible.builtin.command:
+        argv:
+          - "{{ gh_runner_mac_home }}/svc.sh"
+          - stop
+        chdir: "{{ gh_runner_mac_home }}"
+      failed_when: false
+      changed_when: true
+
+    - name: Uninstall the runner LaunchAgent (best effort)
+      ansible.builtin.command:
+        argv:
+          - "{{ gh_runner_mac_home }}/svc.sh"
+          - uninstall
+        chdir: "{{ gh_runner_mac_home }}"
+      failed_when: false
+      changed_when: true
+
+    # config.sh treats ANY of these as "already configured" and refuses to
+    # reconfigure. .runner_migrated / .credentials_migrated are the v2-broker
+    # migration markers a runner that has auto-updated past the v2 flow leaves
+    # behind — miss them and re-register fails with "already configured" even
+    # though .runner is gone (found 2026-07-17 on both Macs).
+    - name: Remove stale runner registration files
+      ansible.builtin.file:
+        path: "{{ gh_runner_mac_home }}/{{ item }}"
+        state: absent
+      loop:
+        - .runner
+        - .runner_migrated
+        - .credentials
+        - .credentials_migrated
+        - .credentials_rsaparams
+
+# --- Registration token (only when we actually need to register) ----------
+- name: Mint runner registration token via gh (control node)
+  ansible.builtin.command:
+    argv:
+      - gh
+      - api
+      - --method
+      - POST
+      - "repos/{{ gh_runner_mac_owner }}/{{ gh_runner_mac_repo }}/actions/runners/registration-token"
+      - --jq
+      - .token
+  delegate_to: localhost
+  register: gh_mac_gh_token
+  changed_when: false
+  no_log: true
+  when:
+    - gh_runner_mac_token_source == 'gh'
+    - gh_mac_need_register | bool
+    - not ansible_check_mode
+
+- name: Fetch ephemeral runner registration token from GitHub (token_source=pat)
   ansible.builtin.uri:
     url: "https://api.github.com/repos/{{ gh_runner_mac_owner }}/{{ gh_runner_mac_repo }}/actions/runners/registration-token"
     method: POST
@@ -41,12 +134,25 @@
       X-GitHub-Api-Version: "2022-11-28"
     status_code: 201
     return_content: true
-  register: gh_mac_registration_token
-  when: not ansible_check_mode
+  register: gh_mac_pat_token
   changed_when: false
   no_log: true
+  when:
+    - gh_runner_mac_token_source == 'pat'
+    - gh_mac_need_register | bool
+    - not ansible_check_mode
 
-- name: Configure runner (idempotent via .runner marker)
+- name: Resolve registration token from the selected source
+  ansible.builtin.set_fact:
+    gh_mac_reg_token: >-
+      {{ gh_mac_gh_token.stdout | trim if gh_runner_mac_token_source == 'gh'
+         else gh_mac_pat_token.json.token }}
+  no_log: true
+  when:
+    - gh_mac_need_register | bool
+    - not ansible_check_mode
+
+- name: Configure runner (only when (re)registration is needed)
   ansible.builtin.command:
     argv:
       - "{{ gh_runner_mac_home }}/config.sh"
@@ -55,14 +161,16 @@
       - --url
       - "{{ gh_runner_mac_url }}"
       - --token
-      - "{{ gh_mac_registration_token.json.token }}"
+      - "{{ gh_mac_reg_token }}"
       - --name
       - "{{ gh_runner_mac_name }}"
       - --labels
       - "{{ gh_runner_mac_labels | join(',') }}"
     chdir: "{{ gh_runner_mac_home }}"
     creates: "{{ gh_runner_mac_home }}/.runner"
-  when: not ansible_check_mode
+  when:
+    - gh_mac_need_register | bool
+    - not ansible_check_mode
   no_log: true
 
 # svc.sh install/start manages the LaunchAgent. Idempotent: the script

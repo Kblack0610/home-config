@@ -79,6 +79,19 @@ automation:
                         entity_id: "select.{{ repeat.item }}_wake_word_1"
                       data:
                         option: "binks"
+                # Second wake word: "ok_nabu" (built-in, rock-solid). Dual wake word means a
+                # panel still responds when the short custom "binks" model misses (single
+                # short words are inherently flakier). Guarded the same way.
+                - if:
+                    - condition: template
+                      value_template: >-
+                        {{ 'ok_nabu' in state_attr('select.' ~ repeat.item ~ '_wake_word_2', 'options') | default([]) }}
+                  then:
+                    - service: select.select_option
+                      target:
+                        entity_id: "select.{{ repeat.item }}_wake_word_2"
+                      data:
+                        option: "ok_nabu"
                 - service: switch.turn_on
                   target:
                     entity_id:

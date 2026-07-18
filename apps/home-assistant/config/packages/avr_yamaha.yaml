@@ -1,0 +1,110 @@
+# Yamaha RX-V385 AV receiver - IR control + power-state feedback.
+#
+# The RX-V385 has NO network/Ethernet/MusicCast and no RS-232, so HA cannot talk
+# to it over IP (that path only exists on the RX-V485 and up). The two control
+# surfaces it DOES have are IR and HDMI-CEC. This package drives it over IR via a
+# Broadlink blaster and derives on/off STATE from a power-monitoring smart plug,
+# working around the missing network telemetry.
+#
+# ---------------------------------------------------------------------------
+# ACTIVATION - replace the two placeholders below, then it goes live:
+#
+#   1. remote.REPLACE_broadlink_ir
+#      The `remote.*` entity created when you add the Broadlink integration in
+#      the HA UI (Settings > Devices > Add > Broadlink) after pairing the
+#      blaster. Then learn the physical remote's buttons into a device named
+#      exactly `yamaha_rxv385` with these command names (Developer Tools >
+#      Actions > remote.learn_command, or the UI):
+#        power_on  power_off  volume_up  volume_down  mute
+#        input_tv  input_av   input_audio  input_bluetooth  input_tuner
+#      (Learn power as a TOGGLE if that is all the remote has; source discrete
+#      on/off IR hex later for idempotent automation - see the plan file.)
+#
+#   2. sensor.REPLACE_avr_plug_power
+#      The power (W) sensor of the smart plug the receiver is plugged into. You
+#      already run LocalTuya + Tapo, so a spare energy-monitoring Tuya/Tapo plug
+#      needs no new integration - just its `*_power` sensor entity_id. Shelly /
+#      ESPHome / Zigbee energy plugs work identically.
+#
+# Until BOTH exist the entities render `unavailable` (guarded by availability),
+# so this package is a safe no-op when merged ahead of the hardware.
+# Full plan: ~/.claude/plans/yamaha-hs5-cluster-audio-endpoint.md (AVR section).
+# ---------------------------------------------------------------------------
+
+# --- STATE FEEDBACK: on/off inferred from the plug's power draw ---------------
+# Receiver in standby pulls <1 W; powered-on pulls tens of W. 5 W cleanly
+# separates the two. This is the "at least one way" of knowing real state that
+# IR alone cannot give (IR is fire-and-forget, no telemetry back).
+template:
+  - binary_sensor:
+      - name: "Yamaha RX-V385 Power"
+        unique_id: yamaha_rxv385_power
+        device_class: power
+        state: >
+          {{ states('sensor.REPLACE_avr_plug_power') | float(0) > 5 }}
+        availability: >
+          {{ has_value('sensor.REPLACE_avr_plug_power') }}
+
+# --- CONTROL: expose the receiver as a media_player driven over IR ------------
+# `universal` lets us map standard media_player commands to arbitrary actions
+# (here: Broadlink IR) and pull the reported state from the power binary_sensor
+# above, so the dashboard tile shows real on/off plus working power/volume/mute.
+media_player:
+  - platform: universal
+    name: "Yamaha RX-V385"
+    unique_id: yamaha_rxv385_avr
+    device_class: receiver
+    children: []
+    attributes:
+      # Reported state tracks the plug-derived power sensor (real feedback).
+      state: binary_sensor.yamaha_rxv385_power
+    commands:
+      turn_on:
+        service: remote.send_command
+        target:
+          entity_id: remote.REPLACE_broadlink_ir
+        data:
+          device: yamaha_rxv385
+          command: power_on
+      turn_off:
+        service: remote.send_command
+        target:
+          entity_id: remote.REPLACE_broadlink_ir
+        data:
+          device: yamaha_rxv385
+          command: power_off
+      volume_up:
+        service: remote.send_command
+        target:
+          entity_id: remote.REPLACE_broadlink_ir
+        data:
+          device: yamaha_rxv385
+          command: volume_up
+      volume_down:
+        service: remote.send_command
+        target:
+          entity_id: remote.REPLACE_broadlink_ir
+        data:
+          device: yamaha_rxv385
+          command: volume_down
+      volume_mute:
+        service: remote.send_command
+        target:
+          entity_id: remote.REPLACE_broadlink_ir
+        data:
+          device: yamaha_rxv385
+          command: mute
+      select_source:
+        # `source` comes from the media_player.select_source call; map the
+        # source name to the learned IR command. Sources listed in source_list.
+        service: remote.send_command
+        target:
+          entity_id: remote.REPLACE_broadlink_ir
+        data:
+          device: yamaha_rxv385
+          command: >
+            {{ {'TV': 'input_tv',
+                'AV': 'input_av',
+                'Audio': 'input_audio',
+                'Bluetooth': 'input_bluetooth',
+                'Tuner': 'input_tuner'}.get(source, 'input_tv') }}

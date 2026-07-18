@@ -1,0 +1,10 @@
+---
+# Ensure the CI/build formulae are absent. Idempotent: `state: absent` on an
+# already-removed formula reports 'ok'. Reversible: re-run the platform repo's
+# tools/setup-mac-runner.sh, or `brew install <list>`.
+- name: Remove CI/build Homebrew packages (dedicated LLM node)
+  community.general.homebrew:
+    name: "{{ macos_llm_node_remove_brew_packages }}"
+    state: absent
+    update_homebrew: false
+  # REVERSIBLE: brew install {{ macos_llm_node_remove_brew_packages | join(' ') }}

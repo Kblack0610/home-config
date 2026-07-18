@@ -1,0 +1,8 @@
+#!/bin/bash
+# Managed by Ansible role macos-llm-node — DO NOT EDIT BY HAND.
+# Applied at every boot by the {{ macos_llm_node_sysctl_label }} LaunchDaemon
+# (RunAtLoad) because macOS does not persist `sysctl -w` across reboots.
+set -euo pipefail
+{% for k, v in macos_llm_node_sysctls.items() %}
+/usr/sbin/sysctl -w {{ k }}={{ v }}
+{% endfor %}

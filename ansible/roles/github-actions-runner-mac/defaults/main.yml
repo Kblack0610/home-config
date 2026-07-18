@@ -28,7 +28,17 @@ gh_runner_mac_labels:
   - macOS
   - "{{ gh_runner_mac_arch }}"
 
-# Registration-token source:
+# Desired end-state for this runner on this host:
+#   present (default) — download, register, install + start the LaunchAgent.
+#   absent            — stop + uninstall the LaunchAgent, deregister from
+#                       GitHub, and remove local markers. Bind the role in
+#                       absent mode to demote a host that is no longer a CI
+#                       runner (mac-studio became a dedicated LLM node
+#                       2026-07-18; the mac-studio play sets this).
+gh_runner_mac_state: present
+
+# Registration-token source (used by BOTH present registration and absent
+# deregistration):
 #   gh  — mint on the control node via the authenticated `gh` CLI (default;
 #         no standing secret in the repo). Workstation applies.
 #   pat — GitHub REST API with vault_github_pat. For the in-cluster

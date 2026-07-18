@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN"
+  "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!-- Managed by Ansible role macos-llm-node — DO NOT EDIT BY HAND.
+     Root LaunchDaemon that re-applies the Apple Silicon LLM sysctls at boot
+     (sysctl -w is not persistent). Run-once at load; launchctl shows it
+     exited 0, which is expected, not an error. -->
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>{{ macos_llm_node_sysctl_label }}</string>
+    <key>ProgramArguments</key>
+    <array>
+        <string>{{ macos_llm_node_sysctl_script_path }}</string>
+    </array>
+    <key>RunAtLoad</key>
+    <true/>
+    <key>KeepAlive</key>
+    <false/>
+    <key>StandardOutPath</key>
+    <string>/tmp/llm-sysctl.log</string>
+    <key>StandardErrorPath</key>
+    <string>/tmp/llm-sysctl.log</string>
+</dict>
+</plist>

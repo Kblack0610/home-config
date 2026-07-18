@@ -1,0 +1,73 @@
+---
+# Apple Silicon LLM tuning. macOS does not persist `sysctl -w` and ignores
+# /etc/sysctl.conf, so a root LaunchDaemon (RunAtLoad) re-applies the sysctls
+# every boot. We ALSO apply them immediately here so the box converges without
+# a reboot. LaunchDaemon (not LaunchAgent): sysctl needs root and must run
+# independent of login.
+
+- name: Ensure /usr/local/sbin exists (script home)
+  become: true
+  ansible.builtin.file:
+    path: "{{ macos_llm_node_sysctl_script_path | dirname }}"
+    state: directory
+    owner: root
+    group: wheel
+    mode: "0755"
+
+- name: Render the boot-time sysctl apply script
+  become: true
+  ansible.builtin.template:
+    src: apply-llm-sysctl.sh.j2
+    dest: "{{ macos_llm_node_sysctl_script_path }}"
+    owner: root
+    group: wheel
+    mode: "0755"
+  register: llm_sysctl_script
+
+- name: Render the sysctl LaunchDaemon plist
+  become: true
+  ansible.builtin.template:
+    src: com.kblab.llm-sysctl.plist.j2
+    dest: "{{ macos_llm_node_launchdaemons_dir }}/{{ macos_llm_node_sysctl_label }}.plist"
+    owner: root
+    group: wheel
+    mode: "0644"
+  register: llm_sysctl_plist
+
+# Apply the sysctls live now (idempotent: read current, write only on drift).
+- name: Apply LLM sysctls immediately (idempotent)
+  become: true
+  ansible.builtin.shell: |
+    set -euo pipefail
+    changed=0
+    {% for k, v in macos_llm_node_sysctls.items() %}
+    cur="$(/usr/sbin/sysctl -n {{ k }} 2>/dev/null || echo unset)"
+    if [ "$cur" != "{{ v }}" ]; then
+      /usr/sbin/sysctl -w {{ k }}={{ v }}
+      changed=1
+    fi
+    {% endfor %}
+    if [ "$changed" = "1" ]; then echo CHANGED; else echo OK; fi
+  register: llm_sysctl_now
+  changed_when: "'CHANGED' in llm_sysctl_now.stdout"
+  when:
+    - macos_llm_node_sysctls | length > 0
+    - not ansible_check_mode
+  # REVERSIBLE (per key): sudo sysctl -w iogpu.wired_limit_mb=0   (Apple default)
+
+# (Re)load the LaunchDaemon only when a template changed, so steady-state runs
+# don't churn it. system domain (root), mirroring the gui-domain dance in
+# launchd-powermetrics-textfile.
+- name: (Re)load the sysctl LaunchDaemon if it changed
+  become: true
+  ansible.builtin.shell: |
+    set -e
+    launchctl bootout system/{{ macos_llm_node_sysctl_label }} 2>/dev/null || true
+    launchctl bootstrap system {{ macos_llm_node_launchdaemons_dir }}/{{ macos_llm_node_sysctl_label }}.plist
+  when:
+    - not ansible_check_mode
+    - (llm_sysctl_plist.changed | default(false)) or (llm_sysctl_script.changed | default(false))
+  changed_when: true
+  # REVERSIBLE: sudo launchctl bootout system/{{ macos_llm_node_sysctl_label }} &&
+  #             sudo rm {{ macos_llm_node_launchdaemons_dir }}/{{ macos_llm_node_sysctl_label }}.plist
+  #             (setting reverts to Apple default on next reboot)

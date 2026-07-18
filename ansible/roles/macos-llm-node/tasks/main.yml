@@ -1,0 +1,19 @@
+---
+# Dedicated-LLM-node concerns, each independently taggable. Order: strip CI
+# bloat first, then OS debloat, then install the boot-time tuning. MLX itself
+# is re-asserted by the launchd-mlx-server play that runs AFTER this one.
+- name: Remove CI/build Homebrew packages
+  ansible.builtin.import_tasks: debloat-brew.yml
+  tags: [debloat, brew]
+
+- name: Remove filesystem bloat (Xcode / checkouts / runner dir)
+  ansible.builtin.import_tasks: debloat-fs.yml
+  tags: [debloat, fs]
+
+- name: Apply reversible macOS OS-level debloat toggles
+  ansible.builtin.import_tasks: os-toggles.yml
+  tags: [debloat, os-toggles]
+
+- name: Install Apple Silicon LLM sysctl tuning (persisted at boot)
+  ansible.builtin.import_tasks: llm-tuning.yml
+  tags: [llm-tuning, sysctl]

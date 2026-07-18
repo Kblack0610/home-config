@@ -1,0 +1,122 @@
+---
+# Reversible OS-level debloat for a headless inference box. Each task reads
+# current state and only writes on drift (re-runs report 'ok'). We ONLY flip
+# defaults/mdutil/tmutil/pmset and bootout USER (gui/<uid>) agents — never
+# touch SIP-protected /System/Library daemons (mDNSResponder, opendirectoryd,
+# sshd, WindowServer, ...); those break login/SSH/Metal and relaunchd revives
+# them anyway. Every task documents its reverse.
+
+# --- Spotlight indexing ---------------------------------------------------
+# Target the root volume only. `mdutil -a` also hits the synthetic
+# /System/Volumes/Data (firmlinked to /) which returns error -405 and would
+# abort under `set -e`; disabling / covers it. `set -e` is intentionally
+# dropped and each mdutil call is best-effort — we judge success by re-reading
+# the state, and only fail if / is still enabled afterward.
+- name: Disable Spotlight indexing (idempotent)
+  become: true
+  ansible.builtin.shell: |
+    set -uo pipefail
+    before="$(mdutil -s / 2>/dev/null | grep -c 'Indexing enabled' || true)"
+    if [ "$before" != "0" ]; then
+      mdutil -i off / >/dev/null 2>&1 || true
+      {% if macos_llm_node_erase_spotlight_index %}mdutil -E / >/dev/null 2>&1 || true{% endif %}
+
+    fi
+    after="$(mdutil -s / 2>/dev/null | grep -c 'Indexing enabled' || true)"
+    if [ "$after" != "0" ]; then echo "FAILED still-enabled"; exit 1; fi
+    if [ "$before" != "0" ]; then echo "CHANGED"; else echo "OK"; fi
+  register: llm_spotlight
+  changed_when: "'CHANGED' in llm_spotlight.stdout"
+  when: macos_llm_node_disable_spotlight | bool
+  # REVERSIBLE: sudo mdutil -i on /
+
+# --- Time Machine automatic backups --------------------------------------
+# `tmutil disablelocal` was removed on modern macOS; `tmutil disable` is the
+# supported switch. Largely moot with no TM destination, but makes it explicit.
+- name: Disable Time Machine automatic backups (idempotent)
+  become: true
+  ansible.builtin.shell: |
+    set -euo pipefail
+    cur="$(defaults read /Library/Preferences/com.apple.TimeMachine AutoBackup 2>/dev/null || echo unset)"
+    if [ "$cur" = "1" ]; then
+      tmutil disable
+      echo "CHANGED"
+    else
+      echo "OK"
+    fi
+  register: llm_tm
+  changed_when: "'CHANGED' in llm_tm.stdout"
+  when: macos_llm_node_disable_timemachine | bool
+  # REVERSIBLE: sudo tmutil enable
+
+# --- Siri / dictation -----------------------------------------------------
+# Per-user pref + bootout of the running agent. Do NOT edit the SIP-protected
+# /System/Library/LaunchAgents/com.apple.Siri.plist.
+- name: Disable Siri (idempotent, per-user)
+  ansible.builtin.shell: |
+    set -euo pipefail
+    cur="$(defaults read com.apple.assistant.support "Assistant Enabled" 2>/dev/null || echo unset)"
+    if [ "$cur" != "0" ]; then
+      defaults write com.apple.assistant.support "Assistant Enabled" -bool false
+      launchctl bootout gui/$(id -u)/com.apple.Siri 2>/dev/null || true
+      echo "CHANGED"
+    else
+      echo "OK"
+    fi
+  register: llm_siri
+  changed_when: "'CHANGED' in llm_siri.stdout"
+  when: macos_llm_node_disable_siri | bool
+  # REVERSIBLE: defaults write com.apple.assistant.support "Assistant Enabled" -bool true
+
+# --- Analytics & diagnostics submission to Apple -------------------------
+- name: Disable analytics/diagnostics submission (idempotent)
+  become: true
+  ansible.builtin.shell: |
+    set -euo pipefail
+    plist="/Library/Application Support/CrashReporter/DiagnosticMessagesHistory.plist"
+    cur="$(defaults read "$plist" AutoSubmit 2>/dev/null || echo unset)"
+    if [ "$cur" != "0" ]; then
+      defaults write "$plist" AutoSubmit -bool false
+      defaults write "$plist" ThirdPartyDataSubmit -bool false
+      chmod 644 "$plist" 2>/dev/null || true
+      echo "CHANGED"
+    else
+      echo "OK"
+    fi
+  register: llm_diag
+  changed_when: "'CHANGED' in llm_diag.stdout"
+  when: macos_llm_node_disable_analytics | bool
+  # REVERSIBLE: sudo defaults write "/Library/Application Support/CrashReporter/DiagnosticMessagesHistory.plist" AutoSubmit -bool true
+
+# --- Power Nap ------------------------------------------------------------
+- name: Disable Power Nap (idempotent)
+  become: true
+  ansible.builtin.shell: |
+    set -euo pipefail
+    cur="$(pmset -g | awk '$1=="powernap" {print $2; exit}')"
+    if [ "${cur:-1}" != "0" ]; then
+      pmset -a powernap 0
+      echo "CHANGED"
+    else
+      echo "OK"
+    fi
+  register: llm_powernap
+  changed_when: "'CHANGED' in llm_powernap.stdout"
+  when: macos_llm_node_disable_powernap | bool
+  # REVERSIBLE: sudo pmset -a powernap 1
+
+# --- App Nap (global) -----------------------------------------------------
+- name: Disable App Nap globally (idempotent, per-user)
+  ansible.builtin.shell: |
+    set -euo pipefail
+    cur="$(defaults read NSGlobalDomain NSAppSleepDisabled 2>/dev/null || echo unset)"
+    if [ "$cur" != "1" ]; then
+      defaults write NSGlobalDomain NSAppSleepDisabled -bool YES
+      echo "CHANGED"
+    else
+      echo "OK"
+    fi
+  register: llm_appnap
+  changed_when: "'CHANGED' in llm_appnap.stdout"
+  when: macos_llm_node_disable_appnap | bool
+  # REVERSIBLE: defaults delete NSGlobalDomain NSAppSleepDisabled

@@ -1,0 +1,24 @@
+---
+galaxy_info:
+  role_name: macos_llm_node
+  author: home-config
+  description: >-
+    Turn a Mac into a dedicated LLM inference node: remove CI/build tooling
+    (Homebrew formulae, Xcode, the platform checkout, the actions runner),
+    apply reversible macOS OS-level debloat (Spotlight, Time Machine, Siri,
+    analytics, Power/App Nap), and persist Apple Silicon LLM tuning sysctls
+    (iogpu.wired_limit_mb) via a root LaunchDaemon. Does NOT own MLX itself —
+    that stays in launchd-mlx-server.
+  license: MIT
+  min_ansible_version: "2.14"
+  platforms:
+    - name: MacOSX
+      versions:
+        - all
+  galaxy_tags:
+    - macos
+    - llm
+    - mlx
+    - debloat
+    - tuning
+dependencies: []

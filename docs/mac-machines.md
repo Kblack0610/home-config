@@ -1,128 +1,132 @@
 # Mac Machines Setup Guide
 
-Dedicated macOS machines on the home LAN for iOS builds, Expo, and GitHub Actions CI/CD.
+Two Apple-Silicon Macs on the home LAN, each with a **single dedicated role** since the 2026-07-18 split:
+
+- **mac-studio** (M3 Ultra) — dedicated **LLM inference node** (MLX). No CI, deeply debloated, tuned for large models.
+- **mac-mini** (M1) — the **sole self-hosted mobile-CI runner** (iOS/Android builds, TestFlight/Play upload).
+
+They are **not** part of the K3s cluster (K3s is Linux-only). The Pi cluster handles containerized workloads; Macs handle Apple-native + GPU-inference workloads.
 
 ## Inventory
 
-| Machine | Chip | RAM | IP | Hostname | Role |
-|---------|------|-----|-----|----------|------|
-| Mac Studio | M3 Ultra | 512 GB | 192.168.1.4 | mac-studio | LLM inference (MLX), iOS builds, GitHub Actions runner |
-| Mac Mini | M1 | 16 GB | 192.168.1.7 | pc-home-m1-mini | iOS builds, Expo, GitHub Actions runner |
+| Machine | Chip | RAM | IP | inventory host | scutil hostname | Role |
+|---------|------|-----|-----|----------------|-----------------|------|
+| Mac Studio | M3 Ultra | 512 GB | 192.168.1.4 | `mac-studio` | mac-studio | **LLM inference node (MLX)** |
+| Mac Mini | M1 | 16 GB | 192.168.1.7 | `mac-mini` | pc-home-m1-mini | **CI runner** |
 
-## Purpose
+### What lives where (post-split manifest)
 
-These machines run **native macOS workloads** that can't run in containers or on Linux:
+| | mac-studio (LLM node) | mac-mini (CI node) |
+|---|---|---|
+| **Runs** | MLX server `com.mlx-server` :8090 (4 models), node_exporter :9100, powermetrics textfile sampler | GH Actions runner `mac-mini-mac`, node_exporter :9100, iOS toolchain (Xcode, CocoaPods, node/pnpm/yarn, JDK17) |
+| **Removed** | GH runner (torn down + deregistered); brew `node@20`/`pnpm`/`yarn`/`cocoapods`/`openjdk@17`; `Xcode.app`; `~/actions-runner`; (optional) `~/dev/bnb/platform` | — |
+| **Kept despite debloat** | `node` (used by `opencode`), `ruby` (used by `cocoapods`+`tmuxinator`), `node_exporter` | full toolchain |
+| **Tuned** | `iogpu.wired_limit_mb=491520` (480 GB); Spotlight/Time Machine/Siri/analytics/Power+App Nap off | — |
 
-- **Xcode / iOS builds** - compile, sign, and archive iOS apps
-- **Expo prebuild** - generate native iOS/Android projects
-- **CocoaPods** - iOS dependency management
-- **TestFlight submission** - upload IPA to App Store Connect
-- **GitHub Actions self-hosted runners** - CI/CD for mobile builds
+The split is expressed as **per-host plays** in `ansible/playbooks/site.yml`. No mobile workflow pins a runner by name (only by the `[self-hosted, macOS, arm64]` label set), so demoting mac-studio is transparent to CI as long as mac-mini is online.
 
-They are **not** part of the K3s cluster (K3s is Linux-only). The Pi cluster handles containerized workloads; Macs handle Apple-native workloads.
+## Role: LLM inference node (mac-studio)
 
-## LLM Inference (Mac Studio)
+Runs a single `mlx-openai-server` (cubist38) process serving chat, vision, and embedding models from one OpenAI-compatible endpoint on `:8090`. (This replaced the retired three-service `com.mlx-lm.{code,smart,reasoning}` layout on 8080/8081/8082.)
 
-The Mac Studio runs three `mlx_lm.server` instances as launchd services for local LLM inference:
+Currently served (`mlx_models` in `roles/launchd-mlx-server/defaults/main.yml`): `code` (Qwen3-Coder-Next-4bit), `reasoning` (Qwen3.6-35B-A3B-4bit), `fast` (Qwen3-4B), `embedding` (modernbert-embed-base-4bit) — ~68 GB pinned of 512 GB.
 
-| Service | Model | Port | Launchd Label |
-|---------|-------|------|---------------|
-| Code | mlx-community/Qwen3-Coder-Next-4bit | 8080 | com.mlx-lm.code |
-| Smart | mlx-community/Qwen3-235B-A22B-4bit-DWQ | 8081 | com.mlx-lm.smart |
-| Reasoning | mlx-community/DeepSeek-R1-Distill-Qwen-32B-MLX-4Bit | 8082 | com.mlx-lm.reasoning |
-
-- **Python venv:** `~/mlx-env`
-- **Logs:** `/tmp/mlx-lm-{code,smart,reasoning}.log`
-
-### Management
+- **Python venv:** `~/mlx-env` (not created by Ansible; `launchd-mlx-server` asserts it exists)
+- **LaunchAgent:** `~/Library/LaunchAgents/com.mlx-server.plist` (per-user — Metal needs a logged-in GUI session, NOT a LaunchDaemon)
 
 ```bash
-# Stop/start a service
-launchctl stop com.mlx-lm.code
-launchctl start com.mlx-lm.code
-
-# Check all MLX services
-launchctl list | grep mlx
-
-# View logs
-tail -f /tmp/mlx-lm-code.log
-
-# Verify API
-curl http://192.168.1.4:8080/v1/models
+launchctl list | grep mlx-server        # com.mlx-server, numeric PID
+curl http://192.168.1.4:8090/v1/models  # list served models
+tail -f /tmp/mlx-server.log
 ```
 
-## Initial Setup (New Mac)
+### Ansible roles on this box
 
-### Prerequisites
+- **`launchd-mlx-server`** — the MLX server itself (models, config, HF token).
+- **`launchd-powermetrics-textfile`** — feeds Apple-Silicon GPU/ANE/CPU power into node_exporter.
+- **`macos-llm-node`** — the *specialization*: removes CI/build bloat, applies reversible OS debloat, and installs the LLM tuning (`iogpu.wired_limit_mb`) as a root LaunchDaemon. See `roles/macos-llm-node/README.md` for the full var table + an "Unapply" section (every toggle is reversible).
+- **`macos-baseline`** (shared) — power persistence + SSH key sync + auto-login/FileVault assert.
 
-- macOS with Xcode installed from App Store
-- Static IP assigned (via router DHCP reservation or manual)
-- SSH entry added to workstation `~/.ssh/config`
+### LLM tuning: `iogpu.wired_limit_mb`
 
-### 1. Bootstrap SSH Access
+macOS caps how much unified memory the GPU/Metal may wire for model weights (~65-75% by default). On a 512 GB M3 Ultra that fences off ~130-180 GB. `macos-llm-node` raises it to **491520 MB (480 GB)**, leaving a 32 GB OS reserve. macOS does not persist `sysctl -w` (and ignores `/etc/sysctl.conf`), so a root LaunchDaemon `com.kblab.llm-sysctl` (`RunAtLoad`) re-applies it at every boot; the role also applies it live so no reboot is needed to converge.
 
-From the new Mac's terminal:
 ```bash
-# Clone dotfiles
-git clone https://github.com/kblack0610/.dotfiles.git ~/.dotfiles
-
-# Run the universal installer (detects macOS, installs everything)
-cd ~/.dotfiles/.local/src/installation_scripts
-bash install.sh
+ssh mac-studio "sysctl iogpu.wired_limit_mb"   # 491520
+ssh mac-studio "cat /tmp/llm-sysctl.log"       # boot-time apply log
 ```
 
-This installs Homebrew, dev tools, applies macOS defaults (auto-login, no sleep, disable FileVault), and adds the workstation's SSH key to `~/.ssh/authorized_keys`.
+**Never approach the full 512 GB** — starving macOS of wired memory hard-hangs the box. Watch Activity Monitor memory pressure after changing it. Revert with `sudo sysctl -w iogpu.wired_limit_mb=0` (Apple default) + remove the LaunchDaemon.
 
-### 2. Install build dependencies
+### Headless prerequisites (or it won't recover unattended)
 
-On the new Mac (still native, one-time — installs node@20, pnpm, cocoapods, Java 17, etc. that Ansible does not yet manage):
+- **FileVault OFF + auto-login ON** — MLX/Metal needs a logged-in WindowServer session, and auto-login requires FileVault off. `macos-baseline` asserts this. **macOS 26 Tahoe re-enables FileVault by default** (incl. on upgrades); if `fdesetup status` shows On, run `sudo fdesetup disable` (interactive: admin pw + a secure-token user) + reboot before trusting recovery.
+- **1080p HDMI dummy plug** — with no display attached macOS gives only a low-res virtual framebuffer and can throttle Metal init. Fit a cheap **1080p** (not 4K) dummy plug and reboot once. (mac-studio currently reports a 1920x1080 display — satisfied.)
+
+## Role: CI runner (mac-mini)
+
+The sole self-hosted runner for `BlackNBrownStudios/platform` mobile CI. Native macOS workloads that can't run in a container: Xcode/iOS builds, Expo prebuild, CocoaPods, TestFlight submission.
+
+- **Runner:** `mac-mini-mac`, labels `[self-hosted, macOS, arm64]`, per-user LaunchAgent (`github-actions-runner-mac` role, `present` mode).
+- **Toolchain (installed by the platform repo's `tools/setup-mac-runner.sh`, not Ansible):** Xcode, CocoaPods, node/pnpm/yarn, JDK17, ruby.
+
+**Capacity note:** 16 GB RAM is the ceiling. Fine for single-stream iOS builds but tight — Xcode + a booted Simulator + Metal/UI tests push 16 GB into swap. Keep runner concurrency at 1 (a single runner process already = 1 concurrent job) and periodically clear DerivedData / simulator runtimes / npm+CocoaPods caches. If mobile CI volume grows, 16 GB is the first bottleneck.
+
+### Workflows
+
+| Workflow | File | Trigger | Runner |
+|----------|------|---------|--------|
+| Mobile Local Build | `mobile-local-build.yml` | PRs to main (mobile changes) | `[self-hosted, macOS]` |
+| Mobile Local Release | `mobile-local-release.yml` | Git tags `*-mobile-v*.*.*` | `[self-hosted, macOS]` |
+| Deploy Mobile (backup) | `deploy-mobile.yml` | Manual | `ubuntu-latest` (EAS Cloud) |
+
+### Required GitHub Secrets
+
+**iOS:** `KEYCHAIN_PASSWORD` (login pw for keychain unlock), `APPLE_ID`, `EXPO_APPLE_PASSWORD` (app-specific pw), `APPLE_TEAM_ID`.
+**Android:** `ANDROID_KEYSTORE_BASE64`, `ANDROID_KEYSTORE_PASSWORD`, `ANDROID_KEY_ALIAS`, `ANDROID_KEY_PASSWORD`, `GOOGLE_PLAY_SERVICE_ACCOUNT_KEY`.
+
+## Reprovision from bare metal
+
+Both flows start the same: on the new Mac, `git clone https://github.com/kblack0610/.dotfiles.git ~/.dotfiles && cd ~/.dotfiles/.local/src/installation_scripts && bash install.sh` (Homebrew, dev tools, macOS defaults, workstation SSH key). Then add/confirm the host in `ansible/inventory.yml` under `macos_hosts` and run from the workstation with `ANSIBLE_VAULT_PASSWORD_FILE=$HOME/.ansible-vault-pass` (become password for `-K` is rbw item `mac_fleet_password`).
+
+### LLM node (mac-studio)
+
 ```bash
-git clone https://github.com/BlackNBrownStudios/platform.git ~/dev/bnb/platform
-cd ~/dev/bnb/platform
-./tools/setup-mac-runner.sh   # build tools only; do NOT register the runner here
-```
-
-### 3. Register the runner + persistence via Ansible (from the workstation)
-
-Everything below the build tools is Ansible-managed. Add the host to `ansible/inventory.yml` under `macos_hosts`, then from the workstation:
-
-```bash
+# 1. MLX venv (native, one-time): python3.12 -m venv ~/mlx-env && ~/mlx-env/bin/pip install mlx-openai-server
+# 2. Confirm FileVault off + auto-login on + a 1080p display/dummy-plug attached.
 cd ~/dev/home/home-config/ansible
-export ANSIBLE_VAULT_PASSWORD_FILE=$HOME/.ansible-vault-pass
-
-# Dry-run first (per role README). -K prompts for the Mac's sudo password
-# (needed by the pmset power tasks; no NOPASSWD sudo on these boxes).
-ansible-playbook playbooks/site.yml --limit <host> --tags mac -K --check --diff
-
-# Apply. On a fresh box the runner registers cleanly; on a box with a stale
-# orphaned registration, add force_reregister to self-heal it.
-ansible-playbook playbooks/site.yml --limit <host> --tags mac -K \
-  -e gh_runner_mac_force_reregister=true
+ansible-playbook playbooks/site.yml --limit mac-studio --tags mac -K --check --diff   # review first
+ansible-playbook playbooks/site.yml --limit mac-studio --tags mac -K                  # apply
+# Verify:
+gh api repos/BlackNBrownStudios/platform/actions/runners --jq '.runners[]|.name'  # NO mac-studio-mac
+ssh mac-studio "curl -s http://127.0.0.1:8090/v1/models | head -c 80"             # MLX serving
+ssh mac-studio "sysctl iogpu.wired_limit_mb"                                       # 491520
 ```
 
-This binds two roles (`ansible/playbooks/site.yml`, `hosts: macos_hosts`):
+The mac-studio play sets the destructive removal vars (`macos_llm_node_remove_xcode`, `..._platform_checkout`, `..._runner_dir`) true — always `--check --diff` first, and note the checkout removal HARD-FAILS if `~/dev/bnb/platform` has uncommitted/unpushed work.
 
-- **`macos-baseline`** — power policy (`pmset autorestart 1` + no-sleep), syncs the workstation SSH key into `authorized_keys` (so you can't get locked out), and asserts auto-login is on + FileVault off.
-- **`github-actions-runner-mac`** — downloads/registers the runner as a per-user LaunchAgent. The registration token is minted on the workstation via the already-authenticated `gh` CLI (`gh_runner_mac_token_source: gh`) — no PAT stored in the repo.
+### CI node (mac-mini)
 
-Verify:
 ```bash
-gh api repos/BlackNBrownStudios/platform/actions/runners --jq '.runners[]|{name,status}'  # both online
-ssh <host> "launchctl list | grep actions.runner"   # numeric PID, not '-'
-ssh <host> "pmset -g | grep autorestart"            # autorestart 1
+# 1. Build tools (native, one-time): git clone platform && ./tools/setup-mac-runner.sh  (do NOT register here)
+cd ~/dev/home/home-config/ansible
+ansible-playbook playbooks/site.yml --limit mac-mini --tags mac -K --check --diff
+# Fresh box registers cleanly; a stale orphaned registration needs force:
+ansible-playbook playbooks/site.yml --limit mac-mini --tags mac -K -e gh_runner_mac_force_reregister=true
+# Verify:
+gh api repos/BlackNBrownStudios/platform/actions/runners --jq '.runners[]|{name,status}'  # mac-mini-mac online
+ssh mac-mini "launchctl list | grep actions.runner"   # numeric PID
 ```
 
 ## Power / persistence (survive a power failure)
 
-The load-bearing setting is `pmset autorestart 1`: after a power cut the Mac boots itself, auto-login reaches a logged-in session, and the runner's LaunchAgent (`RunAtLoad`) brings the runner back online — no human needed. `macos-baseline` sets and asserts this; `autorestart 0` is why both Macs previously stayed dark after outages (found 2026-07-17). FileVault MUST stay off and auto-login on, or the boot stops at the login window and nothing recovers.
+The load-bearing setting is `pmset autorestart 1`: after a power cut the Mac boots itself, auto-login reaches a logged-in session, and the per-user LaunchAgent (`RunAtLoad`) brings the workload (MLX or runner) back online — no human needed. `macos-baseline` sets and asserts this; `autorestart 0` is why both Macs previously stayed dark after outages (found 2026-07-17). FileVault MUST stay off and auto-login on, or the boot stops at the login window and nothing recovers.
 
 ## Why not MDM
 
-Considered and rejected. MDM's unique capability is zero-touch DEP/ADE enrollment, which requires Apple Business Manager (DUNS + business verification). Everything we actually need — power policy, auto-login, runner, SSH keys — is host-OS config that Ansible already owns per this repo's deployment model (`docs/gitops.md`). Without ABM, MDM only offers user-removable profiles, which is weaker than Ansible and adds a server to run. It also does not solve power-failure recovery; that is purely `pmset autorestart`.
+Considered and rejected. MDM's unique capability is zero-touch DEP/ADE enrollment, which requires Apple Business Manager (DUNS + business verification). Everything we actually need — power policy, auto-login, runner, SSH keys, debloat, tuning — is host-OS config that Ansible already owns per this repo's deployment model (`docs/gitops.md`). Without ABM, MDM only offers user-removable profiles, which is weaker than Ansible and adds a server to run. It also does not solve power-failure recovery; that is purely `pmset autorestart`.
 
-## macOS Defaults
-
-Auto-login, no-sleep, and FileVault-off are applied by the install script; **`pmset autorestart` and no-sleep are enforced idempotently by the `macos-baseline` Ansible role** (source of truth for power policy).
+## macOS Defaults / debloat ownership
 
 | Setting | Value | Why | Owner |
 |---------|-------|-----|-------|
@@ -131,41 +135,16 @@ Auto-login, no-sleep, and FileVault-off are applied by the install script; **`pm
 | Wake-on-LAN (womp) | Enabled | Remote wake | macos-baseline (pmset) |
 | FileVault | Disabled | Allows auto-login on restart | install script (asserted by macos-baseline) |
 | Auto-login | Enabled (current user) | Unattended restarts after power outage | install script (asserted by macos-baseline) |
-| Key repeat / Spotlight shortcut | Fast / Disabled | Dev preference | install script |
+| **Spotlight index / Time Machine / Siri / analytics / Power+App Nap** | **Off** | **Headless LLM node debloat** | **macos-llm-node** (mac-studio only, all reversible) |
+| **iogpu.wired_limit_mb** | **491520 (480 GB)** | **Large-model MLX headroom** | **macos-llm-node** (LaunchDaemon) |
 
-## Workflows
-
-| Workflow | File | Trigger | Runner |
-|----------|------|---------|--------|
-| Mobile Local Build | `mobile-local-build.yml` | PRs to main (mobile changes) | `[self-hosted, macOS]` |
-| Mobile Local Release | `mobile-local-release.yml` | Git tags `*-mobile-v*.*.*` | `[self-hosted, macOS]` |
-| Deploy Mobile (backup) | `deploy-mobile.yml` | Manual | `ubuntu-latest` (EAS Cloud) |
-
-## Required GitHub Secrets
-
-### iOS
-| Secret | Purpose |
-|--------|---------|
-| `KEYCHAIN_PASSWORD` | Mac login password for keychain unlock during code signing |
-| `APPLE_ID` | Apple ID for TestFlight upload |
-| `EXPO_APPLE_PASSWORD` | App-specific password for Apple ID |
-| `APPLE_TEAM_ID` | Apple Developer Team ID |
-
-### Android
-| Secret | Purpose |
-|--------|---------|
-| `ANDROID_KEYSTORE_BASE64` | Base64-encoded keystore file |
-| `ANDROID_KEYSTORE_PASSWORD` | Keystore password |
-| `ANDROID_KEY_ALIAS` | Key alias name |
-| `ANDROID_KEY_PASSWORD` | Key password |
-| `GOOGLE_PLAY_SERVICE_ACCOUNT_KEY` | Google Play service account JSON |
+Only user-space + supported knobs are touched (`defaults`/`mdutil`/`tmutil`/`pmset`/`sysctl`, and `bootout` of user agents). SIP-protected `/System/Library` daemons (`mDNSResponder`, `opendirectoryd`, `sshd`, `WindowServer`, ...) are NEVER touched — they break SSH/login/Metal and are SIP-revived anyway.
 
 ## SSH Access
 
-From the workstation:
 ```bash
-ssh m1            # Mac Mini M1
-ssh mac-studio    # Mac Studio M3 Ultra
+ssh m1            # Mac Mini M1  (user kennethblack, 192.168.1.7)
+ssh mac-studio    # Mac Studio M3 Ultra (user kblack0610, 192.168.1.4)
 ```
 
 SSH config (`~/.ssh/config`):
@@ -181,75 +160,45 @@ Host mac-studio
     IdentityFile ~/.ssh/id_ed25519
 ```
 
-## Troubleshooting
-
-### Runner offline after reboot
-```bash
-ssh m1
-~/actions-runner/svc.sh status
-~/actions-runner/svc.sh start
-```
-
-### Runner not picking up jobs
-```bash
-# Check logs
-tail -f ~/actions-runner/_diag/Runner_*.log
-
-# Verify environment
-cat ~/actions-runner/.env
-```
-
-### Can't SSH after reboot
-Likely `SetEnv` issue in SSH config. Use:
-```bash
-ssh -F /dev/null kennethblack@192.168.1.7
-```
-
-### Build fails with code signing error
-```bash
-# Unlock keychain manually
-security unlock-keychain ~/Library/Keychains/login.keychain-db
-```
-
 ## Monitoring
 
-Both Macs run [node_exporter](https://github.com/prometheus/node_exporter) via Homebrew, scraped by Prometheus in the K3s cluster.
-
-### Stack
-
-```
-node_exporter (port 9100) → Prometheus (ServiceMonitor) → Grafana / Home Assistant
-```
-
-### Install / Verify
+Both Macs run [node_exporter](https://github.com/prometheus/node_exporter) on `:9100` (managed by the `node-exporter-mac` role), scraped by cluster Prometheus via the `mac-nodes` ServiceMonitor (`apps/monitoring/external-mac-nodes.yaml`, every 30s). mac-studio additionally exports Apple-Silicon GPU/ANE/CPU power via the powermetrics textfile sampler.
 
 ```bash
-# Install (already in install_mac.sh)
-brew install node_exporter
-brew services start node_exporter
-
-# Verify
 curl -s http://192.168.1.4:9100/metrics | head -5   # Mac Studio
 curl -s http://192.168.1.7:9100/metrics | head -5   # Mac Mini
 ```
 
-### Dashboards
-
 | Dashboard | URL |
 |-----------|-----|
-| Mac Studio metrics | http://192.168.1.4:9100/metrics |
-| Mac Mini metrics | http://192.168.1.7:9100/metrics |
-| Grafana (Node Exporter Full) | Import dashboard ID `1860` and filter by instance |
-| Home Assistant | Homelab dashboard → Mac Machines section |
+| Grafana (Node Exporter Full) | Import dashboard ID `1860`, filter by instance |
+| Home Assistant | Homelab dashboard -> Mac Machines section |
 
-### K8s Resources
+## Troubleshooting
 
-- `apps/monitoring/external-mac-nodes.yaml` — headless Service + Endpoints + ServiceMonitor
-- Prometheus scrapes both IPs every 30s via the `mac-nodes` ServiceMonitor
+### MLX not serving (mac-studio)
+```bash
+ssh mac-studio "launchctl kickstart -k gui/$(id -u)/com.mlx-server"   # restart the LaunchAgent
+ssh mac-studio "tail -50 /tmp/mlx-server.log"
+```
+
+### Runner offline after reboot (mac-mini)
+```bash
+ssh m1 "~/actions-runner/svc.sh status && ~/actions-runner/svc.sh start"
+tail -f ~/actions-runner/_diag/Runner_*.log   # jobs not picked up
+```
+
+### Can't SSH after reboot
+Likely a `SetEnv` issue in SSH config: `ssh -F /dev/null kennethblack@192.168.1.7`.
+
+### Build fails with code signing error (mac-mini)
+```bash
+security unlock-keychain ~/Library/Keychains/login.keychain-db
+```
 
 ## Maintenance
 
-- **Xcode updates**: Install from App Store, then `sudo xcode-select -s /Applications/Xcode.app`
-- **Homebrew updates**: `brew update && brew upgrade`
-- **Runner updates**: Runner auto-updates when GitHub releases new versions
-- **Check runner health**: `https://github.com/BlackNBrownStudios/platform/settings/actions/runners`
+- **Homebrew updates:** `brew update && brew upgrade`
+- **Runner updates (mac-mini):** auto-updates when GitHub releases a new version.
+- **Xcode (mac-mini only):** install from App Store, then `sudo xcode-select -s /Applications/Xcode.app`. mac-studio intentionally has no Xcode (CLT only).
+- **Runner health:** `https://github.com/BlackNBrownStudios/platform/settings/actions/runners`

@@ -47,6 +47,7 @@ resources:
   - openwakeword
   - orcaslicer
   - postgres
+  - print-service
   - sops-backup-rbac
   - spotify-concerts
   - time-tangle

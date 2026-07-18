@@ -1,0 +1,18 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+namespace: orcaslicer
+
+resources:
+  - deployment.yaml
+  - service.yaml
+
+# server.py is shipped as a hashed ConfigMap so any edit rolls the Deployment.
+configMapGenerator:
+  - name: print-service-server
+    files:
+      - server.py
+
+generatorOptions:
+  # keep the hash suffix (default) so a server.py change triggers a rollout
+  disableNameSuffixHash: false

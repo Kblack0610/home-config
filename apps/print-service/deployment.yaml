@@ -1,0 +1,85 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: print-service
+  namespace: orcaslicer
+  labels:
+    app.kubernetes.io/name: print-service
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: print-service
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: print-service
+    spec:
+      # Co-located with the NAS 3d-printing share (hostPath on asus-laptop),
+      # same as the OrcaSlicer GUI. Slicing is CPU-only, so no GPU/privileged.
+      nodeSelector:
+        kubernetes.io/hostname: asus-laptop
+        storage.role/nas: "true"
+      containers:
+        - name: print-service
+          # Reuses the OrcaSlicer image purely for the `orca-slicer` CLI binary
+          # and its bundled python3; the Selkies desktop entrypoint is bypassed.
+          image: lscr.io/linuxserver/orcaslicer:v2.3.2-ls9
+          command: ["/lsiopy/bin/python3", "/app/server.py"]
+          env:
+            - name: PORT
+              value: "8080"
+            - name: HOME
+              value: /tmp
+            - name: QT_QPA_PLATFORM
+              value: offscreen
+            - name: SEED_DIR
+              value: /seed
+            - name: PRINTS_DIR
+              value: /prints
+            - name: NEPTUNE_MOONRAKER_URL
+              value: http://neptune.neptune.svc.cluster.local:7125
+          ports:
+            - name: http
+              containerPort: 8080
+          volumeMounts:
+            - name: server
+              mountPath: /app
+              readOnly: true
+            - name: profiles
+              mountPath: /seed
+              readOnly: true
+            - name: prints
+              mountPath: /prints
+          resources:
+            requests:
+              memory: "256Mi"
+              cpu: "200m"
+            limits:
+              memory: "2Gi"
+              cpu: "2000m"
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: 8080
+            initialDelaySeconds: 10
+            periodSeconds: 20
+          readinessProbe:
+            httpGet:
+              path: /healthz
+              port: 8080
+            initialDelaySeconds: 5
+            periodSeconds: 10
+      volumes:
+        - name: server
+          configMap:
+            name: print-service-server
+        - name: profiles
+          configMap:
+            name: orcaslicer-profiles   # shared with the OrcaSlicer GUI app
+        - name: prints
+          hostPath:
+            path: /mnt/nas/public/3d-printing
+            type: DirectoryOrCreate

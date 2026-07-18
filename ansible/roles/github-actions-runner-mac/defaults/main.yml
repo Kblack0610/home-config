@@ -27,3 +27,17 @@ gh_runner_mac_labels:
   - self-hosted
   - macOS
   - "{{ gh_runner_mac_arch }}"
+
+# Registration-token source:
+#   gh  — mint on the control node via the authenticated `gh` CLI (default;
+#         no standing secret in the repo). Workstation applies.
+#   pat — GitHub REST API with vault_github_pat. For the in-cluster
+#         ansible-runner CronJob, which has no `gh` binary.
+gh_runner_mac_token_source: gh
+
+# Self-heal a stale/orphaned local registration (a .runner marker whose
+# GitHub-side runner was dropped). When true, the role stops + uninstalls the
+# LaunchAgent and removes the marker before reconfiguring. Default false so
+# steady-state drift-checks stay idempotent no-ops. Pass
+# `-e gh_runner_mac_force_reregister=true` for the one-time recovery apply.
+gh_runner_mac_force_reregister: false

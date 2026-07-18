@@ -73,51 +73,65 @@ bash install.sh
 
 This installs Homebrew, dev tools, applies macOS defaults (auto-login, no sleep, disable FileVault), and adds the workstation's SSH key to `~/.ssh/authorized_keys`.
 
-### 2. Set Up as GitHub Actions Runner
+### 2. Install build dependencies
 
-From the new Mac:
+On the new Mac (still native, one-time — installs node@20, pnpm, cocoapods, Java 17, etc. that Ansible does not yet manage):
 ```bash
-# Clone the platform repo
 git clone https://github.com/BlackNBrownStudios/platform.git ~/dev/bnb/platform
 cd ~/dev/bnb/platform
-
-# Install build dependencies (node@20, pnpm, cocoapods, Java 17, etc.)
-./tools/setup-mac-runner.sh
-
-# Register runner with GitHub (two options):
-
-# Option A: One-time token from GitHub UI
-# Get token from: https://github.com/BlackNBrownStudios/platform/settings/actions/runners/new
-./tools/register-mac-runner.sh <REGISTRATION_TOKEN>
-
-# Option B: PAT-based (can be automated)
-export GITHUB_PAT=ghp_xxxxxxxxxxxx
-./tools/register-mac-runner.sh --pat
+./tools/setup-mac-runner.sh   # build tools only; do NOT register the runner here
 ```
 
-The runner installs as a LaunchDaemon and auto-starts on boot.
+### 3. Register the runner + persistence via Ansible (from the workstation)
 
-### 3. Verify
+Everything below the build tools is Ansible-managed. Add the host to `ansible/inventory.yml` under `macos_hosts`, then from the workstation:
 
 ```bash
-# Check runner service
-~/actions-runner/svc.sh status
+cd ~/dev/home/home-config/ansible
+export ANSIBLE_VAULT_PASSWORD_FILE=$HOME/.ansible-vault-pass
 
-# Check on GitHub
-# https://github.com/BlackNBrownStudios/platform/settings/actions/runners
+# Dry-run first (per role README). -K prompts for the Mac's sudo password
+# (needed by the pmset power tasks; no NOPASSWD sudo on these boxes).
+ansible-playbook playbooks/site.yml --limit <host> --tags mac -K --check --diff
+
+# Apply. On a fresh box the runner registers cleanly; on a box with a stale
+# orphaned registration, add force_reregister to self-heal it.
+ansible-playbook playbooks/site.yml --limit <host> --tags mac -K \
+  -e gh_runner_mac_force_reregister=true
 ```
 
-## macOS Defaults (Applied by install script)
+This binds two roles (`ansible/playbooks/site.yml`, `hosts: macos_hosts`):
 
-| Setting | Value | Why |
-|---------|-------|-----|
-| Sleep | Disabled (all power sources) | Headless server, must stay awake |
-| Display sleep | Disabled | Same |
-| Hibernate | Disabled | Fast wake if sleep triggers |
-| FileVault | Disabled | Allows auto-login on restart |
-| Auto-login | Enabled (current user) | Unattended restarts after power outage |
-| Key repeat | Fast | Dev preference |
-| Spotlight shortcut | Disabled | Frees Cmd+Space for Raycast |
+- **`macos-baseline`** — power policy (`pmset autorestart 1` + no-sleep), syncs the workstation SSH key into `authorized_keys` (so you can't get locked out), and asserts auto-login is on + FileVault off.
+- **`github-actions-runner-mac`** — downloads/registers the runner as a per-user LaunchAgent. The registration token is minted on the workstation via the already-authenticated `gh` CLI (`gh_runner_mac_token_source: gh`) — no PAT stored in the repo.
+
+Verify:
+```bash
+gh api repos/BlackNBrownStudios/platform/actions/runners --jq '.runners[]|{name,status}'  # both online
+ssh <host> "launchctl list | grep actions.runner"   # numeric PID, not '-'
+ssh <host> "pmset -g | grep autorestart"            # autorestart 1
+```
+
+## Power / persistence (survive a power failure)
+
+The load-bearing setting is `pmset autorestart 1`: after a power cut the Mac boots itself, auto-login reaches a logged-in session, and the runner's LaunchAgent (`RunAtLoad`) brings the runner back online — no human needed. `macos-baseline` sets and asserts this; `autorestart 0` is why both Macs previously stayed dark after outages (found 2026-07-17). FileVault MUST stay off and auto-login on, or the boot stops at the login window and nothing recovers.
+
+## Why not MDM
+
+Considered and rejected. MDM's unique capability is zero-touch DEP/ADE enrollment, which requires Apple Business Manager (DUNS + business verification). Everything we actually need — power policy, auto-login, runner, SSH keys — is host-OS config that Ansible already owns per this repo's deployment model (`docs/gitops.md`). Without ABM, MDM only offers user-removable profiles, which is weaker than Ansible and adds a server to run. It also does not solve power-failure recovery; that is purely `pmset autorestart`.
+
+## macOS Defaults
+
+Auto-login, no-sleep, and FileVault-off are applied by the install script; **`pmset autorestart` and no-sleep are enforced idempotently by the `macos-baseline` Ansible role** (source of truth for power policy).
+
+| Setting | Value | Why | Owner |
+|---------|-------|-----|-------|
+| Auto-restart after power failure | Enabled | Unattended boot after outage | macos-baseline (pmset) |
+| Sleep / disk sleep / display sleep | Disabled | Headless server, must stay awake | macos-baseline (pmset) |
+| Wake-on-LAN (womp) | Enabled | Remote wake | macos-baseline (pmset) |
+| FileVault | Disabled | Allows auto-login on restart | install script (asserted by macos-baseline) |
+| Auto-login | Enabled (current user) | Unattended restarts after power outage | install script (asserted by macos-baseline) |
+| Key repeat / Spotlight shortcut | Fast / Disabled | Dev preference | install script |
 
 ## Workflows
 

@@ -6,17 +6,22 @@ Retires the manual flow at `BlackNBrownStudios/platform/tools/{setup-mac-runner,
 
 ## What it does
 
-1. Asserts `vault_github_pat` is set and not the placeholder (same secret used by the Linux role).
+1. Obtains a short-lived registration token (see **Token source** below).
 2. Downloads and extracts the pinned `actions-runner-osx-arm64-<ver>.tar.gz` into `~/actions-runner`.
-3. Fetches a short-lived registration token from the GitHub REST API using the PAT.
+3. Optionally self-heals a stale registration (see **Re-registration** below).
 4. Runs `./config.sh --unattended` (idempotent via `.runner` marker).
 5. Runs `./svc.sh install` and `./svc.sh start` — the runner becomes a LaunchAgent at `~/Library/LaunchAgents/actions.runner.<owner>-<repo>.<name>.plist`.
 
-## Required variables
+## Token source
 
-| Variable | Where | Notes |
-|----------|-------|-------|
-| `vault_github_pat` | `group_vars/macos_hosts/vault.yml` | PAT with `repo` scope. Same secret the Linux role uses — if you share the vault across groups, define it once. |
+`gh_runner_mac_token_source` selects how the registration token is minted:
+
+- **`gh`** (default) — minted on the **control node** via the already-authenticated `gh` CLI (`gh api ... /registration-token`). No standing secret in the repo; right for workstation applies. Requires `gh` logged in with `repo` scope on the target repo.
+- **`pat`** — GitHub REST API with `vault_github_pat`. For the in-cluster ansible-runner CronJob, which has no `gh` binary. Set a real PAT (scope `repo`) in `group_vars/macos_hosts/vault.yml`.
+
+## Re-registration
+
+The `config.sh` step is guarded by the `.runner` marker, so it is a no-op once a runner is registered. If the local marker is stale (GitHub already dropped the runner), pass `-e gh_runner_mac_force_reregister=true`: the role stops + uninstalls the LaunchAgent and removes the marker before reconfiguring. Default `false` keeps steady-state drift-checks idempotent.
 
 All other variables have defaults in `defaults/main.yml`.
 
@@ -37,7 +42,7 @@ In GitHub: `https://github.com/BlackNBrownStudios/platform/settings/actions/runn
 
 ## Binding in site.yml
 
-**Authored but NOT bound.** First apply against a live Mac re-registers the runner (the `--replace` flag will evict an existing runner with the same name). Don't run unattended — review the `--check --diff` output first.
+**Bound** in the `macOS baseline + monitoring` play (`hosts: macos_hosts`), alongside `macos-baseline`. Apply with the `mac` or `runner` tag. First recovery apply against the current orphaned boxes needs `-e gh_runner_mac_force_reregister=true`; review `--check --diff` first. The runner/authorized_keys tasks run as the login user, so `-K` is only needed for `macos-baseline`'s pmset tasks.
 
 ## Notes
 

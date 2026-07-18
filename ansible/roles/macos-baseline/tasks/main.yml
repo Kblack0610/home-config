@@ -1,0 +1,74 @@
+---
+# macOS host persistence baseline. Everything a headless Mac CI/build box
+# needs to survive a power cut and stay reachable, minus the runner itself
+# (that's the github-actions-runner-mac role). Three concerns:
+#   1. Power policy — boot after power failure, never sleep.
+#   2. SSH key sync — keep the workstation key present so we never get
+#      locked out (mac-mini did exactly that on 2026-07-17).
+#   3. Assert the unattended-restart prerequisites (auto-login + no FileVault),
+#      failing loudly rather than silently leaving a box that won't come back.
+
+# --- 1. Power persistence -------------------------------------------------
+# pmset requires root. Idempotent: read the current value per setting and
+# only write when it differs, so re-runs report 'ok'. `autorestart 1` is the
+# load-bearing setting — without it a Mac stays powered off after an outage.
+- name: Apply macOS power persistence settings (idempotent)
+  become: true
+  ansible.builtin.shell: |
+    set -euo pipefail
+    cur="$(pmset -g | awk -v k="{{ item.key }}" '$1==k {print $2; exit}')"
+    if [ "$cur" != "{{ item.value }}" ]; then
+      pmset -a {{ item.key }} {{ item.value }}
+      echo "CHANGED ${cur:-unset} -> {{ item.value }}"
+    else
+      echo "OK"
+    fi
+  loop: "{{ macos_power_settings }}"
+  loop_control:
+    label: "{{ item.key }}={{ item.value }}"
+  register: macos_pmset_apply
+  changed_when: "'CHANGED' in macos_pmset_apply.stdout"
+
+# --- 2. SSH key sync ------------------------------------------------------
+# Reads the control-node pubkey at apply time (no hardcoded key). exclusive:
+# false so we only add ours, never clobber other authorized keys.
+- name: Ensure workstation SSH key is authorized (prevents lockout)
+  ansible.posix.authorized_key:
+    user: "{{ ansible_user }}"
+    key: "{{ lookup('file', macos_workstation_pubkey_path) }}"
+    state: present
+    exclusive: false
+
+# --- 3. Unattended-restart prerequisites (read-only assert) ---------------
+# After autorestart boots the Mac, it must reach a LOGGED-IN session for the
+# runner's per-user LaunchAgent to fire. That needs auto-login ON and
+# FileVault OFF (FileVault gates the pre-login disk, blocking auto-login).
+# These are set by the install script / macOS defaults, not by Ansible — we
+# assert them so a misconfigured box fails the play instead of silently
+# becoming a machine that never comes back online.
+- name: Read auto-login user
+  ansible.builtin.command: defaults read /Library/Preferences/com.apple.loginwindow autoLoginUser
+  register: macos_autologin_user
+  changed_when: false
+  failed_when: false
+
+- name: Read FileVault status
+  ansible.builtin.command: fdesetup status
+  register: macos_filevault
+  changed_when: false
+
+- name: Assert unattended-restart prerequisites (auto-login on, FileVault off)
+  ansible.builtin.assert:
+    that:
+      - macos_autologin_user.rc == 0
+      - (macos_autologin_user.stdout | trim | length) > 0
+      - "'FileVault is Off' in macos_filevault.stdout"
+    fail_msg: >-
+      This Mac will not return to a logged-in session after a power failure.
+      Required: auto-login enabled (current: '{{ macos_autologin_user.stdout | trim }}')
+      AND FileVault off (current: '{{ macos_filevault.stdout | trim }}').
+      Fix in System Settings > Users & Groups (auto-login) and
+      System Settings > Privacy & Security > FileVault, then re-run.
+    success_msg: >-
+      Unattended restart OK — auto-login user '{{ macos_autologin_user.stdout | trim }}',
+      FileVault off.

@@ -78,6 +78,10 @@
 # The github-actions-runner-linux role is KEPT — the dodginballs Unity runner
 # (hp-victus, below) still uses it.
 
+# macOS build/CI boxes (mac-studio, mac-mini). The runner + authorized_keys
+# tasks run as the login user; only macos-baseline's pmset tasks self-elevate
+# (become: true), so applying the [mac]/[persistence] tags needs an
+# interactive sudo password: add `-K`. See docs/mac-machines.md.
 - name: macOS baseline + monitoring (safe Phase D roles)
   hosts: macos_hosts
   gather_facts: true
@@ -86,6 +90,16 @@
       tags: [brew, mac]
     - role: node-exporter-mac
       tags: [monitoring, mac]
+    # Host persistence: auto-restart after power failure, no sleep, SSH key
+    # sync, and assert auto-login/FileVault so the box comes back unattended.
+    - role: macos-baseline
+      tags: [mac, persistence]
+    # Self-hosted GitHub Actions runner (mobile CI). token_source=gh mints a
+    # registration token via the workstation's `gh` — no PAT in the repo.
+    # First recovery apply needs `-e gh_runner_mac_force_reregister=true` to
+    # clear the stale orphaned registration.
+    - role: github-actions-runner-mac
+      tags: [mac, runner]
 
 # Phase B: k3s-agent role is AUTHORED but not bound. Applying it against
 # running cluster nodes reinstalls k3s — the user enables this binding when

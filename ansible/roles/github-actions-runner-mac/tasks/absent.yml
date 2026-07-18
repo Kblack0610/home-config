@@ -1,0 +1,117 @@
+---
+# Teardown path (gh_runner_mac_state == 'absent'): demote this host from being
+# a self-hosted runner. Every step is best-effort and idempotent, so running
+# this against an already-clean box (no runner ever installed) is a no-op.
+#
+# Order matters: stop + uninstall the LaunchAgent FIRST (so the process isn't
+# holding the registration), THEN deregister GitHub-side with a removal token,
+# THEN wipe the local markers. If the GitHub-side removal can't run (no token,
+# repo already dropped the runner), the local LaunchAgent is still gone, so the
+# box stops being a runner regardless.
+
+- name: Check for an installed runner
+  ansible.builtin.stat:
+    path: "{{ gh_runner_mac_home }}/svc.sh"
+  register: gh_mac_svc
+
+- name: Stop the runner LaunchAgent (best effort)
+  ansible.builtin.command:
+    argv:
+      - "{{ gh_runner_mac_home }}/svc.sh"
+      - stop
+    chdir: "{{ gh_runner_mac_home }}"
+  failed_when: false
+  changed_when: true
+  when:
+    - gh_mac_svc.stat.exists
+    - not ansible_check_mode
+
+- name: Uninstall the runner LaunchAgent (best effort)
+  ansible.builtin.command:
+    argv:
+      - "{{ gh_runner_mac_home }}/svc.sh"
+      - uninstall
+    chdir: "{{ gh_runner_mac_home }}"
+  failed_when: false
+  changed_when: true
+  when:
+    - gh_mac_svc.stat.exists
+    - not ansible_check_mode
+
+# --- GitHub-side deregister (best effort) ---------------------------------
+# Mint a short-lived REMOVAL token the same two ways registration is minted:
+# gh CLI on the control node (default) or the REST API with a vault PAT.
+- name: Mint runner removal token via gh (control node)
+  ansible.builtin.command:
+    argv:
+      - gh
+      - api
+      - --method
+      - POST
+      - "repos/{{ gh_runner_mac_owner }}/{{ gh_runner_mac_repo }}/actions/runners/remove-token"
+      - --jq
+      - .token
+  delegate_to: localhost
+  register: gh_mac_gh_remove_token
+  changed_when: false
+  failed_when: false
+  no_log: true
+  when:
+    - gh_runner_mac_token_source == 'gh'
+    - not ansible_check_mode
+
+- name: Fetch runner removal token from GitHub (token_source=pat)
+  ansible.builtin.uri:
+    url: "https://api.github.com/repos/{{ gh_runner_mac_owner }}/{{ gh_runner_mac_repo }}/actions/runners/remove-token"
+    method: POST
+    headers:
+      Accept: application/vnd.github+json
+      Authorization: "Bearer {{ vault_github_pat }}"
+      X-GitHub-Api-Version: "2022-11-28"
+    status_code: 201
+    return_content: true
+  register: gh_mac_pat_remove_token
+  changed_when: false
+  failed_when: false
+  no_log: true
+  when:
+    - gh_runner_mac_token_source == 'pat'
+    - not ansible_check_mode
+
+- name: Resolve removal token from the selected source
+  ansible.builtin.set_fact:
+    gh_mac_remove_token: >-
+      {{ (gh_mac_gh_remove_token.stdout | default('') | trim)
+         if gh_runner_mac_token_source == 'gh'
+         else (gh_mac_pat_remove_token.json.token | default('')) }}
+  no_log: true
+  when: not ansible_check_mode
+
+- name: Deregister the runner from GitHub (config.sh remove)
+  ansible.builtin.command:
+    argv:
+      - "{{ gh_runner_mac_home }}/config.sh"
+      - remove
+      - --token
+      - "{{ gh_mac_remove_token }}"
+    chdir: "{{ gh_runner_mac_home }}"
+  failed_when: false
+  changed_when: true
+  no_log: true
+  when:
+    - gh_mac_svc.stat.exists
+    - (gh_mac_remove_token | default('') | length) > 0
+    - not ansible_check_mode
+
+# config.sh remove usually clears these itself, but wipe them unconditionally
+# so a demoted box can never be seen as "already configured" by a later run.
+- name: Remove local runner registration markers
+  ansible.builtin.file:
+    path: "{{ gh_runner_mac_home }}/{{ item }}"
+    state: absent
+  loop:
+    - .runner
+    - .runner_migrated
+    - .credentials
+    - .credentials_migrated
+    - .credentials_rsaparams

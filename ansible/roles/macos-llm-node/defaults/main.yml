@@ -1,0 +1,71 @@
+---
+# macos-llm-node — turn a Mac into a dedicated LLM inference node: strip the
+# CI/build tooling, apply safe + reversible OS debloat, and tune Apple Silicon
+# for large-model MLX. Does NOT own MLX itself (that's launchd-mlx-server).
+#
+# Every debloat/tuning action is reversible — the exact undo is in each task's
+# `# REVERSIBLE:` comment and collected in the role README "Unapply" section.
+
+# --- 1. CI/build Homebrew formulae to remove ------------------------------
+# The build toolchain the platform runner installed on mac-studio (2026-07-18
+# audit), filtered to formulae with NO other dependents (verified live via
+# `brew uses --installed <f>`). The homebrew module refuses to orphan-break a
+# depended-on formula, so keep this list dependency-free.
+#
+# DELIBERATELY EXCLUDED (kept — they are runtime deps of tools the box uses):
+#   node  — required by `opencode` (AI CLI the user runs here)
+#   ruby  — required by `cocoapods` AND `tmuxinator`
+# node_exporter is also excluded (monitoring stays).
+macos_llm_node_remove_brew_packages:
+  - node@20
+  - pnpm
+  - yarn
+  - cocoapods
+  - openjdk@17
+
+# --- 2. Filesystem debloat (DESTRUCTIVE, default-false) --------------------
+# Xcode is ~20-40 GB and useless on a box that will never build iOS again.
+# MLX only needs the Command Line Tools (pip wheels + Metal runtime), so after
+# removing Xcode we repoint the active developer dir at the CLT.
+macos_llm_node_remove_xcode: false
+macos_llm_node_xcode_path: /Applications/Xcode.app
+macos_llm_node_clt_path: /Library/Developer/CommandLineTools
+
+# The platform monorepo checkout the old runner used. Guarded: the role
+# HARD-FAILS if the checkout has uncommitted OR unpushed work before deleting.
+macos_llm_node_remove_platform_checkout: false
+macos_llm_node_platform_checkout_path: "{{ ansible_env.HOME }}/dev/bnb/platform"
+
+# The runner install dir. Only removed AFTER the runner is torn down in absent
+# mode (github-actions-runner-mac state=absent), so we never orphan a live
+# LaunchAgent. Default-false; the mac-studio play opts in.
+macos_llm_node_remove_runner_dir: false
+macos_llm_node_runner_dir: "{{ ansible_env.HOME }}/actions-runner"
+
+# --- 3. OS-level debloat toggles (all reversible) -------------------------
+# Default-true on a dedicated LLM node; each is individually flippable and the
+# reverse command is documented per task + in the README.
+macos_llm_node_disable_spotlight: true      # REVERSE: sudo mdutil -a -i on
+macos_llm_node_erase_spotlight_index: true  # reclaim disk after disabling
+macos_llm_node_disable_timemachine: true    # REVERSE: sudo tmutil enable
+macos_llm_node_disable_siri: true           # REVERSE: Assistant Enabled -bool true
+macos_llm_node_disable_analytics: true      # REVERSE: AutoSubmit -bool true
+macos_llm_node_disable_powernap: true       # REVERSE: sudo pmset -a powernap 1
+macos_llm_node_disable_appnap: true         # REVERSE: defaults delete NSGlobalDomain NSAppSleepDisabled
+
+# --- 4. Apple Silicon LLM tuning (persisted sysctls) ----------------------
+# macOS does not persist `sysctl -w` and ignores /etc/sysctl.conf, so a root
+# LaunchDaemon (RunAtLoad) re-applies these every boot. They are ALSO applied
+# immediately on the run, so no reboot is needed to converge.
+#
+# iogpu.wired_limit_mb — max unified memory the GPU/Metal may wire for model
+# weights. Default policy caps ~65-75% of RAM; on a 512 GB M3 Ultra that fences
+# off ~130-180 GB. 491520 MB = 480 GB leaves a 32 GB OS reserve. NEVER approach
+# the full 512 GB — starving the OS of wired memory hard-hangs the box. Set to
+# {} to disable tuning (the LaunchDaemon still installs but is a no-op).
+macos_llm_node_sysctls:
+  iogpu.wired_limit_mb: 491520   # 480 GB of 512 GB (32 GB reserved for macOS)
+
+macos_llm_node_sysctl_label: com.kblab.llm-sysctl
+macos_llm_node_launchdaemons_dir: /Library/LaunchDaemons
+macos_llm_node_sysctl_script_path: /usr/local/sbin/apply-llm-sysctl.sh

@@ -1,10 +1,17 @@
 # github-actions-runner-mac
 
-Registers a GitHub Actions self-hosted runner on macOS (Apple Silicon) and installs it as a per-user LaunchAgent via `svc.sh install`.
+Manages the full lifecycle of a GitHub Actions self-hosted runner on macOS (Apple Silicon): registers + runs it as a per-user LaunchAgent, or tears it down and deregisters it. Which one is chosen by `gh_runner_mac_state` (see **State** below).
 
 Retires the manual flow at `BlackNBrownStudios/platform/tools/{setup-mac-runner,register-mac-runner}.sh` for the registration half. Build-tool installation (node@20, pnpm, cocoapods, Java 17) remains with `setup-mac-runner.sh` in the platform repo until a follow-up role picks it up.
 
-## What it does
+## State
+
+`gh_runner_mac_state` selects the desired end-state on the host:
+
+- **`present`** (default) — obtain a token, download/extract the pinned runner, `config.sh --unattended`, and `svc.sh install`/`start`. See **What it does (present)**.
+- **`absent`** — stop + uninstall the LaunchAgent, mint a *removal* token, `config.sh remove` (deregister GitHub-side), and wipe local markers. Best-effort + idempotent: a clean box is a no-op. Bind the role in absent mode to **demote** a host from being a runner. `mac-studio` uses this (it became a dedicated LLM node 2026-07-18); `mac-mini` is the sole `present` runner.
+
+## What it does (present)
 
 1. Obtains a short-lived registration token (see **Token source** below).
 2. Downloads and extracts the pinned `actions-runner-osx-arm64-<ver>.tar.gz` into `~/actions-runner`.
@@ -42,9 +49,14 @@ In GitHub: `https://github.com/BlackNBrownStudios/platform/settings/actions/runn
 
 ## Binding in site.yml
 
-**Bound** in the `macOS baseline + monitoring` play (`hosts: macos_hosts`), alongside `macos-baseline`. Apply with the `mac` or `runner` tag. First recovery apply against the current orphaned boxes needs `-e gh_runner_mac_force_reregister=true`; review `--check --diff` first. The runner/authorized_keys tasks run as the login user, so `-K` is only needed for `macos-baseline`'s pmset tasks.
+Bound in **two** per-host plays (2026-07-18 role split):
+
+- **`hosts: mac-mini`** (`present`, default) — the sole self-hosted mobile-CI runner. Apply with the `mac` or `runner` tag. A recovery apply against a stale/orphaned registration needs `-e gh_runner_mac_force_reregister=true`; review `--check --diff` first.
+- **`hosts: mac-studio`** (`gh_runner_mac_state: absent`) — tears the runner down so the LLM node stops being a CI target. Runs before the `macos-llm-node` + MLX plays.
+
+The runner tasks run as the login user (no `become`), so `-K` is only needed for `macos-baseline`'s pmset tasks in the shared baseline play.
 
 ## Notes
 
 - The runner binary auto-updates in place at runtime. The version default is only consulted on fresh install.
-- To reset: `~/actions-runner/svc.sh uninstall && rm -rf ~/actions-runner && <remove runner in GitHub UI>`, then re-run this role.
+- Manual reset: `~/actions-runner/svc.sh uninstall && rm -rf ~/actions-runner && <remove runner in GitHub UI>`, then re-run this role. The `absent` state does this for you (and deregisters GitHub-side).

@@ -1,0 +1,119 @@
+---
+# Filesystem debloat. Every removal is behind a default-false var so a plain
+# run never deletes anything; the mac-studio play opts in explicitly. All are
+# idempotent (file state=absent on a missing path is 'ok').
+
+# --- Xcode.app (MLX only needs the Command Line Tools) --------------------
+- name: Stat Xcode.app
+  ansible.builtin.stat:
+    path: "{{ macos_llm_node_xcode_path }}"
+  register: llm_xcode
+  when: macos_llm_node_remove_xcode | bool
+
+- name: Remove Xcode.app (destructive, guarded)
+  become: true
+  ansible.builtin.file:
+    path: "{{ macos_llm_node_xcode_path }}"
+    state: absent
+  when:
+    - macos_llm_node_remove_xcode | bool
+    - llm_xcode.stat.exists | default(false)
+  # REVERSIBLE (expensive): re-download Xcode from the App Store.
+
+# After Xcode is gone, xcode-select may still point at the removed bundle.
+# Repoint it at the CLT so `xcrun`, clang and the Metal runtime keep working
+# for MLX. Idempotent: only switch when the active dir isn't already the CLT.
+- name: Ensure Command Line Tools are installed
+  become: true
+  ansible.builtin.stat:
+    path: "{{ macos_llm_node_clt_path }}/usr/bin/clang"
+  register: llm_clt
+  when: macos_llm_node_remove_xcode | bool
+
+- name: Assert Command Line Tools are present before repointing
+  ansible.builtin.assert:
+    that:
+      - llm_clt.stat.exists | default(false)
+    fail_msg: >-
+      Command Line Tools not found at {{ macos_llm_node_clt_path }}. Run
+      `sudo xcode-select --install` on the Mac BEFORE removing Xcode, or MLX
+      loses its clang/Metal toolchain. Refusing to leave the box toolchain-less.
+  when: macos_llm_node_remove_xcode | bool
+
+- name: Point xcode-select at the Command Line Tools (idempotent)
+  become: true
+  ansible.builtin.shell: |
+    set -euo pipefail
+    cur="$(xcode-select -p 2>/dev/null || echo none)"
+    if [ "$cur" != "{{ macos_llm_node_clt_path }}" ]; then
+      xcode-select --switch "{{ macos_llm_node_clt_path }}"
+      echo "CHANGED ${cur} -> {{ macos_llm_node_clt_path }}"
+    else
+      echo "OK"
+    fi
+  register: llm_xcodeselect
+  changed_when: "'CHANGED' in llm_xcodeselect.stdout"
+  when: macos_llm_node_remove_xcode | bool
+  # REVERSIBLE: sudo xcode-select --switch /Applications/Xcode.app/Contents/Developer
+
+# --- platform monorepo checkout (CI-only) --------------------------------
+- name: Stat platform checkout .git
+  ansible.builtin.stat:
+    path: "{{ macos_llm_node_platform_checkout_path }}/.git"
+  register: llm_platform_git
+  when: macos_llm_node_remove_platform_checkout | bool
+
+- name: Refuse to delete platform checkout with uncommitted or unpushed work
+  when:
+    - macos_llm_node_remove_platform_checkout | bool
+    - llm_platform_git.stat.exists | default(false)
+  block:
+    - name: Check for uncommitted changes
+      ansible.builtin.command:
+        cmd: git status --porcelain
+        chdir: "{{ macos_llm_node_platform_checkout_path }}"
+      register: llm_platform_dirty
+      changed_when: false
+
+    - name: Check for unpushed commits (only if the branch has an upstream)
+      ansible.builtin.shell: |
+        set -euo pipefail
+        if git rev-parse --abbrev-ref --symbolic-full-name '@{u}' >/dev/null 2>&1; then
+          git log --oneline '@{u}..HEAD'
+        fi
+      args:
+        chdir: "{{ macos_llm_node_platform_checkout_path }}"
+      register: llm_platform_unpushed
+      changed_when: false
+
+    - name: Assert the checkout is safe to delete
+      ansible.builtin.assert:
+        that:
+          - (llm_platform_dirty.stdout | trim | length) == 0
+          - (llm_platform_unpushed.stdout | trim | length) == 0
+        fail_msg: >-
+          {{ macos_llm_node_platform_checkout_path }} has local work that would
+          be lost. Uncommitted: '{{ llm_platform_dirty.stdout | trim }}'.
+          Unpushed commits: '{{ llm_platform_unpushed.stdout | trim }}'.
+          Commit + push (or stash) on the Mac, then re-run. Refusing to delete.
+
+- name: Remove the platform checkout (destructive, guarded)
+  ansible.builtin.file:
+    path: "{{ macos_llm_node_platform_checkout_path }}"
+    state: absent
+  when:
+    - macos_llm_node_remove_platform_checkout | bool
+    - llm_platform_git.stat.exists | default(false)
+  # REVERSIBLE: git clone git@github.com:BlackNBrownStudios/platform.git
+
+# --- old runner install dir ----------------------------------------------
+# Only meaningful after github-actions-runner-mac ran in absent mode (which
+# uninstalls the LaunchAgent + deregisters). This just reclaims the ~/actions-
+# runner tree. Guard on absence of the LaunchAgent-managed marker is implicit:
+# absent mode already removed .runner, so nothing live remains.
+- name: Remove the old actions-runner directory (destructive, guarded)
+  ansible.builtin.file:
+    path: "{{ macos_llm_node_runner_dir }}"
+    state: absent
+  when: macos_llm_node_remove_runner_dir | bool
+  # REVERSIBLE: re-run github-actions-runner-mac in present mode.

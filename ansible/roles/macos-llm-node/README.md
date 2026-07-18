@@ -4,9 +4,10 @@ Turns a Mac into a **dedicated LLM inference node**. Bound to `mac-studio` (M3 U
 
 ## What it does
 
-1. **Removes CI/build Homebrew formulae** — `node`, `node@20`, `pnpm`, `yarn`, `cocoapods`, `openjdk@17` (`state: absent`, idempotent).
+1. **Removes CI/build Homebrew formulae** — `node@20`, `pnpm`, `yarn`, `cocoapods`, `openjdk@17` (`state: absent`, idempotent; `node`/`ruby` kept — they back opencode/tmuxinator), then `brew autoremove` (sweep orphaned deps) + `brew cleanup -s` (reclaim old versions + cache).
 2. **Removes filesystem bloat** (each behind a default-false safety var):
    - `Xcode.app` — MLX only needs the Command Line Tools; the role asserts the CLT is present, then repoints `xcode-select` at it.
+   - `~/Library/Developer` — Xcode DerivedData / CoreSimulator / caches (multi-GB, regenerated on demand). Only when Xcode is removed; never touches the system CLT at `/Library/Developer/CommandLineTools`.
    - `~/dev/bnb/platform` — the CI checkout. **Hard-fails if it has uncommitted OR unpushed work** before deleting.
    - `~/actions-runner` — only after the runner is torn down (`github-actions-runner-mac` in `absent` mode).
 3. **Applies reversible OS debloat** — Spotlight index off, Time Machine auto-backup off, Siri/dictation off, Apple analytics submission off, Power Nap + App Nap off. Each is read-then-write idempotent.

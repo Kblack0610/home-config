@@ -8,3 +8,22 @@
     state: absent
     update_homebrew: false
   # REVERSIBLE: brew install {{ macos_llm_node_remove_brew_packages | join(' ') }}
+
+# Sweep dependencies that are now orphaned (nothing installed needs them).
+# `brew autoremove` never touches a formula that is still a dependency or was
+# explicitly installed, so it is safe on the deps of kept tools (node/ruby).
+- name: Sweep orphaned Homebrew dependencies (brew autoremove)
+  ansible.builtin.command: "{{ macos_llm_node_brew_bin }} autoremove"
+  register: llm_brew_autoremove
+  changed_when: "'Autoremoving' in llm_brew_autoremove.stdout or 'Uninstalling' in llm_brew_autoremove.stdout"
+  when: macos_llm_node_brew_autoremove | bool
+  # REVERSIBLE: brew install <formula> (nothing needed it, so reinstall on demand)
+
+# Reclaim old versions + the download cache. Non-destructive to installed
+# formulae. `changed_when: false` — cleanup reclaims disk but doesn't change
+# the installed set, so it should not report as a config change.
+- name: Reclaim Homebrew disk (brew cleanup)
+  ansible.builtin.command: "{{ macos_llm_node_brew_bin }} cleanup -s"
+  register: llm_brew_cleanup
+  changed_when: false
+  when: macos_llm_node_brew_cleanup | bool

@@ -73,35 +73,14 @@ rest:
             unknown
           {% endif %}
 
-  - resource: "http://192.168.1.4:8080/v1/models"
+  # Single mlx-openai-server on :8090 (replaced the retired 8080/8081/8082
+  # multi-port layout). Reports how many models the server currently lists
+  # (pinned + any JIT-loaded on_demand models).
+  - resource: "http://192.168.1.4:8090/v1/models"
     scan_interval: 60
     sensor:
-      - name: MLX Code Server
-        unique_id: mlx_code_server
-        unit_of_measurement: "models"
-        value_template: >-
-          {% if value_json.data is defined %}
-            {{ value_json.data | count }}
-          {% else %}
-            unknown
-          {% endif %}
-  - resource: "http://192.168.1.4:8081/v1/models"
-    scan_interval: 60
-    sensor:
-      - name: MLX Smart Server
-        unique_id: mlx_smart_server
-        unit_of_measurement: "models"
-        value_template: >-
-          {% if value_json.data is defined %}
-            {{ value_json.data | count }}
-          {% else %}
-            unknown
-          {% endif %}
-  - resource: "http://192.168.1.4:8082/v1/models"
-    scan_interval: 60
-    sensor:
-      - name: MLX Reasoning Server
-        unique_id: mlx_reasoning_server
+      - name: MLX Server
+        unique_id: mlx_server
         unit_of_measurement: "models"
         value_template: >-
           {% if value_json.data is defined %}

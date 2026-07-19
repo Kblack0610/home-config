@@ -30,17 +30,42 @@ ssh mac-studio '/opt/homebrew/bin/python3.12 -m venv ~/mlx-env'
 # 2. Install the server (transitively brings mlx-lm + mlx-vlm + mlx-embeddings)
 ssh mac-studio '~/mlx-env/bin/pip install -U mlx-openai-server'
 
-# 3. Pre-warm model weights. The chat models are likely already cached
-#    from the legacy setup; the embedding model is small (~250 MB).
+# 3. Pre-warm model weights so the first request doesn't stall on a
+#    multi-GB download. Pinned fleet:
 ssh mac-studio bash -lc "
   ~/mlx-env/bin/hf download mlx-community/Qwen3-Coder-Next-4bit
-  ~/mlx-env/bin/hf download mlx-community/Qwen3-235B-A22B-4bit-DWQ
-  ~/mlx-env/bin/hf download mlx-community/DeepSeek-R1-Distill-Qwen-32B-MLX-4Bit
+  ~/mlx-env/bin/hf download mlx-community/Qwen3.6-35B-A3B-4bit
+  ~/mlx-env/bin/hf download mlx-community/Qwen3-4B-Instruct-2507-4bit
+  ~/mlx-env/bin/hf download mlx-community/Qwen3-4B-Instruct-2507-8bit
   ~/mlx-env/bin/hf download mlx-community/nomicai-modernbert-embed-base-4bit
+"
+
+# 3b. on_demand expansion candidates (big — pull before A/B testing them):
+ssh mac-studio bash -lc "
+  ~/mlx-env/bin/hf download lmstudio-community/Qwen3-Coder-Next-MLX-6bit
+  ~/mlx-env/bin/hf download mlx-community/Qwen3-Coder-480B-A35B-Instruct-4bit   # ~250 GB
+  ~/mlx-env/bin/hf download mlx-community/Qwen3.5-397B-A17B-4bit                # ~214 GB
+  ~/mlx-env/bin/hf download mlx-community/Qwen3-VL-30B-A3B-Instruct-8bit
+  ~/mlx-env/bin/hf download mlx-community/Qwen3-Embedding-0.6B-4bit-DWQ
 "
 ```
 
 The `huggingface-cli` command is deprecated as of 2026-Q1; `hf download` is the replacement.
+
+### Local vision (VLM) prerequisite
+
+The `vlm (Qwen3-VL-30B-A3B-8bit)` entry is `model_type: multimodal`. Older `mlx-vlm` hits `RuntimeError: There is no Stream(gpu, N) in current thread` on the worker-thread generation path (mlx-lm #1179/#1256). It is `on_demand` so it can't crash the pinned fleet at boot, but to actually serve it you must bump the venv's `mlx-vlm` to the fixed line:
+
+```bash
+ssh mac-studio '~/mlx-env/bin/pip install -U "mlx-vlm>=0.6.5"'
+# fallback if a request still crashes: launch the server with --disable-batching
+```
+
+Verify a real caption (not a silently-dropped image) before flipping the `vlm` alias in `apps/litellm/configmap.yaml` off `gemini-3-flash`.
+
+### Flagship mode (Kimi K2, ~468 GB — NOT a live entry)
+
+A 1T flagship cannot co-reside with the pinned fleet (~468 GB weights vs ~407 GB usable headroom). Run it as a deliberate mode, not an `on_demand` slot: evict the fleet first (bootout `com.mlx-server`), then serve `mlx-community/Kimi-K2-Instruct-0905-mlx-DQ3_K_M` sole-resident. The `iogpu.wired_limit_mb=491520` (480 GB) tuning it needs is already provisioned by the `macos-llm-node` role (`com.kblab.llm-sysctl` LaunchDaemon). Restore the fleet by re-bootstrapping `com.mlx-server`.
 
 ## Apply
 

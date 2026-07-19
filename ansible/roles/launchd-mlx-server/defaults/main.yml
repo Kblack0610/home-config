@@ -68,10 +68,16 @@ mlx_huggingface_token_path: "{{ ansible_env.HOME }}/.cache/huggingface/token"
 #     Qwen3-Coder-Next-4bit          ~45 GB  (code slot)
 #     Qwen3.6-35B-A3B-4bit (mlx)     ~20 GB  (reasoning slot, mlx-community)
 #     Qwen3-4B-Instruct-2507-4bit     ~3 GB  (fast slot, latency-sensitive)
+#     Qwen3-4B-Instruct-2507-8bit     ~5 GB  (fast slot, tool-reliable A/B)
 #     modernbert-embed-base-4bit   ~250 MB   (embedding slot)
 #                                  --------
-#                                  ~68 GB pinned, ~444 GB headroom for KV
-#                                  cache + OS + GitHub Actions runner
+#                                  ~73 GB pinned, ~407 GB usable headroom
+#                                  (after ~480 GB wired budget) for the
+#                                  on_demand candidates below (loaded one
+#                                  at a time) + KV cache + OS + CI runner.
+#   The dual-tier expansion candidates (6-bit coder, 480B coder, 397B
+#   reasoner, Qwen3-VL, Qwen3-Embedding) are all `on_demand` — see the
+#   MEMORY DISCIPLINE note by the mlx_models entries below.
 #
 # History note: a `smart (GLM-5-4bit)` on_demand slot at ~390 GB and a
 # second `reasoning-ud` A/B variant (Unsloth Dynamic) were removed
@@ -157,3 +163,102 @@ mlx_models:
   - served_model_name: "embedding (modernbert-embed-base-4bit)"
     model_path: mlx-community/nomicai-modernbert-embed-base-4bit
     model_type: embeddings
+
+  # ------------------------------------------------------------------
+  # Dual-tier expansion (2026-07): best-per-category MLX candidates so
+  # each category can be A/B-tested local-vs-Lazer through the gateway.
+  # The four entries ABOVE stay pinned + consumer-stable (do not rename
+  # them — OpenClaw/Karakeep/binks reference the names verbatim). The
+  # entries BELOW are the upgrade/expansion candidates.
+  #
+  # MEMORY DISCIPLINE — why almost all of these are on_demand:
+  #   Pinned fleet base is ~73 GB (code-4bit 45 + reasoning-35B 20 +
+  #   fast-4bit 3 + fast-8bit 5 + modernbert 0.25). on_demand models
+  #   JIT-load on first request and idle-evict, so each loads ON TOP of
+  #   that base one at a time. Individually they fit under the ~480 GB
+  #   usable budget; DO NOT pin the big ones or two will co-resident-OOM.
+  #   The 1T Kimi flagship (~468 GB) does NOT fit on top of the pinned
+  #   fleet at all — it is a separate "flagship mode" (see README), not
+  #   an entry here.
+  #
+  #   on_demand also SIDESTEPS the VLM startup crash: a multimodal model
+  #   only instantiates its (currently-fragile) handler when requested,
+  #   so a broken VLM can't take down the pinned fleet at boot. Local
+  #   vision needs mlx-vlm >= 0.6.5 in the venv (fixes the Stream(gpu,N)
+  #   thread bug) OR the server launched with --disable-batching — see
+  #   README before flipping any consumer to the vlm route.
+
+  # fast (8-bit) — same model as the pinned fast slot but 8-bit. On 512 GB
+  # the extra ~2 GB is free and 8-bit materially improves multi-round
+  # tool-call reliability (quantized MLX models drift into malformed tool
+  # calls after several rounds). Pinned — it's tiny and latency-sensitive.
+  # https://huggingface.co/mlx-community/Qwen3-4B-Instruct-2507-8bit
+  - served_model_name: "fast (Qwen3-4B-8bit)"
+    model_path: mlx-community/Qwen3-4B-Instruct-2507-8bit
+    model_type: lm
+
+  # code (6-bit) — Qwen3-Coder-Next at 6-bit instead of 4-bit. Code is
+  # syntax-sensitive; 6-bit avoids the bracket/quote corruption aggressive
+  # 4-bit can cause, and you have the RAM. Same qwen3_coder parser as the
+  # pinned 4-bit slot, so it's a drop-in A/B. ~65 GB.
+  # https://huggingface.co/lmstudio-community/Qwen3-Coder-Next-MLX-6bit
+  - served_model_name: "code (Qwen3-Coder-Next-6bit)"
+    model_path: lmstudio-community/Qwen3-Coder-Next-MLX-6bit
+    model_type: lm
+    on_demand: true
+    on_demand_idle_timeout: 600
+    enable_auto_tool_choice: true
+    tool_call_parser: qwen3_coder
+    reasoning_parser: qwen3_moe
+
+  # code (heavy) — Qwen3-Coder-480B-A35B, the strongest turnkey MLX coder
+  # that fits (480B total / 35B active, ~250 GB at 4-bit). Same qwen3_coder
+  # parser, so it's a straight capability upgrade for hard multi-file work.
+  # on_demand: too big to pin alongside the fleet.
+  # https://huggingface.co/mlx-community/Qwen3-Coder-480B-A35B-Instruct-4bit
+  - served_model_name: "code (Qwen3-Coder-480B-A35B-4bit)"
+    model_path: mlx-community/Qwen3-Coder-480B-A35B-Instruct-4bit
+    model_type: lm
+    on_demand: true
+    on_demand_idle_timeout: 600
+    enable_auto_tool_choice: true
+    tool_call_parser: qwen3_coder
+    reasoning_parser: qwen3_moe
+
+  # reasoning (big) — Qwen3.5-397B-A17B, the strongest reasoner-per-GB that
+  # still leaves fleet headroom (~214 GB at 4-bit, 17B active -> fast).
+  # Huge jump over the pinned 35B. Native qwen tool parser. on_demand.
+  # https://huggingface.co/mlx-community/Qwen3.5-397B-A17B-4bit
+  - served_model_name: "reasoning (Qwen3.5-397B-A17B-4bit)"
+    model_path: mlx-community/Qwen3.5-397B-A17B-4bit
+    model_type: lm
+    on_demand: true
+    on_demand_idle_timeout: 600
+    enable_auto_tool_choice: true
+    tool_call_parser: qwen3           # HermesToolParser (Qwen3 format)
+    reasoning_parser: qwen3_5         # Qwen35ReasoningParser
+
+  # vlm — Qwen3-VL-30B-A3B-Instruct at 8-bit (~34 GB, 3B active -> fast),
+  # the first LOCAL vision route. model_type: multimodal. on_demand so a
+  # fragile VLM handler can't crash the pinned fleet at boot; REQUIRES
+  # mlx-vlm >= 0.6.5 in the venv (or --disable-batching) — see README.
+  # Replaces the paid vlm (gemini-3-flash) for most image tasks once green.
+  # https://huggingface.co/mlx-community/Qwen3-VL-30B-A3B-Instruct-8bit
+  - served_model_name: "vlm (Qwen3-VL-30B-A3B-8bit)"
+    model_path: mlx-community/Qwen3-VL-30B-A3B-Instruct-8bit
+    model_type: multimodal
+    on_demand: true
+    on_demand_idle_timeout: 600
+
+  # embedding (Qwen3) — Qwen3-Embedding-0.6B, a clear retrieval upgrade over
+  # modernbert (multilingual, 32k context, instruction-aware). Its native
+  # dim is 1024; mem0's pgvector column is vector(768). DO NOT point mem0 at
+  # this until you have CONFIRMED it emits 768 dims (Matryoshka truncation)
+  # from this server — otherwise inserts fail with a dim mismatch. Kept
+  # on_demand + unwired from consumers as a test candidate for that reason.
+  # https://huggingface.co/mlx-community/Qwen3-Embedding-0.6B-4bit-DWQ
+  - served_model_name: "embedding (Qwen3-Embedding-0.6B)"
+    model_path: mlx-community/Qwen3-Embedding-0.6B-4bit-DWQ
+    model_type: embeddings
+    on_demand: true
+    on_demand_idle_timeout: 600

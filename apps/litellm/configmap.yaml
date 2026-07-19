@@ -110,6 +110,141 @@ data:
           mode: embedding
           tags: ["local", "mlx"]
 
+      # ------------------------------------------------------------
+      # Dual-tier expansion (2026-07): local MLX candidates that mirror
+      # the paid Lazer routes below, so each category can be A/B-tested
+      # local-vs-paid through the gateway and switched with one line via
+      # `model_group_alias` (router_settings). These map to the on_demand
+      # entries in ansible/roles/launchd-mlx-server/defaults/main.yml —
+      # first call JIT-loads the model on Mac Studio (expect a cold-load
+      # stall). tpm/rpm here are runaway-loop guards only; local has no
+      # per-token cost so there is no max_budget.
+      # ------------------------------------------------------------
+
+      # fast (8-bit) — tool-reliable A/B for the pinned fast slot. Pinned
+      # on the box, so no cold-load. Prefer this over fast (Qwen3-4B) for
+      # multi-round tool-calling.
+      - model_name: "fast (Qwen3-4B-8bit)"
+        litellm_params:
+          model: "openai/fast (Qwen3-4B-8bit)"
+          api_base: http://192.168.1.4:8090/v1
+          stream: true
+          api_key: "mlx"
+          tpm: 500000
+          rpm: 240
+        model_info:
+          mode: chat
+          tags: ["local", "mlx"]
+          capabilities:
+            tools: true
+            code: false
+            vision: false
+            reasoning: false
+            json_mode: true
+          supports_function_calling: true
+
+      # code (6-bit) — higher code fidelity than the pinned 4-bit slot.
+      # on_demand on the box.
+      - model_name: "code (Qwen3-Coder-Next-6bit)"
+        litellm_params:
+          model: "openai/code (Qwen3-Coder-Next-6bit)"
+          api_base: http://192.168.1.4:8090/v1
+          stream: true
+          api_key: "mlx"
+          tpm: 500000
+          rpm: 120
+        model_info:
+          mode: chat
+          tags: ["local", "mlx"]
+          capabilities:
+            tools: true
+            code: true
+            vision: false
+            reasoning: false
+            json_mode: true
+          supports_function_calling: true
+
+      # code (heavy) — Qwen3-Coder-480B-A35B, strongest turnkey local coder.
+      # on_demand ~250 GB cold load; low rpm since each load is expensive.
+      - model_name: "code (Qwen3-Coder-480B-A35B-4bit)"
+        litellm_params:
+          model: "openai/code (Qwen3-Coder-480B-A35B-4bit)"
+          api_base: http://192.168.1.4:8090/v1
+          stream: true
+          api_key: "mlx"
+          tpm: 300000
+          rpm: 30
+        model_info:
+          mode: chat
+          tags: ["local", "mlx", "heavy"]
+          capabilities:
+            tools: true
+            code: true
+            vision: false
+            reasoning: false
+            json_mode: true
+          supports_function_calling: true
+
+      # reasoning (big) — Qwen3.5-397B-A17B, huge jump over the pinned 35B.
+      # on_demand ~214 GB cold load.
+      - model_name: "reasoning (Qwen3.5-397B-A17B-4bit)"
+        litellm_params:
+          model: "openai/reasoning (Qwen3.5-397B-A17B-4bit)"
+          api_base: http://192.168.1.4:8090/v1
+          stream: true
+          api_key: "mlx"
+          tpm: 300000
+          rpm: 30
+        model_info:
+          mode: chat
+          tags: ["local", "mlx", "heavy"]
+          capabilities:
+            tools: true
+            code: true
+            vision: false
+            reasoning: true
+            json_mode: true
+          supports_function_calling: true
+
+      # vlm (local) — Qwen3-VL-30B-A3B, the FIRST local vision route.
+      # REQUIRES mlx-vlm >= 0.6.5 in the box venv (fixes the Stream(gpu,N)
+      # crash) OR the server launched --disable-batching. Verify a real
+      # caption before flipping the `vlm` alias off gemini-3-flash.
+      - model_name: "vlm (Qwen3-VL-30B-A3B-8bit)"
+        litellm_params:
+          model: "openai/vlm (Qwen3-VL-30B-A3B-8bit)"
+          api_base: http://192.168.1.4:8090/v1
+          stream: true
+          api_key: "mlx"
+          tpm: 200000
+          rpm: 60
+        model_info:
+          mode: chat
+          tags: ["local", "mlx"]
+          capabilities:
+            tools: false
+            code: false
+            vision: true
+            reasoning: false
+            json_mode: true
+
+      # embedding (Qwen3) — retrieval upgrade over modernbert. WARNING:
+      # native dim is 1024; mem0's pgvector column is vector(768). DO NOT
+      # point mem0/karakeep here until this route is CONFIRMED to emit 768
+      # dims from the box (Matryoshka truncation) — else inserts fail with
+      # a dim mismatch. Left unwired as a test candidate.
+      - model_name: "embedding (Qwen3-Embedding-0.6B)"
+        litellm_params:
+          model: "openai/embedding (Qwen3-Embedding-0.6B)"
+          api_base: http://192.168.1.4:8090/v1
+          api_key: "mlx"
+          encoding_format: "float"
+          drop_params: true
+          additional_drop_params: ["dimensions"]
+        model_info:
+          mode: embedding
+          tags: ["local", "mlx"]
+
       # ============================================================
       # Cloud free-tier routes via Google Gemini (native gemini/ provider)
       # ============================================================
@@ -280,6 +415,24 @@ data:
     router_settings:
       routing_strategy: "simple-shuffle"
       timeout: 900
+      # ONE-LINE LOCAL<->PAID TOGGLE per category. A consumer can call the
+      # short stable name (e.g. model="code") and LiteLLM resolves it to the
+      # concrete route on the right. To flip a category between the local
+      # MLX box and the paid Lazer/Gemini tier, change ONLY the target here,
+      # commit, and Flux reconciles — no consumer edits. The explicit route
+      # names still work directly for side-by-side A/B testing.
+      #
+      # Defaults point at the WORKING tier: Mac Studio is currently offline
+      # (see the note on the embedding fallback below), so these resolve to
+      # Lazer/Gemini today. Flip the value to the matching `(... local ...)`
+      # route name once the box is verified up per category.
+      model_group_alias:
+        code: "code (qwen-3-coder)"            # local: "code (Qwen3-Coder-Next-6bit)" / "...480B-A35B-4bit"
+        reasoning: "reasoning (deepseek-v4-pro)"  # local: "reasoning (Qwen3.5-397B-A17B-4bit)"
+        fast: "fast (gpt-oss-120b)"            # local: "fast (Qwen3-4B-8bit)"
+        vlm: "vlm (gemini-3-flash)"            # local: "vlm (Qwen3-VL-30B-A3B-8bit)" (needs mlx-vlm>=0.6.5)
+        embedding: "embedding (gemini-001)"    # local: "embedding (modernbert-embed-base-4bit)"
+        stt: "stt (whisper-turbo)"
       # Failover chains (LiteLLM tries the listed models in order when the
       # primary errors/times out). mem0 points its LLM at the Lazer `fast`
       # route and its embedder at Gemini; these chains add resilience:

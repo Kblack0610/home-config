@@ -33,8 +33,10 @@ Every consumer of this gateway should hold a *scoped virtual key* — never `LIT
 | `karakeep-tagging` | `fast (Qwen3-4B)` | none (free upstream) | rpm 60 | `apps/karakeep/` |
 | `mem0-embeddings` | `embedding (modernbert-embed-base-4bit)`, `fast (Qwen3-4B)` | none (free upstream) | rpm 120 | `apps/mem0/` |
 | `openclaw-coding` | `code (...)`, `reasoning (...)`, `fast (...)` | none (free upstream) | tpm 100k | `apps/openclaw/` |
-| `opencode-default` | all free local + `premium (claude-sonnet-4.6)` | $50 | tpm 50k, rpm 30 | opencode default mode |
-| `opencode-premium` | all `premium (*)` | $150 | tpm 100k | opencode build/escalation mode |
+| `opencode-default` | free local + the toggle aliases (`code`/`reasoning`/`fast`) | $50 | tpm 50k, rpm 30 | opencode default mode |
+| `opencode-premium` | the paid Lazer routes (`code (qwen-3-coder)`, `reasoning (deepseek-v4-pro)`, `fast (gpt-oss-120b)`, `vlm (gemini-3-flash)`) | $150 | tpm 100k | opencode build/escalation mode |
+
+> **Toggle aliases (2026-07):** `router_settings.model_group_alias` in `configmap.yaml` exposes short stable names (`code`, `reasoning`, `fast`, `vlm`, `embedding`, `stt`) that resolve to whichever concrete route a category currently points at. Consumers/keys can allow the short alias and stay put while you flip local-vs-paid in one line. Each category also has explicit local (`... local model ...`) and paid (`... (lazer) ...`) routes for direct A/B testing.
 
 ### Create a key
 
@@ -49,7 +51,7 @@ curl -sX POST https://llm.kblab.me/key/generate \
   -H "Content-Type: application/json" \
   -d '{
     "key_alias": "opencode-default",
-    "models": ["code (Qwen3-Coder-Next-4bit)", "fast (Qwen3-4B)", "reasoning (Qwen3.6-35B-A3B-4bit)", "premium (claude-sonnet-4.6)"],
+    "models": ["code (Qwen3-Coder-Next-4bit)", "fast (Qwen3-4B)", "reasoning (Qwen3.6-35B-A3B-4bit)", "code (qwen-3-coder)"],
     "max_budget": 50.00,
     "budget_duration": "30d",
     "tpm_limit": 50000,

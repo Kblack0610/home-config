@@ -251,11 +251,12 @@ mlx_models:
     on_demand_idle_timeout: 600
 
   # embedding (Qwen3) — Qwen3-Embedding-0.6B, a clear retrieval upgrade over
-  # modernbert (multilingual, 32k context, instruction-aware). Its native
-  # dim is 1024; mem0's pgvector column is vector(768). DO NOT point mem0 at
-  # this until you have CONFIRMED it emits 768 dims (Matryoshka truncation)
-  # from this server — otherwise inserts fail with a dim mismatch. Kept
-  # on_demand + unwired from consumers as a test candidate for that reason.
+  # modernbert (multilingual, 32k context, instruction-aware). CONFIRMED
+  # 2026-07-18 live: this server emits 1024 dims (it does NOT truncate to a
+  # requested dimension), and mem0's pgvector column is vector(768) — so
+  # pointing mem0 here without a re-index to vector(1024) or a 768-truncation
+  # path would fail inserts on a dim mismatch. Kept on_demand + unwired from
+  # consumers as a test candidate for that reason.
   # https://huggingface.co/mlx-community/Qwen3-Embedding-0.6B-4bit-DWQ
   - served_model_name: "embedding (Qwen3-Embedding-0.6B)"
     model_path: mlx-community/Qwen3-Embedding-0.6B-4bit-DWQ

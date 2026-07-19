@@ -228,11 +228,13 @@ data:
             reasoning: false
             json_mode: true
 
-      # embedding (Qwen3) — retrieval upgrade over modernbert. WARNING:
-      # native dim is 1024; mem0's pgvector column is vector(768). DO NOT
-      # point mem0/karakeep here until this route is CONFIRMED to emit 768
-      # dims from the box (Matryoshka truncation) — else inserts fail with
-      # a dim mismatch. Left unwired as a test candidate.
+      # embedding (Qwen3) — retrieval upgrade over modernbert. CONFIRMED
+      # 2026-07-18 live: this route emits 1024 dims (the server does NOT
+      # Matryoshka-truncate to the requested `dimensions`), so it is NOT
+      # drop-in for mem0's pgvector vector(768) column — inserts would fail
+      # with a dim mismatch. To adopt it, either re-index mem0 to
+      # vector(1024) or add a client/server 768-truncation path first. Left
+      # unwired from consumers as a test candidate until then.
       - model_name: "embedding (Qwen3-Embedding-0.6B)"
         litellm_params:
           model: "openai/embedding (Qwen3-Embedding-0.6B)"

@@ -75,8 +75,18 @@ data:
                 "maxTokens": 4096
               },
               {
-                "id": "code (Qwen3-Coder-Next-4bit)",
-                "name": "code — Qwen3-Coder-Next 4bit",
+                "id": "fast (Qwen3-4B-8bit)",
+                "name": "fast — LOCAL Qwen3-4B 8bit (Mac Studio, pinned)",
+                "reasoning": false,
+                "input": [
+                  "text"
+                ],
+                "contextWindow": 128000,
+                "maxTokens": 16384
+              },
+              {
+                "id": "code (Qwen3-Coder-Next-6bit)",
+                "name": "code — LOCAL Qwen3-Coder-Next 6bit (Mac Studio, on-demand)",
                 "reasoning": false,
                 "input": [
                   "text"
@@ -85,8 +95,18 @@ data:
                 "maxTokens": 65536
               },
               {
-                "id": "reasoning (Qwen3.6-35B-A3B-4bit)",
-                "name": "reasoning — Qwen3.6-35B-A3B 4bit (mlx-community)",
+                "id": "code (Qwen3-Coder-480B-A35B-4bit)",
+                "name": "code — LOCAL Qwen3-Coder 480B (Mac Studio, heavy on-demand)",
+                "reasoning": false,
+                "input": [
+                  "text"
+                ],
+                "contextWindow": 256000,
+                "maxTokens": 65536
+              },
+              {
+                "id": "reasoning (Qwen3.5-397B-A17B-4bit)",
+                "name": "reasoning — LOCAL Qwen3.5 397B (Mac Studio, on-demand)",
                 "reasoning": true,
                 "input": [
                   "text"
@@ -95,14 +115,15 @@ data:
                 "maxTokens": 65536
               },
               {
-                "id": "fast (Qwen3-4B)",
-                "name": "fast — Qwen3 4B (latency-sensitive)",
+                "id": "vlm (Qwen3-VL-30B-A3B-8bit)",
+                "name": "vlm — LOCAL Qwen3-VL 30B (Mac Studio, on-demand; needs mlx-vlm>=0.6.5)",
                 "reasoning": false,
                 "input": [
-                  "text"
+                  "text",
+                  "image"
                 ],
-                "contextWindow": 128000,
-                "maxTokens": 16384
+                "contextWindow": 256000,
+                "maxTokens": 65536
               },
               {
                 "id": "vlm (gemini-3-flash)",

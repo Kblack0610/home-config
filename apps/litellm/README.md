@@ -37,6 +37,14 @@ Every consumer of this gateway should hold a *scoped virtual key* — never `LIT
 | `opencode-premium` | the paid Lazer routes (`code (qwen-3-coder)`, `reasoning (deepseek-v4-pro)`, `fast (gpt-oss-120b)`, `vlm (gemini-3-flash)`) | $150 | tpm 100k | opencode build/escalation mode |
 
 > **Toggle aliases (2026-07):** `router_settings.model_group_alias` in `configmap.yaml` exposes short stable names (`code`, `reasoning`, `fast`, `vlm`, `embedding`, `stt`) that resolve to whichever concrete route a category currently points at. Consumers/keys can allow the short alias and stay put while you flip local-vs-paid in one line. Each category also has explicit local (`... local model ...`) and paid (`... (lazer) ...`) routes for direct A/B testing.
+>
+> **Consumers now call the aliases (so a flip actually reaches them):** mem0 (`MEM0_DEFAULT_LLM_MODEL: "fast"`), karakeep (`INFERENCE_TEXT_MODEL: "fast"`), and openclaw (primary `litellm/code`, fallback `litellm/reasoning`, image/pdf `litellm/vlm`, compaction `litellm/fast`) reference category aliases rather than pinned route names. Flip a `model_group_alias` value -> reconcile -> every consumer follows with no per-app edit.
+>
+> **Two safety rails that make a local flip non-destructive:**
+> - `router_settings.fallbacks` has local->cloud chains keyed by each local route (e.g. `fast (Qwen3-4B-8bit)` -> `fast (gpt-oss-120b)` -> `fast (gemini-2.0-flash)`), so a down box or a cold on_demand timeout spills to cloud instead of erroring.
+> - **Embedding is intentionally NOT wired to any stateful consumer via its alias.** mem0/karakeep pin an explicit embedder because a vector store cannot hot-swap embedder dimensions (local Qwen3 = 1024-dim, pgvector column = 768). Chat/vision/stt are stateless and safe to toggle; embedding is stateful and stays pinned.
+>
+> **How to flip a category to local** (once the Mac Studio box is verified up for it): set the alias value to the local route, e.g. `fast: "fast (Qwen3-4B-8bit)"`, then `git push forgejo master && flux reconcile kustomization apps --with-source && kubectl -n ai-gateway delete pod -l app=litellm` (configmap remount). Revert the one line to roll back.
 
 ### Create a key
 

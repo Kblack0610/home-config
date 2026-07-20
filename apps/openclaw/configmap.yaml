@@ -24,6 +24,57 @@ data:
             "api": "openai-completions",
             "models": [
               {
+                "id": "code",
+                "name": "code — category alias (toggles local MLX <-> cloud in apps/litellm)",
+                "reasoning": false,
+                "input": [
+                  "text"
+                ],
+                "contextWindow": 256000,
+                "maxTokens": 65536
+              },
+              {
+                "id": "reasoning",
+                "name": "reasoning — category alias (toggles local MLX <-> cloud in apps/litellm)",
+                "reasoning": true,
+                "input": [
+                  "text"
+                ],
+                "contextWindow": 256000,
+                "maxTokens": 65536
+              },
+              {
+                "id": "fast",
+                "name": "fast — category alias (toggles local MLX <-> cloud in apps/litellm)",
+                "reasoning": false,
+                "input": [
+                  "text"
+                ],
+                "contextWindow": 128000,
+                "maxTokens": 16384
+              },
+              {
+                "id": "vlm",
+                "name": "vlm — category alias (toggles local MLX <-> cloud in apps/litellm)",
+                "reasoning": false,
+                "input": [
+                  "text",
+                  "image"
+                ],
+                "contextWindow": 1000000,
+                "maxTokens": 65536
+              },
+              {
+                "id": "stt",
+                "name": "stt — category alias (toggles local MLX <-> cloud in apps/litellm)",
+                "reasoning": false,
+                "input": [
+                  "audio"
+                ],
+                "contextWindow": 30000,
+                "maxTokens": 4096
+              },
+              {
                 "id": "code (Qwen3-Coder-Next-4bit)",
                 "name": "code — Qwen3-Coder-Next 4bit",
                 "reasoning": false,
@@ -149,23 +200,23 @@ data:
             }
           },
           "model": {
-            "primary": "litellm/code (Qwen3-Coder-Next-4bit)",
+            "primary": "litellm/code",
             "fallbacks": [
-              "litellm/reasoning (Qwen3.6-35B-A3B-4bit)"
+              "litellm/reasoning"
             ]
           },
           "imageModel": {
-            "primary": "litellm/vlm (gemini-3-flash)"
+            "primary": "litellm/vlm"
           },
           "pdfModel": {
-            "primary": "litellm/vlm (gemini-3-flash)"
+            "primary": "litellm/vlm"
           },
           "workspace": "~/.openclaw/workspace",
           "userTimezone": "America/Los_Angeles",
           "contextTokens": 200000,
           "compaction": {
             "mode": "safeguard",
-            "model": "litellm/fast (Qwen3-4B)"
+            "model": "litellm/fast"
           },
           "thinkingDefault": "medium",
           "timeoutSeconds": 900,
@@ -180,11 +231,9 @@ data:
             "name": "Home OpenClaw",
             "workspace": "~/.openclaw/workspace",
             "model": {
-              "primary": "litellm/code (Qwen3-Coder-Next-4bit)",
+              "primary": "litellm/code",
               "fallbacks": [
-                "litellm/reasoning (Qwen3.6-35B-A3B-4bit)",
-                "litellm/code (qwen-3-coder)",
-                "litellm/reasoning (deepseek-v4-pro)"
+                "litellm/reasoning"
               ]
             }
           }

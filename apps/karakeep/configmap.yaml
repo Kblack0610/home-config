@@ -19,13 +19,16 @@ data:
   CRAWLER_STORE_PDF: "false"
   MAX_ASSET_SIZE_MB: "50"
   TZ: America/New_York
-  # AI tagging routed via in-cluster LiteLLM (apps/litellm). Model slot names
-  # must match apps/litellm/configmap.yaml model_list entries verbatim
-  # (spaces/parens included). INFERENCE_IMAGE_MODEL omitted: no vision route
-  # in LiteLLM yet — see apps/litellm/configmap.yaml lines 67-74 (mlx-vlm
-  # Stream(gpu,0) bug). Restore once a VLM model_list entry exists.
+  # AI tagging routed via in-cluster LiteLLM (apps/litellm). Text inference
+  # uses the `fast` CATEGORY ALIAS (model_group_alias) so a single toggle in
+  # apps/litellm moves karakeep's tagging between the local MLX box and the
+  # cloud tier; local->cloud fallback keeps it up if the box drops.
+  # EMBEDDING_TEXT_MODEL is PINNED (not aliased): karakeep's stored vectors are
+  # tied to the embedder's dimensions, so it must not follow a category flip —
+  # swapping it is a deliberate re-index. INFERENCE_IMAGE_MODEL omitted until
+  # local vision (mlx-vlm>=0.6.5) is verified; add the `vlm` alias then.
   OPENAI_BASE_URL: http://litellm.ai-gateway.svc.cluster.local:4000/v1
-  INFERENCE_TEXT_MODEL: "fast (Qwen3-4B)"
+  INFERENCE_TEXT_MODEL: "fast"
   EMBEDDING_TEXT_MODEL: "embedding (modernbert-embed-base-4bit)"
   INFERENCE_ENABLE_AUTO_TAGGING: "true"
   INFERENCE_ENABLE_AUTO_SUMMARIZATION: "true"

@@ -29,12 +29,17 @@ data:
   # keys leave the cluster. The model names here MUST match entries in
   # apps/litellm/configmap.yaml (model_name field).
   OPENAI_BASE_URL: http://litellm.ai-gateway.svc.cluster.local:4000/v1
-  # LLM = Lazer `fast` (default); LiteLLM router falls back to Gemini flash
-  # then Mac Studio. Embedder = Gemini text-embedding-004 (768-dim, matches
-  # the pgvector column) since Lazer has no embedder and Mac Studio is often
-  # offline; falls back to local modernbert. Fallback chains live in
-  # apps/litellm/configmap.yaml router_settings.fallbacks.
-  MEM0_DEFAULT_LLM_MODEL: "fast (gpt-oss-120b)"
+  # LLM = the `fast` CATEGORY ALIAS (model_group_alias in apps/litellm). It
+  # resolves to whatever tier that alias currently targets (Lazer gpt-oss-120b
+  # by default; flip it to local `fast (Qwen3-4B-8bit)` in one edit and mem0
+  # follows with no change here). LiteLLM's local->cloud fallback chain keeps
+  # this resilient if the Mac Studio box drops.
+  MEM0_DEFAULT_LLM_MODEL: "fast"
+  # Embedder = PINNED explicit route, NOT an alias, on purpose. mem0's pgvector
+  # column is vector(768); Gemini text-embedding-004 emits 768-dim. The local
+  # Qwen3 embedder emits 1024-dim, so aliasing this would let a category flip
+  # silently break every stored memory. Changing the embedder here requires a
+  # deliberate re-index, so it stays pinned to the 768-dim Gemini route.
   MEM0_DEFAULT_EMBEDDER_MODEL: "embedding (gemini-001)"
 
   # --- Auth ---

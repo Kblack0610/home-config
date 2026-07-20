@@ -424,10 +424,19 @@ data:
       # commit, and Flux reconciles — no consumer edits. The explicit route
       # names still work directly for side-by-side A/B testing.
       #
-      # Defaults point at the WORKING tier: Mac Studio is currently offline
-      # (see the note on the embedding fallback below), so these resolve to
-      # Lazer/Gemini today. Flip the value to the matching `(... local ...)`
-      # route name once the box is verified up per category.
+      # Defaults point at the WORKING tier: Mac Studio is intermittently
+      # reachable, so these resolve to Lazer/Gemini today. Flip a value to the
+      # matching `(... local ...)` route name once the box is verified up for
+      # that category — EVERY consumer that calls the alias follows in one edit
+      # (mem0/karakeep/openclaw all now call these aliases, not pinned routes),
+      # and the local->cloud `fallbacks` below make a flip safe even if the box
+      # drops mid-request.
+      #
+      # NOTE embedding is deliberately NOT wired into any stateful consumer via
+      # this alias: mem0/karakeep pin an explicit embedder because a vector
+      # store cannot hot-swap embedder dimensions (local Qwen3 emits 1024-dim,
+      # the pgvector column is 768). Chat/vision/stt are stateless -> safe to
+      # toggle; embedding is stateful -> pinned. See each consumer's configmap.
       model_group_alias:
         code: "code (qwen-3-coder)"            # local: "code (Qwen3-Coder-Next-6bit)" / "...480B-A35B-4bit"
         reasoning: "reasoning (deepseek-v4-pro)"  # local: "reasoning (Qwen3.5-397B-A17B-4bit)"
@@ -443,6 +452,17 @@ data:
       fallbacks:
         - {"fast (gpt-oss-120b)": ["fast (gemini-2.0-flash)", "fast (Qwen3-4B)"]}
         - {"fast (gemini-2.0-flash)": ["fast (Qwen3-4B)"]}
+        # LOCAL -> CLOUD safety nets. These make flipping a `model_group_alias`
+        # to a local MLX route non-destructive: if the Mac Studio box is down
+        # or a cold on_demand load times out, the request transparently spills
+        # to the paid/cloud equivalent instead of hard-erroring. Keyed by the
+        # LOCAL route name, so they only engage once an alias is flipped local.
+        - {"fast (Qwen3-4B-8bit)": ["fast (gpt-oss-120b)", "fast (gemini-2.0-flash)"]}
+        - {"fast (Qwen3-4B)": ["fast (gpt-oss-120b)", "fast (gemini-2.0-flash)"]}
+        - {"code (Qwen3-Coder-Next-6bit)": ["code (qwen-3-coder)"]}
+        - {"code (Qwen3-Coder-480B-A35B-4bit)": ["code (qwen-3-coder)"]}
+        - {"reasoning (Qwen3.5-397B-A17B-4bit)": ["reasoning (deepseek-v4-pro)"]}
+        - {"vlm (Qwen3-VL-30B-A3B-8bit)": ["vlm (gemini-3-flash)"]}
         # NOTE: no embedding fallback to modernbert — Mac Studio is offline,
         # so falling back to it turns any transient Gemini hiccup into a hard
         # 500 (+30s) and masks the real error. Re-add once Mac Studio is back:

@@ -34,17 +34,29 @@ Reason: a phone sleeps. Android Doze pauses cron, so the heartbeat stops wheneve
 
 ### One command (everything after this is automated)
 
-In Termux:
+In Termux (download-then-run so the prompts have a terminal):
 
 ```
-curl -fsSL https://git.kblab.me/kblack0610/.dotfiles/raw/branch/main/.local/bin/termux-fleet-onboard | bash
+curl -fsSLO https://raw.githubusercontent.com/Kblack0610/.dotfiles/main/.local/bin/termux-fleet-onboard
+FLEET_GATUS=https://fleet.kblab.me bash termux-fleet-onboard
 ```
 
-`termux-fleet-onboard` (in the dotfiles repo) chains:
-- `fleet-pulse` enroll (Termux branch): probes the gatus key first (never installs a silently-failing agent), writes `~/.config/fleet-pulse/{env,token}`, drops a `~/.termux/boot/start-fleet-pulse.sh` that starts `crond` at boot, and adds a crontab line that runs `push.sh` every 15 minutes.
-- optionally, `notes-termux-bootstrap` for the notes-on-phone setup.
+`termux-fleet-onboard` (public dotfiles, host-generic - the fleet URL comes from `FLEET_GATUS`) chains three opt-in pieces:
+- **fleet heartbeat** via `fleet-pulse` enroll (Termux branch): probes the gatus key first (never installs a silently-failing agent), writes `~/.config/fleet-pulse/{env,token}`, drops `~/.termux/boot/start-fleet-pulse.sh` (starts `crond` at boot), and adds a crontab line that runs `push.sh` every 15 minutes.
+- **sshd over the tailnet** (opt-in, recommended): Termux `sshd` on port 8022, key-based, started at boot. Gives headless control of the phone from any fleet machine - see below.
+- **notes-on-phone** (opt-in): delegates to `notes-termux-bootstrap`.
 
-You paste the shared fleet token once at a hidden prompt (grab it from rbw, or decrypt `apps/gatus-fleet/fleet-token-secret.sops.yaml` on the desktop). It is never passed on the command line.
+You paste the shared fleet token once at a hidden prompt (grab it from rbw, or decrypt `apps/gatus-fleet/fleet-token-secret.sops.yaml` on the desktop). It is never passed on the command line (the wrapper reads prompts from `/dev/tty` and hands the token to `enroll.sh` via a temp file).
+
+### SSH into the phone (Termux sshd over the tailnet)
+
+Because the phone is on the tailnet, you can SSH into it headlessly - no port-forwarding, no public exposure. `termux-fleet-onboard` sets this up when you answer yes: it installs `openssh`, appends your desktop public key to `~/.ssh/authorized_keys`, starts `sshd` (Termux's sshd listens on **port 8022**), and adds a `~/.termux/boot/start-sshd.sh` so it comes back after a reboot. Connect from any fleet machine:
+
+```
+ssh -p 8022 <phone-tailnet-ip>      # tailscale ip -4 on the phone shows it
+```
+
+Key auth is preferred; if you skip pasting a key, set a password on the phone with `passwd`. This is the "a lot of control" lane: run commands, push files, drive the phone from your desktop.
 
 ### Declare the device (one-time, done on the desktop before the phone enrolls)
 

@@ -19,7 +19,7 @@ spec:
     spec:
       containers:
         - name: microbin
-          image: danielszabo99/microbin:2.1.0
+          image: danielszabo99/microbin:2.1.4
           imagePullPolicy: IfNotPresent
           ports:
             - name: http

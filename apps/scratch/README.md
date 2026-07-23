@@ -2,7 +2,7 @@
 
 An **anonymous, LAN-only** pastebin at **https://scratch.kblab.me** for quick
 cross-machine notes and ferrying snippets/keys between boxes. Runs
-[MicroBin](https://microbin.eu) `2.1.0`.
+[MicroBin](https://microbin.eu) `2.1.4`.
 
 ## Access
 

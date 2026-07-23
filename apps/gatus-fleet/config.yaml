@@ -80,7 +80,7 @@ external-endpoints:
   # desktop status bars - rostering a sleeping device pins the glyph amber forever
   # (same reasoning as the removed iot Pi Zeros below). Onboard with
   # `termux-fleet-onboard` (dotfiles). Key is android_<name>.
-  - name: ken-phone    # Tier-A push heartbeat from Termux (not Headwind)
+  - name: ken-s25-main    # Galaxy S25 (daily driver) - Tier-A push heartbeat from Termux (not Headwind)
     group: android
     token: "${FLEET_TOKEN}"
 

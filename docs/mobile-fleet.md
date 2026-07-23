@@ -63,7 +63,7 @@ Key auth is preferred; if you skip pasting a key, set a password on the phone wi
 Add one `external-endpoints` entry under the `android` group in `apps/gatus-fleet/config.yaml`:
 
 ```yaml
-- name: <kebab-handle>   # e.g. ken-phone - Tier-A push heartbeat (not Headwind)
+- name: <kebab-handle>   # e.g. ken-s25-main - Tier-A push heartbeat (not Headwind)
   group: android
   token: "${FLEET_TOKEN}"
 ```

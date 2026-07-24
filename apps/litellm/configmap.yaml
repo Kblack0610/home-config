@@ -430,7 +430,15 @@ data:
       # (litellm_settings) smooths the translation. Scoped key
       # `delivery-loop` (allowed_models = these two + fast); key in rbw as
       # litellm_delivery_loop_key, never committed.
-      - model_name: "claude-sonnet-4.6 (lazer)"
+      #
+      # NAMING EXCEPTION to the `<role> (<model>)` convention: these routes are
+      # named with the BARE CANONICAL Anthropic id. Claude Code canonicalizes
+      # whatever model it's given (strips a ` (lazer)` suffix, turns `4.6` into
+      # `4-6`) before putting it on the wire, so the addressable gateway name
+      # MUST equal what Claude Code emits (`claude-sonnet-4-6`) or the request
+      # 404s / the key 403s. The Lazer provider id keeps the dotted `4.6` in
+      # `model:` below.
+      - model_name: "claude-sonnet-4-6"
         litellm_params:
           model: "openai/claude-sonnet-4.6"
           api_base: https://proxy.lazertechnologies.com/v1
@@ -452,7 +460,7 @@ data:
 
       # Opus route for the heavy pipeline legs (architect/reviewer). Higher
       # per-token cost, so a tighter budget cap than the sonnet workhorse.
-      - model_name: "claude-opus-4.6 (lazer)"
+      - model_name: "claude-opus-4-6"
         litellm_params:
           model: "openai/claude-opus-4.6"
           api_base: https://proxy.lazertechnologies.com/v1

@@ -1,0 +1,99 @@
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: 3d-prints-backup
+  namespace: nas
+spec:
+  schedule: "45 3 * * 0"  # Weekly, Sunday 3:45 AM (prints change rarely; 14 weekly snapshots ~= 3 months of history)
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      template:
+        spec:
+          nodeSelector:
+            kubernetes.io/hostname: asus-laptop
+            storage.role/nas: "true"
+          # Privileged: required for btrfs subvolume snapshot/delete commands
+          securityContext:
+            runAsUser: 0
+          containers:
+            - name: backup
+              image: alpine:latest
+              securityContext:
+                privileged: true
+              command:
+                - /bin/sh
+                - -c
+                - |
+                  set -e
+                  apk add --no-cache rsync btrfs-progs
+
+                  # -- Dest mount-safety guard -------------------------------------
+                  # If the 7.3TB USB drive is unplugged the hostPath stubs still
+                  # exist as empty dirs (DirectoryOrCreate). Abort rather than
+                  # silently filling the root filesystem.
+                  mountpoint -q /backup-dest || {
+                    echo "ERROR: /mnt/backup-8t/3d-prints is not mounted. Aborting to avoid filling root fs."
+                    exit 1
+                  }
+                  mountpoint -q /snapshots || {
+                    echo "ERROR: /mnt/backup-8t/3d-prints-snapshots is not mounted. Aborting."
+                    exit 1
+                  }
+
+                  # -- Source-safety guard -----------------------------------------
+                  # The source lives on the NAS public share (a separate mount). If
+                  # that mount is gone, /source would be empty and rsync --delete
+                  # would WIPE the backup. Abort if the source has no entries.
+                  if [ -z "$(ls -A /source 2>/dev/null)" ]; then
+                    echo "ERROR: /source is empty (NAS public unmounted?). Aborting to protect the backup."
+                    exit 1
+                  fi
+
+                  TIMESTAMP=$(date +%Y%m%d-%H%M%S)
+                  echo "=== 3D-prints backup starting: $TIMESTAMP ==="
+
+                  # -- Step 1: rsync mirror (read-only source) ---------------------
+                  echo "Syncing 3d-printing..."
+                  rsync -aH --delete --stats /source/ /backup-dest/
+                  echo "rsync complete"
+
+                  # -- Step 2: btrfs read-only snapshot ----------------------------
+                  SNAP_NAME="3d-prints-$TIMESTAMP"
+                  btrfs subvolume snapshot -r /backup-dest "/snapshots/$SNAP_NAME"
+                  echo "Snapshot created: $SNAP_NAME"
+
+                  # -- Step 3: prune old snapshots (keep 14) -----------------------
+                  SNAP_COUNT=$(ls -d /snapshots/3d-prints-* 2>/dev/null | wc -l)
+                  if [ "$SNAP_COUNT" -gt 14 ]; then
+                    REMOVE=$((SNAP_COUNT - 14))
+                    echo "Pruning $REMOVE old snapshots..."
+                    ls -d /snapshots/3d-prints-* | sort | head -n "$REMOVE" | while read SNAP; do
+                      btrfs subvolume delete "$SNAP" && echo "Deleted: $SNAP"
+                    done
+                  fi
+
+                  echo "=== 3D-prints backup complete: $TIMESTAMP ==="
+              volumeMounts:
+                - name: source
+                  mountPath: /source
+                  readOnly: true
+                - name: backup-dest
+                  mountPath: /backup-dest
+                - name: snapshots
+                  mountPath: /snapshots
+          restartPolicy: OnFailure
+          volumes:
+            - name: source
+              hostPath:
+                path: /mnt/nas/public/3d-printing
+                type: Directory
+            - name: backup-dest
+              hostPath:
+                path: /mnt/backup-8t/3d-prints
+                type: DirectoryOrCreate
+            - name: snapshots
+              hostPath:
+                path: /mnt/backup-8t/3d-prints-snapshots
+                type: DirectoryOrCreate

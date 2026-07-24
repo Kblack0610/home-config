@@ -2,9 +2,21 @@
 
 Use this guide to verify scheduled backups, trigger them manually, or restore data for services that back up into local node storage and the NAS.
 
-## 8TB Backup Drive (asus-laptop)
+## asus-laptop drive inventory
 
-The 8TB Seagate Expansion USB HDD (`/dev/sda`, uuid `99a8c3bb-b1d9-4a78-88de-627b429cd147`, label `backup8t`) is the primary consolidated backup target on asus-laptop. It holds the Immich photo originals plus DB snapshots, with `@media` and `@app-config` subvolumes reserved for Phase 2.
+Authoritative list of the disks on asus-laptop (the pinned NAS + backup node). The kernel device letter (`/dev/sdX`) is NOT stable across reboots/replugs - always identify a disk by its label or UUID, never by `/dev/sda`.
+
+| Disk | Size | Label / UUID | Role | Mount(s) |
+|---|---|---|---|---|
+| USB HDD | 7.3TB (8TB nominal) | `backup8t` / `99a8c3bb-b1d9-4a78-88de-627b429cd147` | consolidated backup target | `/mnt/backup-8t/*` |
+| NVMe | 1.8TB | `nvme1n1p2` | NAS data (public + private shares) | `/mnt/nas/public`, `/mnt/nas/private` |
+| NVMe | 1.8TB | `nvme0n1p2` | OS root + kubelet | `/` |
+
+Note: this is a same-box setup - the NAS data and its backup drive are both inside asus-laptop. That protects against a single disk failing and against accidental deletion (via snapshots), but NOT against loss of the whole machine (fire/theft). Offsite is not yet implemented.
+
+## Backup Drive (asus-laptop)
+
+The Seagate Expansion USB HDD (label `backup8t`, uuid `99a8c3bb-b1d9-4a78-88de-627b429cd147`; currently enumerates as `/dev/sdc`) is the primary consolidated backup target on asus-laptop. It holds the Immich photo originals + DB snapshots and the 3D-print files mirror, with `@media` and `@app-config` subvolumes reserved for Phase 2.
 
 ### Drive layout
 
@@ -13,43 +25,53 @@ The 8TB Seagate Expansion USB HDD (`/dev/sda`, uuid `99a8c3bb-b1d9-4a78-88de-627
 | `@immich` | `/mnt/backup-8t/immich` | rsync mirror of Immich originals (`/mnt/nas/private/immich`) |
 | `@immich-db` | `/mnt/backup-8t/immich-db` | DB dumps copied from `/var/backups/immich` |
 | `@immich-snapshots` | `/mnt/backup-8t/immich-snapshots` | Dated read-only btrfs snapshots (14 retained) |
+| `@3d-prints` | `/mnt/backup-8t/3d-prints` | rsync mirror of 3D-print files (`/mnt/nas/public/3d-printing`) |
+| `@3d-prints-snapshots` | `/mnt/backup-8t/3d-prints-snapshots` | Dated read-only btrfs snapshots (14 retained) |
 | `@media` | `/mnt/backup-8t/media` | Reserved for Phase 2 (media library) |
 | `@app-config` | `/mnt/backup-8t/app-config` | Reserved for Phase 2 (all NAS app-config) |
 
 ### Reprovisioning (if drive is reformatted or replaced)
 
-Run on asus-laptop (ssh -p 2222 192.168.1.152):
+Run on asus-laptop (ssh -p 2222 192.168.1.152). The device letter is not stable - resolve it from the label first:
 
 ```bash
+# 0. Resolve the device by label (do NOT assume /dev/sda - it currently enumerates as /dev/sdc)
+DEV=$(blkid -L backup8t 2>/dev/null | sed 's/[0-9]*$//')   # e.g. /dev/sdc ; if unformatted, find via lsblk
+echo "Device: $DEV"
+
 # 1. Wipe + partition
-wipefs -a /dev/sda
-printf "label: gpt\nstart=, size=, type=0FC63DAF-8483-4772-8E79-3D69D8477DE4, name=backup8t\n" | sudo sfdisk /dev/sda
+wipefs -a "$DEV"
+printf "label: gpt\nstart=, size=, type=0FC63DAF-8483-4772-8E79-3D69D8477DE4, name=backup8t\n" | sudo sfdisk "$DEV"
 
 # 2. Format btrfs
-sudo mkfs.btrfs -L backup8t /dev/sda1
-NEW_UUID=$(sudo blkid -s UUID -o value /dev/sda1)
+sudo mkfs.btrfs -L backup8t "${DEV}1"
+NEW_UUID=$(sudo blkid -s UUID -o value "${DEV}1")
 echo "UUID: $NEW_UUID"
 
 # 3. Create subvolumes
 sudo mkdir -p /mnt/btrfs-top
-sudo mount /dev/sda1 /mnt/btrfs-top
+sudo mount -o subvolid=5 "${DEV}1" /mnt/btrfs-top
 sudo btrfs subvolume create /mnt/btrfs-top/@immich
 sudo btrfs subvolume create /mnt/btrfs-top/@immich-db
 sudo btrfs subvolume create /mnt/btrfs-top/@immich-snapshots
+sudo btrfs subvolume create /mnt/btrfs-top/@3d-prints
+sudo btrfs subvolume create /mnt/btrfs-top/@3d-prints-snapshots
 sudo btrfs subvolume create /mnt/btrfs-top/@media
 sudo btrfs subvolume create /mnt/btrfs-top/@app-config
 sudo umount /mnt/btrfs-top
 sudo rmdir /mnt/btrfs-top
 
 # 4. Create mount points
-sudo mkdir -p /mnt/backup-8t/{immich,immich-db,immich-snapshots,media,app-config}
+sudo mkdir -p /mnt/backup-8t/{immich,immich-db,immich-snapshots,3d-prints,3d-prints-snapshots,media,app-config}
 
 # 5. Append to /etc/fstab (replace UUID with $NEW_UUID from step 2)
-# UUID=... /mnt/backup-8t/immich           btrfs noatime,compress=zstd:1,nofail,subvol=@immich           0 0
-# UUID=... /mnt/backup-8t/immich-db        btrfs noatime,compress=zstd:1,nofail,subvol=@immich-db        0 0
-# UUID=... /mnt/backup-8t/immich-snapshots btrfs noatime,compress=zstd:1,nofail,subvol=@immich-snapshots 0 0
-# UUID=... /mnt/backup-8t/media            btrfs noatime,compress=zstd:1,nofail,subvol=@media            0 0
-# UUID=... /mnt/backup-8t/app-config       btrfs noatime,compress=zstd:1,nofail,subvol=@app-config       0 0
+# UUID=... /mnt/backup-8t/immich               btrfs noatime,compress=zstd:1,nofail,subvol=@immich               0 0
+# UUID=... /mnt/backup-8t/immich-db            btrfs noatime,compress=zstd:1,nofail,subvol=@immich-db            0 0
+# UUID=... /mnt/backup-8t/immich-snapshots     btrfs noatime,compress=zstd:1,nofail,subvol=@immich-snapshots     0 0
+# UUID=... /mnt/backup-8t/3d-prints            btrfs noatime,compress=zstd:1,nofail,subvol=@3d-prints            0 0
+# UUID=... /mnt/backup-8t/3d-prints-snapshots  btrfs noatime,compress=zstd:1,nofail,subvol=@3d-prints-snapshots  0 0
+# UUID=... /mnt/backup-8t/media                btrfs noatime,compress=zstd:1,nofail,subvol=@media                0 0
+# UUID=... /mnt/backup-8t/app-config           btrfs noatime,compress=zstd:1,nofail,subvol=@app-config           0 0
 
 sudo mount -a
 findmnt /mnt/backup-8t/immich  # verify
@@ -102,6 +124,7 @@ K3s app backups run on schedule via CronJobs. Each backup writes a local archive
 | `litellm-backup` | Daily 2 AM | `ai-gateway` | NAS `home-k3s/litellm/` |
 | `immich-backup` | Daily 3 AM | `immich` | `/var/backups/immich` + NAS `home-k3s/immich/` (DB only) |
 | `immich-originals-backup` | Daily 3:30 AM | `immich` | 8TB `/mnt/backup-8t/immich` + snapshots (originals + DB) |
+| `3d-prints-backup` | Sunday 3:45 AM | `nas` | 8TB `/mnt/backup-8t/3d-prints` + snapshots (mirror of `/mnt/nas/public/3d-printing`) |
 | `sops-key-backup` | Sunday 4 AM | `nas` | NAS `home-k3s/sops/` |
 | `nas-backup-cleanup` | Sunday 5 AM | `nas` | not applicable |
 | `nas-backup-verify` | Monday 6 AM | `nas` | writes `manifest.log` |
@@ -112,6 +135,7 @@ K3s app backups run on schedule via CronJobs. Each backup writes a local archive
 |----------|-----------|
 | Local node storage | 30 backups per app |
 | NAS backups | 14 backups per app |
+| 8TB btrfs snapshots (immich, 3d-prints) | 14 snapshots each |
 | SOPS key copies | 4 copies |
 
 ## Manual Backup
@@ -128,6 +152,9 @@ kubectl --context home-k3s create job --from=cronjob/immich-backup manual-backup
 
 # Immich originals + snapshots to 8TB (run after immich-backup so a fresh dump is available)
 kubectl --context home-k3s create job --from=cronjob/immich-originals-backup manual-backup-$(date +%s) -n immich
+
+# 3D-print files: mirror /mnt/nas/public/3d-printing to the 8TB + snapshot
+kubectl --context home-k3s create job --from=cronjob/3d-prints-backup manual-backup-$(date +%s) -n nas
 
 # SOPS key
 kubectl --context home-k3s create job --from=cronjob/sops-key-backup manual-sops-backup-$(date +%s) -n nas

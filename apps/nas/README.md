@@ -32,6 +32,7 @@ Both shares use `vfs objects = fruit streams_xattr` for macOS compatibility (Tim
 | `sops-backup-cronjob.yaml` | Weekly SOPS age key backup (Sun 4 AM) |
 | `backup-cleanup-cronjob.yaml` | Weekly backup retention pruning (Sun 5 AM, keep 14) |
 | `backup-verify-cronjob.yaml` | Weekly backup integrity check (Mon 6 AM) |
+| `3d-prints-backup-cronjob.yaml` | Weekly mirror of the public 3D-print files to the 8TB drive + snapshot (Sun 3:45 AM) |
 | `sops-backup-rbac.yaml` | ServiceAccount for SOPS key backup job |
 
 ## Backup Infrastructure
@@ -40,6 +41,7 @@ The NAS serves as the central backup target. App backup cronjobs write to `/mnt/
 
 | CronJob | Schedule | What it does |
 |---------|----------|-------------|
+| `3d-prints-backup` | Sun 3:45 AM | Mirrors `/mnt/nas/public/3d-printing` to the 8TB drive (`/mnt/backup-8t/3d-prints`) + dated btrfs snapshot, keeps last 14. See [backup runbook](../../docs/backup-runbook.md) |
 | `sops-key-backup` | Sun 4 AM | Exports `sops-age` secret from `flux-system`, keeps last 4 copies |
 | `nas-backup-cleanup` | Sun 5 AM | Prunes per-app backups beyond 14 copies (skips sops) |
 | `nas-backup-verify` | Mon 6 AM | Checks backup freshness (< 48h) and tar.gz integrity for home-assistant, litellm; verifies SOPS key backup exists |

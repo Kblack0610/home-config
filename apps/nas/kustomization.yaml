@@ -12,3 +12,4 @@ resources:
   - sops-backup-cronjob.yaml
   - backup-cleanup-cronjob.yaml
   - backup-verify-cronjob.yaml
+  - 3d-prints-backup-cronjob.yaml

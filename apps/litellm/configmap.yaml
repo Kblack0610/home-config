@@ -425,22 +425,28 @@ data:
       # Claude Code REQUIRES an Anthropic Messages endpoint; Lazer is
       # OpenAI-only (no /v1/messages), so the path is Claude Code -> LiteLLM
       # anthropic bridge (translates Anthropic<->OpenAI) -> these Lazer routes.
-      # tool_use/MCP fidelity through the double-translation MUST be smoke-tested
-      # before the loop is armed (see the delivery-loop plan). drop_params
-      # (litellm_settings) smooths the translation. Scoped key
-      # `delivery-loop` (allowed_models = these two + fast); key in rbw as
+      # drop_params (litellm_settings) smooths the translation. Scoped key
+      # `delivery-loop` (allowed_models = these three); key in rbw as
       # litellm_delivery_loop_key, never committed.
       #
-      # NAMING EXCEPTION to the `<role> (<model>)` convention: these routes are
-      # named with the BARE CANONICAL Anthropic id. Claude Code canonicalizes
-      # whatever model it's given (strips a ` (lazer)` suffix, turns `4.6` into
-      # `4-6`) before putting it on the wire, so the addressable gateway name
-      # MUST equal what Claude Code emits (`claude-sonnet-4-6`) or the request
-      # 404s / the key 403s. The Lazer provider id keeps the dotted `4.6` in
-      # `model:` below.
-      - model_name: "claude-sonnet-4-6"
+      # TWO naming rules combine here:
+      #  1. NAMING EXCEPTION to `<role> (<model>)`: each route is named with the
+      #     BARE CANONICAL Anthropic id Claude Code emits. Claude Code
+      #     canonicalizes any model it's handed (dots -> hyphens, strips
+      #     suffixes) before the wire, so the addressable gateway name MUST equal
+      #     that id (`claude-sonnet-5`, `claude-opus-4-8`,
+      #     `claude-haiku-4-5-20251001`) or the key 403s / the route 404s.
+      #  2. The upstream `model:` id must be a REAL entry in Lazer's catalog
+      #     (verified live 2026-07: claude-sonnet-5, claude-opus-4.8,
+      #     claude-opus-4.6, claude-haiku-4.5, claude-fable-5 — note there is NO
+      #     claude-sonnet-4.6). So the Claude-Code id and the Lazer id differ by
+      #     design: e.g. Claude Code's `claude-sonnet-5` -> Lazer `claude-sonnet-5`,
+      #     its default background `claude-haiku-4-5-20251001` -> Lazer `claude-haiku-4.5`.
+      #
+      # sonnet-5 = the loop's workhorse main model (set ANTHROPIC_MODEL to this).
+      - model_name: "claude-sonnet-5"
         litellm_params:
-          model: "openai/claude-sonnet-4.6"
+          model: "openai/claude-sonnet-5"
           api_base: https://proxy.lazertechnologies.com/v1
           api_key: os.environ/LAZER_API_KEY
           tpm: 400000
@@ -458,11 +464,11 @@ data:
             json_mode: true
           supports_function_calling: true
 
-      # Opus route for the heavy pipeline legs (architect/reviewer). Higher
-      # per-token cost, so a tighter budget cap than the sonnet workhorse.
-      - model_name: "claude-opus-4-6"
+      # opus-4.8 = best available; for the heavy pipeline legs (architect/
+      # reviewer) or as the main model when max quality is wanted. Tighter cap.
+      - model_name: "claude-opus-4-8"
         litellm_params:
-          model: "openai/claude-opus-4.6"
+          model: "openai/claude-opus-4.8"
           api_base: https://proxy.lazertechnologies.com/v1
           api_key: os.environ/LAZER_API_KEY
           tpm: 200000
@@ -477,6 +483,30 @@ data:
             code: true
             vision: false
             reasoning: true
+            json_mode: true
+          supports_function_calling: true
+
+      # haiku-4.5 = the background/small-fast slot. Claude Code hardcodes the id
+      # `claude-haiku-4-5-20251001` for background tasks (title-gen, summaries)
+      # and ignores ANTHROPIC_SMALL_FAST_MODEL when it's not a claude id, so this
+      # route MUST exist under exactly that name or every harnessed run 403s.
+      - model_name: "claude-haiku-4-5-20251001"
+        litellm_params:
+          model: "openai/claude-haiku-4.5"
+          api_base: https://proxy.lazertechnologies.com/v1
+          api_key: os.environ/LAZER_API_KEY
+          tpm: 500000
+          rpm: 240
+          max_budget: 20.00
+          budget_duration: 30d
+        model_info:
+          mode: chat
+          tags: ["paid", "lazer"]
+          capabilities:
+            tools: true
+            code: false
+            vision: false
+            reasoning: false
             json_mode: true
           supports_function_calling: true
 

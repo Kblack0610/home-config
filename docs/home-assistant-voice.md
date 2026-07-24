@@ -10,7 +10,8 @@ Built and shipped in stages so each layer is tested in isolation.
 | 1 | **Text chat** — Binks conversation agent + home control | ✅ shipped |
 | 2 | **Press-to-talk voice** — STT via LiteLLM whisper + Google TTS | ✅ shipped |
 | 3 | **Wake word (server)** — `wyoming-openwakeword` for *hardware* satellites; unused by the tablet card | ◑ server side shipped |
-| 4 | **Wall-tablet wake word** — in-browser `voice_satellite` card → Binks; `ok_nabu` validated, `hey_binks` = training follow-up | ◑ server side shipped |
+| 4 | **Wall-tablet wake word** — in-browser `voice_satellite` card → Binks; custom `binks` microWakeWord live on all 4 tablets | ✅ shipped (`binks` live) |
+| 5 | **HA Voice PE hardware satellites** — 2 pucks, ESPHome, on-device wake → Binks | ◑ adopting (onboard + wire to Binks) |
 
 Everything is code-first: custom components are vendored by `install-*` init containers
 and config entries are written by idempotent `seed-*` init containers (see
@@ -257,6 +258,49 @@ screensaver; verify on the M11).
 
 ---
 
+## Stage 5 - HA Voice PE hardware satellites (adopting)
+
+Two Home Assistant Voice Preview Edition pucks - the first *hardware* satellites on this setup (until now every mic was a wall-tablet browser, Stage 4, or hypothetical, the appendix). The Voice PE runs the stock "Home Assistant Voice" ESPHome firmware: it holds its own mic open, runs microWakeWord on-device, and streams post-wake audio to whatever Assist pipeline it is assigned - here, Binks. It brings its own mic + wake engine, so it does NOT use the Stage-3 `wyoming-openwakeword` server or the Stage-4 card.
+
+### Why this works on container-HA (no HA OS, no add-on)
+
+Adopting an already-flashed ESPHome device needs only HA's built-in **ESPHome integration** - NOT the ESPHome *builder* add-on (that only compiles firmware, and this setup has no add-ons anyway). So the puck drops into the k3s-container HA with **zero new Flux deployments**.
+
+### Onboarding (one-time per puck - inherent per-device identity, NOT git-seedable)
+
+Like the Stage-4 tablet's browser->satellite binding, the ESPHome config entry carries a per-device API encryption key generated on the puck, so it can't be seeded from git.
+
+1. Power the puck - USB-C, any 5V source (retail box ships bare in some regions; a phone charger is fine).
+2. Onboard Wi-Fi + HA via the **HA Companion app** (Bluetooth/Improv): open it next to the puck, it is discovered over BLE, pick Wi-Fi, it hands off to HA. Desktop also shows a "New device discovered" (ESPHome) prompt; the Improv flow passes the encryption key automatically.
+3. **Name it per room** at adoption (e.g. "Voice Kitchen"). Entities derive from the name: `assist_satellite.voice_kitchen`, `select.voice_kitchen_wake_word`, `number.voice_kitchen_volume`, `switch.voice_kitchen_mute`, `light.voice_kitchen` (LED ring), plus sensors. Verify the exact IDs after adoption.
+4. **Assign the Area** (Settings -> Devices -> the puck -> Area). This is what makes "turn off the lights" resolve to that room without naming entities.
+
+### Wire it to Binks (per-puck; pinnable once entity IDs are known)
+
+- **Pipeline -> Binks:** set the satellite's preferred pipeline (Settings -> the `assist_satellite` device -> Preferred pipeline, or the Voice assistants page). Reuses the entire existing stack: litellm whisper STT -> Binks/gemini-3-flash -> Google TTS. No new services.
+- **Wake word -> Okay Nabu (for now):** the puck's on-device microWakeWord select. Stock firmware ships **Okay Nabu / Hey Jarvis / Hey Mycroft** only. Validate end-to-end on Okay Nabu before touching a custom word.
+- **Reproducibility:** once a puck is adopted and its exact entity IDs are known, mirror the Stage-4 pattern with a startup automation package (sibling of `config/packages/voice_satellite_binks.yaml`) that pins pipeline + wake word on every HA start. Deferred until the IDs exist - the ESPHome pipeline knob differs from the card's `_pipeline_1` select, so verify on adoption before writing the package.
+
+### Validate
+
+Say **"Okay Nabu"** at the puck -> wake chime + LED ring -> speak a room command ("turn off the lights") -> Binks acts on that room's exposed entities -> spoken reply via Google TTS. Confirms mic + wake + pipeline + area routing before touching a custom word.
+
+### Custom "hey binks" on the Voice PE = firmware rebuild (reuses the Stage-4B model)
+
+The wall tablets already run a trained **`binks` microWakeWord** model (Stage 4B: `binks.tflite`, ~0.97 cutoff, ~0.3 false-accepts/hr, ~4% miss). The Voice PE also uses microWakeWord, but its models are **baked into the ESPHome firmware**, not loaded at runtime - so unlike the tablet you cannot just drop the file in. To get "hey binks" on the puck:
+
+1. Take the existing `binks` microWakeWord model (`.tflite` + `.json`) from Stage 4B.
+2. Add it to a Voice PE ESPHome firmware config (`micro_wake_word:` model list) and **compile + flash** the puck (USB or OTA).
+3. The `hey binks` option then appears in the puck's wake-word select; pin it like the tablets.
+
+Until then a mixed fleet is fine - pucks on **Okay Nabu**, tablets on **binks** - since wake word is per-device.
+
+### Placement (two pucks)
+
+One puck covers one room; mic pickup is roughly 3-5 m in a quiet room and drops with noise or a closed door. Put them where you *talk to* HA, not the biggest rooms - big rooms are harder for far-field mics. The tablets already cover Kitchen / Office / Living Room / Bedroom as browser satellites, so the pucks are best where you want a dedicated always-listening mic with a real speaker (3.5mm jack for a bigger speaker) rather than relying on a tablet page staying loaded.
+
+---
+
 ## Appendix — Voice input: options & decision record
 
 The one idea that unlocks it: a wake word needs **a mic held open** + **a program that
@@ -276,7 +320,7 @@ satellite is just "a mic + a listener in a box" for a room with **no** always-on
 | **StreamAssist + RTSP audio app** → server owww | ✅ | ❌ | ⚠️ | Fiddly, experimental |
 | **M5 Atom Echo (~$13)** → server owww | ✅ | ✅ ($13) | ✅ | Cheapest *hardware* mic for a computer-less room |
 | **Raspberry Pi + mic** | ✅ | ✅ | ✅ | More capable, more setup |
-| **HA Voice PE** | ✅ (firmware build) | ✅ ($$) | ✅ | Nicest hardware; custom word = firmware rebuild |
+| **HA Voice PE** | ✅ (firmware build, reuses Stage-4B model) | ✅ ($$) | ✅ | **ADOPTED (Stage 5)** — 2 pucks; nicest hardware; custom word = firmware rebuild |
 
 **Why the "obvious" tablet paths fail for a custom word:** a bare Fully/FreeKiosk page can't
 do wake word — **HA's frontend has no browser wake-word feature** (push-to-talk only); the

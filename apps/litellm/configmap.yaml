@@ -414,6 +414,64 @@ data:
           capabilities:
             audio: true
 
+      # ------------------------------------------------------------
+      # Claude behind Lazer (2026-07) — for HARNESSED consumers that need a
+      # real Claude model, reached through LiteLLM's Anthropic `/v1/messages`
+      # bridge. First consumer: the headless `delivery-loop` agentctl agent
+      # (~/.dotfiles/.local/bin/delivery-loop), which runs `claude -p` with
+      # ANTHROPIC_BASE_URL=https://llm.kblab.me so the kb-* pipeline's tokens
+      # flow through Lazer instead of the native Anthropic subscription.
+      #
+      # Claude Code REQUIRES an Anthropic Messages endpoint; Lazer is
+      # OpenAI-only (no /v1/messages), so the path is Claude Code -> LiteLLM
+      # anthropic bridge (translates Anthropic<->OpenAI) -> these Lazer routes.
+      # tool_use/MCP fidelity through the double-translation MUST be smoke-tested
+      # before the loop is armed (see the delivery-loop plan). drop_params
+      # (litellm_settings) smooths the translation. Scoped key
+      # `delivery-loop` (allowed_models = these two + fast); key in rbw as
+      # litellm_delivery_loop_key, never committed.
+      - model_name: "claude-sonnet-4.6 (lazer)"
+        litellm_params:
+          model: "openai/claude-sonnet-4.6"
+          api_base: https://proxy.lazertechnologies.com/v1
+          api_key: os.environ/LAZER_API_KEY
+          tpm: 400000
+          rpm: 120
+          max_budget: 75.00
+          budget_duration: 30d
+        model_info:
+          mode: chat
+          tags: ["paid", "lazer"]
+          capabilities:
+            tools: true
+            code: true
+            vision: false
+            reasoning: false
+            json_mode: true
+          supports_function_calling: true
+
+      # Opus route for the heavy pipeline legs (architect/reviewer). Higher
+      # per-token cost, so a tighter budget cap than the sonnet workhorse.
+      - model_name: "claude-opus-4.6 (lazer)"
+        litellm_params:
+          model: "openai/claude-opus-4.6"
+          api_base: https://proxy.lazertechnologies.com/v1
+          api_key: os.environ/LAZER_API_KEY
+          tpm: 200000
+          rpm: 60
+          max_budget: 50.00
+          budget_duration: 30d
+        model_info:
+          mode: chat
+          tags: ["paid", "lazer"]
+          capabilities:
+            tools: true
+            code: true
+            vision: false
+            reasoning: true
+            json_mode: true
+          supports_function_calling: true
+
     router_settings:
       routing_strategy: "simple-shuffle"
       timeout: 900

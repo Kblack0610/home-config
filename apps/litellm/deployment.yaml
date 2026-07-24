@@ -35,6 +35,16 @@ spec:
           ports:
             - name: http
               containerPort: 4000
+          env:
+            # Force the /v1/messages (Anthropic) endpoint to translate to the
+            # upstream /chat/completions for OpenAI-provider models, instead of
+            # the OpenAI Responses API. Required so Claude Code (which only
+            # speaks /v1/messages) can reach the Lazer-backed claude-* routes:
+            # Lazer is OpenAI-only with no Responses API, so the default path
+            # hits a nonexistent upstream URL and 404s. See
+            # litellm.use_chat_completions_url_for_anthropic_messages.
+            - name: LITELLM_USE_CHAT_COMPLETIONS_URL_FOR_ANTHROPIC_MESSAGES
+              value: "true"
           envFrom:
             # litellm-secrets is bootstrapped out-of-band (not in git) and
             # holds LITELLM_MASTER_KEY. litellm-db-secrets is SOPS-managed

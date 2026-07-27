@@ -275,6 +275,27 @@ data:
             reasoning: false
             json_mode: true
 
+      # assist chat — Binks (HA voice) PRIMARY. gemini-2.5-flash on the FAMILY
+      # Gemini key (GEMINI_API_KEY_FAMILY) which — unlike GEMINI_API_KEY above —
+      # HAS chat generateContent quota (verified 2026-07: function-calling
+      # returns a real tool_call). Dedicated route, not the shared `fast`/`vlm`
+      # alias, so Binks routing is isolated and A/B-able. Fallback chain in
+      # router_settings.fallbacks below: -> Lazer gpt-oss-120b -> local Qwen3-4B.
+      - model_name: "assist (gemini-flash)"
+        litellm_params:
+          model: "gemini/gemini-2.5-flash"
+          api_key: os.environ/GEMINI_API_KEY_FAMILY
+        model_info:
+          mode: chat
+          tags: ["cloud", "gemini", "assist"]
+          capabilities:
+            tools: true
+            code: false
+            vision: true
+            reasoning: false
+            json_mode: true
+          supports_function_calling: true
+
       # embedding cloud — gemini-embedding-001 forced to 768 dims
       # (output_dimensionality), matching the local modernbert embedder, so
       # it writes into the SAME pgvector column (apps/mem0/, vector(768)) with
@@ -548,6 +569,11 @@ data:
       fallbacks:
         - {"fast (gpt-oss-120b)": ["fast (gemini-2.0-flash)", "fast (Qwen3-4B)"]}
         - {"fast (gemini-2.0-flash)": ["fast (Qwen3-4B)"]}
+        # Binks (HA voice) 3-tier chain: Gemini family key (primary) -> Lazer
+        # gpt-oss-120b (verified tool-calling) -> local Qwen3-4B (last-resort;
+        # answers but emits text-style tool calls, so device control is best-
+        # effort on this tier). Keeps voice up across a cloud outage.
+        - {"assist (gemini-flash)": ["fast (gpt-oss-120b)", "fast (Qwen3-4B-8bit)"]}
         # LOCAL -> CLOUD safety nets. These make flipping a `model_group_alias`
         # to a local MLX route non-destructive: if the Mac Studio box is down
         # or a cold on_demand load times out, the request transparently spills

@@ -1233,9 +1233,29 @@ spec:
               for e in entries:
                   e.setdefault("subentries", {})
 
+              CHAT_MODEL = "assist (gemini-flash)"
               for e in entries:
                   if e.get("domain") == DOMAIN:
-                      print("Binks conversation entry already exists, skipping")
+                      # Reconcile (not create-only): the chat_model moved off the
+                      # retired Lazer `vlm (gemini-3-flash)` route to the
+                      # `assist (gemini-flash)` fallback chain. A create-only seed
+                      # would strand the running entry on the dead model. Idempotent
+                      # — only writes when chat_model or the scoped key changed.
+                      opts = e.setdefault("options", {})
+                      changed = False
+                      if opts.get("chat_model") != CHAT_MODEL:
+                          opts["chat_model"] = CHAT_MODEL
+                          changed = True
+                      if e.setdefault("data", {}).get("api_key") != api_key:
+                          e["data"]["api_key"] = api_key
+                          changed = True
+                      if changed:
+                          e["modified_at"] = datetime.now(timezone.utc).isoformat()
+                          with open(ENTRIES, "w") as f:
+                              json.dump(store, f, indent=2)
+                          print(f"Reconciled Binks conversation entry -> chat_model={CHAT_MODEL}")
+                      else:
+                          print("Binks conversation entry already up to date, skipping")
                       exit(0)
 
               prompt = (
@@ -1274,7 +1294,7 @@ spec:
                   "minor_version": 1,
                   "modified_at": now,
                   "options": {
-                      "chat_model": "vlm (gemini-3-flash)",
+                      "chat_model": CHAT_MODEL,
                       "max_tokens": 500,
                       "temperature": 0.4,
                       "top_p": 1,

@@ -334,6 +334,7 @@ spec:
               cp /managed-config/package_voice_targets.yaml /config/packages/voice_targets.yaml
               cp /managed-config/package_site_status.yaml /config/packages/site_status.yaml
               cp /managed-config/package_fleet_alerts.yaml /config/packages/fleet_alerts.yaml
+              cp /managed-config/package_voice_health.yaml /config/packages/voice_health.yaml
               cp /managed-config/package_marine.yaml /config/packages/marine.yaml
               cp /managed-config/package_voice_satellite_binks.yaml /config/packages/voice_satellite_binks.yaml
               cp /managed-config/package_plug_settings.yaml /config/packages/plug_settings.yaml
@@ -1913,6 +1914,15 @@ spec:
             capabilities:
               drop:
                 - ALL
+          env:
+            # Scoped assist key for the Binks-brain health probe (the command_line
+            # sensor in config/packages/voice_health.yaml). Same key the seed init
+            # containers use; read from the container env at probe time.
+            - name: LITELLM_ASSIST_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: litellm-assist-credentials
+                  key: api-key
           ports:
             - name: http
               containerPort: 8123

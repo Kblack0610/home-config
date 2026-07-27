@@ -1,7 +1,8 @@
 # Home Assistant voice assistant — "Binks"
 
 A staged, code-first conversational assistant for the home. Backed by the cluster
-**LiteLLM** gateway (model `vlm (gemini-3-flash)`), able to control exposed devices.
+**LiteLLM** gateway (model `assist (gemini-flash)` — a Gemini -> Lazer -> local
+fallback chain), able to control exposed devices.
 Built and shipped in stages so each layer is tested in isolation.
 
 | Stage | What | Status |
@@ -11,7 +12,7 @@ Built and shipped in stages so each layer is tested in isolation.
 | 2 | **Press-to-talk voice** — STT via LiteLLM whisper + Google TTS | ✅ shipped |
 | 3 | **Wake word (server)** — `wyoming-openwakeword` for *hardware* satellites; unused by the tablet card | ◑ server side shipped |
 | 4 | **Wall-tablet wake word** — in-browser `voice_satellite` card → Binks; custom `binks` microWakeWord live on all 4 tablets | ✅ shipped (`binks` live) |
-| 5 | **HA Voice PE hardware satellites** — 2 pucks, ESPHome, on-device wake → Binks | ◑ adopting (onboard + wire to Binks) |
+| 5 | **HA Voice PE hardware satellites** — 2 pucks, ESPHome, on-device wake → Binks | ✅ both adopted, on Binks pipeline (Kitchen + Bedroom) |
 
 Everything is code-first: custom components are vendored by `install-*` init containers
 and config entries are written by idempotent `seed-*` init containers (see
@@ -42,23 +43,99 @@ and config entries are written by idempotent `seed-*` init containers (see
 Binks authenticates to LiteLLM with a scoped virtual key (alias `home-assistant-assist`),
 minted out-of-band per `apps/litellm/README.md` and stored SOPS-encrypted in
 `apps/home-assistant/litellm-assist-secret.yaml` (Secret `litellm-assist-credentials`,
-key `api-key`). Allowed models:
+key `api-key`). Allowed models — Binks's 3-tier chat fallback chain plus STT:
 
 ```
-vlm (gemini-3-flash)   # Binks chat + tool calling
-fast (gpt-oss-120b)    # documented fast fallback
+assist (gemini-flash)  # PRIMARY — gemini-2.5-flash on GEMINI_API_KEY_FAMILY
+fast (gpt-oss-120b)    # fallback tier 2 — Lazer (verified tool-calling)
+fast (Qwen3-4B-8bit)   # fallback tier 3 — local MLX (best-effort control)
 stt (whisper-turbo)    # Stage 2 speech-to-text
 ```
 
-Re-mint / rotate:
+Change the allowed-models WITHOUT re-minting (keeps the same key value, so no
+secret edit) via `/key/update`:
+
+```bash
+MASTER_KEY=$(kubectl -n ai-gateway get secret litellm-secrets -o jsonpath='{.data.LITELLM_MASTER_KEY}' | base64 -d)
+AKEY=$(kubectl -n home-assistant get secret litellm-assist-credentials -o jsonpath='{.data.api-key}' | base64 -d)
+curl -sX POST https://llm.kblab.me/key/update -H "Authorization: Bearer $MASTER_KEY" \
+  -H 'Content-Type: application/json' \
+  -d "{\"key\":\"$AKEY\",\"models\":[\"assist (gemini-flash)\",\"fast (gpt-oss-120b)\",\"fast (Qwen3-4B-8bit)\",\"stt (whisper-turbo)\"]}"
+```
+
+Re-mint / rotate the key VALUE (only when the value itself must change):
 
 ```bash
 MASTER_KEY=$(kubectl -n ai-gateway get secret litellm-secrets -o jsonpath='{.data.LITELLM_MASTER_KEY}' | base64 -d)
 curl -sX POST https://llm.kblab.me/key/generate -H "Authorization: Bearer $MASTER_KEY" \
   -H 'Content-Type: application/json' \
-  -d '{"key_alias":"home-assistant-assist","models":["vlm (gemini-3-flash)","fast (gpt-oss-120b)","stt (whisper-turbo)"],"tpm_limit":100000}'
+  -d '{"key_alias":"home-assistant-assist","models":["assist (gemini-flash)","fast (gpt-oss-120b)","fast (Qwen3-4B-8bit)","stt (whisper-turbo)"],"tpm_limit":100000}'
 # put .key into apps/home-assistant/litellm-assist-secret.yaml stringData.api-key, then: sops -e -i <file>
 ```
+
+---
+
+## Model routing & resilience
+
+Binks's `chat_model` is one LiteLLM group, `assist (gemini-flash)`, with an ordered
+fallback chain (`router_settings.fallbacks` in `apps/litellm/configmap.yaml`):
+
+```
+assist (gemini-flash)     gemini-2.5-flash   Google (GEMINI_API_KEY_FAMILY)   PRIMARY
+  -> fast (gpt-oss-120b)  gpt-oss-120b       Lazer (Deloitte proxy)           on Gemini error
+  -> fast (Qwen3-4B-8bit) Qwen3-4B           Mac Studio MLX (local)           last resort
+```
+
+- **Gemini is primary on purpose:** it keeps personal home voice off the Lazer
+  (Deloitte) proxy in the normal path — Lazer is only touched on a Gemini failure. The
+  local tier answers but emits text-style tool calls, so device *control* is
+  best-effort there; it is a "still talks during a cloud outage" net, not a full tier.
+- **Two Gemini keys, don't confuse them:** `GEMINI_API_KEY` is embeddings-only (chat
+  generateContent quota = 0); `GEMINI_API_KEY_FAMILY` has chat quota and is the assist
+  route's key. Both live in `apps/litellm/secret.sops.yaml`.
+- The EOC config-entry seed **reconciles** `chat_model` on every HA start (not
+  create-only), so changing the model in `deployment.yaml` propagates to the running
+  entry on the next roll instead of stranding it on the old value.
+
+### Which model actually served a turn
+
+- **Terminal:** `GET /spend/logs?api_key=<assist key>` on the gateway returns
+  `{model, status}` per request — tail it while testing.
+- **Response headers:** `x-litellm-model-api-base` (which upstream served it),
+  `x-litellm-attempted-fallbacks` (did it fail over).
+- **Dashboard:** langfuse.kblab.me — the `langfuse_otel` callback traces every call
+  (model, fallback chain, latency, cost).
+
+### Incident — 2026-07-27: Binks silently dead
+
+`chat_model` was `vlm (gemini-3-flash)`, a Lazer route. Lazer's catalog dropped the
+`gemini-3-flash` name (the 2026-07-24 "Claude-behind-Lazer" remap), so **every** turn
+400'd (`unknown model: gemini-3-flash`) — voice fully broken. It went unnoticed because
+gatus only probes LiteLLM `/health/readiness` (gateway up), which stays green while a
+single model route is dead. Fixed by moving to the `assist (gemini-flash)` chain
+(PR #166). See **Monitoring** below — a synthetic assist-route probe is the fix so this
+cannot degrade silently again.
+
+---
+
+## Monitoring & health
+
+Two monitoring layers exist, and as of 2026-07 **neither covers voice**:
+
+- **gatus** (`apps/gatus/config.yaml`) probes LiteLLM `/health/readiness` and the
+  `llm.kblab.me` ingress — these confirm the *gateway* is up, NOT that Binks's model
+  route answers. A dead model route (the incident above) passes both. Fix: a
+  **synthetic assist-route probe** — a gatus endpoint that POSTs a trivial prompt to
+  `assist (gemini-flash)` with the assist key and asserts the body is not an error.
+- **HA `fleet_alerts.yaml`** turns `device_class: connectivity` binary_sensors (from
+  `site_status.yaml`) into ntfy alerts on the `homelab-alerts` topic. The voice
+  **satellites are not in it** — if a Voice PE puck or a wall tablet drops off WiFi,
+  nothing alerts. Fix: a connectivity `binary_sensor` per satellite (derived from the
+  `assist_satellite.*` availability) so it flows into the existing pipeline.
+
+Status: both are **known gaps / TODO**. The satellite entities *are* visible in HA
+today (`assist_satellite.*` state = idle / unavailable, plus the Assist pipeline Debug
+view), just not alerted.
 
 ---
 
@@ -68,7 +145,7 @@ Three init containers do the work (all in `deployment.yaml`):
 
 1. `install-extended-openai-conversation` — vendors EOC `1.1.0` into `/config/custom_components`.
 2. `seed-binks-conversation` — writes the EOC config entry: `base_url` = the in-cluster
-   LiteLLM `/v1`, `chat_model` = `vlm (gemini-3-flash)`, `use_tools: true`,
+   LiteLLM `/v1`, `chat_model` = `assist (gemini-flash)`, `use_tools: true`,
    `skip_authentication: true` (so HA boot doesn't depend on LiteLLM being up that
    instant — the key is verified out of band), and the **Binks persona prompt**.
 3. `seed-binks-expose` — exposes an action-only allow-list of domains
@@ -109,9 +186,11 @@ narrowing it there is safe and persists (the seed won't re-add what you remove).
 
 ### Fallbacks / knobs
 
-- If Gemini tool-calling ever misbehaves through LiteLLM, switch `chat_model` in the
-  `seed-binks-conversation` options to `fast (gpt-oss-120b)` and roll the deployment.
-  (Verified 2026-07: gemini-3-flash returns correct `execute_services` tool calls.)
+- **Gemini failover is automatic** now — the `assist (gemini-flash)` group falls back
+  to `fast (gpt-oss-120b)` (Lazer) then `fast (Qwen3-4B-8bit)` (local) at the LiteLLM
+  router (see **Model routing & resilience**). No manual switch needed for a transient
+  Gemini hiccup. To change the primary permanently, edit `chat_model` in
+  `seed-binks-conversation` (the seed reconciles it on the next roll).
 - To make the built-in local agent the default again: **Settings → Voice assistants →**
   set "Home Assistant" as preferred (the pipeline is still there).
 
@@ -270,18 +349,30 @@ Adopting an already-flashed ESPHome device needs only HA's built-in **ESPHome in
 
 ### Onboarding (one-time per puck - inherent per-device identity, NOT git-seedable)
 
-Like the Stage-4 tablet's browser->satellite binding, the ESPHome config entry carries a per-device API encryption key generated on the puck, so it can't be seeded from git.
+The ONLY step needing physical presence is the first Wi-Fi handshake — a fresh puck has no IP, so it must be reached over BLE or USB. Everything after that is headless (verified 2026-07-27: both pucks adopted + configured entirely via the HA API, **no companion app and no encryption key** — stock firmware exposed the native API *unencrypted*, so the config flow created the entry immediately).
 
 1. Power the puck - USB-C, any 5V source (retail box ships bare in some regions; a phone charger is fine).
-2. Onboard Wi-Fi + HA via the **HA Companion app** (Bluetooth/Improv): open it next to the puck, it is discovered over BLE, pick Wi-Fi, it hands off to HA. Desktop also shows a "New device discovered" (ESPHome) prompt; the Improv flow passes the encryption key automatically.
-3. **Name it per room** at adoption (e.g. "Voice Kitchen"). Entities derive from the name: `assist_satellite.voice_kitchen`, `select.voice_kitchen_wake_word`, `number.voice_kitchen_volume`, `switch.voice_kitchen_mute`, `light.voice_kitchen` (LED ring), plus sensors. Verify the exact IDs after adoption.
-4. **Assign the Area** (Settings -> Devices -> the puck -> Area). This is what makes "turn off the lights" resolve to that room without naming entities.
+2. **Get it on Wi-Fi** (the one hands-on step): the HA Companion app or `improv-wifi.com` in Chrome, next to the puck, over BLE. Or flash your own ESPHome firmware with Wi-Fi baked in for a fully code-first path (see the appendix). It then appears on the LAN as `home-assistant-voice-<macsuffix>.local:6053`.
+3. **Adopt + configure headlessly** (`$BASE` = https://hass.kblab.me, `$TOKEN` = the HA token):
+
+```bash
+# adopt: start the esphome config flow, submit host:port -> create_entry (no key)
+FLOW=$(curl -sX POST "$BASE/api/config/config_entries/flow" -H "Authorization: Bearer $TOKEN" \
+  -H 'Content-Type: application/json' -d '{"handler":"esphome","show_advanced_options":true}' | jq -r .flow_id)
+curl -sX POST "$BASE/api/config/config_entries/flow/$FLOW" -H "Authorization: Bearer $TOKEN" \
+  -H 'Content-Type: application/json' -d '{"host":"<puck-ip>","port":6053}'
+# then: select.<dev>_assistant -> "Binks", select.<dev>_wake_word -> "Okay Nabu"
+# (select/select_option service), and the WS API config/device_registry/update ->
+# area_id + name_by_user "Voice <Room>".
+```
+
+Entities derive from the device name (`home_assistant_voice_<macsuffix>_*`): the `assist_satellite`, `select.*_assistant` (pipeline), `select.*_wake_word`, `number.*_volume`, `switch.*_mute`, `light.*_led_ring`, plus sensors. The two pucks are **Kitchen (0a9a90)** and **Bedroom (0aa6d9)**. Area assignment is tied to device identity, so you can adopt from anywhere and physically move the puck later — it keeps its Area, pipeline, and name.
 
 ### Wire it to Binks (per-puck; pinnable once entity IDs are known)
 
-- **Pipeline -> Binks:** set the satellite's preferred pipeline (Settings -> the `assist_satellite` device -> Preferred pipeline, or the Voice assistants page). Reuses the entire existing stack: litellm whisper STT -> Binks/gemini-3-flash -> Google TTS. No new services.
+- **Pipeline -> Binks:** set the satellite's preferred pipeline (Settings -> the `assist_satellite` device -> Preferred pipeline, or the Voice assistants page). Reuses the entire existing stack: litellm whisper STT -> Binks/`assist (gemini-flash)` -> Google TTS. No new services.
 - **Wake word -> Okay Nabu (for now):** the puck's on-device microWakeWord select. Stock firmware ships **Okay Nabu / Hey Jarvis / Hey Mycroft** only. Validate end-to-end on Okay Nabu before touching a custom word.
-- **Reproducibility:** once a puck is adopted and its exact entity IDs are known, mirror the Stage-4 pattern with a startup automation package (sibling of `config/packages/voice_satellite_binks.yaml`) that pins pipeline + wake word on every HA start. Deferred until the IDs exist - the ESPHome pipeline knob differs from the card's `_pipeline_1` select, so verify on adoption before writing the package.
+- **Reproducibility (follow-up):** the config entry + select states are runtime state (on the PVC), not git. Entity IDs are now known (`home_assistant_voice_0a9a90_*`, `home_assistant_voice_0aa6d9_*`), so the pin is a concrete TODO: a startup automation package (sibling of `config/packages/voice_satellite_binks.yaml`) that re-selects `select.*_assistant` -> Binks + `select.*_wake_word` -> Okay Nabu on every HA start, so a PVC rebuild doesn't strand the pucks. Note the ESPHome pipeline knob is `select.<dev>_assistant`, NOT the card's `_pipeline_1`.
 
 ### Validate
 

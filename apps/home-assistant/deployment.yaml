@@ -337,6 +337,7 @@ spec:
               cp /managed-config/package_voice_health.yaml /config/packages/voice_health.yaml
               cp /managed-config/package_marine.yaml /config/packages/marine.yaml
               cp /managed-config/package_voice_satellite_binks.yaml /config/packages/voice_satellite_binks.yaml
+              cp /managed-config/package_voice_pe_pucks.yaml /config/packages/voice_pe_pucks.yaml
               cp /managed-config/package_plug_settings.yaml /config/packages/plug_settings.yaml
               cp /managed-config/package_wall_screensaver.yaml /config/packages/wall_screensaver.yaml
               cp /managed-config/package_wall_night_mode.yaml /config/packages/wall_night_mode.yaml

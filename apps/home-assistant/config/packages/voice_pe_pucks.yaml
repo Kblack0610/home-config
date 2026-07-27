@@ -1,0 +1,70 @@
+# Voice PE puck defaults (Binks pipeline + Okay Nabu), code-first.
+#
+# The ESPHome Voice PE pucks expose per-device SELECT entities whose chosen values
+# are runtime state (on the PVC / in the ESPHome config entry), NOT git. A PVC
+# rebuild or a re-adoption resets them to firmware defaults ("preferred" pipeline,
+# "Okay Nabu"), stranding the pucks off Binks. This automation re-pins them on every
+# HA start and whenever a puck reconnects, so the setup is reproducible.
+#
+# Sibling of voice_satellite_binks.yaml (the Stage-4 tablets). NOTE the ESPHome
+# pipeline knob is select.<dev>_assistant, NOT the card's _pipeline_1. Pucks:
+# Kitchen = home_assistant_voice_0a9a90, Bedroom = home_assistant_voice_0aa6d9.
+#
+# NOT covered here: adoption itself (the ESPHome config entry is runtime state; see
+# docs/home-assistant-voice.md Stage 5 for the headless re-adoption recipe).
+
+automation:
+  - id: voice_pe_puck_defaults
+    alias: "Voice PE — puck defaults (Binks)"
+    description: >-
+      Pin both Voice PE pucks to the Binks pipeline + Okay Nabu + moderate
+      sensitivity on HA start and whenever a puck's assistant select reappears
+      after the ESPHome integration reconnects. Skips a puck whose entities are
+      not yet available.
+    mode: single
+    max_exceeded: silent
+    trigger:
+      - platform: homeassistant
+        event: start
+      - platform: state
+        entity_id:
+          - select.home_assistant_voice_0a9a90_assistant
+          - select.home_assistant_voice_0aa6d9_assistant
+        from:
+          - unavailable
+          - unknown
+    action:
+      # Settle delay so sibling entities are up on the start-trigger path.
+      - delay: "00:00:05"
+      - repeat:
+          for_each:
+            - home_assistant_voice_0a9a90
+            - home_assistant_voice_0aa6d9
+          sequence:
+            - if:
+                - condition: template
+                  value_template: >-
+                    {{ states('select.' ~ repeat.item ~ '_assistant') not in ['unavailable', 'unknown'] }}
+              then:
+                - service: select.select_option
+                  target:
+                    entity_id: "select.{{ repeat.item }}_assistant"
+                  data:
+                    option: "Binks"
+                - service: select.select_option
+                  target:
+                    entity_id: "select.{{ repeat.item }}_wake_word"
+                  data:
+                    option: "Okay Nabu"
+                # Sensitivity is a nice-to-have; guard so it only sets when the
+                # option is actually present (firmware revisions vary the labels).
+                - if:
+                    - condition: template
+                      value_template: >-
+                        {{ 'Moderately sensitive' in state_attr('select.' ~ repeat.item ~ '_wake_word_sensitivity', 'options') | default([]) }}
+                  then:
+                    - service: select.select_option
+                      target:
+                        entity_id: "select.{{ repeat.item }}_wake_word_sensitivity"
+                      data:
+                        option: "Moderately sensitive"

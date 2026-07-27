@@ -109,6 +109,61 @@ data:
       output {
         metrics = [otelcol.exporter.prometheus.otel.input]
         logs    = [otelcol.exporter.loki.otel.input]
+        traces  = [otelcol.processor.batch.langfuse.input]
+      }
+    }
+
+    // ---- Traces -> Langfuse -------------------------------------------------
+    // Claude Code emits spans (claude_code.interaction as the per-prompt root,
+    // with claude_code.llm_request / .tool / .tool.execution / .hook beneath it)
+    // when CLAUDE_CODE_ENHANCED_TELEMETRY_BETA=1 and OTEL_TRACES_EXPORTER=otlp.
+    // Until now this receiver had no traces output at all, so every span was
+    // accepted and silently dropped: the metrics told us a session cost $X, but
+    // nothing could answer what it actually did.
+    //
+    // Langfuse is the right sink rather than Tempo because it is already the
+    // LLM-observability surface here (apps/litellm forwards gateway traces to
+    // the same project via its langfuse_otel callback) and it scores/evaluates
+    // traces, which a generic tracing backend does not.
+    //
+    // Alloy is the right junction rather than exporting straight from the
+    // workstation: the receiver already terminates OTLP on a hostPort on every
+    // node, so this adds no client-side fan-out and keeps the Langfuse key in
+    // the cluster instead of in a shell rc file.
+    otelcol.processor.batch "langfuse" {
+      // Spans arrive one interaction at a time; batch to avoid a request per span.
+      timeout             = "5s"
+      send_batch_size     = 256
+      send_batch_max_size = 512
+
+      output {
+        traces = [otelcol.exporter.otlphttp.langfuse.input]
+      }
+    }
+
+    otelcol.exporter.otlphttp "langfuse" {
+      client {
+        // Langfuse speaks OTLP over HTTP ONLY (HTTP/JSON and HTTP/protobuf); it
+        // has no gRPC ingestion endpoint, so this must be otlphttp, not otlp.
+        // The base path is /api/public/otel - the exporter appends /v1/traces.
+        // In-cluster Service, so this never leaves the node network.
+        endpoint = "http://langfuse-web.langfuse.svc.cluster.local:3000/api/public/otel"
+        headers = {
+          // Basic auth over base64("pk-lf-...:sk-lf-..."), from apps/alloy/secret.sops.yaml.
+          "Authorization"                = join(["Basic ", sys.env("LANGFUSE_BASIC_AUTH")], ""),
+          "x-langfuse-ingestion-version" = "4",
+        }
+      }
+      // A Langfuse outage must not wedge the metrics/logs pipelines.
+      sending_queue {
+        enabled    = true
+        queue_size = 1000
+      }
+      retry_on_failure {
+        enabled          = true
+        initial_interval = "5s"
+        max_interval     = "30s"
+        max_elapsed_time = "5m"
       }
     }
 

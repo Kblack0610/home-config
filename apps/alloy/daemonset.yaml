@@ -35,6 +35,14 @@ spec:
               valueFrom:
                 fieldRef:
                   fieldPath: spec.nodeName
+            # Consumed by otelcol.exporter.otlphttp "langfuse" in the config via
+            # sys.env(). Alloy resolves sys.env() at config load, so a rotation
+            # needs a pod restart, not just a secret update.
+            - name: LANGFUSE_BASIC_AUTH
+              valueFrom:
+                secretKeyRef:
+                  name: alloy-langfuse
+                  key: LANGFUSE_BASIC_AUTH
           ports:
             - name: http
               containerPort: 12345

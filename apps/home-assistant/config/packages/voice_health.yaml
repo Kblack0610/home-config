@@ -1,0 +1,60 @@
+# Voice health monitoring -> feeds the existing fleet_alerts.yaml ntfy pipeline.
+# A binary_sensor with device_class: connectivity in state 'off' is counted by
+# sensor.services_down_count (site_status.yaml) and pushed to the ntfy
+# 'homelab-alerts' topic by fleet_alerts.yaml. This package fills the two gaps
+# documented in docs/home-assistant-voice.md "Monitoring & health":
+#
+#   1. Binks brain — gatus only probes LiteLLM /health/readiness (gateway UP),
+#      which stays green while the assist model route is dead (the 2026-07-27
+#      silent outage). This synthetically calls the REAL assist (gemini-flash)
+#      route every 10 min and alerts on a non-200.
+#   2. Voice PE puck liveness — the pucks were in no monitoring board; these
+#      surface an offline puck (off WiFi / unplugged).
+#
+# The wall TABLETS are intentionally NOT alerted here: their assist_satellite
+# goes unavailable on dashboard reload / night-mode, which would be noisy. Their
+# state is already visible via the native assist_satellite.wall_* entities.
+
+command_line:
+  - sensor:
+      name: "Binks brain probe"
+      unique_id: binks_brain_probe
+      # Minimal 1-token call to the real assist route with the scoped key. Emits
+      # only the HTTP status. ${LITELLM_ASSIST_KEY} comes from the container env
+      # (secret litellm-assist-credentials, added to the main container); HA logs
+      # the UNEXPANDED command, so the key is not written to the log.
+      command: >-
+        curl -s -m 20 -o /dev/null -w "%{http_code}"
+        -X POST http://litellm.ai-gateway.svc.cluster.local:4000/v1/chat/completions
+        -H "Authorization: Bearer ${LITELLM_ASSIST_KEY}"
+        -H "Content-Type: application/json"
+        -d '{"model":"assist (gemini-flash)","messages":[{"role":"user","content":"ping"}],"max_tokens":1}'
+      scan_interval: 600
+
+template:
+  - binary_sensor:
+      # Binks brain: ON = the assist route answered 200; OFF = any non-200 (dead
+      # model route, gateway down, key rejected). availability guard keeps it
+      # 'unavailable' (not 'off') until the first probe returns, so a cold start
+      # does not false-alert.
+      - name: "Binks brain"
+        unique_id: binks_brain
+        device_class: connectivity
+        availability: "{{ states('sensor.binks_brain_probe') not in ['unknown', 'unavailable'] }}"
+        state: "{{ states('sensor.binks_brain_probe') == '200' }}"
+
+      # Voice PE puck liveness. ON = the puck's assist_satellite is reachable;
+      # OFF = unavailable/unknown (offline). A brief startup blip is absorbed by
+      # the fleet_alerts "for: 00:03:00" debounce.
+      - name: "Voice Kitchen puck"
+        unique_id: voice_kitchen_puck_online
+        device_class: connectivity
+        state: >-
+          {{ states('assist_satellite.home_assistant_voice_0a9a90_assist_satellite')
+             not in ['unavailable', 'unknown'] }}
+      - name: "Voice Bedroom puck"
+        unique_id: voice_bedroom_puck_online
+        device_class: connectivity
+        state: >-
+          {{ states('assist_satellite.home_assistant_voice_0aa6d9_assist_satellite')
+             not in ['unavailable', 'unknown'] }}

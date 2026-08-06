@@ -401,9 +401,16 @@ data:
       # vlm paid — gemini-3-flash. First VLM route in the gateway
       # (no local equivalent until mlx_vlm bug is sorted). Maps to
       # OpenClaw's image + pdf slots. Image-capable, cheap.
+      # NOTE the route name is a STABLE ALIAS; the upstream id below floats.
+      # Lazer retired `gemini-3-flash` (now 3.5/3.6), so this route - and the
+      # bare `vlm` alias that points at it - returned
+      # `400 unknown model: gemini-3-flash` for every vision request. Renaming
+      # the route to chase the vendor was rejected: the name is pinned in 7
+      # repo files plus openclaw's cluster configmap, so a rename is churn that
+      # repeats on every vendor bump. Only the upstream moves.
       - model_name: "vlm (gemini-3-flash)"
         litellm_params:
-          model: "openai/gemini-3-flash"
+          model: "openai/gemini-3.6-flash"
           api_base: https://proxy.lazertechnologies.com/v1
           api_key: os.environ/LAZER_API_KEY
           tpm: 100000

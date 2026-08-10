@@ -19,7 +19,13 @@ spec:
     spec:
       containers:
         - name: actual-budget
-          image: actualbudget/actual-server:26.2.0
+          # Keep in step with actual-http-api-deployment.yaml: the API image is an
+          # Actual client and is released per server version.
+          # 26.2.0 -> 26.8.1: 26.2.0 aborts the whole SimpleFIN batch when any linked
+          # account is missing upstream, so four de-listed Capital One accounts blocked
+          # bank sync for every other account too. Fixed by 26.4.0 (#7125 per-account
+          # error isolation, #7152 missing-account handling). See docs/finance/simplefin-reconnect.md.
+          image: actualbudget/actual-server:26.8.1
           imagePullPolicy: Always
           ports:
             - containerPort: 5006

@@ -21,7 +21,7 @@ kubectl --context home-k3s port-forward -n actual-budget svc/actual-budget 5006:
 
 - [Finance Stack Overview](./finance-stack.md) - what Actual is/isn't for, and the future business-finance options.
 - [Tax categories + business/personal separation](./tax-categories.md) - the category scheme that makes exports tax-meaningful.
-- [SimpleFIN reconnect](./simplefin-reconnect.md) - revive bank sync (stale since 2026-04-13).
+- [SimpleFIN bank-sync troubleshooting](./simplefin-reconnect.md) - diagnose before reconnecting; the 2026-04-13 stall was orphaned account ids, not an expired token.
 - [Tax export](./tax-export.md) - activation-gated actual-http-api bridge + quarterly CSV to the NAS.
 
 ## Operations

@@ -212,7 +212,7 @@ database: MySQL/MariaDB or PostgreSQL
 - [x] Configure ingress (finance.kblab.me) - live, no port-forward needed
 - [x] Set up automated backups - now with off-box NAS copy + weekly verify
 - [x] Import existing accounts - done; ~2MB budget file with real history
-- [ ] Configure SimpleFIN bank sync - WAS live, went stale 2026-04-13; reconnect: [simplefin-reconnect.md](./simplefin-reconnect.md)
+- [ ] Configure SimpleFIN bank sync - partially live. The token is valid and U.S. Bank + Amex are serving current data; the four Capital One accounts went orphan on 2026-04-13 and need re-authorizing plus re-linking: [simplefin-reconnect.md](./simplefin-reconnect.md)
 - [ ] Set up budget categories for taxes - scheme documented in [tax-categories.md](./tax-categories.md); apply in-app
 
 ### Phase 1b: Tax readiness (2026-07)

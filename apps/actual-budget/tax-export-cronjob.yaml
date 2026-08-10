@@ -7,9 +7,10 @@
 #   kubectl --context home-k3s create job --from=cronjob/actual-budget-tax-export \
 #     tax-export-$(date +%s) -n actual-budget
 #
-# NOTE: the jq field paths below match jhonderson/actual-http-api 26.2.0's
-# response shape. Validate the FIRST run's CSV against your real budget and
-# adjust field names if your Actual version differs (see docs/finance/tax-export.md).
+# NOTE: the jq field paths below were written against jhonderson/actual-http-api
+# 26.2.0's response shape and have NOT been re-checked against the 26.8.1 image now
+# pinned in actual-http-api-deployment.yaml. Validate the FIRST run's CSV against
+# your real budget and adjust field names if they moved (see docs/finance/tax-export.md).
 apiVersion: batch/v1
 kind: CronJob
 metadata:

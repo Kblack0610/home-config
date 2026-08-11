@@ -48,6 +48,7 @@ resources:
   - orcaslicer
   - postgres
   - print-service
+  - renovate
   - sops-backup-rbac
   - spotify-concerts
   - time-tangle

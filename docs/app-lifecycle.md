@@ -7,6 +7,7 @@ See [gitops.md](./gitops.md) for Flux workflow details.
 
 - [ ] **Create manifest directory** — `apps/<name>/` with `namespace.yaml`, deployment or HelmRelease, service, `kustomization.yaml`
 - [ ] **Register in Flux** — add entry to `apps/kustomization.yaml` (alphabetical order)
+- [ ] **Pin the image tag to a version** — never `:latest`, `:stable`, `:release` or any other floating tag. A floating tag does not keep an app current (nothing repulls until the pod restarts); it only makes the deployed version unknowable and unrollbackable, and it hides the app from Renovate, which cannot bump a tag that encodes no version. If upstream publishes no version tag, pin the digest instead (`image:tag@sha256:...`, as `apps/nas/deployment.yaml` and `apps/vaultwarden/` do). Renovate then keeps it current — see `apps/renovate/README.md`.
 - [ ] **All resources go in `apps/`** — Flux only watches `./apps` (defined in `clusters/home-k3s/apps.yaml`). The `infrastructure/` directory is NOT reconciled by Flux; anything placed there requires manual `kubectl apply`.
 - [ ] **Secrets** — use SOPS encryption. File must match `.*secret.*\.yaml$`. Encrypt with `sops -e -i <file>`. Flux decrypts automatically via the `sops-age` secret.
 - [ ] **Storage** (see `docs/architecture.md` Storage section for the full model):

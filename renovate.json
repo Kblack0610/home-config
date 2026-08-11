@@ -1,0 +1,91 @@
+{
+  "$schema": "https://docs.renovatebot.com/renovate-schema.json",
+  "extends": [
+    "config:recommended",
+    ":dependencyDashboard",
+    ":semanticCommits"
+  ],
+  "timezone": "Etc/UTC",
+  "commitMessagePrefix": "chore(deps):",
+
+  "description": [
+    "Self-hosted settings (platform, endpoint, token, repositories) are NOT here -- they are admin-only options and live in apps/renovate/cronjob.yaml as RENOVATE_* env vars.",
+    "The kubernetes manager below ships NO default file pattern. Without managerFilePatterns, Renovate runs clean, reports success and finds ZERO images. If a run ever reports a suspiciously low dependency count, check that first."
+  ],
+
+  "kubernetes": {
+    "managerFilePatterns": [
+      "/^apps/.+\\.ya?ml$/",
+      "/^infrastructure/.+\\.ya?ml$/"
+    ]
+  },
+
+  "flux": {
+    "managerFilePatterns": [
+      "/^apps/.+\\.ya?ml$/",
+      "/^clusters/.+\\.ya?ml$/"
+    ]
+  },
+
+  "ignorePaths": [
+    "**/ansible/collections/**",
+    "**/node_modules/**"
+  ],
+
+  "prConcurrentLimit": 5,
+  "prHourlyLimit": 2,
+  "dependencyDashboardTitle": "Renovate: dependency dashboard",
+
+  "packageRules": [
+    {
+      "description": "Patch and digest bumps land themselves once CI is green. Minor/major always wait for a human -- those are the ones that can move a schema.",
+      "matchUpdateTypes": ["patch", "digest"],
+      "automerge": true,
+      "automergeType": "pr",
+      "platformAutomerge": true
+    },
+    {
+      "description": "Never automerge a minor or major bump, even for a dependency whose patches automerge.",
+      "matchUpdateTypes": ["minor", "major"],
+      "automerge": false
+    },
+    {
+      "description": "Our own apps are pushed by their own CD pipelines, not bumped here. The tag in this repo is a pointer, not a version to track.",
+      "matchPackageNames": ["/^git\\.kblab\\.me\\/kblack0610\\//"],
+      "enabled": false
+    },
+    {
+      "description": "apps/openclaw/kustomization.yaml rewrites this ref to our own registry, so the upstream image is never pulled and bumping it would be a no-op.",
+      "matchPackageNames": ["ghcr.io/openclaw/openclaw"],
+      "enabled": false
+    },
+    {
+      "description": "Home Assistant ships breaking config changes in minor releases and drives the whole house. Never automerge it; group its bumps so they are reviewed as one.",
+      "matchPackageNames": ["ghcr.io/home-assistant/home-assistant"],
+      "automerge": false,
+      "groupName": "home-assistant"
+    },
+    {
+      "description": "Immich pins server and machine-learning to the same release; a split bump breaks the pair.",
+      "matchPackageNames": ["/^ghcr\\.io\\/immich-app\\//"],
+      "groupName": "immich",
+      "automerge": false
+    },
+    {
+      "description": "Databases: never automerge, and never take a major without a human reading the upgrade notes.",
+      "matchPackageNames": [
+        "/^postgres$/",
+        "/pgvector/",
+        "/^redis$/",
+        "/^ghcr\\.io\\/immich-app\\/postgres$/"
+      ],
+      "automerge": false
+    },
+    {
+      "description": "Base images used only as throwaway job/init containers -- safe to keep current automatically.",
+      "matchPackageNames": ["/^alpine$/", "/^busybox$/", "/^alpine\\/k8s$/"],
+      "matchUpdateTypes": ["patch", "minor", "digest"],
+      "automerge": true
+    }
+  ]
+}

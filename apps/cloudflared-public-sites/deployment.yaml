@@ -45,7 +45,7 @@ spec:
             secretKeyRef:
               key: token
               name: cloudflared-public-sites-tunnel-token
-        image: cloudflare/cloudflared:latest
+        image: cloudflare/cloudflared:2026.7.3
         imagePullPolicy: Always
         livenessProbe:
           failureThreshold: 3

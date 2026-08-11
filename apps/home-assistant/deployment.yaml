@@ -375,7 +375,7 @@ spec:
             - name: managed-config
               mountPath: /managed-config
         - name: seed-integrations
-          image: ghcr.io/home-assistant/home-assistant:stable
+          image: ghcr.io/home-assistant/home-assistant:2025.11.3
           command:
             - python3
             - -c
@@ -483,7 +483,7 @@ spec:
         # Schema mirrors custom_components/tapo_rv30/config_flow.py @ v0.3.0:
         # entry.data = {host, username, password}; unique_id = host; VERSION = 1.
         - name: seed-tapo-rv30
-          image: ghcr.io/home-assistant/home-assistant:stable
+          image: ghcr.io/home-assistant/home-assistant:2025.11.3
           command:
             - python3
             - -c
@@ -575,7 +575,7 @@ spec:
         # VERSION = 1, MINOR_VERSION = 3. Hosts are the pinned DHCP leases
         # (.104/.105). Idempotent: keyed on domain + data.host.
         - name: seed-shelly
-          image: ghcr.io/home-assistant/home-assistant:stable
+          image: ghcr.io/home-assistant/home-assistant:2025.11.3
           command:
             - python3
             - -c
@@ -653,7 +653,7 @@ spec:
         # Idempotent: keyed on domain + data.mac. Codes are learned later via the
         # broadlink.learn service (never the phone app — app codes are cloud-encrypted).
         - name: seed-broadlink
-          image: ghcr.io/home-assistant/home-assistant:stable
+          image: ghcr.io/home-assistant/home-assistant:2025.11.3
           command:
             - python3
             - -c
@@ -719,7 +719,7 @@ spec:
         # unique_id = MAC (lowercase, colons); VERSION=1 MINOR_VERSION=1.
         # Idempotent on domain+data.host. Extend PLUGS as the other 5 come online.
         - name: seed-esphome
-          image: ghcr.io/home-assistant/home-assistant:stable
+          image: ghcr.io/home-assistant/home-assistant:2025.11.3
           command:
             - python3
             - -c
@@ -800,7 +800,7 @@ spec:
         # Idempotent: keyed on domain alone. This is the modular MQTT capability —
         # devices that speak HA MQTT discovery auto-appear once this is present.
         - name: seed-mqtt
-          image: ghcr.io/home-assistant/home-assistant:stable
+          image: ghcr.io/home-assistant/home-assistant:2025.11.3
           command:
             - python3
             - -c
@@ -860,7 +860,7 @@ spec:
         # config (.storage/core.config) so precise coordinates never live in git
         # (this repo mirrors to GitHub). Idempotent: keyed on domain + feed url.
         - name: seed-geo-feeds
-          image: ghcr.io/home-assistant/home-assistant:stable
+          image: ghcr.io/home-assistant/home-assistant:2025.11.3
           command:
             - python3
             - -c
@@ -939,7 +939,7 @@ spec:
         # Idempotent on domain. Seed schema mirrors custom_components/localtuya
         # config_flow.py @ 2025.11.0 (per-platform flow_schema required keys).
         - name: seed-localtuya
-          image: ghcr.io/home-assistant/home-assistant:stable
+          image: ghcr.io/home-assistant/home-assistant:2025.11.3
           command:
             - python3
             - -c
@@ -1118,7 +1118,7 @@ spec:
         # HA_REMOTE_CALENDARS_JSON=[{"name":..,"url":..}] so their tokens never
         # enter git. Idempotent: keyed on domain + feed url.
         - name: seed-remote-calendars
-          image: ghcr.io/home-assistant/home-assistant:stable
+          image: ghcr.io/home-assistant/home-assistant:2025.11.3
           command:
             - python3
             - -c
@@ -1209,7 +1209,7 @@ spec:
         # below looks it up). Model + persona live in options; skip_authentication
         # keeps HA boot independent of LiteLLM being reachable at that instant.
         - name: seed-binks-conversation
-          image: ghcr.io/home-assistant/home-assistant:stable
+          image: ghcr.io/home-assistant/home-assistant:2025.11.3
           command:
             - python3
             - -c
@@ -1330,7 +1330,7 @@ spec:
         # Idempotent + non-destructive: only sets entities that have no existing
         # conversation decision, so a user un-expose in the UI is never overridden.
         - name: seed-binks-expose
-          image: ghcr.io/home-assistant/home-assistant:stable
+          image: ghcr.io/home-assistant/home-assistant:2025.11.3
           command:
             - python3
             - -c
@@ -1380,7 +1380,7 @@ spec:
         # network validation happens at entry load, so HA boot stays independent
         # of LiteLLM. Idempotent on domain. Entity id derives from name → stt.binks_stt.
         - name: seed-openai-stt
-          image: ghcr.io/home-assistant/home-assistant:stable
+          image: ghcr.io/home-assistant/home-assistant:2025.11.3
           command:
             - python3
             - -c
@@ -1458,7 +1458,7 @@ spec:
         # (setup_retry) and the wake_word.openwakeword entity appears once it
         # connects. Idempotent on domain + host.
         - name: seed-wyoming-openwakeword
-          image: ghcr.io/home-assistant/home-assistant:stable
+          image: ghcr.io/home-assistant/home-assistant:2025.11.3
           command:
             - python3
             - -c
@@ -1519,7 +1519,7 @@ spec:
         # re-run). Idempotent on pipeline name "Binks". The prior "Home Assistant"
         # pipeline is kept in items so it stays selectable.
         - name: seed-binks-pipeline
-          image: ghcr.io/home-assistant/home-assistant:stable
+          image: ghcr.io/home-assistant/home-assistant:2025.11.3
           command:
             - python3
             - -c
@@ -1599,7 +1599,7 @@ spec:
         # automation), not here. Schema mirrors config_flow.py @ 2026.6.3:
         # data={"name": …}, unique_id=name.lower().replace(" ","_"), VERSION=1.
         - name: seed-voice-satellite
-          image: ghcr.io/home-assistant/home-assistant:stable
+          image: ghcr.io/home-assistant/home-assistant:2025.11.3
           command:
             - python3
             - -c
@@ -1668,7 +1668,7 @@ spec:
         # The wrapped lights land in core.entity_registry, so seed-binks-expose
         # exposes them to Binks on the next boot (light domain is allow-listed).
         - name: seed-switch-as-x-lights
-          image: ghcr.io/home-assistant/home-assistant:stable
+          image: ghcr.io/home-assistant/home-assistant:2025.11.3
           command:
             - python3
             - -c
@@ -1741,7 +1741,7 @@ spec:
         # point is that any user assigns them live from the Settings view; every
         # plug starts "Unassigned" until a human places it.
         - name: seed-areas
-          image: ghcr.io/home-assistant/home-assistant:stable
+          image: ghcr.io/home-assistant/home-assistant:2025.11.3
           command:
             - python3
             - -c
@@ -1808,7 +1808,7 @@ spec:
         # pod boots fine with no Spotify). Mint the refresh token with
         # spotify-ha-bootstrap.py. Idempotent on domain=="spotify".
         - name: seed-spotify
-          image: ghcr.io/home-assistant/home-assistant:stable
+          image: ghcr.io/home-assistant/home-assistant:2025.11.3
           command:
             - python3
             - -c
@@ -1909,7 +1909,7 @@ spec:
               mountPath: /config
       containers:
         - name: home-assistant
-          image: ghcr.io/home-assistant/home-assistant:stable
+          image: ghcr.io/home-assistant/home-assistant:2025.11.3
           securityContext:
             allowPrivilegeEscalation: false
             capabilities:

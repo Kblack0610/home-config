@@ -24,7 +24,7 @@ spec:
         storage.role/nas: "true"
       containers:
         - name: samba
-          image: ghcr.io/servercontainers/samba:latest
+          image: ghcr.io/servercontainers/samba:latest@sha256:57859789bd3425e6e929269fa13b16251cc8b8f939e4362ed7100aaf41a17122
           env:
             # SMB user "nas" with password from Secret
             - name: ACCOUNT_nas

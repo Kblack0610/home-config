@@ -16,26 +16,16 @@ spec:
     - name: homelab-scheduled-jobs.alerts
       interval: 1m
       rules:
-        # Why this exists: apps/flux-audit failed every night for months and
-        # nobody was told. Nor was anyone told about ansible-runner's
-        # convergence-check, which has been erroring since at least 2026-08-06.
-        # Every scheduled check in this cluster was, until now, trusted on the
-        # assumption that someone would happen to run `kubectl get jobs`.
-        - alert: HomelabCronJobFailing
-          expr: |
-            kube_job_failed{namespace!~"kube-system|flux-system"} > 0
-          for: 15m
-          labels:
-            severity: warning
-            category: scheduled-jobs
-          annotations:
-            summary: "Scheduled job failing: {{ $labels.namespace }}/{{ $labels.job_name }}"
-            description: >-
-              Job {{ $labels.namespace }}/{{ $labels.job_name }} has failed.
-              For flux-audit and renovate a failure means THE CHECK ITSELF is
-              broken (findings are reported over ntfy, not by exit code), so
-              this is not a finding - it is a blind spot. Logs:
-              kubectl -n {{ $labels.namespace }} logs job/{{ $labels.job_name }}
+        # NOTE: there is deliberately no "job failed" alert here. The bundled
+        # kube-prometheus-stack rule KubeJobFailed already covers it with the
+        # same metric, threshold and 15m window, and it routes to the same
+        # ntfy topic - a second copy would just page twice for every failure.
+        #
+        # KubeJobFailed had in fact been firing for flux-audit continuously,
+        # because that job reported findings by exiting 1. An alert that fires
+        # every night for something working is how alert fatigue starts, and
+        # it is why nobody acted on it. That is fixed at the source in
+        # apps/flux-audit/cronjob.yaml rather than by muting the alert here.
 
         # A CronJob that stops being scheduled at all is the quietest failure
         # of the lot: no failed job exists to alert on, the check simply stops.

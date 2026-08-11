@@ -52,6 +52,7 @@ resources:
   - sops-backup-rbac
   - spotify-concerts
   - time-tangle
+  - trivy-operator
   - vaultwarden
   - vikunja
 

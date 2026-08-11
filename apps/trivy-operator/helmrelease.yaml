@@ -1,0 +1,95 @@
+apiVersion: helm.toolkit.fluxcd.io/v2
+kind: HelmRelease
+metadata:
+  name: trivy-operator
+  namespace: trivy-system
+spec:
+  interval: 30m
+  chart:
+    spec:
+      chart: trivy-operator
+      version: "0.35.0"
+      sourceRef:
+        kind: HelmRepository
+        name: aqua
+      interval: 1h
+  values:
+    # Scan everything except the namespaces whose contents we do not control
+    # and cannot patch anyway. kube-system on k3s is the distro's own payload.
+    excludeNamespaces: "kube-system,kube-public,kube-node-lease,trivy-system"
+
+    # --- Placement. This is the decision most worth understanding here. ---
+    # Both the operator and every scan job are pinned to asus-laptop:
+    #   - The 6 arm64 Pis are the control plane and workers with 4-8GB; Trivy's
+    #     vulnerability DB plus per-scan cache would evict real workloads.
+    #   - hp-victus is the other amd64 box but sits at ~70% disk with a
+    #     documented DiskPressure history and no MIN_FREE_GB guard. Trivy's
+    #     cache is exactly the workload that would tip it over.
+    #   - asus-laptop: ~12% disk, 64GB RAM, and already hosts the NAS mount.
+    nodeSelector:
+      kubernetes.io/hostname: asus-laptop
+
+    operator:
+      # 10 concurrent scan jobs is a CI-cluster default. Two is plenty for ~60
+      # images and keeps the node usable while a full sweep runs.
+      scanJobsConcurrentLimit: 2
+      scanJobTimeout: 10m
+      # Deploys the chart's own trivy server StatefulSet and, per the chart
+      # docs, overrides trivy.mode to ClientServer and sets trivy.serverURL to
+      # point at it. Setting trivy.mode by hand instead fails to render:
+      # "`.Values.trivy.serverURL is required`" -- this one flag does both.
+      builtInTrivyServer: true
+      # Only scan the live ReplicaSet, not every historical revision.
+      vulnerabilityScannerScanOnlyCurrentRevisions: true
+
+      # --- Scanner scope ---
+      # On: what answers "is something I am running vulnerable".
+      vulnerabilityScannerEnabled: true
+      exposedSecretScannerEnabled: true
+      configAuditScannerEnabled: true
+      # Off: node-level CIS/infra compliance. These spawn node-collector jobs
+      # on EVERY node, which means the six arm64 Pis including the control
+      # plane, to answer a question nobody asked here. Turn them on
+      # deliberately later if CIS benchmarking becomes a goal.
+      infraAssessmentScannerEnabled: false
+      clusterComplianceEnabled: false
+      rbacAssessmentScannerEnabled: false
+      metricsFindingsEnabled: true
+      # Leave the high-cardinality per-CVE metrics off. The alert below only
+      # needs counts by severity; enabling these multiplies series by every
+      # CVE id in the fleet.
+      metricsVulnIdEnabled: false
+      metricsExposedSecretInfo: false
+      metricsConfigAuditInfo: false
+
+    trivyOperator:
+      scanJobNodeSelector:
+        kubernetes.io/hostname: asus-laptop
+
+    trivy:
+      # ClientServer (set by operator.builtInTrivyServer above), not
+      # Standalone: in Standalone every scan job downloads the full
+      # vulnerability DB itself. With ~60 images that is dozens of
+      # multi-hundred-MB pulls per sweep and a fast route to a registry rate
+      # limit. ClientServer downloads it once into the trivy server.
+      #
+      # Pin explicitly. The operator image and the scanner image are separate
+      # settings, and aquasec/trivy:latest has shipped as a broken single-arch
+      # manifest before now.
+      image:
+        tag: "0.69.3"
+      storageClassEnabled: true
+      storageClassName: local-path
+      storageSize: "5Gi"
+      resources:
+        requests:
+          cpu: 100m
+          memory: 256Mi
+        limits:
+          memory: 1Gi
+
+    # serviceMonitorSelector on the Prometheus CR is {} (matches everything),
+    # so unlike PrometheusRule this needs no `release` label to be picked up.
+    serviceMonitor:
+      enabled: true
+      namespace: trivy-system

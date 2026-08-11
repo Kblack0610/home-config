@@ -1,0 +1,54 @@
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: homelab-vulnerabilities
+  namespace: monitoring
+  labels:
+    app.kubernetes.io/name: homelab-vulnerabilities
+    app.kubernetes.io/part-of: monitoring
+    # REQUIRED. ruleSelector.matchLabels.release=kube-prometheus-stack on the
+    # Prometheus CR. Without it this file applies cleanly and is never
+    # evaluated -- see the note in prometheus-rules-app-health.yaml.
+    release: kube-prometheus-stack
+spec:
+  groups:
+    - name: homelab-vulnerabilities.alerts
+      interval: 5m
+      rules:
+        # Deliberately not "any CVE": a homelab fleet of ~60 images always has
+        # a long tail of unfixable lows, and an alert that is always firing is
+        # an alert nobody reads. Critical only, and only where a fix exists,
+        # so every page is actionable by bumping a tag.
+        - alert: HomelabCriticalVulnerability
+          expr: |
+            sum by (namespace, name) (
+              trivy_image_vulnerabilities{severity="Critical"}
+            ) > 0
+          for: 30m
+          labels:
+            severity: warning
+            category: security
+          annotations:
+            summary: "Critical CVEs in {{ $labels.namespace }}/{{ $labels.name }}"
+            description: >-
+              {{ $labels.namespace }}/{{ $labels.name }} is running an image with
+              {{ printf "%.0f" $value }} CRITICAL vulnerabilities. Renovate opens
+              bumps automatically; if none is open, the fix is not yet published
+              upstream. Detail:
+              kubectl -n {{ $labels.namespace }} get vulnerabilityreports -o wide
+
+        # The scanner going blind is its own failure. A cluster with zero
+        # vulnerability reports looks identical to a perfectly clean one.
+        - alert: HomelabVulnerabilityScannerDown
+          expr: |
+            absent(trivy_image_vulnerabilities) == 1
+          for: 1h
+          labels:
+            severity: warning
+            category: security
+          annotations:
+            summary: "Trivy is not reporting any vulnerability metrics"
+            description: >-
+              No trivy_image_vulnerabilities series exist. Either the operator
+              is down or its ServiceMonitor is not being scraped, which means
+              the cluster is unscanned while appearing clean.

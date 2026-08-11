@@ -1,0 +1,94 @@
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: renovate
+  namespace: renovate
+spec:
+  # SUSPENDED until apps/renovate/secret.yaml holds a real Forgejo PAT.
+  # A token only the repo owner can mint is the one thing blocking this; see
+  # apps/renovate/README.md. Flip to false in the same commit that sets the
+  # token -- do not enable it against the REPLACE_ME placeholder, it will just
+  # fail 401 every morning.
+  suspend: true
+  # Daily, early. Renovate only opens what prConcurrentLimit allows, so a daily
+  # cadence drains the backlog gradually instead of dumping ~100 PRs at once.
+  schedule: "0 5 * * *"
+  timeZone: Etc/UTC
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 3
+  # Keep failed pods around. The whole point of this app is to notice staleness;
+  # a scanner that fails silently is the bug we are fixing (see apps/flux-audit).
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      backoffLimit: 2
+      template:
+        spec:
+          restartPolicy: Never
+          # The renovate image runs as uid 1000; an emptyDir is root-owned 0755
+          # by default, so without fsGroup the base dir below is not writable.
+          securityContext:
+            fsGroup: 1000
+          # Renovate is Node and holds the whole dep tree in memory. Keep it off
+          # the arm64 Pis (control plane + workers, 4-8GB); the amd64 boxes have
+          # the headroom. Same placement rationale as the alertmanager in
+          # apps/monitoring/helm-values.yaml.
+          nodeSelector:
+            kubernetes.io/arch: amd64
+          containers:
+            - name: renovate
+              image: renovate/renovate:44.24.2
+              env:
+                # --- Self-hosted (admin-only) options. These CANNOT live in
+                # renovate.json; Renovate ignores platform/endpoint/token there.
+                - name: RENOVATE_PLATFORM
+                  value: forgejo
+                - name: RENOVATE_ENDPOINT
+                  value: https://git.kblab.me/api/v1
+                - name: RENOVATE_REPOSITORIES
+                  value: kblack0610/home-config
+                - name: RENOVATE_GIT_AUTHOR
+                  value: "Renovate Bot <renovate@kblab.me>"
+                # Forgejo 14.x is well past the v10.0.0 floor, so Renovate can
+                # use the platform's own automerge instead of merging by API.
+                - name: RENOVATE_PLATFORM_AUTOMERGE
+                  value: "true"
+                - name: LOG_LEVEL
+                  value: info
+                # Must match the mounted volume below; the image's default base
+                # dir is not writable under a read-only-ish pod security context.
+                - name: RENOVATE_BASE_DIR
+                  value: /tmp/renovate
+                - name: RENOVATE_TOKEN
+                  valueFrom:
+                    secretKeyRef:
+                      name: renovate-secrets
+                      key: renovate-token
+                # Optional but recommended: without it, the github-releases and
+                # github-tags datasources are skipped ("github-token-required")
+                # and PRs carry no changelogs. Read-only, public scope is enough.
+                - name: GITHUB_COM_TOKEN
+                  valueFrom:
+                    secretKeyRef:
+                      name: renovate-secrets
+                      key: github-com-token
+                      optional: true
+              resources:
+                requests:
+                  cpu: 200m
+                  memory: 512Mi
+                limits:
+                  memory: 2Gi
+              volumeMounts:
+                - name: workdir
+                  mountPath: /tmp/renovate
+              securityContext:
+                allowPrivilegeEscalation: false
+                capabilities:
+                  drop: ["ALL"]
+          volumes:
+            # Renovate clones the repo and caches lookups here. emptyDir is
+            # correct: a cold cache each run costs a little time and removes a
+            # whole class of stale-state bugs.
+            - name: workdir
+              emptyDir: {}

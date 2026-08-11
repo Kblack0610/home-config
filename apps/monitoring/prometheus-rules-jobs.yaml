@@ -6,6 +6,11 @@ metadata:
   labels:
     app.kubernetes.io/name: homelab-scheduled-jobs
     app.kubernetes.io/part-of: monitoring
+    # REQUIRED. The Prometheus CR selects rules with
+    # ruleSelector.matchLabels.release=kube-prometheus-stack. Without this
+    # label the CR applies cleanly, `kubectl get prometheusrule` shows it,
+    # and Prometheus silently ignores it forever.
+    release: kube-prometheus-stack
 spec:
   groups:
     - name: homelab-scheduled-jobs.alerts

@@ -6,6 +6,12 @@ metadata:
   labels:
     app.kubernetes.io/name: homelab-app-health
     app.kubernetes.io/part-of: monitoring
+    # REQUIRED, and missing until 2026-08-11: the Prometheus CR selects on
+    # ruleSelector.matchLabels.release=kube-prometheus-stack, so this entire
+    # ruleset -- HomelabAppDown, HomelabAppDegraded, HomelabAppRestartSpike
+    # and six recording rules -- was applied, visible in `kubectl get
+    # prometheusrule`, and never once evaluated.
+    release: kube-prometheus-stack
 spec:
   groups:
     - name: homelab-app-health.recording

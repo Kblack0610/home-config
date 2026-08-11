@@ -9,6 +9,7 @@ resources:
   - prometheus-rules-litellm.yaml
   - prometheus-rules-node-health.yaml
   - prometheus-rules-jobs.yaml
+  - prometheus-rules-trivy.yaml
   - probe-sites.yaml
   - external-mac-nodes.yaml
   - external-standalone-nodes.yaml

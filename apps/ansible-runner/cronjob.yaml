@@ -60,7 +60,26 @@ spec:
                   echo "--- Running against home-config revision: $(cat /workspace/.revision) ---"
                   mkdir -p ~/.ssh
                   install -m 0600 /secrets/ssh-privkey ~/.ssh/id_ed25519
-                  ssh-keyscan -H 192.168.1.100 2>/dev/null >> ~/.ssh/known_hosts
+
+                  # ssh-keyscan's stderr used to go to /dev/null. Combined with
+                  # `set -e` that made an unreachable target the QUIETEST possible
+                  # failure: the job exited 1 having printed nothing but the
+                  # revision banner, which is exactly how it failed from at least
+                  # 2026-08-06 without anyone being able to see why. Say what
+                  # happened instead.
+                  TARGET_HOST=192.168.1.100
+                  if ! ssh-keyscan -H "$TARGET_HOST" >> ~/.ssh/known_hosts 2>/tmp/keyscan.err; then
+                    echo "ERROR: cannot reach $TARGET_HOST (thinkcentre) over ssh."
+                    # ssh-keyscan is usually silent on an unreachable host, so only
+                    # print this section when it actually said something.
+                    if [ -s /tmp/keyscan.err ]; then
+                      echo "  ssh-keyscan said:"
+                      sed 's/^/    /' /tmp/keyscan.err
+                    fi
+                    echo "  The host is powered off or off-network. Convergence cannot be"
+                    echo "  checked while the only --limit target is down."
+                    exit 1
+                  fi
                   chmod 644 ~/.ssh/known_hosts
                   export ANSIBLE_VAULT_PASSWORD_FILE=/secrets/ansible-vault-pass
                   cd /workspace/ansible

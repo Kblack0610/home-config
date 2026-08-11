@@ -30,17 +30,28 @@ spec:
                   apk add --no-cache rsync btrfs-progs
 
                   # -- Dest mount-safety guard -------------------------------------
-                  # If the 7.3TB USB drive is unplugged the hostPath stubs still
-                  # exist as empty dirs (DirectoryOrCreate). Abort rather than
-                  # silently filling the root filesystem.
-                  mountpoint -q /backup-dest || {
-                    echo "ERROR: /mnt/backup-8t/3d-prints is not mounted. Aborting to avoid filling root fs."
-                    exit 1
+                  # `mountpoint` alone is NOT sufficient. When the USB drive is
+                  # physically disconnected the filesystem stays MOUNTED: mountpoint
+                  # returns true, df reports the old size, and only real reads fail
+                  # with EIO. That is what happened on 2026-08-09 09:39:43 (`usb 4-2:
+                  # USB disconnect`) and it let the immich backup on the same drive
+                  # run "successfully guarded" for two days while writing nothing.
+                  # Probing with a real write distinguishes mounted from present.
+                  require_live_mount() {
+                    dir="$1"
+                    mountpoint -q "$dir" || {
+                      echo "ERROR: $dir is not mounted. Aborting to avoid filling root fs."
+                      exit 1
+                    }
+                    if ! touch "$dir/.write-probe" 2>/dev/null; then
+                      echo "ERROR: $dir is mounted but not writable - the backing device is gone (stale mount). Aborting."
+                      exit 1
+                    fi
+                    rm -f "$dir/.write-probe"
                   }
-                  mountpoint -q /snapshots || {
-                    echo "ERROR: /mnt/backup-8t/3d-prints-snapshots is not mounted. Aborting."
-                    exit 1
-                  }
+
+                  require_live_mount /backup-dest
+                  require_live_mount /snapshots
 
                   # -- Source-safety guard -----------------------------------------
                   # The source lives on the NAS public share (a separate mount). If
@@ -83,7 +94,11 @@ spec:
                   mountPath: /backup-dest
                 - name: snapshots
                   mountPath: /snapshots
-          restartPolicy: OnFailure
+          # Never, not OnFailure: OnFailure makes the Job controller DELETE
+          # the failed pod, taking its logs with it. That is why this job's
+          # two days of failures could only be seen as "BackoffLimitExceeded,
+          # no pods retained" and had to be diagnosed with a hand-built pod.
+          restartPolicy: Never
           volumes:
             - name: source
               hostPath:

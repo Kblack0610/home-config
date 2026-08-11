@@ -15,7 +15,12 @@ spec:
       template:
         spec:
           serviceAccountName: flux-audit
-          restartPolicy: OnFailure
+          # Never, not OnFailure: with OnFailure the Job controller DELETES the
+          # failed pod, so the logs explaining the failure are gone by the time
+          # anyone looks. That is why three months of failures here could only
+          # be seen as "BackoffLimitExceeded, no pods retained". With Never the
+          # failed pod (and its logs) stays until failedJobsHistoryLimit rotates.
+          restartPolicy: Never
           containers:
             - name: audit
               image: alpine/k8s:1.34.4
@@ -27,27 +32,61 @@ spec:
                   cpu: 200m
                   memory: 128Mi
               env:
+                # `homelab-alerts` is the topic a phone is actually subscribed
+                # to - it is where Alertmanager sends everything
+                # (apps/monitoring/helm-values.yaml). This used to post to a
+                # `flux-audit` topic that nothing subscribes to, so every
+                # finding since this job was written went into the void.
                 - name: NTFY_TOPIC
-                  value: "https://ntfy.kblab.me/flux-audit"
+                  value: "https://ntfy.kblab.me/homelab-alerts"
               command: ["/bin/sh", "-c"]
               args:
                 - |
                   set -eu
                   apk add --no-cache python3 curl >/dev/null
-                  OUTPUT=$(python3 /scripts/audit.py 2>&1 || true)
-                  if [ -n "$OUTPUT" ] && echo "$OUTPUT" | grep -q '/'; then
-                    echo "ORPHANS DETECTED:"
+
+                  # Exit-code contract, and the whole point of this block:
+                  #   exit 0 = the audit RAN. Findings are reported by ntfy.
+                  #   exit 1 = the audit itself is BROKEN (script blew up, or
+                  #            the notification could not be delivered).
+                  # Previously "orphans found" was also exit 1, which made a
+                  # working alarm indistinguishable from a crashed job. It ran
+                  # for months, found real orphans every night, exited 1 every
+                  # night, and read as a broken cronjob nobody had to act on.
+                  # Job failure now means the CHECK is broken, which is what
+                  # HomelabCronJobFailing in prometheus-rules-jobs.yaml pages on.
+                  set +e
+                  OUTPUT=$(python3 /scripts/audit.py 2>&1)
+                  RC=$?
+                  set -e
+
+                  # audit.py exits 1 when it finds orphans and >1 on real error.
+                  if [ "$RC" -gt 1 ]; then
+                    echo "AUDIT FAILED (rc=$RC):"
                     echo "$OUTPUT"
-                    curl -sf -X POST "$NTFY_TOPIC" \
-                      -H "Title: Flux audit: orphan resources in home-k3s" \
+                    exit 1
+                  fi
+
+                  if [ -n "$OUTPUT" ] && echo "$OUTPUT" | grep -q '/'; then
+                    COUNT=$(echo "$OUTPUT" | grep -c '/')
+                    echo "ORPHANS DETECTED ($COUNT):"
+                    echo "$OUTPUT"
+                    # A notification that cannot be delivered is a silent alarm,
+                    # so failing to send is itself a job failure worth paging on.
+                    if ! curl -sf -X POST "$NTFY_TOPIC" \
+                      -H "Title: Flux audit: $COUNT orphan resources in home-k3s" \
                       -H "Priority: default" \
                       -H "Tags: warning,kubernetes" \
-                      -d "$OUTPUT" || echo "ntfy notify failed (non-fatal)"
-                    exit 1
-                  else
-                    echo "0 orphan resources detected"
+                      -d "$OUTPUT"; then
+                      echo "FATAL: could not deliver the finding to $NTFY_TOPIC"
+                      exit 1
+                    fi
+                    echo "reported $COUNT orphans to ntfy"
                     exit 0
                   fi
+
+                  echo "0 orphan resources detected"
+                  exit 0
               volumeMounts:
                 - name: script
                   mountPath: /scripts

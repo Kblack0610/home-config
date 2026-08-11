@@ -1,0 +1,59 @@
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: homelab-scheduled-jobs
+  namespace: monitoring
+  labels:
+    app.kubernetes.io/name: homelab-scheduled-jobs
+    app.kubernetes.io/part-of: monitoring
+spec:
+  groups:
+    - name: homelab-scheduled-jobs.alerts
+      interval: 1m
+      rules:
+        # Why this exists: apps/flux-audit failed every night for months and
+        # nobody was told. Nor was anyone told about ansible-runner's
+        # convergence-check, which has been erroring since at least 2026-08-06.
+        # Every scheduled check in this cluster was, until now, trusted on the
+        # assumption that someone would happen to run `kubectl get jobs`.
+        - alert: HomelabCronJobFailing
+          expr: |
+            kube_job_failed{namespace!~"kube-system|flux-system"} > 0
+          for: 15m
+          labels:
+            severity: warning
+            category: scheduled-jobs
+          annotations:
+            summary: "Scheduled job failing: {{ $labels.namespace }}/{{ $labels.job_name }}"
+            description: >-
+              Job {{ $labels.namespace }}/{{ $labels.job_name }} has failed.
+              For flux-audit and renovate a failure means THE CHECK ITSELF is
+              broken (findings are reported over ntfy, not by exit code), so
+              this is not a finding - it is a blind spot. Logs:
+              kubectl -n {{ $labels.namespace }} logs job/{{ $labels.job_name }}
+
+        # A CronJob that stops being scheduled at all is the quietest failure
+        # of the lot: no failed job exists to alert on, the check simply stops.
+        #
+        # Measured against each CronJob's OWN next_schedule_time, not a flat
+        # "hasn't run in 48h". A flat threshold looks right until you notice
+        # nas/ runs four WEEKLY jobs (0 5 * * 0 and friends) - it would have
+        # paged on all of them every single week for being healthy, which is
+        # how an alert teaches people to ignore it. This form self-adjusts to
+        # daily and weekly schedules alike.
+        - alert: HomelabCronJobNotScheduling
+          expr: |
+            time() - kube_cronjob_next_schedule_time{namespace!~"kube-system|flux-system"}
+              > 6 * 3600
+            and on (namespace, cronjob) kube_cronjob_spec_suspend == 0
+          for: 1h
+          labels:
+            severity: warning
+            category: scheduled-jobs
+          annotations:
+            summary: "CronJob overdue: {{ $labels.namespace }}/{{ $labels.cronjob }}"
+            description: >-
+              {{ $labels.namespace }}/{{ $labels.cronjob }} is not suspended but
+              is more than 6h past its own next scheduled run. Daily backups,
+              the flux audit and the Renovate scan all live here; silence from
+              one of them is indistinguishable from success without this alert.

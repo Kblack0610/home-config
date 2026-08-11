@@ -17,7 +17,14 @@ spec:
             storage.role/nas: "true"
           containers:
             - name: sops-backup
-              image: bitnami/kubectl:latest
+              # Was bitnami/kubectl:latest. Bitnami removed every versioned tag
+              # from its free Docker Hub repos in 2025 (images moved to the
+              # frozen `bitnamilegacy/*` namespace), so that ref was both
+              # unpinnable and no longer maintained. alpine/k8s is what
+              # apps/flux-audit already uses, and it has the shell this job
+              # needs — registry.k8s.io/kubectl is distroless and would break
+              # the `/bin/sh -c` below.
+              image: alpine/k8s:1.33.5
               securityContext:
                 runAsUser: 0
               command:

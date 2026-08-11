@@ -16,7 +16,7 @@ spec:
             storage.role/nas: "true"
           containers:
             - name: verify
-              image: alpine:latest
+              image: alpine:3.24.1
               command:
                 - /bin/sh
                 - -c

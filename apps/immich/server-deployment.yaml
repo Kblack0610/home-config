@@ -25,7 +25,7 @@ spec:
         storage.role/nas: "true"
       containers:
         - name: server
-          image: ghcr.io/immich-app/immich-server:release
+          image: ghcr.io/immich-app/immich-server:v3.0.1
           ports:
             - name: http
               containerPort: 2283

@@ -29,7 +29,7 @@ spec:
           - 983   # video
       containers:
         - name: machine-learning
-          image: ghcr.io/immich-app/immich-machine-learning:release-rocm
+          image: ghcr.io/immich-app/immich-machine-learning:v3.0.1-rocm
           securityContext:
             privileged: true   # required for /dev/kfd access (same pattern as orcaslicer)
           ports:

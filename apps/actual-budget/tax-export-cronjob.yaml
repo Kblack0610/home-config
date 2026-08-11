@@ -27,7 +27,7 @@ spec:
           restartPolicy: OnFailure
           containers:
             - name: tax-export
-              image: alpine:latest
+              image: alpine:3.24.1
               env:
                 - name: API_KEY
                   valueFrom:

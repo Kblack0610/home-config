@@ -59,9 +59,21 @@ rewrites `Mods=` from `MOD_IDS` and actively **clears** `WorkshopItems` whenever
 
 ### Sandbox settings
 
-On first boot the entrypoint copies the `Survival` preset out of the game files into
+On first boot the entrypoint copies the `Apocalypse` preset out of the game files into
 `Server/servertest_SandboxVars.lua` (it will not overwrite an existing one). Generating it
 from the shipped preset avoids hand-writing the Lua and getting the format subtly wrong.
+
+`SERVERPRESET` must name a preset that exists in **this** build. Build 42 ships
+`Apocalypse`, `Extinction`, `Outbreak`, `Rising`, `SixMonthsLater`. The upstream README
+still documents the Build 41 set (`Survival`, `Survivor`, `Builder`, `Beginner`,
+`FirstWeek`) and those files no longer exist — the entrypoint hard-exits on an unknown
+preset before the server starts. Check before changing it:
+
+```bash
+kubectl -n zomboid run pz-inspect --rm -i --restart=Never \
+  --image=danixu86/project-zomboid-dedicated-server:42.20.2-release \
+  --command -- ls /home/steam/pz-dedicated/media/lua/shared/Sandbox/
+```
 
 To move sandbox settings into git afterwards, copy the generated file out of the volume,
 add it to `configmap.yaml`, and extend the `config-seed` initContainer to place it.
@@ -138,7 +150,7 @@ mod list under B42. Measured headroom on `hp-victus` at deploy time: 22 GB RAM a
 | `deployment.yaml` | The server. `replicas: 0` is the intended resting state |
 | `configmap.yaml` | Server config, git-authoritative |
 | `secret.yaml` | Admin / RCON / join passwords (SOPS) |
-| `pvc.yaml` | One 64Gi claim, mounted twice by subPath (data + game install) |
+| `pvc.yaml` | Saves, config and own mods. **Not** the game install — that is in the image |
 | `control/` | Scale API, its RBAC, and the public ingress |
 | `sleep/` | Idle poller and its CronJob |
 | `tests/` | Test suites for both scripts |

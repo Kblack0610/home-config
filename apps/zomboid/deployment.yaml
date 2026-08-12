@@ -126,8 +126,16 @@ spec:
             # avoids hand-writing the Lua and getting the format subtly wrong. To move
             # sandbox settings into git later, copy the generated file out of the PVC and
             # add it to the config-seed initContainer.
+            #
+            # MUST be one of the presets that actually ship in THIS build. Build 42 has
+            # Apocalypse, Extinction, Outbreak, Rising, SixMonthsLater. The upstream
+            # README still lists the Build 41 set (Survival, Survivor, Builder,
+            # Beginner, FirstWeek) - those files are gone, and the entrypoint hard-exits
+            # on an unknown preset before the server ever starts. Verify against the
+            # image before changing:
+            #   ls /home/steam/pz-dedicated/media/lua/shared/Sandbox/
             - name: SERVERPRESET
-              value: Survival
+              value: Apocalypse
           ports:
             - name: game
               containerPort: 16261
@@ -151,12 +159,15 @@ spec:
               hostPort: 27015
               protocol: TCP
           volumeMounts:
+            # ONLY the data dir. Do NOT also mount /home/steam/pz-dedicated - the
+            # game install is baked into the image at build time (see the upstream
+            # Dockerfile, which runs app_update during build, which is why the tags
+            # are build-pinned). Mounting a volume there masks the install with an
+            # empty dir and the entrypoint dies on the preset check before the
+            # server ever starts.
             - name: data
               mountPath: /home/steam/Zomboid
               subPath: Zomboid
-            - name: data
-              mountPath: /home/steam/pz-dedicated
-              subPath: pz-dedicated
             - name: localtime
               mountPath: /etc/localtime
               readOnly: true

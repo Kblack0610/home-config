@@ -1,9 +1,14 @@
-# One claim, mounted twice by subPath (see deployment.yaml):
-#   Zomboid/      -> /home/steam/Zomboid      (saves, server config, our own mods)
-#   pz-dedicated/ -> /home/steam/pz-dedicated (the ~10GB SteamCMD game install)
+# Holds ONLY the data dir, mounted at /home/steam/Zomboid via subPath `Zomboid`:
+# saves, server config, and our own mods.
 #
-# The install MUST persist. This deployment is scale-to-zero, so it restarts often,
-# and an ephemeral install would re-download the whole game from Steam on every wake.
+# It deliberately does NOT hold the game install. Upstream bakes the game into the
+# image at build time, so the install rides the image layer (cached on the node) and
+# a new build is a tag bump - which is what makes the build-pinned tags meaningful.
+# An earlier revision mounted this claim over /home/steam/pz-dedicated too, which
+# masked the install and broke startup outright.
+#
+# Sized well above the saves themselves: a PZ world grows with explored map area, and
+# local-path does not enforce a quota, so this request is nominal headroom.
 apiVersion: v1
 kind: PersistentVolumeClaim
 metadata:

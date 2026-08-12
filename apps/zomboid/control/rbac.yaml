@@ -1,0 +1,50 @@
+# Least privilege on purpose: this ServiceAccount is reachable, indirectly, from the
+# public internet via the control ingress. It can scale exactly one Deployment and
+# delete pods in its own namespace. It cannot read Secrets, cannot touch any other
+# namespace, and holds no cluster-scoped rights.
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: zomboid-control
+  namespace: zomboid
+  labels:
+    app.kubernetes.io/name: zomboid-control
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: zomboid-control
+  namespace: zomboid
+  labels:
+    app.kubernetes.io/name: zomboid-control
+rules:
+  # Read the deployment to report state, and scale it 0 <-> 1.
+  - apiGroups: ["apps"]
+    resources: ["deployments"]
+    resourceNames: ["zomboid"]
+    verbs: ["get"]
+  - apiGroups: ["apps"]
+    resources: ["deployments/scale"]
+    resourceNames: ["zomboid"]
+    verbs: ["get", "update", "patch"]
+  # /restart deletes the running pod and lets the Deployment recreate it. With
+  # strategy Recreate and replicas 1, a rollout restart would be a no-op.
+  - apiGroups: [""]
+    resources: ["pods"]
+    verbs: ["get", "list", "delete"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: zomboid-control
+  namespace: zomboid
+  labels:
+    app.kubernetes.io/name: zomboid-control
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: zomboid-control
+subjects:
+  - kind: ServiceAccount
+    name: zomboid-control
+    namespace: zomboid

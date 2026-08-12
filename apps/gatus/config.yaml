@@ -91,6 +91,17 @@ endpoints:
     conditions:
       - "[STATUS] == 200"
 
+  # Probes the CONTROL API, not the game server. The game server is scale-to-zero by
+  # design, so monitoring it directly would alert every time nobody is playing - which
+  # is most of the time, and is the correct state. What must always be up is the thing
+  # that can WAKE it: if this is down, nobody can start a session.
+  - name: Zomboid Control
+    group: home-k3s
+    url: "http://zomboid-control.zomboid.svc:80/healthz"
+    interval: 120s
+    conditions:
+      - "[STATUS] == 200"
+
   # --- apps ---
   - name: Actual Budget
     group: apps

@@ -1,0 +1,57 @@
+# Server config, git-authoritative.
+#
+# The config-seed initContainer copies this into the PVC on EVERY start, so this file
+# is the source of truth and edits made in-game or on disk are discarded on restart.
+#
+# IMPORTANT - do not add an env var to deployment.yaml for any key set here.
+# The image entrypoint (scripts/entry.sh) runs set_ini_option() for a fixed list of
+# keys, but ONLY when the matching env var is set. An env var therefore silently
+# overrides this file. Secrets (Password/RCONPassword) are the deliberate exception:
+# they cannot live in git, so they arrive via env from secret.yaml and the entrypoint
+# seds them in after this file is copied.
+#
+# A partial ini is supported and intended: the server fills in every key it does not
+# find here with its own default.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: zomboid-config
+  namespace: zomboid
+  labels:
+    app.kubernetes.io/name: zomboid
+data:
+  servertest.ini: |
+    # --- identity -------------------------------------------------------------
+    PublicName=Kblab Zomboid
+    PublicDescription=Home server. Ask in Discord if it is asleep.
+    # Private: friends direct-connect by address, server is not listed in the browser.
+    Public=false
+    Open=true
+    MaxPlayers=8
+
+    # --- ports ----------------------------------------------------------------
+    # Must match the hostPort values in deployment.yaml and the OpenWRT forward.
+    DefaultPort=16261
+    UDPPort=16262
+
+    # --- RCON -----------------------------------------------------------------
+    # Reachable on the hp-victus LAN IP and over the tailnet, deliberately NOT
+    # forwarded on the WAN. The control API and the idle-sleep CronJob both use it.
+    RCONPort=27015
+
+    # --- mods -----------------------------------------------------------------
+    # SELF_MANAGED_MODS=true in deployment.yaml keeps the entrypoint from touching
+    # these two keys, so they are owned here. Our own mods are cloned into
+    # Zomboid/mods/ by the mods-sync initContainer; list their mod IDs in Mods=.
+    Mods=
+    WorkshopItems=
+    Map=Muldraugh, KY
+
+    # --- behaviour ------------------------------------------------------------
+    # Pauses the simulation when nobody is connected. Matters here: it drops CPU to
+    # near zero in the window between the last player leaving and the idle-sleep
+    # CronJob scaling the deployment to 0.
+    PauseEmpty=true
+    PVP=false
+    GlobalChat=true
+    SaveWorldEveryMinutes=15

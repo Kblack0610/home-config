@@ -1,0 +1,193 @@
+# Project Zomboid dedicated server, scale-to-zero.
+#
+# replicas: 0 is the intended resting state and Flux must keep reconciling it that way.
+# The control API (control/) scales this 0 <-> 1; the idle-sleep CronJob scales it back
+# to 0. Do NOT add an HPA and do NOT "fix" replicas to 1 - a running server costs ~8Gi
+# on a node that is also a k3s worker.
+#
+# Image choice: danixu86 publishes build-pinned tags (42.20.2-release) so git names the
+# exact PZ build, matching how apps/jellyfin pins 10.10.7. The more commonly cited
+# renegademaster image was last published 2024-06 - before Build 42 existed - and is not
+# a safe pin.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: zomboid
+  namespace: zomboid
+  labels:
+    app.kubernetes.io/name: zomboid
+spec:
+  replicas: 0
+  strategy:
+    # RWO volume + a single authoritative world. Never run two of these at once.
+    type: Recreate
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: zomboid
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: zomboid
+    spec:
+      nodeSelector:
+        kubernetes.io/hostname: hp-victus
+      # The server flushes the world to disk on SIGTERM. Cutting it short corrupts saves.
+      terminationGracePeriodSeconds: 120
+      initContainers:
+        # Git is the source of truth for server config: this overwrites the ini in the
+        # PVC on every start. Edits made on disk or in-game do not survive a restart.
+        - name: config-seed
+          image: busybox:1.36
+          command:
+            - sh
+            - -c
+            - |
+              set -eu
+              mkdir -p /data/Server
+              cp /config/servertest.ini /data/Server/servertest.ini
+              echo "seeded servertest.ini from ConfigMap"
+          volumeMounts:
+            - name: config
+              mountPath: /config
+            - name: data
+              mountPath: /data
+              subPath: Zomboid
+
+        # Ken's own mods, cloned fresh each start. PZ needs a restart to pick up mod
+        # changes anyway, so the workflow is: push to the mods repo, hit /restart.
+        # No-op until MODS_REPO is set, so this does not block the initial deploy.
+        - name: mods-sync
+          image: alpine/git:2.45.2
+          env:
+            - name: MODS_REPO
+              value: ""
+          command:
+            - sh
+            - -c
+            - |
+              set -eu
+              if [ -z "${MODS_REPO}" ]; then
+                echo "MODS_REPO unset - skipping (Workshop mods are unaffected)"
+                exit 0
+              fi
+              rm -rf /data/mods.tmp
+              git clone --depth 1 "${MODS_REPO}" /data/mods.tmp
+              rm -rf /data/mods.tmp/.git
+              mkdir -p /data/mods
+              cp -a /data/mods.tmp/. /data/mods/
+              rm -rf /data/mods.tmp
+              echo "synced own mods from ${MODS_REPO}"
+          volumeMounts:
+            - name: data
+              mountPath: /data
+              subPath: Zomboid
+      containers:
+        - name: zomboid
+          image: danixu86/project-zomboid-dedicated-server:42.20.2-release
+          env:
+            # Secrets only. Every other ini key is owned by configmap.yaml - setting an
+            # env var here for a key that lives there would silently override git.
+            - name: ADMINUSERNAME
+              value: admin
+            - name: ADMINPASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: zomboid-credentials
+                  key: admin-password
+            - name: RCONPASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: zomboid-credentials
+                  key: rcon-password
+            - name: PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: zomboid-credentials
+                  key: server-password
+            # Resolves the config filenames: Server/${SERVERNAME}.ini. Must match the
+            # ConfigMap key name in configmap.yaml.
+            - name: SERVERNAME
+              value: servertest
+            - name: CACHEDIR
+              value: /home/steam/Zomboid
+            # MANDATORY. Without it the entrypoint rewrites Mods= from MOD_IDS and,
+            # worse, actively CLEARS WorkshopItems when WORKSHOP_IDS is empty - wiping
+            # the values configmap.yaml just seeded, on every single boot.
+            - name: SELF_MANAGED_MODS
+              value: "true"
+            # Sized for 4-6 players on a light mod list under B42. Heap 6g against an
+            # 8Gi limit leaves ~2Gi for JVM non-heap (metaspace, GC, native).
+            - name: MIN_MEMORY
+              value: 2048m
+            - name: MAX_MEMORY
+              value: 6144m
+            # First boot only: the entrypoint copies this preset from the game files if
+            # SandboxVars does not already exist. Generating it from the shipped preset
+            # avoids hand-writing the Lua and getting the format subtly wrong. To move
+            # sandbox settings into git later, copy the generated file out of the PVC and
+            # add it to the config-seed initContainer.
+            - name: SERVERPRESET
+              value: Survival
+          ports:
+            - name: game
+              containerPort: 16261
+              hostPort: 16261
+              protocol: UDP
+            - name: direct
+              containerPort: 16262
+              hostPort: 16262
+              protocol: UDP
+            - name: steam1
+              containerPort: 8766
+              hostPort: 8766
+              protocol: UDP
+            - name: steam2
+              containerPort: 8767
+              hostPort: 8767
+              protocol: UDP
+            # LAN + tailnet only. Deliberately not forwarded on the WAN.
+            - name: rcon
+              containerPort: 27015
+              hostPort: 27015
+              protocol: TCP
+          volumeMounts:
+            - name: data
+              mountPath: /home/steam/Zomboid
+              subPath: Zomboid
+            - name: data
+              mountPath: /home/steam/pz-dedicated
+              subPath: pz-dedicated
+            - name: localtime
+              mountPath: /etc/localtime
+              readOnly: true
+          resources:
+            requests:
+              memory: "4Gi"
+              cpu: "1000m"
+            limits:
+              memory: "8Gi"
+              cpu: "4000m"
+          # PZ serves no HTTP health endpoint. RCON binds once the world has finished
+          # loading, which makes a TCP connect the honest "server is actually up" signal.
+          startupProbe:
+            tcpSocket:
+              port: 27015
+            # Generous on purpose: the FIRST boot downloads the ~10GB game install via
+            # SteamCMD before the server starts. 180 x 10s = 30 min.
+            periodSeconds: 10
+            failureThreshold: 180
+          livenessProbe:
+            tcpSocket:
+              port: 27015
+            periodSeconds: 30
+            failureThreshold: 4
+      volumes:
+        - name: data
+          persistentVolumeClaim:
+            claimName: zomboid-data
+        - name: config
+          configMap:
+            name: zomboid-config
+        - name: localtime
+          hostPath:
+            path: /etc/localtime

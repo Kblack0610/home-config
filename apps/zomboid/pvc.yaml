@@ -1,0 +1,20 @@
+# One claim, mounted twice by subPath (see deployment.yaml):
+#   Zomboid/      -> /home/steam/Zomboid      (saves, server config, our own mods)
+#   pz-dedicated/ -> /home/steam/pz-dedicated (the ~10GB SteamCMD game install)
+#
+# The install MUST persist. This deployment is scale-to-zero, so it restarts often,
+# and an ephemeral install would re-download the whole game from Steam on every wake.
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: zomboid-data
+  namespace: zomboid
+  labels:
+    app.kubernetes.io/name: zomboid
+spec:
+  accessModes:
+    - ReadWriteOnce
+  storageClassName: local-path
+  resources:
+    requests:
+      storage: 64Gi

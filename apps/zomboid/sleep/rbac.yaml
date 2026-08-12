@@ -1,0 +1,43 @@
+# Separate identity from zomboid-control on purpose. The sleeper needs to patch
+# annotations (to carry its idle counter) but must never delete pods; the control API
+# needs to delete pods but must never write annotations. Neither can read Secrets.
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: zomboid-sleeper
+  namespace: zomboid
+  labels:
+    app.kubernetes.io/name: zomboid-sleeper
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: zomboid-sleeper
+  namespace: zomboid
+  labels:
+    app.kubernetes.io/name: zomboid-sleeper
+rules:
+  - apiGroups: ["apps"]
+    resources: ["deployments"]
+    resourceNames: ["zomboid"]
+    verbs: ["get", "patch"]
+  - apiGroups: ["apps"]
+    resources: ["deployments/scale"]
+    resourceNames: ["zomboid"]
+    verbs: ["get", "patch"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: zomboid-sleeper
+  namespace: zomboid
+  labels:
+    app.kubernetes.io/name: zomboid-sleeper
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: zomboid-sleeper
+subjects:
+  - kind: ServiceAccount
+    name: zomboid-sleeper
+    namespace: zomboid

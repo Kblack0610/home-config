@@ -55,6 +55,7 @@ resources:
   - trivy-operator
   - vaultwarden
   - vikunja
+  - zomboid
 
   # Public sites (Cloudflare tunnel → Traefik → service)
   - portfolio

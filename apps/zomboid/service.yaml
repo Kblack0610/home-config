@@ -1,0 +1,21 @@
+# In-cluster RCON only. Game traffic does not go through this Service - it uses
+# hostPort on hp-victus so packets reach the pod without a kube-proxy UDP hop.
+#
+# Consumers: the control API (readiness of a just-woken server) and the idle-sleep
+# CronJob (player count).
+apiVersion: v1
+kind: Service
+metadata:
+  name: zomboid-rcon
+  namespace: zomboid
+  labels:
+    app.kubernetes.io/name: zomboid
+spec:
+  type: ClusterIP
+  selector:
+    app.kubernetes.io/name: zomboid
+  ports:
+    - name: rcon
+      port: 27015
+      targetPort: 27015
+      protocol: TCP

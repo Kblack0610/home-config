@@ -1,0 +1,19 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+namespace: zomboid
+
+resources:
+  - rbac.yaml
+  - cronjob.yaml
+
+# Hash-suffixed so a change to sleeper.py produces a new ConfigMap name and the next
+# Job picks up the new code.
+configMapGenerator:
+  - name: zomboid-sleeper-app
+    files:
+      - sleeper.py
+
+generatorOptions:
+  labels:
+    app.kubernetes.io/name: zomboid-sleeper

@@ -1,0 +1,35 @@
+# Public entry point for the Discord bot (and curl). HTTP, so it rides the normal
+# Traefik + cert-manager path like every other app here.
+#
+# This is the ONLY thing about Zomboid that is safe to put behind Cloudflare - the
+# game itself is UDP, which a Cloudflare tunnel cannot carry.
+#
+# Every mutating route requires the bearer token from secret.yaml. Only /healthz is open.
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: zomboid-control
+  namespace: zomboid
+  labels:
+    app.kubernetes.io/name: zomboid-control
+  annotations:
+    kubernetes.io/ingress.class: traefik
+    cert-manager.io/cluster-issuer: letsencrypt-dns
+    traefik.ingress.kubernetes.io/router.entrypoints: web,websecure
+    traefik.ingress.kubernetes.io/custom-request-headers: "X-Forwarded-Proto:https"
+spec:
+  tls:
+    - hosts:
+        - zomboid.kblab.me
+      secretName: zomboid-tls
+  rules:
+    - host: zomboid.kblab.me
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: zomboid-control
+                port:
+                  number: 80

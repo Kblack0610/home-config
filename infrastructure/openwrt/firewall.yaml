@@ -1,3 +1,32 @@
 prune: false
 
-redirects: []
+redirects:
+  # Project Zomboid. The server runs as a k3s workload on hp-victus with hostPort, so
+  # the destination is the node's LAN IP, not a service VIP - a Cloudflare tunnel
+  # cannot carry UDP, so this is a genuine WAN forward.
+  #
+  # Deliberately NOT forwarded:
+  #   27015/tcp  RCON. Admin control of the server; reachable on the LAN and over the
+  #              tailnet only. Forwarding it would put full server control on the
+  #              public internet behind one password.
+  #   8766-8767  Steam master-server / query ports. Only needed when the server is
+  #              listed publicly, and configmap.yaml sets Public=false - friends
+  #              connect directly by address.
+  - name: "Zomboid-Game"
+    src: "wan"
+    dest: "lan"
+    proto: "udp"
+    src_dport: "16261"
+    dest_ip: "192.168.1.243"
+    dest_port: "16261"
+    enabled: true
+
+  # Direct-connection port. Must match UDPPort in apps/zomboid/configmap.yaml.
+  - name: "Zomboid-Direct"
+    src: "wan"
+    dest: "lan"
+    proto: "udp"
+    src_dport: "16262"
+    dest_ip: "192.168.1.243"
+    dest_port: "16262"
+    enabled: true

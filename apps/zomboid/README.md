@@ -132,6 +132,26 @@ RCON_PW=$(kubectl -n zomboid get secret zomboid-credentials -o jsonpath='{.data.
 rcon-cli --host 192.168.1.243 --port 27015 --password "$RCON_PW" players
 ```
 
+## How to connect
+
+| Where you are | Address |
+|---|---|
+| On the home LAN | `192.168.1.243:16261` |
+| Anywhere else (friends) | `zomboid-play.kblab.me:16261` |
+
+**Use the IP at home, not the hostname.** AdGuard owns `*.kblab.me` on the LAN and rewrites
+it to the Traefik ingress (192.168.1.124), which serves HTTP and knows nothing about the
+game. From inside the house the hostname resolves to the wrong box; from outside, public DNS
+returns the WAN address correctly. Verified both ways.
+
+The server is not listed in the in-game browser (`Public=false`), so add it manually under
+Favourites -> Add Server. Log in with the same username you used before or PZ will hand you a
+new character.
+
+If nobody has played for a while the server is asleep and the client will report *The server
+failed to respond* - that is not a network fault. Wake it first (see above), wait for
+`running`, then connect.
+
 ## Networking
 
 | Port | Protocol | Exposure | Purpose |
@@ -205,6 +225,6 @@ mod list under B42. Measured headroom on `hp-victus` at deploy time: 22 GB RAM a
 
 ## Known gaps
 
-- **No Discord bot yet.** Needs an application registered in the Discord developer portal
-  (a human gate). The control API it would call is done and tested.
-- **Stable public address.** Friends need a hostname that survives a WAN IP change.
+- **No Discord bot yet.** Waking the server still means curling the control API. Needs an
+  application registered in the Discord developer portal (a human gate); the API it would
+  call is done and tested.

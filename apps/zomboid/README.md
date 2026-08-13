@@ -2,8 +2,14 @@
 
 Build 42 server for a small group, running on `hp-victus` as a Flux-managed k3s workload.
 
-It is **asleep by default** (`replicas: 0`). Something has to wake it, and it puts itself
-back to sleep once nobody is connected. Running it 24/7 would hold ~8 GB on a node that is
+It is **asleep at rest**. Something has to wake it, and it puts itself back to sleep once
+nobody is connected.
+
+`deployment.yaml` deliberately carries **no `replicas:` field**. Replica count is owned at
+runtime by the control API and the sleeper; pinning it in git hands the field to Flux's
+server-side apply, and Flux re-reconciles every 10 minutes, so it would stamp the git value
+back over the runtime's choice. With `replicas: 0` committed that killed a live server under
+its players within 10 minutes of them joining. Running it 24/7 would hold ~8 GB on a node that is
 also a k3s worker, for a game nobody is playing most of the day.
 
 ## Waking and sleeping it
@@ -168,7 +174,7 @@ mod list under B42. Measured headroom on `hp-victus` at deploy time: 22 GB RAM a
 
 | Path | Purpose |
 |---|---|
-| `deployment.yaml` | The server. `replicas: 0` is the intended resting state |
+| `deployment.yaml` | The server. Carries no `replicas:` - see below |
 | `configmap.yaml` | Server config, git-authoritative |
 | `secret.yaml` | Admin / RCON / join passwords (SOPS) |
 | `pvc.yaml` | Saves, config and own mods. **Not** the game install — that is in the image |

@@ -7,7 +7,13 @@ metadata:
     app.kubernetes.io/name: zomboid-sleeper
 spec:
   # The cadence. Idle time before sleep = this interval x CHECKS_BEFORE_SLEEP,
-  # so 5 min x 4 = 20 minutes of an empty server.
+  # so 5 min x 8 = 40 minutes of an empty server.
+  #
+  # It was 20 minutes, which turned out to be too tight in practice: waking the
+  # server and then actually getting into the game (adding the server entry,
+  # credentials, the client's own load) ate enough of the window that it parked
+  # itself before the first join and the client just saw "server failed to
+  # respond". The wake-to-join path has to fit comfortably inside this.
   schedule: "*/5 * * * *"
   concurrencyPolicy: Forbid
   successfulJobsHistoryLimit: 1
@@ -41,7 +47,7 @@ spec:
                 - name: RCON_PORT
                   value: "27015"
                 - name: CHECKS_BEFORE_SLEEP
-                  value: "4"
+                  value: "8"
                 - name: RCON_PASSWORD
                   valueFrom:
                     secretKeyRef:

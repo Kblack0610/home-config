@@ -9,3 +9,15 @@ lan:
 domains:
   - name: "nas.lan"
     ip: "192.168.1.152"
+  # Split-horizon for the Zomboid game port.
+  #
+  # AdGuard rewrites *.kblab.me to the Traefik ingress (192.168.1.124), which is
+  # right for every other name here because they are all HTTP services behind
+  # Traefik. The game is not: it is UDP on hp-victus (192.168.1.243), so the
+  # wildcard sends LAN players to a box that does not serve the game.
+  #
+  # dnsmasq answers its own domain entries authoritatively instead of forwarding to
+  # AdGuard, so this specific name wins over the wildcard. Public DNS still returns
+  # the WAN address via Cloudflare, so the same hostname now works from both sides.
+  - name: "zomboid-play.kblab.me"
+    ip: "192.168.1.243"

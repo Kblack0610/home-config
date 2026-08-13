@@ -23,15 +23,44 @@ setup() {
   mkdir -p "${SANDBOX}/bin"
   cat > "${SANDBOX}/bin/smbclient" <<'STUB'
 #!/bin/sh
-echo "$@" >> "${SMB_CALLS}"
-# `ls <archive>` must report a plausible size so the verify step can pass.
-case "$*" in
-  *"ls zomboid-"*) echo "  $(echo "$*" | sed 's/.*ls //')  A  ${FAKE_REMOTE_SIZE:-0}  Wed Aug 12 00:00:00 2026" ;;
-esac
+# Models real smbclient closely enough to catch the bug that shipped once:
+#  - mkdir does NOT create parent directories
+#  - a failed `cd` prints NT_STATUS_* and the REST OF THE -c STRING STILL RUNS
+#  - the process still exits 0 either way
+cmd=""
+while [ $# -gt 0 ]; do case "$1" in -c) cmd="$2"; shift 2;; *) shift;; esac; done
+echo "$cmd" >> "${SMB_CALLS}"
+DIRS="${SMB_DIRS}"; touch "$DIRS"
+run_one() {
+  case "$1" in
+    "mkdir "*)
+      d=$(echo "$1" | sed 's/^mkdir //')
+      parent=$(dirname "$d")
+      if [ "$parent" != "." ] && ! grep -qx "$parent" "$DIRS"; then
+        echo "mkdir \\$d: NT_STATUS_OBJECT_PATH_NOT_FOUND"; return
+      fi
+      if grep -qx "$d" "$DIRS"; then echo "NT_STATUS_OBJECT_NAME_COLLISION making remote directory"; return; fi
+      echo "$d" >> "$DIRS" ;;
+    "cd "*)
+      d=$(echo "$1" | sed 's/^cd //')
+      if grep -qx "$d" "$DIRS"; then CWD="$d"; else echo "cd \\$d\\: NT_STATUS_OBJECT_PATH_NOT_FOUND"; fi ;;
+    "put "*) echo "putting file" ; echo "${CWD:-<ROOT>}|$1" >> "${SMB_PUTS}" ;;
+    "ls "*)  echo "  $(echo "$1" | sed 's/^ls //')  A  ${FAKE_REMOTE_SIZE:-0}  Wed Aug 12 00:00:00 2026" ;;
+  esac
+}
+CWD=""
+OLDIFS="$IFS"; IFS=";"
+for part in $cmd; do
+  p=$(echo "$part" | sed 's/^ *//; s/ *$//')
+  [ -n "$p" ] && run_one "$p"
+done
+IFS="$OLDIFS"
 exit 0
 STUB
   chmod +x "${SANDBOX}/bin/smbclient"
   export SMB_CALLS="${SANDBOX}/smb-calls.txt"; : > "${SMB_CALLS}"
+  export SMB_DIRS="${SANDBOX}/smb-dirs.txt"; : > "${SMB_DIRS}"
+  export SMB_PUTS="${SANDBOX}/smb-puts.txt"; : > "${SMB_PUTS}"
   export PATH="${SANDBOX}/bin:${PATH}"
   export NAS_HOST=nas.invalid
   export DATA_DIR="${SANDBOX}/data" WORK_DIR="${SANDBOX}/work"
@@ -59,7 +88,7 @@ check "implausibly small archive is refused" 1 "$(run_rc)"
 
 # nothing should have been uploaded in any of the three refusals
 # grep -c prints 0 AND exits 1 on no match, so `|| echo 0` would emit a second line.
-uploads="$(grep -c "put " "${SMB_CALLS}" 2>/dev/null | head -1)"
+uploads="$(grep -c "put " "${SMB_PUTS}" 2>/dev/null | head -1)"
 uploads="${uploads:-0}"
 if [[ "${uploads}" == "0" ]]; then echo "  PASS  no upload attempted in any refusal case"; else
   echo "  FAIL  ${uploads} upload(s) attempted despite refusing"; FAILED=1; fi
@@ -78,10 +107,18 @@ out="$( cd "${SANDBOX}" && sh "${SCRIPT}" 2>&1 )"; rc=$?
 localsize="$(echo "${out}" | sed -n 's/.*created .* (\([0-9]*\) bytes).*/\1/p')"
 FAKE_REMOTE_SIZE="${localsize}" out2="$( cd "${SANDBOX}" && FAKE_REMOTE_SIZE="${localsize}" sh "${SCRIPT}" 2>&1 )"; rc2=$?
 check "backs up successfully when the world is real" 0 "${rc2}"
-if grep -q "put " "${SMB_CALLS}"; then echo "  PASS  upload was attempted"; else
+if grep -q "put " "${SMB_PUTS}"; then echo "  PASS  upload was attempted"; else
   echo "  FAIL  no upload attempted"; FAILED=1; fi
 if echo "${out2}" | grep -q "verified on the share"; then echo "  PASS  size verified against the share"; else
   echo "  FAIL  did not verify remote size"; FAILED=1; fi
+# THE assertion. The original version of this script uploaded to the share ROOT
+# because `cd backups/zomboid` failed and smbclient carried on regardless, and every
+# other check here still passed. Assert the destination, not just that a put happened.
+landed="$(cut -d'|' -f1 "${SMB_PUTS}" | tail -1)"
+if [[ "${landed}" == "backups/zomboid" ]]; then
+  echo "  PASS  uploaded INTO backups/zomboid (not the share root)"
+else
+  echo "  FAIL  uploaded into '${landed}' instead of backups/zomboid"; FAILED=1; fi
 teardown
 
 echo

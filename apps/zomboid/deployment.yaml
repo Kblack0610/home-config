@@ -1,9 +1,20 @@
 # Project Zomboid dedicated server, scale-to-zero.
 #
-# replicas: 0 is the intended resting state and Flux must keep reconciling it that way.
-# The control API (control/) scales this 0 <-> 1; the idle-sleep CronJob scales it back
-# to 0. Do NOT add an HPA and do NOT "fix" replicas to 1 - a running server costs ~8Gi
-# on a node that is also a k3s worker.
+# DO NOT add `replicas:` back to this spec.
+#
+# Replica count is owned at RUNTIME - the control API scales it 0 <-> 1 and the
+# idle-sleep CronJob scales it back to 0. Pinning it here hands the field to Flux's
+# server-side apply, and Flux reconciles this Kustomization every 10 minutes, so it
+# would stamp the git value back over whatever the runtime had chosen. With
+# `replicas: 0` in git that meant a live server was killed under its players within
+# 10 minutes of them joining, which is exactly what happened on 2026-08-12.
+#
+# Omitting the field entirely leaves Flux with no opinion on it. The cost is that a
+# freshly created Deployment defaults to 1 replica and boots once; the sleeper parks
+# it within the idle window, which is harmless.
+#
+# Do NOT add an HPA either - a running server costs ~8Gi on a node that is also a
+# k3s worker, and the wake/sleep decision is not a CPU-pressure decision.
 #
 # Image choice: danixu86 publishes build-pinned tags (42.20.2-release) so git names the
 # exact PZ build, matching how apps/jellyfin pins 10.10.7. The more commonly cited
@@ -17,7 +28,6 @@ metadata:
   labels:
     app.kubernetes.io/name: zomboid
 spec:
-  replicas: 0
   strategy:
     # RWO volume + a single authoritative world. Never run two of these at once.
     type: Recreate

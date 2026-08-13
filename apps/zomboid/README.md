@@ -30,8 +30,8 @@ Wake is deliberately explicit rather than triggered by an incoming game packet: 
 minute or two to boot, so a packet-triggered wake would time out the connection that
 triggered it, every time. Tell people to hit start, then join when it says `running`.
 
-The server puts itself to sleep after **4 consecutive empty checks at a 5-minute cadence,
-so ~20 minutes idle** (`sleep/cronjob.yaml`). There is no "last player left" event in PZ,
+The server puts itself to sleep after **8 consecutive empty checks at a 5-minute cadence,
+so ~40 minutes idle** (`sleep/cronjob.yaml`). There is no "last player left" event in PZ,
 so polling RCON is the only mechanism available; it is one loop on one cadence, and it
 **fails closed** — any error (RCON refused, unparseable output, API failure) leaves the
 server running.

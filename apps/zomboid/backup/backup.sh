@@ -72,12 +72,36 @@ fi
 
 # --- upload --------------------------------------------------------------------
 SMB="//${NAS_HOST}/${NAS_SHARE}"
-smbclient "${SMB}" -N -c "mkdir ${DEST_DIR}" >/dev/null 2>&1 || true
-smbclient "${SMB}" -N -c "cd ${DEST_DIR}; put ${ARCHIVE} ${ARCHIVE}"
+
+# smbclient -c does NOT exit non-zero when a command inside it fails; it prints an
+# NT_STATUS_* line and carries on with the next one. That is how the first version
+# of this script silently uploaded to the share ROOT: `cd backups/zomboid` failed
+# with NT_STATUS_OBJECT_PATH_NOT_FOUND, `put` then ran in the root, and the verify
+# step looked in the root too and "passed". Every smbclient call has to be checked
+# for NT_STATUS_ in its output.
+smb() {
+  _out="$(smbclient "${SMB}" -N -c "$1" 2>&1)"
+  _bad="$(echo "${_out}" | grep -o 'NT_STATUS_[A-Z_]*' | grep -v 'NT_STATUS_OBJECT_NAME_COLLISION' || true)"
+  if [ -n "${_bad}" ]; then
+    log "ERROR: smbclient '$1' failed: ${_bad}"
+    return 1
+  fi
+  echo "${_out}"
+}
+
+# mkdir does not create parents, so walk the path a component at a time. An
+# existing component reports OBJECT_NAME_COLLISION, which smb() treats as fine.
+_path=""
+for _part in $(echo "${DEST_DIR}" | tr '/' ' '); do
+  _path="${_path:+${_path}/}${_part}"
+  smb "mkdir ${_path}" >/dev/null
+done
+
+smb "cd ${DEST_DIR}; put ${ARCHIVE} ${ARCHIVE}" >/dev/null
 log "uploaded to ${SMB}/${DEST_DIR}/${ARCHIVE}"
 
 # --- verify it actually landed, at the right size ------------------------------
-remote_size="$(smbclient "${SMB}" -N -c "cd ${DEST_DIR}; ls ${ARCHIVE}" 2>/dev/null \
+remote_size="$(smb "cd ${DEST_DIR}; ls ${ARCHIVE}" \
   | awk -v f="${ARCHIVE}" '$1==f {print $3}')"
 if [ -z "${remote_size}" ]; then
   log "ERROR: ${ARCHIVE} is not on the share after upload."
@@ -91,14 +115,13 @@ log "verified on the share: ${remote_size} bytes"
 
 # --- prune ---------------------------------------------------------------------
 # Sorted by name, which is chronological because the stamp is YYYYmmdd-HHMMSS.
-olds="$(smbclient "${SMB}" -N -c "cd ${DEST_DIR}; ls zomboid-*.tar.gz" 2>/dev/null \
+olds="$(smb "cd ${DEST_DIR}; ls zomboid-*.tar.gz" \
   | awk '/^ *zomboid-.*\.tar\.gz/ {print $1}' | sort)"
 count="$(echo "${olds}" | grep -c . || true)"
 if [ "${count}" -gt "${KEEP}" ]; then
   drop="$(echo "${olds}" | head -n "$((count - KEEP))")"
   for f in ${drop}; do
-    smbclient "${SMB}" -N -c "cd ${DEST_DIR}; del ${f}" >/dev/null 2>&1 \
-      && log "pruned ${f}"
+    smb "cd ${DEST_DIR}; del ${f}" >/dev/null && log "pruned ${f}"
   done
 fi
 log "done - ${count} backup(s) on the share, keeping ${KEEP}"

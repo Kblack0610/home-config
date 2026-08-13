@@ -1,0 +1,16 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+namespace: zomboid
+
+resources:
+  - cronjob.yaml
+
+configMapGenerator:
+  - name: zomboid-backup-app
+    files:
+      - backup.sh
+
+generatorOptions:
+  labels:
+    app.kubernetes.io/name: zomboid-backup

@@ -57,6 +57,20 @@
     - role: time-sync
       tags: [time, ntp]
 
+- name: USB backup drive mounts on asus-laptop (survive re-enumeration)
+  # See roles/usb-backup-mounts/README.md. The 8TB drive dropped off USB on
+  # 2026-08-09 and came back as a different device node; the seven mounts went
+  # stale while df/mountpoint kept reporting healthy, and three days of backups
+  # silently wrote nothing. This role hands the lifecycle to systemd
+  # (x-systemd.automount) so device loss tears the mount down cleanly and device
+  # return remounts it by UUID.
+  hosts: asus-laptop
+  become: true
+  gather_facts: true
+  roles:
+    - role: usb-backup-mounts
+      tags: [backup-mounts, storage]
+
 - name: Disable lid-close / suspend on laptop k3s nodes
   # See ansible/roles/k3s-node-no-suspend/README.md — without this, closing
   # a laptop lid removes the node from the cluster (the 2026-05 hp-victus

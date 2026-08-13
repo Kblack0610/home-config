@@ -1,0 +1,78 @@
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: homelab-backup-freshness
+  namespace: monitoring
+  labels:
+    app.kubernetes.io/name: homelab-backup-freshness
+    app.kubernetes.io/part-of: monitoring
+    # REQUIRED. ruleSelector.matchLabels.release=kube-prometheus-stack on the
+    # Prometheus CR; without it the CR applies and is never evaluated. See the
+    # note in prometheus-rules-app-health.yaml, which was inert for exactly this
+    # reason until 2026-08-11.
+    release: kube-prometheus-stack
+spec:
+  groups:
+    - name: homelab-backup-freshness.alerts
+      interval: 5m
+      rules:
+        # Why this measures OUTCOME rather than plumbing:
+        #
+        # On 2026-08-09 the 8TB USB drive re-enumerated from /dev/sdc to
+        # /dev/sda. The mounts went stale but stayed in the table, so df,
+        # mountpoint and the filesystem metrics all kept reporting a healthy
+        # 7.3T/177G. Every plumbing-level signal was green while three days of
+        # backups wrote nothing. The only thing that was actually false was
+        # "a backup completed recently".
+        #
+        # An absent()-on-mountpoint alert was considered and rejected: the
+        # mounts are now x-systemd.automount (roles/usb-backup-mounts), so a
+        # path is legitimately unmounted until first access and the
+        # node_filesystem_* series legitimately come and go. That alert would
+        # have fired after every reboot.
+        - alert: HomelabBackupStale
+          expr: |
+            (
+              time() - max by (namespace, owner_name) (
+                kube_job_status_completion_time{namespace!="nas"}
+                * on (namespace, job_name) group_left(owner_name)
+                  kube_job_owner{owner_kind="CronJob"}
+              )
+            ) > 36 * 3600
+          for: 30m
+          labels:
+            severity: warning
+            category: backup
+          annotations:
+            summary: "Backup stale: {{ $labels.namespace }}/{{ $labels.owner_name }}"
+            description: >-
+              {{ $labels.namespace }}/{{ $labels.owner_name }} has not completed
+              successfully in {{ printf "%.0f" $value }} seconds (>36h for a
+              daily job). The job may be failing, or succeeding while writing
+              nowhere - check the destination is really mounted, not merely
+              listed as mounted.
+
+        # Split out because nas/ holds only WEEKLY cronjobs (0 5 * * 0 and
+        # friends). Folding them into the 36h rule above would page on all four
+        # every single week for being perfectly healthy - the same mistake that
+        # was caught and fixed in prometheus-rules-jobs.yaml.
+        - alert: HomelabWeeklyBackupStale
+          expr: |
+            (
+              time() - max by (namespace, owner_name) (
+                kube_job_status_completion_time{namespace="nas"}
+                * on (namespace, job_name) group_left(owner_name)
+                  kube_job_owner{owner_kind="CronJob"}
+              )
+            ) > 9 * 24 * 3600
+          for: 1h
+          labels:
+            severity: warning
+            category: backup
+          annotations:
+            summary: "Weekly backup stale: {{ $labels.namespace }}/{{ $labels.owner_name }}"
+            description: >-
+              {{ $labels.namespace }}/{{ $labels.owner_name }} is a weekly job
+              that has not completed successfully in over 9 days. The 8TB USB
+              drive backs these; confirm it is present and the automount units
+              are up (roles/usb-backup-mounts).

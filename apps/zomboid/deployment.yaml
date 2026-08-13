@@ -110,6 +110,19 @@ spec:
               value: servertest
             - name: CACHEDIR
               value: /home/steam/Zomboid
+            # Without this the server logs
+            #   [S_API FAIL] Tried to access Steam interface SteamNetworkingUtils004
+            #   before SteamAPI_Init succeeded
+            # and then never binds the Steam ports (8766/8767), so a Steam client
+            # gets "The server failed to respond" even though 16261/udp is open and
+            # the world is loaded fine.
+            #
+            # Cause: the steamclient.so shipped inside the game install is older than
+            # the one steamcmd carries (45067032 vs 46520512 bytes on 42.20.2). This
+            # copies steamcmd's over the game's at startup, which is what the upstream
+            # image provides this flag for.
+            - name: FORCESTEAMCLIENTSOUPDATE
+              value: "true"
             # MANDATORY. Without it the entrypoint rewrites Mods= from MOD_IDS and,
             # worse, actively CLEARS WorkshopItems when WORKSHOP_IDS is empty - wiping
             # the values configmap.yaml just seeded, on every single boot.

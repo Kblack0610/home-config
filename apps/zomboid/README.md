@@ -78,6 +78,27 @@ kubectl -n zomboid run pz-inspect --rm -i --restart=Never \
 To move sandbox settings into git afterwards, copy the generated file out of the volume,
 add it to `configmap.yaml`, and extend the `config-seed` initContainer to place it.
 
+## The world
+
+This server runs an **imported co-op world**, not a freshly generated one. It came from
+`~/Zomboid/Saves/Multiplayer/poopypoo` on the workstation (last played 2026-08-11) and was
+copied in on 2026-08-12, verified byte-for-byte on `players.db`, `map_meta.bin`,
+`vehicles.db`, `WorldDictionary.bin` and `map_animals.bin`. Its `SandboxVars` came across
+too, so the world's rules are unchanged from the co-op game.
+
+The empty world that was generated on first boot is parked next to it as
+`Saves/Multiplayer/servertest.generated-backup` and can be deleted once the imported world
+is known good.
+
+**Log in with the same username you used in the co-op game** — PZ keys characters to the
+account name, so a different username spawns a new character rather than resuming yours.
+
+Importing a world onto this server means, in order: stop it (`POST /stop`, and wait for the
+pod to actually go away — PZ flushes the world on SIGTERM and takes about a minute), copy
+the save into `Zomboid/Saves/Multiplayer/servertest`, copy
+`<name>_SandboxVars.lua` to `Zomboid/Server/servertest_SandboxVars.lua`, `chown -R 1000:1000`,
+then start. The directory must be named `servertest` to match `SERVERNAME`.
+
 ## Mods
 
 **Workshop mods:** add the IDs to `WorkshopItems=` and `Mods=` in `configmap.yaml`, commit,

@@ -133,6 +133,19 @@ spec:
             # image provides this flag for.
             - name: FORCESTEAMCLIENTSOUPDATE
               value: "true"
+            # A Steam client reached the server and then hung: the log showed
+            # "Steam client <id> is initiating a connection" over and over with no
+            # result, and the server was listening only on 16261/16262 - never on
+            # 8766/8767, which is where Steam's game-server side has to live.
+            #
+            # The ini had 149 keys filled in by the server and SteamPort1/SteamPort2
+            # were not among them, so there was nothing to bind. These pass
+            # -steamport1/-steamport2 explicitly. They are the documented defaults;
+            # the point is that they are now set rather than absent.
+            - name: STEAMPORT1
+              value: "8766"
+            - name: STEAMPORT2
+              value: "8767"
             # MANDATORY. Without it the entrypoint rewrites Mods= from MOD_IDS and,
             # worse, actively CLEARS WorkshopItems when WORKSHOP_IDS is empty - wiping
             # the values configmap.yaml just seeded, on every single boot.

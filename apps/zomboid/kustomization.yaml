@@ -12,3 +12,4 @@ resources:
   - service.yaml
   - control
   - sleep
+  - backup

@@ -147,6 +147,27 @@ WAN forwards are declared in `infrastructure/openwrt/firewall.yaml` and applied 
 The control API is the only part that goes through Cloudflare. The game is UDP, which a
 Cloudflare tunnel cannot carry.
 
+## Backups
+
+`backup/` runs nightly at 04:30, tars the world plus `Server/` and pushes it to the NAS
+**public** share at `//192.168.1.152/public/backups/zomboid/`, keeping 14 dailies.
+
+It targets the *public* share on purpose: that share is `guest ok=yes`, so the job needs no
+credentials and the NAS password is not duplicated into this namespace where it would drift
+from the copy in `apps/nas`. A world save holds no secrets, so public is appropriate.
+
+04:30 is chosen so it lands while the server is almost certainly scaled to zero, which makes
+the on-disk save quiescent and the copy exact. If somebody is playing, the worst case is a
+backup as stale as the last autosave (`SaveWorldEveryMinutes=15`). It does **not** issue an
+RCON `save` first - that would mean a second copy of the RCON client (the first lives in
+`sleep/sleeper.py`), and kustomize path restrictions make sharing one copy across two
+ConfigMaps awkward. If quiesced backups become necessary, hoist both scripts into one shared
+ConfigMap rather than duplicating the client.
+
+The script refuses rather than writing a bad backup: missing save dir, empty save dir, an
+archive under 1 MB, or a size mismatch after upload all abort non-zero. Restore is
+`tar xzf zomboid-<stamp>.tar.gz -C <the PVC's Zomboid dir>` with the server scaled to 0.
+
 ## Monitoring
 
 `gatus` probes the **control API**, not the game server. The game server being down is its
@@ -184,10 +205,6 @@ mod list under B42. Measured headroom on `hp-victus` at deploy time: 22 GB RAM a
 
 ## Known gaps
 
-- **No save backup yet.** The PVC is RWO on `hp-victus`; the NAS is Samba on `asus-laptop`,
-  so the existing "co-locate the backup job with the storage" pattern in `apps/nas/` cannot
-  reach it. Needs a decision between pushing to the NAS over SMB and pushing to MinIO with a
-  scoped key. Until then, **the world is not backed up.**
 - **No Discord bot yet.** Needs an application registered in the Discord developer portal
   (a human gate). The control API it would call is done and tested.
 - **Stable public address.** Friends need a hostname that survives a WAN IP change.

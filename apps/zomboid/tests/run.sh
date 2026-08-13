@@ -11,9 +11,10 @@ set -euo pipefail
 cd "$(dirname "$0")/.."
 
 failed=0
-for suite in tests/test_control.py tests/test_sleeper.py; do
+for suite in tests/test_control.py tests/test_sleeper.py tests/test_backup.sh; do
   echo "=== ${suite} ==="
-  if ! python3 "${suite}"; then
+  runner=python3; [[ "${suite}" == *.sh ]] && runner=bash
+  if ! "${runner}" "${suite}"; then
     failed=1
   fi
   echo

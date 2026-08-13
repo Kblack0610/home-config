@@ -1,0 +1,75 @@
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: zomboid-backup
+  namespace: zomboid
+  labels:
+    app.kubernetes.io/name: zomboid-backup
+spec:
+  # 04:30 daily. Chosen so it lands while the server is almost certainly scaled to
+  # zero (nobody plays at 04:30), which makes the on-disk save quiescent and the
+  # copy exact. Also avoids 03:45, when the 3d-prints job is hitting the same NAS.
+  schedule: "30 4 * * *"
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 3
+  startingDeadlineSeconds: 3600
+  jobTemplate:
+    spec:
+      backoffLimit: 1
+      template:
+        spec:
+          restartPolicy: Never
+          # Must land on the same node as the server: the claim is RWO and
+          # local-path pins it to hp-victus.
+          nodeSelector:
+            kubernetes.io/hostname: hp-victus
+          containers:
+            - name: backup
+              image: alpine:3.24.1
+              command:
+                - /bin/sh
+                - -c
+                - |
+                  set -eu
+                  apk add --no-cache samba-client tar >/dev/null
+                  exec sh /app/backup.sh
+              env:
+                - name: NAS_HOST
+                  value: "192.168.1.152"
+                - name: NAS_SHARE
+                  value: "public"
+                - name: DEST_DIR
+                  value: "backups/zomboid"
+                - name: DATA_DIR
+                  value: "/data"
+                - name: SAVE_SUBPATH
+                  value: "Saves/Multiplayer/servertest"
+                - name: SERVER_SUBPATH
+                  value: "Server"
+                # ~2 weeks of dailies. A PZ world is tens of MB, so this is cheap.
+                - name: KEEP
+                  value: "14"
+              volumeMounts:
+                - name: data
+                  mountPath: /data
+                  subPath: Zomboid
+                  readOnly: true
+                - name: app
+                  mountPath: /app
+                  readOnly: true
+              resources:
+                requests:
+                  memory: "64Mi"
+                  cpu: "50m"
+                limits:
+                  memory: "512Mi"
+                  cpu: "1000m"
+          volumes:
+            - name: data
+              persistentVolumeClaim:
+                claimName: zomboid-data
+                readOnly: true
+            - name: app
+              configMap:
+                name: zomboid-backup-app

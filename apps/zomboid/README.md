@@ -134,15 +134,22 @@ rcon-cli --host 192.168.1.243 --port 27015 --password "$RCON_PW" players
 
 ## How to connect
 
-| Where you are | Address |
-|---|---|
-| On the home LAN | `192.168.1.243:16261` |
-| Anywhere else (friends) | `zomboid-play.kblab.me:16261` |
+**`zomboid-play.kblab.me:16261` — from anywhere, inside the house or out.**
 
-**Use the IP at home, not the hostname.** AdGuard owns `*.kblab.me` on the LAN and rewrites
-it to the Traefik ingress (192.168.1.124), which serves HTTP and knows nothing about the
-game. From inside the house the hostname resolves to the wrong box; from outside, public DNS
-returns the WAN address correctly. Verified both ways.
+That works because of a deliberate split-horizon entry, which is worth understanding before
+anyone "tidies it up":
+
+| Query from | Answer | Why |
+|---|---|---|
+| The LAN | `192.168.1.243` | dnsmasq answers it directly (`infrastructure/openwrt/dns.yaml`) |
+| The internet | `66.27.123.93` | Cloudflare A record, kept current by the `wan-ddns` CronJob |
+
+AdGuard rewrites `*.kblab.me` to the Traefik ingress (192.168.1.124), which is correct for
+every other name in this zone because they are all HTTP services behind Traefik. The game is
+the exception: it is UDP on hp-victus, so the wildcard would send LAN players to a box that
+does not serve the game. dnsmasq answers its own `domains` entries authoritatively instead of
+forwarding to AdGuard, so the specific name wins over the wildcard. Removing that entry
+silently breaks LAN play while leaving remote play working.
 
 The server is not listed in the in-game browser (`Public=false`), so add it manually under
 Favourites -> Add Server. Log in with the same username you used before or PZ will hand you a

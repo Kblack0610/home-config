@@ -1,0 +1,77 @@
+# Publishes the house's current WAN IP as an A record.
+#
+# Lives in the external-dns namespace so it can use the Cloudflare token that is
+# already here, rather than copying that secret into another namespace where the
+# two would drift.
+#
+# Consumer today is the Project Zomboid server (apps/zomboid), which is reached by
+# a WAN port-forward on UDP 16261/16262 - see infrastructure/openwrt/firewall.yaml.
+# Friends connect to the name below; this is what keeps it correct when the ISP
+# moves the address.
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: wan-ddns
+  namespace: external-dns
+  labels:
+    app.kubernetes.io/name: wan-ddns
+spec:
+  # Residential IPs move rarely but without warning. Every 5 minutes bounds the
+  # outage to about that long, and the job is a no-op when nothing has changed.
+  schedule: "*/5 * * * *"
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 1
+  failedJobsHistoryLimit: 3
+  startingDeadlineSeconds: 120
+  jobTemplate:
+    spec:
+      backoffLimit: 1
+      template:
+        spec:
+          restartPolicy: Never
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 65534
+            runAsGroup: 65534
+            seccompProfile:
+              type: RuntimeDefault
+          containers:
+            - name: ddns
+              image: python:3.12-slim
+              command: ["python3", "/app/ddns.py"]
+              env:
+                - name: ZONE_NAME
+                  value: kblab.me
+                # NOT zomboid.kblab.me - external-dns already owns that name as a
+                # proxied CNAME to the Cloudflare tunnel for the control API. The
+                # game is UDP and cannot go through the tunnel, so it needs its own
+                # DNS-only name pointed straight at the WAN address.
+                - name: RECORD_NAME
+                  value: zomboid-play.kblab.me
+                - name: TTL
+                  value: "60"
+                - name: CF_API_TOKEN
+                  valueFrom:
+                    secretKeyRef:
+                      name: cloudflare-api-token
+                      key: api-token
+              volumeMounts:
+                - name: app
+                  mountPath: /app
+                  readOnly: true
+              securityContext:
+                allowPrivilegeEscalation: false
+                readOnlyRootFilesystem: true
+                capabilities:
+                  drop: ["ALL"]
+              resources:
+                requests:
+                  memory: "32Mi"
+                  cpu: "10m"
+                limits:
+                  memory: "128Mi"
+                  cpu: "200m"
+          volumes:
+            - name: app
+              configMap:
+                name: wan-ddns-app

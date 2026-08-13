@@ -8,3 +8,14 @@ resources:
   - secret.sops.yaml
   - rbac.yaml
   - deployment.yaml
+  - ddns-cronjob.yaml
+
+# Hash-suffixed so a change to ddns.py rolls into the next scheduled run.
+configMapGenerator:
+  - name: wan-ddns-app
+    files:
+      - ddns.py
+
+generatorOptions:
+  labels:
+    app.kubernetes.io/name: wan-ddns

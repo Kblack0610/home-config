@@ -194,12 +194,17 @@ spec:
             - name: localtime
               mountPath: /etc/localtime
               readOnly: true
+          # Measured with 1 player on 2026-08-12: 7301Mi against the old 8Gi limit,
+          # i.e. 89% - a 6g heap plus ~1.3Gi of JVM non-heap (metaspace, code cache,
+          # thread stacks, GC structures). That is too little headroom; an OOM kill
+          # mid-session drops everyone and risks the save. The heap stays at 6g, so
+          # this is purely headroom, not more room for the world.
           resources:
             requests:
               memory: "4Gi"
               cpu: "1000m"
             limits:
-              memory: "8Gi"
+              memory: "10Gi"
               cpu: "4000m"
           # PZ serves no HTTP health endpoint. RCON binds once the world has finished
           # loading, which makes a TCP connect the honest "server is actually up" signal.

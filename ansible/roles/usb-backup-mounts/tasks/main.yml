@@ -1,0 +1,79 @@
+---
+# Make the 8TB USB backup drive's mounts survive a device re-enumeration.
+#
+# On 2026-08-09 09:39:43 the drive threw `usb 4-2: USB disconnect` and came back
+# as /dev/sda instead of /dev/sdc. The seven fstab entries were already keyed by
+# UUID, so a REBOOT would have recovered fine - but nothing reboots, and nothing
+# remounted. The old mounts simply stayed in the table pointing at a device node
+# that no longer existed:
+#
+#   /dev/sdc1 on /mnt/backup-8t/immich type btrfs (rw,noatime,...)
+#   $ ls /dev/sdc  ->  not a block device
+#
+# Everything downstream then lied in the same direction: `df` happily reported
+# 7.3T with 177G used, `mountpoint -q` returned true (which is what defeated the
+# backup job's own safety guard), and only real I/O failed with EIO. Immich
+# originals, the DB copy, the btrfs snapshots and the 3D-print backup were all
+# dead for three days while every check said the mounts were fine.
+#
+# noauto + x-systemd.automount makes systemd own the lifecycle instead: the
+# mount is bound to the device unit, so it is torn down cleanly when the device
+# vanishes and re-established on next access when it returns. See
+# defaults/main.yml for the full reasoning.
+
+- name: Ensure the mountpoint directories exist
+  ansible.builtin.file:
+    path: "{{ item.path }}"
+    state: directory
+    mode: "0755"
+  loop: "{{ usb_backup_subvolumes }}"
+  loop_control:
+    label: "{{ item.path }}"
+
+- name: Configure fstab entries for the backup subvolumes (automount, UUID-keyed)
+  # state: present writes fstab WITHOUT mounting. Mounting is systemd's job via
+  # the generated .automount unit, and forcing a mount here would defeat the
+  # point of the change.
+  ansible.posix.mount:
+    path: "{{ item.path }}"
+    src: "UUID={{ usb_backup_fs_uuid }}"
+    fstype: btrfs
+    opts: "{{ usb_backup_mount_opts }},subvol={{ item.subvol }}"
+    state: present
+  loop: "{{ usb_backup_subvolumes }}"
+  loop_control:
+    label: "{{ item.path }} ({{ item.subvol }})"
+  register: usb_backup_fstab
+
+- name: Reload systemd so the fstab generator rebuilds the mount/automount units
+  ansible.builtin.systemd:
+    daemon_reload: true
+  when: usb_backup_fstab is changed
+
+- name: Enable + start the automount units
+  # The .automount unit is what places the autofs trigger on the path; without
+  # starting it, nothing remounts until the next boot.
+  ansible.builtin.systemd:
+    name: "{{ item.path | regex_replace('^/', '') | regex_replace('/', '-') }}.automount"
+    enabled: true
+    state: started
+  loop: "{{ usb_backup_subvolumes }}"
+  loop_control:
+    label: "{{ item.path }}"
+  # In --check mode against a host where the units do not exist yet this is
+  # expected to be skipped rather than fail the whole run.
+  failed_when: false
+
+- name: Verify each mountpoint is actually backed by the real device
+  # The lesson from the incident: "is it mounted" is not the same question as
+  # "is the device there". A write is the only honest probe, and it is exactly
+  # what apps/immich/originals-backup-cronjob.yaml now does before it runs.
+  ansible.builtin.command: >-
+    findmnt --noheadings --output SOURCE,FSTYPE {{ item.path }}
+  loop: "{{ usb_backup_subvolumes }}"
+  loop_control:
+    label: "{{ item.path }}"
+  register: usb_backup_findmnt
+  changed_when: false
+  failed_when: false
+  check_mode: false

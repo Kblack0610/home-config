@@ -31,13 +31,17 @@ all:
           ansible_host: 192.168.1.100
         hp-victus:
           ansible_host: 192.168.1.243
-        # asus-laptop is reachable only on a non-standard port historically and
-        # has no stable SSH alias (see lessons 2026-04-01). Kept listed but not
-        # targeted by Phase A — manage via kubectl until SSH is normalised.
+        # asus-laptop listens on 2222, not 22 (that part of the 2026-04-01 note
+        # still holds). The `unreachable: true` flag was removed 2026-08-12:
+        # it was stale, and it was load-bearing in the wrong direction. The host
+        # answers fine on 2222 with the standard key, but because it was marked
+        # unmanaged, its 8TB backup drive's mounts were never owned by Ansible -
+        # so when the drive re-enumerated on 2026-08-09 there was no role to fix
+        # it with, and the mounts had to be repaired by hand. It now carries the
+        # usb-backup-mounts role.
         asus-laptop:
           ansible_host: 192.168.1.152
           ansible_port: 2222
-          unreachable: true
 
     # This workstation, managed over a local connection (no SSH). Hosts the
     # gungan dictation ASR daemons (see roles/asr-servers).

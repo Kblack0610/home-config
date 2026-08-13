@@ -52,6 +52,11 @@ data:
     # near zero in the window between the last player leaving and the idle-sleep
     # CronJob scaling the deployment to 0.
     PauseEmpty=true
-    PVP=false
+    # Carried over from the imported co-op world, which ran PVP on. Flip to false
+    # here (then restart) if you would rather it be off.
+    PVP=true
     GlobalChat=true
+    # The co-op game had this at 0 (no periodic autosave). 15 is the safer choice for
+    # a dedicated server: a crash or an OOM loses at most 15 minutes instead of the
+    # whole session.
     SaveWorldEveryMinutes=15

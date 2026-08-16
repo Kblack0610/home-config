@@ -20,6 +20,19 @@ redirects:
     dest_ip: "192.168.1.243"
     dest_port: "16261"
     enabled: true
+    # Reflection OFF. It is not just unnecessary here, it is harmful.
+    #
+    # fw4 implements reflection with a companion SNAT rule that matches ANY LAN
+    # source talking to 192.168.1.243:16261 - including a client connecting straight
+    # to the LAN address, which never needed hairpin at all - and rewrites its source
+    # to 192.168.1.1. The server then sees every LAN player arriving from the router
+    # instead of their real address, which breaks the Steam auth handshake: the
+    # client reaches "authorizing with Steam" and hangs with no error.
+    #
+    # LAN clients do not need reflection because dns.yaml resolves
+    # zomboid-play.kblab.me to 192.168.1.243 inside the house. Only WAN clients use
+    # this redirect, and they are unaffected by turning reflection off.
+    reflection: false
 
   # Direct-connection port. Must match UDPPort in apps/zomboid/configmap.yaml.
   - name: "Zomboid-Direct"
@@ -30,3 +43,4 @@ redirects:
     dest_ip: "192.168.1.243"
     dest_port: "16262"
     enabled: true
+    reflection: false

@@ -43,13 +43,19 @@ Two rules follow:
 
 ## Retiring a machine
 
-A machine that is gone but still declared goes **stale, not absent** — it pins the fleet glyph amber forever and there is no server-side expiry to save you. Remove it from all three places in the same change, or the two rosters drift and the `fleet_machine_unrostered` metric starts firing:
+A machine that is gone but still declared goes **stale, not absent** — it pins the fleet glyph amber forever and there is no server-side expiry to save you. The roster is written down in **four** places across **three** repos, and a retirement has to touch all four in the same change:
 
-1. `config.yaml` here (drops the endpoint; the pod rolls because the ConfigMap hash changes, and gatus prunes the retired endpoint's stored statuses on startup).
+1. `config.yaml` here (drops the endpoint; the pod rolls because the ConfigMap hash changes, and gatus prunes the retired endpoint's stored statuses on startup — verified 2026-08-17).
 2. `FLEET_ROSTER` in `apps/fleet-exporter/deployment.yaml` (the Grafana/Prometheus denominator).
-3. `FLEET_ROSTER` in `~/.config/fleet-pulse/env` (the status-bar denominator) — that file lives in the `~/.dotfiles-private` overlay, so it is a **separate repo and a separate PR**.
+3. `FLEET_ROSTER` in `~/.config/fleet-pulse/env` (the status-bar denominator) — in the `~/.dotfiles-private` overlay, so a **separate repo and separate PR**.
+4. `FLEET_DISPLAY` in `.config/waybar/fleet_pulse.sh` (which machines get their own labelled dot) — in the **public** `~/.dotfiles` repo, a third repo again.
 
-Worked example: `lazer-machine` (the Deloitte VDI) was retired on 2026-08-17 when the contract ended.
+**Don't rely on remembering four files.** Two things check for you:
+
+- `scripts/check-fleet-roster.py` asserts every rostered name is declared here. CI runs the two-file half on every PR (`.forgejo/workflows/checks.yaml`); run it with `--roster-env ~/.config/fleet-pulse/env --display ~/.dotfiles/.config/waybar/fleet_pulse.sh` to cover all four at once.
+- The bar itself renders a token naming a host that is on no roster and unknown to gatus as an amber `?`, not a red `○`, and names it in the tooltip. Absence-of-machine and absence-of-config used to share a glyph, which is exactly how a retired machine hid.
+
+Worked example: `lazer-machine` (the Deloitte VDI) was retired on 2026-08-17 when the contract ended. Places 1–3 were updated and place 4 was missed — the bar kept drawing a red `lzr○` that looked like an outage. That miss is what both checks above exist to prevent.
 
 ## Ingress: why crowdsec and not the IP allowlist
 

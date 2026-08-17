@@ -1,0 +1,73 @@
+name: checks
+
+# The repo's first PR-triggered CI. Until now nothing ran on a pull request at all:
+# manifests were reviewed by eye and `kubectl kustomize` was a thing you remembered to
+# do. That is fine for a typo and useless for an invariant that spans two files, which
+# is how a machine retired from the gatus config stayed on the exporter's roster.
+#
+# Deliberately cheap and deliberately narrow. This is not a "lint everything" job - it
+# asserts facts that cannot be seen by reading one file, so adding a check here should
+# mean "two things must agree", not "this file should be pretty".
+
+on:
+  pull_request:
+  push:
+    branches:
+      - master
+  workflow_dispatch:
+
+jobs:
+  fleet-roster:
+    runs-on: docker
+    container:
+      # Alpine + explicit git/nodejs is this repo's convention for a checkout-capable
+      # container (see openclaw-image.yaml); actions/checkout needs both.
+      image: python:3.12-alpine
+    steps:
+      - name: Install checkout deps
+        run: apk add --no-cache git nodejs
+
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      # Stdlib only, so there is no pip step to break and no lockfile to drift.
+      - name: Fleet roster agrees with the gatus declarations
+        run: python3 scripts/check-fleet-roster.py
+
+  kustomize-builds:
+    runs-on: docker
+    container:
+      image: alpine:3.20
+    steps:
+      - name: Install deps
+        run: apk add --no-cache git nodejs kustomize
+
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      # A manifest that does not build is a manifest Flux refuses AFTER merge, in a
+      # place nobody is watching. Cheaper to learn it here.
+      #
+      # Builds exactly what FLUX builds - the `apps` aggregate and each cluster - not
+      # every apps/*/ directory. Those are not the same set: apps/cal is not listed in
+      # apps/kustomization.yaml and references a secret.yaml that is not in the repo, so
+      # a per-directory loop would gate this repo on a directory Flux itself ignores.
+      # A gate that fails on something production does not build teaches people to
+      # ignore the gate.
+      - name: Flux entry points build
+        run: |
+          set -eu
+          rc=0
+          targets="apps $(ls -d clusters/*/ 2>/dev/null || true)"
+          # An empty target list must FAIL, not pass vacuously.
+          [ -n "$(echo "$targets" | tr -d ' ')" ] || { echo "FAIL: no build targets found"; exit 1; }
+          for d in $targets; do
+            if kustomize build "$d" >/dev/null 2>build.err; then
+              echo "ok: $d"
+            else
+              echo "FAIL: kustomize build $d"
+              sed 's/^/    /' build.err
+              rc=1
+            fi
+          done
+          exit $rc

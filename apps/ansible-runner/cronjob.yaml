@@ -67,25 +67,49 @@ spec:
                   # revision banner, which is exactly how it failed from at least
                   # 2026-08-06 without anyone being able to see why. Say what
                   # happened instead.
-                  TARGET_HOST=192.168.1.100
-                  if ! ssh-keyscan -H "$TARGET_HOST" >> ~/.ssh/known_hosts 2>/tmp/keyscan.err; then
-                    echo "ERROR: cannot reach $TARGET_HOST (thinkcentre) over ssh."
-                    # ssh-keyscan is usually silent on an unreachable host, so only
-                    # print this section when it actually said something.
-                    if [ -s /tmp/keyscan.err ]; then
-                      echo "  ssh-keyscan said:"
-                      sed 's/^/    /' /tmp/keyscan.err
+                  # Every host this check should cover, as "alias=ip". thinkcentre
+                  # alone used to be the entire scope, which meant the no-suspend
+                  # guard on the laptops was never verified by anything - and when
+                  # thinkcentre went off-network the job just failed nightly while
+                  # checking nothing at all.
+                  #
+                  # A host being down must not stop the others being checked. That is
+                  # the whole point of a drift check: the fleet is partially available
+                  # by nature.
+                  HOSTS="thinkcentre=192.168.1.100 hp-victus=192.168.1.243 asus-laptop=192.168.1.152"
+
+                  REACHABLE=""
+                  SKIPPED=""
+                  for entry in $HOSTS; do
+                    alias="${entry%%=*}"
+                    ip="${entry##*=}"
+                    if ssh-keyscan -T 5 -H "$ip" >> ~/.ssh/known_hosts 2>/dev/null; then
+                      REACHABLE="${REACHABLE:+$REACHABLE,}$alias"
+                    else
+                      SKIPPED="${SKIPPED:+$SKIPPED }$alias($ip)"
                     fi
-                    echo "  The host is powered off or off-network. Convergence cannot be"
-                    echo "  checked while the only --limit target is down."
+                  done
+                  chmod 644 ~/.ssh/known_hosts
+
+                  # Never let a skipped host be silent - an unchecked host looks
+                  # exactly like a clean one in the logs otherwise.
+                  if [ -n "$SKIPPED" ]; then
+                    echo "WARNING: skipping unreachable host(s): $SKIPPED"
+                    echo "  They are powered off or off-network. Drift on them is NOT"
+                    echo "  being checked. Everything reachable is still checked below."
+                  fi
+
+                  if [ -z "$REACHABLE" ]; then
+                    echo "ERROR: no target host is reachable ($HOSTS). Nothing could be checked."
                     exit 1
                   fi
-                  chmod 644 ~/.ssh/known_hosts
+
+                  echo "--- Checking convergence on: $REACHABLE ---"
                   export ANSIBLE_VAULT_PASSWORD_FILE=/secrets/ansible-vault-pass
                   cd /workspace/ansible
                   ansible-galaxy collection install -r requirements.yml --force
                   exec ansible-playbook playbooks/site.yml \
-                    --limit thinkcentre \
+                    --limit "$REACHABLE" \
                     --check --diff
               env:
                 - name: ANSIBLE_HOST_KEY_CHECKING

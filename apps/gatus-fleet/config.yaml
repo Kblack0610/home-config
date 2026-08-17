@@ -1,8 +1,8 @@
 # fleet.kblab.me - THE MACHINES. Every device that is a computer, not a service.
 #
 # status.kblab.me answers "are my APPS up". This answers "are my MACHINES up",
-# and it is the only surface that covers the work laptop and the VDI - nothing
-# can poll into a corporate-managed box, so they push outbound instead.
+# and it is the only surface that covers the work laptop - nothing can poll into
+# a corporate-managed box, so it pushes outbound instead.
 #
 # TWO MECHANISMS, chosen by reachability, not by taste:
 #   poll  - machines we can reach: already-exporting, always-on, on-LAN.
@@ -19,8 +19,8 @@ storage:
 # Expose /metrics so Prometheus can scrape this and Grafana can render the real
 # fleet view. This is the ONLY source that covers PUSHED machines - node_exporter
 # gives depth for the polled ones (k3s nodes, Macs), but nothing scrapes the work
-# laptop or the VDI, because nothing can reach into them. Gatus is where their
-# liveness exists at all.
+# laptop, because nothing can reach into it. Gatus is where its liveness exists
+# at all.
 #
 # It also buys ordering: gatus sorts its own groups ALPHABETICALLY (android,
 # homelab, iot, k3s, workplace) with no way to reorder, so "work at the top" is
@@ -43,11 +43,14 @@ external-endpoints:
   # One key per physical machine, deliberately. The tempting shortcut is a
   # single `work` endpoint that whichever box is live pushes to - which is
   # exactly the bug the old `mac` endpoint had (two Macs, one key, each
-  # masking the other's death). Two employers, two machines, two keys.
+  # masking the other's death). One employer today, but keep the per-machine
+  # key shape: the second one comes back the next time there are two.
+  #
+  # `lazer-machine` (Deloitte VDI) removed 2026-08-17 - that contract ended, the
+  # box is gone, and its last heartbeat was 2026-08-15. A retired machine left
+  # declared here is worse than absent: it goes stale and pins the fleet glyph
+  # amber forever, which is the same false-signal trap the iot Pi Zeros hit.
   - name: gp-mac         # Gigantic Playground
-    group: workplace
-    token: "${FLEET_TOKEN}"
-  - name: lazer-machine  # Deloitte VDI
     group: workplace
     token: "${FLEET_TOKEN}"
 

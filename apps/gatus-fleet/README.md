@@ -2,20 +2,20 @@
 
 **URL:** https://fleet.kblab.me — every **machine**. `status.kblab.me` is every **app**.
 
-A second, dedicated [gatus](https://github.com/TwiN/gatus) instance. Not a duplicate of `apps/gatus/`: that one answers *"are my services up"* via cluster DNS; this one answers *"are my machines up"* — and it is the only surface that can represent the work laptop and the VDI.
+A second, dedicated [gatus](https://github.com/TwiN/gatus) instance. Not a duplicate of `apps/gatus/`: that one answers *"are my services up"* via cluster DNS; this one answers *"are my machines up"* — and it is the only surface that can represent the work laptop.
 
 ## Why it exists
 
 Machine liveness used to be scattered across three groups (`fleet`, `mac-machines`, `iot-fleet`) on the apps dashboard, and the machines that mattered most weren't there at all:
 
-- **The work laptop and VDI had no home.** Nothing can poll into a corporate-managed box, and installing an osquery/MDM agent on one is a non-starter. An outbound HTTPS POST from a user-level scheduled task is the only mechanism that works — so push is not a stylistic choice, it's the only option.
+- **The work machines had no home.** Nothing can poll into a corporate-managed box, and installing an osquery/MDM agent on one is a non-starter. An outbound HTTPS POST from a user-level scheduled task is the only mechanism that works — so push is not a stylistic choice, it's the only option.
 - **Nothing watched the k3s nodes.** The `home-k3s` group is 11 cluster-DNS *service* checks; no group anywhere answered "is pi5-worker2 alive". The 2026-07-09 outage was a *node* failure (asus-laptop disk), and the in-cluster alerting that should have caught it was evicted by the very pressure it was reporting.
 
 ## Layout
 
 | Group | Members | Mechanism |
 |---|---|---|
-| `workplace` | gp-mac, lazer-machine | push |
+| `workplace` | gp-mac | push |
 | `homelab` | linux-cachyos, windows | push |
 | `homelab` | mac-studio, mac-mini | poll `:9100` |
 | `k3s` | pi5-master, pi5-worker1-3, pi4-worker4-5, asus-laptop, hp-victus | poll `:9100` |
@@ -41,13 +41,23 @@ Two rules follow:
 - **Push** (roaming/off-LAN): add an `external-endpoints:` entry, then enroll the host (`~/.local/src/fleet-pulse/README.md`).
 - Either way: add the name to `FLEET_ROSTER` on each machine that renders the glyph, or it won't be counted.
 
+## Retiring a machine
+
+A machine that is gone but still declared goes **stale, not absent** — it pins the fleet glyph amber forever and there is no server-side expiry to save you. Remove it from all three places in the same change, or the two rosters drift and the `fleet_machine_unrostered` metric starts firing:
+
+1. `config.yaml` here (drops the endpoint; the pod rolls because the ConfigMap hash changes, and gatus prunes the retired endpoint's stored statuses on startup).
+2. `FLEET_ROSTER` in `apps/fleet-exporter/deployment.yaml` (the Grafana/Prometheus denominator).
+3. `FLEET_ROSTER` in `~/.config/fleet-pulse/env` (the status-bar denominator) — that file lives in the `~/.dotfiles-private` overlay, so it is a **separate repo and a separate PR**.
+
+Worked example: `lazer-machine` (the Deloitte VDI) was retired on 2026-08-17 when the contract ended.
+
 ## Ingress: why crowdsec and not the IP allowlist
 
 `monitoring-local-network-only` is a **verified no-op** on any `*.kblab.me` host. Traefik here has no `forwardedHeaders`/`trustedIPs`, so `ipAllowList` matches the *connecting* IP — for tunnel traffic that's the cloudflared pod at `10.42.x.x`, inside its own `10.0.0.0/8` range. Every tunnel request looks LAN-local to it. Confirmed live: `fleet.kblab.me` carried that middleware and still answered HTTP 200 from the Cloudflare edge. crowdsec works because its middleware sets `trustForwardHeader: true` and reads the real client IP from `X-Forwarded-For`.
 
-This host **is** internet-reachable — external-dns runs with no `--domain-filter` and the tunnel is a wildcard catch-all, so every `*.kblab.me` Ingress is public whether intended or not. That's exactly why the work laptop and VDI can reach it. The dashboard being publicly *readable* is an accepted trade, identical to `status.kblab.me` today.
+This host **is** internet-reachable — external-dns runs with no `--domain-filter` and the tunnel is a wildcard catch-all, so every `*.kblab.me` Ingress is public whether intended or not. That's exactly why the work laptop can reach it. The dashboard being publicly *readable* is an accepted trade, identical to `status.kblab.me` today.
 
 ## Known limitations
 
 - **It can't report on its own node.** Pinned to asus-laptop (the data hostPath is on the NAS mount), so it inherits the trap it partly exists to fix. Backstop: the status bars go RED when the API is unreachable at all.
-- **One shared token authenticates every machine**, so any holder can forge any host's heartbeat. Tolerable when every holder is a machine you own; less so now that it sits on a corporate laptop and a VDI. Gatus supports a distinct `token:` per external-endpoint — per-device tokens are the planned follow-up.
+- **One shared token authenticates every machine**, so any holder can forge any host's heartbeat. Tolerable when every holder is a machine you own; less so now that it sits on a corporate laptop. Gatus supports a distinct `token:` per external-endpoint — per-device tokens are the planned follow-up.

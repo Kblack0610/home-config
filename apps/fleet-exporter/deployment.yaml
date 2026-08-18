@@ -46,7 +46,7 @@ spec:
             # from gatus emits enrolled=0, which is the only way "never reported"
             # becomes visible to Prometheus at all.
             - name: FLEET_ROSTER
-              value: "gp-mac linux-cachyos windows mac-studio mac-mini pi5-master pi5-worker1 pi5-worker2 pi5-worker3 pi4-worker4 pi4-worker5 asus-laptop hp-victus h0001 h0002 h0003"
+              value: "gp-mac linux-cachyos cachy-laptop windows mac-studio mac-mini pi5-master pi5-worker1 pi5-worker2 pi5-worker3 pi4-worker4 pi4-worker5 asus-laptop hp-victus h0001 h0002 h0003"
             # Same window the bars use, so the glyph and the dashboard cannot
             # disagree about "up".
             - name: FLEET_STALE_AFTER

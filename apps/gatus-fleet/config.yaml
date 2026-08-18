@@ -58,6 +58,23 @@ external-endpoints:
   - name: linux-cachyos
     group: homelab
     token: "${FLEET_TOKEN}"
+  # The second CachyOS box (the laptop). It was on every roster the BARS use but was
+  # declared nowhere here, so gatus had no key to accept its heartbeat into - the push
+  # is rejected with "External endpoint not found" and the machine can NEVER
+  # materialize. It has therefore read NEVER REPORTED since the day it was rostered,
+  # including on days it was demonstrably switched on. A red dot that no amount of
+  # uptime can turn green is not monitoring, it is furniture.
+  #
+  # Its identity comes from a systemd drop-in on that machine, NOT from the shared
+  # fleet-pulse env (which is byte-identical on every host, so a name in it would make
+  # every box claim to be the same one):
+  #   ~/.config/systemd/user/fleet-pulse.service.d/identity.conf
+  # If that drop-in sets a group other than `homelab`, the push still 404s - the group
+  # is half the key. scripts/check-fleet-roster.py now fails on a name rostered here
+  # but undeclared, which is what surfaced this one.
+  - name: cachy-laptop
+    group: homelab
+    token: "${FLEET_TOKEN}"
   - name: windows
     group: homelab
     token: "${FLEET_TOKEN}"
@@ -72,6 +89,19 @@ external-endpoints:
     group: android
     token: "${FLEET_TOKEN}"
   - name: h0003        # Lenovo Tab M9 (TB305)
+    group: android
+    token: "${FLEET_TOKEN}"
+  # h0004 - a fourth device the bridge has been pushing for with nowhere to land it:
+  # 1130 rejected heartbeats in 48h ("External endpoint with key=android_h0004 not
+  # found"). The bridge enumerates Headwind's devices table, so a device enrolled
+  # THERE starts pushing here immediately whether or not anyone declared it - and the
+  # rejection is a log line nobody reads, not an error anyone sees.
+  #
+  # Declared so its data lands and it becomes visible on the board. Deliberately NOT
+  # added to FLEET_ROSTER until someone confirms what it is: rostering a device that
+  # turns out to be a stale enrolment pins the glyph amber forever (the reason the
+  # sleeping Pi Zeros and the carry phone are off the roster too).
+  - name: h0004
     group: android
     token: "${FLEET_TOKEN}"
 

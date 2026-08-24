@@ -14,6 +14,11 @@ spec:
       labels:
         app: black-dev-web
     spec:
+      # amd64-only image (single-arch manifest, no manifest list). Without this
+      # the scheduler places the pod on an arm64 Pi and the container dies with
+      # `exec format error`. Remove once the image is rebuilt multi-arch.
+      nodeSelector:
+        kubernetes.io/arch: amd64
       imagePullSecrets:
         - name: forgejo-registry
       containers:

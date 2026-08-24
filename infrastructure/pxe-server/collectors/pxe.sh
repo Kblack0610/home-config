@@ -16,6 +16,9 @@ while [[ -L "$SCRIPT_PATH" ]]; do
 done
 SCRIPT_DIR="$(cd "$(dirname "$SCRIPT_PATH")" && pwd)"
 
+# shellcheck source=../base_functions.sh
+source "$SCRIPT_DIR/../base_functions.sh"
+
 # Runtime paths
 PXE_LOG_DIR="/tmp/pxe-server"
 DNSMASQ_PID="$PXE_LOG_DIR/dnsmasq.pid"
@@ -27,11 +30,11 @@ HTTP_ROOT="$SCRIPT_DIR/../http"
 dnsmasq_running=false
 http_running=false
 
-if [[ -f "$DNSMASQ_PID" ]] && kill -0 "$(cat "$DNSMASQ_PID")" 2>/dev/null; then
+if process_running "$DNSMASQ_PID"; then
     dnsmasq_running=true
 fi
 
-if [[ -f "$HTTP_PID" ]] && kill -0 "$(cat "$HTTP_PID")" 2>/dev/null; then
+if process_running "$HTTP_PID"; then
     http_running=true
 fi
 

@@ -74,9 +74,18 @@ port_in_use() {
 }
 
 # Check if a process is running by PID file
+#
+# Tests /proc/<pid> rather than `kill -0`: dnsmasq drops privileges to `nobody`
+# after binding its sockets, and signalling a process owned by another user
+# returns EPERM even while the process is alive. That made `status` report a
+# healthy server as "stopped", and made start_dnsmasq's already-running guard
+# fall through and launch a second dnsmasq.
 process_running() {
-    local pid_file="$1"
-    [[ -f "$pid_file" ]] && kill -0 "$(cat "$pid_file")" 2>/dev/null
+    local pid_file="$1" pid
+    [[ -f "$pid_file" ]] || return 1
+    pid=$(cat "$pid_file" 2>/dev/null) || return 1
+    [[ "$pid" =~ ^[0-9]+$ ]] || return 1
+    [[ -d "/proc/$pid" ]]
 }
 
 # Wait for a service to be ready

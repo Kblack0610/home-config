@@ -30,21 +30,97 @@ spec:
                 - /bin/sh
                 - -c
                 - |
-                  apk add --no-cache tar gzip samba-client
+                  set -eu
+                  apk add --no-cache tar gzip samba-client >/dev/null
+
+                  DATA_DIR=/data
+                  KEEP_LOCAL=30
+                  # A budget archive has never been under 200KB. 20KB is a floor
+                  # low enough never to false-trip and high enough to catch an
+                  # empty /data.
+                  MIN_BYTES=20480
+                  SMB="//nas.nas.svc.cluster.local/private"
+                  DEST="backups/home-k3s/actual-budget"
+
+                  log() { echo "[$(date -Iseconds)] $*"; }
+
+                  # --- refuse to back up nothing ---------------------------------
+                  # Writing a tiny "successful" tarball over a good backup set is
+                  # worse than failing loudly, and it is the failure mode that
+                  # hides for weeks. Both files must exist or the PVC is not
+                  # mounted where we think it is.
+                  if [ ! -f "${DATA_DIR}/server-files/account.sqlite" ]; then
+                    log "ERROR: server-files/account.sqlite missing - is the PVC mounted? Refusing to back up."
+                    exit 1
+                  fi
+                  budgets="$(find "${DATA_DIR}/user-files" -maxdepth 1 -name '*.sqlite' 2>/dev/null | wc -l)"
+                  if [ "${budgets}" -eq 0 ]; then
+                    log "ERROR: no budget .sqlite under user-files. Refusing to back up."
+                    exit 1
+                  fi
+                  log "found ${budgets} budget file(s)"
+
+                  # --- archive ---------------------------------------------------
                   TIMESTAMP=$(date +%Y%m%d-%H%M%S)
-                  BACKUP_FILE="actual-$TIMESTAMP.tar.gz"
+                  BACKUP_FILE="actual-${TIMESTAMP}.tar.gz"
                   # Snapshot the whole /data dir (SQLite budget files + server-files + blobs)
-                  tar -czf /backup/$BACKUP_FILE -C /data .
-                  # Keep only last 30 local backups
-                  ls -t /backup/actual-*.tar.gz | tail -n +31 | xargs -r rm
-                  echo "Local backup complete: $BACKUP_FILE"
-                  # Upload to NAS (best-effort — local backup still succeeds if NAS is down).
-                  # This is the durability tier: the local hostPath copy lives on the SAME node
-                  # as the PVC, so the off-box NAS copy is what survives a node loss.
-                  smbclient //nas.nas.svc.cluster.local/private -U "nas%${NAS_SMB_PASSWORD}" -c \
-                    "mkdir backups; cd backups; mkdir home-k3s; cd home-k3s; mkdir actual-budget; cd actual-budget; put /backup/$BACKUP_FILE $BACKUP_FILE" \
-                    && echo "NAS copy OK: $BACKUP_FILE" \
-                    || echo "WARN: NAS copy failed, local backup still available"
+                  tar -czf "/backup/${BACKUP_FILE}" -C "${DATA_DIR}" .
+                  size="$(wc -c < "/backup/${BACKUP_FILE}")"
+                  log "created ${BACKUP_FILE} (${size} bytes)"
+                  if [ "${size}" -lt "${MIN_BYTES}" ]; then
+                    log "ERROR: archive under ${MIN_BYTES} bytes is implausible for a budget. Not uploading."
+                    exit 1
+                  fi
+
+                  ls -t /backup/actual-*.tar.gz | tail -n +$((KEEP_LOCAL + 1)) | xargs -r rm
+                  log "local backup complete: ${BACKUP_FILE}"
+
+                  # --- off-box copy ----------------------------------------------
+                  # Best-effort by design (see docs/backup-runbook.md): the local
+                  # copy is the success condition. But the REPORT has to be true.
+                  # smbclient -c does NOT exit non-zero when a command inside it
+                  # fails - it prints NT_STATUS_* and carries on - so the previous
+                  # unchecked `&&` printed "NAS copy OK" even for a file that had
+                  # landed in the share root or nowhere at all. Same trap already
+                  # documented in apps/zomboid/backup/backup.sh.
+                  smb() {
+                    _out="$(smbclient "${SMB}" -U "nas%${NAS_SMB_PASSWORD}" -c "$1" 2>&1)"
+                    _bad="$(echo "${_out}" | grep -o 'NT_STATUS_[A-Z_]*' | grep -v 'NT_STATUS_OBJECT_NAME_COLLISION' || true)"
+                    if [ -n "${_bad}" ]; then
+                      log "ERROR: smbclient '$1' failed: ${_bad}"
+                      return 1
+                    fi
+                    echo "${_out}"
+                  }
+
+                  nas_copy() {
+                    # mkdir does not create parents, so walk the path a component
+                    # at a time. An existing component reports OBJECT_NAME_COLLISION,
+                    # which smb() treats as fine.
+                    _path=""
+                    for _part in $(echo "${DEST}" | tr '/' ' '); do
+                      _path="${_path:+${_path}/}${_part}"
+                      smb "mkdir ${_path}" >/dev/null || return 1
+                    done
+                    smb "cd ${DEST}; put /backup/${BACKUP_FILE} ${BACKUP_FILE}" >/dev/null || return 1
+                    # Confirm it landed in the RIGHT directory at the RIGHT size.
+                    remote_size="$(smb "cd ${DEST}; ls ${BACKUP_FILE}" | awk -v f="${BACKUP_FILE}" '$1==f {print $3}')"
+                    if [ -z "${remote_size}" ]; then
+                      log "ERROR: ${BACKUP_FILE} is not on the share after upload."
+                      return 1
+                    fi
+                    if [ "${remote_size}" != "${size}" ]; then
+                      log "ERROR: size mismatch - local ${size}, remote ${remote_size}."
+                      return 1
+                    fi
+                    log "verified on the share: ${remote_size} bytes"
+                  }
+
+                  if nas_copy; then
+                    log "NAS copy OK: ${BACKUP_FILE}"
+                  else
+                    log "WARN: NAS copy failed. The local copy on this node is good, but the OFF-BOX copy is missing - fix before this node is lost."
+                  fi
               volumeMounts:
                 - name: data
                   mountPath: /data

@@ -122,12 +122,20 @@ K3s app backups run on schedule via CronJobs. Each backup writes a local archive
 |---------|----------|-----------|--------|
 | `home-assistant-backup` | Daily 2 AM | `home-assistant` | NAS `home-k3s/home-assistant/` |
 | `litellm-backup` | Daily 2 AM | `ai-gateway` | NAS `home-k3s/litellm/` |
+| `actual-budget-backup` | Daily 3 AM | `actual-budget` | `/var/backups/actual-budget` + NAS `home-k3s/actual-budget/` |
+| `forgejo-backup` | Daily 3 AM | `forgejo` | asus-laptop `/mnt/backups/forgejo` (2nd disk; off-box copy is the separate job below) |
 | `immich-backup` | Daily 3 AM | `immich` | `/var/backups/immich` + NAS `home-k3s/immich/` (DB only) |
+| `karakeep-backup` | Daily 3 AM | `karakeep` | `/var/backups/karakeep` (LOCAL ONLY - no off-box copy) |
+| `vaultwarden-backup` | Daily 3 AM | `vaultwarden` | `/var/backups/vaultwarden` + NAS `home-k3s/vaultwarden/` |
+| `forgejo-backup-offbox` | Daily 3:30 AM | `forgejo` | hp-victus NFS `192.168.1.243:/srv/backups/forgejo` |
 | `immich-originals-backup` | Daily 3:30 AM | `immich` | 8TB `/mnt/backup-8t/immich` + snapshots (originals + DB) |
 | `3d-prints-backup` | Sunday 3:45 AM | `nas` | 8TB `/mnt/backup-8t/3d-prints` + snapshots (mirror of `/mnt/nas/public/3d-printing`) |
 | `sops-key-backup` | Sunday 4 AM | `nas` | NAS `home-k3s/sops/` |
+| `zomboid-backup` | Daily 4:30 AM | `zomboid` | NAS **public** share `backups/zomboid/` |
 | `nas-backup-cleanup` | Sunday 5 AM | `nas` | not applicable |
 | `nas-backup-verify` | Monday 6 AM | `nas` | writes `manifest.log` |
+
+Every copy in this table lives in this house. There is no offsite tier: see the note under `asus-laptop drive inventory`.
 
 ## Retention
 
@@ -143,6 +151,9 @@ K3s app backups run on schedule via CronJobs. Each backup writes a local archive
 ```bash
 # Home Assistant
 kubectl --context home-k3s create job --from=cronjob/home-assistant-backup manual-backup-$(date +%s) -n home-assistant
+
+# Actual Budget (finance.kblab.me) - run this before any risky change to the budget
+kubectl --context home-k3s create job --from=cronjob/actual-budget-backup manual-backup-$(date +%s) -n actual-budget
 
 # LiteLLM
 kubectl --context home-k3s create job --from=cronjob/litellm-backup manual-backup-$(date +%s) -n ai-gateway
@@ -224,6 +235,80 @@ Use the same flow as Home Assistant with these substitutions:
 - PVC: `litellm-data`
 - NAS path: `/mnt/nas/private/backups/home-k3s/litellm/`
 - Local path: `/var/backups/litellm/`
+
+## Restore Actual Budget (finance.kblab.me)
+
+Actual stores two things under `/data`, and a restore needs both:
+
+| Path | Holds |
+|---|---|
+| `server-files/account.sqlite` | server accounts, sessions, and the list of budget files |
+| `user-files/group-<uuid>.sqlite` | the budget itself, as an append-only CRDT sync log |
+| `user-files/file-<uuid>.blob` | the budget's initial snapshot |
+
+The budget is a sync log, not a table of transactions, so category assignments are messages inside `group-<uuid>.sqlite`. That is why a partial restore of only `account.sqlite` gets you a working login and an empty budget.
+
+```bash
+# 1. Pick a backup. Newest first, both tiers:
+kubectl --context home-k3s get pods -n actual-budget -o wide           # which node holds the PVC
+ssh <that-node> ls -lt /var/backups/actual-budget/                     # node-local copy
+ssh pc-home-asus-laptop sudo ls -lt /mnt/nas/private/backups/home-k3s/actual-budget/   # off-box copy
+
+# 2. Scale down. The PVC is RWO and the Deployment is strategy: Recreate,
+#    so the app MUST be stopped or it will write over the restore.
+kubectl --context home-k3s scale deployment actual-budget -n actual-budget --replicas=0
+
+# 3. Restore pod with the PVC mounted
+kubectl --context home-k3s run restore --rm -it --image=alpine \
+  --overrides='{"spec":{"volumes":[{"name":"data","persistentVolumeClaim":{"claimName":"actual-budget-data"}}],"containers":[{"name":"restore","image":"alpine","stdin":true,"tty":true,"volumeMounts":[{"name":"data","mountPath":"/data"}]}]}}' \
+  -n actual-budget -- /bin/sh
+```
+
+Inside the restore pod (copy the chosen archive in first, e.g. with `kubectl cp`):
+
+```bash
+rm -rf /data/*
+tar -xzf /path/to/actual-YYYYMMDD-HHMMSS.tar.gz -C /data/
+ls -la /data/user-files /data/server-files    # confirm both are populated
+exit
+```
+
+Bring it back:
+
+```bash
+kubectl --context home-k3s scale deployment actual-budget -n actual-budget --replicas=1
+```
+
+Then, in the browser: the web client keeps its own local copy of the budget and will try to sync it back over the restored server state. After a server-side restore, close the file in the Actual UI and re-download it from the server rather than continuing in the open tab.
+
+## Verify a backup without restoring
+
+A backup that exists is not the same as a backup that holds your data. These checks read a copy directly and touch nothing in the cluster. Actual is the worked example; the shape applies to any SQLite-backed app here.
+
+```bash
+# Pull the newest off-box copy and unpack it somewhere scratch
+ssh pc-home-asus-laptop sudo cat /mnt/nas/private/backups/home-k3s/actual-budget/actual-YYYYMMDD-HHMMSS.tar.gz > /tmp/ab.tar.gz
+mkdir -p /tmp/ab && tar -xzf /tmp/ab.tar.gz -C /tmp/ab && tar -tzf /tmp/ab.tar.gz
+
+# Both databases must be structurally sound
+sqlite3 /tmp/ab/server-files/account.sqlite "pragma integrity_check;"
+sqlite3 /tmp/ab/user-files/group-*.sqlite   "pragma integrity_check;"
+
+# The budget file is registered and not deleted
+sqlite3 /tmp/ab/server-files/account.sqlite "select id,name,group_id,deleted from files;"
+
+# How much budget history the archive actually contains, and how fresh it is
+sqlite3 /tmp/ab/user-files/group-*.sqlite \
+  "select count(*) messages, min(timestamp) oldest, max(timestamp) newest from messages_binary;"
+```
+
+To confirm a specific piece of work survived, search the sync log for the column it wrote. `hex()` returns UPPERCASE, so the needle must be uppercase or every count comes back 0. The needle is the protobuf field-3 tag (`1A`), the length, then the column name:
+
+```bash
+# transactions that have a category assigned ("category" = 8 bytes -> 1A 08)
+sqlite3 /tmp/ab/user-files/group-*.sqlite \
+  "select count(*) from messages_binary where instr(hex(content),'1A0863617465676F7279')>0;"
+```
 
 ## Restore SOPS Age Key
 

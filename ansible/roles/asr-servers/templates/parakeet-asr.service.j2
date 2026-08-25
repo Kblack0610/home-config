@@ -6,9 +6,14 @@ After=network.target
 [Service]
 Type=simple
 Environment=ASR_MODEL_DIR={{ parakeet_model_dir }}
+Environment=ASR_PRECISION={{ parakeet_precision }}
 Environment=ASR_HOST={{ parakeet_host }}
 Environment=ASR_PORT={{ parakeet_port }}
 Environment=ASR_THREADS={{ parakeet_threads }}
+Environment=ASR_DECODING={{ parakeet_decoding_method }}
+Environment=ASR_HOTWORDS_FILE={{ parakeet_hotwords_file }}
+Environment=ASR_HOTWORDS_SCORE={{ parakeet_hotwords_score }}
+Environment=ASR_BPE_VOCAB={{ parakeet_bpe_vocab }}
 ExecStart={{ asr_venv }}/bin/python {{ asr_base }}/parakeet_server.py
 Restart=on-failure
 RestartSec=3

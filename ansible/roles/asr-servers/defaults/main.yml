@@ -27,14 +27,57 @@ parakeet_pip_packages:
   - python-multipart
   - numpy
   - soundfile
-parakeet_model_name: sherpa-onnx-nemo-parakeet-tdt-0.6b-v2-int8
+# Weight precision: int8 or fp16. Measured 2026-08-25 on cachyos-x8664-main, fp16
+# produced no accuracy gain over int8 on either natural or synthetic speech while
+# costing ~2x disk (1.2G vs 652M encoder) and ~30% latency, so int8 stays default.
+# Flip to fp16 to re-test on your own voice; everything else follows the variable.
+parakeet_precision: int8
+parakeet_model_name: "sherpa-onnx-nemo-parakeet-tdt-0.6b-v2-{{ parakeet_precision }}"
 parakeet_model_dir: "{{ asr_base }}/models/{{ parakeet_model_name }}"
 parakeet_model_url: "https://github.com/k2-fsa/sherpa-onnx/releases/download/asr-models/{{ parakeet_model_name }}.tar.bz2"
 # Optional integrity pin for the model tarball ('' = skip, rely on `creates` guard).
 parakeet_model_sha256: ""
 parakeet_host: 127.0.0.1
 parakeet_port: 8771
-parakeet_threads: 4
+# Encoder is memory-bandwidth-bound, not core-bound: 4->8 threads saves ~90ms on
+# 30s of audio, 8->24 is noise. 8 is the knee.
+parakeet_threads: 8
+
+# --- Parakeet contextual biasing (hotwords) ----------------------------------
+# A transducer has almost no internal language model, so rare proper nouns come
+# out phonetically ("Forgejo" -> "Fargo", "kubectl" -> "cubect"). Contextual
+# biasing is the fix, and it requires modified_beam_search: greedy ignores it.
+parakeet_decoding_method: modified_beam_search
+# Boost applied to hotword paths during beam search. Too high invents the word
+# out of unrelated audio; 2.0 measured clean.
+parakeet_hotwords_score: 2.0
+parakeet_hotwords_file: "{{ asr_base }}/hotwords.txt"
+# sherpa-onnx tokenizes hotwords with BPE and needs a SentencePiece-style vocab
+# (`token score`). The Parakeet release ships only tokens.txt (`token id`), so we
+# derive it: score = -id preserves the original merge order. Lives inside the
+# model dir so switching precision or model regenerates it.
+parakeet_bpe_vocab: "{{ parakeet_model_dir }}/bpe.vocab"
+# Vocabulary this machine actually dictates. Keep to real words the acoustics can
+# reach: biasing sharpens a near-miss, it cannot rescue a word the audio lost.
+parakeet_hotwords:
+  - kubectl
+  - kustomization
+  - Flux
+  - Forgejo
+  - Vikunja
+  - Immich
+  - Traefik
+  - Grafana
+  - Prometheus
+  - sops
+  - ansible
+  - systemd
+  - k3s
+  - kblab
+  - namespace
+  - ingress
+  - Parakeet
+  - gungan
 
 # --- whisper.cpp-server (fallback) -------------------------------------------
 whisper_src: "{{ asr_home }}/src/whisper.cpp"

@@ -5,14 +5,24 @@ Exposes POST /v1/audio/transcriptions (multipart 'file') -> {"text": ...}.
 Parakeet is a transducer trained on silence->empty, so silent/non-speech audio
 returns "" instead of a hallucinated phrase. Runs CPU-only by default.
 
+The flip side of a transducer is a near-absent internal language model: rare
+proper nouns decode phonetically. Contextual biasing (hotwords) counters that,
+and it only takes effect under modified_beam_search.
+
 Config via env:
-  ASR_MODEL_DIR   dir with encoder/decoder/joiner.int8.onnx + tokens.txt
-  ASR_HOST        bind host (default 127.0.0.1)
-  ASR_PORT        bind port (default 8771)
-  ASR_THREADS     onnx threads (default 4)
+  ASR_MODEL_DIR       dir with encoder/decoder/joiner.<precision>.onnx + tokens.txt
+  ASR_PRECISION       weight precision suffix (int8 | fp16), default int8
+  ASR_HOST            bind host (default 127.0.0.1)
+  ASR_PORT            bind port (default 8771)
+  ASR_THREADS         onnx threads (default 4)
+  ASR_DECODING        greedy_search | modified_beam_search
+  ASR_HOTWORDS_FILE   one phrase per line; biasing is skipped if unset/empty
+  ASR_HOTWORDS_SCORE  boost applied to hotword paths (default 2.0)
+  ASR_BPE_VOCAB       SentencePiece-style vocab used to tokenize hotwords
 """
 import io
 import os
+import sys
 
 import numpy as np
 import sherpa_onnx
@@ -22,20 +32,52 @@ from fastapi import FastAPI, File, UploadFile
 from fastapi.responses import JSONResponse
 
 MODEL_DIR = os.environ.get("ASR_MODEL_DIR", "").rstrip("/")
+PRECISION = os.environ.get("ASR_PRECISION", "int8")
 HOST = os.environ.get("ASR_HOST", "127.0.0.1")
 PORT = int(os.environ.get("ASR_PORT", "8771"))
 THREADS = int(os.environ.get("ASR_THREADS", "4"))
+DECODING = os.environ.get("ASR_DECODING", "greedy_search")
+HOTWORDS_FILE = os.environ.get("ASR_HOTWORDS_FILE", "")
+HOTWORDS_SCORE = float(os.environ.get("ASR_HOTWORDS_SCORE", "2.0"))
+BPE_VOCAB = os.environ.get("ASR_BPE_VOCAB", "")
 
 if not MODEL_DIR or not os.path.isdir(MODEL_DIR):
     raise SystemExit(f"ASR_MODEL_DIR not set or missing: {MODEL_DIR!r}")
 
+
+def _has_content(path: str) -> bool:
+    return bool(path) and os.path.isfile(path) and os.path.getsize(path) > 0
+
+
+# sherpa-onnx aborts the whole process (C++ abort, not a Python exception) when a
+# hotwords or vocab path is missing, so validate before constructing rather than
+# wrapping in try/except. Biasing is an accuracy nicety; dictation working at all
+# is not, so any missing piece degrades to plain greedy decoding and says so.
+bias = {}
+if DECODING == "modified_beam_search" and _has_content(HOTWORDS_FILE):
+    if _has_content(BPE_VOCAB):
+        bias = dict(
+            decoding_method="modified_beam_search",
+            hotwords_file=HOTWORDS_FILE,
+            hotwords_score=HOTWORDS_SCORE,
+            modeling_unit="bpe",
+            bpe_vocab=BPE_VOCAB,
+        )
+    else:
+        print(
+            f"[parakeet-asr] bpe vocab missing ({BPE_VOCAB!r}); "
+            "hotword biasing disabled, falling back to greedy_search",
+            file=sys.stderr,
+        )
+
 recognizer = sherpa_onnx.OfflineRecognizer.from_transducer(
-    encoder=f"{MODEL_DIR}/encoder.int8.onnx",
-    decoder=f"{MODEL_DIR}/decoder.int8.onnx",
-    joiner=f"{MODEL_DIR}/joiner.int8.onnx",
+    encoder=f"{MODEL_DIR}/encoder.{PRECISION}.onnx",
+    decoder=f"{MODEL_DIR}/decoder.{PRECISION}.onnx",
+    joiner=f"{MODEL_DIR}/joiner.{PRECISION}.onnx",
     tokens=f"{MODEL_DIR}/tokens.txt",
     num_threads=THREADS,
     model_type="nemo_transducer",
+    **bias,
 )
 
 app = FastAPI(title="parakeet-asr")
@@ -43,13 +85,32 @@ app = FastAPI(title="parakeet-asr")
 
 @app.get("/health")
 def health():
-    return {"status": "ok", "model": os.path.basename(MODEL_DIR), "engine": "parakeet"}
+    return {
+        "status": "ok",
+        "model": os.path.basename(MODEL_DIR),
+        "engine": "parakeet",
+        "precision": PRECISION,
+        "decoding": bias.get("decoding_method", "greedy_search"),
+        "hotwords": bool(bias),
+    }
+
+
+# One 16-bit quantization step. pw-record captures s16, so a buffer peaking at or
+# below this carries no signal at all and there is nothing to transcribe.
+# Measured headroom: real speech peaks ~0.74, and speech attenuated 40dB still
+# peaks 240x above this, so the gate cannot swallow quiet dictation.
+SILENCE_PEAK = 1.0 / 32768
 
 
 def _transcribe(raw: bytes) -> str:
     # soundfile reads WAV/FLAC/OGG; pw-record gives 16k mono s16 WAV.
     data, sr = sf.read(io.BytesIO(raw), dtype="float32", always_2d=True)
     samples = data.mean(axis=1)  # downmix to mono
+    # Greedy Parakeet returns "" on silence, but hotword biasing re-introduces
+    # the hallucination (digital silence decodes as "I" / "I'm sorry."), so the
+    # guarantee is enforced here rather than left to an emergent model property.
+    if samples.size == 0 or np.abs(samples).max() <= SILENCE_PEAK:
+        return ""
     stream = recognizer.create_stream()
     stream.accept_waveform(sr, samples)  # sherpa resamples internally if needed
     recognizer.decode_stream(stream)

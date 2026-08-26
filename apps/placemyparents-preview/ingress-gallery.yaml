@@ -1,0 +1,41 @@
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: placemyparents-gallery
+  namespace: placemyparents-preview
+  labels:
+    app: placemyparents-gallery
+  annotations:
+    cert-manager.io/cluster-issuer: letsencrypt-dns
+    # LAN-only, deliberately, and enforced twice.
+    #
+    # docs/architecture.md calls *.kblab.me "LAN-only by convention", but that
+    # is not what the cluster actually does: external-dns runs with no
+    # --domain-filter, and status.kblab.me / git.kblab.me both resolve publicly
+    # to Cloudflare today. Convention alone would have published this.
+    #
+    # These are screenshots of every provider, coordinator and admin screen in
+    # PlaceMyParents. The data is synthetic, but the UI, routes and internal
+    # structure are not, and none of it needs to be on the open internet.
+    external-dns.alpha.kubernetes.io/exclude: 'true'
+    traefik.ingress.kubernetes.io/router.middlewares: monitoring-local-network-only@kubernetescrd
+spec:
+  ingressClassName: traefik
+  tls:
+    # DNS-01 issuance, so a certificate is obtained without any public HTTP
+    # reachability. The cert-manager ClusterIssuer's dnsZones already cover
+    # kblab.me.
+    - hosts:
+        - apps.kblab.me
+      secretName: placemyparents-gallery-tls
+  rules:
+    - host: apps.kblab.me
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: placemyparents-gallery
+                port:
+                  number: 80

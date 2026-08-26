@@ -10,7 +10,9 @@ resources:
   - postgres-statefulset.yaml
   - deployment-api.yaml
   - deployment-web.yaml
+  - deployment-gallery.yaml
   - ingress.yaml
+  - ingress-gallery.yaml
 
 # The Forgejo workflow .forgejo/workflows/deploy-placemyparents-preview.yml
 # (in the platform repo) rewrites these newTag values on every push to main
@@ -20,3 +22,5 @@ images:
     newTag: pre-f0b3412
   - name: git.kblab.me/kblack0610/placemyparents-web
     newTag: pre-f0b3412
+  - name: git.kblab.me/kblack0610/placemyparents-gallery
+    newTag: pre-572ce2d8

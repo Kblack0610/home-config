@@ -9,6 +9,13 @@ spec:
   failedJobsHistoryLimit: 1
   jobTemplate:
     spec:
+      # Now that a failed off-box copy fails the job, bound the retries. Each
+      # attempt writes a fresh timestamped archive and re-runs the keep-30
+      # prune, so the default backoffLimit of 6 would let a single night of NAS
+      # downtime push 7 same-day archives through the local set and squeeze out
+      # the older days it exists to protect. 3 attempts is enough to ride out a
+      # brief NAS blip and still leaves 10 days of local depth.
+      backoffLimit: 2
       template:
         spec:
           # No nodeSelector: the job co-locates with the local-path PVC (RWO,
@@ -76,8 +83,16 @@ spec:
                   log "local backup complete: ${BACKUP_FILE}"
 
                   # --- off-box copy ----------------------------------------------
-                  # Best-effort by design (see docs/backup-runbook.md): the local
-                  # copy is the success condition. But the REPORT has to be true.
+                  # DELIBERATE EXCEPTION to the house rule. Every other backup job
+                  # here treats the NAS copy as best-effort and exits 0 without it
+                  # (docs/backup-runbook.md, "NAS upload fails but local backup
+                  # succeeds"). This job does not, because the local copy is a
+                  # hostPath on the SINGLE node holding the RWO PVC: if that Pi
+                  # dies while the off-box copy has been quietly failing, the
+                  # finance history is gone outright. There is no offsite tier to
+                  # fall back on. Failing loudly costs nothing - the local copy is
+                  # already written by this point and survives the job failure.
+                  #
                   # smbclient -c does NOT exit non-zero when a command inside it
                   # fails - it prints NT_STATUS_* and carries on - so the previous
                   # unchecked `&&` printed "NAS copy OK" even for a file that had
@@ -119,7 +134,8 @@ spec:
                   if nas_copy; then
                     log "NAS copy OK: ${BACKUP_FILE}"
                   else
-                    log "WARN: NAS copy failed. The local copy on this node is good, but the OFF-BOX copy is missing - fix before this node is lost."
+                    log "ERROR: off-box copy failed. The local copy on this node is good and has been kept, but the finance data now exists on ONE machine only."
+                    exit 1
                   fi
               volumeMounts:
                 - name: data

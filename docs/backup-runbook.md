@@ -137,6 +137,15 @@ K3s app backups run on schedule via CronJobs. Each backup writes a local archive
 
 Every copy in this table lives in this house. There is no offsite tier: see the note under `asus-laptop drive inventory`.
 
+**2026-08-25 decision: LAN-only is accepted, for now.** Offsite was considered for `actual-budget` (encrypted push to DO Spaces, a third LAN copy on hp-victus, or an encrypted archive in a private repo) and deliberately deferred, not overlooked. The exposure is a whole-house loss: fire, theft or flood takes every copy of the finance history, the Vaultwarden export and the Home Assistant config at once. Revisit when convenient. Until then, `actual-budget-backup` fails loudly if its off-box copy fails, because with no offsite tier the second machine is the only redundancy there is.
+
+### Failure policy per job
+
+| Job | Off-box copy fails |
+|---|---|
+| `actual-budget-backup` | **Job fails, `KubeJobFailed` pages.** Deliberate exception, see above. |
+| everything else | Job exits 0, warning in the log only (best-effort). |
+
 ## Retention
 
 | Location | Retention |
@@ -333,7 +342,9 @@ chmod 600 ~/.config/sops/age/keys.txt
 
 ### NAS upload fails but local backup succeeds
 
-That is expected. The local backup is the primary success condition; NAS copy is best-effort.
+That is expected for every job except `actual-budget-backup`. The local backup is the primary success condition; the NAS copy is best-effort.
+
+`actual-budget-backup` is the exception and fails the job instead, so a missing off-box copy pages rather than sitting in a log nobody reads. See `Failure policy per job`. If it pages, the local copy on the PVC's node is still good - fix the NAS and re-run the job manually rather than treating the data as lost.
 
 ```bash
 kubectl --context home-k3s get pods -n nas

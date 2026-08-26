@@ -88,7 +88,46 @@ spec:
                   echo "Exported $ROWS transactions for tax year $YEAR"
                   [ "$ROWS" -gt 0 ] || { echo "ERROR: zero rows - check API_KEY / budget-sync-id / bridge"; exit 1; }
 
-                  smbclient //nas.nas.svc.cluster.local/private -U "nas%${NAS_SMB_PASSWORD}" -c \
-                    "mkdir backups; cd backups; mkdir home-k3s; cd home-k3s; mkdir actual-budget; cd actual-budget; mkdir tax-exports; cd tax-exports; put $OUT actual-tax-${YEAR}.csv" \
-                    && echo "NAS copy OK: actual-tax-${YEAR}.csv" \
-                    || echo "WARN: NAS copy failed, CSV is in the pod at $OUT"
+                  # smbclient -c does not exit non-zero when a command inside it
+                  # fails, so every call must be checked for NT_STATUS_. Why, and
+                  # the identical copies that move with this one:
+                  # apps/zomboid/backup/backup.sh.
+                  SMB="//nas.nas.svc.cluster.local/private"
+                  DEST="backups/home-k3s/actual-budget/tax-exports"
+                  CSV="actual-tax-${YEAR}.csv"
+
+                  smb() {
+                    _out="$(smbclient "${SMB}" -U "nas%${NAS_SMB_PASSWORD}" -c "$1" 2>&1)"
+                    _bad="$(echo "${_out}" | grep -o 'NT_STATUS_[A-Z_]*' | grep -v 'NT_STATUS_OBJECT_NAME_COLLISION' || true)"
+                    if [ -n "${_bad}" ]; then
+                      echo "ERROR: smbclient '$1' failed: ${_bad}"
+                      return 1
+                    fi
+                    echo "${_out}"
+                  }
+
+                  nas_copy() {
+                    _path=""
+                    for _part in $(echo "${DEST}" | tr '/' ' '); do
+                      _path="${_path:+${_path}/}${_part}"
+                      smb "mkdir ${_path}" >/dev/null || return 1
+                    done
+                    smb "cd ${DEST}; put ${OUT} ${CSV}" >/dev/null || return 1
+                    local_size="$(wc -c < "${OUT}")"
+                    remote_size="$(smb "cd ${DEST}; ls ${CSV}" | awk -v f="${CSV}" '$1==f {print $3}')"
+                    if [ -z "${remote_size}" ]; then
+                      echo "ERROR: ${CSV} is not on the share after upload."
+                      return 1
+                    fi
+                    if [ "${remote_size}" != "${local_size}" ]; then
+                      echo "ERROR: size mismatch - local ${local_size}, remote ${remote_size}."
+                      return 1
+                    fi
+                    echo "verified on the share: ${remote_size} bytes"
+                  }
+
+                  if nas_copy; then
+                    echo "NAS copy OK: ${CSV}"
+                  else
+                    echo "WARN: NAS copy failed, CSV is in the pod at $OUT"
+                  fi

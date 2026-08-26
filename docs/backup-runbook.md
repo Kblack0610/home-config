@@ -121,7 +121,7 @@ K3s app backups run on schedule via CronJobs. Each backup writes a local archive
 | CronJob | Schedule | Namespace | Target |
 |---------|----------|-----------|--------|
 | `home-assistant-backup` | Daily 2 AM | `home-assistant` | NAS `home-k3s/home-assistant/` |
-| `litellm-backup` | Daily 2 AM | `ai-gateway` | NAS `home-k3s/litellm/` |
+| `litellm-backup` | Daily 2 AM | `ai-gateway` | NAS `home-k3s/litellm/` (**COVERS NOTHING** - see Known gaps) |
 | `actual-budget-backup` | Daily 3 AM | `actual-budget` | `/var/backups/actual-budget` + NAS `home-k3s/actual-budget/` |
 | `forgejo-backup` | Daily 3 AM | `forgejo` | asus-laptop `/mnt/backups/forgejo` (2nd disk; off-box copy is the separate job below) |
 | `immich-backup` | Daily 3 AM | `immich` | `/var/backups/immich` + NAS `home-k3s/immich/` (DB only) |
@@ -138,6 +138,19 @@ K3s app backups run on schedule via CronJobs. Each backup writes a local archive
 Every copy in this table lives in this house. There is no offsite tier: see the note under `asus-laptop drive inventory`.
 
 **2026-08-25 decision: LAN-only is accepted, for now.** Offsite was considered for `actual-budget` (encrypted push to DO Spaces, a third LAN copy on hp-victus, or an encrypted archive in a private repo) and deliberately deferred, not overlooked. The exposure is a whole-house loss: fire, theft or flood takes every copy of the finance history, the Vaultwarden export and the Home Assistant config at once. Revisit when convenient. Until then, `actual-budget-backup` fails loudly if its off-box copy fails, because with no offsite tier the second machine is the only redundancy there is.
+
+### Known gaps
+
+**`litellm-backup` covers nothing, and has not since it was written.** Every archive it has produced is 104 bytes. The job tars the `litellm-data` PVC, but that PVC is empty: litellm keeps its virtual keys, spend ledger and config in Postgres via `DATABASE_URL`, not on disk. The archive is a valid, well-formed backup of an empty directory, uploaded to the NAS nightly, reporting success.
+
+The fix is to dump that database instead of tarring the PVC, which is the same missing piece as the shared Postgres having no backup at all (mem0's data included). Deliberately not papered over with a size guard: a nightly alert would announce the gap without closing it, and the job needs repointing, not an alarm. Until then, treat LiteLLM's keys and spend history as **unprotected**.
+
+Verify the claim for yourself:
+
+```bash
+ssh pc-home-asus-laptop sudo ls -l /mnt/nas/private/backups/home-k3s/litellm/ | tail -3   # 104 bytes each
+kubectl --context home-k3s exec -n ai-gateway deploy/litellm -- ls -la /app/data          # where the PVC actually mounts
+```
 
 ### Failure policy per job
 

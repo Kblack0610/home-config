@@ -30,19 +30,75 @@ spec:
                 - /bin/sh
                 - -c
                 - |
-                  apk add --no-cache tar gzip samba-client
+                  set -eu
+                  apk add --no-cache tar gzip samba-client >/dev/null
+
+                  # A vault with the SQLite db plus keys has sat around 40KB. 4KB
+                  # catches an unmounted PVC without false-tripping on a small vault.
+                  MIN_BYTES=4096
+                  SMB="//nas.nas.svc.cluster.local/private"
+                  DEST="backups/home-k3s/vaultwarden"
+
+                  log() { echo "[$(date -Iseconds)] $*"; }
+
                   TIMESTAMP=$(date +%Y%m%d-%H%M%S)
-                  BACKUP_FILE="vaultwarden-$TIMESTAMP.tar.gz"
+                  BACKUP_FILE="vaultwarden-${TIMESTAMP}.tar.gz"
                   # Snapshot the whole /data dir (SQLite db + attachments + keys)
-                  tar -czf /backup/$BACKUP_FILE -C /data .
-                  # Keep only last 30 local backups
+                  tar -czf "/backup/${BACKUP_FILE}" -C /data .
+                  size="$(wc -c < "/backup/${BACKUP_FILE}")"
+                  log "created ${BACKUP_FILE} (${size} bytes)"
+                  # Losing the keys silently is unrecoverable, so refuse rather
+                  # than rotate 30 good archives out behind a tiny one.
+                  if [ "${size}" -lt "${MIN_BYTES}" ]; then
+                    log "ERROR: archive under ${MIN_BYTES} bytes is implausible - is the PVC mounted? Not uploading."
+                    exit 1
+                  fi
+
                   ls -t /backup/vaultwarden-*.tar.gz | tail -n +31 | xargs -r rm
-                  echo "Local backup complete: $BACKUP_FILE"
-                  # Upload to NAS (best-effort — local backup still succeeds if NAS is down)
-                  smbclient //nas.nas.svc.cluster.local/private -U "nas%${NAS_SMB_PASSWORD}" -c \
-                    "mkdir backups; cd backups; mkdir home-k3s; cd home-k3s; mkdir vaultwarden; cd vaultwarden; put /backup/$BACKUP_FILE $BACKUP_FILE" \
-                    && echo "NAS copy OK: $BACKUP_FILE" \
-                    || echo "WARN: NAS copy failed, local backup still available"
+                  log "local backup complete: ${BACKUP_FILE}"
+
+                  # Off-box copy. Best-effort by design (docs/backup-runbook.md):
+                  # the local copy is the success condition, so this warns and
+                  # exits 0. smbclient -c does not exit non-zero when a command
+                  # inside it fails, so every call must be checked for NT_STATUS_.
+                  # Why, and the identical copies that move with this one:
+                  # apps/zomboid/backup/backup.sh.
+                  smb() {
+                    _out="$(smbclient "${SMB}" -U "nas%${NAS_SMB_PASSWORD}" -c "$1" 2>&1)"
+                    _bad="$(echo "${_out}" | grep -o 'NT_STATUS_[A-Z_]*' | grep -v 'NT_STATUS_OBJECT_NAME_COLLISION' || true)"
+                    if [ -n "${_bad}" ]; then
+                      log "ERROR: smbclient '$1' failed: ${_bad}"
+                      return 1
+                    fi
+                    echo "${_out}"
+                  }
+
+                  nas_copy() {
+                    # mkdir does not create parents, so walk the path a component
+                    # at a time. OBJECT_NAME_COLLISION means it already exists.
+                    _path=""
+                    for _part in $(echo "${DEST}" | tr '/' ' '); do
+                      _path="${_path:+${_path}/}${_part}"
+                      smb "mkdir ${_path}" >/dev/null || return 1
+                    done
+                    smb "cd ${DEST}; put /backup/${BACKUP_FILE} ${BACKUP_FILE}" >/dev/null || return 1
+                    remote_size="$(smb "cd ${DEST}; ls ${BACKUP_FILE}" | awk -v f="${BACKUP_FILE}" '$1==f {print $3}')"
+                    if [ -z "${remote_size}" ]; then
+                      log "ERROR: ${BACKUP_FILE} is not on the share after upload."
+                      return 1
+                    fi
+                    if [ "${remote_size}" != "${size}" ]; then
+                      log "ERROR: size mismatch - local ${size}, remote ${remote_size}."
+                      return 1
+                    fi
+                    log "verified on the share: ${remote_size} bytes"
+                  }
+
+                  if nas_copy; then
+                    log "NAS copy OK: ${BACKUP_FILE}"
+                  else
+                    log "WARN: off-box copy failed. The local copy on this node is good, but the OFF-BOX copy is missing."
+                  fi
               volumeMounts:
                 - name: data
                   mountPath: /data

@@ -53,14 +53,33 @@
     dest: "/tmp/{{ parakeet_model_name }}.tar.bz2"
     checksum: "{{ ('sha256:' + parakeet_model_sha256) if parakeet_model_sha256 else omit }}"
     mode: "0644"
-  when: not (parakeet_model_dir + '/encoder.int8.onnx') is exists
+  when: not (parakeet_model_dir + '/encoder.' + parakeet_precision + '.onnx') is exists
 
 - name: Extract Parakeet model
   ansible.builtin.unarchive:
     src: "/tmp/{{ parakeet_model_name }}.tar.bz2"
     dest: "{{ asr_base }}/models"
     remote_src: true
-    creates: "{{ parakeet_model_dir }}/encoder.int8.onnx"
+    creates: "{{ parakeet_model_dir }}/encoder.{{ parakeet_precision }}.onnx"
+
+# Hotword biasing tokenizes with BPE, but the Parakeet release ships only
+# tokens.txt (`token id`). Derive the SentencePiece-style vocab sherpa-onnx wants
+# (`token score`) by negating the id, which preserves BPE merge order. Written
+# inside the model dir so a precision or model change regenerates it.
+- name: Derive bpe.vocab from the model's tokens.txt
+  ansible.builtin.shell:
+    cmd: >-
+      awk '{print $1" "(-$2)}' {{ (parakeet_model_dir + '/tokens.txt') | quote }}
+      > {{ parakeet_bpe_vocab | quote }}
+    creates: "{{ parakeet_bpe_vocab }}"
+  notify: restart parakeet-asr
+
+- name: Install Parakeet hotword list
+  ansible.builtin.copy:
+    content: "{{ parakeet_hotwords | join('\n') }}\n"
+    dest: "{{ parakeet_hotwords_file }}"
+    mode: "0644"
+  notify: restart parakeet-asr
 
 - name: Install Parakeet server shim
   ansible.builtin.template:

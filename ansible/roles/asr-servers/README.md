@@ -23,6 +23,66 @@ gungan client picks one via `GUNGAN_BACKEND` and falls back automatically.
   then runs it with `--vad` + `--suppress-nst` + confidence thresholds tuned so
   short words ("ok") survive while silence is trimmed before the decoder.
 
+## Accuracy: hotword biasing
+
+Parakeet's transducer has almost no internal language model. That is what makes
+it fast and silence-safe, but it also means rare proper nouns decode
+phonetically, with nothing to fall back on. Whisper's seq2seq decoder was
+silently repairing those; Parakeet cannot.
+
+The counter is contextual biasing: a hotword list, applied under
+`modified_beam_search` (greedy decoding ignores hotwords entirely). Edit
+`parakeet_hotwords` in `defaults/main.yml` and re-run the role.
+
+Measured on `cachyos-x8664-main`, 2026-08-25, same synthesized audio through
+each config:
+
+| | config | result |
+|---|---|---|
+| A | int8, greedy (old default) | `the Fargo runner logs`, `Run cubect to get pods`, `The Viconya Task Tracker`, `SAPS encrypted` |
+| B | fp16, greedy | `the 4GO runner logs`, `Run cubect to get pods`, `The Vikonya task tracker`, `SARPS encrypted` |
+| C | int8, beam + hotwords | `the Forgejo runner logs`, `Run kubectl get pods`, `The Vikunja Task Tracker`, `sops encrypted` |
+
+Two things this settles:
+
+- **Precision is not the lever.** fp16 changed nothing measurable while costing
+  ~2x disk and ~30% latency, so `parakeet_precision` defaults to `int8`. The
+  variable exists so you can re-test on your own voice by flipping one word.
+- **Biasing is the lever**, and it costs ~30ms on a 7s clip.
+
+Biasing sharpens a near-miss; it cannot recover a word the acoustics lost. In
+the run above `Traefik` and `Immich` stayed wrong despite being listed, because
+the synthesized audio did not carry them.
+
+`parakeet_hotwords_score` is tuned, not arbitrary. Below 2.0 the weaker
+matches (`Immich`, `sops`) fall back to phonetic; at 3.0 hotwords start bleeding
+into unrelated audio (`Grafana` surfaced as `Graf`, `Forgejo` as `Forge`).
+
+If the hotwords or derived `bpe.vocab` file is missing, the shim logs a warning
+and falls back to greedy rather than failing: sherpa-onnx aborts the process on a
+bad biasing path, and losing dictation entirely is worse than losing the boost.
+
+### Biasing re-introduces silence hallucination
+
+Enabling hotwords costs the property Parakeet was picked for. Measured on
+2s of `anullsrc` digital silence:
+
+| decoding | silence decodes as |
+|---|---|
+| greedy | `''` |
+| beam, no hotwords | `''` |
+| beam + hotwords, score 1.0 | `"I'm sorry."` |
+| beam + hotwords, score 2.0 | `"I"` |
+
+Beam search alone is safe; biasing is what breaks it, and non-monotonically in
+score, so no score is trustworthy on its own. The shim therefore enforces the
+guarantee explicitly with a `SILENCE_PEAK` gate rather than relying on an
+emergent model property that we just proved is fragile. The threshold is one
+16-bit quantization step, derived from `pw-record`'s s16 capture format: a buffer
+peaking at or below it carries no signal. Verified not to swallow quiet
+dictation, speech attenuated 40dB still peaks 244x above the gate and
+transcribes.
+
 ## Run
 
 ```bash
@@ -35,6 +95,7 @@ ansible-playbook playbooks/site.yml --limit cachyos-x8664-main --tags asr
 
 ```bash
 systemctl --user status parakeet-asr whisper-asr
+# hotwords:true confirms biasing is actually armed (false = silently greedy):
 curl -s 127.0.0.1:8771/health
 # silence -> empty (no hallucination):
 ffmpeg -f lavfi -i anullsrc=r=16000:cl=mono -t 2 /tmp/s.wav -y

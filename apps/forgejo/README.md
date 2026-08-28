@@ -93,13 +93,67 @@ docker tag myimage:latest git.kblab.me/kenneth/myimage:latest
 docker push git.kblab.me/kenneth/myimage:latest
 ```
 
+## Onboarding a repo that needs Forgejo Actions
+
+A repo needs to exist on Forgejo whenever its CI has to reach something only the LAN can see: the container registry at `git.kblab.me`, the npm registry, or the cluster itself. GitHub-hosted runners cannot.
+
+**The default is a normal Forgejo repo with two remotes, not a mirror.** Every personal repo here works that way: `.notes` and `.agent` carry `origin` on Forgejo plus a `backup` remote on GitHub, and `home-config` carries `origin` on GitHub plus a `forgejo` remote; either naming is fine as long as the push reaches both. `~/.git-credentials` already holds a `git.kblab.me` entry, so this costs no new credential at all.
+
+Onboarding, end to end:
+
+```bash
+# 1. Create the repo (token: rbw get forgejo_repo_admin, scopes write:repository,write:user)
+curl -s -X POST -H "Authorization: token $(rbw get forgejo_repo_admin)" \
+  -H "Content-Type: application/json" \
+  -d '{"name":"<repo>","private":true,"default_branch":"main","auto_init":false}' \
+  https://git.kblab.me/api/v1/user/repos
+
+# 2. Point the local clone at it and push
+git remote add forgejo https://git.kblab.me/kblack0610/<repo>.git
+git push -u forgejo main
+
+# 3. Set the Actions secrets the deploy workflow reads (see the table below)
+curl -s -X PUT -H "Authorization: token $(rbw get forgejo_repo_admin)" \
+  -H "Content-Type: application/json" \
+  -d "$(jq -n --arg v "$(rbw get forgejo_npm_read)" '{data:$v}')" \
+  https://git.kblab.me/api/v1/repos/kblack0610/<repo>/actions/secrets/FORGEJO_NPM_READ_TOKEN
+```
+
+Runners need no work: they register instance-level (`owner_id=0, repo_id=0`), so a brand-new repo is picked up with no registration step.
+
+**Secrets are repo-level, not user-level or org-level.** There is no inheritance, so each repo gets its own copy. The set a home-k3s deploy workflow reads:
+
+| Secret | Value |
+|---|---|
+| `FORGEJO_REGISTRY_USER` | `kblack0610` |
+| `FORGEJO_REGISTRY_TOKEN` | `rbw get forgejo_npm_publish` (`write:package` covers containers and npm alike) |
+| `FORGEJO_DEPLOY_USER` | `kblack0610` |
+| `FORGEJO_DEPLOY_TOKEN` | `rbw get forgejo_deploy` (`write:repository`, pushes the image tag bump to home-config) |
+| `FORGEJO_NPM_READ_TOKEN` | `rbw get forgejo_npm_read`, only if the build installs from the npm registry |
+
+`CLOUDFLARE_API_TOKEN`, the `CLOUDFLARE_*_ZONE_ID` pair, and `SLACK_BOT_TOKEN` are referenced by the deploy workflows but are set on **no repo on this instance**, so the cache-purge and Slack-notify jobs have always no-opped through their empty-value guards. Leave them unset or set them deliberately; do not assume they work.
+
+Mint a token with the admin CLI rather than the UI when scripting:
+
+```bash
+kubectl --context home-k3s exec -n forgejo deploy/forgejo -c forgejo -- \
+  su-exec git forgejo admin user generate-access-token \
+    -u kblack0610 -t <name> --scopes write:repository --raw
+```
+
 ## Mirroring
 
-Configure per-repo in the Forgejo UI under repo Settings → Mirror Settings:
+Reach for a mirror only when the canonical copy lives somewhere this account does not control. **`platform` is the only mirror on the instance** (`is_mirror=1`), because it is a `BlackNBrownStudios` org repo that is GitHub-first; a pull mirror from a private GitHub repo needs a credential inside Forgejo, and platform's is a read-only SSH deploy key (`forgejo-mirror-readonly`) scoped to that one repo. **That key cannot be reused for another repo** -- a second mirror means a second credential, which is the reason not to reach for one by default.
+
+Tags do propagate through a pull mirror, which is what makes tag-triggered deploys work on `platform`. The cost is the 5-minute sync lag between a GitHub push and Forgejo seeing it.
+
+Configure per-repo in the Forgejo UI under repo Settings -> Mirror Settings:
 
 - **Push mirror to gitlab.com**: offsite DR for personal repos
 - **Push mirror to github.com**: public-facing repos only
-- **Pull mirror from github.com**: read-only replica of repos where GitHub is canonical (e.g., home-config for Flux)
+- **Pull mirror from github.com**: only where GitHub is genuinely canonical and outside this account (`platform`)
+
+> `home-config` is **not** a pull mirror, despite what this section used to claim. It is Forgejo-first with GitHub downstream: Flux reads `git.kblab.me/kblack0610/home-config`, so a push to GitHub alone gets overwritten. Always `git push forgejo master`.
 
 ## Deploy
 

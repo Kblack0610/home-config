@@ -1,0 +1,50 @@
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: homelab-site-availability
+  namespace: monitoring
+  labels:
+    app.kubernetes.io/name: homelab-site-availability
+    app.kubernetes.io/part-of: monitoring
+    # REQUIRED: the Prometheus CR selects on
+    # ruleSelector.matchLabels.release=kube-prometheus-stack. Without it this
+    # file is applied, visible in `kubectl get prometheusrule`, and never
+    # evaluated. Do not remove.
+    release: kube-prometheus-stack
+spec:
+  groups:
+    # Alerts on the blackbox probes in probe-sites.yaml, which recorded the
+    # 2026-08-17 seven-day outage correctly while nothing alerted on them.
+    #
+    # Deliberately independent of the homelab_app_health_state chain in
+    # prometheus-rules-app-health.yaml: this asserts what a visitor actually
+    # experiences end to end, so it still fires when the fault sits in a layer
+    # Kubernetes considers healthy (DNS, cert, tunnel, ingress routing) and it
+    # cannot be silenced by a bug in a recording rule.
+    - name: homelab-site-availability.alerts
+      interval: 1m
+      rules:
+        - alert: PublicSiteDown
+          # 5m at a 300s scrape interval means the first failed probe pages.
+          expr: probe_success{job="blackbox-sites"} == 0
+          for: 5m
+          labels:
+            # critical routes to the 1h-repeat_interval branch in Alertmanager
+            # (apps/monitoring/helm-values.yaml) rather than the 12h default, so
+            # a site being down keeps reminding instead of paging once and going
+            # quiet for half a day.
+            severity: critical
+            category: site-availability
+          annotations:
+            summary: "Public site down: {{ $labels.instance }}"
+            description: "{{ $labels.instance }} has failed its blackbox probe for 5m. Check the backing pod is Ready and on a node whose architecture matches its image."
+
+        - alert: PublicSiteCertExpiringSoon
+          expr: (probe_ssl_earliest_cert_expiry{job="blackbox-sites"} - time()) / 86400 < 14
+          for: 1h
+          labels:
+            severity: warning
+            category: site-availability
+          annotations:
+            summary: "TLS cert expiring: {{ $labels.instance }}"
+            description: "The certificate for {{ $labels.instance }} expires in {{ printf \"%.0f\" $value }} days. cert-manager should renew at 30 days, so this firing means renewal is stuck."

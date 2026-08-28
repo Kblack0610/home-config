@@ -8,6 +8,7 @@ resources:
   - prometheus-rules-app-health.yaml
   - prometheus-rules-litellm.yaml
   - prometheus-rules-node-health.yaml
+  - prometheus-rules-site-availability.yaml
   - prometheus-rules-jobs.yaml
   - prometheus-rules-backup-drive.yaml
   - prometheus-rules-trivy.yaml

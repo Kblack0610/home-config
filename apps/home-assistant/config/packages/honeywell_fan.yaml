@@ -1,0 +1,49 @@
+# Honeywell QuietSet HYF260 tower fan — IR control via the Broadlink RM4 Pro.
+#
+# The physical remote was lost, so codes were sourced from the community
+# Flipper-IRDB (Fans/Honeywell/Honeywell_Fan_HYF290B.ir — the QuietSet remote is
+# shared across the HYF260/HYF290 series) and converted to Broadlink b64 format.
+# Live-verified 2026-07-08: firing Power turned the fan off.
+#
+# It's a 3-button remote:
+#   Power     — on/off toggle
+#   Fan_Speed — cycles through the speed levels (single button, one press = next)
+#   Oscillate — oscillation toggle
+#
+# IR is one-way/stateless: HA cannot read the fan's real state, so these are
+# fire-and-forget buttons (not a stateful fan entity). Pair with a spare Athom
+# plug for true on/off + energy if you want real state.
+#
+# To re-learn or add buttons: infrastructure/smart-home/broadlink-learn.sh
+# (guided learn), or re-convert from Flipper-IRDB. See docs/smart-home-control.md.
+
+script:
+  honeywell_fan_power:
+    alias: "Honeywell Fan: Power"
+    icon: mdi:power
+    sequence:
+      - action: remote.send_command
+        target:
+          entity_id: remote.broadlink_rm4_pro
+        data:
+          command: "b64:JgEcACgPKQ4OKikPKQ8OKg4qDioOKikPDioOAAEDDQU="
+
+  honeywell_fan_speed:
+    alias: "Honeywell Fan: Speed"
+    icon: mdi:fan
+    sequence:
+      - action: remote.send_command
+        target:
+          entity_id: remote.broadlink_rm4_pro
+        data:
+          command: "b64:JgEcACkOKQ4OKikPKQ8pDw4qDioOKikPKQ8OAAECDQU="
+
+  honeywell_fan_oscillate:
+    alias: "Honeywell Fan: Oscillate"
+    icon: mdi:fan-chevron
+    sequence:
+      - action: remote.send_command
+        target:
+          entity_id: remote.broadlink_rm4_pro
+        data:
+          command: "b64:JgEaACoOKg4OKioOKg4qDg4qECgQKBAoKg4q5g0F"

@@ -162,3 +162,34 @@ sections:
                 icon: mdi:flash
         sort:
           method: friendly_name
+
+  # ── Fans (IR via Broadlink) ──
+  # Honeywell QuietSet — remote lost; codes from the DB, fired through the RM4.
+  # Stateless 3-button remote (Power / Speed / Oscillate). See
+  # config/packages/honeywell_fan.yaml.
+  - type: grid
+    cards:
+      - type: heading
+        heading: Fans (IR)
+        icon: mdi:fan
+      - type: custom:mushroom-template-card
+        primary: Honeywell — Power
+        icon: mdi:power
+        icon_color: blue
+        tap_action:
+          action: perform-action
+          perform_action: script.honeywell_fan_power
+      - type: custom:mushroom-template-card
+        primary: Honeywell — Speed
+        icon: mdi:fan
+        icon_color: cyan
+        tap_action:
+          action: perform-action
+          perform_action: script.honeywell_fan_speed
+      - type: custom:mushroom-template-card
+        primary: Honeywell — Oscillate
+        icon: mdi:fan-chevron
+        icon_color: teal
+        tap_action:
+          action: perform-action
+          perform_action: script.honeywell_fan_oscillate

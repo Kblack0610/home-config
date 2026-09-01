@@ -484,6 +484,34 @@ views:
                     type: custom:mushroom-climate-card
       - type: grid
         cards:
+          - type: heading
+            heading: Fans (IR)
+            heading_style: title
+          # Honeywell QuietSet — IR remote was lost; codes come from the DB, fired
+          # via the Broadlink. Stateless 3-button remote: Power / Speed / Oscillate.
+          - type: custom:mushroom-template-card
+            primary: Honeywell — Power
+            icon: mdi:power
+            icon_color: blue
+            tap_action:
+              action: perform-action
+              perform_action: script.honeywell_fan_power
+          - type: custom:mushroom-template-card
+            primary: Honeywell — Speed
+            icon: mdi:fan
+            icon_color: cyan
+            tap_action:
+              action: perform-action
+              perform_action: script.honeywell_fan_speed
+          - type: custom:mushroom-template-card
+            primary: Honeywell — Oscillate
+            icon: mdi:fan-chevron
+            icon_color: teal
+            tap_action:
+              action: perform-action
+              perform_action: script.honeywell_fan_oscillate
+      - type: grid
+        cards:
           - type: markdown
             content: >
               Controls populate automatically as devices are added. This view

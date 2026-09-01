@@ -103,6 +103,43 @@ curl -s -F file=@/tmp/s.wav 127.0.0.1:8771/v1/audio/transcriptions   # {"text":"
 curl -s -F file=@/tmp/s.wav 127.0.0.1:8772/inference                 # {"text":""}
 ```
 
+## Troubleshooting: "dictation is broken" is usually the mic, not the daemons
+
+Both daemons return an empty string on silence **by design** (that is the whole
+point of defaulting to Parakeet). The gungan client then reports "No speech
+detected". So a dead microphone and a working one produce the *same* end-user
+symptom, and every arrow points at the ASR stack while the real cause is input.
+
+Check the input **before** touching the daemons:
+
+```bash
+gungan health          # reports the live RMS of the default source; fails on dead input
+wpctl status           # which source is actually default (* marks it)
+```
+
+Measure directly if `gungan` is not available:
+
+```bash
+pw-record --format=s16 --rate=16000 --channels=1 /tmp/probe.wav   # ^C after ~5s
+sox /tmp/probe.wav -n stats | grep 'RMS lev'
+```
+
+Reference points: live mic in a quiet room reads about **-60 dB**; a disconnected
+input reads **-90 dB or below** (pure dither, `Bit-depth 2/16`).
+
+Known trap on `cachyos-x8664-main`: the Focusrite Scarlett Solo presents as a
+healthy, selectable capture device **even with nothing plugged into its XLR
+jack** - it just streams silence. WirePlumber will also fall back to it when the
+previously configured default source (e.g. a USB webcam) is unplugged, silently
+redirecting capture to a dead jack. Repin the real device with:
+
+```bash
+wpctl set-default <id>   # id from `wpctl status` Sources
+```
+
+This persists to `~/.local/state/wireplumber/default-nodes` as
+`default.configured.audio.source`.
+
 ## Notes
 
 - Requires `uv` (`curl -LsSf https://astral.sh/uv/install.sh | sh`) and the

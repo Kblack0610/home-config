@@ -342,6 +342,7 @@ spec:
               cp /managed-config/package_wall_screensaver.yaml /config/packages/wall_screensaver.yaml
               cp /managed-config/package_wall_night_mode.yaml /config/packages/wall_night_mode.yaml
               cp /managed-config/package_avr_yamaha.yaml /config/packages/avr_yamaha.yaml
+              cp /managed-config/package_honeywell_fan.yaml /config/packages/honeywell_fan.yaml
 
               # Custom microWakeWord model for the in-browser voice satellites.
               # The engine loads .tflite from /config/voice_satellite/models/ and

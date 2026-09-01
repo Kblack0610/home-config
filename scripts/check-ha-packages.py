@@ -1,37 +1,37 @@
 #!/usr/bin/env python3
-"""Assert every Home Assistant package file is registered with the ConfigMap generator.
+"""Assert every Home Assistant package file actually reaches /config/packages in the pod.
 
 THE PROBLEM THIS EXISTS FOR
 
-apps/home-assistant/kustomization.yaml lists its config files EXPLICITLY:
+Getting one package file to Home Assistant takes THREE agreeing edits in three files:
 
-    configMapGenerator:
-      - name: home-assistant-managed-config
-        files:
-          - package_avr_yamaha.yaml=config/packages/avr_yamaha.yaml
-          ...
+  1. apps/home-assistant/config/packages/<name>.yaml    - the package itself
+  2. apps/home-assistant/kustomization.yaml             - an explicit configMapGenerator
+                                                          entry, or it is not in the ConfigMap
+  3. apps/home-assistant/deployment.yaml                - an explicit `cp` line in the init
+                                                          container, or it is in the ConfigMap
+                                                          but never lands in /config/packages
 
-So a file can sit in config/packages/ looking completely deployed - committed, reviewed,
-merged, sitting in the tree next to files that work - while never reaching the cluster,
-because nothing added the line that carries it there.
+Miss either 2 or 3 and the file looks completely deployed - committed, reviewed, merged,
+sitting in the tree beside files that work - while doing nothing.
 
-Nothing catches this. `kustomize build` succeeds: an unreferenced file is not an error,
-it is simply not an input. Flux applies happily. Home Assistant starts healthy. The only
-symptom is at the far end, on a wall tablet, where a dashboard button calls a script that
-was never defined and does nothing when pressed.
+Nothing catches it. `kustomize build` succeeds: an unreferenced file is not an error, it
+is simply not an input. Flux applies. Home Assistant starts healthy. The only symptom is
+at the far end, on a wall tablet, where a button calls a script that was never defined.
 
-That is exactly how apps/home-assistant/config/packages/honeywell_fan.yaml shipped in
-b41a897 (2026-07-09): the package, the IR tooling, and THREE dashboard buttons landed
-together, the kustomization line did not, and the branch was abandoned - plausibly
-because someone pressed a button, saw nothing happen, and never found out why. It was
-re-landed as broken as it was written, and only caught by querying the live HA API for
-the entities it was supposed to create.
+That is how honeywell_fan.yaml shipped in b41a897 (2026-07-09): the package, the IR
+tooling, and THREE dashboard buttons landed together while BOTH wiring edits did not, and
+the branch was abandoned - plausibly because someone pressed a button, saw nothing, and
+never found out why. Re-landing it in #210 reproduced the bug exactly. Fixing only edit 2
+(#215) was not enough, and the live HA API still reported zero honeywell entities: the
+two omissions are independent and each one alone is sufficient to break it.
 
 THE INVARIANT
 
-Every *.yaml in config/packages/ is referenced by kustomization.yaml. One direction only:
-a reference to a file that does not exist is already a hard `kustomize build` failure, so
-it needs no check here.
+Every *.yaml in config/packages/ appears in BOTH the kustomization and the init
+container's copy list. One direction only: a reference to a file that does not exist is
+already a hard `kustomize build` failure (2) or an init-container crash (3), so the
+reverse needs no check here.
 """
 
 import pathlib
@@ -39,20 +39,23 @@ import sys
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 KUSTOMIZATION = ROOT / "apps/home-assistant/kustomization.yaml"
+DEPLOYMENT = ROOT / "apps/home-assistant/deployment.yaml"
 PACKAGES = ROOT / "apps/home-assistant/config/packages"
 
 
 def main() -> int:
-    if not KUSTOMIZATION.is_file():
-        print(f"FAIL: {KUSTOMIZATION} not found")
-        return 1
+    for path in (KUSTOMIZATION, DEPLOYMENT):
+        if not path.is_file():
+            print(f"FAIL: {path.relative_to(ROOT)} not found")
+            return 1
     if not PACKAGES.is_dir():
-        print(f"FAIL: {PACKAGES} not found")
+        print(f"FAIL: {PACKAGES.relative_to(ROOT)} not found")
         return 1
 
-    # Read as text, not YAML: the reference is a "key=path" string, and the path is the
-    # only half that matters. Parsing the document would not make the match any surer.
+    # Read as text, not YAML: both references are substrings inside a "key=path" entry
+    # and a shell `cp` line. Parsing the documents would not make the match any surer.
     kustomization = KUSTOMIZATION.read_text()
+    deployment = DEPLOYMENT.read_text()
 
     found = sorted(PACKAGES.glob("*.yaml"))
     # An empty package set means the layout moved and this check has silently stopped
@@ -61,16 +64,25 @@ def main() -> int:
         print(f"FAIL: no package files under {PACKAGES.relative_to(ROOT)}")
         return 1
 
-    missing = [p for p in found if f"config/packages/{p.name}" not in kustomization]
+    broken = 0
+    for p in found:
+        in_configmap = f"config/packages/{p.name}" in kustomization
+        # The init container copies the flattened ConfigMap key to its real name.
+        in_copy = f"/config/packages/{p.name}" in deployment
+        if in_configmap and in_copy:
+            continue
+        broken += 1
+        print(f"FAIL: config/packages/{p.name} never reaches /config/packages in the pod")
+        if not in_configmap:
+            print(f"      kustomization.yaml needs:  - package_{p.stem}.yaml=config/packages/{p.name}")
+        if not in_copy:
+            print(f"      deployment.yaml needs:     cp /managed-config/package_{p.stem}.yaml /config/packages/{p.name}")
 
-    for p in missing:
-        print(f"FAIL: config/packages/{p.name} is not in kustomization.yaml")
-        print(f"      add:  - package_{p.stem}.yaml=config/packages/{p.name}")
-    if missing:
-        print(f"\n{len(missing)} of {len(found)} package files would never reach the cluster.")
+    if broken:
+        print(f"\n{broken} of {len(found)} package files are wired up incompletely.")
         return 1
 
-    print(f"ok: all {len(found)} home-assistant package files are registered")
+    print(f"ok: all {len(found)} home-assistant package files are in the ConfigMap and copied into place")
     return 0
 
 

@@ -34,6 +34,9 @@ jobs:
       - name: Fleet roster agrees with the gatus declarations
         run: python3 scripts/check-fleet-roster.py
 
+      - name: Home Assistant packages are all registered with the ConfigMap generator
+        run: python3 scripts/check-ha-packages.py
+
   kustomize-builds:
     runs-on: docker
     container:

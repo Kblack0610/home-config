@@ -87,6 +87,19 @@ all:
           ansible_host: 192.168.1.1
           ansible_user: root
 
+    # AdGuard Home - the LAN's filtering resolver, a Raspberry Pi 3B running
+    # docker-compose OUTSIDE k3s (it must survive cluster outages, and it owns
+    # the *.kblab.me rewrites the cluster's own ingress depends on).
+    #
+    # Added 2026-09-01. It had been unmanaged since 2026-03: its AdGuardHome.yaml
+    # existed only on the SD card, and its node_exporter was installed by hand.
+    # .193 was also a DYNAMIC lease that the router hardcodes as its DNS
+    # upstream - now pinned in infrastructure/dhcp/devices.yaml.
+    adguard:
+      hosts:
+        pi3-adguard:
+          ansible_host: 192.168.1.193
+
     # NUT (Network UPS Tools) groups. The single CyberPower CP1500PFCLCDa plugs
     # into pi5-master via USB; pi5-master runs upsd + upsmon-primary and every
     # other Pi runs upsmon-secondary to honour the FSD broadcast.

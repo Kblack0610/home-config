@@ -89,7 +89,7 @@ thinkcentre (192.168.1.100) → SSH-reachable from workstation
 - Source of truth: `infrastructure/dhcp/devices.yaml` (YAML inventory of every MAC/hostname/IP).
 - Sync tool: `infrastructure/dhcp/dhcp.sh` (reads `devices.yaml` → `uci set` → `uci commit dhcp` → `/etc/init.d/dnsmasq restart`).
 - Phase C draft PR `ansible/roles/openwrt-dhcp/` ports this to Ansible once apply-safety review is done.
-- DNS: OpenWRT dnsmasq forwards every query to AdGuard Home at `192.168.1.193` (see `apps/pi3-adguard-home/README.md:69-87`), which has a wildcard rewrite for `*.kblab.me → 192.168.1.124`.
+- DNS: OpenWRT dnsmasq forwards every query to AdGuard Home at `192.168.1.193`, which has a wildcard rewrite for `*.kblab.me → 192.168.1.124`. AdGuard's own config is rendered by `ansible/roles/adguard/`; the router's forwarding is declared in `infrastructure/openwrt/dns.yaml`. Read [`ansible/roles/adguard/README.md`](../ansible/roles/adguard/README.md) before adding a second upstream or trying to make DNS fault-tolerant: the obvious approaches were measured and do not work.
 
 ## Worked example 3: a new bare-metal node joins
 
@@ -195,7 +195,7 @@ Gatus (`apps/gatus/`) monitors every endpoint in this graph — the Gatus config
 |-----------|----------------------------|---------------|
 | `pi5-master` (k3s server) | Every k3s pod on every node — no scheduler, no API | All bare-metal services: MLX, Mac runners, thinkcentre Linux runner. OpenWRT DHCP/DNS. AdGuard Pi3. Frigate. |
 | OpenWRT router (192.168.1.1) | DHCP new-client onboarding, DNS resolution via the router's dnsmasq | Static IPs keep routing LAN-to-LAN. External internet is gone (OpenWRT is the gateway). AdGuard Pi3 keeps answering for clients that hit it directly. |
-| AdGuard Home (pi3, 192.168.1.193) | `*.kblab.me` resolution from any client | Everything else — OpenWRT falls back through its own dnsmasq |
+| AdGuard Home (pi3, 192.168.1.193) | **All DNS for every client**, not just `*.kblab.me`. The router runs `no-resolv` with AdGuard as its only upstream, so dnsmasq has nothing to fall back to and returns SERVFAIL for anything not already cached. | Established connections and anything addressed by IP. dnsmasq keeps answering `/lan/` names, `/etc/hosts`, and its two static domain entries (`nas.lan`, `zomboid-play.kblab.me`) from its own config. |
 | mac-studio | MLX inference (all three models) | LiteLLM still serves — but every request that routes to a MLX upstream 500s |
 | NAS (asus-laptop pod) | Actual Budget backup jobs, Jellyfin media, Immich library | Home Assistant (no NAS dep), Forgejo (backups queue, app keeps running) |
 | cloudflared-public-sites pod | Public HTTPS access to `kennethblack.me`, `blacknbrownstudios.com`, `kblack.dev`, `binks.chat` | LAN access (via AdGuard rewrite path) still works for non-public services |

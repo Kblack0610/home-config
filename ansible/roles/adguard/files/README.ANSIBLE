@@ -1,0 +1,19 @@
+MANAGED BY ANSIBLE - do not edit AdGuardHome.yaml on this host.
+
+Source of truth:  home-config/ansible/roles/adguard/
+  values           defaults/main.yml
+  file layout      templates/AdGuardHome.yaml.j2
+  container spec   templates/docker-compose.yml.j2
+
+Apply:  ansible-playbook playbooks/site.yml --limit pi3-adguard --check --diff
+        ansible-playbook playbooks/site.yml --limit pi3-adguard
+
+Anything you change here, or in the AdGuard web UI, is reverted on the next
+converge. The one exception is the admin password: the role reads the existing
+`users:` block off this host and writes it straight back, so changing the
+password in the UI is safe and persists. It is deliberately not stored in git.
+
+This file exists because AdGuard rewrites AdGuardHome.yaml with its own YAML
+emitter on every start, and that emitter strips comments - so the warning above
+cannot live in the config file itself without making the role report a change,
+and restart AdGuard, on every single run.

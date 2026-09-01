@@ -46,7 +46,10 @@ data:
       base_domain: tail.kblab.me
       nameservers:
         global:
-          - 10.43.199.233  # AdGuard ClusterIP
+          # AdGuard on pi3, by LAN address. This was 10.43.199.233, a ClusterIP
+          # from when AdGuard ran in-cluster; no Service has held that address
+          # since, so MagicDNS was handing tailnet clients a dead resolver.
+          - 192.168.1.193
       extra_records:
         - name: hass.kblab.me
           type: A

@@ -1,6 +1,30 @@
 dnsmasq:
   noresolv: true
+
+  # REQUIRED as long as any non-filtering resolver could end up in `server`.
+  # Measured 2026-09-01 with AdGuard plus a public fallback listed: strict_order
+  # true blocked 18/18 ad-domain queries, false let 18/18 through, because
+  # dnsmasq favours the faster server and a public anycast resolver always beats
+  # a Pi 3. See ansible/roles/adguard/README.md ("Why there is no DNS fallback").
+  strict_order: true
+
+  # add_subnet is deliberately NOT set: AdGuard ignores inbound ECS for client
+  # attribution, forwards it to upstream unstripped, and some resolvers refuse
+  # private-space ECS. See ansible/roles/adguard/README.md ("Per-device
+  # visibility") before reaching for it again.
+
   server:
+    # AdGuard Home on pi3 - the only resolver, and a deliberate single point of
+    # failure. Adding a public resolver here as a "fallback" was tried and
+    # REVERTED: it cannot work. strict_order true means it is never reached
+    # (uncached names just fail after 15s), and false means it takes essentially
+    # all traffic and ad-blocking stops. There is no middle setting.
+    #
+    # The supported way to remove this SPOF is a SECOND FILTERING resolver, not
+    # a public one - two AdGuards, strict_order false, dnsmasq picks whichever
+    # is up and both filter. Until then pi3 being down means no DNS, which is
+    # loud and obvious rather than silent and unfiltered, and is covered by the
+    # gatus checks in apps/gatus/config.yaml.
     - "192.168.1.193"
 
 lan:

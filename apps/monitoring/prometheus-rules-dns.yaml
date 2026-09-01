@@ -1,0 +1,101 @@
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: homelab-dns
+  namespace: monitoring
+  labels:
+    app.kubernetes.io/name: homelab-dns
+    app.kubernetes.io/part-of: monitoring
+    # REQUIRED: the Prometheus CR selects on
+    # ruleSelector.matchLabels.release=kube-prometheus-stack. Without it this
+    # file is applied, visible in `kubectl get prometheusrule`, and never
+    # evaluated. Do not remove.
+    release: kube-prometheus-stack
+spec:
+  groups:
+    # Alerts on the blackbox DNS probes in probe-dns.yaml.
+    #
+    # AdGuard on pi3 is a deliberate single point of failure: the router runs
+    # no-resolv with one upstream, so if the Pi is down the house has no DNS. A
+    # public fallback was tried and reverted - it cannot coexist with filtering
+    # (see ansible/roles/adguard/README.md, "Why there is no DNS fallback").
+    # Monitoring is therefore the whole mitigation, not a supplement to it.
+    - name: homelab-dns.alerts
+      interval: 1m
+      rules:
+        - alert: HouseDNSDown
+          # The chain the whole house depends on stopped answering. Everything
+          # else in this rule file is a refinement of this one.
+          expr: probe_success{job="blackbox-dns-resolve"} == 0
+          for: 3m
+          labels:
+            # critical routes to the 1h-repeat_interval Alertmanager branch, so
+            # it keeps reminding rather than paging once and going quiet.
+            severity: critical
+            category: dns
+          annotations:
+            summary: "House DNS is down"
+            description: >-
+              The router at 192.168.1.1 has failed to resolve google.com for 3m.
+              Nothing on the LAN can resolve names. Check AdGuard on pi3 first:
+              `ssh pi3 'docker ps'` - the container is the only upstream dnsmasq
+              has, so a stopped or wedged AdGuard takes the whole house with it.
+
+        - alert: DNSResolvingUnfiltered
+          # The canary. If this fires while HouseDNSDown is quiet, DNS is
+          # working and is NOT filtering - the state that is otherwise invisible
+          # because everything appears healthy.
+          expr: probe_success{job="blackbox-dns-filtering"} == 0
+          for: 10m
+          labels:
+            severity: warning
+            category: dns
+          annotations:
+            summary: "DNS is resolving but no longer filtering"
+            description: >-
+              doubleclick.net resolved to something other than 0.0.0.0 for 10m,
+              so queries are reaching the internet unfiltered while ordinary
+              resolution still works. Either AdGuard stopped filtering
+              (protection disabled, filter list empty or failed to update) or
+              the LAN is pointed at a resolver that is not AdGuard. Confirm with
+              `dig +short doubleclick.net @192.168.1.193` - if that returns
+              0.0.0.0, AdGuard is fine and the fault is in the router's
+              `server=` list.
+              NOTE: a false alarm here means the AdGuard DNS filter simply
+              stopped blocking this domain; pick another and update both
+              apps/blackbox-exporter/configmap.yaml and apps/gatus/config.yaml.
+
+        - alert: DNSRewriteBroken
+          # *.kblab.me is how every internal service is reached. This fails
+          # independently of plain resolution - AdGuard can be up and answering
+          # while its rewrite rules are gone.
+          expr: probe_success{job="blackbox-dns-rewrite"} == 0
+          for: 10m
+          labels:
+            severity: warning
+            category: dns
+          annotations:
+            summary: "Internal *.kblab.me DNS rewrite is broken"
+            description: >-
+              adguard.kblab.me stopped resolving to 192.168.1.124 for 10m. Every
+              internal service is reached through this wildcard, so LAN clients
+              will fail to reach ingress even though public DNS still works.
+              Check the `rewrites` block in AdGuard, which is rendered by
+              ansible/roles/adguard.
+
+        - alert: DNSProbesAbsent
+          # A probe that vanishes reports nothing, which looks exactly like a
+          # probe that is passing. Without this, deleting probe-dns.yaml or
+          # dropping the release label would silently disable every alert above.
+          expr: absent(probe_success{job="blackbox-dns-resolve"})
+          for: 15m
+          labels:
+            severity: warning
+            category: dns
+          annotations:
+            summary: "House DNS probes have disappeared from Prometheus"
+            description: >-
+              No blackbox-dns-resolve samples for 15m, so the DNS alerts above
+              cannot fire and DNS is effectively unmonitored. Check the Probe
+              still carries `release: kube-prometheus-stack` and that
+              blackbox-exporter is running.

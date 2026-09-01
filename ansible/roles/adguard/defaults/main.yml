@@ -1,0 +1,118 @@
+---
+# AdGuard Home - the LAN's filtering resolver, on pi3 (192.168.1.193).
+#
+# Every value AdGuard actually depends on lives here or in the template, so this
+# role plus group_vars/adguard/vault.yml is the ONLY source of truth for the
+# box. Before this role existed AdGuardHome.yaml lived on the SD card and
+# nowhere else; a card failure lost the config permanently.
+#
+# NOTE: the template renders the WHOLE config file, so changes made in the
+# AdGuard web UI are reverted on the next converge. That is deliberate - the UI
+# is for looking, this file is for changing.
+
+adguard_home_dir: /home/kblack0610/adguard-home
+adguard_data_dir: "{{ adguard_home_dir }}/data"
+
+# Pinned deliberately. `:latest` was frozen at v0.107.72 for ~6 months with no
+# updater present, so any future `docker compose pull` would have jumped an
+# unknown number of releases at once. Bump this and adguard_schema_version
+# together, after reading the release notes.
+adguard_image: adguard/adguardhome:v0.107.72
+# AdGuard migrates its own config on startup when this is behind the binary. It
+# is pinned so a template render never silently downgrades the schema.
+adguard_schema_version: 33
+
+# --- Upstreams -------------------------------------------------------------
+# Deliberately spread across DIFFERENT operators. The previous config had a
+# single upstream (9.9.9.10) and an empty fallback list, which produced 14,716
+# logged timeouts across 54 distinct days: whenever Quad9 was unreachable every
+# query in the house burned upstream_timeout twice and then failed. A second
+# Quad9 address would have failed in exactly the same windows.
+adguard_upstream_dns:
+  - 9.9.9.10          # Quad9 unsecured (no DNSSEC / no malware filtering)
+  - 1.1.1.1           # Cloudflare - different operator, different anycast fabric
+# Used only when every upstream above fails.
+adguard_fallback_dns:
+  - 149.112.112.10    # Quad9 secondary
+  - 8.8.8.8           # Google
+adguard_bootstrap_dns:
+  - 9.9.9.10
+  - 149.112.112.10
+  - 2620:fe::10
+  - 2620:fe::fe:10
+
+adguard_upstream_mode: load_balance
+# Was 10s, which the retry doubled into the observed 20.003s stalls. At 3s a
+# dead upstream costs a hiccup instead of an outage.
+adguard_upstream_timeout: 3s
+# Serve a stale answer while refreshing in the background. This alone would
+# have hidden most of the upstream-outage windows from every client.
+adguard_cache_optimistic: true
+adguard_cache_size: 4194304
+
+# --- Ratelimit -------------------------------------------------------------
+# dnsmasq forwards every query, so AdGuard sees one client (the router) for the
+# whole house. With ratelimit_subnet_len_ipv4=24 that put all household DNS in a
+# single 20 qps bucket whose overflow is dropped silently. Whitelisting the
+# router removes the tripwire; the router is not a plausible abuse source.
+adguard_ratelimit: 20
+adguard_ratelimit_whitelist:
+  - 192.168.1.1
+
+# --- EDNS Client Subnet ----------------------------------------------------
+# Off. See ansible/roles/adguard/README.md - AdGuard does not use an inbound ECS
+# option to identify clients, and OpenWrt 23.05's dnsmasq init script has no
+# `addsubnet` option to send one with. Turning this on would only start leaking
+# ECS UPSTREAM, which is the opposite of what we want.
+adguard_edns_client_subnet_enabled: false
+
+# --- Retention -------------------------------------------------------------
+# Was 2160h (90d), which had grown querylog.json to 4.21 GB plus a 2.01 GB
+# rotation - 64% of the SD card, appended ~50 MB/day. Sustained small appends
+# are the worst case for SD flash and this card exposes no wear telemetry, so
+# the first symptom of failure would have been the filesystem going read-only.
+# Query logs are diagnostics, not records: they are not backed up anywhere.
+adguard_querylog_interval: 168h    # 7 days
+adguard_querylog_enabled: true
+adguard_querylog_file_enabled: true
+# Inverted from the old config, which hoarded 90 days of raw log while
+# discarding the cheap aggregate after 24h.
+adguard_statistics_interval: 720h  # 30 days
+
+# --- Filtering -------------------------------------------------------------
+adguard_filters:
+  - id: 1
+    name: AdGuard DNS filter
+    url: https://adguardteam.github.io/HostlistsRegistry/assets/filter_1.txt
+    enabled: true
+  - id: 2
+    name: AdAway Default Blocklist
+    url: https://adguardteam.github.io/HostlistsRegistry/assets/filter_2.txt
+    enabled: false
+
+# Split-horizon for the LAN. Public DNS returns the WAN address for these names;
+# inside the house they must resolve to the Traefik ingress.
+#
+# NOTE: zomboid-play.kblab.me is deliberately NOT here - it is a dnsmasq domain
+# entry in infrastructure/openwrt/dns.yaml, because the game is UDP on
+# hp-victus rather than an HTTP service behind Traefik. dnsmasq answers its own
+# domain entries authoritatively, so that specific name never reaches AdGuard
+# and wins over the wildcard below.
+adguard_rewrites:
+  - domain: '*.kblab.me'
+    answer: 192.168.1.124
+    enabled: true
+  - domain: kblab.me
+    answer: 192.168.1.124
+    enabled: true
+
+adguard_user_rules: []
+
+# --- Host hygiene ----------------------------------------------------------
+# Pointless on a wired, headless DNS appliance; each is a service that can fail
+# or be attacked for no benefit.
+adguard_mask_services:
+  - bluetooth
+  - ModemManager
+  - triggerhappy
+  - wpa_supplicant

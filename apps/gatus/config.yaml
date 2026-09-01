@@ -221,6 +221,50 @@ endpoints:
     conditions:
       - "[DNS_RCODE] == NOERROR"
 
+  # The three checks below query the ROUTER, not the Pi. The two above prove
+  # AdGuard is alive; only these prove the house can actually resolve, because
+  # every client talks to dnsmasq and never to AdGuard directly.
+  - name: DNS chain (via router)
+    group: standalone
+    url: "192.168.1.1"
+    dns:
+      query-name: "google.com"
+      query-type: "A"
+    interval: 120s
+    conditions:
+      - "[DNS_RCODE] == NOERROR"
+
+  # Proves the *.kblab.me rewrite still resolves. Every internal service is
+  # reached through this name, so it fails independently of plain resolution.
+  - name: DNS rewrite (via router)
+    group: standalone
+    url: "192.168.1.1"
+    dns:
+      query-name: "adguard.kblab.me"
+      query-type: "A"
+    interval: 120s
+    conditions:
+      - "[DNS_RCODE] == NOERROR"
+      - "[BODY] == 192.168.1.124"
+
+  # Resolves a domain AdGuard blocks and asserts the null answer. This is the
+  # only check that can tell "DNS works" apart from "DNS works and is still
+  # filtering" - a real IP here means queries are reaching the internet
+  # unfiltered while every other check stays green.
+  #
+  # Keep the query name in sync with the AdGuard DNS filter; verify with
+  #   dig +short doubleclick.net @192.168.1.193   -> must be 0.0.0.0
+  # A domain the list quietly stops blocking would turn this into a false alarm.
+  - name: DNS filtering active
+    group: standalone
+    url: "192.168.1.1"
+    dns:
+      query-name: "doubleclick.net"
+      query-type: "A"
+    interval: 120s
+    conditions:
+      - "[BODY] == 0.0.0.0"
+
   # mac-machines + iot-fleet moved to apps/gatus-fleet/ (fleet.kblab.me).
   # They are machines, not apps, and they now sit beside the k3s nodes and the
   # work boxes on one machines-only surface.

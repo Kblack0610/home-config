@@ -1,5 +1,23 @@
 # AdGuard Home on Raspberry Pi 3
 
+> **Day-to-day config lives in [`ansible/roles/adguard/`](../../ansible/roles/adguard/README.md), not here.**
+>
+> Since 2026-09-01 `AdGuardHome.yaml` and `docker-compose.yml` are rendered from
+> that role, so anything you change on the host or in the AdGuard web UI is
+> reverted on the next converge. This directory keeps only the bare-metal
+> bootstrap: `flash-pi.sh` and `custom.toml` for imaging a fresh SD card.
+>
+> The role README also covers two questions this page cannot answer: why there
+> is no DNS fallback despite the Pi being a single point of failure, and why
+> AdGuard cannot see individual devices. Both were measured; the obvious fixes
+> do not work.
+>
+> ```bash
+> ansible-playbook playbooks/site.yml --limit pi3-adguard --check --diff
+> ```
+>
+> Sections below marked OBSOLETE are kept for the imaging path only.
+
 Local DNS server with ad-blocking for the home network. Works alongside Cloudflare Tunnel for external access.
 
 ## Architecture
@@ -173,19 +191,24 @@ docker compose pull
 docker compose up -d
 ```
 
-### Backup Configuration
+### Backup and restore (OBSOLETE - git is the backup)
+
+The manual `tar` that used to live here is gone. The config is rendered from
+`ansible/roles/adguard/`, so the repo IS the backup and a hand-made tarball
+would just be a second source of truth that drifts.
+
+To rebuild after an SD-card failure: image the card with `flash-pi.sh`, then
 
 ```bash
-# On Pi 3
-tar -czvf adguard-backup-$(date +%Y%m%d).tar.gz data/
+ansible-playbook playbooks/site.yml --limit pi3-adguard
 ```
 
-### Restore Configuration
+The one thing not in git is the admin password. The role preserves whatever the
+host already has; on a fresh card the `users:` block renders empty and AdGuard
+serves its first-run wizard on :3000, where you set a new one.
 
-```bash
-tar -xzvf adguard-backup-YYYYMMDD.tar.gz
-docker compose restart
-```
+Query logs are not backed up at all, by design - they are diagnostics, not
+records. Retention is 7 days.
 
 ## Troubleshooting
 

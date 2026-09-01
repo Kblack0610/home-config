@@ -12,7 +12,9 @@ resources:
   - prometheus-rules-jobs.yaml
   - prometheus-rules-backup-drive.yaml
   - prometheus-rules-trivy.yaml
+  - prometheus-rules-dns.yaml
   - probe-sites.yaml
+  - probe-dns.yaml
   - external-mac-nodes.yaml
   - external-standalone-nodes.yaml
   - external-iot-nodes.yaml

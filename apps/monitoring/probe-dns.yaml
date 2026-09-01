@@ -1,0 +1,65 @@
+# blackbox Probes for house DNS. Modules are defined in
+# apps/blackbox-exporter/configmap.yaml; each asks one question, so there is one
+# Probe per question.
+#
+# Targets are the ROUTER, because that is what every client actually queries.
+# AdGuard's own liveness is already covered by the standalone-nodes scrape in
+# external-standalone-nodes.yaml and the gatus checks in apps/gatus/config.yaml.
+#
+# The `release: kube-prometheus-stack` label is required: the operator's default
+# probeSelector only picks up Probes carrying the Helm release label. Without it
+# these apply cleanly, show in `kubectl get probe`, and are never scraped.
+---
+apiVersion: monitoring.coreos.com/v1
+kind: Probe
+metadata:
+  name: dns-resolve
+  namespace: monitoring
+  labels:
+    release: kube-prometheus-stack
+spec:
+  jobName: blackbox-dns-resolve
+  interval: 60s
+  module: dns_resolve
+  prober:
+    url: blackbox-exporter.monitoring.svc.cluster.local:9115
+  targets:
+    staticConfig:
+      static:
+        - 192.168.1.1
+---
+apiVersion: monitoring.coreos.com/v1
+kind: Probe
+metadata:
+  name: dns-rewrite
+  namespace: monitoring
+  labels:
+    release: kube-prometheus-stack
+spec:
+  jobName: blackbox-dns-rewrite
+  interval: 60s
+  module: dns_rewrite
+  prober:
+    url: blackbox-exporter.monitoring.svc.cluster.local:9115
+  targets:
+    staticConfig:
+      static:
+        - 192.168.1.1
+---
+apiVersion: monitoring.coreos.com/v1
+kind: Probe
+metadata:
+  name: dns-filtering
+  namespace: monitoring
+  labels:
+    release: kube-prometheus-stack
+spec:
+  jobName: blackbox-dns-filtering
+  interval: 60s
+  module: dns_filtering
+  prober:
+    url: blackbox-exporter.monitoring.svc.cluster.local:9115
+  targets:
+    staticConfig:
+      static:
+        - 192.168.1.1

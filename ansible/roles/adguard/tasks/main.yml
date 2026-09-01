@@ -1,0 +1,145 @@
+---
+# AdGuard Home on pi3. See ansible/roles/adguard/README.md for the DNS chain and
+# the reasoning behind the upstream/retention choices.
+
+- name: Ensure adguard data directories exist
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+  loop:
+    - "{{ adguard_home_dir }}"
+    - "{{ adguard_data_dir }}"
+    - "{{ adguard_data_dir }}/conf"
+    - "{{ adguard_data_dir }}/work"
+  become: true
+
+# --- Preserve the admin credential in place -------------------------------
+# The template renders the WHOLE config, so it has to reproduce the `users:`
+# block or the next converge locks you out of the admin UI.
+#
+# The hash is deliberately NOT stored in git, not even vaulted. It is an
+# offline-crackable credential, it is worthless to anyone who cannot already
+# reach the LAN, and vaulting it would put a permanent secret in the repo to
+# solve a problem that reading it from the host solves for free. So: read what
+# AdGuard already has and write it straight back.
+#
+# If the file is absent (a fresh SD card), the users block renders empty and
+# AdGuard serves its first-run setup wizard on :3000. That is the correct
+# rebuild path - set a new password there, and this task preserves it forever
+# after. Nothing to restore, nothing to leak.
+- name: Check for an existing AdGuard config
+  ansible.builtin.stat:
+    path: "{{ adguard_data_dir }}/conf/AdGuardHome.yaml"
+  register: adguard_existing_config
+  become: true
+
+- name: Read the existing admin credential
+  ansible.builtin.slurp:
+    src: "{{ adguard_data_dir }}/conf/AdGuardHome.yaml"
+  register: adguard_existing_raw
+  become: true
+  when: adguard_existing_config.stat.exists
+  # The hash must never reach the play log, a --diff render, or CI output.
+  no_log: true
+
+- name: Extract the existing users block
+  ansible.builtin.set_fact:
+    adguard_existing_users: >-
+      {{ (adguard_existing_raw.content | b64decode | from_yaml).get('users', [])
+         if adguard_existing_config.stat.exists else [] }}
+  no_log: true
+
+- name: Render AdGuard Home config
+  ansible.builtin.template:
+    src: AdGuardHome.yaml.j2
+    dest: "{{ adguard_data_dir }}/conf/AdGuardHome.yaml"
+    owner: root
+    group: root
+    # AdGuard writes this file back itself, and it carries the admin bcrypt
+    # hash, so it stays 0600 as AdGuard leaves it.
+    mode: "0600"
+    # A malformed render would take the whole house's DNS down on restart, and
+    # the backup is what makes that recoverable without a reflash.
+    backup: true
+  become: true
+  # The rendered file contains the admin bcrypt hash, and --diff would print it
+  # into the play log - including the in-cluster ansible-runner's pod logs when
+  # it drift-checks this host. Change reporting (ok vs changed) still works; to
+  # review the content itself, render the template locally instead:
+  #   ansible/roles/adguard/README.md -> "Reviewing a config change"
+  no_log: true
+  notify: restart adguard
+
+- name: Drop the managed-by-Ansible marker beside the config
+  # AdGuard's emitter strips comments out of AdGuardHome.yaml on every start, so
+  # the warning has to live in a file it does not own.
+  ansible.builtin.copy:
+    src: README.ANSIBLE
+    dest: "{{ adguard_data_dir }}/conf/README.ANSIBLE"
+    owner: root
+    group: root
+    mode: "0644"
+  become: true
+
+- name: Render docker-compose file
+  ansible.builtin.template:
+    src: docker-compose.yml.j2
+    dest: "{{ adguard_home_dir }}/docker-compose.yml"
+    owner: root
+    group: root
+    mode: "0644"
+  become: true
+  notify: recreate adguard container
+
+- name: Mask services that a wired headless DNS appliance does not need
+  ansible.builtin.systemd:
+    name: "{{ item }}"
+    state: stopped
+    enabled: false
+    masked: true
+  loop: "{{ adguard_mask_services }}"
+  become: true
+  # Not every image ships every one of these; a missing unit is not a failure.
+  failed_when: false
+  when: not ansible_check_mode
+
+- name: Ensure prometheus-node-exporter is installed
+  # Scraped by apps/monitoring/external-standalone-nodes.yaml, which hardcodes
+  # 192.168.1.193:9100. Before this role it had been installed by hand, so a
+  # rebuild would have silently lost the box's metrics and the NodeDown alert.
+  ansible.builtin.apt:
+    name: prometheus-node-exporter
+    state: present
+    update_cache: true
+    cache_valid_time: 3600
+  become: true
+
+- name: Ensure prometheus-node-exporter is running
+  ansible.builtin.systemd:
+    name: prometheus-node-exporter
+    state: started
+    enabled: true
+  become: true
+  when: not ansible_check_mode
+
+# Deliberately ansible.builtin.command rather than community.docker: that
+# collection is not in ansible/requirements.yml, and adding it would force a
+# rebuild of the in-cluster ansible-runner image before this host could be
+# drift-checked from the cluster. `docker compose up -d` is idempotent, so a
+# plain command with honest change-detection costs nothing here.
+- name: Ensure AdGuard container is running
+  ansible.builtin.command:
+    cmd: docker compose up -d
+    chdir: "{{ adguard_home_dir }}"
+  become: true
+  register: adguard_compose_up
+  # Compose reports progress on stderr and says "Running" when it had nothing
+  # to do. Anything else means it actually touched the container.
+  changed_when: >-
+    ('Started' in adguard_compose_up.stderr)
+    or ('Created' in adguard_compose_up.stderr)
+    or ('Recreated' in adguard_compose_up.stderr)
+  when: not ansible_check_mode

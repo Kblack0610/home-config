@@ -144,8 +144,9 @@ endpoints:
   # so this is pure config - no new agent, no ansible role.
   #
   # IPs come from `kubectl get nodes`, NOT infrastructure/dhcp/devices.yaml -
-  # that file omits the Pi Zeros/Pi3/thinkcentre and disagrees with
+  # that file omits the Pi Zeros/thinkcentre and disagrees with
   # ansible/inventory.yml about pi4-worker5 (.25 there vs .124 in reality).
+  # (pi3 was added to devices.yaml on 2026-09-01 and is no longer an exception.)
   - name: pi5-master
     group: k3s
     url: "http://192.168.1.20:9100/metrics"

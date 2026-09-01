@@ -272,6 +272,25 @@
     - role: openwrt-iot-vlan
       tags: [openwrt, iot-vlan]
 
+# AdGuard Home on pi3 - the LAN's filtering resolver, outside k3s on purpose.
+#
+# CAUTION: a config change here restarts the container, which drops ALL house
+# DNS for ~10-15s. That is only survivable because infrastructure/openwrt/dns.yaml
+# gives dnsmasq a strict-order fallback to a public resolver; the house keeps
+# resolving (unfiltered) through the restart, and the gatus "DNS filtering
+# active" canary alerts if it ever fails to come back. Do not remove that
+# fallback without also making this play a maintenance-window operation.
+#
+# ALWAYS run --check --diff first:
+#   ansible-playbook playbooks/site.yml --limit pi3-adguard --check --diff
+- name: AdGuard Home (pi3 - LAN filtering resolver)
+  hosts: adguard
+  become: true
+  gather_facts: true
+  roles:
+    - role: adguard
+      tags: [adguard, dns]
+
 # Yamaha HS5 desk audio endpoint - Phase 0: bring up a USB balanced interface
 # as the default ALSA sink so the cluster/HA can drive the monitors. Bound to
 # the audio_endpoints group, which is EMPTY until the box is added to the

@@ -114,6 +114,23 @@ devices:
     ip: "192.168.1.25"
     category: servers
 
+  # pi3-adguard: AdGuard Home, the LAN's filtering resolver (Raspberry Pi 3B,
+  # docker-compose outside k3s, ansible/roles/adguard).
+  #
+  # THIS RESERVATION IS LOAD-BEARING. The router hardcodes 192.168.1.193 as its
+  # DNS upstream (infrastructure/openwrt/dns.yaml), but until 2026-09-01 the Pi
+  # held that address on a DYNAMIC lease inside the .160-.254 pool with no
+  # reservation at all. If the lease had lapsed while the Pi was off, or .193
+  # had been handed to another device, house DNS would have broken silently and
+  # very confusingly. Kept at .193 rather than renumbered into the servers range
+  # because the address is referenced in ~6 other places (gatus, monitoring
+  # endpoints, headscale, infra.sh, docs) and moving it buys nothing.
+  - hostname: pi3-adguard-lan
+    mac: "B8:27:EB:1F:E7:CB"
+    ip: "192.168.1.193"
+    category: servers
+    range_exception: true
+
   - hostname: asus-laptop
     mac: "04:42:1A:D1:65:F8"
     ip: "192.168.1.152"

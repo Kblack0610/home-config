@@ -25,6 +25,14 @@ Mapping for the current fleet (regenerate any time with `kubectl get nodes -o js
 | `pi5-worker3` | `pi5-worker3-lan` | `raspberrypi-771be84c` | `192.168.1.23` |
 | `pi4-worker4` | `pi4-worker4-lan` | `raspberrypi-7386c525` | `192.168.1.24` |
 | `pi4-worker5` | `pi4-worker5-lan` | `raspberrypi-b814834e` | `192.168.1.124` |
+| `pi3-adguard` | `pi3-adguard-lan` | n/a (not a k3s node) | `192.168.1.193` |
+
+pi3 is the odd one out: it is not in the cluster, so there is no k8s node name and
+`kubectl debug` is not available as an escape hatch. It also kept a real hostname
+(`pi3-adguard`) instead of the default `raspberrypi`, and `ssh pi3` works via
+`~/.ssh/config`. It runs AdGuard Home, which is the LAN's only DNS resolver, so
+when it is down name resolution fails for everything - including whatever you
+were about to use to debug it. Reach it by IP.
 
 Macs use `~/.ssh/config` aliases (`m1`, `mac-studio`) — see `docs/mac-machines.md`. The `-lan` suffix is a Pi/x86 convention only.
 

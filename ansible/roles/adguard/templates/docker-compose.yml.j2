@@ -1,0 +1,64 @@
+# MANAGED BY ANSIBLE - ansible/roles/adguard/templates/docker-compose.yml.j2
+#
+# `version:` is deliberately absent - it is obsolete in Compose v2 and only
+# produces a warning on every invocation.
+---
+services:
+  adguard-home:
+    image: {{ adguard_image }}
+    container_name: adguard-home
+    restart: unless-stopped
+    # NOTE: `unless-stopped` means a manual `docker stop` PERSISTS across a
+    # reboot. After hands-on maintenance, confirm the container is running - the
+    # gatus "DNS filtering active" canary catches it if you forget.
+    ports:
+      # DNS
+      - "53:53/tcp"
+      - "53:53/udp"
+      # Admin panel (initial setup on 3000, then 80)
+      - "3000:3000/tcp"
+      - "80:80/tcp"
+      # HTTPS / DNS-over-HTTPS
+      - "443:443/tcp"
+      # DNS-over-TLS
+      - "853:853/tcp"
+      # DNS-over-QUIC
+      - "853:853/udp"
+    volumes:
+      - {{ adguard_data_dir }}/conf:/opt/adguardhome/conf
+      - {{ adguard_data_dir }}/work:/opt/adguardhome/work
+      - /etc/localtime:/etc/localtime:ro
+    # `restart: unless-stopped` only recovers a CRASHED process; an AdGuard that
+    # is running but wedged would never be restarted and nothing would notice.
+    #
+    # This resolves kblab.me, which is served by a LOCAL REWRITE and so needs no
+    # upstream. That is the point: it reports AdGuard's own health and stays
+    # green during an upstream outage, which is a separate fault with its own
+    # alert. A healthcheck that needed the internet would restart the container
+    # for something restarting cannot fix.
+    healthcheck:
+      test: ["CMD", "nslookup", "kblab.me", "127.0.0.1"]
+      interval: 60s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+    # The default json-file driver has no size cap, so this log grew unrotated
+    # from 2026-03 onward on a box whose only disk is an SD card.
+    logging:
+      driver: json-file
+      options:
+        max-size: 10m
+        max-file: "3"
+    networks:
+      - adguard-net
+
+    # NOTE: the original compose granted `cap_add: [NET_ADMIN]` with the comment
+    # "Required for binding to port 53". That was never true - the container
+    # runs as root and binds 53 inside its own network namespace, and the host
+    # side is a published port, not a direct bind. Dropped as unnecessary
+    # privilege. If DNS ever fails to bind after an image bump, this is the
+    # first thing to re-add.
+
+networks:
+  adguard-net:
+    driver: bridge

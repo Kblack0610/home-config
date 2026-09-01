@@ -17,19 +17,32 @@ spec:
     - name: homelab-app-health.recording
       interval: 1m
       rules:
+        # The `sum by (namespace, workload)` is load-bearing, and was missing
+        # until 2026-08-24: without it this metric keeps every kube-state-metrics
+        # label (container, endpoint, instance, job, pod, service, deployment)
+        # while homelab_app_restarts_1h below is already aggregated down to
+        # {namespace, workload}. The two label sets then never match, so every
+        # binary op that combines them -- homelab_app_health_score and
+        # homelab_app_health_state -- silently produced ZERO series, which in
+        # turn made HomelabAppDown/HomelabAppDegraded structurally unfirable and
+        # left the homelab-app-health dashboard permanently blank. That is why
+        # the 7-day kennethblack.me/kblack.dev/binks.chat outage paged no one.
+        # Keep this aggregation identical in shape to homelab_app_restarts_1h.
         - record: homelab_app_ready_ratio
           expr: |
             label_join(
-              label_replace(
-                clamp_max(
-                  kube_deployment_status_replicas_available{namespace!~"kube-system|flux-system"}
-                  / clamp_min(kube_deployment_spec_replicas{namespace!~"kube-system|flux-system"}, 1),
-                  1
-                ),
-                "workload",
-                "$1",
-                "deployment",
-                "(.*)"
+              sum by (namespace, workload) (
+                label_replace(
+                  clamp_max(
+                    kube_deployment_status_replicas_available{namespace!~"kube-system|flux-system"}
+                    / clamp_min(kube_deployment_spec_replicas{namespace!~"kube-system|flux-system"}, 1),
+                    1
+                  ),
+                  "workload",
+                  "$1",
+                  "deployment",
+                  "(.*)"
+                )
               ),
               "app_id",
               "/",
@@ -39,19 +52,22 @@ spec:
           labels:
             platform: k8s
             workload_type: deployment
+        # Same aggregation requirement as the deployment variant above.
         - record: homelab_app_ready_ratio
           expr: |
             label_join(
-              label_replace(
-                clamp_max(
-                  kube_statefulset_status_replicas_ready{namespace!~"kube-system|flux-system"}
-                  / clamp_min(kube_statefulset_replicas{namespace!~"kube-system|flux-system"}, 1),
-                  1
-                ),
-                "workload",
-                "$1",
-                "statefulset",
-                "(.*)"
+              sum by (namespace, workload) (
+                label_replace(
+                  clamp_max(
+                    kube_statefulset_status_replicas_ready{namespace!~"kube-system|flux-system"}
+                    / clamp_min(kube_statefulset_replicas{namespace!~"kube-system|flux-system"}, 1),
+                    1
+                  ),
+                  "workload",
+                  "$1",
+                  "statefulset",
+                  "(.*)"
+                )
               ),
               "app_id",
               "/",

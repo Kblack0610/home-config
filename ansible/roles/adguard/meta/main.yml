@@ -1,0 +1,20 @@
+---
+galaxy_info:
+  role_name: adguard
+  author: kblack0610
+  description: >-
+    AdGuard Home on pi3 - the LAN's filtering resolver. Renders
+    AdGuardHome.yaml and docker-compose.yml from git so the config is
+    reproducible after an SD-card failure, and enforces the multi-operator
+    upstream/fallback set that ended the recurring house-wide DNS outages.
+  license: MIT
+  min_ansible_version: "2.14"
+  platforms:
+    - name: Debian
+      versions:
+        - bookworm
+  galaxy_tags:
+    - homelab
+    - dns
+    - adguard
+dependencies: []

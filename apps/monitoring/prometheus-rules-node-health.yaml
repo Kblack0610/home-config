@@ -47,6 +47,24 @@ spec:
               No node-exporter (DaemonSet) targets are being scraped at all.
               Prometheus may have lost its scrape config, or the DaemonSet is
               down cluster-wide — node-down detection is currently blind.
+        # NodeDown matches standalone-nodes, but the absent() check above did
+        # not: if the pi3 target disappeared from Prometheus entirely, NodeDown
+        # would stop matching and nothing would say so. That box runs the LAN's
+        # only DNS resolver, so it is the worst one to go quietly unmonitored.
+        - alert: StandaloneNodeExporterAbsent
+          expr: absent(up{job="standalone-nodes"})
+          for: 15m
+          labels:
+            severity: warning
+            category: node-health
+          annotations:
+            summary: "standalone-nodes scrape job is absent"
+            description: >-
+              No standalone-nodes targets are being scraped, so pi3 (AdGuard,
+              192.168.1.193) is unmonitored and NodeDown cannot fire for it.
+              Check apps/monitoring/external-standalone-nodes.yaml and that
+              prometheus-node-exporter is running on the host; it is installed
+              by ansible/roles/adguard.
         # kubelet raised DiskPressure on a node -> it taints the node and evicts
         # pods. On 2026-07-09 this took down the whole workload cluster (forgejo
         # backups filled asus-laptop's root disk). This is the fast, direct signal

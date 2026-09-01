@@ -20,3 +20,56 @@ data:
           fail_if_not_ssl: true
           preferred_ip_protocol: ip4
           ip_protocol_fallback: true
+
+      # --- House DNS ----------------------------------------------------------
+      # These probe the ROUTER (192.168.1.1), not AdGuard directly, because
+      # every client talks to dnsmasq and never to AdGuard. A check against the
+      # Pi proves the daemon is alive; only these prove the house can resolve.
+      #
+      # blackbox puts the query in the MODULE and the server in the target, so
+      # each distinct question needs its own module.
+
+      # Plain resolution: can the chain answer at all.
+      dns_resolve:
+        prober: dns
+        timeout: 5s
+        dns:
+          query_name: google.com
+          query_type: A
+          preferred_ip_protocol: ip4
+          valid_rcodes: [NOERROR]
+
+      # The *.kblab.me rewrite, which every internal service is reached through.
+      # It fails independently of plain resolution, so it gets its own probe.
+      dns_rewrite:
+        prober: dns
+        timeout: 5s
+        dns:
+          query_name: adguard.kblab.me
+          query_type: A
+          preferred_ip_protocol: ip4
+          valid_rcodes: [NOERROR]
+          validate_answer_rrs:
+            fail_if_not_matches_regexp:
+              - "adguard\\.kblab\\.me\\.\\s+\\d+\\s+IN\\s+A\\s+192\\.168\\.1\\.124"
+
+      # THE CANARY. Resolves a domain AdGuard blocks and requires the null
+      # answer. This is the only probe that separates "DNS works" from "DNS
+      # works and is still filtering": if AdGuard stops filtering, or the house
+      # is ever pointed at an unfiltered resolver, every other check stays green
+      # and this one goes red.
+      #
+      # Keep query_name in sync with the AdGuard DNS filter. Verify with
+      #   dig +short doubleclick.net @192.168.1.193   -> must be 0.0.0.0
+      # A domain the list quietly stops blocking becomes a false alarm.
+      dns_filtering:
+        prober: dns
+        timeout: 5s
+        dns:
+          query_name: doubleclick.net
+          query_type: A
+          preferred_ip_protocol: ip4
+          valid_rcodes: [NOERROR]
+          validate_answer_rrs:
+            fail_if_not_matches_regexp:
+              - "doubleclick\\.net\\.\\s+\\d+\\s+IN\\s+A\\s+0\\.0\\.0\\.0"

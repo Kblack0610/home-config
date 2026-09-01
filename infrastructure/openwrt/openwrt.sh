@@ -129,6 +129,7 @@ domains.sort(key=lambda item: (item["name"], item["ip"]))
 result = {
     "dnsmasq": {
         "noresolv": bool(((data.get("dnsmasq") or {}).get("noresolv", False))),
+        "strict_order": bool(((data.get("dnsmasq") or {}).get("strict_order", False))),
         "server": list((data.get("dnsmasq") or {}).get("server", []) or []),
     },
     "lan": {
@@ -176,9 +177,10 @@ get_dns_current_json() {
     python3 - "$raw" <<'PY'
 import json
 import re
+import shlex
 import sys
 
-dnsmasq = {"noresolv": False, "server": []}
+dnsmasq = {"noresolv": False, "strict_order": False, "server": []}
 lan_dns_options = []
 other_lan_options = []
 domain_sections = set()
@@ -189,15 +191,23 @@ for raw_line in sys.argv[1].splitlines():
     line = raw_line.strip()
     if not line or "=" not in line:
         continue
-    key, value = line.split("=", 1)
-    value = value.strip().strip("'")
+    key, raw_value = line.split("=", 1)
+    # `uci show` renders a LIST on one line as key='a' 'b' 'c', so the outer
+    # strip("'") below yields the mangled "a' 'b' 'c" for anything multi-valued.
+    # That stayed invisible while dnsmasq had a single upstream and would have
+    # shown up as permanent false drift the moment a second one was added.
+    value_list = shlex.split(raw_value.strip())
+    value = value_list[0] if value_list else ""
     if key.startswith("dhcp.") and value == "domain":
         section = key[len("dhcp.") :]
         domain_sections.add(section)
     elif key == "dhcp.@dnsmasq[0].noresolv":
         dnsmasq["noresolv"] = value in {"1", "true", "on", "yes"}
+    elif key == "dhcp.@dnsmasq[0].strictorder":
+        dnsmasq["strict_order"] = value in {"1", "true", "on", "yes"}
     elif key == "dhcp.@dnsmasq[0].server":
-        dnsmasq["server"].append(value)
+        # Order is load-bearing under strict-order, so preserve it exactly.
+        dnsmasq["server"].extend(value_list)
     elif key == "dhcp.lan.dhcp_option":
         if re.match(r"^6,", value):
             lan_dns_options.append(value)
@@ -299,6 +309,13 @@ if current["dnsmasq"]["noresolv"] != desired["dnsmasq"]["noresolv"]:
         "field": "dnsmasq.noresolv",
         "current": current["dnsmasq"]["noresolv"],
         "desired": desired["dnsmasq"]["noresolv"],
+    })
+
+if current["dnsmasq"].get("strict_order", False) != desired["dnsmasq"].get("strict_order", False):
+    changes.append({
+        "field": "dnsmasq.strict_order",
+        "current": current["dnsmasq"].get("strict_order", False),
+        "desired": desired["dnsmasq"].get("strict_order", False),
     })
 
 current_servers = current["dnsmasq"]["server"]
@@ -467,6 +484,17 @@ commands.append(
     )
 )
 
+# strict-order makes dnsmasq ask the servers in the order listed instead of
+# preferring whichever answers fastest. It is NOT a failover mechanism: dnsmasq
+# does not move to the next server when the first refuses the connection.
+# Its real job here is to stop a non-filtering resolver from winning the race
+# against AdGuard on a Pi 3, which it otherwise does on every query.
+commands.append(
+    "uci set dhcp.@dnsmasq[0].strictorder={}".format(
+        shlex.quote("1" if desired["dnsmasq"].get("strict_order", False) else "0")
+    )
+)
+
 commands.append("uci delete dhcp.@dnsmasq[0].server 2>/dev/null || true")
 for server in desired["dnsmasq"]["server"]:
     commands.append(
@@ -597,6 +625,27 @@ for server in dns["dnsmasq"]["server"]:
     except ValueError:
         warning(f"dnsmasq.server contains non-IP value: {server}")
 
+# A second upstream is a fork in the road and both branches have a sharp edge,
+# so make whoever adds one say which they meant. Measured 2026-09-01 with one
+# AdGuard + one public resolver: strict_order true blocked 18/18 ad domains but
+# never failed over; false failed over but let 18/18 through, because dnsmasq
+# favours the faster server and public anycast always beats a Pi 3.
+if len(dns["dnsmasq"]["server"]) > 1:
+    if dns["dnsmasq"].get("strict_order", False):
+        warning(
+            "dnsmasq has {} upstreams with strict_order true: servers after the "
+            "first are effectively NEVER used (dnsmasq does not fail over to "
+            "them on a refused connection). Correct only if every one of them "
+            "filters.".format(len(dns["dnsmasq"]["server"]))
+        )
+    else:
+        warning(
+            "dnsmasq has {} upstreams with strict_order false: dnsmasq will "
+            "prefer whichever answers fastest. Correct ONLY if every server "
+            "listed is a filtering resolver - a public resolver here disables "
+            "ad-blocking entirely.".format(len(dns["dnsmasq"]["server"]))
+        )
+
 for option in dns["lan"]["dhcp_option"]:
     if not re.match(r"^6,", option):
         error(f"lan.dhcp_option must be DNS option 6 entries only: {option}")
@@ -686,6 +735,7 @@ path = sys.argv[2]
 data = {
     "dnsmasq": {
         "noresolv": current["dnsmasq"]["noresolv"],
+        "strict_order": current["dnsmasq"].get("strict_order", False),
         "server": current["dnsmasq"]["server"],
     },
     "lan": {
@@ -1145,6 +1195,7 @@ cmd_status() {
 
     echo -e "  Router reachable: ${GREEN}yes${NC}"
     echo -e "  DNS upstreams: $(echo "$dns_current" | jq -r '.dnsmasq.server | join(", ") // "-"')"
+    echo -e "  DNS server order: $(echo "$dns_current" | jq -r 'if .dnsmasq.strict_order then "strict-order (asked in order; no failover)" else "fastest-wins" end')"
     echo -e "  LAN DNS options: $(echo "$dns_current" | jq -r '.lan.dhcp_option | join(", ") // "-"')"
     echo -e "  Static DNS aliases: $(echo "$dns_current" | jq -r '(.domains // []) | map("\(.name)=\(.ip)") | join(", ") // "-"')"
     echo -e "  Redirects on router: $(echo "$fw_current" | jq '.redirects | length')"
@@ -1174,6 +1225,7 @@ COMMANDS:
 NOTES:
     - DNS sync manages only:
       * dhcp.@dnsmasq[0].noresolv
+      * dhcp.@dnsmasq[0].strictorder
       * dhcp.@dnsmasq[0].server
       * DNS-related dhcp.lan.dhcp_option entries (option 6)
       * Static dhcp domain aliases declared in dns.yaml

@@ -57,6 +57,26 @@ This repo has two remotes that must stay in lockstep:
 
 Forgejo mirrors itself to github on every push to master via `.forgejo/workflows/mirror-to-github.yaml`. The two refs should diverge for at most one workflow run (~30s). If they ever diverge longer than that, the mirror workflow is broken or the deploy key was revoked — see the next section.
 
+### Never open a PR on github
+
+The mirror is one-way and it pushes with `--force --prune` over `refs/heads/*`. Two things follow, and the second is the dangerous one:
+
+1. A PR merged on github **never deploys**. Flux reconciles from forgejo only; there is no github -> forgejo path.
+2. That merge is then **destroyed**. The next push to forgejo master force-overwrites github's master, so the commit disappears with no error anywhere.
+
+The mirror also replicates every forgejo feature branch to github, which is what gives a stray `gh pr create` something to open a PR against.
+
+This is enforced, not just documented:
+
+| Guard | Where |
+|---|---|
+| Issues disabled | github repo settings (`gh api -X PATCH repos/Kblack0610/home-config -f has_issues=false`) |
+| PRs auto-closed on open | `.github/workflows/reject-pull-requests.yml` (github has no switch to disable PRs) |
+
+**What went wrong on 2026-08-28.** Eight PRs were opened on github by mistake. Five were merged there; they survived only by accident, because an unrelated branch was later cut from `origin/master` and dragged them back into forgejo through a normal forgejo PR. Two more (#51, #52) sat open as stale duplicates of forgejo #33 and #37: work that had already merged and been *superseded* by forgejo #94, so merging them would have reverted master. Note that `#N` is ambiguous across the two forges; always say which forge you mean.
+
+If you find yourself with work stuck on github, do not merge it there. Cherry-pick it onto a branch cut from `forgejo/master` and open the PR on forgejo.
+
 ### Mirror status — currently configured
 
 The mirror workflow authenticates to github via a **deploy key** (SSH), NOT a PAT. Deploy keys are scoped to one repo, don't expire, and have a strictly narrower blast radius than any PAT.

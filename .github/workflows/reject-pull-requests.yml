@@ -1,0 +1,37 @@
+name: reject-pull-requests
+
+# github.com/Kblack0610/home-config is a passive mirror. A PR merged here never
+# deploys (Flux reconciles from Forgejo) and is then erased by the next mirror
+# push, which runs --force --prune. Issues are disabled via the API; pull
+# requests have no equivalent switch, so this workflow is the lock.
+#
+# Background and the incident that prompted it: docs/gitops.md -> Canonical Remote.
+
+on:
+  pull_request_target:
+    types: [opened, reopened]
+
+permissions:
+  pull-requests: write
+
+jobs:
+  close:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Close the PR and point it at the canonical forge
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR: ${{ github.event.pull_request.number }}
+          REPO: ${{ github.repository }}
+        run: |
+          gh pr comment "$PR" --repo "$REPO" --body \
+          'This repository is a passive mirror. Flux reconciles from Forgejo, so a
+          PR merged here would never deploy - and would then be erased by the next
+          mirror push, which runs with `--force --prune`.
+
+          Please reopen this against the canonical forge:
+          **https://git.kennethblack.me/kblack0610/home-config** (or `git.kblab.me`
+          on the LAN). See `docs/gitops.md` -> Canonical Remote.
+
+          Closed automatically by `.github/workflows/reject-pull-requests.yml`.'
+          gh pr close "$PR" --repo "$REPO"

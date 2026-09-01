@@ -159,6 +159,30 @@ endpoints:
     conditions:
       - "[STATUS] < 500"
 
+  # --- placemyparents production (DigitalOcean, external) ---
+  # The two endpoints above are the home-k3s PREVIEW deployment. Without these,
+  # an outage of the real public site or API goes unnoticed here.
+  - name: placemyparents.com (prod web)
+    group: placemyparents-prod
+    url: "https://placemyparents.com/api/health"
+    interval: 60s
+    conditions:
+      - "[STATUS] == 200"
+      - "[BODY].status == ok"
+      - "[CERTIFICATE_EXPIRATION] > 240h"
+      - "[RESPONSE_TIME] < 3000"
+
+  - name: api.placemyparents.com (prod API)
+    group: placemyparents-prod
+    url: "https://api.placemyparents.com/api/health"
+    interval: 60s
+    conditions:
+      - "[STATUS] == 200"
+      - "[BODY].status == ok"
+      - "[BODY].environment == production"
+      - "[CERTIFICATE_EXPIRATION] > 240h"
+      - "[RESPONSE_TIME] < 3000"
+
   - name: Forgejo Registry
     group: apps
     url: "http://forgejo-http.forgejo.svc:3000/v2/"

@@ -107,17 +107,18 @@ data:
     # ForgejoRepoLooseObjectsHigh in apps/monitoring/prometheus-rules-forgejo-mirrors.yaml
     # watches for it falling behind. Do not remove one without the other.
     gc.auto = 0
-    # The one that actually mattered. Forgejo ships fetch.writeCommitGraph=true,
-    # so `git fetch` writes a SPLIT commit-graph itself on every mirror pull -
-    # independently of gc. The 2026-09-08 debris was
-    # objects/info/commit-graphs/commit-graph-chain.lock plus a tmp_graph_*,
-    # which is the split chain, i.e. the fetch's write and not gc's single-file
-    # one. gc.auto=0 alone would have left that crash path wide open.
+    # NOTE: fetch.writeCommitGraph CANNOT be turned off from here. Forgejo sets
+    # core.commitGraph, gc.writeCommitGraph and fetch.writeCommitGraph itself
+    # AFTER applying [git.config], so a value set here is silently overwritten.
+    # Verified on 14.0.4: app.ini carried `fetch.writeCommitGraph = false` and
+    # /data/gitea/data/home/.gitconfig still read `writeCommitGraph = true`.
+    # gc.auto above survives only because Forgejo does not manage that key.
     #
-    # The graph is still maintained: gc.writeCommitGraph stays on, so
-    # [cron.git_gc_repos] builds it during scheduled maintenance, where a crash
-    # costs one housekeeping run instead of replication.
-    fetch.writeCommitGraph = false
+    # So `git fetch` still writes a split commit-graph on every mirror pull, and
+    # that is the operation that crashed on 2026-09-08. The path is bounded, not
+    # closed: forgejo-lock-reaper clears the debris within the hour and
+    # ForgejoMirrorBlockedByStaleLock pages in 15m, so the worst case is ~1h of
+    # stalled replication instead of two weeks.
 
     [cron.git_gc_repos]
     ENABLED = true

@@ -198,12 +198,15 @@ On 2026-09-08 03:55:57 UTC a `git` process SIGSEGV'd mid commit-graph write (con
 
 It could not self-heal. The repo held 7291 loose objects, over git's `gc.auto` default of 6700, so every fetch triggered `gc --auto`, which died on the same lock, so the objects were never packed and the trigger never cleared.
 
-The structural fault was not the crash. It was that git housekeeping ran *inside* `git fetch`, so replication and housekeeping shared a code path and a lock. Two settings in `apps/forgejo/configmap.yaml` separate them:
+The structural fault was not the crash. It was that git housekeeping ran *inside* `git fetch`, so replication and housekeeping shared a code path and a lock.
 
-- `fetch.writeCommitGraph = false` is the important one. Forgejo ships this ON, so `git fetch` writes a split commit-graph on every mirror pull. That is the operation that crashed: the debris was the split chain (`commit-graphs/commit-graph-chain.lock` plus `tmp_graph_*`), not gc's single-file `objects/info/commit-graph`, which completed fine.
-- `gc.auto = 0` plus `[cron.git_gc_repos]` enabled moves packing to scheduled maintenance, where a failure costs one housekeeping run instead of the mirror.
+`gc.auto = 0` in `apps/forgejo/configmap.yaml`, plus `[cron.git_gc_repos]` enabled, moves packing to scheduled maintenance where a failure costs one housekeeping run instead of the mirror. The trade-off is that nothing packs these repos except the cron, so `ForgejoRepoLooseObjectsHigh` watches for it falling behind. Do not remove one without the other.
 
-The graph is still built, during gc rather than during replication. The trade-off is that nothing packs these repos except the cron, so `ForgejoRepoLooseObjectsHigh` watches for it falling behind. Do not remove one without the other.
+**But that only closes half the path, and the half that did not crash.** The debris was the *split* chain (`commit-graphs/commit-graph-chain.lock` plus `tmp_graph_*`), which is written by `git fetch` itself under `fetch.writeCommitGraph`, not by gc, whose single-file `objects/info/commit-graph` completed fine.
+
+**`fetch.writeCommitGraph` cannot be turned off from `[git.config]`.** Forgejo sets `core.commitGraph`, `gc.writeCommitGraph` and `fetch.writeCommitGraph` itself *after* applying `[git.config]`, so a value set there is silently overwritten. Verified on 14.0.4: app.ini carried `fetch.writeCommitGraph = false` and the materialised `/data/gitea/data/home/.gitconfig` still read `writeCommitGraph = true`. `gc.auto` survives only because Forgejo does not manage that key. Do not re-add the setting believing it works - check the gitconfig, not app.ini.
+
+So a mirror fetch can still crash mid commit-graph write. What changed is the blast radius: `forgejo-lock-reaper` clears the debris within the hour and `ForgejoMirrorBlockedByStaleLock` pages in 15 minutes, so the worst case is roughly an hour of stalled replication rather than two weeks of silence. The path is **bounded, not closed**.
 
 `[git.timeout] GC` is 600, not the stock 60, because Forgejo hard-kills git at that deadline and a gc killed mid commit-graph write produces the same orphaned lock by a different route. A real gc on `platform` measured 10.8s.
 

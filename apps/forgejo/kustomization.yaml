@@ -13,6 +13,7 @@ resources:
   - ingress.yaml
   - ingress-public.yaml
   - backup-cronjob.yaml
+  - lock-reaper-cronjob.yaml
   - runner-config-cm.yaml
   - runner-secret.yaml
   - runner-deployment.yaml

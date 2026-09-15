@@ -88,7 +88,30 @@ data:
     MIRROR = 1800
     CLONE = 1800
     PULL = 1800
-    GC = 60
+    # 600, not the stock 60. Forgejo hard-kills git at this deadline, and a
+    # `git gc` SIGKILLed mid commit-graph write leaves an orphaned
+    # commit-graph-chain.lock that blocks every later operation on the repo -
+    # byte for byte the 2026-09-08 wedge. 60s is sized for small repos; this
+    # instance hosts Unity repos big enough that MIGRATE is already 3600.
+    # Kept well under the exporter's 7200s stale-lock threshold so a
+    # legitimately long gc is never reported as debris.
+    GC = 600
+
+    [git.config]
+    # git gc --auto runs INSIDE git fetch, so on a mirror it shares a code path
+    # and a lock with replication: one crashed gc wedged kblack0610/platform for
+    # two weeks on 2026-09-08. Moving gc to the scheduled task below means a
+    # failed gc costs one housekeeping run instead of the mirror.
+    #
+    # The trade-off is real: nothing packs these repos now except the cron, so
+    # ForgejoRepoLooseObjectsHigh in apps/monitoring/prometheus-rules-forgejo-mirrors.yaml
+    # watches for it falling behind. Do not remove one without the other.
+    gc.auto = 0
+
+    [cron.git_gc_repos]
+    ENABLED = true
+    SCHEDULE = @every 72h
+    TIMEOUT = 10m
 
     [webhook]
     # Allow LAN-side webhook targets (e.g., notes-sync-bridge.kblab.me at

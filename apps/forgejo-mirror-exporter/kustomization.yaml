@@ -1,0 +1,18 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+# Runs in the forgejo namespace (it mounts that namespace's PVC) but keeps its
+# own app dir - same arrangement as apps/fleet-exporter, which runs in
+# gatus-fleet. The namespace itself is created by apps/forgejo.
+namespace: forgejo
+
+# Hashed name -> editing exporter.py changes the ConfigMap name -> changes the
+# Deployment -> Flux rolls the pod. Without the hash, a script edit would apply
+# and do nothing until an unrelated restart.
+configMapGenerator:
+  - name: forgejo-mirror-exporter-script
+    files:
+      - exporter.py
+
+resources:
+  - deployment.yaml

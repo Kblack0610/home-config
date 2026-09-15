@@ -1,0 +1,267 @@
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: homelab-forgejo-mirrors
+  namespace: monitoring
+  labels:
+    app.kubernetes.io/name: homelab-forgejo-mirrors
+    app.kubernetes.io/part-of: monitoring
+    # REQUIRED. The Prometheus CR selects on
+    # ruleSelector.matchLabels.release=kube-prometheus-stack. Without this label
+    # the file applies cleanly, shows up in `kubectl get prometheusrule`, and is
+    # never evaluated - which is how the node-health rules sat inert through a
+    # 6h outage. See prometheus-rules-node-health.yaml.
+    #
+    # Do not treat the label's presence as proof. The recording rules below also
+    # exist so evaluation is PROVABLE: if forgejo_mirror:overdue_budget_ratio
+    # returns series, this file is being evaluated, and no label can fake that.
+    release: kube-prometheus-stack
+spec:
+  groups:
+    - name: homelab-forgejo-mirrors.recording
+      interval: 1m
+      rules:
+        # Built on next_update_unix, which only advances on a SUCCESSFUL sync.
+        # NOT on updated_unix / the API's mirror_updated, which advance on
+        # failure too and stayed green through the whole 2026-09-08 outage -
+        # see docs/gitops.md "Mirror health".
+        #
+        # The budget self-scales: max(3 * interval, 900s), so a 5m and an hourly
+        # mirror both get proportionate slack. A flat threshold would page
+        # weekly on a slow-but-healthy mirror (same mistake as
+        # prometheus-rules-jobs.yaml). `monitored == 1` drops manual-only
+        # (interval 0) and archived mirrors, which would never clear.
+        - record: forgejo_mirror:overdue_budget_ratio
+          expr: |
+            (
+              forgejo_mirror_overdue_seconds
+                / clamp_min(3 * forgejo_mirror_interval_seconds, 900)
+            )
+            and (forgejo_mirror_monitored == 1)
+
+        # The INDEPENDENT signal. It knows nothing about the database and names
+        # the CAUSE rather than the symptom. The age threshold is applied in the
+        # exporter (7200s = 2x [git.timeout] MIGRATE), so anything counted here
+        # is already older than any git process Forgejo could still be running.
+        - record: forgejo_repo:stale_git_locks
+          expr: sum by (repo) (forgejo_repo_stale_lock_files)
+
+        # Days since this repo last produced a Forgejo Actions run, scoped to
+        # repos that have a live mirror - i.e. the ones whose CI is fed by
+        # replication and would go quiet if replication broke.
+        - record: forgejo_repo:days_since_action_run
+          expr: |
+            (
+              (time() - forgejo_repo_last_action_run_timestamp_seconds) / 86400
+            )
+            and on (repo) (max by (repo) (forgejo_mirror_monitored) == 1)
+
+    - name: homelab-forgejo-mirrors.alerts
+      interval: 1m
+      rules:
+        # The money alert: BOTH independent signals agree. Critical because two
+        # unrelated sources concur so it is not a lie, and because the fix is
+        # one command, carried in the description.
+        - alert: ForgejoMirrorBlockedByStaleLock
+          expr: |
+            (forgejo_mirror:overdue_budget_ratio > 1)
+              and on (repo) (forgejo_repo:stale_git_locks > 0)
+          for: 15m
+          labels:
+            severity: critical
+            category: git-mirror
+          annotations:
+            summary: "Mirror {{ $labels.repo }} is stuck behind an orphaned git lock"
+            description: >-
+              {{ $labels.repo }} ({{ $labels.kind }}) is past the sync Forgejo
+              scheduled AND holds a git *.lock older than 2h. This is the
+              2026-09-08 failure: a git process died mid commit-graph write and
+              left objects/info/commit-graphs/commit-graph-chain.lock, so every
+              sync after it died on the same lock. It will NOT self-heal while
+              the repo is over gc.auto's 6700 loose objects, because each fetch
+              retries gc and dies on that lock. Refs may look current and the
+              API's mirror_updated will look fresh; both lie. Forgejo marks the
+              sync FAILED and never emits the mirror-sync event, so no Actions
+              run fires and anything downstream freezes. Fix: kubectl -n forgejo
+              exec deploy/forgejo -c forgejo -- sh -c 'cd
+              /data/git/repositories/{{ $labels.repo }}.git && find . -name
+              "*.lock" -mmin +120 -delete && rm -f
+              objects/info/commit-graphs/tmp_graph_* objects/info/gc.log && git
+              gc'
+
+        # DB signal alone: overdue, cause not identified. `unless` keeps this
+        # mutually exclusive with the critical above so one incident produces
+        # one notification. Alertmanager's inhibit_rules cannot do this - they
+        # match on equal:[alertname,instance] and these share neither.
+        - alert: ForgejoMirrorSyncOverdue
+          expr: |
+            (forgejo_mirror:overdue_budget_ratio > 1)
+              unless on (repo) (forgejo_repo:stale_git_locks > 0)
+          for: 15m
+          labels:
+            severity: warning
+            category: git-mirror
+          annotations:
+            summary: "Mirror overdue: {{ $labels.repo }} ({{ $labels.kind }})"
+            description: >-
+              Forgejo has not completed a sync of {{ $labels.repo }} within 3x
+              its own interval (budget ratio {{ $value | printf "%.1f" }}).
+              next_update_unix only advances after a SUCCESSFUL sync, so syncs
+              are failing or not running. Do NOT check mirror_updated in the
+              API - it advances on failure. No stale lock was found, so look at
+              credentials, the remote host, or whether Forgejo is up:
+              kubectl -n forgejo logs deploy/forgejo | grep -i mirror
+
+        - alert: ForgejoMirrorSyncStuck
+          expr: forgejo_mirror:overdue_budget_ratio > 8
+          for: 30m
+          labels:
+            severity: critical
+            category: git-mirror
+          annotations:
+            summary: "Mirror badly stuck: {{ $labels.repo }} ({{ $labels.kind }})"
+            description: >-
+              {{ $labels.repo }} is more than 8x its sync budget overdue (~2h+
+              for a 5m mirror) and has been for 30 minutes. Anything downstream
+              of this mirror's sync event - Forgejo Actions runs, preview
+              deployments - has been frozen at least that long.
+
+        # FS signal alone: debris on a repo that is not (yet) a stuck mirror.
+        - alert: ForgejoRepoStaleGitLock
+          expr: |
+            (forgejo_repo:stale_git_locks > 0)
+              unless on (repo) (forgejo_mirror:overdue_budget_ratio > 1)
+          for: 30m
+          labels:
+            severity: warning
+            category: git-maintenance
+          annotations:
+            summary: "Stale git lock in {{ $labels.repo }}"
+            description: >-
+              {{ $labels.repo }} holds {{ $value | printf "%.0f" }} git *.lock
+              file(s) older than 2 hours. Forgejo hard-kills git at
+              [git.timeout] MIGRATE=3600, so nothing legitimate holds a lock
+              that long - a git process died and left it. Any mirror here is
+              still completing for now, but every future gc, fetch and
+              commit-graph write in this repo will fail on it.
+
+        # The independent backstop for the link that actually hurt. Deliberately
+        # NOT "a commit arrived and no run followed": workflows carry paths:
+        # filters, so a commit legitimately producing no run is normal and that
+        # alert would be noise. This fires only when a mirror-fed repo goes
+        # entirely quiet, which for an active repo is unambiguous. It would have
+        # caught the 2026-09-08 outage on day 7 by a path that shares no code
+        # and no assumption with the mirror signals above.
+        - alert: ForgejoActionsRunsStalled
+          expr: forgejo_repo:days_since_action_run > 7
+          for: 1h
+          labels:
+            severity: warning
+            category: ci
+          annotations:
+            summary: "No Forgejo Actions run for {{ $labels.repo }} in {{ $value | printf \"%.0f\" }} days"
+            description: >-
+              {{ $labels.repo }} has a live mirror but has produced no Actions
+              run in {{ $value | printf "%.0f" }} days. Either the repo is
+              genuinely idle, or the trigger chain is broken - a mirror that
+              syncs but is marked failed emits no event, so no run is created
+              and any preview environment silently keeps serving its last image.
+              Check forgejo_mirror:overdue_budget_ratio for this repo first.
+
+        # The precondition that made the incident self-sustaining, and the
+        # trade-off guard for gc.auto=0 in apps/forgejo/configmap.yaml: with
+        # auto-gc off, this is what proves the scheduled cron is keeping up.
+        # info, not warning: a busy repo legitimately crosses 6700 between gc
+        # runs, so only 6h of persistence means gc is not working at all.
+        - alert: ForgejoRepoLooseObjectsHigh
+          expr: forgejo_repo_loose_objects > 6700
+          for: 6h
+          labels:
+            severity: info
+            category: git-maintenance
+          annotations:
+            summary: "{{ $labels.repo }} is over the gc.auto threshold and staying there"
+            description: >-
+              {{ $labels.repo }} holds {{ $value | printf "%.0f" }} loose
+              objects (git's gc.auto default is 6700) and has for 6 hours. With
+              gc.auto=0 set in apps/forgejo/configmap.yaml this means
+              [cron.git_gc_repos] is not keeping up or is not running.
+
+        - alert: ForgejoRepoGcFailing
+          expr: forgejo_repo_gc_log_present == 1
+          for: 1h
+          labels:
+            severity: warning
+            category: git-maintenance
+          annotations:
+            summary: "git gc is failing in {{ $labels.repo }}"
+            description: >-
+              objects/info/gc.log exists in {{ $labels.repo }}: git's own
+              auto-gc failed and recorded why, and will now REFUSE to retry for
+              gc.logExpiry (1 day) while loose objects accumulate. The error
+              text is in the exporter's log: kubectl -n forgejo logs
+              deploy/forgejo-mirror-exporter | grep gc.log
+
+        - alert: ForgejoPushMirrorError
+          expr: forgejo_mirror_last_error_present{kind="push"} == 1
+          for: 30m
+          labels:
+            severity: warning
+            category: git-mirror
+          annotations:
+            summary: "Push mirror failing: {{ $labels.repo }} -> {{ $labels.remote_name }}"
+            description: >-
+              push_mirror.last_error is set for {{ $labels.repo }} remote
+              {{ $labels.remote_name }}; see forgejo_mirror_last_error_info for
+              the class and the exporter log for the text. Note the pull
+              `mirror` table has no last_error column at all, which is why pull
+              mirrors are watched via next_update_unix instead.
+
+        # The observer going blind is its own failure, and looks identical to
+        # everything being healthy.
+        - alert: ForgejoMirrorExporterDown
+          expr: |
+            up{job="forgejo-mirror-exporter"} == 0
+            or absent(up{job="forgejo-mirror-exporter"})
+          for: 15m
+          labels:
+            severity: warning
+            category: monitoring
+          annotations:
+            summary: "forgejo-mirror-exporter is not being scraped"
+            description: >-
+              With this exporter down every mirror alert above goes quiet, which
+              is indistinguishable from every mirror being healthy - the exact
+              failure mode it exists to prevent, one layer up.
+
+        - alert: ForgejoMirrorExporterDegraded
+          expr: forgejo_mirror_exporter_scrape_ok == 0
+          for: 30m
+          labels:
+            severity: warning
+            category: monitoring
+          annotations:
+            summary: "forgejo-mirror-exporter cannot read its {{ $labels.source }} source"
+            description: >-
+              The {{ $labels.source }} source has failed to refresh for 30m. It
+              keeps serving last-known-good data and overdue_seconds is measured
+              against live time, so the numbers grow rather than freeze (it
+              fails toward alerting) - but the data is stale. Reason is in
+              forgejo_mirror_exporter_errors_total{source="{{ $labels.source }}"}.
+
+        # Up, running, and knowing nothing looks exactly like reporting perfect
+        # health.
+        - alert: ForgejoMirrorInventoryEmpty
+          expr: |
+            absent(forgejo_mirror_info)
+            and on() (forgejo_mirror_exporter_scrape_ok{source="db"} == 1)
+          for: 1h
+          labels:
+            severity: warning
+            category: monitoring
+          annotations:
+            summary: "Forgejo reports zero mirrors"
+            description: >-
+              The exporter read the database successfully and found no mirror
+              rows at all. Either every mirror really was deleted, or it is
+              reading the wrong database.

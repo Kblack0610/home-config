@@ -13,6 +13,7 @@ resources:
   - prometheus-rules-backup-drive.yaml
   - prometheus-rules-trivy.yaml
   - prometheus-rules-dns.yaml
+  - prometheus-rules-forgejo-mirrors.yaml
   - probe-sites.yaml
   - probe-dns.yaml
   - external-mac-nodes.yaml

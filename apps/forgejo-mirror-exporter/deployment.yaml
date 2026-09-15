@@ -1,0 +1,176 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: forgejo-mirror-exporter
+  namespace: forgejo
+  labels:
+    app.kubernetes.io/name: forgejo-mirror-exporter
+spec:
+  replicas: 1
+  # Recreate rather than RollingUpdate: two pods briefly sharing the RWO PVC
+  # during a rollout is avoidable risk for a metrics exporter, and a few seconds
+  # of gap is far inside the 15m `for:` on ForgejoMirrorExporterDown.
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: forgejo-mirror-exporter
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: forgejo-mirror-exporter
+    spec:
+      # Same shape as apps/fleet-exporter: stdlib python from a
+      # configMapGenerator'd script, no build step, no image to publish.
+      #
+      # A separate Deployment, not a sidecar in apps/forgejo: the observer has
+      # to outlive the observed, since "Forgejo is wedged" is a state this must
+      # keep reporting. Mounting forgejo-data alongside the running Forgejo pod
+      # is what apps/forgejo/backup-cronjob.yaml already does - RWO means one
+      # NODE, not one pod, and local-path's PV node affinity pins both without a
+      # nodeSelector. Swapping local-path for a single-attach RWO CSI driver
+      # would make this second long-lived mount deadlock Forgejo's rollout.
+      securityContext:
+        # 1000:1000, NOT 65534 as fleet-exporter uses. Forgejo's repositories
+        # are owned 1000:1000 with 0750 bare dirs, so as `nobody` the filesystem
+        # scan would walk into permission errors, find zero repos, and report
+        # perfect health forever - the exact bug class this exporter exists to
+        # catch. runAsNonRoot still holds.
+        runAsNonRoot: true
+        runAsUser: 1000
+        runAsGroup: 1000
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: exporter
+          image: python:3.12-alpine
+          command: ["python3", "/app/exporter.py"]
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop:
+                - ALL
+          env:
+            - name: FORGEJO_DB_PATH
+              value: "/data/gitea/gitea.db"
+            - name: FORGEJO_REPO_ROOT
+              value: "/data/git/repositories"
+            # 2x [git.timeout] MIGRATE=3600 in apps/forgejo/configmap.yaml, the
+            # longest a Forgejo-invoked git process can live before Forgejo
+            # kills it. Anything older than this was left by a dead process.
+            # Raise this and [git.timeout] together or healthy long clones
+            # start getting reported as debris.
+            - name: STALE_LOCK_AFTER
+              value: "7200"
+            - name: DB_REFRESH_SECONDS
+              value: "120"
+            - name: FS_REFRESH_SECONDS
+              value: "600"
+            # Verified locally: a direct read-only open works against a WAL
+            # database even on a read-only mount, so long as the -shm exists
+            # (i.e. whenever Forgejo is running), and costs no I/O. It fails
+            # against a hot rollback journal - the state a crashed writer leaves
+            # - which is when the snapshot copy takes over. Watch
+            # forgejo_mirror_exporter_db_read_mode to see which path is live.
+            - name: DB_READ_MODE
+              value: "auto"
+            - name: SNAPSHOT_DIR
+              value: "/tmp/snap"
+            # 3x the current ~61MB database. Past this the snapshot path fails
+            # loudly (scrape_ok=0, reason=too_large) instead of OOMing the pod,
+            # because the tmpfs below counts against the memory limit.
+            - name: SNAPSHOT_MAX_BYTES
+              value: "201326592"
+          ports:
+            - name: metrics
+              containerPort: 9310
+          volumeMounts:
+            - name: script
+              mountPath: /app
+              readOnly: true
+            - name: data
+              mountPath: /data
+              readOnly: true
+            - name: snapshot
+              mountPath: /tmp
+          resources:
+            requests:
+              memory: "48Mi"
+              cpu: "10m"
+            limits:
+              # Must exceed SNAPSHOT_MAX_BYTES plus the interpreter: an
+              # emptyDir with medium=Memory is charged to the container, so an
+              # undersized limit turns a snapshot into an OOMKill loop.
+              memory: "384Mi"
+              cpu: "500m"
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 9310
+            initialDelaySeconds: 10
+            periodSeconds: 30
+          readinessProbe:
+            # /health deliberately tests ONLY that the HTTP server answers,
+            # never the database or the PVC. A data-aware probe would pull this
+            # pod out of the Service the moment its data source broke, stopping
+            # the scrape and making forgejo_mirror_exporter_scrape_ok=0
+            # invisible at precisely the moment it is the only thing worth
+            # knowing. This looks like an oversight; it is the opposite.
+            httpGet:
+              path: /health
+              port: 9310
+            initialDelaySeconds: 5
+            periodSeconds: 10
+      volumes:
+        - name: script
+          configMap:
+            name: forgejo-mirror-exporter-script
+        - name: data
+          persistentVolumeClaim:
+            claimName: forgejo-data
+        - name: snapshot
+          emptyDir:
+            medium: Memory
+            sizeLimit: 256Mi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: forgejo-mirror-exporter
+  namespace: forgejo
+  labels:
+    app.kubernetes.io/name: forgejo-mirror-exporter
+spec:
+  selector:
+    app.kubernetes.io/name: forgejo-mirror-exporter
+  ports:
+    - name: metrics
+      port: 9310
+      targetPort: 9310
+  type: ClusterIP
+---
+# No `release: kube-prometheus-stack` label here, and that is not an oversight:
+# apps/monitoring/helm-values.yaml sets serviceMonitorSelectorNilUsesHelmValues
+# false, so Prometheus selects every ServiceMonitor in every namespace. The
+# opposite is true of PrometheusRule, where ruleSelector.matchLabels.release IS
+# enforced - see apps/monitoring/prometheus-rules-forgejo-mirrors.yaml.
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: forgejo-mirror-exporter
+  namespace: forgejo
+  labels:
+    app.kubernetes.io/name: forgejo-mirror-exporter
+spec:
+  endpoints:
+    - port: metrics
+      path: /metrics
+      interval: 30s
+      scrapeTimeout: 10s
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: forgejo-mirror-exporter
+  namespaceSelector:
+    matchNames:
+      - forgejo

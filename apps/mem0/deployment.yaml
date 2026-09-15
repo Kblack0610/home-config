@@ -75,6 +75,15 @@ spec:
               sed -i '/ORDER BY distance/,/return \[OutputData/{s/score=float(r\[1\])/score=float(1.0 - r[1])/}' "$F"
               grep -q 'score=float(1.0 - r\[1\])' "$F" || { echo "ERROR: mem0 pgvector rank-fix patch did not apply — upstream may have changed pgvector.py" >&2; exit 1; }
               echo "mem0 pgvector rank-fix patch applied"
+              M=/app/main.py
+              E=/app/errors.py
+              sed -i 's|^\( *\)params = {k: v for k, v in search_req.model_dump().items() if v is not None and k != "query"}$|\1_p = {k: v for k, v in search_req.model_dump().items() if v is not None and k != "query"}; _f = {**{k: _p.pop(k) for k in ("user_id", "run_id", "agent_id") if k in _p}, **(dict(_p.pop("filters", None) or {}))}; params = {**_p, **({"filters": _f} if _f else {})}|' "$M"
+              grep -q '_p.pop("filters", None) or {}' "$M" || { echo "ERROR: mem0 /search filters-fold patch did not apply - upstream may have changed main.py" >&2; exit 1; }
+              sed -i 's|^    return ("unknown", "Upstream provider error.")$|    if isinstance(exc, (ValueError, TypeError)):\n        return ("client_bad_params", f"Bad request parameters: {exc}")\n    return ("unknown", f"Unhandled {type(exc).__name__}: {exc}")|' "$E"
+              grep -q 'client_bad_params' "$E" || { echo "ERROR: mem0 client-error classify patch did not apply - upstream may have changed errors.py" >&2; exit 1; }
+              sed -i 's|super().__init__(status_code=502, detail=detail)|super().__init__(status_code=(400 if str(code).startswith("client_") else 502), detail=detail)|' "$E"
+              grep -q 'startswith("client_")' "$E" || { echo "ERROR: mem0 client-error status patch did not apply - upstream may have changed errors.py" >&2; exit 1; }
+              echo "mem0 search filters-fold + client-error patches applied"
               exec uvicorn main:app --host 0.0.0.0 --port 8000
           securityContext:
             allowPrivilegeEscalation: false

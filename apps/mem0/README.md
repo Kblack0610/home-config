@@ -120,10 +120,17 @@ single `sed` patch before launching uvicorn. The patches are visible in
 | # | Patch | Reason | Drop when |
 |---|-------|--------|-----------|
 | 1 | `pgvector.py` line 251: `score=float(r[1])` → `score=float(1.0 - r[1])` | mem0 v2.0.1's pgvector backend returns cosine **distance** as the `score` field, but `score_and_rank` (used by `/search`) treats `score` as similarity and sorts `reverse=True`. Without this fix, the LEAST-similar memories rank first — exact-text matches end up dead last. The TS SDK was fixed in upstream PR [#4944](https://github.com/mem0ai/mem0/pull/4944); the Python equivalent is open as [#4994](https://github.com/mem0ai/mem0/pull/4994). | A new image tag containing #4994 lands. Then drop `command:` + `args:` from `deployment.yaml`, restoring the image's default CMD. |
+| 2 | `main.py` `/search`: fold top-level `user_id` / `run_id` / `agent_id` into `filters` before calling `search()` | `GET /memories` already does exactly this (it builds `filters` from those three), but `POST /search` passes them through as top-level kwargs, and mem0 v2.0.1's `search()` raises `ValueError: Top-level entity parameters ... are not supported in search(). Use filters={...} instead.` So the obvious call shape - the one that works on every other endpoint - always failed. An explicit `filters` still wins; nothing is sent when there is no scope. | Upstream makes `/search` consistent with `get_all`. Worth a PR. |
+| 3 | `errors.py`: classify `ValueError`/`TypeError` as `client_bad_params` and answer **400** with the real exception text; name the exception type in the `unknown` fallback instead of "Upstream provider error." | Every unclassified exception was rendered as a 502 `{"detail":"Upstream provider error."}`, so a **caller mistake was reported as a backend outage**. Patch 2's `ValueError` is exactly that case: it read as "the LLM provider is down" for seven weeks (2026-07-28 to 2026-09-15), two nightly dream sweeps recorded "mem0 has no read path", and a 69-item cross-project memory queue sat unpostable. The server's own traceback had the answer the whole time; only its HTTP body was misleading. | Upstream separates client errors from provider errors. Worth the same PR. |
 
-The container fails fast (`grep -q ... || exit 1`) if a future image bump
-silently breaks the patch (e.g., upstream rewrites the line) — better than
-running with broken ranking.
+Every patch is followed by a `grep -q ... || exit 1` gate, so a future image bump
+that silently breaks one fails the container instead of running degraded. All three
+gates were verified to fail on purpose before this landed: rewriting the target line
+in a copy of `main.py` or `errors.py` makes the script exit 1 with its own message.
+
+Note on patch 3: the 400 responses now carry the exception text. mem0 here is
+LAN/tailnet-only behind an API key, so that is a deliberate trade - a private service
+that tells you what you got wrong beats one that says "Upstream provider error."
 
 ## Access model (two hosts, two auth layers)
 

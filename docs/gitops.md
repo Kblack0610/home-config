@@ -170,9 +170,10 @@ The pull mirror is configured **inside Forgejo** (repo DB, set via UI/API), NOT 
 USERTOK=$(grep git.kblab.me ~/.git-credentials | sed -E 's#https://([^@]+)@.*#\1#')
 FJ=https://git.kblab.me/api/v1
 
-# Does the mirror exist, and is it fresh?
+# Does the mirror exist? (NOT whether it is healthy - see "Mirror health" below:
+# mirror_updated / updated_at advance on FAILED syncs and cannot answer that.)
 curl -s -u "$USERTOK" "$FJ/repos/kblack0610/platform" \
-  | jq '{mirror, mirror_interval, original_url, updated_at}'
+  | jq '{mirror, mirror_interval, original_url}'
 
 # Is the close-on-merge workflow actually running (and on what commits)?
 curl -s -u "$USERTOK" "$FJ/repos/kblack0610/platform/actions/tasks?limit=10" \
@@ -180,6 +181,50 @@ curl -s -u "$USERTOK" "$FJ/repos/kblack0610/platform/actions/tasks?limit=10" \
 ```
 
 Known latent bug in the platform close workflow: it inspects only the single tip commit (`github.sha`). If two PRs each carrying a `Vikunja: <id>` line land inside one 5-minute sync window, only the tip's ticket auto-closes. Fix is to scan the pushed range (`github.event.before..github.sha`). Tracked in the platform repo, not here.
+
+### Mirror health: the field that lies, and what to use instead
+
+**`mirror_updated` in the REST API means "last sync ATTEMPT", not "last success".** Forgejo's failure branch calls `TouchMirror()`, which writes `mirror.updated_unix` and nothing else, so the field advances every cycle whether the sync worked or not. Verified live on 2026-09-15 by sampling it three times 45 seconds apart while every single sync was failing.
+
+The field that actually answers the question is `mirror.next_update_unix`, which only advances via `ScheduleNextUpdate()` on the success path. During the outage below it sat frozen 42 minutes in the past, and jumped to `now + interval` the instant the fault was cleared.
+
+This matters because it is the natural thing to check. Anyone writing a mirror healthcheck reaches for `mirror_updated` first, and it would have read green for the entire two-week outage.
+
+**What watches it now.** `apps/forgejo-mirror-exporter/` reads Forgejo's own SQLite and the bare repos on disk, and emits two deliberately independent signals: a database-derived overdue measure against a self-scaling budget of `max(3 * interval, 900s)`, and a filesystem scan for orphaned git `*.lock` and `tmp_*` files older than 7200s. Alerts live in `apps/monitoring/prometheus-rules-forgejo-mirrors.yaml` and page ntfy `homelab-alerts`. Agreement between the two escalates to critical, because two unrelated sources concurring is not a lie. `ForgejoActionsRunsStalled` is a third, independent path covering the downstream CI link. New mirrors are enumerated from the database, so they are covered with no config.
+
+### Why a crashed git used to wedge a mirror forever
+
+On 2026-09-08 03:55:57 UTC a `git` process SIGSEGV'd mid commit-graph write (confirmed by a host coredump record on asus-laptop) and left a 0-byte `objects/info/commit-graphs/commit-graph-chain.lock` in `kblack0610/platform`. Every sync after that died on the lock. Refs still updated, so the repo looked healthy, but Forgejo marked each sync FAILED and therefore never emitted the mirror-sync event that starts an Actions run. The placemyparents preview environment served a Sep 1 image for two weeks, and a human found it chasing a broken signup form.
+
+It could not self-heal. The repo held 7291 loose objects, over git's `gc.auto` default of 6700, so every fetch triggered `gc --auto`, which died on the same lock, so the objects were never packed and the trigger never cleared.
+
+The structural fault was not the crash. It was that git housekeeping ran *inside* `git fetch`, so replication and housekeeping shared a code path and a lock. Two settings in `apps/forgejo/configmap.yaml` separate them:
+
+- `fetch.writeCommitGraph = false` is the important one. Forgejo ships this ON, so `git fetch` writes a split commit-graph on every mirror pull. That is the operation that crashed: the debris was the split chain (`commit-graphs/commit-graph-chain.lock` plus `tmp_graph_*`), not gc's single-file `objects/info/commit-graph`, which completed fine.
+- `gc.auto = 0` plus `[cron.git_gc_repos]` enabled moves packing to scheduled maintenance, where a failure costs one housekeeping run instead of the mirror.
+
+The graph is still built, during gc rather than during replication. The trade-off is that nothing packs these repos except the cron, so `ForgejoRepoLooseObjectsHigh` watches for it falling behind. Do not remove one without the other.
+
+`[git.timeout] GC` is 600, not the stock 60, because Forgejo hard-kills git at that deadline and a gc killed mid commit-graph write produces the same orphaned lock by a different route. A real gc on `platform` measured 10.8s.
+
+`forgejo-lock-reaper` (`apps/forgejo/lock-reaper-cronjob.yaml`) sweeps hourly for whatever still orphans, against a closed allowlist of filenames and an age gate of 2x `[git.timeout] MIGRATE`. It deliberately never touches anything under `refs/` or `objects/pack/`: removing a ref lock under a live writer is data loss, not cleanup. Every reap pages, because a repo needing it twice means something upstream is dying.
+
+**Manual recovery**, if you ever need it before the reaper runs:
+
+```bash
+kubectl --context home-k3s -n forgejo exec deploy/forgejo -c forgejo -- sh -c '
+  cd /data/git/repositories/<owner>/<repo>.git &&
+  find . -name "*.lock" -mmin +120 -delete &&
+  rm -f objects/info/commit-graphs/tmp_graph_* objects/info/gc.log &&
+  git gc'
+```
+
+**Changing any of this requires a pod restart.** `app.ini` is mounted with `subPath`, and an init container copies it onto the PVC, so a ConfigMap change alone leaves the running pod on the old config indefinitely. This trap bit the rollout of the very fix described above: Flux reconciled green, the ConfigMap held the new values, and the running Forgejo still read `GC = 60`. Confirm against the file Forgejo actually materialises, not the ConfigMap:
+
+```bash
+kubectl --context home-k3s -n forgejo exec deploy/forgejo -c forgejo -- \
+  cat /data/gitea/data/home/.gitconfig
+```
 
 ## Repository Shape
 

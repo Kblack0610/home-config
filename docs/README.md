@@ -16,6 +16,7 @@ Use this index to find the right document by task instead of scanning the repo t
 | Verify backups or run a restore | [backup-runbook.md](./backup-runbook.md) | Backup schedules, manual triggers, restore flows |
 | Inspect or edit files inside a running pod | [container-access.md](./container-access.md) | `kubectl debug` with nvim, cp round-trip, GitOps caveat |
 | Reach a bare-metal node when SSH is broken (key mismatch, re-bootstrap) | [host-access.md](./host-access.md) | Four-naming-systems table, `kubectl debug node/...` escape hatch, SSH key re-bootstrap recipe |
+| Zomboid players stuck on "Joining game" while the server looks healthy | [zomboid-version-lock.md](./zomboid-version-lock.md) | Steam auto-updates the client but the server image is pinned; compare buildids before suspecting the network |
 
 ## Environment and Platform Guides
 

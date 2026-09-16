@@ -147,16 +147,18 @@ endpoints:
 
   - name: PlaceMyParents API
     group: apps
-    url: "http://placemyparents-api.apps.svc:3004/"
+    url: "http://placemyparents-api.placemyparents-preview.svc/api/health"
     interval: 60s
     conditions:
-      - "[STATUS] < 500"
+      - "[STATUS] == 200"
+      - "[BODY].status == ok"
 
   - name: PlaceMyParents Web
     group: apps
-    url: "http://placemyparents-web.apps.svc:3006/"
+    url: "http://placemyparents-web.placemyparents-preview.svc/"
     interval: 60s
     conditions:
+      - "[CONNECTED] == true"
       - "[STATUS] < 500"
 
   # --- placemyparents production (DigitalOcean, external) ---
@@ -193,14 +195,7 @@ endpoints:
   # --- databases ---
   - name: PlaceMyParents DB
     group: databases
-    url: "tcp://placemyparents-postgres.apps.svc:5432"
-    interval: 120s
-    conditions:
-      - "[CONNECTED] == true"
-
-  - name: History Time DB
-    group: databases
-    url: "tcp://history-time-postgres.history-time.svc:5432"
+    url: "tcp://placemyparents-postgres.placemyparents-preview.svc:5432"
     interval: 120s
     conditions:
       - "[CONNECTED] == true"

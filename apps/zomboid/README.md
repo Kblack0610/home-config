@@ -39,8 +39,30 @@ triggered it, every time. Tell people to hit start, then join when it says `runn
 The server puts itself to sleep after **8 consecutive empty checks at a 5-minute cadence,
 so ~40 minutes idle** (`sleep/cronjob.yaml`). There is no "last player left" event in PZ,
 so polling RCON is the only mechanism available; it is one loop on one cadence, and it
-**fails closed** — any error (RCON refused, unparseable output, API failure) leaves the
-server running.
+**fails closed** - any error (RCON refused, unparseable output, API failure) leaves the
+server running. So in normal use you do not have to stop it by hand at all: walk away and
+it parks itself.
+
+### If the control API is unreachable
+
+`zomboid-control` is an ordinary Deployment and can be stranded by a NotReady node, in
+which case every call above fails to connect. Scale the game server directly instead:
+
+```bash
+kubectl scale deploy/zomboid -n zomboid --replicas=0   # or 1 to wake it
+```
+
+This is safe and does not fight Flux: `replicas` is deliberately absent from
+`deployment.yaml` (see the comment at the top of that file), so the live value is owned by
+whoever set it last and a reconcile will not stamp it back. Allow up to **120 s** for the
+pod to go away: the server flushes the world to disk on SIGTERM and cutting that short
+corrupts saves.
+
+### Seeing whether it is up
+
+`status.kblab.me`, **game-servers** group. A red dot there is the normal resting state and
+means nobody is playing; it is only a fault if you expected a session to be live. Nothing
+alerts off it.
 
 ## Changing server settings
 

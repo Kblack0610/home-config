@@ -95,12 +95,30 @@ endpoints:
   # design, so monitoring it directly would alert every time nobody is playing - which
   # is most of the time, and is the correct state. What must always be up is the thing
   # that can WAKE it: if this is down, nobody can start a session.
+  #
+  # The game server's own up/down now shows in the game-servers group below, which is
+  # readable-but-not-alertable for exactly the reason above.
   - name: Zomboid Control
     group: home-k3s
     url: "http://zomboid-control.zomboid.svc:80/healthz"
     interval: 120s
     conditions:
       - "[STATUS] == 200"
+
+  # --- game servers ---
+  # Read as "is it up right now", NOT as health. These are scale-to-zero, so a red dot
+  # is the normal resting state ("nobody is playing") and uptime percentages here are
+  # meaningless by construction - do not "fix" a low number. Nothing pages off this
+  # group; there is no alerting block in this file.
+  #
+  # RCON is the probe because it only binds once the world has finished loading, so
+  # CONNECTED means genuinely joinable rather than merely scheduled.
+  - name: Zomboid
+    group: game-servers
+    url: "tcp://zomboid-rcon.zomboid.svc:27015"
+    interval: 60s
+    conditions:
+      - "[CONNECTED] == true"
 
   # --- apps ---
   - name: Actual Budget

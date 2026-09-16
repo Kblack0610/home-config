@@ -6,15 +6,14 @@ metadata:
   labels:
     app.kubernetes.io/name: zomboid-sleeper
 spec:
-  # TEMPORARILY SUSPENDED while a connection problem is being debugged.
+  # Set it here, never with `kubectl patch`: Flux re-applies this manifest every 10
+  # minutes and stamps the field back, which is how a patched suspend=true silently
+  # became false again and scaled the server out from under someone mid-session.
   #
-  # It has to be set here, not with `kubectl patch`: Flux re-applies this manifest
-  # every 10 minutes and stamps the field back to its default, which is exactly how
-  # a patched suspend=true silently became false again and the sleeper scaled the
-  # server out from under someone mid-troubleshooting.
-  #
-  # REVERT THIS to false once connections are working.
-  suspend: true
+  # Unsuspended 2026-09-16 after the 42.20.4 bump restored joins (the connection
+  # problem this was parked for). It had been suspended since 2026-08-13, so the
+  # server held ~3GB on hp-victus for a month instead of sleeping.
+  suspend: false
 
   # The cadence. Idle time before sleep = this interval x CHECKS_BEFORE_SLEEP,
   # so 5 min x 8 = 40 minutes of an empty server.

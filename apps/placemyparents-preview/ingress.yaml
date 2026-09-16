@@ -13,6 +13,7 @@ spec:
     - hosts:
         - placemyparents.blacknbrownstudios.com
         - placemyparents-api.blacknbrownstudios.com
+        - placemyparents-mobile.blacknbrownstudios.com
       secretName: placemyparents-preview-tls
   rules:
     - host: placemyparents.blacknbrownstudios.com
@@ -33,5 +34,18 @@ spec:
             backend:
               service:
                 name: placemyparents-api
+                port:
+                  number: 80
+    # The Expo app bundled for react-native-web, so the mobile UI is reviewable
+    # in a browser. Depth-1 subdomain because Cloudflare Universal SSL covers
+    # *.blacknbrownstudios.com at one level only.
+    - host: placemyparents-mobile.blacknbrownstudios.com
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: placemyparents-mobile-web
                 port:
                   number: 80

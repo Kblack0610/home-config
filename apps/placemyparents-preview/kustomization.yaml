@@ -10,6 +10,7 @@ resources:
   - postgres-statefulset.yaml
   - deployment-api.yaml
   - deployment-web.yaml
+  - deployment-mobile-web.yaml
   - deployment-gallery.yaml
   - ingress.yaml
   - ingress-gallery.yaml
@@ -22,5 +23,14 @@ images:
     newTag: pre-5583e26
   - name: git.kblab.me/kblack0610/placemyparents-web
     newTag: pre-5583e26
+  # No image exists under this name until the first preview run after the
+  # platform PR lands, so this pod ImagePullBackOffs until then and that is the
+  # expected bootstrap state. The entry has to exist NOW regardless: the
+  # workflow's awk rewrites an existing `- name:` block and hard-fails the run
+  # if it cannot find all three. A deliberately invalid tag rather than
+  # `latest`, so the gap reads as "not built yet" instead of silently serving
+  # whatever `latest` happens to point at.
+  - name: git.kblab.me/kblack0610/placemyparents-mobile-web
+    newTag: bootstrap-not-yet-built
   - name: git.kblab.me/kblack0610/placemyparents-gallery
     newTag: pre-572ce2d8

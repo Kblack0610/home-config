@@ -343,6 +343,7 @@ spec:
               cp /managed-config/package_wall_night_mode.yaml /config/packages/wall_night_mode.yaml
               cp /managed-config/package_avr_yamaha.yaml /config/packages/avr_yamaha.yaml
               cp /managed-config/package_honeywell_fan.yaml /config/packages/honeywell_fan.yaml
+              cp /managed-config/package_zomboid.yaml /config/packages/zomboid.yaml
 
               # Custom microWakeWord model for the in-browser voice satellites.
               # The engine loads .tflite from /config/voice_satellite/models/ and
@@ -1925,6 +1926,17 @@ spec:
                 secretKeyRef:
                   name: litellm-assist-credentials
                   key: api-key
+            # Zomboid start/stop buttons (config/packages/zomboid.yaml). The package
+            # reads AUTH, not TOKEN: HA's !env_var cannot concatenate, so the "Bearer "
+            # prefix is composed here with k8s $(VAR) expansion, which only sees vars
+            # declared ABOVE it - do not reorder these two.
+            - name: ZOMBOID_CONTROL_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: zomboid-control-token
+                  key: control-token
+            - name: ZOMBOID_CONTROL_AUTH
+              value: "Bearer $(ZOMBOID_CONTROL_TOKEN)"
           ports:
             - name: http
               containerPort: 8123

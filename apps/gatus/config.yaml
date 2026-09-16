@@ -5,6 +5,11 @@ storage:
 ui:
   title: KB Lab Status
   header: KB Lab Infrastructure
+  # Gatus has no action surface - ui.buttons are plain hyperlinks and the dashboard is
+  # read-only - so anything you press lives in Home Assistant. This is the hand-off.
+  buttons:
+    - name: "Game server controls"
+      link: "https://hass.kblab.me/lovelace/ops"
 
 # This instance is APPS. Machines live on fleet.kblab.me (apps/gatus-fleet/).
 #

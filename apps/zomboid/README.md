@@ -77,7 +77,7 @@ preset before the server starts. Check before changing it:
 
 ```bash
 kubectl -n zomboid run pz-inspect --rm -i --restart=Never \
-  --image=danixu86/project-zomboid-dedicated-server:42.20.2-release \
+  --image=danixu86/project-zomboid-dedicated-server:42.20.4-release \
   --command -- ls /home/steam/pz-dedicated/media/lua/shared/Sandbox/
 ```
 

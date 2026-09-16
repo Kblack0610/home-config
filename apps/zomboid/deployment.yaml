@@ -16,10 +16,16 @@
 # Do NOT add an HPA either - a running server costs ~8Gi on a node that is also a
 # k3s worker, and the wake/sleep decision is not a CPU-pressure decision.
 #
-# Image choice: danixu86 publishes build-pinned tags (42.20.2-release) so git names the
+# Image choice: danixu86 publishes build-pinned tags (42.20.4-release) so git names the
 # exact PZ build, matching how apps/jellyfin pins 10.10.7. The more commonly cited
 # renegademaster image was last published 2024-06 - before Build 42 existed - and is not
 # a safe pin.
+#
+# This pin must track the build Steam has pushed to CLIENTS: PZ has no version
+# negotiation, so a newer client authenticates, gets connection-details, then never sends
+# player-connect. The server logs nothing and the player sits on "Joining game". Diagnose
+# by comparing buildids (client appmanifest_108600.acf vs server appmanifest_380870.acf)
+# before suspecting the network. See docs/zomboid-version-lock.md.
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -93,7 +99,7 @@ spec:
               subPath: Zomboid
       containers:
         - name: zomboid
-          image: danixu86/project-zomboid-dedicated-server:42.20.2-release
+          image: danixu86/project-zomboid-dedicated-server:42.20.4-release
           env:
             # Secrets only. Every other ini key is owned by configmap.yaml - setting an
             # env var here for a key that lives there would silently override git.

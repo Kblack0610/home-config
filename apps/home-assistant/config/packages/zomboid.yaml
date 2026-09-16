@@ -1,0 +1,70 @@
+# Start/stop buttons for the scale-to-zero Project Zomboid server (apps/zomboid).
+#
+# The actions live here rather than on status.kblab.me because gatus has no action
+# surface at all: its `ui.buttons` are plain hyperlinks and the dashboard is strictly
+# read-only. Gatus shows the dot, this drives it.
+#
+# Everything goes through zomboid-control's HTTP API, which holds RBAC scoped to
+# scaling exactly one Deployment. HA deliberately gets no cluster credentials of its
+# own - that narrow ServiceAccount is the whole reason the control API exists.
+#
+# ZOMBOID_CONTROL_AUTH is composed in apps/home-assistant/deployment.yaml as
+# "Bearer $(ZOMBOID_CONTROL_TOKEN)". !env_var raises if it is unset, so a broken
+# wiring fails loudly at config load instead of silently 401-ing on first press.
+
+rest_command:
+  zomboid_start:
+    url: "http://zomboid-control.zomboid.svc:80/start"
+    method: POST
+    headers:
+      Authorization: !env_var ZOMBOID_CONTROL_AUTH
+  zomboid_stop:
+    url: "http://zomboid-control.zomboid.svc:80/stop"
+    method: POST
+    headers:
+      Authorization: !env_var ZOMBOID_CONTROL_AUTH
+
+# asleep | starting | running. `starting` is a real state and lasts 60-120 s while the
+# world loads, so the button feedback below reports it rather than pretending the
+# server is up the moment the pod is scheduled.
+rest:
+  - resource: "http://zomboid-control.zomboid.svc:80/status"
+    scan_interval: 30
+    headers:
+      Authorization: !env_var ZOMBOID_CONTROL_AUTH
+    sensor:
+      - name: "Zomboid server"
+        unique_id: zomboid_server_state
+        icon: mdi:zombie
+        value_template: "{{ value_json.state | default('unknown') }}"
+
+script:
+  zomboid_start:
+    alias: Start Zomboid server
+    icon: mdi:play
+    mode: single
+    sequence:
+      - action: rest_command.zomboid_start
+      # The world takes 60-120 s to load, so without this the tablet gives no sign
+      # anything happened and people press Start repeatedly.
+      - action: persistent_notification.create
+        data:
+          title: Zomboid
+          message: >-
+            Starting. The world takes a minute or two to load - join when the
+            Ops dashboard shows "running".
+          notification_id: zomboid_start
+
+  zomboid_stop:
+    alias: Stop Zomboid server
+    icon: mdi:stop
+    mode: single
+    sequence:
+      - action: rest_command.zomboid_stop
+      - action: persistent_notification.create
+        data:
+          title: Zomboid
+          message: >-
+            Stopping. Allow about two minutes - the server flushes the world to
+            disk on shutdown and cutting that short corrupts saves.
+          notification_id: zomboid_stop

@@ -103,3 +103,31 @@ sections:
             name: Traefik
           - entity: sensor.litellm_cpu
             name: LiteLLM
+
+  - type: grid
+    cards:
+      - type: heading
+        heading: Game Servers
+        icon: mdi:gamepad-variant
+      # Scale-to-zero: asleep is the normal state, and it parks itself after ~40 min
+      # empty, so Stop is for reclaiming the ~3GB early rather than routine use.
+      - type: entities
+        title: Project Zomboid
+        show_header_toggle: false
+        entities:
+          - entity: sensor.zomboid_server
+            name: State
+      - type: horizontal-stack
+        cards:
+          - type: button
+            name: Start
+            icon: mdi:play
+            tap_action:
+              action: perform-action
+              perform_action: script.zomboid_start
+          - type: button
+            name: Stop
+            icon: mdi:stop
+            tap_action:
+              action: perform-action
+              perform_action: script.zomboid_stop

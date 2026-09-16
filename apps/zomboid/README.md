@@ -14,6 +14,20 @@ also a k3s worker, for a game nobody is playing most of the day.
 
 ## Waking and sleeping it
 
+**Easiest: the Ops dashboard in Home Assistant** (`hass.kblab.me/lovelace/ops`, Game
+Servers section) has Start and Stop buttons plus a live `asleep / starting / running`
+state. It works from a phone and from the wall panels, and `status.kblab.me` links to it
+from the "Game server controls" header button.
+
+Those buttons call the same API below; HA holds no cluster credentials of its own.
+`config/packages/zomboid.yaml` is the package, and the bearer token is a **second copy**
+of `control/secret.yaml` living in the `home-assistant` namespace
+(`apps/home-assistant/zomboid-control-token-secret.yaml`) because Secrets do not cross
+namespaces. **Rotating the token means editing both files** - if they drift, the buttons
+401 while the API itself still looks healthy.
+
+Or call it directly:
+
 | Action | Call |
 |---|---|
 | Status | `curl -H "Authorization: Bearer $TOKEN" https://zomboid.kblab.me/status` |

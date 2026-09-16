@@ -40,7 +40,7 @@ The server has done its whole job. It authenticated the user (`user.txt` shows `
 
 ## Confirming it
 
-Compare the two Steam build ids directly. They must match.
+Compare the two Steam manifests. Note that the game (appid 108600) and the dedicated server (appid 380870) are **separate Steam apps with independent buildid sequences**, so their `buildid` values are never equal and comparing them for equality is meaningless. Compare `LastUpdated` instead: a healthy pair was published in the same upstream release wave, normally within a couple of hours.
 
 Client (on the player's machine, appid 108600):
 
@@ -57,7 +57,9 @@ kubectl exec -n zomboid deploy/zomboid -c zomboid -- \
   /home/steam/pz-dedicated/steamapps/appmanifest_380870.acf
 ```
 
-Convert `LastUpdated` with `date -u -d @<epoch>`. If the client's timestamp is newer than the server's, that is the fault. Do this **before** investigating DNS, port-forwards, NAT reflection or hostPort - the network is provably fine the moment `client-connect` reaches the server at all.
+Convert `LastUpdated` with `date -u -d @<epoch>`. If the client's timestamp is days newer than the server's, that is the fault. For reference, the 2026-09-16 outage read client 2026-08-26 11:45Z against server 2026-08-06 - a 20-day gap; after the fix the pair read 11:45Z and 12:45Z on the same day, which is what correct looks like.
+
+Do this **before** investigating DNS, port-forwards, NAT reflection or hostPort - the network is provably fine the moment `client-connect` reaches the server at all.
 
 ## The fix
 

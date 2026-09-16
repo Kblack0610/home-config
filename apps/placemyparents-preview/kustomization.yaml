@@ -31,6 +31,6 @@ images:
   # `latest`, so the gap reads as "not built yet" instead of silently serving
   # whatever `latest` happens to point at.
   - name: git.kblab.me/kblack0610/placemyparents-mobile-web
-    newTag: bootstrap-not-yet-built
+    newTag: pre-1f9411f
   - name: git.kblab.me/kblack0610/placemyparents-gallery
     newTag: pre-572ce2d8

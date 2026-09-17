@@ -1,0 +1,47 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: playground-server
+  labels:
+    app: playground-server
+spec:
+  # No replicas field on purpose: Flux then does not own it, so `ctl.sh up` and
+  # `ctl.sh down` (kubectl scale) stick instead of being reconciled back to 1.
+  selector:
+    matchLabels:
+      app: playground-server
+  strategy:
+    type: Recreate
+  template:
+    metadata:
+      labels:
+        app: playground-server
+    spec:
+      # A Unity Linux server build is x86_64 only, and hostNetwork puts the UDP
+      # port straight on the node's LAN address - no servicelb proxy pods.
+      nodeSelector:
+        kubernetes.io/arch: amd64
+        kubernetes.io/hostname: hp-victus
+      hostNetwork: true
+      dnsPolicy: ClusterFirstWithHostNet
+      terminationGracePeriodSeconds: 30
+      imagePullSecrets:
+        - name: forgejo-registry
+      containers:
+        - name: playground-server
+          image: git.kblab.me/kblack0610/unity-playground-server:latest
+          imagePullPolicy: Always
+          env:
+            - name: PLAYGROUND_PORT
+              value: "7770"
+          ports:
+            - containerPort: 7770
+              hostPort: 7770
+              protocol: UDP
+              name: fishnet
+          resources:
+            requests:
+              cpu: 100m
+              memory: 256Mi
+            limits:
+              memory: 1Gi

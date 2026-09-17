@@ -15,7 +15,7 @@ The playground repo wraps both in `scripts/server/ctl.sh up|down|status|logs`.
 |---|---|
 | Node | `hp-victus` (192.168.1.243), the idle x86 machine |
 | Address for clients | `192.168.1.243:7770` (UDP, FishNet Tugboat) |
-| Image | `git.kblab.me/kblack0610/unity-playground-server:latest`, built by `scripts/server/image.sh` |
+| Image | `git.kblab.me/kblack0610/unity-playground-server`, built from a tag by `scripts/build.sh <tag> server` and pushed by `scripts/server/image.sh` |
 
 A clone joins it by putting `client@192.168.1.243:7770` in its `.parrelsyncarg`.
 
@@ -23,5 +23,5 @@ A clone joins it by putting `client@192.168.1.243:7770` in its `.parrelsyncarg`.
 
 - **No `replicas` field.** Flux uses server-side apply, so a field that is not in git is not owned by Flux and a manual `kubectl scale` sticks. Adding `replicas: 0` here would fight every scale-up.
 - **`hostNetwork` and a pinned node.** A Unity Linux server build is x86_64 only, and the cluster is mostly Raspberry Pis, so it has to land on `hp-victus` or `asus-laptop`. Binding the node's own LAN address also avoids servicelb's per-node UDP proxy pods. To move it, change the `kubernetes.io/hostname` selector.
-- **`imagePullPolicy: Always`** so a scale-up after a push picks up the new `:latest`. Pin a tag here if a build ever needs to stay put.
+- **A pinned image tag.** The playground builds the server from a git tag, so the version that is running is written down here and a scale-up cannot quietly pick up a different build. Bump this line to deploy a new one.
 - **No probes.** The server speaks UDP only, and a dead process is restarted by the kubelet anyway.

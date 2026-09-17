@@ -59,6 +59,7 @@ resources:
   - zomboid
 
   # Public sites (Cloudflare tunnel → Traefik → service)
+  - playground-server
   - portfolio
   - bnb-studios
   - office-cup

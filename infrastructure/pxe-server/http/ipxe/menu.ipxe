@@ -30,6 +30,11 @@ set force 0
 # =============================================================================
 
 :start
+# A host tagged for unattended install (config/dnsmasq.conf) is chained here
+# from autoinstall-cluster.ipxe with ${autostart} already set, and must never
+# stop at the menu - there is nobody at the keyboard to choose.
+isset ${autostart} && goto ${autostart} ||
+
 menu CachyOS Network Boot
 item --gap --             ========================================
 item --gap --             CachyOS Installation Options

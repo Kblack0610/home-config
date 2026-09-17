@@ -1,0 +1,18 @@
+#!ipxe
+#
+# Unattended cluster-node install.
+#
+# Served only to MACs tagged autoinstall-cluster in config/dnsmasq.conf, never
+# reachable from the interactive menu. Sets the target and hands off to the
+# normal menu script, which honours ${autostart} and skips the menu entirely.
+#
+# chain is relative to this script's own URL, so the server IP lives in exactly
+# one place (menu.ipxe).
+
+echo
+echo Unattended install: cluster node (k3s worker)
+echo No keypress required - installing without a console.
+echo
+
+set autostart cachyos-cluster
+chain menu.ipxe

@@ -131,6 +131,19 @@ devices:
     category: servers
     range_exception: true
 
+  # thinkcentre: x86 k3s node, Forgejo/GitHub Actions runner host, node-exporter.
+  # It held 192.168.1.100 statically in the OS with no reservation here at all,
+  # so when the box died the address existed nowhere the router knew about, and
+  # a rebuild would have come back on a random dynamic lease while ~8 places
+  # still pointed at .100 (ansible/inventory.yml, apps/ansible-runner/cronjob.yaml,
+  # apps/minio/README.md, the HA launcher's node-exporter link, docs/mcp-server.md).
+  # Kept at .100 rather than renumbered into the servers range for that reason.
+  - hostname: thinkcentre-lan
+    mac: "6C:4B:90:9A:79:66"
+    ip: "192.168.1.100"
+    category: servers
+    range_exception: true
+
   - hostname: asus-laptop
     mac: "04:42:1A:D1:65:F8"
     ip: "192.168.1.152"

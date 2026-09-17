@@ -23,5 +23,5 @@ A clone joins it by putting `client@192.168.1.243:7770` in its `.parrelsyncarg`.
 
 - **No `replicas` field.** Flux uses server-side apply, so a field that is not in git is not owned by Flux and a manual `kubectl scale` sticks. Adding `replicas: 0` here would fight every scale-up.
 - **`hostNetwork` and a pinned node.** A Unity Linux server build is x86_64 only, and the cluster is mostly Raspberry Pis, so it has to land on `hp-victus` or `asus-laptop`. Binding the node's own LAN address also avoids servicelb's per-node UDP proxy pods. To move it, change the `kubernetes.io/hostname` selector.
-- **A pinned image tag.** The playground builds the server from a git tag, so the version that is running is written down here and a scale-up cannot quietly pick up a different build. Bump this line to deploy a new one.
+- **A pinned image tag**, named after the playground commit it was built from, so what is running is written down and a scale-up cannot quietly pick up a different build. Build with `scripts/build.sh <tag> server` (or the same `-executeMethod` against a checkout), push with `scripts/server/image.sh <tag>`, then bump this line.
 - **No probes.** The server speaks UDP only, and a dead process is restarted by the kubelet anyway.

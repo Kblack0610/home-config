@@ -757,14 +757,21 @@ EOF
 # Main
 # =============================================================================
 
-# Parse global flags
+# Parse global flags in any position. The old loop stopped at the first
+# non-flag, so `dhcp sync --force` - the form USAGE documents above - parsed no
+# flags at all and fell through to the interactive confirm. Under a non-TTY
+# (CI, an agent, a pipe) that `read` sees EOF and declines, so the sync printed
+# its plan and applied nothing while exiting 0.
+ARGS=()
 while [[ $# -gt 0 ]]; do
     case "$1" in
-        --force) FORCE=true; shift ;;
-        -*) log_error "Unknown option: $1"; cmd_help; exit 1 ;;
-        *) break ;;
+        --force)    FORCE=true; shift ;;
+        --help|-h)  ARGS+=("help"); shift ;;
+        -*)         log_error "Unknown option: $1"; cmd_help; exit 1 ;;
+        *)          ARGS+=("$1"); shift ;;
     esac
 done
+set -- ${ARGS[@]+"${ARGS[@]}"}
 
 case "${1:-help}" in
     bootstrap)          cmd_bootstrap ;;

@@ -77,6 +77,12 @@ spec:
               value: us-east-1
             - name: EMAIL_FROM
               value: preview@kblab.me
+            # Matches prod (platform infra/flux/apps/prod/placemyparents/configmap.yaml).
+            # Unset, the schema default is false, which hid the Documents and
+            # physician-report surfaces from the preview and from the release
+            # gate's Playwright run. Preview data is synthetic seed only.
+            - name: PHYSICIAN_REPORTS_ENABLED
+              value: 'true'
             - name: DATABASE_URL
               valueFrom:
                 secretKeyRef:

@@ -1,7 +1,12 @@
 # Least privilege on purpose: this ServiceAccount is reachable, indirectly, from the
-# public internet via the control ingress. It can scale exactly one Deployment and
-# delete pods in its own namespace. It cannot read Secrets, cannot touch any other
-# namespace, and holds no cluster-scoped rights.
+# public internet via the control ingress. It cannot read Secrets and holds no
+# cluster-scoped rights.
+#
+# It is no longer confined to this namespace: the control service drives every game
+# server now, so each game's namespace grants it the same narrow Role from its own
+# directory (apps/playground-server/rbac.yaml). Scaling is scoped by resourceNames to
+# one Deployment per namespace; the pods rule cannot be, because `list` takes no
+# resourceNames, so it covers every pod in whichever namespace granted it.
 apiVersion: v1
 kind: ServiceAccount
 metadata:

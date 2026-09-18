@@ -26,6 +26,23 @@ of `control/secret.yaml` living in the `home-assistant` namespace
 namespaces. **Rotating the token means editing both files** - if they drift, the buttons
 401 while the API itself still looks healthy.
 
+### The page at games.kblab.me
+
+The same pod serves a page listing every server in `control/servers.json` - today Zomboid
+and the Unity playground server in the `playground-server` namespace - with its state,
+its join address and Start/Stop. Adding a third server is an entry in that file plus a
+RoleBinding in its namespace (`apps/playground-server/rbac.yaml` is the example); no code
+changes.
+
+It asks for a username and password, held in the same Secret as the bearer token. That is
+not belt-and-braces: every `*.kblab.me` ingress is reachable from the internet through the
+wildcard tunnel, and the `ipAllowList` middleware is a no-op behind it
+(`apps/gatus-fleet/ingress.yaml`), so the page has to authenticate itself.
+
+```bash
+kubectl -n zomboid get secret zomboid-control-token -o jsonpath='{.data.ui-password}' | base64 -d
+```
+
 Or call it directly:
 
 | Action | Call |
@@ -34,6 +51,9 @@ Or call it directly:
 | Start | `curl -XPOST -H "Authorization: Bearer $TOKEN" https://zomboid.kblab.me/start` |
 | Stop | `curl -XPOST -H "Authorization: Bearer $TOKEN" https://zomboid.kblab.me/stop` |
 | Restart | `curl -XPOST -H "Authorization: Bearer $TOKEN" https://zomboid.kblab.me/restart` |
+
+Those routes act on Zomboid (`DEFAULT_SERVER`). Every server is also addressable as
+`/servers/<name>/{status,start,stop,restart}`, and `GET /servers` lists them all.
 
 ```bash
 TOKEN=$(kubectl -n zomboid get secret zomboid-control-token -o jsonpath='{.data.control-token}' | base64 -d)
@@ -262,7 +282,7 @@ mod list under B42. Measured headroom on `hp-victus` at deploy time: 22 GB RAM a
 | `configmap.yaml` | Server config, git-authoritative |
 | `secret.yaml` | Admin / RCON / join passwords (SOPS) |
 | `pvc.yaml` | Saves, config and own mods. **Not** the game install — that is in the image |
-| `control/` | Scale API, its RBAC, and the public ingress |
+| `control/` | Scale API for every game server, the games.kblab.me page, RBAC and both ingresses |
 | `sleep/` | Idle poller and its CronJob |
 | `tests/` | Test suites for both scripts |
 

@@ -3,7 +3,7 @@
 
 Walks every Ingress under apps/, extracts the hostnames from spec.rules, and
 rewrites the section between BEGIN_GENERATED_INGRESS / END_GENERATED_INGRESS
-markers in apps/gatus/configmap.yaml. Each host becomes a generic HTTPS check
+markers in apps/gatus/config.yaml. Each host becomes a generic HTTPS check
 with a cert-expiration condition.
 
 Run this after adding, renaming, or removing an Ingress. The output is
@@ -23,9 +23,16 @@ import sys
 import yaml
 
 REPO = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
-CONFIGMAP = os.path.join(REPO, "apps/gatus/configmap.yaml")
+CONFIGMAP = os.path.join(REPO, "apps/gatus/config.yaml")
 INGRESS_GLOB = os.path.join(REPO, "apps/*/ingress*.yaml")
-INDENT = " " * 6  # matches the indentation of entries inside data.config.yaml
+INDENT = " " * 2  # matches the indentation of entries in apps/gatus/config.yaml
+# Was 6 while that file was embedded in a ConfigMap under data.config.yaml; it is a
+# standalone file now, and the script had been failing on both path and indent since
+# the split - so the generated block has drifted a long way from the ingresses.
+#
+# Careful before rerunning: the block currently holds hand-tuned checks that this
+# script cannot reproduce (binks.chat's body assertions, llm.kblab.me). Regenerating
+# deletes them. Reconciling that drift is its own change.
 BEGIN_MARK = "# BEGIN_GENERATED_INGRESS"
 END_MARK = "# END_GENERATED_INGRESS"
 

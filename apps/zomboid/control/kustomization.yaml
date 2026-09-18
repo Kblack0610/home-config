@@ -9,6 +9,7 @@ resources:
   - deployment.yaml
   - service.yaml
   - ingress.yaml
+  - ingress-games.yaml
 
 # Generated rather than a static ConfigMap so the name carries a content hash. That
 # makes the Deployment reference change whenever server.py changes, which rolls the
@@ -18,6 +19,7 @@ configMapGenerator:
   - name: zomboid-control-app
     files:
       - server.py
+      - servers.json
 
 generatorOptions:
   labels:

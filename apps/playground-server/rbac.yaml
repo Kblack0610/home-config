@@ -1,0 +1,46 @@
+# Lets the control service in the zomboid namespace scale this one too.
+#
+# The ServiceAccount stays over there (apps/zomboid/control/rbac.yaml); a RoleBinding
+# may name a subject from another namespace, so nothing about that identity moves.
+#
+# What this widens, stated plainly because the comment on the Role over there used to
+# claim the opposite: that identity now reaches two namespaces, and the pods rule below
+# has no resourceNames - `list` cannot take one - so it covers every pod in this
+# namespace, not just the game server's. The deployment rules are scoped to the single
+# Deployment by name.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: playground-server-control
+  namespace: playground-server
+  labels:
+    app.kubernetes.io/name: playground-server
+rules:
+  - apiGroups: ["apps"]
+    resources: ["deployments"]
+    resourceNames: ["playground-server"]
+    verbs: ["get"]
+  - apiGroups: ["apps"]
+    resources: ["deployments/scale"]
+    resourceNames: ["playground-server"]
+    verbs: ["get", "update", "patch"]
+  # /restart deletes the running pod and lets the Deployment recreate it.
+  - apiGroups: [""]
+    resources: ["pods"]
+    verbs: ["get", "list", "delete"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: playground-server-control
+  namespace: playground-server
+  labels:
+    app.kubernetes.io/name: playground-server
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: playground-server-control
+subjects:
+  - kind: ServiceAccount
+    name: zomboid-control
+    namespace: zomboid

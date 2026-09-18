@@ -36,6 +36,18 @@ spec:
               hostPort: 7770
               protocol: UDP
               name: fishnet
+          # Readiness, so "starting" on the games page means something. Without it
+          # the pod is Ready the instant the process starts and the page would say
+          # "running" through the whole Unity boot. 7770 is 0x1e5a in /proc/net/udp,
+          # and the socket binds once FishNet's transport is actually listening.
+          # Note this is hostNetwork, so it reads the node's socket table - another
+          # process holding 7770 on this node would also satisfy it.
+          readinessProbe:
+            exec:
+              command: ["grep", "-qi", ":1e5a", "/proc/net/udp"]
+            initialDelaySeconds: 5
+            periodSeconds: 5
+            failureThreshold: 24
           resources:
             requests:
               cpu: 100m

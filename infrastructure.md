@@ -161,6 +161,7 @@ Traefik on the local network path behind `192.168.1.124`. All `*.kblab.me` local
 | openclaw.kblab.me | OpenClaw | home-k3s | Traefik Ingress |
 | prometheus.kblab.me | Prometheus | home-k3s | Traefik Ingress |
 | slicer.kblab.me | OrcaSlicer | home-k3s | Traefik Ingress |
+| games.kblab.me | Game servers page (zomboid-control) | home-k3s | Traefik Ingress; asks for a password, because every *.kblab.me host is tunnel-reachable |
 
 ---
 

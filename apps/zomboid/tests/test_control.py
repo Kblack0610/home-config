@@ -5,6 +5,7 @@ auth cases are the ones that matter: this service is reachable from the internet
 
 Run: python3 tests/test_control.py   (optional arg: an alternate server.py to test)
 """
+import base64
 import importlib.util
 import json
 import os
@@ -25,6 +26,21 @@ SA.mkdir()
 
 os.environ["CONTROL_TOKEN"] = "correct-horse"
 os.environ["SA_DIR"] = str(SA)
+os.environ["UI_USER"] = "ken"
+os.environ["UI_PASSWORD"] = "hunter2"
+
+# The real servers.json is read at import; point at a fixture so the tests do not
+# move every time a server is added.
+SERVERS_FILE = TMP / "servers.json"
+SERVERS_FILE.write_text(json.dumps([
+    {"name": "zomboid", "namespace": "zomboid", "deployment": "zomboid",
+     "labelSelector": "app.kubernetes.io/name=zomboid", "join": "host:16261"},
+    {"name": "playground", "namespace": "playground-server",
+     "deployment": "playground-server", "labelSelector": "app=playground-server",
+     "join": "host:7770"},
+]))
+os.environ["SERVERS_FILE"] = str(SERVERS_FILE)
+os.environ["DEFAULT_SERVER"] = "zomboid"
 HERE = pathlib.Path(__file__).resolve().parent
 SRC = pathlib.Path(sys.argv[1]) if len(sys.argv) > 1 else HERE.parent / "control" / "server.py"
 
@@ -38,15 +54,18 @@ ctl._ssl_ctx = ssl.create_default_context(cafile=str(SA / "ca.crt"))
 
 CALLS = []
 STATE = {"spec": {"replicas": 0}, "status": {"readyReplicas": 0}}
+PLAYGROUND = {"spec": {"replicas": 0}, "status": {"readyReplicas": 0}}
+STATES = {"zomboid": STATE, "playground-server": PLAYGROUND}
 
 
 def fake_k8s(method, path, body=None, content_type="application/json"):
     CALLS.append((method, path, body))
-    if method == "GET" and path.endswith("/deployments/zomboid"):
-        return STATE
-    if method == "PATCH" and path.endswith("/scale"):
-        STATE["spec"]["replicas"] = body["spec"]["replicas"]
-        return {}
+    for name, state in STATES.items():
+        if method == "GET" and path.endswith(f"/deployments/{name}"):
+            return state
+        if method == "PATCH" and path.endswith(f"/deployments/{name}/scale"):
+            state["spec"]["replicas"] = body["spec"]["replicas"]
+            return {}
     if method == "GET" and "/pods" in path:
         return {"items": [{"metadata": {"name": "zomboid-abc123"}}]}
     return {}
@@ -59,15 +78,32 @@ threading.Thread(target=srv.serve_forever, daemon=True).start()
 BASE = f"http://127.0.0.1:{srv.server_address[1]}"
 
 
-def call(method, path, token=None):
+def call(method, path, token=None, basic=None):
     req = urllib.request.Request(f"{BASE}{path}", method=method)
     if token:
         req.add_header("Authorization", f"Bearer {token}")
+    if basic:
+        encoded = base64.b64encode(basic.encode()).decode()
+        req.add_header("Authorization", f"Basic {encoded}")
     try:
         with urllib.request.urlopen(req, timeout=5) as r:
             return r.status, json.loads(r.read())
     except urllib.error.HTTPError as e:
         return e.code, json.loads(e.read())
+
+
+def fetch_raw(path, token=None, basic=None):
+    req = urllib.request.Request(f"{BASE}{path}")
+    if token:
+        req.add_header("Authorization", f"Bearer {token}")
+    if basic:
+        encoded = base64.b64encode(basic.encode()).decode()
+        req.add_header("Authorization", f"Basic {encoded}")
+    try:
+        with urllib.request.urlopen(req, timeout=5) as r:
+            return r.status, r.headers.get("Content-Type", ""), r.read().decode()
+    except urllib.error.HTTPError as e:
+        return e.code, e.headers.get("Content-Type", ""), e.read().decode()
 
 
 failures = []
@@ -118,6 +154,62 @@ print("routing:")
 check("unknown GET is 404", call("GET", "/nope", "correct-horse")[0], 404)
 check("unknown POST is 404", call("POST", "/nope", "correct-horse")[0], 404)
 check("mutating route rejects GET", call("GET", "/start", "correct-horse")[0], 404)
+
+print("browser auth:")
+check("basic with the right password is accepted",
+      call("GET", "/status", basic="ken:hunter2")[0], 200)
+check("basic with the wrong password is rejected",
+      call("GET", "/status", basic="ken:wrong")[0], 401)
+check("basic with the wrong user is rejected",
+      call("GET", "/status", basic="eve:hunter2")[0], 401)
+check("garbage basic header is rejected",
+      call("GET", "/status", basic="not-a-colon-pair")[0], 401)
+status, _, _ = fetch_raw("/status")
+check("an unauthenticated caller is told how to authenticate", status, 401)
+
+print("the page:")
+status, ctype, body = fetch_raw("/", basic="ken:hunter2")
+check("/ serves html to a logged-in browser", (status, ctype.split(";")[0]), (200, "text/html"))
+# The page ships no server list of its own - it asks /servers, so adding a server
+# is a config change and never an HTML edit. That indirection is the thing to pin.
+check("the page reads its list from /servers", '"/servers"' in body, True)
+check("/ needs a credential", fetch_raw("/")[0], 401)
+
+print("multi-server routes:")
+STATE["spec"]["replicas"], PLAYGROUND["spec"]["replicas"] = 0, 0
+check("/servers lists both",
+      sorted(s["name"] for s in call("GET", "/servers", "correct-horse")[1]["servers"]),
+      ["playground", "zomboid"])
+call("POST", "/servers/playground/start", "correct-horse")
+check("starting one leaves the other alone",
+      (PLAYGROUND["spec"]["replicas"], STATE["spec"]["replicas"]), (1, 0))
+call("POST", "/servers/playground/stop", "correct-horse")
+check("/servers/<name>/stop scales that one down", PLAYGROUND["spec"]["replicas"], 0)
+check("per-server status reports its own join address",
+      call("GET", "/servers/playground/status", "correct-horse")[1]["join"], "host:7770")
+check("unknown server is 404", call("GET", "/servers/nope/status", "correct-horse")[0], 404)
+check("unknown server cannot be started",
+      call("POST", "/servers/nope/start", "correct-horse")[0], 404)
+check("an unknown server does not leak to an unauthenticated caller",
+      call("GET", "/servers/nope/status")[0], 401)
+
+print("legacy routes still mean zomboid:")
+STATE["spec"]["replicas"], PLAYGROUND["spec"]["replicas"] = 0, 0
+call("POST", "/start", "correct-horse")
+check("/start is the default server, not all of them",
+      (STATE["spec"]["replicas"], PLAYGROUND["spec"]["replicas"]), (1, 0))
+check("/status reports the default server",
+      call("GET", "/status", "correct-horse")[1]["name"], "zomboid")
+
+print("config validation:")
+bad = TMP / "bad-servers.json"
+bad.write_text(json.dumps([{"name": "x", "namespace": "n", "deployment": "d",
+                            "labelSelector": ""}]))
+try:
+    ctl.load_servers(str(bad))
+    check("an empty labelSelector is refused", "accepted", "ValueError")
+except ValueError:
+    check("an empty labelSelector is refused", "ValueError", "ValueError")
 
 print()
 if failures:

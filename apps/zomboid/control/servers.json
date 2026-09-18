@@ -1,0 +1,18 @@
+[
+  {
+    "name": "zomboid",
+    "namespace": "zomboid",
+    "deployment": "zomboid",
+    "labelSelector": "app.kubernetes.io/name=zomboid",
+    "join": "192.168.1.243:16261",
+    "blurb": "Project Zomboid. Takes a minute or two to load the world."
+  },
+  {
+    "name": "playground",
+    "namespace": "playground-server",
+    "deployment": "playground-server",
+    "labelSelector": "app=playground-server",
+    "join": "192.168.1.243:7770",
+    "blurb": "Unity playground sandbox. Join from a build or a ParrelSync clone."
+  }
+]

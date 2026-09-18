@@ -37,6 +37,28 @@ jobs:
       - name: Home Assistant packages are all registered with the ConfigMap generator
         run: python3 scripts/check-ha-packages.py
 
+  zomboid-scripts:
+    # The control and sleeper suites have existed since those scripts were written
+    # and have only ever run when someone remembered to. They are stdlib-only and
+    # need no cluster, so there is no reason for that.
+    runs-on: docker
+    container:
+      image: python:3.12-alpine
+    steps:
+      - name: Install checkout deps
+        run: apk add --no-cache git nodejs
+
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      # run.sh is bash (and the control suite reads the CA bundle to build an SSL
+      # context), neither of which alpine ships.
+      - name: Install test deps
+        run: apk add --no-cache bash ca-certificates
+
+      - name: Control API and sleeper suites
+        run: apps/zomboid/tests/run.sh
+
   kustomize-builds:
     runs-on: docker
     container:

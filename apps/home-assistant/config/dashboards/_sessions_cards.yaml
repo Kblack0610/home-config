@@ -1,0 +1,33 @@
+# Shared cards: your interactive Claude sessions, grouped by project exactly like the waybar
+# ai-agents module (both read `agent-panel list`). One sensor.agent_sessions_<project> per group,
+# published by agent-mqtt-publish; glyphs are agent-panel's: ! needs you, ~ working, check idle.
+# Included by view_agents.yaml and phone.yaml; navigation-free.
+- type: heading
+  heading: Your sessions
+  heading_style: title
+- type: custom:auto-entities
+  show_empty: true
+  card_param: cards
+  card:
+    type: grid
+    columns: 1
+    square: false
+  filter:
+    include:
+      - entity_id: sensor.agent_sessions_*
+        options:
+          type: custom:mushroom-template-card
+          primary: "{{ state_attr(entity, 'project') }}  {{ state_attr(entity, 'glyphs') }}"
+          secondary: >-
+            {% set busy = (state_attr(entity, 'sessions') or []) | rejectattr('status', 'eq', 'idle') | list %}
+            {% if busy %}{% for s in busy %}{{ '!' if s.status == 'attention' else '~' }} {{ s.title }}{{ '\n' if not loop.last }}{% endfor %}
+            {% else %}{{ state_attr(entity, 'count') }} idle{% endif %}
+          multiline_secondary: true
+          icon: mdi:console-line
+          icon_color: >-
+            {{ {'attention': 'red', 'working': 'amber', 'idle': 'green'}.get(states(entity), 'disabled') }}
+          tap_action: { action: more-info }
+  sort: { method: entity_id }
+  else:
+    type: markdown
+    content: No Claude sessions running.

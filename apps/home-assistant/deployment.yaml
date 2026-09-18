@@ -380,6 +380,7 @@ spec:
               cp /managed-config/dashboard_view_media.yaml /config/dashboards/view_media.yaml
               cp /managed-config/dashboard_view_settings.yaml /config/dashboards/view_settings.yaml
               cp /managed-config/dashboard_phone.yaml /config/dashboards/phone.yaml
+              cp /managed-config/dashboard_sessions_cards.yaml /config/dashboards/_sessions_cards.yaml
           volumeMounts:
             - name: config
               mountPath: /config

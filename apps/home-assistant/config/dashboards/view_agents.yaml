@@ -52,6 +52,9 @@ sections:
             content: "${{ states('sensor.agent_cost_24h') | float(0) | round(0) | int }} / 24h"
             tap_action: { action: more-info, entity: sensor.agent_cost_24h }
 
+  - type: grid
+    cards: !include _sessions_cards.yaml
+
   # Questions an agent is blocked on until you answer (answer from the cockpit / agent-ask).
   - type: grid
     cards:
@@ -74,7 +77,7 @@ sections:
   - type: grid
     cards:
       - type: heading
-        heading: Runners
+        heading: Background runners
         heading_style: title
       - type: custom:auto-entities
         show_empty: false
@@ -102,6 +105,7 @@ sections:
             - entity_id: sensor.agent_watch_*
             - entity_id: sensor.agent_asks_open
             - entity_id: sensor.agent_sessions
+            - entity_id: sensor.agent_sessions_*
             - entity_id: sensor.agent_cost_*
         sort: { method: entity_id }
 

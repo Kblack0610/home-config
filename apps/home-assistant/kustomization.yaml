@@ -58,6 +58,7 @@ configMapGenerator:
       - dashboard_view_media.yaml=config/dashboards/view_media.yaml
       - dashboard_view_settings.yaml=config/dashboards/view_settings.yaml
       - dashboard_phone.yaml=config/dashboards/phone.yaml
+      - dashboard_sessions_cards.yaml=config/dashboards/_sessions_cards.yaml
 
 resources:
   - namespace.yaml

@@ -1,0 +1,132 @@
+# Phone dashboard (/phone-home), for the HA Companion app on Android.
+# Everything but Home is SHARED with the wall tablets (dashboards/wall.yaml): the view_*.yaml
+# files and the device_*.yaml subviews use relative navigation paths, so one file serves
+# both dashboards. Wall-only pieces stay out: no wallpanel/screensaver, no kiosk_mode, no
+# Photos panel, no Voice Room. Home here is phone-shaped: one column, attention first.
+title: Phone
+views:
+  - title: Home
+    path: home
+    icon: mdi:home
+    type: sections
+    max_columns: 2
+    sections:
+      - type: grid
+        cards:
+          - type: custom:mushroom-template-card
+            primary: >-
+              {{ ['Good morning','Good afternoon','Good evening'][0 if now().hour < 12 else 1 if now().hour < 18 else 2] }}
+            secondary: '{{ now().strftime("%A %-d %B, %-I:%M %p") }}'
+            icon: mdi:cellphone
+            icon_color: blue
+            tap_action: { action: none }
+          - type: custom:clock-weather-card
+            entity: weather.forecast_home
+            forecast_rows: 3
+          # What needs you: agents, services, the game server. Each chip opens its detail.
+          - type: custom:mushroom-chips-card
+            alignment: start
+            chips:
+              - type: template
+                icon: mdi:robot
+                icon_color: >-
+                  {{ 'red' if states('sensor.agents_problem') | int(0) > 0
+                     else 'amber' if is_state('binary_sensor.agents_need_attention', 'on') else 'green' }}
+                content: >-
+                  {% set p = states('sensor.agents_problem') | int(0) %}{% set a = states('sensor.agent_asks_open') | int(0) %}
+                  {{ states('sensor.agents_working') }} working{% if p %}, {{ p }} problem{% endif %}{% if a %}, {{ a }} asks{% endif %}
+                tap_action: { action: navigate, navigation_path: agents }
+              - type: template
+                icon: mdi:lan-connect
+                icon_color: "{{ 'red' if states('sensor.services_down_count') | int(0) > 0 else 'green' }}"
+                content: >-
+                  {% set d = states('sensor.services_down_count') | int(0) %}{{ d ~ ' down' if d else 'Services up' }}
+                tap_action: { action: navigate, navigation_path: ops }
+              - type: template
+                icon: mdi:currency-usd
+                content: "${{ states('sensor.agent_cost_24h') | float(0) | round(0) | int }} / 24h"
+                tap_action: { action: more-info, entity: sensor.agent_cost_24h }
+              # Zomboid: tap for state, hold to start the server.
+              - type: template
+                icon: mdi:controller
+                icon_color: "{{ 'green' if is_state('sensor.zomboid_server', 'running') else 'grey' }}"
+                content: "Zomboid {{ states('sensor.zomboid_server') }}"
+                tap_action: { action: more-info, entity: sensor.zomboid_server }
+                hold_action:
+                  action: perform-action
+                  perform_action: script.zomboid_start
+                  confirmation: { text: Start the Zomboid server? }
+          - type: custom:mushroom-chips-card
+            alignment: start
+            chips:
+              - { type: template, icon: mdi:robot, content: Agents, tap_action: { action: navigate, navigation_path: agents } }
+              - { type: template, icon: mdi:tune, content: Controls, tap_action: { action: navigate, navigation_path: control } }
+              - { type: template, icon: mdi:robot-vacuum, content: Devices, tap_action: { action: navigate, navigation_path: devices } }
+              - { type: template, icon: mdi:map-marker-radius, content: Local, tap_action: { action: navigate, navigation_path: local } }
+              - { type: template, icon: mdi:server-network, content: Ops, tap_action: { action: navigate, navigation_path: ops } }
+              - { type: template, icon: mdi:play-box-multiple, content: Media, tap_action: { action: navigate, navigation_path: media } }
+      - type: grid
+        cards:
+          - type: heading
+            heading: Devices
+            heading_style: title
+          - type: custom:mushroom-chips-card
+            alignment: start
+            chips:
+              - type: template
+                icon: mdi:robot-vacuum
+                content: "{{ states('sensor.tapovacuummop_status') }}"
+                icon_color: >-
+                  {{ 'red' if states('sensor.tapovacuummop_error') not in ['Ok','unknown','unavailable']
+                     else 'green' if is_state('vacuum.tapovacuummop','docked') else 'blue' }}
+                tap_action: { action: navigate, navigation_path: device-vacuum }
+              - type: template
+                icon: mdi:cat
+                content: "{{ states('sensor.cat_litter_box_status') }}"
+                icon_color: "{{ 'orange' if is_state('sensor.cat_litter_box_status','Cat_into') else 'blue' }}"
+                tap_action: { action: navigate, navigation_path: device-litterbox }
+              - type: template
+                icon: mdi:printer-3d-nozzle
+                content: >-
+                  {% set s = states('sensor.a1_03900d5b1110644_print_status') %}{{ 'off' if s in ['unavailable','unknown'] else s }}
+                tap_action: { action: navigate, navigation_path: device-bambu }
+              - type: template
+                icon: mdi:cast-audio-variant
+                content: "{{ states.media_player | list | count }} speakers"
+                tap_action: { action: navigate, navigation_path: device-speakers }
+      # Rooms: the same shared partial the wall and the Overview use.
+      - type: grid
+        cards: !include _rooms_cards.yaml
+      - type: grid
+        cards:
+          - type: heading
+            heading: Announce
+            heading_style: title
+          - type: custom:mushroom-entity-card
+            entity: input_text.voice_announce_message
+            icon: mdi:message-text
+          - type: custom:mushroom-template-card
+            primary: Announce to all speakers
+            icon: mdi:bullhorn-variant
+            icon_color: amber
+            tap_action:
+              action: call-service
+              service: script.tts_announce_all_cast
+              data:
+                message: "{{ states('input_text.voice_announce_message') }}"
+                language: "{{ states('input_select.voice_announce_language') }}"
+
+  - !include view_agents.yaml
+  - !include view_devices.yaml
+  - !include view_control.yaml
+  - !include view_local.yaml
+  - !include view_ops.yaml
+  - !include view_media.yaml
+  - !include view_settings.yaml
+
+  # Hidden device-detail subviews, the same files the wall and the main dashboard include.
+  - !include device_vacuum.yaml
+  - !include device_litterbox.yaml
+  - !include device_bambu.yaml
+  - !include device_neptune.yaml
+  - !include device_speakers.yaml

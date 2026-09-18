@@ -1,0 +1,56 @@
+# Shared view: included by BOTH dashboards/wall.yaml and dashboards/phone.yaml.
+# Navigation paths are RELATIVE (home, device-*) so they resolve inside whichever dashboard
+# shows the view; an absolute /wall-panels/... path here would strand the phone.
+# ──────────────────────────────── MEDIA ──────────────────────────────────
+# Jellyfin: the "Open Jellyfin" button works now (web UI). For in-HA control,
+# add the Jellyfin integration (Settings → Devices → Add Integration → Jellyfin
+# → jellyfin.kblab.me + API key) — it creates media_player entities per active
+# session. For playback ON the tablet, install Findroid (Amazon Appstore / F-Droid).
+title: Media
+path: media
+icon: mdi:play-box-multiple
+type: sections
+max_columns: 3
+sections:
+  - type: grid
+    cards:
+      - type: custom:bubble-card
+        card_type: button
+        button_type: name
+        name: Home
+        icon: mdi:home
+        tap_action: { action: navigate, navigation_path: home }
+      - type: heading
+        heading: Jellyfin
+        heading_style: title
+      - type: custom:mushroom-template-card
+        primary: Open Jellyfin
+        secondary: Browse & play the library
+        icon: mdi:jellyfish
+        icon_color: purple
+        tap_action: { action: url, url_path: 'https://jellyfin.kblab.me' }
+      - type: markdown
+        content: >
+          **In-HA control** needs the Jellyfin integration added
+          (Settings → Devices → Add Integration → Jellyfin). **Playback on this
+          tablet**: install Findroid. HA acts as the remote / now-playing.
+  - type: grid
+    cards:
+      - type: heading
+        heading: Players
+        heading_style: title
+      - type: custom:auto-entities
+        show_empty: false
+        card_param: cards
+        card:
+          type: grid
+          columns: 1
+          square: false
+        filter:
+          include:
+            - domain: media_player
+              options:
+                type: custom:mushroom-media-player-card
+                media_controls: [play_pause, next]
+                volume_controls: [volume_buttons]
+        sort: { method: friendly_name }

@@ -372,6 +372,14 @@ spec:
               cp /managed-config/dashboard_device_bambu.yaml /config/dashboards/device_bambu.yaml
               cp /managed-config/dashboard_device_neptune.yaml /config/dashboards/device_neptune.yaml
               cp /managed-config/dashboard_device_speakers.yaml /config/dashboards/device_speakers.yaml
+              cp /managed-config/dashboard_view_agents.yaml /config/dashboards/view_agents.yaml
+              cp /managed-config/dashboard_view_devices.yaml /config/dashboards/view_devices.yaml
+              cp /managed-config/dashboard_view_control.yaml /config/dashboards/view_control.yaml
+              cp /managed-config/dashboard_view_local.yaml /config/dashboards/view_local.yaml
+              cp /managed-config/dashboard_view_ops.yaml /config/dashboards/view_ops.yaml
+              cp /managed-config/dashboard_view_media.yaml /config/dashboards/view_media.yaml
+              cp /managed-config/dashboard_view_settings.yaml /config/dashboards/view_settings.yaml
+              cp /managed-config/dashboard_phone.yaml /config/dashboards/phone.yaml
           volumeMounts:
             - name: config
               mountPath: /config

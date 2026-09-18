@@ -28,8 +28,9 @@ two omissions are independent and each one alone is sufficient to break it.
 
 THE INVARIANT
 
-Every *.yaml in config/packages/ appears in BOTH the kustomization and the init
-container's copy list. One direction only: a reference to a file that does not exist is
+Every *.yaml in config/packages/ AND config/dashboards/ appears in BOTH the kustomization
+and the init container's copy list. Dashboards have the same failure with a worse symptom:
+a view file that is `!include`d but never copied breaks the whole dashboard it sits in. One direction only: a reference to a file that does not exist is
 already a hard `kustomize build` failure (2) or an init-container crash (3), so the
 reverse needs no check here.
 """
@@ -40,7 +41,9 @@ import sys
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 KUSTOMIZATION = ROOT / "apps/home-assistant/kustomization.yaml"
 DEPLOYMENT = ROOT / "apps/home-assistant/deployment.yaml"
-PACKAGES = ROOT / "apps/home-assistant/config/packages"
+CONFIG = ROOT / "apps/home-assistant/config"
+# (directory under config/, ConfigMap key prefix)
+MANAGED = (("packages", "package"), ("dashboards", "dashboard"))
 
 
 def main() -> int:
@@ -48,41 +51,39 @@ def main() -> int:
         if not path.is_file():
             print(f"FAIL: {path.relative_to(ROOT)} not found")
             return 1
-    if not PACKAGES.is_dir():
-        print(f"FAIL: {PACKAGES.relative_to(ROOT)} not found")
-        return 1
-
     # Read as text, not YAML: both references are substrings inside a "key=path" entry
     # and a shell `cp` line. Parsing the documents would not make the match any surer.
     kustomization = KUSTOMIZATION.read_text()
     deployment = DEPLOYMENT.read_text()
 
-    found = sorted(PACKAGES.glob("*.yaml"))
-    # An empty package set means the layout moved and this check has silently stopped
-    # checking anything. Fail rather than pass vacuously.
-    if not found:
-        print(f"FAIL: no package files under {PACKAGES.relative_to(ROOT)}")
-        return 1
-
-    broken = 0
-    for p in found:
-        in_configmap = f"config/packages/{p.name}" in kustomization
-        # The init container copies the flattened ConfigMap key to its real name.
-        in_copy = f"/config/packages/{p.name}" in deployment
-        if in_configmap and in_copy:
-            continue
-        broken += 1
-        print(f"FAIL: config/packages/{p.name} never reaches /config/packages in the pod")
-        if not in_configmap:
-            print(f"      kustomization.yaml needs:  - package_{p.stem}.yaml=config/packages/{p.name}")
-        if not in_copy:
-            print(f"      deployment.yaml needs:     cp /managed-config/package_{p.stem}.yaml /config/packages/{p.name}")
+    broken = total = 0
+    for sub, prefix in MANAGED:
+        found = sorted((CONFIG / sub).glob("*.yaml"))
+        # An empty set means the layout moved and this check has silently stopped
+        # checking anything. Fail rather than pass vacuously.
+        if not found:
+            print(f"FAIL: no files under apps/home-assistant/config/{sub}")
+            return 1
+        total += len(found)
+        for p in found:
+            in_configmap = f"config/{sub}/{p.name}" in kustomization
+            # The init container copies the flattened ConfigMap key to its real name.
+            in_copy = f"/config/{sub}/{p.name}" in deployment
+            if in_configmap and in_copy:
+                continue
+            broken += 1
+            key = f"{prefix}_{p.stem.lstrip('_')}.yaml"
+            print(f"FAIL: config/{sub}/{p.name} never reaches /config/{sub} in the pod")
+            if not in_configmap:
+                print(f"      kustomization.yaml needs:  - {key}=config/{sub}/{p.name}")
+            if not in_copy:
+                print(f"      deployment.yaml needs:     cp /managed-config/{key} /config/{sub}/{p.name}")
 
     if broken:
-        print(f"\n{broken} of {len(found)} package files are wired up incompletely.")
+        print(f"\n{broken} of {total} package/dashboard files are wired up incompletely.")
         return 1
 
-    print(f"ok: all {len(found)} home-assistant package files are in the ConfigMap and copied into place")
+    print(f"ok: all {total} home-assistant package and dashboard files are in the ConfigMap and copied into place")
     return 0
 
 

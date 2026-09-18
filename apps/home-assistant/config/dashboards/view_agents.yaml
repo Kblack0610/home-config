@@ -1,0 +1,141 @@
+# Shared view: included by BOTH dashboards/wall.yaml and dashboards/phone.yaml.
+# Navigation paths are RELATIVE (home) so they resolve inside whichever dashboard shows it.
+# The AI agent fleet. Every sensor.agent_* entity arrives by MQTT discovery from
+# agent-mqtt-publish on the workstation (dotfiles); rollups live in packages/agents.yaml.
+# Runners carry a `last_outcome` attribute, watches are sensor.agent_watch_*.
+title: Agents
+path: agents
+icon: mdi:robot
+type: sections
+max_columns: 3
+sections:
+  - type: grid
+    cards:
+      - type: custom:bubble-card
+        card_type: button
+        button_type: name
+        name: Home
+        icon: mdi:home
+        tap_action: { action: navigate, navigation_path: home }
+      - type: heading
+        heading: Agents
+        heading_style: title
+      - type: custom:mushroom-template-card
+        primary: >-
+          {% set p = states('sensor.agents_problem') | int(0) %}
+          {{ 'All clear' if p == 0 else p ~ (' problem' if p == 1 else ' problems') }}
+        secondary: >-
+          {% set n = state_attr('sensor.agents_problem', 'names') or [] %}
+          {{ n | join(', ') if n else states('sensor.agents_working') ~ ' working' }}
+        icon: "{{ 'mdi:robot-happy-outline' if states('sensor.agents_problem') | int(0) == 0 else 'mdi:robot-dead-outline' }}"
+        icon_color: "{{ 'green' if states('sensor.agents_problem') | int(0) == 0 else 'red' }}"
+        multiline_secondary: true
+        tap_action: { action: more-info, entity: sensor.agents_problem }
+      - type: custom:mushroom-chips-card
+        alignment: start
+        chips:
+          - type: template
+            icon: mdi:robot-outline
+            icon_color: blue
+            content: "{{ states('sensor.agents_working') }} working"
+          - type: template
+            icon: mdi:account-question
+            icon_color: "{{ 'amber' if states('sensor.agent_asks_open') | int(0) > 0 else 'grey' }}"
+            content: "{{ states('sensor.agent_asks_open') }} asks"
+            tap_action: { action: more-info, entity: sensor.agent_asks_open }
+          - type: template
+            icon: mdi:console
+            content: "{{ states('sensor.agent_sessions') }} sessions"
+            tap_action: { action: more-info, entity: sensor.agent_sessions }
+          - type: template
+            icon: mdi:currency-usd
+            content: "${{ states('sensor.agent_cost_24h') | float(0) | round(0) | int }} / 24h"
+            tap_action: { action: more-info, entity: sensor.agent_cost_24h }
+
+  # Questions an agent is blocked on until you answer (answer from the cockpit / agent-ask).
+  - type: grid
+    cards:
+      - type: heading
+        heading: Waiting on you
+        heading_style: title
+      - type: markdown
+        content: |
+          {% set asks = state_attr('sensor.agent_asks_open', 'asks') or [] %}
+          {% set live = (state_attr('sensor.agent_sessions', 'sessions') or [])
+                        | selectattr('status', 'eq', 'attention') | list %}
+          {% if not asks and not live %}Nothing is waiting on you.{% endif %}
+          {% for a in asks %}
+          - **{{ a.project }}** ({{ a.kind }}): {{ a.question }}
+          {% endfor %}
+          {% for s in live %}
+          - **{{ s.project }}** session needs you: {{ s.title }}
+          {% endfor %}
+
+  - type: grid
+    cards:
+      - type: heading
+        heading: Runners
+        heading_style: title
+      - type: custom:auto-entities
+        show_empty: false
+        card_param: cards
+        card:
+          type: grid
+          columns: 1
+          square: false
+        filter:
+          include:
+            - entity_id: sensor.agent_*
+              options:
+                type: custom:mushroom-template-card
+                primary: "{{ entity.split('.')[1][6:] | replace('_', '-') }}"
+                secondary: >-
+                  {% set s = states(entity) %}{% set u = state_attr(entity, 'updated') %}
+                  {{ s }}{% if state_attr(entity, 'item') %} - {{ state_attr(entity, 'item') }}{% endif %}
+                  {% if u %} - {{ relative_time(as_datetime(u)) }} ago{% endif %}
+                icon: mdi:robot
+                icon_color: >-
+                  {{ {'working': 'blue', 'error': 'red', 'blocked': 'orange', 'ok': 'green',
+                      'idle': 'grey'}.get(states(entity), 'disabled') }}
+                tap_action: { action: more-info }
+          exclude:
+            - entity_id: sensor.agent_watch_*
+            - entity_id: sensor.agent_asks_open
+            - entity_id: sensor.agent_sessions
+            - entity_id: sensor.agent_cost_*
+        sort: { method: entity_id }
+
+  - type: grid
+    cards:
+      - type: heading
+        heading: Watches
+        heading_style: title
+      # Tripped first, as full cards; the healthy rest as one compact list.
+      - type: custom:auto-entities
+        show_empty: false
+        card_param: cards
+        card:
+          type: grid
+          columns: 1
+          square: false
+        filter:
+          include:
+            - entity_id: sensor.agent_watch_*
+              state: /^(TRIP|ERROR)$/
+              options:
+                type: custom:mushroom-template-card
+                primary: "{{ entity.split('.')[1][12:] | replace('_', '-') }}"
+                secondary: >-
+                  {% set s = state_attr(entity, 'since') %}
+                  {{ states(entity) }}{% if s %} for {{ relative_time(as_datetime(s)) }}{% endif %}
+                icon: mdi:eye-remove
+                icon_color: red
+                tap_action: { action: more-info }
+      - type: markdown
+        content: |
+          {% set w = states.sensor | selectattr('entity_id', 'match', 'sensor\\.agent_watch_')
+                     | rejectattr('state', 'in', ['TRIP', 'ERROR']) | list %}
+          {% for g in w | groupby('state') %}
+          **{{ g.grouper }}**: {{ g.list | map(attribute='object_id') | map('replace', 'agent_watch_', '')
+                                 | map('replace', '_', '-') | join(', ') }}
+          {% endfor %}

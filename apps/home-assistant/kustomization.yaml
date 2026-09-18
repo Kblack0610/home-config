@@ -50,6 +50,14 @@ configMapGenerator:
       - dashboard_device_bambu.yaml=config/dashboards/device_bambu.yaml
       - dashboard_device_neptune.yaml=config/dashboards/device_neptune.yaml
       - dashboard_device_speakers.yaml=config/dashboards/device_speakers.yaml
+      - dashboard_view_agents.yaml=config/dashboards/view_agents.yaml
+      - dashboard_view_devices.yaml=config/dashboards/view_devices.yaml
+      - dashboard_view_control.yaml=config/dashboards/view_control.yaml
+      - dashboard_view_local.yaml=config/dashboards/view_local.yaml
+      - dashboard_view_ops.yaml=config/dashboards/view_ops.yaml
+      - dashboard_view_media.yaml=config/dashboards/view_media.yaml
+      - dashboard_view_settings.yaml=config/dashboards/view_settings.yaml
+      - dashboard_phone.yaml=config/dashboards/phone.yaml
 
 resources:
   - namespace.yaml

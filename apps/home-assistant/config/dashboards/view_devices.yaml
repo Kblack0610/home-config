@@ -1,0 +1,125 @@
+# Shared view: included by BOTH dashboards/wall.yaml and dashboards/phone.yaml.
+# Navigation paths are RELATIVE (home, device-*) so they resolve inside whichever dashboard
+# shows the view; an absolute /wall-panels/... path here would strand the phone.
+# ────────────────────────────── DEVICES ──────────────────────────────────
+# Rich device hub (mirrors the main dashboard's Devices tab): each card taps
+# through to its shared detail subview at device-* (relative), with a chips
+# stat row for glance info. Printers get their own section. Self-contained —
+# no navigating off the kiosk.
+title: Devices
+path: devices
+icon: mdi:devices
+type: sections
+max_columns: 3
+sections:
+  - type: grid
+    cards:
+      - type: custom:bubble-card
+        card_type: button
+        button_type: name
+        name: Home
+        icon: mdi:home
+        tap_action: { action: navigate, navigation_path: home }
+      - type: heading
+        heading: Devices
+        heading_style: title
+      - type: vertical-stack
+        cards:
+          - type: custom:mushroom-template-card
+            primary: Robot Vacuum
+            secondary: "{{ states('sensor.tapovacuummop_status') }}"
+            icon: mdi:robot-vacuum
+            icon_color: >-
+              {{ 'red' if states('sensor.tapovacuummop_error') not in ['Ok','unknown','unavailable']
+                 else 'green' if states('vacuum.tapovacuummop') == 'docked' else 'blue' }}
+            tap_action: { action: navigate, navigation_path: device-vacuum }
+          - type: custom:mushroom-chips-card
+            alignment: start
+            chips:
+              - type: entity
+                entity: sensor.tapovacuummop_battery
+                icon: mdi:battery
+              - type: entity
+                entity: sensor.tapovacuummop_last_clean_area
+                icon: mdi:ruler-square
+              - type: entity
+                entity: sensor.tapovacuummop_error
+                icon: mdi:alert-circle-outline
+      - type: vertical-stack
+        cards:
+          - type: custom:mushroom-template-card
+            primary: Litter Box
+            secondary: "{{ states('sensor.cat_litter_box_status') }}"
+            icon: mdi:cat
+            icon_color: >-
+              {{ 'orange' if is_state('sensor.cat_litter_box_status','Cat_into') else 'blue' }}
+            tap_action: { action: navigate, navigation_path: device-litterbox }
+          - type: custom:mushroom-chips-card
+            alignment: start
+            chips:
+              - type: entity
+                entity: sensor.cat_litter_box_cat_weight
+                icon: mdi:scale
+              - type: template
+                entity: sensor.cat_litter_box_excretions_per_day
+                icon: mdi:cat
+                content: "{{ states('sensor.cat_litter_box_excretions_per_day') }}/day"
+              - type: entity
+                entity: sensor.cat_litter_box_use_time
+                icon: mdi:timer-outline
+      - type: vertical-stack
+        cards:
+          - type: custom:mushroom-template-card
+            primary: Speakers
+            secondary: "{{ states.media_player | list | count }} cast device(s)"
+            icon: mdi:cast-audio-variant
+            icon_color: >-
+              {{ 'blue' if states.media_player | selectattr('state','eq','playing') | list | count > 0
+                 else 'grey' }}
+            tap_action: { action: navigate, navigation_path: device-speakers }
+  - type: grid
+    cards:
+      - type: heading
+        heading: 3D Printers
+        heading_style: title
+      - type: vertical-stack
+        cards:
+          - type: custom:mushroom-template-card
+            primary: Bambu A1
+            secondary: "{{ states('sensor.a1_03900d5b1110644_print_status') }}"
+            icon: mdi:printer-3d-nozzle
+            icon_color: >-
+              {{ 'grey' if states('sensor.a1_03900d5b1110644_print_status') in ['unavailable','unknown']
+                 else 'blue' if states('sensor.a1_03900d5b1110644_print_status') in ['printing','running']
+                 else 'green' }}
+            tap_action: { action: navigate, navigation_path: device-bambu }
+          - type: custom:mushroom-chips-card
+            alignment: start
+            chips:
+              - type: entity
+                entity: sensor.a1_03900d5b1110644_print_progress
+                icon: mdi:progress-clock
+              - type: entity
+                entity: sensor.a1_03900d5b1110644_current_stage
+              - type: entity
+                entity: sensor.a1_03900d5b1110644_nozzle_temperature
+                icon: mdi:printer-3d-nozzle-heat
+      - type: vertical-stack
+        cards:
+          - type: custom:mushroom-template-card
+            primary: Elegoo Neptune
+            secondary: "{{ states('sensor.neptune_print_state') }}"
+            icon: mdi:printer-3d-nozzle
+            icon_color: >-
+              {{ 'grey' if states('sensor.neptune_printer_status') in ['unavailable','unknown']
+                 else 'blue' if states('sensor.neptune_print_state') == 'printing' else 'green' }}
+            tap_action: { action: navigate, navigation_path: device-neptune }
+          - type: custom:mushroom-chips-card
+            alignment: start
+            chips:
+              - type: entity
+                entity: sensor.neptune_print_progress
+                icon: mdi:progress-clock
+              - type: entity
+                entity: sensor.neptune_extruder_temp
+                icon: mdi:printer-3d-nozzle-heat

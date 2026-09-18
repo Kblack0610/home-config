@@ -42,6 +42,13 @@ lovelace:
       title: Wall
       icon: mdi:tablet-dashboard
       show_in_sidebar: true
+    # Phone-shaped dashboard for the Companion app; shares every view but Home with the wall.
+    phone-home:
+      mode: yaml
+      filename: dashboards/phone.yaml
+      title: Phone
+      icon: mdi:cellphone
+      show_in_sidebar: true
 
 # card-mod must load as a frontend module (not just a Lovelace resource) so it
 # also styles more-info dialogs. Merges with the frontend from default_config.

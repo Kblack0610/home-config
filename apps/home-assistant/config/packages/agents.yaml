@@ -1,0 +1,65 @@
+# Agent fleet rollups for the dashboards and phone widgets.
+# The per-agent entities are NOT defined here: sensor.agent_<runner>, sensor.agent_watch_<name>,
+# sensor.agent_asks_open and sensor.agent_sessions come from MQTT discovery, published by
+# agent-mqtt-publish on the workstation (dotfiles). Runners are the ones carrying a
+# `last_outcome` attribute; watches are sensor.agent_watch_*.
+template:
+  - sensor:
+      - name: Agents working
+        unique_id: agents_working
+        icon: mdi:robot-outline
+        state: >-
+          {{ states.sensor | selectattr('attributes.last_outcome', 'defined')
+             | selectattr('state', 'eq', 'working') | list | count
+             + (state_attr('sensor.agent_sessions', 'working') | int(0)) }}
+
+      # A runner whose last run errored, or a sentinel watch that is tripped.
+      - name: Agents problem
+        unique_id: agents_problem
+        icon: mdi:robot-dead-outline
+        state: >-
+          {{ (states.sensor | selectattr('attributes.last_outcome', 'defined')
+              | selectattr('state', 'eq', 'error') | list | count)
+           + (states.sensor | selectattr('entity_id', 'match', 'sensor\.agent_watch_')
+              | selectattr('state', 'in', ['TRIP', 'ERROR']) | list | count) }}
+        attributes:
+          names: >-
+            {{ ((states.sensor | selectattr('attributes.last_outcome', 'defined')
+                 | selectattr('state', 'eq', 'error') | list)
+              + (states.sensor | selectattr('entity_id', 'match', 'sensor\.agent_watch_')
+                 | selectattr('state', 'in', ['TRIP', 'ERROR']) | list))
+               | map(attribute='object_id') | map('replace', 'agent_watch_', '')
+               | map('replace', 'agent_', '') | list }}
+
+  - binary_sensor:
+      # Something wants the human: a problem above, an open ask, or a live session flagged `!`.
+      - name: Agents need attention
+        unique_id: agents_attention
+        icon: mdi:account-alert
+        state: >-
+          {{ states('sensor.agents_problem') | int(0) > 0
+             or states('sensor.agent_asks_open') | int(0) > 0
+             or state_attr('sensor.agent_sessions', 'attention') | int(0) > 0 }}
+
+# Claude spend over a rolling 24h, from the OTel metrics every session exports
+# (Alloy -> Prometheus). service_name=claude-agentctl is the headless runners.
+rest:
+  - resource: "http://kube-prometheus-stack-prometheus.monitoring.svc:9090/api/v1/query?query=sum%20by%20(service_name)(increase(claude_code_cost_usage_USD_total%5B24h%5D))"
+    scan_interval: 300
+    sensor:
+      - name: Agent cost 24h
+        unique_id: agent_cost_24h
+        icon: mdi:currency-usd
+        unit_of_measurement: USD
+        state_class: measurement
+        value_template: >-
+          {{ value_json.data.result | map(attribute='value') | map('last')
+             | map('float', 0) | sum | round(2) }}
+      - name: Agent cost 24h headless
+        unique_id: agent_cost_24h_headless
+        icon: mdi:robot-outline
+        unit_of_measurement: USD
+        state_class: measurement
+        value_template: >-
+          {{ value_json.data.result | selectattr('metric.service_name', 'eq', 'claude-agentctl')
+             | map(attribute='value') | map('last') | map('float', 0) | sum | round(2) }}

@@ -39,6 +39,8 @@ not belt-and-braces: every `*.kblab.me` ingress is reachable from the internet t
 wildcard tunnel, and the `ipAllowList` middleware is a no-op behind it
 (`apps/gatus-fleet/ingress.yaml`), so the page has to authenticate itself.
 
+The user is `kblack0610`; the password is in the same Secret:
+
 ```bash
 kubectl -n zomboid get secret zomboid-control-token -o jsonpath='{.data.ui-password}' | base64 -d
 ```

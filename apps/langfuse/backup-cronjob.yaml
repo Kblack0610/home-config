@@ -1,0 +1,164 @@
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: langfuse-backup
+  namespace: langfuse
+  labels:
+    app.kubernetes.io/name: langfuse
+spec:
+  # 03:15, between immich (03:00) and forgejo-offbox (03:30).
+  schedule: "15 3 * * *"
+  timeZone: "America/New_York"
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 3
+  # Never, not OnFailure: OnFailure makes the Job controller delete the failed
+  # pod and its logs with it, which is how the 2026-08 NAS failures became
+  # undiagnosable.
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      template:
+        spec:
+          # The 8TB drive is physically in asus-laptop.
+          nodeSelector:
+            kubernetes.io/hostname: asus-laptop
+            storage.role/nas: "true"
+          restartPolicy: Never
+          containers:
+            - name: backup
+              image: alpine:3.24.1
+              env:
+                - name: PGPASSWORD
+                  valueFrom:
+                    secretKeyRef:
+                      name: langfuse-secrets
+                      key: POSTGRES_PASSWORD
+                - name: CH_PASSWORD
+                  valueFrom:
+                    secretKeyRef:
+                      name: langfuse-secrets
+                      key: CLICKHOUSE_PASSWORD
+              command:
+                - /bin/sh
+                - -c
+                - |
+                  set -eu
+                  set -o pipefail
+                  apk add --no-cache postgresql17-client curl gzip >/dev/null
+
+                  CH="http://langfuse-clickhouse.langfuse.svc.cluster.local:8123/"
+                  PG_HOST="postgres.databases.svc.cluster.local"
+                  RETENTION_DAYS=90
+                  PG_MIN_BYTES=16384
+                  TIMESTAMP="$(date +%Y%m%d-%H%M%S)"
+
+                  log() { echo "[$(date -Iseconds)] $*"; }
+
+                  # A disconnected USB drive stays MOUNTED: mountpoint returns
+                  # true, df reports the old size, and only real IO fails. On
+                  # 2026-08-09 that let a backup run "successfully guarded" for
+                  # two days while writing nothing. Probe with a real write.
+                  require_live_mount() {
+                    mountpoint -q "$1" || { log "FATAL: $1 not mounted"; exit 1; }
+                    touch "$1/.write-probe" 2>/dev/null || {
+                      log "FATAL: $1 is mounted but not writable - backing device gone"
+                      exit 1
+                    }
+                    rm -f "$1/.write-probe"
+                  }
+
+                  ch() { curl -sS --fail -X POST --data-binary @- \
+                           -H "X-ClickHouse-User: default" \
+                           -H "X-ClickHouse-Key: ${CH_PASSWORD}" "${CH}"; }
+
+                  # ClickHouse returns 500 / "Code: 241 memory limit exceeded"
+                  # when the server is at its cap, which says nothing about this
+                  # query - it is whatever else was running. Retry rather than
+                  # lose a night's archive to someone else's allocation.
+                  retry() {
+                    n=1
+                    while [ "${n}" -le 3 ]; do
+                      if "$@"; then return 0; fi
+                      log "attempt ${n}/3 failed, backing off $((n * 30))s"
+                      sleep $((n * 30))
+                      n=$((n + 1))
+                    done
+                    return 1
+                  }
+
+                  require_live_mount /backup
+                  mkdir -p /backup/postgres /backup/clickhouse
+
+                  log "=== langfuse backup ${TIMESTAMP} ==="
+
+                  # --- Postgres: projects, users, API keys, prompts, datasets.
+                  # Without it the ClickHouse archive restores into nothing.
+                  PG_FILE="/backup/postgres/langfuse-${TIMESTAMP}.sql.gz"
+                  pg_dump -h "${PG_HOST}" -U langfuse -d langfuse | gzip > "${PG_FILE}"
+                  PG_SIZE="$(wc -c < "${PG_FILE}")"
+                  # gzip succeeds on empty input, so a failed dump yields a
+                  # valid archive of nothing. Size is the only real check.
+                  if [ "${PG_SIZE}" -lt "${PG_MIN_BYTES}" ]; then
+                    log "FATAL: postgres dump is ${PG_SIZE} bytes, under ${PG_MIN_BYTES}"
+                    rm -f "${PG_FILE}"
+                    exit 1
+                  fi
+                  log "postgres: ${PG_FILE} (${PG_SIZE} bytes)"
+                  ls -t /backup/postgres/langfuse-*.sql.gz | tail -n +31 | xargs -r rm
+
+                  # --- ClickHouse: append-only month archive.
+                  # These tables partition by month, so a month is the natural
+                  # unit. Closed months are written once and never rewritten;
+                  # that is what makes the TTL below safe to apply.
+                  THIS_MONTH="$(date +%Y%m)"
+                  LAST_MONTH="$(date -d '1 month ago' +%Y%m 2>/dev/null || date +%Y%m)"
+
+                  for SPEC in traces:timestamp observations:start_time scores:timestamp; do
+                    TABLE="${SPEC%%:*}"
+                    COL="${SPEC##*:}"
+                    mkdir -p "/backup/clickhouse/${TABLE}"
+                    MONTHS="$(echo "SELECT DISTINCT toYYYYMM(${COL}) FROM default.${TABLE} ORDER BY 1 FORMAT TabSeparated" | ch)"
+                    for M in ${MONTHS}; do
+                      OUT="/backup/clickhouse/${TABLE}/${M}.native.gz"
+                      # Re-export the open month every run, and the previous one
+                      # once more after it closes to pick up its final hours.
+                      if [ -s "${OUT}" ] && [ "${M}" != "${THIS_MONTH}" ] && [ "${M}" != "${LAST_MONTH}" ]; then
+                        continue
+                      fi
+                      export_month() {
+                        echo "SELECT * FROM default.${TABLE} WHERE toYYYYMM(${COL}) = ${M} FORMAT Native" \
+                          | ch | gzip > "${OUT}.tmp"
+                      }
+                      retry export_month
+                      # Publish only after a complete write, so an interrupted
+                      # run cannot leave a truncated month looking archived.
+                      mv "${OUT}.tmp" "${OUT}"
+                      log "clickhouse: ${TABLE} ${M} ($(wc -c < "${OUT}") bytes)"
+                    done
+                  done
+
+                  # --- Local retention, asserted only now that the archive is
+                  # written. Re-asserted every run so a Langfuse migration that
+                  # rewrites the table cannot silently drop it.
+                  for SPEC in traces:timestamp observations:start_time scores:timestamp; do
+                    TABLE="${SPEC%%:*}"
+                    COL="${SPEC##*:}"
+                    CURRENT="$(echo "SELECT engine_full FROM system.tables WHERE database='default' AND name='${TABLE}' FORMAT TabSeparated" | ch)"
+                    case "${CURRENT}" in
+                      *"INTERVAL ${RETENTION_DAYS} DAY"*)
+                        log "ttl: ${TABLE} already ${RETENTION_DAYS}d" ;;
+                      *)
+                        echo "ALTER TABLE default.${TABLE} MODIFY TTL toDateTime(${COL}) + INTERVAL ${RETENTION_DAYS} DAY SETTINGS materialize_ttl_after_modify = 1" | ch
+                        log "ttl: ${TABLE} set to ${RETENTION_DAYS}d" ;;
+                    esac
+                  done
+
+                  log "=== langfuse backup complete ${TIMESTAMP} ==="
+              volumeMounts:
+                - name: backup
+                  mountPath: /backup
+          volumes:
+            - name: backup
+              hostPath:
+                path: /mnt/backup-8t/langfuse
+                type: DirectoryOrCreate

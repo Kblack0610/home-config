@@ -6,3 +6,4 @@ resources:
   - helmrepository.yaml
   - secret.sops.yaml
   - helmrelease.yaml
+  - backup-cronjob.yaml

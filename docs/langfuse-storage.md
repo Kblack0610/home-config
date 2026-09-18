@@ -65,6 +65,8 @@ $CH 'clickhouse-client --user=default --password="$CLICKHOUSE_ADMIN_PASSWORD" -q
 
 Verify the reclaim with `du -sh /bitnami/clickhouse/data/store` inside the pod.
 
+**Do this before expecting the backup job to work.** While the log tables were still filling, the server sat at its 4Gi cap permanently and any large `SELECT` lost the race: a preflight run of the backup script on 2026-09-18 got `curl: (18) transfer closed` on the `observations` export three attempts running, with `Code: 241 memory limit exceeded` in `system.query_log` each time. Lowering `max_threads` and `max_block_size` on the export did not help, because the pressure was not the export's. The job is ordered after this drop for that reason.
+
 ## Retention and archive
 
 The hot window is **90 days** in ClickHouse. Full history lives on the 8TB drive.

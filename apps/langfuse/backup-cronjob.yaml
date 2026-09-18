@@ -110,9 +110,6 @@ spec:
                   # These tables partition by month, so a month is the natural
                   # unit. Closed months are written once and never rewritten;
                   # that is what makes the TTL below safe to apply.
-                  THIS_MONTH="$(date +%Y%m)"
-                  LAST_MONTH="$(date -d '1 month ago' +%Y%m 2>/dev/null || date +%Y%m)"
-
                   for SPEC in traces:timestamp observations:start_time scores:timestamp; do
                     TABLE="${SPEC%%:*}"
                     COL="${SPEC##*:}"
@@ -120,20 +117,35 @@ spec:
                     MONTHS="$(echo "SELECT DISTINCT toYYYYMM(${COL}) FROM default.${TABLE} ORDER BY 1 FORMAT TabSeparated" | ch)"
                     for M in ${MONTHS}; do
                       OUT="/backup/clickhouse/${TABLE}/${M}.native.gz"
-                      # Re-export the open month every run, and the previous one
-                      # once more after it closes to pick up its final hours.
-                      if [ -s "${OUT}" ] && [ "${M}" != "${THIS_MONTH}" ] && [ "${M}" != "${LAST_MONTH}" ]; then
+                      ROWS_FILE="${OUT}.rows"
+                      ROWS="$(echo "SELECT count() FROM default.${TABLE} WHERE toYYYYMM(${COL}) = ${M} FORMAT TabSeparated" | ch)"
+                      # Re-export a month only when its row count moved. A closed
+                      # month is written once; the open one changes daily; a trace
+                      # backfilled into an old month re-triggers that month. Do not
+                      # use `date -d '1 month ago'` here - busybox has no GNU
+                      # relative dates, so it fails and a closed month would never
+                      # be re-exported, losing its final hours permanently.
+                      if [ -s "${OUT}" ] && [ "$(cat "${ROWS_FILE}" 2>/dev/null || echo -1)" = "${ROWS}" ]; then
                         continue
                       fi
+                      # max_threads/max_block_size keep the export's own buffers
+                      # small. This is a plain streaming SELECT, so it needs very
+                      # little - but it shares one 4Gi server-wide budget with
+                      # Langfuse's async inserts, and losing a race with those is
+                      # what truncated the first preflight run mid-transfer.
                       export_month() {
-                        echo "SELECT * FROM default.${TABLE} WHERE toYYYYMM(${COL}) = ${M} FORMAT Native" \
+                        echo "SELECT * FROM default.${TABLE} WHERE toYYYYMM(${COL}) = ${M} FORMAT Native
+                              SETTINGS max_threads = 1, max_block_size = 8192" \
                           | ch | gzip > "${OUT}.tmp"
                       }
                       retry export_month
                       # Publish only after a complete write, so an interrupted
-                      # run cannot leave a truncated month looking archived.
+                      # run cannot leave a truncated month looking archived. The
+                      # row count is written last: if it is present it means the
+                      # archive beside it is whole.
                       mv "${OUT}.tmp" "${OUT}"
-                      log "clickhouse: ${TABLE} ${M} ($(wc -c < "${OUT}") bytes)"
+                      echo "${ROWS}" > "${ROWS_FILE}"
+                      log "clickhouse: ${TABLE} ${M} - ${ROWS} rows, $(wc -c < "${OUT}") bytes"
                     done
                   done
 
@@ -148,7 +160,12 @@ spec:
                       *"INTERVAL ${RETENTION_DAYS} DAY"*)
                         log "ttl: ${TABLE} already ${RETENTION_DAYS}d" ;;
                       *)
-                        echo "ALTER TABLE default.${TABLE} MODIFY TTL toDateTime(${COL}) + INTERVAL ${RETENTION_DAYS} DAY SETTINGS materialize_ttl_after_modify = 1" | ch
+                        # materialize_ttl_after_modify = 0: do not rewrite every
+                        # existing part on the spot. Nothing is eligible for
+                        # deletion for another month, and an immediate mutation
+                        # against a memory-capped server is how this job would
+                        # fail on the night it is first deployed.
+                        echo "ALTER TABLE default.${TABLE} MODIFY TTL toDateTime(${COL}) + INTERVAL ${RETENTION_DAYS} DAY SETTINGS materialize_ttl_after_modify = 0" | ch
                         log "ttl: ${TABLE} set to ${RETENTION_DAYS}d" ;;
                     esac
                   done

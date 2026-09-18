@@ -34,7 +34,7 @@ views:
                      else 'amber' if is_state('binary_sensor.agents_need_attention', 'on') else 'green' }}
                 content: >-
                   {% set p = states('sensor.agents_problem') | int(0) %}{% set a = states('sensor.agent_asks_open') | int(0) %}
-                  {{ states('sensor.agents_working') }} working{% if p %}, {{ p }} problem{% endif %}{% if a %}, {{ a }} asks{% endif %}
+                  {{ states('sensor.agents_working') }} working{% if p %}, {{ p }} problem{{ 's' if p != 1 }}{% endif %}{% if a %}, {{ a }} asks{% endif %}
                 tap_action: { action: navigate, navigation_path: agents }
               - type: template
                 icon: mdi:lan-connect

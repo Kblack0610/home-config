@@ -156,8 +156,12 @@ spec:
                     TABLE="${SPEC%%:*}"
                     COL="${SPEC##*:}"
                     CURRENT="$(echo "SELECT engine_full FROM system.tables WHERE database='default' AND name='${TABLE}' FORMAT TabSeparated" | ch)"
+                    # Match the NORMALISED form. The ALTER below is written as
+                    # `INTERVAL 90 DAY`, but engine_full reads back as
+                    # `toIntervalDay(90)`, so matching the literal we sent would
+                    # never hit and this would re-ALTER every night forever.
                     case "${CURRENT}" in
-                      *"INTERVAL ${RETENTION_DAYS} DAY"*)
+                      *"toIntervalDay(${RETENTION_DAYS})"*)
                         log "ttl: ${TABLE} already ${RETENTION_DAYS}d" ;;
                       *)
                         # materialize_ttl_after_modify = 0: do not rewrite every

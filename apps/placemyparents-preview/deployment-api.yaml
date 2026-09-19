@@ -83,6 +83,12 @@ spec:
             # gate's Playwright run. Preview data is synthetic seed only.
             - name: PHYSICIAN_REPORTS_ENABLED
               value: 'true'
+            # Matches prod (same configmap). Unset, providers were never gated
+            # on the BAA in preview, so the release gate could not see the
+            # gate prod enforces. Seeded providers carry synthetic acceptances
+            # (platform #1303), so demo flows still work with this on.
+            - name: PROVIDER_BAA_ACCEPTANCE_REQUIRED
+              value: 'true'
             - name: DATABASE_URL
               valueFrom:
                 secretKeyRef:

@@ -31,6 +31,29 @@ template:
                | map(attribute='object_id') | map('replace', 'agent_watch_', '')
                | map('replace', 'agent_', '') | list }}
 
+      # The waybar ai-agents line, for a phone home-screen Template widget:
+      # "pla OK OK ~ ! | uni ! OK". Rendered here so the widget stays one expression
+      # ({{ states('sensor.agent_bar') }}) and any format change lands without retyping it.
+      - name: Agent bar
+        unique_id: agent_bar
+        icon: mdi:console-line
+        # truncate: an HA state over 255 chars is rejected outright, and this grows with sessions.
+        state: >-
+          {% set ns = namespace(p=[]) %}
+          {% for s in states.sensor | selectattr('entity_id', 'match', 'sensor\.agent_sessions_')
+                      | selectattr('attributes.glyphs', 'defined') %}
+          {% set ns.p = ns.p + [s.attributes.project[:3] ~ ' ' ~ s.attributes.glyphs] %}
+          {% endfor %}
+          {{ ns.p | join(' | ') | truncate(250, true, '..') }}
+        attributes:
+          full: >-
+            {% set ns = namespace(p=[]) %}
+            {% for s in states.sensor | selectattr('entity_id', 'match', 'sensor\.agent_sessions_')
+                        | selectattr('attributes.glyphs', 'defined') %}
+            {% set ns.p = ns.p + [s.attributes.project ~ ' ' ~ s.attributes.glyphs] %}
+            {% endfor %}
+            {{ ns.p | join(' | ') }}
+
   - binary_sensor:
       # Something wants the human: a problem above, an open ask, or a live session flagged `!`.
       - name: Agents need attention

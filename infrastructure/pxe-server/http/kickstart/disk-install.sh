@@ -49,6 +49,12 @@ PXE_DRYRUN=$(get_cmdline_param "pxe_dryrun" "0")
 PXE_DISK=$(get_cmdline_param "pxe_disk" "auto")
 PXE_FORCE=$(get_cmdline_param "pxe_force" "0")
 
+# The workstation key trusted by both the live environment and the installed
+# system. One definition: bootstrap_live_access and bootstrap_access both read
+# it, and a key that differs between the two is how you end up locked out of
+# exactly the box you need to debug.
+AUTHORIZED_KEY="ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIM6yTlK3GCzXC2+njcPtTucjwxb53Sb0+JT+TuTD78Jh kblack0610@gmail.com"
+
 # Installation target
 INSTALL_ROOT="/mnt"
 
@@ -91,13 +97,30 @@ log_success() { echo -e "${GREEN}[DISK OK]${NC} $*"; }
 log_warning() { echo -e "${YELLOW}[DISK WARN]${NC} $*"; }
 log_error()   { echo -e "${RED}[DISK ERROR]${NC} $*" >&2; }
 
+# Report progress by fetching a URL the PXE server does not serve. The 404 is
+# the point: it lands in the HTTP access log, which is the only channel that
+# survives a headless install. The console is unreachable, this script's own
+# output dies with the live environment, and a box that fails mid-install
+# leaves nothing behind - which is exactly how thinkcentre sat for 5 days
+# looking installed. Never fatal: -m 2 and `|| true`, so a wedged or absent
+# server cannot hold up the install.
+beacon() {
+    local phase="${1// /-}"
+    curl -s -m 2 -o /dev/null "http://${PXE_SERVER}:9080/beacon/${phase}" 2>/dev/null || true
+}
+
 log_section() {
     echo ""
     echo -e "${BLUE}════════════════════════════════════════${NC}"
     echo -e "${BLUE}  $*${NC}"
     echo -e "${BLUE}════════════════════════════════════════${NC}"
     echo ""
+    beacon "$*"
 }
+
+# `set -e` kills this script silently on a headless box. Name the line it died
+# on in the access log before it goes.
+trap 'beacon "FAILED-at-line-$LINENO"' ERR
 
 # Run a command, or log it if dry-run mode
 run() {
@@ -419,6 +442,26 @@ EOF
 # Bootstrap Access (guaranteed login regardless of auto-provision outcome)
 # =============================================================================
 
+# Make the LIVE environment reachable before touching the disk. Everything
+# below this runs with no console on a headless box, so if the install dies
+# the only way to read /tmp/autoinstall.log is over SSH into the live system -
+# and bootstrap_access seeds the key into the INSTALLED root, which does not
+# exist yet and never will if the install fails. Runs before safety_checks so
+# even a preflight abort leaves a debuggable box.
+bootstrap_live_access() {
+    log_section "Bootstrapping Live Access"
+
+    mkdir -p /root/.ssh
+    printf '%s\n' "$AUTHORIZED_KEY" > /root/.ssh/authorized_keys
+    chmod 700 /root/.ssh
+    chmod 600 /root/.ssh/authorized_keys
+
+    systemctl enable --now sshd 2>/dev/null || systemctl start sshd 2>/dev/null || \
+        log_warning "Could not start sshd in the live environment"
+
+    log_success "Live environment reachable: ssh root@<this host>"
+}
+
 bootstrap_access() {
     log_section "Bootstrapping Access"
 
@@ -458,9 +501,7 @@ bootstrap_access() {
     local ssh_dir="$INSTALL_ROOT/home/kblack0610/.ssh"
     mkdir -p "$ssh_dir"
     # Embed the workstation's public key
-    cat > "$ssh_dir/authorized_keys" <<'SSHEOF'
-ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIM6yTlK3GCzXC2+njcPtTucjwxb53Sb0+JT+TuTD78Jh kblack0610@gmail.com
-SSHEOF
+    printf '%s\n' "$AUTHORIZED_KEY" > "$ssh_dir/authorized_keys"
     chmod 700 "$ssh_dir"
     chmod 600 "$ssh_dir/authorized_keys"
     arch-chroot "$INSTALL_ROOT" chown -R kblack0610:kblack0610 /home/kblack0610/.ssh
@@ -592,6 +633,7 @@ main() {
     log_section "PXE Automated Disk Installation"
     log "Started at: $(date)"
 
+    bootstrap_live_access
     safety_checks
     detect_disk
 

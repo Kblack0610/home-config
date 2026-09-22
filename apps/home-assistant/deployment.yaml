@@ -345,6 +345,7 @@ spec:
               cp /managed-config/package_honeywell_fan.yaml /config/packages/honeywell_fan.yaml
               cp /managed-config/package_zomboid.yaml /config/packages/zomboid.yaml
               cp /managed-config/package_agents.yaml /config/packages/agents.yaml
+              cp /managed-config/package_lamps.yaml /config/packages/lamps.yaml
 
               # Custom microWakeWord model for the in-browser voice satellites.
               # The engine loads .tflite from /config/voice_satellite/models/ and

@@ -1,0 +1,56 @@
+# One-tap lamp actions, for Companion app Button widgets (one widget = one script),
+# the dashboards and voice.
+#
+# Targets the `lamp` LABEL, which is the category the plug editor writes
+# (pyscript/plug_settings.py: category -> entity labels). So a new plug tagged Lamp joins
+# these automatically and a renamed one never breaks them - no entity list lives here.
+# Per-room is label AND area, which a service target cannot express (its fields are a
+# union), hence the template.
+script:
+  lamps_off:
+    alias: Lamps off
+    icon: mdi:lightbulb-off
+    mode: single
+    sequence:
+      - action: switch.turn_off
+        target:
+          label_id: lamp
+
+  lamps_on:
+    alias: Lamps on
+    icon: mdi:lightbulb-on
+    mode: single
+    sequence:
+      - action: switch.turn_on
+        target:
+          label_id: lamp
+
+  lamps_toggle_living_room:
+    alias: Living Room lamps
+    icon: mdi:sofa
+    mode: single
+    sequence:
+      - action: switch.toggle
+        target:
+          entity_id: >-
+            {{ label_entities('lamp') | select('in', area_entities('Living Room')) | list }}
+
+  lamps_toggle_bedroom:
+    alias: Bedroom lamps
+    icon: mdi:bed
+    mode: single
+    sequence:
+      - action: switch.toggle
+        target:
+          entity_id: >-
+            {{ label_entities('lamp') | select('in', area_entities('Bedroom')) | list }}
+
+  lamps_toggle_office:
+    alias: Office lamps
+    icon: mdi:desk
+    mode: single
+    sequence:
+      - action: switch.toggle
+        target:
+          entity_id: >-
+            {{ label_entities('lamp') | select('in', area_entities('Office')) | list }}

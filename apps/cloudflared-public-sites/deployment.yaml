@@ -7,7 +7,7 @@ metadata:
   name: cloudflared-public-sites
 spec:
   progressDeadlineSeconds: 600
-  replicas: 1
+  replicas: 2
   revisionHistoryLimit: 10
   selector:
     matchLabels:
@@ -48,7 +48,7 @@ spec:
         image: cloudflare/cloudflared:2026.7.3
         imagePullPolicy: Always
         livenessProbe:
-          failureThreshold: 3
+          failureThreshold: 5
           httpGet:
             path: /ready
             port: 2000
@@ -56,7 +56,7 @@ spec:
           initialDelaySeconds: 15
           periodSeconds: 10
           successThreshold: 1
-          timeoutSeconds: 1
+          timeoutSeconds: 5
         name: cloudflared
         ports:
         - containerPort: 2000
@@ -71,10 +71,10 @@ spec:
           initialDelaySeconds: 10
           periodSeconds: 5
           successThreshold: 1
-          timeoutSeconds: 1
+          timeoutSeconds: 5
         resources:
           limits:
-            cpu: 200m
+            cpu: 500m
             memory: 128Mi
           requests:
             cpu: 50m

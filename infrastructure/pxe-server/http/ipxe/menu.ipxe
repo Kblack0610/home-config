@@ -36,11 +36,12 @@ set force 0
 isset ${autostart} && goto ${autostart} ||
 
 # Unattended hosts are matched here, not by dnsmasq tag: a dhcp-host `set:`
-# tag does not reach dhcp-boot in proxy-DHCP mode. Both tests below mean the
-# same box (.100 is reserved to that MAC in infrastructure/dhcp/devices.yaml).
-# REMOVE once the node is Ready, or it reinstalls on every power-on.
-iseq ${net0/mac} 6c:4b:90:9a:79:66 && goto cachyos-cluster ||
-iseq ${ip} 192.168.1.100 && goto cachyos-cluster ||
+# tag does not reach dhcp-boot in proxy-DHCP mode. Add a host's MAC below only
+# for as long as it needs installing, because the match fires on EVERY network
+# boot - and the cluster path sets pxe_force=1, which switches off the
+# existing-install guard in disk-install.sh's safety_checks.
+#
+#   iseq ${net0/mac} <mac> && goto cachyos-cluster ||
 
 menu CachyOS Network Boot
 item --gap --             ========================================

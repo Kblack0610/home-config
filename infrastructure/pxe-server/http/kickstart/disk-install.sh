@@ -586,14 +586,34 @@ run_provisioning() {
 
     chmod +x "$INSTALL_ROOT/tmp/auto-provision.sh"
 
+    # The chroot has no resolver of its own, so every name lookup inside it
+    # fails - and auto-provision.sh runs `set -e`, so its first one (the
+    # dotfiles clone) kills the script silently. thinkcentre installed on
+    # 2026-09-24 with a working base system and no user config at all: no
+    # dotfiles, no profile packages, no k3s. Seed the live environment's
+    # resolver before entering.
+    if [[ -f /etc/resolv.conf ]]; then
+        cp /etc/resolv.conf "$INSTALL_ROOT/etc/resolv.conf"
+    else
+        log_warning "No /etc/resolv.conf to seed - provisioning may fail to resolve names"
+    fi
+
     # Copy kernel cmdline params so auto-provision.sh can read them in chroot
     # The script reads /proc/cmdline, but in chroot it sees the host's cmdline - which is correct here
     log "Running provisioning in chroot..."
-    arch-chroot "$INSTALL_ROOT" bash /tmp/auto-provision.sh --chroot || {
-        log_warning "Auto-provisioning reported errors (non-fatal)"
-    }
+    local provision_rc=0
+    arch-chroot "$INSTALL_ROOT" bash /tmp/auto-provision.sh --chroot || provision_rc=$?
 
     rm -f "$INSTALL_ROOT/tmp/auto-provision.sh"
+
+    # A swallowed failure here is worse than a loud one: the install still
+    # reboots into a bootable system, so it LOOKS finished while the machine
+    # has none of its configuration. Report it where a headless run can see it.
+    if [[ "$provision_rc" -ne 0 ]]; then
+        log_error "Auto-provisioning FAILED (exit $provision_rc) - system is installed but unconfigured"
+        beacon "PROVISIONING-FAILED-rc-$provision_rc"
+        return 0
+    fi
 
     log_success "Provisioning complete"
 }

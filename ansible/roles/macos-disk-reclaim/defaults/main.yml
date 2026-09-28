@@ -1,0 +1,63 @@
+---
+# Prunes regenerable build caches on the Macs weekly, reporting what it freed
+# through the node_exporter textfile collector node-exporter-mac manages.
+#
+# The rule this role is built around: never touch anything CI depends on.
+# mac-mini-m1 is the sole self-hosted mobile-CI runner (site.yml) and
+# mobile-local-build.yml caches Pods and DerivedData between runs, so those are
+# load-bearing, not garbage. The keep-list below is not a suggestion.
+# Background: docs/mac-machines.md#disk-reclaim
+
+disk_reclaim_label: com.kblab.disk-reclaim
+disk_reclaim_launchagents_dir: "{{ ansible_env.HOME }}/Library/LaunchAgents"
+disk_reclaim_log_dir: /tmp
+
+disk_reclaim_script_dir: "{{ ansible_env.HOME }}/.local/bin"
+disk_reclaim_script_path: "{{ disk_reclaim_script_dir }}/reclaim-disk.sh"
+
+# Same textfile directory node_exporter reads. Keep in sync with
+# node-exporter-mac's node_exporter_textfile_dir.
+disk_reclaim_textfile_dir: "{{ ansible_env.HOME }}/.local/share/node_exporter/textfile"
+disk_reclaim_prom_path: "{{ disk_reclaim_textfile_dir }}/disk_reclaim.prom"
+
+# Weekly. These caches accumulate over weeks, not hours, and every run costs a
+# slow first rebuild for whatever it pruned - so a tighter cadence would trade
+# real developer time for disk nobody is short of yet.
+disk_reclaim_interval_seconds: 604800
+
+# Set true to report what WOULD be pruned and delete nothing. The metric still
+# gets written, so you can watch a cycle or two before trusting it.
+disk_reclaim_dry_run: false
+
+# Only prune caches untouched for this long. A project being actively worked on
+# keeps its cache; one nobody has opened in a month does not.
+disk_reclaim_min_age_days: 30
+
+# Unity project roots to sweep. Empty on a host means "no Unity here" and the
+# whole Unity section is skipped.
+disk_reclaim_unity_roots: []
+
+# Erase iOS simulator device DATA (installed apps and their caches) for devices
+# whose data exceeds this, in MB. This erases data only: the device stays
+# registered and the runtime stays installed, so CI reinstalls its app on the
+# next run exactly as it does on a fresh device. Set 0 to disable.
+#
+# Devices are skipped unless Shutdown, and the whole run aborts if a CI job is
+# in flight - erasing a device out from under a running build would break it.
+disk_reclaim_simulator_threshold_mb: 1024
+
+# Paths this role must never touch, whatever else changes. Each one is either
+# CI state or user data:
+#   actions-runner   the runner itself and its _work checkouts
+#   DerivedData      cached between CI runs by mobile-local-build.yml
+#   Pods             same
+#   pnpm / npm       the stores CI installs from
+#   Library/Android  mobile CI builds Android here too
+#   Downloads        user data, not a cache
+disk_reclaim_never_touch:
+  - "{{ ansible_env.HOME }}/actions-runner"
+  - "{{ ansible_env.HOME }}/Library/Developer/Xcode/DerivedData"
+  - "{{ ansible_env.HOME }}/Library/pnpm"
+  - "{{ ansible_env.HOME }}/.npm"
+  - "{{ ansible_env.HOME }}/Library/Android"
+  - "{{ ansible_env.HOME }}/Downloads"

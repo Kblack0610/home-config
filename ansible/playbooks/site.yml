@@ -110,6 +110,13 @@
     # sync, and assert auto-login/FileVault so the box comes back unattended.
     - role: macos-baseline
       tags: [mac, persistence]
+    # Weekly prune of regenerable build caches, reported through the existing
+    # node_exporter textfile collector. Unity roots are per-host: the mini is
+    # where DodginBalls lives, and a host with no roots set skips that section.
+    - role: macos-disk-reclaim
+      tags: [mac, disk]
+      vars:
+        disk_reclaim_unity_roots: "{{ ['/Users/kennethblack/dev/Games/DodginBalls_root'] if inventory_hostname == 'mac-mini' else [] }}"
 
 # 2026-07-18 ROLE SPLIT: mac-mini is the SOLE self-hosted mobile-CI runner;
 # mac-studio is a dedicated LLM inference node (its runner is torn down below).

@@ -1,0 +1,69 @@
+---
+- name: Assert the keep-list is non-empty
+  ansible.builtin.assert:
+    that:
+      - disk_reclaim_never_touch | length > 0
+    fail_msg: >-
+      disk_reclaim_never_touch is empty. This role deletes things; an empty
+      keep-list means somebody overrode the CI protections by accident.
+
+- name: Ensure script directory exists
+  ansible.builtin.file:
+    path: "{{ disk_reclaim_script_dir }}"
+    state: directory
+    mode: "0755"
+
+- name: Ensure textfile directory exists
+  ansible.builtin.file:
+    path: "{{ disk_reclaim_textfile_dir }}"
+    state: directory
+    mode: "0755"
+
+- name: Render reclaim-disk.sh
+  ansible.builtin.template:
+    src: reclaim-disk.sh.j2
+    dest: "{{ disk_reclaim_script_path }}"
+    mode: "0755"
+    validate: "/bin/bash -n %s"
+  register: disk_reclaim_script_result
+
+- name: Ensure LaunchAgents directory exists
+  ansible.builtin.file:
+    path: "{{ disk_reclaim_launchagents_dir }}"
+    state: directory
+    mode: "0755"
+
+- name: Render LaunchAgent plist
+  ansible.builtin.template:
+    src: "{{ disk_reclaim_label }}.plist.j2"
+    dest: "{{ disk_reclaim_launchagents_dir }}/{{ disk_reclaim_label }}.plist"
+    mode: "0644"
+  register: disk_reclaim_plist_result
+
+# bootout before bootstrap so a changed plist or script is actually picked up:
+# launchd keeps serving the loaded definition otherwise, and the host then
+# reports converged while running the old schedule.
+- name: Reload the LaunchAgent when the script or plist changed
+  when: disk_reclaim_script_result.changed or disk_reclaim_plist_result.changed
+  block:
+    - name: Bootout existing agent (ignored when not loaded)
+      ansible.builtin.command:
+        cmd: "launchctl bootout gui/{{ ansible_user_uid }}/{{ disk_reclaim_label }}"
+      register: disk_reclaim_bootout
+      changed_when: disk_reclaim_bootout.rc == 0
+      failed_when: false
+
+    - name: Bootstrap the agent
+      ansible.builtin.command:
+        cmd: >-
+          launchctl bootstrap gui/{{ ansible_user_uid }}
+          {{ disk_reclaim_launchagents_dir }}/{{ disk_reclaim_label }}.plist
+      register: disk_reclaim_bootstrap
+      changed_when: disk_reclaim_bootstrap.rc == 0
+
+- name: Verify the agent is registered with launchd
+  ansible.builtin.command:
+    cmd: "launchctl print gui/{{ ansible_user_uid }}/{{ disk_reclaim_label }}"
+  register: disk_reclaim_verify
+  changed_when: false
+  failed_when: disk_reclaim_verify.rc != 0

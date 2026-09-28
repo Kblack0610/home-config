@@ -117,6 +117,28 @@ spec:
                   name: placemyparents-preview-secrets
                   key: square-location-id
                   optional: true
+            # Mercury SANDBOX for provider bank verification + payouts (no real
+            # money). The sandbox token is IP-whitelisted in Mercury to this
+            # cluster's egress (the home ISP address), so a changed home IP
+            # breaks it with a misleading 401 "No matching token found". See
+            # platform docs/operations/OUTBOUND_IP_ALLOWLISTS.md.
+            - name: MERCURY_API_BASE_URL
+              value: "https://api-sandbox.mercury.com/api/v1"
+            - name: MERCURY_API_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: placemyparents-preview-secrets
+                  key: mercury-api-token
+            - name: MERCURY_ACCOUNT_ID
+              valueFrom:
+                secretKeyRef:
+                  name: placemyparents-preview-secrets
+                  key: mercury-account-id
+            - name: PAYOUT_ENCRYPTION_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: placemyparents-preview-secrets
+                  key: payout-encryption-key
             # Google OAuth — optional. Populate google-client-id /
             # google-client-secret in placemyparents-preview-secrets to enable.
             # Register https://placemyparents-api.blacknbrownstudios.com/api/v1/auth/google/callback

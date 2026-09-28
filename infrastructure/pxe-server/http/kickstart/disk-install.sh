@@ -49,11 +49,21 @@ PXE_DRYRUN=$(get_cmdline_param "pxe_dryrun" "0")
 PXE_DISK=$(get_cmdline_param "pxe_disk" "auto")
 PXE_FORCE=$(get_cmdline_param "pxe_force" "0")
 
-# The workstation key trusted by both the live environment and the installed
-# system. One definition: bootstrap_live_access and bootstrap_access both read
-# it, and a key that differs between the two is how you end up locked out of
-# exactly the box you need to debug.
-AUTHORIZED_KEY="ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIM6yTlK3GCzXC2+njcPtTucjwxb53Sb0+JT+TuTD78Jh kblack0610@gmail.com"
+# Keys trusted by both the live environment and the installed system. One
+# definition: bootstrap_live_access and bootstrap_access both read it, and a key
+# that differs between the two is how you end up locked out of exactly the box
+# you need to debug.
+#
+# The ansible-runner key belongs here too. Without it a freshly installed host
+# is reachable by a human and by nothing else, so the nightly convergence check
+# (apps/ansible-runner) cannot manage the machine it just rebuilt - thinkcentre
+# refused that key from 2026-09-24 and its KubeJobFailed alerts were still
+# firing 4 days later. Public keys only; the runner holds the private half in
+# the SOPS secret ansible-runner-secrets.
+AUTHORIZED_KEYS=(
+    "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIM6yTlK3GCzXC2+njcPtTucjwxb53Sb0+JT+TuTD78Jh kblack0610@gmail.com"
+    "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIAm2iORKcEev3hnxx5sXtYvA4wcO2Xp+dnarHP7/4db1 ansible-runner@home-k3s"
+)
 
 # Installation target
 INSTALL_ROOT="/mnt"
@@ -420,6 +430,14 @@ configure_system() {
     arch-chroot "$INSTALL_ROOT" ln -sf "/usr/share/zoneinfo/$TIMEZONE" /etc/localtime
     arch-chroot "$INSTALL_ROOT" hwclock --systohc
 
+    # Keep the clock corrected. Setting it once at install is not the same as
+    # keeping it right: timesyncd ships with systemd but is disabled by default,
+    # so thinkcentre ran 4 days with `System clock synchronized: no` and fired
+    # NodeClockNotSynchronising. A k3s node with a drifting clock fails TLS and
+    # misorders every log it writes.
+    arch-chroot "$INSTALL_ROOT" systemctl enable systemd-timesyncd 2>/dev/null \
+        || log_warning "Could not enable systemd-timesyncd - check the clock after first boot"
+
     # Locale
     echo "$LOCALE UTF-8" > "$INSTALL_ROOT/etc/locale.gen"
     arch-chroot "$INSTALL_ROOT" locale-gen
@@ -452,7 +470,7 @@ bootstrap_live_access() {
     log_section "Bootstrapping Live Access"
 
     mkdir -p /root/.ssh
-    printf '%s\n' "$AUTHORIZED_KEY" > /root/.ssh/authorized_keys
+    printf '%s\n' "${AUTHORIZED_KEYS[@]}" > /root/.ssh/authorized_keys
     chmod 700 /root/.ssh
     chmod 600 /root/.ssh/authorized_keys
 
@@ -501,7 +519,7 @@ bootstrap_access() {
     local ssh_dir="$INSTALL_ROOT/home/kblack0610/.ssh"
     mkdir -p "$ssh_dir"
     # Embed the workstation's public key
-    printf '%s\n' "$AUTHORIZED_KEY" > "$ssh_dir/authorized_keys"
+    printf '%s\n' "${AUTHORIZED_KEYS[@]}" > "$ssh_dir/authorized_keys"
     chmod 700 "$ssh_dir"
     chmod 600 "$ssh_dir/authorized_keys"
     arch-chroot "$INSTALL_ROOT" chown -R kblack0610:kblack0610 /home/kblack0610/.ssh

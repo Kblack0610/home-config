@@ -51,6 +51,13 @@ spec:
       # on EVERY node, which means the six arm64 Pis including the control
       # plane, to answer a question nobody asked here. Turn them on
       # deliberately later if CIS benchmarking becomes a goal.
+      # Off: SBOM reports. The chart defaults this on, and each SbomReport is a
+      # full image SBOM stored as an API object. On 2026-09-28 477 of them were
+      # 926MB of etcd/kine data that k3s-server held in its watch cache, putting
+      # the 8GB control-plane Pi at 81% memory (k3s-server RSS 5.6GB). Nothing
+      # here reads them: vulnerability reports and HomelabCriticalVulnerability
+      # do not depend on SBOM generation.
+      sbomGenerationEnabled: false
       infraAssessmentScannerEnabled: false
       clusterComplianceEnabled: false
       rbacAssessmentScannerEnabled: false

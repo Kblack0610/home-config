@@ -1,0 +1,83 @@
+# Daily SimpleFIN bank sync, run server-side through the actual-http-api bridge.
+#
+# Actual only pulls bank data when a client asks for it. Nobody opened the app
+# between 2026-08-27 and 2026-09-28, so five weeks of transactions sat unimported
+# while the SimpleFIN link itself was healthy the whole time. This job is the
+# "client" that asks every morning.
+#
+# It also fails when the newest transaction across ALL accounts is older than
+# STALE_DAYS, so a stall that the sync call itself does not report (a bank
+# dropping out of SimpleFIN, an orphaned account id) still turns the job red and
+# KubeJobFailed pages. Per-account staleness would false-trip: 360 Checking and
+# the Money Market see no transactions for weeks at a time. The Amex card alone
+# posts several a day, so the aggregate going quiet for 5 days is a real stall.
+#
+# Diagnose a failure with docs/finance/simplefin-reconnect.md.
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: actual-budget-bank-sync
+  namespace: actual-budget
+spec:
+  schedule: "0 13 * * *"  # 13:00 UTC = 06:00 PDT, before the day starts
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 1
+  jobTemplate:
+    spec:
+      backoffLimit: 1
+      template:
+        spec:
+          restartPolicy: Never
+          containers:
+            - name: bank-sync
+              image: alpine:3.24.1
+              env:
+                - name: API_KEY
+                  valueFrom:
+                    secretKeyRef:
+                      name: finance-api-credentials
+                      key: api-key
+                - name: BUDGET_SYNC_ID
+                  valueFrom:
+                    secretKeyRef:
+                      name: finance-api-credentials
+                      key: budget-sync-id
+                - name: STALE_DAYS
+                  value: "5"
+              command:
+                - /bin/sh
+                - -c
+                - |
+                  set -eu
+                  apk add --no-cache curl jq >/dev/null
+                  API="http://actual-http-api.actual-budget.svc.cluster.local:5007/v1/budgets/${BUDGET_SYNC_ID}"
+                  AUTH="x-api-key: ${API_KEY}"
+                  log() { echo "[$(date -Iseconds)] $*"; }
+
+                  # --- sync --------------------------------------------------------
+                  # -f: a 4xx/5xx from the bridge (bad password, bank error) exits
+                  # non-zero. The bridge holds the request open for the whole sync.
+                  log "running bank sync for all linked accounts"
+                  curl -fsS --max-time 600 -X POST -H "$AUTH" "$API/accounts/banksync"
+                  echo
+                  log "bank sync returned OK"
+
+                  # --- freshness ---------------------------------------------------
+                  since="$(date -u -d "@$(( $(date +%s) - 40 * 86400 ))" +%Y-%m-%d)"
+                  newest=""
+                  for aid in $(curl -fsS -H "$AUTH" "$API/accounts" | jq -r '.data[] | select(.closed | not) | .id'); do
+                    d="$(curl -fsS -H "$AUTH" "$API/accounts/${aid}/transactions?since_date=${since}" \
+                      | jq -r '[.data[].date] | max // empty')"
+                    if [ -n "$d" ] && { [ -z "$newest" ] || [ "$d" \> "$newest" ]; }; then newest="$d"; fi
+                  done
+                  if [ -z "$newest" ]; then
+                    log "ERROR: no transactions in the last 40 days on any account. Sync is not importing."
+                    exit 1
+                  fi
+                  cutoff="$(date -u -d "@$(( $(date +%s) - STALE_DAYS * 86400 ))" +%Y-%m-%d)"
+                  log "newest transaction across all accounts: ${newest} (stale if before ${cutoff})"
+                  if [ "$newest" \< "$cutoff" ]; then
+                    log "ERROR: nothing imported in ${STALE_DAYS} days. See docs/finance/simplefin-reconnect.md."
+                    exit 1
+                  fi

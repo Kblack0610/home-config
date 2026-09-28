@@ -1,0 +1,160 @@
+#!/bin/bash
+# Managed by ansible role macos-disk-reclaim. Do not edit on the host.
+#
+# Prunes regenerable build caches and reports bytes freed per category to the
+# node_exporter textfile collector. Every deletion is guarded by a predicate
+# that proves the target holds no unique source.
+
+set -uo pipefail
+
+DRY_RUN="{{ 'true' if disk_reclaim_dry_run else 'false' }}"
+MIN_AGE_DAYS="{{ disk_reclaim_min_age_days }}"
+SIM_THRESHOLD_MB="{{ disk_reclaim_simulator_threshold_mb }}"
+PROM_PATH="{{ disk_reclaim_prom_path }}"
+UNITY_ROOTS=({% for r in disk_reclaim_unity_roots %}"{{ r }}" {% endfor %})
+
+freed_unity_clones=0
+freed_unity_library=0
+freed_simulator=0
+skipped_reason=""
+
+# Logs go to stderr because remove_path returns its byte count on stdout, and a
+# log line captured into $(( )) is an arithmetic syntax error - which in a
+# non-interactive shell takes the whole run down mid-prune.
+log() { echo "[reclaim $(date -u +%FT%TZ)] $*" >&2; }
+
+dir_bytes() { du -sk "$1" 2>/dev/null | awk '{print $1 * 1024}'; }
+
+# A CI job in flight is the one condition under which doing nothing is right:
+# erasing a simulator or a cache mid-build fails that build.
+# Two ways this guard has already been wrong, both caught by its test:
+#   `pgrep -q` is not portable - GNU procps rejects it (exit 2), so the guard
+#   errored out and pruned next to a live Runner.Worker.
+#   `pgrep -f Runner.Worker` then matched any process whose command line merely
+#   MENTIONS the name, including the shell running this script's own test. That
+#   fails safe, but a guard that always trips means the role never prunes and
+#   nobody notices.
+# So: match the process NAME exactly (-x, which cannot see arguments), and keep
+# a full-cmdline fallback written as [R]unner so it can never match itself.
+ci_running() {
+    pgrep -x 'Runner.Worker' >/dev/null 2>&1 && return 0
+    pgrep -f '[R]unner\.Worker' >/dev/null 2>&1 && return 0
+    return 1
+}
+
+if ci_running; then
+    log "CI job in flight (Runner.Worker) - skipping this run entirely"
+    skipped_reason="ci_running"
+fi
+
+# Unity holds its import cache open; pruning under a live editor corrupts it.
+if [[ -z "$skipped_reason" ]] && pgrep -x 'Unity' >/dev/null 2>&1; then
+    log "Unity is running - skipping the Unity sections"
+    skipped_reason="unity_running"
+fi
+
+remove_path() {
+    local path="$1" label="$2" bytes
+    bytes=$(dir_bytes "$path")
+    [[ -z "$bytes" || "$bytes" -eq 0 ]] && return 0
+    if [[ "$DRY_RUN" == "true" ]]; then
+        log "WOULD remove $label: $path ($(( bytes / 1048576 )) MB)"
+    else
+        rm -rf "$path" && log "removed $label: $path ($(( bytes / 1048576 )) MB)"
+    fi
+    echo "$bytes"
+}
+
+if [[ "$skipped_reason" != "ci_running" && ${#UNITY_ROOTS[@]} -gt 0 ]]; then
+    for root in "${UNITY_ROOTS[@]}"; do
+        [[ -d "$root" ]] || continue
+
+        # ParrelSync copies. Its clones symlink Assets and ProjectSettings back
+        # to the original, so a copy holds no source of its own - but only the
+        # symlink check proves that for a given directory. A real Assets dir
+        # means someone made a genuine copy, and it is left alone: a first pass
+        # at this deleted nothing precisely because an unexpected real
+        # directory turned up inside an otherwise textbook ParrelSync clone.
+        while IFS= read -r clone; do
+            [[ -n "$clone" ]] || continue
+            if [[ ! -L "$clone/Assets" ]]; then
+                log "skip $clone: Assets is not a symlink, may hold real source"
+                continue
+            fi
+            if [[ ! -L "$clone/ProjectSettings" ]]; then
+                log "skip $clone: ProjectSettings is not a symlink"
+                continue
+            fi
+            b=$(remove_path "$clone" "parrelsync clone")
+            freed_unity_clones=$(( freed_unity_clones + ${b:-0} ))
+        done < <(find "$root" -maxdepth 1 -type d -name '*_clone_*' -mtime "+${MIN_AGE_DAYS}" 2>/dev/null)
+
+        # Unity import caches older than the age gate. Regenerated on next open.
+        while IFS= read -r lib; do
+            [[ -n "$lib" ]] || continue
+            b=$(remove_path "$lib" "unity Library")
+            freed_unity_library=$(( freed_unity_library + ${b:-0} ))
+        done < <(find "$root" -maxdepth 2 -type d -name Library -mtime "+${MIN_AGE_DAYS}" -prune 2>/dev/null)
+    done
+fi
+
+# iOS simulator app data. `simctl erase` wipes a device's data and keeps both
+# the device and its runtime, so CI reinstalls its app on the next run the same
+# way it would on a fresh device. Shutdown-only: erasing a booted device is how
+# you break whatever is using it.
+if [[ "$skipped_reason" != "ci_running" && "$SIM_THRESHOLD_MB" -gt 0 ]] \
+   && command -v xcrun >/dev/null 2>&1; then
+    devices_dir="$HOME/Library/Developer/CoreSimulator/Devices"
+    if [[ -d "$devices_dir" ]]; then
+        while IFS= read -r dev_dir; do
+            udid=$(basename "$dev_dir")
+            size_mb=$(du -sm "$dev_dir" 2>/dev/null | awk '{print $1}')
+            [[ -z "$size_mb" || "$size_mb" -lt "$SIM_THRESHOLD_MB" ]] && continue
+            state=$(xcrun simctl list devices -j 2>/dev/null \
+                | /usr/bin/python3 -c "
+import json,sys
+try: d=json.load(sys.stdin)
+except Exception: sys.exit(0)
+for devs in d.get('devices',{}).values():
+    for dev in devs:
+        if dev.get('udid')=='$udid': print(dev.get('state',''))
+" 2>/dev/null)
+            if [[ "$state" != "Shutdown" ]]; then
+                log "skip simulator $udid: state=$state (not Shutdown)"
+                continue
+            fi
+            if [[ "$DRY_RUN" == "true" ]]; then
+                log "WOULD erase simulator $udid (${size_mb} MB)"
+            else
+                xcrun simctl erase "$udid" >/dev/null 2>&1 \
+                    && log "erased simulator $udid (${size_mb} MB)" \
+                    || { log "WARN: failed to erase $udid"; continue; }
+            fi
+            freed_simulator=$(( freed_simulator + size_mb * 1048576 ))
+        done < <(find "$devices_dir" -maxdepth 1 -mindepth 1 -type d 2>/dev/null)
+    fi
+fi
+
+total=$(( freed_unity_clones + freed_unity_library + freed_simulator ))
+log "done: $(( total / 1048576 )) MB reclaimed (dry_run=$DRY_RUN skipped=${skipped_reason:-none})"
+
+# Atomic write so node_exporter never reads a half-written file.
+tmp=$(mktemp "${PROM_PATH}.XXXXXX") || exit 0
+cat > "$tmp" <<EOF
+# HELP homelab_disk_reclaim_bytes Bytes reclaimed by the last run, per category.
+# TYPE homelab_disk_reclaim_bytes gauge
+homelab_disk_reclaim_bytes{category="unity_clones"} ${freed_unity_clones}
+homelab_disk_reclaim_bytes{category="unity_library"} ${freed_unity_library}
+homelab_disk_reclaim_bytes{category="simulator_data"} ${freed_simulator}
+# HELP homelab_disk_reclaim_last_run_timestamp_seconds Unix time of the last run.
+# TYPE homelab_disk_reclaim_last_run_timestamp_seconds gauge
+homelab_disk_reclaim_last_run_timestamp_seconds $(date +%s)
+# HELP homelab_disk_reclaim_dry_run 1 when the run reported without deleting.
+# TYPE homelab_disk_reclaim_dry_run gauge
+homelab_disk_reclaim_dry_run {{ 1 if disk_reclaim_dry_run else 0 }}
+# HELP homelab_disk_reclaim_skipped 1 when a run declined to act, by reason.
+# TYPE homelab_disk_reclaim_skipped gauge
+homelab_disk_reclaim_skipped{reason="ci_running"} $([[ "$skipped_reason" == "ci_running" ]] && echo 1 || echo 0)
+homelab_disk_reclaim_skipped{reason="unity_running"} $([[ "$skipped_reason" == "unity_running" ]] && echo 1 || echo 0)
+EOF
+chmod 644 "$tmp" && mv -f "$tmp" "$PROM_PATH"

@@ -61,7 +61,10 @@ KUBECTL_TIMEOUT=5
 SHOW_TEMP=false
 SHOW_ALL=false
 SHOW_AGE=false
-SHOW_DISK=false
+# Disk is shown by default. It costs one parallel node_exporter scrape round -
+# measured 647ms without it against 1165ms with it - and "how full is it" is
+# half of what this command gets asked. --no-disk buys that half-second back.
+SHOW_DISK=true
 DHCP_DEVICES_FILE="${SCRIPT_DIR}/../dhcp/devices.yaml"
 
 # Temp directory for parallel data collection
@@ -1432,16 +1435,17 @@ COMMANDS:
 
 OPTIONS:
     --all,  -a   Include remote clusters (e.g. DigitalOcean)
-    --disk, -d   Include disk/storage column (cluster nodes, Android /data)
+    --disk, -d   Include disk/storage column (cluster nodes, Android /data) - on by default
+    --no-disk, -D  Skip the disk column and its node_exporter scrape (~0.5s faster)
     --temp, -t   Include CPU temperature column (slower, scrapes node_exporter)
     --age,  -g   Include uptime/age column for Mac and local devices
 
 EXAMPLES:
-    infra            # show local devices only (cluster: CPU/MEM/AGE, others: CPU/MEM/DISK)
+    infra            # show local devices only (cluster: CPU/MEM/DISK/AGE, others: CPU/MEM/DISK)
     infra apps       # show live Kubernetes app inventory for local contexts
     infra --all      # include remote clusters
     infra apps --all # include remote clusters in app inventory
-    infra --disk     # add disk usage for cluster nodes and Android storage
+    infra --no-disk  # skip disk usage (and its scrape) for a faster run
     infra --temp     # include temperature readings
     infra --age      # include uptime/age for Mac and local
     infra help       # show this help
@@ -1468,6 +1472,7 @@ for arg in "$@"; do
         --all|-a) SHOW_ALL=true ;;
         --age|-g) SHOW_AGE=true ;;
         --disk|-d) SHOW_DISK=true ;;
+        --no-disk|-D) SHOW_DISK=false ;;
         help|--help|-h) cmd="help" ;;
         nodes) cmd="nodes" ;;
         apps) cmd="apps" ;;

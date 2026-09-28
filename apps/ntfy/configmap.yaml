@@ -11,7 +11,10 @@ data:
     listen-http: ":80"
     behind-proxy: true
     cache-file: "/var/cache/ntfy/cache.db"
-    cache-duration: "12h"
+    # 48h, not 12h: the daily infra-digest timer polls the homelab-janitor
+    # topic once a day (since=24h), so the cache must outlive a skipped run.
+    # ntfy reads this only at startup - roll the deployment after changing it.
+    cache-duration: "48h"
     attachment-cache-dir: "/var/cache/ntfy/attachments"
     auth-file: "/var/lib/ntfy/user.db"
     # No auth on the broker. Topic name is the access token; combined with

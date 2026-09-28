@@ -23,6 +23,32 @@ G="$WORK/Games"
 PROM="$WORK/out.prom"
 failures=0
 
+# Render through real Jinja first. The sed rendering below is close enough to
+# exercise the script's logic, but it is not Jinja and will happily pass a
+# template Ansible refuses: `${#array[@]}` opens a Jinja comment, which broke
+# the first deploy with "Missing end of comment tag".
+jinja_check() {
+    /usr/bin/env python3 - "$TEMPLATE" <<'PY' || return 1
+import sys
+try:
+    from jinja2 import Environment
+except ImportError:
+    src = open(sys.argv[1]).read()
+    if '{#' in src and '#}' not in src:
+        print("FAIL template contains an unclosed Jinja comment opener ({#)")
+        sys.exit(1)
+    print("  SKIP jinja2 not installed - fell back to a {# check")
+    sys.exit(0)
+src = open(sys.argv[1]).read()
+try:
+    Environment().parse(src)
+except Exception as exc:
+    print(f"FAIL template is not valid Jinja: {exc}")
+    sys.exit(1)
+print("  PASS template parses as Jinja")
+PY
+}
+
 render() {
     local dry="$1" dry_num="$2"
     sed -e "s|{{ 'true' if disk_reclaim_dry_run else 'false' }}|$dry|" \
@@ -64,6 +90,11 @@ check() {
         failures=$(( failures + 1 ))
     fi
 }
+
+echo "== template validity =="
+if ! jinja_check; then
+    failures=$(( failures + 1 ))
+fi
 
 echo "== prune run =="
 render false 0

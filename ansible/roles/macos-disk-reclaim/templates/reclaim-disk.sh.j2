@@ -65,7 +65,14 @@ remove_path() {
     echo "$bytes"
 }
 
-if [[ "$skipped_reason" != "ci_running" && ${#UNITY_ROOTS[@]} -gt 0 ]]; then
+# Emptiness tested via [*] rather than bash's array-length form, because this
+# file is a Jinja template and a dollar-brace-hash sequence opens a Jinja
+# comment - Ansible refused to render the role at all with "Missing end of
+# comment tag". Writing that sequence even inside a shell comment breaks it
+# again, which is why this note spells it out in words. A sed-rendered test
+# cannot catch it either, since sed is not Jinja; tests/run-tests.sh now parses
+# this file with Jinja itself.
+if [[ "$skipped_reason" != "ci_running" && -n "${UNITY_ROOTS[*]:-}" ]]; then
     for root in "${UNITY_ROOTS[@]}"; do
         [[ -d "$root" ]] || continue
 

@@ -14,6 +14,7 @@ resources:
   - binks-api
   - blackbox-exporter
   - cloudflared-public-sites
+  - cluster-janitor
   - crowdsec
   - external-dns
   - fleet-exporter

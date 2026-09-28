@@ -1,0 +1,85 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: cluster-janitor-script
+  namespace: cluster-janitor
+data:
+  janitor.sh: |
+    #!/bin/sh
+    # Deterministic pod-level self-healing. Every action is one line on the
+    # `homelab-janitor` ntfy topic (low priority, no buzz) and one JANITOR line
+    # on stdout (Loki via alloy). The daily infra-digest timer turns the ntfy
+    # feed into the daily note's ## Refs, so nothing here is silent.
+    #
+    # Actions:
+    #   1. Delete Failed pods (incl. Evicted) older than FAILED_MIN_AGE_MIN
+    #      that are NOT owned by a Job. Job pods are skipped: their retention is
+    #      failedJobsHistoryLimit's job, and deleting them erases the logs that
+    #      limit exists to keep.
+    #   2. Force-delete pods stuck Terminating longer than STUCK_MIN_AGE_MIN on a
+    #      node that has been NotReady longer than STUCK_MIN_AGE_MIN. The kubelet
+    #      that would confirm the kill is gone, so without this they sit forever.
+    #      StatefulSet pods are REPORTED, never force-deleted: if the node is only
+    #      partitioned, a second copy could write the same volume
+    #      (kubernetes.io/docs/tasks/run-application/force-delete-stateful-set-pod).
+    #   3. Report (never touch) pods stuck Terminating on a READY node - that is a
+    #      finalizer or kubelet problem a human has to look at.
+    set -eu
+
+    now=$(date +%s)
+
+    post() { # $1=priority $2=message
+      echo "JANITOR $2"
+      curl -fsS -m 10 -H "Title: cluster-janitor" -H "Priority: $1" \
+        -H "Tags: broom" -d "$2" "$NTFY_URL" >/dev/null \
+        || echo "WARN ntfy post failed: $2" >&2
+    }
+
+    run() { # dry-run aware
+      if [ "$DRY_RUN" = "true" ]; then echo "DRY-RUN $*"; else "$@"; fi
+    }
+
+    pods=$(kubectl get pods -A -o json)
+    nodes=$(kubectl get nodes -o json)
+
+    # Nodes NotReady (or Unknown) for longer than the stuck threshold.
+    dead_nodes=$(echo "$nodes" | jq -r --argjson now "$now" --argjson min "$STUCK_MIN_AGE_MIN" '
+      .items[]
+      | (.status.conditions[] | select(.type == "Ready")) as $r
+      | select($r.status != "True")
+      | select(($now - ($r.lastTransitionTime | fromdateiso8601)) > ($min * 60))
+      | .metadata.name')
+
+    # 1. Failed, not Job-owned, old enough.
+    echo "$pods" | jq -r --argjson now "$now" --argjson min "$FAILED_MIN_AGE_MIN" '
+      .items[]
+      | select(.status.phase == "Failed")
+      | select(([.metadata.ownerReferences[]?.kind] | index("Job")) == null)
+      | select(($now - (.metadata.creationTimestamp | fromdateiso8601)) > ($min * 60))
+      | "\(.metadata.namespace) \(.metadata.name) \(.status.reason // "Failed")"' |
+    while read -r ns name reason; do
+      run kubectl delete pod -n "$ns" "$name" --wait=false >/dev/null
+      post 2 "deleted failed pod $ns/$name (reason: $reason)"
+    done
+
+    # 2 + 3. Stuck Terminating.
+    echo "$pods" | jq -r --argjson now "$now" --argjson min "$STUCK_MIN_AGE_MIN" '
+      .items[]
+      | select(.metadata.deletionTimestamp)
+      | select(($now - (.metadata.deletionTimestamp | fromdateiso8601)) > ($min * 60))
+      | "\(.metadata.namespace) \(.metadata.name) \(.spec.nodeName // "-") \([.metadata.ownerReferences[]?.kind] | join(",") | if . == "" then "-" else . end)"' |
+    while read -r ns name node owner; do
+      if echo "$dead_nodes" | grep -qx "$node"; then
+        case ",$owner," in
+          *,StatefulSet,*)
+            post 4 "NEEDS YOU: StatefulSet pod $ns/$name stuck Terminating on NotReady node $node - not force-deleted (split-brain risk); confirm the node is really down, then kubectl delete pod -n $ns $name --force --grace-period=0" ;;
+          *)
+            run kubectl delete pod -n "$ns" "$name" --force --grace-period=0 >/dev/null 2>&1
+            post 2 "force-deleted pod $ns/$name stuck Terminating on NotReady node $node" ;;
+        esac
+      else
+        post 3 "NEEDS YOU: pod $ns/$name stuck Terminating on Ready node $node (finalizer/kubelet issue) - not touched"
+      fi
+    done
+
+    echo "janitor pass done (dry_run=$DRY_RUN)"

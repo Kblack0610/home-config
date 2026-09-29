@@ -22,14 +22,18 @@ spec:
     spec:
       containers:
         - name: chrome
-          image: gcr.io/zenika-hub/alpine-chrome:124
+          # Upstream's own headless-shell build (docker/chrome in karakeep-app/karakeep).
+          # gcr.io/zenika-hub/alpine-chrome started 403ing in 2026-08 and the pod
+          # sat in ImagePullBackOff for 42 days with nothing crawled. The image's
+          # run.sh already binds the CDP port (socat 9222 -> chrome 9223), so only
+          # pass the flags upstream's docker-compose.yml passes.
+          image: ghcr.io/karakeep-app/karakeep-chrome:151.0.7922.47-r1
           args:
-            - --no-sandbox
             - --disable-gpu
             - --disable-dev-shm-usage
-            - --remote-debugging-address=0.0.0.0
-            - --remote-debugging-port=9222
             - --hide-scrollbars
+            - --disable-blink-features=AutomationControlled
+            - --window-size=1440,900
           ports:
             - name: debug
               containerPort: 9222

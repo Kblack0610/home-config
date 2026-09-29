@@ -1,12 +1,12 @@
----
-# Resolve the effective PAT. Most hosts use the shared `vault_github_pat`
-# (platform-scoped). A per-play override via `gh_runner_pat` lets a second
-# playbook register a runner against a DIFFERENT repo (e.g. dodginballs)
-# with a separately-scoped PAT — without leaking either across repos.
+# Resolve the effective PAT (token_source=pat). Most hosts use the shared
+# `vault_github_pat` (platform-scoped). A per-play override via `gh_runner_pat`
+# lets a second playbook register a runner against a DIFFERENT repo (e.g.
+# dodginballs) with a separately-scoped PAT - without leaking either across repos.
 - name: Resolve GitHub PAT for this runner binding
   ansible.builtin.set_fact:
     _effective_gh_runner_pat: "{{ gh_runner_pat | default(vault_github_pat | default('')) }}"
   no_log: true
+  when: gh_runner_token_source == 'pat'
 
 - name: Assert GitHub PAT is available
   ansible.builtin.assert:
@@ -20,13 +20,16 @@
       pass gh_runner_pat via playbook vars referencing a repo-specific vault
       variable (e.g. vault_github_dodginballs_pat) for a per-repo runner.
       Both values must be `repo`-scoped PATs encrypted via `ansible-vault
-      encrypt`.
+      encrypt`. Or set gh_runner_token_source=gh to mint the token with the
+      control node's gh CLI instead.
+  when: gh_runner_token_source == 'pat'
 
 - name: Install system packages
   community.general.pacman:
     name: "{{ gh_runner_system_packages }}"
     state: present
     update_cache: true
+  when: gh_runner_install_packages | bool
 
 - name: Ensure docker daemon is enabled and running
   ansible.builtin.systemd:
@@ -46,21 +49,27 @@
     group: "{{ gh_runner_group }}"
     groups: [docker]
     append: true
-    home: "{{ gh_runner_home }}"
+    home: "{{ gh_runner_user_home }}"
     shell: /bin/bash
     system: true
     create_home: true
 
 - name: Ensure runner home and work dirs exist
   ansible.builtin.file:
-    path: "{{ item }}"
+    path: "{{ item.path }}"
     state: directory
     owner: "{{ gh_runner_user }}"
     group: "{{ gh_runner_group }}"
-    mode: "0750"
-  loop:
-    - "{{ gh_runner_home }}"
-    - "{{ gh_runner_home }}/{{ gh_runner_work_dir }}"
+    mode: "{{ item.mode }}"
+  # The instance dir is 0755 because the runner tarball's root entry resets it
+  # to that on extract (a 0750 here flapped on every apply). When instances
+  # share a user, the 0750 user home above them is what keeps other users out.
+  loop: >-
+    {{ ([{'path': gh_runner_user_home, 'mode': '0750'}] if gh_runner_user_home != gh_runner_home else [])
+       + [{'path': gh_runner_home, 'mode': '0755'},
+          {'path': gh_runner_home ~ '/' ~ gh_runner_work_dir, 'mode': '0750'}] }}
+  loop_control:
+    label: "{{ item.path }}"
 
 - name: Download runner tarball
   ansible.builtin.get_url:
@@ -79,9 +88,25 @@
     group: "{{ gh_runner_group }}"
     creates: "{{ gh_runner_home }}/config.sh"
 
-# Ephemeral registration token (valid ~1 hour), fetched from the GitHub API
-# using the long-lived PAT. Mirrors the curl in platform/tools/register-mac-runner.sh.
-- name: Fetch ephemeral runner registration token from GitHub
+# Ephemeral registration token (valid ~1 hour). Only fetched when this
+# instance is not registered yet, so steady-state applies make no API call.
+- name: Check for an existing registration
+  ansible.builtin.stat:
+    path: "{{ gh_runner_home }}/.runner"
+  register: _gh_runner_marker
+
+# Only when a registration is actually needed, so the nightly in-cluster
+# drift check (no gh CLI there) passes on already-registered hosts.
+- name: Assert gh CLI is authenticated on the control node (token_source=gh)
+  ansible.builtin.command: gh auth status
+  delegate_to: localhost
+  become: false
+  changed_when: false
+  when:
+    - gh_runner_token_source == 'gh'
+    - not _gh_runner_marker.stat.exists
+
+- name: Fetch registration token with the PAT (token_source=pat)
   ansible.builtin.uri:
     url: "https://api.github.com/repos/{{ gh_runner_owner }}/{{ gh_runner_repo }}/actions/runners/registration-token"
     method: POST
@@ -91,8 +116,31 @@
       X-GitHub-Api-Version: "2022-11-28"
     status_code: 201
     return_content: true
-  register: gh_registration_token
-  when: not (ansible_check_mode)
+  register: _gh_pat_token
+  when:
+    - gh_runner_token_source == 'pat'
+    - not _gh_runner_marker.stat.exists
+    - not ansible_check_mode
+  changed_when: false
+  no_log: true
+
+- name: Fetch registration token with the control node's gh (token_source=gh)
+  ansible.builtin.command:
+    argv:
+      - gh
+      - api
+      - -X
+      - POST
+      - "repos/{{ gh_runner_owner }}/{{ gh_runner_repo }}/actions/runners/registration-token"
+      - -q
+      - .token
+  delegate_to: localhost
+  become: false
+  register: _gh_cli_token
+  when:
+    - gh_runner_token_source == 'gh'
+    - not _gh_runner_marker.stat.exists
+    - not ansible_check_mode
   changed_when: false
   no_log: true
 
@@ -107,7 +155,7 @@
       - --url
       - "{{ gh_runner_url }}"
       - --token
-      - "{{ gh_registration_token.json.token }}"
+      - "{{ _gh_pat_token.json.token if gh_runner_token_source == 'pat' else (_gh_cli_token.stdout | trim) }}"
       - --name
       - "{{ gh_runner_name }}"
       - --labels
@@ -116,19 +164,36 @@
       - "{{ gh_runner_work_dir }}"
     chdir: "{{ gh_runner_home }}"
     creates: "{{ gh_runner_home }}/.runner"
-  when: not (ansible_check_mode)
+  when:
+    - not _gh_runner_marker.stat.exists
+    - not ansible_check_mode
   no_log: true
+
+- name: Set extra job environment in the runner .env
+  ansible.builtin.lineinfile:
+    path: "{{ gh_runner_home }}/.env"
+    regexp: "^{{ item.key }}="
+    line: "{{ item.key }}={{ item.value }}"
+    create: true
+    owner: "{{ gh_runner_user }}"
+    group: "{{ gh_runner_group }}"
+    mode: "0640"
+  loop: "{{ gh_runner_env | dict2items }}"
+  register: _gh_runner_env_file
 
 - name: Install systemd unit for runner
   ansible.builtin.template:
     src: actions.runner.service.j2
     dest: "/etc/systemd/system/actions.runner.{{ gh_runner_name }}.service"
     mode: "0644"
-  notify: restart github actions runner
+  register: _gh_runner_unit
 
-- name: Enable and start the runner
+# A register + restart instead of a handler: the platform CI play applies this
+# role once per instance in a loop, and a handler would only fire for the last
+# gh_runner_name it saw.
+- name: Enable and (re)start the runner
   ansible.builtin.systemd:
     name: "actions.runner.{{ gh_runner_name }}.service"
     enabled: true
-    state: started
-    daemon_reload: true
+    state: "{{ 'restarted' if (_gh_runner_unit.changed or _gh_runner_env_file.changed) else 'started' }}"
+    daemon_reload: "{{ _gh_runner_unit.changed }}"

@@ -1,0 +1,46 @@
+---
+# Host prep for the BlackNBrownStudios/platform self-hosted runners. The
+# runner instances themselves come from the github-actions-runner-linux role,
+# applied once per slot by the "platform CI runners" play in site.yml.
+
+# Caps for every runner on the host, set on one systemd slice. Override per
+# host in inventory.yml (platform_ci_runners group).
+pmp_ci_cpu_cores: 4
+pmp_ci_memory_max: 8G
+pmp_ci_slice: pmp-ci.slice
+
+# What a platform CI job expects beyond the runner itself. No node/pnpm: the
+# workflows install their own with actions/setup-node + pnpm/action-setup.
+# The Chromium libraries stand in for `playwright install --with-deps`, which
+# only knows apt.
+pmp_ci_packages:
+  - docker
+  - docker-buildx
+  - git
+  - git-lfs
+  - jq
+  - curl
+  - unzip
+  - zip
+  - github-cli
+  - kubectl
+  - python
+  - python-yaml
+  # Playwright Chromium runtime
+  - nss
+  - nspr
+  - alsa-lib
+  - at-spi2-core
+  - libcups
+  - libdrm
+  - libxkbcommon
+  - libxcomposite
+  - libxdamage
+  - libxrandr
+  - libxfixes
+  - libxshmfence
+  - mesa
+  - pango
+  - cairo
+  - ttf-liberation
+  - noto-fonts

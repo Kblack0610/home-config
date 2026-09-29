@@ -1,0 +1,15 @@
+---
+galaxy_info:
+  role_name: platform_ci_host
+  author: home-config
+  description: >-
+    Host prep for the BlackNBrownStudios/platform self-hosted GitHub Actions
+    runners: packages, a resource-capped systemd slice, and a weekly docker
+    cleanup timer.
+  license: MIT
+  min_ansible_version: "2.14"
+  platforms:
+    - name: ArchLinux
+      versions:
+        - rolling
+dependencies: []

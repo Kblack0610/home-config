@@ -114,6 +114,32 @@ all:
         pi4-worker4:
         pi4-worker5:
 
+    # Self-hosted GitHub Actions runners for BlackNBrownStudios/platform
+    # (added 2026-09-28; see the "platform CI runners" play in site.yml).
+    # GitHub has no runner priority - an idle runner with matching labels takes
+    # the next job - so the slot counts ARE the priority: asus + hp carry most
+    # of the work, thinkcentre is a single overflow slot. pmp-heavy jobs publish
+    # fixed host ports (postgres 5432, mailpit 1025/8025, app ports), so never
+    # more than one heavy slot per host. cpu/memory caps are for the whole
+    # host's CI slice.
+    platform_ci_runners:
+      hosts:
+        asus-laptop:
+          pmp_light_slots: 3
+          pmp_heavy_slots: 1
+          pmp_ci_cpu_cores: 12
+          pmp_ci_memory_max: 40G
+        hp-victus:
+          pmp_light_slots: 2
+          pmp_heavy_slots: 1
+          pmp_ci_cpu_cores: 12
+          pmp_ci_memory_max: 16G
+        thinkcentre:
+          pmp_light_slots: 1
+          pmp_heavy_slots: 0
+          pmp_ci_cpu_cores: 3
+          pmp_ci_memory_max: 10G
+
     # HS5 desk audio endpoint(s). See ansible/roles/audio-endpoint/README.md.
     # Board-agnostic (Raspberry Pi OS, or Armbian on a Libre / BigTreeTech
     # board). Add the box here once it is flashed and on the LAN, e.g.:

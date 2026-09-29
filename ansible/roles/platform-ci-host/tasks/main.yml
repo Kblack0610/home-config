@@ -1,0 +1,43 @@
+---
+- name: Install platform CI packages
+  community.general.pacman:
+    name: "{{ pmp_ci_packages }}"
+    state: present
+    update_cache: true
+
+- name: Ensure docker is enabled and running
+  ansible.builtin.systemd:
+    name: docker.service
+    enabled: true
+    state: started
+  # In --check the package step above is simulated, so a fresh host has no unit yet.
+  ignore_errors: "{{ ansible_check_mode }}"
+
+- name: Install the CI resource slice
+  ansible.builtin.template:
+    src: pmp-ci.slice.j2
+    dest: "/etc/systemd/system/{{ pmp_ci_slice }}"
+    mode: "0644"
+  register: _pmp_ci_slice_unit
+
+- name: Install the weekly docker cleanup service and timer
+  ansible.builtin.template:
+    src: "{{ item }}.j2"
+    dest: "/etc/systemd/system/{{ item }}"
+    mode: "0644"
+  loop:
+    - pmp-ci-docker-cleanup.service
+    - pmp-ci-docker-cleanup.timer
+  register: _pmp_ci_cleanup_units
+
+- name: Reload systemd after unit changes
+  ansible.builtin.systemd:
+    daemon_reload: true
+  when: _pmp_ci_slice_unit.changed or _pmp_ci_cleanup_units.changed
+
+- name: Enable the docker cleanup timer
+  ansible.builtin.systemd:
+    name: pmp-ci-docker-cleanup.timer
+    enabled: true
+    state: started
+  ignore_errors: "{{ ansible_check_mode }}"

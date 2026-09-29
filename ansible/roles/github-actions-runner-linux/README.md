@@ -18,7 +18,13 @@ Mirrors `platform/tools/setup-mac-runner.sh` + `register-mac-runner.sh` for the 
 
 | Variable | Where | Notes |
 |----------|-------|-------|
-| `vault_github_pat` | `group_vars/linux_bare_metal/vault.yml` | PAT with `repo` scope. Same requirement as the Mac setup. |
+| `vault_github_pat` | `group_vars/linux_bare_metal/vault.yml` | PAT with `repo` scope, for `gh_runner_token_source: pat` (the default). Same requirement as the Mac setup. |
+
+With `gh_runner_token_source: gh` no PAT is needed: the registration token is minted on the control node with its authenticated `gh` CLI, and only when the instance has no `.runner` marker yet.
+
+## Several runners on one host
+
+Set `gh_runner_user_home` to a shared directory and `gh_runner_home` to a per-instance directory under it, and apply the role once per instance (the "platform CI runners" play in `playbooks/site.yml` loops it with `include_role`). Each instance gets its own systemd unit, `.runner` marker and work dir. `gh_runner_env` writes extra `KEY=VALUE` lines into the instance's `.env`; the platform play sets `HOME` per instance so parallel jobs never share a pnpm store or `~/setup-pnpm`. `gh_runner_slice` puts the unit in a systemd slice (the `platform-ci-host` role owns `pmp-ci.slice` and its caps).
 
 All other variables have sensible defaults in `defaults/main.yml`.
 

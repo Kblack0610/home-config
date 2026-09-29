@@ -6,8 +6,9 @@
 #   ansible-playbook playbooks/site.yml --limit thinkcentre
 #   ansible-playbook playbooks/site.yml --limit thinkcentre --check --diff
 #
-# The github-actions-runner-linux role is now bound only to hp-victus (dodginballs
-# Unity runner); the thinkcentre platform runner was decommissioned 2026-06-18.
+# The github-actions-runner-linux role runs the dodginballs Unity runner on
+# hp-victus and, since 2026-09-28, the platform CI runner slots on the
+# platform_ci_runners group (see the "platform CI runners" play).
 # Future phases will add roles here (k3s-agent, launchd-mlx, openwrt-config, etc.).
 
 - name: Local ASR dictation daemons (Parakeet + whisper.cpp) on this workstation
@@ -82,15 +83,63 @@
     - role: k3s-node-no-suspend
       tags: [no-suspend, k3s]
 
-# DECOMMISSIONED 2026-06-18: the thinkcentre platform [self-hosted, linux] runner
-# is gone. platform #833 moved the release gate to ubuntu-latest, and #854/#856
-# moved preview-smoke + vikunja-close-on-merge to ubuntu-latest (Vikunja reached
-# over its public host instead of LAN). No GitHub workflow targets
-# [self-hosted, linux] anymore, so this binding was removed and the runner
-# deregistered from BlackNBrownStudios/platform. CI is now: Forgejo Actions =
-# primary in-cluster (resilient, replicas:2) + github-hosted cloud for the rest.
-# The github-actions-runner-linux role is KEPT — the dodginballs Unity runner
-# (hp-victus, below) still uses it.
+# Platform CI runners (BlackNBrownStudios/platform), added 2026-09-28.
+#
+# History: the thinkcentre [self-hosted, linux] runner was decommissioned
+# 2026-06-18 after a power outage froze a release gate queued on it (#833), and
+# the direction became "Forgejo local, GitHub cloud". That is REVERSED for
+# ordinary CI only: hosted minutes hit the org's $200 Actions budget in
+# September 2026 (agent PR volume, ~86 billed min per landed PR), while
+# self-hosted minutes cost $0. What keeps the June failure from coming back:
+#   - release/deploy jobs (deploy-production, release gates, mobile promote)
+#     stay on ubuntu-latest in the platform repo;
+#   - every moved job reads its runs-on from the LINUX_RUNNER_LIGHT /
+#     LINUX_RUNNER_HEAVY repo variables, and deleting them sends everything
+#     back to ubuntu-latest (docs/deployment/PIPELINES.md in platform).
+#
+# Slots per host and the CI slice caps live in inventory.yml
+# (platform_ci_runners). Each slot is its own runner under one `pmp-runner`
+# user, with HOME set to the slot's own dir so parallel jobs never share a
+# pnpm store, Playwright cache or ~/setup-pnpm. Registration tokens come from
+# the control node's `gh` CLI, so there is no standing PAT.
+#
+# Lowering a slot count does NOT remove the old slot: stop and disable
+# actions.runner.<host>-<slot>.service, delete it in the repo's runner
+# settings, and rm -rf /var/lib/pmp-runner/<slot>.
+- name: platform CI runners (pmp-light / pmp-heavy)
+  hosts: platform_ci_runners
+  become: true
+  gather_facts: true
+  vars:
+    pmp_ci_instances: >-
+      {{ (range(1, pmp_light_slots + 1) | map('regex_replace', '^', 'light-') | list)
+         + (range(1, pmp_heavy_slots + 1) | map('regex_replace', '^', 'heavy-') | list) }}
+  roles:
+    - role: platform-ci-host
+      tags: [runner, ci, platform]
+  tasks:
+    - name: Register the platform runner slots
+      ansible.builtin.include_role:
+        name: github-actions-runner-linux
+        apply:
+          tags: [runner, ci, platform]
+      loop: "{{ pmp_ci_instances }}"
+      loop_control:
+        loop_var: pmp_slot
+      vars:
+        gh_runner_repo: platform
+        gh_runner_token_source: gh
+        gh_runner_install_packages: false
+        gh_runner_user: pmp-runner
+        gh_runner_group: pmp-runner
+        gh_runner_user_home: /var/lib/pmp-runner
+        gh_runner_home: "/var/lib/pmp-runner/{{ pmp_slot }}"
+        gh_runner_name: "{{ inventory_hostname }}-{{ pmp_slot }}"
+        gh_runner_labels: [self-hosted, linux, x64, "pmp-{{ pmp_slot.split('-')[0] }}"]
+        gh_runner_slice: pmp-ci.slice
+        gh_runner_env:
+          HOME: "/var/lib/pmp-runner/{{ pmp_slot }}"
+      tags: [runner, ci, platform]
 
 # macOS build/CI boxes (mac-studio, mac-mini). Shared baseline on BOTH: brew
 # essentials, node_exporter, and macos-baseline (power policy + SSH key sync +

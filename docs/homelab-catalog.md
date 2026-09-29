@@ -27,7 +27,8 @@ One-page index of services and their management plane. Use this to answer "where
 | GitHub Actions runner (macOS) | mac-studio, mac-mini | LaunchAgent | Ansible role authored, unbound → `platform/tools/setup-mac-runner.sh` today | `ansible/roles/github-actions-runner-mac/` |
 | node_exporter (macOS) | mac-studio, mac-mini | brew services (port 9100) | Ansible role authored, unbound → manual brew today | `ansible/roles/node-exporter-mac/` |
 | Homebrew baseline | mac-studio, mac-mini | user-scoped brew install | Ansible role authored, unbound → `install.sh` today | `ansible/roles/brew-common/` |
-| **GitHub Actions runner (Linux)** | **thinkcentre** | **systemd `actions.runner.thinkcentre-linux.service`** | **Ansible (this repo)** | **`ansible/roles/github-actions-runner-linux/`** |
+| GitHub Actions runners, platform CI (Linux) | asus-laptop (3 light + 1 heavy), hp-victus (2 + 1), thinkcentre (1 light) | systemd `actions.runner.<host>-<slot>.service` in `pmp-ci.slice` | Ansible (this repo), play "platform CI runners" | `ansible/roles/github-actions-runner-linux/` + `ansible/roles/platform-ci-host/` |
+| GitHub Actions runner, dodginballs Unity | hp-victus | systemd `actions.runner.hp-victus-unity.service` | Ansible (this repo) | `ansible/roles/github-actions-runner-linux/` |
 | Fluidd / Moonraker (live) | neptune-3d-printer (192.168.1.54) | embedded (on printer) | — | — |
 | AdGuard Home | pi3 (192.168.1.193) | docker-compose | In-repo compose, bootstrapped via `flash-pi.sh` + `setup.sh` | `apps/pi3-adguard-home/` |
 | Frigate NVR | (standalone Pi) | docker-compose | In-repo compose, run via `docker compose up -d` | `apps/frigate/` |
@@ -53,7 +54,7 @@ See `docs/gitops.md` for the layer boundaries and `docs/architecture.md` for wor
 
 ## Roles authored vs applied
 
-Every Ansible role listed above that shows "role authored, unbound" exists as code under `ansible/roles/<name>/` but is **not** yet bound in `ansible/playbooks/site.yml`. Today only `github-actions-runner-linux` is live-applied (against `thinkcentre`). Enabling a role means:
+Every Ansible role listed above that shows "role authored, unbound" exists as code under `ansible/roles/<name>/` but is **not** yet bound in `ansible/playbooks/site.yml`. `github-actions-runner-linux` is live-applied (platform CI slots on the `platform_ci_runners` group, dodginballs Unity on hp-victus). Enabling a role means:
 
 1. Seed the per-group vault (`vault_k3s_token`, `vault_github_pat`).
 2. Uncomment the role block in `ansible/playbooks/site.yml`.

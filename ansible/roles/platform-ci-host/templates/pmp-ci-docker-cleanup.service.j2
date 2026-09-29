@@ -1,0 +1,16 @@
+# Managed by ansible (platform-ci-host). Clears what CI jobs leave behind on a
+# persistent runner. It never runs `image prune -a`: hp-victus keeps ~49GB of
+# unityci editor images that the dodginballs runner needs, so only dangling
+# images go.
+[Unit]
+Description=Prune leftovers from platform CI jobs
+Requires=docker.service
+After=docker.service
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/docker container prune --force --filter until=24h
+ExecStart=/usr/bin/docker network prune --force --filter until=24h
+ExecStart=/usr/bin/docker volume prune --force
+ExecStart=/usr/bin/docker image prune --force
+ExecStart=/usr/bin/docker builder prune --force --filter until=168h

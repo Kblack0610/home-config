@@ -13,19 +13,44 @@ gh_runner_url: "https://github.com/{{ gh_runner_owner }}/{{ gh_runner_repo }}"
 # Pin the runner release. Bump deliberately (not automatically) — the runner
 # binary self-updates in-place at runtime, but a clean re-provision uses this
 # pinned tarball.
-gh_runner_version: "2.320.0"
+gh_runner_version: "2.337.0"
 gh_runner_arch: x64
 gh_runner_tarball: "actions-runner-linux-{{ gh_runner_arch }}-{{ gh_runner_version }}.tar.gz"
 gh_runner_tarball_url: "https://github.com/actions/runner/releases/download/v{{ gh_runner_version }}/{{ gh_runner_tarball }}"
-# sha256 for v2.320.0 linux-x64. Fetched from:
-#   curl -sL https://github.com/actions/runner/releases/download/v2.320.0/actions-runner-linux-x64-2.320.0.tar.gz | sha256sum
-gh_runner_tarball_sha256: "93ac1b7ce743ee85b5d386f5c1787385ef07b3d7c728ff66ce0d3813d5f46900"
+# sha256 for v2.337.0 linux-x64. Fetched from:
+#   curl -sL https://github.com/actions/runner/releases/download/v2.337.0/actions-runner-linux-x64-2.337.0.tar.gz | sha256sum
+# (matches the SHA block in the release notes). GitHub stops dispatching to
+# runners that are too old, so bump this when provisioning a fresh host.
+gh_runner_tarball_sha256: "70920811a4f8ad4328818682bca5c6469c1c942fab52448868071d0063816613"
 
 # Host-side paths and identities.
 gh_runner_user: actions-runner
 gh_runner_group: actions-runner
 gh_runner_home: /var/lib/actions-runner
 gh_runner_work_dir: _work
+# The runner USER's home. Defaults to the instance dir (one runner per user).
+# Several instances can share one user by pointing gh_runner_home at
+# <user_home>/<instance> - this stays fixed so a second instance never re-homes
+# the user out from under the first.
+gh_runner_user_home: "{{ gh_runner_home }}"
+
+# Where the registration token comes from:
+#   pat - vault_github_pat (or the gh_runner_pat override). Default; this is
+#         what the dodginballs Unity binding uses.
+#   gh  - mint a short-lived token on the control node with the already
+#         authenticated `gh` CLI, so no standing secret is needed (same as the
+#         github-actions-runner-mac role).
+gh_runner_token_source: pat
+
+# Skip the pacman step when a host-prep role has already installed packages
+# (the per-instance loop in the platform CI play would otherwise repeat it).
+gh_runner_install_packages: true
+
+# Extra KEY=VALUE lines for the runner's .env (inherited by every job).
+gh_runner_env: {}
+
+# Optional systemd slice for the unit (resource caps live on the slice).
+gh_runner_slice: ""
 
 # Runner identity. Name defaults to hostname so re-running on a different host
 # doesn't collide.

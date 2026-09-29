@@ -1,0 +1,11 @@
+# Managed by ansible (platform-ci-host).
+[Unit]
+Description=Weekly prune of platform CI docker leftovers
+
+[Timer]
+OnCalendar=Sun 04:30
+Persistent=true
+RandomizedDelaySec=30min
+
+[Install]
+WantedBy=timers.target

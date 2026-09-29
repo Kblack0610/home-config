@@ -49,6 +49,10 @@ Actual Budget is a local-first personal finance application focused on envelope 
    - Link your bank accounts
    - Copy access URL to Actual Budget → Settings → Linked Accounts
 
+#### Budgets do not roll forward
+
+Actual stores a budgeted amount per category per month, and a new month starts at zero. On 2026-09-28 the August budget looked "gone" from September and October for exactly this reason: every August row was still there, and no other month had any. Fill each month at its start with "Copy last month's budget", or put `#template <amount>` lines in category notes (Settings -> Experimental -> goal templates) and use "Apply budget template".
+
 #### Maintenance
 
 - **Backups**: Automated daily at 3 AM, 30-day local retention PLUS a best-effort off-box copy to the NAS (`backups/home-k3s/actual-budget/`). The budget SQLite lives on a single-node local-path PVC, so the NAS copy is the durability tier - a node loss no longer takes the data and every backup at once. Verified weekly by `nas-backup-verify`.
@@ -212,7 +216,7 @@ database: MySQL/MariaDB or PostgreSQL
 - [x] Configure ingress (finance.kblab.me) - live, no port-forward needed
 - [x] Set up automated backups - now with off-box NAS copy + weekly verify
 - [x] Import existing accounts - done; ~2MB budget file with real history
-- [ ] Configure SimpleFIN bank sync - partially live. The token is valid and U.S. Bank + Amex are serving current data; the four Capital One accounts went orphan on 2026-04-13 and need re-authorizing plus re-linking: [simplefin-reconnect.md](./simplefin-reconnect.md)
+- [x] Configure SimpleFIN bank sync - all linked accounts `MATCH` as of 2026-09-28. Sync is now server-side and daily: `actual-budget-bank-sync` CronJob calls the actual-http-api bridge at 06:00 PDT and fails (so `KubeJobFailed` pages) when nothing has imported for 5 days. Troubleshooting: [simplefin-reconnect.md](./simplefin-reconnect.md)
 - [ ] Set up budget categories for taxes - scheme documented in [tax-categories.md](./tax-categories.md); apply in-app
 
 ### Phase 1b: Tax readiness (2026-07)
@@ -303,4 +307,5 @@ ls -la /var/backups/actual-budget/
 |------|--------|
 | 2026-01-16 | Initial Actual Budget deployment |
 | 2026-01-16 | Documentation created |
+| 2026-09-28 | Activated the actual-http-api bridge; daily server-side bank sync with a 5-day staleness check; documented that budgets do not roll forward |
 | 2026-07-16 | Audit + remediation: off-box NAS backup + weekly verify; tax-category scheme; business/personal separation model; SimpleFIN reconnect runbook; activation-gated tax-export subsystem (actual-http-api + quarterly CSV); doc truth-up (ingress live, roadmap corrected) |

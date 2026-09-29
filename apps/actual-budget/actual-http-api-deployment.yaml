@@ -2,10 +2,8 @@
 # HTTP+JSON API so scripts (the tax-export CronJob, the actual-budget-tools
 # sidecar) can read accounts/transactions without speaking the sync protocol.
 #
-# ACTIVATION-GATED: this is NOT yet listed in kustomization.yaml. It cannot
-# function until finance-api-secret.yaml holds the real Actual server password.
-# To activate: populate the secret (see docs/finance/tax-export.md), then
-# uncomment the three tax-export resources in kustomization.yaml.
+# Listed in kustomization.yaml. It needs the real Actual server password in
+# finance-api-secret.yaml to authenticate against the Actual server.
 apiVersion: apps/v1
 kind: Deployment
 metadata:

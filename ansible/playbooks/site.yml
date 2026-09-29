@@ -233,16 +233,16 @@
 #     - role: osquery-agent
 #       tags: [fleet, osquery]
 
-# dodginballs Unity runner — PRIMARY: hp-victus (32 GB, Arch, k3s node with
-# ComfyUI+Prometheus+OpenClaw running but idle). Uses the github-actions-runner-linux
-# role with gh_runner_pat override (different repo than thinkcentre's platform binding).
-# Labels include 'unity' so the dodginballs release workflow (runs-on: [self-hosted, unity])
-# lands here. asus-laptop will join the pool when it comes online (flip its
-# unreachable flag + re-run the playbook).
+# dodginballs Unity runner on hp-victus (the only Unity runner). Labels include
+# 'unity' so the dodginballs workflows (runs-on: [self-hosted, unity]) land here.
 #
-# thinkcentre-unity is INTENTIONALLY not in this host list — its systemd unit is
-# stopped + disabled (manual save, not decommission). Bring it back with
-# `ssh thinkcentre 'sudo systemctl enable --now actions.runner.thinkcentre-unity'`.
+# The instance is hp-victus-unity-2 in /var/lib/actions-runner-2 because that is
+# the registration that works. Both it and the play's original hp-victus-unity
+# (in /var/lib/actions-runner) were registered 2026-04-23; only the first was
+# ever in this play. GitHub later deleted hp-victus-unity's registration, and
+# its unit restart-looped every 7s (506k restarts, 5.5G of _diag logs) until
+# 2026-09-29. unity-2 holds ~35G of Unity Library cache, so it is adopted, not
+# re-registered. /var/lib/actions-runner stays the user's home (.ssh, .docker).
 - name: dodginballs Unity runner (hp-victus primary)
   hosts: hp-victus
   become: true
@@ -251,9 +251,12 @@
     - role: github-actions-runner-linux
       vars:
         gh_runner_repo: dodginballs
-        gh_runner_name: "{{ inventory_hostname }}-unity"
+        gh_runner_name: "{{ inventory_hostname }}-unity-2"
+        gh_runner_home: /var/lib/actions-runner-2
+        gh_runner_user_home: /var/lib/actions-runner
         gh_runner_labels: [self-hosted, linux, x64, unity]
-        gh_runner_pat: "{{ vault_github_dodginballs_pat }}"
+        # Registration token minted by the workstation's gh, like the pmp slots.
+        gh_runner_token_source: gh
       tags: [runner, ci, dodginballs]
 
 # NFS backup target — hp-victus exports /srv/backups so k3s workloads can keep

@@ -13,7 +13,7 @@ Self-hosted bookmark / read-later manager. Replaces the local-first Firefox `Sta
 |---|---|---|---|
 | `karakeep-web` | `ghcr.io/karakeep-app/karakeep:0.31.0` | PVC `karakeep-data` (20Gi, `local-path`) at `/data` | Next.js + API + worker; SQLite at `/data/db.db` |
 | `karakeep-meilisearch` | `getmeili/meilisearch:v1.41.0` | PVC `karakeep-meilisearch` (5Gi, `local-path`) at `/meili_data` | Full-text search index |
-| `karakeep-chrome` | `gcr.io/zenika-hub/alpine-chrome:124` | none (stateless) | Headless browser for crawl + screenshots |
+| `karakeep-chrome` | `ghcr.io/karakeep-app/karakeep-chrome:151.0.7922.47-r1` | none (stateless) | Headless browser for crawl + screenshots |
 
 PVCs use the k3s `local-path` provisioner — Kubernetes provisions the directory on whichever node first schedules the pod (no `nodeSelector`, no manual `mkdir`). Same pattern as `apps/forgejo/` (20Gi) and `apps/qdrant/` (5Gi). See `docs/architecture.md` Storage section.
 

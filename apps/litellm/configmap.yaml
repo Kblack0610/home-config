@@ -552,7 +552,7 @@ data:
       # reachable, so these resolve to Lazer/Gemini today. Flip a value to the
       # matching `(... local ...)` route name once the box is verified up for
       # that category — EVERY consumer that calls the alias follows in one edit
-      # (mem0/karakeep/openclaw all now call these aliases, not pinned routes),
+      # (mem0/openclaw call these aliases; karakeep is pinned to its key's route),
       # and the local->cloud `fallbacks` below make a flip safe even if the box
       # drops mid-request.
       #

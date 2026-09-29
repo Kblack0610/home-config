@@ -19,16 +19,17 @@ data:
   CRAWLER_STORE_PDF: "false"
   MAX_ASSET_SIZE_MB: "50"
   TZ: America/New_York
-  # AI tagging routed via in-cluster LiteLLM (apps/litellm). Text inference
-  # uses the `fast` CATEGORY ALIAS (model_group_alias) so a single toggle in
-  # apps/litellm moves karakeep's tagging between the local MLX box and the
-  # cloud tier; local->cloud fallback keeps it up if the box drops.
-  # EMBEDDING_TEXT_MODEL is PINNED (not aliased): karakeep's stored vectors are
-  # tied to the embedder's dimensions, so it must not follow a category flip —
-  # swapping it is a deliberate re-index. INFERENCE_IMAGE_MODEL omitted until
-  # local vision (mlx-vlm>=0.6.5) is verified; add the `vlm` alias then.
+  # AI tagging routed via in-cluster LiteLLM (apps/litellm). Text inference is
+  # PINNED to `fast (Qwen3-4B)` (local MLX), the only chat route the `karakeep`
+  # virtual key allows. Do not point it at the `fast` alias: that alias resolves
+  # to a paid route the key rejects with 403, and from 2026-07-19 to 2026-09-29
+  # every tagging call failed that way silently (LOG_LEVEL notice), 0 tags.
+  # When the box is down, LiteLLM's `fast (Qwen3-4B)` fallback chain applies.
+  # EMBEDDING_TEXT_MODEL is PINNED too: karakeep's stored vectors are tied to
+  # the embedder's dimensions, so swapping it is a deliberate re-index.
+  # INFERENCE_IMAGE_MODEL omitted until local vision (mlx-vlm>=0.6.5) is verified.
   OPENAI_BASE_URL: http://litellm.ai-gateway.svc.cluster.local:4000/v1
-  INFERENCE_TEXT_MODEL: "fast"
+  INFERENCE_TEXT_MODEL: "fast (Qwen3-4B)"
   EMBEDDING_TEXT_MODEL: "embedding (modernbert-embed-base-4bit)"
   INFERENCE_ENABLE_AUTO_TAGGING: "true"
   INFERENCE_ENABLE_AUTO_SUMMARIZATION: "true"

@@ -9,6 +9,11 @@ pmp_ci_cpu_cores: 4
 pmp_ci_memory_max: 8G
 pmp_ci_slice: pmp-ci.slice
 
+# Runner user home; each slot lives under it. The job-started hook refuses to
+# clean a workspace outside this tree.
+pmp_ci_user_home: /var/lib/pmp-runner
+pmp_ci_job_started_hook: /usr/local/lib/pmp-ci/job-started.sh
+
 # What a platform CI job expects beyond the runner itself. No node/pnpm: the
 # workflows install their own with actions/setup-node + pnpm/action-setup.
 # The Chromium libraries stand in for `playwright install --with-deps`, which

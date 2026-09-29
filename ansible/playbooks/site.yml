@@ -100,7 +100,9 @@
 # Slots per host and the CI slice caps live in inventory.yml
 # (platform_ci_runners). Each slot is its own runner under one `pmp-runner`
 # user, with HOME set to the slot's own dir so parallel jobs never share a
-# pnpm store, Playwright cache or ~/setup-pnpm. Registration tokens come from
+# pnpm store, Playwright cache or ~/setup-pnpm, and a job-started hook empties
+# the workspace before every job (roles/platform-ci-host/templates/
+# job-started.sh.j2). Registration tokens come from
 # the control node's `gh` CLI, so there is no standing PAT.
 #
 # Lowering a slot count does NOT remove the old slot: stop and disable
@@ -132,13 +134,14 @@
         gh_runner_install_packages: false
         gh_runner_user: pmp-runner
         gh_runner_group: pmp-runner
-        gh_runner_user_home: /var/lib/pmp-runner
-        gh_runner_home: "/var/lib/pmp-runner/{{ pmp_slot }}"
+        gh_runner_user_home: "{{ pmp_ci_user_home }}"
+        gh_runner_home: "{{ pmp_ci_user_home }}/{{ pmp_slot }}"
         gh_runner_name: "{{ inventory_hostname }}-{{ pmp_slot }}"
         gh_runner_labels: [self-hosted, linux, x64, "pmp-{{ pmp_slot.split('-')[0] }}"]
         gh_runner_slice: pmp-ci.slice
         gh_runner_env:
-          HOME: "/var/lib/pmp-runner/{{ pmp_slot }}"
+          HOME: "{{ pmp_ci_user_home }}/{{ pmp_slot }}"
+          ACTIONS_RUNNER_HOOK_JOB_STARTED: "{{ pmp_ci_job_started_hook }}"
       tags: [runner, ci, platform]
 
 # macOS build/CI boxes (mac-studio, mac-mini). Shared baseline on BOTH: brew

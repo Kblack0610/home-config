@@ -1,0 +1,29 @@
+#!/usr/bin/env bash
+# Managed by ansible (platform-ci-host). ACTIONS_RUNNER_HOOK_JOB_STARTED for
+# every platform CI slot: empty the job's workspace before it runs.
+#
+# Why: these runners are persistent, and the workflows were written for a fresh
+# VM. On 2026-09-29 the Vikunja PR gate's sparse checkout left
+# core.sparsecheckout=true in the slot's clone; actions/checkout in the next
+# job reused the clone without undoing it, so `pnpm install` found no
+# package.json. Emptying the workspace gives every job a fresh checkout. The
+# pnpm store and Playwright cache live in the slot's HOME, not here, so
+# installs still reuse them.
+#
+# A file the slot cannot delete (root-owned, left by a `docker run` without
+# --user) fails the job loudly here instead of corrupting the next one.
+set -euo pipefail
+
+ws="${GITHUB_WORKSPACE:-}"
+case "$ws" in
+  {{ pmp_ci_user_home }}/*/_work/*) ;;
+  *)
+    echo "pmp-ci job-started: GITHUB_WORKSPACE='${ws}' is outside {{ pmp_ci_user_home }}; not cleaning" >&2
+    exit 0
+    ;;
+esac
+
+if [ -d "$ws" ]; then
+  find "$ws" -mindepth 1 -maxdepth 1 -exec rm -rf {} +
+  echo "pmp-ci job-started: emptied ${ws}"
+fi

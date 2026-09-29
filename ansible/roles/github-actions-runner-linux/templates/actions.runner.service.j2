@@ -9,7 +9,12 @@ Type=simple
 User={{ gh_runner_user }}
 Group={{ gh_runner_group }}
 WorkingDirectory={{ gh_runner_home }}
-ExecStart={{ gh_runner_home }}/run.sh
+# bin/runsvc.sh, not run.sh: it is what the runner's own svc.sh installs, and it
+# forwards SIGTERM to the listener. With KillMode=process, run.sh took the
+# SIGTERM alone and left Runner.Listener running, so every restart produced a
+# second listener stuck on "A session for this runner already exists" while the
+# orphan kept taking jobs with the OLD config (2026-09-29, platform CI slots).
+ExecStart={{ gh_runner_home }}/bin/runsvc.sh
 Restart=always
 RestartSec=5
 {% if gh_runner_slice %}

@@ -1,0 +1,90 @@
+---
+# Arm the hardware watchdog so a frozen host reboots itself.
+#
+# Found the hard way: 2026-09-30 pi3-adguard hard-froze at ~14:24 and the house
+# had no DNS for 25 minutes, until both the router and the Pi were power-cycled
+# by hand. The Pi's journal just stops - no shutdown, no kernel error - and the
+# two boots before it ended exactly the same way (2026-08-09, 2026-08-23). The
+# SoC has a watchdog timer (/dev/watchdog0, bcm2835-wdt) that would have reset it
+# in 15s, but systemd ships with RuntimeWatchdogSec=0, so nothing ever armed it.
+# See roles/hw-watchdog/README.md.
+
+- name: Check the host has a hardware watchdog device
+  ansible.builtin.stat:
+    path: /dev/watchdog0
+  register: hw_watchdog_dev
+
+- name: Fail if there is no watchdog device to arm
+  # Writing the config on a host without the device succeeds silently and arms
+  # nothing, which is the exact state this role exists to end.
+  ansible.builtin.fail:
+    msg: >-
+      {{ inventory_hostname }} has no /dev/watchdog0. On a Raspberry Pi the
+      bcm2835-wdt driver should create it; check `dmesg | grep -i wdt`.
+  when: not hw_watchdog_dev.stat.exists
+
+- name: Ensure the systemd system.conf.d drop-in directory exists
+  ansible.builtin.file:
+    path: /etc/systemd/system.conf.d
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+
+- name: Arm the hardware watchdog through PID 1
+  ansible.builtin.copy:
+    dest: /etc/systemd/system.conf.d/10-hw-watchdog.conf
+    owner: root
+    group: root
+    mode: "0644"
+    content: |
+      # Managed by ansible (roles/hw-watchdog). Do not edit by hand.
+      [Manager]
+      RuntimeWatchdogSec={{ hw_watchdog_runtime_sec }}
+      RebootWatchdogSec={{ hw_watchdog_reboot_sec }}
+  notify: reexec systemd
+
+- name: Reboot on kernel panic instead of hanging
+  ansible.builtin.copy:
+    dest: /etc/sysctl.d/90-hw-watchdog.conf
+    owner: root
+    group: root
+    mode: "0644"
+    content: |
+      # Managed by ansible (roles/hw-watchdog). Do not edit by hand.
+      kernel.panic = {{ hw_watchdog_kernel_panic }}
+  notify: apply panic sysctl
+
+- name: Apply pending changes now so the read-back below sees them
+  ansible.builtin.meta: flush_handlers
+
+- name: Read back what PID 1 actually armed
+  # Verify the OUTCOME, not that a file was written. check_mode: false because
+  # this is read-only and a --check run should still report the real state.
+  ansible.builtin.command: systemctl show --property=RuntimeWatchdogUSec --value
+  register: hw_watchdog_armed
+  changed_when: false
+  check_mode: false
+
+- name: Read back the live panic timeout
+  ansible.builtin.command: cat /proc/sys/kernel/panic
+  register: hw_watchdog_panic
+  changed_when: false
+  check_mode: false
+
+- name: Report watchdog state (also the whole point of a --check run)
+  ansible.builtin.debug:
+    msg: >-
+      {{ inventory_hostname }}: RuntimeWatchdog={{ hw_watchdog_armed.stdout | trim }}
+      kernel.panic={{ hw_watchdog_panic.stdout | trim }}
+
+- name: Fail loudly if the watchdog is not armed
+  # A dry run cannot re-exec systemd, so the old value is expected there.
+  ansible.builtin.fail:
+    msg: >-
+      {{ inventory_hostname }} reports RuntimeWatchdog={{ hw_watchdog_armed.stdout | trim }},
+      expected {{ hw_watchdog_runtime_sec }}. Check `journalctl -b | grep -i watchdog`
+      for the driver refusing the timeout.
+  when:
+    - not ansible_check_mode
+    - (hw_watchdog_armed.stdout | trim) != hw_watchdog_runtime_sec

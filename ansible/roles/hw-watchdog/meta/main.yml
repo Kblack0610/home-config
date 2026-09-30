@@ -1,0 +1,18 @@
+galaxy_info:
+  role_name: hw_watchdog
+  author: kblack0610
+  description: >-
+    Arms the SoC hardware watchdog through systemd and makes a kernel panic
+    reboot instead of hang, so a frozen host recovers on its own instead of
+    waiting for someone to pull the plug.
+  license: MIT
+  min_ansible_version: "2.14"
+  platforms:
+    - name: Debian
+      versions:
+        - bookworm
+  galaxy_tags:
+    - homelab
+    - watchdog
+    - raspberrypi
+dependencies: []

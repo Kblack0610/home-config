@@ -353,6 +353,19 @@
     - role: adguard
       tags: [adguard, dns]
 
+# Arm the SoC hardware watchdog on the resolver the whole house depends on.
+# pi3 hard-froze three times (2026-08-09, 08-23, 09-30) and each time stayed
+# dead until someone power-cycled it; the watchdog was present but unarmed.
+# See ansible/roles/hw-watchdog/README.md.
+#   ansible-playbook playbooks/site.yml --limit pi3-adguard --tags watchdog --check --diff
+- name: Hardware watchdog (pi3 - reboot itself on a freeze)
+  hosts: adguard
+  become: true
+  gather_facts: false
+  roles:
+    - role: hw-watchdog
+      tags: [watchdog]
+
 # Yamaha HS5 desk audio endpoint - Phase 0: bring up a USB balanced interface
 # as the default ALSA sink so the cluster/HA can drive the monitors. Bound to
 # the audio_endpoints group, which is EMPTY until the box is added to the

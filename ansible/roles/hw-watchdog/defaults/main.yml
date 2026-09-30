@@ -1,0 +1,14 @@
+---
+# systemd pets the hardware watchdog at half this interval. If PID 1 stops
+# running (kernel freeze, hard lockup) the SoC resets itself after this long.
+# 15s is the ceiling on a Pi: the BCM2835 timer is 20 bits at 65536 ticks/s,
+# so anything larger is clamped or rejected by the driver.
+hw_watchdog_runtime_sec: 15s
+
+# Armed during shutdown/reboot, so a reboot that hangs half way still completes.
+hw_watchdog_reboot_sec: 2min
+
+# Seconds a panicked kernel waits before rebooting itself. The Debian default
+# is 0, which means "hang forever" - the watchdog does not help there, because
+# some panics leave the timer being fed.
+hw_watchdog_kernel_panic: 10

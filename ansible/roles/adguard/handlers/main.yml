@@ -4,10 +4,10 @@
 # fail or - worse here - bounce house DNS for no reason.
 #
 # Restarting AdGuard drops ALL house DNS for the ~10-15s the container takes to
-# come back. That is survivable ONLY because infrastructure/openwrt/dns.yaml
-# gives dnsmasq a strict-order fallback, so the house keeps resolving
-# (unfiltered) meanwhile. If that fallback is ever removed, every converge
-# becomes a house-wide outage.
+# come back. There is no fallback: infrastructure/openwrt/dns.yaml lists pi3 as
+# dnsmasq's only upstream (the public fallback was reverted 2026-09-01, see
+# README "Why there is no DNS fallback"), so every converge that fires one of
+# these handlers is a brief house-wide outage. Only dnsmasq's cache softens it.
 #
 # builtin.command rather than community.docker - see the note in tasks/main.yml.
 

@@ -1,0 +1,19 @@
+---
+# Gated on `not ansible_check_mode`: in --check nothing was written, so there
+# is nothing to reload.
+
+- name: Re-execute systemd
+  # daemon-reload does NOT re-read system.conf; only a re-exec does. PID 1
+  # serializes its state and re-executes in place - no services restart, so
+  # AdGuard (and house DNS) is untouched.
+  ansible.builtin.systemd_service:
+    daemon_reexec: true
+  listen: reexec systemd
+  when: not ansible_check_mode
+
+- name: Apply the panic sysctl
+  ansible.builtin.command:
+    cmd: /usr/sbin/sysctl -p /etc/sysctl.d/90-hw-watchdog.conf
+  listen: apply panic sysctl
+  changed_when: true
+  when: not ansible_check_mode

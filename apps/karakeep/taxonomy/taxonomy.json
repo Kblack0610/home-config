@@ -1,0 +1,364 @@
+{
+  "_comment": "Karakeep tag taxonomy: single source of truth. top = the 10 main tags (every bookmark gets at least one); folders = old Firefox archive folder name -> tags (ancestors add theirs too). Detail tags are whatever the folders map produces. Applied by ./retag.",
+  "top": [
+    "dev",
+    "gamedev",
+    "hardware",
+    "art",
+    "music",
+    "business",
+    "jobs",
+    "work",
+    "hobbies",
+    "self"
+  ],
+  "folders": {
+    "Business": [
+      "business"
+    ],
+    "Logos": [
+      "business"
+    ],
+    "FluidLogic": [
+      "work"
+    ],
+    "RVOHealth": [
+      "work"
+    ],
+    "JA(O)BS": [
+      "jobs"
+    ],
+    "Applied": [
+      "jobs"
+    ],
+    "Closed opportunities": [
+      "jobs"
+    ],
+    "LinkedinRecruiters": [
+      "jobs"
+    ],
+    "SPACE": [
+      "jobs"
+    ],
+    "interviews": [
+      "jobs"
+    ],
+    "Old": [
+      "work"
+    ],
+    "BALLERTV": [
+      "work"
+    ],
+    "BallerTV SRE": [
+      "work",
+      "devops"
+    ],
+    "Hyvee": [
+      "work"
+    ],
+    "Yelli": [
+      "work"
+    ],
+    "work": [
+      "work"
+    ],
+    "blacknbrown": [
+      "business"
+    ],
+    "Dev": [
+      "dev"
+    ],
+    "dev": [
+      "dev"
+    ],
+    "Accessibility": [
+      "web"
+    ],
+    "Cheat Sheets": [
+      "cheatsheet"
+    ],
+    "Quick": [],
+    "Software": [],
+    "Tools": [
+      "tools"
+    ],
+    "Hardware": [
+      "hardware"
+    ],
+    "3d printing": [
+      "hardware",
+      "3d-printing"
+    ],
+    "good prints": [
+      "3d-printing"
+    ],
+    "CAD": [
+      "hardware",
+      "cad"
+    ],
+    "Flipper": [
+      "hardware",
+      "flipper"
+    ],
+    "IOT": [
+      "hardware",
+      "iot"
+    ],
+    "HomeAssistant": [
+      "iot",
+      "homelab"
+    ],
+    "Keyboard": [
+      "hardware",
+      "keyboard"
+    ],
+    "DactylManuform": [
+      "keyboard"
+    ],
+    "keyboards": [
+      "keyboard"
+    ],
+    "Raspeberry PI": [
+      "hardware",
+      "raspberry-pi"
+    ],
+    "AI": [
+      "ai"
+    ],
+    "DevOps": [
+      "devops"
+    ],
+    "GCP": [
+      "devops",
+      "cloud"
+    ],
+    "StatusPages": [
+      "devops"
+    ],
+    "Terraform": [
+      "devops",
+      "terraform"
+    ],
+    "VMs": [
+      "devops",
+      "homelab"
+    ],
+    "Languages": [],
+    "Bash": [
+      "bash"
+    ],
+    "Rust": [
+      "rust"
+    ],
+    "Networking": [
+      "networking"
+    ],
+    "Ssh": [
+      "networking"
+    ],
+    "OS": [
+      "linux"
+    ],
+    "Android": [
+      "android"
+    ],
+    "Linux": [
+      "linux"
+    ],
+    "SystemDesign": [
+      "system-design"
+    ],
+    "GIT": [
+      "git",
+      "tools"
+    ],
+    "Obsidian": [
+      "tools"
+    ],
+    "Vim": [
+      "vim"
+    ],
+    "LSP": [
+      "vim"
+    ],
+    "WebAnd Mobile": [
+      "web"
+    ],
+    "Heroku": [
+      "web",
+      "cloud"
+    ],
+    "TechArticles": [
+      "articles"
+    ],
+    "OpenCV": [
+      "ai"
+    ],
+    "Blogs": [
+      "articles"
+    ],
+    "Tech Blogs": [
+      "articles"
+    ],
+    "Crypto": [
+      "crypto"
+    ],
+    "crypto": [
+      "crypto"
+    ],
+    "DataStructures": [
+      "cs"
+    ],
+    "LIFE": [
+      "self"
+    ],
+    "Productivity": [
+      "productivity"
+    ],
+    "DACTYL": [
+      "hardware",
+      "keyboard"
+    ],
+    "coolest shit and ideas": [
+      "ideas"
+    ],
+    "dev environment": [
+      "tools"
+    ],
+    "Games": [
+      "gamedev"
+    ],
+    "DodginBalls": [
+      "gamedev",
+      "dodginballs"
+    ],
+    "Edgegap": [
+      "multiplayer"
+    ],
+    "Scrum": [
+      "business"
+    ],
+    "Steam": [
+      "steam"
+    ],
+    "Steamworks": [
+      "steam"
+    ],
+    "GameDevelopment": [
+      "gamedev"
+    ],
+    "Animation": [
+      "animation"
+    ],
+    "Character": [
+      "animation"
+    ],
+    "Docs": [],
+    "GameAssets": [
+      "assets"
+    ],
+    "GameDevEnvironment": [
+      "tools"
+    ],
+    "GameJams": [
+      "gamejam"
+    ],
+    "GameResources(NeedToSort)": [
+      "assets"
+    ],
+    "Gaming Tech Articles": [
+      "articles"
+    ],
+    "MapCreators": [
+      "assets"
+    ],
+    "game development": [],
+    "2d game of the gods": [],
+    "invector": [
+      "unity"
+    ],
+    "sprite sites": [
+      "2d-art",
+      "assets"
+    ],
+    "Marketing": [
+      "marketing"
+    ],
+    "MultiPlayer": [
+      "multiplayer"
+    ],
+    "Fishnet": [
+      "multiplayer",
+      "unity"
+    ],
+    "Performance": [],
+    "UI": [
+      "ui"
+    ],
+    "Unity": [
+      "unity"
+    ],
+    "UnityEditor": [
+      "unity"
+    ],
+    "Hobbies": [
+      "hobbies"
+    ],
+    "Angion": [],
+    "BREWING": [
+      "brewing"
+    ],
+    "HUNTING": [
+      "hunting"
+    ],
+    "RPG": [
+      "rpg"
+    ],
+    "Weed": [],
+    "Media": [
+      "art"
+    ],
+    "2D Art": [
+      "art",
+      "2d-art"
+    ],
+    "Enhancements": [],
+    "Movies": [
+      "movies"
+    ],
+    "OSTs": [
+      "music"
+    ],
+    "WebsiteSources": [
+      "web"
+    ],
+    "Music Theory": [
+      "music",
+      "music-theory"
+    ],
+    "Guitar": [
+      "guitar"
+    ],
+    "Production": [
+      "music",
+      "production"
+    ],
+    "Venues": [
+      "music",
+      "venues"
+    ],
+    "SELF": [
+      "self"
+    ],
+    "Imported Bookmarks": [],
+    "Bookmarks Toolbar": [],
+    "Mozilla Firefox": [],
+    "Other Bookmarks": [],
+    "_ARCHIVE_2026": [],
+    "Simple Tab Groups": [],
+    "Biology/Chemistry": [
+      "self",
+      "science"
+    ]
+  }
+}

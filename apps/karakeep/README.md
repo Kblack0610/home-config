@@ -90,3 +90,11 @@ To restore: scale `karakeep-web` and `karakeep-meilisearch` to 0, untar into the
 - `curl -I https://karakeep.kblab.me` — 200 / 307, valid Let's Encrypt cert
 - Save a URL from the web UI; confirm screenshot + reader-mode extraction
 - Open the same URL in iOS + Android apps to prove cross-device sync
+
+## Tag taxonomy
+
+`taxonomy/taxonomy.json` is the single source of truth: 10 main tags (`dev`, `gamedev`, `hardware`, `art`, `music`, `business`, `jobs`, `work`, `hobbies`, `self`) plus detail tags derived from the imported Firefox archive folders. `taxonomy/retag` applies it through the REST API (dry run by default; `--apply`, `--apply --prune` to delete tags outside the taxonomy). Key: `rbw get karakeep_api_key`.
+
+AI tagging is held to the same set by two user settings (set via tRPC `users.updateSettings` / `prompts.create`, visible under Settings -> AI): `curatedTagIds` = every taxonomy tag, `tagStyle` = `lowercase-hyphens`, and one `all_tagging` custom prompt requiring exactly one main tag plus at most two detail tags. `retag --apply` re-syncs `curatedTagIds` from `taxonomy.json` on every run, so after adding a tag just run it.
+
+First backfill 2026-09-30: 915/996 bookmarks tagged from folders (2001 tags), 242 one-off AI tags pruned, the 81 bookmarks with no folder re-crawled for AI tagging.

@@ -1,0 +1,135 @@
+#!/usr/bin/env python3
+"""Backfill Karakeep tags from the imported Firefox archive folders.
+
+Each bookmark gets the tags of every list (folder) it sits in, plus the tags
+of that folder's ancestors, per taxonomy.json. Tags outside the taxonomy
+(the AI's one-off names) are deleted with --prune.
+
+  retag                 dry run: per-tag counts, unmapped folders, what would change
+  retag --apply         attach taxonomy tags + sync AI curated tags (safe to re-run)
+  retag --apply --prune also delete every tag not in the taxonomy
+
+Auth: KARAKEEP_API_KEY, else `rbw get karakeep_api_key`. REST API only; never
+touches the sqlite db. Take a backup first:
+  kubectl -n karakeep create job karakeep-backup-manual --from=cronjob/karakeep-backup
+"""
+import argparse
+import collections
+import json
+import os
+import subprocess
+import sys
+import urllib.parse
+import urllib.request
+from pathlib import Path
+
+BASE = os.environ.get("KARAKEEP_URL", "https://karakeep.kblab.me") + "/api/v1"
+TAXONOMY = json.loads((Path(__file__).parent / "taxonomy.json").read_text())
+
+
+def api_key():
+    key = os.environ.get("KARAKEEP_API_KEY")
+    if not key:
+        key = subprocess.run(["rbw", "get", "karakeep_api_key"], check=True,
+                             capture_output=True, text=True).stdout.splitlines()[0]
+    return key.strip()
+
+
+KEY = api_key()
+
+
+def call(method, path, body=None):
+    req = urllib.request.Request(
+        BASE + path, method=method,
+        data=json.dumps(body).encode() if body is not None else None,
+        headers={"Authorization": f"Bearer {KEY}", "Content-Type": "application/json"})
+    with urllib.request.urlopen(req, timeout=60) as r:
+        raw = r.read()
+        return json.loads(raw) if raw else None
+
+
+def paged(path, field):
+    cursor = None
+    while True:
+        q = {"limit": 100, "includeContent": "false"}
+        if cursor:
+            q["cursor"] = cursor
+        page = call("GET", f"{path}?{urllib.parse.urlencode(q)}")
+        yield from page[field]
+        cursor = page.get("nextCursor")
+        if not cursor:
+            return
+
+
+def main():
+    ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    ap.add_argument("--apply", action="store_true")
+    ap.add_argument("--prune", action="store_true")
+    args = ap.parse_args()
+    if args.prune and not args.apply:
+        ap.error("--prune needs --apply")
+
+    top, folders = TAXONOMY["top"], TAXONOMY["folders"]
+    canonical = set(top) | {t for ts in folders.values() for t in ts}
+
+    lists = {l["id"]: l for l in call("GET", "/lists")["lists"]}
+    unmapped = sorted({l["name"] for l in lists.values()} - set(folders))
+
+    def folder_tags(lid):
+        tags, l = set(), lists[lid]
+        while l:
+            tags.update(folders.get(l["name"], []))
+            l = lists.get(l.get("parentId"))
+        return tags
+
+    want = collections.defaultdict(set)
+    for lid in lists:
+        tags = folder_tags(lid)
+        if tags:
+            for b in paged(f"/lists/{lid}/bookmarks", "bookmarks"):
+                want[b["id"]] |= tags
+
+    bookmarks = {b["id"]: b for b in paged("/bookmarks", "bookmarks")}
+    all_tags = call("GET", "/tags")["tags"]
+    stray = [t for t in all_tags if t["name"] not in canonical]
+
+    todo = {}
+    for bid, tags in want.items():
+        have = {t["name"] for t in bookmarks.get(bid, {}).get("tags", [])}
+        if tags - have:
+            todo[bid] = sorted(tags - have)
+
+    counts = collections.Counter(t for ts in want.values() for t in ts)
+    print(f"bookmarks: {len(bookmarks)}  folder-tagged: {len(want)}  no folder signal: {len(bookmarks) - len(want)}")
+    print("top:", {t: counts[t] for t in top})
+    print("detail:", dict(sorted(((t, n) for t, n in counts.items() if t not in top), key=lambda x: -x[1])))
+    print(f"unmapped folders: {unmapped or 'none'}")
+    print(f"to attach: {sum(map(len, todo.values()))} tags on {len(todo)} bookmarks")
+    print(f"stray tags (not in taxonomy): {len(stray)}" + ("" if args.prune else " (kept; --prune deletes)"))
+    if not args.apply:
+        print("dry run; re-run with --apply")
+        return
+
+    for i, (bid, tags) in enumerate(todo.items(), 1):
+        call("POST", f"/bookmarks/{bid}/tags", {"tags": [{"tagName": t} for t in tags]})
+        if i % 100 == 0:
+            print(f"  attached {i}/{len(todo)}", file=sys.stderr)
+    print(f"attached tags on {len(todo)} bookmarks")
+    if args.prune:
+        for t in stray:
+            call("DELETE", f"/tags/{t['id']}")
+        print(f"deleted {len(stray)} stray tags")
+
+    # Hold AI tagging to the same set: curatedTagIds = every taxonomy tag that exists.
+    curated = [t["id"] for t in call("GET", "/tags")["tags"] if t["name"] in canonical]
+    trpc = BASE.removesuffix("/v1").replace("/api", "/api/trpc", 1)
+    req = urllib.request.Request(
+        f"{trpc}/users.updateSettings", method="POST",
+        data=json.dumps({"json": {"curatedTagIds": curated, "tagStyle": "lowercase-hyphens"}}).encode(),
+        headers={"Authorization": f"Bearer {KEY}", "Content-Type": "application/json"})
+    urllib.request.urlopen(req, timeout=60).read()
+    print(f"curated tags for AI tagging: {len(curated)}")
+
+
+if __name__ == "__main__":
+    main()

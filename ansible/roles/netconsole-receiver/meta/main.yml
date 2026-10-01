@@ -1,0 +1,16 @@
+galaxy_info:
+  role_name: netconsole_receiver
+  author: kblack0610
+  description: >-
+    Receives netconsole kernel messages over UDP into the journal, so a host
+    that freezes before its own disk write still leaves a record elsewhere.
+  license: MIT
+  min_ansible_version: "2.14"
+  platforms:
+    - name: Debian
+      versions:
+        - trixie
+  galaxy_tags:
+    - homelab
+    - logging
+dependencies: []

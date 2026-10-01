@@ -149,3 +149,40 @@ spec:
               {{ $labels.instance }} disagrees with the cluster's mean clock by
               more than 60s. hp-victus sat 102s out and it took a dashboard
               rendering the whole fleet DOWN to notice.
+
+        # pi3 rebooted. Uptime rather than changes(boot_time): a reboot after a
+        # long outage would leave the previous sample outside any changes()
+        # window and never fire. With roles/hw-watchdog armed, an unplanned
+        # reboot here usually means the watchdog caught a freeze - the
+        # timestamp is the evidence, so it is worth a page even after recovery.
+        - alert: StandaloneHostRebooted
+          expr: >-
+            (node_time_seconds{job="standalone-nodes"}
+              - node_boot_time_seconds{job="standalone-nodes"}) < 1800
+          labels:
+            severity: warning
+            category: node-health
+          annotations:
+            summary: "{{ $labels.instance }} rebooted (watchdog, power, or by hand)"
+            description: >-
+              {{ $labels.instance }} has been up for under 30 minutes. If nobody
+              rebooted it, it froze and the hardware watchdog reset it, or it lost
+              power. Its last kernel messages before the reset are on pi5-master:
+              `ssh kblack0610@192.168.1.20 'journalctl -u netconsole-receiver --since "-1h"'`.
+              Also check `rpi_throttled{when="since_boot"}` for undervoltage.
+
+        # The Pi firmware latched an undervoltage event since boot. The latch
+        # holds until reboot, so this catches a brownout too short for any
+        # one-minute sample to see. Metric: roles/crash-evidence.
+        - alert: PiUndervoltageSinceBoot
+          expr: rpi_throttled{flag="undervoltage",when="since_boot"} == 1
+          labels:
+            severity: warning
+            category: node-health
+          annotations:
+            summary: "Undervoltage on {{ $labels.instance }} since boot"
+            description: >-
+              The Raspberry Pi firmware recorded supply voltage below ~4.63V at
+              least once since {{ $labels.instance }} last booted. That is the
+              leading suspect for its silent freezes. Replace the PSU and cable
+              with the official 5.1V supply. Stays firing until the next reboot.

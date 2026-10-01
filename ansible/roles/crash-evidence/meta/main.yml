@@ -1,0 +1,17 @@
+galaxy_info:
+  role_name: crash_evidence
+  author: kblack0610
+  description: >-
+    Streams kernel messages off-host with netconsole and exports the Raspberry
+    Pi firmware's undervoltage latch, so a silent freeze leaves evidence.
+  license: MIT
+  min_ansible_version: "2.14"
+  platforms:
+    - name: Debian
+      versions:
+        - bookworm
+  galaxy_tags:
+    - homelab
+    - raspberrypi
+    - logging
+dependencies: []

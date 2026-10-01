@@ -1,0 +1,24 @@
+# Managed by ansible (roles/netconsole-receiver). Do not edit by hand.
+[Unit]
+Description=netconsole receiver (kernel logs from {{ netconsole_receiver_senders | join(' ') }})
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+ExecStart=/usr/bin/python3 -u /usr/local/libexec/netconsole-receiver.py {{ netconsole_port }} {{ netconsole_receiver_senders | join(' ') }}
+SyslogIdentifier=netconsole
+Restart=always
+RestartSec=5
+
+DynamicUser=yes
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+PrivateDevices=yes
+RestrictAddressFamilies=AF_INET
+CapabilityBoundingSet=
+MemoryMax=64M
+
+[Install]
+WantedBy=multi-user.target

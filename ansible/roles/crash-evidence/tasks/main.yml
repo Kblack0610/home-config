@@ -1,0 +1,157 @@
+---
+# Leave evidence behind when this host dies without warning. Two halves:
+#   1. netconsole streams kernel messages to another box as they are printed,
+#      so the lines written in the last second before a freeze survive even
+#      though they never reach this host's SD card.
+#   2. the firmware's undervoltage latch is exported to Prometheus, so a
+#      brownout too short to sample still shows up as a metric and an alert.
+# See roles/crash-evidence/README.md.
+
+- name: Resolve the netconsole target address from the inventory
+  ansible.builtin.set_fact:
+    netconsole_target_ip: "{{ hostvars[netconsole_receiver_host].ansible_host }}"
+    netconsole_iface: "{{ ansible_default_ipv4.interface }}"
+
+- name: Configure netconsole module options
+  # No MAC after the target IP: netconsole then sends to the broadcast MAC, so
+  # nothing breaks if the receiver's NIC is ever replaced. Every LAN host sees
+  # the frame and all but the target drop it by IP; kernel logging is a
+  # handful of lines a day.
+  ansible.builtin.copy:
+    dest: /etc/modprobe.d/netconsole.conf
+    owner: root
+    group: root
+    mode: "0644"
+    content: |
+      # Managed by ansible (roles/crash-evidence). Do not edit by hand.
+      options netconsole netconsole={{ netconsole_src_port }}@{{ ansible_host }}/{{ netconsole_iface }},{{ netconsole_port }}@{{ netconsole_target_ip }}/
+  notify: reload netconsole
+
+- name: Install the netconsole unit
+  # Loaded by a unit after network-online rather than modules-load.d: at
+  # modules-load time eth0 has no address yet and netconsole refuses to start.
+  ansible.builtin.copy:
+    dest: /etc/systemd/system/netconsole.service
+    owner: root
+    group: root
+    mode: "0644"
+    content: |
+      # Managed by ansible (roles/crash-evidence). Do not edit by hand.
+      [Unit]
+      Description=netconsole kernel log to {{ netconsole_target_ip }}:{{ netconsole_port }}
+      After=network-online.target
+      Wants=network-online.target
+
+      [Service]
+      Type=oneshot
+      RemainAfterExit=yes
+      ExecStart=/usr/sbin/modprobe netconsole
+      ExecStop=/usr/sbin/modprobe -r netconsole
+
+      [Install]
+      WantedBy=multi-user.target
+  notify: reload netconsole
+
+- name: Raise the console loglevel so ERR and WARNING reach netconsole
+  ansible.builtin.copy:
+    dest: /etc/sysctl.d/91-netconsole.conf
+    owner: root
+    group: root
+    mode: "0644"
+    content: |
+      # Managed by ansible (roles/crash-evidence). Do not edit by hand.
+      kernel.printk = {{ netconsole_console_loglevel }} 4 1 3
+  notify: apply console loglevel
+
+- name: Enable netconsole
+  ansible.builtin.systemd_service:
+    name: netconsole
+    enabled: true
+    state: started
+    daemon_reload: true
+  when: not ansible_check_mode
+
+- name: Install the throttle exporter script
+  ansible.builtin.copy:
+    src: rpi-throttled-textfile.sh
+    dest: /usr/local/bin/rpi-throttled-textfile
+    owner: root
+    group: root
+    mode: "0755"
+
+- name: Install the throttle exporter units
+  ansible.builtin.copy:
+    dest: "/etc/systemd/system/{{ item.name }}"
+    owner: root
+    group: root
+    mode: "0644"
+    content: "{{ item.content }}"
+  loop:
+    - name: rpi-throttled-textfile.service
+      content: |
+        # Managed by ansible (roles/crash-evidence). Do not edit by hand.
+        [Unit]
+        Description=Export Raspberry Pi throttle flags for node-exporter
+
+        [Service]
+        Type=oneshot
+        ExecStart=/usr/local/bin/rpi-throttled-textfile {{ crash_evidence_textfile_dir }}
+    - name: rpi-throttled-textfile.timer
+      content: |
+        # Managed by ansible (roles/crash-evidence). Do not edit by hand.
+        [Unit]
+        Description=Export Raspberry Pi throttle flags every minute
+
+        [Timer]
+        OnBootSec=30s
+        OnUnitActiveSec=60s
+        AccuracySec=5s
+
+        [Install]
+        WantedBy=timers.target
+  loop_control:
+    label: "{{ item.name }}"
+  notify: reload throttle timer
+
+- name: Enable the throttle exporter timer
+  ansible.builtin.systemd_service:
+    name: rpi-throttled-textfile.timer
+    enabled: true
+    state: started
+    daemon_reload: true
+  when: not ansible_check_mode
+
+- name: Apply pending reloads before the read-back
+  ansible.builtin.meta: flush_handlers
+
+- name: Write the throttle metric once now, so the read-back has something to read
+  ansible.builtin.systemd_service:
+    name: rpi-throttled-textfile.service
+    state: started
+  changed_when: false
+  when: not ansible_check_mode
+
+- name: Read back netconsole, loglevel and the exported metric
+  ansible.builtin.shell: |
+    set -o pipefail
+    test -d /sys/module/netconsole && echo netconsole=loaded || echo netconsole=MISSING
+    echo "printk=$(cut -f1 /proc/sys/kernel/printk)"
+    grep -c '^rpi_throttled{' {{ crash_evidence_textfile_dir }}/rpi_throttled.prom 2>/dev/null | sed 's/^/throttle_series=/' || echo throttle_series=0
+  args:
+    executable: /bin/bash
+  register: crash_evidence_state
+  changed_when: false
+  check_mode: false
+
+- name: Report crash-evidence state
+  ansible.builtin.debug:
+    msg: "{{ inventory_hostname }}: {{ crash_evidence_state.stdout_lines | join(' ') }}"
+
+- name: Fail if any half is not live
+  ansible.builtin.fail:
+    msg: "{{ inventory_hostname }} crash-evidence not live: {{ crash_evidence_state.stdout_lines | join(' ') }}"
+  when:
+    - not ansible_check_mode
+    - ('netconsole=loaded' not in crash_evidence_state.stdout)
+      or ('printk=' ~ netconsole_console_loglevel not in crash_evidence_state.stdout_lines)
+      or ('throttle_series=8' not in crash_evidence_state.stdout_lines)

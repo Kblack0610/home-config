@@ -366,6 +366,27 @@
     - role: hw-watchdog
       tags: [watchdog]
 
+# Make pi3's next freeze explain itself: kernel messages stream to pi5-master
+# over netconsole, and the firmware's undervoltage latch is exported to
+# Prometheus. Receiver first, so the sender has somewhere to talk to.
+# See ansible/roles/crash-evidence/README.md.
+#   ansible-playbook playbooks/site.yml --limit pi5-master,pi3-adguard --tags crash-evidence --check --diff
+- name: netconsole receiver (pi5-master - collects kernel logs from pi3)
+  hosts: pi5-master
+  become: true
+  gather_facts: false
+  roles:
+    - role: netconsole-receiver
+      tags: [crash-evidence, netconsole]
+
+- name: Crash evidence (pi3 - netconsole sender + undervoltage latch metric)
+  hosts: adguard
+  become: true
+  gather_facts: true
+  roles:
+    - role: crash-evidence
+      tags: [crash-evidence, netconsole]
+
 # Yamaha HS5 desk audio endpoint - Phase 0: bring up a USB balanced interface
 # as the default ALSA sink so the cluster/HA can drive the monitors. Bound to
 # the audio_endpoints group, which is EMPTY until the box is added to the

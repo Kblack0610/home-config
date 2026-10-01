@@ -1,0 +1,7 @@
+---
+# Must match netconsole_port in roles/crash-evidence.
+netconsole_port: 6666
+
+# Only these source IPs are logged; anything else on the LAN is dropped.
+# Derived from the inventory so adding a host to the group is the only step.
+netconsole_receiver_senders: "{{ groups['adguard'] | map('extract', hostvars, 'ansible_host') | list }}"

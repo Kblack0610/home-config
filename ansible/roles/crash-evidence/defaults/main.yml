@@ -1,0 +1,14 @@
+---
+# Where kernel messages go. Must match roles/netconsole-receiver.
+netconsole_receiver_host: pi5-master
+netconsole_port: 6666
+netconsole_src_port: 6665
+
+# console_loglevel: messages with a level BELOW this reach netconsole. The Pi
+# image boots `quiet` (3), which passes only EMERG/ALERT/CRIT and drops the
+# KERN_ERR lines that precede most freezes (RCU stalls, hung tasks, mmc
+# errors). 5 passes ERR and WARNING too.
+netconsole_console_loglevel: 5
+
+# node-exporter's textfile collector directory (Debian package default).
+crash_evidence_textfile_dir: /var/lib/prometheus/node-exporter

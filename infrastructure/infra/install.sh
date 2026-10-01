@@ -2,7 +2,7 @@
 set -euo pipefail
 
 # =============================================================================
-# Install script for infra CLI
+# Install script for the infra and netcheck CLIs
 # =============================================================================
 
 RED='\033[0;31m'
@@ -16,33 +16,35 @@ log_error()   { echo -e "${RED}[ERROR]${NC} $*"; }
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 BIN_DIR="${HOME}/.local/bin"
-SOURCE="${SCRIPT_DIR}/infra.sh"
-TARGET="${BIN_DIR}/infra"
-
-# Ensure source exists and is executable
-if [[ ! -f "$SOURCE" ]]; then
-    log_error "infra.sh not found at $SOURCE"
-    exit 1
-fi
-chmod +x "$SOURCE"
-
-# Ensure bin directory exists
 mkdir -p "$BIN_DIR"
 
-# Handle existing file/symlink at target
-if [[ -L "$TARGET" ]]; then
-    rm "$TARGET"
-elif [[ -f "$TARGET" ]]; then
-    log_warning "File exists at $TARGET (not a symlink)"
-    read -p "Replace? [y/N] " -n 1 -r
-    echo
-    if [[ $REPLY =~ ^[Yy]$ ]]; then
-        rm "$TARGET"
-    else
-        log_warning "Skipped — no changes made"
-        exit 0
-    fi
-fi
+# <command name> <script in this dir>
+link_tool() {
+    local name="$1" SOURCE="${SCRIPT_DIR}/$2" TARGET="${BIN_DIR}/$1"
 
-ln -s "$SOURCE" "$TARGET"
-log_success "Symlink created: infra -> $SOURCE"
+    if [[ ! -f "$SOURCE" ]]; then
+        log_error "$2 not found at $SOURCE"
+        exit 1
+    fi
+    chmod +x "$SOURCE"
+
+    if [[ -L "$TARGET" ]]; then
+        rm "$TARGET"
+    elif [[ -f "$TARGET" ]]; then
+        log_warning "File exists at $TARGET (not a symlink)"
+        read -p "Replace? [y/N] " -n 1 -r
+        echo
+        if [[ $REPLY =~ ^[Yy]$ ]]; then
+            rm "$TARGET"
+        else
+            log_warning "Skipped $name - no changes made"
+            return 0
+        fi
+    fi
+
+    ln -s "$SOURCE" "$TARGET"
+    log_success "Symlink created: $name -> $SOURCE"
+}
+
+link_tool infra infra.sh
+link_tool netcheck netcheck.sh

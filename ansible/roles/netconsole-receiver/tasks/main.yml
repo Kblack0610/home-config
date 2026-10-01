@@ -1,0 +1,48 @@
+---
+# Collects kernel messages that hosts in roles/crash-evidence send over UDP, so
+# a host that dies mid-sentence still leaves its last words somewhere else.
+# Output lands in this host's journal: journalctl -u netconsole-receiver
+
+- name: Install the receiver script
+  ansible.builtin.copy:
+    src: netconsole-receiver.py
+    dest: /usr/local/libexec/netconsole-receiver.py
+    owner: root
+    group: root
+    mode: "0755"
+  notify: restart netconsole receiver
+
+- name: Install the receiver unit
+  ansible.builtin.template:
+    src: netconsole-receiver.service.j2
+    dest: /etc/systemd/system/netconsole-receiver.service
+    owner: root
+    group: root
+    mode: "0644"
+  notify: restart netconsole receiver
+
+- name: Enable and start the receiver
+  ansible.builtin.systemd_service:
+    name: netconsole-receiver
+    enabled: true
+    state: started
+    daemon_reload: true
+  when: not ansible_check_mode
+
+- name: Apply pending restarts before the read-back
+  ansible.builtin.meta: flush_handlers
+
+- name: Read back that the receiver is listening
+  ansible.builtin.command: ss -Hlun sport = :{{ netconsole_port }}
+  register: netconsole_listening
+  changed_when: false
+  check_mode: false
+
+- name: Fail if nothing is listening on the netconsole port
+  ansible.builtin.fail:
+    msg: >-
+      Nothing is listening on udp/{{ netconsole_port }} on {{ inventory_hostname }}.
+      Check: journalctl -u netconsole-receiver -n 20
+  when:
+    - not ansible_check_mode
+    - netconsole_listening.stdout | trim | length == 0

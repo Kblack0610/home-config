@@ -55,7 +55,9 @@ Actual stores a budgeted amount per category per month, and a new month starts a
 
 #### Categorization is rules
 
-Actual's rules (Settings -> Rules) categorize on import, and Actual adds one whenever you categorize a payee by hand. Rent is a rule on the Zelle description `Katelyn Nynas` -> `Rent`. The People Center split rule sends 33% to `Tax Reserve` (360 Checking holds the tax money) and the rest to `Income`. `Savings` is for Fidelity.
+Actual's rules (Settings -> Rules) categorize on import, and Actual adds one whenever you categorize a payee by hand. Rent is a rule on the Zelle description `Katelyn Nynas` -> `Rent`. The People Center split rule sends 33% to `Tax Reserve` (360 Checking holds the tax money) and the rest to `Biz Income: Lazer`; a Deel rule sends those deposits to `Biz Income: OpenAI (Deel)`. `Savings` is for Fidelity.
+
+Rule order matters: Actual ranks a `payee is` rule above a `notes contains` rule, so a learned "Zelle Transfer -> Bills" rule silently beat the rent rule until it was deleted (2026-10-02). When a rule seems ignored, look for a broader payee rule that outranks it.
 
 #### Monthly routine (about 10 minutes)
 
@@ -63,7 +65,15 @@ Actual's rules (Settings -> Rules) categorize on import, and Actual adds one whe
 2. Cover any overspent category from `Buffer`.
 3. Edit the `#template` notes if next month's plan should change. The rollover job applies them on the 1st.
 
-#### Maintenance
+#### Backfilling history the first sync skipped
+
+Linking an account in Actual only pulls about 90 days, so the file started on 2026-06-03 with January-May empty. SimpleFIN still serves older history when asked in windows of 90 days or less (it recommends 45): U.S. Bank from at least 2025-10 and Amex from 2025-11, but Capital One and Fidelity only from late May 2026. Those two need a CSV export from the bank.
+
+The 2026-10-02 backfill used the bridge's `POST accounts/{id}/transactions/import` in batches of 80 (a single 580-row body returns 413), with `imported_id` set to the SimpleFIN transaction id. That is the same id bank sync writes, so later syncs never duplicate a row, and a second import run adds 0. Two follow-ups are required after any backfill:
+
+1. Move each account's `Starting Balance` row to the day before the new history and subtract the imported net, so the current balance still equals the bank.
+2. Categorize every imported row. An uncategorized row is outside the budget, so 352 of them made October's To Budget read -$26.6k until they were categorized.
+
 
 - **Backups**: Automated daily at 3 AM, 30-day local retention PLUS a best-effort off-box copy to the NAS (`backups/home-k3s/actual-budget/`). The budget SQLite lives on a single-node local-path PVC, so the NAS copy is the durability tier - a node loss no longer takes the data and every backup at once. Verified weekly by `nas-backup-verify`.
 - **Local location**: `/var/backups/actual-budget/` on the node holding the PVC
@@ -317,6 +327,7 @@ ls -la /var/backups/actual-budget/
 |------|--------|
 | 2026-01-16 | Initial Actual Budget deployment |
 | 2026-01-16 | Documentation created |
+| 2026-10-02 | Backfilled Jan-May 2026 from SimpleFIN (U.S. Bank, Amex); tax categories created (C2C income, Schedule C group, Taxes & Deductions) |
 | 2026-10-02 | Monthly rollover job fills budgets from `#template` notes; Rent/Tax Reserve/Buffer/Drinks categories; rules documented |
 | 2026-09-28 | Activated the actual-http-api bridge; daily server-side bank sync with a 5-day staleness check; documented that budgets do not roll forward |
 | 2026-07-16 | Audit + remediation: off-box NAS backup + weekly verify; tax-category scheme; business/personal separation model; SimpleFIN reconnect runbook; activation-gated tax-export subsystem (actual-http-api + quarterly CSV); doc truth-up (ingress live, roadmap corrected) |

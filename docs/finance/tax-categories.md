@@ -14,6 +14,18 @@ Three levers, in order of importance:
 2. Account naming. Prefix business accounts so they read unambiguously in the CSV, e.g. `Biz - Deel Checking`, `Biz - Card`. Personal accounts keep plain names.
 3. Notes convention (secondary). For a rare mixed transaction on a personal account, add `#biz` in the note so it is greppable, but prefer just categorizing it into the Business group.
 
+## What exists in the file (2026-10-02)
+
+The 2026 setup is a lean subset of the scheme below, sized to two C2C contracts plus the LLC. Add a line from the full tables only when a real expense needs it.
+
+- Income: `W-2 Income (ADP)`, `Biz Income: OpenAI (Deel)` (Jan-Feb 2026, rule on `deel`), `Biz Income: Lazer` (People Center deposits, Apr-Aug 2026), `Other Income`.
+- `Business - Schedule C`: `Biz: Software & subscriptions` (the old `Business` category, renamed), `Biz: Equipment & office`, `Biz: Legal & professional` (Incfile, Dun & Bradstreet, CPA), `Biz: Taxes & licenses` (CA LLC franchise tax), `Biz: Travel`, `Biz: Meals 50%`, `Biz: Phone & internet`.
+- `Taxes & Deductions`: `Tax: Federal estimated`, `Tax: CA estimated`, `Ded: Charitable`. Medical stays in `Health`; it only counts above 7.5% of AGI.
+
+Gross Lazer income is the full People Center deposit. The split rule routes 33% of each deposit to `Tax Reserve`, so the `Biz Income: Lazer` total understates it by a third. 360 Checking is off-budget and has no SimpleFIN history before late May 2026, so any Deel deposits or estimated-tax payments made from it before then are not in the file until a Capital One CSV is imported.
+
+Itemizing: keep tracking deductions even if the standard deduction wins. With California tax on C2C income of this size, SALT alone may exceed the standard deduction (the SALT cap is $40k for 2025-2029). A CPA should confirm.
+
 ## Category groups to create in Actual
 
 Create these groups under Budget -> Categories. Personal groups you already have; add the two tax-oriented groups.

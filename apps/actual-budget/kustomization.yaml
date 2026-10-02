@@ -19,4 +19,5 @@ resources:
   - actual-http-api-deployment.yaml
   - actual-http-api-service.yaml
   - bank-sync-cronjob.yaml
+  - budget-rollover-cronjob.yaml
   - tax-export-cronjob.yaml

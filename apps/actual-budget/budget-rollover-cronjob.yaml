@@ -1,0 +1,87 @@
+# Monthly budget fill: on the 1st, give every category its `#template N` amount.
+#
+# Actual stores a budgeted amount per category per month, and a new month starts
+# at zero. Applying templates is a manual click, and September 2026 was never
+# budgeted because nobody clicked it, so every September expense landed as
+# overspending. This job does the click.
+#
+# For each category whose note has a `#template N` line, set the current
+# month's budgeted amount to N, but only when that month is still 0. A number
+# typed in by hand is never overwritten. Any bridge error fails the job, so
+# KubeJobFailed pages.
+#
+# Run it by hand (idempotent; a month already filled is a no-op):
+#   kubectl --context home-k3s -n actual-budget create job \
+#     --from=cronjob/actual-budget-rollover rollover-$(date +%s)
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: actual-budget-rollover
+  namespace: actual-budget
+spec:
+  schedule: "0 15 1 * *"  # 15:00 UTC on the 1st = 08:00 PDT
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 1
+  jobTemplate:
+    spec:
+      backoffLimit: 1
+      template:
+        spec:
+          restartPolicy: Never
+          containers:
+            - name: rollover
+              image: alpine:3.24.1
+              env:
+                - name: API_KEY
+                  valueFrom:
+                    secretKeyRef:
+                      name: finance-api-credentials
+                      key: api-key
+                - name: BUDGET_SYNC_ID
+                  valueFrom:
+                    secretKeyRef:
+                      name: finance-api-credentials
+                      key: budget-sync-id
+                # Override as YYYY-MM to fill a specific month; defaults to now.
+                - name: MONTH
+                  value: ""
+              command:
+                - /bin/sh
+                - -c
+                - |
+                  set -eu
+                  apk add --no-cache curl jq >/dev/null
+                  API="http://actual-http-api.actual-budget.svc.cluster.local:5007/v1/budgets/${BUDGET_SYNC_ID}"
+                  AUTH="x-api-key: ${API_KEY}"
+                  M="${MONTH:-$(date -u +%Y-%m)}"
+                  log() { echo "[$(date -Iseconds)] $*"; }
+
+                  filled=0; kept=0; skipped=0
+                  cats="$(curl -fsS -H "$AUTH" "$API/categories" | jq -r '.data[] | select(.is_income | not) | [.id, .name] | @tsv')"
+                  tab="$(printf '\t')"
+                  while IFS="$tab" read -r cid name; do
+                    [ -n "$cid" ] || continue
+                    # Note text is free-form; take the first `#template N` line.
+                    amt="$(curl -fsS -H "$AUTH" "$API/notes/category/${cid}" \
+                      | jq -r '(.data // "") | [scan("#template\\s+([0-9]+(?:\\.[0-9]+)?)")] | first // [] | first // empty')"
+                    if [ -z "$amt" ]; then skipped=$((skipped + 1)); continue; fi
+                    cents="$(awk -v a="$amt" 'BEGIN{printf "%d", a * 100 + 0.5}')"
+                    cur="$(curl -fsS -H "$AUTH" "$API/months/${M}/categories/${cid}" | jq -r '.data.budgeted')"
+                    if [ "$cur" != "0" ]; then
+                      log "keep   ${name}: already ${cur} cents in ${M}"
+                      kept=$((kept + 1)); continue
+                    fi
+                    curl -fsS -X PATCH -H "$AUTH" -H 'content-type: application/json' \
+                      -d "{\"category\":{\"budgeted\":${cents}}}" \
+                      "$API/months/${M}/categories/${cid}" >/dev/null
+                    log "filled ${name}: ${amt}"
+                    filled=$((filled + 1))
+                  done <<EOF
+                  ${cats}
+                  EOF
+                  log "${M}: filled ${filled}, kept ${kept} hand-set, ${skipped} without a template"
+                  if [ $((filled + kept)) -eq 0 ]; then
+                    log "ERROR: no category has a #template note. Nothing was budgeted for ${M}."
+                    exit 1
+                  fi

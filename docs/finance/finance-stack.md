@@ -49,9 +49,19 @@ Actual Budget is a local-first personal finance application focused on envelope 
    - Link your bank accounts
    - Copy access URL to Actual Budget → Settings → Linked Accounts
 
-#### Budgets do not roll forward
+#### Budgets do not roll forward, so a job fills them
 
-Actual stores a budgeted amount per category per month, and a new month starts at zero. On 2026-09-28 the August budget looked "gone" from September and October for exactly this reason: every August row was still there, and no other month had any. Fill each month at its start with "Copy last month's budget", or put `#template <amount>` lines in category notes (Settings -> Experimental -> goal templates) and use "Apply budget template".
+Actual stores a budgeted amount per category per month, and a new month starts at zero. September 2026 was never budgeted for exactly this reason, so all of its spending landed as overspending. Each category's note now carries a `#template <amount>` line, and the `actual-budget-rollover` CronJob (15:00 UTC on the 1st) sets every category with a template to that amount for the new month. It never overwrites a month you already filled by hand. To change next month's plan, edit the template in the category note.
+
+#### Categorization is rules
+
+Actual's rules (Settings -> Rules) categorize on import, and Actual adds one whenever you categorize a payee by hand. Rent is a rule on the Zelle description `Katelyn Nynas` -> `Rent`. The People Center split rule sends 33% to `Tax Reserve` (360 Checking holds the tax money) and the rest to `Income`. `Savings` is for Fidelity.
+
+#### Monthly routine (about 10 minutes)
+
+1. Clear the uncategorized count. Categorizing a payee by hand also teaches a rule.
+2. Cover any overspent category from `Buffer`.
+3. Edit the `#template` notes if next month's plan should change. The rollover job applies them on the 1st.
 
 #### Maintenance
 
@@ -307,5 +317,6 @@ ls -la /var/backups/actual-budget/
 |------|--------|
 | 2026-01-16 | Initial Actual Budget deployment |
 | 2026-01-16 | Documentation created |
+| 2026-10-02 | Monthly rollover job fills budgets from `#template` notes; Rent/Tax Reserve/Buffer/Drinks categories; rules documented |
 | 2026-09-28 | Activated the actual-http-api bridge; daily server-side bank sync with a 5-day staleness check; documented that budgets do not roll forward |
 | 2026-07-16 | Audit + remediation: off-box NAS backup + weekly verify; tax-category scheme; business/personal separation model; SimpleFIN reconnect runbook; activation-gated tax-export subsystem (actual-http-api + quarterly CSV); doc truth-up (ingress live, roadmap corrected) |

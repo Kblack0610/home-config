@@ -150,6 +150,35 @@ download_ipxe() {
     fi
 }
 
+# Backs the [M] Memory Test entry in http/ipxe/menu.ipxe, which chains
+# ${http-root}/utils/memtest86+.efi. Without this the entry 404s.
+download_memtest() {
+    log_section "Downloading memtest86+"
+
+    local version="7.20"
+    # From https://www.memtest.org/download/v7.20/sha256sum.txt
+    local sha256="8aa81b2ac218f4848af4c1a6cff1c1a8a6cdfa884f37c426b8185894b65f09c3"
+    local dest="$PXE_HTTP_DIR/utils/memtest86+.efi"
+
+    if [[ -f "$dest" ]]; then
+        log_info "memtest86+.efi already exists"
+        return 0
+    fi
+
+    local tmp
+    tmp="$(mktemp -d)"
+    log_info "Downloading memtest86+ $version..."
+    if curl -sfL "https://www.memtest.org/download/v$version/mt86plus_$version.binaries.zip" -o "$tmp/mt.zip" \
+        && echo "$sha256  $tmp/mt.zip" | sha256sum -c --quiet - \
+        && python3 -m zipfile -e "$tmp/mt.zip" "$tmp/x" \
+        && install -m 644 "$tmp/x/memtest64.efi" "$dest"; then
+        log_success "Installed memtest86+.efi"
+    else
+        log_error "Failed to install memtest86+.efi (download or checksum)"
+    fi
+    rm -rf "$tmp"
+}
+
 setup_syslinux() {
     log_section "Setting Up SYSLINUX (BIOS Boot)"
 
@@ -317,6 +346,7 @@ main() {
     check_dependencies
     create_directories
     download_ipxe
+    download_memtest
     setup_syslinux
     install_symlink
     install_systemd_service

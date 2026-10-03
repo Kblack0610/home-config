@@ -29,7 +29,7 @@ spec:
         - name: forgejo-registry
       containers:
         - name: playground-server
-          image: git.kblab.me/kblack0610/unity-playground-server:0.3.2-rc1
+          image: git.kblab.me/kblack0610/unity-playground-server:0.3.2-rc9
           args: ["-port", "7770"]
           ports:
             - containerPort: 7770

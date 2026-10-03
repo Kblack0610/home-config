@@ -316,9 +316,39 @@ endpoints:
   # Regenerate: ./scripts/gen-gatus-ingress-checks.py
   # Opt out per Ingress with annotation: gatus.kblab.me/monitor: "false"
   # BEGIN_GENERATED_INGRESS (regenerate via scripts/gen-gatus-ingress-checks.py)
+  - name: agents.kblab.me
+    group: ingress
+    url: "https://agents.kblab.me"
+    interval: 300s
+    client:
+      insecure: true
+    conditions:
+      - "[STATUS] < 500"
+      - "[CERTIFICATE_EXPIRATION] > 720h"
+
   - name: alertmanager.kblab.me
     group: ingress
     url: "https://alertmanager.kblab.me"
+    interval: 300s
+    client:
+      insecure: true
+    conditions:
+      - "[STATUS] < 500"
+      - "[CERTIFICATE_EXPIRATION] > 720h"
+
+  - name: api.time-tangle.com
+    group: ingress
+    url: "https://api.time-tangle.com"
+    interval: 300s
+    client:
+      insecure: true
+    conditions:
+      - "[STATUS] < 500"
+      - "[CERTIFICATE_EXPIRATION] > 720h"
+
+  - name: apps.kblab.me
+    group: ingress
+    url: "https://apps.kblab.me"
     interval: 300s
     client:
       insecure: true
@@ -336,6 +366,16 @@ endpoints:
       - "[STATUS] < 500"
       - "[CERTIFICATE_EXPIRATION] > 720h"
 
+  - name: cal.kennethblack.me
+    group: ingress
+    url: "https://cal.kennethblack.me"
+    interval: 300s
+    client:
+      insecure: true
+    conditions:
+      - "[STATUS] < 500"
+      - "[CERTIFICATE_EXPIRATION] > 720h"
+
   - name: finance.kblab.me
     group: ingress
     url: "https://finance.kblab.me"
@@ -346,9 +386,29 @@ endpoints:
       - "[STATUS] < 500"
       - "[CERTIFICATE_EXPIRATION] > 720h"
 
+  - name: fleet.kblab.me
+    group: ingress
+    url: "https://fleet.kblab.me"
+    interval: 300s
+    client:
+      insecure: true
+    conditions:
+      - "[STATUS] < 500"
+      - "[CERTIFICATE_EXPIRATION] > 720h"
+
   - name: git.kblab.me
     group: ingress
     url: "https://git.kblab.me"
+    interval: 300s
+    client:
+      insecure: true
+    conditions:
+      - "[STATUS] < 500"
+      - "[CERTIFICATE_EXPIRATION] > 720h"
+
+  - name: git.kennethblack.me
+    group: ingress
+    url: "https://git.kennethblack.me"
     interval: 300s
     client:
       insecure: true
@@ -396,9 +456,29 @@ endpoints:
       - "[STATUS] < 500"
       - "[CERTIFICATE_EXPIRATION] > 720h"
 
+  - name: immich-kiosk.kblab.me
+    group: ingress
+    url: "https://immich-kiosk.kblab.me"
+    interval: 300s
+    client:
+      insecure: true
+    conditions:
+      - "[STATUS] < 500"
+      - "[CERTIFICATE_EXPIRATION] > 720h"
+
   - name: jellyfin.kblab.me
     group: ingress
     url: "https://jellyfin.kblab.me"
+    interval: 300s
+    client:
+      insecure: true
+    conditions:
+      - "[STATUS] < 500"
+      - "[CERTIFICATE_EXPIRATION] > 720h"
+
+  - name: karakeep.kblab.me
+    group: ingress
+    url: "https://karakeep.kblab.me"
     interval: 300s
     client:
       insecure: true
@@ -426,31 +506,89 @@ endpoints:
       - "[STATUS] < 500"
       - "[CERTIFICATE_EXPIRATION] > 720h"
 
-  - name: binks.chat (SPA)
-    group: ingress
-    url: "https://binks.chat"
-    interval: 60s
-    client:
-      insecure: true
-    conditions:
-      - "[STATUS] == 200"
-      - "[BODY] == pat(*Binks Chat*)"
-
-  - name: binks.chat /api/health
-    group: ingress
-    url: "https://binks.chat/api/health"
-    interval: 60s
-    client:
-      insecure: true
-    conditions:
-      - "[STATUS] == 200"
-      - "[BODY].status == ok"
-      - "[BODY].database == true"
-      - "[RESPONSE_TIME] < 2000"
-
   - name: llm.kblab.me
     group: ingress
     url: "https://llm.kblab.me"
+    interval: 300s
+    client:
+      insecure: true
+    conditions:
+      - "[STATUS] < 500"
+      - "[CERTIFICATE_EXPIRATION] > 720h"
+
+  - name: mdm.kblab.me
+    group: ingress
+    url: "https://mdm.kblab.me"
+    interval: 300s
+    client:
+      insecure: true
+    conditions:
+      - "[STATUS] < 500"
+      - "[CERTIFICATE_EXPIRATION] > 720h"
+
+  - name: mem0.kblab.me
+    group: ingress
+    url: "https://mem0.kblab.me"
+    interval: 300s
+    client:
+      insecure: true
+    conditions:
+      - "[STATUS] < 500"
+      - "[CERTIFICATE_EXPIRATION] > 720h"
+
+  - name: mem0.kennethblack.me
+    group: ingress
+    url: "https://mem0.kennethblack.me"
+    interval: 300s
+    client:
+      insecure: true
+    conditions:
+      - "[STATUS] < 500"
+      - "[CERTIFICATE_EXPIRATION] > 720h"
+
+  - name: minio.kblab.me
+    group: ingress
+    url: "https://minio.kblab.me"
+    interval: 300s
+    client:
+      insecure: true
+    conditions:
+      - "[STATUS] < 500"
+      - "[CERTIFICATE_EXPIRATION] > 720h"
+
+  - name: neptune.kblab.me
+    group: ingress
+    url: "https://neptune.kblab.me"
+    interval: 300s
+    client:
+      insecure: true
+    conditions:
+      - "[STATUS] < 500"
+      - "[CERTIFICATE_EXPIRATION] > 720h"
+
+  - name: notes-sync-bridge.kblab.me
+    group: ingress
+    url: "https://notes-sync-bridge.kblab.me"
+    interval: 300s
+    client:
+      insecure: true
+    conditions:
+      - "[STATUS] < 500"
+      - "[CERTIFICATE_EXPIRATION] > 720h"
+
+  - name: ntfy.kblab.me
+    group: ingress
+    url: "https://ntfy.kblab.me"
+    interval: 300s
+    client:
+      insecure: true
+    conditions:
+      - "[STATUS] < 500"
+      - "[CERTIFICATE_EXPIRATION] > 720h"
+
+  - name: openclaw.kblab.me
+    group: ingress
+    url: "https://openclaw.kblab.me"
     interval: 300s
     client:
       insecure: true
@@ -468,9 +606,79 @@ endpoints:
       - "[STATUS] < 500"
       - "[CERTIFICATE_EXPIRATION] > 720h"
 
+  - name: placemyparents-api.blacknbrownstudios.com
+    group: ingress
+    url: "https://placemyparents-api.blacknbrownstudios.com"
+    interval: 300s
+    client:
+      insecure: true
+    conditions:
+      - "[STATUS] < 500"
+      - "[CERTIFICATE_EXPIRATION] > 720h"
+
+  - name: placemyparents-mobile.blacknbrownstudios.com
+    group: ingress
+    url: "https://placemyparents-mobile.blacknbrownstudios.com"
+    interval: 300s
+    client:
+      insecure: true
+    conditions:
+      - "[STATUS] < 500"
+      - "[CERTIFICATE_EXPIRATION] > 720h"
+
+  - name: placemyparents.blacknbrownstudios.com
+    group: ingress
+    url: "https://placemyparents.blacknbrownstudios.com"
+    interval: 300s
+    client:
+      insecure: true
+    conditions:
+      - "[STATUS] < 500"
+      - "[CERTIFICATE_EXPIRATION] > 720h"
+
+  - name: print.kblab.me
+    group: ingress
+    url: "https://print.kblab.me"
+    interval: 300s
+    client:
+      insecure: true
+    conditions:
+      - "[STATUS] < 500"
+      - "[CERTIFICATE_EXPIRATION] > 720h"
+
   - name: prometheus.kblab.me
     group: ingress
     url: "https://prometheus.kblab.me"
+    interval: 300s
+    client:
+      insecure: true
+    conditions:
+      - "[STATUS] < 500"
+      - "[CERTIFICATE_EXPIRATION] > 720h"
+
+  - name: s3.kblab.me
+    group: ingress
+    url: "https://s3.kblab.me"
+    interval: 300s
+    client:
+      insecure: true
+    conditions:
+      - "[STATUS] < 500"
+      - "[CERTIFICATE_EXPIRATION] > 720h"
+
+  - name: scratch.kblab.me
+    group: ingress
+    url: "https://scratch.kblab.me"
+    interval: 300s
+    client:
+      insecure: true
+    conditions:
+      - "[STATUS] < 500"
+      - "[CERTIFICATE_EXPIRATION] > 720h"
+
+  - name: ship.blacknbrownstudios.com
+    group: ingress
+    url: "https://ship.blacknbrownstudios.com"
     interval: 300s
     client:
       insecure: true
@@ -491,6 +699,26 @@ endpoints:
   - name: status.kblab.me
     group: ingress
     url: "https://status.kblab.me"
+    interval: 300s
+    client:
+      insecure: true
+    conditions:
+      - "[STATUS] < 500"
+      - "[CERTIFICATE_EXPIRATION] > 720h"
+
+  - name: vault.kblab.me
+    group: ingress
+    url: "https://vault.kblab.me"
+    interval: 300s
+    client:
+      insecure: true
+    conditions:
+      - "[STATUS] < 500"
+      - "[CERTIFICATE_EXPIRATION] > 720h"
+
+  - name: vikunja.kblab.me
+    group: ingress
+    url: "https://vikunja.kblab.me"
     interval: 300s
     client:
       insecure: true

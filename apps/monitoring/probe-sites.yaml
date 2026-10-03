@@ -25,13 +25,18 @@ spec:
     staticConfig:
       # BEGIN_GENERATED_TARGETS (regenerate via scripts/gen-ha-launcher.py)
       static:
+        - https://agents.kblab.me
         - https://alertmanager.kblab.me
+        - https://api.time-tangle.com
+        - https://apps.kblab.me
         - https://binks-next.kblab.me
         - https://binks.chat
         - https://blacknbrownstudios.com
         - https://cal.kennethblack.me
         - https://finance.kblab.me
+        - https://fleet.kblab.me
         - https://git.kblab.me
+        - https://git.kennethblack.me
         - https://grafana.kblab.me
         - https://hass.kblab.me
         - https://headscale-ui.kblab.me
@@ -41,6 +46,7 @@ spec:
         - https://kblack.dev
         - https://kennethblack.me
         - https://llm.kblab.me
+        - https://mdm.kblab.me
         - https://mem0.kblab.me
         - https://mem0.kennethblack.me
         - https://minio.kblab.me
@@ -50,10 +56,12 @@ spec:
         - https://openclaw.kblab.me
         - https://photos.kblab.me
         - https://placemyparents-api.blacknbrownstudios.com
+        - https://placemyparents-mobile.blacknbrownstudios.com
         - https://placemyparents.blacknbrownstudios.com
+        - https://print.kblab.me
         - https://prometheus.kblab.me
         - https://s3.kblab.me
-        - https://scratch.kennethblack.me
+        - https://scratch.kblab.me
         - https://ship.blacknbrownstudios.com
         - https://slicer.kblab.me
         - https://status.kblab.me

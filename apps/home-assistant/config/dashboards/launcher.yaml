@@ -11,6 +11,13 @@ sections:
         heading: Public
         icon: mdi:earth
       - type: tile
+        entity: binary_sensor.api_time_tangle_com
+        name: api.time-tangle.com
+        icon: mdi:web
+        tap_action:
+          action: url
+          url_path: https://api.time-tangle.com
+      - type: tile
         entity: binary_sensor.binks_chat
         name: binks.chat
         icon: mdi:chat
@@ -31,6 +38,13 @@ sections:
         tap_action:
           action: url
           url_path: https://cal.kennethblack.me
+      - type: tile
+        entity: binary_sensor.git_kennethblack_me
+        name: git.kennethblack.me
+        icon: mdi:git
+        tap_action:
+          action: url
+          url_path: https://git.kennethblack.me
       - type: tile
         entity: binary_sensor.kblack_dev
         name: kblack.dev
@@ -60,19 +74,19 @@ sections:
           action: url
           url_path: https://placemyparents-api.blacknbrownstudios.com
       - type: tile
+        entity: binary_sensor.placemyparents_mobile_blacknbrownstudios_com
+        name: placemyparents-mobile.blacknbrownstudios.com
+        icon: mdi:web
+        tap_action:
+          action: url
+          url_path: https://placemyparents-mobile.blacknbrownstudios.com
+      - type: tile
         entity: binary_sensor.placemyparents_blacknbrownstudios_com
         name: placemyparents.blacknbrownstudios.com
         icon: mdi:account-group
         tap_action:
           action: url
           url_path: https://placemyparents.blacknbrownstudios.com
-      - type: tile
-        entity: binary_sensor.scratch_kennethblack_me
-        name: scratch.kennethblack.me
-        icon: mdi:web
-        tap_action:
-          action: url
-          url_path: https://scratch.kennethblack.me
       - type: tile
         entity: binary_sensor.ship_blacknbrownstudios_com
         name: ship.blacknbrownstudios.com
@@ -226,6 +240,34 @@ sections:
         heading: Other
         icon: mdi:application
       - type: tile
+        entity: binary_sensor.agents_kblab_me
+        name: Agents
+        icon: mdi:application
+        tap_action:
+          action: url
+          url_path: https://agents.kblab.me
+      - type: tile
+        entity: binary_sensor.apps_kblab_me
+        name: Apps
+        icon: mdi:application
+        tap_action:
+          action: url
+          url_path: https://apps.kblab.me
+      - type: tile
+        entity: binary_sensor.fleet_kblab_me
+        name: Fleet
+        icon: mdi:application
+        tap_action:
+          action: url
+          url_path: https://fleet.kblab.me
+      - type: tile
+        entity: binary_sensor.mdm_kblab_me
+        name: Mdm
+        icon: mdi:application
+        tap_action:
+          action: url
+          url_path: https://mdm.kblab.me
+      - type: tile
         entity: binary_sensor.mem0_kblab_me
         name: Mem0
         icon: mdi:application
@@ -261,6 +303,13 @@ sections:
           action: url
           url_path: https://s3.kblab.me
       - type: tile
+        entity: binary_sensor.scratch_kblab_me
+        name: Scratch
+        icon: mdi:application
+        tap_action:
+          action: url
+          url_path: https://scratch.kblab.me
+      - type: tile
         entity: binary_sensor.vault_kblab_me
         name: Vault
         icon: mdi:application
@@ -286,6 +335,13 @@ sections:
         tap_action:
           action: url
           url_path: https://neptune.kblab.me
+      - type: tile
+        entity: binary_sensor.print_kblab_me
+        name: Print
+        icon: mdi:application
+        tap_action:
+          action: url
+          url_path: https://print.kblab.me
       - type: tile
         entity: binary_sensor.slicer_kblab_me
         name: Slicer

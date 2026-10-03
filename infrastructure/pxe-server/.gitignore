@@ -10,6 +10,9 @@ http/cachyos/airootfs.sfs.orig
 http/cachyos/x86_64/
 http/cachyos/*.sig
 
+# Downloaded by install.sh (download_memtest)
+http/utils/*.efi
+
 # Runtime files
 *.pid
 *.log

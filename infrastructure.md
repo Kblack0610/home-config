@@ -53,6 +53,7 @@
 | namespace | purpose | status |
 |-----------|---------|--------|
 | actual-budget | Personal finance (Actual Budget) | active |
+| agents | Ingress + endpoints for agent-web on the desktop | active |
 | apps | PlaceMyParents (API + Web + DB) | active |
 | forgejo | Git hosting (Forgejo) | active |
 | home-assistant | Smart home hub | active |
@@ -156,6 +157,7 @@ Traefik on the local network path behind `192.168.1.124`. All `*.kblab.me` local
 
 | hostname | service | cluster | notes |
 |----------|---------|---------|-------|
+| agents.kblab.me | agent-web (Claude sessions, runs on the desktop) | home-k3s | Traefik Ingress -> 192.168.1.2:8790; kept off public DNS with the external-dns controller annotation; app token |
 | hass.kblab.me | Home Assistant | home-k3s | Traefik Ingress |
 | grafana.kblab.me | Grafana | home-k3s | Traefik Ingress |
 | openclaw.kblab.me | OpenClaw | home-k3s | Traefik Ingress |

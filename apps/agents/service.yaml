@@ -1,0 +1,29 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: agents
+  namespace: agents
+  labels:
+    app.kubernetes.io/name: agents
+spec:
+  type: ClusterIP
+  ports:
+    - name: http
+      port: 80
+      targetPort: 8790
+---
+# agent-web runs on the desktop (pc-home-cachy-main), not in the cluster: it needs the
+# desktop's tmux sockets and ~/.claude. This Service only gives Traefik a backend.
+apiVersion: v1
+kind: Endpoints
+metadata:
+  name: agents
+  namespace: agents
+  labels:
+    app.kubernetes.io/name: agents
+subsets:
+  - addresses:
+      - ip: 192.168.1.2
+    ports:
+      - name: http
+        port: 8790

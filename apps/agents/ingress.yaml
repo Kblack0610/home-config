@@ -1,0 +1,37 @@
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: agents
+  namespace: agents
+  labels:
+    app.kubernetes.io/name: agents
+  annotations:
+    kubernetes.io/ingress.class: traefik
+    cert-manager.io/cluster-issuer: letsencrypt-dns
+    # Keep this host OFF public DNS. external-dns has no --domain-filter and the tunnel
+    # is a wildcard catch-all, so any *.kblab.me Ingress it sees becomes internet
+    # reachable (apps/gatus-fleet/ingress.yaml). A controller value other than
+    # dns-controller makes the v0.15 source skip the Ingress entirely. The `exclude`
+    # key used elsewhere is not an external-dns annotation and does nothing.
+    # This page types into live agent sessions; it must not be public.
+    external-dns.alpha.kubernetes.io/controller: none
+    # With no tunnel path, the allowlist sees real LAN sources again. The app's own
+    # token is still the gate.
+    traefik.ingress.kubernetes.io/router.middlewares: monitoring-local-network-only@kubernetescrd
+spec:
+  ingressClassName: traefik
+  tls:
+    - hosts:
+        - agents.kblab.me
+      secretName: agents-tls
+  rules:
+    - host: agents.kblab.me
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: agents
+                port:
+                  number: 80

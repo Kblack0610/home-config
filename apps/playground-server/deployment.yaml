@@ -32,10 +32,11 @@ spec:
           image: git.kblab.me/kblack0610/unity-playground-server:0.4.0-rc1
           args: ["-port", "7770"]
           # Lists the server in the game registry (apps/game-registry) with a join
-          # code; a build without the online listing ignores these.
+          # code; a build without the online listing ignores these. HTTPS, not the
+          # in-cluster Service: the player refuses plain http (insecureHttpOption 0).
           env:
             - name: REGISTRY_URL
-              value: http://game-registry.game-registry.svc:8080
+              value: https://game-registry.kblab.me
             - name: SERVER_ADDRESS
               value: 192.168.1.243
             - name: SERVER_NAME

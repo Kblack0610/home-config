@@ -62,6 +62,7 @@ resources:
 
   # Public sites (Cloudflare tunnel → Traefik → service)
   - playground-server
+  - game-registry
   - portfolio
   - bnb-studios
   - office-cup

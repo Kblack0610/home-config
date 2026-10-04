@@ -1,0 +1,71 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: game-registry
+  labels:
+    app.kubernetes.io/name: game-registry
+spec:
+  replicas: 1
+  # One SQLite file on a local-path volume: never two writers.
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: game-registry
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: game-registry
+    spec:
+      nodeSelector:
+        kubernetes.io/arch: amd64
+      imagePullSecrets:
+        - name: forgejo-registry
+      containers:
+        - name: registry
+          image: git.kblab.me/kblack0610/bnb-game-servers/registry:registry-v1.1.1
+          ports:
+            - name: http
+              containerPort: 8080
+          env:
+            - name: PORT
+              value: "8080"
+            - name: DB_PATH
+              value: /data/registry.db
+            # Traefik sits in front, so the caller's address is in X-Forwarded-For.
+            - name: TRUST_PROXY
+              value: "1"
+            - name: SERVER_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: game-registry-tokens
+                  key: SERVER_TOKEN
+            - name: HOST_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: game-registry-tokens
+                  key: HOST_TOKEN
+          volumeMounts:
+            - name: data
+              mountPath: /data
+          readinessProbe:
+            httpGet:
+              path: /api/v1/health
+              port: 8080
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /api/v1/health
+              port: 8080
+            initialDelaySeconds: 10
+            periodSeconds: 30
+          resources:
+            requests:
+              cpu: 10m
+              memory: 32Mi
+            limits:
+              memory: 128Mi
+      volumes:
+        - name: data
+          persistentVolumeClaim:
+            claimName: game-registry-data

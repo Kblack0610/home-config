@@ -31,6 +31,20 @@ spec:
         - name: playground-server
           image: git.kblab.me/kblack0610/unity-playground-server:0.3.2-rc9
           args: ["-port", "7770"]
+          # Lists the server in the game registry (apps/game-registry) with a join
+          # code; a build without the online listing ignores these.
+          env:
+            - name: REGISTRY_URL
+              value: http://game-registry.game-registry.svc:8080
+            - name: SERVER_ADDRESS
+              value: 192.168.1.243
+            - name: SERVER_NAME
+              value: Playground server
+            - name: SERVER_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: game-registry-token
+                  key: SERVER_TOKEN
           ports:
             - containerPort: 7770
               hostPort: 7770

@@ -7,4 +7,5 @@ resources:
   - namespace.yaml
   - rbac.yaml
   - registry-secret.yaml
+  - registry-token-secret.yaml
   - deployment.yaml

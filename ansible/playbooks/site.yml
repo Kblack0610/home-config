@@ -22,6 +22,8 @@
   roles:
     - role: asr-servers
       tags: [asr, ml, dictation]
+    - role: desktop-firewall
+      tags: [firewall, agent-web]
 
 - name: Bootstrap — ensure Python is installed so Ansible modules can run
   hosts: thinkcentre

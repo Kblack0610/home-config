@@ -1,0 +1,10 @@
+---
+galaxy_info:
+  role_name: desktop_firewall
+  author: home-config
+  description: >-
+    ufw allow rules for services on the CachyOS workstation that the cluster
+    proxies to (agent-web for agents.kblab.me).
+  license: MIT
+  min_ansible_version: "2.14"
+dependencies: []

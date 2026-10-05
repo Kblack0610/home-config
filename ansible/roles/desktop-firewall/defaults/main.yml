@@ -1,0 +1,10 @@
+---
+# Inbound ports this workstation opens to the LAN. ufw is active on the desktop
+# and default-denies inbound, so a service the cluster proxies to needs a rule here.
+desktop_firewall_rules:
+  # agent-web, fronted by agents.kblab.me (apps/agents). Traefik reaches it from
+  # the cluster nodes, which are all on 192.168.1.0/24.
+  - port: "8790"
+    proto: tcp
+    from: 192.168.1.0/24
+    comment: agent-web

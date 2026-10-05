@@ -286,9 +286,11 @@
 # with runs-on [self-hosted, linux, unity] (added 2026-10-05). Slots per host and
 # the slice caps live in inventory.yml (unity_ci_runners). Each slot is its own
 # runner under the actions-runner user with HOME set to the slot's dir, so slots
-# never share a Unity cache, Library or ~/.ssh; all of a host's slots share one
-# Unity machine id, so a host is one activation however many slots it has. The
-# unity-ci-host role puts the asset-library copy and the editor image on the host.
+# never share a Unity cache or Library. OpenSSH still reads known_hosts from the
+# user's passwd home, so unity-ci-host manages GitHub's keys there for every slot.
+# All of a host's slots share one Unity machine id, so a host is one activation
+# however many slots it has. The unity-ci-host role puts the asset-library copy
+# and the editor image on the host.
 #
 # A new HOST is a new Unity activation on the shared Personal serial: check the
 # serial still has one free before adding a host (unity-core-playground

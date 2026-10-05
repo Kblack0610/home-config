@@ -29,6 +29,45 @@
     system: true
     create_home: true
 
+# Each slot's HOME is its own dir, so the jobs' ssh-agent action writes GitHub's
+# host keys there; ssh itself reads known_hosts from the user's passwd home
+# instead, and refuses the submodule clone without them ("Host key verification
+# failed"). The keys come from GitHub's meta API at apply time.
+- name: Read GitHub's SSH host keys
+  ansible.builtin.uri:
+    url: https://api.github.com/meta
+    return_content: true
+  delegate_to: localhost
+  become: false
+  run_once: true
+  check_mode: false
+  register: _unity_ci_github_meta
+
+- name: Create the runner user's .ssh
+  ansible.builtin.file:
+    path: "{{ unity_ci_user_home }}/.ssh"
+    state: directory
+    owner: "{{ unity_ci_user }}"
+    group: "{{ unity_ci_group }}"
+    mode: "0700"
+
+- name: Trust GitHub's host keys for the runner user
+  ansible.builtin.known_hosts:
+    path: "{{ unity_ci_user_home }}/.ssh/known_hosts"
+    name: github.com
+    key: "github.com {{ item }}"
+  loop: "{{ _unity_ci_github_meta.json.ssh_keys }}"
+  loop_control:
+    label: "{{ item.split(' ')[0] }}"
+
+- name: Own the runner user's known_hosts
+  ansible.builtin.file:
+    path: "{{ unity_ci_user_home }}/.ssh/known_hosts"
+    owner: "{{ unity_ci_user }}"
+    group: "{{ unity_ci_group }}"
+    mode: "0644"
+  when: not ansible_check_mode
+
 - name: Install the Unity CI slice
   ansible.builtin.template:
     src: unity-ci.slice.j2

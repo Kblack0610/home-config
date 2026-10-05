@@ -323,15 +323,19 @@ data:
       # Lazer upstream (unconfirmed); the gateway meters it. LiteLLM cannot price a custom
       # api_base, so every route below carries Lazer's list price
       # (input_cost_per_token etc., $/1M from proxy /v1/models). Without those
-      # keys spend records as $0 and no max_budget below can ever trip.
+      # keys spend records as $0 and no budget could ever trip.
+      # No per-route max_budget: the pool is a LiteLLM team (lazer-pool, $250/1mo)
+      # with a per-key daily ceiling, so route caps would only stack under it and
+      # block a heavy day early. tpm/rpm below are runaway-loop guards only.
       # Route NAMES are stable aliases; the upstream `model:` id floats with
       # Lazer's catalog. Probe the id live (POST /v1/chat/completions,
       # max_tokens 16) before changing it: /v1/models lists ids the key cannot
       # reach (qwen-3.7-plus, deepseek-v4-pro and deepseek-v4-flash all 404).
       #
-      # Three layers of cost control per entry:
-      #   - tpm/rpm:           runaway-loop / stuck-retry caps
-      #   - max_budget:        upstream-side absolute ceiling per route
+      # Cost control, outermost first:
+      #   - team lazer-pool:   $250 per calendar month across every Lazer-capable
+      #                        key (runtime state in the gateway DB, not here)
+      #   - tpm/rpm:           runaway-loop / stuck-retry caps per route
       #   - per-virtual-key:   primary control via /key/generate
       #                        allowed_models. binks-api + mem0 use the
       #                        `local-only` key (no paid access);
@@ -352,8 +356,6 @@ data:
           cache_read_input_token_cost: 0.00000025
           tpm: 200000
           rpm: 120
-          max_budget: 30.00
-          budget_duration: 30d
         model_info:
           mode: chat
           tags: ["paid", "lazer"]
@@ -378,8 +380,6 @@ data:
           cache_read_input_token_cost: 0.00000026
           tpm: 100000
           rpm: 60
-          max_budget: 30.00
-          budget_duration: 30d
         model_info:
           mode: chat
           tags: ["paid", "lazer"]
@@ -403,8 +403,6 @@ data:
           output_cost_per_token: 0.00000075
           tpm: 500000
           rpm: 240
-          max_budget: 20.00
-          budget_duration: 30d
         model_info:
           mode: chat
           tags: ["paid", "lazer"]
@@ -436,8 +434,6 @@ data:
           cache_read_input_token_cost: 0.000000075
           tpm: 100000
           rpm: 60
-          max_budget: 20.00
-          budget_duration: 30d
         model_info:
           mode: chat
           tags: ["paid", "lazer"]
@@ -505,8 +501,6 @@ data:
           cache_creation_input_token_cost: 0.0000025
           tpm: 400000
           rpm: 120
-          max_budget: 75.00
-          budget_duration: 30d
         model_info:
           mode: chat
           tags: ["paid", "lazer"]
@@ -532,8 +526,6 @@ data:
           cache_creation_input_token_cost: 0.000005
           tpm: 200000
           rpm: 60
-          max_budget: 50.00
-          budget_duration: 30d
         model_info:
           mode: chat
           tags: ["paid", "lazer"]
@@ -561,8 +553,6 @@ data:
           cache_creation_input_token_cost: 0.00000125
           tpm: 500000
           rpm: 240
-          max_budget: 20.00
-          budget_duration: 30d
         model_info:
           mode: chat
           tags: ["paid", "lazer"]

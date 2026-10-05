@@ -29,6 +29,8 @@ One-page index of services and their management plane. Use this to answer "where
 | Homebrew baseline | mac-studio, mac-mini | user-scoped brew install | Ansible role authored, unbound → `install.sh` today | `ansible/roles/brew-common/` |
 | GitHub Actions runners, platform CI (Linux) | asus-laptop (3 light + 1 heavy), hp-victus (2 + 1) | systemd `actions.runner.<host>-<slot>.service` in `pmp-ci.slice` | Ansible (this repo), play "platform CI runners" | `ansible/roles/github-actions-runner-linux/` + `ansible/roles/platform-ci-host/` |
 | GitHub Actions runner, dodginballs Unity | hp-victus | systemd `actions.runner.hp-victus-unity-2.service` (/var/lib/actions-runner-2) | Ansible (this repo) | `ansible/roles/github-actions-runner-linux/` |
+| GitHub Actions runner, unity-core-playground | hp-victus | systemd `actions.runner.hp-victus-playground.service` (/var/lib/actions-runner-playground) | Ansible (this repo) | `ansible/roles/github-actions-runner-linux/` |
+| GitHub Actions Unity runner pool (org-wide, label `unity`) | asus-laptop (2), cachyos-x8664-main (2) | systemd `actions.runner.<host>-unity-pool-<n>.service` in `unity-ci.slice`; Unity containers in the same slice | Ansible (this repo), play "Unity CI runner pool" | `ansible/roles/unity-ci-host/` + `ansible/roles/github-actions-runner-linux/` |
 | Fluidd / Moonraker (live) | neptune-3d-printer (192.168.1.54) | embedded (on printer) | — | — |
 | AdGuard Home | pi3 (192.168.1.193) | docker-compose | In-repo compose, bootstrapped via `flash-pi.sh` + `setup.sh` | `apps/pi3-adguard-home/` |
 | Frigate NVR | (standalone Pi) | docker-compose | In-repo compose, run via `docker compose up -d` | `apps/frigate/` |

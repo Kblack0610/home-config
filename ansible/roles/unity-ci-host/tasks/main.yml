@@ -1,0 +1,166 @@
+---
+- name: Install Unity CI packages
+  community.general.pacman:
+    name: "{{ unity_ci_packages }}"
+    state: present
+
+- name: Ensure docker is enabled and running
+  ansible.builtin.systemd:
+    name: docker.service
+    enabled: true
+    state: started
+  ignore_errors: "{{ ansible_check_mode }}"
+
+# Same user the runner role creates; made here first so the files below can be
+# owned by it before any slot exists.
+- name: Create the runner group
+  ansible.builtin.group:
+    name: "{{ unity_ci_group }}"
+    system: true
+
+- name: Create the runner user
+  ansible.builtin.user:
+    name: "{{ unity_ci_user }}"
+    group: "{{ unity_ci_group }}"
+    groups: [docker]
+    append: true
+    home: "{{ unity_ci_user_home }}"
+    shell: /bin/bash
+    system: true
+    create_home: true
+
+- name: Install the Unity CI slice
+  ansible.builtin.template:
+    src: unity-ci.slice.j2
+    dest: "/etc/systemd/system/{{ unity_ci_slice }}"
+    mode: "0644"
+  register: _unity_ci_slice_unit
+
+- name: Reload systemd after the slice changed
+  ansible.builtin.systemd:
+    daemon_reload: true
+  when: _unity_ci_slice_unit.changed
+
+# 32 hex digits, the /etc/machine-id format. Made once; replacing it makes the
+# host a new machine to Unity, which costs an activation.
+- name: Create the host's Unity machine id
+  ansible.builtin.shell: >-
+    umask 022 && od -An -tx1 -N16 /dev/urandom | tr -d ' \n' > {{ unity_ci_machine_id_file }}
+    && chown {{ unity_ci_user }}:{{ unity_ci_group }} {{ unity_ci_machine_id_file }}
+  args:
+    creates: "{{ unity_ci_machine_id_file }}"
+
+# asset-library copy. The fingerprint covers every file's path, size and mtime
+# under Packages/; it runs on the control node, which is the workstation that
+# holds the library. Skipped where there is no source (the in-cluster drift run).
+- name: Fingerprint the workstation's asset-library packages
+  ansible.builtin.shell: >-
+    set -o pipefail &&
+    cd {{ unity_ci_asset_library_source }} &&
+    find Packages -type f -printf '%P %s %T@\n' | sort | sha256sum | cut -d' ' -f1
+  args:
+    executable: /bin/bash
+  delegate_to: localhost
+  become: false
+  run_once: true
+  changed_when: false
+  failed_when: false
+  check_mode: false
+  register: _unity_ci_library_source
+
+- name: Read the copy's fingerprint
+  ansible.builtin.command: cat {{ unity_ci_asset_library }}/.fingerprint
+  changed_when: false
+  failed_when: false
+  check_mode: false
+  register: _unity_ci_library_copy
+
+- name: Copy the asset-library when it changed
+  when:
+    - _unity_ci_library_source.rc == 0
+    - _unity_ci_library_source.stdout != _unity_ci_library_copy.stdout
+  block:
+    - name: Pack the library's Packages/ on the workstation
+      community.general.archive:
+        path: "{{ unity_ci_asset_library_source }}/Packages"
+        dest: /tmp/unity-ci-asset-library.tar
+        format: tar
+        mode: "0600"
+      delegate_to: localhost
+      become: false
+
+    # Removed first so a package deleted from the library leaves the copy too.
+    - name: Remove the old copy
+      ansible.builtin.file:
+        path: "{{ unity_ci_asset_library }}"
+        state: absent
+
+    - name: Create the copy's directory
+      ansible.builtin.file:
+        path: "{{ unity_ci_asset_library }}"
+        state: directory
+        owner: "{{ unity_ci_user }}"
+        group: "{{ unity_ci_group }}"
+        mode: "0755"
+
+    - name: Unpack the library on the host
+      ansible.builtin.unarchive:
+        src: /tmp/unity-ci-asset-library.tar
+        dest: "{{ unity_ci_asset_library }}"
+        owner: "{{ unity_ci_user }}"
+        group: "{{ unity_ci_group }}"
+      # In --check the pack above is simulated, so there is no tarball to read.
+      when: not ansible_check_mode
+
+    - name: Record the copy's fingerprint
+      ansible.builtin.copy:
+        content: "{{ _unity_ci_library_source.stdout }}"
+        dest: "{{ unity_ci_asset_library }}/.fingerprint"
+        owner: "{{ unity_ci_user }}"
+        group: "{{ unity_ci_group }}"
+        mode: "0644"
+
+# Editor images: load a missing one from the workstation's docker. The host's own
+# connection details are read here, before the copy is delegated to localhost,
+# where ansible_connection and ansible_host would name localhost instead.
+- name: Note how this host is reached
+  ansible.builtin.set_fact:
+    _unity_ci_local: "{{ ansible_connection | default('ssh') == 'local' }}"
+    _unity_ci_ssh: >-
+      -p {{ ansible_port | default(22) }} {{ ansible_user }}@{{ ansible_host | default(inventory_hostname) }}
+
+- name: Check which editor images the host has
+  ansible.builtin.command: docker image inspect --format ok {{ item }}
+  loop: "{{ unity_ci_images }}"
+  changed_when: false
+  failed_when: false
+  check_mode: false
+  register: _unity_ci_images
+
+- name: Copy missing editor images from the workstation
+  ansible.builtin.shell: >-
+    set -o pipefail &&
+    docker image inspect {{ item.item }} >/dev/null &&
+    docker save {{ item.item }} |
+    ssh -o BatchMode=yes {{ _unity_ci_ssh }} sudo docker load
+  args:
+    executable: /bin/bash
+  loop: "{{ _unity_ci_images.results }}"
+  loop_control:
+    label: "{{ item.item }}"
+  when:
+    - item.rc != 0
+    - not _unity_ci_local
+  delegate_to: localhost
+  become: false
+
+- name: Assert the workstation itself has the editor images
+  ansible.builtin.assert:
+    that: item.rc == 0
+    fail_msg: "{{ item.item }} is missing here; docker pull it (over IPv4) before applying"
+  loop: "{{ _unity_ci_images.results }}"
+  loop_control:
+    label: "{{ item.item }}"
+  when:
+    - _unity_ci_local
+    - not ansible_check_mode

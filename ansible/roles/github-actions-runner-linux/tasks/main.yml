@@ -108,7 +108,7 @@
 
 - name: Fetch registration token with the PAT (token_source=pat)
   ansible.builtin.uri:
-    url: "https://api.github.com/repos/{{ gh_runner_owner }}/{{ gh_runner_repo }}/actions/runners/registration-token"
+    url: "https://api.github.com/{{ gh_runner_api_path }}/actions/runners/registration-token"
     method: POST
     headers:
       Accept: application/vnd.github+json
@@ -131,7 +131,7 @@
       - api
       - -X
       - POST
-      - "repos/{{ gh_runner_owner }}/{{ gh_runner_repo }}/actions/runners/registration-token"
+      - "{{ gh_runner_api_path }}/actions/runners/registration-token"
       - -q
       - .token
   delegate_to: localhost

@@ -1,0 +1,40 @@
+---
+# Host prep for the BNB Unity runner pool (the "Unity CI runner pool" play in
+# site.yml). The runner slots themselves come from github-actions-runner-linux.
+# What the jobs expect from a host: unity-core-playground docs/operations/ci.md.
+
+# Caps for every Unity container on the host together. The jobs run Unity in
+# docker, and dockerd owns its containers, so the slice is handed to docker
+# (UNITY_CI_CGROUP_PARENT -> docker run --cgroup-parent) as well as set on the
+# runner units. Override per host in inventory.yml (unity_ci_runners).
+unity_ci_cpu_cores: 8
+unity_ci_memory_max: 24G
+unity_ci_slice: unity-ci.slice
+
+unity_ci_user: actions-runner
+unity_ci_group: actions-runner
+unity_ci_user_home: /var/lib/actions-runner
+
+# Every slot on the host mounts this as the container's /etc/machine-id, so the
+# host is one machine (one activation) to Unity whatever its slot count.
+unity_ci_machine_id_file: "{{ unity_ci_user_home }}/unity-machine-id"
+
+# The asset-library has no remote; the game manifests name it by its path on the
+# workstation, and the jobs mount this copy there read-only. Only Packages/ is
+# copied. Re-run the play (--tags unity-ci) after the library's packages change;
+# a fingerprint of the tree skips the copy when nothing did.
+unity_ci_asset_library_source: /home/kblack0610/dev/bnb/games/engine/asset-library
+unity_ci_asset_library: "{{ unity_ci_user_home }}/asset-library"
+
+# Editor images the jobs build on. Pulling these on the LAN fails (the IPv6 path
+# corrupts long downloads), so a missing one is copied from the workstation's
+# docker with docker save | docker load. Add the new tag on a Unity upgrade.
+unity_ci_images:
+  - unityci/editor:ubuntu-6000.0.72f1-base-3
+
+unity_ci_packages:
+  - docker
+  - git
+  - git-lfs
+  - jq
+  - curl

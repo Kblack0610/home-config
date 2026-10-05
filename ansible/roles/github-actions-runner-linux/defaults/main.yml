@@ -1,8 +1,13 @@
 ---
-# Target repo for the runner. Single-repo runners; change to org-scoped later if needed.
+# Where the runner registers. repo: one repo (gh_runner_repo) sees it. org: every repo
+# in gh_runner_owner sees it, through the org's Default runner group (the Unity pool).
+# An org registration token needs an org admin; with token_source=gh that is the
+# workstation's gh with the admin:org scope (gh auth refresh -h github.com -s admin:org).
+gh_runner_scope: repo
 gh_runner_owner: BlackNBrownStudios
 gh_runner_repo: platform
-gh_runner_url: "https://github.com/{{ gh_runner_owner }}/{{ gh_runner_repo }}"
+gh_runner_url: "https://github.com/{{ gh_runner_owner }}{{ '' if gh_runner_scope == 'org' else '/' ~ gh_runner_repo }}"
+gh_runner_api_path: "{{ 'orgs/' ~ gh_runner_owner if gh_runner_scope == 'org' else 'repos/' ~ gh_runner_owner ~ '/' ~ gh_runner_repo }}"
 
 # PAT override — per-play, for hosts that register against a DIFFERENT repo
 # than the default `vault_github_pat` covers (e.g. dodginballs). Undefined by

@@ -8,9 +8,9 @@ The server runs on `pc-home-cachy-main` (`192.168.1.2:8790`) as the `agent-web` 
 
 - The Ingress carries `external-dns.alpha.kubernetes.io/controller: none`, so external-dns never publishes it and the wildcard tunnel cannot route it. Check: `dig +short agents.kblab.me @1.1.1.1` prints nothing.
 - The `local-network-only` middleware allows RFC1918 sources only.
-- agent-web checks a token. On the desktop it is in `~/.config/agent-web/token`. Open `https://agents.kblab.me/?token=<token>` once per browser; the page trades it for a cookie.
+- agent-web signs you in with Forgejo (OAuth2, app `agents.kblab.me` on `git.kblab.me`) and only lets the logins in `AGENT_WEB_ALLOWED_USERS` through. A signed-out visit shows a Sign in with Forgejo button; there is no token to paste. Details: `~/.dotfiles/.local/src/agent-web/README.md`.
 
-The desktop runs ufw, so port 8790 has to be allowed from the LAN: `sudo ufw allow from 192.168.1.0/24 to any port 8790 proto tcp`.
+The desktop runs ufw; the allow rule for port 8790 from the LAN is the `desktop-firewall` role in `ansible/`.
 
 ## Files
 
@@ -26,7 +26,7 @@ The desktop runs ufw, so port 8790 has to be allowed from the LAN: `sudo ufw all
 ```bash
 kubectl --context home-k3s -n agents get svc,endpoints,ingress
 curl -s https://agents.kblab.me/healthz            # ok
-curl -s -o /dev/null -w '%{http_code}\n' https://agents.kblab.me/api/agents   # 401 without the token
+curl -s -o /dev/null -w '%{http_code}\n' https://agents.kblab.me/api/agents   # 401 without a session
 ```
 
 A `502` means Traefik cannot reach the desktop: check `systemctl --user status agent-web` and the ufw rule.

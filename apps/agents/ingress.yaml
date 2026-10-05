@@ -16,7 +16,7 @@ metadata:
     # This page types into live agent sessions; it must not be public.
     external-dns.alpha.kubernetes.io/controller: none
     # With no tunnel path, the allowlist sees real LAN sources again. The app's own
-    # token is still the gate.
+    # Sign in with Forgejo is still the gate.
     traefik.ingress.kubernetes.io/router.middlewares: monitoring-local-network-only@kubernetescrd
 spec:
   ingressClassName: traefik

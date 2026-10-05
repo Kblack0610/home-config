@@ -22,6 +22,10 @@ Mirrors `platform/tools/setup-mac-runner.sh` + `register-mac-runner.sh` for the 
 
 With `gh_runner_token_source: gh` no PAT is needed: the registration token is minted on the control node with its authenticated `gh` CLI, and only when the instance has no `.runner` marker yet.
 
+## Repo or org
+
+`gh_runner_scope: repo` (the default) registers against `gh_runner_repo` only. `gh_runner_scope: org` registers against the whole `gh_runner_owner` org, so every repo in its Default runner group can use the runner (the Unity runner pool does this). An org token needs an org admin: with `gh_runner_token_source: gh`, run `gh auth refresh -h github.com -s admin:org` on the control node first.
+
 ## Several runners on one host
 
 Set `gh_runner_user_home` to a shared directory and `gh_runner_home` to a per-instance directory under it, and apply the role once per instance (the "platform CI runners" play in `playbooks/site.yml` loops it with `include_role`). Each instance gets its own systemd unit, `.runner` marker and work dir. `gh_runner_env` writes extra `KEY=VALUE` lines into the instance's `.env`; the platform play sets `HOME` per instance so parallel jobs never share a pnpm store or `~/setup-pnpm`. `gh_runner_slice` puts the unit in a systemd slice (the `platform-ci-host` role owns `pmp-ci.slice` and its caps).

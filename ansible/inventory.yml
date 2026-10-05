@@ -140,6 +140,24 @@ all:
         # Run memtest86+ before adding it back. Its slot was deregistered by
         # hand; the pmp-ci slice, cleanup timer and docker stay installed.
 
+    # BNB Unity runner pool (added 2026-10-05; the "Unity CI runner pool" play in
+    # site.yml). Org-scoped, label `unity`, for every game repo. Each slot runs
+    # one Unity job at a time (a PlayMode shard, an EditMode run, a DodginBalls
+    # build), about 4-6 GB each. Caps are for all of the host's Unity containers
+    # together. Every host here is one activation on the shared Unity serial.
+    unity_ci_runners:
+      hosts:
+        # 16 cores / 62 GB, beside the platform slots (12 cores / 40G cap).
+        asus-laptop:
+          unity_ci_slots: 2
+          unity_ci_cpu_cores: 8
+          unity_ci_memory_max: 24G
+        # The workstation: the human's desk, so Unity CI is capped at half of it.
+        cachyos-x8664-main:
+          unity_ci_slots: 2
+          unity_ci_cpu_cores: 12
+          unity_ci_memory_max: 48G
+
     # HS5 desk audio endpoint(s). See ansible/roles/audio-endpoint/README.md.
     # Board-agnostic (Raspberry Pi OS, or Armbian on a Libre / BigTreeTech
     # board). Add the box here once it is flashed and on the LAN, e.g.:

@@ -1,0 +1,15 @@
+---
+galaxy_info:
+  role_name: unity_ci_host
+  author: home-config
+  description: >-
+    Host prep for the BNB Unity runner pool: the asset-library copy and
+    unityci editor image the game repos' Unity jobs need, one Unity machine id
+    for the host, and a systemd slice that caps every Unity container on it.
+  license: MIT
+  min_ansible_version: "2.14"
+  platforms:
+    - name: ArchLinux
+      versions:
+        - rolling
+dependencies: []

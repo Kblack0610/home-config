@@ -1,0 +1,12 @@
+# Managed by ansible (unity-ci-host). Every Unity runner slot on this host, and
+# every container its jobs start (docker run --cgroup-parent), runs in this
+# slice, so Unity CI uses at most {{ unity_ci_cpu_cores }} cores and {{ unity_ci_memory_max }} here.
+[Unit]
+Description=Unity CI runner pool (GitHub Actions)
+Before=slices.target
+
+[Slice]
+CPUAccounting=true
+CPUQuota={{ unity_ci_cpu_cores * 100 }}%
+MemoryAccounting=true
+MemoryMax={{ unity_ci_memory_max }}

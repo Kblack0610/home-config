@@ -282,6 +282,61 @@
         gh_runner_install_packages: false
       tags: [runner, ci, playground]
 
+# BNB Unity runner pool: org-scoped runners every BlackNBrownStudios repo can use
+# with runs-on [self-hosted, linux, unity] (added 2026-10-05). Slots per host and
+# the slice caps live in inventory.yml (unity_ci_runners). Each slot is its own
+# runner under the actions-runner user with HOME set to the slot's dir, so slots
+# never share a Unity cache, Library or ~/.ssh; all of a host's slots share one
+# Unity machine id, so a host is one activation however many slots it has. The
+# unity-ci-host role puts the asset-library copy and the editor image on the host.
+#
+# A new HOST is a new Unity activation on the shared Personal serial: check the
+# serial still has one free before adding a host (unity-core-playground
+# docs/operations/ci.md). Org registration tokens need the workstation's gh with
+# admin:org (gh auth refresh -h github.com -s admin:org).
+#
+# hp-victus's two repo-scoped Unity runners (dodginballs, playground) above stay
+# as they are and carry the same `unity` label, so they take pool jobs for their
+# own repo too.
+#
+# Lowering a slot count does NOT remove the old slot: stop and disable
+# actions.runner.<host>-unity-pool-<n>.service, delete it in the org's runner
+# settings, and rm -rf /var/lib/actions-runner/unity-pool-<n>.
+- name: Unity CI runner pool (org-wide)
+  hosts: unity_ci_runners
+  become: true
+  gather_facts: true
+  roles:
+    # unity-ci-host alone (--tags unity-ci-host) refreshes the asset-library copy
+    # and editor images without touching the runners.
+    - role: unity-ci-host
+      tags: [runner, ci, unity-ci, unity-ci-host]
+  tasks:
+    - name: Register the Unity pool slots
+      ansible.builtin.include_role:
+        name: github-actions-runner-linux
+        apply:
+          tags: [runner, ci, unity-ci]
+      loop: "{{ range(1, unity_ci_slots + 1) | list }}"
+      loop_control:
+        loop_var: unity_slot
+      vars:
+        gh_runner_scope: org
+        gh_runner_token_source: gh
+        gh_runner_install_packages: false
+        gh_runner_user: "{{ unity_ci_user }}"
+        gh_runner_group: "{{ unity_ci_group }}"
+        gh_runner_user_home: "{{ unity_ci_user_home }}"
+        gh_runner_home: "{{ unity_ci_user_home }}/unity-pool-{{ unity_slot }}"
+        gh_runner_name: "{{ inventory_hostname }}-unity-pool-{{ unity_slot }}"
+        gh_runner_labels: [self-hosted, linux, x64, unity, "host-{{ inventory_hostname }}"]
+        gh_runner_slice: "{{ unity_ci_slice }}"
+        gh_runner_env:
+          HOME: "{{ unity_ci_user_home }}/unity-pool-{{ unity_slot }}"
+          UNITY_MACHINE_ID_FILE: "{{ unity_ci_machine_id_file }}"
+          UNITY_CI_CGROUP_PARENT: "{{ unity_ci_slice }}"
+      tags: [runner, ci, unity-ci]
+
 # NFS backup target — hp-victus exports /srv/backups so k3s workloads can keep
 # an OFF-BOX backup copy on a different machine than the one that produced them.
 # Motivating case: forgejo's nightly backup used to write only to a hostPath on

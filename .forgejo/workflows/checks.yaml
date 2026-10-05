@@ -33,6 +33,8 @@ jobs:
       # Stdlib only, so there is no pip step to break and no lockfile to drift.
       - name: Fleet roster agrees with the gatus declarations
         run: python3 scripts/check-fleet-roster.py
+      - name: Runner roster agrees with the ansible inventory
+        run: python3 scripts/check-runner-roster.py
 
       - name: Home Assistant packages are all registered with the ConfigMap generator
         run: python3 scripts/check-ha-packages.py

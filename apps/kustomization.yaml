@@ -22,6 +22,7 @@ resources:
   - flux-audit
   - forgejo
   - forgejo-mirror-exporter
+  - github-runner-exporter
   - gatus
   - gatus-fleet
   - headscale

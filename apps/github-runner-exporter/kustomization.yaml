@@ -1,0 +1,16 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+# Runs in monitoring: it reads only the GitHub API, so it owns no namespace of
+# its own. Same configMapGenerator shape as apps/fleet-exporter: the hashed
+# name means an exporter.py edit rolls the pod.
+namespace: monitoring
+
+configMapGenerator:
+  - name: github-runner-exporter-script
+    files:
+      - exporter.py
+
+resources:
+  - deployment.yaml
+  # - github-runner-exporter-secret.yaml   # see deployment.yaml GITHUB_TOKEN

@@ -120,7 +120,8 @@ all:
     # the next job - so the slot counts ARE the priority. pmp-heavy jobs publish
     # fixed host ports (postgres 5432, mailpit 1025/8025, app ports), so never
     # more than one heavy slot per host. cpu/memory caps are for the whole
-    # host's CI slice.
+    # host's CI slice. Slot counts are mirrored in apps/github-runner-exporter
+    # RUNNER_ROSTER; scripts/check-runner-roster.py fails CI when they disagree.
     platform_ci_runners:
       hosts:
         asus-laptop:
@@ -145,6 +146,7 @@ all:
     # one Unity job at a time (a PlayMode shard, an EditMode run, a DodginBalls
     # build), about 4-6 GB each. Caps are for all of the host's Unity containers
     # together. Every host here is one activation on the shared Unity serial.
+    # Mirrored in RUNNER_ROSTER like platform_ci_runners above.
     unity_ci_runners:
       hosts:
         # 16 cores / 62 GB, beside the platform slots (12 cores / 40G cap).

@@ -36,3 +36,6 @@ configMapGenerator:
   - name: grafana-dashboard-fleet-machines
     files:
       - fleet-machines.json
+  - name: grafana-dashboard-ci-runners
+    files:
+      - ci-runners.json

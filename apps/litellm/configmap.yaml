@@ -319,9 +319,15 @@ data:
       # ============================================================
       # Paid routes via Lazer (proxy.lazertechnologies.com)
       # ============================================================
-      # Cost-effective picks from Lazer's catalog (2026-04-30). $250/mo
-      # budget; per-route max_budget caps sum to ~$100/30d total ceiling
-      # under typical usage.
+      # Picks from Lazer's catalog. The Lazer budget is $250/mo, believed to be enforced by
+      # Lazer upstream (unconfirmed); the gateway meters it. LiteLLM cannot price a custom
+      # api_base, so every route below carries Lazer's list price
+      # (input_cost_per_token etc., $/1M from proxy /v1/models). Without those
+      # keys spend records as $0 and no max_budget below can ever trip.
+      # Route NAMES are stable aliases; the upstream `model:` id floats with
+      # Lazer's catalog. Probe the id live (POST /v1/chat/completions,
+      # max_tokens 16) before changing it: /v1/models lists ids the key cannot
+      # reach (qwen-3.7-plus, deepseek-v4-pro and deepseek-v4-flash all 404).
       #
       # Three layers of cost control per entry:
       #   - tpm/rpm:           runaway-loop / stuck-retry caps
@@ -337,9 +343,13 @@ data:
       # same family as local Qwen3-Coder-Next so prompts transfer.
       - model_name: "code (qwen-3-coder)"
         litellm_params:
-          model: "openai/qwen-3-coder"
+          model: "openai/qwen-3.8-max"
           api_base: https://proxy.lazertechnologies.com/v1
           api_key: os.environ/LAZER_API_KEY
+          # Lazer list price, $/1M: in 2 out 6 cache_read 0.25 (proxy /v1/models, 2026-10-05).
+          input_cost_per_token: 0.000002
+          output_cost_per_token: 0.000006
+          cache_read_input_token_cost: 0.00000025
           tpm: 200000
           rpm: 120
           max_budget: 30.00
@@ -359,9 +369,13 @@ data:
       # model with thinking mode.
       - model_name: "reasoning (deepseek-v4-pro)"
         litellm_params:
-          model: "openai/deepseek-v4-pro"
+          model: "openai/glm-5.3"
           api_base: https://proxy.lazertechnologies.com/v1
           api_key: os.environ/LAZER_API_KEY
+          # Lazer list price, $/1M: in 1.4 out 4.4 cache_read 0.26 (proxy /v1/models, 2026-10-05).
+          input_cost_per_token: 0.0000014
+          output_cost_per_token: 0.0000044
+          cache_read_input_token_cost: 0.00000026
           tpm: 100000
           rpm: 60
           max_budget: 30.00
@@ -384,6 +398,9 @@ data:
           model: "openai/gpt-oss-120b"
           api_base: https://proxy.lazertechnologies.com/v1
           api_key: os.environ/LAZER_API_KEY
+          # Lazer list price, $/1M: in 0.35 out 0.75 (proxy /v1/models, 2026-10-05).
+          input_cost_per_token: 0.00000035
+          output_cost_per_token: 0.00000075
           tpm: 500000
           rpm: 240
           max_budget: 20.00
@@ -410,9 +427,13 @@ data:
       # repeats on every vendor bump. Only the upstream moves.
       - model_name: "vlm (gemini-3-flash)"
         litellm_params:
-          model: "openai/gemini-3.6-flash"
+          model: "openai/gemini-3.8-flash"
           api_base: https://proxy.lazertechnologies.com/v1
           api_key: os.environ/LAZER_API_KEY
+          # Lazer list price, $/1M: in 0.75 out 3.75 cache_read 0.075 (proxy /v1/models, 2026-10-05).
+          input_cost_per_token: 0.00000075
+          output_cost_per_token: 0.00000375
+          cache_read_input_token_cost: 0.000000075
           tpm: 100000
           rpm: 60
           max_budget: 20.00
@@ -474,9 +495,14 @@ data:
       # sonnet-5 = the loop's workhorse main model (set ANTHROPIC_MODEL to this).
       - model_name: "claude-sonnet-5"
         litellm_params:
-          model: "openai/claude-sonnet-5"
+          model: "openai/claude-sonnet-5.5"
           api_base: https://proxy.lazertechnologies.com/v1
           api_key: os.environ/LAZER_API_KEY
+          # Lazer list price, $/1M: in 2 out 10 cache_read 0.2 cache_write 2.5 (proxy /v1/models, 2026-10-05).
+          input_cost_per_token: 0.000002
+          output_cost_per_token: 0.00001
+          cache_read_input_token_cost: 0.0000002
+          cache_creation_input_token_cost: 0.0000025
           tpm: 400000
           rpm: 120
           max_budget: 75.00
@@ -496,9 +522,14 @@ data:
       # reviewer) or as the main model when max quality is wanted. Tighter cap.
       - model_name: "claude-opus-4-8"
         litellm_params:
-          model: "openai/claude-opus-4.8"
+          model: "openai/claude-opus-5.5"
           api_base: https://proxy.lazertechnologies.com/v1
           api_key: os.environ/LAZER_API_KEY
+          # Lazer list price, $/1M: in 4 out 20 cache_read 0.2 cache_write 5 (proxy /v1/models, 2026-10-05).
+          input_cost_per_token: 0.000004
+          output_cost_per_token: 0.00002
+          cache_read_input_token_cost: 0.0000002
+          cache_creation_input_token_cost: 0.000005
           tpm: 200000
           rpm: 60
           max_budget: 50.00
@@ -523,6 +554,11 @@ data:
           model: "openai/claude-haiku-4.5"
           api_base: https://proxy.lazertechnologies.com/v1
           api_key: os.environ/LAZER_API_KEY
+          # Lazer list price, $/1M: in 1 out 5 cache_read 0.1 cache_write 1.25 (proxy /v1/models, 2026-10-05).
+          input_cost_per_token: 0.000001
+          output_cost_per_token: 0.000005
+          cache_read_input_token_cost: 0.0000001
+          cache_creation_input_token_cost: 0.00000125
           tpm: 500000
           rpm: 240
           max_budget: 20.00

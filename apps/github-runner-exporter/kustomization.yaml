@@ -13,4 +13,4 @@ configMapGenerator:
 
 resources:
   - deployment.yaml
-  # - github-runner-exporter-secret.yaml   # see deployment.yaml GITHUB_TOKEN
+  - github-runner-exporter-secret.yaml   # PAT, vault: github-runner-exporter-pat

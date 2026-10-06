@@ -5,8 +5,13 @@
 Description=Unity CI runner pool (GitHub Actions)
 Before=slices.target
 
+# Cores, not a quota: CPUQuota froze the whole slice for the rest of each
+# 100 ms period once it used its share, even with cores idle, and every
+# millisecond timing in the tests paid for it (asus: 10% of periods throttled,
+# a 5 ms page open measured 18 ms). AllowedCPUs gives it the last
+# {{ unity_ci_cpu_cores }} CPUs outright and never stalls it.
 [Slice]
 CPUAccounting=true
-CPUQuota={{ unity_ci_cpu_cores * 100 }}%
+AllowedCPUs={{ ansible_processor_nproc - unity_ci_cpu_cores }}-{{ ansible_processor_nproc - 1 }}
 MemoryAccounting=true
 MemoryMax={{ unity_ci_memory_max }}

@@ -157,11 +157,10 @@ all:
           unity_ci_slots: 1
           unity_ci_cpu_cores: 8
           unity_ci_memory_max: 24G
-        # The workstation: the human's desk, so Unity CI is capped at half of it.
-        cachyos-x8664-main:
-          unity_ci_slots: 2
-          unity_ci_cpu_cores: 12
-          unity_ci_memory_max: 48G
+        # Not the workstation (cachyos-x8664-main): it is the human's work machine,
+        # and its two slots took 12 cores and 48G while they worked. Removed
+        # 2026-10-06, when CI moved to nightly and release runs only; its slots
+        # were deregistered by hand. Do not add it back.
 
     # HS5 desk audio endpoint(s). See ansible/roles/audio-endpoint/README.md.
     # Board-agnostic (Raspberry Pi OS, or Armbian on a Libre / BigTreeTech

@@ -33,10 +33,11 @@
 # host keys there; ssh itself reads known_hosts from the user's passwd home
 # instead, and refuses the submodule clone without them ("Host key verification
 # failed"). The keys come from GitHub's meta API at apply time.
+# Through the control node's gh, signed in: GitHub allows 60 anonymous API
+# calls an hour per IP, and every machine on the LAN shares one IP.
 - name: Read GitHub's SSH host keys
-  ansible.builtin.uri:
-    url: https://api.github.com/meta
-    return_content: true
+  ansible.builtin.command: gh api meta --jq '.ssh_keys[]'
+  changed_when: false
   delegate_to: localhost
   become: false
   run_once: true
@@ -56,7 +57,7 @@
     path: "{{ unity_ci_user_home }}/.ssh/known_hosts"
     name: github.com
     key: "github.com {{ item }}"
-  loop: "{{ _unity_ci_github_meta.json.ssh_keys }}"
+  loop: "{{ _unity_ci_github_meta.stdout_lines }}"
   loop_control:
     label: "{{ item.split(' ')[0] }}"
 

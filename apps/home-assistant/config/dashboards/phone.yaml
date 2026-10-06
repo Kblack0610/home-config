@@ -123,6 +123,7 @@ views:
   - !include view_control.yaml
   - !include view_local.yaml
   - !include view_ops.yaml
+  - !include view_ci.yaml
   - !include view_media.yaml
   - !include view_settings.yaml
 

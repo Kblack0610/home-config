@@ -1,0 +1,56 @@
+# CI runners: what every self-hosted GitHub Actions runner is doing, from the
+# github-runner-exporter series in Prometheus (apps/github-runner-exporter). The
+# runner and waiting-job rows ride along as the `result` attribute so the CI view
+# (dashboards/view_ci.yaml) can render them; Grafana's "CI / Runners" dashboard
+# is the deep view.
+#
+# sensor.ci_github_api says whether the exporter can read GitHub at all. Check it
+# before trusting a 0: with no token every count below is 0 because nothing was
+# read, not because nothing is running.
+rest:
+  - resource: http://kube-prometheus-stack-prometheus.monitoring.svc:9090/api/v1/query
+    params:
+      query: github_runner_state
+    scan_interval: 60
+    sensor:
+      - name: CI runners running
+        unique_id: ci_runners_running
+        icon: mdi:run-fast
+        unit_of_measurement: runners
+        value_template: "{{ value_json.data.result | selectattr('metric.state', 'eq', 'running') | list | count }}"
+        json_attributes_path: "$.data"
+        json_attributes:
+          - result
+      - name: CI runners down
+        unique_id: ci_runners_down
+        icon: mdi:server-off
+        unit_of_measurement: runners
+        value_template: "{{ value_json.data.result | selectattr('metric.state', 'in', ['offline', 'missing']) | list | count }}"
+
+  - resource: http://kube-prometheus-stack-prometheus.monitoring.svc:9090/api/v1/query
+    params:
+      # sort_desc: oldest first. Values are strings in the JSON, so a Jinja
+      # sort would put "900" above "3600"; Prometheus sorts them as numbers.
+      query: sort_desc(github_actions_job_waiting)
+    scan_interval: 60
+    sensor:
+      - name: CI jobs waiting
+        unique_id: ci_jobs_waiting
+        icon: mdi:timer-sand
+        unit_of_measurement: jobs
+        value_template: "{{ value_json.data.result | count }}"
+        json_attributes_path: "$.data"
+        json_attributes:
+          - result
+
+  - resource: http://kube-prometheus-stack-prometheus.monitoring.svc:9090/api/v1/query
+    params:
+      query: min(github_runner_exporter_api_ok)
+    scan_interval: 60
+    sensor:
+      - name: CI GitHub API
+        unique_id: ci_github_api
+        icon: mdi:github
+        value_template: >-
+          {% set r = value_json.data.result %}
+          {{ 'no data' if not r else ('ok' if r[0].value[1] == '1' else 'failing') }}

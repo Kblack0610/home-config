@@ -31,9 +31,10 @@ spec:
               drop:
                 - ALL
           env:
-            # Fine-grained PAT, resource owner BlackNBrownStudios, read-only:
-            # Organization > Self-hosted runners: Read, Repository > Actions: Read
-            # (all repos). Minted by a human, then:
+            # Fine-grained PAT, resource owner BlackNBrownStudios, all repos,
+            # read-only: Organization > Self-hosted runners, Repository > Actions,
+            # Repository > Administration (listing a REPO's runners needs it).
+            # Minted by a human, then:
             #   kubectl create secret generic github-runner-exporter -n monitoring \
             #     --from-literal=github-token=<PAT> --dry-run=client -o yaml \
             #     > apps/github-runner-exporter/github-runner-exporter-secret.yaml
@@ -46,8 +47,10 @@ spec:
                   name: github-runner-exporter
                   key: github-token
                   optional: true
-            - name: RUNNER_SOURCES
-              value: "repos/BlackNBrownStudios/platform orgs/BlackNBrownStudios"
+            # Org-scoped runners (the Unity pool). Repo-scoped runners are read
+            # from every repo in RUN_REPOS.
+            - name: RUNNER_ORGS
+              value: "BlackNBrownStudios"
             - name: RUN_REPOS
               value: "BlackNBrownStudios/platform BlackNBrownStudios/unity-core BlackNBrownStudios/unity-core-harness BlackNBrownStudios/unity-core-playground BlackNBrownStudios/dodginballs"
             # host:pool:slots. Mirrors ansible/inventory.yml (platform_ci_runners
@@ -102,8 +105,8 @@ spec:
       targetPort: 9320
   type: ClusterIP
 ---
-# 60s, not 30s: every scrape is ~12 GitHub API calls (see exporter.py), and
-# runner state does not change faster than a minute matters.
+# 60s, not 30s: a scrape is ~20-40 GitHub API calls (runners per repo, active
+# runs and their jobs, recent runs), ~2400/h at most against the PAT's 5000/h.
 apiVersion: monitoring.coreos.com/v1
 kind: ServiceMonitor
 metadata:

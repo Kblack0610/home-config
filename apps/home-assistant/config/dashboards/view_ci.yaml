@@ -1,0 +1,84 @@
+# Shared view: included by ui-lovelace.yaml (Homelab) and dashboards/phone.yaml.
+# What every self-hosted CI runner is doing right now and what is waiting, from
+# packages/ci_runners.yaml. The deep view (recent runs, trends) is Grafana's
+# "CI / Runners" dashboard, one tap away at the bottom.
+title: CI
+path: ci
+icon: mdi:progress-wrench
+type: sections
+max_columns: 2
+sections:
+  - type: grid
+    cards:
+      - type: heading
+        heading: CI runners
+        heading_style: title
+      - type: custom:mushroom-template-card
+        primary: Running
+        secondary: "{{ states('sensor.ci_runners_running') }} jobs"
+        icon: mdi:run-fast
+        icon_color: "{{ 'blue' if states('sensor.ci_runners_running') | int(0) > 0 else 'grey' }}"
+      - type: custom:mushroom-template-card
+        primary: Waiting
+        secondary: "{{ states('sensor.ci_jobs_waiting') }} jobs"
+        icon: mdi:timer-sand
+        icon_color: "{{ 'orange' if states('sensor.ci_jobs_waiting') | int(0) > 0 else 'green' }}"
+      - type: custom:mushroom-template-card
+        primary: Offline / missing
+        secondary: "{{ states('sensor.ci_runners_down') }} runners"
+        icon: mdi:server-off
+        icon_color: "{{ 'red' if states('sensor.ci_runners_down') | int(0) > 0 else 'green' }}"
+      - type: custom:mushroom-template-card
+        primary: GitHub API
+        secondary: "{{ states('sensor.ci_github_api') }}"
+        icon: mdi:github
+        icon_color: "{{ 'green' if is_state('sensor.ci_github_api', 'ok') else 'red' }}"
+      - type: markdown
+        title: Runners
+        content: |
+          {%- set rows = state_attr('sensor.ci_runners_running', 'result') or [] -%}
+          {%- set icons = {'running': 'mdi:play-circle', 'idle': 'mdi:sleep', 'offline': 'mdi:lan-disconnect', 'missing': 'mdi:help-circle-outline'} -%}
+          {%- if not rows -%}
+          No runner data (GitHub API: {{ states('sensor.ci_github_api') }}).
+          {%- else -%}
+          {%- for st in ['running', 'offline', 'missing', 'idle'] -%}
+          {%- for r in rows | selectattr('metric.state', 'eq', st) | sort(attribute='metric.name') -%}
+          {%- set m = r.metric -%}
+          {%- set s = r.value[1] | int(0) -%}
+          {%- set took = (s // 3600) ~ 'h ' ~ ((s % 3600) // 60) ~ 'm' if s >= 3600 else (s // 60) ~ 'm' -%}
+          <ha-icon icon="{{ icons[st] }}"></ha-icon> **{{ m.name }}** ({{ m.pool }})
+          {%- if st == 'running' and m.url %} {{ took }}: {{ m.repo }} / {{ m.workflow }} / [{{ m.job | replace('|', '/') }}]({{ m.url }}) on `{{ m.branch }}`
+          {%- elif st == 'running' %} busy on {{ m.repo }}
+          {%- else %} {{ st }}{%- endif %}
+
+          {% endfor -%}
+          {%- endfor -%}
+          {%- endif -%}
+
+  - type: grid
+    cards:
+      - type: heading
+        heading: Waiting for a runner
+        heading_style: title
+      - type: markdown
+        content: |
+          {%- set rows = state_attr('sensor.ci_jobs_waiting', 'result') or [] -%}
+          {%- if not rows -%}
+          Nothing waiting.
+          {%- else -%}
+          {%- for r in rows -%}
+          {%- set m = r.metric -%}
+          {%- set s = r.value[1] | int(0) -%}
+          {%- set age = (s // 86400) ~ 'd' if s >= 86400 else ((s // 3600) ~ 'h ' ~ ((s % 3600) // 60) ~ 'm' if s >= 3600 else (s // 60) ~ 'm') -%}
+          <ha-icon icon="mdi:timer-sand"></ha-icon> {{ age }}: {{ m.repo }} / {{ m.workflow }} / [{{ m.job | replace('|', '/') }}]({{ m.url }}) on `{{ m.branch }}`{% if m.labels %}, needs `{{ m.labels }}`{% endif %}
+
+          {% endfor -%}
+          {%- endif -%}
+      - type: custom:bubble-card
+        card_type: button
+        button_type: name
+        name: Open Grafana CI dashboard
+        icon: mdi:chart-box
+        tap_action:
+          action: url
+          url_path: https://grafana.kblab.me/d/kb-ci-runners

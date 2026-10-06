@@ -1,7 +1,7 @@
 {
   "uid": "kb-ci-runners",
   "title": "CI / Runners",
-  "description": "Self-hosted GitHub Actions runners for BlackNBrownStudios (platform pmp-light/pmp-heavy, mac-mini, the org Unity pool), roster-first so a slot that never registered shows as missing. Fed by apps/github-runner-exporter. Alerts are Sentinel's, not this dashboard's.",
+  "description": "What every self-hosted GitHub Actions runner for BlackNBrownStudios is doing, what is waiting, and what just finished. Fed by apps/github-runner-exporter. Alerts are Sentinel's, not this dashboard's.",
   "tags": [
     "ci",
     "runners",
@@ -36,32 +36,15 @@
   },
   "panels": [
     {
-      "type": "row",
-      "title": "Pools",
-      "collapsed": false,
+      "type": "stat",
+      "title": "Running",
+      "description": "Runners executing a job right now.",
       "gridPos": {
-        "h": 1,
-        "w": 24,
+        "h": 4,
+        "w": 4,
         "x": 0,
         "y": 0
       },
-      "panels": [],
-      "id": 1,
-      "datasource": {
-        "type": "prometheus",
-        "uid": "${datasource}"
-      }
-    },
-    {
-      "type": "stat",
-      "title": "Unity online / expected",
-      "description": "Online unity runners against the roster's slots. Red when any rostered slot is offline or never registered.",
-      "gridPos": {
-        "h": 4,
-        "w": 4,
-        "x": 0,
-        "y": 1
-      },
       "targets": [
         {
           "datasource": {
@@ -69,407 +52,7 @@
             "uid": "${datasource}"
           },
           "editorMode": "code",
-          "expr": "sum(github_runner_pool_online{pool=\"unity\"})",
-          "format": "time_series",
-          "instant": true,
-          "range": false,
-          "legendFormat": "online",
-          "refId": "A"
-        },
-        {
-          "datasource": {
-            "type": "prometheus",
-            "uid": "${datasource}"
-          },
-          "editorMode": "code",
-          "expr": "sum(github_runner_pool_expected{pool=\"unity\"})",
-          "format": "time_series",
-          "instant": true,
-          "range": false,
-          "legendFormat": "expected",
-          "refId": "B"
-        }
-      ],
-      "options": {
-        "reduceOptions": {
-          "calcs": [
-            "lastNotNull"
-          ],
-          "fields": "",
-          "values": false
-        },
-        "colorMode": "background",
-        "graphMode": "none",
-        "textMode": "value_and_name",
-        "justifyMode": "auto",
-        "orientation": "horizontal"
-      },
-      "fieldConfig": {
-        "defaults": {
-          "color": {
-            "mode": "fixed",
-            "fixedColor": "text"
-          },
-          "mappings": [],
-          "unit": "none"
-        },
-        "overrides": [
-          {
-            "matcher": {
-              "id": "byName",
-              "options": "online"
-            },
-            "properties": [
-              {
-                "id": "color",
-                "value": {
-                  "mode": "thresholds"
-                }
-              },
-              {
-                "id": "thresholds",
-                "value": {
-                  "mode": "absolute",
-                  "steps": [
-                    {
-                      "color": "red",
-                      "value": null
-                    },
-                    {
-                      "color": "green",
-                      "value": 1
-                    }
-                  ]
-                }
-              }
-            ]
-          }
-        ]
-      },
-      "id": 2,
-      "datasource": {
-        "type": "prometheus",
-        "uid": "${datasource}"
-      }
-    },
-    {
-      "type": "stat",
-      "title": "pmp-light online / expected",
-      "description": "Online pmp-light runners against the roster's slots. Red when any rostered slot is offline or never registered.",
-      "gridPos": {
-        "h": 4,
-        "w": 4,
-        "x": 4,
-        "y": 1
-      },
-      "targets": [
-        {
-          "datasource": {
-            "type": "prometheus",
-            "uid": "${datasource}"
-          },
-          "editorMode": "code",
-          "expr": "sum(github_runner_pool_online{pool=\"pmp-light\"})",
-          "format": "time_series",
-          "instant": true,
-          "range": false,
-          "legendFormat": "online",
-          "refId": "A"
-        },
-        {
-          "datasource": {
-            "type": "prometheus",
-            "uid": "${datasource}"
-          },
-          "editorMode": "code",
-          "expr": "sum(github_runner_pool_expected{pool=\"pmp-light\"})",
-          "format": "time_series",
-          "instant": true,
-          "range": false,
-          "legendFormat": "expected",
-          "refId": "B"
-        }
-      ],
-      "options": {
-        "reduceOptions": {
-          "calcs": [
-            "lastNotNull"
-          ],
-          "fields": "",
-          "values": false
-        },
-        "colorMode": "background",
-        "graphMode": "none",
-        "textMode": "value_and_name",
-        "justifyMode": "auto",
-        "orientation": "horizontal"
-      },
-      "fieldConfig": {
-        "defaults": {
-          "color": {
-            "mode": "fixed",
-            "fixedColor": "text"
-          },
-          "mappings": [],
-          "unit": "none"
-        },
-        "overrides": [
-          {
-            "matcher": {
-              "id": "byName",
-              "options": "online"
-            },
-            "properties": [
-              {
-                "id": "color",
-                "value": {
-                  "mode": "thresholds"
-                }
-              },
-              {
-                "id": "thresholds",
-                "value": {
-                  "mode": "absolute",
-                  "steps": [
-                    {
-                      "color": "red",
-                      "value": null
-                    },
-                    {
-                      "color": "green",
-                      "value": 1
-                    }
-                  ]
-                }
-              }
-            ]
-          }
-        ]
-      },
-      "id": 3,
-      "datasource": {
-        "type": "prometheus",
-        "uid": "${datasource}"
-      }
-    },
-    {
-      "type": "stat",
-      "title": "pmp-heavy online / expected",
-      "description": "Online pmp-heavy runners against the roster's slots. Red when any rostered slot is offline or never registered.",
-      "gridPos": {
-        "h": 4,
-        "w": 4,
-        "x": 8,
-        "y": 1
-      },
-      "targets": [
-        {
-          "datasource": {
-            "type": "prometheus",
-            "uid": "${datasource}"
-          },
-          "editorMode": "code",
-          "expr": "sum(github_runner_pool_online{pool=\"pmp-heavy\"})",
-          "format": "time_series",
-          "instant": true,
-          "range": false,
-          "legendFormat": "online",
-          "refId": "A"
-        },
-        {
-          "datasource": {
-            "type": "prometheus",
-            "uid": "${datasource}"
-          },
-          "editorMode": "code",
-          "expr": "sum(github_runner_pool_expected{pool=\"pmp-heavy\"})",
-          "format": "time_series",
-          "instant": true,
-          "range": false,
-          "legendFormat": "expected",
-          "refId": "B"
-        }
-      ],
-      "options": {
-        "reduceOptions": {
-          "calcs": [
-            "lastNotNull"
-          ],
-          "fields": "",
-          "values": false
-        },
-        "colorMode": "background",
-        "graphMode": "none",
-        "textMode": "value_and_name",
-        "justifyMode": "auto",
-        "orientation": "horizontal"
-      },
-      "fieldConfig": {
-        "defaults": {
-          "color": {
-            "mode": "fixed",
-            "fixedColor": "text"
-          },
-          "mappings": [],
-          "unit": "none"
-        },
-        "overrides": [
-          {
-            "matcher": {
-              "id": "byName",
-              "options": "online"
-            },
-            "properties": [
-              {
-                "id": "color",
-                "value": {
-                  "mode": "thresholds"
-                }
-              },
-              {
-                "id": "thresholds",
-                "value": {
-                  "mode": "absolute",
-                  "steps": [
-                    {
-                      "color": "red",
-                      "value": null
-                    },
-                    {
-                      "color": "green",
-                      "value": 1
-                    }
-                  ]
-                }
-              }
-            ]
-          }
-        ]
-      },
-      "id": 4,
-      "datasource": {
-        "type": "prometheus",
-        "uid": "${datasource}"
-      }
-    },
-    {
-      "type": "stat",
-      "title": "macOS online / expected",
-      "description": "Online macos runners against the roster's slots. Red when any rostered slot is offline or never registered.",
-      "gridPos": {
-        "h": 4,
-        "w": 4,
-        "x": 12,
-        "y": 1
-      },
-      "targets": [
-        {
-          "datasource": {
-            "type": "prometheus",
-            "uid": "${datasource}"
-          },
-          "editorMode": "code",
-          "expr": "sum(github_runner_pool_online{pool=\"macos\"})",
-          "format": "time_series",
-          "instant": true,
-          "range": false,
-          "legendFormat": "online",
-          "refId": "A"
-        },
-        {
-          "datasource": {
-            "type": "prometheus",
-            "uid": "${datasource}"
-          },
-          "editorMode": "code",
-          "expr": "sum(github_runner_pool_expected{pool=\"macos\"})",
-          "format": "time_series",
-          "instant": true,
-          "range": false,
-          "legendFormat": "expected",
-          "refId": "B"
-        }
-      ],
-      "options": {
-        "reduceOptions": {
-          "calcs": [
-            "lastNotNull"
-          ],
-          "fields": "",
-          "values": false
-        },
-        "colorMode": "background",
-        "graphMode": "none",
-        "textMode": "value_and_name",
-        "justifyMode": "auto",
-        "orientation": "horizontal"
-      },
-      "fieldConfig": {
-        "defaults": {
-          "color": {
-            "mode": "fixed",
-            "fixedColor": "text"
-          },
-          "mappings": [],
-          "unit": "none"
-        },
-        "overrides": [
-          {
-            "matcher": {
-              "id": "byName",
-              "options": "online"
-            },
-            "properties": [
-              {
-                "id": "color",
-                "value": {
-                  "mode": "thresholds"
-                }
-              },
-              {
-                "id": "thresholds",
-                "value": {
-                  "mode": "absolute",
-                  "steps": [
-                    {
-                      "color": "red",
-                      "value": null
-                    },
-                    {
-                      "color": "green",
-                      "value": 1
-                    }
-                  ]
-                }
-              }
-            ]
-          }
-        ]
-      },
-      "id": 5,
-      "datasource": {
-        "type": "prometheus",
-        "uid": "${datasource}"
-      }
-    },
-    {
-      "type": "stat",
-      "title": "Queued runs",
-      "description": "Workflow runs waiting for a runner, across the watched repos. A self-hosted job waits instead of failing, so this is where a dead pool shows up.",
-      "gridPos": {
-        "h": 4,
-        "w": 4,
-        "x": 16,
-        "y": 1
-      },
-      "targets": [
-        {
-          "datasource": {
-            "type": "prometheus",
-            "uid": "${datasource}"
-          },
-          "editorMode": "code",
-          "expr": "sum(github_actions_runs{status=\"queued\"}) or vector(0)",
+          "expr": "sum(github_runners_by_state{state=\"running\"})",
           "format": "time_series",
           "instant": true,
           "range": false,
@@ -487,8 +70,8 @@
         },
         "colorMode": "background",
         "graphMode": "none",
-        "textMode": "auto",
-        "justifyMode": "auto"
+        "textMode": "value",
+        "justifyMode": "center"
       },
       "fieldConfig": {
         "defaults": {
@@ -497,6 +80,139 @@
           },
           "mappings": [],
           "unit": "none",
+          "noValue": "0",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "#3a3f47",
+                "value": null
+              },
+              {
+                "color": "blue",
+                "value": 1
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "id": 1,
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${datasource}"
+      }
+    },
+    {
+      "type": "stat",
+      "title": "Idle",
+      "description": "Online runners with nothing to do.",
+      "gridPos": {
+        "h": 4,
+        "w": 4,
+        "x": 4,
+        "y": 0
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "editorMode": "code",
+          "expr": "sum(github_runners_by_state{state=\"idle\"})",
+          "format": "time_series",
+          "instant": true,
+          "range": false,
+          "legendFormat": "__auto",
+          "refId": "A"
+        }
+      ],
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "colorMode": "background",
+        "graphMode": "none",
+        "textMode": "value",
+        "justifyMode": "center"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "thresholds"
+          },
+          "mappings": [],
+          "unit": "none",
+          "noValue": "0",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "#3a3f47",
+                "value": null
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "id": 2,
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${datasource}"
+      }
+    },
+    {
+      "type": "stat",
+      "title": "Waiting",
+      "description": "Jobs queued for a runner across the watched repos. A self-hosted job waits instead of failing, so this is where a dead or full pool shows up.",
+      "gridPos": {
+        "h": 4,
+        "w": 4,
+        "x": 8,
+        "y": 0
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "editorMode": "code",
+          "expr": "count(github_actions_job_waiting) or vector(0)",
+          "format": "time_series",
+          "instant": true,
+          "range": false,
+          "legendFormat": "__auto",
+          "refId": "A"
+        }
+      ],
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "colorMode": "background",
+        "graphMode": "none",
+        "textMode": "value",
+        "justifyMode": "center"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "thresholds"
+          },
+          "mappings": [],
+          "unit": "none",
+          "noValue": "0",
           "thresholds": {
             "mode": "absolute",
             "steps": [
@@ -506,18 +222,18 @@
               },
               {
                 "color": "yellow",
-                "value": 3
+                "value": 1
               },
               {
                 "color": "red",
-                "value": 10
+                "value": 5
               }
             ]
           }
         },
         "overrides": []
       },
-      "id": 6,
+      "id": 3,
       "datasource": {
         "type": "prometheus",
         "uid": "${datasource}"
@@ -525,13 +241,81 @@
     },
     {
       "type": "stat",
-      "title": "Exporter",
-      "description": "1 = every runner source answered. 0 = the GitHub API failed (token missing or expired), so the pool numbers are unknown, not zero.",
+      "title": "Offline / missing",
+      "description": "Registered runners that are offline, plus roster slots that never registered (ansible/inventory.yml says they should exist).",
       "gridPos": {
         "h": 4,
         "w": 4,
-        "x": 20,
-        "y": 1
+        "x": 12,
+        "y": 0
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "editorMode": "code",
+          "expr": "sum(github_runners_by_state{state=~\"offline|missing\"})",
+          "format": "time_series",
+          "instant": true,
+          "range": false,
+          "legendFormat": "__auto",
+          "refId": "A"
+        }
+      ],
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "colorMode": "background",
+        "graphMode": "none",
+        "textMode": "value",
+        "justifyMode": "center"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "thresholds"
+          },
+          "mappings": [],
+          "unit": "none",
+          "noValue": "0",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "red",
+                "value": 1
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "id": 4,
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${datasource}"
+      }
+    },
+    {
+      "type": "stat",
+      "title": "GitHub API",
+      "description": "Whether the exporter can read GitHub. 'no data' means the token is missing or rejected: the tables below are then empty because nothing could be read, not because nothing is running.",
+      "gridPos": {
+        "h": 4,
+        "w": 8,
+        "x": 16,
+        "y": 0
       },
       "targets": [
         {
@@ -558,16 +342,31 @@
         },
         "colorMode": "background",
         "graphMode": "none",
-        "textMode": "auto",
-        "justifyMode": "auto"
+        "textMode": "value",
+        "justifyMode": "center"
       },
       "fieldConfig": {
         "defaults": {
           "color": {
             "mode": "thresholds"
           },
-          "mappings": [],
+          "mappings": [
+            {
+              "type": "value",
+              "options": {
+                "0": {
+                  "text": "FAILING (token?)",
+                  "color": "red"
+                },
+                "1": {
+                  "text": "OK",
+                  "color": "green"
+                }
+              }
+            }
+          ],
           "unit": "none",
+          "noValue": "no data",
           "thresholds": {
             "mode": "absolute",
             "steps": [
@@ -584,24 +383,7 @@
         },
         "overrides": []
       },
-      "id": 7,
-      "datasource": {
-        "type": "prometheus",
-        "uid": "${datasource}"
-      }
-    },
-    {
-      "type": "row",
-      "title": "Runners",
-      "collapsed": false,
-      "gridPos": {
-        "h": 1,
-        "w": 24,
-        "x": 0,
-        "y": 5
-      },
-      "panels": [],
-      "id": 8,
+      "id": 5,
       "datasource": {
         "type": "prometheus",
         "uid": "${datasource}"
@@ -609,13 +391,13 @@
     },
     {
       "type": "table",
-      "title": "Slots by host",
-      "description": "Roster-first: a host/pool with expected > online has a slot offline or never registered (ansible play not applied).",
+      "title": "Runners: what is running where",
+      "description": "One row per runner. RUNNING rows show the job and how long it has been going; click the job to open it on GitHub. MISSING = a slot the roster expects that never registered.",
       "gridPos": {
-        "h": 9,
-        "w": 9,
+        "h": 12,
+        "w": 24,
         "x": 0,
-        "y": 6
+        "y": 4
       },
       "targets": [
         {
@@ -624,73 +406,260 @@
             "uid": "${datasource}"
           },
           "editorMode": "code",
-          "expr": "github_runner_pool_expected",
+          "expr": "github_runner_state",
           "format": "table",
           "instant": true,
           "range": false,
           "legendFormat": "__auto",
           "refId": "A"
-        },
-        {
-          "datasource": {
-            "type": "prometheus",
-            "uid": "${datasource}"
-          },
-          "editorMode": "code",
-          "expr": "github_runner_pool_online",
-          "format": "table",
-          "instant": true,
-          "range": false,
-          "legendFormat": "__auto",
-          "refId": "B"
         }
       ],
       "transformations": [
         {
-          "id": "merge",
-          "options": {}
-        },
-        {
           "id": "organize",
           "options": {
             "excludeByName": {
-              "Time": true
+              "Time": true,
+              "__name__": true,
+              "scope": true
             },
             "indexByName": {
-              "host": 0,
-              "pool": 1,
-              "Value #B": 2,
-              "Value #A": 3
+              "state": 0,
+              "name": 1,
+              "pool": 2,
+              "host": 3,
+              "repo": 4,
+              "workflow": 5,
+              "job": 6,
+              "branch": 7,
+              "Value": 8,
+              "url": 9
             },
             "renameByName": {
-              "Value #A": "expected",
-              "Value #B": "online"
+              "name": "runner",
+              "Value": "running for"
             }
           }
         }
       ],
       "options": {
         "showHeader": true,
+        "cellHeight": "sm",
         "sortBy": [
           {
-            "displayName": "host",
-            "desc": false
+            "displayName": "running for",
+            "desc": true
           }
         ]
       },
       "fieldConfig": {
-        "defaults": {},
+        "defaults": {
+          "noValue": "no runner data (see GitHub API)",
+          "custom": {
+            "align": "left"
+          }
+        },
         "overrides": [
           {
             "matcher": {
               "id": "byName",
-              "options": "online"
+              "options": "state"
             },
             "properties": [
               {
+                "id": "mappings",
+                "value": [
+                  {
+                    "type": "value",
+                    "options": {
+                      "running": {
+                        "text": "RUNNING",
+                        "color": "blue",
+                        "index": 0
+                      },
+                      "idle": {
+                        "text": "idle",
+                        "color": "#3a3f47",
+                        "index": 1
+                      },
+                      "offline": {
+                        "text": "OFFLINE",
+                        "color": "red",
+                        "index": 2
+                      },
+                      "missing": {
+                        "text": "MISSING",
+                        "color": "orange",
+                        "index": 3
+                      }
+                    }
+                  }
+                ]
+              },
+              {
                 "id": "custom.cellOptions",
                 "value": {
-                  "type": "color-background"
+                  "type": "color-background",
+                  "mode": "basic"
+                }
+              },
+              {
+                "id": "custom.width",
+                "value": 110
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "running for"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "dtdurations"
+              },
+              {
+                "id": "mappings",
+                "value": [
+                  {
+                    "type": "value",
+                    "options": {
+                      "0": {
+                        "text": ""
+                      }
+                    }
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "job"
+            },
+            "properties": [
+              {
+                "id": "links",
+                "value": [
+                  {
+                    "title": "Open job on GitHub",
+                    "url": "${__data.fields.url}",
+                    "targetBlank": true
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "url"
+            },
+            "properties": [
+              {
+                "id": "custom.hidden",
+                "value": true
+              }
+            ]
+          }
+        ]
+      },
+      "id": 6,
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${datasource}"
+      }
+    },
+    {
+      "type": "table",
+      "title": "Waiting for a runner",
+      "description": "Queued jobs, oldest first. 'needs' is the runs-on label set, so you can see which pool is short. '(run has no jobs)' is a run GitHub left queued with no jobs: it will never start, cancel it.",
+      "gridPos": {
+        "h": 8,
+        "w": 24,
+        "x": 0,
+        "y": 16
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "editorMode": "code",
+          "expr": "github_actions_job_waiting",
+          "format": "table",
+          "instant": true,
+          "range": false,
+          "legendFormat": "__auto",
+          "refId": "A"
+        }
+      ],
+      "transformations": [
+        {
+          "id": "organize",
+          "options": {
+            "excludeByName": {
+              "Time": true,
+              "__name__": true,
+              "status": true
+            },
+            "indexByName": {
+              "repo": 0,
+              "workflow": 1,
+              "job": 2,
+              "branch": 3,
+              "labels": 4,
+              "Value": 5,
+              "url": 6
+            },
+            "renameByName": {
+              "labels": "needs",
+              "Value": "waiting for"
+            }
+          }
+        }
+      ],
+      "options": {
+        "showHeader": true,
+        "cellHeight": "sm",
+        "sortBy": [
+          {
+            "displayName": "waiting for",
+            "desc": true
+          }
+        ]
+      },
+      "fieldConfig": {
+        "defaults": {
+          "noValue": "Nothing waiting",
+          "custom": {
+            "align": "left"
+          }
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "waiting for"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "dtdurations"
+              },
+              {
+                "id": "custom.cellOptions",
+                "value": {
+                  "type": "color-text"
+                }
+              },
+              {
+                "id": "color",
+                "value": {
+                  "mode": "thresholds"
                 }
               },
               {
@@ -699,21 +668,55 @@
                   "mode": "absolute",
                   "steps": [
                     {
-                      "color": "red",
+                      "color": "text",
                       "value": null
                     },
                     {
-                      "color": "green",
-                      "value": 1
+                      "color": "orange",
+                      "value": 900
+                    },
+                    {
+                      "color": "red",
+                      "value": 3600
                     }
                   ]
                 }
               }
             ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "job"
+            },
+            "properties": [
+              {
+                "id": "links",
+                "value": [
+                  {
+                    "title": "Open job on GitHub",
+                    "url": "${__data.fields.url}",
+                    "targetBlank": true
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "url"
+            },
+            "properties": [
+              {
+                "id": "custom.hidden",
+                "value": true
+              }
+            ]
           }
         ]
       },
-      "id": 9,
+      "id": 7,
       "datasource": {
         "type": "prometheus",
         "uid": "${datasource}"
@@ -721,13 +724,13 @@
     },
     {
       "type": "table",
-      "title": "Every runner",
-      "description": "As GitHub reports them. busy = running a job right now.",
+      "title": "Recent runs",
+      "description": "The last completed runs per watched repo, newest first. Click the workflow to open the run.",
       "gridPos": {
-        "h": 9,
-        "w": 15,
-        "x": 9,
-        "y": 6
+        "h": 10,
+        "w": 24,
+        "x": 0,
+        "y": 24
       },
       "targets": [
         {
@@ -736,7 +739,7 @@
             "uid": "${datasource}"
           },
           "editorMode": "code",
-          "expr": "github_runner_online",
+          "expr": "github_actions_run_recent * 1000",
           "format": "table",
           "instant": true,
           "range": false,
@@ -749,7 +752,7 @@
             "uid": "${datasource}"
           },
           "editorMode": "code",
-          "expr": "github_runner_busy",
+          "expr": "github_actions_run_recent_duration_seconds + 0",
           "format": "table",
           "instant": true,
           "range": false,
@@ -769,36 +772,44 @@
               "Time": true
             },
             "indexByName": {
-              "name": 0,
-              "host": 1,
-              "pool": 2,
-              "scope": 3,
-              "Value #A": 4,
-              "Value #B": 5
+              "conclusion": 0,
+              "repo": 1,
+              "workflow": 2,
+              "branch": 3,
+              "event": 4,
+              "Value #A": 5,
+              "Value #B": 6,
+              "url": 7
             },
             "renameByName": {
-              "Value #A": "online",
-              "Value #B": "busy"
+              "Value #A": "finished",
+              "Value #B": "took"
             }
           }
         }
       ],
       "options": {
         "showHeader": true,
+        "cellHeight": "sm",
         "sortBy": [
           {
-            "displayName": "pool",
-            "desc": false
+            "displayName": "finished",
+            "desc": true
           }
         ]
       },
       "fieldConfig": {
-        "defaults": {},
+        "defaults": {
+          "noValue": "no recent runs",
+          "custom": {
+            "align": "left"
+          }
+        },
         "overrides": [
           {
             "matcher": {
               "id": "byName",
-              "options": "online"
+              "options": "conclusion"
             },
             "properties": [
               {
@@ -807,13 +818,30 @@
                   {
                     "type": "value",
                     "options": {
-                      "0": {
-                        "text": "offline",
-                        "color": "red"
+                      "success": {
+                        "text": "success",
+                        "color": "green",
+                        "index": 0
                       },
-                      "1": {
-                        "text": "online",
-                        "color": "green"
+                      "failure": {
+                        "text": "FAILED",
+                        "color": "red",
+                        "index": 1
+                      },
+                      "cancelled": {
+                        "text": "cancelled",
+                        "color": "#6e7079",
+                        "index": 2
+                      },
+                      "skipped": {
+                        "text": "skipped",
+                        "color": "#6e7079",
+                        "index": 3
+                      },
+                      "timed_out": {
+                        "text": "timed out",
+                        "color": "orange",
+                        "index": 4
                       }
                     }
                   }
@@ -822,46 +850,73 @@
               {
                 "id": "custom.cellOptions",
                 "value": {
-                  "type": "color-background"
+                  "type": "color-background",
+                  "mode": "basic"
                 }
+              },
+              {
+                "id": "custom.width",
+                "value": 110
               }
             ]
           },
           {
             "matcher": {
               "id": "byName",
-              "options": "busy"
+              "options": "finished"
             },
             "properties": [
               {
-                "id": "mappings",
+                "id": "unit",
+                "value": "dateTimeFromNow"
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "took"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "dtdurations"
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "workflow"
+            },
+            "properties": [
+              {
+                "id": "links",
                 "value": [
                   {
-                    "type": "value",
-                    "options": {
-                      "0": {
-                        "text": "idle",
-                        "color": "transparent"
-                      },
-                      "1": {
-                        "text": "busy",
-                        "color": "blue"
-                      }
-                    }
+                    "title": "Open run on GitHub",
+                    "url": "${__data.fields.url}",
+                    "targetBlank": true
                   }
                 ]
-              },
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "url"
+            },
+            "properties": [
               {
-                "id": "custom.cellOptions",
-                "value": {
-                  "type": "color-background"
-                }
+                "id": "custom.hidden",
+                "value": true
               }
             ]
           }
         ]
       },
-      "id": 10,
+      "id": 8,
       "datasource": {
         "type": "prometheus",
         "uid": "${datasource}"
@@ -869,118 +924,121 @@
     },
     {
       "type": "row",
-      "title": "Load",
-      "collapsed": false,
+      "title": "Trends",
+      "collapsed": true,
       "gridPos": {
         "h": 1,
         "w": 24,
         "x": 0,
-        "y": 15
+        "y": 34
       },
-      "panels": [],
+      "panels": [
+        {
+          "type": "timeseries",
+          "title": "Busy runners by pool",
+          "gridPos": {
+            "h": 8,
+            "w": 12,
+            "x": 0,
+            "y": 35
+          },
+          "targets": [
+            {
+              "datasource": {
+                "type": "prometheus",
+                "uid": "${datasource}"
+              },
+              "editorMode": "code",
+              "expr": "count by (pool) (github_runner_state{state=\"running\"})",
+              "format": "time_series",
+              "instant": false,
+              "range": true,
+              "legendFormat": "{{pool}}",
+              "refId": "A"
+            }
+          ],
+          "fieldConfig": {
+            "defaults": {
+              "unit": "none",
+              "decimals": 0,
+              "noValue": "0",
+              "custom": {
+                "drawStyle": "line",
+                "lineInterpolation": "stepAfter",
+                "fillOpacity": 10
+              }
+            },
+            "overrides": []
+          },
+          "options": {
+            "legend": {
+              "displayMode": "list",
+              "placement": "bottom"
+            },
+            "tooltip": {
+              "mode": "multi"
+            }
+          },
+          "id": 9,
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          }
+        },
+        {
+          "type": "timeseries",
+          "title": "Waiting jobs by repo",
+          "gridPos": {
+            "h": 8,
+            "w": 12,
+            "x": 12,
+            "y": 35
+          },
+          "targets": [
+            {
+              "datasource": {
+                "type": "prometheus",
+                "uid": "${datasource}"
+              },
+              "editorMode": "code",
+              "expr": "count by (repo) (github_actions_job_waiting)",
+              "format": "time_series",
+              "instant": false,
+              "range": true,
+              "legendFormat": "{{repo}}",
+              "refId": "A"
+            }
+          ],
+          "fieldConfig": {
+            "defaults": {
+              "unit": "none",
+              "decimals": 0,
+              "noValue": "0",
+              "custom": {
+                "drawStyle": "line",
+                "lineInterpolation": "stepAfter",
+                "fillOpacity": 0
+              }
+            },
+            "overrides": []
+          },
+          "options": {
+            "legend": {
+              "displayMode": "list",
+              "placement": "bottom"
+            },
+            "tooltip": {
+              "mode": "multi"
+            }
+          },
+          "id": 10,
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          }
+        }
+      ],
       "id": 11,
-      "datasource": {
-        "type": "prometheus",
-        "uid": "${datasource}"
-      }
-    },
-    {
-      "type": "timeseries",
-      "title": "Busy runners by pool",
-      "gridPos": {
-        "h": 8,
-        "w": 12,
-        "x": 0,
-        "y": 16
-      },
-      "targets": [
-        {
-          "datasource": {
-            "type": "prometheus",
-            "uid": "${datasource}"
-          },
-          "editorMode": "code",
-          "expr": "sum by (pool) (github_runner_busy)",
-          "format": "time_series",
-          "instant": false,
-          "range": true,
-          "legendFormat": "{{pool}}",
-          "refId": "A"
-        }
-      ],
-      "fieldConfig": {
-        "defaults": {
-          "unit": "none",
-          "decimals": 0,
-          "custom": {
-            "drawStyle": "line",
-            "lineInterpolation": "stepAfter",
-            "fillOpacity": 10
-          }
-        },
-        "overrides": []
-      },
-      "options": {
-        "legend": {
-          "displayMode": "list",
-          "placement": "bottom"
-        },
-        "tooltip": {
-          "mode": "multi"
-        }
-      },
-      "id": 12,
-      "datasource": {
-        "type": "prometheus",
-        "uid": "${datasource}"
-      }
-    },
-    {
-      "type": "timeseries",
-      "title": "Queued and in-progress runs by repo",
-      "gridPos": {
-        "h": 8,
-        "w": 12,
-        "x": 12,
-        "y": 16
-      },
-      "targets": [
-        {
-          "datasource": {
-            "type": "prometheus",
-            "uid": "${datasource}"
-          },
-          "editorMode": "code",
-          "expr": "github_actions_runs",
-          "format": "time_series",
-          "instant": false,
-          "range": true,
-          "legendFormat": "{{repo}} {{status}}",
-          "refId": "A"
-        }
-      ],
-      "fieldConfig": {
-        "defaults": {
-          "unit": "none",
-          "decimals": 0,
-          "custom": {
-            "drawStyle": "line",
-            "lineInterpolation": "stepAfter",
-            "fillOpacity": 0
-          }
-        },
-        "overrides": []
-      },
-      "options": {
-        "legend": {
-          "displayMode": "list",
-          "placement": "bottom"
-        },
-        "tooltip": {
-          "mode": "multi"
-        }
-      },
-      "id": 13,
       "datasource": {
         "type": "prometheus",
         "uid": "${datasource}"

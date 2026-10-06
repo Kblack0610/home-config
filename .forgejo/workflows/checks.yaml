@@ -35,6 +35,8 @@ jobs:
         run: python3 scripts/check-fleet-roster.py
       - name: Runner roster agrees with the ansible inventory
         run: python3 scripts/check-runner-roster.py
+      - name: github-runner-exporter offline tests
+        run: python3 apps/github-runner-exporter/test_exporter.py
 
       - name: Home Assistant packages are all registered with the ConfigMap generator
         run: python3 scripts/check-ha-packages.py

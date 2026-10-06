@@ -6,6 +6,7 @@ views:
   - !include dashboards/launcher.yaml
   - !include dashboards/local.yaml
   - !include dashboards/ops.yaml
+  - !include dashboards/view_ci.yaml
   - !include dashboards/admin.yaml
   # Hidden device-detail subviews (subview: true → not in the tab bar; reached
   # from the Devices hub). Shared with the wall dashboard via the same files.

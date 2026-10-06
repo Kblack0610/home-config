@@ -31,6 +31,7 @@ configMapGenerator:
       - package_zomboid.yaml=config/packages/zomboid.yaml
       - package_agents.yaml=config/packages/agents.yaml
       - package_lamps.yaml=config/packages/lamps.yaml
+      - package_ci_runners.yaml=config/packages/ci_runners.yaml
       - pyscript_plug_settings.py=config/pyscript/plug_settings.py
       - pyscript_room_layout.yaml=config/pyscript/room_layout.yaml
       # Custom microWakeWord model (binary). The voice_satellite in-browser engine
@@ -54,6 +55,7 @@ configMapGenerator:
       - dashboard_view_agents.yaml=config/dashboards/view_agents.yaml
       - dashboard_view_devices.yaml=config/dashboards/view_devices.yaml
       - dashboard_view_control.yaml=config/dashboards/view_control.yaml
+      - dashboard_view_ci.yaml=config/dashboards/view_ci.yaml
       - dashboard_view_local.yaml=config/dashboards/view_local.yaml
       - dashboard_view_ops.yaml=config/dashboards/view_ops.yaml
       - dashboard_view_media.yaml=config/dashboards/view_media.yaml

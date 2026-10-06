@@ -1,26 +1,37 @@
 #!/usr/bin/env python3
-"""github-runner-exporter - the self-hosted GitHub Actions runner pools, roster-first.
+"""github-runner-exporter - what every self-hosted GitHub Actions runner is doing.
 
 WHY THIS EXISTS:
 
 CI for BlackNBrownStudios runs on home hardware: the platform pmp-light /
-pmp-heavy slots (repo-scoped, BlackNBrownStudios/platform), the mac-mini macOS
-runner (same repo), and the Unity pool (org-scoped, label `unity`, every game
-repo). A self-hosted job WAITS for a runner instead of failing, so a dead slot
-does not show up as a red check - it shows up as a PR that sits queued. The only
-place that state existed was `gh api .../actions/runners`, one repo at a time.
+pmp-heavy slots and the mac-mini (repo-scoped on platform), the org Unity pool,
+and repo-scoped Unity runners on single game repos (hp-victus-playground on
+unity-core-playground, hp-victus-unity-2 on dodginballs). A self-hosted job
+WAITS for a runner instead of failing, so a dead slot shows up as a PR sitting
+queued, not as a red check. Before this, the only view was `gh api` one repo at
+a time, and it could not say what a busy runner was busy WITH.
 
-ROSTER-FIRST, for the same reason as apps/fleet-exporter: GitHub only lists
-runners that registered. A slot the ansible play never brought up is not
-offline, it is ABSENT, and a dashboard built on the API alone counts it as
-nothing. $RUNNER_ROSTER says what SHOULD exist (it mirrors the slot counts in
-ansible/inventory.yml: platform_ci_runners, unity_ci_runners,
-github_runner_mac), so online-vs-expected is a real number.
+The question the dashboard answers is "what is running where, and what is
+waiting", so the main series is github_runner_state: one row per runner with
+the repo / workflow / job / branch / job URL it is running and for how long.
+GitHub's runner object does not carry its current job, so that comes from the
+other side: every in-progress run in $RUN_REPOS, its jobs, matched on
+job.runner_name.
+
+ROSTER-FIRST for slot counts, same reason as apps/fleet-exporter: GitHub only
+lists runners that registered, so a slot whose ansible play never ran would
+otherwise be invisible. $RUNNER_ROSTER mirrors ansible/inventory.yml and
+scripts/check-runner-roster.py keeps them equal. Each missing slot is a
+state="missing" row. Runners outside the roster (the repo-scoped Unity ones
+are not ansible-managed) are listed but not counted against anything.
 
 Fetched on every scrape, no background loop: Prometheus's scrape interval is the
-cadence. GitHub has no push API for runner state. Budget: 2 runner calls + 2
-per repo in $RUN_REPOS per scrape, ~720/h at a 60s interval against the PAT's
-5000/h.
+cadence (GitHub has no push API for runner state). Calls run on a small thread
+pool so a scrape stays well inside the ServiceMonitor timeout.
+
+A failed source never reads as "offline": its runners are simply absent and
+github_runner_exporter_api_ok{source} says why. Missing-slot rows and pool
+counts are only emitted when every runner source answered.
 
 Alerting is NOT here. Sentinel (~/.agent/watches/*runners-online.yaml) is the
 notification voice for runner pools; this is the screen.
@@ -28,19 +39,23 @@ notification voice for runner pools; this is the screen.
 import json
 import os
 import re
+import time
 import urllib.error
 import urllib.request
+from concurrent.futures import ThreadPoolExecutor
+from datetime import datetime, timezone
 from http.server import BaseHTTPRequestHandler, HTTPServer
 
 API = os.environ.get("GITHUB_API", "https://api.github.com").rstrip("/")
 TOKEN = os.environ.get("GITHUB_TOKEN", "")
 PORT = int(os.environ.get("PORT", "9320"))
-# API paths whose /actions/runners list we read: a repo scope and an org scope.
-RUNNER_SOURCES = os.environ.get(
-    "RUNNER_SOURCES", "repos/BlackNBrownStudios/platform orgs/BlackNBrownStudios"
-).split()
-# Repos whose queued / in-progress workflow runs are counted.
+ORGS = os.environ.get("RUNNER_ORGS", "BlackNBrownStudios").split()
+# Repos whose repo-scoped runners, active runs and recent runs are read.
 RUN_REPOS = os.environ.get("RUN_REPOS", "BlackNBrownStudios/platform").split()
+RECENT_PER_REPO = int(os.environ.get("RECENT_PER_REPO", "8"))
+# Bounds the jobs fan-out per repo per status, so one repo with a deep queue
+# cannot eat the API budget or the scrape timeout.
+MAX_RUNS_PER_REPO = int(os.environ.get("MAX_RUNS_PER_REPO", "15"))
 # host:pool:slots, whitespace separated.
 ROSTER = []
 for entry in os.environ.get("RUNNER_ROSTER", "").split():
@@ -48,6 +63,7 @@ for entry in os.environ.get("RUNNER_ROSTER", "").split():
     ROSTER.append((host, pool, int(slots)))
 ROSTER_HOSTS = sorted({h for h, _, _ in ROSTER}, key=len, reverse=True)
 POOL_LABELS = ("pmp-light", "pmp-heavy", "unity")
+API_ERRORS = (urllib.error.URLError, OSError, ValueError, KeyError)
 
 
 def get(path):
@@ -70,6 +86,16 @@ def runners(source):
         page += 1
 
 
+def ts(s):
+    """GitHub ISO-8601 'Z' timestamp -> epoch seconds, parsed as explicit UTC."""
+    if not s:
+        return None
+    try:
+        return datetime.strptime(s, "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=timezone.utc).timestamp()
+    except ValueError:
+        return None
+
+
 def pool_of(labels):
     for p in POOL_LABELS:
         if p in labels:
@@ -78,79 +104,192 @@ def pool_of(labels):
 
 
 def host_of(name, labels):
-    # The unity role stamps host-<inventory_hostname>; the platform role does not,
-    # but names it <inventory_hostname>-<pool>-<n>, so match the roster's hosts
-    # as name prefixes (longest first, so no host can shadow a longer one).
+    # The unity pool role stamps host-<inventory_hostname>; the others do not,
+    # but name the runner <inventory_hostname>-..., so match roster hosts as
+    # name prefixes (longest first). Unrostered names fall back to the text
+    # before the first pool-ish word.
     for l in labels:
         if l.startswith("host-"):
             return l[5:]
     for h in ROSTER_HOSTS:
         if name == h or name.startswith(h + "-"):
             return h
-    return "unknown"
+    m = re.match(r"(.+?)-(light|heavy|unity|playground|mac)\b", name)
+    return m.group(1) if m else "unknown"
 
 
 def esc(v):
     return re.sub(r'(["\\])', r"\\\1", str(v)).replace("\n", " ")
 
 
+def labels_str(d):
+    return ",".join(f'{k}="{esc(v)}"' for k, v in d.items())
+
+
+def repo_activity(repo):
+    """One repo's active runs and their jobs, plus recent completed runs."""
+    out = {"repo": repo, "ok": True, "counts": {}, "jobs": [], "recent": []}
+    try:
+        active = []
+        for status in ("in_progress", "queued"):
+            data = get(f"repos/{repo}/actions/runs?status={status}&per_page={MAX_RUNS_PER_REPO}")
+            out["counts"][status] = data.get("total_count", 0)
+            active += data.get("workflow_runs", [])
+        for run in active:
+            jobs = get(f"repos/{repo}/actions/runs/{run['id']}/jobs?per_page=100").get("jobs", [])
+            if not jobs and run.get("status") == "queued":
+                # A queued run with no jobs never gets a runner. GitHub leaves
+                # these behind (one platform schedule run sat like this from
+                # 2026-09-13), and they hold the queued count up forever, so
+                # list it as a waiting row with its age rather than hide it.
+                jobs = [{"name": "(run has no jobs)", "status": "queued", "created_at": run.get("created_at"),
+                         "head_branch": run.get("head_branch"), "labels": [], "html_url": run.get("html_url", "")}]
+            for job in jobs:
+                job["_workflow"] = run.get("name") or job.get("workflow_name", "")
+                out["jobs"].append(job)
+        data = get(f"repos/{repo}/actions/runs?status=completed&per_page={RECENT_PER_REPO}")
+        out["recent"] = data.get("workflow_runs", [])
+    except API_ERRORS:
+        out["ok"] = False
+    return out
+
+
 def render():
+    now = time.time()
+    sources = [f"orgs/{o}" for o in ORGS] + [f"repos/{r}" for r in RUN_REPOS]
+    with ThreadPoolExecutor(max_workers=8) as pool:
+        runner_futs = {s: pool.submit(runners, s) for s in sources}
+        repo_futs = [pool.submit(repo_activity, r) for r in RUN_REPOS]
+        acts = [f.result() for f in repo_futs]
+
     L = [
-        "# HELP github_runner_exporter_api_ok 1 if this runner source answered this scrape",
+        "# HELP github_runner_exporter_api_ok 1 if this GitHub source answered this scrape",
         "# TYPE github_runner_exporter_api_ok gauge",
     ]
-    seen, all_ok = {}, True
-    for src in RUNNER_SOURCES:
+    seen, runners_ok = {}, True
+    for src, fut in runner_futs.items():
         try:
-            for r in runners(src):
-                seen[r["id"]] = (src.split("/")[0].rstrip("s"), r)
+            for r in fut.result():
+                seen.setdefault(r["id"], ("org" if src.startswith("orgs/") else src.split("/", 1)[1], r))
             ok = 1
-        except (urllib.error.URLError, OSError, ValueError, KeyError):
-            ok, all_ok = 0, False
-        L.append(f'github_runner_exporter_api_ok{{source="{esc(src)}"}} {ok}')
+        except API_ERRORS:
+            ok, runners_ok = 0, False
+        L.append(f'github_runner_exporter_api_ok{{source="{esc(src)}",kind="runners"}} {ok}')
+    for a in acts:
+        L.append(f'github_runner_exporter_api_ok{{source="repos/{esc(a["repo"])}",kind="runs"}} {1 if a["ok"] else 0}')
+
+    # runner_name -> the job it is running right now.
+    running = {}
+    waiting = []
+    for a in acts:
+        for j in a["jobs"]:
+            if j.get("status") == "in_progress" and j.get("runner_name"):
+                running[j["runner_name"]] = (a["repo"], j)
+            elif j.get("status") in ("queued", "waiting", "pending", "requested"):
+                waiting.append((a["repo"], j))
 
     L += [
-        "# HELP github_runner_online 1 if GitHub reports this runner online",
-        "# TYPE github_runner_online gauge",
-        "# HELP github_runner_busy 1 if this runner is running a job",
-        "# TYPE github_runner_busy gauge",
+        "# HELP github_runner_state One row per runner: state is running|idle|offline|missing; value is seconds the current job has run (0 otherwise)",
+        "# TYPE github_runner_state gauge",
     ]
-    online = {}
+    by_state, online = {}, {}
     for scope, r in sorted(seen.values(), key=lambda s: s[1]["name"]):
-        labels = [l["name"] for l in r.get("labels", [])]
-        host, pool = host_of(r["name"], labels), pool_of(labels)
-        is_on = 1 if r.get("status") == "online" else 0
-        lab = f'name="{esc(r["name"])}",host="{esc(host)}",pool="{pool}",scope="{scope}"'
-        L.append(f"github_runner_online{{{lab}}} {is_on}")
-        L.append(f"github_runner_busy{{{lab}}} {1 if r.get('busy') else 0}")
-        online[(host, pool)] = online.get((host, pool), 0) + is_on
+        names = [l["name"] for l in r.get("labels", [])]
+        host, pool_ = host_of(r["name"], names), pool_of(names)
+        lab = {"name": r["name"], "host": host, "pool": pool_, "scope": scope,
+               "state": "", "repo": "", "workflow": "", "job": "", "branch": "", "url": ""}
+        value = 0
+        if r.get("status") != "online":
+            lab["state"] = "offline"
+        elif r.get("busy"):
+            lab["state"] = "running"
+            if r["name"] in running:
+                repo, j = running[r["name"]]
+                lab.update(repo=repo.split("/", 1)[1], workflow=j["_workflow"], job=j.get("name", ""),
+                           branch=j.get("head_branch") or "", url=j.get("html_url", ""))
+                started = ts(j.get("started_at"))
+                value = int(now - started) if started else 0
+            else:
+                # Busy on a job in a repo outside $RUN_REPOS, or one that started
+                # between the two API reads. Say so instead of a blank row.
+                lab["repo"] = "(not watched)"
+        else:
+            lab["state"] = "idle"
+        if lab["state"] != "offline":
+            online[(host, pool_)] = online.get((host, pool_), 0) + 1
+        by_state[lab["state"]] = by_state.get(lab["state"], 0) + 1
+        L.append(f"github_runner_state{{{labels_str(lab)}}} {value}")
+
+    if runners_ok:
+        registered = {}
+        for scope, r in seen.values():
+            names = [l["name"] for l in r.get("labels", [])]
+            k = (host_of(r["name"], names), pool_of(names))
+            registered[k] = registered.get(k, 0) + 1
+        for host, pool_, slots in ROSTER:
+            for n in range(registered.get((host, pool_), 0), slots):
+                lab = {"name": f"{host} {pool_} slot {n + 1}", "host": host, "pool": pool_, "scope": "roster",
+                       "state": "missing", "repo": "", "workflow": "", "job": "", "branch": "", "url": ""}
+                by_state["missing"] = by_state.get("missing", 0) + 1
+                L.append(f"github_runner_state{{{labels_str(lab)}}} 0")
+
+    L += [
+        "# HELP github_runners_by_state Count of runners in each state (absent while a runner source failed for missing)",
+        "# TYPE github_runners_by_state gauge",
+    ]
+    for state in ("running", "idle", "offline", "missing"):
+        if state == "missing" and not runners_ok:
+            continue
+        L.append(f'github_runners_by_state{{state="{state}"}} {by_state.get(state, 0)}')
 
     L += [
         "# HELP github_runner_pool_expected Slots the roster says this host runs in this pool",
         "# TYPE github_runner_pool_expected gauge",
-        "# HELP github_runner_pool_online Online runners in this host/pool; absent while any source failed",
+        "# HELP github_runner_pool_online Online runners in this host/pool; absent while any runner source failed",
         "# TYPE github_runner_pool_online gauge",
     ]
-    for host, pool, slots in ROSTER:
-        L.append(f'github_runner_pool_expected{{host="{host}",pool="{pool}"}} {slots}')
-    # Only when every source answered: a failed source must read as "unknown",
-    # never as "0 online", or one API blip paints the whole pool down.
-    if all_ok:
-        keys = {(h, p) for h, p, _ in ROSTER} | set(online)
-        for host, pool in sorted(keys):
-            L.append(f'github_runner_pool_online{{host="{host}",pool="{pool}"}} {online.get((host, pool), 0)}')
+    for host, pool_, slots in ROSTER:
+        L.append(f'github_runner_pool_expected{{host="{host}",pool="{pool_}"}} {slots}')
+    if runners_ok:
+        for host, pool_ in sorted({(h, p) for h, p, _ in ROSTER} | set(online)):
+            L.append(f'github_runner_pool_online{{host="{host}",pool="{pool_}"}} {online.get((host, pool_), 0)}')
+
+    L += [
+        "# HELP github_actions_job_waiting A job waiting for a runner; value is seconds since it was queued",
+        "# TYPE github_actions_job_waiting gauge",
+    ]
+    for repo, j in waiting:
+        created = ts(j.get("created_at"))
+        lab = {"repo": repo.split("/", 1)[1], "workflow": j["_workflow"], "job": j.get("name", ""),
+               "branch": j.get("head_branch") or "", "status": j.get("status", ""),
+               "labels": ",".join(j.get("labels") or []), "url": j.get("html_url", "")}
+        L.append(f"github_actions_job_waiting{{{labels_str(lab)}}} {int(now - created) if created else 0}")
 
     L += [
         "# HELP github_actions_runs Workflow runs in this status (queued, in_progress)",
         "# TYPE github_actions_runs gauge",
     ]
-    for repo in RUN_REPOS:
-        for status in ("queued", "in_progress"):
-            try:
-                n = get(f"repos/{repo}/actions/runs?status={status}&per_page=1").get("total_count", 0)
-            except (urllib.error.URLError, OSError, ValueError):
+    for a in acts:
+        for status, n in a["counts"].items():
+            L.append(f'github_actions_runs{{repo="{esc(a["repo"])}",status="{status}"}} {n}')
+
+    L += [
+        "# HELP github_actions_run_recent A recently completed run; value is when it finished (epoch seconds)",
+        "# TYPE github_actions_run_recent gauge",
+        "# HELP github_actions_run_recent_duration_seconds How long that run took",
+        "# TYPE github_actions_run_recent_duration_seconds gauge",
+    ]
+    for a in acts:
+        for run in a["recent"]:
+            done, started = ts(run.get("updated_at")), ts(run.get("run_started_at"))
+            if not done:
                 continue
-            L.append(f'github_actions_runs{{repo="{esc(repo)}",status="{status}"}} {n}')
+            lab = labels_str({"repo": a["repo"].split("/", 1)[1], "workflow": run.get("name", ""),
+                              "branch": run.get("head_branch") or "", "event": run.get("event", ""),
+                              "conclusion": run.get("conclusion") or "", "url": run.get("html_url", "")})
+            L.append(f"github_actions_run_recent{{{lab}}} {int(done)}")
+            if started:
+                L.append(f"github_actions_run_recent_duration_seconds{{{lab}}} {int(done - started)}")
     return "\n".join(L) + "\n"
 
 
@@ -179,8 +318,8 @@ class H(BaseHTTPRequestHandler):
 
 if __name__ == "__main__":
     print(
-        f"github-runner-exporter: sources={RUNNER_SOURCES} repos={len(RUN_REPOS)} "
-        f"roster={len(ROSTER)} token={'set' if TOKEN else 'MISSING'} port={PORT}",
+        f"github-runner-exporter: orgs={ORGS} repos={len(RUN_REPOS)} roster={len(ROSTER)} "
+        f"token={'set' if TOKEN else 'MISSING'} port={PORT}",
         flush=True,
     )
     HTTPServer(("", PORT), H).serve_forever()

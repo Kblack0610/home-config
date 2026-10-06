@@ -10,7 +10,9 @@
 rest:
   - resource: http://kube-prometheus-stack-prometheus.monitoring.svc:9090/api/v1/query
     params:
-      query: github_runner_state
+      # max without the scrape-target labels: one row per runner, also during a
+      # pod rollout when two exporter pods are briefly scraped at once.
+      query: max without (instance, pod, job, namespace, service, endpoint, container) (github_runner_state)
     scan_interval: 60
     sensor:
       - name: CI runners running
@@ -31,7 +33,7 @@ rest:
     params:
       # sort_desc: oldest first. Values are strings in the JSON, so a Jinja
       # sort would put "900" above "3600"; Prometheus sorts them as numbers.
-      query: sort_desc(github_actions_job_waiting)
+      query: sort_desc(max without (instance, pod, job, namespace, service, endpoint, container) (github_actions_job_waiting))
     scan_interval: 60
     sensor:
       - name: CI jobs waiting

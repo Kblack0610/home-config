@@ -13,7 +13,10 @@ a time, and it could not say what a busy runner was busy WITH.
 
 The question the dashboard answers is "what is running where, and what is
 waiting", so the main series is github_runner_state: one row per runner with
-the repo / workflow / job / branch / job URL it is running and for how long.
+the repo / workflow / job_name / branch / job URL it is running and for how
+long. (`job_name`, never `job`: Prometheus owns the `job` label for the scrape
+target and renames ours to exported_job, which put "github-runner-exporter" in
+every job column of the first deploy.)
 GitHub's runner object does not carry its current job, so that comes from the
 other side: every in-progress run in $RUN_REPOS, its jobs, matched on
 job.runner_name.
@@ -197,7 +200,7 @@ def render():
         names = [l["name"] for l in r.get("labels", [])]
         host, pool_ = host_of(r["name"], names), pool_of(names)
         lab = {"name": r["name"], "host": host, "pool": pool_, "scope": scope,
-               "state": "", "repo": "", "workflow": "", "job": "", "branch": "", "url": ""}
+               "state": "", "repo": "", "workflow": "", "job_name": "", "branch": "", "url": ""}
         value = 0
         if r.get("status") != "online":
             lab["state"] = "offline"
@@ -205,7 +208,7 @@ def render():
             lab["state"] = "running"
             if r["name"] in running:
                 repo, j = running[r["name"]]
-                lab.update(repo=repo.split("/", 1)[1], workflow=j["_workflow"], job=j.get("name", ""),
+                lab.update(repo=repo.split("/", 1)[1], workflow=j["_workflow"], job_name=j.get("name", ""),
                            branch=j.get("head_branch") or "", url=j.get("html_url", ""))
                 started = ts(j.get("started_at"))
                 value = int(now - started) if started else 0
@@ -229,7 +232,7 @@ def render():
         for host, pool_, slots in ROSTER:
             for n in range(registered.get((host, pool_), 0), slots):
                 lab = {"name": f"{host} {pool_} slot {n + 1}", "host": host, "pool": pool_, "scope": "roster",
-                       "state": "missing", "repo": "", "workflow": "", "job": "", "branch": "", "url": ""}
+                       "state": "missing", "repo": "", "workflow": "", "job_name": "", "branch": "", "url": ""}
                 by_state["missing"] = by_state.get("missing", 0) + 1
                 L.append(f"github_runner_state{{{labels_str(lab)}}} 0")
 
@@ -260,7 +263,7 @@ def render():
     ]
     for repo, j in waiting:
         created = ts(j.get("created_at"))
-        lab = {"repo": repo.split("/", 1)[1], "workflow": j["_workflow"], "job": j.get("name", ""),
+        lab = {"repo": repo.split("/", 1)[1], "workflow": j["_workflow"], "job_name": j.get("name", ""),
                "branch": j.get("head_branch") or "", "status": j.get("status", ""),
                "labels": ",".join(j.get("labels") or []), "url": j.get("html_url", "")}
         L.append(f"github_actions_job_waiting{{{labels_str(lab)}}} {int(now - created) if created else 0}")

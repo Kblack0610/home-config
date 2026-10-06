@@ -52,7 +52,7 @@
             "uid": "${datasource}"
           },
           "editorMode": "code",
-          "expr": "sum(github_runners_by_state{state=\"running\"})",
+          "expr": "sum(max without (instance, pod, job, namespace, service, endpoint, container) (github_runners_by_state{state=\"running\"}))",
           "format": "time_series",
           "instant": true,
           "range": false,
@@ -120,7 +120,7 @@
             "uid": "${datasource}"
           },
           "editorMode": "code",
-          "expr": "sum(github_runners_by_state{state=\"idle\"})",
+          "expr": "sum(max without (instance, pod, job, namespace, service, endpoint, container) (github_runners_by_state{state=\"idle\"}))",
           "format": "time_series",
           "instant": true,
           "range": false,
@@ -184,7 +184,7 @@
             "uid": "${datasource}"
           },
           "editorMode": "code",
-          "expr": "count(github_actions_job_waiting) or vector(0)",
+          "expr": "count(max without (instance, pod, job, namespace, service, endpoint, container) (github_actions_job_waiting)) or vector(0)",
           "format": "time_series",
           "instant": true,
           "range": false,
@@ -256,7 +256,7 @@
             "uid": "${datasource}"
           },
           "editorMode": "code",
-          "expr": "sum(github_runners_by_state{state=~\"offline|missing\"})",
+          "expr": "sum(max without (instance, pod, job, namespace, service, endpoint, container) (github_runners_by_state{state=~\"offline|missing\"}))",
           "format": "time_series",
           "instant": true,
           "range": false,
@@ -406,7 +406,7 @@
             "uid": "${datasource}"
           },
           "editorMode": "code",
-          "expr": "github_runner_state",
+          "expr": "max without (instance, pod, job, namespace, service, endpoint, container) (github_runner_state)",
           "format": "table",
           "instant": true,
           "range": false,
@@ -430,13 +430,14 @@
               "host": 3,
               "repo": 4,
               "workflow": 5,
-              "job": 6,
+              "job_name": 6,
               "branch": 7,
               "Value": 8,
               "url": 9
             },
             "renameByName": {
               "name": "runner",
+              "job_name": "job",
               "Value": "running for"
             }
           }
@@ -589,7 +590,7 @@
             "uid": "${datasource}"
           },
           "editorMode": "code",
-          "expr": "github_actions_job_waiting",
+          "expr": "max without (instance, pod, job, namespace, service, endpoint, container) (github_actions_job_waiting)",
           "format": "table",
           "instant": true,
           "range": false,
@@ -609,7 +610,7 @@
             "indexByName": {
               "repo": 0,
               "workflow": 1,
-              "job": 2,
+              "job_name": 2,
               "branch": 3,
               "labels": 4,
               "Value": 5,
@@ -617,6 +618,7 @@
             },
             "renameByName": {
               "labels": "needs",
+              "job_name": "job",
               "Value": "waiting for"
             }
           }
@@ -739,7 +741,7 @@
             "uid": "${datasource}"
           },
           "editorMode": "code",
-          "expr": "github_actions_run_recent * 1000",
+          "expr": "max without (instance, pod, job, namespace, service, endpoint, container) (github_actions_run_recent) * 1000",
           "format": "table",
           "instant": true,
           "range": false,
@@ -752,7 +754,7 @@
             "uid": "${datasource}"
           },
           "editorMode": "code",
-          "expr": "github_actions_run_recent_duration_seconds + 0",
+          "expr": "max without (instance, pod, job, namespace, service, endpoint, container) (github_actions_run_recent_duration_seconds)",
           "format": "table",
           "instant": true,
           "range": false,
@@ -949,7 +951,7 @@
                 "uid": "${datasource}"
               },
               "editorMode": "code",
-              "expr": "count by (pool) (github_runner_state{state=\"running\"})",
+              "expr": "count by (pool) (max without (instance, pod, job, namespace, service, endpoint, container) (github_runner_state{state=\"running\"}))",
               "format": "time_series",
               "instant": false,
               "range": true,
@@ -1001,7 +1003,7 @@
                 "uid": "${datasource}"
               },
               "editorMode": "code",
-              "expr": "count by (repo) (github_actions_job_waiting)",
+              "expr": "count by (repo) (max without (instance, pod, job, namespace, service, endpoint, container) (github_actions_job_waiting))",
               "format": "time_series",
               "instant": false,
               "range": true,

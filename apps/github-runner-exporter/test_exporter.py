@@ -77,7 +77,7 @@ class ExporterTest(unittest.TestCase):
 
     def test_busy_runner_carries_its_job(self):
         (row,) = [r for r in rows(self.render(), "github_runner_state") if 'name="box-unity-pool-1"' in r]
-        for want in ('state="running"', 'repo="game"', 'workflow="Tests"', 'job="PlayMode 1"',
+        for want in ('state="running"', 'repo="game"', 'workflow="Tests"', 'job_name="PlayMode 1"',
                      'branch="main"', 'url="https://x/job/1"', 'host="box"', 'pool="unity"'):
             self.assertIn(want, row)
         self.assertGreaterEqual(int(row.rsplit(" ", 1)[1]), 590)
@@ -97,8 +97,8 @@ class ExporterTest(unittest.TestCase):
     def test_waiting_jobs_include_jobless_ghost_run(self):
         waiting = rows(self.render(), "github_actions_job_waiting")
         self.assertEqual(len(waiting), 2)
-        self.assertTrue(any('job="PlayMode 2"' in r and 'labels="self-hosted,unity"' in r for r in waiting))
-        self.assertTrue(any('job="(run has no jobs)"' in r and 'workflow="Drift"' in r for r in waiting))
+        self.assertTrue(any('job_name="PlayMode 2"' in r and 'labels="self-hosted,unity"' in r for r in waiting))
+        self.assertTrue(any('job_name="(run has no jobs)"' in r and 'workflow="Drift"' in r for r in waiting))
 
     def test_recent_runs(self):
         out = self.render()
@@ -113,6 +113,13 @@ class ExporterTest(unittest.TestCase):
         self.assertFalse(any('state="missing"' in r for r in state))
         self.assertNotIn('state="missing"} ', "\n".join(l for l in out.splitlines() if l.startswith("github_runners_by_state")))
         self.assertEqual(rows(out, "github_runner_pool_online"), [])
+
+    def test_no_reserved_prometheus_labels(self):
+        # Prometheus renames a scraped `job`/`instance` label to exported_*, so
+        # emitting one silently moves the value out of the column that shows it.
+        for line in self.render().splitlines():
+            if not line.startswith("#"):
+                self.assertNotRegex(line, r'[{,](job|instance)="', line)
 
     def test_no_token_everything_failed(self):
         out = self.render(broken=("orgs/", "repos/"))

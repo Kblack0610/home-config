@@ -149,9 +149,12 @@ all:
     # Mirrored in RUNNER_ROSTER like platform_ci_runners above.
     unity_ci_runners:
       hosts:
-        # 16 cores / 62 GB, beside the platform slots (12 cores / 40G cap).
+        # 16 cores / 62 GB, beside the platform slots (12 cores / 40G cap) and k3s.
+        # One slot: with two, load ran to 19 on 16 threads and real-time tests
+        # (HitReactions, Fists, BarrageMovement, NavPageBudget) failed only here
+        # (2026-10-06, main run 37416749384). Slot 2 was removed by hand.
         asus-laptop:
-          unity_ci_slots: 2
+          unity_ci_slots: 1
           unity_ci_cpu_cores: 8
           unity_ci_memory_max: 24G
         # The workstation: the human's desk, so Unity CI is capped at half of it.

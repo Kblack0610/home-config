@@ -54,7 +54,7 @@ spec:
             # pmp_*_slots, unity_ci_runners unity_ci_slots, the mac-mini runner).
             # Change a slot count there, change it here.
             - name: RUNNER_ROSTER
-              value: "asus-laptop:pmp-light:3 asus-laptop:pmp-heavy:1 asus-laptop:unity:2 hp-victus:pmp-light:2 hp-victus:pmp-heavy:1 cachyos-x8664-main:unity:2 mac-mini:macos:1"
+              value: "asus-laptop:pmp-light:3 asus-laptop:pmp-heavy:1 asus-laptop:unity:1 hp-victus:pmp-light:2 hp-victus:pmp-heavy:1 cachyos-x8664-main:unity:2 mac-mini:macos:1"
           ports:
             - name: metrics
               containerPort: 9320

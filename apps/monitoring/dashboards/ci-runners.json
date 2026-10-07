@@ -488,7 +488,7 @@
       },
       "fieldConfig": {
         "defaults": {
-          "noValue": "no runner data (see GitHub API)",
+          "noValue": "-",
           "custom": {
             "align": "left"
           }
@@ -706,7 +706,7 @@
       "title": "What each pool runs",
       "description": "Workflows each runner pool finished recently (last ~60 completed runs per repo), newest first. Read from job history, so it stays true when the workflow files change.",
       "gridPos": {
-        "h": 7,
+        "h": 10,
         "w": 24,
         "x": 0,
         "y": 17
@@ -757,7 +757,7 @@
       },
       "fieldConfig": {
         "defaults": {
-          "noValue": "no history yet",
+          "noValue": "-",
           "custom": {
             "align": "left"
           }
@@ -788,10 +788,10 @@
       "title": "Waiting for a runner",
       "description": "Queued jobs, oldest first. 'needs' is the runs-on label set, so you can see which pool is short. '(run has no jobs)' is a run GitHub left queued with no jobs: it will never start, cancel it.",
       "gridPos": {
-        "h": 8,
+        "h": 6,
         "w": 24,
         "x": 0,
-        "y": 24
+        "y": 27
       },
       "targets": [
         {
@@ -846,7 +846,7 @@
       },
       "fieldConfig": {
         "defaults": {
-          "noValue": "Nothing waiting",
+          "noValue": "-",
           "custom": {
             "align": "left"
           }
@@ -942,7 +942,7 @@
         "h": 10,
         "w": 24,
         "x": 0,
-        "y": 32
+        "y": 33
       },
       "targets": [
         {
@@ -1012,7 +1012,7 @@
       },
       "fieldConfig": {
         "defaults": {
-          "noValue": "no recent runs",
+          "noValue": "-",
           "custom": {
             "align": "left"
           }
@@ -1142,7 +1142,7 @@
         "h": 1,
         "w": 24,
         "x": 0,
-        "y": 42
+        "y": 43
       },
       "panels": [
         {
@@ -1152,7 +1152,7 @@
             "h": 8,
             "w": 12,
             "x": 0,
-            "y": 43
+            "y": 44
           },
           "targets": [
             {
@@ -1204,7 +1204,7 @@
             "h": 8,
             "w": 12,
             "x": 12,
-            "y": 43
+            "y": 44
           },
           "targets": [
             {

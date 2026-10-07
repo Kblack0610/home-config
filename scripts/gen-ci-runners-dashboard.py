@@ -82,7 +82,7 @@ panels = [
            "renameByName": {"name": "runner", "job_name": "job", "Value #A": "running for", "last_conclusion": "last result",
                             "last_repo": "last repo", "last_workflow": "last workflow", "last_job": "last job", "Value #B": "last finished"}}}],
        "options": {"showHeader": True, "cellHeight": "sm", "sortBy": [{"displayName": "running for", "desc": True}]},
-       "fieldConfig": {"defaults": {"noValue": "no runner data (see GitHub API)", "custom": {"align": "left"}},
+       "fieldConfig": {"defaults": {"noValue": "-", "custom": {"align": "left"}},
                        "overrides": [
                            {"matcher": {"id": "byName", "options": "state"}, "properties": [
                                {"id": "mappings", "value": STATE_MAP},
@@ -103,26 +103,26 @@ panels = [
 
     P({"type": "table", "title": "What each pool runs",
        "description": "Workflows each runner pool finished recently (last ~60 completed runs per repo), newest first. Read from job history, so it stays true when the workflow files change.",
-       "gridPos": {"h": 7, "w": 24, "x": 0, "y": 17},
+       "gridPos": {"h": 10, "w": 24, "x": 0, "y": 17},
        "targets": [tgt(W + "(github_pool_workflow) * 1000")],
        "transformations": [{"id": "organize", "options": {
            "excludeByName": {"Time": True},
            "indexByName": {"pool": 0, "repo": 1, "workflow": 2, "Value": 3},
            "renameByName": {"Value": "last ran"}}}],
        "options": {"showHeader": True, "cellHeight": "sm", "sortBy": [{"displayName": "pool", "desc": False}]},
-       "fieldConfig": {"defaults": {"noValue": "no history yet", "custom": {"align": "left"}},
+       "fieldConfig": {"defaults": {"noValue": "-", "custom": {"align": "left"}},
                        "overrides": [{"matcher": {"id": "byName", "options": "last ran"}, "properties": [{"id": "unit", "value": "dateTimeFromNow"}]}]}}),
 
     P({"type": "table", "title": "Waiting for a runner",
        "description": "Queued jobs, oldest first. 'needs' is the runs-on label set, so you can see which pool is short. '(run has no jobs)' is a run GitHub left queued with no jobs: it will never start, cancel it.",
-       "gridPos": {"h": 8, "w": 24, "x": 0, "y": 24},
+       "gridPos": {"h": 6, "w": 24, "x": 0, "y": 27},
        "targets": [tgt(W + "(github_actions_job_waiting)")],
        "transformations": [{"id": "organize", "options": {
            "excludeByName": {"Time": True, "__name__": True, "status": True},
            "indexByName": {"repo": 0, "workflow": 1, "job_name": 2, "branch": 3, "labels": 4, "Value": 5, "url": 6},
            "renameByName": {"labels": "needs", "job_name": "job", "Value": "waiting for"}}}],
        "options": {"showHeader": True, "cellHeight": "sm", "sortBy": [{"displayName": "waiting for", "desc": True}]},
-       "fieldConfig": {"defaults": {"noValue": "Nothing waiting", "custom": {"align": "left"}},
+       "fieldConfig": {"defaults": {"noValue": "-", "custom": {"align": "left"}},
                        "overrides": [
                            {"matcher": {"id": "byName", "options": "waiting for"}, "properties": [
                                {"id": "unit", "value": "dtdurations"},
@@ -134,7 +134,7 @@ panels = [
 
     P({"type": "table", "title": "Recent runs",
        "description": "The last completed runs per watched repo, newest first. Click the workflow to open the run.",
-       "gridPos": {"h": 10, "w": 24, "x": 0, "y": 32},
+       "gridPos": {"h": 10, "w": 24, "x": 0, "y": 33},
        "targets": [tgt(W + "(github_actions_run_recent) * 1000", "A"), tgt(W + "(github_actions_run_recent_duration_seconds)", "B")],
        "transformations": [{"id": "merge", "options": {}},
                            {"id": "organize", "options": {
@@ -142,7 +142,7 @@ panels = [
                                "indexByName": {"conclusion": 0, "repo": 1, "workflow": 2, "branch": 3, "event": 4, "Value #A": 5, "Value #B": 6, "url": 7},
                                "renameByName": {"Value #A": "finished", "Value #B": "took"}}}],
        "options": {"showHeader": True, "cellHeight": "sm", "sortBy": [{"displayName": "finished", "desc": True}]},
-       "fieldConfig": {"defaults": {"noValue": "no recent runs", "custom": {"align": "left"}},
+       "fieldConfig": {"defaults": {"noValue": "-", "custom": {"align": "left"}},
                        "overrides": [
                            {"matcher": {"id": "byName", "options": "conclusion"}, "properties": [
                                {"id": "mappings", "value": CONCLUSION_MAP},
@@ -153,13 +153,13 @@ panels = [
                            {"matcher": {"id": "byName", "options": "workflow"}, "properties": [link("Open run on GitHub")]},
                        ] + hide("url")}}),
 
-    P({"type": "row", "title": "Trends", "collapsed": True, "gridPos": {"h": 1, "w": 24, "x": 0, "y": 42}, "panels": [
-        P({"type": "timeseries", "title": "Busy runners by pool", "gridPos": {"h": 8, "w": 12, "x": 0, "y": 43},
+    P({"type": "row", "title": "Trends", "collapsed": True, "gridPos": {"h": 1, "w": 24, "x": 0, "y": 43}, "panels": [
+        P({"type": "timeseries", "title": "Busy runners by pool", "gridPos": {"h": 8, "w": 12, "x": 0, "y": 44},
            "targets": [tgt('count by (pool) (' + W + '(github_runner_state{state="running"}))', instant=False, legend="{{pool}}", fmt="time_series")],
            "fieldConfig": {"defaults": {"unit": "none", "decimals": 0, "noValue": "0",
                                         "custom": {"drawStyle": "line", "lineInterpolation": "stepAfter", "fillOpacity": 10}}, "overrides": []},
            "options": {"legend": {"displayMode": "list", "placement": "bottom"}, "tooltip": {"mode": "multi"}}}),
-        P({"type": "timeseries", "title": "Waiting jobs by repo", "gridPos": {"h": 8, "w": 12, "x": 12, "y": 43},
+        P({"type": "timeseries", "title": "Waiting jobs by repo", "gridPos": {"h": 8, "w": 12, "x": 12, "y": 44},
            "targets": [tgt("count by (repo) (" + W + "(github_actions_job_waiting))", instant=False, legend="{{repo}}", fmt="time_series")],
            "fieldConfig": {"defaults": {"unit": "none", "decimals": 0, "noValue": "0",
                                         "custom": {"drawStyle": "line", "lineInterpolation": "stepAfter", "fillOpacity": 0}}, "overrides": []},

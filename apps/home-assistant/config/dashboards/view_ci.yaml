@@ -1,7 +1,13 @@
 # Shared view: included by ui-lovelace.yaml (Homelab) and dashboards/phone.yaml.
-# What every self-hosted CI runner is doing right now and what is waiting, from
-# packages/ci_runners.yaml. The deep view (recent runs, trends) is Grafana's
-# "CI / Runners" dashboard, one tap away at the bottom.
+# What every self-hosted CI runner is doing right now, what it last did, what
+# each pool is for, and what is waiting - from packages/ci_runners.yaml. The
+# deep view (recent runs, trends) is Grafana's "CI / Runners" dashboard.
+#
+# STRICT MODE: the markdown card renders templates strictly, so an undefined
+# variable blanks the WHOLE card. Prometheus drops labels whose value is empty
+# (a job with no branch, a waiting job with no runs-on labels), so every
+# optional label is read with .get(), never as m.label. Test a change with
+# render_template strict=true over the HA websocket before shipping.
 title: CI
 path: ci
 icon: mdi:progress-wrench
@@ -36,7 +42,10 @@ sections:
       - type: markdown
         title: Runners
         content: |
+          {%- macro ago(s) -%}{{ (s // 86400) ~ 'd' if s >= 86400 else ((s // 3600) ~ 'h ' ~ ((s % 3600) // 60) ~ 'm' if s >= 3600 else (s // 60) ~ 'm') }}{%- endmacro -%}
           {%- set rows = state_attr('sensor.ci_runners_running', 'result') or [] -%}
+          {%- set hist = state_attr('sensor.ci_runner_history', 'result') or [] -%}
+          {%- set now_s = as_timestamp(now()) | int(0) -%}
           {%- set icons = {'running': 'mdi:play-circle', 'idle': 'mdi:sleep', 'offline': 'mdi:lan-disconnect', 'missing': 'mdi:help-circle-outline'} -%}
           {%- if not rows -%}
           No runner data (GitHub API: {{ states('sensor.ci_github_api') }}).
@@ -45,11 +54,14 @@ sections:
           {%- for r in rows | selectattr('metric.state', 'eq', st) | sort(attribute='metric.name') -%}
           {%- set m = r.metric -%}
           {%- set s = r.value[1] | int(0) -%}
-          {%- set took = (s // 3600) ~ 'h ' ~ ((s % 3600) // 60) ~ 'm' if s >= 3600 else (s // 60) ~ 'm' -%}
-          <ha-icon icon="{{ icons[st] }}"></ha-icon> **{{ m.name }}** ({{ m.pool }})
-          {%- if st == 'running' and m.url %} {{ took }}: {{ m.repo }} / {{ m.workflow }} / [{{ m.job_name | replace('|', '/') }}]({{ m.url }}) on `{{ m.branch }}`
-          {%- elif st == 'running' %} busy on {{ m.repo }}
+          <ha-icon icon="{{ icons[st] }}"></ha-icon> **{{ m.get('name', '?') }}** ({{ m.get('pool', '?') }})
+          {%- if st == 'running' and m.get('url') %} {{ ago(s) }}: {{ m.get('repo', '') }} / {{ m.get('workflow', '') }} / [{{ m.get('job_name', 'job') | replace('|', '/') }}]({{ m.get('url') }}){% if m.get('branch') %} on `{{ m.get('branch') }}`{% endif %}
+          {%- elif st == 'running' %} busy on {{ m.get('repo', 'an unwatched repo') }}
           {%- else %} {{ st }}{%- endif %}
+          {%- set l = hist | selectattr('metric.name', 'eq', m.get('name')) | first -%}
+          {%- if st != 'running' and l is defined and l -%}
+          {%- set lm = l.metric %}<br>last: {{ lm.get('last_repo', '') }} / {{ lm.get('last_workflow', '') }} / [{{ lm.get('last_job', 'job') | replace('|', '/') }}]({{ lm.get('last_url', '') }}) {{ lm.get('last_conclusion', '') }}, {{ ago(now_s - (l.value[1] | int(0))) }} ago
+          {%- endif %}
 
           {% endfor -%}
           {%- endfor -%}
@@ -62,15 +74,28 @@ sections:
         heading_style: title
       - type: markdown
         content: |
+          {%- macro ago(s) -%}{{ (s // 86400) ~ 'd' if s >= 86400 else ((s // 3600) ~ 'h ' ~ ((s % 3600) // 60) ~ 'm' if s >= 3600 else (s // 60) ~ 'm') }}{%- endmacro -%}
           {%- set rows = state_attr('sensor.ci_jobs_waiting', 'result') or [] -%}
           {%- if not rows -%}
           Nothing waiting.
           {%- else -%}
           {%- for r in rows -%}
           {%- set m = r.metric -%}
-          {%- set s = r.value[1] | int(0) -%}
-          {%- set age = (s // 86400) ~ 'd' if s >= 86400 else ((s // 3600) ~ 'h ' ~ ((s % 3600) // 60) ~ 'm' if s >= 3600 else (s // 60) ~ 'm') -%}
-          <ha-icon icon="mdi:timer-sand"></ha-icon> {{ age }}: {{ m.repo }} / {{ m.workflow }} / [{{ m.job_name | replace('|', '/') }}]({{ m.url }}) on `{{ m.branch }}`{% if m.labels %}, needs `{{ m.labels }}`{% endif %}
+          <ha-icon icon="mdi:timer-sand"></ha-icon> {{ ago(r.value[1] | int(0)) }}: {{ m.get('repo', '') }} / {{ m.get('workflow', '') }} / [{{ m.get('job_name', 'job') | replace('|', '/') }}]({{ m.get('url', '') }}){% if m.get('branch') %} on `{{ m.get('branch') }}`{% endif %}{% if m.get('labels') %}, needs `{{ m.get('labels') }}`{% endif %}
+
+          {% endfor -%}
+          {%- endif -%}
+      - type: heading
+        heading: What each pool runs
+        heading_style: title
+      - type: markdown
+        content: |
+          {%- set rows = state_attr('sensor.ci_pool_workflows', 'result') or [] -%}
+          {%- if not rows -%}
+          No recent history yet.
+          {%- else -%}
+          {%- for pool in rows | map(attribute='metric') | map(attribute='pool') | unique | sort -%}
+          **{{ pool }}**: {% for r in rows | selectattr('metric.pool', 'eq', pool) -%}{{ r.metric.get('repo', '') }} / {{ r.metric.get('workflow', '') }}{{ ', ' if not loop.last }}{%- endfor %}
 
           {% endfor -%}
           {%- endif -%}

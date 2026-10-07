@@ -135,7 +135,41 @@ defaultRules:
 
 grafana:
   enabled: true
+  # First-boot value only. Grafana keeps the admin password in its own DB after
+  # that, so this is NOT the current password: the real one is the vault entry
+  # `grafana.kblab.me` (reset 2026-10-06). Kept as the break-glass login for when
+  # Forgejo, the normal sign-in below, is down.
   adminPassword: admin
+  # Sign in with Forgejo (same pattern as agent-web). The OAuth app is
+  # `grafana.kblab.me` (id 5) under kblack0610 on Forgejo; its client id and
+  # secret come from the SOPS secret apps/monitoring/grafana-forgejo-oauth-secret.yaml
+  # as GF_AUTH_GENERIC_OAUTH_CLIENT_ID / _SECRET, which Grafana reads natively.
+  envFromSecret: grafana-forgejo-oauth
+  grafana.ini:
+    server:
+      # Without it Grafana builds the OAuth redirect from localhost:3000.
+      root_url: https://grafana.kblab.me
+    auth.generic_oauth:
+      enabled: true
+      name: Forgejo
+      icon: signin
+      allow_sign_up: true
+      scopes: openid email profile
+      use_pkce: true
+      # The browser goes to Forgejo's ROOT_URL host; the token and userinfo
+      # calls are server-side, so they use the in-cluster service and skip
+      # Cloudflare.
+      auth_url: https://git.kennethblack.me/login/oauth/authorize
+      token_url: http://forgejo-http.forgejo.svc:3000/login/oauth/access_token
+      api_url: http://forgejo-http.forgejo.svc:3000/login/oauth/userinfo
+      login_attribute_path: preferred_username
+      name_attribute_path: name
+      email_attribute_path: email
+      # Only kblack0610 gets in (as Grafana server admin); any other Forgejo
+      # account is refused at login rather than given a Viewer seat.
+      role_attribute_path: "preferred_username == 'kblack0610' && 'GrafanaAdmin' || 'None'"
+      role_attribute_strict: true
+      allow_assign_grafana_admin: true
   defaultDashboardsEnabled: true
   defaultDashboardsTimezone: America/Los_Angeles
   initChownData:

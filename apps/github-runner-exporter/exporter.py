@@ -55,7 +55,16 @@ PORT = int(os.environ.get("PORT", "9320"))
 ORGS = os.environ.get("RUNNER_ORGS", "BlackNBrownStudios").split()
 # Repos whose repo-scoped runners, active runs and recent runs are read.
 RUN_REPOS = os.environ.get("RUN_REPOS", "BlackNBrownStudios/platform").split()
-RECENT_PER_REPO = int(os.environ.get("RECENT_PER_REPO", "8"))
+RECENT_PER_REPO = int(os.environ.get("RECENT_PER_REPO", "15"))
+# Completed runs per repo mined for "what does this runner / pool run". Wider
+# than the Recent runs table because most runs are GitHub-hosted: at 15,
+# platform showed one self-hosted workflow. Jobs are cached, so this costs
+# ~HISTORY_PER_REPO calls per repo once, then one per newly finished run.
+HISTORY_PER_REPO = int(os.environ.get("HISTORY_PER_REPO", "60"))
+# run id -> its jobs, for COMPLETED runs only: they never change, so each is
+# fetched once and the steady-state cost is one call per newly finished run.
+# Pruned every scrape to the runs still in the recent window.
+DONE_JOBS = {}
 # Bounds the jobs fan-out per repo per status, so one repo with a deep queue
 # cannot eat the API budget or the scrape timeout.
 MAX_RUNS_PER_REPO = int(os.environ.get("MAX_RUNS_PER_REPO", "15"))
@@ -131,7 +140,7 @@ def labels_str(d):
 
 def repo_activity(repo):
     """One repo's active runs and their jobs, plus recent completed runs."""
-    out = {"repo": repo, "ok": True, "counts": {}, "jobs": [], "recent": []}
+    out = {"repo": repo, "ok": True, "counts": {}, "jobs": [], "recent": [], "history": []}
     try:
         active = []
         for status in ("in_progress", "queued"):
@@ -150,8 +159,15 @@ def repo_activity(repo):
             for job in jobs:
                 job["_workflow"] = run.get("name") or job.get("workflow_name", "")
                 out["jobs"].append(job)
-        data = get(f"repos/{repo}/actions/runs?status=completed&per_page={RECENT_PER_REPO}")
-        out["recent"] = data.get("workflow_runs", [])
+        data = get(f"repos/{repo}/actions/runs?status=completed&per_page={max(RECENT_PER_REPO, HISTORY_PER_REPO)}")
+        out["history"] = data.get("workflow_runs", [])
+        out["recent"] = out["history"][:RECENT_PER_REPO]
+        # Uncached finished runs in parallel: a cold cache is ~HISTORY_PER_REPO
+        # calls per repo, which sequentially took 51s, past the scrape timeout.
+        todo = [run["id"] for run in out["history"] if run["id"] not in DONE_JOBS]
+        with ThreadPoolExecutor(max_workers=6) as ex:
+            for rid, jobs in zip(todo, ex.map(lambda i: get(f"repos/{repo}/actions/runs/{i}/jobs?per_page=100").get("jobs", []), todo)):
+                DONE_JOBS[rid] = jobs
     except API_ERRORS:
         out["ok"] = False
     return out
@@ -293,6 +309,41 @@ def render():
             L.append(f"github_actions_run_recent{{{lab}}} {int(done)}")
             if started:
                 L.append(f"github_actions_run_recent_duration_seconds{{{lab}}} {int(done - started)}")
+    # What each runner actually did last, and which workflows each pool handles:
+    # the answer to "what is this runner for", read from history instead of a
+    # hand-written description that drifts from the workflow files.
+    pool_of_runner = {}
+    for scope, r in seen.values():
+        pool_of_runner[r["name"]] = pool_of([l["name"] for l in r.get("labels", [])])
+    last, pool_wf = {}, {}
+    for a in acts:
+        for run in a["history"]:
+            for j in DONE_JOBS.get(run["id"], []):
+                rn, done = j.get("runner_name"), ts(j.get("completed_at"))
+                if not rn or not done or rn not in pool_of_runner:
+                    continue  # GitHub-hosted, or a runner since removed
+                if done > last.get(rn, (0,))[0]:
+                    last[rn] = (done, a["repo"], run.get("name", ""), j)
+                k = (pool_of_runner[rn], a["repo"].split("/", 1)[1], run.get("name", ""))
+                pool_wf[k] = max(pool_wf.get(k, 0), done)
+    L += [
+        "# HELP github_runner_last_job The last job this runner finished (within the recent-runs window); value is when",
+        "# TYPE github_runner_last_job gauge",
+    ]
+    for rn, (done, repo, wf, j) in sorted(last.items()):
+        lab = labels_str({"name": rn, "last_repo": repo.split("/", 1)[1], "last_workflow": wf,
+                          "last_job": j.get("name", ""), "last_conclusion": j.get("conclusion") or "",
+                          "last_url": j.get("html_url", "")})
+        L.append(f"github_runner_last_job{{{lab}}} {int(done)}")
+    L += [
+        "# HELP github_pool_workflow A workflow this pool ran recently; value is when it last did",
+        "# TYPE github_pool_workflow gauge",
+    ]
+    for (pool_, repo, wf), done in sorted(pool_wf.items()):
+        L.append(f"github_pool_workflow{{{labels_str({'pool': pool_, 'repo': repo, 'workflow': wf})}}} {int(done)}")
+    live = {run["id"] for a in acts for run in a["history"]}
+    for rid in [k for k in DONE_JOBS if k not in live]:
+        del DONE_JOBS[rid]
     return "\n".join(L) + "\n"
 
 

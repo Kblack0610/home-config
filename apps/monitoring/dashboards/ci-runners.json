@@ -392,9 +392,9 @@
     {
       "type": "table",
       "title": "Runners: what is running where",
-      "description": "One row per runner. RUNNING rows show the job and how long it has been going; click the job to open it on GitHub. MISSING = a slot the roster expects that never registered.",
+      "description": "One row per runner. RUNNING rows show the job and how long it has been going; the 'last' columns show the last job it finished, which is what that runner is actually used for. Click a job to open it on GitHub. MISSING = a slot the roster expects that never registered.",
       "gridPos": {
-        "h": 12,
+        "h": 13,
         "w": 24,
         "x": 0,
         "y": 4
@@ -412,33 +412,66 @@
           "range": false,
           "legendFormat": "__auto",
           "refId": "A"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "editorMode": "code",
+          "expr": "max without (instance, pod, job, namespace, service, endpoint, container) (github_runner_last_job) * 1000",
+          "format": "table",
+          "instant": true,
+          "range": false,
+          "legendFormat": "__auto",
+          "refId": "B"
         }
       ],
       "transformations": [
+        {
+          "id": "joinByField",
+          "options": {
+            "byField": "name",
+            "mode": "outer"
+          }
+        },
         {
           "id": "organize",
           "options": {
             "excludeByName": {
               "Time": true,
+              "Time 1": true,
+              "Time 2": true,
               "__name__": true,
-              "scope": true
+              "scope": true,
+              "host": true
             },
             "indexByName": {
               "state": 0,
               "name": 1,
               "pool": 2,
-              "host": 3,
-              "repo": 4,
-              "workflow": 5,
-              "job_name": 6,
-              "branch": 7,
-              "Value": 8,
-              "url": 9
+              "repo": 3,
+              "workflow": 4,
+              "job_name": 5,
+              "branch": 6,
+              "Value #A": 7,
+              "last_conclusion": 8,
+              "last_repo": 9,
+              "last_workflow": 10,
+              "last_job": 11,
+              "Value #B": 12,
+              "url": 13,
+              "last_url": 14
             },
             "renameByName": {
               "name": "runner",
               "job_name": "job",
-              "Value": "running for"
+              "Value #A": "running for",
+              "last_conclusion": "last result",
+              "last_repo": "last repo",
+              "last_workflow": "last workflow",
+              "last_job": "last job",
+              "Value #B": "last finished"
             }
           }
         }
@@ -556,7 +589,102 @@
           {
             "matcher": {
               "id": "byName",
+              "options": "last job"
+            },
+            "properties": [
+              {
+                "id": "links",
+                "value": [
+                  {
+                    "title": "Open job on GitHub",
+                    "url": "${__data.fields.last_url}",
+                    "targetBlank": true
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "last result"
+            },
+            "properties": [
+              {
+                "id": "mappings",
+                "value": [
+                  {
+                    "type": "value",
+                    "options": {
+                      "success": {
+                        "text": "success",
+                        "color": "green",
+                        "index": 0
+                      },
+                      "failure": {
+                        "text": "FAILED",
+                        "color": "red",
+                        "index": 1
+                      },
+                      "cancelled": {
+                        "text": "cancelled",
+                        "color": "#6e7079",
+                        "index": 2
+                      },
+                      "skipped": {
+                        "text": "skipped",
+                        "color": "#6e7079",
+                        "index": 3
+                      },
+                      "timed_out": {
+                        "text": "timed out",
+                        "color": "orange",
+                        "index": 4
+                      }
+                    }
+                  }
+                ]
+              },
+              {
+                "id": "custom.cellOptions",
+                "value": {
+                  "type": "color-text"
+                }
+              },
+              {
+                "id": "custom.width",
+                "value": 100
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "last finished"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "dateTimeFromNow"
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
               "options": "url"
+            },
+            "properties": [
+              {
+                "id": "custom.hidden",
+                "value": true
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "last_url"
             },
             "properties": [
               {
@@ -575,13 +703,95 @@
     },
     {
       "type": "table",
+      "title": "What each pool runs",
+      "description": "Workflows each runner pool finished recently (last ~60 completed runs per repo), newest first. Read from job history, so it stays true when the workflow files change.",
+      "gridPos": {
+        "h": 7,
+        "w": 24,
+        "x": 0,
+        "y": 17
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "editorMode": "code",
+          "expr": "max without (instance, pod, job, namespace, service, endpoint, container) (github_pool_workflow) * 1000",
+          "format": "table",
+          "instant": true,
+          "range": false,
+          "legendFormat": "__auto",
+          "refId": "A"
+        }
+      ],
+      "transformations": [
+        {
+          "id": "organize",
+          "options": {
+            "excludeByName": {
+              "Time": true
+            },
+            "indexByName": {
+              "pool": 0,
+              "repo": 1,
+              "workflow": 2,
+              "Value": 3
+            },
+            "renameByName": {
+              "Value": "last ran"
+            }
+          }
+        }
+      ],
+      "options": {
+        "showHeader": true,
+        "cellHeight": "sm",
+        "sortBy": [
+          {
+            "displayName": "pool",
+            "desc": false
+          }
+        ]
+      },
+      "fieldConfig": {
+        "defaults": {
+          "noValue": "no history yet",
+          "custom": {
+            "align": "left"
+          }
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "last ran"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "dateTimeFromNow"
+              }
+            ]
+          }
+        ]
+      },
+      "id": 7,
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${datasource}"
+      }
+    },
+    {
+      "type": "table",
       "title": "Waiting for a runner",
       "description": "Queued jobs, oldest first. 'needs' is the runs-on label set, so you can see which pool is short. '(run has no jobs)' is a run GitHub left queued with no jobs: it will never start, cancel it.",
       "gridPos": {
         "h": 8,
         "w": 24,
         "x": 0,
-        "y": 16
+        "y": 24
       },
       "targets": [
         {
@@ -718,7 +928,7 @@
           }
         ]
       },
-      "id": 7,
+      "id": 8,
       "datasource": {
         "type": "prometheus",
         "uid": "${datasource}"
@@ -732,7 +942,7 @@
         "h": 10,
         "w": 24,
         "x": 0,
-        "y": 24
+        "y": 32
       },
       "targets": [
         {
@@ -918,7 +1128,7 @@
           }
         ]
       },
-      "id": 8,
+      "id": 9,
       "datasource": {
         "type": "prometheus",
         "uid": "${datasource}"
@@ -932,7 +1142,7 @@
         "h": 1,
         "w": 24,
         "x": 0,
-        "y": 34
+        "y": 42
       },
       "panels": [
         {
@@ -942,7 +1152,7 @@
             "h": 8,
             "w": 12,
             "x": 0,
-            "y": 35
+            "y": 43
           },
           "targets": [
             {
@@ -981,7 +1191,7 @@
               "mode": "multi"
             }
           },
-          "id": 9,
+          "id": 10,
           "datasource": {
             "type": "prometheus",
             "uid": "${datasource}"
@@ -994,7 +1204,7 @@
             "h": 8,
             "w": 12,
             "x": 12,
-            "y": 35
+            "y": 43
           },
           "targets": [
             {
@@ -1033,14 +1243,14 @@
               "mode": "multi"
             }
           },
-          "id": 10,
+          "id": 11,
           "datasource": {
             "type": "prometheus",
             "uid": "${datasource}"
           }
         }
       ],
-      "id": 11,
+      "id": 12,
       "datasource": {
         "type": "prometheus",
         "uid": "${datasource}"

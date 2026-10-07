@@ -71,13 +71,16 @@ panels = [
          mappings=[{"type": "value", "options": {"0": {"text": "FAILING (token?)", "color": "red"}, "1": {"text": "OK", "color": "green"}}}]),
 
     P({"type": "table", "title": "Runners: what is running where",
-       "description": "One row per runner. RUNNING rows show the job and how long it has been going; click the job to open it on GitHub. MISSING = a slot the roster expects that never registered.",
-       "gridPos": {"h": 12, "w": 24, "x": 0, "y": 4},
-       "targets": [tgt(W + "(github_runner_state)")],
-       "transformations": [{"id": "organize", "options": {
-           "excludeByName": {"Time": True, "__name__": True, "scope": True},
-           "indexByName": {"state": 0, "name": 1, "pool": 2, "host": 3, "repo": 4, "workflow": 5, "job_name": 6, "branch": 7, "Value": 8, "url": 9},
-           "renameByName": {"name": "runner", "job_name": "job", "Value": "running for"}}}],
+       "description": "One row per runner. RUNNING rows show the job and how long it has been going; the 'last' columns show the last job it finished, which is what that runner is actually used for. Click a job to open it on GitHub. MISSING = a slot the roster expects that never registered.",
+       "gridPos": {"h": 13, "w": 24, "x": 0, "y": 4},
+       "targets": [tgt(W + "(github_runner_state)", "A"), tgt(W + "(github_runner_last_job) * 1000", "B")],
+       "transformations": [{"id": "joinByField", "options": {"byField": "name", "mode": "outer"}},
+                           {"id": "organize", "options": {
+           "excludeByName": {"Time": True, "Time 1": True, "Time 2": True, "__name__": True, "scope": True, "host": True},
+           "indexByName": {"state": 0, "name": 1, "pool": 2, "repo": 3, "workflow": 4, "job_name": 5, "branch": 6, "Value #A": 7,
+                           "last_conclusion": 8, "last_repo": 9, "last_workflow": 10, "last_job": 11, "Value #B": 12, "url": 13, "last_url": 14},
+           "renameByName": {"name": "runner", "job_name": "job", "Value #A": "running for", "last_conclusion": "last result",
+                            "last_repo": "last repo", "last_workflow": "last workflow", "last_job": "last job", "Value #B": "last finished"}}}],
        "options": {"showHeader": True, "cellHeight": "sm", "sortBy": [{"displayName": "running for", "desc": True}]},
        "fieldConfig": {"defaults": {"noValue": "no runner data (see GitHub API)", "custom": {"align": "left"}},
                        "overrides": [
@@ -89,11 +92,30 @@ panels = [
                                {"id": "unit", "value": "dtdurations"},
                                {"id": "mappings", "value": [{"type": "value", "options": {"0": {"text": ""}}}]}]},
                            {"matcher": {"id": "byName", "options": "job"}, "properties": [link("Open job on GitHub")]},
-                       ] + hide("url")}}),
+                           {"matcher": {"id": "byName", "options": "last job"}, "properties": [
+                               {"id": "links", "value": [{"title": "Open job on GitHub", "url": "${__data.fields.last_url}", "targetBlank": True}]}]},
+                           {"matcher": {"id": "byName", "options": "last result"}, "properties": [
+                               {"id": "mappings", "value": CONCLUSION_MAP},
+                               {"id": "custom.cellOptions", "value": {"type": "color-text"}},
+                               {"id": "custom.width", "value": 100}]},
+                           {"matcher": {"id": "byName", "options": "last finished"}, "properties": [{"id": "unit", "value": "dateTimeFromNow"}]},
+                       ] + hide("url", "last_url")}}),
+
+    P({"type": "table", "title": "What each pool runs",
+       "description": "Workflows each runner pool finished recently (last ~60 completed runs per repo), newest first. Read from job history, so it stays true when the workflow files change.",
+       "gridPos": {"h": 7, "w": 24, "x": 0, "y": 17},
+       "targets": [tgt(W + "(github_pool_workflow) * 1000")],
+       "transformations": [{"id": "organize", "options": {
+           "excludeByName": {"Time": True},
+           "indexByName": {"pool": 0, "repo": 1, "workflow": 2, "Value": 3},
+           "renameByName": {"Value": "last ran"}}}],
+       "options": {"showHeader": True, "cellHeight": "sm", "sortBy": [{"displayName": "pool", "desc": False}]},
+       "fieldConfig": {"defaults": {"noValue": "no history yet", "custom": {"align": "left"}},
+                       "overrides": [{"matcher": {"id": "byName", "options": "last ran"}, "properties": [{"id": "unit", "value": "dateTimeFromNow"}]}]}}),
 
     P({"type": "table", "title": "Waiting for a runner",
        "description": "Queued jobs, oldest first. 'needs' is the runs-on label set, so you can see which pool is short. '(run has no jobs)' is a run GitHub left queued with no jobs: it will never start, cancel it.",
-       "gridPos": {"h": 8, "w": 24, "x": 0, "y": 16},
+       "gridPos": {"h": 8, "w": 24, "x": 0, "y": 24},
        "targets": [tgt(W + "(github_actions_job_waiting)")],
        "transformations": [{"id": "organize", "options": {
            "excludeByName": {"Time": True, "__name__": True, "status": True},
@@ -112,7 +134,7 @@ panels = [
 
     P({"type": "table", "title": "Recent runs",
        "description": "The last completed runs per watched repo, newest first. Click the workflow to open the run.",
-       "gridPos": {"h": 10, "w": 24, "x": 0, "y": 24},
+       "gridPos": {"h": 10, "w": 24, "x": 0, "y": 32},
        "targets": [tgt(W + "(github_actions_run_recent) * 1000", "A"), tgt(W + "(github_actions_run_recent_duration_seconds)", "B")],
        "transformations": [{"id": "merge", "options": {}},
                            {"id": "organize", "options": {
@@ -131,13 +153,13 @@ panels = [
                            {"matcher": {"id": "byName", "options": "workflow"}, "properties": [link("Open run on GitHub")]},
                        ] + hide("url")}}),
 
-    P({"type": "row", "title": "Trends", "collapsed": True, "gridPos": {"h": 1, "w": 24, "x": 0, "y": 34}, "panels": [
-        P({"type": "timeseries", "title": "Busy runners by pool", "gridPos": {"h": 8, "w": 12, "x": 0, "y": 35},
+    P({"type": "row", "title": "Trends", "collapsed": True, "gridPos": {"h": 1, "w": 24, "x": 0, "y": 42}, "panels": [
+        P({"type": "timeseries", "title": "Busy runners by pool", "gridPos": {"h": 8, "w": 12, "x": 0, "y": 43},
            "targets": [tgt('count by (pool) (' + W + '(github_runner_state{state="running"}))', instant=False, legend="{{pool}}", fmt="time_series")],
            "fieldConfig": {"defaults": {"unit": "none", "decimals": 0, "noValue": "0",
                                         "custom": {"drawStyle": "line", "lineInterpolation": "stepAfter", "fillOpacity": 10}}, "overrides": []},
            "options": {"legend": {"displayMode": "list", "placement": "bottom"}, "tooltip": {"mode": "multi"}}}),
-        P({"type": "timeseries", "title": "Waiting jobs by repo", "gridPos": {"h": 8, "w": 12, "x": 12, "y": 35},
+        P({"type": "timeseries", "title": "Waiting jobs by repo", "gridPos": {"h": 8, "w": 12, "x": 12, "y": 43},
            "targets": [tgt("count by (repo) (" + W + "(github_actions_job_waiting))", instant=False, legend="{{repo}}", fmt="time_series")],
            "fieldConfig": {"defaults": {"unit": "none", "decimals": 0, "noValue": "0",
                                         "custom": {"drawStyle": "line", "lineInterpolation": "stepAfter", "fillOpacity": 0}}, "overrides": []},

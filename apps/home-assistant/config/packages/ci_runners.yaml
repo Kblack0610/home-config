@@ -45,6 +45,34 @@ rest:
         json_attributes:
           - result
 
+  # What each runner last finished, and which workflows each pool ran recently:
+  # the "what is this runner for" answer, from history.
+  - resource: http://kube-prometheus-stack-prometheus.monitoring.svc:9090/api/v1/query
+    params:
+      query: max without (instance, pod, job, namespace, service, endpoint, container) (github_runner_last_job)
+    scan_interval: 300
+    sensor:
+      - name: CI runner history
+        unique_id: ci_runner_history
+        icon: mdi:history
+        value_template: "{{ value_json.data.result | count }}"
+        json_attributes_path: "$.data"
+        json_attributes:
+          - result
+
+  - resource: http://kube-prometheus-stack-prometheus.monitoring.svc:9090/api/v1/query
+    params:
+      query: sort_desc(max without (instance, pod, job, namespace, service, endpoint, container) (github_pool_workflow))
+    scan_interval: 300
+    sensor:
+      - name: CI pool workflows
+        unique_id: ci_pool_workflows
+        icon: mdi:sitemap
+        value_template: "{{ value_json.data.result | count }}"
+        json_attributes_path: "$.data"
+        json_attributes:
+          - result
+
   - resource: http://kube-prometheus-stack-prometheus.monitoring.svc:9090/api/v1/query
     params:
       query: min(github_runner_exporter_api_ok)

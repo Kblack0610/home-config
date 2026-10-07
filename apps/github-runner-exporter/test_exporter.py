@@ -18,6 +18,7 @@ os.environ.update(
     RUN_REPOS="acme/web acme/game",
     RUNNER_ROSTER="box:pmp-light:2 box:unity:1 gone:unity:1",
     RECENT_PER_REPO="2",
+    HISTORY_PER_REPO="2",
 )
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import exporter  # noqa: E402
@@ -50,8 +51,13 @@ FAKE = {
         {"name": "PlayMode 2", "status": "queued", "created_at": T0, "head_branch": "main",
          "labels": ["self-hosted", "unity"], "html_url": "https://x/job/2"}]},
     "repos/acme/web/actions/runs?status=completed&per_page=2": {"workflow_runs": [
-        {"name": "CI", "head_branch": "main", "event": "push", "conclusion": "failure",
+        {"id": 9, "name": "CI", "head_branch": "main", "event": "push", "conclusion": "failure",
          "updated_at": T0, "run_started_at": T0, "html_url": "https://x/run/9"}]},
+    "repos/acme/web/actions/runs/9/jobs?per_page=100": {"jobs": [
+        {"name": "lint", "status": "completed", "conclusion": "failure", "runner_name": "box-light-1",
+         "completed_at": T0, "html_url": "https://x/job/9"},
+        {"name": "build", "status": "completed", "conclusion": "success", "runner_name": "GitHub Actions 5",
+         "completed_at": T0, "html_url": "https://x/job/10"}]},
     "repos/acme/game/actions/runs?status=completed&per_page=2": {"workflow_runs": []},
 }
 
@@ -59,8 +65,10 @@ FAKE = {
 class Fake:
     def __init__(self, broken=()):
         self.broken = broken
+        self.calls = []
 
     def __call__(self, path):
+        self.calls.append(path)
         if any(path.startswith(b) for b in self.broken):
             raise urllib.error.URLError("boom")
         return FAKE[path]
@@ -71,6 +79,9 @@ def rows(text, metric):
 
 
 class ExporterTest(unittest.TestCase):
+    def setUp(self):
+        exporter.DONE_JOBS.clear()
+
     def render(self, broken=()):
         exporter.get = Fake(broken)
         return exporter.render()
@@ -120,6 +131,24 @@ class ExporterTest(unittest.TestCase):
         for line in self.render().splitlines():
             if not line.startswith("#"):
                 self.assertNotRegex(line, r'[{,](job|instance)="', line)
+
+    def test_last_job_per_runner_and_pool_workflows(self):
+        out = self.render()
+        (row,) = rows(out, "github_runner_last_job")
+        for want in ('name="box-light-1"', 'last_repo="web"', 'last_workflow="CI"', 'last_job="lint"',
+                     'last_conclusion="failure"', 'last_url="https://x/job/9"'):
+            self.assertIn(want, row)
+        # The GitHub-hosted job is not a runner of ours and must not appear.
+        self.assertNotIn("GitHub Actions", out)
+        self.assertEqual(rows(out, "github_pool_workflow"),
+                         [l for l in out.splitlines() if l.startswith('github_pool_workflow{pool="pmp-light",repo="web",workflow="CI"}')])
+
+    def test_finished_jobs_are_fetched_once(self):
+        self.render()
+        exporter.get = Fake()
+        exporter.render()
+        self.assertNotIn("repos/acme/web/actions/runs/9/jobs?per_page=100", exporter.get.calls)
+        self.assertIn("repos/acme/game/actions/runs/10/jobs?per_page=100", exporter.get.calls)  # active: always refetched
 
     def test_no_token_everything_failed(self):
         out = self.render(broken=("orgs/", "repos/"))

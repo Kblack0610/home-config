@@ -13,6 +13,7 @@ Built and shipped in stages so each layer is tested in isolation.
 | 3 | **Wake word (server)** — `wyoming-openwakeword` for *hardware* satellites; unused by the tablet card | ◑ server side shipped |
 | 4 | **Wall-tablet wake word** — in-browser `voice_satellite` card → Binks; custom `binks` microWakeWord live on all 4 tablets | ✅ shipped (`binks` live) |
 | 5 | **HA Voice PE hardware satellites** — 2 pucks, ESPHome, on-device wake → Binks | ✅ both adopted, on Binks pipeline (Kitchen + Bedroom) |
+| 6 | **Local-first room + fixture commands** - built-in intents before Binks, rooms on every light and satellite | shipped 2026-10-12 |
 
 Everything is code-first: custom components are vendored by `install-*` init containers
 and config entries are written by idempotent `seed-*` init containers (see
@@ -120,22 +121,14 @@ cannot degrade silently again.
 
 ## Monitoring & health
 
-Two monitoring layers exist, and as of 2026-07 **neither covers voice**:
+`apps/home-assistant/config/packages/voice_health.yaml` feeds the existing
+`fleet_alerts.yaml` ntfy pipeline (topic `homelab-alerts`) with three
+`device_class: connectivity` binary sensors:
 
-- **gatus** (`apps/gatus/config.yaml`) probes LiteLLM `/health/readiness` and the
-  `llm.kblab.me` ingress — these confirm the *gateway* is up, NOT that Binks's model
-  route answers. A dead model route (the incident above) passes both. Fix: a
-  **synthetic assist-route probe** — a gatus endpoint that POSTs a trivial prompt to
-  `assist (gemini-flash)` with the assist key and asserts the body is not an error.
-- **HA `fleet_alerts.yaml`** turns `device_class: connectivity` binary_sensors (from
-  `site_status.yaml`) into ntfy alerts on the `homelab-alerts` topic. The voice
-  **satellites are not in it** — if a Voice PE puck or a wall tablet drops off WiFi,
-  nothing alerts. Fix: a connectivity `binary_sensor` per satellite (derived from the
-  `assist_satellite.*` availability) so it flows into the existing pipeline.
+- **`binary_sensor.binks_brain`** - a `command_line` probe POSTs a 1-token prompt to the real `assist (gemini-flash)` route with the scoped assist key every 10 min. ON = HTTP 200. This is what catches a dead model route (the 2026-07-27 incident) that gatus's LiteLLM `/health/readiness` check passes.
+- **`binary_sensor.voice_kitchen_puck`** and **`binary_sensor.voice_bedroom_puck`** - OFF when the Voice PE puck's `assist_satellite` is unavailable (off WiFi, unplugged). The `for: 00:03:00` debounce in `fleet_alerts.yaml` absorbs a startup blip.
 
-Status: both are **known gaps / TODO**. The satellite entities *are* visible in HA
-today (`assist_satellite.*` state = idle / unavailable, plus the Assist pipeline Debug
-view), just not alerted.
+Still not alerted, on purpose: the four wall tablets. Their `assist_satellite.wall_*` goes unavailable on every dashboard reload and in night mode, so a liveness alert would be noise. Check them by hand from the entity states or the Assist pipeline debug view.
 
 ---
 
@@ -193,6 +186,62 @@ narrowing it there is safe and persists (the seed won't re-add what you remove).
   `seed-binks-conversation` (the seed reconciles it on the next roll).
 - To make the built-in local agent the default again: **Settings → Voice assistants →**
   set "Home Assistant" as preferred (the pipeline is still there).
+
+---
+
+## Local-first commands (room + fixture)
+
+The Binks pipeline has `prefer_local_intents: True` (`seed-binks-pipeline` in `deployment.yaml`, rewritten on every boot). Every utterance is first tried against HA's built-in intents, strict match, exposed entities only. If one matches and finds a target, HA acts and answers itself with no LLM turn (`processed_locally: true` in the pipeline run). If nothing matches, or the match finds no target, the turn goes to Binks unchanged. Question-style intents (`HassGetState`, media search) are always left to Binks, because HA filters them out when the agent can control devices.
+
+There is no custom grammar for device control. What makes it work is registry hygiene:
+
+- every lamp is a `light` (lamp plugs are wrapped by `switch_as_x`, see `seed-switch-as-x-lights`), with a room and a speakable name;
+- every satellite device has a room, which becomes the default area for its commands;
+- names, rooms and aliases are declared in `apps/home-assistant/config/pyscript/room_layout.yaml` and seeded on boot (non-destructive; a UI edit wins).
+
+### What you can say
+
+| Say | Intent | Acts on |
+|-----|--------|---------|
+| "bedroom light off", "turn off the bedroom light" | HassTurnOff | the light named or in Bedroom |
+| "living room lights on" | HassTurnOn | every light in Living Room |
+| "light off", "turn on the light" (to a satellite) | HassTurnOn/Off | lights in the satellite's own room |
+| "UFO light on", "light strips off", "monkey light on" | HassTurnOn/Off | that light, by name or alias |
+| "turn off the office AC" | HassTurnOff | `switch.shellyplugusg4_acebe6f28334` |
+| "never mind", "cancel", "forget it" | HassNevermind | ends the turn silently |
+| anything else ("what's the weather", "dim it a bit and play jazz") | none | Binks |
+
+Bare "stop" stays the built-in HassMediaPause; while a satellite is speaking, its on-device stop word handles it. `apps/home-assistant/config/custom_sentences/en/` holds only phrasings the built-ins miss (today: "cancel" and "forget it" for HassNevermind). Add a file there only after checking the built-ins with the recognizer below; do not grow a parallel grammar.
+
+Kitchen has no lights yet, so "light off" to a Kitchen satellite finds no target and goes to Binks.
+
+### Check what a sentence resolves to
+
+Recognize without acting (pass a satellite `device_id` to test its room):
+
+```
+{"type":"conversation/agent/homeassistant/debug","language":"en",
+ "device_id":"<satellite device id>","sentences":["light off"]}
+```
+
+over the websocket API. To test the full pipeline, send `assist_pipeline/run` with `start_stage`/`end_stage` = `intent` and `input.text`; the `intent-end` event carries `processed_locally`. Note that `POST /api/conversation/process` does NOT go through a pipeline: with no `agent_id` it always uses the built-in agent, and with `agent_id: conversation.binks` it always uses the LLM, so it cannot show the local-first behaviour.
+
+### Registry changes made 2026-10-12
+
+Made live through the websocket/REST API and mirrored into git (`room_layout.yaml`, `seed-switch-as-x-lights`), so a rebuild converges on the same state:
+
+| Thing | Before | After |
+|-------|--------|-------|
+| Wall Office / Living Room / Bedroom / Kitchen satellite devices | no area | office / living_room / bedroom / kitchen |
+| Lamp plugs 600fec, 6027f0, 6043c8, 6058b8, 60a188 | `switch` only | wrapped as `light.athom_plug_v3_<id>_switch` via the switch_as_x config flow (source switch hidden + unexposed, name copied) |
+| Those five wrapper lights | no area | bedroom, office, office, living_room, living_room |
+| `light.athom_plug_v3_613888_switch` | name "Athom Plug V3 613888 Switch", no area | "Monkey Light", living_room |
+| `switch.athom_smart_plug_v3_613888_switch` | visible | hidden (user), unexposed |
+| `light.athom_plug_v3_6043c8_switch` aliases | none | "UFO Light" |
+| `light.athom_plug_v3_6027f0_switch` aliases | none | "Light Strips" |
+| `light.shelly_plug_1`, `light.shelly_plug_2_lamp` (switch_as_x on the Office/Bedroom AC plugs) | exposed lights, so "lights off" could cut an AC | config entries removed |
+| `switch.shellyplugusg4_acebe6f28334` / `_a1e8` (Office AC / Bedroom AC) | not exposed | exposed to Assist |
+| Voice PE puck LED rings | exposed lights in kitchen/bedroom | unexposed (a room "lights on" would light the puck ring) |
 
 ---
 

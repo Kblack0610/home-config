@@ -28,7 +28,7 @@ two omissions are independent and each one alone is sufficient to break it.
 
 THE INVARIANT
 
-Every *.yaml in config/packages/ AND config/dashboards/ appears in BOTH the kustomization
+Every *.yaml in config/packages/, config/dashboards/ AND config/custom_sentences/en/ appears in BOTH the kustomization
 and the init container's copy list. Dashboards have the same failure with a worse symptom:
 a view file that is `!include`d but never copied breaks the whole dashboard it sits in. One direction only: a reference to a file that does not exist is
 already a hard `kustomize build` failure (2) or an init-container crash (3), so the
@@ -43,7 +43,11 @@ KUSTOMIZATION = ROOT / "apps/home-assistant/kustomization.yaml"
 DEPLOYMENT = ROOT / "apps/home-assistant/deployment.yaml"
 CONFIG = ROOT / "apps/home-assistant/config"
 # (directory under config/, ConfigMap key prefix)
-MANAGED = (("packages", "package"), ("dashboards", "dashboard"))
+MANAGED = (
+    ("packages", "package"),
+    ("dashboards", "dashboard"),
+    ("custom_sentences/en", "custom_sentences_en"),
+)
 
 
 def main() -> int:

@@ -116,6 +116,12 @@ def _do_room_seed(force):
         name = spec.get("name")
         if name and (force or not entry.name):
             updates["name"] = name
+        # Extra spoken names for Assist. COMPUTED_NAME keeps the entity's own
+        # name answering too; only set while the entity has no custom alias.
+        aliases = spec.get("aliases") or []
+        custom = [a for a in entry.aliases if a is not er.COMPUTED_NAME]
+        if aliases and (force or not custom):
+            updates["aliases"] = [er.COMPUTED_NAME] + list(aliases)
         if updates:
             ent_reg.async_update_entity(entity_id, **updates)
             ent_set += 1

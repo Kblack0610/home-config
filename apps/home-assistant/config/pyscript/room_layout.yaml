@@ -33,8 +33,28 @@ entities:
   switch.shellyplugusg4_acebe6f28334:       { room: Office,      name: Office AC }
   switch.shellyplugusg4_acebe6f2a1e8:       { room: Bedroom,     name: Bedroom AC }
 
+  # Lamp plugs wrapped as lights (switch_as_x, see seed-switch-as-x-lights). The
+  # wrapper sits on the plug's device, which has no room, so it needs its own.
+  # These are what voice targets: "bedroom light off", or "light off" said to a
+  # room's satellite (built-in HassTurnOff, domain=light in that area).
+  # aliases = extra spoken names, added only while the entity has none.
+  light.athom_plug_v3_600fec_switch: { room: Bedroom,     name: Bedroom Light }
+  light.athom_plug_v3_6027f0_switch: { room: Office,      name: Computer Light Strips, aliases: [Light Strips] }
+  light.athom_plug_v3_6043c8_switch: { room: Office,      name: UFO Light 1, aliases: [UFO Light] }
+  light.athom_plug_v3_6058b8_switch: { room: Living Room, name: Table Light }
+  light.athom_plug_v3_60a188_switch: { room: Living Room, name: Main Light }
+  light.athom_plug_v3_613888_switch: { room: Living Room, name: Monkey Light }
+
 # Multi-entity appliances — whole-device room, resolved from one representative
 # entity_id -> its device (moves all of the device's entities at once).
 devices:
   vacuum.tapovacuummop:         { room: Living Room }   # Robot Vacuum
   sensor.cat_litter_box_status: { room: Living Room }   # Litter Box
+  # Voice satellites. A satellite's room is the default area for its commands,
+  # so "light off" to the bedroom panel means the bedroom light.
+  assist_satellite.wall_office:      { room: Office }
+  assist_satellite.wall_living_room: { room: Living Room }
+  assist_satellite.wall_bedroom:     { room: Bedroom }
+  assist_satellite.wall_kitchen:     { room: Kitchen }
+  assist_satellite.home_assistant_voice_0a9a90_assist_satellite: { room: Kitchen }  # Voice PE puck
+  assist_satellite.home_assistant_voice_0aa6d9_assist_satellite: { room: Bedroom }  # Voice PE puck

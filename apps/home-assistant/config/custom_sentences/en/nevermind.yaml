@@ -1,0 +1,19 @@
+# Extra phrasings for HA's built-in HassNevermind intent (ends the turn
+# silently, no LLM call). Built-in English already covers "never mind" and
+# "nevermind"; "cancel" and "forget it" fell through to Binks, which then
+# answered a dismissal with a sentence.
+#
+# Only gaps the built-in intents miss belong in this directory. Room + fixture
+# control ("bedroom light off", "light off" to a satellite) is built-in
+# HassTurnOn/HassTurnOff and needs no sentences here. Bare "stop" is left to the
+# built-in HassMediaPause (and the satellites' on-device stop word).
+#
+# Synced to /config/custom_sentences/en/ by the sync-managed-config init
+# container. See docs/home-assistant-voice.md "Local-first commands".
+language: "en"
+intents:
+  HassNevermind:
+    data:
+      - sentences:
+          - "cancel [that|it]"
+          - "forget [about] it"

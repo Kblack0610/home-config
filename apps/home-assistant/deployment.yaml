@@ -352,6 +352,13 @@ spec:
               cp /managed-config/package_lamps.yaml /config/packages/lamps.yaml
               cp /managed-config/package_ci_runners.yaml /config/packages/ci_runners.yaml
 
+              # Assist custom sentences: only gaps HA's built-in intents miss
+              # (docs/home-assistant-voice.md "Local-first commands"). Pruned like
+              # packages/ so a sentence file dropped from git stops loading.
+              mkdir -p /config/custom_sentences/en
+              rm -f /config/custom_sentences/en/*.yaml
+              cp /managed-config/custom_sentences_en_nevermind.yaml /config/custom_sentences/en/nevermind.yaml
+
               # Custom microWakeWord model for the in-browser voice satellites.
               # The engine loads .tflite from /config/voice_satellite/models/ and
               # exposes the wake word by filename (binks.tflite -> "binks").
@@ -1616,7 +1623,11 @@ spec:
                   # trained and shipped into apps/openwakeword (/custom).
                   "wake_word_entity": "wake_word.openwakeword",
                   "wake_word_id": "okay_nabu",
-                  "prefer_local_intents": False,
+                  # Local first: "bedroom light off" / "light off" (satellite's
+                  # own room) / "cancel" resolve via HA's built-in intents with
+                  # no LLM turn; anything they cannot match falls through to
+                  # Binks. Rewritten on every boot, so this is the source of truth.
+                  "prefer_local_intents": True,
               })
               store["data"]["preferred_item"] = binks["id"]
               with open(PIPE, "w") as f:
@@ -1702,6 +1713,10 @@ spec:
         # config_flow @ HA 2025.11). Idempotent on domain + options.entity_id.
         # The wrapped lights land in core.entity_registry, so seed-binks-expose
         # exposes them to Binks on the next boot (light domain is allow-listed).
+        # Unlike the UI/plug-editor flow, a JSON-seeded entry does not hide the
+        # source switch or copy its name; on a live HA prefer the flow
+        # (pyscript _apply_is_light, or POST /api/config/config_entries/flow),
+        # which this seed then skips because the entity_id is already wrapped.
         - name: seed-switch-as-x-lights
           image: ghcr.io/home-assistant/home-assistant:2026.9.4
           command:
@@ -1713,12 +1728,19 @@ spec:
 
               ENTRIES = "/config/.storage/core.config_entries"
               DOMAIN = "switch_as_x"
-              # Smart plugs that drive lamps → treat as lights ("light as default").
-              # Appliance switches (cat litter, printer camera, etc.) are left alone.
+              # Smart plugs that drive lamps -> treat as lights ("light as default"),
+              # so "turn off the lights" and "light off" from a room's satellite
+              # (domain=light in that area) reach them. Appliance switches are left
+              # alone: the two Shelly plugs drive the Office/Bedroom AC, so they must
+              # NOT be lights. Names/rooms for the wrapper lights live in
+              # config/pyscript/room_layout.yaml.
               PLUGS = [
+                  ("switch.athom_smart_plug_v3_600fec_switch", "Bedroom Light"),
+                  ("switch.athom_smart_plug_v3_6027f0_switch", "Computer Light Strips"),
+                  ("switch.athom_smart_plug_v3_6043c8_switch", "UFO Light 1"),
+                  ("switch.athom_smart_plug_v3_6058b8_switch", "Table Light"),
+                  ("switch.athom_smart_plug_v3_60a188_switch", "Main Light"),
                   ("switch.athom_smart_plug_v3_613888_switch", "Athom Plug 613888"),
-                  ("switch.shellyplugusg4_acebe6f28334", "Shelly Plug 1"),
-                  ("switch.shellyplugusg4_acebe6f2a1e8", "Shelly Plug 2 (Lamp)"),
               ]
 
               os.makedirs(os.path.dirname(ENTRIES), exist_ok=True)

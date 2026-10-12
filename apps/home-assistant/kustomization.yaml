@@ -34,6 +34,7 @@ configMapGenerator:
       - package_ci_runners.yaml=config/packages/ci_runners.yaml
       - pyscript_plug_settings.py=config/pyscript/plug_settings.py
       - pyscript_room_layout.yaml=config/pyscript/room_layout.yaml
+      - custom_sentences_en_nevermind.yaml=config/custom_sentences/en/nevermind.yaml
       # Custom microWakeWord model (binary). The voice_satellite in-browser engine
       # loads .tflite files from /config/voice_satellite/models/ and labels the
       # wake-word option by filename (binks.tflite -> "binks"). kustomize base64s

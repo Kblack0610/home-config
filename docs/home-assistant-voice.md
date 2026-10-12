@@ -206,7 +206,7 @@ There is no custom grammar for device control. What makes it work is registry hy
 | "bedroom light off", "turn off the bedroom light" | HassTurnOff | the light named or in Bedroom |
 | "living room lights on" | HassTurnOn | every light in Living Room |
 | "light off", "turn on the light" (to a satellite) | HassTurnOn/Off | lights in the satellite's own room |
-| "UFO light on", "light strips off", "monkey light on" | HassTurnOn/Off | that light, by name or alias |
+| "UFO light on", "light strips off", "monkey light on", "printer light on" | HassTurnOn/Off | that light, by name or alias |
 | "turn off the office AC" | HassTurnOff | `switch.shellyplugusg4_acebe6f28334` |
 | "never mind", "cancel", "forget it" | HassNevermind | ends the turn silently |
 | anything else ("what's the weather", "dim it a bit and play jazz") | none | Binks |
@@ -242,6 +242,7 @@ Made live through the websocket/REST API and mirrored into git (`room_layout.yam
 | `light.shelly_plug_1`, `light.shelly_plug_2_lamp` (switch_as_x on the Office/Bedroom AC plugs) | exposed lights, so "lights off" could cut an AC | config entries removed |
 | `switch.shellyplugusg4_acebe6f28334` / `_a1e8` (Office AC / Bedroom AC) | not exposed | exposed to Assist |
 | Voice PE puck LED rings | exposed lights in kitchen/bedroom | unexposed (a room "lights on" would light the puck ring) |
+| `light.a1_03900d5b1110644_chamber_light` (Bambu A1) | exposed, no name override (spoken as "A1_03900D5B1110644 Chamber light"), no area | named "Printer Light" by the `room_layout.yaml` seed on the next boot; still no area, on purpose |
 
 ---
 

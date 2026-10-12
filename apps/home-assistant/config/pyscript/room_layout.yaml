@@ -44,6 +44,9 @@ entities:
   light.athom_plug_v3_6058b8_switch: { room: Living Room, name: Table Light }
   light.athom_plug_v3_60a188_switch: { room: Living Room, name: Main Light }
   light.athom_plug_v3_613888_switch: { room: Living Room, name: Monkey Light }
+  # Bambu A1 chamber light (ha-bambulab). Exposed to Assist, so it needs a
+  # speakable name; no room, so a room's "lights off" never reaches the printer.
+  light.a1_03900d5b1110644_chamber_light: { name: Printer Light }
 
 # Multi-entity appliances — whole-device room, resolved from one representative
 # entity_id -> its device (moves all of the device's entities at once).

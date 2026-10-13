@@ -1,0 +1,18 @@
+# Managed by Ansible (roles/audio-endpoint) - do not edit by hand.
+# Snapcast client for this desktop. Plays into PipeWire through pipewire-pulse
+# on the DEFAULT sink, so it mixes with normal desktop audio and follows
+# whatever the default sink is; it never changes it.
+[Unit]
+Description=Snapcast client (PipeWire via pulse, room {{ audio_endpoint_snapclient_host_id }})
+Documentation=man:snapclient(1)
+Wants=pipewire-pulse.service
+After=pipewire-pulse.service network-online.target
+
+[Service]
+# snapclient reconnects to the server by itself; Restart covers crashes.
+ExecStart=/usr/bin/snapclient --logsink=system --host {{ audio_endpoint_snapserver_host }} --port {{ audio_endpoint_snapserver_port }} --hostID {{ audio_endpoint_snapclient_host_id }} --player pulse
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=default.target

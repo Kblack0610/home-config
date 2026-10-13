@@ -1,0 +1,118 @@
+---
+# Packages. ALSA tools are needed only where the role touches the card (alsa
+# backend, or capture). netcat (OpenBSD flavour, for `-N`) only for capture.
+
+- name: Compute packages for this endpoint
+  ansible.builtin.set_fact:
+    # Debian: snapclient is in the main archive (Pi OS / Armbian included).
+    # Arch: snapclient comes from the AUR build below, not from this list.
+    audio_endpoint_distro_packages: >-
+      {{ (audio_endpoint_packages if (audio_endpoint_backend == 'alsa' or audio_endpoint_capture | bool) else [])
+         + (['snapclient'] if (audio_endpoint_snapclient_enabled | bool and ansible_facts['os_family'] == 'Debian') else [])
+         + ([audio_endpoint_netcat_package[ansible_facts['os_family']]] if audio_endpoint_capture | bool else []) }}
+  vars:
+    audio_endpoint_netcat_package:
+      Debian: netcat-openbsd
+      Archlinux: openbsd-netcat
+
+- name: Install packages (Debian family)
+  ansible.builtin.apt:
+    name: "{{ audio_endpoint_distro_packages }}"
+    state: present
+    update_cache: true
+    cache_valid_time: 3600
+  become: true
+  register: audio_endpoint_apt
+  when:
+    - ansible_facts['os_family'] == 'Debian'
+    - audio_endpoint_distro_packages | length > 0
+
+- name: Install packages (Arch)
+  community.general.pacman:
+    name: "{{ audio_endpoint_distro_packages }}"
+    state: present
+  become: true
+  when:
+    - ansible_facts['os_family'] == 'Archlinux'
+    - audio_endpoint_distro_packages | length > 0
+
+- name: Check for an installed snapclient
+  ansible.builtin.stat:
+    path: /usr/bin/snapclient
+  register: audio_endpoint_snapclient_bin
+  when:
+    - audio_endpoint_snapclient_enabled | bool
+    - ansible_facts['os_family'] == 'Archlinux'
+
+- name: Report the AUR build that a real run would do (check mode)
+  ansible.builtin.debug:
+    msg: >-
+      snapclient is not installed; a real run builds the AUR snapcast package
+      ({{ audio_endpoint_aur_snapshot_url }}) with makepkg and installs it with
+      pacman -U.
+  when:
+    - audio_endpoint_snapclient_enabled | bool
+    - ansible_facts['os_family'] == 'Archlinux'
+    - not audio_endpoint_snapclient_bin.stat.exists
+    - ansible_check_mode
+
+# Arch: snapcast is AUR-only. makepkg must run as a normal user and pacman as
+# root, so the build is split: fetch + makepkg as the login user, deps + install
+# via become. Dependencies are read from the PKGBUILD's own .SRCINFO, so there is
+# no second copy of the dependency list here to drift. No AUR helper is needed
+# (paru/yay would prompt for sudo, which Ansible cannot answer).
+- name: Build snapcast from the AUR (Arch, only when snapclient is missing)
+  when:
+    - audio_endpoint_snapclient_enabled | bool
+    - ansible_facts['os_family'] == 'Archlinux'
+    - not audio_endpoint_snapclient_bin.stat.exists
+    - not ansible_check_mode
+  block:
+    - name: Create the AUR build directory
+      ansible.builtin.file:
+        path: "{{ audio_endpoint_aur_build_dir }}"
+        state: directory
+        mode: "0755"
+
+    - name: Fetch the snapcast PKGBUILD snapshot
+      ansible.builtin.unarchive:
+        src: "{{ audio_endpoint_aur_snapshot_url }}"
+        dest: "{{ audio_endpoint_aur_build_dir }}"
+        remote_src: true
+
+    - name: Read the PKGBUILD dependencies
+      ansible.builtin.command:
+        cmd: makepkg --printsrcinfo
+        chdir: "{{ audio_endpoint_aur_build_dir }}/snapcast"
+      register: audio_endpoint_srcinfo
+      changed_when: false
+
+    - name: Install build and runtime dependencies
+      community.general.pacman:
+        name: >-
+          {{ ['base-devel']
+             + (audio_endpoint_srcinfo.stdout_lines
+                | select('match', '^\s*(make|check)?depends = ')
+                | map('regex_replace', '^\s*\w+ = ([^<>=:\s]+).*$', '\1')
+                | list) }}
+        state: present
+      become: true
+
+    - name: Build the package
+      ansible.builtin.command:
+        cmd: makepkg --noconfirm --force --clean
+        chdir: "{{ audio_endpoint_aur_build_dir }}/snapcast"
+      changed_when: true
+
+    - name: List the built package files
+      ansible.builtin.command:
+        cmd: makepkg --packagelist
+        chdir: "{{ audio_endpoint_aur_build_dir }}/snapcast"
+      register: audio_endpoint_pkglist
+      changed_when: false
+
+    - name: Install the built snapcast package
+      community.general.pacman:
+        name: "{{ audio_endpoint_pkglist.stdout_lines | reject('search', '-debug-') | list }}"
+        state: present
+      become: true

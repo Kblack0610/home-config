@@ -1,36 +1,80 @@
 ---
-# audio-endpoint - Phase 0 of the Yamaha HS5 -> home-cluster audio endpoint.
-# Brings up a USB balanced interface as the default ALSA sink on a dedicated,
-# always-on box. Board-agnostic: works on Raspberry Pi OS (a Pi) or Armbian
-# (a Libre Computer or BigTreeTech board) - the only per-board difference is the
-# OS image you flashed, not this role. Later phases add shairport-sync (AirPlay),
-# Music Assistant, and Snapcast on top. See README.md for the full staged plan.
+# audio-endpoint - turns a box into one room of the whole-house Snapcast system.
+# Phase 0 brings up a USB interface as the default ALSA sink; on top of that the
+# role installs snapclient (the room's player) and, opt-in, streams the USB
+# interface's line input to the snapserver (the turntable source). See README.md.
 
-# Debian-family packages for the ALSA userspace + test tools. Pi OS and Armbian
-# are both Debian-derived, so apt + these names cover every supported board.
+# --- Backend -------------------------------------------------------------------
+# How this endpoint plays audio:
+#   alsa  - dedicated box (Pi / Armbian). A system snapclient service owns the
+#           USB card by name, and /etc/asound.conf makes that card the default
+#           sink. This is the original Phase 0 behaviour.
+#   pulse - a desktop that already runs PipeWire (pipewire-pulse). snapclient
+#           runs as a systemd USER service with --player pulse, so it mixes into
+#           the default sink next to normal desktop audio. Never writes
+#           /etc/asound.conf and never changes the default sink.
+audio_endpoint_backend: alsa
+
+# --- Phase 0 (alsa backend) ----------------------------------------------------
+# ALSA userspace + test tools (aplay, arecord, speaker-test). Same package name
+# on Debian-family (Pi OS, Armbian) and Arch.
 audio_endpoint_packages:
   - alsa-utils
 
 # Substring matched against the `aplay -l` card lines to find the interface.
-# "USB" matches virtually every class-compliant interface (Behringer UMC202HD,
-# Focusrite Scarlett, etc.), so the role does NOT need the exact model to be
-# correct. Override only if the box has more than one USB audio card.
+# "USB" matches virtually every class-compliant interface (Behringer UFO202 /
+# UMC202HD, Focusrite Scarlett, etc.), so the role does NOT need the exact model
+# to be correct. Override only if the box has more than one USB audio card.
 audio_endpoint_card_hint: "USB"
 
-# Write /etc/asound.conf so the matched card is the system-default sink. The
-# config references the card by its ALSA *id* (name), not its index, so it
-# survives reboots and USB re-enumeration.
+# Write /etc/asound.conf so the matched card is the system-default sink (alsa
+# backend only). The config references the card by its ALSA *id* (name), not
+# its index, so it survives reboots and USB re-enumeration.
 audio_endpoint_set_default_card: true
 
 # Fail the run if no matching card is present (interface unplugged or powered
-# off). Set false to converge the box BEFORE the interface is attached - useful
-# to pre-stage the OS while you wait on the hardware.
+# off). Applies to the alsa backend only: the pulse backend plays through
+# whatever PipeWire's default sink is and never looks for a card. Set false to
+# converge an alsa box BEFORE the interface is attached.
 audio_endpoint_require_card: true
 
-# Opt-in: play a short sine tone to verify wiring by ear. Off by default so a
-# normal converge is silent and idempotent. Enable per-run to test:
-#   ansible-playbook playbooks/site.yml --limit hs5-desk \
-#     -e audio_endpoint_run_speaker_test=true
+# Opt-in: play a short sine tone to verify wiring by ear (alsa backend only).
+# Off by default so a normal converge is silent and idempotent.
 audio_endpoint_run_speaker_test: false
 audio_endpoint_test_channels: 2
 audio_endpoint_test_freq: 440
+
+# --- Snapclient ----------------------------------------------------------------
+audio_endpoint_snapclient_enabled: true
+
+# Snapserver address (apps/snapcast). REQUIRED when snapclient or capture is
+# enabled: there is deliberately no default, and the role fails with a clear
+# message when it is empty. Set it once for the group in inventory.yml.
+audio_endpoint_snapserver_host: ""
+# Snapcast stream port for clients.
+audio_endpoint_snapserver_port: 1704
+
+# Stable client id shown in snapweb / Music Assistant / HA. Snapclient defaults
+# to the MAC address, which is unreadable and changes with the NIC.
+audio_endpoint_snapclient_host_id: "{{ inventory_hostname }}"
+
+# Arch has no snapcast package in the official repos; it is built from the AUR
+# PKGBUILD (snapcast = snapserver + snapclient) with makepkg as the login user
+# and installed with pacman -U. Only runs when /usr/bin/snapclient is missing;
+# upgrades are then ordinary AUR upgrades (paru -Syu).
+audio_endpoint_aur_snapshot_url: https://aur.archlinux.org/cgit/aur.git/snapshot/snapcast.tar.gz
+audio_endpoint_aur_build_dir: "{{ ansible_facts['user_dir'] }}/.cache/audio-endpoint/aur"
+
+# --- Turntable capture (opt-in) ------------------------------------------------
+# Stream the USB interface's line input to the snapserver's Turntable source
+# (`tcp://0.0.0.0:4953?name=Turntable&mode=server` in apps/snapcast). Uses the
+# same card the alsa detection finds (audio_endpoint_card_hint).
+audio_endpoint_capture: false
+audio_endpoint_capture_port: 4953
+# Must equal the snapserver stream's sampleformat (snapcast default 48000:16:2).
+# The UFO202 converter runs natively at 48 kHz / 16-bit stereo.
+audio_endpoint_capture_rate: 48000
+audio_endpoint_capture_format: S16_LE
+audio_endpoint_capture_channels: 2
+# Pause between restarts when the server is down or the card is unplugged.
+audio_endpoint_capture_restart_sec: 5

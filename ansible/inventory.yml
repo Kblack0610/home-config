@@ -154,11 +154,23 @@ all:
         # 2026-10-06, when CI moved to nightly and release runs only; its slots
         # were deregistered by hand. Do not add it back.
 
-    # HS5 desk audio endpoint(s). See ansible/roles/audio-endpoint/README.md.
-    # Board-agnostic (Raspberry Pi OS, or Armbian on a Libre / BigTreeTech
-    # board). Add the box here once it is flashed and on the LAN, e.g.:
-    #   hs5-desk:
-    #     ansible_host: 192.168.1.NNN   # add a DHCP -lan reservation too
-    # Until then this group is empty and the site.yml play is a safe no-op.
+    # Whole-house audio: one host per room, each a snapclient of the snapserver
+    # in apps/snapcast. See ansible/roles/audio-endpoint/README.md.
+    # Dedicated boxes (Pi OS / Armbian) use the default alsa backend; add one
+    # once it is flashed and on the LAN (and give it a DHCP -lan reservation),
+    # e.g. the living-room Pi with the turntable on its UFO202 line input:
+    #   livingroom-audio:
+    #     ansible_host: 192.168.1.NNN
+    #     audio_endpoint_capture: true
     audio_endpoints:
-      hosts: {}
+      vars:
+        # The name apps/snapcast's README points clients at. *.kblab.me resolves
+        # on the LAN to a k3s node (192.168.1.124), and servicelb publishes the
+        # snapserver LoadBalancer ports (1704 stream, 4953 Turntable) on every
+        # node. Confirm once apps/snapcast is merged and reconciled.
+        audio_endpoint_snapserver_host: snapcast.kblab.me
+      hosts:
+        # Office: the desktop itself is the endpoint (Scarlett Solo -> HS5).
+        # snapclient runs as a user service mixed into PipeWire.
+        cachyos-x8664-main:
+          audio_endpoint_backend: pulse

@@ -1,0 +1,45 @@
+---
+# pulse backend: snapclient as a systemd USER service of the desktop user, so it
+# is just another PipeWire (pipewire-pulse) client on the default sink, mixed
+# with everything else the desktop plays. Nothing system-wide is touched: no
+# /etc/asound.conf, no default-sink change, no system snapclient.
+# The desktop user is the user Ansible connects as (the play does not become
+# root at play level), so these tasks need no privilege at all.
+
+# Debian's package enables a system snapclient on install; on a pulse host it
+# would be a second client grabbing the hardware behind PipeWire's back. (Arch
+# packages never enable units, so there is nothing to undo there.)
+- name: Keep the packaged system snapclient off (Debian)
+  ansible.builtin.systemd_service:
+    name: snapclient.service
+    enabled: false
+    state: stopped
+  become: true
+  when: ansible_facts['os_family'] == 'Debian'
+
+- name: Ensure the user systemd directory exists
+  ansible.builtin.file:
+    path: "{{ ansible_facts['user_dir'] }}/.config/systemd/user"
+    state: directory
+    mode: "0755"
+
+- name: Install the snapclient user unit
+  ansible.builtin.template:
+    src: snapclient-pulse.service.j2
+    dest: "{{ ansible_facts['user_dir'] }}/.config/systemd/user/snapclient.service"
+    mode: "0644"
+  register: audio_endpoint_user_unit
+  notify: Restart user snapclient
+
+# In --check the unit file is not really written, so systemd cannot find it
+# yet; the template diff above is the check-mode evidence.
+- name: Enable and start the snapclient user service
+  ansible.builtin.systemd_service:
+    name: snapclient.service
+    scope: user
+    enabled: true
+    state: started
+    daemon_reload: true
+  environment:
+    XDG_RUNTIME_DIR: "/run/user/{{ ansible_facts['user_uid'] }}"
+  when: not (ansible_check_mode and audio_endpoint_user_unit is changed)

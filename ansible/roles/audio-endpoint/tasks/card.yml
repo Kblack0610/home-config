@@ -1,0 +1,47 @@
+---
+# Phase 0: find the USB interface in `aplay -l` by substring and record its ALSA
+# id (name), which survives reboots and USB re-enumeration. Used by the alsa
+# backend (default sink + snapclient) and by capture (same card's line input).
+
+- name: Enumerate ALSA playback devices
+  ansible.builtin.command: aplay -l
+  register: audio_endpoint_aplay
+  changed_when: false
+  check_mode: false  # Read-only; later tasks need its output even in --check.
+  become: true  # root sees every card regardless of the login user's groups.
+
+- name: Select the first matching playback card line
+  ansible.builtin.set_fact:
+    audio_endpoint_card_line: >-
+      {{ audio_endpoint_aplay.stdout_lines
+         | select('match', '^card \d+:')
+         | select('search', audio_endpoint_card_hint)
+         | list | first | default('') }}
+
+- name: Fail when no matching USB audio card is present
+  ansible.builtin.fail:
+    msg: >-
+      No ALSA playback card matching '{{ audio_endpoint_card_hint }}' in
+      `aplay -l`. Is the USB interface plugged in and powered? Set
+      audio_endpoint_require_card=false to pre-stage the box without it
+      (capture still needs the card).
+      aplay -l said:
+      {{ audio_endpoint_aplay.stdout }}
+  when:
+    - audio_endpoint_card_line == ''
+    - (audio_endpoint_backend == 'alsa' and audio_endpoint_require_card | bool) or audio_endpoint_capture | bool
+
+- name: Extract the ALSA card id (name) and index
+  ansible.builtin.set_fact:
+    # id/name (e.g. "CODEC" for a UFO202) is stable across reboots; every
+    # device string the role writes references the card by it.
+    audio_endpoint_card_id: "{{ audio_endpoint_card_line | regex_search('^card \\d+:\\s+(\\S+)', '\\1') | first }}"
+    audio_endpoint_card_index: "{{ audio_endpoint_card_line | regex_search('^card (\\d+):', '\\1') | first }}"
+  when: audio_endpoint_card_line != ''
+
+- name: Report the selected interface
+  ansible.builtin.debug:
+    msg: >-
+      Using ALSA card '{{ audio_endpoint_card_id }}'
+      (hw index {{ audio_endpoint_card_index }}).
+  when: audio_endpoint_card_line != ''

@@ -1,0 +1,27 @@
+---
+# Phase 0 (alsa backend): make the USB card the default ALSA sink and,
+# opt-in, play a test tone through it.
+
+- name: Set the USB interface as the default ALSA device
+  ansible.builtin.template:
+    src: asound.conf.j2
+    dest: /etc/asound.conf
+    owner: root
+    group: root
+    mode: "0644"
+  become: true
+  when:
+    - audio_endpoint_set_default_card | bool
+    - audio_endpoint_card_line != ''
+
+- name: Play a verification tone through the interface (opt-in)
+  # -l 1 = one loop then exit (never hangs). speaker-test cycles channels, so a
+  # correctly-cabled pair plays LEFT then RIGHT - confirms both the sink and the
+  # L/R cabling into the speakers.
+  ansible.builtin.command:
+    cmd: >-
+      speaker-test -D default -c {{ audio_endpoint_test_channels }}
+      -t sine -f {{ audio_endpoint_test_freq }} -l 1
+  changed_when: false
+  become: true
+  when: audio_endpoint_run_speaker_test | bool

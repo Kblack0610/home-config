@@ -1,0 +1,27 @@
+# Managed by Ansible (roles/audio-endpoint) - do not edit by hand.
+# Streams the USB interface's line input (card {{ audio_endpoint_card_id }}) to the
+# snapserver Turntable source at {{ audio_endpoint_snapserver_host }}:{{ audio_endpoint_capture_port }}.
+#
+# Why `arecord | nc`: a snapserver tcp source in mode=server accepts one TCP
+# connection and reads raw interleaved PCM in the stream's sampleformat
+# (snapcast default 48000:16:2), with no header or framing. arecord -t raw
+# produces exactly that from the card, and nc ships it; nothing to transcode,
+# no extra daemon. Either half dying ends the pipeline: if the server goes away
+# nc exits and arecord gets SIGPIPE; if the card goes away arecord exits and
+# nc -N (OpenBSD netcat) closes the socket on stdin EOF instead of hanging.
+# systemd then restarts the whole thing. Debian calls the binary nc.openbsd so
+# an installed netcat-traditional (no -N) cannot win the `nc` alternative.
+[Unit]
+Description=Line-in capture to snapserver ({{ audio_endpoint_snapserver_host }}:{{ audio_endpoint_capture_port }})
+Wants=network-online.target sound.target
+After=network-online.target sound.target
+
+[Service]
+ExecStart=/bin/sh -c 'arecord -q -D hw:CARD={{ audio_endpoint_card_id }},DEV=0 -t raw -f {{ audio_endpoint_capture_format }} -r {{ audio_endpoint_capture_rate }} -c {{ audio_endpoint_capture_channels }} | {{ 'nc.openbsd' if ansible_facts['os_family'] == 'Debian' else 'nc' }} -N {{ audio_endpoint_snapserver_host }} {{ audio_endpoint_capture_port }}'
+Restart=always
+RestartSec={{ audio_endpoint_capture_restart_sec }}
+DynamicUser=yes
+SupplementaryGroups=audio
+
+[Install]
+WantedBy=multi-user.target

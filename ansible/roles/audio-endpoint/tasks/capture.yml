@@ -1,0 +1,24 @@
+---
+# Opt-in turntable capture: the USB card's line input, as raw PCM, pushed to
+# the snapserver's Turntable source (`tcp://...:4953?mode=server`).
+
+- name: Install the capture service
+  ansible.builtin.template:
+    src: audio-endpoint-capture.service.j2
+    dest: /etc/systemd/system/audio-endpoint-capture.service
+    owner: root
+    group: root
+    mode: "0644"
+  become: true
+  register: audio_endpoint_capture_unit
+  notify: Restart capture
+
+- name: Enable and start the capture service
+  ansible.builtin.systemd_service:
+    name: audio-endpoint-capture.service
+    enabled: true
+    state: started
+    daemon_reload: true
+  become: true
+  # In --check the unit file is not really written; the diff above stands in.
+  when: not (ansible_check_mode and audio_endpoint_capture_unit is changed)

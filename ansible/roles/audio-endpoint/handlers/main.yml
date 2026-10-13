@@ -1,0 +1,28 @@
+---
+# Not in --check: a unit or package that check mode only pretended to install
+# cannot be restarted, and a restart is not something check mode can show.
+
+- name: Restart system snapclient
+  ansible.builtin.systemd_service:
+    name: snapclient.service
+    state: restarted
+  become: true
+  when: not ansible_check_mode
+
+- name: Restart user snapclient
+  ansible.builtin.systemd_service:
+    name: snapclient.service
+    scope: user
+    state: restarted
+    daemon_reload: true
+  environment:
+    XDG_RUNTIME_DIR: "/run/user/{{ ansible_facts['user_uid'] }}"
+  when: not ansible_check_mode
+
+- name: Restart capture
+  ansible.builtin.systemd_service:
+    name: audio-endpoint-capture.service
+    state: restarted
+    daemon_reload: true
+  become: true
+  when: not ansible_check_mode

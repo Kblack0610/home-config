@@ -1,74 +1,60 @@
 ---
-# Phase 0: install ALSA, find the USB balanced interface, make it the default
-# sink, and (opt-in) play a test tone. Board-agnostic, Debian-family only.
+# audio-endpoint: one room of the whole-house Snapcast system.
+#   install.yml          - ALSA tools, snapclient, capture tools (distro / AUR)
+#   card.yml             - Phase 0: find the USB interface (alsa backend / capture)
+#   alsa.yml             - Phase 0: default ALSA sink + opt-in test tone
+#   snapclient-alsa.yml  - system snapclient owning the card (alsa backend)
+#   snapclient-pulse.yml - user snapclient mixing into PipeWire (pulse backend)
+#   capture.yml          - opt-in line-in -> snapserver Turntable stream
+# The play does not become root at play level; privileged tasks self-elevate so
+# the pulse backend can talk to the login user's systemd --user manager.
 
-- name: Install ALSA userspace + test tools
-  ansible.builtin.apt:
-    name: "{{ audio_endpoint_packages }}"
-    state: present
-    update_cache: true
-    cache_valid_time: 3600
-  become: true
+- name: Validate audio-endpoint settings
+  ansible.builtin.assert:
+    that:
+      - audio_endpoint_backend in ['alsa', 'pulse']
+      - ansible_facts['os_family'] in ['Debian', 'Archlinux']
+    fail_msg: >-
+      audio_endpoint_backend must be 'alsa' or 'pulse' (got
+      '{{ audio_endpoint_backend }}'), and the host must be Debian-family or
+      Arch (got '{{ ansible_facts['os_family'] }}').
+    quiet: true
 
-- name: Enumerate ALSA playback devices
-  ansible.builtin.command: aplay -l
-  register: audio_endpoint_aplay
-  changed_when: false
-  check_mode: false  # Read-only; later tasks need its output even in --check.
+- name: Require the snapserver address when snapclient or capture is enabled
+  ansible.builtin.assert:
+    that:
+      - audio_endpoint_snapserver_host | string | length > 0
+    fail_msg: >-
+      audio_endpoint_snapserver_host is empty. Set it to the snapserver LAN
+      address (apps/snapcast) for the audio_endpoints group in
+      ansible/inventory.yml, or set audio_endpoint_snapclient_enabled=false and
+      audio_endpoint_capture=false to run Phase 0 only.
+    quiet: true
+  when: audio_endpoint_snapclient_enabled | bool or audio_endpoint_capture | bool
 
-- name: Select the first USB playback card line
-  ansible.builtin.set_fact:
-    audio_endpoint_card_line: >-
-      {{ audio_endpoint_aplay.stdout_lines
-         | select('match', '^card \d+:')
-         | select('search', audio_endpoint_card_hint)
-         | list | first | default('') }}
+- name: Install ALSA tools, snapclient and capture tools
+  ansible.builtin.import_tasks: install.yml
 
-- name: Fail when no matching USB audio card is present
-  ansible.builtin.fail:
-    msg: >-
-      No ALSA playback card matching '{{ audio_endpoint_card_hint }}' in
-      `aplay -l`. Is the USB interface plugged in and powered? Set
-      audio_endpoint_require_card=false to pre-stage the box without it.
-      aplay -l said:
-      {{ audio_endpoint_aplay.stdout }}
+- name: Find the USB audio interface
+  ansible.builtin.import_tasks: card.yml
+  when: audio_endpoint_backend == 'alsa' or audio_endpoint_capture | bool
+
+- name: Default ALSA sink + verification tone
+  ansible.builtin.import_tasks: alsa.yml
+  when: audio_endpoint_backend == 'alsa'
+
+- name: System snapclient on the USB card
+  ansible.builtin.import_tasks: snapclient-alsa.yml
   when:
-    - audio_endpoint_card_line == ''
-    - audio_endpoint_require_card | bool
+    - audio_endpoint_snapclient_enabled | bool
+    - audio_endpoint_backend == 'alsa'
 
-- name: Extract the ALSA card id (name) and index
-  ansible.builtin.set_fact:
-    # id/name (e.g. "U192k") is stable across reboots; prefer it in asound.conf.
-    audio_endpoint_card_id: "{{ audio_endpoint_card_line | regex_search('^card \\d+:\\s+(\\S+)', '\\1') | first }}"
-    audio_endpoint_card_index: "{{ audio_endpoint_card_line | regex_search('^card (\\d+):', '\\1') | first }}"
-  when: audio_endpoint_card_line != ''
-
-- name: Report the selected interface
-  ansible.builtin.debug:
-    msg: >-
-      Using ALSA card '{{ audio_endpoint_card_id }}'
-      (hw index {{ audio_endpoint_card_index }}) as the default sink.
-  when: audio_endpoint_card_line != ''
-
-- name: Set the USB interface as the default ALSA device
-  ansible.builtin.template:
-    src: asound.conf.j2
-    dest: /etc/asound.conf
-    owner: root
-    group: root
-    mode: "0644"
-  become: true
+- name: User snapclient into PipeWire
+  ansible.builtin.import_tasks: snapclient-pulse.yml
   when:
-    - audio_endpoint_set_default_card | bool
-    - audio_endpoint_card_line != ''
+    - audio_endpoint_snapclient_enabled | bool
+    - audio_endpoint_backend == 'pulse'
 
-- name: Play a verification tone through the interface (opt-in)
-  # -l 1 = one loop then exit (never hangs). speaker-test cycles channels, so a
-  # correctly-cabled HS5 pair plays LEFT then RIGHT - confirms both the sink and
-  # the L/R cabling into the speakers.
-  ansible.builtin.command:
-    cmd: >-
-      speaker-test -D default -c {{ audio_endpoint_test_channels }}
-      -t sine -f {{ audio_endpoint_test_freq }} -l 1
-  changed_when: false
-  when: audio_endpoint_run_speaker_test | bool
+- name: Line-in capture to the snapserver
+  ansible.builtin.import_tasks: capture.yml
+  when: audio_endpoint_capture | bool

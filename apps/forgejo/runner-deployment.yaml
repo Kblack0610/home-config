@@ -21,8 +21,8 @@ spec:
         app.kubernetes.io/name: forgejo-runner
     spec:
       affinity:
-        # Schedule only on amd64 workstation nodes (thinkcentre/hp-victus/
-        # asus-laptop). DinD needs amd64 + privileged + 6Gi, which the arm64 Pis
+        # Schedule only on amd64 workstation nodes (hp-victus/asus-laptop).
+        # DinD needs amd64 + privileged + 6Gi, which the arm64 Pis
         # can't satisfy, so the workstation role label is the correct gate.
         nodeAffinity:
           requiredDuringSchedulingIgnoredDuringExecution:

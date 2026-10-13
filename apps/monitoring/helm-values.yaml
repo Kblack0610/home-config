@@ -292,7 +292,7 @@ prometheus:
 # an empty string.
 #
 # --collector.systemd exposes node_systemd_unit_state for bare-metal service
-# visibility (e.g. actions.runner.*.service on thinkcentre). The collector
+# visibility (e.g. actions.runner.*.service on the platform CI runner hosts). The collector
 # opens /var/run/dbus/system_bus_socket on the host — the chart does NOT mount
 # this by default, so we add it explicitly via extraHostVolumeMounts below.
 prometheus-node-exporter:

@@ -442,12 +442,4 @@ sections:
           action: url
           url_path: http://192.168.1.23:9100/metrics
         hide_state: true
-      - type: tile
-        entity: sun.sun
-        name: Thinkcentre
-        icon: mdi:server
-        tap_action:
-          action: url
-          url_path: http://192.168.1.100:9100/metrics
-        hide_state: true
 # END_GENERATED_LAUNCHER

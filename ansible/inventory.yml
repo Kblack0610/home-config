@@ -7,7 +7,7 @@
 #   - Flux:    k3s workloads (unchanged)
 #
 # IP truth lives in infrastructure/dhcp/devices.yaml, but k3s nodes assigned
-# post-devices.yaml (thinkcentre, hp-victus) are sourced from `kubectl get nodes`.
+# post-devices.yaml (hp-victus) are sourced from `kubectl get nodes`.
 # Update both files when adding a host.
 
 #
@@ -27,8 +27,6 @@ all:
   children:
     linux_bare_metal:
       hosts:
-        thinkcentre:
-          ansible_host: 192.168.1.100
         hp-victus:
           ansible_host: 192.168.1.243
         # asus-laptop listens on 2222, not 22 (that part of the 2026-04-01 note
@@ -134,12 +132,6 @@ all:
           pmp_heavy_slots: 1
           pmp_ci_cpu_cores: 12
           pmp_ci_memory_max: 16G
-        # thinkcentre was removed 2026-09-29: within a day it logged 10 segfaults
-        # across unrelated programs (node, the runner's own .NET worker and
-        # config.sh, and a root-owned jq) on different cores, and it failed two
-        # platform CI jobs that way. That pattern is hardware, most likely RAM.
-        # Run memtest86+ before adding it back. Its slot was deregistered by
-        # hand; the pmp-ci slice, cleanup timer and docker stay installed.
 
     # BNB Unity runner pool (added 2026-10-05; the "Unity CI runner pool" play in
     # site.yml). Org-scoped, label `unity`, for every game repo. Each slot runs

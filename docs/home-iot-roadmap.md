@@ -96,7 +96,7 @@ far ($940).
 
 | Item | Cost | Why | When |
 |---|---|---|---|
-| **Sonoff ZBDongle-E** | $20 | Zigbee 3.0 coordinator for zigbee2mqtt. Plug into pi5-master or thinkcentre via USB. | Before deploying `apps/zigbee2mqtt/` |
+| **Sonoff ZBDongle-E** | $20 | Zigbee 3.0 coordinator for zigbee2mqtt. Plug into pi5-master via USB. | Before deploying `apps/zigbee2mqtt/` |
 | **Zigbee starter devices** | varies | Whatever Zigbee bulbs/switches/sensors are wanted; auto-paired through z2m. | After Phase 5 ships |
 
 ### Phase 6 — no new hardware
@@ -117,8 +117,8 @@ targets. Phase 6 is pure software.
 3. **Nabu Casa vs self-hosted (Phase 3 + 4).** Already decided self-hosted in
    the original plan. Re-litigate only if Cloudflare Tunnel auth gets ugly.
 4. **Zigbee stick host (Phase 5).** USB stick must be on a node that won't get
-   recycled. Recommend `thinkcentre` (the Forgejo node — least disruption to
-   homelab).
+   recycled. The earlier pick, `thinkcentre`, was retired 2026-10-12, so this
+   is open again.
 
 ## Out of scope (intentionally — don't re-research these)
 

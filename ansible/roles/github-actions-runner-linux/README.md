@@ -37,7 +37,7 @@ All other variables have sensible defaults in `defaults/main.yml`.
 On the target host:
 
 ```bash
-systemctl status actions.runner.thinkcentre-linux.service
+systemctl status 'actions.runner.*'   # runner name is <inventory_hostname>-linux
 sudo -u actions-runner docker ps
 ```
 

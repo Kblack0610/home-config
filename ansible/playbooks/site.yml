@@ -3,8 +3,8 @@
 #
 # Run:
 #   ansible-playbook playbooks/site.yml
-#   ansible-playbook playbooks/site.yml --limit thinkcentre
-#   ansible-playbook playbooks/site.yml --limit thinkcentre --check --diff
+#   ansible-playbook playbooks/site.yml --limit hp-victus
+#   ansible-playbook playbooks/site.yml --limit hp-victus --check --diff
 #
 # The github-actions-runner-linux role runs the dodginballs Unity runner on
 # hp-victus and, since 2026-09-28, the platform CI runner slots on the
@@ -25,22 +25,6 @@
     - role: desktop-firewall
       tags: [firewall, agent-web]
 
-- name: Bootstrap — ensure Python is installed so Ansible modules can run
-  hosts: thinkcentre
-  become: true
-  gather_facts: false
-  tasks:
-    - name: Check for python3
-      ansible.builtin.raw: command -v python3
-      register: python3_check
-      changed_when: false
-      failed_when: false
-      check_mode: false  # Always run — this is read-only and the next task needs its output.
-
-    - name: Install python (via pacman) if missing
-      ansible.builtin.raw: pacman -Sy --noconfirm --needed python
-      when: (python3_check.rc | default(1)) != 0
-
 - name: Keep Linux host clocks synced (systemd-timesyncd)
   # See ansible/roles/time-sync/README.md. hp-victus was found ~102s behind the
   # rest of the cluster with NO time daemon at all, while every other node sat
@@ -51,8 +35,7 @@
   #
   # Targets the Pis too even though they are already synced: the role is
   # idempotent there, and a drifting clock should be prevented fleet-wide rather
-  # than fixed per-host after it bites. thinkcentre is excluded - it is no longer
-  # a k3s node (`kubectl get nodes` shows 8, without it).
+  # than fixed per-host after it bites.
   hosts: hp-victus:asus-laptop:pi_k3s
   become: true
   gather_facts: true
@@ -225,7 +208,7 @@
 # cross-OS inventory / live-query pane. Bind only AFTER apps/fleet is deployed
 # and the enroll secret is stored as vault_fleet_enroll_secret (see
 # apps/fleet/README.md + roles/osquery-agent/README.md). Covers macOS + Pi
-# (Debian) hosts; Arch/x86 (thinkcentre/hp-victus/cachyos) is a documented
+# (Debian) hosts; Arch/x86 (hp-victus/cachyos) is a documented
 # follow-up (osquery is AUR-only). ALWAYS --check --diff a single host first.
 #
 # - name: Fleet osquery agent (macOS + Pi hosts)

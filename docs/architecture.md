@@ -70,20 +70,20 @@ For LAN traffic (`hass.kblab.me`), the flow skips Cloudflare: client → OpenWRT
 
 ## Worked example 2: a DHCP lease lands
 
-Goal: `thinkcentre` boots and gets IP `192.168.1.100`.
+Goal: `hp-victus` boots and gets IP `192.168.1.243`.
 
 ```
-thinkcentre
+hp-victus
   │ boot → DHCP DISCOVER (eth0)
   ▼
 OpenWRT (192.168.1.1)
   │ dnsmasq reads /etc/config/dhcp
-  │ match on MAC → static lease (name=thinkcentre, ip=192.168.1.100)
+  │ match on MAC → static lease (name=hp-victus, ip=192.168.1.243)
   ▼
-DHCP OFFER → thinkcentre
+DHCP OFFER → hp-victus
   │ kernel networking comes up
   ▼
-thinkcentre (192.168.1.100) → SSH-reachable from workstation
+hp-victus (192.168.1.243) → SSH-reachable from workstation
 ```
 
 - Source of truth: `infrastructure/dhcp/devices.yaml` (YAML inventory of every MAC/hostname/IP).
@@ -193,7 +193,7 @@ Gatus (`apps/gatus/`) monitors every endpoint in this graph — the Gatus config
 
 | Component | What goes down immediately | What stays up |
 |-----------|----------------------------|---------------|
-| `pi5-master` (k3s server) | Every k3s pod on every node — no scheduler, no API | All bare-metal services: MLX, Mac runners, thinkcentre Linux runner. OpenWRT DHCP/DNS. AdGuard Pi3. Frigate. |
+| `pi5-master` (k3s server) | Every k3s pod on every node — no scheduler, no API | All bare-metal services: MLX, Mac runners, platform CI runner slots on the laptops. OpenWRT DHCP/DNS. AdGuard Pi3. Frigate. |
 | OpenWRT router (192.168.1.1) | DHCP new-client onboarding, DNS resolution via the router's dnsmasq | Static IPs keep routing LAN-to-LAN. External internet is gone (OpenWRT is the gateway). AdGuard Pi3 keeps answering for clients that hit it directly. |
 | AdGuard Home (pi3, 192.168.1.193) | **All DNS for every client**, not just `*.kblab.me`. The router runs `no-resolv` with AdGuard as its only upstream, so dnsmasq has nothing to fall back to and returns SERVFAIL for anything not already cached. | Established connections and anything addressed by IP. dnsmasq keeps answering `/lan/` names, `/etc/hosts`, and its two static domain entries (`nas.lan`, `zomboid-play.kblab.me`) from its own config. |
 | mac-studio | MLX inference (all three models) | LiteLLM still serves — but every request that routes to a MLX upstream 500s |

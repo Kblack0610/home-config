@@ -124,7 +124,6 @@ HOST_ICON = {
 # Inventory-host -> { label, url, icon }. URL points at the admin UI or
 # node_exporter metrics. Macs and Pis are metrics-only today.
 INVENTORY_TILES = {
-    "thinkcentre": ("Thinkcentre", "http://192.168.1.100:9100/metrics", "mdi:server"),
     "hp-victus":   ("HP Victus",   "http://192.168.1.243:9100/metrics", "mdi:server"),
     "asus-laptop": ("Asus Laptop", "http://192.168.1.152:9100/metrics", "mdi:laptop"),
     "mac-studio":  ("Mac Studio",  "http://192.168.1.4:9100/metrics",   "mdi:apple"),

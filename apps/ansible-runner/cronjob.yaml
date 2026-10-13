@@ -68,7 +68,7 @@ spec:
                   # 2026-08-06 without anyone being able to see why. Say what
                   # happened instead.
                   # Every host this check should cover, as "alias=ip". thinkcentre
-                  # alone used to be the entire scope, which meant the no-suspend
+                  # (retired 2026-10-12) alone used to be the entire scope, which meant the no-suspend
                   # guard on the laptops was never verified by anything - and when
                   # thinkcentre went off-network the job just failed nightly while
                   # checking nothing at all.
@@ -76,7 +76,7 @@ spec:
                   # A host being down must not stop the others being checked. That is
                   # the whole point of a drift check: the fleet is partially available
                   # by nature.
-                  HOSTS="thinkcentre=192.168.1.100 hp-victus=192.168.1.243 asus-laptop=192.168.1.152"
+                  HOSTS="hp-victus=192.168.1.243 asus-laptop=192.168.1.152"
 
                   REACHABLE=""
                   SKIPPED=""

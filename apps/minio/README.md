@@ -10,7 +10,7 @@ pattern `<module-name>/terraform.tfstate`.
 - **Web console**: https://minio.kblab.me
 
 Both LAN/Tailscale-only via internal DNS (`kblab.me` resolves to home-k3s
-ingress at 192.168.1.100). Not exposed publicly via the Cloudflare tunnel.
+ingress at 192.168.1.124). Not exposed publicly via the Cloudflare tunnel.
 
 ## Credentials
 

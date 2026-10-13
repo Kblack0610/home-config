@@ -1,7 +1,7 @@
 # Bare-metal power resilience (physical checklist)
 
 **Why this exists:** a grid power outage took down `thinkcentre` (192.168.1.100,
-x86 k3s workstation node) and it **stayed dark** — a reset didn't bring it back.
+x86 k3s workstation node, retired 2026-10-12 for bad RAM) and it **stayed dark** — a reset didn't bring it back.
 Two root causes, both physical and neither fixable from software:
 
 1. Its BIOS was not set to power on automatically after AC loss.
@@ -14,7 +14,8 @@ doc covers the **hands-on steps only you can do at the machine**.
 
 > Host name/IP cheatsheet for the boxes below — see
 > [`host-access.md`](./host-access.md). Bare-metal x86 nodes:
-> `thinkcentre` 192.168.1.100, `hp-victus` 192.168.1.243, `asus-laptop` 192.168.1.152.
+> `hp-victus` 192.168.1.243, `asus-laptop` 192.168.1.152. There is no x86 desktop
+> node since thinkcentre was retired; the steps below apply to any that is added.
 
 ---
 
@@ -24,13 +25,13 @@ This single setting is what makes a box reboot itself after an outage. Without
 it, the machine waits for a human to press the power button — exactly what
 happened to thinkcentre.
 
-### thinkcentre (Lenovo desktop)
-1. Power on, tap **F1** (or **Enter** → F1) at the Lenovo splash to enter BIOS.
-2. **Power** → **After Power Loss** (some firmwares: **Automatic Power On** →
-   **After AC Power Loss**).
+### Desktops
+1. Enter the firmware setup at boot.
+2. Find **After Power Loss** / **Restore on AC Power Loss** (often under
+   **Power**).
 3. Set to **Power On** (not "Last State", which can stay off if it was off when
    the power dropped — prefer the unconditional **Power On**).
-4. **F10** to save and exit.
+4. Save and exit.
 
 ### hp-victus / asus-laptop (laptops)
 Laptops have internal batteries, so they ride through brief outages — but a long
@@ -49,20 +50,20 @@ firmware exposes it:
 
 ---
 
-## 2. UPS: put thinkcentre on a **battery** outlet
+## 2. UPS: put any desktop node on a **battery** outlet
 
 The homelab UPS is a CyberPower CP1500PFCLCD on `pi5-master`
 (see [`nut-ups.md`](./nut-ups.md)). Desktops are the real exposure (no internal
-battery), so thinkcentre should be on a battery-backed outlet.
+battery), so a desktop node should be on a battery-backed outlet.
 
 1. On the CP1500 rear, the outlets are split into a **Battery+Surge** bank and a
-   **Surge-only** bank. Move thinkcentre's plug to a **Battery+Surge** outlet.
+   **Surge-only** bank. Plug the desktop into a **Battery+Surge** outlet.
 2. Check headroom: a CP1500 (~900W / 1500VA) already drives the Pi fleet + UPS
    electronics. A desktop under load can be 100–250W — confirm the runtime on the
    LCD stays sane (several minutes) after adding it. If runtime drops too low,
    don't add it; note the limit here instead.
 3. Once it's on battery, bring it under **NUT** so it shuts down gracefully on a
-   sustained outage instead of hard-dropping — add `thinkcentre` to `nut_clients`
+   sustained outage instead of hard-dropping — add the host to `nut_clients`
    in `ansible/inventory.yml` and re-run the NUT play (deferred follow-up; see
    [`nut-ups.md`](./nut-ups.md)).
 
@@ -70,17 +71,17 @@ battery), so thinkcentre should be on a battery-backed outlet.
 
 ## 3. After any reboot: verify the NIC actually came back
 
-This incident's tell: thinkcentre reset but **never rejoined the LAN** (the
+The thinkcentre incident's tell: it reset but **never rejoined the LAN** (the
 router showed ARP `0x0` for it, the k8s node stayed `NotReady`). That points at a
 physical link problem, not the OS.
 
 1. Check the **NIC link LED** on the motherboard/switch port — solid/blinking =
    link, dark = no link.
 2. Reseat the Ethernet cable both ends; try a different switch port.
-3. From another host: `ping 192.168.1.100`, then `arp -n | grep 192.168.1.100`
+3. From another host: `ping <ip>`, then `arp -n | grep <ip>`
    (a `0x0` / incomplete entry = no link).
 4. Once it pings, confirm it rejoined: `kubectl --context home-k3s get nodes`
-   → `thinkcentre` should return to `Ready`, and the Forgejo runner / node-exporter
+   → the node should return to `Ready`, and the Forgejo runner / node-exporter
    land back on it automatically.
 
 ---
@@ -89,10 +90,10 @@ physical link problem, not the OS.
 
 ```bash
 # Node back in the cluster
-kubectl --context home-k3s get nodes -o wide | grep thinkcentre   # want: Ready
+kubectl --context home-k3s get nodes -o wide | grep <node>   # want: Ready
 
 # node-exporter scraping again (NodeDown clears)
-#   prometheus.kblab.me → up{instance="192.168.1.100:9100"} == 1
+#   prometheus.kblab.me → up{instance="<ip>:9100"} == 1
 
 # Runners healthy across nodes (no longer a single point of failure)
 kubectl --context home-k3s -n forgejo get pods -o wide

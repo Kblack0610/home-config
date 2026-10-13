@@ -37,7 +37,7 @@ Two rules follow:
 
 ## Adding a machine
 
-- **Poll** (always-on, on-LAN, exporting): add an `endpoints:` entry. Take node IPs from `kubectl get nodes`, **not** `infrastructure/dhcp/devices.yaml` — that file omits the Pi Zeros, the Pi3 and thinkcentre, and disagrees with `ansible/inventory.yml` about pi4-worker5 (`.25` vs the real `.124`).
+- **Poll** (always-on, on-LAN, exporting): add an `endpoints:` entry. Take node IPs from `kubectl get nodes`, **not** `infrastructure/dhcp/devices.yaml` — that file omits the Pi Zeros, and disagrees with `ansible/inventory.yml` about pi4-worker5 (`.25` vs the real `.124`).
 - **Push** (roaming/off-LAN): add an `external-endpoints:` entry, then enroll the host (`~/.local/src/fleet-pulse/README.md`).
 - Either way: add the name to `FLEET_ROSTER` on each machine that renders the glyph, or it won't be counted.
 

@@ -34,13 +34,13 @@ echo 'export ANSIBLE_VAULT_PASSWORD_FILE=$HOME/.ansible-vault-pass' >> ~/.zshrc
 cd ansible
 
 # Dry run against one host
-ansible-playbook playbooks/site.yml --limit thinkcentre --check --diff
+ansible-playbook playbooks/site.yml --limit hp-victus --check --diff
 
 # Apply
-ansible-playbook playbooks/site.yml --limit thinkcentre
+ansible-playbook playbooks/site.yml --limit hp-victus
 
 # Re-run just the runner role via tag
-ansible-playbook playbooks/site.yml --limit thinkcentre --tags runner
+ansible-playbook playbooks/site.yml --limit hp-victus --tags runner
 ```
 
 ## Secrets (ansible-vault)
@@ -58,7 +58,7 @@ Encrypted vault files are committed; plaintext and the password file are gitigno
 
 ## Scheduled runs + run history: `ansible-runner` CronJob
 
-No web UI — we deliberately rejected Semaphore (bootstrapping projects/keys/inventories via its REST API is more plumbing than the tool is worth for a single-user homelab). Instead, `apps/ansible-runner/` ships a Flux-managed CronJob that runs `ansible-playbook --check --diff` at 04:00 daily against thinkcentre, logs drift, and does not mutate state.
+No web UI — we deliberately rejected Semaphore (bootstrapping projects/keys/inventories via its REST API is more plumbing than the tool is worth for a single-user homelab). Instead, `apps/ansible-runner/` ships a Flux-managed CronJob that runs `ansible-playbook --check --diff` at 04:00 daily against the reachable hosts in its `HOSTS` list, logs drift, and does not mutate state.
 
 Ad-hoc runs via `kubectl create job --from=cronjob/convergence-check`. Run history lives in `kubectl -n ansible-runner get jobs` + `kubectl logs`. Full workflow: `apps/ansible-runner/README.md`.
 
@@ -91,7 +91,7 @@ Running services show up in the Grafana dashboard **Homelab: Bare-metal services
 
 | Phase | Status | Scope |
 |-------|--------|-------|
-| **A** | shipped | `github-actions-runner-linux` on thinkcentre. Ansible skeleton. `ansible-runner` CronJob for drift detection. Runner picks up Linux jobs **only after** a `platform` workflow is migrated to `runs-on: [self-hosted, linux, x64]` — the runner comes up online but idle until then. |
+| **A** | shipped | `github-actions-runner-linux` on thinkcentre (host retired 2026-10-12). Ansible skeleton. `ansible-runner` CronJob for drift detection. Runner picks up Linux jobs **only after** a `platform` workflow is migrated to `runs-on: [self-hosted, linux, x64]` — the runner comes up online but idle until then. |
 | **B** | authored, unbound | `k3s-agent` role extracted from the PXE kickstart (`infrastructure/pxe-server/http/kickstart/profiles/cluster.sh:64-84`). Role is present at `ansible/roles/k3s-agent/` and lint-clean, but the `site.yml` binding is commented out — applying it against a running cluster node reinvokes the k3s installer. Enable by uncommenting the role block in `site.yml` and seeding `vault_k3s_token` in `group_vars/{linux_bare_metal,pi_k3s}/vault.yml`. The inline install in `cluster.sh` stays during the transition. |
 | C | not started | Port `infrastructure/{openwrt,dhcp}/*.sh` to Ansible roles. |
 | D | not started | macOS roles: `launchd-mlx-services`, `github-actions-runner-mac`, `brew-common`, `node-exporter-mac`. Retire `docs/mac-machines.md` setup steps. |

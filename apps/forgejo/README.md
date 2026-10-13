@@ -52,8 +52,7 @@ Docker-in-Docker sidecar for container-based CI workflows.
 
 It runs **2 concurrent replicas, not pinned to a single host**:
 `runner-deployment.yaml` schedules pods on amd64 workstation nodes
-(`node-role.kubernetes.io/workstation`, currently thinkcentre / hp-victus /
-asus-laptop) and a soft `podAntiAffinity` spreads them across different nodes. If
+(`node-role.kubernetes.io/workstation`, currently hp-victus / asus-laptop) and a soft `podAntiAffinity` spreads them across different nodes. If
 one node dies (e.g. a power outage), the other replica is already live on another
 box — instant failover instead of the ~5-min eviction gap a single replica would
 suffer on a hard node death. One dead box can no longer block CI. Each pod

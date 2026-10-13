@@ -59,27 +59,27 @@ echo 'export ANSIBLE_VAULT_PASSWORD_FILE=$HOME/.ansible-vault-pass' >> ~/.zshrc
 # Sanity-check inventory
 ansible-inventory --graph
 ansible all -m ping
-ansible thinkcentre -m ping
+ansible hp-victus -m ping
 
 # Dry-run a playbook
-ansible-playbook playbooks/site.yml --limit thinkcentre --check --diff
+ansible-playbook playbooks/site.yml --limit hp-victus --check --diff
 
 # Apply
-ansible-playbook playbooks/site.yml --limit thinkcentre
+ansible-playbook playbooks/site.yml --limit hp-victus
 
 # Run only a specific role via tags
-ansible-playbook playbooks/site.yml --limit thinkcentre --tags runner
+ansible-playbook playbooks/site.yml --limit hp-victus --tags runner
 ```
 
 ## Phase A scope
 
-- `github-actions-runner-linux` role → `thinkcentre`: registers a self-hosted GitHub Actions runner for `BlackNBrownStudios/platform`.
+- `github-actions-runner-linux` role: registered a self-hosted GitHub Actions runner for `BlackNBrownStudios/platform` on `thinkcentre` (that host was retired 2026-10-12; the role now serves the `platform_ci_runners` group).
 
 Everything else (k3s agent install, macOS launchd, OpenWRT config push, DHCP reservations) is a later phase — see the plan file referenced in `docs/gitops.md`.
 
 ## Run history / scheduled runs
 
-`apps/ansible-runner/` is a Flux-managed CronJob that runs `ansible-playbook --check --diff --limit thinkcentre` daily at 04:00 against this repo's master branch, logging drift without mutating state. Trigger ad-hoc dry-runs with:
+`apps/ansible-runner/` is a Flux-managed CronJob that runs `ansible-playbook --check --diff` daily at 04:00, limited to whichever hosts in its `HOSTS` list answer SSH, against this repo's master branch, logging drift without mutating state. Trigger ad-hoc dry-runs with:
 
 ```bash
 kubectl -n ansible-runner create job --from=cronjob/convergence-check convergence-$(date +%s)

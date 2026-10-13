@@ -6,7 +6,7 @@ Flux-managed in-cluster runner for Ansible playbooks. Replaces Semaphore UI with
 
 | Job | Schedule | Behavior |
 |-----|----------|----------|
-| `convergence-check` CronJob | 04:00 daily, America/Los_Angeles | Clones `home-config` at master, runs `ansible-playbook playbooks/site.yml --limit thinkcentre --check --diff`. Logs drift. Does NOT change state. |
+| `convergence-check` CronJob | 04:00 daily, America/Los_Angeles | Clones `home-config` at master, runs `ansible-playbook playbooks/site.yml --check --diff`, limited to the hosts in `HOSTS` (in `cronjob.yaml`) that answer SSH. Logs drift. Does NOT change state. |
 
 The playbook comes straight from git master on every execution — there is no baked-in version. Edit `ansible/` in git, push, next scheduled run picks it up.
 
@@ -43,7 +43,7 @@ kubectl -n ansible-runner get cronjob convergence-check -o yaml \
 ```bash
 cd ~/dev/home/home-config/ansible
 ANSIBLE_VAULT_PASSWORD_FILE=~/.ansible-vault-pass \
-  ansible-playbook playbooks/site.yml --limit thinkcentre
+  ansible-playbook playbooks/site.yml --limit hp-victus
 ```
 
 (The CronJob is convenient for scheduled drift checks; Option B is fine for ad-hoc applies.)
@@ -54,7 +54,7 @@ ANSIBLE_VAULT_PASSWORD_FILE=~/.ansible-vault-pass \
 
 | Key | Purpose |
 |-----|---------|
-| `ssh-privkey` | Dedicated ed25519 keypair for the runner. Public key is in `kblack0610@thinkcentre:~/.ssh/authorized_keys`. |
+| `ssh-privkey` | Dedicated ed25519 keypair for the runner. Public key must be in `~/.ssh/authorized_keys` on every host in `HOSTS` (`cronjob.yaml`). |
 | `ansible-vault-pass` | Decrypts `ansible/group_vars/*/vault.yml`. Same as workstation's `~/.ansible-vault-pass`. |
 
 ### Rotating the SSH key
@@ -63,8 +63,8 @@ ANSIBLE_VAULT_PASSWORD_FILE=~/.ansible-vault-pass \
 # 1. Generate new keypair on workstation
 ssh-keygen -t ed25519 -N '' -C 'ansible-runner@home-k3s' -f /tmp/newkey
 
-# 2. Install pub key on every target host
-cat /tmp/newkey.pub | ssh kblack0610@192.168.1.100 'cat >> ~/.ssh/authorized_keys && sort -u ~/.ssh/authorized_keys -o ~/.ssh/authorized_keys'
+# 2. Install pub key on every target host (repeat per host in HOSTS)
+cat /tmp/newkey.pub | ssh kblack0610@192.168.1.243 'cat >> ~/.ssh/authorized_keys && sort -u ~/.ssh/authorized_keys -o ~/.ssh/authorized_keys'
 
 # 3. Update SOPS secret with new privkey
 sops apps/ansible-runner/secret.yaml     # paste /tmp/newkey contents into ssh-privkey
@@ -99,16 +99,16 @@ flux --context home-k3s reconcile kustomization apps --with-source
 
 ## Verifying drift detection
 
-On thinkcentre, intentionally break the desired state:
+On hp-victus, intentionally break the desired state (the time-sync role keeps timesyncd started):
 
 ```bash
-ssh kblack0610@192.168.1.100 'sudo systemctl stop actions.runner.thinkcentre-linux.service'
+ssh kblack0610@192.168.1.243 'sudo systemctl stop systemd-timesyncd'
 ```
 
 Trigger the Job manually. Expect the log to show `changed=1` or a `--diff` section for the service task. Re-start the service:
 
 ```bash
-ssh kblack0610@192.168.1.100 'sudo systemctl start actions.runner.thinkcentre-linux.service'
+ssh kblack0610@192.168.1.243 'sudo systemctl start systemd-timesyncd'
 ```
 
 Next run: `changed=0` (or 1 for the cosmetic token-fetch task).

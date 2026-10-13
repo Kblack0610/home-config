@@ -1,0 +1,17 @@
+# server.json: client names, group membership, per-client volume and latency.
+# Losing it is not fatal (clients re-register) but every room forgets its name
+# and group, so it lives on a PVC rather than an emptyDir.
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: snapserver-data
+  namespace: snapcast
+  labels:
+    app.kubernetes.io/name: snapserver
+spec:
+  accessModes:
+    - ReadWriteOnce
+  storageClassName: local-path
+  resources:
+    requests:
+      storage: 1Gi

@@ -1,0 +1,33 @@
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: snapweb
+  namespace: snapcast
+  labels:
+    app.kubernetes.io/name: snapserver
+  annotations:
+    kubernetes.io/ingress.class: traefik
+    cert-manager.io/cluster-issuer: letsencrypt-dns
+    # Snapweb has no login and can change every room's stream and volume, so
+    # keep it off public DNS: without this external-dns publishes the host to
+    # the wildcard tunnel (see apps/agents/ingress.yaml for the full why).
+    external-dns.alpha.kubernetes.io/controller: none
+    # With no tunnel path the allowlist sees real LAN sources.
+    traefik.ingress.kubernetes.io/router.middlewares: monitoring-local-network-only@kubernetescrd
+spec:
+  ingressClassName: traefik
+  tls:
+    - hosts:
+        - snapcast.kblab.me
+      secretName: snapweb-tls
+  rules:
+    - host: snapcast.kblab.me
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: snapserver-direct
+                port:
+                  number: 1780

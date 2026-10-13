@@ -60,6 +60,8 @@
 | history-time | History-Time app (PostgreSQL) | active |
 | headscale | Tailscale VPN (self-hosted) | suspended |
 | monitoring | Prometheus / Grafana / AlertManager | active |
+| music-assistant | Music Assistant server (hostNetwork on asus-laptop) | active |
+| snapcast | Snapcast server, whole-house synced audio | active |
 | crowdsec | CrowdSec IPS (LAPI + bouncer) | active |
 | openclaw | OpenClaw gateway and Control UI | active |
 | orcaslicer | 3D printer slicer (OrcaSlicer) | active |
@@ -100,6 +102,8 @@
 | CrowdSec | home-k3s | crowdsec | HelmRelease | active |
 | OpenClaw | home-k3s | openclaw | Deployment | active |
 | OrcaSlicer | home-k3s | orcaslicer | Deployment | active |
+| Snapcast server | home-k3s | snapcast | Deployment | active |
+| Music Assistant | home-k3s | music-assistant | Deployment | active |
 | Kenneth Black Portfolio | home-k3s | portfolio | Deployment | active |
 | BNB Studios | home-k3s | bnb-studios | Deployment | active |
 | kblack.dev | home-k3s | black-dev | Deployment | active |
@@ -163,6 +167,8 @@ Traefik on the local network path behind `192.168.1.124`. All `*.kblab.me` local
 | openclaw.kblab.me | OpenClaw | home-k3s | Traefik Ingress |
 | prometheus.kblab.me | Prometheus | home-k3s | Traefik Ingress |
 | slicer.kblab.me | OrcaSlicer | home-k3s | Traefik Ingress |
+| music.kblab.me | Music Assistant | home-k3s | Traefik Ingress; off public DNS (external-dns controller annotation); MA login |
+| snapcast.kblab.me | Snapweb + Snapcast TCP 1704/1705/4953 | home-k3s | Snapweb via Traefik Ingress, off public DNS; TCP via servicelb LoadBalancer on every node |
 | games.kblab.me | Game servers page (zomboid-control) | home-k3s | Traefik Ingress; asks for a password, because every *.kblab.me host is tunnel-reachable |
 
 ---

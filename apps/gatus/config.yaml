@@ -556,6 +556,16 @@ endpoints:
       - "[STATUS] < 500"
       - "[CERTIFICATE_EXPIRATION] > 720h"
 
+  - name: music.kblab.me
+    group: ingress
+    url: "https://music.kblab.me"
+    interval: 300s
+    client:
+      insecure: true
+    conditions:
+      - "[STATUS] < 500"
+      - "[CERTIFICATE_EXPIRATION] > 720h"
+
   - name: neptune.kblab.me
     group: ingress
     url: "https://neptune.kblab.me"
@@ -689,6 +699,16 @@ endpoints:
   - name: slicer.kblab.me
     group: ingress
     url: "https://slicer.kblab.me"
+    interval: 300s
+    client:
+      insecure: true
+    conditions:
+      - "[STATUS] < 500"
+      - "[CERTIFICATE_EXPIRATION] > 720h"
+
+  - name: snapcast.kblab.me
+    group: ingress
+    url: "https://snapcast.kblab.me"
     interval: 300s
     client:
       insecure: true

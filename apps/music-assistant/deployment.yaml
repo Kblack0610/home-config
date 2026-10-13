@@ -1,0 +1,81 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: music-assistant
+  namespace: music-assistant
+  labels:
+    app.kubernetes.io/name: music-assistant
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate  # single instance with a RWO PVC; also owns host ports
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: music-assistant
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: music-assistant
+    spec:
+      # Upstream makes host (or macvlan) networking mandatory: player discovery
+      # is mDNS/uPnP and AirPlay/Chromecast/DLNA/Sonos open random ports
+      # (https://www.music-assistant.io/installation/). Snapcast alone would work
+      # bridged, but this keeps the supported mode and lets any LAN player and
+      # Spotify Connect work later. The pod is pinned anyway by its local-path
+      # PVC, so pin it explicitly next to Jellyfin (same pattern as apps/nas).
+      hostNetwork: true
+      dnsPolicy: ClusterFirstWithHostNet
+      nodeSelector:
+        kubernetes.io/hostname: asus-laptop
+      containers:
+        - name: music-assistant
+          image: ghcr.io/music-assistant/server:2.10.4
+          env:
+            - name: LOG_LEVEL
+              value: info
+          ports:
+            - name: http
+              containerPort: 8095
+              protocol: TCP
+            # stream server players pull audio from (next free port if taken)
+            - name: stream
+              containerPort: 8097
+              protocol: TCP
+          volumeMounts:
+            - name: data
+              mountPath: /data
+            - name: localtime
+              mountPath: /etc/localtime
+              readOnly: true
+          resources:
+            requests:
+              cpu: "200m"
+              memory: "512Mi"
+            limits:
+              cpu: "4"
+              memory: "3Gi"
+          # /info answers without auth (it is what the HA integration probes).
+          startupProbe:
+            httpGet:
+              path: /info
+              port: 8095
+            periodSeconds: 5
+            failureThreshold: 36
+          readinessProbe:
+            httpGet:
+              path: /info
+              port: 8095
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /info
+              port: 8095
+            periodSeconds: 30
+            failureThreshold: 3
+      volumes:
+        - name: data
+          persistentVolumeClaim:
+            claimName: music-assistant-data
+        - name: localtime
+          hostPath:
+            path: /etc/localtime

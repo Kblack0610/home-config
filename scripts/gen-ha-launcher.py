@@ -81,10 +81,12 @@ NAMESPACE_GROUP = {
     "litellm": "AI",
     "monitoring": "Ops",
     "mqtt2prom": "Ops",
+    "music-assistant": "Media",
     "neptune": "Printing",
     "openclaw": "AI",
     "orcaslicer": "Printing",
     "semaphore": "Ops",
+    "snapcast": "Media",
 }
 
 # Host subdomain -> icon. Fallback is mdi:web (public) or mdi:application (private).
@@ -111,6 +113,7 @@ HOST_ICON = {
     "kblack": "mdi:code-tags",
     "kennethblack": "mdi:account-box",
     "llm": "mdi:robot",
+    "music": "mdi:music",
     "neptune": "mdi:printer-3d",
     "openclaw": "mdi:robot-industrial",
     "photos": "mdi:image",
@@ -118,6 +121,7 @@ HOST_ICON = {
     "placemyparents-api": "mdi:api",
     "prometheus": "mdi:chart-line",
     "slicer": "mdi:printer-3d-nozzle",
+    "snapcast": "mdi:speaker-multiple",
     "status": "mdi:heart-pulse",
 }
 

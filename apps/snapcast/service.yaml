@@ -1,0 +1,54 @@
+# LAN entry point for snapclients and the turntable Pi. k3s servicelb binds
+# these ports on every node, so any node IP works; clients use
+# snapcast.kblab.me, which the AdGuard *.kblab.me rewrite points at a node.
+# LoadBalancer (not NodePort as in apps/mosquitto) keeps the standard ports,
+# so a stock `snapclient -h snapcast.kblab.me` needs no --port flag.
+apiVersion: v1
+kind: Service
+metadata:
+  name: snapserver
+  namespace: snapcast
+  labels:
+    app.kubernetes.io/name: snapserver
+spec:
+  type: LoadBalancer
+  selector:
+    app.kubernetes.io/name: snapserver
+  ports:
+    - name: stream
+      port: 1704
+      targetPort: stream
+      protocol: TCP
+    - name: control
+      port: 1705
+      targetPort: control
+      protocol: TCP
+    - name: turntable
+      port: 4953
+      targetPort: turntable
+      protocol: TCP
+---
+# Headless: resolves straight to the pod IP. Music Assistant needs this, not the
+# Service above: it registers a tcp source on a RANDOM port in 4953-5153 via
+# Stream.AddStream and then pushes audio to <snapserver host>:<that port>, and a
+# Service cannot forward a port range. Also the snapweb backend for the Ingress.
+apiVersion: v1
+kind: Service
+metadata:
+  name: snapserver-direct
+  namespace: snapcast
+  labels:
+    app.kubernetes.io/name: snapserver
+spec:
+  clusterIP: None
+  selector:
+    app.kubernetes.io/name: snapserver
+  ports:
+    - name: control
+      port: 1705
+      targetPort: control
+      protocol: TCP
+    - name: http
+      port: 1780
+      targetPort: http
+      protocol: TCP

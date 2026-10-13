@@ -1545,6 +1545,67 @@ spec:
           volumeMounts:
             - name: config
               mountPath: /config
+        # Seed the Snapcast integration against the in-cluster snapserver
+        # (apps/snapcast). One media_player per snapclient appears once clients
+        # connect; its source select is how a room is put on the Turntable
+        # stream (Music Assistant does not list non-MA streams as sources).
+        # Schema mirrors homeassistant/components/snapcast/config_flow.py:
+        # entry.data = {host, port}, title "Snapcast", VERSION 1. If snapserver
+        # is down at HA boot the entry goes to setup_retry (boot-safe).
+        - name: seed-snapcast
+          image: ghcr.io/home-assistant/home-assistant:2026.9.4
+          command:
+            - python3
+            - -c
+            - |
+              import json, os, uuid
+              from datetime import datetime, timezone
+
+              ENTRIES = "/config/.storage/core.config_entries"
+              DOMAIN = "snapcast"
+              HOST = "snapserver.snapcast.svc.cluster.local"
+              PORT = 1705
+
+              os.makedirs(os.path.dirname(ENTRIES), exist_ok=True)
+              if os.path.exists(ENTRIES):
+                  with open(ENTRIES) as f:
+                      store = json.load(f)
+              else:
+                  store = {"version": 1, "minor_version": 4, "key": "core.config_entries", "data": {"entries": []}}
+              entries = store["data"]["entries"]
+              for e in entries:
+                  e.setdefault("subentries", {})
+
+              for e in entries:
+                  if e.get("domain") == DOMAIN and e.get("data", {}).get("host") == HOST:
+                      print("Snapcast entry already exists, skipping")
+                      exit(0)
+
+              now = datetime.now(timezone.utc).isoformat()
+              entries.append({
+                  "created_at": now,
+                  "data": {"host": HOST, "port": PORT},
+                  "disabled_by": None,
+                  "discovery_keys": {},
+                  "domain": DOMAIN,
+                  "entry_id": uuid.uuid4().hex,
+                  "minor_version": 1,
+                  "modified_at": now,
+                  "options": {},
+                  "pref_disable_new_entities": False,
+                  "pref_disable_polling": False,
+                  "source": "user",
+                  "subentries": {},
+                  "title": "Snapcast",
+                  "unique_id": None,
+                  "version": 1,
+              })
+              with open(ENTRIES, "w") as f:
+                  json.dump(store, f, indent=2)
+              print(f"Seeded Snapcast entry -> {HOST}:{PORT}")
+          volumeMounts:
+            - name: config
+              mountPath: /config
         # Seed a "Binks" Assist pipeline whose conversation engine is the Binks
         # agent (the extended_openai_conversation conversation entity, looked up
         # in the entity registry) and make it the preferred pipeline. Stage 1 is chat-only, so

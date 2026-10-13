@@ -181,12 +181,26 @@ sections:
           action: url
           url_path: https://jellyfin.kblab.me
       - type: tile
+        entity: binary_sensor.music_kblab_me
+        name: Music
+        icon: mdi:music
+        tap_action:
+          action: url
+          url_path: https://music.kblab.me
+      - type: tile
         entity: binary_sensor.photos_kblab_me
         name: Photos
         icon: mdi:image
         tap_action:
           action: url
           url_path: https://photos.kblab.me
+      - type: tile
+        entity: binary_sensor.snapcast_kblab_me
+        name: Snapcast
+        icon: mdi:speaker-multiple
+        tap_action:
+          action: url
+          url_path: https://snapcast.kblab.me
   - type: grid
     cards:
       - type: heading

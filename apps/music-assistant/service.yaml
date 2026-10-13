@@ -1,0 +1,19 @@
+# In-cluster address for the Ingress and for Home Assistant's Music Assistant
+# integration (http://music-assistant.music-assistant.svc.cluster.local:8095).
+# The pod is hostNetwork, so the endpoint is asus-laptop:8095.
+apiVersion: v1
+kind: Service
+metadata:
+  name: music-assistant
+  namespace: music-assistant
+  labels:
+    app.kubernetes.io/name: music-assistant
+spec:
+  type: ClusterIP
+  selector:
+    app.kubernetes.io/name: music-assistant
+  ports:
+    - name: http
+      port: 8095
+      targetPort: 8095
+      protocol: TCP

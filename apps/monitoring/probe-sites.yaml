@@ -50,6 +50,7 @@ spec:
         - https://mem0.kblab.me
         - https://mem0.kennethblack.me
         - https://minio.kblab.me
+        - https://music.kblab.me
         - https://neptune.kblab.me
         - https://notes-sync-bridge.kblab.me
         - https://ntfy.kblab.me
@@ -64,6 +65,7 @@ spec:
         - https://scratch.kblab.me
         - https://ship.blacknbrownstudios.com
         - https://slicer.kblab.me
+        - https://snapcast.kblab.me
         - https://status.kblab.me
         - https://vault.kblab.me
         - https://vikunja.kblab.me

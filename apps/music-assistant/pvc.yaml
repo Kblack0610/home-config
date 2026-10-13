@@ -1,0 +1,15 @@
+# /data: settings.json (providers, players, the admin user), library db, cache.
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: music-assistant-data
+  namespace: music-assistant
+  labels:
+    app.kubernetes.io/name: music-assistant
+spec:
+  accessModes:
+    - ReadWriteOnce
+  storageClassName: local-path
+  resources:
+    requests:
+      storage: 5Gi

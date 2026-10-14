@@ -47,11 +47,7 @@ $EDITOR group_vars/linux_bare_metal/vault.yml       # fill in real values
 ansible-vault encrypt group_vars/linux_bare_metal/vault.yml
 ```
 
-Configure the default vault password file:
-
-```bash
-echo 'export ANSIBLE_VAULT_PASSWORD_FILE=$HOME/.ansible-vault-pass' >> ~/.zshrc
-```
+`ansible.cfg` sets `vault_password_file = ~/.ansible-vault-pass`, so every `ansible-playbook` run from this directory decrypts the vaults with no extra flag or shell export. `ANSIBLE_VAULT_PASSWORD_FILE` still overrides it; the in-cluster ansible-runner uses that to point at its mounted Secret.
 
 ## Common commands
 

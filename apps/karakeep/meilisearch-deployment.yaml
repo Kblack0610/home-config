@@ -47,19 +47,25 @@ spec:
             limits:
               memory: "1Gi"
               cpu: "1000m"
+          # /health answers 408 under load on a busy node; the 1s default timeout made the
+          # liveness probe kill a healthy process (43 restarts by 2026-10-14). Liveness only
+          # restarts after ~5 minutes of no answer; readiness takes it out of service sooner.
           livenessProbe:
             httpGet:
               path: /health
               port: 7700
             initialDelaySeconds: 30
             periodSeconds: 30
-            failureThreshold: 3
+            timeoutSeconds: 10
+            failureThreshold: 10
           readinessProbe:
             httpGet:
               path: /health
               port: 7700
             initialDelaySeconds: 10
             periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 3
       volumes:
         - name: data
           persistentVolumeClaim:

@@ -10,3 +10,5 @@ resources:
   - deployment.yaml
   - service.yaml
   - ingress.yaml
+  - backup-cronjob.yaml
+  - backup-nas-secret.yaml

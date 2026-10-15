@@ -23,6 +23,7 @@ configMapGenerator:
   - name: litellm-config
     files:
       - config.yaml
+      - gemini_tool_schema.py
     options:
       labels:
         app.kubernetes.io/name: litellm

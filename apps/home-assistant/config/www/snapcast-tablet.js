@@ -28,6 +28,9 @@ const RECONNECT_BASE_MS = 1000;
 const RECONNECT_MAX_MS = 30000;
 
 const LOG = "[snapcast-tablet]";
+// Playback stats cadence into the HA log after a stream starts (diagnostics).
+const STATS_INTERVAL_MS = 10000;
+const STATS_REPORTS = 6;
 
 function satelliteEntity() {
   try {
@@ -522,6 +525,8 @@ class SnapcastTabletClient {
     this.audioBuffers = [];
     this.freeBuffers = [];
     this.lastError = null;
+    this.stats = { scheduled: 0, audible: 0 };
+    this.statsHandle = null;
 
     window.addEventListener("online", () => this.reconnectNow());
   }
@@ -644,8 +649,12 @@ class SnapcastTabletClient {
       this.ctx.onstatechange = () => console.info(LOG, `AudioContext ${this.ctx.state}`);
     }
     this.ctx.resume().then(() => {
+      window.__snapcastTabletDiag?.(`AudioContext after resume: ${this.ctx.state} rate=${this.ctx.sampleRate}`);
       if (this.ctx.state !== "running") this.resumeOnGesture();
-    }, () => this.resumeOnGesture());
+    }, (e) => {
+      window.__snapcastTabletDiag?.(`AudioContext resume rejected: ${e}`);
+      this.resumeOnGesture();
+    });
   }
 
   // Fallback for a browser that blocks autoplay: the first touch or key press
@@ -698,6 +707,8 @@ class SnapcastTabletClient {
       this.stream = new AudioStream(this.timeProvider, this.sampleFormat, this.bufferMs);
       this.latency = (this.ctx.baseLatency || 0) + (this.ctx.outputLatency || 0);
       console.info(LOG, `codec ${codec.codec} ${this.sampleFormat}, output latency ${this.latency.toFixed(3)} s`);
+      window.__snapcastTabletDiag?.(`codec ${codec.codec} ${this.sampleFormat} latency=${this.latency.toFixed(3)}s volume=${this.serverSettings ? this.serverSettings.volumePercent : "?"} muted=${this.serverSettings ? this.serverSettings.muted : "?"}`);
+      this.statsStart();
       this.play();
     } else if (type === 2) {
       if (!this.decoder || !this.stream) return;
@@ -732,6 +743,23 @@ class SnapcastTabletClient {
     for (let i = 0; i < this.audioBufferCount; ++i) this.playNext();
   }
 
+  // Playback stats into the HA log for the first minute of a stream, so a silent
+  // panel can be told apart: no chunks arriving, all-silent buffers (clock
+  // sync), or a suspended AudioContext. One cadence, bounded by a count.
+  statsStart() {
+    this.stats = { scheduled: 0, audible: 0 };
+    if (this.statsHandle) clearInterval(this.statsHandle);
+    let reports = 0;
+    this.statsHandle = setInterval(() => {
+      window.__snapcastTabletDiag?.(`stats ctx=${this.ctx ? this.ctx.state : "none"} scheduled=${this.stats.scheduled} audible=${this.stats.audible} queued=${this.stream ? this.stream.chunks.length : 0} clockOffsetMs=${this.timeProvider.diff} gain=${this.gainNode ? this.gainNode.gain.value : "?"} lastError=${this.lastError}`);
+      this.stats = { scheduled: 0, audible: 0 };
+      if (++reports >= STATS_REPORTS) {
+        clearInterval(this.statsHandle);
+        this.statsHandle = null;
+      }
+    }, STATS_INTERVAL_MS);
+  }
+
   // Each scheduled buffer queues the next one when it ends, so audio is driven
   // by the AudioContext clock rather than a timer.
   playNext() {
@@ -739,6 +767,14 @@ class SnapcastTabletClient {
     const buffer = this.freeBuffers.pop() || this.ctx.createBuffer(this.sampleFormat.channels, this.bufferFrameCount, this.sampleFormat.rate);
     const playTimeMs = (this.playTime + this.latency) * 1000 - this.bufferMs;
     this.stream.getNextBuffer(buffer, playTimeMs);
+    this.stats.scheduled++;
+    const ch = buffer.getChannelData(0);
+    for (let i = 0; i < ch.length; i += 97) {
+      if (ch[i] !== 0) {
+        this.stats.audible++;
+        break;
+      }
+    }
     const source = this.ctx.createBufferSource();
     source.buffer = buffer;
     source.connect(this.gainNode);

@@ -546,6 +546,7 @@ class SnapcastTabletClient {
     this.socket = socket;
     socket.binaryType = "arraybuffer";
     socket.onopen = () => {
+      window.__snapcastTabletDiag?.(`socket open ${this.url}`);
       console.info(LOG, `connected to ${this.url} as ${this.hostId}`);
       this.reconnectDelayMs = RECONNECT_BASE_MS;
       this.lastMessageAt = performance.now();
@@ -576,6 +577,7 @@ class SnapcastTabletClient {
     };
     socket.onerror = () => {
       this.lastError = `websocket error on ${this.url}`;
+      window.__snapcastTabletDiag?.(this.lastError);
     };
     socket.onclose = () => {
       if (this.socket !== socket) return;
@@ -652,6 +654,7 @@ class SnapcastTabletClient {
     if (this.waitingForGesture) return;
     this.waitingForGesture = true;
     this.lastError = "autoplay blocked, waiting for a touch";
+    window.__snapcastTabletDiag?.(this.lastError);
     console.warn(LOG, this.lastError);
     const unlock = () => {
       this.ctx.resume();
@@ -762,7 +765,44 @@ export async function startSnapcastClient({ hostId, hostName = hostId, url = SNA
   return client;
 }
 
-const room = ROOMS[satelliteEntity()];
+// Diagnostics into HA's system log (Settings > System > Logs, logger
+// snapcast_tablet), because a mounted kiosk tablet has no reachable devtools.
+// The hass object is attached to <home-assistant> after this module runs and
+// there is no event for it, so poll for it on one bounded cadence.
+const DIAG_POLL_MS = 1000;
+const DIAG_POLL_MAX = 60;
+const diagQueue = [];
+let diagPolls = 0;
+function diagFlush() {
+  const hass = document.querySelector("home-assistant")?.hass;
+  if (!hass) {
+    if (diagPolls++ < DIAG_POLL_MAX) setTimeout(diagFlush, DIAG_POLL_MS);
+    return;
+  }
+  while (diagQueue.length) {
+    hass
+      .callService("system_log", "write", { message: `${LOG} ${diagQueue.shift()}`, level: "warning", logger: "snapcast_tablet" })
+      .catch(() => {});
+  }
+}
+function diag(msg) {
+  console.info(LOG, msg);
+  diagQueue.push(msg);
+  if (diagQueue.length === 1) diagFlush();
+}
+window.__snapcastTabletDiag = diag;
+
+let rawKeys = "";
+try {
+  rawKeys = `vs-satellite-entity=${localStorage.getItem("vs-satellite-entity")} vs-panel-config=${localStorage.getItem("vs-panel-config") ? "set" : "unset"}`;
+} catch (e) {
+  rawKeys = `localStorage error ${e}`;
+}
+const satellite = satelliteEntity();
+const room = ROOMS[satellite];
+if (satellite || location.search.includes("kiosk")) diag(`loaded: path=${location.pathname} satellite=${satellite} room=${room || "none"} ${rawKeys} ua=${navigator.userAgent.slice(0, 80)}`);
 if (room) {
-  startSnapcastClient({ hostId: room }).catch((e) => console.error(LOG, "not started:", e));
+  startSnapcastClient({ hostId: room })
+    .then((c) => diag(`started ${room}: ${JSON.stringify(c.status())}`))
+    .catch((e) => diag(`not started: ${e}`));
 }

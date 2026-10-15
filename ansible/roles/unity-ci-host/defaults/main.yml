@@ -19,12 +19,17 @@ unity_ci_user_home: /var/lib/actions-runner
 # host is one machine (one activation) to Unity whatever its slot count.
 unity_ci_machine_id_file: "{{ unity_ci_user_home }}/unity-machine-id"
 
-# The asset-library has no remote; the game manifests name it by its path on the
-# workstation, and the jobs mount this copy there read-only. Only Packages/ is
-# copied. Re-run the play (--tags unity-ci) after the library's packages change;
-# a fingerprint of the tree skips the copy when nothing did.
-unity_ci_asset_library_source: /home/kblack0610/dev/bnb/games/engine/asset-library
-unity_ci_asset_library: "{{ unity_ci_user_home }}/asset-library"
+# The art libraries the game manifests name by their paths on the workstation:
+# asset-library (no remote) and asset-library-hd (Forgejo, LFS; the HD venues).
+# Each is copied to <unity_ci_user_home>/<name>, and the jobs mount the copies at
+# those workstation paths read-only (UNITY_LIBRARY_ROOT in the playground's
+# workflow). Only Packages/ is copied. Re-run the play (--tags unity-ci) after a
+# library's packages change; a fingerprint of the tree skips an unchanged copy.
+unity_ci_asset_libraries:
+  - name: asset-library
+    source: /home/kblack0610/dev/bnb/games/engine/asset-library
+  - name: asset-library-hd
+    source: /home/kblack0610/dev/bnb/games/engine/asset-library-hd
 
 # Editor images the jobs build on. Pulling these on the LAN fails (the IPv6 path
 # corrupts long downloads), so a missing one is copied from the workstation's

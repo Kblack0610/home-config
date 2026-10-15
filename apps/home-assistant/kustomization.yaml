@@ -63,6 +63,7 @@ configMapGenerator:
       - dashboard_view_settings.yaml=config/dashboards/view_settings.yaml
       - dashboard_phone.yaml=config/dashboards/phone.yaml
       - dashboard_sessions_cards.yaml=config/dashboards/_sessions_cards.yaml
+      - www_snapcast_tablet.js=config/www/snapcast-tablet.js
 
 resources:
   - namespace.yaml

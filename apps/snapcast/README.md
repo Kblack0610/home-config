@@ -12,6 +12,7 @@ Whole-house synced audio. One Snapcast server (`snapserver` 0.35.0) is the singl
 | Snapweb | https://snapcast.kblab.me | LAN only, no login |
 | In-cluster control | `snapserver.snapcast.svc.cluster.local:1705` | Home Assistant Snapcast integration |
 | In-cluster, pod IP | `snapserver-direct.snapcast.svc.cluster.local` | Music Assistant (needs the dynamic ports) |
+| Wall-panel rooms (kitchen) | `wss://snapcast.kblab.me/stream` | browser client inside the HA wall dashboard, see `docs/wall-panels.md` "Snapcast room on a wall panel" |
 
 `snapserver` is a `type: LoadBalancer` Service, so k3s servicelb binds 1704/1705/4953 on every node and any node IP works. `snapcast.kblab.me` resolves on the LAN through the AdGuard `*.kblab.me` rewrite to a node, which is why the same name serves both snapweb (via Traefik on 443) and the raw TCP ports. LoadBalancer rather than a NodePort (as in `apps/mosquitto`) keeps the standard ports, so stock snapclients need no `--port`. Port 1780 is not on the LoadBalancer; snapweb goes through the Ingress so the LAN-only middleware applies.
 

@@ -245,7 +245,7 @@ spec:
             - -c
             - |
               set -u
-              VERSION="2026-09-29-1"
+              VERSION="2026-10-15-1"
               WWW="/config/www/community"
               MARKER="$WWW/.version"
               if [ -f "$MARKER" ] && [ "$(cat "$MARKER")" = "$VERSION" ]; then
@@ -273,6 +273,19 @@ spec:
               # Phase 1.5 — Nest-Hub photo layer: wallpanel (rotating-photo screensaver) + clock-weather hero.
               dl "https://github.com/j-a-n/lovelace-wallpanel/releases/download/v4.65.1/wallpanel.js"              "$WWW/wallpanel/wallpanel.js"
               dl "https://github.com/pkissling/clock-weather-card/releases/download/v2.9.3/clock-weather-card.js"  "$WWW/clock-weather-card/clock-weather-card.js"
+              # libflacjs (MIT): the FLAC decoder snapcast-tablet.js uses, the same
+              # library snapweb bundles. npm tarball, checksum-pinned; only the
+              # wasm build is kept.
+              if wget -q -O /tmp/libflacjs.tgz "https://registry.npmjs.org/libflacjs/-/libflacjs-5.4.0.tgz" \
+                  && echo "c8658c772d35190225656a12e42b1aa524d157d2d22ec8c55874d4227cf808da  /tmp/libflacjs.tgz" | sha256sum -c -s; then
+                tar -xzf /tmp/libflacjs.tgz -C /tmp
+                rm -rf "$WWW/libflacjs"; mkdir -p "$WWW/libflacjs"
+                cp /tmp/package/dist/libflac.min.wasm.js /tmp/package/dist/libflac.min.wasm.wasm "$WWW/libflacjs/"
+                rm -rf /tmp/libflacjs.tgz /tmp/package
+                echo "ok    libflacjs"
+              else
+                echo "WARN  failed: libflacjs"; FAIL=$((FAIL+1))
+              fi
               # browser_mod is a Python custom_component (frontend bundled); install the dir.
               if wget -q -O /tmp/bm.tgz "https://github.com/thomasloven/hass-browser_mod/archive/refs/tags/v3.2.3.tar.gz"; then
                 tar -xzf /tmp/bm.tgz -C /tmp
@@ -395,6 +408,12 @@ spec:
               cp /managed-config/dashboard_view_settings.yaml /config/dashboards/view_settings.yaml
               cp /managed-config/dashboard_phone.yaml /config/dashboards/phone.yaml
               cp /managed-config/dashboard_sessions_cards.yaml /config/dashboards/_sessions_cards.yaml
+
+              # Frontend module served at /local/snapcast-tablet/ (docs/wall-panels.md
+              # "Snapcast room on a wall panel"). The dir holds only git-managed files.
+              rm -rf /config/www/snapcast-tablet
+              mkdir -p /config/www/snapcast-tablet
+              cp /managed-config/www_snapcast_tablet.js /config/www/snapcast-tablet/snapcast-tablet.js
           volumeMounts:
             - name: config
               mountPath: /config

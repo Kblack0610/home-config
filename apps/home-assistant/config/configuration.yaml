@@ -55,6 +55,10 @@ lovelace:
 frontend:
   extra_module_url:
     - /local/community/card-mod/card-mod.js
+    # Snapcast client for wall panels that are a Snapcast room (kitchen). A module,
+    # not a card, so it outlives view changes; a no-op on every other browser.
+    # Bump ?v= on change: the tablets' WebView caches /local.
+    - /local/snapcast-tablet/snapcast-tablet.js?v=1
 
 automation: !include automations.yaml
 script: !include scripts.yaml

@@ -146,6 +146,26 @@ FreeKiosk-specific things matter:
 One-time, in HA (per browser, like browser_mod): open the **Voice Satellite** sidebar panel
 → assign this browser to the **"Wall Kitchen"** satellite. Then say "ok nabu" → Binks.
 
+### Snapcast room on a wall panel
+
+A wall panel with a speaker on its aux jack can be a synced Snapcast room. The kitchen panel is one: it shows up in snapweb and in HA's Snapcast integration as client `kitchen`, and plays whatever stream its group is on, in sync with the other rooms.
+
+How: `apps/home-assistant/config/www/snapcast-tablet.js` is a Snapcast browser client loaded on every HA page through `frontend: extra_module_url`. It starts only on a browser whose Voice Satellite assignment (localStorage `vs-satellite-entity`, set in the Voice Satellite sidebar panel) is listed in its `ROOMS` table, so phones and desktops load it and do nothing. It connects to `wss://snapcast.kblab.me/stream` with hostID and host name set to the room name. FLAC is decoded with libflacjs 5.4.0, vendored by the `install-lovelace-cards` init container into `/local/community/libflacjs/`.
+
+Why this shape:
+
+- A module, not a card: HA is a single-page app, so a card is unmounted on every view change, and the wallpanel screensaver is an overlay. The module is evaluated once per page load and keeps running until the page reloads.
+- Not an iframe of snapweb: snapweb's player registers as "Snapweb client" under a random id kept in snapcast.kblab.me's localStorage, which the HA page cannot set, so the room could not be named. It also starts only from a click on its play button.
+- The code is a port of snapweb v0.9.2 `src/snapstream.ts` (the version the snapserver image ships), not a rewrite. Changes from upstream: native AudioContext instead of the standardized-audio-context ponyfill; FLAC and PCM only (the server codec is flac); the clock-offset median sorts numerically (upstream sorts strings); buffers are stopped on disconnect (upstream stacks another set of buffer chains on every reconnect); a link that goes silent for 5 s without a TCP close is closed and reconnected, with backoff from 1 s to 30 s and an immediate retry on the browser `online` event.
+- Autoplay: FreeKiosk's WebView sets `mediaPlaybackRequiresUserAction={false}` (`src/components/WebViewComponent.tsx`), the same reason the satellite's TTS plays untouched, so the AudioContext starts without a tap. If a browser blocks it anyway, the first touch on the page starts it.
+- Cross-origin: browsers do not apply CORS to WebSockets and snapserver does not check `Origin`, so `hass.kblab.me` talking to `snapcast.kblab.me` needs no ingress change. Both are https/wss, so there is no mixed content. HA sends no Content-Security-Policy.
+
+Add a room: add `"assist_satellite.<panel>": "<room>"` to `ROOMS`, bump the `?v=` on the `extra_module_url` line in `configuration.yaml`, deploy, and reload the panel. Pick the room's stream and volume in snapweb or with the HA `media_player` for that client.
+
+Debug: in the panel's WebView console, `window.__snapcastTablet.status()` shows the socket, AudioContext state, sample format, volume, clock offset and last error. Log lines are prefixed `[snapcast-tablet]`. From any LAN machine: `curl -s https://snapcast.kblab.me/jsonrpc -d '{"id":1,"jsonrpc":"2.0","method":"Server.GetStatus"}' | jq '.result.server.groups[] | {stream_id, clients: [.clients[] | {id, connected}]}'`.
+
+---
+
 ## 3. Per-tablet identity (browser_mod)
 Each tablet registers with browser_mod under a stable Browser ID by adding it to the URL once:
 `…/wall-panels/home?kiosk&BrowserID=wall-kitchen` (e.g. `wall-kitchen`, `wall-bedroom`).

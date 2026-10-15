@@ -115,7 +115,7 @@ Health endpoints used by the deployment:
 
 Once `general_settings.database_url` is set, virtual keys, per-key budgets, and spend logs move from sqlite (`/app/data/litellm.db`) to the `litellm` database in `postgres.databases.svc.cluster.local`. The current `backup-cronjob.yaml` only protects `/app/data` and so no longer captures the load-bearing data.
 
-`apps/postgres/` does not yet have a backup CronJob (see `apps/postgres/README.md`'s "Backup: Not yet wired"). The PVC + backup CronJob in this directory are kept as a no-op placeholder until that gap is closed; deleting them would mean zero protection for the new key/spend store. Follow-up: add `apps/postgres/backup-cronjob.yaml` (`pg_dump` → NAS), then drop `pvc.yaml`, `backup-cronjob.yaml`, and `backup-nas-secret.yaml` from this directory.
+`apps/postgres/` does not yet have a backup CronJob (see `apps/postgres/README.md`'s "Backup: Not yet wired"). The PVC + backup CronJob in this directory are kept as a no-op placeholder until that gap is closed (the Deployment no longer mounts the PVC: a local-path PV pins its pod to one node); deleting them would mean zero protection for the new key/spend store. Follow-up: add `apps/postgres/backup-cronjob.yaml` (`pg_dump` → NAS), then drop `pvc.yaml`, `backup-cronjob.yaml`, and `backup-nas-secret.yaml` from this directory.
 
 ## Related Docs
 

@@ -59,8 +59,6 @@ spec:
             - name: config
               mountPath: /etc/litellm/config.yaml
               subPath: config.yaml
-            - name: data
-              mountPath: /app/data
             - name: localtime
               mountPath: /etc/localtime
               readOnly: true
@@ -92,9 +90,9 @@ spec:
         - name: config
           configMap:
             name: litellm-config
-        - name: data
-          persistentVolumeClaim:
-            claimName: litellm-data
+        # No `litellm-data` volume: keys, spend and budgets live in Postgres (DATABASE_URL) and the
+        # PVC is empty. Mounting it pinned the pod to the local-path PV's node, so one Pi losing
+        # its container runtime (2026-10-14) took the whole gateway down for 12h+.
         - name: localtime
           hostPath:
             path: /etc/localtime

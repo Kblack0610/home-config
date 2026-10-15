@@ -90,75 +90,14 @@
   args:
     creates: "{{ unity_ci_machine_id_file }}"
 
-# asset-library copy. The fingerprint covers every file's path, size and mtime
-# under Packages/; it runs on the control node, which is the workstation that
-# holds the library. Skipped where there is no source (the in-cluster drift run).
-- name: Fingerprint the workstation's asset-library packages
-  ansible.builtin.shell: >-
-    set -o pipefail &&
-    cd {{ unity_ci_asset_library_source }} &&
-    find Packages -type f -printf '%P %s %T@\n' | sort | sha256sum | cut -d' ' -f1
-  args:
-    executable: /bin/bash
-  delegate_to: localhost
-  become: false
-  run_once: true
-  changed_when: false
-  failed_when: false
-  check_mode: false
-  register: _unity_ci_library_source
-
-- name: Read the copy's fingerprint
-  ansible.builtin.command: cat {{ unity_ci_asset_library }}/.fingerprint
-  changed_when: false
-  failed_when: false
-  check_mode: false
-  register: _unity_ci_library_copy
-
-- name: Copy the asset-library when it changed
-  when:
-    - _unity_ci_library_source.rc == 0
-    - _unity_ci_library_source.stdout != _unity_ci_library_copy.stdout
-  block:
-    - name: Pack the library's Packages/ on the workstation
-      community.general.archive:
-        path: "{{ unity_ci_asset_library_source }}/Packages"
-        dest: /tmp/unity-ci-asset-library.tar
-        format: tar
-        mode: "0600"
-      delegate_to: localhost
-      become: false
-
-    # Removed first so a package deleted from the library leaves the copy too.
-    - name: Remove the old copy
-      ansible.builtin.file:
-        path: "{{ unity_ci_asset_library }}"
-        state: absent
-
-    - name: Create the copy's directory
-      ansible.builtin.file:
-        path: "{{ unity_ci_asset_library }}"
-        state: directory
-        owner: "{{ unity_ci_user }}"
-        group: "{{ unity_ci_group }}"
-        mode: "0755"
-
-    - name: Unpack the library on the host
-      ansible.builtin.unarchive:
-        src: /tmp/unity-ci-asset-library.tar
-        dest: "{{ unity_ci_asset_library }}"
-        owner: "{{ unity_ci_user }}"
-        group: "{{ unity_ci_group }}"
-      # In --check the pack above is simulated, so there is no tarball to read.
-      when: not ansible_check_mode
-
-    - name: Record the copy's fingerprint
-      ansible.builtin.copy:
-        content: "{{ _unity_ci_library_source.stdout }}"
-        dest: "{{ unity_ci_asset_library }}/.fingerprint"
-        owner: "{{ unity_ci_user }}"
-        group: "{{ unity_ci_group }}"
-        mode: "0644"
+# Art library copies (asset-library, asset-library-hd), one folder each under the
+# runner's home: tasks/library.yml, once per entry of unity_ci_asset_libraries.
+- name: Copy the art libraries
+  ansible.builtin.include_tasks: library.yml
+  loop: "{{ unity_ci_asset_libraries }}"
+  loop_control:
+    loop_var: library
+    label: "{{ library.name }}"
 
 # Editor images: load a missing one from the workstation's docker. The host's own
 # connection details are read here, before the copy is delegated to localhost,

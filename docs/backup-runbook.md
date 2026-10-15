@@ -115,6 +115,7 @@ Note: `nofail` means an unplugged drive never blocks boot. The `immich-originals
 | Check recent backup jobs | `kubectl --context home-k3s get jobs -A --sort-by=.status.startTime | grep backup | tail -5` |
 | Restore Home Assistant | See `Restore Home Assistant` |
 | Restore LiteLLM | See `Restore LiteLLM` |
+| Restore Music Assistant | `apps/music-assistant/README.md` -> Backup and rebuild |
 | Recover the SOPS Age key | See `Restore SOPS Age Key` |
 
 ## Architecture
@@ -131,6 +132,7 @@ K3s app backups run on schedule via CronJobs. Each backup writes a local archive
 |---------|----------|-----------|--------|
 | `home-assistant-backup` | Daily 2 AM | `home-assistant` | NAS `home-k3s/home-assistant/` |
 | `litellm-backup` | Daily 2 AM | `ai-gateway` | NAS `home-k3s/litellm/` (**COVERS NOTHING** - see Known gaps) |
+| `music-assistant-backup` | Daily 2:30 AM | `music-assistant` | `/var/backups/music-assistant` + NAS `home-k3s/music-assistant/` |
 | `actual-budget-backup` | Daily 3 AM | `actual-budget` | `/var/backups/actual-budget` + NAS `home-k3s/actual-budget/` |
 | `forgejo-backup` | Daily 3 AM | `forgejo` | asus-laptop `/mnt/backups/forgejo` (2nd disk; off-box copy is the separate job below) |
 | `immich-backup` | Daily 3 AM | `immich` | `/var/backups/immich` + NAS `home-k3s/immich/` (DB only) |
@@ -189,6 +191,9 @@ kubectl --context home-k3s create job --from=cronjob/actual-budget-backup manual
 
 # LiteLLM
 kubectl --context home-k3s create job --from=cronjob/litellm-backup manual-backup-$(date +%s) -n ai-gateway
+
+# Music Assistant
+kubectl --context home-k3s create job --from=cronjob/music-assistant-backup manual-backup-$(date +%s) -n music-assistant
 
 # Immich DB dump (runs first)
 kubectl --context home-k3s create job --from=cronjob/immich-backup manual-backup-$(date +%s) -n immich

@@ -15,6 +15,7 @@ resources:
   - prometheus-rules-trivy.yaml
   - prometheus-rules-dns.yaml
   - prometheus-rules-forgejo-mirrors.yaml
+  - prometheus-rules-command-center.yaml
   - probe-sites.yaml
   - probe-dns.yaml
   - external-mac-nodes.yaml

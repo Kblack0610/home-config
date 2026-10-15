@@ -146,6 +146,10 @@ grafana:
   # as GF_AUTH_GENERIC_OAUTH_CLIENT_ID / _SECRET, which Grafana reads natively.
   envFromSecret: grafana-forgejo-oauth
   grafana.ini:
+    # The Command Center is the landing page. The dashboards sidecar writes every
+    # grafana_dashboard ConfigMap into /tmp/dashboards/<file>.
+    dashboards:
+      default_home_dashboard_path: /tmp/dashboards/command-center.json
     server:
       # Without it Grafana builds the OAuth redirect from localhost:3000.
       root_url: https://grafana.kblab.me

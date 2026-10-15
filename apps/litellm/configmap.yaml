@@ -640,6 +640,11 @@ data:
       # unreachable from outside: ingress-metrics-deny.yaml 403s /metrics on llm.kblab.me,
       # so only in-cluster Prometheus (ServiceMonitor -> Service) can read it.
       require_auth_for_metrics_endpoint: false
+      # Emit team/key budget gauges from the DB on a cron, not only after a request. The
+      # Command Center spend tiles read litellm_team_max_budget_metric and
+      # litellm_remaining_team_budget_metric{team_alias="lazer-pool"}, which are otherwise
+      # absent after every restart until that team next sends traffic.
+      prometheus_initialize_budget_metrics: true
 
     general_settings:
       master_key: os.environ/LITELLM_MASTER_KEY

@@ -1,0 +1,170 @@
+# Command Center: ONE judgement per domain, read by every renderer.
+#
+# The Grafana "Command Center" dashboard and the hub tmux board (dotfiles
+# .local/src/tmux/command-center.sh) both draw these series and compute nothing
+# themselves, so the two can never disagree about what is red.
+#
+#   cc:component_status{domain,component}  0 ok, 1 warn, 2 red, one row per input
+#   cc:domain_status{domain}               worst component in the domain
+#   cc:overall_status                       worst domain
+#   cc:<name>                               the numbers the tiles print
+#
+# Status comes from sentinel watches where one exists (they are the curated alarms that
+# already page), and from metrics where none does (nodes, heartbeats, runner pools).
+# Watch and runner state arrive via agent-mqtt-publish -> mosquitto -> mqtt2prom as
+# mqtt_tripped / mqtt_stale / mqtt_failed / mqtt_running{topic="agents_<host>_<kind>_<name>"}.
+#
+# Each component is `(red-case > 0) or (warn-case > 0) or vector(0)`: the comparison
+# drops a zero-valued series so `or` falls through to the next case, and vector(0)
+# keeps the row present when its inputs are absent.
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: command-center
+  namespace: monitoring
+  labels:
+    app.kubernetes.io/name: command-center
+    app.kubernetes.io/part-of: monitoring
+    release: kube-prometheus-stack
+spec:
+  groups:
+    - name: command-center.components
+      interval: 1m
+      rules:
+        # sentinel watches for k3s: tripped -> 2, not polled in 3x interval -> 1
+        - record: cc:component_status
+          labels: {domain: k3s, component: watches}
+          expr: >-
+            (max(mqtt_tripped{topic=~"agents_.+_watch_(home_k3s_.+|cluster_janitor_alive)"}) * 2 > 0) or (max(mqtt_stale{topic=~"agents_.+_watch_(home_k3s_.+|cluster_janitor_alive)"}) > 0) or vector(0)
+        # sentinel watches for prod: tripped -> 2, not polled in 3x interval -> 1
+        - record: cc:component_status
+          labels: {domain: prod, component: watches}
+          expr: >-
+            (max(mqtt_tripped{topic=~"agents_.+_watch_(pmp_.+|prod_mercury_payouts|posthog_prod_guard)"}) * 2 > 0) or (max(mqtt_stale{topic=~"agents_.+_watch_(pmp_.+|prod_mercury_payouts|posthog_prod_guard)"}) > 0) or vector(0)
+        # sentinel watches for llm: tripped -> 2, not polled in 3x interval -> 1
+        - record: cc:component_status
+          labels: {domain: llm, component: watches}
+          expr: >-
+            (max(mqtt_tripped{topic=~"agents_.+_watch_(mac_studio_mlx)"}) * 2 > 0) or (max(mqtt_stale{topic=~"agents_.+_watch_(mac_studio_mlx)"}) > 0) or vector(0)
+        # sentinel watches for ci: tripped -> 2, not polled in 3x interval -> 1
+        - record: cc:component_status
+          labels: {domain: ci, component: watches}
+          expr: >-
+            (max(mqtt_tripped{topic=~"agents_.+_watch_(.+_runners?_online)"}) * 2 > 0) or (max(mqtt_stale{topic=~"agents_.+_watch_(.+_runners?_online)"}) > 0) or vector(0)
+        # sentinel watches for spend: tripped -> 1, not polled in 3x interval -> 1
+        - record: cc:component_status
+          labels: {domain: spend, component: watches}
+          expr: >-
+            (max(mqtt_tripped{topic=~"agents_.+_watch_(lazer_pool_pace|gh_actions_budget_pace)"}) * 1 > 0) or (max(mqtt_stale{topic=~"agents_.+_watch_(lazer_pool_pace|gh_actions_budget_pace)"}) > 0) or vector(0)
+        # sentinel watches for platform: tripped -> 1, not polled in 3x interval -> 1
+        - record: cc:component_status
+          labels: {domain: platform, component: watches}
+          expr: >-
+            (max(mqtt_tripped{topic=~"agents_.+_watch_(skill_drift|mem0_search_path|deploy_drift|fleet_liveness)"}) * 1 > 0) or (max(mqtt_stale{topic=~"agents_.+_watch_(skill_drift|mem0_search_path|deploy_drift|fleet_liveness)"}) > 0) or vector(0)
+        # a watch no domain above claims still counts, so a new manifest is never invisible here
+        - record: cc:component_status
+          labels: {domain: other, component: watches}
+          expr: >-
+            (max(mqtt_tripped{topic=~"agents_.+_watch_.+",topic!~"agents_.+_watch_((?:home_k3s_.+|cluster_janitor_alive)|(?:pmp_.+|prod_mercury_payouts|posthog_prod_guard)|(?:mac_studio_mlx)|(?:.+_runners?_online)|(?:lazer_pool_pace|gh_actions_budget_pace)|(?:skill_drift|mem0_search_path|deploy_drift|fleet_liveness))"}) * 2 > 0) or (max(mqtt_stale{topic=~"agents_.+_watch_.+",topic!~"agents_.+_watch_((?:home_k3s_.+|cluster_janitor_alive)|(?:pmp_.+|prod_mercury_payouts|posthog_prod_guard)|(?:mac_studio_mlx)|(?:.+_runners?_online)|(?:lazer_pool_pace|gh_actions_budget_pace)|(?:skill_drift|mem0_search_path|deploy_drift|fleet_liveness))"}) > 0) or vector(0)
+        # any NotReady node -> 1 (the home_k3s_node_ready watch already makes it 2)
+        - record: cc:component_status
+          labels: {domain: k3s, component: nodes}
+          expr: >-
+            clamp_max(count(kube_node_status_condition{condition="Ready",status="true"} == 0), 1) or vector(0)
+        # a k3s box missing heartbeats -> 2; any other machine, or the exporter blind -> 1
+        - record: cc:component_status
+          labels: {domain: machines, component: heartbeats}
+          expr: >-
+            (clamp_max(count(fleet_machine_up{group="k3s"} == 0), 1) * 2) or clamp_max(count(fleet_machine_up == 0), 1) or clamp_max(count(fleet_exporter_gatus_reachable == 0), 1) or vector(0)
+        # LiteLLM itself not scrapeable -> 2
+        - record: cc:component_status
+          labels: {domain: llm, component: gateway}
+          expr: >-
+            (clamp_max(count(up{job="litellm"} == 0), 1) * 2) or (absent(up{job="litellm"}) * 2) or vector(0)
+        # any runner pool below its expected size -> 1
+        - record: cc:component_status
+          labels: {domain: ci, component: pools}
+          expr: >-
+            clamp_max(count(max by (pool) (github_runner_pool_online) < max by (pool) (github_runner_pool_expected)), 1) or vector(0)
+        # any agentctl runner in error or whose last run STALLED -> 1
+        - record: cc:component_status
+          labels: {domain: agents, component: runners}
+          expr: >-
+            clamp_max(count(mqtt_failed{topic=~"agents_.+_runner_.+"} == 1), 1) or vector(0)
+        # agent-mqtt-publish republishes every 5 min; nothing in 20 min means every agent and watch number is frozen -> 1
+        - record: cc:component_status
+          labels: {domain: agents, component: feed}
+          expr: >-
+            clamp_max(count(changes(mqtt_message_total{topic=~"agents_.+_summary_asks_open"}[20m]) == 0), 1) or (absent(mqtt_message_total{topic=~"agents_.+_summary_asks_open"})) or vector(0)
+        # Lazer allowance: under 25% left -> 1, under 10% -> 2
+        - record: cc:component_status
+          labels: {domain: spend, component: lazer}
+          expr: >-
+            ((max(litellm_remaining_team_budget_metric{team_alias="lazer-pool"} / litellm_team_max_budget_metric{team_alias="lazer-pool"}) < bool 0.10) + (max(litellm_remaining_team_budget_metric{team_alias="lazer-pool"} / litellm_team_max_budget_metric{team_alias="lazer-pool"}) < bool 0.25)) or vector(0)
+    - name: command-center.rollup
+      interval: 1m
+      rules:
+        - record: cc:domain_status
+          expr: max by (domain) (cc:component_status)
+        - record: cc:overall_status
+          expr: max(cc:domain_status)
+    - name: command-center.numbers
+      interval: 1m
+      rules:
+        - record: cc:k3s_nodes_ready
+          expr: >-
+            sum(kube_node_status_condition{condition="Ready",status="true"})
+        - record: cc:k3s_nodes_total
+          expr: >-
+            count(kube_node_status_condition{condition="Ready",status="true"})
+        - record: cc:machines_up
+          expr: >-
+            sum(fleet_machine_up)
+        - record: cc:machines_total
+          expr: >-
+            max(fleet_roster_size)
+        - record: cc:watches_total
+          expr: >-
+            count(mqtt_tripped{topic=~"agents_.+_watch_.+"})
+        - record: cc:watches_tripped
+          expr: >-
+            sum(mqtt_tripped{topic=~"agents_.+_watch_.+"})
+        - record: cc:watches_stale
+          expr: >-
+            sum(mqtt_stale{topic=~"agents_.+_watch_.+"})
+        - record: cc:runners_total
+          expr: >-
+            count(mqtt_failed{topic=~"agents_.+_runner_.+"})
+        - record: cc:runners_failed
+          expr: >-
+            sum(mqtt_failed{topic=~"agents_.+_runner_.+"})
+        - record: cc:runners_running
+          expr: >-
+            sum(mqtt_running{topic=~"agents_.+_runner_.+"})
+        - record: cc:asks_open
+          expr: >-
+            max(mqtt_state{topic=~"agents_.+_summary_asks_open"})
+        - record: cc:sessions_total
+          expr: >-
+            sum(mqtt_state{topic=~"agents_.+_summary_sessions"})
+        - record: cc:sessions_working
+          expr: >-
+            sum(mqtt_working{topic=~"agents_.+_summary_sessions"})
+        - record: cc:sessions_attention
+          expr: >-
+            sum(mqtt_attention{topic=~"agents_.+_summary_sessions"})
+        - record: cc:ci_online
+          expr: >-
+            sum(max by (pool) (github_runner_pool_online))
+        - record: cc:ci_expected
+          expr: >-
+            sum(max by (pool) (github_runner_pool_expected))
+        - record: cc:lazer_budget_usd
+          expr: >-
+            max(litellm_team_max_budget_metric{team_alias="lazer-pool"})
+        - record: cc:lazer_spend_usd
+          expr: >-
+            max(litellm_team_max_budget_metric{team_alias="lazer-pool"}) - max(litellm_remaining_team_budget_metric{team_alias="lazer-pool"})
+        - record: cc:claude_code_cost_24h_usd
+          expr: >-
+            sum(increase(claude_code_cost_usage_USD_total[24h]))

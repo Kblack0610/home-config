@@ -39,3 +39,6 @@ configMapGenerator:
   - name: grafana-dashboard-ci-runners
     files:
       - ci-runners.json
+  - name: grafana-dashboard-command-center
+    files:
+      - command-center.json

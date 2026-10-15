@@ -143,6 +143,8 @@ FreeKiosk-specific things matter:
   screensaver OFF (or Dim-Only)** on a voice panel. (This is why the in-dashboard wallpanel
   photo screensaver is fine but an OS/screen-off screensaver is not.)
 
+**Talk button and on-screen answers.** The Home view and the screensaver column carry a **Talk to Binks** button (`dashboards/_talk_card.yaml`). It calls `voice_satellite.wake` on the satellite this browser is bound to, read from the card's own localStorage key `vs-satellite-entity`, so one dashboard file serves every room; a browser with no room assigned shows no button. Replies stay on screen for 15 s after speech ends (`finish_delay`, pinned in `voice_satellite_binks.yaml`); double tap or "stop" dismisses early.
+
 One-time, in HA (per browser, like browser_mod): open the **Voice Satellite** sidebar panel
 → assign this browser to the **"Wall Kitchen"** satellite. Then say "ok nabu" → Binks.
 

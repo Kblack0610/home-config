@@ -25,7 +25,7 @@ and config entries are written by idempotent `seed-*` init containers (see
 
 - **HA is the `stable` container in k3s (2025.11.x), not HA OS** → no add-ons; every
   helper service is a plain container wired by config.
-- **Conversation agent = `jekalmin/extended_openai_conversation` pinned to `1.1.0`.**
+- **Conversation agent = `jekalmin/extended_openai_conversation`**, now pinned to `3.0.0-beta11` (see `install-extended-openai-conversation` in `deployment.yaml`); it exposes `conversation.binks`. The 1.1.0 notes below are history from the HA 2025.11 era.
   HA's *built-in* OpenAI Conversation cannot target a custom `base_url` in 2025.11
   (hard-locked to api.openai.com, on the Responses API), so it can't reach LiteLLM.
   `1.1.0` is the last EOC release compatible with HA 2025.11 (2.x needs HA ≥ 2026.3)
@@ -47,7 +47,7 @@ minted out-of-band per `apps/litellm/README.md` and stored SOPS-encrypted in
 key `api-key`). Allowed models — Binks's 3-tier chat fallback chain plus STT:
 
 ```
-assist (gemini-flash)  # PRIMARY — gemini-2.5-flash on GEMINI_API_KEY_FAMILY
+assist (gemini-flash)  # PRIMARY — gemini-3.5-flash-lite on GEMINI_API_KEY_FAMILY
 fast (gpt-oss-120b)    # fallback tier 2 — Lazer (verified tool-calling)
 fast (Qwen3-4B-8bit)   # fallback tier 3 — local MLX (best-effort control)
 stt (whisper-turbo)    # Stage 2 speech-to-text
@@ -79,10 +79,10 @@ curl -sX POST https://llm.kblab.me/key/generate -H "Authorization: Bearer $MASTE
 ## Model routing & resilience
 
 Binks's `chat_model` is one LiteLLM group, `assist (gemini-flash)`, with an ordered
-fallback chain (`router_settings.fallbacks` in `apps/litellm/configmap.yaml`):
+fallback chain (`router_settings.fallbacks` in `apps/litellm/config.yaml`):
 
 ```
-assist (gemini-flash)     gemini-2.5-flash   Google (GEMINI_API_KEY_FAMILY)   PRIMARY
+assist (gemini-flash)     gemini-3.5-flash-lite  Google (GEMINI_API_KEY_FAMILY)  PRIMARY, 8s timeout
   -> fast (gpt-oss-120b)  gpt-oss-120b       Lazer (Deloitte proxy)           on Gemini error
   -> fast (Qwen3-4B-8bit) Qwen3-4B           Mac Studio MLX (local)           last resort
 ```
@@ -125,7 +125,7 @@ cannot degrade silently again.
 `fleet_alerts.yaml` ntfy pipeline (topic `homelab-alerts`) with three
 `device_class: connectivity` binary sensors:
 
-- **`binary_sensor.binks_brain`** - a `command_line` probe POSTs a 1-token prompt to the real `assist (gemini-flash)` route with the scoped assist key every 10 min. ON = HTTP 200. This is what catches a dead model route (the 2026-07-27 incident) that gatus's LiteLLM `/health/readiness` check passes.
+- **`binary_sensor.binks_brain`** - a `command_line` probe POSTs a 1-token prompt to the real `assist (gemini-flash)` route with the scoped assist key every 30 min, with `disable_fallbacks: true`. ON = HTTP 200 from Gemini itself; with fallbacks on, the probe stayed green while Gemini was 429 all day (2026-10-15). This is what catches a dead model route (the 2026-07-27 incident) that gatus's LiteLLM `/health/readiness` check passes.
 - **`binary_sensor.voice_kitchen_puck`** and **`binary_sensor.voice_bedroom_puck`** - OFF when the Voice PE puck's `assist_satellite` is unavailable (off WiFi, unplugged). The `for: 00:03:00` debounce in `fleet_alerts.yaml` absorbs a startup blip.
 
 Still not alerted, on purpose: the four wall tablets. Their `assist_satellite.wall_*` goes unavailable on every dashboard reload and in night mode, so a liveness alert would be noise. Check them by hand from the entity states or the Assist pipeline debug view.
@@ -352,7 +352,7 @@ in our own dashboard, not a companion app. Works because the tablet loads
 - **`config/packages/voice_satellite_binks.yaml`** — a startup automation that pins the
   per-device selects on every HA start (reproducible): Pipeline 1 → **Binks**, detection →
   **On Device (microWakeWord)**, wake word → `ok_nabu` (validation; → `hey_binks` later),
-  sensitivity → moderate, noise-gate + stop-word-interruption **on**.
+  noise-gate + stop-word-interruption **on**, finished speaking detection → **aggressive**, finish delay → **15 s** (the reply bubble stays on screen; 15 is the entity max).
 
 Detection is 100% in-browser → the Stage-3 `wyoming-openwakeword` server is **not** used by
 this path (it stays for future hardware satellites; retire later if unwanted).
@@ -476,3 +476,12 @@ fixed words**.
 MIT **`com.freekiosk`** v1.2.20-beta.4+ (needs `MODIFY_AUDIO_SETTINGS`, added there) over
 proprietary Fully Kiosk; and the tablet must load a **trusted-HTTPS** URL
 (`https://hass.kblab.me`) or `getUserMedia` is silently blocked.
+
+## Turn latency (2026-10-15)
+
+Measured with the pipeline debug view (`assist_pipeline/pipeline_debug/*` over the HA websocket):
+
+- **Brain was the big one.** `gemini-2.5-flash` on the free-tier family key allows 20 requests/day, and the 10-minute brain probe alone spent that, so every turn silently fell back to Lazer `gpt-oss-120b` at ~5.5 s. The route now runs `gemini-3.5-flash-lite` (0.7-0.8 s direct, no thinking tokens, correct tool calls) with an 8 s per-route timeout so a stalled upstream falls back fast instead of waiting the 900 s router default.
+- **End of speech.** Satellites (tablets and pucks) are pinned to `aggressive` finished speaking detection. If it clips people mid-sentence, set `finished_speaking` back to `default` in `voice_satellite_binks.yaml`.
+- **STT is batch, not streaming.** Whisper gets the clip after end-of-speech; that costs ~0.6 s, so it is not where the wait was.
+- LiteLLM config lives in `apps/litellm/config.yaml` and is generated into a hash-named ConfigMap, so a route change restarts the gateway. Before, edits only took effect on an unrelated pod restart.

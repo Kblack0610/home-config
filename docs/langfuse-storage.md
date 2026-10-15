@@ -2,7 +2,7 @@
 
 Langfuse is the LLM-observability surface for the house. Two producers write to it:
 
-- **LiteLLM gateway** - `apps/litellm/configmap.yaml` sets `callbacks: ["prometheus", "langfuse_otel"]`, so every call through the gateway is traced.
+- **LiteLLM gateway** - `apps/litellm/config.yaml` sets `callbacks: ["prometheus", "langfuse_otel"]`, so every call through the gateway is traced.
 - **Claude Code** - `~/.dotfiles/.config/shared-hooks/claude-telemetry.sh` exports OTLP to the Alloy DaemonSet, and `apps/alloy/configmap.yaml` forwards traces on to `langfuse-web:3000/api/public/otel`. That hook sets `OTEL_LOG_USER_PROMPTS`, `OTEL_LOG_ASSISTANT_RESPONSES`, `OTEL_LOG_TOOL_DETAILS` and `OTEL_LOG_TOOL_CONTENT` to 1, so **full prompt and response text lands in this ClickHouse**. The only thing keeping that on the LAN is the `getent hosts hp-victus` guard in the hook.
 
 Volume as of 2026-09-18: roughly 450-520 traces/day, 38.7k traces and 205k observations total since 2026-07-17.

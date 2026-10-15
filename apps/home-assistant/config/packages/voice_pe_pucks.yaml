@@ -68,3 +68,15 @@ automation:
                         entity_id: "select.{{ repeat.item }}_wake_word_sensitivity"
                       data:
                         option: "Moderately sensitive"
+                # Same end-of-speech setting as the wall tablets
+                # (voice_satellite_binks.yaml): a short pause ends the turn.
+                - if:
+                    - condition: template
+                      value_template: >-
+                        {{ 'aggressive' in state_attr('select.' ~ repeat.item ~ '_finished_speaking_detection', 'options') | default([]) }}
+                  then:
+                    - service: select.select_option
+                      target:
+                        entity_id: "select.{{ repeat.item }}_finished_speaking_detection"
+                      data:
+                        option: "aggressive"

@@ -56,7 +56,7 @@ sops apps/karakeep/secret.yaml
 
 Then flip `INFERENCE_ENABLE_AUTO_TAGGING: "true"` in `configmap.yaml`. Commit, push, Flux applies.
 
-`OPENAI_BASE_URL` already points at LiteLLM (`http://litellm.ai-gateway.svc.cluster.local:4000/v1`), so any model in `apps/litellm/configmap.yaml` is reachable. Update `INFERENCE_TEXT_MODEL` / `INFERENCE_IMAGE_MODEL` to match a configured `model_name`.
+`OPENAI_BASE_URL` already points at LiteLLM (`http://litellm.ai-gateway.svc.cluster.local:4000/v1`), so any model in `apps/litellm/config.yaml` is reachable. Update `INFERENCE_TEXT_MODEL` / `INFERENCE_IMAGE_MODEL` to match a configured `model_name`.
 
 ## Stash migration (optional)
 

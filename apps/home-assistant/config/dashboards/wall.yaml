@@ -85,6 +85,8 @@ wallpanel:
       card_mod:
         style: |
           ha-card { background: rgba(20,20,22,0.42); border: none; box-shadow: none; backdrop-filter: blur(3px); }
+    # Tap-to-talk, reachable without leaving the screensaver.
+    - !include _talk_card.yaml
     # Room quick-actions — the SHARED area-driven room layout (one source of truth
     # with the Home view; tap a plug tile to toggle it). Empty rooms auto-hide.
     - type: vertical-stack
@@ -141,6 +143,7 @@ views:
             icon_color: blue
             multiline_secondary: true
             tap_action: { action: none }
+          - !include _talk_card.yaml
           # Clock + multi-day forecast hero. Needs the Met.no integration added
           # (Settings → Devices → Add Integration → Met.no) → weather.forecast_home.
           - type: custom:clock-weather-card

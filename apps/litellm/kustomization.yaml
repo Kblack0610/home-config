@@ -5,7 +5,6 @@ namespace: ai-gateway
 
 resources:
   - namespace.yaml
-  - configmap.yaml
   - secret.sops.yaml
   - litellm-secrets.sops.yaml
   - pvc.yaml
@@ -16,3 +15,14 @@ resources:
   - servicemonitor.yaml
   - backup-cronjob.yaml
   - backup-nas-secret.yaml
+
+# Generated so the name carries a content hash: LiteLLM reads its config only at
+# startup, and a plain ConfigMap edit never restarted the pod, so route changes
+# went live whenever the pod happened to restart. The hash rolls it on every edit.
+configMapGenerator:
+  - name: litellm-config
+    files:
+      - config.yaml
+    options:
+      labels:
+        app.kubernetes.io/name: litellm

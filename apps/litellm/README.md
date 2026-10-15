@@ -21,7 +21,7 @@ The litellm tenant role + database in Postgres is provisioned by `apps/postgres/
 ## Configuration and Secrets
 
 - `litellm-secrets` (out-of-band, holds `LITELLM_MASTER_KEY`) and `litellm-db-secrets` (SOPS, this directory) are both merged via `envFrom`.
-- Config is mounted from `litellm-config` to `/etc/litellm/config.yaml`.
+- Config lives in `config.yaml`, generated into the `litellm-config` ConfigMap (hash-suffixed, so an edit rolls the pod) and mounted at `/etc/litellm/config.yaml`.
 - Persistent state for keys/spend/budgets lives in Postgres (`postgres.databases.svc.cluster.local`); the `model_list` stays in `configmap.yaml` (`store_model_in_db: false`).
 
 ## Virtual Keys (Cost & Rate Control)

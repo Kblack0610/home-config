@@ -61,7 +61,7 @@ ssh mac-studio '~/mlx-env/bin/pip install -U "mlx-vlm>=0.6.5"'
 # fallback if a request still crashes: launch the server with --disable-batching
 ```
 
-Verify a real caption (not a silently-dropped image) before flipping the `vlm` alias in `apps/litellm/configmap.yaml` off `gemini-3-flash`.
+Verify a real caption (not a silently-dropped image) before flipping the `vlm` alias in `apps/litellm/config.yaml` off `gemini-3-flash`.
 
 ### Flagship mode (Kimi K2, ~468 GB — NOT a live entry)
 
@@ -104,7 +104,7 @@ curl -fsS -X POST http://192.168.1.4:8090/v1/embeddings \
 1. Add an entry to `mlx_models` in `defaults/main.yml`.
 2. Pre-warm the weights on `mac-studio` via `hf download`.
 3. Re-run the playbook. The role re-renders config + plist, `bootout`+`bootstrap` reloads the service.
-4. Add the matching `model_name` entry to `apps/litellm/configmap.yaml` so LiteLLM routes external callers to it.
+4. Add the matching `model_name` entry to `apps/litellm/config.yaml` so LiteLLM routes external callers to it.
 
 ## Logs
 

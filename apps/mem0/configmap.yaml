@@ -27,7 +27,7 @@ data:
   # all chat + embedding calls through the in-cluster LiteLLM gateway,
   # which fronts the local MLX models on Mac Studio. No third-party API
   # keys leave the cluster. The model names here MUST match entries in
-  # apps/litellm/configmap.yaml (model_name field).
+  # apps/litellm/config.yaml (model_name field).
   OPENAI_BASE_URL: http://litellm.ai-gateway.svc.cluster.local:4000/v1
   # LLM = the `fast` CATEGORY ALIAS (model_group_alias in apps/litellm). It
   # resolves to whatever tier that alias currently targets (Lazer gpt-oss-120b

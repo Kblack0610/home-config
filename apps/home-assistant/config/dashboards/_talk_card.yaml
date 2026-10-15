@@ -1,0 +1,44 @@
+# Tap-to-talk: wakes THIS tablet's voice satellite as if "binks" was heard.
+# Shared by the Home view and the screensaver column in wall.yaml.
+#
+# The dashboard is one file for every tablet, so the room comes from the
+# browser: the voice_satellite card remembers which assist_satellite this
+# browser is bound to in localStorage ("vs-satellite-entity", falling back to
+# "vs-panel-config".satellite_entity, the same lookup the card itself does).
+# A browser with no room assigned (Admin -> Voice Room) gets no button.
+type: custom:button-card
+name: Talk to Binks
+icon: mdi:microphone
+layout: icon_name
+variables:
+  satellite: |
+    [[[
+      let id = null;
+      try { id = localStorage.getItem('vs-satellite-entity'); } catch (e) {}
+      if (!id) {
+        try { id = (JSON.parse(localStorage.getItem('vs-panel-config') || '{}')).satellite_entity || null; } catch (e) {}
+      }
+      return id && states[id] ? id : '';
+    ]]]
+tap_action:
+  action: perform-action
+  perform_action: voice_satellite.wake
+  target:
+    entity_id: "[[[ return variables.satellite; ]]]"
+  haptic: medium
+styles:
+  card:
+    - display: "[[[ return variables.satellite ? 'block' : 'none'; ]]]"
+    - padding: 14px 18px
+    - border-radius: 16px
+    - background: rgba(20,20,22,0.42)
+    - backdrop-filter: blur(3px)
+    - box-shadow: none
+  icon:
+    - width: 36px
+    - color: var(--blue-color, #2196f3)
+  name:
+    - font-size: 18px
+    - font-weight: 500
+    - justify-self: start
+    - padding-left: 12px

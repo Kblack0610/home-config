@@ -34,7 +34,7 @@ Served (`mlx_models` in `roles/launchd-mlx-server/defaults/main.yml`):
 - **Pinned (~73 GB, always resident):** `code` (Qwen3-Coder-Next-4bit), `reasoning` (Qwen3.6-35B-A3B-4bit), `fast` (Qwen3-4B, 4bit + 8bit), `embedding` (modernbert-embed-base-4bit).
 - **on_demand (JIT-loaded, idle-evicted — dual-tier A/B candidates, 2026-07):** `code` (Qwen3-Coder-Next-6bit), `code` (Qwen3-Coder-480B-A35B-4bit, ~250 GB), `reasoning` (Qwen3.5-397B-A17B-4bit, ~214 GB), `vlm` (Qwen3-VL-30B-A3B-8bit — needs `mlx-vlm>=0.6.5`), `embedding` (Qwen3-Embedding-0.6B).
 
-Each local model has a matching route in `apps/litellm/configmap.yaml`; the `router_settings.model_group_alias` block there toggles each category (`code`/`reasoning`/`fast`/`vlm`/`embedding`) between the local box and the paid Lazer/Gemini tier in one line. The 1T Kimi K2 flagship is a manual "flagship mode" (sole-resident), not a live entry — see `roles/launchd-mlx-server/README.md`.
+Each local model has a matching route in `apps/litellm/config.yaml`; the `router_settings.model_group_alias` block there toggles each category (`code`/`reasoning`/`fast`/`vlm`/`embedding`) between the local box and the paid Lazer/Gemini tier in one line. The 1T Kimi K2 flagship is a manual "flagship mode" (sole-resident), not a live entry — see `roles/launchd-mlx-server/README.md`.
 
 - **Python venv:** `~/mlx-env` (not created by Ansible; `launchd-mlx-server` asserts it exists)
 - **LaunchAgent:** `~/Library/LaunchAgents/com.mlx-server.plist` (per-user — Metal needs a logged-in GUI session, NOT a LaunchDaemon)

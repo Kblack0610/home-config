@@ -42,6 +42,7 @@ configMapGenerator:
       - voice_satellite_model_binks.tflite=config/voice_satellite/models/binks.tflite
       - dashboard_overview.yaml=config/dashboards/overview.yaml
       - dashboard_rooms_cards.yaml=config/dashboards/_rooms_cards.yaml
+      - dashboard_talk_card.yaml=config/dashboards/_talk_card.yaml
       - dashboard_local.yaml=config/dashboards/local.yaml
       - dashboard_ops.yaml=config/dashboards/ops.yaml
       - dashboard_admin.yaml=config/dashboards/admin.yaml

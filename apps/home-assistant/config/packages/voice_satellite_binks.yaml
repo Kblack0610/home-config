@@ -4,7 +4,8 @@
 # entities whose chosen values are runtime state (not config-entry data). This
 # automation pins them on every HA start so the setup is reproducible across
 # restarts / PVC rebuilds — for EVERY seeded room satellite: Pipeline 1 = Binks,
-# on-device microWakeWord, noise gate + stop-word barge-in on.
+# on-device microWakeWord, noise gate + stop-word barge-in on, aggressive
+# end-of-speech detection, and a finish delay so the answer stays on screen.
 #
 # Rooms are seeded by the `seed-voice-satellite` init container (deployment.yaml).
 # Keep the SLUGS list below in sync with the NAMES there (slug = name.lower with
@@ -38,6 +39,17 @@ automation:
         from:
           - unavailable
           - unknown
+    variables:
+      # How fast the satellite decides you stopped talking (default|relaxed|
+      # aggressive). HA's default waits long enough that a short command felt
+      # like it "listened forever" (2026-10-15); aggressive ends the turn on a
+      # short pause. Drop back to default if it clips mid-sentence.
+      finished_speaking: aggressive
+      # Seconds the reply bubble stays on screen after TTS ends. 0 closed it
+      # the instant speech finished, so text answers never seemed to show.
+      # 15 is the entity max.
+      # Double tap or the stop word still dismisses it early.
+      finish_delay: 15
     action:
       # Small settle delay so sibling entities are up on the start-trigger path.
       - delay: "00:00:05"
@@ -97,3 +109,18 @@ automation:
                     entity_id:
                       - "switch.{{ repeat.item }}_wake_word_noise_gate"
                       - "switch.{{ repeat.item }}_stop_word_interruption"
+                - if:
+                    - condition: template
+                      value_template: >-
+                        {{ finished_speaking in state_attr('select.' ~ repeat.item ~ '_finished_speaking_detection', 'options') | default([]) }}
+                  then:
+                    - service: select.select_option
+                      target:
+                        entity_id: "select.{{ repeat.item }}_finished_speaking_detection"
+                      data:
+                        option: "{{ finished_speaking }}"
+                - service: number.set_value
+                  target:
+                    entity_id: "number.{{ repeat.item }}_finish_delay"
+                  data:
+                    value: "{{ finish_delay }}"

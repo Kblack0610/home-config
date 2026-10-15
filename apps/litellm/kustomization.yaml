@@ -12,6 +12,7 @@ resources:
   - deployment.yaml
   - service.yaml
   - ingress.yaml
+  - ingress-metrics-deny.yaml
   - servicemonitor.yaml
   - backup-cronjob.yaml
   - backup-nas-secret.yaml

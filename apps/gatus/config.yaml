@@ -56,7 +56,7 @@ endpoints:
 
   - name: MQTT2Prom
     group: home-k3s
-    url: "http://mqtt2prom.mqtt2prom.svc:9201/metrics"
+    url: "http://mqtt2prom.mqtt2prom.svc:9000/metrics"
     interval: 60s
     conditions:
       - "[STATUS] == 200"

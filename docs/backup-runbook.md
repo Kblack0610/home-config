@@ -211,6 +211,8 @@ kubectl --context home-k3s create job --from=cronjob/sops-key-backup manual-sops
 Phones are archived in two steps, because a phone is only reachable when it is plugged in:
 
 1. **Phone -> NAS (manual, USB).** On a desktop with the phone plugged in and USB debugging authorized, run `phone-backup <name>` (dotfiles `.local/bin/phone-backup`). It pulls every top-level `/sdcard` entry except `Android/` over adb into `~/.cache/phone-backup/<name>/`, then rsyncs that to `/mnt/nas/private/phones/<name>/sdcard/` on asus-laptop over SSH. There is no `--delete`, so the NAS copy is an archive: clearing space on the phone never removes a file from it. Per-phone settings (adb serial, expected model, NAS target) live in the untracked `~/.config/phone-backup/<name>.env`; the script's header documents the keys.
+   - **Free phone space:** `phone-backup <name> --free` runs the backup, then deletes each phone file whose relative path and sha256 match the NAS copy. Folders listed in `FREE_KEEP` (folders an app reads, e.g. emulator games) are never touched, and anything new or changed stays on the phone. The NAS archive keeps every deleted file.
+   - **adb on a host with Unity:** a Unity editor's bundled adb kills any adb server of another version on every editor start, so set `ADB=` in the env file to that same adb binary. If another session runs its own adb server on a second port and grabs the phone, point at it with `ANDROID_ADB_SERVER_PORT=<port>`.
 2. **NAS -> 8TB (automatic).** The `phones-backup` CronJob mirrors `/mnt/nas/private/phones` to `@phones` every Sunday and takes a dated snapshot, keeping 14.
 
 The camera roll is covered separately by the Immich app's background backup, which `immich-originals-backup` mirrors to the 8TB nightly.

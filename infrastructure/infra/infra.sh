@@ -66,6 +66,10 @@ SHOW_AGE=false
 # half of what this command gets asked. --no-disk buys that half-second back.
 SHOW_DISK=true
 DHCP_DEVICES_FILE="${SCRIPT_DIR}/../dhcp/devices.yaml"
+# The Ansible inventory is the one place that names every node the way a human
+# says it (pi5-worker3), keyed by IP. k8s node names are the Pis' default
+# hostnames (raspberrypi-771be84c), which say nothing about which box it is.
+INVENTORY_FILE="${SCRIPT_DIR}/../../ansible/inventory.yml"
 
 # Temp directory for parallel data collection
 TMPDIR_INFRA=""
@@ -260,6 +264,16 @@ parse_node_uptime() {
     format_uptime_age "$uptime_secs"
 }
 
+# Prints "ip alias" for every uncommented `alias:` + `ansible_host: ip` pair.
+inventory_aliases() {
+    [[ -r "$INVENTORY_FILE" ]] || return 0
+    awk '
+        /^[[:space:]]*#/ { next }
+        /^[[:space:]]+[A-Za-z0-9_.-]+:[[:space:]]*$/ { alias = $1; sub(/:$/, "", alias); next }
+        /^[[:space:]]+ansible_host:/ { if (alias != "") print $2, alias; alias = "" }
+    ' "$INVENTORY_FILE"
+}
+
 parse_k8s_nodes() {
     local ctx="$1"
     local tmpdir="$2"
@@ -283,8 +297,15 @@ parse_k8s_nodes() {
         done < "$top_file"
     fi
 
+    declare -A host_map
+    local a_ip a_alias
+    while read -r a_ip a_alias; do
+        host_map["$a_ip"]="$a_alias"
+    done < <(inventory_aliases)
+
     # Parse nodes (-o wide: name status roles age version internal-ip ...)
     while read -r name status roles age _ver nodeip _rest; do
+        local host="${host_map[$nodeip]:-"-"}"
         local cpu="${cpu_map[$name]:-"-"}"
         local mem="${mem_map[$name]:-"-"}"
         local metrics_file="$tmpdir/ne.${ctx}.${name}.metrics"
@@ -314,7 +335,7 @@ parse_k8s_nodes() {
             fi
         fi
 
-        echo "${up}|${name}|${roles}|${cpu}|${mem}|${disk}|${temp}|${node_age}"
+        echo "${up}|${name}|${host}|${roles}|${cpu}|${mem}|${disk}|${temp}|${node_age}"
     done < "$nodes_file"
 }
 
@@ -969,9 +990,9 @@ print_cluster_header() {
     echo ""
     echo -e " ${BOLD}CLUSTER: ${ctx} (${label})${NC}"
 
-    local fmt="  ${BOLD}%-6s  %-24s %-11s %5s  %5s"
-    local sep_len=59
-    local -a cols=("STATUS" "NODE" "ROLE" "CPU" "MEM")
+    local fmt="  ${BOLD}%-6s  %-24s %-13s %-11s %5s  %5s"
+    local sep_len=73
+    local -a cols=("STATUS" "NODE" "HOST" "ROLE" "CPU" "MEM")
 
     if [[ "$SHOW_DISK" == true ]]; then
         fmt+="  %5s"
@@ -995,7 +1016,7 @@ print_cluster_header() {
 }
 
 print_node_row() {
-    local status="$1" name="$2" role="$3" cpu="$4" mem="$5" disk="$6" temp="$7" age="$8"
+    local status="$1" name="$2" host="$3" role="$4" cpu="$5" mem="$6" disk="$7" temp="$8" age="$9"
 
     local status_icon status_color status_text
     if [[ "$status" == "UP" ]]; then
@@ -1008,8 +1029,8 @@ print_node_row() {
         status_text="DOWN"
     fi
 
-    local fmt="  ${status_icon} ${status_color}%4s${NC}  %-24s %-11s %5s  %5s"
-    local -a vals=("$status_text" "$name" "$role" "$cpu" "$mem")
+    local fmt="  ${status_icon} ${status_color}%4s${NC}  %-24s %-13s %-11s %5s  %5s"
+    local -a vals=("$status_text" "$name" "$host" "$role" "$cpu" "$mem")
 
     if [[ "$SHOW_DISK" == true ]]; then
         fmt+="  %5s"
@@ -1285,8 +1306,8 @@ cmd_nodes() {
         if [[ "$node_data" == "UNREACHABLE" ]]; then
             echo -e "  ${YELLOW}Context unreachable${NC}"
         else
-            while IFS='|' read -r status name role cpu mem disk temp age; do
-                print_node_row "$status" "$name" "$role" "$cpu" "$mem" "$disk" "$temp" "$age"
+            while IFS='|' read -r status name host role cpu mem disk temp age; do
+                print_node_row "$status" "$name" "$host" "$role" "$cpu" "$mem" "$disk" "$temp" "$age"
                 total=$((total + 1))
                 if [[ "$status" == "UP" ]]; then
                     healthy=$((healthy + 1))

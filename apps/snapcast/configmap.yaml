@@ -43,7 +43,13 @@ data:
     # a random port in 4953-5153; it retries another port if it draws 4953.
     default_source = default
     sampleformat = 48000:16:2
-    codec = flac
+    # Uncompressed on the LAN: ~1.5 Mbit/s per room, no decode cost, lower
+    # latency. The kitchen wall panel's in-browser client (apps/home-assistant
+    # .../www/snapcast-tablet.js) scheduled only silent buffers with flac on the
+    # Android WebView (stats: audible=0, queued=0, context running), so it needs
+    # pcm. snapclient (Giada, desktop) handles pcm natively. Applies to the
+    # Music Assistant streams too: they inherit this default codec.
+    codec = pcm
     chunk_ms = 20
     buffer = 1000
     send_to_muted = false

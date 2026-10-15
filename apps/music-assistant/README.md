@@ -29,6 +29,58 @@ MA 2.x requires a login and the first visitor to an un-onboarded server creates 
 
 Snapcast players show up in MA only once snapclients are connected (Phase 2/3).
 
+## Backup and rebuild
+
+`music-assistant-backup` (CronJob, daily 2:30 AM) tars `/data` to `/var/backups/music-assistant/` on asus-laptop (30 kept) and copies it to the NAS at `/mnt/nas/private/backups/home-k3s/music-assistant/` (14 kept). Same script as `apps/home-assistant/backup-cronjob.yaml`; schedule, retention and failure policy are in `docs/backup-runbook.md`. The archive is about 4MB: `.cache/` (cache db, thumbnails, Spotify audio cache) and `soloist/` (the Spotify helper binary MA downloads itself) are excluded because MA regenerates them. Everything else is in it: `settings.json` with its `encryption_key` (provider secrets, including the Spotify login, are encrypted with that key, so the two only work together), `auth.db` (the admin user and the Home Assistant token), `library.db` and `spotify/`.
+
+Run one now:
+
+```bash
+kubectl --context home-k3s -n music-assistant create job --from=cronjob/music-assistant-backup manual-backup-$(date +%s)
+```
+
+### Restore from the archive
+
+Both copies live on asus-laptop, which is also where the PVC is, so a restore pod pinned there can read the local copy directly.
+
+```bash
+# Pick an archive (local copy first, NAS copy as the fallback)
+ssh pc-home-asus-laptop ls -lt /var/backups/music-assistant/ /mnt/nas/private/backups/home-k3s/music-assistant/
+
+# Stop MA. The PVC is RWO and the Deployment is strategy: Recreate, so it must be down or it writes over the restore.
+kubectl --context home-k3s -n music-assistant scale deployment music-assistant --replicas=0
+
+# Restore pod with the PVC at /data and the local backups at /backup
+kubectl --context home-k3s -n music-assistant run restore --rm -it --image=alpine:3.24.1 \
+  --overrides='{"spec":{"nodeSelector":{"kubernetes.io/hostname":"asus-laptop"},"volumes":[{"name":"data","persistentVolumeClaim":{"claimName":"music-assistant-data"}},{"name":"backup","hostPath":{"path":"/var/backups/music-assistant","type":"Directory"}}],"containers":[{"name":"restore","image":"alpine:3.24.1","stdin":true,"tty":true,"volumeMounts":[{"name":"data","mountPath":"/data"},{"name":"backup","mountPath":"/backup","readOnly":true}]}]}}' \
+  -- /bin/sh
+```
+
+Inside the restore pod (`find` rather than `rm -rf /data/*`, which skips `.cache`):
+
+```bash
+find /data -mindepth 1 -delete
+tar -xzf /backup/music-assistant-YYYYMMDD-HHMMSS.tar.gz -C /data
+exit
+```
+
+To restore a NAS copy instead, copy it into `/var/backups/music-assistant/` on asus-laptop first.
+
+```bash
+kubectl --context home-k3s -n music-assistant scale deployment music-assistant --replicas=1
+curl -fsS https://music.kblab.me/info | jq '{server_version, onboard_done}'   # onboard_done: true
+```
+
+### Rebuild without an archive
+
+With no archive, MA starts un-onboarded and the first visitor creates the admin. Redo `First run` above, then re-add the providers (Settings -> Providers -> Add):
+
+- **Snapcast**: enable "Use existing Snapserver", host `snapserver-direct.snapcast.svc.cluster.local`, control port `1705`.
+- **Radio Browser**: no settings.
+- **Spotify**: log in again. The old login cannot be carried over by hand, because it is encrypted with the lost `encryption_key`.
+
+The Home Assistant Music Assistant integration also has to be re-authorised (step 4 of `First run`), since its token lived in the lost `auth.db`.
+
 ## Verify
 
 ```bash

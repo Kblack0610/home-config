@@ -209,7 +209,7 @@ spec:
             - -c
             - |
               set -u
-              VERSION="2026.6.3"
+              VERSION="2026.9.13"
               TARGET="/config/custom_components/voice_satellite"
               MARKER="$TARGET/.version"
               if [ -f "$MARKER" ] && [ "$(cat "$MARKER")" = "$VERSION" ]; then
@@ -228,6 +228,81 @@ spec:
               else
                 echo "WARN: voice_satellite download failed; no marker, will retry next start"
               fi
+              exit 0
+          volumeMounts:
+            - name: config
+              mountPath: /config
+        # Binks rich answers: jxlarrea's voice_satellite_llm_tools registers HA LLM
+        # APIs (web/image search via the in-cluster SearXNG, Wikipedia, weather)
+        # whose tool results the satellite card draws as image grids and summary
+        # cards. The release .zip unpacks FLAT. No pip deps.
+        # RESILIENT: set -u + final exit 0; marker on success only.
+        - name: install-voice-satellite-llm-tools
+          image: alpine:3.20
+          command:
+            - sh
+            - -c
+            - |
+              set -u
+              VERSION="v1.3.1"
+              TARGET="/config/custom_components/voice_satellite_llm_tools"
+              MARKER="$TARGET/.version"
+              if [ -f "$MARKER" ] && [ "$(cat "$MARKER")" = "$VERSION" ]; then
+                echo "voice_satellite_llm_tools $VERSION already installed, skipping"
+                exit 0
+              fi
+              apk add --no-cache wget unzip >/dev/null
+              mkdir -p /config/custom_components
+              if wget -q -O /tmp/t.zip \
+                  "https://github.com/jxlarrea/voice-satellite-card-llm-tools/releases/download/$VERSION/voice-satellite-llm-tools.zip"; then
+                rm -rf "$TARGET"; mkdir -p "$TARGET"
+                unzip -o -q /tmp/t.zip -d "$TARGET"
+                rm /tmp/t.zip
+                echo "$VERSION" > "$MARKER"
+                echo "voice_satellite_llm_tools $VERSION installed"
+              else
+                echo "WARN: voice_satellite_llm_tools download failed; no marker, will retry next start"
+              fi
+              exit 0
+          volumeMounts:
+            - name: config
+              mountPath: /config
+        # Binks's conversation agent: acon96 home-llm ("Local LLMs",
+        # llama_conversation) on its Generic OpenAI backend -> LiteLLM. Chosen over
+        # extended_openai_conversation because it can attach HA LLM APIs (Assist +
+        # the LLM tools above); EOC cannot, and HA core agents that can (openai,
+        # google, anthropic) take no base URL, so they would bypass the gateway.
+        # No release asset: take custom_components/llama_conversation from the tag
+        # tarball. HA pip-installs huggingface-hub + fuzy-jon at boot.
+        # RESILIENT: set -u + final exit 0; marker on success only.
+        - name: install-home-llm
+          image: alpine:3.20
+          command:
+            - sh
+            - -c
+            - |
+              set -u
+              VERSION="v0.4.12"
+              TARGET="/config/custom_components/llama_conversation"
+              MARKER="$TARGET/.version"
+              if [ -f "$MARKER" ] && [ "$(cat "$MARKER")" = "$VERSION" ]; then
+                echo "home-llm $VERSION already installed, skipping"
+                exit 0
+              fi
+              apk add --no-cache wget tar >/dev/null
+              mkdir -p /config/custom_components /tmp/hl
+              if wget -q -O /tmp/hl.tgz \
+                  "https://github.com/acon96/home-llm/archive/refs/tags/$VERSION.tar.gz" \
+                  && tar xzf /tmp/hl.tgz -C /tmp/hl \
+                  && [ -d /tmp/hl/home-llm-${VERSION#v}/custom_components/llama_conversation ]; then
+                rm -rf "$TARGET"
+                cp -r /tmp/hl/home-llm-${VERSION#v}/custom_components/llama_conversation "$TARGET"
+                echo "$VERSION" > "$MARKER"
+                echo "home-llm $VERSION installed"
+              else
+                echo "WARN: home-llm download failed; no marker, will retry next start"
+              fi
+              rm -rf /tmp/hl /tmp/hl.tgz
               exit 0
           volumeMounts:
             - name: config

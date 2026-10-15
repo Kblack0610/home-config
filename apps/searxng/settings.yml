@@ -1,0 +1,22 @@
+# SearXNG for Binks (voice_satellite_llm_tools web + image search).
+# Only the deltas from upstream defaults; secret_key comes from the
+# SEARXNG_SECRET env var (secret.sops.yaml).
+use_default_settings: true
+
+general:
+  instance_name: binks-search
+
+server:
+  # Private, single-consumer instance: no rate limiter (would need valkey),
+  # no image proxy (the tablet loads result images directly).
+  limiter: false
+  public_instance: false
+  image_proxy: false
+
+search:
+  # json is what the LLM tools call; html kept for debugging with a browser
+  # via port-forward.
+  formats:
+    - html
+    - json
+  safe_search: 1

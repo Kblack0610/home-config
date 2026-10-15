@@ -50,6 +50,7 @@ resources:
   - nvidia-device-plugin
   - openclaw
   - openwakeword
+  - searxng
   - orcaslicer
   - postgres
   - print-service

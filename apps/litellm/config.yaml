@@ -633,7 +633,10 @@ litellm_settings:
   #                    Get pk/sk from https://langfuse.kblab.me/settings/api-keys
   #                    after Langfuse is up. NOTE: LANGFUSE_OTEL_HOST (not
   #                    LANGFUSE_HOST) is the correct env var for this callback.
-  callbacks: ["prometheus", "langfuse_otel"]
+  # gemini_tool_schema: drops anyOf branches that only say `required`, which
+  # Gemini rejects (HA timer tools broke every wall-tablet voice turn). The
+  # module sits next to this file in /etc/litellm (gemini_tool_schema.py).
+  callbacks: ["prometheus", "langfuse_otel", "gemini_tool_schema.proxy_handler_instance"]
   # /metrics/ needs no key. LiteLLM only accepts a PROXY ADMIN key there, and a scrape
   # credential with admin power is worse than no credential. Instead the path is
   # unreachable from outside: ingress-metrics-deny.yaml 403s /metrics on llm.kblab.me,

@@ -54,6 +54,12 @@ wallpanel:
   content_interaction: true
   stop_screensaver_on_mouse_click: false
   stop_screensaver_on_mouse_move: false
+  # wallpanel only ends the screensaver when window.location.href CHANGES. The
+  # screensaver usually starts on Home, so a Dashboard tap that navigates to the
+  # Home it is already on is a no-op and the photos stay up ("works sometimes").
+  # Parking the idle screen on a distinct Home URL makes every Dashboard tap a
+  # real location change. It also returns an idle panel to Home from any view.
+  screensaver_start_navigation_path: /wall-panels/home?kiosk&idle
   # On-demand start/stop from a dashboard button (and easy testing).
   screensaver_entity: input_boolean.wall_screensaver
   # Night mode (22:00 - 07:00): sensor.wall_mode goes to "night" and wallpanel
@@ -76,12 +82,13 @@ wallpanel:
       # Clear the right-hand control column: nothing to show on a black screen.
       cards: []
   cards:
-    # Corner "admin" tap — the only exit: navigate ends the screensaver → Home.
+    # Corner "admin" tap, the only exit: navigating off the ?idle URL that
+    # screensaver_start_navigation_path parks on ends the screensaver -> Home.
     - type: custom:mushroom-template-card
       primary: Dashboard
       icon: mdi:view-dashboard
       icon_color: blue
-      tap_action: { action: navigate, navigation_path: /wall-panels/home }
+      tap_action: { action: navigate, navigation_path: /wall-panels/home?kiosk }
       card_mod:
         style: |
           ha-card { background: rgba(20,20,22,0.42); border: none; box-shadow: none; backdrop-filter: blur(3px); }

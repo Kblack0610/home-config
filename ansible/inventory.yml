@@ -174,3 +174,12 @@ all:
         # snapclient runs as a user service mixed into PipeWire.
         cachyos-x8664-main:
           audio_endpoint_backend: pulse
+        # Living room: Giada DN24 (Raspberry Pi CM4, Pi OS bookworm, user giada)
+        # with a Behringer UFO202. UFO202 out -> RX-V385 AUDIO 2 (house music);
+        # UFO202 in <- turntable via a Y-splitter whose other leg feeds the
+        # receiver directly, so records play live in this room and the capture
+        # streams them to the snapserver Turntable source for the other rooms.
+        audio-living:
+          ansible_host: 192.168.1.120   # audio-living-lan
+          ansible_user: giada
+          audio_endpoint_capture: true

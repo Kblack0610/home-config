@@ -463,6 +463,8 @@ spec:
               cp /managed-config/dashboard_rooms_cards.yaml /config/dashboards/_rooms_cards.yaml
               cp /managed-config/dashboard_talk_card.yaml /config/dashboards/_talk_card.yaml
               cp /managed-config/binks_functions.yaml /config/binks_functions.yaml
+              cp /managed-config/binks_agent.yaml /config/binks_agent.yaml
+              cp /managed-config/binks_prompt.jinja /config/binks_prompt.jinja
               cp /managed-config/dashboard_local.yaml /config/dashboards/local.yaml
               cp /managed-config/dashboard_ops.yaml /config/dashboards/ops.yaml
               cp /managed-config/dashboard_admin.yaml /config/dashboards/admin.yaml
@@ -1463,6 +1465,98 @@ spec:
           volumeMounts:
             - name: config
               mountPath: /config
+        # Binks rich answers: create/reconcile the voice_satellite_llm_tools
+        # entries and the home-llm (llama_conversation) Binks agent from
+        # config/binks/agent.yaml + prompt.jinja (copied in by
+        # sync-managed-config). Matches existing entries by unique_id / domain
+        # and rewrites their data every boot, so git is the source of truth.
+        - name: seed-binks-agent
+          image: ghcr.io/home-assistant/home-assistant:2026.9.4
+          command:
+            - python3
+            - -c
+            - |
+              import json, os, uuid, yaml
+              from datetime import datetime, timezone
+
+              ENTRIES = "/config/.storage/core.config_entries"
+              CFG = "/config/binks_agent.yaml"
+              PROMPT = "/config/binks_prompt.jinja"
+              api_key = os.environ.get("LITELLM_ASSIST_KEY", "").strip()
+              if not (api_key and os.path.exists(ENTRIES) and os.path.exists(CFG)):
+                  print("WARN: key, config entries or binks_agent.yaml missing; skipping")
+                  exit(0)
+              cfg = yaml.safe_load(open(CFG))
+              prompt = open(PROMPT).read()
+              with open(ENTRIES) as f:
+                  store = json.load(f)
+              entries = store["data"]["entries"]
+              now = datetime.now(timezone.utc).isoformat()
+              changed = []
+
+              def new_entry(domain, title, unique_id, version, minor, data, options, subentries):
+                  return {"created_at": now, "data": data, "disabled_by": None,
+                          "discovery_keys": {}, "domain": domain,
+                          "entry_id": uuid.uuid4().hex, "minor_version": minor,
+                          "modified_at": now, "options": options,
+                          "pref_disable_new_entities": False, "pref_disable_polling": False,
+                          "source": "user", "subentries": subentries, "title": title,
+                          "unique_id": unique_id, "version": version}
+
+              for tool in cfg["llm_tools"]:
+                  uid = "voice_satellite_llm_tools_" + tool["data"]["tool_type"]
+                  e = next((x for x in entries if x.get("domain") == "voice_satellite_llm_tools"
+                            and x.get("unique_id") == uid), None)
+                  if e is None:
+                      entries.append(new_entry("voice_satellite_llm_tools", tool["title"], uid,
+                                               1, 1, dict(tool["data"]), {}, []))
+                      changed.append("created " + uid)
+                  elif e.get("data") != tool["data"]:
+                      e["data"] = dict(tool["data"]); e["modified_at"] = now
+                      changed.append("updated " + uid)
+
+              b = cfg["backend"]
+              options = {"host": b["host"], "port": b["port"], "ssl": b["ssl"],
+                         "openai_path": b["openai_path"], "openai_api_key": api_key,
+                         "model_backend": "generic_openai", "selected_language": "en"}
+              agent = dict(cfg["agent"]); title = agent.pop("title")
+              agent["prompt"] = prompt
+              e = next((x for x in entries if x.get("domain") == "llama_conversation"), None)
+              if e is None:
+                  sub = {"data": agent, "subentry_id": uuid.uuid4().hex,
+                         "subentry_type": "conversation", "title": title, "unique_id": None}
+                  entries.append(new_entry("llama_conversation", "LiteLLM gateway", None, 3, 3,
+                                           {"model_backend": "generic_openai"}, options, [sub]))
+                  changed.append("created llama_conversation Binks")
+              else:
+                  if {k: e.get("options", {}).get(k) for k in options} != options:
+                      e.setdefault("options", {}).update(options); changed.append("updated backend")
+                  subs = e.setdefault("subentries", [])
+                  sub = next((x for x in subs if x.get("subentry_type") == "conversation"), None)
+                  if sub is None:
+                      subs.append({"data": agent, "subentry_id": uuid.uuid4().hex,
+                                   "subentry_type": "conversation", "title": title, "unique_id": None})
+                      changed.append("created Binks subentry")
+                  else:
+                      d = sub.setdefault("data", {})
+                      if {k: d.get(k) for k in agent} != agent or sub.get("title") != title:
+                          d.update(agent); sub["title"] = title; changed.append("updated Binks subentry")
+                  if changed:
+                      e["modified_at"] = now
+
+              if changed:
+                  with open(ENTRIES, "w") as f:
+                      json.dump(store, f, indent=2)
+              print("seed-binks-agent: " + (", ".join(changed) or "up to date"))
+          env:
+            - name: LITELLM_ASSIST_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: litellm-assist-credentials
+                  key: api-key
+          volumeMounts:
+            - name: config
+              mountPath: /config
         # Expose a conservative, action-only set of entities to the Assist
         # "conversation" assistant so Binks can control them. Reads the entity
         # registry; allow-lists actionable domains (deliberately NOT lock/alarm).
@@ -1745,6 +1839,14 @@ spec:
               # from the subentry title "Binks", so conversation.binks is the
               # deterministic fallback until the entity registry has it.
               agent_id = "conversation.binks"
+              # config/binks/agent.yaml picks which integration's agent the
+              # pipeline uses (home-llm by default, EOC as the rollback).
+              want = "extended_openai_conversation"
+              try:
+                  import yaml
+                  want = yaml.safe_load(open("/config/binks_agent.yaml")).get("pipeline_agent", want)
+              except Exception as err:
+                  print(f"WARN: binks_agent.yaml unreadable ({err}); using {want}")
 
               # Stage 2 STT: the openai_whisper_cloud entity. Resolve its real
               # entity_id from the registry; fall back to the deterministic id
@@ -1756,7 +1858,7 @@ spec:
                       for ent in json.load(f)["data"]["entities"]:
                           if ent.get("platform") == "openai_whisper_cloud" and stt_engine == "stt.binks_stt":
                               stt_engine = ent["entity_id"]
-                          if (ent.get("platform") == "extended_openai_conversation"
+                          if (ent.get("platform") == want
                                   and ent["entity_id"].startswith("conversation.")):
                               agent_id = ent["entity_id"]
 

@@ -485,3 +485,13 @@ Measured with the pipeline debug view (`assist_pipeline/pipeline_debug/*` over t
 - **End of speech.** Satellites (tablets and pucks) are pinned to `aggressive` finished speaking detection. If it clips people mid-sentence, set `finished_speaking` back to `default` in `voice_satellite_binks.yaml`.
 - **STT is batch, not streaming.** Whisper gets the clip after end-of-speech; that costs ~0.6 s, so it is not where the wait was.
 - LiteLLM config lives in `apps/litellm/config.yaml` and is generated into a hash-named ConfigMap, so a route change restarts the gateway. Before, edits only took effect on an unrelated pod restart.
+
+## Rich answers on the wall tablets (2026-10-15)
+
+Binks's pipeline runs on **home-llm** (`llama_conversation`, Generic OpenAI backend -> LiteLLM `assist (gemini-flash)`), not extended_openai_conversation, because only home-llm can attach HA LLM APIs. Attached: Assist (device control) plus `voice_satellite_llm_tools` Web Search, Image Search, Wikipedia and Weather. The tablet card draws those tool results: an image grid for "show me recipes for chicken", a summary card with a featured image for Wikipedia and web answers, and a forecast card for weather.
+
+- Config is code: `apps/home-assistant/config/binks/agent.yaml` (agent options, tool entries, which agent the pipeline uses) and `prompt.jinja` (persona + device list), applied every boot by the `seed-binks-agent` init container. Edit there, not in the UI.
+- Search is the in-cluster `apps/searxng` (no ingress, no API keys). Image quality is tuned in `apps/searxng/settings.yml` by removing engines; the tool's own engine list does not filter because it also sends `categories=images`.
+- `tool_response_as_string` must stay `false`, or results are spoken but never drawn.
+- Rollback: set `pipeline_agent: extended_openai_conversation` in `agent.yaml`. EOC stays installed and seeded.
+- Cost of the switch: plain chit-chat is ~1.5 s slower than EOC (bigger prompt with the Assist tool definitions); a search answer is two model rounds plus SearXNG, ~3-4 s.

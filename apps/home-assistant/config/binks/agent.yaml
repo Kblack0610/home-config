@@ -1,0 +1,73 @@
+# Binks's conversation agent (home-llm / llama_conversation) and the
+# voice_satellite_llm_tools entries it calls. Read by the seed-binks-agent init
+# container on every boot: entries are created when missing and their data is
+# reconciled to this file, so edit here, not in the HA UI.
+#
+# Why home-llm: it can attach HA LLM APIs, and the tablet card draws the LLM
+# tools' results (image grid, web/Wikipedia summary, forecast). The old
+# extended_openai_conversation agent cannot load them; it stays installed as
+# the rollback (set pipeline_agent: extended_openai_conversation).
+pipeline_agent: llama_conversation
+
+# LiteLLM through the in-cluster gateway with Binks's scoped key
+# (LITELLM_ASSIST_KEY). Never a model host directly.
+backend:
+  host: litellm.ai-gateway.svc.cluster.local
+  port: "4000"
+  ssl: false
+  openai_path: v1
+
+agent:
+  title: Binks
+  huggingface_model: "assist (gemini-flash)"
+  llm_hass_api:
+    - assist
+    - voice_satellite_llm_tools_web_search
+    - voice_satellite_llm_tools_image_search
+    - voice_satellite_llm_tools_wikipedia
+    - voice_satellite_llm_tools_weather
+  enable_streaming: true
+  use_server_sampling_defaults: false
+  temperature: 0.4
+  top_p: 1.0
+  max_new_tokens: 512
+  max_tool_call_iterations: 3
+  enable_legacy_tool_calling: false
+  # MUST stay false: the satellite card only draws a tool result that arrives
+  # as an object (results[].image_url, forecast, featured_image). As a string
+  # it is spoken but never shown.
+  tool_response_as_string: false
+  # in-context examples are for small local models; Gemini does not need them.
+  in_context_examples: false
+  refresh_prompt_per_turn: true
+  remember_conversation: true
+  remember_num_interactions: 5
+  remember_conversation_time_minutes: 2
+  request_timeout: 20
+
+# One config entry per tool (unique_id = voice_satellite_llm_tools_<tool_type>).
+llm_tools:
+  - title: Web Search - SearXNG
+    data:
+      tool_type: web_search
+      web_search_provider: SearXNG
+      searxng_server_url: http://searxng.home-assistant.svc.cluster.local:8080
+      searxng_web_num_results: 3
+      searxng_web_engines: ""
+  - title: Image Search - SearXNG
+    data:
+      tool_type: image_search
+      image_search_provider: SearXNG
+      searxng_server_url: http://searxng.home-assistant.svc.cluster.local:8080
+      searxng_image_num_results: 6
+      # The tool also sends categories=images, which SearXNG unions with this,
+      # so the real filter is the engine removal in apps/searxng/settings.yml.
+      searxng_engines: "bing images,google cse images,pinterest"
+  - title: Wikipedia Search
+    data:
+      tool_type: wikipedia
+      wikipedia_detail: concise
+  - title: Weather Forecast
+    data:
+      tool_type: weather
+      daily_weather_entity: weather.forecast_home

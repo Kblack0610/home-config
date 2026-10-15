@@ -44,6 +44,8 @@ configMapGenerator:
       - dashboard_rooms_cards.yaml=config/dashboards/_rooms_cards.yaml
       - dashboard_talk_card.yaml=config/dashboards/_talk_card.yaml
       - binks_functions.yaml=config/binks/functions.yaml
+      - binks_agent.yaml=config/binks/agent.yaml
+      - binks_prompt.jinja=config/binks/prompt.jinja
       - dashboard_local.yaml=config/dashboards/local.yaml
       - dashboard_ops.yaml=config/dashboards/ops.yaml
       - dashboard_admin.yaml=config/dashboards/admin.yaml

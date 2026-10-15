@@ -1,7 +1,19 @@
 # SearXNG for Binks (voice_satellite_llm_tools web + image search).
 # Only the deltas from upstream defaults; secret_key comes from the
 # SEARXNG_SECRET env var (secret.sops.yaml).
-use_default_settings: true
+use_default_settings:
+  engines:
+    # Image results feed the tablet's picture grid. These engines answered
+    # "chicken recipes" with museum art, icon sets and stock photos of raw meat
+    # (2026-10-15); bing images, google cse images and pinterest return the
+    # actual dishes.
+    remove:
+      - artic
+      - lucide
+      - openverse
+      - flickr
+      - pexels
+      - wikicommons.images
 
 general:
   instance_name: binks-search

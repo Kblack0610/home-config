@@ -387,6 +387,7 @@ spec:
               # shared room-layout partial, !include'd by overview + wall Home
               cp /managed-config/dashboard_rooms_cards.yaml /config/dashboards/_rooms_cards.yaml
               cp /managed-config/dashboard_talk_card.yaml /config/dashboards/_talk_card.yaml
+              cp /managed-config/binks_functions.yaml /config/binks_functions.yaml
               cp /managed-config/dashboard_local.yaml /config/dashboards/local.yaml
               cp /managed-config/dashboard_ops.yaml /config/dashboards/ops.yaml
               cp /managed-config/dashboard_admin.yaml /config/dashboards/admin.yaml
@@ -1282,6 +1283,11 @@ spec:
                   e.setdefault("subentries", {})
 
               CHAT_MODEL = "assist (gemini-flash)"
+              # Explicit function tools (config/binks/functions.yaml, copied in by
+              # sync-managed-config). Without them EOC mutates its shared default
+              # list and every turn after the first fails; see that file.
+              with open("/config/binks_functions.yaml") as f:
+                  FUNCTIONS = f.read()
               for e in entries:
                   if e.get("domain") == DOMAIN:
                       # Reconcile (not create-only): the chat_model moved off the
@@ -1302,6 +1308,9 @@ spec:
                       if opts.get("chat_model") != CHAT_MODEL:
                           opts["chat_model"] = CHAT_MODEL
                           changed = True
+                      if opts.get("functions") != FUNCTIONS:
+                          opts["functions"] = FUNCTIONS
+                          changed = True
                       if e.setdefault("data", {}).get("api_key") != api_key:
                           e["data"]["api_key"] = api_key
                           changed = True
@@ -1309,7 +1318,7 @@ spec:
                           e["modified_at"] = datetime.now(timezone.utc).isoformat()
                           with open(ENTRIES, "w") as f:
                               json.dump(store, f, indent=2)
-                          print(f"Reconciled Binks conversation entry -> chat_model={CHAT_MODEL}")
+                          print(f"Reconciled Binks conversation entry -> chat_model={CHAT_MODEL}, functions")
                       else:
                           print("Binks conversation entry already up to date, skipping")
                       exit(0)
@@ -1357,6 +1366,7 @@ spec:
                       "use_tools": True,
                       "max_function_calls_per_conversation": 3,
                       "prompt": prompt,
+                      "functions": FUNCTIONS,
                   },
                   "pref_disable_new_entities": False,
                   "pref_disable_polling": False,

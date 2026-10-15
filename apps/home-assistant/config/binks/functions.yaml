@@ -1,0 +1,90 @@
+# Binks (extended_openai_conversation) function tools, written into the
+# conversation subentry's `functions` field by the seed-binks-conversation init
+# container.
+#
+# Why this file exists: with no `functions` set, EOC 3.0.0-beta11/12 falls back
+# to a module-level DEFAULT list and validates it IN PLACE, turning
+# value_template into a Template object. The second request then re-validates
+# that object and fails ("template value should be a string"), so every Binks
+# turn after the first one per HA restart errored (2026-10-15). An explicit
+# string is re-parsed per request, so nothing is shared.
+#
+# Same tools as the EOC defaults minus `load_skill` (no skills configured) and
+# `bash` (a shell for the voice model is not something Binks should have).
+- spec:
+    name: execute_services
+    description: Execute service in Home Assistant.
+    parameters:
+      type: object
+      properties:
+        delay:
+          type: object
+          description: Time to wait before execution
+          properties:
+            hours:
+              type: integer
+              minimum: 0
+            minutes:
+              type: integer
+              minimum: 0
+            seconds:
+              type: integer
+              minimum: 0
+        list:
+          type: array
+          items:
+            type: object
+            properties:
+              domain:
+                type: string
+                description: The domain of the service.
+              service:
+                type: string
+                description: The service to be called
+              service_data:
+                type: object
+                description: The service data object to indicate what to control.
+                properties:
+                  entity_id:
+                    type: array
+                    items:
+                      type: string
+                      description: The entity_id retrieved from available devices. It must start with domain, followed by dot character.
+                  area_id:
+                    type: array
+                    items:
+                      type: string
+                      description: The id retrieved from areas. You can specify only area_id without entity_id to act on all entities in that area
+            required:
+            - domain
+            - service
+            - service_data
+  function:
+    type: native
+    name: execute_service
+- spec:
+    name: get_attributes
+    description: Get attributes of entity or multiple entities.
+    parameters:
+      type: object
+      properties:
+        entity_id:
+          type: array
+          description: entity_id of entity or multiple entities
+          items:
+            type: string
+      required:
+      - entity_id
+  function:
+    type: template
+    value_template: '```csv
+
+      entity,attributes
+
+      {%for entity in entity_id%}
+
+      {{entity}},{{states[entity].attributes}}
+
+      {%endfor%}
+
+      ```'

@@ -48,6 +48,34 @@ There is no upstream container image. `sweisgerber/snapcast` is the alpine `snap
 
 `/data/server.json` on the `snapserver-data` PVC holds client names, groups, volumes and latency offsets. Losing it only means re-naming rooms.
 
+## Backup and restore
+
+`snapcast-backup` (CronJob, daily 2:45 AM) tars `/data` to `/var/backups/snapcast/` on hp-victus, where the local-path PVC lives (30 kept), and copies it to the NAS at `/mnt/nas/private/backups/home-k3s/snapcast/` (14 kept). Same script as `apps/home-assistant/backup-cronjob.yaml`; schedule, retention and failure policy are in `docs/backup-runbook.md`. The archive is about 600 bytes, so its `MIN_BYTES` floor is 150: above an empty `/data` (113 bytes), below the smallest valid `server.json` (203).
+
+Run one now:
+
+```bash
+kubectl --context home-k3s -n snapcast create job --from=cronjob/snapcast-backup manual-backup-$(date +%s)
+```
+
+Restore (the server must be down, or it writes its own `server.json` back over the restored one):
+
+```bash
+kubectl --context home-k3s -n snapcast scale deployment snapserver --replicas=0
+
+# Restore pod on hp-victus with the PVC at /data and the local backups at /backup
+kubectl --context home-k3s -n snapcast run restore --rm -it --image=alpine:3.24.1 \
+  --overrides='{"spec":{"nodeSelector":{"kubernetes.io/hostname":"hp-victus"},"volumes":[{"name":"data","persistentVolumeClaim":{"claimName":"snapserver-data"}},{"name":"backup","hostPath":{"path":"/var/backups/snapcast","type":"Directory"}}],"containers":[{"name":"restore","image":"alpine:3.24.1","stdin":true,"tty":true,"volumeMounts":[{"name":"data","mountPath":"/data"},{"name":"backup","mountPath":"/backup","readOnly":true}]}]}}' \
+  -- /bin/sh
+#   ls -lt /backup
+#   tar -xzf /backup/snapcast-YYYYMMDD-HHMMSS.tar.gz -C /data   # keeps the archived owner, uid 911
+#   exit
+
+kubectl --context home-k3s -n snapcast scale deployment snapserver --replicas=1
+```
+
+If the hp-victus copy is gone, the NAS copy is on asus-laptop; copy it into `/var/backups/snapcast/` on hp-victus first. With no archive at all, start the server empty: clients re-register on their own, then rename the rooms and rebuild the groups in snapweb or Home Assistant.
+
 ## Verify
 
 ```bash

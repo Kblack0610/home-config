@@ -75,7 +75,10 @@ external-endpoints:
   - name: cachy-laptop
     group: homelab
     token: "${FLEET_TOKEN}"
-  - name: windows
+  # The living-room Windows PC. Was a generic `windows` slot that never enrolled;
+  # named per machine so a second Windows box can't share (and mask) its key.
+  # Enrolled with ~/.dotfiles/.local/src/fleet-pulse/enroll.ps1 -Name living-room-pc -Group homelab.
+  - name: living-room-pc
     group: homelab
     token: "${FLEET_TOKEN}"
 

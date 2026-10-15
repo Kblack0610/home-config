@@ -16,7 +16,7 @@ Machine liveness used to be scattered across three groups (`fleet`, `mac-machine
 | Group | Members | Mechanism |
 |---|---|---|
 | `workplace` | gp-mac | push |
-| `homelab` | linux-cachyos, windows | push |
+| `homelab` | linux-cachyos, cachy-laptop, living-room-pc | push |
 | `homelab` | mac-studio, mac-mini | poll `:9100` |
 | `k3s` | pi5-master, pi5-worker1-3, pi4-worker4-5, asus-laptop, hp-victus | poll `:9100` |
 | `android` | h0001 (+ tablets) | push (via `apps/headwind-fleet-bridge`) |

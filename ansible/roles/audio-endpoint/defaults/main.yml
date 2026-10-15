@@ -65,6 +65,16 @@ audio_endpoint_snapclient_host_id: "{{ inventory_hostname }}"
 audio_endpoint_aur_snapshot_url: https://aur.archlinux.org/cgit/aur.git/snapshot/snapcast.tar.gz
 audio_endpoint_aur_build_dir: "{{ ansible_facts['user_dir'] }}/.cache/audio-endpoint/aur"
 
+# ALSA device the system snapclient plays to (alsa backend). Empty = the USB
+# interface found by audio_endpoint_card_hint, via plughw. Set it to send the
+# synced copy somewhere else while the USB interface keeps doing capture, e.g.
+# the living room plays through the receiver's HDMI input so every room is in
+# exact sync (the UFO202's analog pass-through would otherwise lead the network
+# rooms by the snapserver buffer and echo between rooms). vc4 HDMI only takes
+# IEC958 frames on its raw hw device, so use the `hdmi:` PCM, which converts:
+#   audio_endpoint_playback_device: "hdmi:CARD=vc4hdmi0,DEV=0"
+audio_endpoint_playback_device: ""
+
 # --- Turntable capture (opt-in) ------------------------------------------------
 # Stream the USB interface's line input to the snapserver's Turntable source
 # (`tcp://0.0.0.0:4953?name=Turntable&mode=server` in apps/snapcast). Uses the

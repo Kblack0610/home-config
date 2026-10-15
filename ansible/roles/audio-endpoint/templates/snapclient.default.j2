@@ -2,7 +2,8 @@
 # Read by the packaged snapclient.service (EnvironmentFile).
 # --host/--port are the spelling every snapclient version accepts (Debian
 # bookworm ships 0.26, which predates the tcp:// URL form).
-# The sound card is the USB interface by ALSA id via plughw (rate/format
+# The sound card is audio_endpoint_playback_device when set (e.g. HDMI to the
+# receiver), else the USB interface by ALSA id via plughw (rate/format
 # conversion), so it does not depend on /etc/asound.conf or the card index.
 START_SNAPCLIENT=true
-SNAPCLIENT_OPTS="--host {{ audio_endpoint_snapserver_host }} --port {{ audio_endpoint_snapserver_port }} --hostID {{ audio_endpoint_snapclient_host_id }} --player alsa --soundcard {{ ('plughw:CARD=' ~ audio_endpoint_card_id ~ ',DEV=0') if audio_endpoint_card_id is defined else 'default' }}"
+SNAPCLIENT_OPTS="--host {{ audio_endpoint_snapserver_host }} --port {{ audio_endpoint_snapserver_port }} --hostID {{ audio_endpoint_snapclient_host_id }} --player alsa --soundcard {{ audio_endpoint_playback_device if audio_endpoint_playback_device else (('plughw:CARD=' ~ audio_endpoint_card_id ~ ',DEV=0') if audio_endpoint_card_id is defined else 'default') }}"

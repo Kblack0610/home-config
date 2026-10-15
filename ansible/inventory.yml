@@ -183,3 +183,9 @@ all:
           ansible_host: 192.168.1.120   # audio-living-lan
           ansible_user: giada
           audio_endpoint_capture: true
+          # Synced copy goes to the receiver over HDMI so this room matches the
+          # network rooms (no inter-room echo). The UFO202 out stays on an
+          # analog input as a "direct records, this room only" option.
+          # The box does not come back from a software reboot: it needs its
+          # physical power button, so never reboot it remotely.
+          audio_endpoint_playback_device: "hdmi:CARD=vc4hdmi1,DEV=0"   # 2nd HDMI port (HDMI-A-2)

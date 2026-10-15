@@ -1,0 +1,63 @@
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: phones-backup
+  namespace: nas
+spec:
+  # Weekly, Sunday 4:15 AM. Phone archives land on the NAS only when someone
+  # runs `phone-backup <name>` with the phone plugged in, so weekly is plenty;
+  # 14 weekly snapshots ~= 3 months of history.
+  schedule: "15 4 * * 0"
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      template:
+        spec:
+          nodeSelector:
+            kubernetes.io/hostname: asus-laptop
+            storage.role/nas: "true"
+          # Privileged: required for btrfs subvolume snapshot/delete commands
+          securityContext:
+            runAsUser: 0
+          containers:
+            - name: backup
+              image: alpine:3.24.1
+              securityContext:
+                privileged: true
+              command: ["/bin/sh", "/scripts/mirror-snapshot.sh"]
+              env:
+                - name: NAME
+                  value: phones
+                - name: KEEP
+                  value: "14"
+              volumeMounts:
+                - name: script
+                  mountPath: /scripts
+                  readOnly: true
+                - name: source
+                  mountPath: /source
+                  readOnly: true
+                - name: backup-dest
+                  mountPath: /backup-dest
+                - name: snapshots
+                  mountPath: /snapshots
+          # Never, not OnFailure: keeps the failed pod and its logs (see
+          # 3d-prints-backup-cronjob.yaml).
+          restartPolicy: Never
+          volumes:
+            - name: script
+              configMap:
+                name: nas-mirror-script
+            - name: source
+              hostPath:
+                path: /mnt/nas/private/phones
+                type: Directory
+            - name: backup-dest
+              hostPath:
+                path: /mnt/backup-8t/phones
+                type: DirectoryOrCreate
+            - name: snapshots
+              hostPath:
+                path: /mnt/backup-8t/phones-snapshots
+                type: DirectoryOrCreate

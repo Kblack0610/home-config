@@ -16,7 +16,7 @@ Note: this is a same-box setup - the NAS data and its backup drive are both insi
 
 ## Backup Drive (asus-laptop)
 
-The Seagate Expansion USB HDD (label `backup8t`, uuid `99a8c3bb-b1d9-4a78-88de-627b429cd147`; currently enumerates as `/dev/sdc`) is the primary consolidated backup target on asus-laptop. It holds the Immich photo originals + DB snapshots and the 3D-print files mirror, with `@media` and `@app-config` subvolumes reserved for Phase 2.
+The Seagate Expansion USB HDD (label `backup8t`, uuid `99a8c3bb-b1d9-4a78-88de-627b429cd147`; currently enumerates as `/dev/sdc`) is the primary consolidated backup target on asus-laptop. It holds the Immich photo originals + DB snapshots, the 3D-print files mirror and the phone archives, with `@media` and `@app-config` subvolumes reserved for Phase 2.
 
 ### Drive layout
 
@@ -27,6 +27,8 @@ The Seagate Expansion USB HDD (label `backup8t`, uuid `99a8c3bb-b1d9-4a78-88de-6
 | `@immich-snapshots` | `/mnt/backup-8t/immich-snapshots` | Dated read-only btrfs snapshots (14 retained) |
 | `@3d-prints` | `/mnt/backup-8t/3d-prints` | rsync mirror of 3D-print files (`/mnt/nas/public/3d-printing`) |
 | `@3d-prints-snapshots` | `/mnt/backup-8t/3d-prints-snapshots` | Dated read-only btrfs snapshots (14 retained) |
+| `@phones` | `/mnt/backup-8t/phones` | rsync mirror of phone archives (`/mnt/nas/private/phones`, see `Phone backup`) |
+| `@phones-snapshots` | `/mnt/backup-8t/phones-snapshots` | Dated read-only btrfs snapshots (14 retained) |
 | `@media` | `/mnt/backup-8t/media` | Reserved for Phase 2 (media library) |
 | `@app-config` | `/mnt/backup-8t/app-config` | Reserved for Phase 2 (all NAS app-config) |
 
@@ -56,23 +58,30 @@ sudo btrfs subvolume create /mnt/btrfs-top/@immich-db
 sudo btrfs subvolume create /mnt/btrfs-top/@immich-snapshots
 sudo btrfs subvolume create /mnt/btrfs-top/@3d-prints
 sudo btrfs subvolume create /mnt/btrfs-top/@3d-prints-snapshots
+sudo btrfs subvolume create /mnt/btrfs-top/@phones
+sudo btrfs subvolume create /mnt/btrfs-top/@phones-snapshots
 sudo btrfs subvolume create /mnt/btrfs-top/@media
 sudo btrfs subvolume create /mnt/btrfs-top/@app-config
 sudo umount /mnt/btrfs-top
 sudo rmdir /mnt/btrfs-top
 
 # 4. Create mount points
-sudo mkdir -p /mnt/backup-8t/{immich,immich-db,immich-snapshots,3d-prints,3d-prints-snapshots,media,app-config}
+sudo mkdir -p /mnt/backup-8t/{immich,immich-db,immich-snapshots,3d-prints,3d-prints-snapshots,phones,phones-snapshots,media,app-config}
 
-# 5. Append to /etc/fstab (replace UUID with $NEW_UUID from step 2)
-# UUID=... /mnt/backup-8t/immich               btrfs noatime,compress=zstd:1,nofail,subvol=@immich               0 0
-# UUID=... /mnt/backup-8t/immich-db            btrfs noatime,compress=zstd:1,nofail,subvol=@immich-db            0 0
-# UUID=... /mnt/backup-8t/immich-snapshots     btrfs noatime,compress=zstd:1,nofail,subvol=@immich-snapshots     0 0
-# UUID=... /mnt/backup-8t/3d-prints            btrfs noatime,compress=zstd:1,nofail,subvol=@3d-prints            0 0
-# UUID=... /mnt/backup-8t/3d-prints-snapshots  btrfs noatime,compress=zstd:1,nofail,subvol=@3d-prints-snapshots  0 0
-# UUID=... /mnt/backup-8t/media                btrfs noatime,compress=zstd:1,nofail,subvol=@media                0 0
-# UUID=... /mnt/backup-8t/app-config           btrfs noatime,compress=zstd:1,nofail,subvol=@app-config           0 0
+# 5. Append to /etc/fstab (replace UUID with $NEW_UUID from step 2). noauto +
+#    x-systemd.automount mounts each subvolume on first access, so a detached
+#    drive never blocks boot; this matches the live fstab on asus-laptop.
+# UUID=... /mnt/backup-8t/immich              btrfs noatime,compress=zstd:1,nofail,noauto,x-systemd.automount,x-systemd.device-timeout=10,subvol=@immich 0 0
+# UUID=... /mnt/backup-8t/immich-db           btrfs noatime,compress=zstd:1,nofail,noauto,x-systemd.automount,x-systemd.device-timeout=10,subvol=@immich-db 0 0
+# UUID=... /mnt/backup-8t/immich-snapshots    btrfs noatime,compress=zstd:1,nofail,noauto,x-systemd.automount,x-systemd.device-timeout=10,subvol=@immich-snapshots 0 0
+# UUID=... /mnt/backup-8t/3d-prints           btrfs noatime,compress=zstd:1,nofail,noauto,x-systemd.automount,x-systemd.device-timeout=10,subvol=@3d-prints 0 0
+# UUID=... /mnt/backup-8t/3d-prints-snapshots btrfs noatime,compress=zstd:1,nofail,noauto,x-systemd.automount,x-systemd.device-timeout=10,subvol=@3d-prints-snapshots 0 0
+# UUID=... /mnt/backup-8t/phones              btrfs noatime,compress=zstd:1,nofail,noauto,x-systemd.automount,x-systemd.device-timeout=10,subvol=@phones 0 0
+# UUID=... /mnt/backup-8t/phones-snapshots    btrfs noatime,compress=zstd:1,nofail,noauto,x-systemd.automount,x-systemd.device-timeout=10,subvol=@phones-snapshots 0 0
+# UUID=... /mnt/backup-8t/media               btrfs noatime,compress=zstd:1,nofail,noauto,x-systemd.automount,x-systemd.device-timeout=10,subvol=@media 0 0
+# UUID=... /mnt/backup-8t/app-config          btrfs noatime,compress=zstd:1,nofail,noauto,x-systemd.automount,x-systemd.device-timeout=10,subvol=@app-config 0 0
 
+sudo systemctl daemon-reload
 sudo mount -a
 findmnt /mnt/backup-8t/immich  # verify
 ```
@@ -130,6 +139,7 @@ K3s app backups run on schedule via CronJobs. Each backup writes a local archive
 | `forgejo-backup-offbox` | Daily 3:30 AM | `forgejo` | hp-victus NFS `192.168.1.243:/srv/backups/forgejo` |
 | `immich-originals-backup` | Daily 3:30 AM | `immich` | 8TB `/mnt/backup-8t/immich` + snapshots (originals + DB) |
 | `3d-prints-backup` | Sunday 3:45 AM | `nas` | 8TB `/mnt/backup-8t/3d-prints` + snapshots (mirror of `/mnt/nas/public/3d-printing`) |
+| `phones-backup` | Sunday 4:15 AM | `nas` | 8TB `/mnt/backup-8t/phones` + snapshots (mirror of `/mnt/nas/private/phones`) |
 | `sops-key-backup` | Sunday 4 AM | `nas` | NAS `home-k3s/sops/` |
 | `zomboid-backup` | Daily 4:30 AM | `zomboid` | NAS **public** share `backups/zomboid/` |
 | `nas-backup-cleanup` | Sunday 5 AM | `nas` | not applicable |
@@ -165,7 +175,7 @@ kubectl --context home-k3s exec -n ai-gateway deploy/litellm -- ls -la /app/data
 |----------|-----------|
 | Local node storage | 30 backups per app |
 | NAS backups | 14 backups per app |
-| 8TB btrfs snapshots (immich, 3d-prints) | 14 snapshots each |
+| 8TB btrfs snapshots (immich, 3d-prints, phones) | 14 snapshots each |
 | SOPS key copies | 4 copies |
 
 ## Manual Backup
@@ -189,9 +199,25 @@ kubectl --context home-k3s create job --from=cronjob/immich-originals-backup man
 # 3D-print files: mirror /mnt/nas/public/3d-printing to the 8TB + snapshot
 kubectl --context home-k3s create job --from=cronjob/3d-prints-backup manual-backup-$(date +%s) -n nas
 
+# Phone archives: mirror /mnt/nas/private/phones to the 8TB + snapshot
+kubectl --context home-k3s create job --from=cronjob/phones-backup manual-backup-$(date +%s) -n nas
+
 # SOPS key
 kubectl --context home-k3s create job --from=cronjob/sops-key-backup manual-sops-backup-$(date +%s) -n nas
 ```
+
+## Phone backup
+
+Phones are archived in two steps, because a phone is only reachable when it is plugged in:
+
+1. **Phone -> NAS (manual, USB).** On a desktop with the phone plugged in and USB debugging authorized, run `phone-backup <name>` (dotfiles `.local/bin/phone-backup`). It pulls every top-level `/sdcard` entry except `Android/` over adb into `~/.cache/phone-backup/<name>/`, then rsyncs that to `/mnt/nas/private/phones/<name>/sdcard/` on asus-laptop over SSH. There is no `--delete`, so the NAS copy is an archive: clearing space on the phone never removes a file from it. Per-phone settings (adb serial, expected model, NAS target) live in the untracked `~/.config/phone-backup/<name>.env`; the script's header documents the keys.
+2. **NAS -> 8TB (automatic).** The `phones-backup` CronJob mirrors `/mnt/nas/private/phones` to `@phones` every Sunday and takes a dated snapshot, keeping 14.
+
+The camera roll is covered separately by the Immich app's background backup, which `immich-originals-backup` mirrors to the 8TB nightly.
+
+Not covered: app-private data (`/sdcard/Android/data`, `obb`), SMS and call logs, which Android does not expose over adb without root. Contacts and calendars sync to Google.
+
+`/mnt/nas/private` is `root:root 0770`, so `NAS_SUDO=sudo` is required; the script then runs the remote rsync as `sudo rsync`.
 
 ## Verification
 

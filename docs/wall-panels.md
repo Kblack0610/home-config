@@ -164,6 +164,12 @@ Add a room: add `"assist_satellite.<panel>": "<room>"` to `ROOMS`, bump the `?v=
 
 Debug: in the panel's WebView console, `window.__snapcastTablet.status()` shows the socket, AudioContext state, sample format, volume, clock offset and last error. Log lines are prefixed `[snapcast-tablet]`. From any LAN machine: `curl -s https://snapcast.kblab.me/jsonrpc -d '{"id":1,"jsonrpc":"2.0","method":"Server.GetStatus"}' | jq '.result.server.groups[] | {stream_id, clients: [.clients[] | {id, connected}]}'`.
 
+### Music view
+
+`/wall-panels/music` (Music chip on Home) has one section per Snapcast room: the Music Assistant player as a `media-control` card (now playing, play/pause, skip, the browse button for MA's library, radio and Spotify, the join button for grouping rooms), a volume slider, and a Source picker on the room's Snapcast client entity (`media_player.<room>_snapcast_client`). Turntable is picked there, because MA only offers its own streams. Source is per Snapcast group, so joined rooms switch together.
+
+Every tablet shows the same view: all tablets log in as the same HA user and browser_mod has no config entry, so a card cannot tell which tablet it is on. A room's cards hide while its players do not exist (a state condition reads a missing entity as `unavailable`).
+
 ---
 
 ## 3. Per-tablet identity (browser_mod)

@@ -187,6 +187,10 @@ views:
                 content: "{{ states('sensor.cluster_nodes_online') }}/{{ states('sensor.homelab_total_nodes') }}"
                 tap_action: { action: navigate, navigation_path: /wall-panels/ops }
               - type: template
+                icon: mdi:music
+                content: Music
+                tap_action: { action: navigate, navigation_path: /wall-panels/music }
+              - type: template
                 icon: mdi:play-box-multiple
                 content: Media
                 tap_action: { action: navigate, navigation_path: /wall-panels/media }
@@ -290,6 +294,112 @@ views:
       - type: iframe
         url: 'https://immich-kiosk.kblab.me?disable_ui=true'
         aspect_ratio: 100%
+
+  # -------------------------------- MUSIC ---------------------------------
+  # One section per Snapcast room. Per room: the Music Assistant player (now
+  # playing, play/pause, skip, browse MA's library/radio/Spotify, join other
+  # rooms), its volume, and the room's Snapcast client, whose Source picks the
+  # stream (Turntable, default, or the MA stream). MA only offers its own
+  # streams, so Turntable comes from the Snapcast entity. Source is a GROUP
+  # setting: rooms joined into one Snapcast group switch together.
+  # No per-tablet "own room first": every tablet logs in as the same HA user
+  # and browser_mod is not set up, so a card cannot tell which tablet it is on.
+  # A room whose players do not exist yet (kitchen, until the kitchen tablet's
+  # Snapcast client connects) shows a note instead of a missing-entity warning;
+  # a state condition reads a missing entity as `unavailable`.
+  - title: Music
+    path: music
+    icon: mdi:music
+    type: sections
+    max_columns: 3
+    sections:
+      - type: grid
+        cards:
+          - type: custom:bubble-card
+            card_type: button
+            button_type: name
+            name: Home
+            icon: mdi:home
+            tap_action: { action: navigate, navigation_path: /wall-panels/home }
+          - type: heading
+            heading: Living Room
+            icon: mdi:sofa
+          - type: media-control
+            entity: media_player.living_room
+            grid_options: { columns: full }
+          - type: tile
+            entity: media_player.living_room
+            name: Volume
+            hide_state: true
+            features_position: inline
+            features: [{ type: media-player-volume-slider }]
+            grid_options: { columns: full }
+          - type: tile
+            entity: media_player.living_room_snapcast_client
+            name: Source
+            icon: mdi:record-player
+            hide_state: true
+            features_position: inline
+            features: [{ type: media-player-source }]
+            grid_options: { columns: full }
+      - type: grid
+        cards:
+          - type: heading
+            heading: Office
+            icon: mdi:briefcase
+          - type: media-control
+            entity: media_player.office
+            grid_options: { columns: full }
+          - type: tile
+            entity: media_player.office
+            name: Volume
+            hide_state: true
+            features_position: inline
+            features: [{ type: media-player-volume-slider }]
+            grid_options: { columns: full }
+          - type: tile
+            entity: media_player.office_snapcast_client
+            name: Source
+            icon: mdi:record-player
+            hide_state: true
+            features_position: inline
+            features: [{ type: media-player-source }]
+            grid_options: { columns: full }
+      - type: grid
+        cards:
+          - type: heading
+            heading: Kitchen
+            icon: mdi:fridge-outline
+          - type: markdown
+            content: >-
+              Kitchen speaker offline. If the kitchen tablet has never joined
+              Snapcast, pull down on it once to reload the page.
+            visibility:
+              - { condition: state, entity: media_player.kitchen, state: unavailable }
+          - type: media-control
+            entity: media_player.kitchen
+            grid_options: { columns: full }
+            visibility:
+              - { condition: state, entity: media_player.kitchen, state_not: unavailable }
+          - type: tile
+            entity: media_player.kitchen
+            name: Volume
+            hide_state: true
+            features_position: inline
+            features: [{ type: media-player-volume-slider }]
+            grid_options: { columns: full }
+            visibility:
+              - { condition: state, entity: media_player.kitchen, state_not: unavailable }
+          - type: tile
+            entity: media_player.kitchen_snapcast_client
+            name: Source
+            icon: mdi:record-player
+            hide_state: true
+            features_position: inline
+            features: [{ type: media-player-source }]
+            grid_options: { columns: full }
+            visibility:
+              - { condition: state, entity: media_player.kitchen_snapcast_client, state_not: unavailable }
 
   - !include view_media.yaml
 

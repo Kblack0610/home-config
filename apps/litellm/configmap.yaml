@@ -635,6 +635,11 @@ data:
       #                    after Langfuse is up. NOTE: LANGFUSE_OTEL_HOST (not
       #                    LANGFUSE_HOST) is the correct env var for this callback.
       callbacks: ["prometheus", "langfuse_otel"]
+      # /metrics/ needs no key. LiteLLM only accepts a PROXY ADMIN key there, and a scrape
+      # credential with admin power is worse than no credential. Instead the path is
+      # unreachable from outside: ingress-metrics-deny.yaml 403s /metrics on llm.kblab.me,
+      # so only in-cluster Prometheus (ServiceMonitor -> Service) can read it.
+      require_auth_for_metrics_endpoint: false
 
     general_settings:
       master_key: os.environ/LITELLM_MASTER_KEY

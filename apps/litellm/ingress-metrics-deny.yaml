@@ -1,0 +1,41 @@
+# Keeps LiteLLM's /metrics/ (per-key spend, budgets, request counts) off the ingress.
+#
+# configmap.yaml sets require_auth_for_metrics_endpoint: false so in-cluster Prometheus
+# can scrape without a proxy-admin key. This Ingress claims the /metrics prefix on the
+# same host; Traefik ranks the longer path above `/`, and the allowlist admits only
+# 127.0.0.1, which no client reaching the ingress has, so every request gets 403.
+---
+apiVersion: traefik.io/v1alpha1
+kind: Middleware
+metadata:
+  name: litellm-metrics-deny
+  namespace: ai-gateway
+spec:
+  ipAllowList:
+    sourceRange:
+      - 127.0.0.1/32
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: litellm-metrics-deny
+  namespace: ai-gateway
+  annotations:
+    kubernetes.io/ingress.class: traefik
+    traefik.ingress.kubernetes.io/router.middlewares: ai-gateway-litellm-metrics-deny@kubernetescrd
+spec:
+  rules:
+    - host: llm.kblab.me
+      http:
+        paths:
+          - path: /metrics
+            pathType: Prefix
+            backend:
+              service:
+                name: litellm
+                port:
+                  number: 4000
+  tls:
+    - hosts:
+        - llm.kblab.me
+      secretName: litellm-tls

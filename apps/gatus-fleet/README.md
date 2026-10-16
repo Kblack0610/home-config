@@ -30,10 +30,11 @@ The status bars count against `$FLEET_ROSTER` (in `~/.config/fleet-pulse/env`), 
 
 **Gatus only materializes an external-endpoint once it receives that host's FIRST push.** A machine that is declared here but has never enrolled is absent from `/api/v1/endpoints/statuses` entirely — not stale, *missing*. Counting the API's rows drew the denominator from the same set as the numerator, so `healthy == total` held trivially and the glyph read GREEN while four of five machines had never reported once. The bug hid its own symptom. The roster is the independent answer to "who *should* be reporting".
 
-Two rules follow:
+Three rules follow:
 
 1. **Names must be kebab-case.** `FLEET_ROSTER` is space-separated and the bars match on the `name` field, so `Mac Studio` could never be rostered. (Gatus separately derives `key = <group>_<name>`, lowercasing and mapping `/ _ , .` and whitespace to `-`.)
-2. **`iot` is deliberately NOT in the roster.** The Pi Zeros sleep by design; counting them would pin the glyph amber forever. This mirrors `apps/monitoring/prometheus-rules-node-health.yaml`, which already excludes `iot-pi-nodes` from `NodeDown` "to avoid false pages". They're visible here; they just don't drive the glyph.
+2. **Machines that are off by design stay off the roster.** A laptop is closed most of the day; rostered, it would pin the glyph and the command-center health amber whenever it is. `cachy-laptop` is declared here but unrostered, and the waybar draws it with a `~cachy-laptop=lap` token, which shows its dot only while it is up.
+3. **`iot` is deliberately NOT in the roster.** The Pi Zeros sleep by design; counting them would pin the glyph amber forever. This mirrors `apps/monitoring/prometheus-rules-node-health.yaml`, which already excludes `iot-pi-nodes` from `NodeDown` "to avoid false pages". They're visible here; they just don't drive the glyph.
 
 ## Adding a machine
 

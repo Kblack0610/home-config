@@ -142,6 +142,9 @@ def main():
             key = token.split("=", 1)[0]
             if key.startswith("@"):
                 continue  # a gatus group, not a machine
+            # ~name: drawn only while up, deliberately OFF the roster (a laptop).
+            # It must still be declared, or it can never report at all.
+            key = key.lstrip("~")
             if key not in known:
                 problems.append(
                     f"{args.display}: FLEET_DISPLAY names '{key}', which is on no roster "

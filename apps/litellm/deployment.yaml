@@ -60,8 +60,8 @@ spec:
               mountPath: /etc/litellm/config.yaml
               subPath: config.yaml
             - name: config
-              mountPath: /etc/litellm/gemini_tool_schema.py
-              subPath: gemini_tool_schema.py
+              mountPath: /etc/litellm/tool_compat.py
+              subPath: tool_compat.py
             - name: localtime
               mountPath: /etc/localtime
               readOnly: true

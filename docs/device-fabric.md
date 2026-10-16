@@ -36,6 +36,7 @@ Each machine's status bar (waybar/sketchybar) polls `/api/v1/endpoints/statuses`
 - **Per-machine config:** `~/.config/fleet-pulse/env` (`GATUS_BASE`, `FLEET_ROSTER`) + the token, from the `~/.dotfiles-private` overlay - never in the public repo.
 - **Token:** one shared bearer, SOPS-encrypted in `apps/gatus/fleet-token-secret.sops.yaml`.
 - Full detail: `~/.dotfiles/.local/src/fleet-pulse/README.md`.
+- Adding a Windows PC (SSH bootstrap, remote enroll, S4U task): [`windows-machines.md`](./windows-machines.md).
 
 ## 2. Android management: Headwind MDM
 

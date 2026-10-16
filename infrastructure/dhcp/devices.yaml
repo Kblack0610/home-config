@@ -286,6 +286,13 @@ devices:
     ip: "192.168.1.120"
     category: media
 
+  # Living-room Windows PC (DESKTOP-BPLB04U), on Wi-Fi (Intel AX210). Fleet key
+  # homelab_living-room-pc; reached over Windows OpenSSH. See docs/windows-machines.md.
+  - hostname: living-room-pc-lan
+    mac: "F4:3B:D8:6F:A7:A7"
+    ip: "192.168.1.121"
+    category: media
+
   # --- Dynamic / Unknown -----------------------------------------------------
   - hostname: unknown-37233e
     mac: "2A:64:1F:37:23:3E"

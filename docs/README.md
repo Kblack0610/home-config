@@ -42,6 +42,7 @@ Start with the service README in its manifest directory when you are editing or 
 | Forgejo | [../apps/forgejo/README.md](../apps/forgejo/README.md) |
 | Monitoring | [../apps/monitoring/README.md](../apps/monitoring/README.md) |
 | NAS | [../apps/nas/README.md](../apps/nas/README.md) |
+| Whole-house audio (overview) | [whole-house-audio.md](whole-house-audio.md) |
 | Snapcast (whole-house audio) | [../apps/snapcast/README.md](../apps/snapcast/README.md) |
 | Music Assistant | [../apps/music-assistant/README.md](../apps/music-assistant/README.md) |
 | Pi3 AdGuard Home | [../apps/pi3-adguard-home/README.md](../apps/pi3-adguard-home/README.md) |

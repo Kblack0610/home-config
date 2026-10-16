@@ -6,8 +6,9 @@
 #
 #   1. Binks brain — gatus only probes LiteLLM /health/readiness (gateway UP),
 #      which stays green while the assist model route is dead (the 2026-07-27
-#      silent outage). This synthetically calls the REAL assist (gemini-flash)
-#      route every 30 min with fallbacks disabled and alerts on a non-200.
+#      silent outage). This synthetically calls Binks's REAL primary route,
+#      fast (gpt-oss-120b) per config/binks/agent.yaml,
+#      every 30 min with fallbacks disabled and alerts on a non-200.
 #      disable_fallbacks matters: with fallbacks on, LiteLLM answered 200 from
 #      Lazer while Gemini was 429 all day (2026-10-15), so the probe was green
 #      through the very outage it exists to catch. 30 min, not 10, because the
@@ -32,7 +33,7 @@ command_line:
         -X POST http://litellm.ai-gateway.svc.cluster.local:4000/v1/chat/completions
         -H "Authorization: Bearer ${LITELLM_ASSIST_KEY}"
         -H "Content-Type: application/json"
-        -d '{"model":"assist (gemini-flash)","messages":[{"role":"user","content":"ping"}],"max_tokens":1,"disable_fallbacks":true}'
+        -d '{"model":"fast (gpt-oss-120b)","messages":[{"role":"user","content":"ping"}],"max_tokens":1,"disable_fallbacks":true}'
       scan_interval: 1800
 
 template:

@@ -247,37 +247,6 @@ model_list:
   # Lazer's catalog has no embedding model. Free tier; key in
   # secret.sops.yaml (litellm-db-secrets) as GEMINI_API_KEY.
 
-  # fast cloud — gemini-2.0-flash. Chat fallback for the Lazer `fast`
-  # route. NOTE: this Gemini key currently has free-tier generateContent
-  # quota = 0 (embeddings work, chat does not), so this route 429s until
-  # billing/quota is enabled. Kept defined so it activates automatically
-  # once quota exists; Lazer remains the working chat default.
-  - model_name: "fast (gemini-2.0-flash)"
-    litellm_params:
-      model: "gemini/gemini-2.0-flash"
-      api_key: os.environ/GEMINI_API_KEY
-    model_info:
-      mode: chat
-      tags: ["cloud", "gemini", "free"]
-      capabilities:
-        tools: true
-        code: false
-        vision: true
-        reasoning: false
-        json_mode: true
-
-  # assist chat — Binks (HA voice) PRIMARY, on the FAMILY Gemini key
-  # (GEMINI_API_KEY_FAMILY). Dedicated route, not the shared `fast`/`vlm`
-  # alias, so Binks routing is isolated and A/B-able. Fallback chain in
-  # router_settings.fallbacks below: -> Lazer gpt-oss-120b -> local Qwen3-4B.
-  # Model is gemini-3.5-flash-lite (route name kept: HA and the probe pin it).
-  # 2026-10-15: gemini-2.5-flash on this free-tier key allows 20 requests/day,
-  # so it was 429 all day and every Binks turn silently took the Lazer
-  # fallback (~5.5s). Measured direct: 3.5-flash-lite 0.7-0.8s with no
-  # thinking tokens and a correct execute_services call; 2.5-flash-lite was
-  # faster but dropped the `light.` prefix; 3.8-flash took 10-23s.
-  # timeout: a voice turn cannot wait 900s (router default) for a stalled
-  # upstream, so give up after 8s and let the fallback answer.
   - model_name: "assist (gemini-flash)"
     litellm_params:
       model: "gemini/gemini-3.5-flash-lite"
@@ -599,8 +568,12 @@ router_settings:
   #   chat:      Lazer fast  -> Gemini flash -> Mac Studio fast
   #   embedding: Gemini 004  -> Mac Studio modernbert
   fallbacks:
-    - {"fast (gpt-oss-120b)": ["fast (gemini-2.0-flash)", "fast (Qwen3-4B)"]}
-    - {"fast (gemini-2.0-flash)": ["fast (Qwen3-4B)"]}
+    # gpt-oss is also Binks's primary (config/binks/agent.yaml in
+    # home-assistant), so its first fallback is the free Gemini assist route.
+    # The old Gemini 2.0 hop was removed 2026-10-15: Google retired that model
+    # (404) and its key had no chat quota, so it turned every recoverable
+    # failure into a hard error.
+    - {"fast (gpt-oss-120b)": ["assist (gemini-flash)", "fast (Qwen3-4B)"]}
     # Binks (HA voice) 3-tier chain: Gemini family key (primary) -> Lazer
     # gpt-oss-120b (verified tool-calling) -> local Qwen3-4B (last-resort;
     # answers but emits text-style tool calls, so device control is best-
@@ -611,8 +584,8 @@ router_settings:
     # or a cold on_demand load times out, the request transparently spills
     # to the paid/cloud equivalent instead of hard-erroring. Keyed by the
     # LOCAL route name, so they only engage once an alias is flipped local.
-    - {"fast (Qwen3-4B-8bit)": ["fast (gpt-oss-120b)", "fast (gemini-2.0-flash)"]}
-    - {"fast (Qwen3-4B)": ["fast (gpt-oss-120b)", "fast (gemini-2.0-flash)"]}
+    - {"fast (Qwen3-4B-8bit)": ["fast (gpt-oss-120b)", "assist (gemini-flash)"]}
+    - {"fast (Qwen3-4B)": ["fast (gpt-oss-120b)", "assist (gemini-flash)"]}
     - {"code (Qwen3-Coder-Next-6bit)": ["code (qwen-3-coder)"]}
     - {"code (Qwen3-Coder-480B-A35B-4bit)": ["code (qwen-3-coder)"]}
     - {"reasoning (Qwen3.5-397B-A17B-4bit)": ["reasoning (deepseek-v4-pro)"]}

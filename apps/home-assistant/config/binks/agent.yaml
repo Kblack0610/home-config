@@ -19,7 +19,10 @@ backend:
 
 agent:
   title: Binks
-  huggingface_model: "assist (gemini-flash)"
+  # Lazer gpt-oss-120b first (0.4s, metered on the Lazer allowance through
+  # the gateway); its LiteLLM fallback is the free Gemini `assist` route.
+  # 2026-10-15: free Gemini flash-lite ran ~4s with intermittent 503s.
+  huggingface_model: "fast (gpt-oss-120b)"
   llm_hass_api:
     - assist
     # look_up (custom_components/binks_answers): web answers where every

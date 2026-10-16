@@ -499,3 +499,7 @@ Binks's pipeline runs on **home-llm** (`llama_conversation`, Generic OpenAI back
 ### look_up: summary with pictures (2026-10-15)
 
 For recipes, how-to, places, products and news, Binks calls `look_up` from our own integration `apps/home-assistant/custom_components/binks_answers` (configured by `config/packages/binks_answers.yaml`). It searches SearXNG `categories=general`, skips video sites, and returns five results with snippets plus a picture each: the page's `og:image` when it answers within a shared 1.2 s budget, else the search thumbnail. The model speaks a two or three sentence overview naming the results while the card shows their pictures beside the text. The card contract it relies on: it draws `results[]` entries that carry `image_url`, paints `thumbnail_url` first, and opens `image_url` large on tap. `search_images` is now only for "pictures of X".
+
+### Brain: Lazer first (2026-10-15)
+
+Binks's home-llm agent calls `fast (gpt-oss-120b)` (Lazer, metered on the Lazer allowance through LiteLLM; about 0.4 s for a tool round), and that route falls back to the free Gemini `assist (gemini-flash)` route, then local Qwen. Free Gemini flash-lite measured about 4 s with intermittent 503s the same day. The retired `fast (gemini-2.0-flash)` route is gone: it sat in the fallback chain and turned recoverable failures into 404s.

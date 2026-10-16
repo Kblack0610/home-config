@@ -115,9 +115,28 @@ on stock-Android Lenovo tablets (M9/M11). (FireOS is not supported — see plan.
 > MQTT/REST channel to HA — Headwind MDM only handles enrollment, app deploy, lockdown, and
 > liveness. See the "Runtime control is FreeKiosk MQTT" decision in `docs/device-fabric.md`.
 > Enable it per tablet with `provision-wall-tablet.sh --mqtt-broker mosquitto.kblab.me ...`,
-> then reload via the FreeKiosk `reload` MQTT entity instead of adb. **Until MQTT is enabled
-> on the mounted tablets** (not yet, as of 2026-07-17), the fallback is `adb force-stop
-> com.freekiosk` + relaunch — see the `wall-tablet-ops` skill for the exact sequence.
+> then reload via the FreeKiosk `reload` MQTT entity instead of adb. Where MQTT is not enabled,
+> the fallback is `adb force-stop com.freekiosk` + relaunch (see the `wall-tablet-ops` skill).
+
+#### Remote update and view: status (verified 2026-10-15)
+
+What survives a reboot and what does not, per channel:
+
+| Channel | Gives you | Survives reboot? | Live on |
+|---------|-----------|------------------|---------|
+| FreeKiosk MQTT -> HA | reload, navigate URL, screen, brightness, volume, current-URL sensor, D-pad/keyboard | Yes, config is stored in the app (bedroom has reported continuously since 2026-07-17) | wall-bedroom only (`freekiosk_dc43ede573076a31`, 192.168.1.60) |
+| FreeKiosk REST `:8080` | `/api/url`, `/api/js` | Yes on the tablet, but the set-once key must be in `~/.config/wall-tablets/<name>.rest-key` | none: that directory does not exist on the workstation, so no key is usable |
+| `adb tcpip 5555` | screencap, input, provisioning | No, resets on reboot (no root, `persist.adb.tcp.port` denied) | none |
+| Android Wireless Debugging (paired workstation, random port, `~/.local/bin/adb-wall-bedroom` scans for it) | screencap, scrcpy | **No in practice.** Set up on .60 on 2026-07-18; on 2026-10-15 the scan found no port. Android turns it off on its own (Wi-Fi reconnect / timeout), not only on reboot | none |
+| DHCP static lease | stable IP | Yes (router-side) | wall-bedroom only; kitchen, living room, office are dynamic and their old IPs (.181/.234/.235) no longer answer |
+
+So today there is **no remote view (screenshot) path that holds**, and remote reload works on the bedroom panel only. FreeKiosk MQTT has no screenshot. Verify a reload without a screenshot via HA: `sensor.freekiosk_*_current_url`, `binary_sensor.freekiosk_*_screen_on`, and `assist_satellite.<room>` going `idle`.
+
+Open follow-up, in order:
+1. Find the current IPs of kitchen / living room / office (Headwind device list or router leases) and add static leases in `infrastructure/dhcp/devices.yaml`.
+2. Re-provision those three with `--mqtt-broker mosquitto.kblab.me` (one USB session each) and keep the REST key file.
+3. For a remote view that holds: check what Headwind MDM (already device owner on all four) can enforce, such as keeping USB/wireless debugging on, or a remote-view app it keeps running. Do not rely on Wireless Debugging alone.
+4. HA script that presses every `button.freekiosk_*_reload`, for use after a dashboard deploy.
 
 ---
 

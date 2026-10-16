@@ -44,9 +44,12 @@ API_PROMPT = (
     "spoken overview of what is on screen."
 )
 INSTRUCTION = (
-    "Answer in two or three short spoken sentences built from these snippets. "
-    "Name two or three of the results by their dish or page name, since their "
-    "pictures are on screen. No URLs, no lists, no markdown."
+    "Answer like a helpful friend, in two or three short spoken "
+    "sentences built from these snippets. Name the actual dishes, steps, "
+    "places or products (e.g. 'garlic butter chicken' or 'Rattlesnake Ledge'), "
+    "never page titles, site names, numbers of recipes, URLs, quotation marks, "
+    "asterisks or lists. Their pictures are already on screen, so do not "
+    "describe the screen."
 )
 
 _OG_RE = (

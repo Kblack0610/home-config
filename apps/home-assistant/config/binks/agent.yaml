@@ -22,7 +22,9 @@ agent:
   huggingface_model: "assist (gemini-flash)"
   llm_hass_api:
     - assist
-    - voice_satellite_llm_tools_web_search
+    # look_up (custom_components/binks_answers): web answers where every
+    # result carries its own picture. Replaces the upstream search_web here.
+    - binks_answers
     - voice_satellite_llm_tools_image_search
     - voice_satellite_llm_tools_wikipedia
     - voice_satellite_llm_tools_weather

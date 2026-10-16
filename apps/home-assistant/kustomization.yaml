@@ -46,6 +46,10 @@ configMapGenerator:
       - binks_functions.yaml=config/binks/functions.yaml
       - binks_agent.yaml=config/binks/agent.yaml
       - binks_prompt.jinja=config/binks/prompt.jinja
+      - package_binks_answers.yaml=config/packages/binks_answers.yaml
+      - binks_answers_init.py=custom_components/binks_answers/__init__.py
+      - binks_answers_tool.py=custom_components/binks_answers/tool.py
+      - binks_answers_manifest.json=custom_components/binks_answers/manifest.json
       - dashboard_local.yaml=config/dashboards/local.yaml
       - dashboard_ops.yaml=config/dashboards/ops.yaml
       - dashboard_admin.yaml=config/dashboards/admin.yaml

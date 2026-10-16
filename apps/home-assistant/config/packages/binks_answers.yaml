@@ -1,0 +1,5 @@
+# Binks Answers: the look_up LLM tool (custom_components/binks_answers in this
+# repo). Searches the in-cluster SearXNG; Binks attaches it via
+# config/binks/agent.yaml.
+binks_answers:
+  searxng_url: http://searxng.home-assistant.svc.cluster.local:8080

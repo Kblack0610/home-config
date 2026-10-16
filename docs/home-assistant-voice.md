@@ -495,3 +495,7 @@ Binks's pipeline runs on **home-llm** (`llama_conversation`, Generic OpenAI back
 - `tool_response_as_string` must stay `false`, or results are spoken but never drawn.
 - Rollback: set `pipeline_agent: extended_openai_conversation` in `agent.yaml`. EOC stays installed and seeded.
 - Cost of the switch: plain chit-chat is ~1.5 s slower than EOC (bigger prompt with the Assist tool definitions); a search answer is two model rounds plus SearXNG, ~3-4 s.
+
+### look_up: summary with pictures (2026-10-15)
+
+For recipes, how-to, places, products and news, Binks calls `look_up` from our own integration `apps/home-assistant/custom_components/binks_answers` (configured by `config/packages/binks_answers.yaml`). It searches SearXNG `categories=general`, skips video sites, and returns five results with snippets plus a picture each: the page's `og:image` when it answers within a shared 1.2 s budget, else the search thumbnail. The model speaks a two or three sentence overview naming the results while the card shows their pictures beside the text. The card contract it relies on: it draws `results[]` entries that carry `image_url`, paints `thumbnail_url` first, and opens `image_url` large on tap. `search_images` is now only for "pictures of X".

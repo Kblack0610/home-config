@@ -1,0 +1,10 @@
+{
+  "domain": "binks_answers",
+  "name": "Binks Answers",
+  "codeowners": [],
+  "dependencies": ["http"],
+  "documentation": "https://git.kblab.me/kblack0610/home-config/src/branch/master/docs/home-assistant-voice.md",
+  "iot_class": "cloud_polling",
+  "requirements": [],
+  "version": "1.0.0"
+}

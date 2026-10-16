@@ -465,6 +465,13 @@ spec:
               cp /managed-config/binks_functions.yaml /config/binks_functions.yaml
               cp /managed-config/binks_agent.yaml /config/binks_agent.yaml
               cp /managed-config/binks_prompt.jinja /config/binks_prompt.jinja
+              cp /managed-config/package_binks_answers.yaml /config/packages/binks_answers.yaml
+              # binks_answers is our own integration (look_up tool), so it ships
+              # from git like the dashboards rather than from a release download.
+              mkdir -p /config/custom_components/binks_answers
+              cp /managed-config/binks_answers_init.py /config/custom_components/binks_answers/__init__.py
+              cp /managed-config/binks_answers_tool.py /config/custom_components/binks_answers/tool.py
+              cp /managed-config/binks_answers_manifest.json /config/custom_components/binks_answers/manifest.json
               cp /managed-config/dashboard_local.yaml /config/dashboards/local.yaml
               cp /managed-config/dashboard_ops.yaml /config/dashboards/ops.yaml
               cp /managed-config/dashboard_admin.yaml /config/dashboards/admin.yaml

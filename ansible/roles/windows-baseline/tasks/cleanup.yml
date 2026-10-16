@@ -1,0 +1,14 @@
+---
+# Maintenance, not state: reported as unchanged so a converged run reads changed=0.
+- name: Clear temp files older than a week
+  ansible.windows.win_powershell:
+    script: |
+      $Ansible.Changed = $false
+      $cut = (Get-Date).AddDays(-7)
+      foreach ($d in $env:TEMP, "$env:SystemRoot\Temp", "$env:SystemRoot\SoftwareDistribution\Download") {
+        Get-ChildItem $d -Recurse -Force -File -EA 0 | Where-Object LastWriteTime -lt $cut | Remove-Item -Force -EA 0
+      }
+
+- name: Drop superseded Windows component versions
+  ansible.windows.win_command: dism.exe /Online /Cleanup-Image /StartComponentCleanup /Quiet
+  changed_when: false

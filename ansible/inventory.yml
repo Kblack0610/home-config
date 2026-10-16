@@ -58,6 +58,20 @@ all:
           ansible_host: 192.168.1.7
           ansible_user: kennethblack
 
+    # Windows PCs, managed over Windows OpenSSH (see docs/windows-machines.md
+    # for the one-time paste that enables sshd and trusts the workstation key).
+    # sshd's default shell on Windows is cmd, hence ansible_shell_type: cmd;
+    # the ansible.windows modules wrap themselves in PowerShell regardless.
+    windows_hosts:
+      vars:
+        ansible_connection: ssh
+        ansible_shell_type: cmd
+      hosts:
+        # TV-connected gaming + playtest box (Win10 Pro, Wi-Fi only).
+        living-room-pc:
+          ansible_host: 192.168.1.121   # living-room-pc-lan
+          ansible_user: hughl
+
     pi_k3s:
       hosts:
         pi5-master:

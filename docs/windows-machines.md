@@ -2,13 +2,13 @@
 
 How a Windows PC joins the fleet. The goal is one short visit to the PC, then everything else from the workstation over SSH.
 
-What "on the fleet" means today: the PC pushes a liveness heartbeat every 60s to `fleet.kblab.me` and shows up on the fleet dashboard, Grafana and the status-bar glyph. It is not Ansible-managed yet. The mechanism is shared with every other computer and is described in [device-fabric.md](./device-fabric.md) and `apps/gatus-fleet/README.md`.
+What "on the fleet" means today: the PC pushes a liveness heartbeat every 60s to `fleet.kblab.me` and shows up on the fleet dashboard, Grafana and the status-bar glyph. Once SSH works it is also Ansible-managed (`windows_hosts` in `ansible/inventory.yml`, see [Managed by Ansible](#managed-by-ansible)). The heartbeat mechanism is shared with every other computer and is described in [device-fabric.md](./device-fabric.md) and `apps/gatus-fleet/README.md`.
 
 ## Inventory
 
 | Name (fleet key) | Windows hostname | IP | User | Notes |
 |------------------|------------------|----|------|-------|
-| `living-room-pc` (`homelab_living-room-pc`) | `DESKTOP-BPLB04U` | 192.168.1.121 (`living-room-pc-lan`) | `hughl` (Microsoft account, admin) | Wi-Fi only (Intel AX210), enrolled 2026-10-16 |
+| `living-room-pc` (`homelab_living-room-pc`) | `DESKTOP-BPLB04U` | 192.168.1.121 (`living-room-pc-lan`) | `hughl` (Microsoft account, admin) | Wi-Fi only (Intel AX210), enrolled 2026-10-16. Win10 Pro 22H2, legacy BIOS boot, SVM off. TV-connected gaming and playtest box |
 
 ## The path
 
@@ -100,6 +100,35 @@ A timestamp under a minute old and `true`. Check again a few minutes after the S
 - **Interactive vs S4U.** `enroll.ps1` registers the task as Interactive so it works without admin on a locked-down work machine. That flashes a console every minute and stops at logoff. On a home PC that is admin-controlled, S4U is the right setting (step 4).
 - **A wrong name or group is a silent 404.** The gatus key is `<group>_<name>`. `enroll.ps1` probes first and stops on a 404, so a machine is never left installed but reporting nothing.
 
-## Not covered yet
+## Managed by Ansible
 
-Ansible management of Windows (packages, config). The SSH server from step 2 is the prerequisite for it; nothing in `ansible/` targets Windows today.
+After step 4, add the PC to `windows_hosts` in `ansible/inventory.yml` (`ansible_host`, `ansible_user`). Windows OpenSSH's default shell is cmd, so the group sets `ansible_shell_type: cmd`; the `ansible.windows` modules wrap themselves in PowerShell anyway. Prove the connection with `ansible <name> -m ansible.windows.win_ping` before anything else.
+
+Two roles, bound in `ansible/playbooks/site.yml`:
+
+- `windows-baseline` - the debloat: Store apps, ASUS/OEM software, telemetry and ads, OneDrive removal, autostart nags, power and network-card settings, hibernation off, gaming settings, cleanup. Every item is a list in its `defaults/main.yml`. Details and measured results: `ansible/roles/windows-baseline/README.md`.
+- `windows-playtest-target` - `C:\Playtest\` plus the `playtest-launch` scheduled task that starts a pushed build on the signed-in desktop. See `ansible/roles/windows-playtest-target/README.md`.
+
+```bash
+cd ansible && ansible-galaxy collection install -r requirements.yml -p ./collections
+ansible-playbook playbooks/site.yml --limit living-room-pc --check --diff
+ansible-playbook playbooks/site.yml --limit living-room-pc
+ansible living-room-pc -m ansible.windows.win_reboot -a "pre_reboot_delay=60"   # first apply only
+```
+
+Not wired into the in-cluster `ansible-runner` drift check: its image has no `ansible.windows` collection and its key is not on the PC.
+
+## Playtesting on the TV
+
+Builds are made elsewhere (the workstation or the Linux Unity runner) and pushed to the PC; there is no Unity editor or CI runner on it. For dodginballs, from the game repo:
+
+```bash
+scripts/builds/build-windows.sh            # -> Builds/Windows/DodginBalls.exe
+scripts/builds/playtest-push.sh            # copies it to C:\Playtest\dodginballs\<stamp> and starts it on the TV
+```
+
+Someone has to be signed in at the PC: the launcher runs in the desktop session, and with nobody signed in it does nothing.
+
+## Windows 10 end of support
+
+living-room-pc runs Windows 10 22H2. Consumer Extended Security Updates ended 2026-10-13, so it no longer gets security patches; Defender definitions still update. The CPU and TPM qualify for Windows 11, but the PC boots in legacy BIOS mode with SVM (CPU virtualization) off. One visit to the BIOS (CSM off, UEFI and Secure Boot on, SVM on) followed by `mbr2gpt /convert /allowFullOS` over SSH unlocks both an in-place Windows 11 upgrade and WSL2. Until then neither is possible.

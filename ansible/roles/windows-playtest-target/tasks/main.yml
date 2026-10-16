@@ -1,0 +1,26 @@
+---
+- name: Playtest landing directory
+  ansible.windows.win_file:
+    path: "{{ playtest_root }}"
+    state: directory
+  tags: [windows, playtest]
+
+- name: Launcher script
+  ansible.windows.win_copy:
+    src: launch.ps1
+    dest: "{{ playtest_root }}\\launch.ps1"
+  tags: [windows, playtest]
+
+- name: Scheduled task that starts the build on the desktop
+  community.windows.win_scheduled_task:
+    name: "{{ playtest_task_name }}"
+    description: Start the last pushed playtest build on screen (see home-config docs/windows-machines.md)
+    actions:
+      - path: powershell.exe
+        arguments: -NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File "{{ playtest_root }}\launch.ps1"
+    username: "{{ playtest_user }}"
+    logon_type: interactive_token
+    run_level: limited
+    multiple_instances: 2   # ignore a second start while one is running
+    enabled: true
+  tags: [windows, playtest]

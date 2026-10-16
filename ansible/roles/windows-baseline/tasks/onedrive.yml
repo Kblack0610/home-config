@@ -1,0 +1,52 @@
+---
+# Desktop, Documents and Pictures were redirected into OneDrive (Known Folder
+# Move). Point them back at the local profile and copy over only the files that
+# are physically on disk. Cloud-only placeholders are NOT copied: reading one
+# would download it, and they stay safe in the OneDrive account. The OneDrive
+# folder itself is left in place, never deleted.
+- name: Move known folders out of OneDrive
+  ansible.windows.win_powershell:
+    script: |
+      $Ansible.Changed = $false
+      $key = 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\User Shell Folders'
+      $od = Join-Path $env:USERPROFILE 'OneDrive'
+      $props = (Get-Item $key).Property
+      foreach ($name in $props) {
+        $raw = (Get-Item $key).GetValue($name, $null, 'DoNotExpandEnvironmentNames')
+        $expanded = [Environment]::ExpandEnvironmentVariables($raw)
+        if (-not $expanded.StartsWith($od + '\', 'OrdinalIgnoreCase')) { continue }
+        $leaf = $expanded.Substring($od.Length + 1)
+        $local = Join-Path $env:USERPROFILE $leaf
+        New-Item -ItemType Directory -Force -Path $local | Out-Null
+        if (Test-Path $expanded) {
+          # 0x400000 RECALL_ON_DATA_ACCESS, 0x1000 OFFLINE: cloud-only placeholders.
+          Get-ChildItem $expanded -Recurse -File -Force -EA 0 |
+            Where-Object { -not ($_.Attributes -band 0x401000) } |
+            ForEach-Object {
+              $dest = Join-Path $local $_.FullName.Substring($expanded.Length).TrimStart('\')
+              if (-not (Test-Path -LiteralPath $dest)) {
+                New-Item -ItemType Directory -Force -Path (Split-Path $dest) | Out-Null
+                Copy-Item -LiteralPath $_.FullName -Destination $dest
+              }
+            }
+        }
+        Set-ItemProperty -Path $key -Name $name -Value ('%USERPROFILE%\' + $leaf) -Type ExpandString
+        $Ansible.Result = @($Ansible.Result) + "$name -> %USERPROFILE%\$leaf"
+        $Ansible.Changed = $true
+      }
+
+- name: Uninstall the OneDrive sync client
+  ansible.windows.win_powershell:
+    script: |
+      $Ansible.Changed = $false
+      Get-Process OneDrive -EA 0 | Stop-Process -Force
+      $u = Get-ItemProperty 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall\OneDriveSetup.exe' -EA 0
+      $setup = @(
+        $(if ($u) { ($u.UninstallString -split '"')[1] }),
+        "$env:SystemRoot\SysWOW64\OneDriveSetup.exe",
+        "$env:SystemRoot\System32\OneDriveSetup.exe"
+      ) | Where-Object { $_ -and (Test-Path $_) } | Select-Object -First 1
+      if ($u -and $setup) {
+        Start-Process $setup -ArgumentList '/uninstall' -Wait
+        $Ansible.Changed = $true
+      }

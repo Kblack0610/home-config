@@ -1,0 +1,132 @@
+---
+# Everything this role removes or sets is data here; tasks/ is only the
+# mechanism. Override per host in inventory when a box needs something kept.
+
+# Store apps removed for every user AND de-provisioned, so a new profile or a
+# feature update does not bring them back. Matched by exact package Name.
+# Kept on purpose (not listed): Store, DesktopAppInstaller (winget), Xbox
+# identity/TCUI/Game Bar (Xbox-account games such as Sea of Thieves need them),
+# Photos, Calculator, ScreenSketch, Paint, NVIDIA/Realtek control panels, and
+# the codec extensions (VP9/WebP/HEIF/WebMedia).
+windows_baseline_appx_remove:
+  - Microsoft.549981C3F5F10              # Cortana
+  - Microsoft.BingSearch
+  - Microsoft.BingWeather
+  - Microsoft.Copilot
+  - Microsoft.GetHelp
+  - Microsoft.Getstarted
+  - Microsoft.Microsoft3DViewer
+  - Microsoft.MicrosoftOfficeHub
+  - Microsoft.MicrosoftSolitaireCollection
+  - Microsoft.MicrosoftStickyNotes
+  - Microsoft.MixedReality.Portal
+  - Microsoft.Office.OneNote
+  - Microsoft.OutlookForWindows
+  - Microsoft.People
+  - Microsoft.SkypeApp
+  - Microsoft.Wallet
+  - Microsoft.Windows.DevHome
+  - Microsoft.WindowsAlarms
+  - microsoft.windowscommunicationsapps  # Mail and Calendar
+  - Microsoft.WindowsFeedbackHub
+  - Microsoft.WindowsMaps
+  - Microsoft.WindowsSoundRecorder
+  - Microsoft.XboxApp                    # the old Xbox Console Companion, not the identity provider
+  - Microsoft.YourPhone
+  - Microsoft.ZuneMusic
+  - Microsoft.ZuneVideo
+  - MicrosoftWindows.CrossDevice
+  - B9ECED6F.ArmouryCrate
+  - DTSInc.DTSCustomforAsus
+
+# MSI products removed by ProductCode (msiexec /x /qn). A code that is not
+# installed is skipped, so the list stays safe on a box without them.
+windows_baseline_msi_remove:
+  - { name: ROG Live Service, code: "{2D87BFB6-C184-4A59-9BBE-3E20CE797631}" }
+  - { name: ASUS AURA Motherboard HAL, code: "{359B9A9D-A289-4962-BCE2-13EBFD50D532}" }
+  - { name: AURA lighting effect add-on x64, code: "{C5A4A164-4428-4931-B728-96EEF0FA3C44}" }
+  - { name: AURA lighting effect add-on, code: "{1E2EA04B-FCA7-457E-B6F4-F33E1858E859}" }
+  - { name: ASUS AIOFan HAL, code: "{EAE80DED-1A39-41C5-9F60-87CC947F6454}" }
+  - { name: ASUS Update Helper, code: "{A92DAB39-4E2C-4304-9AB6-BC44E68B55E2}" }
+
+# Services set Disabled and stopped. Missing names are skipped. The non-MSI
+# ASUS installers (Armoury Crate Service, Framework, DriverHub) have no silent
+# uninstall, so they are neutralised here instead; WPBT (below) stops the BIOS
+# from dropping Armoury Crate back in.
+windows_baseline_services_disable:
+  - DiagTrack
+  - dmwappushservice
+  - ArmouryCrateService
+  - asComSvc
+  - asus
+  - asusm
+  - AsusCertService
+  - AsusFanControlService
+  - AsusUpdateCheck
+  - ROG Live Service
+
+# Scheduled tasks disabled, matched as "<TaskPath><TaskName>" by -like pattern.
+windows_baseline_tasks_disable:
+  - '\ASUS\*'
+  - '\OneDrive *'
+  - '\Microsoft\Windows\Application Experience\Microsoft Compatibility Appraiser'
+  - '\Microsoft\Windows\Application Experience\ProgramDataUpdater'
+  - '\Microsoft\Windows\Customer Experience Improvement Program\Consolidator'
+  - '\Microsoft\Windows\Customer Experience Improvement Program\UsbCeip'
+  - '\Microsoft\Windows\Feedback\Siuf\DmClient'
+  - '\Microsoft\Windows\Feedback\Siuf\DmClientOnScenarioDownload'
+  - '\NvTm*'
+
+# Autostart (Run key) entries removed by value name, from HKLM, the SSH
+# user's HKCU, and the LocalService/NetworkService hives, where Windows plants
+# the per-profile OneDrive setup stub.
+windows_baseline_run_remove:
+  - OneDrive
+  - OneDriveSetup
+  - Logitech Download Assistant   # LogiLDA.dll nag; Logi Options+ itself stays
+  - Logi Download Assistant
+
+# Registry state. HKCU lands in ansible_user's hive (the SSH logon loads it).
+windows_baseline_registry:
+  # Telemetry and feedback (Pro clamps AllowTelemetry 0 to 1, Required).
+  - { path: 'HKLM:\SOFTWARE\Policies\Microsoft\Windows\DataCollection', name: AllowTelemetry, data: 0 }
+  - { path: 'HKCU:\Software\Microsoft\Siuf\Rules', name: NumberOfSIUFInPeriod, data: 0 }
+  - { path: 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Privacy', name: TailoredExperiencesWithDiagnosticDataEnabled, data: 0 }
+  - { path: 'HKCU:\Software\Microsoft\Windows\CurrentVersion\AdvertisingInfo', name: Enabled, data: 0 }
+  # Suggested apps, tips, silent installs of promoted apps.
+  - { path: 'HKLM:\SOFTWARE\Policies\Microsoft\Windows\CloudContent', name: DisableWindowsConsumerFeatures, data: 1 }
+  - { path: 'HKCU:\Software\Microsoft\Windows\CurrentVersion\ContentDeliveryManager', name: ContentDeliveryAllowed, data: 0 }
+  - { path: 'HKCU:\Software\Microsoft\Windows\CurrentVersion\ContentDeliveryManager', name: OemPreInstalledAppsEnabled, data: 0 }
+  - { path: 'HKCU:\Software\Microsoft\Windows\CurrentVersion\ContentDeliveryManager', name: PreInstalledAppsEnabled, data: 0 }
+  - { path: 'HKCU:\Software\Microsoft\Windows\CurrentVersion\ContentDeliveryManager', name: SilentInstalledAppsEnabled, data: 0 }
+  - { path: 'HKCU:\Software\Microsoft\Windows\CurrentVersion\ContentDeliveryManager', name: SoftLandingEnabled, data: 0 }
+  - { path: 'HKCU:\Software\Microsoft\Windows\CurrentVersion\ContentDeliveryManager', name: SystemPaneSuggestionsEnabled, data: 0 }
+  - { path: 'HKCU:\Software\Microsoft\Windows\CurrentVersion\ContentDeliveryManager', name: SubscribedContent-338388Enabled, data: 0 }
+  - { path: 'HKCU:\Software\Microsoft\Windows\CurrentVersion\ContentDeliveryManager', name: SubscribedContent-338389Enabled, data: 0 }
+  - { path: 'HKCU:\Software\Microsoft\Windows\CurrentVersion\ContentDeliveryManager', name: SubscribedContent-353694Enabled, data: 0 }
+  - { path: 'HKCU:\Software\Microsoft\Windows\CurrentVersion\ContentDeliveryManager', name: SubscribedContent-353696Enabled, data: 0 }
+  # Start menu search stays local: no Bing, no Cortana, no Copilot, no News and Interests.
+  - { path: 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Search', name: BingSearchEnabled, data: 0 }
+  - { path: 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Search', name: CortanaConsent, data: 0 }
+  - { path: 'HKLM:\SOFTWARE\Policies\Microsoft\Windows\Windows Search', name: AllowCortana, data: 0 }
+  - { path: 'HKCU:\Software\Policies\Microsoft\Windows\Explorer', name: DisableSearchBoxSuggestions, data: 1 }
+  - { path: 'HKCU:\Software\Policies\Microsoft\Windows\WindowsCopilot', name: TurnOffWindowsCopilot, data: 1 }
+  - { path: 'HKLM:\SOFTWARE\Policies\Microsoft\Windows\Windows Feeds', name: EnableFeeds, data: 0 }
+  # No peer-to-peer Windows Update uploads over the home Wi-Fi.
+  - { path: 'HKLM:\SOFTWARE\Policies\Microsoft\Windows\DeliveryOptimization', name: DODownloadMode, data: 0 }
+  # OneDrive stays gone: the sync client refuses to run under this policy.
+  - { path: 'HKLM:\SOFTWARE\Policies\Microsoft\Windows\OneDrive', name: DisableFileSyncNGSC, data: 1 }
+  # The firmware's WPBT table is how ASUS boards reinstall Armoury Crate after
+  # it is removed; turning WPBT execution off avoids a BIOS visit.
+  - { path: 'HKLM:\SYSTEM\CurrentControlSet\Control\Session Manager', name: DisableWpbtExecution, data: 1 }
+  # Gaming: Game Mode on, hardware GPU scheduling on (reboot), background
+  # capture off. Game Bar itself stays.
+  - { path: 'HKCU:\Software\Microsoft\GameBar', name: AutoGameModeEnabled, data: 1 }
+  - { path: 'HKLM:\SYSTEM\CurrentControlSet\Control\GraphicsDrivers', name: HwSchMode, data: 2 }
+  - { path: 'HKCU:\System\GameConfigStore', name: GameDVR_Enabled, data: 0 }
+  - { path: 'HKCU:\Software\Microsoft\Windows\CurrentVersion\GameDVR', name: AppCaptureEnabled, data: 0 }
+
+# Power. The plan is matched by name; Wi-Fi and sleep settings are written to
+# whichever plan is active, so they follow a plan change.
+windows_baseline_power_plan: High performance
+windows_baseline_hibernate: false

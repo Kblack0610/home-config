@@ -1,0 +1,57 @@
+---
+- name: Activate the power plan
+  community.windows.win_power_plan:
+    name: "{{ windows_baseline_power_plan }}"
+
+# 0 = never sleep on AC; Wi-Fi adapter "Power Saving Mode" 0 = max performance.
+# Written to the active plan, which the task above just set. Same GUIDs as the
+# docs/windows-machines.md step 2 paste.
+- name: No sleep on AC, Wi-Fi at max performance
+  ansible.windows.win_powershell:
+    script: |
+      $Ansible.Changed = $false
+      $want = @(
+        @{ sub = '238c9fa8-0aad-41ed-83f4-97be242c8f20'; set = '29f6c1db-86da-48c5-9fdb-f2b67b1f44da'; v = 0 },  # sleep after
+        @{ sub = '19cbb8fa-5279-450e-9fac-8a3d5fedd0c1'; set = '12bbebe6-58d6-4636-95bb-3217ef867c1a'; v = 0 }   # wireless power saving
+      )
+      foreach ($w in $want) {
+        $q = powercfg /query SCHEME_CURRENT $w.sub $w.set | Select-String 'Current AC Power Setting Index: (0x[0-9a-f]+)'
+        if (-not $q -or [Convert]::ToInt32($q.Matches[0].Groups[1].Value, 16) -ne $w.v) {
+          powercfg /setacvalueindex SCHEME_CURRENT $w.sub $w.set $w.v
+          $Ansible.Changed = $true
+        }
+      }
+      if ($Ansible.Changed) { powercfg /setactive SCHEME_CURRENT }
+
+- name: Hibernation (and Fast Startup with it)
+  ansible.windows.win_powershell:
+    parameters:
+      Enabled: "{{ windows_baseline_hibernate }}"
+    script: |
+      param([bool]$Enabled)
+      # HibernateEnabled is often absent; Windows then falls back to
+      # HibernateEnabledDefault, so read both the way the OS does.
+      $p = Get-ItemProperty 'HKLM:\SYSTEM\CurrentControlSet\Control\Power'
+      $v = if ($null -ne $p.HibernateEnabled) { $p.HibernateEnabled } else { $p.HibernateEnabledDefault }
+      $on = $v -eq 1
+      $Ansible.Changed = $on -ne $Enabled
+      if ($Ansible.Changed) { powercfg /hibernate $(if ($Enabled) { 'on' } else { 'off' }) }
+
+# Clears "Allow the computer to turn off this device to save power" on every
+# physical adapter. Set-NetAdapterPowerManagement cannot; PnPCapabilities=24
+# can. Takes effect after a reboot.
+- name: Network cards never powered off
+  ansible.windows.win_powershell:
+    script: |
+      $Ansible.Changed = $false
+      $class = 'HKLM:\SYSTEM\CurrentControlSet\Control\Class\{4d36e972-e325-11ce-bfc1-08002be10318}'
+      foreach ($a in Get-NetAdapter -Physical) {
+        Get-ChildItem $class -EA 0 |
+          Where-Object { (Get-ItemProperty $_.PSPath -EA 0).NetCfgInstanceId -eq $a.InterfaceGuid } |
+          ForEach-Object {
+            if ((Get-ItemProperty $_.PSPath -EA 0).PnPCapabilities -ne 24) {
+              Set-ItemProperty $_.PSPath PnPCapabilities 24 -Type DWord
+              $Ansible.Changed = $true
+            }
+          }
+      }

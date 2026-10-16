@@ -10,3 +10,9 @@ collections:
   # can drift-check the openwrt host; workstation applies are fine).
   - name: community.openwrt
     version: ">=1.0.0"
+  # Windows hosts (roles/windows-baseline, roles/windows-playtest-target),
+  # reached over Windows OpenSSH rather than WinRM.
+  - name: ansible.windows
+    version: ">=2.5.0"
+  - name: community.windows
+    version: ">=2.3.0"

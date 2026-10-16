@@ -1,0 +1,103 @@
+---
+- name: Remove consumer and OEM Store apps (installed and provisioned)
+  ansible.windows.win_powershell:
+    parameters:
+      Names: "{{ windows_baseline_appx_remove }}"
+    script: |
+      param([string[]]$Names)
+      $Ansible.Changed = $false
+      foreach ($n in $Names) {
+        foreach ($p in Get-AppxPackage -AllUsers -Name $n -EA 0) {
+          Remove-AppxPackage -Package $p.PackageFullName -AllUsers -EA Stop
+          $Ansible.Changed = $true
+        }
+        foreach ($p in Get-AppxProvisionedPackage -Online | Where-Object DisplayName -eq $n) {
+          Remove-AppxProvisionedPackage -Online -PackageName $p.PackageName -EA Stop | Out-Null
+          $Ansible.Changed = $true
+        }
+      }
+  tags: [windows, debloat]
+
+- name: Uninstall OEM MSI products
+  ansible.windows.win_package:
+    product_id: "{{ item.code }}"
+    state: absent
+  loop: "{{ windows_baseline_msi_remove }}"
+  loop_control:
+    label: "{{ item.name }}"
+  tags: [windows, debloat, oem]
+
+- name: Disable telemetry and OEM services
+  ansible.windows.win_powershell:
+    parameters:
+      Names: "{{ windows_baseline_services_disable }}"
+    script: |
+      param([string[]]$Names)
+      $Ansible.Changed = $false
+      foreach ($n in $Names) {
+        $s = Get-Service -Name $n -EA 0
+        if (-not $s) { continue }
+        if ($s.StartType -ne 'Disabled') { Set-Service -Name $n -StartupType Disabled; $Ansible.Changed = $true }
+        if ($s.Status -ne 'Stopped') { Stop-Service -Name $n -Force -EA Continue; $Ansible.Changed = $true }
+      }
+  tags: [windows, debloat, oem]
+
+- name: Disable telemetry, OEM and OneDrive scheduled tasks
+  ansible.windows.win_powershell:
+    parameters:
+      Patterns: "{{ windows_baseline_tasks_disable }}"
+    script: |
+      param([string[]]$Patterns)
+      $Ansible.Changed = $false
+      foreach ($t in Get-ScheduledTask) {
+        $full = "$($t.TaskPath)$($t.TaskName)"
+        if ($t.State -eq 'Disabled') { continue }
+        if ($Patterns | Where-Object { $full -like $_ }) {
+          Disable-ScheduledTask -InputObject $t | Out-Null
+          $Ansible.Changed = $true
+        }
+      }
+  tags: [windows, debloat]
+
+- name: Remove autostart entries
+  ansible.windows.win_powershell:
+    parameters:
+      Names: "{{ windows_baseline_run_remove }}"
+    script: |
+      param([string[]]$Names)
+      $Ansible.Changed = $false
+      New-PSDrive -Name HKU -PSProvider Registry -Root HKEY_USERS -EA 0 | Out-Null
+      $keys = 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Run',
+              'HKLM:\SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\Run',
+              'HKCU:\Software\Microsoft\Windows\CurrentVersion\Run',
+              'HKU:\S-1-5-19\SOFTWARE\Microsoft\Windows\CurrentVersion\Run',
+              'HKU:\S-1-5-20\SOFTWARE\Microsoft\Windows\CurrentVersion\Run'
+      foreach ($k in $keys) {
+        foreach ($n in $Names) {
+          if (Get-ItemProperty -Path $k -Name $n -EA 0) { Remove-ItemProperty -Path $k -Name $n; $Ansible.Changed = $true }
+        }
+      }
+  tags: [windows, debloat]
+
+- name: Registry policy (telemetry, ads, search, OneDrive, WPBT, gaming)
+  ansible.windows.win_regedit:
+    path: "{{ item.path }}"
+    name: "{{ item.name }}"
+    data: "{{ item.data }}"
+    type: "{{ item.type | default('dword') }}"
+  loop: "{{ windows_baseline_registry }}"
+  loop_control:
+    label: "{{ item.path | basename }}\\{{ item.name }}={{ item.data }}"
+  tags: [windows, debloat, perf]
+
+- name: Remove OneDrive
+  ansible.builtin.import_tasks: onedrive.yml
+  tags: [windows, onedrive]
+
+- name: Power and network-card settings
+  ansible.builtin.import_tasks: power.yml
+  tags: [windows, power, perf]
+
+- name: Disk cleanup
+  ansible.builtin.import_tasks: cleanup.yml
+  tags: [windows, cleanup]

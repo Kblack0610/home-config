@@ -7,9 +7,11 @@ Turntable (LINE) -> UFO202 in -> living-room Pi --tcp:4953--> snapserver (k3s)
                                                                   |
              +-----------------------------+----------------------+
              v                             v                      v
-   office: desktop snapclient    living-room Pi snapclient   kitchen Pi snapclient
-   (pulse backend, PipeWire)     (alsa backend, UFO202 out)  (alsa backend, DAC)
+   office: desktop snapclient    living-room Pi snapclient   bedroom Pi 3B+ snapclient
+   (pulse backend, PipeWire)     (alsa backend, UFO202 out)  (alsa backend, 3.5mm jack)
 ```
+
+The kitchen is not a host here: its room is the wall tablet's browser client (`apps/home-assistant/config/www/snapcast-tablet.js`). A box whose speaker is on the Pi's onboard 3.5mm jack sets `audio_endpoint_card_hint: "Headphones"` (the bcm2835 card), as `audio-bedroom` does.
 
 Full plan: `~/.claude/plans/and-i-slareyda-have-cryptic-wall.md`.
 

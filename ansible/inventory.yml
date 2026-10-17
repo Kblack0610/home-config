@@ -203,3 +203,10 @@ all:
           # The box does not come back from a software reboot: it needs its
           # physical power button, so never reboot it remotely.
           audio_endpoint_playback_device: "hdmi:CARD=vc4hdmi1,DEV=0"   # 2nd HDMI port (HDMI-A-2)
+        # Bedroom: Raspberry Pi 3B+ (Pi OS trixie, Wi-Fi) with the speaker on the
+        # onboard 3.5mm jack, so the card to find is "Headphones" (bcm2835), not
+        # a USB interface. The kitchen room is the wall tablet's browser client
+        # (snapcast-tablet.js), not a Pi.
+        audio-bedroom:
+          ansible_host: 192.168.1.122   # audio-bedroom-lan
+          audio_endpoint_card_hint: "Headphones"

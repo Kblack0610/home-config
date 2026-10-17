@@ -1,6 +1,6 @@
 # windows-baseline
 
-Lean, gaming-first baseline for a Windows PC reached over Windows OpenSSH. Written for `living-room-pc` (Win10 Pro, a TV-connected gaming and playtest box), and kept generic: every app, service, task and registry value it touches is a list in `defaults/main.yml`, so another Windows host overrides data, not tasks.
+Lean, gaming-first baseline for a Windows PC reached over Windows OpenSSH. Written for `living-room-pc` (Win10 Pro, a TV-connected gaming box), and kept generic: every app, service, task and registry value it touches is a list in `defaults/main.yml`, so another Windows host overrides data, not tasks.
 
 ## What it does
 

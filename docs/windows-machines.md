@@ -8,7 +8,7 @@ What "on the fleet" means today: the PC pushes a liveness heartbeat every 60s to
 
 | Name (fleet key) | Windows hostname | IP | User | Notes |
 |------------------|------------------|----|------|-------|
-| `living-room-pc` (`homelab_living-room-pc`) | `DESKTOP-BPLB04U` | 192.168.1.121 (`living-room-pc-lan`) | `hughl` (Microsoft account, admin) | Wi-Fi only (Intel AX210), enrolled 2026-10-16. Win10 Pro 22H2, legacy BIOS boot, SVM off. TV-connected gaming and playtest box |
+| `living-room-pc` (`homelab_living-room-pc`) | `DESKTOP-BPLB04U` | 192.168.1.121 (`living-room-pc-lan`) | `hughl` (Microsoft account, admin) | Wi-Fi only (Intel AX210), enrolled 2026-10-16. Win10 Pro 22H2, legacy BIOS boot, SVM off. TV-connected gaming box |
 
 ## The path
 
@@ -104,10 +104,9 @@ A timestamp under a minute old and `true`. Check again a few minutes after the S
 
 After step 4, add the PC to `windows_hosts` in `ansible/inventory.yml` (`ansible_host`, `ansible_user`). Windows OpenSSH's default shell is cmd, so the group sets `ansible_shell_type: cmd`; the `ansible.windows` modules wrap themselves in PowerShell anyway. Prove the connection with `ansible <name> -m ansible.windows.win_ping` before anything else.
 
-Two roles, bound in `ansible/playbooks/site.yml`:
+One role, bound in `ansible/playbooks/site.yml`:
 
 - `windows-baseline` - the debloat: Store apps, ASUS/OEM software, telemetry and ads, OneDrive removal, autostart nags, power and network-card settings, hibernation off, gaming settings, cleanup. Every item is a list in its `defaults/main.yml`. Details and measured results: `ansible/roles/windows-baseline/README.md`.
-- `windows-playtest-target` - `C:\Playtest\` plus the `playtest-launch` scheduled task that starts a pushed build on the signed-in desktop. See `ansible/roles/windows-playtest-target/README.md`.
 
 ```bash
 cd ansible && ansible-galaxy collection install -r requirements.yml -p ./collections
@@ -117,17 +116,6 @@ ansible living-room-pc -m ansible.windows.win_reboot -a "pre_reboot_delay=60"   
 ```
 
 Not wired into the in-cluster `ansible-runner` drift check: its image has no `ansible.windows` collection and its key is not on the PC.
-
-## Playtesting on the TV
-
-Builds are made elsewhere (the workstation or the Linux Unity runner) and pushed to the PC; there is no Unity editor or CI runner on it. For dodginballs, from the game repo:
-
-```bash
-scripts/builds/build-windows.sh            # -> Builds/Windows/DodginBalls.exe
-scripts/builds/playtest-push.sh            # copies it to C:\Playtest\dodginballs\<stamp> and starts it on the TV
-```
-
-Someone has to be signed in at the PC: the launcher runs in the desktop session, and with nobody signed in it does nothing.
 
 ## Windows 10 end of support
 

@@ -465,15 +465,12 @@
       tags: [audio, snapcast, alsa]
 
 # Windows PCs over OpenSSH. windows-baseline is the lean, gaming-first debloat
-# (Store apps, telemetry, ASUS/OneDrive removal, power, cleanup);
-# windows-playtest-target is where game builds land and how they get on screen.
+# (Store apps, telemetry, ASUS/OneDrive removal, power, cleanup).
 # Reboot after the first apply: GPU scheduling and the NIC power setting only
 # take effect on boot. See docs/windows-machines.md.
-- name: Windows baseline + playtest target
+- name: Windows baseline
   hosts: windows_hosts
   gather_facts: false
   roles:
     - role: windows-baseline
       tags: [windows]
-    - role: windows-playtest-target
-      tags: [windows, playtest]

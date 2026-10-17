@@ -1,6 +1,0 @@
----
-playtest_root: 'C:\Playtest'
-# The desktop user the game is shown to. The launcher task runs in this user's
-# logged-on session, so someone must be signed in at the screen.
-playtest_user: "{{ ansible_user }}"
-playtest_task_name: playtest-launch

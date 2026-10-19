@@ -286,6 +286,9 @@ class AudioStream {
     this.bufferMs = bufferMs;
     this.chunks = [];
     this.chunk = undefined;
+    // Diagnostics: hard syncs are audible as clicks, so count them.
+    this.hardSyncs = 0;
+    this.maxAbsAgeMs = 0;
   }
 
   addChunk(chunk) {
@@ -311,7 +314,9 @@ class AudioStream {
       let age = serverPlayTimeMs - this.chunk.startMs();
       const reqChunkDuration = frames / this.sampleFormat.msRate();
       if (age >= -reqChunkDuration) {
+        this.maxAbsAgeMs = Math.max(this.maxAbsAgeMs, Math.abs(age));
         if (Math.abs(age) > 5) {
+          this.hardSyncs++;
           // More than 5 ms off: hard sync by seeking instead of stretching.
           while (this.chunk && age > this.chunk.duration()) {
             this.chunk = this.chunks.shift();
@@ -342,7 +347,9 @@ class AudioStream {
         while (read < readFrames && this.chunk) {
           const pcmChunk = this.chunk;
           const pcmBuffer = pcmChunk.readFrames(readFrames - read);
-          const normalize = 2 ** pcmChunk.sampleFormat.bits;
+          // Signed samples: full scale is 2^(bits-1). Dividing by 2^bits played
+          // everything 6 dB low, which the tablet's analog out made hissy.
+          const normalize = 2 ** (pcmChunk.sampleFormat.bits - 1);
           const payload = pcmChunk.sampleFormat.bits >= 24 ? new Int32Array(pcmBuffer) : new Int16Array(pcmBuffer);
           for (let i = 0; i < payload.length; i += 2) {
             read++;
@@ -751,8 +758,12 @@ class SnapcastTabletClient {
     if (this.statsHandle) clearInterval(this.statsHandle);
     let reports = 0;
     this.statsHandle = setInterval(() => {
-      window.__snapcastTabletDiag?.(`stats ctx=${this.ctx ? this.ctx.state : "none"} scheduled=${this.stats.scheduled} audible=${this.stats.audible} queued=${this.stream ? this.stream.chunks.length : 0} clockOffsetMs=${this.timeProvider.diff} gain=${this.gainNode ? this.gainNode.gain.value : "?"} lastError=${this.lastError}`);
+      window.__snapcastTabletDiag?.(`stats ctx=${this.ctx ? this.ctx.state : "none"} scheduled=${this.stats.scheduled} audible=${this.stats.audible} queued=${this.stream ? this.stream.chunks.length : 0} hardSyncs=${this.stream ? this.stream.hardSyncs : 0} maxAgeMs=${this.stream ? this.stream.maxAbsAgeMs.toFixed(1) : 0} clockOffsetMs=${this.timeProvider.diff} gain=${this.gainNode ? this.gainNode.gain.value : "?"} lastError=${this.lastError}`);
       this.stats = { scheduled: 0, audible: 0 };
+      if (this.stream) {
+        this.stream.hardSyncs = 0;
+        this.stream.maxAbsAgeMs = 0;
+      }
       if (++reports >= STATS_REPORTS) {
         clearInterval(this.statsHandle);
         this.statsHandle = null;

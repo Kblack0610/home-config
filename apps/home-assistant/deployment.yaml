@@ -472,6 +472,7 @@ spec:
               cp /managed-config/package_avr_yamaha.yaml /config/packages/avr_yamaha.yaml
               cp /managed-config/package_honeywell_fan.yaml /config/packages/honeywell_fan.yaml
               cp /managed-config/package_zomboid.yaml /config/packages/zomboid.yaml
+              cp /managed-config/package_amcrest.yaml /config/packages/amcrest.yaml
               cp /managed-config/package_agents.yaml /config/packages/agents.yaml
               cp /managed-config/package_lamps.yaml /config/packages/lamps.yaml
               cp /managed-config/package_ci_runners.yaml /config/packages/ci_runners.yaml
@@ -2303,6 +2304,17 @@ spec:
                   key: control-token
             - name: ZOMBOID_CONTROL_AUTH
               value: "Bearer $(ZOMBOID_CONTROL_TOKEN)"
+            # Amcrest camera controls (config/packages/amcrest.yaml).
+            - name: AMCREST_USER
+              valueFrom:
+                secretKeyRef:
+                  name: amcrest-camera
+                  key: username
+            - name: AMCREST_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: amcrest-camera
+                  key: password
           ports:
             - name: http
               containerPort: 8123

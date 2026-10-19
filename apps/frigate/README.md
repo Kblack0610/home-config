@@ -47,7 +47,8 @@ Accounts, both in rbw:
 | rbw item | Camera account | Used by |
 |----------|----------------|---------|
 | `amcrest_admin` | `admin` | Camera web UI and setup |
-| `amcrest_frigate` | `frigate` (group `user`) | Frigate RTSP + ONVIF, via `camera-secret.yaml` |
+| `amcrest_frigate` | `frigate` (group `user`; ONVIF Operator) | Frigate RTSP + ONVIF PTZ, via `camera-secret.yaml` |
+| `amcrest_hass` | `hass` (group `admin`, no ONVIF) | Home Assistant's Amcrest integration (privacy mode, day/night, motion and audio toggles, presets), via `apps/home-assistant/amcrest-camera-secret.yaml` and `config/packages/amcrest.yaml` |
 
 This firmware's HTTP API checks the password but not the account's permissions: the `frigate` user can read and change settings even though its group grants only live view and playback, and `modifyGroup` returns Not Implemented. Treat every account on the camera as an admin. The protection is network-level: keep the camera on the LAN with no port forward.
 

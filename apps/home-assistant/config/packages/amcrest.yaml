@@ -1,0 +1,30 @@
+# Camera-side controls for the Amcrest IP4M-1041B (amcrest-ptz-1, 192.168.1.80).
+#
+# Frigate (apps/frigate) owns video, detection, recording and PTZ. This package
+# adds what only the camera itself can do: privacy mode (the lens turns away),
+# day/night via the amcrest.set_color_bw service, motion detection and audio
+# toggles, PTZ presets and the status light.
+#
+# stream_source is snapshot so this integration never opens its own RTSP
+# session: the camera allows only a few, and go2rtc in Frigate already holds one
+# per stream. Use camera.amcrest_ptz_1 (Frigate's) for live video.
+#
+# Credentials are the camera's "hass" account (rbw: amcrest_hass), from the
+# amcrest-camera Secret via the deployment env. !env_var raises if unset, so a
+# broken wiring fails at config load instead of retrying logins - this camera
+# locks an account after 5 failed attempts.
+
+amcrest:
+  - host: 192.168.1.80
+    name: Amcrest PTZ 1 Device
+    username: !env_var AMCREST_USER
+    password: !env_var AMCREST_PASSWORD
+    stream_source: snapshot
+    binary_sensors:
+      - online
+      - motion_detected
+    switches:
+      - privacy_mode
+    sensors:
+      - ptz_preset
+    control_light: true

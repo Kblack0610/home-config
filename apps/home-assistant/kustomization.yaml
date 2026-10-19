@@ -29,6 +29,7 @@ configMapGenerator:
       - package_avr_yamaha.yaml=config/packages/avr_yamaha.yaml
       - package_honeywell_fan.yaml=config/packages/honeywell_fan.yaml
       - package_zomboid.yaml=config/packages/zomboid.yaml
+      - package_amcrest.yaml=config/packages/amcrest.yaml
       - package_agents.yaml=config/packages/agents.yaml
       - package_lamps.yaml=config/packages/lamps.yaml
       - package_ci_runners.yaml=config/packages/ci_runners.yaml
@@ -89,3 +90,4 @@ resources:
   - calendars-secret.yaml
   - litellm-assist-secret.yaml
   - zomboid-control-token-secret.yaml
+  - amcrest-camera-secret.yaml

@@ -6,6 +6,7 @@ One-page index of services and their management plane. Use this to answer "where
 |---------|------|---------|------------|----------|
 | **Kubernetes cluster workloads** | | | | |
 | Home Assistant | any pi | k3s pod | Flux | `apps/home-assistant/` |
+| Frigate NVR | hp-victus (pinned: the only GPU node) | k3s pod (nvidia runtime) | Flux | `apps/frigate/` |
 | Forgejo + runner | amd64 workstation nodes (asus-laptop, hp-victus) | k3s pod (DinD) | Flux | `apps/forgejo/` |
 | LiteLLM | hp-victus | k3s pod (NVIDIA) | Flux | `apps/litellm/` |
 | Immich | asus-laptop | k3s pod (AMD ROCm) | Flux | `apps/immich/` |
@@ -33,7 +34,6 @@ One-page index of services and their management plane. Use this to answer "where
 | GitHub Actions Unity runner pool (org-wide, label `unity`) | asus-laptop (1); not the workstation | systemd `actions.runner.<host>-unity-pool-<n>.service` in `unity-ci.slice`; Unity containers in the same slice | Ansible (this repo), play "Unity CI runner pool" | `ansible/roles/unity-ci-host/` + `ansible/roles/github-actions-runner-linux/` |
 | Fluidd / Moonraker (live) | neptune-3d-printer (192.168.1.54) | embedded (on printer) | — | — |
 | AdGuard Home | pi3 (192.168.1.193) | docker-compose | In-repo compose, bootstrapped via `flash-pi.sh` + `setup.sh` | `apps/pi3-adguard-home/` |
-| Frigate NVR | (standalone Pi) | docker-compose | In-repo compose, run via `docker compose up -d` | `apps/frigate/` |
 | ESP32 smart switch | ESP32 | firmware | manual flash | `apps/esp32-firmware/` |
 | **Routing and DNS** | | | | |
 | OpenWRT (router, DHCP, DNS) | 192.168.1.1 | host OS | `infrastructure/openwrt/openwrt.sh` ; Ansible skeleton in draft PR | `infrastructure/openwrt/` ; `ansible/roles/openwrt-config/` |

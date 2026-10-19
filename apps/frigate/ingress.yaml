@@ -1,0 +1,33 @@
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: frigate
+  namespace: frigate
+  labels:
+    app.kubernetes.io/name: frigate
+  annotations:
+    kubernetes.io/ingress.class: traefik
+    cert-manager.io/cluster-issuer: letsencrypt-dns
+    # Camera footage from inside the house: keep this host OFF public DNS. Any
+    # *.kblab.me Ingress external-dns sees becomes internet reachable through the
+    # wildcard tunnel; a controller value other than dns-controller makes it skip
+    # this one. Same pattern and reasoning as apps/agents/ingress.yaml.
+    external-dns.alpha.kubernetes.io/controller: none
+    traefik.ingress.kubernetes.io/router.middlewares: monitoring-local-network-only@kubernetescrd
+spec:
+  ingressClassName: traefik
+  tls:
+    - hosts:
+        - frigate.kblab.me
+      secretName: frigate-tls
+  rules:
+    - host: frigate.kblab.me
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: frigate
+                port:
+                  number: 8971

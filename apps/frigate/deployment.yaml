@@ -1,0 +1,139 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: frigate
+  namespace: frigate
+  labels:
+    app.kubernetes.io/name: frigate
+spec:
+  replicas: 1
+  # RWO local-path volumes and one GPU: the old pod must be gone first.
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: frigate
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: frigate
+    spec:
+      # hp-victus is the only node with a GPU (RTX 4060 Laptop, 8 GB).
+      nodeSelector:
+        kubernetes.io/hostname: hp-victus
+      runtimeClassName: nvidia
+      initContainers:
+        # Git is the source of truth for config.yml (see the header of config.yml).
+        - name: install-config
+          image: alpine:3.24.1
+          command: ["sh", "-c", "cp /seed/config.yml /config/config.yml"]
+          volumeMounts:
+            - name: config
+              mountPath: /config
+            - name: seed
+              mountPath: /seed
+        # Frigate ships no GPU model; ours is built by apps/frigate/model/build.sh
+        # and published to the Forgejo generic registry. Fetched once, checked
+        # against MODEL_SHA256 every start, re-fetched on mismatch. Unlike the HA
+        # custom-component installs this one FAILS the pod on error: Frigate
+        # cannot start without its model, and a loud crashloop beats a silent one.
+        - name: fetch-model
+          image: alpine:3.24.1
+          env:
+            - name: MODEL_URL
+              value: "https://git.kblab.me/api/packages/kblack0610/generic/frigate-model/yolov9-s-320/yolov9-s-320.onnx"
+            - name: MODEL_SHA256
+              value: "15d251c4ab60403410a0496080b7eab9d7fc59c26b69d455c981a4277c56109c"
+            - name: MODEL_PATH
+              value: /config/model_cache/yolov9-s-320.onnx
+          command:
+            - sh
+            - -c
+            - |
+              set -eu
+              ok() { [ -f "$MODEL_PATH" ] && echo "$MODEL_SHA256  $MODEL_PATH" | sha256sum -c -s; }
+              if ok; then echo "model present and verified"; exit 0; fi
+              mkdir -p "$(dirname "$MODEL_PATH")"
+              wget -q -O "$MODEL_PATH.tmp" "$MODEL_URL"
+              mv "$MODEL_PATH.tmp" "$MODEL_PATH"
+              ok || { echo "ERROR: sha256 mismatch for $MODEL_URL"; rm -f "$MODEL_PATH"; exit 1; }
+              echo "model fetched and verified"
+          volumeMounts:
+            - name: config
+              mountPath: /config
+      containers:
+        - name: frigate
+          image: ghcr.io/blakeblackshear/frigate:0.18.0-tensorrt
+          env:
+            - name: TZ
+              value: America/Los_Angeles
+            # The nvidia runtime grants compute+utility by default; ffmpeg's
+            # NVDEC decode (preset-nvidia) also needs the video capability.
+            - name: NVIDIA_DRIVER_CAPABILITIES
+              value: compute,utility,video
+          envFrom:
+            - secretRef:
+                name: frigate-camera
+          ports:
+            - name: http-auth
+              containerPort: 8971
+            - name: http-internal
+              containerPort: 5000
+            - name: rtsp
+              containerPort: 8554
+            - name: webrtc-tcp
+              containerPort: 8555
+              protocol: TCP
+            - name: webrtc-udp
+              containerPort: 8555
+              protocol: UDP
+          resources:
+            requests:
+              cpu: 500m
+              memory: 1Gi
+            limits:
+              memory: 4Gi
+              nvidia.com/gpu: 1
+          startupProbe:
+            httpGet:
+              path: /api/version
+              port: http-internal
+            periodSeconds: 10
+            failureThreshold: 30
+          livenessProbe:
+            httpGet:
+              path: /api/version
+              port: http-internal
+            periodSeconds: 30
+            failureThreshold: 5
+          volumeMounts:
+            - name: config
+              mountPath: /config
+            - name: media
+              mountPath: /media/frigate
+            - name: cache
+              mountPath: /tmp/cache
+            - name: dshm
+              mountPath: /dev/shm
+      volumes:
+        - name: config
+          persistentVolumeClaim:
+            claimName: frigate-config
+        - name: media
+          persistentVolumeClaim:
+            claimName: frigate-media
+        - name: seed
+          configMap:
+            name: frigate-config
+        # Recording segments land here before they are moved to /media; RAM
+        # saves the SSD the churn.
+        - name: cache
+          emptyDir:
+            medium: Memory
+            sizeLimit: 1Gi
+        # Frigate's frame buffers. One 640x480 detect stream needs well under
+        # this; raise it with each camera added (see Frigate's shm docs).
+        - name: dshm
+          emptyDir:
+            medium: Memory
+            sizeLimit: 256Mi

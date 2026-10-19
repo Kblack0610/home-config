@@ -163,7 +163,8 @@ litellm (in-cluster, hp-victus)
 home-assistant → mosquitto (MQTT broker, in-cluster)
                 → mqtt2prom → monitoring (Prometheus)
 
-frigate (pi docker-compose) → home-assistant (via MQTT)
+frigate (k3s, hp-victus GPU) → mosquitto (events) + home-assistant (integration, :5000)
+        → camera amcrest-ptz-1 (192.168.1.80, RTSP + ONVIF)
 
 apps requiring NAS (backups / media):
   - actual-budget → nas Samba share
@@ -193,7 +194,7 @@ Gatus (`apps/gatus/`) monitors every endpoint in this graph — the Gatus config
 
 | Component | What goes down immediately | What stays up |
 |-----------|----------------------------|---------------|
-| `pi5-master` (k3s server) | Every k3s pod on every node — no scheduler, no API | All bare-metal services: MLX, Mac runners, platform CI runner slots on the laptops. OpenWRT DHCP/DNS. AdGuard Pi3. Frigate. |
+| `pi5-master` (k3s server) | Every k3s pod on every node — no scheduler, no API | All bare-metal services: MLX, Mac runners, platform CI runner slots on the laptops. OpenWRT DHCP/DNS. AdGuard Pi3. |
 | OpenWRT router (192.168.1.1) | DHCP new-client onboarding, DNS resolution via the router's dnsmasq | Static IPs keep routing LAN-to-LAN. External internet is gone (OpenWRT is the gateway). AdGuard Pi3 keeps answering for clients that hit it directly. |
 | AdGuard Home (pi3, 192.168.1.193) | **All DNS for every client**, not just `*.kblab.me`. The router runs `no-resolv` with AdGuard as its only upstream, so dnsmasq has nothing to fall back to and returns SERVFAIL for anything not already cached. | Established connections and anything addressed by IP. dnsmasq keeps answering `/lan/` names, `/etc/hosts`, and its two static domain entries (`nas.lan`, `zomboid-play.kblab.me`) from its own config. |
 | mac-studio | MLX inference (all three models) | LiteLLM still serves — but every request that routes to a MLX upstream 500s |

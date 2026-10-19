@@ -216,6 +216,11 @@ devices:
     ip: "192.168.1.113"
     category: iot
 
+  - hostname: amcrest-ptz-1
+    mac: "9C:8E:CD:32:6D:0B"
+    ip: "192.168.1.80"
+    category: iot
+
   - hostname: broadlink-rm4-pro
     mac: "34:8E:89:E4:FA:AE"
     ip: "192.168.1.103"

@@ -1,0 +1,106 @@
+# Frigate config. Copied over /config/config.yml by the deployment's init
+# container on every start, so this file wins: edits made in the Frigate UI's
+# config editor are lost on the next restart unless they are brought back here.
+#
+# Credentials come from the frigate-camera Secret as FRIGATE_* env vars.
+
+mqtt:
+  host: mosquitto.mosquitto.svc.cluster.local
+  port: 1883
+
+# Traefik terminates TLS for frigate.kblab.me; 8971 serves plain HTTP behind it.
+tls:
+  enabled: false
+
+auth:
+  enabled: true
+  cookie_secure: true
+  # Traefik's pod range, so login rate limiting sees the real client.
+  trusted_proxies:
+    - 10.42.0.0/16
+
+# The one block that changes if Frigate moves off the GPU (e.g. a Pi with a
+# Hailo-8L or Coral). The model is fetched by the init container: see
+# apps/frigate/model/build.sh and MODEL_URL in deployment.yaml.
+detectors:
+  onnx:
+    type: onnx
+
+model:
+  model_type: yolo-generic
+  width: 320
+  height: 320
+  input_tensor: nchw
+  input_dtype: float
+  path: /config/model_cache/yolov9-s-320.onnx
+  labelmap_path: /labelmap/coco-80.txt
+
+ffmpeg:
+  hwaccel_args: preset-nvidia
+
+go2rtc:
+  streams:
+    # Amcrest allows only a few RTSP sessions, so go2rtc is the one consumer of
+    # the camera and everything else (Frigate itself, HA, the UI) restreams.
+    amcrest_ptz_1:
+      - rtsp://{FRIGATE_RTSP_USER}:{FRIGATE_RTSP_PASSWORD}@192.168.1.80:554/cam/realmonitor?channel=1&subtype=0
+    amcrest_ptz_1_sub:
+      - rtsp://{FRIGATE_RTSP_USER}:{FRIGATE_RTSP_PASSWORD}@192.168.1.80:554/cam/realmonitor?channel=1&subtype=1
+  webrtc:
+    candidates:
+      # The pod is pinned to hp-victus; 8555 is published by the frigate-webrtc
+      # LoadBalancer Service.
+      - 192.168.1.243:8555
+      - stun:8555
+
+record:
+  enabled: true
+  continuous:
+    days: 0
+  motion:
+    days: 3
+  alerts:
+    retain:
+      days: 14
+      mode: motion
+  detections:
+    retain:
+      days: 7
+      mode: motion
+
+snapshots:
+  enabled: true
+  retain:
+    default: 14
+
+objects:
+  track:
+    - person
+    - dog
+    - cat
+
+cameras:
+  amcrest_ptz_1:
+    ffmpeg:
+      inputs:
+        - path: rtsp://127.0.0.1:8554/amcrest_ptz_1
+          input_args: preset-rtsp-restream
+          roles:
+            - record
+        - path: rtsp://127.0.0.1:8554/amcrest_ptz_1_sub
+          input_args: preset-rtsp-restream
+          roles:
+            - detect
+    detect:
+      width: 640
+      height: 480
+      fps: 5
+    live:
+      streams:
+        Main: amcrest_ptz_1
+        Sub: amcrest_ptz_1_sub
+    onvif:
+      host: 192.168.1.80
+      port: 80
+      user: "{FRIGATE_RTSP_USER}"
+      password: "{FRIGATE_RTSP_PASSWORD}"

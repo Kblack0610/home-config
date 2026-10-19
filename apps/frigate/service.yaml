@@ -1,0 +1,47 @@
+# In-cluster only. 5000 is Frigate's UNAUTHENTICATED internal API (Home
+# Assistant's integration uses it); 8971 is the logged-in UI behind the ingress;
+# 8554 is go2rtc's restream, also unauthenticated, for HA's camera entities.
+apiVersion: v1
+kind: Service
+metadata:
+  name: frigate
+  namespace: frigate
+  labels:
+    app.kubernetes.io/name: frigate
+spec:
+  selector:
+    app.kubernetes.io/name: frigate
+  ports:
+    - name: http-auth
+      port: 8971
+      targetPort: http-auth
+    - name: http-internal
+      port: 5000
+      targetPort: http-internal
+    - name: rtsp
+      port: 8554
+      targetPort: rtsp
+---
+# WebRTC media for low-latency live view and two-way talk. Browsers connect to
+# the candidate in config.yml (hp-victus:8555), so this must be reachable on the
+# LAN; it carries only negotiated media, never an unauthenticated stream.
+apiVersion: v1
+kind: Service
+metadata:
+  name: frigate-webrtc
+  namespace: frigate
+  labels:
+    app.kubernetes.io/name: frigate
+spec:
+  type: LoadBalancer
+  selector:
+    app.kubernetes.io/name: frigate
+  ports:
+    - name: webrtc-tcp
+      port: 8555
+      targetPort: webrtc-tcp
+      protocol: TCP
+    - name: webrtc-udp
+      port: 8555
+      targetPort: webrtc-udp
+      protocol: UDP

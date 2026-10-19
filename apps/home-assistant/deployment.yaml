@@ -118,6 +118,42 @@ spec:
           volumeMounts:
             - name: config
               mountPath: /config
+        # Frigate integration (blakeblackshear/frigate-hass-integration): camera,
+        # occupancy and event entities plus PTZ for the NVR in apps/frigate. It
+        # talks to Frigate's internal API at frigate.frigate.svc:5000. Same tarball
+        # pattern and RESILIENT contract as install-localtuya above. The config
+        # entry itself is added once through HA (apps/frigate/README.md).
+        - name: install-frigate
+          image: alpine:3.20
+          command:
+            - sh
+            - -c
+            - |
+              set -u
+              VERSION="5.15.6"
+              TARGET="/config/custom_components/frigate"
+              MARKER="$TARGET/.version"
+              if [ -f "$MARKER" ] && [ "$(cat "$MARKER")" = "$VERSION" ]; then
+                echo "frigate $VERSION already installed, skipping"
+                exit 0
+              fi
+              apk add --no-cache wget tar >/dev/null
+              mkdir -p /config/custom_components
+              if wget -q -O /tmp/fr.tgz \
+                  "https://github.com/blakeblackshear/frigate-hass-integration/archive/refs/tags/v$VERSION.tar.gz"; then
+                rm -rf "$TARGET"; mkdir -p "$TARGET"
+                tar -xzf /tmp/fr.tgz -C /tmp
+                cp -r /tmp/frigate-hass-integration-*/custom_components/frigate/. "$TARGET/"
+                rm -rf /tmp/fr.tgz /tmp/frigate-hass-integration-*
+                echo "$VERSION" > "$MARKER"
+                echo "frigate $VERSION installed"
+              else
+                echo "WARN: frigate download failed; no marker written, will retry next start"
+              fi
+              exit 0
+          volumeMounts:
+            - name: config
+              mountPath: /config
         # Binks assistant - Extended OpenAI Conversation (jekalmin), pinned to the
         # 3.0.0-beta11 pre-release: 1.1.0 (openai~=2.2.0) and 2.0.2 (openai~=2.21.0)
         # both conflict with the openai==2.45.0 HA core bundles since 2026.8, so

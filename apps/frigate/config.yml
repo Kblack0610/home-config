@@ -102,7 +102,11 @@ cameras:
       streams:
         Main: amcrest_ptz_1
         Sub: amcrest_ptz_1_sub
-    # onvif (PTZ) is off until the camera account for it is verified. The
-    # "frigate" account failed ONVIF auth and Frigate's retries locked it out on
-    # the camera (5 attempts), which also blocks RTSP reconnects. Re-add once a
-    # single manual ONVIF call succeeds; see apps/frigate/README.md.
+    # ONVIF keeps its OWN user store on this camera (see "ONVIF" in
+    # apps/frigate/README.md): "frigate" exists there as an Operator, created
+    # through ONVIF CreateUsers, with the same password as the web/RTSP account.
+    onvif:
+      host: 192.168.1.80
+      port: 80
+      user: "{FRIGATE_RTSP_USER}"
+      password: "{FRIGATE_RTSP_PASSWORD}"

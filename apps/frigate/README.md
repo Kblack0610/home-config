@@ -58,8 +58,20 @@ Camera settings Frigate depends on. A firmware upgrade restores defaults (the up
 | Main stream | H.264, 2560x1440, 15 fps, GOP 15, Smart Codec off | Browsers play H.264; a keyframe every second keeps stream start and recording segment boundaries tight (default GOP 60 at 30 fps) |
 | Sub stream | H.264, 640x480, 5 fps, GOP 5 | Detection input; matches `detect` in `config.yml` |
 | Audio | AAC (default) | Recordings keep audio with no transcode |
-| Time | NTP `pool.ntp.org`, `NTP.TimeZone=28` (UTC-08:00), US DST rules in `Locales` | The router does not answer NTP. `NTP.TimeZone` is an offset index, not the web UI's label list |
+| Time | NTP `pool.ntp.org`, `NTP.TimeZone=28` (UTC-08:00), `Locales.DSTEnable=false` | DST must stay OFF, see ONVIF below. The router does not answer NTP. `NTP.TimeZone` is an offset index, not the web UI's label list |
+| On-screen clock | `VideoWidget[0].TimeTitle.EncodeBlend=false` | With DST off the camera's local clock is an hour behind in summer; better no timestamp in the video than a wrong one. Frigate's timeline shows the real time |
 | Password | Letters and digits only | Special characters break RTSP URLs |
+
+### ONVIF (PTZ)
+
+Two traps, both found on 2026-10-19, both of which surface as the same misleading fault, `Sender not Authorized. Invalid username or password! You still have N attempt(s)`:
+
+1. ONVIF has its own user store. Accounts and passwords set through the CGI or web API (`userManager.cgi`) do not reach it: after the admin password was changed over CGI, ONVIF still accepted the factory `admin`/`admin`, and `frigate` did not exist for ONVIF at all. Manage ONVIF users with ONVIF itself (`GetUsers`, `CreateUsers`, `SetUser`, e.g. via `onvif-zeep-async` inside the Frigate pod). Current ONVIF users: `admin` (Administrator) and `frigate` (Operator, enough for PTZ), with the same passwords as their rbw items. After any factory reset or firmware upgrade, check that `admin`/`admin` is refused over ONVIF.
+2. With the camera's DST enabled, its ONVIF layer reports UTC as local + 8 and ignores the DST hour, so in summer its UTC runs an hour fast and every WS-Security timestamp is rejected. Keep `Locales.DSTEnable=false`. `GetSystemDateAndTime` needs no auth; compare its `UTCDateTime` with `date -u`.
+
+Failed ONVIF logins lock the account for ONVIF only (`frigate` showed "0 attempts" while RTSP kept working). Test with one call, not a loop.
+
+### Settings over the API
 
 Settings are applied over the camera's CGI API with digest auth. Pass `curl -g`: the setting names contain `[0]`, which curl otherwise treats as a glob and silently drops the request.
 

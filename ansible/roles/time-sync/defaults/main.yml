@@ -1,0 +1,7 @@
+---
+# Hold time-sync.target until timesyncd has a real sync, so services ordered
+# after it (snapclient) never start on a stale clock. Opt-in: a Pi has no RTC
+# and boots at its last-shutdown time, which is where this matters. Off by
+# default because units after time-sync.target wait without limit when the
+# network is down.
+time_sync_wait_at_boot: false

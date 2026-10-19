@@ -30,6 +30,16 @@
     state: started
     daemon_reload: true
 
+- name: Hold time-sync.target until the clock has really synced
+  # 2026-10-19: audio-bedroom (Pi 3B+, no RTC) booted ~62 days behind, started
+  # snapclient, then NTP stepped the clock and snapclient went silent until a
+  # restart. Its unit is already After=time-sync.target; this makes that
+  # target mean "synced" instead of "timesyncd started".
+  ansible.builtin.systemd_service:
+    name: systemd-time-wait-sync.service
+    enabled: true
+  when: time_sync_wait_at_boot | bool
+
 - name: Turn NTP on via timedatectl
   # systemctl enable alone is not sufficient: timedatectl set-ntp is what flips
   # org.freedesktop.timedate1 NTP=yes, and hp-victus showed "NTP service:

@@ -1,0 +1,53 @@
+---
+# node_exporter on a standalone Debian box (Pi OS). k3s nodes already run it
+# through kube-prometheus-stack and the Macs through node-exporter-mac.
+
+- name: Install node_exporter
+  ansible.builtin.apt:
+    name: "{{ node_exporter_linux_package }}"
+    state: present
+    update_cache: true
+    cache_valid_time: 3600
+    # Recommends pull in prometheus-node-exporter-collectors and its timers
+    # (smartmon, apt, ...), which a Pi audio box does not need.
+    install_recommends: false
+
+- name: Configure node_exporter flags
+  ansible.builtin.template:
+    src: prometheus-node-exporter.default.j2
+    dest: /etc/default/prometheus-node-exporter
+    owner: root
+    group: root
+    mode: "0644"
+  notify: Restart node_exporter
+
+- name: Enable and start node_exporter
+  ansible.builtin.systemd_service:
+    name: prometheus-node-exporter.service
+    enabled: true
+    state: started
+  when: not ansible_check_mode
+
+- name: Apply a changed config before probing
+  ansible.builtin.meta: flush_handlers
+
+- name: Probe the metrics endpoint
+  # Verify the outcome: the unit being active is not the same as serving.
+  ansible.builtin.uri:
+    url: "http://127.0.0.1:{{ node_exporter_linux_port }}/metrics"
+    return_content: true
+  register: node_exporter_linux_probe
+  until: node_exporter_linux_probe.status == 200
+  retries: 6
+  delay: 2
+  when: not ansible_check_mode
+
+- name: Fail if a listed systemd unit is missing from the metrics
+  ansible.builtin.assert:
+    that: "('name=\"' ~ item ~ '\"') in node_exporter_linux_probe.content"
+    fail_msg: >-
+      {{ item }} is not in node_systemd_unit_state on {{ inventory_hostname }}:
+      the unit does not exist or the systemd collector is not running.
+    quiet: true
+  loop: "{{ node_exporter_linux_systemd_units }}"
+  when: not ansible_check_mode

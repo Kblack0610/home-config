@@ -20,6 +20,7 @@ Machine liveness used to be scattered across three groups (`fleet`, `mac-machine
 | `homelab` | mac-studio, mac-mini | poll `:9100` |
 | `k3s` | pi5-master, pi5-worker1-3, pi4-worker4-5, asus-laptop, hp-victus | poll `:9100` |
 | `android` | h0001 (+ tablets) | push (via `apps/headwind-fleet-bridge`) |
+| `audio` | audio-living, audio-bedroom | poll `:9100`, plus snapclient's unit state (`node-exporter-linux` role) |
 | `iot` | pi-zero-1/2/3 | poll `:9200` |
 
 **Poll what you can reach; push what you can't.** Polled machines already export — node_exporter runs on every k3s node with `hostNetwork: true` (kube-prometheus-stack subchart) and on the Macs via the `node-exporter-mac` ansible role. **No new agent was installed for any of this**; polling nodes is pure config.

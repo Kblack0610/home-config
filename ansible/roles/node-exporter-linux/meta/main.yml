@@ -1,0 +1,13 @@
+---
+galaxy_info:
+  role_name: node_exporter_linux
+  author: home-config
+  description: >-
+    Install Debian's prometheus-node-exporter on standalone Linux boxes (not k3s
+    nodes, which get it from kube-prometheus-stack) and optionally export the
+    state of named systemd units.
+  license: MIT
+  min_ansible_version: "2.14"
+  platforms:
+    - name: Debian
+dependencies: []

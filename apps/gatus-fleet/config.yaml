@@ -206,6 +206,27 @@ endpoints:
     conditions:
       - "[STATUS] == 200"
 
+  # Whole-house audio boxes (docs/whole-house-audio.md). node_exporter from the
+  # node-exporter-linux ansible role, which also exports snapclient's unit
+  # state: a room that is up but silent is the failure that matters here, so
+  # the check fails on either. IPs from ansible/inventory.yml (not k3s nodes).
+  - name: audio-living    # Giada DN24 (Pi CM4): living room + turntable capture
+    group: audio
+    url: "http://192.168.1.120:9100/metrics"
+    interval: 60s
+    conditions:
+      - "[STATUS] == 200"
+      - '[BODY] == pat(*node_systemd_unit_state{name="snapclient.service",state="active",type="simple"} 1*)'
+      - '[BODY] == pat(*node_systemd_unit_state{name="audio-endpoint-capture.service",state="active",type="simple"} 1*)'
+
+  - name: audio-bedroom   # Pi 3B+ on Wi-Fi, speaker on the 3.5mm jack
+    group: audio
+    url: "http://192.168.1.122:9100/metrics"
+    interval: 60s
+    conditions:
+      - "[STATUS] == 200"
+      - '[BODY] == pat(*node_systemd_unit_state{name="snapclient.service",state="active",type="simple"} 1*)'
+
   # IoT (pi-zero-1/2/3, bespoke Rust pi-monitor on :9200) REMOVED for now: all
   # three are physically down, so they only rendered as three permanent red bars.
   # They were already excluded from $FLEET_ROSTER (they sleep by design, and

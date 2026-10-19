@@ -1,0 +1,14 @@
+---
+# Debian's packaged node_exporter. Same port as every other node, so the
+# standalone-nodes scrape (apps/monitoring/external-standalone-nodes.yaml) and
+# the fleet.kblab.me poll (apps/gatus-fleet/config.yaml) need no special case.
+node_exporter_linux_package: prometheus-node-exporter
+node_exporter_linux_port: 9100
+
+# systemd units whose state is exported as node_systemd_unit_state. Empty =
+# systemd collector off. The fleet check matches on these, so a box that is up
+# but has lost its service reads as down. Kept to an explicit list: the
+# collector walks D-Bus on every scrape, which is not free on a Pi 3. Names go
+# into the include regex unescaped (a `.` matching any character is harmless),
+# because a backslash does not survive the EnvironmentFile + $ARGS expansion.
+node_exporter_linux_systemd_units: []

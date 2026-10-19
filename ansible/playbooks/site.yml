@@ -464,6 +464,24 @@
     - role: audio-endpoint
       tags: [audio, snapcast, alsa]
 
+# The dedicated audio boxes (not the desktop endpoint): a synced clock before
+# snapclient starts, and node_exporter so fleet.kblab.me and Prometheus see
+# them. The fleet check also reads snapclient's unit state, so a box that is up
+# but silent shows as down. See apps/gatus-fleet/config.yaml.
+- name: Audio boxes - clock and monitoring
+  hosts: audio-living:audio-bedroom
+  become: true
+  gather_facts: true
+  roles:
+    - role: time-sync
+      tags: [time, ntp, audio]
+      vars:
+        time_sync_wait_at_boot: true
+    - role: node-exporter-linux
+      tags: [monitoring, audio]
+      vars:
+        node_exporter_linux_systemd_units: "{{ ['snapclient.service'] + (['audio-endpoint-capture.service'] if audio_endpoint_capture | default(false) else []) }}"
+
 # Windows PCs over OpenSSH. windows-baseline is the lean, gaming-first debloat
 # (Store apps, telemetry, ASUS/OneDrive removal, power, cleanup).
 # Reboot after the first apply: GPU scheduling and the NIC power setting only

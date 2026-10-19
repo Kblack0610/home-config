@@ -1,6 +1,8 @@
 # Standalone devices monitored via node_exporter (port 9100)
 # These are not K8s nodes — they run Docker Compose workloads
 # Pi3 AdGuard (192.168.1.193): Network-wide DNS + ad-blocking
+# audio-living (192.168.1.120) + audio-bedroom (192.168.1.122): Snapcast rooms,
+#   node_exporter from the node-exporter-linux ansible role
 
 apiVersion: v1
 kind: Service
@@ -28,6 +30,8 @@ metadata:
 subsets:
   - addresses:
       - ip: 192.168.1.193
+      - ip: 192.168.1.120
+      - ip: 192.168.1.122
     ports:
       - name: metrics
         port: 9100

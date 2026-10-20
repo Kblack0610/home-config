@@ -25,3 +25,7 @@ A clone joins it by putting `client@192.168.1.243:7770` in its `.parrelsyncarg`.
 - **`hostNetwork` and a pinned node.** A Unity Linux server build is x86_64 only, and the cluster is mostly Raspberry Pis, so it has to land on `hp-victus` or `asus-laptop`. Binding the node's own LAN address also avoids servicelb's per-node UDP proxy pods. To move it, change the `kubernetes.io/hostname` selector.
 - **A pinned image tag**, named after the playground commit it was built from, so what is running is written down and a scale-up cannot quietly pick up a different build. Build with `scripts/build.sh <tag> server` (or the same `-executeMethod` against a checkout), push with `scripts/server/image.sh <tag>`, then bump this line.
 - **No probes.** The server speaks UDP only, and a dead process is restarted by the kubelet anyway.
+
+## Screens gallery
+
+`gallery.yaml` serves the playground's UI shots at https://apps.kblab.me/playground/ (LAN only, beside PlaceMyParents' gallery at `/`). The playground repo's `shots.yml` captures them after each nightly test run and on `gh workflow run shots.yml`, pushes `git.kblab.me/kblack0610/unity-playground-gallery:<commit>-<run>`, and moves the `images:` tag in `kustomization.yaml` (`scripts/shots/publish.sh`). It pushes with the `unity-playground-shots` Forgejo token (write:package, write:repository; rbw `forgejo_unity_playground_shots`). The image is amd64 only, so the pod is pinned to an amd64 node.

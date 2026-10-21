@@ -4,7 +4,7 @@
 # advanced-camera-card (vendored by the install-lovelace-cards init container)
 # reads Frigate through the Frigate integration: live video is go2rtc WebRTC,
 # proxied by HA, so it works off the LAN too. Tap the video, or the expand button,
-# to open it full size. The menu also has PTZ, the two-way talk button and
+# to open it full size. The menu (top-left button) also has PTZ, the two-way talk button and
 # Frigate's reviews. expander-card remembers open/closed per browser (storage-id).
 # A new camera is one more entry under `cameras:`.
 type: grid
@@ -22,8 +22,10 @@ cards:
             live_provider: go2rtc
         dimensions:
           aspect_ratio: "16:9"
+        # hidden: one button opens the menu, so the tile shows the picture, not a
+        # wall of icons. PTZ arrows stay on the video.
         menu:
-          style: overlay
+          style: hidden
           buttons:
             expand: { enabled: true }
             call: { enabled: true }

@@ -7,7 +7,9 @@ resources:
   - namespace.yaml
   - registry-pull-secret.yaml
   - tokens-secret.yaml
+  - admin-secret.yaml
   - pvc.yaml
   - deployment.yaml
   - service.yaml
   - ingress.yaml
+  - ingress-admin.yaml

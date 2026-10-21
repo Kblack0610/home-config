@@ -166,6 +166,7 @@ PAGE = """<!doctype html>
 <main>
   <h1>Game servers</h1>
   <div id="servers">Loading...</div>
+  <p class="blurb"><a href="/playground/">Playground admin</a>: game status and live overrides.</p>
 </main>
 <script>
 const el = document.getElementById("servers");

@@ -454,7 +454,7 @@ model_list:
   #     claude-opus-4.6, claude-haiku-4.5, claude-fable-5 — note there is NO
   #     claude-sonnet-4.6). So the Claude-Code id and the Lazer id differ by
   #     design: e.g. Claude Code's `claude-sonnet-5` -> Lazer `claude-sonnet-5`,
-  #     its default background `claude-haiku-4-5-20251001` -> Lazer `claude-haiku-4.5`.
+  #     its default background `claude-haiku-4-5-20251001` -> Lazer `claude-haiku-5.5` (4.5 left the catalog by 2026-10-20).
   #
   # sonnet-5 = the loop's workhorse main model (set ANTHROPIC_MODEL to this).
   - model_name: "claude-sonnet-5"
@@ -511,14 +511,14 @@ model_list:
   # route MUST exist under exactly that name or every harnessed run 403s.
   - model_name: "claude-haiku-4-5-20251001"
     litellm_params:
-      model: "openai/claude-haiku-4.5"
+      model: "openai/claude-haiku-5.5"
       api_base: https://proxy.lazertechnologies.com/v1
       api_key: os.environ/LAZER_API_KEY
-      # Lazer list price, $/1M: in 1 out 5 cache_read 0.1 cache_write 1.25 (proxy /v1/models, 2026-10-05).
-      input_cost_per_token: 0.000001
-      output_cost_per_token: 0.000005
-      cache_read_input_token_cost: 0.0000001
-      cache_creation_input_token_cost: 0.00000125
+      # Lazer list price, $/1M: in 0.1 out 0.5 cache_read 0.01 cache_write 0.125 (proxy /v1/models, claude-haiku-5.5, 2026-10-20).
+      input_cost_per_token: 0.0000001
+      output_cost_per_token: 0.0000005
+      cache_read_input_token_cost: 0.00000001
+      cache_creation_input_token_cost: 0.000000125
       tpm: 500000
       rpm: 240
     model_info:

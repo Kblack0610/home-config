@@ -1,5 +1,5 @@
 # Speaker toggles for the Music section on the wall and phone Home views
-# (dashboards/_cameras_music_sections.yaml).
+# (dashboards/_music_section.yaml).
 #
 # "The music" is one Music Assistant sync group. A room is ON when it is in that
 # group, so tapping a room joins it to what is playing (or to the speakers picked
@@ -16,8 +16,11 @@ template:
         # The playing player's leader, else a paused one's, else the leader of any
         # standing group. "none" when there is nothing to join.
         state: >-
-          {% set players = integration_entities('music_assistant')
-               | select('match', 'media_player\.') | reject('is_state', 'unavailable') | list %}
+          {# states.media_player, not integration_entities(): the template only
+             re-renders on entities it read, and at startup Music Assistant has not
+             loaded yet, so integration_entities() is empty and the sensor sticks. #}
+          {% set players = states.media_player | selectattr('attributes.mass_player_type', 'defined')
+               | rejectattr('state', 'eq', 'unavailable') | map(attribute='entity_id') | list %}
           {% set ns = namespace(pick='none') %}
           {% for want in ['playing', 'paused'] %}
             {% if ns.pick == 'none' %}

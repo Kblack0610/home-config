@@ -31,9 +31,20 @@
     group: root
     mode: "0755"
 
+- name: Remove the drop-in under its old name
+  # It was 10-hw-watchdog.conf until 2026-10-21. Pi OS trixie ships
+  # /usr/lib/systemd/system.conf.d/40-rpi-enable-watchdog.conf
+  # (RuntimeWatchdogSec=1m), and drop-ins apply in filename order across both
+  # directories, so a 10- file lost to it and audio-bedroom ran at 1min.
+  ansible.builtin.file:
+    path: /etc/systemd/system.conf.d/10-hw-watchdog.conf
+    state: absent
+  notify: reexec systemd
+
 - name: Arm the hardware watchdog through PID 1
+  # 90- so it sorts after every distro drop-in and its values win.
   ansible.builtin.copy:
-    dest: /etc/systemd/system.conf.d/10-hw-watchdog.conf
+    dest: /etc/systemd/system.conf.d/90-hw-watchdog.conf
     owner: root
     group: root
     mode: "0644"

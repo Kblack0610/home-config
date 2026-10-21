@@ -112,6 +112,24 @@ all:
         pi3-adguard:
           ansible_host: 192.168.1.193
 
+    # Pis that arm the SoC hardware watchdog (roles/hw-watchdog), so a freeze
+    # resets the box instead of waiting for someone to pull the plug.
+    watchdog_pis:
+      children:
+        adguard:
+      hosts:
+        audio-living:
+        audio-bedroom:
+
+    # Pis that stream kernel messages to pi5-master and export the undervoltage
+    # latch (roles/crash-evidence). Wired only: netconsole needs netpoll, which
+    # the Pi Wi-Fi driver (brcmfmac) lacks, so audio-bedroom is not here.
+    netconsole_senders:
+      children:
+        adguard:
+      hosts:
+        audio-living:
+
     # NUT (Network UPS Tools) groups. The single CyberPower CP1500PFCLCDa plugs
     # into pi5-master via USB; pi5-master runs upsd + upsmon-primary and every
     # other Pi runs upsmon-secondary to honour the FSD broadcast.

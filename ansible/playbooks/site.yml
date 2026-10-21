@@ -416,25 +416,27 @@
     - role: adguard
       tags: [adguard, dns]
 
-# Arm the SoC hardware watchdog on the resolver the whole house depends on.
+# Arm the SoC hardware watchdog on the Pis nobody should have to power-cycle.
 # pi3 hard-froze three times (2026-08-09, 08-23, 09-30) and each time stayed
 # dead until someone power-cycled it; the watchdog was present but unarmed.
+# The living-room Giada (audio-living) hung the same way after the 2026-10-20
+# power blip and stayed off the LAN for 16h until it was unplugged.
 # See ansible/roles/hw-watchdog/README.md.
-#   ansible-playbook playbooks/site.yml --limit pi3-adguard --tags watchdog --check --diff
-- name: Hardware watchdog (pi3 - reboot itself on a freeze)
-  hosts: adguard
+#   ansible-playbook playbooks/site.yml --limit watchdog_pis --tags watchdog --check --diff
+- name: Hardware watchdog (reboot itself on a freeze)
+  hosts: watchdog_pis
   become: true
   gather_facts: false
   roles:
     - role: hw-watchdog
       tags: [watchdog]
 
-# Make pi3's next freeze explain itself: kernel messages stream to pi5-master
+# Make the next freeze explain itself: kernel messages stream to pi5-master
 # over netconsole, and the firmware's undervoltage latch is exported to
 # Prometheus. Receiver first, so the sender has somewhere to talk to.
 # See ansible/roles/crash-evidence/README.md.
-#   ansible-playbook playbooks/site.yml --limit pi5-master,pi3-adguard --tags crash-evidence --check --diff
-- name: netconsole receiver (pi5-master - collects kernel logs from pi3)
+#   ansible-playbook playbooks/site.yml --limit pi5-master,netconsole_senders --tags crash-evidence --check --diff
+- name: netconsole receiver (pi5-master - collects kernel logs from the senders)
   hosts: pi5-master
   become: true
   gather_facts: false
@@ -442,8 +444,8 @@
     - role: netconsole-receiver
       tags: [crash-evidence, netconsole]
 
-- name: Crash evidence (pi3 - netconsole sender + undervoltage latch metric)
-  hosts: adguard
+- name: Crash evidence (netconsole sender + undervoltage latch metric)
+  hosts: netconsole_senders
   become: true
   gather_facts: true
   roles:

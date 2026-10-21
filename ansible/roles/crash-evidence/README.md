@@ -1,6 +1,6 @@
 # crash-evidence
 
-Makes a host that dies without warning leave evidence behind. Bound to the `adguard` group (pi3), because the whole house resolves through it.
+Makes a host that dies without warning leave evidence behind. Bound to the `netconsole_senders` inventory group: pi3, because the whole house resolves through it, and the living-room audio box (`audio-living`), which hung after the 2026-10-20 power cut with nothing left to read. Wired hosts only: netconsole needs netpoll, which the Pi Wi-Fi driver lacks.
 
 ## Why
 
@@ -29,8 +29,8 @@ curl -s 'http://192.168.1.20:30090/api/v1/query?query=rpi_throttled' | jq -r '.d
 
 ```bash
 cd ansible
-ansible-playbook playbooks/site.yml --limit pi5-master,pi3-adguard --tags crash-evidence --check --diff
-ansible-playbook playbooks/site.yml --limit pi5-master,pi3-adguard --tags crash-evidence
+ansible-playbook playbooks/site.yml --limit pi5-master,netconsole_senders --tags crash-evidence --check --diff
+ansible-playbook playbooks/site.yml --limit pi5-master,netconsole_senders --tags crash-evidence
 ```
 
 Prove the path end to end by printing a test line into pi3's kernel log and finding it on pi5-master:

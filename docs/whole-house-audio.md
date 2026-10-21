@@ -42,7 +42,7 @@ Turntable (LINE) -> UFO202 in -> Giada --> Snapcast server (k3s, hp-victus) --> 
 
 ## Gotchas
 
-- The Giada does not come back from a software reboot: it needs its physical power button. Never reboot it remotely.
+- The Giada does not come back from a software reboot (2026-10-15), and after the 2026-10-20 power cut it hung with its power LED on but nothing on the LAN for 16 hours. Unplugging and replugging its power brought it straight back. Never reboot it remotely. Since then its hardware watchdog is armed (`ansible/roles/hw-watchdog`, also on audio-bedroom) and its kernel log streams to pi5-master (`ansible/roles/crash-evidence`), so the next hang either resets itself or leaves evidence. `NodeDown` pages ntfy `homelab-alerts` within 2 minutes of it dropping.
 - Snapserver sends `pcm`, not `flac` (PR #322): the kitchen browser client played only silence with flac. snapclient handles pcm natively; it costs about 1.5 Mbit/s per room.
 - A snapserver restart drops Music Assistant's stream; press play again. Clients reconnect on their own within about a minute.
 - HA's Snapcast integration once lost all its entities for two days until an HA restart (2026-10-13 to 10-15, cause unknown). If the Source pickers vanish, reload the Snapcast integration.

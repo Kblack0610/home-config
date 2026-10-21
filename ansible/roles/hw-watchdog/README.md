@@ -13,6 +13,8 @@ Evidence gathered afterwards:
 - The 2026-08-09 boot logged 145 `Undervoltage detected!` events, so the likely root cause is the power supply. This role does not fix that; it limits the damage.
 - `/dev/watchdog0` (bcm2835-wdt) was present the whole time, but systemd ships `RuntimeWatchdogSec=0`, so nothing ever armed it.
 
+2026-10-20 the living-room audio box (`audio-living`, Giada DN24, a Pi CM4) hung after a short power cut: power LED on, but no DHCP request and no ARP for 16 hours, until it was unplugged and replugged, after which it booted normally. It also never came back from a software `reboot` (2026-10-15). Both audio Pis are now in the `watchdog_pis` inventory group with pi3. `RebootWatchdogSec=2min` is the part aimed at the reboot hang. If the power-cut hang happens before Linux starts, this role cannot help; `StandaloneHostRebooted` and the netconsole log (roles/crash-evidence) tell the two cases apart next time.
+
 ## How it works
 
 The watchdog is a countdown timer inside the SoC, separate from the CPU cores. With `RuntimeWatchdogSec=15s`, systemd (PID 1) resets it every 7.5s. If the kernel freezes, PID 1 stops running, the countdown reaches zero and the timer pulls the chip's reset line. No software has to be alive for that to happen.
@@ -29,11 +31,11 @@ The watchdog is a countdown timer inside the SoC, separate from the CPU cores. W
 ```bash
 cd ansible   # ansible.cfg uses relative paths; see docs/ansible.md
 
-ansible-playbook playbooks/site.yml --limit pi3-adguard --tags watchdog --check --diff
-ansible-playbook playbooks/site.yml --limit pi3-adguard --tags watchdog
+ansible-playbook playbooks/site.yml --limit watchdog_pis --tags watchdog --check --diff
+ansible-playbook playbooks/site.yml --limit watchdog_pis --tags watchdog
 ```
 
-Applying it re-executes systemd in place (`daemon-reexec`). No services restart, so house DNS stays up.
+Applying it re-executes systemd in place (`daemon-reexec`). No services restart, so house DNS and the music keep playing.
 
 ## Verify
 

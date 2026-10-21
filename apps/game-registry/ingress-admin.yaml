@@ -1,0 +1,48 @@
+# The games admin site at https://games.kblab.me/playground/ (the registry's ADMIN_PORT):
+# edit each playground game's live overrides. "/" on the host stays the server control
+# page (apps/zomboid/control/ingress-games.yaml); Traefik routes the longer prefix here.
+#
+# Reachable from the internet like every *.kblab.me host (see that file for why an IP
+# allow-list does nothing here), so the site signs people in itself: Forgejo OAuth2, and
+# only ADMIN_USERS (deployment.yaml) get a session. crowdsec rate limits, as on "/".
+# No prefix strip: the registry serves under ADMIN_BASE=/playground.
+apiVersion: traefik.io/v1alpha1
+kind: Middleware
+metadata:
+  name: admin-slash
+spec:
+  redirectRegex:
+    regex: "^(https?://[^/]+/playground)$"
+    replacement: "${1}/"
+    permanent: true
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: game-registry-admin
+  annotations:
+    kubernetes.io/ingress.class: traefik
+    cert-manager.io/cluster-issuer: letsencrypt-dns
+    traefik.ingress.kubernetes.io/router.entrypoints: web,websecure
+    traefik.ingress.kubernetes.io/router.middlewares: >-
+      crowdsec-crowdsec-bouncer@kubernetescrd,game-registry-admin-slash@kubernetescrd
+    # A signed-out probe only ever sees the redirect to Forgejo; the registry's health is
+    # already watched through game-registry.kblab.me.
+    gatus.kblab.me/monitor: "false"
+    homepage.kblab.me/launcher: "false"
+spec:
+  tls:
+    - hosts:
+        - games.kblab.me
+      secretName: games-admin-tls
+  rules:
+    - host: games.kblab.me
+      http:
+        paths:
+          - path: /playground
+            pathType: Prefix
+            backend:
+              service:
+                name: game-registry
+                port:
+                  number: 8081

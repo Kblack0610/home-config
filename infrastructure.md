@@ -170,6 +170,7 @@ Traefik on the local network path behind `192.168.1.124`. All `*.kblab.me` local
 | music.kblab.me | Music Assistant | home-k3s | Traefik Ingress; off public DNS (external-dns controller annotation); MA login |
 | snapcast.kblab.me | Snapweb + Snapcast TCP 1704/1705/4953 | home-k3s | Snapweb via Traefik Ingress, off public DNS; TCP via servicelb LoadBalancer on every node |
 | games.kblab.me | Game servers page (zomboid-control) | home-k3s | Traefik Ingress; asks for a password, because every *.kblab.me host is tunnel-reachable |
+| games.kblab.me/playground | Games admin site (game-registry admin port) | home-k3s | Traefik Ingress; Forgejo sign-in, ADMIN_USERS only |
 
 ---
 

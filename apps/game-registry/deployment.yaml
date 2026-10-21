@@ -23,10 +23,13 @@ spec:
         - name: forgejo-registry
       containers:
         - name: registry
-          image: git.kblab.me/kblack0610/bnb-game-servers/registry:registry-v1.1.1
+          image: git.kblab.me/kblack0610/bnb-game-servers/registry:registry-v1.3.0
           ports:
             - name: http
               containerPort: 8080
+            # The admin site, routed only by ingress-admin.yaml (games.kblab.me/playground).
+            - name: admin
+              containerPort: 8081
           env:
             - name: PORT
               value: "8080"
@@ -45,6 +48,29 @@ spec:
                 secretKeyRef:
                   name: game-registry-tokens
                   key: HOST_TOKEN
+            # The admin site: overrides, Forgejo sign-in, Save to repo (registry README,
+            # "Overrides and the admin site"). Tokens and the OAuth app come from admin-secret.yaml.
+            - name: ADMIN_PORT
+              value: "8081"
+            - name: ADMIN_BASE
+              value: /playground
+            - name: ADMIN_USERS
+              value: kblack0610
+            - name: SERVER_CONTROL_URL
+              value: https://games.kblab.me/
+            # The browser signs in on Forgejo's ROOT_URL host; the token and userinfo calls
+            # are server-side, so they use the in-cluster service (as Grafana does).
+            - name: OAUTH_AUTH_URL
+              value: https://git.kennethblack.me/login/oauth/authorize
+            - name: OAUTH_TOKEN_URL
+              value: http://forgejo-http.forgejo.svc:3000/login/oauth/access_token
+            - name: OAUTH_USERINFO_URL
+              value: http://forgejo-http.forgejo.svc:3000/login/oauth/userinfo
+            - name: OAUTH_REDIRECT_URL
+              value: https://games.kblab.me/playground/auth/callback
+          envFrom:
+            - secretRef:
+                name: game-registry-admin
           volumeMounts:
             - name: data
               mountPath: /data

@@ -28,6 +28,8 @@ namespaces. **Rotating the token means editing both files** - if they drift, the
 
 ### The page at games.kblab.me
 
+`/playground/` on the same host is a different app, the games admin site (live overrides for the Unity playground's games), served by the game registry and signed in with Forgejo: `apps/game-registry/ingress-admin.yaml`. The two pages link to each other.
+
 The same pod serves a page listing every server in `control/servers.json` - today Zomboid
 and the Unity playground server in the `playground-server` namespace - with its state,
 its join address and Start/Stop. Adding a third server is an entry in that file plus a

@@ -1,0 +1,79 @@
+# Speaker toggles for the Music section on the wall and phone Home views
+# (dashboards/_cameras_music_sections.yaml).
+#
+# "The music" is one Music Assistant sync group. A room is ON when it is in that
+# group, so tapping a room joins it to what is playing (or to the speakers picked
+# for the next play) and tapping again drops it out. HA lists the leader first in
+# group_members, and every member carries the same list.
+#
+# Rooms are not listed here: the players come from the music_assistant
+# integration, so a new Snapcast room shows up without an edit.
+template:
+  - sensor:
+      - name: Music leader
+        unique_id: music_leader
+        icon: mdi:speaker-multiple
+        # The playing player's leader, else a paused one's, else the leader of any
+        # standing group. "none" when there is nothing to join.
+        state: >-
+          {% set players = integration_entities('music_assistant')
+               | select('match', 'media_player\.') | reject('is_state', 'unavailable') | list %}
+          {% set ns = namespace(pick='none') %}
+          {% for want in ['playing', 'paused'] %}
+            {% if ns.pick == 'none' %}
+              {% for p in players if is_state(p, want) and ns.pick == 'none' %}
+                {% set ns.pick = (state_attr(p, 'group_members') or [p])[0] %}
+              {% endfor %}
+            {% endif %}
+          {% endfor %}
+          {% if ns.pick == 'none' %}
+            {% for p in players if (state_attr(p, 'group_members') or []) | length > 1 and ns.pick == 'none' %}
+              {% set ns.pick = state_attr(p, 'group_members')[0] %}
+            {% endfor %}
+          {% endif %}
+          {{ ns.pick }}
+
+script:
+  music_toggle_room:
+    alias: Toggle a speaker in the music
+    icon: mdi:speaker
+    mode: queued
+    fields:
+      room:
+        description: A Music Assistant media_player, e.g. media_player.office
+        required: true
+        selector:
+          entity:
+            integration: music_assistant
+            domain: media_player
+    variables:
+      leader: "{{ states('sensor.music_leader') }}"
+      members: "{{ (state_attr(leader, 'group_members') or [leader]) if leader != 'none' else [] }}"
+    sequence:
+      - choose:
+          # A member that is not the leader: drop it out.
+          - conditions: "{{ room in members and room != leader }}"
+            sequence:
+              - action: media_player.unjoin
+                target: { entity_id: "{{ room }}" }
+          # The leader with others in the group: leave them playing together.
+          - conditions: "{{ room == leader and members | length > 1 }}"
+            sequence:
+              - action: media_player.unjoin
+                target: { entity_id: "{{ room }}" }
+          # The leader alone: stop it.
+          - conditions: "{{ room == leader }}"
+            sequence:
+              - action: media_player.media_pause
+                target: { entity_id: "{{ room }}" }
+          # Not in the music: join it.
+          - conditions: "{{ leader != 'none' }}"
+            sequence:
+              - action: media_player.join
+                target: { entity_id: "{{ leader }}" }
+                data:
+                  group_members: ["{{ room }}"]
+        # Nothing playing and no group: resume this room's own queue.
+        default:
+          - action: media_player.media_play
+            target: { entity_id: "{{ room }}" }

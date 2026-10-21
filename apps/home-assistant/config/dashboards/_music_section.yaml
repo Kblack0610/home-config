@@ -1,0 +1,112 @@
+# Music: one collapsible section, shared by the wall Home view and the phone Home
+# view (included as a section in both).
+#
+# Player controls follow sensor.music_leader (packages/music_panel.yaml), the
+# Music Assistant player at the head of what is playing. Each room tile is lit when
+# that room is in the music; tap to add or drop it (script.music_toggle_room),
+# hold for the room's own player. Turntable and per-room sources stay on the
+# Music view.
+type: grid
+cards:
+  - type: custom:expander-card
+    title: Music
+    icon: mdi:music
+    expanded: true
+    storage-id: home-music
+    cards:
+      - type: markdown
+        content: Nothing playing. Tap a room to resume it.
+        visibility:
+          - condition: state
+            entity: sensor.music_leader
+            state: none
+      - type: media-control
+        entity: media_player.living_room
+        visibility:
+          - condition: state
+            entity: sensor.music_leader
+            state: media_player.living_room
+      - type: media-control
+        entity: media_player.office
+        visibility:
+          - condition: state
+            entity: sensor.music_leader
+            state: media_player.office
+      - type: media-control
+        entity: media_player.kitchen
+        visibility:
+          - condition: state
+            entity: sensor.music_leader
+            state: media_player.kitchen
+      - type: media-control
+        entity: media_player.audio_bedroom
+        visibility:
+          - condition: state
+            entity: sensor.music_leader
+            state: media_player.audio_bedroom
+      - type: grid
+        columns: 2
+        square: false
+        cards:
+          - &room
+            type: custom:mushroom-template-card
+            entity: media_player.living_room
+            primary: Living Room
+            icon: mdi:sofa
+            secondary: >-
+              {% set l = states('sensor.music_leader') %}
+              {% set m = (state_attr(l, 'group_members') or [l]) if l != 'none' else [] %}
+              {{ 'On' if entity in m else 'Off' }}
+            icon_color: >-
+              {% set l = states('sensor.music_leader') %}
+              {% set m = (state_attr(l, 'group_members') or [l]) if l != 'none' else [] %}
+              {{ 'green' if entity in m else 'disabled' }}
+            tap_action:
+              action: perform-action
+              perform_action: script.music_toggle_room
+              data:
+                room: media_player.living_room
+            hold_action: { action: more-info }
+            visibility:
+              - condition: state
+                entity: media_player.living_room
+                state_not: unavailable
+          - <<: *room
+            entity: media_player.office
+            primary: Office
+            icon: mdi:desk
+            tap_action:
+              action: perform-action
+              perform_action: script.music_toggle_room
+              data:
+                room: media_player.office
+            visibility:
+              - condition: state
+                entity: media_player.office
+                state_not: unavailable
+          - <<: *room
+            entity: media_player.kitchen
+            primary: Kitchen
+            icon: mdi:silverware-fork-knife
+            tap_action:
+              action: perform-action
+              perform_action: script.music_toggle_room
+              data:
+                room: media_player.kitchen
+            visibility:
+              - condition: state
+                entity: media_player.kitchen
+                state_not: unavailable
+          - <<: *room
+            entity: media_player.audio_bedroom
+            primary: Bedroom
+            icon: mdi:bed
+            tap_action:
+              action: perform-action
+              perform_action: script.music_toggle_room
+              data:
+                room: media_player.audio_bedroom
+            visibility:
+              - condition: state
+                entity: media_player.audio_bedroom
+                state_not: unavailable

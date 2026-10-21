@@ -33,6 +33,11 @@ lovelace:
       type: module
     - url: /local/community/clock-weather-card/clock-weather-card.js?v=2.9.3
       type: module
+    # Home view Cameras + Music sections (dashboards/_cameras_section.yaml, _music_section.yaml).
+    - url: /local/community/expander-card/expander-card.js?v=7.3.3
+      type: module
+    - url: /local/community/advanced-camera-card/advanced-camera-card.js?v=8.1.0
+      type: module
   # Second YAML dashboard (the default "Homelab" stays at /lovelace). The key
   # must contain a hyphen. Reached at /wall-panels; the wall tablets load this.
   dashboards:

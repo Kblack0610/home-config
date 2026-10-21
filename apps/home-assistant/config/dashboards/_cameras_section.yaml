@@ -1,0 +1,36 @@
+# Security cameras: one collapsible section, shared by the wall Home view and the
+# phone Home view (included as a section in both).
+#
+# advanced-camera-card (vendored by the install-lovelace-cards init container)
+# reads Frigate through the Frigate integration: live video is go2rtc WebRTC,
+# proxied by HA, so it works off the LAN too. Tap the video, or the expand button,
+# to open it full size. The menu also has PTZ, the two-way talk button and
+# Frigate's reviews. expander-card remembers open/closed per browser (storage-id).
+# A new camera is one more entry under `cameras:`.
+type: grid
+column_span: 2
+cards:
+  - type: custom:expander-card
+    title: Cameras
+    icon: mdi:cctv
+    expanded: true
+    storage-id: home-cameras
+    cards:
+      - type: custom:advanced-camera-card
+        cameras:
+          - camera_entity: camera.amcrest_ptz_1
+            live_provider: go2rtc
+        dimensions:
+          aspect_ratio: "16:9"
+        menu:
+          style: overlay
+          buttons:
+            expand: { enabled: true }
+            call: { enabled: true }
+            ptz_controls: { enabled: true }
+            reviews: { enabled: true }
+        live:
+          actions:
+            tap_action:
+              action: custom:advanced-camera-card-action
+              advanced_camera_card_action: expand

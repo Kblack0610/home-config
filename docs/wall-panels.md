@@ -6,7 +6,7 @@ photo metadata overlay, automatic side-by-side **portrait pairing**, and a trans
 **control panel** pinned to the right ~36% (weather + homelab/device status + an Expand hint).
 
 - **Dashboard:** `https://hass.kblab.me/wall-panels` (LAN/Tailscale only)
-- **Views:** Home (glance) · Control · Devices · Ops/Fleet · Photos · Media · Settings · Admin
+- **Views:** Home (glance, with collapsible Cameras and Music sections) · Control · Devices · Local · Ops/Fleet · Agents · Photos · Music · Media · Settings · Admin
 - **Screensaver:** lovelace-wallpanel embeds immich-kiosk's full page via `iframe+` (idle/keep-awake
   from wallpanel; clock + metadata + `KIOSK_LAYOUT=splitview` portrait pairing from immich-kiosk),
   with wallpanel's info box repurposed as a right-hand control panel (`wallpanel.cards`).
@@ -184,6 +184,13 @@ Why this shape:
 Add a room: add `"assist_satellite.<panel>": "<room>"` to `ROOMS`, bump the `?v=` on the `extra_module_url` line in `configuration.yaml`, deploy, and reload the panel. Pick the room's stream and volume in snapweb or with the HA `media_player` for that client.
 
 Debug: in the panel's WebView console, `window.__snapcastTablet.status()` shows the socket, AudioContext state, sample format, volume, clock offset and last error. Log lines are prefixed `[snapcast-tablet]`. From any LAN machine: `curl -s https://snapcast.kblab.me/jsonrpc -d '{"id":1,"jsonrpc":"2.0","method":"Server.GetStatus"}' | jq '.result.server.groups[] | {stream_id, clients: [.clients[] | {id, connected}]}'`.
+
+### Cameras and Music on Home
+
+The wall Home view and the phone Home view both include `dashboards/_cameras_section.yaml` and `dashboards/_music_section.yaml`, one file each, so the two dashboards cannot drift. Each is an expander-card that starts open and remembers open or closed per browser (`storage-id`).
+
+- **Cameras:** advanced-camera-card on Frigate's `camera.amcrest_ptz_1`, live over go2rtc WebRTC proxied by HA. Tap the video or the expand button for a full-size dialog; the overlay menu has PTZ, the talk button (two-way audio) and Frigate reviews. A new camera is one more entry under `cameras:`.
+- **Music:** player controls for `sensor.music_leader` (`packages/music_panel.yaml`), the Music Assistant player at the head of what is playing, and one tile per room. A tile is lit when the room is in the music. Tap adds or drops it (`script.music_toggle_room`): with nothing playing it resumes that room's queue, and dropping the last room pauses it. Hold opens the room's player. Turntable and per-room sources stay on the Music view.
 
 ### Music view
 

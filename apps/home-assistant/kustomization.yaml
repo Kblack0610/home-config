@@ -33,6 +33,7 @@ configMapGenerator:
       - package_agents.yaml=config/packages/agents.yaml
       - package_lamps.yaml=config/packages/lamps.yaml
       - package_ci_runners.yaml=config/packages/ci_runners.yaml
+      - package_music_panel.yaml=config/packages/music_panel.yaml
       - pyscript_plug_settings.py=config/pyscript/plug_settings.py
       - pyscript_room_layout.yaml=config/pyscript/room_layout.yaml
       - custom_sentences_en_nevermind.yaml=config/custom_sentences/en/nevermind.yaml
@@ -43,6 +44,8 @@ configMapGenerator:
       - voice_satellite_model_binks.tflite=config/voice_satellite/models/binks.tflite
       - dashboard_overview.yaml=config/dashboards/overview.yaml
       - dashboard_rooms_cards.yaml=config/dashboards/_rooms_cards.yaml
+      - dashboard_cameras_section.yaml=config/dashboards/_cameras_section.yaml
+      - dashboard_music_section.yaml=config/dashboards/_music_section.yaml
       - dashboard_talk_card.yaml=config/dashboards/_talk_card.yaml
       - binks_functions.yaml=config/binks/functions.yaml
       - binks_agent.yaml=config/binks/agent.yaml

@@ -215,6 +215,9 @@ views:
               - type: entity
                 entity: sun.sun
                 icon: mdi:white-balance-sunny
+      # Cameras + Music, collapsible; shared with the phone Home view.
+      - !include _cameras_section.yaml
+      - !include _music_section.yaml
       - type: grid
         cards:
           - type: heading

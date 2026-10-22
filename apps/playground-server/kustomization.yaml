@@ -14,4 +14,4 @@ resources:
 # Moved by the playground repo's scripts/shots/publish.sh after each shots run.
 images:
   - name: git.kblab.me/kblack0610/unity-playground-gallery
-    newTag: "ed82fc5-20"
+    newTag: "08325c2-22"

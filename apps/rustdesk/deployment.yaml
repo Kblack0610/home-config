@@ -1,0 +1,145 @@
+# hbbs (ID / rendezvous) and hbbr (relay) in one pod. Both read the keypair from
+# the rustdesk-keypair Secret; nothing else is worth keeping (clients re-register
+# with hbbs on their next heartbeat), so the pod is stateless and can move nodes.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: rustdesk
+  namespace: rustdesk
+  labels:
+    app.kubernetes.io/name: rustdesk
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate  # two hbbs instances would split client registrations
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: rustdesk
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: rustdesk
+    spec:
+      # Workstations sleep and reboot; keep the relay on the always-on nodes.
+      affinity:
+        nodeAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            nodeSelectorTerms:
+              - matchExpressions:
+                  - key: node-role.kubernetes.io/workstation
+                    operator: DoesNotExist
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        runAsGroup: 1000
+        fsGroup: 1000
+      containers:
+        - name: hbbs
+          image: rustdesk/rustdesk-server:1.1.16@sha256:8ecdab65deb7c84652a626380e31d11a8f1fbafd97916d57f95c20628f943c00
+          # -k _ : load the keypair from the working dir and refuse clients
+          # that do not carry its public key.
+          command: ["hbbs", "-k", "_"]
+          workingDir: /data
+          env:
+            # hbbs writes its own config under $HOME; the image default is /root.
+            - name: HOME
+              value: /data
+          ports:
+            - name: nat-test
+              containerPort: 21115
+              protocol: TCP
+            - name: id-tcp
+              containerPort: 21116
+              protocol: TCP
+            - name: id-udp
+              containerPort: 21116
+              protocol: UDP
+          volumeMounts:
+            - name: data
+              mountPath: /data
+            - name: keypair
+              mountPath: /data/id_ed25519
+              subPath: id_ed25519
+              readOnly: true
+            - name: keypair
+              mountPath: /data/id_ed25519.pub
+              subPath: id_ed25519.pub
+              readOnly: true
+          resources:
+            requests:
+              cpu: "10m"
+              memory: "16Mi"
+            limits:
+              cpu: "500m"
+              memory: "128Mi"
+          readinessProbe:
+            tcpSocket:
+              port: 21116
+            periodSeconds: 10
+          livenessProbe:
+            tcpSocket:
+              port: 21116
+            initialDelaySeconds: 10
+            periodSeconds: 30
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop:
+                - ALL
+        - name: hbbr
+          image: rustdesk/rustdesk-server:1.1.16@sha256:8ecdab65deb7c84652a626380e31d11a8f1fbafd97916d57f95c20628f943c00
+          command: ["hbbr", "-k", "_"]
+          workingDir: /data
+          env:
+            - name: HOME
+              value: /data
+            # Mb/s. The defaults (32 per session, 128 per connection) are sized
+            # for a shared internet relay and throttle a LAN desktop stream.
+            - name: LIMIT_SPEED
+              value: "512"
+            - name: SINGLE_BANDWIDTH
+              value: "512"
+          ports:
+            - name: relay
+              containerPort: 21117
+              protocol: TCP
+          volumeMounts:
+            - name: data
+              mountPath: /data
+            - name: keypair
+              mountPath: /data/id_ed25519
+              subPath: id_ed25519
+              readOnly: true
+            - name: keypair
+              mountPath: /data/id_ed25519.pub
+              subPath: id_ed25519.pub
+              readOnly: true
+          resources:
+            requests:
+              cpu: "10m"
+              memory: "16Mi"
+            limits:
+              cpu: "1"
+              memory: "128Mi"
+          readinessProbe:
+            tcpSocket:
+              port: 21117
+            periodSeconds: 10
+          livenessProbe:
+            tcpSocket:
+              port: 21117
+            initialDelaySeconds: 10
+            periodSeconds: 30
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop:
+                - ALL
+      volumes:
+        - name: data
+          emptyDir: {}
+        - name: keypair
+          secret:
+            secretName: rustdesk-keypair

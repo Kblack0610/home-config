@@ -1,0 +1,33 @@
+# LAN entry point for RustDesk clients. k3s servicelb binds these ports on every
+# node, so any node IP works; clients use rustdesk.kblab.me, which the AdGuard
+# *.kblab.me rewrite points at a node. Only the ID server is configured on the
+# client: with Relay Server left blank it relays via the same host on 21117.
+# 21118/21119 (web-client websockets) are left off; nothing here uses them.
+apiVersion: v1
+kind: Service
+metadata:
+  name: rustdesk
+  namespace: rustdesk
+  labels:
+    app.kubernetes.io/name: rustdesk
+spec:
+  type: LoadBalancer
+  selector:
+    app.kubernetes.io/name: rustdesk
+  ports:
+    - name: nat-test
+      port: 21115
+      targetPort: nat-test
+      protocol: TCP
+    - name: id-tcp
+      port: 21116
+      targetPort: id-tcp
+      protocol: TCP
+    - name: id-udp
+      port: 21116
+      targetPort: id-udp
+      protocol: UDP
+    - name: relay
+      port: 21117
+      targetPort: relay
+      protocol: TCP

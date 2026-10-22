@@ -30,7 +30,10 @@ spec:
       containers:
         - name: playground-server
           image: git.kblab.me/kblack0610/unity-playground-server:0.4.0-rc1
-          args: ["-port", "7770"]
+          # -devControls: anyone who joins may switch the game, tune it and run admin
+          # commands, as in the editor. Without it only a host may, and this server has
+          # none. A build from before session access (0.4.0-rc1) ignores it.
+          args: ["-port", "7770", "-devControls"]
           # Lists the server in the game registry (apps/game-registry) with a join
           # code; a build without the online listing ignores these. HTTPS, not the
           # in-cluster Service: the player refuses plain http (insecureHttpOption 0).

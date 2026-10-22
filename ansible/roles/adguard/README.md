@@ -27,7 +27,7 @@ LAN clients --DHCP opt 6--> 192.168.1.1  OpenWrt dnsmasq
                             public resolvers
 ```
 
-dnsmasq answers `nas.lan` and `zomboid-play.kblab.me` itself and never forwards
+dnsmasq answers `nas.lan`, `zomboid-play.kblab.me` and `playground-play.kblab.me` itself and never forwards
 them (`infrastructure/openwrt/dns.yaml`). Everything else goes to AdGuard, which
 rewrites `*.kblab.me` to the Traefik ingress at 192.168.1.124.
 
@@ -158,4 +158,4 @@ likely to need changing:
 | `adguard_image` | `adguard/adguardhome:v0.107.72` | Pinned. Bump with `adguard_schema_version` together, after reading release notes. |
 | `adguard_upstream_dns` | Quad9 + Cloudflare | Deliberately different operators; a second Quad9 address would fail in the same windows. |
 | `adguard_querylog_interval` | `168h` | See "Query logs are not backed up". |
-| `adguard_rewrites` | `*.kblab.me` -> .124 | `zomboid-play.kblab.me` is NOT here - it is a dnsmasq entry, because the game is UDP on hp-victus. |
+| `adguard_rewrites` | `*.kblab.me` -> .124 | `zomboid-play.kblab.me` and `playground-play.kblab.me` are NOT here - they are dnsmasq entries, because the games are UDP on hp-victus. |

@@ -45,3 +45,6 @@ domains:
   # the WAN address via Cloudflare, so the same hostname now works from both sides.
   - name: "zomboid-play.kblab.me"
     ip: "192.168.1.243"
+  # The same split-horizon for the playground dedicated server (UDP 7770, hp-victus).
+  - name: "playground-play.kblab.me"
+    ip: "192.168.1.243"

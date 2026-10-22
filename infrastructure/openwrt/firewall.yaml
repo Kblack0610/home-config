@@ -44,3 +44,17 @@ redirects:
     dest_port: "16262"
     enabled: true
     reflection: false
+
+  # The playground dedicated server (apps/playground-server), hostNetwork on hp-victus.
+  # Only the game port: the LAN beacon (7771) is LAN by design, and players away from
+  # home join playground-play.kblab.me:7770 by address. Reflection off for the same
+  # reason as Zomboid's: dns.yaml answers the name with the LAN IP inside the house.
+  - name: "Playground-Game"
+    src: "wan"
+    dest: "lan"
+    proto: "udp"
+    src_dport: "7770"
+    dest_ip: "192.168.1.243"
+    dest_port: "7770"
+    enabled: true
+    reflection: false

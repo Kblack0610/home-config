@@ -4,10 +4,10 @@
 # already here, rather than copying that secret into another namespace where the
 # two would drift.
 #
-# Consumer today is the Project Zomboid server (apps/zomboid), which is reached by
-# a WAN port-forward on UDP 16261/16262 - see infrastructure/openwrt/firewall.yaml.
-# Friends connect to the name below; this is what keeps it correct when the ISP
-# moves the address.
+# Consumers are the Project Zomboid server (apps/zomboid, UDP 16261/16262) and the
+# playground dedicated server (apps/playground-server, UDP 7770), each reached by a
+# WAN port-forward - see infrastructure/openwrt/firewall.yaml. Players connect to
+# the names below; this is what keeps them correct when the ISP moves the address.
 apiVersion: batch/v1
 kind: CronJob
 metadata:
@@ -46,8 +46,8 @@ spec:
                 # proxied CNAME to the Cloudflare tunnel for the control API. The
                 # game is UDP and cannot go through the tunnel, so it needs its own
                 # DNS-only name pointed straight at the WAN address.
-                - name: RECORD_NAME
-                  value: zomboid-play.kblab.me
+                - name: RECORD_NAMES
+                  value: zomboid-play.kblab.me,playground-play.kblab.me
                 - name: TTL
                   value: "60"
                 - name: CF_API_TOKEN

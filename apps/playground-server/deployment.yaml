@@ -40,8 +40,11 @@ spec:
           env:
             - name: REGISTRY_URL
               value: https://game-registry.kblab.me
+            # One name for every player: dnsmasq answers it with the LAN IP inside
+            # the house, Cloudflare with the WAN address outside (wan-ddns), where
+            # the router forwards UDP 7770 here (infrastructure/openwrt/firewall.yaml).
             - name: SERVER_ADDRESS
-              value: 192.168.1.243
+              value: playground-play.kblab.me
             - name: SERVER_NAME
               value: Playground server
             - name: SERVER_TOKEN

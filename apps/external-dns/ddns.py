@@ -23,7 +23,8 @@ import urllib.request
 API = "https://api.cloudflare.com/client/v4"
 TOKEN = os.environ["CF_API_TOKEN"]
 ZONE_NAME = os.environ.get("ZONE_NAME", "kblab.me")
-RECORD_NAME = os.environ["RECORD_NAME"]
+# One or more names, comma separated: every game reached by a WAN forward has its own.
+RECORD_NAMES = [n.strip() for n in os.environ["RECORD_NAMES"].split(",") if n.strip()]
 TTL = int(os.environ.get("TTL", "60"))
 # Cloudflare's own echo, so we are not adding a dependency on a third-party
 # what-is-my-ip service just to talk to Cloudflare.
@@ -69,11 +70,17 @@ def main():
         return 1
 
     zone_id = cf("GET", f"/zones?name={ZONE_NAME}")[0]["id"]
-    records = cf("GET", f"/zones/{zone_id}/dns_records?type=A&name={RECORD_NAME}")
+    for name in RECORD_NAMES:
+        publish(zone_id, name, ip)
+    return 0
+
+
+def publish(zone_id, name, ip):
+    records = cf("GET", f"/zones/{zone_id}/dns_records?type=A&name={name}")
 
     body = {
         "type": "A",
-        "name": RECORD_NAME,
+        "name": name,
         "content": ip,
         "ttl": TTL,
         # Never proxy this one - see the module docstring.
@@ -82,17 +89,16 @@ def main():
 
     if not records:
         cf("POST", f"/zones/{zone_id}/dns_records", body)
-        log(f"created {RECORD_NAME} -> {ip}")
-        return 0
+        log(f"created {name} -> {ip}")
+        return
 
     record = records[0]
     if record["content"] == ip and record["proxied"] is False:
-        log(f"{RECORD_NAME} already points at {ip}; nothing to do")
-        return 0
+        log(f"{name} already points at {ip}; nothing to do")
+        return
 
     cf("PATCH", f"/zones/{zone_id}/dns_records/{record['id']}", body)
-    log(f"updated {RECORD_NAME}: {record['content']} -> {ip}")
-    return 0
+    log(f"updated {name}: {record['content']} -> {ip}")
 
 
 if __name__ == "__main__":

@@ -36,6 +36,7 @@ unity_ci_asset_libraries:
 # docker with docker save | docker load. Add the new tag on a Unity upgrade.
 unity_ci_images:
   - unityci/editor:ubuntu-6000.0.72f1-base-3
+  - unityci/editor:ubuntu-6000.0.85f1-base-3
 
 unity_ci_packages:
   - docker

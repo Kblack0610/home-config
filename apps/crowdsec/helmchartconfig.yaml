@@ -1,6 +1,7 @@
 # HelmChartConfig patches the K3s-managed Traefik HelmChart
 # Enables access logs (stdout) for CrowdSec log ingestion
-# and preserves real client IPs through the LoadBalancer
+# and preserves real client IPs through the LoadBalancer.
+# Also runs Traefik as two replicas on two nodes (see below).
 apiVersion: helm.cattle.io/v1
 kind: HelmChartConfig
 metadata:
@@ -15,3 +16,37 @@ spec:
     service:
       spec:
         externalTrafficPolicy: Local
+    # Two replicas on two different nodes, preferring the Pis. With one replica
+    # on asus-laptop, every flap of that node took down ALL *.kblab.me hosts
+    # for 2-5 min (8 times in 24h on 2026-10-21), and the kitchen wall panel's
+    # Snapcast stream (wss://snapcast.kblab.me) dropped with it. The flaps are
+    # shorter than the 300s not-ready toleration, so the pod never moved.
+    # Every entry point (LAN DNS and router :443 -> .124, the Cloudflare
+    # tunnel -> the ClusterIP) reaches any healthy replica: each node's
+    # svclb pod forwards to the NodePort, and pod-originated traffic is not
+    # limited by externalTrafficPolicy: Local. Traefik is stateless here
+    # (emptyDir only), so replicas need no shared storage.
+    deployment:
+      replicas: 2
+    podDisruptionBudget:
+      enabled: true
+      minAvailable: 1
+    affinity:
+      podAntiAffinity:
+        requiredDuringSchedulingIgnoredDuringExecution:
+          - topologyKey: kubernetes.io/hostname
+            labelSelector:
+              matchLabels:
+                app.kubernetes.io/name: traefik
+                app.kubernetes.io/instance: traefik-kube-system
+      nodeAffinity:
+        # The two workstations flap and storm (asus-laptop, hp-victus); prefer
+        # the Pis, but still allow them so a Pi outage cannot leave a replica
+        # unschedulable.
+        preferredDuringSchedulingIgnoredDuringExecution:
+          - weight: 100
+            preference:
+              matchExpressions:
+                - key: kubernetes.io/hostname
+                  operator: NotIn
+                  values: [asus-laptop, hp-victus]

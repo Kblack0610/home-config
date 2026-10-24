@@ -23,7 +23,7 @@ spec:
         - name: forgejo-registry
       containers:
         - name: registry
-          image: git.kblab.me/kblack0610/bnb-game-servers/registry:registry-v1.3.0
+          image: git.kblab.me/kblack0610/bnb-game-servers/registry:registry-v1.4.0
           ports:
             - name: http
               containerPort: 8080

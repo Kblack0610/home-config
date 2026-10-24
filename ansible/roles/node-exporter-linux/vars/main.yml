@@ -1,0 +1,11 @@
+---
+# Where each distro's packaged unit reads its flags from: Debian's unit expands
+# $ARGS from /etc/default, Arch's expands $NODE_EXPORTER_ARGS from /etc/conf.d.
+node_exporter_linux_layouts:
+  Debian:
+    env_file: /etc/default/prometheus-node-exporter
+    env_var: ARGS
+  Archlinux:
+    env_file: /etc/conf.d/prometheus-node-exporter
+    env_var: NODE_EXPORTER_ARGS
+node_exporter_linux_layout: "{{ node_exporter_linux_layouts[ansible_os_family] }}"

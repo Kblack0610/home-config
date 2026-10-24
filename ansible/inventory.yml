@@ -40,6 +40,11 @@ all:
         asus-laptop:
           ansible_host: 192.168.1.152
           ansible_port: 2222
+        # Razer Blade 14 (Ryzen 9 8945HS, 96 GB), reinstalled headless by PXE
+        # kexec 2026-10-24 as a CI-only host. Not a k3s node. On the LAN through
+        # a USB-C ethernet dongle; the DHCP reservation follows that dongle's MAC.
+        razer-laptop:
+          ansible_host: 192.168.1.26
 
     # This workstation, managed over a local connection (no SSH). Hosts the
     # gungan dictation ASR daemons (see roles/asr-servers).
@@ -160,6 +165,9 @@ all:
         hp-victus:
           pmp_light_slots: 2
           pmp_heavy_slots: 1
+        razer-laptop:
+          pmp_light_slots: 2
+          pmp_heavy_slots: 1
 
     # BNB Unity runner pool (added 2026-10-05; the "Unity CI runner pool" play in
     # site.yml). Org-scoped, label `unity`, for every game repo. Each slot runs
@@ -173,6 +181,9 @@ all:
         # (HitReactions, Fists, BarrageMovement, NavPageBudget) failed only here
         # (2026-10-06, main run 37416749384). Slot 2 was removed by hand.
         asus-laptop:
+          unity_ci_slots: 1
+        # One slot until a nightly shows the timed tests pass here.
+        razer-laptop:
           unity_ci_slots: 1
         # Not the workstation (cachyos-x8664-main): it is the human's work machine,
         # and its two slots took 12 cores and 48G while they worked. Removed
@@ -206,6 +217,15 @@ all:
           ci_memory_max: 20G
           ci_unity_memory_max: 14G
           ci_pmp_memory_max: 14G
+        # 8 cores / 16 threads, SMT siblings are n and n+8. Core 0 (CPUs 0, 8)
+        # stays with the OS; Unity keeps cores 4-7 to itself. 93 GB usable and
+        # nothing else runs here, so CI gets most of it.
+        razer-laptop:
+          ci_cpus: 1-7,9-15
+          ci_memory_max: 72G
+          ci_unity_cpus: 4-7,12-15
+          ci_unity_memory_max: 24G
+          ci_pmp_memory_max: 40G
 
     # Nodes that run the game servers (apps/playground-server pins to the
     # kblab.me/game-server label, roles/game-server-node sets it). Each host keeps
@@ -236,6 +256,11 @@ all:
         hp-victus:
           thermal_cap_rapl_long_watts: 40
           thermal_cap_rapl_short_watts: 55
+        # acpi-cpufreq with a global boost switch. No platform_profile, no
+        # writable RAPL limit, no charge threshold (the battery holds at ~97%,
+        # "Not charging", on AC).
+        razer-laptop:
+          thermal_cap_boost: false
 
     # Whole-house audio: one host per room, each a snapclient of the snapserver
     # in apps/snapcast. See ansible/roles/audio-endpoint/README.md.

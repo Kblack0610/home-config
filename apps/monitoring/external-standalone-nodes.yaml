@@ -3,6 +3,7 @@
 # Pi3 AdGuard (192.168.1.193): Network-wide DNS + ad-blocking
 # audio-living (192.168.1.120) + audio-bedroom (192.168.1.122): Snapcast rooms,
 #   node_exporter from the node-exporter-linux ansible role
+# razer-laptop (192.168.1.26): CI-only host (Unity + platform runners), same role
 
 apiVersion: v1
 kind: Service
@@ -32,6 +33,7 @@ subsets:
       - ip: 192.168.1.193
       - ip: 192.168.1.120
       - ip: 192.168.1.122
+      - ip: 192.168.1.26
     ports:
       - name: metrics
         port: 9100

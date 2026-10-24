@@ -1,6 +1,6 @@
 # Managed by Ansible (roles/node-exporter-linux) - do not edit by hand.
 {% if node_exporter_linux_systemd_units %}
-ARGS="--web.listen-address=:{{ node_exporter_linux_port }} --collector.systemd --collector.systemd.unit-include=({{ node_exporter_linux_systemd_units | join('|') }})"
+{{ node_exporter_linux_layout.env_var }}="--web.listen-address=:{{ node_exporter_linux_port }} --collector.systemd --collector.systemd.unit-include=({{ node_exporter_linux_systemd_units | join('|') }})"
 {% else %}
-ARGS="--web.listen-address=:{{ node_exporter_linux_port }}"
+{{ node_exporter_linux_layout.env_var }}="--web.listen-address=:{{ node_exporter_linux_port }}"
 {% endif %}

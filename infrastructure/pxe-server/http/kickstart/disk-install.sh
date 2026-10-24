@@ -379,6 +379,10 @@ install_base() {
     log "Packages: ${BASE_PACKAGES[*]}"
     echo ""
 
+    # pacstrap -K seeds the new root's keyring from the LIVE image's keyring
+    # package, so a months-old image rejects packages signed by newer packager
+    # keys ("required key missing from keyring"). Refresh it first.
+    run pacman -Sy --needed --noconfirm archlinux-keyring cachyos-keyring
     run pacstrap -K "$INSTALL_ROOT" "${BASE_PACKAGES[@]}"
 
     log_success "Base system installed"
@@ -596,13 +600,16 @@ run_provisioning() {
         return 0
     fi
 
-    if ! curl -sfL "$provision_url" -o "$INSTALL_ROOT/tmp/auto-provision.sh"; then
+    # Staged under /root: arch-chroot mounts a fresh tmpfs over the chroot's
+    # /tmp, so a script left in $INSTALL_ROOT/tmp is invisible inside and bash
+    # exits 127 before running a line (every chroot run until 2026-10-24).
+    if ! curl -sfL "$provision_url" -o "$INSTALL_ROOT/root/auto-provision.sh"; then
         log_warning "Failed to download auto-provision.sh"
         log_warning "Provisioning will need to be run manually after first boot"
         return 0
     fi
 
-    chmod +x "$INSTALL_ROOT/tmp/auto-provision.sh"
+    chmod +x "$INSTALL_ROOT/root/auto-provision.sh"
 
     # The chroot has no resolver of its own, so every name lookup inside it
     # fails - and auto-provision.sh runs `set -e`, so its first one (the
@@ -620,9 +627,9 @@ run_provisioning() {
     # The script reads /proc/cmdline, but in chroot it sees the host's cmdline - which is correct here
     log "Running provisioning in chroot..."
     local provision_rc=0
-    arch-chroot "$INSTALL_ROOT" bash /tmp/auto-provision.sh --chroot || provision_rc=$?
+    arch-chroot "$INSTALL_ROOT" bash /root/auto-provision.sh --chroot || provision_rc=$?
 
-    rm -f "$INSTALL_ROOT/tmp/auto-provision.sh"
+    rm -f "$INSTALL_ROOT/root/auto-provision.sh"
 
     # A swallowed failure here is worse than a loud one: the install still
     # reboots into a bootable system, so it LOOKS finished while the machine

@@ -106,6 +106,25 @@ Target Device
 - **Optional**: syslinux (BIOS), qemu (testing), edk2-ovmf (UEFI testing)
 - **Router**: OpenWRT (or any router supporting DHCP option 66)
 
+## Reinstall a running machine
+
+When the target is up and reachable over SSH but cannot network-boot (its firmware has no PXE option, or the wired NIC is a USB dongle), kexec into the same installer instead of going through the BIOS:
+
+```bash
+# on the target
+curl -fsS http://192.168.1.2:9080/kickstart/kexec-reinstall.sh | sudo bash -s -- headless
+```
+
+The script downloads the kernel and initramfs from this server and boots them with the same arguments as `menu.ipxe`, so `disk-install.sh` runs unattended and wipes the largest internal disk. Progress arrives as `/beacon/<phase>` requests in the HTTP server log; the live installer takes a new DHCP address, and the source IP on those lines is the one to use. `ssh root@<that ip>` works during the install (`bootstrap_live_access`).
+
+- dnsmasq is not needed; `python3 -m http.server 9080` in `http/` is enough.
+- Secure Boot must be off; kernel lockdown refuses kexec.
+- The wired NIC's driver must be in the installer initramfs. USB `cdc_ncm`, `cdc_ether` and `r8152` are. Wi-Fi is not available there.
+- Nothing touches the disk until the live system is fully up, so if the switch hangs, a power cycle brings back the old install.
+- The new hostname is `<profile>-<last 4 of the MAC>`; rename it after first boot.
+
+First used 2026-10-24 on the Razer Blade 14 (USB-C ethernet dongle, no usable network boot).
+
 ## Environment Variables
 
 ```bash
@@ -132,6 +151,18 @@ PXE_HTTP_PORT=8080            # Override HTTP port
 1. Ensure `pxe-server prepare` completed successfully
 2. Check `pxe-server status` shows all files [OK]
 3. Verify sufficient RAM on target (4GB+ recommended)
+
+### Install fails at "Installing Base System" with "required key missing from keyring"
+
+`pacstrap -K` seeds the new root's keyring from the live image's `archlinux-keyring`, so an image older than a packager's newest key rejects the packages. The partitions are already formatted by this point. `disk-install.sh` now refreshes `archlinux-keyring` and `cachyos-keyring` before pacstrap. If an older copy of the script is the one being served, run `pacman -Sy --needed --noconfirm archlinux-keyring cachyos-keyring` in the live env (`ssh root@<live ip>`) and then `/tmp/disk-install.sh`. Seen on the Razer on 2026-10-24 with the 2026-02 image.
+
+### Beacon `PROVISIONING-FAILED-rc-127`, then the machine boots with no dotfiles
+
+arch-chroot mounts a fresh tmpfs over the chroot's `/tmp`, so a script staged in `$INSTALL_ROOT/tmp` does not exist inside and bash exits 127 before running a line. `disk-install.sh` and `auto-provision.sh` now stage their scripts under `/root`. To finish a machine that hit this, run `auto-provision.sh` on the installed system with the installer's `pxe_*` arguments, or run the remaining `common/*.sh` steps directly (each one documents its existing-machine mode).
+
+### Provisioning stops at "Setting Up NAS Automounts" with `NAS_PASSWORD not set`
+
+An unattended install has no NAS password. `common/nas-mounts.sh` now sets up the public share, skips the private one, and exits 0. Add the private share later with `sudo NAS_PASSWORD=... bash nas-mounts.sh`.
 
 ## Testing
 

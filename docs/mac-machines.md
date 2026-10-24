@@ -90,6 +90,15 @@ The sole self-hosted runner for `BlackNBrownStudios/platform` mobile CI. Native 
 **iOS:** `KEYCHAIN_PASSWORD` (login pw for keychain unlock), `APPLE_ID`, `EXPO_APPLE_PASSWORD` (app-specific pw), `APPLE_TEAM_ID`.
 **Android:** `ANDROID_KEYSTORE_BASE64`, `ANDROID_KEYSTORE_PASSWORD`, `ANDROID_KEY_ALIAS`, `ANDROID_KEY_PASSWORD`, `GOOGLE_PLAY_SERVICE_ACCOUNT_KEY`.
 
+## Candidate: Unity builds at night (mac-studio)
+
+Not set up. Proposed 2026-10-24 as a night-only build host. It would reverse the split above that removed this box's runner to keep it a dedicated inference node, so that is the first decision.
+
+- The Unity CI pool runs Unity in x86 Linux containers (`unityci/editor`, see unity-core-playground `docs/operations/ci.md`). Those images are amd64 only and would run under emulation on Apple Silicon, so a Mac would run Unity natively, which needs its own path in the playground's `scripts/test/` instead of `in-docker.sh`.
+- Best fit is the work only a Mac can do: macOS and iOS player builds. Memory is not the constraint (512 GB); the overnight `dream` and eval jobs use MLX on this box, so a build window has to avoid them.
+- Night-only means a launchd schedule that starts the runner service in the evening and stops it in the morning.
+- Each Mac host is one more activation on the shared Unity Personal serial (no two-machine cap observed; see the playground doc).
+
 ## Reprovision from bare metal
 
 Both flows start the same: on the new Mac, `git clone https://github.com/kblack0610/.dotfiles.git ~/.dotfiles && cd ~/.dotfiles/.local/src/installation_scripts && bash install.sh` (Homebrew, dev tools, macOS defaults, workstation SSH key). Then add/confirm the host in `ansible/inventory.yml` under `macos_hosts` and run from the workstation with `ANSIBLE_VAULT_PASSWORD_FILE=$HOME/.ansible-vault-pass` (become password for `-K` is rbw item `mac_fleet_password`).

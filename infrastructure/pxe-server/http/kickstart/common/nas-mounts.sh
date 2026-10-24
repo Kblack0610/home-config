@@ -133,31 +133,38 @@ main() {
         "guest,uid=${TARGET_UID},gid=${TARGET_GID},file_mode=0755,dir_mode=0755,iocharset=utf8,nofail"
     write_automount_unit "public"
 
-    # Private share (authenticated)
-    setup_credentials
-    write_mount_unit "private" \
-        "credentials=/etc/samba/nas-credentials,uid=${TARGET_UID},gid=${TARGET_GID},file_mode=0755,dir_mode=0755,iocharset=utf8,nofail"
-    write_automount_unit "private"
+    # Private share (authenticated). An unattended PXE install never has the
+    # password, so it gets the public share and the private one waits for a rerun.
+    local shares=(public)
+    if setup_credentials; then
+        write_mount_unit "private" \
+            "credentials=/etc/samba/nas-credentials,uid=${TARGET_UID},gid=${TARGET_GID},file_mode=0755,dir_mode=0755,iocharset=utf8,nofail"
+        write_automount_unit "private"
+        shares+=(private)
+    else
+        error "Private share skipped. Add it later: sudo NAS_PASSWORD=... bash nas-mounts.sh"
+    fi
 
     # Enable automount units (skip if in chroot/PXE mode)
+    local share
     if [[ -z "$INSTALL_ROOT" ]]; then
         log "Reloading systemd and enabling automounts..."
         systemctl daemon-reload
-        systemctl enable --now mnt-nas-public.automount
-        systemctl enable --now mnt-nas-private.automount
+        for share in "${shares[@]}"; do
+            systemctl enable --now "mnt-nas-${share}.automount"
+        done
         log "Automounts enabled and active"
     else
         # In chroot: just enable, will start on next boot
         log "Enabling automounts for next boot..."
-        if command -v arch-chroot &>/dev/null && [[ -n "$INSTALL_ROOT" ]]; then
-            arch-chroot "$INSTALL_ROOT" systemctl enable mnt-nas-public.automount 2>/dev/null || true
-            arch-chroot "$INSTALL_ROOT" systemctl enable mnt-nas-private.automount 2>/dev/null || true
-        else
-            ln -sf "${SYSTEMD_DIR}/mnt-nas-public.automount" \
-                "${INSTALL_ROOT}/etc/systemd/system/multi-user.target.wants/mnt-nas-public.automount" 2>/dev/null || true
-            ln -sf "${SYSTEMD_DIR}/mnt-nas-private.automount" \
-                "${INSTALL_ROOT}/etc/systemd/system/multi-user.target.wants/mnt-nas-private.automount" 2>/dev/null || true
-        fi
+        for share in "${shares[@]}"; do
+            if command -v arch-chroot &>/dev/null; then
+                arch-chroot "$INSTALL_ROOT" systemctl enable "mnt-nas-${share}.automount" 2>/dev/null || true
+            else
+                ln -sf "${SYSTEMD_DIR}/mnt-nas-${share}.automount" \
+                    "${INSTALL_ROOT}/etc/systemd/system/multi-user.target.wants/mnt-nas-${share}.automount" 2>/dev/null || true
+            fi
+        done
     fi
 
     log "NAS automount setup complete"

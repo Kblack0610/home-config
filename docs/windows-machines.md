@@ -120,3 +120,13 @@ Not wired into the in-cluster `ansible-runner` drift check: its image has no `an
 ## Windows 10 end of support
 
 living-room-pc runs Windows 10 22H2. Consumer Extended Security Updates ended 2026-10-13, so it no longer gets security patches; Defender definitions still update. The CPU and TPM qualify for Windows 11, but the PC boots in legacy BIOS mode with SVM (CPU virtualization) off. One visit to the BIOS (CSM off, UEFI and Secure Boot on, SVM on) followed by `mbr2gpt /convert /allowFullOS` over SSH unlocks both an in-place Windows 11 upgrade and WSL2. Until then neither is possible.
+
+## Candidate: Unity CI at night (living-room-pc)
+
+Not set up. Proposed 2026-10-24 as a night-only runner for the Unity pool.
+
+- Route: WSL2 plus Docker, so the PC runs the same Linux container path (`in-docker.sh`) as the Linux pool hosts and needs no Windows-specific CI code.
+- Blocked on the BIOS visit above: WSL2 needs SVM on (and the UEFI conversion gets Windows 11 at the same time).
+- It is on Wi-Fi only. The first sync of the editor image and `Library/` is tens of GB; a wired link is worth running before it joins.
+- It is the gaming box, so the runner only runs in a night window: a Task Scheduler start and stop of the runner service.
+- One more activation on the shared Unity Personal serial (no two-machine cap observed; see unity-core-playground `docs/operations/ci.md`).

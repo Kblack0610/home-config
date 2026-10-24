@@ -226,9 +226,10 @@ apply_profile() {
         chmod +x /tmp/profile-script.sh
 
         if [[ -n "$INSTALL_ROOT" ]]; then
-            cp /tmp/profile-script.sh "${INSTALL_ROOT}/tmp/profile-script.sh"
-            arch-chroot "$INSTALL_ROOT" bash /tmp/profile-script.sh
-            rm -f "${INSTALL_ROOT}/tmp/profile-script.sh"
+            # /root, not /tmp: arch-chroot mounts a fresh tmpfs over /tmp.
+            cp /tmp/profile-script.sh "${INSTALL_ROOT}/root/profile-script.sh"
+            arch-chroot "$INSTALL_ROOT" bash /root/profile-script.sh
+            rm -f "${INSTALL_ROOT}/root/profile-script.sh"
         else
             bash /tmp/profile-script.sh
         fi

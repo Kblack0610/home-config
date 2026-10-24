@@ -3,7 +3,7 @@
 The BNB game server registry (`bnb-game-servers/registry`, Go + SQLite): game servers register here for a join code and a place in the server list, and the playground posts match results and records to it for its leaderboards.
 
 - URL: `https://game-registry.kblab.me` (LAN and tailnet only). In the cluster: `http://game-registry.game-registry.svc:8080`.
-- Image: `git.kblab.me/kblack0610/bnb-game-servers/registry:<tag>`, published by that repo's Forgejo workflow on a `registry-v*` tag. Bump the tag in `deployment.yaml`.
+- Image: `git.kblab.me/kblack0610/bnb-game-servers/registry:<tag>`, published by that repo's Forgejo workflow on a `registry-v*` tag. Bump the tag in `deployment.yaml`. Since v1.5.0 the admin site also has a Live players page (`/playground/live.html`): servers that register with `admin: true` long-poll the public port for admin lines (`GET /api/v1/servers/{id}/admin/next`, held up to 30 s, under Traefik's 60 s default).
 - Tokens: `tokens-secret.yaml` (sops). `SERVER_TOKEN` is for dedicated servers, and its results move ratings; `playground-server` holds a copy in its own namespace (`apps/playground-server/registry-token-secret.yaml`), so rotate both together. `HOST_TOKEN` ships in every playground build (`Assets/Playground/Resources/Online/online.json`) and only registers servers and posts unverified results.
 - Data: one SQLite file on the `game-registry-data` local-path volume.
 - Routes and env: `registry/README.md` in bnb-game-servers.

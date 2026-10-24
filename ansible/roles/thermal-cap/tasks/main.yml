@@ -1,0 +1,30 @@
+---
+- name: Create the thermal-cap directory
+  ansible.builtin.file:
+    path: "{{ thermal_cap_script | dirname }}"
+    state: directory
+    mode: "0755"
+
+- name: Install the thermal-cap script
+  ansible.builtin.template:
+    src: apply.sh.j2
+    dest: "{{ thermal_cap_script }}"
+    mode: "0755"
+  register: _thermal_cap_script
+
+- name: Install the thermal-cap unit
+  ansible.builtin.template:
+    src: thermal-cap.service.j2
+    dest: /etc/systemd/system/thermal-cap.service
+    mode: "0644"
+  register: _thermal_cap_unit
+
+# Restarting a oneshot reruns it, which applies a changed cap now instead of at
+# the next boot. It fails here, loudly, if a knob is missing on this host.
+- name: Enable and run thermal-cap
+  ansible.builtin.systemd:
+    name: thermal-cap.service
+    enabled: true
+    daemon_reload: "{{ _thermal_cap_unit.changed }}"
+    state: "{{ 'restarted' if (_thermal_cap_script.changed or _thermal_cap_unit.changed) else 'started' }}"
+  ignore_errors: "{{ ansible_check_mode }}"

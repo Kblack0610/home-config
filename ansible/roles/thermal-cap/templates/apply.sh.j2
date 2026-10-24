@@ -1,0 +1,40 @@
+#!/bin/bash
+# Managed by ansible (thermal-cap). Run at boot by thermal-cap.service, because
+# every value here lives in sysfs and resets on reboot. Each set knob is written
+# and read back; a knob whose file is missing or will not take the value fails
+# the unit, so a cap never silently does nothing.
+set -u
+rc=0
+
+put() { # file value
+  if [ ! -w "$1" ]; then echo "thermal-cap: $1 missing or read-only" >&2; rc=1; return; fi
+  echo "$2" > "$1" 2>/dev/null
+  if [ "$(cat "$1")" != "$2" ]; then echo "thermal-cap: $1 is $(cat "$1"), wanted $2" >&2; rc=1; return; fi
+  echo "thermal-cap: $1 = $2"
+}
+
+{% if thermal_cap_platform_profile %}
+put /sys/firmware/acpi/platform_profile {{ thermal_cap_platform_profile }}
+{% endif %}
+{% if not thermal_cap_boost %}
+if [ -e /sys/devices/system/cpu/intel_pstate/no_turbo ]; then
+  put /sys/devices/system/cpu/intel_pstate/no_turbo 1
+else
+  put /sys/devices/system/cpu/cpufreq/boost 0
+fi
+{% endif %}
+{% if thermal_cap_rapl_long_watts %}
+for zone in /sys/class/powercap/intel-rapl:0 /sys/class/powercap/intel-rapl-mmio:0; do
+  [ -d "$zone" ] || continue
+  put "$zone/constraint_0_power_limit_uw" {{ thermal_cap_rapl_long_watts * 1000000 }}
+{% if thermal_cap_rapl_short_watts %}
+  put "$zone/constraint_1_power_limit_uw" {{ thermal_cap_rapl_short_watts * 1000000 }}
+{% endif %}
+done
+{% endif %}
+{% if thermal_cap_charge_limit %}
+bats=(/sys/class/power_supply/BAT*/charge_control_end_threshold)
+[ -e "${bats[0]}" ] || { echo "thermal-cap: no battery charge_control_end_threshold" >&2; rc=1; }
+for f in "${bats[@]}"; do [ -e "$f" ] && put "$f" {{ thermal_cap_charge_limit }}; done
+{% endif %}
+exit $rc

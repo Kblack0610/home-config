@@ -1,6 +1,5 @@
-# Managed by ansible (platform-ci-host). Every platform CI runner unit runs in
-# this slice, so CI can use at most {{ pmp_ci_cpu_cores }} cores and {{ pmp_ci_memory_max }}
-# on this host and cannot starve the kubelet.
+# Managed by ansible (ci-host-budget). Every platform CI runner unit runs here,
+# inside the host's CI budget ({{ ci_slice }}).
 #
 # Service containers (postgres, mailpit) are started by dockerd and live in
 # docker's own cgroup, so they are NOT counted here. They are small; the node,
@@ -11,6 +10,5 @@ Before=slices.target
 
 [Slice]
 CPUAccounting=true
-CPUQuota={{ pmp_ci_cpu_cores * 100 }}%
 MemoryAccounting=true
-MemoryMax={{ pmp_ci_memory_max }}
+MemoryMax={{ ci_pmp_memory_max }}

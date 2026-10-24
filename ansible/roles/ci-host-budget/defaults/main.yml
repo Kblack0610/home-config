@@ -1,0 +1,32 @@
+---
+# One CPU and memory budget for all CI on a host. Every CI runner unit and every
+# container its jobs start runs under ci.slice, in a child slice per workload, so
+# Unity and platform jobs can each use the whole budget when the other is idle but
+# never more than it together. Set per host in inventory.yml (ci_hosts).
+
+# CPUs CI may use, as an AllowedCPUs list ("4-15"). The rest stay with k3s and
+# the OS. A list and not a count because the hosts differ: on hp-victus the last
+# eight CPUs are E-cores, on asus all sixteen are alike.
+ci_cpus: ""
+# Memory for all CI together. Leave room for k3s pods and the OS.
+ci_memory_max: 24G
+
+# Unity: optional narrower CPU list inside ci_cpus (empty = all of ci_cpus), and
+# a memory cap of its own. About 4-6 GB per Unity job.
+ci_unity_cpus: ""
+ci_unity_memory_max: 16G
+
+# Platform (pmp) runners: memory cap of their own; they use all of ci_cpus.
+ci_pmp_memory_max: 16G
+
+# Slice names. systemd nests by name: ci-unity.slice is a child of ci.slice.
+# The runner units (gh_runner_slice) and the Unity containers
+# (UNITY_CI_CGROUP_PARENT, read by the game repos' in-docker.sh) both name these.
+ci_slice: ci.slice
+ci_unity_slice: ci-unity.slice
+ci_pmp_slice: ci-pmp.slice
+
+# The per-workload slices this role replaced (2026-10-24). Removed on apply.
+ci_retired_slices:
+  - unity-ci.slice
+  - pmp-ci.slice

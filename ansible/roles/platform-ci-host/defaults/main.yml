@@ -3,11 +3,8 @@
 # runner instances themselves come from the github-actions-runner-linux role,
 # applied once per slot by the "platform CI runners" play in site.yml.
 
-# Caps for every runner on the host, set on one systemd slice. Override per
-# host in inventory.yml (platform_ci_runners group).
-pmp_ci_cpu_cores: 4
-pmp_ci_memory_max: 8G
-pmp_ci_slice: pmp-ci.slice
+# CPU and memory caps for the runners live in roles/ci-host-budget
+# (ci-pmp.slice), a dependency of this role.
 
 # Runner user home; each slot lives under it. The job-started hook refuses to
 # clean a workspace outside this tree.

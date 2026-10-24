@@ -1,0 +1,14 @@
+---
+galaxy_info:
+  role_name: ci_host_budget
+  author: home-config
+  description: >-
+    One systemd CPU and memory budget (ci.slice) for every CI runner on a host,
+    with a child slice each for Unity and platform jobs.
+  license: MIT
+  min_ansible_version: "2.14"
+  platforms:
+    - name: ArchLinux
+      versions:
+        - rolling
+dependencies: []

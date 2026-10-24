@@ -69,18 +69,6 @@
     mode: "0644"
   when: not ansible_check_mode
 
-- name: Install the Unity CI slice
-  ansible.builtin.template:
-    src: unity-ci.slice.j2
-    dest: "/etc/systemd/system/{{ unity_ci_slice }}"
-    mode: "0644"
-  register: _unity_ci_slice_unit
-
-- name: Reload systemd after the slice changed
-  ansible.builtin.systemd:
-    daemon_reload: true
-  when: _unity_ci_slice_unit.changed
-
 # 32 hex digits, the /etc/machine-id format. Made once; replacing it makes the
 # host a new machine to Unity, which costs an activation.
 - name: Create the host's Unity machine id

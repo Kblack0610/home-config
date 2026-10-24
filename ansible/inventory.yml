@@ -149,42 +149,80 @@ all:
     # GitHub has no runner priority - an idle runner with matching labels takes
     # the next job - so the slot counts ARE the priority. pmp-heavy jobs publish
     # fixed host ports (postgres 5432, mailpit 1025/8025, app ports), so never
-    # more than one heavy slot per host. cpu/memory caps are for the whole
-    # host's CI slice. Slot counts are mirrored in apps/github-runner-exporter
+    # more than one heavy slot per host. CPU/memory caps are in ci_hosts below.
+    # Slot counts are mirrored in apps/github-runner-exporter
     # RUNNER_ROSTER; scripts/check-runner-roster.py fails CI when they disagree.
     platform_ci_runners:
       hosts:
         asus-laptop:
           pmp_light_slots: 3
           pmp_heavy_slots: 1
-          pmp_ci_cpu_cores: 12
-          pmp_ci_memory_max: 40G
         hp-victus:
           pmp_light_slots: 2
           pmp_heavy_slots: 1
-          pmp_ci_cpu_cores: 12
-          pmp_ci_memory_max: 16G
 
     # BNB Unity runner pool (added 2026-10-05; the "Unity CI runner pool" play in
     # site.yml). Org-scoped, label `unity`, for every game repo. Each slot runs
     # one Unity job at a time (a PlayMode shard, an EditMode run, a DodginBalls
-    # build), about 4-6 GB each. Caps are for all of the host's Unity containers
-    # together. Every host here is one activation on the shared Unity serial.
+    # build), about 4-6 GB each. CPU/memory caps are in ci_hosts below. Every
+    # host here is one activation on the shared Unity serial.
     # Mirrored in RUNNER_ROSTER like platform_ci_runners above.
     unity_ci_runners:
       hosts:
-        # 16 cores / 62 GB, beside the platform slots (12 cores / 40G cap) and k3s.
         # One slot: with two, load ran to 19 on 16 threads and real-time tests
         # (HitReactions, Fists, BarrageMovement, NavPageBudget) failed only here
         # (2026-10-06, main run 37416749384). Slot 2 was removed by hand.
         asus-laptop:
           unity_ci_slots: 1
-          unity_ci_cpu_cores: 8
-          unity_ci_memory_max: 24G
         # Not the workstation (cachyos-x8664-main): it is the human's work machine,
         # and its two slots took 12 cores and 48G while they worked. Removed
         # 2026-10-06, when CI moved to nightly and release runs only; its slots
         # were deregistered by hand. Do not add it back.
+
+    # One CPU and memory budget per CI host (roles/ci-host-budget): every runner
+    # and container of every CI workload on the host shares it, and what is left
+    # stays with k3s and the OS. Until 2026-10-24 each workload had its own cap,
+    # and on asus they added up to 64G of its 62G before k3s, while hp-victus's
+    # Unity runners had no cap at all. Both are k3s nodes; asus holds forgejo,
+    # the databases and most PVs, so a CI meltdown there is a cluster outage.
+    # Starting values, tuned against a full nightly.
+    ci_hosts:
+      hosts:
+        # Ryzen 9 5900HX, 16 threads alike, 62 GB (+ zram). Unity keeps its own
+        # 8 CPUs, as before, so platform jobs cannot slow its timed tests.
+        asus-laptop:
+          ci_cpus: 4-15
+          ci_memory_max: 36G
+          ci_unity_cpus: 8-15
+          ci_unity_memory_max: 24G
+          ci_pmp_memory_max: 24G
+        # i7-13700HX: CPUs 0-15 are the P-core threads, 16-23 the E-cores.
+        # k3s (redis, ntfy) keeps four E-cores. 31 GB, no swap. Two Unity runners
+        # (dodginballs, playground) can each run a job.
+        hp-victus:
+          ci_cpus: 0-19
+          ci_memory_max: 20G
+          ci_unity_memory_max: 14G
+          ci_pmp_memory_max: 14G
+
+    # Hosts whose CPU power is capped so CI holds them below their thermal limit
+    # (roles/thermal-cap). 2026-10-23: asus held 93-96C through the Unity
+    # nightly and dropped off the LAN; hp-victus peaked at 98C of 100C crit.
+    # Target: at most 85C sustained over a full nightly.
+    thermal_capped:
+      hosts:
+        # AMD: no writable package power limit, so boost goes off. Already on
+        # the balanced profile when it hit 94C. Charge limit: on the charger 24/7.
+        asus-laptop:
+          thermal_cap_platform_profile: balanced
+          thermal_cap_boost: false
+          thermal_cap_charge_limit: 80
+        # Intel: firmware PL1 is 55W (MSR; MMIO says 130W). Roughly 1.2C per
+        # watt above ambient at 55W/98C, so ~40W should land near 85C. No
+        # platform profile and no charge threshold in its firmware.
+        hp-victus:
+          thermal_cap_rapl_long_watts: 40
+          thermal_cap_rapl_short_watts: 55
 
     # Whole-house audio: one host per room, each a snapclient of the snapserver
     # in apps/snapcast. See ansible/roles/audio-endpoint/README.md.

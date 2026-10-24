@@ -25,13 +25,6 @@
     dest: "{{ pmp_ci_job_started_hook }}"
     mode: "0755"
 
-- name: Install the CI resource slice
-  ansible.builtin.template:
-    src: pmp-ci.slice.j2
-    dest: "/etc/systemd/system/{{ pmp_ci_slice }}"
-    mode: "0644"
-  register: _pmp_ci_slice_unit
-
 - name: Install the weekly docker cleanup service and timer
   ansible.builtin.template:
     src: "{{ item }}.j2"
@@ -45,7 +38,7 @@
 - name: Reload systemd after unit changes
   ansible.builtin.systemd:
     daemon_reload: true
-  when: _pmp_ci_slice_unit.changed or _pmp_ci_cleanup_units.changed
+  when: _pmp_ci_cleanup_units.changed
 
 - name: Enable the docker cleanup timer
   ansible.builtin.systemd:

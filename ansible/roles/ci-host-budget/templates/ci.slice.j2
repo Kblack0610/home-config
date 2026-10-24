@@ -1,0 +1,17 @@
+# Managed by ansible (ci-host-budget). The budget for ALL CI on this host: the
+# Unity and platform runners and their containers live in child slices of this
+# one, so together they use at most CPUs {{ ci_cpus }} and {{ ci_memory_max }}.
+# The other CPUs and memory stay with k3s and the OS, so a CI burst cannot take
+# the node down with it.
+[Unit]
+Description=CI runners, all workloads (GitHub Actions)
+Before=slices.target
+
+# Cores, not a quota: CPUQuota froze the whole slice for the rest of each
+# 100 ms period once it used its share, even with cores idle, and every
+# millisecond timing in the Unity tests paid for it (2026-10-05, asus).
+[Slice]
+CPUAccounting=true
+AllowedCPUs={{ ci_cpus }}
+MemoryAccounting=true
+MemoryMax={{ ci_memory_max }}

@@ -1,0 +1,12 @@
+# Managed by ansible (thermal-cap). See ansible/roles/thermal-cap/README.md.
+[Unit]
+Description=Cap CPU power and battery charge (thermal-cap)
+After=sysinit.target
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart={{ thermal_cap_script }}
+
+[Install]
+WantedBy=multi-user.target

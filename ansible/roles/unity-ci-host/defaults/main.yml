@@ -3,13 +3,8 @@
 # site.yml). The runner slots themselves come from github-actions-runner-linux.
 # What the jobs expect from a host: unity-core-playground docs/operations/ci.md.
 
-# Caps for every Unity container on the host together. The jobs run Unity in
-# docker, and dockerd owns its containers, so the slice is handed to docker
-# (UNITY_CI_CGROUP_PARENT -> docker run --cgroup-parent) as well as set on the
-# runner units. Override per host in inventory.yml (unity_ci_runners).
-unity_ci_cpu_cores: 8
-unity_ci_memory_max: 24G
-unity_ci_slice: unity-ci.slice
+# CPU and memory caps for the Unity runners and their containers live in
+# roles/ci-host-budget (ci-unity.slice), a dependency of this role.
 
 unity_ci_user: actions-runner
 unity_ci_group: actions-runner

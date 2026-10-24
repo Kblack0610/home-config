@@ -1,0 +1,14 @@
+# Managed by ansible (ci-host-budget). Every Unity runner on this host, and every
+# container its jobs start (docker run --cgroup-parent), runs here, inside the
+# host's CI budget ({{ ci_slice }}).
+[Unit]
+Description=Unity CI runners (GitHub Actions)
+Before=slices.target
+
+[Slice]
+CPUAccounting=true
+{% if ci_unity_cpus %}
+AllowedCPUs={{ ci_unity_cpus }}
+{% endif %}
+MemoryAccounting=true
+MemoryMax={{ ci_unity_memory_max }}

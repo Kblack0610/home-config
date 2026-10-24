@@ -4,12 +4,13 @@ galaxy_info:
   author: home-config
   description: >-
     Host prep for the BlackNBrownStudios/platform self-hosted GitHub Actions
-    runners: packages, a resource-capped systemd slice, and a weekly docker
-    cleanup timer.
+    runners: packages and a weekly docker cleanup timer. The CPU and memory
+    caps come from ci-host-budget.
   license: MIT
   min_ansible_version: "2.14"
   platforms:
     - name: ArchLinux
       versions:
         - rolling
-dependencies: []
+dependencies:
+  - role: ci-host-budget

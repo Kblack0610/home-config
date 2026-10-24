@@ -82,8 +82,8 @@
 #     LINUX_RUNNER_HEAVY repo variables, and deleting them sends everything
 #     back to ubuntu-latest (docs/deployment/PIPELINES.md in platform).
 #
-# Slots per host and the CI slice caps live in inventory.yml
-# (platform_ci_runners). Each slot is its own runner under one `pmp-runner`
+# Slots per host live in inventory.yml (platform_ci_runners); the host's CI
+# CPU and memory budget in ci_hosts (roles/ci-host-budget). Each slot is its own runner under one `pmp-runner`
 # user, with HOME set to the slot's own dir so parallel jobs never share a
 # pnpm store, Playwright cache or ~/setup-pnpm, and a job-started hook empties
 # the workspace before every job (roles/platform-ci-host/templates/
@@ -123,7 +123,7 @@
         gh_runner_home: "{{ pmp_ci_user_home }}/{{ pmp_slot }}"
         gh_runner_name: "{{ inventory_hostname }}-{{ pmp_slot }}"
         gh_runner_labels: [self-hosted, linux, x64, "pmp-{{ pmp_slot.split('-')[0] }}"]
-        gh_runner_slice: pmp-ci.slice
+        gh_runner_slice: "{{ ci_pmp_slice }}"
         gh_runner_env:
           HOME: "{{ pmp_ci_user_home }}/{{ pmp_slot }}"
           ACTIONS_RUNNER_HOOK_JOB_STARTED: "{{ pmp_ci_job_started_hook }}"
@@ -228,11 +228,19 @@
 # its unit restart-looped every 7s (506k restarts, 5.5G of _diag logs) until
 # 2026-09-29. unity-2 holds ~35G of Unity Library cache, so it is adopted, not
 # re-registered. /var/lib/actions-runner stays the user's home (.ssh, .docker).
+#
+# Both hp-victus Unity runners run in ci-unity.slice, inside the host's CI budget
+# (roles/ci-host-budget). Until 2026-10-24 they sat in system.slice with no cap.
+# The playground's Unity containers follow via UNITY_CI_CGROUP_PARENT; the
+# dodginballs workflow starts its game-ci containers itself, so only its runner
+# process is capped.
 - name: dodginballs Unity runner (hp-victus primary)
   hosts: hp-victus
   become: true
   gather_facts: true
   roles:
+    - role: ci-host-budget
+      tags: [runner, ci, dodginballs]
     - role: github-actions-runner-linux
       vars:
         gh_runner_repo: dodginballs
@@ -240,6 +248,7 @@
         gh_runner_home: /var/lib/actions-runner-2
         gh_runner_user_home: /var/lib/actions-runner
         gh_runner_labels: [self-hosted, linux, x64, unity]
+        gh_runner_slice: "{{ ci_unity_slice }}"
         # Registration token minted by the workstation's gh, like the pmp slots.
         gh_runner_token_source: gh
       tags: [runner, ci, dodginballs]
@@ -254,6 +263,8 @@
   become: true
   gather_facts: true
   roles:
+    - role: ci-host-budget
+      tags: [runner, ci, playground]
     - role: github-actions-runner-linux
       vars:
         gh_runner_repo: unity-core-playground
@@ -263,11 +274,14 @@
         gh_runner_labels: [self-hosted, linux, x64, unity]
         gh_runner_token_source: gh
         gh_runner_install_packages: false
+        gh_runner_slice: "{{ ci_unity_slice }}"
+        gh_runner_env:
+          UNITY_CI_CGROUP_PARENT: "{{ ci_unity_slice }}"
       tags: [runner, ci, playground]
 
 # BNB Unity runner pool: org-scoped runners every BlackNBrownStudios repo can use
-# with runs-on [self-hosted, linux, unity] (added 2026-10-05). Slots per host and
-# the slice caps live in inventory.yml (unity_ci_runners). Each slot is its own
+# with runs-on [self-hosted, linux, unity] (added 2026-10-05). Slots per host live
+# in inventory.yml (unity_ci_runners); the CPU and memory caps in ci_hosts. Each slot is its own
 # runner under the actions-runner user with HOME set to the slot's dir, so slots
 # never share a Unity cache or Library. OpenSSH still reads known_hosts from the
 # user's passwd home, so unity-ci-host manages GitHub's keys there for every slot.
@@ -315,11 +329,11 @@
         gh_runner_home: "{{ unity_ci_user_home }}/unity-pool-{{ unity_slot }}"
         gh_runner_name: "{{ inventory_hostname }}-unity-pool-{{ unity_slot }}"
         gh_runner_labels: [self-hosted, linux, x64, unity, "host-{{ inventory_hostname }}"]
-        gh_runner_slice: "{{ unity_ci_slice }}"
+        gh_runner_slice: "{{ ci_unity_slice }}"
         gh_runner_env:
           HOME: "{{ unity_ci_user_home }}/unity-pool-{{ unity_slot }}"
           UNITY_MACHINE_ID_FILE: "{{ unity_ci_machine_id_file }}"
-          UNITY_CI_CGROUP_PARENT: "{{ unity_ci_slice }}"
+          UNITY_CI_CGROUP_PARENT: "{{ ci_unity_slice }}"
       tags: [runner, ci, unity-ci]
 
 # NFS backup target — hp-victus exports /srv/backups so k3s workloads can keep
@@ -430,6 +444,19 @@
   roles:
     - role: hw-watchdog
       tags: [watchdog]
+
+# Cap CPU power on the laptops that run CI, so a long job holds them below their
+# thermal limit (2026-10-23: asus at 93-96C for hours before it dropped off the
+# LAN; hp-victus peaked at 98C of 100C). Knobs per host in inventory.yml
+# (thermal_capped). See ansible/roles/thermal-cap/README.md.
+#   ansible-playbook playbooks/site.yml --limit thermal_capped --tags thermal --check --diff
+- name: Thermal cap (CI laptops)
+  hosts: thermal_capped
+  become: true
+  gather_facts: false
+  roles:
+    - role: thermal-cap
+      tags: [thermal]
 
 # Make the next freeze explain itself: kernel messages stream to pi5-master
 # over netconsole, and the firmware's undervoltage latch is exported to

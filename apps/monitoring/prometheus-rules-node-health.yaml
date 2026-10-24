@@ -186,3 +186,46 @@ spec:
               least once since {{ $labels.instance }} last booted. That is the
               leading suspect for its silent freezes. Replace the PSU and cable
               with the official 5.1V supply. Stays firing until the next reboot.
+
+        # CPU package temperature (Intel coretemp, AMD k10temp), any node that
+        # exports it. 2026-10-23 the Unity nightly held asus-laptop at 93-96C
+        # for hours before it dropped off the LAN, and hp-victus peaked at 98C
+        # of its 100C crit; nothing paged. ansible/roles/thermal-cap caps the
+        # CI laptops to stay near 85C, so firing means the cap is not holding.
+        - alert: NodeCpuHot
+          expr: >-
+            max by (instance) (
+              node_hwmon_temp_celsius
+              * on (instance, chip) group_left (chip_name)
+              node_hwmon_chip_names{chip_name=~"coretemp|k10temp"}
+            ) > 90
+          for: 10m
+          labels:
+            severity: warning
+            category: node-health
+          annotations:
+            summary: "CPU hot on {{ $labels.instance }} ({{ $value }}C for 10m)"
+            description: >-
+              The CPU package on {{ $labels.instance }} has been above 90C for
+              10m. On a CI laptop, check what is running (Unity jobs, platform
+              slots) and whether thermal-cap.service applied after the last boot
+              (systemctl status thermal-cap). Lower the cap in inventory.yml
+              (thermal_capped) if it did.
+        - alert: NodeCpuCritical
+          expr: >-
+            max by (instance) (
+              node_hwmon_temp_celsius
+              * on (instance, chip) group_left (chip_name)
+              node_hwmon_chip_names{chip_name=~"coretemp|k10temp"}
+            ) > 95
+          for: 2m
+          labels:
+            severity: critical
+            category: node-health
+          annotations:
+            summary: "CPU at {{ $value }}C on {{ $labels.instance }}"
+            description: >-
+              The CPU package on {{ $labels.instance }} has been above 95C for 2m,
+              close to its thermal limit. The host may throttle hard or shut
+              down; asus-laptop dropped off the LAN after hours here on
+              2026-10-23. Stop or cancel CI on it now.

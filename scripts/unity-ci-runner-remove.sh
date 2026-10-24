@@ -63,8 +63,6 @@ done
 if ! ls /etc/systemd/system/actions.runner.*-unity-pool-*.service >/dev/null 2>&1; then
   echo "== no Unity slots left: removing the host-wide pieces"
   docker ps -q --filter name=unity-test | xargs -r docker stop
-  sudo rm -f /etc/systemd/system/unity-ci.slice
-  sudo systemctl stop unity-ci.slice 2>/dev/null || true
   sudo rm -rf "$RUNNER_HOME/asset-library" "$RUNNER_HOME/unity-machine-id"
   if ! ls /etc/systemd/system/actions.runner.*.service >/dev/null 2>&1; then
     echo "== no runner of any kind left: removing the actions-runner user"

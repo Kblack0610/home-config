@@ -1,0 +1,24 @@
+---
+# Hold a host to a sustained temperature it can live with, by capping power
+# rather than time-slicing CPU (see README). Every knob is optional and off by
+# default; set the ones a host's firmware has in inventory.yml (thermal_capped).
+# A knob that is set but missing on the host fails the apply, so a cap never
+# silently does nothing.
+
+# ACPI platform profile (quiet | balanced | performance), the vendor's own fan
+# and power-limit preset. /sys/firmware/acpi/platform_profile.
+thermal_cap_platform_profile: ""
+# false turns CPU boost off: amd-pstate cpufreq/boost=0 or intel_pstate
+# no_turbo=1. Big single-thread cost; use on AMD, where there is no writable
+# package power limit.
+thermal_cap_boost: true
+# Intel package power limits in watts (PL1 long-term, PL2 short-term), written
+# to both the MSR and the MMIO RAPL zones, since the lower of the two wins.
+# 0 leaves the firmware's value.
+thermal_cap_rapl_long_watts: 0
+thermal_cap_rapl_short_watts: 0
+# Battery stops charging at this percent. These laptops sit on the charger
+# 24/7, and a cell held at 100% and warm swells. 0 leaves it.
+thermal_cap_charge_limit: 0
+
+thermal_cap_script: /usr/local/lib/thermal-cap/apply.sh

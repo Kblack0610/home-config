@@ -1,0 +1,35 @@
+---
+- name: Require a CPU list for CI on this host
+  ansible.builtin.assert:
+    that: ci_cpus | length > 0
+    fail_msg: >-
+      {{ inventory_hostname }} has no ci_cpus. Add it to the ci_hosts group in
+      inventory.yml with the CPUs CI may use.
+
+- name: Install the CI slices
+  ansible.builtin.template:
+    src: "{{ item.src }}"
+    dest: "/etc/systemd/system/{{ item.name }}"
+    mode: "0644"
+  loop:
+    - { src: ci.slice.j2, name: "{{ ci_slice }}" }
+    - { src: ci-unity.slice.j2, name: "{{ ci_unity_slice }}" }
+    - { src: ci-pmp.slice.j2, name: "{{ ci_pmp_slice }}" }
+  loop_control:
+    label: "{{ item.name }}"
+  register: _ci_slice_units
+
+# A unit still inside a retired slice keeps running there until the runner role
+# restarts it into the new one (its unit file changes, so it does).
+- name: Remove the retired per-workload slices
+  ansible.builtin.file:
+    path: "/etc/systemd/system/{{ item }}"
+    state: absent
+  loop: "{{ ci_retired_slices }}"
+  register: _ci_retired_units
+
+- name: Reload systemd after the slices changed
+  ansible.builtin.systemd:
+    daemon_reload: true
+  when: _ci_slice_units.changed or _ci_retired_units.changed
+

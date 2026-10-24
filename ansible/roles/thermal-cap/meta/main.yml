@@ -1,0 +1,15 @@
+---
+galaxy_info:
+  role_name: thermal_cap
+  author: home-config
+  description: >-
+    Caps CPU power on hosts that run hot under sustained load (platform
+    profile, boost, Intel RAPL limits) and sets a battery charge limit,
+    reapplied at every boot.
+  license: MIT
+  min_ansible_version: "2.14"
+  platforms:
+    - name: ArchLinux
+      versions:
+        - rolling
+dependencies: []

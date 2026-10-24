@@ -1,0 +1,7 @@
+---
+galaxy_info:
+  role_name: game_server_node
+  author: kblack0610
+  description: Marks a k3s node as one the game servers run on
+  min_ansible_version: "2.14"
+dependencies: []

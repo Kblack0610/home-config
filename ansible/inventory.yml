@@ -198,12 +198,25 @@ all:
           ci_pmp_memory_max: 24G
         # i7-13700HX: CPUs 0-15 are the P-core threads, 16-23 the E-cores.
         # k3s (redis, ntfy) keeps four E-cores. 31 GB, no swap. Two Unity runners
-        # (dodginballs, playground) can each run a job.
+        # (dodginballs, playground) can each run a job. P-core threads 12-15 are
+        # the game server's (game_server_cpus in game_server_nodes below), so CI
+        # skips them.
         hp-victus:
-          ci_cpus: 0-19
+          ci_cpus: 0-11,16-19
           ci_memory_max: 20G
           ci_unity_memory_max: 14G
           ci_pmp_memory_max: 14G
+
+    # Nodes that run the game servers (apps/playground-server pins to the
+    # kblab.me/game-server label, roles/game-server-node sets it). Each host keeps
+    # game_server_cpus out of its ci_cpus, so a CI burst cannot take the cores a
+    # game's tick runs on. Moving the server to another box (a mini PC, the
+    # Razer) is this group, that host's ci_cpus, and the router's LAN answer and
+    # UDP forward (apps/playground-server/README.md).
+    game_server_nodes:
+      hosts:
+        hp-victus:
+          game_server_cpus: 12-15
 
     # Hosts whose CPU power is capped so CI holds them below their thermal limit
     # (roles/thermal-cap). 2026-10-23: asus held 93-96C through the Unity

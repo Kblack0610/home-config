@@ -5,8 +5,12 @@ metadata:
   annotations:
     kubernetes.io/ingress.class: traefik
     cert-manager.io/cluster-issuer: letsencrypt-dns
-    # LAN and tailnet only, like the game servers it lists.
-    traefik.ingress.kubernetes.io/router.middlewares: monitoring-local-network-only@kubernetescrd
+    # Public, and meant to be: players away from home list games and resolve join
+    # codes here, and servers on other hosts (Edgegap) register here. The LAN-only
+    # allowlist this had was a no-op behind the tunnel (see
+    # apps/zomboid/control/ingress-games.yaml). Writes need a token, and a server's
+    # heartbeat and removal need its own lease; crowdsec rate-limits the rest.
+    traefik.ingress.kubernetes.io/router.middlewares: crowdsec-crowdsec-bouncer@kubernetescrd
     # API only, `/` answers 404, which the http_up probe counts as down. Keep it
     # out of the generated HA launcher and the blackbox site probes.
     homepage.kblab.me/launcher: "false"

@@ -5,8 +5,10 @@ metadata:
   labels:
     app: playground-server
 spec:
-  # No replicas field on purpose: Flux then does not own it, so `ctl.sh up` and
-  # `ctl.sh down` (kubectl scale) stick instead of being reconciled back to 1.
+  # Always on (2026-10-24): friends join whenever they like, with nobody starting
+  # it first. Flux owns the count, so `ctl.sh down` and the games page's stop only
+  # last until the next reconcile; to take it down for longer, set 0 here.
+  replicas: 1
   selector:
     matchLabels:
       app: playground-server
@@ -19,9 +21,12 @@ spec:
     spec:
       # A Unity Linux server build is x86_64 only, and hostNetwork puts the UDP
       # port straight on the node's LAN address - no servicelb proxy pods.
+      # A game server node, not a named host: ansible's game_server_nodes group
+      # labels it and keeps CI off the cores it runs on (roles/game-server-node).
       nodeSelector:
         kubernetes.io/arch: amd64
-        kubernetes.io/hostname: hp-victus
+        kblab.me/game-server: "true"
+      priorityClassName: game-server
       hostNetwork: true
       dnsPolicy: ClusterFirstWithHostNet
       terminationGracePeriodSeconds: 30
@@ -69,9 +74,14 @@ spec:
             initialDelaySeconds: 5
             periodSeconds: 5
             failureThreshold: 24
+          # Two cores requested, so it is scheduled with room and gets the larger
+          # share when the node is busy. No CPU limit on purpose: a limit is a CFS
+          # quota, which stalls the process for the rest of each period once it is
+          # spent, and a server tick pays for that as a hitch (the same lesson as
+          # ci.slice). rc8 ran at about 800 Mi with two players, close to the old 1 Gi.
           resources:
             requests:
-              cpu: 100m
-              memory: 256Mi
+              cpu: "2"
+              memory: 2Gi
             limits:
-              memory: 1Gi
+              memory: 2Gi

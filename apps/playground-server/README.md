@@ -2,18 +2,11 @@
 
 Dedicated server for `unity-core-playground`, so the ParrelSync clones, the Quests and anything else, at home or away, can play against a server nobody has to host.
 
-It is off by default. Scale it up when you want to play, down when you are done:
-
-```bash
-kubectl -n playground-server scale deploy/playground-server --replicas=1
-kubectl -n playground-server scale deploy/playground-server --replicas=0
-```
-
-The playground repo wraps both in `scripts/server/ctl.sh up|down|status|logs`.
+It is always on (`replicas: 1`, since 2026-10-24), so friends join whenever they like. `scripts/server/ctl.sh status|logs` in the playground repo watches it; `ctl.sh down` only lasts until Flux reconciles, so take it down for longer by setting `replicas: 0` here.
 
 | | |
 |---|---|
-| Node | `hp-victus` (192.168.1.243), the idle x86 machine |
+| Node | whichever node carries `kblab.me/game-server=true`: today `hp-victus` (192.168.1.243) |
 | Address for clients | `playground-play.kblab.me:7770` (UDP, FishNet Tugboat), from anywhere |
 | Image | `git.kblab.me/kblack0610/unity-playground-server`, built from a tag by `scripts/build.sh <tag> server` and pushed by `scripts/server/image.sh` |
 
@@ -21,8 +14,9 @@ The playground repo wraps both in `scripts/server/ctl.sh up|down|status|logs`.
 
 ## Why it looks like this
 
-- **No `replicas` field.** Flux uses server-side apply, so a field that is not in git is not owned by Flux and a manual `kubectl scale` sticks. Adding `replicas: 0` here would fight every scale-up.
-- **`hostNetwork` and a pinned node.** A Unity Linux server build is x86_64 only, and the cluster is mostly Raspberry Pis, so it has to land on `hp-victus` or `asus-laptop`. Binding the node's own LAN address also avoids servicelb's per-node UDP proxy pods. To move it, change the `kubernetes.io/hostname` selector.
+- **Always on.** Until 2026-10-24 it had no `replicas` field so a manual scale stuck, and it sat off unless someone started it. Now Flux owns the count.
+- **A game-server node, not a named host.** A Unity Linux server build is x86_64 only, and the cluster is mostly Raspberry Pis. Ansible's `game_server_nodes` group labels the node `kblab.me/game-server=true` (`roles/game-server-node`), and that host's `game_server_cpus` stay out of its `ci_cpus`, so CI cannot take the cores a tick runs on. The pod requests two cores with no CPU limit (a limit is a CFS quota, which stalls a tick once spent), and its `game-server` PriorityClass makes it the last pod evicted.
+- **Moving it to another box** (a mini PC, the Razer): put that host in `game_server_nodes` with its `game_server_cpus`, take hp-victus out, run the `game-server` tag of `playbooks/site.yml`, then point the LAN answer (`infrastructure/openwrt/dns.yaml`) and the UDP 7770 forward (`infrastructure/openwrt/firewall.yaml`) at the new node's address. `hostNetwork` binds the node's own LAN address, which avoids servicelb's per-node UDP proxy pods, so those two follow the node.
 - **A pinned image tag**, named after the playground tag it was built from, so what is running is written down and a scale-up cannot quietly pick up a different build. Build with `scripts/build.sh <tag> server` (or the same `-executeMethod` against a checkout), push with `scripts/server/image.sh <tag>`, then bump this line.
 - **A readiness probe on the UDP socket.** The server speaks UDP only, so readiness is the bound port in `/proc/net/udp`; it makes "starting" on the games page mean the Unity boot.
 

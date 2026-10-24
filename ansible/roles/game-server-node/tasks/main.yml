@@ -1,0 +1,17 @@
+---
+- name: Require the game server's CPUs on this host
+  ansible.builtin.assert:
+    that: game_server_cpus | default('') | length > 0
+    fail_msg: >-
+      {{ inventory_hostname }} is in game_server_nodes without game_server_cpus.
+      Give it the CPUs the game server keeps and leave them out of its ci_cpus.
+
+# Labels are cluster state, so this runs where kubectl is. The node name is the
+# inventory name, as k3s registers it.
+- name: Label the node for the game servers
+  ansible.builtin.command: >-
+    {{ game_server_kubectl }} label node {{ inventory_hostname }}
+    {{ game_server_label }}=true --overwrite
+  delegate_to: "{{ game_server_kubectl_host }}"
+  register: _game_server_label
+  changed_when: "'not labeled' not in _game_server_label.stdout"

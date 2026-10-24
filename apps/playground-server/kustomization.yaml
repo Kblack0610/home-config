@@ -8,6 +8,7 @@ resources:
   - rbac.yaml
   - registry-secret.yaml
   - registry-token-secret.yaml
+  - priorityclass.yaml
   - deployment.yaml
   - gallery.yaml
 

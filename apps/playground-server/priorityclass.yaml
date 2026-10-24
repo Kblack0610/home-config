@@ -1,0 +1,11 @@
+# Game servers are the last thing evicted when a node runs short: a dropped
+# server kicks every player at once, while most other pods restart unnoticed.
+# Below system-cluster-critical, and it never preempts running pods.
+apiVersion: scheduling.k8s.io/v1
+kind: PriorityClass
+metadata:
+  name: game-server
+value: 100000
+preemptionPolicy: Never
+globalDefault: false
+description: Dedicated game servers; evicted last.

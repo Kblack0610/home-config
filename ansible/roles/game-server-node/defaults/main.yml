@@ -1,0 +1,6 @@
+---
+# The label apps/playground-server's nodeSelector matches.
+game_server_label: kblab.me/game-server
+# Where kubectl runs: the k3s server carries it.
+game_server_kubectl_host: pi5-master
+game_server_kubectl: /usr/local/bin/k3s kubectl

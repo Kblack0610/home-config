@@ -253,6 +253,17 @@
         gh_runner_token_source: gh
       tags: [runner, ci, dodginballs]
 
+# Game server nodes (game_server_nodes in inventory.yml): the label the
+# playground server's Deployment pins to. The cores it keeps are left out of the
+# host's ci_cpus, which the CI plays apply.
+- name: Game server nodes
+  hosts: game_server_nodes
+  become: false
+  gather_facts: false
+  roles:
+    - role: game-server-node
+      tags: [game-server]
+
 # unity-core-playground test runner on hp-victus, a second instance under the
 # same actions-runner user (docker group, no sudo). The workflow runs the suite
 # inside the unityci/editor image, so the host needs no Unity and no X libraries

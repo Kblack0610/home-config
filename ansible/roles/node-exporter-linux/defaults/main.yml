@@ -1,7 +1,8 @@
 ---
-# Debian's packaged node_exporter. Same port as every other node, so the
-# standalone-nodes scrape (apps/monitoring/external-standalone-nodes.yaml) and
-# the fleet.kblab.me poll (apps/gatus-fleet/config.yaml) need no special case.
+# The distro's packaged node_exporter (same name on Debian and Arch). Same
+# port as every other node, so the standalone-nodes scrape
+# (apps/monitoring/external-standalone-nodes.yaml) and the fleet.kblab.me poll
+# (apps/gatus-fleet/config.yaml) need no special case.
 node_exporter_linux_package: prometheus-node-exporter
 node_exporter_linux_port: 9100
 

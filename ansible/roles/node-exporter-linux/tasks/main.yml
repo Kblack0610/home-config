@@ -1,8 +1,9 @@
 ---
-# node_exporter on a standalone Debian box (Pi OS). k3s nodes already run it
-# through kube-prometheus-stack and the Macs through node-exporter-mac.
+# node_exporter on a standalone box outside k3s: Debian (the Pi audio boxes) or
+# Arch (razer-laptop). k3s nodes already run it through kube-prometheus-stack
+# and the Macs through node-exporter-mac.
 
-- name: Install node_exporter
+- name: Install node_exporter (Debian)
   ansible.builtin.apt:
     name: "{{ node_exporter_linux_package }}"
     state: present
@@ -11,11 +12,18 @@
     # Recommends pull in prometheus-node-exporter-collectors and its timers
     # (smartmon, apt, ...), which a Pi audio box does not need.
     install_recommends: false
+  when: ansible_os_family == "Debian"
+
+- name: Install node_exporter (Arch)
+  community.general.pacman:
+    name: "{{ node_exporter_linux_package }}"
+    state: present
+  when: ansible_os_family == "Archlinux"
 
 - name: Configure node_exporter flags
   ansible.builtin.template:
     src: prometheus-node-exporter.default.j2
-    dest: /etc/default/prometheus-node-exporter
+    dest: "{{ node_exporter_linux_layout.env_file }}"
     owner: root
     group: root
     mode: "0644"

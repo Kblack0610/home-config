@@ -90,8 +90,12 @@ spec:
           # Allow push to the in-cluster Forgejo registry without TLS,
           # so workflows can bypass Traefik's per-layer ingress timeout
           # on multi-GB image pushes (see .forgejo/workflows/openclaw-image.yaml).
+          # The pod's eth0 is 1450 (flannel vxlan); docker0 defaults to 1500,
+          # so a build container's TLS handshakes stall (apk add hung 20 min
+          # on registry-v1.4.0). Match the pod MTU.
           args:
             - --insecure-registry=forgejo-http.forgejo.svc.cluster.local:3000
+            - --mtu=1450
           env:
             - name: DOCKER_TLS_CERTDIR
               value: ""

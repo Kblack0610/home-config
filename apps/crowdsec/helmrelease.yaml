@@ -61,3 +61,33 @@ spec:
         requests:
           cpu: 100m
           memory: 128Mi
+
+  # The chart's agent init container runs `cscli lapi register --machine
+  # <pod name>` on every start. A node reboot restarts the pod under the same
+  # name, LAPI answers 403 "user already exist", and the agent crash-loops
+  # forever (7 of 8 agents sat down from the 2026-09-30 Pi reboots until 2026-10-24).
+  # The credentials from the first registration are still in the pod's
+  # emptyDir, so reuse them when the register fails. Chart 0.24.2 still has
+  # the same command; drop this patch when upstream makes register idempotent.
+  postRenderers:
+    - kustomize:
+        patches:
+          - target:
+              kind: DaemonSet
+              name: crowdsec-agent
+            patch: |
+              - op: test
+                path: /spec/template/spec/initContainers/0/name
+                value: wait-for-lapi-and-register
+              - op: replace
+                path: /spec/template/spec/initContainers/0/command
+                value:
+                  - sh
+                  - -c
+                  - >-
+                    until nc "$LAPI_HOST" "$LAPI_PORT" -z; do echo waiting for lapi to start; sleep 5; done;
+                    ln -s /staging/etc/crowdsec /etc/crowdsec &&
+                    { { cscli lapi register --machine "$USERNAME" -u "$LAPI_URL" --token "$REGISTRATION_TOKEN" &&
+                    cp /etc/crowdsec/local_api_credentials.yaml /tmp_config/local_api_credentials.yaml; } ||
+                    { [ -s /tmp_config/local_api_credentials.yaml ] &&
+                    echo "machine $USERNAME is already registered; reusing its saved credentials"; }; }

@@ -109,6 +109,13 @@ sops -e -i apps/crowdsec/secret.yaml    # re-encrypt after editing
 kubectl --context home-k3s rollout restart -n crowdsec deploy/crowdsec-lapi deploy/crowdsec-bouncer
 ```
 
+### Troubleshooting
+
+| Symptom | Cause | Fix |
+|---------|-------|-----|
+| Agent pods stuck in `Init:CrashLoopBackOff`, init log says `api register ... 403 Forbidden: user 'crowdsec-agent-xxxxx' already exist` | The chart re-registers the agent under its pod name on every start, and a node reboot restarts the pod under the same name. | The `postRenderers` patch in `helmrelease.yaml` reuses the credentials saved in the pod's emptyDir. If it still happens (the emptyDir was lost), delete the pod so the DaemonSet recreates it under a new name. |
+| Every public site answers `403 Forbidden` | The bouncer cannot reach LAPI (LAPI pod down, or its node is). | Get `crowdsec-lapi` running again; its PVCs are `local-path`, so it can only run on the node that holds them. |
+
 ## Phases
 
 - **Phase 1 (this PR)**: Engine + bouncer on public ingresses only

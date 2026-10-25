@@ -42,3 +42,6 @@ configMapGenerator:
   - name: grafana-dashboard-command-center
     files:
       - command-center.json
+  - name: grafana-dashboard-game-fleet
+    files:
+      - game-fleet.json

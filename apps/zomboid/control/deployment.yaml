@@ -38,18 +38,6 @@ spec:
                 secretKeyRef:
                   name: zomboid-control-token
                   key: control-token
-            # Browser credentials for the page. A browser cannot hold a bearer
-            # token, and there is no network boundary here to stand in for one.
-            - name: UI_USER
-              valueFrom:
-                secretKeyRef:
-                  name: zomboid-control-token
-                  key: ui-user
-            - name: UI_PASSWORD
-              valueFrom:
-                secretKeyRef:
-                  name: zomboid-control-token
-                  key: ui-password
           ports:
             - name: http
               containerPort: 8080

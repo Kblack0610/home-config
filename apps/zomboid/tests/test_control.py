@@ -26,8 +26,6 @@ SA.mkdir()
 
 os.environ["CONTROL_TOKEN"] = "correct-horse"
 os.environ["SA_DIR"] = str(SA)
-os.environ["UI_USER"] = "ken"
-os.environ["UI_PASSWORD"] = "hunter2"
 
 # The real servers.json is read at import; point at a fixture so the tests do not
 # move every time a server is added.
@@ -155,25 +153,25 @@ check("unknown GET is 404", call("GET", "/nope", "correct-horse")[0], 404)
 check("unknown POST is 404", call("POST", "/nope", "correct-horse")[0], 404)
 check("mutating route rejects GET", call("GET", "/start", "correct-horse")[0], 404)
 
-print("browser auth:")
-check("basic with the right password is accepted",
-      call("GET", "/status", basic="ken:hunter2")[0], 200)
-check("basic with the wrong password is rejected",
-      call("GET", "/status", basic="ken:wrong")[0], 401)
-check("basic with the wrong user is rejected",
-      call("GET", "/status", basic="eve:hunter2")[0], 401)
-check("garbage basic header is rejected",
-      call("GET", "/status", basic="not-a-colon-pair")[0], 401)
+print("no browser auth:")
+# The page moved to the registry's admin site, so the bearer token is the only credential.
+check("basic auth is not a credential", call("GET", "/status", basic="ken:hunter2")[0], 401)
 status, _, _ = fetch_raw("/status")
-check("an unauthenticated caller is told how to authenticate", status, 401)
+check("an unauthenticated caller gets 401", status, 401)
 
-print("the page:")
-status, ctype, body = fetch_raw("/", basic="ken:hunter2")
-check("/ serves html to a logged-in browser", (status, ctype.split(";")[0]), (200, "text/html"))
-# The page ships no server list of its own - it asks /servers, so adding a server
-# is a config change and never an HTML edit. That indirection is the thing to pin.
-check("the page reads its list from /servers", '"/servers"' in body, True)
-check("/ needs a credential", fetch_raw("/")[0], 401)
+
+class NoRedirect(urllib.request.HTTPRedirectHandler):
+    def redirect_request(self, *args, **kwargs):
+        return None
+
+
+print("the fleet redirect:")
+try:
+    urllib.request.build_opener(NoRedirect).open(f"{BASE}/", timeout=5)
+    check("/ redirects to the fleet page", "no redirect", 302)
+except urllib.error.HTTPError as e:
+    check("/ redirects to the fleet page", (e.code, e.headers.get("Location")),
+          (302, "/playground/fleet.html"))
 
 print("multi-server routes:")
 STATE["spec"]["replicas"], PLAYGROUND["spec"]["replicas"] = 0, 0
@@ -185,6 +183,10 @@ check("starting one leaves the other alone",
       (PLAYGROUND["spec"]["replicas"], STATE["spec"]["replicas"]), (1, 0))
 call("POST", "/servers/playground/stop", "correct-horse")
 check("/servers/<name>/stop scales that one down", PLAYGROUND["spec"]["replicas"], 0)
+check("per-server status names its deployment, for the registry's session match",
+      {k: call("GET", "/servers/playground/status", "correct-horse")[1][k]
+       for k in ("namespace", "deployment")},
+      {"namespace": "playground-server", "deployment": "playground-server"})
 check("per-server status reports its own join address",
       call("GET", "/servers/playground/status", "correct-horse")[1]["join"], "host:7770")
 check("unknown server is 404", call("GET", "/servers/nope/status", "correct-horse")[0], 404)

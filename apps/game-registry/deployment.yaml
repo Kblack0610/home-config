@@ -23,13 +23,17 @@ spec:
         - name: forgejo-registry
       containers:
         - name: registry
-          image: git.kblab.me/kblack0610/bnb-game-servers/registry:registry-v1.6.1
+          image: git.kblab.me/kblack0610/bnb-game-servers/registry:registry-v1.7.0
           ports:
             - name: http
               containerPort: 8080
             # The admin site, routed only by ingress-admin.yaml (games.kblab.me/playground).
             - name: admin
               containerPort: 8081
+            # Prometheus /metrics for the live fleet, scraped by servicemonitor.yaml. No
+            # ingress names this port.
+            - name: metrics
+              containerPort: 9090
           env:
             - name: PORT
               value: "8080"
@@ -56,8 +60,24 @@ spec:
               value: /playground
             - name: ADMIN_USERS
               value: kblack0610
-            - name: SERVER_CONTROL_URL
-              value: https://games.kblab.me/
+            # The Fleet page's home servers: listed and scaled through zomboid-control
+            # (apps/zomboid/control, servers.json), with its token copied into
+            # control-token-secret.yaml.
+            - name: CONTROL_API
+              value: http://zomboid-control.zomboid.svc
+            - name: CONTROL_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: game-registry-control
+                  key: CONTROL_TOKEN
+            - name: METRICS_PORT
+              value: "9090"
+            # A session's graphs and logs on the Game fleet dashboard
+            # (apps/monitoring/dashboards/game-fleet.json; panel 100 is the logs).
+            - name: GRAFANA_URL
+              value: https://grafana.kblab.me/d/kb-game-fleet/game-fleet?var-id={id}
+            - name: LOGS_URL
+              value: https://grafana.kblab.me/d/kb-game-fleet/game-fleet?var-id={id}&var-pod={pod}&viewPanel=100
             # Online games on Edgegap (registry README, "Online games"). EDGEGAP_TOKEN comes
             # from admin-secret.yaml; this caps how many run at once, since each one bills.
             - name: EDGEGAP_MAX

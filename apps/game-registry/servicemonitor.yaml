@@ -1,0 +1,22 @@
+# Scrape the registry's /metrics into Prometheus: one series set per live game server
+# session, labelled with its id, game, provider, site and version, plus every number
+# in its heartbeat stats (registry README, "Sessions"). The Game fleet dashboard
+# (apps/monitoring/dashboards/game-fleet.json) reads it.
+#
+# No release label: this cluster's Prometheus selects every ServiceMonitor
+# (apps/gatus-fleet/servicemonitor.yaml has the why).
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: game-registry
+  labels:
+    app.kubernetes.io/name: game-registry
+spec:
+  endpoints:
+    - port: metrics
+      path: /metrics
+      interval: 30s
+      scrapeTimeout: 10s
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: game-registry

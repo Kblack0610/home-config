@@ -1,5 +1,6 @@
-# The game server page: state, join address and start/stop for every entry in
-# servers.json.
+# games.kblab.me "/": the control API (state and start/stop for every entry in
+# servers.json) and a redirect from "/" to the registry's Fleet page
+# (apps/game-registry/ingress-admin.yaml), which is where people press buttons.
 #
 # Reachable from the internet, like every other *.kblab.me host - external-dns has
 # no --domain-filter and the tunnel is a wildcard catch-all. Do NOT reach for
@@ -8,10 +9,10 @@
 # request arrives from the cloudflared pod inside 10.0.0.0/8. See
 # apps/gatus-fleet/ingress.yaml.
 #
-# So the page authenticates itself: the service answers 401 with WWW-Authenticate
-# Basic and checks the credentials from its own Secret. crowdsec is here for rate
-# limiting, the same as fleet.kblab.me - it reads X-Forwarded-For and therefore
-# does see real client IPs.
+# So the API authenticates itself with a bearer token from its own Secret; only
+# /healthz and the "/" redirect are open. crowdsec is here for rate limiting, the
+# same as fleet.kblab.me - it reads X-Forwarded-For and therefore does see real
+# client IPs.
 apiVersion: networking.k8s.io/v1
 kind: Ingress
 metadata:
@@ -24,8 +25,8 @@ metadata:
     cert-manager.io/cluster-issuer: letsencrypt-dns
     traefik.ingress.kubernetes.io/router.entrypoints: web,websecure
     traefik.ingress.kubernetes.io/router.middlewares: crowdsec-crowdsec-bouncer@kubernetescrd
-    # The page needs a credential, so an unauthenticated probe can only ever see 401
-    # and would sit red forever. What matters for these servers is already watched:
+    # Everything but the redirect needs a credential, so an unauthenticated probe
+    # would only ever see 401 or a redirect to a sign-in. What matters for these servers is already watched:
     # the "Zomboid Control" check in apps/gatus/config.yaml probes this same pod's
     # /healthz - the thing that can wake them up.
     gatus.kblab.me/monitor: "false"

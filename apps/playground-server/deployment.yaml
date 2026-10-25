@@ -55,6 +55,22 @@ spec:
               value: "1"
             - name: SERVER_NAME
               value: Playground server
+            # Its identity in the registry: the session id comes out as
+            # <yymmdd>-playground-home-<n>-<node>, and provider_ref is what the Fleet
+            # page matches against zomboid-control's namespace/deployment. A build from
+            # before the structured ids ignores these.
+            - name: SERVER_PROVIDER
+              value: home
+            - name: SERVER_SITE
+              valueFrom:
+                fieldRef:
+                  fieldPath: spec.nodeName
+            - name: POD_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.name
+            - name: SERVER_PROVIDER_REF
+              value: playground-server/playground-server/$(POD_NAME)
             - name: SERVER_TOKEN
               valueFrom:
                 secretKeyRef:

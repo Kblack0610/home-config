@@ -8,8 +8,10 @@ resources:
   - registry-pull-secret.yaml
   - tokens-secret.yaml
   - admin-secret.yaml
+  - control-token-secret.yaml
   - pvc.yaml
   - deployment.yaml
   - service.yaml
+  - servicemonitor.yaml
   - ingress.yaml
   - ingress-admin.yaml

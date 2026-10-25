@@ -23,7 +23,7 @@ spec:
         - name: forgejo-registry
       containers:
         - name: registry
-          image: git.kblab.me/kblack0610/bnb-game-servers/registry:registry-v1.5.1
+          image: git.kblab.me/kblack0610/bnb-game-servers/registry:registry-v1.6.0
           ports:
             - name: http
               containerPort: 8080
@@ -58,6 +58,10 @@ spec:
               value: kblack0610
             - name: SERVER_CONTROL_URL
               value: https://games.kblab.me/
+            # Online games on Edgegap (registry README, "Online games"). EDGEGAP_TOKEN comes
+            # from admin-secret.yaml; this caps how many run at once, since each one bills.
+            - name: EDGEGAP_MAX
+              value: "2"
             # The browser signs in on Forgejo's ROOT_URL host; the token and userinfo calls
             # are server-side, so they use the in-cluster service (as Grafana does).
             - name: OAUTH_AUTH_URL

@@ -167,6 +167,7 @@ PAGE = """<!doctype html>
   <h1>Game servers</h1>
   <div id="servers">Loading...</div>
   <p class="blurb"><a href="/playground/">Playground admin</a>: game status and live overrides.</p>
+  <p class="blurb"><a href="/playground/online.html">Online games</a>: start a playground server on Edgegap near you (or a friend), see its join code, stop it.</p>
 </main>
 <script>
 const el = document.getElementById("servers");

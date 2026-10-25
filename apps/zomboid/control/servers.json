@@ -12,7 +12,7 @@
     "namespace": "playground-server",
     "deployment": "playground-server",
     "labelSelector": "app=playground-server",
-    "join": "192.168.1.243:7770",
+    "join": "playground-play.kblab.me:7770",
     "blurb": "Unity playground sandbox. Join from a build or a ParrelSync clone."
   }
 ]

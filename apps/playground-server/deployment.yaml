@@ -5,10 +5,8 @@ metadata:
   labels:
     app: playground-server
 spec:
-  # Always on (2026-10-24): friends join whenever they like, with nobody starting
-  # it first. Flux owns the count, so `ctl.sh down` and the games page's stop only
-  # last until the next reconcile; to take it down for longer, set 0 here.
-  replicas: 1
+  # No replicas field on purpose: a new Deployment starts at 1 and stays on, and a
+  # Stop on games.kblab.me (or `ctl.sh down`) sticks, since Flux does not own the count.
   selector:
     matchLabels:
       app: playground-server

@@ -1,17 +1,18 @@
-"""Scale game server deployments 0 <-> 1 over HTTP, and serve a page to press.
+"""Scale game server deployments 0 <-> 1 over HTTP.
 
 Servers come from servers.json; nothing here is game-specific. The legacy routes
 (/status, /start, /stop, /restart) act on DEFAULT_SERVER so Home Assistant and
 anything else pointed at them keep working.
 
+The page people press lives in the game registry's admin site (the Fleet page at
+games.kblab.me/playground/fleet.html), which calls this API; "/" redirects there.
+
 Every *.kblab.me ingress is reachable from the internet - the ipAllowList
 middleware is a no-op behind the tunnel, see apps/gatus-fleet/ingress.yaml - so
-there is no network boundary to lean on and every route but /healthz needs a
-credential. Two are accepted, for two kinds of caller: a bearer token for
-Home Assistant and scripts, HTTP Basic for a browser, which is what lets the
-page exist at all. /healthz stays open because gatus probes it unauthenticated.
+there is no network boundary to lean on and every route but /healthz and the "/"
+redirect needs the bearer token. /healthz stays open because gatus probes it
+unauthenticated.
 """
-import base64
 import hmac
 import http.server
 import json
@@ -26,8 +27,7 @@ import urllib.request
 SA_DIR = os.environ.get("SA_DIR", "/var/run/secrets/kubernetes.io/serviceaccount")
 API = "https://kubernetes.default.svc"
 CONTROL_TOKEN = os.environ["CONTROL_TOKEN"]
-UI_USER = os.environ.get("UI_USER", "")
-UI_PASSWORD = os.environ.get("UI_PASSWORD", "")
+FLEET_PAGE = os.environ.get("FLEET_PAGE", "/playground/fleet.html")
 SERVERS_FILE = os.environ.get("SERVERS_FILE", "/app/servers.json")
 DEFAULT_SERVER = os.environ.get("DEFAULT_SERVER", "zomboid")
 
@@ -102,6 +102,10 @@ def read_state(name):
         "ready": ready,
         "join": server.get("join", ""),
         "blurb": server.get("blurb", ""),
+        # The registry matches a server to the session it registered as by this
+        # prefix of the session's provider_ref (namespace/deployment/pod).
+        "namespace": server["namespace"],
+        "deployment": server["deployment"],
     }
 
 
@@ -136,91 +140,6 @@ def read_all():
     return {"servers": [read_state(name) for name in SERVERS]}
 
 
-PAGE = """<!doctype html>
-<html lang="en">
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Game servers</title>
-<style>
-  :root { color-scheme: light dark; }
-  body { font: 16px/1.5 system-ui, sans-serif; margin: 0; padding: 2rem 1rem; }
-  main { max-width: 34rem; margin: 0 auto; }
-  h1 { font-size: 1.25rem; margin: 0 0 1.5rem; }
-  .server { border: 1px solid color-mix(in srgb, currentColor 20%, transparent);
-            border-radius: 8px; padding: 1rem; margin-bottom: 1rem; }
-  .row { display: flex; align-items: baseline; gap: .5rem; flex-wrap: wrap; }
-  .name { font-weight: 600; }
-  .state { font-size: .875rem; opacity: .8; }
-  .dot { width: .6rem; height: .6rem; border-radius: 50%; display: inline-block;
-         background: #999; }
-  .running .dot { background: #2e9e4f; }
-  .starting .dot { background: #d98324; }
-  .blurb, .join { font-size: .875rem; opacity: .75; margin: .35rem 0 0; }
-  .join code { font-size: .9em; }
-  .actions { margin-top: .75rem; display: flex; gap: .5rem; }
-  button { font: inherit; padding: .35rem .9rem; border-radius: 6px;
-           border: 1px solid color-mix(in srgb, currentColor 30%, transparent);
-           background: transparent; color: inherit; cursor: pointer; }
-  button[disabled] { opacity: .4; cursor: default; }
-</style>
-<main>
-  <h1>Game servers</h1>
-  <div id="servers">Loading...</div>
-  <p class="blurb"><a href="/playground/">Playground admin</a>: game status and live overrides.</p>
-  <p class="blurb"><a href="/playground/online.html">Online games</a>: start a playground server on Edgegap near you (or a friend), see its join code, stop it.</p>
-</main>
-<script>
-const el = document.getElementById("servers");
-
-async function refresh() {
-  try {
-    const res = await fetch("/servers", { headers: { "Accept": "application/json" } });
-    if (!res.ok) throw new Error(res.status);
-    render((await res.json()).servers);
-  } catch (err) {
-    el.textContent = "Cannot reach the control API (" + err.message + ").";
-  }
-}
-
-function render(servers) {
-  el.replaceChildren(...servers.map(s => {
-    const box = document.createElement("div");
-    box.className = "server " + s.state;
-    box.innerHTML = `
-      <div class="row"><span class="dot"></span>
-        <span class="name"></span><span class="state"></span></div>
-      <p class="blurb"></p>
-      <p class="join">Join at <code></code></p>
-      <div class="actions">
-        <button data-do="start">Start</button>
-        <button data-do="stop">Stop</button>
-      </div>`;
-    box.querySelector(".name").textContent = s.name;
-    box.querySelector(".state").textContent = s.state === "starting"
-      ? "starting, not joinable yet" : s.state;
-    box.querySelector(".blurb").textContent = s.blurb;
-    box.querySelector(".join code").textContent = s.join;
-    box.querySelector(".join").hidden = !s.join || s.state !== "running";
-    box.querySelector('[data-do="start"]').disabled = s.state !== "asleep";
-    box.querySelector('[data-do="stop"]').disabled = s.state === "asleep";
-    box.querySelectorAll("button").forEach(b =>
-      b.addEventListener("click", () => act(s.name, b.dataset.do, box)));
-    return box;
-  }));
-}
-
-async function act(name, what, box) {
-  box.querySelectorAll("button").forEach(b => b.disabled = true);
-  await fetch(`/servers/${encodeURIComponent(name)}/${what}`, { method: "POST" });
-  refresh();
-}
-
-refresh();
-// A start takes a while to become joinable, so keep the page honest on its own.
-setInterval(refresh, 5000);
-</script>
-</html>
-"""
 
 
 class Handler(http.server.BaseHTTPRequestHandler):
@@ -239,20 +158,8 @@ class Handler(http.server.BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(body)
 
-    def _reply_page(self):
-        body = PAGE.encode()
-        self.send_response(200)
-        self.send_header("Content-Type", "text/html; charset=utf-8")
-        self.send_header("Content-Length", str(len(body)))
-        self.end_headers()
-        self.wfile.write(body)
-
     def _unauthorized(self):
-        # The browser only shows its login box if we ask for one, and only the page
-        # wants that - a script gets a plain 401 to fail on.
         self.send_response(401)
-        if UI_USER:
-            self.send_header("WWW-Authenticate", 'Basic realm="game control"')
         body = json.dumps({"error": "unauthorized"}).encode()
         self.send_header("Content-Type", "application/json")
         self.send_header("Content-Length", str(len(body)))
@@ -265,18 +172,6 @@ class Handler(http.server.BaseHTTPRequestHandler):
         if header.startswith("Bearer "):
             # compare_digest, not ==, so a wrong token cannot be recovered by timing.
             return hmac.compare_digest(header[7:], CONTROL_TOKEN)
-
-        if header.startswith("Basic ") and UI_USER and UI_PASSWORD:
-            try:
-                decoded = base64.b64decode(header[6:]).decode("utf-8")
-            except (ValueError, UnicodeDecodeError):
-                return False
-            user, _, password = decoded.partition(":")
-            # Both halves always compared, so neither can be probed by timing.
-            user_ok = hmac.compare_digest(user, UI_USER)
-            password_ok = hmac.compare_digest(password, UI_PASSWORD)
-            return user_ok and password_ok
-
         return False
 
     def _dispatch(self, action):
@@ -302,9 +197,12 @@ class Handler(http.server.BaseHTTPRequestHandler):
             return self._reply(200, {"ok": True})
 
         if self.path == "/":
-            if not self._authorized():
-                return self._unauthorized()
-            return self._reply_page()
+            # Bookmarks and Home Assistant links to games.kblab.me land on the fleet.
+            self.send_response(302)
+            self.send_header("Location", FLEET_PAGE)
+            self.send_header("Content-Length", "0")
+            self.end_headers()
+            return None
 
         if self.path == "/servers":
             return self._dispatch(read_all)

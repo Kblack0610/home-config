@@ -23,30 +23,14 @@ Those buttons call the same API below; HA holds no cluster credentials of its ow
 `config/packages/zomboid.yaml` is the package, and the bearer token is a **second copy**
 of `control/secret.yaml` living in the `home-assistant` namespace
 (`apps/home-assistant/zomboid-control-token-secret.yaml`) because Secrets do not cross
-namespaces. **Rotating the token means editing both files** - if they drift, the buttons
+namespaces. **Rotating the token means editing all three copies** (this one, `control/secret.yaml` and the registry's, below) - if they drift, the buttons
 401 while the API itself still looks healthy.
 
-### The page at games.kblab.me
+### The fleet page
 
-`/playground/` on the same host is a different app, the games admin site (live overrides for the Unity playground's games), served by the game registry and signed in with Forgejo: `apps/game-registry/ingress-admin.yaml`. The two pages link to each other.
+People press buttons on the game registry's Fleet page, `https://games.kblab.me/playground/fleet.html` (signed in with Forgejo, `apps/game-registry/ingress-admin.yaml`); `/` on games.kblab.me redirects there. The registry calls this API with its own copy of the bearer token (`apps/game-registry/control-token-secret.yaml`), so **rotating the token means editing three files**: that one, `control/secret.yaml` and the Home Assistant copy.
 
-The same pod serves a page listing every server in `control/servers.json` - today Zomboid
-and the Unity playground server in the `playground-server` namespace - with its state,
-its join address and Start/Stop. Adding a third server is an entry in that file plus a
-RoleBinding in its namespace (`apps/playground-server/rbac.yaml` is the example); no code
-changes.
-
-It asks for a username and password, held in the same Secret as the bearer token. That is
-not belt-and-braces: every `*.kblab.me` ingress is reachable from the internet through the
-wildcard tunnel, and the `ipAllowList` middleware is a no-op behind it
-(`apps/gatus-fleet/ingress.yaml`), so the page has to authenticate itself.
-
-The user is `kblack0610`, and the password is the `games.kblab.me` entry in rbw - that
-is where it is kept, and it is copied from there into the Secret:
-
-```bash
-kubectl -n zomboid get secret zomboid-control-token -o jsonpath='{.data.ui-password}' | base64 -d
-```
+The page lists every server in `control/servers.json` - today Zomboid and the Unity playground server in the `playground-server` namespace - with its state, join address, Start/Stop/Restart and, for a server that registers with the game registry, its session id and live stats. Adding a third server is an entry in that file plus a RoleBinding in its namespace (`apps/playground-server/rbac.yaml` is the example); no code changes. Each server's `/servers` entry carries its `namespace` and `deployment`, which the registry matches against a session's `provider_ref`.
 
 Or call it directly:
 
@@ -287,7 +271,7 @@ mod list under B42. Measured headroom on `hp-victus` at deploy time: 22 GB RAM a
 | `configmap.yaml` | Server config, git-authoritative |
 | `secret.yaml` | Admin / RCON / join passwords (SOPS) |
 | `pvc.yaml` | Saves, config and own mods. **Not** the game install — that is in the image |
-| `control/` | Scale API for every game server, the games.kblab.me page, RBAC and both ingresses |
+| `control/` | Scale API for every game server (the Fleet page's home servers), RBAC and both ingresses |
 | `sleep/` | Idle poller and its CronJob |
 | `tests/` | Test suites for both scripts |
 

@@ -15,3 +15,4 @@ resources:
   - servicemonitor.yaml
   - ingress.yaml
   - ingress-admin.yaml
+  - backup-cronjob.yaml

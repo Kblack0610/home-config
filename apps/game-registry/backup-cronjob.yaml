@@ -1,0 +1,110 @@
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: game-saves-backup
+  labels:
+    app.kubernetes.io/name: game-registry
+    app.kubernetes.io/component: backup
+spec:
+  # The registry's Postgres database and its game-saves bucket (snapshot bodies) to the
+  # NAS: /mnt/nas/private/backups/home-k3s/game-saves/{postgres,minio}. Restore:
+  # docs/backup-runbook.md, "Restore the game registry".
+  schedule: "50 2 * * *"
+  timeZone: "America/New_York"
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 3
+  # Never, not OnFailure, so a failed pod keeps its logs (see langfuse-backup).
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      backoffLimit: 1
+      template:
+        metadata:
+          labels:
+            app.kubernetes.io/name: game-registry
+            app.kubernetes.io/component: backup
+        spec:
+          # The NAS disk is in asus-laptop.
+          nodeSelector:
+            kubernetes.io/hostname: asus-laptop
+            storage.role/nas: "true"
+          restartPolicy: Never
+          securityContext:
+            runAsUser: 0
+          initContainers:
+            # The database first: a bucket copy without the rows that name its objects
+            # restores into nothing.
+            - name: pg-dump
+              image: pgvector/pgvector:0.8.2-pg17-trixie
+              imagePullPolicy: IfNotPresent
+              env:
+                - name: DATABASE_URL
+                  valueFrom:
+                    secretKeyRef:
+                      name: game-registry-saves
+                      key: DATABASE_URL
+              command:
+                - /bin/bash
+                - -c
+                - |
+                  set -euo pipefail
+                  log() { echo "[$(date -Iseconds)] $*"; }
+                  # /nas is /mnt/nas/private. backups/home-k3s exists only on the NAS
+                  # disk, so a missing one means the disk is not mounted: stop rather than
+                  # fill the node's root disk.
+                  [ -d /nas/backups/home-k3s ] || { log "FATAL: /nas/backups/home-k3s missing, NAS not mounted"; exit 1; }
+                  OUT=/nas/backups/home-k3s/game-saves/postgres
+                  mkdir -p "$OUT"
+                  touch "$OUT/.write-probe" && rm -f "$OUT/.write-probe"
+                  TS="$(date +%Y%m%d-%H%M%S)"
+                  FILE="$OUT/registry-$TS.sql.gz"
+                  pg_dump --no-owner --no-privileges "$DATABASE_URL" | gzip > "$FILE.tmp"
+                  SIZE="$(wc -c < "$FILE.tmp")"
+                  # gzip of an empty dump is a valid file, so the size is the check.
+                  if [ "$SIZE" -lt 4096 ]; then
+                    log "FATAL: dump is $SIZE bytes"; rm -f "$FILE.tmp"; exit 1
+                  fi
+                  mv "$FILE.tmp" "$FILE"
+                  log "postgres: $FILE ($SIZE bytes)"
+                  ls -t "$OUT"/registry-*.sql.gz | tail -n +31 | xargs -r rm
+              volumeMounts:
+                - name: nas
+                  mountPath: /nas
+          containers:
+            - name: mirror
+              image: bitnamilegacy/minio-client:2025.4.16
+              imagePullPolicy: IfNotPresent
+              env:
+                - name: S3_ACCESS_KEY
+                  valueFrom:
+                    secretKeyRef:
+                      name: game-registry-saves
+                      key: S3_ACCESS_KEY
+                - name: S3_SECRET_KEY
+                  valueFrom:
+                    secretKeyRef:
+                      name: game-registry-saves
+                      key: S3_SECRET_KEY
+              command:
+                - /bin/bash
+                - -c
+                - |
+                  set -euo pipefail
+                  export HOME=/tmp
+                  log() { echo "[$(date -Iseconds)] $*"; }
+                  OUT=/nas/backups/home-k3s/game-saves/minio/game-saves
+                  mkdir -p "$OUT"
+                  mc alias set m http://minio.minio.svc.cluster.local:9000 "$S3_ACCESS_KEY" "$S3_SECRET_KEY" >/dev/null
+                  # No --remove: an object the registry's retention deleted stays on the
+                  # NAS. It is unreferenced by any dump newer than its deletion, and
+                  # harmless to an older one.
+                  mc mirror --overwrite --quiet m/game-saves "$OUT"
+                  log "minio: $(find "$OUT" -type f | wc -l) objects, $(du -sh "$OUT" | cut -f1) in $OUT"
+              volumeMounts:
+                - name: nas
+                  mountPath: /nas
+          volumes:
+            - name: nas
+              hostPath:
+                path: /mnt/nas/private
+                type: Directory

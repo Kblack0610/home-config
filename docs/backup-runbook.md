@@ -115,6 +115,7 @@ Note: `nofail` means an unplugged drive never blocks boot. The `immich-originals
 | Check recent backup jobs | `kubectl --context home-k3s get jobs -A --sort-by=.status.startTime | grep backup | tail -5` |
 | Restore Home Assistant | See `Restore Home Assistant` |
 | Restore LiteLLM | See `Restore LiteLLM` |
+| Restore the game registry | See `Restore the game registry` |
 | Restore Music Assistant | `apps/music-assistant/README.md` -> Backup and rebuild |
 | Restore Snapcast | `apps/snapcast/README.md` -> Backup and restore |
 | Recover the SOPS Age key | See `Restore SOPS Age Key` |
@@ -135,6 +136,7 @@ K3s app backups run on schedule via CronJobs. Each backup writes a local archive
 | `litellm-backup` | Daily 2 AM | `ai-gateway` | NAS `home-k3s/litellm/` (**COVERS NOTHING** - see Known gaps) |
 | `music-assistant-backup` | Daily 2:30 AM | `music-assistant` | `/var/backups/music-assistant` + NAS `home-k3s/music-assistant/` |
 | `snapcast-backup` | Daily 2:45 AM | `snapcast` | hp-victus `/var/backups/snapcast` + NAS `home-k3s/snapcast/` |
+| `game-saves-backup` | Daily 2:50 AM | `game-registry` | NAS `home-k3s/game-saves/` (registry Postgres dump + `game-saves` bucket mirror) |
 | `actual-budget-backup` | Daily 3 AM | `actual-budget` | `/var/backups/actual-budget` + NAS `home-k3s/actual-budget/` |
 | `forgejo-backup` | Daily 3 AM | `forgejo` | asus-laptop `/mnt/backups/forgejo` (2nd disk; off-box copy is the separate job below) |
 | `immich-backup` | Daily 3 AM | `immich` | `/var/backups/immich` + NAS `home-k3s/immich/` (DB only) |
@@ -193,6 +195,9 @@ kubectl --context home-k3s create job --from=cronjob/actual-budget-backup manual
 
 # LiteLLM
 kubectl --context home-k3s create job --from=cronjob/litellm-backup manual-backup-$(date +%s) -n ai-gateway
+
+# Game registry (Postgres dump + game-saves bucket)
+kubectl --context home-k3s create job --from=cronjob/game-saves-backup manual-backup-$(date +%s) -n game-registry
 
 # Music Assistant
 kubectl --context home-k3s create job --from=cronjob/music-assistant-backup manual-backup-$(date +%s) -n music-assistant
@@ -419,3 +424,32 @@ Common causes:
 
 - [gitops.md](./gitops.md)
 - [../infrastructure.md](../infrastructure.md)
+
+## Restore the game registry
+
+`game-saves-backup` writes two things to the NAS under `/mnt/nas/private/backups/home-k3s/game-saves/` on asus-laptop:
+
+- `postgres/registry-<ts>.sql.gz`: a plain `pg_dump` of the database `registry`. The last 30 are kept.
+- `minio/game-saves/`: a mirror of the `game-saves` bucket, the snapshot bodies at `saves/<world or character>/<snapshot>.json.gz`. It never deletes, so it is a superset of any one dump.
+
+Every snapshot row names its object, so restore the database and the bucket from the same night.
+
+1. Stop the registry so nothing writes during the restore: `kubectl --context home-k3s -n game-registry scale deploy/game-registry --replicas=0`.
+2. Open a shell on asus-laptop that can reach the cluster and see the NAS, for example a throwaway pod on that node with `/mnt/nas/private` mounted read-only and the `game-registry-saves` secret as env (the backup CronJob's pod spec is the template).
+3. Database. Recreate it empty, then load the dump as the `registry` role:
+   ```bash
+   # as postgres, from deploy/postgres in the databases namespace
+   psql -c 'DROP DATABASE registry WITH (FORCE)' -c 'CREATE DATABASE registry OWNER registry'
+   # then, with DATABASE_URL from game-registry-saves
+   gunzip -c /nas/backups/home-k3s/game-saves/postgres/registry-<ts>.sql.gz | psql "$DATABASE_URL" -v ON_ERROR_STOP=1
+   ```
+4. Bucket. Copy the mirror back. Objects the dump does not name are harmless, and the registry never reads them:
+   ```bash
+   mc alias set m http://minio.minio.svc.cluster.local:9000 "$S3_ACCESS_KEY" "$S3_SECRET_KEY"
+   mc mirror --overwrite /nas/backups/home-k3s/game-saves/minio/game-saves m/game-saves
+   ```
+5. Scale the registry back to 1 and check `GET /api/v1/health`. Then, with a player code, `GET /api/v1/worlds` and download a head snapshot.
+
+The pepper is not in the backup. It lives only in `apps/game-registry/saves-secret.sops.yaml` (in git, with the Age key covered by `sops-key-backup`). Without it no player code resolves to its account.
+
+To test a dump without touching the live database, load it into a scratch database (`CREATE DATABASE registry_restore_test`), compare `SELECT COUNT(*)` per table with the live one, then drop it.

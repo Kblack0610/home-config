@@ -6,7 +6,7 @@ metadata:
     app.kubernetes.io/name: game-registry
 spec:
   replicas: 1
-  # One SQLite file on a local-path volume: never two writers.
+  # One writer at a time: the retention sweep and the SQLite import below assume it.
   strategy:
     type: Recreate
   selector:
@@ -21,9 +21,21 @@ spec:
         kubernetes.io/arch: amd64
       imagePullSecrets:
         - name: forgejo-registry
+      # Copies the v1.7.0 SQLite file into Postgres once; a marker row makes every later
+      # start a no-op. Removed, with game-registry-data, once the import is verified.
+      initContainers:
+        - name: import-sqlite
+          image: git.kblab.me/kblack0610/bnb-game-servers/registry:registry-v1.8.0
+          args: ["import-sqlite", "/data/registry.db"]
+          envFrom:
+            - secretRef:
+                name: game-registry-saves
+          volumeMounts:
+            - name: data
+              mountPath: /data
       containers:
         - name: registry
-          image: git.kblab.me/kblack0610/bnb-game-servers/registry:registry-v1.7.0
+          image: git.kblab.me/kblack0610/bnb-game-servers/registry:registry-v1.8.0
           ports:
             - name: http
               containerPort: 8080
@@ -37,8 +49,10 @@ spec:
           env:
             - name: PORT
               value: "8080"
-            - name: DB_PATH
-              value: /data/registry.db
+            # Postgres (DATABASE_URL), the game-saves bucket keys and ACCOUNT_PEPPER come
+            # from saves-secret.sops.yaml (registry README, "Storage and the SQLite import").
+            - name: S3_ENDPOINT
+              value: minio.minio.svc.cluster.local:9000
             # Traefik sits in front, so the caller's address is in X-Forwarded-For.
             - name: TRUST_PROXY
               value: "1"
@@ -95,9 +109,8 @@ spec:
           envFrom:
             - secretRef:
                 name: game-registry-admin
-          volumeMounts:
-            - name: data
-              mountPath: /data
+            - secretRef:
+                name: game-registry-saves
           readinessProbe:
             httpGet:
               path: /api/v1/health
@@ -114,7 +127,8 @@ spec:
               cpu: 10m
               memory: 32Mi
             limits:
-              memory: 128Mi
+              # A snapshot upload is held whole (up to 8 MiB, plus its gzip).
+              memory: 256Mi
       volumes:
         - name: data
           persistentVolumeClaim:

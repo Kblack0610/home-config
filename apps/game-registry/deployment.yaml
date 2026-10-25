@@ -6,7 +6,7 @@ metadata:
     app.kubernetes.io/name: game-registry
 spec:
   replicas: 1
-  # One writer at a time: the retention sweep and the SQLite import below assume it.
+  # One writer at a time: the hourly retention sweep assumes it.
   strategy:
     type: Recreate
   selector:
@@ -21,18 +21,6 @@ spec:
         kubernetes.io/arch: amd64
       imagePullSecrets:
         - name: forgejo-registry
-      # Copies the v1.7.0 SQLite file into Postgres once; a marker row makes every later
-      # start a no-op. Removed, with game-registry-data, once the import is verified.
-      initContainers:
-        - name: import-sqlite
-          image: git.kblab.me/kblack0610/bnb-game-servers/registry:registry-v1.8.0
-          args: ["import-sqlite", "/data/registry.db"]
-          envFrom:
-            - secretRef:
-                name: game-registry-saves
-          volumeMounts:
-            - name: data
-              mountPath: /data
       containers:
         - name: registry
           image: git.kblab.me/kblack0610/bnb-game-servers/registry:registry-v1.8.0
@@ -129,7 +117,3 @@ spec:
             limits:
               # A snapshot upload is held whole (up to 8 MiB, plus its gzip).
               memory: 256Mi
-      volumes:
-        - name: data
-          persistentVolumeClaim:
-            claimName: game-registry-data

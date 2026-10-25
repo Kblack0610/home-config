@@ -10,7 +10,6 @@ resources:
   - admin-secret.yaml
   - control-token-secret.yaml
   - saves-secret.sops.yaml
-  - pvc.yaml
   - deployment.yaml
   - service.yaml
   - servicemonitor.yaml

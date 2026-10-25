@@ -1,0 +1,89 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: game-saves-bucket
+  # The game registry's snapshot bucket (apps/game-registry, registry README "Snapshots").
+  # Creates the bucket with versioning on, expires a noncurrent version after 30 days,
+  # and makes the game-registry user, which can reach this bucket only. Idempotent.
+  # To re-run, bump the name.
+  labels:
+    app.kubernetes.io/name: game-registry
+    app.kubernetes.io/component: bucket-bootstrap
+spec:
+  backoffLimit: 3
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: game-registry
+        app.kubernetes.io/component: bucket-bootstrap
+    spec:
+      restartPolicy: OnFailure
+      nodeSelector:
+        kubernetes.io/arch: amd64
+      containers:
+        - name: mc
+          image: bitnamilegacy/minio-client:2025.4.16
+          imagePullPolicy: IfNotPresent
+          env:
+            - name: MINIO_ROOT_USER
+              valueFrom:
+                secretKeyRef:
+                  name: minio-root-secret
+                  key: MINIO_ROOT_USER
+            - name: MINIO_ROOT_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: minio-root-secret
+                  key: MINIO_ROOT_PASSWORD
+            # The registry's keys. The same values are in
+            # apps/game-registry/saves-secret.sops.yaml; rotate both together.
+            - name: S3_ACCESS_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: game-saves-s3
+                  key: S3_ACCESS_KEY
+            - name: S3_SECRET_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: game-saves-s3
+                  key: S3_SECRET_KEY
+          command:
+            - /bin/bash
+            - -c
+            - |
+              set -euo pipefail
+              export HOME=/tmp
+              BUCKET=game-saves
+              mc alias set m http://minio.minio.svc.cluster.local:9000 "$MINIO_ROOT_USER" "$MINIO_ROOT_PASSWORD" >/dev/null
+
+              mc mb --ignore-existing "m/${BUCKET}"
+              mc version enable "m/${BUCKET}"
+              # mc picks the rule id itself, so the rule is found by what it does.
+              if ! mc ilm rule ls --json "m/${BUCKET}" 2>/dev/null | grep -q '"NoncurrentDays":30'; then
+                mc ilm rule add --noncurrent-expire-days 30 "m/${BUCKET}"
+              fi
+
+              cat > /tmp/policy.json <<POLICY
+              {
+                "Version": "2012-10-17",
+                "Statement": [
+                  {"Effect": "Allow", "Action": ["s3:GetBucketLocation", "s3:ListBucket"], "Resource": ["arn:aws:s3:::${BUCKET}"]},
+                  {"Effect": "Allow", "Action": ["s3:GetObject", "s3:PutObject", "s3:DeleteObject"], "Resource": ["arn:aws:s3:::${BUCKET}/*"]}
+                ]
+              }
+              POLICY
+              mc admin policy create m game-saves-rw /tmp/policy.json
+              mc admin user add m "$S3_ACCESS_KEY" "$S3_SECRET_KEY" >/dev/null
+              if ! mc admin user info m "$S3_ACCESS_KEY" | grep -q 'game-saves-rw'; then
+                mc admin policy attach m game-saves-rw --user "$S3_ACCESS_KEY"
+              fi
+
+              mc version info "m/${BUCKET}"
+              mc ilm rule ls "m/${BUCKET}"
+              echo "game-saves bucket + user ready."
+          resources:
+            requests:
+              memory: "32Mi"
+              cpu: "20m"
+            limits:
+              memory: "128Mi"

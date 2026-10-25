@@ -1,0 +1,80 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: registry-db-bootstrap
+  # The game registry's database (apps/game-registry). Lives here (namespace: databases)
+  # so it can read postgres-secrets for the superuser password. Same pattern as
+  # hmdm-db-bootstrap-job.yaml.
+  labels:
+    app.kubernetes.io/name: game-registry
+    app.kubernetes.io/component: db-bootstrap
+spec:
+  backoffLimit: 3
+  # No ttlSecondsAfterFinished: Flux owns this manifest. To re-run, bump the name.
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: game-registry
+        app.kubernetes.io/component: db-bootstrap
+    spec:
+      restartPolicy: OnFailure
+      containers:
+        - name: bootstrap
+          image: pgvector/pgvector:0.8.2-pg17-trixie
+          imagePullPolicy: IfNotPresent
+          envFrom:
+            - secretRef:
+                name: postgres-secrets
+          env:
+            - name: PGHOST
+              value: postgres.databases.svc.cluster.local
+            - name: PGPORT
+              value: "5432"
+            - name: PGUSER
+              value: postgres
+            - name: PGDATABASE
+              value: postgres
+            # The registry role's password. The same value is inside DATABASE_URL in
+            # apps/game-registry/saves-secret.sops.yaml; rotate both together.
+            - name: REGISTRY_DB_PASS
+              valueFrom:
+                secretKeyRef:
+                  name: registry-db-secret
+                  key: registry-db-pass
+          command:
+            - /bin/bash
+            - -c
+            - |
+              set -euo pipefail
+              export PGPASSWORD="$POSTGRES_PASSWORD"
+
+              psql -v ON_ERROR_STOP=1 <<-EOSQL
+                DO \$\$
+                BEGIN
+                  IF NOT EXISTS (SELECT FROM pg_roles WHERE rolname = 'registry') THEN
+                    CREATE ROLE registry LOGIN PASSWORD '${REGISTRY_DB_PASS}';
+                  ELSE
+                    ALTER ROLE registry WITH LOGIN PASSWORD '${REGISTRY_DB_PASS}';
+                  END IF;
+                END
+                \$\$;
+              EOSQL
+
+              if ! psql -v ON_ERROR_STOP=1 -tA \
+                  -c "SELECT 1 FROM pg_database WHERE datname='registry'" | grep -q 1; then
+                psql -v ON_ERROR_STOP=1 -c "CREATE DATABASE registry OWNER registry;"
+              fi
+
+              psql -v ON_ERROR_STOP=1 -d registry <<-EOSQL
+                GRANT ALL PRIVILEGES ON DATABASE registry TO registry;
+                GRANT ALL PRIVILEGES ON SCHEMA public TO registry;
+              EOSQL
+
+              echo "registry role + database ready."
+          resources:
+            requests:
+              memory: "64Mi"
+              cpu: "50m"
+            limits:
+              memory: "256Mi"
+              cpu: "500m"

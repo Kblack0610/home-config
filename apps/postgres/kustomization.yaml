@@ -14,3 +14,5 @@ resources:
   - langfuse-db-bootstrap-job.yaml
   - hmdm-db-secret.sops.yaml
   - hmdm-db-bootstrap-job.yaml
+  - registry-db-secret.sops.yaml
+  - registry-db-bootstrap-job.yaml

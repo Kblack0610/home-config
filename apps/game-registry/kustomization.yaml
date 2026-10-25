@@ -9,6 +9,7 @@ resources:
   - tokens-secret.yaml
   - admin-secret.yaml
   - control-token-secret.yaml
+  - saves-secret.sops.yaml
   - pvc.yaml
   - deployment.yaml
   - service.yaml

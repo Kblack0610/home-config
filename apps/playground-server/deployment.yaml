@@ -34,11 +34,10 @@ spec:
         - name: forgejo-registry
       containers:
         - name: playground-server
-          image: git.kblab.me/kblack0610/unity-playground-server:0.4.0-rc9
-          # -devControls: anyone who joins may switch the game, tune it and run admin
-          # commands, as in the editor. Without it only a host may, and this server has
-          # none. A build from before session access (0.4.0-rc1) ignores it.
-          args: ["-port", "7770", "-devControls"]
+          image: git.kblab.me/kblack0610/unity-playground-server:0.4.0-rc10
+          # Settings come from the server contract (SERVER_* env, the game repo's
+          # docs/operations/dedicated-server.md#the-contract); the image's entrypoint
+          # passes SERVER_PORT on as -port. No args, so the same image runs anywhere.
           # Lists the server in the game registry (apps/game-registry) with a join
           # code; a build without the online listing ignores these. HTTPS, not the
           # in-cluster Service: the player refuses plain http (insecureHttpOption 0).
@@ -48,8 +47,14 @@ spec:
             # One name for every player: dnsmasq answers it with the LAN IP inside
             # the house, Cloudflare with the WAN address outside (wan-ddns), where
             # the router forwards UDP 7770 here (infrastructure/openwrt/firewall.yaml).
-            - name: SERVER_ADDRESS
+            - name: SERVER_PUBLIC_ADDRESS
               value: playground-play.kblab.me
+            - name: SERVER_PORT
+              value: "7770"
+            # Anyone who joins may switch the game, tune it and run admin commands, as
+            # in the editor. Without it only a host may, and this server has none.
+            - name: SERVER_DEV_CONTROLS
+              value: "1"
             - name: SERVER_NAME
               value: Playground server
             - name: SERVER_TOKEN

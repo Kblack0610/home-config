@@ -10,3 +10,5 @@ resources:
   - deployment.yaml
   - service.yaml
   - ingress.yaml
+  - game-saves-secret.sops.yaml
+  - game-saves-bucket-job.yaml

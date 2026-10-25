@@ -1,0 +1,28 @@
+---
+# Replaces the PXE installer's bootstrap `changeme` on both accounts. Root gets
+# no usable password: ssh has PermitRootLogin no and the login user's sudo is
+# NOPASSWD, so a root password is only something to leak.
+
+- name: Assert the login password hash is provided by the vault
+  ansible.builtin.assert:
+    that:
+      - login_passwords_user_hash is match('^\$(6|y)\$')
+    fail_msg: >-
+      vault_linux_login_password_hash is missing or is not a sha512 ($6$) or
+      yescrypt ($y$) crypt hash. Add it to group_vars/linux_bare_metal/vault.yml
+      with `ansible-vault edit` - see roles/login-passwords/README.md.
+    quiet: true
+
+- name: Set the login user's password from the vault hash
+  ansible.builtin.user:
+    name: "{{ login_passwords_user }}"
+    password: "{{ login_passwords_user_hash }}"
+    update_password: always
+  no_log: true
+
+- name: Lock root's password
+  ansible.builtin.user:
+    name: root
+    password: "!"
+    update_password: always
+  no_log: true

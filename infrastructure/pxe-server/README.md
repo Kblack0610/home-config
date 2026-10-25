@@ -125,6 +125,10 @@ The script downloads the kernel and initramfs from this server and boots them wi
 
 First used 2026-10-24 on the Razer Blade 14 (USB-C ethernet dongle, no usable network boot).
 
+## After any install: passwords
+
+The installer sets root and the login user to `changeme`, only so the console works on first boot. Add the host to `linux_bare_metal` in `ansible/inventory.yml` and run `site.yml`: the `login-passwords` role sets the user's password from the vault hash and locks root's (`ansible/roles/login-passwords/README.md`). Until that has run, the box still answers to `changeme` at the console.
+
 ## Environment Variables
 
 ```bash

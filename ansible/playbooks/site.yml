@@ -543,3 +543,16 @@
   roles:
     - role: windows-baseline
       tags: [windows]
+
+# Login passwords on the PXE-built Linux hosts: the user's from
+# vault_linux_login_password_hash, root's locked. Last on purpose: its assert
+# fails the play while the hash is missing, and a failed host is dropped from
+# every LATER play, so nothing else is held up by it. See
+# roles/login-passwords/README.md.
+- name: Login passwords (bare-metal Linux)
+  hosts: linux_bare_metal
+  become: true
+  gather_facts: false
+  roles:
+    - role: login-passwords
+      tags: [passwords]

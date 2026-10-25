@@ -76,7 +76,7 @@ spec:
                   # A host being down must not stop the others being checked. That is
                   # the whole point of a drift check: the fleet is partially available
                   # by nature.
-                  HOSTS="hp-victus=192.168.1.243 asus-laptop=192.168.1.152"
+                  HOSTS="hp-victus=192.168.1.243 asus-laptop=192.168.1.152 razer-laptop=192.168.1.26"
 
                   REACHABLE=""
                   SKIPPED=""

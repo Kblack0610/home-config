@@ -37,16 +37,15 @@ log_warning() { echo -e "${YELLOW}[WARN]${NC} $*" >&2; }
 
 K8S_CONTEXTS=("home-k3s|local" "do-nyc3-placemyparents-k8s-prod|DigitalOcean")
 
-MAC_MACHINES=(
-    "mac-studio|192.168.1.4"
-    "mac-mini-m1|192.168.1.7"
-)
-
-# Standalone devices (Linux boxes not in K8s): "name|ip"
-# Uses node_exporter on :9100 for metrics, falls back to ping for UP/DOWN.
-STANDALONE_DEVICES=(
-    "pi3-adguard|192.168.1.193"
-)
+# Macs and standalone Linux boxes ("name|ip") are read from the Ansible inventory
+# in cmd_nodes, so a host added there shows up here with no second edit. A
+# hardcoded copy here once listed only pi3-adguard and missed razer-laptop and
+# both audio boxes. Standalone uses node_exporter on :9100, falling back to
+# ping for UP/DOWN; boxes that are also k3s nodes are shown in the cluster table.
+MAC_GROUPS="macos_hosts"
+STANDALONE_GROUPS="linux_bare_metal adguard audio_endpoints"
+MAC_MACHINES=()
+STANDALONE_DEVICES=()
 
 # Android devices: "serial|friendly-name"
 # Run `adb devices -l` to get serials. Unknown serials auto-detect name.
@@ -271,6 +270,18 @@ inventory_aliases() {
         /^[[:space:]]*#/ { next }
         /^[[:space:]]+[A-Za-z0-9_.-]+:[[:space:]]*$/ { alias = $1; sub(/:$/, "", alias); next }
         /^[[:space:]]+ansible_host:/ { if (alias != "") print $2, alias; alias = "" }
+    ' "$INVENTORY_FILE"
+}
+
+# Prints "alias|ip" once per host that has an ansible_host under any of the
+# given top-level inventory groups, in file order.
+inventory_group_hosts() {
+    [[ -r "$INVENTORY_FILE" ]] || return 0
+    awk -v groups=" $* " '
+        /^[[:space:]]*#/ { next }
+        /^    [A-Za-z0-9_.-]+:[[:space:]]*$/ { g = $1; sub(/:$/, "", g); on = index(groups, " " g " ") > 0; alias = ""; next }
+        on && /^        [A-Za-z0-9_.-]+:[[:space:]]*$/ { alias = $1; sub(/:$/, "", alias); next }
+        on && /^          ansible_host:/ { if (alias != "" && !seen[alias]++) print alias "|" $2; alias = "" }
     ' "$INVENTORY_FILE"
 }
 
@@ -1249,6 +1260,8 @@ print_app_row() {
 
 cmd_nodes() {
     TMPDIR_INFRA=$(mktemp -d)
+    mapfile -t MAC_MACHINES < <(inventory_group_hosts $MAC_GROUPS)
+    mapfile -t STANDALONE_DEVICES < <(inventory_group_hosts $STANDALONE_GROUPS)
 
     # --- Parallel data collection -------------------------------------------
     local pids=()
@@ -1337,11 +1350,19 @@ cmd_nodes() {
         fi
     done
 
-    # Standalone devices
+    # Standalone devices. A bare-metal box that is also a k3s node (hp-victus,
+    # asus-laptop) already has its cluster row; it lands here only when its
+    # cluster is unreachable, so it is never silently dropped.
+    local k8s_ips=" "
+    local nodes_file
+    for nodes_file in "$TMPDIR_INFRA"/*.nodes; do
+        [[ -s "$nodes_file" ]] && k8s_ips+="$(awk '{ printf "%s ", $6 }' "$nodes_file")"
+    done
     print_standalone_header
     for entry in "${STANDALONE_DEVICES[@]}"; do
         local sd_name="${entry%%|*}"
         local sd_ip="${entry##*|}"
+        [[ "$k8s_ips" == *" $sd_ip "* ]] && continue
 
         local sd_data
         sd_data=$(parse_standalone_metrics "$sd_name" "$sd_ip" "$TMPDIR_INFRA")

@@ -1,0 +1,6 @@
+---
+# The login account's password, as a crypt hash (never the plain text). It
+# lives in vault_linux_login_password_hash (ansible-vault,
+# group_vars/linux_bare_metal/vault.yml). See this role's README to set it.
+login_passwords_user: "{{ ansible_user }}"
+login_passwords_user_hash: "{{ vault_linux_login_password_hash | default('') }}"

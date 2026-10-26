@@ -298,7 +298,7 @@
         gh_runner_name: "{{ inventory_hostname }}-playground"
         gh_runner_home: /var/lib/actions-runner-playground
         gh_runner_user_home: /var/lib/actions-runner
-        gh_runner_labels: [self-hosted, linux, x64, unity]
+        gh_runner_labels: [self-hosted, linux, x64, unity, unity-full]
         gh_runner_token_source: gh
         gh_runner_install_packages: false
         gh_runner_slice: "{{ ci_unity_slice }}"
@@ -355,7 +355,10 @@
         gh_runner_user_home: "{{ unity_ci_user_home }}"
         gh_runner_home: "{{ unity_ci_user_home }}/unity-pool-{{ unity_slot }}"
         gh_runner_name: "{{ inventory_hostname }}-unity-pool-{{ unity_slot }}"
-        gh_runner_labels: [self-hosted, linux, x64, unity, "host-{{ inventory_hostname }}"]
+        # unity-full: the hosts full suite runs may take (unity_ci_full in inventory.yml).
+        # A registered runner keeps its labels; add one to a live runner with
+        # gh api -X POST orgs/BlackNBrownStudios/actions/runners/<id>/labels -f 'labels[]=unity-full'.
+        gh_runner_labels: "{{ [ 'self-hosted', 'linux', 'x64', 'unity', 'host-' ~ inventory_hostname ] + ([ 'unity-full' ] if unity_ci_full | default(true) else []) }}"
         gh_runner_slice: "{{ ci_unity_slice }}"
         gh_runner_env:
           HOME: "{{ unity_ci_user_home }}/unity-pool-{{ unity_slot }}"

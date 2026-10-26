@@ -32,7 +32,7 @@ spec:
         - name: forgejo-registry
       containers:
         - name: playground-server
-          image: git.kblab.me/kblack0610/unity-playground-server:0.4.0-rc10
+          image: git.kblab.me/kblack0610/unity-playground-server:0.4.0
           # Settings come from the server contract (SERVER_* env, the game repo's
           # docs/operations/dedicated-server.md#the-contract); the image's entrypoint
           # passes SERVER_PORT on as -port. No args, so the same image runs anywhere.

@@ -16,9 +16,9 @@ Machine liveness used to be scattered across three groups (`fleet`, `mac-machine
 | Group | Members | Mechanism |
 |---|---|---|
 | `workplace` | gp-mac | push |
-| `homelab` | linux-cachyos, cachy-laptop, living-room-pc | push |
+| `homelab` | linux-cachyos, living-room-pc | push |
 | `homelab` | mac-studio, mac-mini | poll `:9100` |
-| `k3s` | pi5-master, pi5-worker1-3, pi4-worker4-5, asus-laptop, hp-victus | poll `:9100` |
+| `k3s` | pi5-master, pi5-worker1-3, pi4-worker4-5, asus-laptop, hp-victus, razer-laptop | poll `:9100` |
 | `android` | h0001 (+ tablets) | push (via `apps/headwind-fleet-bridge`) |
 | `audio` | audio-living, audio-bedroom | poll `:9100`, plus snapclient's unit state (`node-exporter-linux` role) |
 | `iot` | pi-zero-1/2/3 | poll `:9200` |
@@ -34,7 +34,7 @@ The status bars count against `$FLEET_ROSTER` (in `~/.config/fleet-pulse/env`), 
 Three rules follow:
 
 1. **Names must be kebab-case.** `FLEET_ROSTER` is space-separated and the bars match on the `name` field, so `Mac Studio` could never be rostered. (Gatus separately derives `key = <group>_<name>`, lowercasing and mapping `/ _ , .` and whitespace to `-`.)
-2. **Machines that are off by design stay off the roster.** A laptop is closed most of the day; rostered, it would pin the glyph and the command-center health amber whenever it is. `cachy-laptop` is declared here but unrostered, and the waybar draws it with a `~cachy-laptop=lap` token, which shows its dot only while it is up.
+2. **Machines that are off by design stay off the roster.** A laptop is closed most of the day; rostered, it would pin the glyph and the command-center health amber whenever it is. Declare such a machine here but leave it unrostered, and draw it in the waybar with a `~name=label` token, which shows its dot only while it is up. (The Razer was `cachy-laptop`, drawn that way, until 2026-10-26; as a k3s node it is always on, so it is rostered.)
 3. **`iot` is deliberately NOT in the roster.** The Pi Zeros sleep by design; counting them would pin the glyph amber forever. This mirrors `apps/monitoring/prometheus-rules-node-health.yaml`, which already excludes `iot-pi-nodes` from `NodeDown` "to avoid false pages". They're visible here; they just don't drive the glyph.
 
 ## Adding a machine

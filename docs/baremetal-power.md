@@ -14,7 +14,7 @@ doc covers the **hands-on steps only you can do at the machine**.
 
 > Host name/IP cheatsheet for the boxes below — see
 > [`host-access.md`](./host-access.md). Bare-metal x86 nodes:
-> `hp-victus` 192.168.1.243, `asus-laptop` 192.168.1.152. There is no x86 desktop
+> `hp-victus` 192.168.1.243, `asus-laptop` 192.168.1.152, `razer-laptop` 192.168.1.26. There is no x86 desktop
 > node since thinkcentre was retired; the steps below apply to any that is added.
 
 ---
@@ -33,7 +33,7 @@ happened to thinkcentre.
    the power dropped — prefer the unconditional **Power On**).
 4. Save and exit.
 
-### hp-victus / asus-laptop (laptops)
+### hp-victus / asus-laptop / razer-laptop (laptops)
 Laptops have internal batteries, so they ride through brief outages — but a long
 outage that drains the battery has the same "stays off" failure. Where the
 firmware exposes it:

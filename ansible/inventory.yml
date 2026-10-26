@@ -41,10 +41,17 @@ all:
           ansible_host: 192.168.1.152
           ansible_port: 2222
         # Razer Blade 14 (Ryzen 9 8945HS, 96 GB), reinstalled headless by PXE
-        # kexec 2026-10-24 as a CI-only host. Not a k3s node. On the LAN through
+        # kexec 2026-10-24 as a CI host, and a k3s agent since 2026-10-26. On the LAN through
         # a USB-C ethernet dongle; the DHCP reservation follows that dongle's MAC.
         razer-laptop:
           ansible_host: 192.168.1.26
+          # A k3s agent since 2026-10-26, like hp-victus and asus-laptop. Pinned
+          # to the server's version: an agent newer than the server is outside
+          # the supported skew (hp/asus run v1.34.4 against a v1.33.5 server).
+          k3s_role: agent
+          k3s_install_version: v1.33.5+k3s1
+          k3s_extra_args:
+            - --node-label=node.kubernetes.io/friendly-name=razer-laptop
           # Its power button is a keyboard key and it sits stacked, lid shut:
           # a short press powered it off on 2026-10-24. Hold to force off.
           k3s_no_suspend_power_key: ignore
@@ -220,11 +227,11 @@ all:
           ci_memory_max: 20G
           ci_unity_memory_max: 14G
           ci_pmp_memory_max: 14G
-        # 8 cores / 16 threads, SMT siblings are n and n+8. Core 0 (CPUs 0, 8)
-        # stays with the OS; Unity keeps cores 4-7 to itself. 93 GB usable and
-        # nothing else runs here, so CI gets most of it.
+        # 8 cores / 16 threads, SMT siblings are n and n+8. Cores 0-1 (CPUs
+        # 0-1, 8-9) stay with k3s and the OS; Unity keeps cores 4-7 to itself.
+        # 93 GB usable, so CI gets most of it.
         razer-laptop:
-          ci_cpus: 1-7,9-15
+          ci_cpus: 2-7,10-15
           ci_memory_max: 72G
           ci_unity_cpus: 4-7,12-15
           ci_unity_memory_max: 24G

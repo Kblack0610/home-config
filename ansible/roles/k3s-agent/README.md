@@ -44,6 +44,9 @@ ansible-playbook playbooks/site.yml --limit <host> --check --diff --tags k3s
 
 ## Notes
 
-- This role is **authored but NOT bound** in `ansible/playbooks/site.yml` yet. Binding is the user's call: running it against a live k3s node will invoke the upstream installer, which is idempotent via `creates:` but still re-templates systemd units. Review before enabling in `site.yml`.
+- Bound in `ansible/playbooks/site.yml` for razer-laptop only (play "k3s agent (razer-laptop)", joined 2026-10-26). hp-victus and asus-laptop were joined by the PXE profile and run v1.34.4 against a v1.33.5 server; pin them to the server's version before adding them to the play, or a converge changes their version.
+- Pin `k3s_install_version` to the server's version on every agent. An empty version follows the `stable` channel, which runs ahead of the server.
+- A kubelet may not label itself `node-role.kubernetes.io/*` (NodeRestriction), so after the first join run `kubectl label node <host> node-role.kubernetes.io/workstation=true` by hand. Labels under `node.kubernetes.io/` (the friendly name) go in `k3s_extra_args` as `--node-label=...`.
+- A host that ran its own node_exporter on :9100 (the `node-exporter-linux` role) must stop it before joining, or the cluster's node-exporter DaemonSet pod cannot bind the port.
 - For major version upgrades, bump `k3s_install_version` and run a rolling update one node at a time.
 - To reset a node: `/usr/local/bin/k3s-agent-uninstall.sh` (agents) or `/usr/local/bin/k3s-uninstall.sh` (server), then re-run the role.

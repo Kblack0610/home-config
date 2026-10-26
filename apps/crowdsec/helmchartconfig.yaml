@@ -40,7 +40,7 @@ spec:
                 app.kubernetes.io/name: traefik
                 app.kubernetes.io/instance: traefik-kube-system
       nodeAffinity:
-        # The two workstations flap and storm (asus-laptop, hp-victus); prefer
+        # The workstations flap and storm (asus-laptop, hp-victus, razer-laptop); prefer
         # the Pis, but still allow them so a Pi outage cannot leave a replica
         # unschedulable.
         preferredDuringSchedulingIgnoredDuringExecution:
@@ -49,4 +49,4 @@ spec:
               matchExpressions:
                 - key: kubernetes.io/hostname
                   operator: NotIn
-                  values: [asus-laptop, hp-victus]
+                  values: [asus-laptop, hp-victus, razer-laptop]

@@ -203,6 +203,21 @@
 #     - role: k3s-agent
 #       tags: [k3s]
 
+# The first host the k3s-agent role joins. hp-victus and asus-laptop were joined
+# by the PXE cluster profile before the role existed; add them here once their
+# agents are pinned to the server's version (they run v1.34.4 against a v1.33.5
+# server, so a converge would downgrade them). After the first join, label the
+# node by hand, since a kubelet may not set node-role labels on itself:
+#   kubectl label node razer-laptop node-role.kubernetes.io/workstation=true
+#   ansible-playbook playbooks/site.yml --limit razer-laptop --tags k3s --check --diff
+- name: k3s agent (razer-laptop)
+  hosts: razer-laptop
+  become: true
+  gather_facts: true
+  roles:
+    - role: k3s-agent
+      tags: [k3s]
+
 # Fleet (osquery) agent — AUTHORED but not bound. Enrolls hosts into the
 # self-hosted FleetDM server (apps/fleet, https://fleet.kblab.me) for the
 # cross-OS inventory / live-query pane. Bind only AFTER apps/fleet is deployed
@@ -468,17 +483,6 @@
   roles:
     - role: thermal-cap
       tags: [thermal]
-
-# CI hosts outside k3s get no node_exporter from the cluster's DaemonSet, so
-# NodeCpuHot would never see them. Scraped via
-# apps/monitoring/external-standalone-nodes.yaml.
-- name: Standalone CI host monitoring (razer-laptop)
-  hosts: razer-laptop
-  become: true
-  gather_facts: true
-  roles:
-    - role: node-exporter-linux
-      tags: [monitoring]
 
 # Make the next freeze explain itself: kernel messages stream to pi5-master
 # over netconsole, and the firmware's undervoltage latch is exported to

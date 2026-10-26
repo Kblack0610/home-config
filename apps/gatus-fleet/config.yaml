@@ -58,23 +58,6 @@ external-endpoints:
   - name: linux-cachyos
     group: homelab
     token: "${FLEET_TOKEN}"
-  # The second CachyOS box (the laptop). It was on every roster the BARS use but was
-  # declared nowhere here, so gatus had no key to accept its heartbeat into - the push
-  # is rejected with "External endpoint not found" and the machine can NEVER
-  # materialize. It has therefore read NEVER REPORTED since the day it was rostered,
-  # including on days it was demonstrably switched on. A red dot that no amount of
-  # uptime can turn green is not monitoring, it is furniture.
-  #
-  # Its identity comes from a systemd drop-in on that machine, NOT from the shared
-  # fleet-pulse env (which is byte-identical on every host, so a name in it would make
-  # every box claim to be the same one):
-  #   ~/.config/systemd/user/fleet-pulse.service.d/identity.conf
-  # If that drop-in sets a group other than `homelab`, the push still 404s - the group
-  # is half the key. scripts/check-fleet-roster.py now fails on a name rostered here
-  # but undeclared, which is what surfaced this one.
-  - name: cachy-laptop
-    group: homelab
-    token: "${FLEET_TOKEN}"
   # The living-room Windows PC. Was a generic `windows` slot that never enrolled;
   # named per machine so a second Windows box can't share (and mask) its key.
   # Enrolled with ~/.dotfiles/.local/src/fleet-pulse/enroll.ps1 -Name living-room-pc -Group homelab.
@@ -202,6 +185,15 @@ endpoints:
   - name: hp-victus
     group: k3s
     url: "http://192.168.1.243:9100/metrics"
+    interval: 60s
+    conditions:
+      - "[STATUS] == 200"
+
+  # Was the push-only `cachy-laptop` until its 2026-10-24 reinstall; polled like
+  # the other workstations since it joined k3s on 2026-10-26.
+  - name: razer-laptop
+    group: k3s
+    url: "http://192.168.1.26:9100/metrics"
     interval: 60s
     conditions:
       - "[STATUS] == 200"

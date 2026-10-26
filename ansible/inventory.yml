@@ -192,12 +192,17 @@ all:
         # (2026-10-06, main run 37416749384). Slot 2 was removed by hand.
         asus-laptop:
           unity_ci_slots: 1
+          unity_ci_full: true
         # One slot, like asus: the same 8 Unity threads. Its first pool shards
         # (2026-10-24 PlayMode 4 green, 2026-10-26 PlayMode 3 one flaky timed
         # test) match the other hosts, which each fail one different timed test
         # per run.
+        # No unity-full label: full suite runs (3.5 h, every slot) never take it,
+        # so a branch's merge gate (unity-core-playground ci-gate.sh) always has
+        # a runner. Gates still use asus and hp-victus when they are free.
         razer-laptop:
           unity_ci_slots: 1
+          unity_ci_full: false
         # Not the workstation (cachyos-x8664-main): it is the human's work machine,
         # and its two slots took 12 cores and 48G while they worked. Removed
         # 2026-10-06, when CI moved to nightly and release runs only; its slots

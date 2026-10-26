@@ -41,6 +41,9 @@ jobs:
       - name: Home Assistant packages are all registered with the ConfigMap generator
         run: python3 scripts/check-ha-packages.py
 
+      - name: SOPS is the only secret store, and every *.sops.yaml is encrypted
+        run: python3 scripts/check-secret-store.py
+
   zomboid-scripts:
     # The control and sleeper suites have existed since those scripts were written
     # and have only ever run when someone remembered to. They are stdlib-only and

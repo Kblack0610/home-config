@@ -18,7 +18,7 @@ Mirrors `platform/tools/setup-mac-runner.sh` + `register-mac-runner.sh` for the 
 
 | Variable | Where | Notes |
 |----------|-------|-------|
-| `vault_github_pat` | `group_vars/linux_bare_metal/vault.yml` | PAT with `repo` scope, for `gh_runner_token_source: pat` (the default). Same requirement as the Mac setup. |
+| `vault_github_pat` | `group_vars/linux_bare_metal/vault.sops.yaml` | PAT with `repo` scope, for `gh_runner_token_source: pat` (the default). Same requirement as the Mac setup. |
 
 With `gh_runner_token_source: gh` no PAT is needed: the registration token is minted on the control node with its authenticated `gh` CLI, and only when the instance has no `.runner` marker yet.
 

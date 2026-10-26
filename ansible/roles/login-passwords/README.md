@@ -1,6 +1,6 @@
 # login-passwords
 
-Sets the login user's password on the bare-metal Linux hosts from a hash held in ansible-vault, and locks root's password.
+Sets the login user's password on the bare-metal Linux hosts from a hash held in SOPS, and locks root's password.
 
 ## Why
 
@@ -8,22 +8,21 @@ The PXE installer seeds both root and the login user with `changeme` (`infrastru
 
 Root is locked rather than given a password. ssh refuses root (`PermitRootLogin no`) and the login user's sudo is NOPASSWD, so nothing needs one. The cost: systemd's emergency shell will not open for a locked root. To get a root shell on a box that will not boot, add `init=/bin/bash` (or `systemd.setenv=SYSTEMD_SULOGIN_FORCE=1`) to the kernel command line at the boot menu.
 
-SOPS in this repo encrypts Kubernetes Secrets only (`.sops.yaml`); Ansible's secrets live in ansible-vault, so the hash goes there.
+The password itself lives in rbw (`linux_fleet_password`), because a human types it. The repo holds only its hash, in `group_vars/linux_bare_metal/vault.sops.yaml`, because Ansible needs it unattended.
 
 ## Set or rotate the password
 
-Run these yourself; the plain text never goes into a file or a chat.
+The plain text goes from rbw to `openssl` to `sops` through pipes, never a file, argv or the screen.
 
 ```bash
-openssl passwd -6          # prompts twice, prints $6$...
-cd ~/dev/home/home-config/ansible
-ansible-vault edit group_vars/linux_bare_metal/vault.yml
-# add:  vault_linux_login_password_hash: '$6$...'
+cd ~/dev/home/home-config
+rbw generate 24 linux_fleet_password kblack0610 --no-symbols >/dev/null   # rotate: rbw edit instead
+rbw get linux_fleet_password | openssl passwd -6 -stdin | jq -R . \
+  | sops set --value-stdin ansible/group_vars/linux_bare_metal/vault.sops.yaml '["vault_linux_login_password_hash"]'
+cd ansible
 ansible-playbook playbooks/site.yml --limit linux_bare_metal --tags passwords --check --diff
 ansible-playbook playbooks/site.yml --limit linux_bare_metal --tags passwords
 ```
-
-Single quotes around the hash matter: it contains `$`.
 
 ## What it does
 

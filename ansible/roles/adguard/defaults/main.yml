@@ -2,7 +2,7 @@
 # AdGuard Home - the LAN's filtering resolver, on pi3 (192.168.1.193).
 #
 # Every value AdGuard actually depends on lives here or in the template, so this
-# role plus group_vars/adguard/vault.yml is the ONLY source of truth for the
+# role plus group_vars/adguard/vault.sops.yaml is the ONLY source of truth for the
 # box. Before this role existed AdGuardHome.yaml lived on the SD card and
 # nowhere else; a card failure lost the config permanently.
 #

@@ -24,7 +24,7 @@ Retires the manual flow at `BlackNBrownStudios/platform/tools/{setup-mac-runner,
 `gh_runner_mac_token_source` selects how the registration token is minted:
 
 - **`gh`** (default) — minted on the **control node** via the already-authenticated `gh` CLI (`gh api ... /registration-token`). No standing secret in the repo; right for workstation applies. Requires `gh` logged in with `repo` scope on the target repo.
-- **`pat`** — GitHub REST API with `vault_github_pat`. For the in-cluster ansible-runner CronJob, which has no `gh` binary. Set a real PAT (scope `repo`) in `group_vars/macos_hosts/vault.yml`.
+- **`pat`** — GitHub REST API with `vault_github_pat`. For the in-cluster ansible-runner CronJob, which has no `gh` binary. Set a real PAT (scope `repo`) in `group_vars/macos_hosts/vault.sops.yaml`.
 
 ## Re-registration
 

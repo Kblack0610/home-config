@@ -15,8 +15,8 @@
       - not (nut_upsmon_password is match('^REPLACE_ME'))
     fail_msg: >-
       vault_nut_upsmon_password is missing, too short (<12 chars), or still the
-      placeholder. Create it in group_vars/all/vault.yml encrypted with
-      `ansible-vault encrypt`. See docs/nut-ups.md.
+      placeholder. Set it in group_vars/all/vault.sops.yaml with `sops`.
+      See docs/nut-ups.md.
 
 - name: Install NUT packages
   ansible.builtin.package:

@@ -22,8 +22,7 @@
     fail_msg: >-
       token_source=pat but vault_github_pat is missing or still the
       placeholder. Add a real PAT (scope: repo) to
-      group_vars/macos_hosts/vault.yml and encrypt it via `ansible-vault
-      encrypt`, or use the default token_source=gh from a workstation.
+      group_vars/macos_hosts/vault.sops.yaml with `sops`, or use the default token_source=gh from a workstation.
   when: gh_runner_mac_token_source == 'pat'
 
 - name: Ensure runner home dir exists

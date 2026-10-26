@@ -22,10 +22,9 @@ sudo pacman -S ansible           # or: brew install ansible
 cd ansible
 ansible-galaxy collection install -r requirements.yml
 
-# Vault password file (gitignored)
-echo 'mystrongpassword' > ~/.ansible-vault-pass
-chmod 600 ~/.ansible-vault-pass
-echo 'export ANSIBLE_VAULT_PASSWORD_FILE=$HOME/.ansible-vault-pass' >> ~/.zshrc
+# Secrets decrypt with the SOPS age key in ~/.config/sops/age/keys.txt,
+# and the vars plugin needs the sops binary on PATH.
+sudo pacman -S sops               # or: brew install sops
 ```
 
 ## Run a play
@@ -43,18 +42,9 @@ ansible-playbook playbooks/site.yml --limit hp-victus
 ansible-playbook playbooks/site.yml --limit hp-victus --tags runner
 ```
 
-## Secrets (ansible-vault)
+## Secrets (SOPS)
 
-Per-group vaults live at `group_vars/<group>/vault.yml`. Create with:
-
-```bash
-cp group_vars/linux_bare_metal/vault.yml.example \
-   group_vars/linux_bare_metal/vault.yml
-$EDITOR group_vars/linux_bare_metal/vault.yml       # fill real values
-ansible-vault encrypt group_vars/linux_bare_metal/vault.yml
-```
-
-Encrypted vault files are committed; plaintext and the password file are gitignored.
+Ansible's secrets are SOPS files at `group_vars/<group>/vault.sops.yaml`, loaded as ordinary group vars by the `community.sops` vars plugin. Edit one from the repo root with `sops ansible/group_vars/<group>/vault.sops.yaml`. Who holds which key, and how to add a value without it reaching your shell history, is in [`ansible/README.md`](../ansible/README.md#secrets).
 
 ## Scheduled runs + run history: `ansible-runner` CronJob
 
@@ -92,7 +82,7 @@ Running services show up in the Grafana dashboard **Homelab: Bare-metal services
 | Phase | Status | Scope |
 |-------|--------|-------|
 | **A** | shipped | `github-actions-runner-linux` on thinkcentre (host retired 2026-10-12). Ansible skeleton. `ansible-runner` CronJob for drift detection. Runner picks up Linux jobs **only after** a `platform` workflow is migrated to `runs-on: [self-hosted, linux, x64]` — the runner comes up online but idle until then. |
-| **B** | authored, unbound | `k3s-agent` role extracted from the PXE kickstart (`infrastructure/pxe-server/http/kickstart/profiles/cluster.sh:64-84`). Role is present at `ansible/roles/k3s-agent/` and lint-clean, but the `site.yml` binding is commented out — applying it against a running cluster node reinvokes the k3s installer. Enable by uncommenting the role block in `site.yml` and seeding `vault_k3s_token` in `group_vars/{linux_bare_metal,pi_k3s}/vault.yml`. The inline install in `cluster.sh` stays during the transition. |
+| **B** | authored, unbound | `k3s-agent` role extracted from the PXE kickstart (`infrastructure/pxe-server/http/kickstart/profiles/cluster.sh:64-84`). Role is present at `ansible/roles/k3s-agent/` and lint-clean, but the `site.yml` binding is commented out — applying it against a running cluster node reinvokes the k3s installer. Enable by uncommenting the role block in `site.yml` and seeding `vault_k3s_token` in `group_vars/{linux_bare_metal,pi_k3s}/vault.sops.yaml`. The inline install in `cluster.sh` stays during the transition. |
 | C | not started | Port `infrastructure/{openwrt,dhcp}/*.sh` to Ansible roles. |
 | D | not started | macOS roles: `launchd-mlx-services`, `github-actions-runner-mac`, `brew-common`, `node-exporter-mac`. Retire `docs/mac-machines.md` setup steps. |
 | **E** | shipped | `k3s-node-no-suspend` (laptop lid-close keeps node online) and `nut` (UPS-driven graceful cluster shutdown, primary on `pi5-master`, secondaries on all 5 Pi workers). See `docs/nut-ups.md`. |

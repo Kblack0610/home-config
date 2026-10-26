@@ -17,16 +17,13 @@ See `docs/ansible.md` for the broader host-layer workflow; this doc covers the U
 
 1. **Pick a strong password** for the upsd `upsmon` user. ≥12 chars, mix of classes. This is the credential every secondary uses to authenticate to the master, so it gates the FSD broadcast — treat it like SSH.
 
-2. **Stash it in the global vault**:
+2. **Stash it in the global SOPS file**:
 
     ```bash
-    cd ansible
-    cp group_vars/all/vault.yml.example group_vars/all/vault.yml
-    $EDITOR group_vars/all/vault.yml          # paste the password
-    ansible-vault encrypt group_vars/all/vault.yml
+    sops ansible/group_vars/all/vault.sops.yaml   # set vault_nut_upsmon_password
     ```
 
-    The encrypted file is safe to commit. The plaintext `.example` is the template.
+    sops decrypts into `$EDITOR` and re-encrypts on save; only the encrypted file touches disk and it is safe to commit.
 
 3. **Verify USB enumeration** before running Ansible. SSH to the master and look for the UPS:
 
@@ -117,7 +114,7 @@ ansible-playbook playbooks/site.yml --tags nut --limit pi5-master
 - **upsd not responding**: `sudo systemctl status nut-server nut-driver@cyberpower`. The driver unit is the usual culprit if the USB cable was unplugged.
 - **Client can't reach upsd**: from the client, `nc -vz pi5-master-lan 3493`. If the port is closed, check the master's `LISTEN` directive in `/etc/nut/upsd.conf` and any firewall.
 - **UPS stuck "killed power"**: after the OS halts NUT issues `killpower` to the UPS, which cuts the outlets for a few seconds. If the outlets stay off after grid returns, the UPS battery may be exhausted; let it charge for 10+ minutes with the unit plugged in, then power-cycle the UPS via its front-panel button.
-- **Forgot the vault password**: `sops -d apps/ansible-runner/secret.yaml | grep ansible-vault-pass` (requires `~/.config/sops/age/keys.txt` — see `CLAUDE.md`).
+- **Forgot the upsmon password**: `sops -d --extract '["vault_nut_upsmon_password"]' ansible/group_vars/all/vault.sops.yaml` (requires `~/.config/sops/age/keys.txt` — see `CLAUDE.md`).
 
 ## Followups (not done yet)
 

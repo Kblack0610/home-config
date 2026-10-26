@@ -105,7 +105,7 @@ Goal: a fresh Intel NUC becomes a working k3s agent.
 
 2. Ansible (day 1+)
    - Add a host entry to ansible/inventory.yml under linux_bare_metal
-   - Seed ansible/group_vars/linux_bare_metal/vault.yml if any secret is needed
+   - Seed ansible/group_vars/linux_bare_metal/vault.sops.yaml if any secret is needed
    - Optionally bind roles: github-actions-runner-linux, k3s-agent, etc.
    - Run: ansible-playbook playbooks/site.yml --limit <host> --check --diff
    - Apply, then verify via systemctl / kubectl get nodes

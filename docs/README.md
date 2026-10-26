@@ -11,7 +11,7 @@ Use this index to find the right document by task instead of scanning the repo t
 | Deploy or troubleshoot GitOps changes | [gitops.md](./gitops.md) | Flux, SOPS, reconciliation, rollback |
 | **Put a site on the public internet** | [public-sites.md](./public-sites.md) | **Canonical.** Add an Ingress + push — external-dns + the single-wildcard tunnel do the rest. No tunnel edit, no token |
 | Add or remove an app from the cluster | [app-lifecycle.md](./app-lifecycle.md) | Step-by-step checklists, common pitfalls |
-| Manage bare-metal host services (systemd, launchd, OpenWRT) | [ansible.md](./ansible.md) | Ansible inventory, vault, `ansible-runner` CronJob, phase roadmap |
+| Manage bare-metal host services (systemd, launchd, OpenWRT) | [ansible.md](./ansible.md) | Ansible inventory, SOPS secrets, `ansible-runner` CronJob, phase roadmap |
 | See what runs where (cluster vs bare-metal) | [homelab-catalog.md](./homelab-catalog.md) | One-page service → host → runtime → manager table |
 | Verify backups or run a restore | [backup-runbook.md](./backup-runbook.md) | Backup schedules, manual triggers, restore flows |
 | Inspect or edit files inside a running pod | [container-access.md](./container-access.md) | `kubectl debug` with nvim, cp round-trip, GitOps caveat |

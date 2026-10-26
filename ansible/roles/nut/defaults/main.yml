@@ -24,7 +24,7 @@ nut_listen_address: 0.0.0.0
 nut_listen_port: 3493
 
 # upsmon principal that clients authenticate with. The password lives in
-# vault_nut_upsmon_password (ansible-vault, group_vars/all/vault.yml).
+# vault_nut_upsmon_password (SOPS, group_vars/all/vault.sops.yaml).
 nut_upsmon_user: upsmon
 nut_upsmon_password: "{{ vault_nut_upsmon_password }}"
 

@@ -4,6 +4,10 @@ collections:
     version: ">=10.0.0"
   - name: ansible.posix
     version: ">=2.0.0"
+  # Reads group_vars/<group>/vault.sops.yaml (ansible.cfg vars_plugins_enabled).
+  # Needs the sops binary on the control node.
+  - name: community.sops
+    version: ">=2.0.0"
   # OpenWrt management via pure-shell (ash) modules: no Python needed on the
   # router. Used by roles/openwrt-iot-vlan. Requires ansible-core >= 2.18 on the
   # control node (the in-cluster ansible-runner image must be bumped before it

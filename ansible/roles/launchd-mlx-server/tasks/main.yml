@@ -38,7 +38,7 @@
     fail_msg: >-
       mlx_huggingface_token is missing or still a placeholder. Add
       `vault_huggingface_token: <hf_token>` to
-      group_vars/macos_hosts/vault.yml (encrypted with `ansible-vault`)
+      group_vars/macos_hosts/vault.sops.yaml (edit it with `sops`)
       so first-time model downloads on this host bypass the
       unauthenticated rate cap. Get a Read-scope token at
       https://huggingface.co/settings/tokens.

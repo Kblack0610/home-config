@@ -101,7 +101,7 @@ Not set up. Proposed 2026-10-24 as a night-only build host. It would reverse the
 
 ## Reprovision from bare metal
 
-Both flows start the same: on the new Mac, `git clone https://github.com/kblack0610/.dotfiles.git ~/.dotfiles && cd ~/.dotfiles/.local/src/installation_scripts && bash install.sh` (Homebrew, dev tools, macOS defaults, workstation SSH key). Then add/confirm the host in `ansible/inventory.yml` under `macos_hosts` and run from the workstation with `ANSIBLE_VAULT_PASSWORD_FILE=$HOME/.ansible-vault-pass` (become password for `-K` is rbw item `mac_fleet_password`).
+Both flows start the same: on the new Mac, `git clone https://github.com/kblack0610/.dotfiles.git ~/.dotfiles && cd ~/.dotfiles/.local/src/installation_scripts && bash install.sh` (Homebrew, dev tools, macOS defaults, workstation SSH key). Then add/confirm the host in `ansible/inventory.yml` under `macos_hosts` and run from the workstation; secrets decrypt with the SOPS age key (become password for `-K` is rbw item `mac_fleet_password`).
 
 ### LLM node (mac-studio)
 

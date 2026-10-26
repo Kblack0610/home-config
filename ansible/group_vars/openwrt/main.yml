@@ -13,7 +13,7 @@ ansible_python_interpreter: /bin/false
 
 # --- openwrt-iot-vlan secrets ------------------------------------------------
 # WPA2 PSK for the throwaway IoT test SSID (Brown-iot-test). The PSK itself lives
-# encrypted in group_vars/openwrt/vault.yml; this only maps the vault var onto
+# encrypted in group_vars/openwrt/vault.sops.yaml; this only maps the vault var onto
 # the role's input so the SSID key never sits in git plaintext.
 iot_vlan_test_ssid_key: "{{ vault_iot_test_ssid_key }}"
 

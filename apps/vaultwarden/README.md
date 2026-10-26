@@ -1,8 +1,8 @@
 # Vaultwarden — self-hosted password manager
 
 Bitwarden-compatible vault for human logins, TOTP seeds, and **2FA backup
-codes** — the credentials that don't belong in SOPS or ansible-vault (those
-hold *machine* secrets, not human login recovery material).
+codes** — the credentials that don't belong in SOPS (that holds
+*machine* secrets, not human login recovery material).
 
 Fully self-hosted: no external API key, no vendor account, no phone-home. Vault
 data lives only on the cluster's local-path PVC and is backed up to NAS nightly.

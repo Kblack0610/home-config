@@ -10,7 +10,7 @@
       - iot_vlan_test_ssid_key | length > 0
     fail_msg: >-
       iot_vlan_test_ssid_enabled is true but iot_vlan_test_ssid_key is empty.
-      Set vault_iot_test_ssid_key in group_vars/openwrt/vault.yml.
+      Set vault_iot_test_ssid_key in group_vars/openwrt/vault.sops.yaml.
   when: iot_vlan_test_ssid_enabled | bool
 
 - name: Create/enable the throwaway test SSID on the iot network (phase 1)

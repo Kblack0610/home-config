@@ -48,7 +48,6 @@ The capture streams silence while the needle is up, so the Turntable stream neve
 The role is bound in `playbooks/site.yml` to the `audio_endpoints` inventory group. The group sets `audio_endpoint_snapserver_host` once for every room; it is required whenever snapclient or capture is on, and the role fails with a clear message if it is empty.
 
 ```bash
-export ANSIBLE_VAULT_PASSWORD_FILE=$HOME/.ansible-vault-pass
 ansible-playbook playbooks/site.yml --limit <host> --tags audio --check --diff
 ansible-playbook playbooks/site.yml --limit <host> --tags audio
 ```

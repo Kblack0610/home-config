@@ -2,6 +2,16 @@
 # See: https://github.com/getsops/sops
 
 creation_rules:
+  # Ansible secrets (group_vars/<group>/vault.sops.yaml, read by the
+  # community.sops vars plugin). Every value is encrypted. Two recipients: the
+  # main key (workstation, Flux backup) and an Ansible-only key that the nightly
+  # ansible-runner holds (apps/ansible-runner/secret.yaml, sops-age-key), so the
+  # runner can read these files and no k8s Secret. First, so the k8s rule below
+  # never claims these files.
+  - path_regex: ansible/.*\.sops\.yaml$
+    age: >-
+      age138x34tdqulknsj967wjv9urg9ucxtpkep2apzjmthta3xtjgvpgsm8k3a0,
+      age1q694uddq28kzxyteemaa4x5zxrnqlmhj0z336zmf6wpptq6ema5qcez399
   # Encrypt only the 'data' and 'stringData' fields in Kubernetes secrets
   - path_regex: .*secret.*\.yaml$
     encrypted_regex: ^(data|stringData)$

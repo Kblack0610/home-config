@@ -40,7 +40,6 @@ Deliberately **no** `x-systemd.idle-timeout`: an idle unmount would make the `no
 ## Run it
 
 ```bash
-export ANSIBLE_VAULT_PASSWORD_FILE=$HOME/.ansible-vault-pass
 cd ansible
 ansible-playbook playbooks/site.yml --limit asus-laptop --tags backup-mounts --check --diff
 ansible-playbook playbooks/site.yml --limit asus-laptop --tags backup-mounts

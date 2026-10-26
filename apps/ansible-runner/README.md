@@ -42,8 +42,7 @@ kubectl -n ansible-runner get cronjob convergence-check -o yaml \
 
 ```bash
 cd ~/dev/home/home-config/ansible
-ANSIBLE_VAULT_PASSWORD_FILE=~/.ansible-vault-pass \
-  ansible-playbook playbooks/site.yml --limit hp-victus
+ansible-playbook playbooks/site.yml --limit hp-victus
 ```
 
 (The CronJob is convenient for scheduled drift checks; Option B is fine for ad-hoc applies.)
@@ -55,7 +54,7 @@ ANSIBLE_VAULT_PASSWORD_FILE=~/.ansible-vault-pass \
 | Key | Purpose |
 |-----|---------|
 | `ssh-privkey` | Dedicated ed25519 keypair for the runner. Public key must be in `~/.ssh/authorized_keys` on every host in `HOSTS` (`cronjob.yaml`), and on pi5-master, where `roles/game-server-node` delegates `kubectl label`. Missing there, every run ended `UNREACHABLE` (fixed 2026-10-26). |
-| `ansible-vault-pass` | Decrypts `ansible/group_vars/*/vault.yml`. Same as workstation's `~/.ansible-vault-pass`. |
+| `sops-age-key` | An age private key that decrypts `ansible/group_vars/*/vault.sops.yaml` and nothing else. Those files are encrypted to it and to the main key (`.sops.yaml`, first rule). An init container copies a pinned `sops` binary into `/workspace/bin`, since the semaphore image has none. |
 
 ### Rotating the SSH key
 
@@ -80,19 +79,23 @@ flux --context home-k3s reconcile kustomization apps --with-source
 
 No pod restart dance: every CronJob execution gets a fresh pod that reads the current Secret.
 
-### Rotating the ansible-vault password
+### Rotating the Ansible age key
 
 ```bash
-# 1. Re-encrypt all ansible vaults with the new password (repeat per-vault)
-ansible-vault rekey ansible/group_vars/linux_bare_metal/vault.yml
+# 1. New key; the public half goes into .sops.yaml's ansible rule in place of the old one
+age-keygen -o /tmp/ansible-age.txt     # prints the public key
+$EDITOR .sops.yaml
 
-# 2. Update the workstation + the SOPS secret
-echo -n 'NEW_PASSWORD' > ~/.ansible-vault-pass
-sops apps/ansible-runner/secret.yaml   # update ansible-vault-pass
+# 2. Re-encrypt the Ansible files to the new recipient set
+for f in ansible/group_vars/*/vault.sops.yaml; do sops updatekeys -y "$f"; done
 
-# 3. Commit + reconcile
-git add ansible/ apps/ansible-runner/secret.yaml
-git commit -m "chore(ansible): rotate vault password"
+# 3. Swap the private half into the runner's Secret, then shred the temp file
+sops apps/ansible-runner/secret.yaml   # replace sops-age-key with /tmp/ansible-age.txt's AGE-SECRET-KEY line
+shred -u /tmp/ansible-age.txt
+
+# 4. Commit + reconcile
+git add .sops.yaml ansible/ apps/ansible-runner/secret.yaml
+git commit -m "chore(ansible-runner): rotate the ansible age key"
 git push
 flux --context home-k3s reconcile kustomization apps --with-source
 ```

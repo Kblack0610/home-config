@@ -9,8 +9,8 @@
       - login_passwords_user_hash is match('^\$(6|y)\$')
     fail_msg: >-
       vault_linux_login_password_hash is missing or is not a sha512 ($6$) or
-      yescrypt ($y$) crypt hash. Add it to group_vars/linux_bare_metal/vault.yml
-      with `ansible-vault edit` - see roles/login-passwords/README.md.
+      yescrypt ($y$) crypt hash. Add it to group_vars/linux_bare_metal/vault.sops.yaml
+      with `sops set` - see roles/login-passwords/README.md.
     quiet: true
 
 - name: Set the login user's password from the vault hash

@@ -29,25 +29,27 @@ ansible-galaxy collection install -r requirements.yml
 
 ## Secrets
 
-**Repo convention:** Kubernetes secrets under `apps/` are encrypted with **SOPS+Age** (see `.sops.yaml`). Ansible-specific secrets in this directory are encrypted with **ansible-vault** instead, because Ansible reads ansible-vault-encrypted group_vars natively without an extra lookup plugin. Both conventions coexist:
+Every secret in this repo is SOPS + age. Passwords a human types (sudo, console logins) live in rbw, and when Ansible needs one the repo holds only its hash. There is no third store: ansible-vault was retired 2026-10-26, and `scripts/check-secret-store.py` fails CI if it comes back.
 
-| Where | Tool | Why |
-|-------|------|-----|
-| `apps/*/secret.yaml` | SOPS + Age | Flux decrypts via the `sops-age` cluster secret |
-| `ansible/group_vars/**/vault.yml` | ansible-vault | Native to ansible-playbook; no extra decryption plugin |
+| Where | What | Decrypted by |
+|-------|------|--------------|
+| `apps/**/secret.yaml`, other `*.sops.yaml` outside `ansible/` | Kubernetes Secrets | Flux, with the `sops-age` cluster secret |
+| `ansible/group_vars/<group>/vault.sops.yaml` | Ansible vars named `vault_*` | the `community.sops` vars plugin, at playbook run time |
 
-Per-group vaults live at `group_vars/<group>/vault.yml`, encrypted with `ansible-vault`. The vault password file lives at `~/.ansible-vault-pass` on the workstation (gitignored; not in this repo).
+The Ansible files are encrypted to two age recipients (first rule in `.sops.yaml`): the main key in `~/.config/sops/age/keys.txt`, and an Ansible-only key held by the in-cluster ansible-runner (`apps/ansible-runner/secret.yaml`, key `sops-age-key`). The runner can open these files and no Kubernetes Secret.
 
-To create the `linux_bare_metal` vault for the first time:
+The vars plugin (`vars_plugins_enabled` in `ansible.cfg`) loads `vault.sops.yaml` like any other group_vars file, so roles read `vault_*` vars with no lookup. It needs the `sops` binary on PATH and the collection from `requirements.yml`. Without the age key a run stops with "Failed to get the data key"; it never continues with an encrypted value.
+
+Edit or add a value, from the repo root:
 
 ```bash
-cp group_vars/linux_bare_metal/vault.yml.example \
-   group_vars/linux_bare_metal/vault.yml
-$EDITOR group_vars/linux_bare_metal/vault.yml       # fill in real values
-ansible-vault encrypt group_vars/linux_bare_metal/vault.yml
+sops ansible/group_vars/linux_bare_metal/vault.sops.yaml     # decrypts into $EDITOR, re-encrypts on save
+
+# non-interactive; the value goes through stdin as a JSON string, never argv
+rbw get some_item | jq -R . | sops set --value-stdin ansible/group_vars/all/vault.sops.yaml '["vault_some_secret"]'
 ```
 
-`ansible.cfg` sets `vault_password_file = ~/.ansible-vault-pass`, so every `ansible-playbook` run from this directory decrypts the vaults with no extra flag or shell export. `ANSIBLE_VAULT_PASSWORD_FILE` still overrides it; the in-cluster ansible-runner uses that to point at its mounted Secret.
+A new group gets its file the same way (`sops ansible/group_vars/<group>/vault.sops.yaml`); the `.sops.yaml` rule picks the recipients.
 
 ## Common commands
 

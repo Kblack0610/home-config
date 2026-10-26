@@ -49,8 +49,8 @@ mlx_log_level: INFO
 # HuggingFace Read token. Dropped to ~/.cache/huggingface/token (mode
 # 0600) so first-time model downloads on this host don't hit the
 # unauthenticated rate cap. Real value lives in
-# group_vars/macos_hosts/vault.yml as `vault_huggingface_token`,
-# encrypted with ansible-vault. The role refuses to apply if the token
+# group_vars/macos_hosts/vault.sops.yaml as `vault_huggingface_token`,
+# encrypted with SOPS. The role refuses to apply if the token
 # is missing or still the placeholder.
 mlx_huggingface_token: "{{ vault_huggingface_token | default('') }}"
 mlx_huggingface_token_path: "{{ ansible_env.HOME }}/.cache/huggingface/token"

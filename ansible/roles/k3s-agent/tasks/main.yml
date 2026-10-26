@@ -8,7 +8,7 @@
     fail_msg: >-
       vault_k3s_token is missing or still the placeholder. Read the real token
       from the server (pi5-master:/var/lib/rancher/k3s/server/node-token) and
-      put it in group_vars/<group>/vault.yml encrypted with `ansible-vault`.
+      put it in group_vars/<group>/vault.sops.yaml with `sops`.
 
 - name: Assert k3s_role is one of server/agent
   ansible.builtin.assert:

@@ -30,8 +30,8 @@ NO Python is installed on the router. The `uci` module is genuinely idempotent
 ## Phased rollout (always `--check --diff` first)
 
 The disruptive steps are gated behind default-false vars, so a plain run only
-creates the non-disruptive `br-iot` interface + DHCP pool. Set the vault password
-first: `export ANSIBLE_VAULT_PASSWORD_FILE=$HOME/.ansible-vault-pass`.
+creates the non-disruptive `br-iot` interface + DHCP pool. Secrets decrypt with
+the SOPS age key (see ansible/README.md "Secrets").
 
 ```bash
 cd ansible
@@ -40,7 +40,7 @@ cd ansible
 ansible-playbook playbooks/site.yml --limit openwrt --check --diff
 
 # Phase 1 - plumbing + temporary test SSID (non-disruptive)
-#   requires vault_iot_test_ssid_key in group_vars/openwrt/vault.yml
+#   requires vault_iot_test_ssid_key in group_vars/openwrt/vault.sops.yaml
 ansible-playbook playbooks/site.yml --limit openwrt \
   --tags network,dhcp,wireless_test \
   -e iot_vlan_test_ssid_enabled=true --check --diff   # then drop --check to apply
@@ -78,7 +78,6 @@ first:
 
   ```bash
   cd ansible
-  export ANSIBLE_VAULT_PASSWORD_FILE=$HOME/.ansible-vault-pass
   # off (keeps the wifi-iface, sets disabled=1):
   ansible-playbook playbooks/site.yml --limit openwrt --tags wireless_test \
     -e iot_vlan_test_ssid_enabled=false
@@ -90,7 +89,7 @@ first:
   The toggle-off path is guarded by a wireless lookup so it only disables an
   existing section (never appends a phantom half-iface). To change the SSID or
   password, edit `iot_vlan_test_ssid` (defaults) / `vault_iot_test_ssid_key`
-  (`group_vars/openwrt/vault.yml`) and re-run with `wireless_test`.
+  (`group_vars/openwrt/vault.sops.yaml`) and re-run with `wireless_test`.
 
 ## Rollback / recovery
 

@@ -20,7 +20,7 @@ k3s_role: agent
 k3s_url: "https://192.168.1.20:6443"
 
 # Node-token the installer validates against the control-plane. Comes from the
-# vault — create ansible/group_vars/{linux_bare_metal,pi_k3s}/vault.yml with
+# SOPS file ansible/group_vars/{linux_bare_metal,pi_k3s}/vault.sops.yaml, as
 # `vault_k3s_token: <token>` (the server prints it to /var/lib/rancher/k3s/server/node-token).
 k3s_token: "{{ vault_k3s_token }}"
 

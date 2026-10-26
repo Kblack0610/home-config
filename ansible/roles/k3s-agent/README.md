@@ -13,7 +13,7 @@ Installs a k3s node (agent by default, server when `k3s_role: server` is set) an
 
 | Variable | Where | Notes |
 |----------|-------|-------|
-| `vault_k3s_token` | `group_vars/<group>/vault.yml` | Cluster node-token. On the server: `sudo cat /var/lib/rancher/k3s/server/node-token`. |
+| `vault_k3s_token` | `group_vars/<group>/vault.sops.yaml` | Cluster node-token. On the server: `sudo cat /var/lib/rancher/k3s/server/node-token`. |
 
 All other variables have defaults in `defaults/main.yml`. Per-host `k3s_role` is set in `ansible/inventory.yml`.
 

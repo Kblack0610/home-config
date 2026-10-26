@@ -41,6 +41,15 @@ spec:
               volumeMounts:
                 - name: workspace
                   mountPath: /workspace
+            # Ansible secrets are SOPS files (community.sops vars plugin), which
+            # shells out to `sops`. The ansible image has none, so take the
+            # binary from the pinned upstream image.
+            - name: sops-binary
+              image: ghcr.io/getsops/sops:v3.11.0-alpine
+              command: ["sh", "-c", "mkdir -p /workspace/bin && cp \"$(command -v sops)\" /workspace/bin/sops && /workspace/bin/sops --version"]
+              volumeMounts:
+                - name: workspace
+                  mountPath: /workspace
           containers:
             - name: ansible
               # The semaphore image variant bundles ansible-playbook + collections.
@@ -110,7 +119,10 @@ spec:
                   fi
 
                   echo "--- Checking convergence on: $REACHABLE ---"
-                  export ANSIBLE_VAULT_PASSWORD_FILE=/secrets/ansible-vault-pass
+                  # The Ansible-only age key: decrypts ansible/**/*.sops.yaml and
+                  # no k8s Secret (.sops.yaml at the repo root).
+                  export SOPS_AGE_KEY_FILE=/secrets/sops-age-key
+                  export PATH="/workspace/bin:$PATH"
                   cd /workspace/ansible
                   ansible-galaxy collection install -r requirements.yml --force
                   exec ansible-playbook playbooks/site.yml \

@@ -11,7 +11,7 @@ Network UPS Tools (NUT) for the home-k3s fleet. One UPS plugged into `pi5-master
 
 | Variable | Where | Notes |
 |---|---|---|
-| `vault_nut_upsmon_password` | `group_vars/all/vault.yml` | ansible-vault encrypted, ≥12 chars. Shared between server users file and every client `MONITOR` line. |
+| `vault_nut_upsmon_password` | `group_vars/all/vault.sops.yaml` | SOPS encrypted, ≥12 chars. Shared between server users file and every client `MONITOR` line. |
 | `nut_role` | `group_vars/nut_server` or `nut_clients` | `server` or `client`. |
 
 All other vars have defaults in `defaults/main.yml` — UPS model, listener bind, timers.

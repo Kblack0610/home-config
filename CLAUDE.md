@@ -59,11 +59,12 @@ Rule of thumb:
 
 Full mapping table + the `kubectl debug node/<name> --profile=sysadmin -- chroot /host` recipe for fixing dead-SSH nodes lives in [`docs/host-access.md`](./docs/host-access.md).
 
-## Secrets & Vault
+## Secrets
 
-- **ansible-vault password file**: `~/.ansible-vault-pass` on the workstation (mode 600, gitignored). Used by every `ansible-playbook` invocation against this repo. Set `ANSIBLE_VAULT_PASSWORD_FILE=$HOME/.ansible-vault-pass` in your shell, or pass `--vault-password-file ~/.ansible-vault-pass` per-run. Don't use `--ask-vault-pass` in this repo — the file already exists. Recovery if lost: `sops -d apps/ansible-runner/secret.yaml | grep ansible-vault-pass` (requires `~/.config/sops/age/keys.txt`).
-- **SOPS age key**: `~/.config/sops/age/keys.txt`. Decrypts every `*.sops.yaml` and the in-cluster ansible-runner Secret. Without it, `flux bootstrap` works but SOPS-encrypted Kustomizations fail to decrypt. Full key-rotation procedure in `docs/gitops.md`.
-- **Two SOPS / vault layers, don't confuse them**: SOPS protects in-cluster Secrets via `.sops.yaml` (Flux decrypts at apply time); ansible-vault protects host-OS secrets via `group_vars/<group>/vault.yml` (the workstation/runner decrypts at playbook run time). They share no keys — SOPS uses age, ansible-vault uses the password file. The ansible-runner CronJob bridges them: it stores the ansible-vault password as a SOPS-encrypted Secret so the in-cluster runner can decrypt host vaults at run time.
+- **One store for secrets in git: SOPS + age.** Kubernetes Secrets (Flux decrypts at apply time) and Ansible's `vault_*` vars (`ansible/group_vars/<group>/vault.sops.yaml`, decrypted at playbook run time by the `community.sops` vars plugin) are both SOPS files. ansible-vault is retired; see `ansible/README.md` "Secrets".
+- **SOPS age key**: `~/.config/sops/age/keys.txt`. Decrypts every `*.sops.yaml` and the in-cluster ansible-runner Secret. Without it, `flux bootstrap` works but SOPS-encrypted Kustomizations fail to decrypt, and `ansible-playbook` stops at "Failed to get the data key". Full key-rotation procedure in `docs/gitops.md`.
+- **The ansible-runner holds a second, Ansible-only age key** (`apps/ansible-runner/secret.yaml` key `sops-age-key`). The Ansible files are encrypted to both keys, so the runner can read them and no Kubernetes Secret.
+- **Passwords a human types live in rbw** (`mac_fleet_password`, `linux_fleet_password`). The repo holds only a hash when Ansible needs one.
 
 ## OpenClaw: skills over MCPs
 

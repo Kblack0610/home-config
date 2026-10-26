@@ -8,7 +8,7 @@ What "on the fleet" means today: the PC pushes a liveness heartbeat every 60s to
 
 | Name (fleet key) | Windows hostname | IP | User | Notes |
 |------------------|------------------|----|------|-------|
-| `living-room-pc` (`homelab_living-room-pc`) | `DESKTOP-BPLB04U` | 192.168.1.121 (`living-room-pc-lan`) | `hughl` (Microsoft account, admin) | Wi-Fi only (Intel AX210), enrolled 2026-10-16. Win10 Pro 22H2, legacy BIOS boot, SVM off. TV-connected gaming box |
+| `windows-media` (`homelab_windows-media`) | `WINDOWS-MEDIA` | 192.168.1.8 (`windows-media-lan`) | `hughl` (Microsoft account, admin) | The living-room Windows and media box, and the infra Windows test host: agents drive it over SSH ([Driving it from an agent](#driving-it-from-an-agent)) and it is an opt-in runner ([Windows test runner](#windows-test-runner)). Ryzen 5 5500, 64 GB, RTX 3050, TV at 3840x2160 and 300% scale. Wi-Fi only (Intel AX210). Win10 Pro 22H2, legacy BIOS boot, SVM off. Enrolled 2026-10-16 as `living-room-pc` (`DESKTOP-BPLB04U`, .121), renamed 2026-10-26 |
 
 ## The path
 
@@ -59,14 +59,14 @@ The window title must say Administrator, or the admin key file cannot be written
 
 ### 3. Pin the IP (workstation)
 
-Add a reservation to `infrastructure/dhcp/devices.yaml` (desktops go in `.30-.49`, living-room/media boxes in `.120-.139`), then `dhcp diff` and `dhcp --force sync` per `infrastructure/dhcp/README.md`. Use the MAC of the adapter that is actually `Up` in `Get-NetAdapter -Physical`; a PC on Wi-Fi has a different MAC from its unplugged ethernet port. The PC keeps its old address until its lease renews, so reboot it once from SSH: `shutdown /r /t 60 /c "..."` gives anyone at the screen a minute to cancel with `shutdown /a`.
+Add a reservation to `infrastructure/dhcp/devices.yaml` (desktops go in `.30-.49`, media-only boxes in `.120-.139`, a PC that is also infra, like windows-media, next to the Macs in `.1-.9`), then `dhcp diff` and `dhcp --force sync` per `infrastructure/dhcp/README.md`. Use the MAC of the adapter that is actually `Up` in `Get-NetAdapter -Physical`; a PC on Wi-Fi has a different MAC from its unplugged ethernet port. The PC keeps its old address until its lease renews, so reboot it once from SSH: `shutdown /r /t 60 /c "..."` gives anyone at the screen a minute to cancel with `shutdown /a`.
 
 ### 4. Enroll over SSH (workstation)
 
 `enroll.ps1` fetches the pusher, sends one probe heartbeat, and only registers the Scheduled Task if the probe got through. Feed it the token on stdin so it never lands on a command line or in shell history. Use `printf`, not `echo`: zsh's `echo` turns `\e` in a Windows path into an escape character.
 
 ```bash
-PC=hughl@192.168.1.121 NAME=living-room-pc
+PC=hughl@windows-media-lan NAME=windows-media
 { printf '$env:FLEET_TOKEN = "%s"\n' "$(cat ~/.config/fleet-pulse/token)"
   printf '%s\n' '$f = Join-Path $env:TEMP "enroll.ps1"' \
     'irm https://raw.githubusercontent.com/Kblack0610/.dotfiles/main/.local/src/fleet-pulse/enroll.ps1 -OutFile $f' \
@@ -85,7 +85,7 @@ printf '%s\n' 'Set-ScheduledTask fleet-pulse -Principal (New-ScheduledTaskPrinci
 ### 5. Verify
 
 ```bash
-curl -s https://fleet.kblab.me/api/v1/endpoints/statuses | jq -r '.[] | select(.key=="homelab_living-room-pc") | .results[-1] | "\(.timestamp) \(.success)"'
+curl -s https://fleet.kblab.me/api/v1/endpoints/statuses | jq -r '.[] | select(.key=="homelab_windows-media") | .results[-1] | "\(.timestamp) \(.success)"'
 ```
 
 A timestamp under a minute old and `true`. Check again a few minutes after the S4U switch: the task's `LastTaskResult` is 0 even when a push fails (the pusher exits 0 by contract), so only fresh results in gatus prove the task is pushing.
@@ -94,7 +94,7 @@ A timestamp under a minute old and `true`. Check again a few minutes after the S
 
 - **The PIN is not a password.** A Windows Hello PIN only unlocks the PC at the PC. SSH, Remote Desktop and file sharing want the account password, which on a Microsoft-account login is the Microsoft account password. Step 2 uses keys, so nobody needs it.
 - **Admins ignore `~/.ssh/authorized_keys`.** For a user in Administrators, Windows OpenSSH reads only `C:\ProgramData\ssh\administrators_authorized_keys`, and only if its ACL is Administrators + SYSTEM. Step 2 writes both files so it works either way.
-- **"No route to host" means the network card is asleep, not that the PC is off.** Nothing answered on the LAN at all. On 2026-10-16 the living-room PC was on with the screen awake and still dropped off the network between checks. It is on Wi-Fi with Windows' default power saving, and the router had also logged a `169.254.x` fallback address for its MAC. Step 2 turns the Wi-Fi and network-card power saving off for this reason.
+- **"No route to host" means the network card is asleep, not that the PC is off.** Nothing answered on the LAN at all. On 2026-10-16 the living-room PC (now windows-media) was on with the screen awake and still dropped off the network between checks. It is on Wi-Fi with Windows' default power saving, and the router had also logged a `169.254.x` fallback address for its MAC. Step 2 turns the Wi-Fi and network-card power saving off for this reason.
 - **`powershell -Command -` reads stdin line by line.** One-line statements work; a multi-line `foreach { ... }` block silently produces nothing. Send anything multi-line as `-EncodedCommand $(iconv -t UTF-16LE script.ps1 | base64 -w0)`.
 - **`Set-NetAdapterPowerManagement` has no `-AllowComputerToTurnOffDevice` parameter**, and `Disable-NetAdapterPowerManagement` leaves that checkbox on. The registry `PnPCapabilities = 24` in step 2 is what clears it.
 - **Interactive vs S4U.** `enroll.ps1` registers the task as Interactive so it works without admin on a locked-down work machine. That flashes a console every minute and stops at logoff. On a home PC that is admin-controlled, S4U is the right setting (step 4).
@@ -102,31 +102,75 @@ A timestamp under a minute old and `true`. Check again a few minutes after the S
 
 ## Managed by Ansible
 
-After step 4, add the PC to `windows_hosts` in `ansible/inventory.yml` (`ansible_host`, `ansible_user`). Windows OpenSSH's default shell is cmd, so the group sets `ansible_shell_type: cmd`; the `ansible.windows` modules wrap themselves in PowerShell anyway. Prove the connection with `ansible <name> -m ansible.windows.win_ping` before anything else.
+After step 4, add the PC to `windows_hosts` in `ansible/inventory.yml` (`ansible_host`, `ansible_user`, `windows_hostname`). Prove the connection with `ansible <name> -m ansible.windows.win_ping` before anything else.
 
-One role, bound in `ansible/playbooks/site.yml`:
+The group sets `ansible_shell_type: powershell`, because `windows-agent-tools` makes PowerShell sshd's default shell. It works on a new PC whose sshd shell is still cmd too, so no override is needed.
 
-- `windows-baseline` - the debloat: Store apps, ASUS/OEM software, telemetry and ads, OneDrive removal, autostart nags, power and network-card settings, hibernation off, gaming settings, cleanup. Every item is a list in its `defaults/main.yml`. Details and measured results: `ansible/roles/windows-baseline/README.md`.
+Roles, bound in `ansible/playbooks/site.yml`:
+
+- `windows-baseline` - the debloat: Store apps, ASUS/OEM software, telemetry and ads, OneDrive removal, autostart nags, power and network-card settings, hibernation off, gaming settings, cleanup, and the computer name. Every item is a list in its `defaults/main.yml`. Details and measured results: `ansible/roles/windows-baseline/README.md`.
+- `windows-agent-tools` - PowerShell as the SSH shell, execution policy RemoteSigned, and the `C:\tools` desktop helpers. See [Driving it from an agent](#driving-it-from-an-agent).
+- `github-actions-runner-windows` (windows-media only) - the opt-in test runner. See [Windows test runner](#windows-test-runner).
 
 ```bash
 cd ansible && ansible-galaxy collection install -r requirements.yml -p ./collections
-ansible-playbook playbooks/site.yml --limit living-room-pc --check --diff
-ansible-playbook playbooks/site.yml --limit living-room-pc
-ansible living-room-pc -m ansible.windows.win_reboot -a "pre_reboot_delay=60"   # first apply only
+ansible-playbook playbooks/site.yml --limit windows-media --tags windows --check --diff
+ansible-playbook playbooks/site.yml --limit windows-media --tags windows
+ansible windows-media -m ansible.windows.win_reboot -a "pre_reboot_delay=60"   # first apply, or after a rename
 ```
 
 Not wired into the in-cluster `ansible-runner` drift check: its image has no `ansible.windows` collection and its key is not on the PC.
 
+## Driving it from an agent
+
+SSH is the way in: `ssh hughl@windows-media-lan '<PowerShell>'`. The workstation key is trusted and `hughl` is an admin, so an agent has full control of the machine. For anything multi-line, send `-EncodedCommand` (see the gotcha below):
+
+```bash
+enc() { iconv -t UTF-16LE | base64 -w0; }
+ssh hughl@windows-media-lan "powershell -NoProfile -EncodedCommand $(enc < script.ps1)"
+```
+
+An SSH session is Windows session 0. A program started from it has no window on the screen and no display GPU, so it is not what you would see on the TV. To test anything visual, use the helpers in `C:\tools`, which go through a one-shot Interactive scheduled task into the logged-on user's desktop (session 1):
+
+| Command | What it does |
+|---|---|
+| `C:\tools\run-on-desktop.ps1 -Path <exe> [-Arguments '..'] [-WorkingDirectory ..]` | Starts the program on the TV desktop and returns once it is running. |
+| `... -Wait [-TimeoutSec 600]` | Waits for it to exit, prints its stdout/stderr, exits with its exit code. |
+| `C:\tools\screenshot.ps1` | Captures every monitor at physical resolution, prints the PNG path under `C:\tools\runs\`. |
+| `C:\tools\display-info.ps1` | Prints each monitor's resolution and scale, e.g. `\\.\DISPLAY1 3840x2160 scale 300% primary`. |
+
+```bash
+ssh hughl@windows-media-lan 'C:\tools\run-on-desktop.ps1 -Path C:\bnbtest\windows\Game.exe -Arguments "-screen-fullscreen 1"'
+ssh hughl@windows-media-lan 'C:\tools\screenshot.ps1'        # prints C:\tools\runs\screen-<stamp>.png
+scp 'hughl@windows-media-lan:C:/tools/runs/screen-<stamp>.png' .
+ssh hughl@windows-media-lan 'Stop-Process -Name Game'
+```
+
+Things to know:
+
+- **Someone must be logged on.** The helpers and the runner need a desktop session, and there is no autologon (it would need the Microsoft account password stored on the PC). After a reboot, log in at the TV once. The helpers say so when nobody is logged on.
+- **New windows can open behind the foreground app.** Windows' focus-stealing prevention applies to programs a task starts. A fullscreen game normally takes over; if a screenshot shows something else in front, minimize everything first: `run-on-desktop.ps1 -Path powershell.exe -Arguments '-NoProfile -Command (New-Object -ComObject Shell.Application).MinimizeAll()' -Wait`.
+- **A blank or stale screenshot usually means the TV is off** or on another input. That is a human step.
+- **Put test builds under `C:\bnbtest\`** and delete them when done. C: is a 1 TB disk with about 38 GB free (2026-10-26).
+- **The host key.** Agents cannot write `~/.ssh/known_hosts` on the workstation. After the IP or name changes, the user accepts the new entry once: `ssh -o StrictHostKeyChecking=accept-new hughl@windows-media-lan exit`.
+
+## Windows test runner
+
+windows-media is an org-scoped GitHub Actions runner for Windows-only issues, the way mac-mini is for macOS. It is opt-in and never a merge gate: its labels are the runner's own `self-hosted`, `Windows`, `X64` plus `host-windows-media`, and as of 2026-10-26 no CI workflow asks for any of those, so a job lands here only when it says so:
+
+```yaml
+jobs:
+  windows-check:
+    runs-on: [self-hosted, windows]
+    steps:
+      - run: systeminfo | findstr /B /C:"OS Name" /C:"Host Name"
+```
+
+- It runs in hughl's desktop session (scheduled task `actions-runner`, started at logon), not as a Windows service, so job steps can open windows on the TV and use the GPU. It is offline whenever nobody is logged on.
+- Every job step runs at below-normal priority (Task Scheduler priority 7, for CPU, I/O and memory), so what is on the TV wins.
+- Not part of the Unity pool, and there is no Unity editor on the PC: Windows players are cross-built on the Linux pool (dodginballs `build-windows`), and this box runs them.
+- Role: `ansible/roles/github-actions-runner-windows`. It counts in `apps/github-runner-exporter` as `windows-media:windows:1`.
+
 ## Windows 10 end of support
 
-living-room-pc runs Windows 10 22H2. Consumer Extended Security Updates ended 2026-10-13, so it no longer gets security patches; Defender definitions still update. The CPU and TPM qualify for Windows 11, but the PC boots in legacy BIOS mode with SVM (CPU virtualization) off. One visit to the BIOS (CSM off, UEFI and Secure Boot on, SVM on) followed by `mbr2gpt /convert /allowFullOS` over SSH unlocks both an in-place Windows 11 upgrade and WSL2. Until then neither is possible.
-
-## Candidate: Unity CI at night (living-room-pc)
-
-Not set up. Proposed 2026-10-24 as a night-only runner for the Unity pool.
-
-- Route: WSL2 plus Docker, so the PC runs the same Linux container path (`in-docker.sh`) as the Linux pool hosts and needs no Windows-specific CI code.
-- Blocked on the BIOS visit above: WSL2 needs SVM on (and the UEFI conversion gets Windows 11 at the same time).
-- It is on Wi-Fi only. The first sync of the editor image and `Library/` is tens of GB; a wired link is worth running before it joins.
-- It is the gaming box, so the runner only runs in a night window: a Task Scheduler start and stop of the runner service.
-- One more activation on the shared Unity Personal serial (no two-machine cap observed; see unity-core-playground `docs/operations/ci.md`).
+windows-media runs Windows 10 22H2. Consumer Extended Security Updates ended 2026-10-13, so it no longer gets security patches; Defender definitions still update. The CPU and TPM qualify for Windows 11, but the PC boots in legacy BIOS mode with SVM (CPU virtualization) off. One visit to the BIOS (CSM off, UEFI and Secure Boot on, SVM on) followed by `mbr2gpt /convert /allowFullOS` over SSH unlocks both an in-place Windows 11 upgrade and WSL2. Until then neither is possible.

@@ -101,3 +101,11 @@
 - name: Disk cleanup
   ansible.builtin.import_tasks: cleanup.yml
   tags: [windows, cleanup]
+
+# Windows' own name, so it matches the inventory instead of DESKTOP-XXXXXXX.
+# Takes effect at the next reboot; this role never reboots by itself.
+- name: Set the computer name
+  ansible.windows.win_hostname:
+    name: "{{ windows_hostname }}"
+  when: windows_hostname is defined
+  tags: [windows, hostname]

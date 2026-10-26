@@ -75,17 +75,22 @@ all:
 
     # Windows PCs, managed over Windows OpenSSH (see docs/windows-machines.md
     # for the one-time paste that enables sshd and trusts the workstation key).
-    # sshd's default shell on Windows is cmd, hence ansible_shell_type: cmd;
-    # the ansible.windows modules wrap themselves in PowerShell regardless.
+    # roles/windows-agent-tools makes PowerShell sshd's default shell, hence
+    # ansible_shell_type: powershell. It also works on a PC whose sshd shell is
+    # still cmd (checked 2026-10-26), so a new PC needs no override.
     windows_hosts:
       vars:
         ansible_connection: ssh
-        ansible_shell_type: cmd
+        ansible_shell_type: powershell
       hosts:
-        # TV-connected gaming box (Win10 Pro, Wi-Fi only).
-        living-room-pc:
-          ansible_host: 192.168.1.121   # living-room-pc-lan
+        # The living-room Windows and media box (Win10 Pro, Wi-Fi only), and
+        # the infra Windows test host: agents drive it over SSH, and it is an
+        # opt-in org runner for Windows-only issues, the way mac-mini is for
+        # macOS. Not a CI gate. Was living-room-pc (.121) until 2026-10-26.
+        windows-media:
+          ansible_host: 192.168.1.8   # windows-media-lan
           ansible_user: hughl
+          windows_hostname: WINDOWS-MEDIA
 
     pi_k3s:
       hosts:

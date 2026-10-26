@@ -150,6 +150,11 @@ class ExporterTest(unittest.TestCase):
         self.assertNotIn("repos/acme/web/actions/runs/9/jobs?per_page=100", exporter.get.calls)
         self.assertIn("repos/acme/game/actions/runs/10/jobs?per_page=100", exporter.get.calls)  # active: always refetched
 
+    def test_pool_of_pinned_runners(self):
+        self.assertEqual(exporter.pool_of(["self-hosted", "macOS", "arm64"]), "macos")
+        self.assertEqual(exporter.pool_of(["self-hosted", "Windows", "X64", "host-windows-media"]), "windows")
+        self.assertEqual(exporter.pool_of(["self-hosted", "Linux", "X64"]), "other")
+
     def test_no_token_everything_failed(self):
         out = self.render(broken=("orgs/", "repos/"))
         self.assertEqual(rows(out, "github_runner_state"), [])

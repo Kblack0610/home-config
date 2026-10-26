@@ -58,10 +58,11 @@ external-endpoints:
   - name: linux-cachyos
     group: homelab
     token: "${FLEET_TOKEN}"
-  # The living-room Windows PC. Was a generic `windows` slot that never enrolled;
-  # named per machine so a second Windows box can't share (and mask) its key.
-  # Enrolled with ~/.dotfiles/.local/src/fleet-pulse/enroll.ps1 -Name living-room-pc -Group homelab.
-  - name: living-room-pc
+  # windows-media: the living-room Windows and media box and the infra Windows
+  # test host (living-room-pc until 2026-10-26). Named per machine so a second
+  # Windows box can't share (and mask) its key. Enrolled with
+  # ~/.dotfiles/.local/src/fleet-pulse/enroll.ps1 -Name windows-media -Group homelab.
+  - name: windows-media
     group: homelab
     token: "${FLEET_TOKEN}"
 

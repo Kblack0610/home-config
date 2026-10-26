@@ -1,0 +1,31 @@
+---
+- name: Give SSH sessions PowerShell as their shell
+  ansible.windows.win_regedit:
+    path: HKLM:\SOFTWARE\OpenSSH
+    name: DefaultShell
+    data: "{{ windows_agent_tools_ssh_shell }}"
+    type: string
+  tags: [ssh-shell]
+
+- name: Let local PowerShell scripts run
+  ansible.windows.win_powershell:
+    parameters:
+      Policy: "{{ windows_agent_tools_execution_policy }}"
+    script: |
+      param([string]$Policy)
+      $Ansible.Changed = $false
+      if ((Get-ExecutionPolicy -Scope LocalMachine) -ne $Policy) {
+        Set-ExecutionPolicy -Scope LocalMachine -ExecutionPolicy $Policy -Force
+        $Ansible.Changed = $true
+      }
+
+- name: Install the desktop helpers (run-on-desktop, screenshot, display-info)
+  ansible.windows.win_copy:
+    src: "{{ item }}"
+    dest: "{{ windows_agent_tools_dir }}\\{{ item }}"
+  loop:
+    - run-on-desktop.ps1
+    - screenshot.ps1
+    - capture-screen.ps1
+    - display-info.ps1
+    - display-info-session.ps1

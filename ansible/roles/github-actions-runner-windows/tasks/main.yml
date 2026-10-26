@@ -1,0 +1,8 @@
+---
+- name: Ensure the runner is present (register + run at logon)
+  ansible.builtin.import_tasks: present.yml
+  when: gh_runner_win_state == 'present'
+
+- name: Ensure the runner is absent
+  ansible.builtin.import_tasks: absent.yml
+  when: gh_runner_win_state == 'absent'

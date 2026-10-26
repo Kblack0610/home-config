@@ -1,0 +1,14 @@
+---
+# Where the agent helpers live. Agents call them by this path, and
+# docs/windows-machines.md ("Driving it from an agent") names it, so change both.
+windows_agent_tools_dir: C:\tools
+
+# The shell an SSH session gets. PowerShell, so an agent can send
+# `ssh <host> '<PowerShell>'` without a `powershell -Command` wrapper; the
+# inventory's ansible_shell_type must match it.
+windows_agent_tools_ssh_shell: C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe
+
+# Client Windows ships Restricted, which refuses every .ps1, including the
+# helpers below. RemoteSigned runs local scripts and still refuses downloaded
+# unsigned ones.
+windows_agent_tools_execution_policy: RemoteSigned

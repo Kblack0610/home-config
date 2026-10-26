@@ -1,0 +1,101 @@
+---
+- name: Assert gh CLI is authenticated on the control node
+  ansible.builtin.command: gh auth status
+  delegate_to: localhost
+  run_once: true
+  changed_when: false
+
+- name: Ensure the runner directory exists
+  ansible.windows.win_file:
+    path: "{{ gh_runner_win_home }}"
+    state: directory
+
+- name: Download the runner zip
+  ansible.windows.win_get_url:
+    url: "{{ gh_runner_win_zip_url }}"
+    dest: "{{ gh_runner_win_home }}\\{{ gh_runner_win_zip }}"
+    checksum: "{{ gh_runner_win_zip_sha256 }}"
+    checksum_algorithm: sha256
+
+- name: Unpack the runner
+  ansible.windows.win_powershell:
+    parameters:
+      Zip: "{{ gh_runner_win_home }}\\{{ gh_runner_win_zip }}"
+      Dest: "{{ gh_runner_win_home }}"
+    script: |
+      param([string]$Zip, [string]$Dest)
+      $Ansible.Changed = $false
+      if (Test-Path (Join-Path $Dest 'config.cmd')) { return }
+      Expand-Archive -Path $Zip -DestinationPath $Dest -Force
+      $Ansible.Changed = $true
+
+- name: Detect an existing registration
+  ansible.windows.win_stat:
+    path: "{{ gh_runner_win_home }}\\.runner"
+  register: _gh_win_marker
+
+- name: Mint an org registration token via gh (control node)
+  ansible.builtin.command:
+    argv: [gh, api, --method, POST, "{{ gh_runner_win_api_path }}/actions/runners/registration-token", --jq, .token]
+  delegate_to: localhost
+  register: _gh_win_token
+  changed_when: false
+  no_log: true
+  when:
+    - not _gh_win_marker.stat.exists
+    - not ansible_check_mode
+
+- name: Register the runner
+  ansible.windows.win_command:
+    argv:
+      - "{{ gh_runner_win_home }}\\config.cmd"
+      - --unattended
+      - --replace
+      - --url
+      - "{{ gh_runner_win_url }}"
+      - --token
+      - "{{ _gh_win_token.stdout | trim }}"
+      - --name
+      - "{{ gh_runner_win_name }}"
+      - --labels
+      - "{{ gh_runner_win_labels | join(',') }}"
+      - --work
+      - _work
+    chdir: "{{ gh_runner_win_home }}"
+    creates: "{{ gh_runner_win_home }}\\.runner"
+  no_log: true
+  when:
+    - not _gh_win_marker.stat.exists
+    - not ansible_check_mode
+
+# Hidden PowerShell hosts run.cmd so the TV never shows a console window.
+# ExecutionTimeLimit zero: the default (72h) would kill a healthy runner.
+- name: Run the runner at logon, below normal priority
+  ansible.windows.win_powershell:
+    parameters:
+      Name: "{{ gh_runner_win_task }}"
+      RunnerHome: "{{ gh_runner_win_home }}"
+      User: "{{ gh_runner_win_user }}"
+      Priority: "{{ gh_runner_win_priority }}"
+    script: |
+      param([string]$Name, [string]$RunnerHome, [string]$User, [int]$Priority)
+      $Ansible.Changed = $false
+      $arg = "-NoProfile -NonInteractive -WindowStyle Hidden -Command & '$RunnerHome\run.cmd'"
+      $t = Get-ScheduledTask -TaskName $Name -EA 0
+      $same = $t -and $t.Actions[0].Arguments -eq $arg -and $t.Settings.Priority -eq $Priority -and
+              $t.Principal.LogonType -eq 'Interactive' -and $t.Settings.ExecutionTimeLimit -eq 'PT0S'
+      if (-not $same) {
+        $action = New-ScheduledTaskAction -Execute 'powershell.exe' -Argument $arg -WorkingDirectory $RunnerHome
+        $trigger = New-ScheduledTaskTrigger -AtLogOn -User $User
+        $principal = New-ScheduledTaskPrincipal -UserId $User -LogonType Interactive -RunLevel Limited
+        $settings = New-ScheduledTaskSettingsSet -Priority $Priority -ExecutionTimeLimit ([TimeSpan]::Zero) `
+          -RestartCount 999 -RestartInterval (New-TimeSpan -Minutes 1) -MultipleInstances IgnoreNew `
+          -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries
+        Register-ScheduledTask -TaskName $Name -Action $action -Trigger $trigger -Principal $principal -Settings $settings -Force | Out-Null
+        $Ansible.Changed = $true
+      }
+      # Start it now when someone is at the desktop; otherwise the next logon does.
+      if ((Get-CimInstance Win32_ComputerSystem).UserName -and (Get-ScheduledTask -TaskName $Name).State -ne 'Running') {
+        Start-ScheduledTask -TaskName $Name
+        $Ansible.Changed = $true
+      }

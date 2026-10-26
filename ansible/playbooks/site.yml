@@ -541,16 +541,32 @@
       vars:
         node_exporter_linux_systemd_units: "{{ ['snapclient.service'] + (['audio-endpoint-capture.service'] if audio_endpoint_capture | default(false) else []) }}"
 
-# Windows PCs over OpenSSH. windows-baseline is the lean, gaming-first debloat
-# (Store apps, telemetry, ASUS/OneDrive removal, power, cleanup).
-# Reboot after the first apply: GPU scheduling and the NIC power setting only
-# take effect on boot. See docs/windows-machines.md.
+# Windows PCs over OpenSSH. windows-baseline is the lean debloat (Store apps,
+# telemetry, ASUS/OneDrive removal, power, cleanup) plus the computer name;
+# windows-agent-tools makes the PC drivable by an agent (PowerShell over SSH,
+# script policy, the C:\tools desktop helpers).
+# Reboot after the first apply: GPU scheduling, the NIC power setting and a
+# new computer name only take effect on boot. See docs/windows-machines.md.
 - name: Windows baseline
   hosts: windows_hosts
   gather_facts: false
   roles:
     - role: windows-baseline
       tags: [windows]
+    - role: windows-agent-tools
+      tags: [windows, agent-tools]
+
+# The opt-in Windows test runner (org-scoped, labels self-hosted/Windows/X64/
+# host-windows-media). Not a CI gate and not the Unity pool: a job lands here
+# only with `runs-on: [self-hosted, windows]`. It runs at logon in the desktop
+# session, so it is offline while nobody is logged on. Registration needs
+# `gh` with admin:org on the control node, like the Unity pool.
+- name: Windows test runner (windows-media only)
+  hosts: windows-media
+  gather_facts: false
+  roles:
+    - role: github-actions-runner-windows
+      tags: [windows, runner]
 
 # Login passwords on the PXE-built Linux hosts: the user's from
 # vault_linux_login_password_hash, root's locked. Last on purpose: its assert

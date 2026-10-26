@@ -6,7 +6,7 @@ down independently of the GitHub API, because the API only lists runners that
 registered and a slot whose play never ran is exactly what the dashboard exists to
 show. So it is a copy of the slot counts in ansible/inventory.yml
 (platform_ci_runners pmp_light_slots / pmp_heavy_slots, unity_ci_runners
-unity_ci_slots) plus the single mac-mini runner from the "macOS CI runner" play.
+unity_ci_slots) plus the single-host runners pinned by their own plays (mac-mini, windows-media).
 
 Same rule as check-fleet-roster.py: independent copies are the design, copies nobody
 compares are the bug. This compares them in BOTH directions, because both break: a
@@ -31,9 +31,10 @@ GROUPS = {
     "platform_ci_runners": {"pmp_light_slots": "pmp-light", "pmp_heavy_slots": "pmp-heavy"},
     "unity_ci_runners": {"unity_ci_slots": "unity"},
 }
-# The macOS runner is one play pinned to one host (playbooks/site.yml, "macOS CI
-# runner (mac-mini only)"), not an inventory group with a slot var.
-MAC = {("mac-mini", "macos"): 1}
+# The macOS runner and the Windows test runner are each one play pinned to one
+# host (playbooks/site.yml, "macOS CI runner (mac-mini only)" and "Windows test
+# runner (windows-media only)"), not inventory groups with a slot var.
+PINNED = {("mac-mini", "macos"): 1, ("windows-media", "windows"): 1}
 
 
 def inventory_roster(path):
@@ -70,9 +71,9 @@ def exporter_roster(path):
 
 def main():
     want = inventory_roster(INVENTORY)
-    want.update(MAC)
+    want.update(PINNED)
     have = exporter_roster(EXPORTER_DEPLOY)
-    if len(want) <= len(MAC):
+    if len(want) <= len(PINNED):
         sys.exit(f"FAIL: parsed no runner slots out of {INVENTORY}; the parser is broken, not the roster")
     rc = 0
     for key in sorted(set(want) | set(have)):

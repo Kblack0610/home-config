@@ -112,7 +112,11 @@ def pool_of(labels):
     for p in POOL_LABELS:
         if p in labels:
             return p
-    return "macos" if "macOS" in labels else "other"
+    if "macOS" in labels:
+        return "macos"
+    # GitHub matches labels without regard to case, and the runner's own label
+    # is "Windows".
+    return "windows" if any(l.lower() == "windows" for l in labels) else "other"
 
 
 def host_of(name, labels):

@@ -1,6 +1,6 @@
 # windows-baseline
 
-Lean, gaming-first baseline for a Windows PC reached over Windows OpenSSH. Written for `living-room-pc` (Win10 Pro, a TV-connected gaming box), and kept generic: every app, service, task and registry value it touches is a list in `defaults/main.yml`, so another Windows host overrides data, not tasks.
+Lean baseline for a Windows PC reached over Windows OpenSSH. Written for `windows-media` (Win10 Pro, the living-room Windows and media box, also the infra Windows test host), and kept generic: every app, service, task and registry value it touches is a list in `defaults/main.yml`, so another Windows host overrides data, not tasks.
 
 ## What it does
 
@@ -11,21 +11,22 @@ Lean, gaming-first baseline for a Windows PC reached over Windows OpenSSH. Writt
 5. Removes autostart nags (Logi Download Assistant, the OneDrive setup stubs).
 6. Performance: High performance plan, no sleep on AC, Wi-Fi at max performance, network cards never powered off (`PnPCapabilities=24`), hibernation off (also disables Fast Startup), Game Mode on, hardware-accelerated GPU scheduling on, background Game DVR capture off.
 7. Cleanup: temp files older than a week, the Windows Update download cache, superseded component versions. Reported as unchanged, so a converged run reads `changed=0`.
+8. Computer name: `windows_hostname` from the inventory (`WINDOWS-MEDIA`), so Windows' own name matches the fleet name. It takes effect at the next reboot; the role never reboots.
 
 ## Apply
 
 ```bash
 cd ansible && ansible-galaxy collection install -r requirements.yml -p ./collections
-ansible-playbook playbooks/site.yml --limit living-room-pc --check --diff
-ansible-playbook playbooks/site.yml --limit living-room-pc
-ansible living-room-pc -m ansible.windows.win_reboot -a "pre_reboot_delay=60"   # first apply only
+ansible-playbook playbooks/site.yml --limit windows-media --check --diff
+ansible-playbook playbooks/site.yml --limit windows-media
+ansible windows-media -m ansible.windows.win_reboot -a "pre_reboot_delay=60"   # first apply only
 ```
 
 GPU scheduling and the network-card power setting take effect after a reboot. `win_reboot` waits for the host to answer again instead of sleeping.
 
 ## Verify
 
-A second run reports `changed=0`. Measured on living-room-pc, 2026-10-16, before -> after: C: free 29.9 -> 60.1 GB, Store apps 50 -> 20, provisioned 47 -> 21, running services 93 -> 80, processes 119 -> 104, ASUS services running 0, Balanced -> High performance.
+A second run reports `changed=0`. Measured on this PC (then named living-room-pc), 2026-10-16, before -> after: C: free 29.9 -> 60.1 GB, Store apps 50 -> 20, provisioned 47 -> 21, running services 93 -> 80, processes 119 -> 104, ASUS services running 0, Balanced -> High performance.
 
 ## Gotchas
 

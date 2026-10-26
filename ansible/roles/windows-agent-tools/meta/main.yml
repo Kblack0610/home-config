@@ -1,0 +1,10 @@
+---
+galaxy_info:
+  role_name: windows_agent_tools
+  author: kblack0610
+  description: Make a Windows PC drivable by an agent over SSH (PowerShell shell, script policy, desktop-session helpers)
+  license: MIT
+  min_ansible_version: "2.18"
+  platforms:
+    - name: Windows
+dependencies: []

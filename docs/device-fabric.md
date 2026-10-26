@@ -77,7 +77,7 @@ Full detail: `apps/headwind-fleet-bridge/README.md`.
 | Piece | State |
 |-------|-------|
 | fleet-pulse liveness | **live** (Linux pushing; Mac/Windows pushers authored, apply per-host) |
-| gatus `fleet` group | **live** (`linux-cachyos`/`living-room-pc` declared) |
+| gatus `fleet` group | **live** (`linux-cachyos`/`windows-media` declared) |
 | Headwind MDM | **live**, LAN-only, tablets enrolled (Lenovo Tab wall panels) |
 | headwind-fleet-bridge | **live**, mirroring tablet liveness into the fleet group |
 | FleetDM | **decommissioned** (2026-07) - namespace/manifests/osquery-agent role removed; `fleet.kblab.me` now the gatus fleet dashboard |

@@ -77,6 +77,15 @@ devices:
     category: workstations
     range_exception: true
 
+  # windows-media (WINDOWS-MEDIA): the living-room Windows and media box and the
+  # infra Windows test host, next to the Macs it does the same job as. Wi-Fi
+  # (Intel AX210). Fleet key homelab_windows-media; reached over Windows
+  # OpenSSH. Was living-room-pc-lan at .121 until 2026-10-26. See docs/windows-machines.md.
+  - hostname: windows-media-lan
+    mac: "F4:3B:D8:6F:A7:A7"
+    ip: "192.168.1.8"
+    category: infrastructure
+
   - hostname: tl-sg108e-network-switch-8
     mac: "0C:EF:15:05:E9:FA"
     ip: "192.168.1.52"
@@ -297,13 +306,6 @@ devices:
   - hostname: audio-living-lan
     mac: "24:1C:04:27:55:D5"
     ip: "192.168.1.120"
-    category: media
-
-  # Living-room Windows PC (DESKTOP-BPLB04U), on Wi-Fi (Intel AX210). Fleet key
-  # homelab_living-room-pc; reached over Windows OpenSSH. See docs/windows-machines.md.
-  - hostname: living-room-pc-lan
-    mac: "F4:3B:D8:6F:A7:A7"
-    ip: "192.168.1.121"
     category: media
 
   # Bedroom whole-house audio endpoint: Raspberry Pi 3B+ (Pi OS trixie) on Wi-Fi,

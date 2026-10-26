@@ -1,0 +1,37 @@
+---
+# An org-scoped runner, like the Unity pool: any BlackNBrownStudios repo can ask
+# for it, and nothing asks by accident. A job lands here only with
+# `runs-on: [self-hosted, windows]`, and as of 2026-10-26 no workflow does.
+gh_runner_win_owner: BlackNBrownStudios
+gh_runner_win_url: "https://github.com/{{ gh_runner_win_owner }}"
+gh_runner_win_api_path: "orgs/{{ gh_runner_win_owner }}"
+
+# Same release as the Linux role. Bump deliberately; the runner self-updates in
+# between, so this only decides what a fresh install starts from.
+gh_runner_win_version: "2.337.0"
+gh_runner_win_zip: "actions-runner-win-x64-{{ gh_runner_win_version }}.zip"
+gh_runner_win_zip_url: "https://github.com/actions/runner/releases/download/v{{ gh_runner_win_version }}/{{ gh_runner_win_zip }}"
+# From the release notes: gh release view v2.337.0 -R actions/runner (BEGIN SHA win-x64)
+gh_runner_win_zip_sha256: "1150692afa94e71f872017e254ea55b6eece1eece3fe7e3a6d4c93d0a1b85cfc"
+
+gh_runner_win_home: C:\actions-runner
+gh_runner_win_name: "{{ inventory_hostname }}"
+# The runner adds self-hosted, Windows and X64 itself (labels match without
+# regard to case, so `runs-on: [self-hosted, windows]` finds it). host-<name>
+# matches the Unity pool's convention, for pinning a job to this one box.
+gh_runner_win_labels:
+  - "host-{{ inventory_hostname }}"
+
+# The runner runs in the console user's desktop session, started at logon by a
+# scheduled task, not as a service: a service lives in session 0, where a game
+# build has no window on the screen and no display GPU. The macOS runner is a
+# per-user LaunchAgent for the same kind of reason. Consequence: it is offline
+# whenever nobody is logged on, which is fine for an opt-in test box.
+gh_runner_win_task: actions-runner
+gh_runner_win_user: "{{ ansible_user }}"
+# Task Scheduler priority 7 is below normal (CPU, I/O and memory), inherited by
+# every job step, so whatever is on the TV wins.
+gh_runner_win_priority: 7
+
+# present: download, register, run at logon. absent: stop, deregister, remove.
+gh_runner_win_state: present

@@ -1,0 +1,53 @@
+---
+# Stop the task first so the process is not holding the registration, then
+# deregister GitHub-side, then remove the files. Best effort throughout: an
+# already-clean box is a no-op.
+- name: Stop and remove the logon task
+  ansible.windows.win_powershell:
+    parameters:
+      Name: "{{ gh_runner_win_task }}"
+    script: |
+      param([string]$Name)
+      $Ansible.Changed = $false
+      if (Get-ScheduledTask -TaskName $Name -EA 0) {
+        Stop-ScheduledTask -TaskName $Name
+        Unregister-ScheduledTask -TaskName $Name -Confirm:$false
+        $Ansible.Changed = $true
+      }
+
+- name: Check for a registration
+  ansible.windows.win_stat:
+    path: "{{ gh_runner_win_home }}\\.runner"
+  register: _gh_win_marker
+
+- name: Mint an org removal token via gh (control node)
+  ansible.builtin.command:
+    argv: [gh, api, --method, POST, "{{ gh_runner_win_api_path }}/actions/runners/remove-token", --jq, .token]
+  delegate_to: localhost
+  register: _gh_win_remove_token
+  changed_when: false
+  failed_when: false
+  no_log: true
+  when:
+    - _gh_win_marker.stat.exists
+    - not ansible_check_mode
+
+- name: Deregister the runner from GitHub
+  ansible.windows.win_command:
+    argv:
+      - "{{ gh_runner_win_home }}\\config.cmd"
+      - remove
+      - --token
+      - "{{ _gh_win_remove_token.stdout | default('') | trim }}"
+    chdir: "{{ gh_runner_win_home }}"
+  failed_when: false
+  no_log: true
+  when:
+    - _gh_win_marker.stat.exists
+    - (_gh_win_remove_token.stdout | default('') | length) > 0
+    - not ansible_check_mode
+
+- name: Remove the runner directory
+  ansible.windows.win_file:
+    path: "{{ gh_runner_win_home }}"
+    state: absent

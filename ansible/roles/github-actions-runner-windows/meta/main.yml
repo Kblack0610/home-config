@@ -1,0 +1,12 @@
+---
+galaxy_info:
+  role_name: github_actions_runner_windows
+  author: kblack0610
+  description: >-
+    Org-scoped GitHub Actions runner on a Windows PC, run at logon in the
+    desktop session at below-normal priority. An opt-in test box, not a CI gate.
+  license: MIT
+  min_ansible_version: "2.18"
+  platforms:
+    - name: Windows
+dependencies: []

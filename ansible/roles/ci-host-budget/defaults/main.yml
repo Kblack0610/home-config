@@ -1,8 +1,10 @@
 ---
-# One CPU and memory budget for all CI on a host. Every CI runner unit and every
-# container its jobs start runs under ci.slice, in a child slice per workload, so
-# Unity and platform jobs can each use the whole budget when the other is idle but
-# never more than it together. Set per host in inventory.yml (ci_hosts).
+# One CPU and memory budget for all CI on a host. Every CI runner unit runs under
+# ci.slice, in a child slice per workload, so Unity and platform jobs can each use
+# the whole budget when the other is idle but never more than it together. Every
+# docker container lands there too: docker's default cgroup parent is ci.slice,
+# and a job may name a narrower child (the playground's in-docker.sh passes
+# --cgroup-parent ci-unity.slice). Set per host in inventory.yml (ci_hosts).
 
 # CPUs CI may use, as an AllowedCPUs list ("4-15"). The rest stay with k3s and
 # the OS. A list and not a count because the hosts differ: on hp-victus the last
@@ -15,6 +17,12 @@ ci_memory_max: 24G
 # a memory cap of its own. About 4-6 GB per Unity job.
 ci_unity_cpus: ""
 ci_unity_memory_max: 16G
+# Unity's share of contended CPUs against the platform slice (systemd default
+# 100). Platform jobs still use Unity's CPUs when Unity is idle; when both want
+# them, Unity gets about 80%, so a platform burst slows its timed tests less.
+# A weight and not a CPU split, which would leave razer's three platform slots
+# four threads.
+ci_unity_cpu_weight: 400
 
 # Platform (pmp) runners: memory cap of their own; they use all of ci_cpus.
 ci_pmp_memory_max: 16G

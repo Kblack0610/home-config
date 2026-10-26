@@ -246,9 +246,10 @@
 #
 # Both hp-victus Unity runners run in ci-unity.slice, inside the host's CI budget
 # (roles/ci-host-budget). Until 2026-10-24 they sat in system.slice with no cap.
-# The playground's Unity containers follow via UNITY_CI_CGROUP_PARENT; the
-# dodginballs workflow starts its game-ci containers itself, so only its runner
-# process is capped.
+# The playground's Unity containers follow via UNITY_CI_CGROUP_PARENT. The
+# dodginballs workflows start their game-ci containers themselves without a
+# parent, so those land in ci.slice through docker's default (ci-host-budget):
+# inside the host budget, not the narrower Unity one.
 - name: dodginballs Unity runner (hp-victus primary)
   hosts: hp-victus
   become: true

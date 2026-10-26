@@ -33,3 +33,69 @@
     daemon_reload: true
   when: _ci_slice_units.changed or _ci_retired_units.changed
 
+# Containers are children of dockerd, not of the runner that asked for them, so a
+# job's `docker run` lands in system.slice with no cap unless it passes
+# --cgroup-parent. Only the playground does; dodginballs (plain docker run and
+# game-ci/unity-builder) and platform service containers did not, and ran
+# uncapped until 2026-10-26. Docker's default parent closes that for every repo:
+# a container that names no slice goes into the host's CI budget, and one that
+# names a narrower slice (the playground's ci-unity.slice) still gets it. Docker
+# on these hosts is CI only; k3s runs on containerd.
+- name: Read the docker daemon config
+  ansible.builtin.slurp:
+    src: /etc/docker/daemon.json
+  register: _ci_docker_daemon_json
+  failed_when: false
+
+- name: Ensure the docker config directory exists
+  ansible.builtin.file:
+    path: /etc/docker
+    state: directory
+    mode: "0755"
+
+- name: Default every docker container into the CI budget
+  ansible.builtin.copy:
+    dest: /etc/docker/daemon.json
+    content: >-
+      {{ ((_ci_docker_daemon_json.content | b64decode | from_json)
+          if _ci_docker_daemon_json.content is defined else {})
+         | combine({'cgroup-parent': ci_slice}) | to_nice_json }}
+    mode: "0644"
+
+# State, not a notify: a refused restart must still be pending on the next run,
+# and a handler would be forgotten once the file is already written. live-restore
+# is off on these hosts, so restarting dockerd kills the containers of a running
+# job; refuse rather than do that.
+- name: Check whether dockerd predates its config
+  ansible.builtin.shell: |
+    set -eu
+    started=$(date -d "$(systemctl show docker.service -p ActiveEnterTimestamp --value)" +%s)
+    [ "$(stat -c %Y /etc/docker/daemon.json)" -gt "$started" ] && echo stale || echo current
+  register: _ci_docker_config_age
+  changed_when: false
+  check_mode: false
+
+- name: List running containers before restarting docker
+  ansible.builtin.command: docker ps -q
+  register: _ci_docker_running
+  changed_when: false
+  check_mode: false
+  when: _ci_docker_config_age.stdout == 'stale'
+
+- name: Refuse to restart docker under a running CI job
+  ansible.builtin.assert:
+    that: _ci_docker_running.stdout | length == 0
+    fail_msg: >-
+      A CI job is running on {{ inventory_hostname }}
+      ({{ _ci_docker_running.stdout_lines | length }} containers), and docker
+      must restart to pick up its new config. Re-run this play when the host's
+      runners are idle; the restart stays pending until then.
+    quiet: true
+  when: _ci_docker_config_age.stdout == 'stale' and not ansible_check_mode
+
+- name: Restart docker to load its config
+  ansible.builtin.systemd:
+    name: docker.service
+    state: restarted
+  when: _ci_docker_config_age.stdout == 'stale'
+

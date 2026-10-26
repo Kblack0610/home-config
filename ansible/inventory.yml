@@ -192,7 +192,10 @@ all:
         # (2026-10-06, main run 37416749384). Slot 2 was removed by hand.
         asus-laptop:
           unity_ci_slots: 1
-        # One slot until a nightly shows the timed tests pass here.
+        # One slot, like asus: the same 8 Unity threads. Its first pool shards
+        # (2026-10-24 PlayMode 4 green, 2026-10-26 PlayMode 3 one flaky timed
+        # test) match the other hosts, which each fail one different timed test
+        # per run.
         razer-laptop:
           unity_ci_slots: 1
         # Not the workstation (cachyos-x8664-main): it is the human's work machine,
@@ -209,8 +212,9 @@ all:
     # Starting values, tuned against a full nightly.
     ci_hosts:
       hosts:
-        # Ryzen 9 5900HX, 16 threads alike, 62 GB (+ zram). Unity keeps its own
-        # 8 CPUs, as before, so platform jobs cannot slow its timed tests.
+        # Ryzen 9 5900HX, 16 threads alike, 62 GB (+ zram). Unity is held to 8
+        # CPUs; platform jobs may use them too, but Unity wins them under
+        # contention (ci_unity_cpu_weight).
         asus-laptop:
           ci_cpus: 4-15
           ci_memory_max: 36G
@@ -228,7 +232,8 @@ all:
           ci_unity_memory_max: 14G
           ci_pmp_memory_max: 14G
         # 8 cores / 16 threads, SMT siblings are n and n+8. Cores 0-1 (CPUs
-        # 0-1, 8-9) stay with k3s and the OS; Unity keeps cores 4-7 to itself.
+        # 0-1, 8-9) stay with k3s and the OS. Unity is held to cores 4-7, which
+        # platform jobs share at a lower weight (ci_unity_cpu_weight).
         # 93 GB usable, so CI gets most of it.
         razer-laptop:
           ci_cpus: 2-7,10-15

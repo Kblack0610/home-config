@@ -54,7 +54,7 @@ ANSIBLE_VAULT_PASSWORD_FILE=~/.ansible-vault-pass \
 
 | Key | Purpose |
 |-----|---------|
-| `ssh-privkey` | Dedicated ed25519 keypair for the runner. Public key must be in `~/.ssh/authorized_keys` on every host in `HOSTS` (`cronjob.yaml`). |
+| `ssh-privkey` | Dedicated ed25519 keypair for the runner. Public key must be in `~/.ssh/authorized_keys` on every host in `HOSTS` (`cronjob.yaml`), and on pi5-master, where `roles/game-server-node` delegates `kubectl label`. Missing there, every run ended `UNREACHABLE` (fixed 2026-10-26). |
 | `ansible-vault-pass` | Decrypts `ansible/group_vars/*/vault.yml`. Same as workstation's `~/.ansible-vault-pass`. |
 
 ### Rotating the SSH key

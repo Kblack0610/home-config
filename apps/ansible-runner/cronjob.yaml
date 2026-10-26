@@ -76,17 +76,22 @@ spec:
                   # A host being down must not stop the others being checked. That is
                   # the whole point of a drift check: the fleet is partially available
                   # by nature.
-                  HOSTS="hp-victus=192.168.1.243 asus-laptop=192.168.1.152 razer-laptop=192.168.1.26"
+                  # alias=ip[:port]. asus-laptop's sshd is on 2222 (inventory.yml);
+                  # scanning it on 22 skipped it as "unreachable" every night.
+                  HOSTS="hp-victus=192.168.1.243 asus-laptop=192.168.1.152:2222 razer-laptop=192.168.1.26"
 
                   REACHABLE=""
                   SKIPPED=""
                   for entry in $HOSTS; do
                     alias="${entry%%=*}"
-                    ip="${entry##*=}"
-                    if ssh-keyscan -T 5 -H "$ip" >> ~/.ssh/known_hosts 2>/dev/null; then
+                    addr="${entry##*=}"
+                    ip="${addr%%:*}"
+                    port=22
+                    case "$addr" in *:*) port="${addr##*:}" ;; esac
+                    if ssh-keyscan -T 5 -p "$port" -H "$ip" >> ~/.ssh/known_hosts 2>/dev/null; then
                       REACHABLE="${REACHABLE:+$REACHABLE,}$alias"
                     else
-                      SKIPPED="${SKIPPED:+$SKIPPED }$alias($ip)"
+                      SKIPPED="${SKIPPED:+$SKIPPED }$alias($addr)"
                     fi
                   done
                   chmod 644 ~/.ssh/known_hosts

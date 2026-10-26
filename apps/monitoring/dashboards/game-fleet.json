@@ -39,7 +39,7 @@
             "uid": "${datasource}"
           },
           "editorMode": "code",
-          "expr": "bnb_fleet_sessions",
+          "expr": "count(bnb_server_info{game=~\"$game\"}) or vector(0)",
           "legendFormat": "__auto",
           "refId": "A",
           "instant": true,
@@ -89,7 +89,7 @@
             "uid": "${datasource}"
           },
           "editorMode": "code",
-          "expr": "sum(bnb_server_players)",
+          "expr": "sum(bnb_server_players{game=~\"$game\"}) or vector(0)",
           "legendFormat": "__auto",
           "refId": "A",
           "instant": true,
@@ -139,7 +139,7 @@
             "uid": "${datasource}"
           },
           "editorMode": "code",
-          "expr": "count(bnb_server_info{provider=\"home\"}) or vector(0)",
+          "expr": "count(bnb_server_info{game=~\"$game\",provider=\"home\"}) or vector(0)",
           "legendFormat": "__auto",
           "refId": "A",
           "instant": true,
@@ -189,7 +189,7 @@
             "uid": "${datasource}"
           },
           "editorMode": "code",
-          "expr": "count(bnb_server_info{provider=\"edgegap\"}) or vector(0)",
+          "expr": "count(bnb_server_info{game=~\"$game\",provider=\"edgegap\"}) or vector(0)",
           "legendFormat": "__auto",
           "refId": "A",
           "instant": true,
@@ -239,7 +239,7 @@
             "uid": "${datasource}"
           },
           "editorMode": "code",
-          "expr": "bnb_server_info{id=~\"$id\"}",
+          "expr": "bnb_server_info{game=~\"$game\",id=~\"$id\"}",
           "legendFormat": "",
           "refId": "A",
           "instant": true,
@@ -323,7 +323,7 @@
             "uid": "${datasource}"
           },
           "editorMode": "code",
-          "expr": "bnb_server_players{id=~\"$id\"}",
+          "expr": "bnb_server_players{game=~\"$game\",id=~\"$id\"}",
           "legendFormat": "{{id}}",
           "refId": "A",
           "instant": false,
@@ -373,7 +373,7 @@
             "uid": "${datasource}"
           },
           "editorMode": "code",
-          "expr": "bnb_server_stat{id=~\"$id\",stat=~\"tickMs|tickMaxMs\"}",
+          "expr": "bnb_server_stat{game=~\"$game\",id=~\"$id\",stat=~\"tickMs|tickMaxMs\"}",
           "legendFormat": "{{id}} {{stat}}",
           "refId": "A",
           "instant": false,
@@ -423,7 +423,7 @@
             "uid": "${datasource}"
           },
           "editorMode": "code",
-          "expr": "bnb_server_stat{id=~\"$id\",stat=\"frameMs\"}",
+          "expr": "bnb_server_stat{game=~\"$game\",id=~\"$id\",stat=\"frameMs\"}",
           "legendFormat": "{{id}}",
           "refId": "A",
           "instant": false,
@@ -473,7 +473,7 @@
             "uid": "${datasource}"
           },
           "editorMode": "code",
-          "expr": "bnb_server_stat{id=~\"$id\",stat=\"heapMB\"}",
+          "expr": "bnb_server_stat{game=~\"$game\",id=~\"$id\",stat=\"heapMB\"}",
           "legendFormat": "{{id}}",
           "refId": "A",
           "instant": false,
@@ -523,7 +523,7 @@
             "uid": "${datasource}"
           },
           "editorMode": "code",
-          "expr": "bnb_server_stat{id=~\"$id\",stat=~\"inKBPerS|outKBPerS\"}",
+          "expr": "bnb_server_stat{game=~\"$game\",id=~\"$id\",stat=~\"inKBPerS|outKBPerS\"}",
           "legendFormat": "{{id}} {{stat}}",
           "refId": "A",
           "instant": false,
@@ -573,7 +573,7 @@
             "uid": "${datasource}"
           },
           "editorMode": "code",
-          "expr": "bnb_server_heartbeat_age_seconds{id=~\"$id\"}",
+          "expr": "bnb_server_heartbeat_age_seconds{game=~\"$game\",id=~\"$id\"}",
           "legendFormat": "{{id}}",
           "refId": "A",
           "instant": false,
@@ -659,6 +659,31 @@
         "options": []
       },
       {
+        "name": "game",
+        "label": "Game",
+        "type": "query",
+        "datasource": {
+          "type": "prometheus",
+          "uid": "${datasource}"
+        },
+        "query": {
+          "query": "label_values(bnb_server_info, game)",
+          "refId": "games"
+        },
+        "definition": "label_values(bnb_server_info, game)",
+        "includeAll": true,
+        "multi": true,
+        "allValue": ".*",
+        "current": {
+          "text": "All",
+          "value": "$__all"
+        },
+        "refresh": 2,
+        "sort": 1,
+        "hide": 0,
+        "options": []
+      },
+      {
         "name": "id",
         "label": "Server",
         "type": "query",
@@ -667,10 +692,10 @@
           "uid": "${datasource}"
         },
         "query": {
-          "query": "label_values(bnb_server_info, id)",
+          "query": "label_values(bnb_server_info{game=~\"$game\"}, id)",
           "refId": "ids"
         },
-        "definition": "label_values(bnb_server_info, id)",
+        "definition": "label_values(bnb_server_info{game=~\"$game\"}, id)",
         "includeAll": true,
         "multi": true,
         "allValue": ".*",

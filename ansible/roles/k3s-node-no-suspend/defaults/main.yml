@@ -1,0 +1,17 @@
+---
+# What a short press of the power key does. poweroff is logind's own default.
+# ignore suits a laptop whose power button is a keyboard key and that sits
+# stacked with its lid shut: razer-laptop powered off on 2026-10-24 from
+# "Power key pressed short" with stray keystrokes on its console just before.
+# Holding the button still forces power-off in firmware either way.
+k3s_no_suspend_power_key: poweroff
+
+# Every logind property the dropin sets, and the value it must read live.
+k3s_no_suspend_logind:
+  HandleLidSwitch: ignore
+  HandleLidSwitchDocked: ignore
+  HandleLidSwitchExternalPower: ignore
+  HandleSuspendKey: ignore
+  HandleHibernateKey: ignore
+  HandlePowerKey: "{{ k3s_no_suspend_power_key }}"
+  IdleAction: ignore

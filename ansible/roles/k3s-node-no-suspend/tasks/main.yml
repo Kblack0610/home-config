@@ -24,12 +24,9 @@
       # k3s agents on laptops must NOT suspend — doing so silently removes
       # the node from the cluster. See ansible/roles/k3s-node-no-suspend/.
       [Login]
-      HandleLidSwitch=ignore
-      HandleLidSwitchDocked=ignore
-      HandleLidSwitchExternalPower=ignore
-      HandleSuspendKey=ignore
-      HandleHibernateKey=ignore
-      IdleAction=ignore
+      {% for key, value in k3s_no_suspend_logind.items() %}
+      {{ key }}={{ value }}
+      {% endfor %}
   notify: Restart systemd-logind
 
 - name: Mask sleep/suspend/hibernate/hybrid-sleep systemd targets
@@ -60,35 +57,28 @@
   ansible.builtin.command:
     cmd: >-
       busctl --no-pager get-property org.freedesktop.login1
-      /org/freedesktop/login1 org.freedesktop.login1.Manager {{ item }}
+      /org/freedesktop/login1 org.freedesktop.login1.Manager {{ item.key }}
   register: logind_props
-  changed_when: false
-  loop:
-    - HandleLidSwitch
-    - HandleLidSwitchDocked
-    - HandleLidSwitchExternalPower
-    - HandleSuspendKey
-    - HandleHibernateKey
-    - IdleAction
+  # "changed" here means the live value differs from the dropin: drift.
+  changed_when: ('"' ~ item.value ~ '"') not in logind_props.stdout
+  loop: "{{ k3s_no_suspend_logind | dict2items }}"
+  loop_control:
+    label: "{{ item.key }}"
 
 - name: Reload logind if live state hasn't converged with on-disk config
   ansible.builtin.systemd_service:
     name: systemd-logind
     state: reloaded
-  when: logind_props.results | map(attribute='stdout') | select('match', '.*ignore.*') | list | length < (logind_props.results | length)
+  when: logind_props is changed
 
-- name: Final verify — all managed properties live as 'ignore'
+- name: Final verify - every managed property live at its configured value
   ansible.builtin.command:
     cmd: >-
       busctl --no-pager get-property org.freedesktop.login1
-      /org/freedesktop/login1 org.freedesktop.login1.Manager {{ item }}
+      /org/freedesktop/login1 org.freedesktop.login1.Manager {{ item.key }}
   register: logind_final
   changed_when: false
-  failed_when: '"ignore" not in logind_final.stdout'
-  loop:
-    - HandleLidSwitch
-    - HandleLidSwitchDocked
-    - HandleLidSwitchExternalPower
-    - HandleSuspendKey
-    - HandleHibernateKey
-    - IdleAction
+  failed_when: ('"' ~ item.value ~ '"') not in logind_final.stdout
+  loop: "{{ k3s_no_suspend_logind | dict2items }}"
+  loop_control:
+    label: "{{ item.key }}"

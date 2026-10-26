@@ -45,6 +45,9 @@ all:
         # a USB-C ethernet dongle; the DHCP reservation follows that dongle's MAC.
         razer-laptop:
           ansible_host: 192.168.1.26
+          # Its power button is a keyboard key and it sits stacked, lid shut:
+          # a short press powered it off on 2026-10-24. Hold to force off.
+          k3s_no_suspend_power_key: ignore
 
     # This workstation, managed over a local connection (no SSH). Hosts the
     # gungan dictation ASR daemons (see roles/asr-servers).

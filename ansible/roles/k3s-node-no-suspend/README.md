@@ -1,6 +1,6 @@
 # k3s-node-no-suspend
 
-Prevents laptop k3s nodes from suspending. Bound to `hp-victus` and `asus-laptop` in `ansible/playbooks/site.yml`.
+Prevents laptop k3s nodes and CI hosts from suspending. Bound to `hp-victus`, `asus-laptop` and `razer-laptop` in `ansible/playbooks/site.yml`.
 
 ## Why this exists
 
@@ -16,6 +16,8 @@ This role makes that failure mode impossible.
 2. Masks `sleep.target`, `suspend.target`, `hibernate.target`, `hybrid-sleep.target` so `systemctl suspend` can't be invoked even manually.
 3. Restarts `systemd-logind` to pick up the new config.
 4. Verifies the live config matches expectation.
+
+The settings are one dict, `k3s_no_suspend_logind` in `defaults/main.yml`, which writes the dropin and drives both live checks. `k3s_no_suspend_power_key` (default `poweroff`) sets what a short press of the power key does; razer-laptop sets `ignore` because its power button is a keyboard key and it sits stacked with the lid shut (a press powered it off on 2026-10-24). Holding the button still forces power-off.
 
 ## Apply
 

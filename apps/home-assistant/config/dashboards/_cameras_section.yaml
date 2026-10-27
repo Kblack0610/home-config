@@ -6,7 +6,7 @@
 # proxied by HA, so it works off the LAN too. Tap the video, or the expand button,
 # to open it full size. The menu (top-left button) also has PTZ, the two-way talk button and
 # Frigate's reviews. expander-card remembers open/closed per browser (storage-id).
-# A new camera is one more entry under `cameras:`.
+# A new camera is one more entry under `cameras:`; the live grid picks it up.
 type: grid
 column_span: 2
 cards:
@@ -20,6 +20,8 @@ cards:
         cameras:
           - camera_entity: camera.amcrest_ptz_1
             live_provider: go2rtc
+          - camera_entity: camera.amcrest_living_room
+            live_provider: go2rtc
         dimensions:
           aspect_ratio: "16:9"
         # hidden: one button opens the menu, so the tile shows the picture, not a
@@ -32,6 +34,10 @@ cards:
             ptz_controls: { enabled: true }
             reviews: { enabled: true }
         live:
+          # Every camera at once; without it the card shows one and the others
+          # sit behind the hidden menu's camera switcher.
+          display:
+            mode: grid
           actions:
             tap_action:
               action: custom:advanced-camera-card-action

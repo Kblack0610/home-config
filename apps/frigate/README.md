@@ -12,7 +12,7 @@ Frigate NVR on home-k3s, reconciled by Flux. Object detection runs on hp-victus'
 | `service.yaml` | ClusterIP for the UI (8971), the internal API (5000) and the go2rtc restream (8554); a LoadBalancer for WebRTC (8555). |
 | `ingress.yaml` | `frigate.kblab.me`, LAN only (external-dns skips it). |
 | `pvc.yaml` | `frigate-config` (db, model cache) and `frigate-media` (recordings), both local-path on hp-victus. |
-| `camera-secret.yaml` | SOPS. The camera's `frigate` account as `FRIGATE_RTSP_USER` / `FRIGATE_RTSP_PASSWORD`. |
+| `camera-secret.yaml` | SOPS. amcrest-ptz-1's `frigate` account as `FRIGATE_RTSP_USER` / `FRIGATE_RTSP_PASSWORD`, amcrest-living-room's `admin` account as `FRIGATE_LIVING_ROOM_USER` / `FRIGATE_LIVING_ROOM_PASSWORD`. |
 | `backup-cronjob.yaml` | Daily `sqlite3 .backup` of `frigate.db` + `config.yml` to the NAS. Recordings are not backed up. |
 
 ## Access
@@ -87,6 +87,36 @@ Check the streams before blaming Frigate:
 ffprobe -v error -rtsp_transport tcp -show_entries stream=codec_name,width,height,avg_frame_rate -of compact \
   "rtsp://frigate:$(rbw get amcrest_frigate)@192.168.1.80:554/cam/realmonitor?channel=1&subtype=0"
 ```
+
+### amcrest-living-room (Amcrest ASH21-B-V2)
+
+1080p indoor camera with a fixed lens, on Wi-Fi (`BrownDooDoo`). 192.168.1.81, MAC 24:14:07:A2:B7:2A (the Wi-Fi interface; its Ethernet MAC 9C:8E:CD:38:AE:85 has no reservation). Firmware 2.680.00AC008.0.R (2022-04-06). Set up on 2026-10-27.
+
+This is Amcrest's "Smart Home" line, a different product from the IP4M. It has no local web UI and no CGI API: port 80 accepts a connection and then sends an empty reply, and only RTSP and ONVIF work. The IP4M recipes above (CGI settings, `curl -g`, the `hass` account and the Home Assistant Amcrest integration) do not apply. Its first password can only be set through the Amcrest Smart Home app.
+
+| rbw item | Camera account | Used by |
+|----------|----------------|---------|
+| `amcrest-wifi-camera-password` | `admin` (the device password set in the app) | Frigate RTSP, via `FRIGATE_LIVING_ROOM_*` in `camera-secret.yaml`; ONVIF |
+
+Frigate uses `admin` because RTSP knows no other account. ONVIF has its own user store here too: a `frigate` user created with ONVIF `CreateUsers` was refused over RTSP (401), so it was deleted again. ONVIF `admin` shares the app password and `admin`/`admin` is refused.
+
+Stream settings are applied over ONVIF Media2 (`/onvif/media2_service`, `SetVideoEncoderConfiguration`). Media1 reports the main stream as H264 even when it is H.265, so read and write it through Media2. The app's defaults were H.265 main at 30 fps, GOP 60. A reset restores them:
+
+| Setting | Value | Why |
+|---------|-------|-----|
+| Main stream (`VideoEncoder000`) | H.264, 1920x1080, 15 fps, GOP 30, 2048 kbps | Browsers play H.264. GOP 30 is the camera's minimum (range 30-150), a keyframe every 2 s |
+| Sub stream (`VideoEncoder001`) | H.264, 640x480, 5 fps, GOP 30, 512 kbps | Detection input; matches `detect` in `config.yml` |
+| Audio | AAC (default) | Recordings keep audio with no transcode |
+| Time | DST on, TZ GMT-06:00 (app defaults) | ONVIF UTC matched `date -u` with these, so the DST bug from the IP4M does not show here. The on-screen clock can only be changed in the app |
+
+ONVIF `SystemReboot` restarts it, which is how it was moved onto its DHCP reservation without a power cycle.
+
+After a factory reset (hold the pinhole a full 30 s; a short press only reboots it):
+
+1. Check it really reset: the unauthenticated WS-Discovery reply (UDP 3702) reports the init state, which reads uninitialized after a real reset.
+2. Add it in the Amcrest Smart Home app on `BrownDooDoo`. When the app asks for the device password, use `amcrest-wifi-camera-password` from rbw. The app's other password prompt is the Amcrest cloud login, not the camera's.
+3. Check `admin`/`admin` is refused over ONVIF, with one call.
+4. Reapply the stream settings above over Media2 and confirm with `ffprobe`.
 
 ## Verify
 

@@ -46,6 +46,12 @@ go2rtc:
       - rtsp://{FRIGATE_RTSP_USER}:{FRIGATE_RTSP_PASSWORD}@192.168.1.80:554/cam/realmonitor?channel=1&subtype=0
     amcrest_ptz_1_sub:
       - rtsp://{FRIGATE_RTSP_USER}:{FRIGATE_RTSP_PASSWORD}@192.168.1.80:554/cam/realmonitor?channel=1&subtype=1
+    # ASH21 (Smart Home line): RTSP only knows the app-created admin account,
+    # see "amcrest-living-room" in apps/frigate/README.md.
+    amcrest_living_room:
+      - rtsp://{FRIGATE_LIVING_ROOM_USER}:{FRIGATE_LIVING_ROOM_PASSWORD}@192.168.1.81:554/cam/realmonitor?channel=1&subtype=0
+    amcrest_living_room_sub:
+      - rtsp://{FRIGATE_LIVING_ROOM_USER}:{FRIGATE_LIVING_ROOM_PASSWORD}@192.168.1.81:554/cam/realmonitor?channel=1&subtype=1
   webrtc:
     candidates:
       # The pod is pinned to hp-victus; 8555 is published by the frigate-webrtc
@@ -110,3 +116,25 @@ cameras:
       port: 80
       user: "{FRIGATE_RTSP_USER}"
       password: "{FRIGATE_RTSP_PASSWORD}"
+
+  # Fixed lens, no PTZ, so no onvif block.
+  amcrest_living_room:
+    ffmpeg:
+      inputs:
+        - path: rtsp://127.0.0.1:8554/amcrest_living_room
+          input_args: preset-rtsp-restream
+          roles:
+            - record
+        - path: rtsp://127.0.0.1:8554/amcrest_living_room_sub
+          input_args: preset-rtsp-restream
+          roles:
+            - detect
+    detect:
+      enabled: true
+      width: 640
+      height: 480
+      fps: 5
+    live:
+      streams:
+        Main: amcrest_living_room
+        Sub: amcrest_living_room_sub

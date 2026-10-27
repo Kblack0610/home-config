@@ -13,6 +13,11 @@
 # posts several a day, so the aggregate going quiet for 5 days is a real stall.
 #
 # Diagnose a failure with docs/finance/simplefin-reconnect.md.
+#
+# On NUDGE_WEEKDAY it also posts the last 14 days of uncategorized spending to
+# the ntfy `finance` topic. Rules only know merchants seen before, so the first
+# visit to a new restaurant imports with no category and never counts against a
+# budget; October 2026 reached 29 such rows before anyone noticed.
 apiVersion: batch/v1
 kind: CronJob
 metadata:
@@ -45,6 +50,12 @@ spec:
                       key: budget-sync-id
                 - name: STALE_DAYS
                   value: "5"
+                # 1 = Monday (date +%u). Set to the current weekday on a one-off
+                # job to test the nudge.
+                - name: NUDGE_WEEKDAY
+                  value: "1"
+                - name: NTFY_URL
+                  value: "http://ntfy.ntfy.svc.cluster.local/finance"
               command:
                 - /bin/sh
                 - -c
@@ -80,4 +91,23 @@ spec:
                   if [ "$newest" \< "$cutoff" ]; then
                     log "ERROR: nothing imported in ${STALE_DAYS} days. See docs/finance/simplefin-reconnect.md."
                     exit 1
+                  fi
+
+                  # --- uncategorized nudge -----------------------------------------
+                  # Off-budget accounts and transfers carry no category by design.
+                  # A failed ntfy post only logs: paging stays with the checks above.
+                  if [ "$(date -u +%u)" = "${NUDGE_WEEKDAY}" ]; then
+                    since="$(date -u -d "@$(( $(date +%s) - 14 * 86400 ))" +%Y-%m-%d)"
+                    rows="$(for aid in $(curl -fsS -H "$AUTH" "$API/accounts" | jq -r '.data[] | select((.closed | not) and (.offbudget | not)) | .id'); do
+                      curl -fsS -H "$AUTH" "$API/accounts/${aid}/transactions?since_date=${since}" \
+                        | jq -c '.data[] | select(.category == null and .transfer_id == null and .amount < 0 and (.is_parent | not))'
+                    done)"
+                    n="$(printf '%s' "$rows" | jq -s 'length')"
+                    if [ "$n" -gt 0 ]; then
+                      msg="$(printf '%s' "$rows" | jq -rs '"\(length) uncategorized since '"${since}"', $\((map(-.amount) | add) / 100). Biggest: " + (sort_by(.amount) | .[0:5] | map("\(.imported_payee // "?") $\(-.amount / 100)") | join(", ")) + ". Categorize at finance.kblab.me."')"
+                      curl -sS --max-time 15 -H "Title: Finance: ${n} to categorize" -d "$msg" "$NTFY_URL" >/dev/null \
+                        && log "nudge sent: ${msg}" || log "WARN: ntfy post failed: ${msg}"
+                    else
+                      log "nudge: nothing uncategorized since ${since}"
+                    fi
                   fi

@@ -59,6 +59,12 @@ Actual's rules (Settings -> Rules) categorize on import, and Actual adds one whe
 
 Rule order matters: Actual ranks a `payee is` rule above a `notes contains` rule, so a learned "Zelle Transfer -> Bills" rule silently beat the rent rule until it was deleted (2026-10-02). When a rule seems ignored, look for a broader payee rule that outranks it.
 
+Day-to-day spending categories (2026-10-27): `Restaurants` (dine-in and Uber Eats), `Groceries`, `Liquor` (bars, breweries, wine and liquor stores), `Rideshare` (Uber and Lyft rides), `Car` (gas, parking, insurance). Spending on a trip goes to `Travel` whatever it is. Learned payee rules only know merchants seen before, so four `imported_payee contains` rules catch first visits to chains: grocery names (Vons, Whole Foods, Trader Joe, Mitsuwa, Sprouts, Ralphs, Costco, Valley Farm), drink words (Brewing, Brewery, Taproom, Public House, Wine, Liquor, Cellars, Beverages & More, Bevmo), Car (ARCO, Chevron, Parking) and Lyft. There is no bare `Bar`, which would match Barnes and similar. A new restaurant still arrives uncategorized; the weekly nudge below lists it.
+
+Weekly nudge: on Mondays the bank-sync job posts the last 14 days of uncategorized on-budget spending to the ntfy topic `finance` (subscribe to `https://ntfy.kblab.me/finance` in the ntfy app). No post means nothing is waiting. To test it on another day, create a one-off job from the CronJob with `NUDGE_WEEKDAY` set to today's `date -u +%u`.
+
+Scripting rules through the bridge: send `"stage": null` for a default-stage rule. The bridge's swagger says `"default"`, but `PATCH /rules/{id}` with `"default"` answers 500 "Unknown error" (actual-http-api 26.8.1, 2026-10-27). To link two imported rows as one transfer, PATCH each with `transfer_id` set to the other row's id and `payee` set to the other account's transfer payee; this links them without creating a third row.
+
 #### Monthly routine (about 10 minutes)
 
 1. Clear the uncategorized count. Categorizing a payee by hand also teaches a rule.
@@ -328,6 +334,7 @@ ls -la /var/backups/actual-budget/
 | 2026-01-16 | Initial Actual Budget deployment |
 | 2026-01-16 | Documentation created |
 | 2026-10-02 | Backfilled Jan-May 2026 from SimpleFIN (U.S. Bank, Amex); tax categories created (C2C income, Schedule C group, Taxes & Deductions) |
+| 2026-10-27 | Food split into Restaurants and Groceries, Drinks renamed Liquor, Rideshare added (Jun-Oct history moved); chain `contains` rules; weekly ntfy nudge for uncategorized spending |
 | 2026-10-02 | Monthly rollover job fills budgets from `#template` notes; Rent/Tax Reserve/Buffer/Drinks categories; rules documented |
 | 2026-09-28 | Activated the actual-http-api bridge; daily server-side bank sync with a 5-day staleness check; documented that budgets do not roll forward |
 | 2026-07-16 | Audit + remediation: off-box NAS backup + weekly verify; tax-category scheme; business/personal separation model; SimpleFIN reconnect runbook; activation-gated tax-export subsystem (actual-http-api + quarterly CSV); doc truth-up (ingress live, roadmap corrected) |

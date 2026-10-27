@@ -98,6 +98,11 @@
   ansible.builtin.import_tasks: power.yml
   tags: [windows, power, perf]
 
+- name: Automatic sign-in (opt-in)
+  ansible.builtin.import_tasks: autologon.yml
+  when: windows_baseline_autologon | bool
+  tags: [windows, autologon]
+
 - name: Disk cleanup
   ansible.builtin.import_tasks: cleanup.yml
   tags: [windows, cleanup]

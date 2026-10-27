@@ -91,6 +91,9 @@ all:
           ansible_host: 192.168.1.8   # windows-media-lan
           ansible_user: hughl
           windows_hostname: WINDOWS-MEDIA
+          # Agents need a signed-in desktop; this brings it back after a reboot
+          # or power cut with no one at the TV.
+          windows_baseline_autologon: true
 
     pi_k3s:
       hosts:

@@ -152,11 +152,26 @@ ssh hughl@windows-media-lan 'Stop-Process -Name Game'
 
 Things to know:
 
-- **Someone must be logged on.** The helpers and the runner need a desktop session, and there is no autologon (it would need the Microsoft account password stored on the PC). After a reboot, log in at the TV once. The helpers say so when nobody is logged on.
+- **Someone must be logged on.** The helpers and the runner need a desktop session. windows-media signs itself in at boot (see [Unattended restart](#unattended-restart)); on a PC without that, log in at the screen after a reboot. The helpers say so when nobody is logged on.
 - **New windows can open behind the foreground app.** Windows' focus-stealing prevention applies to programs a task starts. A fullscreen game normally takes over; if a screenshot shows something else in front, minimize everything first: `run-on-desktop.ps1 -Path powershell.exe -Arguments '-NoProfile -Command (New-Object -ComObject Shell.Application).MinimizeAll()' -Wait`.
 - **A stale screenshot means the displays are asleep.** The screen turns off after 15 minutes idle, and Windows stops drawing every monitor, virtual ones too, so a capture returns the last frame (2026-10-26: a capture showed the clock from 22 hours earlier). Start what you will screenshot with `-KeepDisplayOn`. The TV being off or on another input does not cause it: Windows keeps drawing.
 - **Put test builds under `C:\bnbtest\`** and delete them when done. C: is a 1 TB disk with about 38 GB free (2026-10-26).
 - **The host key.** Agents cannot write `~/.ssh/known_hosts` on the workstation. After the IP or name changes, the user accepts the new entry once: `ssh -o StrictHostKeyChecking=accept-new hughl@windows-media-lan exit`.
+
+### Unattended restart
+
+windows-media has to come back by itself after a reboot or a power cut, with no one at the TV. That needs three things:
+
+| What | Set by | Check |
+|---|---|---|
+| Power on when mains power returns | Firmware, once, at the PC: **Del** at boot, **Advanced** -> **APM Configuration** -> **Restore AC Power Loss** -> **Power On**, then **F10** to save (ASUS TUF GAMING B550-PLUS WIFI II; [baremetal-power.md](baremetal-power.md)) | A controlled power pull: the PC boots and answers SSH |
+| Sign in at boot | `windows_baseline_autologon: true` (inventory) makes it possible; then once, at the PC: **Win+R**, `netplwiz`, untick **Users must enter a user name and password to use this computer**, **Apply**, type the Microsoft account password twice | `ansible-playbook ... --tags autologon` passes; after a reboot `(Get-CimInstance Win32_ComputerSystem).UserName` is `WINDOWS-MEDIA\hughl` |
+| No sleep on AC | `windows-baseline` power tasks | Already applied |
+
+- **The password stays out of this repo.** netplwiz stores it as an LSA secret on the PC. The role only unhides the netplwiz box (`DevicePasswordLessBuildVersion=0`, which Windows Hello sign-in had set to 2) and asserts `AutoAdminLogon=1`, failing with these steps when it is off.
+- **The trade-off.** Whoever turns the PC on gets `hughl`'s desktop, an admin account. That is the living-room PC's normal state anyway; do not set `windows_baseline_autologon` on a PC that leaves the house.
+- **Changing the Microsoft account password breaks it silently.** The stored copy goes stale and the PC stops at the sign-in screen. Repeat the netplwiz step.
+- **The firmware setting is readable over SSH, but its values are not documented.** The board's ASUS WMI class answers `Invoke-CimMethod -InputObject @(Get-CimInstance -Namespace root\wmi ASUSManagement)[0] -MethodName GetOptionData -Arguments @{OptionName='LastState'}` (read 2026-10-26: `ErrorCode=0`, `Value=1`; unknown names return `ErrorCode=14`). `LastState` is most likely Restore AC Power Loss, but which number means **Power On** is unconfirmed, so set it in the firmware screen and never write it blind with `SetOptionData`. Once the screen has been read, record the mapping here.
 
 ### A test monitor off the TV
 

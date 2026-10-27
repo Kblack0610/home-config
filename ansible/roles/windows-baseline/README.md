@@ -12,6 +12,7 @@ Lean baseline for a Windows PC reached over Windows OpenSSH. Written for `window
 6. Performance: High performance plan, no sleep on AC, Wi-Fi at max performance, network cards never powered off (`PnPCapabilities=24`), hibernation off (also disables Fast Startup), Game Mode on, hardware-accelerated GPU scheduling on, background Game DVR capture off.
 7. Cleanup: temp files older than a week, the Windows Update download cache, superseded component versions. Reported as unchanged, so a converged run reads `changed=0`.
 8. Computer name: `windows_hostname` from the inventory (`WINDOWS-MEDIA`), so Windows' own name matches the fleet name. It takes effect at the next reboot; the role never reboots.
+9. Automatic sign-in, opt-in (`windows_baseline_autologon`, tag `autologon`): unhides the netplwiz checkbox that Windows Hello sign-in hides, and asserts `AutoAdminLogon=1`. The password is typed once at the PC, never by the role. Steps: `docs/windows-machines.md`, "Unattended restart".
 
 ## Apply
 

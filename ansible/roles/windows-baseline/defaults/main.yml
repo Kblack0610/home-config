@@ -130,3 +130,9 @@ windows_baseline_registry:
 # whichever plan is active, so they follow a plan change.
 windows_baseline_power_plan: High performance
 windows_baseline_hibernate: false
+
+# Sign in at boot with no one at the screen, so a box that agents drive comes
+# back by itself after a reboot or power cut. Off by default: it hands the
+# desktop to whoever turns the PC on. The role only makes it possible and checks
+# it is on; the password is entered once at the PC (tasks/autologon.yml).
+windows_baseline_autologon: false

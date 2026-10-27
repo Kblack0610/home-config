@@ -1,0 +1,29 @@
+---
+# Windows 10 hides the "Users must enter a user name and password" box in
+# netplwiz while "Require Windows Hello sign-in for Microsoft accounts" is on
+# (DevicePasswordLessBuildVersion=2), and a Microsoft account cannot sign in
+# automatically without it. 0 shows the box; the PIN keeps working.
+- name: Let a Microsoft account sign in automatically
+  ansible.windows.win_regedit:
+    path: HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion\PasswordLess\Device
+    name: DevicePasswordLessBuildVersion
+    data: 0
+    type: dword
+
+# The password never passes through Ansible: netplwiz stores it as an LSA
+# secret. So this only checks the result, and says how to fix it.
+- name: Read the automatic sign-in setting
+  ansible.windows.win_reg_stat:
+    path: HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Winlogon
+    name: AutoAdminLogon
+  register: _autologon
+
+- name: Automatic sign-in is on
+  ansible.builtin.assert:
+    that: _autologon.exists and (_autologon.value | string) == '1'
+    fail_msg: >-
+      Automatic sign-in is off on {{ inventory_hostname }}. At the PC, signed in:
+      Win+R, netplwiz, untick "Users must enter a user name and password to use
+      this computer", Apply, and type the account's password twice (for a
+      Microsoft account, its Microsoft password, not the PIN). Then rerun.
+      docs/windows-machines.md, "Unattended restart".

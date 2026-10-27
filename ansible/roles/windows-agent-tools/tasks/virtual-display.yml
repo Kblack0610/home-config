@@ -1,0 +1,92 @@
+---
+# The virtual test monitor. Installed and left OFF: files/virtual-display.ps1
+# turns it on for a test and off after. Usage: docs/windows-machines.md, "A
+# test monitor off the TV".
+- name: Make the virtual display download and settings directories
+  ansible.windows.win_file:
+    path: "{{ item }}"
+    state: directory
+  loop:
+    - "{{ windows_agent_tools_dir }}\\vdd"
+    - "{{ windows_agent_tools_vdd_settings_dir }}"
+
+- name: Download the virtual display driver and nefcon (pinned, checksummed)
+  ansible.windows.win_get_url:
+    url: "{{ item.url }}"
+    dest: "{{ windows_agent_tools_dir }}\\vdd\\{{ item.name }}.zip"
+    checksum: "{{ item.sha256 }}"
+    checksum_algorithm: sha256
+  loop:
+    - name: "driver-{{ windows_agent_tools_vdd_version }}"
+      url: "https://github.com/VirtualDrivers/Virtual-Display-Driver/releases/download/{{ windows_agent_tools_vdd_version }}/VirtualDisplayDriver-x86.Driver.Only.zip"
+      sha256: "{{ windows_agent_tools_vdd_sha256 }}"
+    - name: "nefcon-{{ windows_agent_tools_nefcon_version }}"
+      url: "https://github.com/nefarius/nefcon/releases/download/v{{ windows_agent_tools_nefcon_version }}/nefcon_v{{ windows_agent_tools_nefcon_version }}.zip"
+      sha256: "{{ windows_agent_tools_nefcon_sha256 }}"
+  loop_control:
+    label: "{{ item.name }}"
+
+- name: Unpack them
+  ansible.windows.win_powershell:
+    parameters:
+      Zip: "{{ windows_agent_tools_dir }}\\vdd\\{{ item }}.zip"
+      Dest: "{{ windows_agent_tools_dir }}\\vdd\\{{ item }}"
+    script: |
+      param([string]$Zip, [string]$Dest)
+      $Ansible.Changed = $false
+      if (Test-Path $Dest) { return }
+      Expand-Archive -Path $Zip -DestinationPath $Dest -Force
+      $Ansible.Changed = $true
+  loop:
+    - "driver-{{ windows_agent_tools_vdd_version }}"
+    - "nefcon-{{ windows_agent_tools_nefcon_version }}"
+
+- name: Write the virtual monitor's settings
+  ansible.windows.win_template:
+    src: vdd_settings.xml.j2
+    dest: "{{ windows_agent_tools_vdd_settings_dir }}\\vdd_settings.xml"
+
+- name: Install the virtual display driver, switched off
+  ansible.windows.win_powershell:
+    parameters:
+      Inf: "{{ windows_agent_tools_dir }}\\vdd\\driver-{{ windows_agent_tools_vdd_version }}\\VirtualDisplayDriver\\MttVDD.inf"
+      Nefcon: "{{ windows_agent_tools_dir }}\\vdd\\nefcon-{{ windows_agent_tools_nefcon_version }}\\x64\\nefconc.exe"
+    script: |
+      param([string]$Inf, [string]$Nefcon)
+      $ErrorActionPreference = 'Stop'
+      $Ansible.Changed = $false
+      $HardwareId = 'Root\MttVDD'
+
+      # Windows asks "always trust this publisher?" before installing a driver
+      # that is not Microsoft-signed, and nobody can answer that over SSH. Trust
+      # the catalog's signer only, after checking its signature chains to a root.
+      $sig = Get-AuthenticodeSignature (Join-Path (Split-Path $Inf) 'mttvdd.cat')
+      if ($sig.Status -ne 'Valid') { throw "mttvdd.cat signature is $($sig.Status): $($sig.StatusMessage)" }
+      if (-not (Test-Path "Cert:\LocalMachine\TrustedPublisher\$($sig.SignerCertificate.Thumbprint)")) {
+        $store = New-Object Security.Cryptography.X509Certificates.X509Store 'TrustedPublisher', 'LocalMachine'
+        $store.Open('ReadWrite'); $store.Add($sig.SignerCertificate); $store.Close()
+        $Ansible.Changed = $true
+      }
+
+      $find = { Get-PnpDevice -Class Display -EA 0 | Where-Object { $_.HardwareID -contains $HardwareId } }
+      $device = & $find
+      if (-not $device) {
+        & $Nefcon install $Inf $HardwareId
+        if ($LASTEXITCODE -notin 0, 3010) { throw "nefconc install exited $LASTEXITCODE" }
+        $device = & $find
+        if (-not $device) { throw "nefconc install exited $LASTEXITCODE but there is no $HardwareId device" }
+        # Off until a test turns it on: windows that open on a monitor nobody
+        # can see are lost to whoever is at the TV.
+        $device | Disable-PnpDevice -Confirm:$false
+        $Ansible.Changed = $true
+        return
+      }
+
+      # Already installed: update the driver when the pinned package is newer.
+      $want = (Select-String -Path $Inf -Pattern '^\s*DriverVer\s*=\s*[^,]+,\s*([\d.]+)').Matches[0].Groups[1].Value
+      $have = (Get-CimInstance Win32_PnPSignedDriver | Where-Object DeviceID -eq $device.InstanceId).DriverVersion
+      if ($have -ne $want) {
+        pnputil /add-driver $Inf /install
+        if ($LASTEXITCODE -notin 0, 3010) { throw "pnputil /add-driver exited $LASTEXITCODE" }
+        $Ansible.Changed = $true
+      }

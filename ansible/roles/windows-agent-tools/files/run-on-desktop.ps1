@@ -12,8 +12,12 @@ Without -Wait it returns as soon as the task has started the program (a game
 keeps running). With -Wait it waits for the program to exit, prints anything it
 wrote to stdout/stderr, and exits with its exit code.
 
+With -KeepDisplayOn the displays stay on while the program runs (see
+keep-display-on.ps1). Use it for anything you will screenshot: after the idle
+timeout Windows stops drawing, and a screenshot returns an old frame.
+
 .EXAMPLE
-C:\tools\run-on-desktop.ps1 -Path C:\builds\Game\Game.exe -Arguments '-screen-fullscreen 1'
+C:\tools\run-on-desktop.ps1 -Path C:\builds\Game\Game.exe -Arguments '-screen-fullscreen 1' -KeepDisplayOn
 
 .EXAMPLE
 C:\tools\run-on-desktop.ps1 -Path cmd.exe -Arguments '/c echo %SESSIONNAME%' -Wait
@@ -23,7 +27,8 @@ param(
     [string]$Arguments = '',
     [string]$WorkingDirectory = '',
     [switch]$Wait,
-    [int]$TimeoutSec = 600
+    [int]$TimeoutSec = 600,
+    [switch]$KeepDisplayOn
 )
 $ErrorActionPreference = 'Stop'
 
@@ -39,6 +44,13 @@ if (-not $user) { throw 'Nobody is logged on at the console, so there is no desk
 
 $exe = if ([IO.Path]::IsPathRooted($Path)) { $Path } else { (Get-Command $Path).Source }
 if (-not $WorkingDirectory) { $WorkingDirectory = Split-Path -Parent $exe }
+$program = $exe
+if ($KeepDisplayOn) {
+    $encoded = [Convert]::ToBase64String([Text.Encoding]::Unicode.GetBytes($Arguments))
+    $Arguments = "-NoProfile -NonInteractive -WindowStyle Hidden -ExecutionPolicy Bypass -File `"$(Join-Path $PSScriptRoot 'keep-display-on.ps1')`" -Path `"$exe`"" +
+        $(if ($Arguments) { " -ArgumentsBase64 $encoded" } else { '' })
+    $exe = (Get-Command powershell.exe).Source
+}
 
 $runs = Join-Path $PSScriptRoot 'runs'
 New-Item -ItemType Directory -Force $runs | Out-Null
@@ -65,7 +77,7 @@ Register-ScheduledTask -TaskName $name -Action $action -Principal $principal -Se
 Start-ScheduledTask -TaskName $name
 
 if (-not $Wait) {
-    Write-Output "started $exe on $user's desktop (task $name)"
+    Write-Output "started $program on $user's desktop (task $name)"
     exit 0
 }
 

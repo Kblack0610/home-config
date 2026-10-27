@@ -139,6 +139,9 @@ An SSH session is Windows session 0. A program started from it has no window on 
 | `... -Wait [-TimeoutSec 600]` | Waits for it to exit, prints its stdout/stderr, exits with its exit code. |
 | `C:\tools\screenshot.ps1` | Captures every monitor at physical resolution, prints the PNG path under `C:\tools\runs\`. |
 | `C:\tools\display-info.ps1` | Prints each monitor's resolution and scale, e.g. `\\.\DISPLAY1 3840x2160 scale 300% primary`. |
+| `... -KeepDisplayOn` | Holds the displays on until the program exits. Use it for anything you will screenshot. |
+| `C:\tools\screenshot.ps1 -Display <n>` | Captures only `\\.\DISPLAY<n>`. |
+| `C:\tools\virtual-display.ps1 -On [-Scale 300] [-TvOff]` / `-Off` | Plugs in or unplugs the virtual test monitor. See [A test monitor off the TV](#a-test-monitor-off-the-tv). |
 
 ```bash
 ssh hughl@windows-media-lan 'C:\tools\run-on-desktop.ps1 -Path C:\bnbtest\windows\Game.exe -Arguments "-screen-fullscreen 1"'
@@ -151,9 +154,24 @@ Things to know:
 
 - **Someone must be logged on.** The helpers and the runner need a desktop session, and there is no autologon (it would need the Microsoft account password stored on the PC). After a reboot, log in at the TV once. The helpers say so when nobody is logged on.
 - **New windows can open behind the foreground app.** Windows' focus-stealing prevention applies to programs a task starts. A fullscreen game normally takes over; if a screenshot shows something else in front, minimize everything first: `run-on-desktop.ps1 -Path powershell.exe -Arguments '-NoProfile -Command (New-Object -ComObject Shell.Application).MinimizeAll()' -Wait`.
-- **A blank or stale screenshot usually means the TV is off** or on another input. That is a human step.
+- **A stale screenshot means the displays are asleep.** The screen turns off after 15 minutes idle, and Windows stops drawing every monitor, virtual ones too, so a capture returns the last frame (2026-10-26: a capture showed the clock from 22 hours earlier). Start what you will screenshot with `-KeepDisplayOn`. The TV being off or on another input does not cause it: Windows keeps drawing.
 - **Put test builds under `C:\bnbtest\`** and delete them when done. C: is a 1 TB disk with about 38 GB free (2026-10-26).
 - **The host key.** Agents cannot write `~/.ssh/known_hosts` on the workstation. After the IP or name changes, the user accepts the new entry once: `ssh -o StrictHostKeyChecking=accept-new hughl@windows-media-lan exit`.
+
+### A test monitor off the TV
+
+The TV is also the living room's TV. For a visual test, plug in the virtual monitor, a software-only screen (Virtual Display Driver, installed off by the `windows-agent-tools` role), run the game there, and unplug it after:
+
+```bash
+ssh hughl@windows-media-lan 'C:\tools\virtual-display.ps1 -On -TvOff'      # prints "virtual monitor: \\.\DISPLAY<n>"
+ssh hughl@windows-media-lan 'C:\tools\run-on-desktop.ps1 -Path C:\bnbtest\windows\Game.exe -KeepDisplayOn'
+ssh hughl@windows-media-lan 'C:\tools\screenshot.ps1 -Display <n>'
+ssh hughl@windows-media-lan 'Stop-Process -Name Game; C:\tools\virtual-display.ps1 -Off'
+```
+
+- **`-TvOff` or not.** With `-TvOff` the virtual monitor is the only screen until `-Off`, so the game and the screenshot need no monitor number, and the TV gets no picture from the PC. Use it when the TV is on another source: `-KeepDisplayOn` wakes the displays, and a TV with automatic source switching can jump to the PC's input. Without `-TvOff` the virtual monitor sits beside the TV, which keeps showing what it was. Use that when someone is watching the PC on the TV; start the game with Unity's `-monitor <m>` and check with a screenshot which `m` lands on the virtual monitor. The game takes keyboard focus while it runs either way.
+- **It is 3840x2160 at 300% by default**, the TV's mode. `-Scale` takes any Windows scale (100, 125, ... 500); the resolutions it offers are `windows_agent_tools_vdd_resolutions` in the role.
+- **Always `-Off` when done.** An enabled virtual monitor is a screen nobody can see, and windows that open on it are lost to whoever is at the TV. If a test dies with the TV off, `-Off` brings it back; so does a reboot, because `-TvOff` is not saved.
 
 ## Windows test runner
 

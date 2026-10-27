@@ -12,3 +12,21 @@ windows_agent_tools_ssh_shell: C:\Windows\System32\WindowsPowerShell\v1.0\powers
 # helpers below. RemoteSigned runs local scripts and still refuses downloaded
 # unsigned ones.
 windows_agent_tools_execution_policy: RemoteSigned
+
+# The virtual test monitor (tasks/virtual-display.yml, files/virtual-display.ps1):
+# a software-only monitor agents turn on for a test, so a game renders off the
+# TV. Virtual Display Driver, MIT, signed by SignPath Foundation. The release
+# asset is named x86 but holds the amd64 driver. Bump version and sha256
+# together; the sha256 is the release asset's digest (`gh release view`).
+windows_agent_tools_vdd_version: "25.7.23"
+windows_agent_tools_vdd_sha256: e24210692b442b39af763536330ce78b423f19342b7a7792c26de3944e418b3a
+# nefcon creates the root-enumerated device the driver binds to; Windows 10 has
+# no built-in command for that (`pnputil /add-device` is Windows 11).
+windows_agent_tools_nefcon_version: "1.14.0"
+windows_agent_tools_nefcon_sha256: a15557da24a9efca203158de3b43b0eaf982db231f0194031f1ed428bc13e669
+# The driver reads its settings from this directory (Driver.cpp `confpath`).
+windows_agent_tools_vdd_settings_dir: C:\VirtualDisplayDriver
+# The modes the virtual monitor offers. One mode, the TV's, so a game sees the
+# same screen it would on the TV; the scale is set per test (-Scale).
+windows_agent_tools_vdd_resolutions:
+  - { width: 3840, height: 2160, refresh: 60 }

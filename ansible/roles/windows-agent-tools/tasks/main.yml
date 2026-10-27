@@ -19,7 +19,7 @@
         $Ansible.Changed = $true
       }
 
-- name: Install the desktop helpers (run-on-desktop, screenshot, display-info)
+- name: Install the desktop helpers (run-on-desktop, screenshot, display-info, virtual-display)
   ansible.windows.win_copy:
     src: "{{ item }}"
     dest: "{{ windows_agent_tools_dir }}\\{{ item }}"
@@ -29,3 +29,10 @@
     - capture-screen.ps1
     - display-info.ps1
     - display-info-session.ps1
+    - keep-display-on.ps1
+    - virtual-display.ps1
+    - virtual-display-session.ps1
+
+- name: Install the virtual test monitor
+  ansible.builtin.import_tasks: virtual-display.yml
+  tags: [virtual-display]

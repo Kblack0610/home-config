@@ -43,7 +43,9 @@ FAKE = {
                                              "head_branch": "develop", "html_url": "https://x/20"}]},
     "repos/acme/web/actions/runs/20/jobs?per_page=100": {"jobs": []},
     "repos/acme/game/actions/runs?status=in_progress&per_page=15": {
-        "total_count": 1, "workflow_runs": [{"id": 10, "name": "Tests", "status": "in_progress"}]},
+        "total_count": 1, "workflow_runs": [{"id": 10, "name": "Tests", "status": "in_progress", "event": "pull_request",
+                                             "display_title": "feat: a title long enough to be clipped at sixty characters, really",
+                                             "pull_requests": [{"number": 412}]}]},
     "repos/acme/game/actions/runs?status=queued&per_page=15": {"total_count": 0, "workflow_runs": []},
     "repos/acme/game/actions/runs/10/jobs?per_page=100": {"jobs": [
         {"name": "PlayMode 1", "status": "in_progress", "runner_name": "box-unity-pool-1", "started_at": T0,
@@ -92,6 +94,24 @@ class ExporterTest(unittest.TestCase):
                      'branch="main"', 'url="https://x/job/1"', 'host="box"', 'pool="unity"'):
             self.assertIn(want, row)
         self.assertGreaterEqual(int(row.rsplit(" ", 1)[1]), 590)
+
+    def test_busy_runner_and_its_queued_sibling_carry_the_pr(self):
+        out = self.render()
+        (row,) = [r for r in rows(out, "github_runner_state") if 'name="box-unity-pool-1"' in r]
+        self.assertIn('pr="412"', row)
+        self.assertIn('event="pull_request"', row)
+        self.assertIn('title="feat: a title long enough to be clipped at sixty characters,"', row)
+        (sib,) = [r for r in rows(out, "github_actions_job_waiting") if 'job_name="PlayMode 2"' in r]
+        self.assertIn('pr="412"', sib)
+
+    def test_no_pr_is_blank_not_guessed(self):
+        # The Drift run has no pull_requests (a schedule run, or a fork PR), so
+        # its pr label is empty; idle runners carry the same empty labels.
+        out = self.render()
+        (ghost,) = [r for r in rows(out, "github_actions_job_waiting") if 'workflow="Drift"' in r]
+        self.assertIn('pr=""', ghost)
+        (idle,) = [r for r in rows(out, "github_runner_state") if 'name="box-light-1"' in r]
+        self.assertIn('pr=""', idle)
 
     def test_offline_idle_and_missing(self):
         out = self.render()

@@ -8,6 +8,7 @@
 #   cc:domain_status{domain}               worst component in the domain
 #   cc:overall_status                       worst domain
 #   cc:<name>                               the numbers the tiles print
+#   cc:host_<metric>{host}                  per-machine load for the board's MACHINES rows
 #
 # Status comes from sentinel watches where one exists (they are the curated alarms that
 # already page), and from metrics where none does (nodes, heartbeats, runner pools).
@@ -81,11 +82,11 @@ spec:
           labels: {domain: llm, component: gateway}
           expr: >-
             (clamp_max(count(up{job="litellm"} == 0), 1) * 2) or (absent(up{job="litellm"}) * 2) or vector(0)
-        # any runner pool below its expected size -> 1
+        # any host/pool below its expected size -> 1 (per host: one dead laptop must not hide behind another's full pool)
         - record: cc:component_status
           labels: {domain: ci, component: pools}
           expr: >-
-            clamp_max(count(max by (pool) (github_runner_pool_online) < max by (pool) (github_runner_pool_expected)), 1) or vector(0)
+            clamp_max(count(max by (host, pool) (github_runner_pool_online) < max by (host, pool) (github_runner_pool_expected)), 1) or vector(0)
         # any agentctl runner in error or whose last run STALLED -> 1
         - record: cc:component_status
           labels: {domain: agents, component: runners}
@@ -153,12 +154,14 @@ spec:
         - record: cc:sessions_attention
           expr: >-
             sum(mqtt_attention{topic=~"agents_.+_summary_sessions"})
+        # Rostered slots only, so online/expected compare like with like: hp-victus's two
+        # unity runners are set up outside RUNNER_ROSTER and would read 16/14.
         - record: cc:ci_online
           expr: >-
-            sum(max by (pool) (github_runner_pool_online))
+            sum(max by (host, pool) (github_runner_pool_online) and on (host, pool) max by (host, pool) (github_runner_pool_expected))
         - record: cc:ci_expected
           expr: >-
-            sum(max by (pool) (github_runner_pool_expected))
+            sum(max by (host, pool) (github_runner_pool_expected))
         - record: cc:lazer_budget_usd
           expr: >-
             max(litellm_team_max_budget_metric{team_alias="lazer-pool"})
@@ -168,3 +171,40 @@ spec:
         - record: cc:claude_code_cost_24h_usd
           expr: >-
             sum(increase(claude_code_cost_usage_USD_total[24h]))
+    # One row per machine, keyed by its inventory name (the same `host` the runner
+    # exporter stamps on github_runner_state), so a runner row and its machine's load
+    # join on one label. Rules run in order inside a group, so cc:host_instance is
+    # fresh when the rest read it.
+    - name: command-center.hosts
+      interval: 1m
+      rules:
+        # instance -> host. k3s nodes: the node-exporter pod's node name (helm-values is
+        # plain Helm, so no scrape-time relabel there). Everything scraped from a static
+        # Endpoints list (Macs, standalone boxes) carries `host` from the address's
+        # hostname via its ServiceMonitor.
+        - record: cc:host_instance
+          expr: >-
+            max by (instance, host) (label_replace(max by (instance, pod) (node_uname_info{job="node-exporter"})
+              * on (pod) group_left (node) max by (pod, node) (kube_pod_info{namespace="monitoring"}), "host", "$1", "node", "(.+)"))
+            or max by (instance, host) (node_uname_info{host!=""})
+        - record: cc:host_cores
+          expr: >-
+            count by (host) (node_cpu_seconds_total{mode="idle"} * on (instance) group_left (host) cc:host_instance)
+        - record: cc:host_cpu_busy_ratio
+          expr: >-
+            1 - avg by (host) (rate(node_cpu_seconds_total{mode="idle"}[2m]) * on (instance) group_left (host) cc:host_instance)
+        - record: cc:host_load1
+          expr: >-
+            max by (host) (node_load1 * on (instance) group_left (host) cc:host_instance)
+        # Linux: MemAvailable. macOS has none; app + wired + compressed is what Activity Monitor calls used.
+        - record: cc:host_mem_used_ratio
+          expr: >-
+            max by (host) (
+              (1 - node_memory_MemAvailable_bytes / node_memory_MemTotal_bytes
+               or (node_memory_active_bytes + node_memory_wired_bytes + node_memory_compressed_bytes) / node_memory_total_bytes)
+              * on (instance) group_left (host) cc:host_instance)
+        # CPU package temperature only (coretemp / k10temp); nvme, wifi and battery sensors would read as the box.
+        - record: cc:host_temp_c
+          expr: >-
+            max by (host) ((node_hwmon_temp_celsius * on (instance, chip) group_left (chip_name) node_hwmon_chip_names{chip_name=~"coretemp|k10temp"})
+              * on (instance) group_left (host) cc:host_instance)

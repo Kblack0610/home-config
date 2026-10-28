@@ -32,8 +32,11 @@ metadata:
 subsets:
   - addresses:
       - ip: 192.168.1.193
+        hostname: pi3-adguard
       - ip: 192.168.1.120
+        hostname: audio-living
       - ip: 192.168.1.122
+        hostname: audio-bedroom
     ports:
       - name: metrics
         port: 9100
@@ -50,6 +53,12 @@ spec:
     - port: metrics
       interval: 30s
       scrapeTimeout: 10s
+      relabelings:
+        # `host` = the address's hostname below (the inventory name), so cc:host_* can
+        # name this machine the way the runner exporter and the fleet roster do.
+        - sourceLabels: [__meta_kubernetes_endpoint_hostname]
+          regex: (.+)
+          targetLabel: host
   selector:
     matchLabels:
       app.kubernetes.io/name: standalone-nodes

@@ -391,13 +391,361 @@
     },
     {
       "type": "table",
+      "title": "Machines: load on every host that runs CI",
+      "description": "One row per CI host: CPU busy, 1-minute load against its cores, memory used, CPU package temperature, and how many of its runners are busy. '-' = that host exports no such series (macOS has no temperature sensor in node_exporter).",
+      "gridPos": {
+        "h": 8,
+        "w": 24,
+        "x": 0,
+        "y": 4
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "editorMode": "code",
+          "expr": "cc:host_cpu_busy_ratio and on (host) max by (host) (github_runner_pool_expected)",
+          "format": "table",
+          "instant": true,
+          "range": false,
+          "legendFormat": "__auto",
+          "refId": "A"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "editorMode": "code",
+          "expr": "cc:host_load1 and on (host) max by (host) (github_runner_pool_expected)",
+          "format": "table",
+          "instant": true,
+          "range": false,
+          "legendFormat": "__auto",
+          "refId": "B"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "editorMode": "code",
+          "expr": "cc:host_cores and on (host) max by (host) (github_runner_pool_expected)",
+          "format": "table",
+          "instant": true,
+          "range": false,
+          "legendFormat": "__auto",
+          "refId": "C"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "editorMode": "code",
+          "expr": "cc:host_mem_used_ratio and on (host) max by (host) (github_runner_pool_expected)",
+          "format": "table",
+          "instant": true,
+          "range": false,
+          "legendFormat": "__auto",
+          "refId": "D"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "editorMode": "code",
+          "expr": "cc:host_temp_c and on (host) max by (host) (github_runner_pool_expected)",
+          "format": "table",
+          "instant": true,
+          "range": false,
+          "legendFormat": "__auto",
+          "refId": "E"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "editorMode": "code",
+          "expr": "count by (host) (max without (instance, pod, job, namespace, service, endpoint, container) (github_runner_state{state=\"running\"}))",
+          "format": "table",
+          "instant": true,
+          "range": false,
+          "legendFormat": "__auto",
+          "refId": "F"
+        }
+      ],
+      "transformations": [
+        {
+          "id": "joinByField",
+          "options": {
+            "byField": "host",
+            "mode": "outer"
+          }
+        },
+        {
+          "id": "organize",
+          "options": {
+            "excludeByName": {
+              "Time": true,
+              "Time 1": true,
+              "Time 2": true,
+              "Time 3": true,
+              "Time 4": true,
+              "Time 5": true,
+              "Time 6": true,
+              "Time 7": true
+            },
+            "renameByName": {
+              "Value #A": "cpu",
+              "Value #B": "load",
+              "Value #C": "cores",
+              "Value #D": "mem",
+              "Value #E": "temp",
+              "Value #F": "busy runners"
+            }
+          }
+        }
+      ],
+      "options": {
+        "showHeader": true,
+        "cellHeight": "sm",
+        "sortBy": [
+          {
+            "displayName": "cpu",
+            "desc": true
+          }
+        ]
+      },
+      "fieldConfig": {
+        "defaults": {
+          "noValue": "-",
+          "custom": {
+            "align": "left"
+          }
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "cpu"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "percentunit"
+              },
+              {
+                "id": "decimals",
+                "value": 0
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "load"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "none"
+              },
+              {
+                "id": "decimals",
+                "value": 1
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "cores"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "none"
+              },
+              {
+                "id": "decimals",
+                "value": 1
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "mem"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "percentunit"
+              },
+              {
+                "id": "decimals",
+                "value": 0
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "temp"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "celsius"
+              },
+              {
+                "id": "decimals",
+                "value": 0
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "cpu"
+            },
+            "properties": [
+              {
+                "id": "custom.cellOptions",
+                "value": {
+                  "type": "color-text"
+                }
+              },
+              {
+                "id": "color",
+                "value": {
+                  "mode": "thresholds"
+                }
+              },
+              {
+                "id": "thresholds",
+                "value": {
+                  "mode": "absolute",
+                  "steps": [
+                    {
+                      "color": "text",
+                      "value": null
+                    },
+                    {
+                      "color": "orange",
+                      "value": 0.7
+                    },
+                    {
+                      "color": "red",
+                      "value": 0.9
+                    }
+                  ]
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "mem"
+            },
+            "properties": [
+              {
+                "id": "custom.cellOptions",
+                "value": {
+                  "type": "color-text"
+                }
+              },
+              {
+                "id": "color",
+                "value": {
+                  "mode": "thresholds"
+                }
+              },
+              {
+                "id": "thresholds",
+                "value": {
+                  "mode": "absolute",
+                  "steps": [
+                    {
+                      "color": "text",
+                      "value": null
+                    },
+                    {
+                      "color": "orange",
+                      "value": 0.8
+                    },
+                    {
+                      "color": "red",
+                      "value": 0.92
+                    }
+                  ]
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "temp"
+            },
+            "properties": [
+              {
+                "id": "custom.cellOptions",
+                "value": {
+                  "type": "color-text"
+                }
+              },
+              {
+                "id": "color",
+                "value": {
+                  "mode": "thresholds"
+                }
+              },
+              {
+                "id": "thresholds",
+                "value": {
+                  "mode": "absolute",
+                  "steps": [
+                    {
+                      "color": "text",
+                      "value": null
+                    },
+                    {
+                      "color": "orange",
+                      "value": 85
+                    },
+                    {
+                      "color": "red",
+                      "value": 95
+                    }
+                  ]
+                }
+              }
+            ]
+          }
+        ]
+      },
+      "id": 6,
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${datasource}"
+      }
+    },
+    {
+      "type": "table",
       "title": "Runners: what is running where",
       "description": "One row per runner. RUNNING rows show the job and how long it has been going; the 'last' columns show the last job it finished, which is what that runner is actually used for. Click a job to open it on GitHub. MISSING = a slot the roster expects that never registered.",
       "gridPos": {
         "h": 13,
         "w": 24,
         "x": 0,
-        "y": 4
+        "y": 12
       },
       "targets": [
         {
@@ -444,24 +792,27 @@
               "Time 2": true,
               "__name__": true,
               "scope": true,
-              "host": true
+              "event": true
             },
             "indexByName": {
               "state": 0,
               "name": 1,
-              "pool": 2,
-              "repo": 3,
-              "workflow": 4,
-              "job_name": 5,
+              "host": 2,
+              "pool": 3,
+              "repo": 4,
+              "pr": 5,
               "branch": 6,
-              "Value #A": 7,
-              "last_conclusion": 8,
-              "last_repo": 9,
-              "last_workflow": 10,
-              "last_job": 11,
-              "Value #B": 12,
-              "url": 13,
-              "last_url": 14
+              "title": 7,
+              "workflow": 8,
+              "job_name": 9,
+              "Value #A": 10,
+              "last_conclusion": 11,
+              "last_repo": 12,
+              "last_workflow": 13,
+              "last_job": 14,
+              "Value #B": 15,
+              "url": 16,
+              "last_url": 17
             },
             "renameByName": {
               "name": "runner",
@@ -589,6 +940,28 @@
           {
             "matcher": {
               "id": "byName",
+              "options": "pr"
+            },
+            "properties": [
+              {
+                "id": "links",
+                "value": [
+                  {
+                    "title": "Open PR on GitHub",
+                    "targetBlank": true,
+                    "url": "https://github.com/BlackNBrownStudios/${__data.fields.repo}/pull/${__data.fields.pr}"
+                  }
+                ]
+              },
+              {
+                "id": "custom.width",
+                "value": 70
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
               "options": "last job"
             },
             "properties": [
@@ -695,7 +1068,7 @@
           }
         ]
       },
-      "id": 6,
+      "id": 7,
       "datasource": {
         "type": "prometheus",
         "uid": "${datasource}"
@@ -709,7 +1082,7 @@
         "h": 10,
         "w": 24,
         "x": 0,
-        "y": 17
+        "y": 25
       },
       "targets": [
         {
@@ -777,7 +1150,7 @@
           }
         ]
       },
-      "id": 7,
+      "id": 8,
       "datasource": {
         "type": "prometheus",
         "uid": "${datasource}"
@@ -791,7 +1164,7 @@
         "h": 6,
         "w": 24,
         "x": 0,
-        "y": 27
+        "y": 35
       },
       "targets": [
         {
@@ -815,16 +1188,19 @@
             "excludeByName": {
               "Time": true,
               "__name__": true,
-              "status": true
+              "status": true,
+              "event": true,
+              "title": true
             },
             "indexByName": {
               "repo": 0,
-              "workflow": 1,
-              "job_name": 2,
-              "branch": 3,
-              "labels": 4,
-              "Value": 5,
-              "url": 6
+              "pr": 1,
+              "branch": 2,
+              "workflow": 3,
+              "job_name": 4,
+              "labels": 5,
+              "Value": 6,
+              "url": 7
             },
             "renameByName": {
               "labels": "needs",
@@ -917,6 +1293,28 @@
           {
             "matcher": {
               "id": "byName",
+              "options": "pr"
+            },
+            "properties": [
+              {
+                "id": "links",
+                "value": [
+                  {
+                    "title": "Open PR on GitHub",
+                    "targetBlank": true,
+                    "url": "https://github.com/BlackNBrownStudios/${__data.fields.repo}/pull/${__data.fields.pr}"
+                  }
+                ]
+              },
+              {
+                "id": "custom.width",
+                "value": 70
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
               "options": "url"
             },
             "properties": [
@@ -928,7 +1326,7 @@
           }
         ]
       },
-      "id": 8,
+      "id": 9,
       "datasource": {
         "type": "prometheus",
         "uid": "${datasource}"
@@ -942,7 +1340,7 @@
         "h": 10,
         "w": 24,
         "x": 0,
-        "y": 33
+        "y": 41
       },
       "targets": [
         {
@@ -1128,7 +1526,7 @@
           }
         ]
       },
-      "id": 9,
+      "id": 10,
       "datasource": {
         "type": "prometheus",
         "uid": "${datasource}"
@@ -1142,7 +1540,7 @@
         "h": 1,
         "w": 24,
         "x": 0,
-        "y": 43
+        "y": 51
       },
       "panels": [
         {
@@ -1152,7 +1550,7 @@
             "h": 8,
             "w": 12,
             "x": 0,
-            "y": 44
+            "y": 52
           },
           "targets": [
             {
@@ -1191,7 +1589,7 @@
               "mode": "multi"
             }
           },
-          "id": 10,
+          "id": 11,
           "datasource": {
             "type": "prometheus",
             "uid": "${datasource}"
@@ -1204,7 +1602,7 @@
             "h": 8,
             "w": 12,
             "x": 12,
-            "y": 44
+            "y": 52
           },
           "targets": [
             {
@@ -1243,14 +1641,14 @@
               "mode": "multi"
             }
           },
-          "id": 11,
+          "id": 12,
           "datasource": {
             "type": "prometheus",
             "uid": "${datasource}"
           }
         }
       ],
-      "id": 12,
+      "id": 13,
       "datasource": {
         "type": "prometheus",
         "uid": "${datasource}"

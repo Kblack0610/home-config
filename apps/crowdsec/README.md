@@ -15,9 +15,9 @@ Internet → Traefik (kube-system)
                │                   CrowdSec Agent (DaemonSet)
                │                   reads Traefik container logs
                │
-           Only applied to:
-             finance.kblab.me  (actual-budget)
-             git.kblab.me      (forgejo)
+           Applied to every Ingress annotated with
+           crowdsec-crowdsec-bouncer@kubernetescrd
+           (grep the repo; 8 ingresses on 7 hosts as of 2026-10-27)
 ```
 
 ### Components
@@ -115,6 +115,7 @@ kubectl --context home-k3s rollout restart -n crowdsec deploy/crowdsec-lapi depl
 |---------|-------|-----|
 | Agent pods stuck in `Init:CrashLoopBackOff`, init log says `api register ... 403 Forbidden: user 'crowdsec-agent-xxxxx' already exist` | The chart re-registers the agent under its pod name on every start, and a node reboot restarts the pod under the same name. | The `postRenderers` patch in `helmrelease.yaml` reuses the credentials saved in the pod's emptyDir. If it still happens (the emptyDir was lost), delete the pod so the DaemonSet recreates it under a new name. |
 | Every public site answers `403 Forbidden` | The bouncer cannot reach LAPI (LAPI pod down, or its node is). | Get `crowdsec-lapi` running again; its PVCs are `local-path`, so it can only run on the node that holds them. |
+| Intermittent `403 Forbidden` on every bouncer host at once, for a few seconds, while LAPI is up | The bouncer asks LAPI on every request, has no cache, and answers 403 when that call fails or is slow. LAPI's SQLite blocks those reads while a write holds the lock, and a slow disk on the LAPI's node (asus-laptop) stretches the lock to seconds. | Check `db_config.use_wal` reads `true` in the LAPI's effective config (`kubectl exec deploy/crowdsec-lapi -- cat /etc/crowdsec/config.yaml.local`) and that `crowdsec.db-wal` exists next to the DB. If WAL is on and it still happens, the next step is a bouncer with a decision cache. |
 
 ## Phases
 

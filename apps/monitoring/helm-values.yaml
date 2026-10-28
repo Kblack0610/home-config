@@ -270,13 +270,15 @@ prometheus:
     scrapeInterval: 30s
     retention: 7d
     retentionSize: 5GB
+    # 1Gi OOMKilled it at the 2-hourly head compaction (peak 1015Mi with
+    # ~225k head series, 35 restarts by 2026-10-27, all at odd hours :00 UTC).
     resources:
       limits:
         cpu: 1000m
-        memory: 1Gi
+        memory: 2Gi
       requests:
         cpu: 200m
-        memory: 512Mi
+        memory: 1Gi
     storageSpec:
       volumeClaimTemplate:
         spec:

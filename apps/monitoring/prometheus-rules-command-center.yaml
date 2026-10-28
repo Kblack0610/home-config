@@ -190,19 +190,24 @@ spec:
         - record: cc:host_cores
           expr: >-
             count by (host) (node_cpu_seconds_total{mode="idle"} * on (instance) group_left (host) cc:host_instance)
+            or count by (host) (windows_cpu_time_total{mode="idle", host!=""})
         - record: cc:host_cpu_busy_ratio
           expr: >-
             1 - avg by (host) (rate(node_cpu_seconds_total{mode="idle"}[2m]) * on (instance) group_left (host) cc:host_instance)
+            or 1 - avg by (host) (rate(windows_cpu_time_total{mode="idle", host!=""}[2m]))
+        # Windows has no load average, so no Windows branch: the board reads "-".
         - record: cc:host_load1
           expr: >-
             max by (host) (node_load1 * on (instance) group_left (host) cc:host_instance)
         # Linux: MemAvailable. macOS has none; app + wired + compressed is what Activity Monitor calls used.
+        # Windows: physical_free_bytes is GlobalMemoryStatusEx's available memory.
         - record: cc:host_mem_used_ratio
           expr: >-
             max by (host) (
               (1 - node_memory_MemAvailable_bytes / node_memory_MemTotal_bytes
                or (node_memory_active_bytes + node_memory_wired_bytes + node_memory_compressed_bytes) / node_memory_total_bytes)
               * on (instance) group_left (host) cc:host_instance)
+            or max by (host) (1 - windows_memory_physical_free_bytes{host!=""} / windows_memory_physical_total_bytes{host!=""})
         # CPU package temperature only (coretemp / k10temp); nvme, wifi and battery sensors would read as the box.
         - record: cc:host_temp_c
           expr: >-

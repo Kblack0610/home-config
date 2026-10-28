@@ -1,0 +1,60 @@
+# Windows PCs monitored via windows_exporter (port 9182), installed by the
+# windows-exporter ansible role. Its firewall exception only admits the LAN.
+# windows-media (192.168.1.8): living-room PC and the opt-in Windows runner.
+# Not in NodeDown: a living-room PC that is switched off is not an outage.
+
+apiVersion: v1
+kind: Service
+metadata:
+  name: windows-nodes
+  namespace: monitoring
+  labels:
+    app.kubernetes.io/name: windows-nodes
+    app.kubernetes.io/part-of: monitoring
+spec:
+  type: ClusterIP
+  clusterIP: None
+  ports:
+    - name: metrics
+      port: 9182
+      targetPort: 9182
+---
+apiVersion: v1
+kind: Endpoints
+metadata:
+  name: windows-nodes
+  namespace: monitoring
+  labels:
+    app.kubernetes.io/name: windows-nodes
+subsets:
+  - addresses:
+      - ip: 192.168.1.8
+        hostname: windows-media
+    ports:
+      - name: metrics
+        port: 9182
+---
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: windows-nodes
+  namespace: monitoring
+  labels:
+    app.kubernetes.io/name: windows-nodes
+spec:
+  endpoints:
+    - port: metrics
+      interval: 30s
+      scrapeTimeout: 10s
+      relabelings:
+        # `host` = the address's hostname above (the inventory name), as in
+        # external-standalone-nodes.yaml, so cc:host_* names this machine.
+        - sourceLabels: [__meta_kubernetes_endpoint_hostname]
+          regex: (.+)
+          targetLabel: host
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: windows-nodes
+  namespaceSelector:
+    matchNames:
+      - monitoring

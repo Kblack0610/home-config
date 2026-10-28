@@ -1,0 +1,12 @@
+---
+galaxy_info:
+  role_name: windows_exporter
+  author: kblack0610
+  description: >-
+    Prometheus windows_exporter as a Windows service, its firewall exception
+    limited to the LAN, so cc:host_* and Grafana see the PC's load and memory.
+  license: MIT
+  min_ansible_version: "2.18"
+  platforms:
+    - name: Windows
+dependencies: []

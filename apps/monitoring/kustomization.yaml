@@ -20,6 +20,7 @@ resources:
   - probe-dns.yaml
   - external-mac-nodes.yaml
   - external-standalone-nodes.yaml
+  - external-windows-nodes.yaml
   - external-iot-nodes.yaml
   - external-smartctl-exporter.yaml
   - dashboards

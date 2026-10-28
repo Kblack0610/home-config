@@ -1,0 +1,53 @@
+---
+# windows_exporter on a Windows PC: the Windows counterpart of node-exporter-linux.
+# Scraped by apps/monitoring/external-windows-nodes.yaml.
+
+- name: Ensure the download directory exists
+  ansible.windows.win_file:
+    path: "{{ windows_exporter_download_dir }}"
+    state: directory
+
+- name: Download the MSI
+  ansible.windows.win_get_url:
+    url: "{{ windows_exporter_msi_url }}"
+    dest: "{{ windows_exporter_download_dir }}\\{{ windows_exporter_msi }}"
+    checksum: "{{ windows_exporter_msi_sha256 }}"
+    checksum_algorithm: sha256
+
+- name: Install windows_exporter
+  # win_package reads the product code from the MSI, so a rerun of the same
+  # version is a no-op and a new version upgrades in place.
+  ansible.windows.win_package:
+    path: "{{ windows_exporter_download_dir }}\\{{ windows_exporter_msi }}"
+    arguments: >-
+      ENABLED_COLLECTORS={{ windows_exporter_collectors | join(',') }}
+      LISTEN_PORT={{ windows_exporter_port }}
+      ADDLOCAL=FirewallException
+      REMOTE_ADDR={{ windows_exporter_remote_addr }}
+    state: present
+
+- name: Keep the service running and starting at boot
+  ansible.windows.win_service:
+    name: windows_exporter
+    start_mode: auto
+    state: started
+  when: not ansible_check_mode
+
+- name: Probe the metrics endpoint
+  # Verify the outcome: a running service is not the same as serving.
+  ansible.windows.win_uri:
+    url: "http://127.0.0.1:{{ windows_exporter_port }}/metrics"
+    return_content: true
+  register: windows_exporter_probe
+  until: windows_exporter_probe.status_code == 200
+  retries: 6
+  delay: 2
+  when: not ansible_check_mode
+
+- name: Fail if a collector the board reads is missing
+  ansible.builtin.assert:
+    that: "('windows_' ~ item ~ '_') in windows_exporter_probe.content"
+    fail_msg: "windows_{{ item }}_* is not in the metrics on {{ inventory_hostname }}"
+    quiet: true
+  loop: [cpu, memory]
+  when: not ansible_check_mode

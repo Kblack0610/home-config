@@ -8,3 +8,9 @@ desktop_firewall_rules:
     proto: tcp
     from: 192.168.1.0/24
     comment: agent-web
+  # node_exporter, scraped by Prometheus from the cluster nodes
+  # (apps/monitoring/external-standalone-nodes.yaml).
+  - port: "9100"
+    proto: tcp
+    from: 192.168.1.0/24
+    comment: node-exporter

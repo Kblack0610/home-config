@@ -1,0 +1,18 @@
+---
+# Pinned release. Bump deliberately: a changed version reinstalls with the flags
+# below, and the MSI only reads its properties at install time, so a changed
+# collector list or allow-list needs a version bump (or an uninstall) to apply.
+windows_exporter_version: "0.31.9"
+windows_exporter_msi: "windows_exporter-{{ windows_exporter_version }}-amd64.msi"
+windows_exporter_msi_url: "https://github.com/prometheus-community/windows_exporter/releases/download/v{{ windows_exporter_version }}/{{ windows_exporter_msi }}"
+# From the release asset digest: gh api repos/prometheus-community/windows_exporter/releases/tags/v0.31.9
+windows_exporter_msi_sha256: "1e8a3898e8febaa475e008ffd2e729e1bef84ecbcb6875910546ee0798e96126"
+windows_exporter_download_dir: C:\ProgramData\windows_exporter-install
+
+windows_exporter_port: 9182
+# What cc:host_* reads (CPU busy, cores, memory) plus disk and network for
+# Grafana. The `cs` collector is deprecated upstream; memory covers it.
+windows_exporter_collectors: [cpu, memory, os, system, logical_disk, net]
+# The firewall exception the MSI adds, limited to the LAN: Prometheus scrapes
+# from the k3s nodes, which are all on 192.168.1.0/24.
+windows_exporter_remote_addr: 192.168.1.0/24

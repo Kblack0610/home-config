@@ -25,6 +25,24 @@
     - role: desktop-firewall
       tags: [firewall, agent-web]
 
+- name: Workstation monitoring (node_exporter)
+  # So cc:host_* and the hub:infra board see this machine's load, memory and
+  # temperature. Not a runner (removed 2026-10-06), so its "CI" is the local
+  # Unity gates fleet-assess publishes through the textfile directory. ufw
+  # default-denies inbound, hence the 9100 rule in desktop-firewall. Needs sudo:
+  #   ansible-playbook playbooks/site.yml --limit cachyos-x8664-main --tags monitoring -K
+  hosts: cachyos-x8664-main
+  become: true
+  gather_facts: true
+  roles:
+    - role: node-exporter-linux
+      tags: [monitoring]
+      vars:
+        node_exporter_linux_textfile_dir: /var/lib/node_exporter/textfile
+        node_exporter_linux_textfile_owner: kblack0610
+    - role: desktop-firewall
+      tags: [monitoring, firewall]
+
 - name: Keep Linux host clocks synced (systemd-timesyncd)
   # See ansible/roles/time-sync/README.md. hp-victus was found ~102s behind the
   # rest of the cluster with NO time daemon at all, while every other node sat
@@ -555,6 +573,15 @@
       tags: [windows]
     - role: windows-agent-tools
       tags: [windows, agent-tools]
+
+# windows_exporter, so cc:host_* and the hub:infra board see the PC's CPU and
+# memory. Scraped by apps/monitoring/external-windows-nodes.yaml.
+- name: Windows monitoring (windows_exporter)
+  hosts: windows_hosts
+  gather_facts: false
+  roles:
+    - role: windows-exporter
+      tags: [windows, monitoring]
 
 # The opt-in Windows test runner (org-scoped, labels self-hosted/Windows/X64/
 # host-windows-media). Not a CI gate and not the Unity pool: a job lands here

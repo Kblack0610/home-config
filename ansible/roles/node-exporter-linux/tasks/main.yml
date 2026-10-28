@@ -20,6 +20,15 @@
     state: present
   when: ansible_os_family == "Archlinux"
 
+- name: Ensure the textfile collector directory exists
+  ansible.builtin.file:
+    path: "{{ node_exporter_linux_textfile_dir }}"
+    state: directory
+    owner: "{{ node_exporter_linux_textfile_owner }}"
+    group: "{{ node_exporter_linux_textfile_owner }}"
+    mode: "0755"
+  when: node_exporter_linux_textfile_dir | length > 0
+
 - name: Configure node_exporter flags
   ansible.builtin.template:
     src: prometheus-node-exporter.default.j2

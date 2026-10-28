@@ -13,3 +13,9 @@ node_exporter_linux_port: 9100
 # into the include regex unescaped (a `.` matching any character is harmless),
 # because a backslash does not survive the EnvironmentFile + $ARGS expansion.
 node_exporter_linux_systemd_units: []
+
+# Directory the textfile collector reads *.prom files from. Empty = off. Set on
+# the workstation, where fleet-assess publishes its local Unity gates (owned by
+# the user that runs it, so the writer needs no root).
+node_exporter_linux_textfile_dir: ""
+node_exporter_linux_textfile_owner: root

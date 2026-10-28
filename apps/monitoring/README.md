@@ -17,6 +17,7 @@ This directory augments the Prometheus stack with ingress, dashboards, alert rul
 | `prometheus-rules-node-health.yaml` | `NodeDown` / `NodeExporterAbsent` — pages when any monitored machine stops responding |
 | `external-mac-nodes.yaml` | Scrape definitions for Apple Silicon hosts |
 | `external-standalone-nodes.yaml` | Scrape definitions for non-Kubernetes hosts |
+| `external-windows-nodes.yaml` | Scrape definitions for Windows PCs (windows_exporter, role `windows-exporter`) |
 | `external-iot-nodes.yaml` | Scrape definitions for IoT devices |
 | `dashboards/` | Grafana dashboards committed with the repo |
 

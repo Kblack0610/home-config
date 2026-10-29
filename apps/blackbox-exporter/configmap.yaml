@@ -7,15 +7,17 @@ data:
   blackbox.yml: |
     modules:
       # "Is it up" semantics for a homelab status board: a service that answers
-      # with auth (401/403) or a redirect is still up. Only 5xx / TLS failure /
-      # connection error counts as down. Mirrors the gatus `[STATUS] < 500` rule.
+      # with auth (401/403), a redirect, or a 404 on `/` (API hosts have no root
+      # page) is still up. Only 5xx / TLS failure / connection error counts as
+      # down. Mirrors the gatus `[STATUS] < 500` rule; blackbox takes no range,
+      # so the 4xx codes are listed.
       http_up:
         prober: http
         timeout: 8s
         http:
           method: GET
           valid_http_versions: ["HTTP/1.1", "HTTP/2.0"]
-          valid_status_codes: [200, 201, 202, 203, 204, 301, 302, 303, 307, 308, 401, 403]
+          valid_status_codes: [200, 201, 202, 203, 204, 301, 302, 303, 307, 308, 400, 401, 403, 404, 405, 406, 409, 410, 418, 421, 426, 429]
           follow_redirects: true
           fail_if_not_ssl: true
           preferred_ip_protocol: ip4

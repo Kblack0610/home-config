@@ -32,13 +32,6 @@ sections:
           action: url
           url_path: https://blacknbrownstudios.com
       - type: tile
-        entity: binary_sensor.cal_kennethblack_me
-        name: cal.kennethblack.me
-        icon: mdi:calendar
-        tap_action:
-          action: url
-          url_path: https://cal.kennethblack.me
-      - type: tile
         entity: binary_sensor.git_kennethblack_me
         name: git.kennethblack.me
         icon: mdi:git
@@ -274,6 +267,13 @@ sections:
         tap_action:
           action: url
           url_path: https://fleet.kblab.me
+      - type: tile
+        entity: binary_sensor.frigate_kblab_me
+        name: Frigate
+        icon: mdi:application
+        tap_action:
+          action: url
+          url_path: https://frigate.kblab.me
       - type: tile
         entity: binary_sensor.mdm_kblab_me
         name: Mdm

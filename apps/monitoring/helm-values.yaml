@@ -50,7 +50,14 @@ alertmanager:
   # the header above; the receiver config still lives in git.
   #
   # ntfy needs no auth (auth-default-access: read-write, LAN-only). Subscribe a
-  # phone to the `homelab-alerts` topic at https://ntfy.kblab.me/homelab-alerts.
+  # phone to the `homelab-alerts` topic at https://ntfy.kblab.me/homelab-alerts
+  # with Minimum priority High: criticals arrive at 5 (red), the rest at 3 and
+  # stay silent in the app list. Topic map: apps/ntfy/README.md.
+  #
+  # ntfy renders the Alertmanager JSON into a title and one line per alert
+  # (X-Template; ntfy turns a literal \n in a header into a newline). Without
+  # it every page was the raw webhook JSON. ntfy cannot template the priority,
+  # so the two levels are two receivers.
   config:
     global:
       resolve_timeout: 5m
@@ -64,9 +71,13 @@ alertmanager:
         # Watchdog is an always-firing heartbeat — never page on it.
         - matchers: [alertname = "Watchdog"]
           receiver: "null"
-        # Criticals (e.g. NodeDown) remind hourly until resolved.
+        # InfoInhibitor exists only to inhibit info alerts; it fires whenever
+        # any info alert does and is never meant to be delivered.
+        - matchers: [alertname = "InfoInhibitor"]
+          receiver: "null"
+        # Criticals (e.g. NodeDown) page red and remind hourly until resolved.
         - matchers: [severity = "critical"]
-          receiver: ntfy
+          receiver: ntfy-critical
           repeat_interval: 1h
     receivers:
       - name: "null"
@@ -74,6 +85,21 @@ alertmanager:
         webhook_configs:
           - url: http://ntfy.ntfy.svc.cluster.local/homelab-alerts
             send_resolved: true
+            http_config:
+              http_headers: &ntfy_template
+                X-Template: { values: ["yes"] }
+                X-Title: { values: ['{{if eq .status "resolved"}}Resolved{{else}}Firing{{end}}: {{.commonLabels.alertname}}'] }
+                X-Message: { values: ['{{range .alerts}}{{if eq .status "resolved"}}OK: {{end}}{{or .annotations.summary .labels.alertname}}\n{{end}}'] }
+                X-Priority: { values: ["default"] }
+      - name: ntfy-critical
+        webhook_configs:
+          - url: http://ntfy.ntfy.svc.cluster.local/homelab-alerts
+            send_resolved: true
+            http_config:
+              http_headers:
+                <<: *ntfy_template
+                X-Priority: { values: ["max"] }
+                X-Tags: { values: ["rotating_light"] }
     inhibit_rules:
       - source_matchers: [severity = "critical"]
         target_matchers: [severity = "warning"]

@@ -290,6 +290,20 @@ NO_RUN = {"pr": "", "event": "", "title": ""}
 # Only what render() reads is kept from a finished run or job: a day of raw run
 # objects (each carries two full repository objects) is tens of MB, and the pod
 # has 64Mi.
+MAIN_BRANCHES = ("main", "master")
+
+
+def run_scope(run):
+    """main for a run of the default branch, branch for a pull request's or a work branch's.
+
+    A red on main is everyone's problem; a red gate on a work branch is the gate doing its
+    job, so the two are told apart before anyone reads a pass rate.
+    """
+    if run.get("event") != "pull_request" and run.get("head_branch") in MAIN_BRANCHES:
+        return "main"
+    return "branch"
+
+
 RUN_KEYS = ("id", "name", "conclusion", "created_at", "updated_at", "run_started_at", "head_branch", "event", "html_url")
 JOB_KEYS = ("name", "conclusion", "runner_name", "labels", "created_at", "started_at", "completed_at", "html_url")
 
@@ -565,7 +579,7 @@ def render():
         repo = a["repo"].split("/", 1)[1]
         for run in a["history"]:
             wf = run.get("name") or ""
-            k = (repo, wf, run.get("conclusion") or "")
+            k = (repo, wf, run.get("conclusion") or "", run_scope(run))
             runs_done[k] = runs_done.get(k, 0) + 1
             for j in DONE_JOBS.get(run["id"], []):
                 rn, labels = j.get("runner_name"), j.get("labels") or []
@@ -585,11 +599,11 @@ def render():
                 if done:
                     took.setdefault((pool_, wf), []).append(max(0, done - started))
     L += [
-        "# HELP github_runs_finished Completed runs created in the last 24h",
+        "# HELP github_runs_finished Completed runs created in the last 24h; scope main = the default branch, not a pull request",
         "# TYPE github_runs_finished gauge",
     ]
-    for (repo, wf, c), n in sorted(runs_done.items()):
-        L.append(f"github_runs_finished{{{labels_str({'repo': repo, 'workflow': wf, 'conclusion': c})}}} {n}")
+    for (repo, wf, c, scope), n in sorted(runs_done.items()):
+        L.append(f"github_runs_finished{{{labels_str({'repo': repo, 'workflow': wf, 'conclusion': c, 'scope': scope})}}} {n}")
     L += [
         "# HELP github_jobs_finished Completed jobs of runs created in the last 24h, by the pool that ran them (github-hosted = not our runners)",
         "# TYPE github_jobs_finished gauge",

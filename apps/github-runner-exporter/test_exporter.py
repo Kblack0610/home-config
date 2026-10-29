@@ -207,10 +207,18 @@ class ExporterTest(unittest.TestCase):
     def test_runs_finished_counts_the_window(self):
         out = self.render()
         self.assertEqual(sorted(rows(out, "github_runs_finished")), [
-            'github_runs_finished{repo="web",workflow="CI",conclusion="cancelled"} 1',
-            'github_runs_finished{repo="web",workflow="CI",conclusion="failure"} 1'])
+            'github_runs_finished{repo="web",workflow="CI",conclusion="cancelled",scope="branch"} 1',
+            'github_runs_finished{repo="web",workflow="CI",conclusion="failure",scope="main"} 1'])
         # Paging asks with the window's cutoff, URL-encoded.
         self.assertTrue(any("status=completed&created=%3E%3D" in c for c in exporter.get.calls))
+
+    def test_run_scope_is_main_only_for_the_default_branch(self):
+        scope = exporter.run_scope
+        self.assertEqual(scope({"head_branch": "main", "event": "schedule"}), "main")
+        self.assertEqual(scope({"head_branch": "master", "event": "workflow_dispatch"}), "main")
+        self.assertEqual(scope({"head_branch": "main", "event": "pull_request"}), "branch")
+        self.assertEqual(scope({"head_branch": "fix/kick-scooter-red", "event": "workflow_dispatch"}), "branch")
+        self.assertEqual(scope({}), "branch")
 
     def test_jobs_finished_by_pool(self):
         self.assertEqual(sorted(rows(self.render(), "github_jobs_finished")), [
@@ -257,7 +265,7 @@ class ExporterTest(unittest.TestCase):
             out = self.render()
             self.assertEqual(set(exporter.DONE_JOBS), {9})
             # Run 8 counts as a run already; its job is not counted until cached.
-            self.assertIn('github_runs_finished{repo="web",workflow="CI",conclusion="cancelled"} 1', out)
+            self.assertIn('github_runs_finished{repo="web",workflow="CI",conclusion="cancelled",scope="branch"} 1', out)
             self.assertFalse(any('conclusion="cancelled"' in r for r in rows(out, "github_jobs_finished")))
             exporter.render()
             self.assertEqual(set(exporter.DONE_JOBS), {9, 8})
@@ -379,7 +387,7 @@ class ColdStartBudgetTest(unittest.TestCase):
     def test_runs_still_count_while_jobs_fill(self):
         self.fake()
         out = exporter.render()
-        self.assertIn(f'github_runs_finished{{repo="game",workflow="Tests",conclusion="success"}} {self.RUNS}', out)
+        self.assertIn(f'github_runs_finished{{repo="game",workflow="Tests",conclusion="success",scope="branch"}} {self.RUNS}', out)
 
 
 class RateLimitTest(unittest.TestCase):

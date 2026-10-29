@@ -3,6 +3,9 @@
 # Pi3 AdGuard (192.168.1.193): Network-wide DNS + ad-blocking
 # audio-living (192.168.1.120) + audio-bedroom (192.168.1.122): Snapcast rooms,
 #   node_exporter from the node-exporter-linux ansible role
+# workstation (192.168.1.2): the main PC, node_exporter from the workstation play
+#   in ansible/playbooks/site.yml; its textfile dir carries fleet-assess's local
+#   Unity gates (fleet_local_gate, fleet_agent_sessions).
 # razer-laptop left this list on 2026-10-26 when it joined k3s: the cluster's
 #   node-exporter DaemonSet scrapes it now, like hp-victus and asus-laptop.
 
@@ -37,6 +40,8 @@ subsets:
         hostname: audio-living
       - ip: 192.168.1.122
         hostname: audio-bedroom
+      - ip: 192.168.1.2
+        hostname: workstation
     ports:
       - name: metrics
         port: 9100

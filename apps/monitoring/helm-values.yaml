@@ -60,8 +60,12 @@ alertmanager:
   # v0.87 rejects webhook `http_headers` (amtool accepts them, the operator
   # does not, and it then keeps serving the previous config). Decoded:
   #   t = {{if eq .status "resolved"}}Resolved{{else}}Firing{{end}}: {{.commonLabels.alertname}}
-  #   m = {{range .alerts}}{{if eq .status "resolved"}}OK: {{end}}{{or .annotations.summary .labels.alertname}}<newline>{{end}}
+  #   m = {{range .alerts}}{{if eq .status "resolved"}}OK: {{end}}{{or .annotations.summary .labels.alertname}}<newline>{{end}}{{if .truncatedAlerts}}+{{.truncatedAlerts}} more{{end}}
   # ntfy cannot template the priority (`p`), so the two levels are two receivers.
+  # max_alerts caps a group at 10 alerts per request: ntfy answers 413 "JSON
+  # body too large" to a templated body over its limit, and Alertmanager then
+  # drops the page (109 Trivy HomelabCriticalVulnerability alerts did). The
+  # rest arrive as truncatedAlerts, printed as "+N more".
   config:
     global:
       resolve_timeout: 5m
@@ -87,12 +91,14 @@ alertmanager:
       - name: "null"
       - name: ntfy
         webhook_configs:
-          - url: "http://ntfy.ntfy.svc.cluster.local/homelab-alerts?tpl=yes&t=%7B%7Bif%20eq%20.status%20%22resolved%22%7D%7DResolved%7B%7Belse%7D%7DFiring%7B%7Bend%7D%7D%3A%20%7B%7B.commonLabels.alertname%7D%7D&m=%7B%7Brange%20.alerts%7D%7D%7B%7Bif%20eq%20.status%20%22resolved%22%7D%7DOK%3A%20%7B%7Bend%7D%7D%7B%7Bor%20.annotations.summary%20.labels.alertname%7D%7D%0A%7B%7Bend%7D%7D&p=default"
+          - url: "http://ntfy.ntfy.svc.cluster.local/homelab-alerts?tpl=yes&t=%7B%7Bif%20eq%20.status%20%22resolved%22%7D%7DResolved%7B%7Belse%7D%7DFiring%7B%7Bend%7D%7D%3A%20%7B%7B.commonLabels.alertname%7D%7D&m=%7B%7Brange%20.alerts%7D%7D%7B%7Bif%20eq%20.status%20%22resolved%22%7D%7DOK%3A%20%7B%7Bend%7D%7D%7B%7Bor%20.annotations.summary%20.labels.alertname%7D%7D%0A%7B%7Bend%7D%7D%7B%7Bif%20.truncatedAlerts%7D%7D%2B%7B%7B.truncatedAlerts%7D%7D%20more%7B%7Bend%7D%7D&p=default"
             send_resolved: true
+            max_alerts: 10
       - name: ntfy-critical
         webhook_configs:
-          - url: "http://ntfy.ntfy.svc.cluster.local/homelab-alerts?tpl=yes&t=%7B%7Bif%20eq%20.status%20%22resolved%22%7D%7DResolved%7B%7Belse%7D%7DFiring%7B%7Bend%7D%7D%3A%20%7B%7B.commonLabels.alertname%7D%7D&m=%7B%7Brange%20.alerts%7D%7D%7B%7Bif%20eq%20.status%20%22resolved%22%7D%7DOK%3A%20%7B%7Bend%7D%7D%7B%7Bor%20.annotations.summary%20.labels.alertname%7D%7D%0A%7B%7Bend%7D%7D&p=max&ta=rotating_light"
+          - url: "http://ntfy.ntfy.svc.cluster.local/homelab-alerts?tpl=yes&t=%7B%7Bif%20eq%20.status%20%22resolved%22%7D%7DResolved%7B%7Belse%7D%7DFiring%7B%7Bend%7D%7D%3A%20%7B%7B.commonLabels.alertname%7D%7D&m=%7B%7Brange%20.alerts%7D%7D%7B%7Bif%20eq%20.status%20%22resolved%22%7D%7DOK%3A%20%7B%7Bend%7D%7D%7B%7Bor%20.annotations.summary%20.labels.alertname%7D%7D%0A%7B%7Bend%7D%7D%7B%7Bif%20.truncatedAlerts%7D%7D%2B%7B%7B.truncatedAlerts%7D%7D%20more%7B%7Bend%7D%7D&p=max&ta=rotating_light"
             send_resolved: true
+            max_alerts: 10
     inhibit_rules:
       - source_matchers: [severity = "critical"]
         target_matchers: [severity = "warning"]

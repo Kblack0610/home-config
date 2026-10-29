@@ -1,6 +1,6 @@
 # home-config Project Rules
 
-Inherits shared rules from `~/CLAUDE.md`. The following are specific to this repository.
+Inherits shared rules from `~/.claude/CLAUDE.md`. The following are specific to this repository.
 
 ## Concurrent agents: use git worktrees
 
@@ -58,6 +58,17 @@ Rule of thumb:
 - `kubectl debug node/...` (the SSH-broken escape hatch) → k8s node name from `kubectl get nodes`
 
 Full mapping table + the `kubectl debug node/<name> --profile=sysadmin -- chroot /host` recipe for fixing dead-SSH nodes lives in [`docs/host-access.md`](./docs/host-access.md).
+
+## Local LLM routing
+
+Anything that needs a self-hosted model calls the **LiteLLM gateway** (`apps/litellm`, OpenAI-compatible `/v1`). Never curl a model host by IP:port, and never `ollama pull` as a workaround when an endpoint is unreachable.
+
+- **Ollama is decommissioned.** Mac Studio serves models via `mlx-server` (:8090), fronted by LiteLLM. A hardcoded `:11434` is always stale.
+- **LiteLLM fronts three tiers:** local MLX (free), Gemini (free tier), and paid **Lazer** (`proxy.lazertechnologies.com`). Lazer is the user's own AI allowance ($250/mo, LiteLLM team `lazer-pool`), not a client proxy, and personal data may use it. Reach it through the gateway with a scoped key so spend is metered.
+- **Consumers hold a scoped virtual key, never the master key.** Scope `allowed_models` to the tiers that consumer may use, so a wrong model name fails closed at the gateway instead of leaking content to a paid or cloud upstream. Minting: `apps/litellm/README.md` -> Create a key.
+- **Config points at the gateway, not a host.** If a config key names a model endpoint, verify something actually reads it; a documented-but-dead key hides the real endpoint in a code default.
+
+Why: 2026-07-20 the `comms` email-triage skill classified tier-2 against `192.168.1.4:11434`, decommissioned months earlier. Its fail-closed path defaulted to FYI, so triage silently degraded to "everything FYI" with no error, and an agent debugging it proposed `ollama pull` because nothing mentioned LiteLLM.
 
 ## Secrets
 

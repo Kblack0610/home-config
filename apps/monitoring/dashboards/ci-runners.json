@@ -392,7 +392,7 @@
     {
       "type": "table",
       "title": "Machines: load on every host that runs CI",
-      "description": "One row per CI host: CPU busy now and averaged over 6h (the headroom a rebalance is judged on), 1-minute load against its cores, memory used, CPU package temperature, and how many of its runners are busy. '-' = that host exports no such series (macOS has no temperature sensor in node_exporter).",
+      "description": "One row per CI host: CPU busy now and averaged over 6h (the headroom a rebalance is judged on), 1-minute load against its cores, memory used, CPU package temperature, and how many of its runners are busy (for the workstation, how many of its local Unity gate slots are held). '-' = that host exports no such series (macOS has no temperature sensor in node_exporter).",
       "gridPos": {
         "h": 8,
         "w": 24,
@@ -406,7 +406,7 @@
             "uid": "${datasource}"
           },
           "editorMode": "code",
-          "expr": "cc:host_cpu_busy_ratio and on (host) max by (host) (github_runner_pool_expected)",
+          "expr": "cc:host_cpu_busy_ratio and on (host) (max by (host) (github_runner_pool_expected) or cc:host_local_slots)",
           "format": "table",
           "instant": true,
           "range": false,
@@ -419,7 +419,7 @@
             "uid": "${datasource}"
           },
           "editorMode": "code",
-          "expr": "cc:host_cpu_busy_ratio:avg6h and on (host) max by (host) (github_runner_pool_expected)",
+          "expr": "cc:host_cpu_busy_ratio:avg6h and on (host) (max by (host) (github_runner_pool_expected) or cc:host_local_slots)",
           "format": "table",
           "instant": true,
           "range": false,
@@ -432,7 +432,7 @@
             "uid": "${datasource}"
           },
           "editorMode": "code",
-          "expr": "cc:host_load1 and on (host) max by (host) (github_runner_pool_expected)",
+          "expr": "cc:host_load1 and on (host) (max by (host) (github_runner_pool_expected) or cc:host_local_slots)",
           "format": "table",
           "instant": true,
           "range": false,
@@ -445,7 +445,7 @@
             "uid": "${datasource}"
           },
           "editorMode": "code",
-          "expr": "cc:host_cores and on (host) max by (host) (github_runner_pool_expected)",
+          "expr": "cc:host_cores and on (host) (max by (host) (github_runner_pool_expected) or cc:host_local_slots)",
           "format": "table",
           "instant": true,
           "range": false,
@@ -458,7 +458,7 @@
             "uid": "${datasource}"
           },
           "editorMode": "code",
-          "expr": "cc:host_mem_used_ratio and on (host) max by (host) (github_runner_pool_expected)",
+          "expr": "cc:host_mem_used_ratio and on (host) (max by (host) (github_runner_pool_expected) or cc:host_local_slots)",
           "format": "table",
           "instant": true,
           "range": false,
@@ -471,7 +471,7 @@
             "uid": "${datasource}"
           },
           "editorMode": "code",
-          "expr": "cc:host_temp_c and on (host) max by (host) (github_runner_pool_expected)",
+          "expr": "cc:host_temp_c and on (host) (max by (host) (github_runner_pool_expected) or cc:host_local_slots)",
           "format": "table",
           "instant": true,
           "range": false,
@@ -484,7 +484,7 @@
             "uid": "${datasource}"
           },
           "editorMode": "code",
-          "expr": "count by (host) (max without (instance, pod, job, namespace, service, endpoint, container) (github_runner_state{state=\"running\"}))",
+          "expr": "count by (host) (max without (instance, pod, job, namespace, service, endpoint, container) (github_runner_state{state=\"running\"})) or cc:host_local_busy",
           "format": "table",
           "instant": true,
           "range": false,
@@ -811,9 +811,9 @@
     {
       "type": "table",
       "title": "Pools: busy, slots and queue",
-      "description": "One row per runner pool (cc:pool_* in prometheus-rules-command-center.yaml). A pool with every slot busy and jobs waiting, next to pools with idle slots, is where capacity should move. Queued runs GitHub never gave jobs are left out (they show in 'Waiting for a runner').",
+      "description": "One row per runner pool (cc:pool_* in prometheus-rules-command-center.yaml). A pool with every slot busy and jobs waiting, next to pools with idle slots, is where capacity should move. Queued runs GitHub never gave jobs are left out (they show in 'Waiting for a runner'). The 24h columns count jobs of runs created in the last day: pass = success / (success + failure + timed out), so cancelled jobs (the playground cancels gates for closed PRs on purpose) are counted apart. github-hosted = jobs that ran on GitHub's runners.",
       "gridPos": {
-        "h": 6,
+        "h": 8,
         "w": 24,
         "x": 0,
         "y": 12
@@ -870,6 +870,45 @@
           "range": false,
           "legendFormat": "__auto",
           "refId": "D"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "editorMode": "code",
+          "expr": "cc:pool_done_24h",
+          "format": "table",
+          "instant": true,
+          "range": false,
+          "legendFormat": "__auto",
+          "refId": "E"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "editorMode": "code",
+          "expr": "cc:pool_pass_ratio_24h",
+          "format": "table",
+          "instant": true,
+          "range": false,
+          "legendFormat": "__auto",
+          "refId": "F"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "editorMode": "code",
+          "expr": "cc:pool_cancelled_24h",
+          "format": "table",
+          "instant": true,
+          "range": false,
+          "legendFormat": "__auto",
+          "refId": "G"
         }
       ],
       "transformations": [
@@ -888,13 +927,19 @@
               "Time 1": true,
               "Time 2": true,
               "Time 3": true,
-              "Time 4": true
+              "Time 4": true,
+              "Time 5": true,
+              "Time 6": true,
+              "Time 7": true
             },
             "renameByName": {
               "Value #A": "busy",
               "Value #B": "slots",
               "Value #C": "waiting",
-              "Value #D": "oldest wait"
+              "Value #D": "oldest wait",
+              "Value #E": "done 24h",
+              "Value #F": "pass 24h",
+              "Value #G": "cancelled 24h"
             }
           }
         }
@@ -1000,6 +1045,54 @@
                 }
               }
             ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "pass 24h"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "percentunit"
+              },
+              {
+                "id": "decimals",
+                "value": 0
+              },
+              {
+                "id": "custom.cellOptions",
+                "value": {
+                  "type": "color-text"
+                }
+              },
+              {
+                "id": "color",
+                "value": {
+                  "mode": "thresholds"
+                }
+              },
+              {
+                "id": "thresholds",
+                "value": {
+                  "mode": "absolute",
+                  "steps": [
+                    {
+                      "color": "red",
+                      "value": null
+                    },
+                    {
+                      "color": "orange",
+                      "value": 0.7
+                    },
+                    {
+                      "color": "green",
+                      "value": 0.9
+                    }
+                  ]
+                }
+              }
+            ]
           }
         ]
       },
@@ -1017,7 +1110,7 @@
         "h": 13,
         "w": 24,
         "x": 0,
-        "y": 18
+        "y": 20
       },
       "targets": [
         {
@@ -1349,12 +1442,12 @@
     {
       "type": "table",
       "title": "What each pool runs",
-      "description": "Workflows each runner pool finished recently (last ~60 completed runs per repo), newest first. Read from job history, so it stays true when the workflow files change.",
+      "description": "Workflows each runner pool finished in the last 24h, newest first. Read from job history, so it stays true when the workflow files change.",
       "gridPos": {
         "h": 10,
         "w": 24,
         "x": 0,
-        "y": 31
+        "y": 33
       },
       "targets": [
         {
@@ -1436,7 +1529,7 @@
         "h": 6,
         "w": 24,
         "x": 0,
-        "y": 41
+        "y": 43
       },
       "targets": [
         {
@@ -1612,7 +1705,7 @@
         "h": 10,
         "w": 24,
         "x": 0,
-        "y": 47
+        "y": 49
       },
       "targets": [
         {
@@ -1805,6 +1898,208 @@
       }
     },
     {
+      "type": "table",
+      "title": "Finished, last 24h by workflow",
+      "description": "Every workflow run created in the last 24h, one row per repo and workflow, most failures first. pass = success / (success + failure + timed out); failed counts timed out too; cancelled runs (closed-PR gates, superseded pushes) are counted apart. '-' in pass = nothing in the day passed or failed.",
+      "gridPos": {
+        "h": 10,
+        "w": 24,
+        "x": 0,
+        "y": 59
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "editorMode": "code",
+          "expr": "sum by (repo, workflow) (max without (instance, pod, job, namespace, service, endpoint, container) (github_runs_finished))",
+          "format": "table",
+          "instant": true,
+          "range": false,
+          "legendFormat": "__auto",
+          "refId": "A"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "editorMode": "code",
+          "expr": "(sum by (repo, workflow) (max without (instance, pod, job, namespace, service, endpoint, container) (github_runs_finished{conclusion=\"success\"})) or sum by (repo, workflow) (max without (instance, pod, job, namespace, service, endpoint, container) (github_runs_finished)) * 0) / (sum by (repo, workflow) (max without (instance, pod, job, namespace, service, endpoint, container) (github_runs_finished{conclusion=~\"success|failure|timed_out\"})) > 0)",
+          "format": "table",
+          "instant": true,
+          "range": false,
+          "legendFormat": "__auto",
+          "refId": "B"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "editorMode": "code",
+          "expr": "sum by (repo, workflow) (max without (instance, pod, job, namespace, service, endpoint, container) (github_runs_finished{conclusion=~\"failure|timed_out\"})) or sum by (repo, workflow) (max without (instance, pod, job, namespace, service, endpoint, container) (github_runs_finished)) * 0",
+          "format": "table",
+          "instant": true,
+          "range": false,
+          "legendFormat": "__auto",
+          "refId": "C"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "editorMode": "code",
+          "expr": "sum by (repo, workflow) (max without (instance, pod, job, namespace, service, endpoint, container) (github_runs_finished{conclusion=\"cancelled\"})) or sum by (repo, workflow) (max without (instance, pod, job, namespace, service, endpoint, container) (github_runs_finished)) * 0",
+          "format": "table",
+          "instant": true,
+          "range": false,
+          "legendFormat": "__auto",
+          "refId": "D"
+        }
+      ],
+      "transformations": [
+        {
+          "id": "merge",
+          "options": {}
+        },
+        {
+          "id": "organize",
+          "options": {
+            "excludeByName": {
+              "Time": true
+            },
+            "indexByName": {
+              "repo": 0,
+              "workflow": 1,
+              "Value #A": 2,
+              "Value #B": 3,
+              "Value #C": 4,
+              "Value #D": 5
+            },
+            "renameByName": {
+              "Value #A": "runs",
+              "Value #B": "pass",
+              "Value #C": "failed",
+              "Value #D": "cancelled"
+            }
+          }
+        }
+      ],
+      "options": {
+        "showHeader": true,
+        "cellHeight": "sm",
+        "sortBy": [
+          {
+            "displayName": "failed",
+            "desc": true
+          }
+        ]
+      },
+      "fieldConfig": {
+        "defaults": {
+          "noValue": "-",
+          "custom": {
+            "align": "left"
+          }
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "pass"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "percentunit"
+              },
+              {
+                "id": "decimals",
+                "value": 0
+              },
+              {
+                "id": "custom.cellOptions",
+                "value": {
+                  "type": "color-text"
+                }
+              },
+              {
+                "id": "color",
+                "value": {
+                  "mode": "thresholds"
+                }
+              },
+              {
+                "id": "thresholds",
+                "value": {
+                  "mode": "absolute",
+                  "steps": [
+                    {
+                      "color": "red",
+                      "value": null
+                    },
+                    {
+                      "color": "orange",
+                      "value": 0.7
+                    },
+                    {
+                      "color": "green",
+                      "value": 0.9
+                    }
+                  ]
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "failed"
+            },
+            "properties": [
+              {
+                "id": "custom.cellOptions",
+                "value": {
+                  "type": "color-text"
+                }
+              },
+              {
+                "id": "color",
+                "value": {
+                  "mode": "thresholds"
+                }
+              },
+              {
+                "id": "thresholds",
+                "value": {
+                  "mode": "absolute",
+                  "steps": [
+                    {
+                      "color": "text",
+                      "value": null
+                    },
+                    {
+                      "color": "red",
+                      "value": 1
+                    }
+                  ]
+                }
+              }
+            ]
+          }
+        ]
+      },
+      "id": 12,
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${datasource}"
+      }
+    },
+    {
       "type": "row",
       "title": "Trends",
       "collapsed": true,
@@ -1812,7 +2107,7 @@
         "h": 1,
         "w": 24,
         "x": 0,
-        "y": 57
+        "y": 69
       },
       "panels": [
         {
@@ -1822,7 +2117,7 @@
             "h": 8,
             "w": 12,
             "x": 0,
-            "y": 58
+            "y": 70
           },
           "targets": [
             {
@@ -1861,7 +2156,7 @@
               "mode": "multi"
             }
           },
-          "id": 12,
+          "id": 13,
           "datasource": {
             "type": "prometheus",
             "uid": "${datasource}"
@@ -1874,7 +2169,7 @@
             "h": 8,
             "w": 12,
             "x": 12,
-            "y": 58
+            "y": 70
           },
           "targets": [
             {
@@ -1913,14 +2208,14 @@
               "mode": "multi"
             }
           },
-          "id": 13,
+          "id": 14,
           "datasource": {
             "type": "prometheus",
             "uid": "${datasource}"
           }
         }
       ],
-      "id": 14,
+      "id": 15,
       "datasource": {
         "type": "prometheus",
         "uid": "${datasource}"

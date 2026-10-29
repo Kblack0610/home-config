@@ -10,6 +10,9 @@
 #   cc:<name>                               the numbers the tiles print
 #   cc:host_<metric>{host}                  per-machine load for the board's MACHINES rows
 #   cc:host_local_gate{host,worktree,...}  the workstation's local Unity gates (fleet-assess)
+#   cc:host_local_slots / _busy / _queued{host}          its gate slots, slots held, runs waiting
+#   cc:host_local_done_24h / _pass_ratio_24h{host}       its gates finished in 24h, and pass / finished
+#   cc:pool_done_24h / _cancelled_24h / _pass_ratio_24h{pool}  jobs each runner pool finished in 24h
 #
 # Status comes from sentinel watches where one exists (they are the curated alarms that
 # already page), and from metrics where none does (nodes, heartbeats, runner pools).
@@ -226,6 +229,33 @@ spec:
           expr: >-
             max without (instance, job, namespace, service, endpoint, pod, container) (fleet_local_gate{host!=""}
               and on (instance) (time() - node_textfile_mtime_seconds{file=~".*fleet_local.prom"} < 180))
+        # The workstation's gate slots, from the same textfile. slots.sh owns the slot
+        # count (open + burst); fleet-assess only reports it, never re-derives it.
+        - record: cc:host_local_slots
+          expr: >-
+            sum by (host) (fleet_local_slots{host!=""}
+              and on (instance) (time() - node_textfile_mtime_seconds{file=~".*fleet_local.prom"} < 180))
+        - record: cc:host_local_busy
+          expr: >-
+            max by (host) (fleet_local_slots_busy{host!=""}
+              and on (instance) (time() - node_textfile_mtime_seconds{file=~".*fleet_local.prom"} < 180))
+        - record: cc:host_local_queued
+          expr: >-
+            max by (host) (fleet_local_queued{host!=""}
+              and on (instance) (time() - node_textfile_mtime_seconds{file=~".*fleet_local.prom"} < 180))
+        # Gates finished in the last 24h (run.sh's ledger). pass / all results: absent
+        # when nothing finished, so an idle day reads "-" and not 0%, and 0 (not absent)
+        # when every gate failed.
+        - record: cc:host_local_done_24h
+          expr: >-
+            sum by (host) (fleet_local_gate_finished{host!=""}
+              and on (instance) (time() - node_textfile_mtime_seconds{file=~".*fleet_local.prom"} < 180))
+        - record: cc:host_local_pass_ratio_24h
+          expr: >-
+            (sum by (host) (fleet_local_gate_finished{host!="",result="pass"}
+              and on (instance) (time() - node_textfile_mtime_seconds{file=~".*fleet_local.prom"} < 180))
+              or cc:host_local_done_24h * 0)
+            / (cc:host_local_done_24h > 0)
         - record: cc:agent_sessions_running
           expr: >-
             sum(fleet_agent_sessions{host!=""}
@@ -256,6 +286,27 @@ spec:
         - record: cc:pool_oldest_wait_seconds
           expr: >-
             max by (pool) (github_actions_job_waiting{stuck!="true"})
+        # Jobs each pool finished in the last 24h (runs created in the window). Jobs on
+        # runners that are not ours read pool="github-hosted".
+        - record: cc:pool_done_24h
+          expr: >-
+            sum by (pool) (max without (instance, pod, job, namespace, service, endpoint, container)
+              (github_jobs_finished{conclusion=~"success|failure|timed_out|cancelled"}))
+        - record: cc:pool_cancelled_24h
+          expr: >-
+            sum by (pool) (max without (instance, pod, job, namespace, service, endpoint, container)
+              (github_jobs_finished{conclusion="cancelled"}))
+        # Pass % leaves cancelled (and skipped) out of the denominator: the playground
+        # cancels gate runs for closed PRs on purpose (drop-closed-gates.yml), and that
+        # is not a pool failing. Absent when nothing passed or failed; 0 when all failed.
+        - record: cc:pool_pass_ratio_24h
+          expr: >-
+            (sum by (pool) (max without (instance, pod, job, namespace, service, endpoint, container)
+              (github_jobs_finished{conclusion="success"}))
+              or sum by (pool) (max without (instance, pod, job, namespace, service, endpoint, container)
+              (github_jobs_finished{conclusion=~"failure|timed_out"})) * 0)
+            / (sum by (pool) (max without (instance, pod, job, namespace, service, endpoint, container)
+              (github_jobs_finished{conclusion=~"success|failure|timed_out"})) > 0)
         - record: cc:ci_stuck_runs
           expr: >-
             count(max without (instance, pod, job, namespace, service, endpoint, container)

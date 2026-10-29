@@ -35,6 +35,14 @@ A failed source never reads as "offline": its runners are simply absent and
 github_runner_exporter_api_ok{source} says why. Missing-slot rows and pool
 counts are only emitted when every runner source answered.
 
+FINISHED WORK is read over a 24h window: every completed run CREATED in the
+last day, and each one's jobs. That is what pass % per pool and per workflow,
+queue time and job duration are computed from (github_runs_finished,
+github_jobs_finished, github_job_queue_seconds, github_job_duration_seconds),
+here rather than in PromQL because 24h of per-job samples is not in
+Prometheus. The run list is re-read every HISTORY_REFRESH_SECS, and each
+finished run's jobs are fetched once and cached.
+
 Alerting is NOT here. Sentinel (~/.agent/watches/*runners-online.yaml) is the
 notification voice for runner pools; this is the screen.
 """
@@ -43,6 +51,7 @@ import os
 import re
 import time
 import urllib.error
+import urllib.parse
 import urllib.request
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timezone
@@ -55,15 +64,28 @@ ORGS = os.environ.get("RUNNER_ORGS", "BlackNBrownStudios").split()
 # Repos whose repo-scoped runners, active runs and recent runs are read.
 RUN_REPOS = os.environ.get("RUN_REPOS", "BlackNBrownStudios/platform").split()
 RECENT_PER_REPO = int(os.environ.get("RECENT_PER_REPO", "15"))
-# Completed runs per repo mined for "what does this runner / pool run". Wider
-# than the Recent runs table because most runs are GitHub-hosted: at 15,
-# platform showed one self-hosted workflow. Jobs are cached, so this costs
-# ~HISTORY_PER_REPO calls per repo once, then one per newly finished run.
-HISTORY_PER_REPO = int(os.environ.get("HISTORY_PER_REPO", "60"))
+# Finished work is every completed run created in this window: the span pass %,
+# queue time and "what does this runner / pool run" are judged over.
+HISTORY_WINDOW_SECS = 86400
+# How often the window's run list is re-read. GitHub has no push API, and the
+# watched repos finish ~500 runs a day (2026-10-29), ~10 pages of 100: re-read
+# on every 1-minute scrape that is ~600 calls/h of a 5000/h limit the token
+# shares with every gh user on the account. Every 10 minutes it is ~60/h, and a
+# scrape in between reuses the cached list, so the finished numbers lag by at
+# most this much.
+HISTORY_REFRESH_SECS = 600
+# repo -> (fetched at, completed runs in the window, newest first).
+HISTORY = {}
 # run id -> its jobs, for COMPLETED runs only: they never change, so each is
 # fetched once and the steady-state cost is one call per newly finished run.
-# Pruned every scrape to the runs still in the recent window.
+# Pruned every scrape to the runs still in the window.
 DONE_JOBS = {}
+# A cold cache is a day of runs (~500 job calls across the repos), which no
+# scrape can make inside its 30s timeout. Fetch at most this many per repo per
+# scrape, newest first; the rest fill over the next scrapes. Measured cold: 30s
+# at 150, 23s at 60 with ~10 scrapes to fill. Until a run's jobs are cached it
+# counts in the run-level series and is missing from the job-level ones.
+MAX_JOB_FETCH_PER_SCRAPE = int(os.environ.get("MAX_JOB_FETCH_PER_SCRAPE", "60"))
 # Bounds the jobs fan-out per repo per status, so one repo with a deep queue
 # cannot eat the API budget or the scrape timeout.
 MAX_RUNS_PER_REPO = int(os.environ.get("MAX_RUNS_PER_REPO", "15"))
@@ -142,6 +164,14 @@ def host_of(name, labels):
     return m.group(1) if m else "unknown"
 
 
+def quantile(xs, q):
+    """Nearest-rank quantile of a sorted, non-empty list."""
+    return xs[max(0, -(-round(q * 100) * len(xs) // 100) - 1)]
+
+
+QUANTILES = ("0.5", "0.9")
+
+
 def esc(v):
     return re.sub(r'(["\\])', r"\\\1", str(v)).replace("\n", " ")
 
@@ -167,9 +197,38 @@ def run_labels(run):
 
 NO_RUN = {"pr": "", "event": "", "title": ""}
 
+# Only what render() reads is kept from a finished run or job: a day of raw run
+# objects (each carries two full repository objects) is tens of MB, and the pod
+# has 64Mi.
+RUN_KEYS = ("id", "name", "conclusion", "created_at", "updated_at", "run_started_at", "head_branch", "event", "html_url")
+JOB_KEYS = ("name", "conclusion", "runner_name", "labels", "created_at", "started_at", "completed_at", "html_url")
 
-def repo_activity(repo):
-    """One repo's active runs and their jobs, plus recent completed runs."""
+
+def slim(d, keys):
+    return {k: d.get(k) for k in keys}
+
+
+def finished_runs(repo, now):
+    """Completed runs created in the window, newest first.
+
+    GitHub caps a filtered run listing at 1000 results; the busiest repo is
+    ~600 a day. Pages after the first are read in parallel, and a run that
+    shifts across a page boundary while they are read is de-duplicated by id.
+    """
+    since = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(now - HISTORY_WINDOW_SECS))
+    q = f"repos/{repo}/actions/runs?status=completed&created={urllib.parse.quote('>=' + since)}&per_page=100"
+    first = get(f"{q}&page=1")
+    pages = [first]
+    n = -(-first.get("total_count", 0) // 100)
+    if n > 1:
+        with ThreadPoolExecutor(max_workers=4) as ex:
+            pages += list(ex.map(lambda p: get(f"{q}&page={p}"), range(2, n + 1)))
+    runs = {r["id"]: slim(r, RUN_KEYS) for page in pages for r in page.get("workflow_runs", [])}
+    return [runs[i] for i in sorted(runs, reverse=True)]
+
+
+def repo_activity(repo, now):
+    """One repo's active runs and their jobs, plus the window's completed runs."""
     out = {"repo": repo, "ok": True, "counts": {}, "jobs": [], "recent": [], "history": []}
     try:
         active = []
@@ -191,15 +250,19 @@ def repo_activity(repo):
                 job["_workflow"] = run.get("name") or job.get("workflow_name", "")
                 job["_run"] = run_labels(run)
                 out["jobs"].append(job)
-        data = get(f"repos/{repo}/actions/runs?status=completed&per_page={max(RECENT_PER_REPO, HISTORY_PER_REPO)}")
-        out["history"] = data.get("workflow_runs", [])
+        cached = HISTORY.get(repo)
+        if not cached or now - cached[0] >= HISTORY_REFRESH_SECS:
+            cached = HISTORY[repo] = (now, finished_runs(repo, now))
+        # The cached list was cut at fetch time; cut again so a run ages out on
+        # time between refreshes.
+        out["history"] = [r for r in cached[1] if (ts(r.get("created_at")) or 0) >= now - HISTORY_WINDOW_SECS]
         out["recent"] = out["history"][:RECENT_PER_REPO]
-        # Uncached finished runs in parallel: a cold cache is ~HISTORY_PER_REPO
-        # calls per repo, which sequentially took 51s, past the scrape timeout.
-        todo = [run["id"] for run in out["history"] if run["id"] not in DONE_JOBS]
+        # Uncached finished runs in parallel, newest first and capped (see
+        # MAX_JOB_FETCH_PER_SCRAPE): sequentially, 60 of them took 51s.
+        todo = [run["id"] for run in out["history"] if run["id"] not in DONE_JOBS][:MAX_JOB_FETCH_PER_SCRAPE]
         with ThreadPoolExecutor(max_workers=6) as ex:
             for rid, jobs in zip(todo, ex.map(lambda i: get(f"repos/{repo}/actions/runs/{i}/jobs?per_page=100").get("jobs", []), todo)):
-                DONE_JOBS[rid] = jobs
+                DONE_JOBS[rid] = [slim(j, JOB_KEYS) for j in jobs]
     except API_ERRORS:
         out["ok"] = False
     return out
@@ -210,7 +273,7 @@ def render():
     sources = [f"orgs/{o}" for o in ORGS] + [f"repos/{r}" for r in RUN_REPOS]
     with ThreadPoolExecutor(max_workers=8) as pool:
         runner_futs = {s: pool.submit(runners, s) for s in sources}
-        repo_futs = [pool.submit(repo_activity, r) for r in RUN_REPOS]
+        repo_futs = [pool.submit(repo_activity, r, now) for r in RUN_REPOS]
         acts = [f.result() for f in repo_futs]
 
     L = [
@@ -371,7 +434,7 @@ def render():
                 k = (pool_of_runner[rn], a["repo"].split("/", 1)[1], run.get("name", ""))
                 pool_wf[k] = max(pool_wf.get(k, 0), done)
     L += [
-        "# HELP github_runner_last_job The last job this runner finished (within the recent-runs window); value is when",
+        "# HELP github_runner_last_job The last job this runner finished (within the 24h window); value is when",
         "# TYPE github_runner_last_job gauge",
     ]
     for rn, (done, repo, wf, j) in sorted(last.items()):
@@ -380,12 +443,72 @@ def render():
                           "last_url": j.get("html_url", "")})
         L.append(f"github_runner_last_job{{{lab}}} {int(done)}")
     L += [
-        "# HELP github_pool_workflow A workflow this pool ran recently; value is when it last did",
+        "# HELP github_pool_workflow A workflow this pool ran in the last 24h; value is when it last did",
         "# TYPE github_pool_workflow gauge",
     ]
     for (pool_, repo, wf), done in sorted(pool_wf.items()):
         L.append(f"github_pool_workflow{{{labels_str({'pool': pool_, 'repo': repo, 'workflow': wf})}}} {int(done)}")
-    live = {run["id"] for a in acts for run in a["history"]}
+
+    # Finished work over the window. Runs count as soon as they are listed; a
+    # run's jobs count once they are cached (MAX_JOB_FETCH_PER_SCRAPE), so after
+    # a restart the job-level numbers fill in over a few scrapes.
+    runs_done, jobs_done, queue, took = {}, {}, {}, {}
+    for a in acts:
+        repo = a["repo"].split("/", 1)[1]
+        for run in a["history"]:
+            wf = run.get("name") or ""
+            k = (repo, wf, run.get("conclusion") or "")
+            runs_done[k] = runs_done.get(k, 0) + 1
+            for j in DONE_JOBS.get(run["id"], []):
+                rn, labels = j.get("runner_name"), j.get("labels") or []
+                # A self-hosted job on a runner not listed this scrape (removed
+                # since, or its source failed) still belongs to the pool it asked
+                # for; everything else (GitHub's runners, or no runner at all,
+                # as for a skipped job) is github-hosted.
+                pool_ = (pool_of_runner.get(rn) or (pool_of(labels) if "self-hosted" in labels else None)
+                         or "github-hosted")
+                k = (pool_, repo, wf, j.get("conclusion") or "")
+                jobs_done[k] = jobs_done.get(k, 0) + 1
+                created, started, done = ts(j.get("created_at")), ts(j.get("started_at")), ts(j.get("completed_at"))
+                if not rn or not started:
+                    continue
+                if created:
+                    queue.setdefault(pool_, []).append(max(0, started - created))
+                if done:
+                    took.setdefault((pool_, wf), []).append(max(0, done - started))
+    L += [
+        "# HELP github_runs_finished Completed runs created in the last 24h",
+        "# TYPE github_runs_finished gauge",
+    ]
+    for (repo, wf, c), n in sorted(runs_done.items()):
+        L.append(f"github_runs_finished{{{labels_str({'repo': repo, 'workflow': wf, 'conclusion': c})}}} {n}")
+    L += [
+        "# HELP github_jobs_finished Completed jobs of runs created in the last 24h, by the pool that ran them (github-hosted = not our runners)",
+        "# TYPE github_jobs_finished gauge",
+    ]
+    for (pool_, repo, wf, c), n in sorted(jobs_done.items()):
+        L.append(f"github_jobs_finished{{{labels_str({'pool': pool_, 'repo': repo, 'workflow': wf, 'conclusion': c})}}} {n}")
+    L += [
+        "# HELP github_job_queue_seconds Time a finished job (last 24h) waited for a runner, started_at - created_at",
+        "# TYPE github_job_queue_seconds gauge",
+    ]
+    for pool_, xs in sorted(queue.items()):
+        xs.sort()
+        for q in QUANTILES:
+            L.append(f'github_job_queue_seconds{{{labels_str({"pool": pool_, "quantile": q})}}} {int(quantile(xs, float(q)))}')
+    L += [
+        "# HELP github_job_duration_seconds How long a finished job (last 24h) ran, completed_at - started_at",
+        "# TYPE github_job_duration_seconds gauge",
+    ]
+    for (pool_, wf), xs in sorted(took.items()):
+        xs.sort()
+        for q in QUANTILES:
+            L.append(f'github_job_duration_seconds{{{labels_str({"pool": pool_, "workflow": wf, "quantile": q})}}} {int(quantile(xs, float(q)))}')
+
+    # Pruned against the cached lists, not this scrape's: a scrape where a repo
+    # failed (rate limit, network) must not throw away a day of cached jobs and
+    # spend ~500 calls refilling them.
+    live = {run["id"] for _, runs in HISTORY.values() for run in runs}
     for rid in [k for k in DONE_JOBS if k not in live]:
         del DONE_JOBS[rid]
     return "\n".join(L) + "\n"

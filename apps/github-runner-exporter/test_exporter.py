@@ -8,6 +8,7 @@ source makes runners absent and suppresses missing rows instead of reading as
 offline. Stdlib only; CI runs it in the checks workflow.
 """
 import os
+import re
 import sys
 import time
 import unittest
@@ -18,12 +19,14 @@ os.environ.update(
     RUN_REPOS="acme/web acme/game",
     RUNNER_ROSTER="box:pmp-light:2 box:unity:1 gone:unity:1",
     RECENT_PER_REPO="2",
-    HISTORY_PER_REPO="2",
 )
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import exporter  # noqa: E402
 
 T0 = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(time.time() - 600))
+T1 = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(time.time() - 540))
+T2 = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(time.time() - 300))
+OLD = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(time.time() - 90000))
 
 
 def runner(i, name, labels, status="online", busy=False):
@@ -52,15 +55,31 @@ FAKE = {
          "head_branch": "main", "html_url": "https://x/job/1"},
         {"name": "PlayMode 2", "status": "queued", "created_at": T0, "head_branch": "main",
          "labels": ["self-hosted", "unity"], "html_url": "https://x/job/2"}]},
-    "repos/acme/web/actions/runs?status=completed&per_page=2": {"workflow_runs": [
-        {"id": 9, "name": "CI", "head_branch": "main", "event": "push", "conclusion": "failure",
-         "updated_at": T0, "run_started_at": T0, "html_url": "https://x/run/9"}]},
+    # Completed listings; Fake drops the `created=` cutoff, which moves with the clock.
+    # Run 7 is older than the window: GitHub would not list it, but the cached list
+    # holds runs that age out between refreshes, and it must not count.
+    "repos/acme/web/actions/runs?status=completed&per_page=100&page=1": {"total_count": 3, "workflow_runs": [
+        {"id": 9, "name": "CI", "head_branch": "main", "event": "push", "conclusion": "failure", "created_at": T0,
+         "updated_at": T0, "run_started_at": T0, "html_url": "https://x/run/9"},
+        {"id": 8, "name": "CI", "head_branch": "main", "event": "pull_request", "conclusion": "cancelled", "created_at": T0,
+         "updated_at": T0, "run_started_at": T0, "html_url": "https://x/run/8"},
+        {"id": 7, "name": "CI", "head_branch": "main", "event": "push", "conclusion": "success", "created_at": OLD,
+         "updated_at": OLD, "run_started_at": OLD, "html_url": "https://x/run/7"}]},
     "repos/acme/web/actions/runs/9/jobs?per_page=100": {"jobs": [
         {"name": "lint", "status": "completed", "conclusion": "failure", "runner_name": "box-light-1",
-         "completed_at": T0, "html_url": "https://x/job/9"},
+         "labels": ["self-hosted", "pmp-light"], "created_at": T0, "started_at": T1, "completed_at": T2,
+         "html_url": "https://x/job/9"},
         {"name": "build", "status": "completed", "conclusion": "success", "runner_name": "GitHub Actions 5",
-         "completed_at": T0, "html_url": "https://x/job/10"}]},
-    "repos/acme/game/actions/runs?status=completed&per_page=2": {"workflow_runs": []},
+         "labels": ["ubuntu-latest"], "created_at": T0, "started_at": T0, "completed_at": T1,
+         "html_url": "https://x/job/10"},
+        {"name": "deploy", "status": "completed", "conclusion": "skipped", "runner_name": None, "labels": ["ubuntu-latest"],
+         "created_at": T0, "started_at": T0, "completed_at": T0, "html_url": "https://x/job/11"}]},
+    # A self-hosted job whose runner is not listed (removed since): it keeps its pool.
+    "repos/acme/web/actions/runs/8/jobs?per_page=100": {"jobs": [
+        {"name": "e2e", "status": "completed", "conclusion": "cancelled", "runner_name": "old-light-9",
+         "labels": ["self-hosted", "pmp-light"], "created_at": T0, "started_at": T1, "completed_at": T1,
+         "html_url": "https://x/job/12"}]},
+    "repos/acme/game/actions/runs?status=completed&per_page=100&page=1": {"total_count": 0, "workflow_runs": []},
 }
 
 
@@ -73,7 +92,7 @@ class Fake:
         self.calls.append(path)
         if any(path.startswith(b) for b in self.broken):
             raise urllib.error.URLError("boom")
-        return FAKE[path]
+        return FAKE[re.sub(r"&created=[^&]*", "", path)]
 
 
 def rows(text, metric):
@@ -83,6 +102,7 @@ def rows(text, metric):
 class ExporterTest(unittest.TestCase):
     def setUp(self):
         exporter.DONE_JOBS.clear()
+        exporter.HISTORY.clear()
 
     def render(self, broken=()):
         exporter.get = Fake(broken)
@@ -148,9 +168,10 @@ class ExporterTest(unittest.TestCase):
             exporter.JOBLESS_STUCK_SECS = old
 
     def test_recent_runs(self):
-        out = self.render()
-        self.assertEqual(len(rows(out, "github_actions_run_recent")), 1)
-        self.assertIn('conclusion="failure"', rows(out, "github_actions_run_recent")[0])
+        recent = rows(self.render(), "github_actions_run_recent")
+        self.assertEqual(len(recent), 2)  # RECENT_PER_REPO, newest first; the aged-out run 7 is not one
+        self.assertIn('conclusion="failure"', recent[0])
+        self.assertIn('conclusion="cancelled"', recent[1])
 
     def test_failed_source_is_unknown_not_offline(self):
         out = self.render(broken=("orgs/acme",))
@@ -178,6 +199,75 @@ class ExporterTest(unittest.TestCase):
         self.assertNotIn("GitHub Actions", out)
         self.assertEqual(rows(out, "github_pool_workflow"),
                          [l for l in out.splitlines() if l.startswith('github_pool_workflow{pool="pmp-light",repo="web",workflow="CI"}')])
+
+    def test_runs_finished_counts_the_window(self):
+        out = self.render()
+        self.assertEqual(sorted(rows(out, "github_runs_finished")), [
+            'github_runs_finished{repo="web",workflow="CI",conclusion="cancelled"} 1',
+            'github_runs_finished{repo="web",workflow="CI",conclusion="failure"} 1'])
+        # Paging asks with the window's cutoff, URL-encoded.
+        self.assertTrue(any("status=completed&created=%3E%3D" in c for c in exporter.get.calls))
+
+    def test_jobs_finished_by_pool(self):
+        self.assertEqual(sorted(rows(self.render(), "github_jobs_finished")), [
+            'github_jobs_finished{pool="github-hosted",repo="web",workflow="CI",conclusion="skipped"} 1',
+            'github_jobs_finished{pool="github-hosted",repo="web",workflow="CI",conclusion="success"} 1',
+            'github_jobs_finished{pool="pmp-light",repo="web",workflow="CI",conclusion="cancelled"} 1',
+            'github_jobs_finished{pool="pmp-light",repo="web",workflow="CI",conclusion="failure"} 1'])
+
+    def test_queue_and_duration_quantiles(self):
+        out = self.render()
+        q = {r.rsplit(" ", 1)[0]: int(r.rsplit(" ", 1)[1]) for r in rows(out, "github_job_queue_seconds")}
+        # pmp-light: lint waited 60s, e2e 60s. The GitHub-hosted build waited 0s.
+        # The skipped job had no runner and gives no sample.
+        self.assertEqual(q['github_job_queue_seconds{pool="pmp-light",quantile="0.5"}'], 60)
+        self.assertEqual(q['github_job_queue_seconds{pool="github-hosted",quantile="0.9"}'], 0)
+        self.assertEqual(len(q), 4)
+        d = {r.rsplit(" ", 1)[0]: int(r.rsplit(" ", 1)[1]) for r in rows(out, "github_job_duration_seconds")}
+        # pmp-light ran lint 240s and e2e 0s: median (nearest rank) 0, p90 240.
+        self.assertEqual(d['github_job_duration_seconds{pool="pmp-light",workflow="CI",quantile="0.5"}'], 0)
+        self.assertEqual(d['github_job_duration_seconds{pool="pmp-light",workflow="CI",quantile="0.9"}'], 240)
+        self.assertEqual(d['github_job_duration_seconds{pool="github-hosted",workflow="CI",quantile="0.5"}'], 60)
+
+    def test_quantile_nearest_rank(self):
+        xs = list(range(1, 11))
+        self.assertEqual([exporter.quantile(xs, 0.5), exporter.quantile(xs, 0.9)], [5, 9])
+        self.assertEqual(exporter.quantile([7], 0.9), 7)
+
+    def test_run_list_is_reused_between_refreshes(self):
+        self.render()
+        exporter.get = Fake()
+        exporter.render()
+        self.assertFalse(any("status=completed" in c for c in exporter.get.calls))
+        # Once the cadence has passed, it is read again.
+        for repo, (at, runs) in list(exporter.HISTORY.items()):
+            exporter.HISTORY[repo] = (at - exporter.HISTORY_REFRESH_SECS, runs)
+        exporter.get = Fake()
+        exporter.render()
+        self.assertEqual(sum("status=completed" in c for c in exporter.get.calls), 2)
+
+    def test_job_fetch_is_capped_per_scrape_newest_first(self):
+        old = exporter.MAX_JOB_FETCH_PER_SCRAPE
+        try:
+            exporter.MAX_JOB_FETCH_PER_SCRAPE = 1
+            out = self.render()
+            self.assertEqual(set(exporter.DONE_JOBS), {9})
+            # Run 8 counts as a run already; its job is not counted until cached.
+            self.assertIn('github_runs_finished{repo="web",workflow="CI",conclusion="cancelled"} 1', out)
+            self.assertFalse(any('conclusion="cancelled"' in r for r in rows(out, "github_jobs_finished")))
+            exporter.render()
+            self.assertEqual(set(exporter.DONE_JOBS), {9, 8})
+        finally:
+            exporter.MAX_JOB_FETCH_PER_SCRAPE = old
+
+    def test_failed_scrape_keeps_the_job_cache(self):
+        self.render()
+        self.assertIn(9, exporter.DONE_JOBS)
+        for repo, (at, runs) in list(exporter.HISTORY.items()):
+            exporter.HISTORY[repo] = (at - exporter.HISTORY_REFRESH_SECS, runs)
+        out = self.render(broken=("repos/",))
+        self.assertEqual(rows(out, "github_runs_finished"), [])
+        self.assertIn(9, exporter.DONE_JOBS)
 
     def test_finished_jobs_are_fetched_once(self):
         self.render()

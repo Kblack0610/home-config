@@ -6,5 +6,15 @@ namespace: monitoring
 resources:
   - rbac.yaml
   - secret.sops.yaml
-  - configmap.yaml
   - daemonset.yaml
+
+# Generated so the name carries a content hash: Alloy has no config reloader
+# here, so a plain ConfigMap edit never reached the running pods (they were 57
+# days old when this changed). The hash rolls the DaemonSet on every edit.
+configMapGenerator:
+  - name: alloy-config
+    files:
+      - config.alloy
+    options:
+      labels:
+        app.kubernetes.io/name: alloy

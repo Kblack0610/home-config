@@ -393,6 +393,10 @@
           HOME: "{{ unity_ci_user_home }}/unity-pool-{{ unity_slot }}"
           UNITY_MACHINE_ID_FILE: "{{ unity_ci_machine_id_file }}"
           UNITY_CI_CGROUP_PARENT: "{{ unity_slot_slice }}"
+          # One asset-library LFS store per host (scripts/setup/asset-library.sh in
+          # the playground): with the default under each slot's HOME, a new slot
+          # downloaded the whole 7.9 GB library before its first job could start.
+          ASSET_LIBRARY_LFS_STORE: "{{ unity_ci_user_home }}/.cache/bnb/asset-library-lfs"
       tags: [runner, ci, unity-ci]
 
 # NFS backup target — hp-victus exports /srv/backups so k3s workloads can keep

@@ -212,13 +212,16 @@ all:
         # for merge gates 2026-10-26 to 10-27; since playground gates run on the
         # workstation first with a narrow pick, the reservation only slowed the
         # nightly.
-        # Two slots since 2026-10-28, each on three cores of its own
+        # Several slots since 2026-10-28, each on cores of its own
         # (ci_unity_slot_cpus in ci_hosts), so they cannot starve each other's
         # real-time tests the way asus's two did. In the 24h before, razer
         # averaged 31% CPU, peaked at 65C and used at most 31% of its memory,
-        # while about 30 Unity jobs waited on average.
+        # while about 30 Unity jobs waited on average. Two slots of three cores
+        # each the first evening, three of two cores each from 20:00 the same
+        # day with about 40 jobs queued. If razer's timed tests fail more often
+        # than the other hosts', go back to two.
         razer-laptop:
-          unity_ci_slots: 2
+          unity_ci_slots: 3
           unity_ci_full: true
         # Not the workstation (cachyos-x8664-main): it is the human's work machine,
         # and its two slots took 12 cores and 48G while they worked. Removed
@@ -254,15 +257,15 @@ all:
           ci_unity_memory_max: 14G
           ci_pmp_memory_max: 14G
         # 8 cores / 16 threads, SMT siblings are n and n+8. Cores 0-1 (CPUs
-        # 0-1, 8-9) stay with k3s and the OS. Unity gets cores 2-7, three per
+        # 0-1, 8-9) stay with k3s and the OS. Unity gets cores 2-7, two per
         # slot, which platform jobs share at a lower weight (ci_unity_cpu_weight).
-        # 93 GB usable, so CI gets most of it.
+        # 93 GB usable, so CI gets most of it; a Unity job peaks around 8 GB.
         razer-laptop:
           ci_cpus: 2-7,10-15
           ci_memory_max: 72G
           ci_unity_cpus: 2-7,10-15
-          ci_unity_slot_cpus: ["2-4,10-12", "5-7,13-15"]
-          ci_unity_memory_max: 32G
+          ci_unity_slot_cpus: ["2-3,10-11", "4-5,12-13", "6-7,14-15"]
+          ci_unity_memory_max: 40G
           ci_pmp_memory_max: 40G
 
     # Nodes that run the game servers (apps/playground-server pins to the

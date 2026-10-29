@@ -356,6 +356,14 @@
     - role: unity-ci-host
       tags: [runner, ci, unity-ci, unity-ci-host]
   tasks:
+    - name: Require one CPU list per Unity slot when slots have their own
+      ansible.builtin.assert:
+        that: ci_unity_slot_cpus | length in [0, unity_ci_slots]
+        fail_msg: >-
+          {{ inventory_hostname }} has unity_ci_slots {{ unity_ci_slots }} but
+          {{ ci_unity_slot_cpus | length }} entries in ci_unity_slot_cpus.
+      tags: [runner, ci, unity-ci]
+
     - name: Register the Unity pool slots
       ansible.builtin.include_role:
         name: github-actions-runner-linux
@@ -377,11 +385,14 @@
         # A registered runner keeps its labels; add one to a live runner with
         # gh api -X POST orgs/BlackNBrownStudios/actions/runners/<id>/labels -f 'labels[]=unity-full'.
         gh_runner_labels: "{{ [ 'self-hosted', 'linux', 'x64', 'unity', 'host-' ~ inventory_hostname ] + ([ 'unity-full' ] if unity_ci_full | default(true) else []) }}"
-        gh_runner_slice: "{{ ci_unity_slice }}"
+        # With ci_unity_slot_cpus each slot gets its own cores (roles/ci-host-budget).
+        unity_slot_slice: >-
+          {{ (ci_unity_slot_slice_prefix ~ unity_slot ~ '.slice') if ci_unity_slot_cpus | length else ci_unity_slice }}
+        gh_runner_slice: "{{ unity_slot_slice }}"
         gh_runner_env:
           HOME: "{{ unity_ci_user_home }}/unity-pool-{{ unity_slot }}"
           UNITY_MACHINE_ID_FILE: "{{ unity_ci_machine_id_file }}"
-          UNITY_CI_CGROUP_PARENT: "{{ ci_unity_slice }}"
+          UNITY_CI_CGROUP_PARENT: "{{ unity_slot_slice }}"
       tags: [runner, ci, unity-ci]
 
 # NFS backup target — hp-victus exports /srv/backups so k3s workloads can keep

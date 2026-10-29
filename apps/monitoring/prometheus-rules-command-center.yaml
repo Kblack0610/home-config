@@ -197,6 +197,11 @@ spec:
             1 - avg by (host) (rate(node_cpu_seconds_total{mode="idle"}[2m]) * on (instance) group_left (host) cc:host_instance)
             or 1 - avg by (host) (rate(windows_cpu_time_total{mode="idle", host!=""}[2m]))
         # Windows has no load average, so no Windows branch: the board reads "-".
+        # Headroom over a working day, not one sample: a host that reads busy now may
+        # have idled all afternoon, and the 6h figure is what a rebalance is judged on.
+        - record: cc:host_cpu_busy_ratio:avg6h
+          expr: >-
+            avg_over_time(cc:host_cpu_busy_ratio[6h])
         - record: cc:host_load1
           expr: >-
             max by (host) (node_load1 * on (instance) group_left (host) cc:host_instance)
@@ -225,3 +230,33 @@ spec:
           expr: >-
             sum(fleet_agent_sessions{host!=""}
               and on (instance) (time() - node_textfile_mtime_seconds{file=~".*fleet_local.prom"} < 180))
+    # CI pools: how many runners each pool has, how many are busy, and how many jobs
+    # wait for it. Read next to each other these show balance: a saturated pool
+    # beside idle ones. Pools come from the exporter's labels (pool_of), so a job
+    # and the runners that could take it share one name. A queued run GitHub never
+    # gave jobs (stuck="true") is left out, so its age cannot stand for the queue's.
+    # Slots first: busy and waiting fall back to 0 for every pool that has runners.
+    - name: command-center.pools
+      interval: 1m
+      rules:
+        - record: cc:pool_slots
+          expr: >-
+            count by (pool) (max without (instance, pod, job, namespace, service, endpoint, container)
+              (github_runner_state{state=~"running|idle"}))
+        - record: cc:pool_busy
+          expr: >-
+            count by (pool) (max without (instance, pod, job, namespace, service, endpoint, container)
+              (github_runner_state{state="running"}))
+            or cc:pool_slots * 0
+        - record: cc:pool_waiting
+          expr: >-
+            count by (pool) (max without (instance, pod, job, namespace, service, endpoint, container)
+              (github_actions_job_waiting{stuck!="true"}))
+            or cc:pool_slots * 0
+        - record: cc:pool_oldest_wait_seconds
+          expr: >-
+            max by (pool) (github_actions_job_waiting{stuck!="true"})
+        - record: cc:ci_stuck_runs
+          expr: >-
+            count(max without (instance, pod, job, namespace, service, endpoint, container)
+              (github_actions_job_waiting{stuck="true"})) or vector(0)

@@ -392,7 +392,7 @@
     {
       "type": "table",
       "title": "Machines: load on every host that runs CI",
-      "description": "One row per CI host: CPU busy, 1-minute load against its cores, memory used, CPU package temperature, and how many of its runners are busy. '-' = that host exports no such series (macOS has no temperature sensor in node_exporter).",
+      "description": "One row per CI host: CPU busy now and averaged over 6h (the headroom a rebalance is judged on), 1-minute load against its cores, memory used, CPU package temperature, and how many of its runners are busy. '-' = that host exports no such series (macOS has no temperature sensor in node_exporter).",
       "gridPos": {
         "h": 8,
         "w": 24,
@@ -419,7 +419,7 @@
             "uid": "${datasource}"
           },
           "editorMode": "code",
-          "expr": "cc:host_load1 and on (host) max by (host) (github_runner_pool_expected)",
+          "expr": "cc:host_cpu_busy_ratio:avg6h and on (host) max by (host) (github_runner_pool_expected)",
           "format": "table",
           "instant": true,
           "range": false,
@@ -432,7 +432,7 @@
             "uid": "${datasource}"
           },
           "editorMode": "code",
-          "expr": "cc:host_cores and on (host) max by (host) (github_runner_pool_expected)",
+          "expr": "cc:host_load1 and on (host) max by (host) (github_runner_pool_expected)",
           "format": "table",
           "instant": true,
           "range": false,
@@ -445,7 +445,7 @@
             "uid": "${datasource}"
           },
           "editorMode": "code",
-          "expr": "cc:host_mem_used_ratio and on (host) max by (host) (github_runner_pool_expected)",
+          "expr": "cc:host_cores and on (host) max by (host) (github_runner_pool_expected)",
           "format": "table",
           "instant": true,
           "range": false,
@@ -458,7 +458,7 @@
             "uid": "${datasource}"
           },
           "editorMode": "code",
-          "expr": "cc:host_temp_c and on (host) max by (host) (github_runner_pool_expected)",
+          "expr": "cc:host_mem_used_ratio and on (host) max by (host) (github_runner_pool_expected)",
           "format": "table",
           "instant": true,
           "range": false,
@@ -471,12 +471,25 @@
             "uid": "${datasource}"
           },
           "editorMode": "code",
-          "expr": "count by (host) (max without (instance, pod, job, namespace, service, endpoint, container) (github_runner_state{state=\"running\"}))",
+          "expr": "cc:host_temp_c and on (host) max by (host) (github_runner_pool_expected)",
           "format": "table",
           "instant": true,
           "range": false,
           "legendFormat": "__auto",
           "refId": "F"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "editorMode": "code",
+          "expr": "count by (host) (max without (instance, pod, job, namespace, service, endpoint, container) (github_runner_state{state=\"running\"}))",
+          "format": "table",
+          "instant": true,
+          "range": false,
+          "legendFormat": "__auto",
+          "refId": "G"
         }
       ],
       "transformations": [
@@ -498,15 +511,17 @@
               "Time 4": true,
               "Time 5": true,
               "Time 6": true,
-              "Time 7": true
+              "Time 7": true,
+              "Time 8": true
             },
             "renameByName": {
               "Value #A": "cpu",
-              "Value #B": "load",
-              "Value #C": "cores",
-              "Value #D": "mem",
-              "Value #E": "temp",
-              "Value #F": "busy runners"
+              "Value #B": "cpu 6h",
+              "Value #C": "load",
+              "Value #D": "cores",
+              "Value #E": "mem",
+              "Value #F": "temp",
+              "Value #G": "busy runners"
             }
           }
         }
@@ -533,6 +548,22 @@
             "matcher": {
               "id": "byName",
               "options": "cpu"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "percentunit"
+              },
+              {
+                "id": "decimals",
+                "value": 0
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "cpu 6h"
             },
             "properties": [
               {
@@ -613,6 +644,46 @@
             "matcher": {
               "id": "byName",
               "options": "cpu"
+            },
+            "properties": [
+              {
+                "id": "custom.cellOptions",
+                "value": {
+                  "type": "color-text"
+                }
+              },
+              {
+                "id": "color",
+                "value": {
+                  "mode": "thresholds"
+                }
+              },
+              {
+                "id": "thresholds",
+                "value": {
+                  "mode": "absolute",
+                  "steps": [
+                    {
+                      "color": "text",
+                      "value": null
+                    },
+                    {
+                      "color": "orange",
+                      "value": 0.7
+                    },
+                    {
+                      "color": "red",
+                      "value": 0.9
+                    }
+                  ]
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "cpu 6h"
             },
             "properties": [
               {
@@ -739,13 +810,214 @@
     },
     {
       "type": "table",
+      "title": "Pools: busy, slots and queue",
+      "description": "One row per runner pool (cc:pool_* in prometheus-rules-command-center.yaml). A pool with every slot busy and jobs waiting, next to pools with idle slots, is where capacity should move. Queued runs GitHub never gave jobs are left out (they show in 'Waiting for a runner').",
+      "gridPos": {
+        "h": 6,
+        "w": 24,
+        "x": 0,
+        "y": 12
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "editorMode": "code",
+          "expr": "cc:pool_busy",
+          "format": "table",
+          "instant": true,
+          "range": false,
+          "legendFormat": "__auto",
+          "refId": "A"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "editorMode": "code",
+          "expr": "cc:pool_slots",
+          "format": "table",
+          "instant": true,
+          "range": false,
+          "legendFormat": "__auto",
+          "refId": "B"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "editorMode": "code",
+          "expr": "cc:pool_waiting",
+          "format": "table",
+          "instant": true,
+          "range": false,
+          "legendFormat": "__auto",
+          "refId": "C"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "editorMode": "code",
+          "expr": "cc:pool_oldest_wait_seconds",
+          "format": "table",
+          "instant": true,
+          "range": false,
+          "legendFormat": "__auto",
+          "refId": "D"
+        }
+      ],
+      "transformations": [
+        {
+          "id": "joinByField",
+          "options": {
+            "byField": "pool",
+            "mode": "outer"
+          }
+        },
+        {
+          "id": "organize",
+          "options": {
+            "excludeByName": {
+              "Time": true,
+              "Time 1": true,
+              "Time 2": true,
+              "Time 3": true,
+              "Time 4": true
+            },
+            "renameByName": {
+              "Value #A": "busy",
+              "Value #B": "slots",
+              "Value #C": "waiting",
+              "Value #D": "oldest wait"
+            }
+          }
+        }
+      ],
+      "options": {
+        "showHeader": true,
+        "cellHeight": "sm",
+        "sortBy": [
+          {
+            "displayName": "waiting",
+            "desc": true
+          }
+        ]
+      },
+      "fieldConfig": {
+        "defaults": {
+          "noValue": "-",
+          "custom": {
+            "align": "left"
+          }
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "oldest wait"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "dtdurations"
+              },
+              {
+                "id": "custom.cellOptions",
+                "value": {
+                  "type": "color-text"
+                }
+              },
+              {
+                "id": "color",
+                "value": {
+                  "mode": "thresholds"
+                }
+              },
+              {
+                "id": "thresholds",
+                "value": {
+                  "mode": "absolute",
+                  "steps": [
+                    {
+                      "color": "text",
+                      "value": null
+                    },
+                    {
+                      "color": "orange",
+                      "value": 900
+                    },
+                    {
+                      "color": "red",
+                      "value": 3600
+                    }
+                  ]
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "waiting"
+            },
+            "properties": [
+              {
+                "id": "custom.cellOptions",
+                "value": {
+                  "type": "color-text"
+                }
+              },
+              {
+                "id": "color",
+                "value": {
+                  "mode": "thresholds"
+                }
+              },
+              {
+                "id": "thresholds",
+                "value": {
+                  "mode": "absolute",
+                  "steps": [
+                    {
+                      "color": "text",
+                      "value": null
+                    },
+                    {
+                      "color": "orange",
+                      "value": 1
+                    },
+                    {
+                      "color": "red",
+                      "value": 10
+                    }
+                  ]
+                }
+              }
+            ]
+          }
+        ]
+      },
+      "id": 7,
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${datasource}"
+      }
+    },
+    {
+      "type": "table",
       "title": "Runners: what is running where",
       "description": "One row per runner. RUNNING rows show the job and how long it has been going; the 'last' columns show the last job it finished, which is what that runner is actually used for. Click a job to open it on GitHub. MISSING = a slot the roster expects that never registered.",
       "gridPos": {
         "h": 13,
         "w": 24,
         "x": 0,
-        "y": 12
+        "y": 18
       },
       "targets": [
         {
@@ -1068,7 +1340,7 @@
           }
         ]
       },
-      "id": 7,
+      "id": 8,
       "datasource": {
         "type": "prometheus",
         "uid": "${datasource}"
@@ -1082,7 +1354,7 @@
         "h": 10,
         "w": 24,
         "x": 0,
-        "y": 25
+        "y": 31
       },
       "targets": [
         {
@@ -1150,7 +1422,7 @@
           }
         ]
       },
-      "id": 8,
+      "id": 9,
       "datasource": {
         "type": "prometheus",
         "uid": "${datasource}"
@@ -1164,7 +1436,7 @@
         "h": 6,
         "w": 24,
         "x": 0,
-        "y": 35
+        "y": 41
       },
       "targets": [
         {
@@ -1326,7 +1598,7 @@
           }
         ]
       },
-      "id": 9,
+      "id": 10,
       "datasource": {
         "type": "prometheus",
         "uid": "${datasource}"
@@ -1340,7 +1612,7 @@
         "h": 10,
         "w": 24,
         "x": 0,
-        "y": 41
+        "y": 47
       },
       "targets": [
         {
@@ -1526,7 +1798,7 @@
           }
         ]
       },
-      "id": 10,
+      "id": 11,
       "datasource": {
         "type": "prometheus",
         "uid": "${datasource}"
@@ -1540,7 +1812,7 @@
         "h": 1,
         "w": 24,
         "x": 0,
-        "y": 51
+        "y": 57
       },
       "panels": [
         {
@@ -1550,7 +1822,7 @@
             "h": 8,
             "w": 12,
             "x": 0,
-            "y": 52
+            "y": 58
           },
           "targets": [
             {
@@ -1589,7 +1861,7 @@
               "mode": "multi"
             }
           },
-          "id": 11,
+          "id": 12,
           "datasource": {
             "type": "prometheus",
             "uid": "${datasource}"
@@ -1602,7 +1874,7 @@
             "h": 8,
             "w": 12,
             "x": 12,
-            "y": 52
+            "y": 58
           },
           "targets": [
             {
@@ -1641,14 +1913,14 @@
               "mode": "multi"
             }
           },
-          "id": 12,
+          "id": 13,
           "datasource": {
             "type": "prometheus",
             "uid": "${datasource}"
           }
         }
       ],
-      "id": 13,
+      "id": 14,
       "datasource": {
         "type": "prometheus",
         "uid": "${datasource}"

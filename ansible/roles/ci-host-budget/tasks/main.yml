@@ -19,6 +19,36 @@
     label: "{{ item.name }}"
   register: _ci_slice_units
 
+- name: Install the per-slot Unity slices
+  ansible.builtin.template:
+    src: ci-unity-slot.slice.j2
+    dest: "/etc/systemd/system/{{ ci_unity_slot_slice_prefix ~ ci_unity_slot }}.slice"
+    mode: "0644"
+  loop: "{{ range(1, ci_unity_slot_cpus | length + 1) | list }}"
+  loop_control:
+    loop_var: ci_unity_slot
+  register: _ci_slot_units
+
+# A host that drops to fewer slots (or back to a shared slice) loses the extra
+# slot slices here, so no stale cpuset is left for a unit to land in.
+- name: Find per-slot Unity slices
+  ansible.builtin.find:
+    paths: /etc/systemd/system
+    patterns: "{{ ci_unity_slot_slice_prefix }}*.slice"
+  register: _ci_slot_found
+
+- name: Remove per-slot Unity slices beyond ci_unity_slot_cpus
+  ansible.builtin.file:
+    path: "{{ item.path }}"
+    state: absent
+  loop: "{{ _ci_slot_found.files }}"
+  loop_control:
+    label: "{{ item.path | basename }}"
+  when: >-
+    (item.path | basename | replace(ci_unity_slot_slice_prefix, '') | replace('.slice', '') | int)
+    > (ci_unity_slot_cpus | length)
+  register: _ci_slot_removed
+
 # A unit still inside a retired slice keeps running there until the runner role
 # restarts it into the new one (its unit file changes, so it does).
 - name: Remove the retired per-workload slices
@@ -31,7 +61,9 @@
 - name: Reload systemd after the slices changed
   ansible.builtin.systemd:
     daemon_reload: true
-  when: _ci_slice_units.changed or _ci_retired_units.changed
+  when: >-
+    _ci_slice_units.changed or _ci_retired_units.changed
+    or _ci_slot_units.changed or _ci_slot_removed.changed
 
 # Containers are children of dockerd, not of the runner that asked for them, so a
 # job's `docker run` lands in system.slice with no cap unless it passes

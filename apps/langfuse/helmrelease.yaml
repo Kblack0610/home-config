@@ -8,13 +8,11 @@ spec:
   chart:
     spec:
       chart: langfuse
-      version: "1.5.39"
+      version: "2.1.7"
       sourceRef:
         kind: HelmRepository
         name: langfuse
       interval: 1h
-  # Note: chart ships frozen bitnamilegacy/* images (post-Aug 2025 Bitnami
-  # restructure). Acceptable for homelab; revisit if security scans flag CVEs.
   values:
     langfuse:
       # ----------------------------------------------------------------
@@ -149,95 +147,35 @@ spec:
           key: S3_SECRET_ACCESS_KEY
 
     # ----------------------------------------------------------------
-    # ClickHouse - bundled subchart (Bitnami v8.0.5), single-node
-    # Required for trace/observation analytics in Langfuse v3.
-    # Default ships 3 replicas @ 2xlarge + 3 ZooKeeper - overridden.
-    # Password pinned via existingSecret to survive helm upgrades.
+    # ClickHouse - our own StatefulSet (apps/langfuse/clickhouse/), not the
+    # chart's. Chart 2.x would run it through the alpha clickhouse-operator
+    # plus a 3-node Keeper; these tables are all non-replicated, so one plain
+    # server does the job. Why and how: docs/langfuse-storage.md
     # ----------------------------------------------------------------
     clickhouse:
-      deploy: true
-      clusterEnabled: false
-      replicaCount: 1
-      zookeeper:
-        enabled: false
+      deploy: false
+      host: langfuse-ch.langfuse.svc.cluster.local
       auth:
         existingSecret: langfuse-secrets
         existingSecretKey: CLICKHOUSE_PASSWORD
-      nodeSelector:
-        kubernetes.io/arch: amd64
-      persistence:
-        enabled: true
-        size: 20Gi
-        storageClassName: local-path
-
-      # ClickHouse's self-telemetry, off. It reached 166 GiB guarding 660 MiB
-      # of actual Langfuse data, on a PVC claiming 20Gi that local-path never
-      # enforced, and OOMed the server against its 4Gi limit while doing it.
-      # query_log is kept (142 MiB, answers "why is this query slow") with a
-      # TTL; the rest is already in Prometheus and Loki.
-      # Numbers and the drop procedure: docs/langfuse-storage.md
-      extraOverrides: |
-        <clickhouse>
-          <trace_log remove="1"/>
-          <text_log remove="1"/>
-          <metric_log remove="1"/>
-          <asynchronous_metric_log remove="1"/>
-          <latency_log remove="1"/>
-          <processors_profile_log remove="1"/>
-          <opentelemetry_span_log remove="1"/>
-          <part_log remove="1"/>
-          <query_log>
-            <database>system</database>
-            <table>query_log</table>
-            <flush_interval_milliseconds>7500</flush_interval_milliseconds>
-            <ttl>event_date + INTERVAL 7 DAY DELETE</ttl>
-          </query_log>
-        </clickhouse>
-
-      # The profilers that fed trace_log, off at the source. The dominant
-      # writer was the MEMORY profiler, not the query one: 97% of rows came
-      # from memory_profiler_step, so setting only query_profiler_* would
-      # have left almost all of the writes in place.
-      # Profile settings live in users.d, not config.d.
-      usersExtraOverrides: |
-        <clickhouse>
-          <profiles>
-            <default>
-              <memory_profiler_step>0</memory_profiler_step>
-              <memory_profiler_sample_probability>0</memory_profiler_sample_probability>
-              <query_profiler_real_time_period_ns>0</query_profiler_real_time_period_ns>
-              <query_profiler_cpu_time_period_ns>0</query_profiler_cpu_time_period_ns>
-            </default>
-          </profiles>
-        </clickhouse>
-
-      resourcesPreset: ""
-      resources:
-        requests:
-          cpu: 500m
-          memory: 2Gi
-        limits:
-          cpu: "2"
-          memory: 4Gi
+      # Both default to true. cluster.enabled makes the migrator write
+      # ON CLUSTER DDL; keeper.enabled makes the chart demand the operator's
+      # KeeperCluster CRD even with deploy: false.
+      cluster:
+        enabled: false
+      keeper:
+        enabled: false
 
     # ----------------------------------------------------------------
-    # Redis/Valkey - bundled subchart
-    # noeviction policy is already the chart default but stated
-    # explicitly here as a guard against subchart default changes.
+    # Redis/Valkey - bundled subchart (valkey-io). The chart generates
+    # langfuse-redis-auth and reuses it on every upgrade (lookup), so the
+    # password needs no SOPS entry. noeviction is the chart default, stated
+    # here as a guard: Langfuse's queues must not be evicted.
     # ----------------------------------------------------------------
     redis:
       deploy: true
-      # Password consumed by BOTH the Valkey subchart AND the langfuse
-      # connection-string helper (both read redis.auth.existingSecret).
-      # Without this the chart deploys password-protected Valkey but hands
-      # web a passwordless redis:// string -> WRONGPASS crash loop.
-      auth:
-        existingSecret: langfuse-secrets
-        existingSecretPasswordKey: REDIS_PASSWORD
-      primary:
-        extraFlags:
-          - "--maxmemory-policy noeviction"
-      resourcesPreset: ""
+      valkeyConfig: |
+        maxmemory-policy noeviction
       resources:
         requests:
           cpu: 100m

@@ -10,6 +10,12 @@
 # duplicate on a re-insert, which is why it truncates instead of appending.
 # Exits non-zero unless every table's row count matches.
 #
+# traces, observations and scores carry the 90-day TTL (docs/langfuse-storage.md,
+# "Retention and archive"). The new server applies it on insert, while the old
+# one still holds expired rows its TTL merges never removed, so for a table with
+# a TTL only rows still more than an hour inside the window are compared. The
+# expired ones are already in the monthly archive on the 8TB drive.
+#
 # Runs from a workstation with kubectl access; the SQL runs inside the new pod,
 # which reads the old server with remote(). Both servers share the
 # langfuse-secrets CLICKHOUSE_PASSWORD, and the new pod's shell substitutes it
@@ -46,8 +52,10 @@ for row in "${objects[@]}"; do
 TRUNCATE TABLE default.\`$name\`;
 INSERT INTO default.\`$name\` SELECT * FROM remote('$OLD_HOST', default, \`$name\`, 'default', '@PW@');
 SQL
-  a=$(echo "SELECT count() FROM default.\`$name\`" | old)
-  b=$(echo "SELECT count() FROM default.\`$name\`" | new)
+  ttl=$(echo "SELECT extract(create_table_query, ' TTL (.+?) SETTINGS ') FROM system.tables WHERE database = 'default' AND name = '$name'" | old)
+  where=""; [ -n "$ttl" ] && where="WHERE $ttl > now() + INTERVAL 1 HOUR"
+  a=$(echo "SELECT count() FROM default.\`$name\` $where" | old)
+  b=$(echo "SELECT count() FROM default.\`$name\` $where" | new)
   if [ "$a" = "$b" ]; then echo "ok: $name $b rows"; else echo "MISMATCH: $name old=$a new=$b"; rc=1; fi
 done
 exit $rc

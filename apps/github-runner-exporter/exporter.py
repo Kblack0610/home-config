@@ -49,6 +49,7 @@ notification voice for runner pools; this is the screen.
 import json
 import os
 import re
+import threading
 import time
 import urllib.error
 import urllib.parse
@@ -80,12 +81,26 @@ HISTORY = {}
 # fetched once and the steady-state cost is one call per newly finished run.
 # Pruned every scrape to the runs still in the window.
 DONE_JOBS = {}
-# A cold cache is a day of runs (~500 job calls across the repos), which no
-# scrape can make inside its 30s timeout. Fetch at most this many per repo per
-# scrape, newest first; the rest fill over the next scrapes. Measured cold: 30s
-# at 150, 23s at 60 with ~10 scrapes to fill. Until a run's jobs are cached it
-# counts in the run-level series and is missing from the job-level ones.
-MAX_JOB_FETCH_PER_SCRAPE = int(os.environ.get("MAX_JOB_FETCH_PER_SCRAPE", "60"))
+# The token's 5000 calls/h are per USER, shared with every gh session on the
+# account and with apps/ci-runner-governor, and live runner state must never
+# starve for history. So history's job fetches (the only part that grows with
+# the backlog: a cold cache is ~500 calls) get a fixed budget per scrape, shared
+# by all repos and spent newest run first, and stop altogether while GitHub says
+# fewer than HISTORY_FLOOR calls are left. A cold start fills over ~10 scrapes.
+# Until a run's jobs are cached it counts in the run-level series and is
+# missing from the job-level ones. The run list itself is not budgeted: it is
+# at most 10 pages per repo per HISTORY_REFRESH_SECS.
+HISTORY_CALL_BUDGET = int(os.environ.get("HISTORY_CALL_BUDGET", "50"))
+HISTORY_FLOOR = int(os.environ.get("HISTORY_FLOOR", "1000"))
+# What GitHub last said about the budget, and when to call it again after it
+# refused (403/429 at zero remaining, or a secondary limit's Retry-After).
+# While refused every call fails here without going out, instead of each scrape
+# re-asking ~40 times for the rest of the hour.
+RATE = {"remaining": None, "until": 0.0}
+# Calls made, by kind: what spends the budget, readable live.
+CALLS = {}
+BUDGET = {"left": 0}
+LOCK = threading.Lock()
 # Bounds the jobs fan-out per repo per status, so one repo with a deep queue
 # cannot eat the API budget or the scrape timeout.
 MAX_RUNS_PER_REPO = int(os.environ.get("MAX_RUNS_PER_REPO", "15"))
@@ -103,20 +118,53 @@ JOBLESS_STUCK_SECS = 3600
 API_ERRORS = (urllib.error.URLError, OSError, ValueError, KeyError)
 
 
-def get(path):
+class RateLimited(urllib.error.URLError):
+    pass
+
+
+def note_rate(headers, code=None):
+    left = headers.get("X-RateLimit-Remaining") if headers else None
+    with LOCK:
+        if left is not None and left.isdigit():
+            RATE["remaining"] = int(left)
+        if code in (403, 429) and (left == "0" or headers.get("Retry-After")):
+            reset = headers.get("X-RateLimit-Reset") or ""
+            retry = headers.get("Retry-After") or ""
+            RATE["until"] = max(RATE["until"], float(reset) if left == "0" and reset.isdigit()
+                                else time.time() + (int(retry) if retry.isdigit() else 60))
+
+
+def get(path, kind="other"):
+    if time.time() < RATE["until"]:
+        raise RateLimited("GitHub rate limit: backing off until reset")
+    with LOCK:
+        CALLS[kind] = CALLS.get(kind, 0) + 1
     req = urllib.request.Request(f"{API}/{path}")
     req.add_header("Accept", "application/vnd.github+json")
     req.add_header("X-GitHub-Api-Version", "2022-11-28")
     if TOKEN:
         req.add_header("Authorization", f"Bearer {TOKEN}")
-    with urllib.request.urlopen(req, timeout=10) as r:
-        return json.load(r)
+    try:
+        with urllib.request.urlopen(req, timeout=10) as r:
+            note_rate(r.headers)
+            return json.load(r)
+    except urllib.error.HTTPError as e:
+        note_rate(e.headers, e.code)
+        raise
+
+
+def spend(n):
+    """Take up to n calls from this scrape's history budget; returns how many."""
+    with LOCK:
+        k = max(0, min(n, BUDGET["left"]))
+        BUDGET["left"] -= k
+        return k
 
 
 def runners(source):
     out, page = [], 1
     while True:
-        data = get(f"{source}/actions/runners?per_page=100&page={page}")
+        data = get(f"{source}/actions/runners?per_page=100&page={page}", "runners")
         out.extend(data.get("runners", []))
         if len(out) >= data.get("total_count", 0) or not data.get("runners"):
             return out
@@ -217,14 +265,18 @@ def finished_runs(repo, now):
     """
     since = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(now - HISTORY_WINDOW_SECS))
     q = f"repos/{repo}/actions/runs?status=completed&created={urllib.parse.quote('>=' + since)}&per_page=100"
-    first = get(f"{q}&page=1")
+    first = get(f"{q}&page=1", "history_runs")
     pages = [first]
     n = -(-first.get("total_count", 0) // 100)
     if n > 1:
         with ThreadPoolExecutor(max_workers=4) as ex:
-            pages += list(ex.map(lambda p: get(f"{q}&page={p}"), range(2, n + 1)))
+            pages += list(ex.map(lambda p: get(f"{q}&page={p}", "history_runs"), range(2, n + 1)))
     runs = {r["id"]: slim(r, RUN_KEYS) for page in pages for r in page.get("workflow_runs", [])}
     return [runs[i] for i in sorted(runs, reverse=True)]
+
+
+def low_budget():
+    return RATE["remaining"] is not None and RATE["remaining"] < HISTORY_FLOOR
 
 
 def repo_activity(repo, now):
@@ -233,11 +285,11 @@ def repo_activity(repo, now):
     try:
         active = []
         for status in ("in_progress", "queued"):
-            data = get(f"repos/{repo}/actions/runs?status={status}&per_page={MAX_RUNS_PER_REPO}")
+            data = get(f"repos/{repo}/actions/runs?status={status}&per_page={MAX_RUNS_PER_REPO}", "active_runs")
             out["counts"][status] = data.get("total_count", 0)
             active += data.get("workflow_runs", [])
         for run in active:
-            jobs = get(f"repos/{repo}/actions/runs/{run['id']}/jobs?per_page=100").get("jobs", [])
+            jobs = get(f"repos/{repo}/actions/runs/{run['id']}/jobs?per_page=100", "active_jobs").get("jobs", [])
             if not jobs and run.get("status") == "queued":
                 # A queued run with no jobs never gets a runner. GitHub leaves
                 # these behind (one platform schedule run sat like this from
@@ -251,18 +303,29 @@ def repo_activity(repo, now):
                 job["_run"] = run_labels(run)
                 out["jobs"].append(job)
         cached = HISTORY.get(repo)
-        if not cached or now - cached[0] >= HISTORY_REFRESH_SECS:
+        if (not cached or now - cached[0] >= HISTORY_REFRESH_SECS) and not low_budget():
             cached = HISTORY[repo] = (now, finished_runs(repo, now))
+        if not cached:
+            return out
         # The cached list was cut at fetch time; cut again so a run ages out on
         # time between refreshes.
         out["history"] = [r for r in cached[1] if (ts(r.get("created_at")) or 0) >= now - HISTORY_WINDOW_SECS]
         out["recent"] = out["history"][:RECENT_PER_REPO]
-        # Uncached finished runs in parallel, newest first and capped (see
-        # MAX_JOB_FETCH_PER_SCRAPE): sequentially, 60 of them took 51s.
-        todo = [run["id"] for run in out["history"] if run["id"] not in DONE_JOBS][:MAX_JOB_FETCH_PER_SCRAPE]
+        # Uncached finished runs in parallel, newest first, within the scrape's
+        # budget (see HISTORY_CALL_BUDGET): sequentially, 60 of them took 51s.
+        todo = [run["id"] for run in out["history"] if run["id"] not in DONE_JOBS]
+        todo = todo[:spend(len(todo))]
+
+        def jobs_of(rid):
+            # One failed call must not discard the ones that answered.
+            try:
+                return get(f"repos/{repo}/actions/runs/{rid}/jobs?per_page=100", "history_jobs").get("jobs", [])
+            except API_ERRORS:
+                return None
         with ThreadPoolExecutor(max_workers=6) as ex:
-            for rid, jobs in zip(todo, ex.map(lambda i: get(f"repos/{repo}/actions/runs/{i}/jobs?per_page=100").get("jobs", []), todo)):
-                DONE_JOBS[rid] = [slim(j, JOB_KEYS) for j in jobs]
+            for rid, jobs in zip(todo, ex.map(jobs_of, todo)):
+                if jobs is not None:
+                    DONE_JOBS[rid] = [slim(j, JOB_KEYS) for j in jobs]
     except API_ERRORS:
         out["ok"] = False
     return out
@@ -271,6 +334,7 @@ def repo_activity(repo, now):
 def render():
     now = time.time()
     sources = [f"orgs/{o}" for o in ORGS] + [f"repos/{r}" for r in RUN_REPOS]
+    BUDGET["left"] = 0 if low_budget() else HISTORY_CALL_BUDGET
     with ThreadPoolExecutor(max_workers=8) as pool:
         runner_futs = {s: pool.submit(runners, s) for s in sources}
         repo_futs = [pool.submit(repo_activity, r, now) for r in RUN_REPOS]
@@ -450,7 +514,7 @@ def render():
         L.append(f"github_pool_workflow{{{labels_str({'pool': pool_, 'repo': repo, 'workflow': wf})}}} {int(done)}")
 
     # Finished work over the window. Runs count as soon as they are listed; a
-    # run's jobs count once they are cached (MAX_JOB_FETCH_PER_SCRAPE), so after
+    # run's jobs count once they are cached (HISTORY_CALL_BUDGET), so after
     # a restart the job-level numbers fill in over a few scrapes.
     runs_done, jobs_done, queue, took = {}, {}, {}, {}
     for a in acts:
@@ -504,6 +568,19 @@ def render():
         xs.sort()
         for q in QUANTILES:
             L.append(f'github_job_duration_seconds{{{labels_str({"pool": pool_, "workflow": wf, "quantile": q})}}} {int(quantile(xs, float(q)))}')
+
+    L += [
+        "# HELP github_runner_exporter_api_calls_total GitHub API calls made since start, by kind",
+        "# TYPE github_runner_exporter_api_calls_total counter",
+    ]
+    for kind, n in sorted(CALLS.items()):
+        L.append(f'github_runner_exporter_api_calls_total{{kind="{kind}"}} {n}')
+    L += [
+        "# HELP github_runner_exporter_rate_remaining Calls GitHub says the token has left this hour",
+        "# TYPE github_runner_exporter_rate_remaining gauge",
+    ]
+    if RATE["remaining"] is not None:
+        L.append(f"github_runner_exporter_rate_remaining {RATE['remaining']}")
 
     # Pruned against the cached lists, not this scrape's: a scrape where a repo
     # failed (rate limit, network) must not throw away a day of cached jobs and

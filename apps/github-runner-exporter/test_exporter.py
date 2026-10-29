@@ -7,6 +7,7 @@ waiting, a never-registered roster slot is a `missing` row, and a failed
 source makes runners absent and suppresses missing rows instead of reading as
 offline. Stdlib only; CI runs it in the checks workflow.
 """
+import io
 import os
 import re
 import sys
@@ -88,7 +89,7 @@ class Fake:
         self.broken = broken
         self.calls = []
 
-    def __call__(self, path):
+    def __call__(self, path, kind="other"):
         self.calls.append(path)
         if any(path.startswith(b) for b in self.broken):
             raise urllib.error.URLError("boom")
@@ -103,6 +104,8 @@ class ExporterTest(unittest.TestCase):
     def setUp(self):
         exporter.DONE_JOBS.clear()
         exporter.HISTORY.clear()
+        exporter.CALLS.clear()
+        exporter.RATE.update(remaining=None, until=0.0)
 
     def render(self, broken=()):
         exporter.get = Fake(broken)
@@ -247,9 +250,9 @@ class ExporterTest(unittest.TestCase):
         self.assertEqual(sum("status=completed" in c for c in exporter.get.calls), 2)
 
     def test_job_fetch_is_capped_per_scrape_newest_first(self):
-        old = exporter.MAX_JOB_FETCH_PER_SCRAPE
+        old = exporter.HISTORY_CALL_BUDGET
         try:
-            exporter.MAX_JOB_FETCH_PER_SCRAPE = 1
+            exporter.HISTORY_CALL_BUDGET = 1
             out = self.render()
             self.assertEqual(set(exporter.DONE_JOBS), {9})
             # Run 8 counts as a run already; its job is not counted until cached.
@@ -258,7 +261,7 @@ class ExporterTest(unittest.TestCase):
             exporter.render()
             self.assertEqual(set(exporter.DONE_JOBS), {9, 8})
         finally:
-            exporter.MAX_JOB_FETCH_PER_SCRAPE = old
+            exporter.HISTORY_CALL_BUDGET = old
 
     def test_failed_scrape_keeps_the_job_cache(self):
         self.render()
@@ -268,6 +271,14 @@ class ExporterTest(unittest.TestCase):
         out = self.render(broken=("repos/",))
         self.assertEqual(rows(out, "github_runs_finished"), [])
         self.assertIn(9, exporter.DONE_JOBS)
+
+    def test_no_history_work_below_the_floor(self):
+        exporter.RATE["remaining"] = exporter.HISTORY_FLOOR - 1
+        out = self.render()
+        self.assertFalse(any("status=completed" in c or "/runs/9/" in c for c in exporter.get.calls))
+        self.assertEqual(rows(out, "github_runs_finished"), [])
+        # Live state is still read.
+        self.assertTrue(any('name="box-unity-pool-1"' in r for r in rows(out, "github_runner_state")))
 
     def test_finished_jobs_are_fetched_once(self):
         self.render()
@@ -302,6 +313,126 @@ class ExporterTest(unittest.TestCase):
         self.assertEqual(rows(out, "github_runner_state"), [])
         self.assertEqual(rows(out, "github_actions_job_waiting"), [])
 
+
+class ColdStartBudgetTest(unittest.TestCase):
+    """A day of runs at the playground's volume (2026-10-29: ~600 runs, ~3 jobs
+    each): the cold start must spend at most HISTORY_CALL_BUDGET history job
+    calls per scrape, and stop when GitHub says the budget is low."""
+
+    RUNS = 600
+
+    def setUp(self):
+        exporter.DONE_JOBS.clear()
+        exporter.HISTORY.clear()
+        exporter.CALLS.clear()
+        exporter.RATE.update(remaining=None, until=0.0)
+        self.saved = exporter.get
+
+    def tearDown(self):
+        exporter.get = self.saved
+
+    def fake(self):
+        runs = [{"id": 10000 - i, "name": "Tests", "conclusion": "success", "created_at": T0} for i in range(self.RUNS)]
+        calls = {}
+
+        def get(path, kind="other"):
+            calls[kind] = calls.get(kind, 0) + 1
+            if "/actions/runners" in path:
+                return {"total_count": 0, "runners": []}
+            m = re.search(r"status=completed.*&page=(\d+)", path)
+            if m and path.startswith("repos/acme/web/"):
+                return {"total_count": 0, "workflow_runs": []}
+            if m:
+                p = int(m.group(1))
+                return {"total_count": len(runs), "workflow_runs": runs[(p - 1) * 100:p * 100]}
+            if "status=" in path:
+                return {"total_count": 0, "workflow_runs": []}
+            return {"jobs": [{"name": f"j{k}", "conclusion": "success", "runner_name": "x",
+                              "created_at": T0, "started_at": T1, "completed_at": T2} for k in range(3)]}
+        exporter.get = get
+        return calls
+
+    def test_cold_start_stays_inside_the_budget(self):
+        calls = self.fake()
+        exporter.render()
+        # 3 runner sources, 2 active listings per repo, 1 + 6 list pages (600 runs
+        # in game, none in web), and the history budget for jobs.
+        self.assertEqual(calls, {"runners": 3, "active_runs": 4, "history_runs": 7,
+                                 "history_jobs": exporter.HISTORY_CALL_BUDGET})
+        self.assertEqual(len(exporter.DONE_JOBS), exporter.HISTORY_CALL_BUDGET)
+        scrapes = 1
+        while len(exporter.DONE_JOBS) < self.RUNS:
+            before = dict(calls)
+            exporter.render()
+            scrapes += 1
+            spent = {k: calls[k] - before.get(k, 0) for k in calls}
+            self.assertLessEqual(spent.get("history_jobs", 0), exporter.HISTORY_CALL_BUDGET)
+            self.assertEqual(spent.get("history_runs", 0), 0)  # the list is cached between refreshes
+            self.assertLess(scrapes, 20)
+        self.assertEqual(scrapes, -(-self.RUNS // exporter.HISTORY_CALL_BUDGET))
+        # Filled: a scrape now spends nothing on history.
+        before = dict(calls)
+        exporter.render()
+        self.assertEqual(calls["history_jobs"], before["history_jobs"])
+
+    def test_runs_still_count_while_jobs_fill(self):
+        self.fake()
+        out = exporter.render()
+        self.assertIn(f'github_runs_finished{{repo="game",workflow="Tests",conclusion="success"}} {self.RUNS}', out)
+
+
+class RateLimitTest(unittest.TestCase):
+    """A 403 at zero remaining stops every call until GitHub's reset, instead of
+    re-asking on each scrape."""
+
+    def setUp(self):
+        exporter.RATE.update(remaining=None, until=0.0)
+        exporter.CALLS.clear()
+        self.saved = (exporter.urllib.request.urlopen, exporter.get)
+        exporter.get = ORIGINAL_GET
+        self.opened = 0
+
+    def tearDown(self):
+        exporter.urllib.request.urlopen, exporter.get = self.saved
+        exporter.RATE.update(remaining=None, until=0.0)
+
+    def refuse(self, headers):
+        def urlopen(req, timeout=None):
+            self.opened += 1
+            raise urllib.error.HTTPError(req.full_url, headers.pop("_code", 403), "rate limited", headers, io.BytesIO(b""))
+        exporter.urllib.request.urlopen = urlopen
+
+    def test_backs_off_until_reset(self):
+        reset = int(time.time()) + 900
+        self.refuse({"X-RateLimit-Remaining": "0", "X-RateLimit-Reset": str(reset)})
+        with self.assertRaises(urllib.error.HTTPError):
+            exporter.get("orgs/acme/actions/runners", "runners")
+        self.assertEqual(exporter.RATE["remaining"], 0)
+        self.assertEqual(exporter.RATE["until"], reset)
+        for _ in range(3):
+            with self.assertRaises(exporter.RateLimited):
+                exporter.get("orgs/acme/actions/runners", "runners")
+        self.assertEqual(self.opened, 1)
+        # A whole scrape while backing off makes no call and reads as api_ok=0.
+        out = exporter.render()
+        self.assertEqual(self.opened, 1)
+        self.assertIn('github_runner_exporter_api_ok{source="orgs/acme",kind="runners"} 0', out)
+        self.assertIn("github_runner_exporter_rate_remaining 0", out)
+
+    def test_secondary_limit_honours_retry_after(self):
+        self.refuse({"_code": 429, "Retry-After": "30"})
+        with self.assertRaises(urllib.error.HTTPError):
+            exporter.get("orgs/acme/actions/runners", "runners")
+        self.assertAlmostEqual(exporter.RATE["until"], time.time() + 30, delta=2)
+
+    def test_other_errors_do_not_back_off(self):
+        self.refuse({"X-RateLimit-Remaining": "4000", "_code": 403})
+        with self.assertRaises(urllib.error.HTTPError):
+            exporter.get("repos/acme/web/actions/runners", "runners")
+        self.assertEqual(exporter.RATE["until"], 0.0)
+
+
+ORIGINAL_GET = exporter.get
 
 if __name__ == "__main__":
     unittest.main(verbosity=1)

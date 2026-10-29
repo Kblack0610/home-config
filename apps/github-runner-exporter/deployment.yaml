@@ -109,10 +109,12 @@ spec:
 # 60s, not 30s: a scrape is ~20-40 GitHub API calls (runners per repo, active
 # runs and their jobs), ~2400/h at most against the PAT's 5000/h. The 24h
 # finished-run list adds ~60/h (re-read every 10 min) plus one call per newly
-# finished run, and a cold start ~500 once (at most 60 runs' jobs per repo per
-# scrape). The 5000/h is per USER, shared with every gh session on the account:
-# 2026-10-29 a local test run drained it and this exporter read api_ok=0 until
-# the hourly reset.
+# finished run, and a cold start ~500 once, at most HISTORY_CALL_BUDGET (50) per
+# scrape and none below HISTORY_FLOOR (1000) remaining. The 5000/h is per USER,
+# shared with every gh session on the account and with ci-runner-governor:
+# 2026-10-29 a local test run drained it, and this exporter and the governor
+# both read nothing until the hourly reset. On a 403/429 at zero remaining the
+# exporter stops calling until GitHub's reset time.
 apiVersion: monitoring.coreos.com/v1
 kind: ServiceMonitor
 metadata:

@@ -3,11 +3,12 @@
 # (langfuse-clickhouse) into langfuse-ch. One-off, for the v3 -> v4 upgrade;
 # procedure in docs/langfuse-storage.md.
 #
-# Every run creates any missing table or view from the old server's own
-# SHOW CREATE, then TRUNCATEs and refills each table, so it is safe to re-run:
-# once while v3 is live to rehearse, once more during the cutover freeze for
-# the final copy. Plain MergeTree tables (event_log, schema_migrations) would
-# duplicate on a re-insert, which is why it truncates instead of appending.
+# Every run drops each table and view on the new server, re-creates it from the
+# old server's own SHOW CREATE and refills it, so it is safe to re-run: once
+# while v3 is live to rehearse, once more during the cutover freeze for the
+# final copy. Re-creating, not just refilling, matters: the 1.5.41 bump ran
+# ClickHouse migration 37 (a created_at index) between rehearsal and freeze, and
+# a refill alone would have left the new server claiming 37 without it.
 # Exits non-zero unless every table's row count matches.
 #
 # traces, observations and scores carry the 90-day TTL (docs/langfuse-storage.md,
@@ -35,13 +36,13 @@ new() { kubectl --context "$CTX" -n "$NS" exec -i "$NEW_POD" -- bash -c 'sql=$(c
 mapfile -t objects < <(echo "SELECT name, engine FROM system.tables WHERE database = 'default' ORDER BY engine LIKE '%View', name FORMAT TSV" | old)
 [ "${#objects[@]}" -gt 0 ] || { echo "FAIL: no tables found on $OLD_POD" >&2; exit 1; }
 
+# Drop in reverse (views first), create in order.
+for ((i = ${#objects[@]} - 1; i >= 0; i--)); do
+  echo "DROP TABLE IF EXISTS default.\`${objects[i]%%$'\t'*}\`" | new
+done
 for row in "${objects[@]}"; do
   name="${row%%$'\t'*}"
-  exists=$(echo "EXISTS TABLE default.\`$name\`" | new)
-  if [ "$exists" = 0 ]; then
-    echo "SHOW CREATE TABLE default.\`$name\` FORMAT TSVRaw" | old | new
-    echo "created: $name"
-  fi
+  echo "SHOW CREATE TABLE default.\`$name\` FORMAT TSVRaw" | old | new
 done
 
 rc=0
@@ -49,7 +50,6 @@ for row in "${objects[@]}"; do
   name="${row%%$'\t'*}"; engine="${row#*$'\t'}"
   case "$engine" in *View) continue ;; esac
   new <<SQL
-TRUNCATE TABLE default.\`$name\`;
 INSERT INTO default.\`$name\` SELECT * FROM remote('$OLD_HOST', default, \`$name\`, 'default', '@PW@');
 SQL
   ttl=$(echo "SELECT extract(create_table_query, ' TTL (.+?) SETTINGS ') FROM system.tables WHERE database = 'default' AND name = '$name'" | old)

@@ -111,8 +111,15 @@ NOT_MODIFIED = {}
 # jobs and the runner lists were ~1,200 of ~2,150 calls an hour. Bounded,
 # least recently used out, since active runs' job paths come and go. The body
 # is kept as bytes and parsed per call, so no caller shares a mutable object.
+# Only paths a later scrape asks for again are kept: the history run list's
+# path carries a moving created>= bound, and a completed run's jobs are read
+# once into DONE_JOBS, so caching either only held dead bodies (~1 MB a run
+# list page) until the pod was OOMKilled at 64Mi every ~11 minutes (2026-10-29).
 ETAGS = OrderedDict()
-ETAG_MAX = 2000
+ETAG_KINDS = frozenset({"runners", "active_runs", "active_jobs"})
+# The live set is ~200 paths (runner pages, two run lists per repo, and up to
+# MAX_RUNS_PER_REPO jobs lists per status per repo); the rest is headroom.
+ETAG_MAX = 400
 BUDGET = {"left": 0}
 LOCK = threading.Lock()
 # Bounds the jobs fan-out per repo per status, so one repo with a deep queue
@@ -163,7 +170,7 @@ def get(path, kind="other"):
     if TOKEN:
         req.add_header("Authorization", f"Bearer {TOKEN}")
     with LOCK:
-        cached = ETAGS.get(path)
+        cached = ETAGS.get(path) if kind in ETAG_KINDS else None
     if cached:
         req.add_header("If-None-Match", cached[0])
     try:
@@ -187,7 +194,7 @@ def get(path, kind="other"):
         raise
     with LOCK:
         CALLS[kind] = CALLS.get(kind, 0) + 1
-        if etag:
+        if etag and kind in ETAG_KINDS:
             ETAGS[path] = (etag, body)
             ETAGS.move_to_end(path)
             while len(ETAGS) > ETAG_MAX:
@@ -321,13 +328,17 @@ def finished_runs(repo, now):
     """
     since = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(now - HISTORY_WINDOW_SECS))
     q = f"repos/{repo}/actions/runs?status=completed&created={urllib.parse.quote('>=' + since)}&per_page=100"
-    first = get(f"{q}&page=1", "history_runs")
+    def page(p):
+        # Slimmed as each page lands: a raw page of 100 runs is ~1 MB parsed.
+        data = get(f"{q}&page={p}", "history_runs")
+        return data.get("total_count", 0), [slim(r, RUN_KEYS) for r in data.get("workflow_runs", [])]
+    total, first = page(1)
     pages = [first]
-    n = -(-first.get("total_count", 0) // 100)
+    n = -(-total // 100)
     if n > 1:
         with ThreadPoolExecutor(max_workers=4) as ex:
-            pages += list(ex.map(lambda p: get(f"{q}&page={p}", "history_runs"), range(2, n + 1)))
-    runs = {r["id"]: slim(r, RUN_KEYS) for page in pages for r in page.get("workflow_runs", [])}
+            pages += [runs for _, runs in ex.map(page, range(2, n + 1))]
+    runs = {r["id"]: r for pg in pages for r in pg}
     return [runs[i] for i in sorted(runs, reverse=True)]
 
 

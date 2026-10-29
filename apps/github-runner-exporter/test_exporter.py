@@ -499,6 +499,16 @@ class RateLimitTest(unittest.TestCase):
             exporter.get(f"repos/acme/web/actions/runs/{i}/jobs", "active_jobs")
         self.assertEqual(list(exporter.ETAGS), ["repos/acme/web/actions/runs/1/jobs", "repos/acme/web/actions/runs/2/jobs"])
 
+    def test_one_shot_paths_are_not_etag_cached(self):
+        # History paths are never asked for again (moving created>= bound, or a
+        # completed run read once into DONE_JOBS); caching them OOMKilled the pod.
+        self.serve({"jobs": []}, '"v"')
+        exporter.get("repos/acme/web/actions/runs/9/jobs", "history_jobs")
+        exporter.get("repos/acme/web/actions/runs?status=completed&created=%3E%3D2026", "history_runs")
+        exporter.get("repos/acme/web/actions/runs/9/jobs", "history_jobs")
+        self.assertEqual(list(exporter.ETAGS), [])
+        self.assertEqual(self.sent, [None, None, None])
+
 
 ORIGINAL_GET = exporter.get
 

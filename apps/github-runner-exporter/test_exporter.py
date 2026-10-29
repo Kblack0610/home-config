@@ -191,6 +191,21 @@ class ExporterTest(unittest.TestCase):
         self.assertEqual(exporter.pool_of(["self-hosted", "Windows", "X64", "host-windows-media"]), "windows")
         self.assertEqual(exporter.pool_of(["self-hosted", "Linux", "X64"]), "other")
         self.assertEqual(exporter.pool_of(["self-hosted", "linux", "unity-full"]), "unity")
+        self.assertEqual(exporter.pool_of(["self-hosted", "linux", "unity-withheld", "host-box"]), "unity")
+
+    def test_withheld_runner_stays_in_the_pool(self):
+        org = "orgs/acme/actions/runners?per_page=100&page=1"
+        saved = FAKE[org]
+        FAKE[org] = {"total_count": 1, "runners": [
+            runner(1, "box-unity-pool-1", ["self-hosted", "unity-withheld", "host-box"], busy=True)]}
+        try:
+            out = self.render()
+        finally:
+            FAKE[org] = saved
+        self.assertEqual(rows(out, "github_runner_withheld"), ['github_runner_withheld{name="box-unity-pool-1",host="box"} 1'])
+        self.assertTrue(any('pool="unity"' in r and 'state="running"' in r for r in rows(out, "github_runner_state")))
+        self.assertFalse(any('state="missing"' in r and 'host="box"' in r and 'pool="unity"' in r
+                             for r in rows(out, "github_runner_state")))
 
     def test_no_token_everything_failed(self):
         out = self.render(broken=("orgs/", "repos/"))

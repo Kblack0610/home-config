@@ -1,0 +1,110 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: ci-runner-governor
+  namespace: monitoring
+  labels:
+    app.kubernetes.io/name: ci-runner-governor
+spec:
+  # One writer: two governors would each withhold a runner for the same reading.
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: ci-runner-governor
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: ci-runner-governor
+    spec:
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 65534
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: governor
+          image: python:3.12-alpine
+          command: ["python3", "/app/governor.py"]
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop:
+                - ALL
+          env:
+            # 1 logs and exports every decision and changes no runner. Going
+            # live: a human mints a fine-grained PAT (resource owner
+            # BlackNBrownStudios, Organization > Self-hosted runners: write),
+            # stores it as Secret ci-runner-governor key github-token (SOPS, the
+            # same recipe as apps/github-runner-exporter), and sets this to 0.
+            - name: DRY_RUN
+              value: "1"
+            - name: GITHUB_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: ci-runner-governor
+                  key: github-token
+                  optional: true
+            - name: PROMETHEUS_URL
+              value: "http://kube-prometheus-stack-prometheus.monitoring:9090"
+          ports:
+            - name: metrics
+              containerPort: 9321
+          volumeMounts:
+            - name: app
+              mountPath: /app
+              readOnly: true
+          resources:
+            requests:
+              memory: "24Mi"
+              cpu: "5m"
+            limits:
+              memory: "64Mi"
+              cpu: "100m"
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 9321
+            initialDelaySeconds: 5
+            periodSeconds: 30
+      volumes:
+        - name: app
+          configMap:
+            name: ci-runner-governor
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: ci-runner-governor
+  namespace: monitoring
+  labels:
+    app.kubernetes.io/name: ci-runner-governor
+spec:
+  selector:
+    app.kubernetes.io/name: ci-runner-governor
+  ports:
+    - name: metrics
+      port: 9321
+      targetPort: 9321
+  type: ClusterIP
+---
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: ci-runner-governor
+  namespace: monitoring
+  labels:
+    app.kubernetes.io/name: ci-runner-governor
+spec:
+  endpoints:
+    - port: metrics
+      path: /metrics
+      interval: 60s
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: ci-runner-governor
+  namespaceSelector:
+    matchNames:
+      - monitoring

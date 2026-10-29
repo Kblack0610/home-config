@@ -1,0 +1,16 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+# Runs in monitoring beside github-runner-exporter, whose series it reads. The
+# hashed configMapGenerator names mean a governor.py or config.json edit rolls
+# the pod.
+namespace: monitoring
+
+configMapGenerator:
+  - name: ci-runner-governor
+    files:
+      - governor.py
+      - config.json
+
+resources:
+  - deployment.yaml

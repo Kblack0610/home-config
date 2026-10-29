@@ -116,7 +116,9 @@ def pool_of(labels):
         if p in labels:
             return p
     # Full suite runs ask for unity-full, which only unity pool runners carry.
-    if "unity-full" in labels:
+    # apps/ci-runner-governor swaps both for unity-withheld on a runner it holds
+    # back; that runner is still in the pool.
+    if "unity-full" in labels or "unity-withheld" in labels:
         return "unity"
     if "macOS" in labels:
         return "macos"
@@ -268,6 +270,15 @@ def render():
             online[(host, pool_)] = online.get((host, pool_), 0) + 1
         by_state[lab["state"]] = by_state.get(lab["state"], 0) + 1
         L.append(f"github_runner_state{{{labels_str(lab)}}} {value}")
+
+    L += [
+        "# HELP github_runner_withheld A unity pool runner apps/ci-runner-governor holds back from new jobs",
+        "# TYPE github_runner_withheld gauge",
+    ]
+    for scope, r in sorted(seen.values(), key=lambda s: s[1]["name"]):
+        names = [l["name"] for l in r.get("labels", [])]
+        if "unity-withheld" in names:
+            L.append(f"github_runner_withheld{{{labels_str({'name': r['name'], 'host': host_of(r['name'], names)})}}} 1")
 
     if runners_ok:
         registered = {}

@@ -46,7 +46,7 @@ spec:
                   set -o pipefail
                   apk add --no-cache postgresql17-client curl gzip >/dev/null
 
-                  CH="http://langfuse-clickhouse.langfuse.svc.cluster.local:8123/"
+                  CH="http://langfuse-ch.langfuse.svc.cluster.local:8123/"
                   PG_HOST="postgres.databases.svc.cluster.local"
                   RETENTION_DAYS=90
                   PG_MIN_BYTES=16384

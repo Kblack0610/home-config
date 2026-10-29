@@ -357,6 +357,23 @@
     - role: unity-ci-host-mac
       tags: [runner, ci, unity-ci, unity-ci-host]
   tasks:
+    # A new slot copies slot 1's checkout (an APFS clone: instant, no extra disk)
+    # before its runner starts, so it never clones from the forge. Eight slots
+    # cold-cloning at once took asus, and Forgejo with it, down on 2026-10-29;
+    # the copy also brings slot 1's imported Library. On a fresh host slot 1 has
+    # no checkout yet: register it alone (unity_ci_slots: 1), let one job run,
+    # then raise the count.
+    - name: Seed new slots from slot 1's checkout
+      ansible.builtin.shell:
+        cmd: >-
+          mkdir -p {{ unity_ci_mac_root }}/unity-pool-{{ item }}/_work &&
+          /bin/cp -cR {{ unity_ci_mac_root }}/unity-pool-1/_work/{{ unity_ci_mac_seed_repo }}
+          {{ unity_ci_mac_root }}/unity-pool-{{ item }}/_work/
+        creates: "{{ unity_ci_mac_root }}/unity-pool-{{ item }}/_work/{{ unity_ci_mac_seed_repo }}"
+        removes: "{{ unity_ci_mac_root }}/unity-pool-1/_work/{{ unity_ci_mac_seed_repo }}"
+      loop: "{{ range(2, unity_ci_slots + 1) | list }}"
+      tags: [runner, ci, unity-ci]
+
     - name: Register the Unity pool slots
       ansible.builtin.include_role:
         name: github-actions-runner-mac

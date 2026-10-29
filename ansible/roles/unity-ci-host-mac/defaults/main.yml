@@ -12,6 +12,9 @@
 # Where the slots live: <unity_ci_mac_root>/unity-pool-<n>, each also its HOME.
 unity_ci_mac_root: "{{ ansible_env.HOME }}/actions-runner"
 
+# The repo a new slot copies from slot 1 (the "Seed new slots" task in site.yml).
+unity_ci_mac_seed_repo: unity-core-playground
+
 # Editors the jobs ask for, by the project's ProjectSettings/ProjectVersion.txt
 # (m_EditorVersionWithRevision gives the changeset). Add the new one on a Unity
 # upgrade; the jobs refuse any other version.

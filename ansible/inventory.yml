@@ -223,6 +223,16 @@ all:
         razer-laptop:
           unity_ci_slots: 3
           unity_ci_full: true
+        # Two slots since 2026-10-29. They replace hp-victus's two repo-scoped
+        # runners (hp-victus-playground on unity-core-playground, hp-victus-unity-2
+        # on dodginballs), which already let it run two Unity jobs at once; the
+        # dodginballs one sat idle apart from the weekly License Canary while
+        # about 56 playground shards queued. Org slots serve dodginballs too.
+        # The machine id was seeded from the playground runner's, so the host is
+        # still the same single activation.
+        hp-victus:
+          unity_ci_slots: 2
+          unity_ci_full: true
         # Not the workstation (cachyos-x8664-main): it is the human's work machine,
         # and its two slots took 12 cores and 48G while they worked. Removed
         # 2026-10-06, when CI moved to nightly and release runs only; its slots
@@ -247,14 +257,22 @@ all:
           ci_unity_memory_max: 24G
           ci_pmp_memory_max: 24G
         # i7-13700HX: CPUs 0-15 are the P-core threads, 16-23 the E-cores.
-        # k3s (redis, ntfy) keeps four E-cores. 31 GB, no swap. Two Unity runners
-        # (dodginballs, playground) can each run a job. P-core threads 12-15 are
-        # the game server's (game_server_cpus in game_server_nodes below), so CI
-        # skips them.
+        # k3s (redis, ntfy) keeps four E-cores. 31 GB, no swap. P-core threads
+        # 12-15 are the game server's (game_server_cpus in game_server_nodes
+        # below), so CI skips them. Two Unity pool slots, each on three P-cores
+        # and two E-cores of its own.
+        # Unity memory is the whole CI budget since 2026-10-29. Container peaks
+        # from journald, 10-24 to 10-28, one job at a time: PlayMode shard p50
+        # 8.5G max 13.9G (n=110), EditMode max 8.6G, Two-process max 12.4G, Multi
+        # max 12.6G. At 14G a single PlayMode Unity was OOM-killed four times
+        # (10-26 to 10-28, anon-rss 14.3G), and two typical shards need about
+        # 17G. Two heavy jobs at once (Multi plus a 13G shard) still exceed 20G,
+        # and one of them gets killed.
         hp-victus:
           ci_cpus: 0-11,16-19
           ci_memory_max: 20G
-          ci_unity_memory_max: 14G
+          ci_unity_slot_cpus: ["0-5,16-17", "6-11,18-19"]
+          ci_unity_memory_max: 20G
           ci_pmp_memory_max: 14G
         # 8 cores / 16 threads, SMT siblings are n and n+8. Cores 0-1 (CPUs
         # 0-1, 8-9) stay with k3s and the OS. Unity gets cores 2-7, two per

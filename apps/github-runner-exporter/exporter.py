@@ -4,9 +4,8 @@
 WHY THIS EXISTS:
 
 CI for BlackNBrownStudios runs on home hardware: the platform pmp-light /
-pmp-heavy slots and the mac-mini (repo-scoped on platform), the org Unity pool,
-and repo-scoped Unity runners on single game repos (hp-victus-playground on
-unity-core-playground, hp-victus-unity-2 on dodginballs). A self-hosted job
+pmp-heavy slots and the mac-mini (repo-scoped on platform), and the org Unity
+pool, which serves every game repo. A self-hosted job
 WAITS for a runner instead of failing, so a dead slot shows up as a PR sitting
 queued, not as a red check. Before this, the only view was `gh api` one repo at
 a time, and it could not say what a busy runner was busy WITH.
@@ -25,8 +24,8 @@ ROSTER-FIRST for slot counts, same reason as apps/fleet-exporter: GitHub only
 lists runners that registered, so a slot whose ansible play never ran would
 otherwise be invisible. $RUNNER_ROSTER mirrors ansible/inventory.yml and
 scripts/check-runner-roster.py keeps them equal. Each missing slot is a
-state="missing" row. Runners outside the roster (the repo-scoped Unity ones
-are not ansible-managed) are listed but not counted against anything.
+state="missing" row. Runners outside the roster (m1-playground-mac is not
+ansible-managed) are listed but not counted against anything.
 
 Fetched on every scrape, no background loop: Prometheus's scrape interval is the
 cadence (GitHub has no push API for runner state). Calls run on a small thread

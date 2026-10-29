@@ -34,13 +34,13 @@ spec:
               drop:
                 - ALL
           env:
-            # 1 logs and exports every decision and changes no runner. Going
-            # live: a human mints a fine-grained PAT (resource owner
-            # BlackNBrownStudios, Organization > Self-hosted runners: write),
-            # stores it as Secret ci-runner-governor key github-token (SOPS, the
-            # same recipe as apps/github-runner-exporter), and sets this to 0.
+            # 1 logs and exports every decision and changes no runner. The token
+            # is the control node's `gh auth token` (admin:org, what the Unity
+            # pool play registers runners with), SOPS-encrypted the same way as
+            # apps/github-runner-exporter's; after `gh auth refresh` re-run that
+            # recipe with --from-literal=github-token="$(gh auth token)".
             - name: DRY_RUN
-              value: "1"
+              value: "0"
             - name: GITHUB_TOKEN
               valueFrom:
                 secretKeyRef:

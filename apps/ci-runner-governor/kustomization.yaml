@@ -14,3 +14,4 @@ configMapGenerator:
 
 resources:
   - deployment.yaml
+  - ci-runner-governor-secret.yaml   # the control node's `gh auth token` (admin:org), the token the Unity pool play registers runners with

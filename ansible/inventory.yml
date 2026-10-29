@@ -220,8 +220,13 @@ all:
         # each the first evening, three of two cores each from 20:00 the same
         # day with about 40 jobs queued. If razer's timed tests fail more often
         # than the other hosts', go back to two.
+        # Five since 2026-10-29: slots 4 and 5 float over all of razer's Unity
+        # cores and only take work while ci-runner-governor admits them (it
+        # withholds a slot when CPU pressure or idle say the host is full). 37
+        # jobs queued with razer at 34% CPU and 76G free; the governor, not a
+        # fixed count, decides how many of the five run.
         razer-laptop:
-          unity_ci_slots: 3
+          unity_ci_slots: 5
           unity_ci_full: true
         # Two slots since 2026-10-29. They replace hp-victus's two repo-scoped
         # runners (hp-victus-playground on unity-core-playground, hp-victus-unity-2
@@ -282,8 +287,8 @@ all:
           ci_cpus: 2-7,10-15
           ci_memory_max: 72G
           ci_unity_cpus: 2-7,10-15
-          ci_unity_slot_cpus: ["2-3,10-11", "4-5,12-13", "6-7,14-15"]
-          ci_unity_memory_max: 40G
+          ci_unity_slot_cpus: ["2-3,10-11", "4-5,12-13", "6-7,14-15", "2-7,10-15", "2-7,10-15"]
+          ci_unity_memory_max: 60G
           ci_pmp_memory_max: 40G
 
     # Nodes that run the game servers (apps/playground-server pins to the

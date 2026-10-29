@@ -63,7 +63,7 @@ spec:
               `server=` list.
               NOTE: a false alarm here means the AdGuard DNS filter simply
               stopped blocking this domain; pick another and update both
-              apps/blackbox-exporter/configmap.yaml and apps/gatus/config.yaml.
+              apps/blackbox-exporter/blackbox.yml and apps/gatus/config.yaml.
 
         - alert: DNSRewriteBroken
           # *.kblab.me is how every internal service is reached. This fails

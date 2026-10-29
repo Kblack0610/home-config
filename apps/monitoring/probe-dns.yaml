@@ -1,5 +1,5 @@
 # blackbox Probes for house DNS. Modules are defined in
-# apps/blackbox-exporter/configmap.yaml; each asks one question, so there is one
+# apps/blackbox-exporter/blackbox.yml; each asks one question, so there is one
 # Probe per question.
 #
 # Targets are the ROUTER, because that is what every client actually queries.

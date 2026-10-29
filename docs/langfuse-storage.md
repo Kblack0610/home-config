@@ -87,6 +87,17 @@ gunzip -c /mnt/backup-8t/langfuse/clickhouse/traces/202607.native.gz \
       -q "INSERT INTO default.traces FORMAT Native"
 ```
 
+## Upgrading to Langfuse v4 (own ClickHouse)
+
+Langfuse v4 needs ClickHouse 25.12 or later, and the chart's Bitnami ClickHouse (25.2) cannot get there. Chart 2.x replaces it with the alpha clickhouse-operator plus Keeper and refuses an in-place upgrade while `StatefulSet/langfuse-clickhouse-shard0` exists. Every table here is non-replicated MergeTree family, so `apps/langfuse/clickhouse/` runs a plain single-node ClickHouse (`langfuse-ch`) instead, with the system-log tuning above carried over as `config.d` / `users.d` XML, and the chart points at it as an external ClickHouse.
+
+1. Back up: `kubectl -n langfuse create job --from=cronjob/langfuse-backup langfuse-backup-pre-v4`.
+2. Chart 1.5.41 (app 3.224.1), the oldest version v4 upgrades from. Then in the `langfuse` Postgres database `SELECT name, failed_at FROM background_migrations WHERE finished_at IS NULL` must return no rows.
+3. Merge `apps/langfuse/clickhouse/`. Nothing points at it yet.
+4. Rehearse the copy while v3 runs: `apps/langfuse/clickhouse/copy-from-bitnami.sh`. It creates the schema from the old server's `SHOW CREATE` (including `schema_migrations`, so the migrator knows where it is), truncates and refills every table, and compares row counts. A small mismatch on `observations` or `traces` is expected here, since v3 is still writing.
+5. Cut over, in this order: `flux suspend helmrelease langfuse -n langfuse`; scale `langfuse-web` to 0 (Alloy retries spans for up to 5 minutes); let `langfuse-worker` drain its queue, then scale it to 0; run the copy script again, which must now end with every table `ok`; merge the cutover PR (chart 2.x, `clickhouse.deploy: false`, host `langfuse-ch`, backup CronJob `CH=` pointed at `langfuse-ch`); `flux resume helmrelease langfuse -n langfuse`.
+6. Rollback until the old PVCs are deleted: revert the cutover PR. The Bitnami StatefulSet comes back on its untouched volume, without whatever v4 wrote.
+
 ## Known gaps
 
 - **Same box.** `/mnt/backup-8t` is `sda` inside asus-laptop, the same machine as the nvme holding the live PVC. Per `backup-runbook.md` there is still no offsite. This protects against a disk dying, not against losing the host.

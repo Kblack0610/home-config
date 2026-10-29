@@ -1,0 +1,108 @@
+# Langfuse's ClickHouse, run here instead of by the Langfuse chart.
+#
+# Langfuse v4 needs ClickHouse 25.12+, and chart 2.x replaced the bundled
+# Bitnami ClickHouse with the alpha clickhouse-operator plus Keeper, refusing to
+# upgrade in place while the old StatefulSet exists. Langfuse supports an
+# external ClickHouse, and these tables are all non-replicated MergeTree
+# family, so a single plain StatefulSet does the job with no operator and no
+# Keeper, and keeps the system-log tuning as the XML it already was.
+# Upgrade procedure: docs/langfuse-storage.md
+apiVersion: v1
+kind: Service
+metadata:
+  name: langfuse-ch
+  namespace: langfuse
+  labels:
+    app: langfuse-ch
+spec:
+  clusterIP: None
+  selector:
+    app: langfuse-ch
+  ports:
+    - name: http
+      port: 8123
+      targetPort: 8123
+    - name: native
+      port: 9000
+      targetPort: 9000
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: langfuse-ch
+  namespace: langfuse
+spec:
+  serviceName: langfuse-ch
+  replicas: 1
+  selector:
+    matchLabels:
+      app: langfuse-ch
+  template:
+    metadata:
+      labels:
+        app: langfuse-ch
+    spec:
+      # Same node as the Bitnami ClickHouse it replaces and the nightly backup
+      # (backup-cronjob.yaml), and off the workstation. local-path binds the
+      # volume to whichever node schedules first, so pin it.
+      nodeSelector:
+        kubernetes.io/hostname: asus-laptop
+      containers:
+        - name: clickhouse
+          image: clickhouse/clickhouse-server:26.4.5.143
+          ports:
+            - containerPort: 8123
+              name: http
+            - containerPort: 9000
+              name: native
+          env:
+            # The image's entrypoint writes users.d/default-user.xml from these,
+            # which is why users.d is mounted file by file below, not replaced.
+            - name: CLICKHOUSE_USER
+              value: default
+            - name: CLICKHOUSE_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: langfuse-secrets
+                  key: CLICKHOUSE_PASSWORD
+          resources:
+            requests:
+              cpu: 500m
+              memory: 2Gi
+            limits:
+              cpu: "2"
+              memory: 4Gi
+          volumeMounts:
+            - name: data
+              mountPath: /var/lib/clickhouse
+            - name: config
+              mountPath: /etc/clickhouse-server/config.d/system-logs.xml
+              subPath: system-logs.xml
+            - name: config
+              mountPath: /etc/clickhouse-server/users.d/profilers-off.xml
+              subPath: profilers-off.xml
+          readinessProbe:
+            httpGet:
+              path: /ping
+              port: http
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /ping
+              port: http
+            initialDelaySeconds: 30
+            periodSeconds: 30
+      volumes:
+        - name: config
+          configMap:
+            name: langfuse-ch-config
+  volumeClaimTemplates:
+    - metadata:
+        name: data
+      spec:
+        accessModes: ['ReadWriteOnce']
+        storageClassName: local-path
+        resources:
+          requests:
+            storage: 20Gi

@@ -100,6 +100,9 @@ Langfuse v4 needs ClickHouse 25.12 or later, and the chart's Bitnami ClickHouse 
 
 ## Known gaps
 
+- **Claude Code cost starts 2026-10-29.** Until #400 (2026-10-29 01:41 UTC) the Alloy transform did not map Claude Code's token attributes to `gen_ai.usage.*`, so every Claude call before then is stored with empty usage and $0 cost. Langfuse prices an observation when it ingests it and does not re-price old ones, so the cost charts are only meaningful from that point. Earlier spend is in Prometheus (`claude_code_cost_usage_USD_total`) and the workstation's `day-log`.
+- **Scores are pushed, not evaluated here.** The session scores (`friction`, `reverted_7d`, `interrupts`, ...) come from the workstation's nightly `agentctl-session-outcomes` run, keyed on the Claude session id. No Langfuse LLM-as-judge evaluator is configured, on purpose: the outcomes are counted from git, gh and transcript structure, and the retired per-session LLM judge scored nearly everything 10/10.
+
 - **Same box.** `/mnt/backup-8t` is `sda` inside asus-laptop, the same machine as the nvme holding the live PVC. Per `backup-runbook.md` there is still no offsite. This protects against a disk dying, not against losing the host.
 - **S3 blobs are not covered.** Langfuse writes raw event payloads to minio (`S3_ACCESS_KEY_ID` in `langfuse-secrets`). The traces and observations are fully restorable without them; the original event bodies are not.
 - **`nas-backup-verify` does not check this job.** It loops over `home-assistant litellm actual-budget music-assistant snapcast` against the SMB share, and this job writes to the 8TB hostPath instead. Staleness is covered - `HomelabBackupStale` in `apps/monitoring/prometheus-rules-backup-drive.yaml` joins on any CronJob outside the `nas` namespace, so creating this CronJob brought Langfuse under it automatically - but content is not verified.

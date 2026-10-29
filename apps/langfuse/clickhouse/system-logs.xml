@@ -1,0 +1,27 @@
+<!--
+  ClickHouse's self-telemetry, off. It reached 166 GiB guarding 660 MiB of
+  actual Langfuse data, on a PVC claiming 20Gi that local-path never enforced,
+  and OOMed the server against its 4Gi limit while doing it. query_log is kept
+  (answers "why is this query slow") with a TTL; the rest is already in
+  Prometheus and Loki. Numbers and the drop procedure: docs/langfuse-storage.md
+-->
+<clickhouse>
+  <trace_log remove="1"/>
+  <text_log remove="1"/>
+  <metric_log remove="1"/>
+  <asynchronous_metric_log remove="1"/>
+  <latency_log remove="1"/>
+  <processors_profile_log remove="1"/>
+  <opentelemetry_span_log remove="1"/>
+  <part_log remove="1"/>
+  <!-- Periodic metric dumps that 25.x did not write (or wrote only lightly). -->
+  <query_metric_log remove="1"/>
+  <histogram_metric_log remove="1"/>
+  <background_schedule_pool_log remove="1"/>
+  <query_log>
+    <database>system</database>
+    <table>query_log</table>
+    <flush_interval_milliseconds>7500</flush_interval_milliseconds>
+    <ttl>event_date + INTERVAL 7 DAY DELETE</ttl>
+  </query_log>
+</clickhouse>

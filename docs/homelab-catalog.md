@@ -29,9 +29,7 @@ One-page index of services and their management plane. Use this to answer "where
 | node_exporter (macOS) | mac-studio, mac-mini | brew services (port 9100) | Ansible role authored, unbound → manual brew today | `ansible/roles/node-exporter-mac/` |
 | Homebrew baseline | mac-studio, mac-mini | user-scoped brew install | Ansible role authored, unbound → `install.sh` today | `ansible/roles/brew-common/` |
 | GitHub Actions runners, platform CI (Linux) | asus-laptop (2 light + 1 heavy), hp-victus (2 + 1), razer-laptop (3 + 1) | systemd `actions.runner.<host>-<slot>.service` in `ci-pmp.slice`, inside the host's `ci.slice` budget | Ansible (this repo), play "platform CI runners" | `ansible/roles/github-actions-runner-linux/` + `ansible/roles/platform-ci-host/` |
-| GitHub Actions runner, dodginballs Unity | hp-victus | systemd `actions.runner.hp-victus-unity-2.service` (/var/lib/actions-runner-2) | Ansible (this repo) | `ansible/roles/github-actions-runner-linux/` |
-| GitHub Actions runner, unity-core-playground | hp-victus | systemd `actions.runner.hp-victus-playground.service` (/var/lib/actions-runner-playground) | Ansible (this repo) | `ansible/roles/github-actions-runner-linux/` |
-| GitHub Actions Unity runner pool (org-wide, label `unity`) | asus-laptop (1), razer-laptop (3, each in its own `ci-unity-<n>.slice` cpuset); not the workstation | systemd `actions.runner.<host>-unity-pool-<n>.service` in `ci-unity.slice`, inside the host's `ci.slice` budget; Unity containers in the same slice | Ansible (this repo), play "Unity CI runner pool" | `ansible/roles/unity-ci-host/` + `ansible/roles/github-actions-runner-linux/` |
+| GitHub Actions Unity runner pool (org-wide, label `unity`) | asus-laptop (1), razer-laptop (3), hp-victus (2), the razer and hp-victus slots each in its own `ci-unity-<n>.slice` cpuset; not the workstation | systemd `actions.runner.<host>-unity-pool-<n>.service` in `ci-unity.slice`, inside the host's `ci.slice` budget; Unity containers in the same slice | Ansible (this repo), play "Unity CI runner pool" | `ansible/roles/unity-ci-host/` + `ansible/roles/github-actions-runner-linux/` |
 | Fluidd / Moonraker (live) | neptune-3d-printer (192.168.1.54) | embedded (on printer) | — | — |
 | AdGuard Home | pi3 (192.168.1.193) | docker-compose | In-repo compose, bootstrapped via `flash-pi.sh` + `setup.sh` | `apps/pi3-adguard-home/` |
 | ESP32 smart switch | ESP32 | firmware | manual flash | `apps/esp32-firmware/` |
@@ -56,7 +54,7 @@ See `docs/gitops.md` for the layer boundaries and `docs/architecture.md` for wor
 
 ## Roles authored vs applied
 
-Every Ansible role listed above that shows "role authored, unbound" exists as code under `ansible/roles/<name>/` but is **not** yet bound in `ansible/playbooks/site.yml`. `github-actions-runner-linux` is live-applied (platform CI slots on the `platform_ci_runners` group, dodginballs Unity on hp-victus). Enabling a role means:
+Every Ansible role listed above that shows "role authored, unbound" exists as code under `ansible/roles/<name>/` but is **not** yet bound in `ansible/playbooks/site.yml`. `github-actions-runner-linux` is live-applied (platform CI slots on the `platform_ci_runners` group, the org Unity pool on `unity_ci_runners`). Enabling a role means:
 
 1. Seed the per-group vault (`vault_k3s_token`, `vault_github_pat`).
 2. Uncomment the role block in `ansible/playbooks/site.yml`.

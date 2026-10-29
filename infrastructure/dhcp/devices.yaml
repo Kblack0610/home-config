@@ -78,11 +78,13 @@ devices:
     range_exception: true
 
   # windows-media (WINDOWS-MEDIA): the living-room Windows and media box and the
-  # infra Windows test host, next to the Macs it does the same job as. Wi-Fi
-  # (Intel AX210). Fleet key homelab_windows-media; reached over Windows
-  # OpenSSH. Was living-room-pc-lan at .121 until 2026-10-26. See docs/windows-machines.md.
+  # infra Windows test host, next to the Macs it does the same job as. Ethernet
+  # (Realtek 2.5GbE) since 2026-10-29, for its Unity CI slot; the Wi-Fi (Intel
+  # AX210, F4:3B:D8:6F:A7:A7) is unreserved. Fleet key homelab_windows-media;
+  # reached over Windows OpenSSH. Was living-room-pc-lan at .121 until 2026-10-26.
+  # See docs/windows-machines.md.
   - hostname: windows-media-lan
-    mac: "F4:3B:D8:6F:A7:A7"
+    mac: "60:CF:84:75:D4:E7"
     ip: "192.168.1.8"
     category: infrastructure
 

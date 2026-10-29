@@ -243,6 +243,20 @@ all:
         # 2026-10-06, when CI moved to nightly and release runs only; its slots
         # were deregistered by hand. Do not add it back.
 
+    # macOS hosts in the same Unity pool (site.yml, "Unity CI runner pool
+    # (macOS)"). Native editor, no container, so no ci_hosts budget: macOS has
+    # no cpusets. Mirrored in RUNNER_ROSTER like unity_ci_runners.
+    unity_ci_mac_runners:
+      hosts:
+        # M3 Ultra, 24P+8E cores, 512G, from 2026-10-29 until it is sold. Eight
+        # slots, about three P-cores each, with the E-cores left to macOS and
+        # mlx-server. Raise toward ten only if its per-host row in
+        # unity-core-playground scripts/test/ci-cost.py stays as fast and green
+        # as the Linux hosts'.
+        mac-studio:
+          unity_ci_slots: 8
+          unity_ci_full: true
+
     # One CPU and memory budget per CI host (roles/ci-host-budget): every runner
     # and container of every CI workload on the host shares it, and what is left
     # stays with k3s and the OS. Until 2026-10-24 each workload had its own cap,

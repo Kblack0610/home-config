@@ -1,19 +1,31 @@
 ---
-# Target repo, mirroring github-actions-runner-linux. Single-repo runners
-# today; switch to org-scoped by updating these two plus the API URL.
+# Target, mirroring github-actions-runner-linux: repo (one repo's runner, the
+# mac-mini mobile runner) or org (every repo in the org, the Unity pool slots).
+gh_runner_mac_scope: repo
 gh_runner_mac_owner: BlackNBrownStudios
 gh_runner_mac_repo: platform
-gh_runner_mac_url: "https://github.com/{{ gh_runner_mac_owner }}/{{ gh_runner_mac_repo }}"
+gh_runner_mac_url: >-
+  {{ 'https://github.com/' ~ gh_runner_mac_owner ~ (('/' ~ gh_runner_mac_repo) if gh_runner_mac_scope == 'repo' else '') }}
+# The REST path the registration and removal tokens are minted under.
+gh_runner_mac_api_path: >-
+  {{ ('repos/' ~ gh_runner_mac_owner ~ '/' ~ gh_runner_mac_repo) if gh_runner_mac_scope == 'repo' else ('orgs/' ~ gh_runner_mac_owner) }}
+# svc.sh names the LaunchAgent actions.runner.<owner>-<repo>.<name> for a repo
+# runner and actions.runner.<owner>.<name> for an org one.
+gh_runner_mac_svc_name: >-
+  actions.runner.{{ gh_runner_mac_owner ~ (('-' ~ gh_runner_mac_repo) if gh_runner_mac_scope == 'repo' else '') }}.{{ gh_runner_mac_name }}
 
 # Pin the runner release. Matches the Linux role's pinned version so the
 # fleet runs a consistent actions-runner. Bump deliberately.
-gh_runner_mac_version: "2.320.0"
+gh_runner_mac_version: "2.337.0"
 gh_runner_mac_arch: arm64  # Both mac-studio (M3 Ultra) and mac-mini (M1) are Apple Silicon.
 gh_runner_mac_tarball: "actions-runner-osx-{{ gh_runner_mac_arch }}-{{ gh_runner_mac_version }}.tar.gz"
 gh_runner_mac_tarball_url: "https://github.com/actions/runner/releases/download/v{{ gh_runner_mac_version }}/{{ gh_runner_mac_tarball }}"
 # sha256 fetched via:
-#   curl -sL https://github.com/actions/runner/releases/download/v2.320.0/actions-runner-osx-arm64-2.320.0.tar.gz | sha256sum
-gh_runner_mac_tarball_sha256: "14e2600c07ad76a1c9f6d9e498edf14f1c63f7f7f8d55de0653e450f64caa854"
+#   curl -sL https://github.com/actions/runner/releases/download/v2.337.0/actions-runner-osx-arm64-2.337.0.tar.gz | sha256sum
+# 2.320.0 could no longer register (404, "runner version is out of date",
+# 2026-10-29); an installed runner updates itself, so only a new registration
+# reads this pin.
+gh_runner_mac_tarball_sha256: "5a2cd92908a93d7276a194e1de6008099f3e7946f3f8e14aa7a1a7b4a31fdec2"
 
 # Runner install dir (user-scoped, no root needed for LaunchAgent mode).
 # `svc.sh install` on macOS creates a per-user LaunchAgent at
@@ -27,6 +39,16 @@ gh_runner_mac_labels:
   - self-hosted
   - macOS
   - "{{ gh_runner_mac_arch }}"
+# true registers with only gh_runner_mac_labels, without GitHub's own
+# self-hosted/macOS/ARM64. An org runner otherwise matches every org job that
+# asks for [self-hosted, macOS], such as the platform repo's iOS builds.
+gh_runner_mac_no_default_labels: false
+
+# Extra job environment, written to the runner's .env (HOME, for one, gives a
+# Unity pool slot its own caches), and the job PATH written to its .path when
+# set. A change restarts the runner. Empty = the runner's own defaults.
+gh_runner_mac_env: {}
+gh_runner_mac_path: ""
 
 # Desired end-state for this runner on this host:
 #   present (default) — download, register, install + start the LaunchAgent.

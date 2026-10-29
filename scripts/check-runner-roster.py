@@ -30,6 +30,7 @@ EXPORTER_DEPLOY = os.path.join(REPO, "apps/github-runner-exporter/deployment.yam
 GROUPS = {
     "platform_ci_runners": {"pmp_light_slots": "pmp-light", "pmp_heavy_slots": "pmp-heavy"},
     "unity_ci_runners": {"unity_ci_slots": "unity"},
+    "unity_ci_mac_runners": {"unity_ci_slots": "unity"},
 }
 # The macOS runner and the Windows test runner are each one play pinned to one
 # host (playbooks/site.yml, "macOS CI runner (mac-mini only)" and "Windows test

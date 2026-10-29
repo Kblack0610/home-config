@@ -1,0 +1,15 @@
+---
+galaxy_info:
+  role_name: unity_ci_host_mac
+  author: home-config
+  description: >-
+    Host prep for a macOS host in the BNB Unity runner pool: Homebrew's GNU
+    tools first on the job PATH, Unity Hub and the project's editors, and
+    Unity's license directory. The jobs run natively, not in the editor image.
+  license: MIT
+  min_ansible_version: "2.14"
+  platforms:
+    - name: MacOSX
+      versions:
+        - all
+dependencies: []

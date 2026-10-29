@@ -187,24 +187,21 @@
     - role: github-actions-runner-mac
       tags: [mac, runner]
 
-# mac-studio dedicated LLM node: (1) tear down + deregister its old CI runner,
-# (2) debloat + tune for MLX. Runs BEFORE the MLX server play below so a full
-# `--limit mac-studio` run cleans, then re-asserts MLX. Destructive removals in
-# macos-llm-node are opt-in here (default-false vars) — `--check --diff` first.
-# `-K` needed (become: pmset/sysctl/Xcode removal).
-- name: Mac Studio LLM node (runner teardown + debloat + tuning)
+# mac-studio LLM node: debloat + tune for MLX. Runs BEFORE the MLX server play
+# below so a full `--limit mac-studio` run cleans, then re-asserts MLX.
+# Destructive removals in macos-llm-node are opt-in here (default-false vars) —
+# `--check --diff` first. `-K` needed (become: pmset/sysctl/Xcode removal).
+# Its old platform runner was torn down 2026-07-18; since 2026-10-29 it is a
+# Unity pool host too (the macOS pool play below), whose slots live under
+# ~/actions-runner, so the runner dir is no longer removed.
+- name: Mac Studio LLM node (debloat + tuning)
   hosts: mac-studio
   gather_facts: true
   roles:
-    - role: github-actions-runner-mac
-      vars:
-        gh_runner_mac_state: absent
-      tags: [mac, runner, teardown]
     - role: macos-llm-node
       vars:
         macos_llm_node_remove_xcode: true
         macos_llm_node_remove_platform_checkout: true
-        macos_llm_node_remove_runner_dir: true
       # Per-concern tags (debloat / fs / os-toggles / llm-tuning) come from the
       # role's import_tasks, so a run can stage them independently.
       tags: [mac, llm-node]
@@ -336,6 +333,54 @@
           # the playground): with the default under each slot's HOME, a new slot
           # downloaded the whole 7.9 GB library before its first job could start.
           ASSET_LIBRARY_LFS_STORE: "{{ unity_ci_user_home }}/.cache/bnb/asset-library-lfs"
+      tags: [runner, ci, unity-ci]
+
+# BNB Unity runner pool, macOS hosts (added 2026-10-29, mac-studio until it is
+# sold). The same org pool as above, labelled unity/unity-full, unity-native and
+# host-<name>, without GitHub's default labels: the jobs that need the Linux
+# editor image keep runs-on linux or self-hosted, and the rest (EditMode) run
+# natively here. Slot counts are in
+# inventory.yml (unity_ci_mac_runners). The governor cannot read a Mac's load
+# (no PSI or hwmon), so these slots are always admitted.
+#
+# To retire a host (the Studio's sale): stop and uninstall each slot with
+# ~/actions-runner/unity-pool-<n>/svc.sh, delete the runners in the org's
+# settings, remove the host from unity_ci_mac_runners and RUNNER_ROSTER, and
+# lower pool_max_admitted in apps/ci-runner-governor/config.json.
+- name: Unity CI runner pool (macOS)
+  hosts: unity_ci_mac_runners
+  gather_facts: true
+  # A non-login ssh shell lacks Homebrew, whose GNU tar ansible's unarchive needs.
+  environment:
+    PATH: "/opt/homebrew/bin:{{ ansible_env.PATH }}"
+  roles:
+    - role: unity-ci-host-mac
+      tags: [runner, ci, unity-ci, unity-ci-host]
+  tasks:
+    - name: Register the Unity pool slots
+      ansible.builtin.include_role:
+        name: github-actions-runner-mac
+        apply:
+          tags: [runner, ci, unity-ci]
+      loop: "{{ range(1, unity_ci_slots + 1) | list }}"
+      loop_control:
+        loop_var: unity_slot
+      vars:
+        gh_runner_mac_scope: org
+        gh_runner_mac_token_source: gh
+        gh_runner_mac_home: "{{ unity_ci_mac_root }}/unity-pool-{{ unity_slot }}"
+        gh_runner_mac_name: "{{ inventory_hostname }}-unity-pool-{{ unity_slot }}"
+        # No self-hosted/macOS/ARM64: with them an org slot here would take the
+        # platform repo's [self-hosted, macOS] iOS jobs and dodginballs'
+        # [self-hosted, unity] game-ci (docker) jobs. Only jobs that ask for the
+        # pool labels alone land here (unity-core-playground test.yml EditMode).
+        gh_runner_mac_no_default_labels: true
+        gh_runner_mac_labels: "{{ [ 'unity', 'unity-native', 'host-' ~ inventory_hostname ] + ([ 'unity-full' ] if unity_ci_full | default(true) else []) }}"
+        gh_runner_mac_path: "{{ unity_ci_mac_path }}"
+        gh_runner_mac_env:
+          HOME: "{{ unity_ci_mac_root }}/unity-pool-{{ unity_slot }}"
+          UNITY_CI_NATIVE: "1"
+          ASSET_LIBRARY_LFS_STORE: "{{ unity_ci_mac_lfs_store }}"
       tags: [runner, ci, unity-ci]
 
 # NFS backup target — hp-victus exports /srv/backups so k3s workloads can keep

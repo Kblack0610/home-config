@@ -25,6 +25,9 @@ Run after adding, renaming, or removing an Ingress/IngressRoute or inventory hos
 The output is committed to git; Flux reconciles, the sync-managed-config init
 container copies the HA files to the PVC on pod restart, and HA picks them up.
 
+Only apps listed in apps/kustomization.yaml are read: an ingress Flux never
+applies has no site behind it.
+
 Opt out per Ingress/IngressRoute with:
     metadata:
       annotations:
@@ -47,6 +50,7 @@ LAUNCHER = os.path.join(REPO, "apps/home-assistant/config/dashboards/launcher.ya
 STATUS_PKG = os.path.join(REPO, "apps/home-assistant/config/packages/site_status.yaml")
 PROBE = os.path.join(REPO, "apps/monitoring/probe-sites.yaml")
 INGRESS_GLOB = os.path.join(REPO, "apps/*/ingress*.yaml")
+APPS_KUSTOMIZATION = os.path.join(REPO, "apps/kustomization.yaml")
 INVENTORY = os.path.join(REPO, "ansible/inventory.yml")
 
 BEGIN_MARK = "# BEGIN_GENERATED_LAUNCHER"
@@ -151,9 +155,22 @@ def is_private(host: str) -> bool:
     return host.endswith(".kblab.me") or host == "kblab.me"
 
 
+def flux_apps() -> set[str]:
+    """App dirs Flux deploys: the resources of apps/kustomization.yaml.
+
+    An ingress file under an app that is not listed there is never applied, so
+    probing its host only produces a permanent PublicSiteDown (apps/cal did).
+    """
+    with open(APPS_KUSTOMIZATION) as fp:
+        return set(yaml.safe_load(fp).get("resources") or [])
+
+
 def iter_ingress_hosts():
     """Yield (host, namespace) from Ingress + IngressRoute, honoring the opt-out."""
+    deployed = flux_apps()
     for path in sorted(glob.glob(INGRESS_GLOB)):
+        if os.path.basename(os.path.dirname(path)) not in deployed:
+            continue
         with open(path) as fp:
             for doc in yaml.safe_load_all(fp):
                 if not doc:

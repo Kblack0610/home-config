@@ -87,6 +87,28 @@ spec:
           additionalEnv:
             - name: NODE_OPTIONS
               value: "--max-old-space-size=1536"
+            # "Sign in with Forgejo" via OIDC discovery on the issuer. The
+            # OAuth app is langfuse.kblab.me under kblack0610 in Forgejo; its
+            # client ID/secret are AUTH_CUSTOM_CLIENT_* in langfuse-secrets.
+            # Password login stays as the fallback (rbw: langfuse).
+            - name: AUTH_CUSTOM_NAME
+              value: Forgejo
+            - name: AUTH_CUSTOM_ISSUER
+              value: https://git.kennethblack.me
+            - name: AUTH_CUSTOM_SCOPE
+              value: openid email profile
+            - name: AUTH_CUSTOM_ALLOW_ACCOUNT_LINKING
+              value: "true"
+            # A Forgejo account whose email matches no Langfuse user becomes
+            # a new user in the kblab org. Forgejo registration is disabled,
+            # so only accounts made there by the admin can get in.
+            - name: LANGFUSE_DEFAULT_ORG_ID
+              valueFrom:
+                secretKeyRef:
+                  name: langfuse-secrets
+                  key: LANGFUSE_INIT_ORG_ID
+            - name: LANGFUSE_DEFAULT_ORG_ROLE
+              value: OWNER
 
       # Worker (background jobs: trace ingestion, exports, evals) - amd64 only.
       # Same Node heap-sizing fix as web: trace ingestion is memory-heavy and

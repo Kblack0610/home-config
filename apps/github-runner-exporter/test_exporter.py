@@ -105,7 +105,7 @@ class ExporterTest(unittest.TestCase):
         exporter.DONE_JOBS.clear()
         exporter.HISTORY.clear()
         exporter.CALLS.clear()
-        exporter.RATE.update(remaining=None, until=0.0)
+        exporter.RATE.clear()
 
     def render(self, broken=()):
         exporter.get = Fake(broken)
@@ -273,7 +273,7 @@ class ExporterTest(unittest.TestCase):
         self.assertIn(9, exporter.DONE_JOBS)
 
     def test_no_history_work_below_the_floor(self):
-        exporter.RATE["remaining"] = exporter.HISTORY_FLOOR - 1
+        exporter.rate("repos")["remaining"] = exporter.HISTORY_FLOOR - 1
         out = self.render()
         self.assertFalse(any("status=completed" in c or "/runs/9/" in c for c in exporter.get.calls))
         self.assertEqual(rows(out, "github_runs_finished"), [])
@@ -325,7 +325,7 @@ class ColdStartBudgetTest(unittest.TestCase):
         exporter.DONE_JOBS.clear()
         exporter.HISTORY.clear()
         exporter.CALLS.clear()
-        exporter.RATE.update(remaining=None, until=0.0)
+        exporter.RATE.clear()
         self.saved = exporter.get
 
     def tearDown(self):
@@ -386,7 +386,7 @@ class RateLimitTest(unittest.TestCase):
     re-asking on each scrape."""
 
     def setUp(self):
-        exporter.RATE.update(remaining=None, until=0.0)
+        exporter.RATE.clear()
         exporter.CALLS.clear()
         self.saved = (exporter.urllib.request.urlopen, exporter.get)
         exporter.get = ORIGINAL_GET
@@ -394,7 +394,7 @@ class RateLimitTest(unittest.TestCase):
 
     def tearDown(self):
         exporter.urllib.request.urlopen, exporter.get = self.saved
-        exporter.RATE.update(remaining=None, until=0.0)
+        exporter.RATE.clear()
 
     def refuse(self, headers):
         def urlopen(req, timeout=None):
@@ -407,29 +407,42 @@ class RateLimitTest(unittest.TestCase):
         self.refuse({"X-RateLimit-Remaining": "0", "X-RateLimit-Reset": str(reset)})
         with self.assertRaises(urllib.error.HTTPError):
             exporter.get("orgs/acme/actions/runners", "runners")
-        self.assertEqual(exporter.RATE["remaining"], 0)
-        self.assertEqual(exporter.RATE["until"], reset)
+        self.assertEqual(exporter.rate("orgs")["remaining"], 0)
+        self.assertEqual(exporter.rate("orgs")["until"], reset)
         for _ in range(3):
             with self.assertRaises(exporter.RateLimited):
                 exporter.get("orgs/acme/actions/runners", "runners")
         self.assertEqual(self.opened, 1)
         # A whole scrape while backing off makes no call and reads as api_ok=0.
         out = exporter.render()
-        self.assertEqual(self.opened, 1)
         self.assertIn('github_runner_exporter_api_ok{source="orgs/acme",kind="runners"} 0', out)
-        self.assertIn("github_runner_exporter_rate_remaining 0", out)
+        self.assertIn('github_runner_exporter_rate_remaining{scope="orgs"} 0', out)
+        # Only the empty bucket is held off: repos/ calls still go out.
+        self.assertGreater(self.opened, 1)
+
+    def test_one_bucket_empty_does_not_block_the_other(self):
+        reset = int(time.time()) + 900
+        self.refuse({"X-RateLimit-Remaining": "0", "X-RateLimit-Reset": str(reset)})
+        with self.assertRaises(urllib.error.HTTPError):
+            exporter.get("repos/acme/web/actions/runners", "runners")
+        with self.assertRaises(exporter.RateLimited):
+            exporter.get("repos/acme/game/actions/runners", "runners")
+        opened = self.opened
+        with self.assertRaises(urllib.error.HTTPError):
+            exporter.get("orgs/acme/actions/runners", "runners")
+        self.assertEqual(self.opened, opened + 1)
 
     def test_secondary_limit_honours_retry_after(self):
         self.refuse({"_code": 429, "Retry-After": "30"})
         with self.assertRaises(urllib.error.HTTPError):
             exporter.get("orgs/acme/actions/runners", "runners")
-        self.assertAlmostEqual(exporter.RATE["until"], time.time() + 30, delta=2)
+        self.assertAlmostEqual(exporter.rate("orgs")["until"], time.time() + 30, delta=2)
 
     def test_other_errors_do_not_back_off(self):
         self.refuse({"X-RateLimit-Remaining": "4000", "_code": 403})
         with self.assertRaises(urllib.error.HTTPError):
             exporter.get("repos/acme/web/actions/runners", "runners")
-        self.assertEqual(exporter.RATE["until"], 0.0)
+        self.assertEqual(exporter.rate("repos")["until"], 0.0)
 
 
 ORIGINAL_GET = exporter.get

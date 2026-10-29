@@ -95,8 +95,11 @@ HISTORY_FLOOR = int(os.environ.get("HISTORY_FLOOR", "1000"))
 # What GitHub last said about the budget, and when to call it again after it
 # refused (403/429 at zero remaining, or a secondary limit's Retry-After).
 # While refused every call fails here without going out, instead of each scrape
-# re-asking ~40 times for the rest of the hour.
-RATE = {"remaining": None, "until": 0.0}
+# re-asking ~40 times for the rest of the hour. Kept per scope (the path's first
+# segment) because GitHub charges orgs/ calls to a different bucket than
+# repos/ calls (2026-10-29: org runners had 4278 left while every repo call was
+# refused), and one empty bucket must not hide the other's runners.
+RATE = {}
 # Calls made, by kind: what spends the budget, readable live.
 CALLS = {}
 BUDGET = {"left": 0}
@@ -122,21 +125,27 @@ class RateLimited(urllib.error.URLError):
     pass
 
 
-def note_rate(headers, code=None):
+def rate(scope):
+    return RATE.setdefault(scope, {"remaining": None, "until": 0.0})
+
+
+def note_rate(scope, headers, code=None):
     left = headers.get("X-RateLimit-Remaining") if headers else None
     with LOCK:
+        r = rate(scope)
         if left is not None and left.isdigit():
-            RATE["remaining"] = int(left)
+            r["remaining"] = int(left)
         if code in (403, 429) and (left == "0" or headers.get("Retry-After")):
             reset = headers.get("X-RateLimit-Reset") or ""
             retry = headers.get("Retry-After") or ""
-            RATE["until"] = max(RATE["until"], float(reset) if left == "0" and reset.isdigit()
-                                else time.time() + (int(retry) if retry.isdigit() else 60))
+            r["until"] = max(r["until"], float(reset) if left == "0" and reset.isdigit()
+                             else time.time() + (int(retry) if retry.isdigit() else 60))
 
 
 def get(path, kind="other"):
-    if time.time() < RATE["until"]:
-        raise RateLimited("GitHub rate limit: backing off until reset")
+    scope = path.split("/", 1)[0]
+    if time.time() < rate(scope)["until"]:
+        raise RateLimited(f"GitHub rate limit ({scope}): backing off until reset")
     with LOCK:
         CALLS[kind] = CALLS.get(kind, 0) + 1
     req = urllib.request.Request(f"{API}/{path}")
@@ -146,10 +155,10 @@ def get(path, kind="other"):
         req.add_header("Authorization", f"Bearer {TOKEN}")
     try:
         with urllib.request.urlopen(req, timeout=10) as r:
-            note_rate(r.headers)
+            note_rate(scope, r.headers)
             return json.load(r)
     except urllib.error.HTTPError as e:
-        note_rate(e.headers, e.code)
+        note_rate(scope, e.headers, e.code)
         raise
 
 
@@ -276,7 +285,9 @@ def finished_runs(repo, now):
 
 
 def low_budget():
-    return RATE["remaining"] is not None and RATE["remaining"] < HISTORY_FLOOR
+    # History reads only repos/ endpoints, so that bucket is the one to guard.
+    left = rate("repos")["remaining"]
+    return left is not None and left < HISTORY_FLOOR
 
 
 def repo_activity(repo, now):
@@ -576,11 +587,12 @@ def render():
     for kind, n in sorted(CALLS.items()):
         L.append(f'github_runner_exporter_api_calls_total{{kind="{kind}"}} {n}')
     L += [
-        "# HELP github_runner_exporter_rate_remaining Calls GitHub says the token has left this hour",
+        "# HELP github_runner_exporter_rate_remaining Calls GitHub says the token has left this hour, per bucket (orgs/repos)",
         "# TYPE github_runner_exporter_rate_remaining gauge",
     ]
-    if RATE["remaining"] is not None:
-        L.append(f"github_runner_exporter_rate_remaining {RATE['remaining']}")
+    for scope, r in sorted(RATE.items()):
+        if r["remaining"] is not None:
+            L.append(f'github_runner_exporter_rate_remaining{{scope="{scope}"}} {r["remaining"]}')
 
     # Pruned against the cached lists, not this scrape's: a scrape where a repo
     # failed (rate limit, network) must not throw away a day of cached jobs and

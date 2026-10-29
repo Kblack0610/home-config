@@ -114,7 +114,8 @@ spec:
 # shared with every gh session on the account and with ci-runner-governor:
 # 2026-10-29 a local test run drained it, and this exporter and the governor
 # both read nothing until the hourly reset. On a 403/429 at zero remaining the
-# exporter stops calling until GitHub's reset time.
+# exporter stops calling that bucket (orgs/ and repos/ are charged apart)
+# until GitHub's reset time.
 apiVersion: monitoring.coreos.com/v1
 kind: ServiceMonitor
 metadata:

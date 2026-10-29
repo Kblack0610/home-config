@@ -1,0 +1,11 @@
+# Managed by ansible (ci-host-budget). Unity pool slot {{ ci_unity_slot }} on this
+# host: its runner and the containers its jobs start (UNITY_CI_CGROUP_PARENT) run
+# here, on CPUs of their own, inside {{ ci_unity_slice }}'s weight and memory cap.
+[Unit]
+Description=Unity CI runner slot {{ ci_unity_slot }} (GitHub Actions)
+Before=slices.target
+
+[Slice]
+CPUAccounting=true
+AllowedCPUs={{ ci_unity_slot_cpus[ci_unity_slot - 1] }}
+MemoryAccounting=true

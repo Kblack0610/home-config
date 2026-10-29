@@ -82,6 +82,9 @@ wallpanel:
       # Clear the right-hand control column: nothing to show on a black screen.
       cards: []
   cards:
+    # The current household alert, if any (packages/home_alerts.yaml). First, so an idle
+    # panel shows it over the photos.
+    - !include _home_alert_card.yaml
     # Corner "admin" tap, the only exit: navigating off the ?idle URL that
     # screensaver_start_navigation_path parks on ends the screensaver -> Home.
     - type: custom:mushroom-template-card
@@ -141,6 +144,8 @@ views:
     sections:
       - type: grid
         cards:
+          # The current household alert, if any; hidden when there is none.
+          - !include _home_alert_card.yaml
           # Always-works greeting hero (renders regardless of integrations).
           - type: custom:mushroom-template-card
             primary: >-

@@ -19,6 +19,7 @@ configMapGenerator:
       - package_voice_targets.yaml=config/packages/voice_targets.yaml
       - package_site_status.yaml=config/packages/site_status.yaml
       - package_fleet_alerts.yaml=config/packages/fleet_alerts.yaml
+      - package_home_alerts.yaml=config/packages/home_alerts.yaml
       - package_voice_health.yaml=config/packages/voice_health.yaml
       - package_marine.yaml=config/packages/marine.yaml
       - package_voice_satellite_binks.yaml=config/packages/voice_satellite_binks.yaml
@@ -47,6 +48,7 @@ configMapGenerator:
       - dashboard_cameras_section.yaml=config/dashboards/_cameras_section.yaml
       - dashboard_music_section.yaml=config/dashboards/_music_section.yaml
       - dashboard_talk_card.yaml=config/dashboards/_talk_card.yaml
+      - dashboard_home_alert_card.yaml=config/dashboards/_home_alert_card.yaml
       - binks_functions.yaml=config/binks/functions.yaml
       - binks_agent.yaml=config/binks/agent.yaml
       - binks_prompt.jinja=config/binks/prompt.jinja

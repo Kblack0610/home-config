@@ -1,0 +1,27 @@
+# The current household alert (packages/home_alerts.yaml), shown only while there is one.
+# Shared by the wall Home view and the screensaver column, so an alert is visible on an
+# idle panel too. Tap to clear it on every panel at once.
+type: conditional
+conditions:
+  - condition: state
+    entity: input_text.home_alert
+    state_not: ""
+  - condition: state
+    entity: input_text.home_alert
+    state_not: unknown
+card:
+  type: custom:mushroom-template-card
+  entity: input_text.home_alert
+  primary: "{{ states('input_text.home_alert') }}"
+  secondary: Tap to clear
+  icon: mdi:bell-alert
+  icon_color: amber
+  multiline_secondary: true
+  tap_action:
+    action: perform-action
+    perform_action: input_text.set_value
+    target: { entity_id: input_text.home_alert }
+    data: { value: "" }
+  card_mod:
+    style: |
+      ha-card { background: rgba(120,80,0,0.55); border: 1px solid rgba(255,190,60,0.7); }

@@ -475,6 +475,7 @@ spec:
               cp /managed-config/package_voice_targets.yaml /config/packages/voice_targets.yaml
               cp /managed-config/package_site_status.yaml /config/packages/site_status.yaml
               cp /managed-config/package_fleet_alerts.yaml /config/packages/fleet_alerts.yaml
+              cp /managed-config/package_home_alerts.yaml /config/packages/home_alerts.yaml
               cp /managed-config/package_voice_health.yaml /config/packages/voice_health.yaml
               cp /managed-config/package_marine.yaml /config/packages/marine.yaml
               cp /managed-config/package_voice_satellite_binks.yaml /config/packages/voice_satellite_binks.yaml
@@ -515,6 +516,7 @@ spec:
               cp /managed-config/dashboard_cameras_section.yaml /config/dashboards/_cameras_section.yaml
               cp /managed-config/dashboard_music_section.yaml /config/dashboards/_music_section.yaml
               cp /managed-config/dashboard_talk_card.yaml /config/dashboards/_talk_card.yaml
+              cp /managed-config/dashboard_home_alert_card.yaml /config/dashboards/_home_alert_card.yaml
               cp /managed-config/binks_functions.yaml /config/binks_functions.yaml
               cp /managed-config/binks_agent.yaml /config/binks_agent.yaml
               cp /managed-config/binks_prompt.jinja /config/binks_prompt.jinja

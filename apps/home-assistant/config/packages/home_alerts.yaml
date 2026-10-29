@@ -1,0 +1,153 @@
+# Household alerts: things in the house that want a person (a print finished or failed,
+# the vacuum stuck, the litter box left open) on the wall panels and on ntfy topic `home`.
+#
+# Separate from fleet_alerts.yaml on purpose: that one is infra (`homelab-alerts`, for
+# whoever runs the cluster); this one is for everyone who lives here. The wall panels run
+# FreeKiosk in lock-task mode, so no phone app can draw over them; HA is the only thing
+# that can put an alert on a panel, which is why the alert is a dashboard card
+# (dashboards/_home_alert_card.yaml) driven by input_text.home_alert, not a push.
+#
+# One way in: every automation calls script.home_alert, which sets the panel card and
+# posts to ntfy. Tap the card on a panel to clear it.
+# Topic map and phone setup: apps/ntfy/README.md.
+
+input_text:
+  home_alert:
+    name: Home alert
+    max: 255
+    icon: mdi:bell-alert
+
+rest_command:
+  ntfy_home:
+    url: "http://ntfy.ntfy.svc.cluster.local/home"
+    method: POST
+    content_type: "text/plain"
+    payload: "{{ message }}"
+    headers:
+      Title: "{{ title | default('Home') }}"
+      Priority: "{{ priority | default('default') }}"
+      Tags: "{{ tags | default('house') }}"
+
+script:
+  home_alert:
+    alias: "Home alert: wall panels + ntfy home"
+    mode: queued
+    fields:
+      title: { description: "Short headline", example: "Print finished" }
+      message: { description: "One line", example: "Bambu A1: benchy.3mf" }
+      priority: { description: "ntfy priority: low | default | high", example: "default" }
+      tags: { description: "ntfy tags (emoji shortcodes)", example: "printer" }
+      panel: { description: "Also show on the wall panels (false for the digest)", example: true }
+    sequence:
+      - if: "{{ panel | default(true) }}"
+        then:
+          - service: input_text.set_value
+            target: { entity_id: input_text.home_alert }
+            data:
+              value: "{{ (title ~ ': ' ~ message)[:255] }}"
+      - service: rest_command.ntfy_home
+        data:
+          title: "{{ title }}"
+          message: "{{ message }}"
+          priority: "{{ priority | default('default') }}"
+          tags: "{{ tags | default('house') }}"
+
+automation:
+  # Bambu A1. print_status is an enum: finish / failed are the two ends of a print.
+  - id: home_alert_bambu_print
+    alias: "Home alert: Bambu print finished or failed"
+    mode: queued
+    trigger:
+      - platform: state
+        entity_id: sensor.a1_03900d5b1110644_print_status
+        to: [finish, failed]
+        from: [running, pause, prepare]
+    action:
+      - service: script.home_alert
+        data:
+          title: "{{ 'Print failed' if trigger.to_state.state == 'failed' else 'Print finished' }}"
+          message: "Bambu A1{{ ': ' ~ states('sensor.a1_03900d5b1110644_current_stage') if trigger.to_state.state == 'failed' else '' }}"
+          priority: "{{ 'high' if trigger.to_state.state == 'failed' else 'default' }}"
+          tags: "{{ 'x,printer' if trigger.to_state.state == 'failed' else 'white_check_mark,printer' }}"
+
+  # Neptune via Moonraker: print_stats.state is standby / printing / paused / complete /
+  # cancelled / error. Only a print that was running can finish or fail.
+  - id: home_alert_neptune_print
+    alias: "Home alert: Neptune print finished or failed"
+    mode: queued
+    trigger:
+      - platform: state
+        entity_id: sensor.neptune_print_state
+        to: [complete, error]
+        from: [printing, paused]
+    action:
+      - service: script.home_alert
+        data:
+          title: "{{ 'Print failed' if trigger.to_state.state == 'error' else 'Print finished' }}"
+          message: "Neptune: {{ states('sensor.neptune_current_file') }}"
+          priority: "{{ 'high' if trigger.to_state.state == 'error' else 'default' }}"
+          tags: "{{ 'x,printer' if trigger.to_state.state == 'error' else 'white_check_mark,printer' }}"
+
+  # Vacuum: the standard HA vacuum state. Two minutes so a self-recovering bump is not a page.
+  - id: home_alert_vacuum_error
+    alias: "Home alert: vacuum needs help"
+    mode: single
+    trigger:
+      - platform: state
+        entity_id: vacuum.tapovacuummop
+        to: error
+        for: "00:02:00"
+    action:
+      - service: script.home_alert
+        data:
+          title: "Vacuum needs help"
+          message: "{{ states('sensor.tapovacuummop_error') }}"
+          priority: high
+          tags: "warning,broom"
+
+  # Litter box. Drawers_open and Clean_Pause are the two states seen in history that need a
+  # person; both also happen briefly during normal use, so they must last before they alert.
+  - id: home_alert_litter_box
+    alias: "Home alert: litter box needs attention"
+    mode: single
+    trigger:
+      - platform: state
+        entity_id: sensor.cat_litter_box_status
+        to: Drawers_open
+        for: "00:10:00"
+      - platform: state
+        entity_id: sensor.cat_litter_box_status
+        to: Clean_Pause
+        for: "00:30:00"
+    action:
+      - service: script.home_alert
+        data:
+          title: "Litter box"
+          message: "{{ 'Drawer left open' if trigger.to_state.state == 'Drawers_open' else 'Paused mid-clean for 30 min' }}"
+          priority: default
+          tags: "cat"
+
+  # Morning digest: ntfy only, low (silent). The panels already show this state all day.
+  - id: home_alert_daily_digest
+    alias: "Home alert: morning digest"
+    mode: single
+    trigger:
+      - platform: time
+        at: "08:00:00"
+    action:
+      - service: script.home_alert
+        data:
+          title: "Good morning"
+          priority: low
+          tags: "sunny"
+          panel: false
+          message: >-
+            {% set w = states('weather.forecast_home') %}
+            Weather: {{ w if w not in ['unknown', 'unavailable'] else 'n/a' }}
+            {%- if state_attr('weather.forecast_home', 'temperature') is not none %}, {{ state_attr('weather.forecast_home', 'temperature') }}{{ state_attr('weather.forecast_home', 'temperature_unit') or '' }}{% endif %}.
+            Bambu: {{ states('sensor.a1_03900d5b1110644_print_status') }}.
+            Neptune: {{ states('sensor.neptune_print_state') }}.
+            Vacuum: {{ states('vacuum.tapovacuummop') }}.
+            Litter box: {{ states('sensor.cat_litter_box_status') }}.
+            {%- set on = states.switch | selectattr('entity_id', 'search', 'plug') | selectattr('state', 'eq', 'on') | map(attribute='name') | list %}
+            {% if on %} On: {{ on | join(', ') }}.{% endif %}

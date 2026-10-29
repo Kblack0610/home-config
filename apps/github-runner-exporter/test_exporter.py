@@ -8,6 +8,7 @@ source makes runners absent and suppresses missing rows instead of reading as
 offline. Stdlib only; CI runs it in the checks workflow.
 """
 import io
+import json
 import os
 import re
 import sys
@@ -388,6 +389,8 @@ class RateLimitTest(unittest.TestCase):
     def setUp(self):
         exporter.RATE.clear()
         exporter.CALLS.clear()
+        exporter.NOT_MODIFIED.clear()
+        exporter.ETAGS.clear()
         self.saved = (exporter.urllib.request.urlopen, exporter.get)
         exporter.get = ORIGINAL_GET
         self.opened = 0
@@ -443,6 +446,50 @@ class RateLimitTest(unittest.TestCase):
         with self.assertRaises(urllib.error.HTTPError):
             exporter.get("repos/acme/web/actions/runners", "runners")
         self.assertEqual(exporter.rate("repos")["until"], 0.0)
+
+    def serve(self, body, etag):
+        """GitHub as seen by one path: 200 with the ETag, 304 when it is sent back."""
+        self.sent = []
+
+        def urlopen(req, timeout=None):
+            self.opened += 1
+            self.sent.append(req.get_header("If-none-match"))
+            headers = {"X-RateLimit-Remaining": "4000", "ETag": etag}
+            if req.get_header("If-none-match") == etag:
+                raise urllib.error.HTTPError(req.full_url, 304, "Not Modified", headers, io.BytesIO(b""))
+            r = io.BytesIO(json.dumps(body).encode())
+            r.headers = headers
+            return r
+        exporter.urllib.request.urlopen = urlopen
+
+    def test_an_unchanged_answer_is_a_free_304_from_the_etag_cache(self):
+        self.serve({"runners": [1]}, '"v1"')
+        first = exporter.get("orgs/acme/actions/runners", "runners")
+        first["runners"].append(2)  # a caller's edit must not reach the cache
+        self.assertEqual(exporter.get("orgs/acme/actions/runners", "runners"), {"runners": [1]})
+        self.assertEqual(self.sent, [None, '"v1"'])
+        self.assertEqual(exporter.CALLS, {"runners": 1})
+        self.assertEqual(exporter.NOT_MODIFIED, {"runners": 1})
+        exporter.get = Fake()  # render the counter over the fixture repos
+        out = exporter.render()
+        self.assertIn('github_runner_exporter_api_not_modified_total{kind="runners"} 1', out)
+
+    def test_a_changed_answer_replaces_the_cache_and_is_charged(self):
+        self.serve({"runners": [1]}, '"v1"')
+        exporter.get("orgs/acme/actions/runners", "runners")
+        self.serve({"runners": [1, 2]}, '"v2"')
+        self.assertEqual(exporter.get("orgs/acme/actions/runners", "runners"), {"runners": [1, 2]})
+        self.assertEqual(exporter.get("orgs/acme/actions/runners", "runners"), {"runners": [1, 2]})
+        self.assertEqual(self.sent, ['"v1"', '"v2"'])
+        self.assertEqual(exporter.CALLS, {"runners": 2})
+
+    def test_the_etag_cache_is_bounded(self):
+        saved, exporter.ETAG_MAX = exporter.ETAG_MAX, 2
+        self.addCleanup(setattr, exporter, "ETAG_MAX", saved)
+        self.serve({}, '"v"')
+        for i in range(3):
+            exporter.get(f"repos/acme/web/actions/runs/{i}/jobs", "active_jobs")
+        self.assertEqual(list(exporter.ETAGS), ["repos/acme/web/actions/runs/1/jobs", "repos/acme/web/actions/runs/2/jobs"])
 
 
 ORIGINAL_GET = exporter.get

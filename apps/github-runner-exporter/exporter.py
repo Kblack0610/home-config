@@ -51,6 +51,7 @@ import os
 import re
 import threading
 import time
+from collections import OrderedDict
 import urllib.error
 import urllib.parse
 import urllib.request
@@ -100,8 +101,18 @@ HISTORY_FLOOR = int(os.environ.get("HISTORY_FLOOR", "1000"))
 # repos/ calls (2026-10-29: org runners had 4278 left while every repo call was
 # refused), and one empty bucket must not hide the other's runners.
 RATE = {}
-# Calls made, by kind: what spends the budget, readable live.
+# Calls GitHub charged, by kind: what spends the budget, readable live.
 CALLS = {}
+# Calls GitHub answered 304 Not Modified, by kind: free, counted apart.
+NOT_MODIFIED = {}
+# path -> (ETag, body) of its last 200. A conditional request that GitHub
+# answers 304 is not charged to the limit, and most of a scrape re-reads lists
+# that have not changed since the last one: on 2026-10-29 active runs, their
+# jobs and the runner lists were ~1,200 of ~2,150 calls an hour. Bounded,
+# least recently used out, since active runs' job paths come and go. The body
+# is kept as bytes and parsed per call, so no caller shares a mutable object.
+ETAGS = OrderedDict()
+ETAG_MAX = 2000
 BUDGET = {"left": 0}
 LOCK = threading.Lock()
 # Bounds the jobs fan-out per repo per status, so one repo with a deep queue
@@ -146,20 +157,42 @@ def get(path, kind="other"):
     scope = path.split("/", 1)[0]
     if time.time() < rate(scope)["until"]:
         raise RateLimited(f"GitHub rate limit ({scope}): backing off until reset")
-    with LOCK:
-        CALLS[kind] = CALLS.get(kind, 0) + 1
     req = urllib.request.Request(f"{API}/{path}")
     req.add_header("Accept", "application/vnd.github+json")
     req.add_header("X-GitHub-Api-Version", "2022-11-28")
     if TOKEN:
         req.add_header("Authorization", f"Bearer {TOKEN}")
+    with LOCK:
+        cached = ETAGS.get(path)
+    if cached:
+        req.add_header("If-None-Match", cached[0])
     try:
         with urllib.request.urlopen(req, timeout=10) as r:
             note_rate(scope, r.headers)
-            return json.load(r)
+            body, etag = r.read(), r.headers.get("ETag")
     except urllib.error.HTTPError as e:
         note_rate(scope, e.headers, e.code)
+        if e.code == 304 and cached:
+            with LOCK:
+                NOT_MODIFIED[kind] = NOT_MODIFIED.get(kind, 0) + 1
+                if path in ETAGS:
+                    ETAGS.move_to_end(path)
+            return json.loads(cached[1])
+        with LOCK:
+            CALLS[kind] = CALLS.get(kind, 0) + 1
         raise
+    except API_ERRORS:
+        with LOCK:
+            CALLS[kind] = CALLS.get(kind, 0) + 1
+        raise
+    with LOCK:
+        CALLS[kind] = CALLS.get(kind, 0) + 1
+        if etag:
+            ETAGS[path] = (etag, body)
+            ETAGS.move_to_end(path)
+            while len(ETAGS) > ETAG_MAX:
+                ETAGS.popitem(last=False)
+    return json.loads(body)
 
 
 def spend(n):
@@ -581,11 +614,17 @@ def render():
             L.append(f'github_job_duration_seconds{{{labels_str({"pool": pool_, "workflow": wf, "quantile": q})}}} {int(quantile(xs, float(q)))}')
 
     L += [
-        "# HELP github_runner_exporter_api_calls_total GitHub API calls made since start, by kind",
+        "# HELP github_runner_exporter_api_calls_total GitHub API calls charged to the limit since start, by kind",
         "# TYPE github_runner_exporter_api_calls_total counter",
     ]
     for kind, n in sorted(CALLS.items()):
         L.append(f'github_runner_exporter_api_calls_total{{kind="{kind}"}} {n}')
+    L += [
+        "# HELP github_runner_exporter_api_not_modified_total GitHub API calls answered 304 from the ETag cache (free), by kind",
+        "# TYPE github_runner_exporter_api_not_modified_total counter",
+    ]
+    for kind, n in sorted(NOT_MODIFIED.items()):
+        L.append(f'github_runner_exporter_api_not_modified_total{{kind="{kind}"}} {n}')
     L += [
         "# HELP github_runner_exporter_rate_remaining Calls GitHub says the token has left this hour, per bucket (orgs/repos)",
         "# TYPE github_runner_exporter_rate_remaining gauge",

@@ -1,0 +1,43 @@
+---
+# Host prep for a macOS host in the BNB Unity runner pool (the "Unity CI runner
+# pool (macOS)" play in site.yml). The slots themselves come from
+# github-actions-runner-mac, org-scoped, one per slot.
+#
+# The Linux pool runs Unity in the amd64 unityci/editor image, which an Apple
+# Silicon Mac cannot run, so a Mac slot runs the playground's scripts natively
+# (UNITY_CI_NATIVE=1 in the slot's .env; unity-core-playground
+# scripts/test/in-docker.sh) with the editor installed here. The machine itself
+# is the Unity activation, so a Mac host is one activation whatever its slots.
+
+# Where the slots live: <unity_ci_mac_root>/unity-pool-<n>, each also its HOME.
+unity_ci_mac_root: "{{ ansible_env.HOME }}/actions-runner"
+
+# Editors the jobs ask for, by the project's ProjectSettings/ProjectVersion.txt
+# (m_EditorVersionWithRevision gives the changeset). Add the new one on a Unity
+# upgrade; the jobs refuse any other version.
+unity_ci_mac_editors:
+  - version: 6000.3.27f1
+    changeset: 672d562a42a7
+
+unity_ci_mac_hub: /Applications/Unity Hub.app/Contents/MacOS/Unity Hub
+
+# The scripts are bash 4+ and GNU (mapfile, flock, stat -c, tail --pid, timeout,
+# xargs -r, base64 -w0). Homebrew's GNU tools go first on the job PATH through
+# their gnubin dirs, so the scripts run unchanged.
+unity_ci_mac_formulae:
+  - bash
+  - coreutils
+  - findutils
+  - gnu-sed
+  - grep
+  - flock
+  - git-lfs
+  # The runner role unpacks its tarball with ansible unarchive, which needs GNU tar.
+  - gnu-tar
+  - jq
+
+unity_ci_mac_path: >-
+  /opt/homebrew/opt/coreutils/libexec/gnubin:/opt/homebrew/opt/findutils/libexec/gnubin:/opt/homebrew/opt/gnu-sed/libexec/gnubin:/opt/homebrew/opt/grep/libexec/gnubin:/opt/homebrew/bin:/opt/homebrew/sbin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin
+
+# One asset-library LFS store per host, as on Linux (ASSET_LIBRARY_LFS_STORE).
+unity_ci_mac_lfs_store: "{{ unity_ci_mac_root }}/.cache/bnb/asset-library-lfs"

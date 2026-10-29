@@ -4,7 +4,7 @@
   "full_label": "unity-full",
   "withheld_label": "unity-withheld",
   "pool_min_admitted": 2,
-  "pool_max_admitted": 8,
+  "pool_max_admitted": 16,
   "cooldown_seconds": 600,
   "defaults": {
     "min_admitted": 1,

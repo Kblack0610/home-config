@@ -18,8 +18,8 @@ They are **not** part of the K3s cluster (K3s is Linux-only). The Pi cluster han
 
 | | mac-studio (LLM node) | mac-mini (CI node) |
 |---|---|---|
-| **Runs** | MLX server `com.mlx-server` :8090 (5 pinned + 5 on-demand candidates), node_exporter :9100, powermetrics textfile sampler | GH Actions runner `mac-mini-mac`, node_exporter :9100, iOS toolchain (Xcode, CocoaPods, node/pnpm/yarn, JDK17) |
-| **Removed** | GH runner (torn down + deregistered); brew `node@20`/`pnpm`/`yarn`/`cocoapods`/`openjdk@17`; `Xcode.app`; `~/actions-runner`; (optional) `~/dev/bnb/platform` | — |
+| **Runs** | MLX server `com.mlx-server` :8090 (5 pinned + 5 on-demand candidates), Unity CI pool slots `mac-studio-unity-pool-1..8` (since 2026-10-29, until the sale), node_exporter :9100, powermetrics textfile sampler | GH Actions runner `mac-mini-mac`, node_exporter :9100, iOS toolchain (Xcode, CocoaPods, node/pnpm/yarn, JDK17) |
+| **Removed** | platform GH runner `mac-studio-mac` (torn down + deregistered); brew `node@20`/`pnpm`/`yarn`/`cocoapods`/`openjdk@17`; `Xcode.app`; `~/actions-runner`; (optional) `~/dev/bnb/platform` | — |
 | **Kept despite debloat** | `node` (used by `opencode`), `ruby` (used by `cocoapods`+`tmuxinator`), `node_exporter` | full toolchain |
 | **Tuned** | `iogpu.wired_limit_mb=491520` (480 GB); Spotlight/Time Machine/Siri/analytics/Power+App Nap off | — |
 
@@ -90,14 +90,16 @@ The sole self-hosted runner for `BlackNBrownStudios/platform` mobile CI. Native 
 **iOS:** `KEYCHAIN_PASSWORD` (login pw for keychain unlock), `APPLE_ID`, `EXPO_APPLE_PASSWORD` (app-specific pw), `APPLE_TEAM_ID`.
 **Android:** `ANDROID_KEYSTORE_BASE64`, `ANDROID_KEYSTORE_PASSWORD`, `ANDROID_KEY_ALIAS`, `ANDROID_KEY_PASSWORD`, `GOOGLE_PLAY_SERVICE_ACCOUNT_KEY`.
 
-## Candidate: Unity builds at night (mac-studio)
+## Unity CI pool (mac-studio, until it is sold)
 
-Not set up. Proposed 2026-10-24 as a night-only build host. It would reverse the split above that removed this box's runner to keep it a dedicated inference node, so that is the first decision.
+Since 2026-10-29 the Studio also runs 8 slots of the org-scoped Unity CI pool, beside MLX. This reverses part of the split above for as long as the box is here; the platform repo's iOS runner stays on mac-mini.
 
-- The Unity CI pool runs Unity in x86 Linux containers (`unityci/editor`, see unity-core-playground `docs/operations/ci.md`). Those images are amd64 only and would run under emulation on Apple Silicon, so a Mac would run Unity natively, which needs its own path in the playground's `scripts/test/` instead of `in-docker.sh`.
-- Best fit is the work only a Mac can do: macOS and iOS player builds. Memory is not the constraint (512 GB); the overnight `dream` and eval jobs use MLX on this box, so a build window has to avoid them.
-- Night-only means a launchd schedule that starts the runner service in the evening and stops it in the morning.
-- Each Mac host is one more activation on the shared Unity Personal serial (no two-machine cap observed; see the playground doc).
+- Play "Unity CI runner pool (macOS)" in `ansible/playbooks/site.yml`, group `unity_ci_mac_runners` in `ansible/inventory.yml` (`unity_ci_slots`). Roles: `unity-ci-host-mac` (Homebrew GNU tools, Unity Hub, the editor at the project's version) and `github-actions-runner-mac` once per slot (`scope: org`, home `~/actions-runner/unity-pool-<n>`).
+- Labels are `unity, unity-native, host-mac-studio` (+ `unity-full`), registered with `--no-default-labels`: without it the slots also carry `self-hosted, macOS`, which takes the platform repo's iOS jobs and dodginballs' `[self-hosted, unity]` jobs. The playground runs the harness natively there (`UNITY_CI_NATIVE=1` in each slot's `.env`, see unity-core-playground `docs/operations/ci.md` "The Mac pool").
+- `ci-runner-governor` cannot read a Mac's load, so it always admits these slots; they count toward `pool_max_admitted` (16).
+- Unity saves its license under `/Library/Application Support/Unity`, which needs sudo once: `ansible-playbook playbooks/site.yml --limit mac-studio --tags unity-ci-sudo -K`.
+- The slots are LaunchAgents, so macOS Local Network privacy applies to non-Apple binaries in them (Homebrew git): a fetch from `git.kblab.me` fails in a few ms with "Couldn't connect to server" while it works over ssh. `launchctl kickstart -k gui/$(id -u)/<service>` is the known reset (see the playground's `builds-and-releases.md`).
+- Before the sale: follow the retire steps in the play's header comment (`site.yml`): uninstall each slot with its `svc.sh`, delete the runners in the org settings, take the host out of `unity_ci_mac_runners` and `RUNNER_ROSTER`, lower `pool_max_admitted`, and run `scripts/check-runner-roster.py`.
 
 ## Reprovision from bare metal
 
@@ -112,12 +114,12 @@ cd ~/dev/home/home-config/ansible
 ansible-playbook playbooks/site.yml --limit mac-studio --tags mac -K --check --diff   # review first
 ansible-playbook playbooks/site.yml --limit mac-studio --tags mac -K                  # apply
 # Verify:
-gh api repos/BlackNBrownStudios/platform/actions/runners --jq '.runners[]|.name'  # NO mac-studio-mac
+gh api repos/BlackNBrownStudios/platform/actions/runners --jq '.runners[]|.name'  # NO mac-studio-mac (the org pool's mac-studio-unity-pool-N are separate)
 ssh mac-studio "curl -s http://127.0.0.1:8090/v1/models | head -c 80"             # MLX serving
 ssh mac-studio "sysctl iogpu.wired_limit_mb"                                       # 491520
 ```
 
-The mac-studio play sets the destructive removal vars (`macos_llm_node_remove_xcode`, `..._platform_checkout`, `..._runner_dir`) true — always `--check --diff` first, and note the checkout removal HARD-FAILS if `~/dev/bnb/platform` has uncommitted/unpushed work.
+The mac-studio play sets the destructive removal vars (`macos_llm_node_remove_xcode`, `..._platform_checkout`) true (`..._runner_dir` is off while the Unity pool slots live under `~/actions-runner`) — always `--check --diff` first, and note the checkout removal HARD-FAILS if `~/dev/bnb/platform` has uncommitted/unpushed work.
 
 ### CI node (mac-mini)
 

@@ -48,7 +48,7 @@
       - api
       - --method
       - POST
-      - "repos/{{ gh_runner_mac_owner }}/{{ gh_runner_mac_repo }}/actions/runners/remove-token"
+      - "{{ gh_runner_mac_api_path }}/actions/runners/remove-token"
       - --jq
       - .token
   delegate_to: localhost
@@ -62,7 +62,7 @@
 
 - name: Fetch runner removal token from GitHub (token_source=pat)
   ansible.builtin.uri:
-    url: "https://api.github.com/repos/{{ gh_runner_mac_owner }}/{{ gh_runner_mac_repo }}/actions/runners/remove-token"
+    url: "https://api.github.com/{{ gh_runner_mac_api_path }}/actions/runners/remove-token"
     method: POST
     headers:
       Accept: application/vnd.github+json

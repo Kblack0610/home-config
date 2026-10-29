@@ -1,0 +1,57 @@
+---
+- name: Install the GNU tools and git-lfs the jobs use
+  community.general.homebrew:
+    name: "{{ unity_ci_mac_formulae }}"
+    state: present
+    update_homebrew: false
+
+# A Hub installed from Unity's own download (mac-studio's) is not brew's, and the
+# cask refuses to overwrite it, so the cask installs only where there is none.
+- name: Look for Unity Hub
+  ansible.builtin.stat:
+    path: "{{ unity_ci_mac_hub }}"
+  register: _unity_ci_mac_hub
+
+- name: Install Unity Hub
+  community.general.homebrew_cask:
+    name: unity-hub
+    state: present
+  when: not _unity_ci_mac_hub.stat.exists
+
+# Hub's CLI installs an editor headless; it is a no-op once the editor is there.
+- name: Install the Unity editors the jobs ask for
+  ansible.builtin.command:
+    argv:
+      - "{{ unity_ci_mac_hub }}"
+      - --
+      - --headless
+      - install
+      - --version
+      - "{{ item.version }}"
+      - --changeset
+      - "{{ item.changeset }}"
+      - --architecture
+      - arm64
+    creates: "/Applications/Unity/Hub/Editor/{{ item.version }}/Unity.app/Contents/MacOS/Unity"
+  loop: "{{ unity_ci_mac_editors }}"
+
+# A serial activation writes the license here, and Unity does not create it
+# (unity-core-playground docs/operations/builds-and-releases.md, the M1 runner).
+# The one task that needs sudo (-K); tagged so a run without it can skip it.
+- name: Create Unity's license directory, writable by the runner user
+  ansible.builtin.file:
+    path: /Library/Application Support/Unity
+    state: directory
+    owner: "{{ ansible_user_id }}"
+    mode: "0755"
+  become: true
+  tags: [unity-ci-sudo]
+
+- name: Create the slots' root and the shared asset-library LFS store
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: directory
+    mode: "0750"
+  loop:
+    - "{{ unity_ci_mac_root }}"
+    - "{{ unity_ci_mac_lfs_store }}"

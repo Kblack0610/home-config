@@ -8,7 +8,7 @@ CPU and heat. Measured on the workstation 2026-10-29: each batch Unity editor he
 
 Sizing per concurrent Unity job: about 6-8 GB RAM and 2-4 CPU threads, more during IL2CPP and shader compiles. A fast NVMe matters too, since every runner keeps its own `Library/` per project and a cold import is mostly disk.
 
-Before buying for parallelism, check the license ceiling: the governor caps the pool at 8 admitted runners, and about 15 Unity activations in 90 minutes is where activation trouble starts. At that cap a new host only helps by finishing each job faster, which favours one fast box over several slow ones.
+Before buying for parallelism, check the license ceiling: the governor caps the pool at 16 admitted runners (8 before the Mac Studio joined, 2026-10-29), and about 15 Unity activations in 90 minutes is where activation trouble starts. At that cap a new host only helps by finishing each job faster, which favours one fast box over several slow ones.
 
 ## Checklist
 

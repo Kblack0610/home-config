@@ -55,12 +55,12 @@ spec:
         - record: cc:component_status
           labels: {domain: ci, component: watches}
           expr: >-
-            (max(mqtt_tripped{topic=~"agents_.+_watch_(.+_runners?_online)"}) * 2 > 0) or (max(mqtt_stale{topic=~"agents_.+_watch_(.+_runners?_online)"}) > 0) or vector(0)
+            (max(mqtt_tripped{topic=~"agents_.+_watch_(.+_runners?_online|playground_nightly)"}) * 2 > 0) or (max(mqtt_stale{topic=~"agents_.+_watch_(.+_runners?_online|playground_nightly)"}) > 0) or vector(0)
         # sentinel watches for spend: tripped -> 1, not polled in 3x interval -> 1
         - record: cc:component_status
           labels: {domain: spend, component: watches}
           expr: >-
-            (max(mqtt_tripped{topic=~"agents_.+_watch_(lazer_pool_pace|gh_actions_budget_pace)"}) * 1 > 0) or (max(mqtt_stale{topic=~"agents_.+_watch_(lazer_pool_pace|gh_actions_budget_pace)"}) > 0) or vector(0)
+            (max(mqtt_tripped{topic=~"agents_.+_watch_(lazer_pool_pace|gh_actions_budget_pace|claude_spend_(?:hourly|daily))"}) * 1 > 0) or (max(mqtt_stale{topic=~"agents_.+_watch_(lazer_pool_pace|gh_actions_budget_pace|claude_spend_(?:hourly|daily))"}) > 0) or vector(0)
         # sentinel watches for platform: tripped -> 1, not polled in 3x interval -> 1
         - record: cc:component_status
           labels: {domain: platform, component: watches}
@@ -70,7 +70,7 @@ spec:
         - record: cc:component_status
           labels: {domain: other, component: watches}
           expr: >-
-            (max(mqtt_tripped{topic=~"agents_.+_watch_.+",topic!~"agents_.+_watch_((?:home_k3s_.+|cluster_janitor_alive)|(?:pmp_.+|prod_mercury_payouts|posthog_prod_guard)|(?:mac_studio_mlx)|(?:.+_runners?_online)|(?:lazer_pool_pace|gh_actions_budget_pace)|(?:skill_drift|mem0_search_path|deploy_drift|fleet_liveness))"}) * 2 > 0) or (max(mqtt_stale{topic=~"agents_.+_watch_.+",topic!~"agents_.+_watch_((?:home_k3s_.+|cluster_janitor_alive)|(?:pmp_.+|prod_mercury_payouts|posthog_prod_guard)|(?:mac_studio_mlx)|(?:.+_runners?_online)|(?:lazer_pool_pace|gh_actions_budget_pace)|(?:skill_drift|mem0_search_path|deploy_drift|fleet_liveness))"}) > 0) or vector(0)
+            (max(mqtt_tripped{topic=~"agents_.+_watch_.+",topic!~"agents_.+_watch_((?:home_k3s_.+|cluster_janitor_alive)|(?:pmp_.+|prod_mercury_payouts|posthog_prod_guard)|(?:mac_studio_mlx)|(?:.+_runners?_online|playground_nightly)|(?:lazer_pool_pace|gh_actions_budget_pace|claude_spend_(?:hourly|daily))|(?:skill_drift|mem0_search_path|deploy_drift|fleet_liveness))"}) * 2 > 0) or (max(mqtt_stale{topic=~"agents_.+_watch_.+",topic!~"agents_.+_watch_((?:home_k3s_.+|cluster_janitor_alive)|(?:pmp_.+|prod_mercury_payouts|posthog_prod_guard)|(?:mac_studio_mlx)|(?:.+_runners?_online|playground_nightly)|(?:lazer_pool_pace|gh_actions_budget_pace|claude_spend_(?:hourly|daily))|(?:skill_drift|mem0_search_path|deploy_drift|fleet_liveness))"}) > 0) or vector(0)
         # any NotReady node -> 1 (the home_k3s_node_ready watch already makes it 2)
         - record: cc:component_status
           labels: {domain: k3s, component: nodes}

@@ -131,6 +131,22 @@ class ExporterTest(unittest.TestCase):
         self.assertTrue(any('job_name="PlayMode 2"' in r and 'labels="self-hosted,unity"' in r for r in waiting))
         self.assertTrue(any('job_name="(run has no jobs)"' in r and 'workflow="Drift"' in r for r in waiting))
 
+    def test_waiting_jobs_carry_pool_and_stuck(self):
+        waiting = rows(self.render(), "github_actions_job_waiting")
+        job = next(r for r in waiting if 'job_name="PlayMode 2"' in r)
+        self.assertIn('pool="unity"', job)
+        self.assertIn('stuck="false"', job)
+        # The ghost run is 10 minutes old in the fixture: jobless, but not stuck yet.
+        ghost = next(r for r in waiting if 'job_name="(run has no jobs)"' in r)
+        self.assertIn('stuck="false"', ghost)
+        old = exporter.JOBLESS_STUCK_SECS
+        try:
+            exporter.JOBLESS_STUCK_SECS = 60
+            ghost = next(r for r in rows(self.render(), "github_actions_job_waiting") if 'job_name="(run has no jobs)"' in r)
+            self.assertIn('stuck="true"', ghost)
+        finally:
+            exporter.JOBLESS_STUCK_SECS = old
+
     def test_recent_runs(self):
         out = self.render()
         self.assertEqual(len(rows(out, "github_actions_run_recent")), 1)
@@ -174,6 +190,7 @@ class ExporterTest(unittest.TestCase):
         self.assertEqual(exporter.pool_of(["self-hosted", "macOS", "arm64"]), "macos")
         self.assertEqual(exporter.pool_of(["self-hosted", "Windows", "X64", "host-windows-media"]), "windows")
         self.assertEqual(exporter.pool_of(["self-hosted", "Linux", "X64"]), "other")
+        self.assertEqual(exporter.pool_of(["self-hosted", "linux", "unity-full"]), "unity")
 
     def test_no_token_everything_failed(self):
         out = self.render(broken=("orgs/", "repos/"))

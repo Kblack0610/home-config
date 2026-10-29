@@ -75,6 +75,10 @@ for entry in os.environ.get("RUNNER_ROSTER", "").split():
     ROSTER.append((host, pool, int(slots)))
 ROSTER_HOSTS = sorted({h for h, _, _ in ROSTER}, key=len, reverse=True)
 POOL_LABELS = ("pmp-light", "pmp-heavy", "unity")
+# A queued run with no jobs this old never gets a runner (GitHub creates a run's
+# jobs within seconds). It is labelled stuck="true" so boards can list it apart
+# instead of letting its age stand for the queue's.
+JOBLESS_STUCK_SECS = 3600
 API_ERRORS = (urllib.error.URLError, OSError, ValueError, KeyError)
 
 
@@ -112,6 +116,9 @@ def pool_of(labels):
     for p in POOL_LABELS:
         if p in labels:
             return p
+    # Full suite runs ask for unity-full, which only unity pool runners carry.
+    if "unity-full" in labels:
+        return "unity"
     if "macOS" in labels:
         return "macos"
     # GitHub matches labels without regard to case, and the runner's own label
@@ -177,7 +184,8 @@ def repo_activity(repo):
                 # 2026-09-13), and they hold the queued count up forever, so
                 # list it as a waiting row with its age rather than hide it.
                 jobs = [{"name": "(run has no jobs)", "status": "queued", "created_at": run.get("created_at"),
-                         "head_branch": run.get("head_branch"), "labels": [], "html_url": run.get("html_url", "")}]
+                         "head_branch": run.get("head_branch"), "labels": [], "html_url": run.get("html_url", ""),
+                         "_jobless": True}]
             for job in jobs:
                 job["_workflow"] = run.get("name") or job.get("workflow_name", "")
                 job["_run"] = run_labels(run)
@@ -302,10 +310,13 @@ def render():
     ]
     for repo, j in waiting:
         created = ts(j.get("created_at"))
+        age = int(now - created) if created else 0
         lab = {"repo": repo.split("/", 1)[1], "workflow": j["_workflow"], "job_name": j.get("name", ""),
                "branch": j.get("head_branch") or "", "status": j.get("status", ""),
-               "labels": ",".join(j.get("labels") or []), "url": j.get("html_url", ""), **j["_run"]}
-        L.append(f"github_actions_job_waiting{{{labels_str(lab)}}} {int(now - created) if created else 0}")
+               "labels": ",".join(j.get("labels") or []), "pool": pool_of(j.get("labels") or []),
+               "stuck": "true" if j.get("_jobless") and age > JOBLESS_STUCK_SECS else "false",
+               "url": j.get("html_url", ""), **j["_run"]}
+        L.append(f"github_actions_job_waiting{{{labels_str(lab)}}} {age}")
 
     L += [
         "# HELP github_actions_runs Workflow runs in this status (queued, in_progress)",

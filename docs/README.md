@@ -23,6 +23,7 @@ Use this index to find the right document by task instead of scanning the repo t
 | Task | Document | Notes |
 |------|----------|-------|
 | Provision or maintain Apple Silicon utility hosts | [mac-machines.md](./mac-machines.md) | CI runners, MLX inference, monitoring |
+| Buy a host for the Unity CI pool | [unity-ci-hardware.md](./unity-ci-hardware.md) | CPU not RAM is the bottleneck; checklist, AMD vs Intel, price tiers |
 | Add a Windows PC to the fleet | [windows-machines.md](./windows-machines.md) | One paste at the PC, then SSH; liveness heartbeat via S4U task |
 | Set up or operate Headscale clients and routing | [headscale-setup.md](./headscale-setup.md) | Complements the in-repo service manifests |
 | Review finance stack design and integrations | [finance/README.md](./finance/README.md) | Entry point into finance-specific docs |

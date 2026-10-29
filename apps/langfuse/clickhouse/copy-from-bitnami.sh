@@ -54,8 +54,11 @@ INSERT INTO default.\`$name\` SELECT * FROM remote('$OLD_HOST', default, \`$name
 SQL
   ttl=$(echo "SELECT extract(create_table_query, ' TTL (.+?) SETTINGS ') FROM system.tables WHERE database = 'default' AND name = '$name'" | old)
   where=""; [ -n "$ttl" ] && where="WHERE $ttl > now() + INTERVAL 1 HOUR"
-  a=$(echo "SELECT count() FROM default.\`$name\` $where" | old)
-  b=$(echo "SELECT count() FROM default.\`$name\` $where" | new)
+  # Replacing/Aggregating tables keep superseded versions until a merge, and
+  # the freshly written copy merges sooner, so compare what queries see.
+  final=""; case "$engine" in Replacing*|Aggregating*) final=FINAL ;; esac
+  a=$(echo "SELECT count() FROM default.\`$name\` $final $where" | old)
+  b=$(echo "SELECT count() FROM default.\`$name\` $final $where" | new)
   if [ "$a" = "$b" ]; then echo "ok: $name $b rows"; else echo "MISMATCH: $name old=$a new=$b"; rc=1; fi
 done
 exit $rc

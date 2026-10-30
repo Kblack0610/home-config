@@ -15,20 +15,3 @@ spec:
   resources:
     requests:
       storage: 150Gi
----
-# The old 14d volume on hp-victus. Kept only until its chunks are copied into
-# loki-data-nvme; delete this document after that, and Flux prunes it.
-apiVersion: v1
-kind: PersistentVolumeClaim
-metadata:
-  name: loki-data
-  namespace: monitoring
-  labels:
-    app.kubernetes.io/name: loki
-spec:
-  accessModes:
-    - ReadWriteOnce
-  storageClassName: local-path
-  resources:
-    requests:
-      storage: 10Gi

@@ -32,6 +32,13 @@ more than pool_max_admitted: each admitted runner starts a job, and with it a
 Unity activation, every shard, and about 15 activations in 90 minutes is where
 activation began failing.
 
+A standby host (config "standby": the Mac Studio, which publishes no CPU pressure
+or sensors to judge) is overflow: GitHub has no way to prefer a runner, so its
+slots stay withheld until jobs wait and no other host has an idle slot or admits
+one. Then one slot per cycle comes in, up to the host's max_admitted, and goes
+back once nothing waits. The rest stay free for a job pinned to its host label,
+which needs no pool label.
+
 DRY_RUN=1 (the default) logs and exports every decision and changes nothing.
 Live, it needs GITHUB_TOKEN with Organization > Self-hosted runners: write.
 
@@ -133,6 +140,8 @@ def decide(cfg, hosts, runners, queue, last_action, now):
     """[(host, action, runner, verdict, why)]: at most one action per host, withholds
     first so a re-admit elsewhere can use the room the pool keeps."""
     admitted = sum(1 for r in runners.values() if not r["withheld"])
+    # A standby host can go to zero, so only the other hosts hold the pool's floor.
+    floor_held = sum(1 for r in runners.values() if not r["withheld"] and r["host"] in cfg["hosts"])
     plans = []
     for host in sorted(cfg["hosts"]):
         t = cfg["hosts"][host]
@@ -146,9 +155,10 @@ def decide(cfg, hosts, runners, queue, last_action, now):
         action, runner = "hold", ""
         if cooling:
             why = f"cooldown ({why})"
-        elif v == "HOT" and len(on) > t["min_admitted"] and admitted > cfg["pool_min_admitted"]:
+        elif v == "HOT" and len(on) > t["min_admitted"] and floor_held > cfg["pool_min_admitted"]:
             action, runner = "withhold", on[0]
             admitted -= 1
+            floor_held -= 1
         elif v == "ROOM" and off and queue > 0:
             action, runner = "admit", off[0]
         elif v == "HOT":
@@ -162,6 +172,27 @@ def decide(cfg, hosts, runners, queue, last_action, now):
             else:
                 admitted += 1
         out.append((host, action, runner, v, why))
+    admitting = any(action == "admit" for _, action, *_ in out)
+    spare = any(not r["withheld"] and not r["busy"] for r in runners.values() if r["host"] in cfg["hosts"])
+    for host in sorted(cfg["standby"]):
+        mine = {n: r for n, r in runners.items() if r["host"] == host}
+        on = sorted((n for n, r in mine.items() if not r["withheld"]),
+                    key=lambda n: (mine[n]["busy"], -mine[n]["elapsed"], n))
+        off = sorted(n for n, r in mine.items() if r["withheld"])
+        cap = cfg["standby"][host]["max_admitted"]
+        action, runner, why = "hold", "", "overflow"
+        if len(on) > cap:
+            action, runner, why = "withhold", on[0], f"over its {cap} cap"
+        elif queue == 0 and on and not mine[on[0]]["busy"]:
+            action, runner, why = "withhold", on[0], "nothing waits"
+        elif queue > 0 and off and not (admitting or spare) and len(on) < cap:
+            if admitted < cfg["pool_max_admitted"]:
+                action, runner, why = "admit", off[0], "jobs wait and the other hosts are full"
+                admitted += 1
+                admitting = True
+            else:
+                why = f"pool at its {cfg['pool_max_admitted']} cap"
+        out.append((host, action, runner, "STANDBY", why))
     return out
 
 
@@ -211,7 +242,7 @@ def render(cfg, hosts, runners, queue, decisions, ok):
          f"ci_governor_queue {queue}",
          "# HELP ci_governor_admitted Pool runners on a host that carry the pool label (may take jobs)",
          "# TYPE ci_governor_admitted gauge"]
-    for host in sorted(cfg["hosts"]):
+    for host in sorted({*cfg["hosts"], *cfg["standby"]}):
         mine = [r for r in runners.values() if r["host"] == host]
         L.append(f'ci_governor_admitted{{host="{host}"}} {sum(1 for r in mine if not r["withheld"])}')
         L.append(f'ci_governor_registered{{host="{host}"}} {len(mine)}')

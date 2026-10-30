@@ -4,8 +4,8 @@
 Covers what a live night cannot show on demand: a hot host withholds its idle
 runner first and its longest-running busy one next, a host with room re-admits
 only while jobs wait, the pool floor and cap hold, a cooling host is left alone,
-a missing reading is never room, and a live action adds the new label before it
-removes the old. Stdlib only; CI runs it in the checks workflow.
+a missing reading is never room, a standby host takes only what the others cannot,
+and a live action adds the new label before it removes the old. Stdlib only; CI runs it in the checks workflow.
 """
 import os
 import sys
@@ -90,6 +90,56 @@ class GovernorTest(unittest.TestCase):
         warm = {**COOL, "tctl": 91}
         self.assertEqual(governor.verdict(warm, CFG["hosts"]["asus-laptop"])[0], "HOT")
         self.assertEqual(governor.verdict(warm, CFG["hosts"]["razer-laptop"])[0], "STEADY")
+
+    def mac(self, on_busy=0, on_idle=0, off=2):
+        specs = [(f"mac-{i}", "mac-studio", True, 100 - i, False) for i in range(on_busy)]
+        specs += [(f"mac-idle-{i}", "mac-studio", False, 0, False) for i in range(on_idle)]
+        specs += [(f"mac-off-{i}", "mac-studio", False, 0, True) for i in range(off)]
+        return pool(*specs)
+
+    FULL = pool(("razer-1", "razer-laptop", True, 900, False), ("hpv-1", "hp-victus", True, 50, False))
+    STEADY = readings(**{"razer-laptop": BUSY, "asus-laptop": BUSY, "hp-victus": BUSY})
+
+    def test_standby_stays_out_while_another_host_has_an_idle_slot(self):
+        runners = {**self.mac(), **RUNNERS}  # razer-3 is admitted and idle
+        self.assertEqual(actions(self.STEADY, runners)["mac-studio"], ("hold", ""))
+
+    def test_standby_takes_one_when_the_other_hosts_are_full(self):
+        runners = {**self.mac(), **self.FULL}
+        self.assertEqual(actions(self.STEADY, runners)["mac-studio"], ("admit", "mac-off-0"))
+
+    def test_standby_waits_for_a_host_with_room_to_admit_first(self):
+        runners = {**self.mac(), **self.FULL, "hpv-2": RUNNERS["hpv-2"]}
+        hosts = readings(**{"razer-laptop": BUSY, "asus-laptop": BUSY, "hp-victus": COOL})
+        got = actions(hosts, runners)
+        self.assertEqual(got["hp-victus"], ("admit", "hpv-2"))
+        self.assertEqual(got["mac-studio"], ("hold", ""))
+
+    def test_standby_never_passes_its_own_cap(self):
+        runners = {**self.mac(on_busy=6), **self.FULL}
+        self.assertEqual(actions(self.STEADY, runners)["mac-studio"], ("hold", ""))
+
+    def test_standby_over_its_cap_gives_one_back(self):
+        runners = {**self.mac(on_busy=8, off=0), **self.FULL}
+        self.assertEqual(actions(self.STEADY, runners)["mac-studio"], ("withhold", "mac-0"))
+
+    def test_standby_respects_the_pool_cap(self):
+        runners = {**self.mac(on_busy=1), **self.FULL}
+        got = actions(self.STEADY, runners, cfg={**CFG, "pool_max_admitted": 3})
+        self.assertEqual(got["mac-studio"], ("hold", ""))
+
+    def test_standby_goes_back_when_nothing_waits(self):
+        runners = {**self.mac(on_busy=1, on_idle=1), **self.FULL}
+        self.assertEqual(actions(self.STEADY, runners, queue=0)["mac-studio"], ("withhold", "mac-idle-0"))
+
+    def test_standby_leaves_a_busy_slot_when_nothing_waits(self):
+        runners = {**self.mac(on_busy=1), **self.FULL}
+        self.assertEqual(actions(self.STEADY, runners, queue=0)["mac-studio"], ("hold", ""))
+
+    def test_standby_slots_do_not_hold_the_pool_floor(self):
+        runners = {**self.mac(on_busy=4, off=0), "asus-1": RUNNERS["asus-1"], "razer-1": RUNNERS["razer-1"]}
+        hosts = readings(**{"razer-laptop": BUSY, "asus-laptop": HOT, "hp-victus": BUSY})
+        self.assertEqual(actions(hosts, runners)["asus-laptop"], ("hold", ""))
 
     def test_live_admit_adds_before_it_removes(self):
         calls = []

@@ -340,8 +340,9 @@
 # host-<name>, without GitHub's default labels: the jobs that need the Linux
 # editor image keep runs-on linux or self-hosted, and the rest (EditMode) run
 # natively here. Slot counts are in
-# inventory.yml (unity_ci_mac_runners). The governor cannot read a Mac's load
-# (no PSI or hwmon), so these slots are always admitted.
+# inventory.yml (unity_ci_mac_runners). The governor cannot judge a Mac's load
+# (no PSI or hwmon), so these slots are its standby tier: withheld until the
+# Linux hosts are full (apps/ci-runner-governor).
 #
 # To retire a host (the Studio's sale): stop and uninstall each slot with
 # ~/actions-runner/unity-pool-<n>/svc.sh, delete the runners in the org's

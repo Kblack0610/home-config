@@ -287,11 +287,16 @@ all:
         # (10-26 to 10-28, anon-rss 14.3G), and two typical shards need about
         # 17G. Two heavy jobs at once (Multi plus a 13G shard) still exceed 20G,
         # and one of them gets killed.
+        # A slot stops at 16G. From 10-29 to 10-30, 122 containers had p50 8.3G and
+        # p90 9.8G, and the only three over 13G were ones whose Unity the kernel
+        # killed. The 18.6G runaway of 10-30 first ran the host out of memory, and
+        # with k3s pods at about 9G the OOM killer took openclaw and litellm before it.
         hp-victus:
           ci_cpus: 0-11,16-19
           ci_memory_max: 20G
           ci_unity_slot_cpus: ["0-5,16-17", "6-11,18-19"]
           ci_unity_memory_max: 20G
+          ci_unity_slot_memory_max: 16G
           ci_pmp_memory_max: 14G
         # 8 cores / 16 threads, SMT siblings are n and n+8. Cores 0-1 (CPUs
         # 0-1, 8-9) stay with k3s and the OS. Unity gets cores 2-7, two per

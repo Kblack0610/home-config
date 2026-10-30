@@ -63,7 +63,7 @@
             "uid": "${loki}"
           },
           "editorMode": "code",
-          "expr": "sum(count_over_time({service_name=\"claude-code\"} |= \"claude_code.api_request\" [$__range]))",
+          "expr": "sum(count_over_time({service_name=\"claude-code\"} |= \"claude_code.api_request\" | json ev=`body` | ev=\"claude_code.api_request\" [$__range]))",
           "legendFormat": "__auto",
           "queryType": "instant",
           "refId": "A"
@@ -124,7 +124,7 @@
             "uid": "${loki}"
           },
           "editorMode": "code",
-          "expr": "sum(count_over_time({service_name=\"claude-code\"} |= \"claude_code.api_error\" [$__range]))",
+          "expr": "sum(count_over_time({service_name=\"claude-code\"} |= \"claude_code.api_error\" | json ev=`body` | ev=\"claude_code.api_error\" [$__range]))",
           "legendFormat": "__auto",
           "queryType": "instant",
           "refId": "A"
@@ -193,7 +193,7 @@
             "uid": "${loki}"
           },
           "editorMode": "code",
-          "expr": "sum(count_over_time({service_name=\"claude-code\"} |= \"claude_code.tool_result\" [$__range]))",
+          "expr": "sum(count_over_time({service_name=\"claude-code\"} |= \"claude_code.tool_result\" | json ev=`body` | ev=\"claude_code.tool_result\" [$__range]))",
           "legendFormat": "__auto",
           "queryType": "instant",
           "refId": "A"
@@ -254,7 +254,7 @@
             "uid": "${loki}"
           },
           "editorMode": "code",
-          "expr": "sum(count_over_time({service_name=\"claude-code\"} |= \"claude_code.tool_result\" | json ok=`attributes.success` | ok=\"false\" [$__range]))",
+          "expr": "sum(count_over_time({service_name=\"claude-code\"} |= \"claude_code.tool_result\" | json ev=`body` | ev=\"claude_code.tool_result\" | json ok=`attributes.success` | ok=\"false\" [$__range]))",
           "legendFormat": "__auto",
           "queryType": "instant",
           "refId": "A"
@@ -319,7 +319,7 @@
             "uid": "${loki}"
           },
           "editorMode": "code",
-          "expr": "sum(count_over_time({service_name=\"claude-code\"} |= \"claude_code.tool_decision\" | json d=`attributes.decision` | d=\"reject\" [$__range]))",
+          "expr": "sum(count_over_time({service_name=\"claude-code\"} |= \"claude_code.tool_decision\" | json ev=`body` | ev=\"claude_code.tool_decision\" | json d=`attributes.decision` | d=\"reject\" [$__range]))",
           "legendFormat": "__auto",
           "queryType": "instant",
           "refId": "A"
@@ -384,7 +384,7 @@
             "uid": "${loki}"
           },
           "editorMode": "code",
-          "expr": "sum(count_over_time({service_name=\"claude-code\"} |= \"claude_code.compaction\" [$__range]))",
+          "expr": "sum(count_over_time({service_name=\"claude-code\"} |= \"claude_code.compaction\" | json ev=`body` | ev=\"claude_code.compaction\" [$__range]))",
           "legendFormat": "__auto",
           "queryType": "instant",
           "refId": "A"
@@ -445,7 +445,7 @@
             "uid": "${loki}"
           },
           "editorMode": "code",
-          "expr": "sum by (status) (count_over_time({service_name=\"claude-code\"} |= \"claude_code.api_error\" | json status=`attributes.status_code` [$__interval]))",
+          "expr": "sum by (status) (count_over_time({service_name=\"claude-code\"} |= \"claude_code.api_error\" | json ev=`body` | ev=\"claude_code.api_error\" | json status=`attributes.status_code` [$__interval]))",
           "legendFormat": "{{status}}",
           "queryType": "range",
           "refId": "A"
@@ -506,7 +506,7 @@
             "uid": "${loki}"
           },
           "editorMode": "code",
-          "expr": "quantile_over_time(0.95, {service_name=\"claude-code\"} |= \"claude_code.api_request\" | json model=`attributes.model`, d=`attributes.duration_ms` | unwrap d [$__interval]) by (model)",
+          "expr": "quantile_over_time(0.95, {service_name=\"claude-code\"} |= \"claude_code.api_request\" | json ev=`body` | ev=\"claude_code.api_request\" | json model=`attributes.model`, d=`attributes.duration_ms` | unwrap d [$__interval]) by (model)",
           "legendFormat": "p95 {{model}}",
           "queryType": "range",
           "refId": "A"
@@ -517,7 +517,7 @@
             "uid": "${loki}"
           },
           "editorMode": "code",
-          "expr": "quantile_over_time(0.5, {service_name=\"claude-code\"} |= \"claude_code.api_request\" | json model=`attributes.model`, d=`attributes.duration_ms` | unwrap d [$__interval]) by (model)",
+          "expr": "quantile_over_time(0.5, {service_name=\"claude-code\"} |= \"claude_code.api_request\" | json ev=`body` | ev=\"claude_code.api_request\" | json model=`attributes.model`, d=`attributes.duration_ms` | unwrap d [$__interval]) by (model)",
           "legendFormat": "p50 {{model}}",
           "queryType": "range",
           "refId": "B"
@@ -578,7 +578,7 @@
             "uid": "${loki}"
           },
           "editorMode": "code",
-          "expr": "sum by (tool) (count_over_time({service_name=\"claude-code\"} |= \"claude_code.tool_result\" | json tool=`attributes.tool_name` [$__range]))",
+          "expr": "sum by (tool) (count_over_time({service_name=\"claude-code\"} |= \"claude_code.tool_result\" | json ev=`body` | ev=\"claude_code.tool_result\" | json tool=`attributes.tool_name` [$__range]))",
           "legendFormat": "__auto",
           "queryType": "instant",
           "refId": "A"
@@ -589,7 +589,7 @@
             "uid": "${loki}"
           },
           "editorMode": "code",
-          "expr": "sum by (tool) (count_over_time({service_name=\"claude-code\"} |= \"claude_code.tool_result\" | json tool=`attributes.tool_name`, ok=`attributes.success` | ok=\"false\" [$__range]))",
+          "expr": "sum by (tool) (count_over_time({service_name=\"claude-code\"} |= \"claude_code.tool_result\" | json ev=`body` | ev=\"claude_code.tool_result\" | json tool=`attributes.tool_name`, ok=`attributes.success` | ok=\"false\" [$__range]))",
           "legendFormat": "__auto",
           "queryType": "instant",
           "refId": "B"
@@ -600,7 +600,7 @@
             "uid": "${loki}"
           },
           "editorMode": "code",
-          "expr": "quantile_over_time(0.95, {service_name=\"claude-code\"} |= \"claude_code.tool_result\" | json tool=`attributes.tool_name`, d=`attributes.duration_ms` | unwrap d [$__range]) by (tool)",
+          "expr": "quantile_over_time(0.95, {service_name=\"claude-code\"} |= \"claude_code.tool_result\" | json ev=`body` | ev=\"claude_code.tool_result\" | json tool=`attributes.tool_name`, d=`attributes.duration_ms` | unwrap d [$__range]) by (tool)",
           "legendFormat": "__auto",
           "queryType": "instant",
           "refId": "C"
@@ -716,7 +716,7 @@
             "uid": "${loki}"
           },
           "editorMode": "code",
-          "expr": "sum by (hook) (count_over_time({service_name=\"claude-code\"} |= \"claude_code.hook_execution_complete\" | json hook=`attributes.hook_name` [$__range]))",
+          "expr": "sum by (hook) (count_over_time({service_name=\"claude-code\"} |= \"claude_code.hook_execution_complete\" | json ev=`body` | ev=\"claude_code.hook_execution_complete\" | json hook=`attributes.hook_name` [$__range]))",
           "legendFormat": "__auto",
           "queryType": "instant",
           "refId": "A"
@@ -727,7 +727,7 @@
             "uid": "${loki}"
           },
           "editorMode": "code",
-          "expr": "sum by (hook) (sum_over_time({service_name=\"claude-code\"} |= \"claude_code.hook_execution_complete\" | json hook=`attributes.hook_name`, b=`attributes.num_blocking` | unwrap b [$__range]))",
+          "expr": "sum by (hook) (sum_over_time({service_name=\"claude-code\"} |= \"claude_code.hook_execution_complete\" | json ev=`body` | ev=\"claude_code.hook_execution_complete\" | json hook=`attributes.hook_name`, b=`attributes.num_blocking` | unwrap b [$__range]))",
           "legendFormat": "__auto",
           "queryType": "instant",
           "refId": "B"
@@ -738,7 +738,7 @@
             "uid": "${loki}"
           },
           "editorMode": "code",
-          "expr": "quantile_over_time(0.95, {service_name=\"claude-code\"} |= \"claude_code.hook_execution_complete\" | json hook=`attributes.hook_name`, d=`attributes.total_duration_ms` | unwrap d [$__range]) by (hook)",
+          "expr": "quantile_over_time(0.95, {service_name=\"claude-code\"} |= \"claude_code.hook_execution_complete\" | json ev=`body` | ev=\"claude_code.hook_execution_complete\" | json hook=`attributes.hook_name`, d=`attributes.total_duration_ms` | unwrap d [$__range]) by (hook)",
           "legendFormat": "__auto",
           "queryType": "instant",
           "refId": "C"
@@ -818,7 +818,7 @@
             "uid": "${loki}"
           },
           "editorMode": "code",
-          "expr": "sort_desc(sum by (skill) (count_over_time({service_name=\"claude-code\"} |= \"claude_code.skill_activated\" | json skill=`attributes[\"skill.name\"]` [$__range])))",
+          "expr": "sort_desc(sum by (skill) (count_over_time({service_name=\"claude-code\"} |= \"claude_code.skill_activated\" | json ev=`body` | ev=\"claude_code.skill_activated\" | json skill=`attributes[\"skill.name\"]` [$__range])))",
           "legendFormat": "{{skill}}",
           "queryType": "instant",
           "refId": "A"
@@ -834,7 +834,7 @@
             "lastNotNull"
           ],
           "fields": "",
-          "values": false
+          "values": true
         },
         "minVizHeight": 16,
         "maxVizHeight": 22,
@@ -883,7 +883,7 @@
             "uid": "${loki}"
           },
           "editorMode": "code",
-          "expr": "sum by (trigger) (count_over_time({service_name=\"claude-code\"} |= \"claude_code.compaction\" | json trigger=`attributes.trigger` [$__interval]))",
+          "expr": "sum by (trigger) (count_over_time({service_name=\"claude-code\"} |= \"claude_code.compaction\" | json ev=`body` | ev=\"claude_code.compaction\" | json trigger=`attributes.trigger` [$__interval]))",
           "legendFormat": "{{trigger}}",
           "queryType": "range",
           "refId": "A"
@@ -945,7 +945,7 @@
             "uid": "${loki}"
           },
           "editorMode": "code",
-          "expr": "sum by (type) (count_over_time({service_name=\"claude-code\"} |= \"claude_code.subagent_completed\" | json type=`attributes.agent_type` [$__interval]))",
+          "expr": "sum by (type) (count_over_time({service_name=\"claude-code\"} |= \"claude_code.subagent_completed\" | json ev=`body` | ev=\"claude_code.subagent_completed\" | json type=`attributes.agent_type` [$__interval]))",
           "legendFormat": "{{type}}",
           "queryType": "range",
           "refId": "A"
@@ -1007,7 +1007,7 @@
             "uid": "${loki}"
           },
           "editorMode": "code",
-          "expr": "{service_name=\"claude-code\"} |= \"claude_code.api_error\" | json status=`attributes.status_code`, model=`attributes.model`, err=`attributes.error`, sid=`attributes[\"session.id\"]` | line_format \"{{.status}} {{.model}} {{.err}}  session {{.sid}}\"",
+          "expr": "{service_name=\"claude-code\"} |= \"claude_code.api_error\" | json ev=`body` | ev=\"claude_code.api_error\" | json status=`attributes.status_code`, model=`attributes.model`, err=`attributes.error`, sid=`attributes[\"session.id\"]` | line_format \"{{.status}} {{.model}} {{.err}}  session {{.sid}}\"",
           "legendFormat": "__auto",
           "queryType": "range",
           "refId": "A"
@@ -1044,7 +1044,7 @@
             "uid": "${loki}"
           },
           "editorMode": "code",
-          "expr": "{service_name=\"claude-code\"} |= \"claude_code.user_prompt\" |~ \"(?i)$search\" | json prompt=`attributes.prompt`, sid=`attributes[\"session.id\"]` | line_format \"{{.sid}}  {{.prompt}}\"",
+          "expr": "{service_name=\"claude-code\"} |= \"claude_code.user_prompt\" | json ev=`body` | ev=\"claude_code.user_prompt\" |~ \"(?i)$search\" | json prompt=`attributes.prompt`, sid=`attributes[\"session.id\"]` | line_format \"{{.sid}}  {{.prompt}}\"",
           "legendFormat": "__auto",
           "queryType": "range",
           "refId": "A"

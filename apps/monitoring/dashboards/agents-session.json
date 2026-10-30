@@ -878,7 +878,7 @@
             "uid": "${loki}"
           },
           "editorMode": "code",
-          "expr": "sort_desc(sum by (tool) (count_over_time({service_name=\"claude-code\"} |= \"$session_id\" |= \"claude_code.tool_result\" | json tool=`attributes.tool_name` [$__range])))",
+          "expr": "sort_desc(sum by (tool) (count_over_time({service_name=\"claude-code\"} |= \"$session_id\" |= \"claude_code.tool_result\" | json ev=`body` | ev=\"claude_code.tool_result\" | json tool=`attributes.tool_name` [$__range])))",
           "legendFormat": "{{tool}}",
           "queryType": "instant",
           "refId": "A"
@@ -894,7 +894,7 @@
             "lastNotNull"
           ],
           "fields": "",
-          "values": false
+          "values": true
         },
         "minVizHeight": 16,
         "maxVizHeight": 22,
@@ -980,7 +980,7 @@
             "uid": "${loki}"
           },
           "editorMode": "code",
-          "expr": "{service_name=\"claude-code\"} |= \"$session_id\" |= \"claude_code.user_prompt\" | json prompt=`attributes.prompt` | line_format \"{{.prompt}}\"",
+          "expr": "{service_name=\"claude-code\"} |= \"$session_id\" |= \"claude_code.user_prompt\" | json ev=`body` | ev=\"claude_code.user_prompt\" | json prompt=`attributes.prompt` | line_format \"{{.prompt}}\"",
           "legendFormat": "__auto",
           "queryType": "range",
           "refId": "A"

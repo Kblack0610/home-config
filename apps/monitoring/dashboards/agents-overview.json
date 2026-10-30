@@ -840,7 +840,7 @@
             "uid": "${datasource}"
           },
           "editorMode": "code",
-          "expr": "sum by (project) (increase(claude_code_cost_usage_USD_total{project=~\"$project\", model=~\"$model\"}[$__interval]))",
+          "expr": "label_replace(sum by (project) (increase(claude_code_cost_usage_USD_total{project=~\"$project\", model=~\"$model\"}[$__interval])), \"project\", \"no project\", \"project\", \"\")",
           "format": "time_series",
           "instant": false,
           "range": true,

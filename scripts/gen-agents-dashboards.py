@@ -72,6 +72,11 @@ def sql(q, ref="A", fmt=1):
             "refId": ref}
 
 
+def event(stream, name):
+    """The line filter is the cheap pre-cut; the body match drops other events that merely mention the name."""
+    return f'{stream} |= "claude_code.{name}" | json ev=`body` | ev="claude_code.{name}"'
+
+
 def pos(x, y, w, h):
     return {"x": x, "y": y, "w": w, "h": h}
 
@@ -108,9 +113,10 @@ def ts(title, desc, targets, gp, unit="none", stack=False, bars=False, overrides
 
 
 def bars(title, desc, target, gp, unit="none", ds=PROM, steps=(("blue", None),)):
+    """Loki instant results reach the panel as one table frame, so they need values=True (a bar per row)."""
     return P({"type": "bargauge", "title": title, "description": desc, "gridPos": gp, "datasource": ds, "targets": [target],
               "options": {"orientation": "horizontal", "displayMode": "basic", "showUnfilled": True, "valueMode": "text",
-                          "reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": False}, "minVizHeight": 16,
+                          "reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": ds is LOKI}, "minVizHeight": 16,
                           "maxVizHeight": 22, "namePlacement": "left", "sizing": "manual"},
               "fieldConfig": {"defaults": {"unit": unit, "color": {"mode": "thresholds"}, "thresholds": thr(*steps), "min": 0},
                               "overrides": []}})
@@ -236,7 +242,8 @@ def overview():
     panels += [
         ts("Cost per hour by project", "Spend per hour, one series per canonical project (claude-telemetry.sh sets it). "
            "Sessions started outside the claude wrappers carry no project and show as the empty series.",
-           [prom(f"sum by (project) (increase(claude_code_cost_usage_USD_total{cf}[$__interval]))", legend="{{project}}")],
+           [prom(f'label_replace(sum by (project) (increase(claude_code_cost_usage_USD_total{cf}[$__interval])), "project", "no project", "project", "")',
+                 legend="{{project}}")],
            pos(0, y, 12, 8), unit="currencyUSD", bars=True, stack=True, interval="1h"),
         ts("Cost per hour by model", "Spend per hour, one series per model.",
            [prom(f"sum by (model) (increase(claude_code_cost_usage_USD_total{cf}[$__interval]))", legend="{{model}}")],
@@ -329,7 +336,7 @@ def session():
     s_line = f'{CLAUDE} |= "$session_id"'
     panels += [
         bars("Tool calls by tool", "Tool results of this session over the range (Loki).",
-             loki(f'sort_desc(sum by (tool) (count_over_time({s_line} |= "claude_code.tool_result" | json tool=`attributes.tool_name` [$__range])))',
+             loki(f'sort_desc(sum by (tool) (count_over_time({event(s_line, "tool_result")} | json tool=`attributes.tool_name` [$__range])))',
                   legend="{{tool}}", instant=True), pos(0, y, 8, 10), ds=LOKI),
         logs("Errors and failed tools", "API errors and tool results that did not succeed, for this session.",
              f'{s_line} |~ "claude_code\\\\.(api_error|tool_result)" | json ev=`body`, tool=`attributes.tool_name`, ok=`attributes.success`, '
@@ -338,7 +345,7 @@ def session():
     ]
     y += 10
     panels.append(logs("Prompts", "What was asked in this session, newest first. Secrets are redacted by Alloy before Loki.",
-                       f'{s_line} |= "claude_code.user_prompt" | json prompt=`attributes.prompt` | line_format "{{{{.prompt}}}}"',
+                       f'{event(s_line, "user_prompt")} | json prompt=`attributes.prompt` | line_format "{{{{.prompt}}}}"',
                        pos(0, y, 24, 10)))
     variables = [v_prom(), v_loki(),
                  v_query("target", "Session", "label_values(agent_session_info, target)", multi=False),
@@ -356,7 +363,7 @@ def errors():
     pid[0] = 0
 
     def ev(name):
-        return f'{CLAUDE} |= "claude_code.{name}"'
+        return event(CLAUDE, name)
 
     def count(name, extra="", rng="$__range"):
         return f"sum(count_over_time({ev(name)}{extra} [{rng}]))"

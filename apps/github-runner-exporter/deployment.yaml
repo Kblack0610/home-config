@@ -54,11 +54,11 @@ spec:
             - name: RUN_REPOS
               value: "BlackNBrownStudios/platform BlackNBrownStudios/unity-core BlackNBrownStudios/unity-core-harness BlackNBrownStudios/unity-core-playground BlackNBrownStudios/dodginballs"
             # host:pool:slots. Mirrors ansible/inventory.yml (platform_ci_runners
-            # pmp_*_slots, unity_ci_runners and unity_ci_mac_runners unity_ci_slots), the mac-mini runner
-            # and the opt-in windows-media test runner.
+            # pmp_*_slots, unity_ci_runners and unity_ci_mac_runners unity_ci_slots), the mac-mini's
+            # two runners (mac-mini-mac, m1-playground-mac) and the opt-in windows-media test runner.
             # Change a slot count there, change it here.
             - name: RUNNER_ROSTER
-              value: "asus-laptop:pmp-light:2 asus-laptop:pmp-heavy:1 asus-laptop:unity:1 hp-victus:pmp-light:2 hp-victus:pmp-heavy:1 hp-victus:unity:2 razer-laptop:pmp-light:3 razer-laptop:pmp-heavy:1 razer-laptop:unity:5 mac-studio:unity:8 mac-mini:macos:1 windows-media:windows:1"
+              value: "asus-laptop:pmp-light:2 asus-laptop:pmp-heavy:1 asus-laptop:unity:1 hp-victus:pmp-light:2 hp-victus:pmp-heavy:1 hp-victus:unity:2 razer-laptop:pmp-light:3 razer-laptop:pmp-heavy:1 razer-laptop:unity:5 mac-studio:unity:8 mac-mini:macos:2 windows-media:windows:1"
           ports:
             - name: metrics
               containerPort: 9320

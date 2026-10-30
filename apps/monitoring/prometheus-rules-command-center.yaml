@@ -11,6 +11,7 @@
 #   cc:host_<metric>{host}                  per-machine load for the board's MACHINES rows
 #   cc:host_local_gate{host,worktree,...}  the workstation's local Unity gates (fleet-assess)
 #   cc:host_local_slots / _busy / _queued{host}          its gate slots, slots held, runs waiting
+#   cc:host_local_open_slots{host}                       the always-open part of its gate slots
 #   cc:host_local_done_24h / _pass_ratio_24h{host}       its gates finished in 24h, and pass / finished
 #   cc:pool_done_24h / _cancelled_24h / _pass_ratio_24h{pool}  jobs each runner pool finished in 24h
 #
@@ -234,6 +235,11 @@ spec:
         - record: cc:host_local_slots
           expr: >-
             sum by (host) (fleet_local_slots{host!=""}
+              and on (instance) (time() - node_textfile_mtime_seconds{file=~".*fleet_local.prom"} < 180))
+        # The rest are room slots, taken only while the machine has room: a ceiling, not capacity.
+        - record: cc:host_local_open_slots
+          expr: >-
+            sum by (host) (fleet_local_slots{host!="", kind="open"}
               and on (instance) (time() - node_textfile_mtime_seconds{file=~".*fleet_local.prom"} < 180))
         - record: cc:host_local_busy
           expr: >-

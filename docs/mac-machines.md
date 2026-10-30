@@ -73,6 +73,7 @@ ssh mac-studio "cat /tmp/llm-sysctl.log"       # boot-time apply log
 The sole self-hosted runner for `BlackNBrownStudios/platform` mobile CI. Native macOS workloads that can't run in a container: Xcode/iOS builds, Expo prebuild, CocoaPods, TestFlight submission.
 
 - **Runner:** `mac-mini-mac`, labels `[self-hosted, macOS, arm64]`, per-user LaunchAgent (`github-actions-runner-mac` role, `present` mode).
+- **Second runner:** `m1-playground-mac`, labels `[self-hosted, macOS, ARM64, unity-mac, host-mac-mini]`, scoped to `unity-core-playground`, builds the Mac player. No play manages it. `m1` is only an ssh alias for this machine, and the `host-mac-mini` label is what makes the exporter and the infra board count it here: without it the runner shows as a host called `m1`. Add it with `gh api -X POST repos/BlackNBrownStudios/unity-core-playground/actions/runners/<id>/labels -f 'labels[]=host-mac-mini'`.
 - **Toolchain (installed by the platform repo's `tools/setup-mac-runner.sh`, not Ansible):** Xcode, CocoaPods, node/pnpm/yarn, JDK17, ruby.
 
 **Capacity note:** 16 GB RAM is the ceiling. Fine for single-stream iOS builds but tight — Xcode + a booted Simulator + Metal/UI tests push 16 GB into swap. Keep runner concurrency at 1 (a single runner process already = 1 concurrent job) and periodically clear DerivedData / simulator runtimes / npm+CocoaPods caches. If mobile CI volume grows, 16 GB is the first bottleneck.

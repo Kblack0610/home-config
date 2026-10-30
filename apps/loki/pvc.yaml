@@ -1,6 +1,26 @@
 apiVersion: v1
 kind: PersistentVolumeClaim
 metadata:
+  name: loki-data-nvme
+  namespace: monitoring
+  labels:
+    app.kubernetes.io/name: loki
+spec:
+  accessModes:
+    - ReadWriteOnce
+  # local-path binds where the first pod lands; the deployment pins asus-laptop
+  # (root NVMe, 927 GB free on 2026-10-29). Not backed up: logs are regenerated
+  # continuously, and a year of them is a convenience, not a record.
+  storageClassName: local-path
+  resources:
+    requests:
+      storage: 150Gi
+---
+# The old 14d volume on hp-victus. Kept only until its chunks are copied into
+# loki-data-nvme; delete this document after that, and Flux prunes it.
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
   name: loki-data
   namespace: monitoring
   labels:
@@ -8,8 +28,6 @@ metadata:
 spec:
   accessModes:
     - ReadWriteOnce
-  # Single local-path volume — NOT backed up (same caveat as minio). Acceptable
-  # for logs: 14d retention, regenerated continuously by Alloy.
   storageClassName: local-path
   resources:
     requests:

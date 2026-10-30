@@ -215,6 +215,16 @@ grafana:
       name: Loki
       type: loki
       url: http://loki:3100
+    # Same PromQL as Prometheus, 2y deep. Pick it for ranges past 7d; the uid is
+    # what the generated Agents dashboards pin.
+    - access: proxy
+      isDefault: false
+      name: VictoriaMetrics (long)
+      uid: victoriametrics
+      type: prometheus
+      url: http://victoria-metrics.monitoring.svc:8428
+      jsonData:
+        timeInterval: 30s
   resources:
     limits:
       cpu: 500m
@@ -295,6 +305,17 @@ prometheus:
     scrapeInterval: 30s
     retention: 7d
     retentionSize: 5GB
+    # Long-term copy: 7d stays hot here, everything goes to VictoriaMetrics on
+    # asus-laptop (apps/victoria-metrics, 2y). The drop list is control-plane
+    # histogram buckets - about 70k of the 238k head series on 2026-10-29 - that
+    # only matter for live debugging, which the 7d here still covers.
+    remoteWrite:
+      - name: victoria-metrics
+        url: http://victoria-metrics.monitoring.svc:8428/api/v1/write
+        writeRelabelConfigs:
+          - sourceLabels: [__name__]
+            regex: (apiserver|etcd|workqueue|rest_client|kubelet_runtime_operations)_.*_bucket|apiserver_request_sli_.*
+            action: drop
     # 1Gi OOMKilled it at the 2-hourly head compaction (peak 1015Mi with
     # ~225k head series, 35 restarts by 2026-10-27, all at odd hours :00 UTC).
     resources:

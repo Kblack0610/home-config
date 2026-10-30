@@ -1,0 +1,30 @@
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: victoria-metrics
+  namespace: monitoring
+  labels:
+    app.kubernetes.io/name: victoria-metrics
+    # REQUIRED: the Prometheus CR only evaluates rules with this label.
+    release: kube-prometheus-stack
+spec:
+  groups:
+    - name: victoria-metrics.alerts
+      interval: 5m
+      rules:
+        # The NVMe is shared with everything else local-path puts on
+        # asus-laptop, so watch the filesystem, not a quota VM does not have.
+        - alert: VictoriaMetricsDiskLow
+          expr: max(vm_free_disk_space_bytes{job="victoria-metrics"}) < 150 * 1024 * 1024 * 1024
+          for: 1h
+          labels:
+            severity: warning
+            category: storage
+          annotations:
+            summary: "VictoriaMetrics disk under 150 GB free on asus-laptop"
+            description: >-
+              {{ $value | humanize1024 }}B free under the long-term metrics store.
+              Shorten -retentionPeriod in apps/victoria-metrics/deployment.yaml or
+              drop more series in Prometheus remoteWrite writeRelabelConfigs.
+        # Remote-write lag is covered by the chart's default PrometheusRemoteWriteBehind
+        # and PrometheusRemoteStorageFailures rules (defaultRules.prometheus).

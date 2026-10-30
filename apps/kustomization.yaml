@@ -64,6 +64,7 @@ resources:
   - time-tangle
   - trivy-operator
   - vaultwarden
+  - victoria-metrics
   - vikunja
   - zomboid
 

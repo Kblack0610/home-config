@@ -25,6 +25,9 @@ spec:
         runAsUser: 10001
         runAsGroup: 10001
         fsGroup: 10001
+      # The volume is local-path, so this decides where a year of logs lives.
+      nodeSelector:
+        kubernetes.io/hostname: asus-laptop
       containers:
         - name: loki
           image: grafana/loki:3.3.2
@@ -65,4 +68,4 @@ spec:
             name: loki-config
         - name: data
           persistentVolumeClaim:
-            claimName: loki-data
+            claimName: loki-data-nvme

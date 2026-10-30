@@ -282,11 +282,22 @@ grafana:
           cpu: 5m
           memory: 128Mi
     datasources:
-      # Sync once in an init container before Grafana starts. The watcher alone
-      # needs about 2 minutes for its first cluster-wide list and skips the
-      # reload after it (REQ_SKIP_INIT), so a new datasource never appeared
-      # until someone called the reload API by hand (2026-10-29).
+      # A native sidecar (init container with restartPolicy Always): Grafana
+      # starts only once its startupProbe passes, i.e. after the first sync, and
+      # it keeps watching afterwards. The plain watcher can take ~2 minutes for
+      # that first sync and skips the reload after it (REQ_SKIP_INIT), so a new
+      # datasource never appeared until the reload API was called by hand
+      # (2026-10-29). initDatasources alone is wrong here: it runs the WATCH
+      # method in an ordinary init container, which never exits.
       initDatasources: true
+      restartPolicy: Always
+      startupProbe:
+        httpGet:
+          path: /healthz
+          port: 8081
+        initialDelaySeconds: 5
+        periodSeconds: 5
+        failureThreshold: 60
       resources:
         limits:
           cpu: 50m

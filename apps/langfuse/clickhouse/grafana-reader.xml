@@ -4,9 +4,11 @@
   this is its SHA-256, so the two must change together.
 
   readonly 2, not 1: the Grafana plugin sets per-query settings such as
-  max_execution_time, which readonly 1 refuses. The constraints keep those
-  settings inside what this server can spare: it has one 4Gi budget shared with
+  max_execution_time, which readonly 1 refuses. The memory and thread caps keep
+  a query inside what this server can spare: it has one 4Gi budget shared with
   Langfuse's own inserts, so a heavy dashboard must fail, not starve ingestion.
+  The time cap is looser on purpose: the plugin asks for more than its own
+  queryTimeout (60 was refused, 2026-10-29), and time is not the scarce resource.
 -->
 <clickhouse>
   <profiles>
@@ -17,7 +19,7 @@
       <max_threads>2</max_threads>
       <constraints>
         <max_memory_usage><max>1000000000</max></max_memory_usage>
-        <max_execution_time><max>60</max></max_execution_time>
+        <max_execution_time><max>300</max></max_execution_time>
         <max_threads><max>2</max></max_threads>
       </constraints>
     </grafana_reader>

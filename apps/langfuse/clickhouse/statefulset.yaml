@@ -81,6 +81,9 @@ spec:
             - name: config
               mountPath: /etc/clickhouse-server/users.d/profilers-off.xml
               subPath: profilers-off.xml
+            - name: config
+              mountPath: /etc/clickhouse-server/users.d/grafana-reader.xml
+              subPath: grafana-reader.xml
           readinessProbe:
             httpGet:
               path: /ping

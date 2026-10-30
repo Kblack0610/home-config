@@ -1,0 +1,39 @@
+<!--
+  Read-only user for Grafana's "Langfuse (ClickHouse)" datasource. The plain
+  password lives only in the SOPS secret apps/monitoring/grafana-clickhouse-reader-secret.sops.yaml;
+  this is its SHA-256, so the two must change together.
+
+  readonly 2, not 1: the Grafana plugin sets per-query settings such as
+  max_execution_time, which readonly 1 refuses. The constraints keep those
+  settings inside what this server can spare: it has one 4Gi budget shared with
+  Langfuse's own inserts, so a heavy dashboard must fail, not starve ingestion.
+-->
+<clickhouse>
+  <profiles>
+    <grafana_reader>
+      <readonly>2</readonly>
+      <max_memory_usage>1000000000</max_memory_usage>
+      <max_execution_time>60</max_execution_time>
+      <max_threads>2</max_threads>
+      <constraints>
+        <max_memory_usage><max>1000000000</max></max_memory_usage>
+        <max_execution_time><max>60</max></max_execution_time>
+        <max_threads><max>2</max></max_threads>
+      </constraints>
+    </grafana_reader>
+  </profiles>
+  <users>
+    <grafana_reader>
+      <password_sha256_hex>f39f8a5746582d334f1f7e787804879d047be92f3e62cc9fb0de06c25d4e0c5e</password_sha256_hex>
+      <profile>grafana_reader</profile>
+      <quota>default</quota>
+      <!-- Pod network only: Grafana reaches it in-cluster. -->
+      <networks>
+        <ip>10.42.0.0/16</ip>
+      </networks>
+      <grants>
+        <query>GRANT SELECT ON default.*</query>
+      </grants>
+    </grafana_reader>
+  </users>
+</clickhouse>

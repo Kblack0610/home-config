@@ -1,0 +1,15 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+# Long-term metrics. Prometheus keeps 7d hot and remote-writes everything here
+# (apps/monitoring/helm-values.yaml); Grafana reads it as "VictoriaMetrics (long)".
+# Same namespace as Prometheus and Loki so the in-cluster names stay short.
+namespace: monitoring
+
+resources:
+  - pvc.yaml
+  - deployment.yaml
+  - service.yaml
+  - servicemonitor.yaml
+  - backup-cronjob.yaml
+  - prometheus-rules.yaml

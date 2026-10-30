@@ -1,0 +1,14 @@
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: victoria-metrics
+  namespace: monitoring
+  labels:
+    app.kubernetes.io/name: victoria-metrics
+spec:
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: victoria-metrics
+  endpoints:
+    - port: http
+      interval: 30s

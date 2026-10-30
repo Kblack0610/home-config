@@ -39,7 +39,7 @@ discovery.relabel "pod_logs" {
 
 loki.source.kubernetes "pods" {
   targets    = discovery.relabel.pod_logs.output
-  forward_to = [loki.write.default.receiver]
+  forward_to = [loki.process.redact.receiver]
 }
 
 // ---- (b) host journald --------------------------------------------------
@@ -68,7 +68,52 @@ loki.source.journal "host" {
   path          = "/var/log/journal"
   relabel_rules = loki.relabel.journal.rules
   labels        = { job = "systemd-journal" }
-  forward_to    = [loki.write.default.receiver]
+  forward_to    = [loki.process.redact.receiver]
+}
+
+// ---- redaction ----------------------------------------------------------
+// Every stream passes through here before Loki. Loki keeps a year, and the
+// Claude Code events carry prompts and tool output (claude-telemetry.sh sets
+// OTEL_LOG_USER_PROMPTS and OTEL_LOG_TOOL_CONTENT), so a key pasted into a
+// prompt or printed by a tool would otherwise sit in it for that year. Each
+// stage replaces only its capture group with the marker, so the line keeps
+// its shape and the prefix says what kind of secret was there.
+loki.process "redact" {
+  forward_to = [loki.write.default.receiver]
+
+  // GitHub tokens: classic (ghp_, gho_, ghu_, ghs_, ghr_) and fine-grained.
+  stage.replace {
+    expression = "(gh[pousr]_[A-Za-z0-9]{36,}|github_pat_[A-Za-z0-9_]{40,})"
+    replace    = "<redacted:github>"
+  }
+  // Anthropic, OpenAI and LiteLLM virtual keys all start sk-.
+  stage.replace {
+    expression = "(sk-[A-Za-z0-9_-]{20,})"
+    replace    = "<redacted:sk>"
+  }
+  stage.replace {
+    expression = "((?:AKIA|ASIA)[0-9A-Z]{16})"
+    replace    = "<redacted:aws>"
+  }
+  stage.replace {
+    expression = "(AIza[0-9A-Za-z_-]{35})"
+    replace    = "<redacted:google>"
+  }
+  stage.replace {
+    expression = "(xox[abprs]-[A-Za-z0-9-]{10,})"
+    replace    = "<redacted:slack>"
+  }
+  // Only the credential after the scheme, so the header name stays readable.
+  stage.replace {
+    expression = "(?i)(?:bearer|basic)\\s+([A-Za-z0-9._~+/=-]{16,})"
+    replace    = "<redacted:auth>"
+  }
+  // Inside a JSON-encoded event the newlines are the two characters \n, so
+  // match across anything, lazily, up to the END line.
+  stage.replace {
+    expression = "(-----BEGIN [A-Z ]*PRIVATE KEY-----(?s:.*?)-----END [A-Z ]*PRIVATE KEY-----)"
+    replace    = "<redacted:private-key>"
+  }
 }
 
 // ---- sink ---------------------------------------------------------------
@@ -203,5 +248,5 @@ prometheus.remote_write "otel" {
 }
 
 otelcol.exporter.loki "otel" {
-  forward_to = [loki.write.default.receiver]
+  forward_to = [loki.process.redact.receiver]
 }

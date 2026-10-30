@@ -1,0 +1,61 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: victoria-metrics
+  namespace: monitoring
+  labels:
+    app.kubernetes.io/name: victoria-metrics
+spec:
+  replicas: 1
+  # A single RWO local-path PVC can't be mounted by an old and new pod at once.
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: victoria-metrics
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: victoria-metrics
+    spec:
+      nodeSelector:
+        kubernetes.io/hostname: asus-laptop
+      containers:
+        - name: victoria-metrics
+          image: victoriametrics/victoria-metrics:v1.154.0
+          args:
+            - -storageDataPath=/storage
+            - -retentionPeriod=2y
+            - -httpListenAddr=:8428
+            # Prometheus remote-write sends in 30s scrape steps; dedup keeps one
+            # sample per step if a write is retried.
+            - -dedup.minScrapeInterval=30s
+            - -search.maxQueryDuration=120s
+          ports:
+            - name: http
+              containerPort: 8428
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: http
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: http
+            initialDelaySeconds: 30
+            periodSeconds: 30
+          resources:
+            requests:
+              memory: 512Mi
+              cpu: 100m
+            limits:
+              memory: 2Gi
+              cpu: 1000m
+          volumeMounts:
+            - name: data
+              mountPath: /storage
+      volumes:
+        - name: data
+          persistentVolumeClaim:
+            claimName: victoria-metrics-data

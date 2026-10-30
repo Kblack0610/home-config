@@ -1,0 +1,19 @@
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: victoria-metrics-data
+  namespace: monitoring
+  labels:
+    app.kubernetes.io/name: victoria-metrics
+spec:
+  accessModes:
+    - ReadWriteOnce
+  # local-path binds to the node of the first pod, so the deployment's
+  # nodeSelector is what puts this on asus-laptop's root NVMe (927 GB free on
+  # 2026-10-29). Never the SMB share: a TSDB on SMB corrupts, and it is 89% full.
+  # local-path does not enforce the size; it documents the budget the
+  # VictoriaMetricsDiskLow alert guards.
+  storageClassName: local-path
+  resources:
+    requests:
+      storage: 400Gi

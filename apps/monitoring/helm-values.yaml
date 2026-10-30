@@ -170,6 +170,12 @@ grafana:
   # secret come from the SOPS secret apps/monitoring/grafana-forgejo-oauth-secret.yaml
   # as GF_AUTH_GENERIC_OAUTH_CLIENT_ID / _SECRET, which Grafana reads natively.
   envFromSecret: grafana-forgejo-oauth
+  # Read by the Langfuse datasource's secureJsonData below.
+  envValueFrom:
+    LANGFUSE_CH_PASSWORD:
+      secretKeyRef:
+        name: grafana-clickhouse-reader
+        key: password
   grafana.ini:
     # The Command Center is the landing page. The dashboards sidecar writes every
     # grafana_dashboard ConfigMap into /tmp/dashboards/<file>.
@@ -178,6 +184,10 @@ grafana:
     server:
       # Without it Grafana builds the OAuth redirect from localhost:3000.
       root_url: https://grafana.kblab.me
+    # Installed at startup, before provisioning, so the Langfuse datasource
+    # below finds its type. Pinned: a plugin bump is a deliberate change.
+    plugins:
+      preinstall_sync: grafana-clickhouse-datasource@4.22.1
     auth.generic_oauth:
       enabled: true
       name: Forgejo
@@ -225,6 +235,22 @@ grafana:
       url: http://victoria-metrics.monitoring.svc:8428
       jsonData:
         timeInterval: 30s
+    # Langfuse's own ClickHouse, read-only (user grafana_reader, defined in
+    # apps/langfuse/clickhouse/grafana-reader.xml). Langfuse v4 writes spans to
+    # default.events_core; traces/observations stopped on 2026-10-29.
+    - name: Langfuse (ClickHouse)
+      uid: langfuse-clickhouse
+      type: grafana-clickhouse-datasource
+      access: proxy
+      isDefault: false
+      jsonData:
+        host: langfuse-ch.langfuse.svc.cluster.local
+        port: 8123
+        protocol: http
+        username: grafana_reader
+        defaultDatabase: default
+      secureJsonData:
+        password: $LANGFUSE_CH_PASSWORD
   resources:
     limits:
       cpu: 500m

@@ -4,6 +4,7 @@ resources:
   - middleware-ip-allowlist.yaml
   - ingress-grafana.yaml
   - grafana-forgejo-oauth-secret.yaml
+  - grafana-clickhouse-reader-secret.sops.yaml
   - ingress-prometheus.yaml
   - ingress-alertmanager.yaml
   - prometheus-rules-app-health.yaml

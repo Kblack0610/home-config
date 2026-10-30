@@ -13,6 +13,7 @@ configMapGenerator:
     files:
       - system-logs.xml
       - profilers-off.xml
+      - grafana-reader.xml
     options:
       labels:
         app: langfuse-ch

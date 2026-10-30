@@ -45,3 +45,18 @@ configMapGenerator:
   - name: grafana-dashboard-game-fleet
     files:
       - game-fleet.json
+  - name: grafana-dashboard-agents-overview
+    files:
+      - agents-overview.json
+  - name: grafana-dashboard-agents-session
+    files:
+      - agents-session.json
+  - name: grafana-dashboard-agents-errors
+    files:
+      - agents-errors.json
+  - name: grafana-dashboard-agents-runners
+    files:
+      - agents-runners.json
+  - name: grafana-dashboard-agents-langfuse
+    files:
+      - agents-langfuse.json

@@ -19,6 +19,11 @@
   },
   "links": [
     {
+      "title": "Agents",
+      "url": "/d/kb-agents-overview",
+      "type": "link"
+    },
+    {
       "title": "Fleet / Machines",
       "url": "/d/kb-fleet",
       "type": "link"
@@ -1091,7 +1096,17 @@
           }
         },
         "overrides": []
-      }
+      },
+      "links": [
+        {
+          "title": "Agents / Overview",
+          "url": "/d/kb-agents-overview"
+        },
+        {
+          "title": "Agents / Runners and watches",
+          "url": "/d/kb-agents-runners"
+        }
+      ]
     },
     {
       "id": 13,

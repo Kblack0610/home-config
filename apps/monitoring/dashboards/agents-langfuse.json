@@ -1,0 +1,762 @@
+{
+  "uid": "kb-agents-langfuse",
+  "title": "Agents / Langfuse",
+  "description": "Langfuse's spans straight from its ClickHouse (default.events_core, Langfuse v4), read-only. events_core is a ReplacingMergeTree, so counts can run slightly high until ClickHouse merges duplicates. Trace rows link to langfuse.kblab.me.",
+  "tags": [
+    "agents",
+    "claude-code",
+    "homelab"
+  ],
+  "timezone": "browser",
+  "schemaVersion": 39,
+  "refresh": "1m",
+  "time": {
+    "from": "now-24h",
+    "to": "now"
+  },
+  "templating": {
+    "list": [
+      {
+        "name": "service",
+        "label": "Service",
+        "type": "query",
+        "datasource": {
+          "type": "grafana-clickhouse-datasource",
+          "uid": "langfuse-clickhouse"
+        },
+        "hide": 0,
+        "refresh": 2,
+        "sort": 1,
+        "query": "SELECT DISTINCT service_name FROM default.events_core WHERE start_time > now() - INTERVAL 7 DAY",
+        "definition": "",
+        "multi": true,
+        "includeAll": true,
+        "current": {
+          "text": "All",
+          "value": "$__all"
+        },
+        "options": [],
+        "regex": ""
+      }
+    ]
+  },
+  "panels": [
+    {
+      "type": "stat",
+      "title": "Spans",
+      "description": "Spans Langfuse stored over the range.",
+      "gridPos": {
+        "x": 0,
+        "y": 0,
+        "w": 6,
+        "h": 4
+      },
+      "datasource": {
+        "type": "grafana-clickhouse-datasource",
+        "uid": "langfuse-clickhouse"
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "grafana-clickhouse-datasource",
+            "uid": "langfuse-clickhouse"
+          },
+          "editorType": "sql",
+          "rawSql": "SELECT count() FROM default.events_core WHERE $__timeFilter(start_time) AND service_name IN (${service:singlequote})",
+          "format": 1,
+          "queryType": "table",
+          "refId": "A"
+        }
+      ],
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "colorMode": "none",
+        "graphMode": "none",
+        "textMode": "value",
+        "justifyMode": "center"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "thresholds"
+          },
+          "unit": "none",
+          "noValue": "0",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "text",
+                "value": null
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "id": 1
+    },
+    {
+      "type": "stat",
+      "title": "Traces",
+      "description": "Distinct traces (one per Claude Code interaction or LiteLLM request).",
+      "gridPos": {
+        "x": 6,
+        "y": 0,
+        "w": 6,
+        "h": 4
+      },
+      "datasource": {
+        "type": "grafana-clickhouse-datasource",
+        "uid": "langfuse-clickhouse"
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "grafana-clickhouse-datasource",
+            "uid": "langfuse-clickhouse"
+          },
+          "editorType": "sql",
+          "rawSql": "SELECT uniq(trace_id) FROM default.events_core WHERE $__timeFilter(start_time) AND service_name IN (${service:singlequote})",
+          "format": 1,
+          "queryType": "table",
+          "refId": "A"
+        }
+      ],
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "colorMode": "none",
+        "graphMode": "none",
+        "textMode": "value",
+        "justifyMode": "center"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "thresholds"
+          },
+          "unit": "none",
+          "noValue": "0",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "text",
+                "value": null
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "id": 2
+    },
+    {
+      "type": "stat",
+      "title": "LLM cost",
+      "description": "Sum of total_cost on GENERATION spans (Langfuse's model prices).",
+      "gridPos": {
+        "x": 12,
+        "y": 0,
+        "w": 6,
+        "h": 4
+      },
+      "datasource": {
+        "type": "grafana-clickhouse-datasource",
+        "uid": "langfuse-clickhouse"
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "grafana-clickhouse-datasource",
+            "uid": "langfuse-clickhouse"
+          },
+          "editorType": "sql",
+          "rawSql": "SELECT sum(total_cost) FROM default.events_core WHERE $__timeFilter(start_time) AND service_name IN (${service:singlequote}) AND type = 'GENERATION'",
+          "format": 1,
+          "queryType": "table",
+          "refId": "A"
+        }
+      ],
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "colorMode": "none",
+        "graphMode": "none",
+        "textMode": "value",
+        "justifyMode": "center"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "thresholds"
+          },
+          "unit": "currencyUSD",
+          "noValue": "0",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "text",
+                "value": null
+              }
+            ]
+          },
+          "decimals": 2
+        },
+        "overrides": []
+      },
+      "id": 3
+    },
+    {
+      "type": "stat",
+      "title": "LLM p95",
+      "description": "95th percentile duration of GENERATION spans.",
+      "gridPos": {
+        "x": 18,
+        "y": 0,
+        "w": 6,
+        "h": 4
+      },
+      "datasource": {
+        "type": "grafana-clickhouse-datasource",
+        "uid": "langfuse-clickhouse"
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "grafana-clickhouse-datasource",
+            "uid": "langfuse-clickhouse"
+          },
+          "editorType": "sql",
+          "rawSql": "SELECT quantile(0.95)(dateDiff('millisecond', start_time, end_time)) FROM default.events_core WHERE $__timeFilter(start_time) AND service_name IN (${service:singlequote}) AND type = 'GENERATION'",
+          "format": 1,
+          "queryType": "table",
+          "refId": "A"
+        }
+      ],
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "colorMode": "none",
+        "graphMode": "none",
+        "textMode": "value",
+        "justifyMode": "center"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "thresholds"
+          },
+          "unit": "ms",
+          "noValue": "0",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "text",
+                "value": null
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "id": 4
+    },
+    {
+      "type": "timeseries",
+      "title": "Spans by type",
+      "description": "Spans per interval by Langfuse type (GENERATION, TOOL, SPAN, AGENT).",
+      "gridPos": {
+        "x": 0,
+        "y": 4,
+        "w": 12,
+        "h": 8
+      },
+      "datasource": {
+        "type": "grafana-clickhouse-datasource",
+        "uid": "langfuse-clickhouse"
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "grafana-clickhouse-datasource",
+            "uid": "langfuse-clickhouse"
+          },
+          "editorType": "sql",
+          "rawSql": "SELECT $__timeInterval(start_time) AS time, type, count() AS spans FROM default.events_core WHERE $__timeFilter(start_time) AND service_name IN (${service:singlequote}) GROUP BY time, type ORDER BY time",
+          "format": 0,
+          "queryType": "timeseries",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "none",
+          "custom": {
+            "drawStyle": "bars",
+            "lineInterpolation": "smooth",
+            "lineWidth": 2,
+            "fillOpacity": 80,
+            "barAlignment": -1,
+            "stacking": {
+              "mode": "normal"
+            },
+            "spanNulls": false,
+            "showPoints": "never"
+          },
+          "color": {
+            "mode": "palette-classic"
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom"
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "id": 5
+    },
+    {
+      "type": "timeseries",
+      "title": "Cost by model",
+      "description": "GENERATION cost per interval by model.",
+      "gridPos": {
+        "x": 12,
+        "y": 4,
+        "w": 12,
+        "h": 8
+      },
+      "datasource": {
+        "type": "grafana-clickhouse-datasource",
+        "uid": "langfuse-clickhouse"
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "grafana-clickhouse-datasource",
+            "uid": "langfuse-clickhouse"
+          },
+          "editorType": "sql",
+          "rawSql": "SELECT $__timeInterval(start_time) AS time, provided_model_name AS model, sum(total_cost) AS cost FROM default.events_core WHERE $__timeFilter(start_time) AND service_name IN (${service:singlequote}) AND type = 'GENERATION' GROUP BY time, model ORDER BY time",
+          "format": 0,
+          "queryType": "timeseries",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "currencyUSD",
+          "custom": {
+            "drawStyle": "bars",
+            "lineInterpolation": "smooth",
+            "lineWidth": 2,
+            "fillOpacity": 80,
+            "barAlignment": -1,
+            "stacking": {
+              "mode": "normal"
+            },
+            "spanNulls": false,
+            "showPoints": "never"
+          },
+          "color": {
+            "mode": "palette-classic"
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom"
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "id": 6
+    },
+    {
+      "type": "timeseries",
+      "title": "LLM latency p95 by model",
+      "description": "95th percentile GENERATION duration per interval.",
+      "gridPos": {
+        "x": 0,
+        "y": 12,
+        "w": 24,
+        "h": 8
+      },
+      "datasource": {
+        "type": "grafana-clickhouse-datasource",
+        "uid": "langfuse-clickhouse"
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "grafana-clickhouse-datasource",
+            "uid": "langfuse-clickhouse"
+          },
+          "editorType": "sql",
+          "rawSql": "SELECT $__timeInterval(start_time) AS time, provided_model_name AS model, quantile(0.95)(dateDiff('millisecond', start_time, end_time)) AS p95 FROM default.events_core WHERE $__timeFilter(start_time) AND service_name IN (${service:singlequote}) AND type = 'GENERATION' GROUP BY time, model ORDER BY time",
+          "format": 0,
+          "queryType": "timeseries",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "ms",
+          "custom": {
+            "drawStyle": "line",
+            "lineInterpolation": "smooth",
+            "lineWidth": 2,
+            "fillOpacity": 0,
+            "barAlignment": -1,
+            "stacking": {
+              "mode": "none"
+            },
+            "spanNulls": false,
+            "showPoints": "never"
+          },
+          "color": {
+            "mode": "palette-classic"
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom"
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "id": 7
+    },
+    {
+      "type": "table",
+      "title": "Models",
+      "description": "One row per model over the range: calls, cost, latency and tokens.",
+      "gridPos": {
+        "x": 0,
+        "y": 20,
+        "w": 12,
+        "h": 10
+      },
+      "datasource": {
+        "type": "grafana-clickhouse-datasource",
+        "uid": "langfuse-clickhouse"
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "grafana-clickhouse-datasource",
+            "uid": "langfuse-clickhouse"
+          },
+          "editorType": "sql",
+          "rawSql": "SELECT provided_model_name AS model, count() AS calls, sum(total_cost) AS cost, quantile(0.5)(dateDiff('millisecond', start_time, end_time)) AS p50, quantile(0.95)(dateDiff('millisecond', start_time, end_time)) AS p95, sum(usage_details['input']) AS input, sum(usage_details['output']) AS output FROM default.events_core WHERE $__timeFilter(start_time) AND service_name IN (${service:singlequote}) AND type = 'GENERATION' GROUP BY model ORDER BY cost DESC",
+          "format": 1,
+          "queryType": "table",
+          "refId": "A"
+        }
+      ],
+      "transformations": [],
+      "options": {
+        "showHeader": true,
+        "cellHeight": "sm"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "noValue": "-",
+          "custom": {
+            "align": "left"
+          }
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "cost"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "currencyUSD"
+              },
+              {
+                "id": "decimals",
+                "value": 2
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "p50"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "ms"
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "p95"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "ms"
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "input"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "short"
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "output"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "short"
+              }
+            ]
+          }
+        ]
+      },
+      "id": 8
+    },
+    {
+      "type": "table",
+      "title": "Tools",
+      "description": "TOOL spans by name over the range: calls, p95 duration and errors (level ERROR).",
+      "gridPos": {
+        "x": 12,
+        "y": 20,
+        "w": 12,
+        "h": 10
+      },
+      "datasource": {
+        "type": "grafana-clickhouse-datasource",
+        "uid": "langfuse-clickhouse"
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "grafana-clickhouse-datasource",
+            "uid": "langfuse-clickhouse"
+          },
+          "editorType": "sql",
+          "rawSql": "SELECT name AS tool, count() AS calls, quantile(0.95)(dateDiff('millisecond', start_time, end_time)) AS p95, countIf(level = 'ERROR') AS errors FROM default.events_core WHERE $__timeFilter(start_time) AND service_name IN (${service:singlequote}) AND type = 'TOOL' GROUP BY tool ORDER BY calls DESC LIMIT 40",
+          "format": 1,
+          "queryType": "table",
+          "refId": "A"
+        }
+      ],
+      "transformations": [],
+      "options": {
+        "showHeader": true,
+        "cellHeight": "sm"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "noValue": "-",
+          "custom": {
+            "align": "left"
+          }
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "p95"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "ms"
+              }
+            ]
+          }
+        ]
+      },
+      "id": 9
+    },
+    {
+      "type": "table",
+      "title": "Slowest traces",
+      "description": "The 20 longest traces in the range. Click a trace to open it in Langfuse.",
+      "gridPos": {
+        "x": 0,
+        "y": 30,
+        "w": 24,
+        "h": 10
+      },
+      "datasource": {
+        "type": "grafana-clickhouse-datasource",
+        "uid": "langfuse-clickhouse"
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "grafana-clickhouse-datasource",
+            "uid": "langfuse-clickhouse"
+          },
+          "editorType": "sql",
+          "rawSql": "SELECT trace_id, project_id, any(trace_name) AS name, any(service_name) AS service, min(start_time) AS started, dateDiff('millisecond', min(start_time), max(end_time)) AS duration, sum(total_cost) AS cost, count() AS spans FROM default.events_core WHERE $__timeFilter(start_time) AND service_name IN (${service:singlequote}) GROUP BY trace_id, project_id ORDER BY duration DESC LIMIT 20",
+          "format": 1,
+          "queryType": "table",
+          "refId": "A"
+        }
+      ],
+      "transformations": [],
+      "options": {
+        "showHeader": true,
+        "cellHeight": "sm"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "noValue": "-",
+          "custom": {
+            "align": "left"
+          }
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "trace_id"
+            },
+            "properties": [
+              {
+                "id": "links",
+                "value": [
+                  {
+                    "title": "Open in Langfuse",
+                    "url": "https://langfuse.kblab.me/project/${__data.fields.project_id}/traces/${__data.fields.trace_id}",
+                    "targetBlank": true
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "duration"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "ms"
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "cost"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "currencyUSD"
+              },
+              {
+                "id": "decimals",
+                "value": 3
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "started"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "dateTimeAsLocal"
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "project_id"
+            },
+            "properties": [
+              {
+                "id": "custom.hidden",
+                "value": true
+              }
+            ]
+          }
+        ]
+      },
+      "id": 10
+    }
+  ],
+  "editable": true,
+  "graphTooltip": 1,
+  "links": [
+    {
+      "title": "Agents",
+      "type": "dashboards",
+      "tags": [
+        "agents"
+      ],
+      "asDropdown": true,
+      "includeVars": false,
+      "keepTime": true
+    }
+  ]
+}

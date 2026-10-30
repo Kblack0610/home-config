@@ -1482,7 +1482,7 @@
     {
       "type": "bargauge",
       "title": "Spend today by project",
-      "description": "Today's spend per project from the day-log (agent_day_cost_usd), TOTAL row excluded.",
+      "description": "Whole-session spend of the sessions the agent-usage registry updated today, per project (day-log, agent_day_cost_usd). A session started yesterday brings its earlier spend, so this differs from the Cost tile, which counts only spend inside the range.",
       "gridPos": {
         "x": 16,
         "y": 38,

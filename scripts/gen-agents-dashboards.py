@@ -269,7 +269,7 @@ def overview():
         bars("Stalled, last 24h", "Hours sessions sat STALLED, per project (fleet-bench).",
              prom(f"sort_desc({WS}(agent_bench_stalled_hours))", legend="{{project}}", instant=True), pos(8, y, 8, 8),
              unit="h", steps=(("orange", None),)),
-        bars("Spend today by project", "Today's spend per project from the day-log (agent_day_cost_usd), TOTAL row excluded.",
+        bars("Spend today by project", "Whole-session spend of the sessions the agent-usage registry updated today, per project (day-log, agent_day_cost_usd). A session started yesterday brings its earlier spend, so this differs from the Cost tile, which counts only spend inside the range.",
              prom(f"sort_desc({WS}(agent_day_cost_usd))", legend="{{project}}", instant=True), pos(16, y, 8, 8),
              unit="currencyUSD", steps=(("blue", None),)),
     ]

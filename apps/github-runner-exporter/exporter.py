@@ -24,8 +24,9 @@ ROSTER-FIRST for slot counts, same reason as apps/fleet-exporter: GitHub only
 lists runners that registered, so a slot whose ansible play never ran would
 otherwise be invisible. $RUNNER_ROSTER mirrors ansible/inventory.yml and
 scripts/check-runner-roster.py keeps them equal. Each missing slot is a
-state="missing" row. Runners outside the roster (m1-playground-mac is not
-ansible-managed) are listed but not counted against anything.
+state="missing" row. Runners outside the roster are listed but not counted
+against anything. m1-playground-mac is in the roster though no play manages it:
+it runs on the mac-mini and says so with a host-mac-mini label.
 
 Fetched on every scrape, no background loop: Prometheus's scrape interval is the
 cadence (GitHub has no push API for runner state). Calls run on a small thread

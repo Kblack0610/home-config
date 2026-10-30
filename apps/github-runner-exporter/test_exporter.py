@@ -303,6 +303,10 @@ class ExporterTest(unittest.TestCase):
         self.assertEqual(exporter.pool_of(["self-hosted", "linux", "unity-full"]), "unity")
         self.assertEqual(exporter.pool_of(["self-hosted", "linux", "unity-withheld", "host-box"]), "unity")
 
+    def test_host_label_beats_the_name_so_one_machine_is_one_host(self):
+        self.assertEqual(exporter.host_of("m1-playground-mac", ["self-hosted", "macOS", "host-mac-mini"]), "mac-mini")
+        self.assertEqual(exporter.host_of("m1-playground-mac", ["self-hosted", "macOS"]), "m1")
+
     def test_withheld_runner_stays_in_the_pool(self):
         org = "orgs/acme/actions/runners?per_page=100&page=1"
         saved = FAKE[org]

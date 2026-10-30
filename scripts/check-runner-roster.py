@@ -34,8 +34,9 @@ GROUPS = {
 }
 # The macOS runner and the Windows test runner are each one play pinned to one
 # host (playbooks/site.yml, "macOS CI runner (mac-mini only)" and "Windows test
-# runner (windows-media only)"), not inventory groups with a slot var.
-PINNED = {("mac-mini", "macos"): 1, ("windows-media", "windows"): 1}
+# runner (windows-media only)"), not inventory groups with a slot var. The
+# mac-mini's second runner, m1-playground-mac, has no play (docs/mac-machines.md).
+PINNED = {("mac-mini", "macos"): 2, ("windows-media", "windows"): 1}
 
 
 def inventory_roster(path):

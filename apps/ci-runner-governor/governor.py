@@ -36,8 +36,8 @@ A standby host (config "standby": the Mac Studio, which publishes no CPU pressur
 or sensors to judge) is overflow: GitHub has no way to prefer a runner, so its
 slots stay withheld until jobs wait and no other host has an idle slot or admits
 one. Then one slot per cycle comes in, up to the host's max_admitted, and goes
-back once nothing waits. The rest stay free for a job pinned to its host label,
-which needs no pool label.
+back once nothing waits. A job pinned to its host label needs no pool label, so
+a withheld slot takes it.
 
 DRY_RUN=1 (the default) logs and exports every decision and changes nothing.
 Live, it needs GITHUB_TOKEN with Organization > Self-hosted runners: write.

@@ -12,7 +12,7 @@
     "withhold": {"idle": 0.15, "psi": 0.4, "tctl": 92, "mem": 0.1}
   },
   "standby": {
-    "mac-studio": {"max_admitted": 6}
+    "mac-studio": {"max_admitted": 8}
   },
   "hosts": {
     "asus-laptop": {"min_admitted": 0, "admit": {"tctl": 80}, "withhold": {"idle": 0.25, "tctl": 90}},

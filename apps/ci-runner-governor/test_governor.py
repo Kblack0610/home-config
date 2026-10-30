@@ -99,6 +99,7 @@ class GovernorTest(unittest.TestCase):
 
     FULL = pool(("razer-1", "razer-laptop", True, 900, False), ("hpv-1", "hp-victus", True, 50, False))
     STEADY = readings(**{"razer-laptop": BUSY, "asus-laptop": BUSY, "hp-victus": BUSY})
+    CAPPED = {**CFG, "standby": {"mac-studio": {"max_admitted": 6}}}
 
     def test_standby_stays_out_while_another_host_has_an_idle_slot(self):
         runners = {**self.mac(), **RUNNERS}  # razer-3 is admitted and idle
@@ -117,11 +118,11 @@ class GovernorTest(unittest.TestCase):
 
     def test_standby_never_passes_its_own_cap(self):
         runners = {**self.mac(on_busy=6), **self.FULL}
-        self.assertEqual(actions(self.STEADY, runners)["mac-studio"], ("hold", ""))
+        self.assertEqual(actions(self.STEADY, runners, cfg=self.CAPPED)["mac-studio"], ("hold", ""))
 
     def test_standby_over_its_cap_gives_one_back(self):
         runners = {**self.mac(on_busy=8, off=0), **self.FULL}
-        self.assertEqual(actions(self.STEADY, runners)["mac-studio"], ("withhold", "mac-0"))
+        self.assertEqual(actions(self.STEADY, runners, cfg=self.CAPPED)["mac-studio"], ("withhold", "mac-0"))
 
     def test_standby_respects_the_pool_cap(self):
         runners = {**self.mac(on_busy=1), **self.FULL}

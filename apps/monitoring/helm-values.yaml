@@ -249,6 +249,8 @@ grafana:
         protocol: http
         username: grafana_reader
         defaultDatabase: default
+        # Sent as max_execution_time; the reader profile caps it at 60.
+        queryTimeout: "60"
       secureJsonData:
         password: $LANGFUSE_CH_PASSWORD
   resources:
@@ -280,6 +282,11 @@ grafana:
           cpu: 5m
           memory: 128Mi
     datasources:
+      # Sync once in an init container before Grafana starts. The watcher alone
+      # needs about 2 minutes for its first cluster-wide list and skips the
+      # reload after it (REQ_SKIP_INIT), so a new datasource never appeared
+      # until someone called the reload API by hand (2026-10-29).
+      initDatasources: true
       resources:
         limits:
           cpu: 50m

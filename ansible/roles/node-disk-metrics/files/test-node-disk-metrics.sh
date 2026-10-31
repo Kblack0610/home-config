@@ -17,8 +17,8 @@ run "$t/storage" "$t/core"; rc=$?
 [ "$rc" = 0 ] && echo "ok   exits 0" || { echo "FAIL exit $rc"; cat "$t/err"; fail=1; }
 has "only the recent core dump counts" '^node_coredumps_last_hour 1$'
 has "core dump bytes cover both files" '^node_coredump_bytes [0-9]{4,}$'
-has "PV labels parse" 'local_path_pv_used_bytes\{volumename="pvc-aaa",namespace="frigate",persistentvolumeclaim="frigate-media"\} [0-9]{7,}$'
-has "second PV is listed" 'namespace="forgejo",persistentvolumeclaim="forgejo-data"'
+has "PV labels parse" 'local_path_pv_used_bytes\{volumename="pvc-aaa",claim_namespace="frigate",persistentvolumeclaim="frigate-media"\} [0-9]{7,}$'
+has "second PV is listed" 'claim_namespace="forgejo",persistentvolumeclaim="forgejo-data"'
 hasnt "a directory that is not a PV is skipped" 'not-a-pv'
 [ "$(ls -A "$t/out" | wc -l)" = 1 ] && echo "ok   no temp file left" || { echo "FAIL temp file left"; fail=1; }
 [ "$(stat -c %a "$t/out/node_disk.prom")" = 644 ] && echo "ok   readable by node-exporter" || { echo "FAIL mode"; fail=1; }

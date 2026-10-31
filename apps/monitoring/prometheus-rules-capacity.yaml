@@ -39,6 +39,16 @@ spec:
               node_filesystem_files{fstype!~"tmpfs|ramfs|overlay|squashfs|autofs|vfat|nsfs|devtmpfs|cifs|nfs.*|fuse.*",mountpoint!~"/System/Volumes/(Preboot|VM|Update|xarts|iSCPreboot|Hardware).*|/Library/Developer/.*|/run.*|/boot.*|/var/lib/kubelet.*|/snap.*|/tmp"}
             )
 
+    - name: homelab-capacity.pv
+      rules:
+        # The scrape target's own `namespace` overwrites one in the textfile, so the
+        # script writes `claim_namespace` and it becomes `namespace` here.
+        - record: local_path_pv:used_over_request:ratio
+          expr: >-
+            label_replace(local_path_pv_used_bytes, "namespace", "$1", "claim_namespace", "(.+)")
+            / on (namespace, persistentvolumeclaim) group_left ()
+            max by (namespace, persistentvolumeclaim) (kube_persistentvolumeclaim_resource_requests_storage_bytes)
+
     - name: homelab-capacity.disk
       rules:
         # Kubelet evicts at 5% free and does not stop until 15% free, so a node that
@@ -112,7 +122,7 @@ spec:
         # local-path does not enforce a PV's size, so a PV past its request is taking disk
         # the scheduler and everyone else think is free.
         - alert: LocalPathPvOverRequest
-          expr: local_path_pv_used_bytes / on (namespace, persistentvolumeclaim) group_left () max by (namespace, persistentvolumeclaim) (kube_persistentvolumeclaim_resource_requests_storage_bytes) > 1
+          expr: local_path_pv:used_over_request:ratio > 1
           for: 1h
           labels:
             severity: warning
@@ -120,7 +130,7 @@ spec:
           annotations:
             summary: "{{ $labels.namespace }}/{{ $labels.persistentvolumeclaim }} uses {{ $value | humanizePercentage }} of what it requested"
         - alert: LocalPathPvFarOverRequest
-          expr: local_path_pv_used_bytes / on (namespace, persistentvolumeclaim) group_left () max by (namespace, persistentvolumeclaim) (kube_persistentvolumeclaim_resource_requests_storage_bytes) > 1.5
+          expr: local_path_pv:used_over_request:ratio > 1.5
           for: 1h
           labels:
             severity: critical

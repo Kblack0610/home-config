@@ -24,7 +24,7 @@ trap 'rm -f "$tmp"' EXIT
         # local-path names a directory pvc-<uid>_<namespace>_<claim>, and neither name can hold a _.
         name=${dir##*/}
         rest=${name#*_}
-        echo "local_path_pv_used_bytes{volumename=\"${name%%_*}\",namespace=\"${rest%%_*}\",persistentvolumeclaim=\"${rest#*_}\"} $(du -sxB1 "$dir" | cut -f1)"
+        echo "local_path_pv_used_bytes{volumename=\"${name%%_*}\",claim_namespace=\"${rest%%_*}\",persistentvolumeclaim=\"${rest#*_}\"} $(du -sxB1 "$dir" | cut -f1)"
     done
 } > "$tmp"
 chmod 644 "$tmp"

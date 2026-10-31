@@ -297,22 +297,23 @@ tests:
           - exp_labels: {alertname: NodeCoreDumpStorm, severity: critical, category: capacity, instance: many}
             exp_annotations: {summary: "many is crash looping or holding large core dumps"}
 
+  # As scraped: the target's namespace is on the series, the claim's is in claim_namespace.
   - name: a PV warns past its request and pages past 150%
     interval: 1m
     input_series:
-      - series: 'local_path_pv_used_bytes{namespace="n",persistentvolumeclaim="fits",volumename="pvc-a"}'
+      - series: 'local_path_pv_used_bytes{namespace="monitoring",claim_namespace="n",persistentvolumeclaim="fits",volumename="pvc-a"}'
         values: '100x90'
       - series: 'kube_persistentvolumeclaim_resource_requests_storage_bytes{namespace="n",persistentvolumeclaim="fits"}'
         values: '100x90'
-      - series: 'local_path_pv_used_bytes{namespace="n",persistentvolumeclaim="over",volumename="pvc-b"}'
+      - series: 'local_path_pv_used_bytes{namespace="monitoring",claim_namespace="n",persistentvolumeclaim="over",volumename="pvc-b"}'
         values: '120x90'
       - series: 'kube_persistentvolumeclaim_resource_requests_storage_bytes{namespace="n",persistentvolumeclaim="over"}'
         values: '100x90'
-      - series: 'local_path_pv_used_bytes{namespace="n",persistentvolumeclaim="far",volumename="pvc-c"}'
+      - series: 'local_path_pv_used_bytes{namespace="monitoring",claim_namespace="n",persistentvolumeclaim="far",volumename="pvc-c"}'
         values: '160x90'
       - series: 'kube_persistentvolumeclaim_resource_requests_storage_bytes{namespace="n",persistentvolumeclaim="far"}'
         values: '100x90'
-      - series: 'local_path_pv_used_bytes{namespace="n",persistentvolumeclaim="edge",volumename="pvc-d"}'
+      - series: 'local_path_pv_used_bytes{namespace="monitoring",claim_namespace="n",persistentvolumeclaim="edge",volumename="pvc-d"}'
         values: '150x90'
       - series: 'kube_persistentvolumeclaim_resource_requests_storage_bytes{namespace="n",persistentvolumeclaim="edge"}'
         values: '100x90'
@@ -323,16 +324,16 @@ tests:
       - eval_time: 65m
         alertname: LocalPathPvFarOverRequest
         exp_alerts:
-          - exp_labels: {alertname: LocalPathPvFarOverRequest, severity: critical, category: capacity, namespace: n, persistentvolumeclaim: far, volumename: pvc-c}
+          - exp_labels: {alertname: LocalPathPvFarOverRequest, severity: critical, category: capacity, namespace: n, claim_namespace: n, persistentvolumeclaim: far, volumename: pvc-c}
             exp_annotations: {summary: "n/far uses 160% of what it requested"}
       - eval_time: 65m
         alertname: LocalPathPvOverRequest
         exp_alerts:
-          - exp_labels: {alertname: LocalPathPvOverRequest, severity: warning, category: capacity, namespace: n, persistentvolumeclaim: edge, volumename: pvc-d}
+          - exp_labels: {alertname: LocalPathPvOverRequest, severity: warning, category: capacity, namespace: n, claim_namespace: n, persistentvolumeclaim: edge, volumename: pvc-d}
             exp_annotations: {summary: "n/edge uses 150% of what it requested"}
-          - exp_labels: {alertname: LocalPathPvOverRequest, severity: warning, category: capacity, namespace: n, persistentvolumeclaim: far, volumename: pvc-c}
+          - exp_labels: {alertname: LocalPathPvOverRequest, severity: warning, category: capacity, namespace: n, claim_namespace: n, persistentvolumeclaim: far, volumename: pvc-c}
             exp_annotations: {summary: "n/far uses 160% of what it requested"}
-          - exp_labels: {alertname: LocalPathPvOverRequest, severity: warning, category: capacity, namespace: n, persistentvolumeclaim: over, volumename: pvc-b}
+          - exp_labels: {alertname: LocalPathPvOverRequest, severity: warning, category: capacity, namespace: n, claim_namespace: n, persistentvolumeclaim: over, volumename: pvc-b}
             exp_annotations: {summary: "n/over uses 120% of what it requested"}
 
   - name: a stopped metrics timer warns after an hour

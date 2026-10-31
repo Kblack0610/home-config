@@ -50,30 +50,31 @@
     daemon_reload: true
   when: usb_backup_fstab is changed
 
-- name: Enable + start the automount units
+- name: Start the automount units
   # The .automount unit is what places the autofs trigger on the path; without
   # starting it, nothing remounts until the next boot.
   ansible.builtin.systemd:
-    name: "{{ item.path | regex_replace('^/', '') | regex_replace('/', '-') }}.automount"
-    enabled: true
+    # Unit names escape "-" as \x2d: backup-8t is mnt-backup\x2d8t-....
+    name: "{{ item.path | regex_replace('^/', '') | regex_replace('-', '\\\\x2d') | regex_replace('/', '-') }}.automount"
     state: started
   loop: "{{ usb_backup_subvolumes }}"
   loop_control:
     label: "{{ item.path }}"
   # In --check mode against a host where the units do not exist yet this is
   # expected to be skipped rather than fail the whole run.
-  failed_when: false
+  ignore_errors: "{{ ansible_check_mode }}"
 
 - name: Verify each mountpoint is actually backed by the real device
-  # The lesson from the incident: "is it mounted" is not the same question as
-  # "is the device there". A write is the only honest probe, and it is exactly
-  # what apps/immich/originals-backup-cronjob.yaml now does before it runs.
-  ansible.builtin.command: >-
-    findmnt --noheadings --output SOURCE,FSTYPE {{ item.path }}
+  # Listing the path triggers the automount, then findmnt requires a btrfs mount.
+  # An autofs trigger with nothing behind it fails here: an unmounted path is a
+  # plain directory on the root disk, and a backup job would fill that instead.
+  ansible.builtin.shell: >-
+    ls {{ item.path | quote }} >/dev/null &&
+    findmnt --noheadings --types btrfs --output SOURCE {{ item.path | quote }}
   loop: "{{ usb_backup_subvolumes }}"
   loop_control:
     label: "{{ item.path }}"
   register: usb_backup_findmnt
   changed_when: false
-  failed_when: false
+  failed_when: usb_backup_findmnt.rc != 0 and not ansible_check_mode
   check_mode: false

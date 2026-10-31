@@ -32,3 +32,7 @@ usb_backup_subvolumes:
   - { subvol: "@immich-snapshots", path: /mnt/backup-8t/immich-snapshots }
   - { subvol: "@3d-prints", path: /mnt/backup-8t/3d-prints }
   - { subvol: "@3d-prints-snapshots", path: /mnt/backup-8t/3d-prints-snapshots }
+  - { subvol: "@phones", path: /mnt/backup-8t/phones }
+  - { subvol: "@phones-snapshots", path: /mnt/backup-8t/phones-snapshots }
+  - { subvol: "@forgejo-packages", path: /mnt/backup-8t/forgejo-packages }
+  - { subvol: "@forgejo-packages-snapshots", path: /mnt/backup-8t/forgejo-packages-snapshots }

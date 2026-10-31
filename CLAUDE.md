@@ -16,6 +16,10 @@ git worktree remove ~/.worktrees/home-config-<agent>-<task>
 
 Why: during the 2026-05 cleanup session, three concurrent agents (microbin, minio, nut, gatus) all branched off and committed to the SHARED checkout, which collided with my open work — a NUT commit landed on a chore branch I'd just created, my comfyui edits got reverted by a launcher regeneration, and Forgejo briefly merged a PR but never advanced master because of a race with a parallel push. Worktrees eliminate all of these failure modes (separate index, separate HEAD, separate working tree).
 
+## Storage on asus-laptop
+
+Three independent btrfs disks with no RAID, and the 8TB USB drive is a backup target, not NAS space. Inventory, jobs and what each disk failure loses: `docs/backup-runbook.md`.
+
 ## Canonical Remote — forgejo only
 
 This repo has two remotes: `forgejo` (canonical, Flux watches it) and `origin` (passive github mirror). **Always push to forgejo, never origin** — github is auto-mirrored on every push to master by `.forgejo/workflows/mirror-to-github.yaml`. Full doc: `docs/gitops.md#canonical-remote`.

@@ -51,7 +51,11 @@ The `app-config` copy is taken live, so Immich's Postgres in it is crash-consist
 
 **While a disk is failing but still readable:** take a copy first, then replace it. Check which disk it is by serial, in the alert or with `smartctl -a`, before touching anything: the two NVMe drives look identical.
 
-To read a backup without touching the host, mount the `[backups]` share (`//192.168.1.152/backups`, user `nas`). It is read-only.
+To read a backup without touching the host, use the read-only `[backups]` share (`//192.168.1.152/backups`, user `nas`). On the workstation it mounts at `/mnt/nas/backups`, and `storage` then lists it. Those units are hand-made, not in any repo; this copies the ones for the private share:
+
+```bash
+sudo sh -c 'for u in mount automount; do sed "s#/private#/backups#g; s/private share/backups share/" /etc/systemd/system/mnt-nas-private.$u > /etc/systemd/system/mnt-nas-backups.$u; done; systemctl daemon-reload; systemctl enable --now mnt-nas-backups.automount'
+```
 
 ## Backup Drive (asus-laptop)
 

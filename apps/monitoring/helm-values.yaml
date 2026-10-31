@@ -6,36 +6,6 @@
 #
 # Keep this file in sync with what's actually deployed. Changes here do NOT
 # auto-apply via Flux.
-additionalPrometheusRulesMap:
-  rule-name:
-    groups:
-      - name: node-alerts
-        rules:
-          - alert: HighNodeCPU
-            annotations:
-              description: CPU usage is above 80% for more than 5 minutes
-              summary: High CPU usage on {{ $labels.instance }}
-            expr: 100 - (avg by(instance) (irate(node_cpu_seconds_total{mode="idle"}[5m])) * 100) > 80
-            for: 5m
-            labels:
-              severity: warning
-          - alert: HighNodeMemory
-            annotations:
-              description: Memory usage is above 85% for more than 5 minutes
-              summary: High memory usage on {{ $labels.instance }}
-            expr: (1 - (node_memory_MemAvailable_bytes / node_memory_MemTotal_bytes)) * 100 > 85
-            for: 5m
-            labels:
-              severity: warning
-          - alert: NodeDiskSpaceLow
-            annotations:
-              description: Disk usage is above 85%
-              summary: Disk space low on {{ $labels.instance }}
-            expr: (1 - (node_filesystem_avail_bytes{fstype!~"tmpfs|overlay"} / node_filesystem_size_bytes{fstype!~"tmpfs|overlay"})) * 100 > 85
-            for: 5m
-            labels:
-              severity: warning
-
 alertmanager:
   enabled: true
   # Inline receiver/route config (was: none — Alertmanager had a default null
@@ -83,6 +53,17 @@ alertmanager:
         # any info alert does and is never meant to be delivered.
         - matchers: [alertname = "InfoInhibitor"]
           receiver: "null"
+        # iot-pi-nodes sleep by design.
+        - matchers: [alertname = "TargetDown", job = "iot-pi-nodes"]
+          receiver: "null"
+        # Spend over budget needs you today, not hourly, and is no outage.
+        - matchers: [severity = "critical", category = "cost"]
+          receiver: ntfy-high
+          repeat_interval: 24h
+        # A stale backup is urgent once a day, not all night.
+        - matchers: [severity = "critical", category = "backup"]
+          receiver: ntfy-critical
+          repeat_interval: 24h
         # Criticals (e.g. NodeDown) page red and remind hourly until resolved.
         - matchers: [severity = "critical"]
           receiver: ntfy-critical
@@ -92,6 +73,11 @@ alertmanager:
       - name: ntfy
         webhook_configs:
           - url: "http://ntfy.ntfy.svc.cluster.local/homelab-alerts?tpl=yes&t=%7B%7Bif%20eq%20.status%20%22resolved%22%7D%7DResolved%7B%7Belse%7D%7DFiring%7B%7Bend%7D%7D%3A%20%7B%7B.commonLabels.alertname%7D%7D&m=%7B%7Brange%20.alerts%7D%7D%7B%7Bif%20eq%20.status%20%22resolved%22%7D%7DOK%3A%20%7B%7Bend%7D%7D%7B%7Bor%20.annotations.summary%20.labels.alertname%7D%7D%0A%7B%7Bend%7D%7D%7B%7Bif%20.truncatedAlerts%7D%7D%2B%7B%7B.truncatedAlerts%7D%7D%20more%7B%7Bend%7D%7D&p=default"
+            send_resolved: true
+            max_alerts: 10
+      - name: ntfy-high
+        webhook_configs:
+          - url: "http://ntfy.ntfy.svc.cluster.local/homelab-alerts?tpl=yes&t=%7B%7Bif%20eq%20.status%20%22resolved%22%7D%7DResolved%7B%7Belse%7D%7DFiring%7B%7Bend%7D%7D%3A%20%7B%7B.commonLabels.alertname%7D%7D&m=%7B%7Brange%20.alerts%7D%7D%7B%7Bif%20eq%20.status%20%22resolved%22%7D%7DOK%3A%20%7B%7Bend%7D%7D%7B%7Bor%20.annotations.summary%20.labels.alertname%7D%7D%0A%7B%7Bend%7D%7D%7B%7Bif%20.truncatedAlerts%7D%7D%2B%7B%7B.truncatedAlerts%7D%7D%20more%7B%7Bend%7D%7D&p=high"
             send_resolved: true
             max_alerts: 10
       - name: ntfy-critical
@@ -146,6 +132,13 @@ coreDns:
 
 defaultRules:
   create: true
+  # Replaced by prometheus-rules-capacity.yaml, whose thresholds track the kubelet's
+  # eviction line. These fired at 3% free, which is after it.
+  disabled:
+    NodeFilesystemAlmostOutOfSpace: true
+    NodeFilesystemSpaceFillingUp: true
+    NodeFilesystemAlmostOutOfFiles: true
+    NodeFilesystemFilesFillingUp: true
   rules:
     alertmanager: true
     configReloaders: true

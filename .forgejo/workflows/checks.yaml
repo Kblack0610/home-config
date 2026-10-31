@@ -68,6 +68,20 @@ jobs:
       - name: Control API and sleeper suites
         run: apps/zomboid/tests/run.sh
 
+  prometheus-rules:
+    runs-on: docker
+    container:
+      image: alpine:3.20
+    steps:
+      - name: Install deps
+        run: apk add --no-cache git nodejs prometheus yq-go
+
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Alert rules behave as their tests say
+        run: scripts/test-prometheus-rules.sh
+
   kustomize-builds:
     runs-on: docker
     container:

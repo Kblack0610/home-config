@@ -19,6 +19,7 @@ resources:
   - prometheus-rules-forgejo-mirrors.yaml
   - prometheus-rules-command-center.yaml
   - prometheus-rules-pager.yaml
+  - prometheus-rules-capacity.yaml
   - probe-sites.yaml
   - probe-dns.yaml
   - external-mac-nodes.yaml

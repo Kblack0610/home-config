@@ -84,25 +84,7 @@ spec:
               kubelet reports DiskPressure on node {{ $labels.node }} — the node
               is tainted and pods are being evicted/blocked. Free disk on the
               node's root filesystem now (check hostPath backups, containerd, logs).
-        # Early warning: root filesystem is filling up, well before kubelet's own
-        # eviction threshold (~10% free) trips DiskPressure. The 2026-07-09 outage
-        # grew ~55G/day for weeks — a 15%-free warning gives ~5 days of lead on the
-        # 1.9T workstation disks. 15% (not 20%) keeps the small Pi SD cards / Mac
-        # system volumes, which idle near 20-25% free, from flapping.
-        - alert: NodeRootFilesystemFillingUp
-          expr: >-
-            (node_filesystem_avail_bytes{mountpoint="/",fstype!~"tmpfs|overlay|ramfs"}
-             / node_filesystem_size_bytes{mountpoint="/",fstype!~"tmpfs|overlay|ramfs"}) < 0.15
-          for: 30m
-          labels:
-            severity: warning
-            category: node-health
-          annotations:
-            summary: "Root fs low on {{ $labels.instance }} ({{ $value | humanizePercentage }} free)"
-            description: >-
-              The root filesystem on {{ $labels.instance }} has under 20% free and
-              has stayed there for 30m. Investigate before it reaches the kubelet
-              DiskPressure threshold and evicts pods.
+        # Disk thresholds and the kubelet eviction line: prometheus-rules-capacity.yaml.
 
         # A node's clock has stopped syncing. Found by accident 2026-07-15:
         # hp-victus had drifted ~102s behind the cluster with NO time daemon

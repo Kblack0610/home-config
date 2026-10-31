@@ -1,0 +1,204 @@
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: homelab-capacity
+  namespace: monitoring
+  labels:
+    app.kubernetes.io/name: homelab-capacity
+    app.kubernetes.io/part-of: monitoring
+    # REQUIRED, see prometheus-rules-forgejo-mirrors.yaml.
+    release: kube-prometheus-stack
+spec:
+  # Warning is silent on the phone and critical is not, so critical must stay rare.
+  # Budget: about 5 pages a week. Thresholds come from a replay of 4.5 days of history
+  # (2026-10-27 to 2026-10-31), which is all Prometheus keeps with this data. Each count
+  # below is from that replay. Tests: apps/monitoring/tests/capacity.test.yaml.
+  groups:
+    - name: homelab-capacity.recording
+      rules:
+        # One series per real device. Excluded: pseudo filesystems, network shares
+        # (the server reports them), and Mac simulator and system volumes, which are
+        # always full by design. `min by device` folds btrfs subvolumes into one.
+        - record: device:node_filesystem_avail:ratio
+          expr: >-
+            min by (instance, device, job) (
+              node_filesystem_avail_bytes{fstype!~"tmpfs|ramfs|overlay|squashfs|autofs|vfat|nsfs|devtmpfs|cifs|nfs.*|fuse.*",mountpoint!~"/System/Volumes/(Preboot|VM|Update|xarts|iSCPreboot|Hardware).*|/Library/Developer/.*|/run.*|/boot.*|/var/lib/kubelet.*|/snap.*|/tmp"}
+              /
+              node_filesystem_size_bytes{fstype!~"tmpfs|ramfs|overlay|squashfs|autofs|vfat|nsfs|devtmpfs|cifs|nfs.*|fuse.*",mountpoint!~"/System/Volumes/(Preboot|VM|Update|xarts|iSCPreboot|Hardware).*|/Library/Developer/.*|/run.*|/boot.*|/var/lib/kubelet.*|/snap.*|/tmp"}
+            )
+        - record: device:node_filesystem_avail_predict4h:bytes
+          expr: >-
+            min by (instance, device, job) (
+              predict_linear(node_filesystem_avail_bytes{fstype!~"tmpfs|ramfs|overlay|squashfs|autofs|vfat|nsfs|devtmpfs|cifs|nfs.*|fuse.*",mountpoint!~"/System/Volumes/(Preboot|VM|Update|xarts|iSCPreboot|Hardware).*|/Library/Developer/.*|/run.*|/boot.*|/var/lib/kubelet.*|/snap.*|/tmp"}[2h], 4 * 3600)
+            )
+        - record: device:node_filesystem_files_free:ratio
+          expr: >-
+            min by (instance, device, job) (
+              node_filesystem_files_free{fstype!~"tmpfs|ramfs|overlay|squashfs|autofs|vfat|nsfs|devtmpfs|cifs|nfs.*|fuse.*",mountpoint!~"/System/Volumes/(Preboot|VM|Update|xarts|iSCPreboot|Hardware).*|/Library/Developer/.*|/run.*|/boot.*|/var/lib/kubelet.*|/snap.*|/tmp"}
+              /
+              node_filesystem_files{fstype!~"tmpfs|ramfs|overlay|squashfs|autofs|vfat|nsfs|devtmpfs|cifs|nfs.*|fuse.*",mountpoint!~"/System/Volumes/(Preboot|VM|Update|xarts|iSCPreboot|Hardware).*|/Library/Developer/.*|/run.*|/boot.*|/var/lib/kubelet.*|/snap.*|/tmp"}
+            )
+
+    - name: homelab-capacity.disk
+      rules:
+        # Kubelet evicts at 5% free and does not stop until 15% free, so a node that
+        # trips loses its pods until 10% of the disk comes back. On 2026-10-31 hp-victus
+        # crossed 15% at 19:00, 10% at 22:00, and evicted at 00:57.
+        - alert: NodeDiskLow
+          expr: device:node_filesystem_avail:ratio < 0.20
+          for: 30m
+          labels:
+            severity: warning
+            category: capacity
+          annotations:
+            summary: "{{ $labels.instance }} {{ $labels.device }} has {{ $value | humanizePercentage }} free"
+        # 6 pages in the replay: 4 on asus from the Forgejo backups fixed in #441, 1 the
+        # outage, 1 workstation. Would have given 3 hours of warning on 2026-10-31.
+        - alert: NodeDiskCritical
+          expr: device:node_filesystem_avail:ratio < 0.10
+          for: 15m
+          labels:
+            severity: critical
+            category: capacity
+          annotations:
+            summary: "{{ $labels.instance }} {{ $labels.device }} has {{ $value | humanizePercentage }} free"
+            description: Kubelet evicts pods at 5% free and keeps evicting until 15% is free.
+        # 2 pages in the replay, one of them the outage, which it caught at 19:45. A 6h
+        # window never fired on it: CI fills the disk faster than that slope shows.
+        - alert: NodeDiskFillingFast
+          expr: device:node_filesystem_avail_predict4h:bytes < 0 and device:node_filesystem_avail:ratio < 0.15
+          for: 30m
+          labels:
+            severity: critical
+            category: capacity
+          annotations:
+            summary: "{{ $labels.instance }} {{ $labels.device }} is on course to fill within 4 hours"
+        - alert: NodeInodesLow
+          expr: device:node_filesystem_files_free:ratio < 0.10
+          for: 30m
+          labels:
+            severity: warning
+            category: capacity
+          annotations:
+            summary: "{{ $labels.instance }} {{ $labels.device }} has {{ $value | humanizePercentage }} of its inodes free"
+        - alert: NodeInodesCritical
+          expr: device:node_filesystem_files_free:ratio < 0.05
+          for: 5m
+          labels:
+            severity: critical
+            category: capacity
+          annotations:
+            summary: "{{ $labels.instance }} {{ $labels.device }} has {{ $value | humanizePercentage }} of its inodes free"
+
+    - name: homelab-capacity.compute
+      rules:
+        - alert: NodeMemoryLow
+          expr: node_memory_MemAvailable_bytes{job=~"node-exporter|standalone-nodes"} / node_memory_MemTotal_bytes < 0.15
+          for: 30m
+          labels:
+            severity: warning
+            category: capacity
+          annotations:
+            summary: "{{ $labels.instance }} has {{ $value | humanizePercentage }} of its memory available"
+        # Tasks stalled on memory, which is what hurts; low free memory alone is often
+        # just cache. 25% gave 2 pages in the replay, 10% gave 4.
+        - alert: NodeMemoryPressure
+          expr: rate(node_pressure_memory_stalled_seconds_total[5m]) > 0.25
+          for: 10m
+          labels:
+            severity: critical
+            category: capacity
+          annotations:
+            summary: "{{ $labels.instance }} is stalled on memory {{ $value | humanizePercentage }} of the time"
+        # CI hosts run at full CPU by design, so this stays a warning. 13 in the replay.
+        - alert: NodeCpuSaturated
+          expr: rate(node_pressure_cpu_waiting_seconds_total[5m]) > 0.50
+          for: 30m
+          labels:
+            severity: warning
+            category: capacity
+          annotations:
+            summary: "Tasks on {{ $labels.instance }} are waiting for CPU {{ $value | humanizePercentage }} of the time"
+        # An hour with almost every moment contended. 0 in the replay; at 30m it was 3.
+        - alert: NodeCpuStarved
+          expr: rate(node_pressure_cpu_waiting_seconds_total[5m]) > 0.90
+          for: 1h
+          labels:
+            severity: critical
+            category: capacity
+          annotations:
+            summary: "Tasks on {{ $labels.instance }} have waited for CPU for over an hour"
+        - alert: NodeOomKill
+          expr: increase(node_vmstat_oom_kill[1h]) > 0
+          labels:
+            severity: warning
+            category: capacity
+          annotations:
+            summary: "{{ $labels.instance }} killed {{ $value | humanize }} processes for memory in the last hour"
+        # 2 in the replay. At 3 an hour it was 10, mostly Unity builds on CI hosts.
+        - alert: NodeOomKillStorm
+          expr: increase(node_vmstat_oom_kill[1h]) >= 10
+          for: 5m
+          labels:
+            severity: critical
+            category: capacity
+          annotations:
+            summary: "{{ $labels.instance }} killed {{ $value | humanize }} processes for memory in the last hour"
+        - alert: ContainerOomKilled
+          expr: increase(kube_pod_container_status_restarts_total[15m]) > 0 and on (namespace, pod, container) kube_pod_container_status_last_terminated_reason{reason="OOMKilled"} == 1
+          labels:
+            severity: warning
+            category: capacity
+          annotations:
+            summary: "{{ $labels.namespace }}/{{ $labels.pod }} was killed for memory"
+        # NodeDown reads `up`, and an evicted exporter takes its `up` series with it, so
+        # the node that needs watching most went blind. This reads the node list from
+        # kube-state-metrics. 1 in the replay. Joined on pod, because kube_node_info can
+        # carry an IPv6 address that never matches a scrape target.
+        - alert: NodeExporterMissing
+          expr: kube_node_info unless on (node) ((up{job="node-exporter"} == 1) * on (namespace, pod) group_left (node) kube_pod_info{pod=~".*node-exporter.*"})
+          for: 15m
+          labels:
+            severity: critical
+            category: capacity
+          annotations:
+            summary: "No node-exporter data from {{ $labels.node }}"
+
+    - name: homelab-capacity.services
+      rules:
+        # KubePodCrashLooping is the warning for every namespace. 0 in the replay.
+        - alert: CriticalServiceCrashLooping
+          expr: kube_pod_container_status_waiting_reason{reason="CrashLoopBackOff", namespace=~"monitoring|ntfy|ntfy-public|vaultwarden|forgejo|kube-system|flux-system|traefik|ai-gateway"} == 1
+          for: 1h
+          labels:
+            severity: critical
+            category: capacity
+          annotations:
+            summary: "{{ $labels.namespace }}/{{ $labels.pod }} has been crash looping for an hour"
+        # From the blackbox probes, because cert-manager's metrics are not scraped.
+        - alert: CertExpiringSoon
+          expr: probe_ssl_earliest_cert_expiry - time() < 14 * 86400
+          for: 1h
+          labels:
+            severity: warning
+            category: capacity
+          annotations:
+            summary: "The certificate for {{ $labels.instance }} expires in {{ $value | humanizeDuration }}"
+        - alert: CertExpiringCritical
+          expr: probe_ssl_earliest_cert_expiry - time() < 3 * 86400
+          for: 1h
+          labels:
+            severity: critical
+            category: capacity
+          annotations:
+            summary: "The certificate for {{ $labels.instance }} expires in {{ $value | humanizeDuration }}"
+        # nas-backup-verify checks that the Forgejo archives are whole, the off-box copy
+        # matches, and snapshots are recent. A failed run is a backup you cannot trust.
+        # Limited to recent runs, since failed Job objects linger for months.
+        - alert: BackupVerifyFailed
+          expr: kube_job_status_failed{namespace="nas", job_name=~"nas-backup-verify.*"} > 0 and on (namespace, job_name) (time() - kube_job_status_start_time < 36 * 3600)
+          labels:
+            severity: critical
+            category: backup
+          annotations:
+            summary: "{{ $labels.job_name }} failed: read its log"

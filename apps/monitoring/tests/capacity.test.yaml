@@ -1,0 +1,286 @@
+# promtool test rules. Run with scripts/test-prometheus-rules.sh. Each alert has a case
+# that fires and a case just past its threshold that must not.
+rule_files:
+  - capacity.rules.yaml
+  - pager.rules.yaml
+evaluation_interval: 1m
+
+tests:
+  - name: disk thresholds, 21% free is quiet and each line fires on its own
+    interval: 1m
+    input_series:
+      - series: 'node_filesystem_avail_bytes{instance="a",device="d1",job="node-exporter",fstype="ext4",mountpoint="/"}'
+        values: '21x60'
+      - series: 'node_filesystem_size_bytes{instance="a",device="d1",job="node-exporter",fstype="ext4",mountpoint="/"}'
+        values: '100x60'
+      - series: 'node_filesystem_avail_bytes{instance="b",device="d2",job="node-exporter",fstype="ext4",mountpoint="/"}'
+        values: '19x60'
+      - series: 'node_filesystem_size_bytes{instance="b",device="d2",job="node-exporter",fstype="ext4",mountpoint="/"}'
+        values: '100x60'
+      - series: 'node_filesystem_avail_bytes{instance="c",device="d3",job="node-exporter",fstype="ext4",mountpoint="/"}'
+        values: '9x60'
+      - series: 'node_filesystem_size_bytes{instance="c",device="d3",job="node-exporter",fstype="ext4",mountpoint="/"}'
+        values: '100x60'
+      # Excluded on purpose: a full simulator volume, a full tmpfs, a full share.
+      - series: 'node_filesystem_avail_bytes{instance="m",device="s",job="mac-nodes",fstype="apfs",mountpoint="/Library/Developer/CoreSimulator/Volumes/iOS"}'
+        values: '1x60'
+      - series: 'node_filesystem_size_bytes{instance="m",device="s",job="mac-nodes",fstype="apfs",mountpoint="/Library/Developer/CoreSimulator/Volumes/iOS"}'
+        values: '100x60'
+      - series: 'node_filesystem_avail_bytes{instance="m",device="t",job="node-exporter",fstype="tmpfs",mountpoint="/dev/shm"}'
+        values: '1x60'
+      - series: 'node_filesystem_size_bytes{instance="m",device="t",job="node-exporter",fstype="tmpfs",mountpoint="/dev/shm"}'
+        values: '100x60'
+      - series: 'node_filesystem_avail_bytes{instance="m",device="//nas/x",job="standalone-nodes",fstype="cifs",mountpoint="/mnt/x"}'
+        values: '1x60'
+      - series: 'node_filesystem_size_bytes{instance="m",device="//nas/x",job="standalone-nodes",fstype="cifs",mountpoint="/mnt/x"}'
+        values: '100x60'
+    alert_rule_test:
+      - eval_time: 40m
+        alertname: NodeDiskLow
+        exp_alerts:
+          - exp_labels: {alertname: NodeDiskLow, severity: warning, category: capacity, instance: b, device: d2, job: node-exporter}
+            exp_annotations: {summary: "b d2 has 19% free"}
+          - exp_labels: {alertname: NodeDiskLow, severity: warning, category: capacity, instance: c, device: d3, job: node-exporter}
+            exp_annotations: {summary: "c d3 has 9% free"}
+      - eval_time: 20m
+        alertname: NodeDiskCritical
+        exp_alerts:
+          - exp_labels: {alertname: NodeDiskCritical, severity: critical, category: capacity, instance: c, device: d3, job: node-exporter}
+            exp_annotations:
+              summary: "c d3 has 9% free"
+              description: Kubelet evicts pods at 5% free and keeps evicting until 15% is free.
+      - eval_time: 10m
+        alertname: NodeDiskCritical
+        exp_alerts: []
+
+  - name: btrfs subvolumes on one device count once
+    interval: 1m
+    input_series:
+      - series: 'node_filesystem_avail_bytes{instance="a",device="d",job="node-exporter",fstype="btrfs",mountpoint="/"}'
+        values: '5x30'
+      - series: 'node_filesystem_size_bytes{instance="a",device="d",job="node-exporter",fstype="btrfs",mountpoint="/"}'
+        values: '100x30'
+      - series: 'node_filesystem_avail_bytes{instance="a",device="d",job="node-exporter",fstype="btrfs",mountpoint="/home"}'
+        values: '5x30'
+      - series: 'node_filesystem_size_bytes{instance="a",device="d",job="node-exporter",fstype="btrfs",mountpoint="/home"}'
+        values: '100x30'
+    alert_rule_test:
+      - eval_time: 20m
+        alertname: NodeDiskCritical
+        exp_alerts:
+          - exp_labels: {alertname: NodeDiskCritical, severity: critical, category: capacity, instance: a, device: d, job: node-exporter}
+            exp_annotations:
+              summary: "a d has 5% free"
+              description: Kubelet evicts pods at 5% free and keeps evicting until 15% is free.
+
+  - name: filling fast fires when low and falling, not when only one is true
+    interval: 5m
+    input_series:
+      # Falling 4.8% an hour from 14%: under 15% and empty inside 4 hours.
+      - series: 'node_filesystem_avail_bytes{instance="fast",device="d",job="node-exporter",fstype="ext4",mountpoint="/"}'
+        values: '14-0.4x12'
+      - series: 'node_filesystem_size_bytes{instance="fast",device="d",job="node-exporter",fstype="ext4",mountpoint="/"}'
+        values: '100x12'
+      # Falling quicker but with plenty free: NodeDiskCritical's business if it gets there.
+      - series: 'node_filesystem_avail_bytes{instance="roomy",device="d",job="node-exporter",fstype="ext4",mountpoint="/"}'
+        values: '40-1x12'
+      - series: 'node_filesystem_size_bytes{instance="roomy",device="d",job="node-exporter",fstype="ext4",mountpoint="/"}'
+        values: '100x12'
+      # Low but steady.
+      - series: 'node_filesystem_avail_bytes{instance="steady",device="d",job="node-exporter",fstype="ext4",mountpoint="/"}'
+        values: '14x12'
+      - series: 'node_filesystem_size_bytes{instance="steady",device="d",job="node-exporter",fstype="ext4",mountpoint="/"}'
+        values: '100x12'
+    alert_rule_test:
+      - eval_time: 20m
+        alertname: NodeDiskFillingFast
+        exp_alerts: []
+      - eval_time: 40m
+        alertname: NodeDiskFillingFast
+        exp_alerts:
+          - exp_labels: {alertname: NodeDiskFillingFast, severity: critical, category: capacity, instance: fast, device: d, job: node-exporter}
+            exp_annotations: {summary: "fast d is on course to fill within 4 hours"}
+
+  - name: inodes
+    interval: 1m
+    input_series:
+      - series: 'node_filesystem_files_free{instance="ok",device="d",job="node-exporter",fstype="ext4",mountpoint="/"}'
+        values: '11x40'
+      - series: 'node_filesystem_files{instance="ok",device="d",job="node-exporter",fstype="ext4",mountpoint="/"}'
+        values: '100x40'
+      - series: 'node_filesystem_files_free{instance="low",device="d",job="node-exporter",fstype="ext4",mountpoint="/"}'
+        values: '9x40'
+      - series: 'node_filesystem_files{instance="low",device="d",job="node-exporter",fstype="ext4",mountpoint="/"}'
+        values: '100x40'
+      - series: 'node_filesystem_files_free{instance="out",device="d",job="node-exporter",fstype="ext4",mountpoint="/"}'
+        values: '4x40'
+      - series: 'node_filesystem_files{instance="out",device="d",job="node-exporter",fstype="ext4",mountpoint="/"}'
+        values: '100x40'
+    alert_rule_test:
+      - eval_time: 35m
+        alertname: NodeInodesLow
+        exp_alerts:
+          - exp_labels: {alertname: NodeInodesLow, severity: warning, category: capacity, instance: low, device: d, job: node-exporter}
+            exp_annotations: {summary: "low d has 9% of its inodes free"}
+          - exp_labels: {alertname: NodeInodesLow, severity: warning, category: capacity, instance: out, device: d, job: node-exporter}
+            exp_annotations: {summary: "out d has 4% of its inodes free"}
+      - eval_time: 10m
+        alertname: NodeInodesCritical
+        exp_alerts:
+          - exp_labels: {alertname: NodeInodesCritical, severity: critical, category: capacity, instance: out, device: d, job: node-exporter}
+            exp_annotations: {summary: "out d has 4% of its inodes free"}
+
+  - name: memory
+    interval: 1m
+    input_series:
+      - series: 'node_memory_MemAvailable_bytes{instance="ok",job="node-exporter"}'
+        values: '16x40'
+      - series: 'node_memory_MemTotal_bytes{instance="ok",job="node-exporter"}'
+        values: '100x40'
+      - series: 'node_memory_MemAvailable_bytes{instance="low",job="node-exporter"}'
+        values: '14x40'
+      - series: 'node_memory_MemTotal_bytes{instance="low",job="node-exporter"}'
+        values: '100x40'
+      - series: 'node_pressure_memory_stalled_seconds_total{instance="stalled"}'
+        values: '0+18x40'
+      - series: 'node_pressure_memory_stalled_seconds_total{instance="brief"}'
+        values: '0+12x40'
+    alert_rule_test:
+      - eval_time: 35m
+        alertname: NodeMemoryLow
+        exp_alerts:
+          - exp_labels: {alertname: NodeMemoryLow, severity: warning, category: capacity, instance: low, job: node-exporter}
+            exp_annotations: {summary: "low has 14% of its memory available"}
+      - eval_time: 20m
+        alertname: NodeMemoryPressure
+        exp_alerts:
+          - exp_labels: {alertname: NodeMemoryPressure, severity: critical, category: capacity, instance: stalled}
+            exp_annotations: {summary: "stalled is stalled on memory 30% of the time"}
+
+  - name: cpu pressure
+    interval: 1m
+    input_series:
+      - series: 'node_pressure_cpu_waiting_seconds_total{instance="starved"}'
+        values: '0+57x90'
+      - series: 'node_pressure_cpu_waiting_seconds_total{instance="busy"}'
+        values: '0+42x90'
+      - series: 'node_pressure_cpu_waiting_seconds_total{instance="fine"}'
+        values: '0+24x90'
+    alert_rule_test:
+      - eval_time: 40m
+        alertname: NodeCpuSaturated
+        exp_alerts:
+          - exp_labels: {alertname: NodeCpuSaturated, severity: warning, category: capacity, instance: starved}
+            exp_annotations: {summary: "Tasks on starved are waiting for CPU 95% of the time"}
+          - exp_labels: {alertname: NodeCpuSaturated, severity: warning, category: capacity, instance: busy}
+            exp_annotations: {summary: "Tasks on busy are waiting for CPU 70% of the time"}
+      - eval_time: 40m
+        alertname: NodeCpuStarved
+        exp_alerts: []
+      - eval_time: 70m
+        alertname: NodeCpuStarved
+        exp_alerts:
+          - exp_labels: {alertname: NodeCpuStarved, severity: critical, category: capacity, instance: starved}
+            exp_annotations: {summary: "Tasks on starved have waited for CPU for over an hour"}
+
+  - name: oom kills, a few warn and a storm pages
+    interval: 5m
+    input_series:
+      - series: 'node_vmstat_oom_kill{instance="few"}'
+        values: '0 0 0 0 2 2 2 2 2 2 2 2 2 2'
+      - series: 'node_vmstat_oom_kill{instance="storm"}'
+        values: '0 0 0 0 20 20 20 20 20 20 20 20 20 20'
+      - series: 'node_vmstat_oom_kill{instance="none"}'
+        values: '5x13'
+    alert_rule_test:
+      - eval_time: 30m
+        alertname: NodeOomKillStorm
+        exp_alerts:
+          - exp_labels: {alertname: NodeOomKillStorm, severity: critical, category: capacity, instance: storm}
+            exp_annotations: {summary: "storm killed 20 processes for memory in the last hour"}
+
+  - name: a node whose exporter is gone still pages
+    interval: 1m
+    input_series:
+      - series: 'kube_node_info{node="healthy",internal_ip="10.0.0.1"}'
+        values: '1x30'
+      # An IPv6 internal_ip must not read as missing.
+      - series: 'kube_node_info{node="v6",internal_ip="2603::1"}'
+        values: '1x30'
+      - series: 'kube_node_info{node="evicted",internal_ip="10.0.0.3"}'
+        values: '1x30'
+      - series: 'kube_pod_info{namespace="monitoring",pod="node-exporter-a",node="healthy"}'
+        values: '1x30'
+      - series: 'kube_pod_info{namespace="monitoring",pod="node-exporter-b",node="v6"}'
+        values: '1x30'
+      - series: 'up{job="node-exporter",namespace="monitoring",pod="node-exporter-a",instance="10.0.0.1:9100"}'
+        values: '1x30'
+      - series: 'up{job="node-exporter",namespace="monitoring",pod="node-exporter-b",instance="10.0.0.2:9100"}'
+        values: '1x30'
+    alert_rule_test:
+      - eval_time: 10m
+        alertname: NodeExporterMissing
+        exp_alerts: []
+      - eval_time: 20m
+        alertname: NodeExporterMissing
+        exp_alerts:
+          - exp_labels: {alertname: NodeExporterMissing, severity: critical, category: capacity, node: evicted, internal_ip: 10.0.0.3}
+            exp_annotations: {summary: "No node-exporter data from evicted"}
+
+  - name: crash loops page only in the namespaces that matter
+    interval: 1m
+    input_series:
+      - series: 'kube_pod_container_status_waiting_reason{reason="CrashLoopBackOff",namespace="ntfy",pod="p",container="c"}'
+        values: '1x70'
+      - series: 'kube_pod_container_status_waiting_reason{reason="CrashLoopBackOff",namespace="zomboid",pod="z",container="c"}'
+        values: '1x70'
+    alert_rule_test:
+      - eval_time: 30m
+        alertname: CriticalServiceCrashLooping
+        exp_alerts: []
+      - eval_time: 65m
+        alertname: CriticalServiceCrashLooping
+        exp_alerts:
+          - exp_labels: {alertname: CriticalServiceCrashLooping, severity: critical, category: capacity, reason: CrashLoopBackOff, namespace: ntfy, pod: p, container: c}
+            exp_annotations: {summary: "ntfy/p has been crash looping for an hour"}
+
+  - name: a recent failed verify pages, the 229-day-old Job does not
+    interval: 1m
+    input_series:
+      - series: 'kube_job_status_failed{namespace="nas",job_name="nas-backup-verify-new"}'
+        values: '1x5'
+      - series: 'kube_job_status_start_time{namespace="nas",job_name="nas-backup-verify-new"}'
+        values: '0x5'
+      - series: 'kube_job_status_failed{namespace="nas",job_name="nas-backup-verify-old"}'
+        values: '1x5'
+      - series: 'kube_job_status_start_time{namespace="nas",job_name="nas-backup-verify-old"}'
+        values: '-19785600x5'
+      - series: 'kube_job_status_failed{namespace="nas",job_name="nas-backup-verify-passed"}'
+        values: '0x5'
+      - series: 'kube_job_status_start_time{namespace="nas",job_name="nas-backup-verify-passed"}'
+        values: '0x5'
+    alert_rule_test:
+      - eval_time: 2m
+        alertname: BackupVerifyFailed
+        exp_alerts:
+          - exp_labels: {alertname: BackupVerifyFailed, severity: critical, category: backup, namespace: nas, job_name: nas-backup-verify-new}
+            exp_annotations: {summary: "nas-backup-verify-new failed: read its log"}
+
+  - name: a failed webhook pages, a healthy one does not
+    interval: 1m
+    input_series:
+      - series: 'alertmanager_notifications_failed_total{integration="webhook",reason="other"}'
+        values: '0x5 1+1x20'
+      - series: 'alertmanager_notifications_failed_total{integration="email",reason="other"}'
+        values: '0x25'
+    alert_rule_test:
+      - eval_time: 3m
+        alertname: AlertmanagerPageNotDelivered
+        exp_alerts: []
+      - eval_time: 15m
+        alertname: AlertmanagerPageNotDelivered
+        exp_alerts:
+          - exp_labels: {alertname: AlertmanagerPageNotDelivered, severity: critical, integration: webhook}
+            exp_annotations:
+              summary: Alertmanager failed to deliver a page through webhook
+              runbook: apps/ntfy/README.md

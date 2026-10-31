@@ -15,7 +15,7 @@ spec:
         # A failed webhook is a page that nobody got. It routes as critical, so it
         # goes to both receivers: with ntfy down, ntfy.sh carries it. The counter
         # stood at 1739 through the 2026-10-31 outage and nothing read it.
-        # 30-day backtest: 2 distinct hours, 2026-10-30 and 2026-10-31, both real.
+        # Backtest over the 4.5 days of history: 2 pages, both real.
         - alert: AlertmanagerPageNotDelivered
           expr: sum by (integration) (increase(alertmanager_notifications_failed_total[15m])) > 0
           for: 5m

@@ -63,8 +63,11 @@ record:
   enabled: true
   continuous:
     days: 0
+  # 1 day, down from 3: the living-room camera (#390) took this from about 1G a day to
+  # about 50G, and this PV sits on the CI host's disk. local-path does not enforce the
+  # PVC's 80Gi, so retention is the only limit. Alerts and detections are unchanged.
   motion:
-    days: 3
+    days: 1
   alerts:
     retain:
       days: 14

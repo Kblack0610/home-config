@@ -36,12 +36,13 @@ spec:
               time() - max by (namespace, owner_name) (
                 kube_job_status_completion_time{namespace!="nas"}
                 * on (namespace, job_name) group_left(owner_name)
-                  kube_job_owner{owner_kind="CronJob"}
+                  kube_job_owner{owner_kind="CronJob", owner_name=~".*backup.*"}
               )
             ) > 36 * 3600
           for: 30m
           labels:
-            severity: warning
+            # Critical, repeated daily by the category=backup route in helm-values.
+            severity: critical
             category: backup
           annotations:
             summary: "Backup stale: {{ $labels.namespace }}/{{ $labels.owner_name }}"

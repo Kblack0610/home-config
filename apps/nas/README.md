@@ -53,7 +53,7 @@ The NAS serves as the central backup target. App backup cronjobs write to `/mnt/
 | `nas-backups-mirror` | Daily 5:30 AM | Mirrors `/mnt/nas/private/backups` to `/mnt/backup-8t/nas-backups` + dated snapshot, keeps last 14 |
 | `app-config-backup` | Sun 5:45 AM | Mirrors `/mnt/media/app-config` to `/mnt/backup-8t/app-config` + dated snapshot, keeps last 14 |
 | `harvest-backup` | Sun 6 AM | Mirrors `/mnt/nas/private/harvest` to `/mnt/backup-8t/harvest` + dated snapshot, keeps last 14 |
-| `nas-backup-verify` | Mon 6 AM | Checks backup freshness (< 48h) and gzip integrity for home-assistant, litellm, actual-budget, music-assistant, snapcast, karakeep, postgres; verifies SOPS key backup exists |
+| `nas-backup-verify` | Mon 6 AM | Checks backup freshness (< 48h) and gzip integrity for home-assistant, actual-budget, music-assistant, snapcast, karakeep, postgres; verifies SOPS key backup exists |
 
 Verification results are appended to `/mnt/nas/private/backups/manifest.log`.
 

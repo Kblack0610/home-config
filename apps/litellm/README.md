@@ -6,15 +6,12 @@ LLM gateway deployment in the `ai-gateway` namespace, exposed through Traefik at
 
 | File | Purpose |
 |------|---------|
-| `kustomization.yaml` | Reconciles the namespace, app, service, ingress, and backup job |
+| `kustomization.yaml` | Reconciles the namespace, app, service, and ingress |
 | `configmap.yaml` | LiteLLM config mounted into the container |
 | `secret.sops.yaml` | SOPS-encrypted `litellm-db-secrets`: DATABASE_URL, salt key, UI creds, Lazer key |
 | `deployment.yaml` | Main gateway workload and health checks |
 | `service.yaml` | Cluster service on port `4000` |
 | `ingress.yaml` | TLS ingress for `llm.kblab.me` |
-| `pvc.yaml` | Persistent application data |
-| `backup-cronjob.yaml` | Daily local and NAS backup job |
-| `backup-nas-secret.yaml` | NAS SMB credentials for backup upload |
 
 The litellm tenant role + database in Postgres is provisioned by `apps/postgres/litellm-db-bootstrap-job.yaml` (idempotent psql Job in the `databases` namespace).
 
@@ -98,7 +95,6 @@ Prefer committing manifest changes and reconciling through Flux for normal opera
 ```bash
 kubectl -n ai-gateway get all
 kubectl -n ai-gateway logs deployment/litellm --tail=100
-kubectl -n ai-gateway get cronjob litellm-backup
 ```
 
 Health endpoints used by the deployment:
@@ -108,15 +104,7 @@ Health endpoints used by the deployment:
 
 ## Backup Notes
 
-- The `litellm-backup` CronJob runs daily at `02:00`.
-- Local backups are written to `/var/backups/litellm` on the node.
-- NAS upload is best-effort and uses SMB credentials from `backup-nas-credentials`.
-
-### Known gap: keys + spend now live in Postgres, not in `/app/data`
-
-Once `general_settings.database_url` is set, virtual keys, per-key budgets, and spend logs move from sqlite (`/app/data/litellm.db`) to the `litellm` database in `postgres.databases.svc.cluster.local`. The current `backup-cronjob.yaml` only protects `/app/data` and so no longer captures the load-bearing data.
-
-`apps/postgres/` does not yet have a backup CronJob (see `apps/postgres/README.md`'s "Backup: Not yet wired"). The PVC + backup CronJob in this directory are kept as a no-op placeholder until that gap is closed (the Deployment no longer mounts the PVC: a local-path PV pins its pod to one node); deleting them would mean zero protection for the new key/spend store. Follow-up: add `apps/postgres/backup-cronjob.yaml` (`pg_dump` → NAS), then drop `pvc.yaml`, `backup-cronjob.yaml`, and `backup-nas-secret.yaml` from this directory.
+Keys, budgets and spend live in the `litellm` database in shared Postgres, so `postgres-backup` covers them. Restore: [backup runbook](../../docs/backup-runbook.md), "Restore shared Postgres". The gateway keeps nothing on disk and has no PVC.
 
 ## Related Docs
 

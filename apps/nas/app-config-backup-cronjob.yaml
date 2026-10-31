@@ -4,8 +4,8 @@ metadata:
   name: app-config-backup
   namespace: nas
 spec:
-  # Weekly, Sunday 5:45 AM. Config of the media apps, which sits on the root disk.
-  # Copied live, so a database in here is crash-consistent at best.
+  # Weekly, Sunday 5:45 AM. Config of the media apps, on the NAS disk. Immich's live
+  # Postgres is in here, copied crash-consistent at best: restore it from @immich-db.
   schedule: "45 5 * * 0"
   concurrencyPolicy: Forbid
   successfulJobsHistoryLimit: 3

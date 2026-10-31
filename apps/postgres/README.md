@@ -22,6 +22,7 @@ Immich is intentionally NOT migrated — its existing Postgres uses an Immich-sp
 | `secret.yaml.template` | SOPS-encryption template for superuser + per-app passwords |
 | `deployment.yaml` | pgvector container, 5432 ClusterIP |
 | `service.yaml` | ClusterIP `:5432` |
+| `backup-cronjob.yaml` | Nightly `pg_dumpall` of every database to the NAS |
 | `kustomization.yaml` | Roll-up (excludes secret until encrypted file exists) |
 
 ## Bootstrap
@@ -86,4 +87,4 @@ The `docker-entrypoint-initdb.d` scripts only run when the data directory is emp
 
 ## Backup
 
-Not yet wired. Tracked as a follow-up — this Postgres holds mem0 memories; once the workload is real, add a daily `pg_dump`-to-NAS CronJob analogous to `apps/litellm/backup-cronjob.yaml`.
+`postgres-backup` dumps every database and role to `/mnt/nas/private/backups/home-k3s/postgres/` nightly at 02:20. The job fails if the dump fails or is implausibly small, and `nas-backup-verify` checks the newest dump weekly. Restore: [backup runbook](../../docs/backup-runbook.md), "Restore shared Postgres".

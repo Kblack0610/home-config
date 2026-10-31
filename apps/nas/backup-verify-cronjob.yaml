@@ -31,7 +31,7 @@ spec:
                   REPORT="=== Backup Verification Report $(date -Iseconds) ==="
 
                   # Check each app directory for recent backups (< 48h old)
-                  for APP in home-assistant litellm actual-budget music-assistant snapcast; do
+                  for APP in home-assistant litellm actual-budget music-assistant snapcast karakeep postgres; do
                     APP_DIR="$BACKUP_ROOT/$APP"
                     if [ ! -d "$APP_DIR" ]; then
                       REPORT="$REPORT\nFAIL: $APP — backup directory missing"
@@ -39,7 +39,7 @@ spec:
                       continue
                     fi
 
-                    LATEST=$(ls -t "$APP_DIR"/*.tar.gz 2>/dev/null | head -1)
+                    LATEST=$(ls -t "$APP_DIR"/*.tar.gz "$APP_DIR"/*.sql.gz 2>/dev/null | head -1)
                     if [ -z "$LATEST" ]; then
                       REPORT="$REPORT\nFAIL: $APP — no backup files found"
                       ERRORS=$((ERRORS + 1))
@@ -55,7 +55,7 @@ spec:
                       REPORT="$REPORT\nOK: $APP — latest backup $(basename "$LATEST") ($(( AGE / 3600 ))h ago)"
                     fi
 
-                    # Validate tar.gz integrity
+                    # Validate gzip integrity
                     if ! gzip -t "$LATEST" 2>/dev/null; then
                       REPORT="$REPORT\nFAIL: $APP — latest backup is corrupt: $(basename "$LATEST")"
                       ERRORS=$((ERRORS + 1))

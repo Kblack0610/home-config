@@ -20,6 +20,10 @@ spec:
       # Access control is declared in the ConfigMap (auth-users + auth-access),
       # so ntfy provisions the publisher user + ACL on startup — no init-container
       # seeding (the CLI can't seed before the server creates the auth-file).
+      # Off the CI host: the pager must not share a failure domain with what it
+      # reports (hp-victus DiskPressure, 2026-10-31). The PVC follows this node.
+      nodeSelector:
+        kubernetes.io/hostname: raspberrypi-23a7710c
       containers:
         - name: ntfy
           image: binwiederhier/ntfy:v2.24.0

@@ -84,6 +84,10 @@ kubectl --context home-k3s -n ntfy run curl --rm -it --image curlimages/curl -- 
 curl -sN https://ntfy.kblab.me/notes-sync/json
 ```
 
+## Placement
+
+Runs on `raspberrypi-23a7710c`, away from CI hosts, so a CI disk filling cannot take the pager down with it. To move it: [move-local-path-pvc](../../docs/runbooks/move-local-path-pvc.md).
+
 ## Backups
 
 Skipped intentionally. The PVC holds a 12h message cache and a (currently

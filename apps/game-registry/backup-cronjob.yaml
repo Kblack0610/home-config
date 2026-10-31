@@ -21,8 +21,9 @@ spec:
       template:
         metadata:
           labels:
-            app.kubernetes.io/name: game-registry
-            app.kubernetes.io/component: backup
+            # Not app.kubernetes.io/name: game-registry. That is the Service's selector,
+            # and this pod would become a ready endpoint with nothing listening.
+            app.kubernetes.io/name: game-saves-backup
         spec:
           # The NAS disk is in asus-laptop.
           nodeSelector:

@@ -63,6 +63,17 @@ spec:
                 fruit:metadata=stream;
                 fruit:model=TimeCapsule6,116;
                 fruit:nfs_aces=no
+            # 8TB backup drive, read-only, so a LAN client cannot change a backup.
+            # No fruit vfs: streams_xattr needs to write to the share.
+            - name: SAMBA_VOLUME_CONFIG_backups
+              value: >-
+                [backups];
+                path=/shares/backups;
+                browsable=yes;
+                writable=no;
+                guest ok=no;
+                valid users=nas;
+                force user=root
           ports:
             - name: smb
               containerPort: 445
@@ -72,6 +83,12 @@ spec:
               mountPath: /shares/public
             - name: private
               mountPath: /shares/private
+            - name: backups
+              mountPath: /shares/backups
+              readOnly: true
+              # This pod outlives a USB drop. Without propagation it would keep the
+              # dead mount after systemd remounts the drive on the host.
+              mountPropagation: HostToContainer
             - name: avahi-services
               mountPath: /external/avahi
             - name: localtime
@@ -106,6 +123,12 @@ spec:
           hostPath:
             path: /mnt/nas/private
             type: DirectoryOrCreate
+        - name: backups
+          hostPath:
+            # From ansible/roles/usb-backup-mounts. Directory, not DirectoryOrCreate:
+            # an empty directory on the root disk must not pass for the 8TB.
+            path: /mnt/backup-8t/browse
+            type: Directory
         - name: avahi-services
           hostPath:
             path: /etc/avahi/services

@@ -161,7 +161,7 @@ Traefik on the local network path behind `192.168.1.124`. All `*.kblab.me` local
 
 | hostname | service | cluster | notes |
 |----------|---------|---------|-------|
-| agents.kblab.me | agent-web (Claude sessions, runs on the desktop) | home-k3s | Traefik Ingress -> 192.168.1.2:8790; kept off public DNS with the external-dns controller annotation; app token |
+| agents.kblab.me | agent-web (Claude sessions, runs on the desktop) | home-k3s | Traefik Ingress -> 192.168.1.2:8790; public through the tunnel, crowdsec plus Sign in with Forgejo (2FA required) |
 | hass.kblab.me | Home Assistant | home-k3s | Traefik Ingress |
 | grafana.kblab.me | Grafana | home-k3s | Traefik Ingress |
 | openclaw.kblab.me | OpenClaw | home-k3s | Traefik Ingress |

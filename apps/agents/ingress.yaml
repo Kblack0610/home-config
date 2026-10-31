@@ -8,16 +8,12 @@ metadata:
   annotations:
     kubernetes.io/ingress.class: traefik
     cert-manager.io/cluster-issuer: letsencrypt-dns
-    # Keep this host OFF public DNS. external-dns has no --domain-filter and the tunnel
-    # is a wildcard catch-all, so any *.kblab.me Ingress it sees becomes internet
-    # reachable (apps/gatus-fleet/ingress.yaml). A controller value other than
-    # dns-controller makes the v0.15 source skip the Ingress entirely. The `exclude`
-    # key used elsewhere is not an external-dns annotation and does nothing.
-    # This page types into live agent sessions; it must not be public.
-    external-dns.alpha.kubernetes.io/controller: none
-    # With no tunnel path, the allowlist sees real LAN sources again. The app's own
-    # Sign in with Forgejo is still the gate.
-    traefik.ingress.kubernetes.io/router.middlewares: monitoring-local-network-only@kubernetescrd
+    # Public on purpose, so a phone can reach it off the LAN without a VPN: external-dns
+    # publishes this host and the wildcard tunnel routes it. This page types into live
+    # agent sessions, so the gate is the app's Sign in with Forgejo, with 2FA required on
+    # the Forgejo account. crowdsec, not monitoring-local-network-only, which is a no-op
+    # behind the tunnel (apps/gatus-fleet/ingress.yaml).
+    traefik.ingress.kubernetes.io/router.middlewares: crowdsec-crowdsec-bouncer@kubernetescrd
 spec:
   ingressClassName: traefik
   tls:

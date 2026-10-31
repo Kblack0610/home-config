@@ -23,8 +23,10 @@ spec:
       template:
         metadata:
           labels:
-            app.kubernetes.io/name: postgres
-            app.kubernetes.io/component: backup
+            # Not app.kubernetes.io/name: postgres. That is the Service's selector,
+            # and this pod would become a ready endpoint with nothing on 5432, so
+            # the Service would refuse connections from every client while it runs.
+            app.kubernetes.io/name: postgres-backup
         spec:
           # The NAS disk is in asus-laptop.
           nodeSelector:

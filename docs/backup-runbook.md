@@ -31,6 +31,9 @@ The Seagate Expansion USB HDD (label `backup8t`, uuid `99a8c3bb-b1d9-4a78-88de-6
 | `@phones-snapshots` | `/mnt/backup-8t/phones-snapshots` | Dated read-only btrfs snapshots (14 retained) |
 | `@forgejo-packages` | `/mnt/backup-8t/forgejo-packages` | rsync mirror of the Forgejo package registry, excluded from `forgejo-backup` |
 | `@forgejo-packages-snapshots` | `/mnt/backup-8t/forgejo-packages-snapshots` | Dated read-only btrfs snapshots (4 retained) |
+| `@langfuse` | `/mnt/backup-8t/langfuse` | Langfuse Postgres dumps and ClickHouse archive (`docs/langfuse-storage.md`) |
+| `@victoria-metrics` | `/mnt/backup-8t/victoria-metrics` | Incremental `vmbackup` of VictoriaMetrics |
+| top level, read-only | `/mnt/backup-8t/browse` | Every subvolume in one path, for browsing and checks |
 | `@media` | `/mnt/backup-8t/media` | Reserved for Phase 2 (media library) |
 | `@app-config` | `/mnt/backup-8t/app-config` | Reserved for Phase 2 (all NAS app-config) |
 
@@ -64,13 +67,15 @@ sudo btrfs subvolume create /mnt/btrfs-top/@phones
 sudo btrfs subvolume create /mnt/btrfs-top/@phones-snapshots
 sudo btrfs subvolume create /mnt/btrfs-top/@forgejo-packages
 sudo btrfs subvolume create /mnt/btrfs-top/@forgejo-packages-snapshots
+sudo btrfs subvolume create /mnt/btrfs-top/@langfuse
+sudo btrfs subvolume create /mnt/btrfs-top/@victoria-metrics
 sudo btrfs subvolume create /mnt/btrfs-top/@media
 sudo btrfs subvolume create /mnt/btrfs-top/@app-config
 sudo umount /mnt/btrfs-top
 sudo rmdir /mnt/btrfs-top
 
 # 4. Create mount points
-sudo mkdir -p /mnt/backup-8t/{immich,immich-db,immich-snapshots,3d-prints,3d-prints-snapshots,phones,phones-snapshots,forgejo-packages,forgejo-packages-snapshots,media,app-config}
+sudo mkdir -p /mnt/backup-8t/{immich,immich-db,immich-snapshots,3d-prints,3d-prints-snapshots,phones,phones-snapshots,forgejo-packages,forgejo-packages-snapshots,langfuse,victoria-metrics,browse,media,app-config}
 
 # 5. Append to /etc/fstab (replace UUID with $NEW_UUID from step 2). noauto +
 #    x-systemd.automount mounts each subvolume on first access, so a detached
@@ -84,6 +89,9 @@ sudo mkdir -p /mnt/backup-8t/{immich,immich-db,immich-snapshots,3d-prints,3d-pri
 # UUID=... /mnt/backup-8t/phones-snapshots    btrfs noatime,compress=zstd:1,nofail,noauto,x-systemd.automount,x-systemd.device-timeout=10,subvol=@phones-snapshots 0 0
 # UUID=... /mnt/backup-8t/forgejo-packages    btrfs noatime,compress=zstd:1,nofail,noauto,x-systemd.automount,x-systemd.device-timeout=10,subvol=@forgejo-packages 0 0
 # UUID=... /mnt/backup-8t/forgejo-packages-snapshots btrfs noatime,compress=zstd:1,nofail,noauto,x-systemd.automount,x-systemd.device-timeout=10,subvol=@forgejo-packages-snapshots 0 0
+# UUID=... /mnt/backup-8t/langfuse            btrfs noatime,compress=zstd:1,nofail,noauto,x-systemd.automount,x-systemd.device-timeout=10,subvol=@langfuse 0 0
+# UUID=... /mnt/backup-8t/victoria-metrics    btrfs noatime,compress=zstd:1,nofail,noauto,x-systemd.automount,x-systemd.device-timeout=10,subvol=@victoria-metrics 0 0
+# UUID=... /mnt/backup-8t/browse              btrfs noatime,compress=zstd:1,nofail,noauto,x-systemd.automount,x-systemd.device-timeout=10,ro,subvolid=5 0 0
 # UUID=... /mnt/backup-8t/media               btrfs noatime,compress=zstd:1,nofail,noauto,x-systemd.automount,x-systemd.device-timeout=10,subvol=@media 0 0
 # UUID=... /mnt/backup-8t/app-config          btrfs noatime,compress=zstd:1,nofail,noauto,x-systemd.automount,x-systemd.device-timeout=10,subvol=@app-config 0 0
 

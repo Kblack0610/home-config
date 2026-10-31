@@ -65,6 +65,11 @@ spec:
                       exit 1
                     }
                     rm -f "$1/.write-probe"
+                    # A hostPath is always a mountpoint in here, so check what it is:
+                    # a btrfs subvolume root is inode 256, a plain directory on the
+                    # root disk is not. Without this the backup lands on the disk it
+                    # protects, as it did until 2026-10-31.
+                    [ "$(stat -c %i "$1")" = 256 ] || { log "FATAL: $1 is not the @langfuse subvolume - not on the 8TB"; exit 1; }
                   }
 
                   ch() { curl -sS --fail -X POST --data-binary @- \
@@ -182,4 +187,4 @@ spec:
             - name: backup
               hostPath:
                 path: /mnt/backup-8t/langfuse
-                type: DirectoryOrCreate
+                type: Directory

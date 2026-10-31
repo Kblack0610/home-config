@@ -23,8 +23,10 @@ spec:
       template:
         metadata:
           labels:
-            app.kubernetes.io/name: postgres
-            app.kubernetes.io/component: backup
+            # Not app.kubernetes.io/name: postgres. That is the Service's selector,
+            # and this pod would become a ready endpoint with nothing on 5432, so
+            # the Service would refuse connections from every client while it runs.
+            app.kubernetes.io/name: postgres-backup
         spec:
           # The NAS disk is in asus-laptop.
           nodeSelector:
@@ -61,6 +63,7 @@ spec:
                   OUT=/nas/backups/home-k3s/postgres
                   mkdir -p "$OUT"
                   FILE="$OUT/postgres-$(date +%Y%m%d-%H%M%S).sql.gz"
+                  trap 'rm -f "$FILE.tmp"' EXIT
                   # .tmp until it is whole: nas-backup-cleanup and nas-backup-verify
                   # only look at *.sql.gz, so a partial file can never count as a backup.
                   pg_dumpall --clean --if-exists | gzip > "$FILE.tmp"
@@ -68,7 +71,7 @@ spec:
                   # litellm alone is about 200 MB raw. gzip of an empty dump is a valid
                   # file, so the size is the check.
                   if [ "$SIZE" -lt 1048576 ]; then
-                    log "FATAL: dump is $SIZE bytes"; rm -f "$FILE.tmp"; exit 1
+                    log "FATAL: dump is $SIZE bytes"; exit 1
                   fi
                   gzip -t "$FILE.tmp"
                   mv "$FILE.tmp" "$FILE"

@@ -17,6 +17,10 @@ spec:
       labels:
         app.kubernetes.io/name: ntfy
     spec:
+      # Off the CI host: the pager must not share a failure domain with what it
+      # reports (hp-victus DiskPressure, 2026-10-31). The PVC follows this node.
+      nodeSelector:
+        kubernetes.io/hostname: raspberrypi-23a7710c
       containers:
         - name: ntfy
           image: binwiederhier/ntfy:v2.11.0

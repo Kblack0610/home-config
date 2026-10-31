@@ -17,6 +17,10 @@ spec:
       labels:
         app: vaultwarden
     spec:
+      # Off the CI host, whose disk filling took the vault down on 2026-10-31.
+      # The PVC follows this node.
+      nodeSelector:
+        kubernetes.io/hostname: raspberrypi-23a7710c
       securityContext:
         # Run rootless: uid 1000 binds ROCKET_PORT 8080 (>1024, no root needed).
         # fsGroup makes the local-path PVC group-writable so the SQLite db,

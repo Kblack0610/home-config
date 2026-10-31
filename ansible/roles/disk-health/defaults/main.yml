@@ -4,9 +4,11 @@
 # filesystem scrubs all of it.
 #
 # 07:00 is after the backup window (02:00-06:30), and the days are spread so no two
-# scrubs overlap. Scrub IO is idle class, but it still competes on a loaded node, so the
-# NVMe filesystems also have a limit per device: root is the slowest, as it holds the
-# live databases. `limit` empty means none: the USB drive is slower than any useful limit.
+# scrubs overlap. The unit's idle IO class does nothing here, because the NVMe drives use
+# the `none` scheduler, so the limit per device is the only brake: an unlimited scrub read
+# the NAS disk at 1.3 GiB/s. At these limits NAS takes about 2 hours and root about 3.
+# Root is the slowest, as it holds the live databases. `limit` empty means none: the USB
+# drive is slower than any useful limit.
 #
 # The 8TB path must be read-write: scrub refuses a read-only mount, so not browse.
 disk_health_scrubs:

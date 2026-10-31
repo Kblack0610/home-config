@@ -10,7 +10,8 @@ set -u
 RUNNER_HOME=${RUNNER_HOME:-/var/lib/actions-runner}
 GALLERY_DAYS=${GALLERY_DAYS:-1}
 IMAGE_DAYS=${IMAGE_DAYS:-7}
-TREE_DAYS=${TREE_DAYS:-7}
+PERF_TREE_DAYS=${PERF_TREE_DAYS:-1}
+RELEASE_TREE_DAYS=${RELEASE_TREE_DAYS:-7}
 
 now=$(date +%s)
 
@@ -37,18 +38,24 @@ docker images --format '{{.Repository}}:{{.Tag}}|{{.CreatedAt}}' | while IFS='|'
 done
 
 # A release or perf tree holds a whole checkout and Library, 40G to 60G. perf-round.yml
-# removes its own now; a tree nothing wrote to in TREE_DAYS is a slot that stopped getting
-# that job. The next one there starts cold.
+# removes its own when it ends, so one still here after a day was left by a failed job. A
+# release tree is kept warm on purpose, until a slot has stopped getting that job; the next
+# one there starts cold.
 for work in "$RUNNER_HOME"/unity-pool-*/_work; do
     [ -d "$work" ] || continue
     slot=${work%/_work}
-    if pgrep -f "$slot/bin/Runner.Worker" >/dev/null; then
+    # The runner keeps its binaries in bin.<version>, e.g. bin.2.338.0.
+    if pgrep -f "$slot/bin[^/]*/Runner\.Worker" >/dev/null; then
         echo "busy $slot"
         continue
     fi
     for tree in "$work"/*/*/Builds/perf-tree/* "$work"/*/*/Builds/release-tree/*; do
         [ -d "$tree" ] || continue
-        [ -z "$(find "$tree" -type f -mtime -"$TREE_DAYS" | head -n 1)" ] || continue
+        case "$tree" in
+            */perf-tree/*) days=$PERF_TREE_DAYS ;;
+            *) days=$RELEASE_TREE_DAYS ;;
+        esac
+        [ -z "$(find "$tree" -type f -mtime -"$days" | head -n 1)" ] || continue
         echo "tree $tree"
         rm -rf -- "$tree"
     done

@@ -32,19 +32,23 @@ case "\$1 \$2" in
     "image rm") echo "\$3" >> "$t/removed"; case "\$3" in *inuse) exit 1 ;; esac ;;
 esac
 STUB
+# Matches the way pgrep -f does, against the command line a live runner has.
 cat > "$t/bin/pgrep" <<STUB
 #!/bin/sh
-case "\$2" in *unity-pool-2/*) exit 0 ;; esac; exit 1
+echo "$t/runners/unity-pool-2/bin.2.338.0/Runner.Worker spawnclient 154 159" | grep -Eq -- "\$2"
 STUB
 chmod +x "$t/bin/docker" "$t/bin/pgrep"
 touch "$t/removed"
 
 R="$t/runners"; repo=_work/game/game/Builds
-for tree in unity-pool-1/$repo/perf-tree/stale unity-pool-1/$repo/release-tree/stale unity-pool-1/$repo/release-tree/fresh \
+for tree in unity-pool-1/$repo/perf-tree/stale unity-pool-1/$repo/perf-tree/days3 unity-pool-1/$repo/perf-tree/today \
+            unity-pool-1/$repo/release-tree/stale unity-pool-1/$repo/release-tree/fresh \
             unity-pool-2/$repo/perf-tree/busy unity-pool-1/$repo/other/stale; do
     mkdir -p "$R/$tree"; touch -d '10 days ago' "$R/$tree/file"
 done
 touch -d '3 days ago' "$R/unity-pool-1/$repo/release-tree/fresh/recent"
+touch -d '3 days ago' "$R/unity-pool-1/$repo/perf-tree/days3/file"
+touch "$R/unity-pool-1/$repo/perf-tree/today/recent"
 
 RUNNER_HOME=$R PATH="$t/bin:$PATH" sh "$here/ci-disk-prune.sh" > "$t/log" 2>&1
 rc=$?
@@ -61,10 +65,10 @@ check "a similar name stays"             'unity-other' "$t/removed" 0
 check "alpine stays"                     'alpine' "$t/removed" 0
 check "an untagged image stays"          'gitleaks' "$t/removed" 0
 check "an image in use is reported"      'kept unity-core-playground-test:inuse' "$t/log" 1
-for gone in perf-tree/stale release-tree/stale; do
+for gone in perf-tree/stale perf-tree/days3 release-tree/stale; do
     if [ -e "$R/unity-pool-1/$repo/$gone" ]; then echo "FAIL $gone survived"; fail=1; else echo "ok   $gone removed"; fi
 done
-for kept in unity-pool-1/$repo/release-tree/fresh unity-pool-2/$repo/perf-tree/busy unity-pool-1/$repo/other/stale; do
+for kept in unity-pool-1/$repo/release-tree/fresh unity-pool-1/$repo/perf-tree/today unity-pool-2/$repo/perf-tree/busy unity-pool-1/$repo/other/stale; do
     if [ -e "$R/$kept/file" ]; then echo "ok   kept $kept" | sed "s#$repo/##"; else echo "FAIL $kept removed"; fail=1; fi
 done
 exit $fail

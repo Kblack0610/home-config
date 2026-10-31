@@ -22,7 +22,12 @@ RestartSec=5
 # the kubelet on a k3s node.
 Slice={{ gh_runner_slice }}
 {% endif %}
-KillMode=process
+# mixed: SIGTERM to runsvc.sh alone, which forwards it, then whatever is left in the
+# unit is killed before a restart. With KillMode=process an OOM kill of the main
+# process left the listener alive, each restart added another on the same directory,
+# and they took one job together and deleted each other's _temp, so every job failed
+# in seconds (2026-10-31, hp-victus unity-pool-1 and -2, 3 listeners each).
+KillMode=mixed
 KillSignal=SIGTERM
 TimeoutStopSec=5min
 # The runner binary self-updates in-place; don't lock the exec file.

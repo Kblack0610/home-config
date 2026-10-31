@@ -324,7 +324,7 @@ ssh -p 2222 192.168.1.152 sudo cat /mnt/nas/private/backups/home-k3s/postgres/po
   | gunzip | kubectl --context home-k3s exec -i -n databases deploy/postgres -- psql -U postgres -v ON_ERROR_STOP=0 postgres
 ```
 
-`ON_ERROR_STOP=0` because `pg_dumpall` always recreates the role you are connected as, which reports one harmless error. Read the output for anything else.
+`ON_ERROR_STOP=0` because `pg_dumpall` always drops and recreates the role you are connected as, which reports two harmless errors: `current user cannot be dropped` and `role "postgres" already exists`. Read the output for anything else.
 
 To test a dump without touching the live server, load it into a throwaway `pgvector/pgvector:0.8.2-pg17-trixie` container and compare per-database table row counts with the live server.
 

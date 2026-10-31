@@ -5,11 +5,16 @@ A local-path PV is pinned to one node, and everything on it goes down with that 
 ## Procedure
 
 1. Open a PR adding `nodeSelector` to the Deployment. Wait for CI, and do not merge yet.
-2. Suspend Flux: `kubectl -n flux-system patch kustomization apps --type=merge -p '{"spec":{"suspend":true}}'`
+2. Suspend both Flux levels, parent first, because `flux-system` manages `apps` and clears a suspend set on `apps` alone: `for k in flux-system apps; do kubectl -n flux-system patch kustomization $k --type=merge -p '{"spec":{"suspend":true}}'; done`
 3. For each app: `KUBE_CONTEXT=home-k3s scripts/move-local-path-pvc.sh <ns> <pvc> <deployment> <node>`
-4. Merge the PR, then resume: `kubectl -n flux-system patch kustomization apps --type=merge -p '{"spec":{"suspend":false}}'`
+4. Check every move printed `Done`, or do not merge. Merged early, the `nodeSelector` strands the app Pending while its data is still on the old node.
+5. Merge the PR, then resume: `for k in flux-system apps; do kubectl -n flux-system patch kustomization $k --type=merge -p '{"spec":{"suspend":false}}'; done`
 
-Merge before resuming. Otherwise Flux removes the `nodeSelector`, and the app can land on the wrong node.
+Merge before resuming. Otherwise Flux removes the `nodeSelector`.
+
+## If the script stops midway
+
+The app is scaled to 0 and the old data is intact. Rerunning does not work once the old PVC is gone, because the script reads the old PV from it. Finish by hand from the script's own steps: recreate the PVC, run the two copy pods, compare hashes, then scale the app back up.
 
 The script sets the old PV to `Retain`, stops the app, recreates the PVC on the target node, streams the data between two pods, compares hashes and restarts the app. Check the image supports the target's architecture first: Pis are arm64.
 

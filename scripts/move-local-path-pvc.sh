@@ -3,20 +3,22 @@
 #
 #   KUBE_CONTEXT=home-k3s scripts/move-local-path-pvc.sh <ns> <pvc> <deployment> <target-node>
 #
-# Suspend Flux first, or it recreates the PVC mid-move and the app starts empty:
-#   kubectl -n flux-system patch kustomization apps --type=merge -p '{"spec":{"suspend":true}}'
-# Then merge the matching nodeSelector before resuming. Procedure, rollback and
-# cleanup: docs/runbooks/move-local-path-pvc.md
+# Suspend Flux first, or it recreates the PVC mid-move and the app starts empty.
+# Merge the matching nodeSelector before resuming. Procedure, rollback and cleanup:
+# docs/runbooks/move-local-path-pvc.md
 set -euo pipefail
 
-[ $# -eq 4 ] || { sed -n 2,8p "$0"; exit 2; }
+[ $# -eq 4 ] || { sed -n 2,7p "$0"; exit 2; }
 NS=$1 PVC=$2 DEPLOY=$3 NODE=$4
 K=(kubectl ${KUBE_CONTEXT:+--context "$KUBE_CONTEXT"})
 IMAGE=alpine:3.24.1
 SRC=pvc-move-src DST=pvc-move-dst
 
-[ "$("${K[@]}" -n flux-system get kustomization apps -o jsonpath='{.spec.suspend}')" = true ] \
-  || { echo "ERROR: Flux kustomization apps is not suspended" >&2; exit 1; }
+# flux-system manages apps and clears a suspend set on apps alone, so both must be set.
+for ks in flux-system apps; do
+  [ "$("${K[@]}" -n flux-system get kustomization "$ks" -o jsonpath='{.spec.suspend}')" = true ] \
+    || { echo "ERROR: Flux kustomization $ks is not suspended" >&2; exit 1; }
+done
 
 PV=$("${K[@]}" -n "$NS" get pvc "$PVC" -o jsonpath='{.spec.volumeName}')
 PV_JSON=$("${K[@]}" get pv "$PV" -o json)
@@ -41,6 +43,11 @@ trap cleanup EXIT
 
 "${K[@]}" -n "$NS" scale deploy "$DEPLOY" --replicas=0 >/dev/null
 "${K[@]}" -n "$NS" wait --for=delete pod -l "$SELECTOR" --timeout=120s >/dev/null 2>&1 || true
+# Finished pods, such as a backup CronJob's, hold the claim's protection finalizer.
+"${K[@]}" -n "$NS" get pods -o json | jq -r --arg c "$PVC" '.items[]
+  | select(.status.phase == "Succeeded" or .status.phase == "Failed")
+  | select(any(.spec.volumes[]?; .persistentVolumeClaim.claimName == $c)) | .metadata.name' \
+  | while read -r pod; do "${K[@]}" -n "$NS" delete pod "$pod" >/dev/null; done
 "${K[@]}" -n "$NS" delete pvc "$PVC" --timeout=60s >/dev/null
 "${K[@]}" apply -f - <<<"$NEW_PVC" >/dev/null
 

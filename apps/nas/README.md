@@ -19,8 +19,11 @@ Samba file server running on the `asus-laptop` node, providing SMB shares for LA
 |-------|-------------|------|-------|
 | `public` | `/mnt/nas/public` | Guest OK | macOS-friendly (fruit VFS) |
 | `private` | `/mnt/nas/private` | User `nas` required | Backups stored here |
+| `backups` | `/mnt/backup-8t/browse` | User `nas` required | The 8TB USB drive, read-only: every mirror and snapshot |
 
-Both shares use `vfs objects = fruit streams_xattr` for macOS compatibility (Time Capsule icon, metadata streams).
+`public` and `private` use `vfs objects = fruit streams_xattr` for macOS compatibility (Time Capsule icon, metadata streams). `backups` does not, because that module writes to the share.
+
+The 8TB is a backup target, not extra NAS space. Anything stored only there has no second copy, which is why the share is read-only. Mounts and subvolumes come from `ansible/roles/usb-backup-mounts`.
 
 ## Important Manifests
 

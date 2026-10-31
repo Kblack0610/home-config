@@ -1,6 +1,6 @@
 # usb-backup-mounts
 
-Owns the seven btrfs subvolume mounts of the 8TB USB backup drive on `asus-laptop`, and makes them survive the drive re-enumerating under a different device node.
+Owns the btrfs subvolume mounts of the 8TB USB backup drive on `asus-laptop`, and makes them survive the drive re-enumerating under a different device node.
 
 ## Why
 

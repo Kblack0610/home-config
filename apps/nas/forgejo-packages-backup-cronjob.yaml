@@ -1,0 +1,71 @@
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: forgejo-packages-backup
+  namespace: nas
+spec:
+  # Weekly, Sunday 4:45 AM. The registry is re-buildable and content-addressed,
+  # so it does not need the daily full. forgejo-backup excludes it for that
+  # reason: at 178G it was 80% of each archive.
+  schedule: "45 4 * * 0"
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      backoffLimit: 1
+      activeDeadlineSeconds: 21600
+      template:
+        spec:
+          nodeSelector:
+            kubernetes.io/hostname: asus-laptop
+            storage.role/nas: "true"
+          # Privileged: required for btrfs subvolume snapshot/delete commands
+          securityContext:
+            runAsUser: 0
+          containers:
+            - name: backup
+              image: alpine:3.24.1
+              securityContext:
+                privileged: true
+              # Guards, rsync, snapshot and prune live in mirror-snapshot.sh
+              # (the nas-mirror-script ConfigMap).
+              command: ["/bin/sh", "/scripts/mirror-snapshot.sh"]
+              env:
+                - name: NAME
+                  value: forgejo-packages
+                - name: KEEP
+                  value: "4"
+              volumeMounts:
+                - name: script
+                  mountPath: /scripts
+                  readOnly: true
+                - name: source
+                  mountPath: /source
+                  readOnly: true
+                - name: backup-dest
+                  mountPath: /backup-dest
+                - name: snapshots
+                  mountPath: /snapshots
+          restartPolicy: Never
+          volumes:
+            - name: script
+              configMap:
+                name: nas-mirror-script
+            # The Forgejo data PV is local-path on asus-laptop, so the mirror
+            # reads it from the node instead of a second mount of the PVC.
+            - name: source
+              hostPath:
+                path: /var/lib/rancher/k3s/storage/pvc-85cd4c8e-b60d-46be-a67e-c4369cd5f9ef_forgejo_forgejo-data/gitea/data/packages
+                type: Directory
+            # Directory, not DirectoryOrCreate: the subvolumes come from the
+            # usb-backup-mounts role. To move this backup to a new disk, change
+            # these two paths and that role.
+            - name: backup-dest
+              hostPath:
+                path: /mnt/backup-8t/forgejo-packages
+                type: Directory
+            - name: snapshots
+              hostPath:
+                path: /mnt/backup-8t/forgejo-packages-snapshots
+                type: Directory

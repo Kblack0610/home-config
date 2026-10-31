@@ -29,6 +29,8 @@ The Seagate Expansion USB HDD (label `backup8t`, uuid `99a8c3bb-b1d9-4a78-88de-6
 | `@3d-prints-snapshots` | `/mnt/backup-8t/3d-prints-snapshots` | Dated read-only btrfs snapshots (14 retained) |
 | `@phones` | `/mnt/backup-8t/phones` | rsync mirror of phone archives (`/mnt/nas/private/phones`, see `Phone backup`) |
 | `@phones-snapshots` | `/mnt/backup-8t/phones-snapshots` | Dated read-only btrfs snapshots (14 retained) |
+| `@forgejo-packages` | `/mnt/backup-8t/forgejo-packages` | rsync mirror of the Forgejo package registry, excluded from `forgejo-backup` |
+| `@forgejo-packages-snapshots` | `/mnt/backup-8t/forgejo-packages-snapshots` | Dated read-only btrfs snapshots (4 retained) |
 | `@media` | `/mnt/backup-8t/media` | Reserved for Phase 2 (media library) |
 | `@app-config` | `/mnt/backup-8t/app-config` | Reserved for Phase 2 (all NAS app-config) |
 
@@ -60,13 +62,15 @@ sudo btrfs subvolume create /mnt/btrfs-top/@3d-prints
 sudo btrfs subvolume create /mnt/btrfs-top/@3d-prints-snapshots
 sudo btrfs subvolume create /mnt/btrfs-top/@phones
 sudo btrfs subvolume create /mnt/btrfs-top/@phones-snapshots
+sudo btrfs subvolume create /mnt/btrfs-top/@forgejo-packages
+sudo btrfs subvolume create /mnt/btrfs-top/@forgejo-packages-snapshots
 sudo btrfs subvolume create /mnt/btrfs-top/@media
 sudo btrfs subvolume create /mnt/btrfs-top/@app-config
 sudo umount /mnt/btrfs-top
 sudo rmdir /mnt/btrfs-top
 
 # 4. Create mount points
-sudo mkdir -p /mnt/backup-8t/{immich,immich-db,immich-snapshots,3d-prints,3d-prints-snapshots,phones,phones-snapshots,media,app-config}
+sudo mkdir -p /mnt/backup-8t/{immich,immich-db,immich-snapshots,3d-prints,3d-prints-snapshots,phones,phones-snapshots,forgejo-packages,forgejo-packages-snapshots,media,app-config}
 
 # 5. Append to /etc/fstab (replace UUID with $NEW_UUID from step 2). noauto +
 #    x-systemd.automount mounts each subvolume on first access, so a detached
@@ -78,6 +82,8 @@ sudo mkdir -p /mnt/backup-8t/{immich,immich-db,immich-snapshots,3d-prints,3d-pri
 # UUID=... /mnt/backup-8t/3d-prints-snapshots btrfs noatime,compress=zstd:1,nofail,noauto,x-systemd.automount,x-systemd.device-timeout=10,subvol=@3d-prints-snapshots 0 0
 # UUID=... /mnt/backup-8t/phones              btrfs noatime,compress=zstd:1,nofail,noauto,x-systemd.automount,x-systemd.device-timeout=10,subvol=@phones 0 0
 # UUID=... /mnt/backup-8t/phones-snapshots    btrfs noatime,compress=zstd:1,nofail,noauto,x-systemd.automount,x-systemd.device-timeout=10,subvol=@phones-snapshots 0 0
+# UUID=... /mnt/backup-8t/forgejo-packages    btrfs noatime,compress=zstd:1,nofail,noauto,x-systemd.automount,x-systemd.device-timeout=10,subvol=@forgejo-packages 0 0
+# UUID=... /mnt/backup-8t/forgejo-packages-snapshots btrfs noatime,compress=zstd:1,nofail,noauto,x-systemd.automount,x-systemd.device-timeout=10,subvol=@forgejo-packages-snapshots 0 0
 # UUID=... /mnt/backup-8t/media               btrfs noatime,compress=zstd:1,nofail,noauto,x-systemd.automount,x-systemd.device-timeout=10,subvol=@media 0 0
 # UUID=... /mnt/backup-8t/app-config          btrfs noatime,compress=zstd:1,nofail,noauto,x-systemd.automount,x-systemd.device-timeout=10,subvol=@app-config 0 0
 
@@ -138,15 +144,16 @@ K3s app backups run on schedule via CronJobs. Each backup writes a local archive
 | `snapcast-backup` | Daily 2:45 AM | `snapcast` | hp-victus `/var/backups/snapcast` + NAS `home-k3s/snapcast/` |
 | `game-saves-backup` | Daily 2:50 AM | `game-registry` | NAS `home-k3s/game-saves/` (registry Postgres dump + `game-saves` bucket mirror) |
 | `actual-budget-backup` | Daily 3 AM | `actual-budget` | `/var/backups/actual-budget` + NAS `home-k3s/actual-budget/` |
-| `forgejo-backup` | Daily 3 AM | `forgejo` | asus-laptop `/mnt/backups/forgejo` (2nd disk; off-box copy is the separate job below) |
+| `forgejo-backup` | Daily 3 AM | `forgejo` | asus-laptop `/mnt/backups/forgejo` (2nd disk; excludes `gitea/data/packages`; off-box copy is the separate job below) |
 | `immich-backup` | Daily 3 AM | `immich` | `/var/backups/immich` + NAS `home-k3s/immich/` (DB only) |
 | `karakeep-backup` | Daily 3 AM | `karakeep` | `/var/backups/karakeep` (LOCAL ONLY - no off-box copy) |
 | `vaultwarden-backup` | Daily 3 AM | `vaultwarden` | `/var/backups/vaultwarden` + NAS `home-k3s/vaultwarden/` |
-| `forgejo-backup-offbox` | Daily 3:30 AM | `forgejo` | hp-victus NFS `192.168.1.243:/srv/backups/forgejo` |
 | `immich-originals-backup` | Daily 3:30 AM | `immich` | 8TB `/mnt/backup-8t/immich` + snapshots (originals + DB) |
 | `3d-prints-backup` | Sunday 3:45 AM | `nas` | 8TB `/mnt/backup-8t/3d-prints` + snapshots (mirror of `/mnt/nas/public/3d-printing`) |
 | `phones-backup` | Sunday 4:15 AM | `nas` | 8TB `/mnt/backup-8t/phones` + snapshots (mirror of `/mnt/nas/private/phones`) |
 | `sops-key-backup` | Sunday 4 AM | `nas` | NAS `home-k3s/sops/` |
+| `forgejo-backup-offbox` | Daily 4:30 AM | `forgejo` | hp-victus NFS `192.168.1.243:/srv/backups/forgejo` (newest 2 fulls) |
+| `forgejo-packages-backup` | Sunday 4:45 AM | `nas` | 8TB `/mnt/backup-8t/forgejo-packages` + snapshots (the Forgejo package registry) |
 | `zomboid-backup` | Daily 4:30 AM | `zomboid` | NAS **public** share `backups/zomboid/` |
 | `nas-backup-cleanup` | Sunday 5 AM | `nas` | not applicable |
 | `nas-backup-verify` | Monday 6 AM | `nas` | writes `manifest.log` |

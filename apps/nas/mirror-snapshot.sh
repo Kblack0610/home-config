@@ -3,7 +3,8 @@
 # dated read-only btrfs snapshot and prune to the newest $KEEP.
 #
 # Shipped as the `nas-mirror-script` ConfigMap and run by every 8TB mirror
-# CronJob in this namespace (3d-prints-backup, phones-backup). The CronJob
+# CronJob in this namespace (3d-prints-backup, phones-backup,
+# forgejo-packages-backup). The CronJob
 # supplies the three mounts and the env:
 #   /source       the dataset, mounted read-only
 #   /backup-dest  an 8TB btrfs subvolume (the mirror)
@@ -40,6 +41,17 @@ require_live_mount() {
 
 require_live_mount /backup-dest
 require_live_mount /snapshots
+
+# A hostPath is always a mountpoint inside the container, so the check above
+# cannot see a missing host mount. If the subvolume is absent, the mirror would
+# land on the node's root disk. The snapshot step needs a subvolume anyway, so
+# fail here, before any data moves.
+for dir in /backup-dest /snapshots; do
+  btrfs subvolume show "$dir" >/dev/null 2>&1 || {
+    echo "ERROR: $dir is not a btrfs subvolume (host mount missing?). Aborting."
+    exit 1
+  }
+done
 
 # -- Source-safety guard -----------------------------------------------------
 # The source lives on a NAS share (a separate mount). If that mount is gone,

@@ -189,9 +189,12 @@ Endpoints:
 
 ## Backup Notes
 
-- `forgejo-backup` runs daily at `03:00`
-- Full archives and compressed SQLite backups stored under `/var/backups/forgejo` (hostPath on asus-laptop's root disk)
-- Retention: newest **7** full backups (~55G each). The job prunes BEFORE writing and aborts if `/backup` has under 100G free, so it can never fill the node.
+- `forgejo-backup` runs daily at `03:00` and writes full archives and compressed SQLite backups to `/mnt/backups/forgejo` on asus-laptop's second disk.
+- Retention: newest **7**. Archives are written to `*.tmp` and renamed on success, so a partial never looks like a backup. Pruning runs after a good backup, and the job aborts if `/backup` has under 100G free.
+- GNU tar exit 1 ("file changed as we read it") counts as success, since the archive is complete and Forgejo keeps writing during the backup. Exit 2 fails the job.
+- `gitea/data/packages` (178G) is excluded. `forgejo-packages-backup` in the `nas` namespace mirrors it weekly to the 8TB drive.
+- `forgejo-backup-offbox` runs at `04:30` and keeps the newest **2** fulls on hp-victus. It reads only completed archives, checks size and `gzip -t`, and aborts if the copy would leave hp-victus under 190G free.
+- `nas-backup-verify` checks all of this weekly, including off-box size against the primary.
 - History: on 2026-07-09 a retention of 30 (~1.6TiB of daily fulls) filled asus-laptop's root disk, tripped kubelet DiskPressure, and evicted the entire home-k3s workload cluster for ~6h. Retention was cut to 7 and a prune-first + free-space guard added. Longer-term recovery points belong off-box (MinIO/S3), not on the same disk as the data they protect.
 
 ## Related Docs

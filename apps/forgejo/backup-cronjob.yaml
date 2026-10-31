@@ -7,10 +7,13 @@ metadata:
     app.kubernetes.io/name: forgejo
 spec:
   schedule: "0 3 * * *"  # Daily at 3 AM
+  concurrencyPolicy: Forbid
   successfulJobsHistoryLimit: 3
   failedJobsHistoryLimit: 1
   jobTemplate:
     spec:
+      backoffLimit: 1
+      activeDeadlineSeconds: 14400  # 4h; a normal run is under 1h
       template:
         spec:
           containers:
@@ -24,25 +27,28 @@ spec:
                   apk add --no-cache tar gzip sqlite coreutils
                   TIMESTAMP=$(date +%Y%m%d-%H%M%S)
 
-                  # Retain this many daily full backups (~55G each). These land on
-                  # asus-laptop's SECOND disk (hostPath /mnt/backups on nvme1n1p2,
-                  # 1.9T, separate from the k3s root disk). Until 2026-07-09 they
-                  # went to the ROOT disk with retention 30 (~1.6TiB), which filled
-                  # it, tripped kubelet DiskPressure, and evicted the whole cluster.
-                  # A second, off-box copy on hp-victus is made by the companion
-                  # CronJob forgejo-backup-offbox (NFS). This job = local copy only.
+                  # Retain this many daily full backups (git data, about 45G before
+                  # compression). These land on asus-laptop's SECOND disk (hostPath
+                  # /mnt/backups on nvme1n1p2, 1.9T, separate from the k3s root disk).
+                  # Until 2026-07-09 they went to the ROOT disk with retention 30
+                  # (~1.6TiB), which filled it, tripped kubelet DiskPressure, and
+                  # evicted the whole cluster. A second, off-box copy on hp-victus is
+                  # made by the companion CronJob forgejo-backup-offbox (NFS).
+                  #
+                  # gitea/data/packages (the OCI and npm registry, 177G by 2026-10-31)
+                  # is excluded: it took a full from 55G to 215G and over 2h to write.
+                  # Its blobs are immutable, so the weekly nas forgejo-packages-backup
+                  # mirrors them to the 8TB drive instead.
                   KEEP=7
                   MIN_FREE_GB=100
+                  FULL=/backup/forgejo-full-$TIMESTAMP.tar.gz
+                  DB=/backup/forgejo-db-$TIMESTAMP.db
 
                   echo "Starting Forgejo backup at $TIMESTAMP (keep=$KEEP)"
 
-                  # 1. Prune FIRST so the disk never holds more than KEEP backups.
-                  #    Delete oldest fulls beyond (KEEP-1); the new one below makes KEEP.
-                  ls -t /backup/forgejo-full-*.tar.gz 2>/dev/null | tail -n +$KEEP | xargs -r rm -v
-                  ls -t /backup/forgejo-db-*.db.gz    2>/dev/null | tail -n +$KEEP | xargs -r rm -v
-
-                  # 2. Abort loudly if headroom is still too low, rather than
-                  #    filling the disk and taking the node down again.
+                  # 1. Clear what a killed run left, then abort loudly if headroom is
+                  #    too low, rather than filling the disk and taking the node down.
+                  rm -f /backup/*.tmp
                   FREE_GB=$(df -PBG /backup | awk 'NR==2 {gsub(/G/,"",$4); print $4}')
                   echo "Free space on /backup: ${FREE_GB}G (need >= ${MIN_FREE_GB}G)"
                   if [ "$FREE_GB" -lt "$MIN_FREE_GB" ]; then
@@ -50,17 +56,39 @@ spec:
                     exit 1
                   fi
 
-                  # 3. Full backup of /data directory
-                  tar -czf /backup/forgejo-full-$TIMESTAMP.tar.gz -C /data .
+                  # 2. Full backup of /data. It is written as .tmp and renamed only once
+                  #    it is proven whole, so forgejo-backup-offbox and the prune below
+                  #    can never take a partial file for a backup.
+                  #    GNU tar exits 1 for "file changed as we read it", which is normal
+                  #    on a live server (the SQLite WAL) and leaves a valid archive;
+                  #    exit 2 is the real failure. Treating 1 as fatal made every run
+                  #    retry for hours.
+                  trap 'rm -f "$FULL.tmp" "$DB.tmp" "$DB.gz.tmp"' EXIT
+                  TAR_RC=0
+                  tar --exclude=./gitea/data/packages -czf "$FULL.tmp" -C /data . || TAR_RC=$?
+                  if [ "$TAR_RC" -gt 1 ]; then
+                    echo "ABORT: tar exited $TAR_RC" >&2
+                    exit "$TAR_RC"
+                  fi
+                  gzip -t "$FULL.tmp"
+                  mv "$FULL.tmp" "$FULL"
 
-                  # 4. Separate SQLite DB backup for quick restore
+                  # 3. Separate SQLite DB backup for quick restore
                   if [ -f /data/gitea/gitea.db ]; then
-                    cp /data/gitea/gitea.db /backup/forgejo-db-$TIMESTAMP.db
-                    gzip /backup/forgejo-db-$TIMESTAMP.db
+                    cp /data/gitea/gitea.db "$DB.tmp"
+                    gzip -c "$DB.tmp" > "$DB.gz.tmp"
+                    rm -f "$DB.tmp"
+                    mv "$DB.gz.tmp" "$DB.gz"
                   fi
 
-                  echo "Backup complete: forgejo-full-$TIMESTAMP.tar.gz"
-                  ls -lh /backup/forgejo-full-$TIMESTAMP.tar.gz
+                  # 4. Prune only after a good backup exists. Pruning first let each
+                  #    failed retry delete an older good backup; by 2026-10-31 the
+                  #    retries had consumed all but the last 30 hours of history.
+                  ls -t /backup/forgejo-full-*.tar.gz 2>/dev/null | tail -n +$((KEEP+1)) | xargs -r rm -v
+                  ls -t /backup/forgejo-db-*.db.gz    2>/dev/null | tail -n +$((KEEP+1)) | xargs -r rm -v
+
+                  echo "Backup complete: $(basename "$FULL")"
+                  ls -lh "$FULL"
                   echo "Retained backups:"
                   ls -lht /backup/forgejo-full-*.tar.gz
               volumeMounts:
@@ -69,7 +97,9 @@ spec:
                   readOnly: true
                 - name: backup
                   mountPath: /backup
-          restartPolicy: OnFailure
+          # Never, not OnFailure: OnFailure makes the Job controller delete the
+          # failed pod, taking its logs with it (see nas 3d-prints-backup).
+          restartPolicy: Never
           volumes:
             - name: data
               persistentVolumeClaim:
@@ -92,11 +122,14 @@ metadata:
   labels:
     app.kubernetes.io/name: forgejo
 spec:
-  schedule: "30 3 * * *"  # 30 min after the local backup (0 3 * * *)
+  schedule: "30 4 * * *"  # 90 min after the local backup (0 3 * * *), which takes under 1h
+  concurrencyPolicy: Forbid
   successfulJobsHistoryLimit: 3
   failedJobsHistoryLimit: 2
   jobTemplate:
     spec:
+      backoffLimit: 1
+      activeDeadlineSeconds: 10800  # 3h
       template:
         spec:
           # Must run on asus-laptop: it reads the local backups written by the
@@ -112,10 +145,18 @@ spec:
                 - -c
                 - |
                   set -eu
+                  apk add --no-cache coreutils gzip
                   # Off-box copy of the newest forgejo backup to hp-victus (a
-                  # DIFFERENT machine) over NFS, for real disaster recovery. The
-                  # local copy already exists; this is best-effort second copy.
-                  KEEP_OFFBOX=4   # hp-victus root is smaller (938G, shared w/ CI)
+                  # DIFFERENT machine) over NFS, for real disaster recovery.
+                  #
+                  # Until 2026-10-31 this copied whatever was newest at 03:30, while
+                  # the 03:00 tar was still writing it: 60G of a 215G file, with
+                  # nothing checking. Those copies filled hp-victus, whose DiskPressure
+                  # took down the cluster's monitoring and pager. So now: a complete
+                  # source only (the primary renames when whole), prune first, refuse
+                  # to go under the free-space floor, and prove the copy.
+                  KEEP_OFFBOX=2     # hp-victus root is shared with CI and 13 PVs
+                  MIN_FREE_GB=190   # 20% of its 938G; kubelet evicts at 5%, clears at 15%
 
                   NEWEST_FULL=$(ls -t /local/forgejo-full-*.tar.gz 2>/dev/null | head -1 || true)
                   if [ -z "$NEWEST_FULL" ]; then
@@ -123,14 +164,40 @@ spec:
                     exit 1
                   fi
                   NEWEST_DB=$(ls -t /local/forgejo-db-*.db.gz 2>/dev/null | head -1 || true)
+                  NAME=$(basename "$NEWEST_FULL")
+                  SRC_BYTES=$(stat -c %s "$NEWEST_FULL")
 
-                  echo "Copying $(basename "$NEWEST_FULL") off-box to hp-victus..."
-                  cp -f "$NEWEST_FULL" /offbox/
+                  if [ -f "/offbox/$NAME" ] && [ "$(stat -c %s "/offbox/$NAME")" = "$SRC_BYTES" ]; then
+                    echo "$NAME is already off-box, same size. Nothing to do."
+                    exit 0
+                  fi
+
+                  # 1. Prune first, keeping KEEP_OFFBOX-1 so the new copy makes KEEP_OFFBOX.
+                  rm -f /offbox/*.tmp
+                  ls -t /offbox/forgejo-full-*.tar.gz 2>/dev/null | tail -n +$KEEP_OFFBOX | xargs -r rm -v
+                  ls -t /offbox/forgejo-db-*.db.gz    2>/dev/null | tail -n +$KEEP_OFFBOX | xargs -r rm -v
+
+                  # 2. This disk's other tenants matter more than a second copy.
+                  SRC_GB=$(( SRC_BYTES / 1073741824 + 1 ))
+                  FREE_GB=$(df -PBG /offbox | awk 'NR==2 {gsub(/G/,"",$4); print $4}')
+                  echo "hp-victus free: ${FREE_GB}G, copy: ${SRC_GB}G, floor: ${MIN_FREE_GB}G"
+                  if [ $(( FREE_GB - SRC_GB )) -lt "$MIN_FREE_GB" ]; then
+                    echo "ABORT: copying would leave under ${MIN_FREE_GB}G free on hp-victus." >&2
+                    exit 1
+                  fi
+
+                  # 3. Copy to .tmp, prove it, then rename.
+                  TMP="/offbox/$NAME.tmp"
+                  trap 'rm -f "$TMP"' EXIT
+                  echo "Copying $NAME off-box to hp-victus..."
+                  cp -f "$NEWEST_FULL" "$TMP"
+                  if [ "$(stat -c %s "$TMP")" != "$SRC_BYTES" ]; then
+                    echo "ABORT: size differs after copy." >&2
+                    exit 1
+                  fi
+                  gzip -t "$TMP"
+                  mv -f "$TMP" "/offbox/$NAME"
                   [ -n "$NEWEST_DB" ] && cp -f "$NEWEST_DB" /offbox/ || true
-
-                  # Prune off-box to KEEP_OFFBOX newest.
-                  ls -t /offbox/forgejo-full-*.tar.gz 2>/dev/null | tail -n +$((KEEP_OFFBOX+1)) | xargs -r rm -v
-                  ls -t /offbox/forgejo-db-*.db.gz    2>/dev/null | tail -n +$((KEEP_OFFBOX+1)) | xargs -r rm -v
 
                   echo "Off-box copy complete. On hp-victus:"
                   ls -lht /offbox/forgejo-full-*.tar.gz
@@ -140,7 +207,9 @@ spec:
                   readOnly: true
                 - name: offbox
                   mountPath: /offbox
-          restartPolicy: OnFailure
+          # Never, not OnFailure: OnFailure makes the Job controller delete the
+          # failed pod, taking its logs with it (see nas 3d-prints-backup).
+          restartPolicy: Never
           volumes:
             - name: local
               hostPath:

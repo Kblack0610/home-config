@@ -9,6 +9,9 @@ spec:
   failedJobsHistoryLimit: 1
   jobTemplate:
     spec:
+      backoffLimit: 0
+      # An NFS mount that never comes up must still end in a failed Job.
+      activeDeadlineSeconds: 14400
       template:
         spec:
           nodeSelector:
@@ -59,6 +62,70 @@ spec:
                     fi
                   done
 
+                  # Forgejo keeps its backups off the NAS tree, so it gets its own checks.
+                  # Off-box copies were truncated for weeks because nothing compared them
+                  # to the primary.
+                  FJ_LATEST=$(ls -t /forgejo-backups/forgejo-full-*.tar.gz 2>/dev/null | head -1)
+                  if [ -z "$FJ_LATEST" ]; then
+                    REPORT="$REPORT\nFAIL: forgejo - no full backup found"
+                    ERRORS=$((ERRORS + 1))
+                  else
+                    FJ_AGE=$(( $(date +%s) - $(stat -c %Y "$FJ_LATEST") ))
+                    if [ "$FJ_AGE" -gt 172800 ]; then
+                      REPORT="$REPORT\nFAIL: forgejo - latest full is $(( FJ_AGE / 3600 ))h old (> 48h): $(basename "$FJ_LATEST")"
+                      ERRORS=$((ERRORS + 1))
+                    else
+                      REPORT="$REPORT\nOK: forgejo - latest full $(basename "$FJ_LATEST") ($(( FJ_AGE / 3600 ))h ago)"
+                    fi
+                    if ! gzip -t "$FJ_LATEST" 2>/dev/null; then
+                      REPORT="$REPORT\nFAIL: forgejo - latest full is corrupt: $(basename "$FJ_LATEST")"
+                      ERRORS=$((ERRORS + 1))
+                    fi
+                  fi
+
+                  FJ_DB=$(ls -t /forgejo-backups/forgejo-db-*.db.gz 2>/dev/null | head -1)
+                  if [ -z "$FJ_DB" ] || ! gzip -t "$FJ_DB" 2>/dev/null; then
+                    REPORT="$REPORT\nFAIL: forgejo - latest db backup missing or corrupt: ${FJ_DB:-none}"
+                    ERRORS=$((ERRORS + 1))
+                  fi
+
+                  FJ_OFF=$(ls -t /forgejo-offbox/forgejo-full-*.tar.gz 2>/dev/null | head -1)
+                  if [ -z "$FJ_OFF" ]; then
+                    REPORT="$REPORT\nFAIL: forgejo-offbox - no off-box copy found"
+                    ERRORS=$((ERRORS + 1))
+                  else
+                    FJ_OFF_NAME=$(basename "$FJ_OFF")
+                    FJ_OFF_AGE=$(( $(date +%s) - $(stat -c %Y "$FJ_OFF") ))
+                    FJ_OFF_SIZE=$(stat -c %s "$FJ_OFF")
+                    FJ_SRC_SIZE=$(stat -c %s "/forgejo-backups/$FJ_OFF_NAME" 2>/dev/null || echo missing)
+                    if [ "$FJ_OFF_AGE" -gt 172800 ]; then
+                      REPORT="$REPORT\nFAIL: forgejo-offbox - latest copy is $(( FJ_OFF_AGE / 3600 ))h old (> 48h): $FJ_OFF_NAME"
+                      ERRORS=$((ERRORS + 1))
+                    elif [ "$FJ_OFF_SIZE" != "$FJ_SRC_SIZE" ]; then
+                      REPORT="$REPORT\nFAIL: forgejo-offbox - $FJ_OFF_NAME is $FJ_OFF_SIZE bytes, primary is $FJ_SRC_SIZE"
+                      ERRORS=$((ERRORS + 1))
+                    else
+                      REPORT="$REPORT\nOK: forgejo-offbox - $FJ_OFF_NAME matches primary ($FJ_OFF_SIZE bytes)"
+                    fi
+                  fi
+
+                  # Registry mirror: weekly, so 9 days covers one missed-by-hours run.
+                  # Age comes from the snapshot name: a snapshot's mtime is its source's.
+                  FJ_SNAP=$(ls -d /forgejo-packages-snapshots/forgejo-packages-* 2>/dev/null | sort | tail -1)
+                  if [ -z "$FJ_SNAP" ]; then
+                    REPORT="$REPORT\nFAIL: forgejo-packages - no snapshot found"
+                    ERRORS=$((ERRORS + 1))
+                  else
+                    FJ_SNAP_DAY=$(basename "$FJ_SNAP" | sed 's/^forgejo-packages-//; s/-.*$//')
+                    FJ_SNAP_AGE=$(( ( $(date +%s) - $(date -u -D '%Y%m%d' -d "$FJ_SNAP_DAY" +%s) ) / 86400 ))
+                    if [ "$FJ_SNAP_AGE" -gt 9 ]; then
+                      REPORT="$REPORT\nFAIL: forgejo-packages - latest snapshot is $FJ_SNAP_AGE days old: $(basename "$FJ_SNAP")"
+                      ERRORS=$((ERRORS + 1))
+                    else
+                      REPORT="$REPORT\nOK: forgejo-packages - latest snapshot $(basename "$FJ_SNAP") ($FJ_SNAP_AGE days ago)"
+                    fi
+                  fi
+
                   # Check SOPS key backup exists
                   SOPS_DIR="$BACKUP_ROOT/sops"
                   if [ -d "$SOPS_DIR" ] && ls "$SOPS_DIR"/sops-age-*.yaml >/dev/null 2>&1; then
@@ -86,7 +153,17 @@ spec:
                   mountPath: /nas-backups
                 - name: nas-private
                   mountPath: /nas-private
-          restartPolicy: OnFailure
+                - name: forgejo-backups
+                  mountPath: /forgejo-backups
+                  readOnly: true
+                - name: forgejo-offbox
+                  mountPath: /forgejo-offbox
+                  readOnly: true
+                - name: forgejo-packages-snapshots
+                  mountPath: /forgejo-packages-snapshots
+                  readOnly: true
+          # Never, not OnFailure: OnFailure deletes the failed pod and its report.
+          restartPolicy: Never
           volumes:
             - name: nas-backups
               hostPath:
@@ -96,3 +173,16 @@ spec:
               hostPath:
                 path: /mnt/nas/private
                 type: DirectoryOrCreate
+            - name: forgejo-backups
+              hostPath:
+                path: /mnt/backups/forgejo
+                type: Directory
+            - name: forgejo-offbox
+              nfs:
+                server: 192.168.1.243
+                path: /srv/backups/forgejo
+                readOnly: true
+            - name: forgejo-packages-snapshots
+              hostPath:
+                path: /mnt/backup-8t/forgejo-packages-snapshots
+                type: Directory

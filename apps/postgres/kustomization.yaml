@@ -10,6 +10,7 @@ resources:
   - init-configmap.yaml
   - deployment.yaml
   - service.yaml
+  - backup-cronjob.yaml
   - litellm-db-bootstrap-job.yaml
   - langfuse-db-bootstrap-job.yaml
   - hmdm-db-secret.sops.yaml

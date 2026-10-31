@@ -29,6 +29,19 @@ spec:
                   # Keep only last 30 backups
                   ls -t /backup/karakeep-*.tar.gz | tail -n +31 | xargs -r rm
                   echo "Backup complete: karakeep-$TIMESTAMP.tar.gz"
+
+                  # Off-disk copy. The PVCs and /backup are all on asus-laptop's root
+                  # NVMe, so without this one disk failure loses the data and every
+                  # backup of it. Unlike the best-effort jobs this one fails loudly,
+                  # because here the local copy is no protection.
+                  # backups/home-k3s exists only on the NAS disk, so a missing one
+                  # means it is not mounted. nas-backup-cleanup keeps the newest 14.
+                  [ -d /nas/backups/home-k3s ] || { echo "FATAL: NAS not mounted"; exit 1; }
+                  mkdir -p /nas/backups/home-k3s/karakeep
+                  cp "/backup/karakeep-$TIMESTAMP.tar.gz" "/nas/backups/home-k3s/karakeep/karakeep-$TIMESTAMP.tar.gz.tmp"
+                  gzip -t "/nas/backups/home-k3s/karakeep/karakeep-$TIMESTAMP.tar.gz.tmp"
+                  mv "/nas/backups/home-k3s/karakeep/karakeep-$TIMESTAMP.tar.gz.tmp" "/nas/backups/home-k3s/karakeep/karakeep-$TIMESTAMP.tar.gz"
+                  echo "NAS copy OK: karakeep-$TIMESTAMP.tar.gz"
               volumeMounts:
                 - name: data
                   mountPath: /data
@@ -38,6 +51,8 @@ spec:
                   readOnly: true
                 - name: backup
                   mountPath: /backup
+                - name: nas
+                  mountPath: /nas
           restartPolicy: OnFailure
           volumes:
             - name: data
@@ -52,3 +67,9 @@ spec:
               hostPath:
                 path: /var/backups/karakeep
                 type: DirectoryOrCreate
+            # Only exists on asus-laptop, where the karakeep PVs are pinned. If the
+            # PVs ever move, this fails the job instead of silently losing the copy.
+            - name: nas
+              hostPath:
+                path: /mnt/nas/private
+                type: Directory

@@ -146,7 +146,8 @@ K3s app backups run on schedule via CronJobs. Each backup writes a local archive
 | `actual-budget-backup` | Daily 3 AM | `actual-budget` | `/var/backups/actual-budget` + NAS `home-k3s/actual-budget/` |
 | `forgejo-backup` | Daily 3 AM | `forgejo` | asus-laptop `/mnt/backups/forgejo` (2nd disk; excludes `gitea/data/packages`; off-box copy is the separate job below) |
 | `immich-backup` | Daily 3 AM | `immich` | `/var/backups/immich` + NAS `home-k3s/immich/` (DB only) |
-| `karakeep-backup` | Daily 3 AM | `karakeep` | `/var/backups/karakeep` (LOCAL ONLY - no off-box copy) |
+| `postgres-backup` | Daily 2:20 AM | `databases` | NAS `home-k3s/postgres/` (`pg_dumpall` of every database and role) |
+| `karakeep-backup` | Daily 3 AM | `karakeep` | `/var/backups/karakeep` + NAS `home-k3s/karakeep/` |
 | `vaultwarden-backup` | Daily 3 AM | `vaultwarden` | `/var/backups/vaultwarden` + NAS `home-k3s/vaultwarden/` |
 | `immich-originals-backup` | Daily 3:30 AM | `immich` | 8TB `/mnt/backup-8t/immich` + snapshots (originals + DB) |
 | `3d-prints-backup` | Sunday 3:45 AM | `nas` | 8TB `/mnt/backup-8t/3d-prints` + snapshots (mirror of `/mnt/nas/public/3d-printing`) |
@@ -180,6 +181,8 @@ kubectl --context home-k3s exec -n ai-gateway deploy/litellm -- ls -la /app/data
 | Job | Off-box copy fails |
 |---|---|
 | `actual-budget-backup` | **Job fails, `KubeJobFailed` pages.** Deliberate exception, see above. |
+| `karakeep-backup` | **Job fails.** Its PVCs and local backups share a disk, so the NAS copy is the only protection. |
+| `postgres-backup` | **Job fails.** The NAS is its only destination. |
 | everything else | Job exits 0, warning in the log only (best-effort). |
 
 ## Retention
@@ -307,6 +310,23 @@ Use the same flow as Home Assistant with these substitutions:
 - PVC: `litellm-data`
 - NAS path: `/mnt/nas/private/backups/home-k3s/litellm/`
 - Local path: `/var/backups/litellm/`
+
+## Restore shared Postgres
+
+`postgres-backup` holds every database in the `databases` namespace (mem0, mem0_app, litellm, hmdm, langfuse, registry) plus roles and their password hashes. The dump is written with `--clean --if-exists`, so loading it replaces what is there.
+
+```bash
+# 1. Pick a dump
+ssh -p 2222 192.168.1.152 sudo ls -lt /mnt/nas/private/backups/home-k3s/postgres/ | head -5
+
+# 2. Stop whatever writes to the database you are restoring, then load the dump
+ssh -p 2222 192.168.1.152 sudo cat /mnt/nas/private/backups/home-k3s/postgres/postgres-YYYYmmdd-HHMMSS.sql.gz \
+  | gunzip | kubectl --context home-k3s exec -i -n databases deploy/postgres -- psql -U postgres -v ON_ERROR_STOP=0 postgres
+```
+
+`ON_ERROR_STOP=0` because `pg_dumpall` always recreates the role you are connected as, which reports one harmless error. Read the output for anything else.
+
+To test a dump without touching the live server, load it into a throwaway `pgvector/pgvector:0.8.2-pg17-trixie` container and compare per-database table row counts with the live server.
 
 ## Restore Actual Budget (finance.kblab.me)
 

@@ -1,0 +1,83 @@
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: postgres-backup
+  labels:
+    app.kubernetes.io/name: postgres
+    app.kubernetes.io/component: backup
+spec:
+  # Every database and role in the shared Postgres, to the NAS:
+  # /mnt/nas/private/backups/home-k3s/postgres. The data is on asus-laptop's root
+  # NVMe and the NAS is that machine's second NVMe, so this copy survives losing
+  # either. nas-backup-cleanup keeps the newest 14. Restore: docs/backup-runbook.md,
+  # "Restore shared Postgres".
+  schedule: "20 2 * * *"
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 3
+  # Never, not OnFailure, so a failed pod keeps its logs.
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      backoffLimit: 1
+      activeDeadlineSeconds: 3600
+      template:
+        metadata:
+          labels:
+            app.kubernetes.io/name: postgres
+            app.kubernetes.io/component: backup
+        spec:
+          # The NAS disk is in asus-laptop.
+          nodeSelector:
+            kubernetes.io/hostname: asus-laptop
+            storage.role/nas: "true"
+          restartPolicy: Never
+          securityContext:
+            runAsUser: 0
+          containers:
+            - name: pg-dumpall
+              # Same image as the server, so pg_dumpall is never older than it.
+              image: pgvector/pgvector:0.8.2-pg17-trixie
+              imagePullPolicy: IfNotPresent
+              env:
+                - name: PGHOST
+                  value: postgres
+                - name: PGUSER
+                  value: postgres
+                - name: PGPASSWORD
+                  valueFrom:
+                    secretKeyRef:
+                      name: postgres-secrets
+                      key: POSTGRES_PASSWORD
+              command:
+                - /bin/bash
+                - -c
+                - |
+                  set -euo pipefail
+                  log() { echo "[$(date -Iseconds)] $*"; }
+                  # /nas is /mnt/nas/private. backups/home-k3s exists only on the NAS
+                  # disk, so a missing one means the disk is not mounted: stop rather
+                  # than fill the node's root disk.
+                  [ -d /nas/backups/home-k3s ] || { log "FATAL: /nas/backups/home-k3s missing, NAS not mounted"; exit 1; }
+                  OUT=/nas/backups/home-k3s/postgres
+                  mkdir -p "$OUT"
+                  FILE="$OUT/postgres-$(date +%Y%m%d-%H%M%S).sql.gz"
+                  # .tmp until it is whole: nas-backup-cleanup and nas-backup-verify
+                  # only look at *.sql.gz, so a partial file can never count as a backup.
+                  pg_dumpall --clean --if-exists | gzip > "$FILE.tmp"
+                  SIZE="$(wc -c < "$FILE.tmp")"
+                  # litellm alone is about 200 MB raw. gzip of an empty dump is a valid
+                  # file, so the size is the check.
+                  if [ "$SIZE" -lt 1048576 ]; then
+                    log "FATAL: dump is $SIZE bytes"; rm -f "$FILE.tmp"; exit 1
+                  fi
+                  gzip -t "$FILE.tmp"
+                  mv "$FILE.tmp" "$FILE"
+                  log "postgres: $FILE ($SIZE bytes)"
+              volumeMounts:
+                - name: nas
+                  mountPath: /nas
+          volumes:
+            - name: nas
+              hostPath:
+                path: /mnt/nas/private
+                type: Directory

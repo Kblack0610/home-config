@@ -65,7 +65,7 @@ Sources: OVH `/order/catalog/public/eco` and `/dedicated/server/datacenter/avail
 
 A rented box joins like a home one: tailnet first (`docs/headscale-setup.md`, so it reaches `git.kblab.me`), then `unity_ci_runners` and `ci_hosts` in `ansible/inventory.yml`, the "Unity CI runner pool" play (`unity-ci-host` and `github-actions-runner-linux`), and the three rosters kept in step (`RUNNER_ROSTER` in `apps/github-runner-exporter/deployment.yaml`, the governor's `hosts`, the inventory; `scripts/check-runner-roster.py` fails CI on drift). Start it at about half its slots, prove it with one pinned PlayMode shard timed against hp-victus, then ramp. Add one host at a time, so the new activations do not all start together.
 
-The pool already registers as many slots as `pool_max_admitted` allows (16: asus 1, hp-victus 2, razer 5, mac-studio 8). A rented host adds parallel jobs only if the cap goes up, and the cap is there for the activation rate, so settle the license question first.
+The pool already registers as many slots as `pool_max_admitted` allows (16: asus 1, hp-victus 2, razer 5, mac-studio 8, of which the governor admits 6). A rented host adds parallel jobs only if the cap goes up, and the cap is there for the activation rate, so settle the license question first.
 
 ## Unity license
 

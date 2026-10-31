@@ -36,6 +36,9 @@ The 8TB is a backup target, not extra NAS space. Anything stored only there has 
 | `backup-cleanup-cronjob.yaml` | Weekly backup retention pruning (Sun 5 AM, keep 14) |
 | `backup-verify-cronjob.yaml` | Weekly backup integrity check (Mon 6 AM) |
 | `3d-prints-backup-cronjob.yaml` | Weekly mirror of the public 3D-print files to the 8TB drive + snapshot (Sun 3:45 AM) |
+| `nas-backups-mirror-cronjob.yaml` | Daily mirror of the app backups to the 8TB drive + snapshot (5:30 AM) |
+| `app-config-backup-cronjob.yaml` | Weekly mirror of the media apps' config to the 8TB drive + snapshot (Sun 5:45 AM) |
+| `harvest-backup-cronjob.yaml` | Weekly mirror of files pulled off retired machines to the 8TB drive + snapshot (Sun 6 AM) |
 | `sops-backup-rbac.yaml` | ServiceAccount for SOPS key backup job |
 
 ## Backup Infrastructure
@@ -47,6 +50,9 @@ The NAS serves as the central backup target. App backup cronjobs write to `/mnt/
 | `3d-prints-backup` | Sun 3:45 AM | Mirrors `/mnt/nas/public/3d-printing` to the 8TB drive (`/mnt/backup-8t/3d-prints`) + dated btrfs snapshot, keeps last 14. See [backup runbook](../../docs/backup-runbook.md) |
 | `sops-key-backup` | Sun 4 AM | Exports `sops-age` secret from `flux-system`, keeps last 4 copies |
 | `nas-backup-cleanup` | Sun 5 AM | Prunes per-app backups beyond 14 copies (skips sops) |
+| `nas-backups-mirror` | Daily 5:30 AM | Mirrors `/mnt/nas/private/backups` to `/mnt/backup-8t/nas-backups` + dated snapshot, keeps last 14 |
+| `app-config-backup` | Sun 5:45 AM | Mirrors `/mnt/media/app-config` to `/mnt/backup-8t/app-config` + dated snapshot, keeps last 14 |
+| `harvest-backup` | Sun 6 AM | Mirrors `/mnt/nas/private/harvest` to `/mnt/backup-8t/harvest` + dated snapshot, keeps last 14 |
 | `nas-backup-verify` | Mon 6 AM | Checks backup freshness (< 48h) and gzip integrity for home-assistant, actual-budget, music-assistant, snapcast, karakeep, postgres; verifies SOPS key backup exists |
 
 Verification results are appended to `/mnt/nas/private/backups/manifest.log`.

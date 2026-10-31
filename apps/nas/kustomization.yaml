@@ -22,3 +22,6 @@ resources:
   - 3d-prints-backup-cronjob.yaml
   - phones-backup-cronjob.yaml
   - forgejo-packages-backup-cronjob.yaml
+  - nas-backups-mirror-cronjob.yaml
+  - app-config-backup-cronjob.yaml
+  - harvest-backup-cronjob.yaml

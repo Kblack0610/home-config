@@ -31,6 +31,7 @@ usb_backup_subvolumes:
   - { subvol: "@immich-db", path: /mnt/backup-8t/immich-db }
   - { subvol: "@media", path: /mnt/backup-8t/media }
   - { subvol: "@app-config", path: /mnt/backup-8t/app-config }
+  - { subvol: "@app-config-snapshots", path: /mnt/backup-8t/app-config-snapshots }
   - { subvol: "@immich-snapshots", path: /mnt/backup-8t/immich-snapshots }
   - { subvol: "@3d-prints", path: /mnt/backup-8t/3d-prints }
   - { subvol: "@3d-prints-snapshots", path: /mnt/backup-8t/3d-prints-snapshots }
@@ -38,6 +39,10 @@ usb_backup_subvolumes:
   - { subvol: "@phones-snapshots", path: /mnt/backup-8t/phones-snapshots }
   - { subvol: "@forgejo-packages", path: /mnt/backup-8t/forgejo-packages }
   - { subvol: "@forgejo-packages-snapshots", path: /mnt/backup-8t/forgejo-packages-snapshots }
+  - { subvol: "@nas-backups", path: /mnt/backup-8t/nas-backups }
+  - { subvol: "@nas-backups-snapshots", path: /mnt/backup-8t/nas-backups-snapshots }
+  - { subvol: "@harvest", path: /mnt/backup-8t/harvest }
+  - { subvol: "@harvest-snapshots", path: /mnt/backup-8t/harvest-snapshots }
   - { subvol: "@langfuse", path: /mnt/backup-8t/langfuse }
   - { subvol: "@victoria-metrics", path: /mnt/backup-8t/victoria-metrics }
   # Not a subvolume: the whole filesystem, read-only, so one path shows every

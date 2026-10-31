@@ -55,7 +55,7 @@ for work in "$RUNNER_HOME"/unity-pool-*/_work; do
             */perf-tree/*) days=$PERF_TREE_DAYS ;;
             *) days=$RELEASE_TREE_DAYS ;;
         esac
-        [ -z "$(find "$tree" -type f -mtime -"$days" | head -n 1)" ] || continue
+        [ -z "$(find "$tree" -type f -mtime -"$days" -print -quit)" ] || continue
         echo "tree $tree"
         rm -rf -- "$tree"
     done

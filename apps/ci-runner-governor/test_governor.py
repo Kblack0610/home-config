@@ -4,7 +4,7 @@
 Covers what a live night cannot show on demand: a hot host withholds its idle
 runner first and its longest-running busy one next, a host with room re-admits
 only while jobs wait, the pool floor and cap hold, a cooling host is left alone,
-a missing reading is never room, a standby host takes only what the others cannot,
+a missing reading is never room, a standby host takes only the jobs the others cannot,
 and a live action adds the new label before it removes the old. Stdlib only; CI runs it in the checks workflow.
 """
 import os
@@ -101,9 +101,13 @@ class GovernorTest(unittest.TestCase):
     STEADY = readings(**{"razer-laptop": BUSY, "asus-laptop": BUSY, "hp-victus": BUSY})
     CAPPED = {**CFG, "standby": {"mac-studio": {"max_admitted": 6}}}
 
-    def test_standby_stays_out_while_another_host_has_an_idle_slot(self):
+    def test_standby_stays_out_while_idle_slots_cover_the_queue(self):
         runners = {**self.mac(), **RUNNERS}  # razer-3 is admitted and idle
-        self.assertEqual(actions(self.STEADY, runners)["mac-studio"], ("hold", ""))
+        self.assertEqual(actions(self.STEADY, runners, queue=1)["mac-studio"], ("hold", ""))
+
+    def test_standby_takes_one_when_more_jobs_wait_than_idle_slots(self):
+        runners = {**self.mac(), **RUNNERS}  # razer-3 is admitted and idle
+        self.assertEqual(actions(self.STEADY, runners, queue=9)["mac-studio"], ("admit", "mac-off-0"))
 
     def test_standby_takes_one_when_the_other_hosts_are_full(self):
         runners = {**self.mac(), **self.FULL}
@@ -112,9 +116,17 @@ class GovernorTest(unittest.TestCase):
     def test_standby_waits_for_a_host_with_room_to_admit_first(self):
         runners = {**self.mac(), **self.FULL, "hpv-2": RUNNERS["hpv-2"]}
         hosts = readings(**{"razer-laptop": BUSY, "asus-laptop": BUSY, "hp-victus": COOL})
-        got = actions(hosts, runners)
+        got = actions(hosts, runners, queue=1)
         self.assertEqual(got["hp-victus"], ("admit", "hpv-2"))
         self.assertEqual(got["mac-studio"], ("hold", ""))
+
+    def test_standby_counts_an_idle_slot_and_an_admit_together(self):
+        runners = {**self.mac(), **RUNNERS}  # razer-3 is idle, hpv-2 comes in this cycle
+        hosts = readings(**{"razer-laptop": BUSY, "asus-laptop": BUSY, "hp-victus": COOL})
+        self.assertEqual(actions(hosts, runners, queue=2)["mac-studio"], ("hold", ""))
+        got = actions(hosts, runners, queue=3)
+        self.assertEqual(got["hp-victus"], ("admit", "hpv-2"))
+        self.assertEqual(got["mac-studio"], ("admit", "mac-off-0"))
 
     def test_standby_never_passes_its_own_cap(self):
         runners = {**self.mac(on_busy=6), **self.FULL}

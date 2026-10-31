@@ -34,10 +34,10 @@ activation began failing.
 
 A standby host (config "standby": the Mac Studio, which publishes no CPU pressure
 or sensors to judge) is overflow: GitHub has no way to prefer a runner, so its
-slots stay withheld until jobs wait and no other host has an idle slot or admits
-one. Then one slot per cycle comes in, up to the host's max_admitted, and goes
-back once nothing waits. A job pinned to its host label needs no pool label, so
-a withheld slot takes it.
+slots stay withheld until more jobs wait than the other hosts' idle slots and this
+cycle's admits can take. Then one slot per cycle comes in, up to the host's
+max_admitted, and goes back once nothing waits. A job pinned to its host label
+needs no pool label, so a withheld slot takes it.
 
 DRY_RUN=1 (the default) logs and exports every decision and changes nothing.
 Live, it needs GITHUB_TOKEN with Organization > Self-hosted runners: write.
@@ -172,8 +172,10 @@ def decide(cfg, hosts, runners, queue, last_action, now):
             else:
                 admitted += 1
         out.append((host, action, runner, v, why))
-    admitting = any(action == "admit" for _, action, *_ in out)
-    spare = any(not r["withheld"] and not r["busy"] for r in runners.values() if r["host"] in cfg["hosts"])
+    # Slots the other hosts already have for the waiting jobs. Admitted slots can sit idle
+    # for minutes with jobs queued, so one idle slot must not hold the overflow back.
+    covered = sum(1 for _, action, *_ in out if action == "admit")
+    covered += sum(1 for r in runners.values() if not r["withheld"] and not r["busy"] and r["host"] in cfg["hosts"])
     for host in sorted(cfg["standby"]):
         mine = {n: r for n, r in runners.items() if r["host"] == host}
         on = sorted((n for n, r in mine.items() if not r["withheld"]),
@@ -185,11 +187,11 @@ def decide(cfg, hosts, runners, queue, last_action, now):
             action, runner, why = "withhold", on[0], f"over its {cap} cap"
         elif queue == 0 and on and not mine[on[0]]["busy"]:
             action, runner, why = "withhold", on[0], "nothing waits"
-        elif queue > 0 and off and not (admitting or spare) and len(on) < cap:
+        elif queue > covered and off and len(on) < cap:
             if admitted < cfg["pool_max_admitted"]:
-                action, runner, why = "admit", off[0], "jobs wait and the other hosts are full"
+                action, runner, why = "admit", off[0], f"{queue} jobs wait, the other hosts cover {covered}"
                 admitted += 1
-                admitting = True
+                covered += 1
             else:
                 why = f"pool at its {cfg['pool_max_admitted']} cap"
         out.append((host, action, runner, "STANDBY", why))

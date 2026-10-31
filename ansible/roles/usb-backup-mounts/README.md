@@ -28,14 +28,14 @@ Result: immich originals, the immich DB copy, all 14 btrfs snapshots and the 3D-
 
 ## What it does
 
-Rewrites the seven fstab entries with `noauto,x-systemd.automount`. `systemd-fstab-generator` then emits a `.automount` unit plus a `.mount` unit that `BindsTo` the underlying `.device` unit, which buys two things:
+Creates any missing subvolume and writes one fstab entry per subvolume with `noauto,x-systemd.automount`, plus a read-only mount of the whole filesystem at `/mnt/backup-8t/browse`. `systemd-fstab-generator` then emits a `.automount` unit plus a `.mount` unit that `BindsTo` the underlying `.device` unit, which buys two things:
 
 | Event | Before | After |
 |---|---|---|
 | Device disappears | mount goes stale, still listed, `mountpoint` still true | systemd stops the `.mount` unit; path left clean |
 | Device returns (any node name) | nothing; stays broken until someone notices | next access triggers an automatic remount, resolved by UUID |
 
-Deliberately **no** `x-systemd.idle-timeout`: an idle unmount would make the `node_filesystem_*` series come and go, and `apps/monitoring/prometheus-rules-backup-drive.yaml` alerts on those series being absent.
+Deliberately **no** `x-systemd.idle-timeout`, so a mount stays up once a job has triggered it. Backup failures are alerted by freshness in `apps/monitoring/prometheus-rules-backup-drive.yaml`, not by `node_filesystem_*`, because automounts come and go.
 
 ## Run it
 
@@ -64,5 +64,6 @@ sudo umount /mnt/backup-8t/immich && ls /mnt/backup-8t/immich   # remounts on ac
 
 ## Related
 
-- `apps/immich/originals-backup-cronjob.yaml` and `apps/nas/3d-prints-backup-cronjob.yaml` — both now probe with a real write (`require_live_mount`) rather than trusting `mountpoint`.
-- `apps/monitoring/prometheus-rules-backup-drive.yaml` — alerts within minutes if a backup mount vanishes, instead of waiting for the next scheduled job to fail.
+- `apps/immich/originals-backup-cronjob.yaml` and `apps/nas/3d-prints-backup-cronjob.yaml`: both probe with a real write (`require_live_mount`) rather than trusting `mountpoint`.
+- `apps/monitoring/prometheus-rules-backup-drive.yaml`: stale-backup alerts, which are what catch a dead drive.
+- A path under `/mnt/backup-8t` with no entry in `defaults/main.yml` is a plain directory on the root disk, so every job writing there must first check that it reached a subvolume.

@@ -193,10 +193,12 @@ spec:
               slots) and whether thermal-cap.service applied after the last boot
               (systemctl status thermal-cap). Lower the cap in inventory.yml
               (thermal_capped) if it did.
+        # Not the workstation: a 7900X sits at 95C under load by design, which paged 33
+        # times in 2 days to 2026-10-31, and the fleet-thermal watch already owns it.
         - alert: NodeCpuCritical
           expr: >-
             max by (instance) (
-              node_hwmon_temp_celsius
+              node_hwmon_temp_celsius{instance!="192.168.1.2:9100"}
               * on (instance, chip) group_left (chip_name)
               node_hwmon_chip_names{chip_name=~"coretemp|k10temp"}
             ) > 95

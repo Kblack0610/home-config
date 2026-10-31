@@ -1,0 +1,23 @@
+rule_files:
+  - node-health.rules.yaml
+
+tests:
+  - name: over 95C pages on a CI laptop, not on the workstation
+    interval: 1m
+    input_series:
+      - series: 'node_hwmon_temp_celsius{instance="192.168.1.2:9100",chip="k",sensor="temp1"}'
+        values: '99x10'
+      - series: 'node_hwmon_chip_names{instance="192.168.1.2:9100",chip="k",chip_name="k10temp"}'
+        values: '1x10'
+      - series: 'node_hwmon_temp_celsius{instance="laptop:9100",chip="k",sensor="temp1"}'
+        values: '99x10'
+      - series: 'node_hwmon_chip_names{instance="laptop:9100",chip="k",chip_name="k10temp"}'
+        values: '1x10'
+    alert_rule_test:
+      - eval_time: 5m
+        alertname: NodeCpuCritical
+        exp_alerts:
+          - exp_labels: {alertname: NodeCpuCritical, severity: critical, category: node-health, instance: "laptop:9100"}
+            exp_annotations:
+              summary: "CPU at 99C on laptop:9100"
+              description: "The CPU package on laptop:9100 has been above 95C for 2m, close to its thermal limit. The host may throttle hard or shut down; asus-laptop dropped off the LAN after hours here on 2026-10-23. Stop or cancel CI on it now."

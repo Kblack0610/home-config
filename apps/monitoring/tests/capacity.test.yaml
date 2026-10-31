@@ -298,7 +298,7 @@ tests:
             exp_annotations: {summary: "many is crash looping or holding large core dumps"}
 
   # As scraped: the target's namespace is on the series, the claim's is in claim_namespace.
-  - name: a PV warns past its request and pages past 150%
+  - name: a PV warns past its request and pages past 150% only on a node under 20% free
     interval: 1m
     input_series:
       - series: 'local_path_pv_used_bytes{namespace="monitoring",claim_namespace="n",persistentvolumeclaim="fits",volumename="pvc-a"}'
@@ -309,13 +309,25 @@ tests:
         values: '120x90'
       - series: 'kube_persistentvolumeclaim_resource_requests_storage_bytes{namespace="n",persistentvolumeclaim="over"}'
         values: '100x90'
-      - series: 'local_path_pv_used_bytes{namespace="monitoring",claim_namespace="n",persistentvolumeclaim="far",volumename="pvc-c"}'
+      - series: 'local_path_pv_used_bytes{namespace="monitoring",claim_namespace="n",persistentvolumeclaim="far",volumename="pvc-c",instance="tight:9100"}'
         values: '160x90'
       - series: 'kube_persistentvolumeclaim_resource_requests_storage_bytes{namespace="n",persistentvolumeclaim="far"}'
         values: '100x90'
       - series: 'local_path_pv_used_bytes{namespace="monitoring",claim_namespace="n",persistentvolumeclaim="edge",volumename="pvc-d"}'
         values: '150x90'
       - series: 'kube_persistentvolumeclaim_resource_requests_storage_bytes{namespace="n",persistentvolumeclaim="edge"}'
+        values: '100x90'
+      - series: 'local_path_pv_used_bytes{namespace="monitoring",claim_namespace="n",persistentvolumeclaim="roomy",volumename="pvc-e",instance="roomy:9100"}'
+        values: '900x90'
+      - series: 'kube_persistentvolumeclaim_resource_requests_storage_bytes{namespace="n",persistentvolumeclaim="roomy"}'
+        values: '100x90'
+      - series: 'node_filesystem_avail_bytes{instance="tight:9100",mountpoint="/"}'
+        values: '19x90'
+      - series: 'node_filesystem_size_bytes{instance="tight:9100",mountpoint="/"}'
+        values: '100x90'
+      - series: 'node_filesystem_avail_bytes{instance="roomy:9100",mountpoint="/"}'
+        values: '41x90'
+      - series: 'node_filesystem_size_bytes{instance="roomy:9100",mountpoint="/"}'
         values: '100x90'
     alert_rule_test:
       - eval_time: 50m
@@ -324,17 +336,19 @@ tests:
       - eval_time: 65m
         alertname: LocalPathPvFarOverRequest
         exp_alerts:
-          - exp_labels: {alertname: LocalPathPvFarOverRequest, severity: critical, category: capacity, namespace: n, claim_namespace: n, persistentvolumeclaim: far, volumename: pvc-c}
-            exp_annotations: {summary: "n/far uses 160% of what it requested"}
+          - exp_labels: {alertname: LocalPathPvFarOverRequest, severity: critical, category: capacity, namespace: n, claim_namespace: n, persistentvolumeclaim: far, volumename: pvc-c, instance: "tight:9100"}
+            exp_annotations: {summary: "n/far uses 160% of what it requested, on a node under 20% free"}
       - eval_time: 65m
         alertname: LocalPathPvOverRequest
         exp_alerts:
           - exp_labels: {alertname: LocalPathPvOverRequest, severity: warning, category: capacity, namespace: n, claim_namespace: n, persistentvolumeclaim: edge, volumename: pvc-d}
             exp_annotations: {summary: "n/edge uses 150% of what it requested"}
-          - exp_labels: {alertname: LocalPathPvOverRequest, severity: warning, category: capacity, namespace: n, claim_namespace: n, persistentvolumeclaim: far, volumename: pvc-c}
+          - exp_labels: {alertname: LocalPathPvOverRequest, severity: warning, category: capacity, namespace: n, claim_namespace: n, persistentvolumeclaim: far, volumename: pvc-c, instance: "tight:9100"}
             exp_annotations: {summary: "n/far uses 160% of what it requested"}
           - exp_labels: {alertname: LocalPathPvOverRequest, severity: warning, category: capacity, namespace: n, claim_namespace: n, persistentvolumeclaim: over, volumename: pvc-b}
             exp_annotations: {summary: "n/over uses 120% of what it requested"}
+          - exp_labels: {alertname: LocalPathPvOverRequest, severity: warning, category: capacity, namespace: n, claim_namespace: n, persistentvolumeclaim: roomy, volumename: pvc-e, instance: "roomy:9100"}
+            exp_annotations: {summary: "n/roomy uses 900% of what it requested"}
 
   - name: a stopped metrics timer warns after an hour
     interval: 1m

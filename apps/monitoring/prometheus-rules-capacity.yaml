@@ -129,14 +129,20 @@ spec:
             category: capacity
           annotations:
             summary: "{{ $labels.namespace }}/{{ $labels.persistentvolumeclaim }} uses {{ $value | humanizePercentage }} of what it requested"
+        # Pages only once the node is short too (the governor's and NodeDiskLow's 20%): a
+        # PV far over on a roomy node is a warning, and critical repeats hourly. On
+        # 2026-10-31 forgejo-data was at 1133% with 41% of its node free.
         - alert: LocalPathPvFarOverRequest
-          expr: local_path_pv:used_over_request:ratio > 1.5
+          expr: >-
+            local_path_pv:used_over_request:ratio > 1.5
+            and on (instance)
+            (node_filesystem_avail_bytes{mountpoint="/"} / node_filesystem_size_bytes{mountpoint="/"} < 0.2)
           for: 1h
           labels:
             severity: critical
             category: capacity
           annotations:
-            summary: "{{ $labels.namespace }}/{{ $labels.persistentvolumeclaim }} uses {{ $value | humanizePercentage }} of what it requested"
+            summary: "{{ $labels.namespace }}/{{ $labels.persistentvolumeclaim }} uses {{ $value | humanizePercentage }} of what it requested, on a node under 20% free"
         # The rules above go quiet when the timer stops, which reads the same as all clear.
         - alert: NodeDiskMetricsStale
           expr: time() - node_textfile_mtime_seconds{file=~".*node_disk.prom"} > 3600

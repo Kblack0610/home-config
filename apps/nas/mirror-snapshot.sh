@@ -3,9 +3,7 @@
 # dated read-only btrfs snapshot and prune to the newest $KEEP.
 #
 # Shipped as the `nas-mirror-script` ConfigMap and run by every 8TB mirror
-# CronJob in this namespace (3d-prints-backup, phones-backup,
-# forgejo-packages-backup). The CronJob
-# supplies the three mounts and the env:
+# CronJob in this namespace. The CronJob supplies the three mounts and the env:
 #   /source       the dataset, mounted read-only
 #   /backup-dest  an 8TB btrfs subvolume (the mirror)
 #   /snapshots    an 8TB btrfs subvolume (holds the dated snapshots)

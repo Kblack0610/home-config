@@ -35,7 +35,12 @@ The Seagate Expansion USB HDD (label `backup8t`, uuid `99a8c3bb-b1d9-4a78-88de-6
 | `@victoria-metrics` | `/mnt/backup-8t/victoria-metrics` | Incremental `vmbackup` of VictoriaMetrics |
 | top level, read-only | `/mnt/backup-8t/browse` | Every subvolume in one path, for browsing and checks |
 | `@media` | `/mnt/backup-8t/media` | Reserved for Phase 2 (media library) |
-| `@app-config` | `/mnt/backup-8t/app-config` | Reserved for Phase 2 (all NAS app-config) |
+| `@app-config` | `/mnt/backup-8t/app-config` | rsync mirror of the media apps' config (`/mnt/media/app-config`) |
+| `@app-config-snapshots` | `/mnt/backup-8t/app-config-snapshots` | Dated read-only btrfs snapshots (14 retained) |
+| `@nas-backups` | `/mnt/backup-8t/nas-backups` | rsync mirror of the app backups (`/mnt/nas/private/backups`) |
+| `@nas-backups-snapshots` | `/mnt/backup-8t/nas-backups-snapshots` | Dated read-only btrfs snapshots (14 retained) |
+| `@harvest` | `/mnt/backup-8t/harvest` | rsync mirror of files pulled off retired machines (`/mnt/nas/private/harvest`) |
+| `@harvest-snapshots` | `/mnt/backup-8t/harvest-snapshots` | Dated read-only btrfs snapshots (14 retained) |
 
 ### Reprovisioning (if drive is reformatted or replaced)
 
@@ -55,49 +60,10 @@ sudo mkfs.btrfs -L backup8t "${DEV}1"
 NEW_UUID=$(sudo blkid -s UUID -o value "${DEV}1")
 echo "UUID: $NEW_UUID"
 
-# 3. Create subvolumes
-sudo mkdir -p /mnt/btrfs-top
-sudo mount -o subvolid=5 "${DEV}1" /mnt/btrfs-top
-sudo btrfs subvolume create /mnt/btrfs-top/@immich
-sudo btrfs subvolume create /mnt/btrfs-top/@immich-db
-sudo btrfs subvolume create /mnt/btrfs-top/@immich-snapshots
-sudo btrfs subvolume create /mnt/btrfs-top/@3d-prints
-sudo btrfs subvolume create /mnt/btrfs-top/@3d-prints-snapshots
-sudo btrfs subvolume create /mnt/btrfs-top/@phones
-sudo btrfs subvolume create /mnt/btrfs-top/@phones-snapshots
-sudo btrfs subvolume create /mnt/btrfs-top/@forgejo-packages
-sudo btrfs subvolume create /mnt/btrfs-top/@forgejo-packages-snapshots
-sudo btrfs subvolume create /mnt/btrfs-top/@langfuse
-sudo btrfs subvolume create /mnt/btrfs-top/@victoria-metrics
-sudo btrfs subvolume create /mnt/btrfs-top/@media
-sudo btrfs subvolume create /mnt/btrfs-top/@app-config
-sudo umount /mnt/btrfs-top
-sudo rmdir /mnt/btrfs-top
-
-# 4. Create mount points
-sudo mkdir -p /mnt/backup-8t/{immich,immich-db,immich-snapshots,3d-prints,3d-prints-snapshots,phones,phones-snapshots,forgejo-packages,forgejo-packages-snapshots,langfuse,victoria-metrics,browse,media,app-config}
-
-# 5. Append to /etc/fstab (replace UUID with $NEW_UUID from step 2). noauto +
-#    x-systemd.automount mounts each subvolume on first access, so a detached
-#    drive never blocks boot; this matches the live fstab on asus-laptop.
-# UUID=... /mnt/backup-8t/immich              btrfs noatime,compress=zstd:1,nofail,noauto,x-systemd.automount,x-systemd.device-timeout=10,subvol=@immich 0 0
-# UUID=... /mnt/backup-8t/immich-db           btrfs noatime,compress=zstd:1,nofail,noauto,x-systemd.automount,x-systemd.device-timeout=10,subvol=@immich-db 0 0
-# UUID=... /mnt/backup-8t/immich-snapshots    btrfs noatime,compress=zstd:1,nofail,noauto,x-systemd.automount,x-systemd.device-timeout=10,subvol=@immich-snapshots 0 0
-# UUID=... /mnt/backup-8t/3d-prints           btrfs noatime,compress=zstd:1,nofail,noauto,x-systemd.automount,x-systemd.device-timeout=10,subvol=@3d-prints 0 0
-# UUID=... /mnt/backup-8t/3d-prints-snapshots btrfs noatime,compress=zstd:1,nofail,noauto,x-systemd.automount,x-systemd.device-timeout=10,subvol=@3d-prints-snapshots 0 0
-# UUID=... /mnt/backup-8t/phones              btrfs noatime,compress=zstd:1,nofail,noauto,x-systemd.automount,x-systemd.device-timeout=10,subvol=@phones 0 0
-# UUID=... /mnt/backup-8t/phones-snapshots    btrfs noatime,compress=zstd:1,nofail,noauto,x-systemd.automount,x-systemd.device-timeout=10,subvol=@phones-snapshots 0 0
-# UUID=... /mnt/backup-8t/forgejo-packages    btrfs noatime,compress=zstd:1,nofail,noauto,x-systemd.automount,x-systemd.device-timeout=10,subvol=@forgejo-packages 0 0
-# UUID=... /mnt/backup-8t/forgejo-packages-snapshots btrfs noatime,compress=zstd:1,nofail,noauto,x-systemd.automount,x-systemd.device-timeout=10,subvol=@forgejo-packages-snapshots 0 0
-# UUID=... /mnt/backup-8t/langfuse            btrfs noatime,compress=zstd:1,nofail,noauto,x-systemd.automount,x-systemd.device-timeout=10,subvol=@langfuse 0 0
-# UUID=... /mnt/backup-8t/victoria-metrics    btrfs noatime,compress=zstd:1,nofail,noauto,x-systemd.automount,x-systemd.device-timeout=10,subvol=@victoria-metrics 0 0
-# UUID=... /mnt/backup-8t/browse              btrfs noatime,compress=zstd:1,nofail,noauto,x-systemd.automount,x-systemd.device-timeout=10,ro,subvolid=5 0 0
-# UUID=... /mnt/backup-8t/media               btrfs noatime,compress=zstd:1,nofail,noauto,x-systemd.automount,x-systemd.device-timeout=10,subvol=@media 0 0
-# UUID=... /mnt/backup-8t/app-config          btrfs noatime,compress=zstd:1,nofail,noauto,x-systemd.automount,x-systemd.device-timeout=10,subvol=@app-config 0 0
-
-sudo systemctl daemon-reload
-sudo mount -a
-findmnt /mnt/backup-8t/immich  # verify
+# 3. Set usb_backup_fs_uuid to $NEW_UUID in ansible/roles/usb-backup-mounts/defaults/main.yml
+#    and commit it. Then, from ansible/ on your workstation: this creates every subvolume
+#    and fstab entry in defaults/main.yml, starts the automounts and verifies each one.
+ansible-playbook playbooks/site.yml --limit asus-laptop --tags backup-mounts
 ```
 
 ### USB autosuspend udev rule (required — install once)
@@ -163,6 +129,9 @@ K3s app backups run on schedule via CronJobs. Each backup writes a local archive
 | `sops-key-backup` | Sunday 4 AM | `nas` | NAS `home-k3s/sops/` |
 | `forgejo-backup-offbox` | Daily 4:30 AM | `forgejo` | hp-victus NFS `192.168.1.243:/srv/backups/forgejo` (newest 2 fulls) |
 | `forgejo-packages-backup` | Sunday 4:45 AM | `nas` | 8TB `/mnt/backup-8t/forgejo-packages` + snapshots (the Forgejo package registry) |
+| `nas-backups-mirror` | Daily 5:30 AM | `nas` | 8TB `/mnt/backup-8t/nas-backups` + snapshots (mirror of `/mnt/nas/private/backups`) |
+| `app-config-backup` | Sunday 5:45 AM | `nas` | 8TB `/mnt/backup-8t/app-config` + snapshots (mirror of `/mnt/media/app-config`) |
+| `harvest-backup` | Sunday 6 AM | `nas` | 8TB `/mnt/backup-8t/harvest` + snapshots (mirror of `/mnt/nas/private/harvest`) |
 | `zomboid-backup` | Daily 4:30 AM | `zomboid` | NAS **public** share `backups/zomboid/` |
 | `nas-backup-cleanup` | Sunday 5 AM | `nas` | not applicable |
 | `nas-backup-verify` | Monday 6 AM | `nas` | writes `manifest.log` |

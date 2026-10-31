@@ -109,22 +109,28 @@ spec:
                     fi
                   fi
 
-                  # Registry mirror: weekly, so 9 days covers one missed-by-hours run.
+                  # 8TB mirrors, as name:max_age_days. Weekly ones get 9, so one run missed by
+                  # hours does not fail. /browse is every subvolume, read-only; if the drive
+                  # is gone it is an empty directory and every check below fails, as it should.
                   # Age comes from the snapshot name: a snapshot's mtime is its source's.
-                  FJ_SNAP=$(ls -d /forgejo-packages-snapshots/forgejo-packages-* 2>/dev/null | sort | tail -1)
-                  if [ -z "$FJ_SNAP" ]; then
-                    REPORT="$REPORT\nFAIL: forgejo-packages - no snapshot found"
-                    ERRORS=$((ERRORS + 1))
-                  else
-                    FJ_SNAP_DAY=$(basename "$FJ_SNAP" | sed 's/^forgejo-packages-//; s/-.*$//')
-                    FJ_SNAP_AGE=$(( ( $(date +%s) - $(date -u -D '%Y%m%d' -d "$FJ_SNAP_DAY" +%s) ) / 86400 ))
-                    if [ "$FJ_SNAP_AGE" -gt 9 ]; then
-                      REPORT="$REPORT\nFAIL: forgejo-packages - latest snapshot is $FJ_SNAP_AGE days old: $(basename "$FJ_SNAP")"
+                  for MIRROR in immich:2 nas-backups:2 3d-prints:9 phones:9 forgejo-packages:9 app-config:9 harvest:9; do
+                    NAME="${MIRROR%:*}"
+                    MAX="${MIRROR#*:}"
+                    SNAP=$(ls -d "/browse/@$NAME-snapshots/$NAME"-* 2>/dev/null | sort | tail -1)
+                    if [ -z "$SNAP" ]; then
+                      REPORT="$REPORT\nFAIL: $NAME - no snapshot found"
+                      ERRORS=$((ERRORS + 1))
+                      continue
+                    fi
+                    SNAP_DAY=$(basename "$SNAP" | sed "s/^$NAME-//; s/-.*$//")
+                    SNAP_AGE=$(( ( $(date +%s) - $(date -u -D '%Y%m%d' -d "$SNAP_DAY" +%s) ) / 86400 ))
+                    if [ "$SNAP_AGE" -gt "$MAX" ]; then
+                      REPORT="$REPORT\nFAIL: $NAME - latest snapshot is $SNAP_AGE days old (> $MAX): $(basename "$SNAP")"
                       ERRORS=$((ERRORS + 1))
                     else
-                      REPORT="$REPORT\nOK: forgejo-packages - latest snapshot $(basename "$FJ_SNAP") ($FJ_SNAP_AGE days ago)"
+                      REPORT="$REPORT\nOK: $NAME - latest snapshot $(basename "$SNAP") ($SNAP_AGE days ago)"
                     fi
-                  fi
+                  done
 
                   # Check SOPS key backup exists
                   SOPS_DIR="$BACKUP_ROOT/sops"
@@ -159,8 +165,8 @@ spec:
                 - name: forgejo-offbox
                   mountPath: /forgejo-offbox
                   readOnly: true
-                - name: forgejo-packages-snapshots
-                  mountPath: /forgejo-packages-snapshots
+                - name: browse
+                  mountPath: /browse
                   readOnly: true
           # Never, not OnFailure: OnFailure deletes the failed pod and its report.
           restartPolicy: Never
@@ -182,7 +188,7 @@ spec:
                 server: 192.168.1.243
                 path: /srv/backups/forgejo
                 readOnly: true
-            - name: forgejo-packages-snapshots
+            - name: browse
               hostPath:
-                path: /mnt/backup-8t/forgejo-packages-snapshots
+                path: /mnt/backup-8t/browse
                 type: Directory

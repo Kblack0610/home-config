@@ -85,6 +85,16 @@
     - role: usb-backup-mounts
       tags: [backup-mounts, storage]
 
+- name: Disk scrubs and SMART on asus-laptop
+  # See roles/disk-health/README.md. Nothing scrubbed these filesystems before
+  # 2026-10-31, so rot in a file nobody reads would have gone unnoticed.
+  hosts: asus-laptop
+  become: true
+  gather_facts: true
+  roles:
+    - role: disk-health
+      tags: [disk-health, storage]
+
 - name: Disable lid-close / suspend on laptop k3s nodes and CI hosts
   # See ansible/roles/k3s-node-no-suspend/README.md — without this, closing
   # a laptop lid removes the node from the cluster (the 2026-05 hp-victus

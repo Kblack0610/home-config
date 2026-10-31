@@ -45,7 +45,7 @@ Both copies live on asus-laptop, which is also where the PVC is, so a restore po
 
 ```bash
 # Pick an archive (local copy first, NAS copy as the fallback)
-ssh pc-home-asus-laptop ls -lt /var/backups/music-assistant/ /mnt/nas/private/backups/home-k3s/music-assistant/
+ssh -p 2222 192.168.1.152 ls -lt /var/backups/music-assistant/ /mnt/nas/private/backups/home-k3s/music-assistant/
 
 # Stop MA. The PVC is RWO and the Deployment is strategy: Recreate, so it must be down or it writes over the restore.
 kubectl --context home-k3s -n music-assistant scale deployment music-assistant --replicas=0

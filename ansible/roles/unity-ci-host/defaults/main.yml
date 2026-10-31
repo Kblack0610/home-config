@@ -28,11 +28,16 @@ unity_ci_asset_libraries:
 
 # Editor images the jobs build on. Pulling these on the LAN fails (the IPv6 path
 # corrupts long downloads), so a missing one is copied from the workstation's
-# docker with docker save | docker load. Add the new tag on a Unity upgrade.
+# docker with docker save | docker load. Add the new tags on a Unity upgrade.
+# A player build asks for its platform's flavor (playground perf-round.yml, release.yml);
+# without it the job pulls, and dies on the corrupted download.
 unity_ci_images:
   - unityci/editor:ubuntu-6000.0.72f1-base-3
   - unityci/editor:ubuntu-6000.0.85f1-base-3
   - unityci/editor:ubuntu-6000.3.27f1-base-3
+  - unityci/editor:ubuntu-6000.3.27f1-windows-mono-3
+  - unityci/editor:ubuntu-6000.3.27f1-mac-mono-3
+  - unityci/editor:ubuntu-6000.3.27f1-android-3
 
 unity_ci_packages:
   - docker

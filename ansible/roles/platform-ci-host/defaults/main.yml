@@ -10,6 +10,8 @@
 # clean a workspace outside this tree.
 pmp_ci_user_home: /var/lib/pmp-runner
 pmp_ci_job_started_hook: /usr/local/lib/pmp-ci/job-started.sh
+pmp_ci_disk_prune: /usr/local/lib/pmp-ci/ci-disk-prune.sh
+pmp_ci_coredump_max_use: 5G
 
 # What a platform CI job expects beyond the runner itself. No node/pnpm: the
 # workflows install their own with actions/setup-node + pnpm/action-setup.

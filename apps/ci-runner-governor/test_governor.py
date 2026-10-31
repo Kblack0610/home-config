@@ -4,7 +4,8 @@
 Covers what a live night cannot show on demand: a hot host withholds its idle
 runner first and its longest-running busy one next, a host with room re-admits
 only while jobs wait, the pool floor and cap hold, a cooling host is left alone,
-a missing reading is never room, a standby host takes only the jobs the others cannot,
+a missing reading is never room, a full disk empties a host past its floor and cooldown
+but not the pool floor, a standby host takes only the jobs the others cannot,
 and a live action adds the new label before it removes the old. Stdlib only; CI runs it in the checks workflow.
 """
 import os
@@ -15,9 +16,10 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import governor  # noqa: E402
 
 CFG = governor.load_config(os.path.join(os.path.dirname(os.path.abspath(__file__)), "config.json"))
-COOL = {"idle": 0.6, "psi": 0.05, "tctl": 60, "mem": 0.5}
-BUSY = {"idle": 0.3, "psi": 0.3, "tctl": 70, "mem": 0.4}
-HOT = {"idle": 0.1, "psi": 0.5, "tctl": 70, "mem": 0.4}
+COOL = {"idle": 0.6, "psi": 0.05, "tctl": 60, "mem": 0.5, "disk": 0.5}
+BUSY = {"idle": 0.3, "psi": 0.3, "tctl": 70, "mem": 0.4, "disk": 0.5}
+HOT = {"idle": 0.1, "psi": 0.5, "tctl": 70, "mem": 0.4, "disk": 0.5}
+FULL = {**COOL, "disk": 0.19}
 
 
 def readings(**per_host):
@@ -85,6 +87,36 @@ class GovernorTest(unittest.TestCase):
     def test_a_missing_reading_is_never_room(self):
         got = actions(readings(**{"razer-laptop": BUSY, "asus-laptop": BUSY, "hp-victus": {"tctl": 50}}))
         self.assertEqual(got["hp-victus"], ("hold", ""))
+
+    def test_full_disk_takes_the_hosts_last_slot(self):
+        got = actions(readings(**{"razer-laptop": BUSY, "asus-laptop": BUSY, "hp-victus": FULL}),
+                      pool(("hpv-1", "hp-victus", True, 9, False), ("razer-1", "razer-laptop", True, 9, False),
+                           ("razer-2", "razer-laptop", True, 9, False), ("asus-1", "asus-laptop", True, 9, False)))
+        self.assertEqual(got["hp-victus"], ("withhold", "hpv-1"))  # hp-victus's floor is 1
+
+    def test_full_disk_does_not_wait_for_the_cooldown(self):
+        got = actions(readings(**{"razer-laptop": FULL, "asus-laptop": BUSY, "hp-victus": BUSY}),
+                      last={"razer-laptop": 10_000 - 60})
+        self.assertEqual(got["razer-laptop"], ("withhold", "razer-3"))
+
+    def test_full_disk_stops_at_the_pool_floor(self):
+        runners = pool(("razer-1", "razer-laptop", True, 9, False), ("hpv-1", "hp-victus", True, 9, False))
+        got = actions(readings(**{"razer-laptop": FULL, "asus-laptop": BUSY, "hp-victus": FULL}), runners)
+        self.assertEqual(got["razer-laptop"], ("hold", ""))
+        self.assertEqual(got["hp-victus"], ("hold", ""))
+
+    def test_full_disk_counts_with_cpu_readings_missing(self):
+        self.assertEqual(governor.verdict({"disk": 0.19}, CFG["hosts"]["razer-laptop"])[0], "FULL")
+
+    def test_disk_between_the_lines_withholds_nothing_and_admits_nothing(self):
+        between = {**COOL, "disk": 0.22}
+        self.assertEqual(governor.verdict(between, CFG["hosts"]["hp-victus"])[0], "STEADY")
+        got = actions(readings(**{"razer-laptop": BUSY, "asus-laptop": BUSY, "hp-victus": between}))
+        self.assertEqual(got["hp-victus"], ("hold", ""))
+
+    def test_a_missing_disk_reading_is_never_room(self):
+        self.assertEqual(governor.verdict({k: v for k, v in COOL.items() if k != "disk"},
+                                          CFG["hosts"]["hp-victus"])[0], "STEADY")
 
     def test_asus_runs_hot_sooner(self):
         warm = {**COOL, "tctl": 91}

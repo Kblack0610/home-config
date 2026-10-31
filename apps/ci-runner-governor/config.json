@@ -8,8 +8,8 @@
   "cooldown_seconds": 600,
   "defaults": {
     "min_admitted": 1,
-    "admit": {"idle": 0.35, "psi": 0.2, "tctl": 85, "mem": 0.25},
-    "withhold": {"idle": 0.15, "psi": 0.4, "tctl": 92, "mem": 0.1}
+    "admit": {"idle": 0.35, "psi": 0.2, "tctl": 85, "mem": 0.25, "disk": 0.25},
+    "withhold": {"idle": 0.15, "psi": 0.4, "tctl": 92, "mem": 0.1, "disk": 0.2}
   },
   "standby": {
     "mac-studio": {"max_admitted": 8}

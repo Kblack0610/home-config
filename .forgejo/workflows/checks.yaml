@@ -68,6 +68,19 @@ jobs:
       - name: Control API and sleeper suites
         run: apps/zomboid/tests/run.sh
 
+  ci-disk-prune:
+    runs-on: docker
+    container:
+      image: alpine:3.20
+    steps:
+      # GNU tools, as on the CI hosts the script runs on.
+      - name: Install deps
+        run: apk add --no-cache git nodejs coreutils findutils
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: ci-disk-prune offline test
+        run: sh ansible/roles/platform-ci-host/files/test-ci-disk-prune.sh
+
   prometheus-rules:
     runs-on: docker
     container:

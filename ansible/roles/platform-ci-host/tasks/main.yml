@@ -25,7 +25,31 @@
     dest: "{{ pmp_ci_job_started_hook }}"
     mode: "0755"
 
-- name: Install the weekly docker cleanup service and timer
+- name: Install the disk prune script
+  ansible.builtin.copy:
+    src: ci-disk-prune.sh
+    dest: "{{ pmp_ci_disk_prune }}"
+    mode: "0755"
+  tags: [ci-disk]
+
+- name: Create the coredump drop-in directory
+  ansible.builtin.file:
+    path: /etc/systemd/coredump.conf.d
+    state: directory
+    mode: "0755"
+  tags: [ci-disk]
+
+- name: Cap core dumps (the default is 10% of the disk, 93G here)
+  ansible.builtin.copy:
+    dest: /etc/systemd/coredump.conf.d/50-disk-cap.conf
+    mode: "0644"
+    content: |
+      # Managed by ansible (platform-ci-host).
+      [Coredump]
+      MaxUse={{ pmp_ci_coredump_max_use }}
+  tags: [ci-disk]
+
+- name: Install the daily docker cleanup service and timer
   ansible.builtin.template:
     src: "{{ item }}.j2"
     dest: "/etc/systemd/system/{{ item }}"
@@ -34,11 +58,13 @@
     - pmp-ci-docker-cleanup.service
     - pmp-ci-docker-cleanup.timer
   register: _pmp_ci_cleanup_units
+  tags: [ci-disk]
 
 - name: Reload systemd after unit changes
   ansible.builtin.systemd:
     daemon_reload: true
   when: _pmp_ci_cleanup_units.changed
+  tags: [ci-disk]
 
 - name: Enable the docker cleanup timer
   ansible.builtin.systemd:
@@ -46,3 +72,4 @@
     enabled: true
     state: started
   ignore_errors: "{{ ansible_check_mode }}"
+  tags: [ci-disk]

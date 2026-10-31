@@ -32,6 +32,12 @@ more than pool_max_admitted: each admitted runner starts a job, and with it a
 Unity activation, every shard, and about 15 activations in 90 minutes is where
 activation began failing.
 
+A host short of disk is FULL: every slot goes, one per cycle, past the host's floor and
+its cooldown, since free disk has no 5-minute lag and a Unity slot can write tens of GB
+in a job. Only the pool floor holds. Kubelet evicts at 5% free and does not stop until 15%,
+and on 2026-10-31 that took the cluster's monitoring and pager down for 8 hours. A host
+comes back only above the higher admit line.
+
 A standby host (config "standby": the Mac Studio, which publishes no CPU pressure
 or sensors to judge) is overflow: GitHub has no way to prefer a runner, so its
 slots stay withheld until more jobs wait than the other hosts' idle slots and this
@@ -71,6 +77,8 @@ QUERIES = {
     "tctl": ("max by (nodename) (node_hwmon_temp_celsius * on(instance, chip) group_left(chip_name) "
              f'node_hwmon_chip_names{{chip_name=~"k10temp|coretemp"}} * {UNAME})'),
     "mem": f"max by (nodename) (node_memory_MemAvailable_bytes / node_memory_MemTotal_bytes * {UNAME})",
+    "disk": ('max by (nodename) (node_filesystem_avail_bytes{mountpoint="/"} / '
+             f'node_filesystem_size_bytes{{mountpoint="/"}} * {UNAME})'),
 }
 
 
@@ -116,13 +124,16 @@ def observe(pool_label):
 
 
 def verdict(h, t):
-    """HOT, ROOM or STEADY for one host's readings h against its thresholds t. A missing
-    reading never counts as room, and only temperature may be absent (hp-victus's
-    coretemp is the only sensor some kernels expose)."""
-    idle, psi, mem, tctl = h.get("idle"), h.get("psi"), h.get("mem"), h.get("tctl")
+    """FULL, HOT, ROOM or STEADY for one host's readings h against its thresholds t. A
+    missing reading never counts as room, and only temperature may be absent (hp-victus's
+    coretemp is the only sensor some kernels expose). Disk comes first so a host that is
+    full is treated as full whatever else is missing."""
+    idle, psi, mem, tctl, disk = (h.get(k) for k in ("idle", "psi", "mem", "tctl", "disk"))
+    w, a = t["withhold"], t["admit"]
+    if disk is not None and disk < w["disk"]:
+        return "FULL", f"free disk {disk:.2f} < {w['disk']}"
     if None in (idle, psi, mem):
         return "STEADY", "no reading"
-    w, a = t["withhold"], t["admit"]
     if idle < w["idle"]:
         return "HOT", f"idle {idle:.2f} < {w['idle']}"
     if psi > w["psi"]:
@@ -131,7 +142,8 @@ def verdict(h, t):
         return "HOT", f"tctl {tctl:.0f} >= {w['tctl']}"
     if mem < w["mem"]:
         return "HOT", f"free memory {mem:.2f} < {w['mem']}"
-    if idle >= a["idle"] and psi <= a["psi"] and mem >= a["mem"] and (tctl is None or tctl < a["tctl"]):
+    if (idle >= a["idle"] and psi <= a["psi"] and mem >= a["mem"] and (tctl is None or tctl < a["tctl"])
+            and disk is not None and disk >= a["disk"]):
         return "ROOM", f"idle {idle:.2f}, cpu pressure {psi:.2f}"
     return "STEADY", f"idle {idle:.2f}, cpu pressure {psi:.2f}"
 
@@ -147,7 +159,7 @@ def decide(cfg, hosts, runners, queue, last_action, now):
         t = cfg["hosts"][host]
         mine = {n: r for n, r in runners.items() if r["host"] == host}
         v, why = verdict({k: hosts[k].get(host) for k in QUERIES}, t)
-        cooling = now - last_action.get(host, 0) < cfg["cooldown_seconds"]
+        cooling = v != "FULL" and now - last_action.get(host, 0) < cfg["cooldown_seconds"]
         on = sorted((n for n, r in mine.items() if not r["withheld"]),
                     # Idle first, then the busy one nearest its end (longest running).
                     key=lambda n: (mine[n]["busy"], -mine[n]["elapsed"], n))
@@ -155,13 +167,14 @@ def decide(cfg, hosts, runners, queue, last_action, now):
         action, runner = "hold", ""
         if cooling:
             why = f"cooldown ({why})"
-        elif v == "HOT" and len(on) > t["min_admitted"] and floor_held > cfg["pool_min_admitted"]:
+        elif ((v == "FULL" and on) or (v == "HOT" and len(on) > t["min_admitted"])) \
+                and floor_held > cfg["pool_min_admitted"]:
             action, runner = "withhold", on[0]
             admitted -= 1
             floor_held -= 1
         elif v == "ROOM" and off and queue > 0:
             action, runner = "admit", off[0]
-        elif v == "HOT":
+        elif v in ("HOT", "FULL") and on:
             why += "; at the floor"
         plans.append((host, action, runner, v, why))
     out = []

@@ -43,13 +43,15 @@
   notify: Reload systemd
 
 - name: Limit each scrub's throughput
+  # Not `scrub start --limit`: with btrfs-progs 6.19 on kernel 6.19 it left the kernel's
+  # limit at 0, and a "50M" scrub read 1061 MiB/s (measured 2026-10-31). `scrub limit`
+  # sets it, and it stays set until unmount, so a manual scrub is limited too.
   ansible.builtin.copy:
     dest: "/etc/systemd/system/btrfs-scrub@{{ item.stdout }}.service.d/limit.conf"
     mode: "0644"
     content: |
       [Service]
-      ExecStart=
-      ExecStart=/usr/bin/btrfs scrub start -B{{ (' --limit ' ~ item.item.limit) if item.item.limit else '' }} %f
+      ExecStartPre=/usr/bin/btrfs scrub limit --all --limit {{ item.item.limit or 0 }} %f
   loop: "{{ disk_health_instances.results }}"
   loop_control:
     label: "{{ item.item.path }}"

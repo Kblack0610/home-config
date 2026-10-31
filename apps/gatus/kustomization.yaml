@@ -18,6 +18,7 @@ configMapGenerator:
       - config.yaml
 
 resources:
+  - pager-topic-secret.sops.yaml
   - namespace.yaml
   - deployment.yaml
   - service.yaml

@@ -5,6 +5,7 @@ resources:
   - ingress-grafana.yaml
   - grafana-forgejo-oauth-secret.yaml
   - grafana-clickhouse-reader-secret.sops.yaml
+  - alertmanager-offsite-secret.sops.yaml
   - ingress-prometheus.yaml
   - ingress-alertmanager.yaml
   - prometheus-rules-app-health.yaml
@@ -17,6 +18,7 @@ resources:
   - prometheus-rules-dns.yaml
   - prometheus-rules-forgejo-mirrors.yaml
   - prometheus-rules-command-center.yaml
+  - prometheus-rules-pager.yaml
   - probe-sites.yaml
   - probe-dns.yaml
   - external-mac-nodes.yaml

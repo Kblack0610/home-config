@@ -32,6 +32,9 @@ spec:
           # No FLEET_TOKEN here any more: this instance has no external-endpoints
           # to substitute it into. The push endpoints (and the token) moved to
           # apps/gatus-fleet/ with the machines.
+          envFrom:
+            - secretRef:
+                name: pager-topic
           ports:
             - name: http
               containerPort: 8080

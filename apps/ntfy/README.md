@@ -51,6 +51,20 @@ ntfy priorities run 1 to 5. Every publisher here uses the same meaning, so one p
 
 The `agents` levels are defined in `~/.dotfiles-private/.config/agentctl/SENTINEL.md` (section Paging). Alertmanager sends `severity: critical` at 5 and everything else at 3; `InfoInhibitor` and `Watchdog` are never sent.
 
+### The backup channel
+
+This ntfy runs in the cluster, so anything that takes the cluster down takes the pager with it (2026-10-31, 8h27m). A private topic on ntfy.sh is the second path. The phone subscribes to it once; it needs no Tailscale.
+
+| Publisher | Sends there | Secret |
+|---|---|---|
+| Alertmanager | `severity: critical`, alert name and node | `apps/monitoring/alertmanager-offsite-secret.sops.yaml` |
+| Gatus (`status.kblab.me`) | Prometheus or Alertmanager down for 5 minutes, ntfy or the vault for 10 | `apps/gatus/pager-topic-secret.sops.yaml` |
+| Sentinel, through `agent-notify` | urgent always, high when this ntfy fails, title only | `~/.config/agent-notify/env` |
+
+ntfy.sh stores the rendered message for 12 hours. Alertmanager's webhook body, including annotations, still passes through it to be rendered, so do not put user data in an annotation on a critical alert.
+
+`AlertmanagerPageNotDelivered` pages when a webhook fails.
+
 ### Phone setup (Android)
 
 1. Install the ntfy app (F-Droid or Play Store).

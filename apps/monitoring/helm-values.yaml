@@ -99,11 +99,23 @@ alertmanager:
           - url: "http://ntfy.ntfy.svc.cluster.local/homelab-alerts?tpl=yes&t=%7B%7Bif%20eq%20.status%20%22resolved%22%7D%7DResolved%7B%7Belse%7D%7DFiring%7B%7Bend%7D%7D%3A%20%7B%7B.commonLabels.alertname%7D%7D&m=%7B%7Brange%20.alerts%7D%7D%7B%7Bif%20eq%20.status%20%22resolved%22%7D%7DOK%3A%20%7B%7Bend%7D%7D%7B%7Bor%20.annotations.summary%20.labels.alertname%7D%7D%0A%7B%7Bend%7D%7D%7B%7Bif%20.truncatedAlerts%7D%7D%2B%7B%7B.truncatedAlerts%7D%7D%20more%7B%7Bend%7D%7D&p=max&ta=rotating_light"
             send_resolved: true
             max_alerts: 10
+          # The second channel: ntfy.sh, because the ntfy above lives in this
+          # cluster and on 2026-10-31 went down with the node it reports on.
+          # The file holds the same URL shape with a private topic and a template
+          # that keeps only alert name and node in the stored message. Secret:
+          # alertmanager-offsite-secret.sops.yaml. Criticals only.
+          - url_file: /etc/alertmanager/secrets/alertmanager-offsite/backup-critical-url
+            send_resolved: true
+            max_alerts: 10
     inhibit_rules:
       - source_matchers: [severity = "critical"]
         target_matchers: [severity = "warning"]
         equal: [alertname, instance]
   alertmanagerSpec:
+    # Mounted at /etc/alertmanager/secrets/<name>/. Flux must have created it
+    # before a helm upgrade adds it here, or the pod cannot start.
+    secrets:
+      - alertmanager-offsite
     nodeSelector:
       kubernetes.io/arch: amd64
     resources:

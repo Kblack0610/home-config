@@ -11,6 +11,22 @@ ui:
     - name: "Game server controls"
       link: "https://hass.kblab.me/lovelace/ops"
 
+# Pages for what Prometheus and Alertmanager cannot report themselves. ntfy.sh, because
+# the home ntfy is one of the things being watched. An endpoint opts in with
+# `alerts: [{type: ntfy}]`. Five failures at 60s is 5 minutes; an endpoint on a slower
+# interval sets its own threshold. The topic is in
+# pager-topic-secret.sops.yaml.
+alerting:
+  ntfy:
+    url: "https://ntfy.sh"
+    topic: "${NTFY_BACKUP_TOPIC}"
+    priority: 5
+    default-alert:
+      enabled: true
+      failure-threshold: 5
+      success-threshold: 2
+      send-on-resolved: true
+
 # This instance is APPS. Machines live on fleet.kblab.me (apps/gatus-fleet/).
 #
 # The fleet / mac-machines / iot-fleet groups used to be here, which meant
@@ -237,6 +253,8 @@ endpoints:
     interval: 60s
     conditions:
       - "[STATUS] == 200"
+    alerts:
+      - type: ntfy
 
   - name: AlertManager
     group: monitoring
@@ -244,6 +262,8 @@ endpoints:
     interval: 60s
     conditions:
       - "[STATUS] == 200"
+    alerts:
+      - type: ntfy
 
   # --- standalone ---
   - name: AdGuard Home
@@ -595,6 +615,10 @@ endpoints:
     conditions:
       - "[STATUS] < 500"
       - "[CERTIFICATE_EXPIRATION] > 720h"
+    alerts:
+      - type: ntfy
+        # Probed every 5 minutes, so two failures is 10 minutes.
+        failure-threshold: 2
 
   - name: openclaw.kblab.me
     group: ingress
@@ -735,6 +759,10 @@ endpoints:
     conditions:
       - "[STATUS] < 500"
       - "[CERTIFICATE_EXPIRATION] > 720h"
+    alerts:
+      - type: ntfy
+        # Probed every 5 minutes, so two failures is 10 minutes.
+        failure-threshold: 2
 
   - name: vikunja.kblab.me
     group: ingress

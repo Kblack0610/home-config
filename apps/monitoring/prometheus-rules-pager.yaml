@@ -1,0 +1,26 @@
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: homelab-pager
+  namespace: monitoring
+  labels:
+    app.kubernetes.io/name: homelab-pager
+    app.kubernetes.io/part-of: monitoring
+    # REQUIRED, see prometheus-rules-forgejo-mirrors.yaml.
+    release: kube-prometheus-stack
+spec:
+  groups:
+    - name: homelab-pager
+      rules:
+        # A failed webhook is a page that nobody got. It routes as critical, so it
+        # goes to both receivers: with ntfy down, ntfy.sh carries it. The counter
+        # stood at 1739 through the 2026-10-31 outage and nothing read it.
+        # 30-day backtest: 2 distinct hours, 2026-10-30 and 2026-10-31, both real.
+        - alert: AlertmanagerPageNotDelivered
+          expr: sum by (integration) (increase(alertmanager_notifications_failed_total[15m])) > 0
+          for: 5m
+          labels:
+            severity: critical
+          annotations:
+            summary: Alertmanager failed to deliver a page through {{ $labels.integration }}
+            runbook: apps/ntfy/README.md

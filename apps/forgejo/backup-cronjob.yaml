@@ -173,7 +173,9 @@ spec:
                   fi
 
                   # 1. Prune first, keeping KEEP_OFFBOX-1 so the new copy makes KEEP_OFFBOX.
-                  rm -f /offbox/*.tmp
+                  # Only .tmp files past this job's 3h deadline are dead; a younger one may
+                  # belong to a manual run, which concurrencyPolicy does not cover.
+                  find /offbox -maxdepth 1 -name '*.tmp' -mmin +180 -delete
                   ls -t /offbox/forgejo-full-*.tar.gz 2>/dev/null | tail -n +$KEEP_OFFBOX | xargs -r rm -v
                   ls -t /offbox/forgejo-db-*.db.gz    2>/dev/null | tail -n +$KEEP_OFFBOX | xargs -r rm -v
 
@@ -187,7 +189,7 @@ spec:
                   fi
 
                   # 3. Copy to .tmp, prove it, then rename.
-                  TMP="/offbox/$NAME.tmp"
+                  TMP="/offbox/$NAME.$(hostname).tmp"
                   trap 'rm -f "$TMP"' EXIT
                   echo "Copying $NAME off-box to hp-victus..."
                   cp -f "$NEWEST_FULL" "$TMP"

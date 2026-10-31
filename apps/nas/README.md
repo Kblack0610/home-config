@@ -47,7 +47,7 @@ The NAS serves as the central backup target. App backup cronjobs write to `/mnt/
 | `3d-prints-backup` | Sun 3:45 AM | Mirrors `/mnt/nas/public/3d-printing` to the 8TB drive (`/mnt/backup-8t/3d-prints`) + dated btrfs snapshot, keeps last 14. See [backup runbook](../../docs/backup-runbook.md) |
 | `sops-key-backup` | Sun 4 AM | Exports `sops-age` secret from `flux-system`, keeps last 4 copies |
 | `nas-backup-cleanup` | Sun 5 AM | Prunes per-app backups beyond 14 copies (skips sops) |
-| `nas-backup-verify` | Mon 6 AM | Checks backup freshness (< 48h) and gzip integrity for home-assistant, litellm, actual-budget, music-assistant, snapcast, karakeep, postgres; verifies SOPS key backup exists |
+| `nas-backup-verify` | Mon 6 AM | Checks backup freshness (< 48h) and gzip integrity for home-assistant, actual-budget, music-assistant, snapcast, karakeep, postgres; verifies SOPS key backup exists |
 
 Verification results are appended to `/mnt/nas/private/backups/manifest.log`.
 

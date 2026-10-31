@@ -1,0 +1,73 @@
+---
+# Core dumps and local-path PV use, which node-exporter cannot see for itself. local-path
+# does not enforce a PV's size and reports the whole node's capacity to kubelet, so du is
+# the only measure of a PV against what it asked for.
+- name: Create the textfile directory
+  ansible.builtin.file:
+    path: "{{ node_disk_metrics_dir }}"
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+
+- name: Install the metrics script
+  ansible.builtin.copy:
+    src: node-disk-metrics.sh
+    dest: /usr/local/bin/node-disk-metrics
+    owner: root
+    group: root
+    mode: "0755"
+
+- name: Install the service and timer
+  ansible.builtin.copy:
+    dest: "/etc/systemd/system/{{ item.name }}"
+    owner: root
+    group: root
+    mode: "0644"
+    content: "{{ item.content }}"
+  loop:
+    - name: node-disk-metrics.service
+      content: |
+        # Managed by ansible (roles/node-disk-metrics). Do not edit by hand.
+        [Unit]
+        Description=Export core dump and local-path PV disk use for node-exporter
+
+        [Service]
+        Type=oneshot
+        Nice=19
+        IOSchedulingClass=idle
+        TimeoutStartSec=15min
+        ExecStart=/usr/local/bin/node-disk-metrics {{ node_disk_metrics_dir }}
+    - name: node-disk-metrics.timer
+      content: |
+        # Managed by ansible (roles/node-disk-metrics). Do not edit by hand.
+        # A timer because disk use has no event to wait on.
+        [Unit]
+        Description=Export core dump and local-path PV disk use every 15 minutes
+
+        [Timer]
+        OnBootSec=2min
+        OnUnitActiveSec=15min
+        RandomizedDelaySec=1min
+
+        [Install]
+        WantedBy=timers.target
+  loop_control:
+    label: "{{ item.name }}"
+  notify: Reload systemd for node-disk-metrics
+
+- name: Apply unit changes before starting the timer
+  ansible.builtin.meta: flush_handlers
+
+- name: Enable the timer
+  ansible.builtin.systemd:
+    name: node-disk-metrics.timer
+    enabled: true
+    state: started
+  ignore_errors: "{{ ansible_check_mode }}"
+
+- name: Write the first reading now
+  ansible.builtin.systemd:
+    name: node-disk-metrics.service
+    state: started
+  when: not ansible_check_mode

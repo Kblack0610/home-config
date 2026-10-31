@@ -90,6 +90,53 @@ spec:
           annotations:
             summary: "{{ $labels.instance }} {{ $labels.device }} has {{ $value | humanizePercentage }} of its inodes free"
 
+    # From ansible/roles/node-disk-metrics, on k3s nodes only. New rules, so these have no
+    # replay: the series start with this change.
+    - name: homelab-capacity.disk-use
+      rules:
+        - alert: NodeCoreDumps
+          expr: node_coredumps_last_hour > 0
+          labels:
+            severity: warning
+            category: capacity
+          annotations:
+            summary: "{{ $labels.instance }} wrote {{ $value | humanize }} core dumps in the last hour"
+        - alert: NodeCoreDumpStorm
+          expr: node_coredumps_last_hour > 5 or node_coredump_bytes > 10e9
+          for: 5m
+          labels:
+            severity: critical
+            category: capacity
+          annotations:
+            summary: "{{ $labels.instance }} is crash looping or holding large core dumps"
+        # local-path does not enforce a PV's size, so a PV past its request is taking disk
+        # the scheduler and everyone else think is free.
+        - alert: LocalPathPvOverRequest
+          expr: local_path_pv_used_bytes / on (namespace, persistentvolumeclaim) group_left () max by (namespace, persistentvolumeclaim) (kube_persistentvolumeclaim_resource_requests_storage_bytes) > 1
+          for: 1h
+          labels:
+            severity: warning
+            category: capacity
+          annotations:
+            summary: "{{ $labels.namespace }}/{{ $labels.persistentvolumeclaim }} uses {{ $value | humanizePercentage }} of what it requested"
+        - alert: LocalPathPvFarOverRequest
+          expr: local_path_pv_used_bytes / on (namespace, persistentvolumeclaim) group_left () max by (namespace, persistentvolumeclaim) (kube_persistentvolumeclaim_resource_requests_storage_bytes) > 1.5
+          for: 1h
+          labels:
+            severity: critical
+            category: capacity
+          annotations:
+            summary: "{{ $labels.namespace }}/{{ $labels.persistentvolumeclaim }} uses {{ $value | humanizePercentage }} of what it requested"
+        # The rules above go quiet when the timer stops, which reads the same as all clear.
+        - alert: NodeDiskMetricsStale
+          expr: time() - node_textfile_mtime_seconds{file=~".*node_disk.prom"} > 3600
+          for: 15m
+          labels:
+            severity: warning
+            category: capacity
+          annotations:
+            summary: "{{ $labels.instance }} has not updated its disk metrics for over an hour"
+
     - name: homelab-capacity.compute
       rules:
         - alert: NodeMemoryLow

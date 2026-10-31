@@ -266,6 +266,92 @@ tests:
           - exp_labels: {alertname: BackupVerifyFailed, severity: critical, category: backup, namespace: nas, job_name: nas-backup-verify-new}
             exp_annotations: {summary: "nas-backup-verify-new failed: read its log"}
 
+  - name: core dumps warn on any, page past 5 an hour or 10G
+    interval: 1m
+    input_series:
+      - series: 'node_coredumps_last_hour{instance="calm"}'
+        values: '0x20'
+      - series: 'node_coredump_bytes{instance="calm"}'
+        values: '9000000000x20'
+      - series: 'node_coredumps_last_hour{instance="one"}'
+        values: '1x20'
+      - series: 'node_coredump_bytes{instance="one"}'
+        values: '1000x20'
+      - series: 'node_coredumps_last_hour{instance="many"}'
+        values: '6x20'
+      - series: 'node_coredump_bytes{instance="big"}'
+        values: '11000000000x20'
+    alert_rule_test:
+      - eval_time: 10m
+        alertname: NodeCoreDumps
+        exp_alerts:
+          - exp_labels: {alertname: NodeCoreDumps, severity: warning, category: capacity, instance: many}
+            exp_annotations: {summary: "many wrote 6 core dumps in the last hour"}
+          - exp_labels: {alertname: NodeCoreDumps, severity: warning, category: capacity, instance: one}
+            exp_annotations: {summary: "one wrote 1 core dumps in the last hour"}
+      - eval_time: 10m
+        alertname: NodeCoreDumpStorm
+        exp_alerts:
+          - exp_labels: {alertname: NodeCoreDumpStorm, severity: critical, category: capacity, instance: big}
+            exp_annotations: {summary: "big is crash looping or holding large core dumps"}
+          - exp_labels: {alertname: NodeCoreDumpStorm, severity: critical, category: capacity, instance: many}
+            exp_annotations: {summary: "many is crash looping or holding large core dumps"}
+
+  - name: a PV warns past its request and pages past 150%
+    interval: 1m
+    input_series:
+      - series: 'local_path_pv_used_bytes{namespace="n",persistentvolumeclaim="fits",volumename="pvc-a"}'
+        values: '100x90'
+      - series: 'kube_persistentvolumeclaim_resource_requests_storage_bytes{namespace="n",persistentvolumeclaim="fits"}'
+        values: '100x90'
+      - series: 'local_path_pv_used_bytes{namespace="n",persistentvolumeclaim="over",volumename="pvc-b"}'
+        values: '120x90'
+      - series: 'kube_persistentvolumeclaim_resource_requests_storage_bytes{namespace="n",persistentvolumeclaim="over"}'
+        values: '100x90'
+      - series: 'local_path_pv_used_bytes{namespace="n",persistentvolumeclaim="far",volumename="pvc-c"}'
+        values: '160x90'
+      - series: 'kube_persistentvolumeclaim_resource_requests_storage_bytes{namespace="n",persistentvolumeclaim="far"}'
+        values: '100x90'
+      - series: 'local_path_pv_used_bytes{namespace="n",persistentvolumeclaim="edge",volumename="pvc-d"}'
+        values: '150x90'
+      - series: 'kube_persistentvolumeclaim_resource_requests_storage_bytes{namespace="n",persistentvolumeclaim="edge"}'
+        values: '100x90'
+    alert_rule_test:
+      - eval_time: 50m
+        alertname: LocalPathPvFarOverRequest
+        exp_alerts: []
+      - eval_time: 65m
+        alertname: LocalPathPvFarOverRequest
+        exp_alerts:
+          - exp_labels: {alertname: LocalPathPvFarOverRequest, severity: critical, category: capacity, namespace: n, persistentvolumeclaim: far, volumename: pvc-c}
+            exp_annotations: {summary: "n/far uses 160% of what it requested"}
+      - eval_time: 65m
+        alertname: LocalPathPvOverRequest
+        exp_alerts:
+          - exp_labels: {alertname: LocalPathPvOverRequest, severity: warning, category: capacity, namespace: n, persistentvolumeclaim: edge, volumename: pvc-d}
+            exp_annotations: {summary: "n/edge uses 150% of what it requested"}
+          - exp_labels: {alertname: LocalPathPvOverRequest, severity: warning, category: capacity, namespace: n, persistentvolumeclaim: far, volumename: pvc-c}
+            exp_annotations: {summary: "n/far uses 160% of what it requested"}
+          - exp_labels: {alertname: LocalPathPvOverRequest, severity: warning, category: capacity, namespace: n, persistentvolumeclaim: over, volumename: pvc-b}
+            exp_annotations: {summary: "n/over uses 120% of what it requested"}
+
+  - name: a stopped metrics timer warns after an hour
+    interval: 1m
+    input_series:
+      - series: 'node_textfile_mtime_seconds{instance="a",file="/var/lib/node-exporter-textfile/node_disk.prom"}'
+        values: '0x120'
+      - series: 'node_textfile_mtime_seconds{instance="other",file="/var/lib/prometheus/node-exporter/rpi_throttled.prom"}'
+        values: '0x120'
+    alert_rule_test:
+      - eval_time: 70m
+        alertname: NodeDiskMetricsStale
+        exp_alerts: []
+      - eval_time: 80m
+        alertname: NodeDiskMetricsStale
+        exp_alerts:
+          - exp_labels: {alertname: NodeDiskMetricsStale, severity: warning, category: capacity, instance: a, file: /var/lib/node-exporter-textfile/node_disk.prom}
+            exp_annotations: {summary: "a has not updated its disk metrics for over an hour"}
+
   - name: a failed webhook pages, a healthy one does not
     interval: 1m
     input_series:

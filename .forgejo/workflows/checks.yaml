@@ -80,6 +80,8 @@ jobs:
         uses: actions/checkout@v4
       - name: ci-disk-prune offline test
         run: sh ansible/roles/platform-ci-host/files/test-ci-disk-prune.sh
+      - name: node-disk-metrics offline test
+        run: sh ansible/roles/node-disk-metrics/files/test-node-disk-metrics.sh
 
   prometheus-rules:
     runs-on: docker

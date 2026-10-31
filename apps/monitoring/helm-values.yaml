@@ -398,9 +398,15 @@ prometheus:
 # this by default, so we add it explicitly via extraHostVolumeMounts below.
 prometheus-node-exporter:
   extraArgs:
+    - --collector.textfile.directory=/var/lib/node-exporter-textfile
     - --collector.systemd
     - --collector.systemd.unit-include=^(actions\.runner\..*|docker|kubelet|node_exporter|sshd|forgejo-runner)\.service$
   extraHostVolumeMounts:
+    # ansible/roles/node-disk-metrics writes here: core dumps and local-path PV use.
+    - name: textfile
+      hostPath: /var/lib/node-exporter-textfile
+      mountPath: /var/lib/node-exporter-textfile
+      readOnly: true
     - name: dbus-socket
       hostPath: /run/dbus/system_bus_socket
       mountPath: /var/run/dbus/system_bus_socket

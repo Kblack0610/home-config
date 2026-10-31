@@ -61,6 +61,16 @@
     - role: time-sync
       tags: [time, ntp]
 
+- name: Core dump and local-path PV metrics (k3s nodes)
+  # Run before the chart change that mounts the directory.
+  #   ansible-playbook playbooks/site.yml --limit 'hp-victus:asus-laptop:razer-laptop:pi_k3s' --tags disk-metrics
+  hosts: hp-victus:asus-laptop:razer-laptop:pi_k3s
+  become: true
+  gather_facts: false
+  roles:
+    - role: node-disk-metrics
+      tags: [disk-metrics]
+
 - name: USB backup drive mounts on asus-laptop (survive re-enumeration)
   # See roles/usb-backup-mounts/README.md. The 8TB drive dropped off USB on
   # 2026-08-09 and came back as a different device node; the seven mounts went

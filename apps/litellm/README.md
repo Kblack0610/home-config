@@ -95,7 +95,6 @@ Prefer committing manifest changes and reconciling through Flux for normal opera
 ```bash
 kubectl -n ai-gateway get all
 kubectl -n ai-gateway logs deployment/litellm --tail=100
-kubectl -n ai-gateway get cronjob litellm-backup
 ```
 
 Health endpoints used by the deployment:

@@ -21,6 +21,23 @@
 # vanishes and re-established on next access when it returns. See
 # defaults/main.yml for the full reasoning.
 
+- name: Create any missing subvolumes
+  # Through a temporary read-write mount of the top level, because /mnt/backup-8t/browse
+  # is read-only and does not exist on a first run. A missing drive fails here, as it
+  # does in the verify task below.
+  ansible.builtin.shell: |
+    set -eu
+    top="$(mktemp -d)"
+    mount -o subvolid=5 UUID={{ usb_backup_fs_uuid }} "$top"
+    trap 'umount "$top"; rmdir "$top"' EXIT
+    for sub in {{ usb_backup_subvolumes | selectattr('subvol', 'defined') | map(attribute='subvol') | map('quote') | join(' ') }}; do
+      [ -d "$top/$sub" ] || btrfs subvolume create "$top/$sub"
+    done
+  args:
+    executable: /bin/bash
+  register: usb_backup_subvol_create
+  changed_when: "'Create subvolume' in usb_backup_subvol_create.stdout"
+
 - name: Ensure the mountpoint directories exist
   ansible.builtin.file:
     path: "{{ item.path }}"
@@ -38,11 +55,11 @@
     path: "{{ item.path }}"
     src: "UUID={{ usb_backup_fs_uuid }}"
     fstype: btrfs
-    opts: "{{ usb_backup_mount_opts }},subvol={{ item.subvol }}"
+    opts: "{{ usb_backup_mount_opts }},{{ item.opts if 'opts' in item else 'subvol=' ~ item.subvol }}"
     state: present
   loop: "{{ usb_backup_subvolumes }}"
   loop_control:
-    label: "{{ item.path }} ({{ item.subvol }})"
+    label: "{{ item.path }}"
   register: usb_backup_fstab
 
 - name: Reload systemd so the fstab generator rebuilds the mount/automount units

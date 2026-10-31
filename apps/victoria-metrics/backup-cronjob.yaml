@@ -38,6 +38,11 @@ spec:
                   # fails (2026-08-09), so probe with a write before trusting it.
                   touch /backup/.write-probe || { echo "FATAL: /backup not writable - 8TB drive gone"; exit 1; }
                   rm -f /backup/.write-probe
+                  # A hostPath is always a mountpoint in here, so check what it is:
+                  # a btrfs subvolume root is inode 256, a plain directory on the
+                  # root disk is not. Without this the backup lands on the disk it
+                  # protects, as it did until 2026-10-31.
+                  [ "$(stat -c %i /backup)" = 256 ] || { echo "FATAL: /backup is not the @victoria-metrics subvolume - not on the 8TB"; exit 1; }
                   # -snapshot.createURL takes a consistent snapshot through the
                   # running server and deletes it when done. -dst is the same
                   # directory every night, which is what makes it incremental.
@@ -58,4 +63,4 @@ spec:
             - name: backup
               hostPath:
                 path: /mnt/backup-8t/victoria-metrics
-                type: DirectoryOrCreate
+                type: Directory

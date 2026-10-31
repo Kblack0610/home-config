@@ -23,7 +23,9 @@ usb_backup_fs_label: backup8t
 # apps/monitoring/prometheus-rules-backup-drive.yaml keys off those series.
 usb_backup_mount_opts: "noatime,compress=zstd:1,nofail,noauto,x-systemd.automount,x-systemd.device-timeout=10"
 
-# subvol -> mountpoint. Mirrors what was already in asus-laptop's fstab.
+# subvol -> mountpoint. A path with no entry here is a plain directory on the root
+# disk, which is how langfuse and victoria-metrics backups sat on the disk they
+# were protecting until 2026-10-31. A new subvolume is created by this role.
 usb_backup_subvolumes:
   - { subvol: "@immich", path: /mnt/backup-8t/immich }
   - { subvol: "@immich-db", path: /mnt/backup-8t/immich-db }
@@ -36,3 +38,9 @@ usb_backup_subvolumes:
   - { subvol: "@phones-snapshots", path: /mnt/backup-8t/phones-snapshots }
   - { subvol: "@forgejo-packages", path: /mnt/backup-8t/forgejo-packages }
   - { subvol: "@forgejo-packages-snapshots", path: /mnt/backup-8t/forgejo-packages-snapshots }
+  - { subvol: "@langfuse", path: /mnt/backup-8t/langfuse }
+  - { subvol: "@victoria-metrics", path: /mnt/backup-8t/victoria-metrics }
+  # Not a subvolume: the whole filesystem, read-only, so one path shows every
+  # mirror and snapshot. The NAS [backups] share serves it. btrfs applies ro per
+  # mount, so the read-write mounts above are unaffected.
+  - { opts: "ro,subvolid=5", path: /mnt/backup-8t/browse }

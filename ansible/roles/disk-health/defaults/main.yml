@@ -1,0 +1,15 @@
+---
+# One monthly scrub per filesystem. A scrub reads every block and checks it against its
+# checksum, which is the only thing that finds rot in a file nobody reads. Any mount of a
+# filesystem scrubs all of it.
+#
+# 07:00 is after the backup window (02:00-06:30), and the days are spread so no two
+# scrubs overlap. Scrub IO is idle class, but it still competes on a loaded node, so the
+# NVMe filesystems also have a limit per device: root is the slowest, as it holds the
+# live databases. `limit` empty means none: the USB drive is slower than any useful limit.
+#
+# The 8TB path must be read-write: scrub refuses a read-only mount, so not browse.
+disk_health_scrubs:
+  - { path: /mnt/backup-8t/nas-backups, on_calendar: "*-*-01 07:00:00", limit: "" }
+  - { path: /mnt/nas/private, on_calendar: "*-*-08 07:00:00", limit: "200M" }
+  - { path: /, on_calendar: "*-*-15 07:00:00", limit: "100M" }

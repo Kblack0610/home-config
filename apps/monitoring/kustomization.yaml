@@ -14,6 +14,7 @@ resources:
   - prometheus-rules-site-availability.yaml
   - prometheus-rules-jobs.yaml
   - prometheus-rules-backup-drive.yaml
+  - prometheus-rules-disk-health.yaml
   - prometheus-rules-trivy.yaml
   - prometheus-rules-dns.yaml
   - prometheus-rules-forgejo-mirrors.yaml

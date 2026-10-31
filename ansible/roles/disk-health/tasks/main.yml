@@ -1,0 +1,70 @@
+---
+# Scrub timers and the SMART exporter on asus-laptop. The alerts that read their results
+# are in apps/monitoring/prometheus-rules-disk-health.yaml.
+- name: Keep the SMART exporter running
+  ansible.builtin.systemd:
+    name: prometheus-smartctl-exporter
+    enabled: true
+    state: started
+
+- name: Resolve each scrub's systemd instance name
+  ansible.builtin.command: systemd-escape --path {{ item.path | quote }}
+  loop: "{{ disk_health_scrubs }}"
+  loop_control:
+    label: "{{ item.path }}"
+  register: disk_health_instances
+  changed_when: false
+  check_mode: false
+
+- name: Create the drop-in directories
+  ansible.builtin.file:
+    path: "/etc/systemd/system/btrfs-scrub@{{ item.1.stdout }}.{{ item.0 }}.d"
+    state: directory
+    mode: "0755"
+  loop: "{{ ['timer', 'service'] | product(disk_health_instances.results) | list }}"
+  loop_control:
+    label: "{{ item.0 }} {{ item.1.item.path }}"
+
+- name: Schedule each scrub
+  # The package's timer is monthly with up to a week of random delay, which would let
+  # two scrubs overlap or land on the backup window.
+  ansible.builtin.copy:
+    dest: "/etc/systemd/system/btrfs-scrub@{{ item.stdout }}.timer.d/schedule.conf"
+    mode: "0644"
+    content: |
+      [Timer]
+      OnCalendar=
+      OnCalendar={{ item.item.on_calendar }}
+      RandomizedDelaySec=0
+      AccuracySec=1m
+  loop: "{{ disk_health_instances.results }}"
+  loop_control:
+    label: "{{ item.item.path }}"
+  notify: Reload systemd
+
+- name: Limit each scrub's throughput
+  ansible.builtin.copy:
+    dest: "/etc/systemd/system/btrfs-scrub@{{ item.stdout }}.service.d/limit.conf"
+    mode: "0644"
+    content: |
+      [Service]
+      ExecStart=
+      ExecStart=/usr/bin/btrfs scrub start -B{{ (' --limit ' ~ item.item.limit) if item.item.limit else '' }} %f
+  loop: "{{ disk_health_instances.results }}"
+  loop_control:
+    label: "{{ item.item.path }}"
+  notify: Reload systemd
+
+- name: Apply unit changes before starting timers
+  ansible.builtin.meta: flush_handlers
+
+- name: Enable the scrub timers
+  ansible.builtin.systemd:
+    name: "btrfs-scrub@{{ item.stdout }}.timer"
+    enabled: true
+    state: started
+  loop: "{{ disk_health_instances.results }}"
+  loop_control:
+    label: "{{ item.item.path }}"
+  # In --check mode the drop-ins are not written, but the package's template exists.
+  ignore_errors: "{{ ansible_check_mode }}"

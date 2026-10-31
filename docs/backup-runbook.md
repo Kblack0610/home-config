@@ -4,19 +4,58 @@ Use this guide to verify scheduled backups, trigger them manually, or restore da
 
 ## asus-laptop drive inventory
 
-Authoritative list of the disks on asus-laptop (the pinned NAS + backup node). The kernel device letter (`/dev/sdX`) is NOT stable across reboots/replugs - always identify a disk by its label or UUID, never by `/dev/sda`.
+Authoritative list of the disks on asus-laptop (the pinned NAS + backup node). Kernel names are not stable across reboots or replugs, and both NVMe drives are the same model, so identify a disk by its serial or UUID, never by `/dev/sda` or `nvme0n1` (`lsblk -o NAME,SERIAL,SIZE,LABEL`).
 
-| Disk | Size | Label / UUID | Role | Mount(s) |
-|---|---|---|---|---|
-| USB HDD | 7.3TB (8TB nominal) | `backup8t` / `99a8c3bb-b1d9-4a78-88de-627b429cd147` | consolidated backup target | `/mnt/backup-8t/*` |
-| NVMe | 1.8TB | `nvme1n1p2` | NAS data (public + private shares) | `/mnt/nas/public`, `/mnt/nas/private` |
-| NVMe | 1.8TB | `nvme0n1p2` | OS root + kubelet | `/` |
+| Disk | Size | Serial | Filesystem UUID | Role | Mount(s) |
+|---|---|---|---|---|---|
+| NVMe (Kingston SNVS2000G) | 1.8TB | `50026B7685D37E1C` | `8d94259a-cee9-4677-bc3d-f2b739fd52d1` | OS root, kubelet, local-path PVs | `/` |
+| NVMe (Kingston SNVS2000G) | 1.8TB | `50026B7685D37E07` | `e02568f4-e88b-4cf5-b635-016d6e314794` | NAS shares, media app config (Immich's live Postgres), Forgejo fulls | `/mnt/nas/{public,private}`, `/mnt/media/{library,downloads,app-config}`, `/mnt/backups` |
+| USB HDD (Seagate Expansion) | 7.3TB (8TB nominal) | no SMART over USB | `99a8c3bb-b1d9-4a78-88de-627b429cd147` (label `backup8t`) | backup target, not extra NAS space | `/mnt/backup-8t/*`, read-only at `/mnt/backup-8t/browse` and the `[backups]` share |
 
-Note: this is a same-box setup - the NAS data and its backup drive are both inside asus-laptop. That protects against a single disk failing and against accidental deletion (via snapshots), but NOT against loss of the whole machine (fire/theft). Offsite is not yet implemented.
+There is no RAID: these are three independent btrfs filesystems, and redundancy comes from the copies between them. See `If a drive fails`.
+
+Health is watched by the `disk-health` Ansible role and `apps/monitoring/prometheus-rules-disk-health.yaml`: a monthly `btrfs scrub` per filesystem, SMART alerts for the two NVMe drives, and btrfs error alerts for all three. The USB bridge hides SMART, so a failing 8TB shows up only as btrfs errors, a scrub failure or a stale backup.
+
+Note: this is a same-box setup. It protects against one disk failing and against accidental deletion (via snapshots), but NOT against loss of the whole machine (fire, theft, surge). Offsite is not implemented.
+
+## If a drive fails
+
+Apps on a failed disk go down, and a failed root disk takes this node's pods with it. The cluster survives: the control plane is on `raspberrypi`. Losing any one of these disks loses no data beyond what is listed under "Lost for good".
+
+| Failed disk | What is gone | Restore from | Lost for good |
+|---|---|---|---|
+| Root (`...7E1C`) | OS, every local-path PV on this node, `/var/backups/*` local copies | NAS `/mnt/nas/private/backups/home-k3s/` (app dumps), `/mnt/backups/forgejo` or hp-victus (Forgejo), 8TB (Langfuse, VictoriaMetrics, Forgejo packages) | Changes since the last backup. No backup by design: Loki logs, Grafana UI edits, Alertmanager silences, Crowdsec state, Mosquitto retained messages, Trivy cache, the `placemyparents-preview` database. MinIO: Langfuse raw event bodies and the `terraform-state` bucket (rebuild `public-sites-tunnel` state with `terraform import`) |
+| NAS (`...7E07`) | Immich originals, phones, harvest, 3D prints, the public share, all app backups on the NAS, Immich's live Postgres and the media apps' config, Forgejo local fulls | 8TB: every mirror's newest snapshot, `@immich-db` for the Immich database. Forgejo fulls come back at the next 3 AM run, and hp-victus keeps the newest 2 meanwhile | Changes since the last mirror (a day for Immich and the app backups, up to a week for the rest), the snapper history, and the Zomboid backup history on the public share (the live world is on the root disk, and the job writes a new backup nightly) |
+| 8TB (`backup8t`) | Every mirror and all snapshot history. No live data | Nothing to restore: the sources are all still live. Replace the drive and the jobs refill it | Point-in-time history. Until the new drive has filled, a second failure loses data, so replace it first |
+
+Two disks at once, or the whole machine: what remains is the Forgejo copy on hp-victus and the GitHub mirror of this repo. That is the gap the offsite decision is about.
+
+### Replacing a disk
+
+**Root.** Install the OS, then run `ansible/playbooks/site.yml --limit asus-laptop` from your workstation and rejoin the node. Restore Forgejo before anything else, because Flux reads this repo from it and the cluster pulls images from it. A `forgejo-full-*.tar.gz` is a tar of `/data`, so extract the newest one into the empty `forgejo-data` PV, then copy `/mnt/backup-8t/forgejo-packages` to `gitea/data/packages`, which the fulls exclude. This restore has not been rehearsed. Then follow each app's restore section in this file.
+
+**NAS.** No Ansible role builds this disk. Partition it, `mkfs.btrfs`, create the subvolumes `@public`, `@private`, `@backups`, `@media-library`, `@downloads` and `@app-config`, and put the new UUID in the `/etc/fstab` lines that hold the old one. Then copy back from the newest snapshot, with the matching apps stopped:
+
+```bash
+sudo rsync -aHAX --info=progress2 /mnt/backup-8t/immich-snapshots/<newest>/ /mnt/nas/private/immich/
+sudo rsync -aHAX --info=progress2 /mnt/backup-8t/nas-backups-snapshots/<newest>/ /mnt/nas/private/backups/
+sudo rsync -aHAX --info=progress2 /mnt/backup-8t/phones-snapshots/<newest>/ /mnt/nas/private/phones/
+sudo rsync -aHAX --info=progress2 /mnt/backup-8t/harvest-snapshots/<newest>/ /mnt/nas/private/harvest/
+sudo rsync -aHAX --info=progress2 /mnt/backup-8t/3d-prints-snapshots/<newest>/ /mnt/nas/public/3d-printing/
+sudo rsync -aHAX --info=progress2 /mnt/backup-8t/app-config-snapshots/<newest>/ /mnt/media/app-config/
+```
+
+The `app-config` copy is taken live, so Immich's Postgres in it is crash-consistent at best. Restore the Immich database from the dump in `@immich-db` rather than trusting that directory.
+
+**8TB.** Follow `Reprovisioning` below. The role creates every subvolume and mount, and the next scheduled run of each job fills it. `/mnt/backup-8t/browse` must exist before the `nas` pod can start, so run the role before anything else.
+
+**While a disk is failing but still readable:** take a copy first, then replace it. Check which disk it is by serial, in the alert or with `smartctl -a`, before touching anything: the two NVMe drives look identical.
+
+To read a backup without touching the host, mount the `[backups]` share (`//192.168.1.152/backups`, user `nas`). It is read-only.
 
 ## Backup Drive (asus-laptop)
 
-The Seagate Expansion USB HDD (label `backup8t`, uuid `99a8c3bb-b1d9-4a78-88de-627b429cd147`; currently enumerates as `/dev/sdc`) is the primary consolidated backup target on asus-laptop. It holds the Immich photo originals + DB snapshots, the 3D-print files mirror and the phone archives, with `@media` and `@app-config` subvolumes reserved for Phase 2.
+The Seagate Expansion USB HDD (label `backup8t`, uuid `99a8c3bb-b1d9-4a78-88de-627b429cd147`) is the consolidated backup target on asus-laptop. It holds the Immich photo originals and database dumps, and mirrors of the other data on the NAS disk. `@media` is reserved and empty.
 
 ### Drive layout
 
@@ -125,6 +164,7 @@ Note: `nofail` means an unplugged drive never blocks boot. The `immich-originals
 | Task | Command or section |
 |------|--------------------|
 | See which CronJobs exist | `kubectl --context home-k3s get cronjobs -A | grep backup` |
+| A drive failed or is failing | See `If a drive fails` |
 | Trigger a backup now | See `Manual Backup` |
 | Check recent backup jobs | `kubectl --context home-k3s get jobs -A --sort-by=.status.startTime | grep backup | tail -5` |
 | Restore Home Assistant | See `Restore Home Assistant` |
@@ -249,14 +289,14 @@ kubectl --context home-k3s get cronjobs -A | grep backup
 kubectl --context home-k3s get jobs -A --sort-by=.status.startTime | grep backup | tail -5
 
 # NAS manifest
-ssh pc-home-asus-laptop cat /mnt/nas/private/backups/manifest.log
+ssh -p 2222 192.168.1.152 cat /mnt/nas/private/backups/manifest.log
 ```
 
 ### Check stored backups
 
 ```bash
 # NAS copies
-ssh pc-home-asus-laptop 'for d in /mnt/nas/private/backups/home-k3s/*/; do echo "=== $(basename "$d") ==="; ls -lt "$d" | head -3; done'
+ssh -p 2222 192.168.1.152 bash -c "'for d in /mnt/nas/private/backups/home-k3s/*/; do echo \"=== \$(basename \"\$d\") ===\"; ls -lt \"\$d\" | head -3; done'"
 
 # Local node copies for Home Assistant
 ssh raspberrypi 'ls -lt /var/backups/home-assistant/ | head -3'
@@ -269,7 +309,7 @@ ssh raspberrypi 'ls -lt /var/backups/home-assistant/ | head -3'
 kubectl --context home-k3s scale deployment home-assistant -n home-assistant --replicas=0
 
 # Inspect available backups
-ssh pc-home-asus-laptop ls -lt /mnt/nas/private/backups/home-k3s/home-assistant/
+ssh -p 2222 192.168.1.152 ls -lt /mnt/nas/private/backups/home-k3s/home-assistant/
 ssh raspberrypi ls -lt /var/backups/home-assistant/
 
 # Start a temporary restore pod with the PVC mounted
@@ -329,7 +369,7 @@ The budget is a sync log, not a table of transactions, so category assignments a
 # 1. Pick a backup. Newest first, both tiers:
 kubectl --context home-k3s get pods -n actual-budget -o wide           # which node holds the PVC
 ssh <that-node> ls -lt /var/backups/actual-budget/                     # node-local copy
-ssh pc-home-asus-laptop sudo ls -lt /mnt/nas/private/backups/home-k3s/actual-budget/   # off-box copy
+ssh -p 2222 192.168.1.152 sudo ls -lt /mnt/nas/private/backups/home-k3s/actual-budget/   # off-box copy
 
 # 2. Scale down. The PVC is RWO and the Deployment is strategy: Recreate,
 #    so the app MUST be stopped or it will write over the restore.
@@ -364,7 +404,7 @@ A backup that exists is not the same as a backup that holds your data. These che
 
 ```bash
 # Pull the newest off-box copy and unpack it somewhere scratch
-ssh pc-home-asus-laptop sudo cat /mnt/nas/private/backups/home-k3s/actual-budget/actual-YYYYMMDD-HHMMSS.tar.gz > /tmp/ab.tar.gz
+ssh -p 2222 192.168.1.152 sudo cat /mnt/nas/private/backups/home-k3s/actual-budget/actual-YYYYMMDD-HHMMSS.tar.gz > /tmp/ab.tar.gz
 mkdir -p /tmp/ab && tar -xzf /tmp/ab.tar.gz -C /tmp/ab && tar -tzf /tmp/ab.tar.gz
 
 # Both databases must be structurally sound
@@ -393,10 +433,10 @@ Use this when both the local development key and the in-cluster secret are unava
 
 ```bash
 # Find the newest NAS backup
-ssh pc-home-asus-laptop ls -lt /mnt/nas/private/backups/home-k3s/sops/
+ssh -p 2222 192.168.1.152 ls -lt /mnt/nas/private/backups/home-k3s/sops/
 
 # Copy the backup manifest locally
-scp pc-home-asus-laptop:/mnt/nas/private/backups/home-k3s/sops/sops-age-YYYYMMDD-HHMMSS.yaml ./sops-age-restore.yaml
+scp -P 2222 192.168.1.152:/mnt/nas/private/backups/home-k3s/sops/sops-age-YYYYMMDD-HHMMSS.yaml ./sops-age-restore.yaml
 
 # Restore the cluster secret
 kubectl --context home-k3s apply -f sops-age-restore.yaml
@@ -417,7 +457,7 @@ That is expected for every job except `actual-budget-backup`. The local backup i
 ```bash
 kubectl --context home-k3s get pods -n nas
 kubectl --context home-k3s run --rm -it dns-test --image=alpine -- nslookup nas.nas.svc.cluster.local
-ssh pc-home-asus-laptop df -h /mnt/nas/private
+ssh -p 2222 192.168.1.152 df -h /mnt/nas/private
 ```
 
 ### A backup job fails

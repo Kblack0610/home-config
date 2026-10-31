@@ -7,7 +7,7 @@ dir="$(cd "$(dirname "$0")/../apps/monitoring" && pwd)"
 tmp="$(mktemp -d)"
 trap 'rm -rf "$tmp"' EXIT
 
-for name in capacity pager node-health; do
+for name in capacity pager node-health disk-health; do
   yq '.spec' "$dir/prometheus-rules-$name.yaml" > "$tmp/$name.rules.yaml"
 done
 cp "$dir"/tests/*.test.yaml "$tmp/"

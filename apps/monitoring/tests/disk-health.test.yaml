@@ -1,0 +1,113 @@
+rule_files:
+  - disk-health.rules.yaml
+
+tests:
+  - name: a healthy machine raises nothing
+    interval: 1m
+    input_series:
+      - series: 'smartctl_device_smart_status{device="nvme0",instance="nas:9633"}'
+        values: '1x60'
+      - series: 'smartctl_device_smart_status{device="nvme1",instance="nas:9633"}'
+        values: '1x60'
+      - series: 'smartctl_device_critical_warning{device="nvme0",instance="nas:9633"}'
+        values: '0x60'
+      - series: 'smartctl_device_media_errors{device="nvme0",instance="nas:9633"}'
+        values: '0x60'
+      # Six old read errors, as on the root disk: history, and not growing.
+      - series: 'node_btrfs_device_errors_total{device="nvme1n1p2",instance="nas:9100",type="read"}'
+        values: '6x60'
+      - series: 'node_btrfs_device_errors_total{device="sda1",instance="nas:9100",type="corruption"}'
+        values: '0x60'
+    alert_rule_test:
+      - {eval_time: 50m, alertname: DiskSmartFailing, exp_alerts: []}
+      - {eval_time: 50m, alertname: DiskCriticalWarning, exp_alerts: []}
+      - {eval_time: 50m, alertname: DiskMediaErrors, exp_alerts: []}
+      - {eval_time: 50m, alertname: BtrfsCorruption, exp_alerts: []}
+      - {eval_time: 50m, alertname: BtrfsIOErrors, exp_alerts: []}
+      - {eval_time: 50m, alertname: SmartMetricsMissing, exp_alerts: []}
+
+  - name: SMART trouble raises each alert
+    interval: 1m
+    input_series:
+      - series: 'smartctl_device_smart_status{device="nvme0",instance="nas:9633"}'
+        values: '0x30'
+      - series: 'smartctl_device_smart_status{device="nvme1",instance="nas:9633"}'
+        values: '1x30'
+      - series: 'smartctl_device_critical_warning{device="nvme0",instance="nas:9633"}'
+        values: '1x30'
+      - series: 'smartctl_device_media_errors{device="nvme0",instance="nas:9633"}'
+        values: '3x30'
+    alert_rule_test:
+      - eval_time: 10m
+        alertname: DiskSmartFailing
+        exp_alerts:
+          - exp_labels: {severity: critical, category: disk-health, device: nvme0, instance: "nas:9633"}
+            exp_annotations:
+              summary: "SMART says nvme0 is failing"
+              description: 'nvme0 on nas:9633 failed its SMART health check. Check that its data has a current copy, then plan a replacement. See docs/backup-runbook.md, "If a drive fails".'
+      - eval_time: 10m
+        alertname: DiskCriticalWarning
+        exp_alerts:
+          - exp_labels: {severity: critical, category: disk-health, device: nvme0, instance: "nas:9633"}
+            exp_annotations:
+              summary: "NVMe critical warning on nvme0"
+              description: "nvme0 on nas:9633 reports critical warning 1. It covers spare capacity, temperature and media going read-only."
+      - eval_time: 10m
+        alertname: DiskMediaErrors
+        exp_alerts:
+          - exp_labels: {severity: critical, category: disk-health, device: nvme0, instance: "nas:9633"}
+            exp_annotations:
+              summary: "3 media errors on nvme0"
+              description: "nvme0 on nas:9633 could not read or write some of its media. Run a scrub to find which files are affected."
+
+  - name: new btrfs errors raise by type, on the USB drive too
+    interval: 1m
+    input_series:
+      - series: 'node_btrfs_device_errors_total{device="sda1",instance="nas:9100",type="corruption"}'
+        values: '0x30 1x30'
+      - series: 'node_btrfs_device_errors_total{device="sda1",instance="nas:9100",type="write"}'
+        values: '0x30 5x30'
+    alert_rule_test:
+      - {eval_time: 25m, alertname: BtrfsCorruption, exp_alerts: []}
+      - eval_time: 40m
+        alertname: BtrfsCorruption
+        exp_alerts:
+          - exp_labels: {severity: critical, category: disk-health, device: sda1, instance: "nas:9100", type: corruption}
+            exp_annotations:
+              summary: "btrfs corruption errors on sda1"
+              description: "sda1 on nas:9100 returned data that failed its checksum. No RAID here, so btrfs cannot repair it: restore the affected files from backup. `btrfs scrub status` and the kernel log name them."
+      - eval_time: 40m
+        alertname: BtrfsIOErrors
+        exp_alerts:
+          - exp_labels: {severity: warning, category: disk-health, device: sda1, instance: "nas:9100", type: write}
+            exp_annotations:
+              summary: "btrfs write errors on sda1"
+              description: "sda1 on nas:9100 had IO errors in the last hour. Check the kernel log for controller resets or a USB disconnect, and the drive's SMART data if it has any."
+
+  - name: one NVMe gone from the metrics is reported
+    interval: 1m
+    input_series:
+      - series: 'smartctl_device_smart_status{device="nvme0",instance="nas:9633"}'
+        values: '1x60'
+    alert_rule_test:
+      - eval_time: 40m
+        alertname: SmartMetricsMissing
+        exp_alerts:
+          - exp_labels: {severity: warning, category: disk-health}
+            exp_annotations:
+              summary: "SMART metrics missing for an NVMe drive on asus-laptop"
+              description: "smartctl-exporter should report both NVMe drives. A drive that has dropped off the bus disappears here first. Otherwise check prometheus-smartctl-exporter on the host."
+
+  - name: no SMART metrics at all is reported
+    interval: 1m
+    input_series:
+      - series: 'up{job="other"}'
+        values: '1x60'
+    alert_rule_test:
+      - eval_time: 40m
+        alertname: SmartMetricsMissing
+        exp_alerts:
+          - exp_labels: {severity: warning, category: disk-health}
+            exp_annotations:
+              summary: "SMART metrics missing for an NVMe drive on asus-laptop"
+              description: "smartctl-exporter should report both NVMe drives. A drive that has dropped off the bus disappears here first. Otherwise check prometheus-smartctl-exporter on the host."

@@ -1,0 +1,90 @@
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: homelab-disk-health
+  namespace: monitoring
+  labels:
+    app.kubernetes.io/name: homelab-disk-health
+    app.kubernetes.io/part-of: monitoring
+    # REQUIRED: without this label Prometheus never loads these rules. See the note in
+    # prometheus-rules-node-health.yaml.
+    release: kube-prometheus-stack
+spec:
+  groups:
+    - name: homelab-disk-health.alerts
+      rules:
+        - alert: DiskSmartFailing
+          expr: smartctl_device_smart_status == 0
+          for: 5m
+          labels:
+            severity: critical
+            category: disk-health
+          annotations:
+            summary: "SMART says {{ $labels.device }} is failing"
+            description: >-
+              {{ $labels.device }} on {{ $labels.instance }} failed its SMART health check.
+              Check that its data has a current copy, then plan a replacement. See
+              docs/backup-runbook.md, "If a drive fails".
+        - alert: DiskCriticalWarning
+          expr: smartctl_device_critical_warning > 0
+          for: 5m
+          labels:
+            severity: critical
+            category: disk-health
+          annotations:
+            summary: "NVMe critical warning on {{ $labels.device }}"
+            description: >-
+              {{ $labels.device }} on {{ $labels.instance }} reports critical warning
+              {{ $value }}. It covers spare capacity, temperature and media going read-only.
+        - alert: DiskMediaErrors
+          expr: smartctl_device_media_errors > 0
+          for: 5m
+          labels:
+            severity: critical
+            category: disk-health
+          annotations:
+            summary: "{{ $value }} media errors on {{ $labels.device }}"
+            description: >-
+              {{ $labels.device }} on {{ $labels.instance }} could not read or write some of
+              its media. Run a scrub to find which files are affected.
+        # Rot, and the reason to scrub. The only thing that sees it on the 8TB too, which
+        # has no SMART (ansible/roles/disk-health/README.md).
+        - alert: BtrfsCorruption
+          expr: increase(node_btrfs_device_errors_total{type=~"corruption|generation"}[1h]) > 0
+          labels:
+            severity: critical
+            category: disk-health
+          annotations:
+            summary: "btrfs {{ $labels.type }} errors on {{ $labels.device }}"
+            description: >-
+              {{ $labels.device }} on {{ $labels.instance }} returned data that failed its
+              checksum. No RAID here, so btrfs cannot repair it: restore the affected files
+              from backup. `btrfs scrub status` and the kernel log name them.
+        # A warning: a controller reset or a USB drop also counts here, and one is not a
+        # failing disk. Rising counts are.
+        - alert: BtrfsIOErrors
+          expr: increase(node_btrfs_device_errors_total{type=~"read|write|flush"}[1h]) > 0
+          labels:
+            severity: warning
+            category: disk-health
+          annotations:
+            summary: "btrfs {{ $labels.type }} errors on {{ $labels.device }}"
+            description: >-
+              {{ $labels.device }} on {{ $labels.instance }} had IO errors in the last hour.
+              Check the kernel log for controller resets or a USB disconnect, and the
+              drive's SMART data if it has any.
+        # Silence must not read as healthy. Only NVMe appears here: the USB drive never does.
+        - alert: SmartMetricsMissing
+          expr: |
+            count(smartctl_device_smart_status) < 2
+            or absent(smartctl_device_smart_status)
+          for: 30m
+          labels:
+            severity: warning
+            category: disk-health
+          annotations:
+            summary: "SMART metrics missing for an NVMe drive on asus-laptop"
+            description: >-
+              smartctl-exporter should report both NVMe drives. A drive that has dropped off
+              the bus disappears here first. Otherwise check prometheus-smartctl-exporter on
+              the host.

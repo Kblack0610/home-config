@@ -6,7 +6,7 @@ Kubelet evicts pods when a node's disk reaches 5% free, and keeps evicting until
 
 | Free | What happens | Where |
 |---|---|---|
-| 25% | A withheld Unity slot may come back | `apps/ci-runner-governor/config.json` |
+| 25% | A withheld Unity slot may come back. Below this, `CiHostHeldOutByDisk` pages after 30 minutes if slots are withheld and jobs wait | `apps/ci-runner-governor/config.json`, `apps/monitoring/prometheus-rules-capacity.yaml` |
 | 20% | `NodeDiskLow` warning. The governor withholds the host's Unity slots. `LocalPathPvFarOverRequest` pages if a PV on the node is past 150% of its request | `apps/monitoring/prometheus-rules-capacity.yaml` |
 | 15% | `NodeDiskFillingFast` pages if the 2h trend reaches zero within 4 hours | same |
 | 10% | `NodeDiskCritical` pages | same |

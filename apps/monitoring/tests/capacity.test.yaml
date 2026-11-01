@@ -6,6 +6,37 @@ rule_files:
 evaluation_interval: 1m
 
 tests:
+  - name: a CI host held out by disk pages after 30 minutes while jobs wait
+    interval: 1m
+    input_series:
+      - series: 'ci_governor_disk_held{host="razer"}'
+        values: '1x60'
+      - series: 'ci_governor_disk_held{host="hp"}'
+        values: '0x60'
+      - series: 'ci_governor_queue'
+        values: '5x60'
+    alert_rule_test:
+      - eval_time: 20m
+        alertname: CiHostHeldOutByDisk
+        exp_alerts: []
+      - eval_time: 40m
+        alertname: CiHostHeldOutByDisk
+        exp_alerts:
+          - exp_labels: {alertname: CiHostHeldOutByDisk, severity: critical, category: capacity, host: razer}
+            exp_annotations: {summary: "razer has idle Unity slots held out by low disk while jobs wait: docs/runbooks/node-disk-pressure.md"}
+
+  - name: a CI host held out by disk stays quiet when no job waits
+    interval: 1m
+    input_series:
+      - series: 'ci_governor_disk_held{host="razer"}'
+        values: '1x60'
+      - series: 'ci_governor_queue'
+        values: '0x60'
+    alert_rule_test:
+      - eval_time: 40m
+        alertname: CiHostHeldOutByDisk
+        exp_alerts: []
+
   - name: disk thresholds, 21% free is quiet and each line fires on its own
     interval: 1m
     input_series:

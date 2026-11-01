@@ -261,6 +261,14 @@ def render(cfg, hosts, runners, queue, decisions, ok):
         mine = [r for r in runners.values() if r["host"] == host]
         L.append(f'ci_governor_admitted{{host="{host}"}} {sum(1 for r in mine if not r["withheld"])}')
         L.append(f'ci_governor_registered{{host="{host}"}} {len(mine)}')
+    # Between the withhold and admit lines the verdict is STEADY, so nothing else shows this.
+    L += ["# HELP ci_governor_disk_held 1 when a host has withheld runners and too little disk to re-admit them",
+          "# TYPE ci_governor_disk_held gauge"]
+    for host in sorted(cfg["hosts"]):
+        disk = hosts["disk"].get(host)
+        held = (disk is not None and disk < cfg["hosts"][host]["admit"]["disk"]
+                and any(r["withheld"] for r in runners.values() if r["host"] == host))
+        L.append(f'ci_governor_disk_held{{host="{host}"}} {1 if held else 0}')
     # The reason is in the log, not a label: it changes every cycle.
     L += ["# HELP ci_governor_decision This cycle's verdict and action per host", "# TYPE ci_governor_decision gauge"]
     for host, action, _, v, _ in decisions:

@@ -201,6 +201,15 @@ class GovernorTest(unittest.TestCase):
         self.assertEqual(calls[1][2], {"labels": ["unity", "unity-full"]})
         self.assertTrue(calls[2][1].endswith("/7/labels/unity-withheld"))
 
+    def test_disk_held_only_with_withheld_slots_under_the_admit_line(self):
+        def gauge(disk, withheld):
+            hosts = readings(**{"razer-laptop": {**COOL, "disk": disk}})
+            runners = pool(("r-1", "razer-laptop", False, 0, withheld))
+            return 'ci_governor_disk_held{host="razer-laptop"} 1' in governor.render(CFG, hosts, runners, 3, [], True)
+        self.assertTrue(gauge(0.23, True))
+        self.assertFalse(gauge(0.23, False))
+        self.assertFalse(gauge(0.25, True))
+
 
 if __name__ == "__main__":
     unittest.main(verbosity=1)

@@ -1,0 +1,107 @@
+# The dropdown shared by the galleries on https://apps.kblab.me: serves nav.js at /_nav/nav.js.
+# The list of apps is at the top of nav.js.
+apiVersion: v1
+kind: Service
+metadata:
+  name: apps-nav
+  labels:
+    app: apps-nav
+spec:
+  selector:
+    app: apps-nav
+  ports:
+    - name: http
+      port: 80
+      targetPort: 8080
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: apps-nav
+  labels:
+    app: apps-nav
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: apps-nav
+  template:
+    metadata:
+      labels:
+        app: apps-nav
+    spec:
+      containers:
+        - name: nginx
+          image: nginxinc/nginx-unprivileged:1.29-alpine
+          ports:
+            - name: http
+              containerPort: 8080
+          volumeMounts:
+            - name: files
+              mountPath: /usr/share/nginx/html/nav.js
+              subPath: nav.js
+            - name: files
+              mountPath: /etc/nginx/conf.d/default.conf
+              subPath: nginx.conf
+          resources:
+            requests:
+              cpu: 5m
+              memory: 16Mi
+            limits:
+              cpu: 50m
+              memory: 64Mi
+          readinessProbe:
+            httpGet:
+              path: /healthz
+              port: http
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: http
+            initialDelaySeconds: 10
+            periodSeconds: 30
+      volumes:
+        - name: files
+          configMap:
+            name: apps-nav-files
+---
+apiVersion: traefik.io/v1alpha1
+kind: Middleware
+metadata:
+  name: apps-nav-strip
+spec:
+  stripPrefix:
+    prefixes:
+      - /_nav
+---
+# Beside the galleries on the same host, LAN-only the same way
+# (apps/placemyparents-preview/ingress-gallery.yaml).
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: apps-nav
+  labels:
+    app: apps-nav
+  annotations:
+    cert-manager.io/cluster-issuer: letsencrypt-dns
+    external-dns.alpha.kubernetes.io/exclude: 'true'
+    traefik.ingress.kubernetes.io/router.middlewares: >-
+      monitoring-local-network-only@kubernetescrd,apps-nav-apps-nav-strip@kubernetescrd
+spec:
+  ingressClassName: traefik
+  tls:
+    - hosts:
+        - apps.kblab.me
+      secretName: apps-nav-tls
+  rules:
+    - host: apps.kblab.me
+      http:
+        paths:
+          - path: /_nav
+            pathType: Prefix
+            backend:
+              service:
+                name: apps-nav
+                port:
+                  number: 80

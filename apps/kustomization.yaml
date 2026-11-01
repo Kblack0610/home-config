@@ -70,6 +70,7 @@ resources:
 
   # Public sites (Cloudflare tunnel → Traefik → service)
   - playground-server
+  - apps-nav
   - game-registry
   - portfolio
   - bnb-studios

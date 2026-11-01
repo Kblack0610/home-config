@@ -1,0 +1,15 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+namespace: apps-nav
+
+resources:
+  - namespace.yaml
+  - apps-nav.yaml
+
+# Generated, so a change to the list gets a new name and rolls the pod.
+configMapGenerator:
+  - name: apps-nav-files
+    files:
+      - nav.js
+      - nginx.conf

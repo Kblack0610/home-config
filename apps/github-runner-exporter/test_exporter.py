@@ -15,6 +15,7 @@ import sys
 import time
 import unittest
 import urllib.error
+from unittest import mock
 
 os.environ.update(
     RUNNER_ORGS="acme",
@@ -325,6 +326,80 @@ class ExporterTest(unittest.TestCase):
         out = self.render(broken=("orgs/", "repos/"))
         self.assertEqual(rows(out, "github_runner_state"), [])
         self.assertEqual(rows(out, "github_actions_job_waiting"), [])
+
+
+class ByHourTest(unittest.TestCase):
+    """When runs finished, which a trailing-window total cannot say."""
+
+    # Far enough apart that the two can never share an hour, both inside the window.
+    CREATED = time.time() - 20 * 3600
+    FINISHED = time.time() - 3 * 3600
+
+    @staticmethod
+    def iso(t):
+        return time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(t))
+
+    def setUp(self):
+        for d in (exporter.DONE_JOBS, exporter.HISTORY, exporter.CALLS, exporter.RATE):
+            d.clear()
+
+    def render(self, runs):
+        listing = {"total_count": len(runs), "workflow_runs": runs}
+        jobs = {f"repos/acme/game/actions/runs/{r['id']}/jobs?per_page=100": {"jobs": []} for r in runs}
+        with mock.patch.dict(FAKE, {"repos/acme/game/actions/runs?status=completed&per_page=100&page=1": listing, **jobs}):
+            exporter.get = Fake()
+            return exporter.render()
+
+    def run_row(self, i, conclusion, **kw):
+        return {"id": i, "name": "Tests", "head_branch": "feat/x", "event": "pull_request", "conclusion": conclusion,
+                "created_at": self.iso(self.CREATED), "updated_at": self.iso(self.FINISHED), "run_started_at": self.iso(self.CREATED),
+                "html_url": f"https://x/run/{i}", **kw}
+
+    def game_rows(self, out, metric):
+        return [r for r in rows(out, metric) if 'repo="game"' in r]
+
+    def test_a_run_counts_in_the_hour_it_finished_not_the_hour_it_started(self):
+        (row,) = self.game_rows(self.render([self.run_row(30, "success")]), "github_runs_by_hour")
+        self.assertIn(f'hour="{int(self.FINISHED) // 3600 * 3600}"', row)
+        self.assertIn('conclusion="success"', row)
+        self.assertIn('scope="branch"', row)
+        self.assertTrue(row.endswith(" 1"))
+
+    def test_runs_in_one_hour_add_up(self):
+        out = self.render([self.run_row(30, "failure"), self.run_row(31, "failure"), self.run_row(32, "success")])
+        counts = {("failure" if 'conclusion="failure"' in r else "success"): r.rsplit(" ", 1)[1] for r in self.game_rows(out, "github_runs_by_hour")}
+        self.assertEqual(counts, {"failure": "2", "success": "1"})
+
+    def test_a_failure_is_listed_with_when_and_where(self):
+        run = self.run_row(30, "failure", display_title="fix: a thing", pull_requests=[{"number": 77}])
+        (row,) = self.game_rows(self.render([run]), "github_run_failed")
+        for want in ('workflow="Tests"', 'branch="feat/x"', 'scope="branch"', 'conclusion="failure"', 'pr="77"',
+                     'title="fix: a thing"', 'url="https://x/run/30"'):
+            self.assertIn(want, row)
+        self.assertTrue(row.endswith(f" {int(self.FINISHED)}"))
+
+    def test_a_timeout_is_listed_but_cancelled_and_success_only_count(self):
+        out = self.render([self.run_row(30, "timed_out"), self.run_row(31, "cancelled"), self.run_row(32, "success")])
+        (row,) = self.game_rows(out, "github_run_failed")
+        self.assertIn('conclusion="timed_out"', row)
+        self.assertEqual(len(self.game_rows(out, "github_runs_by_hour")), 3)
+
+    def test_a_failure_on_main_says_so(self):
+        (row,) = self.game_rows(self.render([self.run_row(30, "failure", head_branch="main", event="push")]), "github_run_failed")
+        self.assertIn('scope="main"', row)
+
+    def test_a_run_with_no_finish_time_has_no_hour(self):
+        out = self.render([self.run_row(30, "failure", updated_at=None)])
+        self.assertEqual(self.game_rows(out, "github_runs_by_hour"), [])
+        self.assertEqual(self.game_rows(out, "github_run_failed"), [])
+
+    def test_the_hours_come_from_the_cached_list_with_no_api_call(self):
+        runs = [self.run_row(i, "failure") for i in range(30, 35)]
+        self.render(runs)
+        out = self.render(runs)
+        history_calls = [c for c in exporter.get.calls if "status=completed" in c or "/runs/3" in c]
+        self.assertEqual(history_calls, [])
+        self.assertEqual(len(self.game_rows(out, "github_run_failed")), 5)
 
 
 class ColdStartBudgetTest(unittest.TestCase):

@@ -44,6 +44,10 @@ here rather than in PromQL because 24h of per-job samples is not in
 Prometheus. The run list is re-read every HISTORY_REFRESH_SECS, and each
 finished run's jobs are fetched once and cached.
 
+Those totals are trailing-window gauges: runs enter and leave them at once, so
+no PromQL over them can say when anything happened. github_runs_by_hour and
+github_run_failed say that instead, from the same list and with no extra calls.
+
 Alerting is NOT here. Sentinel (~/.agent/watches/*runners-online.yaml) is the
 notification voice for runner pools; this is the screen.
 """
@@ -314,6 +318,9 @@ def run_scope(run):
 
 RUN_KEYS = ("id", "name", "conclusion", "created_at", "updated_at", "run_started_at", "head_branch", "event", "html_url")
 JOB_KEYS = ("name", "conclusion", "runner_name", "labels", "created_at", "started_at", "completed_at", "html_url")
+# The conclusions listed run by run. A cancelled run is counted but not listed:
+# most are a push superseding its own earlier run.
+FAILED_CONCLUSIONS = ("failure", "timed_out")
 
 
 def slim(d, keys):
@@ -332,7 +339,7 @@ def finished_runs(repo, now):
     def page(p):
         # Slimmed as each page lands: a raw page of 100 runs is ~1 MB parsed.
         data = get(f"{q}&page={p}", "history_runs")
-        return data.get("total_count", 0), [slim(r, RUN_KEYS) for r in data.get("workflow_runs", [])]
+        return data.get("total_count", 0), [{**slim(r, RUN_KEYS), **run_labels(r)} for r in data.get("workflow_runs", [])]
     total, first = page(1)
     pages = [first]
     n = -(-total // 100)
@@ -587,12 +594,20 @@ def render():
     # run's jobs count once they are cached (HISTORY_CALL_BUDGET), so after
     # a restart the job-level numbers fill in over a few scrapes.
     runs_done, jobs_done, queue, took = {}, {}, {}, {}
+    # When each run finished: updated_at, as github_actions_run_recent reads it.
+    by_hour, failed = {}, []
     for a in acts:
         repo = a["repo"].split("/", 1)[1]
         for run in a["history"]:
             wf = run.get("name") or ""
             k = (repo, wf, run.get("conclusion") or "", run_scope(run))
             runs_done[k] = runs_done.get(k, 0) + 1
+            finished = ts(run.get("updated_at"))
+            if finished:
+                k = (int(finished) // 3600 * 3600, repo, run.get("conclusion") or "", run_scope(run))
+                by_hour[k] = by_hour.get(k, 0) + 1
+                if run.get("conclusion") in FAILED_CONCLUSIONS:
+                    failed.append((repo, run, int(finished)))
             for j in DONE_JOBS.get(run["id"], []):
                 rn, labels = j.get("runner_name"), j.get("labels") or []
                 # A self-hosted job on a runner not listed this scrape (removed
@@ -616,6 +631,21 @@ def render():
     ]
     for (repo, wf, c, scope), n in sorted(runs_done.items()):
         L.append(f"github_runs_finished{{{labels_str({'repo': repo, 'workflow': wf, 'conclusion': c, 'scope': scope})}}} {n}")
+    L += [
+        "# HELP github_runs_by_hour Completed runs of the last 24h by the hour they finished; hour = its start, epoch seconds",
+        "# TYPE github_runs_by_hour gauge",
+    ]
+    for (hour, repo, c, scope), n in sorted(by_hour.items()):
+        L.append(f"github_runs_by_hour{{{labels_str({'hour': hour, 'repo': repo, 'conclusion': c, 'scope': scope})}}} {n}")
+    L += [
+        "# HELP github_run_failed A run of the last 24h that failed or timed out; value is when it finished (epoch seconds)",
+        "# TYPE github_run_failed gauge",
+    ]
+    for repo, run, finished in sorted(failed, key=lambda f: f[1]["id"]):
+        lab = labels_str({"repo": repo, "workflow": run.get("name") or "", "branch": run.get("head_branch") or "",
+                          "event": run.get("event") or "", "scope": run_scope(run), "conclusion": run.get("conclusion"),
+                          "pr": run.get("pr") or "", "title": run.get("title") or "", "url": run.get("html_url") or ""})
+        L.append(f"github_run_failed{{{lab}}} {finished}")
     L += [
         "# HELP github_jobs_finished Completed jobs of runs created in the last 24h, by the pool that ran them (github-hosted = not our runners)",
         "# TYPE github_jobs_finished gauge",

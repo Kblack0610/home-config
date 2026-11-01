@@ -11,6 +11,7 @@ and a live action adds the new label before it removes the old. Stdlib only; CI 
 import os
 import sys
 import unittest
+from unittest import mock
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import governor  # noqa: E402
@@ -209,6 +210,15 @@ class GovernorTest(unittest.TestCase):
         self.assertTrue(gauge(0.23, True))
         self.assertFalse(gauge(0.23, False))
         self.assertFalse(gauge(0.25, True))
+
+    def test_no_pool_runners_in_the_metrics_is_a_blind_cycle(self):
+        # 2026-11-01: GitHub's limit emptied the exporter's org runner list, and the governor
+        # reported ok with 0 admitted on every host while the runners were all still working.
+        with mock.patch.object(governor, "prom", return_value=[]), \
+                mock.patch.object(governor, "apply") as apply, mock.patch("builtins.print"):
+            governor.cycle(CFG, {})
+        self.assertEqual(governor.State.metrics, "ci_governor_up 1\nci_governor_ok 0\n")
+        apply.assert_not_called()
 
 
 if __name__ == "__main__":

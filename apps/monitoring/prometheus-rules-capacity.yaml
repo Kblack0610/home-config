@@ -72,6 +72,16 @@ spec:
             category: capacity
           annotations:
             summary: "{{ $labels.host }} has idle Unity slots held out by low disk while jobs wait: docs/runbooks/node-disk-pressure.md"
+        # 1 page in 3 days of history: the 8-hour runner metric gap on 2026-10-31. The 5-minute
+        # gap on 2026-11-01, when GitHub's limit ran out at the end of its hour, stays quiet.
+        - alert: CiGovernorBlind
+          expr: ci_governor_ok == 0
+          for: 30m
+          labels:
+            severity: critical
+            category: capacity
+          annotations:
+            summary: "ci-runner-governor has had no reading for 30 minutes, so no Unity slot is being pulled or returned. Check github_runner_exporter_api_ok and GitHub's API limit"
         # 6 pages in the replay: 4 on asus from the Forgejo backups fixed in #441, 1 the
         # outage, 1 workstation. Would have given 3 hours of warning on 2026-10-31.
         - alert: NodeDiskCritical

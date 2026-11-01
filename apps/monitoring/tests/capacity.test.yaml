@@ -37,6 +37,24 @@ tests:
         alertname: CiHostHeldOutByDisk
         exp_alerts: []
 
+  - name: a blind governor pages after 30 minutes, and a short gap stays quiet
+    interval: 1m
+    input_series:
+      - series: 'ci_governor_ok'
+        values: '0x20 1x5 0x45'
+    alert_rule_test:
+      - eval_time: 15m
+        alertname: CiGovernorBlind
+        exp_alerts: []
+      - eval_time: 40m
+        alertname: CiGovernorBlind
+        exp_alerts: []
+      - eval_time: 60m
+        alertname: CiGovernorBlind
+        exp_alerts:
+          - exp_labels: {alertname: CiGovernorBlind, severity: critical, category: capacity}
+            exp_annotations: {summary: "ci-runner-governor has had no reading for 30 minutes, so no Unity slot is being pulled or returned. Check github_runner_exporter_api_ok and GitHub's API limit"}
+
   - name: disk thresholds, 21% free is quiet and each line fires on its own
     interval: 1m
     input_series:

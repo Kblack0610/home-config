@@ -60,3 +60,28 @@ for work in "$RUNNER_HOME"/unity-pool-*/_work; do
         rm -rf -- "$tree"
     done
 done
+
+# Any slot may get a target's next build, so one warm copy per host is all that pays. On
+# 2026-11-01 older copies held razer under the governor's 25% re-admit line, with 4 of its 5
+# slots idle and jobs waiting. A copy on a busy slot stays, whatever its age.
+tab=$(printf '\t')
+for tree in "$RUNNER_HOME"/unity-pool-*/_work/*/*/Builds/release-tree/*; do
+    [ -d "$tree" ] || continue
+    newest=$(find "$tree" -type f -exec stat -c %Y {} + | sort -n | tail -n 1)
+    printf '%s\t%s\t%s\n' "${tree#"$RUNNER_HOME"/*/}" "${newest:-0}" "$tree"
+done | sort -t "$tab" -k1,1 -k2,2nr | {
+    seen=
+    while IFS="$tab" read -r target _ tree; do
+        if [ "$target" != "$seen" ]; then
+            seen=$target
+            continue
+        fi
+        slot=${tree%%/_work/*}
+        if pgrep -f "$slot/bin[^/]*/Runner\.Worker" >/dev/null; then
+            echo "busy $slot"
+            continue
+        fi
+        echo "older copy $tree"
+        rm -rf -- "$tree"
+    done
+}

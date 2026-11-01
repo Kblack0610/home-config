@@ -16,7 +16,7 @@ Kubelet evicts pods when a node's disk reaches 5% free, and keeps evicting until
 
 Largest first, from razer and hp-victus on 2026-10-31:
 
-- `/var/lib/actions-runner/unity-pool-*/_work/*/*/Builds`: perf and release trees, 40G to 60G each. `ci-disk-prune.sh` removes perf trees after 1 day and release trees after 7 days idle, daily at 04:30, on idle slots only.
+- `/var/lib/actions-runner/unity-pool-*/_work/*/*/Builds`: perf and release trees, 40G to 60G each. `ci-disk-prune.sh` removes perf trees after 1 day, release trees after 7 days idle, and every copy of a release tree but the newest per target, hourly, on idle slots only.
 - `/var/lib/containerd` and docker images: Unity editor and test images, 15G to 30G each. Editor images are never pruned.
 - `/var/lib/rancher/k3s/storage`: local-path PVs. Size is not enforced, so a PV can pass its request (Frigate reached 153G in an 80Gi PV).
 - `/srv/backups/forgejo` on hp-victus: the two newest Forgejo off-box copies. The job refuses to go under 20% free.
@@ -33,5 +33,6 @@ Largest first, from razer and hp-victus on 2026-10-31:
 | Symptom | Cause | Fix |
 |---|---|---|
 | Off-box job fails with `.tmp: File exists` or a size mismatch, from before #446 | A manual job and the scheduled one ran together; `concurrencyPolicy` does not cover `create job --from` | Fixed in #446; rerun the job |
-| Prune removes nothing while a slot looks idle | Its newest file is inside the age limit, or `Runner.Worker` is running | `pgrep -af Runner.Worker`; the next daily run takes it |
+| Prune removes nothing while a slot looks idle | Its newest file is inside the age limit, or `Runner.Worker` is running | `pgrep -af Runner.Worker`; the next hourly run takes it |
 | A host's Unity slots stay withheld after the disk recovers | Re-admit needs 25% free, and the host has to report room and have jobs waiting | `kubectl -n monitoring logs deploy/ci-runner-governor` |
+| Slots withheld for CPU pressure stay out on a cool, idle host, and the log shows no new line | Between 20% and 25% free the verdict is STEADY: nothing withholds, nothing re-admits (razer, 2026-11-01) | Remove idle `Builds/` trees until free is over 25%; the governor re-admits one slot per 10 minutes |

@@ -49,6 +49,11 @@ done
 touch -d '3 days ago' "$R/unity-pool-1/$repo/release-tree/fresh/recent"
 touch -d '3 days ago' "$R/unity-pool-1/$repo/perf-tree/days3/file"
 touch "$R/unity-pool-1/$repo/perf-tree/today/recent"
+# One target warm on three slots: inside the age limit, and pool-2 is busy.
+for copy in "unity-pool-1 3" "unity-pool-3 2" "unity-pool-2 4"; do
+    set -- $copy
+    mkdir -p "$R/$1/$repo/release-tree/dup"; touch -d "$2 days ago" "$R/$1/$repo/release-tree/dup/file"
+done
 
 RUNNER_HOME=$R PATH="$t/bin:$PATH" sh "$here/ci-disk-prune.sh" > "$t/log" 2>&1
 rc=$?
@@ -68,7 +73,8 @@ check "an image in use is reported"      'kept unity-core-playground-test:inuse'
 for gone in perf-tree/stale perf-tree/days3 release-tree/stale; do
     if [ -e "$R/unity-pool-1/$repo/$gone" ]; then echo "FAIL $gone survived"; fail=1; else echo "ok   $gone removed"; fi
 done
-for kept in unity-pool-1/$repo/release-tree/fresh unity-pool-1/$repo/perf-tree/today unity-pool-2/$repo/perf-tree/busy unity-pool-1/$repo/other/stale; do
+if [ -e "$R/unity-pool-1/$repo/release-tree/dup" ]; then echo "FAIL an older copy of a release tree survived"; fail=1; else echo "ok   an older copy of a release tree removed"; fi
+for kept in unity-pool-1/$repo/release-tree/fresh unity-pool-3/$repo/release-tree/dup unity-pool-2/$repo/release-tree/dup unity-pool-1/$repo/perf-tree/today unity-pool-2/$repo/perf-tree/busy unity-pool-1/$repo/other/stale; do
     if [ -e "$R/$kept/file" ]; then echo "ok   kept $kept" | sed "s#$repo/##"; else echo "FAIL $kept removed"; fail=1; fi
 done
 exit $fail

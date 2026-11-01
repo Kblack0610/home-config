@@ -1,11 +1,12 @@
 # Managed by ansible (platform-ci-host).
 [Unit]
-Description=Daily prune of CI leftovers
+Description=Hourly prune of CI leftovers
 
 [Timer]
-OnCalendar=*-*-* 04:30
+# Hourly, since a host under the governor's re-admit line takes no Unity jobs until this runs.
+OnCalendar=hourly
 Persistent=true
-RandomizedDelaySec=30min
+RandomizedDelaySec=10min
 
 [Install]
 WantedBy=timers.target

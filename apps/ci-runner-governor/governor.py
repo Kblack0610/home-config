@@ -116,6 +116,10 @@ def observe(pool_label):
         if m.get("scope") == "org":
             runners[m["name"]] = {"host": m["host"], "busy": m["state"] == "running",
                                   "elapsed": float(r["value"][1]), "withheld": False}
+    # The exporter drops these rows when it cannot list the org's runners, so none means
+    # the list is gone, not that the pool is empty.
+    if not runners:
+        raise ValueError(f"no {pool_label} runners in the metrics")
     for r in prom("github_runner_withheld"):
         if r["metric"]["name"] in runners:
             runners[r["metric"]["name"]]["withheld"] = True

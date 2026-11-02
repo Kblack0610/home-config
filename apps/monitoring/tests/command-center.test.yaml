@@ -1,0 +1,28 @@
+# promtool test rules. Run with scripts/test-prometheus-rules.sh.
+rule_files:
+  - command-center.rules.yaml
+evaluation_interval: 1m
+
+tests:
+  - name: per-core busy joins node-exporter to its host and renames the Windows core label
+    interval: 1m
+    input_series:
+      - series: 'node_uname_info{instance="lin:9100",host="lin",job="standalone-nodes"}'
+        values: '1x10'
+      # idle all minute, then idle a quarter of it
+      - series: 'node_cpu_seconds_total{instance="lin:9100",cpu="0",mode="idle"}'
+        values: '0+60x10'
+      - series: 'node_cpu_seconds_total{instance="lin:9100",cpu="1",mode="idle"}'
+        values: '0+15x10'
+      - series: 'windows_cpu_time_total{instance="win:9182",host="win",core="0,0",mode="idle"}'
+        values: '0+30x10'
+    promql_expr_test:
+      - expr: cc:host_core_busy_ratio
+        eval_time: 5m
+        exp_samples:
+          - labels: 'cc:host_core_busy_ratio{host="lin",cpu="0"}'
+            value: 0
+          - labels: 'cc:host_core_busy_ratio{host="lin",cpu="1"}'
+            value: 0.75
+          - labels: 'cc:host_core_busy_ratio{host="win",cpu="0,0"}'
+            value: 0.5

@@ -123,7 +123,7 @@ def observe(pool_label):
     for r in prom("github_runner_withheld"):
         if r["metric"]["name"] in runners:
             runners[r["metric"]["name"]]["withheld"] = True
-    queue = sum(float(r["value"][1]) for r in prom(f'count(github_actions_job_waiting{{pool="{pool_label}"}})'))
+    queue = sum(float(r["value"][1]) for r in prom(f'count(github_actions_job_waiting{{pool="{pool_label}",stuck!="true"}})'))
     return hosts, runners, int(queue)
 
 

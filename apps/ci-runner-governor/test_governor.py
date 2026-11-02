@@ -220,6 +220,20 @@ class GovernorTest(unittest.TestCase):
         self.assertEqual(governor.State.metrics, "ci_governor_up 1\nci_governor_ok 0\n")
         apply.assert_not_called()
 
+    def test_a_stuck_run_is_not_queue_demand(self):
+        # A queued run GitHub never gave jobs (the exporter's stuck="true") holds no slot's
+        # worth of work; counting it kept standby admitted for nothing. Same filter as cc:pool_waiting.
+        def fake(query):
+            if query.startswith("github_runner_state"):
+                return [{"metric": {"scope": "org", "name": "r-1", "host": "razer-laptop", "state": "idle"},
+                         "value": [0, "0"]}]
+            if "github_actions_job_waiting" in query:
+                return [{"metric": {}, "value": [0, "1" if 'stuck!="true"' in query else "3"]}]
+            return []
+        with mock.patch.object(governor, "prom", side_effect=fake):
+            _, _, queue = governor.observe("unity")
+        self.assertEqual(queue, 1)
+
 
 if __name__ == "__main__":
     unittest.main(verbosity=1)

@@ -289,10 +289,10 @@
 # however many slots it has. The unity-ci-host role puts the asset-library copy
 # and the editor image on the host.
 #
-# A new HOST is a new Unity activation on the shared Personal serial: check the
-# serial still has one free before adding a host (unity-core-playground
-# docs/operations/ci.md). Org registration tokens need the workstation's gh with
-# admin:org (gh auth refresh -h github.com -s admin:org).
+# A new HOST is a new Unity activation on the shared Personal serial: add one
+# host at a time (docs/runbooks/unity-ci-host.md, "Unity activation"). Org
+# registration tokens need the workstation's gh with admin:org
+# (gh auth refresh -h github.com -s admin:org).
 #
 # hp-victus had two repo-scoped Unity runners, each its own play, until
 # 2026-10-29: hp-victus-unity-2 (dodginballs, /var/lib/actions-runner-2) and

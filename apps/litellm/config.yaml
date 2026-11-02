@@ -264,6 +264,34 @@ model_list:
         json_mode: true
       supports_function_calling: true
 
+  # Image generation (paid, no free tier): the playground's art pipeline
+  # (unity-core-playground scripts/art/gen.py, key `playground-art`). Chat mode,
+  # not image_generation, so a request can carry reference images (a crest to
+  # build a poster round); the reply's message.images holds the picture. Costs are
+  # Google's list price per token (2026-11-02, aistudio.google.com/docs/pricing):
+  # flash 1K image about $0.067, pro about $0.134, so the key's budget trips.
+  - model_name: "image (gemini-flash-image)"
+    litellm_params:
+      model: "gemini/gemini-3.1-flash-image"
+      api_key: os.environ/GEMINI_API_KEY_FAMILY
+      timeout: 120
+    model_info:
+      mode: chat
+      tags: ["cloud", "gemini", "image", "paid"]
+      input_cost_per_token: 0.0000005
+      output_cost_per_token: 0.00006
+
+  - model_name: "image (gemini-pro-image)"
+    litellm_params:
+      model: "gemini/gemini-3-pro-image"
+      api_key: os.environ/GEMINI_API_KEY_FAMILY
+      timeout: 180
+    model_info:
+      mode: chat
+      tags: ["cloud", "gemini", "image", "paid"]
+      input_cost_per_token: 0.000002
+      output_cost_per_token: 0.00012
+
   # embedding cloud — gemini-embedding-001 forced to 768 dims
   # (output_dimensionality), matching the local modernbert embedder, so
   # it writes into the SAME pgvector column (apps/mem0/, vector(768)) with
@@ -562,6 +590,7 @@ router_settings:
     vlm: "vlm (gemini-3-flash)"            # local: "vlm (Qwen3-VL-30B-A3B-8bit)" (needs mlx-vlm>=0.6.5)
     embedding: "embedding (gemini-001)"    # local: "embedding (modernbert-embed-base-4bit)"
     stt: "stt (whisper-turbo)"
+    image: "image (gemini-flash-image)"
   # Failover chains (LiteLLM tries the listed models in order when the
   # primary errors/times out). mem0 points its LLM at the Lazer `fast`
   # route and its embedder at Gemini; these chains add resilience:

@@ -225,8 +225,14 @@ all:
         # withholds a slot when CPU pressure or idle say the host is full). 37
         # jobs queued with razer at 34% CPU and 76G free; the governor, not a
         # fixed count, decides how many of the five run.
+        # Two since 2026-11-02, three cores each, as the rule above says: over
+        # 10-28 to 11-02 a razer PlayMode job failed 24% of the time against
+        # mac-studio's 7%, every FAIL of the 11-02 nightly ran on razer, and the
+        # classes were timed ones (GadgetMoves, WeightedStart, SkylineMoves).
+        # Failures did not grow with more razer jobs at once, so the two-core
+        # slot was the limit, not its neighbours.
         razer-laptop:
-          unity_ci_slots: 5
+          unity_ci_slots: 2
           unity_ci_full: true
         # Two slots since 2026-10-29. They replace hp-victus's two repo-scoped
         # runners (hp-victus-playground on unity-core-playground, hp-victus-unity-2
@@ -299,15 +305,19 @@ all:
           ci_unity_slot_memory_max: 16G
           ci_pmp_memory_max: 14G
         # 8 cores / 16 threads, SMT siblings are n and n+8. Cores 0-1 (CPUs
-        # 0-1, 8-9) stay with k3s and the OS. Unity gets cores 2-7, two per
+        # 0-1, 8-9) stay with k3s and the OS. Unity gets cores 2-7, three per
         # slot, which platform jobs share at a lower weight (ci_unity_cpu_weight).
-        # 93 GB usable, so CI gets most of it; a Unity job peaks around 8 GB.
+        # 93 GB usable, so CI gets most of it; a Unity job peaks around 8 GB. A
+        # slot stops at 20G: without a cap each took the 32G default, five could
+        # reach 160G against the 60G Unity budget, and one shard was killed on
+        # 11-02 after 462 s.
         razer-laptop:
           ci_cpus: 2-7,10-15
           ci_memory_max: 72G
           ci_unity_cpus: 2-7,10-15
-          ci_unity_slot_cpus: ["2-3,10-11", "4-5,12-13", "6-7,14-15", "2-7,10-15", "2-7,10-15"]
+          ci_unity_slot_cpus: ["2-4,10-12", "5-7,13-15"]
           ci_unity_memory_max: 60G
+          ci_unity_slot_memory_max: 20G
           ci_pmp_memory_max: 40G
 
     # Nodes that run the game servers (apps/playground-server pins to the

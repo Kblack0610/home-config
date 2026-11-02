@@ -160,8 +160,8 @@ spec:
         - record: cc:sessions_attention
           expr: >-
             sum(mqtt_attention{topic=~"agents_.+_summary_sessions"})
-        # Rostered slots only, so online/expected compare like with like: hp-victus's two
-        # unity runners are set up outside RUNNER_ROSTER and would read 16/14.
+        # Rostered slots only, so online/expected compare like with like: the exporter also
+        # reports online runners for a host/pool missing from RUNNER_ROSTER.
         - record: cc:ci_online
           expr: >-
             sum(max by (host, pool) (github_runner_pool_online) and on (host, pool) max by (host, pool) (github_runner_pool_expected))

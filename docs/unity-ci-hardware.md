@@ -1,12 +1,12 @@
 # Unity CI runner hardware
 
-What to buy or rent when adding a host to the Unity CI pool (`unity_ci_runners` in `ansible/inventory.yml`, admitted by [`ci-runner-governor`](../apps/ci-runner-governor/)). Hardware prices are used-market eBay asking prices seen 2026-10-29; recheck with the Sold filter before buying. The Mac Studio's slots are in [mac-machines.md](mac-machines.md#unity-ci-pool-mac-studio-until-it-is-sold).
+What to buy or rent when adding a host to the Unity CI pool (`unity_ci_runners` in `ansible/inventory.yml`, admitted by [`ci-runner-governor`](../apps/ci-runner-governor/)). Hardware prices are used-market eBay asking prices seen 2026-10-29; recheck with the Sold filter before buying. The Mac Studio's slots are in [mac-machines.md](mac-machines.md#unity-ci-pool-mac-studio-until-it-is-sold). Operating a pool host (the play, activation, refreshing its copies, labels): [runbooks/unity-ci-host.md](runbooks/unity-ci-host.md).
 
 ## What the bottleneck is
 
 CPU and heat. Measured on the workstation 2026-10-29: each batch Unity editor held 3.8-6.4 GB, memory pressure was ~0.5% over 5 minutes with 73 of 124 GB free, and the morning hold fired on load 48.9 on 24 cores and tctl 95.6 C with 7 editors running. RAM was never the limit.
 
-Sizing per slot: 3 physical cores of its own and 14 GB RAM. Timed PlayMode tests fail when slots share cores, and while a batch editor sits at 4-6 GB, a PlayMode shard peaks at 13.9 GB and was OOM-killed at 14 GB four times between 10-26 and 10-28 (unity-core-playground `docs/operations/ci.md`, the hp-victus notes). Hyperthreads do not count as cores. A fast NVMe matters too, since every runner keeps its own `Library/` per project and a cold import is mostly disk.
+Sizing per slot: 3 physical cores of its own and 14 GB RAM. Timed PlayMode tests fail when slots share cores, and while a batch editor sits at 4-6 GB, a PlayMode shard peaks at 13.9 GB and was OOM-killed at 14 GB four times between 10-26 and 10-28 on hp-victus. Hyperthreads do not count as cores. A fast NVMe matters too, since every runner keeps its own `Library/` per project and a cold import is mostly disk.
 
 Before buying for parallelism, check the license ceiling: the governor caps the pool at 16 admitted runners (8 before the Mac Studio joined, 2026-10-29), and about 15 Unity activations in 90 minutes is where activation trouble starts. At that cap a new host only helps by finishing each job faster, which favours one fast box over several slow ones.
 

@@ -210,8 +210,8 @@ all:
         # per run.
         # Takes full runs too (unity_ci_full defaults to true). It was reserved
         # for merge gates 2026-10-26 to 10-27; since playground gates run on the
-        # workstation first with a narrow pick, the reservation only slowed the
-        # nightly.
+        # pool with a narrow pick (the workstation only when the pool is backed
+        # up), the reservation only slowed the nightly.
         # Several slots since 2026-10-28, each on cores of its own
         # (ci_unity_slot_cpus in ci_hosts), so they cannot starve each other's
         # real-time tests the way asus's two did. In the 24h before, razer

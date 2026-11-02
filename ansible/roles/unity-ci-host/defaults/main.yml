@@ -1,7 +1,7 @@
 ---
 # Host prep for the BNB Unity runner pool (the "Unity CI runner pool" play in
 # site.yml). The runner slots themselves come from github-actions-runner-linux.
-# What the jobs expect from a host: unity-core-playground docs/operations/ci.md.
+# Operating a host: docs/runbooks/unity-ci-host.md.
 
 # CPU and memory caps for the Unity runners and their containers live in
 # roles/ci-host-budget (ci-unity.slice), a dependency of this role.

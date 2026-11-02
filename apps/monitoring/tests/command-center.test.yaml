@@ -26,3 +26,37 @@ tests:
             value: 0.75
           - labels: 'cc:host_core_busy_ratio{host="win",cpu="0,0"}'
             value: 0.5
+
+  - name: a withheld idle runner is not a pool slot, a withheld runner still draining a job is
+    interval: 1m
+    input_series:
+      - series: 'github_runner_state{name="a",pool="unity",state="running",instance="x"}'
+        values: '1x5'
+      - series: 'github_runner_state{name="b",pool="unity",state="idle",instance="x"}'
+        values: '0x5'
+      - series: 'github_runner_state{name="c",pool="unity",state="idle",instance="x"}'
+        values: '0x5'
+      - series: 'github_runner_state{name="d",pool="unity",state="running",instance="x"}'
+        values: '1x5'
+      - series: 'github_runner_withheld{name="c",instance="x"}'
+        values: '1x5'
+      - series: 'github_runner_withheld{name="d",instance="x"}'
+        values: '1x5'
+      - series: 'github_runner_withheld{name="b",instance="x"}'
+        values: '0x5'
+    promql_expr_test:
+      - expr: cc:pool_slots
+        eval_time: 2m
+        exp_samples:
+          - labels: 'cc:pool_slots{pool="unity"}'
+            value: 3
+      - expr: cc:pool_withheld
+        eval_time: 2m
+        exp_samples:
+          - labels: 'cc:pool_withheld{pool="unity"}'
+            value: 1
+      - expr: cc:pool_busy
+        eval_time: 2m
+        exp_samples:
+          - labels: 'cc:pool_busy{pool="unity"}'
+            value: 2

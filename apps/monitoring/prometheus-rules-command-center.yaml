@@ -15,6 +15,7 @@
 #   cc:host_local_open_slots{host}                       the always-open part of its gate slots
 #   cc:host_local_done_24h / _pass_ratio_24h{host}       its gates finished in 24h, and pass / finished
 #   cc:pool_done_24h / _cancelled_24h / _pass_ratio_24h{pool}  jobs each runner pool finished in 24h
+#   cc:pool_slots / _busy / _withheld{pool}  runners that can take a job, those running one, and idle ones the governor withheld
 #
 # Status comes from sentinel watches where one exists (they are the curated alarms that
 # already page), and from metrics where none does (nodes, heartbeats, runner pools).
@@ -282,10 +283,22 @@ spec:
     - name: command-center.pools
       interval: 1m
       rules:
+        # A slot is a runner that can take a job: running, or idle and not withheld by
+        # the governor. A withheld runner stays idle in pool="unity" (the governor finds
+        # what it can re-admit that way), so counting it read as free capacity beside a
+        # queue (2026-11-02: 3 "idle" unity runners that were all withheld).
         - record: cc:pool_slots
           expr: >-
             count by (pool) (max without (instance, pod, job, namespace, service, endpoint, container)
-              (github_runner_state{state=~"running|idle"}))
+              (github_runner_state{state="running"})
+              or (max without (instance, pod, job, namespace, service, endpoint, container) (github_runner_state{state="idle"})
+                unless on (name) (max without (instance, pod, job, namespace, service, endpoint, container) (github_runner_withheld) == 1)))
+        - record: cc:pool_withheld
+          expr: >-
+            count by (pool) (max without (instance, pod, job, namespace, service, endpoint, container)
+              (github_runner_state{state="idle"})
+              and on (name) (max without (instance, pod, job, namespace, service, endpoint, container) (github_runner_withheld) == 1))
+            or cc:pool_slots * 0
         - record: cc:pool_busy
           expr: >-
             count by (pool) (max without (instance, pod, job, namespace, service, endpoint, container)

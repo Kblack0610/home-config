@@ -33,6 +33,7 @@ resources:
   - home-assistant
   - immich
   - immich-kiosk
+  - wall-ambient
   - jellyfin
   - karakeep
   - langfuse

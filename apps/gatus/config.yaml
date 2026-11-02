@@ -486,6 +486,16 @@ endpoints:
       - "[STATUS] < 500"
       - "[CERTIFICATE_EXPIRATION] > 720h"
 
+  - name: wall-ambient.kblab.me
+    group: ingress
+    url: "https://wall-ambient.kblab.me"
+    interval: 300s
+    client:
+      insecure: true
+    conditions:
+      - "[STATUS] < 500"
+      - "[CERTIFICATE_EXPIRATION] > 720h"
+
   - name: jellyfin.kblab.me
     group: ingress
     url: "https://jellyfin.kblab.me"

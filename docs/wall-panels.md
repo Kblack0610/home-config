@@ -1,22 +1,25 @@
 # Wall Panels (Home Assistant kiosk tablets)
 
-Turns a wall-mounted Android tablet into a Nest-Hub-style home panel: a polished
-HA dashboard that, when idle, fades into an Immich photo frame — with a clock/date +
-photo metadata overlay, automatic side-by-side **portrait pairing**, and a translucent
-**control panel** pinned to the right ~36% (weather + homelab/device status + an Expand hint).
+Turns a wall-mounted Android tablet into a Nest-Hub-style home panel: a polished HA dashboard that, when idle, fades into a screensaver with the room controls on top of it.
 
 - **Dashboard:** `https://hass.kblab.me/wall-panels` (LAN/Tailscale only)
-- **Views:** Home (glance, with collapsible Cameras and Music sections) · Control · Devices · Local · Ops/Fleet · Agents · Photos · Music · Media · Settings · Admin
-- **Screensaver:** lovelace-wallpanel embeds immich-kiosk's full page via `iframe+` (idle/keep-awake
-  from wallpanel; clock + metadata + `KIOSK_LAYOUT=splitview` portrait pairing from immich-kiosk),
-  with wallpanel's info box repurposed as a right-hand control panel (`wallpanel.cards`).
-- **Expand to full view:** `content_interaction: false` — a single tap ANYWHERE (photos or panel)
-  reliably ends the screensaver and reveals the full Home dashboard. (Previously the screensaver
-  ran `content_interaction: true` over a full-screen kiosk iframe, so taps were swallowed and it
-  "took two clicks" to dismiss.) The panel is therefore glanceable; the real controls are one tap
-  away on Home.
-- **Photo source:** `apps/immich-kiosk` (`immich-kiosk.kblab.me`) → your Immich library
+- **Views:** Home (glance, with collapsible Cameras and Music sections), Control, Devices, Local, Ops/Fleet, Agents, Photos, Music, Media, Settings, Admin
+- **Screensaver:** lovelace-wallpanel loads a web page via `iframe+` and repurposes its info box as the control panel (`wallpanel.cards`). Taps toggle tiles in place; the Dashboard button is the way out. What it shows follows a schedule, below.
 - **Dashboard source:** `apps/home-assistant/config/dashboards/wall.yaml` (code-first, Flux-deployed)
+
+### Screensaver schedule
+
+`sensor.wall_mode` (`apps/home-assistant/config/packages/wall_night_mode.yaml`) is the wallpanel `profile_entity`, and its state picks the profile:
+
+| State | When | Content | Controls |
+|-------|------|---------|----------|
+| `day` | Mon-Sat 07:00-22:00 | `apps/wall-ambient` (`wall-ambient.kblab.me`): Wikimedia Commons scenery from the "Wall Scenery" album, with an animated shader scene (plasma, flow, kaleidoscope, Julia set, tunnel, aurora) after every few slides | Full screen, two columns: quick actions left, rooms right, below a clear band for the clock and weather |
+| `family` | Sun 07:00-22:00 | `apps/immich-kiosk` family album ("Wall Best"), portrait pairing, metadata | Narrow translucent column on the right |
+| `night` | 22:00-07:00 | Solid black after 1 s | None; any tap exits |
+
+- **Scenery album:** owned by a dedicated Immich user `wall@kblab.me`, so none of the family libraries mix in. The `immich-scenery` CronJob (`apps/immich/scenery.py`, 05:00) adds 40 new free-licensed featured pictures a night from the Commons categories in `CATEGORIES`, and prunes the oldest past 400. Each asset's description is its credit (title, author, licence), which the slideshow shows.
+- **Retune the rotation** in the `image_url` query string in `wall.yaml`: `scenery` (slides between shader scenes), `trippy_secs` (length of a shader scene), `shaders` (comma list to restrict which ones play), `render_scale` (lower it if a tablet stutters). Set `trippy_secs=0` to turn shader scenes off.
+- **Change the schedule** in the `{% if %}` block of `wall_night_mode.yaml`. wallpanel deep-merges a profile into the base config, so `profiles.family.style` must set every style key the weekday base sets.
 
 Hardware decisions, profiles model, and phase plan live in the project plan; this is the
 hands-on per-tablet runbook. For the full reference - requirements table, FreeKiosk
@@ -28,8 +31,8 @@ and the fleet-update procedure - see [`wall-tablets.md`](./wall-tablets.md).
 ## 0. Quick test (any device, no install)
 Open `https://hass.kblab.me/wall-panels` in a browser and log in.
 **Hard-refresh once (Ctrl/Cmd+Shift+R)** so the custom cards load. Wait ~20s without
-touching it → the Immich photo screensaver starts, with the control panel on the right;
-a single tap anywhere reveals the full Home dashboard. That's the full experience minus
+touching it -> the screensaver starts (scenery on weekdays, family photos on Sunday) with
+the controls on top; the Dashboard button reveals the full Home dashboard. That's the full experience minus
 the OS lockdown.
 
 > Admins keep the HA header/sidebar; non-admin profiles get the clean kiosk view

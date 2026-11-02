@@ -10,6 +10,9 @@ configMapGenerator:
   - name: immich-curate-app
     files:
       - curate.py
+  - name: immich-scenery-app
+    files:
+      - scenery.py
 
 resources:
   - namespace.yaml
@@ -28,4 +31,6 @@ resources:
   - backup-cronjob.yaml
   - originals-backup-cronjob.yaml
   - curate-cronjob.yaml
+  - wall-secret.yaml
+  - scenery-cronjob.yaml
   # - curation-secret.yaml   # add once immich-curation-secret is created (see README -> Curation)

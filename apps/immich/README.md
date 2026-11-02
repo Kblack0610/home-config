@@ -117,6 +117,15 @@ Retune without a rebuild by editing env on `curate-cronjob.yaml` (e.g. `KEEP_FLO
 `JUNK_TOPN`, `JUNK_QUERIES`, `KEEPER_TAG_PREFIX`). Future "true best" ranking (blur/aesthetic
 scoring) is a separate model job - deliberately out of v1.
 
+## Wall scenery album
+
+The wall panels show the "Wall Scenery" album Monday to Saturday (schedule: `docs/wall-panels.md`). It belongs to a dedicated Immich user, `wall@kblab.me`, so scenery never lands in a family library and the kiosk key owns the album it shows.
+
+- `scenery.py` + `scenery-cronjob.yaml` (`immich-scenery`, 05:00): picks random files from Wikimedia Commons featured-picture categories, keeps landscape JPEGs at least 1920 px wide with a CC BY, CC0 or public-domain licence, uploads a 1920 px rendition as `wmc-<pageid>.jpg`, sets the description to the credit, and prunes the oldest past `ALBUM_CAP`. Every knob is an env var on the CronJob.
+- Key: `wall-secret.yaml` (SOPS, `immich-wall-secret`, key `wall-api-key`). The same key is in `apps/immich-kiosk/config-secret.yaml` under `immich_users_api_keys.wall`.
+- The account's password was not kept; reset it as admin if you ever need to log in as `wall`.
+- Run it now: `kubectl -n immich create job --from=cronjob/immich-scenery scenery-manual`. Dry run: add `DRY_RUN=true` with `kubectl set env` on a copy, or run the script locally with `IMMICH_URL=https://photos.kblab.me IMMICH_KEY_WALL=... python3 scenery.py`.
+
 ## Troubleshooting
 
 ```bash

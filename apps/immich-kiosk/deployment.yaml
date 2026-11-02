@@ -41,6 +41,9 @@ spec:
                   key: api-key
             - name: TZ
               value: "America/New_York"
+            # Re-read config-secret.yaml (weather, extra user keys) when the
+            # mounted Secret changes; otherwise kiosk reads it only at start.
+            - { name: KIOSK_WATCH_CONFIG, value: "true" }
             # ── Curated feed ─────────────────────────────────────────────────
             # Show only the "Wall Best (...)" album(s) built nightly by the
             # apps/immich/immich-curate CronJob (family photos, no screenshots),

@@ -1,0 +1,58 @@
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: immich-scenery
+  namespace: immich
+  labels:
+    app.kubernetes.io/name: immich
+spec:
+  # 05:00, after immich-curate (04:00). Adds ADD_PER_RUN new Commons images to
+  # the "Wall Scenery" album and prunes the oldest past ALBUM_CAP, so the
+  # weekday wall slideshow keeps changing. See scenery.py and docs/wall-panels.md.
+  schedule: "0 5 * * *"
+  timeZone: "America/New_York"
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 1
+  jobTemplate:
+    spec:
+      backoffLimit: 1
+      ttlSecondsAfterFinished: 86400
+      template:
+        metadata:
+          labels:
+            app.kubernetes.io/name: immich
+        spec:
+          restartPolicy: OnFailure
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 1000
+            fsGroup: 1000
+          containers:
+            - name: scenery
+              image: docker.io/library/python:3.12-slim
+              command: ["python", "/app/scenery.py"]
+              env:
+                - { name: IMMICH_URL, value: "http://immich-server" }
+                - { name: DRY_RUN, value: "false" }
+                - { name: ALBUM_NAME, value: "Wall Scenery" }
+                - { name: ADD_PER_RUN, value: "40" }
+                - { name: ALBUM_CAP, value: "400" }
+                - name: IMMICH_KEY_WALL
+                  valueFrom:
+                    secretKeyRef: { name: immich-wall-secret, key: wall-api-key }
+              securityContext:
+                allowPrivilegeEscalation: false
+                readOnlyRootFilesystem: true
+                capabilities:
+                  drop: ["ALL"]
+              volumeMounts:
+                - name: app
+                  mountPath: /app
+              resources:
+                requests: { cpu: "50m", memory: "64Mi" }
+                limits: { cpu: "500m", memory: "256Mi" }
+          volumes:
+            - name: app
+              configMap:
+                name: immich-scenery-app

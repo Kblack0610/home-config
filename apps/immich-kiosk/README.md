@@ -35,6 +35,9 @@ The committed Secret ships a **placeholder**. Before photos render:
    ```
 3. Commit, push, merge → Flux reconciles → restart picks up the new key.
 
+## Second user: `wall`
+`config-secret.yaml` also sets `immich_users_api_keys.wall`, the key of the dedicated `wall@kblab.me` Immich user that owns the "Wall Scenery" album. A URL with `?user=wall&album=<id>` shows that album with that key; `apps/wall-ambient` uses it Monday to Saturday. The default (no `user`) is still the family album above. Details: `apps/immich/README.md` -> Wall scenery album.
+
 ## Config
 Config is via `KIOSK_*` env vars on the Deployment (`KIOSK_IMMICH_URL`,
 `KIOSK_IMMICH_API_KEY`). Add more (album, transition, refresh, etc.) as env vars —

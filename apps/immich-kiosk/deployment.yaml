@@ -19,8 +19,11 @@ spec:
         - name: immich-kiosk
           # Open-source Immich slideshow front-end. Serves a kiosk/screensaver
           # URL the wall-panel tablets point at (e.g. ?disable_ui=true&album=<id>).
-          # Pinned; bump deliberately. Tag confirmed to exist on ghcr.
-          image: ghcr.io/damongolding/immich-kiosk:0.39.3
+          # Pinned; bump deliberately. 0.40+ is required for Immich 3 (0.39 reads
+          # album assets from GET /albums/{id}, which Immich 3 no longer returns).
+          # 0.41.0 is the newest that accepts Immich 3.0.1: 0.42 wants 3.0.3 and
+          # 0.44 wants 3.2. Bump this together with apps/immich.
+          image: ghcr.io/damongolding/immich-kiosk:0.41.0
           securityContext:
             allowPrivilegeEscalation: false
             capabilities:

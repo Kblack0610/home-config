@@ -1,5 +1,6 @@
-# The playground's screens gallery, https://apps.kblab.me/playground/: a static page over the
-# UI shots its tests keep, rebuilt by the playground repo's shots.yml (nightly after Tests,
+# The playground's screens gallery, https://apps.kblab.me/playground/: a static page per app over
+# the UI shots its tests keep (Playground at /playground/, DodginBalls, Apociseum and Shape City at
+# /dodginballs/, /apociseum/, /shape-city/, which the image holds as folders of the same names), rebuilt by the playground repo's shots.yml (nightly after Tests,
 # and by hand). The image tag below is moved by scripts/shots/publish.sh there.
 apiVersion: v1
 kind: Service
@@ -66,14 +67,15 @@ spec:
             initialDelaySeconds: 10
             periodSeconds: 30
 ---
-# /playground -> /playground/ (the page's links are relative), then strip the prefix.
+# /<app> -> /<app>/ (the pages' links are relative). Only /playground is stripped: its page is the
+# image's root, and the other apps' pages sit in their own folders.
 apiVersion: traefik.io/v1alpha1
 kind: Middleware
 metadata:
   name: playground-gallery-slash
 spec:
   redirectRegex:
-    regex: "^(https?://[^/]+/playground)$"
+    regex: "^(https?://[^/]+/(playground|dodginballs|apociseum|shape-city))$"
     replacement: "${1}/"
     permanent: true
 ---
@@ -110,6 +112,27 @@ spec:
       http:
         paths:
           - path: /playground
+            pathType: Prefix
+            backend:
+              service:
+                name: playground-gallery
+                port:
+                  number: 80
+          - path: /dodginballs
+            pathType: Prefix
+            backend:
+              service:
+                name: playground-gallery
+                port:
+                  number: 80
+          - path: /apociseum
+            pathType: Prefix
+            backend:
+              service:
+                name: playground-gallery
+                port:
+                  number: 80
+          - path: /shape-city
             pathType: Prefix
             backend:
               service:

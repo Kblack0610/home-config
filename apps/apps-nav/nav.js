@@ -2,6 +2,9 @@
 // so adding an app is one line here. A page that cannot load it just has no dropdown.
 const APPS = [
   { name: "Playground", href: "/playground/" },
+  { name: "DodginBalls", href: "/dodginballs/" },
+  { name: "Apociseum", href: "/apociseum/" },
+  { name: "Shape City", href: "/shape-city/" },
   { name: "PlaceMyParents", href: "/" },
   { name: "Game admin", href: "https://games.kblab.me/" },
 ];

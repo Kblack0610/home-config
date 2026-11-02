@@ -18,6 +18,15 @@ spec:
       labels:
         app.kubernetes.io/name: ci-runner-governor
     spec:
+      affinity:
+        # Off the CI workstations: the governor pulls their Unity slots when
+        # they run hot, so it must not run on one and go down with it. The Pis take it.
+        nodeAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            nodeSelectorTerms:
+              - matchExpressions:
+                  - key: node-role.kubernetes.io/workstation
+                    operator: DoesNotExist
       securityContext:
         runAsNonRoot: true
         runAsUser: 65534

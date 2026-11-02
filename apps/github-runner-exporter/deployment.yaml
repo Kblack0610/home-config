@@ -15,6 +15,15 @@ spec:
       labels:
         app.kubernetes.io/name: github-runner-exporter
     spec:
+      affinity:
+        # Off the CI workstations: the governor reads its runner list from
+        # this exporter, so it must not go down with a hot CI host either.
+        nodeAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            nodeSelectorTerms:
+              - matchExpressions:
+                  - key: node-role.kubernetes.io/workstation
+                    operator: DoesNotExist
       securityContext:
         runAsNonRoot: true
         runAsUser: 65534

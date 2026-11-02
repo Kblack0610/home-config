@@ -339,16 +339,19 @@ all:
       hosts:
         # AMD: no writable package power limit, so boost goes off. Already on
         # the balanced profile when it hit 94C. Charge limit: on the charger 24/7.
+        # 2026-11-02: still 94C peak over 12h with boost off on balanced, so quiet.
         asus-laptop:
-          thermal_cap_platform_profile: balanced
+          thermal_cap_platform_profile: quiet
           thermal_cap_boost: false
           thermal_cap_charge_limit: 80
         # Intel: firmware PL1 is 55W (MSR; MMIO says 130W). Roughly 1.2C per
         # watt above ambient at 55W/98C, so ~40W should land near 85C. No
         # platform profile and no charge threshold in its firmware.
+        # 2026-11-02: at 40/55W it still peaked at 100C over 12h (p90 85C, 4% of
+        # the time above 90C); the 55W short-term limit made the peaks. 32/40W.
         hp-victus:
-          thermal_cap_rapl_long_watts: 40
-          thermal_cap_rapl_short_watts: 55
+          thermal_cap_rapl_long_watts: 32
+          thermal_cap_rapl_short_watts: 40
         # acpi-cpufreq with a global boost switch. No platform_profile, no
         # writable RAPL limit, no charge threshold (the battery holds at ~97%,
         # "Not charging", on AC).

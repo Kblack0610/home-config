@@ -1,0 +1,16 @@
+---
+# CPU each CI runner and its job are using, for the Infra tab's cores per runner
+# (cc:runner_cores_busy in apps/monitoring/prometheus-rules-command-center.yaml).
+
+# One reading every 15 seconds, the Prometheus scrape interval. A timer because
+# neither cgroups nor ps push a change; node-exporter cannot read either itself.
+ci_runner_cpu_interval_seconds: 15
+
+# Linux: the k3s node-exporter mounts this (same dir as roles/node-disk-metrics).
+ci_runner_cpu_linux_textfile_dir: /var/lib/node-exporter-textfile
+
+# macOS: the textfile dir node-exporter-mac's node_exporter reads.
+ci_runner_cpu_mac_label: com.kblab.ci-runner-cpu
+ci_runner_cpu_mac_textfile_dir: "{{ ansible_env.HOME }}/.local/share/node_exporter/textfile"
+ci_runner_cpu_mac_script_path: "{{ ansible_env.HOME }}/.local/bin/ci-runner-cpu"
+ci_runner_cpu_mac_launchagents_dir: "{{ ansible_env.HOME }}/Library/LaunchAgents"

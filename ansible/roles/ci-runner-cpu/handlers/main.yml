@@ -1,0 +1,4 @@
+---
+- name: Reload systemd for ci-runner-cpu
+  ansible.builtin.systemd:
+    daemon_reload: true

@@ -1,0 +1,50 @@
+---
+- name: Ensure the script and LaunchAgents directories exist
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: directory
+    mode: "0755"
+  loop:
+    - "{{ ci_runner_cpu_mac_script_path | dirname }}"
+    - "{{ ci_runner_cpu_mac_textfile_dir }}"
+    - "{{ ci_runner_cpu_mac_launchagents_dir }}"
+
+- name: Install the script
+  ansible.builtin.copy:
+    src: ci-runner-cpu-mac.sh
+    dest: "{{ ci_runner_cpu_mac_script_path }}"
+    mode: "0755"
+  register: ci_runner_cpu_script
+
+- name: Render the LaunchAgent plist
+  ansible.builtin.template:
+    src: ci-runner-cpu.plist.j2
+    dest: "{{ ci_runner_cpu_mac_launchagents_dir }}/{{ ci_runner_cpu_mac_label }}.plist"
+    mode: "0644"
+  register: ci_runner_cpu_plist
+
+# bootout before bootstrap so a changed plist is picked up; launchd keeps serving
+# the loaded definition otherwise (the macos-disk-reclaim pattern).
+- name: Reload the LaunchAgent when the script or plist changed
+  when: ci_runner_cpu_script.changed or ci_runner_cpu_plist.changed
+  block:
+    - name: Bootout the existing agent (ignored when not loaded)
+      ansible.builtin.command:
+        cmd: "launchctl bootout gui/{{ ansible_user_uid }}/{{ ci_runner_cpu_mac_label }}"
+      register: ci_runner_cpu_bootout
+      changed_when: ci_runner_cpu_bootout.rc == 0
+      failed_when: false
+
+    - name: Bootstrap the agent
+      ansible.builtin.command:
+        cmd: >-
+          launchctl bootstrap gui/{{ ansible_user_uid }}
+          {{ ci_runner_cpu_mac_launchagents_dir }}/{{ ci_runner_cpu_mac_label }}.plist
+      register: ci_runner_cpu_bootstrap
+      changed_when: ci_runner_cpu_bootstrap.rc == 0
+
+- name: Verify the agent is registered with launchd
+  ansible.builtin.command:
+    cmd: "launchctl print gui/{{ ansible_user_uid }}/{{ ci_runner_cpu_mac_label }}"
+  register: ci_runner_cpu_verify
+  changed_when: false

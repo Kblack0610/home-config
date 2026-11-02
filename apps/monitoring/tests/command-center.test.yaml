@@ -27,6 +27,36 @@ tests:
           - labels: 'cc:host_core_busy_ratio{host="win",cpu="0,0"}'
             value: 0.5
 
+  - name: per-runner cores join the textfile to its host and drop a stale file
+    interval: 1m
+    input_series:
+      - series: 'node_uname_info{instance="lin:9100",host="lin",job="standalone-nodes"}'
+        values: '1x10'
+      - series: 'node_uname_info{instance="old:9100",host="old",job="standalone-nodes"}'
+        values: '1x10'
+      - series: 'ci_runner_cores_busy{instance="lin:9100",runner="lin-unity-pool-1"}'
+        values: '3x10'
+      - series: 'ci_runner_cpus_allowed{instance="lin:9100",runner="lin-unity-pool-1"}'
+        values: '6x10'
+      - series: 'node_textfile_mtime_seconds{instance="lin:9100",file="/var/lib/node-exporter-textfile/ci_runner.prom"}'
+        values: '0+60x10'
+      # the timer stopped at minute 0, so by minute 5 this host's reading is stale
+      - series: 'ci_runner_cores_busy{instance="old:9100",runner="old-unity-pool-1"}'
+        values: '9x10'
+      - series: 'node_textfile_mtime_seconds{instance="old:9100",file="/var/lib/node-exporter-textfile/ci_runner.prom"}'
+        values: '0x10'
+    promql_expr_test:
+      - expr: cc:runner_cores_busy
+        eval_time: 5m
+        exp_samples:
+          - labels: 'cc:runner_cores_busy{host="lin",runner="lin-unity-pool-1"}'
+            value: 3
+      - expr: cc:runner_cores_allowed
+        eval_time: 5m
+        exp_samples:
+          - labels: 'cc:runner_cores_allowed{host="lin",runner="lin-unity-pool-1"}'
+            value: 6
+
   - name: a withheld idle runner is not a pool slot, a withheld runner still draining a job is
     interval: 1m
     input_series:

@@ -10,6 +10,7 @@
 #   cc:<name>                               the numbers the tiles print
 #   cc:host_<metric>{host}                  per-machine load for the board's MACHINES rows
 #   cc:host_core_busy_ratio{host,cpu}       each core's busy share, the Infra tab's core strip
+#   cc:runner_cores_busy / _allowed{host,runner}  cores a CI runner's job uses, and its pinned CPUs
 #   cc:host_local_gate{host,worktree,...}  the workstation's local Unity gates (fleet-assess)
 #   cc:host_local_slots / _busy / _queued{host}          its gate slots, slots held, runs waiting
 #   cc:host_local_open_slots{host}                       the always-open part of its gate slots
@@ -208,6 +209,17 @@ spec:
           expr: >-
             1 - max by (host, cpu) (rate(node_cpu_seconds_total{mode="idle"}[2m]) * on (instance) group_left (host) cc:host_instance)
             or 1 - max by (host, cpu) (label_replace(rate(windows_cpu_time_total{mode="idle", host!=""}[2m]), "cpu", "$1", "core", "(.+)"))
+        # Cores each CI runner and its job are using, and the CPUs a pinned slot may use
+        # (roles/ci-runner-cpu, a textfile every 15s). Dropped once the file is a minute
+        # old, so a stopped timer reads as no figure, not the last one frozen.
+        - record: cc:runner_cores_busy
+          expr: >-
+            max by (host, runner) (ci_runner_cores_busy * on (instance) group_left (host) cc:host_instance
+              and on (instance) (time() - node_textfile_mtime_seconds{file=~".*ci_runner.prom"} < 60))
+        - record: cc:runner_cores_allowed
+          expr: >-
+            max by (host, runner) (ci_runner_cpus_allowed * on (instance) group_left (host) cc:host_instance
+              and on (instance) (time() - node_textfile_mtime_seconds{file=~".*ci_runner.prom"} < 60))
         # Windows has no load average, so no Windows branch: the board reads "-".
         # Headroom over a working day, not one sample: a host that reads busy now may
         # have idled all afternoon, and the 6h figure is what a rebalance is judged on.

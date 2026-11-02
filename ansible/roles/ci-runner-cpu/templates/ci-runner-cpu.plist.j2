@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>{{ ci_runner_cpu_mac_label }}</string>
+
+    <key>ProgramArguments</key>
+    <array>
+        <string>/bin/sh</string>
+        <string>{{ ci_runner_cpu_mac_script_path }}</string>
+        <string>{{ ci_runner_cpu_mac_textfile_dir }}</string>
+    </array>
+
+    <!-- ps %CPU has no event to wait on; one reading per scrape interval. -->
+    <key>StartInterval</key>
+    <integer>{{ ci_runner_cpu_interval_seconds }}</integer>
+
+    <key>RunAtLoad</key>
+    <true/>
+
+    <key>Nice</key>
+    <integer>10</integer>
+
+    <key>StandardErrorPath</key>
+    <string>/tmp/kblab-ci-runner-cpu.log</string>
+</dict>
+</plist>

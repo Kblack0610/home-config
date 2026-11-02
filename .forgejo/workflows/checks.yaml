@@ -82,6 +82,8 @@ jobs:
         run: sh ansible/roles/platform-ci-host/files/test-ci-disk-prune.sh
       - name: node-disk-metrics offline test
         run: sh ansible/roles/node-disk-metrics/files/test-node-disk-metrics.sh
+      - name: ci-runner-cpu offline test
+        run: sh ansible/roles/ci-runner-cpu/files/test-ci-runner-cpu.sh
 
   prometheus-rules:
     runs-on: docker

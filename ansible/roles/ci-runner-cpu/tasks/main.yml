@@ -1,0 +1,8 @@
+---
+- name: Linux runner hosts (cgroup CPU time)
+  ansible.builtin.include_tasks: linux.yml
+  when: ansible_system == 'Linux'
+
+- name: macOS runner hosts (process-tree %CPU)
+  ansible.builtin.include_tasks: darwin.yml
+  when: ansible_system == 'Darwin'

@@ -71,6 +71,17 @@
     - role: node-disk-metrics
       tags: [disk-metrics]
 
+- name: CPU per CI runner (Linux runner hosts)
+  # The Infra tab's cores per runner: each runner unit's cgroup plus its job
+  # container's, every 15s, into node-exporter's textfile dir.
+  #   ansible-playbook playbooks/site.yml --limit ci_hosts --tags runner-cpu
+  hosts: ci_hosts
+  become: true
+  gather_facts: true
+  roles:
+    - role: ci-runner-cpu
+      tags: [runner-cpu]
+
 - name: USB backup drive mounts on asus-laptop (survive re-enumeration)
   # See roles/usb-backup-mounts/README.md. The 8TB drive dropped off USB on
   # 2026-08-09 and came back as a different device node; the seven mounts went
@@ -192,6 +203,16 @@
       tags: [mac, disk]
       vars:
         disk_reclaim_unity_roots: "{{ ['/Users/kennethblack/dev/Games/DodginBalls_root'] if inventory_hostname == 'mac-mini' else [] }}"
+
+- name: CPU per CI runner (macOS runner hosts)
+  # Sums each Runner.Listener's process tree %CPU every 15s into the textfile
+  # dir node-exporter-mac reads. No sudo needed.
+  #   ansible-playbook playbooks/site.yml --limit 'unity_ci_mac_runners:mac-mini' --tags runner-cpu
+  hosts: unity_ci_mac_runners:mac-mini
+  gather_facts: true
+  roles:
+    - role: ci-runner-cpu
+      tags: [runner-cpu]
 
 # 2026-07-18 ROLE SPLIT: mac-mini is the SOLE self-hosted mobile-CI runner;
 # mac-studio is a dedicated LLM inference node (its runner is torn down below).

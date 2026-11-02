@@ -3,8 +3,8 @@
 # Custom cards vendored by the `install-lovelace-cards` init container.
 #
 # Nest-Hub experience: after `idle_time`s of no touch, lovelace-wallpanel fades
-# into a fullscreen slideshow of random Immich photos (via the immich-kiosk
-# /image endpoint) with a big clock/date overlay — tap to return. While active,
+# into a screensaver: scenery and animated visuals Monday to Saturday, family
+# photos on Sunday, black at night (see the wallpanel block below). While active,
 # the Home view is a glanceable hub (clock+weather, status chips, homelab/printer
 # tiles, announce, cast media). Empty-safe: device sections use auto-entities and
 # fill in as Zigbee/ESPHome land (Phase 5).
@@ -18,26 +18,31 @@ kiosk_mode:
   non_admin_settings:
     kiosk: true
 
-# ── Clickable control-panel screensaver (lovelace-wallpanel → immich-kiosk) ──
+# ── Clickable control-panel screensaver (lovelace-wallpanel) ──
 # wallpanel provides the screensaver trigger (idle, fullscreen, keep-awake); the
-# photo CONTENT is immich-kiosk's full page via wallpanel's `iframe+` URL mode
-# (keeps kiosk's big clock/date + metadata + splitview portrait pairing).
-#
-# The idle screen is a CLICKABLE panel, not a dead photo: wallpanel's info box is
-# a translucent ROOM QUICK-ACTIONS column pinned right (the shared, area-driven
-# _rooms_cards layout — tap a plug tile to toggle it), plus a "Dashboard" button.
+# CONTENT is a web page loaded through wallpanel's `iframe+` URL mode. Which page
+# and which control layout depends on sensor.wall_mode (packages/wall_night_mode.yaml):
+#   day    (Mon-Sat 07-22) -> base config below: apps/wall-ambient (Wikimedia
+#                             scenery from the "Wall Scenery" album mixed with
+#                             animated shader scenes) behind FULL-SCREEN controls.
+#   family (Sun 07-22)     -> profiles.family: immich-kiosk family photos with the
+#                             narrow right-hand control column.
+#   night  (22-07)         -> profiles.night: solid black.
+# wallpanel deep-merges a profile into the base config (arrays replace, objects
+# merge key by key), so profiles.family.style must set every key the base style
+# sets, or the weekday value leaks into Sunday.
 #
 # INTERACTION MODEL (this is the important bit):
-#   - content_interaction: true         → taps reach the panel cards.
-#   - stop_screensaver_on_mouse_click: false / _move: false → a tap TOGGLES the
+#   - content_interaction: true         -> taps reach the panel cards.
+#   - stop_screensaver_on_mouse_click: false / _move: false -> a tap TOGGLES the
 #     tile IN PLACE and does NOT drop the screensaver. This is what kills the old
 #     "have to click twice" feel (a tap acts directly instead of first dismissing).
-#   - The ONLY way out is the "Dashboard" button — it `navigate`s, and
+#   - The ONLY way out is the "Dashboard" button - it `navigate`s, and
 #     stop_screensaver_on_location_change (default true) ends the screensaver and
 #     lands on the full Home dashboard = the "admin ui tap in the corner".
 #   - screensaver_entity: toggling input_boolean.wall_screensaver starts/stops the
-#     frame → the on-dashboard "Screensaver" button + easy testing (idle is 8s).
-# NOTE: do NOT add ?disable_ui=true to the kiosk URL — it also hides kiosk's
+#     frame -> the on-dashboard "Screensaver" button + easy testing (idle is 8s).
+# NOTE: do NOT add ?disable_ui=true to the kiosk URL - it also hides kiosk's
 # clock/date/metadata overlays (verified via Playwright), not just nav chrome.
 wallpanel:
   enabled: true
@@ -49,7 +54,9 @@ wallpanel:
   # Lock API). For a mounted tablet, also set OS/kiosk keep-awake (docs/wall-panels.md).
   keep_screen_on_time: 86400
   show_progress_bar: false
-  image_url: 'iframe+https://immich-kiosk.kblab.me/'
+  # Cadence knobs (scenery slides between shader scenes, seconds per shader
+  # scene) are query params, documented in apps/wall-ambient/ambient.js.
+  image_url: 'iframe+https://wall-ambient.kblab.me/?scenery=4&trippy_secs=45'
   # Clickable panel that stays up on tap; only the Dashboard button exits.
   content_interaction: true
   stop_screensaver_on_mouse_click: false
@@ -62,16 +69,88 @@ wallpanel:
   screensaver_start_navigation_path: /wall-panels/home?kiosk&idle
   # On-demand start/stop from a dashboard button (and easy testing).
   screensaver_entity: input_boolean.wall_screensaver
-  # Night mode (22:00 - 07:00): sensor.wall_mode goes to "night" and wallpanel
-  # merges the overrides below, replacing the photo screensaver with a solid-black
-  # screen. The mic / wake-word satellite stays alive (no OS screen-off).
-  # See: apps/home-assistant/config/packages/wall_night_mode.yaml
   profile_entity: sensor.wall_mode
+  # Weekday layout: two columns across the whole screen, quick actions left and
+  # rooms right, below a clear top band where the clock and weather sit.
+  cards:
+    - type: vertical-stack
+      cards:
+        - &alert_card !include _home_alert_card.yaml
+        - &dashboard_card
+          # Corner "admin" tap, the only exit: navigating off the ?idle URL that
+          # screensaver_start_navigation_path parks on ends the screensaver -> Home.
+          type: custom:mushroom-template-card
+          primary: Dashboard
+          icon: mdi:view-dashboard
+          icon_color: blue
+          tap_action: { action: navigate, navigation_path: /wall-panels/home?kiosk }
+          card_mod:
+            style: |
+              ha-card { background: rgba(20,20,22,0.42); border: none; box-shadow: none; backdrop-filter: blur(3px); }
+        # Tap-to-talk, reachable without leaving the screensaver.
+        - &talk_card !include _talk_card.yaml
+    # Room quick-actions - the SHARED area-driven room layout (one source of truth
+    # with the Home view; tap a plug tile to toggle it). Empty rooms auto-hide.
+    - &rooms_card
+      type: vertical-stack
+      cards: !include _rooms_cards.yaml
+  style:
+    wallpanel-screensaver-info-box:
+      position: absolute
+      top: '0'
+      right: '0'
+      bottom: '0'
+      left: '0'
+      transform: none
+      width: 100%
+      height: 100%
+      margin: '0'
+      padding: 22vh 3vw 3vh
+      box-sizing: border-box
+      display: flex
+      flex-direction: column
+      justify-content: flex-start
+      gap: 12px
+      overflow-y: auto
+      # Light scrim low on the screen, where the tiles sit, so the scenery stays
+      # bright at the top and text stays legible below.
+      background: 'linear-gradient(to bottom, rgba(0,0,0,0) 15%, rgba(0,0,0,0.3) 45%, rgba(0,0,0,0.4) 100%)'
+      text-shadow: '0 1px 4px rgba(0,0,0,0.85)'
+    wallpanel-screensaver-info-box-content:
+      display: grid
+      width: 100%
+      max-width: 100%
+      grid-template-columns: minmax(260px, 1fr) 2fr
+      gap: 3vw
+      align-items: start
   profiles:
+    # Sunday: family photos, with the narrow translucent control column on the right.
+    family:
+      image_url: 'iframe+https://immich-kiosk.kblab.me/'
+      cards:
+        - *alert_card
+        - *dashboard_card
+        - *talk_card
+        - *rooms_card
+      style:
+        wallpanel-screensaver-info-box:
+          left: auto
+          width: 42%
+          padding: 24px
+          # Barely-there scrim so the photo shows through the control column; the
+          # room/quick-action cards carry their own backgrounds for legibility.
+          background: 'linear-gradient(to right, rgba(0,0,0,0) 0%, rgba(0,0,0,0.05) 30%)'
+        # A single full-width column (wallpanel defaults it to a centered grid
+        # that can overflow a narrow box -> the old "half a card").
+        wallpanel-screensaver-info-box-content:
+          display: block
+          grid-template-columns: none
+          gap: normal
+          align-items: normal
     night:
       # Longer grace before the screen goes dark.
       idle_time: 60
-      # No photos at night — blank canvas for the black overlay.
+      # No photos at night - blank canvas for the black overlay.
       show_images: false
       # After 1 s in screensaver mode, the overlay goes solid #000.
       black_screen_after_time: 1
@@ -79,60 +158,8 @@ wallpanel:
       content_interaction: false
       stop_screensaver_on_mouse_click: true
       stop_screensaver_on_mouse_move: false
-      # Clear the right-hand control column: nothing to show on a black screen.
+      # Clear the control column: nothing to show on a black screen.
       cards: []
-  cards:
-    # The current household alert, if any (packages/home_alerts.yaml). First, so an idle
-    # panel shows it over the photos.
-    - !include _home_alert_card.yaml
-    # Corner "admin" tap, the only exit: navigating off the ?idle URL that
-    # screensaver_start_navigation_path parks on ends the screensaver -> Home.
-    - type: custom:mushroom-template-card
-      primary: Dashboard
-      icon: mdi:view-dashboard
-      icon_color: blue
-      tap_action: { action: navigate, navigation_path: /wall-panels/home?kiosk }
-      card_mod:
-        style: |
-          ha-card { background: rgba(20,20,22,0.42); border: none; box-shadow: none; backdrop-filter: blur(3px); }
-    # Tap-to-talk, reachable without leaving the screensaver.
-    - !include _talk_card.yaml
-    # Room quick-actions — the SHARED area-driven room layout (one source of truth
-    # with the Home view; tap a plug tile to toggle it). Empty rooms auto-hide.
-    - type: vertical-stack
-      cards: !include _rooms_cards.yaml
-  style:
-    # Translucent right-hand control column, full height. Tune width on-tablet.
-    wallpanel-screensaver-info-box:
-      position: absolute
-      top: '0'
-      right: '0'
-      bottom: '0'
-      left: auto
-      transform: none
-      width: 42%
-      height: 100%
-      margin: '0'
-      padding: 24px
-      box-sizing: border-box
-      display: flex
-      flex-direction: column
-      justify-content: flex-start
-      gap: 12px
-      overflow-y: auto
-      # Barely-there scrim so the photo shows through the control column; the
-      # room/quick-action cards carry their own backgrounds for legibility.
-      background: 'linear-gradient(to right, rgba(0,0,0,0) 0%, rgba(0,0,0,0.05) 30%)'
-      # Shadow darkens only the text glyphs (headings/labels) so they stay
-      # readable over bright photos WITHOUT a photo-blocking scrim.
-      text-shadow: '0 1px 4px rgba(0,0,0,0.85)'
-    # Force the card container to a single full-width column (wallpanel defaults it
-    # to a centered grid that can overflow a narrow box → the old "half a card").
-    wallpanel-screensaver-info-box-content:
-      display: block
-      width: 100%
-      max-width: 100%
-      grid-template-columns: none
 
 views:
   # ───────────────────────────── HOME / GLANCE ─────────────────────────────

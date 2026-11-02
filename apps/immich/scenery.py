@@ -47,6 +47,7 @@ MIN_ASPECT = float(os.environ.get("MIN_ASPECT", "1.3"))
 MAX_ASPECT = float(os.environ.get("MAX_ASPECT", "2.1"))
 THUMB_WIDTH = int(os.environ.get("THUMB_WIDTH", "1920"))
 LICENSE_OK = re.compile(os.environ.get("LICENSE_OK", r"^(CC BY|CC0|Public domain|PD)"), re.I)
+TITLE_EXCLUDE = re.compile(os.environ.get("TITLE_EXCLUDE", r"b&w|black and white|monochrome|grayscale"), re.I)
 
 COMMONS_API = "https://commons.wikimedia.org/w/api.php"
 # Wikimedia asks every client for a descriptive User-Agent with a contact.
@@ -163,7 +164,8 @@ def image_infos(pageids):
 def keep(info):
     aspect = info["width"] / max(info["height"], 1)
     return (info["mime"] == "image/jpeg" and info["width"] >= MIN_WIDTH
-            and MIN_ASPECT <= aspect <= MAX_ASPECT and LICENSE_OK.match(info["license"] or ""))
+            and MIN_ASPECT <= aspect <= MAX_ASPECT and LICENSE_OK.match(info["license"] or "")
+            and not TITLE_EXCLUDE.search(info["credit"]))
 
 
 def main():

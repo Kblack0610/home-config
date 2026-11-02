@@ -47,6 +47,9 @@ see the upstream docs at <https://docs.immichkiosk.app>.
 Flux-managed. Registered in `apps/kustomization.yaml`. Changes ship via the normal
 loop: feature branch → push to forgejo → PR → merge → `flux reconcile kustomization apps --with-source`.
 
+## Version coupling with Immich
+The kiosk release must match the Immich server major/minor: kiosk 0.39 and older break on Immich 3 (the slideshow shows "no assets found for album" because Immich 3 dropped `assets` from `GET /albums/{id}`), and each kiosk release has a minimum Immich patch (0.41.0 accepts 3.0.0+, 0.42 needs 3.0.3, 0.44 needs 3.2). A kiosk that is too new exits at start with "Immich version not supported". Bump the two together.
+
 ## Verify
 ```bash
 kubectl -n immich-kiosk get pods                       # Running/Ready

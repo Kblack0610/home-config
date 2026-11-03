@@ -27,8 +27,9 @@
 
 - name: Workstation monitoring (node_exporter)
   # So cc:host_* and the hub:infra board see this machine's load, memory and
-  # temperature. Not a runner (removed 2026-10-06), so its "CI" is the local
-  # Unity gates fleet-assess publishes through the textfile directory. ufw
+  # temperature, including while its two gate-only Unity pool slots run
+  # (unity_ci_runners, back since 2026-11-03), and the local Unity gates
+  # fleet-assess publishes through the textfile directory. ufw
   # default-denies inbound, hence the 9100 rule in desktop-firewall. Needs sudo:
   #   ansible-playbook playbooks/site.yml --limit cachyos-x8664-main --tags monitoring -K
   hosts: cachyos-x8664-main

@@ -247,10 +247,18 @@ all:
         hp-victus:
           unity_ci_slots: 2
           unity_ci_full: true
-        # Not the workstation (cachyos-x8664-main): it is the human's work machine,
-        # and its two slots took 12 cores and 48G while they worked. Removed
-        # 2026-10-06, when CI moved to nightly and release runs only; its slots
-        # were deregistered by hand. Do not add it back.
+        # The workstation, the human's work machine, back on 2026-11-03 for merge
+        # gates only (unity_ci_full false, so no nightly, release or Multi run
+        # lands here). It was removed on 2026-10-06 after two uncapped slots took
+        # 12 cores and 48G while the human worked; now each slot has its own
+        # three-core cpuset and a 16G cap (ci_hosts below). The human reversed
+        # the removal once unity-core-playground #1625 made a workstation gate a
+        # local pre-flight and the pool the only merge gate. Add a third slot
+        # only after a day of load and temperatures with two, since
+        # ci-runner-governor is still in dry run and cannot withhold them.
+        cachyos-x8664-main:
+          unity_ci_slots: 2
+          unity_ci_full: false
 
     # macOS hosts in the same Unity pool (site.yml, "Unity CI runner pool
     # (macOS)"). Native editor, no container, so no ci_hosts budget: macOS has
@@ -323,6 +331,18 @@ all:
           ci_unity_memory_max: 60G
           ci_unity_slot_memory_max: 20G
           ci_pmp_memory_max: 40G
+        # The workstation: Ryzen 9 7900X, 12 cores / 24 threads, SMT siblings are
+        # n and n+12, 124G. Cores 0-1 and 8-11 (CPUs 0-1, 8-13, 20-23) stay with
+        # the human's desktop and agents. Each Unity slot gets three cores of its
+        # own and stops at 16G (a PlayMode shard p90 is about 10G); the two
+        # together stop at 32G, a quarter of the machine. No platform runners.
+        cachyos-x8664-main:
+          ci_cpus: 2-7,14-19
+          ci_memory_max: 32G
+          ci_unity_cpus: 2-7,14-19
+          ci_unity_slot_cpus: ["2-4,14-16", "5-7,17-19"]
+          ci_unity_memory_max: 32G
+          ci_unity_slot_memory_max: 16G
 
     # Nodes that run the game servers (apps/playground-server pins to the
     # kblab.me/game-server label, roles/game-server-node sets it). Each host keeps

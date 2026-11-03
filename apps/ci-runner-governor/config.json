@@ -16,6 +16,7 @@
   },
   "hosts": {
     "asus-laptop": {"min_admitted": 0, "admit": {"tctl": 80}, "withhold": {"idle": 0.25, "tctl": 90}},
+    "cachyos-x8664-main": {"min_admitted": 0, "admit": {"idle": 0.5, "tctl": 80}, "withhold": {"idle": 0.3, "tctl": 88}},
     "hp-victus": {},
     "razer-laptop": {}
   }

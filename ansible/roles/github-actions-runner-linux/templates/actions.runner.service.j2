@@ -14,6 +14,12 @@ WorkingDirectory={{ gh_runner_home }}
 # SIGTERM alone and left Runner.Listener running, so every restart produced a
 # second listener stuck on "A session for this runner already exists" while the
 # orphan kept taking jobs with the OLD config (2026-09-29, platform CI slots).
+# A git lock under the work dir when the runner starts is stale: no job runs
+# yet. A host stopped mid-checkout (aws-burst-1 Spot interruption, 2026-11-03)
+# left .git/modules/External/asset-library/index.lock in every slot, and each
+# later job failed on "File exists" in seconds. "-": a failed sweep must not
+# keep the runner down.
+ExecStartPre=-/usr/bin/find {{ gh_runner_work_dir if gh_runner_work_dir.startswith('/') else gh_runner_home ~ '/' ~ gh_runner_work_dir }} -path '*/.git/*' -name '*.lock' -type f -delete
 ExecStart={{ gh_runner_home }}/bin/runsvc.sh
 Restart=always
 RestartSec=5

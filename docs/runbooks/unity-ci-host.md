@@ -46,6 +46,23 @@ scripts/test/fetch-image.py unityci/editor ubuntu-<version>-base-3 ~/.cache/unit
 - Slots are LaunchAgents, and macOS Local Network privacy keeps Homebrew git and git-lfs off the LAN (a LaunchDaemon too), so the playground fetches through the public host, `git.kennethblack.me`.
 - Retiring the Studio: steps in the macOS play's header comment in `site.yml`. Plan the capacity first; its slots are a large share of the pool.
 
+## The AWS burst host (aws-burst-1)
+
+- A persistent Spot instance (m7a.12xlarge, us-east-2a, 8 slots of 4 cores and 14G) from the platform repo's `infra/aws-ci-burst` Terraform module. A Spot interruption stops it; the data volume (`/var/lib/actions-runner`, `/var/lib/docker`, `/var/lib/containerd`) and the machine id survive a stop and start.
+- Admin access is SSH through SSM, no inbound port: `ssh -o ProxyCommand='aws ssm start-session --profile bnb --region us-east-2 --target %h --document-name AWS-StartSSHSession --parameters portNumber=%p' ubuntu@<instance-id>`. The instance id is in `ansible/inventory.yml`.
+- Off the LAN: no `lan` label (`unity_ci_lan: false`), and the libraries come through S3 (`unity_ci_library_s3`) instead of a tarball over ssh.
+- Each slot's first job imports its `Library/` cold, about 50 minutes; later jobs are warm (a PlayMode batch ran 10 minutes, against about 12 warm on mac-studio).
+- Watch jobs from the host. The GitHub jobs API shares one 5000/h limit with every session, and polling it drained that limit on 2026-11-03: `sudo journalctl -f -n 0 -u "actions.runner.*" | grep -E "Running job|completed with result"`.
+- A change to a runner unit or its `.env` restarts the slot and cancels its job. Drain first: remove `unity` with the org endpoint in Labels above (the repo endpoint answers 404 for org runners), wait for the slot to go idle, apply, add the label back.
+
+| Symptom | Cause | Fix |
+|---|---|---|
+| Play or job fails with "no space left on device" | Docker 29 keeps images in `/var/lib/containerd`, on the 38G root disk | The Terraform user data binds it to the data volume (platform #1459) |
+| Library pull from S3 runs at under 1 MB/s | `aws s3 sync` sends 10 requests at a time over about 170k small files | 64 at a time, both on the workstation push and the host pull (home-config #505) |
+| Every job fails in seconds on `index.lock`: File exists, after a Spot stop | The stop interrupted a checkout and left git locks in every slot | The runner unit deletes `.git/**/*.lock` under the work dir before it starts (home-config #510) |
+| A slot's `docker run` finds no test image right after its own build | Ubuntu's `docker.io` has no BuildKit, and four slots building one tag at once raced on the legacy builder | `docker-buildx` in `unity_ci_packages_debian` (home-config #511) |
+| A push over 100 MB to git.kblab.me fails | Cloudflare drops bodies over 100 MB, and the host reaches Forgejo only through it | Jobs that push big files ask for `lan`, which this host does not carry |
+
 ## Secrets the playground workflows need
 
 - `UNITY_SERIAL`, repo secret on unity-core-playground: DodginBalls' Personal serial (reading it from a `Unity_lic.ulf`: dodginballs `docs/operations/ci-findings.md`).

@@ -201,6 +201,10 @@ all:
         # One slot: with two, load ran to 19 on 16 threads and real-time tests
         # (HitReactions, Fists, BarrageMovement, NavPageBudget) failed only here
         # (2026-10-06, main run 37416749384). Slot 2 was removed by hand.
+        # Since 2026-11-02 slot 1 is labelled unity-withheld by hand, so it takes
+        # no pool jobs: asus holds forgejo and the databases, and it ran at
+        # 90-91C, in and out of the pool every few minutes. ci-runner-governor
+        # is in dry run until that is decided (2026-11-09).
         asus-laptop:
           unity_ci_slots: 1
           unity_ci_full: true
@@ -255,9 +259,10 @@ all:
       hosts:
         # M3 Ultra, 24P+8E cores, 512G, from 2026-10-29 until it is sold. Eight
         # slots registered, about three P-cores each, with the E-cores left to
-        # macOS and mlx-server. The governor admits 6 at once (config.json,
-        # why in docs/mac-machines.md); the other 2 take only jobs pinned to
-        # host-mac-studio.
+        # macOS and mlx-server. 6 carry the pool labels (why in
+        # docs/mac-machines.md); slots 7-8 are labelled unity-withheld by hand
+        # since 2026-11-02, while ci-runner-governor is in dry run, and take only
+        # jobs pinned to host-mac-studio.
         mac-studio:
           unity_ci_slots: 8
           unity_ci_full: true

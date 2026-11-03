@@ -210,8 +210,7 @@ all:
         # per run.
         # Takes full runs too (unity_ci_full defaults to true). It was reserved
         # for merge gates 2026-10-26 to 10-27; since playground gates run on the
-        # pool with a narrow pick (the workstation only when the pool is backed
-        # up), the reservation only slowed the nightly.
+        # pool with a narrow pick, the reservation only slowed the nightly.
         # Several slots since 2026-10-28, each on cores of its own
         # (ci_unity_slot_cpus in ci_hosts), so they cannot starve each other's
         # real-time tests the way asus's two did. In the 24h before, razer
@@ -255,10 +254,10 @@ all:
     unity_ci_mac_runners:
       hosts:
         # M3 Ultra, 24P+8E cores, 512G, from 2026-10-29 until it is sold. Eight
-        # slots, about three P-cores each, with the E-cores left to macOS and
-        # mlx-server. Raise toward ten only if its per-host row in
-        # unity-core-playground scripts/test/ci-cost.py stays as fast and green
-        # as the Linux hosts'.
+        # slots registered, about three P-cores each, with the E-cores left to
+        # macOS and mlx-server. The governor admits 6 at once (config.json,
+        # why in docs/mac-machines.md); the other 2 take only jobs pinned to
+        # host-mac-studio.
         mac-studio:
           unity_ci_slots: 8
           unity_ci_full: true

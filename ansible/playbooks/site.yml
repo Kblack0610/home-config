@@ -175,8 +175,8 @@
         gh_runner_scope: org
         gh_runner_token_source: gh
         gh_runner_install_packages: false
-        gh_runner_user: linux-ci
-        gh_runner_group: linux-ci
+        gh_runner_user: "{{ linux_ci_user }}"
+        gh_runner_group: "{{ linux_ci_group }}"
         gh_runner_user_home: "{{ linux_ci_user_home }}"
         gh_runner_home: "{{ linux_ci_user_home }}/{{ ci_slot }}"
         gh_runner_name: "{{ inventory_hostname }}-{{ ci_slot }}"

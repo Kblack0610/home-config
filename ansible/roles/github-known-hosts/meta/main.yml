@@ -1,0 +1,15 @@
+---
+galaxy_info:
+  role_name: github_known_hosts
+  author: home-config
+  description: >-
+    Trust GitHub's SSH host keys for one user, read from GitHub's meta API at
+    apply time. Used by the CI runner roles, whose jobs clone submodules over
+    SSH.
+  license: MIT
+  min_ansible_version: "2.14"
+  platforms:
+    - name: ArchLinux
+      versions:
+        - rolling
+dependencies: []

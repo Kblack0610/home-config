@@ -13,6 +13,36 @@
   # In --check the package step above is simulated, so a fresh host has no unit yet.
   ignore_errors: "{{ ansible_check_mode }}"
 
+# Same user the runner role creates; made here first so GitHub's host keys can
+# be trusted before any slot exists.
+- name: Create the runner group
+  ansible.builtin.group:
+    name: "{{ linux_ci_group }}"
+    system: true
+
+- name: Create the runner user
+  ansible.builtin.user:
+    name: "{{ linux_ci_user }}"
+    group: "{{ linux_ci_group }}"
+    groups: [docker]
+    append: true
+    home: "{{ linux_ci_user_home }}"
+    shell: /bin/bash
+    system: true
+    create_home: true
+  # In --check docker (and its group) may not exist yet on a fresh host.
+  ignore_errors: "{{ ansible_check_mode }}"
+
+# Playground jobs clone submodules over SSH; ssh reads known_hosts from the
+# passwd home, so without this they fail "Host key verification failed".
+- name: Trust GitHub's host keys for the runner user
+  ansible.builtin.include_role:
+    name: github-known-hosts
+  vars:
+    github_known_hosts_user: "{{ linux_ci_user }}"
+    github_known_hosts_group: "{{ linux_ci_group }}"
+    github_known_hosts_home: "{{ linux_ci_user_home }}"
+
 - name: Create the hook directory
   ansible.builtin.file:
     path: "{{ linux_ci_job_started_hook | dirname }}"

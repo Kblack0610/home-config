@@ -1,0 +1,6 @@
+---
+# The user whose ssh must trust github.com, and its passwd home. Callers set
+# all three; the user must already exist.
+github_known_hosts_user: ""
+github_known_hosts_group: "{{ github_known_hosts_user }}"
+github_known_hosts_home: ""

@@ -3,8 +3,9 @@ galaxy_info:
   role_name: linux_ci_host
   author: home-config
   description: >-
-    Host prep for the BlackNBrownStudios/platform self-hosted GitHub Actions
-    runners: packages and a weekly docker cleanup timer. The CPU and memory
+    Host prep for the BlackNBrownStudios light/heavy org GitHub Actions
+    runners: packages, the runner user's GitHub host keys and a docker cleanup
+    timer. The CPU and memory
     caps come from ci-host-budget.
   license: MIT
   min_ansible_version: "2.14"

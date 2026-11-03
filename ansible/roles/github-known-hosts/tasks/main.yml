@@ -1,0 +1,45 @@
+---
+# A CI runner slot's HOME is its own dir, so the jobs' ssh-agent action writes
+# GitHub's host keys there; ssh itself reads known_hosts from the user's passwd home
+# instead, and refuses the submodule clone without them ("Host key verification
+# failed"). The keys come from GitHub's meta API at apply time.
+# Authenticated with vault_github_pat: GitHub allows 60 anonymous API calls an
+# hour per IP, and every machine on the LAN shares one IP. The PAT, not the
+# control node's gh, so the in-cluster ansible-runner (no gh) can run it too.
+- name: Read GitHub's SSH host keys
+  ansible.builtin.uri:
+    url: https://api.github.com/meta
+    headers:
+      Authorization: "Bearer {{ vault_github_pat }}"
+      Accept: application/vnd.github+json
+  no_log: true
+  delegate_to: localhost
+  become: false
+  run_once: true
+  check_mode: false
+  register: _github_known_hosts_meta
+
+- name: Create the runner user's .ssh
+  ansible.builtin.file:
+    path: "{{ github_known_hosts_home }}/.ssh"
+    state: directory
+    owner: "{{ github_known_hosts_user }}"
+    group: "{{ github_known_hosts_group }}"
+    mode: "0700"
+
+- name: Trust GitHub's host keys for the runner user
+  ansible.builtin.known_hosts:
+    path: "{{ github_known_hosts_home }}/.ssh/known_hosts"
+    name: github.com
+    key: "github.com {{ item }}"
+  loop: "{{ _github_known_hosts_meta.json.ssh_keys }}"
+  loop_control:
+    label: "{{ item.split(' ')[0] }}"
+
+- name: Own the runner user's known_hosts
+  ansible.builtin.file:
+    path: "{{ github_known_hosts_home }}/.ssh/known_hosts"
+    owner: "{{ github_known_hosts_user }}"
+    group: "{{ github_known_hosts_group }}"
+    mode: "0644"
+  when: not ansible_check_mode

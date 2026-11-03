@@ -1,10 +1,14 @@
 ---
-# Host prep for the BlackNBrownStudios/platform self-hosted runners. The
+# Host prep for the BlackNBrownStudios light/heavy org runners. The
 # runner instances themselves come from the github-actions-runner-linux role,
 # applied once per slot by the "Linux CI runners" play in site.yml.
 
 # CPU and memory caps for the runners live in roles/ci-host-budget
 # (ci-linux.slice), a dependency of this role.
+
+# Runner user; the slots' github-actions-runner-linux role uses the same one.
+linux_ci_user: linux-ci
+linux_ci_group: linux-ci
 
 # Runner user home; each slot lives under it. The job-started hook refuses to
 # clean a workspace outside this tree.

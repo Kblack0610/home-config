@@ -4,14 +4,17 @@
   "full_label": "unity-full",
   "withheld_label": "unity-withheld",
   "pool_min_admitted": 2,
-  "pool_max_admitted": 16,
+  "pool_max_admitted": 24,
   "cooldown_seconds": 600,
   "defaults": {
     "min_admitted": 1,
     "admit": {"idle": 0.35, "psi": 0.2, "tctl": 85, "mem": 0.25, "disk": 0.25},
     "withhold": {"idle": 0.15, "psi": 0.4, "tctl": 92, "mem": 0.1, "disk": 0.2}
   },
-  "standby": {},
+  "standby": {
+    "aws-burst-1": {"max_admitted": 8, "power": {"provider": "aws", "instance_id": "i-049219a501808a9cf",
+                                               "region": "us-east-2", "idle_off_seconds": 1200, "live": false}}
+  },
   "hosts": {
     "cachyos-x8664-main": {"min_admitted": 0, "admit": {"idle": 0.5, "tctl": 80}, "withhold": {"idle": 0.3, "tctl": 88}},
     "razer-laptop": {}

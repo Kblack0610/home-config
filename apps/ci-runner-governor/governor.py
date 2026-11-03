@@ -45,12 +45,23 @@ cycle's admits can take. Then one slot per cycle comes in, up to the host's
 max_admitted, and goes back once nothing waits. A job pinned to its host label
 needs no pool label, so a withheld slot takes it.
 
+A standby host with a "power" block (aws-burst-1) is also switched on and off. When a
+standby admit would want it and its instance is stopped, the instance is started; its
+slots count as room only once their runners report online, so a start, or a failed one,
+is never room. Once no slot on it has been busy for idle_off_seconds, its slots are
+withheld one per cycle and then the instance is stopped, so a slot never loses a job to
+the stop and comes back withheld. A power block with "live": true acts on that host for
+real (labels and power) even under DRY_RUN. Without AWS_ACCESS_KEY_ID and
+AWS_SECRET_ACCESS_KEY the hook logs why once and does nothing.
+
 DRY_RUN=1 (the default) logs and exports every decision and changes nothing.
 Live, it needs GITHUB_TOKEN with Organization > Self-hosted runners: write.
 
 The loop is a poll: neither host load nor the GitHub queue has an event this
 can await (workflow_job webhooks could replace the queue half later).
 """
+import hashlib
+import hmac
 import json
 import os
 import sys
@@ -58,6 +69,7 @@ import time
 import urllib.error
 import urllib.parse
 import urllib.request
+import xml.etree.ElementTree as ET
 from http.server import BaseHTTPRequestHandler, HTTPServer
 from threading import Lock, Thread
 
@@ -67,8 +79,12 @@ TOKEN = os.environ.get("GITHUB_TOKEN", "")
 DRY_RUN = os.environ.get("DRY_RUN", "1") != "0"
 PORT = int(os.environ.get("PORT", "9321"))
 CONFIG = os.environ.get("GOVERNOR_CONFIG", "/app/config.json")
+AWS_KEY = os.environ.get("AWS_ACCESS_KEY_ID", "")
+AWS_SECRET = os.environ.get("AWS_SECRET_ACCESS_KEY", "")
 CYCLE_SECONDS = 60
+IDLE_OFF_SECONDS = 1200
 API_ERRORS = (urllib.error.URLError, OSError, ValueError, KeyError)
+POWER_ERRORS = API_ERRORS + (ET.ParseError,)
 
 UNAME = "on(instance) group_left(nodename) node_uname_info"
 QUERIES = {
@@ -156,9 +172,10 @@ def verdict(h, t):
     return "STEADY", f"idle {idle:.2f}, cpu pressure {psi:.2f}"
 
 
-def decide(cfg, hosts, runners, queue, last_action, now):
+def decide(cfg, hosts, runners, queue, last_action, now, instances=None):
     """[(host, action, runner, verdict, why)]: at most one action per host, withholds
-    first so a re-admit elsewhere can use the room the pool keeps."""
+    first so a re-admit elsewhere can use the room the pool keeps. instances is
+    power_readings() for the standby hosts with a power block."""
     admitted = sum(1 for r in runners.values() if not r["withheld"])
     # A standby host can go to zero, so only the other hosts hold the pool's floor.
     floor_held = sum(1 for r in runners.values() if not r["withheld"] and r["host"] in cfg["hosts"])
@@ -203,8 +220,14 @@ def decide(cfg, hosts, runners, queue, last_action, now):
                     key=lambda n: (mine[n]["busy"], -mine[n]["elapsed"], n))
         off = sorted(n for n, r in mine.items() if r["withheld"])
         cap = cfg["standby"][host]["max_admitted"]
+        inst = (instances or {}).get(host)
+        idle_off = cfg["standby"][host].get("power", {}).get("idle_off_seconds", IDLE_OFF_SECONDS)
         action, runner, why = "hold", "", "overflow"
-        if len(on) > cap:
+        if inst and inst["state"] == "running" and now - inst["busy_at"] >= idle_off:
+            # Before the job queue: a host idle this long cannot take what waits (a lan job).
+            action, runner = ("withhold", on[0]) if on else ("stop", "")
+            why = f"no slot busy for {int(now - inst['busy_at'])}s"
+        elif len(on) > cap:
             action, runner, why = "withhold", on[0], f"over its {cap} cap"
         elif queue == 0 and on and not mine[on[0]]["busy"]:
             action, runner, why = "withhold", on[0], "nothing waits"
@@ -215,6 +238,14 @@ def decide(cfg, hosts, runners, queue, last_action, now):
                 covered += 1
             else:
                 why = f"pool at its {cfg['pool_max_admitted']} cap"
+        elif inst and inst["state"] == "stopped" and queue > covered:
+            # Not room yet: its slots count once their runners are online and admitted.
+            if admitted < cfg["pool_max_admitted"]:
+                action, why = "start", f"{queue} jobs wait, the other hosts cover {covered}"
+            else:
+                why = f"pool at its {cfg['pool_max_admitted']} cap"
+        elif inst and inst["state"] != "running":
+            why = f"instance {inst['state']}"
         out.append((host, action, runner, "STANDBY", why))
     return out
 
@@ -254,6 +285,93 @@ def apply(cfg, action, name):
             gh("DELETE", f"orgs/{org}/actions/runners/{rid}/labels/{urllib.parse.quote(label)}")
 
 
+class Ec2:
+    """One instance's state, start and stop through the EC2 Query API, signed with SigV4
+    by hand: the pod is python:alpine with no boto3."""
+    NS = "{http://ec2.amazonaws.com/doc/2016-11-15/}"
+
+    def __init__(self, region, key, secret):
+        self.region, self.key, self.secret = region, key, secret
+
+    def sign(self, host, body, t):
+        amz_date, day = time.strftime("%Y%m%dT%H%M%SZ", t), time.strftime("%Y%m%d", t)
+        headers = {"content-type": "application/x-www-form-urlencoded; charset=utf-8",
+                   "host": host, "x-amz-date": amz_date}
+        signed = ";".join(sorted(headers))
+        canonical = "\n".join(["POST", "/", "", *(f"{k}:{headers[k]}" for k in sorted(headers)), "",
+                               signed, hashlib.sha256(body.encode()).hexdigest()])
+        scope = f"{day}/{self.region}/ec2/aws4_request"
+        to_sign = "\n".join(["AWS4-HMAC-SHA256", amz_date, scope, hashlib.sha256(canonical.encode()).hexdigest()])
+        key = ("AWS4" + self.secret).encode()
+        for part in (day, self.region, "ec2", "aws4_request"):
+            key = hmac.new(key, part.encode(), hashlib.sha256).digest()
+        sig = hmac.new(key, to_sign.encode(), hashlib.sha256).hexdigest()
+        headers["authorization"] = (f"AWS4-HMAC-SHA256 Credential={self.key}/{scope}, "
+                                    f"SignedHeaders={signed}, Signature={sig}")
+        return headers
+
+    def call(self, action, instance_id):
+        host = f"ec2.{self.region}.amazonaws.com"
+        body = urllib.parse.urlencode({"Action": action, "Version": "2016-11-15", "InstanceId.1": instance_id})
+        req = urllib.request.Request(f"https://{host}/", data=body.encode(), method="POST",
+                                     headers=self.sign(host, body, time.gmtime()))
+        with urllib.request.urlopen(req, timeout=10) as r:
+            return ET.fromstring(r.read())
+
+    def state(self, instance_id):
+        name = self.call("DescribeInstances", instance_id).find(f".//{self.NS}instanceState/{self.NS}name")
+        if name is None:
+            raise ValueError(f"no instance {instance_id}")
+        return name.text
+
+    def start(self, instance_id):
+        self.call("StartInstances", instance_id)
+
+    def stop(self, instance_id):
+        self.call("StopInstances", instance_id)
+
+
+def power_provider(power):
+    """The client for a power block, or None and why there is none."""
+    if power.get("provider") != "aws":
+        return None, f"unknown power provider {power.get('provider')}"
+    if not (AWS_KEY and AWS_SECRET):
+        return None, "no AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY (the secret's aws-* keys)"
+    return Ec2(power["region"], AWS_KEY, AWS_SECRET), ""
+
+
+def power_readings(cfg, runners, tracked, now):
+    """{host: {state, busy_at, client}} for each standby host with a power block. busy_at is
+    the last cycle a slot on it was busy or the instance was not running, kept in tracked
+    across cycles. A host whose state cannot be read is left out, so nothing powers it."""
+    out = {}
+    for host, s in sorted(cfg["standby"].items()):
+        if "power" not in s:
+            continue
+        t = tracked.setdefault(host, {})
+        client, why = power_provider(s["power"])
+        if not client:
+            if t.get("off") != why:
+                print(f"power hook off for {host}: {why}", flush=True)
+            t["off"] = why
+            continue
+        t.pop("off", None)
+        try:
+            state = client.state(s["power"]["instance_id"])
+        except POWER_ERRORS as e:
+            print(f"{host}: instance state unread, no power action: {e}", flush=True)
+            continue
+        if state != "running" or "busy_at" not in t or any(
+                r["busy"] for r in runners.values() if r["host"] == host):
+            t["busy_at"] = now
+        out[host] = {"state": state, "busy_at": t["busy_at"], "client": client}
+    return out
+
+
+def live(cfg, host):
+    return not DRY_RUN or cfg["standby"].get(host, {}).get("power", {}).get("live", False)
+
+
 class State:
     lock = Lock()
     metrics = "ci_governor_up 0\n"
@@ -284,7 +402,7 @@ def render(cfg, hosts, runners, queue, decisions, ok):
     return "\n".join(L) + "\n"
 
 
-def cycle(cfg, last_action):
+def cycle(cfg, last_action, tracked=None):
     now = time.time()
     try:
         hosts, runners, queue = observe(cfg["pool_label"])
@@ -293,19 +411,26 @@ def cycle(cfg, last_action):
         with State.lock:
             State.metrics = "ci_governor_up 1\nci_governor_ok 0\n"
         return
-    decisions = decide(cfg, hosts, runners, queue, last_action, now)
+    instances = power_readings(cfg, runners, {} if tracked is None else tracked, now)
+    decisions = decide(cfg, hosts, runners, queue, last_action, now, instances)
     for host, action, runner, v, why in decisions:
         if action == "hold":
             continue
-        print(f"{'would ' if DRY_RUN else ''}{action} {runner} on {host}: {v}, {why}; queue {queue}", flush=True)
-        if DRY_RUN:
+        power = action in ("start", "stop")
+        target = cfg["standby"][host]["power"]["instance_id"] if power else runner
+        dry = not live(cfg, host)
+        print(f"{'would ' if dry else ''}{action} {target} on {host}: {v}, {why}; queue {queue}", flush=True)
+        if dry:
             last_action[host] = now
             continue
         try:
-            apply(cfg, action, runner)
+            if power:
+                getattr(instances[host]["client"], action)(target)
+            else:
+                apply(cfg, action, runner)
             last_action[host] = now
-        except API_ERRORS as e:
-            print(f"{action} {runner} failed: {e}", flush=True)
+        except POWER_ERRORS as e:
+            print(f"{action} {target} failed: {e}", flush=True)
     with State.lock:
         State.metrics = "ci_governor_up 1\n" + render(cfg, hosts, runners, queue, decisions, True)
 
@@ -335,10 +460,12 @@ def main():
     if not DRY_RUN and not TOKEN:
         sys.exit("live mode needs GITHUB_TOKEN (Organization > Self-hosted runners: write)")
     Thread(target=HTTPServer(("", PORT), Handler).serve_forever, daemon=True).start()
-    print(f"ci-runner-governor: {'dry run' if DRY_RUN else 'live'}, hosts {', '.join(sorted(cfg['hosts']))}", flush=True)
-    last_action = {}
+    live_hosts = sorted(h for h in cfg["standby"] if DRY_RUN and live(cfg, h))
+    print(f"ci-runner-governor: {'dry run' if DRY_RUN else 'live'}, hosts {', '.join(sorted(cfg['hosts']))}"
+          + (f", live anyway: {', '.join(live_hosts)}" if live_hosts else ""), flush=True)
+    last_action, tracked = {}, {}
     while True:
-        cycle(cfg, last_action)
+        cycle(cfg, last_action, tracked)
         time.sleep(CYCLE_SECONDS)
 
 

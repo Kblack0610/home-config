@@ -51,7 +51,8 @@ spec:
             # is the control node's `gh auth token` (admin:org, what the Unity
             # pool play registers runners with), SOPS-encrypted the same way as
             # apps/github-runner-exporter's; after `gh auth refresh` re-run that
-            # recipe with --from-literal=github-token="$(gh auth token)".
+            # recipe with --from-literal=github-token="$(gh auth token)". A standby
+            # host whose power block says "live": true is acted on for real anyway.
             - name: DRY_RUN
               value: "1"
             - name: GITHUB_TOKEN
@@ -59,6 +60,20 @@ spec:
                 secretKeyRef:
                   name: ci-runner-governor
                   key: github-token
+                  optional: true
+            # The ci-governor IAM key for the aws-burst-1 power hook (config.json
+            # "power"). Not in the secret yet: without it the hook logs why and does nothing.
+            - name: AWS_ACCESS_KEY_ID
+              valueFrom:
+                secretKeyRef:
+                  name: ci-runner-governor
+                  key: aws-access-key-id
+                  optional: true
+            - name: AWS_SECRET_ACCESS_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: ci-runner-governor
+                  key: aws-secret-access-key
                   optional: true
             - name: PROMETHEUS_URL
               value: "http://kube-prometheus-stack-prometheus.monitoring:9090"

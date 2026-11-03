@@ -3,9 +3,9 @@
 
 WHY THIS EXISTS:
 
-CI for BlackNBrownStudios runs on home hardware: the platform pmp-light /
-pmp-heavy slots and the mac-mini (repo-scoped on platform), and the org Unity
-pool, which serves every game repo. A self-hosted job
+CI for BlackNBrownStudios runs on home hardware: the org light / heavy
+slots, the org Unity pool, which serves every game repo, and the mac-mini
+(repo-scoped on platform). A self-hosted job
 WAITS for a runner instead of failing, so a dead slot shows up as a PR sitting
 queued, not as a red check. Before this, the only view was `gh api` one repo at
 a time, and it could not say what a busy runner was busy WITH.
@@ -136,7 +136,7 @@ for entry in os.environ.get("RUNNER_ROSTER", "").split():
     host, pool, slots = entry.split(":")
     ROSTER.append((host, pool, int(slots)))
 ROSTER_HOSTS = sorted({h for h, _, _ in ROSTER}, key=len, reverse=True)
-POOL_LABELS = ("pmp-light", "pmp-heavy", "unity")
+POOL_LABELS = ("light", "heavy", "unity")
 # A queued run with no jobs this old never gets a runner (GitHub creates a run's
 # jobs within seconds). It is labelled stuck="true" so boards can list it apart
 # instead of letting its age stand for the queue's.

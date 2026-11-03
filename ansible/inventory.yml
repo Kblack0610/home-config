@@ -168,34 +168,34 @@ all:
         pi4-worker5:
 
     # Self-hosted GitHub Actions runners for BlackNBrownStudios/platform
-    # (added 2026-09-28; see the "platform CI runners" play in site.yml).
+    # (see the "Linux CI runners" play in site.yml).
     # GitHub has no runner priority - an idle runner with matching labels takes
-    # the next job - so the slot counts ARE the priority. pmp-heavy jobs publish
+    # the next job - so the slot counts ARE the priority. heavy jobs publish
     # fixed host ports (postgres 5432, mailpit 1025/8025, app ports), so never
     # more than one heavy slot per host. CPU/memory caps are in ci_hosts below.
     # Slot counts are mirrored in apps/github-runner-exporter
     # RUNNER_ROSTER; scripts/check-runner-roster.py fails CI when they disagree.
-    platform_ci_runners:
+    linux_ci_runners:
       hosts:
         # Two light slots, was three until 2026-10-28: over the 24h before, asus
         # averaged 60% CPU, peaked at load 57 on 16 threads and 94C, and it holds
         # forgejo and the databases. The third slot moved to razer.
         asus-laptop:
-          pmp_light_slots: 2
-          pmp_heavy_slots: 1
+          ci_light_slots: 2
+          ci_heavy_slots: 1
         hp-victus:
-          pmp_light_slots: 2
-          pmp_heavy_slots: 1
+          ci_light_slots: 2
+          ci_heavy_slots: 1
         razer-laptop:
-          pmp_light_slots: 3
-          pmp_heavy_slots: 1
+          ci_light_slots: 3
+          ci_heavy_slots: 1
 
     # BNB Unity runner pool (added 2026-10-05; the "Unity CI runner pool" play in
     # site.yml). Org-scoped, label `unity`, for every game repo. Each slot runs
     # one Unity job at a time (a PlayMode shard, an EditMode run, a DodginBalls
     # build), about 4-6 GB each. CPU/memory caps are in ci_hosts below. Every
     # host here is one activation on the shared Unity serial.
-    # Mirrored in RUNNER_ROSTER like platform_ci_runners above.
+    # Mirrored in RUNNER_ROSTER like linux_ci_runners above.
     unity_ci_runners:
       hosts:
         # One slot: with two, load ran to 19 on 16 threads and real-time tests
@@ -292,7 +292,7 @@ all:
           ci_memory_max: 36G
           ci_unity_cpus: 8-15
           ci_unity_memory_max: 24G
-          ci_pmp_memory_max: 24G
+          ci_linux_memory_max: 24G
         # i7-13700HX: CPUs 0-15 are the P-core threads, 16-23 the E-cores.
         # k3s (redis, ntfy) keeps four E-cores. 31 GB, no swap. P-core threads
         # 12-15 are the game server's (game_server_cpus in game_server_nodes
@@ -315,7 +315,7 @@ all:
           ci_unity_slot_cpus: ["0-5,16-17", "6-11,18-19"]
           ci_unity_memory_max: 20G
           ci_unity_slot_memory_max: 16G
-          ci_pmp_memory_max: 14G
+          ci_linux_memory_max: 14G
         # 8 cores / 16 threads, SMT siblings are n and n+8. Cores 0-1 (CPUs
         # 0-1, 8-9) stay with k3s and the OS. Unity gets cores 2-7, three per
         # slot, which platform jobs share at a lower weight (ci_unity_cpu_weight).
@@ -330,12 +330,12 @@ all:
           ci_unity_slot_cpus: ["2-4,10-12", "5-7,13-15"]
           ci_unity_memory_max: 60G
           ci_unity_slot_memory_max: 20G
-          ci_pmp_memory_max: 40G
+          ci_linux_memory_max: 40G
         # The workstation: Ryzen 9 7900X, 12 cores / 24 threads, SMT siblings are
         # n and n+12, 124G. Cores 0-1 and 8-11 (CPUs 0-1, 8-13, 20-23) stay with
         # the human's desktop and agents. Each Unity slot gets three cores of its
         # own and stops at 16G (a PlayMode shard p90 is about 10G); the two
-        # together stop at 32G, a quarter of the machine. No platform runners.
+        # together stop at 32G, a quarter of the machine. No light/heavy runners.
         cachyos-x8664-main:
           ci_cpus: 2-7,14-19
           ci_memory_max: 32G

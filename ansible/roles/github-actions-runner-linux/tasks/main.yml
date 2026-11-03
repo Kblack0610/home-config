@@ -187,7 +187,7 @@
     mode: "0644"
   register: _gh_runner_unit
 
-# A register + restart instead of a handler: the platform CI play applies this
+# A register + restart instead of a handler: the Linux CI runners play applies this
 # role once per instance in a loop, and a handler would only fire for the last
 # gh_runner_name it saw.
 - name: Enable and (re)start the runner

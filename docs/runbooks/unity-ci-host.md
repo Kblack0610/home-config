@@ -13,7 +13,7 @@ Operating the hosts of the org-wide Unity runner pool (label `unity`). Which job
 
 - A host is one activation whatever its slot count: every slot mounts one machine id, `/var/lib/actions-runner/unity-machine-id`. Deleting it makes the host a new machine.
 - Every host activates on the shared Unity Personal serial. No per-machine cap has shown up; the limit hit is many activations at once (about 15 in 90 minutes got "Found 0 entitlement groups"), so add hosts one at a time.
-- The first job on a new host proves it. If it says "Unity activation failed", in order: return stale activations on the Unity ID portal and rerun, run the host for platform CI only, or buy a paid seat or Build Server licenses. Licensing: [unity-ci-hardware.md](../unity-ci-hardware.md#unity-license).
+- The first job on a new host proves it. If it says "Unity activation failed", in order: return stale activations on the Unity ID portal and rerun, run the host for light/heavy CI only, or buy a paid seat or Build Server licenses. Licensing: [unity-ci-hardware.md](../unity-ci-hardware.md#unity-license).
 
 ## Keep the host's copies current
 
@@ -56,4 +56,4 @@ scripts/test/fetch-image.py unityci/editor ubuntu-<version>-base-3 ~/.cache/unit
 
 ## hp-victus
 
-hp-victus is also a k3s agent, the NFS backup target and a platform runner host. It has never had a full system upgrade (`pacman -Syu`), so a newly installed package can fail on a newer library (rsync failed on `libacl`, Xvfb on `libnettle`). The jobs run inside the editor image, which keeps them clear of that.
+hp-victus is also a k3s agent, the NFS backup target and a light/heavy runner host. It has never had a full system upgrade (`pacman -Syu`), so a newly installed package can fail on a newer library (rsync failed on `libacl`, Xvfb on `libnettle`). The jobs run inside the editor image, which keeps them clear of that.

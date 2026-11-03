@@ -18,7 +18,7 @@ list-units) printf '%s\n' 'actions.runner.h-unity-pool-1.service loaded active r
                          'actions.runner.h-light-1.service loaded active running GitHub runner' ;;
 show) case "$*" in
       *unity-pool-1*) printf '%s\n' 'ControlGroup=/ci.slice/u1/actions.runner.h-unity-pool-1.service' 'WorkingDirectory=/w/unity-pool-1' ;;
-      *light-1*) printf '%s\n' 'ControlGroup=/ci.slice/pmp/actions.runner.h-light-1.service' 'WorkingDirectory=/w/light-1' ;;
+      *light-1*) printf '%s\n' 'ControlGroup=/ci.slice/ci-linux.slice/actions.runner.h-light-1.service' 'WorkingDirectory=/w/light-1' ;;
       esac ;;
 esac
 EOF
@@ -36,7 +36,7 @@ echo '0::/ci.slice/u1/docker-c1.scope' > "$t/proc/101/cgroup"
 echo '0::/ci.slice/docker-c2.scope' > "$t/proc/102/cgroup"
 echo '0::/ci.slice/u10/docker-c3.scope' > "$t/proc/103/cgroup"
 cg /ci.slice/u1/actions.runner.h-unity-pool-1.service 1000000
-cg /ci.slice/pmp/actions.runner.h-light-1.service 1000000
+cg /ci.slice/ci-linux.slice/actions.runner.h-light-1.service 1000000
 cg /ci.slice/u1/docker-c1.scope 1000000
 cg /ci.slice/docker-c2.scope 1000000
 cg /ci.slice/u10/docker-c3.scope 1000000

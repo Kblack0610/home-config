@@ -1,23 +1,23 @@
 ---
 # Host prep for the BlackNBrownStudios/platform self-hosted runners. The
 # runner instances themselves come from the github-actions-runner-linux role,
-# applied once per slot by the "platform CI runners" play in site.yml.
+# applied once per slot by the "Linux CI runners" play in site.yml.
 
 # CPU and memory caps for the runners live in roles/ci-host-budget
-# (ci-pmp.slice), a dependency of this role.
+# (ci-linux.slice), a dependency of this role.
 
 # Runner user home; each slot lives under it. The job-started hook refuses to
 # clean a workspace outside this tree.
-pmp_ci_user_home: /var/lib/pmp-runner
-pmp_ci_job_started_hook: /usr/local/lib/pmp-ci/job-started.sh
-pmp_ci_disk_prune: /usr/local/lib/pmp-ci/ci-disk-prune.sh
-pmp_ci_coredump_max_use: 5G
+linux_ci_user_home: /var/lib/linux-ci
+linux_ci_job_started_hook: /usr/local/lib/linux-ci/job-started.sh
+linux_ci_disk_prune: /usr/local/lib/linux-ci/ci-disk-prune.sh
+linux_ci_coredump_max_use: 5G
 
-# What a platform CI job expects beyond the runner itself. No node/pnpm: the
+# What a light/heavy CI job expects (platform's pnpm and Playwright jobs set the bar) beyond the runner itself. No node/pnpm: the
 # workflows install their own with actions/setup-node + pnpm/action-setup.
 # The Chromium libraries stand in for `playwright install --with-deps`, which
 # only knows apt.
-pmp_ci_packages:
+linux_ci_packages:
   - docker
   - docker-buildx
   - git

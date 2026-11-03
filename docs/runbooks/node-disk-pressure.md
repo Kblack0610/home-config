@@ -23,7 +23,7 @@ Largest first, from razer and hp-victus on 2026-10-31:
 
 ## When it pages
 
-1. See what grew: `sudo du -xh --max-depth=2 /var/lib | sort -rh | head -20`, then run the prune with `sudo systemctl start pmp-ci-docker-cleanup.service`. It skips busy slots and logs each removal to its journal.
+1. See what grew: `sudo du -xh --max-depth=2 /var/lib | sort -rh | head -20`, then run the prune with `sudo systemctl start linux-ci-docker-cleanup.service`. It skips busy slots and logs each removal to its journal.
 2. A CI host: the governor has already withheld its Unity slots. Removing a whole `Builds/` tree on an idle slot costs only a cold build.
 3. Do not delete from `/var/lib/rancher/k3s/storage` by hand. To move a PVC off the node, see [move-local-path-pvc.md](move-local-path-pvc.md).
 4. After an eviction, delete the leftover Evicted pods. A DaemonSet pod stays Failed until you do, and node-exporter is one of them.

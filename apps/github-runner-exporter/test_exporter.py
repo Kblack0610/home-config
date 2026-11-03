@@ -20,7 +20,7 @@ from unittest import mock
 os.environ.update(
     RUNNER_ORGS="acme",
     RUN_REPOS="acme/web acme/game",
-    RUNNER_ROSTER="box:pmp-light:2 box:unity:1 gone:unity:1",
+    RUNNER_ROSTER="box:light:2 box:unity:1 gone:unity:1",
     RECENT_PER_REPO="2",
 )
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
@@ -40,8 +40,8 @@ FAKE = {
     "orgs/acme/actions/runners?per_page=100&page=1": {
         "total_count": 1, "runners": [runner(1, "box-unity-pool-1", ["self-hosted", "unity", "host-box"], busy=True)]},
     "repos/acme/web/actions/runners?per_page=100&page=1": {
-        "total_count": 2, "runners": [runner(2, "box-light-1", ["self-hosted", "pmp-light"]),
-                                      runner(3, "box-light-2", ["self-hosted", "pmp-light"], status="offline")]},
+        "total_count": 2, "runners": [runner(2, "box-light-1", ["self-hosted", "light"]),
+                                      runner(3, "box-light-2", ["self-hosted", "light"], status="offline")]},
     "repos/acme/game/actions/runners?per_page=100&page=1": {"total_count": 0, "runners": []},
     "repos/acme/web/actions/runs?status=in_progress&per_page=15": {"total_count": 0, "workflow_runs": []},
     "repos/acme/web/actions/runs?status=queued&per_page=15": {
@@ -70,7 +70,7 @@ FAKE = {
          "updated_at": OLD, "run_started_at": OLD, "html_url": "https://x/run/7"}]},
     "repos/acme/web/actions/runs/9/jobs?per_page=100": {"jobs": [
         {"name": "lint", "status": "completed", "conclusion": "failure", "runner_name": "box-light-1",
-         "labels": ["self-hosted", "pmp-light"], "created_at": T0, "started_at": T1, "completed_at": T2,
+         "labels": ["self-hosted", "light"], "created_at": T0, "started_at": T1, "completed_at": T2,
          "html_url": "https://x/job/9"},
         {"name": "build", "status": "completed", "conclusion": "success", "runner_name": "GitHub Actions 5",
          "labels": ["ubuntu-latest"], "created_at": T0, "started_at": T0, "completed_at": T1,
@@ -80,7 +80,7 @@ FAKE = {
     # A self-hosted job whose runner is not listed (removed since): it keeps its pool.
     "repos/acme/web/actions/runs/8/jobs?per_page=100": {"jobs": [
         {"name": "e2e", "status": "completed", "conclusion": "cancelled", "runner_name": "old-light-9",
-         "labels": ["self-hosted", "pmp-light"], "created_at": T0, "started_at": T1, "completed_at": T1,
+         "labels": ["self-hosted", "light"], "created_at": T0, "started_at": T1, "completed_at": T1,
          "html_url": "https://x/job/12"}]},
     "repos/acme/game/actions/runs?status=completed&per_page=100&page=1": {"total_count": 0, "workflow_runs": []},
 }
@@ -143,7 +143,7 @@ class ExporterTest(unittest.TestCase):
         state = rows(out, "github_runner_state")
         self.assertTrue(any('name="box-light-1"' in r and 'state="idle"' in r for r in state))
         self.assertTrue(any('name="box-light-2"' in r and 'state="offline"' in r for r in state))
-        # box:pmp-light has 2 registered (one offline) -> nothing missing there;
+        # box:light has 2 registered (one offline) -> nothing missing there;
         # gone:unity has none -> one missing row.
         missing = [r for r in state if 'state="missing"' in r]
         self.assertEqual(len(missing), 1)
@@ -203,7 +203,7 @@ class ExporterTest(unittest.TestCase):
         # The GitHub-hosted job is not a runner of ours and must not appear.
         self.assertNotIn("GitHub Actions", out)
         self.assertEqual(rows(out, "github_pool_workflow"),
-                         [l for l in out.splitlines() if l.startswith('github_pool_workflow{pool="pmp-light",repo="web",workflow="CI"}')])
+                         [l for l in out.splitlines() if l.startswith('github_pool_workflow{pool="light",repo="web",workflow="CI"}')])
 
     def test_runs_finished_counts_the_window(self):
         out = self.render()
@@ -225,21 +225,21 @@ class ExporterTest(unittest.TestCase):
         self.assertEqual(sorted(rows(self.render(), "github_jobs_finished")), [
             'github_jobs_finished{pool="github-hosted",repo="web",workflow="CI",conclusion="skipped"} 1',
             'github_jobs_finished{pool="github-hosted",repo="web",workflow="CI",conclusion="success"} 1',
-            'github_jobs_finished{pool="pmp-light",repo="web",workflow="CI",conclusion="cancelled"} 1',
-            'github_jobs_finished{pool="pmp-light",repo="web",workflow="CI",conclusion="failure"} 1'])
+            'github_jobs_finished{pool="light",repo="web",workflow="CI",conclusion="cancelled"} 1',
+            'github_jobs_finished{pool="light",repo="web",workflow="CI",conclusion="failure"} 1'])
 
     def test_queue_and_duration_quantiles(self):
         out = self.render()
         q = {r.rsplit(" ", 1)[0]: int(r.rsplit(" ", 1)[1]) for r in rows(out, "github_job_queue_seconds")}
-        # pmp-light: lint waited 60s, e2e 60s. The GitHub-hosted build waited 0s.
+        # light: lint waited 60s, e2e 60s. The GitHub-hosted build waited 0s.
         # The skipped job had no runner and gives no sample.
-        self.assertEqual(q['github_job_queue_seconds{pool="pmp-light",quantile="0.5"}'], 60)
+        self.assertEqual(q['github_job_queue_seconds{pool="light",quantile="0.5"}'], 60)
         self.assertEqual(q['github_job_queue_seconds{pool="github-hosted",quantile="0.9"}'], 0)
         self.assertEqual(len(q), 4)
         d = {r.rsplit(" ", 1)[0]: int(r.rsplit(" ", 1)[1]) for r in rows(out, "github_job_duration_seconds")}
-        # pmp-light ran lint 240s and e2e 0s: median (nearest rank) 0, p90 240.
-        self.assertEqual(d['github_job_duration_seconds{pool="pmp-light",workflow="CI",quantile="0.5"}'], 0)
-        self.assertEqual(d['github_job_duration_seconds{pool="pmp-light",workflow="CI",quantile="0.9"}'], 240)
+        # light ran lint 240s and e2e 0s: median (nearest rank) 0, p90 240.
+        self.assertEqual(d['github_job_duration_seconds{pool="light",workflow="CI",quantile="0.5"}'], 0)
+        self.assertEqual(d['github_job_duration_seconds{pool="light",workflow="CI",quantile="0.9"}'], 240)
         self.assertEqual(d['github_job_duration_seconds{pool="github-hosted",workflow="CI",quantile="0.5"}'], 60)
 
     def test_quantile_nearest_rank(self):

@@ -28,7 +28,7 @@ With `gh_runner_token_source: gh` no PAT is needed: the registration token is mi
 
 ## Several runners on one host
 
-Set `gh_runner_user_home` to a shared directory and `gh_runner_home` to a per-instance directory under it, and apply the role once per instance (the "platform CI runners" play in `playbooks/site.yml` loops it with `include_role`). Each instance gets its own systemd unit, `.runner` marker and work dir. `gh_runner_env` writes extra `KEY=VALUE` lines into the instance's `.env`; the platform play sets `HOME` per instance so parallel jobs never share a pnpm store or `~/setup-pnpm`. `gh_runner_slice` puts the unit in a systemd slice (the `ci-host-budget` role owns `ci.slice` and its `ci-unity.slice` / `ci-pmp.slice` children, and their caps).
+Set `gh_runner_user_home` to a shared directory and `gh_runner_home` to a per-instance directory under it, and apply the role once per instance (the "Linux CI runners" play in `playbooks/site.yml` loops it with `include_role`). Each instance gets its own systemd unit, `.runner` marker and work dir. `gh_runner_env` writes extra `KEY=VALUE` lines into the instance's `.env`; the Linux CI runners play sets `HOME` per instance so parallel jobs never share a pnpm store or `~/setup-pnpm`. `gh_runner_slice` puts the unit in a systemd slice (the `ci-host-budget` role owns `ci.slice` and its `ci-unity.slice` / `ci-linux.slice` children, and their caps).
 
 All other variables have sensible defaults in `defaults/main.yml`.
 

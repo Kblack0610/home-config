@@ -1,14 +1,14 @@
-# Managed by ansible (ci-host-budget). Every platform CI runner unit runs here,
+# Managed by ansible (ci-host-budget). Every light/heavy CI runner unit runs here,
 # inside the host's CI budget ({{ ci_slice }}).
 #
 # Service containers (postgres, mailpit) are started by dockerd and live in
 # docker's own cgroup, so they are NOT counted here. They are small; the node,
 # tsc, vitest and Chromium processes that dominate a job are.
 [Unit]
-Description=Platform CI runners (GitHub Actions)
+Description=Light/heavy CI runners (GitHub Actions)
 Before=slices.target
 
 [Slice]
 CPUAccounting=true
 MemoryAccounting=true
-MemoryMax={{ ci_pmp_memory_max }}
+MemoryMax={{ ci_linux_memory_max }}

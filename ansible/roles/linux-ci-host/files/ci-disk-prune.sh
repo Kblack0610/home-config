@@ -1,5 +1,5 @@
 #!/bin/sh
-# Managed by ansible (platform-ci-host). What CI leaves on a persistent host that a job
+# Managed by ansible (linux-ci-host). What CI leaves on a persistent host that a job
 # rebuilds if it wants it again. Tests: test-ci-disk-prune.sh beside this file.
 #
 # Never `image prune -a`: a Unity slot needs the unityci editor images, and pulling those

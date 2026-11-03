@@ -28,7 +28,7 @@ One-page index of services and their management plane. Use this to answer "where
 | GitHub Actions runner (macOS) | mac-studio, mac-mini | LaunchAgent | Ansible role authored, unbound → `platform/tools/setup-mac-runner.sh` today | `ansible/roles/github-actions-runner-mac/` |
 | node_exporter (macOS) | mac-studio, mac-mini | brew services (port 9100) | Ansible role authored, unbound → manual brew today | `ansible/roles/node-exporter-mac/` |
 | Homebrew baseline | mac-studio, mac-mini | user-scoped brew install | Ansible role authored, unbound → `install.sh` today | `ansible/roles/brew-common/` |
-| GitHub Actions runners, platform CI (Linux) | asus-laptop (2 light + 1 heavy), hp-victus (2 + 1), razer-laptop (3 + 1) | systemd `actions.runner.<host>-<slot>.service` in `ci-pmp.slice`, inside the host's `ci.slice` budget | Ansible (this repo), play "platform CI runners" | `ansible/roles/github-actions-runner-linux/` + `ansible/roles/platform-ci-host/` |
+| GitHub Actions runners, light/heavy CI (Linux, org-scoped) | asus-laptop (2 light + 1 heavy), hp-victus (2 + 1), razer-laptop (3 + 1) | systemd `actions.runner.<host>-<slot>.service` in `ci-linux.slice`, inside the host's `ci.slice` budget | Ansible (this repo), play "Linux CI runners" | `ansible/roles/github-actions-runner-linux/` + `ansible/roles/linux-ci-host/` |
 | GitHub Actions Unity runner pool (org-wide, label `unity`) | asus-laptop, razer-laptop, hp-victus, and the workstation for gates only (slots per host: `unity_ci_slots` in `ansible/inventory.yml`), the razer, hp-victus and workstation slots each in its own `ci-unity-<n>.slice` cpuset | systemd `actions.runner.<host>-unity-pool-<n>.service` in `ci-unity.slice`, inside the host's `ci.slice` budget; Unity containers in the same slice | Ansible (this repo), play "Unity CI runner pool" | `ansible/roles/unity-ci-host/` + `ansible/roles/github-actions-runner-linux/` ; `docs/runbooks/unity-ci-host.md` |
 | ci-runner-governor (which Unity pool runners take jobs) | k8s Deployment in `monitoring` | k8s pod | Flux | `apps/ci-runner-governor/` (dry run: logs and exports `ci_governor_*` decisions, changes no runner; live swaps `unity`/`unity-full` for `unity-withheld` on a hot host's runner and back when it has room and jobs wait) |
 | Fluidd / Moonraker (live) | neptune-3d-printer (192.168.1.54) | embedded (on printer) | — | — |
@@ -55,7 +55,7 @@ See `docs/gitops.md` for the layer boundaries and `docs/architecture.md` for wor
 
 ## Roles authored vs applied
 
-Every Ansible role listed above that shows "role authored, unbound" exists as code under `ansible/roles/<name>/` but is **not** yet bound in `ansible/playbooks/site.yml`. `github-actions-runner-linux` is live-applied (platform CI slots on the `platform_ci_runners` group, the org Unity pool on `unity_ci_runners`). Enabling a role means:
+Every Ansible role listed above that shows "role authored, unbound" exists as code under `ansible/roles/<name>/` but is **not** yet bound in `ansible/playbooks/site.yml`. `github-actions-runner-linux` is live-applied (the org light/heavy slots on the `linux_ci_runners` group, the org Unity pool on `unity_ci_runners`). Enabling a role means:
 
 1. Seed the per-group vault (`vault_k3s_token`, `vault_github_pat`).
 2. Uncomment the role block in `ansible/playbooks/site.yml`.

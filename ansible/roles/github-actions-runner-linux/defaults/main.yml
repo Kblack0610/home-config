@@ -48,7 +48,7 @@ gh_runner_user_home: "{{ gh_runner_home }}"
 gh_runner_token_source: pat
 
 # Skip the pacman step when a host-prep role has already installed packages
-# (the per-instance loop in the platform CI play would otherwise repeat it).
+# (the per-instance loop in the Linux CI runners play would otherwise repeat it).
 gh_runner_install_packages: true
 
 # Extra KEY=VALUE lines for the runner's .env (inherited by every job).

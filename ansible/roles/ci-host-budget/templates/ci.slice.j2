@@ -1,5 +1,5 @@
 # Managed by ansible (ci-host-budget). The budget for ALL CI on this host: the
-# Unity and platform runners and their containers live in child slices of this
+# Unity and light/heavy runners and their containers live in child slices of this
 # one, so together they use at most CPUs {{ ci_cpus }} and {{ ci_memory_max }}.
 # The other CPUs and memory stay with k3s and the OS, so a CI burst cannot take
 # the node down with it.

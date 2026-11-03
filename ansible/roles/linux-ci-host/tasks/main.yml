@@ -1,7 +1,7 @@
 ---
-- name: Install platform CI packages
+- name: Install light/heavy CI packages
   community.general.pacman:
-    name: "{{ pmp_ci_packages }}"
+    name: "{{ linux_ci_packages }}"
     state: present
     update_cache: true
 
@@ -15,20 +15,20 @@
 
 - name: Create the hook directory
   ansible.builtin.file:
-    path: "{{ pmp_ci_job_started_hook | dirname }}"
+    path: "{{ linux_ci_job_started_hook | dirname }}"
     state: directory
     mode: "0755"
 
 - name: Install the job-started hook (empties the workspace before each job)
   ansible.builtin.template:
     src: job-started.sh.j2
-    dest: "{{ pmp_ci_job_started_hook }}"
+    dest: "{{ linux_ci_job_started_hook }}"
     mode: "0755"
 
 - name: Install the disk prune script
   ansible.builtin.copy:
     src: ci-disk-prune.sh
-    dest: "{{ pmp_ci_disk_prune }}"
+    dest: "{{ linux_ci_disk_prune }}"
     mode: "0755"
   tags: [ci-disk]
 
@@ -44,9 +44,9 @@
     dest: /etc/systemd/coredump.conf.d/50-disk-cap.conf
     mode: "0644"
     content: |
-      # Managed by ansible (platform-ci-host).
+      # Managed by ansible (linux-ci-host).
       [Coredump]
-      MaxUse={{ pmp_ci_coredump_max_use }}
+      MaxUse={{ linux_ci_coredump_max_use }}
   tags: [ci-disk]
 
 - name: Install the daily docker cleanup service and timer
@@ -55,20 +55,20 @@
     dest: "/etc/systemd/system/{{ item }}"
     mode: "0644"
   loop:
-    - pmp-ci-docker-cleanup.service
-    - pmp-ci-docker-cleanup.timer
-  register: _pmp_ci_cleanup_units
+    - linux-ci-docker-cleanup.service
+    - linux-ci-docker-cleanup.timer
+  register: _linux_ci_cleanup_units
   tags: [ci-disk]
 
 - name: Reload systemd after unit changes
   ansible.builtin.systemd:
     daemon_reload: true
-  when: _pmp_ci_cleanup_units.changed
+  when: _linux_ci_cleanup_units.changed
   tags: [ci-disk]
 
 - name: Enable the docker cleanup timer
   ansible.builtin.systemd:
-    name: pmp-ci-docker-cleanup.timer
+    name: linux-ci-docker-cleanup.timer
     enabled: true
     state: started
   ignore_errors: "{{ ansible_check_mode }}"

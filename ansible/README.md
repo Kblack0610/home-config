@@ -71,7 +71,7 @@ ansible-playbook playbooks/site.yml --limit hp-victus --tags runner
 
 ## Phase A scope
 
-- `github-actions-runner-linux` role: registered a self-hosted GitHub Actions runner for `BlackNBrownStudios/platform` on `thinkcentre` (that host was retired 2026-10-12; the role now serves the `platform_ci_runners` group).
+- `github-actions-runner-linux` role: registered a self-hosted GitHub Actions runner for `BlackNBrownStudios/platform` on `thinkcentre` (that host was retired 2026-10-12; the role now serves the `linux_ci_runners` group).
 
 Everything else (k3s agent install, macOS launchd, OpenWRT config push, DHCP reservations) is a later phase — see the plan file referenced in `docs/gitops.md`.
 

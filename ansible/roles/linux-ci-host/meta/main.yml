@@ -1,6 +1,6 @@
 ---
 galaxy_info:
-  role_name: platform_ci_host
+  role_name: linux_ci_host
   author: home-config
   description: >-
     Host prep for the BlackNBrownStudios/platform self-hosted GitHub Actions

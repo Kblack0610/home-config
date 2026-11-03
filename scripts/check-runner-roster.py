@@ -5,7 +5,7 @@ The exporter's denominator ("how many runners SHOULD be online") has to be writt
 down independently of the GitHub API, because the API only lists runners that
 registered and a slot whose play never ran is exactly what the dashboard exists to
 show. So it is a copy of the slot counts in ansible/inventory.yml
-(platform_ci_runners pmp_light_slots / pmp_heavy_slots, unity_ci_runners
+(linux_ci_runners ci_light_slots / ci_heavy_slots, unity_ci_runners
 unity_ci_slots) plus the single-host runners pinned by their own plays (mac-mini, windows-media).
 
 Same rule as check-fleet-roster.py: independent copies are the design, copies nobody
@@ -28,7 +28,7 @@ EXPORTER_DEPLOY = os.path.join(REPO, "apps/github-runner-exporter/deployment.yam
 
 # inventory group -> {slot var: exporter pool}
 GROUPS = {
-    "platform_ci_runners": {"pmp_light_slots": "pmp-light", "pmp_heavy_slots": "pmp-heavy"},
+    "linux_ci_runners": {"ci_light_slots": "light", "ci_heavy_slots": "heavy"},
     "unity_ci_runners": {"unity_ci_slots": "unity"},
     "unity_ci_mac_runners": {"unity_ci_slots": "unity"},
 }

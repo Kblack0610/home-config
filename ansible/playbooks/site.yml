@@ -6,8 +6,8 @@
 #   ansible-playbook playbooks/site.yml --limit hp-victus
 #   ansible-playbook playbooks/site.yml --limit hp-victus --check --diff
 #
-# The github-actions-runner-linux role runs the platform CI runner slots on the
-# platform_ci_runners group (since 2026-09-28, the "platform CI runners" play)
+# The github-actions-runner-linux role runs the org light/heavy runner slots on
+# the linux_ci_runners group (the "Linux CI runners" play)
 # and the org Unity pool slots (the "Unity CI runner pool" play).
 # Future phases will add roles here (k3s-agent, launchd-mlx, openwrt-config, etc.).
 
@@ -118,7 +118,10 @@
     - role: k3s-node-no-suspend
       tags: [no-suspend, k3s]
 
-# Platform CI runners (BlackNBrownStudios/platform), added 2026-09-28.
+# Linux CI runners (light / heavy), org-scoped for every BlackNBrownStudios
+# repo. Added 2026-09-28 for the platform repo only; org-scoped 2026-11-03 so the
+# game repos' small jobs (checks, plan and report steps) stop billing hosted
+# minutes. Unity jobs have their own pool (the "Unity CI runner pool" play).
 #
 # History: the thinkcentre [self-hosted, linux] runner was decommissioned
 # 2026-06-18 after a power outage froze a release gate queued on it (#833), and
@@ -126,58 +129,65 @@
 # ordinary CI only: hosted minutes hit the org's $200 Actions budget in
 # September 2026 (agent PR volume, ~86 billed min per landed PR), while
 # self-hosted minutes cost $0. What keeps the June failure from coming back:
-#   - release/deploy jobs (deploy-production, release gates, mobile promote)
-#     stay on ubuntu-latest in the platform repo;
+#   - release/deploy jobs (platform deploy-production, release gates, mobile
+#     promote; playground steam.yml) stay on ubuntu-latest;
 #   - every moved job reads its runs-on from the LINUX_RUNNER_LIGHT /
-#     LINUX_RUNNER_HEAVY repo variables, and deleting them sends everything
-#     back to ubuntu-latest (docs/deployment/PIPELINES.md in platform).
+#     LINUX_RUNNER_HEAVY org variables (["self-hosted","linux","light"] and
+#     ["self-hosted","linux","heavy"]), and deleting them sends everything back
+#     to ubuntu-latest. A repo variable of the same name overrides the org one,
+#     so no repo sets its own.
 #
-# Slots per host live in inventory.yml (platform_ci_runners); the host's CI
-# CPU and memory budget in ci_hosts (roles/ci-host-budget). Each slot is its own runner under one `pmp-runner`
-# user, with HOME set to the slot's own dir so parallel jobs never share a
-# pnpm store, Playwright cache or ~/setup-pnpm, and a job-started hook empties
-# the workspace before every job (roles/platform-ci-host/templates/
-# job-started.sh.j2). Registration tokens come from
-# the control node's `gh` CLI, so there is no standing PAT.
+# Heavy jobs publish fixed host ports (postgres 5432, mailpit 1025/8025, app
+# ports), so never more than one heavy slot per host.
+#
+# Slots per host live in inventory.yml (linux_ci_runners); the host's CI
+# CPU and memory budget in ci_hosts (roles/ci-host-budget). Each slot is its own
+# runner under one `linux-ci` user, with HOME set to the slot's own dir so
+# parallel jobs never share a pnpm store, Playwright cache or ~/setup-pnpm, and
+# a job-started hook empties the workspace before every job
+# (roles/linux-ci-host/templates/job-started.sh.j2). Registration tokens come
+# from the control node's `gh` CLI, which needs admin:org for an org runner
+# (roles/github-actions-runner-linux/README.md), so there is no standing PAT.
 #
 # Lowering a slot count does NOT remove the old slot: stop and disable
-# actions.runner.<host>-<slot>.service, delete it in the repo's runner
-# settings, and rm -rf /var/lib/pmp-runner/<slot>.
-- name: platform CI runners (pmp-light / pmp-heavy)
-  hosts: platform_ci_runners
+# actions.runner.<host>-<slot>.service, delete it in the org's runner settings,
+# and rm -rf /var/lib/linux-ci/<slot>.
+- name: Linux CI runners (light / heavy)
+  hosts: linux_ci_runners
   become: true
   gather_facts: true
   vars:
-    pmp_ci_instances: >-
-      {{ (range(1, pmp_light_slots + 1) | map('regex_replace', '^', 'light-') | list)
-         + (range(1, pmp_heavy_slots + 1) | map('regex_replace', '^', 'heavy-') | list) }}
+    linux_ci_instances: >-
+      {{ (range(1, ci_light_slots + 1) | map('regex_replace', '^', 'light-') | list)
+         + (range(1, ci_heavy_slots + 1) | map('regex_replace', '^', 'heavy-') | list) }}
   roles:
-    - role: platform-ci-host
-      tags: [runner, ci, platform]
+    - role: linux-ci-host
+      tags: [runner, ci, linux-ci]
   tasks:
-    - name: Register the platform runner slots
+    - name: Register the light and heavy runner slots
       ansible.builtin.include_role:
         name: github-actions-runner-linux
         apply:
-          tags: [runner, ci, platform]
-      loop: "{{ pmp_ci_instances }}"
+          tags: [runner, ci, linux-ci]
+      loop: "{{ linux_ci_instances }}"
       loop_control:
-        loop_var: pmp_slot
+        loop_var: ci_slot
       vars:
-        gh_runner_repo: platform
+        gh_runner_scope: org
         gh_runner_token_source: gh
         gh_runner_install_packages: false
-        gh_runner_user: pmp-runner
-        gh_runner_group: pmp-runner
-        gh_runner_user_home: "{{ pmp_ci_user_home }}"
-        gh_runner_home: "{{ pmp_ci_user_home }}/{{ pmp_slot }}"
-        gh_runner_name: "{{ inventory_hostname }}-{{ pmp_slot }}"
-        gh_runner_labels: [self-hosted, linux, x64, "pmp-{{ pmp_slot.split('-')[0] }}"]
-        gh_runner_slice: "{{ ci_pmp_slice }}"
+        gh_runner_user: linux-ci
+        gh_runner_group: linux-ci
+        gh_runner_user_home: "{{ linux_ci_user_home }}"
+        gh_runner_home: "{{ linux_ci_user_home }}/{{ ci_slot }}"
+        gh_runner_name: "{{ inventory_hostname }}-{{ ci_slot }}"
+        # light or heavy, from the slot name.
+        gh_runner_labels: [self-hosted, linux, x64, "{{ ci_slot.split('-')[0] }}"]
+        gh_runner_slice: "{{ ci_linux_slice }}"
         gh_runner_env:
-          HOME: "{{ pmp_ci_user_home }}/{{ pmp_slot }}"
-          ACTIONS_RUNNER_HOOK_JOB_STARTED: "{{ pmp_ci_job_started_hook }}"
-      tags: [runner, ci, platform]
+          HOME: "{{ linux_ci_user_home }}/{{ ci_slot }}"
+          ACTIONS_RUNNER_HOOK_JOB_STARTED: "{{ linux_ci_job_started_hook }}"
+      tags: [runner, ci, linux-ci]
 
 # macOS build/CI boxes (mac-studio, mac-mini). Shared baseline on BOTH: brew
 # essentials, node_exporter, and macos-baseline (power policy + SSH key sync +

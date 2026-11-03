@@ -14,7 +14,7 @@
   loop:
     - { src: ci.slice.j2, name: "{{ ci_slice }}" }
     - { src: ci-unity.slice.j2, name: "{{ ci_unity_slice }}" }
-    - { src: ci-pmp.slice.j2, name: "{{ ci_pmp_slice }}" }
+    - { src: ci-linux.slice.j2, name: "{{ ci_linux_slice }}" }
   loop_control:
     label: "{{ item.name }}"
   register: _ci_slice_units

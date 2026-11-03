@@ -21,6 +21,7 @@ os.environ.update(
     RUNNER_ORGS="acme",
     RUN_REPOS="acme/web acme/game",
     RUNNER_ROSTER="box:light:2 box:unity:1 gone:unity:1",
+    CLOUD_HOSTS="gone",
     RECENT_PER_REPO="2",
 )
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
@@ -56,6 +57,8 @@ FAKE = {
     "repos/acme/game/actions/runs/10/jobs?per_page=100": {"jobs": [
         {"name": "PlayMode 1", "status": "in_progress", "runner_name": "box-unity-pool-1", "started_at": T0,
          "head_branch": "main", "html_url": "https://x/job/1"},
+        {"name": "Lint", "status": "in_progress", "runner_name": "GitHub Actions 3", "runner_group_name": "GitHub Actions",
+         "labels": ["ubuntu-latest"], "started_at": T0, "head_branch": "main", "html_url": "https://x/job/3"},
         {"name": "PlayMode 2", "status": "queued", "created_at": T0, "head_branch": "main",
          "labels": ["self-hosted", "unity"], "html_url": "https://x/job/2"}]},
     # Completed listings; Fake drops the `created=` cutoff, which moves with the clock.
@@ -289,6 +292,77 @@ class ExporterTest(unittest.TestCase):
         self.assertEqual(rows(out, "github_runs_finished"), [])
         # Live state is still read.
         self.assertTrue(any('name="box-unity-pool-1"' in r for r in rows(out, "github_runner_state")))
+
+    def test_site_says_local_or_cloud_from_cloud_hosts(self):
+        state = rows(self.render(), "github_runner_state")
+        self.assertTrue(all('site="local"' in r for r in state if 'host="box"' in r))
+        (gone,) = [r for r in state if 'host="gone"' in r]
+        self.assertIn('site="cloud"', gone)
+
+    def test_github_hosted_jobs_running_counts_only_githubs_runners(self):
+        out = self.render()
+        self.assertIn('github_hosted_jobs_running{repo="game"} 1', out)
+        self.assertIn('github_hosted_jobs_running{repo="web"} 0', out)
+        # A repo whose runs failed is unknown, not zero.
+        out = self.render(broken=("repos/acme/web/actions/runs",))
+        self.assertNotIn('github_hosted_jobs_running{repo="web"}', out)
+
+    def test_github_hosted_needs_the_group_or_labels(self):
+        self.assertTrue(exporter.github_hosted({"labels": ["ubuntu-latest"]}))
+        self.assertFalse(exporter.github_hosted({"runner_group_name": "Default", "labels": ["self-hosted"]}))
+        self.assertFalse(exporter.github_hosted({"labels": ["self-hosted", "unity"]}))
+        self.assertFalse(exporter.github_hosted({}))
+
+    def test_history_stops_at_the_deadline_and_live_state_does_not(self):
+        old = exporter.HISTORY_DEADLINE_SECS
+        try:
+            exporter.HISTORY_DEADLINE_SECS = 0
+            out = self.render()
+            # No finished run's jobs are fetched once the deadline has passed...
+            self.assertEqual(exporter.DONE_JOBS, {})
+            self.assertFalse(any("/runs/9/" in c or "/runs/8/" in c for c in exporter.get.calls))
+            # ...but a cold run list is still read, and live runners and active jobs always are.
+            self.assertTrue(any("status=completed" in c for c in exporter.get.calls))
+            self.assertIn("repos/acme/game/actions/runs/10/jobs?per_page=100", exporter.get.calls)
+            self.assertTrue(any('name="box-unity-pool-1"' in r and 'state="running"' in r
+                                for r in rows(out, "github_runner_state")))
+            # A due refresh of a cached run list waits for a scrape with time left.
+            for repo, (at, runs) in list(exporter.HISTORY.items()):
+                exporter.HISTORY[repo] = (at - exporter.HISTORY_REFRESH_SECS, runs)
+            self.render()
+            self.assertFalse(any("status=completed" in c for c in exporter.get.calls))
+        finally:
+            exporter.HISTORY_DEADLINE_SECS = old
+        self.render()
+        self.assertIn(9, exporter.DONE_JOBS)
+
+    def test_health_answers_while_a_scrape_renders(self):
+        import threading
+        import urllib.request
+        entered, release = threading.Event(), threading.Event()
+        real = exporter.render
+
+        def slow_render():
+            entered.set()
+            release.wait(5)
+            return ""
+
+        exporter.render = slow_render
+        srv = exporter.server(("127.0.0.1", 0))
+        threading.Thread(target=srv.serve_forever, daemon=True).start()
+        base = f"http://127.0.0.1:{srv.server_port}"
+        scrape = threading.Thread(target=lambda: urllib.request.urlopen(base + "/metrics", timeout=5).read())
+        try:
+            scrape.start()
+            self.assertTrue(entered.wait(2))
+            with urllib.request.urlopen(base + "/health", timeout=2) as r:
+                self.assertEqual(r.read(), b"ok")
+        finally:
+            release.set()
+            scrape.join(5)
+            exporter.render = real
+            srv.shutdown()
+            srv.server_close()
 
     def test_finished_jobs_are_fetched_once(self):
         self.render()

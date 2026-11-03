@@ -17,6 +17,8 @@
 #   cc:host_local_done_24h / _pass_ratio_24h{host}       its gates finished in 24h, and pass / finished
 #   cc:pool_done_24h / _cancelled_24h / _pass_ratio_24h{pool}  jobs each runner pool finished in 24h
 #   cc:pool_slots / _busy / _withheld{pool}  runners that can take a job, those running one, and idle ones the governor withheld
+#   cc:site_slots / _busy{site}             the same slots and busy, local (home LAN, workstation gates included) vs cloud
+#   cc:github_hosted_running                jobs running now on GitHub's own runners
 #
 # Status comes from sentinel watches where one exists (they are the curated alarms that
 # already page), and from metrics where none does (nodes, heartbeats, runner pools).
@@ -316,6 +318,30 @@ spec:
             count by (pool) (max without (instance, pod, job, namespace, service, endpoint, container)
               (github_runner_state{state="running"}))
             or cc:pool_slots * 0
+        # The same slots and busy split by where the machine is: site="cloud" for the
+        # exporter's CLOUD_HOSTS (inventory unity_ci_lan: false), "local" otherwise. The
+        # workstation's always-open gate slots count as local, so readers never add
+        # them again. The src label keeps the two halves apart under `or`.
+        - record: cc:site_slots
+          expr: >-
+            sum by (site) (
+              label_replace(count by (site) (max without (instance, pod, job, namespace, service, endpoint, container)
+                (github_runner_state{state="running"})
+                or (max without (instance, pod, job, namespace, service, endpoint, container) (github_runner_state{state="idle"})
+                  unless on (name) (max without (instance, pod, job, namespace, service, endpoint, container) (github_runner_withheld) == 1))),
+                "src", "runners", "", "")
+              or label_replace(label_replace(sum(cc:host_local_open_slots), "site", "local", "", ""), "src", "gates", "", ""))
+        - record: cc:site_busy
+          expr: >-
+            sum by (site) (
+              label_replace(count by (site) (max without (instance, pod, job, namespace, service, endpoint, container)
+                (github_runner_state{state="running"})), "src", "runners", "", "")
+              or label_replace(label_replace(sum(cc:host_local_busy), "site", "local", "", ""), "src", "gates", "", ""))
+            or cc:site_slots * 0
+        - record: cc:github_hosted_running
+          expr: >-
+            sum(max without (instance, pod, job, namespace, service, endpoint, container)
+              (github_hosted_jobs_running)) or vector(0)
         - record: cc:pool_waiting
           expr: >-
             count by (pool) (max without (instance, pod, job, namespace, service, endpoint, container)

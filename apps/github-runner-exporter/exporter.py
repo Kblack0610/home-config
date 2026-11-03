@@ -30,7 +30,8 @@ it runs on the mac-mini and says so with a host-mac-mini label.
 
 Fetched on every scrape, no background loop: Prometheus's scrape interval is the
 cadence (GitHub has no push API for runner state). Calls run on a small thread
-pool so a scrape stays well inside the ServiceMonitor timeout.
+pool, and history stops starting calls at HISTORY_DEADLINE_SECS, so a scrape
+stays well inside the ServiceMonitor timeout.
 
 A failed source never reads as "offline": its runners are simply absent and
 github_runner_exporter_api_ok{source} says why. Missing-slot rows and pool
@@ -62,7 +63,7 @@ import urllib.parse
 import urllib.request
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timezone
-from http.server import BaseHTTPRequestHandler, HTTPServer
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 API = os.environ.get("GITHUB_API", "https://api.github.com").rstrip("/")
 TOKEN = os.environ.get("GITHUB_TOKEN", "")
@@ -98,6 +99,13 @@ DONE_JOBS = {}
 # at most 10 pages per repo per HISTORY_REFRESH_SECS.
 HISTORY_CALL_BUDGET = int(os.environ.get("HISTORY_CALL_BUDGET", "50"))
 HISTORY_FLOOR = int(os.environ.get("HISTORY_FLOOR", "1000"))
+# History's job fetches and run-list refreshes stop starting once a scrape has
+# run this long. A scrape past the ServiceMonitor's 30s scrapeTimeout reads as
+# up=0, every series here goes stale for that minute, and every board blanks
+# with it (2026-11-03: p90 20-27s and 9 timeouts in a day, each restart's cold
+# cache backfilling inside the scrape). Live runner and active-run reads are
+# never cut; a cold cache fills over more scrapes instead.
+HISTORY_DEADLINE_SECS = float(os.environ.get("HISTORY_DEADLINE_SECS", "8"))
 # What GitHub last said about the budget, and when to call it again after it
 # refused (403/429 at zero remaining, or a secondary limit's Retry-After).
 # While refused every call fails here without going out, instead of each scrape
@@ -125,8 +133,10 @@ ETAG_KINDS = frozenset({"runners", "active_runs", "active_jobs"})
 # The live set is ~200 paths (runner pages, two run lists per repo, and up to
 # MAX_RUNS_PER_REPO jobs lists per status per repo); the rest is headroom.
 ETAG_MAX = 400
-BUDGET = {"left": 0}
+BUDGET = {"left": 0, "until": 0.0}
 LOCK = threading.Lock()
+# One render at a time: it rewrites the module caches above. /health does not take it.
+RENDER_LOCK = threading.Lock()
 # Bounds the jobs fan-out per repo per status, so one repo with a deep queue
 # cannot eat the API budget or the scrape timeout.
 MAX_RUNS_PER_REPO = int(os.environ.get("MAX_RUNS_PER_REPO", "15"))
@@ -136,6 +146,16 @@ for entry in os.environ.get("RUNNER_ROSTER", "").split():
     host, pool, slots = entry.split(":")
     ROSTER.append((host, pool, int(slots)))
 ROSTER_HOSTS = sorted({h for h, _, _ in ROSTER}, key=len, reverse=True)
+# Hosts off the home LAN (cloud machines), whitespace separated. Mirrors the
+# inventory hosts with unity_ci_lan: false; scripts/check-runner-roster.py
+# keeps them equal. Every runner row says site="cloud" or site="local".
+CLOUD_HOSTS = frozenset(os.environ.get("CLOUD_HOSTS", "").split())
+
+
+def site_of(host):
+    return "cloud" if host in CLOUD_HOSTS else "local"
+
+
 POOL_LABELS = ("light", "heavy", "unity")
 # A queued run with no jobs this old never gets a runner (GitHub creates a run's
 # jobs within seconds). It is labelled stuck="true" so boards can list it apart
@@ -266,6 +286,14 @@ def host_of(name, labels):
     return m.group(1) if m else "unknown"
 
 
+def github_hosted(job):
+    """A job on GitHub's own runners: its runner group says so, or it never asked for self-hosted."""
+    if job.get("runner_group_name"):
+        return job["runner_group_name"] == "GitHub Actions"
+    labels = job.get("labels") or []
+    return bool(labels) and "self-hosted" not in labels
+
+
 def quantile(xs, q):
     """Nearest-rank quantile of a sorted, non-empty list."""
     return xs[max(0, -(-round(q * 100) * len(xs) // 100) - 1)]
@@ -380,7 +408,8 @@ def repo_activity(repo, now):
                 job["_run"] = run_labels(run)
                 out["jobs"].append(job)
         cached = HISTORY.get(repo)
-        if (not cached or now - cached[0] >= HISTORY_REFRESH_SECS) and not low_budget():
+        stale = not cached or (now - cached[0] >= HISTORY_REFRESH_SECS and time.time() < BUDGET["until"])
+        if stale and not low_budget():
             cached = HISTORY[repo] = (now, finished_runs(repo, now))
         if not cached:
             return out
@@ -394,7 +423,10 @@ def repo_activity(repo, now):
         todo = todo[:spend(len(todo))]
 
         def jobs_of(rid):
-            # One failed call must not discard the ones that answered.
+            # One failed call must not discard the ones that answered; one not
+            # started by the deadline waits for a later scrape (HISTORY_DEADLINE_SECS).
+            if time.time() >= BUDGET["until"]:
+                return None
             try:
                 return get(f"repos/{repo}/actions/runs/{rid}/jobs?per_page=100", "history_jobs").get("jobs", [])
             except API_ERRORS:
@@ -412,6 +444,7 @@ def render():
     now = time.time()
     sources = [f"orgs/{o}" for o in ORGS] + [f"repos/{r}" for r in RUN_REPOS]
     BUDGET["left"] = 0 if low_budget() else HISTORY_CALL_BUDGET
+    BUDGET["until"] = now + HISTORY_DEADLINE_SECS
     with ThreadPoolExecutor(max_workers=8) as pool:
         runner_futs = {s: pool.submit(runners, s) for s in sources}
         repo_futs = [pool.submit(repo_activity, r, now) for r in RUN_REPOS]
@@ -436,10 +469,13 @@ def render():
     # runner_name -> the job it is running right now.
     running = {}
     waiting = []
+    hosted = {a["repo"]: 0 for a in acts if a["ok"]}
     for a in acts:
         for j in a["jobs"]:
             if j.get("status") == "in_progress" and j.get("runner_name"):
                 running[j["runner_name"]] = (a["repo"], j)
+                if a["repo"] in hosted and github_hosted(j):
+                    hosted[a["repo"]] += 1
             elif j.get("status") in ("queued", "waiting", "pending", "requested"):
                 waiting.append((a["repo"], j))
 
@@ -451,7 +487,7 @@ def render():
     for scope, r in sorted(seen.values(), key=lambda s: s[1]["name"]):
         names = [l["name"] for l in r.get("labels", [])]
         host, pool_ = host_of(r["name"], names), pool_of(names)
-        lab = {"name": r["name"], "host": host, "pool": pool_, "scope": scope,
+        lab = {"name": r["name"], "host": host, "pool": pool_, "site": site_of(host), "scope": scope,
                "state": "", "repo": "", "workflow": "", "job_name": "", "branch": "", "url": "", **NO_RUN}
         value = 0
         if r.get("status") != "online":
@@ -492,7 +528,8 @@ def render():
             registered[k] = registered.get(k, 0) + 1
         for host, pool_, slots in ROSTER:
             for n in range(registered.get((host, pool_), 0), slots):
-                lab = {"name": f"{host} {pool_} slot {n + 1}", "host": host, "pool": pool_, "scope": "roster",
+                lab = {"name": f"{host} {pool_} slot {n + 1}", "host": host, "pool": pool_, "site": site_of(host),
+                       "scope": "roster",
                        "state": "missing", "repo": "", "workflow": "", "job_name": "", "branch": "", "url": "", **NO_RUN}
                 by_state["missing"] = by_state.get("missing", 0) + 1
                 L.append(f"github_runner_state{{{labels_str(lab)}}} 0")
@@ -539,6 +576,13 @@ def render():
     for a in acts:
         for status, n in a["counts"].items():
             L.append(f'github_actions_runs{{repo="{esc(a["repo"])}",status="{status}"}} {n}')
+
+    L += [
+        "# HELP github_hosted_jobs_running Jobs running now on GitHub's own runners, not ours (absent for a repo whose runs failed)",
+        "# TYPE github_hosted_jobs_running gauge",
+    ]
+    for repo, n in sorted(hosted.items()):
+        L.append(f'github_hosted_jobs_running{{repo="{esc(repo.split("/", 1)[1])}"}} {n}')
 
     L += [
         "# HELP github_actions_run_recent A recently completed run; value is when it finished (epoch seconds)",
@@ -701,7 +745,8 @@ def render():
 class H(BaseHTTPRequestHandler):
     def do_GET(self):
         if self.path.startswith("/metrics"):
-            body = render().encode()
+            with RENDER_LOCK:
+                body = render().encode()
             self.send_response(200)
             self.send_header("Content-Type", "text/plain; version=0.0.4")
             self.send_header("Content-Length", str(len(body)))
@@ -721,10 +766,17 @@ class H(BaseHTTPRequestHandler):
         pass
 
 
+def server(addr):
+    # Threaded so /health answers while a scrape renders: on one thread a 25s scrape
+    # timed the probes out and readiness pulled the pod from the Service, so the
+    # next scrape failed too (2026-11-03).
+    return ThreadingHTTPServer(addr, H)
+
+
 if __name__ == "__main__":
     print(
         f"github-runner-exporter: orgs={ORGS} repos={len(RUN_REPOS)} roster={len(ROSTER)} "
         f"token={'set' if TOKEN else 'MISSING'} port={PORT}",
         flush=True,
     )
-    HTTPServer(("", PORT), H).serve_forever()
+    server(("", PORT)).serve_forever()

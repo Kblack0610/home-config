@@ -107,11 +107,13 @@ on stock-Android Lenovo tablets (M9/M11). (FireOS is not supported — see plan.
 > metadata overlays). We instead drive the screensaver *inside* the dashboard (wallpanel), so
 > you don't need it — but it's there if you ever want the photos even on a non-HA page.
 
-> **Picking up dashboard changes on the tablet:** the webview caches the dashboard. After a
-> dashboard/screensaver change is deployed, the tablet keeps the old one until you **hard-refresh**
-> (pull-to-refresh, or FreeKiosk → reload, or clear the FreeKiosk webview cache / restart the app).
-> Symptom of a stale tablet: HA logs `frontend.wallpanel ... Failed to play media .../image?t=...`
-> (the old single-image screensaver URL). A refresh switches it to the current immich-kiosk frame.
+> **Picking up dashboard changes on the tablet:** a tablet keeps the page it loaded until the
+> page reloads, so a deploy alone never reaches it. A `wall.yaml` change restarts HA, and on every
+> HA start the automation `wall_panels_reload_after_start` (`packages/wall_screensaver.yaml`)
+> presses the FreeKiosk MQTT `reload` button of every panel that has one, found by device model
+> "(FreeKiosk)". A panel without FreeKiosk MQTT keeps the old page until someone pulls to refresh.
+> Side effect: any HA restart reloads the panels (a few seconds, mic included). A change to
+> `apps/wall-ambient` alone does not restart HA, so it is not pushed.
 >
 > **Intended control channel = FreeKiosk MQTT, not Headwind MDM.** By design, all *runtime*
 > panel control (reload the dashboard, screen on/off, brightness, TTS) rides FreeKiosk's own
@@ -127,19 +129,18 @@ What survives a reboot and what does not, per channel:
 
 | Channel | Gives you | Survives reboot? | Live on |
 |---------|-----------|------------------|---------|
-| FreeKiosk MQTT -> HA | reload, navigate URL, screen, brightness, volume, current-URL sensor, D-pad/keyboard | Yes, config is stored in the app (bedroom has reported continuously since 2026-07-17) | wall-bedroom only (`freekiosk_dc43ede573076a31`, 192.168.1.60) |
+| FreeKiosk MQTT -> HA | reload, navigate URL, screen, brightness, volume, current-URL sensor, D-pad/keyboard | Yes, config is stored in the app (bedroom has reported continuously since 2026-07-17) | wall-bedroom (`freekiosk_dc43ede573076a31`, 192.168.1.60), wall-office and wall-kitchen (enabled in-app 2026-11-03, entities `button.wall_office_reload`, `button.wall_kitchen_reload`) |
 | FreeKiosk REST `:8080` | `/api/url`, `/api/js` | Yes on the tablet, but the set-once key must be in `~/.config/wall-tablets/<name>.rest-key` | none: that directory does not exist on the workstation, so no key is usable |
 | `adb tcpip 5555` | screencap, input, provisioning | No, resets on reboot (no root, `persist.adb.tcp.port` denied) | none |
 | Android Wireless Debugging (paired workstation, random port, `~/.local/bin/adb-wall-bedroom` scans for it) | screencap, scrcpy | **No in practice.** Set up on .60 on 2026-07-18; on 2026-10-15 the scan found no port. Android turns it off on its own (Wi-Fi reconnect / timeout), not only on reboot | none |
 | DHCP static lease | stable IP | Yes (router-side) | wall-bedroom only; kitchen, living room, office are dynamic and their old IPs (.181/.234/.235) no longer answer |
 
-So today there is **no remote view (screenshot) path that holds**, and remote reload works on the bedroom panel only. FreeKiosk MQTT has no screenshot. Verify a reload without a screenshot via HA: `sensor.freekiosk_*_current_url`, `binary_sensor.freekiosk_*_screen_on`, and `assist_satellite.<room>` going `idle`.
+So today there is **no remote view (screenshot) path that holds**, and remote reload works on every panel with FreeKiosk MQTT. FreeKiosk MQTT has no screenshot. Verify a reload without a screenshot via HA: `sensor.freekiosk_*_current_url`, `binary_sensor.freekiosk_*_screen_on`, and `assist_satellite.<room>` going `idle`.
 
 Open follow-up, in order:
 1. Find the current IPs of kitchen / living room / office (Headwind device list or router leases) and add static leases in `infrastructure/dhcp/devices.yaml`.
-2. Turn on FreeKiosk MQTT on those three. No cable needed: on the tablet, open FreeKiosk settings (PIN 4321), Advanced tab, MQTT section, and set broker `mosquitto.kblab.me`, port `31883`, device name `wall-<room>`, no username. With a USB session, `provision-wall-tablet.sh --mqtt-broker mosquitto.kblab.me` does the same and keeps the REST key file.
+2. Turn on FreeKiosk MQTT on the living room panel (office and kitchen done 2026-11-03). No cable needed: on the tablet, tap 5 times in the bottom-right corner, enter PIN 4321, Advanced tab, MQTT section, and set broker `mosquitto.kblab.me`, port `31883`, device name `wall-<room>`, no username. With a USB session, `provision-wall-tablet.sh --mqtt-broker mosquitto.kblab.me` does the same and keeps the REST key file.
 3. For a remote view that holds: check what Headwind MDM (already device owner on all four) can enforce, such as keeping USB/wireless debugging on, or a remote-view app it keeps running. Do not rely on Wireless Debugging alone.
-4. HA script that presses every `button.freekiosk_*_reload`, for use after a dashboard deploy.
 
 ---
 
@@ -290,6 +291,7 @@ Settings → About → Status → Wi-Fi MAC (use the *non-randomized* MAC for th
 | Symptom | Fix |
 |---|---|
 | Cards show "Custom element doesn't exist: …" | Hard-refresh (Ctrl+Shift+R). Resources are vendored by the HA init container; confirm `https://hass.kblab.me/local/community/<card>/<file>.js` returns 200. |
+| A panel still shows the old dashboard or screensaver after a deploy | It has no FreeKiosk MQTT, so the reload-after-start automation cannot reach it: enable MQTT on it (Remote update follow-up 2), or pull to refresh. Check: `button.<panel>_reload` exists in HA. |
 | Screensaver photos don't rotate | The `image_url` must keep `?t=${timestamp}` (cache-buster) — without it newer wallpanel caches one image. |
 | Screensaver image blocked / blank | Use the **HTTPS** immich-kiosk host (HA is HTTPS → http is mixed-content blocked). |
 | Weather hero shows an error | Add the **Met.no** integration (§5) → `weather.forecast_home`. |

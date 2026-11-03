@@ -15,7 +15,7 @@
 set -u
 ORG=BlackNBrownStudios
 RUNNER_HOME=/var/lib/actions-runner
-HOST=$(hostname -s)
+HOST=${HOSTNAME%%.*}  # bash's own: hp-victus has no hostname binary
 SLOTS=()
 
 while [ $# -gt 0 ]; do
@@ -63,7 +63,7 @@ done
 # Only when no Unity slot is left: the host-wide pieces unity-ci-host installed.
 if ! ls /etc/systemd/system/actions.runner.*-unity-pool-*.service >/dev/null 2>&1; then
   echo "== no Unity slots left: removing the host-wide pieces"
-  docker ps -q --filter name=unity-test | xargs -r docker stop
+  sudo docker ps -q --filter name=unity-test | xargs -r sudo docker stop
   # Every unity_ci_asset_libraries copy (asset-library, asset-library-hd). The glob
   # runs as root: $RUNNER_HOME is not readable as yourself.
   sudo sh -c 'rm -rf "$1"/asset-library* "$1/unity-machine-id"' _ "$RUNNER_HOME"

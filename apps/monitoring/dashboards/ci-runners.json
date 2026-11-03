@@ -1157,7 +1157,8 @@
               "Time 2": true,
               "__name__": true,
               "scope": true,
-              "event": true
+              "event": true,
+              "labels": true
             },
             "indexByName": {
               "state": 0,

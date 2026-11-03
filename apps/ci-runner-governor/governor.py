@@ -46,7 +46,11 @@ max_admitted, and goes back once nothing waits. A job pinned to its host label
 needs no pool label, so a withheld slot takes it.
 
 A standby host with a "power" block (aws-burst-1) is also switched on and off. When a
-standby admit would want it and its instance is stopped, the instance is started; its
+standby admit would want it, its instance is stopped and a waiting job asks only for labels
+its runners carry, the instance is started. Those labels are read from the exporter's
+github_runner_state rows for the host, offline ones included, plus the pool labels a
+withheld runner gets back on admit; with none read it is never started. So a job pinned
+to the LAN (`lan`) does not start an off-LAN host that could never take it. Its
 slots count as room only once their runners report online, so a start, or a failed one,
 is never room. Once no slot on it has been busy for idle_off_seconds, its slots are
 withheld one per cycle and then the instance is stopped, so a slot never loses a job to
@@ -143,8 +147,24 @@ def observe(pool_label):
     for r in prom("github_runner_withheld"):
         if r["metric"]["name"] in runners:
             runners[r["metric"]["name"]]["withheld"] = True
-    queue = sum(float(r["value"][1]) for r in prom(f'count(github_actions_job_waiting{{pool="{pool_label}",stuck!="true"}})'))
-    return hosts, runners, int(queue)
+    waiting = [label_set(r["metric"].get("labels", ""))
+               for r in prom(f'github_actions_job_waiting{{pool="{pool_label}",stuck!="true"}}')]
+    return hosts, runners, waiting
+
+
+def label_set(joined):
+    # GitHub matches labels without regard to case.
+    return frozenset(l.lower() for l in joined.split(",") if l)
+
+
+def host_labels(cfg, host):
+    """Every label a pool runner on host carries, in any state (a stopped instance's runners
+    stay registered, offline), plus the pool labels a withheld one gets back on admit.
+    Empty when no runner of it is listed."""
+    have = set()
+    for r in prom(f'github_runner_state{{host="{host}",pool="{cfg["pool_label"]}"}}'):
+        have |= label_set(r["metric"].get("labels", ""))
+    return frozenset(have | label_set(f'{cfg["pool_label"]},{cfg["full_label"]}')) if have else frozenset()
 
 
 def verdict(h, t):
@@ -172,10 +192,12 @@ def verdict(h, t):
     return "STEADY", f"idle {idle:.2f}, cpu pressure {psi:.2f}"
 
 
-def decide(cfg, hosts, runners, queue, last_action, now, instances=None):
+def decide(cfg, hosts, runners, waiting, last_action, now, instances=None):
     """[(host, action, runner, verdict, why)]: at most one action per host, withholds
-    first so a re-admit elsewhere can use the room the pool keeps. instances is
-    power_readings() for the standby hosts with a power block."""
+    first so a re-admit elsewhere can use the room the pool keeps. waiting is one label
+    set per waiting pool job; instances is power_readings() for the standby hosts with a
+    power block."""
+    queue = len(waiting)
     admitted = sum(1 for r in runners.values() if not r["withheld"])
     # A standby host can go to zero, so only the other hosts hold the pool's floor.
     floor_held = sum(1 for r in runners.values() if not r["withheld"] and r["host"] in cfg["hosts"])
@@ -240,8 +262,13 @@ def decide(cfg, hosts, runners, queue, last_action, now, instances=None):
                 why = f"pool at its {cfg['pool_max_admitted']} cap"
         elif inst and inst["state"] == "stopped" and queue > covered:
             # Not room yet: its slots count once their runners are online and admitted.
-            if admitted < cfg["pool_max_admitted"]:
-                action, why = "start", f"{queue} jobs wait, the other hosts cover {covered}"
+            takes = sum(1 for need in waiting if need <= inst["labels"])
+            if not inst["labels"]:
+                why = "no runner labels read"
+            elif not takes:
+                why = f"{queue} jobs wait, none it can take"
+            elif admitted < cfg["pool_max_admitted"]:
+                action, why = "start", f"{queue} jobs wait, {takes} it can take, the other hosts cover {covered}"
             else:
                 why = f"pool at its {cfg['pool_max_admitted']} cap"
         elif inst and inst["state"] != "running":
@@ -341,7 +368,7 @@ def power_provider(power):
 
 
 def power_readings(cfg, runners, tracked, now):
-    """{host: {state, busy_at, client}} for each standby host with a power block. busy_at is
+    """{host: {state, busy_at, labels, client}} for each standby host with a power block. busy_at is
     the last cycle a slot on it was busy or the instance was not running, kept in tracked
     across cycles. A host whose state cannot be read is left out, so nothing powers it."""
     out = {}
@@ -358,13 +385,17 @@ def power_readings(cfg, runners, tracked, now):
         t.pop("off", None)
         try:
             state = client.state(s["power"]["instance_id"])
+            labels = host_labels(cfg, host)
         except POWER_ERRORS as e:
-            print(f"{host}: instance state unread, no power action: {e}", flush=True)
+            print(f"{host}: instance state or runner labels unread, no power action: {e}", flush=True)
             continue
+        if not labels and not t.get("unlabelled"):
+            print(f"{host}: no runner labels in github_runner_state, so it is never started", flush=True)
+        t["unlabelled"] = not labels
         if state != "running" or "busy_at" not in t or any(
                 r["busy"] for r in runners.values() if r["host"] == host):
             t["busy_at"] = now
-        out[host] = {"state": state, "busy_at": t["busy_at"], "client": client}
+        out[host] = {"state": state, "busy_at": t["busy_at"], "labels": labels, "client": client}
     return out
 
 
@@ -405,14 +436,15 @@ def render(cfg, hosts, runners, queue, decisions, ok):
 def cycle(cfg, last_action, tracked=None):
     now = time.time()
     try:
-        hosts, runners, queue = observe(cfg["pool_label"])
+        hosts, runners, waiting = observe(cfg["pool_label"])
     except API_ERRORS as e:
         print(f"blind cycle, deciding nothing: {e}", flush=True)
         with State.lock:
             State.metrics = "ci_governor_up 1\nci_governor_ok 0\n"
         return
+    queue = len(waiting)
     instances = power_readings(cfg, runners, {} if tracked is None else tracked, now)
-    decisions = decide(cfg, hosts, runners, queue, last_action, now, instances)
+    decisions = decide(cfg, hosts, runners, waiting, last_action, now, instances)
     for host, action, runner, v, why in decisions:
         if action == "hold":
             continue

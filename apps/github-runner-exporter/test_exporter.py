@@ -153,6 +153,16 @@ class ExporterTest(unittest.TestCase):
         self.assertIn('host="gone"', missing[0])
         self.assertIn('github_runners_by_state{state="missing"} 1', out)
 
+    def test_runner_rows_carry_their_labels_offline_too(self):
+        # ci-runner-governor reads these to tell which waiting jobs a stopped host could take.
+        state = rows(self.render(), "github_runner_state")
+        (busy,) = [r for r in state if 'name="box-unity-pool-1"' in r]
+        self.assertIn('labels="host-box,self-hosted,unity"', busy)
+        (offline,) = [r for r in state if 'name="box-light-2"' in r]
+        self.assertIn('labels="light,self-hosted"', offline)
+        (missing,) = [r for r in state if 'state="missing"' in r]
+        self.assertIn('labels=""', missing)
+
     def test_waiting_jobs_include_jobless_ghost_run(self):
         waiting = rows(self.render(), "github_actions_job_waiting")
         self.assertEqual(len(waiting), 2)

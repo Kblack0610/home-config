@@ -178,7 +178,7 @@ panels = [
        "targets": [tgt(W + "(github_runner_state)", "A"), tgt(W + "(github_runner_last_job) * 1000", "B")],
        "transformations": [{"id": "joinByField", "options": {"byField": "name", "mode": "outer"}},
                            {"id": "organize", "options": {
-           "excludeByName": {"Time": True, "Time 1": True, "Time 2": True, "__name__": True, "scope": True, "event": True},
+           "excludeByName": {"Time": True, "Time 1": True, "Time 2": True, "__name__": True, "scope": True, "event": True, "labels": True},
            "indexByName": {"state": 0, "name": 1, "host": 2, "pool": 3, "repo": 4, "pr": 5, "branch": 6, "title": 7, "workflow": 8,
                            "job_name": 9, "Value #A": 10, "last_conclusion": 11, "last_repo": 12, "last_workflow": 13, "last_job": 14,
                            "Value #B": 15, "url": 16, "last_url": 17},

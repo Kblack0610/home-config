@@ -7,7 +7,7 @@ only while jobs wait, the pool floor and cap hold, a cooling host is left alone,
 a missing reading is never room, a full disk empties a host past its floor and cooldown
 but not the pool floor, a standby host takes only the jobs the others cannot, a powered
 standby host is started and stopped by a fake EC2 (no network) and only it acts while the
-rest is dry run, and a live action adds the new label before it removes the old. Stdlib
+rest is dry run, it is started only for a waiting job whose labels its runners carry, and a live action adds the new label before it removes the old. Stdlib
 only; CI runs it in the checks workflow.
 """
 import json
@@ -50,16 +50,30 @@ RUNNERS = pool(("razer-1", "razer-laptop", True, 900, False), ("razer-2", "razer
                ("hpv-1", "hp-victus", True, 50, False), ("hpv-2", "hp-victus", False, 0, True))
 
 
-def actions(hosts, runners=RUNNERS, queue=5, last=None, cfg=CFG, instances=None):
-    return {h: (a, r) for h, a, r, _, _ in governor.decide(cfg, hosts, runners, queue, last or {}, 10_000, instances)}
+UNITY_JOB = frozenset({"self-hosted", "unity"})
+LAN_JOB = frozenset({"self-hosted", "unity", "lan"})
+
+
+def decide(hosts, runners=RUNNERS, queue=5, last=None, cfg=CFG, instances=None, waiting=None):
+    waiting = [UNITY_JOB] * queue if waiting is None else waiting
+    return governor.decide(cfg, hosts, runners, waiting, last or {}, 10_000, instances)
+
+
+def actions(*args, **kw):
+    return {h: (a, r) for h, a, r, _, _ in decide(*args, **kw)}
 
 
 POWER = {"provider": "aws", "instance_id": "i-0abc", "region": "us-east-2", "idle_off_seconds": 1200, "live": True}
 AWS = {**CFG, "standby": {"aws-burst-1": {"max_admitted": 8, "power": POWER}}}
 
 
-def instance(state, idle=0):
-    return {"aws-burst-1": {"state": state, "busy_at": 10_000 - idle}}
+# What host_labels() reads for aws-burst-1: its runners' labels (off the LAN, so no `lan`)
+# plus the pool labels.
+AWS_LABELS = frozenset({"self-hosted", "linux", "x64", "host-aws-burst-1", "unity-withheld", "unity", "unity-full"})
+
+
+def instance(state, idle=0, labels=AWS_LABELS):
+    return {"aws-burst-1": {"state": state, "busy_at": 10_000 - idle, "labels": labels}}
 
 
 class FakeEc2:
@@ -260,16 +274,53 @@ class GovernorTest(unittest.TestCase):
                       instances=instance("running", 1200))
         self.assertEqual(got["aws-burst-1"], ("withhold", "aws-idle-0"))
 
+    def test_a_lan_job_alone_does_not_start_an_off_lan_instance(self):
+        # It would start, sit idle for idle_off_seconds, stop and start again, forever.
+        (got,) = [d for d in decide(self.STEADY, self.FULL, cfg=AWS, instances=instance("stopped"),
+                                    waiting=[LAN_JOB] * 3) if d[0] == "aws-burst-1"]
+        self.assertEqual(got[1], "hold")
+        self.assertEqual(got[4], "3 jobs wait, none it can take")
+
+    def test_a_job_it_can_take_starts_it_beside_lan_jobs(self):
+        got = actions(self.STEADY, self.FULL, cfg=AWS, instances=instance("stopped"),
+                      waiting=[LAN_JOB, frozenset({"self-hosted", "unity-full", "linux"})])
+        self.assertEqual(got["aws-burst-1"], ("start", ""))
+
+    def test_a_withheld_only_host_still_takes_a_unity_job(self):
+        # Stopped, so every runner is offline, and the governor withheld all of them.
+        rows = [{"metric": {"name": f"aws-{i}", "host": "aws-burst-1", "pool": "unity", "state": "offline",
+                            "labels": "host-aws-burst-1,Linux,self-hosted,unity-withheld,X64"}, "value": [0, "0"]}
+                for i in range(2)]
+        with mock.patch.object(governor, "prom", return_value=rows) as prom:
+            labels = governor.host_labels(AWS, "aws-burst-1")
+        self.assertIn('host="aws-burst-1"', prom.call_args.args[0])
+        self.assertNotIn("state=", prom.call_args.args[0])
+        got = actions(self.STEADY, self.FULL, cfg=AWS, instances=instance("stopped", labels=labels), queue=1)
+        self.assertEqual(got["aws-burst-1"], ("start", ""))
+        self.assertEqual(actions(self.STEADY, self.FULL, cfg=AWS, instances=instance("stopped", labels=labels),
+                                 waiting=[LAN_JOB])["aws-burst-1"], ("hold", ""))
+
+    def test_no_runner_labels_read_never_starts(self):
+        with mock.patch.object(governor, "prom", return_value=[]):
+            self.assertEqual(governor.host_labels(AWS, "aws-burst-1"), frozenset())
+        ec2 = FakeEc2("stopped")
+        _, log, _ = self.power_cycle(ec2, cycles=2, labels=frozenset())
+        self.assertNotIn(("start", "i-0abc"), ec2.calls)
+        self.assertEqual(len([line for line in log if "no runner labels" in line]), 1)
+        self.assertIn('ci_governor_decision{host="aws-burst-1",verdict="STANDBY",action="hold"} 1',
+                      governor.State.metrics)
+
     def test_power_on_never_past_the_pool_cap(self):
         got = actions(self.STEADY, self.FULL, cfg={**AWS, "pool_max_admitted": 2}, instances=instance("stopped"))
         self.assertEqual(got["aws-burst-1"], ("hold", ""))
 
-    def power_cycle(self, ec2, cfg=AWS, observed=None, cycles=1, tracked=None):
+    def power_cycle(self, ec2, cfg=AWS, observed=None, cycles=1, tracked=None, labels=AWS_LABELS):
         hosts = readings(**{"razer-laptop": HOT, "asus-laptop": BUSY, "hp-victus": BUSY})
-        observed = observed or (hosts, dict(self.FULL, **{"razer-3": RUNNERS["razer-3"]}), 9)
+        observed = observed or (hosts, dict(self.FULL, **{"razer-3": RUNNERS["razer-3"]}), [UNITY_JOB] * 9)
         last, tracked = {}, {} if tracked is None else tracked
         with mock.patch.object(governor, "observe", return_value=observed), \
                 mock.patch.object(governor, "power_provider", return_value=(ec2, "")), \
+                mock.patch.object(governor, "host_labels", return_value=labels), \
                 mock.patch.object(governor, "apply") as apply, mock.patch("builtins.print") as out:
             for _ in range(cycles):
                 governor.cycle(cfg, last, tracked)
@@ -300,7 +351,7 @@ class GovernorTest(unittest.TestCase):
     def test_a_busy_slot_restarts_the_idle_clock(self):
         hosts = readings(**{"razer-laptop": BUSY, "asus-laptop": BUSY, "hp-victus": BUSY})
         tracked = {"aws-burst-1": {"busy_at": 0}}  # idle for hours by the clock
-        busy = (hosts, {**self.aws(on_busy=1, off=7), **self.FULL}, 0)
+        busy = (hosts, {**self.aws(on_busy=1, off=7), **self.FULL}, [])
         with mock.patch.object(governor.time, "time", return_value=10_000):
             self.power_cycle(FakeEc2("running"), observed=busy, tracked=tracked)
         self.assertEqual(tracked["aws-burst-1"]["busy_at"], 10_000)
@@ -308,7 +359,7 @@ class GovernorTest(unittest.TestCase):
     def test_no_credentials_no_aws_call(self):
         hosts = readings(**{"razer-laptop": BUSY, "asus-laptop": BUSY, "hp-victus": BUSY})
         with mock.patch.object(governor, "AWS_KEY", ""), mock.patch.object(governor, "AWS_SECRET", ""), \
-                mock.patch.object(governor, "observe", return_value=(hosts, self.FULL, 9)), \
+                mock.patch.object(governor, "observe", return_value=(hosts, self.FULL, [UNITY_JOB] * 9)), \
                 mock.patch.object(governor.urllib.request, "urlopen") as urlopen, \
                 mock.patch.object(governor, "apply"), mock.patch("builtins.print") as out:
             tracked = {}
@@ -381,11 +432,12 @@ class GovernorTest(unittest.TestCase):
                 return [{"metric": {"scope": "org", "name": "r-1", "host": "razer-laptop", "state": "idle"},
                          "value": [0, "0"]}]
             if "github_actions_job_waiting" in query:
-                return [{"metric": {}, "value": [0, "1" if 'stuck!="true"' in query else "3"]}]
+                job = {"metric": {"labels": "self-hosted,Unity"}, "value": [0, "60"]}
+                return [job] if 'stuck!="true"' in query else [job] * 3
             return []
         with mock.patch.object(governor, "prom", side_effect=fake):
-            _, _, queue = governor.observe("unity")
-        self.assertEqual(queue, 1)
+            _, _, waiting = governor.observe("unity")
+        self.assertEqual(waiting, [UNITY_JOB])
 
 
 if __name__ == "__main__":

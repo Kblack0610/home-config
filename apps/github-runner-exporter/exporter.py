@@ -494,7 +494,9 @@ def render():
     for scope, r in sorted(seen.values(), key=lambda s: s[1]["name"]):
         names = [l["name"] for l in r.get("labels", [])]
         host, pool_ = host_of(r["name"], names), pool_of(names)
+        # labels: what ci-runner-governor matches waiting jobs against, offline runners too.
         lab = {"name": r["name"], "host": host, "pool": pool_, "site": site_of(host), "scope": scope,
+               "labels": ",".join(sorted(names)),
                "state": "", "repo": "", "workflow": "", "job_name": "", "branch": "", "url": "", **NO_RUN}
         value = 0
         if r.get("status") != "online":
@@ -536,7 +538,7 @@ def render():
         for host, pool_, slots in ROSTER:
             for n in range(registered.get((host, pool_), 0), slots):
                 lab = {"name": f"{host} {pool_} slot {n + 1}", "host": host, "pool": pool_, "site": site_of(host),
-                       "scope": "roster",
+                       "scope": "roster", "labels": "",
                        "state": "missing", "repo": "", "workflow": "", "job_name": "", "branch": "", "url": "", **NO_RUN}
                 by_state["missing"] = by_state.get("missing", 0) + 1
                 L.append(f"github_runner_state{{{labels_str(lab)}}} 0")

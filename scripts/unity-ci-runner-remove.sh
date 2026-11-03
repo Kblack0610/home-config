@@ -37,7 +37,8 @@ if [ ${#SLOTS[@]} -eq 0 ]; then
   echo "no Unity pool slots for $HOST under /etc/systemd/system (wrong --host?)"
 fi
 
-sudo -v || exit 1
+# sudo -v asks for a password even under NOPASSWD (sudoers verifypw), so try -n first.
+sudo -n true 2>/dev/null || sudo -v || exit 1
 
 for n in "${SLOTS[@]}"; do
   name="$HOST-unity-pool-$n"
@@ -49,7 +50,7 @@ for n in "${SLOTS[@]}"; do
   sudo rm -rf "$RUNNER_HOME/unity-pool-$n"
   id=""
   if command -v gh >/dev/null; then
-    id=$(gh api "orgs/$ORG/actions/runners" --jq ".runners[]|select(.name==\"$name\").id" 2>/dev/null)
+    id=$(gh api "orgs/$ORG/actions/runners" --paginate --jq ".runners[]|select(.name==\"$name\").id" 2>/dev/null)
   fi
   if [ -n "$id" ]; then
     gh api -X DELETE "orgs/$ORG/actions/runners/$id" && echo "deregistered $name"
@@ -63,7 +64,9 @@ done
 if ! ls /etc/systemd/system/actions.runner.*-unity-pool-*.service >/dev/null 2>&1; then
   echo "== no Unity slots left: removing the host-wide pieces"
   docker ps -q --filter name=unity-test | xargs -r docker stop
-  sudo rm -rf "$RUNNER_HOME/asset-library" "$RUNNER_HOME/unity-machine-id"
+  # Every unity_ci_asset_libraries copy (asset-library, asset-library-hd). The glob
+  # runs as root: $RUNNER_HOME is not readable as yourself.
+  sudo sh -c 'rm -rf "$1"/asset-library* "$1/unity-machine-id"' _ "$RUNNER_HOME"
   if ! ls /etc/systemd/system/actions.runner.*.service >/dev/null 2>&1; then
     echo "== no runner of any kind left: removing the actions-runner user"
     sudo pkill -u actions-runner || true
@@ -77,9 +80,13 @@ sudo systemctl daemon-reload
 sudo systemctl reset-failed
 
 echo "== check: the Unity units left on $HOST (none listed = clean)"
-systemctl list-units --all "actions.runner.$HOST-unity-pool-*" --no-legend
+systemctl list-units --all "actions.runner.$HOST-unity-pool-*" --no-legend | grep -v not-found
 if command -v gh >/dev/null; then
   echo "== check: org runners still named $HOST-unity-pool-* (none listed = clean)"
-  gh api "orgs/$ORG/actions/runners" --jq '.runners[].name' 2>/dev/null | grep -- "^$HOST-unity-pool-" || true
+  if names=$(gh api "orgs/$ORG/actions/runners" --paginate --jq '.runners[].name' 2>/dev/null); then
+    grep -- "^$HOST-unity-pool-" <<<"$names" || true
+  else
+    echo "gh here cannot list org runners (no admin:org); check from the workstation"
+  fi
 fi
 echo "== done"

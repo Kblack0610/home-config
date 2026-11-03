@@ -110,10 +110,13 @@
   changed_when: false
   check_mode: false
 
-- name: List running containers before restarting docker
-  ansible.builtin.command: docker ps -q
+# A running job is a Runner.Worker process, not any container: a workstation
+# keeps its own long-lived containers (a dev database, mailpit) that are not CI.
+- name: List running CI jobs before restarting docker
+  ansible.builtin.command: pgrep -x Runner.Worker
   register: _ci_docker_running
   changed_when: false
+  failed_when: _ci_docker_running.rc > 1
   check_mode: false
   when: _ci_docker_config_age.stdout == 'stale'
 
@@ -122,7 +125,7 @@
     that: _ci_docker_running.stdout | length == 0
     fail_msg: >-
       A CI job is running on {{ inventory_hostname }}
-      ({{ _ci_docker_running.stdout_lines | length }} containers), and docker
+      ({{ _ci_docker_running.stdout_lines | length }} Runner.Worker), and docker
       must restart to pick up its new config. Re-run this play when the host's
       runners are idle; the restart stays pending until then.
     quiet: true

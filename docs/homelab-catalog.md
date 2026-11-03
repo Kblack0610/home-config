@@ -57,7 +57,7 @@ See `docs/gitops.md` for the layer boundaries and `docs/architecture.md` for wor
 
 Every Ansible role listed above that shows "role authored, unbound" exists as code under `ansible/roles/<name>/` but is **not** yet bound in `ansible/playbooks/site.yml`. `github-actions-runner-linux` is live-applied (the org light/heavy slots on the `linux_ci_runners` group, the org Unity pool on `unity_ci_runners`). Enabling a role means:
 
-1. Seed the per-group vault (`vault_k3s_token`, `vault_github_pat`).
+1. Seed the per-group vault (`vault_k3s_token` in `linux_bare_metal`, `vault_github_pat` in `ci_hosts`).
 2. Uncomment the role block in `ansible/playbooks/site.yml`.
 3. `ansible-playbook playbooks/site.yml --limit <host> --check --diff` → review drift.
 4. Apply on a single host, verify, then widen the `--limit`.

@@ -16,7 +16,7 @@
       - not (_effective_gh_runner_pat is match('^ghp_REPLACE_ME'))
     fail_msg: >-
       No usable GitHub PAT. Either set vault_github_pat in
-      group_vars/linux_bare_metal/vault.sops.yaml (platform-scoped, default), OR
+      group_vars/ci_hosts/vault.sops.yaml (platform-scoped, default), OR
       pass gh_runner_pat via playbook vars referencing a repo-specific vault
       variable (e.g. vault_github_dodginballs_pat) for a per-repo runner.
       Both values must be `repo`-scoped PATs, kept in that SOPS file. Or set gh_runner_token_source=gh to mint the token with the

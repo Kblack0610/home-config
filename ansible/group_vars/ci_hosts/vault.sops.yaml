@@ -1,0 +1,25 @@
+vault_github_pat: ENC[AES256_GCM,data:RlVDl/FFkQTHuq5Sk8o3AjW89NoOOIUECb8qbMvdDQe2qJHeYHbFuw==,iv:qg76QJCfMzVnpdgglrHYk/Y9kZM4FxCswtZGgmbGbvk=,tag:6TxruMXXdIhh4y7TEw1bSg==,type:str]
+sops:
+    age:
+        - enc: |
+            -----BEGIN AGE ENCRYPTED FILE-----
+            YWdlLWVuY3J5cHRpb24ub3JnL3YxCi0+IFgyNTUxOSBKckV4SVkyemVoK3VlN3di
+            RWhLVmk0bVNMMGFBcldhTTQxbVBsQzE4bG1JClNBS2VBWTdrK3FRbzhGY1JUVUFS
+            bVJwaEJBbXdRTG5IUGZNU21tbmxVaWcKLS0tIGVJYnVSbXRKZUlKK2gzMGlGTHlj
+            NHg5dDhWUE85UlJRRkUxcHZyZVFKRGsK/fZ9yl2DJgHJGGpHTy5RxQYqCORiSCva
+            jp0TnNS5kkuV5Uig7RGT6acmbL8/NOshDrFwcqTZaPUzVtTlOtrl2Q==
+            -----END AGE ENCRYPTED FILE-----
+          recipient: age138x34tdqulknsj967wjv9urg9ucxtpkep2apzjmthta3xtjgvpgsm8k3a0
+        - enc: |
+            -----BEGIN AGE ENCRYPTED FILE-----
+            YWdlLWVuY3J5cHRpb24ub3JnL3YxCi0+IFgyNTUxOSBpK2lwNGFKazl2UmdnaTBP
+            Y1d5V3MvRkhBanM3NGFWVEt6UUpvQ2NqdEY4CjJIdHZCUmNBZHllazd5SFlkT2or
+            bEZXUUt5SkVWVVk0anNBMHByb2hzbU0KLS0tIFN2T1YrRkE4aHg2RjNZWmFFUlps
+            ZmthdTVaOG9TZW5EWWRGamNPdFdVczAKxREcsE0zIIKENcrCJ3ibWZHyELAUt1EW
+            aK5Dy5EFsisEJlIuJL0s2tCF3DLTNU2nD1RLgXciFiMrQ2De/YMIkg==
+            -----END AGE ENCRYPTED FILE-----
+          recipient: age1q694uddq28kzxyteemaa4x5zxrnqlmhj0z336zmf6wpptq6ema5qcez399
+    lastmodified: "2026-11-03T17:27:52Z"
+    mac: ENC[AES256_GCM,data:IQtVpp91ML1c09P5dx06pgph05I+hpqv6gMPy8B/JN9YEOs0iFUT8TsZ7ElhzWl5Zmty8aGgjTkjPMzMOHrqB6F1QT/tm/PlJK0oLMeJEuWDTILhNoQUAE2ty5/RkIFTWfW+k+CLedazoYspSGO+7zV3WGjEbm2yzo4KxPMu5FI=,iv:qJMrRyMzB1xQA8gIKuzt3oPGPMNqwUI4+zdz7jn8KTs=,tag:OFVy8xdBB7ktV3EqmafUKQ==,type:str]
+    unencrypted_suffix: _unencrypted
+    version: 3.13.3

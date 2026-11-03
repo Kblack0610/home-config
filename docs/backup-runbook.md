@@ -455,7 +455,8 @@ Common causes:
 `game-saves-backup` writes two things to the NAS under `/mnt/nas/private/backups/home-k3s/game-saves/` on asus-laptop:
 
 - `postgres/registry-<ts>.sql.gz`: a plain `pg_dump` of the database `registry`. The last 30 are kept.
-- `minio/game-saves/`: a mirror of the `game-saves` bucket, the snapshot bodies at `saves/<world or character>/<snapshot>.json.gz`. It never deletes, so it is a superset of any one dump.
+- `minio/game-saves/`: a mirror of the `game-saves` bucket, the snapshot bodies at `saves/<world or character>/<snapshot>.json.gz`.
+- `minio/removed/<date>/`: objects that left the bucket that night (retention, a deleted world, a deleted account), deleted after 30 days. With `minio/game-saves/` it covers any dump that is still kept.
 
 Every snapshot row names its object, so restore the database and the bucket from the same night.
 
@@ -472,6 +473,8 @@ Every snapshot row names its object, so restore the database and the bucket from
    ```bash
    mc alias set m http://minio.minio.svc.cluster.local:9000 "$S3_ACCESS_KEY" "$S3_SECRET_KEY"
    mc mirror --overwrite /nas/backups/home-k3s/game-saves/minio/game-saves m/game-saves
+   # and every removed/<date>/ newer than the dump, for objects deleted since that night
+   mc mirror --overwrite /nas/backups/home-k3s/game-saves/minio/removed/<date> m/game-saves
    ```
 5. Scale the registry back to 1 and check `GET /api/v1/health`. Then, with a player code, `GET /api/v1/worlds` and download a head snapshot.
 

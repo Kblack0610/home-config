@@ -24,8 +24,52 @@
   check_mode: false
   register: _unity_ci_library_copy
 
+# Off the LAN (unity_ci_library_s3): through S3 instead of one tarball, so only
+# changed files cross the home uplink and the host pulls inside its region. An
+# SSM tunnel carried the tarball at about 0.6 MB/s.
+- name: Sync {{ library.name }} through S3 when it changed
+  when:
+    - unity_ci_library_s3 | length > 0
+    - _unity_ci_library_source.rc == 0
+    - _unity_ci_library_source.stdout != _unity_ci_library_copy.stdout
+  block:
+    - name: Push {{ library.name }} to S3 from the workstation
+      ansible.builtin.command: >-
+        aws s3 sync --delete --only-show-errors
+        --profile {{ unity_ci_library_s3_profile }} --region {{ unity_ci_library_s3_region }}
+        {{ library.source }}/Packages s3://{{ unity_ci_library_s3 }}/{{ library.name }}/Packages
+      delegate_to: localhost
+      become: false
+      changed_when: true
+
+    - name: Create the synced copy's directory
+      ansible.builtin.file:
+        path: "{{ unity_ci_user_home }}/{{ library.name }}"
+        state: directory
+        owner: "{{ unity_ci_user }}"
+        group: "{{ unity_ci_group }}"
+        mode: "0755"
+
+    - name: Pull {{ library.name }} from S3 on the host
+      ansible.builtin.command: >-
+        aws s3 sync --delete --only-show-errors --region {{ unity_ci_library_s3_region }}
+        s3://{{ unity_ci_library_s3 }}/{{ library.name }}/Packages
+        {{ unity_ci_user_home }}/{{ library.name }}/Packages
+      become: true
+      become_user: "{{ unity_ci_user }}"
+      changed_when: true
+
+    - name: Record the synced copy's fingerprint
+      ansible.builtin.copy:
+        content: "{{ _unity_ci_library_source.stdout }}"
+        dest: "{{ unity_ci_user_home }}/{{ library.name }}/.fingerprint"
+        owner: "{{ unity_ci_user }}"
+        group: "{{ unity_ci_group }}"
+        mode: "0644"
+
 - name: Copy {{ library.name }} when it changed
   when:
+    - unity_ci_library_s3 | length == 0
     - _unity_ci_library_source.rc == 0
     - _unity_ci_library_source.stdout != _unity_ci_library_copy.stdout
   block:

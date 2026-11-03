@@ -26,6 +26,13 @@ unity_ci_asset_libraries:
   - name: asset-library-hd
     source: /home/kblack0610/dev/bnb/games/engine/asset-library-hd
 
+# A host off the LAN gets the libraries through this S3 bucket instead
+# (tasks/library.yml): the workstation pushes with the named AWS profile, the
+# host pulls with its instance role. Empty = the tarball copy.
+unity_ci_library_s3: ""
+unity_ci_library_s3_profile: bnb
+unity_ci_library_s3_region: us-east-2
+
 # Editor images the jobs build on. Pulling these on the LAN fails (the IPv6 path
 # corrupts long downloads), so a missing one is copied from the workstation's
 # docker with docker save | docker load. Add the new tags on a Unity upgrade.

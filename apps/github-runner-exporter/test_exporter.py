@@ -364,6 +364,24 @@ class ExporterTest(unittest.TestCase):
             srv.shutdown()
             srv.server_close()
 
+    def test_a_repos_active_jobs_are_fetched_in_parallel(self):
+        import threading
+        both = threading.Barrier(2, timeout=2)
+        two_runs = {"total_count": 2, "workflow_runs": [{"id": 10, "name": "Tests", "status": "in_progress"},
+                                                         {"id": 11, "name": "Tests", "status": "in_progress"}]}
+        fake = Fake()
+
+        def get(path, kind="other"):
+            if kind == "active_jobs" and "/acme/game/" in path:
+                both.wait()  # breaks, and the render raises, if the two are fetched one by one
+            return fake(path, kind)
+
+        with mock.patch.dict(FAKE, {"repos/acme/game/actions/runs?status=in_progress&per_page=15": two_runs,
+                                    "repos/acme/game/actions/runs/11/jobs?per_page=100": {"jobs": []}}):
+            exporter.get = get
+            exporter.render()
+        self.assertIn("repos/acme/game/actions/runs/11/jobs?per_page=100", fake.calls)
+
     def test_finished_jobs_are_fetched_once(self):
         self.render()
         exporter.get = Fake()

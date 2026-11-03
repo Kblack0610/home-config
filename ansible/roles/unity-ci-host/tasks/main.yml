@@ -1,8 +1,17 @@
 ---
-- name: Install Unity CI packages
+- name: Install Unity CI packages (Arch)
   community.general.pacman:
     name: "{{ unity_ci_packages }}"
     state: present
+  when: ansible_os_family == "Archlinux"
+
+# The cloud burst host (aws-burst-1) runs the Ubuntu AMI.
+- name: Install Unity CI packages (Ubuntu)
+  ansible.builtin.apt:
+    name: "{{ unity_ci_packages_debian }}"
+    state: present
+    update_cache: true
+  when: ansible_os_family == "Debian"
 
 - name: Ensure docker is enabled and running
   ansible.builtin.systemd:
@@ -92,7 +101,8 @@
     loop_var: library
     label: "{{ library.name }}"
 
-# Editor images: load a missing one from the workstation's docker. The host's own
+# Editor images: load a missing one from the workstation's docker, or pull it on
+# a host with unity_ci_images_pull (off the LAN, where the pull is sound). The host's own
 # connection details are read here, before the copy is delegated to localhost,
 # where ansible_connection and ansible_host would name localhost instead.
 - name: Note how this host is reached
@@ -109,6 +119,15 @@
   check_mode: false
   register: _unity_ci_images
 
+- name: Pull missing editor images on the host
+  ansible.builtin.command: docker pull {{ item.item }}
+  loop: "{{ _unity_ci_images.results }}"
+  loop_control:
+    label: "{{ item.item }}"
+  when:
+    - item.rc != 0
+    - unity_ci_images_pull
+
 - name: Copy missing editor images from the workstation
   ansible.builtin.shell: >-
     set -o pipefail &&
@@ -123,6 +142,7 @@
   when:
     - item.rc != 0
     - not _unity_ci_local
+    - not unity_ci_images_pull
   delegate_to: localhost
   become: false
 

@@ -31,6 +31,9 @@ unity_ci_asset_libraries:
 # docker with docker save | docker load. Add the new tags on a Unity upgrade.
 # A player build asks for its platform's flavor (playground perf-round.yml, release.yml);
 # without it the job pulls, and dies on the corrupted download.
+# Pull the images on the host instead of copying them from the workstation. For
+# hosts off the LAN (aws-burst-1), whose pull does not take the broken IPv6 path.
+unity_ci_images_pull: false
 unity_ci_images:
   - unityci/editor:ubuntu-6000.0.72f1-base-3
   - unityci/editor:ubuntu-6000.0.85f1-base-3
@@ -41,6 +44,13 @@ unity_ci_images:
 
 unity_ci_packages:
   - docker
+  - git
+  - git-lfs
+  - jq
+  - curl
+# The same packages by their Ubuntu names (docker is a different package there).
+unity_ci_packages_debian:
+  - docker.io
   - git
   - git-lfs
   - jq

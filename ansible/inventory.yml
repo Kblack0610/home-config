@@ -259,6 +259,24 @@ all:
         cachyos-x8664-main:
           unity_ci_slots: 2
           unity_ci_full: false
+        # The AWS overflow box (platform infra/aws-ci-burst, Terraform), added
+        # 2026-11-03: m7a.xlarge on-demand with one slot until the slot is proven,
+        # then m7a.8xlarge with eight (plan ko-sorry-one-more-synchronous-rain). It
+        # has no inbound port; SSH runs through SSM Session Manager with the bnb
+        # AWS profile, so the workstation needs session-manager-plugin. ansible_host
+        # is the instance id: after a Terraform -replace or the Spot switch, take
+        # the new one from `terraform output instance_id`. Ubuntu, so the editor
+        # images are pulled on the box (unity_ci_images_pull) instead of copied.
+        # Kept stopped when idle; start it before running the play against it.
+        aws-burst-1:
+          ansible_host: i-09612c2070273bdbc
+          ansible_user: ubuntu
+          ansible_ssh_common_args: >-
+            -o ProxyCommand="aws ssm start-session --profile bnb --region us-east-2
+            --target %h --document-name AWS-StartSSHSession --parameters portNumber=%p"
+          unity_ci_slots: 1
+          unity_ci_full: true
+          unity_ci_images_pull: true
 
     # macOS hosts in the same Unity pool (site.yml, "Unity CI runner pool
     # (macOS)"). Native editor, no container, so no ci_hosts budget: macOS has
@@ -343,6 +361,16 @@ all:
           ci_unity_slot_cpus: ["2-4,14-16", "5-7,17-19"]
           ci_unity_memory_max: 32G
           ci_unity_slot_memory_max: 16G
+        # m7a.xlarge: 4 real cores (no SMT), 15G usable. Core 0 stays with the OS
+        # and the SSM agent; the one slot gets cores 1-3 and stops at 13G, under a
+        # PlayMode shard's 13.9G max, which is the point of the 1-slot trial. No
+        # k3s and no platform runners here.
+        aws-burst-1:
+          ci_cpus: 1-3
+          ci_memory_max: 13G
+          ci_unity_cpus: 1-3
+          ci_unity_memory_max: 13G
+          ci_unity_slot_memory_max: 13G
 
     # Nodes that run the game servers (apps/playground-server pins to the
     # kblab.me/game-server label, roles/game-server-node sets it). Each host keeps

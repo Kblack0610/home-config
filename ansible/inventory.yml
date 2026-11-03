@@ -183,12 +183,11 @@ all:
         asus-laptop:
           ci_light_slots: 2
           ci_heavy_slots: 1
-        # No heavy slot since 2026-11-03: its 20G ci.slice holds two Unity slots
-        # that can fill it alone, and a heavy job (pnpm install of the whole
-        # workspace plus postgres) was OOM-killed at /ci.slice twice in an hour.
+        # The heavy slot was 0 for a few hours on 2026-11-03 while two Unity
+        # slots filled its 20G ci.slice; with Unity gone it fits again.
         hp-victus:
           ci_light_slots: 2
-          ci_heavy_slots: 0
+          ci_heavy_slots: 1
         razer-laptop:
           ci_light_slots: 3
           ci_heavy_slots: 1
@@ -199,19 +198,18 @@ all:
     # build), about 4-6 GB each. CPU/memory caps are in ci_hosts below. Every
     # host here is one activation on the shared Unity serial.
     # Mirrored in RUNNER_ROSTER like linux_ci_runners above.
+    #
+    # Not asus-laptop or hp-victus: since 2026-11-03 both are light/heavy
+    # platform workers only. They are k3s nodes, and Unity on them broke the
+    # cluster as well as the jobs. asus holds forgejo and the databases and ran
+    # at 90C with load 31-35 on 16 threads even with its Unity slot idle.
+    # hp-victus has 31G: two Unity slots peaked at 20.2G, its whole CI budget,
+    # with 279 OOM kills in the Unity slices from 10-29 to 11-03, and on three
+    # of those days the host ran out and the kernel killed litellm and
+    # prometheus. Do not add either back; aws-burst-1 is the overflow.
     unity_ci_runners:
       hosts:
-        # One slot: with two, load ran to 19 on 16 threads and real-time tests
-        # (HitReactions, Fists, BarrageMovement, NavPageBudget) failed only here
-        # (2026-10-06, main run 37416749384). Slot 2 was removed by hand.
-        # Since 2026-11-02 slot 1 is labelled unity-withheld by hand, so it takes
-        # no pool jobs: asus holds forgejo and the databases, and it ran at
-        # 90-91C, in and out of the pool every few minutes. ci-runner-governor
-        # is in dry run until that is decided (2026-11-09).
-        asus-laptop:
-          unity_ci_slots: 1
-          unity_ci_full: true
-        # One slot, like asus: the same 8 Unity threads. Its first pool shards
+        # One slot at first: the same 8 Unity threads as asus had. Its first pool shards
         # (2026-10-24 PlayMode 4 green, 2026-10-26 PlayMode 3 one flaky timed
         # test) match the other hosts, which each fail one different timed test
         # per run.
@@ -238,16 +236,6 @@ all:
         # Failures did not grow with more razer jobs at once, so the two-core
         # slot was the limit, not its neighbours.
         razer-laptop:
-          unity_ci_slots: 2
-          unity_ci_full: true
-        # Two slots since 2026-10-29. They replace hp-victus's two repo-scoped
-        # runners (hp-victus-playground on unity-core-playground, hp-victus-unity-2
-        # on dodginballs), which already let it run two Unity jobs at once; the
-        # dodginballs one sat idle apart from the weekly License Canary while
-        # about 56 playground shards queued. Org slots serve dodginballs too.
-        # The machine id was seeded from the playground runner's, so the host is
-        # still the same single activation.
-        hp-victus:
           unity_ci_slots: 2
           unity_ci_full: true
         # Not the workstation (cachyos-x8664-main): it is the human's work machine.
@@ -283,14 +271,12 @@ all:
     # no cpusets. Mirrored in RUNNER_ROSTER like unity_ci_runners.
     unity_ci_mac_runners:
       hosts:
-        # M3 Ultra, 24P+8E cores, 512G, from 2026-10-29 until it is sold. Eight
-        # slots registered, about three P-cores each, with the E-cores left to
-        # macOS and mlx-server. 6 carry the pool labels (why in
-        # docs/mac-machines.md); slots 7-8 are labelled unity-withheld by hand
-        # since 2026-11-02, while ci-runner-governor is in dry run, and take only
-        # jobs pinned to host-mac-studio.
+        # M3 Ultra, 24P+8E cores, 512G, from 2026-10-29 until it is sold. Six
+        # slots, about three P-cores each, with the E-cores left to macOS and
+        # mlx-server (why six in docs/mac-machines.md). Slots 7-8 were removed
+        # 2026-11-03: they only ever ran withheld.
         mac-studio:
-          unity_ci_slots: 8
+          unity_ci_slots: 6
           unity_ci_full: true
 
     # One CPU and memory budget per CI host (roles/ci-host-budget): every runner
@@ -302,38 +288,22 @@ all:
     # Starting values, tuned against a full nightly.
     ci_hosts:
       hosts:
-        # Ryzen 9 5900HX, 16 threads alike, 62 GB (+ zram). Unity is held to 8
-        # CPUs; platform jobs may use them too, but Unity wins them under
-        # contention (ci_unity_cpu_weight).
+        # Ryzen 9 5900HX, 16 threads alike, 62 GB (+ zram). Platform jobs only
+        # (no Unity, see unity_ci_runners).
         asus-laptop:
           ci_cpus: 4-15
           ci_memory_max: 36G
-          ci_unity_cpus: 8-15
-          ci_unity_memory_max: 24G
           ci_linux_memory_max: 24G
         # i7-13700HX: CPUs 0-15 are the P-core threads, 16-23 the E-cores.
-        # k3s (redis, ntfy) keeps four E-cores. 31 GB, no swap. P-core threads
-        # 12-15 are the game server's (game_server_cpus in game_server_nodes
-        # below), so CI skips them. Two Unity pool slots, each on three P-cores
-        # and two E-cores of its own.
-        # Unity memory is the whole CI budget since 2026-10-29. Container peaks
-        # from journald, 10-24 to 10-28, one job at a time: PlayMode shard p50
-        # 8.5G max 13.9G (n=110), EditMode max 8.6G, Two-process max 12.4G, Multi
-        # max 12.6G. At 14G a single PlayMode Unity was OOM-killed four times
-        # (10-26 to 10-28, anon-rss 14.3G), and two typical shards need about
-        # 17G. Two heavy jobs at once (Multi plus a 13G shard) still exceed 20G,
-        # and one of them gets killed.
-        # A slot stops at 16G. From 10-29 to 10-30, 122 containers had p50 8.3G and
-        # p90 9.8G, and the only three over 13G were ones whose Unity the kernel
-        # killed. The 18.6G runaway of 10-30 first ran the host out of memory, and
-        # with k3s pods at about 9G the OOM killer took openclaw and litellm before it.
+        # k3s (redis, ntfy) keeps four E-cores. 31 GB, no swap; k3s pods take
+        # about 9G. P-core threads 12-15 are the game server's (game_server_cpus
+        # in game_server_nodes below), so CI skips them. Platform jobs only (no
+        # Unity, see unity_ci_runners), so they get the whole CI budget: a heavy
+        # job peaked at 11.3G.
         hp-victus:
           ci_cpus: 0-11,16-19
           ci_memory_max: 20G
-          ci_unity_slot_cpus: ["0-5,16-17", "6-11,18-19"]
-          ci_unity_memory_max: 20G
-          ci_unity_slot_memory_max: 16G
-          ci_linux_memory_max: 14G
+          ci_linux_memory_max: 20G
         # 8 cores / 16 threads, SMT siblings are n and n+8. Cores 0-1 (CPUs
         # 0-1, 8-9) stay with k3s and the OS. Unity gets cores 2-7, three per
         # slot, which platform jobs share at a lower weight (ci_unity_cpu_weight).

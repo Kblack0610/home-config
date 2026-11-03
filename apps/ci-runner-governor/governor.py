@@ -38,8 +38,8 @@ in a job. Only the pool floor holds. Kubelet evicts at 5% free and does not stop
 and on 2026-10-31 that took the cluster's monitoring and pager down for 8 hours. A host
 comes back only above the higher admit line.
 
-A standby host (config "standby": the Mac Studio, which publishes no CPU pressure
-or sensors to judge) is overflow: GitHub has no way to prefer a runner, so its
+A standby host (config "standby", for a host with no CPU pressure or sensors to
+judge; none since 2026-11-03) is overflow: GitHub has no way to prefer a runner, so its
 slots stay withheld until more jobs wait than the other hosts' idle slots and this
 cycle's admits can take. Then one slot per cycle comes in, up to the host's
 max_admitted, and goes back once nothing waits. A job pinned to its host label
@@ -84,7 +84,11 @@ QUERIES = {
 
 def load_config(path):
     with open(path) as f:
-        cfg = json.load(f)
+        return with_defaults(json.load(f))
+
+
+def with_defaults(cfg):
+    """Each host's thresholds: the defaults with its own overrides on top."""
     for host, over in cfg["hosts"].items():
         merged = {k: dict(v) if isinstance(v, dict) else v for k, v in cfg["defaults"].items()}
         for k, v in over.items():

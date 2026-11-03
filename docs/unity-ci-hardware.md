@@ -42,11 +42,11 @@ Reading model names: `i3/i5/i7/i9` and `Ryzen 3/5/7/9` are tiers and say nothing
 | Used Dell Precision 7820, 16-24 core Xeon, 128 GB | $1,000-1,500 | 5-7 slots, about $12-18 per slot per month over 24 months. Cores about half the speed of current ones, 250-350 W, loud |
 | Minisforum MS-A2 barebone ($799) plus 64 GB DDR5 SO-DIMM | ~$1,850-2,100 | 4 fast slots, about $21-24 per slot per month. Throttles about 11% under sustained load (Notebookcheck). The $1,335 listing is the 32 GB unit |
 
-Buy one of a cheap model first, add it as one slot, and time a pinned PlayMode shard against hp-victus before buying more. Every home box is one more Unity activation (see [Unity license](#unity-license)).
+Buy one of a cheap model first, add it as one slot, and time a pinned PlayMode shard against razer-laptop before buying more. Every home box is one more Unity activation (see [Unity license](#unity-license)).
 
 ## Laptops as runners
 
-They work (asus-laptop, hp-victus and razer-laptop are already in the pool) but throttle under sustained load and their batteries swell when held at 100%. Set a 60-80% charge limit in the BIOS (or `thinkpad_acpi` thresholds on Linux) and run with the lid open.
+razer-laptop is in the pool. asus-laptop and hp-victus left it on 2026-11-03: as k3s nodes, Unity load there took the cluster down with the jobs (asus ran at 90C, hp-victus's 31G ran out). Laptops work but throttle under sustained load and their batteries swell when held at 100%. Set a 60-80% charge limit in the BIOS (or `thinkpad_acpi` thresholds on Linux) and run with the lid open.
 
 ## Renting
 

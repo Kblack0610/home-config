@@ -45,9 +45,9 @@ spec:
           env:
             # 1 logs and exports every decision and changes no runner. Dry run
             # since 2026-11-02: it held at most 3 of 13 slots while about 65 jobs
-            # waited, so the slot labels are fixed by hand (asus-laptop-unity-pool-1
-            # and mac-studio 7-8 withheld, the other 10 in the pool) and its logs
-            # decide by 2026-11-09 whether it goes. The token
+            # waited, so every registered slot carries the pool labels and none is
+            # withheld (since 2026-11-03 the pool is mac-studio 6, razer 2 and
+            # aws-burst-1); its logs decide by 2026-11-09 whether it goes. The token
             # is the control node's `gh auth token` (admin:org, what the Unity
             # pool play registers runners with), SOPS-encrypted the same way as
             # apps/github-runner-exporter's; after `gh auth refresh` re-run that

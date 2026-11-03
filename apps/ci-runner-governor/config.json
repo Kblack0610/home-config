@@ -11,12 +11,8 @@
     "admit": {"idle": 0.35, "psi": 0.2, "tctl": 85, "mem": 0.25, "disk": 0.25},
     "withhold": {"idle": 0.15, "psi": 0.4, "tctl": 92, "mem": 0.1, "disk": 0.2}
   },
-  "standby": {
-    "mac-studio": {"max_admitted": 6}
-  },
+  "standby": {},
   "hosts": {
-    "asus-laptop": {"min_admitted": 0, "admit": {"tctl": 80}, "withhold": {"idle": 0.25, "tctl": 90}},
-    "hp-victus": {},
     "razer-laptop": {}
   }
 }

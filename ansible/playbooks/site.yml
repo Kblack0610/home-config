@@ -27,9 +27,8 @@
 
 - name: Workstation monitoring (node_exporter)
   # So cc:host_* and the hub:infra board see this machine's load, memory and
-  # temperature, including while its two gate-only Unity pool slots run
-  # (unity_ci_runners, back since 2026-11-03), and the local Unity gates
-  # fleet-assess publishes through the textfile directory. ufw
+  # temperature. Not a runner (removed 2026-10-06), so its "CI" is the local
+  # Unity gates fleet-assess publishes through the textfile directory. ufw
   # default-denies inbound, hence the 9100 rule in desktop-firewall. Needs sudo:
   #   ansible-playbook playbooks/site.yml --limit cachyos-x8664-main --tags monitoring -K
   hosts: cachyos-x8664-main
@@ -372,7 +371,10 @@
         # unity-full: the hosts full suite runs may take (unity_ci_full in inventory.yml).
         # A registered runner keeps its labels; add one to a live runner with
         # gh api -X POST orgs/BlackNBrownStudios/actions/runners/<id>/labels -f 'labels[]=unity-full'.
-        gh_runner_labels: "{{ [ 'self-hosted', 'linux', 'x64', 'unity', 'host-' ~ inventory_hostname ] + ([ 'unity-full' ] if unity_ci_full | default(true) else []) }}"
+        # lan: the slot is on the home LAN, so it can push to git.kblab.me (Shots'
+        # gallery image); through Cloudflare a push over 100 MB fails. Off for
+        # aws-burst-1 (unity_ci_lan in inventory.yml).
+        gh_runner_labels: "{{ [ 'self-hosted', 'linux', 'x64', 'unity', 'host-' ~ inventory_hostname ] + ([ 'unity-full' ] if unity_ci_full | default(true) else []) + ([ 'lan' ] if unity_ci_lan | default(true) else []) }}"
         # With ci_unity_slot_cpus each slot gets its own cores (roles/ci-host-budget).
         unity_slot_slice: >-
           {{ (ci_unity_slot_slice_prefix ~ unity_slot ~ '.slice') if ci_unity_slot_cpus | length else ci_unity_slice }}

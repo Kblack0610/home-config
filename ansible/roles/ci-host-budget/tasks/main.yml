@@ -101,6 +101,9 @@
 - name: Check whether dockerd predates its config
   ansible.builtin.shell: |
     set -eu
+    # Not installed yet (a new Ubuntu host, where unity-ci-host installs docker
+    # after this role): it will start with this config, so nothing is stale.
+    systemctl cat docker.service >/dev/null 2>&1 || { echo current; exit 0; }
     started=$(date -d "$(systemctl show docker.service -p ActiveEnterTimestamp --value)" +%s)
     [ "$(stat -c %Y /etc/docker/daemon.json)" -gt "$started" ] && echo stale || echo current
   register: _ci_docker_config_age

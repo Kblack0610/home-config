@@ -13,6 +13,7 @@
   },
   "standby": {},
   "hosts": {
+    "cachyos-x8664-main": {"min_admitted": 0, "admit": {"idle": 0.5, "tctl": 80}, "withhold": {"idle": 0.3, "tctl": 88}},
     "razer-laptop": {}
   }
 }

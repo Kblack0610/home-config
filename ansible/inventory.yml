@@ -238,11 +238,16 @@ all:
         razer-laptop:
           unity_ci_slots: 2
           unity_ci_full: true
-        # Not the workstation (cachyos-x8664-main): it is the human's work machine.
-        # Removed 2026-10-06 after two slots took 12 cores and 48G while they
-        # worked; briefly back as two capped gate slots (#491) and removed again
-        # 2026-11-03 by the human, before its play ever ran: aws-burst-1 is the
-        # overflow. Do not add it back.
+        # The workstation, the human's work machine: merge gates only
+        # (unity_ci_full false, so no nightly, release or Multi run lands here).
+        # Each slot has its own three-core cpuset and a 16G cap (ci_hosts below).
+        # Uncapped slots took 12 cores and 48G in October; the human asked for
+        # these two again on 2026-11-03, once unity-core-playground stopped
+        # running a gate's pre-flight here, so a gate's only Unity on this machine
+        # is a pool slot. Add a third only after a day of load and temperatures.
+        cachyos-x8664-main:
+          unity_ci_slots: 2
+          unity_ci_full: false
         # The AWS overflow box (platform infra/aws-ci-burst, Terraform), added
         # 2026-11-03, the same day moved to an m7a.12xlarge persistent Spot instance
         # in us-east-2a (no m7a.8xlarge Spot capacity anywhere in us-east-2 that
@@ -321,6 +326,18 @@ all:
           ci_unity_memory_max: 60G
           ci_unity_slot_memory_max: 20G
           ci_linux_memory_max: 40G
+        # The workstation: Ryzen 9 7900X, 12 cores / 24 threads, SMT siblings are
+        # n and n+12, 124G. Cores 0-1 and 8-11 (CPUs 0-1, 8-13, 20-23) stay with
+        # the human's desktop and agents. Each Unity slot gets three cores of its
+        # own and stops at 16G; the two together stop at 32G, a quarter of the
+        # machine. No platform runners.
+        cachyos-x8664-main:
+          ci_cpus: 2-7,14-19
+          ci_memory_max: 32G
+          ci_unity_cpus: 2-7,14-19
+          ci_unity_slot_cpus: ["2-4,14-16", "5-7,17-19"]
+          ci_unity_memory_max: 32G
+          ci_unity_slot_memory_max: 16G
         # m7a.12xlarge: 48 real cores (no SMT), 192 GiB. Core 0 stays with the OS
         # and the SSM agent; each slot gets 4 cores and stops at 14G, over a
         # PlayMode shard's 13.9G max. Four slots now; cores 17-47 hold up to

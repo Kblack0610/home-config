@@ -56,8 +56,12 @@ unity_ci_packages:
   - jq
   - curl
 # The same packages by their Ubuntu names (docker is a different package there).
+# docker-buildx: Ubuntu's docker.io has no BuildKit, and the legacy builder let
+# four slots building one tag at once race on it (aws-burst-1, 2026-11-03: a
+# slot's `docker run` found no image after its own build).
 unity_ci_packages_debian:
   - docker.io
+  - docker-buildx
   - git
   - git-lfs
   - jq

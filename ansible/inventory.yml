@@ -265,7 +265,7 @@ all:
           ansible_ssh_common_args: >-
             -o ProxyCommand="aws ssm start-session --profile bnb --region us-east-2
             --target %h --document-name AWS-StartSSHSession --parameters portNumber=%p"
-          unity_ci_slots: 4
+          unity_ci_slots: 8
           unity_ci_full: true
           unity_ci_images_pull: true
           unity_ci_lan: false
@@ -340,13 +340,14 @@ all:
           ci_unity_slot_memory_max: 16G
         # m7a.12xlarge: 48 real cores (no SMT), 192 GiB. Core 0 stays with the OS
         # and the SSM agent; each slot gets 4 cores and stops at 14G, over a
-        # PlayMode shard's 13.9G max. Four slots now; cores 17-47 hold up to
-        # seven more. No k3s and no platform runners here.
+        # PlayMode shard's 13.9G max. Eight slots, the human's 11-03 target, so
+        # the move to m7a.8xlarge (32 cores, 128G) keeps the slot count. No k3s
+        # and no platform runners here.
         aws-burst-1:
           ci_cpus: 1-47
           ci_memory_max: 180G
           ci_unity_cpus: 1-47
-          ci_unity_slot_cpus: ["1-4", "5-8", "9-12", "13-16"]
+          ci_unity_slot_cpus: ["1-4", "5-8", "9-12", "13-16", "17-20", "21-24", "25-28", "29-32"]
           ci_unity_memory_max: 168G
           ci_unity_slot_memory_max: 14G
 

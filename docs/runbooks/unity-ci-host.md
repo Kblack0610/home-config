@@ -19,9 +19,8 @@ Operating the hosts of the org-wide Unity runner pool (label `unity`). Which job
 
 - `unity-ci-host` puts the asset-library-hd copy (`/var/lib/actions-runner/asset-library-hd`) and the editor images on each host, copied from the workstation. Re-run it with `--tags unity-ci-host` after asset-library-hd's packages change and on a Unity upgrade.
 - Unity upgrade: add the new tags to `unity_ci_images` (`ansible/roles/unity-ci-host/defaults/main.yml`), `docker load` them on the workstation, and run the role on every host before the upgrade merges. The `windows-mono`, `mac-mono` and `android` tags player builds use belong there too, or the build dies pulling its image.
-- By hand, when the role cannot run or the workstation's checkout holds an uncommitted change (the role packs all of `Packages/`; tar only the new package folders then), from the workstation (hp-victus has no rsync):
-  - hp-victus: `tar -C ~/dev/bnb/games/engine/asset-library-hd -cf - Packages | ssh hp-victus 'sudo tar -C /var/lib/actions-runner/asset-library-hd -xf - && sudo chown -R actions-runner:actions-runner /var/lib/actions-runner/asset-library-hd'`
-  - asus-laptop and razer-laptop: the same over `ssh -p 2222 kblack0610@192.168.1.152` and `ssh kblack0610@192.168.1.26`.
+- By hand, when the role cannot run or the workstation's checkout holds an uncommitted change (the role packs all of `Packages/`; tar only the new package folders then), from the workstation:
+  - razer-laptop: `tar -C ~/dev/bnb/games/engine/asset-library-hd -cf - Packages | ssh kblack0610@192.168.1.26 'sudo tar -C /var/lib/actions-runner/asset-library-hd -xf - && sudo chown -R actions-runner:actions-runner /var/lib/actions-runner/asset-library-hd'`
   - Then compare `ls Packages | wc -l` and `find Packages -type f | wc -l` on the host with the workstation's.
 
 ## Editor images over IPv4
@@ -29,7 +28,7 @@ Operating the hosts of the org-wide Unity runner pool (label `unity`). Which job
 `docker pull` of an editor image fails on the home network: the IPv6 path corrupts long downloads (`tls: bad record MAC`) and docker cannot resume a layer. Until the router is fixed, fetch over IPv4 on the workstation with `scripts/test/fetch-image.py`, which lives in the unity-core-playground repo (run it from that checkout), and load it over ssh:
 
 ```sh
-scripts/test/fetch-image.py unityci/editor ubuntu-<version>-base-3 ~/.cache/unity-image-fetch/blobs ~/.cache/unity-image-fetch/base && tar -C ~/.cache/unity-image-fetch/base -cf - . | ssh hp-victus 'sudo docker load'
+scripts/test/fetch-image.py unityci/editor ubuntu-<version>-base-3 ~/.cache/unity-image-fetch/blobs ~/.cache/unity-image-fetch/base && tar -C ~/.cache/unity-image-fetch/base -cf - . | ssh kblack0610@192.168.1.26 'sudo docker load'
 ```
 
 `<version>` is from the playground's `ProjectSettings/ProjectVersion.txt`; the other tags go the same way. Delete `~/.cache/unity-image-fetch` afterwards.
@@ -54,6 +53,6 @@ scripts/test/fetch-image.py unityci/editor ubuntu-<version>-base-3 ~/.cache/unit
 - `ASSET_LIBRARY_TOKEN`: a Forgejo token with `read:repository` for the asset-library submodule on `git.kblab.me`.
 - Org runners run whatever any org repo's pull request workflow says. Keep the repos private, or require approval for outside contributors' runs.
 
-## hp-victus
+## Not Unity hosts: asus-laptop and hp-victus
 
-hp-victus is also a k3s agent, the NFS backup target and a light/heavy runner host. It has never had a full system upgrade (`pacman -Syu`), so a newly installed package can fail on a newer library (rsync failed on `libacl`, Xvfb on `libnettle`). The jobs run inside the editor image, which keeps them clear of that.
+Both are k3s nodes and, since 2026-11-03, light/heavy platform runners only. Unity load there broke the cluster along with the jobs: asus holds forgejo and the databases and ran at 90C, and hp-victus (31G) had 279 OOM kills in its Unity slices from 10-29 to 11-03, some of them litellm and prometheus when the whole host ran out. Their slots were removed with `scripts/unity-ci-runner-remove.sh`; the reasons are in `ansible/inventory.yml` above `unity_ci_runners`. Do not add either back.

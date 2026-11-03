@@ -8,6 +8,7 @@ a missing reading is never room, a full disk empties a host past its floor and c
 but not the pool floor, a standby host takes only the jobs the others cannot,
 and a live action adds the new label before it removes the old. Stdlib only; CI runs it in the checks workflow.
 """
+import json
 import os
 import sys
 import unittest
@@ -16,7 +17,15 @@ from unittest import mock
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import governor  # noqa: E402
 
-CFG = governor.load_config(os.path.join(os.path.dirname(os.path.abspath(__file__)), "config.json"))
+# The live thresholds with a fixed host list, so a change to the real roster
+# (config.json "hosts" and "standby") does not change what these tests mean.
+with open(os.path.join(os.path.dirname(os.path.abspath(__file__)), "config.json")) as f:
+    LIVE = json.load(f)
+CFG = governor.with_defaults({**LIVE, "standby": {"mac-studio": {"max_admitted": 6}}, "hosts": {
+    "asus-laptop": {"min_admitted": 0, "admit": {"tctl": 80}, "withhold": {"idle": 0.25, "tctl": 90}},
+    "hp-victus": {},
+    "razer-laptop": {},
+}})
 COOL = {"idle": 0.6, "psi": 0.05, "tctl": 60, "mem": 0.5, "disk": 0.5}
 BUSY = {"idle": 0.3, "psi": 0.3, "tctl": 70, "mem": 0.4, "disk": 0.5}
 HOT = {"idle": 0.1, "psi": 0.5, "tctl": 70, "mem": 0.4, "disk": 0.5}

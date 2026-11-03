@@ -90,3 +90,68 @@ tests:
         exp_samples:
           - labels: 'cc:pool_busy{pool="unity"}'
             value: 2
+
+  - name: site slots and busy split local from cloud, withheld idle left out, local gates added to local
+    interval: 1m
+    input_series:
+      - series: 'github_runner_state{name="m1",pool="unity",site="local",state="running",instance="x"}'
+        values: '1x5'
+      - series: 'github_runner_state{name="m2",pool="unity",site="local",state="idle",instance="x"}'
+        values: '0x5'
+      - series: 'github_runner_state{name="m3",pool="unity",site="local",state="idle",instance="x"}'
+        values: '0x5'
+      - series: 'github_runner_withheld{name="m3",instance="x"}'
+        values: '1x5'
+      - series: 'github_runner_state{name="a1",pool="unity",site="cloud",state="running",instance="x"}'
+        values: '1x5'
+      - series: 'github_runner_state{name="a2",pool="unity",site="cloud",state="running",instance="x"}'
+        values: '1x5'
+      - series: 'fleet_local_slots{host="ws",kind="open",instance="ws"}'
+        values: '2x5'
+      - series: 'fleet_local_slots{host="ws",kind="room",instance="ws"}'
+        values: '2x5'
+      - series: 'fleet_local_slots_busy{host="ws",instance="ws"}'
+        values: '1x5'
+      - series: 'node_textfile_mtime_seconds{file="/x/fleet_local.prom",instance="ws"}'
+        values: '0+60x5'
+      - series: 'github_hosted_jobs_running{repo="game",instance="x"}'
+        values: '2x5'
+      - series: 'github_hosted_jobs_running{repo="web",instance="x"}'
+        values: '1x5'
+    promql_expr_test:
+      - expr: cc:site_slots
+        eval_time: 3m
+        exp_samples:
+          - labels: 'cc:site_slots{site="local"}'
+            value: 4
+          - labels: 'cc:site_slots{site="cloud"}'
+            value: 2
+      - expr: cc:site_busy
+        eval_time: 3m
+        exp_samples:
+          - labels: 'cc:site_busy{site="local"}'
+            value: 2
+          - labels: 'cc:site_busy{site="cloud"}'
+            value: 2
+      - expr: cc:github_hosted_running
+        eval_time: 3m
+        exp_samples:
+          - labels: 'cc:github_hosted_running'
+            value: 3
+
+  - name: a site with runners but none busy reads 0 busy, and no GitHub-hosted jobs reads 0
+    interval: 1m
+    input_series:
+      - series: 'github_runner_state{name="a1",pool="unity",site="cloud",state="idle",instance="x"}'
+        values: '0x5'
+    promql_expr_test:
+      - expr: cc:site_busy
+        eval_time: 3m
+        exp_samples:
+          - labels: 'cc:site_busy{site="cloud"}'
+            value: 0
+      - expr: cc:github_hosted_running
+        eval_time: 3m
+        exp_samples:
+          - labels: 'cc:github_hosted_running'
+            value: 0

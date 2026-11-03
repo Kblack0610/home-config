@@ -8,6 +8,9 @@ show. So it is a copy of the slot counts in ansible/inventory.yml
 (linux_ci_runners ci_light_slots / ci_heavy_slots, unity_ci_runners
 unity_ci_slots) plus the single-host runners pinned by their own plays (mac-mini, windows-media).
 
+CLOUD_HOSTS is checked the same way: it must equal the runner hosts whose inventory
+entry says unity_ci_lan: false, so a cloud host is declared once, in the inventory.
+
 Same rule as check-fleet-roster.py: independent copies are the design, copies nobody
 compares are the bug. This compares them in BOTH directions, because both break: a
 host added to a pool and forgotten here reads as fully healthy, a host retired there
@@ -40,7 +43,7 @@ PINNED = {("mac-mini", "macos"): 2, ("windows-media", "windows"): 1}
 
 
 def inventory_roster(path):
-    out, group, in_hosts, host = {}, None, False, None
+    out, cloud, group, in_hosts, host = {}, set(), None, False, None
     with open(path, encoding="utf-8") as fh:
         for raw in fh:
             line = raw.split("#", 1)[0].rstrip()
@@ -56,25 +59,31 @@ def inventory_roster(path):
                 host = key
             elif group and host and indent == 10 and key in GROUPS[group]:
                 out[(host, GROUPS[group][key])] = int(val.strip())
-    return out
+            elif group and host and indent == 10 and key == "unity_ci_lan" and val.strip() == "false":
+                cloud.add(host)
+    return out, cloud
+
+
+def env_value(text, name, path):
+    m = re.search(rf"name:\s*{name}\s*\n\s*value:\s*\"([^\"]*)\"", text)
+    if not m:
+        sys.exit(f"FAIL: no {name} value in {path}")
+    return m.group(1)
 
 
 def exporter_roster(path):
     text = open(path, encoding="utf-8").read()
-    m = re.search(r"name:\s*RUNNER_ROSTER\s*\n\s*value:\s*\"([^\"]*)\"", text)
-    if not m:
-        sys.exit(f"FAIL: no RUNNER_ROSTER value in {path}")
     out = {}
-    for entry in m.group(1).split():
+    for entry in env_value(text, "RUNNER_ROSTER", path).split():
         host, pool, slots = entry.split(":")
         out[(host, pool)] = int(slots)
-    return out
+    return out, set(env_value(text, "CLOUD_HOSTS", path).split())
 
 
 def main():
-    want = inventory_roster(INVENTORY)
+    want, want_cloud = inventory_roster(INVENTORY)
     want.update(PINNED)
-    have = exporter_roster(EXPORTER_DEPLOY)
+    have, have_cloud = exporter_roster(EXPORTER_DEPLOY)
     if len(want) <= len(PINNED):
         sys.exit(f"FAIL: parsed no runner slots out of {INVENTORY}; the parser is broken, not the roster")
     rc = 0
@@ -83,8 +92,11 @@ def main():
         if w != h:
             rc = 1
             print(f"FAIL: {key[0]} {key[1]}: inventory says {w}, RUNNER_ROSTER says {h}")
+    if want_cloud != have_cloud:
+        rc = 1
+        print(f"FAIL: CLOUD_HOSTS is {sorted(have_cloud)}, inventory unity_ci_lan: false hosts are {sorted(want_cloud)}")
     if rc == 0:
-        print(f"ok: {len(want)} host/pool slot counts agree")
+        print(f"ok: {len(want)} host/pool slot counts agree, cloud hosts {sorted(want_cloud)}")
     return rc
 
 

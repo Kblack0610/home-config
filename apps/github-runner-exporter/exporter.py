@@ -372,7 +372,9 @@ def finished_runs(repo, now):
     pages = [first]
     n = -(-total // 100)
     if n > 1:
-        with ThreadPoolExecutor(max_workers=4) as ex:
+        # All pages at once: ~3s each, and four at a time put the playground's ten
+        # pages at 12s of a cold scrape (2026-11-03).
+        with ThreadPoolExecutor(max_workers=10) as ex:
             pages += [runs for _, runs in ex.map(page, range(2, n + 1))]
     runs = {r["id"]: r for pg in pages for r in pg}
     return [runs[i] for i in sorted(runs, reverse=True)]
@@ -393,8 +395,13 @@ def repo_activity(repo, now):
             data = get(f"repos/{repo}/actions/runs?status={status}&per_page={MAX_RUNS_PER_REPO}", "active_runs")
             out["counts"][status] = data.get("total_count", 0)
             active += data.get("workflow_runs", [])
-        for run in active:
-            jobs = get(f"repos/{repo}/actions/runs/{run['id']}/jobs?per_page=100", "active_jobs").get("jobs", [])
+        # In parallel: one at a time, the playground's 30 active runs took 12s of a
+        # cold scrape (2026-11-03).
+        with ThreadPoolExecutor(max_workers=6) as ex:
+            fetched = list(ex.map(
+                lambda run: get(f"repos/{repo}/actions/runs/{run['id']}/jobs?per_page=100", "active_jobs").get("jobs", []),
+                active))
+        for run, jobs in zip(active, fetched):
             if not jobs and run.get("status") == "queued":
                 # A queued run with no jobs never gets a runner. GitHub leaves
                 # these behind (one platform schedule run sat like this from

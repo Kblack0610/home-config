@@ -183,9 +183,12 @@ all:
         asus-laptop:
           ci_light_slots: 2
           ci_heavy_slots: 1
+        # No heavy slot since 2026-11-03: its 20G ci.slice holds two Unity slots
+        # that can fill it alone, and a heavy job (pnpm install of the whole
+        # workspace plus postgres) was OOM-killed at /ci.slice twice in an hour.
         hp-victus:
           ci_light_slots: 2
-          ci_heavy_slots: 1
+          ci_heavy_slots: 0
         razer-laptop:
           ci_light_slots: 3
           ci_heavy_slots: 1

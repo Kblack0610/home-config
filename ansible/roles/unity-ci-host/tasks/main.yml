@@ -13,11 +13,13 @@
     update_cache: true
   when: ansible_os_family == "Debian"
 
-# Ubuntu 24.04 has no awscli package; the snap is AWS's own build.
+# Ubuntu 24.04 has no awscli package; the snap is AWS's own build. The snap
+# CLI, not community.general.snap: 12.6.0 fails on snapd 2.77 ("list index out
+# of range", 11-03).
 - name: Install the AWS CLI for the S3 library sync
-  community.general.snap:
-    name: aws-cli
-    classic: true
+  ansible.builtin.command: snap install aws-cli --classic
+  args:
+    creates: /snap/bin/aws
   when: unity_ci_library_s3 | length > 0
 
 - name: Ensure docker is enabled and running

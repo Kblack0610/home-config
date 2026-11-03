@@ -244,8 +244,10 @@ all:
         # 2026-11-03 by the human, before its play ever ran: aws-burst-1 is the
         # overflow. Do not add it back.
         # The AWS overflow box (platform infra/aws-ci-burst, Terraform), added
-        # 2026-11-03, resized the same day to m7a.8xlarge on-demand: four slots
-        # until a shard is proven, then eight (plan ko-sorry-one-more-synchronous-rain). It
+        # 2026-11-03, the same day moved to an m7a.12xlarge persistent Spot instance
+        # in us-east-2a (no m7a.8xlarge Spot capacity anywhere in us-east-2 that
+        # day): four slots until a shard is proven, then more
+        # (plan ko-sorry-one-more-synchronous-rain). It
         # has no inbound port; SSH runs through SSM Session Manager with the bnb
         # AWS profile, so the workstation needs session-manager-plugin. ansible_host
         # is the instance id: after a Terraform -replace or the Spot switch, take
@@ -253,7 +255,7 @@ all:
         # images are pulled on the box (unity_ci_images_pull) instead of copied.
         # Kept stopped when idle; start it before running the play against it.
         aws-burst-1:
-          ansible_host: i-09612c2070273bdbc
+          ansible_host: i-049219a501808a9cf
           ansible_user: ubuntu
           ansible_ssh_common_args: >-
             -o ProxyCommand="aws ssm start-session --profile bnb --region us-east-2
@@ -319,16 +321,16 @@ all:
           ci_unity_memory_max: 60G
           ci_unity_slot_memory_max: 20G
           ci_linux_memory_max: 40G
-        # m7a.8xlarge: 32 real cores (no SMT), 128 GiB. Core 0 stays with the OS
+        # m7a.12xlarge: 48 real cores (no SMT), 192 GiB. Core 0 stays with the OS
         # and the SSM agent; each slot gets 4 cores and stops at 14G, over a
-        # PlayMode shard's 13.9G max. Four slots now, then eight on cores 17-31
-        # (slot 8 gets 3). No k3s and no platform runners here.
+        # PlayMode shard's 13.9G max. Four slots now; cores 17-47 hold up to
+        # seven more. No k3s and no platform runners here.
         aws-burst-1:
-          ci_cpus: 1-31
-          ci_memory_max: 120G
-          ci_unity_cpus: 1-31
+          ci_cpus: 1-47
+          ci_memory_max: 180G
+          ci_unity_cpus: 1-47
           ci_unity_slot_cpus: ["1-4", "5-8", "9-12", "13-16"]
-          ci_unity_memory_max: 112G
+          ci_unity_memory_max: 168G
           ci_unity_slot_memory_max: 14G
 
     # Nodes that run the game servers (apps/playground-server pins to the

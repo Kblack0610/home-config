@@ -33,7 +33,7 @@
 #   --mqtt-broker HOST    Enable MQTT to this broker (e.g. mosquitto.kblab.me / an IP).
 #   --mqtt-user USER      MQTT username (optional).
 #   --mqtt-pass PASS      MQTT password (optional).
-#   --mqtt-port PORT      MQTT port. Default: 1883.
+#   --mqtt-port PORT      MQTT port. Default: 31883, the mosquitto NodePort (apps/mosquitto); 1883 is refused.
 #   --rest-key KEY        Enable the REST API (port 8080) with this X-Api-Key.
 #   --device-owner        Also provision as Android Device Owner (true lock-task).
 #                         DESTRUCTIVE prereq: ALL accounts + SIM removed first.
@@ -50,7 +50,7 @@ DEVICE_ADMIN="$PKG/.DeviceAdminReceiver"
 NAME="" SERIAL="" APK="" DEVICE_OWNER=0 DRY=0
 URL="https://hass.kblab.me/wall-panels"
 PIN="1234"
-MQTT_BROKER="" MQTT_USER="" MQTT_PASS="" MQTT_PORT="1883" REST_KEY=""
+MQTT_BROKER="" MQTT_USER="" MQTT_PASS="" MQTT_PORT="31883" REST_KEY=""
 
 die() { echo "error: $*" >&2; exit 1; }
 usage() { sed -n '2,/^set -euo/p' "$0" | sed 's/^# \{0,1\}//; s/^#//'; exit "${1:-0}"; }

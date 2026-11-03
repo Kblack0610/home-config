@@ -69,7 +69,7 @@ on stock-Android Lenovo tablets (M9/M11). (FireOS is not supported — see plan.
 > ```bash
 > scripts/provision-wall-tablet.sh --name wall-kitchen \
 >   --url https://hass.kblab.me/wall-panels --pin 4321 \
->   --mqtt-broker mosquitto.kblab.me --mqtt-user hass --mqtt-pass '<pw>'   # MQTT optional
+>   --mqtt-broker mosquitto.kblab.me   # MQTT optional; anonymous, port 31883 by default
 > # add --apk <path> to install first, --device-owner for true lock-task, --dry-run to preview
 > ```
 > It prints the few unavoidable on-device/HA steps at the end (HA login, satellite
@@ -137,7 +137,7 @@ So today there is **no remote view (screenshot) path that holds**, and remote re
 
 Open follow-up, in order:
 1. Find the current IPs of kitchen / living room / office (Headwind device list or router leases) and add static leases in `infrastructure/dhcp/devices.yaml`.
-2. Re-provision those three with `--mqtt-broker mosquitto.kblab.me` (one USB session each) and keep the REST key file.
+2. Turn on FreeKiosk MQTT on those three. No cable needed: on the tablet, open FreeKiosk settings (PIN 4321), Advanced tab, MQTT section, and set broker `mosquitto.kblab.me`, port `31883`, device name `wall-<room>`, no username. With a USB session, `provision-wall-tablet.sh --mqtt-broker mosquitto.kblab.me` does the same and keeps the REST key file.
 3. For a remote view that holds: check what Headwind MDM (already device owner on all four) can enforce, such as keeping USB/wireless debugging on, or a remote-view app it keeps running. Do not rely on Wireless Debugging alone.
 4. HA script that presses every `button.freekiosk_*_reload`, for use after a dashboard deploy.
 

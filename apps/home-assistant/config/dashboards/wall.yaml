@@ -76,19 +76,63 @@ wallpanel:
     - type: vertical-stack
       cards:
         - &alert_card !include _home_alert_card.yaml
-        - &dashboard_card
-          # Corner "admin" tap, the only exit: navigating off the ?idle URL that
-          # screensaver_start_navigation_path parks on ends the screensaver -> Home.
-          type: custom:mushroom-template-card
-          primary: Dashboard
-          icon: mdi:view-dashboard
-          icon_color: blue
-          tap_action: { action: navigate, navigation_path: /wall-panels/home?kiosk }
-          card_mod:
-            style: |
-              ha-card { background: rgba(20,20,22,0.42); border: none; box-shadow: none; backdrop-filter: blur(3px); }
-        # Tap-to-talk, reachable without leaving the screensaver.
-        - &talk_card !include _talk_card.yaml
+        # Two big squares side by side, Talk and Dashboard, and the health pill under
+        # the mic. A browser with no voice room hides Talk and leaves its cell empty.
+        - &actions_card
+          type: grid
+          columns: 2
+          square: false
+          cards:
+            # Tap-to-talk, reachable without leaving the screensaver.
+            - !include _talk_card.yaml
+            # Corner "admin" tap, the only exit: navigating off the ?idle URL that
+            # screensaver_start_navigation_path parks on ends the screensaver -> Home.
+            # Same shape as _talk_card.yaml.
+            - type: custom:button-card
+              name: Dashboard
+              icon: mdi:view-dashboard
+              layout: vertical
+              tap_action: { action: navigate, navigation_path: /wall-panels/home?kiosk }
+              styles:
+                card:
+                  - height: 130px
+                  - padding: 16px
+                  - border-radius: 18px
+                  - background: rgba(var(--rgb-card-background-color, 255, 255, 255), 0.72)
+                  - backdrop-filter: blur(6px)
+                  - box-shadow: none
+                icon:
+                  - width: 64px
+                  - color: '#2196f3'
+                name:
+                  - font-size: 18px
+                  - font-weight: 500
+            # Overall health: green when nothing is down, red when anything is, grey
+            # when the sensor is. services_down_count is the same "down" the phone,
+            # the Ops view and the ntfy alert read. Tap opens Ops for the detail.
+            - type: custom:button-card
+              entity: sensor.services_down_count
+              icon: mdi:heart-pulse
+              layout: icon_name
+              name: >-
+                [[[ const n = Number(entity && entity.state);
+                    return Number.isNaN(n) ? 'Health' : n > 0 ? n + ' down' : 'All up'; ]]]
+              tap_action: { action: navigate, navigation_path: /wall-panels/ops?kiosk }
+              styles:
+                card:
+                  - padding: 6px 12px
+                  - border-radius: 14px
+                  - background: rgba(var(--rgb-card-background-color, 255, 255, 255), 0.72)
+                  - box-shadow: none
+                icon:
+                  - width: 22px
+                  - color: >-
+                      [[[ const n = Number(entity && entity.state);
+                          return Number.isNaN(n) ? '#9e9e9e' : n > 0 ? '#ff5252' : '#4caf50'; ]]]
+                name:
+                  - font-size: 14px
+                  - justify-self: start
+                  - padding-left: 8px
     # Room quick-actions - the SHARED area-driven room layout (one source of truth
     # with the Home view; tap a plug tile to toggle it). Empty rooms auto-hide.
     - &rooms_card
@@ -116,6 +160,12 @@ wallpanel:
       # bright at the top and text stays legible below.
       background: 'linear-gradient(to bottom, rgba(0,0,0,0) 15%, rgba(0,0,0,0.3) 45%, rgba(0,0,0,0.4) 100%)'
       text-shadow: '0 1px 4px rgba(0,0,0,0.85)'
+      # Room headings sit on the scenery, not on a card.
+      --ha-heading-card-title-color: '#fff'
+      # Square room tiles scale with screen HEIGHT, so all four rooms fit a 600px
+      # tall Tab M9 as well as an 800px M11, and stop at 120px so a portrait
+      # tablet's single wide column fits too (the tile cap in _rooms_cards.yaml).
+      --wall-tile-max: min(15vh, 120px)
       # wallpanel sizes every card wrapper from this variable (default 500px),
       # which overflows a grid column; auto lets each card fill its column.
       --wp-card-width: auto
@@ -123,7 +173,9 @@ wallpanel:
       display: grid
       width: 100%
       max-width: 100%
-      grid-template-columns: minmax(260px, 1fr) 2fr
+      # Even halves on a landscape tablet, one column in portrait (a column needs
+      # 420px). A fixed track minimum, not auto, stops a long alert widening its half.
+      grid-template-columns: repeat(auto-fit, minmax(min(100%, 420px), 1fr))
       gap: 3vw
       align-items: start
   profiles:
@@ -132,8 +184,7 @@ wallpanel:
       image_url: 'iframe+https://immich-kiosk.kblab.me/'
       cards:
         - *alert_card
-        - *dashboard_card
-        - *talk_card
+        - *actions_card
         - *rooms_card
       style:
         wallpanel-screensaver-info-box:

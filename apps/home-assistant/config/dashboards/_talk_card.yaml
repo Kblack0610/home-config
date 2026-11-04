@@ -6,10 +6,11 @@
 # browser is bound to in localStorage ("vs-satellite-entity", falling back to
 # "vs-panel-config".satellite_entity, the same lookup the card itself does).
 # A browser with no room assigned (Admin -> Voice Room) gets no button.
+# Big icon over one word, the same shape as the screensaver's Dashboard button.
 type: custom:button-card
-name: Talk to Binks
+name: Talk
 icon: mdi:microphone
-layout: icon_name
+layout: vertical
 variables:
   satellite: |
     [[[
@@ -29,16 +30,15 @@ tap_action:
 styles:
   card:
     - display: "[[[ return variables.satellite ? 'block' : 'none'; ]]]"
-    - padding: 14px 18px
-    - border-radius: 16px
-    - background: rgba(20,20,22,0.42)
-    - backdrop-filter: blur(3px)
+    - height: 130px
+    - padding: 16px
+    - border-radius: 18px
+    - background: rgba(var(--rgb-card-background-color, 255, 255, 255), 0.72)
+    - backdrop-filter: blur(6px)
     - box-shadow: none
   icon:
-    - width: 36px
-    - color: var(--blue-color, #2196f3)
+    - width: 64px
+    - color: '#2196f3'
   name:
     - font-size: 18px
     - font-weight: 500
-    - justify-self: start
-    - padding-left: 12px

@@ -1,16 +1,15 @@
-# Shared ROOM LAYOUT — the home view, grouped by room.
+# Shared room layout: the home view, grouped by room. Included by the Overview,
+# phone and wall Home views and the wall screensaver, so it lives in ONE place.
+# Each room is a heading + an auto-entities grid filtered by HA AREA, so it is
+# driven by area metadata (pyscript/room_layout.yaml): assign a device to a room in
+# the wall Settings view and it appears here with no dashboard edit.
 #
-# Included as the `cards:` of one grid section on BOTH the Overview (home) view
-# and the wall Home view, so the room layout lives in ONE place. Each room is a
-# heading + an auto-entities grid filtered by the room's HA AREA, so it is driven
-# entirely by the area metadata (pyscript/room_layout.yaml): assign a device to a
-# room in the wall Settings view and it appears here automatically — no dashboard
-# edit needed.
+# Each device is a square button: icon and name, lit amber when on. Per room: lights, then plugs, then the litter box
+# (filter order). A switch_as_x light hides the switch it wraps and hidden entities
+# are excluded, so a lamp plug shows once, as a light.
 #
-# tap_action is only toggle / more-info here, never `navigate`: the Overview
-# dashboard uses /lovelace/* paths and the wall uses /wall-panels/*, so a shared
-# file can't hard-code a navigation path. Full per-device detail pages stay on
-# the Devices tab.
+# Only toggle / more-info tap actions, never `navigate`: the dashboards use
+# different path prefixes. Per-device detail pages stay on the Devices tab.
 
 - type: heading
   heading: Office
@@ -19,19 +18,72 @@
 - type: custom:auto-entities
   show_empty: false
   card_param: cards
-  card: { type: grid, columns: 2, square: false }
+  card: &room_grid { type: grid, columns: 4, square: false }
   filter:
     include:
+      - domain: light
+        area: Office
+        sort: &by_name { method: friendly_name }
+        options: &light_tile
+          type: custom:button-card
+          icon: >-
+            [[[ return entity.attributes.icon
+                || (entity.state === 'on' ? 'mdi:lightbulb-on' : 'mdi:lightbulb-outline'); ]]]
+          show_label: true
+          # The amber glow says on; a word only for what the glow cannot.
+          label: "[[[ return ['on', 'off'].includes(entity.state) ? '' : 'Offline'; ]]]"
+          tap_action: { action: toggle, haptic: light }
+          hold_action: { action: more-info }
+          styles: &tile_styles
+            # Frosted, so a tile reads on the screensaver's scenery and still looks
+            # like a plain card on a dashboard page. Square by CSS aspect-ratio (not
+            # button-card's aspect_ratio, which sizes from the cell) so the screensaver's
+            # --wall-tile-max shrinks both sides on a short screen; pages leave it unset.
+            card:
+              - aspect-ratio: '1'
+              - height: auto
+              - max-width: var(--wall-tile-max, none)
+              - border-radius: 18px
+              - padding: 8% 6%
+              - background: rgba(var(--rgb-card-background-color, 255, 255, 255), 0.72)
+              - backdrop-filter: blur(6px)
+            grid:
+              - grid-template-areas: '"i" "n" "l"'
+              - grid-template-rows: 1fr min-content min-content
+            icon:
+              - width: 50%
+              - color: var(--secondary-text-color)
+            name:
+              - font-size: 14px
+              - font-weight: 500
+              - line-height: 1.15
+              - white-space: normal
+              - text-align: center
+            label:
+              - font-size: 12px
+              - opacity: '0.7'
+          state: &on_state
+            - value: 'on'
+              styles:
+                card:
+                  - background: >-
+                      linear-gradient(rgba(255,183,77,0.32), rgba(255,183,77,0.32)),
+                      rgba(var(--rgb-card-background-color, 255, 255, 255), 0.72)
+                  - box-shadow: inset 0 0 0 1px rgba(255,193,7,0.65)
+                icon:
+                  - color: '#ffc107'
       - entity_id: switch.*plug*
         area: Office
+        sort: *by_name
         options: &plug_tile
-          type: custom:mushroom-template-card
-          primary: "{{ state_attr(entity, 'friendly_name') or entity }}"
-          secondary: "{{ 'On' if is_state(entity, 'on') else 'Off' }}"
-          icon: "{{ state_attr(entity, 'icon') or 'mdi:power-plug' }}"
-          icon_color: "{{ 'amber' if is_state(entity, 'on') else 'disabled' }}"
-          tap_action: { action: toggle }
-  sort: { method: friendly_name }
+          <<: *light_tile
+          icon: "[[[ return entity.attributes.icon || 'mdi:power-plug'; ]]]"
+    exclude: &not_shown
+      # A switch_as_x light hides the switch it wraps; a voice satellite's LED ring
+      # is not a room light.
+      - hidden_by: integration
+      - hidden_by: user
+      - entity_id: light.*led_ring*
 
 - type: heading
   heading: Bedroom
@@ -39,11 +91,12 @@
 - type: custom:auto-entities
   show_empty: false
   card_param: cards
-  card: { type: grid, columns: 2, square: false }
+  card: *room_grid
   filter:
     include:
-      - { entity_id: switch.*plug*, area: Bedroom, options: *plug_tile }
-  sort: { method: friendly_name }
+      - { domain: light, area: Bedroom, sort: *by_name, options: *light_tile }
+      - { entity_id: switch.*plug*, area: Bedroom, sort: *by_name, options: *plug_tile }
+    exclude: *not_shown
 
 - type: heading
   heading: Kitchen
@@ -51,11 +104,12 @@
 - type: custom:auto-entities
   show_empty: false
   card_param: cards
-  card: { type: grid, columns: 2, square: false }
+  card: *room_grid
   filter:
     include:
-      - { entity_id: switch.*plug*, area: Kitchen, options: *plug_tile }
-  sort: { method: friendly_name }
+      - { domain: light, area: Kitchen, sort: *by_name, options: *light_tile }
+      - { entity_id: switch.*plug*, area: Kitchen, sort: *by_name, options: *plug_tile }
+    exclude: *not_shown
 
 - type: heading
   heading: Living Room
@@ -63,40 +117,42 @@
 - type: custom:auto-entities
   show_empty: false
   card_param: cards
-  card: { type: grid, columns: 2, square: false }
+  card: *room_grid
   filter:
     include:
-      # Plugs / switches assigned to the Living Room (toggle).
-      - { entity_id: switch.*plug*, area: Living Room, options: *plug_tile }
-      # Robot vacuum — status + battery, tap opens its controls (more-info).
-      - entity_id: vacuum.*
-        area: Living Room
-        options:
-          type: custom:mushroom-template-card
-          primary: Robot Vacuum
-          secondary: >-
-            {% set s = states('sensor.tapovacuummop_status') %}
-            {{ 'Offline' if s in ['unavailable', 'unknown'] else s | replace('_', ' ') | capitalize }} ·
-            {{ states('sensor.tapovacuummop_battery') | int(0) }}%
-          icon: mdi:robot-vacuum
-          icon_color: >-
-            {{ 'red' if states('sensor.tapovacuummop_error') not in ['Ok','unknown','unavailable']
-               else 'green' if is_state('vacuum.tapovacuummop','docked') else 'blue' }}
-          tap_action: { action: more-info }
-      # Litter box — status + today's count (more-info).
+      - { domain: light, area: Living Room, sort: *by_name, options: *light_tile }
+      - { entity_id: switch.*plug*, area: Living Room, sort: *by_name, options: *plug_tile }
+      # Litter box: red with the reason when it needs a person (the same statuses
+      # packages/home_alerts.yaml alerts on), orange while a cat is inside.
       - entity_id: sensor.cat_litter_box_status
         area: Living Room
         options:
-          type: custom:mushroom-template-card
-          primary: Litter Box
-          # The sensor reports raw enum values (Cat_into, Cleaning_paused, ...);
-          # show them as words, and Offline for unavailable/unknown.
-          secondary: >-
-            {% set s = states('sensor.cat_litter_box_status') %}
-            {% set label = {'Cat_into': 'Cat inside'}.get(s, s | replace('_', ' ') | capitalize) %}
-            {{ 'Offline' if s in ['unavailable', 'unknown'] else label }} ·
-            {{ states('sensor.cat_litter_box_excretions_per_day') | int(0) }} today
+          type: custom:button-card
+          name: Litter Box
           icon: mdi:cat
-          icon_color: "{{ 'orange' if is_state('sensor.cat_litter_box_status','Cat_into') else 'blue' }}"
+          show_label: true
+          # The sensor reports raw enum values (Cat_into, Drawers_open, ...).
+          label: >-
+            [[[ const s = entity.state;
+                const words = { Cat_into: 'Cat inside', Drawers_open: 'Drawer open', Clean_Pause: 'Paused' };
+                if (s === 'unavailable' || s === 'unknown') return 'Offline';
+                return words[s] || s.replace(/_/g, ' ').replace(/^./, (c) => c.toUpperCase()); ]]]
           tap_action: { action: more-info }
-  sort: { method: friendly_name }
+          styles: *tile_styles
+          state:
+            - operator: template
+              value: "[[[ return ['Drawers_open', 'Clean_Pause'].includes(entity.state); ]]]"
+              styles:
+                card:
+                  - background: rgba(229,57,53,0.45)
+                  - box-shadow: inset 0 0 0 2px rgba(255,82,82,0.9)
+                icon:
+                  - color: '#ff5252'
+                label:
+                  - font-weight: 600
+                  - opacity: '1'
+            - value: Cat_into
+              styles:
+                icon:
+                  - color: '#ff9800'
+    exclude: *not_shown

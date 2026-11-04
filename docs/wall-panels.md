@@ -13,12 +13,14 @@ Turns a wall-mounted Android tablet into a Nest-Hub-style home panel: a polished
 
 | State | When | Content | Controls |
 |-------|------|---------|----------|
-| `day` | Mon-Sat 07:00-22:00 | `apps/wall-ambient` (`wall-ambient.kblab.me`): Wikimedia Commons scenery from the "Wall Scenery" album, with an animated shader scene (plasma, flow, kaleidoscope, Julia set, tunnel, aurora) after every few slides | Full screen, two columns: quick actions left, rooms right, below a clear band for the clock and weather |
+| `day` | Mon-Sat 07:00-22:00 | `apps/wall-ambient` (`wall-ambient.kblab.me`): Wikimedia Commons scenery from the "Wall Scenery" album, with an animated shader scene (plasma, flow, kaleidoscope, Julia set, tunnel, aurora) after every few slides | Full screen below a clear band for the clock and weather: Talk and Dashboard as two big buttons with a health pill under them on the left, square room tiles on the right; one column on a portrait tablet |
 | `family` | Sun 07:00-22:00 | `apps/immich-kiosk` family album ("Wall Best"), portrait pairing, metadata | Narrow translucent column on the right |
 | `night` | 22:00-07:00 | Solid black after 1 s | None; any tap exits |
 
 - **Scenery album:** owned by a dedicated Immich user `wall@kblab.me`, so none of the family libraries mix in. The `immich-scenery` CronJob (`apps/immich/scenery.py`, 05:00) adds 40 new free-licensed featured pictures a night from the Commons categories in `CATEGORIES`, and prunes the oldest past 400. Each asset's description is its credit (title, author, licence), which the slideshow shows.
 - **Retune the rotation** in the `image_url` query string in `wall.yaml`: `scenery` (slides between shader scenes), `trippy_secs` (length of a shader scene), `shaders` (comma list to restrict which ones play), `render_scale` (lower it if a tablet stutters). Set `trippy_secs=0` to turn shader scenes off.
+- **Health pill:** green "All up" or red "N down" from `sensor.services_down_count` (`packages/fleet_alerts.yaml`), the same count the phone, the Ops view and the ntfy alert read; tap opens Ops. To widen what counts as down, change that sensor, not the card.
+- **Screen sizes:** the two columns need 420px each, so a portrait tablet stacks them; room tiles are capped at `--wall-tile-max` (`min(15vh, 120px)`) so all rooms fit a 600px tall Tab M9. Check a change at 1005x600 (Tab M9), 1280x800 (Tab M11) and 1463x914 (Idea Tab), landscape and portrait, before merging.
 - **Change the schedule** in the `{% if %}` block of `wall_night_mode.yaml`. wallpanel deep-merges a profile into the base config, so `profiles.family.style` must set every style key the weekday base sets.
 
 Hardware decisions, profiles model, and phase plan live in the project plan; this is the
@@ -197,7 +199,7 @@ Debug: in the panel's WebView console, `window.__snapcastTablet.status()` shows 
 |---|---|
 | Top bar | One row of equal nav buttons: Controls, Devices, Music, Media, Local, Agents (red or amber when an agent needs you), Photos, Settings, Admin. Destinations only; the Screensaver button is on Admin. |
 | Left: Now | The household alert (only when set), clock and 3-day forecast, Talk to Binks, Cluster and 3D printer status, Announce (folded). |
-| Middle: Rooms | `dashboards/_rooms_cards.yaml`, the room tiles by HA area, shared with Overview and the screensaver. |
+| Middle: Rooms | `dashboards/_rooms_cards.yaml`, the room tiles by HA area, shared with Overview and the screensaver. One square tile per device, lights first, lit amber when on; a word under the name only when the glow cannot say it (Offline, litter box status, red when the litter box needs a person). |
 | Right: Media | Music, then Cameras. |
 
 The view has exactly three sections, so a 3-column tablet fills one row. A narrower one (2 columns, the 8.7" office tablet at some densities) puts Media under Now. Adding a fourth section starts a new row under the tallest column, so add cards to an existing column instead. Every sub-view starts with `dashboards/_home_button.yaml`, one shared Home bar that navigates from anywhere on the bar, not only its icon.
@@ -310,3 +312,5 @@ Settings → About → Status → Wi-Fi MAC (use the *non-randomized* MAC for th
 | Weather hero shows an error | Add the **Met.no** integration (§5) → `weather.forecast_home`. |
 | Screen still sleeps | Layer 2 (Android Stay-awake) is the reliable one; browser Wake Lock alone can drop. |
 | Want full chrome back as admin | Append `?disable_km` to the URL. |
+| A live edit to a dashboard partial (`_rooms_cards.yaml`) does not show | YAML-mode dashboards reload on the main file's mtime only: `touch /config/dashboards/wall.yaml` in the pod, then refresh. |
+| Room tiles run off the bottom of a small tablet | Lower `--wall-tile-max` in `wall.yaml`'s info-box style; a tile cannot shrink below its icon and two-line name (about 90px). |

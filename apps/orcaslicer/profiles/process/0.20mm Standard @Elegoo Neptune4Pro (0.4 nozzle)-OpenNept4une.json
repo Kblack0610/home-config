@@ -54,7 +54,6 @@
     "skirt_loops": "2",
     "slow_down_layers": "2",
     "small_area_infill_flow_compensation": "1",
-    "small_perimeter_speed": "0",
     "sparse_infill_pattern": "cubic",
     "sparse_infill_speed": "165",
     "support_base_pattern_spacing": "2.5",

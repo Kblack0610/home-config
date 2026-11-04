@@ -39,6 +39,7 @@ The app and `apps/print-service` pin the same linuxserver tag (now `v2.4.2-ls47`
 
 1. Check that every `inherits` in `profiles/` names a preset the new version ships, under `/opt/orcaslicer/resources/profiles/{Elegoo,BBL}/` in the image (`docker run --rm --entrypoint ls lscr.io/linuxserver/orcaslicer:<tag> ...`). OrcaSlicer 2.4 renamed the Elegoo presets (`Elegoo Neptune 4 Pro (0.4 nozzle)` -> `Elegoo Neptune 4 Pro 0.4 nozzle`, `@Elegoo Neptune4Pro (0.4 nozzle)` -> `@Elegoo N4Pro 0.4 nozzle`); the GUI maps old names through `renamed_from`, the print-service paths do not.
 2. Re-run the print-service slice check (`apps/print-service/README.md`, "Test / verify").
+3. Slice once in the GUI with each process preset in `profiles/process/`. print-service only uses the system process presets, so it cannot catch a value the new version rejects (2.4.2 refuses `small_perimeter_speed: "0"`).
 
 ## Verify
 
@@ -54,4 +55,5 @@ python3 scripts/check-secret-store.py
 |---------|-------|-----|
 | A merged preset change does not show on `slicer.kblab.me` | The init container copies presets only at pod start | `rollout restart deploy/orcaslicer` |
 | A user filament preset is missing from the list, Orca logs `validate_preset: ... can not found preset and inherit in list` | Its `inherits` names a system preset that the Orca version does not ship (the old `Elegoo Generic PLA`) | Point `inherits` at a preset that exists in `/opt/orcaslicer/resources/profiles/Elegoo/` (`Generic PLA @Elegoo`) |
+| Slicing fails with "Invalid parameter value(s)" (the CLI returns -18) | A preset key holds a value the Orca version no longer accepts | Find the key: apply the preset keys one at a time onto the system parent and slice with `/usr/bin/orca-slicer --slice 0`. Drop the key so it inherits, or set a valid value |
 | A gcode printed with the wrong nozzle | The name was read for the nozzle | Read `nozzle_diameter` from Moonraker metadata (above) |

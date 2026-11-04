@@ -155,3 +155,84 @@ tests:
         exp_samples:
           - labels: 'cc:github_hosted_running'
             value: 0
+
+  - name: red now is one row per item, from watches, runners, nodes and a frozen feed
+    interval: 1m
+    input_series:
+      - series: 'mqtt_tripped{topic="agents_h_watch_queue_starved",instance="a"}'
+        values: '1x10'
+      - series: 'mqtt_tripped{topic="agents_h_watch_queue_starved",instance="b"}'
+        values: '1x10'
+      - series: 'mqtt_tripped{topic="agents_h_watch_ok_one"}'
+        values: '0x10'
+      - series: 'mqtt_failed{topic="agents_h_runner_fleet_dispatch"}'
+        values: '1x10'
+      - series: 'kube_node_status_condition{node="n1",condition="Ready",status="true"}'
+        values: '0x10'
+      - series: 'mqtt_updated_epoch{topic="agents_h_runner_sentinel"}'
+        values: '0x10'
+    promql_expr_test:
+      - expr: cc:red_now
+        eval_time: 5m
+        exp_samples:
+          - labels: 'cc:red_now{item="watch queue_starved"}'
+            value: 1
+          - labels: 'cc:red_now{item="runner fleet_dispatch"}'
+            value: 1
+          - labels: 'cc:red_now{item="node n1 NotReady"}'
+            value: 1
+          - labels: 'cc:red_now{item="agent feed frozen"}'
+            value: 1
+
+  - name: sentinel is silent after 30 min with a live feed, and a frozen feed answers for it instead
+    interval: 1m
+    input_series:
+      # the feed republishes every minute; sentinel's stamp stops at 0
+      - series: 'mqtt_message_total{topic="agents_h_summary_asks_open"}'
+        values: '0+1x60'
+      - series: 'mqtt_updated_epoch{topic="agents_h_runner_sentinel"}'
+        values: '0x60'
+    promql_expr_test:
+      - expr: cc:component_status{domain="agents",component="sentinel"}
+        eval_time: 25m
+        exp_samples:
+          - labels: 'cc:component_status{domain="agents",component="sentinel"}'
+            value: 0
+      - expr: cc:component_status{domain="agents",component="sentinel"}
+        eval_time: 35m
+        exp_samples:
+          - labels: 'cc:component_status{domain="agents",component="sentinel"}'
+            value: 2
+    alert_rule_test:
+      - eval_time: 38m
+        alertname: SentinelSilent
+        exp_alerts: []
+      - eval_time: 45m
+        alertname: SentinelSilent
+        exp_alerts:
+          - exp_labels: {severity: critical, domain: agents, component: sentinel}
+            exp_annotations:
+              summary: Sentinel has not swept in 40 minutes while the feed is live, so no watch is being checked or paged
+              runbook: ~/.config/agentctl/SENTINEL.md (dotfiles-private), "Operate"
+      - eval_time: 45m
+        alertname: AgentFeedFrozen
+        exp_alerts: []
+
+  - name: a frozen feed pages once it has held 10 min, and sentinel stays quiet under it
+    interval: 1m
+    input_series:
+      - series: 'mqtt_message_total{topic="agents_h_summary_asks_open"}'
+        values: '5x60'
+      - series: 'mqtt_updated_epoch{topic="agents_h_runner_sentinel"}'
+        values: '0x60'
+    alert_rule_test:
+      - eval_time: 50m
+        alertname: AgentFeedFrozen
+        exp_alerts:
+          - exp_labels: {severity: critical, domain: agents, component: feed}
+            exp_annotations:
+              summary: The agent feed has published nothing in 30 minutes, so every watch, runner and queue number is frozen
+              runbook: ~/.config/agentctl/SENTINEL.md (dotfiles-private), "Operate"
+      - eval_time: 50m
+        alertname: SentinelSilent
+        exp_alerts: []

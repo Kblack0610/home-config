@@ -7,6 +7,7 @@
 #   cc:component_status{domain,component}  0 ok, 1 warn, 2 red, one row per input
 #   cc:domain_status{domain}               worst component in the domain
 #   cc:overall_status                       worst domain
+#   cc:red_now{item}                        what is red right now, one row per item (dashboard table, hub board, waybar day chip)
 #   cc:<name>                               the numbers the tiles print
 #   cc:host_<metric>{host}                  per-machine load for the board's MACHINES rows
 #   cc:host_core_busy_ratio{host,cpu}       each core's busy share, the Infra tab's core strip
@@ -107,6 +108,14 @@ spec:
           labels: {domain: agents, component: feed}
           expr: >-
             clamp_max(count(changes(mqtt_message_total{topic=~"agents_.+_summary_asks_open"}[20m]) == 0), 1) or (absent(mqtt_message_total{topic=~"agents_.+_summary_asks_open"})) or vector(0)
+        # sentinel stamps its runner state every sweep; nothing in 30 min means no watch is being checked -> 2.
+        # A frozen feed freezes this stamp too, so the feed row answers for that case instead.
+        - record: cc:component_status
+          labels: {domain: agents, component: sentinel}
+          expr: >-
+            (((time() - max(mqtt_updated_epoch{topic=~"agents_.+_runner_sentinel"}) > 1800) * 0 + 2)
+              unless on () (cc:component_status{domain="agents",component="feed"} > 0))
+            or (absent(mqtt_updated_epoch{topic=~"agents_.+_runner_sentinel"}) * 2) or vector(0)
         # Lazer allowance: under 25% left -> 1, under 10% -> 2
         - record: cc:component_status
           labels: {domain: spend, component: lazer}
@@ -119,6 +128,39 @@ spec:
           expr: max by (domain) (cc:component_status)
         - record: cc:overall_status
           expr: max(cc:domain_status)
+    # What is red right now, value 1 per item. The dashboard's "What is red" table, the hub
+    # board's red-now line and the waybar day chip read this one series, so they cannot disagree.
+    - name: command-center.red
+      interval: 1m
+      rules:
+        - record: cc:red_now
+          expr: >-
+            clamp_max(count by (item) (
+              label_replace(mqtt_tripped{topic=~"agents_.+_watch_.+"} == 1, "item", "watch $1", "topic", "agents_.+_watch_(.+)")
+              or label_replace(mqtt_failed{topic=~"agents_.+_runner_.+"} == 1, "item", "runner $1", "topic", "agents_.+_runner_(.+)")
+              or label_replace(kube_node_status_condition{condition="Ready",status="true"} == 0, "item", "node $1 NotReady", "node", "(.+)")
+              or label_replace(cc:component_status{domain="agents",component="feed"} > 0, "item", "agent feed frozen", "", "")
+              or label_replace(cc:component_status{domain="agents",component="sentinel"} > 0, "item", "sentinel silent", "", "")), 1)
+    # The two things Sentinel cannot page about: its own death, and the feed that carries its
+    # state going quiet. Every other agent alarm is a Sentinel watch; these never duplicate one.
+    - name: command-center.alerts
+      rules:
+        - alert: AgentFeedFrozen
+          expr: cc:component_status{domain="agents",component="feed"} > 0
+          for: 10m
+          labels:
+            severity: critical
+          annotations:
+            summary: The agent feed has published nothing in 30 minutes, so every watch, runner and queue number is frozen
+            runbook: ~/.config/agentctl/SENTINEL.md (dotfiles-private), "Operate"
+        - alert: SentinelSilent
+          expr: cc:component_status{domain="agents",component="sentinel"} > 0
+          for: 10m
+          labels:
+            severity: critical
+          annotations:
+            summary: Sentinel has not swept in 40 minutes while the feed is live, so no watch is being checked or paged
+            runbook: ~/.config/agentctl/SENTINEL.md (dotfiles-private), "Operate"
     - name: command-center.numbers
       interval: 1m
       rules:

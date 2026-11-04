@@ -1923,7 +1923,7 @@
         "type": "prometheus",
         "uid": "${datasource}"
       },
-      "description": "Every tripped sentinel watch, failed agentctl runner and NotReady node, right now.",
+      "description": "Every tripped sentinel watch, failed agentctl runner, NotReady node, frozen agent feed and silent Sentinel, right now (cc:red_now).",
       "gridPos": {
         "x": 0,
         "y": 22,
@@ -1937,38 +1937,12 @@
             "uid": "${datasource}"
           },
           "editorMode": "code",
-          "expr": "label_replace(mqtt_tripped{topic=~\"agents_.+_watch_.+\"} == 1, \"item\", \"watch: $1\", \"topic\", \"agents_.+_watch_(.+)\")",
+          "expr": "cc:red_now",
           "format": "table",
           "instant": true,
           "range": false,
           "legendFormat": "",
           "refId": "A"
-        },
-        {
-          "datasource": {
-            "type": "prometheus",
-            "uid": "${datasource}"
-          },
-          "editorMode": "code",
-          "expr": "label_replace(mqtt_failed{topic=~\"agents_.+_runner_.+\"} == 1, \"item\", \"runner: $1\", \"topic\", \"agents_.+_runner_(.+)\")",
-          "format": "table",
-          "instant": true,
-          "range": false,
-          "legendFormat": "",
-          "refId": "B"
-        },
-        {
-          "datasource": {
-            "type": "prometheus",
-            "uid": "${datasource}"
-          },
-          "editorMode": "code",
-          "expr": "label_replace(kube_node_status_condition{condition=\"Ready\",status=\"true\"} == 0, \"item\", \"node NotReady: $1\", \"node\", \"(.+)\")",
-          "format": "table",
-          "instant": true,
-          "range": false,
-          "legendFormat": "",
-          "refId": "C"
         }
       ],
       "transformations": [

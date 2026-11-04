@@ -58,7 +58,23 @@ spec:
               cp /seed/process-standard.info "$CONFIG_DIR/user/default/process/0.20mm Standard @Elegoo Neptune4Pro (0.4 nozzle)-OpenNept4une.info"
               cp /seed/process-petg.json "$CONFIG_DIR/user/default/process/0.20mm PETG @Elegoo Neptune4Pro (0.4 nozzle)-OpenNept4une.json"
               cp /seed/process-petg.info "$CONFIG_DIR/user/default/process/0.20mm PETG @Elegoo Neptune4Pro (0.4 nozzle)-OpenNept4une.info"
+              # The A1 LAN code and serial live in the SOPS Secret, never in git;
+              # the profiles carry @A1_...@ placeholders (scripts/check-secret-store.py).
+              sed -i -e "s/@A1_ACCESS_CODE@/$A1_ACCESS_CODE/g" -e "s/@A1_SERIAL@/$A1_SERIAL/g" \
+                "$CONFIG_DIR/OrcaSlicer.conf" \
+                "$CONFIG_DIR/user/default/machine/Bambu Lab A1 (0.4 nozzle)-LAN.json"
               echo "Config seeding complete."
+          env:
+            - name: A1_ACCESS_CODE
+              valueFrom:
+                secretKeyRef:
+                  name: bambu-a1-credentials
+                  key: access-code
+            - name: A1_SERIAL
+              valueFrom:
+                secretKeyRef:
+                  name: bambu-a1-credentials
+                  key: serial
           volumeMounts:
             - name: config
               mountPath: /config

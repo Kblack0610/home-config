@@ -43,8 +43,14 @@ jobs:
       - name: Home Assistant packages are all registered with the ConfigMap generator
         run: python3 scripts/check-ha-packages.py
 
-      - name: SOPS is the only secret store, and every *.sops.yaml is encrypted
+      - name: SOPS is the only secret store, every *.sops.yaml is encrypted, no printer codes in slicer profiles
         run: python3 scripts/check-secret-store.py
+
+      - name: Negative control - the check fails on a planted printer access code
+        run: |
+          printf '"printhost_access_code": "12345678",\n' > apps/orcaslicer/planted-control.json
+          ! python3 scripts/check-secret-store.py apps/orcaslicer/planted-control.json
+          rm apps/orcaslicer/planted-control.json
 
   zomboid-scripts:
     # The control and sleeper suites have existed since those scripts were written

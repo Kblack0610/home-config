@@ -6,6 +6,7 @@ namespace: orcaslicer
 resources:
   - namespace.yaml
   - configmap-profiles.yaml
+  - bambu-a1-secret.yaml
   - deployment.yaml
   - service.yaml
   - tlsoption.yaml

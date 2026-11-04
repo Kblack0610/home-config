@@ -23,6 +23,10 @@ THE INVARIANTS
      "ansible-vault was retired") and this script.
   3. Every tracked `*.sops.yaml` (the `.sops.yaml` config aside) carries a top-level
      `sops:` block with a `mac:`, so a file saved in plain text under a SOPS name fails.
+  4. No slicer profile or config under apps/orcaslicer/ holds a printer access code or
+     serial: each such value is empty or an `@A1_...@` placeholder that the init container
+     fills from the SOPS Secret. OrcaSlicer writes the live code into any preset or conf you
+     save, and this repo is public on GitHub, so a copied-in preset would publish it again.
 
 USAGE
 
@@ -43,6 +47,12 @@ MENTION = re.compile(r"ansible-vault|ANSIBLE_VAULT_PASSWORD_FILE|vault_password_
 CIPHERTEXT = re.compile(r"\$ANSIBLE_VAULT;")
 VAULT_TAG = re.compile(r":\s*!vault\b")
 SOPS_MAC = re.compile(r"^sops:\s*$.*?^\s+mac:\s*ENC\[", re.M | re.S)
+SLICER_DIR = "apps/orcaslicer/"
+# A code or serial as a named key, or as an `"<ip>": "<code>"` entry of an access_code map.
+PRINTER_SECRET = re.compile(
+    r'"(?:\w*access_code|\w*serial_number)"\s*:\s*"(?!@A1_)[^"]+"'
+    r'|"\d+\.\d+\.\d+\.\d+"\s*:\s*"(?!@A1_)[^"]+"'
+)
 
 
 def tracked_files():
@@ -73,6 +83,8 @@ def main(argv):
                 problems.append(f"{name}:{n}: inline !vault value; move it into a SOPS file")
             elif MENTION.search(line) and not RETIREMENT.search(line):
                 problems.append(f"{name}:{n}: mentions ansible-vault, which is retired; use sops")
+            if name.startswith(SLICER_DIR) and "secret" not in Path(name).name and PRINTER_SECRET.search(line):
+                problems.append(f"{name}:{n}: printer access code or serial in plain text; leave it empty or use the @A1_...@ placeholder")
 
         base = Path(name).name
         if base.endswith(".sops.yaml") and base != ".sops.yaml" and not SOPS_MAC.search(text):
@@ -83,7 +95,7 @@ def main(argv):
     if problems:
         print("\nSecrets in this repo are SOPS only. See ansible/README.md \"Secrets\".")
         return 1
-    print(f"ok: {len(files)} files, no ansible-vault, every *.sops.yaml encrypted")
+    print(f"ok: {len(files)} files, no ansible-vault, every *.sops.yaml encrypted, no printer codes in slicer profiles")
     return 0
 
 

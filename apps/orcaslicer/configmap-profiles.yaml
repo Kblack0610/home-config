@@ -11,8 +11,8 @@ data:
   orcaslicer.conf: |
     {
         "access_code": {
-            "192.168.1.54": "88888888",
-            "192.168.1.55": "20393920"
+            "192.168.1.54": "",
+            "192.168.1.55": "@A1_ACCESS_CODE@"
         },
         "app": {
             "allow_abnormal_storage": false,
@@ -132,9 +132,9 @@ data:
                 "dev_ip": "192.168.1.55",
                 "dev_name": "Bambu Lab A1",
                 "printer_type": "N2S",
-                "dev_access_code": "20393920",
+                "dev_access_code": "@A1_ACCESS_CODE@",
                 "dev_connection_type": "lan",
-                "serial_number": "03900D5B1110644"
+                "serial_number": "@A1_SERIAL@"
             }
         },
         "models": [
@@ -179,8 +179,8 @@ data:
             "settings_folder": "/prints"
         },
         "user_access_code": {
-            "192.168.1.54": "88888888",
-            "192.168.1.55": "20393920"
+            "192.168.1.54": "",
+            "192.168.1.55": "@A1_ACCESS_CODE@"
         }
     }
 
@@ -318,8 +318,8 @@ data:
         "printer_agent": "bambu",
         "printer_settings_id": "Bambu Lab A1 (0.4 nozzle)-LAN",
         "host_type": "bambu_lan",
-        "printhost_access_code": "20393920",
-        "printhost_serial_number": "03900D5B1110644",
+        "printhost_access_code": "@A1_ACCESS_CODE@",
+        "printhost_serial_number": "@A1_SERIAL@",
         "version": "1.9.0.2"
     }
 

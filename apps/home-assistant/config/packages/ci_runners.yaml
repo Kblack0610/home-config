@@ -75,7 +75,7 @@ rest:
 
   - resource: http://kube-prometheus-stack-prometheus.monitoring.svc:9090/api/v1/query
     params:
-      query: min(github_runner_exporter_api_ok)
+      query: min(github_runner_exporter_api_ok{forge="github"})
     scan_interval: 60
     sensor:
       - name: CI GitHub API

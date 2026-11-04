@@ -1,0 +1,33 @@
+# monitoring/github-runner-exporter reads the runners from here: Forgejo 14 has
+# no API that lists runners, so the runner pods are the list, their logs say
+# which task each one took, and the ConfigMap gives capacity and labels.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: forgejo-runner-reader
+  namespace: forgejo
+rules:
+  - apiGroups: [""]
+    resources: ["pods"]
+    verbs: ["get", "list"]
+  - apiGroups: [""]
+    resources: ["pods/log"]
+    verbs: ["get"]
+  - apiGroups: [""]
+    resources: ["configmaps"]
+    resourceNames: ["forgejo-runner-config"]
+    verbs: ["get"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: github-runner-exporter
+  namespace: forgejo
+subjects:
+  - kind: ServiceAccount
+    name: github-runner-exporter
+    namespace: monitoring
+roleRef:
+  kind: Role
+  name: forgejo-runner-reader
+  apiGroup: rbac.authorization.k8s.io

@@ -166,7 +166,7 @@ panels = [
     stat("Offline / missing", "Registered runners that are offline, plus roster slots that never registered (ansible/inventory.yml says they should exist).",
          'sum(' + W + '(github_runners_by_state{state=~"offline|missing"}))', 12, 4, [("green", None), ("red", 1)]),
     stat("GitHub API", "Whether the exporter can read GitHub. 'no data' means the token is missing or rejected: the tables below are then empty because nothing could be read, not because nothing is running.",
-         "min(github_runner_exporter_api_ok)", 16, 8, [("red", None), ("green", 1)], no_value="no data",
+         'min(github_runner_exporter_api_ok{forge="github"})', 16, 8, [("red", None), ("green", 1)], no_value="no data",
          mappings=[{"type": "value", "options": {"0": {"text": "FAILING (token?)", "color": "red"}, "1": {"text": "OK", "color": "green"}}}]),
 
     machines(4),

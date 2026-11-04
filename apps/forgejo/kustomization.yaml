@@ -17,3 +17,4 @@ resources:
   - runner-config-cm.yaml
   - runner-secret.yaml
   - runner-deployment.yaml
+  - runner-reader-rbac.yaml

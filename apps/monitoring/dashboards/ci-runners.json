@@ -324,7 +324,7 @@
             "uid": "${datasource}"
           },
           "editorMode": "code",
-          "expr": "min(github_runner_exporter_api_ok)",
+          "expr": "min(github_runner_exporter_api_ok{forge=\"github\"})",
           "format": "time_series",
           "instant": true,
           "range": false,

@@ -49,12 +49,29 @@ Those totals are trailing-window gauges: runs enter and leave them at once, so
 no PromQL over them can say when anything happened. github_runs_by_hour and
 github_run_failed say that instead, from the same list and with no extra calls.
 
+FORGEJO ACTIONS (git.kblab.me) are rows in the same series with forge="forgejo"
+and pool="forgejo"; every GitHub row says forge="github". Forgejo 14 has no API
+that lists runners or says which runner runs a task, so:
+  - which runners exist and whether they are up comes from the runner pods (each
+    registers under its pod name). A Pending pod is `missing`, a Running pod
+    whose runner container is not ready is `offline`.
+  - runner.capacity in the runner ConfigMap makes each runner that many rows,
+    <pod>/<n>, so the pool counts slots the way the GitHub pools do.
+  - which runner runs which task comes from the runner's own log line "task <id>
+    repo is <repo>", joined to the Forgejo API's running jobs (task ids) and
+    tasks (job, workflow, branch, title). A running task whose log line is gone
+    shows on no row; a runner restart kills its task anyway.
+The API gives no time a job was queued, so a waiting job's age is from the first
+scrape that saw it (reset on an exporter restart). Finished work is every task
+created in the window, by its status. Off unless $FORGEJO_REPOS is set.
+
 Alerting is NOT here. Sentinel (~/.agent/watches/*runners-online.yaml) is the
 notification voice for runner pools; this is the screen.
 """
 import json
 import os
 import re
+import ssl
 import threading
 import time
 from collections import OrderedDict
@@ -246,13 +263,19 @@ def runners(source):
 
 
 def ts(s):
-    """GitHub ISO-8601 'Z' timestamp -> epoch seconds, parsed as explicit UTC."""
+    """ISO-8601 timestamp -> epoch seconds. The 'Z' form is parsed as explicit UTC; Forgejo
+    writes its server's zone (Z on this one today), so an offset form is read with its offset."""
     if not s:
         return None
     try:
         return datetime.strptime(s, "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=timezone.utc).timestamp()
     except ValueError:
+        pass
+    try:
+        t = datetime.fromisoformat(s)
+    except ValueError:
         return None
+    return t.timestamp() if t.tzinfo else None
 
 
 def pool_of(labels):
@@ -447,6 +470,204 @@ def repo_activity(repo, now):
     return out
 
 
+# Forgejo Actions: the runners from the k8s API, their tasks from the Forgejo API.
+# The module docstring, FORGEJO ACTIONS, says which fact comes from where and why.
+FORGEJO_REPOS = os.environ.get("FORGEJO_REPOS", "").split()
+FORGEJO_API = os.environ.get("FORGEJO_API", "http://forgejo-http.forgejo.svc:3000/api/v1").rstrip("/")
+FORGEJO_WEB = os.environ.get("FORGEJO_WEB", "https://git.kblab.me").rstrip("/")
+FORGEJO_TOKEN = os.environ.get("FORGEJO_TOKEN", "")
+FORGEJO_NS = os.environ.get("FORGEJO_RUNNER_NAMESPACE", "forgejo")
+FORGEJO_SELECTOR = os.environ.get("FORGEJO_RUNNER_SELECTOR", "app.kubernetes.io/name=forgejo-runner")
+FORGEJO_CONFIGMAP = os.environ.get("FORGEJO_RUNNER_CONFIGMAP", "forgejo-runner-config")
+FORGEJO_CONTAINER = "runner"
+# Forgejo's largest page. Asking for more is not an error: it answers with every
+# task the repo ever had (2026-11-03: limit=100 returned 2498).
+FORGEJO_PAGE = 50
+# Bounds one log read. Info level writes a few lines per task, so this only
+# matters if the runner's log level is ever raised.
+FORGEJO_LOG_LINES = 20000
+K8S_API = "https://kubernetes.default.svc"
+SA_DIR = "/var/run/secrets/kubernetes.io/serviceaccount"
+# repo -> {task id: task}, the window's tasks; repo -> when they were last read in full.
+FJ_TASKS = {}
+FJ_REFRESHED = {}
+# waiting job id -> when a scrape first saw it waiting.
+FJ_SEEN = {}
+FJ_TASK_KEYS = ("id", "name", "head_branch", "event", "display_title", "status", "workflow_id", "url",
+                "created_at", "updated_at", "run_started_at")
+FJ_DONE = frozenset({"success", "failure", "cancelled", "skipped"})
+
+
+def fget(path):
+    """A Forgejo API GET. Forgejo answers `null` for an empty list."""
+    req = urllib.request.Request(f"{FORGEJO_API}/{path}")
+    req.add_header("Accept", "application/json")
+    if FORGEJO_TOKEN:
+        req.add_header("Authorization", f"token {FORGEJO_TOKEN}")
+    with urllib.request.urlopen(req, timeout=10) as r:
+        return json.loads(r.read())
+
+
+def kget(path, text=False):
+    """A Kubernetes API GET as this pod's service account."""
+    with open(f"{SA_DIR}/token") as f:
+        token = f.read().strip()
+    req = urllib.request.Request(f"{K8S_API}{path}")
+    req.add_header("Authorization", f"Bearer {token}")
+    ctx = ssl.create_default_context(cafile=f"{SA_DIR}/ca.crt")
+    with urllib.request.urlopen(req, timeout=10, context=ctx) as r:
+        body = r.read()
+    return body.decode(errors="replace") if text else json.loads(body)
+
+
+def forgejo_runners():
+    """The runner pods, the ConfigMap's capacity and labels, and the task ids each pod took."""
+    ns = f"/api/v1/namespaces/{FORGEJO_NS}"
+    cfg = kget(f"{ns}/configmaps/{FORGEJO_CONFIGMAP}").get("data", {}).get("config.yaml", "")
+    m = re.search(r"^\s*capacity:\s*(\d+)", cfg, re.M)
+    # `- "docker:docker://docker:27"` registers the label docker.
+    labels = sorted(set(re.findall(r'^\s*-\s*"?([\w.-]+):(?:docker|host|lxc)\b', cfg, re.M)))
+    pods = kget(f"{ns}/pods?labelSelector={urllib.parse.quote(FORGEJO_SELECTOR, safe='')}").get("items", [])
+    out = []
+    for p in sorted(pods, key=lambda p: p["metadata"]["name"]):
+        phase, name = p.get("status", {}).get("phase"), p["metadata"]["name"]
+        if phase in ("Succeeded", "Failed"):
+            continue  # a dead pod object, not a runner
+        ready = any(c.get("name") == FORGEJO_CONTAINER and c.get("ready")
+                    for c in p.get("status", {}).get("containerStatuses") or [])
+        state = "missing" if phase != "Running" else "idle" if ready else "offline"
+        tasks = set()
+        if state == "idle":
+            log = kget(f"{ns}/pods/{name}/log?container={FORGEJO_CONTAINER}&sinceSeconds={HISTORY_WINDOW_SECS}"
+                       f"&tailLines={FORGEJO_LOG_LINES}", text=True)
+            tasks = {int(t) for t in re.findall(r"\btask (\d+) repo is ", log)}
+        out.append({"name": name, "host": p.get("spec", {}).get("nodeName") or "unscheduled",
+                    "state": state, "tasks": tasks})
+    return {"capacity": int(m.group(1)) if m else 1, "labels": labels, "runners": out}
+
+
+def forgejo_repo(repo, now):
+    """One repo's waiting and running jobs, and its tasks of the window (cached in FJ_TASKS).
+
+    Every scrape reads the newest page of tasks, and more until every running job's task
+    is known; every HISTORY_REFRESH_SECS it reads back to the window's start, which
+    is what brings a finished task's final status in.
+    """
+    out = {"repo": repo, "ok": True, "jobs": []}
+    try:
+        out["jobs"] = fget(f"repos/{repo}/actions/runners/jobs") or []
+        want = {j["task_id"] for j in out["jobs"] if j.get("status") == "running" and j.get("task_id")}
+        tasks = FJ_TASKS.setdefault(repo, {})
+        full = now - FJ_REFRESHED.get(repo, 0) >= HISTORY_REFRESH_SECS
+        page = 1
+        while True:
+            batch = (fget(f"repos/{repo}/actions/tasks?limit={FORGEJO_PAGE}&page={page}") or {}).get("workflow_runs") or []
+            for t in batch:
+                tasks[t["id"]] = slim(t, FJ_TASK_KEYS)
+            whole = len(batch) < FORGEJO_PAGE or (ts(batch[-1].get("created_at")) or 0) < now - HISTORY_WINDOW_SECS
+            if whole and full:
+                FJ_REFRESHED[repo] = now
+            if whole or (not full and want <= tasks.keys()) or time.time() >= BUDGET["until"]:
+                break
+            page += 1
+        for tid in [k for k, t in tasks.items() if (ts(t.get("created_at")) or 0) < now - HISTORY_WINDOW_SECS]:
+            del tasks[tid]
+    except API_ERRORS:
+        out["ok"] = False
+    return out
+
+
+def forgejo_rows(runners_fut, repo_futs, now):
+    """Forgejo's rows for each series, as {metric: [(labels, value)]}, and its api_ok lines."""
+    rows, ok = {}, []
+
+    def add(metric, lab, v):
+        rows.setdefault(metric, []).append(({**lab, "forge": "forgejo"}, v))
+
+    try:
+        fr = runners_fut.result()
+        ok.append((f"forgejo:namespaces/{FORGEJO_NS}", "runners", 1))
+    except API_ERRORS:
+        fr = None
+        ok.append((f"forgejo:namespaces/{FORGEJO_NS}", "runners", 0))
+    facts = [f.result() for f in repo_futs]
+    running, waiting_ids = {}, set()
+    for f in facts:
+        ok.append((f"forgejo:repos/{f['repo']}", "runs", 1 if f["ok"] else 0))
+        short = f["repo"].split("/", 1)[1]
+        for j in f["jobs"]:
+            if j.get("status") == "running" and j.get("task_id"):
+                running[j["task_id"]] = (short, j, FJ_TASKS.get(f["repo"], {}).get(j["task_id"], {}))
+            elif j.get("status") == "waiting":
+                waiting_ids.add(j["id"])
+                age = int(now - FJ_SEEN.setdefault(j["id"], now))
+                runs_on = j.get("runs_on") or []
+                stuck = fr is not None and not set(runs_on) <= set(fr["labels"])
+                add("github_actions_job_waiting",
+                    {"repo": short, "workflow": "", "job_name": j.get("name", ""), "branch": "", "status": "waiting",
+                     "labels": ",".join(runs_on), "pool": "forgejo", "stuck": "true" if stuck else "false",
+                     "url": f"{FORGEJO_WEB}/{f['repo']}/actions", **NO_RUN}, age)
+    if all(f["ok"] for f in facts):
+        for jid in [k for k in FJ_SEEN if k not in waiting_ids]:
+            del FJ_SEEN[jid]
+
+    finished = [(r.split("/", 1)[1], t) for r, tasks in FJ_TASKS.items() if r in FORGEJO_REPOS
+                for t in tasks.values() if t.get("status") in FJ_DONE]
+    if fr is not None:
+        by_state = dict.fromkeys(("running", "idle", "offline", "missing"), 0)
+        for r in fr["runners"]:
+            base = {"host": r["host"], "pool": "forgejo", "site": site_of(r["host"]), "scope": "instance",
+                    "labels": ",".join(fr["labels"])}
+            mine = sorted((running[t] for t in r["tasks"] if t in running),
+                          key=lambda x: ts(x[2].get("run_started_at")) or 0)
+            for n in range(fr["capacity"]):
+                lab = {"name": f"{r['name']}/{n + 1}", **base, "state": r["state"], "repo": "", "workflow": "",
+                       "job_name": "", "branch": "", "url": "", **NO_RUN}
+                value = 0
+                if r["state"] == "idle" and n < len(mine):
+                    repo, j, t = mine[n]
+                    lab.update(state="running", repo=repo, workflow=t.get("workflow_id") or "",
+                               job_name=j.get("name") or t.get("name") or "", branch=t.get("head_branch") or "",
+                               url=t.get("url") or "", event=t.get("event") or "",
+                               title=(t.get("display_title") or "").split("\n")[0][:TITLE_MAX])
+                    started = ts(t.get("run_started_at"))
+                    value = int(now - started) if started else 0
+                add("github_runner_state", lab, value)
+                by_state[lab["state"]] += 1
+            last = max(((ts(t.get("updated_at")) or 0, repo, t) for repo, t in finished if t["id"] in r["tasks"]),
+                       key=lambda x: x[0], default=None)
+            # On every slot of the runner: a task is not tied to a slot, and the
+            # dashboard joins this to github_runner_state by name.
+            for n in range(fr["capacity"]) if last and last[0] else ():
+                done, repo, t = last
+                add("github_runner_last_job",
+                    {"name": f"{r['name']}/{n + 1}", "last_repo": repo, "last_workflow": t.get("workflow_id") or "",
+                     "last_job": t.get("name") or "", "last_conclusion": t.get("status") or "",
+                     "last_url": t.get("url") or ""}, int(done))
+        for state, n in by_state.items():
+            add("github_runners_by_state", {"state": state}, n)
+
+    counts, took, pool_wf = {}, {}, {}
+    for repo, t in finished:
+        wf = t.get("workflow_id") or ""
+        k = (repo, wf, t["status"])
+        counts[k] = counts.get(k, 0) + 1
+        started, done = ts(t.get("run_started_at")), ts(t.get("updated_at"))
+        if done:
+            pool_wf[(repo, wf)] = max(pool_wf.get((repo, wf), 0), done)
+        if started and done and t["status"] != "skipped":
+            took.setdefault(wf, []).append(max(0, done - started))
+    for (repo, wf, c), n in sorted(counts.items()):
+        add("github_jobs_finished", {"pool": "forgejo", "repo": repo, "workflow": wf, "conclusion": c}, n)
+    for wf, xs in sorted(took.items()):
+        xs.sort()
+        for q in QUANTILES:
+            add("github_job_duration_seconds", {"pool": "forgejo", "workflow": wf, "quantile": q}, int(quantile(xs, float(q))))
+    for (repo, wf), done in sorted(pool_wf.items()):
+        add("github_pool_workflow", {"pool": "forgejo", "repo": repo, "workflow": wf}, int(done))
+    return rows, ok
+
+
 def render():
     now = time.time()
     sources = [f"orgs/{o}" for o in ORGS] + [f"repos/{r}" for r in RUN_REPOS]
@@ -455,10 +676,16 @@ def render():
     with ThreadPoolExecutor(max_workers=8) as pool:
         runner_futs = {s: pool.submit(runners, s) for s in sources}
         repo_futs = [pool.submit(repo_activity, r, now) for r in RUN_REPOS]
+        fj_runners = pool.submit(forgejo_runners) if FORGEJO_REPOS else None
+        fj_repos = [pool.submit(forgejo_repo, r, now) for r in FORGEJO_REPOS]
         acts = [f.result() for f in repo_futs]
+    fj, fj_ok = forgejo_rows(fj_runners, fj_repos, now) if FORGEJO_REPOS else ({}, [])
+
+    def forgejo(metric):
+        return [f"{metric}{{{labels_str(lab)}}} {v}" for lab, v in fj.get(metric, [])]
 
     L = [
-        "# HELP github_runner_exporter_api_ok 1 if this GitHub source answered this scrape",
+        "# HELP github_runner_exporter_api_ok 1 if this source answered this scrape",
         "# TYPE github_runner_exporter_api_ok gauge",
     ]
     seen, runners_ok = {}, True
@@ -469,9 +696,11 @@ def render():
             ok = 1
         except API_ERRORS:
             ok, runners_ok = 0, False
-        L.append(f'github_runner_exporter_api_ok{{source="{esc(src)}",kind="runners"}} {ok}')
+        L.append(f'github_runner_exporter_api_ok{{source="{esc(src)}",kind="runners",forge="github"}} {ok}')
     for a in acts:
-        L.append(f'github_runner_exporter_api_ok{{source="repos/{esc(a["repo"])}",kind="runs"}} {1 if a["ok"] else 0}')
+        L.append(f'github_runner_exporter_api_ok{{source="repos/{esc(a["repo"])}",kind="runs",forge="github"}} {1 if a["ok"] else 0}')
+    for src, kind, ok in fj_ok:
+        L.append(f'github_runner_exporter_api_ok{{source="{esc(src)}",kind="{kind}",forge="forgejo"}} {ok}')
 
     # runner_name -> the job it is running right now.
     running = {}
@@ -497,7 +726,8 @@ def render():
         # labels: what ci-runner-governor matches waiting jobs against, offline runners too.
         lab = {"name": r["name"], "host": host, "pool": pool_, "site": site_of(host), "scope": scope,
                "labels": ",".join(sorted(names)),
-               "state": "", "repo": "", "workflow": "", "job_name": "", "branch": "", "url": "", **NO_RUN}
+               "state": "", "repo": "", "workflow": "", "job_name": "", "branch": "", "url": "", **NO_RUN,
+               "forge": "github"}
         value = 0
         if r.get("status") != "online":
             lab["state"] = "offline"
@@ -519,6 +749,7 @@ def render():
             online[(host, pool_)] = online.get((host, pool_), 0) + 1
         by_state[lab["state"]] = by_state.get(lab["state"], 0) + 1
         L.append(f"github_runner_state{{{labels_str(lab)}}} {value}")
+    L += forgejo("github_runner_state")
 
     L += [
         "# HELP github_runner_withheld A unity pool runner apps/ci-runner-governor holds back from new jobs",
@@ -539,7 +770,8 @@ def render():
             for n in range(registered.get((host, pool_), 0), slots):
                 lab = {"name": f"{host} {pool_} slot {n + 1}", "host": host, "pool": pool_, "site": site_of(host),
                        "scope": "roster", "labels": "",
-                       "state": "missing", "repo": "", "workflow": "", "job_name": "", "branch": "", "url": "", **NO_RUN}
+                       "state": "missing", "repo": "", "workflow": "", "job_name": "", "branch": "", "url": "", **NO_RUN,
+                       "forge": "github"}
                 by_state["missing"] = by_state.get("missing", 0) + 1
                 L.append(f"github_runner_state{{{labels_str(lab)}}} 0")
 
@@ -550,7 +782,8 @@ def render():
     for state in ("running", "idle", "offline", "missing"):
         if state == "missing" and not runners_ok:
             continue
-        L.append(f'github_runners_by_state{{state="{state}"}} {by_state.get(state, 0)}')
+        L.append(f'github_runners_by_state{{state="{state}",forge="github"}} {by_state.get(state, 0)}')
+    L += forgejo("github_runners_by_state")
 
     L += [
         "# HELP github_runner_pool_expected Slots the roster says this host runs in this pool",
@@ -575,8 +808,9 @@ def render():
                "branch": j.get("head_branch") or "", "status": j.get("status", ""),
                "labels": ",".join(j.get("labels") or []), "pool": pool_of(j.get("labels") or []),
                "stuck": "true" if j.get("_jobless") and age > JOBLESS_STUCK_SECS else "false",
-               "url": j.get("html_url", ""), **j["_run"]}
+               "url": j.get("html_url", ""), **j["_run"], "forge": "github"}
         L.append(f"github_actions_job_waiting{{{labels_str(lab)}}} {age}")
+    L += forgejo("github_actions_job_waiting")
 
     L += [
         "# HELP github_actions_runs Workflow runs in this status (queued, in_progress)",
@@ -634,14 +868,16 @@ def render():
     for rn, (done, repo, wf, j) in sorted(last.items()):
         lab = labels_str({"name": rn, "last_repo": repo.split("/", 1)[1], "last_workflow": wf,
                           "last_job": j.get("name", ""), "last_conclusion": j.get("conclusion") or "",
-                          "last_url": j.get("html_url", "")})
+                          "last_url": j.get("html_url", ""), "forge": "github"})
         L.append(f"github_runner_last_job{{{lab}}} {int(done)}")
+    L += forgejo("github_runner_last_job")
     L += [
         "# HELP github_pool_workflow A workflow this pool ran in the last 24h; value is when it last did",
         "# TYPE github_pool_workflow gauge",
     ]
     for (pool_, repo, wf), done in sorted(pool_wf.items()):
-        L.append(f"github_pool_workflow{{{labels_str({'pool': pool_, 'repo': repo, 'workflow': wf})}}} {int(done)}")
+        L.append(f"github_pool_workflow{{{labels_str({'pool': pool_, 'repo': repo, 'workflow': wf, 'forge': 'github'})}}} {int(done)}")
+    L += forgejo("github_pool_workflow")
 
     # Finished work over the window. Runs count as soon as they are listed; a
     # run's jobs count once they are cached (HISTORY_CALL_BUDGET), so after
@@ -704,7 +940,8 @@ def render():
         "# TYPE github_jobs_finished gauge",
     ]
     for (pool_, repo, wf, c), n in sorted(jobs_done.items()):
-        L.append(f"github_jobs_finished{{{labels_str({'pool': pool_, 'repo': repo, 'workflow': wf, 'conclusion': c})}}} {n}")
+        L.append(f"github_jobs_finished{{{labels_str({'pool': pool_, 'repo': repo, 'workflow': wf, 'conclusion': c, 'forge': 'github'})}}} {n}")
+    L += forgejo("github_jobs_finished")
     L += [
         "# HELP github_job_queue_seconds Time a finished job (last 24h) waited for a runner, started_at - created_at",
         "# TYPE github_job_queue_seconds gauge",
@@ -720,7 +957,8 @@ def render():
     for (pool_, wf), xs in sorted(took.items()):
         xs.sort()
         for q in QUANTILES:
-            L.append(f'github_job_duration_seconds{{{labels_str({"pool": pool_, "workflow": wf, "quantile": q})}}} {int(quantile(xs, float(q)))}')
+            L.append(f'github_job_duration_seconds{{{labels_str({"pool": pool_, "workflow": wf, "quantile": q, "forge": "github"})}}} {int(quantile(xs, float(q)))}')
+    L += forgejo("github_job_duration_seconds")
 
     L += [
         "# HELP github_runner_exporter_api_calls_total GitHub API calls charged to the limit since start, by kind",

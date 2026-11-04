@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Offline tests for exporter.py: canned GitHub responses, no network.
+"""Offline tests for exporter.py: canned GitHub, Forgejo and Kubernetes responses, no network.
 
 Covers the logic a quiet afternoon cannot show on the live API: a busy runner
 gets the job it is running, a queued job and a job-less ghost run show as
@@ -151,7 +151,7 @@ class ExporterTest(unittest.TestCase):
         missing = [r for r in state if 'state="missing"' in r]
         self.assertEqual(len(missing), 1)
         self.assertIn('host="gone"', missing[0])
-        self.assertIn('github_runners_by_state{state="missing"} 1', out)
+        self.assertIn('github_runners_by_state{state="missing",forge="github"} 1', out)
 
     def test_runner_rows_carry_their_labels_offline_too(self):
         # ci-runner-governor reads these to tell which waiting jobs a stopped host could take.
@@ -193,7 +193,7 @@ class ExporterTest(unittest.TestCase):
 
     def test_failed_source_is_unknown_not_offline(self):
         out = self.render(broken=("orgs/acme",))
-        self.assertIn('github_runner_exporter_api_ok{source="orgs/acme",kind="runners"} 0', out)
+        self.assertIn('github_runner_exporter_api_ok{source="orgs/acme",kind="runners",forge="github"} 0', out)
         state = rows(out, "github_runner_state")
         self.assertFalse(any('name="box-unity-pool-1"' in r for r in state))
         self.assertFalse(any('state="missing"' in r for r in state))
@@ -216,7 +216,7 @@ class ExporterTest(unittest.TestCase):
         # The GitHub-hosted job is not a runner of ours and must not appear.
         self.assertNotIn("GitHub Actions", out)
         self.assertEqual(rows(out, "github_pool_workflow"),
-                         [l for l in out.splitlines() if l.startswith('github_pool_workflow{pool="light",repo="web",workflow="CI"}')])
+                         [l for l in out.splitlines() if l.startswith('github_pool_workflow{pool="light",repo="web",workflow="CI",forge="github"}')])
 
     def test_runs_finished_counts_the_window(self):
         out = self.render()
@@ -236,10 +236,10 @@ class ExporterTest(unittest.TestCase):
 
     def test_jobs_finished_by_pool(self):
         self.assertEqual(sorted(rows(self.render(), "github_jobs_finished")), [
-            'github_jobs_finished{pool="github-hosted",repo="web",workflow="CI",conclusion="skipped"} 1',
-            'github_jobs_finished{pool="github-hosted",repo="web",workflow="CI",conclusion="success"} 1',
-            'github_jobs_finished{pool="light",repo="web",workflow="CI",conclusion="cancelled"} 1',
-            'github_jobs_finished{pool="light",repo="web",workflow="CI",conclusion="failure"} 1'])
+            'github_jobs_finished{pool="github-hosted",repo="web",workflow="CI",conclusion="skipped",forge="github"} 1',
+            'github_jobs_finished{pool="github-hosted",repo="web",workflow="CI",conclusion="success",forge="github"} 1',
+            'github_jobs_finished{pool="light",repo="web",workflow="CI",conclusion="cancelled",forge="github"} 1',
+            'github_jobs_finished{pool="light",repo="web",workflow="CI",conclusion="failure",forge="github"} 1'])
 
     def test_queue_and_duration_quantiles(self):
         out = self.render()
@@ -251,9 +251,9 @@ class ExporterTest(unittest.TestCase):
         self.assertEqual(len(q), 4)
         d = {r.rsplit(" ", 1)[0]: int(r.rsplit(" ", 1)[1]) for r in rows(out, "github_job_duration_seconds")}
         # light ran lint 240s and e2e 0s: median (nearest rank) 0, p90 240.
-        self.assertEqual(d['github_job_duration_seconds{pool="light",workflow="CI",quantile="0.5"}'], 0)
-        self.assertEqual(d['github_job_duration_seconds{pool="light",workflow="CI",quantile="0.9"}'], 240)
-        self.assertEqual(d['github_job_duration_seconds{pool="github-hosted",workflow="CI",quantile="0.5"}'], 60)
+        self.assertEqual(d['github_job_duration_seconds{pool="light",workflow="CI",quantile="0.5",forge="github"}'], 0)
+        self.assertEqual(d['github_job_duration_seconds{pool="light",workflow="CI",quantile="0.9",forge="github"}'], 240)
+        self.assertEqual(d['github_job_duration_seconds{pool="github-hosted",workflow="CI",quantile="0.5",forge="github"}'], 60)
 
     def test_quantile_nearest_rank(self):
         xs = list(range(1, 11))
@@ -607,7 +607,7 @@ class RateLimitTest(unittest.TestCase):
         self.assertEqual(self.opened, 1)
         # A whole scrape while backing off makes no call and reads as api_ok=0.
         out = exporter.render()
-        self.assertIn('github_runner_exporter_api_ok{source="orgs/acme",kind="runners"} 0', out)
+        self.assertIn('github_runner_exporter_api_ok{source="orgs/acme",kind="runners",forge="github"} 0', out)
         self.assertIn('github_runner_exporter_rate_remaining{scope="orgs"} 0', out)
         # Only the empty bucket is held off: repos/ calls still go out.
         self.assertGreater(self.opened, 1)
@@ -689,6 +689,239 @@ class RateLimitTest(unittest.TestCase):
         exporter.get("repos/acme/web/actions/runs/9/jobs", "history_jobs")
         self.assertEqual(list(exporter.ETAGS), [])
         self.assertEqual(self.sent, [None, None, None])
+
+
+FJ_CONFIG = """log:
+  level: info
+runner:
+  capacity: 2
+  labels:
+    - "docker:docker://docker:27"
+    - "linux-amd64:host"
+"""
+
+
+def pod(name, node, phase="Running", ready=True):
+    return {"metadata": {"name": name}, "spec": {"nodeName": node} if node else {},
+            "status": {"phase": phase, "containerStatuses": [{"name": "dind", "ready": True},
+                                                             {"name": "runner", "ready": ready}]}}
+
+
+def task(i, status, created, started=None, updated=None, wf="build.yaml", name="build"):
+    return {"id": i, "name": name, "head_branch": "master", "event": "push", "display_title": f"commit {i}\nbody",
+            "status": status, "workflow_id": wf, "url": f"https://forge/kb/ci/actions/runs/{i}",
+            "created_at": created, "updated_at": updated or created, "run_started_at": started or created}
+
+
+# Forgejo renders its own time zone; this one is T2 written at -05:00.
+T2_EST = time.strftime("%Y-%m-%dT%H:%M:%S-05:00", time.gmtime(time.time() - 300 - 5 * 3600))
+FJ = {
+    "repos/kb/ci/actions/runners/jobs": [
+        {"id": 1, "name": "build", "status": "running", "task_id": 101, "runs_on": ["docker"]},
+        {"id": 2, "name": "test", "status": "waiting", "task_id": 0, "runs_on": ["docker"]},
+        {"id": 3, "name": "arm", "status": "waiting", "task_id": 0, "runs_on": ["linux-arm64"]}],
+    "repos/kb/ci/actions/tasks?limit=50&page=1": {"total_count": 4, "workflow_runs": [
+        task(101, "running", T2_EST),
+        task(90, "success", T0, T0, T1),
+        task(89, "failure", T0, T0, T2, wf="lint.yaml", name="lint"),
+        task(70, "success", OLD)]},
+    # Forgejo answers null, not [], when nothing is waiting or running.
+    "repos/kb/site/actions/runners/jobs": None,
+    "repos/kb/site/actions/tasks?limit=50&page=1": {"total_count": 0, "workflow_runs": []},
+}
+FJ_LOG = ("time=x level=info msg=\"task 90 repo is kb/ci https://data.forgejo.org https://forge\"\n"
+          "time=x level=info msg=\"task 101 repo is kb/ci https://data.forgejo.org https://forge\"\n")
+
+
+class FakeForge:
+    def __init__(self, broken=(), jobs=None):
+        self.broken, self.calls, self.jobs = broken, [], jobs
+
+    def fget(self, path):
+        self.calls.append(path)
+        if any(path.startswith(b) for b in self.broken):
+            raise urllib.error.URLError("boom")
+        if self.jobs is not None and path == "repos/kb/ci/actions/runners/jobs":
+            return self.jobs
+        return FJ[path]
+
+    def kget(self, path, text=False):
+        self.calls.append(path)
+        if "k8s" in self.broken:
+            raise urllib.error.URLError("boom")
+        if path.endswith("/configmaps/forgejo-runner-config"):
+            return {"data": {"config.yaml": FJ_CONFIG}}
+        if "/pods?labelSelector=app.kubernetes.io%2Fname%3Dforgejo-runner" in path:
+            return {"items": [pod("runner-b", "razer-laptop", ready=False), pod("runner-a", "hp-victus"),
+                              pod("runner-c", None, phase="Pending"),
+                              pod("runner-old", "asus-laptop", phase="Succeeded", ready=False)]}
+        if path.startswith("/api/v1/namespaces/forgejo/pods/runner-a/log?container=runner&"):
+            return FJ_LOG
+        raise AssertionError(f"unexpected k8s read {path}")
+
+
+class ForgejoTest(unittest.TestCase):
+    def setUp(self):
+        for cache in (exporter.DONE_JOBS, exporter.HISTORY, exporter.CALLS, exporter.RATE,
+                      exporter.FJ_TASKS, exporter.FJ_REFRESHED, exporter.FJ_SEEN):
+            cache.clear()
+        self.repos = mock.patch.object(exporter, "FORGEJO_REPOS", ["kb/ci", "kb/site"])
+        self.repos.start()
+        self.addCleanup(self.repos.stop)
+
+    def render(self, **kw):
+        self.forge = FakeForge(**kw)
+        exporter.get = Fake()
+        with mock.patch.object(exporter, "fget", self.forge.fget), mock.patch.object(exporter, "kget", self.forge.kget):
+            return exporter.render()
+
+    def state(self, out):
+        return {re.search(r'name="([^"]+)"', r).group(1): r for r in rows(out, "github_runner_state")
+                if 'forge="forgejo"' in r}
+
+    def test_a_runner_is_capacity_rows_and_carries_its_task(self):
+        st = self.state(self.render())
+        self.assertEqual(sorted(st), ["runner-a/1", "runner-a/2", "runner-b/1", "runner-b/2", "runner-c/1", "runner-c/2"])
+        run = st["runner-a/1"]
+        for want in ('host="hp-victus"', 'pool="forgejo"', 'site="local"', 'labels="docker,linux-amd64"',
+                     'state="running"', 'repo="ci"', 'workflow="build.yaml"', 'job_name="build"', 'branch="master"',
+                     'url="https://forge/kb/ci/actions/runs/101"', 'event="push"', 'title="commit 101"'):
+            self.assertIn(want, run)
+        # The -05:00 start is read as the same instant as T2, 300s ago.
+        self.assertGreaterEqual(int(run.rsplit(" ", 1)[1]), 299)
+        self.assertLess(int(run.rsplit(" ", 1)[1]), 400)
+        self.assertIn('state="idle"', st["runner-a/2"])
+        self.assertIn('state="offline"', st["runner-b/1"])
+        self.assertIn('state="missing"', st["runner-c/1"])
+        self.assertIn('host="unscheduled"', st["runner-c/1"])
+
+    def test_only_up_runners_have_their_log_read(self):
+        self.render()
+        logs = [c for c in self.forge.calls if "/log?" in c]
+        self.assertEqual(len(logs), 1)
+        self.assertIn("/pods/runner-a/log?container=runner&sinceSeconds=86400", logs[0])
+
+    def test_forge_label_keeps_the_counts_apart(self):
+        out = self.render()
+        for want in ('github_runners_by_state{state="running",forge="forgejo"} 1',
+                     'github_runners_by_state{state="idle",forge="forgejo"} 1',
+                     'github_runners_by_state{state="offline",forge="forgejo"} 2',
+                     'github_runners_by_state{state="missing",forge="forgejo"} 2',
+                     'github_runners_by_state{state="running",forge="github"} 1'):
+            self.assertIn(want, out)
+        gh = [r for r in rows(out, "github_runner_state") if 'name="box-unity-pool-1"' in r]
+        self.assertIn('forge="github"', gh[0])
+
+    def test_waiting_jobs_age_from_first_seen_and_unrunnable_is_stuck(self):
+        out = self.render()
+        wait = {re.search(r'job_name="([^"]+)"', r).group(1): r for r in rows(out, "github_actions_job_waiting")
+                if 'forge="forgejo"' in r}
+        self.assertEqual(sorted(wait), ["arm", "test"])
+        for want in ('repo="ci"', 'pool="forgejo"', 'status="waiting"', 'labels="docker"', 'stuck="false"',
+                     'url="https://git.kblab.me/kb/ci/actions"'):
+            self.assertIn(want, wait["test"])
+        self.assertIn('stuck="true"', wait["arm"])
+        self.assertEqual(int(wait["test"].rsplit(" ", 1)[1]), 0)
+        exporter.FJ_SEEN[2] -= 120
+        (again,) = [r for r in rows(self.render(), "github_actions_job_waiting") if 'job_name="test"' in r]
+        self.assertGreaterEqual(int(again.rsplit(" ", 1)[1]), 120)
+        # Gone from the list (picked up): forgotten, so a later wait starts at 0.
+        self.render(jobs=[])
+        self.assertEqual(list(exporter.FJ_SEEN), [])
+
+    def test_a_failed_repo_keeps_the_first_seen_times(self):
+        self.render()
+        self.render(broken=("repos/kb/ci/",))
+        self.assertEqual(sorted(exporter.FJ_SEEN), [2, 3])
+
+    def test_finished_work_by_status_in_the_window(self):
+        out = self.render()
+        fj = sorted(r for r in rows(out, "github_jobs_finished") if 'forge="forgejo"' in r)
+        self.assertEqual(fj, [
+            'github_jobs_finished{pool="forgejo",repo="ci",workflow="build.yaml",conclusion="success",forge="forgejo"} 1',
+            'github_jobs_finished{pool="forgejo",repo="ci",workflow="lint.yaml",conclusion="failure",forge="forgejo"} 1'])
+        d = {r.rsplit(" ", 1)[0]: int(r.rsplit(" ", 1)[1]) for r in rows(out, "github_job_duration_seconds")}
+        self.assertEqual(d['github_job_duration_seconds{pool="forgejo",workflow="build.yaml",quantile="0.5",forge="forgejo"}'], 60)
+        self.assertEqual(d['github_job_duration_seconds{pool="forgejo",workflow="lint.yaml",quantile="0.9",forge="forgejo"}'], 300)
+        self.assertEqual(len([r for r in rows(out, "github_pool_workflow") if 'pool="forgejo"' in r]), 2)
+
+    def test_last_job_is_on_every_slot_of_the_runner_that_ran_it(self):
+        out = self.render()
+        last = sorted(r for r in rows(out, "github_runner_last_job") if 'forge="forgejo"' in r)
+        self.assertEqual([re.search(r'name="([^"]+)"', r).group(1) for r in last], ["runner-a/1", "runner-a/2"])
+        self.assertIn('last_job="build"', last[0])
+        self.assertIn('last_conclusion="success"', last[0])
+
+    def test_api_ok_per_source(self):
+        out = self.render()
+        for want in ('github_runner_exporter_api_ok{source="forgejo:namespaces/forgejo",kind="runners",forge="forgejo"} 1',
+                     'github_runner_exporter_api_ok{source="forgejo:repos/kb/ci",kind="runs",forge="forgejo"} 1',
+                     'github_runner_exporter_api_ok{source="forgejo:repos/kb/site",kind="runs",forge="forgejo"} 1'):
+            self.assertIn(want, out)
+        out = self.render(broken=("repos/kb/site/",))
+        self.assertIn('github_runner_exporter_api_ok{source="forgejo:repos/kb/site",kind="runs",forge="forgejo"} 0', out)
+
+    def test_unreadable_runners_are_absent_not_offline(self):
+        out = self.render(broken=("k8s",))
+        self.assertEqual(self.state(out), {})
+        self.assertFalse([r for r in rows(out, "github_runners_by_state") if 'forge="forgejo"' in r])
+        self.assertIn('github_runner_exporter_api_ok{source="forgejo:namespaces/forgejo",kind="runners",forge="forgejo"} 0', out)
+        # Waiting jobs still show; with no label list to judge them by, none is called stuck.
+        wait = [r for r in rows(out, "github_actions_job_waiting") if 'forge="forgejo"' in r]
+        self.assertEqual(len(wait), 2)
+        self.assertTrue(all('stuck="false"' in r for r in wait))
+
+    def test_off_without_repos(self):
+        with mock.patch.object(exporter, "FORGEJO_REPOS", []):
+            out = self.render()
+        self.assertNotIn('forge="forgejo"', out)
+        self.assertEqual(self.forge.calls, [])
+
+
+class ForgejoPagingTest(unittest.TestCase):
+    """forgejo_repo reads back to the window's start on a refresh, else only until it knows every running task."""
+
+    def setUp(self):
+        exporter.FJ_TASKS.clear()
+        exporter.FJ_REFRESHED.clear()
+        exporter.BUDGET["until"] = time.time() + 60
+        recent = [task(i, "success", T1) for i in (5, 4, 3, 2, 1)]
+        self.pages = {f"repos/kb/ci/actions/tasks?limit=2&page={n}": {"workflow_runs": recent[2 * n - 2:2 * n]}
+                      for n in (1, 2, 3)}
+        self.pages["repos/kb/ci/actions/runners/jobs"] = [{"id": 9, "status": "running", "task_id": 5}]
+        self.calls = []
+
+    def read(self):
+        def fget(path):
+            self.calls.append(path)
+            return self.pages[path]
+        self.calls.clear()
+        with mock.patch.object(exporter, "fget", fget), mock.patch.object(exporter, "FORGEJO_PAGE", 2):
+            return exporter.forgejo_repo("kb/ci", time.time())
+
+    def test_refresh_reads_every_page_then_one(self):
+        self.assertTrue(self.read()["ok"])
+        self.assertEqual(len([c for c in self.calls if "/tasks?" in c]), 3)
+        self.assertEqual(sorted(exporter.FJ_TASKS["kb/ci"]), [1, 2, 3, 4, 5])
+        self.read()
+        self.assertEqual(len([c for c in self.calls if "/tasks?" in c]), 1)
+
+    def test_an_unknown_running_task_reads_on(self):
+        self.read()
+        self.pages["repos/kb/ci/actions/runners/jobs"] = [{"id": 9, "status": "running", "task_id": 77}]
+        self.read()
+        self.assertEqual(len([c for c in self.calls if "/tasks?" in c]), 3)
+
+    def test_deadline_stops_the_read_and_leaves_the_refresh_due(self):
+        exporter.BUDGET["until"] = 0
+        self.read()
+        self.assertEqual(len([c for c in self.calls if "/tasks?" in c]), 1)
+        self.assertNotIn("kb/ci", exporter.FJ_REFRESHED)
+
+    def test_offset_timestamps(self):
+        self.assertEqual(exporter.ts("2026-11-03T22:15:08-05:00"), exporter.ts("2026-11-04T03:15:08Z"))
+        self.assertIsNone(exporter.ts("2026-11-04T03:15:08"))
+        self.assertIsNone(exporter.ts("garbage"))
 
 
 ORIGINAL_GET = exporter.get

@@ -1,3 +1,11 @@
+# Its own account so apps/forgejo/runner-reader-rbac.yaml can let it read the
+# Forgejo runner pods, their logs and the runner ConfigMap, and nothing else.
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: github-runner-exporter
+  namespace: monitoring
+---
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -15,6 +23,7 @@ spec:
       labels:
         app.kubernetes.io/name: github-runner-exporter
     spec:
+      serviceAccountName: github-runner-exporter
       affinity:
         # Off the CI workstations: the governor reads its runner list from
         # this exporter, so it must not go down with a hot CI host either.
@@ -73,6 +82,22 @@ spec:
             # unity_ci_lan: false; scripts/check-runner-roster.py fails if they drift.
             - name: CLOUD_HOSTS
               value: "aws-burst-1"
+            # Forgejo repos whose Actions jobs and tasks are read; the forgejo-runner
+            # pods are the runners (pool="forgejo", forge="forgejo").
+            - name: FORGEJO_REPOS
+              value: "kblack0610/platform kblack0610/home-config kblack0610/bnb-game-servers kblack0610/personal-sites kblack0610/dodginballs"
+            # Forgejo access token of kblack0610, scope read:repository only: the
+            # jobs list is owner-only (Forgejo v14 api.go: reqOwner) and needs a
+            # token even on a public repo. Minted by a human, then:
+            #   sops apps/github-runner-exporter/github-runner-exporter-secret.yaml
+            # and add a data key forgejo-token (base64). Optional: without it every
+            # forgejo:repos/* source reads api_ok=0, and the runner rows still show.
+            - name: FORGEJO_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: github-runner-exporter
+                  key: forgejo-token
+                  optional: true
           ports:
             - name: metrics
               containerPort: 9320

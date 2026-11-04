@@ -1,0 +1,71 @@
+# Game servers, from the game registry's /metrics (apps/game-registry/servicemonitor.yaml).
+# Every series carries the session's id, game, provider, site and version; a server's
+# heartbeat stats (unity-core-playground docs/operations/online.md) arrive as
+# bnb_server_stat{stat=...}. The registry pod itself is covered by HomelabAppDown and
+# HomelabAppRestartSpike (prometheus-rules-app-health.yaml).
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: game-servers
+  namespace: monitoring
+  labels:
+    app.kubernetes.io/name: game-servers
+    app.kubernetes.io/part-of: monitoring
+    # Required by the operator's ruleSelector, or the rules are never evaluated.
+    release: kube-prometheus-stack
+spec:
+  groups:
+    - name: game-servers.alerts
+      interval: 1m
+      rules:
+        # The registry answers health checks but its metrics are gone: the scrape broke, so
+        # every rule below is blind.
+        - alert: GameRegistryMetricsMissing
+          expr: absent(bnb_fleet_sessions)
+          for: 10m
+          labels:
+            severity: warning
+            category: games
+          annotations:
+            summary: "Game registry metrics are missing"
+            description: "Prometheus has had no bnb_fleet_sessions for 10 minutes; the game-registry scrape is broken, so the game server alerts cannot fire."
+
+        # A server heartbeats about every 15 s; the registry reaps one only after 10 minutes,
+        # so this is the crashed or hung server before it drops off the list.
+        - alert: GameServerHeartbeatStale
+          expr: bnb_server_heartbeat_age_seconds > 90
+          for: 1m
+          labels:
+            severity: warning
+            category: games
+          annotations:
+            summary: "Game server {{ $labels.id }} stopped heartbeating"
+            description: "{{ $labels.game }} on {{ $labels.provider }}/{{ $labels.site }} ({{ $labels.version }}) last heartbeat {{ $value }} s ago; it has crashed or hung."
+
+        # p95 tick time over the span between two heartbeats against the tick budget
+        # (1000 / tickRate ms). Past 80% the server is about to fall behind and catch up in bursts.
+        - alert: GameServerTickSlow
+          expr: |
+            bnb_server_stat{stat="spanTickP95Ms"}
+              > ignoring(stat) (0.8 * 1000 / bnb_server_stat{stat="tickRate"})
+          for: 5m
+          labels:
+            severity: warning
+            category: games
+          annotations:
+            summary: "Game server {{ $labels.id }} ticks are slow"
+            description: "{{ $labels.game }} on {{ $labels.provider }}/{{ $labels.site }}: p95 tick {{ printf \"%.1f\" $value }} ms is over 80% of its tick budget for 5 minutes."
+
+        # An Edgegap deployment is billed while it runs; one that has had nobody on it for
+        # 30 minutes after its first half hour should have been stopped.
+        - alert: GameServerEdgegapIdle
+          expr: |
+            bnb_server_players{provider="edgegap"} == 0
+              and on(id) bnb_server_uptime_seconds{provider="edgegap"} > 1800
+          for: 30m
+          labels:
+            severity: warning
+            category: cost
+          annotations:
+            summary: "Edgegap server {{ $labels.id }} is running empty"
+            description: "{{ $labels.game }} at {{ $labels.site }} has had no players for 30 minutes and is still deployed (and billed)."

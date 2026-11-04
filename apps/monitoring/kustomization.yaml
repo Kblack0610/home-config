@@ -21,6 +21,7 @@ resources:
   - prometheus-rules-command-center.yaml
   - prometheus-rules-pager.yaml
   - prometheus-rules-capacity.yaml
+  - prometheus-rules-game-servers.yaml
   - probe-sites.yaml
   - probe-dns.yaml
   - external-mac-nodes.yaml

@@ -15,6 +15,7 @@ This directory augments the Prometheus stack with ingress, dashboards, alert rul
 | `middleware-ip-allowlist.yaml` | Shared middleware for ingress restrictions |
 | `prometheus-rules-app-health.yaml` | App-specific alerting rules |
 | `prometheus-rules-node-health.yaml` | `NodeDown` / `NodeExporterAbsent` — pages when any monitored machine stops responding |
+| `prometheus-rules-game-servers.yaml` | Game servers from the game registry: metrics missing, a stale heartbeat, slow ticks (span p95 over 80% of the tick budget), an Edgegap server left running empty |
 | `external-mac-nodes.yaml` | Scrape definitions for Apple Silicon hosts |
 | `external-standalone-nodes.yaml` | Scrape definitions for non-Kubernetes hosts |
 | `external-windows-nodes.yaml` | Scrape definitions for Windows PCs (windows_exporter, role `windows-exporter`) |

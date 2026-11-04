@@ -31,9 +31,34 @@ template:
                | map(attribute='object_id') | map('replace', 'agent_watch_', '')
                | map('replace', 'agent_', '') | list }}
 
-      # The waybar ai-agents line, for a phone home-screen Template widget:
-      # "pla OK OK ~ ! | uni ! OK". Rendered here so the widget stays one expression
-      # ({{ states('sensor.agent_bar') }}) and any format change lands without retyping it.
+      # The phone home-screen Template widget: {{ states('sensor.agent_widget') }}. Three lines,
+      # what waits on you first, then throughput, then account room and spend. The state is the
+      # widget's HTML (<br>, <font>), rendered here so the widget stays one expression and any
+      # format change lands without retyping it on the phone. Counts only: names are on the
+      # Agents view, and an HA state over 255 chars is rejected outright.
+      - name: Agent widget
+        unique_id: agent_widget
+        icon: mdi:robot-outline
+        state: >-
+          {% set asks = states('sensor.agent_asks_open') | int(0) %}
+          {% set b = state_attr('sensor.agent_sessions', 'buckets') or {} %}
+          {% set red = state_attr('sensor.agent_sessions', 'main_red') or [] %}
+          {% set broken = states('sensor.agents_problem') | int(0) %}
+          {% set w = [] %}
+          {% if asks %}{% set w = w + [asks ~ ' asks'] %}{% endif %}
+          {% if b.get('NEEDS', 0) %}{% set w = w + [b.NEEDS ~ ' need you'] %}{% endif %}
+          {% if b.get('STALLED', 0) %}{% set w = w + [b.STALLED ~ ' stalled'] %}{% endif %}
+          {% if broken %}{% set w = w + [broken ~ ' broken'] %}{% endif %}
+          {% if red %}{% set w = w + ['main red: ' ~ red | join(', ')] %}{% endif %}
+          {% set l1 = ('! ' ~ w | join(' | ')) if w else 'OK nothing waiting on you' %}
+          {% set l2 = '~ %d working  %d landed  %d merged today' | format(b.get('WORKING', 0),
+                      b.get('LANDED', 0), states('sensor.agent_merged_today') | int(0)) %}
+          {% set l3 = states('sensor.agent_accounts') ~ ' | $'
+                      ~ (states('sensor.agent_cost_24h') | float(0) | round(0) | int) ~ '/24h' %}
+          {{ ("<font color='%s'><b>%s</b></font><br>%s<br>%s" | format('#e53935' if w else '#43a047',
+              l1[:90], l2, l3[:70])) }}
+
+      # The waybar ai-agents line: "pla OK OK ~ ! | uni ! OK". The phone widget is agent_widget.
       - name: Agent bar
         unique_id: agent_bar
         icon: mdi:console-line
@@ -86,3 +111,38 @@ rest:
         value_template: >-
           {{ value_json.data.result | selectattr('metric.service_name', 'eq', 'claude-agentctl')
              | map(attribute='value') | map('last') | map('float', 0) | sum | round(2) }}
+
+  # Claude account room, from claude-acct's textfile (claude_acct.prom, every 15 min):
+  # "alt 90%! bnb 32% main 86%!, out Wed 14:41". `!` is over its weekly pace; `out` is the
+  # earliest projected run-out.
+  - resource: "http://kube-prometheus-stack-prometheus.monitoring.svc:9090/api/v1/query?query=%7B__name__%3D~%22claude_account_%28week_used_percent%7Cover_pace%7Crun_out_timestamp_seconds%29%22%7D"
+    scan_interval: 300
+    sensor:
+      - name: Agent accounts
+        unique_id: agent_accounts
+        icon: mdi:account-clock
+        value_template: >-
+          {% set r = value_json.data.result %}
+          {% set ns = namespace(o=[]) %}
+          {% for a in r | selectattr('metric.__name__', 'eq', 'claude_account_week_used_percent')
+                        | sort(attribute='metric.account') %}
+          {% set over = r | selectattr('metric.__name__', 'eq', 'claude_account_over_pace')
+                          | selectattr('metric.account', 'eq', a.metric.account)
+                          | map(attribute='value') | map('last') | first | default('0') %}
+          {% set ns.o = ns.o + [a.metric.account ~ ' ' ~ (a.value[1] | float(0) | round(0) | int)
+                                ~ '%' ~ ('!' if over == '1' else '')] %}
+          {% endfor %}
+          {% set out = r | selectattr('metric.__name__', 'eq', 'claude_account_run_out_timestamp_seconds')
+                         | map(attribute='value') | map('last') | map('float', 0) | list %}
+          {{ ns.o | join(' ') }}{{ (', out ' ~ (out | min | timestamp_custom('%a %H:%M'))) if out else '' }}
+
+  # PRs merged today across every repo, from day-log's textfile (day_log.prom, every 5 min).
+  - resource: "http://kube-prometheus-stack-prometheus.monitoring.svc:9090/api/v1/query?query=sum%28agent_day_merged%29"
+    scan_interval: 300
+    sensor:
+      - name: Agent merged today
+        unique_id: agent_merged_today
+        icon: mdi:source-merge
+        state_class: measurement
+        value_template: >-
+          {{ (value_json.data.result | map(attribute='value') | map('last') | first | default(0)) | int(0) }}

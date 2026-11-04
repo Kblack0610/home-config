@@ -75,6 +75,17 @@ git add apps/home-assistant/config/dashboards/launcher.yaml
 
 Flux picks up the ConfigMap change → deployment hash rotates → pod rolls → the `sync-managed-config` init container copies `dashboard_launcher.yaml` to `/config/dashboards/launcher.yaml` on the PVC → HA serves the new view on next render.
 
+### Agent fleet phone widget
+
+`sensor.agent_widget` (`config/packages/agents.yaml`) is three lines for an Android home screen: what waits on you (asks, sessions that need you or stalled, broken runners and watches, red default branches), then working, landed and merged today, then each Claude account's weekly use (`!` means over pace) with the earliest run-out and 24h spend. Its state is HTML, because that is what the Companion app's Template widget renders. The data comes from `agent-mqtt-publish` (MQTT discovery) and from Prometheus (`claude_acct.prom`, `day_log.prom`).
+
+Setup on the phone: long-press the home screen -> Widgets -> Home Assistant -> Template, with the template `{{ states('sensor.agent_widget') }}`. It refreshes when the sensor changes, and tapping it forces a refresh. For a color dot, add an Entity state widget on `binary_sensor.agents_need_attention`. Pages that cannot wait still arrive by ntfy; the widget is only a glance.
+
+| Symptom | Fix |
+|---|---|
+| Widget shows old numbers | Check that the Companion app is allowed background data and battery use. If `sensor.agent_sessions` is `unavailable`, its 900 s MQTT expiry ran out, so the workstation publisher (`agent-mqtt-publish.timer`) is down. |
+| Line 3 reads `unknown` | The `Agent accounts` REST sensor got no data. Query `claude_account_week_used_percent` in Prometheus; when it is empty, `claude-acct-usage.timer` on the workstation has stopped writing. |
+
 ### 3D Printer Monitoring
 
 | Use Case | Description |

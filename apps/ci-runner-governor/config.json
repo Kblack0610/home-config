@@ -15,7 +15,7 @@
     "aws-burst-1": {"max_admitted": 6, "power": {"provider": "aws", "instance_id": "i-0f1ecf35dc0e78146",
                                                "region": "us-east-2", "idle_off_seconds": 900,
                                                "start_min_excess": 4, "start_after_seconds": 300, "max_hours_day": 12,
-                                               "live": false}}
+                                               "live": true}}
   },
   "hosts": {
     "cachyos-x8664-main": {"min_admitted": 0, "admit": {"idle": 0.5, "tctl": 80}, "withhold": {"idle": 0.3, "tctl": 88}},

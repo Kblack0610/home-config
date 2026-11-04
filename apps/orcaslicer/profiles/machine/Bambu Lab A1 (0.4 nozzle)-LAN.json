@@ -1,0 +1,13 @@
+{
+    "from": "User",
+    "inherits": "Bambu Lab A1 0.4 nozzle",
+    "name": "Bambu Lab A1 (0.4 nozzle)-LAN",
+    "print_host": "192.168.1.55",
+    "print_host_webui": "",
+    "printer_agent": "bambu",
+    "printer_settings_id": "Bambu Lab A1 (0.4 nozzle)-LAN",
+    "host_type": "bambu_lan",
+    "printhost_access_code": "@A1_ACCESS_CODE@",
+    "printhost_serial_number": "@A1_SERIAL@",
+    "version": "1.9.0.2"
+}

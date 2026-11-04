@@ -31,39 +31,39 @@ spec:
             - /bin/sh
             - -c
             - |
+              set -e
               CONFIG_DIR="/config/.config/OrcaSlicer"
-              if [ -f "$CONFIG_DIR/OrcaSlicer.conf" ]; then
-                echo "OrcaSlicer config already exists, skipping seed."
-                exit 0
+              USER_DIR="$CONFIG_DIR/user/default"
+              mkdir -p "$USER_DIR/machine" "$USER_DIR/filament" "$USER_DIR/process"
+              # OrcaSlicer.conf (first-run wizard done, vendors, printer list) is
+              # seeded once; after that it is the app's own state.
+              if [ ! -f "$CONFIG_DIR/OrcaSlicer.conf" ]; then
+                cp /seed/orcaslicer.conf "$CONFIG_DIR/OrcaSlicer.conf"
+                echo "Seeded OrcaSlicer.conf"
               fi
-              echo "Seeding OrcaSlicer config from ConfigMap..."
-              mkdir -p "$CONFIG_DIR/user/default/machine"
-              mkdir -p "$CONFIG_DIR/user/default/filament"
-              mkdir -p "$CONFIG_DIR/user/default/process"
-              # Main config (marks first-run wizard complete)
-              cp /seed/orcaslicer.conf "$CONFIG_DIR/OrcaSlicer.conf"
-              # Machine profile
-              cp /seed/machine-neptune4pro.json "$CONFIG_DIR/user/default/machine/Elegoo Neptune 4 Pro (0.4 nozzle)-OpenNept4une.json"
-              cp /seed/machine-neptune4pro.info "$CONFIG_DIR/user/default/machine/Elegoo Neptune 4 Pro (0.4 nozzle)-OpenNept4une.info"
-              # Bambu A1 machine profile
-              cp /seed/machine-bambu-a1.json "$CONFIG_DIR/user/default/machine/Bambu Lab A1 (0.4 nozzle)-LAN.json"
-              cp /seed/machine-bambu-a1.info "$CONFIG_DIR/user/default/machine/Bambu Lab A1 (0.4 nozzle)-LAN.info"
-              # Filament profiles
-              cp /seed/filament-pla.json "$CONFIG_DIR/user/default/filament/Elegoo Generic PLA-OpenNept4une.json"
-              cp /seed/filament-pla.info "$CONFIG_DIR/user/default/filament/Elegoo Generic PLA-OpenNept4une.info"
-              cp /seed/filament-petg.json "$CONFIG_DIR/user/default/filament/Elegoo Generic PETG-OpenNept4une.json"
-              cp /seed/filament-petg.info "$CONFIG_DIR/user/default/filament/Elegoo Generic PETG-OpenNept4une.info"
-              # Print process profiles
-              cp /seed/process-standard.json "$CONFIG_DIR/user/default/process/0.20mm Standard @Elegoo Neptune4Pro (0.4 nozzle)-OpenNept4une.json"
-              cp /seed/process-standard.info "$CONFIG_DIR/user/default/process/0.20mm Standard @Elegoo Neptune4Pro (0.4 nozzle)-OpenNept4une.info"
-              cp /seed/process-petg.json "$CONFIG_DIR/user/default/process/0.20mm PETG @Elegoo Neptune4Pro (0.4 nozzle)-OpenNept4une.json"
-              cp /seed/process-petg.info "$CONFIG_DIR/user/default/process/0.20mm PETG @Elegoo Neptune4Pro (0.4 nozzle)-OpenNept4une.info"
+              # The presets are git's (apps/orcaslicer/profiles/): every start
+              # overwrites them, so an edit made here lasts until the next restart.
+              # One line per preset: ConfigMap key, folder, preset name.
+              while IFS='|' read -r key dir name; do
+                [ -n "$key" ] || continue
+                cp "/seed/$key.json" "$USER_DIR/$dir/$name.json"
+                cp "/seed/$key.info" "$USER_DIR/$dir/$name.info"
+              done <<'PRESETS'
+              machine-neptune4pro|machine|Elegoo Neptune 4 Pro (0.4 nozzle)-OpenNept4une
+              machine-neptune4pro-08|machine|Elegoo Neptune 4 Pro (0.8 nozzle)-OpenNept4une
+              machine-bambu-a1|machine|Bambu Lab A1 (0.4 nozzle)-LAN
+              filament-pla|filament|Elegoo Generic PLA-OpenNept4une
+              filament-petg|filament|Elegoo Generic PETG-OpenNept4une
+              process-standard|process|0.20mm Standard @Elegoo Neptune4Pro (0.4 nozzle)-OpenNept4une
+              process-petg|process|0.20mm PETG @Elegoo Neptune4Pro (0.4 nozzle)-OpenNept4une
+              process-standard-08|process|0.40mm Standard @Elegoo Neptune4Pro (0.8 nozzle)-OpenNept4une
+              PRESETS
               # The A1 LAN code and serial live in the SOPS Secret, never in git;
               # the profiles carry @A1_...@ placeholders (scripts/check-secret-store.py).
               sed -i -e "s/@A1_ACCESS_CODE@/$A1_ACCESS_CODE/g" -e "s/@A1_SERIAL@/$A1_SERIAL/g" \
                 "$CONFIG_DIR/OrcaSlicer.conf" \
-                "$CONFIG_DIR/user/default/machine/Bambu Lab A1 (0.4 nozzle)-LAN.json"
-              echo "Config seeding complete."
+                "$USER_DIR/machine/Bambu Lab A1 (0.4 nozzle)-LAN.json"
+              echo "Presets synced from the orcaslicer-profiles ConfigMap."
           env:
             - name: A1_ACCESS_CODE
               valueFrom:

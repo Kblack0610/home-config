@@ -5,9 +5,38 @@ namespace: orcaslicer
 
 resources:
   - namespace.yaml
-  - configmap-profiles.yaml
   - bambu-a1-secret.yaml
   - deployment.yaml
   - service.yaml
   - tlsoption.yaml
   - ingress.yaml
+
+# The presets are files under profiles/ (named exactly as OrcaSlicer names them, so
+# the desktop can link the folders), plus the k3s first-run OrcaSlicer.conf.
+# ConfigMap keys cannot hold spaces, so each gets a short key; the init container
+# in deployment.yaml maps the keys back to preset names. apps/print-service mounts
+# this ConfigMap by name, so it keeps a fixed name (no hash suffix).
+configMapGenerator:
+  - name: orcaslicer-profiles
+    options:
+      disableNameSuffixHash: true
+      labels:
+        app.kubernetes.io/name: orcaslicer
+    files:
+      - orcaslicer.conf=OrcaSlicer.conf
+      - machine-neptune4pro.json=profiles/machine/Elegoo Neptune 4 Pro (0.4 nozzle)-OpenNept4une.json
+      - machine-neptune4pro.info=profiles/machine/Elegoo Neptune 4 Pro (0.4 nozzle)-OpenNept4une.info
+      - machine-neptune4pro-08.json=profiles/machine/Elegoo Neptune 4 Pro (0.8 nozzle)-OpenNept4une.json
+      - machine-neptune4pro-08.info=profiles/machine/Elegoo Neptune 4 Pro (0.8 nozzle)-OpenNept4une.info
+      - machine-bambu-a1.json=profiles/machine/Bambu Lab A1 (0.4 nozzle)-LAN.json
+      - machine-bambu-a1.info=profiles/machine/Bambu Lab A1 (0.4 nozzle)-LAN.info
+      - filament-pla.json=profiles/filament/Elegoo Generic PLA-OpenNept4une.json
+      - filament-pla.info=profiles/filament/Elegoo Generic PLA-OpenNept4une.info
+      - filament-petg.json=profiles/filament/Elegoo Generic PETG-OpenNept4une.json
+      - filament-petg.info=profiles/filament/Elegoo Generic PETG-OpenNept4une.info
+      - process-standard.json=profiles/process/0.20mm Standard @Elegoo Neptune4Pro (0.4 nozzle)-OpenNept4une.json
+      - process-standard.info=profiles/process/0.20mm Standard @Elegoo Neptune4Pro (0.4 nozzle)-OpenNept4une.info
+      - process-petg.json=profiles/process/0.20mm PETG @Elegoo Neptune4Pro (0.4 nozzle)-OpenNept4une.json
+      - process-petg.info=profiles/process/0.20mm PETG @Elegoo Neptune4Pro (0.4 nozzle)-OpenNept4une.info
+      - process-standard-08.json=profiles/process/0.40mm Standard @Elegoo Neptune4Pro (0.8 nozzle)-OpenNept4une.json
+      - process-standard-08.info=profiles/process/0.40mm Standard @Elegoo Neptune4Pro (0.8 nozzle)-OpenNept4une.info

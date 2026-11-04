@@ -1,0 +1,16 @@
+{
+    "name": "0.40mm Standard @Elegoo Neptune4Pro (0.8 nozzle)-OpenNept4une",
+    "inherits": "0.20mm Standard @Elegoo Neptune4Pro (0.8 nozzle)",
+    "from": "User",
+    "layer_height": "0.4",
+    "initial_layer_print_height": "0.45",
+    "filename_format": "{input_filename_base}_{nozzle_diameter[0]}n_{layer_height}mm_{filament_type[0]}_{print_time}.gcode",
+    "print_extruder_id": [
+        "1"
+    ],
+    "print_extruder_variant": [
+        "Direct Drive Standard"
+    ],
+    "print_settings_id": "0.40mm Standard @Elegoo Neptune4Pro (0.8 nozzle)-OpenNept4une",
+    "version": "1.9.0.2"
+}

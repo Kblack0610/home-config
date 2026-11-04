@@ -213,7 +213,7 @@ devices:
     range_exception: true
 
   - hostname: neptune-3d-wan
-    mac: "00:22:F4:5D:E3:55"
+    mac: "00:22:F4:D9:12:3E"
     ip: "192.168.1.54"
     category: iot
     range_exception: true

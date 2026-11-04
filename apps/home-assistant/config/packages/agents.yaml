@@ -1,6 +1,6 @@
 # Agent fleet rollups for the dashboards and phone widgets.
 # The per-agent entities are NOT defined here: sensor.agent_<runner>, sensor.agent_watch_<name>,
-# sensor.agent_asks_open and sensor.agent_sessions come from MQTT discovery, published by
+# sensor.agent_asks_open, sensor.agent_sessions and sensor.agent_overview come from MQTT discovery, published by
 # agent-mqtt-publish on the workstation (dotfiles). Runners are the ones carrying a
 # `last_outcome` attribute; watches are sensor.agent_watch_*.
 template:
@@ -31,53 +31,32 @@ template:
                | map(attribute='object_id') | map('replace', 'agent_watch_', '')
                | map('replace', 'agent_', '') | list }}
 
-      # The phone home-screen Template widget: {{ states('sensor.agent_widget') }}. Three lines,
-      # what waits on you first, then throughput, then account room and spend. The state is the
-      # widget's HTML (<br>, <font>), rendered here so the widget stays one expression and any
-      # format change lands without retyping it on the phone. Counts only: names are on the
-      # Agents view, and an HA state over 255 chars is rejected outright.
+      # The phone home-screen Template widget: {{ state_attr('sensor.agent_widget', 'html') }}. The
+      # waybar chips' own lines (sensor.agent_overview, from fleet-overview in dotfiles), so the
+      # widget and the bar read the same source, under what no chip carries: open asks, broken
+      # runners and watches, red default branches, account room and spend. The HTML is an
+      # attribute because a state over 255 chars is rejected outright, and it is rendered here so
+      # the widget stays one expression and any format change lands without retyping it on the
+      # phone. The Template widget centres its text, so the <p> sets it back to the start.
       - name: Agent widget
         unique_id: agent_widget
         icon: mdi:robot-outline
-        state: >-
-          {% set asks = states('sensor.agent_asks_open') | int(0) %}
-          {% set b = state_attr('sensor.agent_sessions', 'buckets') or {} %}
-          {% set red = state_attr('sensor.agent_sessions', 'main_red') or [] %}
-          {% set broken = states('sensor.agents_problem') | int(0) %}
-          {% set w = [] %}
-          {% if asks %}{% set w = w + [asks ~ ' asks'] %}{% endif %}
-          {% if b.get('NEEDS', 0) %}{% set w = w + [b.NEEDS ~ ' need you'] %}{% endif %}
-          {% if b.get('STALLED', 0) %}{% set w = w + [b.STALLED ~ ' stalled'] %}{% endif %}
-          {% if broken %}{% set w = w + [broken ~ ' broken'] %}{% endif %}
-          {% if red %}{% set w = w + ['main red: ' ~ red | join(', ')] %}{% endif %}
-          {% set l1 = ('! ' ~ w | join(' | ')) if w else 'OK nothing waiting on you' %}
-          {% set l2 = '~ %d working  %d landed  %d merged today' | format(b.get('WORKING', 0),
-                      b.get('LANDED', 0), states('sensor.agent_merged_today') | int(0)) %}
-          {% set l3 = states('sensor.agent_accounts') ~ ' | $'
-                      ~ (states('sensor.agent_cost_24h') | float(0) | round(0) | int) ~ '/24h' %}
-          {{ ("<font color='%s'><b>%s</b></font><br>%s<br>%s" | format('#e53935' if w else '#43a047',
-              l1[:90], l2, l3[:70])) }}
-
-      # The waybar ai-agents line: "pla OK OK ~ ! | uni ! OK". The phone widget is agent_widget.
-      - name: Agent bar
-        unique_id: agent_bar
-        icon: mdi:console-line
-        # truncate: an HA state over 255 chars is rejected outright, and this grows with sessions.
-        state: >-
-          {% set ns = namespace(p=[]) %}
-          {% for s in states.sensor | selectattr('entity_id', 'match', 'sensor\.agent_sessions_')
-                      | selectattr('attributes.glyphs', 'defined') %}
-          {% set ns.p = ns.p + [s.attributes.project[:3] ~ ' ' ~ s.attributes.glyphs] %}
-          {% endfor %}
-          {{ ns.p | join(' | ') | truncate(250, true, '..') }}
+        state: "{{ states('sensor.agent_overview') }}"
         attributes:
-          full: >-
-            {% set ns = namespace(p=[]) %}
-            {% for s in states.sensor | selectattr('entity_id', 'match', 'sensor\.agent_sessions_')
-                        | selectattr('attributes.glyphs', 'defined') %}
-            {% set ns.p = ns.p + [s.attributes.project ~ ' ' ~ s.attributes.glyphs] %}
-            {% endfor %}
-            {{ ns.p | join(' | ') }}
+          html: >-
+            {% set asks = states('sensor.agent_asks_open') | int(0) %}
+            {% set red = state_attr('sensor.agent_sessions', 'main_red') or [] %}
+            {% set broken = states('sensor.agents_problem') | int(0) %}
+            {% set w = [] %}
+            {% if asks %}{% set w = w + [asks ~ ' asks'] %}{% endif %}
+            {% if broken %}{% set w = w + [broken ~ ' broken'] %}{% endif %}
+            {% if red %}{% set w = w + ['main red: ' ~ red | join(', ')] %}{% endif %}
+            {% set money = states('sensor.agent_accounts') ~ ' | $'
+                           ~ (states('sensor.agent_cost_24h') | float(0) | round(0) | int) ~ '/24h' %}
+            {% set fleet = state_attr('sensor.agent_overview', 'html')
+                           or "<font color='#e53935'>no fleet overview: agent-mqtt-publish has stopped</font>" %}
+            <p style="text-align: start">{{ ("<font color='#e53935'><b>! %s</b></font><br>" | format(w | join(' | ')))
+            if w else '' }}{{ money }}<br>{{ fleet }}</p>
 
   - binary_sensor:
       # Something wants the human: a problem above, an open ask, or a live session flagged `!`.
@@ -135,14 +114,3 @@ rest:
           {% set out = r | selectattr('metric.__name__', 'eq', 'claude_account_run_out_timestamp_seconds')
                          | map(attribute='value') | map('last') | map('float', 0) | list %}
           {{ ns.o | join(' ') }}{{ (', out ' ~ (out | min | timestamp_custom('%a %H:%M'))) if out else '' }}
-
-  # PRs merged today across every repo, from day-log's textfile (day_log.prom, every 5 min).
-  - resource: "http://kube-prometheus-stack-prometheus.monitoring.svc:9090/api/v1/query?query=sum%28agent_day_merged%29"
-    scan_interval: 300
-    sensor:
-      - name: Agent merged today
-        unique_id: agent_merged_today
-        icon: mdi:source-merge
-        state_class: measurement
-        value_template: >-
-          {{ (value_json.data.result | map(attribute='value') | map('last') | first | default(0)) | int(0) }}

@@ -1,0 +1,62 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: langfuse-bucket
+  # Langfuse's event bucket (apps/langfuse/helmrelease.yaml `s3`). Creates the bucket and
+  # expires `otel/` objects after 30 days, the window Langfuse's blob-storage docs size
+  # for retry and replay; OTEL spans are complete events, so ClickHouse does not need
+  # the blob once ingested. Without it about 10k objects a day piled up (16G by
+  # 2026-11-04) and the scanner walking them helped stall the shared nvme past MinIO's
+  # 30s drive probe, dropping in-flight uploads. Idempotent. To re-run, bump the name.
+  labels:
+    app.kubernetes.io/name: langfuse
+    app.kubernetes.io/component: bucket-bootstrap
+spec:
+  backoffLimit: 3
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: langfuse
+        app.kubernetes.io/component: bucket-bootstrap
+    spec:
+      restartPolicy: OnFailure
+      nodeSelector:
+        kubernetes.io/arch: amd64
+      containers:
+        - name: mc
+          image: bitnamilegacy/minio-client:2025.4.16
+          imagePullPolicy: IfNotPresent
+          env:
+            - name: MINIO_ROOT_USER
+              valueFrom:
+                secretKeyRef:
+                  name: minio-root-secret
+                  key: MINIO_ROOT_USER
+            - name: MINIO_ROOT_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: minio-root-secret
+                  key: MINIO_ROOT_PASSWORD
+          command:
+            - /bin/bash
+            - -c
+            - |
+              set -euo pipefail
+              export HOME=/tmp
+              BUCKET=langfuse
+              mc alias set m http://minio.minio.svc.cluster.local:9000 "$MINIO_ROOT_USER" "$MINIO_ROOT_PASSWORD" >/dev/null
+
+              mc mb --ignore-existing "m/${BUCKET}"
+              # mc picks the rule id itself, so the rule is found by what it does.
+              if ! mc ilm rule ls --json "m/${BUCKET}" 2>/dev/null | grep -q '"Prefix":"otel/"'; then
+                mc ilm rule add --prefix otel/ --expire-days 30 "m/${BUCKET}"
+              fi
+
+              mc ilm rule ls "m/${BUCKET}"
+              echo "langfuse bucket ready."
+          resources:
+            requests:
+              memory: "32Mi"
+              cpu: "20m"
+            limits:
+              memory: "128Mi"

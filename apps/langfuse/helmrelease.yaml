@@ -150,8 +150,7 @@ spec:
 
     # ----------------------------------------------------------------
     # External Minio (existing minio.minio.svc.cluster.local:9000)
-    # Bucket `langfuse` pre-created:
-    #   kubectl -n minio exec deploy/minio -- mc mb /data/langfuse
+    # Bucket `langfuse` and its 30-day `otel/` expiry: apps/minio/langfuse-bucket-job.yaml
     # ----------------------------------------------------------------
     s3:
       deploy: false

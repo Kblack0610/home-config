@@ -38,6 +38,12 @@ spec:
                   key: MINIO_ROOT_PASSWORD
             - name: MINIO_BROWSER_REDIRECT_URL
               value: https://minio.kblab.me
+            # The /data nvme is shared with most of asus-laptop's PVCs. At the default
+            # speed the scanner's walk of Langfuse's small event objects pushed MinIO's
+            # 30s drive probe over, taking /data offline about 37 times in a week and
+            # failing uploads in flight (2026-11-04). Lifecycle expiry still runs, slower.
+            - name: MINIO_SCANNER_SPEED
+              value: slowest
           ports:
             - name: s3
               containerPort: 9000

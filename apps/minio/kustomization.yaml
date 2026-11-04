@@ -12,3 +12,4 @@ resources:
   - ingress.yaml
   - game-saves-secret.sops.yaml
   - game-saves-bucket-job.yaml
+  - langfuse-bucket-job.yaml

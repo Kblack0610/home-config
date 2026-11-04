@@ -93,6 +93,7 @@ apps/ci-runner-governor powers it (config.json `standby` -> `aws-burst-1` -> `po
 | The box sits stopped while jobs wait | One of: fewer than 4 jobs it can take past the other hosts, a queue under 5 minutes old, its 12h day used, an "off" override, the budget's deny policy | Read the governor log's `aws-burst-1` line for which; "On 2h" on the Infra page overrides all but the budget |
 | Starts fail with `UnauthorizedOperation` | The $180 budget action attached `ci-burst-deny-start` | Budget stop above |
 | It ran past 12h | An "on" override, or the governor pod restarted and lost the day's hours | Expected for the override; a restart resets the count by design |
+| Offline runners `aws-burst-1-unity-pool-7`, `-8` with no `unity` label | #525 cut `unity_ci_slots` from 8 to 6 and left those two registered; a lowered count removes nothing (top of this page) | Deregistered 2026-11-04. Next time, run `scripts/unity-ci-runner-remove.sh --host <host> --slot N` for each dropped slot |
 
 ## Secrets the playground workflows need
 

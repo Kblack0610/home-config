@@ -1,0 +1,66 @@
+# Hourly price backfill (lab/backfill.py): every exchange x whitelist pair x
+# timeframe into /lab/data/<exchange> on PVC freqtrade-lab, prepended to the
+# exchange's oldest candle once, appended every run after; Kraken, which
+# serves no history, is collected forward from its newest 720 candles. What
+# each series holds goes to data_coverage in the trader database. The first
+# run fetches years of 5m candles and can take hours; Forbid keeps the hourly
+# runs from piling up behind it.
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: freqtrade-backfill
+spec:
+  schedule: "20 * * * *"
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      backoffLimit: 0  # the next hour is the retry
+      activeDeadlineSeconds: 21600  # guard: a steady-state run takes about a minute
+      template:
+        metadata:
+          labels:
+            app: freqtrade-backfill
+        spec:
+          restartPolicy: Never
+          nodeSelector:
+            kubernetes.io/arch: amd64
+          securityContext:
+            runAsUser: 1000
+            runAsGroup: 1000
+            fsGroup: 1000
+          initContainers:
+            - name: migrate
+              image: trader
+              command: ["python", "/repo/lab/migrate.py"]
+              env:
+                - name: DATABASE_URL
+                  valueFrom:
+                    secretKeyRef: {name: trader-db, key: database-url}
+              resources:
+                requests:
+                  cpu: 20m
+                  memory: 64Mi
+                limits:
+                  memory: 256Mi
+          containers:
+            - name: backfill
+              image: trader
+              command: ["python", "/repo/lab/backfill.py"]
+              env:
+                - name: DATABASE_URL
+                  valueFrom:
+                    secretKeyRef: {name: trader-db, key: database-url}
+              resources:
+                requests:
+                  cpu: 200m
+                  memory: 512Mi
+                limits:
+                  memory: 4Gi  # one freqtrade process per exchange, each holding a full 5m series
+              volumeMounts:
+                - {name: lab, mountPath: /lab}
+          volumes:
+            - name: lab
+              persistentVolumeClaim:
+                claimName: freqtrade-lab

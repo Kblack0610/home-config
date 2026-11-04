@@ -1,6 +1,7 @@
-# Experiments data and results plus the report history. local-path is RWO and
-# node-pinned; both CronJobs mount it, so they land on whichever amd64 node
-# bound it first.
+# Price history (data/<exchange>, kept by the backfill job), experiment runs
+# and the report history. local-path is RWO and node-pinned (hp-victus), and
+# the size is not enforced; every CronJob that mounts it lands on that node.
+# Backed up weekly by lab-backup-cronjob.yaml.
 apiVersion: v1
 kind: PersistentVolumeClaim
 metadata:

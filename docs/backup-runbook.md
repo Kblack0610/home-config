@@ -176,6 +176,7 @@ K3s app backups run on schedule via CronJobs. Each backup writes a local archive
 | `app-config-backup` | Sunday 5:45 AM | `nas` | 8TB `/mnt/backup-8t/app-config` + snapshots (mirror of `/mnt/media/app-config`) |
 | `harvest-backup` | Sunday 6 AM | `nas` | 8TB `/mnt/backup-8t/harvest` + snapshots (mirror of `/mnt/nas/private/harvest`) |
 | `zomboid-backup` | Daily 4:30 AM | `zomboid` | NAS **public** share `backups/zomboid/` |
+| `freqtrade-lab-backup` | Sunday 2:50 AM | `freqtrade` | NAS **public** share `backups/freqtrade/` (newest 4) |
 | `nas-backup-cleanup` | Sunday 5 AM | `nas` | not applicable |
 | `nas-backup-verify` | Monday 6 AM | `nas` | writes `manifest.log` |
 

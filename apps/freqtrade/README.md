@@ -11,9 +11,11 @@ Results live in the `trader` database in the shared Postgres (`apps/postgres/tra
 | Resource | What it does |
 |---|---|
 | StatefulSet `freqtrade-league` | Pod N runs `roster.tsv` row N; sqlite trade history on its own 1Gi PVC; API at `freqtrade-league-N.freqtrade-league:8080` (cluster only) |
-| CronJob `freqtrade-experiments` | Sunday 04:00: backtest every strategy on binanceus and coinbase over 90 days, lookahead check, hyperopt the top 3; results on PVC `freqtrade-lab` |
+| CronJob `freqtrade-backfill` | Hourly at :20: price history for every exchange x pair x timeframe into `data/<exchange>/` on PVC `freqtrade-lab`, prepended to the oldest candle once, then appended; Kraken collected forward from its newest 720 candles; coverage into `data_coverage` |
+| CronJob `freqtrade-experiments` | Sunday 04:00: backtest every strategy on binanceus and coinbase over 90 days on the backfilled data, lookahead check, hyperopt the top 3; results on PVC `freqtrade-lab` |
 | CronJob `freqtrade-ingest` | Hourly at :07: init container `migrate` applies new schema files, then every bot's trades and a snapshot go into Postgres, and `runs/*/summary.json` plus `league-history.jsonl` are imported (idempotent); fails if a bot is not dry run |
 | CronJob `freqtrade-report` | Daily 06:30: reads every bot's API, appends `league-history.jsonl`, writes `reports/<date>.md`; fails if a bot is not dry run |
+| CronJob `freqtrade-lab-backup` | Sunday 02:50: tar of PVC `freqtrade-lab` to the NAS public share `backups/freqtrade/`, newest 4 kept |
 | Secret `freqtrade-api` | SOPS: API password, JWT secret, ws token shared by the bots, the report and the ingest |
 | Secret `trader-db` | SOPS: `database-url` for the trader role; the same password is in `apps/postgres/trader-db-secret.sops.yaml`, rotate both together |
 
@@ -33,6 +35,10 @@ The report job prints the leaderboard. Files on the `freqtrade-lab` PVC: `report
 Query the database: `kubectl --context home-k3s -n databases exec -it deploy/postgres -- psql -U postgres -d trader`, then for example `SELECT bot, count(*) FROM bot_trades GROUP BY 1;` or the latest snapshot per bot: `SELECT DISTINCT ON (bot) bot, ts, closed_trades, profit_closed_pct, error FROM bot_snapshots ORDER BY bot, ts DESC;`.
 
 Run ingest now: `kubectl --context home-k3s -n freqtrade create job --from=cronjob/freqtrade-ingest ingest-manual-$(date +%s)`.
+
+Data coverage: `SELECT exchange, timeframe, count(*), min(first_ts), max(last_ts), sum(gaps), bool_and(oldest_reached) FROM data_coverage GROUP BY 1, 2 ORDER BY 1, 2;`. Run backfill now: `kubectl --context home-k3s -n freqtrade create job --from=cronjob/freqtrade-backfill backfill-manual-$(date +%s)`.
+
+Restore the lab PVC: list the archives with `smbclient //nas.nas.svc.cluster.local/public -N -c 'cd backups/freqtrade; ls'` from a pod (or `/mnt/nas/public/backups/freqtrade` on the NAS host), suspend the freqtrade CronJobs (`kubectl -n freqtrade patch cronjob <name> -p '{"spec":{"suspend":true}}'`), untar the newest into the PVC root from a pod that mounts it, then unsuspend. The trader database is restored from the nightly `pg_dumpall` instead.
 
 Run experiments now: `kubectl --context home-k3s -n freqtrade create job --from=cronjob/freqtrade-experiments exp-manual-$(date +%s)`.
 
@@ -58,4 +64,4 @@ A new digest or roster restarts the bots; their trade history is on their PVCs a
 | Init container `migrate` fails `changed after it was applied` | An applied migration file was edited in the strategy repo | Revert it there and add the next numbered file |
 | `trader-db-bootstrap` fails, or ingest says `password authentication failed` | The two trader-db secrets disagree | Set the same password in both, then bump the Job name to re-run it |
 | Report rows show `URLError` | Bot not Ready yet, or crash-looping | `kubectl -n freqtrade logs freqtrade-league-N` |
-| Both CronJobs pending | `freqtrade-lab` is local-path RWO, pinned to the node that first bound it | That node must be up; it is always an amd64 node |
+| CronJobs pending | `freqtrade-lab` is local-path RWO, pinned to the node that first bound it | That node must be up; it is always an amd64 node |

@@ -1,0 +1,123 @@
+# Weekly copy of PVC freqtrade-lab (price history, experiment runs, reports)
+# to the NAS public share, backups/freqtrade/. Kraken candles are collected
+# forward and exist nowhere else once they age out, so this is their only
+# second copy. Nothing on the PVC is sensitive, and the public share is guest
+# writable, so no credentials are needed (same reasoning as
+# apps/zomboid/backup/backup.sh). The trader database is covered by the
+# nightly pg_dumpall, not here.
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: freqtrade-lab-backup
+spec:
+  # Sunday 02:50: clear of the :20 backfill and the 04:00 experiments run.
+  schedule: "50 2 * * 0"
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      backoffLimit: 1
+      activeDeadlineSeconds: 7200
+      template:
+        metadata:
+          labels:
+            app: freqtrade-lab-backup
+        spec:
+          restartPolicy: Never
+          containers:
+            - name: backup
+              image: alpine:3.24.1
+              env:
+                - name: KEEP
+                  value: "4"
+              command:
+                - /bin/sh
+                - -c
+                - |
+                  set -eu
+                  apk add --no-cache tar gzip samba-client >/dev/null
+
+                  SMB="//nas.nas.svc.cluster.local/public"
+                  DEST="backups/freqtrade"
+                  MIN_BYTES=1048576
+                  log() { echo "[$(date -Iseconds)] $*"; }
+
+                  # An empty data dir means the PVC is not mounted where we think;
+                  # a tiny "successful" archive would rotate the good ones out.
+                  if [ -z "$(ls -A /lab/data 2>/dev/null)" ]; then
+                    log "ERROR: /lab/data is missing or empty - is the PVC mounted? Not backing up."
+                    exit 1
+                  fi
+
+                  FILE="freqtrade-lab-$(date +%Y%m%d-%H%M%S).tar.gz"
+                  # A backfill or experiments run may write while tar reads; GNU tar
+                  # exits 1 for "file changed as we read it", 2 for a real failure.
+                  rc=0
+                  tar --warning=no-file-changed -czf "/work/${FILE}" -C /lab . || rc=$?
+                  if [ "${rc}" -gt 1 ]; then
+                    log "ERROR: tar exited ${rc}"
+                    exit 1
+                  fi
+                  size="$(wc -c < "/work/${FILE}")"
+                  log "created ${FILE} (${size} bytes)"
+                  if [ "${size}" -lt "${MIN_BYTES}" ]; then
+                    log "ERROR: archive under ${MIN_BYTES} bytes is implausible. Not uploading."
+                    exit 1
+                  fi
+
+                  # smbclient -c does not exit non-zero when a command inside it
+                  # fails, so every call is checked for NT_STATUS_. Why, and the
+                  # identical copies that move with this one:
+                  # apps/zomboid/backup/backup.sh.
+                  smb() {
+                    _out="$(smbclient "${SMB}" -N -c "$1" 2>&1)"
+                    _bad="$(echo "${_out}" | grep -o 'NT_STATUS_[A-Z_]*' | grep -v 'NT_STATUS_OBJECT_NAME_COLLISION' || true)"
+                    if [ -n "${_bad}" ]; then
+                      log "ERROR: smbclient '$1' failed: ${_bad}"
+                      return 1
+                    fi
+                    echo "${_out}"
+                  }
+
+                  _path=""
+                  for _part in $(echo "${DEST}" | tr '/' ' '); do
+                    _path="${_path:+${_path}/}${_part}"
+                    smb "mkdir ${_path}" >/dev/null
+                  done
+                  smb "cd ${DEST}; put /work/${FILE} ${FILE}" >/dev/null
+                  remote_size="$(smb "cd ${DEST}; ls ${FILE}" | awk -v f="${FILE}" '$1==f {print $3}')"
+                  if [ "${remote_size}" != "${size}" ]; then
+                    log "ERROR: on the share: '${remote_size}' bytes, local ${size}."
+                    exit 1
+                  fi
+                  log "verified on the share: ${DEST}/${FILE} ${remote_size} bytes"
+
+                  # Names sort chronologically (YYYYmmdd-HHMMSS).
+                  olds="$(smb "cd ${DEST}; ls freqtrade-lab-*.tar.gz" | awk '/^ *freqtrade-lab-.*\.tar\.gz/ {print $1}' | sort)"
+                  count="$(echo "${olds}" | grep -c . || true)"
+                  if [ "${count}" -gt "${KEEP}" ]; then
+                    for f in $(echo "${olds}" | head -n "$((count - KEEP))"); do
+                      smb "cd ${DEST}; del ${f}" >/dev/null && log "pruned ${f}"
+                    done
+                  fi
+                  log "done - ${count} backup(s) on the share, keeping ${KEEP}"
+              volumeMounts:
+                - {name: lab, mountPath: /lab, readOnly: true}
+                - {name: work, mountPath: /work}
+              resources:
+                requests:
+                  cpu: 50m
+                  memory: 64Mi
+                limits:
+                  cpu: "1"
+                  memory: 512Mi
+          volumes:
+            # local-path pins the PV to one node, so the pod lands there.
+            - name: lab
+              persistentVolumeClaim:
+                claimName: freqtrade-lab
+                readOnly: true
+            - name: work
+              emptyDir:
+                sizeLimit: 8Gi

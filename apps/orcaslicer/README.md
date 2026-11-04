@@ -33,6 +33,13 @@ Every start overwrites the managed presets, so a preset changed only in the brow
 
 A new preset needs a line in the init container's list in `deployment.yaml` and a `key=path` entry in `kustomization.yaml` (ConfigMap keys cannot hold spaces).
 
+## Updating
+
+The app and `apps/print-service` pin the same linuxserver tag (now `v2.4.2-ls47`); bump both in one PR. Before a bump:
+
+1. Check that every `inherits` in `profiles/` names a preset the new version ships, under `/opt/orcaslicer/resources/profiles/{Elegoo,BBL}/` in the image (`docker run --rm --entrypoint ls lscr.io/linuxserver/orcaslicer:<tag> ...`). OrcaSlicer 2.4 renamed the Elegoo presets (`Elegoo Neptune 4 Pro (0.4 nozzle)` -> `Elegoo Neptune 4 Pro 0.4 nozzle`, `@Elegoo Neptune4Pro (0.4 nozzle)` -> `@Elegoo N4Pro 0.4 nozzle`); the GUI maps old names through `renamed_from`, the print-service paths do not.
+2. Re-run the print-service slice check (`apps/print-service/README.md`, "Test / verify").
+
 ## Verify
 
 ```bash

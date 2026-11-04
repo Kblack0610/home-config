@@ -1,6 +1,6 @@
 {
     "name": "0.40mm Standard @Elegoo Neptune4Pro (0.8 nozzle)-OpenNept4une",
-    "inherits": "0.20mm Standard @Elegoo Neptune4Pro (0.8 nozzle)",
+    "inherits": "0.40mm Standard @Elegoo N4Pro 0.8 nozzle",
     "from": "User",
     "layer_height": "0.4",
     "initial_layer_print_height": "0.45",

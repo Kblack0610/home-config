@@ -14,7 +14,7 @@ Endpoints:
   GET  /status?printer=neptune        -> Moonraker print_stats/webhooks state
   POST /cancel  {printer}             -> Moonraker cancel
 
-Slicing recipe (verified 2026-07-17, see README "Why the graft"):
+Slicing recipe (verified 2026-07-17 on 2.3.2 and 2026-11-04 on 2.4.2, see README "Why the graft"):
   OrcaSlicer's CLI --load-settings rejects our user presets on a compatibility
   check (the child's compatible_printers does not override the inherited parent).
   So we load the *system* Neptune-4-Pro machine/process/filament (guaranteed
@@ -57,12 +57,12 @@ PRINTERS = {
     "neptune": {
         "label": "Elegoo Neptune 4 Pro",
         "moonraker": os.environ.get("NEPTUNE_MOONRAKER_URL", "http://neptune.neptune.svc.cluster.local:7125"),
-        "sys_machine": f"{SYS}/machine/EN4SERIES/Elegoo Neptune 4 Pro (0.4 nozzle).json",
+        "sys_machine": f"{SYS}/machine/EN4SERIES/Elegoo Neptune 4 Pro 0.4 nozzle.json",
         "seed_machine": f"{SEED}/machine-neptune4pro.json",
         "processes": {
-            "standard": f"{SYS}/process/EN4SERIES/0.20mm Standard @Elegoo Neptune4Pro (0.4 nozzle).json",
-            "fine": f"{SYS}/process/EN4SERIES/0.12mm Fine @Elegoo Neptune4Pro (0.4 nozzle).json",
-            "draft": f"{SYS}/process/EN4SERIES/0.24mm Draft @Elegoo Neptune4Pro (0.4 nozzle).json",
+            "standard": f"{SYS}/process/EN4SERIES/0.20mm Standard @Elegoo N4Pro 0.4 nozzle.json",
+            "fine": f"{SYS}/process/EN4SERIES/0.12mm Fine @Elegoo N4Pro 0.4 nozzle.json",
+            "draft": f"{SYS}/process/EN4SERIES/0.24mm Draft @Elegoo N4Pro 0.4 nozzle.json",
         },
         "filaments": {
             "pla": f"{SYS}/filament/Generic/Generic PLA @Elegoo.json",

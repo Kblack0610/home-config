@@ -7,7 +7,7 @@
         "30"
     ],
     "from": "User",
-    "inherits": "Elegoo Neptune 4 Pro (0.4 nozzle)",
+    "inherits": "Elegoo Neptune 4 Pro 0.4 nozzle",
     "machine_end_gcode": "PRINT_END",
     "machine_max_acceleration_e": [
         "2000",

@@ -7,7 +7,8 @@ a `print` CLI, and a `print-mcp` MCP server are all thin clients of this service
 
 - Namespace: `orcaslicer` (co-located with the OrcaSlicer GUI so it reuses the
   `orcaslicer-profiles` ConfigMap and the NAS `3d-printing` hostPath).
-- Image: `lscr.io/linuxserver/orcaslicer:v2.3.2-ls9` — used only for the
+- Image: `lscr.io/linuxserver/orcaslicer:v2.4.2-ls47`, the same tag as
+  `apps/orcaslicer` (bump both together) — used only for the
   `orca-slicer` CLI binary and its bundled `python3`; the Selkies desktop
   entrypoint is bypassed (`command: python3 /app/server.py`).
 - Slicing is CPU-only, so no GPU / no `privileged` (unlike the GUI).
@@ -40,7 +41,8 @@ Options today: `process` = `standard` (0.20mm) | `fine` (0.12mm) | `draft`
 
 OrcaSlicer's CLI (`orca-slicer --load-settings machine.json;process.json
 --load-filaments f.json --slice 0 --outputdir DIR file.stl`) has two gotchas we
-hit and solved (verified 2026-07-17, OrcaSlicer 2.3.2):
+hit and solved (verified 2026-07-17 on OrcaSlicer 2.3.2, re-verified 2026-11-04
+on 2.4.2):
 
 1. **User presets fail a compatibility check.** Passing the seeded
    `-OpenNept4une` user presets directly returns `The selected printer is not
@@ -59,6 +61,12 @@ hit and solved (verified 2026-07-17, OrcaSlicer 2.3.2):
    (material-agnostic); material is chosen purely via the system filament preset
    (`Generic PLA @Elegoo` vs `Generic PETG @Elegoo`, which sets the right
    nozzle/bed temps — PLA 210, PETG 240, verified).
+
+OrcaSlicer 2.4 renamed the Elegoo system presets (`Elegoo Neptune 4 Pro (0.4
+nozzle)` -> `Elegoo Neptune 4 Pro 0.4 nozzle`, `@Elegoo Neptune4Pro (0.4 nozzle)`
+-> `@Elegoo N4Pro 0.4 nozzle`), so the system paths in `server.py` follow the
+image tag; after a bump, check each path exists under
+`/opt/orcaslicer/resources/profiles/Elegoo/`.
 
 Runs headless with `QT_QPA_PLATFORM=offscreen` and no `DISPLAY` (no X server).
 `--slice 0` emits `plate_1.gcode`, which the service renames to `<stl>.gcode` on

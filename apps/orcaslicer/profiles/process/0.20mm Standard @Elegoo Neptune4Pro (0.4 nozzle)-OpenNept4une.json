@@ -13,7 +13,7 @@
     "infill_anchor": "2.7",
     "infill_anchor_max": "10",
     "infill_jerk": "5",
-    "inherits": "0.20mm Standard @Elegoo Neptune4Pro (0.4 nozzle)",
+    "inherits": "0.20mm Standard @Elegoo N4Pro 0.4 nozzle",
     "initial_layer_acceleration": "500",
     "initial_layer_infill_speed": "100",
     "initial_layer_jerk": "5",

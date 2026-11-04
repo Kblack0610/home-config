@@ -98,6 +98,7 @@
 | Forgejo | home-k3s | forgejo | Deployment | active |
 | Prometheus | home-k3s | monitoring | StatefulSet | active |
 | Grafana | home-k3s | monitoring | Deployment | active |
+| Freqtrade league + trader site | home-k3s | freqtrade | StatefulSet, CronJobs, Deployment | active (dry run only) |
 | CrowdSec | home-k3s | crowdsec | HelmRelease | active |
 | OrcaSlicer | home-k3s | orcaslicer | Deployment | active |
 | Snapcast server | home-k3s | snapcast | Deployment | active |
@@ -167,6 +168,7 @@ Traefik on the local network path behind `192.168.1.124`. All `*.kblab.me` local
 | music.kblab.me | Music Assistant | home-k3s | Traefik Ingress; off public DNS (external-dns controller annotation); MA login |
 | snapcast.kblab.me | Snapweb + Snapcast TCP 1704/1705/4953 | home-k3s | Snapweb via Traefik Ingress, off public DNS; TCP via servicelb LoadBalancer on every node |
 | games.kblab.me | Game servers page (zomboid-control) | home-k3s | Traefik Ingress; asks for a password, because every *.kblab.me host is tunnel-reachable |
+| trader.kblab.me | Trader site (freqtrade league and research, read-only) | home-k3s | Traefik Ingress; public through the tunnel, crowdsec plus Sign in with Forgejo |
 | games.kblab.me/playground | Games admin site (game-registry admin port) | home-k3s | Traefik Ingress; Forgejo sign-in, ADMIN_USERS only |
 
 ---

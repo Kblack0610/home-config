@@ -14,6 +14,9 @@ resources:
   - backfill-cronjob.yaml
   - lab-backup-cronjob.yaml
   - trader-db-secret.sops.yaml
+  - trader-web-oauth-secret.sops.yaml
+  - web-deployment.yaml
+  - ingress.yaml
 
 images:
   # The lab image (strategy repo Dockerfile, built by its CI): Freqtrade 2026.9
@@ -21,7 +24,7 @@ images:
   # change; the tag is the strategy repo commit it was built from.
   - name: trader
     newName: ghcr.io/kblack0610/trader
-    digest: sha256:017b68b7d7c34c704558a460831cf381ffa5be2f88858496cbd0bb0b12034d88  # sha-ac4b0b1
+    digest: sha256:ad3b8bc9594243b1645fe441a7de802191de3cd0f46f59fa35c18cb7c9fa6ce6  # sha-29ed5f8
 
 configMapGenerator:
   # Rows here and replicas in statefulset.yaml move together.

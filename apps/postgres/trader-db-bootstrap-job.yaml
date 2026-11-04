@@ -1,7 +1,7 @@
 apiVersion: batch/v1
 kind: Job
 metadata:
-  name: trader-db-bootstrap
+  name: trader-db-bootstrap-2
   # The trader database (apps/freqtrade: league trades, research results). Lives here
   # (namespace: databases) so it can read postgres-secrets for the superuser password.
   # Same pattern as registry-db-bootstrap-job.yaml. Tables come from the lab image (lab/migrate.py).
@@ -41,6 +41,13 @@ spec:
                 secretKeyRef:
                   name: trader-db-secret
                   key: trader-db-pass
+            # The site's read-only role (apps/freqtrade/web-deployment.yaml). Same value inside
+            # web-database-url in apps/freqtrade/trader-db-secret.sops.yaml; rotate both together.
+            - name: TRADER_WEB_DB_PASS
+              valueFrom:
+                secretKeyRef:
+                  name: trader-db-secret
+                  key: trader-web-db-pass
           command:
             - /bin/bash
             - -c
@@ -70,7 +77,27 @@ spec:
                 GRANT ALL PRIVILEGES ON SCHEMA public TO trader;
               EOSQL
 
-              echo "trader role + database ready."
+              # trader_web: SELECT only, on the tables there are and the ones migrations add
+              # later (lab/migrate.py runs as trader, so trader's default privileges cover them),
+              # and every transaction read-only on top.
+              psql -v ON_ERROR_STOP=1 -d trader <<-EOSQL
+                DO \$\$
+                BEGIN
+                  IF NOT EXISTS (SELECT FROM pg_roles WHERE rolname = 'trader_web') THEN
+                    CREATE ROLE trader_web LOGIN PASSWORD '${TRADER_WEB_DB_PASS}';
+                  ELSE
+                    ALTER ROLE trader_web WITH LOGIN PASSWORD '${TRADER_WEB_DB_PASS}';
+                  END IF;
+                END
+                \$\$;
+                ALTER ROLE trader_web SET default_transaction_read_only = on;
+                GRANT CONNECT ON DATABASE trader TO trader_web;
+                GRANT USAGE ON SCHEMA public TO trader_web;
+                GRANT SELECT ON ALL TABLES IN SCHEMA public TO trader_web;
+                ALTER DEFAULT PRIVILEGES FOR ROLE trader IN SCHEMA public GRANT SELECT ON TABLES TO trader_web;
+              EOSQL
+
+              echo "trader and trader_web roles + database ready."
           resources:
             requests:
               memory: "64Mi"

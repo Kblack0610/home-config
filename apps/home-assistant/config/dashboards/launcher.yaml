@@ -128,6 +128,13 @@ sections:
         tap_action:
           action: url
           url_path: https://finance.kblab.me
+      - type: tile
+        entity: binary_sensor.trader_kblab_me
+        name: Trader
+        icon: mdi:chart-line-variant
+        tap_action:
+          action: url
+          url_path: https://trader.kblab.me
   - type: grid
     cards:
       - type: heading

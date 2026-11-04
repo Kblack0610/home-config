@@ -64,6 +64,7 @@ spec:
         - https://slicer.kblab.me
         - https://snapcast.kblab.me
         - https://status.kblab.me
+        - https://trader.kblab.me
         - https://vault.kblab.me
         - https://vikunja.kblab.me
       # END_GENERATED_TARGETS

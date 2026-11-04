@@ -76,6 +76,7 @@ NAMESPACE_GROUP = {
     "binks-api": "AI",
     "comfyui": "AI",
     "forgejo": "Dev",
+    "freqtrade": "Finance",
     "gatus": "Ops",
     "headscale": "Ops",
     "home-assistant": "Home",
@@ -124,6 +125,7 @@ HOST_ICON = {
     "slicer": "mdi:printer-3d-nozzle",
     "snapcast": "mdi:speaker-multiple",
     "status": "mdi:heart-pulse",
+    "trader": "mdi:chart-line-variant",
 }
 
 # Inventory-host -> { label, url, icon }. URL points at the admin UI or

@@ -17,7 +17,9 @@ Results live in the `trader` database in the shared Postgres (`apps/postgres/tra
 | CronJob `freqtrade-report` | Daily 06:30: reads every bot's API, appends `league-history.jsonl`, writes `reports/<date>.md`; fails if a bot is not dry run |
 | CronJob `freqtrade-lab-backup` | Sunday 02:50: tar of PVC `freqtrade-lab` to the NAS public share `backups/freqtrade/`, newest 4 kept |
 | Secret `freqtrade-api` | SOPS: API password, JWT secret, ws token shared by the bots, the report and the ingest |
-| Secret `trader-db` | SOPS: `database-url` for the trader role; the same password is in `apps/postgres/trader-db-secret.sops.yaml`, rotate both together |
+| Deployment `trader-web`, Ingress `trader-web` | https://trader.kblab.me: the strategy repo's `web/` site (Overview, bots, data coverage, runs), read-only as the `trader_web` role; public through the tunnel with crowdsec, every page behind Sign in with Forgejo for `ALLOWED_USERS` |
+| Secret `trader-db` | SOPS: `database-url` for the trader role and `web-database-url` for the read-only `trader_web` role; the same passwords are in `apps/postgres/trader-db-secret.sops.yaml` (`trader-db-pass`, `trader-web-db-pass`), rotate each pair together |
+| Secret `trader-web-oauth` | SOPS: the Forgejo OAuth2 app `trader.kblab.me` (id 8 under kblack0610, redirect `https://trader.kblab.me/oauth/callback`) and the cookie `session-key`; rotating the key signs everyone out |
 
 All on amd64 nodes only.
 
@@ -58,6 +60,10 @@ A new digest or roster restarts the bots; their trade history is on their PVCs a
 
 | Symptom | Cause | Fix |
 |---|---|---|
+| trader.kblab.me: Forgejo says the redirect URI is invalid | The OAuth2 app's redirect is not `https://trader.kblab.me/oauth/callback` | Fix it under Forgejo Settings, Applications, `trader.kblab.me` |
+| trader.kblab.me: `Not allowed` after signing in | The Forgejo login is not in `ALLOWED_USERS` | Add it in `web-deployment.yaml` |
+| `trader-web` crashloops with `trader-web: missing ...` | A key of Secret `trader-web-oauth` is empty | Re-encrypt `trader-web-oauth-secret.sops.yaml` with all three keys |
+| `permission denied for table ...` in the `trader-web` log | A table was created by a role other than `trader`, so the default SELECT grant missed it | Re-run the bootstrap Job (bump its name); it grants SELECT on every table |
 | Pod logs `pod ordinal N has no roster row` | replicas above the roster row count | Match `replicas` to `roster.tsv` |
 | Pod logs `refusing to start` | Something made the config non-dry-run or added a key | Find and remove it; the guard is the point |
 | `ImagePullBackOff` on `ghcr.io/kblack0610/trader` | Digest not pushed, or the GHCR package is private | Re-run the digest query above; a 401 there means the package went private |

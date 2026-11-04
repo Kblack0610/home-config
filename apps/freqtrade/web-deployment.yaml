@@ -1,0 +1,78 @@
+# The trader site (strategy repo web/): a read-only view of the league and the lab
+# from the trader database, as the trader_web role (SELECT only, read-only
+# transactions; apps/postgres/trader-db-bootstrap-job.yaml). Every page but
+# /healthz needs Sign in with Forgejo as an allowlisted login. No trade controls.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: trader-web
+  labels:
+    app: trader-web
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: trader-web
+  template:
+    metadata:
+      labels:
+        app: trader-web
+    spec:
+      nodeSelector:
+        kubernetes.io/arch: amd64
+      securityContext:
+        runAsUser: 1000
+        runAsGroup: 1000
+        runAsNonRoot: true
+      containers:
+        - name: web
+          image: trader
+          workingDir: /repo
+          command: ["uvicorn", "web.app:app", "--host", "0.0.0.0", "--port", "8000"]
+          ports:
+            - {name: http, containerPort: 8000}
+          env:
+            - name: DATABASE_URL
+              valueFrom:
+                secretKeyRef: {name: trader-db, key: web-database-url}
+            - {name: TRADER_WEB_BASE_URL, value: "https://trader.kblab.me"}
+            # The browser signs in at Forgejo's ROOT_URL host; the code swap and user
+            # lookup stay in-cluster.
+            - {name: FORGEJO_URL, value: "https://git.kennethblack.me"}
+            - {name: FORGEJO_API_URL, value: "http://forgejo-http.forgejo.svc:3000"}
+            - {name: ALLOWED_USERS, value: "kblack0610"}
+            - {name: TRADER_WEB_TZ, value: "America/Los_Angeles"}
+            - name: OAUTH_CLIENT_ID
+              valueFrom:
+                secretKeyRef: {name: trader-web-oauth, key: client-id}
+            - name: OAUTH_CLIENT_SECRET
+              valueFrom:
+                secretKeyRef: {name: trader-web-oauth, key: client-secret}
+            - name: SESSION_KEY
+              valueFrom:
+                secretKeyRef: {name: trader-web-oauth, key: session-key}
+          readinessProbe:
+            httpGet: {path: /healthz, port: http}
+            periodSeconds: 10
+          livenessProbe:
+            httpGet: {path: /healthz, port: http}
+            periodSeconds: 30
+            failureThreshold: 3
+          resources:
+            requests:
+              cpu: 20m
+              memory: 128Mi
+            limits:
+              memory: 512Mi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: trader-web
+  labels:
+    app: trader-web
+spec:
+  selector:
+    app: trader-web
+  ports:
+    - {name: http, port: 80, targetPort: http}

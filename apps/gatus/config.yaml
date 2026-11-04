@@ -737,6 +737,16 @@ endpoints:
         # Probed every 5 minutes, so two failures is 10 minutes.
         failure-threshold: 2
 
+  - name: trader.kblab.me
+    group: ingress
+    url: "https://trader.kblab.me"
+    interval: 300s
+    client:
+      insecure: true
+    conditions:
+      - "[STATUS] < 500"
+      - "[CERTIFICATE_EXPIRATION] > 720h"
+
   - name: vikunja.kblab.me
     group: ingress
     url: "https://vikunja.kblab.me"

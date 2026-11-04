@@ -24,6 +24,6 @@ configMapGenerator:
   - name: freqtrade-repo
     literals:
       - url=https://github.com/Kblack0610/freqtrade_trading_attempt
-      - ref=be7025b63b96e21a27d9d16012dc2094530b7de3
+      - ref=136bdd4de09a018959b7f5e56bc828fac70644f2
     files:
       - clone-repo.sh

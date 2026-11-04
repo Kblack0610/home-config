@@ -260,12 +260,12 @@ all:
         # images are pulled on the box (unity_ci_images_pull) instead of copied.
         # Kept stopped when idle; start it before running the play against it.
         aws-burst-1:
-          ansible_host: i-049219a501808a9cf
+          ansible_host: i-0f1ecf35dc0e78146
           ansible_user: ubuntu
           ansible_ssh_common_args: >-
             -o ProxyCommand="aws ssm start-session --profile bnb --region us-east-2
             --target %h --document-name AWS-StartSSHSession --parameters portNumber=%p"
-          unity_ci_slots: 8
+          unity_ci_slots: 6
           unity_ci_full: true
           unity_ci_images_pull: true
           unity_ci_lan: false
@@ -338,20 +338,20 @@ all:
           ci_unity_slot_cpus: ["2-4,14-16", "5-7,17-19"]
           ci_unity_memory_max: 32G
           ci_unity_slot_memory_max: 16G
-        # m7a.12xlarge: 48 real cores (no SMT), 192 GiB. Core 0 stays with the OS
-        # and the SSM agent; cores 1-47 go to the eight slots, seven of 6 and one
-        # of 5 (at 4 each, 15 cores sat idle while every slot ran 3.5x
+        # m7a.8xlarge on-demand (platform infra/aws-ci-burst, since 11-04: Spot
+        # reclaimed the 12xlarge 4 times in 9 h): 32 real cores (no SMT), 128 GiB.
+        # Core 0 stays with the OS and the SSM agent; cores 1-30 go to six slots
+        # of 5, core 31 is spare. Not 8 slots of 4: at 4 cores a slot ran 3.5x
         # oversubscribed and a batch's first scene took up to 21 s to compose,
-        # timing out SwapTo). Each slot stops at 14G, over a PlayMode shard's
-        # 13.9G max. The move to m7a.8xlarge (32 cores, 128G) keeps 8 slots but
-        # needs its own list (4 cores each from core 0). No k3s and no platform
-        # runners here.
+        # timing out SwapTo (fixed at 6 cores by #518). Each slot stops at 14G,
+        # over a PlayMode shard's 13.9G max. Slots 7 and 8 from the 12xlarge stay
+        # registered but offline. No k3s and no platform runners here.
         aws-burst-1:
-          ci_cpus: 1-47
-          ci_memory_max: 180G
-          ci_unity_cpus: 1-47
-          ci_unity_slot_cpus: ["1-6", "7-12", "13-18", "19-24", "25-30", "31-36", "37-42", "43-47"]
-          ci_unity_memory_max: 168G
+          ci_cpus: 1-31
+          ci_memory_max: 112G
+          ci_unity_cpus: 1-30
+          ci_unity_slot_cpus: ["1-5", "6-10", "11-15", "16-20", "21-25", "26-30"]
+          ci_unity_memory_max: 100G
           ci_unity_slot_memory_max: 14G
 
     # Nodes that run the game servers (apps/playground-server pins to the

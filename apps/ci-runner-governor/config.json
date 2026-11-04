@@ -12,7 +12,7 @@
     "withhold": {"idle": 0.15, "psi": 0.4, "tctl": 92, "mem": 0.1, "disk": 0.2}
   },
   "standby": {
-    "aws-burst-1": {"max_admitted": 8, "power": {"provider": "aws", "instance_id": "i-049219a501808a9cf",
+    "aws-burst-1": {"max_admitted": 6, "power": {"provider": "aws", "instance_id": "i-0f1ecf35dc0e78146",
                                                "region": "us-east-2", "idle_off_seconds": 1200, "live": false}}
   },
   "hosts": {

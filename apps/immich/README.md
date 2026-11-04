@@ -78,7 +78,7 @@ never empty. The sync is idempotent (adds new winners, removes ones that no long
 
 1. **Create an API key per account** (read + album write): Immich UI -> Account Settings ->
    API Keys -> New API Key, as *me* and as *ktnynas@gmail.com*.
-2. **Create the SOPS secret** (kept out of git until it exists, like `apps/spotify-concerts`):
+2. **Create the SOPS secret** (kept out of git until it exists):
    ```bash
    cat > apps/immich/curation-secret.yaml <<'EOF'
    apiVersion: v1

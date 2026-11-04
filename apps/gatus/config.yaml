@@ -177,13 +177,6 @@ endpoints:
     conditions:
       - "[STATUS] < 500"
 
-  - name: OpenClaw
-    group: apps
-    url: "http://openclaw.openclaw.svc:18789/"
-    interval: 60s
-    conditions:
-      - "[STATUS] < 500"
-
   - name: PlaceMyParents API
     group: apps
     url: "http://placemyparents-api.placemyparents-preview.svc/api/health"
@@ -356,16 +349,6 @@ endpoints:
       - "[STATUS] < 500"
       - "[CERTIFICATE_EXPIRATION] > 720h"
 
-  - name: api.time-tangle.com
-    group: ingress
-    url: "https://api.time-tangle.com"
-    interval: 300s
-    client:
-      insecure: true
-    conditions:
-      - "[STATUS] < 500"
-      - "[CERTIFICATE_EXPIRATION] > 720h"
-
   - name: apps.kblab.me
     group: ingress
     url: "https://apps.kblab.me"
@@ -379,16 +362,6 @@ endpoints:
   - name: blacknbrownstudios.com
     group: ingress
     url: "https://blacknbrownstudios.com"
-    interval: 300s
-    client:
-      insecure: true
-    conditions:
-      - "[STATUS] < 500"
-      - "[CERTIFICATE_EXPIRATION] > 720h"
-
-  - name: cal.kennethblack.me
-    group: ingress
-    url: "https://cal.kennethblack.me"
     interval: 300s
     client:
       insecure: true
@@ -629,16 +602,6 @@ endpoints:
       - type: ntfy
         # Probed every 5 minutes, so two failures is 10 minutes.
         failure-threshold: 2
-
-  - name: openclaw.kblab.me
-    group: ingress
-    url: "https://openclaw.kblab.me"
-    interval: 300s
-    client:
-      insecure: true
-    conditions:
-      - "[STATUS] < 500"
-      - "[CERTIFICATE_EXPIRATION] > 720h"
 
   - name: photos.kblab.me
     group: ingress

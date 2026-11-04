@@ -87,7 +87,6 @@ NAMESPACE_GROUP = {
     "mqtt2prom": "Ops",
     "music-assistant": "Media",
     "neptune": "Printing",
-    "openclaw": "AI",
     "orcaslicer": "Printing",
     "semaphore": "Ops",
     "snapcast": "Media",
@@ -99,7 +98,6 @@ HOST_ICON = {
     "alertmanager": "mdi:bell-alert",
     "binks": "mdi:chat",
     "blacknbrownstudios": "mdi:palette",
-    "cal": "mdi:calendar",
     "comfyui": "mdi:image-multiple",
     "finance": "mdi:cash-multiple",
     "finance-tools": "mdi:cash-multiple",
@@ -119,7 +117,6 @@ HOST_ICON = {
     "llm": "mdi:robot",
     "music": "mdi:music",
     "neptune": "mdi:printer-3d",
-    "openclaw": "mdi:robot-industrial",
     "photos": "mdi:image",
     "placemyparents": "mdi:account-group",
     "placemyparents-api": "mdi:api",
@@ -159,7 +156,7 @@ def flux_apps() -> set[str]:
     """App dirs Flux deploys: the resources of apps/kustomization.yaml.
 
     An ingress file under an app that is not listed there is never applied, so
-    probing its host only produces a permanent PublicSiteDown (apps/cal did).
+    probing its host only produces a permanent PublicSiteDown.
     """
     with open(APPS_KUSTOMIZATION) as fp:
         return set(yaml.safe_load(fp).get("resources") or [])

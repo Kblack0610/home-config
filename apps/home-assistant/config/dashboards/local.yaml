@@ -45,7 +45,6 @@ sections:
       - type: calendar
         initial_view: listWeek
         entities:
-          - calendar.concerts
           - calendar.us_holidays
 
   - type: grid

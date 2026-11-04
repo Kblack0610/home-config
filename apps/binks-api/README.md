@@ -8,7 +8,7 @@ LLM chat backend for `binks.chat`. TypeScript replacement for the legacy Rust `b
 - **Image**: `git.kblab.me/kblack0610/binks-api` (Forgejo registry — `forgejo-registry` imagePullSecret)
 - **DB**: in-namespace `binks-postgres` StatefulSet on a 5Gi PVC. Anonymous and signed-in chats both persisted here.
 - **LLM gateway**: `http://litellm.ai-gateway.svc.cluster.local:4000` — uses the cluster's `litellm-secrets/LITELLM_MASTER_KEY` (mirrored into `binks-api-secret/LITELLM_API_KEY`).
-- **Shadow ingress**: `binks-next.kblab.me` (LAN-only, Traefik IngressRoute). The production `binks.chat` ingress is **not** managed here — it still points at the legacy `binks-agent`.
+- **Ingress**: `binks.chat` (Traefik IngressRoute `binks-chat` in `ingress.yaml`): the SPA on `/`, the API on `/api` and `/ws`. TLS ends at Cloudflare.
 
 ## Deploy lifecycle
 
@@ -25,7 +25,3 @@ LLM chat backend for `binks.chat`. TypeScript replacement for the legacy Rust `b
 - `binks-api-secret`: `DATABASE_URL`, `JWT_SECRET`, `LITELLM_API_KEY`
 
 The `JWT_SECRET` is binks-only in v1 (no shared SSO with PlaceMyParents yet — that's the post-v1 paid-tier work, requires deciding on a cross-cluster secret strategy).
-
-## Cutover (post-soak)
-
-When `binks-next.kblab.me` looks healthy, edit the production `binks.chat` IngressRoute (currently in the `ai-services` namespace pointing at `binks-agent`) to swap the backend service to `binks-api` in this namespace. Then scale `binks-agent` to zero.

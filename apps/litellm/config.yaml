@@ -62,7 +62,7 @@ model_list:
   # handler — bug is upstream and worker-thread-related, not
   # model-specific. Local VLM unblocks once we switch serving stack
   # to mlx_vlm.server / vllm-mlx / omlx; until then the paid
-  # vlm (gemini-3-flash) entry below covers OpenClaw's image+pdf slots.
+  # vlm (gemini-3-flash) entry below covers vision (image+pdf) requests.
 
   # Fast slot — small dense Qwen3 4B Instruct, latency-sensitive.
   # First consumer: apps/karakeep/ INFERENCE_TEXT_MODEL.
@@ -307,7 +307,6 @@ model_list:
   #   - per-virtual-key:   primary control via /key/generate
   #                        allowed_models. binks-api + mem0 use the
   #                        `local-only` key (no paid access);
-  #                        OpenClaw uses `internal-tools` (all-proxy);
   #                        Karakeep gets its own `karakeep` key
   #                        (fast + embedding only).
 
@@ -382,14 +381,14 @@ model_list:
         json_mode: true
 
   # vlm paid — gemini-3-flash. First VLM route in the gateway
-  # (no local equivalent until mlx_vlm bug is sorted). Maps to
-  # OpenClaw's image + pdf slots. Image-capable, cheap.
+  # (no local equivalent until mlx_vlm bug is sorted). Serves
+  # vision (image + pdf) requests. Image-capable, cheap.
   # NOTE the route name is a STABLE ALIAS; the upstream id below floats.
   # Lazer retired `gemini-3-flash` (now 3.5/3.6), so this route - and the
   # bare `vlm` alias that points at it - returned
   # `400 unknown model: gemini-3-flash` for every vision request. Renaming
-  # the route to chase the vendor was rejected: the name is pinned in 7
-  # repo files plus openclaw's cluster configmap, so a rename is churn that
+  # the route to chase the vendor was rejected: the name is pinned in
+  # several repo files and consumer keys, so a rename is churn that
   # repeats on every vendor bump. Only the upstream moves.
   - model_name: "vlm (gemini-3-flash)"
     litellm_params:
@@ -546,7 +545,7 @@ router_settings:
   # reachable, so these resolve to Lazer/Gemini today. Flip a value to the
   # matching `(... local ...)` route name once the box is verified up for
   # that category — EVERY consumer that calls the alias follows in one edit
-  # (mem0/openclaw call these aliases; karakeep is pinned to its key's route),
+  # (mem0 calls these aliases; karakeep is pinned to its key's route),
   # and the local->cloud `fallbacks` below make a flip safe even if the box
   # drops mid-request.
   #

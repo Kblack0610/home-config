@@ -14,12 +14,6 @@ This is the canonical list. If you add a non-Flux directory under `apps/`, add a
 | `apps/iot-fleet/` | Rust source tree (Cargo workspace) | not a service — code only | `cargo build` from this dir | Crates and agents for an embedded-fleet project; lives under `apps/` historically. Candidate to move to `~/.lab/` or a sibling repo. |
 | `apps/pi3-adguard-home/` | Docker Compose | standalone Pi3 (separate from k3s) | bootstrap via `apps/pi3-adguard-home/flash-pi.sh` + `setup.sh` (see [`apps/pi3-adguard-home/README.md`](../apps/pi3-adguard-home/README.md)) | Compose because AdGuard sits OUTSIDE the cluster network namespace — it owns DNS for the LAN (`*.kblab.me` rewrites) and must survive cluster outages. |
 
-## Ready for Flux — activation deferred
-
-| Directory | Why deferred | Activation step |
-|-----------|--------------|-----------------|
-| `apps/cal/` | Requires manual prereqs before Flux can apply cleanly: DNS record for `cal.kennethblack.me`, generated secret material (`NEXTAUTH_SECRET`, `CALENDSO_ENCRYPTION_KEY`, Gmail app password), database role on the shared Postgres in `databases` ns | Follow [`docs/runbooks/cal-com-setup.md`](runbooks/cal-com-setup.md). Final step is adding `- cal` to `apps/kustomization.yaml`. |
-
 ## Runtime-managed secrets (not in git, by design)
 
 Some cluster Secrets are deliberately NOT under Flux because they're populated and mutated by the runtime — committing them to git would either expose sensitive state (auth keys, account-keys) or get clobbered on every reconcile when the controller regenerates them.

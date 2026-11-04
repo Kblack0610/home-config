@@ -232,7 +232,6 @@ Headscale provides MagicDNS for devices on the tailnet:
 The Headscale config includes extra DNS records pointing `*.kblab.me` to the Traefik ingress, so tailnet devices can access:
 - hass.kblab.me
 - grafana.kblab.me
-- openclaw.kblab.me
 - etc.
 
 ### AdGuard Integration

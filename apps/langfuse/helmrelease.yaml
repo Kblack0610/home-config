@@ -54,7 +54,7 @@ spec:
         className: traefik
         annotations:
           cert-manager.io/cluster-issuer: letsencrypt-dns
-          # Restricts to RFC1918 + Tailscale (same as openclaw, mem0)
+          # Restricts to RFC1918 + Tailscale (same as mem0)
           traefik.ingress.kubernetes.io/router.middlewares: monitoring-local-network-only@kubernetescrd
         hosts:
           - host: langfuse.kblab.me

@@ -23,25 +23,11 @@ rest:
           {% set r = value_json.data.result | selectattr('metric.instance', 'eq', 'https://alertmanager.kblab.me') | list %}
           {% set c = (r[0].value[1] | int(0)) if r | length > 0 else 0 %}
           {{ 0 < c < 500 }}
-      - name: "api.time-tangle.com"
-        unique_id: site_up_api_time_tangle_com
-        device_class: connectivity
-        value_template: >-
-          {% set r = value_json.data.result | selectattr('metric.instance', 'eq', 'https://api.time-tangle.com') | list %}
-          {% set c = (r[0].value[1] | int(0)) if r | length > 0 else 0 %}
-          {{ 0 < c < 500 }}
       - name: "apps.kblab.me"
         unique_id: site_up_apps_kblab_me
         device_class: connectivity
         value_template: >-
           {% set r = value_json.data.result | selectattr('metric.instance', 'eq', 'https://apps.kblab.me') | list %}
-          {% set c = (r[0].value[1] | int(0)) if r | length > 0 else 0 %}
-          {{ 0 < c < 500 }}
-      - name: "binks-next.kblab.me"
-        unique_id: site_up_binks_next_kblab_me
-        device_class: connectivity
-        value_template: >-
-          {% set r = value_json.data.result | selectattr('metric.instance', 'eq', 'https://binks-next.kblab.me') | list %}
           {% set c = (r[0].value[1] | int(0)) if r | length > 0 else 0 %}
           {{ 0 < c < 500 }}
       - name: "binks.chat"
@@ -210,13 +196,6 @@ rest:
         device_class: connectivity
         value_template: >-
           {% set r = value_json.data.result | selectattr('metric.instance', 'eq', 'https://ntfy.kblab.me') | list %}
-          {% set c = (r[0].value[1] | int(0)) if r | length > 0 else 0 %}
-          {{ 0 < c < 500 }}
-      - name: "openclaw.kblab.me"
-        unique_id: site_up_openclaw_kblab_me
-        device_class: connectivity
-        value_template: >-
-          {% set r = value_json.data.result | selectattr('metric.instance', 'eq', 'https://openclaw.kblab.me') | list %}
           {% set c = (r[0].value[1] | int(0)) if r | length > 0 else 0 %}
           {{ 0 < c < 500 }}
       - name: "photos.kblab.me"

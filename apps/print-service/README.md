@@ -95,7 +95,7 @@ clients of the API above; set `PRINT_SERVICE_URL` to override (e.g. a port-forwa
   | `print send <f.stl> [--no-start]` | `print status` | `print cancel`. Add `--json` anywhere.
 - **`mcp/print_mcp.py`** - MCP server (tools: `list_printers`, `slice_model`,
   `print_model`, `printer_status`, `cancel_print`), the scoped structured surface for
-  Claude Code / OpenClaw / the voice orchestrator. Self-contained `uv run` (PEP 723
+  Claude Code / the voice orchestrator. Self-contained `uv run` (PEP 723
   inline deps, no persistent install). Registered in the repo `.mcp.json` as `print`.
 
 ## Deploy

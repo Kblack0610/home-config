@@ -11,7 +11,6 @@ One-page index of services and their management plane. Use this to answer "where
 | LiteLLM | hp-victus | k3s pod (NVIDIA) | Flux | `apps/litellm/` |
 | Immich | asus-laptop | k3s pod (AMD ROCm) | Flux | `apps/immich/` |
 | OrcaSlicer | asus-laptop | k3s pod (AMD GPU) | Flux | `apps/orcaslicer/` |
-| OpenClaw | hp-victus | k3s pod | Flux | `apps/openclaw/` |
 | NAS (Samba) | asus-laptop | k3s pod | Flux | `apps/nas/` |
 | Headwind MDM (Android device mgmt) | any k8s node | k3s pod (Tomcat + shared Postgres) | Flux | `apps/headwind-mdm/` ; `docs/device-fabric.md` |
 | Headwind → gatus fleet bridge | headwind-mdm ns | k3s pod (poller) | Flux | `apps/headwind-fleet-bridge/` ; `docs/device-fabric.md` |

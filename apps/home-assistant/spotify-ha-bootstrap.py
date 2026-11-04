@@ -3,7 +3,7 @@
 
 Run ONCE on your workstation. It uses the EXACT scope set Home Assistant's
 spotify integration requests, so the resulting refresh token drives the HA media
-module — AND (since HA's scopes are a superset) the spotify-concerts bridge too.
+module.
 Pure stdlib. Requires a Spotify **Premium** developer app.
 
 Prereqs:

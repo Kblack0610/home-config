@@ -84,7 +84,7 @@ mlx_huggingface_token_path: "{{ ansible_env.HOME }}/.cache/huggingface/token"
 # 2026-04-29 — GLM-5's cold-load thrashed macOS's VM allocator and
 # evicted pages from the pinned slots, causing 60s+ timeouts on `code`
 # and `reasoning`. Reasoning A/B was retired with the mlx-community
-# variant kept (consumer-stable name in OpenClaw fallback chain).
+# variant kept (consumer-stable route name).
 # Re-add via this file if either slot is wanted again — HuggingFace
 # weights are still cached locally.
 #
@@ -168,7 +168,7 @@ mlx_models:
   # Dual-tier expansion (2026-07): best-per-category MLX candidates so
   # each category can be A/B-tested local-vs-Lazer through the gateway.
   # The four entries ABOVE stay pinned + consumer-stable (do not rename
-  # them — OpenClaw/Karakeep/binks reference the names verbatim). The
+  # them - Karakeep/binks reference the names verbatim). The
   # entries BELOW are the upgrade/expansion candidates.
   #
   # MEMORY DISCIPLINE — why almost all of these are on_demand:

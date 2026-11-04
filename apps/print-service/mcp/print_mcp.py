@@ -6,7 +6,7 @@
 """print-mcp - MCP server wrapping the home 3D-print capability (apps/print-service).
 
 The scoped, structured surface for the print capability: exposes slice / print /
-status / cancel as MCP tools so Claude Code, OpenClaw, and (later) the voice
+status / cancel as MCP tools so Claude Code and (later) the voice
 orchestrator can drive 3D printing with typed calls instead of raw HTTP. Pairs
 with the `print` CLI (the shell/skill surface).
 

@@ -2,7 +2,7 @@
 """print - CLI for the home 3D-print capability (apps/print-service).
 
 Thin client of the print-service HTTP API. This is the "skill" surface: an agent
-(OpenClaw / Claude Code) drives 3D printing by shelling out to this CLI. The
+(e.g. Claude Code) drives 3D printing by shelling out to this CLI. The
 scoped print-mcp server is the alternative structured surface for voice.
 
 Endpoint: $PRINT_SERVICE_URL (default https://print.kblab.me). LAN/Tailscale only.

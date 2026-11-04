@@ -5,7 +5,7 @@ namespace: immich
 
 # curate.py is shipped as a ConfigMap (hash-suffixed -> edits roll the CronJob's
 # next pod). Keeping it a real file means it stays lint/test-able instead of
-# buried in YAML (same pattern as apps/spotify-concerts).
+# buried in YAML.
 configMapGenerator:
   - name: immich-curate-app
     files:

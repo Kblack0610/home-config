@@ -57,9 +57,6 @@ data:
         - name: grafana.kblab.me
           type: A
           value: 10.43.43.204
-        - name: openclaw.kblab.me
-          type: A
-          value: 10.43.43.204
         - name: llm.kblab.me
           type: A
           value: 10.43.43.204

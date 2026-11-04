@@ -27,9 +27,7 @@ spec:
       static:
         - https://agents.kblab.me
         - https://alertmanager.kblab.me
-        - https://api.time-tangle.com
         - https://apps.kblab.me
-        - https://binks-next.kblab.me
         - https://binks.chat
         - https://blacknbrownstudios.com
         - https://finance.kblab.me
@@ -54,7 +52,6 @@ spec:
         - https://neptune.kblab.me
         - https://notes-sync-bridge.kblab.me
         - https://ntfy.kblab.me
-        - https://openclaw.kblab.me
         - https://photos.kblab.me
         - https://placemyparents-api.blacknbrownstudios.com
         - https://placemyparents-mobile.blacknbrownstudios.com

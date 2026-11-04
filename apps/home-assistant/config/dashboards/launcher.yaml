@@ -11,13 +11,6 @@ sections:
         heading: Public
         icon: mdi:earth
       - type: tile
-        entity: binary_sensor.api_time_tangle_com
-        name: api.time-tangle.com
-        icon: mdi:web
-        tap_action:
-          action: url
-          url_path: https://api.time-tangle.com
-      - type: tile
         entity: binary_sensor.binks_chat
         name: binks.chat
         icon: mdi:chat
@@ -93,26 +86,12 @@ sections:
         heading: AI
         icon: mdi:robot
       - type: tile
-        entity: binary_sensor.binks_next_kblab_me
-        name: Binks Next
-        icon: mdi:application
-        tap_action:
-          action: url
-          url_path: https://binks-next.kblab.me
-      - type: tile
         entity: binary_sensor.llm_kblab_me
         name: Llm
         icon: mdi:robot
         tap_action:
           action: url
           url_path: https://llm.kblab.me
-      - type: tile
-        entity: binary_sensor.openclaw_kblab_me
-        name: Openclaw
-        icon: mdi:robot-industrial
-        tap_action:
-          action: url
-          url_path: https://openclaw.kblab.me
   - type: grid
     cards:
       - type: heading

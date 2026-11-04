@@ -21,7 +21,7 @@ jobs:
     runs-on: docker
     container:
       # Alpine + explicit git/nodejs is this repo's convention for a checkout-capable
-      # container (see openclaw-image.yaml); actions/checkout needs both.
+      # container; actions/checkout needs both.
       image: python:3.12-alpine
     steps:
       - name: Install checkout deps
@@ -115,9 +115,9 @@ jobs:
       # place nobody is watching. Cheaper to learn it here.
       #
       # Builds exactly what FLUX builds - the `apps` aggregate and each cluster - not
-      # every apps/*/ directory. Those are not the same set: apps/cal is not listed in
-      # apps/kustomization.yaml and references a secret.yaml that is not in the repo, so
-      # a per-directory loop would gate this repo on a directory Flux itself ignores.
+      # every apps/*/ directory. Those are not the same set: some apps/*/ directories
+      # are not listed in apps/kustomization.yaml (docs/excluded-from-flux.md says why),
+      # so a per-directory loop would gate this repo on a directory Flux itself ignores.
       # A gate that fails on something production does not build teaches people to
       # ignore the gate.
       - name: Flux entry points build

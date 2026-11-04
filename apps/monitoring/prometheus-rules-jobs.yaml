@@ -49,6 +49,6 @@ spec:
             summary: "CronJob overdue: {{ $labels.namespace }}/{{ $labels.cronjob }}"
             description: >-
               {{ $labels.namespace }}/{{ $labels.cronjob }} is not suspended but
-              is more than 6h past its own next scheduled run. Daily backups,
-              the flux audit and the Renovate scan all live here; silence from
-              one of them is indistinguishable from success without this alert.
+              is more than 6h past its own next scheduled run. Daily backups
+              and the flux audit both live here; silence from one of them is
+              indistinguishable from success without this alert.

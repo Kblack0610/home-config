@@ -64,7 +64,7 @@ spec:
             - name: DEFAULT_MODEL
               value: 'fast (Qwen3-4B)'
             - name: CORS_ORIGINS
-              value: https://binks.chat,https://binks-next.kblab.me
+              value: https://binks.chat
           envFrom:
             - secretRef:
                 name: binks-api-secret

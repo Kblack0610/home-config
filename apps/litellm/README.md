@@ -29,7 +29,6 @@ Every consumer of this gateway should hold a *scoped virtual key* — never `LIT
 |---|---|---|---|---|
 | `karakeep-tagging` | `fast (Qwen3-4B)` | none (free upstream) | rpm 60 | `apps/karakeep/` |
 | `mem0-embeddings` | `embedding (modernbert-embed-base-4bit)`, `fast (Qwen3-4B)` | none (free upstream) | rpm 120 | `apps/mem0/` |
-| `openclaw-coding` | `code (...)`, `reasoning (...)`, `fast (...)` | none (free upstream) | tpm 100k | `apps/openclaw/` |
 | `opencode-default` | free local + the toggle aliases (`code`/`reasoning`/`fast`) | $50 | tpm 50k, rpm 30 | opencode default mode |
 | `opencode-premium` | the paid Lazer routes (`code (qwen-3-coder)`, `reasoning (deepseek-v4-pro)`, `fast (gpt-oss-120b)`, `vlm (gemini-3-flash)`) | $150 | tpm 100k | opencode build/escalation mode |
 | `model-lane` | `claude-haiku-4-5-20251001` (Lazer Haiku 5.5), team `lazer-pool` | $10 | rpm 30 | `model-lane classify` (dotfiles-private skill), key file `~/.local/state/model-lane/litellm.key` |
@@ -37,7 +36,7 @@ Every consumer of this gateway should hold a *scoped virtual key* — never `LIT
 
 > **Toggle aliases (2026-07):** `router_settings.model_group_alias` in `configmap.yaml` exposes short stable names (`code`, `reasoning`, `fast`, `vlm`, `embedding`, `stt`) that resolve to whichever concrete route a category currently points at. Consumers/keys can allow the short alias and stay put while you flip local-vs-paid in one line. Each category also has explicit local (`... local model ...`) and paid (`... (lazer) ...`) routes for direct A/B testing.
 >
-> **Consumers now call the aliases (so a flip actually reaches them):** mem0 (`MEM0_DEFAULT_LLM_MODEL: "fast"`) and openclaw (primary `litellm/code`, fallback `litellm/reasoning`, image/pdf `litellm/vlm`, compaction `litellm/fast`) reference category aliases rather than pinned route names. Karakeep is the exception: it stays pinned to `fast (Qwen3-4B)` because its key only allows that route (calling the alias 403d every tagging job from 2026-07-19 to 2026-09-29). Flip a `model_group_alias` value -> reconcile -> every consumer follows with no per-app edit.
+> **Consumers now call the aliases (so a flip actually reaches them):** mem0 (`MEM0_DEFAULT_LLM_MODEL: "fast"`) references a category alias rather than a pinned route name. Karakeep is the exception: it stays pinned to `fast (Qwen3-4B)` because its key only allows that route (calling the alias 403d every tagging job from 2026-07-19 to 2026-09-29). Flip a `model_group_alias` value -> reconcile -> every consumer follows with no per-app edit.
 >
 > **Two safety rails that make a local flip non-destructive:**
 > - `router_settings.fallbacks` has local->cloud chains keyed by each local route (e.g. `fast (Qwen3-4B-8bit)` -> `fast (gpt-oss-120b)` -> `assist (gemini-flash)`), so a down box or a cold on_demand timeout spills to cloud instead of erroring.

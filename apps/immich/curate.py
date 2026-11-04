@@ -9,7 +9,7 @@ membership, GPS, mimetype - plus Immich's own CLIP smart-search as a soft
 negative for screenshot/meme/document-shaped assets.
 
 Pure stdlib (urllib + json) so it runs in a stock python:3.12-slim container with
-no pip install, matching the apps/spotify-concerts convention.
+no pip install.
 
 Design notes (calibrated against the live 2.6.3 API on 2026-07-08):
   - Google-Takeout imports carry NO camera EXIF (make/model) and NO facial-

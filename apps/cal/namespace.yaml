@@ -1,6 +1,0 @@
-apiVersion: v1
-kind: Namespace
-metadata:
-  name: cal
-  labels:
-    app.kubernetes.io/name: cal

@@ -33,7 +33,7 @@ lovelace:
       type: module
     - url: /local/community/clock-weather-card/clock-weather-card.js?v=2.9.3
       type: module
-    # Home view Cameras + Music sections (dashboards/_cameras_section.yaml, _music_section.yaml).
+    # Home view Cameras + Music cards (dashboards/_cameras_card.yaml, _music_card.yaml).
     - url: /local/community/expander-card/expander-card.js?v=7.3.3
       type: module
     - url: /local/community/advanced-camera-card/advanced-camera-card.js?v=8.1.0

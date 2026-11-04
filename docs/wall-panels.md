@@ -189,16 +189,29 @@ Add a room: add `"assist_satellite.<panel>": "<room>"` to `ROOMS`, bump the `?v=
 
 Debug: in the panel's WebView console, `window.__snapcastTablet.status()` shows the socket, AudioContext state, sample format, volume, clock offset and last error. Log lines are prefixed `[snapcast-tablet]`. From any LAN machine: `curl -s https://snapcast.kblab.me/jsonrpc -d '{"id":1,"jsonrpc":"2.0","method":"Server.GetStatus"}' | jq '.result.server.groups[] | {stream_id, clients: [.clients[] | {id, connected}]}'`.
 
+### Home layout
+
+`/wall-panels/home` has a fixed layout so every tablet shows the same thing in the same spot:
+
+| Spot | What is there |
+|---|---|
+| Top bar | One row of equal nav buttons: Controls, Devices, Music, Media, Local, Agents (red or amber when an agent needs you), Photos, Settings, Admin. Destinations only; the Screensaver button is on Admin. |
+| Left: Now | The household alert (only when set), clock and 3-day forecast, Talk to Binks, Cluster and 3D printer status, Announce (folded). |
+| Middle: Rooms | `dashboards/_rooms_cards.yaml`, the room tiles by HA area, shared with Overview and the screensaver. |
+| Right: Media | Music, then Cameras. |
+
+The view has exactly three sections, so a 3-column tablet fills one row. A narrower one (2 columns, the 8.7" office tablet at some densities) puts Media under Now. Adding a fourth section starts a new row under the tallest column, so add cards to an existing column instead. Every sub-view starts with `dashboards/_home_button.yaml`, one shared Home bar that navigates from anywhere on the bar, not only its icon.
+
 ### Cameras and Music on Home
 
-The wall Home view and the phone Home view both include `dashboards/_cameras_section.yaml` and `dashboards/_music_section.yaml`, one file each, so the two dashboards cannot drift. Each is an expander-card that starts open and remembers open or closed per browser (`storage-id`).
+The wall Home view and the phone Home view both include `dashboards/_cameras_card.yaml` and `dashboards/_music_card.yaml`, one file each, so the two dashboards cannot drift. Each is an expander-card that starts open and remembers open or closed per browser (`storage-id`).
 
 - **Cameras:** advanced-camera-card on Frigate's `camera.amcrest_ptz_1`, live over go2rtc WebRTC proxied by HA. Tap the video or the expand button for a full-size dialog; the overlay menu has PTZ, the talk button (two-way audio) and Frigate reviews. A new camera is one more entry under `cameras:`.
 - **Music:** player controls for `sensor.music_leader` (`packages/music_panel.yaml`), the Music Assistant player at the head of what is playing, and one tile per room. A tile is lit when the room is in the music. Tap adds or drops it (`script.music_toggle_room`): with nothing playing it resumes that room's queue, and dropping the last room pauses it. Hold opens the room's player. Turntable and per-room sources stay on the Music view.
 
 ### Music view
 
-`/wall-panels/music` (Music chip on Home) has one section per Snapcast room: the Music Assistant player as a `media-control` card (now playing, play/pause, skip, the browse button for MA's library, radio and Spotify, the join button for grouping rooms), a volume slider, and a Source picker on the room's Snapcast client entity (`media_player.<room>_snapcast_client`). Turntable is picked there, because MA only offers its own streams. Source is per Snapcast group, so joined rooms switch together.
+`/wall-panels/music` (Music button on Home) has one section per Snapcast room: the Music Assistant player as a `media-control` card (now playing, play/pause, skip, the browse button for MA's library, radio and Spotify, the join button for grouping rooms), a volume slider, and a Source picker on the room's Snapcast client entity (`media_player.<room>_snapcast_client`). Turntable is picked there, because MA only offers its own streams. Source is per Snapcast group, so joined rooms switch together.
 
 Every tablet shows the same view: all tablets log in as the same HA user and browser_mod has no config entry, so a card cannot tell which tablet it is on. A room's cards hide while its players do not exist (a state condition reads a missing entity as `unavailable`).
 
@@ -224,7 +237,7 @@ rejected for non-admins regardless of UI). The PIN popup added later is cosmetic
 
 ## 4.5 Plug Settings view (any user configures the home)
 
-The **Settings** view (nav chip → `/wall-panels/settings`) lets **any user, including a
+The **Settings** view (Settings button on Home -> `/wall-panels/settings`) lets **any user, including a
 non-admin on the kiosk**, configure each smart plug: its **room**, **name**, **icon**,
 **category**, and whether it counts as a **light**. Tap a plug in the list → it loads into the
 always-visible **Editor** at the top → change fields → **Save**. Changes are instant and apply

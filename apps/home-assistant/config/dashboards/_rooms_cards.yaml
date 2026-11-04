@@ -75,8 +75,9 @@
           type: custom:mushroom-template-card
           primary: Robot Vacuum
           secondary: >-
-            {{ states('sensor.tapovacuummop_status') }} ·
-            {{ states('sensor.tapovacuummop_battery') }}%
+            {% set s = states('sensor.tapovacuummop_status') %}
+            {{ 'Offline' if s in ['unavailable', 'unknown'] else s | replace('_', ' ') | capitalize }} ·
+            {{ states('sensor.tapovacuummop_battery') | int(0) }}%
           icon: mdi:robot-vacuum
           icon_color: >-
             {{ 'red' if states('sensor.tapovacuummop_error') not in ['Ok','unknown','unavailable']
@@ -88,9 +89,13 @@
         options:
           type: custom:mushroom-template-card
           primary: Litter Box
+          # The sensor reports raw enum values (Cat_into, Cleaning_paused, ...);
+          # show them as words, and Offline for unavailable/unknown.
           secondary: >-
-            {{ states('sensor.cat_litter_box_status') }} ·
-            {{ states('sensor.cat_litter_box_excretions_per_day') }} today
+            {% set s = states('sensor.cat_litter_box_status') %}
+            {% set label = {'Cat_into': 'Cat inside'}.get(s, s | replace('_', ' ') | capitalize) %}
+            {{ 'Offline' if s in ['unavailable', 'unknown'] else label }} ·
+            {{ states('sensor.cat_litter_box_excretions_per_day') | int(0) }} today
           icon: mdi:cat
           icon_color: "{{ 'orange' if is_state('sensor.cat_litter_box_status','Cat_into') else 'blue' }}"
           tap_action: { action: more-info }

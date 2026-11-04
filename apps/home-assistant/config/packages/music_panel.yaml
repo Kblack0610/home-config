@@ -1,5 +1,5 @@
 # Speaker toggles for the Music section on the wall and phone Home views
-# (dashboards/_music_section.yaml).
+# (dashboards/_music_card.yaml).
 #
 # "The music" is one Music Assistant sync group. A room is ON when it is in that
 # group, so tapping a room joins it to what is playing (or to the speakers picked

@@ -1,0 +1,12 @@
+# The "Home" bar at the top of every sub-view, on the wall and the phone.
+# navigation_path is RELATIVE so it resolves inside whichever dashboard shows the
+# view (/wall-panels/home, /phone-home/home). bubble-card binds tap_action to the
+# icon and button_action (a map of tap/hold actions, not one action) to the rest
+# of the bar, so both are set: the whole bar navigates, not just the icon.
+type: custom:bubble-card
+card_type: button
+button_type: name
+name: Home
+icon: mdi:home
+tap_action: &home { action: navigate, navigation_path: home }
+button_action: { tap_action: *home }

@@ -19,12 +19,7 @@ sections:
   # ── Editor (always visible; reflects the plug you tap in the list) ──
   - type: grid
     cards:
-      - type: custom:bubble-card
-        card_type: button
-        button_type: name
-        name: Home
-        icon: mdi:home
-        tap_action: { action: navigate, navigation_path: home }
+      - !include _home_button.yaml
       - type: heading
         heading: Plug Settings
         heading_style: title

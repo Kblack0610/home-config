@@ -66,8 +66,8 @@ views:
               - { type: template, icon: mdi:server-network, content: Ops, tap_action: { action: navigate, navigation_path: ops } }
               - { type: template, icon: mdi:play-box-multiple, content: Media, tap_action: { action: navigate, navigation_path: media } }
       # Cameras + Music, collapsible; shared with the wall Home view.
-      - !include _cameras_section.yaml
-      - !include _music_section.yaml
+      - { type: grid, column_span: 2, cards: [!include _cameras_card.yaml] }
+      - { type: grid, cards: [!include _music_card.yaml] }
       - type: grid
         cards: !include _sessions_cards.yaml
       - type: grid

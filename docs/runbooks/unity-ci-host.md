@@ -48,7 +48,7 @@ scripts/test/fetch-image.py unityci/editor ubuntu-<version>-base-3 ~/.cache/unit
 
 ## The AWS burst host (aws-burst-1)
 
-- A persistent Spot instance (m7a.12xlarge, us-east-2a, 8 slots of 4 cores and 14G) from the platform repo's `infra/aws-ci-burst` Terraform module. A Spot interruption stops it; the data volume (`/var/lib/actions-runner`, `/var/lib/docker`, `/var/lib/containerd`) and the machine id survive a stop and start.
+- A persistent Spot instance (m7a.12xlarge, us-east-2a, 8 slots of 6 cores (one of 5) and 14G) from the platform repo's `infra/aws-ci-burst` Terraform module. A Spot interruption stops it; the data volume (`/var/lib/actions-runner`, `/var/lib/docker`, `/var/lib/containerd`) and the machine id survive a stop and start.
 - apps/ci-runner-governor powers it (config.json `standby` `power`): it starts the instance when more pool jobs wait than the other hosts can take, admits its slots once their runners are online, and after `idle_off_seconds` (20 minutes) with no slot busy withholds them and stops it. It needs an IAM key allowed `ec2:StartInstances`, `ec2:StopInstances` and `ec2:DescribeInstances` on this instance, as `aws-access-key-id` and `aws-secret-access-key` in `ci-runner-governor-secret.yaml`; without them it logs `power hook off` and does nothing. `"live": true` acts for real while the rest of the governor is still dry run.
 - Admin access is SSH through SSM, no inbound port: `ssh -o ProxyCommand='aws ssm start-session --profile bnb --region us-east-2 --target %h --document-name AWS-StartSSHSession --parameters portNumber=%p' ubuntu@<instance-id>`. The instance id is in `ansible/inventory.yml`.
 - Off the LAN: no `lan` label (`unity_ci_lan: false`), and the libraries come through S3 (`unity_ci_library_s3`) instead of a tarball over ssh.
@@ -63,6 +63,7 @@ scripts/test/fetch-image.py unityci/editor ubuntu-<version>-base-3 ~/.cache/unit
 | Every job fails in seconds on `index.lock`: File exists, after a Spot stop | The stop interrupted a checkout and left git locks in every slot | The runner unit deletes `.git/**/*.lock` under the work dir before it starts (home-config #510) |
 | A slot's `docker run` finds no test image right after its own build | Ubuntu's `docker.io` has no BuildKit, and four slots building one tag at once raced on the legacy builder | `docker-buildx` in `unity_ci_packages_debian` (home-config #511) |
 | A push over 100 MB to git.kblab.me fails | Cloudflare drops bodies over 100 MB, and the host reaches Forgejo only through it | Jobs that push big files ask for `lan`, which this host does not carry |
+| The first test of a PlayMode batch times out at `SwapTo` ("scene loaded False, host sees it False"), and its `[Load] sandbox3d` line shows `Composing` of 10-20 s, against about 1 s on mac-studio | A fresh Unity process does its first-scene work on a slot's own cores; at 4 cores per slot every slot ran about 3.5x oversubscribed while cores 33-47 sat idle | `ci_unity_slot_cpus` spreads cores 1-47 over the slots (6 each, one of 5); a slice change is a `daemon-reload`, so running jobs keep going |
 
 ## Secrets the playground workflows need
 

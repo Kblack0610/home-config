@@ -26,25 +26,9 @@ spec:
             runAsUser: 1000
             runAsGroup: 1000
             fsGroup: 1000
-          initContainers:
-            - name: clone-repo
-              image: alpine/git:v2.52.0
-              command: ["sh", "/scripts/clone-repo.sh"]
-              env:
-                - name: HOME
-                  value: /tmp
-                - name: REPO_URL
-                  valueFrom:
-                    configMapKeyRef: {name: freqtrade-repo, key: url}
-                - name: REPO_REF
-                  valueFrom:
-                    configMapKeyRef: {name: freqtrade-repo, key: ref}
-              volumeMounts:
-                - {name: repo, mountPath: /repo}
-                - {name: scripts, mountPath: /scripts}
           containers:
             - name: experiments
-              image: freqtradeorg/freqtrade
+              image: trader
               command: ["bash", "/repo/lab/experiments.sh"]
               env:
                 - name: HYPEROPT_JOBS
@@ -56,14 +40,8 @@ spec:
                 limits:
                   memory: 6Gi
               volumeMounts:
-                - {name: repo, mountPath: /repo}
                 - {name: lab, mountPath: /lab}
           volumes:
-            - name: repo
-              emptyDir: {}
-            - name: scripts
-              configMap:
-                name: freqtrade-repo
             - name: lab
               persistentVolumeClaim:
                 claimName: freqtrade-lab

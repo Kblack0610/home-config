@@ -10,20 +10,19 @@ resources:
   - lab-pvc.yaml
   - experiments-cronjob.yaml
   - report-cronjob.yaml
+  - ingest-cronjob.yaml
+  - trader-db-secret.sops.yaml
 
 images:
-  - name: freqtradeorg/freqtrade
-    newTag: "2026.9"
+  # The lab image (strategy repo Dockerfile, built by its CI): Freqtrade 2026.9
+  # plus psycopg plus the repo at /repo. Bump digest to ship a strategy or lab
+  # change; the tag is the strategy repo commit it was built from.
+  - name: trader
+    newName: ghcr.io/kblack0610/trader
+    digest: sha256:f63235572f2ebf7ecfe5f1c22c62f6a5f71a12abc7bb17d084de53a5a850055f  # sha-3524686
 
 configMapGenerator:
   # Rows here and replicas in statefulset.yaml move together.
   - name: freqtrade-league-roster
     files:
       - roster.tsv
-  # Strategy code: the pods clone this commit. Bump ref to ship a strategy change.
-  - name: freqtrade-repo
-    literals:
-      - url=https://github.com/Kblack0610/freqtrade_trading_attempt
-      - ref=136bdd4de09a018959b7f5e56bc828fac70644f2
-    files:
-      - clone-repo.sh

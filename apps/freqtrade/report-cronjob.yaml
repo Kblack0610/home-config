@@ -25,25 +25,9 @@ spec:
             runAsUser: 1000
             runAsGroup: 1000
             fsGroup: 1000
-          initContainers:
-            - name: clone-repo
-              image: alpine/git:v2.52.0
-              command: ["sh", "/scripts/clone-repo.sh"]
-              env:
-                - name: HOME
-                  value: /tmp
-                - name: REPO_URL
-                  valueFrom:
-                    configMapKeyRef: {name: freqtrade-repo, key: url}
-                - name: REPO_REF
-                  valueFrom:
-                    configMapKeyRef: {name: freqtrade-repo, key: ref}
-              volumeMounts:
-                - {name: repo, mountPath: /repo}
-                - {name: scripts, mountPath: /scripts}
           containers:
             - name: report
-              image: freqtradeorg/freqtrade
+              image: trader
               command: ["python", "/repo/lab/report.py"]
               env:
                 - name: FT_API_PASSWORD
@@ -56,15 +40,9 @@ spec:
                 limits:
                   memory: 512Mi
               volumeMounts:
-                - {name: repo, mountPath: /repo}
                 - {name: roster, mountPath: /etc/freqtrade-league}
                 - {name: lab, mountPath: /lab}
           volumes:
-            - name: repo
-              emptyDir: {}
-            - name: scripts
-              configMap:
-                name: freqtrade-repo
             - name: roster
               configMap:
                 name: freqtrade-league-roster

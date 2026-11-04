@@ -1,7 +1,7 @@
 # The dry-run league: pod freqtrade-league-N runs roster.tsv row N via
 # lab/league.py, which refuses to start anything but key-less spot dry run.
-# Each bot keeps its sqlite trade history on its own PVC; the daily report
-# reads every bot's API at freqtrade-league-N.freqtrade-league:8080.
+# Each bot keeps its sqlite trade history on its own PVC; the hourly ingest
+# copies it into Postgres, reading every bot at freqtrade-league-N.freqtrade-league:8080.
 apiVersion: v1
 kind: Service
 metadata:
@@ -43,25 +43,9 @@ spec:
         runAsUser: 1000
         runAsGroup: 1000
         fsGroup: 1000
-      initContainers:
-        - name: clone-repo
-          image: alpine/git:v2.52.0
-          command: ["sh", "/scripts/clone-repo.sh"]
-          env:
-            - name: HOME
-              value: /tmp
-            - name: REPO_URL
-              valueFrom:
-                configMapKeyRef: {name: freqtrade-repo, key: url}
-            - name: REPO_REF
-              valueFrom:
-                configMapKeyRef: {name: freqtrade-repo, key: ref}
-          volumeMounts:
-            - {name: repo, mountPath: /repo}
-            - {name: scripts, mountPath: /scripts}
       containers:
         - name: bot
-          image: freqtradeorg/freqtrade
+          image: trader
           command: ["python", "/repo/lab/league.py"]
           env:
             - name: FT_API_PASSWORD
@@ -89,15 +73,9 @@ spec:
             limits:
               memory: 768Mi
           volumeMounts:
-            - {name: repo, mountPath: /repo}
             - {name: roster, mountPath: /etc/freqtrade-league}
             - {name: state, mountPath: /freqtrade/state}
       volumes:
-        - name: repo
-          emptyDir: {}
-        - name: scripts
-          configMap:
-            name: freqtrade-repo
         - name: roster
           configMap:
             name: freqtrade-league-roster

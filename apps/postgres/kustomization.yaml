@@ -17,3 +17,5 @@ resources:
   - hmdm-db-bootstrap-job.yaml
   - registry-db-secret.sops.yaml
   - registry-db-bootstrap-job.yaml
+  - trader-db-secret.sops.yaml
+  - trader-db-bootstrap-job.yaml

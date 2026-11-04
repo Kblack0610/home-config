@@ -249,16 +249,14 @@ all:
           unity_ci_slots: 2
           unity_ci_full: false
         # The AWS overflow box (platform infra/aws-ci-burst, Terraform), added
-        # 2026-11-03, the same day moved to an m7a.12xlarge persistent Spot instance
-        # in us-east-2a (no m7a.8xlarge Spot capacity anywhere in us-east-2 that
-        # day): four slots until a shard is proven, then more
-        # (plan ko-sorry-one-more-synchronous-rain). It
+        # 2026-11-03: an on-demand m7a.8xlarge in us-east-2a with six slots. It
         # has no inbound port; SSH runs through SSM Session Manager with the bnb
         # AWS profile, so the workstation needs session-manager-plugin. ansible_host
-        # is the instance id: after a Terraform -replace or the Spot switch, take
-        # the new one from `terraform output instance_id`. Ubuntu, so the editor
-        # images are pulled on the box (unity_ci_images_pull) instead of copied.
-        # Kept stopped when idle; start it before running the play against it.
+        # is the instance id: after a Terraform -replace, take the new one from
+        # `terraform output instance_id`. Ubuntu, so the editor images are pulled
+        # on the box (unity_ci_images_pull) instead of copied. The governor starts
+        # and stops it (docs/runbooks/unity-ci-host.md); start it before running
+        # the play against it.
         aws-burst-1:
           ansible_host: i-0f1ecf35dc0e78146
           ansible_user: ubuntu

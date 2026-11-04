@@ -48,22 +48,51 @@ scripts/test/fetch-image.py unityci/editor ubuntu-<version>-base-3 ~/.cache/unit
 
 ## The AWS burst host (aws-burst-1)
 
-- A persistent Spot instance (m7a.12xlarge, us-east-2a, 8 slots of 6 cores (one of 5) and 14G) from the platform repo's `infra/aws-ci-burst` Terraform module. A Spot interruption stops it; the data volume (`/var/lib/actions-runner`, `/var/lib/docker`, `/var/lib/containerd`) and the machine id survive a stop and start.
-- apps/ci-runner-governor powers it (config.json `standby` `power`): it starts the instance when more pool jobs wait than the other hosts can take, admits its slots once their runners are online, and after `idle_off_seconds` (20 minutes) with no slot busy withholds them and stops it. It needs an IAM key allowed `ec2:StartInstances`, `ec2:StopInstances` and `ec2:DescribeInstances` on this instance, as `aws-access-key-id` and `aws-secret-access-key` in `ci-runner-governor-secret.yaml`; without them it logs `power hook off` and does nothing. `"live": true` acts for real while the rest of the governor is still dry run.
+- An on-demand instance (m7a.8xlarge, us-east-2a, 6 slots, about $1.85 an hour while running) from the platform repo's `infra/aws-ci-burst` Terraform module. The 400G data volume (`/var/lib/actions-runner`, `/var/lib/docker`, `/var/lib/containerd`, label `ci-data`) and the machine id survive a stop and start; a stopped instance costs only its disks.
 - Admin access is SSH through SSM, no inbound port: `ssh -o ProxyCommand='aws ssm start-session --profile bnb --region us-east-2 --target %h --document-name AWS-StartSSHSession --parameters portNumber=%p' ubuntu@<instance-id>`. The instance id is in `ansible/inventory.yml`.
 - Off the LAN: no `lan` label (`unity_ci_lan: false`), and the libraries come through S3 (`unity_ci_library_s3`) instead of a tarball over ssh.
 - Each slot's first job imports its `Library/` cold, about 50 minutes; later jobs are warm (a PlayMode batch ran 10 minutes, against about 12 warm on mac-studio).
 - Watch jobs from the host. The GitHub jobs API shares one 5000/h limit with every session, and polling it drained that limit on 2026-11-03: `sudo journalctl -f -n 0 -u "actions.runner.*" | grep -E "Running job|completed with result"`.
 - A change to a runner unit or its `.env` restarts the slot and cancels its job. Drain first: remove `unity` with the org endpoint in Labels above (the repo endpoint answers 404 for org runners), wait for the slot to go idle, apply, add the label back.
 
+### What starts and stops it
+
+apps/ci-runner-governor powers it (config.json `standby` -> `aws-burst-1` -> `power`). The governor's docstring is the full rule; in short:
+
+- Start: at least `start_min_excess` (4) waiting jobs it can take past what the other hosts cover, held for `start_after_seconds` (300). A short burst never starts it. Its slots count as room only once their runners are online.
+- Stop: no slot busy for `idle_off_seconds` (900), or `max_hours_day` (12) hours run this UTC day. It withholds one slot per cycle and stops the instance only once no slot is busy, so a stop never kills a job.
+- The day's hours are kept in the governor's memory: they reset at UTC midnight and on a governor pod restart.
+- It needs the `ci-governor` IAM user's key (`ec2:StartInstances`, `ec2:StopInstances`, `ec2:DescribeInstances` on this instance) as `aws-access-key-id` and `aws-secret-access-key` in `ci-runner-governor-secret.yaml`. Without them it logs `power hook off` and does nothing. `"live": true` acts for real while the rest of the governor is still dry run.
+
+### Holding it on or off by hand
+
+- The Infra page of agent-web has a Cloud runners card: "On 2h", "Off 6h" and "Clear", each a two-click confirm. It writes the ConfigMap below with kubectl, so the page holds no AWS credential.
+- Underneath is ConfigMap `ci-runner-governor-override` in `monitoring`, one key per host, `{"action":"on"|"off","until":<epoch>}`. It is not in Flux; the governor mounts it optional and ignores an expired or unreadable key. "on" starts the host and keeps it past idle-off and the day cap; "off" drains, stops and keeps it stopped.
+- By hand: `kubectl -n monitoring create configmap ci-runner-governor-override --from-literal=aws-burst-1="{\"action\":\"off\",\"until\":$(( $(date +%s) + 6*3600 ))}" --dry-run=client -o yaml | kubectl apply -f -`, and `kubectl -n monitoring delete configmap ci-runner-governor-override` hands every host back.
+- Metrics: `ci_governor_power_state{host,state,reason}`, `ci_governor_power_hours_today`, `ci_governor_power_max_hours_day` and `ci_governor_power_override{action}` (the override's end, 0 with none). They exist only while the power hook is on.
+
+### The month's budget
+
+- AWS Budgets `ci-burst-monthly` ($200, the platform module's `account.tf`) mails the alert address at $100 and $150, actual and forecast.
+- At $180 actual it runs two actions on its own: an SSM stop of this instance, and attaching IAM policy `ci-burst-deny-start` (deny `ec2:StartInstances`) to `ci-governor`, so the governor cannot start it again. The governor then logs failed starts; that is expected.
+- Budget actions do not undo themselves at the new month. To reverse one (Budget stop): detach the policy, `aws iam detach-user-policy --user-name ci-governor --policy-arn arn:aws:iam::311141527647:policy/ci-burst-deny-start --profile bnb`; find the action ids with `aws budgets describe-budget-actions-for-budget --account-id 311141527647 --budget-name ci-burst-monthly --profile bnb`; for each, `aws budgets execute-budget-action --account-id 311141527647 --budget-name ci-burst-monthly --action-id <id> --execution-type REVERSE_BUDGET_ACTION --profile bnb`. The governor starts the instance at the next deep queue, or start it by hand.
+
+### Sentinel
+
+- Watch `aws-burst-power` (`~/.agent/watches/aws-burst-power.yaml`) reads the governor's power metrics every 5 minutes and notifies when the host goes from stopped to running and back, with the reason and the hours run today. No data reads as stopped, so it stays quiet while the power hook is off.
+
 | Symptom | Cause | Fix |
 |---|---|---|
 | Play or job fails with "no space left on device" | Docker 29 keeps images in `/var/lib/containerd`, on the 38G root disk | The Terraform user data binds it to the data volume (platform #1459) |
 | Library pull from S3 runs at under 1 MB/s | `aws s3 sync` sends 10 requests at a time over about 170k small files | 64 at a time, both on the workstation push and the host pull (home-config #505) |
-| Every job fails in seconds on `index.lock`: File exists, after a Spot stop | The stop interrupted a checkout and left git locks in every slot | The runner unit deletes `.git/**/*.lock` under the work dir before it starts (home-config #510) |
+| Every job fails in seconds on `index.lock`: File exists, after a stop | The stop interrupted a checkout and left git locks in every slot | The runner unit deletes `.git/**/*.lock` under the work dir before it starts (home-config #510) |
 | A slot's `docker run` finds no test image right after its own build | Ubuntu's `docker.io` has no BuildKit, and four slots building one tag at once raced on the legacy builder | `docker-buildx` in `unity_ci_packages_debian` (home-config #511) |
 | A push over 100 MB to git.kblab.me fails | Cloudflare drops bodies over 100 MB, and the host reaches Forgejo only through it | Jobs that push big files ask for `lan`, which this host does not carry |
-| The first test of a PlayMode batch times out at `SwapTo` ("scene loaded False, host sees it False"), and its `[Load] sandbox3d` line shows `Composing` of 10-20 s, against about 1 s on mac-studio | A fresh Unity process does its first-scene work on a slot's own cores; at 4 cores per slot every slot ran about 3.5x oversubscribed while cores 33-47 sat idle | `ci_unity_slot_cpus` spreads cores 1-47 over the slots (6 each, one of 5); a slice change is a `daemon-reload`, so running jobs keep going |
+| The first test of a PlayMode batch times out at `SwapTo` ("scene loaded False, host sees it False"), and its `[Load] sandbox3d` line shows `Composing` of 10-20 s, against about 1 s on mac-studio | A fresh Unity process does its first-scene work on a slot's own cores; at 4 cores per slot every slot ran about 3.5x oversubscribed | `ci_unity_slot_cpus` spreads the cores over the slots; a slice change is a `daemon-reload`, so running jobs keep going |
+| The governor log says `power hook off for aws-burst-1` | No `aws-access-key-id` in its secret | Put the `ci-governor` key in with sops (above) |
+| The box sits stopped while jobs wait | One of: fewer than 4 jobs it can take past the other hosts, a queue under 5 minutes old, its 12h day used, an "off" override, the budget's deny policy | Read the governor log's `aws-burst-1` line for which; "On 2h" on the Infra page overrides all but the budget |
+| Starts fail with `UnauthorizedOperation` | The $180 budget action attached `ci-burst-deny-start` | Budget stop above |
+| It ran past 12h | An "on" override, or the governor pod restarted and lost the day's hours | Expected for the override; a restart resets the count by design |
 
 ## Secrets the playground workflows need
 

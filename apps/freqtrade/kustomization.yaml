@@ -1,0 +1,29 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+namespace: freqtrade
+
+resources:
+  - namespace.yaml
+  - api-secret.yaml
+  - statefulset.yaml
+  - lab-pvc.yaml
+  - experiments-cronjob.yaml
+  - report-cronjob.yaml
+
+images:
+  - name: freqtradeorg/freqtrade
+    newTag: "2026.9"
+
+configMapGenerator:
+  # Rows here and replicas in statefulset.yaml move together.
+  - name: freqtrade-league-roster
+    files:
+      - roster.tsv
+  # Strategy code: the pods clone this commit. Bump ref to ship a strategy change.
+  - name: freqtrade-repo
+    literals:
+      - url=https://github.com/Kblack0610/freqtrade_trading_attempt
+      - ref=be7025b63b96e21a27d9d16012dc2094530b7de3
+    files:
+      - clone-repo.sh

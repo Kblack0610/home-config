@@ -1,0 +1,16 @@
+# Freqtrade dry-run league roster: one bot per row, name exchange strategy.
+# Pod freqtrade-league-N runs row N (comments and blank lines skipped), so
+# append new rows at the end and raise replicas in statefulset.yaml to the row
+# count. Strategies live in github.com/Kblack0610/freqtrade_trading_attempt.
+kraken-sample        kraken     SampleStrategy
+binanceus-sample     binanceus  SampleStrategy
+coinbase-sample      coinbase   SampleStrategy
+kraken-bandtastic    kraken     Bandtastic
+binanceus-bandtastic binanceus  Bandtastic
+coinbase-bandtastic  coinbase   Bandtastic
+kraken-s001          kraken     Strategy001
+binanceus-s001       binanceus  Strategy001
+coinbase-s001        coinbase   Strategy001
+kraken-supertrend    kraken     Supertrend
+binanceus-supertrend binanceus  Supertrend
+coinbase-supertrend  coinbase   Supertrend

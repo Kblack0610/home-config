@@ -1,0 +1,13 @@
+# Experiments data and results plus the report history. local-path is RWO and
+# node-pinned; both CronJobs mount it, so they land on whichever amd64 node
+# bound it first.
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: freqtrade-lab
+spec:
+  accessModes: ["ReadWriteOnce"]
+  storageClassName: local-path
+  resources:
+    requests:
+      storage: 10Gi

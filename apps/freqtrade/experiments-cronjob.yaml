@@ -1,0 +1,69 @@
+# Weekly strategy experiments (lab/experiments.sh): download candles, backtest
+# every strategy on binanceus and coinbase, flag lookahead bias, hyperopt the
+# best few. Writes /lab/runs/<date>/summary.md; nothing here touches the bots.
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: freqtrade-experiments
+spec:
+  schedule: "0 4 * * 0"  # Sunday 04:00
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 2
+  failedJobsHistoryLimit: 2
+  jobTemplate:
+    spec:
+      backoffLimit: 0
+      activeDeadlineSeconds: 43200  # guard: a full run is a few hours
+      template:
+        metadata:
+          labels:
+            app: freqtrade-experiments
+        spec:
+          restartPolicy: Never
+          nodeSelector:
+            kubernetes.io/arch: amd64
+          securityContext:
+            runAsUser: 1000
+            runAsGroup: 1000
+            fsGroup: 1000
+          initContainers:
+            - name: clone-repo
+              image: alpine/git:v2.52.0
+              command: ["sh", "/scripts/clone-repo.sh"]
+              env:
+                - name: HOME
+                  value: /tmp
+                - name: REPO_URL
+                  valueFrom:
+                    configMapKeyRef: {name: freqtrade-repo, key: url}
+                - name: REPO_REF
+                  valueFrom:
+                    configMapKeyRef: {name: freqtrade-repo, key: ref}
+              volumeMounts:
+                - {name: repo, mountPath: /repo}
+                - {name: scripts, mountPath: /scripts}
+          containers:
+            - name: experiments
+              image: freqtradeorg/freqtrade
+              command: ["bash", "/repo/lab/experiments.sh"]
+              env:
+                - name: HYPEROPT_JOBS
+                  value: "4"
+              resources:
+                requests:
+                  cpu: "2"
+                  memory: 2Gi
+                limits:
+                  memory: 6Gi
+              volumeMounts:
+                - {name: repo, mountPath: /repo}
+                - {name: lab, mountPath: /lab}
+          volumes:
+            - name: repo
+              emptyDir: {}
+            - name: scripts
+              configMap:
+                name: freqtrade-repo
+            - name: lab
+              persistentVolumeClaim:
+                claimName: freqtrade-lab

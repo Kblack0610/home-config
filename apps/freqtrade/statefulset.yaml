@@ -1,0 +1,112 @@
+# The dry-run league: pod freqtrade-league-N runs roster.tsv row N via
+# lab/league.py, which refuses to start anything but key-less spot dry run.
+# Each bot keeps its sqlite trade history on its own PVC; the daily report
+# reads every bot's API at freqtrade-league-N.freqtrade-league:8080.
+apiVersion: v1
+kind: Service
+metadata:
+  name: freqtrade-league
+  labels:
+    app: freqtrade-league
+spec:
+  clusterIP: None
+  selector:
+    app: freqtrade-league
+  ports:
+    - name: api
+      port: 8080
+      targetPort: api
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: freqtrade-league
+  labels:
+    app: freqtrade-league
+spec:
+  serviceName: freqtrade-league
+  # Must equal the number of rows in roster.tsv: an extra pod exits with
+  # "no roster row", a missing one leaves a row unplayed.
+  replicas: 12
+  podManagementPolicy: Parallel
+  selector:
+    matchLabels:
+      app: freqtrade-league
+  template:
+    metadata:
+      labels:
+        app: freqtrade-league
+    spec:
+      nodeSelector:
+        kubernetes.io/arch: amd64
+      securityContext:
+        runAsUser: 1000
+        runAsGroup: 1000
+        fsGroup: 1000
+      initContainers:
+        - name: clone-repo
+          image: alpine/git:v2.52.0
+          command: ["sh", "/scripts/clone-repo.sh"]
+          env:
+            - name: HOME
+              value: /tmp
+            - name: REPO_URL
+              valueFrom:
+                configMapKeyRef: {name: freqtrade-repo, key: url}
+            - name: REPO_REF
+              valueFrom:
+                configMapKeyRef: {name: freqtrade-repo, key: ref}
+          volumeMounts:
+            - {name: repo, mountPath: /repo}
+            - {name: scripts, mountPath: /scripts}
+      containers:
+        - name: bot
+          image: freqtradeorg/freqtrade
+          command: ["python", "/repo/lab/league.py"]
+          env:
+            - name: FT_API_PASSWORD
+              valueFrom:
+                secretKeyRef: {name: freqtrade-api, key: password}
+            - name: FT_API_JWT_SECRET
+              valueFrom:
+                secretKeyRef: {name: freqtrade-api, key: jwt-secret}
+            - name: FT_API_WS_TOKEN
+              valueFrom:
+                secretKeyRef: {name: freqtrade-api, key: ws-token}
+          ports:
+            - name: api
+              containerPort: 8080
+          readinessProbe:
+            httpGet:
+              path: /api/v1/ping
+              port: api
+            initialDelaySeconds: 20
+            periodSeconds: 30
+          resources:
+            requests:
+              cpu: 50m
+              memory: 256Mi
+            limits:
+              memory: 768Mi
+          volumeMounts:
+            - {name: repo, mountPath: /repo}
+            - {name: roster, mountPath: /etc/freqtrade-league}
+            - {name: state, mountPath: /freqtrade/state}
+      volumes:
+        - name: repo
+          emptyDir: {}
+        - name: scripts
+          configMap:
+            name: freqtrade-repo
+        - name: roster
+          configMap:
+            name: freqtrade-league-roster
+  volumeClaimTemplates:
+    - metadata:
+        name: state
+      spec:
+        accessModes: ["ReadWriteOnce"]
+        storageClassName: local-path
+        resources:
+          requests:
+            storage: 1Gi

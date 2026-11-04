@@ -63,6 +63,7 @@ resources:
   - sops-backup-rbac
   - spotify-concerts
   - time-tangle
+  - freqtrade
   - trivy-operator
   - vaultwarden
   - victoria-metrics

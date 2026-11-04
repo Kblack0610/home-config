@@ -23,6 +23,7 @@ The printer is on the LAN at `192.168.1.54`. Traefik exposes the Fluidd UI at `h
 | Network | Ralink RT5370 USB Wi-Fi dongle (`rt2800usb`), MAC `00:22:F4:D9:12:3E`, onboard Ethernet unused |
 | IP | `192.168.1.54`, DHCP reservation `neptune-3d-wan` in `infrastructure/dhcp/devices.yaml` |
 | Wi-Fi | NetworkManager profile `BrownDooDoo` (WPA2, priority 10, see Joining Wi-Fi), fallback `Home` on BrownThunder (WPA1, priority 0). Both SSIDs are on the router's 2.4 GHz radio0. Power save is off via `/etc/NetworkManager/conf.d/zz-20-override-wifi-powersave-disable.conf` |
+| Nozzle | 0.4 mm. A swap changes `[extruder] nozzle_diameter` in `~/printer_data/config/printer.cfg` (then `FIRMWARE_RESTART`) and the machine preset picked in OrcaSlicer (`apps/orcaslicer`, 0.4 or 0.8). Gcode names carry the nozzle (`_0.4n_`); check an older file with `curl -s "http://192.168.1.54:7125/server/files/metadata?filename=<file>" \| jq .result.nozzle_diameter` |
 | Login | `ssh mks@192.168.1.54` with the workstation key. The `mks` password (needed for sudo) is in rbw as `neptune printer mks` |
 
 The printer is often powered off, and "No route to host" from Moonraker or Home Assistant usually means just that.

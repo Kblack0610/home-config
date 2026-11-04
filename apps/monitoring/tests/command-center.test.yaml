@@ -156,7 +156,7 @@ tests:
           - labels: 'cc:github_hosted_running'
             value: 0
 
-  - name: red now is one row per item, from watches, runners, nodes and a frozen feed
+  - name: red now is one row per live item, from watches, runners, nodes and a frozen feed, never a deleted topic
     interval: 1m
     input_series:
       - series: 'mqtt_tripped{topic="agents_h_watch_queue_starved",instance="a"}'
@@ -171,6 +171,17 @@ tests:
         values: '0x10'
       - series: 'mqtt_updated_epoch{topic="agents_h_runner_sentinel"}'
         values: '0x10'
+      # a runner whose topic the publisher deleted: mqtt2prom keeps its last value, the counter stops
+      - series: 'mqtt_failed{topic="agents_h_runner_gone"}'
+        values: '1x10'
+      - series: 'mqtt_message_total{topic="agents_h_runner_gone"}'
+        values: '7x30'
+      - series: 'mqtt_message_total{topic="agents_h_watch_queue_starved",instance="a"}'
+        values: '0+1x10'
+      - series: 'mqtt_message_total{topic="agents_h_watch_ok_one"}'
+        values: '0+1x10'
+      - series: 'mqtt_message_total{topic="agents_h_runner_fleet_dispatch"}'
+        values: '0+1x10'
     promql_expr_test:
       - expr: cc:red_now
         eval_time: 5m
@@ -236,3 +247,32 @@ tests:
       - eval_time: 50m
         alertname: SentinelSilent
         exp_alerts: []
+
+  - name: a deleted runner leaves the runner counts once its topic has been quiet 20 min
+    interval: 1m
+    input_series:
+      - series: 'mqtt_failed{topic="agents_h_runner_live"}'
+        values: '0x40'
+      - series: 'mqtt_message_total{topic="agents_h_runner_live"}'
+        values: '0+1x40'
+      - series: 'mqtt_failed{topic="agents_h_runner_gone"}'
+        values: '1x40'
+      # its last message, the empty deletion payload, lands at 5m
+      - series: 'mqtt_message_total{topic="agents_h_runner_gone"}'
+        values: '0+1x5 5x35'
+    promql_expr_test:
+      - expr: cc:runners_total
+        eval_time: 10m
+        exp_samples:
+          - labels: 'cc:runners_total'
+            value: 2
+      - expr: cc:runners_total
+        eval_time: 30m
+        exp_samples:
+          - labels: 'cc:runners_total'
+            value: 1
+      - expr: cc:component_status{domain="agents",component="runners"}
+        eval_time: 30m
+        exp_samples:
+          - labels: 'cc:component_status{domain="agents",component="runners"}'
+            value: 0

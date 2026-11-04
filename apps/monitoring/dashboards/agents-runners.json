@@ -54,7 +54,7 @@
             "uid": "${datasource}"
           },
           "editorMode": "code",
-          "expr": "count(mqtt_failed{topic=~\"agents_.+_runner_.+\"})",
+          "expr": "cc:runners_total",
           "format": "time_series",
           "instant": true,
           "range": false,

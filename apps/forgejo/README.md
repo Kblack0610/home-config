@@ -16,7 +16,7 @@ and repository mirroring enabled.
 | `ingress.yaml` | TLS ingress for `git.kblab.me` |
 | `pvc.yaml` | Persistent Forgejo data volume |
 | `backup-cronjob.yaml` | Daily backup job for full data and SQLite snapshots |
-| `runner-deployment.yaml` | Forgejo Runner + DinD sidecar (any amd64 workstation node) |
+| `runner-deployment.yaml` | Forgejo Runner + DinD sidecar (hp-victus and razer-laptop, never the Forgejo node) |
 | `runner-config-cm.yaml` | Runner config with `docker` + `linux-amd64` labels |
 | `runner-secret.yaml` | SOPS-encrypted instance-level runner registration token |
 
@@ -50,12 +50,7 @@ Key config sections:
 Instance-level runners serve all repos on the Forgejo instance, each with a
 Docker-in-Docker sidecar for container-based CI workflows.
 
-It runs **2 concurrent replicas, not pinned to a single host**:
-`runner-deployment.yaml` schedules pods on amd64 workstation nodes
-(`node-role.kubernetes.io/workstation`, currently hp-victus / asus-laptop) and a soft `podAntiAffinity` spreads them across different nodes. If
-one node dies (e.g. a power outage), the other replica is already live on another
-box — instant failover instead of the ~5-min eviction gap a single replica would
-suffer on a hard node death. One dead box can no longer block CI. Each pod
+It runs **2 replicas, one on hp-victus and one on razer-laptop**. `runner-deployment.yaml` requires an amd64 workstation node (`node-role.kubernetes.io/workstation`) that is not asus-laptop, and a required `podAntiAffinity` puts the two pods on different nodes. asus-laptop is excluded because the `forgejo-data` PV is pinned there and its NVMe has controller resets: with the old soft rule both runners sat on it next to Forgejo, so one disk stall took out the forge and all of CI together. If one runner node dies, the other replica is already live; the dead node's replica stays Pending until it returns, by design. Rollouts replace one pod at a time (`maxSurge: 0`), because a surge pod has no free node to land on. Each pod
 registers under its own pod name (`--name "$POD_NAME"` via the downward API),
 which is mandatory with more than one replica — otherwise both would register as
 `forgejo-runner` and collide.

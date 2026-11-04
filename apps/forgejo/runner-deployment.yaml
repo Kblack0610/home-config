@@ -6,12 +6,18 @@ metadata:
   labels:
     app.kubernetes.io/name: forgejo-runner
 spec:
-  # Two concurrent runners (was: 1, pinned to thinkcentre via nodeSelector). When
-  # a workstation node dies (e.g. the power outage that froze a release), the other
-  # replica is already live on a different box — instant failover, not the ~5-min
-  # eviction-timeout gap a single replica would suffer on a hard node death. The
-  # podAntiAffinity below keeps the two pods on different nodes.
+  # Two concurrent runners on two different nodes, neither of them the Forgejo
+  # node. When one node dies the other replica is already live, instead of the
+  # ~5-min eviction gap a single replica would suffer on a hard node death.
   replicas: 2
+  # The anti-affinity below is required and only two nodes qualify, so a surge
+  # pod would have nowhere to go and a rollout would hang. Replace one pod at a
+  # time instead.
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 0
+      maxUnavailable: 1
   selector:
     matchLabels:
       app.kubernetes.io/name: forgejo-runner
@@ -21,26 +27,30 @@ spec:
         app.kubernetes.io/name: forgejo-runner
     spec:
       affinity:
-        # Schedule only on amd64 workstation nodes (hp-victus/asus-laptop).
-        # DinD needs amd64 + privileged + 6Gi, which the arm64 Pis
-        # can't satisfy, so the workstation role label is the correct gate.
+        # amd64 workstation nodes only: DinD needs amd64, privileged and 6Gi,
+        # which the arm64 Pis cannot give. Never asus-laptop: the forgejo-data
+        # PV (local-path) is pinned there, so a runner on it shares Forgejo's
+        # disk and dies with it, and its NVMe has controller resets
+        # (2026-11-03 07:18 and 13:48). That leaves hp-victus and razer-laptop.
         nodeAffinity:
           requiredDuringSchedulingIgnoredDuringExecution:
             nodeSelectorTerms:
               - matchExpressions:
                   - key: node-role.kubernetes.io/workstation
                     operator: Exists
-        # Spread the two replicas across different nodes for real redundancy.
-        # Soft (preferred) so a single live workstation node still runs both
-        # rather than leaving a replica Pending.
+                  - key: kubernetes.io/hostname
+                    operator: NotIn
+                    values:
+                      - asus-laptop
+        # Required, not preferred: with the preferred rule both replicas sat on
+        # asus-laptop, so one node took out all of CI. If one of the two nodes
+        # is down, its replica stays Pending and the other keeps running.
         podAntiAffinity:
-          preferredDuringSchedulingIgnoredDuringExecution:
-            - weight: 100
-              podAffinityTerm:
-                topologyKey: kubernetes.io/hostname
-                labelSelector:
-                  matchLabels:
-                    app.kubernetes.io/name: forgejo-runner
+          requiredDuringSchedulingIgnoredDuringExecution:
+            - topologyKey: kubernetes.io/hostname
+              labelSelector:
+                matchLabels:
+                  app.kubernetes.io/name: forgejo-runner
       containers:
         - name: runner
           image: code.forgejo.org/forgejo/runner:6.3.1
@@ -109,8 +119,7 @@ spec:
               memory: "256Mi"
               cpu: "100m"
             # placemyparents-api builds pnpm install + tsup + Playwright
-            # in a multi-stage Dockerfile — 2Gi got OOMKilled. 6Gi has
-            # ample headroom on asus-laptop (64GB physical, ~13% used).
+            # in a multi-stage Dockerfile - 2Gi got OOMKilled.
             limits:
               memory: "6Gi"
               cpu: "4000m"

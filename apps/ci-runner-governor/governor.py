@@ -50,13 +50,19 @@ standby admit would want it, its instance is stopped and a waiting job asks only
 its runners carry, the instance is started. Those labels are read from the exporter's
 github_runner_state rows for the host, offline ones included, plus the pool labels a
 withheld runner gets back on admit; with none read it is never started. So a job pinned
-to the LAN (`lan`) does not start an off-LAN host that could never take it. Its
-slots count as room only once their runners report online, so a start, or a failed one,
-is never room. Once no slot on it has been busy for idle_off_seconds, its slots are
-withheld one per cycle and then the instance is stopped, so a slot never loses a job to
-the stop and comes back withheld. A power block with "live": true acts on that host for
-real (labels and power) even under DRY_RUN. Without AWS_ACCESS_KEY_ID and
-AWS_SECRET_ACCESS_KEY the hook logs why once and does nothing.
+to the LAN (`lan`) does not start an off-LAN host that could never take it. A start costs
+money, so it waits for start_min_excess jobs it can take past what the other hosts cover,
+held for start_after_seconds; a short burst never starts it. Its slots count as room only
+once their runners report online, so a start, or a failed one, is never room. Once no slot
+on it has been busy for idle_off_seconds, or it has run max_hours_day this UTC day, its
+slots are withheld one per cycle and the instance is stopped once none is busy, so a slot
+never loses a job to the stop and comes back withheld. The ConfigMap
+ci-runner-governor-override (the agent-web Infra page's button) beats all of that until its
+end time: "on" starts it and keeps it from idle-off and the day cap, "off" drains and stops
+it and keeps it stopped. The month's cap is an AWS Budgets action, outside the governor.
+A power block with "live": true acts on that host for real (labels and power) even under
+DRY_RUN. Without AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY the hook logs why once and
+does nothing.
 
 DRY_RUN=1 (the default) logs and exports every decision and changes nothing.
 Live, it needs GITHUB_TOKEN with Organization > Self-hosted runners: write.
@@ -86,7 +92,11 @@ CONFIG = os.environ.get("GOVERNOR_CONFIG", "/app/config.json")
 AWS_KEY = os.environ.get("AWS_ACCESS_KEY_ID", "")
 AWS_SECRET = os.environ.get("AWS_SECRET_ACCESS_KEY", "")
 CYCLE_SECONDS = 60
-IDLE_OFF_SECONDS = 1200
+# A power block's settings when config.json leaves one out. A start costs money (about
+# $1.85/h for aws-burst-1), so only a deep queue held this long starts one, and a day of
+# running time is capped; the month's cap is an AWS Budgets action (platform infra/aws-ci-burst).
+POWER_DEFAULTS = {"idle_off_seconds": 900, "start_min_excess": 4, "start_after_seconds": 300, "max_hours_day": 12}
+OVERRIDE_DIR = os.environ.get("GOVERNOR_OVERRIDE_DIR", "/override")
 API_ERRORS = (urllib.error.URLError, OSError, ValueError, KeyError)
 POWER_ERRORS = API_ERRORS + (ET.ParseError,)
 
@@ -243,15 +253,39 @@ def decide(cfg, hosts, runners, waiting, last_action, now, instances=None):
         off = sorted(n for n, r in mine.items() if r["withheld"])
         cap = cfg["standby"][host]["max_admitted"]
         inst = (instances or {}).get(host)
-        idle_off = cfg["standby"][host].get("power", {}).get("idle_off_seconds", IDLE_OFF_SECONDS)
+        p = {**POWER_DEFAULTS, **cfg["standby"][host].get("power", {})}
         action, runner, why = "hold", "", "overflow"
-        if inst and inst["state"] == "running" and now - inst["busy_at"] >= idle_off:
-            # Before the job queue: a host idle this long cannot take what waits (a lan job).
-            action, runner = ("withhold", on[0]) if on else ("stop", "")
-            why = f"no slot busy for {int(now - inst['busy_at'])}s"
+        over = inst.get("override") if inst else None
+        drain, cause, wanting = "", "", False
+        if inst and inst["state"] == "running":
+            # Before the job queue: a host told off, past its day, or idle this long cannot
+            # take what waits (an idle one: a lan job).
+            if over == "off":
+                drain, cause = "override off", "override"
+            elif over != "on" and inst.get("hours_today", 0) >= p["max_hours_day"]:
+                drain, cause = f"ran {inst['hours_today']:.1f}h today, its {p['max_hours_day']}h cap", "cap"
+            elif over != "on" and now - inst["busy_at"] >= p["idle_off_seconds"]:
+                drain, cause = f"no slot busy for {int(now - inst['busy_at'])}s", "idle"
+        if drain:
+            # One slot per cycle, busy ones too (a withheld slot finishes its job), and the
+            # stop only once no slot is busy, so a stop never kills a job.
+            busy = sum(1 for r in mine.values() if r["busy"])
+            if on:
+                action, runner, why = "withhold", on[0], drain
+            elif busy:
+                why = f"{drain}; {busy} jobs finishing"
+            else:
+                action, why = "stop", drain
         elif len(on) > cap:
             action, runner, why = "withhold", on[0], f"over its {cap} cap"
-        elif queue == 0 and on and not mine[on[0]]["busy"]:
+        elif over == "on" and inst and inst["state"] == "running" and off:
+            if admitted < cfg["pool_max_admitted"]:
+                action, runner, why = "admit", off[0], "override on"
+                admitted += 1
+                covered += 1
+            else:
+                why = f"override on; pool at its {cfg['pool_max_admitted']} cap"
+        elif queue == 0 and on and not mine[on[0]]["busy"] and over != "on":
             action, runner, why = "withhold", on[0], "nothing waits"
         elif queue > covered and off and len(on) < cap:
             if admitted < cfg["pool_max_admitted"]:
@@ -260,19 +294,42 @@ def decide(cfg, hosts, runners, waiting, last_action, now, instances=None):
                 covered += 1
             else:
                 why = f"pool at its {cfg['pool_max_admitted']} cap"
+        elif inst and inst["state"] == "stopped" and over == "on":
+            action, why, cause = "start", "override on", "override"
+        elif inst and inst["state"] == "stopped" and over == "off":
+            why = "override off"
         elif inst and inst["state"] == "stopped" and queue > covered:
-            # Not room yet: its slots count once their runners are online and admitted.
+            # Not room yet: its slots count once their runners are online and admitted. A
+            # start costs money, so only a queue this much deeper than the other hosts can
+            # take, for start_after_seconds in a row, starts it: a short burst waits instead.
             takes = sum(1 for need in waiting if need <= inst["labels"])
+            want = min(takes, queue - covered)
             if not inst["labels"]:
                 why = "no runner labels read"
             elif not takes:
                 why = f"{queue} jobs wait, none it can take"
-            elif admitted < cfg["pool_max_admitted"]:
-                action, why = "start", f"{queue} jobs wait, {takes} it can take, the other hosts cover {covered}"
-            else:
+            elif inst.get("hours_today", 0) >= p["max_hours_day"]:
+                why = f"ran {inst['hours_today']:.1f}h today, its {p['max_hours_day']}h cap"
+            elif want < p["start_min_excess"]:
+                why = f"{want} jobs it can take past the other hosts' {covered}, starts at {p['start_min_excess']}"
+            elif admitted >= cfg["pool_max_admitted"]:
                 why = f"pool at its {cfg['pool_max_admitted']} cap"
+            else:
+                wanting = True
+                since = inst["want_since"] = inst.get("want_since") or now
+                why = f"{queue} jobs wait, {takes} it can take, the other hosts cover {covered}"
+                if now - since >= p["start_after_seconds"]:
+                    action, cause = "start", "queue"
+                else:
+                    why += f"; held {int(now - since)}s of {p['start_after_seconds']}s"
         elif inst and inst["state"] != "running":
             why = f"instance {inst['state']}"
+        if inst is not None:
+            inst["draining"] = bool(drain)
+            if not wanting:
+                inst["want_since"] = None
+            # cycle() keeps it as the power state's reason once the call succeeds.
+            inst["next_cause"] = cause if action in ("start", "stop") else ""
         out.append((host, action, runner, "STANDBY", why))
     return out
 
@@ -367,10 +424,43 @@ def power_provider(power):
     return Ec2(power["region"], AWS_KEY, AWS_SECRET), ""
 
 
+def read_override(host, now):
+    """(action, until) from the ci-runner-governor-override ConfigMap's key for host, mounted
+    optional at OVERRIDE_DIR: {"action": "on"|"off", "until": <epoch>}. ("", 0) when there is
+    none, it has run out, or it does not parse (logged), so a bad edit never powers anything."""
+    try:
+        with open(os.path.join(OVERRIDE_DIR, host)) as f:
+            raw = f.read().strip()
+    except OSError:
+        return "", 0
+    try:
+        o = json.loads(raw) if raw else {}
+        action, until = o.get("action", ""), float(o.get("until", 0))
+    except (ValueError, TypeError, AttributeError) as e:
+        print(f"{host}: override unreadable, ignored: {e}", flush=True)
+        return "", 0
+    return (action, until) if action in ("on", "off") and until > now else ("", 0)
+
+
+def count_run_time(t, state, now):
+    """Seconds the instance has run this UTC day, in t. A cycle counts at most two cycles'
+    worth, so a pod restart or a blind spell never books hours nobody saw. In memory: a pod
+    restart forgets the day, and the AWS budget is the cap that cannot forget."""
+    day = time.strftime("%Y-%m-%d", time.gmtime(now))
+    if t.get("day") != day:
+        t["day"], t["run_seconds"] = day, 0.0
+    if state in ("pending", "running", "stopping") and "seen_at" in t:
+        t["run_seconds"] += max(0.0, min(now - t["seen_at"], 2 * CYCLE_SECONDS, now % 86_400))
+    t["seen_at"] = now
+    t["hours_today"] = t["run_seconds"] / 3600
+
+
 def power_readings(cfg, runners, tracked, now):
-    """{host: {state, busy_at, labels, client}} for each standby host with a power block. busy_at is
-    the last cycle a slot on it was busy or the instance was not running, kept in tracked
-    across cycles. A host whose state cannot be read is left out, so nothing powers it."""
+    """{host: tracked[host]} for each standby host with a power block: state, busy_at,
+    labels, client, hours_today, override and override_until, plus what decide() keeps
+    there across cycles (want_since, draining, next_cause). busy_at is the last cycle a slot
+    on it was busy or the instance was not running. A host whose state cannot be read is
+    left out, so nothing powers it."""
     out = {}
     for host, s in sorted(cfg["standby"].items()):
         if "power" not in s:
@@ -395,8 +485,18 @@ def power_readings(cfg, runners, tracked, now):
         if state != "running" or "busy_at" not in t or any(
                 r["busy"] for r in runners.values() if r["host"] == host):
             t["busy_at"] = now
-        out[host] = {"state": state, "busy_at": t["busy_at"], "labels": labels, "client": client}
+        count_run_time(t, state, now)
+        t["override"], t["override_until"] = read_override(host, now)
+        t.update(state=state, labels=labels, client=client)
+        out[host] = t
     return out
+
+
+def power_state(inst):
+    """What the Infra page and the start/stop notification show for an instance."""
+    if inst["state"] == "running" and inst.get("draining"):
+        return "draining"
+    return {"pending": "starting"}.get(inst["state"], inst["state"])
 
 
 def live(cfg, host):
@@ -408,7 +508,7 @@ class State:
     metrics = "ci_governor_up 0\n"
 
 
-def render(cfg, hosts, runners, queue, decisions, ok):
+def render(cfg, hosts, runners, queue, decisions, ok, instances=None):
     L = ["# HELP ci_governor_ok 1 when every source answered this cycle", "# TYPE ci_governor_ok gauge",
          f"ci_governor_ok {1 if ok else 0}", f"ci_governor_dry_run {1 if DRY_RUN else 0}",
          f"ci_governor_queue {queue}",
@@ -430,6 +530,23 @@ def render(cfg, hosts, runners, queue, decisions, ok):
     L += ["# HELP ci_governor_decision This cycle's verdict and action per host", "# TYPE ci_governor_decision gauge"]
     for host, action, _, v, _ in decisions:
         L.append(f'ci_governor_decision{{host="{host}",verdict="{v}",action="{action}"}} 1')
+    # A powered host, for the agent-web Infra page and Sentinel's start/stop notice. reason is
+    # why the governor last started or stopped it (queue, idle, cap, override), "none" before
+    # it has, so the series changes only when the power does.
+    L += ["# HELP ci_governor_power_state A powered standby host: stopped, starting, running, draining or stopping",
+          "# TYPE ci_governor_power_state gauge",
+          "# HELP ci_governor_power_hours_today Hours its instance has run this UTC day (in memory)",
+          "# TYPE ci_governor_power_hours_today gauge",
+          "# HELP ci_governor_power_override End (epoch) of the override in force, 0 with action none",
+          "# TYPE ci_governor_power_override gauge"]
+    for host, inst in sorted((instances or {}).items()):
+        p = {**POWER_DEFAULTS, **cfg["standby"][host]["power"]}
+        L.append(f'ci_governor_power_state{{host="{host}",state="{power_state(inst)}",'
+                 f'reason="{inst.get("cause") or "none"}"}} 1')
+        L.append(f'ci_governor_power_hours_today{{host="{host}"}} {inst.get("hours_today", 0):.3f}')
+        L.append(f'ci_governor_power_max_hours_day{{host="{host}"}} {p["max_hours_day"]}')
+        L.append(f'ci_governor_power_override{{host="{host}",action="{inst.get("override") or "none"}"}} '
+                 f'{int(inst.get("override_until", 0))}')
     return "\n".join(L) + "\n"
 
 
@@ -458,13 +575,14 @@ def cycle(cfg, last_action, tracked=None):
         try:
             if power:
                 getattr(instances[host]["client"], action)(target)
+                instances[host]["cause"] = instances[host].get("next_cause", "")
             else:
                 apply(cfg, action, runner)
             last_action[host] = now
         except POWER_ERRORS as e:
             print(f"{action} {target} failed: {e}", flush=True)
     with State.lock:
-        State.metrics = "ci_governor_up 1\n" + render(cfg, hosts, runners, queue, decisions, True)
+        State.metrics = "ci_governor_up 1\n" + render(cfg, hosts, runners, queue, decisions, True, instances)
 
 
 class Handler(BaseHTTPRequestHandler):

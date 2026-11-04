@@ -63,8 +63,13 @@ def actions(*args, **kw):
     return {h: (a, r) for h, a, r, _, _ in decide(*args, **kw)}
 
 
-POWER = {"provider": "aws", "instance_id": "i-0abc", "region": "us-east-2", "idle_off_seconds": 1200, "live": True}
+# Starts on the first job past the others, at once: what these tests check is which jobs
+# and slots count, not the cost gate. HEAVY below is the live gate (config.json).
+POWER = {"provider": "aws", "instance_id": "i-0abc", "region": "us-east-2", "idle_off_seconds": 1200, "live": True,
+         "start_min_excess": 1, "start_after_seconds": 0}
 AWS = {**CFG, "standby": {"aws-burst-1": {"max_admitted": 8, "power": POWER}}}
+LIVE_POWER = {**governor.POWER_DEFAULTS, **LIVE["standby"]["aws-burst-1"]["power"]}
+HEAVY = {**CFG, "standby": {"aws-burst-1": {"max_admitted": 6, "power": {**LIVE_POWER, "instance_id": "i-0abc"}}}}
 
 
 # What host_labels() reads for aws-burst-1: its runners' labels (off the LAN, so no `lan`)
@@ -72,8 +77,8 @@ AWS = {**CFG, "standby": {"aws-burst-1": {"max_admitted": 8, "power": POWER}}}
 AWS_LABELS = frozenset({"self-hosted", "linux", "x64", "host-aws-burst-1", "unity-withheld", "unity", "unity-full"})
 
 
-def instance(state, idle=0, labels=AWS_LABELS):
-    return {"aws-burst-1": {"state": state, "busy_at": 10_000 - idle, "labels": labels}}
+def instance(state, idle=0, labels=AWS_LABELS, **more):
+    return {"aws-burst-1": {"state": state, "busy_at": 10_000 - idle, "labels": labels, **more}}
 
 
 class FakeEc2:
@@ -313,6 +318,144 @@ class GovernorTest(unittest.TestCase):
     def test_power_on_never_past_the_pool_cap(self):
         got = actions(self.STEADY, self.FULL, cfg={**AWS, "pool_max_admitted": 2}, instances=instance("stopped"))
         self.assertEqual(got["aws-burst-1"], ("hold", ""))
+
+    # The cost gate (config.json's live values): a start costs money, so only a deep queue,
+    # held, starts it; a day's running time is capped; the Infra page's override beats both.
+    def heavy(self, inst, queue=5, runners=None, waiting=None):
+        got = {h: (a, r, why) for h, a, r, _, why in decide(self.STEADY, self.FULL if runners is None else runners,
+                                                         queue=queue, cfg=HEAVY, instances=inst, waiting=waiting)}
+        return got["aws-burst-1"]
+
+    def test_live_gate_values(self):
+        self.assertEqual({k: LIVE_POWER[k] for k in governor.POWER_DEFAULTS},
+                         {"idle_off_seconds": 900, "start_min_excess": 4, "start_after_seconds": 300,
+                          "max_hours_day": 12})
+
+    def test_no_start_below_the_excess(self):
+        inst = instance("stopped", want_since=1)
+        action, _, why = self.heavy(inst, queue=3)
+        self.assertEqual(action, "hold")
+        self.assertIn("starts at 4", why)
+        self.assertIsNone(inst["aws-burst-1"]["want_since"])
+
+    def test_the_excess_counts_only_jobs_it_can_take(self):
+        waiting = [LAN_JOB] * 6 + [UNITY_JOB] * 3
+        self.assertEqual(self.heavy(instance("stopped", want_since=1), waiting=waiting)[0], "hold")
+
+    def test_no_start_before_the_hold_time_then_a_start(self):
+        inst = instance("stopped")
+        action, _, why = self.heavy(inst)
+        self.assertEqual((action, inst["aws-burst-1"]["want_since"]), ("hold", 10_000))
+        self.assertIn("held 0s of 300s", why)
+        inst["aws-burst-1"]["want_since"] = 10_000 - 299
+        self.assertEqual(self.heavy(inst)[0], "hold")
+        inst["aws-burst-1"]["want_since"] = 10_000 - 300
+        self.assertEqual(self.heavy(inst)[0], "start")
+        self.assertEqual(inst["aws-burst-1"]["next_cause"], "queue")
+
+    def test_a_dip_below_the_excess_restarts_the_hold(self):
+        inst = instance("stopped", want_since=1)
+        self.heavy(inst, queue=2)
+        self.assertEqual(self.heavy(inst)[0], "hold")
+        self.assertEqual(inst["aws-burst-1"]["want_since"], 10_000)
+
+    def test_the_daily_cap_blocks_a_start(self):
+        action, _, why = self.heavy(instance("stopped", want_since=1, hours_today=12.0))
+        self.assertEqual(action, "hold")
+        self.assertIn("12h cap", why)
+
+    def test_the_daily_cap_drains_then_stops_without_killing_a_job(self):
+        def at_cap(runners):
+            return self.heavy(instance("running", hours_today=12.5), runners={**runners, **self.FULL}, queue=9)
+        self.assertEqual(at_cap(self.aws(on_busy=1, off=5))[:2], ("withhold", "aws-0"))
+        action, _, why = at_cap({"aws-0": {**self.aws(on_busy=1)["aws-0"], "withheld": True}, **self.aws(off=5)})
+        self.assertEqual(action, "hold")
+        self.assertIn("1 jobs finishing", why)
+        inst = instance("running", hours_today=12.5)
+        self.assertEqual(self.heavy(inst, runners={**self.aws(off=6), **self.FULL}, queue=9)[0], "stop")
+        self.assertEqual(inst["aws-burst-1"]["next_cause"], "cap")
+        self.assertTrue(inst["aws-burst-1"]["draining"])
+
+    def test_idle_off_is_900s_live(self):
+        runners = {**self.aws(off=6), **RUNNERS}
+        self.assertEqual(self.heavy(instance("running", 899), runners=runners, queue=1)[0], "hold")
+        self.assertEqual(self.heavy(instance("running", 900), runners=runners, queue=1)[0], "stop")
+
+    def test_override_on_starts_with_nothing_waiting(self):
+        inst = instance("stopped", override="on", hours_today=13.0)
+        self.assertEqual(self.heavy(inst, queue=0)[:2], ("start", ""))
+        self.assertEqual(inst["aws-burst-1"]["next_cause"], "override")
+
+    def test_override_on_survives_idle_and_the_cap(self):
+        runners = {**self.aws(on_idle=1, off=5), **self.FULL}
+        inst = instance("running", 5000, override="on", hours_today=13.0)
+        self.assertEqual(self.heavy(inst, runners=runners, queue=0)[:2], ("admit", "aws-off-0"))
+        full = {**self.aws(on_idle=6), **self.FULL}
+        self.assertEqual(self.heavy(inst, runners=full, queue=0)[0], "hold")
+
+    def test_override_off_drains_then_stops(self):
+        inst = instance("running", override="off")
+        busy = {**self.aws(on_busy=2, off=4), **self.FULL}
+        self.assertEqual(self.heavy(inst, runners=busy, queue=9)[:2], ("withhold", "aws-0"))
+        self.assertEqual(self.heavy(inst, runners={**self.aws(off=6), **self.FULL}, queue=9)[0], "stop")
+        self.assertEqual(inst["aws-burst-1"]["next_cause"], "override")
+
+    def test_override_off_blocks_a_start(self):
+        action, _, why = self.heavy(instance("stopped", want_since=1, override="off"), queue=20)
+        self.assertEqual((action, why), ("hold", "override off"))
+
+    def test_read_override(self):
+        import tempfile
+        with tempfile.TemporaryDirectory() as d, mock.patch.object(governor, "OVERRIDE_DIR", d), \
+                mock.patch("builtins.print") as out:
+            self.assertEqual(governor.read_override("aws-burst-1", 100), ("", 0))  # no ConfigMap
+            path = os.path.join(d, "aws-burst-1")
+            for body, want in (('{"action": "on", "until": 200}', ("on", 200)),
+                               ('{"action": "off", "until": 200}', ("off", 200)),
+                               ('{"action": "on", "until": 50}', ("", 0)),     # ran out
+                               ('{"action": "start", "until": 200}', ("", 0)),  # not an action
+                               ("", ("", 0)), ("{}", ("", 0)), ("not json", ("", 0)), ("[1]", ("", 0))):
+                with open(path, "w") as f:
+                    f.write(body)
+                self.assertEqual(governor.read_override("aws-burst-1", 100), want, body)
+        self.assertEqual(len([c for c in out.call_args_list if "unreadable" in c.args[0]]), 2)
+
+    def test_run_time_counts_per_utc_day(self):
+        t, day = {}, 1_762_214_400  # 2025-11-04T00:00:00Z
+        governor.count_run_time(t, "running", day + 60)
+        self.assertEqual(t["run_seconds"], 0)  # the first sight books nothing
+        governor.count_run_time(t, "running", day + 120)
+        governor.count_run_time(t, "stopped", day + 180)
+        governor.count_run_time(t, "running", day + 3600)  # a blind hour books two cycles at most
+        self.assertEqual(t["run_seconds"], 60 + 120)
+        governor.count_run_time(t, "running", day + 86_400 + 30)
+        self.assertEqual((t["run_seconds"], t["day"]), (30, "2025-11-05"))  # only the part after midnight
+
+    def test_power_metrics_after_a_live_stop(self):
+        ec2 = FakeEc2("running")
+        hosts = readings(**{"razer-laptop": BUSY, "asus-laptop": BUSY, "hp-victus": BUSY})
+        tracked = {"aws-burst-1": {"busy_at": 0, "day": time.strftime("%Y-%m-%d"), "run_seconds": 7200.0}}
+        self.power_cycle(ec2, observed=(hosts, {**self.aws(off=8), **self.FULL}, []), tracked=tracked)
+        self.assertIn(("stop", "i-0abc"), ec2.calls)
+        m = governor.State.metrics
+        self.assertIn('ci_governor_power_state{host="aws-burst-1",state="draining",reason="idle"} 1', m)
+        self.assertIn('ci_governor_power_hours_today{host="aws-burst-1"} 2.0', m)
+        self.assertIn('ci_governor_power_max_hours_day{host="aws-burst-1"} 12', m)
+        self.assertIn('ci_governor_power_override{host="aws-burst-1",action="none"} 0', m)
+
+    def test_a_failed_start_keeps_the_old_reason(self):
+        tracked = {}
+        self.power_cycle(FakeEc2("stopped", fail=True), tracked=tracked)
+        self.assertIn('ci_governor_power_state{host="aws-burst-1",state="stopped",reason="none"} 1',
+                      governor.State.metrics)
+        self.power_cycle(FakeEc2("stopped"), tracked=tracked)
+        self.assertEqual(tracked["aws-burst-1"]["cause"], "queue")
+
+    def test_a_dry_run_power_host_reports_its_state(self):
+        cfg = {**AWS, "standby": {"aws-burst-1": {"max_admitted": 8, "power": {**POWER, "live": False}}}}
+        self.power_cycle(FakeEc2("pending"), cfg)
+        self.assertIn('ci_governor_power_state{host="aws-burst-1",state="starting",reason="none"} 1',
+                      governor.State.metrics)
 
     def power_cycle(self, ec2, cfg=AWS, observed=None, cycles=1, tracked=None, labels=AWS_LABELS):
         hosts = readings(**{"razer-laptop": HOT, "asus-laptop": BUSY, "hp-victus": BUSY})

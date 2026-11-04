@@ -84,6 +84,12 @@ spec:
             - name: app
               mountPath: /app
               readOnly: true
+            # The Infra page's On/Off button (agent-web POST /api/cloud-runner) applies
+            # this ConfigMap; it is not in git, so Flux leaves it alone, and optional, so
+            # the pod starts without it. The kubelet refreshes it within about a minute.
+            - name: override
+              mountPath: /override
+              readOnly: true
           resources:
             requests:
               memory: "24Mi"
@@ -101,6 +107,10 @@ spec:
         - name: app
           configMap:
             name: ci-runner-governor
+        - name: override
+          configMap:
+            name: ci-runner-governor-override
+            optional: true
 ---
 apiVersion: v1
 kind: Service

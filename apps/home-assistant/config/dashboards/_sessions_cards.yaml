@@ -1,5 +1,4 @@
-# Shared cards: your interactive Claude sessions, grouped by project exactly like the waybar
-# ai-agents module (both read `agent-panel list`). One sensor.agent_sessions_<project> per group,
+# Shared cards: your interactive Claude sessions, grouped by project, from `agent-panel list`. One sensor.agent_sessions_<project> per group,
 # published by agent-mqtt-publish; glyphs are agent-panel's: ! needs you, ~ working, check idle.
 # Included by view_agents.yaml and phone.yaml; navigation-free.
 - type: heading

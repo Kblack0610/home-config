@@ -77,14 +77,24 @@ Flux picks up the ConfigMap change → deployment hash rotates → pod rolls →
 
 ### Agent fleet phone widget
 
-`sensor.agent_widget` (`config/packages/agents.yaml`) is three lines for an Android home screen: what waits on you (asks, sessions that need you or stalled, broken runners and watches, red default branches), then working, landed and merged today, then each Claude account's weekly use (`!` means over pace) with the earliest run-out and 24h spend. Its state is HTML, because that is what the Companion app's Template widget renders. The data comes from `agent-mqtt-publish` (MQTT discovery) and from Prometheus (`claude_acct.prom`, `day_log.prom`).
+`sensor.agent_widget` (`config/packages/agents.yaml`) is the waybar fleet overview for an Android home screen. Its `html` attribute has two parts:
 
-Setup on the phone: long-press the home screen -> Widgets -> Home Assistant -> Template, with the template `{{ states('sensor.agent_widget') }}`. It refreshes when the sensor changes, and tapping it forces a refresh. For a color dot, add an Entity state widget on `binary_sensor.agents_need_attention`. Pages that cannot wait still arrive by ntfy; the widget is only a glance.
+- What no waybar chip carries: open asks, broken runners and watches, red default branches, then each Claude account's weekly use (`!` means over pace) with the earliest run-out and 24h spend.
+- `sensor.agent_overview`, the lines the waybar chips print, joined by `fleet-overview` in dotfiles and published by `agent-mqtt-publish`: sessions with a glyph strip per project (`x` stalled, `?` unclear, `!` needs you, `~` working, `+` landed, `.` done, `-` parked), then the queue, ready items and dispatch headroom, then CI busy/slots, queue, pass rate and pools, then merged today and what is red now.
+
+It is HTML in an attribute because the Companion app's Template widget renders HTML and an HA state stops at 255 characters. The state is the worst chip: `ok`, `warn` or `critical`. No Lovelace card can sit on a home screen: the Companion app's widgets are Action, Entity state, Media player, Picture, Template and To-do.
+
+Setup on the phone: long-press the home screen -> Widgets -> Home Assistant -> Template, with the template `{{ state_attr('sensor.agent_widget', 'html') }}`, the smallest text size that reads well, then resize the widget to about 4x4. A widget still on the old `states('sensor.agent_widget')` template shows only that one word until you edit it. It refreshes when the sensor changes, and tapping it forces a refresh. For a color dot, add an Entity state widget on `binary_sensor.agents_need_attention`. Pages that cannot wait still arrive by ntfy; the widget is only a glance.
 
 | Symptom | Fix |
 |---|---|
 | Widget shows old numbers | Check that the Companion app is allowed background data and battery use. If `sensor.agent_sessions` is `unavailable`, its 900 s MQTT expiry ran out, so the workstation publisher (`agent-mqtt-publish.timer`) is down. |
-| Line 3 reads `unknown` | The `Agent accounts` REST sensor got no data. Query `claude_account_week_used_percent` in Prometheus; when it is empty, `claude-acct-usage.timer` on the workstation has stopped writing. |
+| Widget shows only `ok`, `warn` or `critical` | It still has the old template: edit it to the one above. |
+| Red line `no fleet overview` | `sensor.agent_overview` is unavailable: its 900 s MQTT expiry ran out, so `agent-mqtt-publish` has stopped or `fleet-overview` is not on the workstation's PATH. Run `agent-mqtt-publish --dry-run` there and look for `summary/overview`. |
+| A line reads `<chip>: the chip printed nothing` | That waybar chip crashed. Run `~/.config/waybar/<chip>.sh` on the workstation. |
+| `cannot read` in place of a section | Prometheus did not answer the workstation. The waybar chip reads the same. |
+| The bottom lines are cut off | The widget does not scroll. Make it taller or pick a smaller text size. |
+| The accounts line reads `unknown` | The `Agent accounts` REST sensor got no data. Query `claude_account_week_used_percent` in Prometheus; when it is empty, `claude-acct-usage.timer` on the workstation has stopped writing. |
 
 ### 3D Printer Monitoring
 

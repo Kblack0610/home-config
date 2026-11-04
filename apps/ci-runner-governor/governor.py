@@ -64,6 +64,16 @@ A power block with "live": true acts on that host for real (labels and power) ev
 DRY_RUN. Without AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY the hook logs why once and
 does nothing.
 
+For the agent-web Infra page it also exports, all as numbers so no series churns: each
+powered host's rule progress (idle seconds against idle_off_seconds, the jobs it could take
+past the other hosts against start_min_excess, the start hold against start_after_seconds),
+its usd_per_hour, its last start or stop, whether each host is acted on live, and, with a
+"budget" block in config.json, the AWS budget's month: spend, forecast, limit, alert lines
+and the stop action's threshold and status. Budgets has no event API and refreshes its
+numbers a few times a day, so it is read once per BUDGET_POLL_SECONDS with the same key;
+a failed read keeps the last numbers, sets ci_governor_budget_ok 0, and never touches a
+power decision.
+
 DRY_RUN=1 (the default) logs and exports every decision and changes nothing.
 Live, it needs GITHUB_TOKEN with Organization > Self-hosted runners: write.
 
@@ -80,6 +90,7 @@ import urllib.error
 import urllib.parse
 import urllib.request
 import xml.etree.ElementTree as ET
+from datetime import datetime
 from http.server import BaseHTTPRequestHandler, HTTPServer
 from threading import Lock, Thread
 
@@ -96,9 +107,12 @@ CYCLE_SECONDS = 60
 # $1.85/h for aws-burst-1), so only a deep queue held this long starts one, and a day of
 # running time is capped; the month's cap is an AWS Budgets action (platform infra/aws-ci-burst).
 POWER_DEFAULTS = {"idle_off_seconds": 900, "start_min_excess": 4, "start_after_seconds": 300, "max_hours_day": 12}
+# The budget's numbers move a few times a day and the API has no event, so one read an hour.
+BUDGET_POLL_SECONDS = 3600
 OVERRIDE_DIR = os.environ.get("GOVERNOR_OVERRIDE_DIR", "/override")
 API_ERRORS = (urllib.error.URLError, OSError, ValueError, KeyError)
 POWER_ERRORS = API_ERRORS + (ET.ParseError,)
+BUDGET_ERRORS = API_ERRORS + (TypeError,)
 
 UNAME = "on(instance) group_left(nodename) node_uname_info"
 QUERIES = {
@@ -256,7 +270,7 @@ def decide(cfg, hosts, runners, waiting, last_action, now, instances=None):
         p = {**POWER_DEFAULTS, **cfg["standby"][host].get("power", {})}
         action, runner, why = "hold", "", "overflow"
         over = inst.get("override") if inst else None
-        drain, cause, wanting = "", "", False
+        drain, cause, wanting, want = "", "", False, 0
         if inst and inst["state"] == "running":
             # Before the job queue: a host told off, past its day, or idle this long cannot
             # take what waits (an idle one: a lan job).
@@ -303,7 +317,7 @@ def decide(cfg, hosts, runners, waiting, last_action, now, instances=None):
             # start costs money, so only a queue this much deeper than the other hosts can
             # take, for start_after_seconds in a row, starts it: a short burst waits instead.
             takes = sum(1 for need in waiting if need <= inst["labels"])
-            want = min(takes, queue - covered)
+            want = max(0, min(takes, queue - covered))
             if not inst["labels"]:
                 why = "no runner labels read"
             elif not takes:
@@ -328,6 +342,10 @@ def decide(cfg, hosts, runners, waiting, last_action, now, instances=None):
             inst["draining"] = bool(drain)
             if not wanting:
                 inst["want_since"] = None
+            # How far along each rule is, for the Infra page: the reasons above are free text.
+            inst["idle_seconds"] = now - inst["busy_at"] if inst["state"] == "running" else 0
+            inst["want"] = want if inst["state"] == "stopped" else 0
+            inst["held_seconds"] = now - inst["want_since"] if wanting else 0
             # cycle() keeps it as the power state's reason once the call succeeds.
             inst["next_cause"] = cause if action in ("start", "stop") else ""
         out.append((host, action, runner, "STANDBY", why))
@@ -369,30 +387,35 @@ def apply(cfg, action, name):
             gh("DELETE", f"orgs/{org}/actions/runners/{rid}/labels/{urllib.parse.quote(label)}")
 
 
+def sigv4(service, region, key, secret, host, body, t, extra=None,
+          content_type="application/x-www-form-urlencoded; charset=utf-8"):
+    """The headers for a POST to / on host, SigV4-signed by hand: the pod is python:alpine
+    with no boto3. extra holds more x-amz-* headers to sign (lower case)."""
+    amz_date, day = time.strftime("%Y%m%dT%H%M%SZ", t), time.strftime("%Y%m%d", t)
+    headers = {"content-type": content_type, "host": host, "x-amz-date": amz_date, **(extra or {})}
+    signed = ";".join(sorted(headers))
+    canonical = "\n".join(["POST", "/", "", *(f"{k}:{headers[k]}" for k in sorted(headers)), "",
+                           signed, hashlib.sha256(body.encode()).hexdigest()])
+    scope = f"{day}/{region}/{service}/aws4_request"
+    to_sign = "\n".join(["AWS4-HMAC-SHA256", amz_date, scope, hashlib.sha256(canonical.encode()).hexdigest()])
+    k = ("AWS4" + secret).encode()
+    for part in (day, region, service, "aws4_request"):
+        k = hmac.new(k, part.encode(), hashlib.sha256).digest()
+    sig = hmac.new(k, to_sign.encode(), hashlib.sha256).hexdigest()
+    headers["authorization"] = (f"AWS4-HMAC-SHA256 Credential={key}/{scope}, "
+                                f"SignedHeaders={signed}, Signature={sig}")
+    return headers
+
+
 class Ec2:
-    """One instance's state, start and stop through the EC2 Query API, signed with SigV4
-    by hand: the pod is python:alpine with no boto3."""
+    """One instance's state, start and stop through the EC2 Query API."""
     NS = "{http://ec2.amazonaws.com/doc/2016-11-15/}"
 
     def __init__(self, region, key, secret):
         self.region, self.key, self.secret = region, key, secret
 
     def sign(self, host, body, t):
-        amz_date, day = time.strftime("%Y%m%dT%H%M%SZ", t), time.strftime("%Y%m%d", t)
-        headers = {"content-type": "application/x-www-form-urlencoded; charset=utf-8",
-                   "host": host, "x-amz-date": amz_date}
-        signed = ";".join(sorted(headers))
-        canonical = "\n".join(["POST", "/", "", *(f"{k}:{headers[k]}" for k in sorted(headers)), "",
-                               signed, hashlib.sha256(body.encode()).hexdigest()])
-        scope = f"{day}/{self.region}/ec2/aws4_request"
-        to_sign = "\n".join(["AWS4-HMAC-SHA256", amz_date, scope, hashlib.sha256(canonical.encode()).hexdigest()])
-        key = ("AWS4" + self.secret).encode()
-        for part in (day, self.region, "ec2", "aws4_request"):
-            key = hmac.new(key, part.encode(), hashlib.sha256).digest()
-        sig = hmac.new(key, to_sign.encode(), hashlib.sha256).hexdigest()
-        headers["authorization"] = (f"AWS4-HMAC-SHA256 Credential={self.key}/{scope}, "
-                                    f"SignedHeaders={signed}, Signature={sig}")
-        return headers
+        return sigv4("ec2", self.region, self.key, self.secret, host, body, t)
 
     def call(self, action, instance_id):
         host = f"ec2.{self.region}.amazonaws.com"
@@ -413,6 +436,73 @@ class Ec2:
 
     def stop(self, instance_id):
         self.call("StopInstances", instance_id)
+
+
+class Budgets:
+    """One AWS budget's month through the Budgets JSON API, whose one endpoint signs as
+    us-east-1."""
+    HOST = "budgets.amazonaws.com"
+
+    def __init__(self, key, secret, account_id, name):
+        self.key, self.secret, self.account_id, self.name = key, secret, account_id, name
+
+    def call(self, op):
+        body = json.dumps({"AccountId": self.account_id, "BudgetName": self.name})
+        headers = sigv4("budgets", "us-east-1", self.key, self.secret, self.HOST, body, time.gmtime(),
+                        {"x-amz-target": f"AWSBudgetServiceGateway.{op}"}, "application/x-amz-json-1.1")
+        req = urllib.request.Request(f"https://{self.HOST}/", data=body.encode(), method="POST", headers=headers)
+        with urllib.request.urlopen(req, timeout=10) as r:
+            return json.load(r)
+
+    def read(self):
+        return budget_reading(self.call("DescribeBudget")["Budget"],
+                              self.call("DescribeNotificationsForBudget").get("Notifications", []),
+                              self.call("DescribeBudgetActionsForBudget").get("Actions", []))
+
+
+def budget_reading(budget, notifications, actions):
+    """Dollars from the three Budgets answers: a threshold given as a percentage becomes
+    dollars of the limit. forecast is None early in a month, before AWS has one."""
+    limit = float(budget["BudgetLimit"]["Amount"])
+    spend = budget.get("CalculatedSpend", {})
+
+    def usd(value, kind):
+        return float(value) if kind == "ABSOLUTE_VALUE" else limit * float(value) / 100
+
+    forecast = spend.get("ForecastedSpend")
+    return {
+        "limit": limit,
+        "actual": float(spend.get("ActualSpend", {}).get("Amount", 0)),
+        "forecast": float(forecast["Amount"]) if forecast else None,
+        "updated": epoch(budget.get("LastUpdatedTime", 0)),
+        "alerts": sorted({(n["NotificationType"].lower(), usd(n["Threshold"], n.get("ThresholdType", "PERCENTAGE")))
+                          for n in notifications}),
+        "actions": sorted((a["ActionType"], a["Status"], usd(a["ActionThreshold"]["ActionThresholdValue"],
+                                                             a["ActionThreshold"]["ActionThresholdType"]))
+                          for a in actions),
+    }
+
+
+def epoch(t):
+    """The API sends epoch seconds; an ISO string (the CLI's rendering) is read too."""
+    return float(t) if isinstance(t, (int, float)) else datetime.fromisoformat(t).timestamp()
+
+
+def read_budget(cfg, b, now):
+    """Refresh b from the config's budget at most once per BUDGET_POLL_SECONDS. A failed read
+    keeps the last numbers with ok False."""
+    spec = cfg.get("budget")
+    if not spec or (b.get("tried_at") is not None and now - b["tried_at"] < BUDGET_POLL_SECONDS):
+        return
+    b["tried_at"] = now
+    if not (AWS_KEY and AWS_SECRET):
+        b["ok"] = False
+        return
+    try:
+        b.update(Budgets(AWS_KEY, AWS_SECRET, spec["account_id"], spec["name"]).read(), ok=True)
+    except BUDGET_ERRORS as e:
+        b["ok"] = False
+        print(f"budget {spec['name']} unread, keeping the last numbers: {e}", flush=True)
 
 
 def power_provider(power):
@@ -508,7 +598,7 @@ class State:
     metrics = "ci_governor_up 0\n"
 
 
-def render(cfg, hosts, runners, queue, decisions, ok, instances=None):
+def render(cfg, hosts, runners, queue, decisions, ok, instances=None, budget=None):
     L = ["# HELP ci_governor_ok 1 when every source answered this cycle", "# TYPE ci_governor_ok gauge",
          f"ci_governor_ok {1 if ok else 0}", f"ci_governor_dry_run {1 if DRY_RUN else 0}",
          f"ci_governor_queue {queue}",
@@ -518,6 +608,7 @@ def render(cfg, hosts, runners, queue, decisions, ok, instances=None):
         mine = [r for r in runners.values() if r["host"] == host]
         L.append(f'ci_governor_admitted{{host="{host}"}} {sum(1 for r in mine if not r["withheld"])}')
         L.append(f'ci_governor_registered{{host="{host}"}} {len(mine)}')
+        L.append(f'ci_governor_live{{host="{host}"}} {1 if live(cfg, host) else 0}')
     # Between the withhold and admit lines the verdict is STEADY, so nothing else shows this.
     L += ["# HELP ci_governor_disk_held 1 when a host has withheld runners and too little disk to re-admit them",
           "# TYPE ci_governor_disk_held gauge"]
@@ -547,10 +638,45 @@ def render(cfg, hosts, runners, queue, decisions, ok, instances=None):
         L.append(f'ci_governor_power_max_hours_day{{host="{host}"}} {p["max_hours_day"]}')
         L.append(f'ci_governor_power_override{{host="{host}",action="{inst.get("override") or "none"}"}} '
                  f'{int(inst.get("override_until", 0))}')
+        # Rule progress, each beside its line: idle against idle-off, jobs it could take past
+        # the other hosts against the start excess, the start hold against its length.
+        for name, value in (("idle_seconds", int(inst.get("idle_seconds", 0))),
+                            ("idle_off_seconds", p["idle_off_seconds"]),
+                            ("want", inst.get("want", 0)), ("start_min_excess", p["start_min_excess"]),
+                            ("held_seconds", int(inst.get("held_seconds", 0))),
+                            ("start_after_seconds", p["start_after_seconds"])):
+            L.append(f'ci_governor_power_{name}{{host="{host}"}} {value}')
+        if "usd_per_hour" in p:
+            L.append(f'ci_governor_power_usd_per_hour{{host="{host}"}} {p["usd_per_hour"]}')
+        L.append(f'ci_governor_power_last_change{{host="{host}",action="{inst.get("changed") or "none"}"}} '
+                 f'{int(inst.get("changed_at", 0))}')
+    if budget and cfg.get("budget"):
+        L += render_budget(budget)
     return "\n".join(L) + "\n"
 
 
-def cycle(cfg, last_action, tracked=None):
+def render_budget(b):
+    """The month as AWS Budgets last reported it. Alert lines are labelled by their dollars,
+    which change only with the Terraform."""
+    L = ["# HELP ci_governor_budget_ok 1 when the last AWS Budgets read worked", "# TYPE ci_governor_budget_ok gauge",
+         f"ci_governor_budget_ok {1 if b.get('ok') else 0}"]
+    if "limit" not in b:
+        return L
+    L += ["# HELP ci_governor_budget_usd This month's spend, forecast and limit in USD (AWS Budgets)",
+          "# TYPE ci_governor_budget_usd gauge",
+          f'ci_governor_budget_usd{{kind="actual"}} {b["actual"]:.2f}',
+          f'ci_governor_budget_usd{{kind="limit"}} {b["limit"]:.2f}']
+    if b["forecast"] is not None:
+        L.append(f'ci_governor_budget_usd{{kind="forecast"}} {b["forecast"]:.2f}')
+    L.append(f"ci_governor_budget_updated {int(b['updated'])}")
+    for basis, usd in b["alerts"]:
+        L.append(f'ci_governor_budget_alert{{basis="{basis}",usd="{usd:g}"}} 1')
+    for kind, status, usd in b["actions"]:
+        L.append(f'ci_governor_budget_action_usd{{type="{kind}",status="{status}"}} {usd:g}')
+    return L
+
+
+def cycle(cfg, last_action, tracked=None, budget=None):
     now = time.time()
     try:
         hosts, runners, waiting = observe(cfg["pool_label"])
@@ -575,14 +701,16 @@ def cycle(cfg, last_action, tracked=None):
         try:
             if power:
                 getattr(instances[host]["client"], action)(target)
-                instances[host]["cause"] = instances[host].get("next_cause", "")
+                instances[host].update(cause=instances[host].get("next_cause", ""), changed=action, changed_at=now)
             else:
                 apply(cfg, action, runner)
             last_action[host] = now
         except POWER_ERRORS as e:
             print(f"{action} {target} failed: {e}", flush=True)
+    if budget is not None:
+        read_budget(cfg, budget, now)
     with State.lock:
-        State.metrics = "ci_governor_up 1\n" + render(cfg, hosts, runners, queue, decisions, True, instances)
+        State.metrics = "ci_governor_up 1\n" + render(cfg, hosts, runners, queue, decisions, True, instances, budget)
 
 
 class Handler(BaseHTTPRequestHandler):
@@ -613,9 +741,9 @@ def main():
     live_hosts = sorted(h for h in cfg["standby"] if DRY_RUN and live(cfg, h))
     print(f"ci-runner-governor: {'dry run' if DRY_RUN else 'live'}, hosts {', '.join(sorted(cfg['hosts']))}"
           + (f", live anyway: {', '.join(live_hosts)}" if live_hosts else ""), flush=True)
-    last_action, tracked = {}, {}
+    last_action, tracked, budget = {}, {}, {}
     while True:
-        cycle(cfg, last_action, tracked)
+        cycle(cfg, last_action, tracked, budget)
         time.sleep(CYCLE_SECONDS)
 
 

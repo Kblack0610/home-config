@@ -457,7 +457,7 @@ class GovernorTest(unittest.TestCase):
         self.assertIn('ci_governor_power_state{host="aws-burst-1",state="starting",reason="none"} 1',
                       governor.State.metrics)
 
-    def power_cycle(self, ec2, cfg=AWS, observed=None, cycles=1, tracked=None, labels=AWS_LABELS):
+    def power_cycle(self, ec2, cfg=AWS, observed=None, cycles=1, tracked=None, labels=AWS_LABELS, budget=None):
         hosts = readings(**{"razer-laptop": HOT, "asus-laptop": BUSY, "hp-victus": BUSY})
         observed = observed or (hosts, dict(self.FULL, **{"razer-3": RUNNERS["razer-3"]}), [UNITY_JOB] * 9)
         last, tracked = {}, {} if tracked is None else tracked
@@ -466,7 +466,7 @@ class GovernorTest(unittest.TestCase):
                 mock.patch.object(governor, "host_labels", return_value=labels), \
                 mock.patch.object(governor, "apply") as apply, mock.patch("builtins.print") as out:
             for _ in range(cycles):
-                governor.cycle(cfg, last, tracked)
+                governor.cycle(cfg, last, tracked, budget)
         return apply, [c.args[0] for c in out.call_args_list], last
 
     def test_a_live_power_host_acts_and_other_hosts_stay_dry_run(self):
@@ -521,6 +521,111 @@ class GovernorTest(unittest.TestCase):
             "ec2.us-east-2.amazonaws.com", body, t)
         self.assertTrue(got["authorization"].endswith(
             "Signature=3320628ae21eda068fe54f2eb85a7427cb9b6ee695233eeb39d0dc6c2261a413"))
+
+    def test_budgets_sigv4_matches_botocore(self):
+        # botocore SigV4Auth("budgets", "us-east-1") for the same DescribeBudget call and time.
+        t = time.strptime("20261104T191920Z", "%Y%m%dT%H%M%SZ")
+        body = json.dumps({"AccountId": "311141527647", "BudgetName": "ci-burst-monthly"})
+        got = governor.sigv4("budgets", "us-east-1", "AKIDEXAMPLE", "wJalrXUtnFEMI/K7MDENG+bPxRfiCYEXAMPLEKEY",
+                             "budgets.amazonaws.com", body, t,
+                             {"x-amz-target": "AWSBudgetServiceGateway.DescribeBudget"}, "application/x-amz-json-1.1")
+        self.assertTrue(got["authorization"].endswith(
+            "Signature=2c9034076a6852e450ea063740e16dfd413b40727c55066bdea06f3c6517b6b0"))
+
+    # The live budget's answers on 2026-11-04, trimmed.
+    BUDGET = {"BudgetLimit": {"Amount": "200.0", "Unit": "USD"}, "LastUpdatedTime": 1793804782.188,
+              "CalculatedSpend": {"ActualSpend": {"Amount": "12.035", "Unit": "USD"},
+                                  "ForecastedSpend": {"Amount": "2.587", "Unit": "USD"}}}
+    NOTIFICATIONS = [{"NotificationType": t, "Threshold": v, "ThresholdType": "ABSOLUTE_VALUE"}
+                     for t in ("ACTUAL", "FORECASTED") for v in (100.0, 150.0)]
+    ACTIONS = [{"ActionType": a, "Status": "STANDBY",
+                "ActionThreshold": {"ActionThresholdValue": 180.0, "ActionThresholdType": "ABSOLUTE_VALUE"}}
+               for a in ("APPLY_IAM_POLICY", "RUN_SSM_DOCUMENTS")]
+
+    def test_budget_reading_in_dollars(self):
+        b = governor.budget_reading(self.BUDGET, self.NOTIFICATIONS + [
+            {"NotificationType": "ACTUAL", "Threshold": 80.0, "ThresholdType": "PERCENTAGE"}], self.ACTIONS)
+        self.assertEqual((b["limit"], b["actual"], b["forecast"]), (200.0, 12.035, 2.587))
+        self.assertEqual(b["alerts"], [("actual", 100.0), ("actual", 150.0), ("actual", 160.0),
+                                       ("forecasted", 100.0), ("forecasted", 150.0)])
+        self.assertEqual(b["actions"], [("APPLY_IAM_POLICY", "STANDBY", 180.0), ("RUN_SSM_DOCUMENTS", "STANDBY", 180.0)])
+        self.assertEqual(governor.epoch("2026-11-04T07:06:22.188000-08:00"), 1793804782.188)
+        self.assertIsNone(governor.budget_reading({**self.BUDGET, "CalculatedSpend": {}}, [], [])["forecast"])
+
+    def budget_cycle(self, budget, answers):
+        """One live cycle with the budget API answering from answers (op -> body, or an error)."""
+        def urlopen(req, timeout):
+            op = req.headers["X-amz-target"].split(".")[1]
+            if isinstance(answers, Exception):
+                raise answers
+            resp = mock.MagicMock()
+            resp.__enter__.return_value.read.return_value = json.dumps(answers[op]).encode()
+            return resp
+        cfg = {**AWS, "budget": {"name": "ci-burst-monthly", "account_id": "311141527647"}}
+        with mock.patch.object(governor, "AWS_KEY", "k"), mock.patch.object(governor, "AWS_SECRET", "s"), \
+                mock.patch.object(governor.urllib.request, "urlopen", side_effect=urlopen) as calls:
+            out = self.power_cycle(FakeEc2("stopped"), cfg, budget=budget)
+        return out, calls
+
+    ANSWERS = property(lambda self: {"DescribeBudget": {"Budget": self.BUDGET},
+                                     "DescribeNotificationsForBudget": {"Notifications": self.NOTIFICATIONS},
+                                     "DescribeBudgetActionsForBudget": {"Actions": self.ACTIONS}})
+
+    def test_budget_metrics_and_one_read_an_hour(self):
+        budget = {}
+        _, calls = self.budget_cycle(budget, self.ANSWERS)
+        m = governor.State.metrics
+        for line in ('ci_governor_budget_ok 1', 'ci_governor_budget_usd{kind="actual"} 12.04',
+                     'ci_governor_budget_usd{kind="forecast"} 2.59', 'ci_governor_budget_usd{kind="limit"} 200.00',
+                     'ci_governor_budget_updated 1793804782', 'ci_governor_budget_alert{basis="actual",usd="150"} 1',
+                     'ci_governor_budget_action_usd{type="RUN_SSM_DOCUMENTS",status="STANDBY"} 180'):
+            self.assertIn(line, m)
+        self.assertEqual(calls.call_count, 3)
+        _, calls = self.budget_cycle(budget, self.ANSWERS)  # the same hour: no read
+        self.assertEqual(calls.call_count, 0)
+
+    def test_a_failed_budget_read_keeps_the_numbers_and_changes_no_decision(self):
+        budget = {}
+        self.budget_cycle(budget, self.ANSWERS)
+        budget["tried_at"] -= governor.BUDGET_POLL_SECONDS
+        (_, log, _), _ = self.budget_cycle(budget, urllib.error.URLError("AccessDenied"))
+        m = governor.State.metrics
+        self.assertIn("ci_governor_budget_ok 0", m)
+        self.assertIn('ci_governor_budget_usd{kind="actual"} 12.04', m)
+        self.assertTrue(any(line.startswith("budget ci-burst-monthly unread") for line in log))
+        self.assertTrue(any(line.startswith("start i-0abc on aws-burst-1") for line in log))
+
+    def test_no_budget_block_no_budget_series(self):
+        cfg = {k: v for k, v in AWS.items() if k != "budget"}
+        self.power_cycle(FakeEc2("stopped"), cfg, budget={})
+        self.assertNotIn("ci_governor_budget", governor.State.metrics)
+
+    def test_rule_progress_while_idle(self):
+        inst = instance("running", idle=600)
+        decide(readings(), queue=0, cfg=HEAVY, instances=inst)
+        self.assertEqual((inst["aws-burst-1"]["idle_seconds"], inst["aws-burst-1"]["want"]), (600, 0))
+
+    def test_rule_progress_below_the_excess_and_while_held(self):
+        hosts = readings(**{"razer-laptop": BUSY, "asus-laptop": BUSY, "hp-victus": BUSY})
+        inst = instance("stopped")
+        decide(hosts, runners=self.FULL, queue=2, cfg=HEAVY, instances=inst)
+        self.assertEqual((inst["aws-burst-1"]["want"], inst["aws-burst-1"]["held_seconds"]), (2, 0))
+        inst["aws-burst-1"]["want_since"] = 10_000 - 120
+        decide(hosts, runners=self.FULL, queue=9, cfg=HEAVY, instances=inst)
+        self.assertEqual((inst["aws-burst-1"]["want"], inst["aws-burst-1"]["held_seconds"]), (9, 120))
+
+    def test_rule_metrics_live_flags_and_last_change(self):
+        cfg = {**AWS, "standby": {"aws-burst-1": {"max_admitted": 8, "power": {**POWER, "usd_per_hour": 1.855}}}}
+        tracked = {}
+        with mock.patch.object(governor.time, "time", return_value=10_000):
+            self.power_cycle(FakeEc2("stopped"), cfg, tracked=tracked)
+        m = governor.State.metrics
+        for line in ('ci_governor_power_idle_off_seconds{host="aws-burst-1"} 1200',
+                     'ci_governor_power_start_min_excess{host="aws-burst-1"} 1',
+                     'ci_governor_power_usd_per_hour{host="aws-burst-1"} 1.855',
+                     'ci_governor_power_last_change{host="aws-burst-1",action="start"} 10000',
+                     'ci_governor_live{host="aws-burst-1"} 1', 'ci_governor_live{host="razer-laptop"} 0'):
+            self.assertIn(line, m)
 
     def test_describe_reads_the_instance_state(self):
         xml = (b'<DescribeInstancesResponse xmlns="http://ec2.amazonaws.com/doc/2016-11-15/"><reservationSet>'

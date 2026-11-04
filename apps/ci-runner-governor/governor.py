@@ -426,10 +426,13 @@ class Ec2:
             return ET.fromstring(r.read())
 
     def state(self, instance_id):
-        name = self.call("DescribeInstances", instance_id).find(f".//{self.NS}instanceState/{self.NS}name")
+        """(state name, epoch of its last start; 0 if AWS gave none)."""
+        item = self.call("DescribeInstances", instance_id).find(f".//{self.NS}instancesSet/{self.NS}item")
+        name = None if item is None else item.find(f"{self.NS}instanceState/{self.NS}name")
         if name is None:
             raise ValueError(f"no instance {instance_id}")
-        return name.text
+        launched = item.findtext(f"{self.NS}launchTime")
+        return name.text, epoch(launched) if launched else 0.0
 
     def start(self, instance_id):
         self.call("StartInstances", instance_id)
@@ -532,15 +535,19 @@ def read_override(host, now):
     return (action, until) if action in ("on", "off") and until > now else ("", 0)
 
 
-def count_run_time(t, state, now):
+def count_run_time(t, state, now, launched=0.0):
     """Seconds the instance has run this UTC day, in t. A cycle counts at most two cycles'
-    worth, so a pod restart or a blind spell never books hours nobody saw. In memory: a pod
-    restart forgets the day, and the AWS budget is the cap that cannot forget."""
+    worth, so a blind spell never books hours nobody saw. In memory, so on the first sight
+    of a running instance (a pod restart) the day starts from AWS's launch time: runs
+    before that start are forgotten, and the AWS budget is the cap that cannot forget."""
     day = time.strftime("%Y-%m-%d", time.gmtime(now))
     if t.get("day") != day:
         t["day"], t["run_seconds"] = day, 0.0
-    if state in ("pending", "running", "stopping") and "seen_at" in t:
+    running = state in ("pending", "running", "stopping")
+    if running and "seen_at" in t:
         t["run_seconds"] += max(0.0, min(now - t["seen_at"], 2 * CYCLE_SECONDS, now % 86_400))
+    elif running and launched:
+        t["run_seconds"] = max(0.0, now - max(launched, now - now % 86_400))
     t["seen_at"] = now
     t["hours_today"] = t["run_seconds"] / 3600
 
@@ -564,7 +571,7 @@ def power_readings(cfg, runners, tracked, now):
             continue
         t.pop("off", None)
         try:
-            state = client.state(s["power"]["instance_id"])
+            state, launched = client.state(s["power"]["instance_id"])
             labels = host_labels(cfg, host)
         except POWER_ERRORS as e:
             print(f"{host}: instance state or runner labels unread, no power action: {e}", flush=True)
@@ -575,7 +582,7 @@ def power_readings(cfg, runners, tracked, now):
         if state != "running" or "busy_at" not in t or any(
                 r["busy"] for r in runners.values() if r["host"] == host):
             t["busy_at"] = now
-        count_run_time(t, state, now)
+        count_run_time(t, state, now, launched)
         t["override"], t["override_until"] = read_override(host, now)
         t.update(state=state, labels=labels, client=client)
         out[host] = t

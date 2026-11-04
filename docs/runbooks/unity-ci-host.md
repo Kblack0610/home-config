@@ -61,7 +61,7 @@ apps/ci-runner-governor powers it (config.json `standby` -> `aws-burst-1` -> `po
 
 - Start: at least `start_min_excess` (4) waiting jobs it can take past what the other hosts cover, held for `start_after_seconds` (300). A short burst never starts it. Its slots count as room only once their runners are online.
 - Stop: no slot busy for `idle_off_seconds` (900), or `max_hours_day` (12) hours run this UTC day. It withholds one slot per cycle and stops the instance only once no slot is busy, so a stop never kills a job.
-- The day's hours are kept in the governor's memory: they reset at UTC midnight and on a governor pod restart.
+- The day's hours are kept in the governor's memory: they reset at UTC midnight. After a pod restart a running instance counts from its EC2 launch time, so earlier runs that day are forgotten.
 - The Infra page's Rule column shows where the rule stands, from the governor's own numbers: running, "busy" or "idle 6 of 15 min, then stops"; stopped, "2 jobs past the home hosts, starts at 4" or "held 2 of 5 min, then starts"; the day cap or an override when one applies. The governor panel under it shows, per host, live or dry run, its verdict and action, and its admitted slots.
 - It needs the `ci-governor` IAM user's key (`ec2:StartInstances`, `ec2:StopInstances`, `ec2:DescribeInstances` on this instance) as `aws-access-key-id` and `aws-secret-access-key` in `ci-runner-governor-secret.yaml`. Without them it logs `power hook off` and does nothing. `"live": true` acts for real while the rest of the governor is still dry run.
 
@@ -95,7 +95,7 @@ apps/ci-runner-governor powers it (config.json `standby` -> `aws-burst-1` -> `po
 | The box sits stopped while jobs wait | One of: fewer than 4 jobs it can take past the other hosts, a queue under 5 minutes old, its 12h day used, an "off" override, the budget's deny policy | Read the governor log's `aws-burst-1` line for which; "On 2h" on the Infra page overrides all but the budget |
 | The Infra page's month line is stale or missing, and `ci_governor_budget_ok` is 0 | The governor log says `budget ci-burst-monthly unread`: an AccessDenied means the key lacks `budgets:ViewBudget` (platform `iam.tf` statement `ReadBurstBudget`), a timeout means no route to budgets.amazonaws.com | Apply the platform module; the next read is within an hour, or restart the governor pod to read at once |
 | Starts fail with `UnauthorizedOperation` | The $180 budget action attached `ci-burst-deny-start` | Budget stop above |
-| It ran past 12h | An "on" override, or the governor pod restarted and lost the day's hours | Expected for the override; a restart resets the count by design |
+| It ran past 12h | An "on" override, or the governor pod restarted after an earlier run that day (the count restarts from the current run's launch time) | Expected for the override; the AWS budget is the cap that cannot forget |
 | Offline runners `aws-burst-1-unity-pool-7`, `-8` with no `unity` label | #525 cut `unity_ci_slots` from 8 to 6 and left those two registered; a lowered count removes nothing (top of this page) | Deregistered 2026-11-04. Next time, run `scripts/unity-ci-runner-remove.sh --host <host> --slot N` for each dropped slot |
 
 ## Secrets the playground workflows need

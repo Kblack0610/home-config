@@ -82,12 +82,12 @@ def instance(state, idle=0, labels=AWS_LABELS, **more):
 
 
 class FakeEc2:
-    def __init__(self, state="stopped", fail=False):
-        self.st, self.fail, self.calls = state, fail, []
+    def __init__(self, state="stopped", fail=False, launched=0.0):
+        self.st, self.fail, self.launched, self.calls = state, fail, launched, []
 
     def state(self, iid):
         self.calls.append(("state", iid))
-        return self.st
+        return self.st, self.launched
 
     def start(self, iid):
         self.calls.append(("start", iid))
@@ -431,6 +431,18 @@ class GovernorTest(unittest.TestCase):
         governor.count_run_time(t, "running", day + 86_400 + 30)
         self.assertEqual((t["run_seconds"], t["day"]), (30, "2025-11-05"))  # only the part after midnight
 
+    def test_a_restart_counts_the_day_from_the_launch_time(self):
+        day = 1_762_214_400
+        t = {}
+        governor.count_run_time(t, "running", day + 5 * 3600, launched=day + 3600)
+        self.assertEqual(t["hours_today"], 4)
+        t = {}
+        governor.count_run_time(t, "running", day + 3600, launched=day - 7200)  # started yesterday
+        self.assertEqual(t["hours_today"], 1)
+        t = {}
+        governor.count_run_time(t, "stopped", day + 3600, launched=day + 60)  # stopped: nothing to book
+        self.assertEqual(t["hours_today"], 0)
+
     def test_power_metrics_after_a_live_stop(self):
         ec2 = FakeEc2("running")
         hosts = readings(**{"razer-laptop": BUSY, "asus-laptop": BUSY, "hp-victus": BUSY})
@@ -630,11 +642,12 @@ class GovernorTest(unittest.TestCase):
     def test_describe_reads_the_instance_state(self):
         xml = (b'<DescribeInstancesResponse xmlns="http://ec2.amazonaws.com/doc/2016-11-15/"><reservationSet>'
                b'<item><instancesSet><item><instanceState><code>80</code><name>stopped</name></instanceState>'
+               b'<launchTime>2026-11-04T15:15:42.000Z</launchTime>'
                b'</item></instancesSet></item></reservationSet></DescribeInstancesResponse>')
         resp = mock.MagicMock()
         resp.__enter__.return_value.read.return_value = xml
         with mock.patch.object(governor.urllib.request, "urlopen", return_value=resp) as urlopen:
-            self.assertEqual(governor.Ec2("us-east-2", "k", "s").state("i-0abc"), "stopped")
+            self.assertEqual(governor.Ec2("us-east-2", "k", "s").state("i-0abc"), ("stopped", 1793805342.0))
         req = urlopen.call_args.args[0]
         self.assertEqual(req.full_url, "https://ec2.us-east-2.amazonaws.com/")
         self.assertIn(b"Action=DescribeInstances", req.data)

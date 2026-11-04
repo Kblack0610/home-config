@@ -62,7 +62,7 @@ spec:
                   key: github-token
                   optional: true
             # The ci-governor IAM key for the aws-burst-1 power hook (config.json
-            # "power"). Not in the secret yet: without it the hook logs why and does nothing.
+            # "power"). Tag-scoped: start, stop and describe on ci-burst=true instances only.
             - name: AWS_ACCESS_KEY_ID
               valueFrom:
                 secretKeyRef:

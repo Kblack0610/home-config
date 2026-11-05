@@ -25,9 +25,8 @@
 {%- if domains -%}
 {%- set down = domains | selectattr('value.1', 'eq', '2') | list | count -%}
 {%- set warn = domains | selectattr('value.1', 'eq', '1') | list | count -%}
-{{ paint('red' if down else 'warn' if warn else 'ok',
-         '<b>System:</b> %d down, %d warn, %d up | %s'
-         | format(down, warn, domains | count - down - warn, now().strftime('%H:%M'))) }}<br>
+{{ paint('red' if down else 'warn' if warn else 'ok', '<b>System:</b>') }}
+{{- ' %d down, %d warn, %d up | %s' | format(down, warn, domains | count - down - warn, now().strftime('%H:%M')) }}<br>
 {%- else -%}
 {{ paint('warn', '<b>System:</b> no health rows from Prometheus') }}<br>
 {%- endif -%}
@@ -68,7 +67,7 @@
 {%- set down = all | selectattr('value.1', 'eq', '2') | rejectattr('metric.domain', 'in', red) | map(attribute='metric.domain') | list -%}
 {%- set warn = all | selectattr('value.1', 'eq', '1') | map(attribute='metric.domain') | list -%}
 {%- if down %}{{ paint('red', '<b>down:</b> ' ~ down | join(', ') | e) }}<br>{% endif -%}
-{%- if warn %}{{ paint('warn', '<b>warn:</b> ' ~ warn | join(', ') | e) }}<br>{% endif -%}
+{%- if warn %}{{ paint('warn', '<b>warn:</b>') }} {{ warn | join(', ') | e }}<br>{% endif -%}
 {%- endmacro -%}
 
 {%- macro alert() -%}
@@ -76,18 +75,22 @@
 {%- if text not in ['', 'unknown', 'unavailable'] %}{{ paint('warn', text | e) }}<br>{% endif -%}
 {%- endmacro -%}
 
-{# The rows under these heads. A section's first row is its head line, `Title: value`, and only the title is bold. #}
+{# The rows under these heads. A head row (the first) or a flagged row reads `Title: value`: the title carries the colour, and only a red row's value keeps it. #}
 {%- macro section(rows, heads) -%}
 {%- for r in rows | selectattr('head', 'in', heads) -%}
 {%- set title, colon, value = (r.text | e).partition(': ') -%}
-{{ paint(r.level, '<b>%s:</b> %s' | format(title, value) if loop.first and colon else r.text | e) }}<br>
+{%- if colon and (loop.first or r.level in COLOUR) -%}
+{{ paint(r.level, '<b>%s:</b>' | format(title)) }} {{ paint('red' if r.level == 'red' else 'ok', value) }}<br>
+{%- else -%}
+{{ paint(r.level, r.text | e) }}<br>
+{%- endif -%}
 {%- endfor -%}
 {%- endmacro -%}
 
 {%- macro claude() -%}
 {%- set accounts = states('sensor.agent_accounts') -%}
-{{ paint('warn' if '!' in accounts else 'ok', '<b>Claude:</b> week ' ~ accounts | replace('!', '') | e) }}<br>
-{{- '$%d/24h' | format(states('sensor.agent_cost_24h') | float(0)) }}<br>
+{{ paint('warn' if '!' in accounts else 'ok', '<b>Claude week:</b>') }} {{ accounts | replace('!', '') | replace('% ', '%, ') | e }}<br>
+{{- 'spent $%d in 24h' | format(states('sensor.agent_cost_24h') | float(0)) }}<br>
 {%- endmacro -%}
 
 {%- macro house() -%}
@@ -95,14 +98,14 @@
 {%- set temperature = state_attr('weather.forecast_home', 'temperature') -%}
 {%- if temperature is not none -%}
 {%- set said = said + [temperature | round(0) | int ~ state_attr('weather.forecast_home', 'temperature_unit')[-1:]
-                       ~ ' ' ~ states('weather.forecast_home') | replace('-', ' ')] -%}
+                       ~ ' ' ~ states('weather.forecast_home') | replace('-', ' ') | replace('partlycloudy', 'partly cloudy')] -%}
 {%- endif -%}
 {%- set events = states.calendar | selectattr('attributes.start_time', 'defined') | sort(attribute='attributes.start_time') | list -%}
 {%- if events -%}
 {%- set said = said + [events[0].attributes.message ~ ' '
                        ~ as_timestamp(events[0].attributes.start_time) | timestamp_custom('%a %-d')] -%}
 {%- endif -%}
-{%- if said %}{{ said | join(' | ') | e }}<br>{% endif -%}
+{%- if said %}<b>House:</b> {{ said | join(' | ') | e }}<br>{% endif -%}
 {%- endmacro -%}
 
 {# rows is none when sensor.agent_overview has expired, which is not the same as nothing to say. #}
@@ -117,9 +120,10 @@
 {%- set said = section(rows, heads) -%}
 {%- if said %}{{ said }}<br>{% endif -%}
 {%- endfor -%}
-{{ section(rows, ['queue']) }}{{ section(rows, ['ci']) }}
+{%- set said = section(rows, ['queue']) ~ section(rows, ['ci']) -%}
+{%- if said %}{{ said }}<br>{% endif -%}
 {%- endif -%}
-{{ claude() }}{{ house() -}}
+{{ claude() }}<br>{{ house() -}}
 </p>
 {%- endmacro -%}
 

@@ -12,6 +12,7 @@ resources:
   - walkforward-cronjob.yaml
   - ingest-cronjob.yaml
   - backfill-cronjob.yaml
+  - backfill-research-cronjob.yaml
   - lab-backup-cronjob.yaml
   - trader-db-secret.sops.yaml
   - trader-web-oauth-secret.sops.yaml
@@ -25,7 +26,7 @@ images:
   # change; the tag is the strategy repo commit it was built from.
   - name: trader
     newName: ghcr.io/kblack0610/trader
-    digest: sha256:fb211932dde836324798f1ab85ac6784590ff61194d47dbb067f5f372958bb47  # sha-e73517d
+    digest: sha256:141d384c06b775a5baeeef23d185d6be3fcf1174b7b8b45636dca86e630f7b44  # sha-3965122
 
 configMapGenerator:
   # Rows here and replicas in statefulset.yaml move together.

@@ -53,13 +53,15 @@ spec:
                   valueFrom:
                     secretKeyRef: {name: trader-db, key: database-url}
                 - name: ANALYZE_WORKERS
-                  value: "6"
+                  value: "10"
+                - name: ANALYZE_MEMORY_GB
+                  value: "10"  # tasks are admitted by estimated memory; 2 GB under the limit
               resources:
                 requests:
-                  cpu: "4"
+                  cpu: "6"
                   memory: 4Gi
                 limits:
-                  memory: 12Gi  # six freqtrade backtests at once, each holding a year of 5m candles for 10 pairs
+                  memory: 12Gi  # ANALYZE_MEMORY_GB plus headroom; a 5m year of 10 pairs peaks at 1.1 GB, a 1m year at 4 GB
               volumeMounts:
                 - {name: lab, mountPath: /lab}
           volumes:

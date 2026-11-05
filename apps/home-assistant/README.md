@@ -95,7 +95,7 @@ Setup on the phone: long-press the home screen -> Widgets -> Home Assistant -> T
 
 | Symptom | Fix |
 |---|---|
-| Widget shows old numbers | The time on the System line is when it last rendered. Check that the Companion app is allowed background data and battery use. If `sensor.agent_sessions` is `unavailable`, its 900 s MQTT expiry ran out, so the workstation publisher (`agent-mqtt-publish.timer`) is down. |
+| Widget shows old numbers, with or without a small red sync mark at the bottom | The time on the System line is when it last rendered. The red mark means the app's last render failed, for example during an HA restart, and it keeps the old text until a render works. Tap the widget to render now; there is no need to re-save it. The app renders on each screen-on only while its process is alive, so if the mark sticks, set the Companion app's battery use to Unrestricted and take it out of Samsung's sleeping apps. If `sensor.agent_sessions` is `unavailable`, its 900 s MQTT expiry ran out, so the workstation publisher (`agent-mqtt-publish.timer`) is down. |
 | Widget shows only `ok`, `warn` or `critical` | It still has the old template: edit it to the one above. |
 | Red line `no fleet overview` | `sensor.agent_overview` has no rows: its 900 s MQTT expiry ran out, so `agent-mqtt-publish` has stopped, or `hub` on the workstation is too old to know `phone`. Run `hub phone --json` there. |
 | Widget shows `unknown` or nothing after a change | `phone_widget.jinja` failed to load. Read the HA log for `TemplateError` or `phone_widget`, and check the init container copied the file to `/config/custom_templates/`. |

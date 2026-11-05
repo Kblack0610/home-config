@@ -75,25 +75,29 @@ git add apps/home-assistant/config/dashboards/launcher.yaml
 
 Flux picks up the ConfigMap change → deployment hash rotates → pod rolls → the `sync-managed-config` init container copies `dashboard_launcher.yaml` to `/config/dashboards/launcher.yaml` on the PVC → HA serves the new view on next render.
 
-### Agent fleet phone widget
+### Phone overview widget
 
-`sensor.agent_widget` (`config/packages/agents.yaml`) is the waybar fleet overview for an Android home screen. Its `html` attribute has two parts:
+`sensor.agent_widget` (`config/packages/agents.yaml`, friendly name Phone overview) is the waybar for an Android home screen. The widget does not scroll and clips at the bottom, so its `html` attribute runs most important first, and the widget's height picks how deep you read:
 
-- What no waybar chip carries: open asks, broken runners and watches, red default branches, then each Claude account's weekly use (`!` means over pace) with the earliest run-out and 24h spend.
-- `sensor.agent_overview`, the lines the waybar chips print, joined by `fleet-overview` in dotfiles and published by `agent-mqtt-publish`: sessions with a glyph strip per project (`x` stalled, `?` unclear, `!` needs you, `~` working, `+` landed, `.` done, `-` parked), then the queue, ready items and dispatch headroom, then CI busy/slots, queue, pass rate and pools, then merged today and what is red now.
+1. System health, the waybar health chip: one dot per domain worst first, the counts, the time it was rendered, then one line per domain that is not up, naming what is wrong. `sensor.system_health` reads the same `cc:*` rules from Prometheus every minute, in the cluster, so this part still works with the workstation off.
+2. What wants you, in red: open asks, sessions that need you, broken runners and watches, red default branches. The line is absent when nothing does.
+3. The house: an active `input_text.home_alert`, the weather, and the next event across every calendar.
+4. Each Claude account's weekly use (`!` means over pace) with the earliest run-out and 24h spend.
+5. `sensor.agent_overview`, the lines the waybar chips print, joined by `fleet-overview` in dotfiles and published by `agent-mqtt-publish`: sessions with a glyph strip per project (`x` stalled, `?` unclear, `!` needs you, `~` working, `+` landed, `.` done, `-` parked), then the queue, ready items and dispatch headroom, then CI busy/slots, queue, pass rate and pools, then merged today and what is red now.
 
-It is HTML in an attribute because the Companion app's Template widget renders HTML and an HA state stops at 255 characters. The state is the worst chip: `ok`, `warn` or `critical`. No Lovelace card can sit on a home screen: the Companion app's widgets are Action, Entity state, Media player, Picture, Template and To-do.
+It is HTML in an attribute because the Companion app's Template widget renders HTML and an HA state stops at 255 characters. The state is the worse of health and the chips: `ok`, `warn` or `critical`, and `warn` when either cannot be read. No Lovelace card can sit on a home screen: the Companion app's widgets are Action, Entity state, Media player, Picture, Template and To-do.
 
-Setup on the phone: long-press the home screen -> Widgets -> Home Assistant -> Template, with the template `{{ state_attr('sensor.agent_widget', 'html') }}`, the smallest text size that reads well, then resize the widget to about 4x4. A widget still on the old `states('sensor.agent_widget')` template shows only that one word until you edit it. It refreshes when the sensor changes, and tapping it forces a refresh. For a color dot, add an Entity state widget on `binary_sensor.agents_need_attention`. Pages that cannot wait still arrive by ntfy; the widget is only a glance.
+Setup on the phone: long-press the home screen -> Widgets -> Home Assistant -> Template, with the template `{{ state_attr('sensor.agent_widget', 'html') }}` and the smallest text size that reads well. About 4x2 shows parts 1 to 4, about 4x4 adds the fleet lines. A widget already on that template picks all of this up by itself. One still on the old `states('sensor.agent_widget')` template shows only that one word until you edit it. It refreshes when the sensor changes, and tapping it forces a refresh. For a color dot, add an Entity state widget on `binary_sensor.agents_need_attention`. Pages that cannot wait still arrive by ntfy; the widget is only a glance.
 
 | Symptom | Fix |
 |---|---|
-| Widget shows old numbers | Check that the Companion app is allowed background data and battery use. If `sensor.agent_sessions` is `unavailable`, its 900 s MQTT expiry ran out, so the workstation publisher (`agent-mqtt-publish.timer`) is down. |
+| Widget shows old numbers | The time on the System line is when it last rendered. Check that the Companion app is allowed background data and battery use. If `sensor.agent_sessions` is `unavailable`, its 900 s MQTT expiry ran out, so the workstation publisher (`agent-mqtt-publish.timer`) is down. |
 | Widget shows only `ok`, `warn` or `critical` | It still has the old template: edit it to the one above. |
 | Red line `no fleet overview` | `sensor.agent_overview` is unavailable: its 900 s MQTT expiry ran out, so `agent-mqtt-publish` has stopped or `fleet-overview` is not on the workstation's PATH. Run `agent-mqtt-publish --dry-run` there and look for `summary/overview`. |
 | A line reads `<chip>: the chip printed nothing` | That waybar chip crashed. Run `~/.config/waybar/<chip>.sh` on the workstation. |
 | `cannot read` in place of a section | Prometheus did not answer the workstation. The waybar chip reads the same. |
-| The bottom lines are cut off | The widget does not scroll. Make it taller or pick a smaller text size. |
+| The bottom lines are cut off | The widget does not scroll, so the least important lines go first. Make it taller or pick a smaller text size. |
+| `System ?` in amber | `sensor.system_health` got no rows. It is `unavailable` when Prometheus did not answer Home Assistant; when it answers, query `cc:domain_status` for the rules in `apps/monitoring/prometheus-rules-command-center.yaml`. |
 | The accounts line reads `unknown` | The `Agent accounts` REST sensor got no data. Query `claude_account_week_used_percent` in Prometheus; when it is empty, `claude-acct-usage.timer` on the workstation has stopped writing. |
 
 ### 3D Printer Monitoring

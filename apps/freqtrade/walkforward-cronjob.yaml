@@ -16,7 +16,7 @@ spec:
   jobTemplate:
     spec:
       backoffLimit: 0  # next week is the retry; failed months are retried there
-      activeDeadlineSeconds: 86400  # guard: the first run is several hours, a normal week about one
+      activeDeadlineSeconds: 172800  # guard: a first run on three venues is about 20 hours, a normal week a few
       template:
         metadata:
           labels:
@@ -51,14 +51,20 @@ spec:
                 - name: DATABASE_URL
                   valueFrom:
                     secretKeyRef: {name: trader-db, key: database-url}
+                - name: WF_EXCHANGES
+                  value: binanceus okx kucoin
+                - name: WF_FOLDS
+                  value: "12"
                 - name: WF_WORKERS
-                  value: "6"
+                  value: "10"
+                - name: WF_MEMORY_GB
+                  value: "12"
               resources:
                 requests:
-                  cpu: "4"
-                  memory: 4Gi
+                  cpu: "6"
+                  memory: 6Gi
                 limits:
-                  memory: 12Gi  # six single-core hyperopts at once, each holding 180 days of 5m candles
+                  memory: 14Gi  # WF_MEMORY_GB of estimated fold memory plus the interpreter and suggest
               volumeMounts:
                 - {name: lab, mountPath: /lab}
           volumes:

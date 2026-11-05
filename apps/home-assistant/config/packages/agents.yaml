@@ -40,7 +40,7 @@ template:
       # is rejected outright, and it is rendered here so the widget stays one expression and any
       # format change lands without retyping it on the phone. The Template widget centres its
       # text, so the <p> sets it back to the start. &#9679; is the chip's filled circle.
-      - name: Phone overview
+      - name: Agent widget
         unique_id: agent_widget
         icon: mdi:cellphone-text
         state: >-
@@ -66,9 +66,10 @@ template:
                               | map(attribute='metric.item') | list
                          or mine | selectattr('metric.__name__', 'eq', 'cc:component_status')
                                  | map(attribute='metric.component') | list %}
-            {% set ns.bad = ns.bad ~ "<font color='%s'>%s</font> %s: %s<br>"
+            {% set ns.bad = ns.bad ~ "<font color='%s'>%s</font> %s: %s"
                             | format(colour[l], word[l], d.metric.domain,
-                                     why | join(', ') | replace('_', ' ')) %}
+                                     why[:3] | join(', ') | replace('_', ' '))
+                            ~ ('' if why | length < 4 else ' +%d' | format(why | length - 3)) ~ '<br>' %}
             {% endif %}
             {% endfor %}
             {% set health = ("<b>System</b> %s %d down, %d warn, %d up | %s<br>%s"

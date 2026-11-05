@@ -77,9 +77,9 @@ Flux picks up the ConfigMap change → deployment hash rotates → pod rolls →
 
 ### Phone overview widget
 
-`sensor.agent_widget` (`config/packages/agents.yaml`, friendly name Phone overview) is the waybar for an Android home screen. The widget does not scroll and clips at the bottom, so its `html` attribute runs most important first, and the widget's height picks how deep you read:
+`sensor.agent_widget` (`config/packages/agents.yaml`) is the waybar for an Android home screen. The widget does not scroll and clips at the bottom, so its `html` attribute runs most important first, and the widget's height picks how deep you read:
 
-1. System health, the waybar health chip: one dot per domain worst first, the counts, the time it was rendered, then one line per domain that is not up, naming what is wrong. `sensor.system_health` reads the same `cc:*` rules from Prometheus every minute, in the cluster, so this part still works with the workstation off.
+1. System health, the waybar health chip: one dot per domain worst first, the counts, the time it was rendered, then one line per domain that is not up, naming up to three things wrong and `+N` for the rest, so an outage cannot push the rest of the glance off the widget. `sensor.system_health` reads the same `cc:*` rules from Prometheus every minute, in the cluster, so this part still works with the workstation off.
 2. What wants you, in red: open asks, sessions that need you, broken runners and watches, red default branches. The line is absent when nothing does.
 3. The house: an active `input_text.home_alert`, the weather, and the next event across every calendar.
 4. Each Claude account's weekly use (`!` means over pace) with the earliest run-out and 24h spend.

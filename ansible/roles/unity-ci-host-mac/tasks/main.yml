@@ -32,7 +32,7 @@
       - "{{ item.changeset }}"
       - --architecture
       - arm64
-    creates: "/Applications/Unity/Hub/Editor/{{ item.version }}/Unity.app/Contents/MacOS/Unity"
+    creates: "{{ unity_ci_mac_editor_root }}/{{ item.version }}/Unity.app/Contents/MacOS/Unity"
   loop: "{{ unity_ci_mac_editors }}"
 
 # A serial activation writes the license here, and Unity does not create it

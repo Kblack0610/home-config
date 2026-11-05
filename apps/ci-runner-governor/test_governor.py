@@ -556,7 +556,7 @@ class GovernorTest(unittest.TestCase):
                 mock.patch.object(governor, "DRY_RUN", True), \
                 mock.patch.object(governor, "apply") as apply, mock.patch("builtins.print") as out:
             governor.cycle(CFG, {})
-        apply.assert_called_once_with(CFG, "withhold", "hpv-2")
+        apply.assert_called_once_with(CFG, "withhold", "hpv-2", "hp-victus")
         log = [c.args[0] for c in out.call_args_list]
         self.assertTrue(any(line.startswith("withhold hpv-2 on hp-victus: PINNED") for line in log), log)
         self.assertTrue(any(line.startswith("would withhold razer-1 on razer-laptop") for line in log), log)
@@ -735,10 +735,29 @@ class GovernorTest(unittest.TestCase):
                                      "labels": [{"name": "self-hosted"}, {"name": "unity-withheld"}]}]}
             return None
         governor.gh = gh
-        governor.apply(CFG, "admit", "hpv-2")
+        governor.apply(CFG, "admit", "hpv-2", "hp-victus")
         self.assertEqual([c[0] for c in calls], ["GET", "POST", "DELETE"])
         self.assertEqual(calls[1][2], {"labels": ["unity", "unity-full"]})
         self.assertTrue(calls[2][1].endswith("/7/labels/unity-withheld"))
+
+    def test_admit_leaves_full_off_a_host_that_takes_no_full_runs(self):
+        calls = []
+
+        def gh(method, path, body=None):
+            calls.append((method, path, body))
+            if method == "GET":
+                return {"runners": [{"id": 7, "name": "ws-1",
+                                     "labels": [{"name": "self-hosted"}, {"name": "unity-withheld"}]}]}
+            return None
+        governor.gh = gh
+        cfg = {**CFG, "hosts": {**CFG["hosts"], "ws": {"full": False}}}
+        governor.apply(cfg, "admit", "ws-1", "ws")
+        self.assertEqual(calls[1][2], {"labels": ["unity"]})
+
+    def test_the_live_config_keeps_full_runs_off_the_workstation(self):
+        cfg = governor.load_config(os.path.join(os.path.dirname(os.path.abspath(__file__)), "config.json"))
+        self.assertEqual(governor.admit_labels(cfg, "cachyos-x8664-main"), ["unity"])
+        self.assertEqual(governor.admit_labels(cfg, "razer-laptop"), ["unity", "unity-full"])
 
     def test_disk_held_only_with_withheld_slots_under_the_admit_line(self):
         def gauge(disk, withheld):

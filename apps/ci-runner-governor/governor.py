@@ -13,7 +13,8 @@ an idle host idle. Registering a runner is slow (ansible, a cold Library/ of
 warm, and the governor decides which of them are ADMITTED, meaning they carry
 the `unity` label that gate jobs ask for.
 
-A withheld runner has `unity` and `unity-full` swapped for `unity-withheld`.
+A withheld runner has `unity` and `unity-full` swapped for `unity-withheld`; a host marked
+"full": false gets only `unity` back, so admitting it never opens it to full runs.
 GitHub matches labels when it assigns a job, so a runner withheld while busy
 finishes that job and takes no other; nothing is killed or restarted.
 
@@ -188,6 +189,13 @@ def label_set(joined):
     return frozenset(l.lower() for l in joined.split(",") if l)
 
 
+def admit_labels(cfg, host):
+    """The labels a runner on host gets back on admit. "full": false in its hosts entry leaves
+    out the full label: unity_ci_full false in inventory.yml, so no full run lands there."""
+    full = cfg["hosts"].get(host, {}).get("full", True)
+    return [cfg["pool_label"]] + ([cfg["full_label"]] if full else [])
+
+
 def host_labels(cfg, host):
     """Every label a pool runner on host carries, in any state (a stopped instance's runners
     stay registered, offline), plus the pool labels a withheld one gets back on admit.
@@ -195,7 +203,7 @@ def host_labels(cfg, host):
     have = set()
     for r in prom(f'github_runner_state{{host="{host}",pool="{cfg["pool_label"]}"}}'):
         have |= label_set(r["metric"].get("labels", ""))
-    return frozenset(have | label_set(f'{cfg["pool_label"]},{cfg["full_label"]}')) if have else frozenset()
+    return frozenset(have | label_set(",".join(admit_labels(cfg, host)))) if have else frozenset()
 
 
 def verdict(h, t):
@@ -392,12 +400,13 @@ def runner_id(org, name):
         page += 1
 
 
-def apply(cfg, action, name):
+def apply(cfg, action, name, host):
     """Swap the pool labels for the withheld one, or back. Adds before it removes, so a
     runner is never left with neither."""
     org, pool = cfg["org"], [cfg["pool_label"], cfg["full_label"]]
     rid, have = runner_id(org, name)
-    add, drop = (pool, [cfg["withheld_label"]]) if action == "admit" else ([cfg["withheld_label"]], pool)
+    add, drop = ((admit_labels(cfg, host), [cfg["withheld_label"]]) if action == "admit"
+                 else ([cfg["withheld_label"]], pool))
     if set(add) - have:
         gh("POST", f"orgs/{org}/actions/runners/{rid}/labels", {"labels": sorted(set(add) - have)})
     for label in drop:
@@ -754,7 +763,7 @@ def cycle(cfg, last_action, tracked=None, budget=None):
                 getattr(instances[host]["client"], action)(target)
                 instances[host].update(cause=instances[host].get("next_cause", ""), changed=action, changed_at=now)
             else:
-                apply(cfg, action, runner)
+                apply(cfg, action, runner, host)
             last_action[host] = now
         except POWER_ERRORS as e:
             print(f"{action} {target} failed: {e}", flush=True)

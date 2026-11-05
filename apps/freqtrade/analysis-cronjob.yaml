@@ -53,7 +53,7 @@ spec:
                   valueFrom:
                     secretKeyRef: {name: trader-db, key: database-url}
                 - name: ANALYZE_EXCHANGES
-                  value: "binanceus coinbase kraken"
+                  value: "binanceus coinbase kraken okx kucoin"  # a venue x timeframe joins once every pair is backfilled to its oldest candle
                 - name: ANALYZE_WORKERS
                   value: "10"
                 - name: ANALYZE_MEMORY_GB

@@ -316,13 +316,6 @@ sections:
         tap_action:
           action: url
           url_path: https://vault.kblab.me
-      - type: tile
-        entity: binary_sensor.vikunja_kblab_me
-        name: Vikunja
-        icon: mdi:application
-        tap_action:
-          action: url
-          url_path: https://vikunja.kblab.me
   - type: grid
     cards:
       - type: heading

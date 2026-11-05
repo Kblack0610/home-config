@@ -64,7 +64,6 @@ parakeet_hotwords:
   - kustomization
   - Flux
   - Forgejo
-  - Vikunja
   - Immich
   - Traefik
   - Grafana

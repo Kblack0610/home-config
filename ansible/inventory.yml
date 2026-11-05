@@ -240,6 +240,7 @@ all:
           unity_ci_full: true
         # The workstation, the human's work machine: merge gates only
         # (unity_ci_full false, so no nightly, release or Multi run lands here).
+        # apps/ci-runner-governor/config.json repeats this as "full": false for its admit.
         # Each slot has its own three-core cpuset and a 16G cap (ci_hosts below).
         # Uncapped slots took 12 cores and 48G in October; the human asked for
         # these two again on 2026-11-03, once unity-core-playground stopped

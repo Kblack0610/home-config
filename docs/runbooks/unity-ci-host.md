@@ -37,7 +37,7 @@ scripts/test/fetch-image.py unityci/editor ubuntu-<version>-base-3 ~/.cache/unit
 
 - Every slot carries `unity`, plus `unity-full` while the host's `unity_ci_full` is true (the default). Full runs (nightly, release, Multi) ask for `unity-full`, merge gates for `unity`. GitHub has no queue priority, so to reserve a runner for gates, set `unity_ci_full: false` on one host.
 - A runner keeps the labels it registered with. On a live one, `gh api -X POST orgs/BlackNBrownStudios/actions/runners/<id>/labels -f 'labels[]=unity-full'` adds a label and `gh api -X DELETE orgs/BlackNBrownStudios/actions/runners/<id>/labels/unity-full` removes it.
-- The workstation (cachyos-x8664-main) has two slots with `unity_ci_full: false`, so it takes merge gates and never a full run. Each slot has three cores and 16G of its own. A third slot waits for a day of load and temperatures with two. No gate runs anything else here (unity-core-playground `docs/operations/ci.md` rule 2).
+- The workstation (cachyos-x8664-main) has two slots with `unity_ci_full: false`, so it takes merge gates and never a full run. The governor's `config.json` says the same with `"full": false`, since it re-labels a runner on admit and cannot read the inventory; change both together. Each slot has three cores and 16G of its own. A third slot waits for a day of load and temperatures with two. No gate runs anything else here (unity-core-playground `docs/operations/ci.md` rule 2).
 
 ## The Mac pool
 

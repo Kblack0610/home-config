@@ -4,7 +4,8 @@
 # driven by area metadata (pyscript/room_layout.yaml): assign a device to a room in
 # the wall Settings view and it appears here with no dashboard edit.
 #
-# Each device is a square button: icon and name, lit amber when on. Per room: lights, then plugs, then the litter box
+# Each device is a square button: icon and name, lit amber when on. The icon is the
+# entity's own (`icon` in room_layout.yaml), else a lightbulb. Per room: lights, then plugs, then the litter box
 # (filter order). A switch_as_x light hides the switch it wraps and hidden entities
 # are excluded, so a lamp plug shows once, as a light.
 #
@@ -47,6 +48,9 @@
               - padding: 8% 6%
               - background: rgba(var(--rgb-card-background-color, 255, 255, 255), 0.72)
               - backdrop-filter: blur(6px)
+              # The screensaver's text-shadow is for white text on scenery; on a
+              # tile's dark text it smears the letters.
+              - text-shadow: none
             grid:
               - grid-template-areas: '"i" "n" "l"'
               - grid-template-rows: 1fr min-content min-content
@@ -56,8 +60,10 @@
             name:
               - font-size: 14px
               - font-weight: 500
-              - line-height: 1.15
+              - line-height: 1.2
+              - color: var(--primary-text-color)
               - white-space: normal
+              - text-wrap: balance
               - text-align: center
             label:
               - font-size: 12px

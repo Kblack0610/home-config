@@ -71,7 +71,7 @@ def _do_room_seed(force):
     """Seed areas + per-entity/-device rooms from room_layout.yaml.
 
     NON-DESTRUCTIVE unless force: a thing gets a room only when it has none, and
-    a name only when there is no override yet — so manual edits (wall Settings
+    a name or icon only when there is no override yet, so manual edits (wall Settings
     view / HA UI) always win. force=True re-applies the seed over everything.
     """
     # Read off the event loop. task.executor rejects pyscript-compiled functions,
@@ -116,6 +116,9 @@ def _do_room_seed(force):
         name = spec.get("name")
         if name and (force or not entry.name):
             updates["name"] = name
+        icon = spec.get("icon")
+        if icon and (force or not entry.icon):
+            updates["icon"] = icon
         # Extra spoken names for Assist. COMPUTED_NAME keeps the entity's own
         # name answering too; only set while the entity has no custom alias.
         aliases = spec.get("aliases") or []

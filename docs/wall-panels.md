@@ -199,7 +199,7 @@ Debug: in the panel's WebView console, `window.__snapcastTablet.status()` shows 
 |---|---|
 | Top bar | One row of equal nav buttons: Controls, Devices, Music, Media, Local, Agents (red or amber when an agent needs you), Photos, Settings, Admin. Destinations only; the Screensaver button is on Admin. |
 | Left: Now | The household alert (only when set), clock and 3-day forecast, Talk to Binks, Cluster and 3D printer status, Announce (folded). |
-| Middle: Rooms | `dashboards/_rooms_cards.yaml`, the room tiles by HA area, shared with Overview and the screensaver. One square tile per device, lights first, lit amber when on; a word under the name only when the glow cannot say it (Offline, litter box status, red when the litter box needs a person). |
+| Middle: Rooms | `dashboards/_rooms_cards.yaml`, the room tiles by HA area, shared with Overview and the screensaver. One square tile per device, lights first, lit amber when on; a word under the name only when the glow cannot say it (Offline, litter box status, red when the litter box needs a person). A tile shows its entity's icon (`icon` in `pyscript/room_layout.yaml`, `mdi:*` or `wall:*`), else a lightbulb. |
 | Right: Media | Music, then Cameras. |
 
 The view has exactly three sections, so a 3-column tablet fills one row. A narrower one (2 columns, the 8.7" office tablet at some densities) puts Media under Now. Adding a fourth section starts a new row under the tallest column, so add cards to an existing column instead. Every sub-view starts with `dashboards/_home_button.yaml`, one shared Home bar that navigates from anywhere on the bar, not only its icon.
@@ -312,5 +312,7 @@ Settings → About → Status → Wi-Fi MAC (use the *non-randomized* MAC for th
 | Weather hero shows an error | Add the **Met.no** integration (§5) → `weather.forecast_home`. |
 | Screen still sleeps | Layer 2 (Android Stay-awake) is the reliable one; browser Wake Lock alone can drop. |
 | Want full chrome back as admin | Append `?disable_km` to the URL. |
+| A name changed in `room_layout.yaml` does not show on a tile | The seed skips an entity that already has a name. Call `pyscript.room_layout_seed` with `force: true` once after the deploy. |
+| A tile needs an icon MDI does not have | Add its path to `config/www/wall-icons.js`, use `wall:<name>` as the `icon`, and bump `?v=` in `configuration.yaml`. |
 | A live edit to a dashboard partial (`_rooms_cards.yaml`) does not show | YAML-mode dashboards reload on the main file's mtime only: `touch /config/dashboards/wall.yaml` in the pod, then refresh. |
 | Room tiles run off the bottom of a small tablet | Lower `--wall-tile-max` in `wall.yaml`'s info-box style; a tile cannot shrink below its icon and two-line name (about 90px). |

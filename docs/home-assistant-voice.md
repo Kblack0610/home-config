@@ -197,7 +197,7 @@ There is no custom grammar for device control. What makes it work is registry hy
 
 - every lamp is a `light` (lamp plugs are wrapped by `switch_as_x`, see `seed-switch-as-x-lights`), with a room and a speakable name;
 - every satellite device has a room, which becomes the default area for its commands;
-- names, rooms and aliases are declared in `apps/home-assistant/config/pyscript/room_layout.yaml` and seeded on boot (non-destructive; a UI edit wins).
+- names, rooms and aliases are declared in `apps/home-assistant/config/pyscript/room_layout.yaml` and seeded on boot (non-destructive; a UI edit wins). A lamp's name leaves out "Light" because it labels a tile with a lamp icon ("Monkey"); its alias keeps "monkey light" working.
 
 ### What you can say
 

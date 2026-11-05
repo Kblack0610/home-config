@@ -64,6 +64,8 @@ frontend:
     # not a card, so it outlives view changes; a no-op on every other browser.
     # Bump ?v= on change: the tablets' WebView caches /local.
     - /local/snapcast-tablet/snapcast-tablet.js?v=4
+    # The wall: icon set, for what MDI lacks. Bump ?v= on change, as above.
+    - /local/wall-icons/wall-icons.js?v=1
 
 automation: !include automations.yaml
 script: !include scripts.yaml

@@ -556,6 +556,10 @@ spec:
               rm -rf /config/www/snapcast-tablet
               mkdir -p /config/www/snapcast-tablet
               cp /managed-config/www_snapcast_tablet.js /config/www/snapcast-tablet/snapcast-tablet.js
+              # wall: icon set, served at /local/wall-icons/. The dir holds only git-managed files.
+              rm -rf /config/www/wall-icons
+              mkdir -p /config/www/wall-icons
+              cp /managed-config/www_wall_icons.js /config/www/wall-icons/wall-icons.js
           volumeMounts:
             - name: config
               mountPath: /config

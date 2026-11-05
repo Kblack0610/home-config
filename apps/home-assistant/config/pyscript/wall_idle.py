@@ -43,6 +43,16 @@ def _is_night(window):
     return now >= start or now < end
 
 
+def _too_dark_for_motion(panel):
+    """A camera in a dark room reports its own noise as motion, so a dimmed panel
+    would wake itself every cycle. A sensorless tablet reports a negative lux."""
+    try:
+        lux = float(state.get(panel["light"]))
+    except ValueError:
+        return False
+    return 0 <= lux < panel["motion_min_lux"]
+
+
 def _screensaver(panel, night):
     if not night:
         return panel["day"]["screensaver"]
@@ -83,7 +93,8 @@ def _watch(panel_id, panel):
 
         @state_trigger(f"{panel['motion']} == 'on'")
         def motion_seen():
-            service.call("input_boolean", "turn_off", entity_id=idle_entity)
+            if not _too_dark_for_motion(panel):
+                service.call("input_boolean", "turn_off", entity_id=idle_entity)
 
         TRIGGERS.append(motion_seen)
 

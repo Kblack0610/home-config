@@ -54,6 +54,9 @@ wallpanel:
   hide_toolbar: true
   hide_sidebar: true
   idle_time: "${entity:sensor.wall_idle_seconds_${browser_id}}"
+  # No fade in: a tablet that draws slowly never finishes the fade, so its black
+  # screensaver stays invisible. Brightness jumps at once anyway.
+  fade_in_time: 0
   # window.browser_mod loads with the page; wait for it so ${browser_id} resolves.
   wait_for_browser_mod_time: 5
   # Keep the display awake while the dashboard/screensaver is open (browser Wake

@@ -14,21 +14,27 @@ defaults:
   # view. Setting sleep_behavior on a panel below overrides that select for it.
   night: { idle_brightness: 0 }
   motion_wake: true
+  # Below this light level motion is ignored and only touch wakes the panel.
+  motion_min_lux: 5
 
 panels:
   wall_bedroom:
     brightness: number.freekiosk_dc43ede573076a31_brightness_control
     motion: binary_sensor.freekiosk_dc43ede573076a31_motion_detected
+    light: sensor.freekiosk_dc43ede573076a31_light_sensor
     motion_switch: switch.freekiosk_dc43ede573076a31_motion_always_on
   wall_office:
     brightness: number.wall_office_brightness_control
     motion: binary_sensor.wall_office_motion
+    light: sensor.wall_office_light_sensor
     motion_switch: switch.wall_office_always_on_motion_detection
   wall_kitchen:
     brightness: number.wall_kitchen_brightness_control
     motion: binary_sensor.wall_kitchen_motion
+    light: sensor.wall_kitchen_light_sensor
     motion_switch: switch.wall_kitchen_always_on_motion_detection
   wall_living_room:
     brightness: number.wall_living_room_brightness_control
     motion: binary_sensor.wall_living_room_motion
+    light: sensor.wall_living_room_light_sensor
     motion_switch: switch.wall_living_room_always_on_motion_detection

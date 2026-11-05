@@ -29,6 +29,7 @@ Per-tablet data is in `config/pyscript/wall_panels.yaml`, `defaults` plus a bloc
 | `sleep_behavior` | Per panel only: `Dim view` or `Black screensaver`, overrides the select for that panel |
 | `night_window` | `start` and `end`, 24h local time |
 | `motion_wake` | Turn on FreeKiosk's always-on camera motion and wake on it |
+| `motion_min_lux` | Ignore motion below this light level; touch still wakes the panel. Needs `light`, the panel's FreeKiosk light sensor. A tablet with no sensor (office reports -1) is never gated |
 
 All four tablets support the same options, so the select has no per-tablet list and the override is data only.
 
@@ -317,4 +318,6 @@ Settings → About → Status → Wi-Fi MAC (use the *non-randomized* MAC for th
 | A panel is still too bright at night | 0 is the floor FreeKiosk can set; below that is the hardware. Black on an LCD still leaks some backlight. Display off is not available on any tablet, see Idle behaviour. |
 | Worried about burn-in with the view up all day | These tablets have LCD panels, which do not burn in like OLED but can hold a faint image of a static layout after long hours. Low backlight slows it. If a ghost image shows, set `day.screensaver: scenery` for that panel, which moves. |
 | A panel wakes by itself at night | Camera motion on `motion_wake`, often a shadow or headlights. Set `motion_wake: false` for that panel; touch still wakes it. Also the setting to turn off if `wall-bedroom` runs short of memory, which it is closest to. |
+| A panel dims, then wakes itself about 12 s later, every cycle | The camera in a very dark room reports noise as motion; `wall_living_room` did this at 0-1 lux, 2026-11-04. `motion_min_lux` stops it; raise it if a panel still cycles. Check with the history of `input_boolean.wall_idle_<panel>` against the panel's motion sensor |
+| `wall_bedroom` feels slow, or an animation never finishes | Its WebView drew 1 to 4 frames per 3 s at any brightness on 2026-11-04, against about 80 on kitchen and living room, and a reload did not help. Cause unknown; its JS heap was about 6 times living room's. `fade_in_time: 0` keeps idle working anyway. Measure with `requestAnimationFrame` through `set/execute_js` |
 | Room tiles run off the bottom of a small tablet | Lower `--wall-tile-max` in `wall.yaml`'s info-box style; a tile cannot shrink below its icon and two-line name (about 90px). |

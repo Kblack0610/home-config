@@ -54,9 +54,9 @@ UNITY_JOB = frozenset({"self-hosted", "unity"})
 LAN_JOB = frozenset({"self-hosted", "unity", "lan"})
 
 
-def decide(hosts, runners=RUNNERS, queue=5, last=None, cfg=CFG, instances=None, waiting=None):
+def decide(hosts, runners=RUNNERS, queue=5, last=None, cfg=CFG, instances=None, waiting=None, pins=None):
     waiting = [UNITY_JOB] * queue if waiting is None else waiting
-    return governor.decide(cfg, hosts, runners, waiting, last or {}, 10_000, instances)
+    return governor.decide(cfg, hosts, runners, waiting, last or {}, 10_000, instances, pins)
 
 
 def actions(*args, **kw):
@@ -420,6 +420,66 @@ class GovernorTest(unittest.TestCase):
                 self.assertEqual(governor.read_override("aws-burst-1", 100), want, body)
         self.assertEqual(len([c for c in out.call_args_list if "unreadable" in c.args[0]]), 2)
 
+    # The human's machine-mode: a pinned host goes to its slots whatever the readings say.
+    PINNED = pool(("hpv-1", "hp-victus", True, 50, False), ("hpv-2", "hp-victus", False, 0, False),
+                  ("razer-1", "razer-laptop", False, 0, False), ("razer-2", "razer-laptop", False, 0, False),
+                  ("asus-1", "asus-laptop", False, 0, False))
+    PIN_HOSTS = readings(**{"razer-laptop": COOL, "asus-laptop": COOL, "hp-victus": COOL})
+
+    def test_pin_withholds_the_idle_slot_first_on_a_cool_host(self):
+        self.assertEqual(actions(self.PIN_HOSTS, self.PINNED, pins={"hp-victus": 1})["hp-victus"],
+                         ("withhold", "hpv-2"))
+
+    def test_pin_withholds_a_busy_slot_past_the_cooldown(self):
+        runners = {**self.PINNED, "hpv-2": {**self.PINNED["hpv-2"], "withheld": True}}
+        self.assertEqual(actions(self.PIN_HOSTS, runners, pins={"hp-victus": 0}, last={"hp-victus": 9_999})["hp-victus"],
+                         ("withhold", "hpv-1"))
+
+    def test_pin_admits_with_no_queue_on_a_hot_host(self):
+        runners = {**self.PINNED, "hpv-2": {**self.PINNED["hpv-2"], "withheld": True}}
+        hosts = readings(**{"razer-laptop": COOL, "asus-laptop": COOL, "hp-victus": HOT})
+        self.assertEqual(actions(hosts, runners, queue=0, pins={"hp-victus": 2})["hp-victus"], ("admit", "hpv-2"))
+
+    def test_pin_met_holds_even_when_hot(self):
+        hosts = readings(**{"razer-laptop": COOL, "asus-laptop": COOL, "hp-victus": HOT})
+        self.assertEqual(actions(hosts, self.PINNED, pins={"hp-victus": 2})["hp-victus"], ("hold", ""))
+
+    def test_pin_stops_at_the_pool_floor(self):
+        runners = pool(("hpv-1", "hp-victus", False, 0, False), ("hpv-2", "hp-victus", False, 0, False))
+        out = {h: (a, w) for h, a, _, _, w in decide(self.PIN_HOSTS, runners, pins={"hp-victus": 0})}
+        self.assertEqual(out["hp-victus"][0], "hold")
+        self.assertIn("at the pool floor", out["hp-victus"][1])
+
+    def test_pin_stops_at_the_pool_cap(self):
+        runners = {**self.PINNED, "hpv-2": {**self.PINNED["hpv-2"], "withheld": True}}
+        cfg = {**CFG, "pool_max_admitted": 4}
+        self.assertEqual(actions(self.PIN_HOSTS, runners, cfg=cfg, pins={"hp-victus": 2})["hp-victus"], ("hold", ""))
+
+    def test_a_full_host_keeps_its_verdict_over_a_pin(self):
+        hosts = readings(**{"razer-laptop": COOL, "asus-laptop": COOL, "hp-victus": FULL})
+        out = decide(hosts, self.PINNED, pins={"hp-victus": 2})
+        self.assertEqual([(a, v) for h, a, _, v, _ in out if h == "hp-victus"], [("withhold", "FULL")])
+
+    def test_an_unpinned_host_is_unchanged(self):
+        hosts = readings(**{"razer-laptop": HOT, "asus-laptop": COOL, "hp-victus": COOL})
+        self.assertEqual(actions(hosts, self.PINNED, pins={"hp-victus": 2})["razer-laptop"], ("withhold", "razer-1"))
+
+    def test_read_pins(self):
+        import tempfile
+        with tempfile.TemporaryDirectory() as d, mock.patch.object(governor, "OVERRIDE_DIR", d), \
+                mock.patch("builtins.print") as out:
+            self.assertEqual(governor.read_pins(CFG), {})  # no ConfigMap
+            path = os.path.join(d, "hp-victus")
+            for body, want in (('{"slots": 1}', {"hp-victus": 1}), ('{"slots": 0}', {"hp-victus": 0}),
+                               ('{"slots": -1}', {}), ('{"slots": "2"}', {}), ('{"slots": true}', {}),
+                               ('{"slots": 1.5}', {}), ("{}", {}), ("", {}), ("not json", {}), ("[1]", {})):
+                with open(path, "w") as f:
+                    f.write(body)
+                self.assertEqual(governor.read_pins(CFG), want, body)
+        lines = [c.args[0] for c in out.call_args_list]
+        self.assertEqual(len([l for l in lines if "pin unreadable" in l]), 4)
+        self.assertEqual(len([l for l in lines if "override unreadable" in l]), 2)
+
     def test_run_time_counts_per_utc_day(self):
         t, day = {}, 1_762_214_400  # 2025-11-04T00:00:00Z
         governor.count_run_time(t, "running", day + 60)
@@ -487,6 +547,19 @@ class GovernorTest(unittest.TestCase):
         self.assertIn(("start", "i-0abc"), ec2.calls)
         apply.assert_not_called()  # razer-laptop is HOT, but only "would withhold"
         self.assertTrue(any(line.startswith("would withhold razer-3 on razer-laptop") for line in log))
+
+    def test_a_pin_acts_in_a_dry_run_and_verdicts_stay_dry(self):
+        hosts = readings(**{"razer-laptop": HOT, "asus-laptop": COOL, "hp-victus": COOL})
+        observed = (hosts, self.PINNED, [UNITY_JOB] * 2)
+        with mock.patch.object(governor, "observe", return_value=observed), \
+                mock.patch.object(governor, "read_pins", return_value={"hp-victus": 1}), \
+                mock.patch.object(governor, "DRY_RUN", True), \
+                mock.patch.object(governor, "apply") as apply, mock.patch("builtins.print") as out:
+            governor.cycle(CFG, {})
+        apply.assert_called_once_with(CFG, "withhold", "hpv-2")
+        log = [c.args[0] for c in out.call_args_list]
+        self.assertTrue(any(line.startswith("withhold hpv-2 on hp-victus: PINNED") for line in log), log)
+        self.assertTrue(any(line.startswith("would withhold razer-1 on razer-laptop") for line in log), log)
 
     def test_a_power_block_not_live_stays_dry_run(self):
         ec2 = FakeEc2("stopped")

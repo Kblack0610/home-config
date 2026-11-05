@@ -46,8 +46,10 @@ spec:
             # 1 logs and exports every decision and changes no runner. Dry run
             # since 2026-11-02: it held at most 3 of 13 slots while about 65 jobs
             # waited, so every registered slot carries the pool labels and none is
-            # withheld (since 2026-11-03 the pool is mac-studio 6, razer 2 and
-            # aws-burst-1); its logs decide by 2026-11-09 whether it goes. The token
+            # withheld (since 2026-11-03 the pool is mac-studio 6, razer 2, the
+            # workstation 2 and aws-burst-1); its logs decide by 2026-11-09 whether
+            # the verdicts go live. The pod stays either way: a host pin (machine-mode
+            # on the workstation) is acted on even in a dry run. The token
             # is the control node's `gh auth token` (admin:org, what the Unity
             # pool play registers runners with), SOPS-encrypted the same way as
             # apps/github-runner-exporter's; after `gh auth refresh` re-run that

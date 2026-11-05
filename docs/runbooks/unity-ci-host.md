@@ -72,6 +72,13 @@ apps/ci-runner-governor powers it (config.json `standby` -> `aws-burst-1` -> `po
 - By hand: `kubectl -n monitoring create configmap ci-runner-governor-override --from-literal=aws-burst-1="{\"action\":\"off\",\"until\":$(( $(date +%s) + 6*3600 ))}" --dry-run=client -o yaml | kubectl apply -f -`, and `kubectl -n monitoring delete configmap ci-runner-governor-override` hands every host back.
 - Metrics: `ci_governor_power_state{host,state,reason}`, `ci_governor_power_hours_today`, `ci_governor_power_max_hours_day` and `ci_governor_power_override{action}` (the override's end, 0 with none). The rule's progress: `_power_idle_seconds` of `_power_idle_off_seconds`, `_power_want` of `_power_start_min_excess`, `_power_held_seconds` of `_power_start_after_seconds`, `_power_last_change{action}` (epoch) and `_power_usd_per_hour` (config.json). They exist only while the power hook is on. `ci_governor_live{host}` is 1 for a host acted on for real, 0 for dry run.
 
+### Pinning a host's slots
+
+- `machine-mode reserved|shared|open` on the workstation writes `{"slots":N}` under its key in the same ConfigMap: 0, 1 or 2 slots admitted. The mode's table is the command's data file, in the dotfiles repo.
+- A pinned host moves one slot per cycle toward N, past its cooldown and in either direction, and these moves happen even with `DRY_RUN=1`. A busy slot finishes its job first. The pool floor and cap still hold, and a FULL host keeps its verdict.
+- The pin has no end time. A host with no pin, or an unreadable one, is back on its verdict, which under a dry run re-admits nothing, so set the mode back rather than deleting the key.
+- The log says `PINNED`, and `ci_governor_decision{verdict="PINNED"}` shows it.
+
 ### The month's budget
 
 - AWS Budgets `ci-burst-monthly` ($200, the platform module's `account.tf`) mails the alert address at $100 and $150, actual and forecast.

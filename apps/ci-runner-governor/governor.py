@@ -60,6 +60,13 @@ never loses a job to the stop and comes back withheld. The ConfigMap
 ci-runner-governor-override (the agent-web Infra page's button) beats all of that until its
 end time: "on" starts it and keeps it from idle-off and the day cap, "off" drains and stops
 it and keeps it stopped. The month's cap is an AWS Budgets action, outside the governor.
+
+A host's key in that ConfigMap can instead hold {"slots": N}, written by the workstation's
+machine-mode command: how many of its slots the human wants admitted. It has no end time,
+since it says what the machine is for and not how loaded it is. A pinned host moves one
+slot per cycle toward N, in either direction, past its cooldown and instead of its verdict,
+and these moves happen even in a dry run, because nothing else re-admits a slot then. Only
+the pool floor and cap hold, and a FULL host keeps its own verdict.
 A power block with "live": true acts on that host for real (labels and power) even under
 DRY_RUN. Without AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY the hook logs why once and
 does nothing.
@@ -216,11 +223,11 @@ def verdict(h, t):
     return "STEADY", f"idle {idle:.2f}, cpu pressure {psi:.2f}"
 
 
-def decide(cfg, hosts, runners, waiting, last_action, now, instances=None):
+def decide(cfg, hosts, runners, waiting, last_action, now, instances=None, pins=None):
     """[(host, action, runner, verdict, why)]: at most one action per host, withholds
     first so a re-admit elsewhere can use the room the pool keeps. waiting is one label
     set per waiting pool job; instances is power_readings() for the standby hosts with a
-    power block."""
+    power block; pins is read_pins()."""
     queue = len(waiting)
     admitted = sum(1 for r in runners.values() if not r["withheld"])
     # A standby host can go to zero, so only the other hosts hold the pool's floor.
@@ -236,7 +243,18 @@ def decide(cfg, hosts, runners, waiting, last_action, now, instances=None):
                     key=lambda n: (mine[n]["busy"], -mine[n]["elapsed"], n))
         off = sorted(n for n, r in mine.items() if r["withheld"])
         action, runner = "hold", ""
-        if cooling:
+        pin = (pins or {}).get(host)
+        if pin is not None and v != "FULL":
+            v, why = "PINNED", f"pinned to {pin}, {len(on)} admitted"
+            if len(on) > pin and floor_held > cfg["pool_min_admitted"]:
+                action, runner = "withhold", on[0]
+                admitted -= 1
+                floor_held -= 1
+            elif len(on) > pin:
+                why += "; at the pool floor"
+            elif len(on) < pin and off:
+                action, runner = "admit", off[0]
+        elif cooling:
             why = f"cooldown ({why})"
         elif ((v == "FULL" and on) or (v == "HOT" and len(on) > t["min_admitted"])) \
                 and floor_held > cfg["pool_min_admitted"]:
@@ -517,22 +535,48 @@ def power_provider(power):
     return Ec2(power["region"], AWS_KEY, AWS_SECRET), ""
 
 
-def read_override(host, now):
-    """(action, until) from the ci-runner-governor-override ConfigMap's key for host, mounted
-    optional at OVERRIDE_DIR: {"action": "on"|"off", "until": <epoch>}. ("", 0) when there is
-    none, it has run out, or it does not parse (logged), so a bad edit never powers anything."""
+def override_key(host):
+    """The ci-runner-governor-override ConfigMap's key for host, mounted optional at
+    OVERRIDE_DIR, as a dict. {} when there is none or it does not parse (logged)."""
     try:
         with open(os.path.join(OVERRIDE_DIR, host)) as f:
             raw = f.read().strip()
     except OSError:
-        return "", 0
+        return {}
     try:
         o = json.loads(raw) if raw else {}
+        if not isinstance(o, dict):
+            raise ValueError(f"not an object: {raw}")
+    except ValueError as e:
+        print(f"{host}: override unreadable, ignored: {e}", flush=True)
+        return {}
+    return o
+
+
+def read_override(host, now):
+    """(action, until) from host's override key: {"action": "on"|"off", "until": <epoch>}.
+    ("", 0) when there is none, it has run out, or it does not parse (logged), so a bad edit
+    never powers anything."""
+    o = override_key(host)
+    try:
         action, until = o.get("action", ""), float(o.get("until", 0))
-    except (ValueError, TypeError, AttributeError) as e:
+    except (ValueError, TypeError) as e:
         print(f"{host}: override unreadable, ignored: {e}", flush=True)
         return "", 0
     return (action, until) if action in ("on", "off") and until > now else ("", 0)
+
+
+def read_pins(cfg):
+    """{host: slots} for each host whose override key holds {"slots": N}, N a whole number
+    from 0. Anything else is no pin (logged), so a bad edit leaves the host as it is."""
+    pins = {}
+    for host in cfg["hosts"]:
+        slots = override_key(host).get("slots")
+        if type(slots) is int and slots >= 0:
+            pins[host] = slots
+        elif slots is not None:
+            print(f"{host}: pin unreadable, ignored: {slots!r}", flush=True)
+    return pins
 
 
 def count_run_time(t, state, now, launched=0.0):
@@ -694,13 +738,13 @@ def cycle(cfg, last_action, tracked=None, budget=None):
         return
     queue = len(waiting)
     instances = power_readings(cfg, runners, {} if tracked is None else tracked, now)
-    decisions = decide(cfg, hosts, runners, waiting, last_action, now, instances)
+    decisions = decide(cfg, hosts, runners, waiting, last_action, now, instances, read_pins(cfg))
     for host, action, runner, v, why in decisions:
         if action == "hold":
             continue
         power = action in ("start", "stop")
         target = cfg["standby"][host]["power"]["instance_id"] if power else runner
-        dry = not live(cfg, host)
+        dry = not live(cfg, host) and v != "PINNED"
         print(f"{'would ' if dry else ''}{action} {target} on {host}: {v}, {why}; queue {queue}", flush=True)
         if dry:
             last_action[host] = now

@@ -1,0 +1,66 @@
+# The daily loss watch (strategy repo lab/watcher.py): every bot's marked-to-market equity on a 60
+# second cadence into the trader database. Stage 0 of the money plan: a breach alerts and stops
+# nothing, and only a drill stops a dry-run bot's entries. Holds no exchange key. One pod, and
+# Recreate so two never overlap on a rollout.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: freqtrade-watcher
+  labels:
+    app: freqtrade-watcher
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app: freqtrade-watcher
+  template:
+    metadata:
+      labels:
+        app: freqtrade-watcher
+    spec:
+      nodeSelector:
+        kubernetes.io/arch: amd64
+      securityContext:
+        runAsUser: 1000
+        runAsGroup: 1000
+        runAsNonRoot: true
+      initContainers:
+        - name: migrate
+          image: trader
+          command: ["python", "/repo/lab/migrate.py"]
+          env:
+            - name: DATABASE_URL
+              valueFrom:
+                secretKeyRef: {name: trader-db, key: database-url}
+          resources:
+            requests:
+              cpu: 20m
+              memory: 64Mi
+            limits:
+              memory: 256Mi
+      containers:
+        - name: watcher
+          image: trader
+          workingDir: /repo
+          command: ["python", "lab/watcher.py"]
+          env:
+            - name: DATABASE_URL
+              valueFrom:
+                secretKeyRef: {name: trader-db, key: database-url}
+            - name: FT_API_PASSWORD
+              valueFrom:
+                secretKeyRef: {name: freqtrade-api, key: password}
+          resources:
+            requests:
+              cpu: 20m
+              memory: 128Mi
+            limits:
+              memory: 384Mi
+          volumeMounts:
+            - {name: roster, mountPath: /etc/freqtrade-league}
+      volumes:
+        - name: roster
+          configMap:
+            name: freqtrade-league-roster

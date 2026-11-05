@@ -43,6 +43,46 @@ spec:
           annotations:
             summary: "trader-web metrics are missing or cannot read the trader database: the not-dry-run page is blind"
 
+        # The money plan's kill path. Only the watcher itself pages red: the rest are paper
+        # bots at Stage 0, so a breach is a rehearsal. An empty watch table has no age series;
+        # the Deployment rules cover a watcher that never started.
+        - alert: TraderWatcherDown
+          expr: trader_watch_age_seconds > 300
+          labels:
+            severity: critical
+            category: trading
+          annotations:
+            summary: "The freqtrade watcher has not finished a pass for 5 minutes: no daily loss check is running"
+            description: >-
+              Check the freqtrade-watcher pod and its log. Every bot's equity is going unwatched
+              (apps/freqtrade/README.md, Troubleshooting).
+
+        - alert: TraderWatchBotBlind
+          expr: trader_watch_unseen_seconds > 300
+          labels:
+            severity: warning
+            category: trading
+          annotations:
+            summary: "The watcher has not read bot {{ $labels.bot }} for 5 minutes"
+
+        - alert: TraderDailyLossBreach
+          expr: trader_watch_breached == 1
+          labels:
+            severity: warning
+            category: trading
+          annotations:
+            summary: "Bot {{ $labels.bot }} broke the daily loss limit (or a drill forced it); clears at 00:00 UTC"
+
+        # A forgotten drill, or a bot someone paused by hand, trades nothing and looks healthy.
+        - alert: TraderBotNotTakingEntries
+          expr: trader_watch_running == 0
+          for: 30m
+          labels:
+            severity: warning
+            category: trading
+          annotations:
+            summary: "Bot {{ $labels.bot }} has been paused or stopped for 30 minutes: python lab/watcher.py --drill-end {{ $labels.bot }} if a drill was left on"
+
         # Ingest writes an error snapshot for a bot whose API does not answer. One snapshot
         # stands for an hour, so 70m means two ingest runs in a row could not reach it. A bot
         # that is not in dry run also gets an error snapshot; TraderBotNotDryRun owns that case.

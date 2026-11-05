@@ -16,6 +16,7 @@ resources:
   - lab-backup-cronjob.yaml
   - trader-db-secret.sops.yaml
   - trader-web-oauth-secret.sops.yaml
+  - watcher-deployment.yaml
   - web-deployment.yaml
   - ingress.yaml
   - servicemonitor.yaml
@@ -26,7 +27,7 @@ images:
   # change; the tag is the strategy repo commit it was built from.
   - name: trader
     newName: ghcr.io/kblack0610/trader
-    digest: sha256:2e5228800275287c1c82db0fb862cacc8ad82bf164cf3235e7caed530fcba5e3  # sha-5419e23
+    digest: sha256:f3971009ec5af9e326b86ab3f15cae1507d9cbce78816aaa59bbb6d7f7c5af7f  # sha-22a5800
 
 configMapGenerator:
   # Rows here and replicas in statefulset.yaml move together.

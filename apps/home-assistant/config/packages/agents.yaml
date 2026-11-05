@@ -96,8 +96,8 @@ rest:
              | map(attribute='value') | map('last') | map('float', 0) | sum | round(2) }}
 
   # Claude account room, from claude-acct's textfile (claude_acct.prom, every 15 min):
-  # "alt 90%! bnb 32% main 86%!, out Wed 14:41". `!` is over its weekly pace; `out` is the
-  # earliest projected run-out.
+  # "alt 90%! bnb 32% main 86%!, alt out Wed 14:41". `!` is over its weekly pace; `out` is the
+  # earliest projected run-out of an account with room left, since one at 100% is already out.
   - resource: "http://kube-prometheus-stack-prometheus.monitoring.svc:9090/api/v1/query?query=%7B__name__%3D~%22claude_account_%28week_used_percent%7Cover_pace%7Crun_out_timestamp_seconds%29%22%7D"
     scan_interval: 300
     sensor:
@@ -106,7 +106,7 @@ rest:
         icon: mdi:account-clock
         value_template: >-
           {% set r = value_json.data.result %}
-          {% set ns = namespace(o=[]) %}
+          {% set ns = namespace(o=[], out=0, who='') %}
           {% for a in r | selectattr('metric.__name__', 'eq', 'claude_account_week_used_percent')
                         | sort(attribute='metric.account') %}
           {% set over = r | selectattr('metric.__name__', 'eq', 'claude_account_over_pace')
@@ -114,7 +114,12 @@ rest:
                           | map(attribute='value') | map('last') | first | default('0') %}
           {% set ns.o = ns.o + [a.metric.account ~ ' ' ~ (a.value[1] | float(0) | round(0) | int)
                                 ~ '%' ~ ('!' if over == '1' else '')] %}
-          {% endfor %}
           {% set out = r | selectattr('metric.__name__', 'eq', 'claude_account_run_out_timestamp_seconds')
-                         | map(attribute='value') | map('last') | map('float', 0) | list %}
-          {{ ns.o | join(' ') }}{{ (', out ' ~ (out | min | timestamp_custom('%a %H:%M'))) if out else '' }}
+                         | selectattr('metric.account', 'eq', a.metric.account)
+                         | map(attribute='value') | map('last') | map('float', 0) | first | default(0) %}
+          {% if out and a.value[1] | float(0) < 100 and (not ns.out or out < ns.out) %}
+          {% set ns.out = out %}
+          {% set ns.who = a.metric.account %}
+          {% endif %}
+          {% endfor %}
+          {{ ns.o | join(' ') }}{{ (', ' ~ ns.who ~ ' out ' ~ (ns.out | timestamp_custom('%a %H:%M'))) if ns.out else '' }}

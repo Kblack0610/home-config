@@ -87,7 +87,7 @@ Flux picks up the ConfigMap change → deployment hash rotates → pod rolls →
 6. Claude: each account's weekly use, amber when one is over pace, the earliest run-out, and 24h spend.
 7. The house: weather and the next event across every calendar.
 
-Every section opens with a bold `Title: value`. Colour marks only what is wrong: a title goes amber or red with its section, and only red items stay red in full, so amber never covers a whole block.
+Every section opens with a bold `Title: value`. Colour marks only what is wrong: a title goes amber or red with its section, and only red items stay red in full, so amber never covers a whole block. Detail lines under a title are grey, so the titles and their values stand out.
 
 It is HTML in an attribute because the Companion app's Template widget renders HTML and an HA state stops at 255 characters. The state is the worse of health and the fleet rows: `ok`, `warn` or `critical`. Text from outside (ask titles, calendar events, the alert) is escaped in the macros.
 

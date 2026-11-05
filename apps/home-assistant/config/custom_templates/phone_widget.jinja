@@ -7,7 +7,7 @@
   sensor.system_health, read in the cluster so it still shows with the workstation off. Anything
   that came from outside is escaped here, because the widget renders what it gets as HTML.
 #}
-{% set COLOUR = {'warn': '#f9a825', 'red': '#e53935'} %}
+{% set COLOUR = {'warn': '#f9a825', 'red': '#e53935', 'dim': '#9aa4b2'} %}
 {% set RED_MAX = 6 %}
 {% set NO_AGE = 9999999999 %}
 
@@ -33,7 +33,7 @@
 {%- endmacro -%}
 
 {# One line per cc:red_now item, unknown ages then newest first: the oldest red is the one already known about. #}
-{%- macro reds(health) -%}
+{%- macro reds(health, rows) -%}
 {%- set watches = health | selectattr('metric.__name__', 'eq', 'cc:watch_state') | list -%}
 {%- set ns = namespace(rows=[]) -%}
 {%- for item in health | selectattr('metric.__name__', 'eq', 'cc:red_now') | map(attribute='metric.item') -%}
@@ -48,8 +48,10 @@
 {%- set said = said ~ (' (%s)' | format(domain) if domain else '') ~ (' ' ~ age(since) if since else '') -%}
 {%- set ns.rows = ns.rows + [{'since': since or NO_AGE, 'said': said}] -%}
 {%- endfor -%}
-{%- if ns.rows -%}
-{{ paint('red', '<b>RED:</b> %d' | format(ns.rows | count)) }}<br>
+{# The count covers the hub's red rows too, printed after these, so it matches the lines under it. #}
+{%- set total = ns.rows | count + rows | selectattr('head', 'eq', 'red') | list | count -%}
+{%- if total -%}
+{{ paint('red', '<b>RED:</b> %d' | format(total)) }}<br>
 {%- for r in (ns.rows | sort(attribute='since', reverse=true))[:RED_MAX] -%}
 {{ paint('red', r.said | e) }}<br>
 {%- endfor -%}
@@ -75,14 +77,14 @@
 {%- if text not in ['', 'unknown', 'unavailable'] %}{{ paint('warn', text | e) }}<br>{% endif -%}
 {%- endmacro -%}
 
-{# The rows under these heads. A head row (the first) or a flagged row reads `Title: value`: the title carries the colour, and only a red row's value keeps it. #}
+{# The rows under these heads. A head row (the first) or a flagged row reads `Title: value`: the title carries the colour, and only a red row's value keeps it. The rest are detail, dimmed. #}
 {%- macro section(rows, heads) -%}
 {%- for r in rows | selectattr('head', 'in', heads) -%}
 {%- set title, colon, value = (r.text | e).partition(': ') -%}
 {%- if colon and (loop.first or r.level in COLOUR) -%}
 {{ paint(r.level, '<b>%s:</b>' | format(title)) }} {{ paint('red' if r.level == 'red' else 'ok', value) }}<br>
 {%- else -%}
-{{ paint(r.level, r.text | e) }}<br>
+{{ paint(r.level if loop.first or r.level in COLOUR else 'dim', r.text | e) }}<br>
 {%- endif -%}
 {%- endfor -%}
 {%- endmacro -%}
@@ -90,7 +92,7 @@
 {%- macro claude() -%}
 {%- set accounts = states('sensor.agent_accounts') -%}
 {{ paint('warn' if '!' in accounts else 'ok', '<b>Claude week:</b>') }} {{ accounts | replace('!', '') | replace('% ', '%, ') | e }}<br>
-{{- 'spent $%d in 24h' | format(states('sensor.agent_cost_24h') | float(0)) }}<br>
+{{- paint('dim', 'spent $%d in 24h' | format(states('sensor.agent_cost_24h') | float(0))) }}<br>
 {%- endmacro -%}
 
 {%- macro house() -%}
@@ -111,7 +113,7 @@
 {# rows is none when sensor.agent_overview has expired, which is not the same as nothing to say. #}
 {%- macro render(health, rows) -%}
 <p style="text-align: start">
-{{- system(health) }}{{ reds(health) }}{{ section(rows or [], ['red', 'error']) }}{{ domains(health) }}{{ alert() -}}
+{{- system(health) }}{{ reds(health, rows or []) }}{{ section(rows or [], ['red', 'error']) }}{{ domains(health) }}{{ alert() -}}
 <br>
 {%- if rows is none -%}
 {{ paint('red', 'no fleet overview: agent-mqtt-publish has stopped') }}<br><br>

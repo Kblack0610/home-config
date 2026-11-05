@@ -62,7 +62,7 @@ spec:
               resources:
                 requests:
                   cpu: "6"
-                  memory: 6Gi
+                  memory: 14Gi  # equal to the limit, as in analysis-cronjob.yaml
                 limits:
                   memory: 14Gi  # WF_MEMORY_GB of estimated fold memory plus the interpreter and suggest
               volumeMounts:

@@ -61,7 +61,7 @@ spec:
               resources:
                 requests:
                   cpu: "6"
-                  memory: 4Gi
+                  memory: 12Gi  # equal to the limit: hp-victus limits sum past its memory, so the scheduler, not the kernel, keeps this and the walk-forward apart
                 limits:
                   memory: 12Gi  # ANALYZE_MEMORY_GB plus headroom; a 5m year of 10 pairs peaks at 1.1 GB, a 1m year at 4 GB
               volumeMounts:

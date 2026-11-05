@@ -24,6 +24,22 @@ spec:
         runAsUser: 1000
         runAsGroup: 1000
         runAsNonRoot: true
+      initContainers:
+        # The site reads tables a new image's migrations add, so they apply before it
+        # starts, as the owner role; the site itself keeps the read-only one.
+        - name: migrate
+          image: trader
+          command: ["python", "/repo/lab/migrate.py"]
+          env:
+            - name: DATABASE_URL
+              valueFrom:
+                secretKeyRef: {name: trader-db, key: database-url}
+          resources:
+            requests:
+              cpu: 20m
+              memory: 64Mi
+            limits:
+              memory: 256Mi
       containers:
         - name: web
           image: trader

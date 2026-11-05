@@ -72,6 +72,9 @@ all:
         mac-mini:
           ansible_host: 192.168.1.7
           ansible_user: kennethblack
+          # The store-console skill drives this Chrome over ssh with the
+          # Playwright Extension; the person signs in to the store consoles here.
+          brew_extra_casks: [google-chrome]
 
     # Windows PCs, managed over Windows OpenSSH (see docs/windows-machines.md
     # for the one-time paste that enables sshd and trusts the workstation key).

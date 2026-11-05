@@ -77,15 +77,19 @@ Flux picks up the ConfigMap change → deployment hash rotates → pod rolls →
 
 ### Phone overview widget
 
-`sensor.agent_widget` (`config/packages/agents.yaml`) is the waybar for an Android home screen. The widget does not scroll and clips at the bottom, so its `html` attribute runs most important first, and the widget's height picks how deep you read:
+`sensor.agent_widget` is the main mobile view: the fleet and the house on an Android home screen. `hub phone --json` in dotfiles makes the fleet rows from the join the hub's Home tab reads, `agent-mqtt-publish` sends them as `sensor.agent_overview`, and `config/custom_templates/phone_widget.jinja` lays them out. That file holds all the HTML and every colour, one macro per section. `config/packages/agents.yaml` only calls it. The widget does not scroll and clips at the bottom, so sections run most important first and a green section is one line:
 
-1. System health, the waybar health chip: one dot per domain worst first, the counts, the time it was rendered, then one line per domain that is not up, naming up to three things wrong and `+N` for the rest, so an outage cannot push the rest of the glance off the widget. `sensor.system_health` reads the same `cc:*` rules from Prometheus every minute, in the cluster, so this part still works with the workstation off.
-2. What wants you, in red: open asks, sessions that need you, broken runners and watches, red default branches. The line is absent when nothing does.
-3. The house: an active `input_text.home_alert`, the weather, and the next event across every calendar.
-4. Each Claude account's weekly use (`!` means over pace) with the earliest run-out and 24h spend.
-5. `sensor.agent_overview`, the lines the waybar chips print, joined by `fleet-overview` in dotfiles and published by `agent-mqtt-publish`: sessions with a glyph strip per project (`x` stalled, `?` unclear, `!` needs you, `~` working, `+` landed, `.` done, `-` parked), then the queue, ready items and dispatch headroom, then CI busy/slots, queue, pass rate and pools, then merged today and what is red now.
+1. System: domains down, warn and up, and the time it was rendered. Read in the cluster, so it still shows with the workstation off.
+2. RED: every `cc:red_now` item with its domain and age, newest first, 6 at most then `+N more`. Then red default branches, sources the workstation could not read, any domain down with no red watch of its own, the domains at warn, and an active `input_text.home_alert`.
+3. Needs you: the count split by kind, the top projects, and the oldest ask.
+4. Agents: session counts, hours waited on you in the last 24h, sessions past their ETA, KPIs over their limit with the limit, cost per PR against 28 days, and merged today.
+5. Queue, then CI, naming only what is down.
+6. Claude: each account's weekly use, amber when one is over pace, the earliest run-out, and 24h spend.
+7. The house: weather and the next event across every calendar.
 
-It is HTML in an attribute because the Companion app's Template widget renders HTML and an HA state stops at 255 characters. The state is the worse of health and the chips: `ok`, `warn` or `critical`, and `warn` when either cannot be read. No Lovelace card can sit on a home screen: the Companion app's widgets are Action, Entity state, Media player, Picture, Template and To-do.
+It is HTML in an attribute because the Companion app's Template widget renders HTML and an HA state stops at 255 characters. The state is the worse of health and the fleet rows: `ok`, `warn` or `critical`. Text from outside (ask titles, calendar events, the alert) is escaped in the macros.
+
+To try a layout change before it ships, POST the file's text plus `{{ render(health, rows) }}` to `/api/template`, with any fixture for `health` and `rows`. Home Assistant reads `custom_templates` when it starts, so the rollout restart picks up a new file.
 
 Setup on the phone: long-press the home screen -> Widgets -> Home Assistant -> Template, with the template `{{ state_attr('sensor.agent_widget', 'html') }}` and the smallest text size that reads well. About 4x2 shows parts 1 to 4, about 4x4 adds the fleet lines. A widget already on that template picks all of this up by itself. One still on the old `states('sensor.agent_widget')` template shows only that one word until you edit it. It refreshes when the sensor changes, and tapping it forces a refresh. For a color dot, add an Entity state widget on `binary_sensor.agents_need_attention`. Pages that cannot wait still arrive by ntfy; the widget is only a glance.
 
@@ -93,9 +97,9 @@ Setup on the phone: long-press the home screen -> Widgets -> Home Assistant -> T
 |---|---|
 | Widget shows old numbers | The time on the System line is when it last rendered. Check that the Companion app is allowed background data and battery use. If `sensor.agent_sessions` is `unavailable`, its 900 s MQTT expiry ran out, so the workstation publisher (`agent-mqtt-publish.timer`) is down. |
 | Widget shows only `ok`, `warn` or `critical` | It still has the old template: edit it to the one above. |
-| Red line `no fleet overview` | `sensor.agent_overview` is unavailable: its 900 s MQTT expiry ran out, so `agent-mqtt-publish` has stopped or `fleet-overview` is not on the workstation's PATH. Run `agent-mqtt-publish --dry-run` there and look for `summary/overview`. |
-| A line reads `<chip>: the chip printed nothing` | That waybar chip crashed. Run `~/.config/waybar/<chip>.sh` on the workstation. |
-| `cannot read` in place of a section | Prometheus did not answer the workstation. The waybar chip reads the same. |
+| Red line `no fleet overview` | `sensor.agent_overview` has no rows: its 900 s MQTT expiry ran out, so `agent-mqtt-publish` has stopped, or `hub` on the workstation is too old to know `phone`. Run `hub phone --json` there. |
+| Widget shows `unknown` or nothing after a change | `phone_widget.jinja` failed to load. Read the HA log for `TemplateError` or `phone_widget`, and check the init container copied the file to `/config/custom_templates/`. |
+| A red line has no age | Its watch has no `since_epoch` and no matching `binary_sensor`, or it is a node or feed row. Those sort first. A `binary_sensor` age restarts with Home Assistant. |
 | The bottom lines are cut off | The widget does not scroll, so the least important lines go first. Make it taller or pick a smaller text size. |
 | `System ?` in amber | `sensor.system_health` got no rows. It is `unavailable` when Prometheus did not answer Home Assistant; when it answers, query `cc:domain_status` for the rules in `apps/monitoring/prometheus-rules-command-center.yaml`. |
 | The accounts line reads `unknown` | The `Agent accounts` REST sensor got no data. Query `claude_account_week_used_percent` in Prometheus; when it is empty, `claude-acct-usage.timer` on the workstation has stopped writing. |

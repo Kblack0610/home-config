@@ -33,6 +33,7 @@ configMapGenerator:
       - package_lamps.yaml=config/packages/lamps.yaml
       - package_ci_runners.yaml=config/packages/ci_runners.yaml
       - package_music_panel.yaml=config/packages/music_panel.yaml
+      - phone_widget.jinja=config/custom_templates/phone_widget.jinja
       - pyscript_room_layout.py=config/pyscript/room_layout.py
       - pyscript_wall_idle.py=config/pyscript/wall_idle.py
       - pyscript_wall_panels.yaml=config/pyscript/wall_panels.yaml

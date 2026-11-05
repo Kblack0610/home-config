@@ -32,14 +32,9 @@ template:
                | map('replace', 'agent_', '') | list }}
 
       # The phone home-screen Template widget: {{ state_attr('sensor.agent_widget', 'html') }}.
-      # The widget does not scroll and clips at the bottom, so lines run most important first and
-      # its height picks the depth: system health (the waybar health chip's cc:* rules, via
-      # sensor.system_health, so it survives the workstation being off), what wants the human,
-      # the house, account room and spend, then the waybar chips' own lines (sensor.agent_overview,
-      # from fleet-overview in dotfiles). The HTML is an attribute because a state over 255 chars
-      # is rejected outright, and it is rendered here so the widget stays one expression and any
-      # format change lands without retyping it on the phone. The Template widget centres its
-      # text, so the <p> sets it back to the start. &#9679; is the chip's filled circle.
+      # The HTML is an attribute because a state over 255 chars is rejected outright, and it is
+      # rendered here so the widget stays one expression and any format change lands without
+      # retyping it on the phone. Layout: custom_templates/phone_widget.jinja.
       - name: Agent widget
         unique_id: agent_widget
         icon: mdi:cellphone-text
@@ -48,64 +43,7 @@ template:
           {{ 'critical' if 'critical' in s else 'ok' if s == ['ok', 'ok'] else 'warn' }}
         attributes:
           html: >-
-            {% set colour = ['#43a047', '#f9a825', '#e53935'] %}
-            {% set word = ['up', 'warn', 'DOWN'] %}
-            {% set rows = state_attr('sensor.system_health', 'result') or [] %}
-            {% set domains = rows | selectattr('metric.__name__', 'eq', 'cc:domain_status')
-                                  | sort(attribute='metric.domain')
-                                  | sort(attribute='value.1', reverse=true) | list %}
-            {% set ns = namespace(dots='', bad='', count=[0, 0, 0]) %}
-            {% for d in domains %}
-            {% set l = d.value[1] | int(1) %}
-            {% set ns.count = ns.count[:l] + [ns.count[l] + 1] + ns.count[l + 1:] %}
-            {% set ns.dots = ns.dots ~ "<font color='%s'>&#9679;</font>" | format(colour[l]) %}
-            {% if l %}
-            {% set mine = rows | selectattr('metric.domain', 'defined')
-                               | selectattr('metric.domain', 'eq', d.metric.domain) | list %}
-            {% set why = mine | selectattr('metric.__name__', 'eq', 'cc:watch_state')
-                              | map(attribute='metric.item') | list
-                         or mine | selectattr('metric.__name__', 'eq', 'cc:component_status')
-                                 | map(attribute='metric.component') | list %}
-            {% set ns.bad = ns.bad ~ "<font color='%s'>%s</font> %s: %s"
-                            | format(colour[l], word[l], d.metric.domain,
-                                     why[:3] | join(', ') | replace('_', ' '))
-                            ~ ('' if why | length < 4 else ' +%d' | format(why | length - 3)) ~ '<br>' %}
-            {% endif %}
-            {% endfor %}
-            {% set health = ("<b>System</b> %s %d down, %d warn, %d up | %s<br>%s"
-                             | format(ns.dots, ns.count[2], ns.count[1], ns.count[0],
-                                      now().strftime('%H:%M'), ns.bad))
-                            if domains else
-                            "<font color='#f9a825'><b>System ?</b> no health rows from Prometheus</font><br>" %}
-            {% set asks = states('sensor.agent_asks_open') | int(0) %}
-            {% set needs = (state_attr('sensor.agent_sessions', 'buckets') or {}).get('NEEDS', 0) %}
-            {% set red = state_attr('sensor.agent_sessions', 'main_red') or [] %}
-            {% set broken = states('sensor.agents_problem') | int(0) %}
-            {% set w = [] %}
-            {% if asks %}{% set w = w + [asks ~ ' asks'] %}{% endif %}
-            {% if needs %}{% set w = w + [needs ~ ' need you'] %}{% endif %}
-            {% if broken %}{% set w = w + [broken ~ ' broken'] %}{% endif %}
-            {% if red %}{% set w = w + ['main red: ' ~ red | join(', ')] %}{% endif %}
-            {% set alert = states('input_text.home_alert') %}
-            {% set home = [] %}
-            {% if alert not in ['', 'unknown', 'unavailable'] %}{% set home = home + ["<font color='#f9a825'>" ~ alert ~ "</font>"] %}{% endif %}
-            {% if state_attr('weather.forecast_home', 'temperature') is not none %}
-            {% set home = home + [state_attr('weather.forecast_home', 'temperature') | round(0) | int
-                                  ~ state_attr('weather.forecast_home', 'temperature_unit') ~ ' '
-                                  ~ states('weather.forecast_home') | replace('-', ' ')] %}
-            {% endif %}
-            {% set events = states.calendar | selectattr('attributes.start_time', 'defined')
-                                            | sort(attribute='attributes.start_time') | list %}
-            {% if events %}
-            {% set home = home + [events[0].attributes.message ~ ' '
-                                  ~ as_timestamp(events[0].attributes.start_time) | timestamp_custom('%a %-d')] %}
-            {% endif %}
-            {% set money = states('sensor.agent_accounts') ~ ' | $'
-                           ~ (states('sensor.agent_cost_24h') | float(0) | round(0) | int) ~ '/24h' %}
-            {% set fleet = state_attr('sensor.agent_overview', 'html')
-                           or "<font color='#e53935'>no fleet overview: agent-mqtt-publish has stopped</font>" %}
-            <p style="text-align: start">{{ health }}{{ ("<font color='#e53935'><b>! %s</b></font><br>" | format(w | join(' | ')))
-            if w else '' }}{{ (home | join(' | ') ~ '<br>') if home else '' }}{{ money }}<br>{{ fleet }}</p>
+            {% from 'phone_widget.jinja' import widget %}{{ widget() }}
 
   - binary_sensor:
       # Something wants the human: a problem above, an open ask, or a live session flagged `!`.
@@ -122,8 +60,8 @@ template:
 rest:
   # System health, the rows the waybar health chip reads: every domain's level plus what is not ok
   # inside it, in `result` for the widget to render (a state stops at 255 chars). The query is
-  # {__name__=~"cc:(overall_status|domain_status)"} or {__name__=~"cc:(watch_state|component_status)"} > 0
-  - resource: "http://kube-prometheus-stack-prometheus.monitoring.svc:9090/api/v1/query?query=%7B__name__%3D~%22cc%3A(overall_status%7Cdomain_status)%22%7D%20or%20%7B__name__%3D~%22cc%3A(watch_state%7Ccomponent_status)%22%7D%20%3E%200"
+  # {__name__=~"cc:(overall_status|domain_status)"} or {__name__=~"cc:(watch_state|component_status|red_now)"} > 0
+  - resource: "http://kube-prometheus-stack-prometheus.monitoring.svc:9090/api/v1/query?query=%7B__name__%3D~%22cc%3A(overall_status%7Cdomain_status)%22%7D%20or%20%7B__name__%3D~%22cc%3A(watch_state%7Ccomponent_status%7Cred_now)%22%7D%20%3E%200"
     scan_interval: 60
     sensor:
       - name: System health

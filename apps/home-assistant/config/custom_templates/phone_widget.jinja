@@ -1,0 +1,128 @@
+{#
+  The phone home-screen widget: its only HTML and its only colours. README "Phone overview widget"
+  says what each line means. The widget does not scroll and clips at the bottom, so sections run
+  most important first and a green section is one line.
+
+  rows is `hub phone --json` (dotfiles), plain text with a level and a section head; health is
+  sensor.system_health, read in the cluster so it still shows with the workstation off. Anything
+  that came from outside is escaped here, because the widget renders what it gets as HTML.
+#}
+{% set COLOUR = {'warn': '#f9a825', 'red': '#e53935'} %}
+{% set RED_MAX = 6 %}
+{% set NO_AGE = 9999999999 %}
+
+{%- macro paint(level, text) -%}
+{%- if level in COLOUR %}<font color="{{ COLOUR[level] }}">{{ text }}</font>{% else %}{{ text }}{% endif -%}
+{%- endmacro -%}
+
+{%- macro age(since) -%}
+{%- set s = now().timestamp() | int - since | int -%}
+{%- if s >= 86400 %}{{ s // 86400 }}d{% elif s >= 3600 %}{{ s // 3600 }}h{% else %}{{ s // 60 }}m{% endif -%}
+{%- endmacro -%}
+
+{%- macro system(health) -%}
+{%- set domains = health | selectattr('metric.__name__', 'eq', 'cc:domain_status') | list -%}
+{%- if domains -%}
+{%- set down = domains | selectattr('value.1', 'eq', '2') | list | count -%}
+{%- set warn = domains | selectattr('value.1', 'eq', '1') | list | count -%}
+{{ paint('red' if down else 'warn' if warn else 'ok',
+         '<b>System</b> %d down, %d warn, %d up | %s'
+         | format(down, warn, domains | count - down - warn, now().strftime('%H:%M'))) }}<br>
+{%- else -%}
+{{ paint('warn', '<b>System ?</b> no health rows from Prometheus') }}<br>
+{%- endif -%}
+{%- endmacro -%}
+
+{# One line per cc:red_now item, unknown ages then newest first: the oldest red is the one already known about. #}
+{%- macro reds(health) -%}
+{%- set watches = health | selectattr('metric.__name__', 'eq', 'cc:watch_state') | list -%}
+{%- set ns = namespace(rows=[]) -%}
+{%- for item in health | selectattr('metric.__name__', 'eq', 'cc:red_now') | map(attribute='metric.item') -%}
+{%- set kind, _, name = item.partition(' ') -%}
+{# selectattr, because states.binary_sensor[name] throws on a name that is not an entity id, and one throw blanks the widget. #}
+{%- set since = state_attr('sensor.agent_' ~ name, 'updated_epoch') if kind == 'runner'
+                else state_attr('sensor.agent_watch_' ~ name, 'since_epoch')
+                     or states.binary_sensor | selectattr('object_id', 'eq', name) | map(attribute='last_changed')
+                        | map('as_timestamp') | first | default(none) if kind == 'watch' -%}
+{%- set domain = watches | selectattr('metric.item', 'eq', name) | map(attribute='metric.domain') | first | default('') -%}
+{%- set said = (name if kind == 'watch' else item) | replace('_', ' ') -%}
+{%- set said = said ~ (' (%s)' | format(domain) if domain else '') ~ (' ' ~ age(since) if since else '') -%}
+{%- set ns.rows = ns.rows + [{'since': since or NO_AGE, 'said': said}] -%}
+{%- endfor -%}
+{%- if ns.rows -%}
+{{ paint('red', '<b>RED %d</b>' | format(ns.rows | count)) }}<br>
+{%- for r in (ns.rows | sort(attribute='since', reverse=true))[:RED_MAX] -%}
+{{ paint('red', r.said | e) }}<br>
+{%- endfor -%}
+{%- if ns.rows | count > RED_MAX -%}
+{{ paint('red', '+%d more' | format(ns.rows | count - RED_MAX)) }}<br>
+{%- endif -%}
+{%- endif -%}
+{%- endmacro -%}
+
+{# Domains the RED lines do not explain: down with no red watch of their own, and every warn. #}
+{%- macro domains(health) -%}
+{%- set all = health | selectattr('metric.__name__', 'eq', 'cc:domain_status') | sort(attribute='metric.domain') | list -%}
+{%- set red = health | selectattr('metric.__name__', 'eq', 'cc:watch_state') | selectattr('value.1', 'eq', '2')
+              | map(attribute='metric.domain') | list -%}
+{%- set down = all | selectattr('value.1', 'eq', '2') | rejectattr('metric.domain', 'in', red) | map(attribute='metric.domain') | list -%}
+{%- set warn = all | selectattr('value.1', 'eq', '1') | map(attribute='metric.domain') | list -%}
+{%- if down %}{{ paint('red', 'down: ' ~ down | join(', ') | e) }}<br>{% endif -%}
+{%- if warn %}{{ paint('warn', 'warn: ' ~ warn | join(', ') | e) }}<br>{% endif -%}
+{%- endmacro -%}
+
+{%- macro alert() -%}
+{%- set text = states('input_text.home_alert') -%}
+{%- if text not in ['', 'unknown', 'unavailable'] %}{{ paint('warn', text | e) }}<br>{% endif -%}
+{%- endmacro -%}
+
+{# The rows under these heads, the first one bold: a section's first row is its head line. #}
+{%- macro section(rows, heads) -%}
+{%- for r in rows | selectattr('head', 'in', heads) -%}
+{%- set text = r.text | e -%}
+{{ paint(r.level, '<b>%s</b>' | format(text) if loop.first else text) }}<br>
+{%- endfor -%}
+{%- endmacro -%}
+
+{%- macro claude() -%}
+{%- set accounts = states('sensor.agent_accounts') -%}
+{{ paint('warn' if '!' in accounts else 'ok', '<b>Claude</b> week ' ~ accounts | replace('!', '') | e) }}<br>
+{{- '$%d/24h' | format(states('sensor.agent_cost_24h') | float(0)) }}<br>
+{%- endmacro -%}
+
+{%- macro house() -%}
+{%- set said = [] -%}
+{%- set temperature = state_attr('weather.forecast_home', 'temperature') -%}
+{%- if temperature is not none -%}
+{%- set said = said + [temperature | round(0) | int ~ state_attr('weather.forecast_home', 'temperature_unit')[-1:]
+                       ~ ' ' ~ states('weather.forecast_home') | replace('-', ' ')] -%}
+{%- endif -%}
+{%- set events = states.calendar | selectattr('attributes.start_time', 'defined') | sort(attribute='attributes.start_time') | list -%}
+{%- if events -%}
+{%- set said = said + [events[0].attributes.message ~ ' '
+                       ~ as_timestamp(events[0].attributes.start_time) | timestamp_custom('%a %-d')] -%}
+{%- endif -%}
+{%- if said %}{{ said | join(' | ') | e }}<br>{% endif -%}
+{%- endmacro -%}
+
+{# rows is none when sensor.agent_overview has expired, which is not the same as nothing to say. #}
+{%- macro render(health, rows) -%}
+<p style="text-align: start">
+{{- system(health) }}{{ reds(health) }}{{ section(rows or [], ['red', 'error']) }}{{ domains(health) }}{{ alert() -}}
+<br>
+{%- if rows is none -%}
+{{ paint('red', 'no fleet overview: agent-mqtt-publish has stopped') }}<br><br>
+{%- else -%}
+{%- for heads in [['needs'], ['agents']] -%}
+{%- set said = section(rows, heads) -%}
+{%- if said %}{{ said }}<br>{% endif -%}
+{%- endfor -%}
+{{ section(rows, ['queue']) }}{{ section(rows, ['ci']) }}
+{%- endif -%}
+{{ claude() }}{{ house() -}}
+</p>
+{%- endmacro -%}
+
+{%- macro widget() -%}
+{{ render(state_attr('sensor.system_health', 'result') or [], state_attr('sensor.agent_overview', 'rows')) }}
+{%- endmacro -%}

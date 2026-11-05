@@ -488,6 +488,10 @@ spec:
               cp /managed-config/package_ci_runners.yaml /config/packages/ci_runners.yaml
               cp /managed-config/package_music_panel.yaml /config/packages/music_panel.yaml
 
+              # Jinja macros, read when HA starts.
+              mkdir -p /config/custom_templates
+              cp /managed-config/phone_widget.jinja /config/custom_templates/phone_widget.jinja
+
               # Assist custom sentences: only gaps HA's built-in intents miss
               # (docs/home-assistant-voice.md "Local-first commands"). Pruned like
               # packages/ so a sentence file dropped from git stops loading.

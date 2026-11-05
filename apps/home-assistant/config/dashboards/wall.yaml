@@ -512,10 +512,6 @@ views:
                 icon: mdi:git
                 content: Forgejo
                 tap_action: { action: url, url_path: 'https://git.kblab.me' }
-              - type: template
-                icon: mdi:check-all
-                content: Vikunja
-                tap_action: { action: url, url_path: 'https://vikunja.kblab.me' }
       - type: grid
         cards:
           - type: heading

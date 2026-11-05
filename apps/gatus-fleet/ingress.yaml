@@ -18,7 +18,7 @@ metadata:
     #
     # crowdsec works because its middleware sets trustForwardHeader: true and
     # therefore reads the real client IP from X-Forwarded-For. Same choice as
-    # mdm.kblab.me / git.kblab.me / vikunja.kblab.me.
+    # mdm.kblab.me / git.kblab.me.
     #
     # This host is reachable from the internet - external-dns has no
     # --domain-filter and the tunnel is a wildcard catch-all, so EVERY *.kblab.me

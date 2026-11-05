@@ -747,16 +747,6 @@ endpoints:
       - "[STATUS] < 500"
       - "[CERTIFICATE_EXPIRATION] > 720h"
 
-  - name: vikunja.kblab.me
-    group: ingress
-    url: "https://vikunja.kblab.me"
-    interval: 300s
-    client:
-      insecure: true
-    conditions:
-      - "[STATUS] < 500"
-      - "[CERTIFICATE_EXPIRATION] > 720h"
-
   - name: www.blacknbrownstudios.com
     group: ingress
     url: "https://www.blacknbrownstudios.com"

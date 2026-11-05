@@ -296,10 +296,3 @@ rest:
           {% set r = value_json.data.result | selectattr('metric.instance', 'eq', 'https://vault.kblab.me') | list %}
           {% set c = (r[0].value[1] | int(0)) if r | length > 0 else 0 %}
           {{ 0 < c < 500 }}
-      - name: "vikunja.kblab.me"
-        unique_id: site_up_vikunja_kblab_me
-        device_class: connectivity
-        value_template: >-
-          {% set r = value_json.data.result | selectattr('metric.instance', 'eq', 'https://vikunja.kblab.me') | list %}
-          {% set c = (r[0].value[1] | int(0)) if r | length > 0 else 0 %}
-          {{ 0 < c < 500 }}

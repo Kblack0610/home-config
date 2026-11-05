@@ -1,0 +1,68 @@
+# Nightly strategy analysis (lab/analyze.py): every strategy x exchange
+# backtested per calendar year over all backfilled history, with lookahead and
+# recursive bias checks, then windows, intervals, Monte Carlo estimates,
+# regimes and correlations rebuilt in the trader database. Past years are
+# cached by file, config and freqtrade version, so a normal night redoes only
+# the current year; the first run, or a freqtrade bump, redoes everything and
+# takes hours. Nothing here touches the bots.
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: freqtrade-analysis
+spec:
+  schedule: "45 2 * * *"  # clear of the :20 backfill
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      backoffLimit: 0  # the next night is the retry; failed chunks are retried there
+      activeDeadlineSeconds: 64800  # guard: a full first run is a few hours, a normal night under one
+      template:
+        metadata:
+          labels:
+            app: freqtrade-analysis
+        spec:
+          restartPolicy: Never
+          nodeSelector:
+            kubernetes.io/arch: amd64
+          securityContext:
+            runAsUser: 1000
+            runAsGroup: 1000
+            fsGroup: 1000
+          initContainers:
+            - name: migrate
+              image: trader
+              command: ["python", "/repo/lab/migrate.py"]
+              env:
+                - name: DATABASE_URL
+                  valueFrom:
+                    secretKeyRef: {name: trader-db, key: database-url}
+              resources:
+                requests:
+                  cpu: 20m
+                  memory: 64Mi
+                limits:
+                  memory: 256Mi
+          containers:
+            - name: analysis
+              image: trader
+              command: ["python", "/repo/lab/analyze.py"]
+              env:
+                - name: DATABASE_URL
+                  valueFrom:
+                    secretKeyRef: {name: trader-db, key: database-url}
+                - name: ANALYZE_WORKERS
+                  value: "6"
+              resources:
+                requests:
+                  cpu: "4"
+                  memory: 4Gi
+                limits:
+                  memory: 12Gi  # six freqtrade backtests at once, each holding a year of 5m candles for 10 pairs
+              volumeMounts:
+                - {name: lab, mountPath: /lab}
+          volumes:
+            - name: lab
+              persistentVolumeClaim:
+                claimName: freqtrade-lab

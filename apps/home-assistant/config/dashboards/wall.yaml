@@ -2,9 +2,9 @@
 # Wall-panel dashboard (Phase 5.5 / 1.5) — the kitchen + secondary tablets.
 # Custom cards vendored by the `install-lovelace-cards` init container.
 #
-# Nest-Hub experience: after `idle_time`s of no touch, lovelace-wallpanel fades
-# into a screensaver: scenery and animated visuals Monday to Saturday, family
-# photos on Sunday, black at night (see the wallpanel block below). While active,
+# After the idle timeout, lovelace-wallpanel dims the panel to that time of day's
+# idle mode: the Home view by day, the Sleep behavior choice at night (see the
+# wallpanel block below). While active,
 # the Home view is a fixed three-column hub under a nav bar (layout: docs/wall-panels.md
 # "Home layout"). Empty-safe: room tiles use auto-entities and fill in as devices
 # get an area.
@@ -19,20 +19,26 @@ kiosk_mode:
     kiosk: true
 
 # ── Clickable control-panel screensaver (lovelace-wallpanel) ──
-# wallpanel provides the screensaver trigger (idle, fullscreen, keep-awake); the
-# CONTENT is a web page loaded through wallpanel's `iframe+` URL mode. Which page
-# and which control layout depends on sensor.wall_mode (packages/wall_night_mode.yaml):
-#   day    (Mon-Sat 07-22) -> base config below: apps/wall-ambient (Wikimedia
-#                             scenery from the "Wall Scenery" album mixed with
-#                             animated shader scenes) behind FULL-SCREEN controls.
-#   family (Sun 07-22)     -> profiles.family: immich-kiosk family photos with the
-#                             narrow right-hand control column.
-#   night  (22-07)         -> profiles.night: solid black.
+# wallpanel owns idle on each tablet: its timer starts the screensaver and a touch
+# ends it. Which screensaver runs and how bright the panel is come from
+# pyscript/wall_idle.py and the per-tablet data in pyscript/wall_panels.yaml, read
+# here per tablet through ${browser_id}, the browser_mod Browser ID in its kiosk URL:
+#   idle_time           sensor.wall_idle_seconds_<panel>, read at page load
+#   screensaver_entity  input_boolean.wall_idle_<panel>, on while idle
+#   profile_entity      sensor.wall_screensaver_<panel>, names one of the below
+# The screensavers, each one piece the data can pick:
+#   scenery -> base config below: apps/wall-ambient (Wikimedia scenery from the
+#              "Wall Scenery" album mixed with animated shader scenes) behind
+#              FULL-SCREEN controls.
+#   family  -> profiles.family: immich-kiosk family photos with the narrow
+#              right-hand control column.
+#   black   -> profiles.black: solid black.
+#   off     -> profiles.off: nothing on top, so the Home view stays visible.
 # wallpanel deep-merges a profile into the base config (arrays replace, objects
-# merge key by key), so profiles.family.style must set every key the base style
-# sets, or the weekday value leaks into Sunday.
+# merge key by key), so a profile's style must set every key the base style sets,
+# or the scenery value leaks into it.
 #
-# INTERACTION MODEL (this is the important bit):
+# INTERACTION MODEL for scenery and family (black and off end on any tap):
 #   - content_interaction: true         -> taps reach the panel cards.
 #   - stop_screensaver_on_mouse_click: false / _move: false -> a tap TOGGLES the
 #     tile IN PLACE and does NOT drop the screensaver. This is what kills the old
@@ -40,8 +46,6 @@ kiosk_mode:
 #   - The ONLY way out is the "Dashboard" button - it `navigate`s, and
 #     stop_screensaver_on_location_change (default true) ends the screensaver and
 #     lands on the full Home dashboard = the "admin ui tap in the corner".
-#   - screensaver_entity: toggling input_boolean.wall_screensaver starts/stops the
-#     frame -> the on-dashboard "Screensaver" button + easy testing (idle is 8s).
 # NOTE: do NOT add ?disable_ui=true to the kiosk URL - it also hides kiosk's
 # clock/date/metadata overlays (verified via Playwright), not just nav chrome.
 wallpanel:
@@ -49,7 +53,9 @@ wallpanel:
   fullscreen: true
   hide_toolbar: true
   hide_sidebar: true
-  idle_time: 8
+  idle_time: "${entity:sensor.wall_idle_seconds_${browser_id}}"
+  # window.browser_mod loads with the page; wait for it so ${browser_id} resolves.
+  wait_for_browser_mod_time: 5
   # Keep the display awake while the dashboard/screensaver is open (browser Wake
   # Lock API). For a mounted tablet, also set OS/kiosk keep-awake (docs/wall-panels.md).
   keep_screen_on_time: 86400
@@ -67,10 +73,9 @@ wallpanel:
   # Parking the idle screen on a distinct Home URL makes every Dashboard tap a
   # real location change. It also returns an idle panel to Home from any view.
   screensaver_start_navigation_path: /wall-panels/home?kiosk&idle
-  # On-demand start/stop from a dashboard button (and easy testing).
-  screensaver_entity: input_boolean.wall_screensaver
-  profile_entity: sensor.wall_mode
-  # Weekday layout: two columns across the whole screen, quick actions left and
+  screensaver_entity: "input_boolean.wall_idle_${browser_id}"
+  profile_entity: "sensor.wall_screensaver_${browser_id}"
+  # Scenery layout: two columns across the whole screen, quick actions left and
   # rooms right, below a clear top band where the clock and weather sit.
   cards:
     - type: vertical-stack
@@ -179,7 +184,7 @@ wallpanel:
       gap: 3vw
       align-items: start
   profiles:
-    # Sunday: family photos, with the narrow translucent control column on the right.
+    # Family photos, with the narrow translucent control column on the right.
     family:
       image_url: 'iframe+https://immich-kiosk.kblab.me/'
       cards:
@@ -202,10 +207,8 @@ wallpanel:
           grid-template-columns: none
           gap: normal
           align-items: normal
-    night:
-      # Longer grace before the screen goes dark.
-      idle_time: 60
-      # No photos at night - blank canvas for the black overlay.
+    black:
+      # No photos: blank canvas for the black overlay.
       show_images: false
       # After 1 s in screensaver mode, the overlay goes solid #000.
       black_screen_after_time: 1
@@ -215,6 +218,18 @@ wallpanel:
       stop_screensaver_on_mouse_move: false
       # Clear the control column: nothing to show on a black screen.
       cards: []
+    # The Home view stays visible under a clear overlay that catches the waking tap.
+    "off":
+      show_images: false
+      content_interaction: false
+      stop_screensaver_on_mouse_click: true
+      stop_screensaver_on_mouse_move: false
+      cards: []
+      style:
+        wallpanel-screensaver-container:
+          background: transparent
+        wallpanel-screensaver-info-box:
+          background: none
 
 views:
   # ───────────────────────────── HOME / GLANCE ─────────────────────────────
@@ -258,7 +273,7 @@ views:
                  else 'amber' if is_state('binary_sensor.agents_need_attention', 'on') else 'blue' }}
             tap_action: { action: navigate, navigation_path: agents }
           - { <<: *nav, primary: Photos, icon: mdi:image-multiple, tap_action: { action: navigate, navigation_path: photos } }
-          - { <<: *nav, primary: Settings, icon: mdi:home-edit, tap_action: { action: navigate, navigation_path: settings } }
+          - { <<: *nav, primary: Settings, icon: mdi:tune, tap_action: { action: navigate, navigation_path: settings } }
           - { <<: *nav, primary: Admin, icon: mdi:cog, icon_color: grey, tap_action: { action: navigate, navigation_path: admin } }
     sections:
       # NOW
@@ -354,8 +369,8 @@ views:
   # stream (Turntable, default, or the MA stream). MA only offers its own
   # streams, so Turntable comes from the Snapcast entity. Source is a GROUP
   # setting: rooms joined into one Snapcast group switch together.
-  # No per-tablet "own room first": every tablet logs in as the same HA user
-  # and browser_mod is not set up, so a card cannot tell which tablet it is on.
+  # No per-tablet "own room first": every tablet logs in as the same HA user, and
+  # only wallpanel reads the Browser ID, so a card cannot tell which tablet it is on.
   # A room whose players do not exist yet (kitchen, until the kitchen tablet's
   # Snapcast client connects) shows a note instead of a missing-entity warning;
   # a state condition reads a missing entity as `unavailable`.
@@ -477,18 +492,6 @@ views:
             name: Voice Room
             icon: mdi:microphone-message
             tap_action: { action: navigate, navigation_path: /voice-satellite }
-          # Start the screensaver now (wallpanel binds this entity via
-          # screensaver_entity; it flips back off when the frame stops).
-          - type: custom:bubble-card
-            card_type: button
-            button_type: name
-            name: Screensaver
-            icon: mdi:monitor-screenshot
-            tap_action: &saver
-              action: perform-action
-              perform_action: input_boolean.turn_on
-              target: { entity_id: input_boolean.wall_screensaver }
-            button_action: { tap_action: *saver }
           - type: heading
             heading: Links
             heading_style: title

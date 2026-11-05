@@ -4,7 +4,7 @@ The canonical reference for the mounted Home Assistant wall-panel tablets: what 
 are, the hard requirements, how each control plane works, how to provision and update
 them, and how to run the Binks voice satellite on them.
 
-- Hands-on per-tablet runbook (dashboard/kiosk/plug-settings steps): [`wall-panels.md`](./wall-panels.md)
+- Hands-on per-tablet runbook (dashboard and kiosk steps): [`wall-panels.md`](./wall-panels.md)
 - Device-fabric overview (MDM planes, fleet liveness, decisions): [`device-fabric.md`](./device-fabric.md)
 - Voice pipeline (Binks stages, server-side): [`home-assistant-voice.md`](./home-assistant-voice.md)
 - Operating skill (reach/reload/provision a tablet): `wall-tablet-ops`
@@ -19,7 +19,7 @@ Each tablet is a stock-Android Lenovo Tab running three cooperating layers:
 |-------|--------------|-----------|
 | **Headwind MDM** (`com.hmdm.launcher`) | Device Owner. Enrollment (Google-free QR), allow-listed apps, its own launcher, OTA fleet management, liveness heartbeats. | `mdm.kblab.me` (LAN/Tailscale) + its own MQTT |
 | **FreeKiosk** (`com.freekiosk`, MIT) | The kiosk: full-screen lock-task WebView pointed at the HA dashboard, keep-awake, screensaver, and a REST + MQTT runtime-control channel. | ADB, FreeKiosk REST (`:8080`), FreeKiosk MQTT |
-| **Home Assistant** (`hass.kblab.me`) | The dashboard content (`wall.yaml`), the voice-satellite integration + Binks Assist pipeline, per-plug settings. | The WebView loads `https://hass.kblab.me/wall-panels` |
+| **Home Assistant** (`hass.kblab.me`) | The dashboard content (`wall.yaml`), the voice-satellite integration + Binks Assist pipeline, idle behaviour. | The WebView loads `https://hass.kblab.me/wall-panels` |
 
 Data/health flow: `apps/headwind-fleet-bridge` polls Headwind's `devices` table every 60s
 and pushes `android_<device>` heartbeats to `apps/gatus-fleet` so tablets appear in the
@@ -242,9 +242,9 @@ microWakeWord `.tflite`, ship it into `/config/voice_satellite/models/`, flip
 
 The in-dashboard lovelace-wallpanel photo screensaver overlays in-page (does not navigate),
 so it is compatible with a held mic. A real OS screen-off, or a screensaver configured to
-navigate away, tears the mic stream down. `wall.yaml` `idle_time` is 8s - if a panel is
-primarily a voice panel, verify the satellite stays `idle` across a screensaver cycle; raise
-`idle_time` if it drops.
+navigate away, tears the mic stream down. If a panel is primarily a voice panel, verify the
+satellite stays `idle` across a screensaver cycle; raise `idle_seconds` in
+`pyscript/wall_panels.yaml` if it drops.
 
 ### 6.7 Diagnose the mic in one shot
 
@@ -303,8 +303,8 @@ provide remote shell (no self-hostable MDM does - confirmed). Liveness bridge:
 - The WebView **caches** the dashboard; a Flux deploy does NOT auto-refresh a panel. Force it:
   `adb ... am force-stop com.freekiosk` + relaunch (or REST `/api/reload`, or FreeKiosk
   pull-to-refresh). Order of operations + verification: `wall-panels.md` Section on reloading.
-- Per-tablet identity uses browser_mod Browser IDs (`?BrowserID=wall-<room>`) for future
-  per-panel targeting (note: browser_mod is vendored but must be configured to register).
+- Per-tablet identity uses browser_mod Browser IDs (`?BrowserID=wall_<room>`), which the idle
+  settings depend on: `wall-panels.md` Section 3.
 
 ---
 

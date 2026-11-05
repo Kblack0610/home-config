@@ -1,28 +1,58 @@
 # Wall Panels (Home Assistant kiosk tablets)
 
-Turns a wall-mounted Android tablet into a Nest-Hub-style home panel: a polished HA dashboard that, when idle, fades into a screensaver with the room controls on top of it.
+Turns a wall-mounted Android tablet into a Nest-Hub-style home panel: a polished HA dashboard that dims when idle: the view stays up by day, and at night it shows what the Sleep behavior setting picks.
 
 - **Dashboard:** `https://hass.kblab.me/wall-panels` (LAN/Tailscale only)
 - **Views:** Home (glance, with collapsible Cameras and Music sections), Control, Devices, Local, Ops/Fleet, Agents, Photos, Music, Media, Settings, Admin
-- **Screensaver:** lovelace-wallpanel loads a web page via `iframe+` and repurposes its info box as the control panel (`wallpanel.cards`). Taps toggle tiles in place; the Dashboard button is the way out. What it shows follows a schedule, below.
+- **Screensaver:** lovelace-wallpanel loads a web page via `iframe+` and repurposes its info box as the control panel (`wallpanel.cards`). It is one piece the idle owner switches per time of day, below.
 - **Dashboard source:** `apps/home-assistant/config/dashboards/wall.yaml` (code-first, Flux-deployed)
 
-### Screensaver schedule
+### Idle behaviour
 
-`sensor.wall_mode` (`apps/home-assistant/config/packages/wall_night_mode.yaml`) is the wallpanel `profile_entity`, and its state picks the profile:
+| When | Idle | Touch or motion |
+|------|------|-----------------|
+| Day | Home view stays up at the tablet's lowest usable brightness | Full brightness |
+| Night (22:00-07:00) | The Sleep behavior choice, at brightness 0 | Full brightness and the view |
 
-| State | When | Content | Controls |
-|-------|------|---------|----------|
-| `day` | Mon-Sat 07:00-22:00 | `apps/wall-ambient` (`wall-ambient.kblab.me`): Wikimedia Commons scenery from the "Wall Scenery" album, with an animated shader scene (plasma, flow, kaleidoscope, Julia set, tunnel, aurora) after every few slides | Full screen below a clear band for the clock and weather: Talk and Dashboard as two big buttons with a health pill under them on the left, square room tiles on the right; one column on a portrait tablet |
-| `family` | Sun 07:00-22:00 | `apps/immich-kiosk` family album ("Wall Best"), portrait pairing, metadata | Narrow translucent column on the right |
-| `night` | 22:00-07:00 | Solid black after 1 s | None; any tap exits |
+After the idle timeout the panel goes back to that time of day's idle mode. To change the night mode, use the **Sleep behavior** select on the Settings view: Black screensaver or Dim view. It takes effect at once, with no edit or deploy.
+
+One owner: lovelace-wallpanel's idle timer on each tablet. It starts the screensaver, a touch ends it, and it mirrors that into `input_boolean.wall_idle_<panel>`. `config/pyscript/wall_idle.py` watches those booleans and sets brightness through FreeKiosk's HA number entity, and publishes `sensor.wall_screensaver_<panel>`, which wallpanel reads as its `profile_entity`. Nothing else dims a panel: FreeKiosk's own screensaver is off, and Android never sleeps.
+
+Per-tablet data is in `config/pyscript/wall_panels.yaml`, `defaults` plus a block per panel that can override any key. It loads when HA starts, so a change here deploys through Flux:
+
+| Key | Meaning |
+|-----|---------|
+| `idle_seconds` | Idle timeout. Read at page load; the restart reloads the panels. |
+| `active_brightness` | Brightness while in use, 0-100 |
+| `day.idle_brightness`, `night.idle_brightness` | Brightness while idle |
+| `day.screensaver` | `off`, `black`, `scenery` or `family` |
+| `sleep_behavior` | Per panel only: `Dim view` or `Black screensaver`, overrides the select for that panel |
+| `night_window` | `start` and `end`, 24h local time |
+| `motion_wake` | Turn on FreeKiosk's always-on camera motion and wake on it |
+
+All four tablets support the same options, so the select has no per-tablet list and the override is data only.
+
+The screensavers are the wallpanel profiles in `wall.yaml`:
+
+| Profile | Content | Controls |
+|---------|---------|----------|
+| `off` | Clear overlay, so the Home view shows through | None; any tap ends it |
+| `black` | Solid black after 1 s | None; any tap ends it |
+| `scenery` (base config) | `apps/wall-ambient` (`wall-ambient.kblab.me`): Wikimedia Commons scenery from the "Wall Scenery" album, with an animated shader scene (plasma, flow, kaleidoscope, Julia set, tunnel, aurora) after every few slides | Full screen below a clear band for the clock and weather: Talk and Dashboard as two big buttons with a health pill under them on the left, square room tiles on the right; one column on a portrait tablet |
+| `family` | `apps/immich-kiosk` family album ("Wall Best"), portrait pairing, metadata | Narrow translucent column on the right |
+
+`scenery` and `family` are not on any schedule now; set `day.screensaver` to bring one back. On those two, taps toggle tiles in place and the Dashboard button is the way out.
+
+**Display off is not offered.** Checked 2026-11-04 on all four tablets (`wall-bedroom`, `wall_office`, `wall_kitchen`, `wall_living_room`): none can power the panel off.
+
+- FreeKiosk `set/screen OFF` left `screen.on` true over three state reports on each, because it has neither Device Admin nor the Accessibility service, and it falls back to dimming. Headwind MDM is device owner, so FreeKiosk cannot be.
+- adb (5555) is closed on all four, so there is no `input keyevent` or screen-off timeout.
+- A real lock would also stop the WebView mic, so the wake word would die on all four voice panels, and touch cannot wake a locked panel. Wake would have to come from HA presence or MQTT.
 
 - **Scenery album:** owned by a dedicated Immich user `wall@kblab.me`, so none of the family libraries mix in. The `immich-scenery` CronJob (`apps/immich/scenery.py`, 05:00) adds 40 new free-licensed featured pictures a night from the Commons categories in `CATEGORIES`, and prunes the oldest past 400. Each asset's description is its credit (title, author, licence), which the slideshow shows.
 - **Retune the rotation** in the `image_url` query string in `wall.yaml`: `scenery` (slides between shader scenes), `trippy_secs` (length of a shader scene), `shaders` (comma list to restrict which ones play), `render_scale` (lower it if a tablet stutters). Set `trippy_secs=0` to turn shader scenes off.
 - **Health pill:** green "All up" or red "N down" from `sensor.services_down_count` (`packages/fleet_alerts.yaml`), the same count the phone, the Ops view and the ntfy alert read; tap opens Ops. To widen what counts as down, change that sensor, not the card.
 - **Screen sizes:** the two columns need 420px each, so a portrait tablet stacks them; room tiles are capped at `--wall-tile-max` (`min(15vh, 120px)`) so all rooms fit a 600px tall Tab M9. Check a change at 1005x600 (Tab M9), 1280x800 (Tab M11) and 1463x914 (Idea Tab), landscape and portrait, before merging.
-- **Brightness:** at night the black screen also drops every FreeKiosk panel to brightness 0, and waking or 07:00 puts it back to 50 (`wall_panels_black_screen_brightness`, same package). `input_boolean.wall_screensaver` is shared, so a tap on one panel brightens them all. It never uses `screen_power`, which would kill the mic.
-- **Change the schedule** in the `{% if %}` block of `wall_night_mode.yaml`. wallpanel deep-merges a profile into the base config, so `profiles.family.style` must set every style key the weekday base sets.
 
 Hardware decisions, profiles model, and phase plan live in the project plan; this is the
 hands-on per-tablet runbook. For the full reference - requirements table, FreeKiosk
@@ -111,8 +141,8 @@ on stock-Android Lenovo tablets (M9/M11). (FireOS is not supported — see plan.
 > you don't need it — but it's there if you ever want the photos even on a non-HA page.
 
 > **Picking up dashboard changes on the tablet:** a tablet keeps the page it loaded until the
-> page reloads, so a deploy alone never reaches it. A `wall.yaml` change restarts HA, and on every
-> HA start the automation `wall_panels_reload_after_start` (`packages/wall_screensaver.yaml`)
+> page reloads, so a deploy alone never reaches it. A `wall.yaml` change restarts HA, and once
+> `wall_idle.py` has started, the automation `wall_panels_reload_after_start` (`packages/wall_idle.yaml`)
 > presses the FreeKiosk MQTT `reload` button of every panel that has one, found by device model
 > "(FreeKiosk)". A panel without FreeKiosk MQTT keeps the old page until someone pulls to refresh.
 > Side effect: any HA restart reloads the panels (a few seconds, mic included). A change to
@@ -136,14 +166,13 @@ What survives a reboot and what does not, per channel:
 | FreeKiosk REST `:8080` | `/api/url`, `/api/js` | Yes on the tablet, but the set-once key must be in `~/.config/wall-tablets/<name>.rest-key` | none: that directory does not exist on the workstation, so no key is usable |
 | `adb tcpip 5555` | screencap, input, provisioning | No, resets on reboot (no root, `persist.adb.tcp.port` denied) | none |
 | Android Wireless Debugging (paired workstation, random port, `~/.local/bin/adb-wall-bedroom` scans for it) | screencap, scrcpy | **No in practice.** Set up on .60 on 2026-07-18; on 2026-10-15 the scan found no port. Android turns it off on its own (Wi-Fi reconnect / timeout), not only on reboot | none |
-| DHCP static lease | stable IP | Yes (router-side) | wall-bedroom only; kitchen, living room, office are dynamic and their old IPs (.181/.234/.235) no longer answer |
+| DHCP static lease | stable IP | Yes (router-side) | wall-bedroom only; kitchen (.229), living room (.181) and office (.227) are dynamic, read 2026-11-04 from each panel's FreeKiosk state |
 
-So today there is **no remote view (screenshot) path that holds**, and remote reload works on every panel with FreeKiosk MQTT. FreeKiosk MQTT has no screenshot. Verify a reload without a screenshot via HA: `sensor.freekiosk_*_current_url`, `binary_sensor.freekiosk_*_screen_on`, and `assist_satellite.<room>` going `idle`.
+So today there is **no remote screenshot path that holds**, though `freekiosk/<name>/set/execute_js` can read the DOM (see `wall-tablet-ops`), and remote reload works on every panel with FreeKiosk MQTT. FreeKiosk MQTT has no screenshot. Verify a reload without a screenshot via HA: `sensor.freekiosk_*_current_url`, `binary_sensor.freekiosk_*_screen_on`, and `assist_satellite.<room>` going `idle`.
 
 Open follow-up, in order:
-1. Find the current IPs of kitchen / living room / office (Headwind device list or router leases) and add static leases in `infrastructure/dhcp/devices.yaml`.
-2. Turn on FreeKiosk MQTT on the living room panel (office and kitchen done 2026-11-03). No cable needed: on the tablet, tap 5 times in the bottom-right corner, enter PIN 4321, Advanced tab, MQTT section, and set broker `mosquitto.kblab.me`, port `31883`, device name `wall-<room>`, no username. With a USB session, `provision-wall-tablet.sh --mqtt-broker mosquitto.kblab.me` does the same and keeps the REST key file.
-3. For a remote view that holds: check what Headwind MDM (already device owner on all four) can enforce, such as keeping USB/wireless debugging on, or a remote-view app it keeps running. Do not rely on Wireless Debugging alone.
+1. Add static leases for kitchen / living room / office in `infrastructure/dhcp/devices.yaml`.
+2. For a remote view that holds: check what Headwind MDM (already device owner on all four) can enforce, such as keeping USB/wireless debugging on, or a remote-view app it keeps running. Do not rely on Wireless Debugging alone.
 
 ---
 
@@ -216,14 +245,14 @@ The wall Home view and the phone Home view both include `dashboards/_cameras_car
 
 `/wall-panels/music` (Music button on Home) has one section per Snapcast room: the Music Assistant player as a `media-control` card (now playing, play/pause, skip, the browse button for MA's library, radio and Spotify, the join button for grouping rooms), a volume slider, and a Source picker on the room's Snapcast client entity (`media_player.<room>_snapcast_client`). Turntable is picked there, because MA only offers its own streams. Source is per Snapcast group, so joined rooms switch together.
 
-Every tablet shows the same view: all tablets log in as the same HA user and browser_mod has no config entry, so a card cannot tell which tablet it is on. A room's cards hide while its players do not exist (a state condition reads a missing entity as `unavailable`).
+Every tablet shows the same view: all tablets log in as the same HA user, and only wallpanel reads the Browser ID, so a card cannot tell which tablet it is on. A room's cards hide while its players do not exist (a state condition reads a missing entity as `unavailable`).
 
 ---
 
 ## 3. Per-tablet identity (browser_mod)
-Each tablet registers with browser_mod under a stable Browser ID by adding it to the URL once:
-`…/wall-panels/home?kiosk&BrowserID=wall-kitchen` (e.g. `wall-kitchen`, `wall-bedroom`).
-This lets later automations target a specific panel (navigate it home on idle, night dim, etc.).
+The idle settings reach a tablet through its Browser ID, which must match its key in `wall_panels.yaml`. Set it once by loading the URL with it:
+`https://hass.kblab.me/wall-panels/home?kiosk&BrowserID=wall_kitchen` (underscores: `wall_bedroom`, `wall_office`, `wall_kitchen`, `wall_living_room`).
+It stays in the tablet's localStorage, so the plain URL works afterwards. To set it remotely, publish that URL to `freekiosk/<name>/set/url`. New tablet: pass it to `provision-wall-tablet.sh --url`, and add the panel to `wall_panels.yaml` and `packages/wall_idle.yaml`.
 
 ---
 
@@ -238,44 +267,11 @@ rejected for non-admins regardless of UI). The PIN popup added later is cosmetic
 
 ---
 
-## 4.5 Plug Settings view (any user configures the home)
+## 4.5 Settings view
 
-The **Settings** view (Settings button on Home -> `/wall-panels/settings`) lets **any user, including a
-non-admin on the kiosk**, configure each smart plug: its **room**, **name**, **icon**,
-**category**, and whether it counts as a **light**. Tap a plug in the list → it loads into the
-always-visible **Editor** at the top → change fields → **Save**. Changes are instant and apply
-everywhere (the plug dashboards regroup by room; voice picks up the new name/area). Plugs start
-**Unassigned** — nothing is placed for you.
+The **Settings** view (Settings button on Home -> `/wall-panels/settings`, also on the phone dashboard) holds only what someone changes from the wall: **Sleep behavior**.
 
-Where the metadata lives — all in HA's **native registries** (the persistent `.storage` "db"),
-so it's the same data HA's own UI would write and it powers native area/voice features:
-
-| Field | Native store |
-|-------|--------------|
-| Room | `core.area_registry` + entity `area_id` |
-| Name | `core.entity_registry` name override |
-| Icon | `core.entity_registry` icon override |
-| Category | `core.label_registry` + entity `labels` |
-| Is-a-light | `switch_as_x` config entry (add/remove) |
-
-How it works (why it needs a helper): HA has **no built-in service to set an entity's area or
-name**, and the native registry editors are **admin-only and hidden in kiosk mode**. So the
-editor calls a small **pyscript** app (`config/pyscript/plug_settings.py`) whose services
-(`pyscript.plug_load` / `pyscript.plug_apply`) run in HA's own context and perform the registry
-writes — callable by a non-admin. The UI is an **inline editor**: a fixed set of staging helpers
-in `config/packages/plug_settings.yaml` (no browser_mod dependency). Tapping a plug calls
-`pyscript.plug_load` (fills the helpers); Save calls `pyscript.plug_apply` (writes them back).
-The per-plug rows are `custom:button-card` because HA core does not template `tap_action`
-service data (button-card's `[[[ ]]]` JS does, so it passes the tapped plug's `entity_id`).
-
-> ⚠️ **Security note:** the `pyscript.plug_*` services are a deliberate, **LAN/Tailscale-only**
-> privileged surface — a non-admin can write the registry through them. That's the price of
-> kiosk-editable metadata; acceptable because the dashboard is not internet-exposed. Do not
-> expose HA publicly without gating these.
-
-Adding rooms: the editor's Room dropdown lists live HA areas; type a new room in **New room
-(optional)** to create it on Save. The baseline palette (Living Room, Kitchen, Bedroom, Office,
-Garage, Bathroom) is seeded idempotently by the `seed-areas` init container.
+Names, rooms, icons and labels are owned by `config/pyscript/room_layout.yaml`, applied by `pyscript.room_layout_seed` on startup into HA's registries. Add `labels: [Lamp]` to a row to put a plug in the lamp group. Whether a plug counts as a light is the `seed-switch-as-x-lights` list in `deployment.yaml`. The baseline rooms are seeded by the `seed-areas` init container.
 
 ---
 
@@ -316,4 +312,9 @@ Settings → About → Status → Wi-Fi MAC (use the *non-randomized* MAC for th
 | A name changed in `room_layout.yaml` does not show on a tile | The seed skips an entity that already has a name. Call `pyscript.room_layout_seed` with `force: true` once after the deploy. |
 | A tile needs an icon MDI does not have | Add its path to `config/www/wall-icons.js`, use `wall:<name>` as the `icon`, and bump `?v=` in `configuration.yaml`. |
 | A live edit to a dashboard partial (`_rooms_cards.yaml`) does not show | YAML-mode dashboards reload on the main file's mtime only: `touch /config/dashboards/wall.yaml` in the pod, then refresh. |
+| A panel never goes idle, or a tap on one wakes the wrong one | Its Browser ID is wrong or missing, so `${browser_id}` matches no `sensor.wall_idle_seconds_<panel>` and an empty idle time means never idle. Load the URL in Section 3 once, then check the sensor exists; if none do, read the HA log for `wall_idle`. |
+| The view is unreadable at day idle, or too bright | Set `day.idle_brightness` for that panel in `wall_panels.yaml`. It is 1, not 0, because 0 is Android's lowest backlight and can leave a view too dark. The level each panel really reaches was not measured remotely (no screenshots, and the office tablet has no light sensor), so judge it by eye. |
+| A panel is still too bright at night | 0 is the floor FreeKiosk can set; below that is the hardware. Black on an LCD still leaks some backlight. Display off is not available on any tablet, see Idle behaviour. |
+| Worried about burn-in with the view up all day | These tablets have LCD panels, which do not burn in like OLED but can hold a faint image of a static layout after long hours. Low backlight slows it. If a ghost image shows, set `day.screensaver: scenery` for that panel, which moves. |
+| A panel wakes by itself at night | Camera motion on `motion_wake`, often a shadow or headlights. Set `motion_wake: false` for that panel; touch still wakes it. Also the setting to turn off if `wall-bedroom` runs short of memory, which it is closest to. |
 | Room tiles run off the bottom of a small tablet | Lower `--wall-tile-max` in `wall.yaml`'s info-box style; a tile cannot shrink below its icon and two-line name (about 90px). |

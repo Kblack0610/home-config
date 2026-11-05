@@ -1,0 +1,63 @@
+# Wall-panel idle helpers, and reloading the panels after a restart. The behaviour
+# and the per-tablet data are in pyscript/wall_idle.py and pyscript/wall_panels.yaml.
+#
+# wallpanel binds input_boolean.wall_idle_<panel> via screensaver_entity: on while
+# that tablet's screensaver runs. Turning one off wakes that tablet.
+input_boolean:
+  wall_idle_wall_bedroom:
+    name: Wall idle bedroom
+    icon: mdi:sleep
+  wall_idle_wall_office:
+    name: Wall idle office
+    icon: mdi:sleep
+  wall_idle_wall_kitchen:
+    name: Wall idle kitchen
+    icon: mdi:sleep
+  wall_idle_wall_living_room:
+    name: Wall idle living room
+    icon: mdi:sleep
+
+# What an idle panel does at night. Only what every tablet can do is listed.
+input_select:
+  wall_sleep_behavior:
+    name: Sleep behavior
+    icon: mdi:weather-night
+    options:
+      - Black screensaver
+      - Dim view
+
+# A tablet keeps the dashboard it loaded until its page reloads, so a wall.yaml
+# change (which restarts HA) never reaches a panel by itself. Once wall_idle.py has
+# published the panels' settings, press the FreeKiosk MQTT `reload` button of every
+# panel that has one. Panels are found by device model "(FreeKiosk)", because entity
+# ids differ per tablet (button.freekiosk_<id>_reload vs button.wall_office_reload).
+# Panels without FreeKiosk MQTT are not covered: enable it per docs/wall-panels.md.
+automation:
+  - id: wall_panels_reload_after_start
+    alias: "Wall panels: reload after Home Assistant starts"
+    mode: single
+    trigger:
+      - platform: event
+        event_type: wall_panels_ready
+    action:
+      # Wait for the MQTT buttons to come back; the timeout is only a guard.
+      - wait_template: >
+          {% set ns = namespace(down=0) %}
+          {% for e in integration_entities('mqtt')
+               if e is match('button\\..*_reload$') and '(FreeKiosk)' in (device_attr(e, 'model') or '')
+                  and states(e) == 'unavailable' %}{% set ns.down = ns.down + 1 %}{% endfor %}
+          {{ ns.down == 0 }}
+        timeout: "00:05:00"
+        continue_on_timeout: true
+      - variables:
+          panels: >
+            {% set ns = namespace(up=[]) %}
+            {% for e in integration_entities('mqtt')
+                 if e is match('button\\..*_reload$') and '(FreeKiosk)' in (device_attr(e, 'model') or '')
+                    and states(e) != 'unavailable' %}{% set ns.up = ns.up + [e] %}{% endfor %}
+            {{ ns.up }}
+      - condition: template
+        value_template: "{{ panels | count > 0 }}"
+      - service: button.press
+        target:
+          entity_id: "{{ panels }}"

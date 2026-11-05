@@ -4,12 +4,12 @@
 # thing's room is its area_id. This file is the reproducible seed for that; it
 # does NOT replace the registries, it just fills them in on a fresh boot.
 #
-# Applied by room_layout_seed() in pyscript/plug_settings.py on every HA startup
+# Applied by room_layout_seed() in pyscript/room_layout.py on every HA startup
 # (and on-demand via the pyscript.room_layout_seed service). NON-DESTRUCTIVE:
 #   - areas here are created only if missing;
 #   - an entity/device is assigned a room ONLY if it currently has none;
-#   - a name or icon is set ONLY if there is no override yet.
-# So a manual change via the wall Settings view or the HA UI always wins and is
+#   - a name, icon or label is set ONLY if there is none yet.
+# So a manual change in the HA UI always wins and is
 # never clobbered on the next restart. To re-seed after a manual change, clear
 # that thing's area in the UI and restart HA (or call the service with
 # force: true to re-apply everything). A renamed row here needs that force call
@@ -22,8 +22,8 @@ areas:
   - Kitchen
   - Living Room
 
-# Smart plugs — entity-level room + name, matching the plug Settings editor's
-# per-entity model. name is the entity_registry name override (optional). A lamp's
+# Smart plugs: entity-level room + name, plus labels (a plug labelled Lamp joins the
+# lamp groups in packages/lamps.yaml). name is the entity_registry name override (optional). A lamp's
 # name leaves out "Light": its tile's icon says that, and aliases keep it speakable.
 entities:
   switch.athom_smart_plug_v3_600fec_switch: { room: Bedroom,     name: Bedroom }

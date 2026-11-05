@@ -1,0 +1,34 @@
+# Wall-panel idle behaviour, as data. Read by pyscript/wall_idle.py when HA starts;
+# docs/wall-panels.md "Idle behaviour" explains every key.
+#
+# A panel's id is its browser_mod Browser ID, and it must also have an
+# input_boolean.wall_idle_<id> in packages/wall_idle.yaml.
+defaults:
+  idle_seconds: 60
+  active_brightness: 50
+  night_window: { start: "22:00", end: "07:00" }
+  # off keeps the wall view up. Also black, scenery or family: the wallpanel
+  # profiles in dashboards/wall.yaml.
+  day: { idle_brightness: 1, screensaver: "off" }
+  # At night the screensaver comes from the Sleep behavior select on the Settings
+  # view. Setting sleep_behavior on a panel below overrides that select for it.
+  night: { idle_brightness: 0 }
+  motion_wake: true
+
+panels:
+  wall_bedroom:
+    brightness: number.freekiosk_dc43ede573076a31_brightness_control
+    motion: binary_sensor.freekiosk_dc43ede573076a31_motion_detected
+    motion_switch: switch.freekiosk_dc43ede573076a31_motion_always_on
+  wall_office:
+    brightness: number.wall_office_brightness_control
+    motion: binary_sensor.wall_office_motion
+    motion_switch: switch.wall_office_always_on_motion_detection
+  wall_kitchen:
+    brightness: number.wall_kitchen_brightness_control
+    motion: binary_sensor.wall_kitchen_motion
+    motion_switch: switch.wall_kitchen_always_on_motion_detection
+  wall_living_room:
+    brightness: number.wall_living_room_brightness_control
+    motion: binary_sensor.wall_living_room_motion
+    motion_switch: switch.wall_living_room_always_on_motion_detection

@@ -420,11 +420,9 @@ spec:
               else
                 echo "WARN  failed: browser_mod"; FAIL=$((FAIL+1))
               fi
-              # pyscript is a Python custom_component: it exposes non-admin-callable
-              # services that write the HA registries (area/name/icon/labels) so any
-              # wall-panel user can configure a plug from the Settings view (HA has
-              # no built-in set-area/set-name service and the native editors are
-              # admin-only + hidden in kiosk). App code lives in /config/pyscript/.
+              # pyscript is a Python custom_component: its apps write the HA registries
+              # (HA has no built-in set-area/set-name service) and run the wall panels'
+              # idle behaviour. App code lives in /config/pyscript/.
               if wget -q -O /tmp/ps.tgz "https://github.com/custom-components/pyscript/archive/refs/tags/2.0.1.tar.gz"; then
                 tar -xzf /tmp/ps.tgz -C /tmp
                 rm -rf /config/custom_components/pyscript
@@ -480,9 +478,7 @@ spec:
               cp /managed-config/package_marine.yaml /config/packages/marine.yaml
               cp /managed-config/package_voice_satellite_binks.yaml /config/packages/voice_satellite_binks.yaml
               cp /managed-config/package_voice_pe_pucks.yaml /config/packages/voice_pe_pucks.yaml
-              cp /managed-config/package_plug_settings.yaml /config/packages/plug_settings.yaml
-              cp /managed-config/package_wall_screensaver.yaml /config/packages/wall_screensaver.yaml
-              cp /managed-config/package_wall_night_mode.yaml /config/packages/wall_night_mode.yaml
+              cp /managed-config/package_wall_idle.yaml /config/packages/wall_idle.yaml
               cp /managed-config/package_avr_yamaha.yaml /config/packages/avr_yamaha.yaml
               cp /managed-config/package_honeywell_fan.yaml /config/packages/honeywell_fan.yaml
               cp /managed-config/package_zomboid.yaml /config/packages/zomboid.yaml
@@ -505,10 +501,11 @@ spec:
               mkdir -p /config/voice_satellite/models
               cp /managed-config/voice_satellite_model_binks.tflite /config/voice_satellite/models/binks.tflite
 
-              # pyscript apps (registry-write services for the plug Settings editor)
-              cp /managed-config/pyscript_plug_settings.py /config/pyscript/plug_settings.py
-              # room-layout seed data read by pyscript.room_layout_seed on startup
+              # pyscript apps, each with the data it reads on startup
+              cp /managed-config/pyscript_room_layout.py /config/pyscript/room_layout.py
               cp /managed-config/pyscript_room_layout.yaml /config/pyscript/room_layout.yaml
+              cp /managed-config/pyscript_wall_idle.py /config/pyscript/wall_idle.py
+              cp /managed-config/pyscript_wall_panels.yaml /config/pyscript/wall_panels.yaml
 
               cp /managed-config/dashboard_overview.yaml /config/dashboards/overview.yaml
               # shared room-layout partial, !include'd by overview + wall Home
@@ -2043,9 +2040,9 @@ spec:
         # config_flow @ HA 2025.11). Idempotent on domain + options.entity_id.
         # The wrapped lights land in core.entity_registry, so seed-binks-expose
         # exposes them to Binks on the next boot (light domain is allow-listed).
-        # Unlike the UI/plug-editor flow, a JSON-seeded entry does not hide the
+        # Unlike the UI flow, a JSON-seeded entry does not hide the
         # source switch or copy its name; on a live HA prefer the flow
-        # (pyscript _apply_is_light, or POST /api/config/config_entries/flow),
+        # (POST /api/config/config_entries/flow),
         # which this seed then skips because the entity_id is already wrapped.
         - name: seed-switch-as-x-lights
           image: ghcr.io/home-assistant/home-assistant:2026.9.4

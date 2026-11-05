@@ -1235,7 +1235,7 @@
             "uid": "${datasource}"
           },
           "editorMode": "code",
-          "expr": "max(cc:domain_status{domain=~\"platform|other\"})",
+          "expr": "max(cc:domain_status{domain=~\"platform|other|queue|home\"})",
           "format": "time_series",
           "instant": true,
           "range": false,

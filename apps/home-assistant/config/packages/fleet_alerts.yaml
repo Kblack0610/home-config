@@ -27,6 +27,32 @@ template:
         icon: mdi:server-network-off
 
 automation:
+  # Prometheus has no Home Assistant metrics, so each sensor goes out over MQTT and becomes
+  # cc:watch_state{domain="home"}: the waybar health chip and this package's count stay one
+  # list. agents/ keeps it in cc:agents_topic_live, whose 20 min window the 5 min cadence
+  # feeds; a sensor that goes unavailable stops publishing and drops out, as it does here.
+  - id: fleet_connectivity_publish
+    alias: "Fleet: publish connectivity to MQTT"
+    mode: restart
+    trigger:
+      - platform: time_pattern
+        minutes: "/5"
+      - platform: state
+        entity_id: sensor.services_down_count
+    action:
+      - repeat:
+          for_each: >-
+            {{ states.binary_sensor
+               | selectattr('attributes.device_class', 'eq', 'connectivity')
+               | selectattr('state', 'in', ['on', 'off'])
+               | map(attribute='entity_id') | list }}
+          sequence:
+            - service: mqtt.publish
+              data:
+                topic: "agents/hass/conn/{{ repeat.item.split('.')[1] }}"
+                payload: >-
+                  {"tripped": {{ is_state(repeat.item, 'off') | tojson }}}
+
   - id: fleet_service_down_notify
     alias: "Fleet: service(s) down → ntfy"
     mode: single

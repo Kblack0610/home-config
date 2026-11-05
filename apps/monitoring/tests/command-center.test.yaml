@@ -276,3 +276,115 @@ tests:
         exp_samples:
           - labels: 'cc:component_status{domain="agents",component="runners"}'
             value: 0
+
+  - name: watch state names each item in its domain at its weight, and burst power is no fault
+    interval: 1m
+    input_series:
+      - series: 'mqtt_tripped{topic="agents_h_watch_playground_nightly",instance="a"}'
+        values: '1x10'
+      - series: 'mqtt_tripped{topic="agents_h_watch_playground_nightly",instance="b"}'
+        values: '1x10'
+      - series: 'mqtt_tripped{topic="agents_h_watch_queue_starved"}'
+        values: '0x10'
+      - series: 'mqtt_stale{topic="agents_h_watch_queue_starved"}'
+        values: '1x10'
+      - series: 'mqtt_tripped{topic="agents_h_watch_heal_flapping"}'
+        values: '1x10'
+      - series: 'mqtt_tripped{topic="agents_h_watch_fleet_thermal"}'
+        values: '1x10'
+      - series: 'mqtt_tripped{topic="agents_h_watch_claude_account_pace"}'
+        values: '1x10'
+      - series: 'mqtt_tripped{topic="agents_h_watch_brand_new"}'
+        values: '1x10'
+      - series: 'mqtt_tripped{topic="agents_h_watch_aws_burst_power"}'
+        values: '1x10'
+      - series: 'mqtt_tripped{topic="agents_hass_conn_voice_bedroom_puck"}'
+        values: '1x10'
+      - series: 'mqtt_tripped{topic="agents_hass_conn_git_kblab_me"}'
+        values: '0x10'
+      # a watch whose topic went quiet keeps its last value and must not count
+      - series: 'mqtt_tripped{topic="agents_h_watch_deploy_drift"}'
+        values: '1x30'
+      - series: 'mqtt_message_total{topic="agents_h_watch_deploy_drift"}'
+        values: '7x30'
+      - series: 'mqtt_message_total{topic="agents_h_watch_playground_nightly",instance="a"}'
+        values: '0+1x10'
+      - series: 'mqtt_message_total{topic="agents_h_watch_queue_starved"}'
+        values: '0+1x10'
+      - series: 'mqtt_message_total{topic="agents_h_watch_heal_flapping"}'
+        values: '0+1x10'
+      - series: 'mqtt_message_total{topic="agents_h_watch_fleet_thermal"}'
+        values: '0+1x10'
+      - series: 'mqtt_message_total{topic="agents_h_watch_claude_account_pace"}'
+        values: '0+1x10'
+      - series: 'mqtt_message_total{topic="agents_h_watch_brand_new"}'
+        values: '0+1x10'
+      - series: 'mqtt_message_total{topic="agents_h_watch_aws_burst_power"}'
+        values: '0+1x10'
+      - series: 'mqtt_message_total{topic="agents_hass_conn_voice_bedroom_puck"}'
+        values: '0+1x10'
+      - series: 'mqtt_message_total{topic="agents_hass_conn_git_kblab_me"}'
+        values: '0+1x10'
+    promql_expr_test:
+      - expr: cc:watch_state
+        eval_time: 5m
+        exp_samples:
+          - labels: 'cc:watch_state{domain="ci",item="playground_nightly"}'
+            value: 2
+          - labels: 'cc:watch_state{domain="queue",item="queue_starved"}'
+            value: 1
+          - labels: 'cc:watch_state{domain="queue",item="heal_flapping"}'
+            value: 1
+          - labels: 'cc:watch_state{domain="machines",item="fleet_thermal"}'
+            value: 1
+          - labels: 'cc:watch_state{domain="spend",item="claude_account_pace"}'
+            value: 1
+          - labels: 'cc:watch_state{domain="other",item="brand_new"}'
+            value: 2
+          - labels: 'cc:watch_state{domain="home",item="voice_bedroom_puck"}'
+            value: 2
+      - expr: cc:domain_status{domain=~"ci|queue|machines|spend|other|home|platform"}
+        eval_time: 5m
+        exp_samples:
+          - labels: 'cc:domain_status{domain="ci"}'
+            value: 2
+          - labels: 'cc:domain_status{domain="queue"}'
+            value: 1
+          - labels: 'cc:domain_status{domain="machines"}'
+            value: 1
+          - labels: 'cc:domain_status{domain="spend"}'
+            value: 1
+          - labels: 'cc:domain_status{domain="other"}'
+            value: 2
+          - labels: 'cc:domain_status{domain="home"}'
+            value: 2
+          - labels: 'cc:domain_status{domain="platform"}'
+            value: 0
+      - expr: cc:red_now{item=~"watch .+"}
+        eval_time: 5m
+        exp_samples:
+          - labels: 'cc:red_now{item="watch playground_nightly"}'
+            value: 1
+          - labels: 'cc:red_now{item="watch brand_new"}'
+            value: 1
+          - labels: 'cc:red_now{item="watch voice_bedroom_puck"}'
+            value: 1
+
+  - name: home warns when Home Assistant stops reporting, rather than reading up
+    interval: 1m
+    input_series:
+      - series: 'mqtt_tripped{topic="agents_hass_conn_voice_bedroom_puck"}'
+        values: '0x40'
+      - series: 'mqtt_message_total{topic="agents_hass_conn_voice_bedroom_puck"}'
+        values: '0+1x5 5x35'
+    promql_expr_test:
+      - expr: cc:component_status{domain="home",component="feed"}
+        eval_time: 3m
+        exp_samples:
+          - labels: 'cc:component_status{domain="home",component="feed"}'
+            value: 0
+      - expr: cc:component_status{domain="home",component="feed"}
+        eval_time: 30m
+        exp_samples:
+          - labels: 'cc:component_status{domain="home",component="feed"}'
+            value: 1

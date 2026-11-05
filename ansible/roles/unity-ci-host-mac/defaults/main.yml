@@ -23,6 +23,12 @@ unity_ci_mac_editors:
     changeset: 672d562a42a7
 
 unity_ci_mac_hub: /Applications/Unity Hub.app/Contents/MacOS/Unity Hub
+# Where Hub puts the editors, <root>/<version>/Unity.app.
+unity_ci_mac_editor_root: /Applications/Unity/Hub/Editor
+
+# Download scratch for tasks/ios.yml (iOS Build Support), deleted after each
+# install. Under ~/Library/Caches, since the pkg expands to about 2 GB.
+unity_ci_mac_ios_scratch: "{{ ansible_facts.env.HOME }}/Library/Caches/unity-ios-support"
 
 # The scripts are bash 4+ and GNU (mapfile, flock, stat -c, tail --pid, timeout,
 # xargs -r, base64 -w0). Homebrew's GNU tools go first on the job PATH through

@@ -1,0 +1,72 @@
+---
+# Unity's iOS Build Support module for each editor in unity_ci_mac_editors, on a
+# Mac that builds the iOS player (mac-mini; bound in site.yml with tasks_from).
+# Not part of main.yml: the pool host (mac-studio) has no Xcode on purpose.
+#
+# Hub's "install-modules" refuses an editor it did not install itself ("No
+# modules found for this editor"), as on the M1, so this takes the module's pkg
+# from Unity's download server and copies its payload into the editor, which
+# needs no sudo. The scratch lives under ~/Library/Caches, never /tmp.
+
+- name: Read the Xcode the iOS build uses
+  ansible.builtin.command: xcode-select -p
+  register: _unity_ios_xcode_path
+  changed_when: false
+  failed_when: false
+  check_mode: false
+
+# -license check exits non-zero until the license is accepted, and
+# -checkFirstLaunchStatus until Xcode's first-launch components are installed.
+- name: Read Xcode's license and first-launch state
+  ansible.builtin.command: "xcodebuild {{ item }}"
+  loop:
+    - -license check
+    - -checkFirstLaunchStatus
+  register: _unity_ios_xcode_state
+  changed_when: false
+  failed_when: false
+  check_mode: false
+
+- name: Assert Xcode is installed, selected and its license accepted
+  ansible.builtin.assert:
+    that:
+      - _unity_ios_xcode_path.rc == 0
+      - "'Xcode' in _unity_ios_xcode_path.stdout"
+      - _unity_ios_xcode_state.results | map(attribute='rc') | select('ne', 0) | list | length == 0
+    fail_msg: >-
+      Unity's iOS build needs the full Xcode, selected and with its license
+      accepted. xcode-select -p: '{{ _unity_ios_xcode_path.stdout | default('') }}';
+      xcodebuild -license check rc {{ _unity_ios_xcode_state.results[0].rc }},
+      -checkFirstLaunchStatus rc {{ _unity_ios_xcode_state.results[1].rc }}.
+      Install Xcode from the App Store, then on the Mac run
+      `sudo xcode-select -s /Applications/Xcode.app`, `sudo xcodebuild -license accept`
+      and `sudo xcodebuild -runFirstLaunch`, and re-run.
+    quiet: true
+
+# creates: skips an editor that already has the module, so a re-run (and
+# --check) reports ok. The payload goes to a .partial sibling and is renamed at
+# the end, so an interrupted run leaves no iOSSupport to fool the next one.
+- name: Install Unity iOS Build Support into each editor
+  ansible.builtin.shell:
+    cmd: |
+      set -euo pipefail
+      engines="{{ unity_ci_mac_editor_root }}/{{ item.version }}/Unity.app/Contents/PlaybackEngines"
+      scratch="{{ unity_ci_mac_ios_scratch }}"
+      test -d "$engines" || { echo "no editor at $engines" >&2; exit 1; }
+      rm -rf "$scratch" "$engines/iOSSupport.partial"
+      mkdir -p "$scratch"
+      curl -sSfL --retry 3 -o "$scratch/ios.pkg" \
+        "https://download.unity3d.com/download_unity/{{ item.changeset }}/MacEditorTargetInstaller/UnitySetup-iOS-Support-for-Editor-{{ item.version }}.pkg"
+      signature="$(pkgutil --check-signature "$scratch/ios.pkg")"
+      grep -q 'Unity Technologies' <<<"$signature" || { echo "pkg not signed by Unity: $signature" >&2; exit 1; }
+      pkgutil --expand-full "$scratch/ios.pkg" "$scratch/x"
+      payload="$(find "$scratch/x" -path '*/Payload/iOSSupport' -type d -print -quit)"
+      test -n "$payload" || { echo "no Payload/iOSSupport in the pkg" >&2; exit 1; }
+      ditto "$payload" "$engines/iOSSupport.partial"
+      mv "$engines/iOSSupport.partial" "$engines/iOSSupport"
+      rm -rf "$scratch"
+    creates: "{{ unity_ci_mac_editor_root }}/{{ item.version }}/Unity.app/Contents/PlaybackEngines/iOSSupport"
+    executable: /bin/bash
+  loop: "{{ unity_ci_mac_editors }}"
+  loop_control:
+    label: "{{ item.version }}"

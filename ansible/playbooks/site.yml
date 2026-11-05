@@ -237,6 +237,15 @@
     # `-e gh_runner_mac_force_reregister=true`.
     - role: github-actions-runner-mac
       tags: [mac, runner]
+  tasks:
+    # Unity's iOS Build Support for the editors unity-ci-host-mac manages, for the
+    # playground's iOS builds on this box's m1-playground-mac runner. Asserts
+    # Xcode first. No sudo.
+    - name: Unity iOS Build Support
+      ansible.builtin.import_role:
+        name: unity-ci-host-mac
+        tasks_from: ios
+      tags: [mac, unity-ios]
 
 # mac-studio LLM node: debloat + tune for MLX. Runs BEFORE the MLX server play
 # below so a full `--limit mac-studio` run cleans, then re-asserts MLX.

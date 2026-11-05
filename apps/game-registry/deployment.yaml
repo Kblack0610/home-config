@@ -23,7 +23,7 @@ spec:
         - name: forgejo-registry
       containers:
         - name: registry
-          image: git.kblab.me/kblack0610/bnb-game-servers/registry:registry-v1.11.0
+          image: git.kblab.me/kblack0610/bnb-game-servers/registry:registry-v1.12.0
           ports:
             - name: http
               containerPort: 8080
@@ -37,7 +37,7 @@ spec:
           env:
             - name: PORT
               value: "8080"
-            # Postgres (DATABASE_URL), the game-saves bucket keys and ACCOUNT_PEPPER come
+            # Postgres (DATABASE_URL), the game-saves bucket keys, ACCOUNT_PEPPER and ENTITLEMENT_SECRET come
             # from saves-secret.sops.yaml (registry README, "Storage and the SQLite import").
             - name: S3_ENDPOINT
               value: minio.minio.svc.cluster.local:9000

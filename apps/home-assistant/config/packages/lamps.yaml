@@ -1,8 +1,8 @@
 # One-tap lamp actions, for Companion app Button widgets (one widget = one script),
 # the dashboards and voice.
 #
-# Targets the `lamp` LABEL, which is the category the plug editor writes
-# (pyscript/plug_settings.py: category -> entity labels). So a new plug tagged Lamp joins
+# Targets the `lamp` LABEL, which is the label room_layout.yaml sets
+# (`labels:` on a row, pyscript/room_layout.py). So a new plug labelled Lamp joins
 # these automatically and a renamed one never breaks them - no entity list lives here.
 # Per-room is label AND area, which a service target cannot express (its fields are a
 # union), hence the template.

@@ -28,6 +28,7 @@
 #   --name NAME           Panel name / MQTT device name (e.g. wall-kitchen). Required.
 #   --serial SERIAL       adb device serial (auto-detected if only one is attached).
 #   --url URL             Dashboard URL. Default: https://hass.kblab.me/wall-panels
+#                         Add ?kiosk&BrowserID=wall_<room>; idle settings key on it.
 #   --pin PIN             FreeKiosk settings/exit PIN. Default: 1234 (CHANGE IT).
 #   --apk PATH            Install this FreeKiosk APK first (else assumes installed).
 #   --mqtt-broker HOST    Enable MQTT to this broker (e.g. mosquitto.kblab.me / an IP).

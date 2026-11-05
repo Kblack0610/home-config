@@ -1,5 +1,5 @@
 // House icon set for what MDI has no icon for, so an entity can use `wall:<name>`
-// wherever HA takes an icon (room_layout.yaml `icon`, the plug Settings editor).
+// wherever HA takes an icon (room_layout.yaml `icon`).
 // Loaded on every HA page via `frontend: extra_module_url`. Paths are 24x24, one
 // color. A cut-out winds against its shape, since ha-icon fills with the nonzero rule.
 

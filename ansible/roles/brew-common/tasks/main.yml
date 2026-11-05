@@ -32,3 +32,10 @@
     state: present
     update_homebrew: false
   when: brew_extra_packages | length > 0
+
+- name: Install host/group-specific Homebrew casks
+  community.general.homebrew_cask:
+    name: "{{ brew_extra_casks }}"
+    state: present
+    update_homebrew: false
+  when: brew_extra_casks | length > 0

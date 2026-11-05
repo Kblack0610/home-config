@@ -22,6 +22,9 @@ brew_common_packages:
 #   brew_extra_packages: [neovim, gh, ripgrep]
 brew_extra_packages: []
 
+# GUI apps (Homebrew casks), empty by default. Set per host in the inventory.
+brew_extra_casks: []
+
 # macOS `defaults write` settings (sleep, FileVault, auto-login, key repeat,
 # Spotlight) are intentionally NOT applied by this role. Those are
 # blast-radius-sensitive system changes and will land in a follow-up

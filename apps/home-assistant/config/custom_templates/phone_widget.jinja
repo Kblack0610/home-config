@@ -26,10 +26,10 @@
 {%- set down = domains | selectattr('value.1', 'eq', '2') | list | count -%}
 {%- set warn = domains | selectattr('value.1', 'eq', '1') | list | count -%}
 {{ paint('red' if down else 'warn' if warn else 'ok',
-         '<b>System</b> %d down, %d warn, %d up | %s'
+         '<b>System:</b> %d down, %d warn, %d up | %s'
          | format(down, warn, domains | count - down - warn, now().strftime('%H:%M'))) }}<br>
 {%- else -%}
-{{ paint('warn', '<b>System ?</b> no health rows from Prometheus') }}<br>
+{{ paint('warn', '<b>System:</b> no health rows from Prometheus') }}<br>
 {%- endif -%}
 {%- endmacro -%}
 
@@ -50,7 +50,7 @@
 {%- set ns.rows = ns.rows + [{'since': since or NO_AGE, 'said': said}] -%}
 {%- endfor -%}
 {%- if ns.rows -%}
-{{ paint('red', '<b>RED %d</b>' | format(ns.rows | count)) }}<br>
+{{ paint('red', '<b>RED:</b> %d' | format(ns.rows | count)) }}<br>
 {%- for r in (ns.rows | sort(attribute='since', reverse=true))[:RED_MAX] -%}
 {{ paint('red', r.said | e) }}<br>
 {%- endfor -%}
@@ -67,8 +67,8 @@
               | map(attribute='metric.domain') | list -%}
 {%- set down = all | selectattr('value.1', 'eq', '2') | rejectattr('metric.domain', 'in', red) | map(attribute='metric.domain') | list -%}
 {%- set warn = all | selectattr('value.1', 'eq', '1') | map(attribute='metric.domain') | list -%}
-{%- if down %}{{ paint('red', 'down: ' ~ down | join(', ') | e) }}<br>{% endif -%}
-{%- if warn %}{{ paint('warn', 'warn: ' ~ warn | join(', ') | e) }}<br>{% endif -%}
+{%- if down %}{{ paint('red', '<b>down:</b> ' ~ down | join(', ') | e) }}<br>{% endif -%}
+{%- if warn %}{{ paint('warn', '<b>warn:</b> ' ~ warn | join(', ') | e) }}<br>{% endif -%}
 {%- endmacro -%}
 
 {%- macro alert() -%}
@@ -76,17 +76,17 @@
 {%- if text not in ['', 'unknown', 'unavailable'] %}{{ paint('warn', text | e) }}<br>{% endif -%}
 {%- endmacro -%}
 
-{# The rows under these heads, the first one bold: a section's first row is its head line. #}
+{# The rows under these heads. A section's first row is its head line, `Title: value`, and only the title is bold. #}
 {%- macro section(rows, heads) -%}
 {%- for r in rows | selectattr('head', 'in', heads) -%}
-{%- set text = r.text | e -%}
-{{ paint(r.level, '<b>%s</b>' | format(text) if loop.first else text) }}<br>
+{%- set title, colon, value = (r.text | e).partition(': ') -%}
+{{ paint(r.level, '<b>%s:</b> %s' | format(title, value) if loop.first and colon else r.text | e) }}<br>
 {%- endfor -%}
 {%- endmacro -%}
 
 {%- macro claude() -%}
 {%- set accounts = states('sensor.agent_accounts') -%}
-{{ paint('warn' if '!' in accounts else 'ok', '<b>Claude</b> week ' ~ accounts | replace('!', '') | e) }}<br>
+{{ paint('warn' if '!' in accounts else 'ok', '<b>Claude:</b> week ' ~ accounts | replace('!', '') | e) }}<br>
 {{- '$%d/24h' | format(states('sensor.agent_cost_24h') | float(0)) }}<br>
 {%- endmacro -%}
 

@@ -1,0 +1,21 @@
+# trader-web's exporter (strategy repo web/exporter.py): league and lab state read from the
+# trader database at scrape time. Alerts: apps/monitoring/prometheus-rules-freqtrade.yaml.
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: trader-web
+  labels:
+    app: trader-web
+spec:
+  endpoints:
+    # Each scrape runs a handful of small queries; bot state changes hourly anyway.
+    - port: metrics
+      path: /metrics
+      interval: 60s
+      scrapeTimeout: 20s
+  selector:
+    matchLabels:
+      app: trader-web
+  namespaceSelector:
+    matchNames:
+      - freqtrade

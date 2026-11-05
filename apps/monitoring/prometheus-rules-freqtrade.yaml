@@ -1,0 +1,96 @@
+# The Freqtrade dry-run league and its lab (apps/freqtrade). Every series comes from the
+# trader-web exporter (strategy repo web/exporter.py), which reads the trader database at
+# scrape time, so bot state is as old as the newest hourly ingest.
+#
+# Covered elsewhere, on purpose not repeated here: a failed CronJob (KubeJobFailed), a CronJob
+# that stops being scheduled (HomelabCronJobNotScheduling), a league pod not ready
+# (KubeStatefulSetReplicasMismatch) and the site down (Gatus).
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: freqtrade
+  namespace: monitoring
+  labels:
+    app.kubernetes.io/name: freqtrade
+    app.kubernetes.io/part-of: monitoring
+    release: kube-prometheus-stack
+spec:
+  groups:
+    - name: freqtrade.alerts
+      interval: 1m
+      rules:
+        # The league must never trade real money. The bot config, lab/league.py and ingest all
+        # refuse it; this is the page if one of them ever does not.
+        - alert: TraderBotNotDryRun
+          expr: trader_bot_dry_run == 0
+          labels:
+            severity: critical
+            category: trading
+          annotations:
+            summary: "Freqtrade bot {{ $labels.bot }} is NOT in dry run: stop the league now: flux suspend kustomization apps, then kubectl -n freqtrade scale sts freqtrade-league --replicas=0"
+            description: >-
+              The newest ingest snapshot of {{ $labels.bot }} reports dry_run false, so it can
+              place real orders. Suspend Flux and scale the league to 0, then find which config or
+              roster change turned dry run off (apps/freqtrade/README.md, Troubleshooting).
+
+        # The exporter is the only source for the alert above, so its silence is an alert too.
+        - alert: TraderMetricsMissing
+          expr: absent(trader_db_up) or trader_db_up == 0
+          for: 15m
+          labels:
+            severity: warning
+            category: trading
+          annotations:
+            summary: "trader-web metrics are missing or cannot read the trader database: the not-dry-run page is blind"
+
+        # Ingest writes an error snapshot for a bot whose API does not answer. One snapshot
+        # stands for an hour, so 70m means two ingest runs in a row could not reach it. A bot
+        # that is not in dry run also gets an error snapshot; TraderBotNotDryRun owns that case.
+        - alert: TraderBotApiDown
+          expr: trader_bot_snapshot_error == 1 unless on (bot) trader_bot_dry_run == 0
+          for: 70m
+          labels:
+            severity: warning
+            category: trading
+          annotations:
+            summary: "Freqtrade bot {{ $labels.bot }} did not answer two ingest runs in a row: kubectl -n freqtrade logs freqtrade-league-<row>"
+
+        - alert: TraderIngestStale
+          expr: trader_ingest_age_seconds > 3 * 3600
+          for: 15m
+          labels:
+            severity: warning
+            category: trading
+          annotations:
+            summary: "No bot snapshot for {{ $value | humanizeDuration }}: check the freqtrade-ingest CronJob"
+
+        # Backfill runs hourly and appends a few hundred candles; 4h without a new one is a stuck
+        # job or an exchange that stopped serving.
+        - alert: TraderCandlesStale
+          expr: trader_candle_age_seconds > 4 * 3600
+          for: 30m
+          labels:
+            severity: warning
+            category: trading
+          annotations:
+            summary: "Newest {{ $labels.exchange }} candle is {{ $value | humanizeDuration }} old: check the freqtrade-backfill CronJob"
+
+        - alert: TraderRunFailed
+          expr: trader_run_ok == 0
+          labels:
+            severity: warning
+            category: trading
+          annotations:
+            summary: "The newest {{ $labels.kind }} run failed: its runs row on trader.kblab.me/runs says why"
+
+        # Analysis is nightly (its job has an 18h guard), walk-forward weekly (24h guard).
+        - alert: TraderRunStale
+          expr: |
+            time() - trader_run_last_ok_timestamp_seconds{kind="analysis"} > 50 * 3600
+            or time() - trader_run_last_ok_timestamp_seconds{kind="walkforward"} > 9 * 86400
+          for: 15m
+          labels:
+            severity: warning
+            category: trading
+          annotations:
+            summary: "No successful {{ $labels.kind }} run for {{ $value | humanizeDuration }}"

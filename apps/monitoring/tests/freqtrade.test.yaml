@@ -1,0 +1,94 @@
+# promtool test rules. Run with scripts/test-prometheus-rules.sh. The not-dry-run page is
+# tested here and never by starting a bot that trades.
+rule_files:
+  - freqtrade.rules.yaml
+evaluation_interval: 1m
+
+tests:
+  - name: a bot that reports it is not in dry run pages at once, a dry-run bot does not
+    interval: 1m
+    input_series:
+      - series: 'trader_bot_dry_run{bot="kraken-s001",job="trader-web"}'
+        values: '1x5 0x5'
+      - series: 'trader_bot_dry_run{bot="kraken-sample",job="trader-web"}'
+        values: '1x10'
+    alert_rule_test:
+      - eval_time: 4m
+        alertname: TraderBotNotDryRun
+        exp_alerts: []
+      - eval_time: 7m
+        alertname: TraderBotNotDryRun
+        exp_alerts:
+          - exp_labels: {alertname: TraderBotNotDryRun, severity: critical, category: trading, bot: kraken-s001, job: trader-web}
+            exp_annotations:
+              summary: "Freqtrade bot kraken-s001 is NOT in dry run: stop the league now: flux suspend kustomization apps, then kubectl -n freqtrade scale sts freqtrade-league --replicas=0"
+              description: "The newest ingest snapshot of kraken-s001 reports dry_run false, so it can place real orders. Suspend Flux and scale the league to 0, then find which config or roster change turned dry run off (apps/freqtrade/README.md, Troubleshooting)."
+
+  - name: missing exporter metrics alert after 15 minutes
+    interval: 1m
+    input_series:
+      - series: 'trader_db_up{job="trader-web"}'
+        values: '1x5 _x30'
+    alert_rule_test:
+      - eval_time: 15m
+        alertname: TraderMetricsMissing
+        exp_alerts: []
+      - eval_time: 30m
+        alertname: TraderMetricsMissing
+        exp_alerts:
+          - exp_labels: {alertname: TraderMetricsMissing, severity: warning, category: trading}
+            exp_annotations: {summary: "trader-web metrics are missing or cannot read the trader database: the not-dry-run page is blind"}
+
+  - name: a bot API error alerts after two ingest runs, and not for a bot the not-dry-run page owns
+    interval: 1m
+    input_series:
+      - series: 'trader_bot_snapshot_error{bot="down",job="trader-web"}'
+        values: '0x5 1x90'
+      - series: 'trader_bot_snapshot_error{bot="live",job="trader-web"}'
+        values: '0x5 1x90'
+      - series: 'trader_bot_dry_run{bot="live",job="trader-web"}'
+        values: '0x95'
+      - series: 'trader_bot_snapshot_error{bot="blip",job="trader-web"}'
+        values: '0x5 1x60 0x30'
+    alert_rule_test:
+      - eval_time: 60m
+        alertname: TraderBotApiDown
+        exp_alerts: []
+      - eval_time: 90m
+        alertname: TraderBotApiDown
+        exp_alerts:
+          - exp_labels: {alertname: TraderBotApiDown, severity: warning, category: trading, bot: down, job: trader-web}
+            exp_annotations: {summary: "Freqtrade bot down did not answer two ingest runs in a row: kubectl -n freqtrade logs freqtrade-league-<row>"}
+
+  - name: a failed run alerts, a later good run clears it
+    interval: 1m
+    input_series:
+      - series: 'trader_run_ok{kind="analysis",job="trader-web"}'
+        values: '0x5 1x5'
+    alert_rule_test:
+      - eval_time: 3m
+        alertname: TraderRunFailed
+        exp_alerts:
+          - exp_labels: {alertname: TraderRunFailed, severity: warning, category: trading, kind: analysis, job: trader-web}
+            exp_annotations: {summary: "The newest analysis run failed: its runs row on trader.kblab.me/runs says why"}
+      - eval_time: 8m
+        alertname: TraderRunFailed
+        exp_alerts: []
+
+  - name: stale runs use each kind's own cadence
+    interval: 1m
+    input_series:
+      # both last succeeded at t=0 (epoch 0), evaluated 3 days later
+      - series: 'trader_run_last_ok_timestamp_seconds{kind="analysis",job="trader-web"}'
+        values: '0x4400'
+      - series: 'trader_run_last_ok_timestamp_seconds{kind="walkforward",job="trader-web"}'
+        values: '0x4400'
+    alert_rule_test:
+      - eval_time: 49h
+        alertname: TraderRunStale
+        exp_alerts: []
+      - eval_time: 72h
+        alertname: TraderRunStale
+        exp_alerts:
+          - exp_labels: {alertname: TraderRunStale, severity: warning, category: trading, kind: analysis, job: trader-web}
+            exp_annotations: {summary: "No successful analysis run for 3d 0h 0m 0s"}

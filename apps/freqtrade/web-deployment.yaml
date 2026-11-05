@@ -47,6 +47,7 @@ spec:
           command: ["uvicorn", "web.app:app", "--host", "0.0.0.0", "--port", "8000"]
           ports:
             - {name: http, containerPort: 8000}
+            - {name: metrics, containerPort: 9100}
           env:
             - name: DATABASE_URL
               valueFrom:
@@ -58,6 +59,9 @@ spec:
             - {name: FORGEJO_API_URL, value: "http://forgejo-http.forgejo.svc:3000"}
             - {name: ALLOWED_USERS, value: "kblack0610"}
             - {name: TRADER_WEB_TZ, value: "America/Los_Angeles"}
+            # Prometheus metrics (servicemonitor.yaml), on their own port so the Ingress,
+            # which routes only port 80, never serves them.
+            - {name: METRICS_PORT, value: "9100"}
             - name: OAUTH_CLIENT_ID
               valueFrom:
                 secretKeyRef: {name: trader-web-oauth, key: client-id}
@@ -92,3 +96,4 @@ spec:
     app: trader-web
   ports:
     - {name: http, port: 80, targetPort: http}
+    - {name: metrics, port: 9100, targetPort: metrics}

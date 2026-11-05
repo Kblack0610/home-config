@@ -17,6 +17,7 @@ resources:
   - trader-web-oauth-secret.sops.yaml
   - web-deployment.yaml
   - ingress.yaml
+  - servicemonitor.yaml
 
 images:
   # The lab image (strategy repo Dockerfile, built by its CI): Freqtrade 2026.9
@@ -24,7 +25,7 @@ images:
   # change; the tag is the strategy repo commit it was built from.
   - name: trader
     newName: ghcr.io/kblack0610/trader
-    digest: sha256:386807891b925569b55b1135e309787ac55f5db58dfdefa12ad2e7670c62ab5c  # sha-29dadf6
+    digest: sha256:d98e9867e504006c5c35c6b1232b015ff62bf1652c7e87914d8351d9757cec4c  # sha-69ef535
 
 configMapGenerator:
   # Rows here and replicas in statefulset.yaml move together.

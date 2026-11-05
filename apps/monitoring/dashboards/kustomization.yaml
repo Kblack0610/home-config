@@ -60,3 +60,6 @@ configMapGenerator:
   - name: grafana-dashboard-agents-langfuse
     files:
       - agents-langfuse.json
+  - name: grafana-dashboard-freqtrade
+    files:
+      - freqtrade.json

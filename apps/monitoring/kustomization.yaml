@@ -22,6 +22,7 @@ resources:
   - prometheus-rules-pager.yaml
   - prometheus-rules-capacity.yaml
   - prometheus-rules-game-servers.yaml
+  - prometheus-rules-freqtrade.yaml
   - probe-sites.yaml
   - probe-dns.yaml
   - external-mac-nodes.yaml

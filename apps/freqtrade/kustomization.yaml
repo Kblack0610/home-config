@@ -9,6 +9,7 @@ resources:
   - statefulset.yaml
   - lab-pvc.yaml
   - analysis-cronjob.yaml
+  - walkforward-cronjob.yaml
   - ingest-cronjob.yaml
   - backfill-cronjob.yaml
   - lab-backup-cronjob.yaml
@@ -23,7 +24,7 @@ images:
   # change; the tag is the strategy repo commit it was built from.
   - name: trader
     newName: ghcr.io/kblack0610/trader
-    digest: sha256:4c61d3b60e8bd82021bd9d8528c141bf051439bd4dc2cb1c8fd48c3edbe998c6  # sha-3c95450
+    digest: sha256:de32e81947e7e3fde45ddc75d080f7dd0e9ba799fd1649c51b72288c64feccee  # sha-1aa3392
 
 configMapGenerator:
   # Rows here and replicas in statefulset.yaml move together.

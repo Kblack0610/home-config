@@ -1,0 +1,67 @@
+# Weekly walk-forward test (lab/walkforward.py): for each of the last six whole
+# months, hyperopt tunes each candidate (league strategies, then promote and
+# watch suggestions) on the 180 days before it, then that unseen month is
+# backtested as is and tuned. Months are cached, so a normal week runs only the
+# newest one; the first run, or a freqtrade bump, runs all six and takes hours.
+# Retune suggestions follow from it. Nothing here touches the bots.
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: freqtrade-walkforward
+spec:
+  schedule: "0 9 * * 6"  # Saturday, after the night's analysis and clear of the :20 backfill
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      backoffLimit: 0  # next week is the retry; failed months are retried there
+      activeDeadlineSeconds: 86400  # guard: the first run is several hours, a normal week about one
+      template:
+        metadata:
+          labels:
+            app: freqtrade-walkforward
+        spec:
+          restartPolicy: Never
+          nodeSelector:
+            kubernetes.io/arch: amd64
+          securityContext:
+            runAsUser: 1000
+            runAsGroup: 1000
+            fsGroup: 1000
+          initContainers:
+            - name: migrate
+              image: trader
+              command: ["python", "/repo/lab/migrate.py"]
+              env:
+                - name: DATABASE_URL
+                  valueFrom:
+                    secretKeyRef: {name: trader-db, key: database-url}
+              resources:
+                requests:
+                  cpu: 20m
+                  memory: 64Mi
+                limits:
+                  memory: 256Mi
+          containers:
+            - name: walkforward
+              image: trader
+              command: ["python", "/repo/lab/walkforward.py"]
+              env:
+                - name: DATABASE_URL
+                  valueFrom:
+                    secretKeyRef: {name: trader-db, key: database-url}
+                - name: WF_WORKERS
+                  value: "6"
+              resources:
+                requests:
+                  cpu: "4"
+                  memory: 4Gi
+                limits:
+                  memory: 12Gi  # six single-core hyperopts at once, each holding 180 days of 5m candles
+              volumeMounts:
+                - {name: lab, mountPath: /lab}
+          volumes:
+            - name: lab
+              persistentVolumeClaim:
+                claimName: freqtrade-lab

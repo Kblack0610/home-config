@@ -13,6 +13,7 @@ Results live in the `trader` database in the shared Postgres (`apps/postgres/tra
 | StatefulSet `freqtrade-league` | Pod N runs `roster.tsv` row N; sqlite trade history on its own 1Gi PVC; API at `freqtrade-league-N.freqtrade-league:8080` (cluster only) |
 | CronJob `freqtrade-backfill` | Hourly at :20: price history for every exchange x pair x timeframe into `data/<exchange>/` on PVC `freqtrade-lab`, prepended to the oldest candle once, then appended; Kraken collected forward from its newest 720 candles; coverage into `data_coverage` |
 | CronJob `freqtrade-analysis` | Nightly 02:45: every strategy x exchange (binanceus, coinbase) backtested per calendar year over the whole history, cached per year, lookahead and recursive bias checks on file change, then windows, intervals, estimates, regimes and correlations into the trader database; fails when more than 10% of the chunks it ran failed |
+| CronJob `freqtrade-walkforward` | Saturday 09:00: for each of the last six whole months, hyperopt tunes each candidate (league strategies, then promote and watch suggestions, lookahead-clean) on the 180 days before it on binanceus, then the unseen month is backtested as is and tuned; months cached, retune suggestions follow; fails when more than 10% of the months it ran failed |
 | CronJob `freqtrade-ingest` | Hourly at :07: init container `migrate` applies new schema files, then every bot's trades and a snapshot go into Postgres; fails if a bot is not dry run |
 | CronJob `freqtrade-lab-backup` | Sunday 02:50: tar of PVC `freqtrade-lab` to the NAS public share `backups/freqtrade/`, newest 4 kept |
 | Secret `freqtrade-api` | SOPS: API password, JWT secret, ws token shared by the bots and the ingest |
@@ -35,6 +36,8 @@ Data coverage: `SELECT exchange, timeframe, count(*), min(first_ts), max(last_ts
 Restore the lab PVC: list the archives with `smbclient //nas.nas.svc.cluster.local/public -N -c 'cd backups/freqtrade; ls'` from a pod (or `/mnt/nas/public/backups/freqtrade` on the NAS host), suspend the freqtrade CronJobs (`kubectl -n freqtrade patch cronjob <name> -p '{"spec":{"suspend":true}}'`), untar the newest into the PVC root from a pod that mounts it, then unsuspend. The trader database is restored from the nightly `pg_dumpall` instead.
 
 Run the analysis now: `kubectl --context home-k3s -n freqtrade create job --from=cronjob/freqtrade-analysis analysis-manual-$(date +%s)`; its log prints progress every 25 chunks. One strategy only: add `ANALYZE_STRATEGIES` to the job, or run `python /repo/lab/analyze.py bias-one lookahead <Strategy>` in a pod that mounts the PVC.
+
+Run the walk-forward now: `kubectl --context home-k3s -n freqtrade create job --from=cronjob/freqtrade-walkforward walkforward-manual-$(date +%s)`; its log prints a line per month. Results are on the site's Walk-forward page.
 
 Try a new strategy live: append a row to `roster.tsv` (`name exchange strategy`), raise `replicas` in `statefulset.yaml` to the row count, commit, push to forgejo. Never reorder or delete rows in the middle: row N is bound to pod N's PVC, so a shift hands a bot another bot's trade history. To retire a bot, replace its row in place with a new name and delete that pod's PVC.
 
@@ -65,3 +68,4 @@ A new digest or roster restarts the bots; their trade history is on their PVCs a
 | CronJobs pending | `freqtrade-lab` is local-path RWO, pinned to the node that first bound it (hp-victus) | That node must be up; it is always an amd64 node |
 | `freqtrade-analysis` OOMKilled | Six backtests at once outgrew the 12Gi limit, for example after a whitelist grew | Lower `ANALYZE_WORKERS` in `analysis-cronjob.yaml`; finished chunks are kept, so the rerun resumes |
 | `freqtrade-analysis` hit its deadline | A first run or a freqtrade bump redoes every year | Finished chunks are stored as they complete; the next night carries on |
+| `freqtrade-walkforward` OOMKilled or hit its deadline | Six hyperopts at once outgrew 12Gi, or a first run or freqtrade bump redoes all six months | Lower `WF_WORKERS` or `WF_EPOCHS` in `walkforward-cronjob.yaml`; finished months are kept, so the rerun resumes |

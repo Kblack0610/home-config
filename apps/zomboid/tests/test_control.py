@@ -128,6 +128,16 @@ check("desired 1 ready 0 -> starting", call("GET", "/status", "correct-horse")[1
 STATE["spec"]["replicas"], STATE["status"]["readyReplicas"] = 1, 1
 check("ready 1 -> running", call("GET", "/status", "correct-horse")[1]["state"], "running")
 
+print("per-server healthz (gatus):")
+STATE["spec"]["replicas"], STATE["status"]["readyReplicas"] = 0, 0
+check("healthz/<name> is open and says asleep", call("GET", "/healthz/zomboid"),
+      (200, {"name": "zomboid", "state": "asleep"}))
+STATE["spec"]["replicas"], STATE["status"]["readyReplicas"] = 1, 1
+check("healthz/<name> says running", call("GET", "/healthz/zomboid")[1]["state"], "running")
+check("healthz/<name> carries nothing but the state",
+      sorted(call("GET", "/healthz/zomboid")[1]), ["name", "state"])
+check("healthz of an unknown server is 404", call("GET", "/healthz/nope")[0], 404)
+
 print("scaling:")
 STATE["spec"]["replicas"] = 0
 call("POST", "/start", "correct-horse")

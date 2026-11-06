@@ -389,7 +389,7 @@ screensaver; verify on the M11).
 
 ---
 
-## Stage 5 - HA Voice PE hardware satellites (adopting)
+## Stage 5 - HA Voice PE hardware satellites (shipped)
 
 Two Home Assistant Voice Preview Edition pucks - the first *hardware* satellites on this setup (until now every mic was a wall-tablet browser, Stage 4, or hypothetical, the appendix). The Voice PE runs the stock "Home Assistant Voice" ESPHome firmware: it holds its own mic open, runs microWakeWord on-device, and streams post-wake audio to whatever Assist pipeline it is assigned - here, Binks. It brings its own mic + wake engine, so it does NOT use the Stage-3 `wyoming-openwakeword` server or the Stage-4 card.
 
@@ -422,7 +422,14 @@ Entities derive from the device name (`home_assistant_voice_<macsuffix>_*`): the
 
 - **Pipeline -> Binks:** set the satellite's preferred pipeline (Settings -> the `assist_satellite` device -> Preferred pipeline, or the Voice assistants page). Reuses the entire existing stack: litellm whisper STT -> Binks/`assist (gemini-flash)` -> Google TTS. No new services.
 - **Wake word -> Okay Nabu (for now):** the puck's on-device microWakeWord select. Stock firmware ships **Okay Nabu / Hey Jarvis / Hey Mycroft** only. Validate end-to-end on Okay Nabu before touching a custom word.
-- **Reproducibility (follow-up):** the config entry + select states are runtime state (on the PVC), not git. Entity IDs are now known (`home_assistant_voice_0a9a90_*`, `home_assistant_voice_0aa6d9_*`), so the pin is a concrete TODO: a startup automation package (sibling of `config/packages/voice_satellite_binks.yaml`) that re-selects `select.*_assistant` -> Binks + `select.*_wake_word` -> Okay Nabu on every HA start, so a PVC rebuild doesn't strand the pucks. Note the ESPHome pipeline knob is `select.<dev>_assistant`, NOT the card's `_pipeline_1`.
+- **Reproducibility:** the config entry is runtime state on the PVC, but the `voice_pe_puck_defaults` automation (`packages/voice_pe_pucks.yaml`) re-selects Binks, Okay Nabu and moderate sensitivity on every HA start and whenever a puck reconnects, so a PVC rebuild does not strand the pucks.
+- **Fixed IPs:** Kitchen is pinned at `.112` and Bedroom at `.173` in `infrastructure/dhcp/devices.yaml`. The esphome entry dials a fixed host and HA in k3s cannot see mDNS, so a puck that moves address stays unavailable.
+
+### Troubleshooting
+
+| Symptom | Cause | Fix |
+| --- | --- | --- |
+| Puck powered and on Wi-Fi (`avahi-browse -tpr _esphomelib._tcp` lists it) but its `assist_satellite` is unavailable and the Services card is red | DHCP gave it a new IP; HA still dials the old host (2026-11-06: .116 -> .112, .177 -> .173) | Re-run the adopt call above with the new host: the flow aborts `already_configured_updates` and rewrites the host. Then pin the IP in `infrastructure/dhcp/devices.yaml` and `dhcp.sh sync --force` |
 
 ### Validate
 

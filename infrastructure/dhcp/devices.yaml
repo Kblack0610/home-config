@@ -260,6 +260,20 @@ devices:
     ip: "192.168.1.105"
     category: iot
 
+  # Voice PE pucks, pinned at the IPs they took on 2026-11-06. The HA esphome
+  # entry dials a fixed host and HA in k3s cannot see mDNS, so a moved puck goes
+  # unavailable and turns the Services card red.
+  - hostname: voice-pe-kitchen
+    mac: "20:F8:3B:0A:9A:90"
+    ip: "192.168.1.112"
+    category: iot
+
+  - hostname: voice-pe-bedroom
+    mac: "20:F8:3B:0A:A6:D9"
+    ip: "192.168.1.173"
+    category: iot
+    range_exception: true
+
   # Fumoi litter box: pinned at its CURRENT .215 so LocalTuya's stored host
   # doesn't break (moving it would require re-seeding the config entry).
   - hostname: fumoi-litter-box

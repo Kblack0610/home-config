@@ -61,6 +61,9 @@ that lists runners or says which runner runs a task, so:
     repo is <repo>", joined to the Forgejo API's running jobs (task ids) and
     tasks (job, workflow, branch, title). A running task whose log line is gone
     shows on no row; a runner restart kills its task anyway.
+  - the pool's expected size is the runner Deployment's replicas x capacity, one
+    host="k3s" row in github_runner_pool_expected / _online (the pods float
+    between nodes, so no node has an expected size).
 The API gives no time a job was queued, so a waiting job's age is from the first
 scrape that saw it (reset on an exporter restart). Finished work is every task
 created in the window, by its status. Off unless $FORGEJO_REPOS is set.
@@ -479,7 +482,10 @@ FORGEJO_TOKEN = os.environ.get("FORGEJO_TOKEN", "")
 FORGEJO_NS = os.environ.get("FORGEJO_RUNNER_NAMESPACE", "forgejo")
 FORGEJO_SELECTOR = os.environ.get("FORGEJO_RUNNER_SELECTOR", "app.kubernetes.io/name=forgejo-runner")
 FORGEJO_CONFIGMAP = os.environ.get("FORGEJO_RUNNER_CONFIGMAP", "forgejo-runner-config")
+FORGEJO_DEPLOYMENT = os.environ.get("FORGEJO_RUNNER_DEPLOYMENT", "forgejo-runner")
 FORGEJO_CONTAINER = "runner"
+# The host label on the Forgejo pool's expected/online rows: the cluster, not a machine.
+FORGEJO_POOL_HOST = "k3s"
 # Forgejo's largest page. Asking for more is not an error: it answers with every
 # task the repo ever had (2026-11-03: limit=100 returned 2498).
 FORGEJO_PAGE = 50
@@ -527,6 +533,9 @@ def forgejo_runners():
     m = re.search(r"^\s*capacity:\s*(\d+)", cfg, re.M)
     # `- "docker:docker://docker:27"` registers the label docker.
     labels = sorted(set(re.findall(r'^\s*-\s*"?([\w.-]+):(?:docker|host|lxc)\b', cfg, re.M)))
+    # The Deployment's replicas are the pool's expected size, the roster of this
+    # pool: a pod that was never created is still a slot that should be there.
+    replicas = kget(f"/apis/apps/v1/namespaces/{FORGEJO_NS}/deployments/{FORGEJO_DEPLOYMENT}").get("spec", {}).get("replicas", 1)
     pods = kget(f"{ns}/pods?labelSelector={urllib.parse.quote(FORGEJO_SELECTOR, safe='')}").get("items", [])
     out = []
     for p in sorted(pods, key=lambda p: p["metadata"]["name"]):
@@ -543,7 +552,7 @@ def forgejo_runners():
             tasks = {int(t) for t in re.findall(r"\btask (\d+) repo is ", log)}
         out.append({"name": name, "host": p.get("spec", {}).get("nodeName") or "unscheduled",
                     "state": state, "tasks": tasks})
-    return {"capacity": int(m.group(1)) if m else 1, "labels": labels, "runners": out}
+    return {"capacity": int(m.group(1)) if m else 1, "labels": labels, "runners": out, "replicas": int(replicas)}
 
 
 def forgejo_repo(repo, now):
@@ -646,6 +655,10 @@ def forgejo_rows(runners_fut, repo_futs, now):
                      "last_url": t.get("url") or ""}, int(done))
         for state, n in by_state.items():
             add("github_runners_by_state", {"state": state}, n)
+        # One row for the whole pool: the pods float between nodes, so no node has an expected size.
+        add("github_runner_pool_expected", {"host": FORGEJO_POOL_HOST, "pool": "forgejo"}, fr["replicas"] * fr["capacity"])
+        add("github_runner_pool_online", {"host": FORGEJO_POOL_HOST, "pool": "forgejo"},
+            sum(fr["capacity"] for r in fr["runners"] if r["state"] == "idle"))
 
     counts, took, pool_wf = {}, {}, {}
     for repo, t in finished:
@@ -786,7 +799,7 @@ def render():
     L += forgejo("github_runners_by_state")
 
     L += [
-        "# HELP github_runner_pool_expected Slots the roster says this host runs in this pool",
+        "# HELP github_runner_pool_expected Slots the roster (Forgejo: the runner Deployment) says this host runs in this pool",
         "# TYPE github_runner_pool_expected gauge",
         "# HELP github_runner_pool_online Online runners in this host/pool; absent while any runner source failed",
         "# TYPE github_runner_pool_online gauge",
@@ -796,6 +809,7 @@ def render():
     if runners_ok:
         for host, pool_ in sorted({(h, p) for h, p, _ in ROSTER} | set(online)):
             L.append(f'github_runner_pool_online{{host="{host}",pool="{pool_}"}} {online.get((host, pool_), 0)}')
+    L += forgejo("github_runner_pool_expected") + forgejo("github_runner_pool_online")
 
     L += [
         "# HELP github_actions_job_waiting A job waiting for a runner; value is seconds since it was queued",

@@ -394,3 +394,107 @@ tests:
         exp_samples:
           - labels: 'cc:component_status{domain="home",component="feed"}'
             value: 1
+
+  - name: ci pools warns on a short pool, a Forgejo pool included, and on a runner source it could not read
+    interval: 1m
+    input_series:
+      - series: 'github_runner_pool_expected{host="hp-victus",pool="unity"}'
+        values: '2x10'
+      - series: 'github_runner_pool_online{host="hp-victus",pool="unity"}'
+        values: '2x10'
+      - series: 'github_runner_pool_expected{host="k3s",pool="forgejo",forge="forgejo"}'
+        values: '4x10'
+      # both Forgejo runners up, then one pod's runner goes not-ready
+      - series: 'github_runner_pool_online{host="k3s",pool="forgejo",forge="forgejo"}'
+        values: '4x4 2x5'
+      # the org runner list answers, then fails: pool_online goes absent with it
+      - series: 'github_runner_exporter_api_ok{source="orgs/acme",kind="runners",forge="github"}'
+        values: '1x7 0x2'
+      - series: 'github_runner_exporter_api_ok{source="repos/acme/app",kind="runs",forge="github"}'
+        values: '0x10'
+    promql_expr_test:
+      - expr: cc:component_status{domain="ci",component="pools"}
+        eval_time: 2m
+        exp_samples:
+          - labels: 'cc:component_status{domain="ci",component="pools"}'
+            value: 0
+      - expr: cc:component_status{domain="ci",component="pools"}
+        eval_time: 6m
+        exp_samples:
+          - labels: 'cc:component_status{domain="ci",component="pools"}'
+            value: 1
+      - expr: cc:ci_expected
+        eval_time: 2m
+        exp_samples:
+          - labels: 'cc:ci_expected'
+            value: 6
+
+  - name: ci pools warns while a runner source failed even though no pool reads short
+    interval: 1m
+    input_series:
+      - series: 'github_runner_pool_expected{host="hp-victus",pool="unity"}'
+        values: '2x10'
+      - series: 'github_runner_exporter_api_ok{source="orgs/acme",kind="runners",forge="github"}'
+        values: '0x10'
+    promql_expr_test:
+      - expr: cc:component_status{domain="ci",component="pools"}
+        eval_time: 2m
+        exp_samples:
+          - labels: 'cc:component_status{domain="ci",component="pools"}'
+            value: 1
+
+  - name: ci pools warns when the exporter reports no runner source at all
+    interval: 1m
+    input_series:
+      - series: 'github_runner_pool_expected{host="hp-victus",pool="unity"}'
+        values: '2x10'
+    promql_expr_test:
+      - expr: cc:component_status{domain="ci",component="pools"}
+        eval_time: 2m
+        exp_samples:
+          - labels: 'cc:component_status{domain="ci",component="pools"}'
+            value: 1
+
+  - name: host_hot marks a held-hot CI host, a critical one 2, and never the workstation
+    interval: 1m
+    input_series:
+      - series: 'node_uname_info{instance="hp:9100",host="hp-victus",job="standalone-nodes"}'
+        values: '1x30'
+      - series: 'node_uname_info{instance="asus:9100",host="asus-laptop",job="standalone-nodes"}'
+        values: '1x30'
+      - series: 'node_uname_info{instance="razer:9100",host="razer-laptop",job="standalone-nodes"}'
+        values: '1x30'
+      - series: 'node_uname_info{instance="ws:9100",host="workstation",job="standalone-nodes"}'
+        values: '1x30'
+      - series: 'node_hwmon_chip_names{instance="hp:9100",chip="k",chip_name="k10temp"}'
+        values: '1x30'
+      - series: 'node_hwmon_chip_names{instance="asus:9100",chip="k",chip_name="coretemp"}'
+        values: '1x30'
+      - series: 'node_hwmon_chip_names{instance="razer:9100",chip="k",chip_name="coretemp"}'
+        values: '1x30'
+      - series: 'node_hwmon_chip_names{instance="ws:9100",chip="k",chip_name="k10temp"}'
+        values: '1x30'
+      # hp-victus: 92C held; asus: 97C held; razer: one 99C boost spike in a cool run; workstation: 96C held
+      - series: 'node_hwmon_temp_celsius{instance="hp:9100",chip="k",sensor="temp1"}'
+        values: '92x30'
+      - series: 'node_hwmon_temp_celsius{instance="asus:9100",chip="k",sensor="temp1"}'
+        values: '97x30'
+      - series: 'node_hwmon_temp_celsius{instance="razer:9100",chip="k",sensor="temp1"}'
+        values: '70x19 99 70x10'
+      - series: 'node_hwmon_temp_celsius{instance="ws:9100",chip="k",sensor="temp1"}'
+        values: '96x30'
+    promql_expr_test:
+      - expr: cc:host_hot
+        eval_time: 20m
+        exp_samples:
+          - labels: 'cc:host_hot{host="hp-victus"}'
+            value: 1
+          - labels: 'cc:host_hot{host="asus-laptop"}'
+            value: 2
+          - labels: 'cc:host_hot{host="razer-laptop"}'
+            value: 0
+      - expr: cc:component_status{domain="machines",component="thermal"}
+        eval_time: 20m
+        exp_samples:
+          - labels: 'cc:component_status{domain="machines",component="thermal"}'
+            value: 2

@@ -12,6 +12,7 @@
 #   cc:red_now{item}                        what is red right now, one row per item (dashboard table, hub board, waybar day and health chips)
 #   cc:<name>                               the numbers the tiles print
 #   cc:host_<metric>{host}                  per-machine load for the board's MACHINES rows
+#   cc:host_hot{host}                       0 ok, 1 hot, 2 critical CPU package temperature, per CI host
 #   cc:host_core_busy_ratio{host,cpu}       each core's busy share, the Infra tab's core strip
 #   cc:runner_cores_busy / _allowed{host,runner}  cores a CI runner's job uses, and its pinned CPUs
 #   cc:host_local_gate{host,worktree,...}  the workstation's local Unity gates (fleet-assess)
@@ -161,11 +162,20 @@ spec:
           labels: {domain: llm, component: gateway}
           expr: >-
             (clamp_max(count(up{job="litellm"} == 0), 1) * 2) or (absent(up{job="litellm"}) * 2) or vector(0)
-        # any host/pool below its expected size -> 1 (per host: one dead laptop must not hide behind another's full pool)
+        # any host/pool below its expected size -> 1 (per host: one dead laptop must not hide behind another's full pool).
+        # A runner source the exporter could not read -> 1 too: pool_online is absent then, so the count above reads ok blind.
         - record: cc:component_status
           labels: {domain: ci, component: pools}
           expr: >-
-            clamp_max(count(max by (host, pool) (github_runner_pool_online) < max by (host, pool) (github_runner_pool_expected)), 1) or vector(0)
+            clamp_max(count(max by (host, pool) (github_runner_pool_online) < max by (host, pool) (github_runner_pool_expected)), 1)
+            or clamp_max(count(github_runner_exporter_api_ok{kind="runners"} == 0), 1)
+            or (vector(1) unless on () github_runner_exporter_api_ok{kind="runners"})
+            or vector(0)
+        # a CI host's CPU package over 90C for 10m -> 1, over 95C for 2m -> 2 (cc:host_hot; the workstation is fleet_thermal's)
+        - record: cc:component_status
+          labels: {domain: machines, component: thermal}
+          expr: >-
+            max(cc:host_hot) or vector(0)
         # any agentctl runner in error or whose last run STALLED -> 1
         - record: cc:component_status
           labels: {domain: agents, component: runners}
@@ -355,6 +365,14 @@ spec:
           expr: >-
             max by (host) ((node_hwmon_temp_celsius * on (instance, chip) group_left (chip_name) node_hwmon_chip_names{chip_name=~"coretemp|k10temp"})
               * on (instance) group_left (host) cc:host_instance)
+        # 0 ok, 1 hot, 2 critical per host, on NodeCpuHot's and NodeCpuCritical's lines and holds
+        # (prometheus-rules-node-health.yaml), so the board marks the machine the alert names.
+        # Not the workstation: its 7900X sits at 95C under load by design, and the fleet_thermal
+        # watch judges it on load and temperature together.
+        - record: cc:host_hot
+          expr: >-
+            ((min_over_time(cc:host_temp_c{host!="workstation"}[2m]) > bool 95) * 2 > 0)
+            or (min_over_time(cc:host_temp_c{host!="workstation"}[10m]) > bool 90)
         # The workstation is not a runner; its CI is the headless Unity gates agents run
         # there, published by fleet-assess --textfile. Dropped once the file is 3 minutes
         # old, so a stopped timer reads as no gates, not the last minute frozen.

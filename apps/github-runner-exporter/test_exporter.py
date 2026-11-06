@@ -749,6 +749,8 @@ class FakeForge:
         self.calls.append(path)
         if "k8s" in self.broken:
             raise urllib.error.URLError("boom")
+        if path == "/apis/apps/v1/namespaces/forgejo/deployments/forgejo-runner":
+            return {"spec": {"replicas": 3}}
         if path.endswith("/configmaps/forgejo-runner-config"):
             return {"data": {"config.yaml": FJ_CONFIG}}
         if "/pods?labelSelector=app.kubernetes.io%2Fname%3Dforgejo-runner" in path:
@@ -812,6 +814,12 @@ class ForgejoTest(unittest.TestCase):
         gh = [r for r in rows(out, "github_runner_state") if 'name="box-unity-pool-1"' in r]
         self.assertIn('forge="github"', gh[0])
 
+    def test_pool_counts_slots_against_the_deployment(self):
+        out = self.render()
+        # 3 replicas x capacity 2; only runner-a is up (runner-b not ready, runner-c Pending).
+        self.assertIn('github_runner_pool_expected{host="k3s",pool="forgejo",forge="forgejo"} 6', out)
+        self.assertIn('github_runner_pool_online{host="k3s",pool="forgejo",forge="forgejo"} 2', out)
+
     def test_waiting_jobs_age_from_first_seen_and_unrunnable_is_stuck(self):
         out = self.render()
         wait = {re.search(r'job_name="([^"]+)"', r).group(1): r for r in rows(out, "github_actions_job_waiting")
@@ -865,6 +873,8 @@ class ForgejoTest(unittest.TestCase):
         out = self.render(broken=("k8s",))
         self.assertEqual(self.state(out), {})
         self.assertFalse([r for r in rows(out, "github_runners_by_state") if 'forge="forgejo"' in r])
+        for metric in ("github_runner_pool_expected", "github_runner_pool_online"):
+            self.assertFalse([r for r in rows(out, metric) if 'forge="forgejo"' in r])
         self.assertIn('github_runner_exporter_api_ok{source="forgejo:namespaces/forgejo",kind="runners",forge="forgejo"} 0', out)
         # Waiting jobs still show; with no label list to judge them by, none is called stuck.
         wait = [r for r in rows(out, "github_actions_job_waiting") if 'forge="forgejo"' in r]

@@ -196,6 +196,47 @@ otelcol.processor.transform "claude_usage" {
   }
 
   output {
+    traces = [otelcol.processor.transform.claude_langfuse.input]
+  }
+}
+
+// Labels and redaction for Claude Code spans, before anything reaches Langfuse.
+//
+// Labels: Langfuse v4 filters observations directly, so what a query groups by
+// has to sit on every span. Claude Code sends none of the langfuse.* names and
+// the session sets its own only through resource attributes (project and
+// queue.item, per launch, from claude-telemetry.sh). Without this, 96% of
+// observations had no trace name and every Claude span sat in `default`.
+// Only langfuse.trace.metadata.* is filterable; a plain attribute lands in
+// metadata.attributes and is not.
+//
+// Redaction: the same patterns as loki.process "redact" above, which only
+// covers the Loki stream. Spans carry the same prompts and tool output, and
+// Langfuse keeps them 90 days. A change to one list belongs in the other.
+otelcol.processor.transform "claude_langfuse" {
+  error_mode = "ignore"
+
+  trace_statements {
+    context    = "span"
+    statements = [
+      `set(attributes["langfuse.environment"], resource.attributes["service.name"]) where resource.attributes["service.name"] != nil`,
+      `set(attributes["langfuse.release"], resource.attributes["service.version"]) where resource.attributes["service.version"] != nil`,
+      `set(attributes["langfuse.trace.name"], resource.attributes["service.name"]) where resource.attributes["service.name"] != nil`,
+      `set(attributes["langfuse.trace.name"], resource.attributes["project"]) where resource.attributes["project"] != nil`,
+      `set(attributes["langfuse.trace.metadata.project"], resource.attributes["project"]) where resource.attributes["project"] != nil`,
+      `set(attributes["langfuse.trace.metadata.queue_item"], resource.attributes["queue.item"]) where resource.attributes["queue.item"] != nil`,
+      `set(attributes["langfuse.trace.metadata.runner"], resource.attributes["agentctl.runner"]) where resource.attributes["agentctl.runner"] != nil`,
+      `replace_all_patterns(attributes, "value", "gh[pousr]_[A-Za-z0-9]{36,}|github_pat_[A-Za-z0-9_]{40,}", "<redacted:github>")`,
+      `replace_all_patterns(attributes, "value", "sk-[A-Za-z0-9_-]{20,}", "<redacted:sk>")`,
+      `replace_all_patterns(attributes, "value", "(?:AKIA|ASIA)[0-9A-Z]{16}", "<redacted:aws>")`,
+      `replace_all_patterns(attributes, "value", "AIza[0-9A-Za-z_-]{35}", "<redacted:google>")`,
+      `replace_all_patterns(attributes, "value", "xox[abprs]-[A-Za-z0-9-]{10,}", "<redacted:slack>")`,
+      `replace_all_patterns(attributes, "value", "(?i)((?:bearer|basic)\\s+)[A-Za-z0-9._~+/=-]{16,}", "$1<redacted:auth>")`,
+      `replace_all_patterns(attributes, "value", "-----BEGIN [A-Z ]*PRIVATE KEY-----(?s:.*?)-----END [A-Z ]*PRIVATE KEY-----", "<redacted:private-key>")`,
+    ]
+  }
+
+  output {
     traces = [otelcol.processor.batch.langfuse.input]
   }
 }

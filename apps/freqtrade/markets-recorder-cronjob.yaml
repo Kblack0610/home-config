@@ -51,7 +51,7 @@ spec:
           containers:
             - name: recorder
               image: trader
-              command: ["python", "-m", "markets.recorder"]
+              command: ["python", "-m", "lab.markets.recorder"]
               env:
                 - name: DATABASE_URL
                   valueFrom:

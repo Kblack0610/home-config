@@ -49,6 +49,7 @@ Turntable (LINE) -> UFO202 in -> Giada --> Snapcast server (k3s, hp-victus) --> 
 - HA's Snapcast integration once lost all its entities for two days until an HA restart (2026-10-13 to 10-15, cause unknown). If the Source pickers vanish, reload the Snapcast integration.
 - The kitchen tablet has one USB-C port. A USB-C audio dongle in it blocks charging and levers the port; use a dongle with PD pass-through, or a Pi Zero for the kitchen speaker.
 - The kitchen client logs to HA's system log (logger `snapcast_tablet`): load, socket, codec, AudioContext state and per-10 s playback stats (`audible` = non-silent buffers, `hardSyncs` = sync jumps, each one an audible click, `maxAgeMs` = worst drift from the server clock in that window). That is how to debug a silent panel without devtools.
+- Turntable silent everywhere with `Turntable` idle in snapweb while the record plays: snapserver is holding a dead capture connection from a network drop, and the live one is stuck in the accept queue. The snapserver liveness probe catches this and restarts the pod within about 90 s. If it persists, delete the snapserver pod; restarting the capture service does not help.
 
 ## Backups
 

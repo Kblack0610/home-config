@@ -71,9 +71,20 @@ spec:
               port: 1705
             initialDelaySeconds: 3
             periodSeconds: 10
+          # Fails when control (1705, hex 06A9) stops listening, or when a client
+          # waits in the Turntable (4953, hex 1359) accept queue. A tcp source in
+          # mode=server takes one connection and has no keepalive, so a capture
+          # link drop leaves it holding a dead socket forever while every
+          # reconnect queues behind it. Restarting clears the dead socket.
           livenessProbe:
-            tcpSocket:
-              port: 1705
+            exec:
+              command:
+                - awk
+                - >-
+                  $4 == "0A" && $2 ~ /:06A9$/ { up = 1 }
+                  $4 == "0A" && $2 ~ /:1359$/ { split($5, q, ":"); if (q[2] != "00000000") stuck = 1 }
+                  END { exit (!up || stuck) }
+                - /proc/net/tcp
             initialDelaySeconds: 10
             periodSeconds: 30
             failureThreshold: 3

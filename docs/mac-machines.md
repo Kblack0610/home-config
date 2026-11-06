@@ -181,12 +181,12 @@ Host mac-studio
 
 ## Driving it from an agent
 
-The mac-mini is an agent machine: an agent may do anything on it a person at the Mac could, unattended. Three ways in, from the workstation:
+The mac-mini is the agent machine: set aside for agents to have full control of every action and operation on it, unattended. Three ways in, from the workstation:
 
 | Need | Use |
 |---|---|
 | Shell, files, builds (`xcodebuild`, Unity, brew), launching apps (`open -a`) | `ssh mac-mini '<command>'` |
-| The desktop: screenshots, clicking by accessibility label, typing, menus, dialogs, windows, any app | the on-demand MCP `mac-desktop`: `claude-mcp mac-desktop` ([Peekaboo](https://github.com/steipete/Peekaboo), pinned in dotfiles-private `.claude/mcp-optional/mac-desktop.json` and in `macos-agent-tools` defaults) |
+| The desktop: screenshots, clicking by accessibility label, typing, menus, dialogs, windows, any app | the on-demand MCP `agent-desktop`: `claude-mcp agent-desktop` ([Peekaboo](https://github.com/steipete/Peekaboo), pinned in dotfiles-private `.claude/mcp-optional/agent-desktop.json` and in `macos-agent-tools` defaults) |
 | Web pages in the signed-in Google Chrome (store consoles) | the on-demand MCP `stores-browser` (Playwright Extension; the `store-console` skill) |
 
 Secrets come from rbw on the workstation, piped over ssh, never typed into a file: `mac_fleet_password` is the Mac's login and keychain password. The `mac-automation` skill is how an agent works here.

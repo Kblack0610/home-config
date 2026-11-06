@@ -237,7 +237,7 @@
     # `-e gh_runner_mac_force_reregister=true`.
     - role: github-actions-runner-mac
       tags: [mac, runner]
-    # Agents drive this Mac's desktop over ssh (mac-desktop MCP, Peekaboo).
+    # Agents drive this Mac's desktop over ssh (agent-desktop MCP, Peekaboo).
     # Asserts the person's one-time privacy grants and no screen lock.
     - role: macos-agent-tools
       tags: [mac, agent-tools]

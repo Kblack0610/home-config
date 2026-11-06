@@ -62,9 +62,9 @@ spec:
               resources:
                 requests:
                   cpu: "6"
-                  memory: 12Gi  # equal to the limit: hp-victus limits sum past its memory, so the scheduler, not the kernel, keeps this and the walk-forward apart
+                  memory: 14Gi  # equal to the limit: with the walk-forward's 14Gi that is 28 of hp-victus's 31Gi allocatable, and the bots' requests (about 3.8Gi) fill the rest, so the scheduler, not the kernel, keeps the two apart
                 limits:
-                  memory: 12Gi  # ANALYZE_MEMORY_GB plus headroom; a 5m year of 10 pairs peaks at 1.1 GB, a 1m year at 4 GB
+                  memory: 14Gi  # ANALYZE_MEMORY_GB plus headroom; runs peak near 10.3 GiB at a budget of 8 (2026-11-06), a 5m year of 10 pairs at 1.1 GB, a 1m year at 4 GB
               volumeMounts:
                 - {name: lab, mountPath: /lab}
           volumes:

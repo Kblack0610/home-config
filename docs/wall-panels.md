@@ -11,10 +11,20 @@ Turns a wall-mounted Android tablet into a Nest-Hub-style home panel: a polished
 
 | When | Idle | Touch or motion |
 |------|------|-----------------|
-| Day | Home view stays up at the tablet's lowest usable brightness | Full brightness |
-| Night (22:00-07:00) | The Sleep behavior choice, at brightness 0 | Full brightness and the view |
+| Day | Home view stays up at the tablet's lowest usable brightness | Brightness |
+| Night (Night starts to Night ends) | The Sleep behavior choice, at brightness 0 | Brightness and the view |
+| Keep screen on | Nothing changes: Home view at Brightness, no screensaver | - |
 
-After the idle timeout the panel goes back to that time of day's idle mode. To change the night mode, use the **Sleep behavior** select on the Settings view: Black screensaver or Dim view. It takes effect at once, with no edit or deploy.
+After the idle timeout the panel goes back to that time of day's idle mode. Everything a person changes is on the Settings view, for all four panels at once, and takes effect at once with no edit or deploy:
+
+| Control | Helper | Effect |
+|---------|--------|--------|
+| Brightness | `input_number.wall_brightness` | Brightness while in use, 5-100 |
+| Keep screen on | `input_boolean.wall_keep_screen_on` | On: no screensaver and no idle dimming, day and night |
+| Sleep behavior | `input_select.wall_sleep_behavior` | Night idle mode: Black screensaver or Dim view |
+| Night starts, Night ends | `input_datetime.wall_night_start`, `wall_night_end` | The night window, 24h local time. The `wall_panels_period_change` automation fires `wall_period_changed` at each, and wall_idle.py re-applies every panel |
+
+The helpers have no `initial`, so a restart keeps what was set. wall_idle.py writes the `settings_seed` values from `wall_panels.yaml` into them once, the first time it runs, and records that in `pyscript.wall_settings_seeded`.
 
 One owner: lovelace-wallpanel's idle timer on each tablet. It starts the screensaver, a touch ends it, and it mirrors that into `input_boolean.wall_idle_<panel>`. `config/pyscript/wall_idle.py` watches those booleans and sets brightness through FreeKiosk's HA number entity, and publishes `sensor.wall_screensaver_<panel>`, which wallpanel reads as its `profile_entity`. Nothing else dims a panel: FreeKiosk's own screensaver is off, and Android never sleeps.
 
@@ -23,11 +33,9 @@ Per-tablet data is in `config/pyscript/wall_panels.yaml`, `defaults` plus a bloc
 | Key | Meaning |
 |-----|---------|
 | `idle_seconds` | Idle timeout. Read at page load; the restart reloads the panels. |
-| `active_brightness` | Brightness while in use, 0-100 |
 | `day.idle_brightness`, `night.idle_brightness` | Brightness while idle |
 | `day.screensaver` | `off`, `black`, `scenery` or `family` |
 | `sleep_behavior` | Per panel only: `Dim view` or `Black screensaver`, overrides the select for that panel |
-| `night_window` | `start` and `end`, 24h local time |
 | `motion_wake` | Turn on FreeKiosk's always-on camera motion and wake on it |
 | `motion_min_lux` | Ignore motion below this light level; touch still wakes the panel. Needs `light`, the panel's FreeKiosk light sensor. A tablet with no sensor (office reports -1) is never gated |
 

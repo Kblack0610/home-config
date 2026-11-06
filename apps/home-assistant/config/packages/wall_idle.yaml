@@ -16,6 +16,34 @@ input_boolean:
   wall_idle_wall_living_room:
     name: Wall idle living room
     icon: mdi:sleep
+  # Settings view: on keeps every panel at Brightness with no screensaver, day and night.
+  wall_keep_screen_on:
+    name: Keep screen on
+    icon: mdi:monitor-eye
+
+# Settings view controls for all four panels. No `initial`: it would reset the
+# value on every restart. wall_idle.py seeds them once from wall_panels.yaml.
+input_number:
+  wall_brightness:
+    name: Brightness
+    icon: mdi:brightness-6
+    min: 5
+    max: 100
+    step: 5
+    mode: slider
+    unit_of_measurement: "%"
+
+input_datetime:
+  wall_night_start:
+    name: Night starts
+    icon: mdi:weather-night
+    has_date: false
+    has_time: true
+  wall_night_end:
+    name: Night ends
+    icon: mdi:weather-sunny
+    has_date: false
+    has_time: true
 
 # What an idle panel does at night. Only what every tablet can do is listed.
 input_select:
@@ -33,6 +61,19 @@ input_select:
 # ids differ per tablet (button.freekiosk_<id>_reload vs button.wall_office_reload).
 # Panels without FreeKiosk MQTT are not covered: enable it per docs/wall-panels.md.
 automation:
+  # Night start and end are helpers, so the time trigger follows the Settings view
+  # with no re-registration; wall_idle.py re-applies every panel on the event.
+  - id: wall_panels_period_change
+    alias: "Wall panels: night starts or ends"
+    mode: single
+    trigger:
+      - platform: time
+        at: input_datetime.wall_night_start
+      - platform: time
+        at: input_datetime.wall_night_end
+    action:
+      - event: wall_period_changed
+
   - id: wall_panels_reload_after_start
     alias: "Wall panels: reload after Home Assistant starts"
     mode: single

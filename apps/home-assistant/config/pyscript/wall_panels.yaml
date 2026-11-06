@@ -3,10 +3,16 @@
 #
 # A panel's id is its browser_mod Browser ID, and it must also have an
 # input_boolean.wall_idle_<id> in packages/wall_idle.yaml.
+
+# First-run values for the Settings view helpers (packages/wall_idle.yaml).
+# wall_idle.py writes them once; after that the Settings view owns them.
+settings_seed:
+  brightness: 50
+  night_start: "22:00"
+  night_end: "07:00"
+
 defaults:
   idle_seconds: 60
-  active_brightness: 50
-  night_window: { start: "22:00", end: "07:00" }
   # off keeps the wall view up. Also black, scenery or family: the wallpanel
   # profiles in dashboards/wall.yaml.
   day: { idle_brightness: 1, screensaver: "off" }

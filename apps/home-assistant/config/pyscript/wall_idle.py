@@ -2,7 +2,9 @@
 
 lovelace-wallpanel owns idle on each tablet: its timer starts the screensaver, a
 touch stops it, and it mirrors that into input_boolean.wall_idle_<panel>. This app
-tells it which screensaver to use and sets brightness to match. Per panel it
+tells it which screensaver to use and sets brightness to match. Brightness, the
+night window and Keep screen on are helpers on the Settings view
+(packages/wall_idle.yaml), so a change there applies at once. Per panel it
 publishes:
     sensor.wall_screensaver_<panel>    wallpanel profile_entity
     sensor.wall_idle_seconds_<panel>   wallpanel idle_time, read at page load
@@ -16,6 +18,12 @@ import yaml
 
 DATA_PATH = "/config/pyscript/wall_panels.yaml"
 SLEEP_SELECT = "input_select.wall_sleep_behavior"
+BRIGHTNESS = "input_number.wall_brightness"
+NIGHT_START = "input_datetime.wall_night_start"
+NIGHT_END = "input_datetime.wall_night_end"
+KEEP_ON = "input_boolean.wall_keep_screen_on"
+# Set once the helpers hold the settings_seed values, so a restart keeps edits.
+SEEDED = "pyscript.wall_settings_seeded"
 # Sleep behavior option -> screensaver. Display off is not offered: no tablet can
 # power its panel off, see docs/wall-panels.md.
 SLEEP_SCREENSAVERS = {"Dim view": "off", "Black screensaver": "black"}
@@ -35,9 +43,9 @@ def _merge(base, over):
     return merged
 
 
-def _is_night(window):
+def _is_night():
     now = dt_util.now().strftime("%H:%M")
-    start, end = window["start"], window["end"]
+    start, end = state.get(NIGHT_START)[:5], state.get(NIGHT_END)[:5]
     if start <= end:
         return start <= now < end
     return now >= start or now < end
@@ -54,6 +62,8 @@ def _too_dark_for_motion(panel):
 
 
 def _screensaver(panel, night):
+    if state.get(KEEP_ON) == "on":
+        return "off"
     if not night:
         return panel["day"]["screensaver"]
     return SLEEP_SCREENSAVERS[panel.get("sleep_behavior") or state.get(SLEEP_SELECT)]
@@ -61,33 +71,26 @@ def _screensaver(panel, night):
 
 def _apply(panel_id):
     panel = PANELS[panel_id]
-    night = _is_night(panel["night_window"])
+    night = _is_night()
     state.set(f"sensor.wall_screensaver_{panel_id}", _screensaver(panel, night))
     idle = state.get(f"input_boolean.wall_idle_{panel_id}") == "on"
     period = panel["night"] if night else panel["day"]
-    level = period["idle_brightness"] if idle else panel["active_brightness"]
+    if idle and state.get(KEEP_ON) != "on":
+        level = period["idle_brightness"]
+    else:
+        level = int(float(state.get(BRIGHTNESS)))
     if state.get(panel["brightness"]) != "unavailable":
         service.call("number", "set_value", entity_id=panel["brightness"], value=level)
 
 
-def _cron(hhmm):
-    hour, minute = hhmm.split(":")
-    return f"cron({int(minute)} {int(hour)} * * *)"
-
-
 def _watch(panel_id, panel):
     idle_entity = f"input_boolean.wall_idle_{panel_id}"
-    window = panel["night_window"]
 
     @state_trigger(idle_entity)
     def idle_changed():
         _apply(panel_id)
 
-    @time_trigger(_cron(window["start"]), _cron(window["end"]))
-    def period_changed():
-        _apply(panel_id)
-
-    TRIGGERS.extend([idle_changed, period_changed])
+    TRIGGERS.append(idle_changed)
 
     if panel["motion_wake"]:
 
@@ -99,10 +102,30 @@ def _watch(panel_id, panel):
         TRIGGERS.append(motion_seen)
 
 
-@state_trigger(SLEEP_SELECT)
-def wall_sleep_behavior_changed():
+def _apply_all():
     for panel_id in PANELS:
         _apply(panel_id)
+
+
+@state_trigger(SLEEP_SELECT, BRIGHTNESS, NIGHT_START, NIGHT_END, KEEP_ON)
+def wall_setting_changed():
+    _apply_all()
+
+
+# Fired by the wall_panels_period_change automation at night start and end.
+@event_trigger("wall_period_changed")
+def wall_period_changed():
+    _apply_all()
+
+
+def _seed(seed):
+    state.persist(SEEDED, default_value="no")
+    if state.get(SEEDED) == "yes":
+        return
+    service.call("input_number", "set_value", entity_id=BRIGHTNESS, value=seed["brightness"], blocking=True)
+    service.call("input_datetime", "set_datetime", entity_id=NIGHT_START, time=seed["night_start"], blocking=True)
+    service.call("input_datetime", "set_datetime", entity_id=NIGHT_END, time=seed["night_end"], blocking=True)
+    state.set(SEEDED, "yes")
 
 
 @time_trigger("startup")
@@ -114,6 +137,7 @@ def wall_idle_startup():
         await hass.config_entries.flow.async_init("browser_mod", context={"source": "user"})
 
     data = yaml.safe_load(task.executor(pathlib.Path(DATA_PATH).read_text))
+    _seed(data["settings_seed"])
     for panel_id, overrides in data["panels"].items():
         panel = _merge(data["defaults"], overrides)
         PANELS[panel_id] = panel

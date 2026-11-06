@@ -16,6 +16,11 @@ sections:
       - type: heading
         heading: Wall tablets
         heading_style: title
+      # All four panels. wall_idle.py applies a change at once; docs/wall-panels.md.
       - type: entities
         entities:
+          - entity: input_number.wall_brightness
+          - entity: input_boolean.wall_keep_screen_on
           - entity: input_select.wall_sleep_behavior
+          - entity: input_datetime.wall_night_start
+          - entity: input_datetime.wall_night_end

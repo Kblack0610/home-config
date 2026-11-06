@@ -12,6 +12,7 @@ metadata:
 spec:
   # Sunday 02:50: clear of the :20 backfill and the 04:00 experiments run.
   schedule: "50 2 * * 0"
+  timeZone: "Etc/UTC"  # unset means the controller zone, America/Los_Angeles
   concurrencyPolicy: Forbid
   successfulJobsHistoryLimit: 3
   failedJobsHistoryLimit: 3

@@ -1,0 +1,71 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: trader-markets-bucket
+  # The trader markets recorder's quote parquet (apps/freqtrade, CronJob trader-markets-recorder).
+  # Creates the bucket and the trader-markets user, which can reach this bucket only. Idempotent.
+  # To re-run, bump the name.
+  labels:
+    app.kubernetes.io/name: trader-markets
+    app.kubernetes.io/component: bucket-bootstrap
+spec:
+  backoffLimit: 3
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: trader-markets
+        app.kubernetes.io/component: bucket-bootstrap
+    spec:
+      restartPolicy: OnFailure
+      nodeSelector:
+        kubernetes.io/arch: amd64
+      containers:
+        - name: mc
+          image: bitnamilegacy/minio-client:2025.4.16
+          imagePullPolicy: IfNotPresent
+          env:
+            - name: MINIO_ROOT_USER
+              valueFrom:
+                secretKeyRef: {name: minio-root-secret, key: MINIO_ROOT_USER}
+            - name: MINIO_ROOT_PASSWORD
+              valueFrom:
+                secretKeyRef: {name: minio-root-secret, key: MINIO_ROOT_PASSWORD}
+            # The recorder's keys. The same values are in
+            # apps/freqtrade/trader-markets-s3-secret.sops.yaml; rotate both together.
+            - name: S3_ACCESS_KEY
+              valueFrom:
+                secretKeyRef: {name: trader-markets-s3, key: S3_ACCESS_KEY}
+            - name: S3_SECRET_KEY
+              valueFrom:
+                secretKeyRef: {name: trader-markets-s3, key: S3_SECRET_KEY}
+          command:
+            - /bin/bash
+            - -c
+            - |
+              set -euo pipefail
+              export HOME=/tmp
+              BUCKET=trader-markets
+              mc alias set m http://minio.minio.svc.cluster.local:9000 "$MINIO_ROOT_USER" "$MINIO_ROOT_PASSWORD" >/dev/null
+              mc mb --ignore-existing "m/${BUCKET}"
+
+              cat > /tmp/policy.json <<POLICY
+              {
+                "Version": "2012-10-17",
+                "Statement": [
+                  {"Effect": "Allow", "Action": ["s3:GetBucketLocation", "s3:ListBucket"], "Resource": ["arn:aws:s3:::${BUCKET}"]},
+                  {"Effect": "Allow", "Action": ["s3:GetObject", "s3:PutObject", "s3:DeleteObject"], "Resource": ["arn:aws:s3:::${BUCKET}/*"]}
+                ]
+              }
+              POLICY
+              mc admin policy create m trader-markets-rw /tmp/policy.json
+              mc admin user add m "$S3_ACCESS_KEY" "$S3_SECRET_KEY" >/dev/null
+              if ! mc admin user info m "$S3_ACCESS_KEY" | grep -q 'trader-markets-rw'; then
+                mc admin policy attach m trader-markets-rw --user "$S3_ACCESS_KEY"
+              fi
+              echo "trader-markets bucket + user ready."
+          resources:
+            requests:
+              memory: "32Mi"
+              cpu: "20m"
+            limits:
+              memory: "128Mi"

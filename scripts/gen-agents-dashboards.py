@@ -239,6 +239,38 @@ def overview():
              prom(f"sort_desc({WS}(agent_day_merged))", legend="{{area}}", instant=True), pos(16, y, 8, 8)),
     ]
     y += 8
+    # Pipeline: where every item sits (fleet-bench pipeline, agent_chain_*). Backlog dwarfs the queue steps, so it has the right axis.
+    right = [{"matcher": {"id": "byName", "options": "backlog"},
+              "properties": [{"id": "custom.axisPlacement", "value": "right"}]}]
+    at_bound = [{"matcher": {"id": "byType", "options": "number"}, "properties": [
+        {"id": "custom.thresholdsStyle", "value": {"mode": "dashed"}},
+        {"id": "thresholds", "value": thr(("transparent", None), ("red", 1))}]}]
+    bottleneck = stat("Bottleneck now", "The step whose age p90 is furthest past its kpi-thresholds bound, as age p90 / bound. "
+                      "Under 1 means every step is inside its bound. `fleet-bench pipeline` prints the same line.",
+                      prom(f"topk(1, {WS}(agent_chain_age_ratio))", legend="{{step}}", instant=True), pos(16, y + 8, 5, 8),
+                      steps=(("green", None), ("orange", 1), ("red", 2)), no_value="-", decimals=1)
+    bottleneck["options"]["textMode"] = "value_and_name"
+    panels += [
+        row("Pipeline", y),
+        ts("Items per step", "Items at each step now: inbox lines, open agent-board rows (backlog, right axis), queue items "
+           "queued, running and waiting, and items finished in the last 24h (done). From the state files, every 10 minutes "
+           "(fleet-bench, agent_chain_wip).",
+           [prom(f"sum by (step) ({WS}(agent_chain_wip))", legend="{{step}}")], pos(0, y + 1, 12, 7), decimals=0, overrides=right),
+        ts("Age p90 vs bound", "Age p90 of the items at each step over its kpi-thresholds bound (agent_chain_age_ratio). "
+           "The dashed line at 1 is the bound; past it the board-chain watch trips. Steps with no bound have no line.",
+           [prom(f"sum by (step) ({WS}(agent_chain_age_ratio))", legend="{{step}}")], pos(12, y + 1, 12, 7), decimals=2,
+           overrides=at_bound),
+        ts("In vs out per step, last hour", "Moves into and out of each step in the trailing hour, from the ingest record "
+           "(notes log --steps, agent_chain_moves). In above out while the step's count rises is a step backing up.",
+           [prom(f'sum by (step, dir) ({WS}(agent_chain_moves{{step!="done"}}))', legend="{{step}} {{dir}}")],
+           pos(0, y + 8, 16, 8), decimals=0),
+        bottleneck,
+        stat("Drift", "Queue items the ingest record and the queue folders place at different steps (agent_chain_drift). "
+             "Non-zero means a writer skipped its chain event; `fleet-bench pipeline` names the count.",
+             prom(f"max({WS}(agent_chain_drift))", instant=True), pos(21, y + 8, 3, 8), no_value="-",
+             steps=(("green", None), ("red", 1))),
+    ]
+    y += 16
     panels += [
         ts("Cost per hour by project", "Spend per hour, one series per canonical project (claude-telemetry.sh sets it). "
            "Sessions started outside the claude wrappers carry no project and show as the empty series.",
@@ -458,7 +490,7 @@ def runners():
 
     y = 0
     panels = [
-        stat("Runners", "agentctl runners publishing state.", prom('count(mqtt_failed{topic=~"agents_.+_runner_.+"})', instant=True),
+        stat("Runners", "agentctl runners publishing state.", prom("cc:runners_total", instant=True),
              pos(0, y, 4, 4)),
         stat("Failed", "Runners whose last run failed.", prom("cc:runners_failed", instant=True), pos(4, y, 4, 4),
              steps=(("green", None), ("red", 1))),

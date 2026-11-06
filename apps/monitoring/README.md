@@ -69,7 +69,7 @@ Five dashboards tagged `agents` (each has an Agents dropdown to the others), gen
 
 | Dashboard | uid | Reads |
 |-----------|-----|-------|
-| Agents / Overview | `kb-agents-overview` | `claude_code_*` (Claude Code OTel), `agent_sessions`, `agent_session_*`, `agent_bench_*`, `agent_day_*` (workstation textfiles from fleet-sessions, fleet-bench, day-log) |
+| Agents / Overview | `kb-agents-overview` | `claude_code_*` (Claude Code OTel), `agent_sessions`, `agent_session_*`, `agent_bench_*`, `agent_chain_*` (the Pipeline row: items, age, moves and drift per delivery step), `agent_day_*` (workstation textfiles from fleet-sessions, fleet-bench, day-log) |
 | Agents / Session | `kb-agents-session` | the same, filtered to one session; `agent_session_info` maps a tmux target to its Claude Code `session_id` |
 | Agents / Errors and tools | `kb-agents-errors` | Loki `{service_name="claude-code"}` events, including prompt search |
 | Agents / Runners and watches | `kb-agents-runners` | `mqtt_*{topic=~"agents_.+"}` and the `cc:*` rules |

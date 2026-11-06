@@ -820,12 +820,397 @@
       "id": 10
     },
     {
+      "type": "row",
+      "title": "Pipeline",
+      "collapsed": false,
+      "gridPos": {
+        "x": 0,
+        "y": 12,
+        "w": 24,
+        "h": 1
+      },
+      "panels": [],
+      "id": 12
+    },
+    {
+      "type": "timeseries",
+      "title": "Items per step",
+      "description": "Items at each step now: inbox lines, open agent-board rows (backlog, right axis), queue items queued, running and waiting, and items finished in the last 24h (done). From the state files, every 10 minutes (fleet-bench, agent_chain_wip).",
+      "gridPos": {
+        "x": 0,
+        "y": 13,
+        "w": 12,
+        "h": 7
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${datasource}"
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "editorMode": "code",
+          "expr": "sum by (step) (max without (instance, job, host) (agent_chain_wip))",
+          "format": "time_series",
+          "instant": false,
+          "range": true,
+          "legendFormat": "{{step}}",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "none",
+          "custom": {
+            "drawStyle": "line",
+            "lineInterpolation": "smooth",
+            "lineWidth": 2,
+            "fillOpacity": 0,
+            "barAlignment": -1,
+            "stacking": {
+              "mode": "none"
+            },
+            "spanNulls": false,
+            "showPoints": "never"
+          },
+          "color": {
+            "mode": "palette-classic"
+          },
+          "decimals": 0
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "backlog"
+            },
+            "properties": [
+              {
+                "id": "custom.axisPlacement",
+                "value": "right"
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom"
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "id": 13
+    },
+    {
+      "type": "timeseries",
+      "title": "Age p90 vs bound",
+      "description": "Age p90 of the items at each step over its kpi-thresholds bound (agent_chain_age_ratio). The dashed line at 1 is the bound; past it the board-chain watch trips. Steps with no bound have no line.",
+      "gridPos": {
+        "x": 12,
+        "y": 13,
+        "w": 12,
+        "h": 7
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${datasource}"
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "editorMode": "code",
+          "expr": "sum by (step) (max without (instance, job, host) (agent_chain_age_ratio))",
+          "format": "time_series",
+          "instant": false,
+          "range": true,
+          "legendFormat": "{{step}}",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "none",
+          "custom": {
+            "drawStyle": "line",
+            "lineInterpolation": "smooth",
+            "lineWidth": 2,
+            "fillOpacity": 0,
+            "barAlignment": -1,
+            "stacking": {
+              "mode": "none"
+            },
+            "spanNulls": false,
+            "showPoints": "never"
+          },
+          "color": {
+            "mode": "palette-classic"
+          },
+          "decimals": 2
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byType",
+              "options": "number"
+            },
+            "properties": [
+              {
+                "id": "custom.thresholdsStyle",
+                "value": {
+                  "mode": "dashed"
+                }
+              },
+              {
+                "id": "thresholds",
+                "value": {
+                  "mode": "absolute",
+                  "steps": [
+                    {
+                      "color": "transparent",
+                      "value": null
+                    },
+                    {
+                      "color": "red",
+                      "value": 1
+                    }
+                  ]
+                }
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom"
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "id": 14
+    },
+    {
+      "type": "timeseries",
+      "title": "In vs out per step, last hour",
+      "description": "Moves into and out of each step in the trailing hour, from the ingest record (notes log --steps, agent_chain_moves). In above out while the step's count rises is a step backing up.",
+      "gridPos": {
+        "x": 0,
+        "y": 20,
+        "w": 16,
+        "h": 8
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${datasource}"
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "editorMode": "code",
+          "expr": "sum by (step, dir) (max without (instance, job, host) (agent_chain_moves{step!=\"done\"}))",
+          "format": "time_series",
+          "instant": false,
+          "range": true,
+          "legendFormat": "{{step}} {{dir}}",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "none",
+          "custom": {
+            "drawStyle": "line",
+            "lineInterpolation": "smooth",
+            "lineWidth": 2,
+            "fillOpacity": 0,
+            "barAlignment": -1,
+            "stacking": {
+              "mode": "none"
+            },
+            "spanNulls": false,
+            "showPoints": "never"
+          },
+          "color": {
+            "mode": "palette-classic"
+          },
+          "decimals": 0
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom"
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "id": 15
+    },
+    {
+      "type": "stat",
+      "title": "Bottleneck now",
+      "description": "The step whose age p90 is furthest past its kpi-thresholds bound, as age p90 / bound. Under 1 means every step is inside its bound. `fleet-bench pipeline` prints the same line.",
+      "gridPos": {
+        "x": 16,
+        "y": 20,
+        "w": 5,
+        "h": 8
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${datasource}"
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "editorMode": "code",
+          "expr": "topk(1, max without (instance, job, host) (agent_chain_age_ratio))",
+          "format": "time_series",
+          "instant": true,
+          "range": false,
+          "legendFormat": "{{step}}",
+          "refId": "A"
+        }
+      ],
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "colorMode": "background",
+        "graphMode": "none",
+        "textMode": "value_and_name",
+        "justifyMode": "center"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "thresholds"
+          },
+          "unit": "none",
+          "noValue": "-",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "orange",
+                "value": 1
+              },
+              {
+                "color": "red",
+                "value": 2
+              }
+            ]
+          },
+          "decimals": 1
+        },
+        "overrides": []
+      },
+      "id": 11
+    },
+    {
+      "type": "stat",
+      "title": "Drift",
+      "description": "Queue items the ingest record and the queue folders place at different steps (agent_chain_drift). Non-zero means a writer skipped its chain event; `fleet-bench pipeline` names the count.",
+      "gridPos": {
+        "x": 21,
+        "y": 20,
+        "w": 3,
+        "h": 8
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${datasource}"
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "editorMode": "code",
+          "expr": "max(max without (instance, job, host) (agent_chain_drift))",
+          "format": "time_series",
+          "instant": true,
+          "range": false,
+          "legendFormat": "__auto",
+          "refId": "A"
+        }
+      ],
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "colorMode": "background",
+        "graphMode": "none",
+        "textMode": "value",
+        "justifyMode": "center"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "thresholds"
+          },
+          "unit": "none",
+          "noValue": "-",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "red",
+                "value": 1
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "id": 16
+    },
+    {
       "type": "timeseries",
       "title": "Cost per hour by project",
       "description": "Spend per hour, one series per canonical project (claude-telemetry.sh sets it). Sessions started outside the claude wrappers carry no project and show as the empty series.",
       "gridPos": {
         "x": 0,
-        "y": 12,
+        "y": 28,
         "w": 12,
         "h": 8
       },
@@ -880,7 +1265,7 @@
         }
       },
       "interval": "1h",
-      "id": 11
+      "id": 17
     },
     {
       "type": "timeseries",
@@ -888,7 +1273,7 @@
       "description": "Spend per hour, one series per model.",
       "gridPos": {
         "x": 12,
-        "y": 12,
+        "y": 28,
         "w": 12,
         "h": 8
       },
@@ -943,7 +1328,7 @@
         }
       },
       "interval": "1h",
-      "id": 12
+      "id": 18
     },
     {
       "type": "timeseries",
@@ -951,7 +1336,7 @@
       "description": "Cache read dominates when caching works; a jump in cacheCreation means prompts are being rebuilt.",
       "gridPos": {
         "x": 0,
-        "y": 20,
+        "y": 36,
         "w": 12,
         "h": 8
       },
@@ -1067,7 +1452,7 @@
         }
       },
       "interval": "1h",
-      "id": 13
+      "id": 19
     },
     {
       "type": "timeseries",
@@ -1075,7 +1460,7 @@
       "description": "Lines added and removed by Claude Code edits.",
       "gridPos": {
         "x": 12,
-        "y": 20,
+        "y": 36,
         "w": 6,
         "h": 8
       },
@@ -1161,7 +1546,7 @@
         }
       },
       "interval": "1h",
-      "id": 14
+      "id": 20
     },
     {
       "type": "timeseries",
@@ -1169,7 +1554,7 @@
       "description": "Commits and pull requests Claude Code created.",
       "gridPos": {
         "x": 18,
-        "y": 20,
+        "y": 36,
         "w": 6,
         "h": 8
       },
@@ -1269,7 +1654,7 @@
         }
       },
       "interval": "1h",
-      "id": 15
+      "id": 21
     },
     {
       "type": "state-timeline",
@@ -1277,7 +1662,7 @@
       "description": "Context tokens each session holds, one row per tmux target (agent_session_context_tokens). Amber from 150k, red from 200k: auto-compaction fires around 240k.",
       "gridPos": {
         "x": 0,
-        "y": 28,
+        "y": 44,
         "w": 24,
         "h": 10
       },
@@ -1343,7 +1728,7 @@
         },
         "overrides": []
       },
-      "id": 16
+      "id": 22
     },
     {
       "type": "bargauge",
@@ -1351,7 +1736,7 @@
       "description": "Hours sessions spent waiting on the human, per project (fleet-bench).",
       "gridPos": {
         "x": 0,
-        "y": 38,
+        "y": 54,
         "w": 8,
         "h": 8
       },
@@ -1410,7 +1795,7 @@
         },
         "overrides": []
       },
-      "id": 17
+      "id": 23
     },
     {
       "type": "bargauge",
@@ -1418,7 +1803,7 @@
       "description": "Hours sessions sat STALLED, per project (fleet-bench).",
       "gridPos": {
         "x": 8,
-        "y": 38,
+        "y": 54,
         "w": 8,
         "h": 8
       },
@@ -1477,7 +1862,7 @@
         },
         "overrides": []
       },
-      "id": 18
+      "id": 24
     },
     {
       "type": "bargauge",
@@ -1485,7 +1870,7 @@
       "description": "Whole-session spend of the sessions the agent-usage registry updated today, per project (day-log, agent_day_cost_usd). A session started yesterday brings its earlier spend, so this differs from the Cost tile, which counts only spend inside the range.",
       "gridPos": {
         "x": 16,
-        "y": 38,
+        "y": 54,
         "w": 8,
         "h": 8
       },
@@ -1544,134 +1929,7 @@
         },
         "overrides": []
       },
-      "id": 19
-    },
-    {
-      "type": "timeseries",
-      "title": "Cost per hour by runner",
-      "description": "Spend per hour, one series per agentctl runner (the agentctl_runner label). Only runs started by agentctl-run carry the label; hand-started sessions are not shown. A judge's per-call cost and errors are in calls.jsonl (hub and agent-web Fleet tab), not here.",
-      "gridPos": {
-        "x": 0,
-        "y": 46,
-        "w": 12,
-        "h": 8
-      },
-      "datasource": {
-        "type": "prometheus",
-        "uid": "${datasource}"
-      },
-      "targets": [
-        {
-          "datasource": {
-            "type": "prometheus",
-            "uid": "${datasource}"
-          },
-          "editorMode": "code",
-          "expr": "sum by (agentctl_runner) (increase(claude_code_cost_usage_USD_total{agentctl_runner!=\"\", project=~\"$project\", model=~\"$model\"}[$__interval]))",
-          "format": "time_series",
-          "instant": false,
-          "range": true,
-          "legendFormat": "{{agentctl_runner}}",
-          "refId": "A"
-        }
-      ],
-      "fieldConfig": {
-        "defaults": {
-          "unit": "currencyUSD",
-          "custom": {
-            "drawStyle": "bars",
-            "lineInterpolation": "smooth",
-            "lineWidth": 2,
-            "fillOpacity": 80,
-            "barAlignment": -1,
-            "stacking": {
-              "mode": "normal"
-            },
-            "spanNulls": false,
-            "showPoints": "never"
-          },
-          "color": {
-            "mode": "palette-classic"
-          }
-        },
-        "overrides": []
-      },
-      "options": {
-        "legend": {
-          "displayMode": "list",
-          "placement": "bottom"
-        },
-        "tooltip": {
-          "mode": "multi",
-          "sort": "desc"
-        }
-      },
-      "interval": "1h",
-      "id": 20
-    },
-    {
-      "type": "timeseries",
-      "title": "Sessions per hour by runner",
-      "description": "Claude sessions started per hour, one series per agentctl runner. Only runs started by agentctl-run carry the label; hand-started sessions are not shown. A judge's per-call cost and errors are in calls.jsonl (hub and agent-web Fleet tab), not here.",
-      "gridPos": {
-        "x": 12,
-        "y": 46,
-        "w": 12,
-        "h": 8
-      },
-      "datasource": {
-        "type": "prometheus",
-        "uid": "${datasource}"
-      },
-      "targets": [
-        {
-          "datasource": {
-            "type": "prometheus",
-            "uid": "${datasource}"
-          },
-          "editorMode": "code",
-          "expr": "sum by (agentctl_runner) (increase(claude_code_session_count_total{agentctl_runner!=\"\", project=~\"$project\"}[$__interval]))",
-          "format": "time_series",
-          "instant": false,
-          "range": true,
-          "legendFormat": "{{agentctl_runner}}",
-          "refId": "A"
-        }
-      ],
-      "fieldConfig": {
-        "defaults": {
-          "unit": "none",
-          "custom": {
-            "drawStyle": "bars",
-            "lineInterpolation": "smooth",
-            "lineWidth": 2,
-            "fillOpacity": 80,
-            "barAlignment": -1,
-            "stacking": {
-              "mode": "normal"
-            },
-            "spanNulls": false,
-            "showPoints": "never"
-          },
-          "color": {
-            "mode": "palette-classic"
-          },
-          "decimals": 0
-        },
-        "overrides": []
-      },
-      "options": {
-        "legend": {
-          "displayMode": "list",
-          "placement": "bottom"
-        },
-        "tooltip": {
-          "mode": "multi",
-          "sort": "desc"
-        }
-      },
-      "interval": "1h",
-      "id": 21
+      "id": 25
     }
   ],
   "editable": true,

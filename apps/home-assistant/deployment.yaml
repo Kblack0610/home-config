@@ -510,6 +510,7 @@ spec:
               cp /managed-config/pyscript_room_layout.yaml /config/pyscript/room_layout.yaml
               cp /managed-config/pyscript_wall_idle.py /config/pyscript/wall_idle.py
               cp /managed-config/pyscript_wall_panels.yaml /config/pyscript/wall_panels.yaml
+              cp /managed-config/pyscript_voice_log.py /config/pyscript/voice_log.py
 
               cp /managed-config/dashboard_overview.yaml /config/dashboards/overview.yaml
               # shared room-layout partial, !include'd by overview + wall Home
@@ -549,6 +550,7 @@ spec:
               cp /managed-config/dashboard_view_ops.yaml /config/dashboards/view_ops.yaml
               cp /managed-config/dashboard_view_media.yaml /config/dashboards/view_media.yaml
               cp /managed-config/dashboard_view_settings.yaml /config/dashboards/view_settings.yaml
+              cp /managed-config/dashboard_view_log.yaml /config/dashboards/view_log.yaml
               cp /managed-config/dashboard_phone.yaml /config/dashboards/phone.yaml
               cp /managed-config/dashboard_sessions_cards.yaml /config/dashboards/_sessions_cards.yaml
 

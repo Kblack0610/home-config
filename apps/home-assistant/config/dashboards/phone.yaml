@@ -129,6 +129,7 @@ views:
   - !include view_ci.yaml
   - !include view_media.yaml
   - !include view_settings.yaml
+  - !include view_log.yaml
 
   # Hidden device-detail subviews, the same files the wall and the main dashboard include.
   - !include device_vacuum.yaml

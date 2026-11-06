@@ -1,0 +1,51 @@
+# Shared subview: included by BOTH dashboards/wall.yaml and dashboards/phone.yaml, reached
+# from the Settings view ("Event log"). subview:true hides it from the tab bar and gives it
+# a back button. Everything here is read from the HA recorder (default 10 days kept).
+#
+# Voice lines ("heard: ... / replied: ...") are written by pyscript/voice_log.py against the
+# satellite that heard them, so they land in the Voice card next to that satellite's state
+# changes. A typed chat (no satellite) is logged without an entity and shows only in
+# HA's own Logbook page.
+title: Event log
+path: log
+icon: mdi:history
+subview: true
+type: sections
+max_columns: 2
+sections:
+  - type: grid
+    cards:
+      - type: heading
+        heading: Voice
+        icon: mdi:microphone-message
+      - type: logbook
+        hours_to_show: 24
+        target:
+          entity_id:
+            - assist_satellite.wall_office
+            - assist_satellite.wall_living_room
+            - assist_satellite.wall_bedroom
+            - assist_satellite.wall_kitchen
+            - assist_satellite.home_assistant_voice_0a9a90_assist_satellite
+            - assist_satellite.home_assistant_voice_0aa6d9_assist_satellite
+  - type: grid
+    cards:
+      - type: heading
+        heading: Wall tablets
+        icon: mdi:tablet-dashboard
+      - type: logbook
+        hours_to_show: 24
+        target:
+          entity_id:
+            - input_boolean.wall_idle_wall_office
+            - input_boolean.wall_idle_wall_living_room
+            - input_boolean.wall_idle_wall_bedroom
+            - input_boolean.wall_idle_wall_kitchen
+            - button.wall_office_reload
+            - button.wall_living_room_reload
+            - button.wall_kitchen_reload
+            - input_number.wall_brightness
+            - input_boolean.wall_keep_screen_on
+            - input_select.wall_sleep_behavior
+            - input_datetime.wall_night_start
+            - input_datetime.wall_night_end

@@ -469,6 +469,7 @@ views:
   - !include view_media.yaml
 
   - !include view_settings.yaml
+  - !include view_log.yaml
 
   # ──────────────────────────────── ADMIN ──────────────────────────────────
   # Quick links + system controls. NOTE: visibility is NOT security — this view

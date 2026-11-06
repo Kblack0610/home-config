@@ -24,3 +24,9 @@ sections:
           - entity: input_select.wall_sleep_behavior
           - entity: input_datetime.wall_night_start
           - entity: input_datetime.wall_night_end
+      # What fired on the wall and what each satellite heard: dashboards/view_log.yaml.
+      - type: button
+        name: Event log
+        icon: mdi:history
+        show_state: false
+        tap_action: { action: navigate, navigation_path: log }

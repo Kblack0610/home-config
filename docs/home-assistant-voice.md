@@ -130,6 +130,10 @@ cannot degrade silently again.
 
 Still not alerted, on purpose: the four wall tablets. Their `assist_satellite.wall_*` goes unavailable on every dashboard reload and in night mode, so a liveness alert would be noise. Check them by hand from the entity states or the Assist pipeline debug view.
 
+### Voice log
+
+`pyscript/voice_log.py` subscribes to HA's conversation chat logs (`async_subscribe_chat_logs`) and writes one `logbook.log` line per turn, "heard: ... / replied: ...", named for the room. The chat log carries no device, so the line is filed under the satellite that was `listening` or `processing` when the words arrived; a typed chat is logged as "Typed" with no entity. The wall's Event log view shows them. Transcripts stay in the HA recorder (default 10 days, local only). If an HA upgrade moves the subscribe API, startup logs `voice_log: cannot subscribe` as a warning and the state-only log keeps working.
+
 ---
 
 ## Stage 1 — text chat + control (this ship)

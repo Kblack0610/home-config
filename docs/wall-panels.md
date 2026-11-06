@@ -278,7 +278,9 @@ rejected for non-admins regardless of UI). The PIN popup added later is cosmetic
 
 ## 4.5 Settings view
 
-The **Settings** view (Settings button on Home -> `/wall-panels/settings`, also on the phone dashboard) holds only what someone changes from the wall: **Sleep behavior**.
+The **Settings** view (Settings button on Home -> `/wall-panels/settings`, also on the phone dashboard) holds only what someone changes from the wall: brightness, keep screen on, sleep behavior and the night window (see Idle behaviour), plus the **Event log** button.
+
+The **Event log** subview (`/wall-panels/log`, `dashboards/view_log.yaml`) shows the last 24 hours from the HA recorder: each voice satellite's state changes with what it heard and replied, then each panel's idle on/off, FreeKiosk reloads and Settings changes. The voice lines come from `pyscript/voice_log.py` (see `docs/home-assistant-voice.md`, Monitoring & health).
 
 Names, rooms, icons and labels are owned by `config/pyscript/room_layout.yaml`, applied by `pyscript.room_layout_seed` on startup into HA's registries. Add `labels: [Lamp]` to a row to put a plug in the lamp group. Whether a plug counts as a light is the `seed-switch-as-x-lights` list in `deployment.yaml`. The baseline rooms are seeded by the `seed-areas` init container.
 

@@ -38,6 +38,7 @@ configMapGenerator:
       - pyscript_wall_idle.py=config/pyscript/wall_idle.py
       - pyscript_wall_panels.yaml=config/pyscript/wall_panels.yaml
       - pyscript_room_layout.yaml=config/pyscript/room_layout.yaml
+      - pyscript_voice_log.py=config/pyscript/voice_log.py
       - custom_sentences_en_nevermind.yaml=config/custom_sentences/en/nevermind.yaml
       # Custom microWakeWord model (binary). The voice_satellite in-browser engine
       # loads .tflite files from /config/voice_satellite/models/ and labels the
@@ -77,6 +78,7 @@ configMapGenerator:
       - dashboard_view_ops.yaml=config/dashboards/view_ops.yaml
       - dashboard_view_media.yaml=config/dashboards/view_media.yaml
       - dashboard_view_settings.yaml=config/dashboards/view_settings.yaml
+      - dashboard_view_log.yaml=config/dashboards/view_log.yaml
       - dashboard_phone.yaml=config/dashboards/phone.yaml
       - dashboard_sessions_cards.yaml=config/dashboards/_sessions_cards.yaml
       - www_snapcast_tablet.js=config/www/snapcast-tablet.js

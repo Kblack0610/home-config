@@ -18,8 +18,15 @@ WorkingDirectory={{ gh_runner_home }}
 # yet. A host stopped mid-checkout (aws-burst-1 Spot interruption, 2026-11-03)
 # left .git/modules/External/asset-library/index.lock in every slot, and each
 # later job failed on "File exists" in seconds. "-": a failed sweep must not
-# keep the runner down.
-ExecStartPre=-/usr/bin/find {{ gh_runner_work_dir if gh_runner_work_dir.startswith('/') else gh_runner_home ~ '/' ~ gh_runner_work_dir }} -path '*/.git/*' -name '*.lock' -type f -delete
+# keep the runner down, but a sweep killed by the 90s start timeout still does.
+# So it walks only each checkout's .git (work/<repo>/<repo>/.git; submodule git
+# dirs live inside it under modules/), pruning everything else at that depth and
+# the object stores. Walking the whole work dir took every Unity Library with it: on
+# aws-burst-1 after a stop, six cold walks never finished inside 90s, systemd
+# restarted each one, and no runner registered for a day of starts (2026-11-05).
+# rm, not -delete: -delete turns on -depth, which find refuses next to -prune.
+{% set work = gh_runner_work_dir if gh_runner_work_dir.startswith('/') else gh_runner_home ~ '/' ~ gh_runner_work_dir %}
+ExecStartPre=-/usr/bin/find {{ work }} ( -path '{{ work }}/*/*/*' ! -path '*/.git' ! -path '*/.git/*' ) -prune -o ( -name objects -o -name lfs ) -prune -o -path '*/.git/*' -name '*.lock' -type f -exec /bin/rm -f {} +
 ExecStart={{ gh_runner_home }}/bin/runsvc.sh
 Restart=always
 RestartSec=5

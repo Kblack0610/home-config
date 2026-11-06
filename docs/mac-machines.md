@@ -197,6 +197,16 @@ The mac-mini is the agent machine: set aside for agents to have full control of 
 
 The desktop needs a one-time grant by a person, because macOS (TCC) lets only a click in System Settings allow screen capture and synthetic input, and refuses synthetic clicks on those switches. macOS attributes an ssh session's requests to `/usr/libexec/sshd-keygen-wrapper`, so that is what gets the grant: System Settings > Privacy & Security > Accessibility, and > Screen & System Audio Recording: + > Cmd+Shift+G > `/usr/libexec/sshd-keygen-wrapper` > switch it on. Click Allow on any "sshd-keygen-wrapper wants to control ..." prompt. `ansible-playbook playbooks/site.yml --limit mac-mini --tags agent-tools` (role `macos-agent-tools`) checks the grants and the screen lock and prints these steps when one is missing. The CI runner is a LaunchAgent, not sshd, so CI jobs do not get the grant.
 
+## Emotiv EEG headset (mac-mini)
+
+The mac-mini runs Emotiv Launcher and EmotivPRO for the EPOC-family headset (board row `hc-132`). There is no brew cask, so the install is manual: Emotiv-Installer-mac.dmg from emotiv.com (My Account > Downloads), with EmotivPRO ticked. It lands in `/Applications/EmotivApps/` (Launcher 4.13.6.528, EmotivPRO 4.13.6.578, plus EmotivBCI, BrainViz and the Maintenance Tool) and adds the "Emotiv CA Root" certificate to the System keychain, which Cortex needs for its local wss endpoint.
+
+It adds three launchd jobs: `~/Library/LaunchAgents/com.emotiv.emotivapp.plist` (the Launcher window at login) and `com.emotiv.cortexv2` and `com.emotiv.sync` (CortexService and CortexSync, KeepAlive). Idle they cost about 3% CPU and 290 MB RSS together, small enough to leave running beside CI.
+
+Sign-in is to the human's EmotivID; rbw holds no Emotiv entry. The Launcher's Sign in opens a Safari sheet on id.emotiv.com that does not share a browser's emotiv.com session. The license is whatever the account carries (every headset includes EmotivPRO Lite); never buy one from an agent session.
+
+Rollback: quit the apps, run `/Applications/EmotivApps/Emotiv Maintenance Tool.app` and choose remove all components, then check the three plists above are gone.
+
 ## Monitoring
 
 Both Macs run [node_exporter](https://github.com/prometheus/node_exporter) on `:9100` (managed by the `node-exporter-mac` role), scraped by cluster Prometheus via the `mac-nodes` ServiceMonitor (`apps/monitoring/external-mac-nodes.yaml`, every 30s). mac-studio additionally exports Apple-Silicon GPU/ANE/CPU power via the powermetrics textfile sampler.

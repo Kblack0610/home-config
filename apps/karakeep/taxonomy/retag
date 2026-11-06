@@ -91,7 +91,8 @@ def main():
 
     bookmarks = {b["id"]: b for b in paged("/bookmarks", "bookmarks")}
     all_tags = call("GET", "/tags")["tags"]
-    stray = [t for t in all_tags if t["name"] not in canonical]
+    reserved = set(TAXONOMY.get("reserved", []))
+    stray = [t for t in all_tags if t["name"] not in canonical | reserved]
 
     todo = {}
     for bid, tags in want.items():

@@ -1,5 +1,6 @@
 {
-  "_comment": "Karakeep tag taxonomy: single source of truth. top = the 10 main tags (every bookmark gets at least one); folders = old Firefox archive folder name -> tags (ancestors add theirs too). Detail tags are whatever the folders map produces. Applied by ./retag.",
+  "_comment": "Karakeep tag taxonomy: single source of truth. top = the 10 main tags (every bookmark gets at least one); folders = old Firefox archive folder name -> tags (ancestors add theirs too). Detail tags are whatever the folders map produces. reserved = tags other tools attach: never pruned, and kept out of the AI tagging set. Applied by ./retag.",
+  "reserved": ["tab-sweep"],
   "top": [
     "dev",
     "gamedev",

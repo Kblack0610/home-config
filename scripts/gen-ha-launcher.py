@@ -22,6 +22,8 @@ Generating all three together guarantees the probe target `instance`, the HA
 sensor filter, and the tile's bound entity agree byte-for-byte.
 
 Run after adding, renaming, or removing an Ingress/IngressRoute or inventory host.
+`--list-sites` writes nothing and prints the private sites as `name<TAB>group<TAB>url`,
+for desktop launchers (dotfiles kblab-menu) to read this same source.
 The output is committed to git; Flux reconciles, the sync-managed-config init
 container copies the HA files to the PVC on pod restart, and HA picks them up.
 
@@ -398,6 +400,12 @@ def update_probe_targets(tiles: list[dict]) -> bool:
 
 def main() -> int:
     tiles = extract_tiles()
+    if "--list-sites" in sys.argv[1:]:
+        for tile in tiles:
+            if not tile["public"]:
+                print(f'{tile["display"]}\t{tile["group"]}\t{tile["url"]}')
+        return 0
+
     site_tiles = tiles  # all ingress hosts get HTTP status
 
     changed = []

@@ -13,5 +13,5 @@ done
 cp "$dir"/tests/*.test.yaml "$tmp/"
 
 cd "$tmp"
-promtool check rules ./*.rules.yaml
+promtool check rules --lint-fatal ./*.rules.yaml
 promtool test rules ./*.test.yaml

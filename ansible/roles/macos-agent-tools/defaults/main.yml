@@ -1,0 +1,5 @@
+---
+# Peekaboo is run by npx from the `agent-desktop` MCP config (dotfiles-private
+# .claude/mcp-optional/agent-desktop.json); keep the two versions equal.
+agent_tools_peekaboo_version: "4.9.8"
+agent_tools_npx: /opt/homebrew/bin/npx

@@ -153,6 +153,7 @@ Considered and rejected. MDM's unique capability is zero-touch DEP/ADE enrollmen
 | Wake-on-LAN (womp) | Enabled | Remote wake | macos-baseline (pmset) |
 | FileVault | Disabled | Allows auto-login on restart | install script (asserted by macos-baseline) |
 | Auto-login | Enabled (current user) | Unattended restarts after power outage | install script (asserted by macos-baseline) |
+| Screen lock (mac-mini) | Off | Agent input cannot reach a locked screen; auto-login already gives a session to anyone at the Mac | person, once (asserted by macos-agent-tools) |
 | **Spotlight index / Time Machine / Siri / analytics / Power+App Nap** | **Off** | **Headless LLM node debloat** | **macos-llm-node** (mac-studio only, all reversible) |
 | **iogpu.wired_limit_mb** | **491520 (480 GB)** | **Large-model MLX headroom** | **macos-llm-node** (LaunchDaemon) |
 
@@ -177,6 +178,20 @@ Host mac-studio
     User kblack0610
     IdentityFile ~/.ssh/id_ed25519
 ```
+
+## Driving it from an agent
+
+The mac-mini is the agent machine: set aside for agents to have full control of every action and operation on it, unattended. Three ways in, from the workstation:
+
+| Need | Use |
+|---|---|
+| Shell, files, builds (`xcodebuild`, Unity, brew), launching apps (`open -a`) | `ssh mac-mini '<command>'` |
+| The desktop: screenshots, clicking by accessibility label, typing, menus, dialogs, windows, any app | the on-demand MCP `agent-desktop`: `claude-mcp agent-desktop` ([Peekaboo](https://github.com/steipete/Peekaboo), pinned in dotfiles-private `.claude/mcp-optional/agent-desktop.json` and in `macos-agent-tools` defaults) |
+| Web pages in the signed-in Google Chrome (store consoles) | the on-demand MCP `stores-browser` (Playwright Extension; the `store-console` skill) |
+
+Secrets come from rbw on the workstation, piped over ssh, never typed into a file: `mac_fleet_password` is the Mac's login and keychain password. The `mac-automation` skill is how an agent works here.
+
+The desktop needs a one-time grant by a person, because macOS (TCC) lets only a click in System Settings allow screen capture and synthetic input, and refuses synthetic clicks on those switches. macOS attributes an ssh session's requests to `/usr/libexec/sshd-keygen-wrapper`, so that is what gets the grant: System Settings > Privacy & Security > Accessibility, and > Screen & System Audio Recording: + > Cmd+Shift+G > `/usr/libexec/sshd-keygen-wrapper` > switch it on. Click Allow on any "sshd-keygen-wrapper wants to control ..." prompt. `ansible-playbook playbooks/site.yml --limit mac-mini --tags agent-tools` (role `macos-agent-tools`) checks the grants and the screen lock and prints these steps when one is missing. The CI runner is a LaunchAgent, not sshd, so CI jobs do not get the grant.
 
 ## Monitoring
 
@@ -208,6 +223,9 @@ tail -f ~/actions-runner/_diag/Runner_*.log   # jobs not picked up
 
 ### Can't SSH after reboot
 Likely a `SetEnv` issue in SSH config: `ssh -F /dev/null kennethblack@192.168.1.7`.
+
+### An agent cannot see or click the desktop (mac-mini)
+`peekaboo permissions status` (or the `agent-tools` tag) shows which grant is off. macOS drops a grant after some updates and can re-ask for Screen Recording; redo the one-time grant in [Driving it from an agent](#driving-it-from-an-agent). A screenshot of the login window means the screen locked: the screen lock must be off (`sysadminctl -screenLock status`).
 
 ### Build fails with code signing error (mac-mini)
 ```bash

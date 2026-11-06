@@ -9,13 +9,14 @@
 # (filter order). A switch_as_x light hides the switch it wraps and hidden entities
 # are excluded, so a lamp plug shows once, as a light.
 #
+# Rooms show in the order below, Living Room first.
+#
 # Only toggle / more-info tap actions, never `navigate`: the dashboards use
 # different path prefixes. Per-device detail pages stay on the Devices tab.
 
 - type: heading
-  heading: Office
-  icon: mdi:briefcase
-
+  heading: Living Room
+  icon: mdi:sofa
 - type: custom:auto-entities
   show_empty: false
   card_param: cards
@@ -23,7 +24,7 @@
   filter:
     include:
       - domain: light
-        area: Office
+        area: Living Room
         sort: &by_name { method: friendly_name }
         options: &light_tile
           type: custom:button-card
@@ -79,55 +80,11 @@
                 icon:
                   - color: '#ffc107'
       - entity_id: switch.*plug*
-        area: Office
+        area: Living Room
         sort: *by_name
         options: &plug_tile
           <<: *light_tile
           icon: "[[[ return entity.attributes.icon || 'mdi:power-plug'; ]]]"
-    exclude: &not_shown
-      # A switch_as_x light hides the switch it wraps; a voice satellite's LED ring
-      # is not a room light.
-      - hidden_by: integration
-      - hidden_by: user
-      - entity_id: light.*led_ring*
-
-- type: heading
-  heading: Bedroom
-  icon: mdi:bed
-- type: custom:auto-entities
-  show_empty: false
-  card_param: cards
-  card: *room_grid
-  filter:
-    include:
-      - { domain: light, area: Bedroom, sort: *by_name, options: *light_tile }
-      - { entity_id: switch.*plug*, area: Bedroom, sort: *by_name, options: *plug_tile }
-    exclude: *not_shown
-
-- type: heading
-  heading: Kitchen
-  icon: mdi:fridge-outline
-- type: custom:auto-entities
-  show_empty: false
-  card_param: cards
-  card: *room_grid
-  filter:
-    include:
-      - { domain: light, area: Kitchen, sort: *by_name, options: *light_tile }
-      - { entity_id: switch.*plug*, area: Kitchen, sort: *by_name, options: *plug_tile }
-    exclude: *not_shown
-
-- type: heading
-  heading: Living Room
-  icon: mdi:sofa
-- type: custom:auto-entities
-  show_empty: false
-  card_param: cards
-  card: *room_grid
-  filter:
-    include:
-      - { domain: light, area: Living Room, sort: *by_name, options: *light_tile }
-      - { entity_id: switch.*plug*, area: Living Room, sort: *by_name, options: *plug_tile }
       # Litter box: red with the reason when it needs a person (the same statuses
       # packages/home_alerts.yaml alerts on), orange while a cat is inside.
       - entity_id: sensor.cat_litter_box_status
@@ -161,4 +118,48 @@
               styles:
                 icon:
                   - color: '#ff9800'
+    exclude: &not_shown
+      # A switch_as_x light hides the switch it wraps; a voice satellite's LED ring
+      # is not a room light.
+      - hidden_by: integration
+      - hidden_by: user
+      - entity_id: light.*led_ring*
+
+- type: heading
+  heading: Office
+  icon: mdi:briefcase
+- type: custom:auto-entities
+  show_empty: false
+  card_param: cards
+  card: *room_grid
+  filter:
+    include:
+      - { domain: light, area: Office, sort: *by_name, options: *light_tile }
+      - { entity_id: switch.*plug*, area: Office, sort: *by_name, options: *plug_tile }
+    exclude: *not_shown
+
+- type: heading
+  heading: Bedroom
+  icon: mdi:bed
+- type: custom:auto-entities
+  show_empty: false
+  card_param: cards
+  card: *room_grid
+  filter:
+    include:
+      - { domain: light, area: Bedroom, sort: *by_name, options: *light_tile }
+      - { entity_id: switch.*plug*, area: Bedroom, sort: *by_name, options: *plug_tile }
+    exclude: *not_shown
+
+- type: heading
+  heading: Kitchen
+  icon: mdi:fridge-outline
+- type: custom:auto-entities
+  show_empty: false
+  card_param: cards
+  card: *room_grid
+  filter:
+    include:
+      - { domain: light, area: Kitchen, sort: *by_name, options: *light_tile }
+      - { entity_id: switch.*plug*, area: Kitchen, sort: *by_name, options: *plug_tile }
     exclude: *not_shown

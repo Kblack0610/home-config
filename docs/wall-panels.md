@@ -28,6 +28,8 @@ The helpers have no `initial`, so a restart keeps what was set. wall_idle.py wri
 
 One owner: lovelace-wallpanel's idle timer on each tablet. It starts the screensaver, a touch ends it, and it mirrors that into `input_boolean.wall_idle_<panel>`. `config/pyscript/wall_idle.py` watches those booleans and sets brightness through FreeKiosk's HA number entity, and publishes `sensor.wall_screensaver_<panel>`, which wallpanel reads as its `profile_entity`. Nothing else dims a panel: FreeKiosk's own screensaver is off, and Android never sleeps.
 
+A tap wakes a dimmed panel in one go: wallpanel ends the screensaver, turns the idle boolean off, and wall_idle.py sends Brightness to FreeKiosk. Tap to brightness command took 0.3 to 0.5 s on bedroom and living room on 2026-11-06, including right after the switch to the night profile. Brightness starts at 100 (`settings_seed`), so a tap restores full brightness until someone lowers it on the Settings view.
+
 Per-tablet data is in `config/pyscript/wall_panels.yaml`, `defaults` plus a block per panel that can override any key. It loads when HA starts, so a change here deploys through Flux:
 
 | Key | Meaning |

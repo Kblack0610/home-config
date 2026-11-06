@@ -7,7 +7,7 @@
 # First-run values for the Settings view helpers (packages/wall_idle.yaml).
 # wall_idle.py writes them once; after that the Settings view owns them.
 settings_seed:
-  brightness: 50
+  brightness: 100
   night_start: "22:00"
   night_end: "07:00"
 

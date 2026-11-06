@@ -124,6 +124,8 @@
 {%- endfor -%}
 {%- set said = section(rows, ['queue']) ~ section(rows, ['ci']) -%}
 {%- if said %}{{ said }}<br>{% endif -%}
+{%- set said = section(rows, ['projects']) -%}
+{%- if said %}{{ said }}<br>{% endif -%}
 {%- endif -%}
 {{ claude() }}<br>{{ house() -}}
 </p>

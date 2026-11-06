@@ -84,8 +84,9 @@ Flux picks up the ConfigMap change → deployment hash rotates → pod rolls →
 3. Needs you: the count split by kind, the top projects, and the oldest ask.
 4. Agents: session counts, hours waited on you in the last 24h, sessions past their ETA, KPIs over their limit with the limit, cost per PR against 28 days, and merged today.
 5. Queue, then CI, naming only what is down.
-6. Claude: each account's weekly use, amber when one is over pace, the earliest run-out, and 24h spend.
-7. The house: weather and the next event across every calendar.
+6. Projects: how many have work in flight, then the first three in flight, each with its percent, ETA and sessions.
+7. Claude: each account's weekly use, amber when one is over pace, the earliest run-out, and 24h spend.
+8. The house: weather and the next event across every calendar.
 
 Every section opens with a bold `Title: value`. Colour marks only what is wrong: a title goes amber or red with its section, and only red items stay red in full, so amber never covers a whole block. Detail lines under a title are grey, so the titles and their values stand out.
 

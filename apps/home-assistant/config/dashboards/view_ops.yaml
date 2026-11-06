@@ -95,9 +95,23 @@ sections:
           include:
             - { state: unavailable }
             - { state: unknown }
+          # Stateless entities rest at `unknown` until first used (a button never pressed),
+          # so they are not faults; their device's other entities show it when it is offline.
+          # They were 92 of the 244 rows on 2026-11-05.
           exclude:
             - entity_id: "*weather*"
             - entity_id: "sun.*"
+            - domain: button
+            - domain: input_button
+            - domain: event
+            - domain: scene
+            - domain: notify
+            - domain: stt
+            - domain: tts
+            - domain: wake_word
+            - domain: conversation
+            - domain: infrared
+            - domain: radio_frequency
         sort: { method: friendly_name }
       # Low-battery roster (battery-powered fleet devices).
       - type: custom:auto-entities

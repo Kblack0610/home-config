@@ -64,11 +64,17 @@ make the change, then remove it again.
 
 ## Zones
 
-`external-dns` (`apps/external-dns/`) owns DNS for **kennethblack.me**,
-**blacknbrownstudios.com**, **binks.chat**, **kblack.dev** (`--domain-filter`, policy
-`upsert-only`). It reads standard Ingresses **and** Traefik `IngressRoute`s
-(`--source=traefik-proxy`, for binks.chat). `*.kblab.me` is **LAN-only** via AdGuard — never
-the tunnel — and is out of scope here.
+`external-dns` (`apps/external-dns/`) owns DNS for every Cloudflare zone in the account (no
+`--domain-filter`, policy `upsert-only`): **kennethblack.me**, **blacknbrownstudios.com**,
+**binks.chat**, **kblack.dev**, and **kblab.me**. It reads standard Ingresses **and** Traefik
+`IngressRoute`s (`--source=traefik-proxy`, for binks.chat).
+
+**`*.kblab.me` is not LAN-only by default.** AdGuard answers it on the LAN, but every
+`*.kblab.me` Ingress is also published through the wildcard Cloudflare tunnel (for example
+`trader.kblab.me`), so it is reachable from the internet. To keep a host off public DNS, set
+`external-dns.alpha.kubernetes.io/controller: none` on its Ingress so external-dns skips it
+(add a `local-network-only` Traefik middleware too). The pattern is `apps/frigate/ingress.yaml`
+(camera footage); `apps/agents/ingress.yaml` is the opposite, public on purpose.
 
 ## Troubleshooting (not part of adding a site)
 

@@ -7,6 +7,7 @@ resources:
   - rbac.yaml
   - secret.sops.yaml
   - daemonset.yaml
+  - service.yaml
 
 # Generated so the name carries a content hash: Alloy has no config reloader
 # here, so a plain ConfigMap edit never reached the running pods (they were 57

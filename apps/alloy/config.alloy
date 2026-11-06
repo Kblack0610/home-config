@@ -146,6 +146,21 @@ otelcol.receiver.otlp "claude_code" {
   }
 }
 
+// ---- OTLP receiver (LiteLLM gateway traces) ------------------------------
+// LiteLLM's langfuse_otel callback always posts to
+// <LANGFUSE_OTEL_HOST>/api/public/otel/v1/traces, so this receiver takes that
+// path on a port of its own. Its prompts and outputs then cross the same
+// redaction as Claude's spans. Reached through the alloy-otlp Service.
+otelcol.receiver.otlp "litellm" {
+  http {
+    endpoint        = "0.0.0.0:4319"
+    traces_url_path = "/api/public/otel/v1/traces"
+  }
+  output {
+    traces = [otelcol.processor.transform.langfuse_redact.input]
+  }
+}
+
 // ---- Traces -> Langfuse -------------------------------------------------
 // Claude Code emits spans (claude_code.interaction as the per-prompt root,
 // with claude_code.llm_request / .tool / .tool.execution / .hook beneath it)
@@ -200,19 +215,15 @@ otelcol.processor.transform "claude_usage" {
   }
 }
 
-// Labels and redaction for Claude Code spans, before anything reaches Langfuse.
+// Labels for Claude Code spans, before anything reaches Langfuse.
 //
-// Labels: Langfuse v4 filters observations directly, so what a query groups by
+// Langfuse v4 filters observations directly, so what a query groups by
 // has to sit on every span. Claude Code sends none of the langfuse.* names and
 // the session sets its own only through resource attributes (project and
 // queue.item, per launch, from claude-telemetry.sh). Without this, 96% of
 // observations had no trace name and every Claude span sat in `default`.
 // Only langfuse.trace.metadata.* is filterable; a plain attribute lands in
 // metadata.attributes and is not.
-//
-// Redaction: the same patterns as loki.process "redact" above, which only
-// covers the Loki stream. Spans carry the same prompts and tool output, and
-// Langfuse keeps them 90 days. A change to one list belongs in the other.
 otelcol.processor.transform "claude_langfuse" {
   error_mode = "ignore"
 
@@ -226,6 +237,27 @@ otelcol.processor.transform "claude_langfuse" {
       `set(attributes["langfuse.trace.metadata.project"], resource.attributes["project"]) where resource.attributes["project"] != nil`,
       `set(attributes["langfuse.trace.metadata.queue_item"], resource.attributes["queue.item"]) where resource.attributes["queue.item"] != nil`,
       `set(attributes["langfuse.trace.metadata.runner"], resource.attributes["agentctl.runner"]) where resource.attributes["agentctl.runner"] != nil`,
+    ]
+  }
+
+  output {
+    traces = [otelcol.processor.transform.langfuse_redact.input]
+  }
+}
+
+// The one redaction every span crosses on its way to Langfuse, from Claude Code
+// and LiteLLM alike. LiteLLM keeps its own environment and trace name, so it
+// joins here and skips the labels above.
+//
+// The same patterns as loki.process "redact" above, which only covers the Loki
+// stream. Spans carry the same prompts and tool output, and Langfuse keeps them
+// 90 days. A change to one list belongs in the other.
+otelcol.processor.transform "langfuse_redact" {
+  error_mode = "ignore"
+
+  trace_statements {
+    context    = "span"
+    statements = [
       `replace_all_patterns(attributes, "value", "gh[pousr]_[A-Za-z0-9]{36,}|github_pat_[A-Za-z0-9_]{40,}", "<redacted:github>")`,
       `replace_all_patterns(attributes, "value", "sk-[A-Za-z0-9_-]{20,}", "<redacted:sk>")`,
       `replace_all_patterns(attributes, "value", "(?:AKIA|ASIA)[0-9A-Z]{16}", "<redacted:aws>")`,

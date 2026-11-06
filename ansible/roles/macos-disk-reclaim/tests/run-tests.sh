@@ -10,6 +10,8 @@
 #   3. the CI guard must both fire AND get out of the way - `pgrep -q` is not
 #      portable, and `pgrep -f <name>` matches the test harness's own command
 #      line, so this guard has failed in both directions
+#   4. a skipped run must try again next hour, a finished one must wait a week
+#   5. a live Unity must keep the Unity sections from running
 #
 # Usage: ./run-tests.sh   (exit 0 = all good)
 set -uo pipefail
@@ -21,6 +23,20 @@ trap 'rm -rf "$WORK"' EXIT
 
 G="$WORK/Games"
 PROM="$WORK/out.prom"
+STAMP="$WORK/out.last-complete"
+export HOME="$WORK/home"
+
+# Real editors and CI jobs on the machine running this test must not decide the
+# result, so pgrep hides whatever was already alive. The fakes below start later
+# and still go through the real pgrep, which is what the guards are tested on.
+mkdir -p "$WORK/bin"
+{ pgrep -x Runner.Worker; pgrep -f '[R]unner\.Worker'; pgrep -x Unity; } > "$WORK/baseline"
+cat > "$WORK/bin/pgrep" <<EOF
+#!/bin/bash
+"$(command -v pgrep)" "\$@" | grep -vxFf "$WORK/baseline"
+EOF
+chmod +x "$WORK/bin/pgrep"
+export PATH="$WORK/bin:$PATH"
 failures=0
 
 # Render through real Jinja first. The sed rendering below is close enough to
@@ -55,6 +71,7 @@ render() {
         -e "s|{{ disk_reclaim_min_age_days }}|0|" \
         -e "s|{{ disk_reclaim_simulator_threshold_mb }}|0|" \
         -e "s|{{ disk_reclaim_prom_path }}|$PROM|" \
+        -e "s|{{ disk_reclaim_interval_seconds }}|604800|" \
         -e "s|({% for r in disk_reclaim_unity_roots %}\"{{ r }}\" {% endfor %})|(\"$G\")|" \
         -e "s|{{ 1 if disk_reclaim_dry_run else 0 }}|$dry_num|" \
         "$TEMPLATE" > "$WORK/reclaim.sh"
@@ -66,7 +83,12 @@ render() {
 }
 
 fixtures() {
-    rm -rf "$G"
+    rm -rf "$G" "$HOME" "$STAMP"
+    # Gradle: 1.0 unused, 2.0 aged but its daemon ran today, 3.0 ran long ago
+    mkdir -p "$HOME/.gradle/caches/1.0" "$HOME/.gradle/caches/2.0" "$HOME/.gradle/caches/3.0"
+    mkdir -p "$HOME/.gradle/caches/modules-2" "$HOME/.gradle/daemon/2.0" "$HOME/.gradle/daemon/3.0"
+    for v in 1.0 2.0 3.0; do printf 'cache' > "$HOME/.gradle/caches/$v/blob"; done
+    touch -d '60 days ago' "$HOME/.gradle/caches/"* "$HOME/.gradle/daemon/3.0"
     mkdir -p "$G/Proj/Assets" "$G/Proj/Library" "$G/Proj/Packages"
     mkdir -p "$G/Proj_clone_0/Library" "$G/Proj_clone_1/Assets"
     # textbook ParrelSync clone: source symlinked out, only a cache of its own
@@ -106,6 +128,21 @@ check "stale Unity Library removed"     '[[ ! -e "$G/Proj/Library" ]]'
 check "original source survived"        '[[ -f "$G/Proj/Assets/realsource" ]]'
 check "bytes reported for clones"       'grep -q "unity_clones\"} [1-9]" "$PROM"'
 check "bytes reported for library"      'grep -q "unity_library\"} [1-9]" "$PROM"'
+check "unused gradle version removed"   '[[ ! -e "$HOME/.gradle/caches/1.0" ]]'
+check "gradle version in use survived"  '[[ -f "$HOME/.gradle/caches/2.0/blob" ]]'
+check "gradle version gone stale removed" '[[ ! -e "$HOME/.gradle/caches/3.0" ]]'
+check "shared gradle modules survived"  '[[ -d "$HOME/.gradle/caches/modules-2" ]]'
+check "bytes reported for gradle"       'grep -q "gradle_versions\"} [1-9]" "$PROM"'
+check "finished pass stamped"           '[[ -s "$STAMP" ]]'
+
+echo "== cadence: a finished pass waits, a stale stamp runs =="
+fixtures
+date +%s > "$STAMP"
+bash "$WORK/reclaim.sh" >/dev/null 2>&1
+check "recent stamp pruned nothing" '[[ -d "$G/Proj_clone_0" ]]'
+echo $(( $(date +%s) - 604801 )) > "$STAMP"
+bash "$WORK/reclaim.sh" >/dev/null 2>&1
+check "week-old stamp pruned"       '[[ ! -e "$G/Proj_clone_0" ]]'
 
 echo "== dry run =="
 render true 1
@@ -123,6 +160,18 @@ sleep 1
 bash "$WORK/reclaim.sh" >/dev/null 2>&1
 check "guard kept the clone"  '[[ -d "$G/Proj_clone_0" ]]'
 check "guard recorded itself" 'grep -q "reason=\"ci_running\"} 1" "$PROM"'
+check "skipped run not stamped, so it retries" '[[ ! -e "$STAMP" ]]'
+kill "$fake" 2>/dev/null
+wait "$fake" 2>/dev/null
+
+echo "== Unity guard: a live editor keeps the Unity sections off =="
+fixtures
+perl -e '$0="Unity"; sleep 20' & fake=$!
+sleep 1
+bash "$WORK/reclaim.sh" >/dev/null 2>&1
+check "live Unity kept the Library" '[[ -d "$G/Proj/Library" ]]'
+check "live Unity recorded itself"  'grep -q "reason=\"unity_running\"} 1" "$PROM"'
+check "live Unity run not stamped"  '[[ ! -e "$STAMP" ]]'
 kill "$fake" 2>/dev/null
 wait "$fake" 2>/dev/null
 

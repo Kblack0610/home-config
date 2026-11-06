@@ -238,7 +238,8 @@
     - role: github-actions-runner-mac
       tags: [mac, runner]
     # Agents drive this Mac's desktop over ssh (agent-desktop MCP, Peekaboo).
-    # Asserts the person's one-time privacy grants and no screen lock.
+    # Sets up the Mac for agents (sudo, Spotlight, updates, PATH), then asserts
+    # the person's one-time privacy grants and no screen lock.
     - role: macos-agent-tools
       tags: [mac, agent-tools]
   tasks:

@@ -14,10 +14,11 @@
     <!--
       StartInterval without RunAtLoad: a reclaim pass is not urgent, and firing
       one the moment the agent loads would prune during whatever made you
-      reload it. The script itself declines to run while a CI job is in flight.
+      reload it. This is the retry interval: the script exits at once until a
+      full cadence has passed, and declines to run while a CI job is in flight.
     -->
     <key>StartInterval</key>
-    <integer>{{ disk_reclaim_interval_seconds }}</integer>
+    <integer>{{ disk_reclaim_retry_seconds }}</integer>
 
     <key>Nice</key>
     <integer>10</integer>

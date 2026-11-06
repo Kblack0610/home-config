@@ -7,6 +7,9 @@
 # grants and prints the steps. See docs/mac-machines.md, "Driving it from an
 # agent".
 
+- name: Set up the Mac for agents
+  ansible.builtin.import_tasks: agent-machine.yml
+
 - name: Read Peekaboo's permission report (Screen Recording, Accessibility)
   ansible.builtin.command: >-
     {{ agent_tools_npx }} -y -p @steipete/peekaboo@{{ agent_tools_peekaboo_version }}
@@ -16,11 +19,13 @@
   register: agent_tools_perms
   changed_when: false
   failed_when: false
+  check_mode: false
 
 - name: Read the screen lock delay
   ansible.builtin.command: sysadminctl -screenLock status
   register: agent_tools_lock
   changed_when: false
+  check_mode: false
 
 - name: Assert agents can drive the desktop
   ansible.builtin.assert:

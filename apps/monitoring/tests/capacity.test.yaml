@@ -434,3 +434,37 @@ tests:
             exp_annotations:
               summary: Alertmanager failed to deliver a page through webhook
               runbook: apps/ntfy/README.md
+
+  - name: a reclaim pass that stops running warns after 8 days, one that keeps running does not
+    interval: 1m
+    input_series:
+      - series: 'homelab_disk_reclaim_last_run_timestamp_seconds{instance="a"}'
+        values: '0x12000'
+      - series: 'homelab_disk_reclaim_last_run_timestamp_seconds{instance="b"}'
+        values: '0+60x12000'
+    alert_rule_test:
+      - eval_time: 190h
+        alertname: DiskReclaimStale
+        exp_alerts: []
+      - eval_time: 200h
+        alertname: DiskReclaimStale
+        exp_alerts:
+          - exp_labels: {alertname: DiskReclaimStale, severity: warning, category: capacity, instance: a}
+            exp_annotations: {summary: "a has not run a disk reclaim pass for over 8 days"}
+
+  - name: a reclaim held off for a day warns, a run that clears inside the day does not
+    interval: 1m
+    input_series:
+      - series: 'homelab_disk_reclaim_skipped{instance="a",reason="ci_running"}'
+        values: '1x2400'
+      - series: 'homelab_disk_reclaim_skipped{instance="b",reason="ci_running"}'
+        values: '1x1200 0x1200'
+    alert_rule_test:
+      - eval_time: 20h
+        alertname: DiskReclaimSkipped
+        exp_alerts: []
+      - eval_time: 30h
+        alertname: DiskReclaimSkipped
+        exp_alerts:
+          - exp_labels: {alertname: DiskReclaimSkipped, severity: warning, category: capacity, instance: a, reason: ci_running}
+            exp_annotations: {summary: "Disk reclaim on a has been skipped for a day: ci_running"}

@@ -11,17 +11,27 @@ DRY_RUN="{{ 'true' if disk_reclaim_dry_run else 'false' }}"
 MIN_AGE_DAYS="{{ disk_reclaim_min_age_days }}"
 SIM_THRESHOLD_MB="{{ disk_reclaim_simulator_threshold_mb }}"
 PROM_PATH="{{ disk_reclaim_prom_path }}"
+CADENCE_SECONDS="{{ disk_reclaim_interval_seconds }}"
+STAMP_PATH="${PROM_PATH%.prom}.last-complete"
 UNITY_ROOTS=({% for r in disk_reclaim_unity_roots %}"{{ r }}" {% endfor %})
 
 freed_unity_clones=0
 freed_unity_library=0
 freed_simulator=0
+freed_gradle=0
 skipped_reason=""
 
 # Logs go to stderr because remove_path returns its byte count on stdout, and a
 # log line captured into $(( )) is an arithmetic syntax error - which in a
 # non-interactive shell takes the whole run down mid-prune.
 log() { echo "[reclaim $(date -u +%FT%TZ)] $*" >&2; }
+
+# launchd wakes this hourly; the stamp keeps real passes weekly. Only a pass that
+# was not skipped writes it, so a run that finds CI busy tries again next hour
+# instead of waiting a week.
+if [[ -f "$STAMP_PATH" ]] && (( $(date +%s) - $(cat "$STAMP_PATH") < CADENCE_SECONDS )); then
+    exit 0
+fi
 
 dir_bytes() { du -sk "$1" 2>/dev/null | awk '{print $1 * 1024}'; }
 
@@ -72,7 +82,7 @@ remove_path() {
 # again, which is why this note spells it out in words. A sed-rendered test
 # cannot catch it either, since sed is not Jinja; tests/run-tests.sh now parses
 # this file with Jinja itself.
-if [[ "$skipped_reason" != "ci_running" && -n "${UNITY_ROOTS[*]:-}" ]]; then
+if [[ -z "$skipped_reason" && -n "${UNITY_ROOTS[*]:-}" ]]; then
     for root in "${UNITY_ROOTS[@]}"; do
         [[ -d "$root" ]] || continue
 
@@ -103,6 +113,22 @@ if [[ "$skipped_reason" != "ci_running" && -n "${UNITY_ROOTS[*]:-}" ]]; then
             freed_unity_library=$(( freed_unity_library + ${b:-0} ))
         done < <(find "$root" -maxdepth 2 -type d -name Library -mtime "+${MIN_AGE_DAYS}" -prune 2>/dev/null)
     done
+fi
+
+# Gradle's per-version caches. A new Gradle version starts a new directory and
+# nothing removes the old one. The daemon directory is the use signal: a version
+# that ran recently touched it, while the cache's own mtime can sit still through
+# read-only builds. modules-2 and the build cache are shared and stay.
+if [[ "$skipped_reason" != "ci_running" ]]; then
+    while IFS= read -r cache; do
+        [[ -n "$cache" ]] || continue
+        daemon="$HOME/.gradle/daemon/$(basename "$cache")"
+        if [[ -d "$daemon" && -z "$(find "$daemon" -maxdepth 0 -mtime "+${MIN_AGE_DAYS}" 2>/dev/null)" ]]; then
+            continue
+        fi
+        b=$(remove_path "$cache" "gradle version cache")
+        freed_gradle=$(( freed_gradle + ${b:-0} ))
+    done < <(find "$HOME/.gradle/caches" -mindepth 1 -maxdepth 1 -type d -name '[0-9]*' -mtime "+${MIN_AGE_DAYS}" 2>/dev/null)
 fi
 
 # iOS simulator app data. `simctl erase` wipes a device's data and keeps both
@@ -142,7 +168,7 @@ for devs in d.get('devices',{}).values():
     fi
 fi
 
-total=$(( freed_unity_clones + freed_unity_library + freed_simulator ))
+total=$(( freed_unity_clones + freed_unity_library + freed_simulator + freed_gradle ))
 log "done: $(( total / 1048576 )) MB reclaimed (dry_run=$DRY_RUN skipped=${skipped_reason:-none})"
 
 # Atomic write so node_exporter never reads a half-written file.
@@ -153,6 +179,7 @@ cat > "$tmp" <<EOF
 homelab_disk_reclaim_bytes{category="unity_clones"} ${freed_unity_clones}
 homelab_disk_reclaim_bytes{category="unity_library"} ${freed_unity_library}
 homelab_disk_reclaim_bytes{category="simulator_data"} ${freed_simulator}
+homelab_disk_reclaim_bytes{category="gradle_versions"} ${freed_gradle}
 # HELP homelab_disk_reclaim_last_run_timestamp_seconds Unix time of the last run.
 # TYPE homelab_disk_reclaim_last_run_timestamp_seconds gauge
 homelab_disk_reclaim_last_run_timestamp_seconds $(date +%s)
@@ -165,3 +192,5 @@ homelab_disk_reclaim_skipped{reason="ci_running"} $([[ "$skipped_reason" == "ci_
 homelab_disk_reclaim_skipped{reason="unity_running"} $([[ "$skipped_reason" == "unity_running" ]] && echo 1 || echo 0)
 EOF
 chmod 644 "$tmp" && mv -f "$tmp" "$PROM_PATH"
+
+[[ -n "$skipped_reason" ]] || date +%s > "$STAMP_PATH"

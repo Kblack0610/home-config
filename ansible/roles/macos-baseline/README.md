@@ -22,7 +22,7 @@ Auto-login and FileVault are one-time, GUI-driven, security-sensitive choices (F
 ## Requirements
 
 - `ansible.posix` collection (for `authorized_key`).
-- Interactive sudo (`-K` / `--ask-become-pass`): the Macs have no NOPASSWD sudo, and `pmset -a` needs root.
+- Become password (`-K` / `--ask-become-pass`), because `pmset -a` needs root. mac-studio has no NOPASSWD sudo; mac-mini has it from `macos-agent-tools`, so it needs the password only on its first apply.
 
 ## Verify
 

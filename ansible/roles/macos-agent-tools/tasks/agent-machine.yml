@@ -1,0 +1,67 @@
+---
+# What makes this Mac easy for an unattended agent. The sudoers entry comes first
+# so the tasks after it, and every apply after this one, need no password.
+
+# Blanket by decision of 2026-11-06: an agent here needs root for anything, and
+# this Mac is the agent machine. Both runners run as this user, so a workflow on
+# their repos gets root too; both repos are private.
+- name: Let the agent user sudo with no password
+  community.general.sudoers:
+    name: "{{ agent_tools_sudoers_name }}"
+    user: "{{ ansible_env.USER }}"
+    commands: ALL
+    nopassword: true
+    state: present
+    validation: required
+  become: true
+
+# `mdutil -X` deletes the index. `-E` alone left 42 GB in Store-V2/DeadFiles on
+# the mini, which nothing cleared with indexing off.
+- name: Turn off Spotlight and remove its index
+  become: true
+  ansible.builtin.shell: |
+    set -uo pipefail
+    for vol in / /System/Volumes/Data; do
+      if mdutil -s "$vol" 2>/dev/null | grep -q 'Indexing enabled'; then
+        mdutil -i off "$vol" >/dev/null 2>&1 || true
+        mdutil -X "$vol" </dev/null >/dev/null 2>&1 || true
+        echo CHANGED
+      fi
+      if mdutil -s "$vol" 2>/dev/null | grep -q 'Indexing enabled'; then
+        echo "FAILED $vol still enabled"; exit 1
+      fi
+    done
+  register: agent_tools_spotlight
+  changed_when: "'CHANGED' in agent_tools_spotlight.stdout"
+  # REVERSIBLE: sudo mdutil -i on /System/Volumes/Data
+
+# The user agent can never work: tailscaled needs root, so it respawns forever
+# and fills its log. The root daemon com.tailscale.tailscaled stays.
+- name: Stop the Homebrew Tailscale agent
+  ansible.builtin.shell: |
+    set -euo pipefail
+    if [ -e "$HOME/Library/LaunchAgents/homebrew.mxcl.tailscale.plist" ]; then
+      /opt/homebrew/bin/brew services stop tailscale >/dev/null
+      echo CHANGED
+    fi
+  register: agent_tools_tailscale
+  changed_when: "'CHANGED' in agent_tools_tailscale.stdout"
+
+# An OS update reboots mid-job and can drop the privacy grants, so an update here
+# is deliberate. Critical responses and config data stay on.
+- name: Keep macOS from installing OS updates by itself
+  become: true
+  community.general.osx_defaults:
+    domain: /Library/Preferences/com.apple.SoftwareUpdate
+    key: AutomaticallyInstallMacOSUpdates
+    type: bool
+    value: false
+
+# A non-login ssh shell reads only ~/.zshenv, so without this brew tools are not
+# on PATH for `ssh mac-mini '<command>'`.
+- name: Put Homebrew on the PATH of a plain ssh command
+  ansible.builtin.lineinfile:
+    path: "{{ ansible_env.HOME }}/.zshenv"
+    line: 'export PATH="/opt/homebrew/bin:$PATH"'
+    create: true
+    mode: "0644"

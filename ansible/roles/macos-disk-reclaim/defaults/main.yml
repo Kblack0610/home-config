@@ -25,6 +25,11 @@ disk_reclaim_prom_path: "{{ disk_reclaim_textfile_dir }}/disk_reclaim.prom"
 # real developer time for disk nobody is short of yet.
 disk_reclaim_interval_seconds: 604800
 
+# How often launchd wakes the script. A run that finds CI busy does not count, so
+# on a host that is busy at the weekly moment the next try is this far away, not
+# a week. A wake with a pass already done this cadence exits at once.
+disk_reclaim_retry_seconds: 3600
+
 # Set true to report what WOULD be pruned and delete nothing. The metric still
 # gets written, so you can watch a cycle or two before trusting it.
 disk_reclaim_dry_run: false

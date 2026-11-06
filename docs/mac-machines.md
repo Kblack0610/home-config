@@ -154,6 +154,10 @@ Considered and rejected. MDM's unique capability is zero-touch DEP/ADE enrollmen
 | FileVault | Disabled | Allows auto-login on restart | install script (asserted by macos-baseline) |
 | Auto-login | Enabled (current user) | Unattended restarts after power outage | install script (asserted by macos-baseline) |
 | Screen lock (mac-mini) | Off | Agent input cannot reach a locked screen; auto-login already gives a session to anyone at the Mac | person, once (asserted by macos-agent-tools) |
+| Passwordless sudo (mac-mini) | Blanket, `/etc/sudoers.d/agent-machine` | Agents need root unattended; mac-studio keeps its password | macos-agent-tools |
+| Spotlight index (mac-mini) | Off, index removed | It reached 51 GB; nothing here searches with it | macos-agent-tools |
+| Automatic macOS install (mac-mini) | Off, critical and config-data updates stay on | An update reboots mid-job and can drop the privacy grants | macos-agent-tools |
+| Homebrew Tailscale agent (mac-mini) | Stopped | It looped on needing root; the root daemon stays, logged out | macos-agent-tools |
 | **Spotlight index / Time Machine / Siri / analytics / Power+App Nap** | **Off** | **Headless LLM node debloat** | **macos-llm-node** (mac-studio only, all reversible) |
 | **iogpu.wired_limit_mb** | **491520 (480 GB)** | **Large-model MLX headroom** | **macos-llm-node** (LaunchDaemon) |
 
@@ -189,7 +193,7 @@ The mac-mini is the agent machine: set aside for agents to have full control of 
 | The desktop: screenshots, clicking by accessibility label, typing, menus, dialogs, windows, any app | the on-demand MCP `agent-desktop`: `claude-mcp agent-desktop` ([Peekaboo](https://github.com/steipete/Peekaboo), pinned in dotfiles-private `.claude/mcp-optional/agent-desktop.json` and in `macos-agent-tools` defaults) |
 | Web pages in the signed-in Google Chrome (store consoles) | the on-demand MCP `stores-browser` (Playwright Extension; the `store-console` skill) |
 
-Secrets come from rbw on the workstation, piped over ssh, never typed into a file: `mac_fleet_password` is the Mac's login and keychain password. The dotfiles-private `agent-machine` skill is how an agent works here, including driving Peekaboo from a plain ssh shell.
+`sudo` needs no password on the mini, and a plain `ssh mac-mini 'brew ...'` finds Homebrew through `~/.zshenv`. Secrets come from rbw on the workstation, piped over ssh, never typed into a file: `mac_fleet_password` is the Mac's login and keychain password. The dotfiles-private `agent-machine` skill is how an agent works here, including driving Peekaboo from a plain ssh shell.
 
 The desktop needs a one-time grant by a person, because macOS (TCC) lets only a click in System Settings allow screen capture and synthetic input, and refuses synthetic clicks on those switches. macOS attributes an ssh session's requests to `/usr/libexec/sshd-keygen-wrapper`, so that is what gets the grant: System Settings > Privacy & Security > Accessibility, and > Screen & System Audio Recording: + > Cmd+Shift+G > `/usr/libexec/sshd-keygen-wrapper` > switch it on. Click Allow on any "sshd-keygen-wrapper wants to control ..." prompt. `ansible-playbook playbooks/site.yml --limit mac-mini --tags agent-tools` (role `macos-agent-tools`) checks the grants and the screen lock and prints these steps when one is missing. The CI runner is a LaunchAgent, not sshd, so CI jobs do not get the grant.
 
@@ -229,7 +233,7 @@ Likely a `SetEnv` issue in SSH config: `ssh -F /dev/null kennethblack@192.168.1.
 
 ### A macOS prompt asks to "bypass the system private window picker" (mac-mini)
 
-"com.apple.sshd-session is requesting to bypass the system private window picker and directly access your screen and audio" follows the Screen Recording grant and comes back now and then. It covers the middle of the screen until someone at the Mac clicks Allow; agents do not click consent prompts.
+"com.apple.sshd-session is requesting to bypass the system private window picker and directly access your screen and audio" follows the Screen Recording grant and comes back every 30 days, on the date in `kScreenCapturePrivacyHintDate` for `/usr/libexec/sshd-keygen-wrapper` in `~/Library/Group Containers/group.com.apple.replayd/ScreenCaptureApprovals.plist`. That file only reports the clock: edits to the hint date, the last-alerted date or the 30-day policy were all put back by the next capture on macOS 26.5.2, even with `replayd` stopped (tested 2026-11-06). Only a person's click resets it. It covers the middle of the screen until someone at the Mac clicks Allow; agents do not click consent prompts.
 
 ### Chrome starts but shows no window (mac-mini)
 

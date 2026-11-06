@@ -189,7 +189,7 @@ The mac-mini is an agent machine: an agent may do anything on it a person at the
 | The desktop: screenshots, clicking by accessibility label, typing, menus, dialogs, windows, any app | the on-demand MCP `mac-desktop`: `claude-mcp mac-desktop` ([Peekaboo](https://github.com/steipete/Peekaboo), pinned in dotfiles-private `.claude/mcp-optional/mac-desktop.json` and in `macos-agent-tools` defaults) |
 | Web pages in the signed-in Google Chrome (store consoles) | the on-demand MCP `stores-browser` (Playwright Extension; the `store-console` skill) |
 
-Secrets come from rbw on the workstation, piped over ssh, never typed into a file: `mac_fleet_password` is the Mac's login and keychain password. The `mac-ops` skill is how an agent works here.
+Secrets come from rbw on the workstation, piped over ssh, never typed into a file: `mac_fleet_password` is the Mac's login and keychain password. The `mac-automation` skill is how an agent works here.
 
 The desktop needs a one-time grant by a person, because macOS (TCC) lets only a click in System Settings allow screen capture and synthetic input, and refuses synthetic clicks on those switches. macOS attributes an ssh session's requests to `/usr/libexec/sshd-keygen-wrapper`, so that is what gets the grant: System Settings > Privacy & Security > Accessibility, and > Screen & System Audio Recording: + > Cmd+Shift+G > `/usr/libexec/sshd-keygen-wrapper` > switch it on. Click Allow on any "sshd-keygen-wrapper wants to control ..." prompt. `ansible-playbook playbooks/site.yml --limit mac-mini --tags agent-tools` (role `macos-agent-tools`) checks the grants and the screen lock and prints these steps when one is missing. The CI runner is a LaunchAgent, not sshd, so CI jobs do not get the grant.
 

@@ -93,6 +93,7 @@ apps/ci-runner-governor powers it (config.json `standby` -> `aws-burst-1` -> `po
 | Symptom | Cause | Fix |
 |---|---|---|
 | Play or job fails with "no space left on device" | Docker 29 keeps images in `/var/lib/containerd`, on the 38G root disk | The Terraform user data binds it to the data volume (platform #1459) |
+| aws-burst-1 runners die mid-run ("lost communication", bee "Request cancelled while reading the binlog", then ENOSPC) | `/var/lib/ci` full: `Builds/release-tree` copies and windows, mac and android editor images left from before player builds moved to `lan` hosts | `df -h /var/lib/ci`; the hourly `linux-ci-docker-cleanup` prune keeps it down, and the host pulls base images only (`unity_ci_images` in inventory.yml). Remove unlisted `unityci/editor` images by hand: the prune never removes them |
 | Library pull from S3 runs at under 1 MB/s | `aws s3 sync` sends 10 requests at a time over about 170k small files | 64 at a time, both on the workstation push and the host pull (home-config #505) |
 | Every job fails in seconds on `index.lock`: File exists, after a stop | The stop interrupted a checkout and left git locks in every slot | The runner unit deletes `.git/**/*.lock` under the work dir before it starts (home-config #510) |
 | A slot's `docker run` finds no test image right after its own build | Ubuntu's `docker.io` has no BuildKit, and four slots building one tag at once raced on the legacy builder | `docker-buildx` in `unity_ci_packages_debian` (home-config #511) |

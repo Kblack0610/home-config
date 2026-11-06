@@ -1545,6 +1545,133 @@
         "overrides": []
       },
       "id": 19
+    },
+    {
+      "type": "timeseries",
+      "title": "Cost per hour by runner",
+      "description": "Spend per hour, one series per agentctl runner (the agentctl_runner label). Only runs started by agentctl-run carry the label; hand-started sessions are not shown. A judge's per-call cost and errors are in calls.jsonl (hub and agent-web Fleet tab), not here.",
+      "gridPos": {
+        "x": 0,
+        "y": 46,
+        "w": 12,
+        "h": 8
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${datasource}"
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "editorMode": "code",
+          "expr": "sum by (agentctl_runner) (increase(claude_code_cost_usage_USD_total{agentctl_runner!=\"\", project=~\"$project\", model=~\"$model\"}[$__interval]))",
+          "format": "time_series",
+          "instant": false,
+          "range": true,
+          "legendFormat": "{{agentctl_runner}}",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "currencyUSD",
+          "custom": {
+            "drawStyle": "bars",
+            "lineInterpolation": "smooth",
+            "lineWidth": 2,
+            "fillOpacity": 80,
+            "barAlignment": -1,
+            "stacking": {
+              "mode": "normal"
+            },
+            "spanNulls": false,
+            "showPoints": "never"
+          },
+          "color": {
+            "mode": "palette-classic"
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom"
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "interval": "1h",
+      "id": 20
+    },
+    {
+      "type": "timeseries",
+      "title": "Sessions per hour by runner",
+      "description": "Claude sessions started per hour, one series per agentctl runner. Only runs started by agentctl-run carry the label; hand-started sessions are not shown. A judge's per-call cost and errors are in calls.jsonl (hub and agent-web Fleet tab), not here.",
+      "gridPos": {
+        "x": 12,
+        "y": 46,
+        "w": 12,
+        "h": 8
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${datasource}"
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "editorMode": "code",
+          "expr": "sum by (agentctl_runner) (increase(claude_code_session_count_total{agentctl_runner!=\"\", project=~\"$project\"}[$__interval]))",
+          "format": "time_series",
+          "instant": false,
+          "range": true,
+          "legendFormat": "{{agentctl_runner}}",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "none",
+          "custom": {
+            "drawStyle": "bars",
+            "lineInterpolation": "smooth",
+            "lineWidth": 2,
+            "fillOpacity": 80,
+            "barAlignment": -1,
+            "stacking": {
+              "mode": "normal"
+            },
+            "spanNulls": false,
+            "showPoints": "never"
+          },
+          "color": {
+            "mode": "palette-classic"
+          },
+          "decimals": 0
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom"
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "interval": "1h",
+      "id": 21
     }
   ],
   "editable": true,

@@ -146,3 +146,36 @@ spec:
             category: trading
           annotations:
             summary: "No successful {{ $labels.kind }} run for {{ $value | humanizeDuration }}"
+
+        # Event-contract markets (strategy repo lab/markets, docs/markets.md). A venue reports while
+        # it has a recorder sweep in the last 7 days, so removing a venue's CronJob ends its series
+        # instead of alerting forever. 15 minutes is the paper league's max_book_age_min: past it the
+        # league already takes no entries on that venue.
+        - alert: TraderMarketsRecorderStale
+          expr: trader_markets_sweep_age_seconds > 15 * 60
+          labels:
+            severity: warning
+            category: trading
+          annotations:
+            summary: "No good {{ $labels.venue }} recorder sweep for {{ $value | humanizeDuration }}: the paper league takes no entries there; failed sweeps and their errors are on trader.kblab.me/markets"
+
+        # A sweep is every 5 minutes, so 3 failures in an hour is a quarter of them: an adapter or
+        # venue error that keeps coming back even while some sweeps still land.
+        - alert: TraderMarketsAdapterErrors
+          expr: trader_markets_sweeps_failed_1h >= 3
+          labels:
+            severity: warning
+            category: trading
+          annotations:
+            summary: "{{ $value }} {{ $labels.venue }} recorder sweeps failed in the last hour: market_sweeps.error on trader.kblab.me/markets"
+
+        # Paper money only: a rehearsal of the book's hard stop (strategy repo lab/suggest.toml
+        # [book] hard_stop, 0.15 of capital below peak). The peak is the last 30 days of marks.
+        - alert: TraderPaperDrawdown
+          expr: (max_over_time(trader_paper_equity[30d]) - trader_paper_equity) / trader_paper_capital > 0.15
+          for: 15m
+          labels:
+            severity: warning
+            category: trading
+          annotations:
+            summary: "Paper account {{ $labels.account }} is {{ $value | humanizePercentage }} of its capital below its peak: past the book's hard stop; trader.kblab.me/markets/book"

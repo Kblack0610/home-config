@@ -110,3 +110,63 @@ tests:
           - exp_labels: {alertname: TraderFuturesStale, severity: warning, category: trading, kind: funding, exchange: okx, job: trader-web}
             exp_annotations:
               summary: "Newest okx funding row is 2d 13h 0m 0s old: check the freqtrade-futures CronJob"
+
+  - name: a venue whose last good sweep is over 15 minutes old alerts, a fresh one does not
+    interval: 1m
+    input_series:
+      - series: 'trader_markets_sweep_age_seconds{venue="kalshi",job="trader-web"}'
+        values: '60+60x20'
+      - series: 'trader_markets_sweep_age_seconds{venue="manifold",job="trader-web"}'
+        values: '120x20'
+    alert_rule_test:
+      - eval_time: 13m
+        alertname: TraderMarketsRecorderStale
+        exp_alerts: []
+      - eval_time: 15m
+        alertname: TraderMarketsRecorderStale
+        exp_alerts:
+          - exp_labels: {alertname: TraderMarketsRecorderStale, severity: warning, category: trading, venue: kalshi, job: trader-web}
+            exp_annotations:
+              summary: "No good kalshi recorder sweep for 16m 0s: the paper league takes no entries there; failed sweeps and their errors are on trader.kblab.me/markets"
+
+  - name: three failed sweeps of a venue in an hour alert, two do not
+    interval: 5m
+    input_series:
+      - series: 'trader_markets_sweeps_failed_1h{venue="kalshi",job="trader-web"}'
+        values: '0 1 2 3 3'
+      - series: 'trader_markets_sweeps_failed_1h{venue="manifold",job="trader-web"}'
+        values: '2x4'
+    alert_rule_test:
+      - eval_time: 10m
+        alertname: TraderMarketsAdapterErrors
+        exp_alerts: []
+      - eval_time: 15m
+        alertname: TraderMarketsAdapterErrors
+        exp_alerts:
+          - exp_labels: {alertname: TraderMarketsAdapterErrors, severity: warning, category: trading, venue: kalshi, job: trader-web}
+            exp_annotations:
+              summary: "3 kalshi recorder sweeps failed in the last hour: market_sweeps.error on trader.kblab.me/markets"
+
+  - name: a paper account 15% of capital below its peak alerts after 15 minutes, a shallower one does not
+    interval: 5m
+    input_series:
+      # peak 1100, then 920: 180 of 1000 capital below the peak
+      - series: 'trader_paper_equity{account="paper-a",job="trader-web"}'
+        values: '1000 1100 920x10'
+      - series: 'trader_paper_capital{account="paper-a",job="trader-web"}'
+        values: '1000x12'
+      # peak 1000, then 900: 10%
+      - series: 'trader_paper_equity{account="paper-b",job="trader-web"}'
+        values: '1000 900x11'
+      - series: 'trader_paper_capital{account="paper-b",job="trader-web"}'
+        values: '1000x12'
+    alert_rule_test:
+      - eval_time: 20m
+        alertname: TraderPaperDrawdown
+        exp_alerts: []
+      - eval_time: 30m
+        alertname: TraderPaperDrawdown
+        exp_alerts:
+          - exp_labels: {alertname: TraderPaperDrawdown, severity: warning, category: trading, account: paper-a, job: trader-web}
+            exp_annotations:
+              summary: "Paper account paper-a is 18% of its capital below its peak: past the book's hard stop; trader.kblab.me/markets/book"

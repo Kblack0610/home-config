@@ -360,6 +360,17 @@
           {{ ci_unity_slot_cpus | length }} entries in ci_unity_slot_cpus.
       tags: [runner, ci, unity-ci]
 
+    # The hourly prune and core-dump cap from linux-ci-host. Without them aws-burst-1,
+    # Unity-only and so not in linux_ci_runners, filled its 400G CI volume on 2026-11-05
+    # with release-tree copies, and every runner died on "No space left on device".
+    - name: Keep the disk from filling
+      ansible.builtin.include_role:
+        name: linux-ci-host
+        tasks_from: disk
+        apply:
+          tags: [runner, ci, unity-ci, ci-disk]
+      tags: [runner, ci, unity-ci, ci-disk]
+
     - name: Register the Unity pool slots
       ansible.builtin.include_role:
         name: github-actions-runner-linux

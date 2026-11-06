@@ -1,0 +1,55 @@
+# Daily funding rates and open interest for the okx and kucoin swaps (lab/futures.py), into the trader database.
+# Free history is only months deep, so a missed day of funding is lost once it ages out; open interest refills
+# itself over its window. No lab PVC: it writes only to Postgres, so it does not pin to hp-victus.
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: freqtrade-futures
+spec:
+  schedule: "35 5 * * *"  # clear of the :07 ingest, :20 and :50 backfills, 02:45 analysis and Saturday 09:00 walk-forward
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      backoffLimit: 0  # the next day is the retry
+      activeDeadlineSeconds: 3600  # guard: the first run took about two minutes
+      template:
+        metadata:
+          labels:
+            app: freqtrade-futures
+        spec:
+          restartPolicy: Never
+          nodeSelector:
+            kubernetes.io/arch: amd64
+          securityContext:
+            runAsUser: 1000
+            runAsGroup: 1000
+          initContainers:
+            - name: migrate
+              image: trader
+              command: ["python", "/repo/lab/migrate.py"]
+              env:
+                - name: DATABASE_URL
+                  valueFrom:
+                    secretKeyRef: {name: trader-db, key: database-url}
+              resources:
+                requests:
+                  cpu: 20m
+                  memory: 64Mi
+                limits:
+                  memory: 256Mi
+          containers:
+            - name: futures
+              image: trader
+              command: ["python", "/repo/lab/futures.py"]
+              env:
+                - name: DATABASE_URL
+                  valueFrom:
+                    secretKeyRef: {name: trader-db, key: database-url}
+              resources:
+                requests:
+                  cpu: 50m
+                  memory: 128Mi
+                limits:
+                  memory: 512Mi

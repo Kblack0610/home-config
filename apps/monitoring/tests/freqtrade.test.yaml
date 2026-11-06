@@ -92,3 +92,21 @@ tests:
         exp_alerts:
           - exp_labels: {alertname: TraderRunStale, severity: warning, category: trading, kind: analysis, job: trader-web}
             exp_annotations: {summary: "No successful analysis run for 3d 0h 0m 0s"}
+
+  - name: futures data older than 60 hours warns, a fresh series does not
+    interval: 5m
+    input_series:
+      - series: 'trader_futures_age_seconds{kind="funding",exchange="okx",job="trader-web"}'
+        values: '201600+300x72'
+      - series: 'trader_futures_age_seconds{kind="open_interest",exchange="kucoin",job="trader-web"}'
+        values: '3600x72'
+    alert_rule_test:
+      - eval_time: 4h
+        alertname: TraderFuturesStale
+        exp_alerts: []
+      - eval_time: 5h
+        alertname: TraderFuturesStale
+        exp_alerts:
+          - exp_labels: {alertname: TraderFuturesStale, severity: warning, category: trading, kind: funding, exchange: okx, job: trader-web}
+            exp_annotations:
+              summary: "Newest okx funding row is 2d 13h 0m 0s old: check the freqtrade-futures CronJob"

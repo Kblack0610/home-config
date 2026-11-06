@@ -115,6 +115,18 @@ spec:
           annotations:
             summary: "Newest {{ $labels.exchange }} candle is {{ $value | humanizeDuration }} old: check the freqtrade-backfill CronJob"
 
+        # The futures job runs daily. Funding settles every 8h and open interest is stamped at the start
+        # of its day, so a healthy newest row is under about 48h old; past 60h a day was missed, and
+        # missed funding is lost once it ages past the exchange's few months of history.
+        - alert: TraderFuturesStale
+          expr: trader_futures_age_seconds > 60 * 3600
+          for: 30m
+          labels:
+            severity: warning
+            category: trading
+          annotations:
+            summary: "Newest {{ $labels.exchange }} {{ $labels.kind }} row is {{ $value | humanizeDuration }} old: check the freqtrade-futures CronJob"
+
         - alert: TraderRunFailed
           expr: trader_run_ok == 0
           labels:

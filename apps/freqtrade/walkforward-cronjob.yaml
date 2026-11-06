@@ -10,6 +10,7 @@ metadata:
   name: freqtrade-walkforward
 spec:
   schedule: "0 9 * * 6"  # Saturday, after the night's analysis and clear of the :20 backfill
+  timeZone: "Etc/UTC"  # unset means the controller zone, America/Los_Angeles
   concurrencyPolicy: Forbid
   successfulJobsHistoryLimit: 3
   failedJobsHistoryLimit: 3

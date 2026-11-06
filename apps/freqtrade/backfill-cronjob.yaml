@@ -11,6 +11,7 @@ metadata:
   name: freqtrade-backfill
 spec:
   schedule: "20 * * * *"
+  timeZone: "Etc/UTC"  # unset means the controller zone, America/Los_Angeles
   concurrencyPolicy: Forbid
   successfulJobsHistoryLimit: 3
   failedJobsHistoryLimit: 3

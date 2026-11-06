@@ -9,6 +9,7 @@ metadata:
   name: trader-markets-recorder
 spec:
   schedule: "*/5 * * * *"
+  timeZone: "Etc/UTC"  # unset means the controller zone, America/Los_Angeles
   concurrencyPolicy: Forbid
   successfulJobsHistoryLimit: 3
   failedJobsHistoryLimit: 3

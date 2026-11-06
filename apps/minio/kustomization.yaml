@@ -13,3 +13,5 @@ resources:
   - game-saves-secret.sops.yaml
   - game-saves-bucket-job.yaml
   - langfuse-bucket-job.yaml
+  - trader-markets-s3-secret.sops.yaml
+  - trader-markets-bucket-job.yaml

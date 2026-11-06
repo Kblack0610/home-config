@@ -117,8 +117,8 @@ endpoints:
   # is most of the time, and is the correct state. What must always be up is the thing
   # that can WAKE it: if this is down, nobody can start a session.
   #
-  # The game server's own up/down now shows in the game-servers group below, which is
-  # readable-but-not-alertable for exactly the reason above.
+  # The game server's own state (asleep, starting, running) shows in the game-servers
+  # group below, which reads asleep as green for exactly the reason above.
   - name: Zomboid Control
     group: home-k3s
     url: "http://zomboid-control.zomboid.svc:80/healthz"
@@ -127,19 +127,19 @@ endpoints:
       - "[STATUS] == 200"
 
   # --- game servers ---
-  # Read as "is it up right now", NOT as health. These are scale-to-zero, so a red dot
-  # is the normal resting state ("nobody is playing") and uptime percentages here are
-  # meaningless by construction - do not "fix" a low number. Nothing pages off this
-  # group; there is no alerting block in this file.
-  #
-  # RCON is the probe because it only binds once the world has finished loading, so
-  # CONNECTED means genuinely joinable rather than merely scheduled.
+  # Green when the server is where it should be: asleep (scaled to zero, nobody playing,
+  # the resting state) or running (the readiness probe has RCON answering, so the world is
+  # joinable). Red is "starting" or a control API that cannot read the Deployment, so a
+  # server that never finishes loading stays red. Nothing pages off this group; there is
+  # no alerting block in this file. It probed RCON alone until 2026-11-05, which read red
+  # every hour the server slept.
   - name: Zomboid
     group: game-servers
-    url: "tcp://zomboid-rcon.zomboid.svc:27015"
+    url: "http://zomboid-control.zomboid.svc:80/healthz/zomboid"
     interval: 60s
     conditions:
-      - "[CONNECTED] == true"
+      - "[STATUS] == 200"
+      - "[BODY].state == any(asleep, running)"
 
   # --- apps ---
   - name: Actual Budget
@@ -389,6 +389,26 @@ endpoints:
       - "[STATUS] < 500"
       - "[CERTIFICATE_EXPIRATION] > 720h"
 
+  - name: frigate.kblab.me
+    group: ingress
+    url: "https://frigate.kblab.me"
+    interval: 300s
+    client:
+      insecure: true
+    conditions:
+      - "[STATUS] < 500"
+      - "[CERTIFICATE_EXPIRATION] > 720h"
+
+  - name: game-registry.kblab.me
+    group: ingress
+    url: "https://game-registry.kblab.me"
+    interval: 300s
+    client:
+      insecure: true
+    conditions:
+      - "[STATUS] < 500"
+      - "[CERTIFICATE_EXPIRATION] > 720h"
+
   - name: git.kblab.me
     group: ingress
     url: "https://git.kblab.me"
@@ -452,16 +472,6 @@ endpoints:
   - name: immich-kiosk.kblab.me
     group: ingress
     url: "https://immich-kiosk.kblab.me"
-    interval: 300s
-    client:
-      insecure: true
-    conditions:
-      - "[STATUS] < 500"
-      - "[CERTIFICATE_EXPIRATION] > 720h"
-
-  - name: wall-ambient.kblab.me
-    group: ingress
-    url: "https://wall-ambient.kblab.me"
     interval: 300s
     client:
       insecure: true
@@ -598,10 +608,6 @@ endpoints:
     conditions:
       - "[STATUS] < 500"
       - "[CERTIFICATE_EXPIRATION] > 720h"
-    alerts:
-      - type: ntfy
-        # Probed every 5 minutes, so two failures is 10 minutes.
-        failure-threshold: 2
 
   - name: photos.kblab.me
     group: ingress
@@ -723,6 +729,16 @@ endpoints:
       - "[STATUS] < 500"
       - "[CERTIFICATE_EXPIRATION] > 720h"
 
+  - name: trader.kblab.me
+    group: ingress
+    url: "https://trader.kblab.me"
+    interval: 300s
+    client:
+      insecure: true
+    conditions:
+      - "[STATUS] < 500"
+      - "[CERTIFICATE_EXPIRATION] > 720h"
+
   - name: vault.kblab.me
     group: ingress
     url: "https://vault.kblab.me"
@@ -732,14 +748,10 @@ endpoints:
     conditions:
       - "[STATUS] < 500"
       - "[CERTIFICATE_EXPIRATION] > 720h"
-    alerts:
-      - type: ntfy
-        # Probed every 5 minutes, so two failures is 10 minutes.
-        failure-threshold: 2
 
-  - name: trader.kblab.me
+  - name: wall-ambient.kblab.me
     group: ingress
-    url: "https://trader.kblab.me"
+    url: "https://wall-ambient.kblab.me"
     interval: 300s
     client:
       insecure: true

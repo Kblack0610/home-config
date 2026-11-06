@@ -196,6 +196,18 @@ class Handler(http.server.BaseHTTPRequestHandler):
         if self.path == "/healthz":
             return self._reply(200, {"ok": True})
 
+        if self.path.startswith("/healthz/"):
+            # gatus reads a server as healthy when it is asleep or joinable: a sleeping
+            # server is the resting state, so an RCON probe alone was red all day. Open like
+            # /healthz, and it carries only the state, which the status page shows anyway.
+            name = urllib.parse.unquote(self.path[len("/healthz/"):])
+            if name not in SERVERS:
+                return self._reply(404, {"error": "not found"})
+            try:
+                return self._reply(200, {"name": name, "state": read_state(name)["state"]})
+            except (urllib.error.URLError, OSError) as exc:
+                return self._reply(502, {"error": f"kubernetes: {exc}"})
+
         if self.path == "/":
             # Bookmarks and Home Assistant links to games.kblab.me land on the fleet.
             self.send_response(302)

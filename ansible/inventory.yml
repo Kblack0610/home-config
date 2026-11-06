@@ -270,6 +270,14 @@ all:
           unity_ci_slots: 6
           unity_ci_full: true
           unity_ci_images_pull: true
+          # Base images only: every player build asks for the lan label (playground
+          # release.yml, perf-round.yml since #1817), and tests use the base flavor.
+          # The windows, mac and android flavors held 63G of its 400G CI volume when
+          # it filled on 2026-11-05 (playground ucp-790).
+          unity_ci_images:
+            - unityci/editor:ubuntu-6000.0.72f1-base-3
+            - unityci/editor:ubuntu-6000.0.85f1-base-3
+            - unityci/editor:ubuntu-6000.3.27f1-base-3
           unity_ci_lan: false
           # The SSM tunnel copies at under 1 MB/s; S3 is the fast path (platform
           # infra/aws-ci-burst libraries.tf).

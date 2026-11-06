@@ -1,0 +1,19 @@
+---
+galaxy_info:
+  role_name: macos_agent_tools
+  author: home-config
+  description: >-
+    Lets agents drive the Mac's desktop over ssh: asserts the two privacy
+    grants (Screen Recording, Accessibility) the Peekaboo MCP needs and that
+    the screen never locks. The grants are a person's one-time clicks; this
+    role checks them and prints the steps.
+  license: MIT
+  min_ansible_version: "2.14"
+  platforms:
+    - name: MacOSX
+      versions:
+        - all
+  galaxy_tags:
+    - macos
+    - automation
+dependencies: []

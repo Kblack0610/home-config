@@ -1,0 +1,40 @@
+---
+# Agents drive this Mac's desktop with Peekaboo (`mac-desktop` MCP, run over
+# ssh). macOS attributes an ssh session's screen and input requests to
+# /usr/libexec/sshd-keygen-wrapper, and only a person can grant it in System
+# Settings (TCC; without MDM there is no supported way to grant it from a
+# shell, and docs/mac-machines.md rejects MDM). So this role asserts the
+# grants and prints the steps. See docs/mac-machines.md, "Driving it from an
+# agent".
+
+- name: Read Peekaboo's permission report (Screen Recording, Accessibility)
+  ansible.builtin.command: >-
+    {{ agent_tools_npx }} -y -p @steipete/peekaboo@{{ agent_tools_peekaboo_version }}
+    peekaboo permissions status --json
+  environment:
+    PATH: /opt/homebrew/bin:/usr/bin:/bin
+  register: agent_tools_perms
+  changed_when: false
+  failed_when: false
+
+- name: Read the screen lock delay
+  ansible.builtin.command: sysadminctl -screenLock status
+  register: agent_tools_lock
+  changed_when: false
+
+- name: Assert agents can drive the desktop
+  ansible.builtin.assert:
+    that:
+      - agent_tools_perms.rc == 0
+      - (agent_tools_perms.stdout | from_json).data.permissions | selectattr('isRequired') | rejectattr('isGranted') | list | length == 0
+      - "'screenLock is off' in agent_tools_lock.stderr or 'screenLock is off' in agent_tools_lock.stdout"
+    fail_msg: >-
+      Agents cannot drive this Mac's desktop yet.
+      Peekaboo permissions: {{ agent_tools_perms.stdout | default('') | trim | truncate(300) }}.
+      Screen lock: {{ (agent_tools_lock.stderr ~ agent_tools_lock.stdout) | trim }}.
+      Fix at the Mac: System Settings > Privacy & Security > Accessibility and
+      Screen & System Audio Recording > + > Cmd+Shift+G
+      /usr/libexec/sshd-keygen-wrapper > switch it on. Screen lock: from the
+      workstation, rbw get mac_fleet_password | ssh mac-mini 'read -r p;
+      sysadminctl -screenLock off -password "$p"'. Then re-run.
+    success_msg: Agents can drive the desktop (Screen Recording, Accessibility granted; no screen lock).

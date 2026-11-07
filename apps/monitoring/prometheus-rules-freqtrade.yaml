@@ -1,6 +1,6 @@
 # The Freqtrade dry-run league and its lab (apps/freqtrade). Every series comes from the
 # trader-web exporter (strategy repo web/exporter.py), which reads the trader database at
-# scrape time, so bot state is as old as the newest hourly ingest.
+# scrape time, so bot state is as old as the newest ingest (every 5 minutes).
 #
 # Covered elsewhere, on purpose not repeated here: a failed CronJob (KubeJobFailed), a CronJob
 # that stops being scheduled (HomelabCronJobNotScheduling), a league pod not ready
@@ -83,8 +83,8 @@ spec:
           annotations:
             summary: "Bot {{ $labels.bot }} has been paused or stopped for 30 minutes: python lab/watcher.py --drill-end {{ $labels.bot }} if a drill was left on"
 
-        # Ingest writes an error snapshot for a bot whose API does not answer. One snapshot
-        # stands for an hour, so 70m means two ingest runs in a row could not reach it. A bot
+        # Ingest writes an error snapshot for a bot whose API does not answer. Ingest runs
+        # every 5 minutes, so 70m is a bot that stayed unreachable for 14 runs in a row. A bot
         # that is not in dry run also gets an error snapshot; TraderBotNotDryRun owns that case.
         - alert: TraderBotApiDown
           expr: trader_bot_snapshot_error == 1 unless on (bot) trader_bot_dry_run == 0
@@ -96,8 +96,8 @@ spec:
             summary: "Freqtrade bot {{ $labels.bot }} did not answer two ingest runs in a row: kubectl -n freqtrade logs freqtrade-league-<row>"
 
         - alert: TraderIngestStale
-          expr: trader_ingest_age_seconds > 3 * 3600
-          for: 15m
+          expr: trader_ingest_age_seconds > 20 * 60
+          for: 5m
           labels:
             severity: warning
             category: trading

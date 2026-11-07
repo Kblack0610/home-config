@@ -334,9 +334,36 @@ model_list:
         json_mode: true
       supports_function_calling: true
 
-  # reasoning paid — deepseek-v4-pro via fireworks. Explicit reasoning
-  # model with thinking mode.
+  # reasoning paid, MISLABELED: this route has served glm-5.3 (not deepseek-v4-pro)
+  # since 2026-10. The honest name is "reasoning (glm-5.3)" below. Both stay until
+  # every key allow-list, review.role and the opencode map name the new one, then this
+  # block, its fallback and its alias value go (queue item glm-drop-mislabeled-route).
   - model_name: "reasoning (deepseek-v4-pro)"
+    litellm_params:
+      model: "openai/glm-5.3"
+      api_base: https://proxy.lazertechnologies.com/v1
+      api_key: os.environ/LAZER_API_KEY
+      # Lazer list price, $/1M: in 1.4 out 4.4 cache_read 0.26 (proxy /v1/models, 2026-10-05).
+      input_cost_per_token: 0.0000014
+      output_cost_per_token: 0.0000044
+      cache_read_input_token_cost: 0.00000026
+      tpm: 100000
+      rpm: 60
+    model_info:
+      mode: chat
+      tags: ["paid", "lazer"]
+      capabilities:
+        tools: true
+        code: true
+        vision: false
+        reasoning: true
+        json_mode: true
+      supports_function_calling: true
+
+  # reasoning paid — glm-5.3, named for what it serves. Same upstream and price as the
+  # mislabeled route above; the scoped `glm-pilot` key (README) allows only this name, so a
+  # GLM canary spends against its own cap. Thinking-mode model.
+  - model_name: "reasoning (glm-5.3)"
     litellm_params:
       model: "openai/glm-5.3"
       api_base: https://proxy.lazertechnologies.com/v1

@@ -606,8 +606,9 @@ litellm_settings:
   #                    so they stay in the secret; Alloy sends its own to Langfuse.
   # tool_compat: JSON-encodes object tool results (OpenAI-compatible upstreams
   # like Lazer require strings) and drops anyOf branches that only say
-  # `required` (Gemini rejects them; HA timer tools). The module sits next to
-  # this file in /etc/litellm (tool_compat.py).
+  # `required` (Gemini rejects them; HA timer tools), and drops the json_schema
+  # name on Lazer's Claude routes (Lazer passes it to Anthropic, which 400s). The
+  # module sits next to this file in /etc/litellm (tool_compat.py).
   callbacks: ["prometheus", "langfuse_otel", "tool_compat.proxy_handler_instance"]
   # /metrics/ needs no key. LiteLLM only accepts a PROXY ADMIN key there, and a scrape
   # credential with admin power is worse than no credential. Instead the path is

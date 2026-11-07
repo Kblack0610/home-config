@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Assert github-runner-exporter's RUNNER_ROSTER and ci-runner-governor's standby list match the ansible inventory's slot counts.
+"""Assert the exporter's RUNNER_ROSTER and the governor's standby list match the inventory.
 
 The exporter's denominator ("how many runners SHOULD be online") has to be written
 down independently of the GitHub API, because the API only lists runners that

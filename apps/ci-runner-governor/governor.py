@@ -63,11 +63,13 @@ never loses a job to the stop and comes back withheld.
 host further down starts only for the jobs the hosts ahead of it cannot take: a stopped
 one ahead counts its max_admitted, one booting or running counts the slots it has not
 admitted yet plus its idle admitted ones, so a deep queue still starts both and a short one
-starts only the first. A host ahead drops out of that count for fallback_seconds when its
-start fails for want of capacity (InsufficientInstanceCapacity) or AWS reclaims it (a Spot
-stop, state reason Server.SpotInstanceShutdown), so the next host takes the queue at once.
-ci_governor_fallback_total{host,reason} counts each. A start refused for any other reason
-(the budget's deny policy) is no fallback: every host shares that deny. The ConfigMap
+starts only the first. A stopped host ahead drops out of that count for fallback_seconds
+when EC2 refuses its start (InsufficientInstanceCapacity is "capacity", any other EC2 code
+such as a Spot request state or a vCPU limit is "refused") or AWS stops it (a Spot reclaim,
+or a start that found no capacity after all: a Server.* state reason, "reclaim"), so the
+next host takes the queue at once. ci_governor_fallback_total{host,reason} counts each
+pass-over once. Two failures are no fallback: the budget's deny policy (UnauthorizedOperation),
+which every host shares, and a network error, which says nothing about the host. The ConfigMap
 ci-runner-governor-override (the agent-web Infra page's button) beats all of that until its
 end time: "on" starts it and keeps it from idle-off and the day cap, "off" drains and stops
 it and keeps it stopped. The month's cap is an AWS Budgets action, outside the governor.
@@ -125,14 +127,18 @@ CYCLE_SECONDS = 60
 # $1.85/h for aws-burst-1), so only a deep queue held this long starts one, and a day of
 # running time is capped; the month's cap is an AWS Budgets action (platform infra/aws-ci-burst).
 POWER_DEFAULTS = {"idle_off_seconds": 900, "start_min_excess": 4, "start_after_seconds": 300, "max_hours_day": 12,
-                  # How long a host whose start found no capacity, or that AWS reclaimed, is
-                  # passed over for the next host in the standby order.
+                  # How long a host whose start EC2 refused, or that AWS stopped, is passed
+                  # over for the next host in the standby order.
                   "fallback_seconds": 3600}
-# StartInstances error codes that mean "not here, not now", so the next standby host starts.
+# StartInstances error codes that mean "not here, not now"; any other EC2 code but the deny
+# is a "refused" fallback.
 CAPACITY_CODES = {"InsufficientInstanceCapacity", "InsufficientCapacity"}
-# The state reason of a Spot instance AWS stopped (or terminated) to take the capacity back.
-RECLAIM_PREFIX = "Server.SpotInstance"
-FALLBACK_REASONS = ("capacity", "reclaim")
+# The budget's deny policy refuses every host alike, so passing one over helps nothing.
+DENY_CODES = {"UnauthorizedOperation"}
+# The state reason prefix of a stop AWS made (Spot reclaim, no capacity after a start, an
+# internal or scheduled stop), as against Client.* for one the governor or a person asked for.
+AWS_STOP_PREFIX = "Server."
+FALLBACK_REASONS = ("capacity", "refused", "reclaim")
 # The budget's numbers move a few times a day and the API has no event, so one read an hour.
 BUDGET_POLL_SECONDS = 3600
 OVERRIDE_DIR = os.environ.get("GOVERNOR_OVERRIDE_DIR", "/override")
@@ -328,7 +334,9 @@ def decide(cfg, hosts, runners, waiting, last_action, now, instances=None, pins=
         over = inst.get("override") if inst else None
         drain, cause, wanting, want = "", "", False, 0
         takes = sum(1 for need in waiting if need <= inst["labels"]) if inst else 0
-        passed = bool(inst) and inst.get("fallback_until", 0) > now
+        # Only a stopped host is passed over: AWS restarts a persistent Spot one by itself
+        # when capacity returns, and then it counts like any running host.
+        passed = bool(inst) and inst["state"] == "stopped" and inst.get("fallback_until", 0) > now
         if inst and inst["state"] == "running":
             # Before the job queue: a host told off, past its day, or idle this long cannot
             # take what waits (an idle one: a lan job).
@@ -507,8 +515,10 @@ class Ec2:
                 return ET.fromstring(r.read())
         except urllib.error.HTTPError as e:
             # The body is <Response><Errors><Error><Code>; anything else stays an HTTPError.
+            with e:  # closes the response it holds
+                body = e.read()
             try:
-                err = ET.fromstring(e.read()).find(".//Error")
+                err = ET.fromstring(body).find(".//Error")
             except ET.ParseError:
                 err = None
             if err is None or not err.findtext("Code"):
@@ -675,9 +685,10 @@ def power_readings(cfg, runners, tracked, now):
     labels, client, hours_today, override and override_until, plus what decide() keeps
     there across cycles (want_since, draining, next_cause). busy_at is the last cycle a slot
     on it was busy or the instance was not running. A host whose state cannot be read is
-    left out, so nothing powers it. A Spot reclaim seen here (a state reason under
-    RECLAIM_PREFIX, once per stop, and not on the first sight after a pod restart, which
-    cannot tell an old one from a new one) passes the host over for fallback_seconds."""
+    left out, so nothing powers it. A stop AWS made, seen here (a host up last cycle and
+    stopping or stopped now with a state reason under AWS_STOP_PREFIX; not on the first
+    sight after a pod restart, which cannot tell an old one from a new one), passes the host
+    over for fallback_seconds."""
     out = {}
     for host, s in cfg["standby"].items():
         if "power" not in s:
@@ -705,7 +716,7 @@ def power_readings(cfg, runners, tracked, now):
         # A reclaim is a host seen up last cycle and stopped by AWS now: one seen stopped
         # already (or first seen after a restart) was counted, or is not news.
         if (t.get("state") in ("pending", "running") and state in ("stopping", "stopped")
-                and reason.startswith(RECLAIM_PREFIX)):
+                and reason.startswith(AWS_STOP_PREFIX)):
             fall_back(t, power_of(cfg, host), "reclaim", now)
             t.update(cause="reclaim", changed="stop", changed_at=now)
             print(f"{host}: reclaimed by AWS ({reason}), the next standby host takes its jobs", flush=True)
@@ -717,10 +728,12 @@ def power_readings(cfg, runners, tracked, now):
 
 
 def fall_back(t, p, reason, now):
-    """Pass a host over for p's fallback_seconds and count why (FALLBACK_REASONS)."""
+    """Pass a host over for p's fallback_seconds and count why (FALLBACK_REASONS), once per
+    pass-over: an override "on" retrying a refused start every cycle only extends it."""
+    if t.get("fallback_until", 0) <= now:
+        counts = t.setdefault("fallbacks", {})
+        counts[reason] = counts.get(reason, 0) + 1
     t["fallback_until"], t["fallback_why"] = now + p["fallback_seconds"], reason
-    counts = t.setdefault("fallbacks", {})
-    counts[reason] = counts.get(reason, 0) + 1
 
 
 def power_state(inst):
@@ -856,9 +869,11 @@ def cycle(cfg, last_action, tracked=None, budget=None):
             last_action[host] = now
         except POWER_ERRORS as e:
             print(f"{action} {target} failed: {e}", flush=True)
-            if action == "start" and getattr(e, "code", "") in CAPACITY_CODES:
-                fall_back(instances[host], power_of(cfg, host), "capacity", now)
-                print(f"{host}: no capacity, passed over for the next standby host", flush=True)
+            code = getattr(e, "code", "")
+            if action == "start" and isinstance(e, Ec2Error) and code not in DENY_CODES:
+                why = "capacity" if code in CAPACITY_CODES else "refused"
+                fall_back(instances[host], power_of(cfg, host), why, now)
+                print(f"{host}: start {why} ({code}), passed over for the next standby host", flush=True)
     if budget is not None:
         read_budget(cfg, budget, now)
     with State.lock:

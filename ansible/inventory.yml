@@ -257,7 +257,7 @@ all:
         # has no inbound port; SSH runs through SSM Session Manager with the bnb
         # AWS profile, so the workstation needs session-manager-plugin. ansible_host
         # is the instance id: after a Terraform -replace, take the new one from
-        # `terraform output instance_id`. Ubuntu, so the editor images are pulled
+        # `terraform output -json instance_ids`. Ubuntu, so the editor images are pulled
         # on the box (unity_ci_images_pull) instead of copied. The governor starts
         # and stops it (docs/runbooks/unity-ci-host.md); start it before running
         # the play against it.

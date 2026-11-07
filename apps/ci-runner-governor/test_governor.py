@@ -889,7 +889,7 @@ class StandbyOrderTest(unittest.TestCase):
         tracked, log = self.cycles(ec2)
         self.assertEqual(self.starts(ec2), ["i-0spot"])  # the next host waited for it
         self.assertEqual(tracked["aws-burst-2"]["fallback_why"], "capacity")
-        self.assertIn("aws-burst-2: no capacity, passed over for the next standby host", log)
+        self.assertIn("aws-burst-2: start capacity (InsufficientInstanceCapacity), passed over for the next standby host", log)
         self.cycles(ec2, tracked=tracked)
         self.assertEqual(self.starts(ec2), ["i-0spot", "i-0abc"])
         m = governor.State.metrics
@@ -905,6 +905,34 @@ class StandbyOrderTest(unittest.TestCase):
         self.assertEqual(self.starts(ec2), ["i-0spot"] * 3)
         self.assertNotIn("fallback_until", tracked["aws-burst-2"])
         self.assertIn('ci_governor_fallback_total{host="aws-burst-2",reason="capacity"} 0', governor.State.metrics)
+
+    def test_a_refused_spot_start_falls_back_too(self):
+        # A Spot-only refusal (price, request state, vCPU limit) must not starve the next host.
+        ec2 = FakeEc2("stopped", fail={"i-0spot": "SpotMaxPriceTooLow"})
+        tracked, _ = self.cycles(ec2, n=2)
+        self.assertEqual(self.starts(ec2), ["i-0spot", "i-0abc"])
+        self.assertEqual(tracked["aws-burst-2"]["fallbacks"], {"refused": 1})
+
+    def test_a_start_that_aws_stops_again_falls_back(self):
+        # A Spot start can succeed, then stop with no capacity after all.
+        tracked, _ = self.cycles(FakeEc2({"i-0spot": "pending", "i-0abc": "stopped"}), waiting=[])
+        ec2 = FakeEc2("stopped", reason={"i-0spot": "Server.InsufficientInstanceCapacity"})
+        tracked, _ = self.cycles(ec2, tracked=tracked)
+        self.assertEqual(self.starts(ec2), ["i-0abc"])
+        self.assertEqual(tracked["aws-burst-2"]["fallback_why"], "reclaim")
+
+    def test_a_spot_aws_restarted_in_its_pass_over_is_ahead(self):
+        # A persistent Spot instance comes back by itself when capacity returns.
+        got = self.got(6, two("running", fallback_until=20_000, fallback_why="reclaim"))
+        self.assertEqual(got["aws-burst-1"][0], "hold")
+
+    def test_a_retried_start_counts_one_pass_over(self):
+        t, p = {}, {"fallback_seconds": 3600}
+        governor.fall_back(t, p, "capacity", 0)
+        governor.fall_back(t, p, "capacity", 60)
+        self.assertEqual((t["fallbacks"], t["fallback_until"]), ({"capacity": 1}, 3660))
+        governor.fall_back(t, p, "capacity", 3660)
+        self.assertEqual(t["fallbacks"], {"capacity": 2})
 
     def test_a_network_error_is_no_fallback(self):
         ec2 = FakeEc2("stopped", fail={"i-0spot": True})

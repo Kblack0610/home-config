@@ -334,35 +334,9 @@ model_list:
         json_mode: true
       supports_function_calling: true
 
-  # reasoning paid, MISLABELED: this route has served glm-5.3 (not deepseek-v4-pro)
-  # since 2026-10. The honest name is "reasoning (glm-5.3)" below. Both stay until
-  # every key allow-list, review.role and the opencode map name the new one, then this
-  # block, its fallback and its alias value go (queue item glm-drop-mislabeled-route).
-  - model_name: "reasoning (deepseek-v4-pro)"
-    litellm_params:
-      model: "openai/glm-5.3"
-      api_base: https://proxy.lazertechnologies.com/v1
-      api_key: os.environ/LAZER_API_KEY
-      # Lazer list price, $/1M: in 1.4 out 4.4 cache_read 0.26 (proxy /v1/models, 2026-10-05).
-      input_cost_per_token: 0.0000014
-      output_cost_per_token: 0.0000044
-      cache_read_input_token_cost: 0.00000026
-      tpm: 100000
-      rpm: 60
-    model_info:
-      mode: chat
-      tags: ["paid", "lazer"]
-      capabilities:
-        tools: true
-        code: true
-        vision: false
-        reasoning: true
-        json_mode: true
-      supports_function_calling: true
-
-  # reasoning paid — glm-5.3, named for what it serves. Same upstream and price as the
-  # mislabeled route above; the scoped `glm-pilot` key (README) allows only this name, so a
-  # GLM canary spends against its own cap. Thinking-mode model.
+  # reasoning paid: glm-5.3, named for what it serves. The scoped `glm-pilot` key
+  # (README) allows only this name, so a GLM canary spends against its own cap.
+  # Thinking-mode model.
   - model_name: "reasoning (glm-5.3)"
     litellm_params:
       model: "openai/glm-5.3"
@@ -583,7 +557,7 @@ router_settings:
   # toggle; embedding is stateful -> pinned. See each consumer's configmap.
   model_group_alias:
     code: "code (qwen-3-coder)"            # local: "code (Qwen3-Coder-Next-6bit)" / "...480B-A35B-4bit"
-    reasoning: "reasoning (deepseek-v4-pro)"  # local: "reasoning (Qwen3.5-397B-A17B-4bit)"
+    reasoning: "reasoning (glm-5.3)"          # local: "reasoning (Qwen3.5-397B-A17B-4bit)"
     fast: "fast (gpt-oss-120b)"            # local: "fast (Qwen3-4B-8bit)"
     vlm: "vlm (gemini-3-flash)"            # local: "vlm (Qwen3-VL-30B-A3B-8bit)" (needs mlx-vlm>=0.6.5)
     embedding: "embedding (gemini-001)"    # local: "embedding (modernbert-embed-base-4bit)"
@@ -614,7 +588,7 @@ router_settings:
     - {"fast (Qwen3-4B)": ["fast (gpt-oss-120b)", "assist (gemini-flash)"]}
     - {"code (Qwen3-Coder-Next-6bit)": ["code (qwen-3-coder)"]}
     - {"code (Qwen3-Coder-480B-A35B-4bit)": ["code (qwen-3-coder)"]}
-    - {"reasoning (Qwen3.5-397B-A17B-4bit)": ["reasoning (deepseek-v4-pro)"]}
+    - {"reasoning (Qwen3.5-397B-A17B-4bit)": ["reasoning (glm-5.3)"]}
     - {"vlm (Qwen3-VL-30B-A3B-8bit)": ["vlm (gemini-3-flash)"]}
     # NOTE: no embedding fallback to modernbert — Mac Studio is offline,
     # so falling back to it turns any transient Gemini hiccup into a hard

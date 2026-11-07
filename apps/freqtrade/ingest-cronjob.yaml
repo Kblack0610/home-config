@@ -1,4 +1,4 @@
-# Hourly ingest (lab/ingest.py): every bot's trades and a snapshot into the
+# Ingest every 5 minutes (lab/ingest.py): every bot's trades and a snapshot into the
 # trader database, plus an idempotent import of /lab/runs/*/summary.json and
 # /lab/league-history.jsonl. The init container applies any new schema
 # migration first. Fails if any bot reports it is not in dry run.
@@ -7,7 +7,7 @@ kind: CronJob
 metadata:
   name: freqtrade-ingest
 spec:
-  schedule: "7 * * * *"
+  schedule: "*/5 * * * *"
   timeZone: "Etc/UTC"  # unset means the controller zone, America/Los_Angeles
   concurrencyPolicy: Forbid
   successfulJobsHistoryLimit: 3

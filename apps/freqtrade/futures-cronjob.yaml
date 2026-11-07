@@ -6,7 +6,7 @@ kind: CronJob
 metadata:
   name: freqtrade-futures
 spec:
-  schedule: "35 5 * * *"  # clear of the :07 ingest, :20 and :50 backfills, 02:45 analysis and Saturday 09:00 walk-forward
+  schedule: "35 5 * * *"  # clear of the 5-minute ingest, :20 and :50 backfills, 02:45 analysis and Saturday 09:00 walk-forward
   timeZone: "Etc/UTC"  # unset means the controller zone, America/Los_Angeles
   concurrencyPolicy: Forbid
   successfulJobsHistoryLimit: 3

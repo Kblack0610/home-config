@@ -1,6 +1,6 @@
 # The dry-run league: pod freqtrade-league-N runs roster.tsv row N via
 # lab/league.py, which refuses to start anything but key-less spot dry run.
-# Each bot keeps its sqlite trade history on its own PVC; the hourly ingest
+# Each bot keeps its sqlite trade history on its own PVC; the 5-minute ingest
 # copies it into Postgres, reading every bot at freqtrade-league-N.freqtrade-league:8080.
 apiVersion: v1
 kind: Service

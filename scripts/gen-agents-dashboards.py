@@ -9,7 +9,7 @@ Sources, and who publishes them:
               agent_bench_*,     fleet-sessions, fleet-bench and day-log (~/.dotfiles)
               agent_day_*
               mqtt_*{topic=~agents_*}  runner and watch state, agent-mqtt-publish -> mqtt2prom
-  Loki        {service_name="claude-code"}  Claude Code OTel events (body = event name,
+  Loki        {service_name=~"claude-code|claude-agentctl"}  Claude Code OTel events (body = event name,
               attributes = its fields), secrets redacted by Alloy before Loki
   ClickHouse  default.events_core  Langfuse v4 spans, read-only user grafana_reader
 Long ranges: switch the Prometheus datasource variable to "VictoriaMetrics (long)" (2y)."""
@@ -21,7 +21,8 @@ import sys
 PROM = {"type": "prometheus", "uid": "${datasource}"}
 LOKI = {"type": "loki", "uid": "${loki}"}
 CH = {"type": "grafana-clickhouse-datasource", "uid": "langfuse-clickhouse"}
-CLAUDE = '{service_name="claude-code"}'
+# Interactive sessions export as claude-code, agentctl runners (shepherd passes included) as claude-agentctl.
+CLAUDE = '{service_name=~"claude-code|claude-agentctl"}'
 # Textfile metrics come from one host; drop its scrape labels so a series is one session.
 WS = "max without (instance, job, host) "
 # mqtt2prom scrape labels, so one row per topic.
@@ -75,6 +76,14 @@ def sql(q, ref="A", fmt=1):
 def event(stream, name):
     """The line filter is the cheap pre-cut; the body match drops other events that merely mention the name."""
     return f'{stream} |= "claude_code.{name}" | json ev=`body` | ev="claude_code.{name}"'
+
+
+def spent(sel, rng="$__range"):
+    """What counters rose by over rng, first sample included. increase() extrapolates from a series' second
+    sample, so it drops the first turn of every session born in the range (about a quarter of a day's cost).
+    A series' peak in the range, less its value before the range for the series that ran then."""
+    return (f"sum(max_over_time({sel}[{rng}])) - "
+            f"(sum(last_over_time({sel}[1d] offset {rng}) and max_over_time({sel}[{rng}])) or vector(0))")
 
 
 def pos(x, y, w, h):
@@ -204,6 +213,7 @@ def overview():
     pid[0] = 0
     cf = '{project=~"$project", model=~"$model"}'
     tok = f'claude_code_token_usage_tokens_total{cf}'
+    by_type = 'claude_code_token_usage_tokens_total{project=~"$project", model=~"$model", type=~"%s"}'
     y = 0
     tiles = [
         stat("Working", "Sessions fleet-sessions files under WORKING right now (agent_sessions).",
@@ -218,16 +228,14 @@ def overview():
              prom(f'max({WS}(agent_asks_open))', instant=True), pos(9, y, 3, 4), no_value="-",
              steps=(("green", None), ("red", 1))),
         stat("Cost", "Claude Code spend over the dashboard range, from claude_code_cost_usage_USD_total (the client's own estimate).",
-             prom(f"sum(increase(claude_code_cost_usage_USD_total{cf}[$__range]))", instant=True), pos(12, y, 3, 4),
+             prom(spent(f"claude_code_cost_usage_USD_total{cf}"), instant=True), pos(12, y, 3, 4),
              unit="currencyUSD", decimals=0),
         stat("Tokens", "Every token type over the range: input, output, cache read and cache creation.",
-             prom(f"sum(increase({tok}[$__range]))", instant=True), pos(15, y, 3, 4), unit="short"),
+             prom(spent(tok), instant=True), pos(15, y, 3, 4), unit="short"),
         stat("Cache hit", "Cache-read tokens over all prompt tokens (input + cache read + cache creation). Higher is cheaper.",
-             prom(f'sum(increase(claude_code_token_usage_tokens_total{{project=~"$project", model=~"$model", type="cacheRead"}}[$__range]))'
-                  f' / sum(increase(claude_code_token_usage_tokens_total{{project=~"$project", model=~"$model", type=~"input|cacheRead|cacheCreation"}}[$__range]))',
-                  instant=True), pos(18, y, 3, 4), unit="percentunit", decimals=0, no_value="-"),
+             prom(f"({spent(by_type % 'cacheRead')}) / ({spent(by_type % 'input|cacheRead|cacheCreation')})", instant=True), pos(18, y, 3, 4), unit="percentunit", decimals=0, no_value="-"),
         stat("PRs opened", "Pull requests Claude Code opened over the range.",
-             prom('sum(increase(claude_code_pull_request_count_total{project=~"$project"}[$__range]))', instant=True),
+             prom(spent('claude_code_pull_request_count_total{project=~"$project"}'), instant=True),
              pos(21, y, 3, 4), decimals=0),
     ]
     y += 4
@@ -339,10 +347,10 @@ def session():
              prom(f'max({WS}(agent_session_phases_done{sel})) / max({WS}(agent_session_phases_total{sel}))', instant=True),
              pos(12, y, 4, 4), unit="percentunit", no_value="-", decimals=0),
         stat("Cost", "Spend of this Claude Code session over the range.",
-             prom(f"sum(increase(claude_code_cost_usage_USD_total{sid}[$__range]))", instant=True), pos(16, y, 4, 4),
+             prom(spent(f"claude_code_cost_usage_USD_total{sid}"), instant=True), pos(16, y, 4, 4),
              unit="currencyUSD", decimals=2, no_value="-"),
         stat("Tokens", "All tokens of this session over the range.",
-             prom(f"sum(increase(claude_code_token_usage_tokens_total{sid}[$__range]))", instant=True), pos(20, y, 4, 4),
+             prom(spent(f"claude_code_token_usage_tokens_total{sid}"), instant=True), pos(20, y, 4, 4),
              unit="short", no_value="-"),
     ]
     y += 4
@@ -376,17 +384,35 @@ def session():
              f'| line_format "{{{{.ev}}}} {{{{.tool}}}}{{{{.status}}}} {{{{.err}}}}"', pos(8, y, 16, 10)),
     ]
     y += 10
+    call = (f'{s_line} |= "claude_code.api_request" | json ev=`body`, sid=`attributes["session.id"]`, model=`attributes.model`, '
+            'source=`attributes.query_source`, input=`attributes.input_tokens`, output=`attributes.output_tokens`, '
+            'cache_read=`attributes.cache_read_tokens`, cache_write=`attributes.cache_creation_tokens`, '
+            'cost=`attributes.cost_usd`, ms=`attributes.duration_ms` '
+            '| ev="claude_code.api_request" | sid="$session_id" | keep model, source, input, output, cache_read, cache_write, cost, ms')
+    nums = ("input", "output", "cache_read", "cache_write", "cost", "ms")
+    panels.append(table(
+        "API calls", "One row per model call of this session, newest first (Loki api_request; up to 5,000 in the range). "
+        "source is the query_source: the main thread, a subagent, compaction or a side query.",
+        [{**loki(call), "maxLines": 5000}], pos(0, y, 24, 10), ds=LOKI, sort="Time",
+        transformations=[
+            {"id": "extractFields", "options": {"source": "labels", "format": "auto", "replace": True, "keepTime": True}},
+            {"id": "convertFieldType", "options": {"conversions": [{"targetField": n, "destinationType": "number"} for n in nums]}},
+            {"id": "organize", "options": {"indexByName": {n: i for i, n in enumerate(("Time", "model", "source") + nums)}}}],
+        overrides=[col("cost", ("unit", "currencyUSD"), ("decimals", 4)), col("ms", ("unit", "ms")),
+                   *[col(n, ("unit", "short")) for n in nums[:4]]]))
+    y += 10
     panels.append(logs("Prompts", "What was asked in this session, newest first. Secrets are redacted by Alloy before Loki.",
                        f'{event(s_line, "user_prompt")} | json prompt=`attributes.prompt` | line_format "{{{{.prompt}}}}"',
                        pos(0, y, 24, 10)))
     variables = [v_prom(), v_loki(),
                  v_query("target", "Session", "label_values(agent_session_info, target)", multi=False),
-                 v_query("session_id", "session_id", 'label_values(agent_session_info{target="$target"}, session_id)',
-                         multi=False, hide_=0)]
+                 {**v_query("session_id", "session_id", 'label_values(agent_session_info{target="$target"}, session_id)',
+                            multi=False, hide_=0), "allowCustomValue": True}]
     return dash("kb-agents-session", "Agents / Session",
                 "One session in depth. Pick its tmux target; agent_session_info (fleet-sessions) maps it to the Claude "
-                "Code session_id that the cost, token and Loki panels filter on. A session with no session_id yet shows "
-                "only the fleet panels.",
+                "Code session_id that the cost, token and Loki panels filter on. Type or paste any session_id to read a session "
+                "that has ended or never had a tmux target (a runner, a shepherd pass). A session with no session_id yet "
+                "shows only the fleet panels.",
                 panels, variables, time_from="now-12h")
 
 

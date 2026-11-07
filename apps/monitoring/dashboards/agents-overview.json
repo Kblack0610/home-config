@@ -364,7 +364,7 @@
             "uid": "${datasource}"
           },
           "editorMode": "code",
-          "expr": "sum(increase(claude_code_cost_usage_USD_total{project=~\"$project\", model=~\"$model\"}[$__range]))",
+          "expr": "sum(max_over_time(claude_code_cost_usage_USD_total{project=~\"$project\", model=~\"$model\"}[$__range])) - (sum(last_over_time(claude_code_cost_usage_USD_total{project=~\"$project\", model=~\"$model\"}[1d] offset $__range) and max_over_time(claude_code_cost_usage_USD_total{project=~\"$project\", model=~\"$model\"}[$__range])) or vector(0))",
           "format": "time_series",
           "instant": true,
           "range": false,
@@ -428,7 +428,7 @@
             "uid": "${datasource}"
           },
           "editorMode": "code",
-          "expr": "sum(increase(claude_code_token_usage_tokens_total{project=~\"$project\", model=~\"$model\"}[$__range]))",
+          "expr": "sum(max_over_time(claude_code_token_usage_tokens_total{project=~\"$project\", model=~\"$model\"}[$__range])) - (sum(last_over_time(claude_code_token_usage_tokens_total{project=~\"$project\", model=~\"$model\"}[1d] offset $__range) and max_over_time(claude_code_token_usage_tokens_total{project=~\"$project\", model=~\"$model\"}[$__range])) or vector(0))",
           "format": "time_series",
           "instant": true,
           "range": false,
@@ -491,7 +491,7 @@
             "uid": "${datasource}"
           },
           "editorMode": "code",
-          "expr": "sum(increase(claude_code_token_usage_tokens_total{project=~\"$project\", model=~\"$model\", type=\"cacheRead\"}[$__range])) / sum(increase(claude_code_token_usage_tokens_total{project=~\"$project\", model=~\"$model\", type=~\"input|cacheRead|cacheCreation\"}[$__range]))",
+          "expr": "(sum(max_over_time(claude_code_token_usage_tokens_total{project=~\"$project\", model=~\"$model\", type=~\"cacheRead\"}[$__range])) - (sum(last_over_time(claude_code_token_usage_tokens_total{project=~\"$project\", model=~\"$model\", type=~\"cacheRead\"}[1d] offset $__range) and max_over_time(claude_code_token_usage_tokens_total{project=~\"$project\", model=~\"$model\", type=~\"cacheRead\"}[$__range])) or vector(0))) / (sum(max_over_time(claude_code_token_usage_tokens_total{project=~\"$project\", model=~\"$model\", type=~\"input|cacheRead|cacheCreation\"}[$__range])) - (sum(last_over_time(claude_code_token_usage_tokens_total{project=~\"$project\", model=~\"$model\", type=~\"input|cacheRead|cacheCreation\"}[1d] offset $__range) and max_over_time(claude_code_token_usage_tokens_total{project=~\"$project\", model=~\"$model\", type=~\"input|cacheRead|cacheCreation\"}[$__range])) or vector(0)))",
           "format": "time_series",
           "instant": true,
           "range": false,
@@ -555,7 +555,7 @@
             "uid": "${datasource}"
           },
           "editorMode": "code",
-          "expr": "sum(increase(claude_code_pull_request_count_total{project=~\"$project\"}[$__range]))",
+          "expr": "sum(max_over_time(claude_code_pull_request_count_total{project=~\"$project\"}[$__range])) - (sum(last_over_time(claude_code_pull_request_count_total{project=~\"$project\"}[1d] offset $__range) and max_over_time(claude_code_pull_request_count_total{project=~\"$project\"}[$__range])) or vector(0))",
           "format": "time_series",
           "instant": true,
           "range": false,

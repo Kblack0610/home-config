@@ -1,7 +1,7 @@
 {
   "uid": "kb-agents-session",
   "title": "Agents / Session",
-  "description": "One session in depth. Pick its tmux target; agent_session_info (fleet-sessions) maps it to the Claude Code session_id that the cost, token and Loki panels filter on. A session with no session_id yet shows only the fleet panels.",
+  "description": "One session in depth. Pick its tmux target; agent_session_info (fleet-sessions) maps it to the Claude Code session_id that the cost, token and Loki panels filter on. Type or paste any session_id to read a session that has ended or never had a tmux target (a runner, a shepherd pass). A session with no session_id yet shows only the fleet panels.",
   "tags": [
     "agents",
     "claude-code",
@@ -77,7 +77,8 @@
         "includeAll": false,
         "current": {},
         "options": [],
-        "regex": ""
+        "regex": "",
+        "allowCustomValue": true
       }
     ]
   },
@@ -364,7 +365,7 @@
             "uid": "${datasource}"
           },
           "editorMode": "code",
-          "expr": "sum(increase(claude_code_cost_usage_USD_total{session_id=\"$session_id\"}[$__range]))",
+          "expr": "sum(max_over_time(claude_code_cost_usage_USD_total{session_id=\"$session_id\"}[$__range])) - (sum(last_over_time(claude_code_cost_usage_USD_total{session_id=\"$session_id\"}[1d] offset $__range) and max_over_time(claude_code_cost_usage_USD_total{session_id=\"$session_id\"}[$__range])) or vector(0))",
           "format": "time_series",
           "instant": true,
           "range": false,
@@ -428,7 +429,7 @@
             "uid": "${datasource}"
           },
           "editorMode": "code",
-          "expr": "sum(increase(claude_code_token_usage_tokens_total{session_id=\"$session_id\"}[$__range]))",
+          "expr": "sum(max_over_time(claude_code_token_usage_tokens_total{session_id=\"$session_id\"}[$__range])) - (sum(last_over_time(claude_code_token_usage_tokens_total{session_id=\"$session_id\"}[1d] offset $__range) and max_over_time(claude_code_token_usage_tokens_total{session_id=\"$session_id\"}[$__range])) or vector(0))",
           "format": "time_series",
           "instant": true,
           "range": false,
@@ -878,7 +879,7 @@
             "uid": "${loki}"
           },
           "editorMode": "code",
-          "expr": "sort_desc(sum by (tool) (count_over_time({service_name=\"claude-code\"} |= \"$session_id\" |= \"claude_code.tool_result\" | json ev=`body` | ev=\"claude_code.tool_result\" | json tool=`attributes.tool_name` [$__range])))",
+          "expr": "sort_desc(sum by (tool) (count_over_time({service_name=~\"claude-code|claude-agentctl\"} |= \"$session_id\" |= \"claude_code.tool_result\" | json ev=`body` | ev=\"claude_code.tool_result\" | json tool=`attributes.tool_name` [$__range])))",
           "legendFormat": "{{tool}}",
           "queryType": "instant",
           "refId": "A"
@@ -943,7 +944,7 @@
             "uid": "${loki}"
           },
           "editorMode": "code",
-          "expr": "{service_name=\"claude-code\"} |= \"$session_id\" |~ \"claude_code\\\\.(api_error|tool_result)\" | json ev=`body`, tool=`attributes.tool_name`, ok=`attributes.success`, status=`attributes.status_code`, err=`attributes.error` | ok=\"false\" or ev=\"claude_code.api_error\" | line_format \"{{.ev}} {{.tool}}{{.status}} {{.err}}\"",
+          "expr": "{service_name=~\"claude-code|claude-agentctl\"} |= \"$session_id\" |~ \"claude_code\\\\.(api_error|tool_result)\" | json ev=`body`, tool=`attributes.tool_name`, ok=`attributes.success`, status=`attributes.status_code`, err=`attributes.error` | ok=\"false\" or ev=\"claude_code.api_error\" | line_format \"{{.ev}} {{.tool}}{{.status}} {{.err}}\"",
           "legendFormat": "__auto",
           "queryType": "range",
           "refId": "A"
@@ -960,9 +961,9 @@
       "id": 13
     },
     {
-      "type": "logs",
-      "title": "Prompts",
-      "description": "What was asked in this session, newest first. Secrets are redacted by Alloy before Loki.",
+      "type": "table",
+      "title": "API calls",
+      "description": "One row per model call of this session, newest first (Loki api_request; up to 5,000 in the range). source is the query_source: the main thread, a subagent, compaction or a side query.",
       "gridPos": {
         "x": 0,
         "y": 30,
@@ -980,7 +981,191 @@
             "uid": "${loki}"
           },
           "editorMode": "code",
-          "expr": "{service_name=\"claude-code\"} |= \"$session_id\" |= \"claude_code.user_prompt\" | json ev=`body` | ev=\"claude_code.user_prompt\" | json prompt=`attributes.prompt` | line_format \"{{.prompt}}\"",
+          "expr": "{service_name=~\"claude-code|claude-agentctl\"} |= \"$session_id\" |= \"claude_code.api_request\" | json ev=`body`, sid=`attributes[\"session.id\"]`, model=`attributes.model`, source=`attributes.query_source`, input=`attributes.input_tokens`, output=`attributes.output_tokens`, cache_read=`attributes.cache_read_tokens`, cache_write=`attributes.cache_creation_tokens`, cost=`attributes.cost_usd`, ms=`attributes.duration_ms` | ev=\"claude_code.api_request\" | sid=\"$session_id\" | keep model, source, input, output, cache_read, cache_write, cost, ms",
+          "legendFormat": "__auto",
+          "queryType": "range",
+          "refId": "A",
+          "maxLines": 5000
+        }
+      ],
+      "transformations": [
+        {
+          "id": "extractFields",
+          "options": {
+            "source": "labels",
+            "format": "auto",
+            "replace": true,
+            "keepTime": true
+          }
+        },
+        {
+          "id": "convertFieldType",
+          "options": {
+            "conversions": [
+              {
+                "targetField": "input",
+                "destinationType": "number"
+              },
+              {
+                "targetField": "output",
+                "destinationType": "number"
+              },
+              {
+                "targetField": "cache_read",
+                "destinationType": "number"
+              },
+              {
+                "targetField": "cache_write",
+                "destinationType": "number"
+              },
+              {
+                "targetField": "cost",
+                "destinationType": "number"
+              },
+              {
+                "targetField": "ms",
+                "destinationType": "number"
+              }
+            ]
+          }
+        },
+        {
+          "id": "organize",
+          "options": {
+            "indexByName": {
+              "Time": 0,
+              "model": 1,
+              "source": 2,
+              "input": 3,
+              "output": 4,
+              "cache_read": 5,
+              "cache_write": 6,
+              "cost": 7,
+              "ms": 8
+            }
+          }
+        }
+      ],
+      "options": {
+        "showHeader": true,
+        "cellHeight": "sm",
+        "sortBy": [
+          {
+            "displayName": "Time",
+            "desc": true
+          }
+        ]
+      },
+      "fieldConfig": {
+        "defaults": {
+          "noValue": "-",
+          "custom": {
+            "align": "left"
+          }
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "cost"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "currencyUSD"
+              },
+              {
+                "id": "decimals",
+                "value": 4
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "ms"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "ms"
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "input"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "short"
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "output"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "short"
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "cache_read"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "short"
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "cache_write"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "short"
+              }
+            ]
+          }
+        ]
+      },
+      "id": 14
+    },
+    {
+      "type": "logs",
+      "title": "Prompts",
+      "description": "What was asked in this session, newest first. Secrets are redacted by Alloy before Loki.",
+      "gridPos": {
+        "x": 0,
+        "y": 40,
+        "w": 24,
+        "h": 10
+      },
+      "datasource": {
+        "type": "loki",
+        "uid": "${loki}"
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "loki",
+            "uid": "${loki}"
+          },
+          "editorMode": "code",
+          "expr": "{service_name=~\"claude-code|claude-agentctl\"} |= \"$session_id\" |= \"claude_code.user_prompt\" | json ev=`body` | ev=\"claude_code.user_prompt\" | json prompt=`attributes.prompt` | line_format \"{{.prompt}}\"",
           "legendFormat": "__auto",
           "queryType": "range",
           "refId": "A"
@@ -994,7 +1179,7 @@
         "dedupStrategy": "none",
         "prettifyLogMessage": false
       },
-      "id": 14
+      "id": 15
     }
   ],
   "editable": true,

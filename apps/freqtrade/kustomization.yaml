@@ -31,7 +31,7 @@ images:
   # change; the tag is the strategy repo commit it was built from.
   - name: trader
     newName: ghcr.io/kblack0610/trader
-    digest: sha256:6014a9f8f76cd8e1915b8ade4cc7191a70e88f649e2b2f146e7578f912e0a967  # sha-95381a9
+    digest: sha256:8d63dc7d024287201675536ec52d064e9fdc5ee1accdd055f90c0c312b0b9c5a  # sha-d6fc730
 
 configMapGenerator:
   # Rows here and replicas in statefulset.yaml move together.

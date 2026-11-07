@@ -25,12 +25,27 @@ the same question with no device worked.
 The fix drops anyOf/oneOf branches that carry nothing but `required`: the
 properties stay, only the at-least-one constraint is lost, and HA still
 validates the arguments when it runs the intent. Anything else is untouched.
+
+3. Lazer's Claude models refuse a named response_format:
+
+Lazer copies OpenAI's response_format.json_schema.name into Anthropic's
+output_config.format, and Anthropic answers 400 "output_config.format.name:
+Extra inputs are not permitted". Claude Code's structured side calls hit this
+on every Lazer Claude route, because the /v1/messages bridge always sets the
+name OpenAI requires (2026-11-06). Without the name Lazer sends a valid format
+and the output stays schema-constrained. This runs as the deployment hook
+because the bridge builds response_format after async_pre_call_hook, and the
+new dict keeps the name for any fallback to a route that needs it. Revisit when
+a named json_schema to `claude-sonnet-5` stops returning that 400: then the
+strip can go.
 """
 
 import json
 from typing import Any
 
 from litellm.integrations.custom_logger import CustomLogger
+
+LAZER_HOST = "proxy.lazertechnologies.com"
 
 
 def strip_required_only_branches(schema: Any) -> Any:
@@ -66,6 +81,21 @@ class ToolCompat(CustomLogger):
                 if isinstance(fn, dict) and "parameters" in fn:
                     fn["parameters"] = strip_required_only_branches(fn["parameters"])
         return data
+
+    async def async_pre_call_deployment_hook(self, kwargs: dict, call_type):
+        response_format = kwargs.get("response_format")
+        json_schema = response_format.get("json_schema") if isinstance(response_format, dict) else None
+        # api_base, because the model reads openai/claude-x from /v1/chat/completions
+        # and bare claude-x from the /v1/messages bridge.
+        if (
+            isinstance(json_schema, dict)
+            and "name" in json_schema
+            and "claude-" in str(kwargs.get("model") or "")
+            and LAZER_HOST in str(kwargs.get("api_base") or "")
+        ):
+            kept = {k: v for k, v in json_schema.items() if k != "name"}
+            kwargs["response_format"] = {**response_format, "json_schema": kept}
+        return kwargs
 
 
 proxy_handler_instance = ToolCompat()

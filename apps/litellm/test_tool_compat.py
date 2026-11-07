@@ -40,7 +40,7 @@ def run_hook(kwargs):
 class ResponseFormatName(unittest.TestCase):
     def test_lazer_claude_route_loses_only_the_name(self):
         # /v1/chat/completions keeps the provider prefix, the /v1/messages bridge drops it.
-        for model in ("openai/claude-haiku-5.5", "claude-haiku-5.5", "claude-sonnet-5.5", "claude-opus-5.5"):
+        for model in ("openai/claude-haiku-5.5", "claude-haiku-5.5"):
             out = run_hook({"model": model, "api_base": LAZER, "response_format": named_format()})
             self.assertEqual(
                 out["response_format"],

@@ -89,7 +89,6 @@ class ToolCompat(CustomLogger):
         # and bare claude-x from the /v1/messages bridge.
         if (
             isinstance(json_schema, dict)
-            and "name" in json_schema
             and "claude-" in str(kwargs.get("model") or "")
             and LAZER_HOST in str(kwargs.get("api_base") or "")
         ):

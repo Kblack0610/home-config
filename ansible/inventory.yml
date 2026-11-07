@@ -370,6 +370,30 @@ all:
     # game's tick runs on. Moving the server to another box (a mini PC, the
     # Razer) is this group, that host's ci_cpus, and the router's LAN answer and
     # UDP forward (apps/playground-server/README.md).
+    # Fleet workers: hosts fleet-dispatch places light claude sessions on, over
+    # ssh. dotfiles .local/lib/fleet-hosts.sh reads this group from this file
+    # alone, so its vars stay here and never move to group_vars/. Provisioned
+    # by roles/fleet-worker; the human signs each account in once. Runbook:
+    # docs/runbooks/fleet-worker.md.
+    #   fleet_place      false keeps a provisioned host out of placement
+    #   fleet_max_live   sessions at once on it (a light item is one run unit)
+    #   fleet_repos      what it clones, and the repos whose items it takes;
+    #                    dest is the same path as on the workstation
+    #   fleet_state_host where its queue and ask writes go (AGENT_STATE_HOST)
+    fleet_workers:
+      vars:
+        fleet_state_host: pc-home-cachy-main.lan
+        fleet_max_live: 1
+        fleet_repos:
+          - dest: ~/.dotfiles
+            repo: https://github.com/Kblack0610/.dotfiles.git
+      hosts:
+        # The first worker (2026-11-07), picked for headroom: 16 threads and
+        # 96 GB. Not placed until the role reports it ready and the human has
+        # signed it in.
+        razer-laptop:
+          fleet_place: false
+
     game_server_nodes:
       hosts:
         hp-victus:

@@ -692,7 +692,7 @@
             "uid": "${datasource}"
           },
           "editorMode": "code",
-          "expr": "sum by (model) (increase(claude_code_cost_usage_USD_total{session_id=\"$session_id\"}[$__interval]))",
+          "expr": "sum by (model) (max_over_time(claude_code_cost_usage_USD_total{session_id=\"$session_id\"}[$__interval])) - (sum by (model) (last_over_time(claude_code_cost_usage_USD_total{session_id=\"$session_id\"}[1d] offset $__interval) and max_over_time(claude_code_cost_usage_USD_total{session_id=\"$session_id\"}[$__interval])) or sum by (model) (max_over_time(claude_code_cost_usage_USD_total{session_id=\"$session_id\"}[$__interval])) * 0)",
           "format": "time_series",
           "instant": false,
           "range": true,
@@ -755,7 +755,7 @@
             "uid": "${datasource}"
           },
           "editorMode": "code",
-          "expr": "sum by (type) (increase(claude_code_token_usage_tokens_total{session_id=\"$session_id\"}[$__interval]))",
+          "expr": "sum by (type) (max_over_time(claude_code_token_usage_tokens_total{session_id=\"$session_id\"}[$__interval])) - (sum by (type) (last_over_time(claude_code_token_usage_tokens_total{session_id=\"$session_id\"}[1d] offset $__interval) and max_over_time(claude_code_token_usage_tokens_total{session_id=\"$session_id\"}[$__interval])) or sum by (type) (max_over_time(claude_code_token_usage_tokens_total{session_id=\"$session_id\"}[$__interval])) * 0)",
           "format": "time_series",
           "instant": false,
           "range": true,

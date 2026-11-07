@@ -285,11 +285,16 @@ spec:
           expr: >-
             max(litellm_team_max_budget_metric{team_alias="lazer-pool"}) - max(litellm_remaining_team_budget_metric{team_alias="lazer-pool"})
         # Peak in the window less the value before it: increase() drops each new session's first sample.
+        # A service with no earlier value keeps its peak. Home Assistant reads the split, the hub the total.
+        - record: cc:claude_code_cost_24h_usd:by_service
+          expr: >-
+            sum by (service_name) (max_over_time(claude_code_cost_usage_USD_total[24h]))
+            - (sum by (service_name) (last_over_time(claude_code_cost_usage_USD_total[1d] offset 24h)
+                   and max_over_time(claude_code_cost_usage_USD_total[24h]))
+               or sum by (service_name) (max_over_time(claude_code_cost_usage_USD_total[24h])) * 0)
         - record: cc:claude_code_cost_24h_usd
           expr: >-
-            sum(max_over_time(claude_code_cost_usage_USD_total[24h]))
-            - (sum(last_over_time(claude_code_cost_usage_USD_total[1d] offset 24h)
-                   and max_over_time(claude_code_cost_usage_USD_total[24h])) or vector(0))
+            sum(cc:claude_code_cost_24h_usd:by_service)
     # One row per machine, keyed by its inventory name (the same `host` the runner
     # exporter stamps on github_runner_state), so a runner row and its machine's load
     # join on one label. Rules run in order inside a group, so cc:host_instance is

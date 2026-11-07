@@ -78,12 +78,15 @@ def event(stream, name):
     return f'{stream} |= "claude_code.{name}" | json ev=`body` | ev="claude_code.{name}"'
 
 
-def spent(sel, rng="$__range"):
+def spent(sel, rng="$__range", by=""):
     """What counters rose by over rng, first sample included. increase() extrapolates from a series' second
     sample, so it drops the first turn of every session born in the range (about a quarter of a day's cost).
-    A series' peak in the range, less its value before the range for the series that ran then."""
-    return (f"sum(max_over_time({sel}[{rng}])) - "
-            f"(sum(last_over_time({sel}[1d] offset {rng}) and max_over_time({sel}[{rng}])) or vector(0))")
+    A series' peak in the range, less its value before the range for the series that ran then. With rng
+    $__interval it is one chart point; by groups it (a group with no earlier value keeps its peak)."""
+    g = f"sum by ({by}) " if by else "sum"
+    peak = f"{g}(max_over_time({sel}[{rng}]))"
+    zero = f"{peak} * 0" if by else "vector(0)"
+    return f"{peak} - ({g}(last_over_time({sel}[1d] offset {rng}) and max_over_time({sel}[{rng}])) or {zero})"
 
 
 def pos(x, y, w, h):
@@ -282,24 +285,24 @@ def overview():
     panels += [
         ts("Cost per hour by project", "Spend per hour, one series per canonical project (claude-telemetry.sh sets it). "
            "Sessions started outside the claude wrappers carry no project and show as the empty series.",
-           [prom(f'label_replace(sum by (project) (increase(claude_code_cost_usage_USD_total{cf}[$__interval])), "project", "no project", "project", "")',
+           [prom(f'label_replace({spent(f"claude_code_cost_usage_USD_total{cf}", "$__interval", "project")}, "project", "no project", "project", "")',
                  legend="{{project}}")],
            pos(0, y, 12, 8), unit="currencyUSD", bars=True, stack=True, interval="1h"),
         ts("Cost per hour by model", "Spend per hour, one series per model.",
-           [prom(f"sum by (model) (increase(claude_code_cost_usage_USD_total{cf}[$__interval]))", legend="{{model}}")],
+           [prom(spent(f"claude_code_cost_usage_USD_total{cf}", "$__interval", "model"), legend="{{model}}")],
            pos(12, y, 12, 8), unit="currencyUSD", bars=True, stack=True, interval="1h"),
     ]
     y += 8
     panels += [
         ts("Tokens per hour by type", "Cache read dominates when caching works; a jump in cacheCreation means prompts are being rebuilt.",
-           [prom(f"sum by (type) (increase({tok}[$__interval]))", legend="{{type}}")], pos(0, y, 12, 8), unit="short",
+           [prom(spent(tok, "$__interval", "type"), legend="{{type}}")], pos(0, y, 12, 8), unit="short",
            bars=True, stack=True, interval="1h", overrides=color_by_name(TOKEN_COLORS)),
         ts("Lines changed per hour", "Lines added and removed by Claude Code edits.",
-           [prom('sum by (type) (increase(claude_code_lines_of_code_count_total{project=~"$project"}[$__interval]))', legend="{{type}}")],
+           [prom(spent('claude_code_lines_of_code_count_total{project=~"$project"}', "$__interval", "type"), legend="{{type}}")],
            pos(12, y, 6, 8), unit="short", bars=True, interval="1h", overrides=color_by_name({"added": C3, "removed": C2})),
         ts("Commits and PRs per hour", "Commits and pull requests Claude Code created.",
-           [prom('sum(increase(claude_code_commit_count_total{project=~"$project"}[$__interval]))', "A", "commits"),
-            prom('sum(increase(claude_code_pull_request_count_total{project=~"$project"}[$__interval]))', "B", "PRs")],
+           [prom(spent('claude_code_commit_count_total{project=~"$project"}', "$__interval"), "A", "commits"),
+            prom(spent('claude_code_pull_request_count_total{project=~"$project"}', "$__interval"), "B", "PRs")],
            pos(18, y, 6, 8), bars=True, interval="1h", decimals=0, overrides=color_by_name({"commits": C1, "PRs": C2})),
     ]
     y += 8
@@ -366,10 +369,10 @@ def session():
     y += 8
     panels += [
         ts("Cost per hour by model", "This session's spend per hour.",
-           [prom(f"sum by (model) (increase(claude_code_cost_usage_USD_total{sid}[$__interval]))", legend="{{model}}")],
+           [prom(spent(f"claude_code_cost_usage_USD_total{sid}", "$__interval", "model"), legend="{{model}}")],
            pos(0, y, 12, 8), unit="currencyUSD", bars=True, stack=True, interval="1h"),
         ts("Tokens per hour by type", "This session's tokens per hour.",
-           [prom(f"sum by (type) (increase(claude_code_token_usage_tokens_total{sid}[$__interval]))", legend="{{type}}")],
+           [prom(spent(f"claude_code_token_usage_tokens_total{sid}", "$__interval", "type"), legend="{{type}}")],
            pos(12, y, 12, 8), unit="short", bars=True, stack=True, interval="1h", overrides=color_by_name(TOKEN_COLORS)),
     ]
     y += 8

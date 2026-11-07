@@ -1225,7 +1225,7 @@
             "uid": "${datasource}"
           },
           "editorMode": "code",
-          "expr": "label_replace(sum by (project) (increase(claude_code_cost_usage_USD_total{project=~\"$project\", model=~\"$model\"}[$__interval])), \"project\", \"no project\", \"project\", \"\")",
+          "expr": "label_replace(sum by (project) (max_over_time(claude_code_cost_usage_USD_total{project=~\"$project\", model=~\"$model\"}[$__interval])) - (sum by (project) (last_over_time(claude_code_cost_usage_USD_total{project=~\"$project\", model=~\"$model\"}[1d] offset $__interval) and max_over_time(claude_code_cost_usage_USD_total{project=~\"$project\", model=~\"$model\"}[$__interval])) or sum by (project) (max_over_time(claude_code_cost_usage_USD_total{project=~\"$project\", model=~\"$model\"}[$__interval])) * 0), \"project\", \"no project\", \"project\", \"\")",
           "format": "time_series",
           "instant": false,
           "range": true,
@@ -1288,7 +1288,7 @@
             "uid": "${datasource}"
           },
           "editorMode": "code",
-          "expr": "sum by (model) (increase(claude_code_cost_usage_USD_total{project=~\"$project\", model=~\"$model\"}[$__interval]))",
+          "expr": "sum by (model) (max_over_time(claude_code_cost_usage_USD_total{project=~\"$project\", model=~\"$model\"}[$__interval])) - (sum by (model) (last_over_time(claude_code_cost_usage_USD_total{project=~\"$project\", model=~\"$model\"}[1d] offset $__interval) and max_over_time(claude_code_cost_usage_USD_total{project=~\"$project\", model=~\"$model\"}[$__interval])) or sum by (model) (max_over_time(claude_code_cost_usage_USD_total{project=~\"$project\", model=~\"$model\"}[$__interval])) * 0)",
           "format": "time_series",
           "instant": false,
           "range": true,
@@ -1351,7 +1351,7 @@
             "uid": "${datasource}"
           },
           "editorMode": "code",
-          "expr": "sum by (type) (increase(claude_code_token_usage_tokens_total{project=~\"$project\", model=~\"$model\"}[$__interval]))",
+          "expr": "sum by (type) (max_over_time(claude_code_token_usage_tokens_total{project=~\"$project\", model=~\"$model\"}[$__interval])) - (sum by (type) (last_over_time(claude_code_token_usage_tokens_total{project=~\"$project\", model=~\"$model\"}[1d] offset $__interval) and max_over_time(claude_code_token_usage_tokens_total{project=~\"$project\", model=~\"$model\"}[$__interval])) or sum by (type) (max_over_time(claude_code_token_usage_tokens_total{project=~\"$project\", model=~\"$model\"}[$__interval])) * 0)",
           "format": "time_series",
           "instant": false,
           "range": true,
@@ -1475,7 +1475,7 @@
             "uid": "${datasource}"
           },
           "editorMode": "code",
-          "expr": "sum by (type) (increase(claude_code_lines_of_code_count_total{project=~\"$project\"}[$__interval]))",
+          "expr": "sum by (type) (max_over_time(claude_code_lines_of_code_count_total{project=~\"$project\"}[$__interval])) - (sum by (type) (last_over_time(claude_code_lines_of_code_count_total{project=~\"$project\"}[1d] offset $__interval) and max_over_time(claude_code_lines_of_code_count_total{project=~\"$project\"}[$__interval])) or sum by (type) (max_over_time(claude_code_lines_of_code_count_total{project=~\"$project\"}[$__interval])) * 0)",
           "format": "time_series",
           "instant": false,
           "range": true,
@@ -1569,7 +1569,7 @@
             "uid": "${datasource}"
           },
           "editorMode": "code",
-          "expr": "sum(increase(claude_code_commit_count_total{project=~\"$project\"}[$__interval]))",
+          "expr": "sum(max_over_time(claude_code_commit_count_total{project=~\"$project\"}[$__interval])) - (sum(last_over_time(claude_code_commit_count_total{project=~\"$project\"}[1d] offset $__interval) and max_over_time(claude_code_commit_count_total{project=~\"$project\"}[$__interval])) or vector(0))",
           "format": "time_series",
           "instant": false,
           "range": true,
@@ -1582,7 +1582,7 @@
             "uid": "${datasource}"
           },
           "editorMode": "code",
-          "expr": "sum(increase(claude_code_pull_request_count_total{project=~\"$project\"}[$__interval]))",
+          "expr": "sum(max_over_time(claude_code_pull_request_count_total{project=~\"$project\"}[$__interval])) - (sum(last_over_time(claude_code_pull_request_count_total{project=~\"$project\"}[1d] offset $__interval) and max_over_time(claude_code_pull_request_count_total{project=~\"$project\"}[$__interval])) or vector(0))",
           "format": "time_series",
           "instant": false,
           "range": true,

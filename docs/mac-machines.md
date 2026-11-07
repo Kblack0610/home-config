@@ -121,6 +121,8 @@ ssh mac-studio "curl -s http://127.0.0.1:8090/v1/models | head -c 80"           
 ssh mac-studio "sysctl iogpu.wired_limit_mb"                                       # 491520
 ```
 
+From a worktree, Ansible finds no collections (`collections_path` is the git-ignored `./collections`), so a run fails on `community.general.pacman`: prefix it with `ANSIBLE_COLLECTIONS_PATH=~/dev/home/home-config/ansible/collections`.
+
 The mac-studio play sets the destructive removal vars (`macos_llm_node_remove_xcode`, `..._platform_checkout`) true (`..._runner_dir` is off while the Unity pool slots live under `~/actions-runner`) — always `--check --diff` first, and note the checkout removal HARD-FAILS if `~/dev/bnb/platform` has uncommitted/unpushed work.
 
 ### CI node (mac-mini)
@@ -153,7 +155,7 @@ Considered and rejected. MDM's unique capability is zero-touch DEP/ADE enrollmen
 | Wake-on-LAN (womp) | Enabled | Remote wake | macos-baseline (pmset) |
 | FileVault | Disabled | Allows auto-login on restart | install script (asserted by macos-baseline) |
 | Auto-login | Enabled (current user) | Unattended restarts after power outage | install script (asserted by macos-baseline) |
-| Screen lock (mac-mini) | Off | Agent input cannot reach a locked screen; auto-login already gives a session to anyone at the Mac | person, once (asserted by macos-agent-tools) |
+| Screen lock and screensaver (mac-mini) | Off (`sysadminctl -screenLock off`, screensaver `idleTime` 0, `askForPassword` 0) | A locked session blocks the desktop and store-console tools; auto-login already gives a session to anyone at the Mac | screen lock: person, once; screensaver: macos-agent-tools sets both and asserts the lock |
 | Passwordless sudo (mac-mini) | Blanket, `/etc/sudoers.d/agent-machine` | Agents need root unattended; mac-studio keeps its password | macos-agent-tools |
 | Spotlight index (mac-mini) | Off, index removed | It reached 51 GB; nothing here searches with it | macos-agent-tools |
 | Automatic macOS install (mac-mini) | Off, critical and config-data updates stay on | An update reboots mid-job and can drop the privacy grants | macos-agent-tools |
@@ -230,6 +232,18 @@ Likely a `SetEnv` issue in SSH config: `ssh -F /dev/null kennethblack@192.168.1.
 
 ### An agent cannot see or click the desktop (mac-mini)
 `peekaboo permissions status` (or the `agent-tools` tag) shows which grant is off. macOS drops a grant after some updates and can re-ask for Screen Recording; redo the one-time grant in [Driving it from an agent](#driving-it-from-an-agent). A screenshot of the login window means the screen locked: the screen lock must be off (`sysadminctl -screenLock status`).
+
+### The screen is locked (mac-mini)
+
+Agents unlock it themselves; it needs no person. A locked session looks like the dimmed wallpaper in a screenshot, and `ssh -T mac-mini 'ioreg -n Root -d1 -a | grep -A1 CGSSessionScreenIsLocked'` prints `<true/>` (no output means unlocked). Browser and Peekaboo calls block on it without an error, so check this first when a desktop or store-console step hangs. Unlock with the login password from rbw, never written to a file or a command line:
+
+```bash
+rbw get mac_fleet_password | ssh -T mac-mini 'read -r v; caffeinate -u -t 2; sleep 1
+  osascript -e "tell application \"System Events\" to key code 49"; sleep 1
+  osascript -e "on run argv" -e "tell application \"System Events\" to keystroke (item 1 of argv)" -e "delay 0.3" -e "tell application \"System Events\" to key code 36" -e "end run" "$v"; unset v'
+```
+
+`caffeinate -u` alone wakes the display but does not unlock. Then run the `agent-tools` tag so it does not lock again: the usual cause is the screensaver (`idleTime`) with `askForPassword` 1, which `sysadminctl -screenLock status` does not show.
 
 ### A macOS prompt asks to "bypass the system private window picker" (mac-mini)
 

@@ -1,0 +1,13 @@
+---
+# What a session on a fleet worker runs: tmux and wt (from the dotfiles), the
+# three harnesses, gh for its PRs, and python-yaml and jq for fleet-hosts.sh.
+fleet_worker_packages:
+  - git
+  - tmux
+  - stow
+  - jq
+  - python-yaml
+  - github-cli
+  - openai-codex
+  - opencode
+fleet_worker_dotfiles_repo: https://github.com/Kblack0610/.dotfiles.git

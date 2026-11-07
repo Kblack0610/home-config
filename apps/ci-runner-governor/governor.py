@@ -161,6 +161,11 @@ def load_config(path):
     return with_defaults(cfg)
 
 
+def power_of(cfg, host):
+    """A standby host's power settings: POWER_DEFAULTS with its own on top."""
+    return {**POWER_DEFAULTS, **cfg["standby"][host].get("power", {})}
+
+
 def with_defaults(cfg):
     """Each host's thresholds: the defaults with its own overrides on top."""
     for host, over in cfg["hosts"].items():
@@ -309,8 +314,8 @@ def decide(cfg, hosts, runners, waiting, last_action, now, instances=None, pins=
     covered = sum(1 for _, action, *_ in out if action == "admit")
     covered += sum(1 for r in runners.values() if not r["withheld"] and not r["busy"] and r["host"] in cfg["hosts"])
     # Jobs the standby hosts ahead in the list will take once they are up: a host further
-    # down starts only for what is left past these. ahead names them for the reason.
-    coming, ahead = 0, []
+    # down starts only for what is left past these: host -> jobs.
+    ahead = {}
     for host in cfg["standby"]:
         mine = {n: r for n, r in runners.items() if r["host"] == host}
         on = sorted((n for n, r in mine.items() if not r["withheld"]),
@@ -318,7 +323,7 @@ def decide(cfg, hosts, runners, waiting, last_action, now, instances=None, pins=
         off = sorted(n for n, r in mine.items() if r["withheld"])
         cap = cfg["standby"][host]["max_admitted"]
         inst = (instances or {}).get(host)
-        p = {**POWER_DEFAULTS, **cfg["standby"][host].get("power", {})}
+        p = power_of(cfg, host)
         action, runner, why = "hold", "", "overflow"
         over = inst.get("override") if inst else None
         drain, cause, wanting, want = "", "", False, 0
@@ -373,6 +378,7 @@ def decide(cfg, hosts, runners, waiting, last_action, now, instances=None, pins=
             # start costs money, so only a queue this much deeper than the other hosts can
             # take, for start_after_seconds in a row, starts it: a short burst waits instead.
             # The standby hosts ahead in the list take theirs first.
+            coming = sum(ahead.values())
             want = max(0, min(takes, queue - covered - coming))
             if not inst["labels"]:
                 why = "no runner labels read"
@@ -408,15 +414,12 @@ def decide(cfg, hosts, runners, waiting, last_action, now, instances=None, pins=
             inst["next_cause"] = cause if action in ("start", "stop") else ""
             # What it will take, for the hosts behind it: nothing while draining, passed
             # over, told off, past its day or unable to take what waits.
-            cap_left = max(0, cap - len(on) - (action == "admit"))
-            if drain or passed or over == "off" or not takes:
-                pass
-            elif inst["state"] == "stopped" and inst.get("hours_today", 0) < p["max_hours_day"]:
-                coming, ahead = coming + cap, ahead + [host]
-            elif inst["state"] in ("pending", "running"):
-                idle = sum(1 for n in on if not mine[n]["busy"])
-                if cap_left + idle:
-                    coming, ahead = coming + cap_left + idle, ahead + [host]
+            if not (drain or passed or over == "off" or not takes):
+                if inst["state"] == "stopped" and inst.get("hours_today", 0) < p["max_hours_day"]:
+                    ahead[host] = cap
+                elif inst["state"] in ("pending", "running"):
+                    ahead[host] = (max(0, cap - len(on) - (action == "admit"))
+                                   + sum(1 for n in on if not mine[n]["busy"]))
         out.append((host, action, runner, "STANDBY", why))
     return out
 
@@ -699,12 +702,13 @@ def power_readings(cfg, runners, tracked, now):
         if state != "running" or "busy_at" not in t or any(
                 r["busy"] for r in runners.values() if r["host"] == host):
             t["busy_at"] = now
-        reclaimed = state in ("stopping", "stopped") and reason.startswith(RECLAIM_PREFIX)
-        if reclaimed and not t.get("reclaimed") and "state" in t:
-            fall_back(t, {**POWER_DEFAULTS, **s["power"]}, "reclaim", now)
+        # A reclaim is a host seen up last cycle and stopped by AWS now: one seen stopped
+        # already (or first seen after a restart) was counted, or is not news.
+        if (t.get("state") in ("pending", "running") and state in ("stopping", "stopped")
+                and reason.startswith(RECLAIM_PREFIX)):
+            fall_back(t, power_of(cfg, host), "reclaim", now)
             t.update(cause="reclaim", changed="stop", changed_at=now)
             print(f"{host}: reclaimed by AWS ({reason}), the next standby host takes its jobs", flush=True)
-        t["reclaimed"] = reclaimed
         count_run_time(t, state, now, launched)
         t["override"], t["override_until"] = read_override(host, now)
         t.update(state=state, labels=labels, client=client)
@@ -772,7 +776,7 @@ def render(cfg, hosts, runners, queue, decisions, ok, instances=None, budget=Non
           "# HELP ci_governor_power_fallback_until End (epoch) of the host's pass-over, 0 when none",
           "# TYPE ci_governor_power_fallback_until gauge"]
     for host, inst in sorted((instances or {}).items()):
-        p = {**POWER_DEFAULTS, **cfg["standby"][host]["power"]}
+        p = power_of(cfg, host)
         L.append(f'ci_governor_power_state{{host="{host}",state="{power_state(inst)}",'
                  f'reason="{inst.get("cause") or "none"}"}} 1')
         L.append(f'ci_governor_power_hours_today{{host="{host}"}} {inst.get("hours_today", 0):.3f}')
@@ -853,7 +857,7 @@ def cycle(cfg, last_action, tracked=None, budget=None):
         except POWER_ERRORS as e:
             print(f"{action} {target} failed: {e}", flush=True)
             if action == "start" and getattr(e, "code", "") in CAPACITY_CODES:
-                fall_back(instances[host], {**POWER_DEFAULTS, **cfg["standby"][host]["power"]}, "capacity", now)
+                fall_back(instances[host], power_of(cfg, host), "capacity", now)
                 print(f"{host}: no capacity, passed over for the next standby host", flush=True)
     if budget is not None:
         read_budget(cfg, budget, now)

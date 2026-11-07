@@ -7,9 +7,12 @@ only while jobs wait, the pool floor and cap hold, a cooling host is left alone,
 a missing reading is never room, a full disk empties a host past its floor and cooldown
 but not the pool floor, a standby host takes only the jobs the others cannot, a powered
 standby host is started and stopped by a fake EC2 (no network) and only it acts while the
-rest is dry run, it is started only for a waiting job whose labels its runners carry, and a live action adds the new label before it removes the old. Stdlib
+rest is dry run, it is started only for a waiting job whose labels its runners carry, the
+standby list starts Spot first and falls back to the next host on no capacity or a
+reclaim but not on a budget deny, and a live action adds the new label before it removes the old. Stdlib
 only; CI runs it in the checks workflow.
 """
+import io
 import json
 import os
 import sys
@@ -23,8 +26,8 @@ import governor  # noqa: E402
 
 # The live thresholds with a fixed host list, so a change to the real roster
 # (config.json "hosts" and "standby") does not change what these tests mean.
-with open(os.path.join(os.path.dirname(os.path.abspath(__file__)), "config.json")) as f:
-    LIVE = json.load(f)
+CONFIG = os.path.join(os.path.dirname(os.path.abspath(__file__)), "config.json")
+LIVE = governor.load_config(CONFIG)
 CFG = governor.with_defaults({**LIVE, "standby": {"mac-studio": {"max_admitted": 6}}, "hosts": {
     "asus-laptop": {"min_admitted": 0, "admit": {"tctl": 80}, "withhold": {"idle": 0.25, "tctl": 90}},
     "hp-victus": {},
@@ -82,17 +85,26 @@ def instance(state, idle=0, labels=AWS_LABELS, **more):
 
 
 class FakeEc2:
-    def __init__(self, state="stopped", fail=False, launched=0.0):
-        self.st, self.fail, self.launched, self.calls = state, fail, launched, []
+    """fail: True for a network error, or an EC2 error code. state, reason and fail may be
+    dicts by instance id, for a config with more than one powered host."""
+    def __init__(self, state="stopped", fail=False, launched=0.0, reason=""):
+        self.st, self.fail, self.launched, self.reason, self.calls = state, fail, launched, reason, []
+
+    @staticmethod
+    def per(v, iid):
+        return v.get(iid, "") if isinstance(v, dict) else v
 
     def state(self, iid):
         self.calls.append(("state", iid))
-        return self.st, self.launched
+        return self.per(self.st, iid), self.launched, self.per(self.reason, iid)
 
     def start(self, iid):
         self.calls.append(("start", iid))
-        if self.fail:
-            raise urllib.error.URLError("InsufficientInstanceCapacity")
+        fail = self.per(self.fail, iid)
+        if fail is True:
+            raise urllib.error.URLError("connection reset")
+        if fail:
+            raise governor.Ec2Error(fail, "no")
 
     def stop(self, iid):
         self.calls.append(("stop", iid))
@@ -329,7 +341,7 @@ class GovernorTest(unittest.TestCase):
     def test_live_gate_values(self):
         self.assertEqual({k: LIVE_POWER[k] for k in governor.POWER_DEFAULTS},
                          {"idle_off_seconds": 900, "start_min_excess": 4, "start_after_seconds": 300,
-                          "max_hours_day": 12})
+                          "max_hours_day": 12, "fallback_seconds": 3600})
 
     def test_no_start_below_the_excess(self):
         inst = instance("stopped", want_since=1)
@@ -720,7 +732,7 @@ class GovernorTest(unittest.TestCase):
         resp = mock.MagicMock()
         resp.__enter__.return_value.read.return_value = xml
         with mock.patch.object(governor.urllib.request, "urlopen", return_value=resp) as urlopen:
-            self.assertEqual(governor.Ec2("us-east-2", "k", "s").state("i-0abc"), ("stopped", 1793805342.0))
+            self.assertEqual(governor.Ec2("us-east-2", "k", "s").state("i-0abc"), ("stopped", 1793805342.0, ""))
         req = urlopen.call_args.args[0]
         self.assertEqual(req.full_url, "https://ec2.us-east-2.amazonaws.com/")
         self.assertIn(b"Action=DescribeInstances", req.data)
@@ -755,7 +767,7 @@ class GovernorTest(unittest.TestCase):
         self.assertEqual(calls[1][2], {"labels": ["unity"]})
 
     def test_the_live_config_keeps_full_runs_off_the_workstation(self):
-        cfg = governor.load_config(os.path.join(os.path.dirname(os.path.abspath(__file__)), "config.json"))
+        cfg = governor.load_config(CONFIG)
         self.assertEqual(governor.admit_labels(cfg, "cachyos-x8664-main"), ["unity"])
         self.assertEqual(governor.admit_labels(cfg, "razer-laptop"), ["unity", "unity-full"])
 
@@ -792,6 +804,153 @@ class GovernorTest(unittest.TestCase):
             _, _, waiting = governor.observe("unity")
         self.assertEqual(waiting, [UNITY_JOB])
 
+
+
+# Two powered standby hosts in config order, Spot first, as config.json lists them.
+SPOT = {**POWER, "instance_id": "i-0spot"}
+TWO = {**CFG, "standby": {"aws-burst-2": {"max_admitted": 6, "power": SPOT},
+                          "aws-burst-1": {"max_admitted": 6, "power": POWER}}}
+SPOT_LABELS = frozenset(AWS_LABELS - {"host-aws-burst-1"} | {"host-aws-burst-2"})
+STEADY = readings(**{"razer-laptop": BUSY, "asus-laptop": BUSY, "hp-victus": BUSY})
+HOME_BUSY = pool(("razer-1", "razer-laptop", True, 900, False), ("hpv-1", "hp-victus", True, 50, False))
+
+
+def two(spot="stopped", od="stopped", **spot_more):
+    return {"aws-burst-2": {"state": spot, "busy_at": 10_000, "labels": SPOT_LABELS, **spot_more},
+            "aws-burst-1": {"state": od, "busy_at": 10_000, "labels": AWS_LABELS}}
+
+
+class StandbyOrderTest(unittest.TestCase):
+    def got(self, queue, inst, runners=HOME_BUSY):
+        return {h: (a, why) for h, a, _, _, why in decide(STEADY, runners, queue=queue, cfg=TWO, instances=inst)}
+
+    def test_the_list_keeps_its_order(self):
+        with mock.patch("builtins.open", mock.mock_open(read_data=json.dumps(
+                {**{k: v for k, v in LIVE.items() if k != "standby"}, "hosts": {},
+                 "standby": [{"host": "b", "max_admitted": 1}, {"host": "a", "max_admitted": 2}]}))):
+            cfg = governor.load_config("config.json")
+        self.assertEqual(list(cfg["standby"]), ["b", "a"])
+        self.assertEqual(cfg["standby"]["a"], {"max_admitted": 2})
+
+    def test_spot_starts_first_and_on_demand_waits(self):
+        got = self.got(6, two())
+        self.assertEqual(got["aws-burst-2"][0], "start")
+        self.assertEqual(got["aws-burst-1"][0], "hold")
+        self.assertIn("aws-burst-2 ahead of it take 6", got["aws-burst-1"][1])
+
+    def test_a_queue_past_the_first_host_starts_both(self):
+        got = self.got(7, two())
+        self.assertEqual((got["aws-burst-2"][0], got["aws-burst-1"][0]), ("start", "start"))
+
+    def test_a_booting_spot_holds_the_next_back(self):
+        # Running, runners not online yet: all six slots are still to come.
+        self.assertEqual(self.got(6, two("running"))["aws-burst-1"][0], "hold")
+        self.assertEqual(self.got(6, two("pending"))["aws-burst-1"][0], "hold")
+
+    def test_a_full_spot_lets_the_next_start(self):
+        spot_busy = pool(*[(f"spot-{i}", "aws-burst-2", True, 100, False) for i in range(6)])
+        got = self.got(3, two("running"), {**HOME_BUSY, **spot_busy})
+        self.assertEqual(got["aws-burst-1"][0], "start")
+
+    def test_a_passed_over_spot_lets_the_next_start_at_once(self):
+        got = self.got(2, two(fallback_until=10_001, fallback_why="capacity"))
+        self.assertEqual(got["aws-burst-2"], ("hold", "passed over after a capacity for 1s more"))
+        self.assertEqual(got["aws-burst-1"][0], "start")
+
+    def test_the_pass_over_runs_out(self):
+        got = self.got(2, two(fallback_until=10_000, fallback_why="capacity"))
+        self.assertEqual((got["aws-burst-2"][0], got["aws-burst-1"][0]), ("start", "hold"))
+
+    def test_override_on_beats_a_pass_over(self):
+        got = self.got(0, two(fallback_until=20_000, fallback_why="reclaim", override="on"))
+        self.assertEqual(got["aws-burst-2"][0], "start")
+
+    def test_a_spot_told_off_or_past_its_day_is_not_ahead(self):
+        self.assertEqual(self.got(2, two(override="off"))["aws-burst-1"][0], "start")
+        self.assertEqual(self.got(2, two(hours_today=12))["aws-burst-1"][0], "start")
+
+    def cycles(self, ec2, n=1, tracked=None, waiting=None):
+        tracked = {} if tracked is None else tracked
+        labels = {"aws-burst-2": SPOT_LABELS, "aws-burst-1": AWS_LABELS}
+        observed = (STEADY, HOME_BUSY, [UNITY_JOB] * 2 if waiting is None else waiting)
+        with mock.patch.object(governor, "observe", return_value=observed), \
+                mock.patch.object(governor, "power_provider", return_value=(ec2, "")), \
+                mock.patch.object(governor, "host_labels", side_effect=lambda cfg, h: labels[h]), \
+                mock.patch.object(governor, "apply"), mock.patch("builtins.print") as out:
+            for _ in range(n):
+                governor.cycle(TWO, {}, tracked)
+        return tracked, [c.args[0] for c in out.call_args_list]
+
+    def starts(self, ec2):
+        return [iid for op, iid in ec2.calls if op == "start"]
+
+    def test_no_spot_capacity_falls_back_to_on_demand(self):
+        ec2 = FakeEc2("stopped", fail={"i-0spot": "InsufficientInstanceCapacity"})
+        tracked, log = self.cycles(ec2)
+        self.assertEqual(self.starts(ec2), ["i-0spot"])  # the next host waited for it
+        self.assertEqual(tracked["aws-burst-2"]["fallback_why"], "capacity")
+        self.assertIn("aws-burst-2: no capacity, passed over for the next standby host", log)
+        self.cycles(ec2, tracked=tracked)
+        self.assertEqual(self.starts(ec2), ["i-0spot", "i-0abc"])
+        m = governor.State.metrics
+        self.assertIn('ci_governor_fallback_total{host="aws-burst-2",reason="capacity"} 1', m)
+        self.assertIn('ci_governor_fallback_total{host="aws-burst-1",reason="reclaim"} 0', m)
+        self.assertIn(f'ci_governor_power_fallback_until{{host="aws-burst-2"}} '
+                      f'{int(tracked["aws-burst-2"]["fallback_until"])}', m)
+
+    def test_a_budget_deny_starts_nothing(self):
+        # Negative control: the deny policy covers every host, so it is no fallback.
+        ec2 = FakeEc2("stopped", fail={"i-0spot": "UnauthorizedOperation"})
+        tracked, _ = self.cycles(ec2, n=3)
+        self.assertEqual(self.starts(ec2), ["i-0spot"] * 3)
+        self.assertNotIn("fallback_until", tracked["aws-burst-2"])
+        self.assertIn('ci_governor_fallback_total{host="aws-burst-2",reason="capacity"} 0', governor.State.metrics)
+
+    def test_a_network_error_is_no_fallback(self):
+        ec2 = FakeEc2("stopped", fail={"i-0spot": True})
+        tracked, _ = self.cycles(ec2, n=2)
+        self.assertEqual(self.starts(ec2), ["i-0spot"] * 2)
+
+    def test_a_reclaim_falls_back_in_the_same_cycle(self):
+        tracked, _ = self.cycles(FakeEc2({"i-0spot": "running", "i-0abc": "stopped"}), waiting=[])
+        ec2 = FakeEc2("stopped", reason={"i-0spot": "Server.SpotInstanceShutdown"})
+        tracked, log = self.cycles(ec2, tracked=tracked)
+        self.assertEqual(self.starts(ec2), ["i-0abc"])
+        self.assertEqual(tracked["aws-burst-2"]["fallback_why"], "reclaim")
+        m = governor.State.metrics
+        self.assertIn('ci_governor_power_state{host="aws-burst-2",state="stopped",reason="reclaim"} 1', m)
+        self.assertIn('ci_governor_fallback_total{host="aws-burst-2",reason="reclaim"} 1', m)
+        # Still stopped by the reclaim next cycle: counted once.
+        self.cycles(ec2, tracked=tracked)
+        self.assertEqual(tracked["aws-burst-2"]["fallbacks"], {"reclaim": 1})
+
+    def test_an_old_reclaim_on_first_sight_is_not_counted(self):
+        ec2 = FakeEc2("stopped", reason={"i-0spot": "Server.SpotInstanceShutdown"})
+        tracked, _ = self.cycles(ec2)
+        self.assertEqual(self.starts(ec2), ["i-0spot"])
+        self.assertNotIn("fallback_until", tracked["aws-burst-2"])
+
+    def test_ec2_error_code_from_the_body(self):
+        body = (b'<?xml version="1.0" encoding="UTF-8"?><Response><Errors><Error>'
+                b'<Code>InsufficientInstanceCapacity</Code><Message>none in us-east-2a</Message>'
+                b'</Error></Errors><RequestID>r</RequestID></Response>')
+        err = urllib.error.HTTPError("https://ec2", 500, "x", {}, io.BytesIO(body))
+        with mock.patch.object(governor.urllib.request, "urlopen", side_effect=err):
+            with self.assertRaises(governor.Ec2Error) as e:
+                governor.Ec2("us-east-2", "k", "s").start("i-0spot")
+        self.assertEqual(e.exception.code, "InsufficientInstanceCapacity")
+        self.assertIsInstance(e.exception, governor.POWER_ERRORS)
+
+    def test_describe_reads_the_state_reason(self):
+        xml = (b'<DescribeInstancesResponse xmlns="http://ec2.amazonaws.com/doc/2016-11-15/"><reservationSet>'
+               b'<item><instancesSet><item><instanceState><code>80</code><name>stopped</name></instanceState>'
+               b'<stateReason><code>Server.SpotInstanceShutdown</code><message>m</message></stateReason>'
+               b'</item></instancesSet></item></reservationSet></DescribeInstancesResponse>')
+        resp = mock.MagicMock()
+        resp.__enter__.return_value.read.return_value = xml
+        with mock.patch.object(governor.urllib.request, "urlopen", return_value=resp):
+            self.assertEqual(governor.Ec2("us-east-2", "k", "s").state("i-0spot"),
+                             ("stopped", 0.0, "Server.SpotInstanceShutdown"))
 
 if __name__ == "__main__":
     unittest.main(verbosity=1)

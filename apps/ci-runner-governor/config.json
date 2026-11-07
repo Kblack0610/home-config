@@ -11,12 +11,12 @@
     "admit": {"idle": 0.35, "psi": 0.2, "tctl": 85, "mem": 0.25, "disk": 0.25},
     "withhold": {"idle": 0.15, "psi": 0.4, "tctl": 92, "mem": 0.1, "disk": 0.2}
   },
-  "standby": {
-    "aws-burst-1": {"max_admitted": 6, "power": {"provider": "aws", "instance_id": "i-0f1ecf35dc0e78146",
-                                               "region": "us-east-2", "idle_off_seconds": 900,
-                                               "start_min_excess": 4, "start_after_seconds": 300, "max_hours_day": 12,
-                                               "usd_per_hour": 1.855, "live": true}}
-  },
+  "standby": [
+    {"host": "aws-burst-1", "max_admitted": 6, "power": {"provider": "aws", "instance_id": "i-0f1ecf35dc0e78146",
+                                                       "region": "us-east-2", "idle_off_seconds": 900,
+                                                       "start_min_excess": 4, "start_after_seconds": 300, "max_hours_day": 12,
+                                                       "fallback_seconds": 3600, "usd_per_hour": 1.855, "live": true}}
+  ],
   "budget": {"name": "ci-burst-monthly", "account_id": "311141527647"},
   "hosts": {
     "cachyos-x8664-main": {"full": false, "min_admitted": 0, "admit": {"idle": 0.5, "tctl": 80}, "withhold": {"idle": 0.3, "tctl": 88}},

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Assert github-runner-exporter's RUNNER_ROSTER matches the ansible inventory's slot counts.
+"""Assert the exporter's RUNNER_ROSTER and the governor's standby list match the inventory.
 
 The exporter's denominator ("how many runners SHOULD be online") has to be written
 down independently of the GitHub API, because the API only lists runners that
@@ -9,7 +9,9 @@ show. So it is a copy of the slot counts in ansible/inventory.yml
 unity_ci_slots) plus the single-host runners pinned by their own plays (mac-mini, windows-media).
 
 CLOUD_HOSTS is checked the same way: it must equal the runner hosts whose inventory
-entry says unity_ci_lan: false, so a cloud host is declared once, in the inventory.
+entry says unity_ci_lan: false, so a cloud host is declared once, in the inventory. The governor's standby list
+(apps/ci-runner-governor/config.json) is the third copy: it must name exactly those
+cloud hosts, each with max_admitted equal to its unity slots.
 
 Same rule as check-fleet-roster.py: independent copies are the design, copies nobody
 compares are the bug. This compares them in BOTH directions, because both break: a
@@ -21,6 +23,7 @@ indentation, not by a YAML library. Exits non-zero on drift, or if it found noth
 to compare - an empty parse must never pass.
 """
 
+import json
 import os
 import re
 import sys
@@ -28,6 +31,7 @@ import sys
 REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 INVENTORY = os.path.join(REPO, "ansible/inventory.yml")
 EXPORTER_DEPLOY = os.path.join(REPO, "apps/github-runner-exporter/deployment.yaml")
+GOVERNOR_CONFIG = os.path.join(REPO, "apps/ci-runner-governor/config.json")
 
 # inventory group -> {slot var: exporter pool}
 GROUPS = {
@@ -95,8 +99,17 @@ def main():
     if want_cloud != have_cloud:
         rc = 1
         print(f"FAIL: CLOUD_HOSTS is {sorted(have_cloud)}, inventory unity_ci_lan: false hosts are {sorted(want_cloud)}")
+    with open(GOVERNOR_CONFIG, encoding="utf-8") as fh:
+        standby = {s["host"]: s["max_admitted"] for s in json.load(fh)["standby"]}
+    if set(standby) != want_cloud:
+        rc = 1
+        print(f"FAIL: governor standby is {sorted(standby)}, inventory unity_ci_lan: false hosts are {sorted(want_cloud)}")
+    for host in sorted(set(standby) & want_cloud):
+        if standby[host] != want.get((host, "unity")):
+            rc = 1
+            print(f"FAIL: {host}: governor max_admitted is {standby[host]}, inventory unity slots {want.get((host, 'unity'))}")
     if rc == 0:
-        print(f"ok: {len(want)} host/pool slot counts agree, cloud hosts {sorted(want_cloud)}")
+        print(f"ok: {len(want)} host/pool slot counts agree, cloud hosts {sorted(want_cloud)} match the governor standby")
     return rc
 
 

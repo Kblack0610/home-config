@@ -57,7 +57,19 @@ held for start_after_seconds; a short burst never starts it. Its slots count as 
 once their runners report online, so a start, or a failed one, is never room. Once no slot
 on it has been busy for idle_off_seconds, or it has run max_hours_day this UTC day, its
 slots are withheld one per cycle and the instance is stopped once none is busy, so a slot
-never loses a job to the stop and comes back withheld. The ConfigMap
+never loses a job to the stop and comes back withheld.
+
+"standby" is an ordered list, Spot first (aws-burst-2, then the on-demand aws-burst-1). A
+host further down starts only for the jobs the hosts ahead of it cannot take: a stopped
+one ahead counts its max_admitted, one booting or running counts the slots it has not
+admitted yet plus its idle admitted ones, so a deep queue still starts both and a short one
+starts only the first. A stopped host ahead drops out of that count for fallback_seconds
+when EC2 refuses its start (InsufficientInstanceCapacity is "capacity", any other EC2 code
+such as a Spot request state or a vCPU limit is "refused") or AWS stops it (a Spot reclaim,
+or a start that found no capacity after all: a Server.* state reason, "reclaim"), so the
+next host takes the queue at once. ci_governor_fallback_total{host,reason} counts each
+pass-over once. Two failures are no fallback: the budget's deny policy (UnauthorizedOperation),
+which every host shares, and a network error, which says nothing about the host. The ConfigMap
 ci-runner-governor-override (the agent-web Infra page's button) beats all of that until its
 end time: "on" starts it and keeps it from idle-off and the day cap, "off" drains and stops
 it and keeps it stopped. The month's cap is an AWS Budgets action, outside the governor.
@@ -114,7 +126,19 @@ CYCLE_SECONDS = 60
 # A power block's settings when config.json leaves one out. A start costs money (about
 # $1.85/h for aws-burst-1), so only a deep queue held this long starts one, and a day of
 # running time is capped; the month's cap is an AWS Budgets action (platform infra/aws-ci-burst).
-POWER_DEFAULTS = {"idle_off_seconds": 900, "start_min_excess": 4, "start_after_seconds": 300, "max_hours_day": 12}
+POWER_DEFAULTS = {"idle_off_seconds": 900, "start_min_excess": 4, "start_after_seconds": 300, "max_hours_day": 12,
+                  # How long a host whose start EC2 refused, or that AWS stopped, is passed
+                  # over for the next host in the standby order.
+                  "fallback_seconds": 3600}
+# StartInstances error codes that mean "not here, not now"; any other EC2 code but the deny
+# is a "refused" fallback.
+CAPACITY_CODES = {"InsufficientInstanceCapacity", "InsufficientCapacity"}
+# The budget's deny policy refuses every host alike, so passing one over helps nothing.
+DENY_CODES = {"UnauthorizedOperation"}
+# The state reason prefix of a stop AWS made (Spot reclaim, no capacity after a start, an
+# internal or scheduled stop), as against Client.* for one the governor or a person asked for.
+AWS_STOP_PREFIX = "Server."
+FALLBACK_REASONS = ("capacity", "refused", "reclaim")
 # The budget's numbers move a few times a day and the API has no event, so one read an hour.
 BUDGET_POLL_SECONDS = 3600
 OVERRIDE_DIR = os.environ.get("GOVERNOR_OVERRIDE_DIR", "/override")
@@ -135,8 +159,17 @@ QUERIES = {
 
 
 def load_config(path):
+    """config.json with each host's thresholds filled in, and "standby", a list in start
+    order, as a dict by host in that order (the shape decide() and the tests use)."""
     with open(path) as f:
-        return with_defaults(json.load(f))
+        cfg = json.load(f)
+    cfg["standby"] = {s["host"]: {k: v for k, v in s.items() if k != "host"} for s in cfg["standby"]}
+    return with_defaults(cfg)
+
+
+def power_of(cfg, host):
+    """A standby host's power settings: POWER_DEFAULTS with its own on top."""
+    return {**POWER_DEFAULTS, **cfg["standby"][host].get("power", {})}
 
 
 def with_defaults(cfg):
@@ -286,17 +319,24 @@ def decide(cfg, hosts, runners, waiting, last_action, now, instances=None, pins=
     # for minutes with jobs queued, so one idle slot must not hold the overflow back.
     covered = sum(1 for _, action, *_ in out if action == "admit")
     covered += sum(1 for r in runners.values() if not r["withheld"] and not r["busy"] and r["host"] in cfg["hosts"])
-    for host in sorted(cfg["standby"]):
+    # Jobs the standby hosts ahead in the list will take once they are up: a host further
+    # down starts only for what is left past these: host -> jobs.
+    ahead = {}
+    for host in cfg["standby"]:
         mine = {n: r for n, r in runners.items() if r["host"] == host}
         on = sorted((n for n, r in mine.items() if not r["withheld"]),
                     key=lambda n: (mine[n]["busy"], -mine[n]["elapsed"], n))
         off = sorted(n for n, r in mine.items() if r["withheld"])
         cap = cfg["standby"][host]["max_admitted"]
         inst = (instances or {}).get(host)
-        p = {**POWER_DEFAULTS, **cfg["standby"][host].get("power", {})}
+        p = power_of(cfg, host)
         action, runner, why = "hold", "", "overflow"
         over = inst.get("override") if inst else None
         drain, cause, wanting, want = "", "", False, 0
+        takes = sum(1 for need in waiting if need <= inst["labels"]) if inst else 0
+        # Only a stopped host is passed over: AWS restarts a persistent Spot one by itself
+        # when capacity returns, and then it counts like any running host.
+        passed = bool(inst) and inst["state"] == "stopped" and inst.get("fallback_until", 0) > now
         if inst and inst["state"] == "running":
             # Before the job queue: a host told off, past its day, or idle this long cannot
             # take what waits (an idle one: a lan job).
@@ -338,12 +378,16 @@ def decide(cfg, hosts, runners, waiting, last_action, now, instances=None, pins=
             action, why, cause = "start", "override on", "override"
         elif inst and inst["state"] == "stopped" and over == "off":
             why = "override off"
+        elif inst and inst["state"] == "stopped" and passed:
+            why = (f"passed over after a {inst['fallback_why']} for "
+                   f"{int(inst['fallback_until'] - now)}s more")
         elif inst and inst["state"] == "stopped" and queue > covered:
             # Not room yet: its slots count once their runners are online and admitted. A
             # start costs money, so only a queue this much deeper than the other hosts can
             # take, for start_after_seconds in a row, starts it: a short burst waits instead.
-            takes = sum(1 for need in waiting if need <= inst["labels"])
-            want = max(0, min(takes, queue - covered))
+            # The standby hosts ahead in the list take theirs first.
+            coming = sum(ahead.values())
+            want = max(0, min(takes, queue - covered - coming))
             if not inst["labels"]:
                 why = "no runner labels read"
             elif not takes:
@@ -352,6 +396,8 @@ def decide(cfg, hosts, runners, waiting, last_action, now, instances=None, pins=
                 why = f"ran {inst['hours_today']:.1f}h today, its {p['max_hours_day']}h cap"
             elif want < p["start_min_excess"]:
                 why = f"{want} jobs it can take past the other hosts' {covered}, starts at {p['start_min_excess']}"
+                if coming:
+                    why += f"; {', '.join(ahead)} ahead of it take {coming}"
             elif admitted >= cfg["pool_max_admitted"]:
                 why = f"pool at its {cfg['pool_max_admitted']} cap"
             else:
@@ -374,6 +420,14 @@ def decide(cfg, hosts, runners, waiting, last_action, now, instances=None, pins=
             inst["held_seconds"] = now - inst["want_since"] if wanting else 0
             # cycle() keeps it as the power state's reason once the call succeeds.
             inst["next_cause"] = cause if action in ("start", "stop") else ""
+            # What it will take, for the hosts behind it: nothing while draining, passed
+            # over, told off, past its day or unable to take what waits.
+            if not (drain or passed or over == "off" or not takes):
+                if inst["state"] == "stopped" and inst.get("hours_today", 0) < p["max_hours_day"]:
+                    ahead[host] = cap
+                elif inst["state"] in ("pending", "running"):
+                    ahead[host] = (max(0, cap - len(on) - (action == "admit"))
+                                   + sum(1 for n in on if not mine[n]["busy"]))
         out.append((host, action, runner, "STANDBY", why))
     return out
 
@@ -434,6 +488,13 @@ def sigv4(service, region, key, secret, host, body, t, extra=None,
     return headers
 
 
+class Ec2Error(ValueError):
+    """An EC2 API error, with AWS's code (InsufficientInstanceCapacity, UnauthorizedOperation)."""
+    def __init__(self, code, message):
+        super().__init__(f"{code}: {message}")
+        self.code = code
+
+
 class Ec2:
     """One instance's state, start and stop through the EC2 Query API."""
     NS = "{http://ec2.amazonaws.com/doc/2016-11-15/}"
@@ -449,17 +510,31 @@ class Ec2:
         body = urllib.parse.urlencode({"Action": action, "Version": "2016-11-15", "InstanceId.1": instance_id})
         req = urllib.request.Request(f"https://{host}/", data=body.encode(), method="POST",
                                      headers=self.sign(host, body, time.gmtime()))
-        with urllib.request.urlopen(req, timeout=10) as r:
-            return ET.fromstring(r.read())
+        try:
+            with urllib.request.urlopen(req, timeout=10) as r:
+                return ET.fromstring(r.read())
+        except urllib.error.HTTPError as e:
+            # The body is <Response><Errors><Error><Code>; anything else stays an HTTPError.
+            with e:  # closes the response it holds
+                body = e.read()
+            try:
+                err = ET.fromstring(body).find(".//Error")
+            except ET.ParseError:
+                err = None
+            if err is None or not err.findtext("Code"):
+                raise
+            raise Ec2Error(err.findtext("Code"), err.findtext("Message") or "") from e
 
     def state(self, instance_id):
-        """(state name, epoch of its last start; 0 if AWS gave none)."""
+        """(state name, epoch of its last start or 0 if AWS gave none, state reason code or
+        "")."""
         item = self.call("DescribeInstances", instance_id).find(f".//{self.NS}instancesSet/{self.NS}item")
         name = None if item is None else item.find(f"{self.NS}instanceState/{self.NS}name")
         if name is None:
             raise ValueError(f"no instance {instance_id}")
         launched = item.findtext(f"{self.NS}launchTime")
-        return name.text, epoch(launched) if launched else 0.0
+        reason = item.findtext(f"{self.NS}stateReason/{self.NS}code") or ""
+        return name.text, epoch(launched) if launched else 0.0, reason
 
     def start(self, instance_id):
         self.call("StartInstances", instance_id)
@@ -610,9 +685,12 @@ def power_readings(cfg, runners, tracked, now):
     labels, client, hours_today, override and override_until, plus what decide() keeps
     there across cycles (want_since, draining, next_cause). busy_at is the last cycle a slot
     on it was busy or the instance was not running. A host whose state cannot be read is
-    left out, so nothing powers it."""
+    left out, so nothing powers it. A stop AWS made, seen here (a host up last cycle and
+    stopping or stopped now with a state reason under AWS_STOP_PREFIX; not on the first
+    sight after a pod restart, which cannot tell an old one from a new one), passes the host
+    over for fallback_seconds."""
     out = {}
-    for host, s in sorted(cfg["standby"].items()):
+    for host, s in cfg["standby"].items():
         if "power" not in s:
             continue
         t = tracked.setdefault(host, {})
@@ -624,7 +702,7 @@ def power_readings(cfg, runners, tracked, now):
             continue
         t.pop("off", None)
         try:
-            state, launched = client.state(s["power"]["instance_id"])
+            state, launched, reason = client.state(s["power"]["instance_id"])
             labels = host_labels(cfg, host)
         except POWER_ERRORS as e:
             print(f"{host}: instance state or runner labels unread, no power action: {e}", flush=True)
@@ -635,11 +713,27 @@ def power_readings(cfg, runners, tracked, now):
         if state != "running" or "busy_at" not in t or any(
                 r["busy"] for r in runners.values() if r["host"] == host):
             t["busy_at"] = now
+        # A reclaim is a host seen up last cycle and stopped by AWS now: one seen stopped
+        # already (or first seen after a restart) was counted, or is not news.
+        if (t.get("state") in ("pending", "running") and state in ("stopping", "stopped")
+                and reason.startswith(AWS_STOP_PREFIX)):
+            fall_back(t, power_of(cfg, host), "reclaim", now)
+            t.update(cause="reclaim", changed="stop", changed_at=now)
+            print(f"{host}: reclaimed by AWS ({reason}), the next standby host takes its jobs", flush=True)
         count_run_time(t, state, now, launched)
         t["override"], t["override_until"] = read_override(host, now)
         t.update(state=state, labels=labels, client=client)
         out[host] = t
     return out
+
+
+def fall_back(t, p, reason, now):
+    """Pass a host over for p's fallback_seconds and count why (FALLBACK_REASONS), once per
+    pass-over: an override "on" retrying a refused start every cycle only extends it."""
+    if t.get("fallback_until", 0) <= now:
+        counts = t.setdefault("fallbacks", {})
+        counts[reason] = counts.get(reason, 0) + 1
+    t["fallback_until"], t["fallback_why"] = now + p["fallback_seconds"], reason
 
 
 def power_state(inst):
@@ -689,9 +783,13 @@ def render(cfg, hosts, runners, queue, decisions, ok, instances=None, budget=Non
           "# HELP ci_governor_power_hours_today Hours its instance has run this UTC day (in memory)",
           "# TYPE ci_governor_power_hours_today gauge",
           "# HELP ci_governor_power_override End (epoch) of the override in force, 0 with action none",
-          "# TYPE ci_governor_power_override gauge"]
+          "# TYPE ci_governor_power_override gauge",
+          "# HELP ci_governor_fallback_total Times a host was passed over for the next standby host, by why",
+          "# TYPE ci_governor_fallback_total counter",
+          "# HELP ci_governor_power_fallback_until End (epoch) of the host's pass-over, 0 when none",
+          "# TYPE ci_governor_power_fallback_until gauge"]
     for host, inst in sorted((instances or {}).items()):
-        p = {**POWER_DEFAULTS, **cfg["standby"][host]["power"]}
+        p = power_of(cfg, host)
         L.append(f'ci_governor_power_state{{host="{host}",state="{power_state(inst)}",'
                  f'reason="{inst.get("cause") or "none"}"}} 1')
         L.append(f'ci_governor_power_hours_today{{host="{host}"}} {inst.get("hours_today", 0):.3f}')
@@ -710,6 +808,10 @@ def render(cfg, hosts, runners, queue, decisions, ok, instances=None, budget=Non
             L.append(f'ci_governor_power_usd_per_hour{{host="{host}"}} {p["usd_per_hour"]}')
         L.append(f'ci_governor_power_last_change{{host="{host}",action="{inst.get("changed") or "none"}"}} '
                  f'{int(inst.get("changed_at", 0))}')
+        for reason in FALLBACK_REASONS:
+            L.append(f'ci_governor_fallback_total{{host="{host}",reason="{reason}"}} '
+                     f'{inst.get("fallbacks", {}).get(reason, 0)}')
+        L.append(f'ci_governor_power_fallback_until{{host="{host}"}} {int(inst.get("fallback_until", 0))}')
     if budget and cfg.get("budget"):
         L += render_budget(budget)
     return "\n".join(L) + "\n"
@@ -767,6 +869,11 @@ def cycle(cfg, last_action, tracked=None, budget=None):
             last_action[host] = now
         except POWER_ERRORS as e:
             print(f"{action} {target} failed: {e}", flush=True)
+            code = getattr(e, "code", "")
+            if action == "start" and isinstance(e, Ec2Error) and code not in DENY_CODES:
+                why = "capacity" if code in CAPACITY_CODES else "refused"
+                fall_back(instances[host], power_of(cfg, host), why, now)
+                print(f"{host}: start {why} ({code}), passed over for the next standby host", flush=True)
     if budget is not None:
         read_budget(cfg, budget, now)
     with State.lock:

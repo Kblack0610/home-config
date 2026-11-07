@@ -18,6 +18,33 @@ Hosts that fleet-dispatch places agent sessions on, over ssh. The roster is the 
    - Sign in each account: `claude`, then `/login`, once per account dir (`CLAUDE_CONFIG_DIR=<dir> claude` for each one but the main).
 4. When the play prints `Ready`, set `fleet_place: true` for the host and merge. On the workstation, `fleet-dispatch hosts` shows the worker as `open`, or the reason it takes nothing.
 
+## Cloud worker
+
+`fleet-worker-1` is an Ubuntu Spot box in AWS (platform `infra/aws-ci-burst`, its `hosts` map) with no CI runners. The governor powers it: fleet-dispatch writes the key `fleet-worker-1.demand` into the `ci-runner-governor-override` ConfigMap on each pass (its live sessions plus the items waiting while every home host is at its gate), the governor starts it on demand and stops it after `idle_off_seconds` without any (`apps/ci-runner-governor/governor.py`, the "workers" paragraph). It takes only items in a repo in its `fleet_repos`, so leave every Unity repo out. A stop keeps its root disk and the sign-ins on it; a Terraform replace drops them.
+
+1. Apply the platform module (it costs money, so the human runs it) and take the instance id from `terraform output -json instance_ids`.
+2. Add the governor entry to `apps/ci-runner-governor/config.json`, `workers`. Keep `idle_off_seconds` at 1800 or more: fleet-dispatch writes demand every 15 minutes, with a 40-minute end, and only for a worker with `fleet_place: true`, so the entry starts nothing before step 5.
+   ```json
+   {"host": "fleet-worker-1", "power": {"provider": "aws", "instance_id": "<instance id>", "region": "us-east-2",
+    "idle_off_seconds": 1800, "start_min_excess": 1, "max_hours_day": 12, "fallback_seconds": 3600,
+    "usd_per_hour": 0.076, "live": true}}
+   ```
+3. Add it under `fleet_workers`:
+   ```yaml
+   fleet-worker-1:
+     ansible_host: <instance id>
+     ansible_user: ubuntu
+     ansible_ssh_common_args: <the SSM ProxyCommand aws-burst-1 has>
+     fleet_tailscale: true
+     fleet_ssh_host: fleet-worker-1         # its tailnet name: fleet-dispatch ssh goes there
+     fleet_state_host: cachyos-x8664-main   # the workstation's tailnet name
+     fleet_power: governor
+     fleet_place: false
+     fleet_repos: [<non-Unity repos only>]
+   ```
+4. Start it with the agent-web Infra page's "on" button and run the play. Its report starts with `sudo tailscale up --hostname fleet-worker-1`: run it in `aws ssm start-session --profile bnb --region us-east-2 --target <instance id>` and open the login link it prints, then do the rest of "Add a worker", step 3.
+5. When the play prints `Ready`, set `fleet_place: true`.
+
 ## Check a worker
 
 - `fleet-dispatch hosts` (or `--json`): each worker's free sessions, load, and why it takes nothing now.
@@ -30,4 +57,6 @@ Hosts that fleet-dispatch places agent sessions on, over ssh. The roster is the 
 |---|---|---|
 | `fleet-dispatch hosts` says `<host> did not answer over ssh` | The host is down, or the workstation's key is not on it | `ssh <ansible_user>@<ansible_host> true` from the workstation |
 | `<host> has no wt, no claude, or an agent-queue that does not forward` | The play has not run, the stow did not finish, or its dotfiles are older than the forwarding | Re-run the play (it pulls the dotfiles to main); check `~/.local/bin/wt`, `~/.local/bin/claude` and `~/.local/bin/agent-queue` on the host |
+| The cloud worker never starts with items waiting | No demand key: fleet-dispatch has no `CC_KUBE_CONTEXT`, a global gate holds, home is under its gate, or no waiting item is in its `fleet_repos` | `ci_governor_power_demand{host="fleet-worker-1"}`; the dispatch log's demand line says what it wrote and why |
+| The cloud worker stops with a session on it | fleet-dispatch stopped writing demand (the key ran out), or its `max_hours_day` | `systemctl --user status fleet-dispatch.timer` on the workstation; the governor log's stop line names the cause |
 | A session's `agent-queue` call prints `the state host ... did not answer over ssh` | The worker's key is not in the state host's `authorized_keys`, or its host key changed | Step 3 of "Add a worker"; re-run the play for the host key |

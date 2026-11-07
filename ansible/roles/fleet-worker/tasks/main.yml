@@ -6,11 +6,46 @@
 # Runbook: docs/runbooks/fleet-worker.md.
 
 - name: Install the session toolchain
+  when: ansible_facts.os_family == "Archlinux"
   become: true
   community.general.pacman:
     name: "{{ fleet_worker_packages }}"
     state: present
     update_cache: true
+
+- name: Install the session toolchain (Ubuntu)
+  when: ansible_facts.os_family == "Debian"
+  become: true
+  ansible.builtin.apt:
+    name: "{{ fleet_worker_packages_apt }}"
+    state: present
+    update_cache: true
+
+# The login link `tailscale up` prints is the human's to open, so no auth key
+# passes through ansible.
+- name: Install tailscale (a cloud worker)
+  when: fleet_tailscale | bool
+  become: true
+  ansible.builtin.shell: set -o pipefail && curl -fsSL https://tailscale.com/install.sh | sh
+  args:
+    executable: /bin/bash
+    creates: /usr/bin/tailscale
+
+- name: Run tailscaled
+  when: fleet_tailscale | bool
+  become: true
+  ansible.builtin.systemd:
+    name: tailscaled
+    enabled: true
+    state: started
+
+- name: Read whether the worker is on the tailnet
+  when: fleet_tailscale | bool
+  ansible.builtin.command: tailscale ip -4
+  register: fleet_worker_tailnet
+  changed_when: false
+  failed_when: false
+  check_mode: false
 
 - name: Install Claude Code (its native installer, per user)
   ansible.builtin.shell: set -o pipefail && curl -fsSL https://claude.ai/install.sh | bash
@@ -127,7 +162,10 @@
   vars:
     fleet_worker_unsigned: "{{ fleet_worker_signed.results | rejectattr('stat.exists') | map(attribute='item') | list }}"
     fleet_worker_left: >-
-      {{ ([] if fleet_worker_gh.rc == 0 else ['gh auth login, then re-run this play for the private overlay'])
+      {{ ([] if not fleet_tailscale | bool or fleet_worker_tailnet.rc | default(1) == 0 else
+            ['sudo tailscale up --hostname ' ~ (fleet_ssh_host | default(inventory_hostname))
+             ~ ', open the login link it prints, then re-run this play'])
+         + ([] if fleet_worker_gh.rc == 0 else ['gh auth login, then re-run this play for the private overlay'])
          + ([] if fleet_worker_state_ssh.rc | default(1) == 0 else
             ['on ' ~ fleet_state_host ~ ', add this key to ~/.ssh/authorized_keys: '
              ~ (fleet_worker_pub.content | default('') | b64decode | trim)])

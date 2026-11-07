@@ -93,23 +93,41 @@ tests:
           - exp_labels: {alertname: TraderRunStale, severity: warning, category: trading, kind: analysis, job: trader-web}
             exp_annotations: {summary: "No successful analysis run for 3d 0h 0m 0s"}
 
-  - name: futures data older than 60 hours warns, a fresh series does not
+  - name: futures data older than 32 hours warns, a fresh series does not
     interval: 5m
     input_series:
       - series: 'trader_futures_age_seconds{kind="funding",exchange="okx",job="trader-web"}'
-        values: '201600+300x72'
+        values: '104400+300x72'
       - series: 'trader_futures_age_seconds{kind="open_interest",exchange="kucoin",job="trader-web"}'
         values: '3600x72'
     alert_rule_test:
-      - eval_time: 4h
+      - eval_time: 3h
         alertname: TraderFuturesStale
         exp_alerts: []
-      - eval_time: 5h
+      - eval_time: 4h
         alertname: TraderFuturesStale
         exp_alerts:
           - exp_labels: {alertname: TraderFuturesStale, severity: warning, category: trading, kind: funding, exchange: okx, job: trader-web}
             exp_annotations:
-              summary: "Newest okx funding row is 2d 13h 0m 0s old: check the freqtrade-futures CronJob"
+              summary: "Newest okx funding row is 1d 9h 0m 0s old: check the freqtrade-futures CronJob"
+
+  - name: a sweep that ran past 5 minutes alerts after 10 minutes, a shorter one does not
+    interval: 5m
+    input_series:
+      - series: 'trader_markets_sweep_duration_seconds{venue="kalshi",job="trader-web"}'
+        values: '330x6'
+      - series: 'trader_markets_sweep_duration_seconds{venue="manifold",job="trader-web"}'
+        values: '270x6'
+    alert_rule_test:
+      - eval_time: 5m
+        alertname: TraderMarketsSweepSlow
+        exp_alerts: []
+      - eval_time: 10m
+        alertname: TraderMarketsSweepSlow
+        exp_alerts:
+          - exp_labels: {alertname: TraderMarketsSweepSlow, severity: warning, category: trading, venue: kalshi, job: trader-web}
+            exp_annotations:
+              summary: "kalshi recorder sweep took 5m 30s, past the 5 minute schedule: the next tick is skipped"
 
   - name: a venue whose last good sweep is over 15 minutes old alerts, a fresh one does not
     interval: 1m

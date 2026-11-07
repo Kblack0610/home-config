@@ -115,11 +115,11 @@ spec:
           annotations:
             summary: "Newest {{ $labels.exchange }} candle is {{ $value | humanizeDuration }} old: check the freqtrade-backfill CronJob"
 
-        # The futures job runs daily. Funding settles every 8h and open interest is stamped at the start
-        # of its day, so a healthy newest row is under about 48h old; past 60h a day was missed, and
-        # missed funding is lost once it ages past the exchange's few months of history.
+        # The futures job runs daily at 05:35 UTC. Funding settles at 00:00, 08:00 and 16:00, so just before
+        # a run the newest row is the previous day's 00:00 settlement, about 29.6h old; past 32h a day was
+        # missed, and missed funding is lost once it ages past the exchange's few months of history.
         - alert: TraderFuturesStale
-          expr: trader_futures_age_seconds > 60 * 3600
+          expr: trader_futures_age_seconds > 32 * 3600
           for: 30m
           labels:
             severity: warning
@@ -158,6 +158,17 @@ spec:
             category: trading
           annotations:
             summary: "No good {{ $labels.venue }} recorder sweep for {{ $value | humanizeDuration }}: the paper league takes no entries there; failed sweeps and their errors are on trader.kblab.me/markets"
+
+        # A sweep is scheduled every 5 minutes with Forbid, so one that runs past 5 minutes makes the next
+        # tick skip and thins the book. This reads the newest good sweep's run time.
+        - alert: TraderMarketsSweepSlow
+          expr: trader_markets_sweep_duration_seconds > 5 * 60
+          for: 10m
+          labels:
+            severity: warning
+            category: trading
+          annotations:
+            summary: "{{ $labels.venue }} recorder sweep took {{ $value | humanizeDuration }}, past the 5 minute schedule: the next tick is skipped"
 
         # A sweep is every 5 minutes, so 3 failures in an hour is a quarter of them: an adapter or
         # venue error that keeps coming back even while some sweeps still land.

@@ -25,6 +25,16 @@
   ansible.builtin.command: sysadminctl -screenLock status
   register: agent_tools_lock
   changed_when: false
+
+# `screenLock is off` is not enough: the screensaver still starts after idleTime
+# and, with askForPassword 1, locks the session (2026-11-07, after 3 hours idle).
+- name: Never start the screensaver
+  ansible.builtin.command: defaults -currentHost write com.apple.screensaver idleTime -int 0
+  changed_when: false
+
+- name: Never ask for the password after the screensaver
+  ansible.builtin.command: defaults write com.apple.screensaver askForPassword -int 0
+  changed_when: false
   check_mode: false
 
 - name: Assert agents can drive the desktop
@@ -42,4 +52,5 @@
       /usr/libexec/sshd-keygen-wrapper > switch it on. Screen lock: from the
       workstation, rbw get mac_fleet_password | ssh mac-mini 'read -r p;
       sysadminctl -screenLock off -password "$p"'. Then re-run.
-    success_msg: Agents can drive the desktop (Screen Recording, Accessibility granted; no screen lock).
+      A session that is locked now: docs/mac-machines.md, "The screen is locked".
+    success_msg: Agents can drive the desktop (Screen Recording, Accessibility granted; no screen lock, no screensaver).

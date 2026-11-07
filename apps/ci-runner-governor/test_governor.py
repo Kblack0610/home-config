@@ -980,5 +980,139 @@ class StandbyOrderTest(unittest.TestCase):
             self.assertEqual(governor.Ec2("us-east-2", "k", "s").state("i-0spot"),
                              ("stopped", 0.0, "Server.SpotInstanceShutdown"))
 
+# A cloud agent box: no runners, powered on fleet-dispatch's demand key.
+WORKER_POWER = {"provider": "aws", "instance_id": "i-0wrk", "region": "us-east-2", "idle_off_seconds": 1800,
+                "start_min_excess": 1, "live": True}
+WRK = {**CFG, "workers": {"fleet-worker-1": {"power": WORKER_POWER}}}
+
+
+class WorkerTest(unittest.TestCase):
+    def cycles(self, ec2, demand=None, tracked=None, n=1, override=None, cfg=WRK):
+        """demand: N for a key that runs out in 10 minutes, or the raw key text."""
+        import tempfile
+        tracked = {} if tracked is None else tracked
+        with tempfile.TemporaryDirectory() as d:
+            if demand is not None:
+                with open(os.path.join(d, "fleet-worker-1.demand"), "w") as f:
+                    f.write(demand if isinstance(demand, str) else
+                            json.dumps({"demand": demand, "until": time.time() + 600}))
+            if override:
+                with open(os.path.join(d, "fleet-worker-1"), "w") as f:
+                    f.write(json.dumps({"action": override, "until": time.time() + 600}))
+            with mock.patch.object(governor, "OVERRIDE_DIR", d), \
+                    mock.patch.object(governor, "observe", return_value=(STEADY, HOME_BUSY, [])), \
+                    mock.patch.object(governor, "power_provider", return_value=(ec2, "")), \
+                    mock.patch.object(governor, "host_labels") as labels, \
+                    mock.patch.object(governor, "apply"), mock.patch("builtins.print") as out:
+                for _ in range(n):
+                    governor.cycle(cfg, {}, tracked)
+        labels.assert_not_called()  # a worker has no runners to read
+        return tracked, [c.args[0] for c in out.call_args_list]
+
+    def ops(self, ec2):
+        return [(op, iid) for op, iid in ec2.calls if op != "state"]
+
+    def test_load_config_reads_workers_and_defaults_to_none(self):
+        body = {**{k: v for k, v in LIVE.items() if k not in ("standby", "workers")}, "hosts": {}, "standby": []}
+        for extra, want in (({}, {}), ({"workers": [{"host": "w", "power": {"live": True}}]},
+                                       {"w": {"power": {"live": True}}})):
+            with mock.patch("builtins.open", mock.mock_open(read_data=json.dumps({**body, **extra}))):
+                self.assertEqual(governor.load_config("config.json")["workers"], want)
+        # One host in both lists would be started and stopped by two rules in one cycle.
+        both = {**body, "standby": [{"host": "w"}], "workers": [{"host": "w"}]}
+        with mock.patch("builtins.open", mock.mock_open(read_data=json.dumps(both))), \
+                self.assertRaisesRegex(ValueError, "in both standby and workers: w"):
+            governor.load_config("config.json")
+
+    def test_read_demand(self):
+        import tempfile
+        with tempfile.TemporaryDirectory() as d, mock.patch.object(governor, "OVERRIDE_DIR", d), \
+                mock.patch("builtins.print") as out:
+            self.assertEqual(governor.read_demand("w", 100), 0)  # no key
+            for body, want in (('{"demand": 2, "until": 200}', 2), ('{"demand": 0, "until": 200}', 0),
+                               ('{"demand": 2, "until": 50}', 0),       # ran out
+                               ('{"demand": 2.5, "until": 200}', 0),    # not a whole number
+                               ('{"demand": -1, "until": 200}', 0), ('{"demand": true, "until": 200}', 0),
+                               ('{"demand": 2}', 0), ("", 0), ("not json", 0)):
+                with open(os.path.join(d, "w.demand"), "w") as f:
+                    f.write(body)
+                self.assertEqual(governor.read_demand("w", 100), want, body)
+        said = [c.args[0] for c in out.call_args_list]
+        self.assertEqual(len([s for s in said if "demand unreadable" in s]), 4)
+        self.assertEqual(len([s for s in said if "override unreadable" in s]), 1)  # "not json", by override_key
+
+    def test_demand_starts_a_stopped_worker(self):
+        ec2 = FakeEc2("stopped")
+        tracked, log = self.cycles(ec2, demand=1)
+        self.assertEqual(self.ops(ec2), [("start", "i-0wrk")])
+        self.assertEqual(tracked["fleet-worker-1"]["cause"], "demand")
+        self.assertIn("start i-0wrk on fleet-worker-1: WORKER, demand 1; queue 0", log)
+        m = governor.State.metrics
+        self.assertIn('ci_governor_power_demand{host="fleet-worker-1"} 1', m)
+        self.assertNotIn('ci_governor_power_start_after_seconds{host="fleet-worker-1"}', m)
+        self.assertIn('ci_governor_live{host="fleet-worker-1"} 1', m)
+        self.assertIn('ci_governor_decision{host="fleet-worker-1",verdict="WORKER",action="start"} 1', m)
+        self.assertNotIn('ci_governor_registered{host="fleet-worker-1"}', m)
+
+    def test_no_demand_or_a_stale_key_starts_nothing(self):
+        for demand in (None, 0, json.dumps({"demand": 3, "until": time.time() - 1})):
+            ec2 = FakeEc2("stopped")
+            self.cycles(ec2, demand=demand)
+            self.assertEqual(self.ops(ec2), [], demand)
+
+    def test_override_beats_demand(self):
+        ec2 = FakeEc2("stopped")
+        self.cycles(ec2, demand=2, override="off")
+        self.assertEqual(self.ops(ec2), [])
+        ec2 = FakeEc2("stopped")
+        self.cycles(ec2, override="on")
+        self.assertEqual(self.ops(ec2), [("start", "i-0wrk")])
+        ec2 = FakeEc2("running")
+        self.cycles(ec2, demand=2, override="off")
+        self.assertEqual(self.ops(ec2), [("stop", "i-0wrk")])
+
+    def test_idle_worker_stops_and_demand_keeps_it_up(self):
+        old = lambda: {"fleet-worker-1": {"state": "running", "busy_at": time.time() - 1801}}
+        ec2 = FakeEc2("running")
+        tracked, _ = self.cycles(ec2, demand=1, tracked=old())
+        self.assertEqual(self.ops(ec2), [])  # demand this cycle: busy now
+        ec2 = FakeEc2("running")
+        tracked, log = self.cycles(ec2, tracked=old())
+        self.assertEqual(self.ops(ec2), [("stop", "i-0wrk")])
+        self.assertEqual(tracked["fleet-worker-1"]["cause"], "idle")
+        ec2 = FakeEc2("running")
+        self.cycles(ec2, tracked={"fleet-worker-1": {"state": "running", "busy_at": time.time() - 600}})
+        self.assertEqual(self.ops(ec2), [])  # idle, not long enough
+
+    def test_the_day_cap_stops_it_and_holds_a_start(self):
+        capped = lambda st: {"fleet-worker-1": {"state": st, "busy_at": time.time(), "day":
+                                                time.strftime("%Y-%m-%d", time.gmtime()), "run_seconds": 12 * 3600}}
+        ec2 = FakeEc2("running")
+        tracked, _ = self.cycles(ec2, demand=1, tracked=capped("running"))
+        self.assertEqual((self.ops(ec2), tracked["fleet-worker-1"]["cause"]), ([("stop", "i-0wrk")], "cap"))
+        ec2 = FakeEc2("stopped")
+        self.cycles(ec2, demand=1, tracked=capped("stopped"))
+        self.assertEqual(self.ops(ec2), [])
+
+    def test_a_refused_start_is_passed_over_not_retried(self):
+        ec2 = FakeEc2("stopped", fail="InsufficientInstanceCapacity")
+        tracked, _ = self.cycles(ec2, demand=1, n=2)
+        self.assertEqual(self.ops(ec2), [("start", "i-0wrk")])
+        self.assertEqual(tracked["fleet-worker-1"]["fallback_why"], "capacity")
+
+    def test_dry_run_only_logs(self):
+        ec2 = FakeEc2("stopped")
+        cfg = {**WRK, "workers": {"fleet-worker-1": {"power": {**WORKER_POWER, "live": False}}}}
+        with mock.patch.object(governor, "DRY_RUN", True):
+            _, log = self.cycles(ec2, demand=1, cfg=cfg)
+        self.assertEqual(self.ops(ec2), [])
+        self.assertIn("would start i-0wrk on fleet-worker-1: WORKER, demand 1; queue 0", log)
+
+    def test_the_ci_hosts_never_see_a_worker(self):
+        inst = {"fleet-worker-1": {"state": "stopped", "busy_at": 10_000, "labels": set(), "demand": 5}}
+        got = decide(STEADY, HOME_BUSY, queue=0, cfg=WRK, instances=inst)
+        self.assertNotIn("fleet-worker-1", [h for h, *_ in got])
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=1)

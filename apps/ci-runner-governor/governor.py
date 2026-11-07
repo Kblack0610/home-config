@@ -94,6 +94,18 @@ numbers a few times a day, so it is read once per BUDGET_POLL_SECONDS with the s
 a failed read keeps the last numbers, sets ci_governor_budget_ok 0, and never touches a
 power decision.
 
+A "workers" entry is a powered host with no runners at all: a cloud agent box that
+fleet-dispatch places queue items on (fleet-worker-1). Its one input is the demand key
+"<host>.demand" in the same ConfigMap, {"demand": N, "until": <epoch>}, which fleet-dispatch
+writes on each pass: the items it has for the box, live sessions on it plus the ones waiting
+while every home host is at its gate. A key of its own, so neither agent-web's whole-key
+"on"/"off" write nor machine-mode's merge drops it. A stopped worker starts once demand
+reaches start_min_excess; a running one stops once it has had no demand for
+idle_off_seconds, or at max_hours_day; a demand key past its end reads as none, so a
+dispatcher that stops writing lets the box go idle and stop. The override, the pass-over
+after a refused start or a reclaim, run time and the power metrics work as for a standby
+host; start_after_seconds does not apply, since each pass already waits for home's gate.
+
 DRY_RUN=1 (the default) logs and exports every decision and changes nothing.
 Live, it needs GITHUB_TOKEN with Organization > Self-hosted runners: write.
 
@@ -160,16 +172,26 @@ QUERIES = {
 
 def load_config(path):
     """config.json with each host's thresholds filled in, and "standby", a list in start
-    order, as a dict by host in that order (the shape decide() and the tests use)."""
+    order, and "workers" (none when left out), as dicts by host in that order (the shape
+    decide() and the tests use)."""
     with open(path) as f:
         cfg = json.load(f)
-    cfg["standby"] = {s["host"]: {k: v for k, v in s.items() if k != "host"} for s in cfg["standby"]}
+    for key in ("standby", "workers"):
+        cfg[key] = {s["host"]: {k: v for k, v in s.items() if k != "host"} for s in cfg.get(key, [])}
+    both = cfg["standby"].keys() & cfg["workers"].keys()
+    if both:
+        raise ValueError(f"in both standby and workers: {', '.join(sorted(both))}")
     return with_defaults(cfg)
 
 
+def powered(cfg, host):
+    """host's standby or workers entry, {} when it has neither."""
+    return cfg["standby"].get(host) or cfg.get("workers", {}).get(host, {})
+
+
 def power_of(cfg, host):
-    """A standby host's power settings: POWER_DEFAULTS with its own on top."""
-    return {**POWER_DEFAULTS, **cfg["standby"][host].get("power", {})}
+    """A powered host's power settings: POWER_DEFAULTS with its own on top."""
+    return {**POWER_DEFAULTS, **powered(cfg, host).get("power", {})}
 
 
 def with_defaults(cfg):
@@ -650,6 +672,19 @@ def read_override(host, now):
     return (action, until) if action in ("on", "off") and until > now else ("", 0)
 
 
+def read_demand(host, now):
+    """Items fleet-dispatch has for worker host, from its "<host>.demand" key:
+    {"demand": N, "until": <epoch>}, N a whole number from 0. 0 when there is none, it has
+    run out, or it does not parse (logged), so a bad edit never starts anything."""
+    o = override_key(f"{host}.demand")
+    n, until = o.get("demand"), o.get("until")
+    if type(n) is int and n >= 0 and type(until) in (int, float):
+        return n if until > now else 0
+    if o:
+        print(f"{host}: demand unreadable, ignored: {o!r}", flush=True)
+    return 0
+
+
 def read_pins(cfg):
     """{host: slots} for each host whose override key holds {"slots": N}, N a whole number
     from 0. Anything else is no pin (logged), so a bad edit leaves the host as it is."""
@@ -681,18 +716,21 @@ def count_run_time(t, state, now, launched=0.0):
 
 
 def power_readings(cfg, runners, tracked, now):
-    """{host: tracked[host]} for each standby host with a power block: state, busy_at,
-    labels, client, hours_today, override and override_until, plus what decide() keeps
-    there across cycles (want_since, draining, next_cause). busy_at is the last cycle a slot
-    on it was busy or the instance was not running. A host whose state cannot be read is
+    """{host: tracked[host]} for each standby host with a power block and each worker host:
+    state, busy_at, labels, client, hours_today, override and override_until, a worker's
+    demand, plus what decide() keeps there across cycles (want_since, draining, next_cause).
+    busy_at is the last cycle a slot on it was busy (a worker: it had demand) or the
+    instance was not running. A host whose state cannot be read is
     left out, so nothing powers it. A stop AWS made, seen here (a host up last cycle and
     stopping or stopped now with a state reason under AWS_STOP_PREFIX; not on the first
     sight after a pod restart, which cannot tell an old one from a new one), passes the host
     over for fallback_seconds."""
     out = {}
-    for host, s in cfg["standby"].items():
+    workers = cfg.get("workers", {})
+    for host, s in [*cfg["standby"].items(), *workers.items()]:
         if "power" not in s:
             continue
+        worker = host in workers
         t = tracked.setdefault(host, {})
         client, why = power_provider(s["power"])
         if not client:
@@ -703,14 +741,17 @@ def power_readings(cfg, runners, tracked, now):
         t.pop("off", None)
         try:
             state, launched, reason = client.state(s["power"]["instance_id"])
-            labels = host_labels(cfg, host)
+            # A worker runs no CI job, so it has no runner labels to read.
+            labels = set() if worker else host_labels(cfg, host)
         except POWER_ERRORS as e:
             print(f"{host}: instance state or runner labels unread, no power action: {e}", flush=True)
             continue
-        if not labels and not t.get("unlabelled"):
+        if not labels and not worker and not t.get("unlabelled"):
             print(f"{host}: no runner labels in github_runner_state, so it is never started", flush=True)
-        t["unlabelled"] = not labels
-        if state != "running" or "busy_at" not in t or any(
+        t["unlabelled"] = not labels and not worker
+        if worker:
+            t["demand"] = read_demand(host, now)
+        if state != "running" or "busy_at" not in t or t.get("demand") or any(
                 r["busy"] for r in runners.values() if r["host"] == host):
             t["busy_at"] = now
         # A reclaim is a host seen up last cycle and stopped by AWS now: one seen stopped
@@ -719,7 +760,8 @@ def power_readings(cfg, runners, tracked, now):
                 and reason.startswith(AWS_STOP_PREFIX)):
             fall_back(t, power_of(cfg, host), "reclaim", now)
             t.update(cause="reclaim", changed="stop", changed_at=now)
-            print(f"{host}: reclaimed by AWS ({reason}), the next standby host takes its jobs", flush=True)
+            print(f"{host}: reclaimed by AWS ({reason}), passed over for {power_of(cfg, host)['fallback_seconds']}s",
+                  flush=True)
         count_run_time(t, state, now, launched)
         t["override"], t["override_until"] = read_override(host, now)
         t.update(state=state, labels=labels, client=client)
@@ -744,7 +786,51 @@ def power_state(inst):
 
 
 def live(cfg, host):
-    return not DRY_RUN or cfg["standby"].get(host, {}).get("power", {}).get("live", False)
+    return not DRY_RUN or powered(cfg, host).get("power", {}).get("live", False)
+
+
+def decide_workers(cfg, instances, now):
+    """[(host, action, "", "WORKER", why)] for each worker host power_readings() could read:
+    start on demand, stop after idle_off_seconds without any (see the module docstring)."""
+    out = []
+    for host in cfg.get("workers", {}):
+        inst = instances.get(host)
+        if inst is None:
+            continue
+        p = power_of(cfg, host)
+        over, demand, state = inst.get("override"), inst.get("demand", 0), inst["state"]
+        idle = now - inst["busy_at"] if state == "running" else 0
+        capped = over != "on" and inst.get("hours_today", 0) >= p["max_hours_day"]
+        cap_why = f"ran {inst.get('hours_today', 0):.1f}h today, its {p['max_hours_day']}h cap"
+        action, cause, why = "hold", "", f"instance {state}"
+        if state == "stopped":
+            if over == "off":
+                why = "override off"
+            elif over == "on":
+                action, cause, why = "start", "override", "override on"
+            elif inst.get("fallback_until", 0) > now:
+                why = f"passed over after a {inst['fallback_why']} for {int(inst['fallback_until'] - now)}s more"
+            elif demand < max(1, p["start_min_excess"]):
+                why = f"demand {demand}, starts at {max(1, p['start_min_excess'])}"
+            elif capped:
+                why = cap_why
+            else:
+                action, cause, why = "start", "demand", f"demand {demand}"
+        elif state == "running":
+            if over == "off":
+                action, cause, why = "stop", "override", "override off"
+            elif capped:
+                action, cause, why = "stop", "cap", cap_why
+            elif over != "on" and idle >= p["idle_off_seconds"]:
+                action, cause, why = "stop", "idle", f"no demand for {int(idle)}s"
+            elif over == "on":
+                why = "override on"
+            else:
+                why = f"demand {demand}" if demand else f"no demand for {int(idle)}s of {p['idle_off_seconds']}s"
+        inst.update(idle_seconds=idle, want=demand if state == "stopped" else 0, held_seconds=0,
+                    want_since=None, draining=False, next_cause=cause if action != "hold" else "")
+        out.append((host, action, "", "WORKER", why))
+    return out
 
 
 class State:
@@ -762,6 +848,9 @@ def render(cfg, hosts, runners, queue, decisions, ok, instances=None, budget=Non
         mine = [r for r in runners.values() if r["host"] == host]
         L.append(f'ci_governor_admitted{{host="{host}"}} {sum(1 for r in mine if not r["withheld"])}')
         L.append(f'ci_governor_registered{{host="{host}"}} {len(mine)}')
+        L.append(f'ci_governor_live{{host="{host}"}} {1 if live(cfg, host) else 0}')
+    # A worker host has no runners, so only whether it is acted on live.
+    for host in sorted(cfg.get("workers", {})):
         L.append(f'ci_governor_live{{host="{host}"}} {1 if live(cfg, host) else 0}')
     # Between the withhold and admit lines the verdict is STEADY, so nothing else shows this.
     L += ["# HELP ci_governor_disk_held 1 when a host has withheld runners and too little disk to re-admit them",
@@ -784,10 +873,12 @@ def render(cfg, hosts, runners, queue, decisions, ok, instances=None, budget=Non
           "# TYPE ci_governor_power_hours_today gauge",
           "# HELP ci_governor_power_override End (epoch) of the override in force, 0 with action none",
           "# TYPE ci_governor_power_override gauge",
-          "# HELP ci_governor_fallback_total Times a host was passed over for the next standby host, by why",
+          "# HELP ci_governor_fallback_total Times a host was passed over (a standby host for the next one), by why",
           "# TYPE ci_governor_fallback_total counter",
           "# HELP ci_governor_power_fallback_until End (epoch) of the host's pass-over, 0 when none",
-          "# TYPE ci_governor_power_fallback_until gauge"]
+          "# TYPE ci_governor_power_fallback_until gauge",
+          "# HELP ci_governor_power_demand A worker host's items from fleet-dispatch (live plus waiting)",
+          "# TYPE ci_governor_power_demand gauge"]
     for host, inst in sorted((instances or {}).items()):
         p = power_of(cfg, host)
         L.append(f'ci_governor_power_state{{host="{host}",state="{power_state(inst)}",'
@@ -797,12 +888,14 @@ def render(cfg, hosts, runners, queue, decisions, ok, instances=None, budget=Non
         L.append(f'ci_governor_power_override{{host="{host}",action="{inst.get("override") or "none"}"}} '
                  f'{int(inst.get("override_until", 0))}')
         # Rule progress, each beside its line: idle against idle-off, jobs it could take past
-        # the other hosts against the start excess, the start hold against its length.
-        for name, value in (("idle_seconds", int(inst.get("idle_seconds", 0))),
-                            ("idle_off_seconds", p["idle_off_seconds"]),
-                            ("want", inst.get("want", 0)), ("start_min_excess", p["start_min_excess"]),
-                            ("held_seconds", int(inst.get("held_seconds", 0))),
-                            ("start_after_seconds", p["start_after_seconds"])):
+        # the other hosts against the start excess, the start hold against its length. A worker
+        # has no start hold, so it has no hold lines.
+        rules = [("idle_seconds", int(inst.get("idle_seconds", 0))), ("idle_off_seconds", p["idle_off_seconds"]),
+                 ("want", inst.get("want", 0)), ("start_min_excess", p["start_min_excess"])]
+        if host in cfg["standby"]:
+            rules += [("held_seconds", int(inst.get("held_seconds", 0))),
+                      ("start_after_seconds", p["start_after_seconds"])]
+        for name, value in rules:
             L.append(f'ci_governor_power_{name}{{host="{host}"}} {value}')
         if "usd_per_hour" in p:
             L.append(f'ci_governor_power_usd_per_hour{{host="{host}"}} {p["usd_per_hour"]}')
@@ -812,6 +905,8 @@ def render(cfg, hosts, runners, queue, decisions, ok, instances=None, budget=Non
             L.append(f'ci_governor_fallback_total{{host="{host}",reason="{reason}"}} '
                      f'{inst.get("fallbacks", {}).get(reason, 0)}')
         L.append(f'ci_governor_power_fallback_until{{host="{host}"}} {int(inst.get("fallback_until", 0))}')
+        if host in cfg.get("workers", {}):
+            L.append(f'ci_governor_power_demand{{host="{host}"}} {inst.get("demand", 0)}')
     if budget and cfg.get("budget"):
         L += render_budget(budget)
     return "\n".join(L) + "\n"
@@ -850,11 +945,12 @@ def cycle(cfg, last_action, tracked=None, budget=None):
     queue = len(waiting)
     instances = power_readings(cfg, runners, {} if tracked is None else tracked, now)
     decisions = decide(cfg, hosts, runners, waiting, last_action, now, instances, read_pins(cfg))
+    decisions += decide_workers(cfg, instances, now)
     for host, action, runner, v, why in decisions:
         if action == "hold":
             continue
         power = action in ("start", "stop")
-        target = cfg["standby"][host]["power"]["instance_id"] if power else runner
+        target = powered(cfg, host)["power"]["instance_id"] if power else runner
         dry = not live(cfg, host) and v != "PINNED"
         print(f"{'would ' if dry else ''}{action} {target} on {host}: {v}, {why}; queue {queue}", flush=True)
         if dry:
@@ -873,7 +969,8 @@ def cycle(cfg, last_action, tracked=None, budget=None):
             if action == "start" and isinstance(e, Ec2Error) and code not in DENY_CODES:
                 why = "capacity" if code in CAPACITY_CODES else "refused"
                 fall_back(instances[host], power_of(cfg, host), why, now)
-                print(f"{host}: start {why} ({code}), passed over for the next standby host", flush=True)
+                print(f"{host}: start {why} ({code}), passed over"
+                      + ("" if host in cfg.get("workers", {}) else " for the next standby host"), flush=True)
     if budget is not None:
         read_budget(cfg, budget, now)
     with State.lock:
@@ -905,7 +1002,7 @@ def main():
     if not DRY_RUN and not TOKEN:
         sys.exit("live mode needs GITHUB_TOKEN (Organization > Self-hosted runners: write)")
     Thread(target=HTTPServer(("", PORT), Handler).serve_forever, daemon=True).start()
-    live_hosts = sorted(h for h in cfg["standby"] if DRY_RUN and live(cfg, h))
+    live_hosts = sorted(h for h in [*cfg["standby"], *cfg["workers"]] if DRY_RUN and live(cfg, h))
     print(f"ci-runner-governor: {'dry run' if DRY_RUN else 'live'}, hosts {', '.join(sorted(cfg['hosts']))}"
           + (f", live anyway: {', '.join(live_hosts)}" if live_hosts else ""), flush=True)
     last_action, tracked, budget = {}, {}, {}

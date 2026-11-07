@@ -17,6 +17,7 @@
                                                        "start_min_excess": 4, "start_after_seconds": 300, "max_hours_day": 12,
                                                        "fallback_seconds": 3600, "usd_per_hour": 1.855, "live": true}}
   ],
+  "workers": [],
   "budget": {"name": "ci-burst-monthly", "account_id": "311141527647"},
   "hosts": {
     "cachyos-x8664-main": {"full": false, "min_admitted": 0, "admit": {"idle": 0.5, "tctl": 80}, "withhold": {"idle": 0.3, "tctl": 88}},

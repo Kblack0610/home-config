@@ -10,4 +10,17 @@ fleet_worker_packages:
   - github-cli
   - openai-codex
   - opencode
+# Ubuntu, the cloud worker (platform infra/aws-ci-burst, fleet-worker-1). It takes
+# light claude items only, so it skips codex and opencode, which apt does not carry.
+fleet_worker_packages_apt:
+  - curl
+  - git
+  - tmux
+  - stow
+  - jq
+  - python3-yaml
+  - gh
+# A cloud worker joins the tailnet to reach the state host and be reached by
+# fleet-dispatch: the role installs tailscale, and `tailscale up` is the human's.
+fleet_tailscale: false
 fleet_worker_dotfiles_repo: https://github.com/Kblack0610/.dotfiles.git

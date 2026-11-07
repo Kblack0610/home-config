@@ -39,8 +39,7 @@ Hosts that fleet-dispatch places agent sessions on, over ssh. The roster is the 
      fleet_ssh_host: fleet-worker-1         # its tailnet name: fleet-dispatch ssh goes there
      fleet_state_host: cachyos-x8664-main   # the workstation's tailnet name
      fleet_power: governor
-     fleet_place: false
-     fleet_repos: [<non-Unity repos only>]
+     fleet_place: false                     # no fleet_repos: the group's list (no Unity repo) is its own
    ```
 4. Start it with the agent-web Infra page's "on" button and run the play. Its report starts with `sudo tailscale up --hostname fleet-worker-1`: run it in `aws ssm start-session --profile bnb --region us-east-2 --target <instance id>` and open the login link it prints, then do the rest of "Add a worker", step 3.
 5. When the play prints `Ready`, set `fleet_place: true`.

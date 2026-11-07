@@ -178,6 +178,9 @@ def load_config(path):
         cfg = json.load(f)
     for key in ("standby", "workers"):
         cfg[key] = {s["host"]: {k: v for k, v in s.items() if k != "host"} for s in cfg.get(key, [])}
+    both = cfg["standby"].keys() & cfg["workers"].keys()
+    if both:
+        raise ValueError(f"in both standby and workers: {', '.join(sorted(both))}")
     return with_defaults(cfg)
 
 
@@ -870,7 +873,7 @@ def render(cfg, hosts, runners, queue, decisions, ok, instances=None, budget=Non
           "# TYPE ci_governor_power_hours_today gauge",
           "# HELP ci_governor_power_override End (epoch) of the override in force, 0 with action none",
           "# TYPE ci_governor_power_override gauge",
-          "# HELP ci_governor_fallback_total Times a host was passed over for the next standby host, by why",
+          "# HELP ci_governor_fallback_total Times a host was passed over (a standby host for the next one), by why",
           "# TYPE ci_governor_fallback_total counter",
           "# HELP ci_governor_power_fallback_until End (epoch) of the host's pass-over, 0 when none",
           "# TYPE ci_governor_power_fallback_until gauge",
@@ -885,12 +888,14 @@ def render(cfg, hosts, runners, queue, decisions, ok, instances=None, budget=Non
         L.append(f'ci_governor_power_override{{host="{host}",action="{inst.get("override") or "none"}"}} '
                  f'{int(inst.get("override_until", 0))}')
         # Rule progress, each beside its line: idle against idle-off, jobs it could take past
-        # the other hosts against the start excess, the start hold against its length.
-        for name, value in (("idle_seconds", int(inst.get("idle_seconds", 0))),
-                            ("idle_off_seconds", p["idle_off_seconds"]),
-                            ("want", inst.get("want", 0)), ("start_min_excess", p["start_min_excess"]),
-                            ("held_seconds", int(inst.get("held_seconds", 0))),
-                            ("start_after_seconds", p["start_after_seconds"])):
+        # the other hosts against the start excess, the start hold against its length. A worker
+        # has no start hold, so it has no hold lines.
+        rules = [("idle_seconds", int(inst.get("idle_seconds", 0))), ("idle_off_seconds", p["idle_off_seconds"]),
+                 ("want", inst.get("want", 0)), ("start_min_excess", p["start_min_excess"])]
+        if host in cfg["standby"]:
+            rules += [("held_seconds", int(inst.get("held_seconds", 0))),
+                      ("start_after_seconds", p["start_after_seconds"])]
+        for name, value in rules:
             L.append(f'ci_governor_power_{name}{{host="{host}"}} {value}')
         if "usd_per_hour" in p:
             L.append(f'ci_governor_power_usd_per_hour{{host="{host}"}} {p["usd_per_hour"]}')
@@ -964,7 +969,8 @@ def cycle(cfg, last_action, tracked=None, budget=None):
             if action == "start" and isinstance(e, Ec2Error) and code not in DENY_CODES:
                 why = "capacity" if code in CAPACITY_CODES else "refused"
                 fall_back(instances[host], power_of(cfg, host), why, now)
-                print(f"{host}: start {why} ({code}), passed over for the next standby host", flush=True)
+                print(f"{host}: start {why} ({code}), passed over"
+                      + ("" if host in cfg.get("workers", {}) else " for the next standby host"), flush=True)
     if budget is not None:
         read_budget(cfg, budget, now)
     with State.lock:

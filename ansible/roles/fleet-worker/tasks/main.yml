@@ -32,7 +32,7 @@
     creates: /usr/bin/tailscale
 
 - name: Run tailscaled
-  when: fleet_tailscale | bool
+  when: fleet_tailscale | bool and not ansible_check_mode
   become: true
   ansible.builtin.systemd:
     name: tailscaled

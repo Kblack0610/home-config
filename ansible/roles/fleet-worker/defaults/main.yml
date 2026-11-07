@@ -13,6 +13,7 @@ fleet_worker_packages:
 # Ubuntu, the cloud worker (platform infra/aws-ci-burst, fleet-worker-1). It takes
 # light claude items only, so it skips codex and opencode, which apt does not carry.
 fleet_worker_packages_apt:
+  - curl
   - git
   - tmux
   - stow

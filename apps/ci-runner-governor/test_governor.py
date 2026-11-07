@@ -1018,6 +1018,11 @@ class WorkerTest(unittest.TestCase):
                                        {"w": {"power": {"live": True}}})):
             with mock.patch("builtins.open", mock.mock_open(read_data=json.dumps({**body, **extra}))):
                 self.assertEqual(governor.load_config("config.json")["workers"], want)
+        # One host in both lists would be started and stopped by two rules in one cycle.
+        both = {**body, "standby": [{"host": "w"}], "workers": [{"host": "w"}]}
+        with mock.patch("builtins.open", mock.mock_open(read_data=json.dumps(both))), \
+                self.assertRaisesRegex(ValueError, "in both standby and workers: w"):
+            governor.load_config("config.json")
 
     def test_read_demand(self):
         import tempfile
@@ -1032,7 +1037,9 @@ class WorkerTest(unittest.TestCase):
                 with open(os.path.join(d, "w.demand"), "w") as f:
                     f.write(body)
                 self.assertEqual(governor.read_demand("w", 100), want, body)
-        self.assertEqual(len([c for c in out.call_args_list if "unreadable" in c.args[0]]), 5)
+        said = [c.args[0] for c in out.call_args_list]
+        self.assertEqual(len([s for s in said if "demand unreadable" in s]), 4)
+        self.assertEqual(len([s for s in said if "override unreadable" in s]), 1)  # "not json", by override_key
 
     def test_demand_starts_a_stopped_worker(self):
         ec2 = FakeEc2("stopped")
@@ -1042,6 +1049,7 @@ class WorkerTest(unittest.TestCase):
         self.assertIn("start i-0wrk on fleet-worker-1: WORKER, demand 1; queue 0", log)
         m = governor.State.metrics
         self.assertIn('ci_governor_power_demand{host="fleet-worker-1"} 1', m)
+        self.assertNotIn('ci_governor_power_start_after_seconds{host="fleet-worker-1"}', m)
         self.assertIn('ci_governor_live{host="fleet-worker-1"} 1', m)
         self.assertIn('ci_governor_decision{host="fleet-worker-1",verdict="WORKER",action="start"} 1', m)
         self.assertNotIn('ci_governor_registered{host="fleet-worker-1"}', m)

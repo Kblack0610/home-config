@@ -142,6 +142,8 @@ ssh mac-mini "launchctl list | grep actions.runner"   # numeric PID
 
 The load-bearing setting is `pmset autorestart 1`: after a power cut the Mac boots itself, auto-login reaches a logged-in session, and the per-user LaunchAgent (`RunAtLoad`) brings the workload (MLX or runner) back online — no human needed. `macos-baseline` sets and asserts this; `autorestart 0` is why both Macs previously stayed dark after outages (found 2026-07-17). FileVault MUST stay off and auto-login on, or the boot stops at the login window and nothing recovers.
 
+Proved on the mac-mini 2026-11-07 with `sudo -n shutdown -r now` and both runners idle, no touch: kernel up 22s after the command, ssh, console login and every Peekaboo grant by 39s, both runner listeners started at 52s, both runners online on GitHub by 94s. A true power cut is not yet proved: that needs someone to pull the plug.
+
 ## Why not MDM
 
 Considered and rejected. MDM's unique capability is zero-touch DEP/ADE enrollment, which requires Apple Business Manager (DUNS + business verification). Everything we actually need — power policy, auto-login, runner, SSH keys, debloat, tuning — is host-OS config that Ansible already owns per this repo's deployment model (`docs/gitops.md`). Without ABM, MDM only offers user-removable profiles, which is weaker than Ansible and adds a server to run. It also does not solve power-failure recovery; that is purely `pmset autorestart`.
@@ -226,6 +228,9 @@ ssh mac-studio "tail -50 /tmp/mlx-server.log"
 ssh m1 "~/actions-runner/svc.sh status && ~/actions-runner/svc.sh start"
 tail -f ~/actions-runner/_diag/Runner_*.log   # jobs not picked up
 ```
+
+### Runner logs "Conflict. Retrying until reconnected" after reboot
+Expected after any unclean stop (`shutdown -r now`, power cut): GitHub still holds the old broker session, so the new listener gets HTTP 409 and retries every 30s until it is dropped. On 2026-11-07 it took one retry, about 30s. If it keeps going past a few minutes, use "Runner offline after reboot" above.
 
 ### Can't SSH after reboot
 Likely a `SetEnv` issue in SSH config: `ssh -F /dev/null kennethblack@192.168.1.7`.

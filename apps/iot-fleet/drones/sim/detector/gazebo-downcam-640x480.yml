@@ -1,0 +1,16 @@
+%YAML:1.0
+---
+# Ideal pinhole for the Gazebo down camera (hfov 1.6 rad, 640x480, no distortion):
+# fx = fy = 320 / tan(0.8). A real Pi camera gets a measured calibration instead.
+image_width: 640
+image_height: 480
+camera_matrix: !!opencv-matrix
+   rows: 3
+   cols: 3
+   dt: d
+   data: [ 310.7887, 0., 320., 0., 310.7887, 240., 0., 0., 1. ]
+distortion_coefficients: !!opencv-matrix
+   rows: 1
+   cols: 5
+   dt: d
+   data: [ 0., 0., 0., 0., 0. ]

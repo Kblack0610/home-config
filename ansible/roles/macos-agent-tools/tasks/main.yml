@@ -37,20 +37,36 @@
   changed_when: false
   check_mode: false
 
+# The settings above say what should lock; this reads whether the session is
+# locked now. ioreg sets CGSSessionScreenIsLocked only on a locked session, and
+# shows none at the login window, so the console owner is checked too.
+- name: Read whether the console session is locked
+  ansible.builtin.shell: |
+    set -eu
+    root=$(ioreg -n Root -d1 -a)
+    echo "console=$(stat -f %Su /dev/console)"
+    echo "locked=$(printf '%s\n' "$root" | grep -A1 CGSSessionScreenIsLocked | grep -c '<true/>' || true)"
+  register: agent_tools_session
+  changed_when: false
+  check_mode: false
+
 - name: Assert agents can drive the desktop
   ansible.builtin.assert:
     that:
       - agent_tools_perms.rc == 0
       - (agent_tools_perms.stdout | from_json).data.permissions | selectattr('isRequired') | rejectattr('isGranted') | list | length == 0
       - "'screenLock is off' in agent_tools_lock.stderr or 'screenLock is off' in agent_tools_lock.stdout"
+      - "('console=' ~ ansible_env.USER) in agent_tools_session.stdout_lines"
+      - "'locked=0' in agent_tools_session.stdout_lines"
     fail_msg: >-
       Agents cannot drive this Mac's desktop yet.
       Peekaboo permissions: {{ agent_tools_perms.stdout | default('') | trim | truncate(300) }}.
       Screen lock: {{ (agent_tools_lock.stderr ~ agent_tools_lock.stdout) | trim }}.
+      Session: {{ agent_tools_session.stdout_lines | join(' ') }} (want console={{ ansible_env.USER }} locked=0).
       Fix at the Mac: System Settings > Privacy & Security > Accessibility and
       Screen & System Audio Recording > + > Cmd+Shift+G
       /usr/libexec/sshd-keygen-wrapper > switch it on. Screen lock: from the
       workstation, rbw get mac_fleet_password | ssh mac-mini 'read -r p;
       sysadminctl -screenLock off -password "$p"'. Then re-run.
       A session that is locked now: docs/mac-machines.md, "The screen is locked".
-    success_msg: Agents can drive the desktop (Screen Recording, Accessibility granted; no screen lock, no screensaver).
+    success_msg: Agents can drive the desktop (Screen Recording, Accessibility granted; no screen lock, no screensaver; the console session is unlocked).

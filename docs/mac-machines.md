@@ -157,7 +157,7 @@ Considered and rejected. MDM's unique capability is zero-touch DEP/ADE enrollmen
 | Wake-on-LAN (womp) | Enabled | Remote wake | macos-baseline (pmset) |
 | FileVault | Disabled | Allows auto-login on restart | install script (asserted by macos-baseline) |
 | Auto-login | Enabled (current user) | Unattended restarts after power outage | install script (asserted by macos-baseline) |
-| Screen lock and screensaver (mac-mini) | Off (`sysadminctl -screenLock off`, screensaver `idleTime` 0, `askForPassword` 0) | A locked session blocks the desktop and store-console tools; auto-login already gives a session to anyone at the Mac | screen lock: person, once; screensaver: macos-agent-tools sets both and asserts the lock |
+| Screen lock and screensaver (mac-mini) | Off (`sysadminctl -screenLock off`, screensaver `idleTime` 0, `askForPassword` 0) | A locked session blocks the desktop and store-console tools; auto-login already gives a session to anyone at the Mac | screen lock: person, once; screensaver: macos-agent-tools sets both, and asserts the lock delay and that the console session is unlocked now (ioreg `CGSSessionScreenIsLocked`) |
 | Passwordless sudo (mac-mini) | Blanket, `/etc/sudoers.d/agent-machine` | Agents need root unattended; mac-studio keeps its password | macos-agent-tools |
 | Spotlight index (mac-mini) | Off, index removed | It reached 51 GB; nothing here searches with it | macos-agent-tools |
 | Automatic macOS install (mac-mini) | Off, critical and config-data updates stay on | An update reboots mid-job and can drop the privacy grants | macos-agent-tools |
@@ -248,7 +248,7 @@ rbw get mac_fleet_password | ssh -T mac-mini 'read -r v; caffeinate -u -t 2; sle
   osascript -e "on run argv" -e "tell application \"System Events\" to keystroke (item 1 of argv)" -e "delay 0.3" -e "tell application \"System Events\" to key code 36" -e "end run" "$v"; unset v'
 ```
 
-`caffeinate -u` alone wakes the display but does not unlock. Then run the `agent-tools` tag so it does not lock again: the usual cause is the screensaver (`idleTime`) with `askForPassword` 1, which `sysadminctl -screenLock status` does not show.
+`caffeinate -u` alone wakes the display but does not unlock. Then run the `agent-tools` tag so it does not lock again; it fails while the session is still locked. The usual cause is the screensaver (`idleTime`) with `askForPassword` 1, which `sysadminctl -screenLock status` does not show. To see what locked it, `/usr/bin/log show --predicate 'process == "loginwindow" AND eventMessage CONTAINS "LockFrom"'` names the reason (2026-11-07: `kLWLockFromScreenSaverIdleLaunch`, with loginwindow reading `idleTime: 10800`).
 
 ### A macOS prompt asks to "bypass the system private window picker" (mac-mini)
 

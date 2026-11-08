@@ -12,6 +12,7 @@ resources:
   - service-ssh.yaml
   - ingress.yaml
   - ingress-public.yaml
+  - ingressroute-browser-redirect.yaml
   - backup-cronjob.yaml
   - lock-reaper-cronjob.yaml
   - runner-config-cm.yaml

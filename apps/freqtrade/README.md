@@ -62,6 +62,7 @@ A new digest or roster restarts the bots; their trade history is on their PVCs a
 | Symptom | Cause | Fix |
 |---|---|---|
 | trader.kblab.me: Forgejo says the redirect URI is invalid | The OAuth2 app's redirect is not `https://trader.kblab.me/oauth/callback` | Fix it under Forgejo Settings, Applications, `trader.kblab.me` |
+| trader.kblab.me: `Sign-in expired or was not started here` on every try, usually from a phone on the home Wi-Fi | The page was opened as `http://`: on the LAN the host answers plain http, and the browser drops the Secure state cookie `/login` sets there | The Ingress redirects http to https (`kube-system-redirect-https`); traefik access logs show `entryPointName: web` for the `/login` hit if it comes back |
 | trader.kblab.me: `Not allowed` after signing in | The Forgejo login is not in `ALLOWED_USERS` | Add it in `web-deployment.yaml` |
 | `trader-web` crashloops with `trader-web: missing ...` | A key of Secret `trader-web-oauth` is empty | Re-encrypt `trader-web-oauth-secret.sops.yaml` with all three keys |
 | `permission denied for table ...` in the `trader-web` log | A table was created by a role other than `trader`, so the default SELECT grant missed it | Re-run the bootstrap Job (bump its name); it grants SELECT on every table |

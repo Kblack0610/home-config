@@ -10,8 +10,10 @@ metadata:
     cert-manager.io/cluster-issuer: letsencrypt-dns
     # Public on purpose, like apps/agents/ingress.yaml: external-dns publishes the host
     # and the wildcard tunnel routes it, so it works off the LAN. The gate is the app's
-    # Sign in with Forgejo; crowdsec in front.
-    traefik.ingress.kubernetes.io/router.middlewares: crowdsec-crowdsec-bouncer@kubernetescrd
+    # Sign in with Forgejo; crowdsec in front. redirect-https because on the LAN the host
+    # also answers plain http, where the browser drops the Secure OAuth state cookie and
+    # the callback then fails with "Sign-in expired".
+    traefik.ingress.kubernetes.io/router.middlewares: kube-system-redirect-https@kubernetescrd,crowdsec-crowdsec-bouncer@kubernetescrd
 spec:
   ingressClassName: traefik
   tls:

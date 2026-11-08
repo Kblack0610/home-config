@@ -27,6 +27,9 @@ THE INVARIANTS
      serial: each such value is empty or an `@A1_...@` placeholder that the init container
      fills from the SOPS Secret. OrcaSlicer writes the live code into any preset or conf you
      save, and this repo is public on GitHub, so a copied-in preset would publish it again.
+  5. No file under apps/forgejo/ sets a signing secret in app.ini form (`LFS_JWT_SECRET = x`):
+     those go in secret.sops.yaml as FORGEJO__<section>__<key> env vars. A stock app.ini
+     carries them in plain text, so a pasted config would publish them again.
 
 USAGE
 
@@ -53,6 +56,8 @@ PRINTER_SECRET = re.compile(
     r'"(?:\w*access_code|\w*serial_number)"\s*:\s*"(?!@A1_)[^"]+"'
     r'|"\d+\.\d+\.\d+\.\d+"\s*:\s*"(?!@A1_)[^"]+"'
 )
+FORGEJO_DIR = "apps/forgejo/"
+FORGEJO_INI_SECRET = re.compile(r"^\s*(?:LFS_JWT_SECRET|INTERNAL_TOKEN|JWT_SECRET|SECRET_KEY)\s*=\s*\S")
 
 
 def tracked_files():
@@ -85,6 +90,8 @@ def main(argv):
                 problems.append(f"{name}:{n}: mentions ansible-vault, which is retired; use sops")
             if name.startswith(SLICER_DIR) and "secret" not in Path(name).name and PRINTER_SECRET.search(line):
                 problems.append(f"{name}:{n}: printer access code or serial in plain text; leave it empty or use the @A1_...@ placeholder")
+            if name.startswith(FORGEJO_DIR) and FORGEJO_INI_SECRET.search(line):
+                problems.append(f"{name}:{n}: Forgejo signing secret in plain text; use a FORGEJO__<section>__<key> env var from secret.sops.yaml")
 
         base = Path(name).name
         if base.endswith(".sops.yaml") and base != ".sops.yaml" and not SOPS_MAC.search(text):
@@ -95,7 +102,7 @@ def main(argv):
     if problems:
         print("\nSecrets in this repo are SOPS only. See ansible/README.md \"Secrets\".")
         return 1
-    print(f"ok: {len(files)} files, no ansible-vault, every *.sops.yaml encrypted, no printer codes in slicer profiles")
+    print(f"ok: {len(files)} files, no ansible-vault, every *.sops.yaml encrypted, no printer codes in slicer profiles, no Forgejo signing secrets")
     return 0
 
 

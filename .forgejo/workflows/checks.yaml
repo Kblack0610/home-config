@@ -54,6 +54,12 @@ jobs:
           ! python3 scripts/check-secret-store.py apps/orcaslicer/planted-control.json
           rm apps/orcaslicer/planted-control.json
 
+      - name: Negative control - the check fails on a planted Forgejo signing secret
+        run: |
+          printf '[server]\nLFS_JWT_SECRET = planted\n' > apps/forgejo/planted-control.ini
+          ! python3 scripts/check-secret-store.py apps/forgejo/planted-control.ini
+          rm apps/forgejo/planted-control.ini
+
   zomboid-scripts:
     # The control and sleeper suites have existed since those scripts were written
     # and have only ever run when someone remembered to. They are stdlib-only and

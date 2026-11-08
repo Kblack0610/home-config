@@ -31,10 +31,10 @@ spec:
   routes:
     - match: Host(`git.kblab.me`) && HeaderRegexp(`Accept`, `text/html`)
       kind: Rule
+      # No crowdsec here: Traefik runs without allowCrossNamespace, so an
+      # IngressRoute cannot reference crowdsec/crowdsec-bouncer, and this route
+      # only answers a 302 to git.kennethblack.me, whose ingress has crowdsec.
       middlewares:
-        # Provider-qualified, like the Ingress annotation: Traefik runs without
-        # allowCrossNamespace, so a `namespace: crowdsec` ref would be rejected.
-        - name: crowdsec-crowdsec-bouncer@kubernetescrd
         - name: git-browser-to-canonical
       services:
         - name: forgejo-http

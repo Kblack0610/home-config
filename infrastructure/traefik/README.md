@@ -1,37 +1,33 @@
 # Traefik
 
-Shared Traefik-related manifests for the homelab ingress layer.
+Traefik is bundled with k3s. Shared middleware is managed by Flux in [apps/traefik](../../apps/traefik/), included in the `apps` Kustomization. This directory holds the ingress template and an optional dashboard example.
 
-## What This Directory Contains
+## Shared middleware
 
-| File | Purpose |
-|------|---------|
-| `kustomization.yaml` | Reconciles the resources in this directory |
-| `middlewares.yaml` | Shared Traefik middleware definitions |
-| `dashboard-ingress.yaml` | Ingress for the Traefik dashboard |
-| `INGRESS-TEMPLATE.yaml` | Reference template for creating new Traefik ingresses |
+`redirect-https` in `kube-system` redirects HTTP requests to HTTPS permanently. An Ingress opts in with:
 
-## Apply
-
-```bash
-kubectl apply -k infrastructure/traefik
+```yaml
+traefik.ingress.kubernetes.io/router.middlewares: kube-system-redirect-https@kubernetescrd
 ```
 
-Use the Flux workflow for normal changes.
+Define app-specific headers or rate limits in the app's Flux directory. There are no shared `secure-headers`, `rate-limit` or `secure-chain` middlewares.
 
-## Verify
+## Changes and verification
+
+Edit [apps/traefik/middlewares.yaml](../../apps/traefik/middlewares.yaml), commit and push to Forgejo. Flux reconciles it through `apps`; follow [the GitOps workflow](../../docs/gitops.md).
 
 ```bash
-kubectl -n kube-system get ingress
-kubectl -n kube-system get middleware
+kubectl kustomize apps/traefik
+kubectl --context home-k3s -n kube-system get middleware redirect-https
+kubectl --context home-k3s -n flux-system get kustomization apps
 ```
 
-## Notes
+| Symptom | Check and fix |
+|---------|---------------|
+| Ingress reports a missing `kube-system-redirect-https` middleware | Check the Flux `apps` status and its inventory for `kube-system_redirect-https_traefik.io_Middleware`. Confirm `apps/kustomization.yaml` includes `traefik`; fix the git source and reconcile through Flux. |
 
-- This directory contains shared ingress-layer helpers, not the Traefik Helm installation itself.
-- Prefer reusing the middleware definitions here before introducing service-local variants.
+## Examples
 
-## Related Docs
-
-- [../../docs/gitops.md](../../docs/gitops.md)
-- [../../infrastructure.md](../../infrastructure.md)
+- [INGRESS-TEMPLATE.yaml](INGRESS-TEMPLATE.yaml): copy into an app's Flux directory and replace the placeholders.
+- [dashboard-ingress.yaml](dashboard-ingress.yaml): optional dashboard example, excluded from Flux. Enable only through a reviewed manifest change.
+- [Public ingress and DNS](../../docs/public-sites.md)

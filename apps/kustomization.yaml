@@ -6,6 +6,7 @@ kind: Kustomization
 resources:
   # Core infrastructure
   - cert-manager
+  - traefik
 
   # Applications (home-k3s cluster)
   - actual-budget

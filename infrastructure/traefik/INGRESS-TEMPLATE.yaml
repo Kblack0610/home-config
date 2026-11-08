@@ -6,7 +6,7 @@
 #   1. Copy this file to your app's directory as ingress.yaml
 #   2. Replace all <PLACEHOLDERS> with your values
 #   3. Add "ingress.yaml" to your kustomization.yaml resources
-#   4. Apply: kubectl apply -k apps/<your-app>/
+#   4. Add your app to apps/kustomization.yaml, commit and push to Forgejo for Flux.
 #
 # Traefik will automatically pick up the Ingress and route traffic.
 #
@@ -27,7 +27,7 @@ metadata:
     traefik.ingress.kubernetes.io/router.entrypoints: web,websecure
 spec:
   rules:
-    # Local access (via AdGuard Home DNS rewrite → Traefik)
+    # Local access (via AdGuard Home DNS rewrite -> Traefik)
     - host: <APP_NAME>.home.lan
       http:
         paths:
@@ -43,24 +43,15 @@ spec:
 # ADDING EXTERNAL ACCESS (via Cloudflare Tunnel)
 # =============================================================================
 #
-# For external access, update your Cloudflare Tunnel config.
-#
-# Add to Terraform:
-#   ingress {
-#     hostname = "<APP_NAME>.kblab.me"
-#     service  = "http://<SERVICE_NAME>.<NAMESPACE>.svc.cluster.local:<PORT>"
-#   }
-#
-# Then run: terraform apply && ./deploy-to-k3s.sh
+# For external access, follow docs/public-sites.md.
 #
 # =============================================================================
 # QUICK REFERENCE - Traefik Middlewares
 # =============================================================================
 #
-# Secure headers:
-#   traefik.ingress.kubernetes.io/router.middlewares: kube-system-secure-headers@kubernetescrd
+# HTTPS redirect (managed by Flux in apps/traefik):
+#   traefik.ingress.kubernetes.io/router.middlewares: kube-system-redirect-https@kubernetescrd
 #
-# Rate limiting:
-#   traefik.ingress.kubernetes.io/router.middlewares: kube-system-rate-limit@kubernetescrd
+# Define app-specific headers or rate limits in the app's Flux directory.
 #
 # =============================================================================

@@ -82,11 +82,12 @@ Flux picks up the ConfigMap change → deployment hash rotates → pod rolls →
 1. System: domains down, warn and up, and the time it was rendered. Read in the cluster, so it still shows with the workstation off.
 2. RED: every `cc:red_now` item with its domain and age, newest first, 6 at most then `+N more`. Then red default branches, sources the workstation could not read, any domain down with no red watch of its own, the domains at warn, and an active `input_text.home_alert`.
 3. Needs you: the count split by kind, the top projects, and the oldest ask.
-4. Agents: session counts, sessions late against their ETA, and the first KPI off target with its limit and how many more.
-5. Queue: running, ready and held, then done today and how long the oldest ready item has waited, then PRs merged today and cost per PR against 28 days. Then CI, naming only what is down.
-6. Projects: how many have work in flight, then the first two in flight, each with its percent, ETA and sessions.
-7. Claude: each account's weekly use, amber when one is over pace, the earliest run-out, and 24h spend.
-8. The house: weather and the next event across every calendar.
+4. Done today: queue items done and PRs merged, then the three busiest projects, each with its own counts and `+N more` for the rest.
+5. Agents: session counts, sessions late against their ETA, and the first KPI off target with its limit and how many more.
+6. Queue: running, ready and held, then how long the oldest ready item has waited and cost per PR against 28 days. Then CI, naming only what is down.
+7. Projects: how many have work in flight, then the first two in flight, each with its percent, ETA and sessions.
+8. Claude: each account's weekly use, amber when one is over pace, the earliest run-out, and 24h spend.
+9. The house: weather and the next event across every calendar.
 
 Every section opens with a bold `Title: value`. Colour marks only what is wrong: a title goes amber or red with its section, and only red items stay red in full, so amber never covers a whole block. Detail lines under a title are grey, so the titles and their values stand out.
 

@@ -1,0 +1,53 @@
+{
+  "_comment": "The phone widget's sizes, read by widget-preview.sh. Boxes are dp, measured off the human's S25 home-screen screenshot of 2026-11-09 (1080x2340 px, 2.625 px per dp): the full 4x5 widget is 938x1574 px = 357x600 dp, so one grid row is 120 dp. must_show lists the section titles that must stay inside the box when that section is present; '*' means nothing may clip.",
+  "device": {
+    "name": "Galaxy S25",
+    "width_px": 1080,
+    "height_px": 2340,
+    "density": 420,
+    "text_sp": 13,
+    "padding_dp": 4
+  },
+  "sizes": [
+    {
+      "name": "4x5",
+      "width_dp": 357,
+      "height_dp": 600,
+      "must_show": [
+        "*"
+      ]
+    },
+    {
+      "name": "4x4",
+      "width_dp": 357,
+      "height_dp": 480,
+      "must_show": [
+        "System",
+        "RED",
+        "Needs you",
+        "Agents",
+        "Queue"
+      ]
+    },
+    {
+      "name": "4x3",
+      "width_dp": 357,
+      "height_dp": 360,
+      "must_show": [
+        "System",
+        "RED",
+        "Needs you",
+        "Agents"
+      ]
+    },
+    {
+      "name": "4x2",
+      "width_dp": 357,
+      "height_dp": 240,
+      "must_show": [
+        "System",
+        "RED"
+      ]
+    }
+  ]
+}

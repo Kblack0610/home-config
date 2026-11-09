@@ -57,9 +57,9 @@ UNITY_JOB = frozenset({"self-hosted", "unity"})
 LAN_JOB = frozenset({"self-hosted", "unity", "lan"})
 
 
-def decide(hosts, runners=RUNNERS, queue=5, last=None, cfg=CFG, instances=None, waiting=None, pins=None):
+def decide(hosts, runners=RUNNERS, queue=5, last=None, cfg=CFG, instances=None, waiting=None, pins=None, restore=()):
     waiting = [UNITY_JOB] * queue if waiting is None else waiting
-    return governor.decide(cfg, hosts, runners, waiting, last or {}, 10_000, instances, pins)
+    return governor.decide(cfg, hosts, runners, waiting, last or {}, 10_000, instances, pins, restore)
 
 
 def actions(*args, **kw):
@@ -476,6 +476,27 @@ class GovernorTest(unittest.TestCase):
         hosts = readings(**{"razer-laptop": HOT, "asus-laptop": COOL, "hp-victus": COOL})
         self.assertEqual(actions(hosts, self.PINNED, pins={"hp-victus": 2})["razer-laptop"], ("withhold", "razer-1"))
 
+    # A dry run applies nothing but pins, so once no pin holds a host it gets its slots back.
+    WITHHELD = {**PINNED, "razer-1": {**PINNED["razer-1"], "withheld": True},
+                "razer-2": {**PINNED["razer-2"], "withheld": True}}
+
+    def test_a_dry_run_restores_an_unpinned_hosts_withheld_slot_on_any_verdict_but_full(self):
+        for reading in (COOL, HOT):
+            hosts = readings(**{"razer-laptop": reading, "asus-laptop": COOL, "hp-victus": COOL})
+            out = decide(hosts, self.WITHHELD, queue=0, last={"razer-laptop": 9_999}, restore={"razer-laptop"})
+            self.assertEqual([(a, r, v) for h, a, r, v, _ in out if h == "razer-laptop"],
+                             [("admit", "razer-1", "RESTORE")], reading)
+        hosts = readings(**{"razer-laptop": FULL, "asus-laptop": COOL, "hp-victus": COOL})
+        self.assertEqual(actions(hosts, self.WITHHELD, queue=0, restore={"razer-laptop"})["razer-laptop"], ("hold", ""))
+
+    def test_a_pin_holds_over_a_restore(self):
+        self.assertEqual(actions(self.PIN_HOSTS, self.WITHHELD, queue=0, pins={"razer-laptop": 0},
+                                 restore={"razer-laptop"})["razer-laptop"], ("hold", ""))
+
+    def test_a_live_host_is_not_restored(self):
+        hosts = readings(**{"razer-laptop": HOT, "asus-laptop": COOL, "hp-victus": COOL})
+        self.assertEqual(actions(hosts, self.WITHHELD, queue=0)["razer-laptop"], ("hold", ""))
+
     def test_read_pins(self):
         import tempfile
         with tempfile.TemporaryDirectory() as d, mock.patch.object(governor, "OVERRIDE_DIR", d), \
@@ -582,6 +603,19 @@ class GovernorTest(unittest.TestCase):
         log = [c.args[0] for c in out.call_args_list]
         self.assertTrue(any(line.startswith("withhold hpv-2 on hp-victus: PINNED") for line in log), log)
         self.assertTrue(any(line.startswith("would withhold razer-1 on razer-laptop") for line in log), log)
+
+    def test_an_ended_reservation_is_restored_in_a_dry_run(self):
+        hosts = readings(**{"razer-laptop": HOT, "asus-laptop": COOL, "hp-victus": HOT})
+        observed = (hosts, self.WITHHELD, [])
+        with mock.patch.object(governor, "observe", return_value=observed), \
+                mock.patch.object(governor, "read_pins", return_value={}), \
+                mock.patch.object(governor, "DRY_RUN", True), \
+                mock.patch.object(governor, "apply") as apply, mock.patch("builtins.print") as out:
+            governor.cycle(CFG, {})
+        apply.assert_called_once_with(CFG, "admit", "razer-1", "razer-laptop")
+        log = [c.args[0] for c in out.call_args_list]
+        self.assertTrue(any(line.startswith("admit razer-1 on razer-laptop: RESTORE") for line in log), log)
+        self.assertTrue(any(line.startswith("would withhold hpv-2 on hp-victus") for line in log), log)
 
     def test_a_power_block_not_live_stays_dry_run(self):
         ec2 = FakeEc2("stopped")

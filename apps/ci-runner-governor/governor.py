@@ -77,13 +77,16 @@ it and keeps it stopped. The month's cap is an AWS Budgets action, outside the g
 A host's key in that ConfigMap can instead hold {"slots": N}, written by the workstation's
 machine-mode command: how many of its slots the human wants admitted. It has no end time,
 since it says what the machine is for and not how loaded it is. A release reservation is a
-key of its own, "<host>.reserve" holding {"until": <epoch>} (machine-mode reserve), so the
+key of its own, "<host>.reserve" holding {"until": <epoch>} (machine-mode release-lane), so the
 power override's until and agent-web's whole-key write never touch it: until then it pins
 the host to 0, so gates go to other hosts while release.yml jobs, which ask for the host
 label alone, take its withheld slots. Past its end it reads as no reservation. A pinned host moves one
 slot per cycle toward N, in either direction, past its cooldown and instead of its verdict,
 and these moves happen even in a dry run, because nothing else re-admits a slot then. Only
-the pool floor and cap hold, and a FULL host keeps its own verdict.
+the pool floor and cap hold, and a FULL host keeps its own verdict. In a dry run a pin is the
+only thing that withholds a host's slot, so a host that is not live and that no pin holds
+gets its withheld slots back one per cycle (RESTORE), past its cooldown and whatever its
+verdict but FULL: an ended reservation or a dropped pin leaves nothing withheld.
 A power block with "live": true acts on that host for real (labels and power) even under
 DRY_RUN. Without AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY the hook logs why once and
 does nothing.
@@ -290,11 +293,12 @@ def verdict(h, t):
     return "STEADY", f"idle {idle:.2f}, cpu pressure {psi:.2f}"
 
 
-def decide(cfg, hosts, runners, waiting, last_action, now, instances=None, pins=None):
+def decide(cfg, hosts, runners, waiting, last_action, now, instances=None, pins=None, restore=()):
     """[(host, action, runner, verdict, why)]: at most one action per host, withholds
     first so a re-admit elsewhere can use the room the pool keeps. waiting is one label
     set per waiting pool job; instances is power_readings() for the standby hosts with a
-    power block; pins is read_pins()."""
+    power block; pins is read_pins(); restore names the hosts whose verdicts are not
+    applied (a dry run), which get back what a pin withheld once no pin holds them."""
     queue = len(waiting)
     admitted = sum(1 for r in runners.values() if not r["withheld"])
     # A standby host can go to zero, so only the other hosts hold the pool's floor.
@@ -321,6 +325,9 @@ def decide(cfg, hosts, runners, waiting, last_action, now, instances=None, pins=
                 why += "; at the pool floor"
             elif len(on) < pin and off:
                 action, runner = "admit", off[0]
+        elif host in restore and off and v != "FULL":
+            v, why = "RESTORE", f"dry run and no pin, {len(off)} withheld"
+            action, runner = "admit", off[0]
         elif cooling:
             why = f"cooldown ({why})"
         elif ((v == "FULL" and on) or (v == "HOT" and len(on) > t["min_admitted"])) \
@@ -957,14 +964,15 @@ def cycle(cfg, last_action, tracked=None, budget=None):
         return
     queue = len(waiting)
     instances = power_readings(cfg, runners, {} if tracked is None else tracked, now)
-    decisions = decide(cfg, hosts, runners, waiting, last_action, now, instances, read_pins(cfg, now))
+    restore = {h for h in cfg["hosts"] if not live(cfg, h)}
+    decisions = decide(cfg, hosts, runners, waiting, last_action, now, instances, read_pins(cfg, now), restore)
     decisions += decide_workers(cfg, instances, now)
     for host, action, runner, v, why in decisions:
         if action == "hold":
             continue
         power = action in ("start", "stop")
         target = powered(cfg, host)["power"]["instance_id"] if power else runner
-        dry = not live(cfg, host) and v != "PINNED"
+        dry = not live(cfg, host) and v not in ("PINNED", "RESTORE")
         print(f"{'would ' if dry else ''}{action} {target} on {host}: {v}, {why}; queue {queue}", flush=True)
         if dry:
             last_action[host] = now

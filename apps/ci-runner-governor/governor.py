@@ -76,7 +76,11 @@ it and keeps it stopped. The month's cap is an AWS Budgets action, outside the g
 
 A host's key in that ConfigMap can instead hold {"slots": N}, written by the workstation's
 machine-mode command: how many of its slots the human wants admitted. It has no end time,
-since it says what the machine is for and not how loaded it is. A pinned host moves one
+since it says what the machine is for and not how loaded it is. A release reservation is a
+key of its own, "<host>.reserve" holding {"until": <epoch>} (machine-mode reserve), so the
+power override's until and agent-web's whole-key write never touch it: until then it pins
+the host to 0, so gates go to other hosts while release.yml jobs, which ask for the host
+label alone, take its withheld slots. Past its end it reads as no reservation. A pinned host moves one
 slot per cycle toward N, in either direction, past its cooldown and instead of its verdict,
 and these moves happen even in a dry run, because nothing else re-admits a slot then. Only
 the pool floor and cap hold, and a FULL host keeps its own verdict.
@@ -685,9 +689,11 @@ def read_demand(host, now):
     return 0
 
 
-def read_pins(cfg):
+def read_pins(cfg, now):
     """{host: slots} for each host whose override key holds {"slots": N}, N a whole number
-    from 0. Anything else is no pin (logged), so a bad edit leaves the host as it is."""
+    from 0. Anything else is no pin (logged), so a bad edit leaves the host as it is. A live
+    release reservation, "<host>.reserve" holding {"until": <epoch>}, pins the host to 0 over
+    any pin of its own; past its end, or unreadable (logged), it is no reservation."""
     pins = {}
     for host in cfg["hosts"]:
         slots = override_key(host).get("slots")
@@ -695,6 +701,13 @@ def read_pins(cfg):
             pins[host] = slots
         elif slots is not None:
             print(f"{host}: pin unreadable, ignored: {slots!r}", flush=True)
+        reserve = override_key(f"{host}.reserve")
+        until = reserve.get("until")
+        if type(until) in (int, float):
+            if until > now:
+                pins[host] = 0
+        elif reserve:
+            print(f"{host}: reservation unreadable, ignored: {reserve!r}", flush=True)
     return pins
 
 
@@ -944,7 +957,7 @@ def cycle(cfg, last_action, tracked=None, budget=None):
         return
     queue = len(waiting)
     instances = power_readings(cfg, runners, {} if tracked is None else tracked, now)
-    decisions = decide(cfg, hosts, runners, waiting, last_action, now, instances, read_pins(cfg))
+    decisions = decide(cfg, hosts, runners, waiting, last_action, now, instances, read_pins(cfg, now))
     decisions += decide_workers(cfg, instances, now)
     for host, action, runner, v, why in decisions:
         if action == "hold":

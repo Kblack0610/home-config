@@ -480,16 +480,26 @@ class GovernorTest(unittest.TestCase):
         import tempfile
         with tempfile.TemporaryDirectory() as d, mock.patch.object(governor, "OVERRIDE_DIR", d), \
                 mock.patch("builtins.print") as out:
-            self.assertEqual(governor.read_pins(CFG), {})  # no ConfigMap
+            self.assertEqual(governor.read_pins(CFG, 1000), {})  # no ConfigMap
             path = os.path.join(d, "hp-victus")
             for body, want in (('{"slots": 1}', {"hp-victus": 1}), ('{"slots": 0}', {"hp-victus": 0}),
                                ('{"slots": -1}', {}), ('{"slots": "2"}', {}), ('{"slots": true}', {}),
                                ('{"slots": 1.5}', {}), ("{}", {}), ("", {}), ("not json", {}), ("[1]", {})):
                 with open(path, "w") as f:
                     f.write(body)
-                self.assertEqual(governor.read_pins(CFG), want, body)
+                self.assertEqual(governor.read_pins(CFG, 1000), want, body)
+            # A release reservation: its own key, a pin to 0 until its end, over the host's own pin.
+            with open(path, "w") as f:
+                f.write('{"slots": 2, "action": "off", "until": 5}')
+            for body, want in (('{"until": 2000}', 0), ('{"until": 1000.5}', 0), ('{"until": 1000}', 2),
+                               ('{"until": 500}', 2), ('{"until": "2000"}', 2), ('{"until": true}', 2),
+                               ("{}", 2), ("", 2)):
+                with open(path + ".reserve", "w") as f:
+                    f.write(body)
+                self.assertEqual(governor.read_pins(CFG, 1000), {"hp-victus": want}, body)
         lines = [c.args[0] for c in out.call_args_list]
         self.assertEqual(len([l for l in lines if "pin unreadable" in l]), 4)
+        self.assertEqual(len([l for l in lines if "reservation unreadable" in l]), 2)
         self.assertEqual(len([l for l in lines if "override unreadable" in l]), 2)
 
     def test_run_time_counts_per_utc_day(self):

@@ -3,6 +3,8 @@
 #
 #   KUBE_CONTEXT=home-k3s scripts/move-local-path-pvc.sh <ns> <pvc> <deployment> <target-node>
 #
+# Pass - as <deployment> for a PVC that only CronJobs mount: the script suspends them.
+#
 # Suspend Flux first, or it recreates the PVC mid-move and the app starts empty.
 # Merge the matching nodeSelector before resuming. Procedure, rollback and cleanup:
 # docs/runbooks/move-local-path-pvc.md
@@ -25,9 +27,14 @@ PV_JSON=$("${K[@]}" get pv "$PV" -o json)
 OLD_NODE=$(jq -r '.spec.nodeAffinity.required.nodeSelectorTerms[0].matchExpressions[0].values[0]' <<<"$PV_JSON")
 OLD_PATH=$(jq -r '.spec.local.path // .spec.hostPath.path' <<<"$PV_JSON")
 [ "$OLD_NODE" != "$NODE" ] || { echo "ERROR: $PVC is already on $NODE" >&2; exit 1; }
-REPLICAS=$("${K[@]}" -n "$NS" get deploy "$DEPLOY" -o jsonpath='{.spec.replicas}')
-SELECTOR=$("${K[@]}" -n "$NS" get deploy "$DEPLOY" -o json \
-  | jq -r '.spec.selector.matchLabels | to_entries | map("\(.key)=\(.value)") | join(",")')
+if [ "$DEPLOY" != - ]; then
+  REPLICAS=$("${K[@]}" -n "$NS" get deploy "$DEPLOY" -o jsonpath='{.spec.replicas}')
+  SELECTOR=$("${K[@]}" -n "$NS" get deploy "$DEPLOY" -o json \
+    | jq -r '.spec.selector.matchLabels | to_entries | map("\(.key)=\(.value)") | join(",")')
+fi
+CRONJOBS=$("${K[@]}" -n "$NS" get cronjob -o json | jq -r --arg c "$PVC" '.items[]
+  | select(any(.spec.jobTemplate.spec.template.spec.volumes[]?; .persistentVolumeClaim.claimName == $c))
+  | .metadata.name')
 NEW_PVC=$("${K[@]}" -n "$NS" get pvc "$PVC" -o json | jq '{apiVersion,kind,
   metadata:{name:.metadata.name,namespace:.metadata.namespace,labels:(.metadata.labels // {})},
   spec:{accessModes:.spec.accessModes,storageClassName:.spec.storageClassName,resources:.spec.resources}}')
@@ -35,14 +42,31 @@ echo "Moving $NS/$PVC ($PV): $OLD_NODE -> $NODE"
 
 cleanup() { "${K[@]}" -n "$NS" delete pod "$SRC" "$DST" --ignore-not-found --wait=false >/dev/null 2>&1 || true; }
 trap cleanup EXIT
+# Left suspended on a failure, so nothing writes to an empty new PVC; resume them by hand once the data is in place.
+suspend_cronjobs() {
+  for cj in $CRONJOBS; do
+    "${K[@]}" -n "$NS" patch cronjob "$cj" --type=merge -p "{\"spec\":{\"suspend\":$1}}" >/dev/null
+  done
+}
+
+suspend_cronjobs true
+RUNNING=$("${K[@]}" -n "$NS" get pods -o json | jq -r --arg c "$PVC" '.items[]
+  | select(.status.phase == "Pending" or .status.phase == "Running")
+  | select(any(.spec.volumes[]?; .persistentVolumeClaim.claimName == $c)) | .metadata.name')
+if [ -n "$RUNNING" ] && [ "$DEPLOY" = - ]; then
+  suspend_cronjobs false
+  echo "ERROR: pods still use $PVC, wait for them to finish: $RUNNING" >&2; exit 1
+fi
 
 # Deleting the PVC must not delete the data: the rollback depends on this.
 "${K[@]}" patch pv "$PV" --type=merge -p '{"spec":{"persistentVolumeReclaimPolicy":"Retain"}}' >/dev/null
 [ "$("${K[@]}" get pv "$PV" -o jsonpath='{.spec.persistentVolumeReclaimPolicy}')" = Retain ] \
   || { echo "ERROR: could not set $PV to Retain" >&2; exit 1; }
 
-"${K[@]}" -n "$NS" scale deploy "$DEPLOY" --replicas=0 >/dev/null
-"${K[@]}" -n "$NS" wait --for=delete pod -l "$SELECTOR" --timeout=120s >/dev/null 2>&1 || true
+if [ "$DEPLOY" != - ]; then
+  "${K[@]}" -n "$NS" scale deploy "$DEPLOY" --replicas=0 >/dev/null
+  "${K[@]}" -n "$NS" wait --for=delete pod -l "$SELECTOR" --timeout=120s >/dev/null 2>&1 || true
+fi
 # Finished pods, such as a backup CronJob's, hold the claim's protection finalizer.
 "${K[@]}" -n "$NS" get pods -o json | jq -r --arg c "$PVC" '.items[]
   | select(.status.phase == "Succeeded" or .status.phase == "Failed")
@@ -88,8 +112,11 @@ echo "Copy verified: $(tail -1 <<<"$A") files"
 
 cleanup
 "${K[@]}" -n "$NS" wait --for=delete pod "$SRC" "$DST" --timeout=90s >/dev/null 2>&1 || true
-"${K[@]}" -n "$NS" patch deploy "$DEPLOY" --type=merge \
-  -p "{\"spec\":{\"template\":{\"spec\":{\"nodeSelector\":{\"kubernetes.io/hostname\":\"$NODE\"}}}}}" >/dev/null
-"${K[@]}" -n "$NS" scale deploy "$DEPLOY" --replicas="$REPLICAS" >/dev/null
-"${K[@]}" -n "$NS" rollout status deploy "$DEPLOY" --timeout=180s
+suspend_cronjobs false
+if [ "$DEPLOY" != - ]; then
+  "${K[@]}" -n "$NS" patch deploy "$DEPLOY" --type=merge \
+    -p "{\"spec\":{\"template\":{\"spec\":{\"nodeSelector\":{\"kubernetes.io/hostname\":\"$NODE\"}}}}}" >/dev/null
+  "${K[@]}" -n "$NS" scale deploy "$DEPLOY" --replicas="$REPLICAS" >/dev/null
+  "${K[@]}" -n "$NS" rollout status deploy "$DEPLOY" --timeout=180s
+fi
 echo "Done. Old data retained: PV $PV at $OLD_NODE:$OLD_PATH"

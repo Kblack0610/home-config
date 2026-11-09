@@ -1,23 +1,24 @@
-# Weekly walk-forward test (lab/walkforward.py): for each of the last six whole
-# months, hyperopt tunes each candidate (league strategies, then promote and
+# Nightly walk-forward test (lab/walkforward.py): for each of the last WF_FOLDS
+# whole months, hyperopt tunes each candidate (league strategies, then promote and
 # watch suggestions) on the 180 days before it, then that unseen month is
-# backtested as is and tuned. Months are cached, so a normal week runs only the
-# newest one; the first run, or a freqtrade bump, runs all six and takes hours.
+# backtested as is and tuned. Each fold is stored as it finishes and skipped once
+# stored, so a normal night runs only new candidates and a new month; a first run,
+# or a freqtrade bump, takes several nights, each carrying on where the last stopped.
 # Retune suggestions follow from it. Nothing here touches the bots.
 apiVersion: batch/v1
 kind: CronJob
 metadata:
   name: freqtrade-walkforward
 spec:
-  schedule: "0 9 * * 6"  # Saturday, after the night's analysis and clear of the :20 backfill
+  schedule: "0 1 * * *"  # nightly, alongside the 02:45 analysis; both fit on razer-laptop
   timeZone: "Etc/UTC"  # unset means the controller zone, America/Los_Angeles
   concurrencyPolicy: Forbid
   successfulJobsHistoryLimit: 3
   failedJobsHistoryLimit: 3
   jobTemplate:
     spec:
-      backoffLimit: 0  # next week is the retry; failed months are retried there
-      activeDeadlineSeconds: 172800  # guard: a first run on three venues is about 20 hours, a normal week a few
+      backoffLimit: 0  # the next night is the retry; failed months are retried there
+      activeDeadlineSeconds: 28800  # ends by 09:00 UTC; a first run (about 53 h of folds) spans several nights
       template:
         metadata:
           labels:

@@ -1,6 +1,6 @@
 # Daily funding rates and open interest for the okx and kucoin swaps (lab/futures.py), into the trader database.
 # Free history is only months deep, so a missed day of funding is lost once it ages out; open interest refills
-# itself over its window. No lab PVC: it writes only to Postgres, so it does not pin to hp-victus.
+# itself over its window. No lab PVC: it writes only to Postgres, so it does not pin to the lab node.
 apiVersion: batch/v1
 kind: CronJob
 metadata:

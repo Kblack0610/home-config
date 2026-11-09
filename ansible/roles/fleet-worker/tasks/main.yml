@@ -55,11 +55,14 @@
 
 # Kept on main: an older agent-queue there would write the queue on the worker
 # instead of forwarding it (fleet-dispatch's probe refuses such a worker).
+# No submodules: two are private ssh remotes a fresh worker cannot reach, and
+# a session needs none of them.
 - name: Clone the public dotfiles, at main
   ansible.builtin.git:
     repo: "{{ fleet_worker_dotfiles_repo }}"
     dest: "{{ ansible_env.HOME }}/.dotfiles"
     version: main
+    recursive: false
 
 # apply_dotfiles removes a plain ~/.bashrc and ~/.zshrc before it stows, so a
 # copy of each is kept first. Runs once: the stowed agent-queue marks it done.

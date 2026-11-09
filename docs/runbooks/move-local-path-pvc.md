@@ -6,7 +6,7 @@ A local-path PV is pinned to one node, and everything on it goes down with that 
 
 1. Open a PR adding `nodeSelector` to the Deployment. Wait for CI, and do not merge yet.
 2. Suspend both Flux levels, parent first, because `flux-system` manages `apps` and clears a suspend set on `apps` alone: `for k in flux-system apps; do kubectl -n flux-system patch kustomization $k --type=merge -p '{"spec":{"suspend":true}}'; done`
-3. For each app: `KUBE_CONTEXT=home-k3s scripts/move-local-path-pvc.sh <ns> <pvc> <deployment> <node>`
+3. For each app: `KUBE_CONTEXT=home-k3s scripts/move-local-path-pvc.sh <ns> <pvc> <deployment> <node>`. For a PVC only CronJobs mount (such as `freqtrade/freqtrade-lab`), pass `-` as the deployment: the script suspends every CronJob in the namespace that mounts it, refuses while one of their pods is running, and resumes them after the copy. Such a PVC needs no `nodeSelector` PR, because its pods follow the new PV.
 4. Check every move printed `Done`, or do not merge. Merged early, the `nodeSelector` strands the app Pending while its data is still on the old node.
 5. Merge the PR, then resume: `for k in flux-system apps; do kubectl -n flux-system patch kustomization $k --type=merge -p '{"spec":{"suspend":false}}'; done`
 

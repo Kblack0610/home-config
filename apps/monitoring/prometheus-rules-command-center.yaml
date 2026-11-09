@@ -285,13 +285,19 @@ spec:
           expr: >-
             max(litellm_team_max_budget_metric{team_alias="lazer-pool"}) - max(litellm_remaining_team_budget_metric{team_alias="lazer-pool"})
         # Peak in the window less the value before it: increase() drops each new session's first sample.
-        # A service with no earlier value keeps its peak. Home Assistant reads the split, the hub the total.
+        # A group with no earlier value keeps its peak. Split by who spent it: service_name (claude-code
+        # is a session you start, claude-agentctl a runner) and agentctl_runner (the runner, or
+        # fleet-dispatch for a queue session); the hub's Costs and Fleet tabs read this split, Home
+        # Assistant the service one, the hub's Home the total.
+        - record: cc:claude_code_cost_24h_usd:by_runner
+          expr: >-
+            sum by (service_name, agentctl_runner) (max_over_time(claude_code_cost_usage_USD_total[24h]))
+            - (sum by (service_name, agentctl_runner) (last_over_time(claude_code_cost_usage_USD_total[1d] offset 24h)
+                   and max_over_time(claude_code_cost_usage_USD_total[24h]))
+               or sum by (service_name, agentctl_runner) (max_over_time(claude_code_cost_usage_USD_total[24h])) * 0)
         - record: cc:claude_code_cost_24h_usd:by_service
           expr: >-
-            sum by (service_name) (max_over_time(claude_code_cost_usage_USD_total[24h]))
-            - (sum by (service_name) (last_over_time(claude_code_cost_usage_USD_total[1d] offset 24h)
-                   and max_over_time(claude_code_cost_usage_USD_total[24h]))
-               or sum by (service_name) (max_over_time(claude_code_cost_usage_USD_total[24h])) * 0)
+            sum by (service_name) (cc:claude_code_cost_24h_usd:by_runner)
         - record: cc:claude_code_cost_24h_usd
           expr: >-
             sum(cc:claude_code_cost_24h_usd:by_service)

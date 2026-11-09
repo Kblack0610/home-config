@@ -25,6 +25,11 @@ CH = {"type": "grafana-clickhouse-datasource", "uid": "langfuse-clickhouse"}
 CLAUDE = '{service_name=~"claude-code|claude-agentctl"}'
 # Textfile metrics come from one host; drop its scrape labels so a series is one session.
 WS = "max without (instance, job, host) "
+# Home's Vitals section, a panel each: the question, then what it asks.
+VITALS = (("Output", "What did the fleet ship?"), ("Flow", "Is the queue draining or backing up?"),
+          ("Quality", "Does work land right the first time?"), ("You", "How much does the fleet ask of the human?"),
+          ("Cost", "What does a landed PR cost in points?"), ("Trust", "Can these numbers be believed?"),
+          ("Outcome", "Do requests start and do landed changes get verified?"))
 # mqtt2prom scrape labels, so one row per topic.
 MQ = "max without (instance, pod, container, endpoint, job, namespace, service) "
 LANGFUSE_TRACE = "https://langfuse.kblab.me/project/${__data.fields.project_id}/traces/${__data.fields.trace_id}"
@@ -282,6 +287,17 @@ def overview():
              steps=(("green", None), ("red", 1))),
     ]
     y += 16
+    # Vitals: Home's rows over time, one panel per question. `and on (kpi)` takes the KPIs from the
+    # agent_bench_vital gauge, so BENCH_VITALS decides what each panel shows.
+    panels.append(row("Vitals", y))
+    y += 1
+    for i, (q, says) in enumerate(VITALS):
+        panels.append(ts(q, f"{says} The 7d value of each KPI BENCH_VITALS names for this question "
+                         "(fleet-bench, agent_bench_kpi); Home shows the same numbers now.",
+                         [prom(f'{WS}(agent_bench_kpi{{window="7d"}}) and on (kpi) {WS}(agent_bench_vital{{question="{q.lower()}"}})',
+                               legend="{{kpi}}")],
+                         pos(i % 4 * 6, y + i // 4 * 7, 6, 7), decimals=2))
+    y += 14
     panels += [
         ts("Cost per hour by project", "Spend per hour, one series per canonical project (claude-telemetry.sh sets it). "
            "Sessions started outside the claude wrappers carry no project and show as the empty series.",

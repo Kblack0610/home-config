@@ -1205,12 +1205,466 @@
       "id": 16
     },
     {
+      "type": "row",
+      "title": "Vitals",
+      "collapsed": false,
+      "gridPos": {
+        "x": 0,
+        "y": 28,
+        "w": 24,
+        "h": 1
+      },
+      "panels": [],
+      "id": 17
+    },
+    {
+      "type": "timeseries",
+      "title": "Output",
+      "description": "What did the fleet ship? The 7d value of each KPI BENCH_VITALS names for this question (fleet-bench, agent_bench_kpi); Home shows the same numbers now.",
+      "gridPos": {
+        "x": 0,
+        "y": 29,
+        "w": 6,
+        "h": 7
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${datasource}"
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "editorMode": "code",
+          "expr": "max without (instance, job, host) (agent_bench_kpi{window=\"7d\"}) and on (kpi) max without (instance, job, host) (agent_bench_vital{question=\"output\"})",
+          "format": "time_series",
+          "instant": false,
+          "range": true,
+          "legendFormat": "{{kpi}}",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "none",
+          "custom": {
+            "drawStyle": "line",
+            "lineInterpolation": "smooth",
+            "lineWidth": 2,
+            "fillOpacity": 0,
+            "barAlignment": -1,
+            "stacking": {
+              "mode": "none"
+            },
+            "spanNulls": false,
+            "showPoints": "never"
+          },
+          "color": {
+            "mode": "palette-classic"
+          },
+          "decimals": 2
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom"
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "id": 18
+    },
+    {
+      "type": "timeseries",
+      "title": "Flow",
+      "description": "Is the queue draining or backing up? The 7d value of each KPI BENCH_VITALS names for this question (fleet-bench, agent_bench_kpi); Home shows the same numbers now.",
+      "gridPos": {
+        "x": 6,
+        "y": 29,
+        "w": 6,
+        "h": 7
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${datasource}"
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "editorMode": "code",
+          "expr": "max without (instance, job, host) (agent_bench_kpi{window=\"7d\"}) and on (kpi) max without (instance, job, host) (agent_bench_vital{question=\"flow\"})",
+          "format": "time_series",
+          "instant": false,
+          "range": true,
+          "legendFormat": "{{kpi}}",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "none",
+          "custom": {
+            "drawStyle": "line",
+            "lineInterpolation": "smooth",
+            "lineWidth": 2,
+            "fillOpacity": 0,
+            "barAlignment": -1,
+            "stacking": {
+              "mode": "none"
+            },
+            "spanNulls": false,
+            "showPoints": "never"
+          },
+          "color": {
+            "mode": "palette-classic"
+          },
+          "decimals": 2
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom"
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "id": 19
+    },
+    {
+      "type": "timeseries",
+      "title": "Quality",
+      "description": "Does work land right the first time? The 7d value of each KPI BENCH_VITALS names for this question (fleet-bench, agent_bench_kpi); Home shows the same numbers now.",
+      "gridPos": {
+        "x": 12,
+        "y": 29,
+        "w": 6,
+        "h": 7
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${datasource}"
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "editorMode": "code",
+          "expr": "max without (instance, job, host) (agent_bench_kpi{window=\"7d\"}) and on (kpi) max without (instance, job, host) (agent_bench_vital{question=\"quality\"})",
+          "format": "time_series",
+          "instant": false,
+          "range": true,
+          "legendFormat": "{{kpi}}",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "none",
+          "custom": {
+            "drawStyle": "line",
+            "lineInterpolation": "smooth",
+            "lineWidth": 2,
+            "fillOpacity": 0,
+            "barAlignment": -1,
+            "stacking": {
+              "mode": "none"
+            },
+            "spanNulls": false,
+            "showPoints": "never"
+          },
+          "color": {
+            "mode": "palette-classic"
+          },
+          "decimals": 2
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom"
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "id": 20
+    },
+    {
+      "type": "timeseries",
+      "title": "You",
+      "description": "How much does the fleet ask of the human? The 7d value of each KPI BENCH_VITALS names for this question (fleet-bench, agent_bench_kpi); Home shows the same numbers now.",
+      "gridPos": {
+        "x": 18,
+        "y": 29,
+        "w": 6,
+        "h": 7
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${datasource}"
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "editorMode": "code",
+          "expr": "max without (instance, job, host) (agent_bench_kpi{window=\"7d\"}) and on (kpi) max without (instance, job, host) (agent_bench_vital{question=\"you\"})",
+          "format": "time_series",
+          "instant": false,
+          "range": true,
+          "legendFormat": "{{kpi}}",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "none",
+          "custom": {
+            "drawStyle": "line",
+            "lineInterpolation": "smooth",
+            "lineWidth": 2,
+            "fillOpacity": 0,
+            "barAlignment": -1,
+            "stacking": {
+              "mode": "none"
+            },
+            "spanNulls": false,
+            "showPoints": "never"
+          },
+          "color": {
+            "mode": "palette-classic"
+          },
+          "decimals": 2
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom"
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "id": 21
+    },
+    {
+      "type": "timeseries",
+      "title": "Cost",
+      "description": "What does a landed PR cost in points? The 7d value of each KPI BENCH_VITALS names for this question (fleet-bench, agent_bench_kpi); Home shows the same numbers now.",
+      "gridPos": {
+        "x": 0,
+        "y": 36,
+        "w": 6,
+        "h": 7
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${datasource}"
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "editorMode": "code",
+          "expr": "max without (instance, job, host) (agent_bench_kpi{window=\"7d\"}) and on (kpi) max without (instance, job, host) (agent_bench_vital{question=\"cost\"})",
+          "format": "time_series",
+          "instant": false,
+          "range": true,
+          "legendFormat": "{{kpi}}",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "none",
+          "custom": {
+            "drawStyle": "line",
+            "lineInterpolation": "smooth",
+            "lineWidth": 2,
+            "fillOpacity": 0,
+            "barAlignment": -1,
+            "stacking": {
+              "mode": "none"
+            },
+            "spanNulls": false,
+            "showPoints": "never"
+          },
+          "color": {
+            "mode": "palette-classic"
+          },
+          "decimals": 2
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom"
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "id": 22
+    },
+    {
+      "type": "timeseries",
+      "title": "Trust",
+      "description": "Can these numbers be believed? The 7d value of each KPI BENCH_VITALS names for this question (fleet-bench, agent_bench_kpi); Home shows the same numbers now.",
+      "gridPos": {
+        "x": 6,
+        "y": 36,
+        "w": 6,
+        "h": 7
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${datasource}"
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "editorMode": "code",
+          "expr": "max without (instance, job, host) (agent_bench_kpi{window=\"7d\"}) and on (kpi) max without (instance, job, host) (agent_bench_vital{question=\"trust\"})",
+          "format": "time_series",
+          "instant": false,
+          "range": true,
+          "legendFormat": "{{kpi}}",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "none",
+          "custom": {
+            "drawStyle": "line",
+            "lineInterpolation": "smooth",
+            "lineWidth": 2,
+            "fillOpacity": 0,
+            "barAlignment": -1,
+            "stacking": {
+              "mode": "none"
+            },
+            "spanNulls": false,
+            "showPoints": "never"
+          },
+          "color": {
+            "mode": "palette-classic"
+          },
+          "decimals": 2
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom"
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "id": 23
+    },
+    {
+      "type": "timeseries",
+      "title": "Outcome",
+      "description": "Do requests start and do landed changes get verified? The 7d value of each KPI BENCH_VITALS names for this question (fleet-bench, agent_bench_kpi); Home shows the same numbers now.",
+      "gridPos": {
+        "x": 12,
+        "y": 36,
+        "w": 6,
+        "h": 7
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${datasource}"
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "editorMode": "code",
+          "expr": "max without (instance, job, host) (agent_bench_kpi{window=\"7d\"}) and on (kpi) max without (instance, job, host) (agent_bench_vital{question=\"outcome\"})",
+          "format": "time_series",
+          "instant": false,
+          "range": true,
+          "legendFormat": "{{kpi}}",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "none",
+          "custom": {
+            "drawStyle": "line",
+            "lineInterpolation": "smooth",
+            "lineWidth": 2,
+            "fillOpacity": 0,
+            "barAlignment": -1,
+            "stacking": {
+              "mode": "none"
+            },
+            "spanNulls": false,
+            "showPoints": "never"
+          },
+          "color": {
+            "mode": "palette-classic"
+          },
+          "decimals": 2
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom"
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "id": 24
+    },
+    {
       "type": "timeseries",
       "title": "Cost per hour by project",
       "description": "Spend per hour, one series per canonical project (claude-telemetry.sh sets it). Sessions started outside the claude wrappers carry no project and show as the empty series.",
       "gridPos": {
         "x": 0,
-        "y": 28,
+        "y": 43,
         "w": 12,
         "h": 8
       },
@@ -1265,7 +1719,7 @@
         }
       },
       "interval": "1h",
-      "id": 17
+      "id": 25
     },
     {
       "type": "timeseries",
@@ -1273,7 +1727,7 @@
       "description": "Spend per hour, one series per model.",
       "gridPos": {
         "x": 12,
-        "y": 28,
+        "y": 43,
         "w": 12,
         "h": 8
       },
@@ -1328,7 +1782,7 @@
         }
       },
       "interval": "1h",
-      "id": 18
+      "id": 26
     },
     {
       "type": "timeseries",
@@ -1336,7 +1790,7 @@
       "description": "Cache read dominates when caching works; a jump in cacheCreation means prompts are being rebuilt.",
       "gridPos": {
         "x": 0,
-        "y": 36,
+        "y": 51,
         "w": 12,
         "h": 8
       },
@@ -1452,7 +1906,7 @@
         }
       },
       "interval": "1h",
-      "id": 19
+      "id": 27
     },
     {
       "type": "timeseries",
@@ -1460,7 +1914,7 @@
       "description": "Lines added and removed by Claude Code edits.",
       "gridPos": {
         "x": 12,
-        "y": 36,
+        "y": 51,
         "w": 6,
         "h": 8
       },
@@ -1546,7 +2000,7 @@
         }
       },
       "interval": "1h",
-      "id": 20
+      "id": 28
     },
     {
       "type": "timeseries",
@@ -1554,7 +2008,7 @@
       "description": "Commits and pull requests Claude Code created.",
       "gridPos": {
         "x": 18,
-        "y": 36,
+        "y": 51,
         "w": 6,
         "h": 8
       },
@@ -1654,7 +2108,7 @@
         }
       },
       "interval": "1h",
-      "id": 21
+      "id": 29
     },
     {
       "type": "state-timeline",
@@ -1662,7 +2116,7 @@
       "description": "Context tokens each session holds, one row per tmux target (agent_session_context_tokens). Amber from 150k, red from 200k: auto-compaction fires around 240k.",
       "gridPos": {
         "x": 0,
-        "y": 44,
+        "y": 59,
         "w": 24,
         "h": 10
       },
@@ -1728,7 +2182,7 @@
         },
         "overrides": []
       },
-      "id": 22
+      "id": 30
     },
     {
       "type": "bargauge",
@@ -1736,7 +2190,7 @@
       "description": "Hours sessions spent waiting on the human, per project (fleet-bench).",
       "gridPos": {
         "x": 0,
-        "y": 54,
+        "y": 69,
         "w": 8,
         "h": 8
       },
@@ -1795,7 +2249,7 @@
         },
         "overrides": []
       },
-      "id": 23
+      "id": 31
     },
     {
       "type": "bargauge",
@@ -1803,7 +2257,7 @@
       "description": "Hours sessions sat STALLED, per project (fleet-bench).",
       "gridPos": {
         "x": 8,
-        "y": 54,
+        "y": 69,
         "w": 8,
         "h": 8
       },
@@ -1862,7 +2316,7 @@
         },
         "overrides": []
       },
-      "id": 24
+      "id": 32
     },
     {
       "type": "bargauge",
@@ -1870,7 +2324,7 @@
       "description": "Whole-session spend of the sessions the agent-usage registry updated today, per project (day-log, agent_day_cost_usd). A session started yesterday brings its earlier spend, so this differs from the Cost tile, which counts only spend inside the range.",
       "gridPos": {
         "x": 16,
-        "y": 54,
+        "y": 69,
         "w": 8,
         "h": 8
       },
@@ -1929,7 +2383,7 @@
         },
         "overrides": []
       },
-      "id": 25
+      "id": 33
     }
   ],
   "editable": true,

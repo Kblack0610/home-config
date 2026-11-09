@@ -118,10 +118,11 @@
 {%- if rows is none -%}
 {{ paint('red', 'no fleet overview: agent-mqtt-publish has stopped') }}<br><br>
 {%- else -%}
-{%- for heads in [['needs'], ['agents']] -%}
-{%- set said = section(rows, heads) -%}
+{# Done sits under Needs with no blank line between, the same pairing as Queue and CI, to spare the line. #}
+{%- set said = section(rows, ['needs']) ~ section(rows, ['done']) -%}
 {%- if said %}{{ said }}<br>{% endif -%}
-{%- endfor -%}
+{%- set said = section(rows, ['agents']) -%}
+{%- if said %}{{ said }}<br>{% endif -%}
 {%- set said = section(rows, ['queue']) ~ section(rows, ['ci']) -%}
 {%- if said %}{{ said }}<br>{% endif -%}
 {%- set said = section(rows, ['projects']) -%}

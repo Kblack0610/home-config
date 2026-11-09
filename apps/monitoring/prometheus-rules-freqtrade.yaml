@@ -162,9 +162,12 @@ spec:
         # Event-contract markets (strategy repo lab/markets, docs/markets.md). A venue reports while
         # it has a recorder sweep in the last 7 days, so removing a venue's CronJob ends its series
         # instead of alerting forever. 15 minutes is the paper league's max_book_age_min: past it the
-        # league already takes no entries on that venue.
+        # league already takes no entries on that venue. Polymarket global sweeps every 15 minutes
+        # (about 10 a sweep), so it gets the same two missed ticks: 45 minutes.
         - alert: TraderMarketsRecorderStale
-          expr: trader_markets_sweep_age_seconds > 15 * 60
+          expr: >-
+            trader_markets_sweep_age_seconds{venue!="polymarket"} > 15 * 60
+            or trader_markets_sweep_age_seconds{venue="polymarket"} > 45 * 60
           labels:
             severity: warning
             category: trading
@@ -174,13 +177,24 @@ spec:
         # A sweep is scheduled every 5 minutes with Forbid, so one that runs past 5 minutes makes the next
         # tick skip and thins the book. This reads the newest good sweep's run time.
         - alert: TraderMarketsSweepSlow
-          expr: trader_markets_sweep_duration_seconds > 5 * 60
+          expr: trader_markets_sweep_duration_seconds{venue!="polymarket"} > 5 * 60
           for: 10m
           labels:
             severity: warning
             category: trading
           annotations:
             summary: "{{ $labels.venue }} recorder sweep took {{ $value | humanizeDuration }}, past the 5 minute schedule: the next tick is skipped"
+
+        # Polymarket global sweeps every 15 minutes and its job is killed at 15 (the compact job's grace),
+        # so a sweep past 12 minutes is close to dying before it records anything.
+        - alert: TraderMarketsGlobalSweepSlow
+          expr: trader_markets_sweep_duration_seconds{venue="polymarket"} > 12 * 60
+          for: 30m
+          labels:
+            severity: warning
+            category: trading
+          annotations:
+            summary: "polymarket recorder sweep took {{ $value | humanizeDuration }}, close to the 15 minute deadline that kills the job"
 
         # A sweep is every 5 minutes, so 3 failures in an hour is a quarter of them: an adapter or
         # venue error that keeps coming back even while some sweeps still land.

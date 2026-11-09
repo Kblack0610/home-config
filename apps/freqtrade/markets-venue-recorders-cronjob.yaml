@@ -1,0 +1,284 @@
+# Markets recorder for each venue but Kalshi (trader-markets-recorder runs Kalshi, the recorder's default), each
+# by name on its own cadence (strategy repo docs/markets.md, Recorder). Same image, database, bucket, init migration
+# and node rule as trader-markets-recorder. A sweep must end inside 15 min, the compact job's grace (markets.toml
+# [compact] grace_h). Memory is sized from the market counts, not measured: Kalshi peaked at 470 MB on 179k markets.
+# The Odds API recorder is not here: its key and cadence are a human money decision (docs/markets.md, Sportsbook odds).
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: trader-markets-recorder-polymarket-us
+spec:
+  # about 150 list requests a sweep at 20 req/s
+  schedule: "*/5 * * * *"
+  timeZone: "Etc/UTC"
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      backoffLimit: 0
+      activeDeadlineSeconds: 600
+      template:
+        metadata:
+          labels:
+            app: trader-markets-recorder
+            venue: polymarket-us
+        spec:
+          restartPolicy: Never
+          affinity:
+            nodeAffinity:
+              requiredDuringSchedulingIgnoredDuringExecution:
+                nodeSelectorTerms:
+                  - matchExpressions:
+                      - {key: kubernetes.io/arch, operator: In, values: [amd64]}
+                      - {key: kubernetes.io/hostname, operator: NotIn, values: [hp-victus]}
+          securityContext:
+            runAsUser: 1000
+            runAsGroup: 1000
+            fsGroup: 1000
+          initContainers:
+            - name: migrate
+              image: trader
+              command: ["python", "/repo/lab/migrate.py"]
+              env:
+                - name: DATABASE_URL
+                  valueFrom:
+                    secretKeyRef: {name: trader-db, key: database-url}
+              resources:
+                requests:
+                  cpu: 20m
+                  memory: 64Mi
+                limits:
+                  memory: 256Mi
+          containers:
+            - name: recorder
+              image: trader
+              command: ["python", "-m", "lab.markets.recorder", "polymarket_us"]
+              env:
+                - name: DATABASE_URL
+                  valueFrom:
+                    secretKeyRef: {name: trader-db, key: database-url}
+                - name: S3_ENDPOINT
+                  value: http://minio.minio.svc.cluster.local:9000
+                - name: S3_ACCESS_KEY
+                  valueFrom:
+                    secretKeyRef: {name: trader-markets-s3, key: S3_ACCESS_KEY}
+                - name: S3_SECRET_KEY
+                  valueFrom:
+                    secretKeyRef: {name: trader-markets-s3, key: S3_SECRET_KEY}
+              resources:
+                requests:
+                  cpu: 100m
+                  memory: 256Mi
+                limits:
+                  memory: 1Gi
+---
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: trader-markets-recorder-polymarket
+spec:
+  # 234k markets in 2,343 keyset pages, about 10 min a sweep (measured 575 s on 2026-11-06)
+  schedule: "*/15 * * * *"
+  timeZone: "Etc/UTC"
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      backoffLimit: 0
+      activeDeadlineSeconds: 900
+      template:
+        metadata:
+          labels:
+            app: trader-markets-recorder
+            venue: polymarket
+        spec:
+          restartPolicy: Never
+          affinity:
+            nodeAffinity:
+              requiredDuringSchedulingIgnoredDuringExecution:
+                nodeSelectorTerms:
+                  - matchExpressions:
+                      - {key: kubernetes.io/arch, operator: In, values: [amd64]}
+                      - {key: kubernetes.io/hostname, operator: NotIn, values: [hp-victus]}
+          securityContext:
+            runAsUser: 1000
+            runAsGroup: 1000
+            fsGroup: 1000
+          initContainers:
+            - name: migrate
+              image: trader
+              command: ["python", "/repo/lab/migrate.py"]
+              env:
+                - name: DATABASE_URL
+                  valueFrom:
+                    secretKeyRef: {name: trader-db, key: database-url}
+              resources:
+                requests:
+                  cpu: 20m
+                  memory: 64Mi
+                limits:
+                  memory: 256Mi
+          containers:
+            - name: recorder
+              image: trader
+              command: ["python", "-m", "lab.markets.recorder", "polymarket"]
+              env:
+                - name: DATABASE_URL
+                  valueFrom:
+                    secretKeyRef: {name: trader-db, key: database-url}
+                - name: S3_ENDPOINT
+                  value: http://minio.minio.svc.cluster.local:9000
+                - name: S3_ACCESS_KEY
+                  valueFrom:
+                    secretKeyRef: {name: trader-markets-s3, key: S3_ACCESS_KEY}
+                - name: S3_SECRET_KEY
+                  valueFrom:
+                    secretKeyRef: {name: trader-markets-s3, key: S3_SECRET_KEY}
+              resources:
+                requests:
+                  cpu: 100m
+                  memory: 768Mi
+                limits:
+                  memory: 1536Mi
+---
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: trader-markets-recorder-predictit
+spec:
+  # one snapshot GET, refreshed by the venue about once a minute
+  schedule: "*/5 * * * *"
+  timeZone: "Etc/UTC"
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      backoffLimit: 0
+      activeDeadlineSeconds: 600
+      template:
+        metadata:
+          labels:
+            app: trader-markets-recorder
+            venue: predictit
+        spec:
+          restartPolicy: Never
+          affinity:
+            nodeAffinity:
+              requiredDuringSchedulingIgnoredDuringExecution:
+                nodeSelectorTerms:
+                  - matchExpressions:
+                      - {key: kubernetes.io/arch, operator: In, values: [amd64]}
+                      - {key: kubernetes.io/hostname, operator: NotIn, values: [hp-victus]}
+          securityContext:
+            runAsUser: 1000
+            runAsGroup: 1000
+            fsGroup: 1000
+          initContainers:
+            - name: migrate
+              image: trader
+              command: ["python", "/repo/lab/migrate.py"]
+              env:
+                - name: DATABASE_URL
+                  valueFrom:
+                    secretKeyRef: {name: trader-db, key: database-url}
+              resources:
+                requests:
+                  cpu: 20m
+                  memory: 64Mi
+                limits:
+                  memory: 256Mi
+          containers:
+            - name: recorder
+              image: trader
+              command: ["python", "-m", "lab.markets.recorder", "predictit"]
+              env:
+                - name: DATABASE_URL
+                  valueFrom:
+                    secretKeyRef: {name: trader-db, key: database-url}
+                - name: S3_ENDPOINT
+                  value: http://minio.minio.svc.cluster.local:9000
+                - name: S3_ACCESS_KEY
+                  valueFrom:
+                    secretKeyRef: {name: trader-markets-s3, key: S3_ACCESS_KEY}
+                - name: S3_SECRET_KEY
+                  valueFrom:
+                    secretKeyRef: {name: trader-markets-s3, key: S3_SECRET_KEY}
+              resources:
+                requests:
+                  cpu: 100m
+                  memory: 256Mi
+                limits:
+                  memory: 512Mi
+---
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: trader-markets-recorder-manifold
+spec:
+  # 26k binary markets in 27 pages, about 15 s a sweep
+  schedule: "*/5 * * * *"
+  timeZone: "Etc/UTC"
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      backoffLimit: 0
+      activeDeadlineSeconds: 600
+      template:
+        metadata:
+          labels:
+            app: trader-markets-recorder
+            venue: manifold
+        spec:
+          restartPolicy: Never
+          affinity:
+            nodeAffinity:
+              requiredDuringSchedulingIgnoredDuringExecution:
+                nodeSelectorTerms:
+                  - matchExpressions:
+                      - {key: kubernetes.io/arch, operator: In, values: [amd64]}
+                      - {key: kubernetes.io/hostname, operator: NotIn, values: [hp-victus]}
+          securityContext:
+            runAsUser: 1000
+            runAsGroup: 1000
+            fsGroup: 1000
+          initContainers:
+            - name: migrate
+              image: trader
+              command: ["python", "/repo/lab/migrate.py"]
+              env:
+                - name: DATABASE_URL
+                  valueFrom:
+                    secretKeyRef: {name: trader-db, key: database-url}
+              resources:
+                requests:
+                  cpu: 20m
+                  memory: 64Mi
+                limits:
+                  memory: 256Mi
+          containers:
+            - name: recorder
+              image: trader
+              command: ["python", "-m", "lab.markets.recorder", "manifold"]
+              env:
+                - name: DATABASE_URL
+                  valueFrom:
+                    secretKeyRef: {name: trader-db, key: database-url}
+                - name: S3_ENDPOINT
+                  value: http://minio.minio.svc.cluster.local:9000
+                - name: S3_ACCESS_KEY
+                  valueFrom:
+                    secretKeyRef: {name: trader-markets-s3, key: S3_ACCESS_KEY}
+                - name: S3_SECRET_KEY
+                  valueFrom:
+                    secretKeyRef: {name: trader-markets-s3, key: S3_SECRET_KEY}
+              resources:
+                requests:
+                  cpu: 100m
+                  memory: 256Mi
+                limits:
+                  memory: 1Gi

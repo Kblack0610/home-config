@@ -15,6 +15,7 @@ resources:
   - backfill-research-cronjob.yaml
   - lab-backup-cronjob.yaml
   - markets-recorder-cronjob.yaml
+  - markets-venue-recorders-cronjob.yaml
   - markets-compact-cronjob.yaml
   - trader-markets-s3-secret.sops.yaml
   - futures-cronjob.yaml

@@ -138,6 +138,8 @@ tests:
         values: '330x6'
       - series: 'trader_markets_sweep_duration_seconds{venue="manifold",job="trader-web"}'
         values: '270x6'
+      - series: 'trader_markets_sweep_duration_seconds{venue="polymarket",job="trader-web"}'
+        values: '600x6'
     alert_rule_test:
       - eval_time: 5m
         alertname: TraderMarketsSweepSlow
@@ -156,6 +158,8 @@ tests:
         values: '60+60x20'
       - series: 'trader_markets_sweep_age_seconds{venue="manifold",job="trader-web"}'
         values: '120x20'
+      - series: 'trader_markets_sweep_age_seconds{venue="polymarket",job="trader-web"}'
+        values: '60+60x20'
     alert_rule_test:
       - eval_time: 13m
         alertname: TraderMarketsRecorderStale
@@ -208,3 +212,33 @@ tests:
           - exp_labels: {alertname: TraderPaperDrawdown, severity: warning, category: trading, account: paper-a, job: trader-web}
             exp_annotations:
               summary: "Paper account paper-a is 18% of its capital below its peak: past the book's hard stop; trader.kblab.me/markets/book"
+
+  - name: polymarket global goes stale after 45 minutes and slow past 12 minutes, not on its 15 minute cadence
+    interval: 5m
+    input_series:
+      - series: 'trader_markets_sweep_age_seconds{venue="polymarket",job="trader-web"}'
+        values: '0+300x12'
+      - series: 'trader_markets_sweep_duration_seconds{venue="polymarket",job="trader-web"}'
+        values: '600x6 780x12'
+    alert_rule_test:
+      - eval_time: 40m
+        alertname: TraderMarketsRecorderStale
+        exp_alerts: []
+      - eval_time: 50m
+        alertname: TraderMarketsRecorderStale
+        exp_alerts:
+          - exp_labels: {alertname: TraderMarketsRecorderStale, severity: warning, category: trading, venue: polymarket, job: trader-web}
+            exp_annotations:
+              summary: "No good polymarket recorder sweep for 50m 0s: the paper league takes no entries there; failed sweeps and their errors are on trader.kblab.me/markets"
+      - eval_time: 25m
+        alertname: TraderMarketsSweepSlow
+        exp_alerts: []
+      - eval_time: 50m
+        alertname: TraderMarketsGlobalSweepSlow
+        exp_alerts: []
+      - eval_time: 65m
+        alertname: TraderMarketsGlobalSweepSlow
+        exp_alerts:
+          - exp_labels: {alertname: TraderMarketsGlobalSweepSlow, severity: warning, category: trading, venue: polymarket, job: trader-web}
+            exp_annotations:
+              summary: "polymarket recorder sweep took 13m 0s, close to the 15 minute deadline that kills the job"

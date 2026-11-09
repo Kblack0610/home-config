@@ -75,6 +75,24 @@ tests:
         alertname: TraderRunFailed
         exp_alerts: []
 
+  - name: a reproduce mismatch pages, a clean night clears it
+    interval: 1m
+    input_series:
+      - series: 'trader_repro_mismatch{job="trader-web"}'
+        values: '0x2 2x3 0x3'
+    alert_rule_test:
+      - eval_time: 1m
+        alertname: TraderReproMismatch
+        exp_alerts: []
+      - eval_time: 4m
+        alertname: TraderReproMismatch
+        exp_alerts:
+          - exp_labels: {alertname: TraderReproMismatch, severity: critical, category: trading, job: trader-web}
+            exp_annotations: {summary: "2 cached result(s) did not reproduce: see the newest reproduce run on trader.kblab.me/runs"}
+      - eval_time: 8m
+        alertname: TraderReproMismatch
+        exp_alerts: []
+
   - name: a nightly run kind with no success for 50 hours is stale
     interval: 1m
     input_series:

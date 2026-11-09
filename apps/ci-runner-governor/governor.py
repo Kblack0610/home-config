@@ -76,10 +76,11 @@ it and keeps it stopped. The month's cap is an AWS Budgets action, outside the g
 
 A host's key in that ConfigMap can instead hold {"slots": N}, written by the workstation's
 machine-mode command: how many of its slots the human wants admitted. It has no end time,
-since it says what the machine is for and not how loaded it is. A pin with "until": <epoch>
-is a release reservation (`machine-mode reserve`): {"slots": 0} on the release lane host
-until the cut's builds are done, so gates go elsewhere while release.yml's jobs, which ask
-for the host label alone, take the withheld slots. Past its end it reads as no pin. A pinned host moves one
+since it says what the machine is for and not how loaded it is. A release reservation is a
+key of its own, "<host>.reserve" holding {"until": <epoch>} (machine-mode reserve), so the
+power override's until and agent-web's whole-key write never touch it: until then it pins
+the host to 0, so gates go to other hosts while release.yml jobs, which ask for the host
+label alone, take its withheld slots. Past its end it reads as no reservation. A pinned host moves one
 slot per cycle toward N, in either direction, past its cooldown and instead of its verdict,
 and these moves happen even in a dry run, because nothing else re-admits a slot then. Only
 the pool floor and cap hold, and a FULL host keeps its own verdict.
@@ -690,18 +691,23 @@ def read_demand(host, now):
 
 def read_pins(cfg, now):
     """{host: slots} for each host whose override key holds {"slots": N}, N a whole number
-    from 0, and, when it has an "until" (a release reservation), only while until > now.
-    Anything else is no pin (logged), so a bad edit leaves the host as it is."""
+    from 0. Anything else is no pin (logged), so a bad edit leaves the host as it is. A live
+    release reservation, "<host>.reserve" holding {"until": <epoch>}, pins the host to 0 over
+    any pin of its own; past its end, or unreadable (logged), it is no reservation."""
     pins = {}
     for host in cfg["hosts"]:
-        o = override_key(host)
-        slots, until = o.get("slots"), o.get("until")
-        if slots is None:
-            continue
-        if type(slots) is not int or slots < 0 or (until is not None and type(until) not in (int, float)):
-            print(f"{host}: pin unreadable, ignored: {o!r}", flush=True)
-        elif until is None or until > now:
+        slots = override_key(host).get("slots")
+        if type(slots) is int and slots >= 0:
             pins[host] = slots
+        elif slots is not None:
+            print(f"{host}: pin unreadable, ignored: {slots!r}", flush=True)
+        reserve = override_key(f"{host}.reserve")
+        until = reserve.get("until")
+        if type(until) in (int, float):
+            if until > now:
+                pins[host] = 0
+        elif reserve:
+            print(f"{host}: reservation unreadable, ignored: {reserve!r}", flush=True)
     return pins
 
 

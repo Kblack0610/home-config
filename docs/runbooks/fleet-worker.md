@@ -16,7 +16,7 @@ Hosts that fleet-dispatch places agent sessions on, over ssh. The roster is the 
    - `gh auth login` on the worker, then re-run the play: that stows the private overlay and clones a private repo.
    - Add the worker's public key, which the task prints, to `~/.ssh/authorized_keys` on the state host.
    - Sign in each account: `claude`, then `/login`, once per account dir (`CLAUDE_CONFIG_DIR=<dir> claude` for each one but the main).
-4. When the play prints `Ready`, set `fleet_place: true` for the host and merge. On the workstation, `fleet-dispatch hosts` shows the worker as `open`, or the reason it takes nothing.
+4. When the play prints `Ready`, set `fleet_place: true` for the host and merge. fleet-dispatch reads the inventory as this repo's checkout's upstream branch holds it, fetched on each pass, so no pull is needed. On the workstation, `fleet-dispatch hosts` shows the worker as `open`, or the reason it takes nothing.
 
 ## Cloud worker
 
@@ -59,3 +59,5 @@ Hosts that fleet-dispatch places agent sessions on, over ssh. The roster is the 
 | The cloud worker never starts with items waiting | No demand key: fleet-dispatch has no `CC_KUBE_CONTEXT`, a global gate holds, home is under its gate, or no waiting item is in its `fleet_repos` | `ci_governor_power_demand{host="fleet-worker-1"}`; the dispatch log's demand line says what it wrote and why |
 | The cloud worker stops with a session on it | fleet-dispatch stopped writing demand (the key ran out), or its `max_hours_day` | `systemctl --user status fleet-dispatch.timer` on the workstation; the governor log's stop line names the cause |
 | A session's `agent-queue` call prints `the state host ... did not answer over ssh` | The worker's key is not in the state host's `authorized_keys`, or its host key changed | Step 3 of "Add a worker"; re-run the play for the host key |
+| `fleet-dispatch hosts` says `no fleet workers`, or shows an old `fleet_place` | The workstation's dotfiles predate the upstream read, or its fetch of this repo fails | `git -C ~/dev/home/home-config fetch` must succeed; `fleet-dispatch hosts` fetches before it reads |
+| The play stops at `Clone the public dotfiles` with `Local modifications exist` | An older role cloned the dotfiles submodules and one stopped half checked out | On the worker: `git -C ~/.dotfiles submodule deinit -f <path>`, then re-run the play |

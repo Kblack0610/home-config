@@ -12,6 +12,10 @@
     "withhold": {"idle": 0.15, "psi": 0.4, "tctl": 92, "mem": 0.1, "disk": 0.2}
   },
   "standby": [
+    {"host": "aws-burst-2", "max_admitted": 6, "power": {"provider": "aws", "instance_id": "i-051f266179192763e",
+                                                       "region": "us-east-2", "idle_off_seconds": 900,
+                                                       "start_min_excess": 4, "start_after_seconds": 300, "max_hours_day": 12,
+                                                       "fallback_seconds": 3600, "usd_per_hour": 0.65, "live": true}},
     {"host": "aws-burst-1", "max_admitted": 5, "power": {"provider": "aws", "instance_id": "i-0f1ecf35dc0e78146",
                                                        "region": "us-east-2", "idle_off_seconds": 900,
                                                        "start_min_excess": 4, "start_after_seconds": 300, "max_hours_day": 12,

@@ -40,16 +40,16 @@ The sole self-hosted runner for `BlackNBrownStudios/platform` mobile CI. Native 
 **iOS:** `KEYCHAIN_PASSWORD` (login pw for keychain unlock), `APPLE_ID`, `EXPO_APPLE_PASSWORD` (app-specific pw), `APPLE_TEAM_ID`.
 **Android:** `ANDROID_KEYSTORE_BASE64`, `ANDROID_KEYSTORE_PASSWORD`, `ANDROID_KEY_ALIAS`, `ANDROID_KEY_PASSWORD`, `GOOGLE_PLAY_SERVICE_ACCOUNT_KEY`.
 
-## Unity CI pool (mac-studio, until it is sold)
+## Unity CI pool on a Mac (none since 2026-11-10)
 
-Since 2026-10-29 the Studio (M3 Ultra, inventory host `mac-studio`) runs 6 slots of the org-scoped Unity CI pool and nothing else; the platform repo's iOS runner stays on mac-mini. It reaches Ansible through the workstation's `mac-studio` ssh alias.
+No Mac is in the Unity pool: the Mac Studio (M3 Ultra) ran 6 slots from 2026-10-29 until it was sold on 2026-11-10, and aws-burst-2 took its slots. The play and roles below stay for a future Mac; the platform repo's iOS runner stays on mac-mini.
 
 - Play "Unity CI runner pool (macOS)" in `ansible/playbooks/site.yml`, group `unity_ci_mac_runners` in `ansible/inventory.yml` (`unity_ci_slots`). Roles: `unity-ci-host-mac` (Homebrew GNU tools, Unity Hub, the editor at the project's version) and `github-actions-runner-mac` once per slot (`scope: org`, home `~/actions-runner/unity-pool-<n>`).
-- Labels are `unity, unity-native, host-mac-studio` (+ `unity-full`), registered with `--no-default-labels`: without it the slots also carry `self-hosted, macOS`, which takes the platform repo's iOS jobs and dodginballs' `[self-hosted, unity]` jobs. The playground runs the harness natively there (`UNITY_CI_NATIVE=1` in each slot's `.env`, see unity-core-playground `scripts/test/in-docker.sh`, and [runbooks/unity-ci-host.md](runbooks/unity-ci-host.md#the-mac-pool)).
-- Six slots, all taking pool jobs. Eight ran the box at load 115-157 on 32 cores with 0% idle (2026-10-31), and PlayMode throughput was no better than at 6 (about 20-28 jobs an hour against about 37, small sample), so slots 7-8 were withheld from 2026-11-02 and removed on 2026-11-03. The governor cannot judge a Mac's load (no CPU pressure or sensors), so the slot count is the limit.
-- Unity saves its license under `/Library/Application Support/Unity`, which needs sudo once: `ansible-playbook playbooks/site.yml --limit mac-studio --tags unity-ci-sudo -K`.
+- Labels are `unity, unity-native, host-<name>` (+ `unity-full`), registered with `--no-default-labels`: without it the slots also carry `self-hosted, macOS`, which takes the platform repo's iOS jobs and dodginballs' `[self-hosted, unity]` jobs. The playground runs the harness natively there (`UNITY_CI_NATIVE=1` in each slot's `.env`, see unity-core-playground `scripts/test/in-docker.sh`, and [runbooks/unity-ci-host.md](runbooks/unity-ci-host.md#the-mac-pool)).
+- The Studio ran six slots. Eight ran the box at load 115-157 on 32 cores with 0% idle (2026-10-31), and PlayMode throughput was no better than at 6 (about 20-28 jobs an hour against about 37, small sample), so slots 7-8 were withheld from 2026-11-02 and removed on 2026-11-03. The governor cannot judge a Mac's load (no CPU pressure or sensors), so the slot count is the limit.
+- Unity saves its license under `/Library/Application Support/Unity`, which needs sudo once: `ansible-playbook playbooks/site.yml --limit <mac> --tags unity-ci-sudo -K`.
 - The slots are LaunchAgents, so macOS Local Network privacy blocks their non-Apple binaries (Homebrew git, git-lfs) from the LAN: a fetch from `git.kblab.me` fails in a few ms with "Couldn't connect to server" while it works over ssh. Only Apple's binaries, root, and ssh sessions are exempt (Apple TN3179); a LaunchDaemon with `UserName` was blocked too, and `launchctl kickstart -k` did not clear it on the Studio (2026-10-29). The playground fetches through the public host instead (its `scripts/setup/forge-git-env.sh`), so do not move the slots to LaunchDaemons for this.
-- Before the sale: follow the retire steps in the play's header comment (`site.yml`): uninstall each slot with its `svc.sh`, delete the runners in the org settings, take the host out of `unity_ci_mac_runners` and `RUNNER_ROSTER`, and run `scripts/check-runner-roster.py`.
+- To retire a Mac: the retire steps in the play's header comment (`site.yml`), then take the host out of `unity_ci_mac_runners` and `RUNNER_ROSTER` and run `scripts/check-runner-roster.py`.
 
 ## Reprovision from bare metal
 

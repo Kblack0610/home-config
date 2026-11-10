@@ -41,10 +41,10 @@ scripts/test/fetch-image.py unityci/editor ubuntu-<version>-base-3 ~/.cache/unit
 
 ## The Mac pool
 
-- The "Unity CI runner pool (macOS)" play (roles `unity-ci-host-mac` and `github-actions-runner-mac`, group `unity_ci_mac_runners`). Details: [mac-machines.md](../mac-machines.md#unity-ci-pool-mac-studio-until-it-is-sold).
+- The "Unity CI runner pool (macOS)" play (roles `unity-ci-host-mac` and `github-actions-runner-mac`, group `unity_ci_mac_runners`). Details: [mac-machines.md](../mac-machines.md#unity-ci-pool-on-a-mac-none-since-2026-11-10).
 - Slots register without GitHub's default labels, only `unity`, `unity-native`, `host-<name>` and `unity-full`: with `self-hosted` and `macOS` they would take the platform repo's iOS jobs and DodginBalls' `[self-hosted, unity]` game-ci jobs.
 - Slots are LaunchAgents, and macOS Local Network privacy keeps Homebrew git and git-lfs off the LAN (a LaunchDaemon too), so the playground fetches through the public host, `git.kennethblack.me`.
-- Retiring the Studio: steps in the macOS play's header comment in `site.yml`. Plan the capacity first; its slots are a large share of the pool.
+- No Mac is in the pool since 2026-11-10: the Mac Studio was sold and its six slots moved to aws-burst-2. The play and roles stay for a future Mac; retiring one is the macOS play's header comment in `site.yml`.
 
 ## The AWS burst host (aws-burst-1)
 

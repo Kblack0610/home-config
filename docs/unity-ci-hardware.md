@@ -55,7 +55,7 @@ Researched 2026-11-03 for "6-8 more slots, a few thousand dollars". Prices are e
 | DIY EPYC 7443 + Tyan S8030 or Gigabyte MZ32-AR0 eBay combo, 8x16 GB RDIMM | ~$1,900-2,100 | 24 / 7 | ~65% | ~280 W | Cheapest to own. BMC has VGA, no GPU needed. Quiet with a Noctua NH-U14S TR4-SP3. The board takes a 7543 or 75F3 later. Combo listings often misstate the CPU: confirm the exact part and that it is not vendor-locked |
 | DIY EPYC 7543 + ASRock Rack ROMED8-2T or Supermicro H12SSL, 128 GB RDIMM | ~$2,300-2,700 | 32 / 8 | ~65% | ~300 W | RAM-bound at 128 GB; 256 GB makes it 10 |
 | **Premium: EPYC 75F3 + Supermicro H12SSL + 256 GB (8x32 GB) RDIMM** | ~$4,500-5,000 | 32 / 10 | ~75% | ~350 W | Fastest Zen 3 cores on still-cheap DDR4, room past 8 slots, one activation |
-| Mac Studio M5 Max, 128 GB | $5,099 new | 18 / 6 (RAM-bound) | fast | quiet | Native Unity, like the current Mac Studio. Only as its replacement |
+| Mac Studio M5 Max, 128 GB | $5,099 new | 18 / 6 (RAM-bound) | fast | quiet | Native Unity, like the Mac Studio sold 2026-11-10. Only as its replacement |
 | Used Dell Precision 7820, 16-24 core Xeon, 128 GB | $1,000-1,500 (2026-10-29) | 16-24 / 5-7 | ~50% | 250-350 W | Loud, slow cores |
 | 2x Minisforum MS-A2 9955HX, 96 GB / 2 TB prebuilt | $2,159 each | 16 / 5 each | ~100% | ~75 W sustained | Two activations. Drops from 100 W to ~75 W in long loads (Notebookcheck), noisy fan. 128 GB is unofficial |
 

@@ -27,7 +27,7 @@ spec:
   serviceName: freqtrade-league
   # Must equal the number of rows in roster.tsv: an extra pod exits with
   # "no roster row", a missing one leaves a row unplayed.
-  replicas: 26
+  replicas: 69
   podManagementPolicy: Parallel
   selector:
     matchLabels:

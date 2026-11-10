@@ -1,0 +1,32 @@
+name: renovate
+
+# Opens grouped bump PRs for the image pins in this repo. Config: /renovate.json.
+# Setup, token rotation and how to read a run: docs/renovate.md.
+#
+# No checkout step: Renovate clones the repo itself over the API with the bot token.
+
+on:
+  schedule:
+    # Daily. prConcurrentLimit in renovate.json caps how many PRs are open at once.
+    - cron: "23 5 * * *"
+  workflow_dispatch:
+
+jobs:
+  renovate:
+    runs-on: docker
+    container:
+      image: renovate/renovate:44.226.2
+    steps:
+      - name: Renovate
+        env:
+          # Admin-only options: Renovate ignores these in renovate.json.
+          RENOVATE_PLATFORM: forgejo
+          RENOVATE_ENDPOINT: https://git.kblab.me/api/v1
+          RENOVATE_REPOSITORIES: kblack0610/home-config
+          RENOVATE_GIT_AUTHOR: "Renovate Bot <renovate@noreply.kblab.me>"
+          RENOVATE_TOKEN: ${{ secrets.RENOVATE_TOKEN }}
+          # Optional (docs/renovate.md). Unset: fluxcd/flux2 is skipped and PRs carry no
+          # changelogs. Forgejo reserves the GITHUB_ prefix for secret names.
+          GITHUB_COM_TOKEN: ${{ secrets.RENOVATE_GITHUB_COM_TOKEN }}
+          LOG_LEVEL: info
+        run: renovate

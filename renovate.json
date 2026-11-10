@@ -1,0 +1,70 @@
+{
+  "$schema": "https://docs.renovatebot.com/renovate-schema.json",
+  "description": [
+    "Image bump PRs for home-config. Platform, endpoint and token are admin-only options and live in .forgejo/workflows/renovate.yaml. Setup and how to read a run: docs/renovate.md.",
+    "The kubernetes manager ships NO default file pattern: without managerFilePatterns it reports success and finds zero images. A run with a low dependency count means a pattern broke."
+  ],
+  "extends": ["config:recommended", ":dependencyDashboard", ":semanticCommits"],
+  "timezone": "Etc/UTC",
+  "commitMessagePrefix": "chore(deps):",
+  "dependencyDashboardTitle": "Renovate: dependency dashboard",
+  "labels": ["dependencies"],
+  "enabledManagers": ["kubernetes", "flux", "kustomize", "helm-values", "dockerfile", "docker-compose"],
+  "kubernetes": {
+    "managerFilePatterns": ["/^apps/.+\\.ya?ml$/", "/^infrastructure/.+\\.ya?ml$/"]
+  },
+  "flux": {
+    "managerFilePatterns": ["/^apps/.+\\.ya?ml$/", "/^clusters/.+\\.ya?ml$/"]
+  },
+  "ignorePaths": ["**/node_modules/**", "**/ansible/collections/**"],
+  "prConcurrentLimit": 10,
+  "prHourlyLimit": 4,
+  "packageRules": [
+    {
+      "description": "One PR per app directory for its minor, patch and digest bumps. Majors stay one PR each.",
+      "matchUpdateTypes": ["minor", "patch", "digest", "pin", "pinDigest"],
+      "groupName": "images",
+      "additionalBranchPrefix": "{{parentDir}}-",
+      "commitMessageSuffix": "({{parentDir}})"
+    },
+    {
+      "description": "linuxserver tags are v<upstream>-ls<build>. Without this the -ls suffix reads as a prerelease and no bump is proposed.",
+      "matchDatasources": ["docker"],
+      "matchPackageNames": ["/^lscr\\.io\\/linuxserver\\//", "/^ghcr\\.io\\/linuxserver\\//", "/^linuxserver\\//"],
+      "versioning": "regex:^v?(?<major>\\d+)\\.(?<minor>\\d+)\\.(?<patch>\\d+)-ls(?<build>\\d+)$"
+    },
+    {
+      "description": "OrcaSlicer is pinned in apps/orcaslicer and apps/print-service and must move in one PR; the profile checks in apps/orcaslicer/README.md 'Updating' come before merging.",
+      "matchPackageNames": ["lscr.io/linuxserver/orcaslicer"],
+      "groupName": "orcaslicer",
+      "additionalBranchPrefix": "",
+      "commitMessageSuffix": "",
+      "prBodyNotes": ["Before merging: apps/orcaslicer/README.md, Updating (profile inherits, print-service slice check, one GUI slice per process preset)."]
+    },
+    {
+      "description": "Home Assistant ships breaking config changes in minor releases; review it on its own.",
+      "matchPackageNames": ["ghcr.io/home-assistant/home-assistant"],
+      "groupName": "home-assistant",
+      "additionalBranchPrefix": "",
+      "commitMessageSuffix": ""
+    },
+    {
+      "description": "Immich server and machine-learning must move together.",
+      "matchPackageNames": ["/^ghcr\\.io\\/immich-app\\//"],
+      "groupName": "immich",
+      "additionalBranchPrefix": "",
+      "commitMessageSuffix": ""
+    },
+    {
+      "description": "An image on a floating tag (latest) gets a digest pin, so a new upstream push becomes a reviewable PR instead of a silent change on the next pod restart.",
+      "matchDatasources": ["docker"],
+      "matchCurrentValue": "latest",
+      "pinDigests": true
+    },
+    {
+      "description": "Our own images are pushed by their own CD pipelines; the tag here is a pointer, not a version to track. Last, so it wins over the rules above.",
+      "matchPackageNames": ["/^git\\.kblab\\.me\\/kblack0610\\//", "/^git\\.kennethblack\\.me\\/kblack0610\\//"],
+      "enabled": false
+    }
+  ]
+}

@@ -207,7 +207,9 @@ The mac-mini runs Emotiv Launcher and EmotivPRO for the EPOC-family headset (boa
 
 It adds three launchd jobs: `~/Library/LaunchAgents/com.emotiv.emotivapp.plist` (the Launcher window at login) and `com.emotiv.cortexv2` and `com.emotiv.sync` (CortexService and CortexSync, KeepAlive). Idle they cost about 3% CPU and 290 MB RSS together, small enough to leave running beside CI.
 
-Sign-in is to the human's EmotivID; rbw holds no Emotiv entry. The Launcher's Sign in opens a Safari sheet on id.emotiv.com that does not share a browser's emotiv.com session. The license is whatever the account carries (every headset includes EmotivPRO Lite); never buy one from an agent session.
+The Launcher is signed in to the human's EmotivID (`kblack0610`, since 2026-11-06) and stays signed in across restarts; rbw holds no Emotiv entry, so a new sign-in is the human's (see Troubleshooting). Account > My Licenses lists PRO Lite (1 device), BCI License (3 devices), a Studio Trial and a BrainViz Free Trial. Never buy a license from an agent session.
+
+The Launcher also needs the Bluetooth privacy grant before it can see a headset over Bluetooth, and that grant is a person's one-time click (see Troubleshooting).
 
 Rollback: quit the apps, run `/Applications/EmotivApps/Emotiv Maintenance Tool.app` and choose remove all components, then check the three plists above are gone.
 
@@ -263,6 +265,14 @@ rbw get mac_fleet_password | ssh -T mac-mini 'read -r v; caffeinate -u -t 2; sle
 ### A macOS prompt asks to "bypass the system private window picker" (mac-mini)
 
 "com.apple.sshd-session is requesting to bypass the system private window picker and directly access your screen and audio" follows the Screen Recording grant and comes back every 30 days, on the date in `kScreenCapturePrivacyHintDate` for `/usr/libexec/sshd-keygen-wrapper` in `~/Library/Group Containers/group.com.apple.replayd/ScreenCaptureApprovals.plist`. That file only reports the clock: edits to the hint date, the last-alerted date or the 30-day policy were all put back by the next capture on macOS 26.5.2, even with `replayd` stopped (tested 2026-11-06). Only a person's click resets it. It covers the middle of the screen until someone at the Mac clicks Allow; agents do not click consent prompts.
+
+### Emotiv Launcher needs to be signed in again (mac-mini)
+
+The Launcher's Sign in opens a Safari sheet on id.emotiv.com that does not share a browser's emotiv.com session, and rbw holds no EmotivID entry, so a person signs in once in that sheet with Remember me on. `grep 'login done' ~/Library/Application\ Support/Emotiv/EmotivApp/logs/*.txt` on the mini shows each successful sign-in with the account name.
+
+### Emotiv Launcher shows "needs your device's permission to use Bluetooth" (mac-mini)
+
+The yellow banner on Devices, and its Proceed button, lead to a System Settings privacy grant that macOS will not take from a synthetic click. A person opens System Settings > Privacy & Security > Bluetooth, adds `/Applications/EmotivApps/EMOTIV Launcher.app` and switches it on, then restarts the Launcher. If it still sees no headset, remove the Launcher entry there and add it again.
 
 ### Chrome starts but shows no window (mac-mini)
 

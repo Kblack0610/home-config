@@ -405,6 +405,8 @@ class ExporterTest(unittest.TestCase):
         self.assertEqual(exporter.pool_of(["self-hosted", "Linux", "X64"]), "other")
         self.assertEqual(exporter.pool_of(["self-hosted", "linux", "unity-full"]), "unity")
         self.assertEqual(exporter.pool_of(["self-hosted", "linux", "unity-withheld", "host-box"]), "unity")
+        self.assertEqual(exporter.pool_of(["self-hosted", "linux", "unity-build", "host-aws-build-1"]), "unity-build")
+        self.assertEqual(exporter.pool_of(["self-hosted", "linux", "unity-build-withheld", "host-aws-build-1"]), "unity-build")
 
     def test_host_label_beats_the_name_so_one_machine_is_one_host(self):
         self.assertEqual(exporter.host_of("m1-playground-mac", ["self-hosted", "macOS", "host-mac-mini"]), "mac-mini")
@@ -423,6 +425,19 @@ class ExporterTest(unittest.TestCase):
         self.assertTrue(any('pool="unity"' in r and 'state="running"' in r for r in rows(out, "github_runner_state")))
         self.assertFalse(any('state="missing"' in r and 'host="box"' in r and 'pool="unity"' in r
                              for r in rows(out, "github_runner_state")))
+
+    def test_withheld_build_runner_stays_in_the_build_pool(self):
+        org = "orgs/acme/actions/runners?per_page=100&page=1"
+        saved = FAKE[org]
+        FAKE[org] = {"total_count": 1, "runners": [
+            runner(1, "bld-unity-pool-1", ["self-hosted", "unity-build-withheld", "host-bld"], busy=False)]}
+        try:
+            out = self.render()
+        finally:
+            FAKE[org] = saved
+        self.assertEqual(rows(out, "github_runner_withheld"), ['github_runner_withheld{name="bld-unity-pool-1",host="bld"} 1'])
+        self.assertTrue(any('pool="unity-build"' in r and 'host="bld"' in r for r in rows(out, "github_runner_state")))
+        self.assertFalse(any('pool="unity"' in r and 'host="bld"' in r for r in rows(out, "github_runner_state")))
 
     def test_no_token_everything_failed(self):
         out = self.render(broken=("orgs/", "repos/"))

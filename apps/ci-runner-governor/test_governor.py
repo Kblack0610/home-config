@@ -803,6 +803,94 @@ class GovernorTest(unittest.TestCase):
         self.assertEqual(calls[1][2], {"labels": ["unity", "unity-full"]})
         self.assertTrue(calls[2][1].endswith("/7/labels/unity-withheld"))
 
+    # A dedicated host (aws-build-1): its own label and withheld label, only its own jobs,
+    # outside the shared pool's queue, floor, cap and standby order.
+    BUILD_JOB = frozenset({"self-hosted", "linux", "unity-build"})
+    BUILD_LABELS = frozenset({"self-hosted", "linux", "x64", "host-aws-build-1", "unity-build-withheld", "unity-build"})
+    BUILD = {**CFG, "standby": {
+        "aws-build-1": {"max_admitted": 3, "labels": ["unity-build"], "withheld_label": "unity-build-withheld",
+                        "power": {**POWER, "instance_id": "i-0bld"}},
+        **AWS["standby"]}}
+
+    def both(self, build="stopped", burst="stopped", idle=0):
+        return {"aws-build-1": {"state": build, "busy_at": 10_000 - idle, "labels": self.BUILD_LABELS},
+                "aws-burst-1": {"state": burst, "busy_at": 10_000 - idle, "labels": AWS_LABELS}}
+
+    def build(self, on_busy=0, on_idle=0, off=0):
+        specs = [(f"bld-{i}", "aws-build-1", True, 100 - i, False) for i in range(on_busy)]
+        specs += [(f"bld-idle-{i}", "aws-build-1", False, 0, False) for i in range(on_idle)]
+        specs += [(f"bld-off-{i}", "aws-build-1", False, 0, True) for i in range(off)]
+        return pool(*specs)
+
+    def test_a_waiting_build_starts_the_build_host_only(self):
+        # razer-3 is idle, which would cover one pool job: it covers no build.
+        got = actions(self.STEADY, RUNNERS, cfg=self.BUILD, instances=self.both(), waiting=[self.BUILD_JOB])
+        self.assertEqual(got["aws-build-1"], ("start", ""))
+        self.assertEqual(got["aws-burst-1"], ("hold", ""))
+
+    def test_gate_jobs_never_start_the_build_host(self):
+        # Negative control: a full pool queue starts aws-burst-1, and aws-build-1, first in the
+        # standby order, neither starts nor stands ahead of it.
+        got = actions(self.STEADY, self.FULL, cfg=self.BUILD, instances=self.both(), queue=5)
+        self.assertEqual(got["aws-build-1"], ("hold", ""))
+        self.assertEqual(got["aws-burst-1"], ("start", ""))
+
+    def test_a_build_does_not_admit_a_pool_slot(self):
+        runners = {**self.aws(off=2), **self.FULL}
+        got = actions(self.STEADY, runners, cfg=self.BUILD, instances=self.both(burst="running"),
+                      waiting=[self.BUILD_JOB])
+        self.assertEqual(got["aws-burst-1"], ("hold", ""))
+
+    def test_the_build_host_admits_past_the_pool_cap(self):
+        cfg = {**self.BUILD, "pool_max_admitted": 0}
+        got = actions(self.STEADY, {**self.build(off=3), **self.FULL}, cfg=cfg,
+                      instances=self.both(build="running"), waiting=[self.BUILD_JOB])
+        self.assertEqual(got["aws-build-1"], ("admit", "bld-off-0"))
+
+    def test_build_slots_do_not_count_toward_the_pool_cap(self):
+        # Two pool runners admitted and a cap of 3: three busy build slots leave room for one more.
+        cfg = {**self.BUILD, "pool_max_admitted": 3}
+        runners = {**self.build(on_busy=3), **self.aws(off=2), **self.FULL}
+        got = actions(self.STEADY, runners, cfg=cfg, instances=self.both(build="running", burst="running"), queue=5)
+        self.assertEqual(got["aws-burst-1"], ("admit", "aws-off-0"))
+
+    def test_the_build_host_goes_back_when_no_build_waits(self):
+        # Gate jobs wait, but none is the build host's.
+        got = actions(self.STEADY, {**self.build(on_idle=1), **self.FULL}, cfg=self.BUILD,
+                      instances=self.both(build="running"), queue=5)
+        self.assertEqual(got["aws-build-1"], ("withhold", "bld-idle-0"))
+
+    def test_the_build_host_stops_when_idle(self):
+        got = actions(self.STEADY, {**self.build(off=3), **self.FULL}, cfg=self.BUILD,
+                      instances=self.both(build="running", idle=1200), queue=5)
+        self.assertEqual(got["aws-build-1"], ("stop", ""))
+
+    def test_build_host_labels_swap_only_its_own(self):
+        for action, has, added, removed in (("admit", "unity-build-withheld", "unity-build", "unity-build-withheld"),
+                                            ("withhold", "unity-build", "unity-build-withheld", "unity-build")):
+            calls = []
+
+            def gh(method, path, body=None):
+                calls.append((method, path, body))
+                if method == "GET":
+                    return {"runners": [{"id": 9, "name": "bld-1",
+                                         "labels": [{"name": "self-hosted"}, {"name": has}]}]}
+                return None
+            governor.gh = gh
+            governor.apply(self.BUILD, action, "bld-1", "aws-build-1")
+            self.assertEqual(calls[1][2], {"labels": [added]}, action)
+            self.assertEqual([c[1].rsplit("/", 1)[1] for c in calls if c[0] == "DELETE"], [removed], action)
+
+    def test_a_waiting_build_is_not_in_the_pool_queue(self):
+        jobs = [self.BUILD_JOB, UNITY_JOB, self.BUILD_JOB]
+        self.assertEqual(governor.pool_jobs(jobs, governor.build_marks(self.BUILD)), [UNITY_JOB])
+
+    def test_the_build_pool_is_read(self):
+        self.assertEqual(governor.pools(self.BUILD), ["unity", "unity-build"])
+        with mock.patch.object(governor, "prom", return_value=[]) as prom:
+            governor.host_labels(self.BUILD, "aws-build-1")
+        self.assertIn('pool=~"unity|unity-build"', prom.call_args.args[0])
+
     def test_admit_leaves_full_off_a_host_that_takes_no_full_runs(self):
         calls = []
 

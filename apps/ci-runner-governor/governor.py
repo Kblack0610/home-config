@@ -59,6 +59,13 @@ on it has been busy for idle_off_seconds, or it has run max_hours_day this UTC d
 slots are withheld one per cycle and the instance is stopped once none is busy, so a slot
 never loses a job to the stop and comes back withheld.
 
+A dedicated standby host ("labels" and "withheld_label" in its entry: aws-build-1, the
+player-build host) carries its own label (unity-build) instead of the pool's and is its
+own exporter pool. It takes only the waiting jobs that ask for that label, which no other
+host covers, so one waiting build starts it; it stays out of the pool's queue, floor,
+max_admitted cap and the standby order. Its idle-off, daily cap, override and drain are
+the same as any powered host's.
+
 "standby" is an ordered list, Spot first (aws-burst-2, then the on-demand aws-burst-1). A
 host further down starts only for the jobs the hosts ahead of it cannot take: a stopped
 one ahead counts its max_admitted, one booting or running counts the slots it has not
@@ -225,12 +232,40 @@ def by_host(result):
     return {r["metric"].get("nodename") or r["metric"].get("host"): float(r["value"][1]) for r in result}
 
 
-def observe(pool_label):
+def pools(cfg):
+    """The exporter pools the governor runs: the shared pool and each dedicated host's own."""
+    return [cfg["pool_label"]] + sorted({l for s in cfg["standby"].values() for l in s.get("labels", [])})
+
+
+def dedicated(cfg, host):
+    """A dedicated standby host's labels (aws-build-1: ["unity-build"]), or None. Its runners
+    carry these instead of the pool's, it takes only the jobs that ask for one, and it stays
+    out of the shared pool's queue, floor, cap and standby order."""
+    return (cfg["standby"].get(host) or {}).get("labels")
+
+
+def build_marks(cfg):
+    """Each dedicated host's labels, lowercased: a job that asks for one is that host's alone."""
+    return {h: frozenset(l.lower() for l in dedicated(cfg, h)) for h in cfg["standby"] if dedicated(cfg, h)}
+
+
+def pool_jobs(waiting, own):
+    """The waiting jobs the shared pool serves: every one that asks for no dedicated host's label."""
+    marks = frozenset().union(*own.values())
+    return [need for need in waiting if not need & marks]
+
+
+def withheld_label(cfg, host):
+    return (cfg["standby"].get(host) or {}).get("withheld_label", cfg["withheld_label"])
+
+
+def observe(pool_labels):
     """One reading of every host and pool runner. Raises when any source fails, so a
     blind cycle decides nothing instead of reading as an idle machine."""
+    pool_label = "|".join(pool_labels)
     hosts = {k: by_host(prom(q)) for k, q in QUERIES.items()}
     runners = {}
-    for r in prom(f'github_runner_state{{pool="{pool_label}",state=~"running|idle"}}'):
+    for r in prom(f'github_runner_state{{pool=~"{pool_label}",state=~"running|idle"}}'):
         m = r["metric"]
         if m.get("scope") == "org":
             runners[m["name"]] = {"host": m["host"], "busy": m["state"] == "running",
@@ -243,7 +278,7 @@ def observe(pool_label):
         if r["metric"]["name"] in runners:
             runners[r["metric"]["name"]]["withheld"] = True
     waiting = [label_set(r["metric"].get("labels", ""))
-               for r in prom(f'github_actions_job_waiting{{pool="{pool_label}",stuck!="true"}}')]
+               for r in prom(f'github_actions_job_waiting{{pool=~"{pool_label}",stuck!="true"}}')]
     return hosts, runners, waiting
 
 
@@ -255,6 +290,8 @@ def label_set(joined):
 def admit_labels(cfg, host):
     """The labels a runner on host gets back on admit. "full": false in its hosts entry leaves
     out the full label: unity_ci_full false in inventory.yml, so no full run lands there."""
+    if dedicated(cfg, host):
+        return list(dedicated(cfg, host))
     full = cfg["hosts"].get(host, {}).get("full", True)
     return [cfg["pool_label"]] + ([cfg["full_label"]] if full else [])
 
@@ -264,7 +301,7 @@ def host_labels(cfg, host):
     stay registered, offline), plus the pool labels a withheld one gets back on admit.
     Empty when no runner of it is listed."""
     have = set()
-    for r in prom(f'github_runner_state{{host="{host}",pool="{cfg["pool_label"]}"}}'):
+    for r in prom(f'github_runner_state{{host="{host}",pool=~"{"|".join(pools(cfg))}"}}'):
         have |= label_set(r["metric"].get("labels", ""))
     return frozenset(have | label_set(",".join(admit_labels(cfg, host)))) if have else frozenset()
 
@@ -297,11 +334,14 @@ def verdict(h, t):
 def decide(cfg, hosts, runners, waiting, last_action, now, instances=None, pins=None, restore=()):
     """[(host, action, runner, verdict, why)]: at most one action per host, withholds
     first so a re-admit elsewhere can use the room the pool keeps. waiting is one label
-    set per waiting pool job; instances is power_readings() for the standby hosts with a
+    set per waiting job, the pool's and the dedicated hosts'; instances is power_readings() for the standby hosts with a
     power block; pins is read_pins(); restore names the hosts whose verdicts are not
     applied (a dry run), which get back what a pin withheld once no pin holds them."""
+    # Jobs that ask for a dedicated host's label are that host's alone; the rest are the pool's.
+    own = build_marks(cfg)
+    waiting_all, waiting = waiting, pool_jobs(waiting, own)
     queue = len(waiting)
-    admitted = sum(1 for r in runners.values() if not r["withheld"])
+    admitted = sum(1 for r in runners.values() if not r["withheld"] and r["host"] not in own)
     # A standby host can go to zero, so only the other hosts hold the pool's floor.
     floor_held = sum(1 for r in runners.values() if not r["withheld"] and r["host"] in cfg["hosts"])
     plans = []
@@ -369,7 +409,12 @@ def decide(cfg, hosts, runners, waiting, last_action, now, instances=None, pins=
         action, runner, why = "hold", "", "overflow"
         over = inst.get("override") if inst else None
         drain, cause, wanting, want = "", "", False, 0
-        takes = sum(1 for need in waiting if need <= inst["labels"]) if inst else 0
+        # A dedicated host answers only its own jobs: no other host covers them, none is
+        # ahead of it, and the shared pool's cap does not count it.
+        ded = host in own
+        jobs = [need for need in waiting_all if need & own[host]] if ded else waiting
+        q, cov = (len(jobs), 0) if ded else (queue, covered)
+        takes = sum(1 for need in jobs if need <= inst["labels"]) if inst else 0
         # Only a stopped host is passed over: AWS restarts a persistent Spot one by itself
         # when capacity returns, and then it counts like any running host.
         passed = bool(inst) and inst["state"] == "stopped" and inst.get("fallback_until", 0) > now
@@ -395,19 +440,21 @@ def decide(cfg, hosts, runners, waiting, last_action, now, instances=None, pins=
         elif len(on) > cap:
             action, runner, why = "withhold", on[0], f"over its {cap} cap"
         elif over == "on" and inst and inst["state"] == "running" and off:
-            if admitted < cfg["pool_max_admitted"]:
+            if ded or admitted < cfg["pool_max_admitted"]:
                 action, runner, why = "admit", off[0], "override on"
-                admitted += 1
-                covered += 1
+                if not ded:
+                    admitted += 1
+                    covered += 1
             else:
                 why = f"override on; pool at its {cfg['pool_max_admitted']} cap"
-        elif queue == 0 and on and not mine[on[0]]["busy"] and over != "on":
+        elif q == 0 and on and not mine[on[0]]["busy"] and over != "on":
             action, runner, why = "withhold", on[0], "nothing waits"
-        elif queue > covered and off and len(on) < cap:
-            if admitted < cfg["pool_max_admitted"]:
-                action, runner, why = "admit", off[0], f"{queue} jobs wait, the other hosts cover {covered}"
-                admitted += 1
-                covered += 1
+        elif q > cov and off and len(on) < cap:
+            if ded or admitted < cfg["pool_max_admitted"]:
+                action, runner, why = "admit", off[0], f"{q} jobs wait, the other hosts cover {cov}"
+                if not ded:
+                    admitted += 1
+                    covered += 1
             else:
                 why = f"pool at its {cfg['pool_max_admitted']} cap"
         elif inst and inst["state"] == "stopped" and over == "on":
@@ -417,29 +464,29 @@ def decide(cfg, hosts, runners, waiting, last_action, now, instances=None, pins=
         elif inst and inst["state"] == "stopped" and passed:
             why = (f"passed over after a {inst['fallback_why']} for "
                    f"{int(inst['fallback_until'] - now)}s more")
-        elif inst and inst["state"] == "stopped" and queue > covered:
+        elif inst and inst["state"] == "stopped" and q > cov:
             # Not room yet: its slots count once their runners are online and admitted. A
             # start costs money, so only a queue this much deeper than the other hosts can
             # take, for start_after_seconds in a row, starts it: a short burst waits instead.
             # The standby hosts ahead in the list take theirs first.
-            coming = sum(ahead.values())
-            want = max(0, min(takes, queue - covered - coming))
+            coming = 0 if ded else sum(ahead.values())
+            want = max(0, min(takes, q - cov - coming))
             if not inst["labels"]:
                 why = "no runner labels read"
             elif not takes:
-                why = f"{queue} jobs wait, none it can take"
+                why = f"{q} jobs wait, none it can take"
             elif inst.get("hours_today", 0) >= p["max_hours_day"]:
                 why = f"ran {inst['hours_today']:.1f}h today, its {p['max_hours_day']}h cap"
             elif want < p["start_min_excess"]:
-                why = f"{want} jobs it can take past the other hosts' {covered}, starts at {p['start_min_excess']}"
+                why = f"{want} jobs it can take past the other hosts' {cov}, starts at {p['start_min_excess']}"
                 if coming:
                     why += f"; {', '.join(ahead)} ahead of it take {coming}"
-            elif admitted >= cfg["pool_max_admitted"]:
+            elif not ded and admitted >= cfg["pool_max_admitted"]:
                 why = f"pool at its {cfg['pool_max_admitted']} cap"
             else:
                 wanting = True
                 since = inst["want_since"] = inst.get("want_since") or now
-                why = f"{queue} jobs wait, {takes} it can take, the other hosts cover {covered}"
+                why = f"{q} jobs wait, {takes} it can take, the other hosts cover {cov}"
                 if now - since >= p["start_after_seconds"]:
                     action, cause = "start", "queue"
                 else:
@@ -458,7 +505,7 @@ def decide(cfg, hosts, runners, waiting, last_action, now, instances=None, pins=
             inst["next_cause"] = cause if action in ("start", "stop") else ""
             # What it will take, for the hosts behind it: nothing while draining, passed
             # over, told off, past its day or unable to take what waits.
-            if not (drain or passed or over == "off" or not takes):
+            if not (ded or drain or passed or over == "off" or not takes):
                 if inst["state"] == "stopped" and inst.get("hours_today", 0) < p["max_hours_day"]:
                     ahead[host] = cap
                 elif inst["state"] in ("pending", "running"):
@@ -493,10 +540,10 @@ def runner_id(org, name):
 def apply(cfg, action, name, host):
     """Swap the pool labels for the withheld one, or back. Adds before it removes, so a
     runner is never left with neither."""
-    org, pool = cfg["org"], [cfg["pool_label"], cfg["full_label"]]
+    org, held = cfg["org"], withheld_label(cfg, host)
+    pool = dedicated(cfg, host) or [cfg["pool_label"], cfg["full_label"]]
     rid, have = runner_id(org, name)
-    add, drop = ((admit_labels(cfg, host), [cfg["withheld_label"]]) if action == "admit"
-                 else ([cfg["withheld_label"]], pool))
+    add, drop = (admit_labels(cfg, host), [held]) if action == "admit" else ([held], pool)
     if set(add) - have:
         gh("POST", f"orgs/{org}/actions/runners/{rid}/labels", {"labels": sorted(set(add) - have)})
     for label in drop:
@@ -959,13 +1006,15 @@ def render_budget(b):
 def cycle(cfg, last_action, tracked=None, budget=None):
     now = time.time()
     try:
-        hosts, runners, waiting = observe(cfg["pool_label"])
+        hosts, runners, waiting = observe(pools(cfg))
     except API_ERRORS as e:
         print(f"blind cycle, deciding nothing: {e}", flush=True)
         with State.lock:
             State.metrics = "ci_governor_up 1\nci_governor_ok 0\n"
         return
-    queue = len(waiting)
+    # ci_governor_queue is the shared pool's queue: a build waiting on its own host is not one
+    # a disk-held pool slot could take (CiHostHeldOutByDisk).
+    queue = len(pool_jobs(waiting, build_marks(cfg)))
     instances = power_readings(cfg, runners, {} if tracked is None else tracked, now)
     restore = {h for h in cfg["hosts"] if not live(cfg, h)}
     decisions = decide(cfg, hosts, runners, waiting, last_action, now, instances, read_pins(cfg, now), restore)

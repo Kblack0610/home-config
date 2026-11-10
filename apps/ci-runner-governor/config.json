@@ -15,7 +15,11 @@
     {"host": "aws-burst-1", "max_admitted": 5, "power": {"provider": "aws", "instance_id": "i-0f1ecf35dc0e78146",
                                                        "region": "us-east-2", "idle_off_seconds": 900,
                                                        "start_min_excess": 4, "start_after_seconds": 300, "max_hours_day": 12,
-                                                       "fallback_seconds": 3600, "usd_per_hour": 1.855, "live": true}}
+                                                       "fallback_seconds": 3600, "usd_per_hour": 1.855, "live": true}},
+    {"host": "aws-build-1", "max_admitted": 3, "labels": ["unity-build"], "withheld_label": "unity-build-withheld",
+     "power": {"provider": "aws", "instance_id": "i-0856b245ff7a81321", "region": "us-east-2", "idle_off_seconds": 900,
+               "start_min_excess": 1, "start_after_seconds": 60, "max_hours_day": 12,
+               "fallback_seconds": 3600, "usd_per_hour": 1.855, "live": true}}
   ],
   "workers": [],
   "budget": {"name": "ci-burst-monthly", "account_id": "311141527647"},

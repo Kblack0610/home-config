@@ -413,9 +413,10 @@
         # that passed the ucp-1521 probes (unity_ci_wide, default false). hd-library: the host
         # holds asset-library-hd (HD, Slim tour); defaults to unity_ci_lan, since only LAN hosts
         # got the tarball, and a cloud host sets unity_ci_hd_library once it reads it from S3.
-        # unity_ci_slot_labels adds labels
-        # to one slot, so a comparison run can be pinned to it.
-        gh_runner_labels: "{{ [ 'self-hosted', 'linux', 'x64', 'unity', 'host-' ~ inventory_hostname ] + ([ 'unity-full' ] if unity_ci_full | default(true) else []) + ([ 'lan' ] if unity_ci_lan | default(true) else []) + ([ 'unity-wide' ] if unity_ci_wide | default(false) else []) + ([ 'hd-library' ] if unity_ci_hd_library | default(unity_ci_lan | default(true)) else []) + (unity_ci_slot_labels | default({})).get(unity_slot, []) }}"
+        # unity_ci_pool: false leaves unity and unity-full off, and unity_ci_build: true puts
+        # unity-build on: a build-only host (aws-build-1) that no gate or nightly can land on.
+        # unity_ci_slot_labels adds labels to one slot, so a comparison run can be pinned to it.
+        gh_runner_labels: "{{ [ 'self-hosted', 'linux', 'x64', 'host-' ~ inventory_hostname ] + ([ 'unity' ] if unity_ci_pool | default(true) else []) + ([ 'unity-full' ] if unity_ci_pool | default(true) and unity_ci_full | default(true) else []) + ([ 'unity-build' ] if unity_ci_build | default(false) else []) + ([ 'lan' ] if unity_ci_lan | default(true) else []) + ([ 'unity-wide' ] if unity_ci_wide | default(false) else []) + ([ 'hd-library' ] if unity_ci_hd_library | default(unity_ci_lan | default(true)) else []) + (unity_ci_slot_labels | default({})).get(unity_slot, []) }}"
         # With ci_unity_slot_cpus each slot gets its own cores (roles/ci-host-budget).
         unity_slot_slice: >-
           {{ (ci_unity_slot_slice_prefix ~ unity_slot ~ '.slice') if ci_unity_slot_cpus | length else ci_unity_slice }}

@@ -173,7 +173,11 @@ def site_of(host):
     return "cloud" if host in CLOUD_HOSTS else "local"
 
 
-POOL_LABELS = ("light", "heavy", "unity")
+# unity-build: the player-build host (aws-build-1), a pool of its own so build waits stay
+# out of the gate pool's numbers.
+POOL_LABELS = ("light", "heavy", "unity", "unity-build")
+# The labels apps/ci-runner-governor swaps a runner's pool labels for while it holds it back.
+WITHHELD_LABELS = {"unity-withheld": "unity", "unity-build-withheld": "unity-build"}
 # A queued run with no jobs this old never gets a runner (GitHub creates a run's
 # jobs within seconds). It is labelled stuck="true" so boards can list it apart
 # instead of letting its age stand for the queue's.
@@ -283,10 +287,12 @@ def pool_of(labels):
         if p in labels:
             return p
     # Full suite runs ask for unity-full, which only unity pool runners carry.
-    # apps/ci-runner-governor swaps both for unity-withheld on a runner it holds
-    # back; that runner is still in the pool.
-    if "unity-full" in labels or "unity-withheld" in labels:
+    if "unity-full" in labels:
         return "unity"
+    # A runner apps/ci-runner-governor holds back is still in its pool.
+    for label, pool in WITHHELD_LABELS.items():
+        if label in labels:
+            return pool
     if "macOS" in labels:
         return "macos"
     # GitHub matches labels without regard to case, and the runner's own label
@@ -752,12 +758,12 @@ def render():
     L += forgejo("github_runner_state")
 
     L += [
-        "# HELP github_runner_withheld A unity pool runner apps/ci-runner-governor holds back from new jobs",
+        "# HELP github_runner_withheld A unity or unity-build runner apps/ci-runner-governor holds back from new jobs",
         "# TYPE github_runner_withheld gauge",
     ]
     for scope, r in sorted(seen.values(), key=lambda s: s[1]["name"]):
         names = [l["name"] for l in r.get("labels", [])]
-        if "unity-withheld" in names:
+        if WITHHELD_LABELS.keys() & set(names):
             L.append(f"github_runner_withheld{{{labels_str({'name': r['name'], 'host': host_of(r['name'], names)})}}} 1")
 
     if runners_ok:

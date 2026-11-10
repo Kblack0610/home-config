@@ -110,6 +110,13 @@ apps/ci-runner-governor powers it (config.json `standby` -> `aws-burst-1` -> `po
 | It ran past 12h | An "on" override, or the governor pod restarted after an earlier run that day (the count restarts from the current run's launch time) | Expected for the override; the AWS budget is the cap that cannot forget |
 | Offline runners `aws-burst-1-unity-pool-7`, `-8` with no `unity` label | #525 cut `unity_ci_slots` from 8 to 6 and left those two registered; a lowered count removes nothing (top of this page) | Deregistered 2026-11-04. Next time, run `scripts/unity-ci-runner-remove.sh --host <host> --slot N` for each dropped slot |
 
+## The AWS build host (aws-build-1)
+
+- The player-build lane: an on-demand m7a.8xlarge (us-east-2, 3 slots of 10 cores and 36G, 600G data volume) from the platform `infra/aws-ci-burst` `hosts` map. Inventory `unity_ci_pool: false` and `unity_ci_build: true` give its runners `unity-build` and no `unity`, `unity-full` or `lan`, so no gate or nightly lands there and a build never waits on one. release.yml asks for `[self-hosted, linux, unity-build]`; its `host` input pins a build to another host instead (the razer release lane).
+- The governor powers it as a dedicated standby host (config.json `standby` -> `aws-build-1`, with `labels` and `withheld_label`): one waiting build starts it after 60 s, and it stops 15 minutes after its last busy slot. A withheld slot carries `unity-build-withheld`. The exporter counts it as pool `unity-build`, so its waits stay out of the gate pool's numbers.
+- Setup and activation are the same as aws-burst-1 above (`--limit aws-build-1`). The host pulls the whole default image list, since a desktop build needs the windows and mac editor images.
+- Another build host: one `hosts` entry in Terraform, one inventory entry modeled on this one, one standby entry, and the rosters. `scripts/check-runner-roster.py` checks the last three agree.
+
 ## Secrets the playground workflows need
 
 - `UNITY_SERIAL`, repo secret on unity-core-playground: DodginBalls' Personal serial (reading it from a `Unity_lic.ulf`: dodginballs `docs/operations/ci-findings.md`).

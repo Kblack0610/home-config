@@ -374,7 +374,7 @@
       "targets": [
         {
           "expr": "trader_bot_profit_pct",
-          "legendFormat": "{{bot}}",
+          "legendFormat": "{{cohort}} {{bot}}",
           "refId": "A"
         }
       ],

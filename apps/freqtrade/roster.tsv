@@ -1,4 +1,6 @@
-# Freqtrade dry-run league roster: one bot per row, name exchange strategy.
+# Freqtrade dry-run league roster: one bot per row, name exchange strategy cohort overlay.
+# cohort is the league the bot reports in, overlay a lab/variants.toml id (base: the strategy's own
+# settings); a 3-column row is cohort league, overlay base. Cohort rows come from lab/cohorts.py.
 # Pod freqtrade-league-N runs row N (comments and blank lines skipped), so
 # append new rows at the end and raise replicas in statefulset.yaml to the row
 # count. Strategies live in github.com/Kblack0610/freqtrade_trading_attempt.
@@ -14,3 +16,17 @@ coinbase-s001        coinbase   Strategy001
 kraken-supertrend    kraken     Supertrend
 binanceus-supertrend binanceus  Supertrend
 coinbase-supertrend  coinbase   Supertrend
+agg-binanceus-binhv45 binanceus BinHV45 aggressive base
+agg-coinbase-binhv45 coinbase BinHV45 aggressive base
+agg-kraken-binhv45 kraken BinHV45 aggressive base
+agg-binanceus-combinedbinhandcluc binanceus CombinedBinHAndCluc aggressive base
+agg-coinbase-combinedbinhandcluc coinbase CombinedBinHAndCluc aggressive base
+agg-kraken-combinedbinhandcluc kraken CombinedBinHAndCluc aggressive base
+agg-binanceus-clucmay72018 binanceus ClucMay72018 aggressive base
+agg-coinbase-clucmay72018 coinbase ClucMay72018 aggressive base
+agg-kraken-clucmay72018 kraken ClucMay72018 aggressive base
+agg-binanceus-binhv27 binanceus BinHV27 aggressive base
+agg-coinbase-binhv27 coinbase BinHV27 aggressive base
+agg-kraken-binhv27 kraken BinHV27 aggressive base
+mix-binanceus-binhv27 binanceus BinHV27 mixture base
+mix-binanceus-bandtastic binanceus Bandtastic mixture base

@@ -46,7 +46,7 @@ Run the analysis now: `kubectl --context home-k3s -n freqtrade create job --from
 
 Run the walk-forward now: `kubectl --context home-k3s -n freqtrade create job --from=cronjob/freqtrade-walkforward walkforward-manual-$(date +%s)`; its log prints a line per month. Results are on the site's Walk-forward page.
 
-Try a new strategy live: append a row to `roster.tsv` (`name exchange strategy`), raise `replicas` in `statefulset.yaml` to the row count, commit, push to forgejo. Never reorder or delete rows in the middle: row N is bound to pod N's PVC, so a shift hands a bot another bot's trade history. To retire a bot, replace its row in place with a new name and delete that pod's PVC.
+Try a new strategy live: append a row to `roster.tsv` (`name exchange strategy cohort overlay`: the cohort is the league it reports in, the overlay a `lab/variants.toml` id or `base`; a 3-column row is `league base`), raise `replicas` in `statefulset.yaml` to the row count, commit, push to forgejo. Never reorder or delete rows in the middle: row N is bound to pod N's PVC, so a shift hands a bot another bot's trade history. To retire a bot, replace its row in place with a new name and delete that pod's PVC. Seed a cohort's rows with `python ci/cohort_roster.py <cohort>` in the strategy repo (it picks them with `python -m lab.cohorts pick <cohort>` in trader-web and opens the PR); resizing a cohort is a human edit.
 
 Ship a strategy or lab change: merge it in the strategy repo, wait for its `image` workflow to push, then set `digest` in `kustomization.yaml` to the digest of tag `sha-<first 7 of the merge commit>`. The package is public, so an anonymous query works:
 

@@ -775,7 +775,7 @@
       "id": 10,
       "type": "stat",
       "title": "LLM",
-      "description": "LiteLLM scrapeable plus the mac_studio_mlx watch.",
+      "description": "LiteLLM scrapeable.",
       "datasource": {
         "type": "prometheus",
         "uid": "${datasource}"

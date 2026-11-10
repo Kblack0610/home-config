@@ -34,7 +34,7 @@ pi3 is the odd one out: it is not in the cluster, so there is no k8s node name a
 when it is down name resolution fails for everything - including whatever you
 were about to use to debug it. Reach it by IP.
 
-Macs use `~/.ssh/config` aliases (`m1`, `mac-studio`) — see `docs/mac-machines.md`. The `-lan` suffix is a Pi/x86 convention only.
+Macs use `~/.ssh/config` aliases (`m1`, `mac-mini`) - see `docs/mac-machines.md`. The `-lan` suffix is a Pi/x86 convention only.
 
 ## Quick decision tree
 

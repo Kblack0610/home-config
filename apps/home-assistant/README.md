@@ -52,8 +52,7 @@ Custom components (e.g. `ha-bambulab`) are installed via init containers with pi
 |----------|-------------|
 | Cluster status | CPU, RAM, and disk sensors for nodes 1-5 |
 | Service health | Home Assistant, Traefik, and LiteLLM container metrics |
-| Mac monitoring | Mac Studio and Mac Mini node exporter metrics |
-| AI endpoints | MLX model endpoint model counts |
+| Mac monitoring | Mac Mini node exporter metrics |
 
 ### Launcher (auto-generated)
 

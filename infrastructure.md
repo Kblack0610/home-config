@@ -110,7 +110,6 @@
 | Pi3 AdGuard Home | standalone | -- | Docker Compose | active |
 | ESP32 Smart Switch | standalone | -- | Embedded (Rust) | active |
 | GitHub Actions Runner | mac-machines | -- | LaunchDaemon | active |
-| MLX LLM Inference | mac-machines | -- | Native (launchd) | active |
 | node_exporter | mac-machines | -- | Homebrew service | active |
 
 ---
@@ -119,8 +118,8 @@
 
 | property | value |
 |----------|-------|
-| machines | Mac Studio M3 Ultra (512GB), Mac Mini M1 (16GB) |
-| purpose | iOS builds, Expo, GitHub Actions CI/CD, LLM inference |
+| machines | Mac Mini M1 (16GB) |
+| purpose | iOS builds, Expo, GitHub Actions CI/CD |
 | monitoring | node_exporter (port 9100) → Prometheus (ServiceMonitor) → Grafana / HA |
 | not in K3s | Native macOS workloads only (K3s is Linux-only) |
 
@@ -128,7 +127,6 @@
 
 | machine | chip | ram | ip | hostname | role |
 |---------|------|-----|-----|----------|------|
-| Mac Studio | M3 Ultra | 512 GB | 192.168.1.4 | mac-studio | MLX inference, iOS builds, GH Actions runner |
 | Mac Mini | M1 | 16 GB | 192.168.1.7 | pc-home-m1-mini | iOS builds, Expo, GH Actions runner |
 
 #### setup docs

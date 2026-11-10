@@ -66,9 +66,6 @@ all:
 
     macos_hosts:
       hosts:
-        mac-studio:
-          ansible_host: 192.168.1.4
-          ansible_user: kblack0610
         mac-mini:
           ansible_host: 192.168.1.7
           ansible_user: kennethblack

@@ -19,7 +19,7 @@ node_exporter_launchagents_dir: "{{ ansible_env.HOME }}/Library/LaunchAgents"
 node_exporter_log_dir: /tmp
 
 # Textfile collector directory. Sampler scripts (e.g. the
-# launchd-powermetrics-textfile role) write *.prom files here and
+# ci-runner-cpu role) write *.prom files here and
 # node_exporter serves them on /metrics. The role creates this dir.
 # Owned by the login user; do NOT use a system path that would require
 # root for sampler writes.

@@ -53,18 +53,6 @@ devices:
     category: workstations
     range_exception: true
 
-  - hostname: mac-home-m3-lan
-    mac: "1C:1D:D3:DE:7D:80"
-    ip: "192.168.1.4"
-    category: workstations
-    range_exception: true
-
-  - hostname: mac-home-m3-wan
-    mac: "46:F4:A9:CF:6E:7D"
-    ip: "192.168.1.5"
-    category: workstations
-    range_exception: true
-
   - hostname: pc-mac-m1
     mac: "72:4F:F3:91:60:3E"
     ip: "192.168.1.6"

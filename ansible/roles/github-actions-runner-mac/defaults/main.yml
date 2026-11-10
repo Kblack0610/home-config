@@ -17,7 +17,7 @@ gh_runner_mac_svc_name: >-
 # Pin the runner release. Matches the Linux role's pinned version so the
 # fleet runs a consistent actions-runner. Bump deliberately.
 gh_runner_mac_version: "2.337.0"
-gh_runner_mac_arch: arm64  # Both mac-studio (M3 Ultra) and mac-mini (M1) are Apple Silicon.
+gh_runner_mac_arch: arm64  # mac-mini (M1) is Apple Silicon.
 gh_runner_mac_tarball: "actions-runner-osx-{{ gh_runner_mac_arch }}-{{ gh_runner_mac_version }}.tar.gz"
 gh_runner_mac_tarball_url: "https://github.com/actions/runner/releases/download/v{{ gh_runner_mac_version }}/{{ gh_runner_mac_tarball }}"
 # sha256 fetched via:
@@ -55,8 +55,7 @@ gh_runner_mac_path: ""
 #   absent            — stop + uninstall the LaunchAgent, deregister from
 #                       GitHub, and remove local markers. Bind the role in
 #                       absent mode to demote a host that is no longer a CI
-#                       runner (mac-studio became a dedicated LLM node
-#                       2026-07-18; the mac-studio play sets this).
+#                       runner.
 gh_runner_mac_state: present
 
 # Registration-token source (used by BOTH present registration and absent

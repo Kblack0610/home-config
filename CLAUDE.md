@@ -54,7 +54,7 @@ Bare-metal Pis have **four different names** for the same box, each resolved by 
 | `kubectl get nodes`, `kubectl debug node/...` | k8s node name | `raspberrypi`, `raspberrypi-e3a771f1` | OS hostname (Pis kept default `raspberrypi[-suffix]`) |
 | Always works | IP | `192.168.1.20` (master), `.21-.24, .124` (workers) | - |
 
-Macs use SSH-config aliases (`m1`, `mac-studio`) instead - see `docs/mac-machines.md`. The `-lan` suffix is a Pi/x86 convention only.
+Macs use SSH-config aliases (`m1`, `mac-mini`) instead - see `docs/mac-machines.md`. The `-lan` suffix is a Pi/x86 convention only.
 
 Rule of thumb:
 - runbook or shell command -> use `-lan` or IP
@@ -63,12 +63,12 @@ Rule of thumb:
 
 Full mapping table + the `kubectl debug node/<name> --profile=sysadmin -- chroot /host` recipe for fixing dead-SSH nodes lives in [`docs/host-access.md`](./docs/host-access.md).
 
-## Local LLM routing
+## LLM routing
 
-Anything that needs a self-hosted model calls the **LiteLLM gateway** (`apps/litellm`, OpenAI-compatible `/v1`). Never curl a model host by IP:port, and never `ollama pull` as a workaround when an endpoint is unreachable.
+Anything that needs a model calls the **LiteLLM gateway** (`apps/litellm`, OpenAI-compatible `/v1`). Never curl a model host by IP:port, and never `ollama pull` as a workaround when an endpoint is unreachable.
 
-- **Ollama is decommissioned.** Mac Studio serves models via `mlx-server` (:8090), fronted by LiteLLM. A hardcoded `:11434` is always stale.
-- **LiteLLM fronts three tiers:** local MLX (free), Gemini (free tier), and paid **Lazer** (`proxy.lazertechnologies.com`). Lazer is the user's own AI allowance ($250/mo, LiteLLM team `lazer-pool`), not a client proxy, and personal data may use it. Reach it through the gateway with a scoped key so spend is metered.
+- **There is no self-hosted model host.** Every route is a cloud upstream behind LiteLLM; a hardcoded `:11434` (Ollama) or `:8090` (MLX) endpoint is always stale.
+- **LiteLLM fronts two tiers:** Gemini (free tier) and paid **Lazer** (`proxy.lazertechnologies.com`). Lazer is the user's own AI allowance ($250/mo, LiteLLM team `lazer-pool`), not a client proxy, and personal data may use it. Reach it through the gateway with a scoped key so spend is metered.
 - **Consumers hold a scoped virtual key, never the master key.** Scope `allowed_models` to the tiers that consumer may use, so a wrong model name fails closed at the gateway instead of leaking content to a paid or cloud upstream. Minting: `apps/litellm/README.md` -> Create a key.
 - **Config points at the gateway, not a host.** If a config key names a model endpoint, verify something actually reads it; a documented-but-dead key hides the real endpoint in a code default.
 

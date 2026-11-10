@@ -44,12 +44,11 @@ and config entries are written by idempotent `seed-*` init containers (see
 Binks authenticates to LiteLLM with a scoped virtual key (alias `home-assistant-assist`),
 minted out-of-band per `apps/litellm/README.md` and stored SOPS-encrypted in
 `apps/home-assistant/litellm-assist-secret.yaml` (Secret `litellm-assist-credentials`,
-key `api-key`). Allowed models — Binks's 3-tier chat fallback chain plus STT:
+key `api-key`). Allowed models - Binks's chat fallback chain plus STT:
 
 ```
 assist (gemini-flash)  # PRIMARY — gemini-3.5-flash-lite on GEMINI_API_KEY_FAMILY
 fast (gpt-oss-120b)    # fallback tier 2 — Lazer (verified tool-calling)
-fast (Qwen3-4B-8bit)   # fallback tier 3 — local MLX (best-effort control)
 stt (whisper-turbo)    # Stage 2 speech-to-text
 ```
 
@@ -61,7 +60,7 @@ MASTER_KEY=$(kubectl -n ai-gateway get secret litellm-secrets -o jsonpath='{.dat
 AKEY=$(kubectl -n home-assistant get secret litellm-assist-credentials -o jsonpath='{.data.api-key}' | base64 -d)
 curl -sX POST https://llm.kblab.me/key/update -H "Authorization: Bearer $MASTER_KEY" \
   -H 'Content-Type: application/json' \
-  -d "{\"key\":\"$AKEY\",\"models\":[\"assist (gemini-flash)\",\"fast (gpt-oss-120b)\",\"fast (Qwen3-4B-8bit)\",\"stt (whisper-turbo)\"]}"
+  -d "{\"key\":\"$AKEY\",\"models\":[\"assist (gemini-flash)\",\"fast (gpt-oss-120b)\",\"stt (whisper-turbo)\"]}"
 ```
 
 Re-mint / rotate the key VALUE (only when the value itself must change):
@@ -70,7 +69,7 @@ Re-mint / rotate the key VALUE (only when the value itself must change):
 MASTER_KEY=$(kubectl -n ai-gateway get secret litellm-secrets -o jsonpath='{.data.LITELLM_MASTER_KEY}' | base64 -d)
 curl -sX POST https://llm.kblab.me/key/generate -H "Authorization: Bearer $MASTER_KEY" \
   -H 'Content-Type: application/json' \
-  -d '{"key_alias":"home-assistant-assist","models":["assist (gemini-flash)","fast (gpt-oss-120b)","fast (Qwen3-4B-8bit)","stt (whisper-turbo)"],"tpm_limit":100000}'
+  -d '{"key_alias":"home-assistant-assist","models":["assist (gemini-flash)","fast (gpt-oss-120b)","stt (whisper-turbo)"],"tpm_limit":100000}'
 # put .key into apps/home-assistant/litellm-assist-secret.yaml stringData.api-key, then: sops -e -i <file>
 ```
 
@@ -84,13 +83,10 @@ fallback chain (`router_settings.fallbacks` in `apps/litellm/config.yaml`):
 ```
 assist (gemini-flash)     gemini-3.5-flash-lite  Google (GEMINI_API_KEY_FAMILY)  PRIMARY, 8s timeout
   -> fast (gpt-oss-120b)  gpt-oss-120b       Lazer (Deloitte proxy)           on Gemini error
-  -> fast (Qwen3-4B-8bit) Qwen3-4B           Mac Studio MLX (local)           last resort
 ```
 
 - **Gemini is primary on purpose:** it keeps personal home voice off the Lazer
-  (Deloitte) proxy in the normal path — Lazer is only touched on a Gemini failure. The
-  local tier answers but emits text-style tool calls, so device *control* is
-  best-effort there; it is a "still talks during a cloud outage" net, not a full tier.
+  (Deloitte) proxy in the normal path - Lazer is only touched on a Gemini failure.
 - **Two Gemini keys, don't confuse them:** `GEMINI_API_KEY` is embeddings-only (chat
   generateContent quota = 0); `GEMINI_API_KEY_FAMILY` has chat quota and is the assist
   route's key. Both live in `apps/litellm/secret.sops.yaml`.
@@ -184,7 +180,7 @@ narrowing it there is safe and persists (the seed won't re-add what you remove).
 ### Fallbacks / knobs
 
 - **Gemini failover is automatic** now — the `assist (gemini-flash)` group falls back
-  to `fast (gpt-oss-120b)` (Lazer) then `fast (Qwen3-4B-8bit)` (local) at the LiteLLM
+  to `fast (gpt-oss-120b)` (Lazer) at the LiteLLM
   router (see **Model routing & resilience**). No manual switch needed for a transient
   Gemini hiccup. To change the primary permanently, edit `chat_model` in
   `seed-binks-conversation` (the seed reconciles it on the next roll).

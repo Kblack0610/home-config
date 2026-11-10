@@ -58,16 +58,6 @@ sections:
         heading: Macs
         icon: mdi:desktop-tower-monitor
       - type: entities
-        title: Mac Studio
-        show_header_toggle: false
-        entities:
-          - entity: sensor.mac_studio_cpu
-            name: CPU
-          - entity: sensor.mac_studio_ram
-            name: RAM
-          - entity: sensor.mac_studio_disk
-            name: Disk
-      - type: entities
         title: Mac Mini
         show_header_toggle: false
         entities:

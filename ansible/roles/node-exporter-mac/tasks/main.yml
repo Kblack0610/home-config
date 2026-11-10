@@ -20,7 +20,7 @@
 # History: this role previously used `brew services start node_exporter`
 # to manage the LaunchAgent. That works for the default flag set, but
 # can't pass `--collector.textfile.directory`, which is the precondition
-# for sampler roles like launchd-powermetrics-textfile to feed Prom-format
+# for sampler roles (ci-runner-cpu, macos-disk-reclaim) to feed Prom-format
 # files into the existing :9100 scrape. We now render our own plist with
 # a distinct label and explicitly stop the brew-managed service so the
 # two never fight over the port.
@@ -49,8 +49,8 @@
   register: node_exporter_plist_result
 
 # launchctl race: bootout returns immediately but the kernel needs a
-# beat to actually tear down. Polling print until gone before bootstrap,
-# matching the pattern in launchd-mlx-server. ~30s gap in scraping during
+# beat to actually tear down. Polling print until gone before bootstrap.
+# ~30s gap in scraping during
 # the swap on first migration; subsequent runs are no-op when plist
 # hasn't changed.
 - name: Reload node_exporter LaunchAgent if plist changed

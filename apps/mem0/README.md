@@ -27,8 +27,7 @@ The previous iteration of this app shipped its own custom MCP server bridging Cl
 ## Dependencies (deploy order)
 
 1. `apps/postgres/` — must be reconciled and running first (mem0 init container fails if Postgres is unreachable).
-2. `apps/litellm/` — already running; new entry for `nomic-embed-text-v1.5` model is in its configmap.
-3. Mac Studio — must be serving the `nomic-embed-text-v1.5` embedding endpoint that LiteLLM fronts (handled by `ansible/roles/launchd-mlx-openai-server/`, in-flight migration).
+2. `apps/litellm/` - running, with the `fast` alias and the `embedding (gemini-001)` route that `configmap.yaml` names.
 
 ## Bootstrap
 

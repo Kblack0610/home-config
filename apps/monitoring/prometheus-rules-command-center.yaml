@@ -63,10 +63,6 @@ spec:
           expr: >-
             max by (item) (label_replace(((mqtt_tripped{topic=~"agents_.+_watch_(pmp_.+|prod_mercury_payouts|posthog_prod_guard)"} and on (topic) cc:agents_topic_live) * 2 > 0) or ((mqtt_stale{topic=~"agents_.+_watch_(pmp_.+|prod_mercury_payouts|posthog_prod_guard)"} and on (topic) cc:agents_topic_live) > 0), "item", "$1", "topic", "agents_.+_watch_(.+)"))
         - record: cc:watch_state
-          labels: {domain: llm}
-          expr: >-
-            max by (item) (label_replace(((mqtt_tripped{topic=~"agents_.+_watch_(mac_studio_mlx)"} and on (topic) cc:agents_topic_live) * 2 > 0) or ((mqtt_stale{topic=~"agents_.+_watch_(mac_studio_mlx)"} and on (topic) cc:agents_topic_live) > 0), "item", "$1", "topic", "agents_.+_watch_(.+)"))
-        - record: cc:watch_state
           labels: {domain: ci}
           expr: >-
             max by (item) (label_replace(((mqtt_tripped{topic=~"agents_.+_watch_(.+_runners?_online|playground_nightly)"} and on (topic) cc:agents_topic_live) * 2 > 0) or ((mqtt_stale{topic=~"agents_.+_watch_(.+_runners?_online|playground_nightly)"} and on (topic) cc:agents_topic_live) > 0), "item", "$1", "topic", "agents_.+_watch_(.+)"))
@@ -105,10 +101,6 @@ spec:
           labels: {domain: prod, component: watches}
           expr: >-
             max(cc:watch_state{domain="prod"}) or vector(0)
-        - record: cc:component_status
-          labels: {domain: llm, component: watches}
-          expr: >-
-            max(cc:watch_state{domain="llm"}) or vector(0)
         - record: cc:component_status
           labels: {domain: ci, component: watches}
           expr: >-

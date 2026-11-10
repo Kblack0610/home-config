@@ -19,17 +19,16 @@ data:
   CRAWLER_STORE_PDF: "false"
   MAX_ASSET_SIZE_MB: "50"
   TZ: America/New_York
-  # AI tagging routed via in-cluster LiteLLM (apps/litellm). Text inference is
-  # PINNED to `fast (Qwen3-4B)` (local MLX), the only chat route the `karakeep`
-  # virtual key allows. Do not point it at the `fast` alias: that alias resolves
-  # to a paid route the key rejects with 403, and from 2026-07-19 to 2026-09-29
-  # every tagging call failed that way silently (LOG_LEVEL notice), 0 tags.
-  # When the box is down, LiteLLM's `fast (Qwen3-4B)` fallback chain applies.
-  # EMBEDDING_TEXT_MODEL is PINNED too: karakeep's stored vectors are tied to
-  # the embedder's dimensions, so swapping it is a deliberate re-index.
-  # INFERENCE_IMAGE_MODEL omitted until local vision (mlx-vlm>=0.6.5) is verified.
+  # AI tagging routed via in-cluster LiteLLM (apps/litellm). The `karakeep`
+  # virtual key allows only `fast`, its route `fast (gpt-oss-120b)` and
+  # `embedding (gemini-001)`: a model name outside that list is a 403, and from
+  # 2026-07-19 to 2026-09-29 every tagging call failed that way silently
+  # (LOG_LEVEL notice), 0 tags. Add a model to the key before naming it here.
+  # EMBEDDING_TEXT_MODEL is the same 768-dim Gemini embedder mem0 pins; karakeep
+  # 0.31 reads it but stores no vectors, so changing it needs no re-index.
+  # INFERENCE_IMAGE_MODEL is omitted: tagging images is not enabled.
   OPENAI_BASE_URL: http://litellm.ai-gateway.svc.cluster.local:4000/v1
-  INFERENCE_TEXT_MODEL: "fast (Qwen3-4B)"
-  EMBEDDING_TEXT_MODEL: "embedding (modernbert-embed-base-4bit)"
+  INFERENCE_TEXT_MODEL: "fast"
+  EMBEDDING_TEXT_MODEL: "embedding (gemini-001)"
   INFERENCE_ENABLE_AUTO_TAGGING: "true"
   INFERENCE_ENABLE_AUTO_SUMMARIZATION: "true"

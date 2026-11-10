@@ -155,10 +155,7 @@ Partial graph — focuses on the dependencies an agent is most likely to hit dur
 
 ```
 litellm (in-cluster, hp-victus)
-  ├── mac-studio:8080  (MLX code — launchd on mac-studio)
-  ├── mac-studio:8081  (MLX smart)
-  └── mac-studio:8082  (MLX reasoning)
-       (these three are bare-metal services; see ansible/roles/launchd-mlx-services/)
+  -> cloud upstreams only: Gemini and Lazer (no LAN model hosts)
 
 home-assistant → mosquitto (MQTT broker, in-cluster)
                 → mqtt2prom → monitoring (Prometheus)
@@ -194,10 +191,9 @@ Gatus (`apps/gatus/`) monitors every endpoint in this graph — the Gatus config
 
 | Component | What goes down immediately | What stays up |
 |-----------|----------------------------|---------------|
-| `pi5-master` (k3s server) | Every k3s pod on every node — no scheduler, no API | All bare-metal services: MLX, Mac runners, light/heavy CI runner slots on the laptops. OpenWRT DHCP/DNS. AdGuard Pi3. |
+| `pi5-master` (k3s server) | Every k3s pod on every node - no scheduler, no API | All bare-metal services: Mac runners, light/heavy CI runner slots on the laptops. OpenWRT DHCP/DNS. AdGuard Pi3. |
 | OpenWRT router (192.168.1.1) | DHCP new-client onboarding, DNS resolution via the router's dnsmasq | Static IPs keep routing LAN-to-LAN. External internet is gone (OpenWRT is the gateway). AdGuard Pi3 keeps answering for clients that hit it directly. |
 | AdGuard Home (pi3, 192.168.1.193) | **All DNS for every client**, not just `*.kblab.me`. The router runs `no-resolv` with AdGuard as its only upstream, so dnsmasq has nothing to fall back to and returns SERVFAIL for anything not already cached. | Established connections and anything addressed by IP. dnsmasq keeps answering `/lan/` names, `/etc/hosts`, and its static domain entries (`nas.lan`, `zomboid-play.kblab.me`, `playground-play.kblab.me`) from its own config. |
-| mac-studio | MLX inference (all three models) | LiteLLM still serves — but every request that routes to a MLX upstream 500s |
 | NAS (asus-laptop pod) | Actual Budget backup jobs, Jellyfin media, Immich library | Home Assistant (no NAS dep), Forgejo (backups queue, app keeps running) |
 | cloudflared-public-sites pod | Public HTTPS access to `kennethblack.me`, `blacknbrownstudios.com`, `kblack.dev`, `binks.chat` | LAN access (via AdGuard rewrite path) still works for non-public services |
 | Traefik | Every ingress, LAN and public | Everything that doesn't need HTTPS ingress (node_exporter on :9100, mosquitto on :1883) |
@@ -221,7 +217,7 @@ Full sequence for "the home-k3s cluster is wiped and needs to come back." Drawn 
    ```
 5. **Flux reconciles the world.** Every app under `apps/` and every infra manifest under `infrastructure/` shows up over the next few minutes. SOPS-encrypted secrets are decrypted by the sops-age secret from step 4.
 6. **Restore per-app data.** Follow `docs/backup-runbook.md` — `actual-budget`, `forgejo`, NAS-backed shares all need their backup restored before the apps come fully up.
-7. **(If Mac / runner services were wiped too)** Run Ansible per Phase roadmap — bind `github-actions-runner-linux` / `mac` / `launchd-mlx-services` as needed and `ansible-playbook --limit <host>` against each.
+7. **(If Mac / runner services were wiped too)** Run Ansible per Phase roadmap - bind `github-actions-runner-linux` / `mac` as needed and `ansible-playbook --limit <host>` against each.
 8. **Verify.** `kubectl get pods -A | grep -v Running`, `flux get all -A`, then smoke-test a few ingresses (`curl -I https://hass.kblab.me`, `curl -I https://kennethblack.me`). Gatus dashboard at `status.kblab.me` is the one-glance check once it's up.
 
 The Age key is the single item without which the cluster is unrecoverable. Backup it offline.

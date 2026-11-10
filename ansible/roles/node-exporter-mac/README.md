@@ -1,6 +1,6 @@
 # node-exporter-mac
 
-Installs Prometheus `node_exporter` via Homebrew on macOS hosts (`mac-studio`, `mac-mini`) and starts it as a brew service. Scraped by the in-cluster Prometheus via `apps/monitoring/external-mac-nodes.yaml`.
+Installs Prometheus `node_exporter` via Homebrew on macOS hosts (`mac-mini`) and starts it as a brew service. Scraped by the in-cluster Prometheus via `apps/monitoring/external-mac-nodes.yaml`.
 
 ## What it does
 
@@ -30,7 +30,7 @@ From the cluster:
 
 ```bash
 kubectl -n monitoring exec -it prometheus-kube-prometheus-stack-prometheus-0 -c prometheus -- \
-  wget -qO- http://192.168.1.4:9100/metrics | head -5     # mac-studio
+  wget -qO- http://192.168.1.7:9100/metrics | head -5     # mac-mini
 ```
 
 ## Binding in site.yml

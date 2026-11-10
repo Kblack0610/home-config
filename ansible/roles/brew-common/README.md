@@ -1,6 +1,6 @@
 # brew-common
 
-Installs Homebrew (if missing) and a small baseline of CLI packages on macOS. Designed to be a prerequisite for every other macOS role (`node-exporter-mac`, `launchd-mlx-services`, `github-actions-runner-mac`).
+Installs Homebrew (if missing) and a small baseline of CLI packages on macOS. Designed to be a prerequisite for every other macOS role (`node-exporter-mac`, `github-actions-runner-mac`).
 
 ## What it does
 
@@ -27,7 +27,7 @@ brew_extra_packages:
   - fd
 ```
 
-`host_vars/mac-studio.yml`:
+`host_vars/mac-mini.yml`:
 
 ```yaml
 brew_extra_packages:

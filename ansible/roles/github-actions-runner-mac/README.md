@@ -9,7 +9,7 @@ Retires the manual flow at `BlackNBrownStudios/platform/tools/{setup-mac-runner,
 `gh_runner_mac_state` selects the desired end-state on the host:
 
 - **`present`** (default) — obtain a token, download/extract the pinned runner, `config.sh --unattended`, and `svc.sh install`/`start`. See **What it does (present)**.
-- **`absent`** — stop + uninstall the LaunchAgent, mint a *removal* token, `config.sh remove` (deregister GitHub-side), and wipe local markers. Best-effort + idempotent: a clean box is a no-op. Bind the role in absent mode to **demote** a host from being a runner. `mac-studio` uses this (it became a dedicated LLM node 2026-07-18); `mac-mini` is the sole `present` runner.
+- **`absent`** - stop + uninstall the LaunchAgent, mint a *removal* token, `config.sh remove` (deregister GitHub-side), and wipe local markers. Best-effort + idempotent: a clean box is a no-op. Bind the role in absent mode to **demote** a host from being a runner. `mac-mini` is the sole `present` runner.
 
 ## What it does (present)
 
@@ -49,10 +49,7 @@ In GitHub: `https://github.com/BlackNBrownStudios/platform/settings/actions/runn
 
 ## Binding in site.yml
 
-Bound in **two** per-host plays (2026-07-18 role split):
-
-- **`hosts: mac-mini`** (`present`, default) — the sole self-hosted mobile-CI runner. Apply with the `mac` or `runner` tag. A recovery apply against a stale/orphaned registration needs `-e gh_runner_mac_force_reregister=true`; review `--check --diff` first.
-- **`hosts: mac-studio`** (`gh_runner_mac_state: absent`) — tears the runner down so the LLM node stops being a CI target. Runs before the `macos-llm-node` + MLX plays.
+Bound in the `hosts: mac-mini` play (`present`, default), the sole self-hosted mobile-CI runner. Apply with the `mac` or `runner` tag. A recovery apply against a stale/orphaned registration needs `-e gh_runner_mac_force_reregister=true`; review `--check --diff` first.
 
 The runner tasks run as the login user (no `become`), so `-K` is only needed for `macos-baseline`'s pmset tasks in the shared baseline play.
 

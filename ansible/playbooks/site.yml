@@ -9,7 +9,7 @@
 # The github-actions-runner-linux role runs the org light/heavy runner slots on
 # the linux_ci_runners group (the "Linux CI runners" play)
 # and the org Unity pool slots (the "Unity CI runner pool" play).
-# Future phases will add roles here (k3s-agent, launchd-mlx, openwrt-config, etc.).
+# Future phases will add roles here (k3s-agent, openwrt-config, etc.).
 
 - name: Local ASR dictation daemons (Parakeet + whisper.cpp) on this workstation
   # See roles/asr-servers/README.md. Parakeet (:8771) is the gungan default —
@@ -198,13 +198,12 @@
     - role: fleet-worker
       tags: [fleet-worker, agents]
 
-# macOS build/CI boxes (mac-studio, mac-mini). Shared baseline on BOTH: brew
-# essentials, node_exporter, and macos-baseline (power policy + SSH key sync +
-# auto-login/FileVault assert). macos-baseline's pmset tasks self-elevate
-# (become: true), so applying the [mac]/[persistence] tags needs an interactive
-# sudo password: add `-K`. The role SPLIT (runner vs LLM node) lives in the two
-# per-host plays below. See docs/mac-machines.md.
-- name: macOS baseline + monitoring (both Macs)
+# macOS hosts (macos_hosts). Shared baseline: brew essentials, node_exporter,
+# and macos-baseline (power policy + SSH key sync + auto-login/FileVault
+# assert). macos-baseline's pmset tasks self-elevate (become: true), so applying
+# the [mac]/[persistence] tags needs an interactive sudo password: add `-K`.
+# See docs/mac-machines.md.
+- name: macOS baseline + monitoring
   hosts: macos_hosts
   gather_facts: true
   roles:
@@ -234,10 +233,8 @@
     - role: ci-runner-cpu
       tags: [runner-cpu]
 
-# 2026-07-18 ROLE SPLIT: mac-mini is the SOLE self-hosted mobile-CI runner;
-# mac-studio is a dedicated LLM inference node (its runner is torn down below).
-# No workflow pins a runner by name — only by the [self-hosted, macOS, arm64]
-# label set — so demoting mac-studio is transparent as long as mac-mini is up.
+# mac-mini is the sole self-hosted mobile-CI runner. No workflow pins a runner
+# by name, only by the [self-hosted, macOS, arm64] label set.
 - name: macOS CI runner (mac-mini only)
   hosts: mac-mini
   gather_facts: true
@@ -261,25 +258,6 @@
         name: unity-ci-host-mac
         tasks_from: modules
       tags: [mac, unity-modules]
-
-# mac-studio LLM node: debloat + tune for MLX. Runs BEFORE the MLX server play
-# below so a full `--limit mac-studio` run cleans, then re-asserts MLX.
-# Destructive removals in macos-llm-node are opt-in here (default-false vars) —
-# `--check --diff` first. `-K` needed (become: pmset/sysctl/Xcode removal).
-# Its old platform runner was torn down 2026-07-18; since 2026-10-29 it is a
-# Unity pool host too (the macOS pool play below), whose slots live under
-# ~/actions-runner, so the runner dir is no longer removed.
-- name: Mac Studio LLM node (debloat + tuning)
-  hosts: mac-studio
-  gather_facts: true
-  roles:
-    - role: macos-llm-node
-      vars:
-        macos_llm_node_remove_xcode: true
-        macos_llm_node_remove_platform_checkout: true
-      # Per-concern tags (debloat / fs / os-toggles / llm-tuning) come from the
-      # role's import_tasks, so a run can stage them independently.
-      tags: [mac, llm-node]
 
 # Phase B: k3s-agent role is AUTHORED but not bound. Applying it against
 # running cluster nodes reinstalls k3s — the user enables this binding when
@@ -534,25 +512,6 @@
   roles:
     - role: nut
       tags: [nut, nut-client, ups]
-
-# Mac Studio MLX server — single mlx-openai-server (cubist38) process
-# serving chat, vision, and embedding models from one OpenAI-compatible
-# endpoint at :8090. Replaces the retired three-service launchd-mlx-services
-# layout (8080/8081/8082) and the standalone Ollama embedding LaunchAgent
-# on :11434.
-#
-# Also runs the powermetrics textfile sampler that feeds Apple Silicon
-# GPU/ANE/CPU power into the existing node_exporter on :9100. Bound only
-# to mac-studio because the mac-mini (iOS builder) doesn't run GPU
-# workloads — the metrics there would always read ~0.
-- name: Mac Studio MLX server (mlx-openai-server via launchd)
-  hosts: mac-studio
-  gather_facts: true
-  roles:
-    - role: launchd-mlx-server
-      tags: [mlx, mac, llm]
-    - role: launchd-powermetrics-textfile
-      tags: [powermetrics, monitoring, mac]
 
 # Phase C (started): OpenWrt router config via the community.openwrt collection
 # (pure-shell uci modules, no Python on the router). This first role isolates

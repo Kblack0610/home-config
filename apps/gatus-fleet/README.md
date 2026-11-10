@@ -17,7 +17,7 @@ Machine liveness used to be scattered across three groups (`fleet`, `mac-machine
 |---|---|---|
 | `workplace` | gp-mac | push |
 | `homelab` | linux-cachyos, windows-media | push |
-| `homelab` | mac-studio, mac-mini | poll `:9100` |
+| `homelab` | mac-mini | poll `:9100` |
 | `k3s` | pi5-master, pi5-worker1-3, pi4-worker4-5, asus-laptop, hp-victus, razer-laptop | poll `:9100` |
 | `android` | h0001 (+ tablets) | push (via `apps/headwind-fleet-bridge`) |
 | `audio` | audio-living, audio-bedroom | poll `:9100`, plus snapclient's unit state (`node-exporter-linux` role) |

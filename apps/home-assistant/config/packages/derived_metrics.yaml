@@ -43,7 +43,6 @@ template:
         unit_of_measurement: "nodes"
         state: >-
           {% set macs = [
-            states('sensor.mac_studio_cpu'),
             states('sensor.mac_mini_cpu')
           ] %}
           {{ macs | reject('in', ['unknown', 'unavailable']) | list | length }}

@@ -95,6 +95,8 @@ To restore: scale `karakeep-web` and `karakeep-meilisearch` to 0, untar into the
 
 `taxonomy/taxonomy.json` is the single source of truth: 10 main tags (`dev`, `gamedev`, `hardware`, `art`, `music`, `business`, `jobs`, `work`, `hobbies`, `self`) plus detail tags derived from the imported Firefox archive folders. `taxonomy/retag` applies it through the REST API (dry run by default; `--apply`, `--apply --prune` to delete tags outside the taxonomy). Key: `rbw get karakeep_api_key`.
 
+AI tags that land outside the taxonomy anyway go in its `strays` map (`"coding": ["dev"]`): `retag` attaches the mapped taxonomy tags to every bookmark carrying one, so `--prune` deletes the stray without losing what it meant. The dry run prints each mapped stray with its bookmark count; an entry whose key is a taxonomy or reserved tag, or whose targets are empty or outside the taxonomy, stops the run.
+
 AI tagging is held to the same set by two user settings (set via tRPC `users.updateSettings` / `prompts.create`, visible under Settings -> AI): `curatedTagIds` = every taxonomy tag, `tagStyle` = `lowercase-hyphens`, and one `all_tagging` custom prompt requiring exactly one main tag plus at most two detail tags. `retag --apply` re-syncs `curatedTagIds` from `taxonomy.json` on every run, so after adding a tag just run it.
 
 First backfill 2026-09-30: 915/996 bookmarks tagged from folders (2001 tags), 242 one-off AI tags pruned, the 81 bookmarks with no folder re-crawled for AI tagging.

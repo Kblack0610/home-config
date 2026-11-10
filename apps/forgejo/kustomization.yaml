@@ -7,11 +7,13 @@ resources:
   - namespace.yaml
   - pvc.yaml
   - configmap.yaml
+  - secret.sops.yaml
   - deployment.yaml
   - service-http.yaml
   - service-ssh.yaml
   - ingress.yaml
   - ingress-public.yaml
+  - ingressroute-browser-redirect.yaml
   - backup-cronjob.yaml
   - lock-reaper-cronjob.yaml
   - runner-config-cm.yaml

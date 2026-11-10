@@ -82,17 +82,18 @@ Flux picks up the ConfigMap change → deployment hash rotates → pod rolls →
 1. System: domains down, warn and up, and the time it was rendered. Read in the cluster, so it still shows with the workstation off.
 2. RED: every `cc:red_now` item with its domain and age, newest first, 6 at most then `+N more`. Then red default branches, sources the workstation could not read, any domain down with no red watch of its own, the domains at warn, and an active `input_text.home_alert`.
 3. Needs you: the count split by kind, the top projects, and the oldest ask.
-4. Agents: session counts, hours waited on you in the last 24h, sessions past their ETA, KPIs over their limit with the limit, cost per PR against 28 days, and merged today.
-5. Queue, then CI, naming only what is down.
-6. Projects: how many have work in flight, then the first three in flight, each with its percent, ETA and sessions.
-7. Claude: each account's weekly use, amber when one is over pace, the earliest run-out, and 24h spend.
-8. The house: weather and the next event across every calendar.
+4. Done today: queue items done and PRs merged, then the three busiest projects, each with its own counts and `+N more` for the rest.
+5. Agents: session counts, sessions late against their ETA, and the first KPI off target with its limit and how many more.
+6. Queue: running, ready and held, then how long the oldest ready item has waited and cost per PR against 28 days. Then CI, naming only what is down.
+7. Projects: how many have work in flight, then the first two in flight, each with its percent, ETA and sessions.
+8. Claude: each account's weekly use, amber when one is over pace, the earliest run-out, and 24h spend.
+9. The house: weather and the next event across every calendar.
 
 Every section opens with a bold `Title: value`. Colour marks only what is wrong: a title goes amber or red with its section, and only red items stay red in full, so amber never covers a whole block. Detail lines under a title are grey, so the titles and their values stand out.
 
 It is HTML in an attribute because the Companion app's Template widget renders HTML and an HA state stops at 255 characters. The state is the worse of health and the fleet rows: `ok`, `warn` or `critical`. Text from outside (ask titles, calendar events, the alert) is escaped in the macros.
 
-To try a layout change before it ships, POST the file's text plus `{{ render(health, rows) }}` to `/api/template`, with any fixture for `health` and `rows`. Home Assistant reads `custom_templates` when it starts, so the rollout restart picks up a new file.
+`scripts/widget-preview.sh` shows the widget as the phone would, at every size in `scripts/phone-widget-sizes.json`: 4x5 (357x600 dp, the whole home screen), 4x4, 4x3 and 4x2, each inside a mock S25 home screen. The sizes were measured off an S25 home-screen screenshot at 2.625 px per dp. It renders this checkout's `phone_widget.jinja` with the live `hub phone --json` rows through Home Assistant's `/api/template`, so the preview and the phone share one renderer, and opens `~/.cache/phone-widget/preview.html`. `--check` lays the page out in headless Chromium, prints each size's cut sections, writes `preview.png`, and exits 3 when a section that size lists in `must_show` is cut (`*` means nothing may clip). `--deployed` shows what the phone has now, `--rows FILE` takes saved rows, `--watch` renders again on every save of the jinja. It needs `rbw unlock` (entry `HASS token`). Chromium draws the HTML where the phone uses Android's text view, so a wrap can land one word differently.
 
 Setup on the phone: long-press the home screen -> Widgets -> Home Assistant -> Template, with the template `{{ state_attr('sensor.agent_widget', 'html') }}` and the smallest text size that reads well. About 4x2 shows parts 1 to 4, about 4x4 adds the fleet lines. A widget already on that template picks all of this up by itself. One still on the old `states('sensor.agent_widget')` template shows only that one word until you edit it. It refreshes when the sensor changes, and tapping it forces a refresh. For a color dot, add an Entity state widget on `binary_sensor.agents_need_attention`. Pages that cannot wait still arrive by ntfy; the widget is only a glance.
 

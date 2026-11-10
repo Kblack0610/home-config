@@ -1,0 +1,11 @@
+# Overlay for the Gazebo stage: the target comes from the vision-landing-2 detector over
+# MAVLink LANDING_TARGET, so the built-in simulated target is off.
+PLND_TYPE        1
+SIM_PLD_ENABLE   0
+# ArduPilotPlugin sends no rangefinder field over JSON, so SITL rangefinder 100 never has
+# data and blocks arming; precland then uses height above home (flat floor).
+RNGFND1_TYPE     0
+# AC_PrecLand needs a healthy rangefinder to judge PLND_ALT_MIN/MAX; with none and limits
+# set it reads every lost target as out of range and descends without the failsafe.
+PLND_ALT_MIN     0
+PLND_ALT_MAX     0

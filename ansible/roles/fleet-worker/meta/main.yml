@@ -1,0 +1,18 @@
+---
+galaxy_info:
+  role_name: fleet_worker
+  author: home-config
+  description: >-
+    Makes a host one that fleet-dispatch can place agent sessions on: the
+    session toolchain, the dotfiles, the repos in fleet_repos and the empty
+    account dirs. The human signs each account in once; the role reports what
+    is still missing.
+  license: MIT
+  min_ansible_version: "2.14"
+  platforms:
+    - name: ArchLinux
+      versions:
+        - all
+  galaxy_tags:
+    - automation
+dependencies: []

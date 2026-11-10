@@ -1,0 +1,55 @@
+# Markets quote compaction (strategy repo lab/markets/compact.py, docs/markets.md Recorder): folds each
+# settled day's recorder parts (up to 288 a venue a day) in MinIO bucket trader-markets into one
+# quotes/venue=<v>/date=<d>/day.parquet and deletes the parts. Idempotent; a missed night is caught up
+# by the next. 01:30 UTC is past the 1 h grace after midnight. MinIO only, no database.
+# Kept off hp-victus, whose memory limits are overcommitted (plan id-like-to-setup-abundant-seahorse).
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: trader-markets-compact
+spec:
+  schedule: "30 1 * * *"
+  timeZone: "Etc/UTC"  # unset means the controller zone, America/Los_Angeles
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      backoffLimit: 1
+      activeDeadlineSeconds: 3600  # guard: one part at a time, streamed
+      template:
+        metadata:
+          labels:
+            app: trader-markets-compact
+        spec:
+          restartPolicy: Never
+          affinity:
+            nodeAffinity:
+              requiredDuringSchedulingIgnoredDuringExecution:
+                nodeSelectorTerms:
+                  - matchExpressions:
+                      - {key: kubernetes.io/arch, operator: In, values: [amd64]}
+                      - {key: kubernetes.io/hostname, operator: NotIn, values: [hp-victus]}
+          securityContext:
+            runAsUser: 1000
+            runAsGroup: 1000
+            fsGroup: 1000
+          containers:
+            - name: compact
+              image: trader
+              command: ["python", "-m", "lab.markets.compact"]
+              env:
+                - name: S3_ENDPOINT
+                  value: http://minio.minio.svc.cluster.local:9000
+                - name: S3_ACCESS_KEY
+                  valueFrom:
+                    secretKeyRef: {name: trader-markets-s3, key: S3_ACCESS_KEY}
+                - name: S3_SECRET_KEY
+                  valueFrom:
+                    secretKeyRef: {name: trader-markets-s3, key: S3_SECRET_KEY}
+              resources:
+                requests:
+                  cpu: 100m
+                  memory: 256Mi
+                limits:
+                  memory: 1Gi

@@ -1,6 +1,7 @@
 # Price history (data/<exchange>, kept by the backfill job), experiment runs
-# and the report history. local-path is RWO and node-pinned (hp-victus), and
-# the size is not enforced; every CronJob that mounts it lands on that node.
+# and the report history. local-path is RWO and node-pinned (razer-laptop since
+# 2026-11-09, moved with docs/runbooks/move-local-path-pvc.md), and the size is not
+# enforced; every CronJob that mounts it lands on that node.
 # Backed up weekly by lab-backup-cronjob.yaml.
 apiVersion: v1
 kind: PersistentVolumeClaim

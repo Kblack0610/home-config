@@ -257,7 +257,7 @@ all:
         # has no inbound port; SSH runs through SSM Session Manager with the bnb
         # AWS profile, so the workstation needs session-manager-plugin. ansible_host
         # is the instance id: after a Terraform -replace, take the new one from
-        # `terraform output instance_id`. Ubuntu, so the editor images are pulled
+        # `terraform output -json instance_ids`. Ubuntu, so the editor images are pulled
         # on the box (unity_ci_images_pull) instead of copied. The governor starts
         # and stops it (docs/runbooks/unity-ci-host.md); start it before running
         # the play against it.
@@ -370,6 +370,35 @@ all:
     # game's tick runs on. Moving the server to another box (a mini PC, the
     # Razer) is this group, that host's ci_cpus, and the router's LAN answer and
     # UDP forward (apps/playground-server/README.md).
+    # Fleet workers: hosts fleet-dispatch places light claude sessions on, over
+    # ssh. dotfiles .local/lib/fleet-hosts.sh reads this group from this file
+    # alone, so its vars stay here and never move to group_vars/. Provisioned
+    # by roles/fleet-worker; the human signs each account in once. Runbook:
+    # docs/runbooks/fleet-worker.md.
+    #   fleet_place      false keeps a provisioned host out of placement
+    #   fleet_max_live   sessions at once on it (a light item is one run unit)
+    #   fleet_repos      what it clones, and the repos whose items it takes;
+    #                    dest is the same path as on the workstation
+    #   fleet_state_host where its queue and ask writes go (AGENT_STATE_HOST)
+    #   fleet_ssh_host   where fleet-dispatch ssh goes when ansible_host is not
+    #                    it (a cloud worker: an instance id behind SSM)
+    #   fleet_power      governor: the ci-runner-governor starts and stops it
+    #                    on fleet-dispatch's demand (its config.json "workers")
+    #   fleet_tailscale  true installs tailscale; `tailscale up` is the human's
+    fleet_workers:
+      vars:
+        fleet_state_host: pc-home-cachy-main.lan
+        fleet_max_live: 1
+        fleet_repos:
+          - dest: ~/.dotfiles
+            repo: https://github.com/Kblack0610/.dotfiles.git
+      hosts:
+        # The first worker (2026-11-07), picked for headroom: 16 threads and
+        # 96 GB. Not placed until the role reports it ready and the human has
+        # signed it in.
+        razer-laptop:
+          fleet_place: false
+
     game_server_nodes:
       hosts:
         hp-victus:

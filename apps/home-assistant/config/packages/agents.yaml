@@ -75,7 +75,7 @@ rest:
                       | map(attribute='value') | map('last') | first | default('') %}
           {{ {'0': 'ok', '1': 'warn', '2': 'critical'}.get(o, 'unknown') }}
 
-  - resource: "http://kube-prometheus-stack-prometheus.monitoring.svc:9090/api/v1/query?query=sum%20by%20(service_name)(increase(claude_code_cost_usage_USD_total%5B24h%5D))"
+  - resource: "http://kube-prometheus-stack-prometheus.monitoring.svc:9090/api/v1/query?query=cc%3Aclaude_code_cost_24h_usd%3Aby_service"
     scan_interval: 300
     sensor:
       - name: Agent cost 24h

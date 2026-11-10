@@ -10,10 +10,13 @@ and repository mirroring enabled.
 |------|---------|
 | `kustomization.yaml` | Reconciles namespace, app, services, ingress, backup, and runner |
 | `configmap.yaml` | Forgejo `app.ini` — Actions, Packages, Mirroring enabled |
+| `secret.sops.yaml` | SOPS-encrypted `LFS_JWT_SECRET`, `INTERNAL_TOKEN` and `JWT_SECRET`, as `FORGEJO__<section>__<key>` env vars |
 | `deployment.yaml` | Main Forgejo workload with config-seed init container |
 | `service-http.yaml` | HTTP service on port `3000` |
 | `service-ssh.yaml` | In-cluster SSH service on port `22` |
-| `ingress.yaml` | TLS ingress for `git.kblab.me` |
+| `ingress.yaml` | TLS ingress for `git.kblab.me` (git, registry, API, Flux) |
+| `ingress-public.yaml` | TLS ingress for `git.kennethblack.me`, the `ROOT_URL` and the one browser hostname |
+| `ingressroute-browser-redirect.yaml` | Redirects browsers (`Accept: text/html`) on `git.kblab.me` to `git.kennethblack.me`, so one login cookie covers every page |
 | `pvc.yaml` | Persistent Forgejo data volume |
 | `backup-cronjob.yaml` | Daily backup job for full data and SQLite snapshots |
 | `runner-deployment.yaml` | Forgejo Runner + DinD sidecar (hp-victus and razer-laptop, never the Forgejo node) |
@@ -25,6 +28,14 @@ and repository mirroring enabled.
 The configmap mounts to `/etc/gitea/app.ini`. An **init container** (`config-seed`)
 copies it to `/data/gitea/conf/app.ini` on every pod start, because Forgejo reads
 config from the PVC path, not the configmap mount.
+
+That copy overwrites `app.ini`, so a generated secret that lives only there is regenerated on every start. Secrets go in `secret.sops.yaml`: the image's `environment-to-ini` writes each `FORGEJO__<section>__<key>` env var into the seeded file before Forgejo starts. `scripts/check-secret-store.py` fails CI if one of them appears in plain text. To rotate:
+
+```bash
+sops apps/forgejo/secret.sops.yaml   # paste values from: forgejo generate secret <LFS_JWT_SECRET|INTERNAL_TOKEN|JWT_SECRET>
+```
+
+Commit and push, then delete the pod, because a changed Secret does not restart it. Rotating `LFS_JWT_SECRET` fails any LFS transfer in flight; `JWT_SECRET` ends OAuth2 and Actions job tokens.
 
 Key config sections:
 
@@ -176,7 +187,7 @@ curl -s https://git.kblab.me/api/healthz
 
 Endpoints:
 
-- Web UI: `https://git.kblab.me`
+- Web UI: `https://git.kennethblack.me` (a browser on `git.kblab.me` is redirected there; log in once with "Remember this device" and it holds for a year)
 - API: `https://git.kblab.me/api/v1`
 - Container Registry: `git.kblab.me` (docker login)
 - In-cluster HTTP: `forgejo-http.forgejo.svc:3000`

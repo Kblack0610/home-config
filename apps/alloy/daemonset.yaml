@@ -56,6 +56,9 @@ spec:
             - name: otlp-http
               containerPort: 4318
               hostPort: 4318
+            # LiteLLM gateway traces, in-cluster only through the alloy-otlp Service.
+            - name: otlp-litellm
+              containerPort: 4319
           resources:
             requests:
               memory: "128Mi"

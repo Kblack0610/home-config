@@ -334,9 +334,10 @@ model_list:
         json_mode: true
       supports_function_calling: true
 
-  # reasoning paid — deepseek-v4-pro via fireworks. Explicit reasoning
-  # model with thinking mode.
-  - model_name: "reasoning (deepseek-v4-pro)"
+  # reasoning paid: glm-5.3, named for what it serves. The scoped `glm-pilot` key
+  # (README) allows only this name, so a GLM canary spends against its own cap.
+  # Thinking-mode model.
+  - model_name: "reasoning (glm-5.3)"
     litellm_params:
       model: "openai/glm-5.3"
       api_base: https://proxy.lazertechnologies.com/v1
@@ -556,7 +557,7 @@ router_settings:
   # toggle; embedding is stateful -> pinned. See each consumer's configmap.
   model_group_alias:
     code: "code (qwen-3-coder)"            # local: "code (Qwen3-Coder-Next-6bit)" / "...480B-A35B-4bit"
-    reasoning: "reasoning (deepseek-v4-pro)"  # local: "reasoning (Qwen3.5-397B-A17B-4bit)"
+    reasoning: "reasoning (glm-5.3)"          # local: "reasoning (Qwen3.5-397B-A17B-4bit)"
     fast: "fast (gpt-oss-120b)"            # local: "fast (Qwen3-4B-8bit)"
     vlm: "vlm (gemini-3-flash)"            # local: "vlm (Qwen3-VL-30B-A3B-8bit)" (needs mlx-vlm>=0.6.5)
     embedding: "embedding (gemini-001)"    # local: "embedding (modernbert-embed-base-4bit)"
@@ -587,7 +588,7 @@ router_settings:
     - {"fast (Qwen3-4B)": ["fast (gpt-oss-120b)", "assist (gemini-flash)"]}
     - {"code (Qwen3-Coder-Next-6bit)": ["code (qwen-3-coder)"]}
     - {"code (Qwen3-Coder-480B-A35B-4bit)": ["code (qwen-3-coder)"]}
-    - {"reasoning (Qwen3.5-397B-A17B-4bit)": ["reasoning (deepseek-v4-pro)"]}
+    - {"reasoning (Qwen3.5-397B-A17B-4bit)": ["reasoning (glm-5.3)"]}
     - {"vlm (Qwen3-VL-30B-A3B-8bit)": ["vlm (gemini-3-flash)"]}
     # NOTE: no embedding fallback to modernbert — Mac Studio is offline,
     # so falling back to it turns any transient Gemini hiccup into a hard
@@ -599,16 +600,16 @@ litellm_settings:
   request_timeout: 900
   # Callbacks:
   #   prometheus     — per-model metrics on /metrics/ (ServiceMonitor in this dir)
-  #   langfuse_otel  — request-level traces to Langfuse at langfuse.kblab.me
-  #                    via OTLP/HTTP. Requires LANGFUSE_PUBLIC_KEY,
-  #                    LANGFUSE_SECRET_KEY, LANGFUSE_OTEL_HOST in the secret.
-  #                    Get pk/sk from https://langfuse.kblab.me/settings/api-keys
-  #                    after Langfuse is up. NOTE: LANGFUSE_OTEL_HOST (not
-  #                    LANGFUSE_HOST) is the correct env var for this callback.
+  #   langfuse_otel  — request-level traces to Langfuse, through Alloy for
+  #                    redaction. LANGFUSE_OTEL_HOST (not LANGFUSE_HOST) is in
+  #                    deployment.yaml and names Alloy. The callback refuses to
+  #                    start without LANGFUSE_PUBLIC_KEY and LANGFUSE_SECRET_KEY,
+  #                    so they stay in the secret; Alloy sends its own to Langfuse.
   # tool_compat: JSON-encodes object tool results (OpenAI-compatible upstreams
   # like Lazer require strings) and drops anyOf branches that only say
-  # `required` (Gemini rejects them; HA timer tools). The module sits next to
-  # this file in /etc/litellm (tool_compat.py).
+  # `required` (Gemini rejects them; HA timer tools), and drops the json_schema
+  # name on Lazer's Claude routes (Lazer passes it to Anthropic, which 400s). The
+  # module sits next to this file in /etc/litellm (tool_compat.py).
   callbacks: ["prometheus", "langfuse_otel", "tool_compat.proxy_handler_instance"]
   # /metrics/ needs no key. LiteLLM only accepts a PROXY ADMIN key there, and a scrape
   # credential with admin power is worse than no credential. Instead the path is

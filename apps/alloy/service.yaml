@@ -1,0 +1,15 @@
+# In-cluster front door for LiteLLM's gateway traces. Claude Code reaches Alloy
+# by hostPort instead (daemonset.yaml), so only this port is here.
+apiVersion: v1
+kind: Service
+metadata:
+  name: alloy-otlp
+  labels:
+    app.kubernetes.io/name: alloy
+spec:
+  selector:
+    app.kubernetes.io/name: alloy
+  ports:
+    - name: otlp-litellm
+      port: 4319
+      targetPort: otlp-litellm

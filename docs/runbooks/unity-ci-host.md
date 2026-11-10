@@ -59,6 +59,9 @@ scripts/test/fetch-image.py unityci/editor ubuntu-<version>-base-3 ~/.cache/unit
 
 apps/ci-runner-governor powers it (config.json `standby` -> `aws-burst-1` -> `power`). The governor's docstring is the full rule; in short:
 
+- Order: `standby` is a list, and the governor starts its hosts in that order (Spot first once `aws-burst-2` is in it, then the on-demand `aws-burst-1`). A host further down starts only for the jobs the hosts ahead cannot take, so a short queue starts one host and a deep one starts both.
+- Fallback: a stopped host whose start EC2 refuses (`InsufficientInstanceCapacity` is `capacity`; any other EC2 code, such as a Spot price or request state or a vCPU limit, is `refused`), or that AWS stops (a Spot reclaim, or a start that found no capacity after all: any `Server.*` state reason, `reclaim`), is passed over for `fallback_seconds` (3600), and the next host takes the queue at once. AWS restarting a persistent Spot host by itself ends the pass-over. `ci_governor_fallback_total{host,reason="capacity|refused|reclaim"}` counts each pass-over once, `ci_governor_power_fallback_until{host}` is its end, and a reclaim shows as `reason="reclaim"` on `ci_governor_power_state`. Not a fallback: the budget deny policy (`UnauthorizedOperation`), which covers every host, and a network error.
+
 - Start: at least `start_min_excess` (4) waiting jobs it can take past what the other hosts cover, held for `start_after_seconds` (300). A short burst never starts it. Its slots count as room only once their runners are online.
 - Stop: no slot busy for `idle_off_seconds` (900), or `max_hours_day` (12) hours run this UTC day. It withholds one slot per cycle and stops the instance only once no slot is busy, so a stop never kills a job.
 - The day's hours are kept in the governor's memory: they reset at UTC midnight. After a pod restart a running instance counts from its EC2 launch time, so earlier runs that day are forgotten.

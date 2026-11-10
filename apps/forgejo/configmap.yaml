@@ -6,6 +6,7 @@ metadata:
   labels:
     app.kubernetes.io/name: forgejo
 data:
+  # No secrets here: this repo is public on GitHub. They come from secret.sops.yaml (README).
   app.ini: |
     APP_NAME = Forgejo Git Server
     RUN_MODE = prod
@@ -27,7 +28,6 @@ data:
     DISABLE_SSH = false
     OFFLINE_MODE = false
     LFS_START_SERVER = true
-    LFS_JWT_SECRET = Aei8uMUYs3o7DMM6ti-RB9lL-h7aH23KpCi4z_AYBQQ
     LFS_HTTP_AUTH_EXPIRY = 20m
 
     [lfs]
@@ -43,6 +43,8 @@ data:
 
     [security]
     INSTALL_LOCK = true
+    # One "Remember this device" login lasts a year (default 31 days).
+    LOGIN_REMEMBER_DAYS = 365
 
     [service]
     DISABLE_REGISTRATION = true
@@ -59,6 +61,10 @@ data:
 
     [session]
     PROVIDER = file
+    # 30 days, not the stock 24h, so a login without remember-me survives a
+    # day away. Browsers only reach Forgejo over HTTPS.
+    SESSION_LIFE_TIME = 2592000
+    COOKIE_SECURE = true
 
     [actions]
     ENABLED = true

@@ -188,6 +188,16 @@
           ACTIONS_RUNNER_HOOK_JOB_STARTED: "{{ linux_ci_job_started_hook }}"
       tags: [runner, ci, linux-ci]
 
+- name: Fleet workers (agent sessions fleet-dispatch places over ssh)
+  # See docs/runbooks/fleet-worker.md. Per user, not root: the sessions run as
+  # ansible_user, at the same paths as on the workstation. The role installs
+  # and reports; signing the accounts in is the human's.
+  hosts: fleet_workers
+  gather_facts: true
+  roles:
+    - role: fleet-worker
+      tags: [fleet-worker, agents]
+
 # macOS build/CI boxes (mac-studio, mac-mini). Shared baseline on BOTH: brew
 # essentials, node_exporter, and macos-baseline (power policy + SSH key sync +
 # auto-login/FileVault assert). macos-baseline's pmset tasks self-elevate

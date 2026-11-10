@@ -1,6 +1,6 @@
 # The Freqtrade dry-run league and its lab (apps/freqtrade). Every series comes from the
 # trader-web exporter (strategy repo web/exporter.py), which reads the trader database at
-# scrape time, so bot state is as old as the newest hourly ingest.
+# scrape time, so bot state is as old as the newest ingest (every 5 minutes).
 #
 # Covered elsewhere, on purpose not repeated here: a failed CronJob (KubeJobFailed), a CronJob
 # that stops being scheduled (HomelabCronJobNotScheduling), a league pod not ready
@@ -83,8 +83,8 @@ spec:
           annotations:
             summary: "Bot {{ $labels.bot }} has been paused or stopped for 30 minutes: python lab/watcher.py --drill-end {{ $labels.bot }} if a drill was left on"
 
-        # Ingest writes an error snapshot for a bot whose API does not answer. One snapshot
-        # stands for an hour, so 70m means two ingest runs in a row could not reach it. A bot
+        # Ingest writes an error snapshot for a bot whose API does not answer. Ingest runs
+        # every 5 minutes, so 70m is a bot that stayed unreachable for 14 runs in a row. A bot
         # that is not in dry run also gets an error snapshot; TraderBotNotDryRun owns that case.
         - alert: TraderBotApiDown
           expr: trader_bot_snapshot_error == 1 unless on (bot) trader_bot_dry_run == 0
@@ -96,8 +96,8 @@ spec:
             summary: "Freqtrade bot {{ $labels.bot }} did not answer two ingest runs in a row: kubectl -n freqtrade logs freqtrade-league-<row>"
 
         - alert: TraderIngestStale
-          expr: trader_ingest_age_seconds > 3 * 3600
-          for: 15m
+          expr: trader_ingest_age_seconds > 20 * 60
+          for: 5m
           labels:
             severity: warning
             category: trading
@@ -115,11 +115,11 @@ spec:
           annotations:
             summary: "Newest {{ $labels.exchange }} candle is {{ $value | humanizeDuration }} old: check the freqtrade-backfill CronJob"
 
-        # The futures job runs daily. Funding settles every 8h and open interest is stamped at the start
-        # of its day, so a healthy newest row is under about 48h old; past 60h a day was missed, and
-        # missed funding is lost once it ages past the exchange's few months of history.
+        # The futures job runs daily at 05:35 UTC. Funding settles at 00:00, 08:00 and 16:00, so just before
+        # a run the newest row is the previous day's 00:00 settlement, about 29.6h old; past 32h a day was
+        # missed, and missed funding is lost once it ages past the exchange's few months of history.
         - alert: TraderFuturesStale
-          expr: trader_futures_age_seconds > 60 * 3600
+          expr: trader_futures_age_seconds > 32 * 3600
           for: 30m
           labels:
             severity: warning
@@ -135,11 +135,23 @@ spec:
           annotations:
             summary: "The newest {{ $labels.kind }} run failed: its runs row on trader.kblab.me/runs says why"
 
-        # Analysis is nightly (its job has an 18h guard), walk-forward weekly (24h guard).
+        # The nightly reproduce check (strategy repo lab/reproduce.py, last step of the analysis job) ran a
+        # sample of cached backtest chunks and walk-forward folds again and one came out different: the
+        # cache is serving results the code no longer produces. Its runs row on trader.kblab.me/runs names
+        # which ones and what differed. Rerunning will not clear it: find what changed (image, freqtrade,
+        # a config, candles) and why it is missing from the cache key.
+        - alert: TraderReproMismatch
+          expr: trader_repro_mismatch > 0
+          labels:
+            severity: critical
+            category: trading
+          annotations:
+            summary: "{{ $value }} cached result(s) did not reproduce: see the newest reproduce run on trader.kblab.me/runs"
+
+        # Analysis (18h guard) and walk-forward (8h guard) are both nightly. A walk-forward catching up
+        # after a freqtrade bump stops at its guard before it records a success, so this fires until it catches up.
         - alert: TraderRunStale
-          expr: |
-            time() - trader_run_last_ok_timestamp_seconds{kind="analysis"} > 50 * 3600
-            or time() - trader_run_last_ok_timestamp_seconds{kind="walkforward"} > 9 * 86400
+          expr: time() - trader_run_last_ok_timestamp_seconds{kind=~"analysis|walkforward"} > 50 * 3600
           for: 15m
           labels:
             severity: warning
@@ -150,14 +162,39 @@ spec:
         # Event-contract markets (strategy repo lab/markets, docs/markets.md). A venue reports while
         # it has a recorder sweep in the last 7 days, so removing a venue's CronJob ends its series
         # instead of alerting forever. 15 minutes is the paper league's max_book_age_min: past it the
-        # league already takes no entries on that venue.
+        # league already takes no entries on that venue. Polymarket global sweeps every 15 minutes
+        # (about 10 a sweep), so it gets the same two missed ticks: 45 minutes.
         - alert: TraderMarketsRecorderStale
-          expr: trader_markets_sweep_age_seconds > 15 * 60
+          expr: >-
+            trader_markets_sweep_age_seconds{venue!="polymarket"} > 15 * 60
+            or trader_markets_sweep_age_seconds{venue="polymarket"} > 45 * 60
           labels:
             severity: warning
             category: trading
           annotations:
             summary: "No good {{ $labels.venue }} recorder sweep for {{ $value | humanizeDuration }}: the paper league takes no entries there; failed sweeps and their errors are on trader.kblab.me/markets"
+
+        # A sweep is scheduled every 5 minutes with Forbid, so one that runs past 5 minutes makes the next
+        # tick skip and thins the book. This reads the newest good sweep's run time.
+        - alert: TraderMarketsSweepSlow
+          expr: trader_markets_sweep_duration_seconds{venue!="polymarket"} > 5 * 60
+          for: 10m
+          labels:
+            severity: warning
+            category: trading
+          annotations:
+            summary: "{{ $labels.venue }} recorder sweep took {{ $value | humanizeDuration }}, past the 5 minute schedule: the next tick is skipped"
+
+        # Polymarket global sweeps every 15 minutes and its job is killed at 15 (the compact job's grace),
+        # so a sweep past 12 minutes is close to dying before it records anything.
+        - alert: TraderMarketsGlobalSweepSlow
+          expr: trader_markets_sweep_duration_seconds{venue="polymarket"} > 12 * 60
+          for: 30m
+          labels:
+            severity: warning
+            category: trading
+          annotations:
+            summary: "polymarket recorder sweep took {{ $value | humanizeDuration }}, close to the 15 minute deadline that kills the job"
 
         # A sweep is every 5 minutes, so 3 failures in an hour is a quarter of them: an adapter or
         # venue error that keeps coming back even while some sweeps still land.

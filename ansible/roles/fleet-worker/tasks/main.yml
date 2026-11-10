@@ -1,0 +1,182 @@
+---
+# A fleet worker takes light claude sessions that fleet-dispatch places over
+# ssh (dotfiles .local/lib/fleet-hosts.sh). This role installs what such a
+# session runs and reports what only the human can do: sign each account in
+# and let the worker's key reach the state host. It copies no token.
+# Runbook: docs/runbooks/fleet-worker.md.
+
+- name: Install the session toolchain
+  when: ansible_facts.os_family == "Archlinux"
+  become: true
+  community.general.pacman:
+    name: "{{ fleet_worker_packages }}"
+    state: present
+    update_cache: true
+
+- name: Install the session toolchain (Ubuntu)
+  when: ansible_facts.os_family == "Debian"
+  become: true
+  ansible.builtin.apt:
+    name: "{{ fleet_worker_packages_apt }}"
+    state: present
+    update_cache: true
+
+# The login link `tailscale up` prints is the human's to open, so no auth key
+# passes through ansible.
+- name: Install tailscale (a cloud worker)
+  when: fleet_tailscale | bool
+  become: true
+  ansible.builtin.shell: set -o pipefail && curl -fsSL https://tailscale.com/install.sh | sh
+  args:
+    executable: /bin/bash
+    creates: /usr/bin/tailscale
+
+- name: Run tailscaled
+  when: fleet_tailscale | bool and not ansible_check_mode
+  become: true
+  ansible.builtin.systemd:
+    name: tailscaled
+    enabled: true
+    state: started
+
+- name: Read whether the worker is on the tailnet
+  when: fleet_tailscale | bool
+  ansible.builtin.command: tailscale ip -4
+  register: fleet_worker_tailnet
+  changed_when: false
+  failed_when: false
+  check_mode: false
+
+- name: Install Claude Code (its native installer, per user)
+  ansible.builtin.shell: set -o pipefail && curl -fsSL https://claude.ai/install.sh | bash
+  args:
+    executable: /bin/bash
+    creates: "{{ ansible_env.HOME }}/.local/bin/claude"
+
+# Kept on main: an older agent-queue there would write the queue on the worker
+# instead of forwarding it (fleet-dispatch's probe refuses such a worker).
+# No submodules: two are private ssh remotes a fresh worker cannot reach, and
+# a session needs none of them.
+- name: Clone the public dotfiles, at main
+  ansible.builtin.git:
+    repo: "{{ fleet_worker_dotfiles_repo }}"
+    dest: "{{ ansible_env.HOME }}/.dotfiles"
+    version: main
+    recursive: false
+
+# apply_dotfiles removes a plain ~/.bashrc and ~/.zshrc before it stows, so a
+# copy of each is kept first. Runs once: the stowed agent-queue marks it done.
+- name: Stow the dotfiles (apply_dotfiles)
+  ansible.builtin.shell: |
+    set -eo pipefail
+    for f in "$HOME/.bashrc" "$HOME/.zshrc"; do
+      if [ -f "$f" ] && [ ! -L "$f" ]; then cp -n "$f" "$f.pre-dotfiles"; fi
+    done
+    . "$HOME/.dotfiles/.local/src/installation_scripts/base_functions.sh"
+    apply_dotfiles
+  args:
+    executable: /bin/bash
+    creates: "{{ ansible_env.HOME }}/.local/bin/agent-queue"
+
+- name: Read whether GitHub is signed in (the private overlay and every PR need it)
+  ansible.builtin.command: gh auth status
+  register: fleet_worker_gh
+  changed_when: false
+  failed_when: false
+  check_mode: false
+
+- name: Stow the private overlay (setup_dotfiles_private)
+  when: fleet_worker_gh.rc == 0
+  ansible.builtin.shell: |
+    set -eo pipefail
+    . "$HOME/.dotfiles/.local/src/installation_scripts/base_functions.sh"
+    setup_dotfiles_private
+  args:
+    executable: /bin/bash
+    creates: "{{ ansible_env.HOME }}/.dotfiles-private"
+
+# Same path as on the workstation: fleet-dispatch places an item only when its
+# repo's checkout is in this list, and opens the session at that path here.
+- name: Clone the repos sessions run in (fleet_repos)
+  ansible.builtin.git:
+    repo: "{{ item.repo }}"
+    dest: "{{ item.dest }}"
+    update: false
+  loop: "{{ fleet_repos | default([]) }}"
+  loop_control:
+    label: "{{ item.dest }}"
+  failed_when: false   # a private repo needs gh auth first; the report names it
+
+- name: Read which repos are cloned
+  ansible.builtin.stat:
+    path: "{{ item.dest | regex_replace('^~', ansible_env.HOME) }}/.git"
+  loop: "{{ fleet_repos | default([]) }}"
+  loop_control:
+    label: "{{ item.dest }}"
+  register: fleet_worker_clones
+
+- name: Read the account dirs claude-acct knows
+  ansible.builtin.command: >-
+    awk '!/^#/ && NF == 2 && $2 != "-" { print $2 }'
+    {{ ansible_env.HOME }}/.dotfiles/.config/claude-acct/accounts
+  register: fleet_worker_accounts
+  changed_when: false
+  failed_when: false
+  check_mode: false
+
+- name: Create each account dir, empty (the human signs each one in)
+  ansible.builtin.file:
+    path: "{{ item | regex_replace('^~', ansible_env.HOME) }}"
+    state: directory
+    mode: "0700"
+  loop: "{{ ['~/.claude'] + fleet_worker_accounts.stdout_lines }}"
+
+- name: Make the key this worker reaches the state host with
+  ansible.builtin.command: ssh-keygen -q -t ed25519 -N '' -C "fleet-worker {{ inventory_hostname }}" -f {{ ansible_env.HOME }}/.ssh/id_ed25519
+  args:
+    creates: "{{ ansible_env.HOME }}/.ssh/id_ed25519"
+
+- name: Trust the state host's host key
+  ansible.builtin.known_hosts:
+    name: "{{ fleet_state_host }}"
+    key: "{{ lookup('ansible.builtin.pipe', 'ssh-keyscan -t ed25519 ' ~ fleet_state_host ~ ' 2>/dev/null') }}"
+    state: present
+
+- name: Read whether the worker reaches the state host
+  ansible.builtin.command: ssh -o BatchMode=yes -o ConnectTimeout=5 {{ fleet_state_host }} true
+  register: fleet_worker_state_ssh
+  changed_when: false
+  failed_when: false
+  check_mode: false
+
+- name: Read whether each account is signed in
+  ansible.builtin.stat:
+    path: "{{ item | regex_replace('^~', ansible_env.HOME) }}/.credentials.json"
+  loop: "{{ ['~/.claude'] + fleet_worker_accounts.stdout_lines }}"
+  register: fleet_worker_signed
+
+- name: Read the worker's public key
+  ansible.builtin.slurp:
+    src: "{{ ansible_env.HOME }}/.ssh/id_ed25519.pub"
+  register: fleet_worker_pub
+  failed_when: false
+
+- name: Report what only the human can do
+  vars:
+    fleet_worker_unsigned: "{{ fleet_worker_signed.results | rejectattr('stat.exists') | map(attribute='item') | list }}"
+    fleet_worker_left: >-
+      {{ ([] if not fleet_tailscale | bool or fleet_worker_tailnet.rc | default(1) == 0 else
+            ['sudo tailscale up --hostname ' ~ (fleet_ssh_host | default(inventory_hostname))
+             ~ ', open the login link it prints, then re-run this play'])
+         + ([] if fleet_worker_gh.rc == 0 else ['gh auth login, then re-run this play for the private overlay'])
+         + ([] if fleet_worker_state_ssh.rc | default(1) == 0 else
+            ['on ' ~ fleet_state_host ~ ', add this key to ~/.ssh/authorized_keys: '
+             ~ (fleet_worker_pub.content | default('') | b64decode | trim)])
+         + (fleet_worker_unsigned | map('regex_replace', '^', 'sign in: CLAUDE_CONFIG_DIR=') | map('regex_replace', '$', ' claude, then /login') | list)
+         + (fleet_worker_clones.results | rejectattr('stat.exists') | map(attribute='item.dest')
+            | map('regex_replace', '^', 'not cloned: ') | list) }}
+  ansible.builtin.debug:
+    msg: >-
+      {{ 'Ready: set fleet_place: true for ' ~ inventory_hostname ~ ' in inventory.yml to let fleet-dispatch place sessions here.'
+         if fleet_worker_left | length == 0 else
+         'Left for the human on ' ~ inventory_hostname ~ ': ' ~ (fleet_worker_left | join('; ')) }}

@@ -1,0 +1,66 @@
+<?xml version="1.0" ?>
+<!-- One room-sized patch of floor, the iris with a down camera at the origin (home),
+     and the AprilTag pad 0.3 m north and 0.3 m east of it. Gazebo world axes are ENU
+     (x east, y north), so the pad sits at x=0.3 y=0.3. -->
+<sdf version="1.9">
+  <world name="hop_pad">
+    <physics name="1ms" type="ignore">
+      <max_step_size>0.001</max_step_size>
+      <real_time_factor>1.0</real_time_factor>
+    </physics>
+    <plugin filename="gz-sim-physics-system" name="gz::sim::systems::Physics"/>
+    <plugin filename="gz-sim-sensors-system" name="gz::sim::systems::Sensors">
+      <render_engine>ogre2</render_engine>
+    </plugin>
+    <plugin filename="gz-sim-user-commands-system" name="gz::sim::systems::UserCommands"/>
+    <plugin filename="gz-sim-scene-broadcaster-system" name="gz::sim::systems::SceneBroadcaster"/>
+    <plugin filename="gz-sim-imu-system" name="gz::sim::systems::Imu"/>
+    <plugin filename="gz-sim-navsat-system" name="gz::sim::systems::NavSat"/>
+
+    <scene>
+      <ambient>1.0 1.0 1.0</ambient>
+      <background>0.8 0.8 0.8</background>
+      <shadows>false</shadows>
+    </scene>
+    <spherical_coordinates>
+      <latitude_deg>-35.363262</latitude_deg>
+      <longitude_deg>149.165237</longitude_deg>
+      <elevation>584</elevation>
+      <heading_deg>0</heading_deg>
+      <surface_model>EARTH_WGS84</surface_model>
+    </spherical_coordinates>
+    <light type="directional" name="sun">
+      <cast_shadows>false</cast_shadows>
+      <pose>0 0 10 0 0 0</pose>
+      <diffuse>0.9 0.9 0.9 1</diffuse>
+      <specular>0.2 0.2 0.2 1</specular>
+      <direction>-0.3 0.1 -0.9</direction>
+    </light>
+
+    <model name="floor">
+      <static>true</static>
+      <link name="link">
+        <collision name="collision">
+          <geometry><plane><normal>0 0 1</normal><size>20 20</size></plane></geometry>
+        </collision>
+        <visual name="visual">
+          <geometry><plane><normal>0 0 1</normal><size>20 20</size></plane></geometry>
+          <material><ambient>0.45 0.42 0.38 1</ambient><diffuse>0.45 0.42 0.38 1</diffuse></material>
+        </visual>
+      </link>
+    </model>
+
+    <include>
+      <name>apriltag_pad</name>
+      <uri>model://apriltag_pad</uri>
+      <pose>0.3 0.3 0 0 0 0</pose>
+    </include>
+
+    <!-- Yaw 90 deg: the nose points north (+y), matching ArduPilot heading 0. -->
+    <include>
+      <name>iris</name>
+      <uri>model://iris_downcam</uri>
+      <pose degrees="true">0 0 0.195 0 0 90</pose>
+    </include>
+  </world>
+</sdf>

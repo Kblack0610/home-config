@@ -374,7 +374,7 @@
       "targets": [
         {
           "expr": "trader_bot_profit_pct",
-          "legendFormat": "{{bot}}",
+          "legendFormat": "{{cohort}} {{bot}}",
           "refId": "A"
         }
       ],
@@ -606,6 +606,114 @@
       "id": 12
     },
     {
+      "title": "Reproduce: cached results run again",
+      "type": "stat",
+      "description": "Chunks and folds the newest nightly reproduce check (strategy repo lab/reproduce.py) ran again and compared. 0 means it found nothing cached to check.",
+      "gridPos": {
+        "h": 4,
+        "w": 12,
+        "x": 0,
+        "y": 28
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": ""
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "none",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "red",
+                "value": null
+              },
+              {
+                "color": "green",
+                "value": 1
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "colorMode": "background",
+        "graphMode": "none",
+        "textMode": "value"
+      },
+      "targets": [
+        {
+          "expr": "trader_repro_checked",
+          "refId": "A",
+          "instant": true
+        }
+      ],
+      "id": 26
+    },
+    {
+      "title": "Reproduce: mismatches",
+      "type": "stat",
+      "description": "Must stay 0. Of those, how many came out different from the stored result; TraderReproMismatch pages on any.",
+      "gridPos": {
+        "h": 4,
+        "w": 12,
+        "x": 12,
+        "y": 28
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": ""
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "none",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "red",
+                "value": 1
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "colorMode": "background",
+        "graphMode": "none",
+        "textMode": "value"
+      },
+      "targets": [
+        {
+          "expr": "trader_repro_mismatch",
+          "refId": "A",
+          "instant": true
+        }
+      ],
+      "id": 27
+    },
+    {
       "title": "Open suggestions by kind",
       "type": "timeseries",
       "description": "",
@@ -613,7 +721,7 @@
         "h": 8,
         "w": 24,
         "x": 0,
-        "y": 28
+        "y": 32
       },
       "datasource": {
         "type": "prometheus",
@@ -658,7 +766,7 @@
         "h": 1,
         "w": 24,
         "x": 0,
-        "y": 36
+        "y": 40
       },
       "panels": [],
       "id": 25
@@ -671,7 +779,7 @@
         "h": 4,
         "w": 6,
         "x": 0,
-        "y": 37
+        "y": 41
       },
       "datasource": {
         "type": "prometheus",
@@ -725,7 +833,7 @@
         "h": 4,
         "w": 6,
         "x": 6,
-        "y": 37
+        "y": 41
       },
       "datasource": {
         "type": "prometheus",
@@ -783,7 +891,7 @@
         "h": 4,
         "w": 6,
         "x": 12,
-        "y": 37
+        "y": 41
       },
       "datasource": {
         "type": "prometheus",
@@ -833,7 +941,7 @@
         "h": 4,
         "w": 6,
         "x": 18,
-        "y": 37
+        "y": 41
       },
       "datasource": {
         "type": "prometheus",
@@ -883,7 +991,7 @@
         "h": 8,
         "w": 12,
         "x": 0,
-        "y": 41
+        "y": 45
       },
       "datasource": {
         "type": "prometheus",
@@ -928,7 +1036,7 @@
         "h": 8,
         "w": 12,
         "x": 12,
-        "y": 41
+        "y": 45
       },
       "datasource": {
         "type": "prometheus",
@@ -973,7 +1081,7 @@
         "h": 8,
         "w": 12,
         "x": 0,
-        "y": 49
+        "y": 53
       },
       "datasource": {
         "type": "prometheus",
@@ -1018,7 +1126,7 @@
         "h": 8,
         "w": 12,
         "x": 12,
-        "y": 49
+        "y": 53
       },
       "datasource": {
         "type": "prometheus",
@@ -1063,7 +1171,7 @@
         "h": 8,
         "w": 12,
         "x": 0,
-        "y": 57
+        "y": 61
       },
       "datasource": {
         "type": "prometheus",
@@ -1108,7 +1216,7 @@
         "h": 8,
         "w": 12,
         "x": 12,
-        "y": 57
+        "y": 61
       },
       "datasource": {
         "type": "prometheus",
@@ -1153,7 +1261,7 @@
         "h": 8,
         "w": 24,
         "x": 0,
-        "y": 65
+        "y": 69
       },
       "datasource": {
         "type": "prometheus",

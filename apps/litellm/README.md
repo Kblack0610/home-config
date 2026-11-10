@@ -30,10 +30,11 @@ Every consumer of this gateway should hold a *scoped virtual key* — never `LIT
 | `karakeep-tagging` | `fast (Qwen3-4B)` | none (free upstream) | rpm 60 | `apps/karakeep/` |
 | `mem0-embeddings` | `embedding (modernbert-embed-base-4bit)`, `fast (Qwen3-4B)` | none (free upstream) | rpm 120 | `apps/mem0/` |
 | `opencode-default` | free local + the toggle aliases (`code`/`reasoning`/`fast`) | $50 | tpm 50k, rpm 30 | opencode default mode |
-| `opencode-premium` | the paid Lazer routes (`code (qwen-3-coder)`, `reasoning (deepseek-v4-pro)`, `fast (gpt-oss-120b)`, `vlm (gemini-3-flash)`) | $150 | tpm 100k | opencode build/escalation mode |
+| `opencode-paid` | the paid Lazer routes (`code (qwen-3-coder)`, `reasoning (glm-5.3)`, `fast (gpt-oss-120b)`, `vlm (gemini-3-flash)`) | $150 | tpm 100k | opencode build/escalation mode |
 | `model-lane` | `claude-haiku-4-5-20251001` (Lazer Haiku 5.5), team `lazer-pool` | $10 | rpm 30 | `model-lane classify` (dotfiles-private skill), key file `~/.local/state/model-lane/litellm.key` |
 | `claude-reserve` | `claude-sonnet-5`, `claude-haiku-4-5-20251001`, team `lazer-pool`; no Opus on purpose | $100 | none | Claude Code on Lazer when the subscription accounts are spent: `claude-lazer` / `cl --lazer` and model-lane's headless sonnet lane (dotfiles-private), key file `~/.local/state/claude-lazer/key` |
-| `lazer-eval` | `claude-sonnet-5`, `claude-haiku-4-5-20251001`, `code (qwen-3-coder)`, `reasoning (deepseek-v4-pro)`, `fast (gpt-oss-120b)`, team `lazer-pool`; no Opus on purpose | $150 lifetime (no `budget_duration`) | rpm 60 | the model and harness eval lane: `fleet-dispatch start --harness claude-lazer\|opencode`, key file `~/.local/state/agentctl/lazer-eval.key`. Each run sends `x-litellm-tags: queue:<slug>`, so spend joins the queue item |
+| `lazer-eval` | `claude-sonnet-5`, `claude-haiku-4-5-20251001`, `code (qwen-3-coder)`, `reasoning (glm-5.3)`, `fast (gpt-oss-120b)`, team `lazer-pool`; no Opus on purpose | $150 lifetime (no `budget_duration`) | rpm 60 | the model and harness eval lane: `fleet-dispatch start --harness claude-lazer\|opencode`, key file `~/.local/state/agentctl/lazer-eval.key`. Each run sends `x-litellm-tags: queue:<slug>`, so spend joins the queue item |
+| `glm-pilot` | `reasoning (glm-5.3)` only, team `lazer-pool` | $50 (`budget_duration` 30d) | rpm 60 | the GLM canary and pilot: `fleet-dispatch start --harness glm`, key file `~/.local/state/agentctl/glm.key`. A key without this route gets 403, not a fallback; its spend and cap read from the `litellm_*_api_key_*` gauges on the Costs tab LAZER line |
 | `eval-reader` | none (`no-default-models`), on the `proxy_admin_viewer` user `eval-reader` | none | none | reads `/tag/daily/activity` for that join, key file `~/.local/state/agentctl/eval-reader.key`. A plain scoped key gets 401 on `/tag/*`; this one gets 403 on writes and completions |
 
 > **Toggle aliases (2026-07):** `router_settings.model_group_alias` in `configmap.yaml` exposes short stable names (`code`, `reasoning`, `fast`, `vlm`, `embedding`, `stt`) that resolve to whichever concrete route a category currently points at. Consumers/keys can allow the short alias and stay put while you flip local-vs-paid in one line. Each category also has explicit local (`... local model ...`) and paid (`... (lazer) ...`) routes for direct A/B testing.
@@ -103,6 +104,15 @@ Health endpoints used by the deployment:
 
 - `/health/liveliness`
 - `/health/readiness`
+
+After a LiteLLM image bump, confirm `tool_compat.py` still fires on the `/v1/messages` bridge, because `test_tool_compat.py` stubs LiteLLM and cannot see a hook contract change. A 400 naming `output_config.format.name` means the hook stopped running:
+
+```bash
+curl -s https://llm.kblab.me/v1/messages \
+  -H "Authorization: Bearer $(cat ~/.local/state/model-lane/litellm.key)" \
+  -H 'anthropic-version: 2023-06-01' -H 'content-type: application/json' \
+  -d '{"model":"claude-haiku-4-5-20251001","max_tokens":64,"messages":[{"role":"user","content":"Say hi as JSON."}],"output_config":{"format":{"type":"json_schema","schema":{"type":"object","properties":{"greeting":{"type":"string"}},"required":["greeting"],"additionalProperties":false}}}}'
+```
 
 ## Backup Notes
 

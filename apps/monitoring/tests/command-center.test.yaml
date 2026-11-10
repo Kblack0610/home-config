@@ -394,3 +394,57 @@ tests:
         exp_samples:
           - labels: 'cc:component_status{domain="home",component="feed"}'
             value: 1
+
+  # Peak less the value before the window: a session born inside it counts its first sample,
+  # which increase() drops (about a quarter of a day's cost).
+  - name: the 24h Claude cost counts a session born in the window in full, and an old one from its base
+    interval: 1m
+    input_series:
+      - series: 'claude_code_cost_usage_USD_total{service_name="claude-code",session_id="old"}'
+        values: '10x120 10+1x1440'
+      - series: 'claude_code_cost_usage_USD_total{service_name="claude-agentctl",session_id="new"}'
+        values: '_x600 3x960'
+    promql_expr_test:
+      - expr: cc:claude_code_cost_24h_usd:by_service
+        eval_time: 26h
+        exp_samples:
+          - labels: 'cc:claude_code_cost_24h_usd:by_service{service_name="claude-code"}'
+            value: 1439
+          - labels: 'cc:claude_code_cost_24h_usd:by_service{service_name="claude-agentctl"}'
+            value: 3
+      - expr: cc:claude_code_cost_24h_usd
+        eval_time: 26h
+        exp_samples:
+          - labels: 'cc:claude_code_cost_24h_usd'
+            value: 1442
+
+  # The runner split: a one-sample judge call counts in full (increase() reads it as 0), and two
+  # sessions of one runner add up under its name.
+  - name: the 24h Claude cost splits by runner, and the service and total rules are its sums
+    interval: 1m
+    input_series:
+      - series: 'claude_code_cost_usage_USD_total{service_name="claude-code",session_id="you"}'
+        values: '_x600 4x960'
+      - series: 'claude_code_cost_usage_USD_total{service_name="claude-agentctl",agentctl_runner="ask-judge",session_id="j1"}'
+        values: '_x1000 0.25'
+      - series: 'claude_code_cost_usage_USD_total{service_name="claude-agentctl",agentctl_runner="fleet-dispatch",session_id="q1"}'
+        values: '_x600 2x960'
+      - series: 'claude_code_cost_usage_USD_total{service_name="claude-agentctl",agentctl_runner="fleet-dispatch",session_id="q2"}'
+        values: '1x120 1+0.25x1440'
+    promql_expr_test:
+      - expr: cc:claude_code_cost_24h_usd:by_runner
+        eval_time: 26h
+        exp_samples:
+          - labels: 'cc:claude_code_cost_24h_usd:by_runner{service_name="claude-code"}'
+            value: 4
+          - labels: 'cc:claude_code_cost_24h_usd:by_runner{service_name="claude-agentctl",agentctl_runner="ask-judge"}'
+            value: 0.25
+          - labels: 'cc:claude_code_cost_24h_usd:by_runner{service_name="claude-agentctl",agentctl_runner="fleet-dispatch"}'
+            value: 361.75
+      - expr: cc:claude_code_cost_24h_usd:by_service
+        eval_time: 26h
+        exp_samples:
+          - labels: 'cc:claude_code_cost_24h_usd:by_service{service_name="claude-code"}'
+            value: 4
+          - labels: 'cc:claude_code_cost_24h_usd:by_service{service_name="claude-agentctl"}'
+            value: 362

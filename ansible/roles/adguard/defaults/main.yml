@@ -106,7 +106,18 @@ adguard_rewrites:
     answer: 192.168.1.124
     enabled: true
 
-adguard_user_rules: []
+# The AdGuard DNS filter blocks the Unity Editor's own analytics hosts. When
+# they resolve to 0.0.0.0, Unity 6000.3 on macOS recurses on the failed post
+# (DataDispatcher::HandlePostRequestDone -> WebRequestRestClient::Abort) until
+# the thread stack overflows, so every editor and batchmode build on a Mac
+# dies with "Illegal instruction: 4" (the mac-mini's release jobs, 2026-11-08
+# to 11-10, ucp-1736). Unity Ads and mediation hosts stay blocked.
+adguard_user_rules:
+  - '@@||cdp.cloud.unity3d.com^'
+  - '@@||config.uca.cloud.unity3d.com^'
+  - '@@||api.uca.cloud.unity3d.com^'
+  - '@@||data-optout-service.uca.cloud.unity3d.com^'
+  - '@@||perf-events.cloud.unity3d.com^'
 
 # --- Host hygiene ----------------------------------------------------------
 # Pointless on a wired, headless DNS appliance; each is a service that can fail

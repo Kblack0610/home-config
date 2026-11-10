@@ -11,6 +11,7 @@ OrcaSlicer in the browser at `https://slicer.kblab.me` (linuxserver image, Selki
 | `kustomization.yaml` | Builds the `orcaslicer-profiles` ConfigMap from the two above (fixed name, `apps/print-service` mounts it) |
 | `deployment.yaml` | The app; its `seed-config` init container copies the presets in on every start |
 | `bambu-a1-secret.yaml` | SOPS: the A1 LAN access code and serial, filled into the `@A1_...@` placeholders at start |
+| `check-presets.sh` | Updating step 1: proves every `inherits` resolves on an image tag, in a throwaway container |
 | `desktop-link.sh` | Points a desktop OrcaSlicer at `profiles/` (symlinks; the A1 preset is a local copy with the code filled from SOPS). Run with Orca closed; the dotfiles installer calls it from `setup_3d_printing` |
 
 ## Presets
@@ -36,11 +37,11 @@ A new preset needs a line in the init container's list in `deployment.yaml` and 
 
 ## Updating
 
-The app and `apps/print-service` pin the same linuxserver tag (now `v2.4.2-ls47`); bump both in one PR. Renovate opens that PR (`renovate/orcaslicer`, docs/renovate.md); before merging it:
+The app and `apps/print-service` pin the same linuxserver tag (now `v2.5.0-ls49`); bump both in one PR. Renovate opens that PR (`renovate/orcaslicer`, docs/renovate.md); before merging it:
 
-1. Check that every `inherits` in `profiles/` names a preset the new version ships, under `/opt/orcaslicer/resources/profiles/{Elegoo,BBL}/` in the image (`docker run --rm --entrypoint ls lscr.io/linuxserver/orcaslicer:<tag> ...`). OrcaSlicer 2.4 renamed the Elegoo presets (`Elegoo Neptune 4 Pro (0.4 nozzle)` -> `Elegoo Neptune 4 Pro 0.4 nozzle`, `@Elegoo Neptune4Pro (0.4 nozzle)` -> `@Elegoo N4Pro 0.4 nozzle`); the GUI maps old names through `renamed_from`, the print-service paths do not.
+1. Prove every `inherits` in `profiles/` still resolves: `apps/orcaslicer/check-presets.sh <tag>` (needs docker; pulls the image). Since 2.5.0 each vendor is an opaque `<vendor>.opc` (not zip) and `/opt/orcaslicer/resources/profiles/Elegoo/` holds no preset files, so `ls` over the image proves nothing. The script copies the vendor bundles into a throwaway datadir `system/`, puts `profiles/` in `user/default/`, and slices a cube with each machine/process/filament set with the image's own CLI (the A1 machine is resolved with `--export-settings`); a preset with a bogus `inherits` is the negative control and must fail. OrcaSlicer 2.4 renamed the Elegoo presets (`Elegoo Neptune 4 Pro (0.4 nozzle)` -> `Elegoo Neptune 4 Pro 0.4 nozzle`, `@Elegoo Neptune4Pro (0.4 nozzle)` -> `@Elegoo N4Pro 0.4 nozzle`); the GUI maps old names through `renamed_from`, the CLI does not. Fix a red by pointing `inherits` at the new name (the new names are in `apps/print-service/server.py`).
 2. Re-run the print-service slice check (`apps/print-service/README.md`, "Test / verify").
-3. Slice once in the GUI with each process preset in `profiles/process/`. print-service only uses the system process presets, so it cannot catch a value the new version rejects (2.4.2 refuses `small_perimeter_speed: "0"`).
+3. Slice once in the GUI with each process preset in `profiles/process/`. print-service only uses the system process presets, so it cannot catch a value the new version rejects (2.4.2 refused `small_perimeter_speed: "0"`; the check script slices a cube with them, which does not exercise every feature of each process preset).
 
 ## Verify
 
@@ -55,6 +56,6 @@ python3 scripts/check-secret-store.py
 | Symptom | Cause | Fix |
 |---------|-------|-----|
 | A merged preset change does not show on `slicer.kblab.me` | The init container copies presets only at pod start | `rollout restart deploy/orcaslicer` |
-| A user filament preset is missing from the list, Orca logs `validate_preset: ... can not found preset and inherit in list` | Its `inherits` names a system preset that the Orca version does not ship (the old `Elegoo Generic PLA`) | Point `inherits` at a preset that exists in `/opt/orcaslicer/resources/profiles/Elegoo/` (`Generic PLA @Elegoo`) |
+| A user filament preset is missing from the list, Orca logs `validate_preset: ... can not found preset and inherit in list` | Its `inherits` names a system preset that the Orca version does not ship (the old `Elegoo Generic PLA`) | Point `inherits` at a preset the version ships (`Generic PLA @Elegoo`); `check-presets.sh <tag>` shows which names resolve |
 | Slicing fails with "Invalid parameter value(s)" (the CLI returns -18) | A preset key holds a value the Orca version no longer accepts | Find the key: apply the preset keys one at a time onto the system parent and slice with `/usr/bin/orca-slicer --slice 0`. Drop the key so it inherits, or set a valid value |
 | A gcode printed with the wrong nozzle | The name was read for the nozzle | Read `nozzle_diameter` from Moonraker metadata (above) |

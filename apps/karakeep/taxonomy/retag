@@ -72,9 +72,10 @@ def main():
 
     top, folders, strays = TAXONOMY["top"], TAXONOMY["folders"], TAXONOMY.get("strays", {})
     canonical = set(top) | {t for ts in folders.values() for t in ts}
-    bad = {s: ts for s, ts in strays.items() if s in canonical or not set(ts) <= canonical}
+    reserved = set(TAXONOMY.get("reserved", []))
+    bad = {s: ts for s, ts in strays.items() if s in canonical | reserved or not ts or not set(ts) <= canonical}
     if bad:
-        sys.exit(f"taxonomy.json strays must map a non-taxonomy tag to taxonomy tags: {bad}")
+        sys.exit(f"taxonomy.json strays must map a tag outside taxonomy and reserved to one or more taxonomy tags: {bad}")
 
     lists = {l["id"]: l for l in call("GET", "/lists")["lists"]}
     unmapped = sorted({l["name"] for l in lists.values()} - set(folders))
@@ -94,6 +95,8 @@ def main():
                 want[b["id"]] |= tags
 
     bookmarks = {b["id"]: b for b in paged("/bookmarks", "bookmarks")}
+    counts = collections.Counter(t for ts in want.values() for t in ts)
+    folder_tagged = len(want)
     stray_mapped = collections.Counter()
     for bid, b in bookmarks.items():
         for t in b.get("tags", []):
@@ -101,7 +104,6 @@ def main():
                 want[bid] |= set(strays[t["name"]])
                 stray_mapped[t["name"]] += 1
     all_tags = call("GET", "/tags")["tags"]
-    reserved = set(TAXONOMY.get("reserved", []))
     stray = [t for t in all_tags if t["name"] not in canonical | reserved]
 
     todo = {}
@@ -110,8 +112,7 @@ def main():
         if tags - have:
             todo[bid] = sorted(tags - have)
 
-    counts = collections.Counter(t for ts in want.values() for t in ts)
-    print(f"bookmarks: {len(bookmarks)}  folder-tagged: {len(want)}  no folder signal: {len(bookmarks) - len(want)}")
+    print(f"bookmarks: {len(bookmarks)}  folder-tagged: {folder_tagged}  no folder signal: {len(bookmarks) - folder_tagged}")
     print("top:", {t: counts[t] for t in top})
     print("detail:", dict(sorted(((t, n) for t, n in counts.items() if t not in top), key=lambda x: -x[1])))
     print(f"unmapped folders: {unmapped or 'none'}")

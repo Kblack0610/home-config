@@ -51,7 +51,7 @@ In GitHub, check `https://github.com/BlackNBrownStudios/platform/settings/action
 
 ## Uninstall
 
-For a light/heavy drain, lower `ci_light_slots` and `ci_heavy_slots` in `ansible/inventory.yml` and update `RUNNER_ROSTER` in `apps/github-runner-exporter/deployment.yaml`. Lowering the counts prevents provisioning from starting the slots again; it does not stop existing services. Remove each runner's `light` or `heavy` scheduling label through the GitHub API first. Let any active job finish, then disable and stop its unit and deregister it from the org. Preserve the slot directories during an investigation. Re-register through the playbook when re-admitting a slot; never edit its registration files by hand.
+For a light/heavy drain, lower `ci_light_slots` and `ci_heavy_slots` in `ansible/inventory.yml` and update `RUNNER_ROSTER` in `apps/github-runner-exporter/deployment.yaml`. Lowering the counts prevents provisioning from starting the slots again; it does not stop existing services. Remove each runner's `light` or `heavy` scheduling label through the GitHub API first. Let any active job finish, then disable and stop its unit and deregister it from the org. Preserve the slot directories during an investigation. When re-admitting a slot, use the runner's supported configuration removal flow on its preserved directory before re-registering through the playbook; never edit registration files by hand.
 
 | Symptom | Check | Action |
 |---|---|---|

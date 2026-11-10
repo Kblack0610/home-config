@@ -135,12 +135,12 @@ spec:
             - -c
             - |
               PRUNE_EVERY_SECONDS=3600
-              while :; do
+              # Sleep first: dind is still starting when this container does.
+              while sleep "$PRUNE_EVERY_SECONDS"; do
                 docker container prune -f --filter until=24h
                 docker image prune -af --filter until=24h
                 docker builder prune -f --max-used-space 20GB
                 docker volume prune -f
-                sleep "$PRUNE_EVERY_SECONDS"
               done
           env:
             - name: DOCKER_HOST

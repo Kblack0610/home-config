@@ -97,7 +97,11 @@ done | sort -t "$tab" -k1,1 -k2,2nr | {
 
 # A busy slot's trees stay: its job may be about to use one. The governor withholds slots on
 # a full host, so they go idle and the next hourly run here frees them.
-[ "$(free_pct)" -lt "$RELEASE_TREE_MIN_FREE_PCT" ] || exit 0
+# A light/heavy-only host has no Unity slots, so nothing here to measure.
+[ -d "$RUNNER_HOME" ] || exit 0
+free=$(free_pct)
+[ -n "$free" ] || { echo "no free space reading for $RUNNER_HOME"; exit 1; }
+[ "$free" -lt "$RELEASE_TREE_MIN_FREE_PCT" ] || exit 0
 for tree in "$RUNNER_HOME"/unity-pool-*/_work/*/*/Builds/release-tree/*; do
     [ -d "$tree" ] || continue
     busy "${tree%%/_work/*}" && continue
@@ -107,4 +111,6 @@ done | sort -n | while IFS="$tab" read -r _ tree; do
     [ "$(free_pct)" -lt "$RELEASE_TREE_MIN_FREE_PCT" ] || break
     echo "low disk $tree"
     rm -rf -- "$tree"
+    # btrfs reports freed space only after a commit; without this df lags and more trees go.
+    sync -f "$RUNNER_HOME"
 done

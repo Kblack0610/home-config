@@ -35,7 +35,7 @@ STUB
 # Matches the way pgrep -f does, against the command line a live runner has.
 cat > "$t/bin/pgrep" <<STUB
 #!/bin/sh
-echo "$t/runners/unity-pool-2/bin.2.338.0/Runner.Worker spawnclient 154 159" | grep -Eq -- "\$2"
+echo "\${BUSY_HOME:-$t/runners}/unity-pool-2/bin.2.338.0/Runner.Worker spawnclient 154 159" | grep -Eq -- "\$2"
 STUB
 # Free space falls DF_PER_TREE points with each release tree left, from 100.
 cat > "$t/bin/df" <<'STUB'
@@ -92,9 +92,7 @@ for copy in "unity-pool-1 a 1" "unity-pool-1 b 2" "unity-pool-1 c 3" "unity-pool
     set -- $copy
     mkdir -p "$L/$1/$repo/release-tree/$2"; touch -d "$3 days ago" "$L/$1/$repo/release-tree/$2/file"
 done
-# pgrep's stub names pool-2 under $t/runners; this run's busy slot is $L/unity-pool-2.
-sed -i "s#$t/runners/#$L/#" "$t/bin/pgrep"
-RUNNER_HOME=$L DF_PER_TREE=20 PATH="$t/bin:$PATH" sh "$here/ci-disk-prune.sh" > "$t/log" 2>&1
+RUNNER_HOME=$L BUSY_HOME=$L DF_PER_TREE=20 PATH="$t/bin:$PATH" sh "$here/ci-disk-prune.sh" > "$t/log" 2>&1
 rc=$?
 [ "$rc" = 0 ] && echo "ok   low disk exits 0" || { echo "FAIL low disk exit $rc"; fail=1; }
 check "low disk removes two trees"       '^low disk ' "$t/log" 2
@@ -104,4 +102,9 @@ done
 for kept in unity-pool-2/$repo/release-tree/e unity-pool-1/$repo/release-tree/b unity-pool-1/$repo/release-tree/a; do
     if [ -e "$L/$kept/file" ]; then echo "ok   low disk kept $kept" | sed "s#$repo/##"; else echo "FAIL low disk removed $kept"; fail=1; fi
 done
+
+# A host with no Unity slots has nothing to measure and exits clean.
+RUNNER_HOME="$t/none" DF_PER_TREE=20 PATH="$t/bin:$PATH" sh "$here/ci-disk-prune.sh" > "$t/log" 2>&1
+rc=$?
+[ "$rc" = 0 ] && echo "ok   no runner home exits 0" || { echo "FAIL no runner home exit $rc"; fail=1; }
 exit $fail

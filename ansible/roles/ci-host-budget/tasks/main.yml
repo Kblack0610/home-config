@@ -11,7 +11,8 @@
   ansible.builtin.set_fact:
     _ci_cpu_sets: >-
       {% set out = {} %}{% for name, spec in {'ci': ci_cpus, 'unity': ci_unity_cpus,
-      'linux': ci_linux_cpus, 'k3s': k3s_cpus}.items() %}{% set cpus = [] %}{%
+      'linux': ci_linux_cpus, 'k3s': k3s_cpus,
+      'slots': ci_unity_slot_cpus | join(',')}.items() %}{% set cpus = [] %}{%
       for part in (spec | string).split(',') if part | trim %}{% set ab = part | trim
       %}{% set ab = ab.split('-') %}{% for c in range(ab[0] | int, (ab[-1] | int) + 1)
       %}{% set _ = cpus.append(c) %}{% endfor %}{% endfor %}{% set _ = out.update({name: cpus})
@@ -22,13 +23,17 @@
     that:
       - _ci_cpu_sets.unity | difference(_ci_cpu_sets.ci) | length == 0
       - _ci_cpu_sets.linux | difference(_ci_cpu_sets.ci) | length == 0
-      - _ci_cpu_sets.unity | intersect(_ci_cpu_sets.linux) | length == 0
+      - _ci_unity_eff | intersect(_ci_cpu_sets.linux) | length == 0
+      - _ci_cpu_sets.slots | difference(_ci_unity_eff) | length == 0
       - _ci_cpu_sets.k3s | intersect(_ci_cpu_sets.ci) | length == 0
     fail_msg: >-
-      {{ inventory_hostname }}: ci_unity_cpus and ci_linux_cpus must sit inside
-      ci_cpus and not overlap, and k3s_cpus must sit outside ci_cpus
+      {{ inventory_hostname }}: ci_unity_cpus (all of ci_cpus when empty) and
+      ci_linux_cpus must sit inside ci_cpus and not overlap, every
+      ci_unity_slot_cpus entry inside Unity's, and k3s_cpus outside ci_cpus
       ({{ _ci_cpu_sets }}).
     quiet: true
+  vars:
+    _ci_unity_eff: "{{ _ci_cpu_sets.unity or _ci_cpu_sets.ci }}"
 
 - name: Install the CI slices
   ansible.builtin.template:
@@ -89,31 +94,18 @@
     _ci_slice_units.changed or _ci_retired_units.changed
     or _ci_slot_units.changed or _ci_slot_removed.changed
 
-# k3s fence (k3s_cpus). kubepods.slice is a transient unit kubelet creates; a
-# drop-in still applies to it, and kubelet sets no cpuset of its own under the
-# default (none) CPU manager. The kubelet arg takes ci_cpus out of allocatable, so
-# the scheduler sends a pod that does not fit in k3s_cpus to another node instead
-# of crowding it in. Empty k3s_cpus removes both, which is the rollback.
-- name: Create the k3s fence directories
+# k3s budget (k3s_cpus). The kubelet arg leaves len(k3s_cpus) allocatable, so the
+# scheduler sends a pod that does not fit in k3s_cpus to another node instead of
+# crowding it in. It does not pin pods: kubelet sets AllowedCPUs to every CPU on
+# kubepods.slice each time it starts, which overrode a drop-in here (razer,
+# 2026-11-10), so a pod without a CPU limit can still run on ci_cpus. Empty
+# k3s_cpus removes the arg, which is the rollback.
+- name: Create the k3s config drop-in directory
   ansible.builtin.file:
-    path: "{{ item }}"
+    path: /etc/rancher/k3s/config.yaml.d
     state: directory
     mode: "0755"
-  loop:
-    - /etc/systemd/system/kubepods.slice.d
-    - /etc/rancher/k3s/config.yaml.d
   when: k3s_cpus | length > 0
-
-- name: Pin k3s pods to k3s_cpus
-  ansible.builtin.copy:
-    dest: /etc/systemd/system/kubepods.slice.d/50-ci-host-budget.conf
-    content: |
-      # Managed by ansible (ci-host-budget). k3s pods stay off the CI cores ({{ ci_cpus }}).
-      [Slice]
-      AllowedCPUs={{ k3s_cpus }}
-    mode: "0644"
-  when: k3s_cpus | length > 0
-  register: _ci_k3s_slice
 
 - name: Reserve the CI cores from kubelet's allocatable
   ansible.builtin.copy:
@@ -122,25 +114,29 @@
       # Managed by ansible (ci-host-budget). CPUs {{ ci_cpus }} are CI's, so the
       # node offers only k3s_cpus ({{ k3s_cpus }}) to pods.
       kubelet-arg+:
-        - system-reserved=cpu={{ _ci_cpu_sets.ci | length }}
+        - system-reserved=cpu={{ ansible_facts.processor_nproc - _ci_cpu_sets.k3s | length }}
     mode: "0644"
   when: k3s_cpus | length > 0
   register: _ci_k3s_config
 
-- name: Remove the k3s fence when k3s_cpus is unset
+- name: Remove the k3s reservation when k3s_cpus is unset
   ansible.builtin.file:
-    path: "{{ item }}"
+    path: /etc/rancher/k3s/config.yaml.d/50-ci-host-budget.yaml
     state: absent
-  loop:
-    - /etc/systemd/system/kubepods.slice.d/50-ci-host-budget.conf
-    - /etc/rancher/k3s/config.yaml.d/50-ci-host-budget.yaml
   when: k3s_cpus | length == 0
   register: _ci_k3s_removed
 
-- name: Reload systemd after the k3s fence changed
+# Retired: the kubepods.slice drop-in kubelet overrides (see above).
+- name: Remove the retired kubepods.slice drop-in
+  ansible.builtin.file:
+    path: /etc/systemd/system/kubepods.slice.d/50-ci-host-budget.conf
+    state: absent
+  register: _ci_k3s_slice_retired
+
+- name: Reload systemd after the kubepods.slice drop-in went
   ansible.builtin.systemd:
     daemon_reload: true
-  when: _ci_k3s_slice.changed or _ci_k3s_removed.changed
+  when: _ci_k3s_slice_retired.changed
 
 # Restarting the agent leaves running containers alone (containerd keeps them);
 # kubelet re-admits its pods against the new allocatable on the way up.
@@ -148,7 +144,7 @@
   ansible.builtin.systemd:
     name: "{{ k3s_service }}"
     state: restarted
-  when: _ci_k3s_config.changed or (_ci_k3s_removed.results | default([]) | selectattr('changed') | list | length > 0)
+  when: _ci_k3s_config.changed or _ci_k3s_removed.changed
 
 # Containers are children of dockerd, not of the runner that asked for them, so a
 # job's `docker run` lands in system.slice with no cap unless it passes

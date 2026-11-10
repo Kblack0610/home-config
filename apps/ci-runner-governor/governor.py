@@ -5,7 +5,7 @@ WHY THIS EXISTS:
 
 The Unity pool is a fixed set of registered runners (ansible/inventory.yml,
 unity_ci_runners). How many of them a host can carry depends on what else it is
-doing: razer also runs four platform slots, asus hosts Forgejo and the databases,
+doing: razer also runs two platform slots, asus hosts Forgejo and the databases,
 hp-victus reserves cores for the game server. A fixed count is either too high
 on a busy night (asus at 94 C, razer stalling 28% of the time on CPU) or leaves
 an idle host idle. Registering a runner is slow (ansible, a cold Library/ of

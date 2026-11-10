@@ -33,8 +33,8 @@ ci_unity_slot_memory_max: 32G
 # Unity's share of contended CPUs against the platform slice (systemd default
 # 100). Platform jobs still use Unity's CPUs when Unity is idle; when both want
 # them, Unity gets about 80%, so a platform burst slows its timed tests less.
-# A weight and not a CPU split, which would leave razer's three platform slots
-# four threads.
+# Moot on a host that gives the platform slice CPUs of its own (ci_linux_cpus),
+# as razer does since 2026-11-10.
 ci_unity_cpu_weight: 400
 
 # Light/heavy runners: memory cap of their own, and optional CPUs of their own
@@ -44,11 +44,11 @@ ci_unity_cpu_weight: 400
 ci_linux_memory_max: 16G
 ci_linux_cpus: ""
 
-# CPUs the host's k3s pods may use, outside ci_cpus (empty = no fence). kubelet
-# puts no cpuset on its pods, so without this they run on CI's cores too: razer's
-# kubepods.slice spanned 0-15 while freqtrade backtests and the CI slots fought
-# over 2-7 (2026-11-10). Set, the role pins kubepods.slice here and reserves ci_cpus
-# from the node's allocatable, so the scheduler stops placing more than fits.
+# CPUs the host's k3s pods are budgeted, outside ci_cpus (empty = no budget). Set,
+# the role reserves ci_cpus from the node's allocatable, so the scheduler stops
+# placing more than fits: razer took 6-CPU freqtrade backtests beside its CI slots
+# and the 15-minute load hit 18 (2026-11-10). It does not pin pods to these CPUs
+# (tasks/main.yml says why).
 k3s_cpus: ""
 # The k3s unit to restart for its kubelet args (k3s-agent on agents).
 k3s_service: "k3s{{ '-agent' if (k3s_role | default('agent')) == 'agent' else '' }}.service"

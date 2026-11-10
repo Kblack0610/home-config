@@ -46,7 +46,7 @@ In GitHub: `https://github.com/BlackNBrownStudios/platform/settings/actions/runn
 ## Notes
 
 - The GitHub runner binary **auto-updates itself in place** during normal operation. The `gh_runner_version` default is only consulted on fresh provisioning (before `config.sh` exists). Don't try to hold the binary version by re-running this role.
-- To rotate / re-register a runner, delete `/var/lib/actions-runner/.runner` on the host and remove the matching runner in the GitHub UI, then re-run the playbook.
+- To re-register a runner (its listener logs "The runner registration has been deleted from the server"), remove it in the GitHub UI if it is still listed, stop its unit, delete `.runner`, `.runner_migrated`, `.credentials` and `.credentials_rsaparams` in its `gh_runner_home` (for example `/var/lib/linux-ci/light-1`), then re-run the playbook. The runner keeps `.runner_migrated` as a second marker, so deleting `.runner` alone fails `config.sh` with "already configured" (razer, 2026-11-10).
 - To uninstall a single runner: `systemctl disable --now actions.runner.<name>.service`, remove it in the GitHub UI, and delete its directory. `rm -rf /var/lib/actions-runner` is safe only when no other runner on the host uses it.
 
 ## Uninstall

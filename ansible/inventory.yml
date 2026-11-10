@@ -370,8 +370,9 @@ all:
           ci_memory_max: 20G
           ci_linux_memory_max: 20G
         # 8 cores / 16 threads, SMT siblings are n and n+8. Cores 0-1 (CPUs
-        # 0-1, 8-9) are k3s and the OS, fenced with k3s_cpus: before that its
-        # pods spanned all 16 and the 15-minute load hit 18 (2026-11-10). Unity
+        # 0-1, 8-9) are k3s and the OS; k3s_cpus caps pods to 4 CPUs of
+        # allocatable, after 6-CPU backtests landed beside CI and the 15-minute
+        # load hit 18 (2026-11-10). Unity
         # gets cores 2-4 for its one slot and the platform runners cores 5-7,
         # each on its own, so neither is throttled by the other's weight.
         # 93 GB usable, so CI gets most of it; a Unity job peaks around 8 GB. A

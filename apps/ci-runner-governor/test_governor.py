@@ -472,6 +472,13 @@ class GovernorTest(unittest.TestCase):
         out = decide(hosts, self.PINNED, pins={"hp-victus": 2})
         self.assertEqual([(a, v) for h, a, _, v, _ in out if h == "hp-victus"], [("withhold", "FULL")])
 
+    def test_a_pin_withholds_on_a_full_host(self):
+        # A release reservation (pin 0) on a full razer: the withhold is the pin's, so a dry
+        # run applies it; a FULL withhold there would only log.
+        hosts = readings(**{"razer-laptop": COOL, "asus-laptop": COOL, "hp-victus": FULL})
+        out = decide(hosts, self.PINNED, pins={"hp-victus": 0})
+        self.assertEqual([(a, r, v) for h, a, r, v, _ in out if h == "hp-victus"], [("withhold", "hpv-2", "PINNED")])
+
     def test_an_unpinned_host_is_unchanged(self):
         hosts = readings(**{"razer-laptop": HOT, "asus-laptop": COOL, "hp-victus": COOL})
         self.assertEqual(actions(hosts, self.PINNED, pins={"hp-victus": 2})["razer-laptop"], ("withhold", "razer-1"))

@@ -6,7 +6,7 @@ galaxy_info:
     Host prep for a macOS host in the BNB Unity runner pool: Homebrew's GNU
     tools first on the job PATH, Unity Hub and the project's editors, and
     Unity's license directory. The jobs run natively, not in the editor image.
-    tasks/ios.yml adds iOS Build Support to those editors on an iOS build Mac.
+    tasks/modules.yml adds the iOS and Mac IL2CPP modules on the Mac build host.
   license: MIT
   min_ansible_version: "2.14"
   platforms:

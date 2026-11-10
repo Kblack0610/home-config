@@ -26,9 +26,24 @@ unity_ci_mac_hub: /Applications/Unity Hub.app/Contents/MacOS/Unity Hub
 # Where Hub puts the editors, <root>/<version>/Unity.app.
 unity_ci_mac_editor_root: /Applications/Unity/Hub/Editor
 
-# Download scratch for tasks/ios.yml (iOS Build Support), deleted after each
-# install. Under ~/Library/Caches, since the pkg expands to about 2 GB.
-unity_ci_mac_ios_scratch: "{{ ansible_facts.env.HOME }}/Library/Caches/unity-ios-support"
+# Player modules tasks/modules.yml adds to each editor: pkg names Unity's
+# UnitySetup-<pkg>-for-Editor-<version>.pkg, payload the directory in its
+# Payload to copy ('' for all of it), into where under PlaybackEngines it goes,
+# and creates a path under into that only the installed module has. The Mac
+# player builds with IL2CPP, hence the second module.
+unity_ci_mac_modules:
+  - pkg: iOS-Support
+    payload: iOSSupport
+    into: iOSSupport
+    creates: UnityEditor.iOS.Extensions.dll
+  - pkg: Mac-IL2CPP-Support
+    payload: ''
+    into: MacStandaloneSupport
+    creates: Variations/macos_x64arm64_player_nondevelopment_il2cpp
+
+# Download scratch for tasks/modules.yml, deleted after each install. Under
+# ~/Library/Caches, since a pkg expands to about 2 GB.
+unity_ci_mac_module_scratch: "{{ ansible_facts.env.HOME }}/Library/Caches/unity-modules"
 
 # The scripts are bash 4+ and GNU (mapfile, flock, stat -c, tail --pid, timeout,
 # xargs -r, base64 -w0). Homebrew's GNU tools go first on the job PATH through

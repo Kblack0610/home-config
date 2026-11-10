@@ -1,0 +1,79 @@
+---
+# Unity's player modules (unity_ci_mac_modules) for each editor in
+# unity_ci_mac_editors, on the Mac that builds the iOS and Mac players
+# (mac-mini; bound in site.yml with tasks_from). Not part of main.yml: the pool
+# host (mac-studio) has no Xcode on purpose, and both modules need it.
+#
+# Hub's "install-modules" refuses an editor it did not install itself ("No
+# modules found for this editor"), as on the M1, so this takes the module's pkg
+# from Unity's download server and copies its payload into the editor, which
+# needs no sudo. The scratch lives under ~/Library/Caches, never /tmp.
+
+- name: Read the Xcode the iOS build uses
+  ansible.builtin.command: xcode-select -p
+  register: _unity_mac_xcode_path
+  changed_when: false
+  failed_when: false
+  check_mode: false
+
+# -license check exits non-zero until the license is accepted, and
+# -checkFirstLaunchStatus until Xcode's first-launch components are installed.
+- name: Read Xcode's license and first-launch state
+  ansible.builtin.command: "xcodebuild {{ item }}"
+  loop:
+    - -license check
+    - -checkFirstLaunchStatus
+  register: _unity_mac_xcode_state
+  changed_when: false
+  failed_when: false
+  check_mode: false
+
+- name: Assert Xcode is installed, selected and its license accepted
+  ansible.builtin.assert:
+    that:
+      - _unity_mac_xcode_path.rc == 0
+      - "'Xcode' in _unity_mac_xcode_path.stdout"
+      - _unity_mac_xcode_state.results | map(attribute='rc') | select('ne', 0) | list | length == 0
+    fail_msg: >-
+      Unity's iOS and Mac IL2CPP builds need the full Xcode, selected and with its license
+      accepted. xcode-select -p: '{{ _unity_mac_xcode_path.stdout | default('') }}';
+      xcodebuild -license check rc {{ _unity_mac_xcode_state.results[0].rc }},
+      -checkFirstLaunchStatus rc {{ _unity_mac_xcode_state.results[1].rc }}.
+      Install Xcode from the App Store, then on the Mac run
+      `sudo xcode-select -s /Applications/Xcode.app`, `sudo xcodebuild -license accept`
+      and `sudo xcodebuild -runFirstLaunch`, and re-run.
+    quiet: true
+
+# creates: a file only the installed module has, so a re-run (and --check)
+# skips it. The module is assembled in a .partial sibling (an APFS clone of the
+# existing directory plus the payload) and swapped in at the end, so an
+# interrupted run never leaves a half module where the editor looks.
+- name: Install Unity player modules into each editor
+  ansible.builtin.shell:
+    cmd: |
+      set -euo pipefail
+      engines="{{ unity_ci_mac_editor_root }}/{{ item.0.version }}/Unity.app/Contents/PlaybackEngines"
+      dest="$engines/{{ item.1.into }}"
+      scratch="{{ unity_ci_mac_module_scratch }}/{{ item.1.pkg }}"
+      test -d "$engines" || { echo "no editor at $engines" >&2; exit 1; }
+      trap 'rm -rf "$scratch" "$dest.partial" "$dest.old"' EXIT
+      rm -rf "$scratch" "$dest.partial" "$dest.old"
+      mkdir -p "$scratch"
+      curl -sSfL --retry 3 -o "$scratch/module.pkg" \
+        "https://download.unity3d.com/download_unity/{{ item.0.changeset }}/MacEditorTargetInstaller/UnitySetup-{{ item.1.pkg }}-for-Editor-{{ item.0.version }}.pkg"
+      signature="$(pkgutil --check-signature "$scratch/module.pkg")"
+      grep -q 'Unity Technologies' <<<"$signature" || { echo "pkg not signed by Unity: $signature" >&2; exit 1; }
+      pkgutil --expand-full "$scratch/module.pkg" "$scratch/x"
+      payloads="$(find "$scratch/x" -type d -name Payload)"
+      [ -n "$payloads" ] && [ "$(wc -l <<<"$payloads")" -eq 1 ] || { echo "expected one Payload in the pkg, found: $payloads" >&2; exit 1; }
+      src="$payloads/{{ item.1.payload }}"
+      test -e "$src/{{ item.1.creates }}" || { echo "pkg has no {{ item.1.creates }} under Payload/{{ item.1.payload }}" >&2; exit 1; }
+      if [ -d "$dest" ]; then cp -Rc "$dest" "$dest.partial"; else mkdir "$dest.partial"; fi
+      ditto "$src" "$dest.partial"
+      if [ -d "$dest" ]; then mv "$dest" "$dest.old"; fi
+      mv "$dest.partial" "$dest"
+    creates: "{{ unity_ci_mac_editor_root }}/{{ item.0.version }}/Unity.app/Contents/PlaybackEngines/{{ item.1.into }}/{{ item.1.creates }}"
+    executable: /bin/bash
+  loop: "{{ unity_ci_mac_editors | product(unity_ci_mac_modules) | list }}"
+  loop_control:
+    label: "{{ item.0.version }} {{ item.1.pkg }}"

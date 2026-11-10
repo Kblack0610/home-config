@@ -253,14 +253,14 @@
     - role: macos-agent-tools
       tags: [mac, agent-tools]
   tasks:
-    # Unity's iOS Build Support for the editors unity-ci-host-mac manages, for the
-    # playground's iOS builds on this box's m1-playground-mac runner. Asserts
-    # Xcode first. No sudo.
-    - name: Unity iOS Build Support
+    # Unity's iOS and Mac IL2CPP modules for the editors unity-ci-host-mac
+    # manages, for the playground's iOS and Mac builds on this box's
+    # m1-playground-mac runner. Asserts Xcode first. No sudo.
+    - name: Unity player modules
       ansible.builtin.import_role:
         name: unity-ci-host-mac
-        tasks_from: ios
-      tags: [mac, unity-ios]
+        tasks_from: modules
+      tags: [mac, unity-modules]
 
 # mac-studio LLM node: debloat + tune for MLX. Runs BEFORE the MLX server play
 # below so a full `--limit mac-studio` run cleans, then re-asserts MLX.

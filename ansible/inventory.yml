@@ -188,8 +188,11 @@ all:
         hp-victus:
           ci_light_slots: 2
           ci_heavy_slots: 1
+        # One of each since 2026-11-10, on cores of their own (ci_linux_cpus in
+        # ci_hosts). Three light and a heavy shared Unity's cores at a quarter of
+        # its weight and blew their caps (platform #1488, #1489).
         razer-laptop:
-          ci_light_slots: 3
+          ci_light_slots: 1
           ci_heavy_slots: 1
 
     # BNB Unity runner pool (added 2026-10-05; the "Unity CI runner pool" play in
@@ -235,8 +238,10 @@ all:
         # classes were timed ones (GadgetMoves, WeightedStart, SkylineMoves).
         # Failures did not grow with more razer jobs at once, so the two-core
         # slot was the limit, not its neighbours.
+        # One since 2026-11-10: the second slot's three cores went to the
+        # platform runners (linux_ci_runners), which had none of their own.
         razer-laptop:
-          unity_ci_slots: 2
+          unity_ci_slots: 1
           unity_ci_full: true
           unity_ci_wide: true
         # The workstation, the human's work machine: merge gates only
@@ -350,8 +355,10 @@ all:
           ci_memory_max: 20G
           ci_linux_memory_max: 20G
         # 8 cores / 16 threads, SMT siblings are n and n+8. Cores 0-1 (CPUs
-        # 0-1, 8-9) stay with k3s and the OS. Unity gets cores 2-7, three per
-        # slot, which platform jobs share at a lower weight (ci_unity_cpu_weight).
+        # 0-1, 8-9) are k3s and the OS, fenced with k3s_cpus: before that its
+        # pods spanned all 16 and the 15-minute load hit 18 (2026-11-10). Unity
+        # gets cores 2-4 for its one slot and the platform runners cores 5-7,
+        # each on its own, so neither is throttled by the other's weight.
         # 93 GB usable, so CI gets most of it; a Unity job peaks around 8 GB. A
         # slot stops at 20G: without a cap each took the 32G default, five could
         # reach 160G against the 60G Unity budget, and one shard was killed on
@@ -359,9 +366,11 @@ all:
         razer-laptop:
           ci_cpus: 2-7,10-15
           ci_memory_max: 72G
-          ci_unity_cpus: 2-7,10-15
-          ci_unity_slot_cpus: ["2-4,10-12", "5-7,13-15"]
+          ci_unity_cpus: 2-4,10-12
+          ci_unity_slot_cpus: ["2-4,10-12"]
           ci_unity_memory_max: 60G
+          ci_linux_cpus: 5-7,13-15
+          k3s_cpus: 0-1,8-9
           ci_unity_slot_memory_max: 20G
           ci_linux_memory_max: 40G
         # The workstation: Ryzen 9 7900X, 12 cores / 24 threads, SMT siblings are

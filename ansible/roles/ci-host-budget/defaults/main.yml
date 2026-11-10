@@ -37,8 +37,21 @@ ci_unity_slot_memory_max: 32G
 # four threads.
 ci_unity_cpu_weight: 400
 
-# Light/heavy runners: memory cap of their own; they use all of ci_cpus.
+# Light/heavy runners: memory cap of their own, and optional CPUs of their own
+# inside ci_cpus (empty = all of ci_cpus, shared with Unity at its weight). Give
+# them their own when Unity's slots are pinned over the rest: at weight 100 against
+# Unity's 400 razer's platform jobs blew their caps on 2026-11-10 (platform #1488).
 ci_linux_memory_max: 16G
+ci_linux_cpus: ""
+
+# CPUs the host's k3s pods may use, outside ci_cpus (empty = no fence). kubelet
+# puts no cpuset on its pods, so without this they run on CI's cores too: razer's
+# kubepods.slice spanned 0-15 while freqtrade backtests and the CI slots fought
+# over 2-7 (2026-11-10). Set, the role pins kubepods.slice here and reserves ci_cpus
+# from the node's allocatable, so the scheduler stops placing more than fits.
+k3s_cpus: ""
+# The k3s unit to restart for its kubelet args (k3s-agent on agents).
+k3s_service: "k3s{{ '-agent' if (k3s_role | default('agent')) == 'agent' else '' }}.service"
 
 # Slice names. systemd nests by name: ci-unity.slice is a child of ci.slice.
 # The runner units (gh_runner_slice) and the Unity containers

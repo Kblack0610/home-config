@@ -6,6 +6,30 @@
       {{ inventory_hostname }} has no ci_cpus. Add it to the ci_hosts group in
       inventory.yml with the CPUs CI may use.
 
+# Each CPU list as numbers, so the checks below compare cores, not strings.
+- name: Expand the host's CPU lists
+  ansible.builtin.set_fact:
+    _ci_cpu_sets: >-
+      {% set out = {} %}{% for name, spec in {'ci': ci_cpus, 'unity': ci_unity_cpus,
+      'linux': ci_linux_cpus, 'k3s': k3s_cpus}.items() %}{% set cpus = [] %}{%
+      for part in (spec | string).split(',') if part | trim %}{% set ab = part | trim
+      %}{% set ab = ab.split('-') %}{% for c in range(ab[0] | int, (ab[-1] | int) + 1)
+      %}{% set _ = cpus.append(c) %}{% endfor %}{% endfor %}{% set _ = out.update({name: cpus})
+      %}{% endfor %}{{ out }}
+
+- name: Require the CPU lists to split the host cleanly
+  ansible.builtin.assert:
+    that:
+      - _ci_cpu_sets.unity | difference(_ci_cpu_sets.ci) | length == 0
+      - _ci_cpu_sets.linux | difference(_ci_cpu_sets.ci) | length == 0
+      - _ci_cpu_sets.unity | intersect(_ci_cpu_sets.linux) | length == 0
+      - _ci_cpu_sets.k3s | intersect(_ci_cpu_sets.ci) | length == 0
+    fail_msg: >-
+      {{ inventory_hostname }}: ci_unity_cpus and ci_linux_cpus must sit inside
+      ci_cpus and not overlap, and k3s_cpus must sit outside ci_cpus
+      ({{ _ci_cpu_sets }}).
+    quiet: true
+
 - name: Install the CI slices
   ansible.builtin.template:
     src: "{{ item.src }}"
@@ -64,6 +88,67 @@
   when: >-
     _ci_slice_units.changed or _ci_retired_units.changed
     or _ci_slot_units.changed or _ci_slot_removed.changed
+
+# k3s fence (k3s_cpus). kubepods.slice is a transient unit kubelet creates; a
+# drop-in still applies to it, and kubelet sets no cpuset of its own under the
+# default (none) CPU manager. The kubelet arg takes ci_cpus out of allocatable, so
+# the scheduler sends a pod that does not fit in k3s_cpus to another node instead
+# of crowding it in. Empty k3s_cpus removes both, which is the rollback.
+- name: Create the k3s fence directories
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: directory
+    mode: "0755"
+  loop:
+    - /etc/systemd/system/kubepods.slice.d
+    - /etc/rancher/k3s/config.yaml.d
+  when: k3s_cpus | length > 0
+
+- name: Pin k3s pods to k3s_cpus
+  ansible.builtin.copy:
+    dest: /etc/systemd/system/kubepods.slice.d/50-ci-host-budget.conf
+    content: |
+      # Managed by ansible (ci-host-budget). k3s pods stay off the CI cores ({{ ci_cpus }}).
+      [Slice]
+      AllowedCPUs={{ k3s_cpus }}
+    mode: "0644"
+  when: k3s_cpus | length > 0
+  register: _ci_k3s_slice
+
+- name: Reserve the CI cores from kubelet's allocatable
+  ansible.builtin.copy:
+    dest: /etc/rancher/k3s/config.yaml.d/50-ci-host-budget.yaml
+    content: |
+      # Managed by ansible (ci-host-budget). CPUs {{ ci_cpus }} are CI's, so the
+      # node offers only k3s_cpus ({{ k3s_cpus }}) to pods.
+      kubelet-arg+:
+        - system-reserved=cpu={{ _ci_cpu_sets.ci | length }}
+    mode: "0644"
+  when: k3s_cpus | length > 0
+  register: _ci_k3s_config
+
+- name: Remove the k3s fence when k3s_cpus is unset
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: absent
+  loop:
+    - /etc/systemd/system/kubepods.slice.d/50-ci-host-budget.conf
+    - /etc/rancher/k3s/config.yaml.d/50-ci-host-budget.yaml
+  when: k3s_cpus | length == 0
+  register: _ci_k3s_removed
+
+- name: Reload systemd after the k3s fence changed
+  ansible.builtin.systemd:
+    daemon_reload: true
+  when: _ci_k3s_slice.changed or _ci_k3s_removed.changed
+
+# Restarting the agent leaves running containers alone (containerd keeps them);
+# kubelet re-admits its pods against the new allocatable on the way up.
+- name: Restart k3s for its kubelet args
+  ansible.builtin.systemd:
+    name: "{{ k3s_service }}"
+    state: restarted
+  when: _ci_k3s_config.changed or (_ci_k3s_removed.results | default([]) | selectattr('changed') | list | length > 0)
 
 # Containers are children of dockerd, not of the runner that asked for them, so a
 # job's `docker run` lands in system.slice with no cap unless it passes

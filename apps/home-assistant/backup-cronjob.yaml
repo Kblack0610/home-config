@@ -41,15 +41,19 @@ spec:
                   tar -czf "/backup/${BACKUP_FILE}" -C /data .
                   size="$(wc -c < "/backup/${BACKUP_FILE}")"
                   log "created ${BACKUP_FILE} (${size} bytes)"
-                  # Writing a tiny "successful" archive and then rotating 30 days
-                  # of good ones out behind it is the failure mode that hides for
+                  # Writing a tiny "successful" archive and then rotating the good
+                  # ones out behind it is the failure mode that hides for
                   # weeks. Refuse instead.
                   if [ "${size}" -lt "${MIN_BYTES}" ]; then
                     log "ERROR: archive under ${MIN_BYTES} bytes is implausible - is the PVC mounted? Not uploading."
                     exit 1
                   fi
 
-                  ls -t /backup/home-assistant-*.tar.gz | tail -n +31 | xargs -r rm
+                  # Keep 7 here, not the 30 the other jobs keep: this hostPath is on
+                  # pi5-master's 29G SD card, and 30 archives of 300-420 MB each
+                  # (9.7G) tripped NodeDiskLow on 2026-11-10. The NAS keeps the
+                  # longer history.
+                  ls -t /backup/home-assistant-*.tar.gz | tail -n +8 | xargs -r rm
                   log "local backup complete: ${BACKUP_FILE}"
 
                   # Off-box copy. Best-effort by design (docs/backup-runbook.md):

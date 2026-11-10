@@ -241,6 +241,7 @@ all:
         razer-laptop:
           unity_ci_slots: 2
           unity_ci_full: true
+          unity_ci_wide: true
         # The workstation, the human's work machine: merge gates only
         # (unity_ci_full false, so no nightly, release or Multi run lands here).
         # apps/ci-runner-governor/config.json repeats this as "full": false for its admit.

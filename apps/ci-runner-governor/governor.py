@@ -83,7 +83,8 @@ the host to 0, so gates go to other hosts while release.yml jobs, which ask for 
 label alone, take its withheld slots. Past its end it reads as no reservation. A pinned host moves one
 slot per cycle toward N, in either direction, past its cooldown and instead of its verdict,
 and these moves happen even in a dry run, because nothing else re-admits a slot then. Only
-the pool floor and cap hold, and a FULL host keeps its own verdict. In a dry run a pin is the
+the pool floor and cap hold, and a FULL host keeps its own verdict unless the pin withholds
+(both want fewer slots, and only the pin's move applies in a dry run). In a dry run a pin is the
 only thing that withholds a host's slot, so a host that is not live and that no pin holds
 gets its withheld slots back one per cycle (RESTORE), past its cooldown and whatever its
 verdict but FULL: an ended reservation or a dropped pin leaves nothing withheld.
@@ -315,7 +316,9 @@ def decide(cfg, hosts, runners, waiting, last_action, now, instances=None, pins=
         off = sorted(n for n, r in mine.items() if r["withheld"])
         action, runner = "hold", ""
         pin = (pins or {}).get(host)
-        if pin is not None and v != "FULL":
+        # A full host gets no admit from a pin, but a pin's withhold still applies: FULL asks
+        # for the same, and on a host that is not live only the pin's move happens.
+        if pin is not None and (v != "FULL" or len(on) > pin):
             v, why = "PINNED", f"pinned to {pin}, {len(on)} admitted"
             if len(on) > pin and floor_held > cfg["pool_min_admitted"]:
                 action, runner = "withhold", on[0]

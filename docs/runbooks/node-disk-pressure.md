@@ -23,6 +23,8 @@ Largest first, from razer and hp-victus on 2026-10-31:
 
 ## When it pages
 
+The disk and CI alerts here carry `fleet: fix`, so besides ntfy each one becomes a `red` queue item for an agent (sentinel watch `alertmanager-fleet`, route in agentctl `triage-routes`, skill `fix-red`). A silence in Alertmanager stops both; give it a reason.
+
 1. See what grew: `sudo du -xh --max-depth=2 /var/lib | sort -rh | head -20`, then run the prune with `sudo systemctl start linux-ci-docker-cleanup.service`. It skips busy slots and logs each removal to its journal.
 2. A CI host: the governor has already withheld its Unity slots. Removing a whole `Builds/` tree on an idle slot costs only a cold build.
 3. Do not delete from `/var/lib/rancher/k3s/storage` by hand. To move a PVC off the node, see [move-local-path-pvc.md](move-local-path-pvc.md).

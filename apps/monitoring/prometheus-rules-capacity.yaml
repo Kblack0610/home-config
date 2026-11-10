@@ -51,6 +51,9 @@ spec:
 
     - name: homelab-capacity.disk
       rules:
+        # `fleet: fix` makes an agent fix it: the sentinel watch alertmanager-fleet reads every
+        # active alert with that label and fleet-bench triage queues each as a `red` item for
+        # the fix-red skill. Put it only on alerts an agent can act on from the runbook.
         # Kubelet evicts at 5% free and does not stop until 15% free, so a node that
         # trips loses its pods until 10% of the disk comes back. On 2026-10-31 hp-victus
         # crossed 15% at 19:00, 10% at 22:00, and evicted at 00:57.
@@ -60,6 +63,7 @@ spec:
           labels:
             severity: warning
             category: capacity
+            fleet: fix
           annotations:
             summary: "{{ $labels.instance }} {{ $labels.device }} has {{ $value | humanizePercentage }} free"
         # Not in the replay. Razer sat idle like this twice on 2026-10-31 and 11-01 while jobs
@@ -70,6 +74,7 @@ spec:
           labels:
             severity: critical
             category: capacity
+            fleet: fix
           annotations:
             summary: "{{ $labels.host }} has idle Unity slots held out by low disk while jobs wait: docs/runbooks/node-disk-pressure.md"
         # 1 page in 3 days of history: the 8-hour runner metric gap on 2026-10-31. The 5-minute
@@ -80,6 +85,7 @@ spec:
           labels:
             severity: critical
             category: capacity
+            fleet: fix
           annotations:
             summary: "ci-runner-governor has had no reading for 30 minutes, so no Unity slot is being pulled or returned. Check github_runner_exporter_api_ok and GitHub's API limit"
         # 6 pages in the replay: 4 on asus from the Forgejo backups fixed in #441, 1 the
@@ -90,6 +96,7 @@ spec:
           labels:
             severity: critical
             category: capacity
+            fleet: fix
           annotations:
             summary: "{{ $labels.instance }} {{ $labels.device }} has {{ $value | humanizePercentage }} free"
             description: Kubelet evicts pods at 5% free and keeps evicting until 15% is free.
@@ -101,6 +108,7 @@ spec:
           labels:
             severity: critical
             category: capacity
+            fleet: fix
           annotations:
             summary: "{{ $labels.instance }} {{ $labels.device }} is on course to fill within 4 hours"
         - alert: NodeInodesLow
@@ -109,6 +117,7 @@ spec:
           labels:
             severity: warning
             category: capacity
+            fleet: fix
           annotations:
             summary: "{{ $labels.instance }} {{ $labels.device }} has {{ $value | humanizePercentage }} of its inodes free"
         - alert: NodeInodesCritical
@@ -117,6 +126,7 @@ spec:
           labels:
             severity: critical
             category: capacity
+            fleet: fix
           annotations:
             summary: "{{ $labels.instance }} {{ $labels.device }} has {{ $value | humanizePercentage }} of its inodes free"
 

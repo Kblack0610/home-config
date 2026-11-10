@@ -22,7 +22,7 @@ tests:
       - eval_time: 40m
         alertname: CiHostHeldOutByDisk
         exp_alerts:
-          - exp_labels: {alertname: CiHostHeldOutByDisk, severity: critical, category: capacity, host: razer}
+          - exp_labels: {alertname: CiHostHeldOutByDisk, severity: critical, category: capacity, fleet: fix, host: razer}
             exp_annotations: {summary: "razer has idle Unity slots held out by low disk while jobs wait: docs/runbooks/node-disk-pressure.md"}
 
   - name: a CI host held out by disk stays quiet when no job waits
@@ -52,7 +52,7 @@ tests:
       - eval_time: 60m
         alertname: CiGovernorBlind
         exp_alerts:
-          - exp_labels: {alertname: CiGovernorBlind, severity: critical, category: capacity}
+          - exp_labels: {alertname: CiGovernorBlind, severity: critical, category: capacity, fleet: fix}
             exp_annotations: {summary: "ci-runner-governor has had no reading for 30 minutes, so no Unity slot is being pulled or returned. Check github_runner_exporter_api_ok and GitHub's API limit"}
 
   - name: disk thresholds, 21% free is quiet and each line fires on its own
@@ -87,14 +87,14 @@ tests:
       - eval_time: 40m
         alertname: NodeDiskLow
         exp_alerts:
-          - exp_labels: {alertname: NodeDiskLow, severity: warning, category: capacity, instance: b, device: d2, job: node-exporter}
+          - exp_labels: {alertname: NodeDiskLow, severity: warning, category: capacity, fleet: fix, instance: b, device: d2, job: node-exporter}
             exp_annotations: {summary: "b d2 has 19% free"}
-          - exp_labels: {alertname: NodeDiskLow, severity: warning, category: capacity, instance: c, device: d3, job: node-exporter}
+          - exp_labels: {alertname: NodeDiskLow, severity: warning, category: capacity, fleet: fix, instance: c, device: d3, job: node-exporter}
             exp_annotations: {summary: "c d3 has 9% free"}
       - eval_time: 20m
         alertname: NodeDiskCritical
         exp_alerts:
-          - exp_labels: {alertname: NodeDiskCritical, severity: critical, category: capacity, instance: c, device: d3, job: node-exporter}
+          - exp_labels: {alertname: NodeDiskCritical, severity: critical, category: capacity, fleet: fix, instance: c, device: d3, job: node-exporter}
             exp_annotations:
               summary: "c d3 has 9% free"
               description: Kubelet evicts pods at 5% free and keeps evicting until 15% is free.
@@ -117,7 +117,7 @@ tests:
       - eval_time: 20m
         alertname: NodeDiskCritical
         exp_alerts:
-          - exp_labels: {alertname: NodeDiskCritical, severity: critical, category: capacity, instance: a, device: d, job: node-exporter}
+          - exp_labels: {alertname: NodeDiskCritical, severity: critical, category: capacity, fleet: fix, instance: a, device: d, job: node-exporter}
             exp_annotations:
               summary: "a d has 5% free"
               description: Kubelet evicts pods at 5% free and keeps evicting until 15% is free.
@@ -147,7 +147,7 @@ tests:
       - eval_time: 40m
         alertname: NodeDiskFillingFast
         exp_alerts:
-          - exp_labels: {alertname: NodeDiskFillingFast, severity: critical, category: capacity, instance: fast, device: d, job: node-exporter}
+          - exp_labels: {alertname: NodeDiskFillingFast, severity: critical, category: capacity, fleet: fix, instance: fast, device: d, job: node-exporter}
             exp_annotations: {summary: "fast d is on course to fill within 4 hours"}
 
   - name: inodes
@@ -169,14 +169,14 @@ tests:
       - eval_time: 35m
         alertname: NodeInodesLow
         exp_alerts:
-          - exp_labels: {alertname: NodeInodesLow, severity: warning, category: capacity, instance: low, device: d, job: node-exporter}
+          - exp_labels: {alertname: NodeInodesLow, severity: warning, category: capacity, fleet: fix, instance: low, device: d, job: node-exporter}
             exp_annotations: {summary: "low d has 9% of its inodes free"}
-          - exp_labels: {alertname: NodeInodesLow, severity: warning, category: capacity, instance: out, device: d, job: node-exporter}
+          - exp_labels: {alertname: NodeInodesLow, severity: warning, category: capacity, fleet: fix, instance: out, device: d, job: node-exporter}
             exp_annotations: {summary: "out d has 4% of its inodes free"}
       - eval_time: 10m
         alertname: NodeInodesCritical
         exp_alerts:
-          - exp_labels: {alertname: NodeInodesCritical, severity: critical, category: capacity, instance: out, device: d, job: node-exporter}
+          - exp_labels: {alertname: NodeInodesCritical, severity: critical, category: capacity, fleet: fix, instance: out, device: d, job: node-exporter}
             exp_annotations: {summary: "out d has 4% of its inodes free"}
 
   - name: memory

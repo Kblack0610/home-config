@@ -1112,7 +1112,7 @@
       "id": 13,
       "type": "stat",
       "title": "Spend",
-      "description": "Lazer allowance left, plus the lazer_pool_pace and gh_actions_budget_pace watches.",
+      "description": "The spend watches (gh_actions_budget_pace, claude spend and account pace). The Lazer test pool is not health: its allowance is the Lazer allowance panel.",
       "datasource": {
         "type": "prometheus",
         "uid": "${datasource}"

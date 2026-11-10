@@ -180,11 +180,6 @@ spec:
             (((time() - max(mqtt_updated_epoch{topic=~"agents_.+_runner_sentinel"}) > 1800) * 0 + 2)
               unless on () (cc:component_status{domain="agents",component="feed"} > 0))
             or (absent(mqtt_updated_epoch{topic=~"agents_.+_runner_sentinel"}) * 2) or vector(0)
-        # Lazer allowance: under 25% left -> 1, under 10% -> 2
-        - record: cc:component_status
-          labels: {domain: spend, component: lazer}
-          expr: >-
-            ((max(litellm_remaining_team_budget_metric{team_alias="lazer-pool"} / litellm_team_max_budget_metric{team_alias="lazer-pool"}) < bool 0.10) + (max(litellm_remaining_team_budget_metric{team_alias="lazer-pool"} / litellm_team_max_budget_metric{team_alias="lazer-pool"}) < bool 0.25)) or vector(0)
     - name: command-center.rollup
       interval: 1m
       rules:

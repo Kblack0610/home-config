@@ -25,7 +25,7 @@ jobs:
           RENOVATE_REPOSITORIES: kblack0610/home-config
           RENOVATE_GIT_AUTHOR: "Renovate Bot <renovate@noreply.kblab.me>"
           RENOVATE_TOKEN: ${{ secrets.RENOVATE_TOKEN }}
-          # Optional (docs/renovate.md). Unset: fluxcd/flux2 is skipped and PRs carry no
+          # Copy of the github-runner-exporter token (docs/renovate.md). Unset: flux2 skipped, no
           # changelogs. Forgejo reserves the GITHUB_ prefix for secret names.
           GITHUB_COM_TOKEN: ${{ secrets.RENOVATE_GITHUB_COM_TOKEN }}
           LOG_LEVEL: info

@@ -16,7 +16,7 @@ Renovate opens PRs on git.kblab.me when an image pinned in this repo has a newer
 
 - Forgejo user `renovate`: not an admin, write collaborator on `kblack0610/home-config` and nothing else. Created by an agent with the admin CLI on 2026-11-10; no human step is needed.
 - Its token (scopes `read:user`, `write:repository`, `write:issue`, `read:organization`, all four required by Renovate's Forgejo platform) is kept in `.forgejo/renovate-secret.sops.yaml`. The workflow reads the copy in the repo's Actions secret `RENOVATE_TOKEN`.
-- Optional Actions secret `RENOVATE_GITHUB_COM_TOKEN`: a read-only github.com token. Without it `fluxcd/flux2` is skipped and PRs carry no changelogs.
+- Actions secret `RENOVATE_GITHUB_COM_TOKEN`: a copy of the github-runner-exporter's fine-grained token (record: `apps/github-runner-exporter/github-runner-exporter-secret.yaml`; rotate both together). It covers `fluxcd/flux2` and PR changelogs; a run without it still opens every image PR.
 
 ### Rotate the token
 

@@ -26,4 +26,16 @@ Each row links the steps; it does not restate them. A service with no steps yet:
 | gatus-fleet token | one shared token | not written yet | `apps/gatus-fleet/fleet-token-secret.sops.yaml` |
 | ntfy-public publisher | htpasswd into the configmap | [ntfy-public README](../apps/ntfy-public/README.md) ("To rotate the publisher password") | `apps/ntfy-public/configmap.yaml`; the plaintext is a GitHub secret |
 
+## GitHub tokens we already hold
+
+GitHub is a service we do not run, but these tokens exist: reuse the narrowest one that fits before asking the human for a new one. Find more with `rbw list`, `rg -il github -g '*secret*' -g '*.sops.yaml'` and `env | grep -i github`. Checked live 2026-11-10 (HTTP 200 on `api.github.com/rate_limit`).
+
+| Token | Kind | Expires | Used by |
+|---|---|---|---|
+| `apps/github-runner-exporter/github-runner-exporter-secret.yaml` `github-token` | fine-grained | - | github-runner-exporter; its copy is the Renovate Actions secret `RENOVATE_GITHUB_COM_TOKEN` |
+| `apps/ci-runner-governor/ci-runner-governor-secret.yaml` `github-token` | classic: admin:org, repo, workflow | - | ci-runner-governor. Too broad to reuse |
+| rbw `github-runner-exporter-pat` (BlackNBrownStudios) | fine-grained | 2027-10-07 | not the exporter's current token |
+| `ansible/group_vars/ci_hosts/vault.sops.yaml` `vault_github_pat`, `linux_bare_metal` `vault_github_dodginballs_pat` | PAT | - | `ansible/roles/github-actions-runner-linux` runner registration |
+| env `GITHUB_PAT_DODGINBALLS_CI` | fine-grained | 2027-02-28 | in the workstation shell env; where it is set is not traced |
+
 A UI-only path (Immich, Karakeep) is still the agent's when the admin login is in SOPS or rbw; when it is not, ask the human for that one login and mint every key with it.

@@ -76,6 +76,7 @@ Why: 2026-07-20 the `comms` email-triage skill classified tier-2 against `192.16
 
 ## Secrets
 
+- **An agent mints the credential for any service we run, through its admin path, into SOPS; never send the human to a UI for one.** Each service's admin path and steps: `docs/credentials.md`. Only accounts at services we do not run are the human's.
 - **One store for secrets in git: SOPS + age.** Kubernetes Secrets (Flux decrypts at apply time) and Ansible's `vault_*` vars (`ansible/group_vars/<group>/vault.sops.yaml`, decrypted at playbook run time by the `community.sops` vars plugin) are both SOPS files. ansible-vault is retired; see `ansible/README.md` "Secrets".
 - **SOPS age key**: `~/.config/sops/age/keys.txt`. Decrypts every `*.sops.yaml` and the in-cluster ansible-runner Secret. Without it, `flux bootstrap` works but SOPS-encrypted Kustomizations fail to decrypt, and `ansible-playbook` stops at "Failed to get the data key". Full key-rotation procedure in `docs/gitops.md`.
 - **The ansible-runner holds a second, Ansible-only age key** (`apps/ansible-runner/secret.yaml` key `sops-age-key`). The Ansible files are encrypted to both keys, so the runner can read them and no Kubernetes Secret.

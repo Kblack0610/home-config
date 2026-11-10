@@ -42,6 +42,33 @@ spec:
             summary: "LiteLLM key {{ $labels.api_key_alias }} budget nearly exhausted (< $2)"
             description: "Virtual key '{{ $labels.api_key_alias }}' has only ${{ printf \"%.2f\" $value }} left. Requests will start being rejected with budget_exceeded once it hits 0."
 
+        # The must-not-stop team (home services, comms, knowledge-engine,
+        # lazer-eval; apps/litellm/README.md). The low-priority lazer-pool
+        # team has no alert on purpose: running out there is expected.
+        - alert: LiteLLMCoreTeamBudgetWarning
+          expr: |
+            litellm_remaining_team_budget_metric{team_alias="lazer-core"}
+            / clamp_min(litellm_team_max_budget_metric{team_alias="lazer-core"}, 1) < 0.30
+          for: 10m
+          labels:
+            severity: warning
+            category: cost
+          annotations:
+            summary: "Lazer core team under 30% of its monthly budget"
+            description: "lazer-core is at {{ humanizePercentage $value }} of its monthly budget. Must-not-stop consumers (karakeep, binks, mem0, Home Assistant, comms, knowledge-engine) stop at 0. Check who is spending: apps/litellm/README.md key list."
+
+        - alert: LiteLLMCoreTeamBudgetCritical
+          expr: |
+            litellm_remaining_team_budget_metric{team_alias="lazer-core"}
+            / clamp_min(litellm_team_max_budget_metric{team_alias="lazer-core"}, 1) < 0.10
+          for: 5m
+          labels:
+            severity: critical
+            category: cost
+          annotations:
+            summary: "Lazer core team under 10% of its monthly budget"
+            description: "lazer-core is nearly spent. Must-not-stop consumers start failing with budget_exceeded at 0; fast falls back to Gemini only on an upstream error, not on a budget refusal."
+
         # Catches runaway loops — spend > $1.50/min sustained for 10m means
         # >$2k/day burn rate. The threshold is a sanity check on automation,
         # not a normal-usage cap. The expr converts to $/min so the alert

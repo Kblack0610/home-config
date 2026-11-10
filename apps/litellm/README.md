@@ -19,22 +19,27 @@ The litellm tenant role + database in Postgres is provisioned by `apps/postgres/
 
 - `litellm-secrets` (out-of-band, holds `LITELLM_MASTER_KEY`) and `litellm-db-secrets` (SOPS, this directory) are both merged via `envFrom`.
 - Config lives in `config.yaml`, generated into the `litellm-config` ConfigMap (hash-suffixed, so an edit rolls the pod) and mounted at `/etc/litellm/config.yaml`.
-- Persistent state for keys/spend/budgets lives in Postgres (`postgres.databases.svc.cluster.local`); the `model_list` stays in `configmap.yaml` (`store_model_in_db: false`).
+- Persistent state for keys/spend/budgets lives in Postgres (`postgres.databases.svc.cluster.local`); the `model_list` stays in `config.yaml` (`store_model_in_db: false`).
 
 ## Virtual Keys (Cost & Rate Control)
 
 Every consumer of this gateway should hold a *scoped virtual key* — never `LITELLM_MASTER_KEY`. The master key creates/manages keys; runtime traffic uses the scoped keys.
 
-| Key alias | Allowed models | `max_budget` (30d) | `tpm` / `rpm` | Consumer |
-|---|---|---|---|---|
-| `karakeep` | `fast`, `fast (gpt-oss-120b)`, `embedding (gemini-001)` | none | none | `apps/karakeep/` |
-| `local-only` (named before the local tier went) | `fast (gpt-oss-120b)`, `embedding (gemini-001)` | none | none | `apps/binks-api/`, `apps/mem0/` |
-| `opencode-paid` | the paid Lazer routes (`code (qwen-3-coder)`, `reasoning (glm-5.3)`, `fast (gpt-oss-120b)`, `vlm (gemini-3-flash)`) | $150 | tpm 100k | opencode build/escalation mode |
-| `model-lane` | `claude-haiku-4-5-20251001` (Lazer Haiku 5.5), team `lazer-pool` | $10 | rpm 30 | `model-lane classify` (dotfiles-private skill), key file `~/.local/state/model-lane/litellm.key` |
-| `claude-reserve` | `claude-sonnet-5`, `claude-haiku-4-5-20251001`, team `lazer-pool`; no Opus on purpose | $100 | none | Claude Code on Lazer when the subscription accounts are spent: `claude-lazer` / `cl --lazer` and model-lane's headless sonnet lane (dotfiles-private), key file `~/.local/state/claude-lazer/key` |
-| `lazer-eval` | `claude-sonnet-5`, `claude-haiku-4-5-20251001`, `code (qwen-3-coder)`, `reasoning (glm-5.3)`, `fast (gpt-oss-120b)`, team `lazer-pool`; no Opus on purpose | $150 lifetime (no `budget_duration`) | rpm 60 | the model and harness eval lane: `fleet-dispatch start --harness claude-lazer\|opencode`, key file `~/.local/state/agentctl/lazer-eval.key`. Each run sends `x-litellm-tags: queue:<slug>`, so spend joins the queue item |
-| `glm-pilot` | `reasoning (glm-5.3)` only, team `lazer-pool` | $50 (`budget_duration` 30d) | rpm 60 | the GLM canary and pilot: `fleet-dispatch start --harness glm`, key file `~/.local/state/agentctl/glm.key`. A key without this route gets 403, not a fallback; its spend and cap read from the `litellm_*_api_key_*` gauges on the Costs tab LAZER line |
-| `eval-reader` | none (`no-default-models`), on the `proxy_admin_viewer` user `eval-reader` | none | none | reads `/tag/daily/activity` for that join, key file `~/.local/state/agentctl/eval-reader.key`. A plain scoped key gets 401 on `/tag/*`; this one gets 403 on writes and completions |
+Two teams split the $250/mo Lazer allowance by priority (human, 2026-11-10). A key joins the team its consumer's priority names; a key in no team never reaches a Lazer route except through its own small cap.
+
+| Team | Budget | Holds |
+|---|---|---|
+| `lazer-core` | $200 / 1mo | `priority: must`: home services, comms triage and the version agents, knowledge-engine, lazer-eval |
+| `lazer-pool` | $50 / 1mo | `priority: low`: cl --lazer (`claude-reserve`, last priority), model-lane, opencode-paid, delivery-loop |
+
+Each key's consumer and priority live on the key itself (`metadata.consumer`, `metadata.priority`: must, low, off, reader), so the gateway is the one inventory. A key that is not a priority is blocked (`/key/block`, reversible with `/key/unblock`), as `glm-pilot` is since 2026-11-10. List every key, its team, cap, spend, consumer and priority:
+
+```bash
+curl -s "https://llm.kblab.me/key/list?return_full_object=true&size=100" -H "Authorization: Bearer $(cat ~/.local/state/agentctl/eval-reader.key)" \
+  | jq -r '.keys[] | [.key_alias, (.team_id // "-")[0:8], (.max_budget // "-"), (.budget_duration // "-"), (.spend*100|round/100), (.blocked // false), .metadata.priority, .metadata.consumer] | @tsv' | column -t -s $'\t'
+```
+
+`eval-reader` is a `proxy_admin_viewer`: it reads keys, teams and spend but calls no model. Set a new key's `team_id`, `metadata.consumer` and `metadata.priority` when you mint it.
 
 > **Category aliases:** `router_settings.model_group_alias` in `config.yaml` exposes short stable names (`code`, `reasoning`, `fast`, `vlm`, `embedding`, `stt`) that resolve to whichever concrete route a category points at. A key that allows the concrete route can call its alias (the `local-only` key calls `fast` through `fast (gpt-oss-120b)`). Retarget an alias in one line -> reconcile -> every consumer follows with no per-app edit. mem0 (`MEM0_DEFAULT_LLM_MODEL`), binks-api (`DEFAULT_MODEL`) and karakeep (`INFERENCE_TEXT_MODEL`) call `fast`.
 >

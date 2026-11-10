@@ -7,7 +7,7 @@ LLM chat backend for `binks.chat`. TypeScript replacement for the legacy Rust `b
 - **Namespace**: `binks-api`
 - **Image**: `git.kblab.me/kblack0610/binks-api` (Forgejo registry — `forgejo-registry` imagePullSecret)
 - **DB**: in-namespace `binks-postgres` StatefulSet on a 5Gi PVC. Anonymous and signed-in chats both persisted here.
-- **LLM gateway**: `http://litellm.ai-gateway.svc.cluster.local:4000` — uses the cluster's `litellm-secrets/LITELLM_MASTER_KEY` (mirrored into `binks-api-secret/LITELLM_API_KEY`).
+- **LLM gateway**: `http://litellm.ai-gateway.svc.cluster.local:4000`, using the scoped `local-only` virtual key in `binks-api-secret/LITELLM_API_KEY` (team `lazer-core`, see `apps/litellm/README.md`).
 - **Ingress**: `binks.chat` (Traefik IngressRoute `binks-chat` in `ingress.yaml`): the SPA on `/`, the API on `/api` and `/ws`. TLS ends at Cloudflare.
 
 ## Deploy lifecycle

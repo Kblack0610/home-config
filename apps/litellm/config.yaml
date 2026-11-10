@@ -60,17 +60,18 @@ model_list:
   # api_base, so every route below carries Lazer's list price
   # (input_cost_per_token etc., $/1M from proxy /v1/models). Without those
   # keys spend records as $0 and no budget could ever trip.
-  # No per-route max_budget: the pool is a LiteLLM team (lazer-pool, $250/1mo)
-  # with a per-key daily ceiling, so route caps would only stack under it and
-  # block a heavy day early. tpm/rpm below are runaway-loop guards only.
+  # No per-route max_budget: the allowance is split into two LiteLLM teams by
+  # consumer priority (lazer-core $200/1mo, lazer-pool $50/1mo, README), so
+  # route caps would only stack under them and block a heavy day early. tpm/rpm below are runaway-loop guards only.
   # Route NAMES are stable aliases; the upstream `model:` id floats with
   # Lazer's catalog. Probe the id live (POST /v1/chat/completions,
   # max_tokens 16) before changing it: /v1/models lists ids the key cannot
   # reach (qwen-3.7-plus, deepseek-v4-pro and deepseek-v4-flash all 404).
   #
   # Cost control, outermost first:
-  #   - team lazer-pool:   $250 per calendar month across every Lazer-capable
-  #                        key (runtime state in the gateway DB, not here)
+  #   - teams:             lazer-core $200 (priority must) + lazer-pool $50
+  #                        (priority low) per calendar month, the $250 allowance
+  #                        (runtime state in the gateway DB, not here)
   #   - tpm/rpm:           runaway-loop / stuck-retry caps per route
   #   - per-virtual-key:   primary control via /key/generate
   #                        allowed_models. binks-api + mem0 use the

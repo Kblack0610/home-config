@@ -13,7 +13,7 @@ entry says unity_ci_lan: false, so a cloud host is declared once, in the invento
 (apps/ci-runner-governor/config.json) is the third copy: it must name exactly those
 cloud hosts, each with max_admitted equal to its unity slots. A build host (unity_ci_build: true with
 unity_ci_pool: false, aws-build-1) is its own exporter pool, unity-build, and its standby entry carries
-that label.
+that label and withheld_label <label>-withheld.
 
 Same rule as check-fleet-roster.py: independent copies are the design, copies nobody
 compares are the bug. This compares them in BOTH directions, because both break: a
@@ -67,7 +67,7 @@ def inventory_roster(path):
                 out[(host, GROUPS[group][key])] = int(val.strip())
             elif group and host and indent == 10 and key == "unity_ci_lan" and val.strip() == "false":
                 cloud.add(host)
-            elif group and host and indent == 10 and key == "unity_ci_pool" and val.strip() == "false":
+            elif group and host and indent == 10 and key == "unity_ci_build" and val.strip() == "true":
                 build.add(host)
     # A build-only host's slots are the unity-build pool's, not the gate pool's.
     for h in build:
@@ -108,7 +108,13 @@ def main():
         rc = 1
         print(f"FAIL: CLOUD_HOSTS is {sorted(have_cloud)}, inventory unity_ci_lan: false hosts are {sorted(want_cloud)}")
     with open(GOVERNOR_CONFIG, encoding="utf-8") as fh:
-        standby = {s["host"]: (s["max_admitted"], (s.get("labels") or ["unity"])[0]) for s in json.load(fh)["standby"]}
+        entries = json.load(fh)["standby"]
+    standby = {s["host"]: (s["max_admitted"], (s.get("labels") or ["unity"])[0]) for s in entries}
+    for s in entries:
+        # Without its own withheld label a dedicated host's withheld slots read as the gate pool's.
+        if s.get("labels") and s.get("withheld_label") != s["labels"][0] + "-withheld":
+            rc = 1
+            print(f"FAIL: {s['host']}: a dedicated standby host needs withheld_label {s['labels'][0]}-withheld")
     if set(standby) != want_cloud:
         rc = 1
         print(f"FAIL: governor standby is {sorted(standby)}, inventory unity_ci_lan: false hosts are {sorted(want_cloud)}")

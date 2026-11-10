@@ -881,6 +881,10 @@ class GovernorTest(unittest.TestCase):
             self.assertEqual(calls[1][2], {"labels": [added]}, action)
             self.assertEqual([c[1].rsplit("/", 1)[1] for c in calls if c[0] == "DELETE"], [removed], action)
 
+    def test_a_waiting_build_is_not_in_the_pool_queue(self):
+        jobs = [self.BUILD_JOB, UNITY_JOB, self.BUILD_JOB]
+        self.assertEqual(governor.pool_jobs(jobs, governor.build_marks(self.BUILD)), [UNITY_JOB])
+
     def test_the_build_pool_is_read(self):
         self.assertEqual(governor.pools(self.BUILD), ["unity", "unity-build"])
         with mock.patch.object(governor, "prom", return_value=[]) as prom:

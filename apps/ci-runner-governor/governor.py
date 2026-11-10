@@ -244,6 +244,17 @@ def dedicated(cfg, host):
     return (cfg["standby"].get(host) or {}).get("labels")
 
 
+def build_marks(cfg):
+    """Each dedicated host's labels, lowercased: a job that asks for one is that host's alone."""
+    return {h: frozenset(l.lower() for l in dedicated(cfg, h)) for h in cfg["standby"] if dedicated(cfg, h)}
+
+
+def pool_jobs(waiting, own):
+    """The waiting jobs the shared pool serves: every one that asks for no dedicated host's label."""
+    marks = frozenset().union(*own.values())
+    return [need for need in waiting if not need & marks]
+
+
 def withheld_label(cfg, host):
     return (cfg["standby"].get(host) or {}).get("withheld_label", cfg["withheld_label"])
 
@@ -327,9 +338,8 @@ def decide(cfg, hosts, runners, waiting, last_action, now, instances=None, pins=
     power block; pins is read_pins(); restore names the hosts whose verdicts are not
     applied (a dry run), which get back what a pin withheld once no pin holds them."""
     # Jobs that ask for a dedicated host's label are that host's alone; the rest are the pool's.
-    own = {h: frozenset(l.lower() for l in dedicated(cfg, h)) for h in cfg["standby"] if dedicated(cfg, h)}
-    marks = frozenset().union(*own.values())
-    waiting_all, waiting = waiting, [need for need in waiting if not need & marks]
+    own = build_marks(cfg)
+    waiting_all, waiting = waiting, pool_jobs(waiting, own)
     queue = len(waiting)
     admitted = sum(1 for r in runners.values() if not r["withheld"] and r["host"] not in own)
     # A standby host can go to zero, so only the other hosts hold the pool's floor.
@@ -1002,7 +1012,9 @@ def cycle(cfg, last_action, tracked=None, budget=None):
         with State.lock:
             State.metrics = "ci_governor_up 1\nci_governor_ok 0\n"
         return
-    queue = len(waiting)
+    # ci_governor_queue is the shared pool's queue: a build waiting on its own host is not one
+    # a disk-held pool slot could take (CiHostHeldOutByDisk).
+    queue = len(pool_jobs(waiting, build_marks(cfg)))
     instances = power_readings(cfg, runners, {} if tracked is None else tracked, now)
     restore = {h for h in cfg["hosts"] if not live(cfg, h)}
     decisions = decide(cfg, hosts, runners, waiting, last_action, now, instances, read_pins(cfg, now), restore)

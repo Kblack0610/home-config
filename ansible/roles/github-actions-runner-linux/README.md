@@ -41,7 +41,7 @@ systemctl status 'actions.runner.*'   # runner name is <inventory_hostname>-linu
 sudo -u actions-runner docker ps
 ```
 
-In GitHub: `https://github.com/BlackNBrownStudios/platform/settings/actions/runners` — the runner should appear online with labels `self-hosted, linux, x64, docker`.
+In GitHub, check `https://github.com/BlackNBrownStudios/platform/settings/actions/runners`: the runner should appear online with labels `self-hosted, linux, x64, docker`.
 
 ## Notes
 
@@ -50,6 +50,12 @@ In GitHub: `https://github.com/BlackNBrownStudios/platform/settings/actions/runn
 - To uninstall a single runner: `systemctl disable --now actions.runner.<name>.service`, remove it in the GitHub UI, and delete its directory. `rm -rf /var/lib/actions-runner` is safe only when no other runner on the host uses it.
 
 ## Uninstall
+
+For a light/heavy drain, lower `ci_light_slots` and `ci_heavy_slots` in `ansible/inventory.yml` and update `RUNNER_ROSTER` in `apps/github-runner-exporter/deployment.yaml`. Lowering the counts prevents provisioning from starting the slots again; it does not stop existing services. Remove each runner's `light` or `heavy` scheduling label through the GitHub API first. Let any active job finish, then disable and stop its unit and deregister it from the org. Preserve the slot directories during an investigation. Re-register through the playbook when re-admitting a slot; never edit its registration files by hand.
+
+| Symptom | Check | Action |
+|---|---|---|
+| Platform installs and unrelated tests slow down together on Razer | Inspect `/proc/pressure/{cpu,memory,io}`, `ci-linux.slice` CPU pressure, the Unity slice's CPU weight and competing k3s processes | Keep light/heavy slots at zero until isolated CPU capacity meets existing job caps with Unity and k3s running; the host's re-admission condition is beside its slot counts in the inventory. |
 
 The playbooks only add runners. To remove Unity CI pool slots (the "Unity CI runner pool" play), first take them out of `unity_ci_runners` in `ansible/inventory.yml` and `RUNNER_ROSTER` in `apps/github-runner-exporter/deployment.yaml`, then run this on the host as yourself:
 

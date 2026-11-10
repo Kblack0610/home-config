@@ -192,8 +192,12 @@ all:
           ci_light_slots: 2
           ci_heavy_slots: 1
         razer-laptop:
-          ci_light_slots: 3
-          ci_heavy_slots: 1
+          # Drained: platform PRs #1488/#1489 timed out under CPU contention.
+          # Unity owns the same CPUs at weight 400 against platform's 100.
+          # Re-admit only after isolating CPU capacity and proving both pools
+          # meet their job caps while Unity and k3s workloads run together.
+          ci_light_slots: 0
+          ci_heavy_slots: 0
 
     # BNB Unity runner pool (added 2026-10-05; the "Unity CI runner pool" play in
     # site.yml). Org-scoped, label `unity`, for every game repo. Each slot runs

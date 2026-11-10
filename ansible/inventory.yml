@@ -287,6 +287,26 @@ all:
           # The SSM tunnel copies at under 1 MB/s; S3 is the fast path (platform
           # infra/aws-ci-burst libraries.tf).
           unity_ci_library_s3: aws-burst-1-libraries-311141527647
+        # The player-build host (platform infra/aws-ci-burst, added 2026-11-10): an
+        # on-demand m7a.8xlarge with a 600G volume, reached like aws-burst-1 (SSM, the
+        # same instance profile and library bucket). Its runners carry unity-build and
+        # no unity or unity-full (unity_ci_pool, unity_ci_build), so playground
+        # release.yml's builds run here and no gate or nightly can. The governor starts
+        # it when a build waits (apps/ci-runner-governor/config.json, dedicated).
+        # Default image list: desktop builds need the windows flavor.
+        aws-build-1:
+          ansible_host: i-0856b245ff7a81321
+          ansible_user: ubuntu
+          ansible_ssh_common_args: >-
+            -o ProxyCommand="aws ssm start-session --profile bnb --region us-east-2
+            --target %h --document-name AWS-StartSSHSession --parameters portNumber=%p"
+          unity_ci_slots: 3
+          unity_ci_pool: false
+          unity_ci_build: true
+          unity_ci_full: false
+          unity_ci_images_pull: true
+          unity_ci_lan: false
+          unity_ci_library_s3: aws-burst-1-libraries-311141527647
 
     # macOS hosts in the same Unity pool (site.yml, "Unity CI runner pool
     # (macOS)"). Native editor, no container, so no ci_hosts budget: macOS has
@@ -369,6 +389,16 @@ all:
           ci_unity_slot_cpus: ["1-10", "11-15", "16-20", "21-25", "26-30"]
           ci_unity_memory_max: 100G
           ci_unity_slot_memory_max: 20G
+        # aws-build-1, the same m7a.8xlarge: three slots of 10 cores for whole-game
+        # player builds, 36G each (a build SIGKILLed at 14G on aws-burst-1, #1817;
+        # razer builds in 20G). Core 0 and core 31 as on aws-burst-1.
+        aws-build-1:
+          ci_cpus: 1-31
+          ci_memory_max: 116G
+          ci_unity_cpus: 1-30
+          ci_unity_slot_cpus: ["1-10", "11-20", "21-30"]
+          ci_unity_memory_max: 108G
+          ci_unity_slot_memory_max: 36G
 
     # Nodes that run the game servers (apps/playground-server pins to the
     # kblab.me/game-server label, roles/game-server-node sets it). Each host keeps

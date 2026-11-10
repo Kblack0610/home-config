@@ -388,7 +388,8 @@
         # gallery image); through Cloudflare a push over 100 MB fails. Off for
         # aws-burst-1 (unity_ci_lan in inventory.yml).
         # unity-wide: slots with the CPU for real-time players (Multi, Soak, Playloop); only slots
-        # that passed the ucp-1521 probes (unity_ci_wide, default false). hd-library: the host
+        # that passed the ucp-1521 probes (unity_ci_wide, default false, for every slot on the host;
+        # one slot alone through unity_ci_slot_labels, as aws-burst-1's slot 1). hd-library: the host
         # holds asset-library-hd (HD, Slim tour); defaults to unity_ci_lan, since only LAN hosts
         # got the tarball, and a cloud host sets unity_ci_hd_library once it reads it from S3.
         # unity_ci_pool: false leaves unity and unity-full off, and unity_ci_build: true puts

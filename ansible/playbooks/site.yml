@@ -408,8 +408,9 @@
         # gh api -X POST orgs/BlackNBrownStudios/actions/runners/<id>/labels -f 'labels[]=unity-full'.
         # lan: the slot is on the home LAN, so it can push to git.kblab.me (Shots'
         # gallery image); through Cloudflare a push over 100 MB fails. Off for
-        # aws-burst-1 (unity_ci_lan in inventory.yml).
-        gh_runner_labels: "{{ [ 'self-hosted', 'linux', 'x64', 'unity', 'host-' ~ inventory_hostname ] + ([ 'unity-full' ] if unity_ci_full | default(true) else []) + ([ 'lan' ] if unity_ci_lan | default(true) else []) }}"
+        # aws-burst-1 (unity_ci_lan in inventory.yml). unity_ci_slot_labels adds labels
+        # to one slot, so a comparison run can be pinned to it.
+        gh_runner_labels: "{{ [ 'self-hosted', 'linux', 'x64', 'unity', 'host-' ~ inventory_hostname ] + ([ 'unity-full' ] if unity_ci_full | default(true) else []) + ([ 'lan' ] if unity_ci_lan | default(true) else []) + (unity_ci_slot_labels | default({})).get(unity_slot, []) }}"
         # With ci_unity_slot_cpus each slot gets its own cores (roles/ci-host-budget).
         unity_slot_slice: >-
           {{ (ci_unity_slot_slice_prefix ~ unity_slot ~ '.slice') if ci_unity_slot_cpus | length else ci_unity_slice }}

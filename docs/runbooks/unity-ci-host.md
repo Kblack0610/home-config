@@ -36,7 +36,7 @@ scripts/test/fetch-image.py unityci/editor ubuntu-<version>-base-3 ~/.cache/unit
 ## Labels
 
 - Every slot carries `unity`, plus `unity-full` while the host's `unity_ci_full` is true (the default). Full runs (nightly, release, Multi) ask for `unity-full`, merge gates for `unity`. GitHub has no queue priority, so to reserve a runner for gates, set `unity_ci_full: false` on one host.
-- A runner keeps the labels it registered with. On a live one, `gh api -X POST orgs/BlackNBrownStudios/actions/runners/<id>/labels -f 'labels[]=unity-full'` adds a label and `gh api -X DELETE orgs/BlackNBrownStudios/actions/runners/<id>/labels/unity-full` removes it.
+- A runner keeps the labels it registered with, `unity_ci_slot_labels` too: on a registered slot add them with the POST below (aws-burst-1-unity-pool-1 got `host-aws-burst-1-wide` that way on 11-10). On a live one, `gh api -X POST orgs/BlackNBrownStudios/actions/runners/<id>/labels -f 'labels[]=unity-full'` adds a label and `gh api -X DELETE orgs/BlackNBrownStudios/actions/runners/<id>/labels/unity-full` removes it.
 - The workstation (cachyos-x8664-main) has two slots with `unity_ci_full: false`, so it takes merge gates and never a full run. The governor's `config.json` says the same with `"full": false`, since it re-labels a runner on admit and cannot read the inventory; change both together. Each slot has three cores and 16G of its own. A third slot waits for a day of load and temperatures with two. No gate runs anything else here (unity-core-playground `docs/operations/ci.md` rule 2).
 
 ## The Mac pool
@@ -48,7 +48,7 @@ scripts/test/fetch-image.py unityci/editor ubuntu-<version>-base-3 ~/.cache/unit
 
 ## The AWS burst host (aws-burst-1)
 
-- An on-demand instance (m7a.8xlarge, us-east-2a, 6 slots, about $1.85 an hour while running) from the platform repo's `infra/aws-ci-burst` Terraform module. The 400G data volume (`/var/lib/actions-runner`, `/var/lib/docker`, `/var/lib/containerd`, label `ci-data`) and the machine id survive a stop and start; a stopped instance costs only its disks.
+- An on-demand instance (m7a.8xlarge, us-east-2a, 5 slots, slot 1 ten cores wide with `host-aws-burst-1-wide` for comparison runs, about $1.85 an hour while running) from the platform repo's `infra/aws-ci-burst` Terraform module. The 400G data volume (`/var/lib/actions-runner`, `/var/lib/docker`, `/var/lib/containerd`, label `ci-data`) and the machine id survive a stop and start; a stopped instance costs only its disks.
 - Admin access is SSH through SSM, no inbound port: `ssh -o ProxyCommand='aws ssm start-session --profile bnb --region us-east-2 --target %h --document-name AWS-StartSSHSession --parameters portNumber=%p' ubuntu@<instance-id>`. The instance id is in `ansible/inventory.yml`.
 - Off the LAN: no `lan` label (`unity_ci_lan: false`), and the libraries come through S3 (`unity_ci_library_s3`) instead of a tarball over ssh.
 - Each slot's first job imports its `Library/` cold, about 50 minutes; later jobs are warm (a PlayMode batch ran 10 minutes, against about 12 warm on mac-studio).

@@ -253,7 +253,7 @@ all:
           unity_ci_slots: 2
           unity_ci_full: false
         # The AWS overflow box (platform infra/aws-ci-burst, Terraform), added
-        # 2026-11-03: an on-demand m7a.8xlarge in us-east-2a with six slots. It
+        # 2026-11-03: an on-demand m7a.8xlarge in us-east-2a with six slots (five since 11-10). It
         # has no inbound port; SSH runs through SSM Session Manager with the bnb
         # AWS profile, so the workstation needs session-manager-plugin. ansible_host
         # is the instance id: after a Terraform -replace, take the new one from
@@ -267,7 +267,12 @@ all:
           ansible_ssh_common_args: >-
             -o ProxyCommand="aws ssm start-session --profile bnb --region us-east-2
             --target %h --document-name AWS-StartSSHSession --parameters portNumber=%p"
-          unity_ci_slots: 6
+          # Five since 2026-11-10 (playground ucp-1521): slot 1 is ten cores wide and
+          # carries host-aws-burst-1-wide, so Multi can be pinned to it and compared
+          # with razer-laptop's slots (Multi failed on CPU at five cores, #1957).
+          unity_ci_slots: 5
+          unity_ci_slot_labels:
+            1: [host-aws-burst-1-wide]
           unity_ci_full: true
           unity_ci_images_pull: true
           # Base images only: every player build asks for the lan label (playground
@@ -350,19 +355,20 @@ all:
           ci_unity_slot_memory_max: 16G
         # m7a.8xlarge on-demand (platform infra/aws-ci-burst, since 11-04: Spot
         # reclaimed the 12xlarge 4 times in 9 h): 32 real cores (no SMT), 128 GiB.
-        # Core 0 stays with the OS and the SSM agent; cores 1-30 go to six slots
-        # of 5, core 31 is spare. Not 8 slots of 4: at 4 cores a slot ran 3.5x
+        # Core 0 stays with the OS and the SSM agent; cores 1-30 go to one slot of
+        # 10 (the wide one, see unity_ci_slot_labels) and four of 5, core 31 is spare. Not 8 slots of 4: at 4 cores a slot ran 3.5x
         # oversubscribed and a batch's first scene took up to 21 s to compose,
-        # timing out SwapTo (fixed at 6 cores by #518). Each slot stops at 14G,
-        # over a PlayMode shard's 13.9G max. Slots 7 and 8 from the 12xlarge stay
-        # registered but offline. No k3s and no platform runners here.
+        # timing out SwapTo (fixed at 6 cores by #518). Each slot stops at 20G
+        # since 11-10 (14G before, over a PlayMode shard's 13.9G max): the wide slot runs
+        # Multi's peers, and five at 20G is the 100G Unity budget. Slot 6 was removed by hand on
+        # 11-10 (unit, home and org runner), as the play's header says. No k3s and no platform runners here.
         aws-burst-1:
           ci_cpus: 1-31
           ci_memory_max: 112G
           ci_unity_cpus: 1-30
-          ci_unity_slot_cpus: ["1-5", "6-10", "11-15", "16-20", "21-25", "26-30"]
+          ci_unity_slot_cpus: ["1-10", "11-15", "16-20", "21-25", "26-30"]
           ci_unity_memory_max: 100G
-          ci_unity_slot_memory_max: 14G
+          ci_unity_slot_memory_max: 20G
 
     # Nodes that run the game servers (apps/playground-server pins to the
     # kblab.me/game-server label, roles/game-server-node sets it). Each host keeps

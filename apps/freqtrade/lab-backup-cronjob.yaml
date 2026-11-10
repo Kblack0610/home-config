@@ -28,7 +28,7 @@ spec:
           restartPolicy: Never
           containers:
             - name: backup
-              image: alpine:3.24.1
+              image: alpine:3.24.4
               env:
                 - name: KEEP
                   value: "4"

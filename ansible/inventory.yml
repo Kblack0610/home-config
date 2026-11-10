@@ -268,9 +268,11 @@ all:
           # Five since 2026-11-10 (playground ucp-1521): slot 1 is ten cores wide and
           # carries host-aws-burst-1-wide, so Multi can be pinned to it and compared
           # with razer-laptop's slots (Multi failed on CPU at five cores, #1957).
+          # It matched razer (Multi 11 ok in 43 min), so it also carries unity-wide:
+          # Multi, Soak and Playloop then have a second host (playground ucp-1752).
           unity_ci_slots: 5
           unity_ci_slot_labels:
-            1: [host-aws-burst-1-wide]
+            1: [host-aws-burst-1-wide, unity-wide]
           unity_ci_full: true
           unity_ci_images_pull: true
           # Base images only: every player build asks for the lan label (playground
@@ -285,6 +287,9 @@ all:
           # The SSM tunnel copies at under 1 MB/s; S3 is the fast path (platform
           # infra/aws-ci-burst libraries.tf).
           unity_ci_library_s3: aws-burst-1-libraries-311141527647
+          # asset-library-hd comes through S3 too, so HD and Slim tour run here as well
+          # as on razer-laptop (playground ucp-1752).
+          unity_ci_hd_library: true
         # The player-build host (platform infra/aws-ci-burst, added 2026-11-10): an
         # on-demand m7a.8xlarge with a 600G volume, reached like aws-burst-1 (SSM, the
         # same instance profile and library bucket). Its runners carry unity-build and

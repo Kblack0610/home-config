@@ -110,8 +110,8 @@ adguard_rewrites:
 # they resolve to 0.0.0.0, Unity 6000.3 on macOS recurses on the failed post
 # (DataDispatcher::HandlePostRequestDone -> WebRequestRestClient::Abort) until
 # the thread stack overflows, so every editor and batchmode build on a Mac
-# dies with "Illegal instruction: 4" (the mac-mini's release jobs, 2026-11-08
-# to 11-10, ucp-1736). Unity Ads and mediation hosts stay blocked.
+# dies with "Illegal instruction: 4". Unity Ads and mediation hosts stay
+# blocked. Drop these once a Unity release survives a failed analytics post.
 adguard_user_rules:
   - '@@||cdp.cloud.unity3d.com^'
   - '@@||config.uca.cloud.unity3d.com^'

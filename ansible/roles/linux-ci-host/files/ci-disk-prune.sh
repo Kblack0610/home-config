@@ -12,8 +12,18 @@ GALLERY_DAYS=${GALLERY_DAYS:-1}
 IMAGE_DAYS=${IMAGE_DAYS:-7}
 PERF_TREE_DAYS=${PERF_TREE_DAYS:-1}
 RELEASE_TREE_DAYS=${RELEASE_TREE_DAYS:-7}
+# The governor re-admits a withheld Unity slot at 25% free and withholds under 20%
+# (apps/ci-runner-governor/config.json), and one release build writes up to about 45G of
+# tree and output, about 10% of razer's 938G. Under 35% free the oldest idle warm trees go,
+# whatever their age: on 2026-11-10 razer held 302G of trees, each one copy and under 7
+# days old, so the age and copy rules removed nothing while the governor withheld both slots.
+RELEASE_TREE_MIN_FREE_PCT=${RELEASE_TREE_MIN_FREE_PCT:-35}
 
 now=$(date +%s)
+# The runner keeps its binaries in bin.<version>, e.g. bin.2.338.0.
+busy() { pgrep -f "$1/bin[^/]*/Runner\.Worker" >/dev/null; }
+newest() { find "$1" -type f -exec stat -c %Y {} + | sort -n | tail -n 1; }
+free_pct() { df -P "$RUNNER_HOME" | awk 'NR == 2 { printf "%d", $4 * 100 / $2 }'; }
 
 # `docker image rm` without -f refuses an image a container uses.
 docker images --format '{{.Repository}}:{{.Tag}}|{{.CreatedAt}}' | while IFS='|' read -r ref created; do
@@ -44,8 +54,7 @@ done
 for work in "$RUNNER_HOME"/unity-pool-*/_work; do
     [ -d "$work" ] || continue
     slot=${work%/_work}
-    # The runner keeps its binaries in bin.<version>, e.g. bin.2.338.0.
-    if pgrep -f "$slot/bin[^/]*/Runner\.Worker" >/dev/null; then
+    if busy "$slot"; then
         echo "busy $slot"
         continue
     fi
@@ -67,8 +76,8 @@ done
 tab=$(printf '\t')
 for tree in "$RUNNER_HOME"/unity-pool-*/_work/*/*/Builds/release-tree/*; do
     [ -d "$tree" ] || continue
-    newest=$(find "$tree" -type f -exec stat -c %Y {} + | sort -n | tail -n 1)
-    printf '%s\t%s\t%s\n' "${tree#"$RUNNER_HOME"/*/}" "${newest:-0}" "$tree"
+    t=$(newest "$tree")
+    printf '%s\t%s\t%s\n' "${tree#"$RUNNER_HOME"/*/}" "${t:-0}" "$tree"
 done | sort -t "$tab" -k1,1 -k2,2nr | {
     seen=
     while IFS="$tab" read -r target _ tree; do
@@ -77,7 +86,7 @@ done | sort -t "$tab" -k1,1 -k2,2nr | {
             continue
         fi
         slot=${tree%%/_work/*}
-        if pgrep -f "$slot/bin[^/]*/Runner\.Worker" >/dev/null; then
+        if busy "$slot"; then
             echo "busy $slot"
             continue
         fi
@@ -85,3 +94,17 @@ done | sort -t "$tab" -k1,1 -k2,2nr | {
         rm -rf -- "$tree"
     done
 }
+
+# A busy slot's trees stay: its job may be about to use one. The governor withholds slots on
+# a full host, so they go idle and the next hourly run here frees them.
+[ "$(free_pct)" -lt "$RELEASE_TREE_MIN_FREE_PCT" ] || exit 0
+for tree in "$RUNNER_HOME"/unity-pool-*/_work/*/*/Builds/release-tree/*; do
+    [ -d "$tree" ] || continue
+    busy "${tree%%/_work/*}" && continue
+    t=$(newest "$tree")
+    printf '%s\t%s\n' "${t:-0}" "$tree"
+done | sort -n | while IFS="$tab" read -r _ tree; do
+    [ "$(free_pct)" -lt "$RELEASE_TREE_MIN_FREE_PCT" ] || break
+    echo "low disk $tree"
+    rm -rf -- "$tree"
+done

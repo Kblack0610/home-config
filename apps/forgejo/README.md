@@ -85,6 +85,8 @@ Check runner status:
 kubectl --context home-k3s logs -n forgejo deploy/forgejo-runner -c runner --tail=20
 ```
 
+Each dind store is an emptyDir on its node's root disk, which on razer-laptop is also the Unity CI disk. The `dind-prune` sidecar removes unused images past a day and holds build cache at 20G every hour, and the volume has a 60Gi `sizeLimit`: past that the kubelet evicts the pod and it comes back empty. Before both (2026-11-10) the store reached 101G and the ci-runner-governor withheld razer's Unity slots for disk.
+
 To use Actions in a repo, add `.forgejo/workflows/<name>.yaml` — same syntax as
 GitHub Actions.
 

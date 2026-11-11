@@ -580,7 +580,7 @@ class GovernorTest(unittest.TestCase):
         prom.assert_not_called()
         with mock.patch.object(governor, "prom", side_effect=urllib.error.URLError("down")), \
                 mock.patch("builtins.print"):
-            self.assertEqual(RESTORED("aws-burst-1", day + 3600), (0.0, "", False))
+            self.assertIsNone(RESTORED("aws-burst-1", day + 3600))
 
     def test_a_first_sight_keeps_the_larger_day_and_a_cause_that_matches_the_state(self):
         def first_sight(state, back, launched=0.0, now=time.time()):
@@ -599,6 +599,16 @@ class GovernorTest(unittest.TestCase):
         t = first_sight("stopped", (2 * 3600.0, "queue", True))
         self.assertEqual(t["hours_today"], 2)
         self.assertNotIn("cause", t)  # it was up, it is down now: the old cause is not this state's
+
+    def test_a_failed_restore_is_asked_again_until_one_answers(self):
+        t, ec2 = {}, FakeEc2("running")
+        with mock.patch.object(governor, "restored", side_effect=[None, (3 * 3600.0, "queue", True)]) as back, \
+                mock.patch.object(governor, "power_provider", return_value=(ec2, "")), \
+                mock.patch.object(governor, "host_labels", return_value=AWS_LABELS):
+            for _ in range(3):
+                governor.power_readings(AWS, {}, {"aws-burst-1": t}, time.time())
+        self.assertEqual(back.call_count, 2)  # unread, then read once and never again
+        self.assertEqual((t["cause"], round(t["hours_today"])), ("queue", 3))
 
     def test_power_metrics_after_a_live_stop(self):
         ec2 = FakeEc2("running")

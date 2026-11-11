@@ -791,8 +791,7 @@ def restored(host, now):
     was up). Each pod starts from the one before it, so the highest hours_today exported
     today is the day so far; the window opens two cycles after midnight, past a pod's last
     value from yesterday. Without this every deploy reset the day cap and exported reason
-    "none" (2026-11-10: aws-burst-1 ran about 14h against its 12h cap over four deploys).
-    (0, "", False) when Prometheus cannot say (logged)."""
+    "none". None when Prometheus cannot say (logged), so the next cycle asks again."""
     since = now % 86_400 - 2 * CYCLE_SECONDS
     if since < CYCLE_SECONDS:
         return 0.0, "", False
@@ -803,7 +802,7 @@ def restored(host, now):
         last = prom(f"topk(1, max_over_time(timestamp(ci_governor_power_state{{{sel}}})[{window}:]))")
     except API_ERRORS as e:
         print(f"{host}: earlier run time and cause unread, counting from the launch time: {e}", flush=True)
-        return 0.0, "", False
+        return None
     m = last[0]["metric"] if last else {}
     cause = "" if m.get("reason", "none") == "none" else m["reason"]
     return hours * 3600, cause, m.get("state") in ("starting", "running", "draining")
@@ -856,10 +855,12 @@ def power_readings(cfg, runners, tracked, now):
             t.update(cause="reclaim", changed="stop", changed_at=now)
             print(f"{host}: reclaimed by AWS ({reason}), passed over for {power_of(cfg, host)['fallback_seconds']}s",
                   flush=True)
-        first = "seen_at" not in t
+        t.setdefault("restore", True)
         count_run_time(t, state, now, launched)
-        if first:
-            seconds, cause, was_up = restored(host, now)
+        back = restored(host, now) if t["restore"] else None
+        if back:
+            seconds, cause, was_up = back
+            t["restore"] = False
             t["run_seconds"] = max(t["run_seconds"], seconds)
             t["hours_today"] = t["run_seconds"] / 3600
             if cause and was_up == (state in ("pending", "running")):

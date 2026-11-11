@@ -785,27 +785,28 @@ def count_run_time(t, state, now, launched=0.0):
     t["hours_today"] = t["run_seconds"] / 3600
 
 
-def restored(host, now):
-    """What earlier governor pods exported for host this UTC day, read back from Prometheus
-    after a restart: (seconds run today, the newest power_state's reason, whether that state
-    was up). Each pod starts from the one before it, so the highest hours_today exported
-    today is the day so far; the window opens two cycles after midnight, past a pod's last
-    value from yesterday. Without this every deploy reset the day cap and exported reason
-    "none". None when Prometheus cannot say (logged), so the next cycle asks again."""
-    since = now % 86_400 - 2 * CYCLE_SECONDS
-    if since < CYCLE_SECONDS:
-        return 0.0, "", False
-    sel, window = f'host="{host}"', f"{int(since)}s"
+def restored(host, now, launched=0.0):
+    """What earlier governor pods exported for host, read back from Prometheus after a
+    restart: (seconds run today, the reason of the newest power_state other than "none"
+    since the instance's last launch, whether that state was up). Each pod starts from the
+    one before it, so the highest hours_today exported today is the day so far; that window
+    opens two cycles after midnight, past a pod's last value from yesterday. The cause looks
+    back to the launch, not to midnight, and past "none": a pod that could not tell the
+    cause exported "none", and a run that started yesterday started for yesterday's reason.
+    None when Prometheus cannot say (logged), so the next cycle asks again."""
+    today = now % 86_400 - 2 * CYCLE_SECONDS
+    run = now - launched if launched else today
+    sel = f'host="{host}"'
     try:
-        hours = max((float(r["value"][1]) for r in prom(
-            f"max(max_over_time(ci_governor_power_hours_today{{{sel}}}[{window}]))")), default=0.0)
-        last = prom(f"topk(1, max_over_time(timestamp(ci_governor_power_state{{{sel}}})[{window}:]))")
+        hours = 0.0 if today < CYCLE_SECONDS else max((float(r["value"][1]) for r in prom(
+            f"max(max_over_time(ci_governor_power_hours_today{{{sel}}}[{int(today)}s]))")), default=0.0)
+        last = [] if run < CYCLE_SECONDS else prom(
+            f'topk(1, max_over_time(timestamp(ci_governor_power_state{{{sel},reason!="none"}})[{int(run)}s:]))')
     except API_ERRORS as e:
         print(f"{host}: earlier run time and cause unread, counting from the launch time: {e}", flush=True)
         return None
     m = last[0]["metric"] if last else {}
-    cause = "" if m.get("reason", "none") == "none" else m["reason"]
-    return hours * 3600, cause, m.get("state") in ("starting", "running", "draining")
+    return hours * 3600, m.get("reason", ""), m.get("state") in ("starting", "running", "draining")
 
 
 def power_readings(cfg, runners, tracked, now):
@@ -857,7 +858,7 @@ def power_readings(cfg, runners, tracked, now):
                   flush=True)
         t.setdefault("restore", True)
         count_run_time(t, state, now, launched)
-        back = restored(host, now) if t["restore"] else None
+        back = restored(host, now, launched) if t["restore"] else None
         if back:
             seconds, cause, was_up = back
             t["restore"] = False

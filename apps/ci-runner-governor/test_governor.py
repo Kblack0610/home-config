@@ -572,12 +572,22 @@ class GovernorTest(unittest.TestCase):
         self.assertAlmostEqual(seconds, 7.9 * 3600)
         self.assertEqual((cause, up), ("queue", True))
         self.assertIn(f"[{10 * 3600 - 2 * governor.CYCLE_SECONDS}s]", prom.call_args_list[0].args[0])
-        none = [{"metric": {"state": "running", "reason": "none"}, "value": [0, "1"]}]
-        with mock.patch.object(governor, "prom", side_effect=[[], none]):
-            self.assertEqual(RESTORED("aws-burst-1", day + 3600), (0.0, "", True))
-        with mock.patch.object(governor, "prom") as prom:  # just past midnight: yesterday's values
+        with mock.patch.object(governor, "prom", side_effect=[[], []]):  # no cause on record
+            self.assertEqual(RESTORED("aws-burst-1", day + 3600), (0.0, "", False))
+        with mock.patch.object(governor, "prom") as prom:  # just past midnight, launch unknown
             self.assertEqual(RESTORED("aws-burst-1", day + 60), (0.0, "", False))
         prom.assert_not_called()
+
+    def test_a_restart_finds_the_start_cause_since_the_launch_past_none_and_midnight(self):
+        # hc-223: started by an override before midnight, then pods that exported "none".
+        day = 1_762_214_400
+        last = [{"metric": {"host": "aws-burst-1", "state": "running", "reason": "override"}, "value": [0, "1"]}]
+        with mock.patch.object(governor, "prom", side_effect=[last]) as prom:
+            back = RESTORED("aws-burst-1", day + 60, launched=day - 8 * 3600)
+        self.assertEqual(back, (0.0, "override", True))
+        query = prom.call_args.args[0]  # the day's hours are not read this close to midnight
+        self.assertIn('reason!="none"', query)
+        self.assertIn(f"[{8 * 3600 + 60}s:]", query)
         with mock.patch.object(governor, "prom", side_effect=urllib.error.URLError("down")), \
                 mock.patch("builtins.print"):
             self.assertIsNone(RESTORED("aws-burst-1", day + 3600))

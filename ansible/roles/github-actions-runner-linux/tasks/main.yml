@@ -28,6 +28,10 @@
     name: "{{ gh_runner_system_packages }}"
     state: present
     update_cache: true
+  register: _gh_runner_pkgs
+  # update_cache counts a refreshed sync db as a change, and --check always does,
+  # so ConvergenceDrift fired on every host nightly: only an installed package is one.
+  changed_when: _gh_runner_pkgs.packages | default([]) | length > 0
   when: gh_runner_install_packages | bool
 
 - name: Ensure docker daemon is enabled and running
@@ -70,13 +74,21 @@
   loop_control:
     label: "{{ item.path }}"
 
+# The extract below runs only once (creates: config.sh), so fetch the tarball only
+# for it. /tmp is cleared on reboot, and an unconditional download re-fetched it
+# on every apply and showed as ConvergenceDrift in each nightly --check.
+- name: Check whether the runner is already extracted
+  ansible.builtin.stat:
+    path: "{{ gh_runner_home }}/config.sh"
+  register: _gh_runner_extracted
+
 - name: Download runner tarball
   ansible.builtin.get_url:
     url: "{{ gh_runner_tarball_url }}"
     dest: "/tmp/{{ gh_runner_tarball }}"
     checksum: "sha256:{{ gh_runner_tarball_sha256 }}"
     mode: "0644"
-  register: runner_tarball_download
+  when: not _gh_runner_extracted.stat.exists
 
 - name: Extract runner tarball into runner home
   ansible.builtin.unarchive:
@@ -86,6 +98,7 @@
     owner: "{{ gh_runner_user }}"
     group: "{{ gh_runner_group }}"
     creates: "{{ gh_runner_home }}/config.sh"
+  when: not _gh_runner_extracted.stat.exists
 
 # Ephemeral registration token (valid ~1 hour). Only fetched when this
 # instance is not registered yet, so steady-state applies make no API call.

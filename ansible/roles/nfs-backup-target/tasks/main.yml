@@ -15,6 +15,10 @@
     name: nfs-utils
     state: present
     update_cache: true
+  register: _nfs_pkgs
+  # update_cache counts a refreshed sync db as a change, and --check always does,
+  # so ConvergenceDrift fired on every host nightly: only an installed package is one.
+  changed_when: _nfs_pkgs.packages | default([]) | length > 0
 
 - name: Ensure export root exists
   ansible.builtin.file:

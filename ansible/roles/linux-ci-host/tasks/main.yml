@@ -4,6 +4,10 @@
     name: "{{ linux_ci_packages }}"
     state: present
     update_cache: true
+  register: _linux_ci_pkgs
+  # update_cache counts a refreshed sync db as a change, and --check always does,
+  # so ConvergenceDrift fired on every host nightly: only an installed package is one.
+  changed_when: _linux_ci_pkgs.packages | default([]) | length > 0
 
 - name: Ensure docker is enabled and running
   ansible.builtin.systemd:

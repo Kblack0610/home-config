@@ -125,7 +125,7 @@ A firing alert means the host is not in the state git describes, and the next an
 To clear it:
 
 1. Read the latest run's changed tasks: `kubectl -n ansible-runner logs job/<latest> | grep -B3 '^changed:'`. Kubelet rotates long logs, so if the start is cut off, run the check locally: `cd ansible && ansible-playbook playbooks/site.yml --limit <host> --check --diff`.
-2. For each task, decide which side is wrong. If the host drifted, apply the role (`--limit <host> --tags <role>`, or Option A/B above). If the task reports a change in check mode on a converged host, fix the task (`changed_when`, `check_mode: false` on a read-only probe) in a PR.
+2. For each task, decide which side is wrong. If the host drifted, apply the role (`--limit <host> --tags <role>`, or Option A/B above). A changed `actions.runner.*.service` or runner `.env` restarts every slot on that host and kills its running job, so apply it once `pgrep -c -x Runner.Worker` on the host prints 0. If the task reports a change in check mode on a converged host, fix the task (`changed_when`, `check_mode: false` on a read-only probe) in a PR.
 3. Trigger a dry-run (above). The alert resolves once the new run reports `changed=0` for that host.
 
 ## Operations

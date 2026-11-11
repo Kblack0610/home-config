@@ -1,0 +1,45 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>{{ unity_ci_mac_prune_label }}</string>
+
+    <key>ProgramArguments</key>
+    <array>
+        <string>/bin/sh</string>
+        <string>{{ unity_ci_mac_prune_script }}</string>
+    </array>
+
+    <!-- Disk use has no event to wait on; build trees grow per job, so hourly. -->
+    <key>StartInterval</key>
+    <integer>{{ unity_ci_mac_prune_interval_seconds }}</integer>
+
+    <key>RunAtLoad</key>
+    <true/>
+
+    <key>Nice</key>
+    <integer>10</integer>
+
+    <key>LowPriorityIO</key>
+    <true/>
+
+    <key>StandardOutPath</key>
+    <string>/tmp/kblab-ci-tree-prune.log</string>
+
+    <key>StandardErrorPath</key>
+    <string>/tmp/kblab-ci-tree-prune.log</string>
+
+    <key>EnvironmentVariables</key>
+    <dict>
+        <key>PATH</key>
+        <string>/usr/bin:/bin:/usr/sbin:/sbin</string>
+        <key>RUNNERS</key>
+        <string>{{ unity_ci_mac_prune_runners | join(' ') }}</string>
+        <key>TREE_DAYS</key>
+        <string>{{ unity_ci_mac_prune_tree_days }}</string>
+        <key>FREE_PCT</key>
+        <string>{{ unity_ci_mac_prune_free_pct }}</string>
+    </dict>
+</dict>
+</plist>

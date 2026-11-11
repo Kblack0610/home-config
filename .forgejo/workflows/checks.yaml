@@ -89,7 +89,7 @@ jobs:
     steps:
       # GNU tools, as on the CI hosts the script runs on.
       - name: Install deps
-        run: apk add --no-cache git nodejs coreutils findutils
+        run: apk add --no-cache git nodejs coreutils findutils procps
       - name: Checkout
         uses: actions/checkout@v4
       - name: ci-disk-prune offline test

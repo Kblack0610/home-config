@@ -259,6 +259,14 @@
         tasks_from: modules
       tags: [mac, unity-modules]
 
+    # The hourly prune of m1-playground-mac's game build trees. Seven held 137G on
+    # 2026-11-10 and NodeDiskLow tripped (docs/mac-machines.md#build-tree-prune).
+    - name: Keep the build trees from filling the disk
+      ansible.builtin.import_role:
+        name: unity-ci-host-mac
+        tasks_from: disk
+      tags: [mac, ci-disk]
+
 # Phase B: k3s-agent role is AUTHORED but not bound. Applying it against
 # running cluster nodes reinstalls k3s — the user enables this binding when
 # they are ready to converge the fleet (set vault_k3s_token first).

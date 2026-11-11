@@ -27,6 +27,16 @@ The sole self-hosted runner for `BlackNBrownStudios/platform` mobile CI. Native 
 
 **Capacity note:** 16 GB RAM is the ceiling. Fine for single-stream iOS builds but tight — Xcode + a booted Simulator + Metal/UI tests push 16 GB into swap. Keep runner concurrency at 1 (a single runner process already = 1 concurrent job) and periodically clear DerivedData / simulator runtimes / npm+CocoaPods caches. If mobile CI volume grows, 16 GB is the first bottleneck.
 
+### Build-tree prune
+
+`m1-playground-mac` builds each game in a git worktree beside its checkout (unity-core-playground `scripts/build.sh`: `<checkout>-<game>`, `<checkout>-<game>-ios`) and keeps it, so that game's next build starts with its Library imported. Nothing removed them: on 2026-11-10 seven held 137G and NodeDiskLow tripped at 16% free. `unity-ci-host-mac` `tasks/disk.yml` (tag `ci-disk`) installs `files/ci-tree-prune.sh` as the hourly LaunchAgent `com.kblab.ci-tree-prune`, the Mac's counterpart of linux-ci-host's `ci-disk-prune.sh`. Each run:
+
+- skips a tree in use: a process names it in its arguments (Unity's `-projectPath`, `git -C`, xcodebuild) or works inside it, or the runner has a job and the tree was written in the last hour;
+- removes a tree idle for `unity_ci_mac_prune_tree_days` (7);
+- while the disk has under `unity_ci_mac_prune_free_pct` (25%) free, removes idle trees oldest first.
+
+The runner's checkout is never touched, and neither is a tree's `Builds/` alone: on APFS the player there is mostly clones of `Library/` data, so only the whole tree frees space. build.sh makes a removed tree again, so a prune costs that game's next build a Library import (up to an hour for DodginBalls). Log: `/tmp/kblab-ci-tree-prune.log`. Apply: `ansible-playbook playbooks/site.yml --limit mac-mini --tags ci-disk`.
+
 ### Workflows
 
 | Workflow | File | Trigger | Runner |

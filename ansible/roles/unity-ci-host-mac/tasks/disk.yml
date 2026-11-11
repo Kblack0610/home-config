@@ -1,0 +1,55 @@
+---
+# The hourly build-tree prune (files/ci-tree-prune.sh), the Mac's counterpart of
+# linux-ci-host's tasks/disk.yml. Bound in site.yml's mac-mini play; no sudo.
+- name: Create the prune script's and LaunchAgents directories
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: directory
+    mode: "0755"
+  loop:
+    - "{{ unity_ci_mac_prune_script | dirname }}"
+    - "{{ ansible_env.HOME }}/Library/LaunchAgents"
+  tags: [ci-disk]
+
+- name: Install the build-tree prune script
+  ansible.builtin.copy:
+    src: ci-tree-prune.sh
+    dest: "{{ unity_ci_mac_prune_script }}"
+    mode: "0755"
+  register: _unity_ci_mac_prune_script
+  tags: [ci-disk]
+
+- name: Render the prune LaunchAgent
+  ansible.builtin.template:
+    src: ci-tree-prune.plist.j2
+    dest: "{{ ansible_env.HOME }}/Library/LaunchAgents/{{ unity_ci_mac_prune_label }}.plist"
+    mode: "0644"
+  register: _unity_ci_mac_prune_plist
+  tags: [ci-disk]
+
+# bootout before bootstrap so a changed plist is picked up; launchd keeps serving the loaded
+# definition otherwise (the macos-disk-reclaim pattern).
+- name: Reload the prune LaunchAgent when the script or plist changed
+  when: _unity_ci_mac_prune_script.changed or _unity_ci_mac_prune_plist.changed
+  tags: [ci-disk]
+  block:
+    - name: Bootout the existing agent (ignored when not loaded)
+      ansible.builtin.command:
+        cmd: "launchctl bootout gui/{{ ansible_user_uid }}/{{ unity_ci_mac_prune_label }}"
+      register: _unity_ci_mac_prune_bootout
+      changed_when: _unity_ci_mac_prune_bootout.rc == 0
+      failed_when: false
+
+    - name: Bootstrap the agent
+      ansible.builtin.command:
+        cmd: >-
+          launchctl bootstrap gui/{{ ansible_user_uid }}
+          {{ ansible_env.HOME }}/Library/LaunchAgents/{{ unity_ci_mac_prune_label }}.plist
+      register: _unity_ci_mac_prune_bootstrap
+      changed_when: _unity_ci_mac_prune_bootstrap.rc == 0
+
+- name: Verify the prune agent is registered with launchd
+  ansible.builtin.command:
+    cmd: "launchctl print gui/{{ ansible_user_uid }}/{{ unity_ci_mac_prune_label }}"
+  changed_when: false
+  tags: [ci-disk]

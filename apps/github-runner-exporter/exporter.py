@@ -491,21 +491,27 @@ def repo_activity(repo, now):
             out["counts"][status] = data.get("total_count", 0)
             active += data.get("workflow_runs", [])
         # In parallel: one at a time, the playground's 30 active runs took 12s of a
-        # cold scrape (2026-11-03).
+        # cold scrape (2026-11-03). One run's failed read must not discard the
+        # repo: GitHub answers a stuck queued run's jobs with a 502 after 10s
+        # (playground, 2026-11-11), which blanked its runners and 24h history.
+        def run_jobs(run):
+            try:
+                return get(f"repos/{repo}/actions/runs/{run['id']}/jobs?per_page=100", "active_jobs").get("jobs", [])
+            except API_ERRORS:
+                return None
         with ThreadPoolExecutor(max_workers=6) as ex:
-            fetched = list(ex.map(
-                lambda run: get(f"repos/{repo}/actions/runs/{run['id']}/jobs?per_page=100", "active_jobs").get("jobs", []),
-                active))
+            fetched = list(ex.map(run_jobs, active))
         for run, jobs in zip(active, fetched):
             if not jobs and run.get("status") == "queued":
-                # A queued run with no jobs never gets a runner. GitHub leaves
-                # these behind (one platform schedule run sat like this from
-                # 2026-09-13), and they hold the queued count up forever, so
-                # list it as a waiting row with its age rather than hide it.
-                jobs = [{"name": "(run has no jobs)", "status": "queued", "created_at": run.get("created_at"),
+                # A queued run with no jobs, or none GitHub will list, never gets
+                # a runner. GitHub leaves these behind (one platform schedule run
+                # sat like this from 2026-09-13), and they hold the queued count up
+                # forever, so list it as a waiting row with its age rather than hide it.
+                jobs = [{"name": "(run has no jobs)" if jobs is not None else "(jobs unreadable)",
+                         "status": "queued", "created_at": run.get("created_at"),
                          "head_branch": run.get("head_branch"), "labels": [], "html_url": run.get("html_url", ""),
                          "_jobless": True}]
-            for job in jobs:
+            for job in jobs or ():
                 job["_workflow"] = run.get("name") or job.get("workflow_name", "")
                 job["_run"] = run_labels(run)
                 out["jobs"].append(job)

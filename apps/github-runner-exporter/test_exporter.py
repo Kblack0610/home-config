@@ -179,6 +179,15 @@ class ExporterTest(unittest.TestCase):
         self.assertTrue(any('job_name="PlayMode 2"' in r and 'labels="self-hosted,unity"' in r for r in waiting))
         self.assertTrue(any('job_name="(run has no jobs)"' in r and 'workflow="Drift"' in r for r in waiting))
 
+    def test_one_unreadable_run_keeps_the_repo(self):
+        # GitHub 502s a stuck queued run's jobs: that run is a waiting row of its own,
+        # and the repo's running jobs and history still read.
+        out = self.render(broken=("repos/acme/web/actions/runs/20/jobs",))
+        self.assertIn('github_runner_exporter_api_ok{source="repos/acme/web",kind="runs",forge="github"} 1', out)
+        waiting = rows(out, "github_actions_job_waiting")
+        self.assertTrue(any('job_name="(jobs unreadable)"' in r and 'workflow="Drift"' in r for r in waiting))
+        self.assertEqual(len(rows(out, "github_actions_run_recent")), 2)
+
     def test_waiting_jobs_carry_pool_and_stuck(self):
         waiting = rows(self.render(), "github_actions_job_waiting")
         job = next(r for r in waiting if 'job_name="PlayMode 2"' in r)

@@ -44,11 +44,10 @@ ci_unity_cpu_weight: 400
 ci_linux_memory_max: 16G
 ci_linux_cpus: ""
 
-# CPUs the host's k3s pods are budgeted, outside ci_cpus (empty = no budget). Set,
-# the role reserves ci_cpus from the node's allocatable, so the scheduler stops
-# placing more than fits: razer took 6-CPU freqtrade backtests beside its CI slots
-# and the 15-minute load hit 18 (2026-11-10). It does not pin pods to these CPUs
-# (tasks/main.yml says why).
+# CPUs the host's k3s pods run on, outside ci_cpus (empty = no pin). Set, the
+# role makes the kubelet reserve every other CPU, so pods run only here and the
+# scheduler stops placing more than fits: razer took 6-CPU freqtrade backtests
+# beside its CI slots and the 15-minute load hit 18 (2026-11-10).
 k3s_cpus: ""
 # The k3s unit to restart for its kubelet args (k3s-agent on agents).
 k3s_service: "k3s{{ '-agent' if (k3s_role | default('agent')) == 'agent' else '' }}.service"

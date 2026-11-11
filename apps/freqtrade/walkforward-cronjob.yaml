@@ -6,19 +6,27 @@
 # or a freqtrade bump, takes several nights, each stopping at WF_BUDGET_S and
 # carrying on where the last stopped.
 # Retune suggestions follow from it. Nothing here touches the bots.
+# It runs as an Indexed Job of WF_SHARDS pods, each the strategy x venue pairs
+# that hash to its index, on any amd64 node but hp-victus (its memory is
+# overcommitted: markets-recorder-cronjob.yaml), from a copy of the candles
+# that candles-publish-cronjob.yaml puts in MinIO, so it is not pinned to the
+# lab PVC's node. The last shard to finish runs the post steps once.
 apiVersion: batch/v1
 kind: CronJob
 metadata:
   name: freqtrade-walkforward
 spec:
-  schedule: "0 1 * * *"  # nightly, alongside the 02:45 analysis; both fit on razer-laptop
+  schedule: "0 1 * * *"  # nightly, after the 00:45 candle publish
   timeZone: "Etc/UTC"  # unset means the controller zone, America/Los_Angeles
   concurrencyPolicy: Forbid
   successfulJobsHistoryLimit: 3
   failedJobsHistoryLimit: 3
   jobTemplate:
     spec:
-      backoffLimit: 0  # the next night is the retry; failed months are retried there
+      completionMode: Indexed
+      completions: 4  # equal to WF_SHARDS below
+      parallelism: 4
+      backoffLimitPerIndex: 0  # the next night is the retry; a failed shard leaves the others running
       activeDeadlineSeconds: 28800  # ends by 09:00 UTC; WF_BUDGET_S stops a run in time, so a first run (about 53 h of folds) is several recorded nights
       template:
         metadata:
@@ -26,8 +34,21 @@ spec:
             app: freqtrade-walkforward
         spec:
           restartPolicy: Never
-          nodeSelector:
-            kubernetes.io/arch: amd64
+          priorityClassName: trader-lab
+          affinity:
+            nodeAffinity:
+              requiredDuringSchedulingIgnoredDuringExecution:
+                nodeSelectorTerms:
+                  - matchExpressions:
+                      - {key: kubernetes.io/arch, operator: In, values: [amd64]}
+                      - {key: kubernetes.io/hostname, operator: NotIn, values: [hp-victus]}
+          topologySpreadConstraints:
+            - maxSkew: 1
+              topologyKey: kubernetes.io/hostname
+              whenUnsatisfiable: ScheduleAnyway  # razer-laptop has CPU for about one shard, asus-laptop the rest
+              labelSelector:
+                matchLabels: {app: freqtrade-walkforward}
+              matchLabelKeys: [batch.kubernetes.io/controller-uid]
           securityContext:
             runAsUser: 1000
             runAsGroup: 1000
@@ -49,8 +70,23 @@ spec:
           containers:
             - name: walkforward
               image: trader
-              command: ["python", "/repo/lab/walkforward.py"]
+              command: ["sh", "-c", "python /repo/lab/snapshot.py fetch $WF_EXCHANGES && exec python /repo/lab/walkforward.py"]
               env:
+                - name: LAB_RESULTS  # the candle copy on the pod's disk, not the lab PVC
+                  value: /work
+                - name: S3_ENDPOINT
+                  value: http://minio.minio.svc.cluster.local:9000
+                - name: S3_ACCESS_KEY
+                  valueFrom:
+                    secretKeyRef: {name: trader-markets-s3, key: S3_ACCESS_KEY}
+                - name: S3_SECRET_KEY
+                  valueFrom:
+                    secretKeyRef: {name: trader-markets-s3, key: S3_SECRET_KEY}
+                - name: WF_JOB  # names the run; every shard of the Job shares it
+                  valueFrom:
+                    fieldRef: {fieldPath: "metadata.labels['batch.kubernetes.io/job-name']"}
+                - name: WF_SHARDS
+                  value: "4"  # equal to completions above
                 - name: DATABASE_URL
                   valueFrom:
                     secretKeyRef: {name: trader-db, key: database-url}
@@ -59,21 +95,21 @@ spec:
                 - name: WF_FOLDS
                   value: "12"
                 - name: WF_WORKERS
-                  value: "2"  # razer-laptop offers pods 4 CPUs since home-config #732; 10 again once the lab leaves razer (trader plan magical-stargazing-owl phase 3)
+                  value: "2"  # per shard, so 8 across the 4; matches the 2-CPU limit
                 - name: WF_MEMORY_GB
-                  value: "12"
+                  value: "4"  # per shard; 2 workers peaked at 3.7Gi on razer (2026-11-11)
                 - name: WF_BUDGET_S  # starts no fold after this: the deadline less WF_TIMEOUT (10800) and 30 min for the post steps
                   value: "16200"
               resources:
                 requests:
-                  cpu: "1"  # with the analysis' 1 this fits razer-laptop's 4 allocatable CPUs beside its other pods; 6 left both Pending (2026-11-11)
-                  memory: 14Gi  # equal to the limit, as in analysis-cronjob.yaml
+                  cpu: "1"
+                  memory: 6Gi  # equal to the limit, so the scheduler sees what it uses
                 limits:
-                  cpu: "2"  # a pod with no CPU limit runs on the CI cores (#732), so the two lab jobs stay inside the 4-CPU k3s budget
-                  memory: 14Gi  # WF_MEMORY_GB of estimated fold memory plus the interpreter and suggest
+                  cpu: "2"
+                  memory: 6Gi  # WF_MEMORY_GB of estimated fold memory plus the interpreter and, in the last shard, the post steps
               volumeMounts:
-                - {name: lab, mountPath: /lab}
+                - {name: work, mountPath: /work}
           volumes:
-            - name: lab
-              persistentVolumeClaim:
-                claimName: freqtrade-lab
+            - name: work
+              emptyDir:
+                sizeLimit: 4Gi  # the walk-forward venues' candles, about 1.4Gi on 2026-11-11

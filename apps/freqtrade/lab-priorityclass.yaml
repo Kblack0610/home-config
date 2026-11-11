@@ -1,0 +1,12 @@
+# Lab compute (the walk-forward shards) yields to everything else: below the
+# default priority 0, so the scheduler may preempt a shard for any other pod,
+# and it never preempts a running pod itself. A preempted shard's folds run the
+# next night.
+apiVersion: scheduling.k8s.io/v1
+kind: PriorityClass
+metadata:
+  name: trader-lab
+value: -100
+preemptionPolicy: Never
+globalDefault: false
+description: Trader lab batch compute; first to give way.

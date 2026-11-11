@@ -24,7 +24,7 @@ spec:
               # apps/flux-audit already uses, and it has the shell this job
               # needs — registry.k8s.io/kubectl is distroless and would break
               # the `/bin/sh -c` below.
-              image: alpine/k8s:1.33.5
+              image: alpine/k8s:1.34.4
               securityContext:
                 runAsUser: 0
               command:

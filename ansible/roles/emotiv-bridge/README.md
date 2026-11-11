@@ -11,7 +11,7 @@ One Node process (`files/emotiv-bridge.mjs`, no packages beyond Node), run by th
 3. Writes each stream to `<spool>/<YYYY-MM-DD>/<start>-<session>/<stream>-<NNNN>.jsonl.gz`. Line 1 is a header (`stream`, `cols`, `session`, `headset`, `chunk`); every other line is `{"time": <epoch s>, "<stream>": [...]}` as Cortex sent it.
 4. Every 5 minutes, and when the headset disconnects, closes the chunks, encrypts each with `age` to the EEG recipient and deletes the plaintext.
 5. Uploads the `.age` files with rsync over ssh to `emotiv-archive@asus-laptop`, where rrsync confines the key to writing into `/mnt/nas/private/eeg`. rsync deletes a spool file only after it has been transferred and checked. A failed upload retries with backoff (30 s doubling to 15 min) and the spool keeps everything.
-6. Publishes a retained heartbeat every 60 s to `emotiv/mini/bridge` on the LAN broker: `up`, `wearing`, `session_seconds`, `spool_bytes`, `last_upload_epoch`, `last_error_code`, `local_quota`, `license_valid_to_epoch`. Alerts on it are P3.
+6. Publishes a retained heartbeat every 60 s to `emotiv/mini/bridge` on the LAN broker, through `/usr/bin/nc` (see Troubleshooting): `up`, `wearing`, `session_seconds`, `spool_bytes`, `last_upload_epoch`, `last_error_code`, `local_quota`, `license_valid_to_epoch`. Alerts on it are P3.
 
 Cortex pushes warnings for connect (104), disconnect (102, 103), session closed (1) and streams stopped (0), and the bridge acts on them. Cortex sends nothing when a headset is switched on, so the bridge asks for a scan every `emotiv_bridge_scan_interval_seconds`.
 
@@ -69,3 +69,5 @@ Tests: `node --test ansible/roles/emotiv-bridge/files/test-emotiv-bridge.mjs` (C
 | Log shows `createSession failed` while wearing | EmotivPRO or another app holds the headset. The bridge waits for the next disconnect. Close the other app's session and switch the headset off and on |
 | `spool_bytes` grows while not wearing | Uploads failing: the log names the rsync exit code. 255 is ssh (asus down, host key changed: update `emotiv_bridge_upload_host_key`) |
 | LaunchAgent restarts every 30 s, `last exit code = 0`, empty log | The script was started through a symlinked path and skipped main(); fixed by the realpath guard. The bridge home stays under `~/Library/Application Support`, never `~/.local`, which on the mini is a symlink into the dotfiles repo |
+| Log shows `mqtt connect EHOSTUNREACH` from the bridge while `nc` over ssh reaches the broker | macOS Local Network privacy blocks Homebrew node in a LaunchAgent from the LAN ([mac-machines.md](../../../docs/mac-machines.md)). MQTT goes through Apple's `/usr/bin/nc` (`emotiv_bridge_nc`) and rsync through `/usr/bin/ssh`, which are exempt. Keep every LAN connection on an Apple binary |
+| rsync exit 255 with `Load key ... invalid format` | The rendered key lost its trailing newline; the role writes it with `trim` plus a newline |

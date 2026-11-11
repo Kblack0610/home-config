@@ -15,6 +15,7 @@ emotiv_bridge_node: /opt/homebrew/bin/node
 emotiv_bridge_age: /opt/homebrew/bin/age
 # Homebrew rsync, not the system openrsync: the far side is rrsync.
 emotiv_bridge_rsync: /opt/homebrew/bin/rsync
+emotiv_bridge_nc: /usr/bin/nc   # Apple binary: exempt from Local Network privacy, unlike Homebrew node
 
 emotiv_bridge_cortex_url: wss://localhost:6868
 

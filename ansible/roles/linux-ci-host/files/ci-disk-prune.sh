@@ -34,6 +34,26 @@ warm_trees() {
 }
 free_pct() { df -P "$RUNNER_HOME" | awk 'NR == 2 { printf "%d", $4 * 100 / $2 }'; }
 
+# One run at a time: the hourly timer and each Unity slot's job-started hook may overlap, and
+# two low-disk passes would each remove a tree for the same shortfall.
+if [ -d "$RUNNER_HOME" ]; then
+    exec 9<"$RUNNER_HOME"
+    flock 9
+fi
+# --before-job: a Unity slot's job-started hook (unity-job-started.sh). It prunes only under the
+# floor. The hourly run skips busy slots and nothing else held a full host back: on 2026-11-11
+# aws-burst-1 sat at 0 bytes free for 30 minutes after #792, and every job there died before
+# its first test. The governor cannot withhold it, since Prometheus has no node_exporter
+# reading for aws-burst-1.
+if [ "${1:-}" = --before-job ]; then
+    [ -d "$RUNNER_HOME" ] || exit 0
+    free=$(free_pct)
+    if [ -z "$free" ] || [ "$free" -ge "$RELEASE_TREE_MIN_FREE_PCT" ]; then
+        exit 0
+    fi
+    echo "free ${free}% < ${RELEASE_TREE_MIN_FREE_PCT}%: pruning idle slots before this job"
+fi
+
 # `docker image rm` without -f refuses an image a container uses.
 docker images --format '{{.Repository}}:{{.Tag}}|{{.CreatedAt}}' | while IFS='|' read -r ref created; do
     case "$ref" in
@@ -103,8 +123,8 @@ done | sort -t "$tab" -k1,1 -k2,2nr | {
     done
 }
 
-# A busy slot's trees stay: its job may be about to use one. The governor withholds slots on
-# a full host, so they go idle and the next hourly run here frees them.
+# A busy slot's trees stay: its job may be about to use one. The next job to start on the host
+# (--before-job) or the next hourly run frees them once that slot is idle.
 # A light/heavy-only host has no Unity slots, so nothing here to measure.
 [ -d "$RUNNER_HOME" ] || exit 0
 free=$(free_pct)

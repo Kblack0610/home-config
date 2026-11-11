@@ -108,10 +108,12 @@ check_ssh() {
 
 # Get current static hosts from router as JSON array:
 # [{"name":"foo","mac":"AA:BB:CC:DD:EE:FF","ip":"192.168.1.10","uci_id":"cfg0a1b2c"}, ...]
+# -X names every section by its stable cfgXXXXXX id. Plain `uci show` prints
+# anonymous sections as @host[N], which shifts after each delete, so a sync
+# removing two hosts deleted the second one's neighbour (hc-235).
 get_router_hosts() {
-    router_ssh "uci show dhcp" 2>/dev/null | awk '
-    # Match both positional (@host[N]) and named (cfgXXXXXX) host entries
-    # Lines like: dhcp.@host[0]=host  or  dhcp.cfg0a1b2c=host
+    router_ssh "uci -X show dhcp" 2>/dev/null | awk '
+    # Lines like: dhcp.cfg0a1b2c=host
     /^dhcp\..+=host$/ {
         # Extract the ID portion between dhcp. and =host
         id = $0
@@ -680,14 +682,14 @@ cmd_sync() {
     # Build UCI commands
     local uci_commands=""
 
-    # Removes (by UCI config ID)
+    # Removes and updates address sections by cfg id (see get_router_hosts)
     if [[ "$removes" -gt 0 ]]; then
         while IFS= read -r uci_id; do
             uci_commands+="uci delete dhcp.${uci_id}"$'\n'
         done < <(echo "$diff_json" | jq -r '.removes[].uci_id')
     fi
 
-    # Updates (delete + re-add for safety)
+    # Updates (in place)
     if [[ "$updates" -gt 0 ]]; then
         while IFS=$'\t' read -r uci_id hostname mac ip; do
             uci_commands+="uci set dhcp.${uci_id}.name='${hostname}'"$'\n'

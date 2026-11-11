@@ -863,13 +863,17 @@ def power_readings(cfg, runners, tracked, now):
                   flush=True)
         t.setdefault("restore", True)
         count_run_time(t, state, now, launched)
-        back = restored(host, now, launched if state in ("pending", "running") else 0.0) if t["restore"] else None
+        up = state in ("pending", "running")
+        back = restored(host, now, launched if up else 0.0) if t["restore"] else None
         if back:
             seconds, cause, was_up = back
             t["restore"] = False
             t["run_seconds"] = max(t["run_seconds"], seconds)
             t["hours_today"] = t["run_seconds"] / 3600
-            if cause and was_up == (state in ("pending", "running")):
+            # Up since a known launch, every reason in the window is this run's, even the
+            # start call's own sample, which AWS still reported stopped. Down, read back
+            # from today, only a down sample's reason is the stop's.
+            if cause and ((up and launched) or was_up == up):
                 t.setdefault("cause", cause)
         t["override"], t["override_until"] = read_override(host, now)
         t.update(state=state, labels=labels, client=client)

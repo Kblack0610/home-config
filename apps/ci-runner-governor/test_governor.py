@@ -606,6 +606,18 @@ class GovernorTest(unittest.TestCase):
         self.assertEqual(back.call_args.args[2], 0.0)
         self.assertEqual(t["cause"], "idle")
 
+    def test_a_restart_in_the_start_call_keeps_its_cause_though_the_sample_read_stopped(self):
+        # hc-223: aws-build-1's last sample before a deploy was "stopped queue", the start
+        # call's own cycle; the instance was running by the new pod's first cycle.
+        now = time.time()
+        with mock.patch.object(governor, "restored", return_value=(0.0, "queue", False)), \
+                mock.patch.object(governor, "power_provider",
+                                  return_value=(FakeEc2("running", launched=now - 30), "")), \
+                mock.patch.object(governor, "host_labels", return_value=AWS_LABELS):
+            t = {}
+            governor.power_readings(AWS, {}, {"aws-burst-1": t}, now)
+        self.assertEqual(t["cause"], "queue")
+
     def test_a_first_sight_keeps_the_larger_day_and_a_cause_that_matches_the_state(self):
         def first_sight(state, back, launched=0.0, now=time.time()):
             t = {}

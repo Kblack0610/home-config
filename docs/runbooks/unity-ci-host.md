@@ -124,6 +124,10 @@ apps/ci-runner-governor powers it (config.json `standby` -> `aws-burst-1` -> `po
 - `ASSET_LIBRARY_TOKEN`: a Forgejo token with `read:repository` for the asset-library submodule on `git.kblab.me`.
 - Org runners run whatever any org repo's pull request workflow says. Keep the repos private, or require approval for outside contributors' runs.
 
+## Disk
+
+The hourly `linux-ci-docker-cleanup.timer` runs `/usr/local/lib/linux-ci/ci-disk-prune.sh` (roles/linux-ci-host, `tasks/disk.yml`) on every Linux CI host, Unity-only ones too. On idle slots it removes release trees not touched in 7 days and every copy of a target but the newest; then, while the disk is under 35% free, idle slots' release trees oldest first. The governor withholds a host's Unity slots under 20% free and re-admits them at 25% (`ci_governor_disk_held`), so a full host drains, its slots go idle, and the next hourly run frees them. Check it with `systemctl list-timers linux-ci-docker-cleanup.timer` and `journalctl -u linux-ci-docker-cleanup.service`. On razer-laptop the forgejo-runner pod's dind store is also on `/`: it has a 60Gi limit and a prune sidecar (apps/forgejo/README.md, Runner).
+
 ## Not Unity hosts: asus-laptop and hp-victus
 
 Both are k3s nodes and, since 2026-11-03, light/heavy platform runners only. Unity load there broke the cluster along with the jobs: asus holds forgejo and the databases and ran at 90C, and hp-victus (31G) had 279 OOM kills in its Unity slices from 10-29 to 11-03, some of them litellm and prometheus when the whole host ran out. Their slots were removed with `scripts/unity-ci-runner-remove.sh`; the reasons are in `ansible/inventory.yml` above `unity_ci_runners`. Do not add either back.

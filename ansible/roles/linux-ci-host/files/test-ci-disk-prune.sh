@@ -35,9 +35,16 @@ STUB
 # Matches the way pgrep -f does, against the command line a live runner has.
 cat > "$t/bin/pgrep" <<STUB
 #!/bin/sh
-echo "$t/runners/unity-pool-2/bin.2.338.0/Runner.Worker spawnclient 154 159" | grep -Eq -- "\$2"
+echo "\${BUSY_HOME:-$t/runners}/unity-pool-2/bin.2.338.0/Runner.Worker spawnclient 154 159" | grep -Eq -- "\$2"
 STUB
-chmod +x "$t/bin/docker" "$t/bin/pgrep"
+# Free space falls DF_PER_TREE points with each release tree left, from 100.
+cat > "$t/bin/df" <<'STUB'
+#!/bin/sh
+n=$(ls -d "$RUNNER_HOME"/*/_work/*/*/Builds/release-tree/* 2>/dev/null | wc -l)
+echo "Filesystem 1024-blocks Used Available Capacity Mounted"
+echo "fake 100 0 $(( 100 - ${DF_PER_TREE:-0} * n )) 0% /"
+STUB
+chmod +x "$t/bin/docker" "$t/bin/pgrep" "$t/bin/df"
 touch "$t/removed"
 
 R="$t/runners"; repo=_work/game/game/Builds
@@ -77,4 +84,27 @@ if [ -e "$R/unity-pool-1/$repo/release-tree/dup" ]; then echo "FAIL an older cop
 for kept in unity-pool-1/$repo/release-tree/fresh unity-pool-3/$repo/release-tree/dup unity-pool-2/$repo/release-tree/dup unity-pool-1/$repo/perf-tree/today unity-pool-2/$repo/perf-tree/busy unity-pool-1/$repo/other/stale; do
     if [ -e "$R/$kept/file" ]; then echo "ok   kept $kept" | sed "s#$repo/##"; else echo "FAIL $kept removed"; fail=1; fi
 done
+
+# Low disk: five warm trees at 20 points each leave 0% free. The oldest idle ones go until
+# 35% is free (two, to 40%); the busy slot's tree stays though it is the oldest.
+L="$t/low"; rm -f "$t/removed"; touch "$t/removed"
+for copy in "unity-pool-1 a 1" "unity-pool-1 b 2" "unity-pool-1 c 3" "unity-pool-3 d 4" "unity-pool-2 e 5"; do
+    set -- $copy
+    mkdir -p "$L/$1/$repo/release-tree/$2"; touch -d "$3 days ago" "$L/$1/$repo/release-tree/$2/file"
+done
+RUNNER_HOME=$L BUSY_HOME=$L DF_PER_TREE=20 PATH="$t/bin:$PATH" sh "$here/ci-disk-prune.sh" > "$t/log" 2>&1
+rc=$?
+[ "$rc" = 0 ] && echo "ok   low disk exits 0" || { echo "FAIL low disk exit $rc"; fail=1; }
+check "low disk removes two trees"       '^low disk ' "$t/log" 2
+for gone in unity-pool-3/$repo/release-tree/d unity-pool-1/$repo/release-tree/c; do
+    if [ -e "$L/$gone" ]; then echo "FAIL low disk kept $gone"; fail=1; else echo "ok   low disk removed $gone" | sed "s#$repo/##"; fi
+done
+for kept in unity-pool-2/$repo/release-tree/e unity-pool-1/$repo/release-tree/b unity-pool-1/$repo/release-tree/a; do
+    if [ -e "$L/$kept/file" ]; then echo "ok   low disk kept $kept" | sed "s#$repo/##"; else echo "FAIL low disk removed $kept"; fail=1; fi
+done
+
+# A host with no Unity slots has nothing to measure and exits clean.
+RUNNER_HOME="$t/none" DF_PER_TREE=20 PATH="$t/bin:$PATH" sh "$here/ci-disk-prune.sh" > "$t/log" 2>&1
+rc=$?
+[ "$rc" = 0 ] && echo "ok   no runner home exits 0" || { echo "FAIL no runner home exit $rc"; fail=1; }
 exit $fail

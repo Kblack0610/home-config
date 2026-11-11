@@ -123,6 +123,35 @@ spec:
             limits:
               memory: "6Gi"
               cpu: "4000m"
+        # Nothing else clears dind's store. On 2026-11-10 it held 101G of 59 unused images on
+        # razer-laptop, a CI host, and the ci-runner-governor withheld its Unity slots for
+        # disk. Built images are pushed when they are built, so one unused past a day goes,
+        # and build cache stays under 20G. The CLI has no event for "store grew", so this
+        # runs on a fixed cadence.
+        - name: dind-prune
+          image: docker:27-cli
+          command:
+            - sh
+            - -c
+            - |
+              PRUNE_EVERY_SECONDS=3600
+              # Sleep first: dind is still starting when this container does.
+              while sleep "$PRUNE_EVERY_SECONDS"; do
+                docker container prune -f --filter until=24h
+                docker image prune -af --filter until=24h
+                docker builder prune -f --max-used-space 20GB
+                docker volume prune -f
+              done
+          env:
+            - name: DOCKER_HOST
+              value: tcp://localhost:2375
+          resources:
+            requests:
+              memory: "16Mi"
+              cpu: "10m"
+            limits:
+              memory: "128Mi"
+              cpu: "200m"
       volumes:
         - name: runner-config
           configMap:
@@ -131,5 +160,9 @@ spec:
           emptyDir: {}
         - name: docker-certs
           emptyDir: {}
+        # Over the limit the kubelet evicts the pod and the runner comes back empty, which
+        # beats filling the node. dind-prune above keeps it well under: a day of images
+        # plus 20G of build cache.
         - name: dind-storage
-          emptyDir: {}
+          emptyDir:
+            sizeLimit: 60Gi

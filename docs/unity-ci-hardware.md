@@ -112,6 +112,26 @@ Checked against the providers' own catalogs and APIs on 2026-10-29. Per slot is 
 
 Sources: OVH `/order/catalog/public/eco` and `/dedicated/server/datacenter/availabilities` (eu.api.ovh.com, api.us.ovhcloud.com), api.cherryservers.com/v1/plans, docs.hetzner.com price adjustment (15 June 2026) and the Hetzner live auction data, the AWS spot price and advisor feeds, runs-on.com/pricing, and each vendor's pricing page.
 
+### GitHub-hosted against the AWS burst hosts
+
+Checked 2026-11-11: moving Unity jobs from the AWS hosts to GitHub-hosted runners costs more. Per slot-hour:
+
+| Where | $ per slot-hour | Basis |
+|---|---|---|
+| Owned hosts | 0 at the margin | governor `rates` |
+| aws-burst-2 (Spot, 6 slots) | ~0.11 | $0.65/h `spot-estimate` |
+| aws-burst-1, aws-build-1 (on-demand m7a.8xlarge) | ~0.37 | $1.855/h over 5 slots |
+| GitHub Linux 4-core, 16 GB | 0.72 | $0.012/min |
+| GitHub Linux 8-core, 32 GB | 1.32 | $0.022/min |
+
+- 4-core is the smallest that fits a slot (3 cores, 14 GB; a PlayMode shard peaks at 13.9 GB), and only just. The 2-core standard runner does not fit.
+- On top of the rate, every hosted job imports a cold `Library/`, activates Unity again (see [Unity license](#unity-license)), and is billed in whole minutes. Jobs that need `lan` (Multi, player builds, git.kblab.me pushes) cannot run there at all.
+- At the pool's 150-260 runner-hours a day (playground `docs/operations/ci-cost.md`, 2026-11-06), GitHub 4-core would cost about $3,200-5,600 a month, against the $200 `ci-burst-monthly` cap on AWS.
+- Non-Unity jobs already use hosted runners (`LINUX_RUNNER_LIGHT`, else `ubuntu-latest`), which is where hosted runners make sense.
+- To spend less, prefer Spot over on-demand and buy owned slots ([Options by value](#options-by-value)).
+
+Source: docs.github.com/en/billing/reference/actions-runner-pricing (Linux x64), `apps/ci-runner-governor/config.json` `rates`.
+
 A rented box joins like a home one: tailnet first (`docs/headscale-setup.md`, so it reaches `git.kblab.me`), then `unity_ci_runners` and `ci_hosts` in `ansible/inventory.yml`, the "Unity CI runner pool" play (`unity-ci-host` and `github-actions-runner-linux`), and the three rosters kept in step (`RUNNER_ROSTER` in `apps/github-runner-exporter/deployment.yaml`, the governor's `hosts`, the inventory; `scripts/check-runner-roster.py` fails CI on drift). Start it at about half its slots, prove it with one pinned PlayMode shard timed against hp-victus, then ramp. Add one host at a time, so the new activations do not all start together.
 
 The pool already registers as many slots as `pool_max_admitted` allows (the numbers live in `ansible/inventory.yml` and `apps/ci-runner-governor/config.json`). A rented host adds parallel jobs only if the cap goes up, and the cap is there for the activation rate, so settle the license question first.

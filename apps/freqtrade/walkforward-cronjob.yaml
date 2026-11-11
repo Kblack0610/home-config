@@ -1,5 +1,5 @@
-# Nightly walk-forward test (lab/walkforward.py): for each of the last WF_FOLDS
-# whole months, hyperopt tunes each candidate (league strategies, then promote and
+# Nightly walk-forward test (lab/walkforward.py): for every whole month back to
+# each venue's first 180 days of candles (WF_FOLDS unset), hyperopt tunes each candidate (league strategies, then promote and
 # watch suggestions) on the 180 days before it, then that unseen month is
 # backtested as is and tuned. Each fold is stored as it finishes and skipped once
 # stored, so a normal night runs only new candidates and a new month; a first run,
@@ -92,8 +92,6 @@ spec:
                     secretKeyRef: {name: trader-db, key: database-url}
                 - name: WF_EXCHANGES
                   value: binanceus okx kucoin
-                - name: WF_FOLDS
-                  value: "12"
                 - name: WF_WORKERS
                   value: "2"  # per shard, so 8 across the 4; matches the 2-CPU limit
                 - name: WF_MEMORY_GB

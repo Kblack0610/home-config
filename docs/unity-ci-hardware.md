@@ -14,7 +14,7 @@ Before buying for parallelism, check the license ceiling: the governor caps the 
 
 - 6 cores / 12 threads minimum, 8+ preferred.
 - Full-power desktop CPU. Skip `T`, `U` and `Y` suffixes (low-power parts). Laptop `H`/`HQ` is acceptable but throttles under sustained load.
-- RAM: 14 GB per slot plus about 8 GB for the host: 32 GB for one slot, 48 GB for two (6 cores), 64 GB for three or four. Desktop DIMMs (DDR4 or DDR5) cost a third of laptop SODIMM in the 2026 shortage; see [Buying in the RAM shortage](#buying-in-the-ram-shortage).
+- RAM: 14 GB per slot plus about 8 GB for the host: 32 GB for one slot, 48 GB for two (6 cores), 64 GB for three or four. DDR5 costs about $14-16 per GB in the 2026 shortage, desktop or SODIMM, so RAM you already own is the cheapest slot; see [Buying in the RAM shortage](#buying-in-the-ram-shortage).
 - NVMe SSD, 1 TB or more.
 - Wired Ethernet, and a case that can cool a sustained load.
 - Condition "Used" or "Refurbished" with returns. Avoid "for parts", all-in-ones (laptop CPUs, often no video out, soldered RAM) and "up to" variation listings (the headline price is the base config).
@@ -46,16 +46,17 @@ Buy one of a cheap model first, add it as one slot, and time a pinned PlayMode s
 
 Researched 2026-11-10 to replace the Mac Studio's slots (sold that day; aws-burst-2 Spot holds them meanwhile). That load is about 5 slots around the clock, so every rental reaches a home box's price in 2-11 months (full comparison: `~/.agent/research/2026-11-10_ci-runners-buy-vs-rent.md`).
 
-RAM sets the price. A 96 GB DDR5 SODIMM kit was $195 in May 2025 and is $1,280-1,700 now; the only in-stock kit seen on a fetched page was Corsair CMSX96GX5M2A4800C40 at $1,467.99 (corsair.com). Desktop RAM is a third of that: 64 GB DDR4-3200 $446, 64 GB DDR5-6000 $520 (rampricesusa, Amazon-linked). DDR4 server RDIMM is no longer cheap: 32 GB is $300-385 (TechMikeNY, PCSP), so the RDIMM builds below now cost $1,000-1,500 more than listed. TrendForce sees prices high through 2027, and Micron sees supply tight through 2028.
+RAM sets the price. A 96 GB DDR5 SODIMM kit was $195 in May 2025 and is $1,280-1,700 now; the only in-stock kit seen on a fetched page was Corsair CMSX96GX5M2A4800C40 at $1,467.99 (corsair.com). Desktop DDR5 is no cheaper per GB: the cheapest new 64 GB (2x32 GB) kit is $870-930 (Corsair DDR5-5600 CL40 $869.99 at Newegg per bytesizeddeals, Corsair Vengeance DDR5-6000 CL40 $929.99 at Newegg per pgrid, checked 2026-11-10), against $1,468 for 96 GB of SODIMM; an earlier $520 figure (rampricesusa) was wrong. A 32 GB (2x16 GB) DDR5-5600 SODIMM kit is $520-585 (Crucial CT2K16G56C46S5, Amazon $522.85 on 2026-11-06). 64 GB DDR4-3200 was $446 and has not been rechecked. DDR4 server RDIMM is no longer cheap: 32 GB is $300-385 (TechMikeNY, PCSP), so the RDIMM builds below now cost $1,000-1,500 more than listed. TrendForce sees prices high through 2027, and Micron sees supply tight through 2028.
 
 | Build | Slots | All-in | Multi / single vs MS-A2 | Notes |
 |---|---|---|---|---|
-| Ryzen 9 9900X (12c) AM5 tower, 64 GB DDR5 | 4 | ~$1,410 | 96% / 106% | Built-in GPU, current platform. CPU $331, RAM $520 |
-| Ryzen 9 9950X (16c) AM5, 64 GB DDR5 | 4, 5 with 96 GB | ~$1,620 | 117% / 108% | CPU $539. 96 GB desktop DDR5 price unverified ($440-1,860 listed) |
+| Ryzen 9 9900X (12c) AM5 tower, 64 GB DDR5 | 4 | ~$1,760-1,820 | 96% / 106% | Built-in GPU, current platform. CPU $331, RAM $870-930 |
+| Ryzen 9 9950X (16c) AM5, 64 GB DDR5 | 4, 5 with 96 GB | ~$1,970-2,030 | 117% / 108% | CPU $539. 96 GB desktop DDR5 price unverified ($440-1,860 listed) |
 | Ryzen 9 5900XT (16c) AM4, 64 GB DDR4 | 4 | ~$1,330 | 78% / 79% | CPU $315 (Amazon, in stock). No cooler or GPU in the box, add ~$65 |
 | Ryzen 9 5950X AM4, 128 GB DDR4 | 5 | ~$1,780-1,950 | 80% / 79% | 4x32 DDR4 $831-1,000 |
-| Ryzen 9 9900X in an ASRock DeskMeet X600 (8 L), 64 GB DDR5 | 4 | ~$1,375 | ~85% (estimate) / ~106% | Barebone $179 (Newegg N82E16856158094), $195-232 (Best Buy) with the board and a 500 W PSU; 4 standard DDR5 DIMM slots. 65 W CPU limit, so the 9900X runs in 65 W ECO mode; needs a cooler under 54 mm (~$50) |
-| **Ryzen 9 9900X in an ASRock DeskSlim X600 (5 L), 64 GB DDR5** | 4 | ~$1,400 | 96% / 106% | **Recommended small box.** Barebone $209.99 (Newegg N82E16856158101, search snippet), $214.49 new on eBay. 4 standard DDR5 DIMM slots, CPUs up to 120 W so the 9900X runs at full power, coolers up to 71 mm, 240 W adapter |
+| Ryzen 9 9900X in an ASRock DeskMeet X600 (8 L), 64 GB DDR5 | 4 | ~$1,725-1,785 | ~85% (estimate) / ~106% | Barebone $179 (Newegg N82E16856158094), $195-232 (Best Buy) with the board and a 500 W PSU; 4 standard DDR5 DIMM slots. 65 W CPU limit, so the 9900X runs in 65 W ECO mode; needs a cooler under 54 mm (~$50) |
+| **Ryzen 9 9900X in an ASRock DeskSlim X600 (5 L), 64 GB DDR5** | 4 | ~$1,750-1,810 | 96% / 106% | **Recommended small box.** Barebone $209.99 (Newegg N82E16856158101, search snippet), $214.49 new on eBay. 4 standard DDR5 DIMM slots, CPUs up to 120 W so the 9900X runs at full power, coolers up to 71 mm, 240 W adapter |
+| **MS-A2 9955HX barebone with razer-laptop's 96 GB SODIMM** | 5 | ~$1,600-1,665 | 100% / 100% | **Best value.** Barebone $789, 2 TB $290, and a 32 GB SODIMM kit ($520-585) so razer-laptop keeps its 1 Unity slot. razer-laptop (8945HS, 8 cores) is CPU-bound at 1-2 slots and used 18 of 93 GB on 2026-11-10. Confirm its RAM is two removable SODIMMs before buying |
 | MS-A2 9955HX, 96 GB DDR5 SODIMM | 5 | ~$2,550 | 100% / 100% | 96 GB and 64 GB bundles sold out; barebone $789 plus the Corsair kit |
 | windows-media CPU swap to a 5900XT or 5950X | 3-4 | ~$350-435 | 78-80% / 79% | Cheapest, but shares the TV PC and needs WSL2 or a VM (see below) |
 

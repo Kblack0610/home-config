@@ -113,6 +113,37 @@ for kept in unity-pool-2/$repo/release-tree/e unity-pool-1/$repo/release-tree/b 
     if [ -e "$L/$kept/file" ]; then echo "ok   low disk kept $kept" | sed "s#$repo/##"; else echo "FAIL low disk removed $kept"; fail=1; fi
 done
 
+# --before-job (a Unity slot's job-started hook): under the floor it prunes idle slots' trees,
+# keeps the busy slot's (the job's own), and leaves images to the hourly run's ordinary passes.
+J="$t/job"; rm -f "$t/removed"; touch "$t/removed"
+for copy in "unity-pool-1 release-tree/a 1" "unity-pool-3 hd-tree 4" "unity-pool-4 release-tree/b 2" "unity-pool-2 release-tree/e 5"; do
+    set -- $copy
+    mkdir -p "$J/$1/$repo/$2"; touch -d "$3 days ago" "$J/$1/$repo/$2/file"
+done
+RUNNER_HOME=$J BUSY_HOME=$J DF_PER_TREE=25 PATH="$t/bin:$PATH" sh "$here/ci-disk-prune.sh" --before-job > "$t/log" 2>&1
+rc=$?
+[ "$rc" = 0 ] && echo "ok   before-job under the floor exits 0" || { echo "FAIL before-job exit $rc"; fail=1; }
+check "before-job says why it prunes"    '^free 0% < 35%' "$t/log" 1
+check "before-job frees to the floor"    '^low disk ' "$t/log" 2
+if [ -e "$J/unity-pool-2/$repo/release-tree/e/file" ]; then echo "ok   before-job kept the busy slot's tree"; else echo "FAIL before-job removed the busy slot's tree"; fail=1; fi
+# Negative control: the same host above the floor. The hook must not touch a warm tree or an
+# image, and must not spend the job's start on the age and copy passes.
+rm -f "$t/removed"; touch "$t/removed"
+mkdir -p "$J/unity-pool-1/$repo/release-tree/old"; touch -d '30 days ago' "$J/unity-pool-1/$repo/release-tree/old/file"
+RUNNER_HOME=$J BUSY_HOME=$J DF_PER_TREE=0 PATH="$t/bin:$PATH" sh "$here/ci-disk-prune.sh" --before-job > "$t/log" 2>&1
+rc=$?
+[ "$rc" = 0 ] && echo "ok   before-job above the floor exits 0" || { echo "FAIL before-job above the floor exit $rc"; fail=1; }
+[ -s "$t/log" ] && { echo "FAIL before-job above the floor printed: $(head -n 1 "$t/log")"; fail=1; } || echo "ok   before-job above the floor does nothing"
+[ -e "$J/unity-pool-1/$repo/release-tree/old/file" ] && echo "ok   before-job above the floor kept a 30-day tree" || { echo "FAIL before-job above the floor removed a tree"; fail=1; }
+check "before-job above the floor removes no image" '.' "$t/removed" 0
+
+# One run at a time: while another holds the lock on the runner home, a run waits.
+exec 8<"$J"; flock 8
+RUNNER_HOME=$J BUSY_HOME=$J DF_PER_TREE=0 PATH="$t/bin:$PATH" timeout 2 sh "$here/ci-disk-prune.sh" --before-job > "$t/log" 2>&1
+rc=$?
+exec 8<&-
+[ "$rc" = 124 ] && echo "ok   a second run waits for the lock" || { echo "FAIL a second run did not wait (exit $rc)"; fail=1; }
+
 # A host with no Unity slots has nothing to measure and exits clean.
 RUNNER_HOME="$t/none" DF_PER_TREE=20 PATH="$t/bin:$PATH" sh "$here/ci-disk-prune.sh" > "$t/log" 2>&1
 rc=$?

@@ -11,6 +11,8 @@
 linux_ci_user_home: /var/lib/linux-ci
 linux_ci_job_started_hook: /usr/local/lib/linux-ci/job-started.sh
 linux_ci_disk_prune: /usr/local/lib/linux-ci/ci-disk-prune.sh
+# Every Unity slot's job-started hook: prunes before the job when the disk is under the floor.
+linux_ci_unity_job_started_hook: /usr/local/lib/linux-ci/unity-job-started.sh
 linux_ci_coredump_max_use: 5G
 
 # What a light/heavy CI job expects (platform's pnpm and Playwright jobs set the bar) beyond the runner itself. No node/pnpm: the

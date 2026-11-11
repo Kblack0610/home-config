@@ -205,6 +205,11 @@ jobs:
 - Not part of the Unity pool, and there is no Unity editor on the PC: Windows players are cross-built on the Linux pool (dodginballs `build-windows`), and this box runs them.
 - Role: `ansible/roles/github-actions-runner-windows`. It counts in `apps/github-runner-exporter` as `windows-media:windows:1`.
 
+## Hardware notes
+
+- The 64 GB (Corsair CMG64GX4M2D3600C18, 2x32 GB DDR4-3600) runs at 2133 because DOCP is off in the firmware (read over SSH 2026-11-10, `Win32_PhysicalMemory`). Turning DOCP on in the BIOS gives the rated 3600. Two of the four DIMM slots are free.
+- CPU upgrade path for CI slots: [unity-ci-hardware.md](unity-ci-hardware.md#buying-in-the-ram-shortage).
+
 ## Windows 10 end of support
 
 windows-media runs Windows 10 22H2. Consumer Extended Security Updates ended 2026-10-13, so it no longer gets security patches; Defender definitions still update. The CPU and TPM qualify for Windows 11, but the PC boots in legacy BIOS mode with SVM (CPU virtualization) off. One visit to the BIOS (CSM off, UEFI and Secure Boot on, SVM on) followed by `mbr2gpt /convert /allowFullOS` over SSH unlocks both an in-place Windows 11 upgrade and WSL2. Until then neither is possible.

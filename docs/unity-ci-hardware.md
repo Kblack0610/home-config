@@ -14,7 +14,7 @@ Before buying for parallelism, check the license ceiling: the governor caps the 
 
 - 6 cores / 12 threads minimum, 8+ preferred.
 - Full-power desktop CPU. Skip `T`, `U` and `Y` suffixes (low-power parts). Laptop `H`/`HQ` is acceptable but throttles under sustained load.
-- RAM: 14 GB per slot plus about 8 GB for the host: 32 GB for one slot, 48 GB for two (6 cores), 64 GB for three or four. DDR4 is far cheaper than DDR5 in 2026.
+- RAM: 14 GB per slot plus about 8 GB for the host: 32 GB for one slot, 48 GB for two (6 cores), 64 GB for three or four. Desktop DIMMs (DDR4 or DDR5) cost a third of laptop SODIMM in the 2026 shortage; see [Buying in the RAM shortage](#buying-in-the-ram-shortage).
 - NVMe SSD, 1 TB or more.
 - Wired Ethernet, and a case that can cool a sustained load.
 - Condition "Used" or "Refurbished" with returns. Avoid "for parts", all-in-ones (laptop CPUs, often no video out, soldered RAM) and "up to" variation listings (the headline price is the base config).
@@ -26,7 +26,7 @@ Before buying for parallelism, check the license ceiling: the governor caps the 
 - Ryzen 5000 (Zen 3, AM4) is the sweet spot: most cores per dollar on cheap DDR4. Targets: Ryzen 7 5700X / 5800X (8C/16T), Ryzen 9 5900X (12C/24T, ~$200 used CPU).
 - Intel 8th-10th gen desktop is fine and cheap, but fewer cores per dollar.
 - Avoid used Intel 13th/14th gen i7/i9: the Raptor Lake degradation issue means a used chip may already be damaged even with the microcode fix.
-- New platforms (Core Ultra 200, Ryzen 7000/9000) need DDR5, which is expensive in 2026.
+- Ryzen 9000 (AM5) on desktop DDR5 now costs about the same as AM4 on DDR4, with faster cores and a built-in GPU (2026-11-10 prices below).
 
 Reading model names: `i3/i5/i7/i9` and `Ryzen 3/5/7/9` are tiers and say nothing about age. The generation is the leading digit(s) of the model number (`i7-9700` is 9th gen, `i7-1355U` is 13th, `Ryzen 9 5900X` is the 5000 series).
 
@@ -36,17 +36,36 @@ Reading model names: `i3/i5/i7/i9` and `Ryzen 3/5/7/9` are tiers and say nothing
 |---|---|---|
 | OptiPlex 7060 Micro / ThinkCentre M920q (i7-8700T, 6C/12T) | $100-180 with RAM | Cheapest usable; 35 W so slower |
 | HP Z4 G4, Xeon W-2145 (8C/16T) | ~$190-250 with 32 GB | Best cores per dollar in a used workstation. Skip W-2102/2104/2123/2125/2223 (4 cores). Needs a discrete GPU (Xeon W has no iGPU). ECC RDIMM. Higher idle power |
-| Used Ryzen 9 5900X build on AM4 | ~$450-600 total | Fastest per dollar, about 2x a 6-core laptop (estimate). Needs a cheap GPU for setup |
+| Ryzen 9 5900X build on AM4 | ~$1,240 with 64 GB new (2026-11-10) | Was ~$450-600 before the RAM shortage. Needs a cheap GPU for setup |
 | OptiPlex 5060 SFF, i5-8500 / i5-8600 / i7-8700 (6 cores) | $80-100 plus RAM to 32-48 GB | About $6-8 per slot per month if two slots hold up, $10-14 if one (24 months, power included). 65 W, holds its clocks. Two slots on six cores leaves no core spare, so measure that before counting on it. Skip the i3-8100 (4 cores) |
 | HP EliteDesk mini, Ryzen 5 PRO 2400GE / 3400GE (4 cores) | ~$60 plus 32 GB | One slot, about $8-10 per slot per month. 35 W 2018-19 chip, roughly half the per-core speed of the newer laptops, so a shard may run 1.5-2x longer. Often sold without the power brick |
 
 Buy one of a cheap model first, add it as one slot, and time a pinned PlayMode shard against razer-laptop before buying more. Every home box is one more Unity activation (see [Unity license](#unity-license)).
 
+## Buying in the RAM shortage
+
+Researched 2026-11-10 to replace the Mac Studio's slots (sold that day; aws-burst-2 Spot holds them meanwhile). That load is about 5 slots around the clock, so every rental reaches a home box's price in 2-11 months (full comparison: `~/.agent/research/2026-11-10_ci-runners-buy-vs-rent.md`).
+
+RAM sets the price. A 96 GB DDR5 SODIMM kit was $195 in May 2025 and is $1,280-1,700 now; the only in-stock kit seen on a fetched page was Corsair CMSX96GX5M2A4800C40 at $1,467.99 (corsair.com). Desktop RAM is a third of that: 64 GB DDR4-3200 $446, 64 GB DDR5-6000 $520 (rampricesusa, Amazon-linked). DDR4 server RDIMM is no longer cheap: 32 GB is $300-385 (TechMikeNY, PCSP), so the RDIMM builds below now cost $1,000-1,500 more than listed. TrendForce sees prices high through 2027, and Micron sees supply tight through 2028.
+
+| Build | Slots | All-in | Multi / single vs MS-A2 | Notes |
+|---|---|---|---|---|
+| **Ryzen 9 9900X (12c) AM5, 64 GB DDR5** | 4 | ~$1,410 | 96% / 106% | **Recommended dedicated box.** Built-in GPU, current platform. CPU $331, RAM $520 |
+| Ryzen 9 9950X (16c) AM5, 64 GB DDR5 | 4, 5 with 96 GB | ~$1,620 | 117% / 108% | CPU $539. 96 GB desktop DDR5 price unverified ($440-1,860 listed) |
+| Ryzen 9 5900XT (16c) AM4, 64 GB DDR4 | 4 | ~$1,330 | 78% / 79% | CPU $315 (Amazon, in stock). No cooler or GPU in the box, add ~$65 |
+| Ryzen 9 5950X AM4, 128 GB DDR4 | 5 | ~$1,780-1,950 | 80% / 79% | 4x32 DDR4 $831-1,000 |
+| MS-A2 9955HX, 96 GB DDR5 SODIMM | 5 | ~$2,550 | 100% / 100% | 96 GB and 64 GB bundles sold out; barebone $789 plus the Corsair kit |
+| windows-media CPU swap to a 5900XT or 5950X | 3-4 | ~$350-435 | 78-80% / 79% | Cheapest, but shares the TV PC and needs WSL2 or a VM (see below) |
+
+All-in is CPU, board ($110-130), RAM, 2 TB NVMe ($290), cooler, PSU and case ($140). CPU and RAM prices were on fetched pages; boards, cases and every eBay figure are search snippets (eBay, Newegg, Micro Center and B&H refused fetches). Multi and single are PassMark against the MS-A2's 56,381 / 4,391. AM4 and AM5 draw about 190-200 W at the wall under load, against 135-160 W for the MS-A2; ECO mode trades about 10% for much less.
+
+windows-media (Ryzen 5 5500, 6 cores, 64 GB, ASUS TUF GAMING B550-PLUS WIFI II, BIOS 3607 read 2026-11-10) gives one slot as it is: two slots on six cores leave nothing for the TV. A 16-core AM4 CPU in the same board makes 3-4 slots on the RAM it already has. Before counting on it: the 5900XT shipped in July 2024, after BIOS 3607, so check ASUS's CPU support list before buying one (the 5950X is supported); the pool's runners are Linux containers, so it needs WSL2 or a Linux VM, which needs the BIOS visit in [windows-machines.md](windows-machines.md#windows-10-end-of-support); and it would be the first pool host that is also someone's TV.
+
 ## 6-8 slots in one box
 
 Researched 2026-11-03 for "6-8 more slots, a few thousand dollars". Prices are eBay and retailer asking prices from search results (eBay refused direct fetches), so check the Sold filter before buying. Power and single-thread figures are estimates from TDP and clocks. Single-thread is relative to a Zen 4 desktop part.
 
-6-8 slots needs 24 or more physical cores and 128 GB. In 2026 the RAM decides the price: a 128 GB desktop DDR5 kit costs $2,087-2,800, a 32 GB DDR5 RDIMM $934-1,470, while a 16 GB DDR4 RDIMM is $60-90. So buy a box that already has 128 GB in it, or one that takes 16 GB DDR4 RDIMMs. One big box also beats two small ones: each host is one Unity activation, and the pool is capped at 16 admitted runners for that reason (see [Unity license](#unity-license)).
+6-8 slots needs 24 or more physical cores and 128 GB. In 2026 the RAM decides the price: a 128 GB desktop DDR5 kit costs $2,087-2,800, a 32 GB DDR5 RDIMM $934-1,470, while a 16 GB DDR4 RDIMM was $60-90 (it has since roughly tripled; see [Buying in the RAM shortage](#buying-in-the-ram-shortage)). So buy a box that already has 128 GB in it. One big box also beats two small ones: each host is one Unity activation, and the pool is capped at 16 admitted runners for that reason (see [Unity license](#unity-license)).
 
 | Option | All-in | Cores / slots | 1T vs Zen 4 | Load power | Notes |
 |---|---|---|---|---|---|
@@ -57,15 +76,15 @@ Researched 2026-11-03 for "6-8 more slots, a few thousand dollars". Prices are e
 | **Premium: EPYC 75F3 + Supermicro H12SSL + 256 GB (8x32 GB) RDIMM** | ~$4,500-5,000 | 32 / 10 | ~75% | ~350 W | Fastest Zen 3 cores on still-cheap DDR4, room past 8 slots, one activation |
 | Mac Studio M5 Max, 128 GB | $5,099 new | 18 / 6 (RAM-bound) | fast | quiet | Native Unity, like the Mac Studio sold 2026-11-10. Only as its replacement |
 | Used Dell Precision 7820, 16-24 core Xeon, 128 GB | $1,000-1,500 (2026-10-29) | 16-24 / 5-7 | ~50% | 250-350 W | Loud, slow cores |
-| 2x Minisforum MS-A2 9955HX, 96 GB / 2 TB prebuilt | $2,159 each | 16 / 5 each | ~100% | ~75 W sustained | Two activations. Drops from 100 W to ~75 W in long loads (Notebookcheck), noisy fan. 128 GB is unofficial |
+| 2x Minisforum MS-A2 9955HX, 96 GB / 2 TB prebuilt | $2,159 each (sold out 2026-11-10) | 16 / 5 each | ~100% | ~75 W sustained | Two activations. Drops from 100 W to ~75 W in long loads (Notebookcheck), noisy fan. 128 GB is unofficial |
 
 Ruled out:
 - Strix Halo 128 GB minis (Framework Desktop, GMKtec EVO-X2, Beelink GTR9 Pro, HP Z2 Mini G1a): $3,400-4,350 each for 5 slots.
-- Ryzen 9 9950X or 5950X: 16 cores is 5 slots, and AM5 needs DDR5 (~$2,600 with 96 GB).
+- Ryzen 9 9950X or 5950X: 16 cores is 5 slots; on 2026-11-10 prices they are the cheap path, see [Buying in the RAM shortage](#buying-in-the-ram-shortage).
 - Threadripper 9960X: $6,400-8,600 for 7 slots, because the DDR5 RDIMM costs more than the CPU and board.
 - Dell R7525 and other 2U servers: 50-70 dBA under load, closet or garage only.
 
-Before ordering, settle the cap: today's 14 slots plus 8 is over the 16-runner cap, so either the Mac Studio sells first (14 - 6 + 8 = 16) or the cap and the license question move. Then buy one box, run it at 4 slots, time a pinned PlayMode shard against razer-laptop, and ramp to 8.
+Before ordering, settle the cap: today's 14 slots plus 8 is over the 16-runner cap, so with the Mac Studio sold (2026-11-10) the new box replaces aws-burst-2's slots, or the cap and the license question move. Then buy one box, run it at 4 slots, time a pinned PlayMode shard against razer-laptop, and ramp to 8.
 
 ## Laptops as runners
 

@@ -11,8 +11,8 @@ resources:
   - tlsoption.yaml
   - ingress.yaml
 
-# The presets are files under profiles/ (named exactly as OrcaSlicer names them, so
-# the desktop can link the folders), plus the k3s first-run OrcaSlicer.conf.
+# The presets are files under profiles/ (named exactly as OrcaSlicer names them),
+# plus the k3s first-run OrcaSlicer.conf.
 # ConfigMap keys cannot hold spaces, so each gets a short key; the init container
 # in deployment.yaml maps the keys back to preset names. apps/print-service mounts
 # this ConfigMap by name, so it keeps a fixed name (no hash suffix).

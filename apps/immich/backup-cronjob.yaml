@@ -16,7 +16,7 @@ spec:
             storage.role/nas: "true"
           containers:
             - name: backup
-              image: alpine:3.24.1
+              image: alpine:3.24.4
               env:
                 - name: PGPASSWORD
                   valueFrom:

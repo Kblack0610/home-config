@@ -1,0 +1,11 @@
+---
+# The NAS end of the Emotiv EEG archive on asus-laptop. roles/emotiv-bridge on
+# mac-mini uploads age-encrypted chunks here; see that role's README.md.
+
+emotiv_archive_user: emotiv-archive
+emotiv_archive_dir: /mnt/nas/private/eeg
+
+# The bridge's upload key; the private half is vault_emotiv_archive_ssh_key in
+# group_vars/macos_hosts. rrsync -wo confines it to the archive and to writes:
+# the mini can add chunks, but cannot list, read or delete what is there.
+emotiv_archive_pubkey: "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAILJKUOecO60LT8mITIZzJRfQfxhn/75cu7J99KjcBCBU emotiv-bridge@mac-mini"

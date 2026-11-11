@@ -1,0 +1,91 @@
+---
+- name: Install age and rsync
+  community.general.homebrew:
+    name: [age, rsync]
+    state: present
+    update_homebrew: false
+
+- name: Create the bridge directories
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: directory
+    mode: "0700"
+  loop:
+    - "{{ emotiv_bridge_home }}"
+    - "{{ emotiv_bridge_spool_dir }}"
+    - "{{ emotiv_bridge_config_dir }}"
+
+- name: Install the bridge
+  ansible.builtin.copy:
+    src: emotiv-bridge.mjs
+    dest: "{{ emotiv_bridge_script }}"
+    mode: "0644"
+  register: emotiv_bridge_code
+
+# Cortex's cert chains to the Emotiv CA the Launcher installs in the System keychain;
+# Node reads extra CAs from a file only.
+- name: Read the Emotiv CA from the System keychain
+  ansible.builtin.command:
+    cmd: security find-certificate -c "Emotiv CA Root" -p /Library/Keychains/System.keychain
+  register: emotiv_bridge_ca
+  changed_when: false
+  check_mode: false
+
+- name: Write the files the bridge reads
+  ansible.builtin.copy:
+    dest: "{{ emotiv_bridge_config_dir }}/{{ item.name }}"
+    content: "{{ item.content }}"
+    mode: "0600"
+  loop:
+    - { name: emotiv-ca.pem, content: "{{ emotiv_bridge_ca.stdout }}\n" }
+    - name: cortex.json
+      content: "{{ {'clientId': vault_emotiv_cortex_client_id, 'clientSecret': vault_emotiv_cortex_client_secret} | to_json }}\n"
+    - { name: archive_ed25519, content: "{{ vault_emotiv_archive_ssh_key }}" }
+    - { name: known_hosts, content: "{{ emotiv_bridge_upload_host_key }}\n" }
+  loop_control:
+    label: "{{ item.name }}"
+  no_log: true
+  register: emotiv_bridge_files
+
+- name: Render the config
+  ansible.builtin.template:
+    src: config.json.j2
+    dest: "{{ emotiv_bridge_config_dir }}/config.json"
+    mode: "0600"
+  register: emotiv_bridge_config
+
+- name: Render the LaunchAgent plist
+  ansible.builtin.template:
+    src: emotiv-bridge.plist.j2
+    dest: "{{ emotiv_bridge_launchagents_dir }}/{{ emotiv_bridge_label }}.plist"
+    mode: "0644"
+  register: emotiv_bridge_plist
+
+# bootout before bootstrap so a changed plist is picked up (the ci-runner-cpu
+# pattern). bootout sends SIGTERM: the bridge closes its session and seals the
+# open chunks first.
+- name: Reload the LaunchAgent when anything it reads changed
+  when: >-
+    emotiv_bridge_code.changed or emotiv_bridge_files.changed or
+    emotiv_bridge_config.changed or emotiv_bridge_plist.changed
+  block:
+    - name: Bootout the existing agent (ignored when not loaded)
+      ansible.builtin.command:
+        cmd: "launchctl bootout gui/{{ ansible_user_uid }}/{{ emotiv_bridge_label }}"
+      register: emotiv_bridge_bootout
+      changed_when: emotiv_bridge_bootout.rc == 0
+      failed_when: false
+
+    - name: Bootstrap the agent
+      ansible.builtin.command:
+        cmd: >-
+          launchctl bootstrap gui/{{ ansible_user_uid }}
+          {{ emotiv_bridge_launchagents_dir }}/{{ emotiv_bridge_label }}.plist
+      register: emotiv_bridge_bootstrap
+      changed_when: emotiv_bridge_bootstrap.rc == 0
+
+- name: Verify the agent is registered with launchd
+  ansible.builtin.command:
+    cmd: "launchctl print gui/{{ ansible_user_uid }}/{{ emotiv_bridge_label }}"
+  register: emotiv_bridge_verify
+  changed_when: false

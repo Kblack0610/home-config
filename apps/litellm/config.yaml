@@ -1,5 +1,5 @@
-# Every route here is a cloud upstream: Gemini (free tier) or Lazer (paid).
-# There is no self-hosted model tier.
+# Every route here is a cloud upstream: Gemini (free tier), Lazer (paid) or
+# OpenCode Go (flat plan). There is no self-hosted model tier.
 model_list:
   # Naming convention: `<role> (<Model-Name>)`, role-first.
   #
@@ -300,6 +300,113 @@ model_list:
         json_mode: true
       supports_function_calling: true
 
+  # ============================================================
+  # Flat-plan routes via OpenCode Go (opencode.ai/inference/go)
+  # ============================================================
+  # Go is $10/mo flat with a per-model dollar allowance (Go plan column at
+  # opencode.ai/docs/go, 2026-11-11: GLM-5.3, Kimi K3 and Haiku 5.5 are $15/mo
+  # each), spent in windows of 20% per 5h, 50% per week, 100% per month. Go has
+  # no usage API, so each route carries Go's list price: gateway spend then
+  # equals what Go counts against the allowance, and the `fleet-go` key's
+  # budgets (README) mirror the windows. Extra Usage stays off in the OpenCode
+  # console, so a spent window is a refusal there, never a charge.
+  #
+  # NO fallback edge on any of these (router_settings.fallbacks): a Go refusal
+  # must fail the call, not spill flat-plan work onto paid Lazer.
+  #
+  # Third-party clients must name themselves in User-Agent (static below) and
+  # send a stable `x-opencode-session` per conversation. opencode sends that
+  # header on every call; litellm_settings.model_group_settings forwards the
+  # client's x- headers for these routes only, so Go sees opencode's own
+  # session id. A caller that sends none (a probe) reaches Go without one.
+  # The Authorization and x-api-key headers are never forwarded (LiteLLM strips
+  # them), so the gateway key does not leave the cluster.
+  #
+  # DeepSeek V4.1 Flash is not routed: it needs the workspace's Global region
+  # (OpenCode console, Settings > Privacy), a human step; until then Go 400s it.
+  - model_name: "go (glm-5.3)"
+    litellm_params:
+      model: "openai/glm-5.3"
+      api_base: https://opencode.ai/inference/go/openai/v1
+      api_key: os.environ/OPENCODE_GO_API_KEY
+      extra_headers: {"User-Agent": "kblab-litellm-gateway/1.0"}
+      # Go list price, $/1M: in 1.40 out 4.40 cache_read 0.26, no cache write (docs/go, 2026-11-11).
+      input_cost_per_token: 0.0000014
+      output_cost_per_token: 0.0000044
+      cache_read_input_token_cost: 0.00000026
+      tpm: 400000
+      rpm: 30
+    model_info:
+      mode: chat
+      tags: ["flat", "opencode-go"]
+      capabilities:
+        tools: true
+        code: true
+        vision: false
+        reasoning: true
+        json_mode: true
+      supports_function_calling: true
+
+  - model_name: "go (kimi-k3)"
+    litellm_params:
+      model: "openai/kimi-k3"
+      api_base: https://opencode.ai/inference/go/openai/v1
+      api_key: os.environ/OPENCODE_GO_API_KEY
+      extra_headers: {"User-Agent": "kblab-litellm-gateway/1.0"}
+      # Go list price, $/1M: in 3.00 out 15.00 cache_read 0.30 cache_write 3.00 (docs/go, 2026-11-11).
+      input_cost_per_token: 0.000003
+      output_cost_per_token: 0.000015
+      cache_read_input_token_cost: 0.0000003
+      cache_creation_input_token_cost: 0.000003
+      tpm: 400000
+      rpm: 30
+    model_info:
+      mode: chat
+      tags: ["flat", "opencode-go"]
+      capabilities:
+        tools: true
+        code: true
+        vision: false
+        reasoning: true
+        json_mode: true
+      supports_function_calling: true
+
+  # Haiku is served on Go's Anthropic Messages endpoint (LiteLLM appends
+  # /v1/messages; Go takes the key as x-api-key). Its price steps up above a
+  # 100K-token prompt, which the _above_100k_ keys in model_info model.
+  - model_name: "go (claude-haiku-5-5)"
+    litellm_params:
+      model: "anthropic/claude-haiku-5-5"
+      api_base: https://opencode.ai/inference/go/anthropic
+      api_key: os.environ/OPENCODE_GO_API_KEY
+      extra_headers: {"User-Agent": "kblab-litellm-gateway/1.0"}
+      # Go list price, $/1M: in 0.10 out 0.50 cache_read 0.01 cache_write 0.125;
+      # above 100K: in 0.50 out 2.50 cache_read 0.05 cache_write 0.625 (docs/go, 2026-11-11).
+      input_cost_per_token: 0.0000001
+      output_cost_per_token: 0.0000005
+      cache_read_input_token_cost: 0.00000001
+      cache_creation_input_token_cost: 0.000000125
+      tpm: 400000
+      rpm: 30
+    model_info:
+      # The above-100K tier sits here, not in litellm_params: the router copies only
+      # its fixed set of price keys (128k/200k/272k tiers) from litellm_params, while
+      # model_info goes into the cost map whole and the cost code parses any
+      # _above_<N>k_ threshold.
+      input_cost_per_token_above_100k_tokens: 0.0000005
+      output_cost_per_token_above_100k_tokens: 0.0000025
+      cache_read_input_token_cost_above_100k_tokens: 0.00000005
+      cache_creation_input_token_cost_above_100k_tokens: 0.000000625
+      mode: chat
+      tags: ["flat", "opencode-go"]
+      capabilities:
+        tools: true
+        code: true
+        vision: false
+        reasoning: false
+        json_mode: true
+      supports_function_calling: true
+
 router_settings:
   routing_strategy: "simple-shuffle"
   timeout: 900
@@ -363,6 +470,13 @@ litellm_settings:
   # litellm_remaining_team_budget_metric{team_alias="lazer-pool"}, which are otherwise
   # absent after every restart until that team next sends traffic.
   prometheus_initialize_budget_metrics: true
+  # Forward the client's x- headers (x-opencode-session above) to these routes
+  # only. Other upstreams never see client headers.
+  model_group_settings:
+    forward_client_headers_to_llm_api:
+      - "go (glm-5.3)"
+      - "go (kimi-k3)"
+      - "go (claude-haiku-5-5)"
 
 general_settings:
   master_key: os.environ/LITELLM_MASTER_KEY

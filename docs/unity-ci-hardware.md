@@ -50,12 +50,12 @@ RAM sets the price. A 96 GB DDR5 SODIMM kit was $195 in May 2025 and is $1,280-1
 
 | Build | Slots | All-in | Multi / single vs MS-A2 | Notes |
 |---|---|---|---|---|
-| **Ryzen 9 9900X (12c) AM5, 64 GB DDR5** | 4 | ~$1,410 | 96% / 106% | **Recommended dedicated box.** Built-in GPU, current platform. CPU $331, RAM $520 |
+| Ryzen 9 9900X (12c) AM5 tower, 64 GB DDR5 | 4 | ~$1,410 | 96% / 106% | Built-in GPU, current platform. CPU $331, RAM $520 |
 | Ryzen 9 9950X (16c) AM5, 64 GB DDR5 | 4, 5 with 96 GB | ~$1,620 | 117% / 108% | CPU $539. 96 GB desktop DDR5 price unverified ($440-1,860 listed) |
 | Ryzen 9 5900XT (16c) AM4, 64 GB DDR4 | 4 | ~$1,330 | 78% / 79% | CPU $315 (Amazon, in stock). No cooler or GPU in the box, add ~$65 |
 | Ryzen 9 5950X AM4, 128 GB DDR4 | 5 | ~$1,780-1,950 | 80% / 79% | 4x32 DDR4 $831-1,000 |
-| Ryzen 9 9900X in an ASRock DeskMeet X600 (8 L), 64 GB DDR5 | 4 | ~$1,390 | ~85% (estimate) / ~106% | **Smallest box on desktop RAM.** Barebone $195-232 (Best Buy) with the board and a 500 W PSU; 4 standard DDR5 DIMM slots. 65 W CPU limit, so the 9900X runs in 65 W ECO mode; needs a cooler under 54 mm (~$50) |
-| Ryzen 9 9900X in an ASRock DeskSlim X600 (5 L), 64 GB DDR5 | 4 | unknown | 96% / 106% | 4 standard DDR5 DIMM slots, CPUs up to 120 W, coolers up to 71 mm. On sale since October 2026 with no published price |
+| Ryzen 9 9900X in an ASRock DeskMeet X600 (8 L), 64 GB DDR5 | 4 | ~$1,375 | ~85% (estimate) / ~106% | Barebone $179 (Newegg N82E16856158094), $195-232 (Best Buy) with the board and a 500 W PSU; 4 standard DDR5 DIMM slots. 65 W CPU limit, so the 9900X runs in 65 W ECO mode; needs a cooler under 54 mm (~$50) |
+| **Ryzen 9 9900X in an ASRock DeskSlim X600 (5 L), 64 GB DDR5** | 4 | ~$1,400 | 96% / 106% | **Recommended small box.** Barebone $209.99 (Newegg N82E16856158101, search snippet), $214.49 new on eBay. 4 standard DDR5 DIMM slots, CPUs up to 120 W so the 9900X runs at full power, coolers up to 71 mm, 240 W adapter |
 | MS-A2 9955HX, 96 GB DDR5 SODIMM | 5 | ~$2,550 | 100% / 100% | 96 GB and 64 GB bundles sold out; barebone $789 plus the Corsair kit |
 | windows-media CPU swap to a 5900XT or 5950X | 3-4 | ~$350-435 | 78-80% / 79% | Cheapest, but shares the TV PC and needs WSL2 or a VM (see below) |
 

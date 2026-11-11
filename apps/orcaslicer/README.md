@@ -50,6 +50,21 @@ kubectl --context home-k3s -n orcaslicer exec deploy/orcaslicer -c orcaslicer --
 python3 scripts/check-secret-store.py
 ```
 
+## Stream and smoothness
+
+Checked 2026-11-11 on `v2.5.0-ls49`; nothing was changed. Selkies 2.2.1 streams over websockets from a Wayland session (labwc). The Radeon dGPU renders (`Renderer: GL on /dev/dri/renderD128` in the pod log) and encodes H.264 with VAAPI (`Render node 0 encodes H264, H265 on vaapi`). Idle, the pod uses about 11m CPU and 825 MiB.
+
+Two settings cap sharpness and smoothness, both from `3dba36e` (2026-04), when the CPU still encoded:
+
+- `SELKIES_IS_MANUAL_RESOLUTION_MODE=true` at 1280x720: the stream is stretched to the browser window, so it looks soft on a big monitor. To fix it, drop the three manual-resolution vars so the remote desktop takes the window size. Check a phone first, because the Orca UI may be too cramped at phone size; if it is, set manual mode to 1920x1080 instead.
+- `SELKIES_FRAMERATE=30`: 60 makes rotating the plate smoother, at the cost of more bandwidth through the public tunnel off the LAN. Try 45 if it stutters away from home.
+
+After a change, the Selkies start line in `kubectl --context home-k3s -n orcaslicer logs deploy/orcaslicer -c orcaslicer | grep "Selkies .* starting"` shows the resolution and framerate. Today it reads `encoder h264enc at 8-240 fps, fixed 1280x720`.
+
+For an app window with no tabs, use Chromium's "Install" button in the address bar (Selkies ships a `manifest.json`) or `chromium --app=https://slicer.kblab.me`.
+
+Selkies stays as the wrapper. Moonlight/Sunshine needs a client install and has no browser path, Selkies WebRTC mode needs a TURN server off the LAN (the tunnel carries only HTTP and websockets), and KasmVNC, noVNC and Guacamole are older and slower.
+
 ## Troubleshooting
 
 | Symptom | Cause | Fix |
@@ -58,3 +73,4 @@ python3 scripts/check-secret-store.py
 | A user filament preset is missing from the list, Orca logs `validate_preset: ... can not found preset and inherit in list` | Its `inherits` names a system preset that the Orca version does not ship (the old `Elegoo Generic PLA`) | Point `inherits` at a preset the version ships (`Generic PLA @Elegoo`); `check-presets.sh <tag>` shows which names resolve |
 | Slicing fails with "Invalid parameter value(s)" (the CLI returns -18) | A preset key holds a value the Orca version no longer accepts | Find the key: apply the preset keys one at a time onto the system parent and slice with `/usr/bin/orca-slicer --slice 0`. Drop the key so it inherits, or set a valid value |
 | A gcode printed with the wrong nozzle | The name was read for the nozzle | Read `nozzle_diameter` from Moonraker metadata (above) |
+| The slicer went black or restarted on its own | On the X11 images (2.3.2 and earlier) the Xvfb server segfaulted: `(EE) Caught signal 11` in Loki on 2026-10-23 and 2026-11-04. The current images use Wayland, and there were no restarts from 2026-11-04 to 11-11 | Search Loki for `{namespace="orcaslicer",container="orcaslicer"} \|~ "(?i)segfault\|signal 11"`. If it is still crashing, add a Sentinel `kubectl` watch with `expect_restarts_max` on `home-k3s/orcaslicer/app.kubernetes.io/name=orcaslicer` |

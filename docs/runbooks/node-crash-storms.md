@@ -23,5 +23,5 @@ SSH by IP or `-lan` name ([host-access.md](../host-access.md)): razer-laptop 192
 |---|---|---|---|
 | NodeCoreDumpStorm on every `light-*` runner host | `sleep 120`, SIGABRT | unity-core-playground harness tests: the fake editor in `scripts/test/tests/test_run.py` is aborted by the watchdog in `scripts/test/run.sh` | board row ucp-1836: the fake editor needs `ulimit -c 0` |
 | NodeCoreDumpStorm by bytes | `Unity` | crashed Unity editors on CI slots | delete old dumps (step 4 above) |
-| NodeOomKillStorm on razer and asus | `python` in `freqtrade/trader-markets-recorder` | CronJob every 5 min at a 1Gi limit (`apps/freqtrade/markets-recorder-cronjob.yaml`) | board row tr-184 |
+| NodeOomKillStorm on razer and asus | `python` in `freqtrade/trader-markets-recorder` (Kalshi) | CronJob every 5 min (`apps/freqtrade/markets-recorder-cronjob.yaml`), sized from a measured peak; re-measure in a one-off Job with a higher limit before changing it | board row tr-184: stream the sweep |
 | NodeOomKillStorm on CI hosts | `ssh-agent` in `ci.slice` | jobs that start an agent and never kill it | board row hc-172 |

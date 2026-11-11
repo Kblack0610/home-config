@@ -222,6 +222,21 @@ kubectl --context home-k3s -n forgejo exec deploy/forgejo -c forgejo -- \
   cat /data/gitea/data/home/.gitconfig
 ```
 
+### Lost merges: a push mirror resetting master
+
+**A Forgejo push mirror whose remote has `fetch = +refs/*:refs/*` resets the branches it pushes.** After a push, git writes each pushed ref's value to its tracking ref, and with that refspec the tracking ref is the local branch itself. A mirror push that read master before a merge finished therefore writes the old master back when it completes. The server reflog records it as `Gitea <gitea@fake.local> ... update by push`, while the PR still reads merged with its `merge_commit_sha`. On 2026-11-09 home-config #697 merged as `3073f01` at 23:55:14Z and the mirror set master back to `0a004cc` at 23:55:16Z. The same cause made all 16 master rewinds from 2026-06 to 2026-11, including the earlier "merge race" drops (#209, #211, #396, #404), and #440 and #498 were never re-landed.
+
+home-config has no push mirror now: `mirror-to-github.yaml` above is the only GitHub mirror, and it pushes from a fresh clone, so it cannot write back. Do not add a push mirror to a repo that has merges. If one is ever needed, unset its fetch refspec in the bare repo (`git config --unset-all remote.<name>.fetch`). Deleting a push mirror through the API removes its database row but leaves the git remote in `config`, so remove that too (`git remote remove <name>`; it does not touch `refs/heads/`).
+
+What watches it: `apps/forgejo-mirror-exporter/` reads each repo's default-branch reflog and counts moves back to an older commit (`ForgejoDefaultBranchRewound`, critical, 24h window), names any pushed-to remote whose fetch refspec lands on `refs/heads/` (`ForgejoPushRemoteRewritesBranches`), and flags a default branch with no reflog, which would hide both (`ForgejoDefaultBranchReflogMissing`). To find a dropped sha by hand:
+
+```bash
+kubectl --context home-k3s -n forgejo exec deploy/forgejo -c forgejo -- \
+  grep -n "update by push" /data/git/repositories/<owner>/<repo>.git/logs/refs/heads/master
+```
+
+Re-land a dropped merge with a fast-forward push of that sha when master has not moved past its parent (`git fetch forgejo <sha>; git push forgejo <sha>:refs/heads/master`), else as a new PR.
+
 ## Repository Shape
 
 ```text

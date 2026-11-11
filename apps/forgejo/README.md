@@ -157,7 +157,7 @@ Tags do propagate through a pull mirror, which is what makes tag-triggered deplo
 Configure per-repo in the Forgejo UI under repo Settings -> Mirror Settings:
 
 - **Push mirror to gitlab.com**: offsite DR for personal repos
-- **Push mirror to github.com**: public-facing repos only
+- **Push mirror to github.com**: public-facing repos only, and never on a repo that takes merges unless its remote has no fetch refspec: a push mirror with `fetch = +refs/*:refs/*` resets master after a concurrent merge (home-config lost #440, #498 and others this way; `docs/gitops.md` "Lost merges"). home-config mirrors to GitHub through `.forgejo/workflows/mirror-to-github.yaml` instead.
 - **Pull mirror from github.com**: only where GitHub is genuinely canonical and outside this account (`platform`)
 
 > `home-config` is **not** a pull mirror, despite what this section used to claim. It is Forgejo-first with GitHub downstream: Flux reads `git.kblab.me/kblack0610/home-config`, so a push to GitHub alone gets overwritten. Always `git push forgejo master`.

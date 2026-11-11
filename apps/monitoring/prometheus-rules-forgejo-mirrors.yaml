@@ -217,6 +217,54 @@ spec:
               `mirror` table has no last_error column at all, which is why pull
               mirrors are watched via next_update_unix instead.
 
+        # A merge Forgejo still shows as merged, gone from the branch. On
+        # 2026-11-09 a push mirror wrote master back to #697's parent two
+        # seconds after the merge; nothing else saw it. No `for:`: the count
+        # holds for REWIND_WINDOW_SECONDS (24h) by itself.
+        - alert: ForgejoDefaultBranchRewound
+          expr: forgejo_repo_default_branch_rewinds > 0
+          labels:
+            severity: critical
+            category: git-integrity
+          annotations:
+            summary: "{{ $labels.repo }} {{ $labels.branch }} moved back to an older commit"
+            description: >-
+              {{ $value }} update(s) in the last 24h set {{ $labels.repo }}
+              {{ $labels.branch }} back to an older commit, so what was on top
+              (often a merged PR) is no longer on the branch. The dropped sha:
+              kubectl -n forgejo logs deploy/forgejo-mirror-exporter | grep rewind.
+              Re-land it by fast-forward push if it is still a child of the tip,
+              else as a new PR. See docs/gitops.md "Lost merges".
+
+        - alert: ForgejoPushRemoteRewritesBranches
+          expr: forgejo_repo_push_remote_rewrites_branches == 1
+          for: 15m
+          labels:
+            severity: warning
+            category: git-integrity
+          annotations:
+            summary: "{{ $labels.repo }} remote {{ $labels.remote }} can reset its branches"
+            description: >-
+              Remote {{ $labels.remote }} in {{ $labels.repo }} is pushed to and
+              maps a fetch refspec onto refs/heads/, so every push to it writes
+              the value it pushed back to the local branch and drops whatever
+              landed meanwhile. Delete the push mirror, or unset
+              remote.{{ $labels.remote }}.fetch in the bare repo.
+
+        - alert: ForgejoDefaultBranchReflogMissing
+          expr: forgejo_repo_default_branch_reflog_present == 0
+          for: 1h
+          labels:
+            severity: warning
+            category: git-integrity
+          annotations:
+            summary: "{{ $labels.repo }} {{ $labels.branch }} has no reflog"
+            description: >-
+              Without logs/refs/heads/{{ $labels.branch }} a rewind of this
+              branch cannot be seen, so ForgejoDefaultBranchRewound stays quiet
+              whatever happens. Forgejo writes reflogs through its own git
+              config (core.logAllRefUpdates); check it was not turned off.
+
         # The observer going blind is its own failure, and looks identical to
         # everything being healthy.
         - alert: ForgejoMirrorExporterDown

@@ -2,7 +2,7 @@
 # trader-web exporter (strategy repo web/exporter.py), which reads the trader database at
 # scrape time, so bot state is as old as the newest ingest (every 5 minutes).
 #
-# Covered elsewhere, on purpose not repeated here: a failed CronJob (KubeJobFailed), a CronJob
+# Covered elsewhere, on purpose not repeated here: a failed CronJob (HomelabCronJobFailed), a CronJob
 # that stops being scheduled (HomelabCronJobNotScheduling), a league pod not ready
 # (KubeStatefulSetReplicasMismatch) and the site down (Gatus).
 apiVersion: monitoring.coreos.com/v1

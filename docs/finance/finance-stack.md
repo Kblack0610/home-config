@@ -242,7 +242,7 @@ database: MySQL/MariaDB or PostgreSQL
 - [x] Configure ingress (finance.kblab.me) - live, no port-forward needed
 - [x] Set up automated backups - now with off-box NAS copy + weekly verify
 - [x] Import existing accounts - done; ~2MB budget file with real history
-- [x] Configure SimpleFIN bank sync - all linked accounts `MATCH` as of 2026-09-28. Sync is now server-side and daily: `actual-budget-bank-sync` CronJob calls the actual-http-api bridge at 06:00 PDT and fails (so `KubeJobFailed` pages) when nothing has imported for 5 days. Troubleshooting: [simplefin-reconnect.md](./simplefin-reconnect.md)
+- [x] Configure SimpleFIN bank sync - all linked accounts `MATCH` as of 2026-09-28. Sync is now server-side and daily: `actual-budget-bank-sync` CronJob calls the actual-http-api bridge at 06:00 PDT and fails (so `HomelabCronJobFailed` pages) when nothing has imported for 5 days. Troubleshooting: [simplefin-reconnect.md](./simplefin-reconnect.md)
 - [ ] Set up budget categories for taxes - scheme documented in [tax-categories.md](./tax-categories.md); apply in-app
 
 ### Phase 1b: Tax readiness (2026-07)

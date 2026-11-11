@@ -307,8 +307,8 @@ model_list:
   # opencode.ai/docs/go, 2026-11-11: GLM-5.3, Kimi K3 and Haiku 5.5 are $15/mo
   # each), spent in windows of 20% per 5h, 50% per week, 100% per month. Go has
   # no usage API, so each route carries Go's list price: gateway spend then
-  # equals what Go counts against the allowance, and the `fleet-go` key's
-  # budgets (README) mirror the windows. Extra Usage stays off in the OpenCode
+  # equals what Go counts against the allowance; each route's 5h budget below
+  # and the `fleet-go` key's week budget (README) mirror the windows. Extra Usage stays off in the OpenCode
   # console, so a spent window is a refusal there, never a charge.
   #
   # NO fallback edge on any of these (router_settings.fallbacks): a Go refusal
@@ -318,7 +318,8 @@ model_list:
   # send a stable `x-opencode-session` per conversation. opencode sends that
   # header on every call; litellm_settings.model_group_settings forwards the
   # client's x- headers for these routes only, so Go sees opencode's own
-  # session id. A caller that sends none (a probe) reaches Go without one.
+  # session id. Go refuses a call without one (400 MissingSessionID), so a
+  # probe sends its own.
   # The Authorization and x-api-key headers are never forwarded (LiteLLM strips
   # them), so the gateway key does not leave the cluster.
   #
@@ -336,6 +337,9 @@ model_list:
       cache_read_input_token_cost: 0.00000026
       tpm: 400000
       rpm: 30
+      # Go's 5h window at 19% of $15 (README, OpenCode Go keys).
+      max_budget: 2.85
+      budget_duration: 5h
     model_info:
       mode: chat
       tags: ["flat", "opencode-go"]
@@ -360,6 +364,9 @@ model_list:
       cache_creation_input_token_cost: 0.000003
       tpm: 400000
       rpm: 30
+      # Go's 5h window at 19% of $15 (README, OpenCode Go keys).
+      max_budget: 2.85
+      budget_duration: 5h
     model_info:
       mode: chat
       tags: ["flat", "opencode-go"]
@@ -388,6 +395,9 @@ model_list:
       cache_creation_input_token_cost: 0.000000125
       tpm: 400000
       rpm: 30
+      # Go's 5h window at 19% of $15 (README, OpenCode Go keys).
+      max_budget: 2.85
+      budget_duration: 5h
     model_info:
       # The above-100K tier sits here, not in litellm_params: the router copies only
       # its fixed set of price keys (128k/200k/272k tiers) from litellm_params, while

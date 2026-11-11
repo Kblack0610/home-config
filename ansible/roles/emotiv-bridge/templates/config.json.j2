@@ -1,0 +1,26 @@
+{{ {
+  'cortex_url': emotiv_bridge_cortex_url,
+  'credentials_file': emotiv_bridge_config_dir ~ '/cortex.json',
+  'streams': emotiv_bridge_streams,
+  'chunk_seconds': emotiv_bridge_chunk_seconds,
+  'scan_interval_seconds': emotiv_bridge_scan_interval_seconds,
+  'heartbeat_seconds': emotiv_bridge_heartbeat_seconds,
+  'spool_dir': emotiv_bridge_spool_dir,
+  'age_bin': emotiv_bridge_age,
+  'age_recipient': emotiv_bridge_age_recipient,
+  'rsync_bin': emotiv_bridge_rsync,
+  'upload': {
+    'host': emotiv_bridge_upload_host,
+    'port': emotiv_bridge_upload_port,
+    'user': emotiv_bridge_upload_user,
+    'key': emotiv_bridge_config_dir ~ '/archive_ed25519',
+    'known_hosts': emotiv_bridge_config_dir ~ '/known_hosts',
+  },
+  'mqtt': {
+    'host': emotiv_bridge_mqtt_host,
+    'port': emotiv_bridge_mqtt_port,
+    'topic': emotiv_bridge_mqtt_topic,
+    'client_id': 'emotiv-bridge-' ~ inventory_hostname,
+    'keepalive_seconds': emotiv_bridge_heartbeat_seconds * 2,
+  },
+} | to_nice_json }}

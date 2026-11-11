@@ -1,0 +1,67 @@
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: eeg-backup
+  namespace: nas
+spec:
+  # Daily 6:15 AM. The Emotiv archive (roles/emotiv-archive-target): age-encrypted
+  # chunks the mac-mini deletes once uploaded, so the NAS copy is the only other one.
+  schedule: "15 6 * * *"
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      backoffLimit: 1
+      activeDeadlineSeconds: 21600
+      template:
+        spec:
+          nodeSelector:
+            kubernetes.io/hostname: asus-laptop
+            storage.role/nas: "true"
+          # Privileged: required for btrfs subvolume snapshot/delete commands
+          securityContext:
+            runAsUser: 0
+          containers:
+            - name: backup
+              image: alpine:3.24.1
+              securityContext:
+                privileged: true
+              # Guards, rsync, snapshot and prune live in mirror-snapshot.sh
+              # (the nas-mirror-script ConfigMap).
+              command: ["/bin/sh", "/scripts/mirror-snapshot.sh"]
+              env:
+                - name: NAME
+                  value: eeg
+                - name: KEEP
+                  value: "14"
+              volumeMounts:
+                - name: script
+                  mountPath: /scripts
+                  readOnly: true
+                - name: source
+                  mountPath: /source
+                  readOnly: true
+                - name: backup-dest
+                  mountPath: /backup-dest
+                - name: snapshots
+                  mountPath: /snapshots
+          restartPolicy: Never
+          volumes:
+            - name: script
+              configMap:
+                name: nas-mirror-script
+            - name: source
+              hostPath:
+                path: /mnt/nas/private/eeg
+                type: Directory
+            # Directory, not DirectoryOrCreate: the subvolumes come from the
+            # usb-backup-mounts role.
+            - name: backup-dest
+              hostPath:
+                path: /mnt/backup-8t/eeg
+                type: Directory
+            - name: snapshots
+              hostPath:
+                path: /mnt/backup-8t/eeg-snapshots
+                type: Directory

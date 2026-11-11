@@ -141,6 +141,8 @@ It adds three launchd jobs: `~/Library/LaunchAgents/com.emotiv.emotivapp.plist` 
 
 The Launcher is signed in to the human's EmotivID (`kblack0610`, since 2026-11-06) and stays signed in across restarts; rbw holds no Emotiv entry, so a new sign-in is the human's (see Troubleshooting). Account > My Licenses lists PRO Lite (1 device), BCI License (3 devices), a Studio Trial and a BrainViz Free Trial. Never buy a license from an agent session.
 
+While the headset is connected, the `emotiv-bridge` LaunchAgent records every stream the license allows and uploads it age-encrypted to the NAS (`/mnt/nas/private/eeg`). How it works, its keys, reading a session back and its troubleshooting: [`ansible/roles/emotiv-bridge/README.md`](../ansible/roles/emotiv-bridge/README.md).
+
 The Launcher also needs the Bluetooth privacy grant before it can see a headset over Bluetooth, and that grant is a person's one-time click (see Troubleshooting).
 
 Rollback: quit the apps, run `/Applications/EmotivApps/Emotiv Maintenance Tool.app` and choose remove all components, then check the three plists above are gone.

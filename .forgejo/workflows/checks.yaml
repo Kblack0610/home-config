@@ -102,6 +102,8 @@ jobs:
         run: sh ansible/roles/node-disk-metrics/files/test-node-disk-metrics.sh
       - name: ci-runner-cpu offline test
         run: sh ansible/roles/ci-runner-cpu/files/test-ci-runner-cpu.sh
+      - name: emotiv-bridge offline tests
+        run: node --test ansible/roles/emotiv-bridge/files/test-emotiv-bridge.mjs
 
   prometheus-rules:
     runs-on: docker

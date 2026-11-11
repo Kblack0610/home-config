@@ -96,6 +96,17 @@
     - role: usb-backup-mounts
       tags: [backup-mounts, storage]
 
+- name: Emotiv EEG archive on asus-laptop
+  # Where roles/emotiv-bridge on mac-mini uploads: a write-only rrsync user and
+  # /mnt/nas/private/eeg. Apply before the bridge, or its uploads queue in the spool.
+  #   ansible-playbook playbooks/site.yml --limit asus-laptop --tags emotiv
+  hosts: asus-laptop
+  become: true
+  gather_facts: false
+  roles:
+    - role: emotiv-archive-target
+      tags: [emotiv, storage]
+
 - name: Disk scrubs and SMART on asus-laptop
   # See roles/disk-health/README.md. Nothing scrubbed these filesystems before
   # 2026-10-31, so rot in a file nobody reads would have gone unnoticed.
@@ -249,6 +260,11 @@
     # the person's one-time privacy grants and no screen lock.
     - role: macos-agent-tools
       tags: [mac, agent-tools]
+    # Records the Emotiv EPOC X while it is connected and uploads it encrypted
+    # to the NAS (roles/emotiv-bridge/README.md). The NAS end is the
+    # emotiv-archive-target play above.
+    - role: emotiv-bridge
+      tags: [mac, emotiv]
   tasks:
     # Unity's iOS and Mac IL2CPP modules for the editors unity-ci-host-mac
     # manages, for the playground's iOS and Mac builds on this box's

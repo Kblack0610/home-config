@@ -1,0 +1,52 @@
+---
+- name: Create the upload user
+  ansible.builtin.user:
+    name: "{{ emotiv_archive_user }}"
+    system: true
+    home: "/var/lib/{{ emotiv_archive_user }}"
+    create_home: true
+    shell: /bin/sh
+    password: "!"
+    comment: Emotiv EEG archive uploads (roles/emotiv-archive-target)
+
+# /mnt/nas/private is root 0770; the user needs only to pass through it.
+- name: Let the upload user traverse the private share
+  ansible.posix.acl:
+    path: /mnt/nas/private
+    entity: "{{ emotiv_archive_user }}"
+    etype: user
+    permissions: x
+    state: present
+  # In check mode the user does not exist yet, so setfacl cannot name it.
+  ignore_errors: "{{ ansible_check_mode }}"
+
+- name: Create the archive directory
+  ansible.builtin.file:
+    path: "{{ emotiv_archive_dir }}"
+    state: directory
+    owner: "{{ emotiv_archive_user }}"
+    group: root
+    mode: "0750"
+
+# Also what keeps the 8TB mirror's empty-source guard (apps/nas/mirror-snapshot.sh)
+# from failing before the first wear.
+- name: Explain the directory to whoever browses it
+  ansible.builtin.copy:
+    dest: "{{ emotiv_archive_dir }}/README.txt"
+    owner: root
+    group: root
+    mode: "0644"
+    content: |
+      Emotiv EPOC X archive, written by the emotiv-bridge LaunchAgent on mac-mini.
+      <date>/<start>-<session>/<stream>-<NNNN>.jsonl.gz.age, one file per stream per 5 minutes.
+      Each is age-encrypted to the EEG identity in home-config
+      ansible/roles/emotiv-bridge/eeg-identity.sops.yaml; nothing on this box can read them.
+      Managed by home-config ansible/roles/emotiv-archive-target.
+
+- name: Authorize the bridge's key, confined by rrsync
+  ansible.posix.authorized_key:
+    user: "{{ emotiv_archive_user }}"
+    key: "{{ emotiv_archive_pubkey }}"
+    key_options: 'restrict,command="/usr/bin/rrsync -wo {{ emotiv_archive_dir }}"'
+    exclusive: true
+  ignore_errors: "{{ ansible_check_mode }}"

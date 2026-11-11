@@ -17,6 +17,7 @@ resources:
   - markets-recorder-cronjob.yaml
   - markets-venue-recorders-cronjob.yaml
   - markets-compact-cronjob.yaml
+  - markets-history-cronjob.yaml
   - trader-markets-s3-secret.sops.yaml
   - futures-cronjob.yaml
   - trader-db-secret.sops.yaml

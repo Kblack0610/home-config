@@ -110,3 +110,18 @@ spec:
           annotations:
             summary: "LiteLLM proxy failure rate > 10% for 10m"
             description: "Across all virtual keys and models, {{ humanizePercentage $value }} of requests are failing. Check `kubectl -n ai-gateway logs deploy/litellm` for auth, DB, or upstream errors."
+
+        # Guessed-key probing. Counts 401s at Traefik, because LiteLLM's own
+        # failed-requests metric misses invalid-key 401s. Baseline is about 17 a
+        # day (agents calling admin routes); 2026-11-07 a scanner sent 190k in
+        # two hours (hc-213). A counter over a window, no hold, so a short burst
+        # still fires.
+        - alert: LiteLLMAuthFailureSpike
+          expr: |
+            sum(increase(traefik_service_requests_total{service="ai-gateway-litellm-4000@kubernetes",code="401"}[15m])) > 30
+          labels:
+            severity: warning
+            category: security
+          annotations:
+            summary: "LiteLLM gateway: {{ $value | printf \"%.0f\" }} rejected keys in 15m"
+            description: "Something is sending keys the gateway does not know. Spend is safe (an unknown key gets nothing), but find the caller: the keys tried are in LiteLLM_SpendLogs (status failure, error_code 401), and llm.kblab.me should have no public DNS record (dig +short llm.kblab.me @1.1.1.1 prints nothing). apps/litellm/README.md, Exposure."

@@ -56,6 +56,7 @@ nowhere (the thinkcentre power outage paged no one).
 - **Subscribe (phone/desktop):** open `https://ntfy.kblab.me/homelab-alerts` in
   the ntfy app, or `ntfy subscribe homelab-alerts` (LAN/Tailscale only).
 - **Criticals** (e.g. `NodeDown`) remind hourly until resolved; warnings every 12h.
+- **Digest, not page:** `category=security` (Trivy CVEs, one alert per image) goes to `ntfy-digest` at priority 2, at most daily, weekly reminder. Failed Jobs are `HomelabCronJobFailed` (one per CronJob, resolves on the next green run) and `HomelabJobFailed` (a Job no CronJob owns); the bundled `KubeJobFailed` is disabled because it never resolved.
 - The receiver is plain webhook → ntfy renders the Alertmanager JSON payload.
   A formatting relay for prettier pages is a noted follow-up.
 

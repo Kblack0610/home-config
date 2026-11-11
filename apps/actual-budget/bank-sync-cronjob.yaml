@@ -8,7 +8,7 @@
 # It also fails when the newest transaction across ALL accounts is older than
 # STALE_DAYS, so a stall that the sync call itself does not report (a bank
 # dropping out of SimpleFIN, an orphaned account id) still turns the job red and
-# KubeJobFailed pages. Per-account staleness would false-trip: 360 Checking and
+# HomelabCronJobFailed pages. Per-account staleness would false-trip: 360 Checking and
 # the Money Market see no transactions for weeks at a time. The Amex card alone
 # posts several a day, so the aggregate going quiet for 5 days is a real stall.
 #

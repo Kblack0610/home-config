@@ -16,16 +16,62 @@ spec:
     - name: homelab-scheduled-jobs.alerts
       interval: 1m
       rules:
-        # NOTE: there is deliberately no "job failed" alert here. The bundled
-        # kube-prometheus-stack rule KubeJobFailed already covers it with the
-        # same metric, threshold and 15m window, and it routes to the same
-        # ntfy topic - a second copy would just page twice for every failure.
+        # These replace the bundled KubeJobFailed (disabled in helm-values.yaml).
+        # That rule fires once per failed Job object, and a failed Job stays
+        # until failedJobsHistoryLimit rotates it out, so a later green run
+        # never resolved it: on 2026-11-11 it held 41 alerts, some from August,
+        # all in one Alertmanager group, and a real NodeDiskLow went unread.
         #
-        # KubeJobFailed had in fact been firing for flux-audit continuously,
-        # because that job reported findings by exiting 1. An alert that fires
-        # every night for something working is how alert fatigue starts, and
-        # it is why nobody acted on it. That is fixed at the source in
-        # apps/flux-audit/cronjob.yaml rather than by muting the alert here.
+        # One alert per CronJob, firing while its newest failed run started
+        # after its last successful one. The next green run resolves it.
+        - alert: HomelabCronJobFailed
+          expr: |
+            (
+              max by (namespace, owner_name) (
+                (kube_job_status_start_time * on (namespace, job_name) group_left (owner_name) kube_job_owner{owner_kind="CronJob"})
+                and on (namespace, job_name) (kube_job_failed{condition="true"} > 0)
+              )
+              > on (namespace, owner_name)
+              max by (namespace, owner_name) (
+                label_replace(kube_cronjob_status_last_successful_time, "owner_name", "$1", "cronjob", "(.*)")
+              )
+            )
+            or
+            (
+              max by (namespace, owner_name) (
+                (kube_job_status_start_time * on (namespace, job_name) group_left (owner_name) kube_job_owner{owner_kind="CronJob"})
+                and on (namespace, job_name) (kube_job_failed{condition="true"} > 0)
+              )
+              unless on (namespace, owner_name)
+              label_replace(kube_cronjob_status_last_successful_time, "owner_name", "$1", "cronjob", "(.*)")
+            )
+          for: 15m
+          labels:
+            severity: warning
+            category: scheduled-jobs
+          annotations:
+            summary: "CronJob failing: {{ $labels.namespace }}/{{ $labels.owner_name }}"
+            description: >-
+              The newest run of {{ $labels.namespace }}/{{ $labels.owner_name }}
+              failed and no run has succeeded since. Logs:
+              kubectl -n {{ $labels.namespace }} get jobs, then logs of the newest
+              failed one. Resolves on the next successful run.
+
+        # A failed Job no CronJob owns (a bootstrap or one-off Job) has no next
+        # run to resolve it. It fires until the Job is fixed or deleted.
+        - alert: HomelabJobFailed
+          expr: |
+            max by (namespace, job_name) (kube_job_failed{condition="true"} > 0)
+            unless on (namespace, job_name) kube_job_owner{owner_kind="CronJob"}
+          for: 15m
+          labels:
+            severity: warning
+            category: scheduled-jobs
+          annotations:
+            summary: "Job failed: {{ $labels.namespace }}/{{ $labels.job_name }}"
+            description: >-
+              {{ $labels.namespace }}/{{ $labels.job_name }} failed and no CronJob
+              will re-run it. Fix and re-run it, or delete the Job once read.
 
         # A CronJob that stops being scheduled at all is the quietest failure
         # of the lot: no failed job exists to alert on, the check simply stops.

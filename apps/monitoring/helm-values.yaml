@@ -56,6 +56,22 @@ alertmanager:
         # iot-pi-nodes sleep by design.
         - matchers: [alertname = "TargetDown", job = "iot-pi-nodes"]
           receiver: "null"
+        # CVEs need a tag bump this week, not a page: one quiet message (p=low)
+        # naming up to 10 images, at most once a day while the list changes,
+        # else weekly. The full list: alertmanager.kblab.me, filter
+        # category=security.
+        # On the page route they were 174 of 290 firing alerts and buried a
+        # real NodeDiskLow (2026-11-10).
+        - matchers: [category = "security"]
+          receiver: ntfy-digest
+          group_by: [alertname]
+          group_interval: 24h
+          repeat_interval: 168h
+        # One group per CronJob, so a new failure is its own message.
+        - matchers: [category = "scheduled-jobs"]
+          receiver: ntfy
+          group_by: [alertname, namespace, owner_name, job_name, cronjob]
+          repeat_interval: 24h
         # Spend over budget needs you today, not hourly, and is no outage.
         - matchers: [severity = "critical", category = "cost"]
           receiver: ntfy-high
@@ -74,6 +90,11 @@ alertmanager:
         webhook_configs:
           - url: "http://ntfy.ntfy.svc.cluster.local/homelab-alerts?tpl=yes&t=%7B%7Bif%20eq%20.status%20%22resolved%22%7D%7DResolved%7B%7Belse%7D%7DFiring%7B%7Bend%7D%7D%3A%20%7B%7B.commonLabels.alertname%7D%7D&m=%7B%7Brange%20.alerts%7D%7D%7B%7Bif%20eq%20.status%20%22resolved%22%7D%7DOK%3A%20%7B%7Bend%7D%7D%7B%7Bor%20.annotations.summary%20.labels.alertname%7D%7D%0A%7B%7Bend%7D%7D%7B%7Bif%20.truncatedAlerts%7D%7D%2B%7B%7B.truncatedAlerts%7D%7D%20more%7B%7Bend%7D%7D&p=default"
             send_resolved: true
+            max_alerts: 10
+      - name: ntfy-digest
+        webhook_configs:
+          - url: "http://ntfy.ntfy.svc.cluster.local/homelab-alerts?tpl=yes&t=%7B%7Bif%20eq%20.status%20%22resolved%22%7D%7DResolved%7B%7Belse%7D%7DFiring%7B%7Bend%7D%7D%3A%20%7B%7B.commonLabels.alertname%7D%7D&m=%7B%7Brange%20.alerts%7D%7D%7B%7Bif%20eq%20.status%20%22resolved%22%7D%7DOK%3A%20%7B%7Bend%7D%7D%7B%7Bor%20.annotations.summary%20.labels.alertname%7D%7D%0A%7B%7Bend%7D%7D%7B%7Bif%20.truncatedAlerts%7D%7D%2B%7B%7B.truncatedAlerts%7D%7D%20more%7B%7Bend%7D%7D&p=low"
+            send_resolved: false
             max_alerts: 10
       - name: ntfy-high
         webhook_configs:
@@ -139,6 +160,10 @@ defaultRules:
     NodeFilesystemSpaceFillingUp: true
     NodeFilesystemAlmostOutOfFiles: true
     NodeFilesystemFilesFillingUp: true
+    # Replaced by HomelabCronJobFailed and HomelabJobFailed in
+    # prometheus-rules-jobs.yaml: this one fires per failed Job object, and a
+    # later green run never resolves it.
+    KubeJobFailed: true
   rules:
     alertmanager: true
     configReloaders: true

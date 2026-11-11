@@ -54,10 +54,13 @@ spec:
             max by (topic) (changes(mqtt_message_total{topic=~"agents_.+"}[20m]) > 0) * 0 + 1
         # What each sentinel watch means, one row per watch that is not ok: its weight when
         # tripped, 1 when not polled in 3x interval. A watch's domain and weight live only here.
+        # home_k3s_trivy_criticals, a fixable-CVE ratchet, is posture and not an outage, so it warns:
+        # fleet-shepherd infra reads a red k3s domain as a cluster outage and holds every fleet-dispatch
+        # start. Its own Sentinel page and the HomelabCriticalVulnerability alert still report a trip.
         - record: cc:watch_state
           labels: {domain: k3s}
           expr: >-
-            max by (item) (label_replace(((mqtt_tripped{topic=~"agents_.+_watch_(home_k3s_.+|cluster_janitor_alive)"} and on (topic) cc:agents_topic_live) * 2 > 0) or ((mqtt_stale{topic=~"agents_.+_watch_(home_k3s_.+|cluster_janitor_alive)"} and on (topic) cc:agents_topic_live) > 0), "item", "$1", "topic", "agents_.+_watch_(.+)"))
+            max by (item) (label_replace(((mqtt_tripped{topic=~"agents_.+_watch_(home_k3s_.+|cluster_janitor_alive)",topic!~"agents_.+_watch_home_k3s_trivy_criticals"} and on (topic) cc:agents_topic_live) * 2 > 0) or ((mqtt_tripped{topic=~"agents_.+_watch_home_k3s_trivy_criticals"} and on (topic) cc:agents_topic_live) * 1 > 0) or ((mqtt_stale{topic=~"agents_.+_watch_(home_k3s_.+|cluster_janitor_alive)"} and on (topic) cc:agents_topic_live) > 0), "item", "$1", "topic", "agents_.+_watch_(.+)"))
         - record: cc:watch_state
           labels: {domain: prod}
           expr: >-

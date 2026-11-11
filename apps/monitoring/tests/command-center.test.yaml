@@ -277,6 +277,32 @@ tests:
           - labels: 'cc:component_status{domain="agents",component="runners"}'
             value: 0
 
+  - name: a k3s outage watch is red, the CVE ratchet only warns, tripped or stale
+    interval: 1m
+    input_series:
+      - series: 'mqtt_tripped{topic="agents_h_watch_home_k3s_node_ready"}'
+        values: '1x10'
+      - series: 'mqtt_tripped{topic="agents_h_watch_home_k3s_trivy_criticals"}'
+        values: '0x10'
+      - series: 'mqtt_stale{topic="agents_h_watch_home_k3s_trivy_criticals"}'
+        values: '1x10'
+      - series: 'mqtt_message_total{topic="agents_h_watch_home_k3s_node_ready"}'
+        values: '0+1x10'
+      - series: 'mqtt_message_total{topic="agents_h_watch_home_k3s_trivy_criticals"}'
+        values: '0+1x10'
+    promql_expr_test:
+      - expr: cc:watch_state{domain="k3s"}
+        eval_time: 5m
+        exp_samples:
+          - labels: 'cc:watch_state{domain="k3s",item="home_k3s_node_ready"}'
+            value: 2
+          - labels: 'cc:watch_state{domain="k3s",item="home_k3s_trivy_criticals"}'
+            value: 1
+      - expr: cc:domain_status{domain="k3s"}
+        eval_time: 5m
+        exp_samples:
+          - labels: 'cc:domain_status{domain="k3s"}'
+            value: 2
   - name: watch state names each item in its domain at its weight, and burst power is no fault
     interval: 1m
     input_series:
@@ -291,6 +317,8 @@ tests:
       - series: 'mqtt_tripped{topic="agents_h_watch_heal_flapping"}'
         values: '1x10'
       - series: 'mqtt_tripped{topic="agents_h_watch_board_chain"}'
+        values: '1x10'
+      - series: 'mqtt_tripped{topic="agents_h_watch_home_k3s_trivy_criticals"}'
         values: '1x10'
       - series: 'mqtt_tripped{topic="agents_h_watch_fleet_thermal"}'
         values: '1x10'
@@ -317,6 +345,8 @@ tests:
         values: '0+1x10'
       - series: 'mqtt_message_total{topic="agents_h_watch_board_chain"}'
         values: '0+1x10'
+      - series: 'mqtt_message_total{topic="agents_h_watch_home_k3s_trivy_criticals"}'
+        values: '0+1x10'
       - series: 'mqtt_message_total{topic="agents_h_watch_fleet_thermal"}'
         values: '0+1x10'
       - series: 'mqtt_message_total{topic="agents_h_watch_claude_account_pace"}'
@@ -335,6 +365,8 @@ tests:
         exp_samples:
           - labels: 'cc:watch_state{domain="ci",item="playground_nightly"}'
             value: 2
+          - labels: 'cc:watch_state{domain="k3s",item="home_k3s_trivy_criticals"}'
+            value: 1
           - labels: 'cc:watch_state{domain="queue",item="queue_starved"}'
             value: 1
           - labels: 'cc:watch_state{domain="queue",item="heal_flapping"}'
@@ -349,9 +381,11 @@ tests:
             value: 2
           - labels: 'cc:watch_state{domain="home",item="voice_bedroom_puck"}'
             value: 2
-      - expr: cc:domain_status{domain=~"ci|queue|machines|spend|other|home|platform"}
+      - expr: cc:domain_status{domain=~"k3s|ci|queue|machines|spend|other|home|platform"}
         eval_time: 5m
         exp_samples:
+          - labels: 'cc:domain_status{domain="k3s"}'
+            value: 1
           - labels: 'cc:domain_status{domain="ci"}'
             value: 2
           - labels: 'cc:domain_status{domain="queue"}'

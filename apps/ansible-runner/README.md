@@ -6,7 +6,7 @@ Flux-managed in-cluster runner for Ansible playbooks. Replaces Semaphore UI with
 
 | Job | Schedule | Behavior |
 |-----|----------|----------|
-| `convergence-check` CronJob | 04:00 daily, America/Los_Angeles | Clones `home-config` at master, runs `ansible-playbook playbooks/site.yml --check --diff`, limited to the hosts in `HOSTS` (in `cronjob.yaml`) that answer SSH. Logs drift. Does NOT change state. |
+| `convergence-check` CronJob | 04:00 daily, America/Los_Angeles | Clones `home-config` at master, runs `ansible-playbook playbooks/site.yml --check --diff`, limited to the hosts in `HOSTS` (in `cronjob.yaml`) that answer SSH. Logs drift and writes the PLAY RECAP as metrics for the `ConvergenceDrift` alert. Does NOT change state. |
 
 The playbook comes straight from git master on every execution — there is no baked-in version. Edit `ansible/` in git, push, next scheduled run picks it up.
 
@@ -115,6 +115,18 @@ ssh kblack0610@192.168.1.243 'sudo systemctl start systemd-timesyncd'
 ```
 
 Next run: `changed=0` (or 1 for the cosmetic token-fetch task).
+
+## ConvergenceDrift
+
+After each run the job writes every host's PLAY RECAP counts to `/var/lib/node-exporter-textfile/ansible-convergence.prom` on the node its pod ran on: `ansible_convergence_recap{host,status}` and `ansible_convergence_run_timestamp_seconds{host}`. The alert (`apps/monitoring/prometheus-rules-jobs.yaml`, warning, `fleet: fix`) fires when a host's newest run, under 2 days old, has `changed > 0`. Files from older runs stay on other nodes; the rule ignores them by timestamp.
+
+A firing alert means the host is not in the state git describes, and the next ansible-playbook apply would change it. On 2026-11-10 razer still ran a stale `linux-ci-docker-cleanup.service` without `ci-disk-prune.sh` and filled its disk to 91%.
+
+To clear it:
+
+1. Read the latest run's changed tasks: `kubectl -n ansible-runner logs job/<latest> | grep -B3 '^changed:'`. Kubelet rotates long logs, so if the start is cut off, run the check locally: `cd ansible && ansible-playbook playbooks/site.yml --limit <host> --check --diff`.
+2. For each task, decide which side is wrong. If the host drifted, apply the role (`--limit <host> --tags <role>`, or Option A/B above). If the task reports a change in check mode on a converged host, fix the task (`changed_when`, `check_mode: false` on a read-only probe) in a PR.
+3. Trigger a dry-run (above). The alert resolves once the new run reports `changed=0` for that host.
 
 ## Operations
 

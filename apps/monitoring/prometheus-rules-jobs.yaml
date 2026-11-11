@@ -52,3 +52,30 @@ spec:
               is more than 6h past its own next scheduled run. Daily backups
               and the flux audit both live here; silence from one of them is
               indistinguishable from success without this alert.
+
+    - name: homelab-scheduled-jobs.convergence
+      rules:
+        # The nightly ansible --check (apps/ansible-runner/cronjob.yaml) writes its PLAY RECAP
+        # to the node-exporter textfile dir of the node its pod ran on, so a host can have a
+        # file on several nodes: read only its newest run, and only if that is under 2 days old.
+        # On 2026-11-10 razer ran a stale linux-ci-docker-cleanup.service without
+        # ci-disk-prune.sh and filled to 91%; that night's check had listed the unit as changed.
+        # `fleet: fix` queues it for an agent, see prometheus-rules-capacity.yaml.
+        # Tests: apps/monitoring/tests/jobs.test.yaml.
+        - alert: ConvergenceDrift
+          expr: |
+            max by (host) (
+              ansible_convergence_recap{status="changed"} > 0
+              and on (host, instance)
+                ansible_convergence_run_timestamp_seconds
+                  == on (host) group_left () max by (host) (ansible_convergence_run_timestamp_seconds)
+              and on (host, instance)
+                time() - ansible_convergence_run_timestamp_seconds < 2 * 86400
+            )
+          for: 15m
+          labels:
+            severity: warning
+            category: scheduled-jobs
+            fleet: fix
+          annotations:
+            summary: "{{ $labels.host }}: ansible --check would change {{ $value }} tasks: apps/ansible-runner/README.md#convergencedrift"

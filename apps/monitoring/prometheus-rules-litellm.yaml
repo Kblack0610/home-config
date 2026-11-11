@@ -93,23 +93,30 @@ spec:
             category: availability
           annotations:
             summary: "LiteLLM upstream {{ $labels.litellm_model_name }} unhealthy (state {{ $value }})"
-            description: "Upstream '{{ $labels.litellm_model_name }}' (provider {{ $labels.api_provider }}) is in deployment_state {{ $value }} — LiteLLM is shedding traffic from it. Check api_base reachability and upstream service logs."
+            description: "Upstream '{{ $labels.litellm_model_name }}' (provider {{ $labels.api_provider }}) at {{ $labels.api_base }} is in deployment_state {{ $value }}: LiteLLM is shedding traffic from it. Check api_base reachability and upstream service logs."
 
-        # Proxy-side failure rate across all routes. Catches gateway-level
-        # auth/config/database problems that aren't tied to a single upstream.
+        # Proxy-side failure rate per requested route. Catches gateway-level
+        # auth/config/database problems, and a quota-capped route (the OpenCode
+        # Go routes refuse past their plan window) failing while the rest are
+        # fine, which an all-routes ratio drowns. The volume floor keeps one
+        # failed probe on an idle route from firing it.
         - alert: LiteLLMHighFailureRate
           expr: |
-            sum(rate(litellm_proxy_failed_requests_metric_total[10m]))
-            /
-            clamp_min(sum(rate(litellm_proxy_total_requests_metric_total[10m])), 0.001)
-            > 0.10
+            (
+              sum by (requested_model) (rate(litellm_proxy_failed_requests_metric_total[10m]))
+              /
+              clamp_min(sum by (requested_model) (rate(litellm_proxy_total_requests_metric_total[10m])), 0.001)
+              > 0.10
+            )
+            and on (requested_model)
+            sum by (requested_model) (increase(litellm_proxy_total_requests_metric_total[10m])) >= 5
           for: 10m
           labels:
             severity: warning
             category: availability
           annotations:
-            summary: "LiteLLM proxy failure rate > 10% for 10m"
-            description: "Across all virtual keys and models, {{ humanizePercentage $value }} of requests are failing. Check `kubectl -n ai-gateway logs deploy/litellm` for auth, DB, or upstream errors."
+            summary: "LiteLLM route {{ $labels.requested_model }} failure rate > 10% for 10m"
+            description: "{{ humanizePercentage $value }} of requests to '{{ $labels.requested_model }}' are failing. Check `kubectl -n ai-gateway logs deploy/litellm` for auth, DB, budget or upstream errors."
 
         # Guessed-key probing. Counts 401s at Traefik, because LiteLLM's own
         # failed-requests metric misses invalid-key 401s. Baseline is about 17 a

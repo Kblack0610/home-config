@@ -8,7 +8,7 @@ LLM gateway deployment in the `ai-gateway` namespace, exposed through Traefik at
 |------|---------|
 | `kustomization.yaml` | Reconciles the namespace, app, service, and ingress |
 | `configmap.yaml` | LiteLLM config mounted into the container |
-| `secret.sops.yaml` | SOPS-encrypted `litellm-db-secrets`: DATABASE_URL, salt key, UI creds, Lazer key |
+| `secret.sops.yaml` | SOPS-encrypted `litellm-db-secrets`: DATABASE_URL, salt key, UI creds, Lazer, Gemini and OpenCode Go keys |
 | `deployment.yaml` | Main gateway workload and health checks |
 | `service.yaml` | Cluster service on port `4000` |
 | `ingress.yaml` | TLS ingress for `llm.kblab.me`, kept off public DNS |
@@ -53,6 +53,16 @@ Each key's consumer and priority live on the key itself (`metadata.consumer`, `m
 curl -s "https://llm.kblab.me/key/list?return_full_object=true&size=100" -H "Authorization: Bearer $(cat ~/.local/state/agentctl/eval-reader.key)" \
   | jq -r '.keys[] | [.key_alias, (.team_id // "-")[0:8], (.max_budget // "-"), (.budget_duration // "-"), (.spend*100|round/100), (.blocked // false), .metadata.priority, .metadata.consumer] | @tsv' | column -t -s $'\t'
 ```
+
+### OpenCode Go keys
+
+The `go (...)` routes spend the OpenCode Go plan ($10/mo flat, key `OPENCODE_GO_API_KEY`, from rbw `opencode-go-api-key`), not the Lazer allowance, so their keys sit in no team: a team over its budget (lazer-pool, 2026-11-11) refuses every key in it, whatever the route. Check `team_id` is null with `/key/info` before a key's first run.
+
+| Key | Models | Budgets | Consumer | Key file |
+|---|---|---|---|---|
+| `fleet-go` | the three `go (...)` routes | `max_budget` $21 / 7d; `model_max_budget` $2.85 / 5h per route | fleet-dispatch harness `opencode-go` (priority low) | `~/.local/state/agentctl/fleet-go.key` |
+
+The budgets mirror Go's windows a little under the plan, so the gateway refuses before Go does and the refusal reads as a budget, not an upstream error. Go gives each model $15/mo (docs/go, Go column), spent 20% per 5h ($3.00) and 50% per week ($7.50). LiteLLM holds one window per model in `model_max_budget`, so that is the 5h one at 19%; the week is the key's `max_budget`, 95% of the three models' $7.50, and the month is left to Go itself (Extra Usage off in the OpenCode console, so a spent window is a refusal there, never a charge). LiteLLM's windows reset on a fixed clock where Go's may roll, and `model_max_budget` spend is held in memory, so a pod restart clears the 5h counter. Add a route: add it to the key's `models` and `model_max_budget` (`/key/update`) and raise `max_budget` by 95% of its weekly allowance.
 
 `eval-reader` is a `proxy_admin_viewer`: it reads keys, teams and spend but calls no model. Set a new key's `team_id`, `metadata.consumer` and `metadata.priority` when you mint it.
 

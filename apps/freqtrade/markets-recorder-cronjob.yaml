@@ -65,9 +65,11 @@ spec:
                   valueFrom:
                     secretKeyRef: {name: trader-markets-s3, key: S3_SECRET_KEY}
               resources:
-                # measured 470 MB peak on a full 179k-market sweep
+                # Measured 1894 MB peak RSS on a full 171k-market sweep (2026-11-11, hc-248); the
+                # 1Gi limit OOM-killed every run from 2026-11-10 11:00Z and paged NodeOomKillStorm.
+                # Up from 470 MB on 179k markets: why it grew is board row tr-184.
                 requests:
                   cpu: 200m
-                  memory: 512Mi
+                  memory: 2Gi
                 limits:
-                  memory: 1Gi
+                  memory: 3Gi

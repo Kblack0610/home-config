@@ -133,6 +133,18 @@ The mac-mini is the agent machine: set aside for agents to have full control of 
 
 The desktop needs a one-time grant by a person, because macOS (TCC) lets only a click in System Settings allow screen capture and synthetic input, and refuses synthetic clicks on those switches. macOS attributes an ssh session's requests to `/usr/libexec/sshd-keygen-wrapper`, so that is what gets the grant: System Settings > Privacy & Security > Accessibility, and > Screen & System Audio Recording: + > Cmd+Shift+G > `/usr/libexec/sshd-keygen-wrapper` > switch it on. Click Allow on any "sshd-keygen-wrapper wants to control ..." prompt. `ansible-playbook playbooks/site.yml --limit mac-mini --tags agent-tools` (role `macos-agent-tools`) checks the grants and the screen lock and prints these steps when one is missing. The CI runner is a LaunchAgent, not sshd, so CI jobs do not get the grant.
 
+## Emotiv EEG headset (mac-mini)
+
+The mac-mini runs Emotiv Launcher and EmotivPRO for the EPOC-family headset (board row `hc-132`). There is no brew cask, so the install is manual: Emotiv-Installer-mac.dmg from emotiv.com (My Account > Downloads), with EmotivPRO ticked. It lands in `/Applications/EmotivApps/` (Launcher 4.13.6.528, EmotivPRO 4.13.6.578, plus EmotivBCI, BrainViz and the Maintenance Tool) and adds the "Emotiv CA Root" certificate to the System keychain, which Cortex needs for its local wss endpoint.
+
+It adds three launchd jobs: `~/Library/LaunchAgents/com.emotiv.emotivapp.plist` (the Launcher window at login) and `com.emotiv.cortexv2` and `com.emotiv.sync` (CortexService and CortexSync, KeepAlive). Idle they cost about 3% CPU and 290 MB RSS together, small enough to leave running beside CI.
+
+The Launcher is signed in to the human's EmotivID (`kblack0610`, since 2026-11-06) and stays signed in across restarts; rbw holds no Emotiv entry, so a new sign-in is the human's (see Troubleshooting). Account > My Licenses lists PRO Lite (1 device), BCI License (3 devices), a Studio Trial and a BrainViz Free Trial. Never buy a license from an agent session.
+
+The Launcher also needs the Bluetooth privacy grant before it can see a headset over Bluetooth, and that grant is a person's one-time click (see Troubleshooting).
+
+Rollback: quit the apps, run `/Applications/EmotivApps/Emotiv Maintenance Tool.app` and choose remove all components, then check the three plists above are gone.
+
 ## Monitoring
 
 The mac-mini runs [node_exporter](https://github.com/prometheus/node_exporter) on `:9100` (managed by the `node-exporter-mac` role), scraped by cluster Prometheus via the `mac-nodes` ServiceMonitor (`apps/monitoring/external-mac-nodes.yaml`, every 30s).
@@ -178,6 +190,14 @@ rbw get mac_fleet_password | ssh -T mac-mini 'read -r v; caffeinate -u -t 2; sle
 ### A macOS prompt asks to "bypass the system private window picker" (mac-mini)
 
 "com.apple.sshd-session is requesting to bypass the system private window picker and directly access your screen and audio" follows the Screen Recording grant and comes back every 30 days, on the date in `kScreenCapturePrivacyHintDate` for `/usr/libexec/sshd-keygen-wrapper` in `~/Library/Group Containers/group.com.apple.replayd/ScreenCaptureApprovals.plist`. That file only reports the clock: edits to the hint date, the last-alerted date or the 30-day policy were all put back by the next capture on macOS 26.5.2, even with `replayd` stopped (tested 2026-11-06). Only a person's click resets it. It covers the middle of the screen until someone at the Mac clicks Allow; agents do not click consent prompts.
+
+### Emotiv Launcher needs to be signed in again (mac-mini)
+
+The Launcher's Sign in opens a Safari sheet on id.emotiv.com that does not share a browser's emotiv.com session, and rbw holds no EmotivID entry, so a person signs in once in that sheet with Remember me on. `grep 'login done' ~/Library/Application\ Support/Emotiv/EmotivApp/logs/*.txt` on the mini shows each successful sign-in with the account name.
+
+### Emotiv Launcher shows "needs your device's permission to use Bluetooth" (mac-mini)
+
+The yellow banner on Devices, and its Proceed button, lead to a System Settings privacy grant that macOS will not take from a synthetic click. A person opens System Settings > Privacy & Security > Bluetooth, adds `/Applications/EmotivApps/EMOTIV Launcher.app` and switches it on, then restarts the Launcher. If it still sees no headset, remove the Launcher entry there and add it again.
 
 ### Chrome starts but shows no window (mac-mini)
 

@@ -793,14 +793,19 @@ def restored(host, now, launched=0.0):
     opens two cycles after midnight, past a pod's last value from yesterday. The cause looks
     back to the launch, not to midnight, and past "none": a pod that could not tell the
     cause exported "none", and a run that started yesterday started for yesterday's reason.
-    None when Prometheus cannot say (logged), so the next cycle asks again."""
+    The window opens two cycles before the launch, for the "starting" sample of the start
+    call. launched is 0 for a host not up (power_readings), which reads today's stop reason
+    instead of looking back to a start weeks ago. None when Prometheus cannot say (logged),
+    or in the first two cycles after midnight with no launch, so the next cycle asks again."""
     today = now % 86_400 - 2 * CYCLE_SECONDS
-    run = now - launched if launched else today
+    if today < CYCLE_SECONDS and not launched:
+        return None
+    run = now - launched + 2 * CYCLE_SECONDS if launched else today
     sel = f'host="{host}"'
     try:
         hours = 0.0 if today < CYCLE_SECONDS else max((float(r["value"][1]) for r in prom(
             f"max(max_over_time(ci_governor_power_hours_today{{{sel}}}[{int(today)}s]))")), default=0.0)
-        last = [] if run < CYCLE_SECONDS else prom(
+        last = prom(
             f'topk(1, max_over_time(timestamp(ci_governor_power_state{{{sel},reason!="none"}})[{int(run)}s:]))')
     except API_ERRORS as e:
         print(f"{host}: earlier run time and cause unread, counting from the launch time: {e}", flush=True)
@@ -858,7 +863,7 @@ def power_readings(cfg, runners, tracked, now):
                   flush=True)
         t.setdefault("restore", True)
         count_run_time(t, state, now, launched)
-        back = restored(host, now, launched) if t["restore"] else None
+        back = restored(host, now, launched if state in ("pending", "running") else 0.0) if t["restore"] else None
         if back:
             seconds, cause, was_up = back
             t["restore"] = False

@@ -574,9 +574,12 @@ class GovernorTest(unittest.TestCase):
         self.assertIn(f"[{10 * 3600 - 2 * governor.CYCLE_SECONDS}s]", prom.call_args_list[0].args[0])
         with mock.patch.object(governor, "prom", side_effect=[[], []]):  # no cause on record
             self.assertEqual(RESTORED("aws-burst-1", day + 3600), (0.0, "", False))
-        with mock.patch.object(governor, "prom") as prom:  # just past midnight, launch unknown
-            self.assertEqual(RESTORED("aws-burst-1", day + 60), (0.0, "", False))
+        with mock.patch.object(governor, "prom") as prom:  # just past midnight, not up: ask again
+            self.assertIsNone(RESTORED("aws-burst-1", day + 60))
         prom.assert_not_called()
+        with mock.patch.object(governor, "prom", side_effect=urllib.error.URLError("down")), \
+                mock.patch("builtins.print"):
+            self.assertIsNone(RESTORED("aws-burst-1", day + 3600))
 
     def test_a_restart_finds_the_start_cause_since_the_launch_past_none_and_midnight(self):
         # hc-223: started by an override before midnight, then pods that exported "none".
@@ -587,10 +590,21 @@ class GovernorTest(unittest.TestCase):
         self.assertEqual(back, (0.0, "override", True))
         query = prom.call_args.args[0]  # the day's hours are not read this close to midnight
         self.assertIn('reason!="none"', query)
-        self.assertIn(f"[{8 * 3600 + 60}s:]", query)
-        with mock.patch.object(governor, "prom", side_effect=urllib.error.URLError("down")), \
-                mock.patch("builtins.print"):
-            self.assertIsNone(RESTORED("aws-burst-1", day + 3600))
+        self.assertIn(f"[{8 * 3600 + 60 + 2 * governor.CYCLE_SECONDS}s:]", query)
+        with mock.patch.object(governor, "prom", side_effect=[[], last]) as prom:  # restart 10s after a start
+            self.assertEqual(RESTORED("aws-burst-1", day + 3600, launched=day + 3590), (0.0, "override", True))
+        self.assertIn(f"[{10 + 2 * governor.CYCLE_SECONDS}s:]", prom.call_args.args[0])
+
+    def test_a_stopped_host_reads_todays_stop_reason_not_back_to_its_old_launch(self):
+        now = time.time()
+        with mock.patch.object(governor, "restored", return_value=(0.0, "idle", False)) as back, \
+                mock.patch.object(governor, "power_provider",
+                                  return_value=(FakeEc2("stopped", launched=now - 21 * 86_400), "")), \
+                mock.patch.object(governor, "host_labels", return_value=AWS_LABELS):
+            t = {}
+            governor.power_readings(AWS, {}, {"aws-burst-1": t}, now)
+        self.assertEqual(back.call_args.args[2], 0.0)
+        self.assertEqual(t["cause"], "idle")
 
     def test_a_first_sight_keeps_the_larger_day_and_a_cause_that_matches_the_state(self):
         def first_sight(state, back, launched=0.0, now=time.time()):

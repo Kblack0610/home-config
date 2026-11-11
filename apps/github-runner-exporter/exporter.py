@@ -45,6 +45,13 @@ here rather than in PromQL because 24h of per-job samples is not in
 Prometheus. The run list is re-read every HISTORY_REFRESH_SECS, and each
 finished run's jobs are fetched once and cached.
 
+The same cache is served as JSON at /api/ci/details?cursor=&limit=100: each
+finished run in the window with every job of its exact attempt (paged, steps
+slimmed), whether that read was complete, and a changes cursor. It is the one
+collector of job detail for the RUN_REPOS repos; schedules-sync reads it through
+the API server's Service proxy every 10 minutes and keeps the 90-day archive, and
+fetches job detail itself only for repos outside the `repos` list this serves.
+
 Those totals are trailing-window gauges: runs enter and leave them at once, so
 no PromQL over them can say when anything happened. github_runs_by_hour and
 github_run_failed say that instead, from the same list and with no extra calls.
@@ -105,6 +112,18 @@ HISTORY = {}
 # fetched once and the steady-state cost is one call per newly finished run.
 # Pruned every scrape to the runs still in the window.
 DONE_JOBS = {}
+# run id -> the record /api/ci/details serves for it: repo, run, attempt, whether
+# every job of that attempt was read, and seq, its place in the changes feed.
+# Pruned with DONE_JOBS. The feed is the window's job detail for the repos in
+# RUN_REPOS, for schedules-sync to archive; a reader that sends back the last
+# `next` it got sees only records stored or changed since. seq restarts with the
+# process, so each answer carries EPOCH and a reader that sees a new one starts
+# from 0 again.
+FEED = {}
+FEED_SEQ = [0]
+FEED_LOCK = threading.Lock()
+EPOCH = int(time.time())
+FEED_LIMIT = 100
 # The token's 5000 calls/h are per USER, shared with every gh session on the
 # account and with apps/ci-runner-governor, and live runner state must never
 # starve for history. So history's job fetches (the only part that grows with
@@ -373,8 +392,13 @@ def run_scope(run):
     return "branch"
 
 
-RUN_KEYS = ("id", "name", "conclusion", "created_at", "updated_at", "run_started_at", "head_branch", "event", "html_url")
-JOB_KEYS = ("name", "conclusion", "runner_name", "labels", "created_at", "started_at", "completed_at", "html_url")
+RUN_KEYS = ("id", "name", "conclusion", "created_at", "updated_at", "run_started_at", "head_branch", "event", "html_url",
+            "run_attempt", "head_sha", "path")
+JOB_KEYS = ("id", "name", "conclusion", "runner_name", "labels", "created_at", "started_at", "completed_at", "html_url",
+            "run_attempt")
+# Steps are kept for the feed (the opened run's step fold), slimmed: a raw step
+# list is ~2 KB a job and the pod's limit is 96Mi.
+STEP_KEYS = ("number", "name", "conclusion", "started_at", "completed_at")
 # The conclusions listed run by run. A cancelled run is counted but not listed:
 # most are a push superseding its own earlier run.
 FAILED_CONCLUSIONS = ("failure", "timed_out")
@@ -382,6 +406,48 @@ FAILED_CONCLUSIONS = ("failure", "timed_out")
 
 def slim(d, keys):
     return {k: d.get(k) for k in keys}
+
+
+def slim_job(j):
+    return {**slim(j, JOB_KEYS), "steps": [slim(s, STEP_KEYS) for s in j.get("steps") or []]}
+
+
+def attempt_jobs(repo, run):
+    """Every job of the run's exact attempt, paged. (jobs, complete): a page that
+    fails after the first keeps what was read and says it is partial."""
+    base = f"repos/{repo}/actions/runs/{run['id']}/attempts/{run.get('run_attempt') or 1}/jobs?per_page=100"
+    jobs, p = [], 1
+    while True:
+        if p > 1 and time.time() >= BUDGET["until"]:
+            return jobs, False
+        try:
+            data = get(f"{base}&page={p}", "history_jobs")
+        except API_ERRORS:
+            if p == 1:
+                raise
+            return jobs, False
+        page = data.get("jobs", [])
+        jobs += page
+        if not page or len(jobs) >= data.get("total_count", 0):
+            return jobs, True
+        p += 1
+
+
+def feed_store(repo, run, jobs, complete):
+    with FEED_LOCK:
+        FEED_SEQ[0] += 1
+        FEED[run["id"]] = {"seq": FEED_SEQ[0], "forge": "github", "repo": repo, "run_id": run["id"],
+                           "attempt": run.get("run_attempt") or 1, "complete": complete, "run": run}
+        DONE_JOBS[run["id"]] = jobs
+
+
+def feed_page(cursor, limit):
+    """The changes feed: records with seq > cursor, oldest change first."""
+    with FEED_LOCK:
+        recs = sorted((r for r in FEED.values() if r["seq"] > cursor), key=lambda r: r["seq"])
+        page = [{**r, "jobs": DONE_JOBS.get(r["run_id"], [])} for r in recs[:limit]]
+    return {"epoch": EPOCH, "repos": RUN_REPOS, "window_secs": HISTORY_WINDOW_SECS,
+            "next": page[-1]["seq"] if page else cursor, "more": len(recs) > limit, "records": page}
 
 
 def finished_runs(repo, now):
@@ -455,22 +521,27 @@ def repo_activity(repo, now):
         out["recent"] = out["history"][:RECENT_PER_REPO]
         # Uncached finished runs in parallel, newest first, within the scrape's
         # budget (see HISTORY_CALL_BUDGET): sequentially, 60 of them took 51s.
-        todo = [run["id"] for run in out["history"] if run["id"] not in DONE_JOBS]
+        # A run is fetched again when its attempt moved (a re-run finished) or
+        # the last read was partial.
+        def stale_detail(run):
+            rec = FEED.get(run["id"])
+            return not rec or not rec["complete"] or rec["attempt"] != (run.get("run_attempt") or 1)
+        todo = [run for run in out["history"] if stale_detail(run)]
         todo = todo[:spend(len(todo))]
 
-        def jobs_of(rid):
+        def jobs_of(run):
             # One failed call must not discard the ones that answered; one not
             # started by the deadline waits for a later scrape (HISTORY_DEADLINE_SECS).
             if time.time() >= BUDGET["until"]:
                 return None
             try:
-                return get(f"repos/{repo}/actions/runs/{rid}/jobs?per_page=100", "history_jobs").get("jobs", [])
+                return attempt_jobs(repo, run)
             except API_ERRORS:
                 return None
         with ThreadPoolExecutor(max_workers=6) as ex:
-            for rid, jobs in zip(todo, ex.map(jobs_of, todo)):
-                if jobs is not None:
-                    DONE_JOBS[rid] = [slim(j, JOB_KEYS) for j in jobs]
+            for run, got in zip(todo, ex.map(jobs_of, todo)):
+                if got is not None:
+                    feed_store(repo, run, [slim_job(j) for j in got[0]], got[1])
     except API_ERRORS:
         out["ok"] = False
     return out
@@ -990,14 +1061,21 @@ def render():
     # failed (rate limit, network) must not throw away a day of cached jobs and
     # spend ~500 calls refilling them.
     live = {run["id"] for _, runs in HISTORY.values() for run in runs}
-    for rid in [k for k in DONE_JOBS if k not in live]:
-        del DONE_JOBS[rid]
+    with FEED_LOCK:
+        for rid in [k for k in DONE_JOBS if k not in live]:
+            del DONE_JOBS[rid]
+            FEED.pop(rid, None)
     return "\n".join(L) + "\n"
 
 
 class H(BaseHTTPRequestHandler):
     def do_GET(self):
-        if self.path.startswith("/metrics"):
+        # Routed on the path alone: the API server's Service proxy can hand on
+        # a trailing slash or a query, and an exact match on self.path answered
+        # those 404 (hub-core reaches this pod only through that proxy).
+        url = urllib.parse.urlsplit(self.path)
+        path = url.path.rstrip("/") or "/"
+        if path == "/metrics":
             with RENDER_LOCK:
                 body = render().encode()
             self.send_response(200)
@@ -1005,7 +1083,22 @@ class H(BaseHTTPRequestHandler):
             self.send_header("Content-Length", str(len(body)))
             self.end_headers()
             self.wfile.write(body)
-        elif self.path == "/health":
+        elif path == "/api/ci/details":
+            q = urllib.parse.parse_qs(url.query)
+            try:
+                cursor = int(q.get("cursor", ["0"])[0])
+                limit = max(1, min(FEED_LIMIT, int(q.get("limit", [str(FEED_LIMIT)])[0])))
+            except ValueError:
+                self.send_response(400)
+                self.end_headers()
+                return
+            body = json.dumps(feed_page(cursor, limit), separators=(",", ":")).encode()
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
+        elif path == "/health":
             # Server only, never the API: a GitHub-aware probe would pull the pod
             # out of the Service exactly when api_ok=0 is the thing to see.
             self.send_response(200)

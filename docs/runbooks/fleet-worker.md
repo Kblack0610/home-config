@@ -27,8 +27,9 @@ Hosts that fleet-dispatch places agent sessions on, over ssh. The roster is the 
    ```json
    {"host": "fleet-worker-1", "power": {"provider": "aws", "instance_id": "<instance id>", "region": "us-east-2",
     "idle_off_seconds": 1800, "start_min_excess": 1, "max_hours_day": 12, "fallback_seconds": 3600,
-    "usd_per_hour": 0.076, "live": true}}
+    "live": true}}
    ```
+   Its price goes in `rates`, the one home of every host's $/h: `"fleet-worker-1": {"usd_per_hour": 0.076, "basis": "spot-estimate"}`.
 3. Add it under `fleet_workers`:
    ```yaml
    fleet-worker-1:

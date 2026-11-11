@@ -1,0 +1,26 @@
+# blackbox Probe for the home internet uplink: WANDown in
+# prometheus-rules-site-availability.yaml fires when every target fails.
+#
+# Two operators, one by IP so a DNS fault alone cannot fail both. A WAN outage
+# takes out both; one provider's outage takes out one, and that is not a page.
+#
+# The `release: kube-prometheus-stack` label is required: the operator's default
+# probeSelector only picks up Probes carrying the Helm release label.
+apiVersion: monitoring.coreos.com/v1
+kind: Probe
+metadata:
+  name: wan
+  namespace: monitoring
+  labels:
+    release: kube-prometheus-stack
+spec:
+  jobName: blackbox-wan
+  interval: 60s
+  module: http_up
+  prober:
+    url: blackbox-exporter.monitoring.svc.cluster.local:9115
+  targets:
+    staticConfig:
+      static:
+        - https://1.1.1.1
+        - https://dns.google

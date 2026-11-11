@@ -118,6 +118,10 @@ alertmanager:
       - source_matchers: [severity = "critical"]
         target_matchers: [severity = "warning"]
         equal: [alertname, instance]
+      # With the uplink down every site reached through the internet fails too;
+      # WANDown is the one page, and the PublicSiteDown pile waits for it to clear.
+      - source_matchers: [alertname = "WANDown"]
+        target_matchers: [alertname = "PublicSiteDown"]
   alertmanagerSpec:
     # Mounted at /etc/alertmanager/secrets/<name>/. Flux must have created it
     # before a helm upgrade adds it here, or the pod cannot start.

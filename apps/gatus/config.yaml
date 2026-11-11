@@ -83,6 +83,10 @@ endpoints:
     interval: 120s
     conditions:
       - "[CONNECTED] == true"
+    # Prometheus has no NAS probe, so this check is the NAS page. 3 x 120s = 6 min.
+    alerts:
+      - type: ntfy
+        failure-threshold: 3
 
   - name: CrowdSec LAPI
     group: home-k3s

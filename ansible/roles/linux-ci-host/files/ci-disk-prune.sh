@@ -14,15 +14,24 @@ PERF_TREE_DAYS=${PERF_TREE_DAYS:-1}
 RELEASE_TREE_DAYS=${RELEASE_TREE_DAYS:-7}
 # The governor re-admits a withheld Unity slot at 25% free and withholds under 20%
 # (apps/ci-runner-governor/config.json), and one release build writes up to about 45G of
-# tree and output, about 10% of razer's 938G. Under 35% free the oldest idle warm trees go,
-# whatever their age: on 2026-11-10 razer held 302G of trees, each one copy and under 7
-# days old, so the age and copy rules removed nothing while the governor withheld both slots.
+# tree and output, about 10% of razer's 938G. Under 35% free the oldest idle warm trees
+# (release and HD) go, whatever their age: on 2026-11-10 razer held 302G of trees, each one
+# copy and under 7 days old, so the age and copy rules removed nothing while the governor
+# withheld both slots.
 RELEASE_TREE_MIN_FREE_PCT=${RELEASE_TREE_MIN_FREE_PCT:-35}
 
 now=$(date +%s)
 # The runner keeps its binaries in bin.<version>, e.g. bin.2.338.0.
 busy() { pgrep -f "$1/bin[^/]*/Runner\.Worker" >/dev/null; }
 newest() { find "$1" -type f -exec stat -c %Y {} + | sort -n | tail -n 1; }
+# Warm trees a job keeps on purpose: a release tree per target, and the one HD tree hd.yml keeps
+# beside a slot's checkout (26G each; on 2026-11-11 two of them held aws-burst-1 at 100%).
+warm_trees() {
+    for tree in "$RUNNER_HOME"/unity-pool-*/_work/*/*/Builds/release-tree/* \
+                "$RUNNER_HOME"/unity-pool-*/_work/*/*/Builds/hd-tree; do
+        [ -d "$tree" ] && printf '%s\n' "$tree"
+    done
+}
 free_pct() { df -P "$RUNNER_HOME" | awk 'NR == 2 { printf "%d", $4 * 100 / $2 }'; }
 
 # `docker image rm` without -f refuses an image a container uses.
@@ -47,10 +56,10 @@ docker images --format '{{.Repository}}:{{.Tag}}|{{.CreatedAt}}' | while IFS='|'
     fi
 done
 
-# A release or perf tree holds a whole checkout and Library, 40G to 60G. perf-round.yml
+# A release, HD or perf tree holds a whole checkout and Library, 25G to 60G. perf-round.yml
 # removes its own when it ends, so one still here after a day was left by a failed job. A
-# release tree is kept warm on purpose, until a slot has stopped getting that job; the next
-# one there starts cold.
+# release or HD tree is kept warm on purpose, until a slot has stopped getting that job; the
+# next one there starts cold.
 for work in "$RUNNER_HOME"/unity-pool-*/_work; do
     [ -d "$work" ] || continue
     slot=${work%/_work}
@@ -58,7 +67,7 @@ for work in "$RUNNER_HOME"/unity-pool-*/_work; do
         echo "busy $slot"
         continue
     fi
-    for tree in "$work"/*/*/Builds/perf-tree/* "$work"/*/*/Builds/release-tree/*; do
+    for tree in "$work"/*/*/Builds/perf-tree/* "$work"/*/*/Builds/release-tree/* "$work"/*/*/Builds/hd-tree; do
         [ -d "$tree" ] || continue
         case "$tree" in
             */perf-tree/*) days=$PERF_TREE_DAYS ;;
@@ -70,12 +79,11 @@ for work in "$RUNNER_HOME"/unity-pool-*/_work; do
     done
 done
 
-# Any slot may get a target's next build, so one warm copy per host is all that pays. On
-# 2026-11-01 older copies held razer under the governor's 25% re-admit line, with 4 of its 5
+# Any slot may get a target's next build or HD run, so one warm copy per host is all that
+# pays. On 2026-11-01 older copies held razer under the governor's 25% re-admit line, with 4 of its 5
 # slots idle and jobs waiting. A copy on a busy slot stays, whatever its age.
 tab=$(printf '\t')
-for tree in "$RUNNER_HOME"/unity-pool-*/_work/*/*/Builds/release-tree/*; do
-    [ -d "$tree" ] || continue
+warm_trees | while read -r tree; do
     t=$(newest "$tree")
     printf '%s\t%s\t%s\n' "${tree#"$RUNNER_HOME"/*/}" "${t:-0}" "$tree"
 done | sort -t "$tab" -k1,1 -k2,2nr | {
@@ -102,8 +110,7 @@ done | sort -t "$tab" -k1,1 -k2,2nr | {
 free=$(free_pct)
 [ -n "$free" ] || { echo "no free space reading for $RUNNER_HOME"; exit 1; }
 [ "$free" -lt "$RELEASE_TREE_MIN_FREE_PCT" ] || exit 0
-for tree in "$RUNNER_HOME"/unity-pool-*/_work/*/*/Builds/release-tree/*; do
-    [ -d "$tree" ] || continue
+warm_trees | while read -r tree; do
     busy "${tree%%/_work/*}" && continue
     t=$(newest "$tree")
     printf '%s\t%s\n' "${t:-0}" "$tree"

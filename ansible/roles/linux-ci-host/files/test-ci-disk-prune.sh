@@ -37,10 +37,10 @@ cat > "$t/bin/pgrep" <<STUB
 #!/bin/sh
 echo "\${BUSY_HOME:-$t/runners}/unity-pool-2/bin.2.338.0/Runner.Worker spawnclient 154 159" | grep -Eq -- "\$2"
 STUB
-# Free space falls DF_PER_TREE points with each release tree left, from 100.
+# Free space falls DF_PER_TREE points with each release or HD tree left, from 100.
 cat > "$t/bin/df" <<'STUB'
 #!/bin/sh
-n=$(ls -d "$RUNNER_HOME"/*/_work/*/*/Builds/release-tree/* 2>/dev/null | wc -l)
+n=$(ls -d "$RUNNER_HOME"/*/_work/*/*/Builds/release-tree/* "$RUNNER_HOME"/*/_work/*/*/Builds/hd-tree 2>/dev/null | wc -l)
 echo "Filesystem 1024-blocks Used Available Capacity Mounted"
 echo "fake 100 0 $(( 100 - ${DF_PER_TREE:-0} * n )) 0% /"
 STUB
@@ -62,6 +62,12 @@ for copy in "unity-pool-1 3" "unity-pool-3 2" "unity-pool-2 4"; do
     mkdir -p "$R/$1/$repo/release-tree/dup"; touch -d "$2 days ago" "$R/$1/$repo/release-tree/dup/file"
 done
 
+# The HD tree on three slots: pool-4's is past 7 days, pool-3's is the older copy, pool-2 is busy.
+for copy in "unity-pool-1 1" "unity-pool-3 2" "unity-pool-2 5" "unity-pool-4 9"; do
+    set -- $copy
+    mkdir -p "$R/$1/$repo/hd-tree"; touch -d "$2 days ago" "$R/$1/$repo/hd-tree/file"
+done
+
 RUNNER_HOME=$R PATH="$t/bin:$PATH" sh "$here/ci-disk-prune.sh" > "$t/log" 2>&1
 rc=$?
 
@@ -81,22 +87,26 @@ for gone in perf-tree/stale perf-tree/days3 release-tree/stale; do
     if [ -e "$R/unity-pool-1/$repo/$gone" ]; then echo "FAIL $gone survived"; fail=1; else echo "ok   $gone removed"; fi
 done
 if [ -e "$R/unity-pool-1/$repo/release-tree/dup" ]; then echo "FAIL an older copy of a release tree survived"; fail=1; else echo "ok   an older copy of a release tree removed"; fi
-for kept in unity-pool-1/$repo/release-tree/fresh unity-pool-3/$repo/release-tree/dup unity-pool-2/$repo/release-tree/dup unity-pool-1/$repo/perf-tree/today unity-pool-2/$repo/perf-tree/busy unity-pool-1/$repo/other/stale; do
+check "an HD tree past 7 days goes by age" '^tree .*unity-pool-4/.*/hd-tree$' "$t/log" 1
+for gone in unity-pool-4/$repo/hd-tree unity-pool-3/$repo/hd-tree; do
+    if [ -e "$R/$gone" ]; then echo "FAIL $gone survived"; fail=1; else echo "ok   $gone removed" | sed "s#$repo/##"; fi
+done
+for kept in unity-pool-1/$repo/hd-tree unity-pool-2/$repo/hd-tree unity-pool-1/$repo/release-tree/fresh unity-pool-3/$repo/release-tree/dup unity-pool-2/$repo/release-tree/dup unity-pool-1/$repo/perf-tree/today unity-pool-2/$repo/perf-tree/busy unity-pool-1/$repo/other/stale; do
     if [ -e "$R/$kept/file" ]; then echo "ok   kept $kept" | sed "s#$repo/##"; else echo "FAIL $kept removed"; fail=1; fi
 done
 
 # Low disk: five warm trees at 20 points each leave 0% free. The oldest idle ones go until
-# 35% is free (two, to 40%); the busy slot's tree stays though it is the oldest.
+# 35% is free (two, to 40%); the busy slot's tree stays though it is the oldest. d is an HD tree.
 L="$t/low"; rm -f "$t/removed"; touch "$t/removed"
-for copy in "unity-pool-1 a 1" "unity-pool-1 b 2" "unity-pool-1 c 3" "unity-pool-3 d 4" "unity-pool-2 e 5"; do
+for copy in "unity-pool-1 release-tree/a 1" "unity-pool-1 release-tree/b 2" "unity-pool-1 release-tree/c 3" "unity-pool-3 hd-tree 4" "unity-pool-2 release-tree/e 5"; do
     set -- $copy
-    mkdir -p "$L/$1/$repo/release-tree/$2"; touch -d "$3 days ago" "$L/$1/$repo/release-tree/$2/file"
+    mkdir -p "$L/$1/$repo/$2"; touch -d "$3 days ago" "$L/$1/$repo/$2/file"
 done
 RUNNER_HOME=$L BUSY_HOME=$L DF_PER_TREE=20 PATH="$t/bin:$PATH" sh "$here/ci-disk-prune.sh" > "$t/log" 2>&1
 rc=$?
 [ "$rc" = 0 ] && echo "ok   low disk exits 0" || { echo "FAIL low disk exit $rc"; fail=1; }
 check "low disk removes two trees"       '^low disk ' "$t/log" 2
-for gone in unity-pool-3/$repo/release-tree/d unity-pool-1/$repo/release-tree/c; do
+for gone in unity-pool-3/$repo/hd-tree unity-pool-1/$repo/release-tree/c; do
     if [ -e "$L/$gone" ]; then echo "FAIL low disk kept $gone"; fail=1; else echo "ok   low disk removed $gone" | sed "s#$repo/##"; fi
 done
 for kept in unity-pool-2/$repo/release-tree/e unity-pool-1/$repo/release-tree/b unity-pool-1/$repo/release-tree/a; do

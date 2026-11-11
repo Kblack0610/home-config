@@ -1,0 +1,6 @@
+#!/bin/sh
+# Managed by ansible (linux-ci-host). ACTIONS_RUNNER_HOOK_JOB_STARTED for every Unity slot
+# (playbooks/site.yml): under the disk floor, prune idle slots' warm trees before this job
+# writes. A prune that fails never fails the job; the hourly run is still there.
+{{ linux_ci_disk_prune }} --before-job || echo "unity job-started: ci-disk-prune.sh exited $?; the job goes on" >&2
+exit 0

@@ -384,6 +384,8 @@
       ansible.builtin.include_role:
         name: linux-ci-host
         tasks_from: disk
+        # The slots' job-started hook below reads linux_ci_unity_job_started_hook.
+        public: true
         apply:
           tags: [runner, ci, unity-ci, ci-disk]
       tags: [runner, ci, unity-ci, ci-disk]
@@ -434,6 +436,10 @@
           # the playground): with the default under each slot's HOME, a new slot
           # downloaded the whole 7.9 GB library before its first job could start.
           ASSET_LIBRARY_LFS_STORE: "{{ unity_ci_lfs_store }}"
+          # Prunes idle slots' warm trees before the job when the disk is under the floor
+          # (roles/linux-ci-host, ci-disk-prune.sh --before-job). Changing this env restarts
+          # every slot and kills its job: apply it with the host's slots idle.
+          ACTIONS_RUNNER_HOOK_JOB_STARTED: "{{ linux_ci_unity_job_started_hook }}"
       tags: [runner, ci, unity-ci]
 
 # BNB Unity runner pool, macOS hosts (added 2026-10-29, mac-studio until it is

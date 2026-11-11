@@ -16,6 +16,10 @@ unity_ci_pool: false, aws-build-1) is its own exporter pool, unity-build, and it
 that label and withheld_label <label>-withheld. The governor's "rates" must name exactly the
 roster's hosts, so every runner host has a $/h and a basis and none is priced that is gone.
 
+A slot that carries unity-wide (unity_ci_wide, or unity-wide in unity_ci_slot_labels) needs
+ci_unity_slot_memory_max of at least WIDE_SLOT_MIN_GB: Multi, Soak, Two-process and Playloop
+build their players in the job, and the server build passed 16G (playground ucp-1830).
+
 Same rule as check-fleet-roster.py: independent copies are the design, copies nobody
 compares are the bug. This compares them in BOTH directions, because both break: a
 host added to a pool and forgotten here reads as fully healthy, a host retired there
@@ -47,6 +51,10 @@ GROUPS = {
 # runner (windows-media only)"), not inventory groups with a slot var. The
 # mac-mini's second runner, m1-playground-mac, has no play (docs/mac-machines.md).
 PINNED = {("mac-mini", "macos"): 2, ("windows-media", "windows"): 1}
+# Provisional, low confidence (one kill; revisit when the unity-wide jobs stop building players in the job, playground
+# ucp-1793): Soak's server build was killed at 16.96G anon in an aws-burst-2 16G slot on
+# 2026-11-11 (ucp-1830); the wide slots that build green (razer-laptop, aws-burst-1 slot 1) have 20G.
+WIDE_SLOT_MIN_GB = 20
 
 
 def inventory_roster(path):
@@ -75,6 +83,31 @@ def inventory_roster(path):
         if (h, "unity") in out:
             out[(h, "unity-build")] = out.pop((h, "unity"))
     return out, cloud
+
+
+def wide_slot_memory(path):
+    """{host: its slot memory cap in GB, or None} for every host with a unity-wide slot."""
+    wide, mem, group, host = set(), {}, None, None
+    with open(path, encoding="utf-8") as fh:
+        for raw in fh:
+            line = raw.split("#", 1)[0].rstrip()
+            if not line.strip():
+                continue
+            indent = len(line) - len(line.lstrip())
+            key, _, val = line.strip().partition(":")
+            val = val.strip()
+            if indent == 4:
+                group, host = key, None
+            elif indent == 8:
+                host = key
+            elif group == "unity_ci_runners" and host and indent == 10 and key == "unity_ci_wide" and val == "true":
+                wide.add(host)
+            elif group == "unity_ci_runners" and host and indent == 12 and re.search(r"\bunity-wide\b", val):
+                wide.add(host)
+            elif group == "ci_hosts" and host and indent == 10 and key == "ci_unity_slot_memory_max":
+                m = re.fullmatch(r"(\d+)G", val)
+                mem[host] = int(m.group(1)) if m else None
+    return {h: mem.get(h) for h in wide}
 
 
 def env_value(text, name, path):
@@ -129,6 +162,16 @@ def main():
         if cap != want.get((host, pool)):
             rc = 1
             print(f"FAIL: {host}: governor max_admitted is {cap}, inventory {pool} slots {want.get((host, pool))}")
+    wide = wide_slot_memory(INVENTORY)
+    if not wide:
+        rc = 1
+        print("FAIL: parsed no unity-wide slot out of the inventory; the parser is broken, not the roster")
+    for host, gb in sorted(wide.items()):
+        if gb is None or gb < WIDE_SLOT_MIN_GB:
+            rc = 1
+            have = "unset or not in whole G" if gb is None else f"{gb}G"
+            print(f"FAIL: {host} carries unity-wide, but its ci_unity_slot_memory_max is {have}, "
+                  f"under the {WIDE_SLOT_MIN_GB}G a player build in the job needs")
     if rc == 0:
         print(f"ok: {len(want)} host/pool slot counts agree, cloud hosts {sorted(want_cloud)} match the governor standby")
     return rc

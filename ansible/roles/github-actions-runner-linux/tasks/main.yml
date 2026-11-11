@@ -200,6 +200,40 @@
     mode: "0644"
   register: _gh_runner_unit
 
+# A restart kills the job the slot is running, so it waits for an idle slot. A restart
+# skipped under a job is kept in a marker file: the unit and .env are already written,
+# so the next apply would otherwise see no change and never restart.
+- name: Check for a restart an earlier apply deferred
+  ansible.builtin.stat:
+    path: "{{ gh_runner_home }}/.restart-pending"
+  register: _gh_runner_pending
+
+# A running job is this slot's Runner.Worker; its path is <home>/bin/ or, after a
+# self-update, <home>/bin.<version>/.
+- name: Check whether the runner is running a job
+  ansible.builtin.command:
+    argv: [pgrep, -f, "^{{ gh_runner_home }}/bin[^/]*/Runner.Worker"]
+  register: _gh_runner_busy
+  changed_when: false
+  failed_when: _gh_runner_busy.rc > 1
+  check_mode: false
+
+- name: Decide whether the runner restarts now
+  ansible.builtin.set_fact:
+    _gh_runner_restart: "{{ _gh_runner_unit.changed or _gh_runner_env_file.changed or _gh_runner_pending.stat.exists }}"
+    _gh_runner_is_busy: "{{ _gh_runner_busy.rc == 0 }}"
+
+# Reported as changed, so a deferred restart shows in ConvergenceDrift until it runs.
+- name: Defer the restart while a job runs
+  ansible.builtin.copy:
+    dest: "{{ gh_runner_home }}/.restart-pending"
+    content: ""
+    owner: "{{ gh_runner_user }}"
+    group: "{{ gh_runner_group }}"
+    mode: "0644"
+  changed_when: true
+  when: _gh_runner_restart and _gh_runner_is_busy
+
 # A register + restart instead of a handler: the Linux CI runners play applies this
 # role once per instance in a loop, and a handler would only fire for the last
 # gh_runner_name it saw.
@@ -207,5 +241,11 @@
   ansible.builtin.systemd:
     name: "actions.runner.{{ gh_runner_name }}.service"
     enabled: true
-    state: "{{ 'restarted' if (_gh_runner_unit.changed or _gh_runner_env_file.changed) else 'started' }}"
+    state: "{{ 'restarted' if (_gh_runner_restart and not _gh_runner_is_busy) else 'started' }}"
     daemon_reload: "{{ _gh_runner_unit.changed }}"
+
+- name: Clear the deferred restart
+  ansible.builtin.file:
+    path: "{{ gh_runner_home }}/.restart-pending"
+    state: absent
+  when: _gh_runner_pending.stat.exists and not _gh_runner_is_busy

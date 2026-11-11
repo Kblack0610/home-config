@@ -194,8 +194,39 @@
     creates: "{{ ansible_env.HOME }}/Library/LaunchAgents/{{ gh_runner_mac_svc_name }}.plist"
   when: not ansible_check_mode
 
-# The runner reads .env and .path when it starts, so a change needs a restart.
-- name: Restart the runner when its .env or .path changed
+# The runner reads .env and .path when it starts, so a change needs a restart. A restart
+# kills the job the runner is running, so it waits for an idle runner; one skipped under
+# a job is kept in a marker file, since the next apply would otherwise see no change.
+- name: Check for a restart an earlier apply deferred
+  ansible.builtin.stat:
+    path: "{{ gh_runner_mac_home }}/.restart-pending"
+  register: _gh_mac_pending
+
+# A running job is this runner's Runner.Worker; its path is <home>/bin/ or, after a
+# self-update, <home>/bin.<version>/.
+- name: Check whether the runner is running a job
+  ansible.builtin.command:
+    argv: [pgrep, -f, "^{{ gh_runner_mac_home }}/bin[^/]*/Runner.Worker"]
+  register: _gh_mac_busy
+  changed_when: false
+  failed_when: _gh_mac_busy.rc > 1
+  check_mode: false
+
+- name: Decide whether the runner restarts now
+  ansible.builtin.set_fact:
+    _gh_mac_restart: "{{ _gh_mac_env_file is changed or _gh_mac_path_file is changed or _gh_mac_pending.stat.exists }}"
+    _gh_mac_is_busy: "{{ _gh_mac_busy.rc == 0 }}"
+
+# Reported as changed, so a deferred restart shows in ConvergenceDrift until it runs.
+- name: Defer the restart while a job runs
+  ansible.builtin.copy:
+    dest: "{{ gh_runner_mac_home }}/.restart-pending"
+    content: ""
+    mode: "0644"
+  changed_when: true
+  when: _gh_mac_restart and _gh_mac_is_busy
+
+- name: Stop the runner for its restart
   ansible.builtin.command:
     argv:
       - "{{ gh_runner_mac_home }}/svc.sh"
@@ -204,8 +235,14 @@
   failed_when: false
   changed_when: true
   when:
-    - _gh_mac_env_file is changed or _gh_mac_path_file is changed
+    - _gh_mac_restart and not _gh_mac_is_busy
     - not ansible_check_mode
+
+- name: Clear the deferred restart
+  ansible.builtin.file:
+    path: "{{ gh_runner_mac_home }}/.restart-pending"
+    state: absent
+  when: _gh_mac_pending.stat.exists and not _gh_mac_is_busy
 
 - name: Ensure runner LaunchAgent is started
   ansible.builtin.command:

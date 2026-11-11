@@ -30,6 +30,8 @@ With `gh_runner_token_source: gh` no PAT is needed: the registration token is mi
 
 Set `gh_runner_user_home` to a shared directory and `gh_runner_home` to a per-instance directory under it, and apply the role once per instance (the "Linux CI runners" play in `playbooks/site.yml` loops it with `include_role`). Each instance gets its own systemd unit, `.runner` marker and work dir. `gh_runner_env` writes extra `KEY=VALUE` lines into the instance's `.env`; the Linux CI runners play sets `HOME` per instance so parallel jobs never share a pnpm store or `~/setup-pnpm`. `gh_runner_slice` puts the unit in a systemd slice (the `ci-host-budget` role owns `ci.slice` and its `ci-unity.slice` / `ci-linux.slice` children, and their caps).
 
+A unit or `.env` change restarts the runner only when it runs no job (no `Runner.Worker` under its `bin*/`). Under a job the apply writes `.restart-pending` in the runner home and reports changed, so ConvergenceDrift shows the pending restart; the next apply on an idle runner restarts it and removes the marker.
+
 All other variables have sensible defaults in `defaults/main.yml`.
 
 ## Verify

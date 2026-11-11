@@ -57,3 +57,7 @@ The runner tasks run as the login user (no `become`), so `-K` is only needed for
 
 - The runner binary auto-updates in place at runtime. The version default is only consulted on fresh install.
 - Manual reset: `~/actions-runner/svc.sh uninstall && rm -rf ~/actions-runner && <remove runner in GitHub UI>`, then re-run this role. The `absent` state does this for you (and deregisters GitHub-side).
+
+## Restarts
+
+A `.env` or `.path` change restarts the runner only when it runs no job (no `Runner.Worker` under its `bin*/`). Under a job the apply writes `.restart-pending` in the runner home and reports changed, so ConvergenceDrift shows the pending restart; the next apply on an idle runner restarts it and removes the marker.

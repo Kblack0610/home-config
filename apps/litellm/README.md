@@ -1,6 +1,6 @@
 # LiteLLM
 
-LLM gateway deployment in the `ai-gateway` namespace, exposed through Traefik at `llm.kblab.me`.
+LLM gateway deployment in the `ai-gateway` namespace, exposed through Traefik at `llm.kblab.me` on the LAN and the tailnet only.
 
 ## What This Directory Contains
 
@@ -11,9 +11,24 @@ LLM gateway deployment in the `ai-gateway` namespace, exposed through Traefik at
 | `secret.sops.yaml` | SOPS-encrypted `litellm-db-secrets`: DATABASE_URL, salt key, UI creds, Lazer key |
 | `deployment.yaml` | Main gateway workload and health checks |
 | `service.yaml` | Cluster service on port `4000` |
-| `ingress.yaml` | TLS ingress for `llm.kblab.me` |
+| `ingress.yaml` | TLS ingress for `llm.kblab.me`, kept off public DNS |
+| `ingress-metrics-deny.yaml` | 403s `/metrics` on the ingress host |
 
 The litellm tenant role + database in Postgres is provisioned by `apps/postgres/litellm-db-bootstrap-job.yaml` (idempotent psql Job in the `databases` namespace).
+
+## Exposure
+
+`llm.kblab.me` has no public DNS record. LAN clients get it from AdGuard and tailnet clients from the headscale `extra_records` (`apps/headscale/configmap.yaml`), both pointing at Traefik. Both Ingresses carry `external-dns.alpha.kubernetes.io/controller: none`; drop it from either and external-dns republishes the host through the Cloudflare tunnel. Re-adding the annotation does not take a published host back off: external-dns runs `upsert-only` and never deletes, so remove the `llm.kblab.me` CNAME and its two `extdns-` TXT records in Cloudflare by hand.
+
+Why: while the host was public, a scanner sent 190,844 guessed keys in two hours on 2026-11-07 (wordlist aimed at LiteLLM: `berriai-litellm-2025`, `dify-lab`, `sk-...master`). None matched and spend stayed $0, but the client IP was lost, because tunnel traffic reaches Traefik from the cloudflared pod.
+
+`LiteLLMAuthFailureSpike` (`apps/monitoring/prometheus-rules-litellm.yaml`) fires on more than 30 rejected keys in 15 minutes, counted at Traefik. The keys tried are in Postgres:
+
+```bash
+kubectl -n databases exec deploy/postgres -- psql -U postgres -d litellm -c \
+  "select date_trunc('hour',\"startTime\"), count(*), count(distinct api_key) from \"LiteLLM_SpendLogs\"
+   where status='failure' and metadata->'error_information'->>'error_code'='401' group by 1 order by 1 desc limit 24"
+```
 
 ## Configuration and Secrets
 

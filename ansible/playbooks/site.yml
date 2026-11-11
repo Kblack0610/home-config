@@ -641,6 +641,15 @@
       vars:
         node_exporter_linux_systemd_units: "{{ ['snapclient.service'] + (['audio-endpoint-capture.service'] if audio_endpoint_capture | default(false) else []) }}"
 
+# Bedroom Pi: onboard LEDs off, since people sleep in that room.
+- name: Bedroom Pi - LEDs off
+  hosts: audio-bedroom
+  become: true
+  gather_facts: false
+  roles:
+    - role: pi-leds-off
+      tags: [leds, audio]
+
 # Windows PCs over OpenSSH. windows-baseline is the lean debloat (Store apps,
 # telemetry, ASUS/OneDrive removal, power, cleanup) plus the computer name;
 # windows-agent-tools makes the PC drivable by an agent (PowerShell over SSH,

@@ -101,6 +101,9 @@
 # kubepods.slice drop-in does not hold because kubelet rewrites AllowedCPUs on
 # each start (razer, 2026-11-10). Both proved on a scratch k3s v1.33.5 node
 # (hc-209). Empty k3s_cpus removes the args, which is the rollback.
+# To verify, read Cpus_allowed_list of the processes in kubepods.slice, not the
+# slice's cpuset.cpus.effective: kubelet pins each container, so the slice and
+# the idle pause sandboxes keep every CPU (all three hosts, 2026-11-11).
 - name: Create the k3s config drop-in directory
   ansible.builtin.file:
     path: /etc/rancher/k3s/config.yaml.d

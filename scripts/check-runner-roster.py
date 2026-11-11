@@ -13,7 +13,8 @@ entry says unity_ci_lan: false, so a cloud host is declared once, in the invento
 (apps/ci-runner-governor/config.json) is the third copy: it must name exactly those
 cloud hosts, each with max_admitted equal to its unity slots. A build host (unity_ci_build: true with
 unity_ci_pool: false, aws-build-1) is its own exporter pool, unity-build, and its standby entry carries
-that label and withheld_label <label>-withheld.
+that label and withheld_label <label>-withheld. The governor's "rates" must name exactly the
+roster's hosts, so every runner host has a $/h and a basis and none is priced that is gone.
 
 Same rule as check-fleet-roster.py: independent copies are the design, copies nobody
 compares are the bug. This compares them in BOTH directions, because both break: a
@@ -108,7 +109,12 @@ def main():
         rc = 1
         print(f"FAIL: CLOUD_HOSTS is {sorted(have_cloud)}, inventory unity_ci_lan: false hosts are {sorted(want_cloud)}")
     with open(GOVERNOR_CONFIG, encoding="utf-8") as fh:
-        entries = json.load(fh)["standby"]
+        governor = json.load(fh)
+    entries = governor["standby"]
+    roster_hosts = {h for h, _ in have}
+    if set(governor.get("rates", {})) != roster_hosts:
+        rc = 1
+        print(f"FAIL: governor rates name {sorted(governor.get('rates', {}))}, RUNNER_ROSTER hosts are {sorted(roster_hosts)}")
     standby = {s["host"]: (s["max_admitted"], (s.get("labels") or ["unity"])[0]) for s in entries}
     for s in entries:
         # Without its own withheld label a dedicated host's withheld slots read as the gate pool's.

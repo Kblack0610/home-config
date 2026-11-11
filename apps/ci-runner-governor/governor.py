@@ -198,7 +198,26 @@ def load_config(path):
     both = cfg["standby"].keys() & cfg["workers"].keys()
     if both:
         raise ValueError(f"in both standby and workers: {', '.join(sorted(both))}")
+    check_rates(cfg)
     return with_defaults(cfg)
+
+
+# What a runner host costs an hour, one entry per host in "rates", and how that number was
+# arrived at: "owned" (hardware already paid for, 0 until a power tariff is written here),
+# "on-demand" (AWS's list price) or "spot-estimate" (Spot moves; the month is reconciled
+# against the budget's actual). The power hook and the run cost view (hub-core, through the
+# Infra series ci_governor_rate_usd_per_hour) both read it here; a host with no entry has
+# no rate, which the view shows as "no rate", never as 0.
+RATE_BASES = ("owned", "on-demand", "spot-estimate")
+
+
+def check_rates(cfg):
+    for host, r in cfg.get("rates", {}).items():
+        if not isinstance(r.get("usd_per_hour"), (int, float)) or r.get("basis") not in RATE_BASES:
+            raise ValueError(f"rates.{host}: needs a numeric usd_per_hour and a basis in {RATE_BASES}")
+    for host, entry in {**cfg["standby"], **cfg["workers"]}.items():
+        if "usd_per_hour" in entry.get("power", {}):
+            raise ValueError(f"{host}: usd_per_hour belongs in rates, not in its power block")
 
 
 def powered(cfg, host):
@@ -967,6 +986,10 @@ def render(cfg, hosts, runners, queue, decisions, ok, instances=None, budget=Non
     # A worker host has no runners, so only whether it is acted on live.
     for host in sorted(cfg.get("workers", {})):
         L.append(f'ci_governor_live{{host="{host}"}} {1 if live(cfg, host) else 0}')
+    L += ["# HELP ci_governor_rate_usd_per_hour What a runner host costs an hour, and on what basis (config.json rates)",
+          "# TYPE ci_governor_rate_usd_per_hour gauge"]
+    for host, r in sorted(cfg.get("rates", {}).items()):
+        L.append(f'ci_governor_rate_usd_per_hour{{host="{host}",basis="{r["basis"]}"}} {r["usd_per_hour"]}')
     # Between the withhold and admit lines the verdict is STEADY, so nothing else shows this.
     L += ["# HELP ci_governor_disk_held 1 when a host has withheld runners and too little disk to re-admit them",
           "# TYPE ci_governor_disk_held gauge"]
@@ -1012,8 +1035,8 @@ def render(cfg, hosts, runners, queue, decisions, ok, instances=None, budget=Non
                       ("start_after_seconds", p["start_after_seconds"])]
         for name, value in rules:
             L.append(f'ci_governor_power_{name}{{host="{host}"}} {value}')
-        if "usd_per_hour" in p:
-            L.append(f'ci_governor_power_usd_per_hour{{host="{host}"}} {p["usd_per_hour"]}')
+        if host in cfg.get("rates", {}):
+            L.append(f'ci_governor_power_usd_per_hour{{host="{host}"}} {cfg["rates"][host]["usd_per_hour"]}')
         L.append(f'ci_governor_power_last_change{{host="{host}",action="{inst.get("changed") or "none"}"}} '
                  f'{int(inst.get("changed_at", 0))}')
         for reason in FALLBACK_REASONS:

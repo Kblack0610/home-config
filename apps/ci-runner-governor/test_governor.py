@@ -863,7 +863,7 @@ class GovernorTest(unittest.TestCase):
         self.assertEqual((inst["aws-burst-1"]["want"], inst["aws-burst-1"]["held_seconds"]), (9, 120))
 
     def test_rule_metrics_live_flags_and_last_change(self):
-        cfg = {**AWS, "standby": {"aws-burst-1": {"max_admitted": 8, "power": {**POWER, "usd_per_hour": 1.855}}}}
+        cfg = {**AWS, "rates": {"aws-burst-1": {"usd_per_hour": 1.855, "basis": "on-demand"}}}
         tracked = {}
         with mock.patch.object(governor.time, "time", return_value=10_000):
             self.power_cycle(FakeEc2("stopped"), cfg, tracked=tracked)
@@ -1352,6 +1352,22 @@ class WorkerTest(unittest.TestCase):
         got = decide(STEADY, HOME_BUSY, queue=0, cfg=WRK, instances=inst)
         self.assertNotIn("fleet-worker-1", [h for h, *_ in got])
 
+
+
+class RatesTest(unittest.TestCase):
+    """config.json "rates": every host's $/h with its basis, in one place."""
+
+    def test_every_rate_is_exported_with_its_basis(self):
+        out = governor.render(LIVE, {"disk": {}}, {}, 0, [], True)
+        for host, r in LIVE["rates"].items():
+            self.assertIn(f'ci_governor_rate_usd_per_hour{{host="{host}",basis="{r["basis"]}"}} {r["usd_per_hour"]}', out)
+
+    def test_a_rate_in_a_power_block_or_without_a_basis_is_refused(self):
+        bad_power = {**LIVE, "standby": {"aws-burst-1": {"max_admitted": 5, "power": {**POWER, "usd_per_hour": 1}}}}
+        with self.assertRaisesRegex(ValueError, "belongs in rates"):
+            governor.check_rates(bad_power)
+        with self.assertRaisesRegex(ValueError, "basis"):
+            governor.check_rates({**LIVE, "rates": {"x": {"usd_per_hour": 1}}})
 
 if __name__ == "__main__":
     unittest.main(verbosity=1)

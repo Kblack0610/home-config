@@ -98,7 +98,16 @@ class Fake:
         self.calls.append(path)
         if any(path.startswith(b) for b in self.broken):
             raise urllib.error.URLError("boom")
-        return FAKE[re.sub(r"&created=[^&]*", "", path)]
+        return FAKE[norm(path)]
+
+
+def norm(path):
+    # History reads an attempt's jobs page by page; the fixtures list each run's
+    # jobs once, under the plain path, as one page.
+    path = re.sub(r"&created=[^&]*", "", path)
+    if path in FAKE:
+        return path
+    return re.sub(r"/attempts/\d+/jobs\?per_page=100&page=1$", "/jobs?per_page=100", path)
 
 
 def rows(text, metric):
@@ -108,6 +117,7 @@ def rows(text, metric):
 class ExporterTest(unittest.TestCase):
     def setUp(self):
         exporter.DONE_JOBS.clear()
+        exporter.FEED.clear()
         exporter.HISTORY.clear()
         exporter.CALLS.clear()
         exporter.RATE.clear()
@@ -394,9 +404,11 @@ class ExporterTest(unittest.TestCase):
 
     def test_finished_jobs_are_fetched_once(self):
         self.render()
+        first = exporter.get
         exporter.get = Fake()
         exporter.render()
-        self.assertNotIn("repos/acme/web/actions/runs/9/jobs?per_page=100", exporter.get.calls)
+        self.assertIn("repos/acme/web/actions/runs/9/attempts/1/jobs?per_page=100&page=1", first.calls)
+        self.assertNotIn("repos/acme/web/actions/runs/9/attempts/1/jobs?per_page=100&page=1", exporter.get.calls)
         self.assertIn("repos/acme/game/actions/runs/10/jobs?per_page=100", exporter.get.calls)  # active: always refetched
 
     def test_pool_of_pinned_runners(self):
@@ -457,7 +469,7 @@ class ByHourTest(unittest.TestCase):
         return time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(t))
 
     def setUp(self):
-        for d in (exporter.DONE_JOBS, exporter.HISTORY, exporter.CALLS, exporter.RATE):
+        for d in (exporter.DONE_JOBS, exporter.FEED, exporter.HISTORY, exporter.CALLS, exporter.RATE):
             d.clear()
 
     def render(self, runs):
@@ -528,6 +540,7 @@ class ColdStartBudgetTest(unittest.TestCase):
 
     def setUp(self):
         exporter.DONE_JOBS.clear()
+        exporter.FEED.clear()
         exporter.HISTORY.clear()
         exporter.CALLS.clear()
         exporter.RATE.clear()
@@ -941,5 +954,102 @@ class ForgejoPagingTest(unittest.TestCase):
 
 ORIGINAL_GET = exporter.get
 
+
+class DetailFeedTest(unittest.TestCase):
+    """/api/ci/details: the window's job detail per exact attempt, as a changes feed."""
+
+    def setUp(self):
+        for d in (exporter.DONE_JOBS, exporter.FEED, exporter.HISTORY, exporter.CALLS, exporter.RATE):
+            d.clear()
+        self.saved = exporter.get
+
+    def tearDown(self):
+        exporter.get = self.saved
+
+    def render(self, extra=None):
+        with mock.patch.dict(FAKE, extra or {}):
+            exporter.get = Fake()
+            exporter.render()
+        return exporter.get
+
+    def test_feed_serves_each_finished_run_with_its_jobs_and_steps(self):
+        steps = [{"number": 1, "name": "checkout", "conclusion": "success", "started_at": T0, "completed_at": T1,
+                  "status": "completed", "log": "x" * 50}]
+        jobs9 = {"jobs": [dict(j, steps=steps) for j in FAKE["repos/acme/web/actions/runs/9/jobs?per_page=100"]["jobs"]]}
+        self.render({"repos/acme/web/actions/runs/9/jobs?per_page=100": jobs9})
+        page = exporter.feed_page(0, 100)
+        self.assertEqual(page["repos"], exporter.RUN_REPOS)
+        by_id = {r["run_id"]: r for r in page["records"]}
+        self.assertEqual(set(by_id), {9, 8})  # 7 is outside the window
+        rec = by_id[9]
+        self.assertEqual((rec["forge"], rec["repo"], rec["attempt"], rec["complete"]), ("github", "acme/web", 1, True))
+        self.assertEqual(rec["jobs"][0]["steps"][0], {k: steps[0][k] for k in exporter.STEP_KEYS})
+        # The cursor: nothing new after the last record, and an unchanged run is not served twice.
+        self.assertEqual(exporter.feed_page(page["next"], 100)["records"], [])
+        self.render()
+        self.assertEqual(exporter.feed_page(page["next"], 100)["records"], [])
+
+    def test_feed_pages_by_limit(self):
+        self.render()
+        first = exporter.feed_page(0, 1)
+        self.assertTrue(first["more"])
+        rest = exporter.feed_page(first["next"], 1)
+        self.assertEqual(len(first["records"]) + len(rest["records"]), 2)
+        self.assertFalse(rest["more"])
+
+    def test_a_rerun_is_fetched_for_its_new_attempt(self):
+        self.render()
+        listing = dict(FAKE["repos/acme/web/actions/runs?status=completed&per_page=100&page=1"])
+        listing["workflow_runs"] = [dict(r, run_attempt=2) if r["id"] == 9 else r for r in listing["workflow_runs"]]
+        for repo in list(exporter.HISTORY):
+            at, _ = exporter.HISTORY[repo]
+            exporter.HISTORY[repo] = (at - exporter.HISTORY_REFRESH_SECS, [])
+        cursor = exporter.feed_page(0, 100)["next"]
+        get = self.render({"repos/acme/web/actions/runs?status=completed&per_page=100&page=1": listing,
+                           "repos/acme/web/actions/runs/9/attempts/2/jobs?per_page=100&page=1": {"total_count": 0, "jobs": []}})
+        self.assertIn("repos/acme/web/actions/runs/9/attempts/2/jobs?per_page=100&page=1", get.calls)
+        (rec,) = exporter.feed_page(cursor, 100)["records"]
+        self.assertEqual((rec["run_id"], rec["attempt"]), (9, 2))
+
+    def test_a_run_with_more_than_100_jobs_pages_and_a_failed_page_stays_partial(self):
+        page1 = {"total_count": 150, "jobs": [{"id": i, "name": f"j{i}"} for i in range(100)]}
+        base = "repos/acme/web/actions/runs/9/attempts/1/jobs?per_page=100"
+        broken = Fake(broken=(base + "&page=2",))
+        with mock.patch.dict(FAKE, {base + "&page=1": page1}):
+            exporter.get = broken
+            exporter.render()
+        rec = {r["run_id"]: r for r in exporter.feed_page(0, 100)["records"]}[9]
+        self.assertFalse(rec["complete"])
+        self.assertEqual(len(rec["jobs"]), 100)
+        page2 = {"total_count": 150, "jobs": [{"id": i, "name": f"j{i}"} for i in range(100, 150)]}
+        cursor = exporter.feed_page(0, 100)["next"]
+        with mock.patch.dict(FAKE, {base + "&page=1": page1, base + "&page=2": page2}):
+            exporter.get = Fake()
+            exporter.render()
+        (rec,) = exporter.feed_page(cursor, 100)["records"]
+        self.assertTrue(rec["complete"])
+        self.assertEqual(len(rec["jobs"]), 150)
+
+    def test_routes_ignore_a_trailing_slash_and_a_query(self):
+        import threading
+        import urllib.request
+        srv = exporter.server(("127.0.0.1", 0))
+        threading.Thread(target=srv.serve_forever, daemon=True).start()
+        base = f"http://127.0.0.1:{srv.server_port}"
+        try:
+            for path in ("/health", "/health/", "/health?x=1"):
+                with urllib.request.urlopen(base + path, timeout=2) as r:
+                    self.assertEqual(r.read(), b"ok", path)
+            with urllib.request.urlopen(base + "/api/ci/details/?cursor=0&limit=5", timeout=2) as r:
+                body = json.loads(r.read())
+            self.assertEqual(body["epoch"], exporter.EPOCH)
+            with self.assertRaises(urllib.error.HTTPError) as e:
+                urllib.request.urlopen(base + "/api/ci/details?cursor=x", timeout=2)
+            self.assertEqual(e.exception.code, 400)
+        finally:
+            srv.shutdown()
+            srv.server_close()
+
 if __name__ == "__main__":
     unittest.main(verbosity=1)
+

@@ -106,11 +106,13 @@ spec:
               mountPath: /app
               readOnly: true
           resources:
+            # 34Mi in use before the /api/ci/details feed (2026-11-11); the feed keeps
+            # each finished job's steps, a few MB over the 24h window.
             requests:
-              memory: "24Mi"
+              memory: "32Mi"
               cpu: "10m"
             limits:
-              memory: "64Mi"
+              memory: "96Mi"
               cpu: "100m"
           livenessProbe:
             httpGet:

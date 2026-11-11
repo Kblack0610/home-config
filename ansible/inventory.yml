@@ -360,20 +360,26 @@ all:
     # Starting values, tuned against a full nightly.
     ci_hosts:
       hosts:
-        # Ryzen 9 5900HX, 16 threads alike, 62 GB (+ zram). Platform jobs only
-        # (no Unity, see unity_ci_runners).
+        # Ryzen 9 5900HX, 16 threads alike (SMT siblings n, n+1), 62 GB (+ zram).
+        # Platform jobs only (no Unity, see unity_ci_runners). k3s_cpus pins pods
+        # to cores 0-2: they request 5.2 CPUs, nearly all held here by hostname or
+        # a local-path PV, and used at most 2.8 over a week (2026-11-11).
         asus-laptop:
-          ci_cpus: 4-15
+          ci_cpus: 6-15
+          k3s_cpus: 0-5
           ci_memory_max: 36G
           ci_linux_memory_max: 24G
         # i7-13700HX: CPUs 0-15 are the P-core threads, 16-23 the E-cores.
-        # k3s (redis, ntfy) keeps four E-cores. 31 GB, no swap; k3s pods take
-        # about 9G. P-core threads 12-15 are the game server's (game_server_cpus
-        # in game_server_nodes below), so CI skips them. Platform jobs only (no
-        # Unity, see unity_ci_runners), so they get the whole CI budget: a heavy
-        # job peaked at 11.3G.
+        # 31 GB, no swap; k3s pods take about 9G. P-core threads 12-15 are the
+        # game server's (game_server_cpus in game_server_nodes below), so CI skips
+        # them. k3s_cpus is everything CI does not take: the game servers are pods,
+        # so it holds 12-15, plus four E-cores. Pods request 1.85 CPUs, 4.85 with
+        # both game servers up (2026-11-11). Platform jobs only (no Unity, see
+        # unity_ci_runners), so they get the whole CI budget: a heavy job peaked
+        # at 11.3G.
         hp-victus:
           ci_cpus: 0-11,16-19
+          k3s_cpus: 12-15,20-23
           ci_memory_max: 20G
           ci_linux_memory_max: 20G
         # 8 cores / 16 threads, SMT siblings are n and n+8. Cores 0-1 (CPUs

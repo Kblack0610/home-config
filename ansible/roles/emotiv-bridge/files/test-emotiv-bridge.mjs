@@ -8,7 +8,7 @@ import path from 'node:path';
 import zlib from 'node:zlib';
 import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
-import { Bridge, Chunks, Uploader, sealSpool, mqttConnect, mqttPublish, WARN } from './emotiv-bridge.mjs';
+import { Bridge, Chunks, Uploader, Mqtt, sealSpool, mqttConnect, mqttPublish, MQTT_DISCONNECT, WARN } from './emotiv-bridge.mjs';
 
 const roots = [];
 after(() => { for (const r of roots) fs.rmSync(r, { recursive: true, force: true }); });
@@ -200,4 +200,20 @@ test('run through a symlinked directory, the script still starts main', () => {
   const r = spawnSync(process.execPath, [path.join(link, 'emotiv-bridge.mjs'), path.join(root, 'missing.json')], { encoding: 'utf8' });
   assert.equal(r.status, 1);
   assert.match(r.stdout + r.stderr, /fatal/);
+});
+
+test('mqtt goes through the nc relay: CONNECT, the retained PUBLISH, then DISCONNECT', async () => {
+  const cfg = tmpCfg();
+  const out = path.join(cfg.root, 'wire');
+  const nc = path.join(cfg.root, 'bin', 'nc');
+  fs.writeFileSync(nc, `#!/bin/sh\necho "$1 $2" > "${out}.args"\ncat > "${out}"\n`, { mode: 0o755 });
+  const m = new Mqtt({ nc_bin: nc, host: 'broker', port: 31883, client_id: 'c', keepalive_seconds: 120 });
+  m.connect();
+  await new Promise((r) => m.proc.once('spawn', r));
+  m.publish('t/x', {});
+  const closed = new Promise((r) => m.proc.once('close', r));
+  m.stop();
+  await closed;
+  assert.equal(fs.readFileSync(`${out}.args`, 'utf8'), 'broker 31883\n');
+  assert.deepEqual(fs.readFileSync(out), Buffer.concat([mqttConnect('c', 120), mqttPublish('t/x', '{}', true), MQTT_DISCONNECT]));
 });

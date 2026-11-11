@@ -10,7 +10,6 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import zlib from 'node:zlib';
-import net from 'node:net';
 import { spawn } from 'node:child_process';
 import { pipeline } from 'node:stream/promises';
 import { fileURLToPath } from 'node:url';
@@ -135,7 +134,7 @@ export class Uploader {
 
   args() {
     const u = this.cfg.upload;
-    const ssh = ['ssh', '-i', u.key, '-p', String(u.port), '-o', 'BatchMode=yes', '-o', 'IdentitiesOnly=yes',
+    const ssh = ['/usr/bin/ssh', '-i', u.key, '-p', String(u.port), '-o', 'BatchMode=yes', '-o', 'IdentitiesOnly=yes',
       '-o', `UserKnownHostsFile=${u.known_hosts}`, '-o', 'StrictHostKeyChecking=yes'].join(' ');
     // -rt, not -a: the far side is an unprivileged user, so owner and group cannot be kept.
     return ['-rt', '--chmod=D0750,F0640', '--remove-source-files', '--include=*/', '--include=*.age', '--exclude=*', '--prune-empty-dirs',
@@ -189,25 +188,34 @@ export const mqttConnect = (clientId, keepalive) => mqttPacket(0x10, Buffer.conc
 export const mqttPublish = (topic, payload, retain) => mqttPacket(0x30 | (retain ? 1 : 0),
   Buffer.concat([mqttString(topic), Buffer.from(payload, 'utf8')]));
 
+export const MQTT_DISCONNECT = Buffer.from([0xe0, 0x00]);
+
+// macOS Local Network privacy keeps a LaunchAgent's non-Apple binaries (Homebrew node) off the
+// LAN, Apple's are exempt (TN3179, docs/mac-machines.md), so the TCP leg is Apple's /usr/bin/nc.
 export class Mqtt {
-  constructor(cfg) { this.cfg = cfg; this.sock = null; this.backoff = 0; this.stopped = false; }
+  constructor(cfg) { this.cfg = cfg; this.pipe = null; this.backoff = 0; this.stopped = false; }
 
   connect() {
-    const s = net.createConnection({ host: this.cfg.host, port: this.cfg.port });
-    s.on('connect', () => { this.backoff = 0; s.write(mqttConnect(this.cfg.client_id, this.cfg.keepalive_seconds)); this.sock = s; });
-    s.on('data', () => {});
-    s.on('error', (e) => log('mqtt', e.message));
-    s.on('close', () => {
-      this.sock = null;
+    const p = spawn(this.cfg.nc_bin, [this.cfg.host, String(this.cfg.port)], { stdio: ['pipe', 'ignore', 'pipe'] });
+    let err = '';
+    p.stderr.on('data', (d) => { err += d; });
+    p.stdin.on('error', () => {});
+    p.on('error', (e) => log('mqtt', e.message));
+    p.on('spawn', () => { this.backoff = 0; p.stdin.write(mqttConnect(this.cfg.client_id, this.cfg.keepalive_seconds)); this.pipe = p.stdin; });
+    p.on('close', (code) => {
+      this.pipe = null;
       if (this.stopped) return;
+      log('mqtt', `nc exited ${code} ${err.trim()}`);
       this.backoff = nextBackoff(this.backoff);
       setTimeout(() => this.connect(), this.backoff).unref?.();
     });
+    this.proc = p;
   }
 
-  publish(topic, obj) { if (this.sock) this.sock.write(mqttPublish(topic, JSON.stringify(obj), true)); }
+  publish(topic, obj) { this.pipe?.write(mqttPublish(topic, JSON.stringify(obj), true)); }
 
-  stop() { this.stopped = true; this.sock?.end(); }
+  // DISCONNECT makes the broker close the connection, so nc exits once it has sent everything.
+  stop() { this.stopped = true; this.pipe?.end(MQTT_DISCONNECT); }
 }
 
 // The Cortex side: one websocket, one activated session per wear.

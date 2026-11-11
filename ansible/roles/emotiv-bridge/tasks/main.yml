@@ -40,7 +40,7 @@
     - { name: emotiv-ca.pem, content: "{{ emotiv_bridge_ca.stdout }}\n" }
     - name: cortex.json
       content: "{{ {'clientId': vault_emotiv_cortex_client_id, 'clientSecret': vault_emotiv_cortex_client_secret} | to_json }}\n"
-    - { name: archive_ed25519, content: "{{ vault_emotiv_archive_ssh_key }}" }
+    - { name: archive_ed25519, content: "{{ vault_emotiv_archive_ssh_key | trim }}\n" }
     - { name: known_hosts, content: "{{ emotiv_bridge_upload_host_key }}\n" }
   loop_control:
     label: "{{ item.name }}"

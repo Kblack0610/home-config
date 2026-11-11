@@ -88,6 +88,21 @@ spec:
             fleet: fix
           annotations:
             summary: "ci-runner-governor has had no reading for 30 minutes, so no Unity slot is being pulled or returned. Check github_runner_exporter_api_ok and GitHub's API limit"
+        # GitHub charges orgs/ and repos/ calls to separate 5000-an-hour buckets, and the
+        # exporter, governor and boards all go blind when one hits 0. Warning, not a page:
+        # it comes ahead of CiGovernorBlind, which only sees the outage after 30 minutes.
+        # Replay of 2026-11-04 to 11-11: 4 fires, all on repos (11-09 22:32, 11-10 04:28,
+        # 11-10 11:31, 11-10 17:32); orgs never went under 3277. min by (scope) folds the
+        # old pod's series into the new one across an exporter restart.
+        - alert: GithubApiRateLow
+          expr: min by (scope) (github_runner_exporter_rate_remaining) < 500
+          for: 10m
+          labels:
+            severity: warning
+            category: capacity
+            fleet: fix
+          annotations:
+            summary: "GitHub API {{ $labels.scope }} bucket has {{ $value }} calls left this hour: docs/runbooks/unity-ci-host.md#github-api-limit"
         # 6 pages in the replay: 4 on asus from the Forgejo backups fixed in #441, 1 the
         # outage, 1 workstation. Would have given 3 hours of warning on 2026-10-31.
         - alert: NodeDiskCritical

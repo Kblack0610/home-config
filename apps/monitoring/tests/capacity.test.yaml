@@ -55,6 +55,36 @@ tests:
           - exp_labels: {alertname: CiGovernorBlind, severity: critical, category: capacity, fleet: fix}
             exp_annotations: {summary: "ci-runner-governor has had no reading for 30 minutes, so no Unity slot is being pulled or returned. Check github_runner_exporter_api_ok and GitHub's API limit"}
 
+  - name: a low GitHub API bucket warns after 10 minutes, per scope, across a pod restart
+    interval: 1m
+    input_series:
+      # repos runs low on the old pod, then the new pod carries on low: one alert.
+      - series: 'github_runner_exporter_rate_remaining{scope="repos",pod="old"}'
+        values: '400x6'
+      - series: 'github_runner_exporter_rate_remaining{scope="repos",pod="new"}'
+        values: '_x6 300x20'
+      - series: 'github_runner_exporter_rate_remaining{scope="orgs",pod="new"}'
+        values: '500x26'
+    alert_rule_test:
+      - eval_time: 8m
+        alertname: GithubApiRateLow
+        exp_alerts: []
+      - eval_time: 15m
+        alertname: GithubApiRateLow
+        exp_alerts:
+          - exp_labels: {alertname: GithubApiRateLow, severity: warning, category: capacity, fleet: fix, scope: repos}
+            exp_annotations: {summary: "GitHub API repos bucket has 300 calls left this hour: docs/runbooks/unity-ci-host.md#github-api-limit"}
+
+  - name: a short dip in the GitHub API bucket stays quiet
+    interval: 1m
+    input_series:
+      - series: 'github_runner_exporter_rate_remaining{scope="repos"}'
+        values: '0x8 4999x20'
+    alert_rule_test:
+      - eval_time: 20m
+        alertname: GithubApiRateLow
+        exp_alerts: []
+
   - name: disk thresholds, 21% free is quiet and each line fires on its own
     interval: 1m
     input_series:

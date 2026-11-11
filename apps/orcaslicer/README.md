@@ -12,7 +12,6 @@ OrcaSlicer in the browser at `https://slicer.kblab.me` (linuxserver image, Selki
 | `deployment.yaml` | The app; its `seed-config` init container copies the presets in on every start |
 | `bambu-a1-secret.yaml` | SOPS: the A1 LAN access code and serial, filled into the `@A1_...@` placeholders at start |
 | `check-presets.sh` | Updating step 1: proves every `inherits` resolves on an image tag, in a throwaway container |
-| `desktop-link.sh` | Points a desktop OrcaSlicer at `profiles/` (symlinks; the A1 preset is a local copy with the code filled from SOPS). Run with Orca closed; the dotfiles installer calls it from `setup_3d_printing` |
 
 ## Presets
 
@@ -28,7 +27,7 @@ Every Neptune process names its gcode `{input_filename_base}_{nozzle_diameter[0]
 
 ## Changing a preset
 
-1. Change the file under `profiles/` (or save the preset in a desktop Orca whose `user/default` folders link here, via `desktop-link.sh`) and open a PR. The desktop A1 machine preset is a local copy holding the real code, so carry an A1 change into `profiles/machine/` by hand with the `@A1_...@` placeholders kept.
+1. Change the file under `profiles/` and open a PR. Keep the `@A1_...@` placeholders in the A1 machine preset; the real code is filled from `bambu-a1-secret.yaml` at start.
 2. After Flux applies it, restart the app so the init container copies the new files in: `kubectl --context home-k3s -n orcaslicer rollout restart deploy/orcaslicer`. `apps/print-service` reads the ConfigMap mount live.
 
 Every start overwrites the managed presets, so a preset changed only in the browser slicer is lost at the next restart. Presets with other names are left alone. Old strays were moved to `user/default/_retired-2026-11-04/` on the hostPath.

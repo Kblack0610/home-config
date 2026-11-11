@@ -94,12 +94,13 @@
     _ci_slice_units.changed or _ci_retired_units.changed
     or _ci_slot_units.changed or _ci_slot_removed.changed
 
-# k3s budget (k3s_cpus). The kubelet arg leaves len(k3s_cpus) allocatable, so the
-# scheduler sends a pod that does not fit in k3s_cpus to another node instead of
-# crowding it in. It does not pin pods: kubelet sets AllowedCPUs to every CPU on
-# kubepods.slice each time it starts, which overrode a drop-in here (razer,
-# 2026-11-10), so a pod without a CPU limit can still run on ci_cpus. Empty
-# k3s_cpus removes the arg, which is the rollback.
+# k3s pin (k3s_cpus). The static CPU manager reserves every other CPU, which
+# also leaves len(k3s_cpus) allocatable, and strict-cpu-reservation takes the
+# reserved CPUs out of the shared pool, so BestEffort and Burstable pods run on
+# k3s_cpus only. Without that option the shared pool keeps every CPU, and a
+# kubepods.slice drop-in does not hold because kubelet rewrites AllowedCPUs on
+# each start (razer, 2026-11-10). Both proved on a scratch k3s v1.33.5 node
+# (hc-209). Empty k3s_cpus removes the args, which is the rollback.
 - name: Create the k3s config drop-in directory
   ansible.builtin.file:
     path: /etc/rancher/k3s/config.yaml.d
@@ -107,43 +108,49 @@
     mode: "0755"
   when: k3s_cpus | length > 0
 
-- name: Reserve the CI cores from kubelet's allocatable
+- name: Pin k3s pods to k3s_cpus
   ansible.builtin.copy:
     dest: /etc/rancher/k3s/config.yaml.d/50-ci-host-budget.yaml
     content: |
-      # Managed by ansible (ci-host-budget). CPUs {{ ci_cpus }} are CI's, so the
-      # node offers only k3s_cpus ({{ k3s_cpus }}) to pods.
+      # Managed by ansible (ci-host-budget). CPUs {{ ci_cpus }} are CI's, so pods
+      # run on, and the node offers, only k3s_cpus ({{ k3s_cpus }}).
       kubelet-arg+:
-        - system-reserved=cpu={{ ansible_facts.processor_nproc - _ci_cpu_sets.k3s | length }}
+        - cpu-manager-policy=static
+        - reserved-cpus={{ range(ansible_facts.processor_nproc) | difference(_ci_cpu_sets.k3s) | join(',') }}
+        - cpu-manager-policy-options=strict-cpu-reservation=true
     mode: "0644"
   when: k3s_cpus | length > 0
   register: _ci_k3s_config
 
-- name: Remove the k3s reservation when k3s_cpus is unset
+- name: Remove the k3s pin when k3s_cpus is unset
   ansible.builtin.file:
     path: /etc/rancher/k3s/config.yaml.d/50-ci-host-budget.yaml
     state: absent
   when: k3s_cpus | length == 0
   register: _ci_k3s_removed
 
-# Retired: the kubepods.slice drop-in kubelet overrides (see above).
-- name: Remove the retired kubepods.slice drop-in
-  ansible.builtin.file:
-    path: /etc/systemd/system/kubepods.slice.d/50-ci-host-budget.conf
-    state: absent
-  register: _ci_k3s_slice_retired
-
-- name: Reload systemd after the kubepods.slice drop-in went
-  ansible.builtin.systemd:
-    daemon_reload: true
-  when: _ci_k3s_slice_retired.changed
-
-# Restarting the agent leaves running containers alone (containerd keeps them);
-# kubelet re-admits its pods against the new allocatable on the way up.
-- name: Restart k3s for its kubelet args
+# Kubelet refuses to start when its CPU manager policy or reserved set differs
+# from its checkpoint, so the checkpoint goes while k3s is stopped. Stopping the
+# agent leaves running containers alone (KillMode=process), and kubelet moves
+# them onto the new shared pool on the way up without a restart. A Guaranteed pod
+# with whole CPUs would lose its exclusive CPUs until it restarts; razer had none
+# (2026-11-11).
+- name: Stop k3s to change its CPU manager
   ansible.builtin.systemd:
     name: "{{ k3s_service }}"
-    state: restarted
+    state: stopped
+  when: _ci_k3s_config.changed or _ci_k3s_removed.changed
+
+- name: Remove the kubelet CPU manager checkpoint
+  ansible.builtin.file:
+    path: /var/lib/kubelet/cpu_manager_state
+    state: absent
+  when: _ci_k3s_config.changed or _ci_k3s_removed.changed
+
+- name: Start k3s with its new kubelet args
+  ansible.builtin.systemd:
+    name: "{{ k3s_service }}"
+    state: started
   when: _ci_k3s_config.changed or _ci_k3s_removed.changed
 
 # Containers are children of dockerd, not of the runner that asked for them, so a

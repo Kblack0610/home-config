@@ -1,0 +1,31 @@
+# promtool test rules. Run with scripts/test-prometheus-rules.sh.
+rule_files:
+  - site-availability.rules.yaml
+evaluation_interval: 1m
+
+tests:
+  - name: WANDown fires only when every WAN target fails for 3m
+    interval: 1m
+    input_series:
+      # one provider down the whole time: no page
+      - series: 'probe_success{job="blackbox-wan",instance="https://1.1.1.1"}'
+        values: '0x20'
+      # the other fails from minute 10
+      - series: 'probe_success{job="blackbox-wan",instance="https://dns.google"}'
+        values: '1x9 0x10'
+    alert_rule_test:
+      - eval_time: 9m
+        alertname: WANDown
+        exp_alerts: []
+      - eval_time: 12m
+        alertname: WANDown
+        exp_alerts: []
+      - eval_time: 14m
+        alertname: WANDown
+        exp_alerts:
+          - exp_labels:
+              severity: critical
+              category: site-availability
+            exp_annotations:
+              summary: "Internet down: every WAN probe target has failed for 3m"
+              description: "blackbox-wan cannot reach 1.1.1.1 or dns.google. Check the router WAN link (192.168.1.1) and the modem."

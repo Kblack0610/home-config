@@ -331,8 +331,8 @@ all:
         # slots, no wide slot: a wide job builds its players in the job, and Soak's server
         # build was killed at 16.96G in a 16G slot (playground ucp-1830); a wide slot needs
         # 20G (scripts/check-runner-roster.py). The lan jobs cannot run here either.
-        # No unity_ci_gate: it was Spot, so it took full runs only (playground ucp-1778).
-        # On-demand now, so a gate could land here; adding the label is its own change.
+        # unity_ci_gate since 2026-11-11: Spot kept gates off it (a reclaim kills a gate,
+        # playground ucp-1778); on-demand, it is the fourth gate host.
         aws-burst-2:
           ansible_host: i-000950e6c992b24bf
           ansible_user: ubuntu
@@ -340,6 +340,7 @@ all:
             -o ProxyCommand="aws ssm start-session --profile bnb --region us-east-2
             --target %h --document-name AWS-StartSSHSession --parameters portNumber=%p"
           unity_ci_slots: 6
+          unity_ci_gate: true
           unity_ci_full: true
           unity_ci_images_pull: true
           unity_ci_images:

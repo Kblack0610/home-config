@@ -59,16 +59,17 @@ spec:
                 - name: WF_FOLDS
                   value: "12"
                 - name: WF_WORKERS
-                  value: "10"
+                  value: "2"  # razer-laptop offers pods 4 CPUs since home-config #732; 10 again once the lab leaves razer (trader plan magical-stargazing-owl phase 3)
                 - name: WF_MEMORY_GB
                   value: "12"
                 - name: WF_BUDGET_S  # starts no fold after this: the deadline less WF_TIMEOUT (10800) and 30 min for the post steps
                   value: "16200"
               resources:
                 requests:
-                  cpu: "6"
+                  cpu: "1"  # with the analysis' 1 this fits razer-laptop's 4 allocatable CPUs beside its other pods; 6 left both Pending (2026-11-11)
                   memory: 14Gi  # equal to the limit, as in analysis-cronjob.yaml
                 limits:
+                  cpu: "2"  # a pod with no CPU limit runs on the CI cores (#732), so the two lab jobs stay inside the 4-CPU k3s budget
                   memory: 14Gi  # WF_MEMORY_GB of estimated fold memory plus the interpreter and suggest
               volumeMounts:
                 - {name: lab, mountPath: /lab}

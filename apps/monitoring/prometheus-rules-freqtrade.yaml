@@ -159,6 +159,18 @@ spec:
           annotations:
             summary: "No successful {{ $labels.kind }} run for {{ $value | humanizeDuration }}"
 
+        # A lab pod the scheduler cannot place. The default KubePodNotReady skips Job pods, and
+        # TraderRunStale waits 50 h, so on 2026-11-11 both nightly pods sat Pending 7 h unseen after
+        # razer-laptop's allocatable CPU fell below their request (home-config #732).
+        - alert: TraderLabPodUnschedulable
+          expr: max by (pod) (kube_pod_status_unschedulable{namespace="freqtrade"}) > 0
+          for: 30m
+          labels:
+            severity: warning
+            category: trading
+          annotations:
+            summary: "{{ $labels.pod }} cannot be scheduled: compare its requests with razer-laptop's allocatable (kubectl describe pod)"
+
         # Event-contract markets (strategy repo lab/markets, docs/markets.md). A venue reports while
         # it has a recorder sweep in the last 7 days, so removing a venue's CronJob ends its series
         # instead of alerting forever. 15 minutes is the paper league's max_book_age_min: past it the

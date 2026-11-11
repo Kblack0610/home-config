@@ -56,14 +56,15 @@ spec:
                 - name: ANALYZE_EXCHANGES
                   value: "binanceus coinbase kraken okx kucoin"  # a venue x timeframe joins once every pair is backfilled to its oldest candle
                 - name: ANALYZE_WORKERS
-                  value: "10"
+                  value: "2"  # matches the 2-CPU limit; see walkforward-cronjob.yaml
                 - name: ANALYZE_MEMORY_GB
                   value: "8"  # tasks are admitted by estimated memory; 4 GB under the limit for the parent process and estimate error
               resources:
                 requests:
-                  cpu: "6"
+                  cpu: "1"  # razer-laptop offers pods 4 CPUs since home-config #732; see walkforward-cronjob.yaml
                   memory: 14Gi  # equal to the limit, so the scheduler sees what it uses: with the walk-forward's 14Gi that is 28 of razer-laptop's 93Gi, and both run at once
                 limits:
+                  cpu: "2"
                   memory: 14Gi  # ANALYZE_MEMORY_GB plus headroom; runs peak near 10.3 GiB at a budget of 8 (2026-11-06), a 5m year of 10 pairs at 1.1 GB, a 1m year at 4 GB
               volumeMounts:
                 - {name: lab, mountPath: /lab}

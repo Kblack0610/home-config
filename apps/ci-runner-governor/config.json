@@ -12,7 +12,7 @@
     "withhold": {"idle": 0.15, "psi": 0.4, "tctl": 92, "mem": 0.1, "disk": 0.2}
   },
   "standby": [
-    {"host": "aws-burst-2", "max_admitted": 6, "power": {"provider": "aws", "instance_id": "i-051f266179192763e",
+    {"host": "aws-burst-2", "max_admitted": 6, "power": {"provider": "aws", "instance_id": "i-000950e6c992b24bf",
                                                        "region": "us-east-2", "idle_off_seconds": 900,
                                                        "start_min_excess": 4, "start_after_seconds": 300, "max_hours_day": 12,
                                                        "fallback_seconds": 3600, "live": true}},
@@ -36,7 +36,7 @@
     "windows-media": {"usd_per_hour": 0, "basis": "owned"},
     "aws-burst-1": {"usd_per_hour": 1.855, "basis": "on-demand"},
     "aws-build-1": {"usd_per_hour": 1.855, "basis": "on-demand"},
-    "aws-burst-2": {"usd_per_hour": 0.65, "basis": "spot-estimate"}
+    "aws-burst-2": {"usd_per_hour": 1.855, "basis": "on-demand"}
   },
   "hosts": {
     "cachyos-x8664-main": {"full": false, "min_admitted": 0, "admit": {"idle": 0.5, "tctl": 80}, "withhold": {"idle": 0.3, "tctl": 88}},

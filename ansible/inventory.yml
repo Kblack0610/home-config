@@ -324,16 +324,17 @@ all:
           unity_ci_images_pull: true
           unity_ci_lan: false
           unity_ci_library_s3: aws-burst-1-libraries-311141527647
-        # The Spot twin (platform infra/aws-ci-burst, applied 2026-11-10 when the Mac
-        # Studio's six slots left the pool): same m7a.8xlarge, its own 400G data volume,
-        # stops on interruption. The governor starts it before aws-burst-1. Six plain
+        # The second burst host (platform infra/aws-ci-burst, applied 2026-11-10 when the
+        # Mac Studio's six slots left the pool): same m7a.8xlarge, its own 400G data volume.
+        # On-demand since 2026-11-11 (was Spot: no capacity or reclaimed all day while
+        # 16-26 jobs waited). The governor starts it before aws-burst-1. Six plain
         # slots, no wide slot: a wide job builds its players in the job, and Soak's server
         # build was killed at 16.96G in a 16G slot (playground ucp-1830); a wide slot needs
         # 20G (scripts/check-runner-roster.py). The lan jobs cannot run here either.
-        # No unity_ci_gate: a Spot reclaim would kill a merge gate, so gates stay on the
-        # non-preemptible hosts and this one takes full runs only (playground ucp-1778).
+        # No unity_ci_gate: it was Spot, so it took full runs only (playground ucp-1778).
+        # On-demand now, so a gate could land here; adding the label is its own change.
         aws-burst-2:
-          ansible_host: i-051f266179192763e
+          ansible_host: i-000950e6c992b24bf
           ansible_user: ubuntu
           ansible_ssh_common_args: >-
             -o ProxyCommand="aws ssm start-session --profile bnb --region us-east-2
@@ -446,7 +447,7 @@ all:
           ci_unity_slot_cpus: ["1-10", "11-20", "21-30"]
           ci_unity_memory_max: 108G
           ci_unity_slot_memory_max: 36G
-        # Spot twin of aws-burst-1, the same 32 cores and 128 GiB: six slots of five
+        # Twin of aws-burst-1, the same 32 cores and 128 GiB: six slots of five
         # cores, each stopping at 16G (a PlayMode shard peaks at 13.9G), 96G of the
         # 100G Unity budget.
         aws-burst-2:

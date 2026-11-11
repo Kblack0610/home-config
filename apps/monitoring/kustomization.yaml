@@ -25,6 +25,7 @@ resources:
   - prometheus-rules-freqtrade.yaml
   - probe-sites.yaml
   - probe-dns.yaml
+  - probe-wan.yaml
   - external-mac-nodes.yaml
   - external-standalone-nodes.yaml
   - external-windows-nodes.yaml

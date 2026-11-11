@@ -105,6 +105,18 @@ jobs:
       - name: emotiv-bridge offline tests
         run: node --test ansible/roles/emotiv-bridge/files/test-emotiv-bridge.mjs
 
+  dhcp-sync:
+    runs-on: docker
+    container:
+      image: alpine:3.20
+    steps:
+      - name: Install deps
+        run: apk add --no-cache git nodejs bash jq python3 py3-yaml
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: dhcp.sh sync against a fake router
+        run: infrastructure/dhcp/tests/test-sync.sh
+
   prometheus-rules:
     runs-on: docker
     container:

@@ -33,9 +33,8 @@ dhcp sync
 | `status` | Summary of inventory vs router state |
 
 > **Gotchas** (learned 2026-07-06):
-> - **Flags go BEFORE the command**: `dhcp --force sync`, not `dhcp sync --force`. The arg parser
->   stops at the first non-flag token, so a trailing `--force` is ignored — and because of
->   `set -euo pipefail` the interactive confirm's `read` then fails on non-TTY stdin (exit 1).
+> - **Flags parse in any position** (`dhcp sync --force` works). Before that fix a trailing `--force` was ignored and the confirm `read` declined on non-TTY stdin.
+> - **Sync addresses router sections by cfg id** (`uci -X show`). Until 2026-11-11 it used `@host[N]` positions from one snapshot, so removing two hosts deleted the second one's neighbour. `tests/test-sync.sh` runs sync against a fake router and must stay green.
 > - **A reservation only takes effect after the device renews its lease.** `sync` restarts
 >   dnsmasq, but a device that already holds a lease keeps its current IP until renewal — reboot
 >   the device (or wait out the lease) to move it onto the pinned IP.
@@ -66,3 +65,4 @@ dhcp sync
 
 - `devices.yaml` — Single source-of-truth device inventory
 - `backups/` — UCI config snapshots taken before each sync (gitignored)
+- `tests/` — `test-sync.sh` with a fake `ssh` and `uci` and a `uci -X show` fixture

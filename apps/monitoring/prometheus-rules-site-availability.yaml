@@ -39,6 +39,19 @@ spec:
             summary: "Public site down: {{ $labels.instance }}"
             description: "{{ $labels.instance }} has failed its blackbox probe for 5m. Check the backing pod is Ready and on a node whose architecture matches its image."
 
+        # probe-wan.yaml: every uplink target failing is the house offline. Alertmanager
+        # inhibits PublicSiteDown while this fires. The page reaches phones on the house
+        # Wi-Fi through the in-cluster ntfy; the ntfy.sh channel cannot leave the house.
+        - alert: WANDown
+          expr: max(probe_success{job="blackbox-wan"}) == 0
+          for: 3m
+          labels:
+            severity: critical
+            category: site-availability
+          annotations:
+            summary: "Internet down: every WAN probe target has failed for 3m"
+            description: "blackbox-wan cannot reach 1.1.1.1 or dns.google. Check the router WAN link (192.168.1.1) and the modem."
+
         - alert: PublicSiteCertExpiringSoon
           expr: (probe_ssl_earliest_cert_expiry{job="blackbox-sites"} - time()) / 86400 < 14
           for: 1h

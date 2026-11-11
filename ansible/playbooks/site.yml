@@ -420,7 +420,8 @@
         # got the tarball, and a cloud host sets unity_ci_hd_library once it reads it from S3.
         # unity_ci_pool: false leaves unity and unity-full off, and unity_ci_build: true puts
         # unity-build on: a build-only host (aws-build-1) that no gate or nightly can land on.
-        # unity_ci_slot_labels adds labels to one slot, so a comparison run can be pinned to it.
+        # unity_ci_slot_labels adds labels to one slot, so a comparison run can be pinned to it,
+        # or a job kept off it (aws-build-1: unity-release on slots 1-2 only).
         # unity-gate: the non-preemptible hosts merge gates may take (unity_ci_gate, default false);
         # a Spot host (aws-burst-2) leaves it off, so a reclaim never kills a gate (playground ucp-1778).
         gh_runner_labels: "{{ [ 'self-hosted', 'linux', 'x64', 'host-' ~ inventory_hostname ] + ([ 'unity' ] if unity_ci_pool | default(true) else []) + ([ 'unity-full' ] if unity_ci_pool | default(true) and unity_ci_full | default(true) else []) + ([ 'unity-build' ] if unity_ci_build | default(false) else []) + ([ 'lan' ] if unity_ci_lan | default(true) else []) + ([ 'unity-wide' ] if unity_ci_wide | default(false) else []) + ([ 'unity-gate' ] if unity_ci_gate | default(false) else []) + ([ 'hd-library' ] if unity_ci_hd_library | default(unity_ci_lan | default(true)) else []) + (unity_ci_slot_labels | default({})).get(unity_slot, []) }}"

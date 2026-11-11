@@ -312,6 +312,12 @@ all:
             -o ProxyCommand="aws ssm start-session --profile bnb --region us-east-2
             --target %h --document-name AWS-StartSSHSession --parameters portNumber=%p"
           unity_ci_slots: 3
+          # Releases take slots 1-2 only (playground release.yml asks unity-release),
+          # so a release, or one per game from ship.sh, never holds the slot players.yml
+          # builds on; a release alone had all three for hours on 2026-11-11 (hc-263).
+          unity_ci_slot_labels:
+            1: [unity-release]
+            2: [unity-release]
           unity_ci_pool: false
           unity_ci_build: true
           unity_ci_full: false

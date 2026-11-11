@@ -20,6 +20,10 @@ A slot that carries unity-wide (unity_ci_wide, or unity-wide in unity_ci_slot_la
 ci_unity_slot_memory_max of at least WIDE_SLOT_MIN_GB: Multi, Soak, Two-process and Playloop
 build their players in the job, and the server build passed 16G (playground ucp-1830).
 
+A build host gives some of its slots, never all, the RELEASE_LABEL in unity_ci_slot_labels:
+playground release.yml asks for it, so a release (one per game from ship.sh) holds those
+slots for hours while players.yml, which asks only unity-build, keeps the rest (hc-263).
+
 Same rule as check-fleet-roster.py: independent copies are the design, copies nobody
 compares are the bug. This compares them in BOTH directions, because both break: a
 host added to a pool and forgotten here reads as fully healthy, a host retired there
@@ -55,6 +59,7 @@ PINNED = {("mac-mini", "macos"): 2, ("windows-media", "windows"): 1}
 # ucp-1793): Soak's server build was killed at 16.96G anon in an aws-burst-2 16G slot on
 # 2026-11-11 (ucp-1830); the wide slots that build green (razer-laptop, aws-burst-1 slot 1) have 20G.
 WIDE_SLOT_MIN_GB = 20
+RELEASE_LABEL = "unity-release"
 
 
 def inventory_roster(path):
@@ -108,6 +113,32 @@ def wide_slot_memory(path):
                 m = re.fullmatch(r"(\d+)G", val)
                 mem[host] = int(m.group(1)) if m else None
     return {h: mem.get(h) for h in wide}
+
+
+def build_release_slots(path):
+    """{host: (its unity slots, how many carry RELEASE_LABEL)} for every build host."""
+    build, slots, release, group, host = set(), {}, {}, None, None
+    with open(path, encoding="utf-8") as fh:
+        for raw in fh:
+            line = raw.split("#", 1)[0].rstrip()
+            if not line.strip():
+                continue
+            indent = len(line) - len(line.lstrip())
+            key, _, val = line.strip().partition(":")
+            val = val.strip()
+            if indent == 4:
+                group, host = key, None
+            elif indent == 8:
+                host = key
+            elif group != "unity_ci_runners" or not host:
+                continue
+            elif indent == 10 and key == "unity_ci_build" and val == "true":
+                build.add(host)
+            elif indent == 10 and key == "unity_ci_slots":
+                slots[host] = int(val)
+            elif indent == 12 and re.search(rf"(?<![\w-]){RELEASE_LABEL}(?![\w-])", val):
+                release[host] = release.get(host, 0) + 1
+    return {h: (slots.get(h, 0), release.get(h, 0)) for h in build}
 
 
 def env_value(text, name, path):
@@ -172,6 +203,15 @@ def main():
             have = "unset or not in whole G" if gb is None else f"{gb}G"
             print(f"FAIL: {host} carries unity-wide, but its ci_unity_slot_memory_max is {have}, "
                   f"under the {WIDE_SLOT_MIN_GB}G a player build in the job needs")
+    builds = build_release_slots(INVENTORY)
+    if not builds:
+        rc = 1
+        print("FAIL: parsed no build host out of the inventory; the parser is broken, not the roster")
+    for host, (slots, release) in sorted(builds.items()):
+        if not 0 < release < slots:
+            rc = 1
+            print(f"FAIL: {host}: {release} of its {slots} build slots carry {RELEASE_LABEL}; a release must "
+                  f"have at least one and leave players.yml at least one")
     if rc == 0:
         print(f"ok: {len(want)} host/pool slot counts agree, cloud hosts {sorted(want_cloud)} match the governor standby")
     return rc

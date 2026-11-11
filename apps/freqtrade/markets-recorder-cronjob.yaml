@@ -65,9 +65,10 @@ spec:
                   valueFrom:
                     secretKeyRef: {name: trader-markets-s3, key: S3_SECRET_KEY}
               resources:
-                # A full 171k-market sweep peaks at 1894 MB RSS (measured 2026-11-11); tr-184 owns cutting it.
+                # Page-scoped state: 214 MiB RSS for 171k live markets (2026-11-11, tr-184).
+                # 1Gi also leaves headroom for a cold sweep retaining every changed quote.
                 requests:
                   cpu: 200m
-                  memory: 2Gi
+                  memory: 512Mi
                 limits:
-                  memory: 3Gi
+                  memory: 1Gi

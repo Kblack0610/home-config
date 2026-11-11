@@ -93,3 +93,48 @@ tests:
             exp_annotations:
               summary: "Job failed: databases/db-bootstrap"
               description: "databases/db-bootstrap failed and no CronJob will re-run it. Fix and re-run it, or delete the Job once read."
+
+  - name: drift fires per host, from its newest run only
+    interval: 1m
+    input_series:
+      # hp-victus: an old file on razer still says 9 changes, the newest run on hp-victus says 0.
+      - series: 'ansible_convergence_recap{host="hp-victus",status="changed",instance="razer:9100"}'
+        values: '9x30'
+      - series: 'ansible_convergence_run_timestamp_seconds{host="hp-victus",instance="razer:9100"}'
+        values: '100x30'
+      - series: 'ansible_convergence_recap{host="hp-victus",status="changed",instance="hp:9100"}'
+        values: '0x30'
+      - series: 'ansible_convergence_run_timestamp_seconds{host="hp-victus",instance="hp:9100"}'
+        values: '200x30'
+      # razer-laptop: the newest run says 11 changes.
+      - series: 'ansible_convergence_recap{host="razer-laptop",status="changed",instance="hp:9100"}'
+        values: '11x30'
+      - series: 'ansible_convergence_run_timestamp_seconds{host="razer-laptop",instance="hp:9100"}'
+        values: '200x30'
+      - series: 'ansible_convergence_recap{host="razer-laptop",status="failed",instance="hp:9100"}'
+        values: '1x30'
+    alert_rule_test:
+      - eval_time: 20m
+        alertname: ConvergenceDrift
+        exp_alerts:
+          - exp_labels: {alertname: ConvergenceDrift, severity: warning, category: scheduled-jobs, fleet: fix, host: razer-laptop}
+            exp_annotations:
+              summary: "razer-laptop: ansible --check would change 11 tasks: apps/ansible-runner/README.md#convergencedrift"
+
+  - name: a run older than 2 days does not fire
+    interval: 1m
+    input_series:
+      - series: 'ansible_convergence_recap{host="asus-laptop",status="changed",instance="asus:9100"}'
+        values: '5x3000'
+      - series: 'ansible_convergence_run_timestamp_seconds{host="asus-laptop",instance="asus:9100"}'
+        values: '0x3000'
+    alert_rule_test:
+      - eval_time: 47h
+        alertname: ConvergenceDrift
+        exp_alerts:
+          - exp_labels: {alertname: ConvergenceDrift, severity: warning, category: scheduled-jobs, fleet: fix, host: asus-laptop}
+            exp_annotations:
+              summary: "asus-laptop: ansible --check would change 5 tasks: apps/ansible-runner/README.md#convergencedrift"
+      - eval_time: 49h
+        alertname: ConvergenceDrift
+        exp_alerts: []

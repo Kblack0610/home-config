@@ -125,9 +125,49 @@ spec:
                   export PATH="/workspace/bin:$PATH"
                   cd /workspace/ansible
                   ansible-galaxy collection install -r requirements.yml --force
-                  exec ansible-playbook playbooks/site.yml \
+                  set +e
+                  ansible-playbook playbooks/site.yml \
                     --limit "$REACHABLE" \
-                    --check --diff
+                    --check --diff 2>&1 | tee /tmp/run.log
+                  rc=$?
+                  set -e
+
+                  # The PLAY RECAP becomes metrics for the ConvergenceDrift alert
+                  # (apps/monitoring/prometheus-rules-jobs.yaml). Written to the
+                  # node-exporter textfile dir of whatever node this pod ran on,
+                  # so older files sit on other nodes: the rule reads each host's
+                  # newest run by its timestamp. Written even when the playbook
+                  # failed, since the recap still counts what would change.
+                  now=$(date +%s)
+                  prom=/textfile/ansible-convergence.prom
+                  awk -v now="$now" '
+                    /^PLAY RECAP/ { recap = 1; next }
+                    recap && NF == 0 { recap = 0 }
+                    recap && $2 == ":" {
+                      ts = ts sprintf("ansible_convergence_run_timestamp_seconds{host=\"%s\"} %s\n", $1, now)
+                      for (i = 3; i <= NF; i++) {
+                        split($i, kv, "=")
+                        tasks = tasks sprintf("ansible_convergence_recap{host=\"%s\",status=\"%s\"} %s\n", $1, kv[1], kv[2])
+                      }
+                    }
+                    END {
+                      print "# HELP ansible_convergence_run_timestamp_seconds When the convergence-check run that reported this host finished."
+                      print "# TYPE ansible_convergence_run_timestamp_seconds gauge"
+                      printf "%s", ts
+                      print "# HELP ansible_convergence_recap Tasks per PLAY RECAP status in the last ansible --check run of this host."
+                      print "# TYPE ansible_convergence_recap gauge"
+                      printf "%s", tasks
+                    }
+                  ' /tmp/run.log > "$prom.tmp"
+                  # No recap (the playbook died early): keep this node's last file.
+                  if grep -q '^ansible_convergence_recap' "$prom.tmp"; then
+                    mv "$prom.tmp" "$prom"
+                    echo "--- Wrote the PLAY RECAP to $prom ---"
+                  else
+                    rm -f "$prom.tmp"
+                    echo "WARNING: no PLAY RECAP in the output; $prom left as it was."
+                  fi
+                  exit "$rc"
               env:
                 - name: ANSIBLE_HOST_KEY_CHECKING
                   value: "False"
@@ -139,6 +179,8 @@ spec:
                 - name: secrets
                   mountPath: /secrets
                   readOnly: true
+                - name: textfile
+                  mountPath: /textfile
               resources:
                 requests:
                   cpu: "50m"
@@ -149,6 +191,12 @@ spec:
           volumes:
             - name: workspace
               emptyDir: {}
+            # Scraped by the kube-prometheus-stack node-exporter on every node
+            # (apps/monitoring/helm-values.yaml, collector.textfile.directory).
+            - name: textfile
+              hostPath:
+                path: /var/lib/node-exporter-textfile
+                type: DirectoryOrCreate
             - name: secrets
               secret:
                 secretName: ansible-runner-secrets

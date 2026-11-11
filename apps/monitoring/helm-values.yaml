@@ -67,10 +67,10 @@ alertmanager:
           group_by: [alertname]
           group_interval: 24h
           repeat_interval: 168h
-        # One group per CronJob, so a new failure is its own message.
+        # One group per CronJob, Job or host, so a new failure is its own message.
         - matchers: [category = "scheduled-jobs"]
           receiver: ntfy
-          group_by: [alertname, namespace, owner_name, job_name, cronjob]
+          group_by: [alertname, namespace, owner_name, job_name, cronjob, host]
           repeat_interval: 24h
         # Spend over budget needs you today, not hourly, and is no outage.
         - matchers: [severity = "critical", category = "cost"]

@@ -1,14 +1,13 @@
 # Frigate
 
-Frigate NVR on home-k3s, reconciled by Flux. Object detection runs on hp-victus's GPU (RTX 4060 Laptop) through the ONNX detector in the `-tensorrt` image, and video decode uses NVDEC. Events go to Home Assistant over MQTT (`apps/mosquitto`) and the Frigate integration.
+Frigate NVR on home-k3s, reconciled by Flux. Object detection runs on a Coral USB Accelerator plugged into hp-victus, and video decode runs on the CPU, so Frigate uses none of the node's GPU. Events go to Home Assistant over MQTT (`apps/mosquitto`) and the Frigate integration.
 
 ## Files
 
 | File | Purpose |
 |------|---------|
 | `config.yml` | Frigate config, copied over `/config/config.yml` on every pod start. Git wins: edits made in the Frigate UI config editor are lost on restart unless brought back here. |
-| `deployment.yaml` | One replica pinned to hp-victus, `runtimeClassName: nvidia`, one GPU. Init containers seed the config and fetch the model. |
-| `model/build.sh` | Builds and publishes the YOLOv9 ONNX model (see Model below). |
+| `deployment.yaml` | One replica pinned to hp-victus, privileged with `/dev/bus/usb` mounted for the Coral. An init container seeds the config. |
 | `service.yaml` | ClusterIP for the UI (8971), the internal API (5000) and the go2rtc restream (8554); a LoadBalancer for WebRTC (8555). |
 | `ingress.yaml` | `frigate.kblab.me`, LAN only (external-dns skips it). |
 | `pvc.yaml` | `frigate-config` (db, model cache) and `frigate-media` (recordings), both local-path on hp-victus. |
@@ -28,13 +27,18 @@ local-path does not enforce PVC sizes, so `frigate-media` can grow until the hp-
 kubectl --context home-k3s get --raw /api/v1/nodes/hp-victus/proxy/stats/summary | jq '.node.fs | {availableGB: (.availableBytes/1e9), capacityGB: (.capacityBytes/1e9)}'
 ```
 
-## Model
+## Detector
 
-Frigate 0.18 ships no GPU model. `model/build.sh` exports YOLOv9-s at 320x320 with the recipe from Frigate's docs (pinned yolov9 commit, classic docker builder) and publishes it to the Forgejo generic registry. The `fetch-model` init container downloads it into `/config/model_cache/` and checks `MODEL_SHA256`, re-fetching on mismatch and failing the pod if the hash still does not match.
+The Coral is a USB Accelerator in hp-victus's USB 3 port. Frigate's `edgetpu` detector runs the MobileDet model bundled in the image (`/edgetpu_model.tflite`), the one Frigate's docs recommend for the Edge TPU, so there is no model to build or fetch. It is less accurate than the YOLOv9-s ONNX model that ran on the 4060 until 2026-11-11 (in git history, with its `model/build.sh`), mostly on small or distant objects and at night.
 
-To change the model: run `model/build.sh <size> <imgsize>`, publish with `FORGEJO_TOKEN=... model/build.sh --publish <file>`, then update `MODEL_URL` / `MODEL_SHA256` in `deployment.yaml` and `model.path` / `width` / `height` in `config.yml` together.
+The Coral changes its USB ID when Frigate loads its firmware (`1a6e:089a` before, `18d1:9302` after), which is why the pod mounts the whole `/dev/bus/usb` and runs privileged rather than mapping one device node. Run it from a USB 3 port: on USB 2 it works at a fraction of the speed.
 
-Moving off the GPU later (a Pi with a Hailo-8L or Coral): change the `detectors` + `model` blocks in `config.yml`, the image tag, and the `nodeSelector` / `runtimeClassName` / GPU limit in `deployment.yaml`.
+If the detector fails to start (`No EdgeTPU was detected` in the log), check the host sees it, then roll the pod:
+
+```bash
+ssh kblack0610@192.168.1.243 'grep -l -e 1a6e -e 18d1 /sys/bus/usb/devices/*/idVendor'
+kubectl --context home-k3s -n frigate rollout restart deploy/frigate
+```
 
 ## Cameras
 

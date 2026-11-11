@@ -7,7 +7,7 @@ metadata:
     app.kubernetes.io/name: frigate
 spec:
   replicas: 1
-  # RWO local-path volumes and one GPU: the old pod must be gone first.
+  # RWO local-path volumes and one USB Coral: the old pod must be gone first.
   strategy:
     type: Recreate
   selector:
@@ -18,10 +18,10 @@ spec:
       labels:
         app.kubernetes.io/name: frigate
     spec:
-      # hp-victus is the only node with a GPU (RTX 4060 Laptop, 8 GB).
+      # The Coral USB Accelerator is plugged into hp-victus, and the
+      # local-path volumes live there.
       nodeSelector:
         kubernetes.io/hostname: hp-victus
-      runtimeClassName: nvidia
       initContainers:
         # Git is the source of truth for config.yml (see the header of config.yml).
         - name: install-config
@@ -32,45 +32,12 @@ spec:
               mountPath: /config
             - name: seed
               mountPath: /seed
-        # Frigate ships no GPU model; ours is built by apps/frigate/model/build.sh
-        # and published to the Forgejo generic registry. Fetched once, checked
-        # against MODEL_SHA256 every start, re-fetched on mismatch. Unlike the HA
-        # custom-component installs this one FAILS the pod on error: Frigate
-        # cannot start without its model, and a loud crashloop beats a silent one.
-        - name: fetch-model
-          image: alpine:3.24.1
-          env:
-            - name: MODEL_URL
-              value: "https://git.kblab.me/api/packages/kblack0610/generic/frigate-model/yolov9-s-320/yolov9-s-320.onnx"
-            - name: MODEL_SHA256
-              value: "15d251c4ab60403410a0496080b7eab9d7fc59c26b69d455c981a4277c56109c"
-            - name: MODEL_PATH
-              value: /config/model_cache/yolov9-s-320.onnx
-          command:
-            - sh
-            - -c
-            - |
-              set -eu
-              ok() { [ -f "$MODEL_PATH" ] && echo "$MODEL_SHA256  $MODEL_PATH" | sha256sum -c -s; }
-              if ok; then echo "model present and verified"; exit 0; fi
-              mkdir -p "$(dirname "$MODEL_PATH")"
-              wget -q -O "$MODEL_PATH.tmp" "$MODEL_URL"
-              mv "$MODEL_PATH.tmp" "$MODEL_PATH"
-              ok || { echo "ERROR: sha256 mismatch for $MODEL_URL"; rm -f "$MODEL_PATH"; exit 1; }
-              echo "model fetched and verified"
-          volumeMounts:
-            - name: config
-              mountPath: /config
       containers:
         - name: frigate
-          image: ghcr.io/blakeblackshear/frigate:0.18.0-tensorrt
+          image: ghcr.io/blakeblackshear/frigate:0.18.0
           env:
             - name: TZ
               value: America/Los_Angeles
-            # The nvidia runtime grants compute+utility by default; ffmpeg's
-            # NVDEC decode (preset-nvidia) also needs the video capability.
-            - name: NVIDIA_DRIVER_CAPABILITIES
-              value: compute,utility,video
           envFrom:
             - secretRef:
                 name: frigate-camera
@@ -87,13 +54,17 @@ spec:
             - name: webrtc-udp
               containerPort: 8555
               protocol: UDP
+          # The Coral re-enumerates when Frigate loads its firmware
+          # (1a6e:089a -> 18d1:9302), so the pod gets the whole USB bus and
+          # device access, not one fixed device node.
+          securityContext:
+            privileged: true
           resources:
             requests:
               cpu: 500m
               memory: 1Gi
             limits:
               memory: 4Gi
-              nvidia.com/gpu: 1
           startupProbe:
             httpGet:
               path: /api/version
@@ -115,6 +86,8 @@ spec:
               mountPath: /tmp/cache
             - name: dshm
               mountPath: /dev/shm
+            - name: usb
+              mountPath: /dev/bus/usb
       volumes:
         - name: config
           persistentVolumeClaim:
@@ -125,6 +98,10 @@ spec:
         - name: seed
           configMap:
             name: frigate-config
+        - name: usb
+          hostPath:
+            path: /dev/bus/usb
+            type: Directory
         # Recording segments land here before they are moved to /media; RAM
         # saves the SSD the churn.
         - name: cache

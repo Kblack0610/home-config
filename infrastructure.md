@@ -106,7 +106,7 @@
 | Kenneth Black Portfolio | home-k3s | portfolio | Deployment | active |
 | BNB Studios | home-k3s | bnb-studios | Deployment | active |
 | kblack.dev | home-k3s | black-dev | Deployment | active |
-| Frigate NVR | standalone | -- | Docker Compose | active |
+| Frigate NVR | home-k3s | frigate | Deployment | active |
 | Pi3 AdGuard Home | standalone | -- | Docker Compose | active |
 | ESP32 Smart Switch | standalone | -- | Embedded (Rust) | active |
 | GitHub Actions Runner | mac-machines | -- | LaunchDaemon | active |

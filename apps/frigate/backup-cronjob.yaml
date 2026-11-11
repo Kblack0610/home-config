@@ -29,7 +29,7 @@ spec:
 
                   # The events database is the state worth keeping; recordings are
                   # not backed up (too large, and they expire in days anyway), the
-                  # model is re-fetched by the fetch-model init container, and
+                  # detector model ships in the image, and
                   # config.yml is in git (copied anyway, to match the db). A
                   # missing frigate.db means the PVC is not mounted, so refuse.
                   MIN_BYTES=4096

@@ -160,7 +160,7 @@ litellm (in-cluster, hp-victus)
 home-assistant → mosquitto (MQTT broker, in-cluster)
                 → mqtt2prom → monitoring (Prometheus)
 
-frigate (k3s, hp-victus GPU) → mosquitto (events) + home-assistant (integration, :5000)
+frigate (k3s, hp-victus USB Coral) → mosquitto (events) + home-assistant (integration, :5000)
         → camera amcrest-ptz-1 (192.168.1.80, RTSP + ONVIF)
 
 apps requiring NAS (backups / media):

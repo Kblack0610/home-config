@@ -19,24 +19,14 @@ auth:
   trusted_proxies:
     - 10.42.0.0/16
 
-# The one block that changes if Frigate moves off the GPU (e.g. a Pi with a
-# Hailo-8L or Coral). The model is fetched by the init container: see
-# apps/frigate/model/build.sh and MODEL_URL in deployment.yaml.
+# The USB Coral plugged into hp-victus. With no `model:` block Frigate uses the
+# MobileDet model bundled in the image (/edgetpu_model.tflite), the one its docs
+# recommend for the Edge TPU. Decode runs on the CPU: two 640x480 detect
+# streams at 5 fps are a few percent of one core, and it keeps the 4060 free.
 detectors:
-  onnx:
-    type: onnx
-
-model:
-  model_type: yolo-generic
-  width: 320
-  height: 320
-  input_tensor: nchw
-  input_dtype: float
-  path: /config/model_cache/yolov9-s-320.onnx
-  labelmap_path: /labelmap/coco-80.txt
-
-ffmpeg:
-  hwaccel_args: preset-nvidia
+  coral:
+    type: edgetpu
+    device: usb
 
 go2rtc:
   streams:

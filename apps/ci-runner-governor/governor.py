@@ -770,9 +770,9 @@ def read_pins(cfg, now):
 
 def count_run_time(t, state, now, launched=0.0):
     """Seconds the instance has run this UTC day, in t. A cycle counts at most two cycles'
-    worth, so a blind spell never books hours nobody saw. In memory, so on the first sight
-    of a running instance (a pod restart) the day starts from AWS's launch time: runs
-    before that start are forgotten, and the AWS budget is the cap that cannot forget."""
+    worth, so a blind spell never books hours nobody saw. On the first sight of a running
+    instance (a pod restart) the day starts from AWS's launch time; power_readings() then
+    adds back what earlier pods counted (restored())."""
     day = time.strftime("%Y-%m-%d", time.gmtime(now))
     if t.get("day") != day:
         t["day"], t["run_seconds"] = day, 0.0
@@ -783,6 +783,29 @@ def count_run_time(t, state, now, launched=0.0):
         t["run_seconds"] = max(0.0, now - max(launched, now - now % 86_400))
     t["seen_at"] = now
     t["hours_today"] = t["run_seconds"] / 3600
+
+
+def restored(host, now):
+    """What earlier governor pods exported for host this UTC day, read back from Prometheus
+    after a restart: (seconds run today, the newest power_state's reason, whether that state
+    was up). Each pod starts from the one before it, so the highest hours_today exported
+    today is the day so far; the window opens two cycles after midnight, past a pod's last
+    value from yesterday. Without this every deploy reset the day cap and exported reason
+    "none". None when Prometheus cannot say (logged), so the next cycle asks again."""
+    since = now % 86_400 - 2 * CYCLE_SECONDS
+    if since < CYCLE_SECONDS:
+        return 0.0, "", False
+    sel, window = f'host="{host}"', f"{int(since)}s"
+    try:
+        hours = max((float(r["value"][1]) for r in prom(
+            f"max(max_over_time(ci_governor_power_hours_today{{{sel}}}[{window}]))")), default=0.0)
+        last = prom(f"topk(1, max_over_time(timestamp(ci_governor_power_state{{{sel}}})[{window}:]))")
+    except API_ERRORS as e:
+        print(f"{host}: earlier run time and cause unread, counting from the launch time: {e}", flush=True)
+        return None
+    m = last[0]["metric"] if last else {}
+    cause = "" if m.get("reason", "none") == "none" else m["reason"]
+    return hours * 3600, cause, m.get("state") in ("starting", "running", "draining")
 
 
 def power_readings(cfg, runners, tracked, now):
@@ -832,7 +855,16 @@ def power_readings(cfg, runners, tracked, now):
             t.update(cause="reclaim", changed="stop", changed_at=now)
             print(f"{host}: reclaimed by AWS ({reason}), passed over for {power_of(cfg, host)['fallback_seconds']}s",
                   flush=True)
+        t.setdefault("restore", True)
         count_run_time(t, state, now, launched)
+        back = restored(host, now) if t["restore"] else None
+        if back:
+            seconds, cause, was_up = back
+            t["restore"] = False
+            t["run_seconds"] = max(t["run_seconds"], seconds)
+            t["hours_today"] = t["run_seconds"] / 3600
+            if cause and was_up == (state in ("pending", "running")):
+                t.setdefault("cause", cause)
         t["override"], t["override_until"] = read_override(host, now)
         t.update(state=state, labels=labels, client=client)
         out[host] = t
@@ -939,7 +971,7 @@ def render(cfg, hosts, runners, queue, decisions, ok, instances=None, budget=Non
     # it has, so the series changes only when the power does.
     L += ["# HELP ci_governor_power_state A powered standby host: stopped, starting, running, draining or stopping",
           "# TYPE ci_governor_power_state gauge",
-          "# HELP ci_governor_power_hours_today Hours its instance has run this UTC day (in memory)",
+          "# HELP ci_governor_power_hours_today Hours its instance has run this UTC day (carried across restarts)",
           "# TYPE ci_governor_power_hours_today gauge",
           "# HELP ci_governor_power_override End (epoch) of the override in force, 0 with action none",
           "# TYPE ci_governor_power_override gauge",

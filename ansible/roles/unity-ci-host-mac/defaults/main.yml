@@ -65,3 +65,16 @@ unity_ci_mac_path: >-
 
 # One asset-library LFS store per host, as on Linux (ASSET_LIBRARY_LFS_STORE).
 unity_ci_mac_lfs_store: "{{ unity_ci_mac_root }}/.cache/bnb/asset-library-lfs"
+
+# tasks/disk.yml: the hourly prune of the game build trees beside a Mac runner's checkout
+# (files/ci-tree-prune.sh; docs/mac-machines.md#build-tree-prune). The runner homes it sweeps;
+# m1-playground-mac is hand-registered, so it is named here rather than read from a play.
+unity_ci_mac_prune_runners:
+  - "{{ ansible_env.HOME }}/actions-runner-playground"
+unity_ci_mac_prune_script: "{{ ansible_env.HOME }}/.local/bin/ci-tree-prune.sh"
+unity_ci_mac_prune_label: com.kblab.ci-tree-prune
+unity_ci_mac_prune_interval_seconds: 3600
+# A tree unused this long goes; under this much free disk, idle trees go oldest first.
+# NodeDiskLow trips at 20% free.
+unity_ci_mac_prune_tree_days: 7
+unity_ci_mac_prune_free_pct: 25

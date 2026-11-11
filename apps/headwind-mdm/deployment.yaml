@@ -23,7 +23,7 @@ spec:
         # guarantee. Block startup until the hmdm role+db actually exist so the
         # app never crash-loops waiting on a missing role.
         - name: wait-for-hmdm-db
-          image: pgvector/pgvector:0.8.2-pg17-trixie
+          image: pgvector/pgvector:0.8.7-pg17-trixie
           env:
             - name: SQL_PASS
               valueFrom:
@@ -42,7 +42,7 @@ spec:
         - name: headwind-mdm
           # Pinned (not :latest) for reproducible deploys. Bump deliberately.
           # The server WAR is separately pinned via HMDM_URL below.
-          image: headwindmdm/hmdm:0.1.8
+          image: headwindmdm/hmdm:0.1.9
           ports:
             - name: http
               containerPort: 8080

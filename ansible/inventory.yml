@@ -320,9 +320,10 @@ all:
           unity_ci_library_s3: aws-burst-1-libraries-311141527647
         # The Spot twin (platform infra/aws-ci-burst, applied 2026-11-10 when the Mac
         # Studio's six slots left the pool): same m7a.8xlarge, its own 400G data volume,
-        # stops on interruption. The governor starts it before aws-burst-1. Every slot
-        # carries unity-wide since 2026-11-11, so the Multi and Two-process shards queued
-        # on two wide slots run here too (ask Kx2itr); the lan jobs still cannot.
+        # stops on interruption. The governor starts it before aws-burst-1. Six plain
+        # slots, no wide slot: a wide job builds its players in the job, and Soak's server
+        # build was killed at 16.96G in a 16G slot (playground ucp-1830); a wide slot needs
+        # 20G (scripts/check-runner-roster.py). The lan jobs cannot run here either.
         # No unity_ci_gate: a Spot reclaim would kill a merge gate, so gates stay on the
         # non-preemptible hosts and this one takes full runs only (playground ucp-1778).
         aws-burst-2:
@@ -333,7 +334,6 @@ all:
             --target %h --document-name AWS-StartSSHSession --parameters portNumber=%p"
           unity_ci_slots: 6
           unity_ci_full: true
-          unity_ci_wide: true
           unity_ci_images_pull: true
           unity_ci_images:
             - unityci/editor:ubuntu-6000.0.72f1-base-3

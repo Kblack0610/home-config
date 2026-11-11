@@ -51,7 +51,7 @@ GROUPS = {
 # runner (windows-media only)"), not inventory groups with a slot var. The
 # mac-mini's second runner, m1-playground-mac, has no play (docs/mac-machines.md).
 PINNED = {("mac-mini", "macos"): 2, ("windows-media", "windows"): 1}
-# Provisional (revisit when the unity-wide jobs stop building players in the job, playground
+# Provisional, low confidence (one kill; revisit when the unity-wide jobs stop building players in the job, playground
 # ucp-1793): Soak's server build was killed at 16.96G anon in an aws-burst-2 16G slot on
 # 2026-11-11 (ucp-1830); the wide slots that build green (razer-laptop, aws-burst-1 slot 1) have 20G.
 WIDE_SLOT_MIN_GB = 20
@@ -169,7 +169,8 @@ def main():
     for host, gb in sorted(wide.items()):
         if gb is None or gb < WIDE_SLOT_MIN_GB:
             rc = 1
-            print(f"FAIL: {host} carries unity-wide, but its ci_unity_slot_memory_max is {gb}G, "
+            have = "unset or not in whole G" if gb is None else f"{gb}G"
+            print(f"FAIL: {host} carries unity-wide, but its ci_unity_slot_memory_max is {have}, "
                   f"under the {WIDE_SLOT_MIN_GB}G a player build in the job needs")
     if rc == 0:
         print(f"ok: {len(want)} host/pool slot counts agree, cloud hosts {sorted(want_cloud)} match the governor standby")

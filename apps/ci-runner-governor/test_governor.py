@@ -110,6 +110,16 @@ class FakeEc2:
         self.calls.append(("stop", iid))
 
 
+RESTORED = governor.restored
+
+
+def setUpModule():
+    # No test reads Prometheus: a first sight restores nothing unless a test says so.
+    p = mock.patch.object(governor, "restored", return_value=(0.0, "", False))
+    p.start()
+    unittest.addModuleCleanup(p.stop)
+
+
 class GovernorTest(unittest.TestCase):
     def test_hot_host_withholds_its_idle_runner_first(self):
         got = actions(readings(**{"razer-laptop": HOT, "asus-laptop": BUSY, "hp-victus": BUSY}))
@@ -553,10 +563,47 @@ class GovernorTest(unittest.TestCase):
         governor.count_run_time(t, "stopped", day + 3600, launched=day + 60)  # stopped: nothing to book
         self.assertEqual(t["hours_today"], 0)
 
+    def test_a_restart_restores_the_run_time_and_cause_earlier_pods_exported(self):
+        day = 1_762_214_400
+        pods = [{"metric": {}, "value": [0, "7.9"]}]
+        last = [{"metric": {"host": "aws-burst-1", "state": "running", "reason": "queue"}, "value": [0, "1"]}]
+        with mock.patch.object(governor, "prom", side_effect=[pods, last]) as prom:
+            seconds, cause, up = RESTORED("aws-burst-1", day + 10 * 3600)
+        self.assertAlmostEqual(seconds, 7.9 * 3600)
+        self.assertEqual((cause, up), ("queue", True))
+        self.assertIn(f"[{10 * 3600 - 2 * governor.CYCLE_SECONDS}s]", prom.call_args_list[0].args[0])
+        none = [{"metric": {"state": "running", "reason": "none"}, "value": [0, "1"]}]
+        with mock.patch.object(governor, "prom", side_effect=[[], none]):
+            self.assertEqual(RESTORED("aws-burst-1", day + 3600), (0.0, "", True))
+        with mock.patch.object(governor, "prom") as prom:  # just past midnight: yesterday's values
+            self.assertEqual(RESTORED("aws-burst-1", day + 60), (0.0, "", False))
+        prom.assert_not_called()
+        with mock.patch.object(governor, "prom", side_effect=urllib.error.URLError("down")), \
+                mock.patch("builtins.print"):
+            self.assertEqual(RESTORED("aws-burst-1", day + 3600), (0.0, "", False))
+
+    def test_a_first_sight_keeps_the_larger_day_and_a_cause_that_matches_the_state(self):
+        def first_sight(state, back, launched=0.0, now=time.time()):
+            t = {}
+            with mock.patch.object(governor, "restored", return_value=back), \
+                    mock.patch.object(governor, "power_provider", return_value=(FakeEc2(state, launched=launched), "")), \
+                    mock.patch.object(governor, "host_labels", return_value=AWS_LABELS):
+                governor.power_readings(AWS, {}, {"aws-burst-1": t}, now)
+            return t
+        now = time.time()
+        midnight = now - now % 86_400
+        t = first_sight("running", (5 * 3600.0, "queue", True), launched=midnight + 60, now=midnight + 3600)
+        self.assertEqual((t["hours_today"], t["cause"]), (5, "queue"))  # earlier pods counted more
+        t = first_sight("running", (60.0, "queue", True), launched=midnight + 60, now=midnight + 3600)
+        self.assertAlmostEqual(t["hours_today"], (3600 - 60) / 3600)  # the launch time counts more
+        t = first_sight("stopped", (2 * 3600.0, "queue", True))
+        self.assertEqual(t["hours_today"], 2)
+        self.assertNotIn("cause", t)  # it was up, it is down now: the old cause is not this state's
+
     def test_power_metrics_after_a_live_stop(self):
         ec2 = FakeEc2("running")
         hosts = readings(**{"razer-laptop": BUSY, "asus-laptop": BUSY, "hp-victus": BUSY})
-        tracked = {"aws-burst-1": {"busy_at": 0, "day": time.strftime("%Y-%m-%d"), "run_seconds": 7200.0}}
+        tracked = {"aws-burst-1": {"busy_at": 0, "day": time.strftime("%Y-%m-%d", time.gmtime()), "run_seconds": 7200.0}}
         self.power_cycle(ec2, observed=(hosts, {**self.aws(off=8), **self.FULL}, []), tracked=tracked)
         self.assertIn(("stop", "i-0abc"), ec2.calls)
         m = governor.State.metrics

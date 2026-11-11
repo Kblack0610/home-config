@@ -50,19 +50,6 @@
         group: "{{ unity_ci_group }}"
         mode: "0755"
 
-    # aws s3 sync sends 10 requests at a time by default; over ~120k small
-    # files that is 2 MB/s in-region. 64 measured 10x on the push side.
-    - name: Write the host's S3 transfer settings
-      ansible.builtin.copy:
-        content: |
-          [default]
-          s3 =
-            max_concurrent_requests = 64
-            max_queue_size = 10000
-        dest: /etc/unity-ci-s3.config
-        mode: "0644"
-      become: true
-
     # As root: the aws-cli snap refuses a user whose home is outside /home
     # (unity_ci_user_home). The jobs mount the copy read-only, so root-owned
     # world-readable files are enough.

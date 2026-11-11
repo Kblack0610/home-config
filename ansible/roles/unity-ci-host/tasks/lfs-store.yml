@@ -1,0 +1,76 @@
+---
+# Seed the host's asset-library LFS store (unity_ci_lfs_store) from the
+# workstation's (unity_ci_lfs_store_source) through S3. The playground's
+# scripts/setup/asset-library.sh points the release trees' submodule at this
+# store, and git lfs fetches only the objects it lacks, so a seeded host fetches
+# little or nothing through git.kblab.me. Objects are content-addressed, so
+# neither side deletes: an object the workstation pruned may still be one an
+# older pin needs. A pin newer than the workstation's store fetches only the delta.
+- name: Fingerprint the workstation's asset-library LFS store
+  ansible.builtin.shell: >-
+    set -o pipefail &&
+    cd {{ unity_ci_lfs_store_source }}/objects &&
+    find . -type f -printf '%P\n' | sort | sha256sum | cut -d' ' -f1
+  args:
+    executable: /bin/bash
+  delegate_to: localhost
+  become: false
+  changed_when: false
+  failed_when: false
+  check_mode: false
+  register: _unity_ci_lfs_source
+
+- name: Read the host store's fingerprint
+  ansible.builtin.command: cat {{ unity_ci_lfs_store }}/.s3-fingerprint
+  changed_when: false
+  failed_when: false
+  check_mode: false
+  register: _unity_ci_lfs_copy
+
+- name: Sync the LFS store through S3 when it changed
+  when:
+    - _unity_ci_lfs_source.rc == 0
+    - _unity_ci_lfs_source.stdout != _unity_ci_lfs_copy.stdout
+  block:
+    - name: Push the LFS objects to S3 from the workstation
+      ansible.builtin.command: >-
+        aws s3 sync --only-show-errors
+        --profile {{ unity_ci_library_s3_profile }} --region {{ unity_ci_library_s3_region }}
+        {{ unity_ci_lfs_store_source }}/objects s3://{{ unity_ci_library_s3 }}/asset-library-lfs/objects
+      delegate_to: localhost
+      become: false
+      changed_when: true
+
+    - name: Create the host's LFS store
+      ansible.builtin.file:
+        path: "{{ unity_ci_lfs_store }}"
+        state: directory
+        owner: "{{ unity_ci_user }}"
+        group: "{{ unity_ci_group }}"
+        mode: "0755"
+
+    # As root, like the library pull (the aws-cli snap refuses a home outside /home).
+    - name: Pull the LFS objects from S3 on the host
+      ansible.builtin.command: >-
+        aws s3 sync --only-show-errors --region {{ unity_ci_library_s3_region }}
+        s3://{{ unity_ci_library_s3 }}/asset-library-lfs/objects
+        {{ unity_ci_lfs_store }}/objects
+      environment:
+        AWS_CONFIG_FILE: /etc/unity-ci-s3.config
+      become: true
+      changed_when: true
+
+    # The jobs' git lfs writes new objects into the same objects/<xx>/<yy>
+    # directories, so the store must be the runner's, not root's.
+    - name: Hand the LFS store to the runner user
+      ansible.builtin.command: chown -R {{ unity_ci_user }}:{{ unity_ci_group }} {{ unity_ci_lfs_store }}
+      become: true
+      changed_when: true
+
+    - name: Record the store's fingerprint
+      ansible.builtin.copy:
+        content: "{{ _unity_ci_lfs_source.stdout }}"
+        dest: "{{ unity_ci_lfs_store }}/.s3-fingerprint"
+        owner: "{{ unity_ci_user }}"
+        group: "{{ unity_ci_group }}"
+        mode: "0644"

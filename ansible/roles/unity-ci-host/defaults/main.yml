@@ -33,6 +33,13 @@ unity_ci_library_s3: ""
 unity_ci_library_s3_profile: bnb
 unity_ci_library_s3_region: us-east-2
 
+# One asset-library LFS store per host, shared by every slot (ASSET_LIBRARY_LFS_STORE,
+# site.yml). Off the LAN it is seeded from the workstation's own store through the
+# same bucket (tasks/lfs-store.yml), so a release tree never fetches LFS through the
+# Cloudflare tunnel, which cut a cold 4.2 GB fetch off with "Authorization error".
+unity_ci_lfs_store: "{{ unity_ci_user_home }}/.cache/bnb/asset-library-lfs"
+unity_ci_lfs_store_source: /home/kblack0610/.cache/bnb/asset-library-lfs
+
 # Editor images the jobs build on. Pulling these on the LAN fails (the IPv6 path
 # corrupts long downloads), so a missing one is copied from the workstation's
 # docker with docker save | docker load. Add the new tags on a Unity upgrade.

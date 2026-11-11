@@ -22,6 +22,19 @@
     creates: /snap/bin/aws
   when: unity_ci_library_s3 | length > 0
 
+# aws s3 sync sends 10 requests at a time by default; over ~120k small
+# files that is 2 MB/s in-region. 64 measured 10x on the push side.
+- name: Write the host's S3 transfer settings
+  ansible.builtin.copy:
+    content: |
+      [default]
+      s3 =
+        max_concurrent_requests = 64
+        max_queue_size = 10000
+    dest: /etc/unity-ci-s3.config
+    mode: "0644"
+  when: unity_ci_library_s3 | length > 0
+
 - name: Ensure docker is enabled and running
   ansible.builtin.systemd:
     name: docker.service
@@ -109,6 +122,12 @@
   loop_control:
     loop_var: library
     label: "{{ library.name }}"
+
+# Off the LAN, the asset-library LFS store the release trees share
+# (ASSET_LIBRARY_LFS_STORE) comes through S3 too: tasks/lfs-store.yml.
+- name: Seed the asset-library LFS store from S3
+  ansible.builtin.include_tasks: lfs-store.yml
+  when: unity_ci_library_s3 | length > 0
 
 # Editor images: load a missing one from the workstation's docker, or pull it on
 # a host with unity_ci_images_pull (off the LAN, where the pull is sound). The host's own

@@ -417,7 +417,7 @@
           # One asset-library LFS store per host (scripts/setup/asset-library.sh in
           # the playground): with the default under each slot's HOME, a new slot
           # downloaded the whole 7.9 GB library before its first job could start.
-          ASSET_LIBRARY_LFS_STORE: "{{ unity_ci_user_home }}/.cache/bnb/asset-library-lfs"
+          ASSET_LIBRARY_LFS_STORE: "{{ unity_ci_lfs_store }}"
       tags: [runner, ci, unity-ci]
 
 # BNB Unity runner pool, macOS hosts (added 2026-10-29, mac-studio until it is

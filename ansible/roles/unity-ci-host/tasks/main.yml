@@ -13,13 +13,21 @@
     update_cache: true
   when: ansible_os_family == "Debian"
 
-# Ubuntu 24.04 has no awscli package; the snap is AWS's own build. The snap
-# CLI, not community.general.snap: 12.6.0 fails on snapd 2.77 ("list index out
-# of range", 11-03).
+# Ubuntu 24.04 has no awscli package. AWS's own installer, not the snap: the
+# on-demand aws-burst-2 (11-11) got a public IP that cannot reach the snap
+# store at all, while awscli.amazonaws.com answers from every AWS address.
+- name: Fetch the AWS CLI installer for the S3 library sync
+  ansible.builtin.unarchive:
+    src: https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip
+    dest: /tmp
+    remote_src: true
+    creates: /usr/local/bin/aws
+  when: unity_ci_library_s3 | length > 0
+
 - name: Install the AWS CLI for the S3 library sync
-  ansible.builtin.command: snap install aws-cli --classic
+  ansible.builtin.command: /tmp/aws/install
   args:
-    creates: /snap/bin/aws
+    creates: /usr/local/bin/aws
   when: unity_ci_library_s3 | length > 0
 
 # aws s3 sync sends 10 requests at a time by default; over ~120k small

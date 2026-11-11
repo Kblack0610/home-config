@@ -50,9 +50,8 @@
         group: "{{ unity_ci_group }}"
         mode: "0755"
 
-    # As root: the aws-cli snap refuses a user whose home is outside /home
-    # (unity_ci_user_home). The jobs mount the copy read-only, so root-owned
-    # world-readable files are enough.
+    # As root: the jobs mount the copy read-only, so root-owned world-readable
+    # files are enough.
     - name: Pull {{ library.name }} from S3 on the host
       ansible.builtin.command: >-
         aws s3 sync --delete --only-show-errors --region {{ unity_ci_library_s3_region }}

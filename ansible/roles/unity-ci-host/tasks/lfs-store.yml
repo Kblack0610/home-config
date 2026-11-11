@@ -49,7 +49,7 @@
         group: "{{ unity_ci_group }}"
         mode: "0755"
 
-    # As root, like the library pull (the aws-cli snap refuses a home outside /home).
+    # As root, like the library pull.
     - name: Pull the LFS objects from S3 on the host
       ansible.builtin.command: >-
         aws s3 sync --only-show-errors --region {{ unity_ci_library_s3_region }}

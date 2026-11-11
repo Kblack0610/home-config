@@ -208,7 +208,19 @@ jobs:
 ## Hardware notes
 
 - The 64 GB (Corsair CMG64GX4M2D3600C18, 2x32 GB DDR4-3600) runs at 2133 because DOCP is off in the firmware (read over SSH 2026-11-10, `Win32_PhysicalMemory`). Turning DOCP on in the BIOS gives the rated 3600. Two of the four DIMM slots are free.
-- CPU upgrade path for CI slots: [unity-ci-hardware.md](unity-ci-hardware.md#buying-in-the-ram-shortage).
+- Why it gets a 16-core CPU: [unity-ci-hardware.md](unity-ci-hardware.md#buying-in-the-ram-shortage).
+
+## CPU upgrade to the Ryzen 9 5900XT
+
+A 5900XT and a Crucial E100 2 TB were ordered 2026-11-10 to make this a 3-4 slot Unity CI host. Read over SSH that day: BitLocker is off (no recovery key prompt after the flash), the disk is MBR and Windows boots legacy (`winload.exe`), and BIOS 3645 is staged at `C:\BIOS\3645\TUF-GAMING-B550-PLUS-WIFI-II-ASUS-3645.CAP` (from the ASUS support API, `GetPDBIOS`). The 5900XT comes without a cooler and the Wraith Stealth on the 5500 is not enough, so a tower cooler (Thermalright Peerless Assassin 120 SE if the case takes 155 mm, AXP120-X67 if not).
+
+1. Agent, over SSH: copy the `.CAP` to a FAT32 USB stick in the PC (EZ Flash 3 reads FAT32). Optional, to fold in the Windows 11 visit below: `mbr2gpt /validate /allowFullOS`, then `/convert`; after that the PC boots only with CSM off.
+2. Human, 5500 still installed: Del into the BIOS, F7, Tool -> ASUS EZ Flash 3, pick the `.CAP`, do not cut power while it runs. The flash resets every setting; if it then finds no boot device, Boot -> CSM -> Launch CSM -> Enabled (or Disabled, if step 1 converted the disk). Boot Windows once, shut down.
+3. Human, unplugged: swap the CPU (gold triangle to the socket mark, no pressure), fit the cooler with its paste, fan on CPU_FAN.
+4. Human, first boot: answer Y to the fTPM reset prompt (safe with BitLocker off; the Windows Hello PIN may need setting again). Ai Tweaker -> Ai Overclock Tuner -> D.O.C.P. (RAM to 3600), Advanced -> CPU Configuration -> SVM Mode -> Enabled, check the CSM setting from step 2, F10.
+5. Agent, over SSH: confirm the CPU (`Win32_Processor`), the RAM speed (`Win32_PhysicalMemory`) and virtualization, then install WSL2 and the runners per queue item `deskslim-ci-host`, and update the Inventory row above.
+
+A flash that fails partway is recoverable: rename the `.CAP` with the `BIOSRenamer.exe` beside it, put it on a FAT32 stick in the FlashBack port and hold the BIOS FlashBack button; it needs no working CPU.
 
 ## Windows 10 end of support
 

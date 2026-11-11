@@ -65,9 +65,9 @@ spec:
                   valueFrom:
                     secretKeyRef: {name: trader-markets-s3, key: S3_SECRET_KEY}
               resources:
-                # measured 470 MB peak on a full 179k-market sweep
+                # A full 171k-market sweep peaks at 1894 MB RSS (measured 2026-11-11); tr-184 owns cutting it.
                 requests:
                   cpu: 200m
-                  memory: 512Mi
+                  memory: 2Gi
                 limits:
-                  memory: 1Gi
+                  memory: 3Gi

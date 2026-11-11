@@ -617,6 +617,13 @@ class GovernorTest(unittest.TestCase):
             t = {}
             governor.power_readings(AWS, {}, {"aws-burst-1": t}, now)
         self.assertEqual(t["cause"], "queue")
+        with mock.patch.object(governor, "restored", return_value=(0.0, "idle", False)), \
+                mock.patch.object(governor, "power_provider",
+                                  return_value=(FakeEc2("running", launched=now - 30), "")), \
+                mock.patch.object(governor, "host_labels", return_value=AWS_LABELS):
+            t = {}
+            governor.power_readings(AWS, {}, {"aws-burst-1": t}, now)
+        self.assertNotIn("cause", t)  # the stop before this launch is not why it started
 
     def test_a_first_sight_keeps_the_larger_day_and_a_cause_that_matches_the_state(self):
         def first_sight(state, back, launched=0.0, now=time.time()):

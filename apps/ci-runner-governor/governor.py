@@ -150,6 +150,8 @@ CONFIG = os.environ.get("GOVERNOR_CONFIG", "/app/config.json")
 AWS_KEY = os.environ.get("AWS_ACCESS_KEY_ID", "")
 AWS_SECRET = os.environ.get("AWS_SECRET_ACCESS_KEY", "")
 CYCLE_SECONDS = 60
+# The causes decide() and decide_workers() give a start (stops: idle, cap, reclaim, override).
+START_CAUSES = ("queue", "demand", "override")
 # A power block's settings when config.json leaves one out. A start costs money (about
 # $1.85/h for aws-burst-1), so only a deep queue held this long starts one, and a day of
 # running time is capped; the month's cap is an AWS Budgets action (platform infra/aws-ci-burst).
@@ -788,7 +790,8 @@ def count_run_time(t, state, now, launched=0.0):
 def restored(host, now, launched=0.0):
     """What earlier governor pods exported for host, read back from Prometheus after a
     restart: (seconds run today, the reason of the newest power_state other than "none"
-    since the instance's last launch, whether that state was up). Each pod starts from the
+    since the instance's last launch, whether that state was up; power_readings() keeps the
+    reason when that state matches, or when it is the start call's own down sample). Each pod starts from the
     one before it, so the highest hours_today exported today is the day so far; that window
     opens two cycles after midnight, past a pod's last value from yesterday. The cause looks
     back to the launch, not to midnight, and past "none": a pod that could not tell the
@@ -870,10 +873,10 @@ def power_readings(cfg, runners, tracked, now):
             t["restore"] = False
             t["run_seconds"] = max(t["run_seconds"], seconds)
             t["hours_today"] = t["run_seconds"] / 3600
-            # Up since a known launch, every reason in the window is this run's, even the
-            # start call's own sample, which AWS still reported stopped. Down, read back
-            # from today, only a down sample's reason is the stop's.
-            if cause and ((up and launched) or was_up == up):
+            # A sample's reason is this state's when its state agrees. The one exception is
+            # the start call's own sample, which AWS still reported stopped: a host up since
+            # a known launch takes a down sample's start cause too, never a stop's.
+            if cause and (was_up == up or (up and launched and cause in START_CAUSES)):
                 t.setdefault("cause", cause)
         t["override"], t["override_until"] = read_override(host, now)
         t.update(state=state, labels=labels, client=client)

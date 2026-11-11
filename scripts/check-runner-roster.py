@@ -116,8 +116,10 @@ def wide_slot_memory(path):
 
 
 def build_release_slots(path):
-    """{host: (its unity slots, how many carry RELEASE_LABEL)} for every build host."""
-    build, slots, release, group, host = set(), {}, {}, None, None
+    """{host: (its unity slots, how many of slots 1..N carry RELEASE_LABEL in unity_ci_slot_labels)}
+    for every build host. A label on a slot past unity_ci_slots never reaches a runner, so it
+    does not count."""
+    build, slots, labelled, group, host, in_labels = set(), {}, {}, None, None, False
     with open(path, encoding="utf-8") as fh:
         for raw in fh:
             line = raw.split("#", 1)[0].rstrip()
@@ -128,17 +130,22 @@ def build_release_slots(path):
             val = val.strip()
             if indent == 4:
                 group, host = key, None
-            elif indent == 8:
-                host = key
-            elif group != "unity_ci_runners" or not host:
+            elif indent <= 8:
+                host = key if indent == 8 else None
+            if indent <= 10:
+                in_labels = False
+            if group != "unity_ci_runners" or not host or indent <= 8:
                 continue
-            elif indent == 10 and key == "unity_ci_build" and val == "true":
+            if indent == 10 and key == "unity_ci_build" and val == "true":
                 build.add(host)
             elif indent == 10 and key == "unity_ci_slots":
                 slots[host] = int(val)
-            elif indent == 12 and re.search(rf"(?<![\w-]){RELEASE_LABEL}(?![\w-])", val):
-                release[host] = release.get(host, 0) + 1
-    return {h: (slots.get(h, 0), release.get(h, 0)) for h in build}
+            elif indent == 10 and key == "unity_ci_slot_labels":
+                in_labels = True
+            elif in_labels and indent == 12 and key.isdigit() and RELEASE_LABEL in re.findall(r"[\w-]+", val):
+                labelled.setdefault(host, set()).add(int(key))
+    return {h: (slots.get(h, 0), sum(1 for n in labelled.get(h, ()) if 1 <= n <= slots.get(h, 0)))
+            for h in build}
 
 
 def env_value(text, name, path):
@@ -210,10 +217,11 @@ def main():
     for host, (slots, release) in sorted(builds.items()):
         if not 0 < release < slots:
             rc = 1
-            print(f"FAIL: {host}: {release} of its {slots} build slots carry {RELEASE_LABEL}; a release must "
-                  f"have at least one and leave players.yml at least one")
+            print(f"FAIL: {host}: {release} of its {slots} build slots (unity_ci_slots) carry {RELEASE_LABEL} "
+                  f"in unity_ci_slot_labels; a release must have at least one and leave players.yml at least one")
     if rc == 0:
-        print(f"ok: {len(want)} host/pool slot counts agree, cloud hosts {sorted(want_cloud)} match the governor standby")
+        print(f"ok: {len(want)} host/pool slot counts agree, cloud hosts {sorted(want_cloud)} match the governor standby, "
+              f"build hosts leave Players a slot: {sorted(builds)}")
     return rc
 
 

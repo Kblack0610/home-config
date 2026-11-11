@@ -113,7 +113,7 @@ spec:
                   # hours does not fail. /browse is every subvolume, read-only; if the drive
                   # is gone it is an empty directory and every check below fails, as it should.
                   # Age comes from the snapshot name: a snapshot's mtime is its source's.
-                  for MIRROR in immich:2 nas-backups:2 3d-prints:9 phones:9 forgejo-packages:9 app-config:9 harvest:9; do
+                  for MIRROR in immich:2 nas-backups:2 3d-prints:9 phones:9 forgejo-packages:9 app-config:9 harvest:9 eeg:2; do
                     NAME="${MIRROR%:*}"
                     MAX="${MIRROR#*:}"
                     SNAP=$(ls -d "/browse/@$NAME-snapshots/$NAME"-* 2>/dev/null | sort | tail -1)

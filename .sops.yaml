@@ -2,6 +2,12 @@
 # See: https://github.com/getsops/sops
 
 creation_rules:
+  # The EEG archive's age identity (roles/emotiv-bridge). Main key only: the
+  # ansible-runner must not be able to read it, and it is never deployed to the
+  # mac-mini, which holds only the public recipient. First, so the ansible rule
+  # below does not add the runner key.
+  - path_regex: ansible/roles/emotiv-bridge/eeg-identity\.sops\.yaml$
+    age: age138x34tdqulknsj967wjv9urg9ucxtpkep2apzjmthta3xtjgvpgsm8k3a0
   # Ansible secrets (group_vars/<group>/vault.sops.yaml, read by the
   # community.sops vars plugin). Every value is encrypted. Two recipients: the
   # main key (workstation, Flux backup) and an Ansible-only key that the nightly

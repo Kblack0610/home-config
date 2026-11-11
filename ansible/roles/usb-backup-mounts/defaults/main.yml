@@ -43,6 +43,8 @@ usb_backup_subvolumes:
   - { subvol: "@nas-backups-snapshots", path: /mnt/backup-8t/nas-backups-snapshots }
   - { subvol: "@harvest", path: /mnt/backup-8t/harvest }
   - { subvol: "@harvest-snapshots", path: /mnt/backup-8t/harvest-snapshots }
+  - { subvol: "@eeg", path: /mnt/backup-8t/eeg }
+  - { subvol: "@eeg-snapshots", path: /mnt/backup-8t/eeg-snapshots }
   - { subvol: "@langfuse", path: /mnt/backup-8t/langfuse }
   - { subvol: "@victoria-metrics", path: /mnt/backup-8t/victoria-metrics }
   # Not a subvolume: the whole filesystem, read-only, so one path shows every

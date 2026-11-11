@@ -1,0 +1,44 @@
+---
+# The Emotiv EPOC X bridge on mac-mini: records the Cortex streams while the headset
+# is connected, age-encrypts each chunk, and rsyncs it to the NAS archive
+# (roles/emotiv-archive-target on asus-laptop). See README.md beside this file.
+
+emotiv_bridge_label: com.kblab.emotiv-bridge
+emotiv_bridge_home: "{{ ansible_env.HOME }}/.local/share/emotiv-bridge"
+emotiv_bridge_config_dir: "{{ ansible_env.HOME }}/.config/emotiv-bridge"
+emotiv_bridge_script: "{{ emotiv_bridge_home }}/emotiv-bridge.mjs"
+emotiv_bridge_spool_dir: "{{ emotiv_bridge_home }}/spool"
+emotiv_bridge_log: "{{ ansible_env.HOME }}/Library/Logs/emotiv-bridge.log"
+emotiv_bridge_launchagents_dir: "{{ ansible_env.HOME }}/Library/LaunchAgents"
+
+emotiv_bridge_node: /opt/homebrew/bin/node
+emotiv_bridge_age: /opt/homebrew/bin/age
+# Homebrew rsync, not the system openrsync: the far side is rrsync.
+emotiv_bridge_rsync: /opt/homebrew/bin/rsync
+
+emotiv_bridge_cortex_url: wss://localhost:6868
+
+# Every stream Cortex offers. Raw eeg is refused under the Basic license (-32016,
+# P1 of ~/.claude/plans/emotiv-stream.md); it stays listed so a license upgrade
+# starts recording it with no change here. A refused stream is logged and skipped.
+emotiv_bridge_streams: [eeg, mot, dev, eq, pow, met, fac, com, sys]
+
+# A chunk is closed, encrypted and uploaded this often, and at the end of a wear.
+emotiv_bridge_chunk_seconds: 300
+# Cortex pushes no event when a headset appears, so the bridge asks for a scan this
+# often. Connect, disconnect and session changes arrive as warnings.
+emotiv_bridge_scan_interval_seconds: 30
+emotiv_bridge_heartbeat_seconds: 60
+
+# Public half of the EEG identity in eeg-identity.sops.yaml. The mini holds only
+# this, so it cannot read what it uploads.
+emotiv_bridge_age_recipient: age17tasvt7r9lt93096de7p3umhun2hjna0jjvscr8wt2tcfu840v2sne05f4
+
+emotiv_bridge_upload_host: 192.168.1.152
+emotiv_bridge_upload_port: 2222
+emotiv_bridge_upload_user: emotiv-archive
+emotiv_bridge_upload_host_key: "[192.168.1.152]:2222 ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAICsWV1oEbjGp4NMxRE6W4wamxt8KJ3PIIuXaUO/1qsXS"
+
+emotiv_bridge_mqtt_host: mosquitto.kblab.me
+emotiv_bridge_mqtt_port: 31883
+emotiv_bridge_mqtt_topic: emotiv/mini/bridge

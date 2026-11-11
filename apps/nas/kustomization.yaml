@@ -25,3 +25,4 @@ resources:
   - nas-backups-mirror-cronjob.yaml
   - app-config-backup-cronjob.yaml
   - harvest-backup-cronjob.yaml
+  - eeg-backup-cronjob.yaml

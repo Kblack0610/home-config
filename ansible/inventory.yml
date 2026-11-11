@@ -244,6 +244,7 @@ all:
           unity_ci_slots: 1
           unity_ci_full: true
           unity_ci_wide: true
+          unity_ci_gate: true
         # The workstation, the human's work machine: merge gates only
         # (unity_ci_full false, so no nightly, release or Multi run lands here).
         # apps/ci-runner-governor/config.json repeats this as "full": false for its admit.
@@ -255,6 +256,7 @@ all:
         cachyos-x8664-main:
           unity_ci_slots: 2
           unity_ci_full: false
+          unity_ci_gate: true
         # The AWS overflow box (platform infra/aws-ci-burst, Terraform), added
         # 2026-11-03: an on-demand m7a.8xlarge in us-east-2a with six slots (five since 11-10). It
         # has no inbound port; SSH runs through SSM Session Manager with the bnb
@@ -279,6 +281,7 @@ all:
           unity_ci_slot_labels:
             1: [host-aws-burst-1-wide, unity-wide]
           unity_ci_full: true
+          unity_ci_gate: true
           unity_ci_images_pull: true
           # Base images only: every player build asks for the lan label (playground
           # release.yml, perf-round.yml since #1817), and tests use the base flavor.
@@ -319,6 +322,8 @@ all:
         # Studio's six slots left the pool): same m7a.8xlarge, its own 400G data volume,
         # stops on interruption. The governor starts it before aws-burst-1. Six plain
         # slots, no wide slot: Multi and the lan jobs stay on their own track (ucp-1521).
+        # No unity_ci_gate: a Spot reclaim would kill a merge gate, so gates stay on the
+        # non-preemptible hosts and this one takes full runs only (playground ucp-1778).
         aws-burst-2:
           ansible_host: i-051f266179192763e
           ansible_user: ubuntu

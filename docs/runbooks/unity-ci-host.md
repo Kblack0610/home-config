@@ -35,7 +35,8 @@ scripts/test/fetch-image.py unityci/editor ubuntu-<version>-base-3 ~/.cache/unit
 
 ## Labels
 
-- Every slot carries `unity`, plus `unity-full` while the host's `unity_ci_full` is true (the default). Full runs (nightly, release, Multi) ask for `unity-full`, merge gates for `unity`. GitHub has no queue priority, so to reserve a runner for gates, set `unity_ci_full: false` on one host.
+- Every slot carries `unity`, plus `unity-full` while the host's `unity_ci_full` is true (the default). Full runs (nightly, release, Multi) ask for `unity-full`, merge gates for `unity` and `unity-gate`. GitHub has no queue priority, so to reserve a runner for gates, set `unity_ci_full: false` on one host.
+- `unity-gate` (`unity_ci_gate`, default false) is on the hosts a merge gate may land on: razer-laptop, cachyos-x8664-main and aws-burst-1. aws-burst-2 is Spot and leaves it off, so a reclaim never kills a gate (playground ucp-1778). The governor's withhold swap leaves it alone: a gate also asks for `unity`, which a withheld slot has lost.
 - A runner keeps the labels it registered with, `unity_ci_slot_labels` too: on a registered slot add them with the POST below (aws-burst-1-unity-pool-1 got `host-aws-burst-1-wide` that way on 11-10). On a live one, `gh api -X POST orgs/BlackNBrownStudios/actions/runners/<id>/labels -f 'labels[]=unity-full'` adds a label and `gh api -X DELETE orgs/BlackNBrownStudios/actions/runners/<id>/labels/unity-full` removes it.
 - The workstation (cachyos-x8664-main) has two slots with `unity_ci_full: false`, so it takes merge gates and never a full run. The governor's `config.json` says the same with `"full": false`, since it re-labels a runner on admit and cannot read the inventory; change both together. Each slot has three cores and 16G of its own. A third slot waits for a day of load and temperatures with two. No gate runs anything else here (unity-core-playground `docs/operations/ci.md` rule 2).
 

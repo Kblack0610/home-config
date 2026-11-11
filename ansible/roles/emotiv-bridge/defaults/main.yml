@@ -4,7 +4,7 @@
 # (roles/emotiv-archive-target on asus-laptop). See README.md beside this file.
 
 emotiv_bridge_label: com.kblab.emotiv-bridge
-emotiv_bridge_home: "{{ ansible_env.HOME }}/.local/share/emotiv-bridge"
+emotiv_bridge_home: "{{ ansible_env.HOME }}/Library/Application Support/emotiv-bridge"
 emotiv_bridge_config_dir: "{{ ansible_env.HOME }}/.config/emotiv-bridge"
 emotiv_bridge_script: "{{ emotiv_bridge_home }}/emotiv-bridge.mjs"
 emotiv_bridge_spool_dir: "{{ emotiv_bridge_home }}/spool"

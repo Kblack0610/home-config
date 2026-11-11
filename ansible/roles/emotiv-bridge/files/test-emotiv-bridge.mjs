@@ -6,6 +6,8 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import zlib from 'node:zlib';
+import { spawnSync } from 'node:child_process';
+import { fileURLToPath } from 'node:url';
 import { Bridge, Chunks, Uploader, sealSpool, mqttConnect, mqttPublish, WARN } from './emotiv-bridge.mjs';
 
 const roots = [];
@@ -188,4 +190,14 @@ test('no headset asks Cortex to scan; a discovered one is connected', async () =
   const ctl = state.calls.filter((c) => c.method === 'controlDevice').map((c) => c.params.command);
   assert.deepEqual(ctl, ['refresh', 'connect']);
   assert.equal(b.session, null);
+});
+
+test('run through a symlinked directory, the script still starts main', () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'emotiv-bridge-link-'));
+  roots.push(root);
+  const link = path.join(root, 'share');
+  fs.symlinkSync(path.dirname(fileURLToPath(import.meta.url)), link);
+  const r = spawnSync(process.execPath, [path.join(link, 'emotiv-bridge.mjs'), path.join(root, 'missing.json')], { encoding: 'utf8' });
+  assert.equal(r.status, 1);
+  assert.match(r.stdout + r.stderr, /fatal/);
 });

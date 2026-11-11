@@ -421,6 +421,7 @@ async function main(configPath) {
   process.on('SIGINT', stop);
 }
 
-if (process.argv[1] === fileURLToPath(import.meta.url)) {
+// Real paths on both sides: on the mini ~/.local is a symlink into ~/.dotfiles, and import.meta.url is resolved.
+if (fs.realpathSync(process.argv[1]) === fileURLToPath(import.meta.url)) {
   main(process.argv[2]).catch((e) => { log('fatal', e.stack ?? e); process.exit(1); });
 }

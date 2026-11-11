@@ -51,7 +51,7 @@ age -d -i <(sops decrypt --extract '["identity"]' ansible/roles/emotiv-bridge/ee
 
 ```bash
 ssh mac-mini 'launchctl print gui/$(id -u)/com.kblab.emotiv-bridge | grep -E "state|pid"; tail -20 ~/Library/Logs/emotiv-bridge.log'
-ssh mac-mini 'find ~/.local/share/emotiv-bridge/spool -type f | head'   # empty unless wearing or the NAS is unreachable
+ssh mac-mini 'find ~/Library/Application\ Support/emotiv-bridge/spool -type f | head'   # empty unless wearing or the NAS is unreachable
 mosquitto_sub -h mosquitto.kblab.me -p 31883 -t emotiv/mini/bridge -C 1
 ```
 
@@ -68,3 +68,4 @@ Tests: `node --test ansible/roles/emotiv-bridge/files/test-emotiv-bridge.mjs` (C
 | Log shows `authorize failed` with -32021 | Wrong client secret: compare the vault with rbw `emotiv-cortex`, re-apply |
 | Log shows `createSession failed` while wearing | EmotivPRO or another app holds the headset. The bridge waits for the next disconnect. Close the other app's session and switch the headset off and on |
 | `spool_bytes` grows while not wearing | Uploads failing: the log names the rsync exit code. 255 is ssh (asus down, host key changed: update `emotiv_bridge_upload_host_key`) |
+| LaunchAgent restarts every 30 s, `last exit code = 0`, empty log | The script was started through a symlinked path and skipped main(); fixed by the realpath guard. The bridge home stays under `~/Library/Application Support`, never `~/.local`, which on the mini is a symlink into the dotfiles repo |

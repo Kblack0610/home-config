@@ -9,6 +9,8 @@ resources:
   - statefulset.yaml
   - lab-pvc.yaml
   - analysis-cronjob.yaml
+  - lab-priorityclass.yaml
+  - candles-publish-cronjob.yaml
   - walkforward-cronjob.yaml
   - ingest-cronjob.yaml
   - backfill-cronjob.yaml

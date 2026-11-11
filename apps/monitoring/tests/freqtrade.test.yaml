@@ -127,8 +127,8 @@ tests:
       - eval_time: 45m
         alertname: TraderLabPodUnschedulable
         exp_alerts:
-          - exp_labels: {alertname: TraderLabPodUnschedulable, severity: warning, category: trading, pod: freqtrade-walkforward-1-abcde}
-            exp_annotations: {summary: "freqtrade-walkforward-1-abcde cannot be scheduled: compare its requests with razer-laptop's allocatable (kubectl describe pod)"}
+          - exp_labels: {alertname: TraderLabPodUnschedulable, severity: warning, category: trading, fleet: fix, pod: freqtrade-walkforward-1-abcde}
+            exp_annotations: {summary: "freqtrade-walkforward-1-abcde cannot be scheduled: compare its requests with the nodes' allocatable (kubectl describe pod)"}
 
   - name: futures data older than 32 hours warns, a fresh series does not
     interval: 5m

@@ -1,0 +1,13 @@
+#!/usr/bin/env bash
+# Stand-in for `ssh user@router <cmd>`: drops the options and the host, then
+# runs the command locally, where PATH puts fake-uci first as `uci`.
+set -euo pipefail
+while [[ "$1" == -o ]]; do shift 2; done
+shift
+# The sync script ends with the router's dnsmasq restart; bash allows a slash in a function name.
+prelude='function /etc/init.d/dnsmasq { :; }'
+if [[ $# -eq 0 || "$*" == sh ]]; then
+    { echo "$prelude"; cat; } | bash
+else
+    bash -c "$prelude; $*"
+fi

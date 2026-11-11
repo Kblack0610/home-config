@@ -156,14 +156,17 @@ spec:
             category: capacity
           annotations:
             summary: "{{ $labels.instance }} wrote {{ $value | humanize }} core dumps in the last hour"
+        # On 2026-11-10 this paged for razer, hp-victus and asus and no agent was told.
+        # `fleet: fix` (see homelab-capacity.disk) sends it to an agent with the runbook.
         - alert: NodeCoreDumpStorm
           expr: node_coredumps_last_hour > 5 or node_coredump_bytes > 10e9
           for: 5m
           labels:
             severity: critical
             category: capacity
+            fleet: fix
           annotations:
-            summary: "{{ $labels.instance }} is crash looping or holding large core dumps"
+            summary: "{{ $labels.instance }} is crash looping or holding large core dumps: docs/runbooks/node-crash-storms.md"
         # local-path does not enforce a PV's size, so a PV past its request is taking disk
         # the scheduler and everyone else think is free.
         - alert: LocalPathPvOverRequest
@@ -262,14 +265,17 @@ spec:
           annotations:
             summary: "{{ $labels.instance }} killed {{ $value | humanize }} processes for memory in the last hour"
         # 2 in the replay. At 3 an hour it was 10, mostly Unity builds on CI hosts.
+        # `fleet: fix` (see homelab-capacity.disk): on 2026-11-10 this paged for razer and no
+        # agent was told.
         - alert: NodeOomKillStorm
           expr: increase(node_vmstat_oom_kill[1h]) >= 10
           for: 5m
           labels:
             severity: critical
             category: capacity
+            fleet: fix
           annotations:
-            summary: "{{ $labels.instance }} killed {{ $value | humanize }} processes for memory in the last hour"
+            summary: "{{ $labels.instance }} killed {{ $value | humanize }} processes for memory in the last hour: docs/runbooks/node-crash-storms.md"
         - alert: ContainerOomKilled
           expr: increase(kube_pod_container_status_restarts_total[15m]) > 0 and on (namespace, pod, container) kube_pod_container_status_last_terminated_reason{reason="OOMKilled"} == 1
           labels:

@@ -49,7 +49,7 @@ ntfy priorities run 1 to 5. Every publisher here uses the same meaning, so one p
 | 3 | default | silent, listed in the app | progress and warnings: a wave rolled, a warning alert, a print finished |
 | 1-2 | min / low | silent, listed in the app | self-healing noise and digests |
 
-The `agents` levels are defined in `~/.dotfiles-private/.config/agentctl/SENTINEL.md` (section Paging). Alertmanager sends `severity: critical` at 5 and everything else at 3; `InfoInhibitor` and `Watchdog` are never sent.
+The `agents` levels are defined in `~/.dotfiles-private/.config/agentctl/SENTINEL.md` (section Paging). Alertmanager sends `severity: critical` at 5, the `category: security` digest at 2 and everything else at 3; `InfoInhibitor` and `Watchdog` are never sent.
 
 ### The backup channel
 

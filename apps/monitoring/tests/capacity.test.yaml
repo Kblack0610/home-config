@@ -275,8 +275,8 @@ tests:
       - eval_time: 30m
         alertname: NodeOomKillStorm
         exp_alerts:
-          - exp_labels: {alertname: NodeOomKillStorm, severity: critical, category: capacity, instance: storm}
-            exp_annotations: {summary: "storm killed 20 processes for memory in the last hour"}
+          - exp_labels: {alertname: NodeOomKillStorm, severity: critical, category: capacity, fleet: fix, instance: storm}
+            exp_annotations: {summary: "storm killed 20 processes for memory in the last hour: docs/runbooks/node-crash-storms.md"}
 
   - name: a node whose exporter is gone still pages
     interval: 1m
@@ -371,10 +371,10 @@ tests:
       - eval_time: 10m
         alertname: NodeCoreDumpStorm
         exp_alerts:
-          - exp_labels: {alertname: NodeCoreDumpStorm, severity: critical, category: capacity, instance: big}
-            exp_annotations: {summary: "big is crash looping or holding large core dumps"}
-          - exp_labels: {alertname: NodeCoreDumpStorm, severity: critical, category: capacity, instance: many}
-            exp_annotations: {summary: "many is crash looping or holding large core dumps"}
+          - exp_labels: {alertname: NodeCoreDumpStorm, severity: critical, category: capacity, fleet: fix, instance: big}
+            exp_annotations: {summary: "big is crash looping or holding large core dumps: docs/runbooks/node-crash-storms.md"}
+          - exp_labels: {alertname: NodeCoreDumpStorm, severity: critical, category: capacity, fleet: fix, instance: many}
+            exp_annotations: {summary: "many is crash looping or holding large core dumps: docs/runbooks/node-crash-storms.md"}
 
   # As scraped: the target's namespace is on the series, the claim's is in claim_namespace.
   - name: a PV warns past its request and pages past 150% only on a node under 20% free

@@ -8,7 +8,7 @@
 # For each category whose note has a `#template N` line, set the current
 # month's budgeted amount to N, but only when that month is still 0. A number
 # typed in by hand is never overwritten. Any bridge error fails the job, so
-# KubeJobFailed pages.
+# HomelabCronJobFailed pages.
 #
 # Run it by hand (idempotent; a month already filled is a no-op):
 #   kubectl --context home-k3s -n actual-budget create job \

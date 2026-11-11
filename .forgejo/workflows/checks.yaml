@@ -37,6 +37,8 @@ jobs:
         run: python3 scripts/check-runner-roster.py
       - name: github-runner-exporter offline tests
         run: python3 apps/github-runner-exporter/test_exporter.py
+      - name: forgejo-mirror-exporter offline tests
+        run: python3 apps/forgejo-mirror-exporter/test_exporter.py
       - name: ci-runner-governor offline tests
         run: python3 apps/ci-runner-governor/test_governor.py
       - name: litellm tool_compat offline tests
@@ -100,6 +102,18 @@ jobs:
         run: sh ansible/roles/node-disk-metrics/files/test-node-disk-metrics.sh
       - name: ci-runner-cpu offline test
         run: sh ansible/roles/ci-runner-cpu/files/test-ci-runner-cpu.sh
+
+  dhcp-sync:
+    runs-on: docker
+    container:
+      image: alpine:3.20
+    steps:
+      - name: Install deps
+        run: apk add --no-cache git nodejs bash jq python3 py3-yaml
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: dhcp.sh sync against a fake router
+        run: infrastructure/dhcp/tests/test-sync.sh
 
   prometheus-rules:
     runs-on: docker

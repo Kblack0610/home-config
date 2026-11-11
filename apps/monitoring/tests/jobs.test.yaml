@@ -1,0 +1,140 @@
+# promtool test rules. Run with scripts/test-prometheus-rules.sh.
+rule_files:
+  - jobs.rules.yaml
+evaluation_interval: 1m
+
+tests:
+  - name: a CronJob whose newest run failed fires once, however many old failed Jobs it has
+    interval: 1m
+    input_series:
+      # Two old failures from before the last success, one new failure after it.
+      - series: 'kube_job_owner{namespace="nas",job_name="v-1",owner_kind="CronJob",owner_name="v"}'
+        values: '1x30'
+      - series: 'kube_job_owner{namespace="nas",job_name="v-2",owner_kind="CronJob",owner_name="v"}'
+        values: '1x30'
+      - series: 'kube_job_owner{namespace="nas",job_name="v-3",owner_kind="CronJob",owner_name="v"}'
+        values: '1x30'
+      - series: 'kube_job_status_start_time{namespace="nas",job_name="v-1"}'
+        values: '100x30'
+      - series: 'kube_job_status_start_time{namespace="nas",job_name="v-2"}'
+        values: '200x30'
+      - series: 'kube_job_status_start_time{namespace="nas",job_name="v-3"}'
+        values: '400x30'
+      - series: 'kube_job_failed{namespace="nas",job_name="v-1",condition="true"}'
+        values: '1x30'
+      - series: 'kube_job_failed{namespace="nas",job_name="v-2",condition="true"}'
+        values: '1x30'
+      - series: 'kube_job_failed{namespace="nas",job_name="v-3",condition="true"}'
+        values: '1x30'
+      - series: 'kube_cronjob_status_last_successful_time{namespace="nas",cronjob="v"}'
+        values: '300x30'
+    alert_rule_test:
+      - eval_time: 10m
+        alertname: HomelabCronJobFailed
+        exp_alerts: []
+      - eval_time: 20m
+        alertname: HomelabCronJobFailed
+        exp_alerts:
+          - exp_labels: {alertname: HomelabCronJobFailed, severity: warning, category: scheduled-jobs, namespace: nas, owner_name: v}
+            exp_annotations:
+              summary: "CronJob failing: nas/v"
+              description: "The newest run of nas/v failed and no run has succeeded since. Logs: kubectl -n nas get jobs, then logs of the newest failed one. Resolves on the next successful run."
+
+  - name: old failed Jobs stay quiet once a later run succeeded
+    interval: 1m
+    input_series:
+      - series: 'kube_job_owner{namespace="immich",job_name="b-1",owner_kind="CronJob",owner_name="b"}'
+        values: '1x30'
+      - series: 'kube_job_status_start_time{namespace="immich",job_name="b-1"}'
+        values: '100x30'
+      - series: 'kube_job_failed{namespace="immich",job_name="b-1",condition="true"}'
+        values: '1x30'
+      - series: 'kube_cronjob_status_last_successful_time{namespace="immich",cronjob="b"}'
+        values: '500x30'
+    alert_rule_test:
+      - eval_time: 20m
+        alertname: HomelabCronJobFailed
+        exp_alerts: []
+
+  - name: a CronJob that never succeeded fires on its failure
+    interval: 1m
+    input_series:
+      - series: 'kube_job_owner{namespace="actual-budget",job_name="t-1",owner_kind="CronJob",owner_name="t"}'
+        values: '1x30'
+      - series: 'kube_job_status_start_time{namespace="actual-budget",job_name="t-1"}'
+        values: '100x30'
+      - series: 'kube_job_failed{namespace="actual-budget",job_name="t-1",condition="true"}'
+        values: '1x30'
+    alert_rule_test:
+      - eval_time: 20m
+        alertname: HomelabCronJobFailed
+        exp_alerts:
+          - exp_labels: {alertname: HomelabCronJobFailed, severity: warning, category: scheduled-jobs, namespace: actual-budget, owner_name: t}
+            exp_annotations:
+              summary: "CronJob failing: actual-budget/t"
+              description: "The newest run of actual-budget/t failed and no run has succeeded since. Logs: kubectl -n actual-budget get jobs, then logs of the newest failed one. Resolves on the next successful run."
+
+  - name: a failed Job no CronJob owns fires, and a CronJob's does not
+    interval: 1m
+    input_series:
+      - series: 'kube_job_failed{namespace="databases",job_name="db-bootstrap",condition="true"}'
+        values: '1x30'
+      - series: 'kube_job_owner{namespace="databases",job_name="db-bootstrap",owner_kind="<none>",owner_name="<none>"}'
+        values: '1x30'
+      - series: 'kube_job_failed{namespace="nas",job_name="v-1",condition="true"}'
+        values: '1x30'
+      - series: 'kube_job_owner{namespace="nas",job_name="v-1",owner_kind="CronJob",owner_name="v"}'
+        values: '1x30'
+    alert_rule_test:
+      - eval_time: 20m
+        alertname: HomelabJobFailed
+        exp_alerts:
+          - exp_labels: {alertname: HomelabJobFailed, severity: warning, category: scheduled-jobs, namespace: databases, job_name: db-bootstrap}
+            exp_annotations:
+              summary: "Job failed: databases/db-bootstrap"
+              description: "databases/db-bootstrap failed and no CronJob will re-run it. Fix and re-run it, or delete the Job once read."
+
+  - name: drift fires per host, from its newest run only
+    interval: 1m
+    input_series:
+      # hp-victus: an old file on razer still says 9 changes, the newest run on hp-victus says 0.
+      - series: 'ansible_convergence_recap{host="hp-victus",status="changed",instance="razer:9100"}'
+        values: '9x30'
+      - series: 'ansible_convergence_run_timestamp_seconds{host="hp-victus",instance="razer:9100"}'
+        values: '100x30'
+      - series: 'ansible_convergence_recap{host="hp-victus",status="changed",instance="hp:9100"}'
+        values: '0x30'
+      - series: 'ansible_convergence_run_timestamp_seconds{host="hp-victus",instance="hp:9100"}'
+        values: '200x30'
+      # razer-laptop: the newest run says 11 changes.
+      - series: 'ansible_convergence_recap{host="razer-laptop",status="changed",instance="hp:9100"}'
+        values: '11x30'
+      - series: 'ansible_convergence_run_timestamp_seconds{host="razer-laptop",instance="hp:9100"}'
+        values: '200x30'
+      - series: 'ansible_convergence_recap{host="razer-laptop",status="failed",instance="hp:9100"}'
+        values: '1x30'
+    alert_rule_test:
+      - eval_time: 20m
+        alertname: ConvergenceDrift
+        exp_alerts:
+          - exp_labels: {alertname: ConvergenceDrift, severity: warning, category: scheduled-jobs, fleet: fix, host: razer-laptop}
+            exp_annotations:
+              summary: "razer-laptop: ansible --check would change 11 tasks: apps/ansible-runner/README.md#convergencedrift"
+
+  - name: a run older than 2 days does not fire
+    interval: 1m
+    input_series:
+      - series: 'ansible_convergence_recap{host="asus-laptop",status="changed",instance="asus:9100"}'
+        values: '5x3000'
+      - series: 'ansible_convergence_run_timestamp_seconds{host="asus-laptop",instance="asus:9100"}'
+        values: '0x3000'
+    alert_rule_test:
+      - eval_time: 47h
+        alertname: ConvergenceDrift
+        exp_alerts:
+          - exp_labels: {alertname: ConvergenceDrift, severity: warning, category: scheduled-jobs, fleet: fix, host: asus-laptop}
+            exp_annotations:
+              summary: "asus-laptop: ansible --check would change 5 tasks: apps/ansible-runner/README.md#convergencedrift"
+      - eval_time: 49h
+        alertname: ConvergenceDrift
+        exp_alerts: []

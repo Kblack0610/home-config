@@ -27,10 +27,21 @@
   register: _unity_ci_mac_prune_plist
   tags: [ci-disk]
 
+- name: Ask launchd whether the prune agent is loaded
+  ansible.builtin.command:
+    cmd: "launchctl print gui/{{ ansible_user_uid }}/{{ unity_ci_mac_prune_label }}"
+  register: _unity_ci_mac_prune_loaded
+  changed_when: false
+  failed_when: false
+  tags: [ci-disk]
+
 # bootout before bootstrap so a changed plist is picked up; launchd keeps serving the loaded
-# definition otherwise (the macos-disk-reclaim pattern).
-- name: Reload the prune LaunchAgent when the script or plist changed
-  when: _unity_ci_mac_prune_script.changed or _unity_ci_mac_prune_plist.changed
+# definition otherwise (the macos-disk-reclaim pattern). An agent that is not loaded, after a
+# failed bootstrap or a manual bootout, is loaded again on the next apply.
+- name: Reload the prune LaunchAgent when it changed or is not loaded
+  when: >-
+    _unity_ci_mac_prune_script.changed or _unity_ci_mac_prune_plist.changed
+    or _unity_ci_mac_prune_loaded.rc != 0
   tags: [ci-disk]
   block:
     - name: Bootout the existing agent (ignored when not loaded)

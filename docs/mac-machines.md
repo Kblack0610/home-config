@@ -35,7 +35,7 @@ The sole self-hosted runner for `BlackNBrownStudios/platform` mobile CI. Native 
 - removes a tree idle for `unity_ci_mac_prune_tree_days` (7);
 - while the disk has under `unity_ci_mac_prune_free_pct` (25%) free, removes idle trees oldest first.
 
-The runner's checkout is never touched, and neither is a tree's `Builds/` alone: on APFS the player there is mostly clones of `Library/` data, so only the whole tree frees space. build.sh makes a removed tree again, so a prune costs that game's next build a Library import (up to an hour for DodginBalls). Log: `/tmp/kblab-ci-tree-prune.log`. Apply: `ansible-playbook playbooks/site.yml --limit mac-mini --tags ci-disk`.
+The runner's checkout is never touched, and neither is a tree's `Builds/` alone: on APFS the player there is mostly clones of `Library/` data, so only the whole tree frees space. build.sh makes a removed tree again, so a prune costs that game's next build a Library import (up to an hour for DodginBalls). Log: `~/Library/Logs/kblab-ci-tree-prune.log`. Apply: `ansible-playbook playbooks/site.yml --limit mac-mini --tags ci-disk`.
 
 ### Workflows
 

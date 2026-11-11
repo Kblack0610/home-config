@@ -94,6 +94,8 @@ jobs:
         uses: actions/checkout@v4
       - name: ci-disk-prune offline test
         run: sh ansible/roles/linux-ci-host/files/test-ci-disk-prune.sh
+      - name: ci-tree-prune offline test
+        run: sh ansible/roles/unity-ci-host-mac/files/test-ci-tree-prune.sh
       - name: node-disk-metrics offline test
         run: sh ansible/roles/node-disk-metrics/files/test-node-disk-metrics.sh
       - name: ci-runner-cpu offline test

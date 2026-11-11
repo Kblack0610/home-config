@@ -15,24 +15,35 @@ IDLE_MINUTES=${IDLE_MINUTES:-60}
 
 now=$(date +%s)
 
-# Unity writes Library, Logs and Temp on every open, and Builds on every build.
+# Unity writes Library, Logs and Temp on every open, and Builds on every build. Their entries
+# count too, since a file rewritten in place leaves its directory's mtime alone.
 last_used() {
-    newest=0
-    for d in "$1/Library" "$1/Logs" "$1/Temp" "$1/Builds"; do
-        [ -e "$d" ] || continue
-        m=$(date -r "$d" +%s)
-        [ "$m" -gt "$newest" ] && newest=$m
-    done
-    [ "$newest" -gt 0 ] || newest=$(date -r "$1" +%s)
-    echo "$newest"
+    { echo "$1"; find "$1/Library" "$1/Logs" "$1/Temp" "$1/Builds" -maxdepth 1 2>/dev/null; } |
+        while IFS= read -r f; do date -r "$f" +%s; done | sort -n | tail -n 1
 }
 
-# Read fresh before each removal. A trailing space lets one pattern end a path, so
-# <checkout>-shapecity never matches a line naming <checkout>-shapecity-ios. Read before the
-# grep starts: in one pipeline ps lists the grep, whose arguments name every tree.
+# Read fresh before each removal. Quotes and separators become spaces and a trailing space
+# ends each line, so one pattern ends a path and <checkout>-shapecity never matches a line
+# naming <checkout>-shapecity-ios. Read before the grep starts: in one pipeline ps lists the
+# grep, whose arguments name every tree.
 in_use() {
     procs=$(ps -axo command=; lsof -nP -d cwd -Fn 2>/dev/null | sed -n 's/^n//p')
-    printf '%s\n' "$procs" | sed 's/$/ /' | grep -qF -e "$1/" -e "$1 "
+    printf '%s\n' "$procs" | tr "\"';:&,=|()" '          ' | sed 's/$/ /' | grep -qF -e "$1/" -e "$1 "
+}
+
+# The runner keeps its binaries in bin.<version>, e.g. bin.2.338.2.
+runner_busy() {
+    pgrep -f "$1/bin[^/]*/Runner\.Worker" >/dev/null
+}
+
+# Asked again before each removal: a job can start while an earlier tree is being removed.
+keep() {
+    tree=$1 used=$2
+    if { runner_busy "${tree%/_work/*}" && [ $((now - used)) -lt $((IDLE_MINUTES * 60)) ]; } || in_use "$tree"; then
+        echo "busy $tree"
+        return 0
+    fi
+    return 1
 }
 
 free_pct() {
@@ -53,9 +64,6 @@ trap 'rm -f "$idle"' EXIT
 
 for runner in $RUNNERS; do
     [ -d "$runner/_work" ] || continue
-    busy=
-    # The runner keeps its binaries in bin.<version>, e.g. bin.2.338.2.
-    pgrep -f "$runner/bin[^/]*/Runner\.Worker" >/dev/null && busy=1
     # A removal this script did not finish.
     for trash in "$runner"/_work/*/.pruned-*; do
         [ -e "$trash" ] && rm -rf -- "$trash"
@@ -63,10 +71,7 @@ for runner in $RUNNERS; do
     for tree in "$runner"/_work/*/*; do
         [ -f "$tree/.git" ] || continue
         used=$(last_used "$tree")
-        if { [ -n "$busy" ] && [ $((now - used)) -lt $((IDLE_MINUTES * 60)) ]; } || in_use "$tree"; then
-            echo "busy $tree"
-            continue
-        fi
+        keep "$tree" "$used" && continue
         if [ $((now - used)) -ge $((TREE_DAYS * 86400)) ]; then
             remove "$tree" stale
             continue
@@ -75,11 +80,8 @@ for runner in $RUNNERS; do
     done
 done
 
-sort -n "$idle" | while read -r _ tree; do
+sort -n "$idle" | while read -r used tree; do
     [ "$(free_pct "${tree%/*}")" -lt "$FREE_PCT" ] || break
-    if in_use "$tree"; then
-        echo "busy $tree"
-        continue
-    fi
+    keep "$tree" "$used" && continue
     remove "$tree" "low disk"
 done

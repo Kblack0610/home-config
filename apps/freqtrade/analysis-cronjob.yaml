@@ -5,6 +5,10 @@
 # cached by file, config and freqtrade version, so a normal night redoes only
 # the current year; the first run, or a freqtrade bump, redoes everything and
 # takes hours. Nothing here touches the bots.
+# It runs the trader-ml image (the same repo on freqtrade's FreqAI base), so the
+# ML family (user_data/strategies/ml) is backtested too; FreqAI keeps the models
+# it trains under user_data/models, here a folder on the lab PVC, so a night
+# retrains only the new weekly windows.
 apiVersion: batch/v1
 kind: CronJob
 metadata:
@@ -33,8 +37,9 @@ spec:
             fsGroup: 1000
           initContainers:
             - name: migrate
-              image: trader
-              command: ["python", "/repo/lab/migrate.py"]
+              image: trader-ml
+              # makes the models folder as uid 1000: a subPath kubelet makes is root's, and this PV is a hostPath
+              command: ["sh", "-c", "mkdir -p /lab/models && exec python /repo/lab/migrate.py"]
               env:
                 - name: DATABASE_URL
                   valueFrom:
@@ -45,9 +50,11 @@ spec:
                   memory: 64Mi
                 limits:
                   memory: 256Mi
+              volumeMounts:
+                - {name: lab, mountPath: /lab}
           containers:
             - name: analysis
-              image: trader
+              image: trader-ml
               command: ["python", "/repo/lab/analyze.py"]
               env:
                 - name: DATABASE_URL
@@ -68,6 +75,7 @@ spec:
                   memory: 14Gi  # ANALYZE_MEMORY_GB plus headroom; runs peak near 10.3 GiB at a budget of 8 (2026-11-06), a 5m year of 10 pairs at 1.1 GB, a 1m year at 4 GB
               volumeMounts:
                 - {name: lab, mountPath: /lab}
+                - {name: lab, mountPath: /repo/user_data/models, subPath: models}
           volumes:
             - name: lab
               persistentVolumeClaim:

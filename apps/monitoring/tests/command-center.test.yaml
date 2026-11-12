@@ -306,6 +306,10 @@ tests:
   - name: the agent budget, gateway and release watches warn in their own domain, never in other
     interval: 1m
     input_series:
+      - series: 'mqtt_tripped{topic="agents_h_watch_source_pace"}'
+        values: '1x10'
+      - series: 'mqtt_message_total{topic="agents_h_watch_source_pace"}'
+        values: '0+1x10'
       - series: 'mqtt_tripped{topic="agents_h_watch_fleet_budget_pace"}'
         values: '1x10'
       - series: 'mqtt_message_total{topic="agents_h_watch_fleet_budget_pace"}'
@@ -327,6 +331,8 @@ tests:
         eval_time: 5m
         exp_samples:
           - labels: 'cc:watch_state{domain="spend",item="fleet_budget_pace"}'
+            value: 1
+          - labels: 'cc:watch_state{domain="spend",item="source_pace"}'
             value: 1
       - expr: cc:watch_state{domain="platform"}
         eval_time: 5m

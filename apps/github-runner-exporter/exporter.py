@@ -99,8 +99,12 @@ API = os.environ.get("GITHUB_API", "https://api.github.com").rstrip("/")
 TOKEN = os.environ.get("GITHUB_TOKEN", "")
 PORT = int(os.environ.get("PORT", "9320"))
 ORGS = os.environ.get("RUNNER_ORGS", "BlackNBrownStudios").split()
-# Repos whose repo-scoped runners, active runs and recent runs are read.
+# Repos whose active runs and recent runs are read.
 RUN_REPOS = os.environ.get("RUN_REPOS", "BlackNBrownStudios/platform").split()
+# Repos whose repo-scoped runners are read (default RUN_REPOS). Listing them needs admin on the
+# repo, and pool counts need every runner source to answer, so a repo read only for its runs
+# stays out of this list.
+RUNNER_REPOS = os.environ.get("RUNNER_REPOS", " ".join(RUN_REPOS)).split()
 RECENT_PER_REPO = int(os.environ.get("RECENT_PER_REPO", "15"))
 # Finished work is every completed run created in this window: the span pass %,
 # queue time and "what does this runner / pool run" are judged over.
@@ -837,7 +841,7 @@ def forgejo_rows(runners_fut, repo_futs, now):
 
 def render():
     now = time.time()
-    sources = [f"orgs/{o}" for o in ORGS] + [f"repos/{r}" for r in RUN_REPOS]
+    sources = [f"orgs/{o}" for o in ORGS] + [f"repos/{r}" for r in RUNNER_REPOS]
     BUDGET["left"] = 0 if low_budget() else HISTORY_CALL_BUDGET
     BUDGET["until"] = now + HISTORY_DEADLINE_SECS
     with ThreadPoolExecutor(max_workers=8) as pool:

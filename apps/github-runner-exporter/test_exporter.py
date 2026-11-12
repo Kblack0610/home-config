@@ -329,6 +329,20 @@ class ExporterTest(unittest.TestCase):
         (gone,) = [r for r in state if 'host="gone"' in r]
         self.assertIn('site="cloud"', gone)
 
+    def test_a_repo_read_for_runs_only_is_no_runner_source(self):
+        # acme/game is read for its runs but not asked for runners, which needs admin on it:
+        # a runner source that cannot answer would blank the pool counts.
+        with mock.patch.object(exporter, "RUNNER_REPOS", ["acme/web"]):
+            out = self.render(broken=("repos/acme/game/actions/runners",))
+        self.assertFalse(any(c.startswith("repos/acme/game/actions/runners") for c in exporter.get.calls))
+        self.assertNotIn('source="repos/acme/game",kind="runners"', out)
+        self.assertIn('github_runner_exporter_api_ok{source="repos/acme/game",kind="runs",forge="github"} 1', out)
+        self.assertTrue(rows(out, "github_runner_pool_online"))
+        # Negative control: the same broken listing as a runner source blanks the pool counts.
+        out = self.render(broken=("repos/acme/game/actions/runners",))
+        self.assertIn('github_runner_exporter_api_ok{source="repos/acme/game",kind="runners",forge="github"} 0', out)
+        self.assertFalse(rows(out, "github_runner_pool_online"))
+
     def test_github_hosted_jobs_running_counts_only_githubs_runners(self):
         out = self.render()
         self.assertIn('github_hosted_jobs_running{repo="game"} 1', out)

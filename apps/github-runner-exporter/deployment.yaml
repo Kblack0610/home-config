@@ -66,11 +66,17 @@ spec:
                   key: github-token
                   optional: true
             # Org-scoped runners (the Unity pool). Repo-scoped runners are read
-            # from every repo in RUN_REPOS.
+            # from every repo in RUNNER_REPOS.
             - name: RUNNER_ORGS
               value: "BlackNBrownStudios"
-            - name: RUN_REPOS
+            - name: RUNNER_REPOS
               value: "BlackNBrownStudios/platform BlackNBrownStudios/unity-core BlackNBrownStudios/unity-core-harness BlackNBrownStudios/unity-core-playground"
+            # Every personal GitHub repo with CI: their runs and jobs are the feed
+            # schedules-sync writes its run ledger from (it polls none of these
+            # itself). The token reads public repos of any owner; the private
+            # Kblack0610 repos need a token that account owns.
+            - name: RUN_REPOS
+              value: "BlackNBrownStudios/platform BlackNBrownStudios/unity-core BlackNBrownStudios/unity-core-harness BlackNBrownStudios/unity-core-playground Kblack0610/.dotfiles Kblack0610/freqtrade_trading_attempt Kblack0610/android-suite Kblack0610/zmk_config kblack0610/openmptcsetup"
             # host:pool:slots. Mirrors ansible/inventory.yml (linux_ci_runners
             # ci_*_slots, unity_ci_runners and unity_ci_mac_runners unity_ci_slots), the mac-mini's
             # two runners (mac-mini-mac, m1-playground-mac) and the opt-in windows-media test runner.

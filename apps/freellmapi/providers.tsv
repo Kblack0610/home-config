@@ -2,9 +2,11 @@
 # platform<TAB>rbw entry<TAB>where the human gets the key. A platform whose rbw entry does not exist yet is
 # listed as missing and skipped; add the entry (`rbw add <entry>`, the key as its password) and re-run.
 # Platform ids: docs/en/providers/01-supported-platforms.md upstream. NVIDIA NIM is not here on purpose:
-# LiteLLM calls it directly (free-deepseek), and a second client on one key would split its 40 rpm.
+# LiteLLM calls it directly (free-deepseek), and a second client on one key would split its 40 rpm. For the
+# same reason google takes its own key: GEMINI_API_TOKEN_FAMILY is already LiteLLM's GEMINI_API_KEY and
+# GEMINI_API_KEY_FAMILY, and Gemini's free quota is per Google Cloud project, so mint it in a new project.
 # Every route through freellmapi carries public input only, so a provider's training terms never decide.
-google	GEMINI_API_TOKEN_FAMILY	https://aistudio.google.com/apikey
+google	freellmapi-google	https://aistudio.google.com/apikey (Create API key -> in a new project)
 groq	freellmapi-groq	https://console.groq.com/keys
 cerebras	freellmapi-cerebras	https://cloud.cerebras.ai (API Keys)
 mistral	freellmapi-mistral	https://console.mistral.ai/api-keys (Experiment plan, free)

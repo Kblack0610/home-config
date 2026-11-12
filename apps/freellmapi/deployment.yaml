@@ -28,7 +28,7 @@ spec:
       containers:
         - name: freellmapi
           # Pinned: upgrades go through a PR, never the app's own self-update (it needs Docker and watchtower).
-          image: ghcr.io/tashfeenahmed/freellmapi:v0.9.9
+          image: ghcr.io/tashfeenahmed/freellmapi:v0.16.27
           imagePullPolicy: IfNotPresent
           securityContext:
             allowPrivilegeEscalation: false

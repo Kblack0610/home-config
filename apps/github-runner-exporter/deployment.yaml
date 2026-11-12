@@ -81,7 +81,7 @@ spec:
             # hover and board can count cloud vs local. Mirrors the inventory hosts with
             # unity_ci_lan: false; scripts/check-runner-roster.py fails if they drift.
             - name: CLOUD_HOSTS
-              value: "aws-burst-1 aws-burst-2 aws-burst-3 aws-build-1"
+              value: "aws-burst-1 aws-burst-2 aws-build-1"
             # Forgejo repos whose Actions jobs and tasks are read; the forgejo-runner
             # pods are the runners (pool="forgejo", forge="forgejo").
             - name: FORGEJO_REPOS

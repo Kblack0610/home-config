@@ -93,6 +93,14 @@ Revoke one user's key with `/key/delete` on its alias; binks-api mints a new one
 |---|---|---|---|---|
 | `fleet-nim` | `free-deepseek (deepseek-v4.1-flash)` | none (free; rpm 35 on the route) | fleet-dispatch harness `nim` (priority low) | `~/.local/state/agentctl/fleet-nim.key` |
 
+### OpenCode free key
+
+The three `opencode-free (...)` routes are OpenCode's free models (beam-free, longcat-2.5-free, iceman-contributor-free) on the Go base and `OPENCODE_GO_API_KEY`, priced 0 by Go and here; the anonymous Zen endpoint refuses them with 429 FreeUsageLimitError. Their providers may train on prompts, which the human accepted on 2026-11-11 for public input only: public repos, canary replays of public PRs, web summaries, never a private or client repo. Three fences hold that: only `fleet-ocfree` lists the routes, so any other key gets a 403 (on 2026-11-11 every one of the 21 keys carried a model list; teams `lazer-core` and `lazer-pool` allow every model, so a key minted into one of them without a model list, or the master key, would reach the routes too); its one consumer, fleet-dispatch harness `ocfree`, starts only for a project in that harness's `projects` allowlist (dotfiles-private `.config/agentctl/harnesses.json`); and its runs load no global opencode, Claude Code or home-dir rules (the harness's `config_dir`), so no private instructions ride along. OpenCode rotates the free list, so a dropped model answers 400 "Model is unavailable"; delete its route then. No fallback edge, like the Go routes.
+
+| Key | Models | Budgets | Consumer | Key file |
+|---|---|---|---|---|
+| `fleet-ocfree` | the three `opencode-free (...)` routes | $1 / 7d, a tripwire only (the routes are priced 0; rpm 20 each) | fleet-dispatch harness `ocfree` (priority low) | `~/.local/state/agentctl/fleet-ocfree.key` |
+
 ### Create a key
 
 The LiteLLM admin UI is reachable at `https://llm.kblab.me/ui/` (Tailscale-gated). Log in with `UI_USERNAME` / `UI_PASSWORD` from `litellm-db-secrets`. Or via API:

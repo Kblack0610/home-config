@@ -324,8 +324,8 @@ model_list:
   # them), so the gateway key does not leave the cluster.
   #
   # DeepSeek V4.1 Flash needs the workspace's Global region (OpenCode console,
-  # Settings > Privacy); unset, Go 400s it. Go's free models are not routed:
-  # their providers may train on prompts.
+  # Settings > Privacy); unset, Go 400s it. Go's free models are routed
+  # separately as opencode-free (...), for public input only.
   - model_name: "go (glm-5.3)"
     litellm_params:
       model: "openai/glm-5.3"
@@ -652,6 +652,73 @@ model_list:
         json_mode: true
       supports_function_calling: true
 
+  # OpenCode free models, served on the Go base with the Go key at cost 0 (Go
+  # /v1/models lists these three at price 0, read 2026-11-11; a probe of
+  # beam-free returned usage.cost 0). The anonymous Zen endpoint refuses them
+  # (429 FreeUsageLimitError). Their providers may train on prompts, and the
+  # human chose to keep that on (2026-11-11), so they carry PUBLIC input only:
+  # only the fleet-ocfree key reaches them, and fleet-dispatch starts its
+  # harness only for an allowlisted public project (README, OpenCode free key).
+  # The list rotates: a model OpenCode drops answers 400 "Model is unavailable".
+  # No fallback edge: a refusal fails the call, never reaches a paid route.
+  - model_name: "opencode-free (beam-free)"
+    litellm_params:
+      model: "openai/beam-free"
+      api_base: https://opencode.ai/inference/go/openai/v1
+      api_key: os.environ/OPENCODE_GO_API_KEY
+      extra_headers: {"User-Agent": "kblab-litellm-gateway/1.0"}
+      input_cost_per_token: 0
+      output_cost_per_token: 0
+      rpm: 20
+    model_info:
+      mode: chat
+      tags: ["free", "opencode-free", "public-input-only"]
+      capabilities:
+        tools: true
+        code: true
+        vision: false
+        reasoning: true
+        json_mode: true
+      supports_function_calling: true
+  - model_name: "opencode-free (longcat-2.5-free)"
+    litellm_params:
+      model: "openai/longcat-2.5-free"
+      api_base: https://opencode.ai/inference/go/openai/v1
+      api_key: os.environ/OPENCODE_GO_API_KEY
+      extra_headers: {"User-Agent": "kblab-litellm-gateway/1.0"}
+      input_cost_per_token: 0
+      output_cost_per_token: 0
+      rpm: 20
+    model_info:
+      mode: chat
+      tags: ["free", "opencode-free", "public-input-only"]
+      capabilities:
+        tools: true
+        code: true
+        vision: false
+        reasoning: true
+        json_mode: true
+      supports_function_calling: true
+  - model_name: "opencode-free (iceman-contributor-free)"
+    litellm_params:
+      model: "openai/iceman-contributor-free"
+      api_base: https://opencode.ai/inference/go/openai/v1
+      api_key: os.environ/OPENCODE_GO_API_KEY
+      extra_headers: {"User-Agent": "kblab-litellm-gateway/1.0"}
+      input_cost_per_token: 0
+      output_cost_per_token: 0
+      rpm: 20
+    model_info:
+      mode: chat
+      tags: ["free", "opencode-free", "public-input-only"]
+      capabilities:
+        tools: true
+        code: true
+        vision: false
+        reasoning: true
+        json_mode: true
+      supports_function_calling: true
+
   # binks.chat product routes (binks brief, "Model and unit economics"), on the
   # winners of the 2026-11-12 eval: 20 prompts through binks-api, judged blind
   # against the Gemini app (lab binks docs/eval/2026-11-12-binks-model-eval.md).
@@ -787,6 +854,9 @@ litellm_settings:
       - "go (minimax-m3.1-flash)"
       - "go (mimo-v2.6-flash)"
       - "go (longcat-2.0)"
+      - "opencode-free (beam-free)"
+      - "opencode-free (longcat-2.5-free)"
+      - "opencode-free (iceman-contributor-free)"
 
 general_settings:
   master_key: os.environ/LITELLM_MASTER_KEY

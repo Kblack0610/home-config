@@ -57,7 +57,7 @@ tests:
           - labels: 'cc:runner_cores_allowed{host="lin",runner="lin-unity-pool-1"}'
             value: 6
 
-  - name: a withheld idle runner is not a pool slot, a withheld runner still draining a job is
+  - name: a withheld idle runner is not a pool slot, a withheld runner still draining a job is, a lent one counts apart
     interval: 1m
     input_series:
       - series: 'github_runner_state{name="a",pool="unity",state="running",instance="x"}'
@@ -74,6 +74,12 @@ tests:
         values: '1x5'
       - series: 'github_runner_withheld{name="b",instance="x"}'
         values: '0x5'
+      - series: 'github_runner_state{name="e",pool="unity",state="idle",instance="x"}'
+        values: '0x5'
+      - series: 'github_runner_withheld{name="e",instance="x"}'
+        values: '1x5'
+      - series: 'ci_governor_lent{name="e",host="h",to="build",instance="y"}'
+        values: '1x5'
     promql_expr_test:
       - expr: cc:pool_slots
         eval_time: 2m
@@ -84,6 +90,11 @@ tests:
         eval_time: 2m
         exp_samples:
           - labels: 'cc:pool_withheld{pool="unity"}'
+            value: 1
+      - expr: cc:pool_lent
+        eval_time: 2m
+        exp_samples:
+          - labels: 'cc:pool_lent{pool="unity"}'
             value: 1
       - expr: cc:pool_busy
         eval_time: 2m

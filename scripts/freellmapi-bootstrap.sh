@@ -32,7 +32,9 @@ trap 'kill "$PF_PID" 2>/dev/null || true' EXIT
 read -r -t 30 line <&"${PF[0]}" || die "port-forward did not start within 30s"
 [[ "$line" =~ ^Forwarding\ from\ 127\.0\.0\.1:([0-9]+) ]] || die "port-forward: $line"
 BASE="http://127.0.0.1:${BASH_REMATCH[1]}"
-cat <&"${PF[0]}" >/dev/null &
+# A background job does not inherit the coproc fds, so drain through a duplicate.
+exec {pf_out}<&"${PF[0]}"
+cat <&"$pf_out" >/dev/null &
 
 TOKEN='' REAUTH=''
 api() {  # api METHOD PATH [JSON] -> body on stdout; fails on an HTTP error with the body on stderr

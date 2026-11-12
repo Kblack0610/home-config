@@ -32,6 +32,12 @@ spec:
               value: "1883"
             - name: MQTT_TOPIC
               value: "#"
+            # fnmatch globs, comma separated. Frigate's event payloads carry each tracked
+            # object's path_data array, and the exporter makes one metric name per index:
+            # 17k names in 3h on 2026-11-11, scrapes past the 10s timeout, then OOMKilled.
+            # Nothing reads them here; Home Assistant uses Frigate's API.
+            - name: MQTT_IGNORED_TOPICS
+              value: "frigate/events,frigate/reviews,frigate/tracked_object_update"
             - name: PROMETHEUS_PORT
               value: "9000"
             - name: LOG_LEVEL

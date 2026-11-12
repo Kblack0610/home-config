@@ -303,6 +303,47 @@ tests:
         exp_samples:
           - labels: 'cc:domain_status{domain="k3s"}'
             value: 2
+  - name: the agent budget, gateway and release watches warn in their own domain, never in other
+    interval: 1m
+    input_series:
+      - series: 'mqtt_tripped{topic="agents_h_watch_fleet_budget_pace"}'
+        values: '1x10'
+      - series: 'mqtt_message_total{topic="agents_h_watch_fleet_budget_pace"}'
+        values: '0+1x10'
+      - series: 'mqtt_tripped{topic="agents_h_watch_gateway_errors"}'
+        values: '1x10'
+      - series: 'mqtt_message_total{topic="agents_h_watch_gateway_errors"}'
+        values: '0+1x10'
+      - series: 'mqtt_tripped{topic="agents_h_watch_release_drift"}'
+        values: '1x10'
+      - series: 'mqtt_message_total{topic="agents_h_watch_release_drift"}'
+        values: '0+1x10'
+      - series: 'mqtt_tripped{topic="agents_h_watch_release_links"}'
+        values: '1x10'
+      - series: 'mqtt_message_total{topic="agents_h_watch_release_links"}'
+        values: '0+1x10'
+    promql_expr_test:
+      - expr: cc:watch_state{domain="spend"}
+        eval_time: 5m
+        exp_samples:
+          - labels: 'cc:watch_state{domain="spend",item="fleet_budget_pace"}'
+            value: 1
+      - expr: cc:watch_state{domain="platform"}
+        eval_time: 5m
+        exp_samples:
+          - labels: 'cc:watch_state{domain="platform",item="release_drift"}'
+            value: 1
+          - labels: 'cc:watch_state{domain="platform",item="release_links"}'
+            value: 1
+      - expr: cc:component_status{domain="llm",component="watches"}
+        eval_time: 5m
+        exp_samples:
+          - labels: 'cc:component_status{domain="llm",component="watches"}'
+            value: 1
+      - expr: cc:watch_state{domain="other"}
+        eval_time: 5m
+        exp_samples: []
+
   - name: watch state names each item in its domain at its weight, and burst power is no fault
     interval: 1m
     input_series:

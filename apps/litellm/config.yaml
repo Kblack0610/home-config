@@ -449,6 +449,179 @@ model_list:
       supports_function_calling: true
       supports_vision: true
 
+  # binks model eval candidates (binks brief, "Model and unit economics": the
+  # default is chosen by measurement). Same Go plan and headers as the routes
+  # above. Each carries a small eval cap, not Go's allowance, which docs/go does
+  # not list per model for these; raise it only with that number.
+  - model_name: "go (glm-5.3-flash)"
+    litellm_params:
+      model: "openai/glm-5.3-flash"
+      api_base: https://opencode.ai/inference/go/openai/v1
+      api_key: os.environ/OPENCODE_GO_API_KEY
+      extra_headers: {"User-Agent": "kblab-litellm-gateway/1.0"}
+      # Go list price, $/1M: in 0.15 out 0.50 cache_read 0.03 (Go /v1/models, 2026-11-11).
+      input_cost_per_token: 0.00000015
+      output_cost_per_token: 0.0000005
+      cache_read_input_token_cost: 0.00000003
+      tpm: 200000
+      rpm: 30
+      max_budget: 1
+      budget_duration: 5h
+    model_info:
+      mode: chat
+      tags: ["flat", "opencode-go", "binks-eval"]
+      capabilities:
+        tools: true
+        code: true
+        vision: true
+        reasoning: true
+        json_mode: true
+      supports_function_calling: true
+  - model_name: "go (qwen3.8-flash)"
+    litellm_params:
+      model: "openai/qwen3.8-flash"
+      api_base: https://opencode.ai/inference/go/openai/v1
+      api_key: os.environ/OPENCODE_GO_API_KEY
+      extra_headers: {"User-Agent": "kblab-litellm-gateway/1.0"}
+      # Go list price, $/1M: in 0.15 out 0.47 cache_read 0.016 (Go /v1/models, 2026-11-11).
+      input_cost_per_token: 0.00000015
+      output_cost_per_token: 0.00000047
+      cache_read_input_token_cost: 0.000000016
+      tpm: 200000
+      rpm: 30
+      max_budget: 1
+      budget_duration: 5h
+    model_info:
+      mode: chat
+      tags: ["flat", "opencode-go", "binks-eval"]
+      capabilities:
+        tools: true
+        code: true
+        vision: true
+        reasoning: true
+        json_mode: true
+      supports_function_calling: true
+  - model_name: "go (qwen3.7-plus)"
+    litellm_params:
+      model: "openai/qwen3.7-plus"
+      api_base: https://opencode.ai/inference/go/openai/v1
+      api_key: os.environ/OPENCODE_GO_API_KEY
+      extra_headers: {"User-Agent": "kblab-litellm-gateway/1.0"}
+      # Go list price, $/1M: in 0.40 out 1.60 cache_read 0.04 (Go /v1/models, 2026-11-11).
+      input_cost_per_token: 0.0000004
+      output_cost_per_token: 0.0000016
+      cache_read_input_token_cost: 0.00000004
+      tpm: 200000
+      rpm: 30
+      max_budget: 1
+      budget_duration: 5h
+    model_info:
+      mode: chat
+      tags: ["flat", "opencode-go", "binks-eval"]
+      capabilities:
+        tools: true
+        code: true
+        vision: true
+        reasoning: true
+        json_mode: true
+      supports_function_calling: true
+  - model_name: "go (minimax-m3)"
+    litellm_params:
+      model: "openai/minimax-m3"
+      api_base: https://opencode.ai/inference/go/openai/v1
+      api_key: os.environ/OPENCODE_GO_API_KEY
+      extra_headers: {"User-Agent": "kblab-litellm-gateway/1.0"}
+      # Go list price, $/1M: in 0.30 out 1.20 cache_read 0.06 (Go /v1/models, 2026-11-11).
+      input_cost_per_token: 0.0000003
+      output_cost_per_token: 0.0000012
+      cache_read_input_token_cost: 0.00000006
+      tpm: 200000
+      rpm: 30
+      max_budget: 1
+      budget_duration: 5h
+    model_info:
+      mode: chat
+      tags: ["flat", "opencode-go", "binks-eval"]
+      capabilities:
+        tools: true
+        code: true
+        vision: true
+        reasoning: true
+        json_mode: true
+      supports_function_calling: true
+  - model_name: "go (minimax-m3.1-flash)"
+    litellm_params:
+      model: "openai/minimax-m3.1-flash"
+      api_base: https://opencode.ai/inference/go/openai/v1
+      api_key: os.environ/OPENCODE_GO_API_KEY
+      extra_headers: {"User-Agent": "kblab-litellm-gateway/1.0"}
+      # Go list price, $/1M: in 0.15 out 0.60 cache_read 0.015 (Go /v1/models, 2026-11-11).
+      input_cost_per_token: 0.00000015
+      output_cost_per_token: 0.0000006
+      cache_read_input_token_cost: 0.000000015
+      tpm: 200000
+      rpm: 30
+      max_budget: 1
+      budget_duration: 5h
+    model_info:
+      mode: chat
+      tags: ["flat", "opencode-go", "binks-eval"]
+      capabilities:
+        tools: true
+        code: true
+        vision: true
+        reasoning: true
+        json_mode: true
+      supports_function_calling: true
+  - model_name: "go (mimo-v2.6-flash)"
+    litellm_params:
+      model: "openai/mimo-v2.6-flash"
+      api_base: https://opencode.ai/inference/go/openai/v1
+      api_key: os.environ/OPENCODE_GO_API_KEY
+      extra_headers: {"User-Agent": "kblab-litellm-gateway/1.0"}
+      # Go list price, $/1M: in 0.14 out 0.28 cache_read 0.0028 (Go /v1/models, 2026-11-11).
+      input_cost_per_token: 0.00000014
+      output_cost_per_token: 0.00000028
+      cache_read_input_token_cost: 0.0000000028
+      tpm: 200000
+      rpm: 30
+      max_budget: 1
+      budget_duration: 5h
+    model_info:
+      mode: chat
+      tags: ["flat", "opencode-go", "binks-eval"]
+      capabilities:
+        tools: true
+        code: true
+        vision: true
+        reasoning: true
+        json_mode: true
+      supports_function_calling: true
+  - model_name: "go (longcat-2.0)"
+    litellm_params:
+      model: "openai/longcat-2.0"
+      api_base: https://opencode.ai/inference/go/openai/v1
+      api_key: os.environ/OPENCODE_GO_API_KEY
+      extra_headers: {"User-Agent": "kblab-litellm-gateway/1.0"}
+      # Go list price, $/1M: in 0.30 out 1.20 cache_read 0.006 (Go /v1/models, 2026-11-11).
+      input_cost_per_token: 0.0000003
+      output_cost_per_token: 0.0000012
+      cache_read_input_token_cost: 0.000000006
+      tpm: 200000
+      rpm: 30
+      max_budget: 1
+      budget_duration: 5h
+    model_info:
+      mode: chat
+      tags: ["flat", "opencode-go", "binks-eval"]
+      capabilities:
+        tools: true
+        code: true
+        vision: false
+        reasoning: true
+        json_mode: true
+      supports_function_calling: true
+
 router_settings:
   routing_strategy: "simple-shuffle"
   timeout: 900

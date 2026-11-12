@@ -439,7 +439,12 @@
         unity_slot_slice: >-
           {{ (ci_unity_slot_slice_prefix ~ unity_slot ~ '.slice') if ci_unity_slot_cpus | length else ci_unity_slice }}
         gh_runner_slice: "{{ unity_slot_slice }}"
-        gh_runner_env:
+        # UNITY_CACHE_SERVER only where the host runs an Accelerator (unity_ci_accelerator,
+        # roles/unity-ci-host), so the other hosts' env, and their slots, are unchanged.
+        gh_runner_env: >-
+          {{ unity_slot_env | combine({'UNITY_CACHE_SERVER': unity_ci_accelerator}
+          if unity_ci_accelerator | default('') | length else {}) }}
+        unity_slot_env:
           HOME: "{{ unity_ci_user_home }}/unity-pool-{{ unity_slot }}"
           UNITY_MACHINE_ID_FILE: "{{ unity_ci_machine_id_file }}"
           UNITY_CI_CGROUP_PARENT: "{{ unity_slot_slice }}"

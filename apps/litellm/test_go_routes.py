@@ -5,7 +5,7 @@ Go refuses a call without the client's x-opencode-session header, and LiteLLM
 forwards client headers only to the routes on that list, so a go route left
 off it fails every call (seven binks eval routes shipped that way, #830). The
 opencode-free routes use the same base and key, and carry public input only,
-so none may sit on a fallback edge either way.
+so none may sit on a fallback edge or an alias either way.
 Parsed with a regex so CI needs no PyYAML.
 """
 import os
@@ -25,8 +25,10 @@ def forwarded(text):
 
 
 def fallback_routes(text):
-    block = re.search(r"^  fallbacks:\n((?:\s+(?:#.*|- .+)\n)+)", text, re.M)
-    return set(re.findall(r'"([^"]+)"', block.group(1))) if block else set()
+    """Every route a router edge names: any *fallbacks list (fallbacks, default_, context_window_,
+    content_policy_) and model_group_alias, through which a caller reaches a route by another name."""
+    blocks = re.findall(r"^\s+(?:\w*fallbacks|model_group_alias):\n((?:    .*\n|\s*#.*\n)+)", text, re.M)
+    return {r for b in blocks for r in re.findall(r'"([^"]+)"', b)}
 
 
 class GoRoutesForwardHeaders(unittest.TestCase):
@@ -48,8 +50,10 @@ class GoRoutesForwardHeaders(unittest.TestCase):
         self.assertEqual(free & fallback_routes(text), set())
 
     def test_fallback_check_fails_on_a_planted_edge(self):
-        text = '  fallbacks:\n    - {"opencode-free (x)": ["fast (y)"]}\n'
-        self.assertEqual(fallback_routes(text) & {"opencode-free (x)"}, {"opencode-free (x)"})
+        for text in ('  fallbacks:\n    - {"opencode-free (x)": ["fast (y)"]}\n',
+                     '  context_window_fallbacks:\n    - {"fast (y)": ["opencode-free (x)"]}\n',
+                     '  model_group_alias:\n    free: "opencode-free (x)"\n'):
+            self.assertEqual(fallback_routes(text) & {"opencode-free (x)"}, {"opencode-free (x)"}, text)
 
 
 if __name__ == "__main__":

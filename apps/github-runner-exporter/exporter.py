@@ -56,7 +56,9 @@ moves (queued, in progress, completed, a new attempt), from the reads above at n
 extra call, so schedules-sync can write its run ledger from here instead of
 polling actions/runs itself. A run that leaves the active lists while older than
 the window, which the completed list cannot show (a re-run of an old run), is read
-by id with the history, from its budget, until it reads finished.
+by id with the history, from its budget, until it reads finished. `repos` and
+`forgejo_repos` are the one list of CI repos schedules-sync syncs: it polls the
+Forgejo ones itself (their runs are not in this feed).
 
 Those totals are trailing-window gauges: runs enter and leave them at once, so
 no PromQL over them can say when anything happened. github_runs_by_hour and
@@ -523,7 +525,8 @@ def feed_page(cursor, limit):
         page = recs[:limit]
         records = [{**r, "jobs": DONE_JOBS.get(r["run_id"], [])} for _, half, r in page if half == 0]
         runs = [r for _, half, r in page if half == 1]
-    return {"epoch": EPOCH, "repos": RUN_REPOS + FEED_REPOS, "window_secs": HISTORY_WINDOW_SECS,
+    return {"epoch": EPOCH, "repos": RUN_REPOS + FEED_REPOS, "forgejo_repos": FORGEJO_REPOS,
+            "window_secs": HISTORY_WINDOW_SECS,
             "next": page[-1][0] if page else cursor, "more": len(recs) > limit, "records": records, "runs": runs}
 
 

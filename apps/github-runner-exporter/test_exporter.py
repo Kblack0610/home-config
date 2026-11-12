@@ -1041,6 +1041,8 @@ class DetailFeedTest(unittest.TestCase):
         self.render({"repos/acme/web/actions/runs/9/jobs?per_page=100": jobs9})
         page = exporter.feed_page(0, 100)
         self.assertEqual(page["repos"], exporter.RUN_REPOS)
+        with mock.patch.object(exporter, "FORGEJO_REPOS", ["o/fj"]):  # the Forgejo half of the one list
+            self.assertEqual(exporter.feed_page(0, 100)["forgejo_repos"], ["o/fj"])
         by_id = {r["run_id"]: r for r in page["records"]}
         self.assertEqual(set(by_id), {9, 8})  # 7 is outside the window
         rec = by_id[9]

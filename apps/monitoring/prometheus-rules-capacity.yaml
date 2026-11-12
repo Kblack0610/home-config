@@ -307,6 +307,17 @@ spec:
             category: capacity
           annotations:
             summary: "{{ $labels.namespace }}/{{ $labels.pod }} has been crash looping for an hour"
+        # A critical service whose image cannot be pulled is down until someone
+        # acts: on 2026-11-11 Forgejo sat in ImagePullBackOff after codeberg.org
+        # lost its amd64 manifest (hc-294). Two pull retries is 10 minutes.
+        - alert: CriticalServiceImagePullFailing
+          expr: kube_pod_container_status_waiting_reason{reason=~"ErrImagePull|ImagePullBackOff", namespace=~"monitoring|ntfy|ntfy-public|vaultwarden|forgejo|kube-system|flux-system|traefik|ai-gateway"} == 1
+          for: 10m
+          labels:
+            severity: critical
+            category: capacity
+          annotations:
+            summary: "{{ $labels.namespace }}/{{ $labels.pod }} cannot pull the image of {{ $labels.container }}"
         # From the blackbox probes, because cert-manager's metrics are not scraped.
         - alert: CertExpiringSoon
           expr: probe_ssl_earliest_cert_expiry - time() < 14 * 86400

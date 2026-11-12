@@ -16,12 +16,12 @@ chmod +x "$t/drill"
 
 fail=0
 prom=$t/out/forgejo_restore_drill.prom
-run() { DRILL=$t/drill bash "$here/forgejo-restore-drill-run.sh" "$t/out" "$1" codeberg.org/forgejo/forgejo 2>"$t/err"; }
+run() { DRILL=$t/drill bash "$here/forgejo-restore-drill-run.sh" "$t/out" "$1" data.forgejo.org/forgejo/forgejo 2>"$t/err"; }
 check() { if [ "$2" = "$3" ]; then echo "ok   $1"; else echo "FAIL $1: got '$2', want '$3'"; fail=1; fi; }
 val() { awk -v m="$1" '$1 == m {print $2}' "$prom"; }
 
 run "file://$t/www"; check "a pass exits 0" "$?" 0
-check "the image tag is the deployed version" "$(cat "$t/image")" codeberg.org/forgejo/forgejo:14.0.4
+check "the image tag is the deployed version" "$(cat "$t/image")" data.forgejo.org/forgejo/forgejo:14.0.4
 check "a pass reports success" "$(val forgejo_restore_drill_last_run_success)" 1
 passed=$(val forgejo_restore_drill_last_success_timestamp_seconds)
 check "a pass records its time" "$passed" "$(val forgejo_restore_drill_last_run_timestamp_seconds)"

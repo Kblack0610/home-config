@@ -64,7 +64,7 @@ portfolio Deployment (apps/portfolio/)
 - DNS is owned by Cloudflare (not this repo). Tunnel provisioning lives in `bnb/platform` per `infrastructure.md:217-229`.
 - The tunnel-terminator pod (`cloudflared-public-sites`) lives in `apps/` and is Flux-managed in this repo.
 - Traefik is bundled with k3s but pinned in `infrastructure/traefik/`.
-- The `portfolio` Deployment ships from `apps/portfolio/`, image built by `bnb/platform` CI and pushed to the local registry `192.168.1.20:30500`.
+- The `portfolio` Deployment ships from `apps/portfolio/`, image built by `bnb/platform` CI and pushed to the Forgejo container registry `git.kblab.me`.
 
 For LAN traffic (`hass.kblab.me`), the flow skips Cloudflare: client → OpenWRT dnsmasq → AdGuard Home (Pi3) rewrites `*.kblab.me` → `192.168.1.124` → Traefik → Service. See `apps/pi3-adguard-home/README.md` for the DNS-rewrite mechanics.
 

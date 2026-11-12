@@ -323,6 +323,23 @@ tests:
           - exp_labels: {alertname: CriticalServiceCrashLooping, severity: critical, category: capacity, reason: CrashLoopBackOff, namespace: ntfy, pod: p, container: c}
             exp_annotations: {summary: "ntfy/p has been crash looping for an hour"}
 
+  - name: an image pull failure pages only in the namespaces that matter
+    interval: 1m
+    input_series:
+      - series: 'kube_pod_container_status_waiting_reason{reason="ImagePullBackOff",namespace="forgejo",pod="f",container="forgejo"}'
+        values: '1x20'
+      - series: 'kube_pod_container_status_waiting_reason{reason="ErrImagePull",namespace="zomboid",pod="z",container="c"}'
+        values: '1x20'
+    alert_rule_test:
+      - eval_time: 9m
+        alertname: CriticalServiceImagePullFailing
+        exp_alerts: []
+      - eval_time: 11m
+        alertname: CriticalServiceImagePullFailing
+        exp_alerts:
+          - exp_labels: {alertname: CriticalServiceImagePullFailing, severity: critical, category: capacity, reason: ImagePullBackOff, namespace: forgejo, pod: f, container: forgejo}
+            exp_annotations: {summary: "forgejo/f cannot pull the image of forgejo"}
+
   - name: a recent failed verify pages, the 229-day-old Job does not
     interval: 1m
     input_series:

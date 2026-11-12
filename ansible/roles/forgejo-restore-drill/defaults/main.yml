@@ -5,7 +5,7 @@ forgejo_restore_drill_on_calendar: "Sat *-*-* 09:00:00"
 # The drill restores onto the version Forgejo serves at run time, read from here.
 forgejo_restore_drill_url: https://git.kblab.me
 # The repository of the image in apps/forgejo/deployment.yaml; the tag comes from the URL above.
-forgejo_restore_drill_image_repo: codeberg.org/forgejo/forgejo
+forgejo_restore_drill_image_repo: data.forgejo.org/forgejo/forgejo
 # node-exporter reads this directory (prometheus-node-exporter.extraArgs in
 # apps/monitoring/helm-values.yaml).
 forgejo_restore_drill_textfile_dir: /var/lib/node-exporter-textfile

@@ -1,10 +1,7 @@
 ---
-# NFS server that hosts OFF-BOX backups for k3s workloads. Motivating case:
-# forgejo's nightly backup used to write only to a hostPath on its own node
-# (asus-laptop). On 2026-07-09 those backups filled that node's root disk and
-# evicted the whole cluster, AND a same-disk backup is not real DR. This role
-# turns a *different* machine (hp-victus) into an NFS target so the backup job
-# can keep a second copy off the box that produced it.
+# NFS server for backups taken on another machine: hp-victus exports Forgejo's
+# data read-only to asus-laptop, whose backup jobs write to asus's own disks,
+# so no backup shares a disk with the data it protects (README.md: Why).
 
 - name: Install nfs-utils (refresh pacman db first)
   # community.general.pacman with update_cache does `-Sy` before installing, so
@@ -31,15 +28,6 @@
     owner: root
     group: root
   loop: "{{ nfs_exports }}"
-
-- name: Ensure per-producer backup subdirs exist
-  ansible.builtin.file:
-    path: "/srv/backups/{{ item }}"
-    state: directory
-    mode: "0755"
-    owner: root
-    group: root
-  loop: "{{ nfs_backup_subdirs }}"
 
 - name: Configure /etc/exports
   ansible.builtin.copy:

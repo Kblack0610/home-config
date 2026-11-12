@@ -17,7 +17,7 @@ and repository mirroring enabled.
 | `ingress.yaml` | TLS ingress for `git.kblab.me` (git, registry, API, Flux) |
 | `ingress-public.yaml` | TLS ingress for `git.kennethblack.me`, the `ROOT_URL` and the one browser hostname |
 | `ingressroute-browser-redirect.yaml` | Redirects browsers (`Accept: text/html`) on `git.kblab.me` to `git.kennethblack.me`, so one login cookie covers every page |
-| `pvc.yaml` | Forgejo's data: a static Retain PV at `/srv/forgejo/data` on hp-victus, plus the pre-move asus claim kept as rollback until 2026-11-18 |
+| `pvc.yaml` | Forgejo's data: a static Retain PV at `/srv/forgejo/data` on hp-victus |
 | `backup-cronjob.yaml` | Daily backup job for full data and SQLite snapshots |
 | `runner-deployment.yaml` | Forgejo Runner + DinD sidecar (asus-laptop and razer-laptop, never the Forgejo node) |
 | `runner-config-cm.yaml` | Runner config with `docker` + `linux-amd64` labels |

@@ -527,13 +527,10 @@
           ASSET_LIBRARY_LFS_STORE: "{{ unity_ci_mac_lfs_store }}"
       tags: [runner, ci, unity-ci]
 
-# NFS backup target — hp-victus exports /srv/backups so k3s workloads can keep
-# an OFF-BOX backup copy on a different machine than the one that produced them.
-# Motivating case: forgejo's nightly backup used to write only to a hostPath on
-# its own node (asus-laptop); on 2026-07-09 that filled the node's root disk and
-# evicted the whole cluster. See roles/nfs-backup-target/ and
-# apps/forgejo/backup-cronjob.yaml (the NFS off-box copy step).
-- name: NFS backup target (hp-victus — off-box k3s backups)
+# NFS backup source: hp-victus exports Forgejo's data (/srv/forgejo) read-only
+# to asus-laptop, where the backup jobs write to other disks than the data's.
+# See roles/nfs-backup-target/ and apps/forgejo/backup-cronjob.yaml.
+- name: NFS backup target (hp-victus)
   hosts: hp-victus
   become: true
   gather_facts: true

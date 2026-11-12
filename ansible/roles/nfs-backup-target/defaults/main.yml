@@ -5,13 +5,8 @@
 # k3s pods egress SNAT'd to their node IP, so the server sees the node's
 # 192.168.1.x address, never the pod IP: clients are node addresses.
 #
-# no_root_squash because the backup jobs run as root: they write root-owned
-# tarballs, and read Forgejo files owned by uid 1000 in 0700 dirs.
+# no_root_squash because the backup jobs run as root and read Forgejo files owned by uid 1000 in 0700 dirs.
 nfs_exports:
-  # Off-box backup copies, one subdir per producer (nfs_backup_subdirs).
-  - path: /srv/backups
-    clients: "192.168.1.0/24"
-    opts: "rw,sync,no_subtree_check,no_root_squash"
   # Forgejo's live data (data/, the forgejo-data-hp-victus PV) and its hourly
   # DB snapshots (snapshots/). Read-only, to asus-laptop only: the backup jobs
   # there (forgejo-backup, nas forgejo-packages-backup, backup-verify) read it
@@ -20,6 +15,3 @@ nfs_exports:
     clients: "{{ hostvars['asus-laptop'].ansible_host }}"
     opts: "ro,sync,no_subtree_check,no_root_squash"
 
-# Subdirectories to pre-create under /srv/backups (one per backup producer).
-nfs_backup_subdirs:
-  - forgejo

@@ -59,7 +59,7 @@ Key config sections:
 ## Runner
 
 Instance-level runners serve all repos on the Forgejo instance, each with a
-Docker-in-Docker sidecar for container-based CI workflows.
+Docker-in-Docker sidecar for container-based CI workflows. DinD is a native sidecar (an init container with `restartPolicy: Always`), so the runner starts only after `docker info` answers and stops before DinD does. Runners register against the in-cluster Service `http://forgejo-http.forgejo.svc.cluster.local:3000`, not `git.kblab.me`, so polling, logs and artifacts skip Traefik; jobs still clone from `ROOT_URL`.
 
 It runs **2 replicas, one on asus-laptop and one on razer-laptop**. `runner-deployment.yaml` requires an amd64 workstation node (`node-role.kubernetes.io/workstation`) that is not hp-victus (the Forgejo node), and a required `podAntiAffinity` puts the two pods on different nodes. hp-victus is excluded because Forgejo's data PV is pinned there: with the old soft rule both runners sat on the Forgejo node, so one disk stall took out the forge and all of CI together. If one runner node dies, the other replica is already live; the dead node's replica stays Pending until it returns, by design. Rollouts replace one pod at a time (`maxSurge: 0`), because a surge pod has no free node to land on. Each pod
 registers under its own pod name (`--name "$POD_NAME"` via the downward API),

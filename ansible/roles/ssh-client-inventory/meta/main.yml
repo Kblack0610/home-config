@@ -1,0 +1,10 @@
+---
+galaxy_info:
+  role_name: ssh_client_inventory
+  author: home-config
+  description: >-
+    Workstation ssh client config generated from the inventory, so
+    `ssh <inventory alias>` reaches each host with its IP, port and user.
+  license: MIT
+  min_ansible_version: "2.14"
+dependencies: []

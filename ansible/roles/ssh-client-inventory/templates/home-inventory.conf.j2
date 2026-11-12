@@ -1,0 +1,19 @@
+# {{ ansible_managed }}
+# One block per inventory host whose ansible_host is an IP, from
+# ansible/inventory.yml (role ssh-client-inventory). Host keys are checked
+# against the IP, which known_hosts already holds for every host Ansible reaches.
+# Hosts reached through a ProxyCommand (the AWS boxes, by instance id) are left out.
+{% for host in groups['all'] | sort %}
+{% set hv = hostvars[host] %}
+{% if hv.ansible_host is defined and hv.ansible_host is match('^[0-9]+(\.[0-9]+){3}$') %}
+
+Host {{ ([host] + (hv.ssh_aliases | default([]))) | join(' ') }}
+    HostName {{ hv.ansible_host }}
+{% if hv.ansible_port is defined %}
+    Port {{ hv.ansible_port }}
+{% endif %}
+{% if hv.ansible_user is defined %}
+    User {{ hv.ansible_user }}
+{% endif %}
+{% endif %}
+{% endfor %}

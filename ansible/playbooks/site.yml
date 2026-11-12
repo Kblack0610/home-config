@@ -42,6 +42,11 @@
         node_exporter_linux_textfile_owner: kblack0610
     - role: desktop-firewall
       tags: [monitoring, firewall]
+    # `ssh <inventory alias>` from this machine (razer-laptop, asus-laptop on
+    # 2222, the Pis): /etc/ssh/ssh_config.d/40-home-inventory.conf from the
+    # inventory. Apply: --limit cachyos-x8664-main --tags ssh-aliases -K
+    - role: ssh-client-inventory
+      tags: [ssh-aliases]
 
 - name: Keep Linux host clocks synced (systemd-timesyncd)
   # See ansible/roles/time-sync/README.md. hp-victus was found ~102s behind the

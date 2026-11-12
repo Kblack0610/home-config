@@ -111,13 +111,7 @@ Only user-space + supported knobs are touched (`defaults`/`mdutil`/`tmutil`/`pms
 ssh m1            # Mac Mini M1  (user kennethblack, 192.168.1.7)
 ```
 
-SSH config (`~/.ssh/config`):
-```
-Host m1 mac-mini
-    HostName 192.168.1.7
-    User kennethblack
-    IdentityFile ~/.ssh/id_ed25519
-```
+The alias comes from the inventory (`mac-mini`, plus `ssh_aliases: [m1]`), written to the workstation's `/etc/ssh/ssh_config.d/40-home-inventory.conf` by the `ssh-client-inventory` role.
 
 ## Driving it from an agent
 

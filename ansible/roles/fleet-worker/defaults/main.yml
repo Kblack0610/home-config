@@ -1,6 +1,7 @@
 ---
 # What a session on a fleet worker runs: tmux and wt (from the dotfiles), the
-# three harnesses, gh for its PRs, and python-yaml and jq for fleet-hosts.sh.
+# three harnesses, gh for its PRs, python-yaml and jq for fleet-hosts.sh, and
+# rust and gcc to build agent-panel.
 fleet_worker_packages:
   - git
   - tmux
@@ -8,6 +9,8 @@ fleet_worker_packages:
   - jq
   - python-yaml
   - github-cli
+  - rust
+  - gcc
   - openai-codex
   - opencode
 # Ubuntu, the cloud worker (platform infra/aws-ci-burst, fleet-worker-1). It takes

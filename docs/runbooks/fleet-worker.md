@@ -11,7 +11,7 @@ Hosts that fleet-dispatch places agent sessions on, over ssh. The roster is the 
 ## Add a worker
 
 1. Add the host under `fleet_workers` with `fleet_place: false`. Its `ansible_host` can come from another group.
-2. From `ansible/`: `ansible-playbook playbooks/site.yml --limit <host> --tags fleet-worker`. Role `fleet-worker` installs tmux, stow, gh, codex, opencode and Claude Code, stows the dotfiles (a plain `~/.zshrc` or `~/.bashrc` is kept as `*.pre-dotfiles`), clones `fleet_repos`, creates the account dirs `claude-acct` knows, makes `~/.ssh/id_ed25519` and trusts the state host's host key.
+2. From `ansible/`: `ansible-playbook playbooks/site.yml --limit <host> --tags fleet-worker`. Role `fleet-worker` installs tmux, stow, gh, codex, opencode, a Rust toolchain and Claude Code, stows the dotfiles (a plain `~/.zshrc` or `~/.bashrc` is kept as `*.pre-dotfiles`), clones `fleet_repos`, creates the account dirs `claude-acct` knows, builds `agent-panel` from the dotfiles (`cargo build --release`, as the user, on Arch only) and links it to `~/.local/bin/agent-panel` for the workstation's `fleet-sessions`, makes `~/.ssh/id_ed25519` and trusts the state host's host key.
 3. The play's last task prints what is left, all of it the human's (no agent copies a token):
    - `gh auth login` on the worker, then re-run the play: that stows the private overlay and clones a private repo.
    - Add the worker's public key, which the task prints, to `~/.ssh/authorized_keys` on the state host.
@@ -48,7 +48,7 @@ Hosts that fleet-dispatch places agent sessions on, over ssh. The roster is the 
 ## Check a worker
 
 - `fleet-dispatch hosts` (or `--json`): each worker's free sessions, load, and why it takes nothing now.
-- `fleet-sessions` lists a worker's sessions with their host; their targets read `<host>@lab/<session>:<window>`.
+- `fleet-sessions` lists a worker's sessions with their host; their targets read `<host>@lab/<session>:<window>`. It runs `agent-panel list --json` on the worker, so `fleet_host_run <host> agent-panel list --json` must exit 0 or 3 (3 is no sessions).
 - A worker that does not answer ssh takes nothing, and reap leaves its items running until it answers again.
 
 ## Troubleshooting
@@ -61,4 +61,5 @@ Hosts that fleet-dispatch places agent sessions on, over ssh. The roster is the 
 | The cloud worker stops with a session on it | fleet-dispatch stopped writing demand (the key ran out), or its `max_hours_day` | `systemctl --user status fleet-dispatch.timer` on the workstation; the governor log's stop line names the cause |
 | A session's `agent-queue` call prints `the state host ... did not answer over ssh` | The worker's key is not in the state host's `authorized_keys`, or its host key changed | Step 3 of "Add a worker"; re-run the play for the host key |
 | `fleet-dispatch hosts` says `no fleet workers`, or shows an old `fleet_place` | The workstation's dotfiles predate the upstream read, or its fetch of this repo fails | `git -C ~/dev/home/home-config fetch` must succeed; `fleet-dispatch hosts` fetches before it reads |
+| `fleet-sessions` lists the worker as silent, `agent-panel` exits 127 | The play has not run since the role learned to build it, or the build failed | Re-run the play; `cargo build --release` in `~/.dotfiles/.local/src/agent-panel` on the worker shows the error |
 | The play stops at `Clone the public dotfiles` with `Local modifications exist` | An older role cloned the dotfiles submodules and one stopped half checked out | On the worker: `git -C ~/.dotfiles submodule deinit -f <path>`, then re-run the play |

@@ -82,6 +82,28 @@
     executable: /bin/bash
     creates: "{{ ansible_env.HOME }}/.local/bin/agent-queue"
 
+# agent-panel lists this worker's sessions: the workstation's fleet-sessions runs
+# `agent-panel list --json` over ssh, and a worker without it never shows any.
+# A narrow task, not the dotfiles' build_local_rust_tools: that also builds
+# agent-web, hub and timebox, which a worker does not run. Arch only: apt's
+# cargo (1.75 on Ubuntu 24.04) is older than the Cargo.lock v4 and clap 4.6 here.
+# A rebuild on each play is incremental; no timer rebuilds it between plays yet.
+- name: Build agent-panel (cargo, as the user)
+  when: ansible_facts.os_family == "Archlinux"
+  ansible.builtin.command: cargo build --release
+  args:
+    chdir: "{{ ansible_env.HOME }}/.dotfiles/.local/src/agent-panel"
+  register: _fleet_worker_panel
+  changed_when: "'Compiling' in _fleet_worker_panel.stderr"
+
+- name: Link agent-panel onto PATH
+  when: ansible_facts.os_family == "Archlinux"
+  ansible.builtin.file:
+    src: "{{ ansible_env.HOME }}/.dotfiles/.local/src/agent-panel/target/release/agent-panel"
+    dest: "{{ ansible_env.HOME }}/.local/bin/agent-panel"
+    state: link
+    force: true
+
 - name: Read whether GitHub is signed in (the private overlay and every PR need it)
   ansible.builtin.command: gh auth status
   register: fleet_worker_gh

@@ -23,6 +23,7 @@ resources:
   - flux-audit
   - forgejo
   - forgejo-mirror-exporter
+  - freellmapi
   - frigate
   - github-runner-exporter
   - gatus

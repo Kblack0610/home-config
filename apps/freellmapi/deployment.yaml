@@ -1,0 +1,85 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: freellmapi
+  namespace: ai-gateway
+  labels:
+    app.kubernetes.io/name: freellmapi
+spec:
+  replicas: 1
+  # One SQLite file on a ReadWriteOnce volume: never two pods at once.
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: freellmapi
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: freellmapi
+    spec:
+      # The image's node user (uid 1000). Started as that user, the entrypoint skips its root chown
+      # step, and fsGroup makes the local-path volume writable.
+      securityContext:
+        runAsUser: 1000
+        runAsGroup: 1000
+        runAsNonRoot: true
+        fsGroup: 1000
+      containers:
+        - name: freellmapi
+          # Pinned: upgrades go through a PR, never the app's own self-update (it needs Docker and watchtower).
+          image: ghcr.io/tashfeenahmed/freellmapi:v0.9.9
+          imagePullPolicy: IfNotPresent
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop:
+                - ALL
+          ports:
+            - name: http
+              containerPort: 3001
+          env:
+            - name: NODE_ENV
+              value: production
+            - name: PORT
+              value: "3001"
+            - name: HOST
+              value: "0.0.0.0"
+            - name: REQUEST_ANALYTICS_RETENTION_DAYS
+              value: "90"
+            - name: ENCRYPTION_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: freellmapi-secrets
+                  key: ENCRYPTION_KEY
+          volumeMounts:
+            - name: data
+              mountPath: /app/server/data
+            - name: localtime
+              mountPath: /etc/localtime
+              readOnly: true
+          readinessProbe:
+            httpGet:
+              path: /api/ping
+              port: http
+            periodSeconds: 15
+          livenessProbe:
+            httpGet:
+              path: /api/ping
+              port: http
+            initialDelaySeconds: 30
+            periodSeconds: 30
+            failureThreshold: 4
+          resources:
+            requests:
+              memory: "192Mi"
+              cpu: "50m"
+            limits:
+              memory: "768Mi"
+      volumes:
+        - name: data
+          persistentVolumeClaim:
+            claimName: freellmapi-data
+        - name: localtime
+          hostPath:
+            path: /etc/localtime

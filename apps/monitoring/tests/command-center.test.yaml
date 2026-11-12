@@ -529,3 +529,186 @@ tests:
             value: 4
           - labels: 'cc:claude_code_cost_24h_usd:by_service{service_name="claude-agentctl"}'
             value: 362
+  - name: every standing watch has a domain, so none lands in other; only a prod outage is down
+    interval: 1m
+    input_series:
+      - series: 'mqtt_tripped{topic="agents_h_watch_agent_web_liveness"}'
+        values: '1x10'
+      - series: 'mqtt_message_total{topic="agents_h_watch_agent_web_liveness"}'
+        values: '0+1x10'
+      - series: 'mqtt_tripped{topic="agents_h_watch_alertmanager_fleet"}'
+        values: '1x10'
+      - series: 'mqtt_message_total{topic="agents_h_watch_alertmanager_fleet"}'
+        values: '0+1x10'
+      - series: 'mqtt_tripped{topic="agents_h_watch_binks_chat_spend"}'
+        values: '1x10'
+      - series: 'mqtt_message_total{topic="agents_h_watch_binks_chat_spend"}'
+        values: '0+1x10'
+      - series: 'mqtt_tripped{topic="agents_h_watch_binks_key_issue_failed"}'
+        values: '1x10'
+      - series: 'mqtt_message_total{topic="agents_h_watch_binks_key_issue_failed"}'
+        values: '0+1x10'
+      - series: 'mqtt_tripped{topic="agents_h_watch_board_open"}'
+        values: '1x10'
+      - series: 'mqtt_message_total{topic="agents_h_watch_board_open"}'
+        values: '0+1x10'
+      - series: 'mqtt_tripped{topic="agents_h_watch_claude_startup"}'
+        values: '1x10'
+      - series: 'mqtt_message_total{topic="agents_h_watch_claude_startup"}'
+        values: '0+1x10'
+      - series: 'mqtt_tripped{topic="agents_h_watch_codex_underuse"}'
+        values: '1x10'
+      - series: 'mqtt_message_total{topic="agents_h_watch_codex_underuse"}'
+        values: '0+1x10'
+      - series: 'mqtt_tripped{topic="agents_h_watch_dotfiles_gate_budget"}'
+        values: '1x10'
+      - series: 'mqtt_message_total{topic="agents_h_watch_dotfiles_gate_budget"}'
+        values: '0+1x10'
+      - series: 'mqtt_tripped{topic="agents_h_watch_emotiv_bridge"}'
+        values: '1x10'
+      - series: 'mqtt_message_total{topic="agents_h_watch_emotiv_bridge"}'
+        values: '0+1x10'
+      - series: 'mqtt_tripped{topic="agents_h_watch_forgejo_restore_drill"}'
+        values: '1x10'
+      - series: 'mqtt_message_total{topic="agents_h_watch_forgejo_restore_drill"}'
+        values: '0+1x10'
+      - series: 'mqtt_tripped{topic="agents_h_watch_intake_stuck"}'
+        values: '1x10'
+      - series: 'mqtt_message_total{topic="agents_h_watch_intake_stuck"}'
+        values: '0+1x10'
+      - series: 'mqtt_tripped{topic="agents_h_watch_lane_sandbox_refusals"}'
+        values: '1x10'
+      - series: 'mqtt_message_total{topic="agents_h_watch_lane_sandbox_refusals"}'
+        values: '0+1x10'
+      - series: 'mqtt_tripped{topic="agents_h_watch_langfuse_read"}'
+        values: '1x10'
+      - series: 'mqtt_message_total{topic="agents_h_watch_langfuse_read"}'
+        values: '0+1x10'
+      - series: 'mqtt_tripped{topic="agents_h_watch_m1_playground_mac_online"}'
+        values: '1x10'
+      - series: 'mqtt_message_total{topic="agents_h_watch_m1_playground_mac_online"}'
+        values: '0+1x10'
+      - series: 'mqtt_tripped{topic="agents_h_watch_mac_mini_desktop_grants"}'
+        values: '1x10'
+      - series: 'mqtt_message_total{topic="agents_h_watch_mac_mini_desktop_grants"}'
+        values: '0+1x10'
+      - series: 'mqtt_tripped{topic="agents_h_watch_main_checkout_branch"}'
+        values: '1x10'
+      - series: 'mqtt_message_total{topic="agents_h_watch_main_checkout_branch"}'
+        values: '0+1x10'
+      - series: 'mqtt_tripped{topic="agents_h_watch_meshy_credits"}'
+        values: '1x10'
+      - series: 'mqtt_message_total{topic="agents_h_watch_meshy_credits"}'
+        values: '0+1x10'
+      - series: 'mqtt_tripped{topic="agents_h_watch_neptune_health"}'
+        values: '1x10'
+      - series: 'mqtt_message_total{topic="agents_h_watch_neptune_health"}'
+        values: '0+1x10'
+      - series: 'mqtt_tripped{topic="agents_h_watch_neptune_updates"}'
+        values: '1x10'
+      - series: 'mqtt_message_total{topic="agents_h_watch_neptune_updates"}'
+        values: '0+1x10'
+      - series: 'mqtt_tripped{topic="agents_h_watch_pager_undelivered"}'
+        values: '1x10'
+      - series: 'mqtt_message_total{topic="agents_h_watch_pager_undelivered"}'
+        values: '0+1x10'
+      - series: 'mqtt_tripped{topic="agents_h_watch_platform_dependabot_runtime"}'
+        values: '1x10'
+      - series: 'mqtt_message_total{topic="agents_h_watch_platform_dependabot_runtime"}'
+        values: '0+1x10'
+      - series: 'mqtt_tripped{topic="agents_h_watch_playground_gate_spread"}'
+        values: '1x10'
+      - series: 'mqtt_message_total{topic="agents_h_watch_playground_gate_spread"}'
+        values: '0+1x10'
+      - series: 'mqtt_tripped{topic="agents_h_watch_playground_main_checks"}'
+        values: '1x10'
+      - series: 'mqtt_message_total{topic="agents_h_watch_playground_main_checks"}'
+        values: '0+1x10'
+      - series: 'mqtt_tripped{topic="agents_h_watch_playground_release_ready"}'
+        values: '1x10'
+      - series: 'mqtt_message_total{topic="agents_h_watch_playground_release_ready"}'
+        values: '0+1x10'
+      - series: 'mqtt_tripped{topic="agents_h_watch_playground_release_runs"}'
+        values: '1x10'
+      - series: 'mqtt_message_total{topic="agents_h_watch_playground_release_runs"}'
+        values: '0+1x10'
+      - series: 'mqtt_tripped{topic="agents_h_watch_playground_train_stuck"}'
+        values: '1x10'
+      - series: 'mqtt_message_total{topic="agents_h_watch_playground_train_stuck"}'
+        values: '0+1x10'
+      - series: 'mqtt_tripped{topic="agents_h_watch_playloop"}'
+        values: '1x10'
+      - series: 'mqtt_message_total{topic="agents_h_watch_playloop"}'
+        values: '0+1x10'
+      - series: 'mqtt_tripped{topic="agents_h_watch_provider_status"}'
+        values: '1x10'
+      - series: 'mqtt_message_total{topic="agents_h_watch_provider_status"}'
+        values: '0+1x10'
+      - series: 'mqtt_tripped{topic="agents_h_watch_queue_cost_export"}'
+        values: '1x10'
+      - series: 'mqtt_message_total{topic="agents_h_watch_queue_cost_export"}'
+        values: '0+1x10'
+      - series: 'mqtt_tripped{topic="agents_h_watch_queue_limit_ends"}'
+        values: '1x10'
+      - series: 'mqtt_message_total{topic="agents_h_watch_queue_limit_ends"}'
+        values: '0+1x10'
+      - series: 'mqtt_tripped{topic="agents_h_watch_runner_score"}'
+        values: '1x10'
+      - series: 'mqtt_message_total{topic="agents_h_watch_runner_score"}'
+        values: '0+1x10'
+      - series: 'mqtt_tripped{topic="agents_h_watch_schedules_fresh"}'
+        values: '1x10'
+      - series: 'mqtt_message_total{topic="agents_h_watch_schedules_fresh"}'
+        values: '0+1x10'
+      - series: 'mqtt_tripped{topic="agents_h_watch_systemd_user_failed"}'
+        values: '1x10'
+      - series: 'mqtt_message_total{topic="agents_h_watch_systemd_user_failed"}'
+        values: '0+1x10'
+      - series: 'mqtt_tripped{topic="agents_h_watch_token_usage_drift"}'
+        values: '1x10'
+      - series: 'mqtt_message_total{topic="agents_h_watch_token_usage_drift"}'
+        values: '0+1x10'
+    promql_expr_test:
+      - expr: cc:watch_state{domain="other"}
+        eval_time: 5m
+        exp_samples: []
+      - expr: cc:watch_state{domain="prod",item="binks_key_issue_failed"}
+        eval_time: 5m
+        exp_samples:
+          - labels: 'cc:watch_state{domain="prod",item="binks_key_issue_failed"}'
+            value: 2
+      - expr: cc:watch_state{domain="ci",item="playground_main_checks"}
+        eval_time: 5m
+        exp_samples:
+          - labels: 'cc:watch_state{domain="ci",item="playground_main_checks"}'
+            value: 1
+      - expr: cc:watch_state{domain="k3s",item="forgejo_restore_drill"}
+        eval_time: 5m
+        exp_samples:
+          - labels: 'cc:watch_state{domain="k3s",item="forgejo_restore_drill"}'
+            value: 1
+      - expr: cc:watch_state{domain="queue",item="board_open"}
+        eval_time: 5m
+        exp_samples:
+          - labels: 'cc:watch_state{domain="queue",item="board_open"}'
+            value: 1
+      - expr: cc:watch_state{domain="machines",item="neptune_health"}
+        eval_time: 5m
+        exp_samples:
+          - labels: 'cc:watch_state{domain="machines",item="neptune_health"}'
+            value: 1
+      - expr: cc:watch_state{domain="spend",item="meshy_credits"}
+        eval_time: 5m
+        exp_samples:
+          - labels: 'cc:watch_state{domain="spend",item="meshy_credits"}'
+            value: 1
+      - expr: cc:watch_state{domain="platform",item="provider_status"}
+        eval_time: 5m
+        exp_samples:
+          - labels: 'cc:watch_state{domain="platform",item="provider_status"}'
+            value: 1
+      - expr: cc:watch_state{domain="llm",item="langfuse_read"}
+        eval_time: 5m
+        exp_samples:
+          - labels: 'cc:watch_state{domain="llm",item="langfuse_read"}'
+            value: 1

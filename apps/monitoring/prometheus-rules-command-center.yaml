@@ -60,35 +60,35 @@ spec:
         - record: cc:watch_state
           labels: {domain: k3s}
           expr: >-
-            max by (item) (label_replace(((mqtt_tripped{topic=~"agents_.+_watch_(home_k3s_.+|cluster_janitor_alive)",topic!~"agents_.+_watch_home_k3s_trivy_criticals"} and on (topic) cc:agents_topic_live) * 2 > 0) or ((mqtt_tripped{topic=~"agents_.+_watch_home_k3s_trivy_criticals"} and on (topic) cc:agents_topic_live) * 1 > 0) or ((mqtt_stale{topic=~"agents_.+_watch_(home_k3s_.+|cluster_janitor_alive)"} and on (topic) cc:agents_topic_live) > 0), "item", "$1", "topic", "agents_.+_watch_(.+)"))
+            max by (item) (label_replace(((mqtt_tripped{topic=~"agents_.+_watch_(home_k3s_.+|cluster_janitor_alive)",topic!~"agents_.+_watch_home_k3s_trivy_criticals"} and on (topic) cc:agents_topic_live) * 2 > 0) or ((mqtt_tripped{topic=~"agents_.+_watch_(home_k3s_trivy_criticals|forgejo_restore_drill)"} and on (topic) cc:agents_topic_live) * 1 > 0) or ((mqtt_stale{topic=~"agents_.+_watch_(home_k3s_.+|cluster_janitor_alive|forgejo_restore_drill)"} and on (topic) cc:agents_topic_live) > 0), "item", "$1", "topic", "agents_.+_watch_(.+)"))
         - record: cc:watch_state
           labels: {domain: prod}
           expr: >-
-            max by (item) (label_replace(((mqtt_tripped{topic=~"agents_.+_watch_(pmp_.+|prod_mercury_payouts|posthog_prod_guard)"} and on (topic) cc:agents_topic_live) * 2 > 0) or ((mqtt_stale{topic=~"agents_.+_watch_(pmp_.+|prod_mercury_payouts|posthog_prod_guard)"} and on (topic) cc:agents_topic_live) > 0), "item", "$1", "topic", "agents_.+_watch_(.+)"))
+            max by (item) (label_replace(((mqtt_tripped{topic=~"agents_.+_watch_(pmp_.+|prod_mercury_payouts|posthog_prod_guard|binks_key_issue_failed)"} and on (topic) cc:agents_topic_live) * 2 > 0) or ((mqtt_stale{topic=~"agents_.+_watch_(pmp_.+|prod_mercury_payouts|posthog_prod_guard|binks_key_issue_failed)"} and on (topic) cc:agents_topic_live) > 0), "item", "$1", "topic", "agents_.+_watch_(.+)"))
         - record: cc:watch_state
           labels: {domain: ci}
           expr: >-
-            max by (item) (label_replace(((mqtt_tripped{topic=~"agents_.+_watch_(.+_runners?_online|playground_nightly)"} and on (topic) cc:agents_topic_live) * 2 > 0) or ((mqtt_stale{topic=~"agents_.+_watch_(.+_runners?_online|playground_nightly)"} and on (topic) cc:agents_topic_live) > 0), "item", "$1", "topic", "agents_.+_watch_(.+)"))
+            max by (item) (label_replace(((mqtt_tripped{topic=~"agents_.+_watch_(.+_runners?_online|playground_nightly)"} and on (topic) cc:agents_topic_live) * 2 > 0) or ((mqtt_tripped{topic=~"agents_.+_watch_(playground_main_checks|playground_gate_spread|playground_release_ready|playground_release_runs|playground_train_stuck|playloop|dotfiles_gate_budget|m1_playground_mac_online)"} and on (topic) cc:agents_topic_live) * 1 > 0) or ((mqtt_stale{topic=~"agents_.+_watch_(.+_runners?_online|playground_nightly|playground_main_checks|playground_gate_spread|playground_release_ready|playground_release_runs|playground_train_stuck|playloop|dotfiles_gate_budget|m1_playground_mac_online)"} and on (topic) cc:agents_topic_live) > 0), "item", "$1", "topic", "agents_.+_watch_(.+)"))
         - record: cc:watch_state
           labels: {domain: queue}
           expr: >-
-            max by (item) (label_replace(((mqtt_tripped{topic=~"agents_.+_watch_(queue_starved|shepherd_stuck)"} and on (topic) cc:agents_topic_live) * 2 > 0) or ((mqtt_tripped{topic=~"agents_.+_watch_(heal_flapping|board_chain)"} and on (topic) cc:agents_topic_live) * 1 > 0) or ((mqtt_stale{topic=~"agents_.+_watch_(queue_starved|shepherd_stuck|heal_flapping|board_chain)"} and on (topic) cc:agents_topic_live) > 0), "item", "$1", "topic", "agents_.+_watch_(.+)"))
+            max by (item) (label_replace(((mqtt_tripped{topic=~"agents_.+_watch_(queue_starved|shepherd_stuck)"} and on (topic) cc:agents_topic_live) * 2 > 0) or ((mqtt_tripped{topic=~"agents_.+_watch_(heal_flapping|board_chain|board_open|intake_stuck|queue_limit_ends)"} and on (topic) cc:agents_topic_live) * 1 > 0) or ((mqtt_stale{topic=~"agents_.+_watch_(queue_starved|shepherd_stuck|heal_flapping|board_chain|board_open|intake_stuck|queue_limit_ends)"} and on (topic) cc:agents_topic_live) > 0), "item", "$1", "topic", "agents_.+_watch_(.+)"))
         - record: cc:watch_state
           labels: {domain: machines}
           expr: >-
-            max by (item) (label_replace(((mqtt_tripped{topic=~"agents_.+_watch_(fleet_thermal)"} and on (topic) cc:agents_topic_live) * 1 > 0) or ((mqtt_stale{topic=~"agents_.+_watch_(fleet_thermal)"} and on (topic) cc:agents_topic_live) > 0), "item", "$1", "topic", "agents_.+_watch_(.+)"))
+            max by (item) (label_replace(((mqtt_tripped{topic=~"agents_.+_watch_(fleet_thermal|emotiv_bridge|mac_mini_desktop_grants|neptune_health|neptune_updates)"} and on (topic) cc:agents_topic_live) * 1 > 0) or ((mqtt_stale{topic=~"agents_.+_watch_(fleet_thermal|emotiv_bridge|mac_mini_desktop_grants|neptune_health|neptune_updates)"} and on (topic) cc:agents_topic_live) > 0), "item", "$1", "topic", "agents_.+_watch_(.+)"))
         - record: cc:watch_state
           labels: {domain: spend}
           expr: >-
-            max by (item) (label_replace(((mqtt_tripped{topic=~"agents_.+_watch_(source_pace|gh_actions_budget_pace|fleet_budget_pace|claude_spend_(?:hourly|daily)|claude_account_pace|claude_acct_usage)"} and on (topic) cc:agents_topic_live) * 1 > 0) or ((mqtt_stale{topic=~"agents_.+_watch_(source_pace|gh_actions_budget_pace|fleet_budget_pace|claude_spend_(?:hourly|daily)|claude_account_pace|claude_acct_usage)"} and on (topic) cc:agents_topic_live) > 0), "item", "$1", "topic", "agents_.+_watch_(.+)"))
+            max by (item) (label_replace(((mqtt_tripped{topic=~"agents_.+_watch_(source_pace|gh_actions_budget_pace|fleet_budget_pace|claude_spend_(?:hourly|daily)|claude_account_pace|claude_acct_usage|binks_chat_spend|meshy_credits|codex_underuse|queue_cost_export|token_usage_drift)"} and on (topic) cc:agents_topic_live) * 1 > 0) or ((mqtt_stale{topic=~"agents_.+_watch_(source_pace|gh_actions_budget_pace|fleet_budget_pace|claude_spend_(?:hourly|daily)|claude_account_pace|claude_acct_usage|binks_chat_spend|meshy_credits|codex_underuse|queue_cost_export|token_usage_drift)"} and on (topic) cc:agents_topic_live) > 0), "item", "$1", "topic", "agents_.+_watch_(.+)"))
         - record: cc:watch_state
           labels: {domain: platform}
           expr: >-
-            max by (item) (label_replace(((mqtt_tripped{topic=~"agents_.+_watch_(skill_drift|mem0_search_path|deploy_drift|fleet_liveness|release_drift|release_links)"} and on (topic) cc:agents_topic_live) * 1 > 0) or ((mqtt_stale{topic=~"agents_.+_watch_(skill_drift|mem0_search_path|deploy_drift|fleet_liveness|release_drift|release_links)"} and on (topic) cc:agents_topic_live) > 0), "item", "$1", "topic", "agents_.+_watch_(.+)"))
+            max by (item) (label_replace(((mqtt_tripped{topic=~"agents_.+_watch_(skill_drift|mem0_search_path|deploy_drift|fleet_liveness|release_drift|release_links|provider_status|pager_undelivered|alertmanager_fleet|agent_web_liveness|systemd_user_failed|main_checkout_branch|schedules_fresh|runner_score|lane_sandbox_refusals|claude_startup|platform_dependabot_runtime)"} and on (topic) cc:agents_topic_live) * 1 > 0) or ((mqtt_stale{topic=~"agents_.+_watch_(skill_drift|mem0_search_path|deploy_drift|fleet_liveness|release_drift|release_links|provider_status|pager_undelivered|alertmanager_fleet|agent_web_liveness|systemd_user_failed|main_checkout_branch|schedules_fresh|runner_score|lane_sandbox_refusals|claude_startup|platform_dependabot_runtime)"} and on (topic) cc:agents_topic_live) > 0), "item", "$1", "topic", "agents_.+_watch_(.+)"))
         - record: cc:watch_state
           labels: {domain: llm}
           expr: >-
-            max by (item) (label_replace(((mqtt_tripped{topic=~"agents_.+_watch_(gateway_errors)"} and on (topic) cc:agents_topic_live) * 1 > 0) or ((mqtt_stale{topic=~"agents_.+_watch_(gateway_errors)"} and on (topic) cc:agents_topic_live) > 0), "item", "$1", "topic", "agents_.+_watch_(.+)"))
+            max by (item) (label_replace(((mqtt_tripped{topic=~"agents_.+_watch_(gateway_errors|langfuse_read)"} and on (topic) cc:agents_topic_live) * 1 > 0) or ((mqtt_stale{topic=~"agents_.+_watch_(gateway_errors|langfuse_read)"} and on (topic) cc:agents_topic_live) > 0), "item", "$1", "topic", "agents_.+_watch_(.+)"))
         # a watch no domain above claims still counts, so a new manifest is never invisible here.
         # aws_burst_power trips whenever the burst runner runs: it pages on start and stop, and is no fault.
         - record: cc:watch_state

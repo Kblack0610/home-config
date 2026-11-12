@@ -2,6 +2,9 @@
 # Kalshi market's top of book, change-only, as parquet into MinIO bucket trader-markets, plus market
 # metadata, resolutions and a market_sweeps row into the trader database. A sweep takes 3 to 4.5 min,
 # so Forbid skips a tick rather than overlapping. Read-only, public API, no venue key.
+# Each sweep is followed in the same container by one pass of the event-contract paper league (strategy repo
+# lab/markets/paper.py, docs/markets.md Paper league; tr-74): it starts when the sweep ends, not on a clock, and runs
+# after a failed sweep too, so fills still settle and mark; with no fresh sweep it takes no entries. Paper money only.
 # Kept off hp-victus, whose memory limits are overcommitted (plan id-like-to-setup-abundant-seahorse).
 apiVersion: batch/v1
 kind: CronJob
@@ -51,7 +54,8 @@ spec:
           containers:
             - name: recorder
               image: trader
-              command: ["python", "-m", "lab.markets.recorder"]
+              # the job fails when either step does; the paper pass runs either way
+              command: ["sh", "-c", "python -m lab.markets.recorder; sweep=$?; python -m lab.markets.paper || exit 1; exit $sweep"]
               env:
                 - name: DATABASE_URL
                   valueFrom:

@@ -86,7 +86,8 @@ pass-over once. Two failures are no fallback: the budget's deny policy (Unauthor
 which every host shares, and a network error, which says nothing about the host. The ConfigMap
 ci-runner-governor-override (the agent-web Infra page's button) beats all of that until its
 end time: "on" starts it and keeps it from idle-off and the day cap, "off" drains and stops
-it and keeps it stopped. The month's cap is an AWS Budgets action, outside the governor.
+it and keeps it stopped. Only a pass-over beats "on": a passed-over host waits out its
+fallback_seconds before an "on" starts it again. The month's cap is an AWS Budgets action, outside the governor.
 
 A host's key in that ConfigMap can instead hold {"slots": N}, written by the workstation's
 machine-mode command: how many of its slots the human wants admitted. It has no end time,
@@ -516,13 +517,15 @@ def decide(cfg, hosts, runners, waiting, last_action, now, instances=None, pins=
                     covered += 1
             else:
                 why = f"pool at its {cfg['pool_max_admitted']} cap"
-        elif inst and inst["state"] == "stopped" and over == "on":
-            action, why, cause = "start", "override on", "override"
         elif inst and inst["state"] == "stopped" and over == "off":
             why = "override off"
         elif inst and inst["state"] == "stopped" and passed:
+            # Before an override on: EC2 just refused it or AWS just stopped it, so a start
+            # every cycle would only fail or be reclaimed again.
             why = (f"passed over after a {inst['fallback_why']} for "
                    f"{int(inst['fallback_until'] - now)}s more")
+        elif inst and inst["state"] == "stopped" and over == "on":
+            action, why, cause = "start", "override on", "override"
         elif inst and inst["state"] == "stopped" and q > cov:
             # Not room yet: its slots count once their runners are online and admitted. A
             # start costs money, so only a queue this much deeper than the other hosts can
@@ -948,7 +951,7 @@ def power_readings(cfg, runners, tracked, now):
 
 def fall_back(t, p, reason, now):
     """Pass a host over for p's fallback_seconds and count why (FALLBACK_REASONS), once per
-    pass-over: an override "on" retrying a refused start every cycle only extends it."""
+    pass-over: a call while it is still passed over only extends it."""
     if t.get("fallback_until", 0) <= now:
         counts = t.setdefault("fallbacks", {})
         counts[reason] = counts.get(reason, 0) + 1
@@ -983,10 +986,10 @@ def decide_workers(cfg, instances, now):
         if state == "stopped":
             if over == "off":
                 why = "override off"
-            elif over == "on":
-                action, cause, why = "start", "override", "override on"
             elif inst.get("fallback_until", 0) > now:
                 why = f"passed over after a {inst['fallback_why']} for {int(inst['fallback_until'] - now)}s more"
+            elif over == "on":
+                action, cause, why = "start", "override", "override on"
             elif demand < max(1, p["start_min_excess"]):
                 why = f"demand {demand}, starts at {max(1, p['start_min_excess'])}"
             elif capped:

@@ -24,11 +24,12 @@ from unittest import mock
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import governor  # noqa: E402
 
-# The live thresholds with a fixed host list, so a change to the real roster
-# (config.json "hosts" and "standby") does not change what these tests mean.
+# The live thresholds with a fixed host list and the pool floor that roster was written
+# for, so a change to the real roster (config.json "hosts", "standby", "pool_min_admitted")
+# does not change what these tests mean.
 CONFIG = os.path.join(os.path.dirname(os.path.abspath(__file__)), "config.json")
 LIVE = governor.load_config(CONFIG)
-CFG = governor.with_defaults({**LIVE, "standby": {"mac-studio": {"max_admitted": 6}}, "hosts": {
+CFG = governor.with_defaults({**LIVE, "pool_min_admitted": 2, "standby": {"mac-studio": {"max_admitted": 6}}, "hosts": {
     "asus-laptop": {"min_admitted": 0, "admit": {"tctl": 80}, "withhold": {"idle": 0.25, "tctl": 90}},
     "hp-victus": {},
     "razer-laptop": {},

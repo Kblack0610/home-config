@@ -106,8 +106,9 @@ spec:
               mountPath: /app
               readOnly: true
           resources:
-            # 34Mi in use before the /api/ci/details feed (2026-11-11); the feed keeps
-            # each finished job's steps, a few MB over the 24h window.
+            # 34Mi in use before the /api/ci/details feed (2026-11-11), 50Mi with its job
+            # records (each finished job's steps over the 24h window); its run records add
+            # about 1 KB per run of the window, ~2 MB.
             requests:
               memory: "32Mi"
               cpu: "10m"

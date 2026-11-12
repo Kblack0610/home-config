@@ -308,6 +308,12 @@ def main():
     for host in sorted(set(pairs) - set(builds)):
         rc = 1
         print(f"FAIL: {host}: governor pairs, but the inventory gives it no unity_ci_build_slots")
+    # Without pairs the governor reads every slot of a dedicated host as a build slot.
+    for host in sorted(set(builds) - set(pairs)):
+        total = sum(n for (h, _), n in want.items() if h == host)
+        if builds[host][0] < total:
+            rc = 1
+            print(f"FAIL: {host}: {builds[host][0]} build slots of {total}, but no governor pairs for the rest")
     fails = [f for host in sorted(set(pairs) & set(builds)) for f in check_pairs(
         host, pairs[host], builds[host][0], sum(n for (h, _), n in want.items() if h == host),
         budgets.get(host, ([], None)))]

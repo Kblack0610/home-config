@@ -389,8 +389,9 @@ def verdict(h, t):
 
 
 def decide(cfg, hosts, runners, waiting, last_action, now, instances=None, pins=None, restore=()):
-    """[(host, action, runner, verdict, why)]: at most one action per host, withholds
-    first so a re-admit elsewhere can use the room the pool keeps. waiting is one label
+    """[(host, action, runner, verdict, why)]: at most one action per host, except that a
+    paired host also withholds every slot stepping aside and admits each build slot whose
+    pair is clear in the same cycle; withholds first so a re-admit elsewhere can use the room the pool keeps. waiting is one label
     set per waiting job, the pool's and the dedicated hosts'; instances is power_readings() for the standby hosts with a
     power block; pins is read_pins(); restore names the hosts whose verdicts are not
     applied (a dry run), which get back what a pin withheld once no pin holds them."""
@@ -461,7 +462,9 @@ def decide(cfg, hosts, runners, waiting, last_action, now, instances=None, pins=
         on = sorted((n for n, r in mine.items() if not r["withheld"]),
                     key=lambda n: (mine[n]["busy"], -mine[n]["elapsed"], n))
         off = sorted(n for n, r in mine.items() if r["withheld"])
-        cap = cfg["standby"][host]["max_admitted"]
+        # max_admitted counts every slot; on a paired host the pool's rules (and a pin) move
+        # only the test slots.
+        cap = cfg["standby"][host]["max_admitted"] - len(pairs(cfg, host))
         # A pin on a standby host is a lower cap: the cap branch below withholds one slot per
         # cycle (a busy one finishes its job) and no admit passes it.
         pin = (pins or {}).get(host)
@@ -488,8 +491,6 @@ def decide(cfg, hosts, runners, waiting, last_action, now, instances=None, pins=
             off = [n for n in off if n in eligible]
             stepped = sum(1 for n in stepping if serves_pool(cfg, host, n))
             admitted -= stepped
-            # max_admitted counts every slot; the pool's rules move only the test slots.
-            cap = min(cap, cfg["standby"][host]["max_admitted"] - len(pairs(cfg, host)))
             # Stopped, it starts for a waiting build on its own thresholds and for tests on
             # the pool's (a burst host's), since one waiting build is worth a start and one
             # test is not.
@@ -1117,7 +1118,7 @@ def render(cfg, hosts, runners, queue, decisions, ok, instances=None, budget=Non
                 and any(r["withheld"] for r in runners.values() if r["host"] == host))
         L.append(f'ci_governor_disk_held{{host="{host}"}} {1 if held else 0}')
     # The reason is in the log, not a label: it changes every cycle.
-    L += ["# HELP ci_governor_decision This cycle's verdict and action per host", "# TYPE ci_governor_decision gauge"]
+    L += ["# HELP ci_governor_decision This cycle's verdict and actions per host (a paired host can show several)", "# TYPE ci_governor_decision gauge"]
     # A paired host moves several slots in one cycle: one row per host, verdict and action.
     for host, action, v in dict.fromkeys((h, a, v) for h, a, _, v, _ in decisions):
         L.append(f'ci_governor_decision{{host="{host}",verdict="{v}",action="{action}"}} 1')

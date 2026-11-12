@@ -312,7 +312,7 @@ all:
           # as on razer-laptop (playground ucp-1752).
           unity_ci_hd_library: true
         # The player-build host (platform infra/aws-ci-burst, added 2026-11-10): an
-        # on-demand m7a.8xlarge with a 600G volume, reached like aws-burst-1 (SSM, the
+        # on-demand m7a.8xlarge with a 900G volume, reached like aws-burst-1 (SSM, the
         # same instance profile and library bucket). Slots 1-3 carry unity-build
         # (unity_ci_build_slots), so playground release.yml's builds run there and no gate
         # or nightly can; slots 4-9 are pool test slots (unity, unity-full, unity-gate). Each

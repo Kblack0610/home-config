@@ -1190,6 +1190,12 @@ class GovernorTest(unittest.TestCase):
         self.assertEqual(settle(self.PAIRED, ".........", [UNITY_JOB] * 10, pins={"aws-build-1": 2}), "...ii....")
         self.assertEqual(settle(self.PAIRED, "...iiiiii", [BUILD_JOB] + [UNITY_JOB] * 10, pins={"aws-build-1": 0}),
                          "i........")
+        # A pin at or over the six test slots caps nothing, so it is not reported as PINNED.
+        up = {"aws-build-1": {"state": "running", "busy_at": 10_000, "labels": PAIRED_LABELS}}
+        verdicts = {v for h, _, _, v, _ in decide(self.STEADY, paired_slots("...iiiiii"), cfg=self.PAIRED,
+                                                  instances=up, waiting=[UNITY_JOB] * 10, pins={"aws-build-1": 7})
+                    if h == "aws-build-1"}
+        self.assertNotIn("PINNED", verdicts)
 
     def test_test_slots_count_toward_the_pool_cap(self):
         cfg = {**self.PAIRED, "pool_max_admitted": 2}

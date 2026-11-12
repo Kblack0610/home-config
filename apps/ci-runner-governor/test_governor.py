@@ -1181,9 +1181,12 @@ class StandbyOrderTest(unittest.TestCase):
         got = self.got(2, two(fallback_until=10_000, fallback_why="capacity"))
         self.assertEqual((got["aws-burst-2"][0], got["aws-burst-1"][0]), ("start", "hold"))
 
-    def test_override_on_beats_a_pass_over(self):
+    def test_a_pass_over_beats_override_on(self):
+        # hc-277: an "on" restarted a just-reclaimed or refused host every cycle.
         got = self.got(0, two(fallback_until=20_000, fallback_why="reclaim", override="on"))
-        self.assertEqual(got["aws-burst-2"][0], "start")
+        self.assertEqual(got["aws-burst-2"], ("hold", "passed over after a reclaim for 10000s more"))
+        got = self.got(0, two(fallback_until=10_000, fallback_why="reclaim", override="on"))
+        self.assertEqual(got["aws-burst-2"][0], "start")  # negative control: the pass-over ran out
 
     def test_a_spot_told_off_or_past_its_day_is_not_ahead(self):
         self.assertEqual(self.got(2, two(override="off"))["aws-burst-1"][0], "start")
@@ -1419,6 +1422,16 @@ class WorkerTest(unittest.TestCase):
         tracked, _ = self.cycles(ec2, demand=1, n=2)
         self.assertEqual(self.ops(ec2), [("start", "i-0wrk")])
         self.assertEqual(tracked["fleet-worker-1"]["fallback_why"], "capacity")
+
+    def test_a_passed_over_worker_set_on_waits(self):
+        passed = lambda until: {"fleet-worker-1": {"state": "stopped", "busy_at": time.time(),
+                                                   "fallback_until": until, "fallback_why": "capacity"}}
+        ec2 = FakeEc2("stopped")
+        self.cycles(ec2, override="on", tracked=passed(time.time() + 3600))
+        self.assertEqual(self.ops(ec2), [])
+        ec2 = FakeEc2("stopped")
+        self.cycles(ec2, override="on", tracked=passed(time.time() - 1))
+        self.assertEqual(self.ops(ec2), [("start", "i-0wrk")])
 
     def test_dry_run_only_logs(self):
         ec2 = FakeEc2("stopped")

@@ -24,6 +24,7 @@ resources:
   - prometheus-rules-capacity.yaml
   - prometheus-rules-game-servers.yaml
   - prometheus-rules-freqtrade.yaml
+  - prometheus-rules-emotiv.yaml
   - probe-sites.yaml
   - probe-dns.yaml
   - probe-wan.yaml

@@ -63,3 +63,6 @@ configMapGenerator:
   - name: grafana-dashboard-freqtrade
     files:
       - freqtrade.json
+  - name: grafana-dashboard-emotiv-mini
+    files:
+      - emotiv-mini.json

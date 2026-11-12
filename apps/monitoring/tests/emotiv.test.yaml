@@ -1,0 +1,117 @@
+# promtool test rules for prometheus-rules-emotiv.yaml. Run with scripts/test-prometheus-rules.sh.
+rule_files:
+  - emotiv.rules.yaml
+evaluation_interval: 1m
+
+tests:
+  - name: a steady heartbeat is quiet, worn or not; a silent one trips after 10m
+    interval: 1m
+    input_series:
+      - series: 'mqtt_message_total{topic="emotiv_mini_bridge",job="mqtt2prom"}'
+        values: '1+1x30 31x20'
+      - series: 'mqtt_wearing{topic="emotiv_mini_bridge",job="mqtt2prom"}'
+        values: '0x10 1x10 0x30'
+    alert_rule_test:
+      - eval_time: 30m
+        alertname: EmotivBridgeStale
+        exp_alerts: []
+      - eval_time: 38m
+        alertname: EmotivBridgeStale
+        exp_alerts: []
+      - eval_time: 42m
+        alertname: EmotivBridgeStale
+        exp_alerts:
+          - exp_labels: {alertname: EmotivBridgeStale, severity: warning, category: node-health, topic: emotiv_mini_bridge, job: mqtt2prom}
+            exp_annotations:
+              summary: "Emotiv bridge on mac-mini sent no heartbeat for 10m: nothing is being recorded"
+              description: "No message on emotiv/mini/bridge for 10 minutes. Check the LaunchAgent and its log: ansible/roles/emotiv-bridge/README.md, Check it."
+
+  - name: no bridge series at all trips the same rule
+    interval: 1m
+    input_series:
+      - series: 'mqtt_message_total{topic="other",job="mqtt2prom"}'
+        values: '1+1x20'
+    alert_rule_test:
+      - eval_time: 10m
+        alertname: EmotivBridgeStale
+        exp_alerts:
+          - exp_labels: {alertname: EmotivBridgeStale, severity: warning, category: node-health, topic: emotiv_mini_bridge}
+            exp_annotations:
+              summary: "Emotiv bridge on mac-mini sent no heartbeat for 10m: nothing is being recorded"
+              description: "No message on emotiv/mini/bridge for 10 minutes. Check the LaunchAgent and its log: ansible/roles/emotiv-bridge/README.md, Check it."
+
+  - name: a spool that drains is quiet; one left after the wear for over an hour trips
+    interval: 1m
+    input_series:
+      # Wear for 30m with a small spool, then the spool empties: quiet.
+      - series: 'mqtt_spool_bytes{topic="emotiv_mini_bridge",job="mqtt2prom"}'
+        values: '1000x30 0x30 5000x90'
+      - series: 'mqtt_wearing{topic="emotiv_mini_bridge",job="mqtt2prom"}'
+        values: '1x30 0x120'
+      # Last upload at minute 30 (epoch 1800 in promtool time).
+      - series: 'mqtt_last_upload_epoch{topic="emotiv_mini_bridge",job="mqtt2prom"}'
+        values: '0x30 1800x120'
+    alert_rule_test:
+      - eval_time: 60m
+        alertname: EmotivUploadBacklog
+        exp_alerts: []
+      # From minute 61 the spool holds 5000 B; the last upload is over an hour old from minute 91.
+      - eval_time: 100m
+        alertname: EmotivUploadBacklog
+        exp_alerts: []
+      - eval_time: 110m
+        alertname: EmotivUploadBacklog
+        exp_alerts:
+          - exp_labels: {alertname: EmotivUploadBacklog, severity: warning, category: node-health, topic: emotiv_mini_bridge, job: mqtt2prom}
+            exp_annotations:
+              summary: "Emotiv archive uploads from mac-mini are backed up (4.883kiB or over an hour old)"
+              description: "The bridge spool holds chunks the NAS has not received. The bridge log names the rsync exit code: ansible/roles/emotiv-bridge/README.md, Troubleshooting."
+
+  - name: a spool over 500 MB trips while worn
+    interval: 1m
+    input_series:
+      - series: 'mqtt_spool_bytes{topic="emotiv_mini_bridge",job="mqtt2prom"}'
+        values: '600e6x30'
+      - series: 'mqtt_wearing{topic="emotiv_mini_bridge",job="mqtt2prom"}'
+        values: '1x30'
+      - series: 'mqtt_last_upload_epoch{topic="emotiv_mini_bridge",job="mqtt2prom"}'
+        values: '0x30'
+    alert_rule_test:
+      - eval_time: 20m
+        alertname: EmotivUploadBacklog
+        exp_alerts:
+          - exp_labels: {alertname: EmotivUploadBacklog, severity: warning, category: node-health, topic: emotiv_mini_bridge, job: mqtt2prom}
+            exp_annotations:
+              summary: "Emotiv archive uploads from mac-mini are backed up (572.2MiB or over an hour old)"
+              description: "The bridge spool holds chunks the NAS has not received. The bridge log names the rsync exit code: ansible/roles/emotiv-bridge/README.md, Troubleshooting."
+
+  - name: a license years out is quiet
+    interval: 1m
+    input_series:
+      - series: 'mqtt_license_valid_to_epoch{topic="emotiv_mini_bridge",job="mqtt2prom"}'
+        values: '2109715199x180'
+    alert_rule_test:
+      - eval_time: 50m
+        alertname: EmotivLicenseExpiring
+        exp_alerts: []
+      - eval_time: 70m
+        alertname: EmotivLicenseExpiring
+        exp_alerts: []
+
+  - name: a license that ends in under 14 days trips after an hour
+    interval: 1m
+    input_series:
+      # Ends at day 10 in promtool time.
+      - series: 'mqtt_license_valid_to_epoch{topic="emotiv_mini_bridge",job="mqtt2prom"}'
+        values: '864000x180'
+    alert_rule_test:
+      - eval_time: 50m
+        alertname: EmotivLicenseExpiring
+        exp_alerts: []
+      - eval_time: 70m
+        alertname: EmotivLicenseExpiring
+        exp_alerts:
+          - exp_labels: {alertname: EmotivLicenseExpiring, severity: warning, category: node-health, topic: emotiv_mini_bridge, job: mqtt2prom}
+            exp_annotations:
+              summary: "Emotiv Cortex license for Home-EEG ends in 9d 22h 50m 0s"
+              description: "Renew or re-sign the Home-EEG Cortex app at emotiv.com (EmotivID kblack0610); rbw emotiv-cortex holds the app."

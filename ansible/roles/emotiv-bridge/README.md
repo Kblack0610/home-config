@@ -11,7 +11,12 @@ One Node process (`files/emotiv-bridge.mjs`, no packages beyond Node), run by th
 3. Writes each stream to `<spool>/<YYYY-MM-DD>/<start>-<session>/<stream>-<NNNN>.jsonl.gz`. Line 1 is a header (`stream`, `cols`, `session`, `headset`, `chunk`); every other line is `{"time": <epoch s>, "<stream>": [...]}` as Cortex sent it.
 4. Every 5 minutes, and when the headset disconnects, closes the chunks, encrypts each with `age` to the EEG recipient and deletes the plaintext.
 5. Uploads the `.age` files with rsync over ssh to `emotiv-archive@asus-laptop`, where rrsync confines the key to writing into `/mnt/nas/private/eeg`. rsync deletes a spool file only after it has been transferred and checked. A failed upload retries with backoff (30 s doubling to 15 min) and the spool keeps everything.
-6. Publishes a retained heartbeat every 60 s to `emotiv/mini/bridge` on the LAN broker, through `/usr/bin/nc` (see Troubleshooting): `up`, `wearing`, `session_seconds`, `spool_bytes`, `last_upload_epoch`, `last_error_code`, `local_quota`, `license_valid_to_epoch`. Alerts on it are P3.
+6. Publishes a retained heartbeat every 60 s, and at once when a wear starts or ends, to `emotiv/mini/bridge` on the LAN broker, through `/usr/bin/nc` (see Troubleshooting): `up`, `wearing`, `session_seconds`, `spool_bytes`, `last_upload_epoch`, `last_error_code`, `local_quota`, `license_valid_to_epoch`.
+7. While worn, publishes live summaries every `emotiv_bridge_summary_seconds` (not retained, never raw values) under `emotiv/mini/`: `pow` (each band's mean over the 14 sensors), `met` (the performance metrics Cortex has active), `fac` (a counter per facial action, one per change into that action, kept for the life of the process), `mot` (accel magnitude and its spread, for head movement) and `dev` (battery, sensors at good contact, EEG quality).
+
+## Live view and alerts
+
+mqtt2prom turns each JSON number into `mqtt_<key>{topic="emotiv_mini_<sub>"}`. Grafana dashboard **Emotiv (mac-mini)** (`apps/monitoring/dashboards/emotiv-mini.json`, uid `emotiv-mini`) shows them, with the live panels blank while not worn. The rules are in `apps/monitoring/prometheus-rules-emotiv.yaml`: `EmotivBridgeStale` (no heartbeat for 10m), `EmotivUploadBacklog` (spool over 500 MB, or chunks left over an hour after a wear) and `EmotivLicenseExpiring` (under 14 days). There is no quota alert: the Basic license reports `localQuota` 0 and no session limit. Sentinel watch `~/.agent/watches/emotiv-bridge.yaml` checks the LaunchAgent over ssh every 15m, which still works when home-k3s is down.
 
 Cortex pushes warnings for connect (104), disconnect (102, 103), session closed (1) and streams stopped (0), and the bridge acts on them. Cortex sends nothing when a headset is switched on, so the bridge asks for a scan every `emotiv_bridge_scan_interval_seconds`.
 
@@ -53,6 +58,7 @@ age -d -i <(sops decrypt --extract '["identity"]' ansible/roles/emotiv-bridge/ee
 ssh mac-mini 'launchctl print gui/$(id -u)/com.kblab.emotiv-bridge | grep -E "state|pid"; tail -20 ~/Library/Logs/emotiv-bridge.log'
 ssh mac-mini 'find ~/Library/Application\ Support/emotiv-bridge/spool -type f | head'   # empty unless wearing or the NAS is unreachable
 mosquitto_sub -h mosquitto.kblab.me -p 31883 -t emotiv/mini/bridge -C 1
+mosquitto_sub -h mosquitto.kblab.me -p 31883 -t 'emotiv/mini/#' -v -C 6   # summaries arrive only while worn
 ```
 
 Tests: `node --test ansible/roles/emotiv-bridge/files/test-emotiv-bridge.mjs` (CI job `ci-disk-prune`).

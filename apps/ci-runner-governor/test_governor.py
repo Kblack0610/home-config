@@ -992,6 +992,86 @@ class GovernorTest(unittest.TestCase):
             governor.host_labels(self.BUILD, "aws-build-1")
         self.assertIn('pool=~"unity|unity-build"', prom.call_args.args[0])
 
+    # A dedicated host that lends (aws-build-1, "lends" in config.json): builds first, the
+    # pool otherwise, never both at once.
+    LENDS = ["unity", "unity-full", "unity-gate"]
+    LEND = {**CFG, "standby": {
+        **AWS["standby"],
+        "aws-build-1": {"max_admitted": 3, "labels": ["unity-build"], "withheld_label": "unity-build-withheld",
+                        "lends": LENDS, "power": {**POWER, "instance_id": "i-0bld"}}}}
+    KIND = {"build": frozenset({"unity-build"}), "pool": frozenset(LENDS), "held": frozenset({"unity-build-withheld"})}
+
+    def lender(self, *slots):
+        """slots: (kind, busy); each runner carries that kind's labels."""
+        return {f"bld-{i}": {"host": "aws-build-1", "busy": busy, "elapsed": 100 - i, "withheld": kind == "held",
+                             "labels": self.KIND[kind] | {"self-hosted", "linux", "host-aws-build-1"}}
+                for i, (kind, busy) in enumerate(slots)}
+
+    def lend_up(self, idle=0):
+        return {"aws-build-1": {"state": "running", "busy_at": 10_000 - idle,
+                                "labels": self.BUILD_LABELS | frozenset(self.LENDS)},
+                "aws-burst-1": {"state": "running", "busy_at": 10_000, "labels": AWS_LABELS}}
+
+    def test_a_lender_lends_a_slot_when_no_build_waits(self):
+        got = actions(self.STEADY, {**self.lender(("held", False)), **self.FULL}, cfg=self.LEND,
+                      instances=self.lend_up(), queue=5)
+        self.assertEqual(got["aws-build-1"], ("lend", "bld-0"))
+
+    def test_a_waiting_build_withholds_a_lent_slot_first(self):
+        got = actions(self.STEADY, {**self.lender(("pool", True), ("held", False)), **self.FULL}, cfg=self.LEND,
+                      instances=self.lend_up(), waiting=[self.BUILD_JOB] + [UNITY_JOB] * 5)
+        self.assertEqual(got["aws-build-1"], ("withhold", "bld-0"))
+
+    def test_a_build_waits_for_the_last_ci_job(self):
+        # Negative control for the next test: the CI job still runs on a withheld slot, so no
+        # build is admitted beside it.
+        got = actions(self.STEADY, {**self.lender(("held", True), ("held", False)), **self.FULL}, cfg=self.LEND,
+                      instances=self.lend_up(), waiting=[self.BUILD_JOB])
+        self.assertEqual(got["aws-build-1"], ("hold", ""))
+
+    def test_a_build_is_admitted_once_no_ci_job_runs(self):
+        got = actions(self.STEADY, {**self.lender(("held", False), ("held", False)), **self.FULL}, cfg=self.LEND,
+                      instances=self.lend_up(), waiting=[self.BUILD_JOB] + [UNITY_JOB] * 5)
+        self.assertEqual(got["aws-build-1"], ("admit", "bld-0"))
+
+    def test_a_running_build_keeps_the_pool_off_the_host(self):
+        got = actions(self.STEADY, {**self.lender(("build", True), ("held", False)), **self.FULL}, cfg=self.LEND,
+                      instances=self.lend_up(), queue=5)
+        self.assertEqual(got["aws-build-1"], ("hold", ""))
+
+    def test_an_idle_build_slot_steps_aside_when_no_build_waits(self):
+        got = actions(self.STEADY, {**self.lender(("build", False), ("held", False)), **self.FULL}, cfg=self.LEND,
+                      instances=self.lend_up(), queue=5)
+        self.assertEqual(got["aws-build-1"], ("withhold", "bld-0"))
+
+    def test_lent_slots_count_toward_the_pool_cap(self):
+        cfg = {**self.LEND, "pool_max_admitted": 2}
+        runners = {**self.lender(("pool", True), ("pool", True), ("held", False)), **self.FULL}
+        got = actions(self.STEADY, runners, cfg=cfg, instances=self.lend_up(), queue=5)
+        self.assertEqual(got["aws-build-1"], ("hold", ""))
+
+    def test_lend_labels_swap_both_kinds(self):
+        for action, has, added, removed in (
+                ("lend", ["unity-build-withheld"], self.LENDS, ["unity-build-withheld"]),
+                ("admit", ["unity-build-withheld"], ["unity-build"], ["unity-build-withheld"]),
+                ("withhold", ["unity", "unity-full", "unity-gate"], ["unity-build-withheld"],
+                 ["unity", "unity-full", "unity-gate"])):
+            calls = []
+
+            def gh(method, path, body=None):
+                calls.append((method, path, body))
+                if method == "GET":
+                    return {"runners": [{"id": 9, "name": "bld-1",
+                                         "labels": [{"name": "self-hosted"}] + [{"name": l} for l in has]}]}
+                return None
+            governor.gh = gh
+            governor.apply(self.LEND, action, "bld-1", "aws-build-1")
+            self.assertEqual(calls[1][2], {"labels": sorted(added)}, action)
+            self.assertEqual(sorted(c[1].rsplit("/", 1)[1] for c in calls if c[0] == "DELETE"), sorted(removed), action)
+
+    def test_the_live_build_host_lends(self):
+        self.assertEqual(governor.lends(LIVE, "aws-build-1"), ["unity", "unity-full", "unity-gate"])
+
     def test_admit_leaves_full_off_a_host_that_takes_no_full_runs(self):
         calls = []
 

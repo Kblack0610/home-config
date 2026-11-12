@@ -1243,6 +1243,21 @@ class GovernorTest(unittest.TestCase):
         out = governor.render(self.PAIRED, self.STEADY, runners, 0, decisions, True)
         self.assertEqual(sum(1 for l in out.splitlines() if l.startswith('ci_governor_decision{host="aws-build-1"')), 1)
 
+    def test_a_slot_held_for_its_pair_is_lent_and_one_held_for_load_is_not(self):
+        lent = lambda spec: {governor.slot_of(n): to for n, (_, to) in governor.lent(self.PAIRED, paired_slots(spec)).items()}
+        # No build: the build slots are lent to tests; pair 3's tests are both held, so slot 3 is not.
+        self.assertEqual(lent("...iiii.."), {1: "tests", 2: "tests"})
+        # A build runs in pair 1: its test slots are lent to it; pair 2 lends its build slot.
+        self.assertEqual(lent("b....i..."), {4: "build", 5: "build", 2: "tests"})
+        # A slot still busy finishing a job uses the cores, withheld or not.
+        self.assertEqual(lent("h........"), {4: "build", 5: "build"})
+        self.assertEqual(lent("...h....."), {1: "tests"})
+        # A drained host lends nothing, and so renders no lent row.
+        self.assertEqual(lent("........."), {})
+        out = governor.render(self.PAIRED, self.STEADY, paired_slots("...iiiiii"), 0, [], True)
+        self.assertIn('ci_governor_lent{host="aws-build-1",name="%s",to="tests"} 1' % slot_name(1), out)
+        self.assertEqual(sum(l.startswith("ci_governor_lent{") for l in out.splitlines()), 3)
+
     def test_a_stopped_paired_host_starts_for_tests_on_pool_thresholds(self):
         # Its build thresholds are 1 job and 60 s; for tests it waits for 4 and 300 s, as the
         # burst hosts do.

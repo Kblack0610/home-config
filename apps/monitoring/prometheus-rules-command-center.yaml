@@ -175,18 +175,15 @@ spec:
             (((time() - max(mqtt_updated_epoch{topic=~"agents_.+_runner_sentinel"}) > 1800) * 0 + 2)
               unless on () (cc:component_status{domain="agents",component="feed"} > 0))
             or (absent(mqtt_updated_epoch{topic=~"agents_.+_runner_sentinel"}) * 2) or vector(0)
-    - name: command-center.rollup
-      interval: 1m
-      rules:
+        # The rollups stay in this group, after the rules they read: a group evaluates in order at one
+        # timestamp, while a separate group reads the previous tick, so a cleared watch left "home"
+        # DOWN for a minute with no watch or component to name why (2026-11-12).
         - record: cc:domain_status
           expr: max by (domain) (cc:component_status)
         - record: cc:overall_status
           expr: max(cc:domain_status)
-    # What is red right now, value 1 per item. The dashboard's "What is red" table, the hub
-    # board's red-now line and the waybar day chip read this one series, so they cannot disagree.
-    - name: command-center.red
-      interval: 1m
-      rules:
+        # What is red right now, value 1 per item. The dashboard's "What is red" table, the hub
+        # board's red-now line and the waybar day chip read this one series, so they cannot disagree.
         - record: cc:red_now
           expr: >-
             clamp_max(count by (item) (

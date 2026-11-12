@@ -8,7 +8,7 @@ import path from 'node:path';
 import zlib from 'node:zlib';
 import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
-import { Bridge, Chunks, Uploader, Mqtt, sealSpool, mqttConnect, mqttPublish, MQTT_DISCONNECT, WARN } from './emotiv-bridge.mjs';
+import { Bridge, Chunks, Uploader, Mqtt, Summary, sealSpool, mqttConnect, mqttPublish, MQTT_DISCONNECT, WARN } from './emotiv-bridge.mjs';
 
 const roots = [];
 after(() => { for (const r of roots) fs.rmSync(r, { recursive: true, force: true }); });
@@ -95,9 +95,9 @@ test('mqtt packets: CONNECT and a retained QoS 0 PUBLISH', () => {
   assert.equal(mqttPublish('t', 'x'.repeat(200), false).subarray(0, 3).toString('hex'), '30cb01');
 });
 
-// A Cortex that answers the bridge's calls; `headsets` and `createFails` steer it.
+// A Cortex that answers the bridge's calls; `headsets`, `createFails` and `cols` steer it.
 function fakeCortex() {
-  const state = { headsets: [{ id: 'EPOCX-1', status: 'connected' }], createFails: false, calls: [] };
+  const state = { headsets: [{ id: 'EPOCX-1', status: 'connected' }], createFails: false, calls: [], cols: {} };
   class FakeWS {
     constructor() { state.ws = this; }
     open() { return this.onopen(); }
@@ -113,7 +113,7 @@ function fakeCortex() {
         case 'subscribe': {
           const s = m.params.streams[0];
           return s === 'eeg' ? reply({ success: [], failure: [{ streamName: 'eeg', code: -32016, message: 'no license' }] })
-            : reply({ success: [{ streamName: s, cols: [`${s}-col`] }], failure: [] });
+            : reply({ success: [{ streamName: s, cols: state.cols[s] ?? [`${s}-col`] }], failure: [] });
         }
         default: return reply({});
       }
@@ -216,4 +216,88 @@ test('mqtt goes through the nc relay: CONNECT, the retained PUBLISH, then DISCON
   await closed;
   assert.equal(fs.readFileSync(`${out}.args`, 'utf8'), 'broker 31883\n');
   assert.deepEqual(fs.readFileSync(out), Buffer.concat([mqttConnect('c', 120), mqttPublish('t/x', '{}', true), MQTT_DISCONNECT]));
+});
+
+// Columns as Cortex answered subscribe in P1 (mini ~/emotiv-capture/20261110T164237/cols.json).
+const SENSORS = ['AF3', 'F7', 'F3', 'FC5', 'T7', 'P7', 'O1', 'O2', 'P8', 'T8', 'FC6', 'F4', 'F8', 'AF4'];
+const P1_COLS = {
+  pow: SENSORS.flatMap((s) => ['theta', 'alpha', 'betaL', 'betaH', 'gamma'].map((b) => `${s}/${b}`)),
+  met: ['attention.isActive', 'attention', 'eng.isActive', 'eng', 'exc.isActive', 'exc', 'lex', 'str.isActive', 'str', 'rel.isActive', 'rel', 'int.isActive', 'int'],
+  fac: ['eyeAct', 'uAct', 'uPow', 'lAct', 'lPow'],
+  mot: ['COUNTER_MEMS', 'INTERPOLATED_MEMS', 'Q0', 'Q1', 'Q2', 'Q3', 'ACCX', 'ACCY', 'ACCZ', 'MAGX', 'MAGY', 'MAGZ'],
+  dev: ['Battery', 'Signal', [...SENSORS, 'OVERALL'], 'BatteryPercent'],
+  eq: ['batteryPercent', 'overall', 'sampleRateQuality', ...SENSORS],
+};
+
+function p1Summary() {
+  const s = new Summary();
+  for (const [k, c] of Object.entries(P1_COLS)) s.setCols(k, c);
+  return s;
+}
+
+test('summary: band power is the mean over sensors and samples, per band', () => {
+  const s = p1Summary();
+  // theta 1, alpha 2, betaL 3, betaH 4, gamma 5 on every sensor, then all doubled.
+  s.add('pow', SENSORS.flatMap(() => [1, 2, 3, 4, 5]));
+  s.add('pow', SENSORS.flatMap(() => [2, 4, 6, 8, 10]));
+  const pow = Object.fromEntries(s.take()).pow;
+  assert.deepEqual(pow, { theta: 1.5, alpha: 3, beta_l: 4.5, beta_h: 6, gamma: 7.5 });
+  assert.equal(Object.fromEntries(s.take()).pow, undefined, 'a new window starts empty');
+});
+
+test('summary: metrics skip inactive (null) values and take the names, not the codes', () => {
+  const s = p1Summary();
+  s.add('met', [false, null, true, 0.61, true, 0.2, 0.3, true, 0.4, false, null, true, 0.5]);
+  assert.deepEqual(Object.fromEntries(s.take()).met, { engagement: 0.61, excitement: 0.2, long_excitement: 0.3, stress: 0.4, interest: 0.5 });
+});
+
+test('summary: a facial action held over many samples counts once, and counters survive windows', () => {
+  const s = p1Summary();
+  const first = Object.fromEntries(s.take()).fac;
+  assert.equal(first.clench, 0, 'known actions exist before the first event');
+  for (const row of [
+    ['neutral', 'neutral', 0, 'neutral', 0],
+    ['blink', 'neutral', 0, 'clench', 0.9],
+    ['blink', 'neutral', 0, 'clench', 0.8],
+    ['neutral', 'neutral', 0, 'clench', 0.7],
+    ['winkL', 'surprise', 1, 'neutral', 0],
+  ]) s.add('fac', row);
+  s.take();
+  s.add('fac', ['neutral', 'neutral', 0, 'clench', 1]);
+  const fac = Object.fromEntries(s.take()).fac;
+  assert.equal(fac.blink, 1);
+  assert.equal(fac.clench, 2);
+  assert.equal(fac.wink_l, 1);
+  assert.equal(fac.surprise, 1);
+  assert.equal(fac.smirk_left, 0);
+});
+
+test('summary: motion is the accel magnitude mean and its spread; contact counts sensors at 4', () => {
+  const s = p1Summary();
+  s.add('mot', [1, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0]);
+  s.add('mot', [2, 0, 0, 0, 0, 0, 3, 0, 4, 0, 0, 0]);
+  s.add('dev', [3, 1, [4, 4, 4, 0, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 92], 61]);
+  s.add('eq', [61, 83, 1, ...SENSORS.map(() => 4)]);
+  const out = Object.fromEntries(s.take());
+  assert.deepEqual(out.mot, { acc_magnitude: 3, motion: 2 });
+  assert.deepEqual(out.dev, { battery_percent: 61, signal: 1, contact_good: 13, contact_sensors: 14, contact_overall: 92, eeg_quality: 83, sample_rate_quality: 1 });
+});
+
+test('the bridge feeds its session streams to the summary and signals each wear start and end', async () => {
+  const cfg = tmpCfg();
+  const { state, FakeWS } = fakeCortex();
+  const b = new Bridge(cfg, { clientId: 'id', clientSecret: 'sec' }, { WebSocket: FakeWS, uploader: noUpload });
+  const changes = [];
+  b.onChange = () => changes.push(b.heartbeat().wearing);
+  state.cols.fac = P1_COLS.fac;
+  b.connect();
+  await state.ws.open();
+  state.ws.push({ sid: 'sess-0001-xyz', time: 1, fac: ['neutral', 'neutral', 0, 'clench', 1] });
+  state.ws.push({ sid: 'other-session', time: 1, fac: ['blink', 'neutral', 0, 'neutral', 0] });
+  assert.equal(b.summary.facial.clench, 1);
+  assert.equal(b.summary.facial.blink, 0, 'another session is ignored');
+  state.headsets = [];
+  state.ws.push({ warning: { code: WARN.DISCONNECTED_TIMEOUT, message: {} } });
+  await b.reconciling;
+  assert.deepEqual(changes, [1, 0]);
 });

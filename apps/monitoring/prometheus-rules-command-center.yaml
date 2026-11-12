@@ -80,7 +80,7 @@ spec:
         - record: cc:watch_state
           labels: {domain: spend}
           expr: >-
-            max by (item) (label_replace(((mqtt_tripped{topic=~"agents_.+_watch_(lazer_pool_pace|gh_actions_budget_pace|fleet_budget_pace|claude_spend_(?:hourly|daily)|claude_account_pace|claude_acct_usage)"} and on (topic) cc:agents_topic_live) * 1 > 0) or ((mqtt_stale{topic=~"agents_.+_watch_(lazer_pool_pace|gh_actions_budget_pace|fleet_budget_pace|claude_spend_(?:hourly|daily)|claude_account_pace|claude_acct_usage)"} and on (topic) cc:agents_topic_live) > 0), "item", "$1", "topic", "agents_.+_watch_(.+)"))
+            max by (item) (label_replace(((mqtt_tripped{topic=~"agents_.+_watch_(source_pace|gh_actions_budget_pace|fleet_budget_pace|claude_spend_(?:hourly|daily)|claude_account_pace|claude_acct_usage)"} and on (topic) cc:agents_topic_live) * 1 > 0) or ((mqtt_stale{topic=~"agents_.+_watch_(source_pace|gh_actions_budget_pace|fleet_budget_pace|claude_spend_(?:hourly|daily)|claude_account_pace|claude_acct_usage)"} and on (topic) cc:agents_topic_live) > 0), "item", "$1", "topic", "agents_.+_watch_(.+)"))
         - record: cc:watch_state
           labels: {domain: platform}
           expr: >-

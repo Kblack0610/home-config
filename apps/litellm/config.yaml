@@ -324,7 +324,7 @@ model_list:
   # them), so the gateway key does not leave the cluster.
   #
   # DeepSeek V4.1 Flash needs the workspace's Global region (OpenCode console,
-  # Settings > Privacy), set 2026-11-11. Go's free models are not routed:
+  # Settings > Privacy); unset, Go 400s it. Go's free models are not routed:
   # their providers may train on prompts.
   - model_name: "go (glm-5.3)"
     litellm_params:
@@ -418,10 +418,10 @@ model_list:
         json_mode: true
       supports_function_calling: true
 
-
-  # DeepSeek's price doubles at peak (weekdays 01-04 and 06-10 UTC); the
-  # gateway charges peak all day, so it over-counts off-peak and its budgets
-  # trip early, never late.
+  # DeepSeek's price doubles at peak (weekdays 01-04 and 06-10 UTC, the cost
+  # multipliers in Go's /v1/models, which also list image input). The gateway
+  # charges peak all day, so it over-counts off-peak and its budgets trip
+  # early, never late.
   - model_name: "go (deepseek-v4.1-flash)"
     litellm_params:
       model: "openai/deepseek-v4.1-flash"

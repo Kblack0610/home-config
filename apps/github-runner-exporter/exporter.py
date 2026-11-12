@@ -51,6 +51,12 @@ slimmed), whether that read was complete, and a changes cursor. It is the one
 collector of job detail for the RUN_REPOS repos; schedules-sync reads it through
 the API server's Service proxy every 10 minutes and keeps the 90-day archive, and
 fetches job detail itself only for repos outside the `repos` list this serves.
+The feed's `runs` are the run half: each run of RUN_REPOS each time its state
+moves (queued, in progress, completed, a new attempt), from the reads above at no
+extra call, so schedules-sync can write its run ledger from here instead of
+polling actions/runs itself. A run that leaves the active lists while older than
+the window, which the completed list cannot show (a re-run of an old run), is read
+by id with the history, from its budget, until it reads finished.
 
 Those totals are trailing-window gauges: runs enter and leave them at once, so
 no PromQL over them can say when anything happened. github_runs_by_hour and
@@ -120,6 +126,10 @@ DONE_JOBS = {}
 # process, so each answer carries EPOCH and a reader that sees a new one starts
 # from 0 again.
 FEED = {}
+# run id -> the run record /api/ci/details serves in `runs`: seq, forge, repo and
+# the run (RUN_KEYS), stored again only when its state moved forward (STATUS_RANK,
+# then the attempt). Shares FEED_SEQ, so one cursor reads both halves in order.
+RUN_FEED = {}
 FEED_SEQ = [0]
 FEED_LOCK = threading.Lock()
 EPOCH = int(time.time())
@@ -401,8 +411,8 @@ def run_scope(run):
     return "branch"
 
 
-RUN_KEYS = ("id", "name", "conclusion", "created_at", "updated_at", "run_started_at", "head_branch", "event", "html_url",
-            "run_attempt", "head_sha", "path")
+RUN_KEYS = ("id", "name", "status", "conclusion", "created_at", "updated_at", "run_started_at", "head_branch", "event",
+            "html_url", "run_attempt", "head_sha", "path", "display_title")
 JOB_KEYS = ("id", "name", "conclusion", "runner_name", "labels", "created_at", "started_at", "completed_at", "html_url",
             "run_attempt")
 # Steps are kept for the feed (the opened run's step fold), slimmed: a raw step
@@ -450,13 +460,62 @@ def feed_store(repo, run, jobs, complete):
         DONE_JOBS[run["id"]] = jobs
 
 
-def feed_page(cursor, limit):
-    """The changes feed: records with seq > cursor, oldest change first."""
+# Where a run's status sits in its life: a read that would move it back (a cached
+# completed list behind a re-run the active list already shows) is not stored.
+STATUS_RANK = {"requested": 0, "waiting": 0, "pending": 0, "queued": 1, "in_progress": 2, "completed": 3}
+
+
+def run_state(run):
+    """What has to change for a run to be served again: the ledger's row changes with it."""
+    done = run.get("status") == "completed"
+    return (run.get("run_attempt") or 1, STATUS_RANK.get(run.get("status"), 0), run.get("conclusion") if done else None,
+            run.get("run_started_at"), run.get("updated_at") if done else None)
+
+
+def run_feed_store(repo, run):
+    rec = slim(run, RUN_KEYS)
     with FEED_LOCK:
-        recs = sorted((r for r in FEED.values() if r["seq"] > cursor), key=lambda r: r["seq"])
-        page = [{**r, "jobs": DONE_JOBS.get(r["run_id"], [])} for r in recs[:limit]]
+        old = RUN_FEED.get(run["id"])
+        if old and run_state(old["run"])[:2] > run_state(rec)[:2]:
+            return
+        if old and run_state(old["run"]) == run_state(rec):
+            return
+        FEED_SEQ[0] += 1
+        RUN_FEED[run["id"]] = {"seq": FEED_SEQ[0], "forge": "github", "repo": repo, "stored_at": int(time.time()),
+                               "run": rec}
+
+
+def feed_page(cursor, limit):
+    """The changes feed: job records and run records with seq > cursor, oldest change
+    first, `limit` of the two together."""
+    with FEED_LOCK:
+        recs = sorted([(r["seq"], 0, r) for r in FEED.values() if r["seq"] > cursor]
+                      + [(r["seq"], 1, r) for r in RUN_FEED.values() if r["seq"] > cursor], key=lambda x: x[0])
+        page = recs[:limit]
+        records = [{**r, "jobs": DONE_JOBS.get(r["run_id"], [])} for _, half, r in page if half == 0]
+        runs = [r for _, half, r in page if half == 1]
     return {"epoch": EPOCH, "repos": RUN_REPOS, "window_secs": HISTORY_WINDOW_SECS,
-            "next": page[-1]["seq"] if page else cursor, "more": len(recs) > limit, "records": page}
+            "next": page[-1][0] if page else cursor, "more": len(recs) > limit, "records": records, "runs": runs}
+
+
+def lost_runs(repo, active, counts, now):
+    """Runs the feed holds open that left the active lists and are older than the window,
+    so the completed list will never show how they ended: each is read by id, from the
+    history budget, until a read says it finished. Only when both active lists were read
+    whole (a capped list may have left a live run off)."""
+    if any(n > MAX_RUNS_PER_REPO for n in counts.values()):
+        return []
+    edge, ids = now - HISTORY_WINDOW_SECS, {r["id"] for r in active}
+    with FEED_LOCK:
+        lost = [r["run"] for r in RUN_FEED.values() if r["repo"] == repo and r["run"].get("status") != "completed"
+                and r["run"]["id"] not in ids and (ts(r["run"].get("created_at")) or 0) < edge]
+    out = []
+    for run in lost[:spend(len(lost))]:
+        try:
+            out.append(get(f"repos/{repo}/actions/runs/{run['id']}", "lost_runs"))
+        except API_ERRORS:
+            pass
+    return out
 
 
 def finished_runs(repo, now):
@@ -510,6 +569,8 @@ def repo_activity(repo, now):
                 return None
         with ThreadPoolExecutor(max_workers=6) as ex:
             fetched = list(ex.map(run_jobs, active))
+        for run in active:
+            run_feed_store(repo, run)
         for run, jobs in zip(active, fetched):
             if not jobs and run.get("status") == "queued":
                 # A queued run with no jobs, or none GitHub will list, never gets
@@ -526,7 +587,8 @@ def repo_activity(repo, now):
                 out["jobs"].append(job)
         cached = HISTORY.get(repo)
         stale = not cached or (now - cached[0] >= HISTORY_REFRESH_SECS and time.time() < BUDGET["until"])
-        if stale and not low_budget():
+        refreshed = stale and not low_budget()
+        if refreshed:
             cached = HISTORY[repo] = (now, finished_runs(repo, now))
         if not cached:
             return out
@@ -534,6 +596,8 @@ def repo_activity(repo, now):
         # time between refreshes.
         out["history"] = [r for r in cached[1] if (ts(r.get("created_at")) or 0) >= now - HISTORY_WINDOW_SECS]
         out["recent"] = out["history"][:RECENT_PER_REPO]
+        for run in out["history"]:
+            run_feed_store(repo, run)
         # Uncached finished runs in parallel, newest first, within the scrape's
         # budget (see HISTORY_CALL_BUDGET): sequentially, 60 of them took 51s.
         # A run is fetched again when its attempt moved (a re-run finished) or
@@ -557,6 +621,10 @@ def repo_activity(repo, now):
             for run, got in zip(todo, ex.map(jobs_of, todo)):
                 if got is not None:
                     feed_store(repo, run, [slim_job(j) for j in got[0]], got[1])
+        # After the job detail, from what budget it left; with the history refresh,
+        # every HISTORY_REFRESH_SECS, not every scrape.
+        for run in lost_runs(repo, active, out["counts"], now) if refreshed else ():
+            run_feed_store(repo, run)
     except API_ERRORS:
         out["ok"] = False
     return out
@@ -1080,6 +1148,13 @@ def render():
         for rid in [k for k in DONE_JOBS if k not in live]:
             del DONE_JOBS[rid]
             FEED.pop(rid, None)
+        # A run record goes a window after its last change once it is finished and out of
+        # the cached lists (a lost run's end is out of them from the start); an open one
+        # stays until a read says how it ended (lost_runs).
+        edge = time.time() - HISTORY_WINDOW_SECS
+        for rid in [k for k, r in RUN_FEED.items()
+                    if k not in live and r["run"].get("status") == "completed" and r["stored_at"] < edge]:
+            del RUN_FEED[rid]
     return "\n".join(L) + "\n"
 
 

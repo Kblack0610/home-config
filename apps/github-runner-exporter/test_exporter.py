@@ -65,11 +65,11 @@ FAKE = {
     # Run 7 is older than the window: GitHub would not list it, but the cached list
     # holds runs that age out between refreshes, and it must not count.
     "repos/acme/web/actions/runs?status=completed&per_page=100&page=1": {"total_count": 3, "workflow_runs": [
-        {"id": 9, "name": "CI", "head_branch": "main", "event": "push", "conclusion": "failure", "created_at": T0,
+        {"id": 9, "name": "CI", "status": "completed", "head_branch": "main", "event": "push", "conclusion": "failure", "created_at": T0,
          "updated_at": T0, "run_started_at": T0, "html_url": "https://x/run/9"},
-        {"id": 8, "name": "CI", "head_branch": "main", "event": "pull_request", "conclusion": "cancelled", "created_at": T0,
+        {"id": 8, "name": "CI", "status": "completed", "head_branch": "main", "event": "pull_request", "conclusion": "cancelled", "created_at": T0,
          "updated_at": T0, "run_started_at": T0, "html_url": "https://x/run/8"},
-        {"id": 7, "name": "CI", "head_branch": "main", "event": "push", "conclusion": "success", "created_at": OLD,
+        {"id": 7, "name": "CI", "status": "completed", "head_branch": "main", "event": "push", "conclusion": "success", "created_at": OLD,
          "updated_at": OLD, "run_started_at": OLD, "html_url": "https://x/run/7"}]},
     "repos/acme/web/actions/runs/9/jobs?per_page=100": {"jobs": [
         {"name": "lint", "status": "completed", "conclusion": "failure", "runner_name": "box-light-1",
@@ -118,6 +118,7 @@ class ExporterTest(unittest.TestCase):
     def setUp(self):
         exporter.DONE_JOBS.clear()
         exporter.FEED.clear()
+        exporter.RUN_FEED.clear()
         exporter.HISTORY.clear()
         exporter.CALLS.clear()
         exporter.RATE.clear()
@@ -487,7 +488,7 @@ class ByHourTest(unittest.TestCase):
         return time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(t))
 
     def setUp(self):
-        for d in (exporter.DONE_JOBS, exporter.FEED, exporter.HISTORY, exporter.CALLS, exporter.RATE):
+        for d in (exporter.DONE_JOBS, exporter.FEED, exporter.RUN_FEED, exporter.HISTORY, exporter.CALLS, exporter.RATE):
             d.clear()
 
     def render(self, runs):
@@ -559,6 +560,7 @@ class ColdStartBudgetTest(unittest.TestCase):
     def setUp(self):
         exporter.DONE_JOBS.clear()
         exporter.FEED.clear()
+        exporter.RUN_FEED.clear()
         exporter.HISTORY.clear()
         exporter.CALLS.clear()
         exporter.RATE.clear()
@@ -977,7 +979,7 @@ class DetailFeedTest(unittest.TestCase):
     """/api/ci/details: the window's job detail per exact attempt, as a changes feed."""
 
     def setUp(self):
-        for d in (exporter.DONE_JOBS, exporter.FEED, exporter.HISTORY, exporter.CALLS, exporter.RATE):
+        for d in (exporter.DONE_JOBS, exporter.FEED, exporter.RUN_FEED, exporter.HISTORY, exporter.CALLS, exporter.RATE):
             d.clear()
         self.saved = exporter.get
 
@@ -1009,11 +1011,109 @@ class DetailFeedTest(unittest.TestCase):
 
     def test_feed_pages_by_limit(self):
         self.render()
-        first = exporter.feed_page(0, 1)
-        self.assertTrue(first["more"])
-        rest = exporter.feed_page(first["next"], 1)
-        self.assertEqual(len(first["records"]) + len(rest["records"]), 2)
-        self.assertFalse(rest["more"])
+        # Two job records and four run records (20, 10, 9, 8), one cursor for both.
+        cursor, seen = 0, []
+        while True:
+            page = exporter.feed_page(cursor, 1)
+            got = [("job", r["run_id"]) for r in page["records"]] + [("run", r["run"]["id"]) for r in page["runs"]]
+            self.assertEqual(len(got), 1)
+            seen += got
+            cursor = page["next"]
+            if not page["more"]:
+                break
+        self.assertEqual(sorted(seen), [("job", 8), ("job", 9), ("run", 8), ("run", 9), ("run", 10), ("run", 20)])
+        self.assertEqual(exporter.feed_page(cursor, 1)["runs"], [])
+
+    def expire_history(self):
+        for repo in list(exporter.HISTORY):
+            at, runs = exporter.HISTORY[repo]
+            exporter.HISTORY[repo] = (at - exporter.HISTORY_REFRESH_SECS, runs)
+
+    def test_runs_are_served_once_per_state_change(self):
+        self.render()
+        runs = {r["run"]["id"]: r for r in exporter.feed_page(0, 100)["runs"]}
+        self.assertEqual(set(runs), {20, 10, 9, 8})  # 7 is outside the window
+        self.assertEqual({k: runs[20][k] for k in ("forge", "repo")}, {"forge": "github", "repo": "acme/web"})
+        self.assertEqual(runs[20]["run"]["status"], "queued")
+        self.assertEqual(runs[10]["run"]["display_title"], FAKE["repos/acme/game/actions/runs?status=in_progress&per_page=15"]
+                         ["workflow_runs"][0]["display_title"])
+        self.assertEqual(runs[9]["run"]["conclusion"], "failure")
+        cursor = exporter.feed_page(0, 100)["next"]
+        self.render()
+        self.assertEqual(exporter.feed_page(cursor, 100)["runs"], [])
+        started = {"total_count": 1, "workflow_runs": [dict(FAKE["repos/acme/web/actions/runs?status=queued&per_page=15"]
+                                                             ["workflow_runs"][0], status="in_progress", run_started_at=T1)]}
+        self.render({"repos/acme/web/actions/runs?status=queued&per_page=15": {"total_count": 0, "workflow_runs": []},
+                     "repos/acme/web/actions/runs?status=in_progress&per_page=15": started})
+        (rec,) = exporter.feed_page(cursor, 100)["runs"]
+        self.assertEqual((rec["run"]["id"], rec["run"]["status"], rec["run"]["run_started_at"]), (20, "in_progress", T1))
+
+    def test_a_cached_completed_list_does_not_move_a_rerun_back(self):
+        self.render()
+        rerun = dict(FAKE["repos/acme/web/actions/runs?status=completed&per_page=100&page=1"]["workflow_runs"][0],
+                     status="in_progress", conclusion=None, run_attempt=2)
+        cursor = exporter.feed_page(0, 100)["next"]
+        self.render({"repos/acme/web/actions/runs?status=in_progress&per_page=15": {"total_count": 1, "workflow_runs": [rerun]},
+                     "repos/acme/web/actions/runs/9/jobs?per_page=100": {"jobs": []}})
+        (rec,) = exporter.feed_page(cursor, 100)["runs"]
+        self.assertEqual((rec["run"]["id"], rec["run"]["run_attempt"], rec["run"]["status"]), (9, 2, "in_progress"))
+        self.assertEqual(exporter.RUN_FEED[9]["run"]["run_attempt"], 2)
+
+    def test_a_lost_run_is_read_by_id_with_the_history(self):
+        self.render()
+        lost = {"id": 5, "name": "Nightly", "status": "in_progress", "created_at": OLD, "run_attempt": 2}
+        exporter.run_feed_store("acme/web", lost)
+        cursor = exporter.feed_page(0, 100)["next"]
+        by_id = "repos/acme/web/actions/runs/5"
+        # Not yet due: the lost read rides the history refresh.
+        get = self.render({by_id: dict(lost, status="completed", conclusion="success")})
+        self.assertNotIn(by_id, get.calls)
+        self.expire_history()
+        get = self.render({by_id: dict(lost, status="completed", conclusion="success")})
+        self.assertIn(by_id, get.calls)
+        (rec,) = exporter.feed_page(cursor, 100)["runs"]
+        self.assertEqual((rec["run"]["id"], rec["run"]["conclusion"]), (5, "success"))
+        # Finished and out of the cached lists, it stays a window for the reader.
+        self.assertIn(5, exporter.RUN_FEED)
+
+    def test_lost_reads_take_turns_and_a_run_github_lost_is_dropped(self):
+        self.render()
+        for rid in (5, 6):
+            exporter.run_feed_store("acme/web", {"id": rid, "name": "Nightly", "status": "in_progress", "created_at": OLD})
+        gone = urllib.error.HTTPError("x", 404, "Not Found", {}, None)
+
+        class Getter(Fake):
+            def __call__(self, path, kind="other"):
+                if path == "repos/acme/web/actions/runs/6":
+                    self.calls.append(path)
+                    raise gone
+                return super().__call__(path, kind)
+        lost = lambda g: [c for c in g.calls if c in ("repos/acme/web/actions/runs/5", "repos/acme/web/actions/runs/6")]
+        with mock.patch.object(exporter, "HISTORY_CALL_BUDGET", 1):
+            self.expire_history()
+            exporter.get = first = Getter()
+            exporter.render()  # 5 is read (no answer: it stays open)
+            self.expire_history()
+            exporter.get = second = Getter()
+            exporter.render()  # then 6, not 5 again: GitHub says 404, so it goes
+        self.assertEqual((lost(first), lost(second)), (["repos/acme/web/actions/runs/5"], ["repos/acme/web/actions/runs/6"]))
+        self.assertIn(5, exporter.RUN_FEED)
+        self.assertNotIn(6, exporter.RUN_FEED)
+
+    def test_an_open_record_unread_for_a_week_is_dropped(self):
+        exporter.run_feed_store("acme/web", {"id": 5, "name": "Nightly", "status": "in_progress", "created_at": OLD})
+        exporter.run_feed_store("acme/web", {"id": 6, "name": "Nightly", "status": "in_progress", "created_at": OLD})
+        exporter.RUN_FEED[5]["stored_at"] -= exporter.RUN_FEED_OPEN_SECS + 1
+        self.render()
+        self.assertNotIn(5, exporter.RUN_FEED)
+        self.assertIn(6, exporter.RUN_FEED)
+
+    def test_an_older_read_of_the_same_state_does_not_overwrite_a_newer_one(self):
+        run = {"id": 5, "name": "N", "status": "in_progress", "created_at": T0, "updated_at": T2}
+        exporter.run_feed_store("acme/web", run)
+        seq = exporter.RUN_FEED[5]["seq"]
+        exporter.run_feed_store("acme/web", dict(run, updated_at=T1, run_started_at=T0))
+        self.assertEqual(exporter.RUN_FEED[5]["seq"], seq)
 
     def test_a_rerun_is_fetched_for_its_new_attempt(self):
         self.render()

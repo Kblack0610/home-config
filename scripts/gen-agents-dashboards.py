@@ -26,10 +26,9 @@ CLAUDE = '{service_name=~"claude-code|claude-agentctl"}'
 # Textfile metrics come from one host; drop its scrape labels so a series is one session.
 WS = "max without (instance, job, host) "
 # Home's Vitals section, a panel each: the question, then what it asks.
-VITALS = (("Output", "What did the fleet ship?"), ("Flow", "Is the queue draining or backing up?"),
-          ("Quality", "Does work land right the first time?"), ("You", "How much does the fleet ask of the human?"),
-          ("Cost", "What does a landed PR cost in points?"), ("Trust", "Can these numbers be believed?"),
-          ("Outcome", "Do requests start and do landed changes get verified?"))
+VITALS = (("You", "How much does the fleet ask of the human?"),
+          ("Outcome", "Do requests start and do landed changes get verified?"),
+          ("Quality", "Does work land right the first time?"), ("Cost", "What does a merged item cost in dollars?"))
 # mqtt2prom scrape labels, so one row per topic.
 MQ = "max without (instance, pod, container, endpoint, job, namespace, service) "
 LANGFUSE_TRACE = "https://langfuse.kblab.me/project/${__data.fields.project_id}/traces/${__data.fields.trace_id}"
@@ -297,7 +296,7 @@ def overview():
                          [prom(f'{WS}(agent_bench_kpi{{window="7d"}}) and on (kpi) {WS}(agent_bench_vital{{question="{q.lower()}"}})',
                                legend="{{kpi}}")],
                          pos(i % 4 * 6, y + i // 4 * 7, 6, 7), decimals=2))
-    y += 14
+    y += -(-len(VITALS) // 4) * 7
     panels += [
         ts("Cost per hour by project", "Spend per hour, one series per canonical project (claude-telemetry.sh sets it). "
            "Sessions started outside the claude wrappers carry no project and show as the empty series.",

@@ -17,9 +17,9 @@ and repository mirroring enabled.
 | `ingress.yaml` | TLS ingress for `git.kblab.me` (git, registry, API, Flux) |
 | `ingress-public.yaml` | TLS ingress for `git.kennethblack.me`, the `ROOT_URL` and the one browser hostname |
 | `ingressroute-browser-redirect.yaml` | Redirects browsers (`Accept: text/html`) on `git.kblab.me` to `git.kennethblack.me`, so one login cookie covers every page |
-| `pvc.yaml` | Persistent Forgejo data volume |
+| `pvc.yaml` | Forgejo's data: a static Retain PV at `/srv/forgejo/data` on hp-victus, plus the pre-move asus claim kept as rollback until 2026-11-18 |
 | `backup-cronjob.yaml` | Daily backup job for full data and SQLite snapshots |
-| `runner-deployment.yaml` | Forgejo Runner + DinD sidecar (hp-victus and razer-laptop, never the Forgejo node) |
+| `runner-deployment.yaml` | Forgejo Runner + DinD sidecar (asus-laptop and razer-laptop, never the Forgejo node) |
 | `runner-config-cm.yaml` | Runner config with `docker` + `linux-amd64` labels |
 | `runner-secret.yaml` | SOPS-encrypted instance-level runner registration token |
 
@@ -61,7 +61,7 @@ Key config sections:
 Instance-level runners serve all repos on the Forgejo instance, each with a
 Docker-in-Docker sidecar for container-based CI workflows.
 
-It runs **2 replicas, one on hp-victus and one on razer-laptop**. `runner-deployment.yaml` requires an amd64 workstation node (`node-role.kubernetes.io/workstation`) that is not asus-laptop, and a required `podAntiAffinity` puts the two pods on different nodes. asus-laptop is excluded because the `forgejo-data` PV is pinned there and its NVMe has controller resets: with the old soft rule both runners sat on it next to Forgejo, so one disk stall took out the forge and all of CI together. If one runner node dies, the other replica is already live; the dead node's replica stays Pending until it returns, by design. Rollouts replace one pod at a time (`maxSurge: 0`), because a surge pod has no free node to land on. Each pod
+It runs **2 replicas, one on asus-laptop and one on razer-laptop**. `runner-deployment.yaml` requires an amd64 workstation node (`node-role.kubernetes.io/workstation`) that is not hp-victus (the Forgejo node), and a required `podAntiAffinity` puts the two pods on different nodes. hp-victus is excluded because Forgejo's data PV is pinned there: with the old soft rule both runners sat on the Forgejo node, so one disk stall took out the forge and all of CI together. If one runner node dies, the other replica is already live; the dead node's replica stays Pending until it returns, by design. Rollouts replace one pod at a time (`maxSurge: 0`), because a surge pod has no free node to land on. Each pod
 registers under its own pod name (`--name "$POD_NAME"` via the downward API),
 which is mandatory with more than one replica — otherwise both would register as
 `forgejo-runner` and collide.
@@ -197,11 +197,13 @@ Endpoints:
 
 ## Backup Notes
 
-- `forgejo-backup` runs daily at `03:00` and writes full archives and compressed SQLite backups to `/mnt/backups/forgejo` on asus-laptop's second disk.
+- Forgejo lives on hp-victus (since 2026-11-11), and its backups run on asus-laptop: hp-victus exports `/srv/forgejo` read-only to asus (ansible role `nfs-backup-target`).
+- `forgejo-db-snapshot` runs hourly on hp-victus: `VACUUM INTO` plus `quick_check`, 48 kept in `/srv/forgejo/snapshots`.
+- `forgejo-backup` runs daily at `03:00` on asus, reads the data over NFS, and writes a full archive and the newest DB snapshot to `/mnt/backups/forgejo` on asus-laptop's second disk.
 - Retention: newest **7**. Archives are written to `*.tmp` and renamed on success, so a partial never looks like a backup. Pruning runs after a good backup, and the job aborts if `/backup` has under 100G free.
 - GNU tar exit 1 ("file changed as we read it") counts as success, since the archive is complete and Forgejo keeps writing during the backup. Exit 2 fails the job.
 - `gitea/data/packages` (178G) is excluded. `forgejo-packages-backup` in the `nas` namespace mirrors it weekly to the 8TB drive.
-- `forgejo-backup-offbox` runs at `04:30` and keeps the newest **2** fulls on hp-victus. It reads only completed archives, checks size and `gzip -t`, and aborts if the copy would leave hp-victus under 190G free.
+- `forgejo-backup-offbox` runs at `04:30` and keeps the newest **3** fulls on the 8TB drive (`/mnt/backup-8t/forgejo-backups`). It reads only completed archives, checks size and `gzip -t`, and aborts if the copy would leave the drive under 500G free. The off-site copy is the Hetzner standby to come (plan `can-we-setup-forgejo-snazzy-hopper` P9).
 - `nas-backup-verify` checks all of this weekly, including off-box size against the primary.
 - History: on 2026-07-09 a retention of 30 (~1.6TiB of daily fulls) filled asus-laptop's root disk, tripped kubelet DiskPressure, and evicted the entire home-k3s workload cluster for ~6h. Retention was cut to 7 and a prune-first + free-space guard added. Longer-term recovery points belong off-box (MinIO/S3), not on the same disk as the data they protect.
 

@@ -1,0 +1,88 @@
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: forgejo-db-snapshot
+  namespace: forgejo
+  labels:
+    app.kubernetes.io/name: forgejo
+spec:
+  # Hourly, so a restore loses at most an hour of PRs, issues and Actions state.
+  # The nightly forgejo-backup ships the newest of these to asus-laptop.
+  schedule: "7 * * * *"
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 2
+  jobTemplate:
+    spec:
+      backoffLimit: 1
+      activeDeadlineSeconds: 900
+      template:
+        spec:
+          # No nodeSelector: the forgejo-data-hp-victus PV pins this to hp-victus.
+          # The snapshot dir is ours alone, so it is created and owned here.
+          initContainers:
+            - name: snapshot-dir
+              image: alpine:3.24.1
+              command: ["install", "-d", "-o", "1000", "-g", "1000", "-m", "0755", "/snapshots"]
+              volumeMounts:
+                - name: snapshots
+                  mountPath: /snapshots
+          containers:
+            - name: snapshot
+              image: alpine:3.24.1
+              command:
+                - /bin/sh
+                - -c
+                - |
+                  set -eu
+                  apk add --no-cache sqlite gzip su-exec
+                  # sqlite3 creates an empty database for a missing path.
+                  if [ ! -s /data/gitea/gitea.db ]; then
+                    echo "ABORT: /data/gitea/gitea.db is missing or empty" >&2
+                    exit 1
+                  fi
+                  KEEP=48
+                  TS=$(date +%Y%m%d-%H%M%S)
+                  OUT=/snapshots/forgejo-db-$TS.db
+                  trap 'rm -f "$OUT.tmp" "$OUT.gz.tmp"' EXIT
+                  rm -f /snapshots/*.tmp
+                  # sqlite3 runs as Forgejo's uid: as root, a run killed mid-way
+                  # could leave root-owned -wal/-shm files Forgejo cannot open.
+                  # VACUUM INTO reads one consistent snapshot in a single read
+                  # transaction; in WAL mode Forgejo keeps writing meanwhile.
+                  su-exec 1000:1000 sqlite3 /data/gitea/gitea.db "VACUUM INTO '$OUT.tmp'"
+                  CHECK=$(su-exec 1000:1000 sqlite3 "$OUT.tmp" "PRAGMA quick_check;")
+                  if [ "$CHECK" != ok ]; then
+                    echo "ABORT: snapshot failed quick_check: $CHECK" >&2
+                    exit 1
+                  fi
+                  gzip -c "$OUT.tmp" > "$OUT.gz.tmp"
+                  mv "$OUT.gz.tmp" "$OUT.gz"
+                  ls -t /snapshots/forgejo-db-*.db.gz | tail -n +$((KEEP+1)) | xargs -r rm -v
+                  ls -lh "$OUT.gz"
+              volumeMounts:
+                # Read-write although nothing is written to /data: SQLite in WAL
+                # mode needs the -shm file writable even to read.
+                - name: data
+                  mountPath: /data
+                - name: snapshots
+                  mountPath: /snapshots
+              resources:
+                requests:
+                  memory: 64Mi
+                  cpu: 50m
+                limits:
+                  memory: 512Mi
+          # Never, not OnFailure: OnFailure deletes the failed pod and its logs.
+          restartPolicy: Never
+          volumes:
+            - name: data
+              persistentVolumeClaim:
+                claimName: forgejo-data-hp-victus
+            # Beside the PV on hp-victus's disk (the root disk, so creating it
+            # cannot fill a different one), exported read-only to asus-laptop
+            # with it (ansible role nfs-backup-target).
+            - name: snapshots
+              hostPath:
+                path: /srv/forgejo/snapshots
+                type: DirectoryOrCreate

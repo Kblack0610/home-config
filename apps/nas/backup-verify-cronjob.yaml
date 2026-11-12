@@ -183,11 +183,12 @@ spec:
               hostPath:
                 path: /mnt/backups/forgejo
                 type: Directory
+            # The second copy of the Forgejo fulls, on the 8TB drive since
+            # 2026-11-11 (forgejo-backup-offbox).
             - name: forgejo-offbox
-              nfs:
-                server: 192.168.1.243
-                path: /srv/backups/forgejo
-                readOnly: true
+              hostPath:
+                path: /mnt/backup-8t/forgejo-backups
+                type: Directory
             - name: browse
               hostPath:
                 path: /mnt/backup-8t/browse

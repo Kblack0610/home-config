@@ -25,6 +25,7 @@
   ansible.builtin.command: sysadminctl -screenLock status
   register: agent_tools_lock
   changed_when: false
+  check_mode: false
 
 # `screenLock is off` is not enough: the screensaver still starts after idleTime
 # and, with askForPassword 1, locks the session (2026-11-07, after 3 hours idle).

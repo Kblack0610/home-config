@@ -21,7 +21,7 @@ The baseline play runs on `macos_hosts`, the runner play on `mac-mini` (`ansible
 The sole self-hosted runner for `BlackNBrownStudios/platform` mobile CI. Native macOS workloads that can't run in a container: Xcode/iOS builds, Expo prebuild, CocoaPods, TestFlight submission.
 
 - **Runner:** `mac-mini-mac`, labels `[self-hosted, macOS, arm64]`, per-user LaunchAgent (`github-actions-runner-mac` role, `present` mode).
-- **Second runner:** `m1-playground-mac`, labels `[self-hosted, macOS, ARM64, unity-mac, host-mac-mini]`, scoped to `unity-core-playground`, builds the Mac player. No play manages it. `m1` is only an ssh alias for this machine, and the `host-mac-mini` label is what makes the exporter and the infra board count it here: without it the runner shows as a host called `m1`. Add it with `gh api -X POST repos/BlackNBrownStudios/unity-core-playground/actions/runners/<id>/labels -f 'labels[]=host-mac-mini'`.
+- **Second runner:** `m1-playground-mac`, labels `[self-hosted, macOS, ARM64, unity-mac, host-mac-mini]`, scoped to `unity-core-playground`, builds the Mac player. No play manages it, so its LaunchAgent got `KeepAlive` by hand (2026-11-12, `plutil -replace KeepAlive -bool true`); re-set it if the runner is ever reinstalled. `m1` is only an ssh alias for this machine, and the `host-mac-mini` label is what makes the exporter and the infra board count it here: without it the runner shows as a host called `m1`. Add it with `gh api -X POST repos/BlackNBrownStudios/unity-core-playground/actions/runners/<id>/labels -f 'labels[]=host-mac-mini'`.
 - **Unity player modules (iOS, Mac IL2CPP):** the mac-mini play adds each module in `unity_ci_mac_modules` to each editor in `unity_ci_mac_editors` (`unity-ci-host-mac` `tasks/modules.yml`, tag `unity-modules`, no sudo), from Unity's pkg because the Hub refuses modules for an editor it did not install, and fails first if Xcode is missing or its license is not accepted: `ansible-playbook playbooks/site.yml --limit mac-mini --tags unity-modules`. The Mac player builds with IL2CPP, so without that module the Mac release job fails at the Addressables step with "Unable to build with the current configuration".
 - **Toolchain (installed by the platform repo's `tools/setup-mac-runner.sh`, not Ansible):** Xcode, CocoaPods, node/pnpm/yarn, JDK17, ruby.
 
@@ -80,7 +80,7 @@ ssh mac-mini "launchctl list | grep actions.runner"   # numeric PID
 
 ## Power / persistence (survive a power failure)
 
-The load-bearing setting is `pmset autorestart 1`: after a power cut the Mac boots itself, auto-login reaches a logged-in session, and the per-user LaunchAgent (`RunAtLoad`) brings the runners back online - no human needed. `macos-baseline` sets and asserts this; `autorestart 0` is why the Macs previously stayed dark after outages (found 2026-07-17). FileVault MUST stay off and auto-login on, or the boot stops at the login window and nothing recovers.
+The load-bearing setting is `pmset autorestart 1`: after a power cut the Mac boots itself, auto-login reaches a logged-in session, and the per-user LaunchAgent (`RunAtLoad`) brings the runners back online - no human needed. `KeepAlive` (set by `github-actions-runner-mac`) brings a runner back when its process is killed while the Mac stays up: `runsvc.sh` exits 0 on a signal, so without it the runner stays offline until the next boot. `macos-baseline` sets and asserts this; `autorestart 0` is why the Macs previously stayed dark after outages (found 2026-07-17). FileVault MUST stay off and auto-login on, or the boot stops at the login window and nothing recovers.
 
 Proved on the mac-mini 2026-11-07 with `sudo -n shutdown -r now` and both runners idle, no touch: kernel up 22s after the command, ssh, console login and every Peekaboo grant by 39s, both runner listeners started at 52s, both runners online on GitHub by 94s. A true power cut is not yet proved: that needs someone to pull the plug.
 
@@ -161,6 +161,9 @@ curl -s http://192.168.1.7:9100/metrics | head -5   # Mac Mini
 | Home Assistant | Homelab dashboard -> Mac Machines section |
 
 ## Troubleshooting
+
+### Runner offline but the Mac is up (mac-mini)
+`launchctl list | grep actions.runner` shows `-` for the PID and the runner's stdout.log ends with "Runner listener exit with 0 return code, stop the service": something signalled its node wrapper (`RunnerService.js`). On 2026-11-12 it was an agent's `pkill -x node` after a store session. Start it with `launchctl kickstart gui/$(id -u)/<label>`, and check its plist has `KeepAlive` (`plutil -extract KeepAlive raw <plist>`); the role sets it, the playground runner needs it by hand.
 
 ### Runner offline after reboot (mac-mini)
 ```bash

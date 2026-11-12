@@ -16,6 +16,12 @@ spec:
       activeDeadlineSeconds: 14400  # 4h; a normal run is under 1h
       template:
         spec:
+          # asus-laptop, not Forgejo's node: since 2026-11-11 Forgejo lives on
+          # hp-victus, and this job reads its data over NFS (read-only, served by
+          # hp-victus, ansible role nfs-backup-target) and writes to asus's
+          # second disk, so the backup is on a different machine from the data.
+          nodeSelector:
+            kubernetes.io/hostname: asus-laptop
           containers:
             - name: backup
               image: alpine:3.24.1
@@ -24,7 +30,7 @@ spec:
                 - -c
                 - |
                   set -eu
-                  apk add --no-cache tar gzip sqlite coreutils
+                  apk add --no-cache tar gzip coreutils
                   TIMESTAMP=$(date +%Y%m%d-%H%M%S)
 
                   # Retain this many daily full backups (git data, about 45G before
@@ -32,8 +38,8 @@ spec:
                   # /mnt/backups on nvme1n1p2, 1.9T, separate from the k3s root disk).
                   # Until 2026-07-09 they went to the ROOT disk with retention 30
                   # (~1.6TiB), which filled it, tripped kubelet DiskPressure, and
-                  # evicted the whole cluster. A second, off-box copy on hp-victus is
-                  # made by the companion CronJob forgejo-backup-offbox (NFS).
+                  # evicted the whole cluster. A second copy on the 8TB drive is
+                  # made by the companion CronJob forgejo-backup-offbox.
                   #
                   # gitea/data/packages (the OCI and npm registry, 177G by 2026-10-31)
                   # is excluded: it took a full from 55G to 215G and over 2h to write.
@@ -73,13 +79,24 @@ spec:
                   gzip -t "$FULL.tmp"
                   mv "$FULL.tmp" "$FULL"
 
-                  # 3. Separate SQLite DB backup for quick restore
-                  if [ -f /data/gitea/gitea.db ]; then
-                    cp /data/gitea/gitea.db "$DB.tmp"
-                    gzip -c "$DB.tmp" > "$DB.gz.tmp"
-                    rm -f "$DB.tmp"
-                    mv "$DB.gz.tmp" "$DB.gz"
+                  # 3. The newest hourly DB snapshot (forgejo-db-snapshot), for a quick
+                  #    restore. A snapshot is consistent; a cp of the live db is not.
+                  SNAP=$(ls -t /snapshots/forgejo-db-*.db.gz 2>/dev/null | head -1 || true)
+                  if [ -z "$SNAP" ]; then
+                    echo "ABORT: no DB snapshot in /snapshots (forgejo-db-snapshot)" >&2
+                    exit 1
                   fi
+                  # A stale snapshot means the hourly job is failing: refuse it, so
+                  # a restore never pairs an old DB with newer repos.
+                  SNAP_AGE=$(( $(date +%s) - $(stat -c %Y "$SNAP") ))
+                  if [ "$SNAP_AGE" -gt 7200 ]; then
+                    echo "ABORT: newest DB snapshot is $(( SNAP_AGE / 60 ))m old: $(basename "$SNAP")" >&2
+                    exit 1
+                  fi
+                  gzip -t "$SNAP"
+                  cp "$SNAP" "$DB.gz.tmp"
+                  mv "$DB.gz.tmp" "$DB.gz"
+                  echo "DB: $(basename "$SNAP")"
 
                   # 4. Prune only after a good backup exists. Pruning first let each
                   #    failed retry delete an older good backup; by 2026-10-31 the
@@ -95,15 +112,26 @@ spec:
                 - name: data
                   mountPath: /data
                   readOnly: true
+                - name: snapshots
+                  mountPath: /snapshots
+                  readOnly: true
                 - name: backup
                   mountPath: /backup
           # Never, not OnFailure: OnFailure makes the Job controller delete the
           # failed pod, taking its logs with it (see nas 3d-prints-backup).
           restartPolicy: Never
           volumes:
+            # IP not DNS: cluster DNS does not serve OpenWRT LAN names.
             - name: data
-              persistentVolumeClaim:
-                claimName: forgejo-data
+              nfs:
+                server: 192.168.1.243
+                path: /srv/forgejo/data
+                readOnly: true
+            - name: snapshots
+              nfs:
+                server: 192.168.1.243
+                path: /srv/forgejo/snapshots
+                readOnly: true
             - name: backup
               hostPath:
                 # asus-laptop 2nd disk (nvme1n1p2, @backups subvol mounted at
@@ -132,9 +160,9 @@ spec:
       activeDeadlineSeconds: 10800  # 3h
       template:
         spec:
-          # Must run on asus-laptop: it reads the local backups written by the
-          # primary job to that node's 2nd disk (hostPath). Decoupled from the
-          # primary job so an NFS/hp-victus outage never fails the local backup.
+          # Must run on asus-laptop: it reads the backups the primary job wrote
+          # to that node's 2nd disk and copies them to its 8TB drive. Decoupled
+          # from the primary job so an 8TB drive outage never fails it.
           nodeSelector:
             kubernetes.io/hostname: asus-laptop
           containers:
@@ -146,8 +174,11 @@ spec:
                 - |
                   set -eu
                   apk add --no-cache coreutils gzip
-                  # Off-box copy of the newest forgejo backup to hp-victus (a
-                  # DIFFERENT machine) over NFS, for real disaster recovery.
+                  # Second copy of the newest forgejo backup, on the 8TB drive (a
+                  # different disk). Until 2026-11-11 it went to hp-victus over
+                  # NFS; Forgejo itself lives there now, so a copy there would sit
+                  # beside the data it protects. The off-site copy is the
+                  # Hetzner standby (plan can-we-setup-forgejo-snazzy-hopper P9).
                   #
                   # Until 2026-10-31 this copied whatever was newest at 03:30, while
                   # the 03:00 tar was still writing it: 60G of a 215G file, with
@@ -155,8 +186,8 @@ spec:
                   # took down the cluster's monitoring and pager. So now: a complete
                   # source only (the primary renames when whole), prune first, refuse
                   # to go under the free-space floor, and prove the copy.
-                  KEEP_OFFBOX=2     # hp-victus root is shared with CI and 13 PVs
-                  MIN_FREE_GB=190   # 20% of its 938G; kubelet evicts at 5%, clears at 15%
+                  KEEP_OFFBOX=3     # the 8TB drive is shared with every other mirror
+                  MIN_FREE_GB=500   # leaves room for the weekly mirrors and their snapshots
 
                   NEWEST_FULL=$(ls -t /local/forgejo-full-*.tar.gz 2>/dev/null | head -1 || true)
                   if [ -z "$NEWEST_FULL" ]; then
@@ -182,16 +213,16 @@ spec:
                   # 2. This disk's other tenants matter more than a second copy.
                   SRC_GB=$(( SRC_BYTES / 1073741824 + 1 ))
                   FREE_GB=$(df -PBG /offbox | awk 'NR==2 {gsub(/G/,"",$4); print $4}')
-                  echo "hp-victus free: ${FREE_GB}G, copy: ${SRC_GB}G, floor: ${MIN_FREE_GB}G"
+                  echo "8TB drive free: ${FREE_GB}G, copy: ${SRC_GB}G, floor: ${MIN_FREE_GB}G"
                   if [ $(( FREE_GB - SRC_GB )) -lt "$MIN_FREE_GB" ]; then
-                    echo "ABORT: copying would leave under ${MIN_FREE_GB}G free on hp-victus." >&2
+                    echo "ABORT: copying would leave under ${MIN_FREE_GB}G free on the 8TB drive." >&2
                     exit 1
                   fi
 
                   # 3. Copy to .tmp, prove it, then rename.
                   TMP="/offbox/$NAME.$(hostname).tmp"
                   trap 'rm -f "$TMP"' EXIT
-                  echo "Copying $NAME off-box to hp-victus..."
+                  echo "Copying $NAME to the 8TB drive..."
                   cp -f "$NEWEST_FULL" "$TMP"
                   if [ "$(stat -c %s "$TMP")" != "$SRC_BYTES" ]; then
                     echo "ABORT: size differs after copy." >&2
@@ -201,7 +232,7 @@ spec:
                   mv -f "$TMP" "/offbox/$NAME"
                   [ -n "$NEWEST_DB" ] && cp -f "$NEWEST_DB" /offbox/ || true
 
-                  echo "Off-box copy complete. On hp-victus:"
+                  echo "Second copy complete. On the 8TB drive:"
                   ls -lht /offbox/forgejo-full-*.tar.gz
               volumeMounts:
                 - name: local
@@ -217,11 +248,10 @@ spec:
               hostPath:
                 path: /mnt/backups/forgejo
                 type: Directory
-            # Off-box NFS target, served by hp-victus (ansible role
-            # nfs-backup-target). IP not DNS: in-cluster pods resolve via cluster
-            # DNS, which doesn't serve OpenWRT dnsmasq LAN names; hp-victus holds
-            # a DHCP reservation at .243 (infrastructure/dhcp/devices.yaml).
+            # Directory, not DirectoryOrCreate: the subvolume comes from the
+            # usb-backup-mounts role, so a missing drive fails the job instead
+            # of filling the root disk.
             - name: offbox
-              nfs:
-                server: 192.168.1.243
-                path: /srv/backups/forgejo
+              hostPath:
+                path: /mnt/backup-8t/forgejo-backups
+                type: Directory

@@ -28,10 +28,10 @@ spec:
     spec:
       affinity:
         # amd64 workstation nodes only: DinD needs amd64, privileged and 6Gi,
-        # which the arm64 Pis cannot give. Never asus-laptop: the forgejo-data
-        # PV (local-path) is pinned there, so a runner on it shares Forgejo's
-        # disk and dies with it, and its NVMe has controller resets
-        # (2026-11-03 07:18 and 13:48). That leaves hp-victus and razer-laptop.
+        # which the arm64 Pis cannot give. Never hp-victus: Forgejo's data PV
+        # (forgejo-data-hp-victus) is there since 2026-11-11, so a runner on it
+        # shares Forgejo's disk, memory and fate. That leaves asus-laptop and
+        # razer-laptop.
         nodeAffinity:
           requiredDuringSchedulingIgnoredDuringExecution:
             nodeSelectorTerms:
@@ -41,7 +41,7 @@ spec:
                   - key: kubernetes.io/hostname
                     operator: NotIn
                     values:
-                      - asus-laptop
+                      - hp-victus
         # Required, not preferred: with the preferred rule both replicas sat on
         # asus-laptop, so one node took out all of CI. If one of the two nodes
         # is down, its replica stays Pending and the other keeps running.

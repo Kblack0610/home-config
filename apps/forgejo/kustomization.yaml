@@ -15,6 +15,7 @@ resources:
   - ingress-public.yaml
   - ingressroute-browser-redirect.yaml
   - backup-cronjob.yaml
+  - db-snapshot-cronjob.yaml
   - lock-reaper-cronjob.yaml
   - runner-config-cm.yaml
   - runner-secret.yaml

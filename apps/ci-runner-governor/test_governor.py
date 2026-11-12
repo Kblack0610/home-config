@@ -24,11 +24,12 @@ from unittest import mock
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import governor  # noqa: E402
 
-# The live thresholds with a fixed host list, so a change to the real roster
-# (config.json "hosts" and "standby") does not change what these tests mean.
+# The live thresholds with a fixed host list and the pool floor that roster was written
+# for, so a change to the real roster (config.json "hosts", "standby", "pool_min_admitted")
+# does not change what these tests mean.
 CONFIG = os.path.join(os.path.dirname(os.path.abspath(__file__)), "config.json")
 LIVE = governor.load_config(CONFIG)
-CFG = governor.with_defaults({**LIVE, "standby": {"mac-studio": {"max_admitted": 6}}, "hosts": {
+CFG = governor.with_defaults({**LIVE, "pool_min_admitted": 2, "standby": {"mac-studio": {"max_admitted": 6}}, "hosts": {
     "asus-laptop": {"min_admitted": 0, "admit": {"tctl": 80}, "withhold": {"idle": 0.25, "tctl": 90}},
     "hp-victus": {},
     "razer-laptop": {},
@@ -72,7 +73,9 @@ POWER = {"provider": "aws", "instance_id": "i-0abc", "region": "us-east-2", "idl
          "start_min_excess": 1, "start_after_seconds": 0}
 AWS = {**CFG, "standby": {"aws-burst-1": {"max_admitted": 8, "power": POWER}}}
 LIVE_POWER = {**governor.POWER_DEFAULTS, **LIVE["standby"]["aws-burst-1"]["power"]}
-HEAVY = {**CFG, "standby": {"aws-burst-1": {"max_admitted": 6, "power": {**LIVE_POWER, "instance_id": "i-0abc"}}}}
+# A 12h day cap of its own: the live hosts run uncapped (24h), and the cap tests need one.
+HEAVY = {**CFG, "standby": {"aws-burst-1": {"max_admitted": 6, "power": {**LIVE_POWER, "instance_id": "i-0abc",
+                                                                       "max_hours_day": 12}}}}
 
 
 # What host_labels() reads for aws-burst-1: its runners' labels (off the LAN, so no `lan`)
@@ -351,7 +354,7 @@ class GovernorTest(unittest.TestCase):
     def test_live_gate_values(self):
         self.assertEqual({k: LIVE_POWER[k] for k in governor.POWER_DEFAULTS},
                          {"idle_off_seconds": 900, "start_min_excess": 4, "start_after_seconds": 300,
-                          "max_hours_day": 12, "fallback_seconds": 3600})
+                          "max_hours_day": 24, "fallback_seconds": 3600})
 
     def test_no_start_below_the_excess(self):
         inst = instance("stopped", want_since=1)
@@ -414,6 +417,25 @@ class GovernorTest(unittest.TestCase):
         self.assertEqual(self.heavy(inst, runners=runners, queue=0)[:2], ("admit", "aws-off-0"))
         full = {**self.aws(on_idle=6), **self.FULL}
         self.assertEqual(self.heavy(inst, runners=full, queue=0)[0], "hold")
+
+    def test_a_pin_drains_a_standby_host_under_override_on(self):
+        inst = instance("running", override="on")
+        busy = {**self.aws(on_busy=2, on_idle=1, off=3), **self.FULL}
+        got = decide(self.STEADY, busy, cfg=HEAVY, instances=inst, pins={"aws-burst-1": 0})
+        self.assertIn(("aws-burst-1", "withhold", "aws-idle-0", "PINNED", "pinned to 0"), got)
+        drained = {**self.aws(off=6), **self.FULL}
+        self.assertEqual(self.heavy(inst, runners=drained)[:2], ("admit", "aws-off-0"))  # no pin: override on admits
+        got = decide(self.STEADY, drained, cfg=HEAVY, instances=inst, pins={"aws-burst-1": 0})
+        self.assertIn(("aws-burst-1", "hold", "", "PINNED", "overflow"), got)
+
+    def test_a_pin_caps_a_standby_host_admits(self):
+        inst = instance("running")
+        two = {**self.aws(on_busy=2, off=4), **self.FULL}
+        self.assertEqual(self.heavy(inst, runners=two, queue=9)[0], "admit")
+        got = decide(self.STEADY, two, cfg=HEAVY, instances=inst, pins={"aws-burst-1": 2})
+        self.assertEqual([d[1] for d in got if d[0] == "aws-burst-1"], ["hold"])
+        got = decide(self.STEADY, two, cfg=HEAVY, instances=inst, pins={"aws-burst-1": 9})
+        self.assertIn(("aws-burst-1", "admit", "aws-off-0", "STANDBY"), [d[:4] for d in got])
 
     def test_override_off_drains_then_stops(self):
         inst = instance("running", override="off")
@@ -539,6 +561,14 @@ class GovernorTest(unittest.TestCase):
         self.assertEqual(len([l for l in lines if "pin unreadable" in l]), 4)
         self.assertEqual(len([l for l in lines if "reservation unreadable" in l]), 2)
         self.assertEqual(len([l for l in lines if "override unreadable" in l]), 2)
+
+    def test_read_pins_covers_standby_hosts(self):
+        import tempfile
+        with tempfile.TemporaryDirectory() as d, mock.patch.object(governor, "OVERRIDE_DIR", d):
+            with open(os.path.join(d, "aws-burst-1"), "w") as f:
+                f.write('{"action": "on", "until": 5000, "slots": 0}')
+            self.assertEqual(governor.read_pins(AWS, 1000), {"aws-burst-1": 0})
+            self.assertEqual(governor.read_override("aws-burst-1", 1000), ("on", 5000.0))
 
     def test_run_time_counts_per_utc_day(self):
         t, day = {}, 1_762_214_400  # 2025-11-04T00:00:00Z
@@ -991,6 +1021,86 @@ class GovernorTest(unittest.TestCase):
             governor.host_labels(self.BUILD, "aws-build-1")
         self.assertIn('pool=~"unity|unity-build"', prom.call_args.args[0])
 
+    # A dedicated host that lends (aws-build-1, "lends" in config.json): builds first, the
+    # pool otherwise, never both at once.
+    LENDS = ["unity", "unity-full", "unity-gate"]
+    LEND = {**CFG, "standby": {
+        **AWS["standby"],
+        "aws-build-1": {"max_admitted": 3, "labels": ["unity-build"], "withheld_label": "unity-build-withheld",
+                        "lends": LENDS, "power": {**POWER, "instance_id": "i-0bld"}}}}
+    KIND = {"build": frozenset({"unity-build"}), "pool": frozenset(LENDS), "held": frozenset({"unity-build-withheld"})}
+
+    def lender(self, *slots):
+        """slots: (kind, busy); each runner carries that kind's labels."""
+        return {f"bld-{i}": {"host": "aws-build-1", "busy": busy, "elapsed": 100 - i, "withheld": kind == "held",
+                             "labels": self.KIND[kind] | {"self-hosted", "linux", "host-aws-build-1"}}
+                for i, (kind, busy) in enumerate(slots)}
+
+    def lend_up(self, idle=0):
+        return {"aws-build-1": {"state": "running", "busy_at": 10_000 - idle,
+                                "labels": self.BUILD_LABELS | frozenset(self.LENDS)},
+                "aws-burst-1": {"state": "running", "busy_at": 10_000, "labels": AWS_LABELS}}
+
+    def test_a_lender_lends_a_slot_when_no_build_waits(self):
+        got = actions(self.STEADY, {**self.lender(("held", False)), **self.FULL}, cfg=self.LEND,
+                      instances=self.lend_up(), queue=5)
+        self.assertEqual(got["aws-build-1"], ("lend", "bld-0"))
+
+    def test_a_waiting_build_withholds_a_lent_slot_first(self):
+        got = actions(self.STEADY, {**self.lender(("pool", True), ("held", False)), **self.FULL}, cfg=self.LEND,
+                      instances=self.lend_up(), waiting=[self.BUILD_JOB] + [UNITY_JOB] * 5)
+        self.assertEqual(got["aws-build-1"], ("withhold", "bld-0"))
+
+    def test_a_build_waits_for_the_last_ci_job(self):
+        # Negative control for the next test: the CI job still runs on a withheld slot, so no
+        # build is admitted beside it.
+        got = actions(self.STEADY, {**self.lender(("held", True), ("held", False)), **self.FULL}, cfg=self.LEND,
+                      instances=self.lend_up(), waiting=[self.BUILD_JOB])
+        self.assertEqual(got["aws-build-1"], ("hold", ""))
+
+    def test_a_build_is_admitted_once_no_ci_job_runs(self):
+        got = actions(self.STEADY, {**self.lender(("held", False), ("held", False)), **self.FULL}, cfg=self.LEND,
+                      instances=self.lend_up(), waiting=[self.BUILD_JOB] + [UNITY_JOB] * 5)
+        self.assertEqual(got["aws-build-1"], ("admit", "bld-0"))
+
+    def test_a_running_build_keeps_the_pool_off_the_host(self):
+        got = actions(self.STEADY, {**self.lender(("build", True), ("held", False)), **self.FULL}, cfg=self.LEND,
+                      instances=self.lend_up(), queue=5)
+        self.assertEqual(got["aws-build-1"], ("hold", ""))
+
+    def test_an_idle_build_slot_steps_aside_when_no_build_waits(self):
+        got = actions(self.STEADY, {**self.lender(("build", False), ("held", False)), **self.FULL}, cfg=self.LEND,
+                      instances=self.lend_up(), queue=5)
+        self.assertEqual(got["aws-build-1"], ("withhold", "bld-0"))
+
+    def test_lent_slots_count_toward_the_pool_cap(self):
+        cfg = {**self.LEND, "pool_max_admitted": 2}
+        runners = {**self.lender(("pool", True), ("pool", True), ("held", False)), **self.FULL}
+        got = actions(self.STEADY, runners, cfg=cfg, instances=self.lend_up(), queue=5)
+        self.assertEqual(got["aws-build-1"], ("hold", ""))
+
+    def test_lend_labels_swap_both_kinds(self):
+        for action, has, added, removed in (
+                ("lend", ["unity-build-withheld"], self.LENDS, ["unity-build-withheld"]),
+                ("admit", ["unity-build-withheld"], ["unity-build"], ["unity-build-withheld"]),
+                ("withhold", ["unity", "unity-full", "unity-gate"], ["unity-build-withheld"],
+                 ["unity", "unity-full", "unity-gate"])):
+            calls = []
+
+            def gh(method, path, body=None):
+                calls.append((method, path, body))
+                if method == "GET":
+                    return {"runners": [{"id": 9, "name": "bld-1",
+                                         "labels": [{"name": "self-hosted"}] + [{"name": l} for l in has]}]}
+                return None
+            governor.gh = gh
+            governor.apply(self.LEND, action, "bld-1", "aws-build-1")
+            self.assertEqual(calls[1][2], {"labels": sorted(added)}, action)
+            self.assertEqual(sorted(c[1].rsplit("/", 1)[1] for c in calls if c[0] == "DELETE"), sorted(removed), action)
+
+    def test_the_live_build_host_lends(self):
+        self.assertEqual(governor.lends(LIVE, "aws-build-1"), ["unity", "unity-full", "unity-gate"])
+
     def test_admit_leaves_full_off_a_host_that_takes_no_full_runs(self):
         calls = []
 
@@ -1100,9 +1210,12 @@ class StandbyOrderTest(unittest.TestCase):
         got = self.got(2, two(fallback_until=10_000, fallback_why="capacity"))
         self.assertEqual((got["aws-burst-2"][0], got["aws-burst-1"][0]), ("start", "hold"))
 
-    def test_override_on_beats_a_pass_over(self):
+    def test_a_pass_over_beats_override_on(self):
+        # hc-277: an "on" restarted a just-reclaimed or refused host every cycle.
         got = self.got(0, two(fallback_until=20_000, fallback_why="reclaim", override="on"))
-        self.assertEqual(got["aws-burst-2"][0], "start")
+        self.assertEqual(got["aws-burst-2"], ("hold", "passed over after a reclaim for 10000s more"))
+        got = self.got(0, two(fallback_until=10_000, fallback_why="reclaim", override="on"))
+        self.assertEqual(got["aws-burst-2"][0], "start")  # negative control: the pass-over ran out
 
     def test_a_spot_told_off_or_past_its_day_is_not_ahead(self):
         self.assertEqual(self.got(2, two(override="off"))["aws-burst-1"][0], "start")
@@ -1338,6 +1451,16 @@ class WorkerTest(unittest.TestCase):
         tracked, _ = self.cycles(ec2, demand=1, n=2)
         self.assertEqual(self.ops(ec2), [("start", "i-0wrk")])
         self.assertEqual(tracked["fleet-worker-1"]["fallback_why"], "capacity")
+
+    def test_a_passed_over_worker_set_on_waits(self):
+        passed = lambda until: {"fleet-worker-1": {"state": "stopped", "busy_at": time.time(),
+                                                   "fallback_until": until, "fallback_why": "capacity"}}
+        ec2 = FakeEc2("stopped")
+        self.cycles(ec2, override="on", tracked=passed(time.time() + 3600))
+        self.assertEqual(self.ops(ec2), [])
+        ec2 = FakeEc2("stopped")
+        self.cycles(ec2, override="on", tracked=passed(time.time() - 1))
+        self.assertEqual(self.ops(ec2), [("start", "i-0wrk")])
 
     def test_dry_run_only_logs(self):
         ec2 = FakeEc2("stopped")

@@ -24,15 +24,15 @@ Apps on a failed disk go down, and a failed root disk takes this node's pods wit
 
 | Failed disk | What is gone | Restore from | Lost for good |
 |---|---|---|---|
-| Root (`...7E1C`) | OS, every local-path PV on this node, `/var/backups/*` local copies | NAS `/mnt/nas/private/backups/home-k3s/` (app dumps), `/mnt/backups/forgejo` or hp-victus (Forgejo), 8TB (Langfuse, VictoriaMetrics, Forgejo packages) | Changes since the last backup. No backup by design: Loki logs, Grafana UI edits, Alertmanager silences, Crowdsec state, Mosquitto retained messages, Trivy cache, the `placemyparents-preview` database. MinIO: Langfuse raw event bodies and the `terraform-state` bucket (rebuild `public-sites-tunnel` state with `terraform import`) |
+| Root (`...7E1C`) | OS, every local-path PV on this node, `/var/backups/*` local copies | NAS `/mnt/nas/private/backups/home-k3s/` (app dumps), `/mnt/backups/forgejo` and the 8TB `forgejo-backups` (Forgejo backups; live Forgejo is on hp-victus since 2026-11-11), 8TB (Langfuse, VictoriaMetrics, Forgejo packages) | Changes since the last backup. No backup by design: Loki logs, Grafana UI edits, Alertmanager silences, Crowdsec state, Mosquitto retained messages, Trivy cache, the `placemyparents-preview` database. MinIO: Langfuse raw event bodies and the `terraform-state` bucket (rebuild `public-sites-tunnel` state with `terraform import`) |
 | NAS (`...7E07`) | Immich originals, phones, harvest, the Emotiv archive, 3D prints, the public share, all app backups on the NAS, Immich's live Postgres and the media apps' config, Forgejo local fulls | 8TB: every mirror's newest snapshot, `@immich-db` for the Immich database. Forgejo fulls come back at the next 3 AM run, and hp-victus keeps the newest 2 meanwhile | Changes since the last mirror (a day for Immich and the app backups, up to a week for the rest), the snapper history, and the Zomboid backup history on the public share (the live world is on the root disk, and the job writes a new backup nightly) |
 | 8TB (`backup8t`) | Every mirror and all snapshot history. No live data | Nothing to restore: the sources are all still live. Replace the drive and the jobs refill it | Point-in-time history. Until the new drive has filled, a second failure loses data, so replace it first |
 
-Two disks at once, or the whole machine: what remains is the Forgejo copy on hp-victus and the GitHub mirror of this repo. That is the gap the offsite decision is about.
+Two disks at once, or the whole machine: what remains is live Forgejo on hp-victus (its data has lived there since 2026-11-11) and the GitHub mirror of this repo. That is the gap the offsite decision is about.
 
 ### Replacing a disk
 
-**Root.** Install the OS, then run `ansible/playbooks/site.yml --limit asus-laptop` from your workstation and rejoin the node. Restore Forgejo before anything else, because Flux reads this repo from it and the cluster pulls images from it. A `forgejo-full-*.tar.gz` is a tar of `/data`, so extract the newest one into the empty `forgejo-data` PV, then copy `/mnt/backup-8t/forgejo-packages` to `gitea/data/packages`, which the fulls exclude. This restore has not been rehearsed. Then follow each app's restore section in this file.
+**Root.** Install the OS, then run `ansible/playbooks/site.yml --limit asus-laptop` from your workstation and rejoin the node. Forgejo itself lives on hp-victus, so an asus loss leaves it running; only its backups are gone until the next nightly. To restore Forgejo after losing hp-victus: a `forgejo-full-*.tar.gz` is a tar of `/data`, so extract the newest one into `/srv/forgejo/data` on the node `apps/forgejo/pvc.yaml` pins, swap in the newest `forgejo-db-*.db.gz` as `gitea/gitea.db`, then copy `/mnt/backup-8t/forgejo-packages` to `gitea/data/packages`, which the fulls exclude. This restore has not been rehearsed. Then follow each app's restore section in this file.
 
 **NAS.** No Ansible role builds this disk. Partition it, `mkfs.btrfs`, create the subvolumes `@public`, `@private`, `@backups`, `@media-library`, `@downloads` and `@app-config`, and put the new UUID in the `/etc/fstab` lines that hold the old one. Then copy back from the newest snapshot, with the matching apps stopped:
 
@@ -163,7 +163,8 @@ K3s app backups run on schedule via CronJobs. Each backup writes a local archive
 | `snapcast-backup` | Daily 2:45 AM | `snapcast` | hp-victus `/var/backups/snapcast` + NAS `home-k3s/snapcast/` |
 | `game-saves-backup` | Daily 2:50 AM | `game-registry` | NAS `home-k3s/game-saves/` (registry Postgres dump + `game-saves` bucket mirror) |
 | `actual-budget-backup` | Daily 3 AM | `actual-budget` | `/var/backups/actual-budget` + NAS `home-k3s/actual-budget/` |
-| `forgejo-backup` | Daily 3 AM | `forgejo` | asus-laptop `/mnt/backups/forgejo` (2nd disk; excludes `gitea/data/packages`; off-box copy is the separate job below) |
+| `forgejo-db-snapshot` | Hourly :07 | `forgejo` | hp-victus `/srv/forgejo/snapshots` (48 kept; the nightly ships the newest) |
+| `forgejo-backup` | Daily 3 AM | `forgejo` | asus-laptop `/mnt/backups/forgejo` (2nd disk; reads hp-victus over read-only NFS; excludes `gitea/data/packages`; second copy is the separate job below) |
 | `immich-backup` | Daily 3 AM | `immich` | `/var/backups/immich` + NAS `home-k3s/immich/` (DB only) |
 | `postgres-backup` | Daily 2:20 AM | `databases` | NAS `home-k3s/postgres/` (`pg_dumpall` of every database and role) |
 | `karakeep-backup` | Daily 3 AM | `karakeep` | `/var/backups/karakeep` + NAS `home-k3s/karakeep/` |
@@ -172,7 +173,7 @@ K3s app backups run on schedule via CronJobs. Each backup writes a local archive
 | `3d-prints-backup` | Sunday 3:45 AM | `nas` | 8TB `/mnt/backup-8t/3d-prints` + snapshots (mirror of `/mnt/nas/public/3d-printing`) |
 | `phones-backup` | Sunday 4:15 AM | `nas` | 8TB `/mnt/backup-8t/phones` + snapshots (mirror of `/mnt/nas/private/phones`) |
 | `sops-key-backup` | Sunday 4 AM | `nas` | NAS `home-k3s/sops/` |
-| `forgejo-backup-offbox` | Daily 4:30 AM | `forgejo` | hp-victus NFS `192.168.1.243:/srv/backups/forgejo` (newest 2 fulls) |
+| `forgejo-backup-offbox` | Daily 4:30 AM | `forgejo` | asus-laptop 8TB `/mnt/backup-8t/forgejo-backups` (newest 3 fulls) |
 | `forgejo-packages-backup` | Sunday 4:45 AM | `nas` | 8TB `/mnt/backup-8t/forgejo-packages` + snapshots (the Forgejo package registry) |
 | `nas-backups-mirror` | Daily 5:30 AM | `nas` | 8TB `/mnt/backup-8t/nas-backups` + snapshots (mirror of `/mnt/nas/private/backups`) |
 | `app-config-backup` | Sunday 5:45 AM | `nas` | 8TB `/mnt/backup-8t/app-config` + snapshots (mirror of `/mnt/media/app-config`) |

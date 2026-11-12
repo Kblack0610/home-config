@@ -1,3 +1,53 @@
+# Forgejo's data lives on hp-victus since 2026-11-11: a static local PV at
+# /srv/forgejo/data, the node with the fewest Ready flaps (0 in 7d, against
+# asus-laptop's 2 and its NVMe resets, hc-25). Retain, not local-path's Delete:
+# deleting the claim must never delete every repo. hp-victus also exports
+# /srv/forgejo read-only to asus-laptop, where the backup jobs run (ansible
+# role nfs-backup-target).
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: forgejo-data-hp-victus
+  labels:
+    app.kubernetes.io/name: forgejo
+spec:
+  capacity:
+    storage: 600Gi
+  accessModes:
+    - ReadWriteOnce
+  persistentVolumeReclaimPolicy: Retain
+  storageClassName: ""
+  volumeMode: Filesystem
+  local:
+    path: /srv/forgejo/data
+  nodeAffinity:
+    required:
+      nodeSelectorTerms:
+        - matchExpressions:
+            - key: kubernetes.io/hostname
+              operator: In
+              values:
+                - hp-victus
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: forgejo-data-hp-victus
+  namespace: forgejo
+  labels:
+    app.kubernetes.io/name: forgejo
+spec:
+  accessModes:
+    - ReadWriteOnce
+  storageClassName: ""
+  volumeName: forgejo-data-hp-victus
+  resources:
+    requests:
+      storage: 600Gi
+---
+# The pre-move volume on asus-laptop, unused since 2026-11-11 and kept as the
+# rollback until 2026-11-18; its PV was patched to Retain before the move.
+# Delete this claim after that date.
 apiVersion: v1
 kind: PersistentVolumeClaim
 metadata:

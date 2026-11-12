@@ -43,6 +43,8 @@ jobs:
         run: python3 apps/ci-runner-governor/test_governor.py
       - name: litellm tool_compat offline tests
         run: python3 apps/litellm/test_tool_compat.py
+      - name: litellm go routes forward the session header
+        run: python3 apps/litellm/test_go_routes.py
       - name: eeg-review offline tests
         run: python3 scripts/test_eeg_review.py
 

@@ -21,6 +21,8 @@ resources:
   - markets-compact-cronjob.yaml
   - markets-history-cronjob.yaml
   - trader-markets-s3-secret.sops.yaml
+  - trader-brokers-secret.sops.yaml
+  - broker-cronjob.yaml
   - futures-cronjob.yaml
   - trader-db-secret.sops.yaml
   - trader-web-oauth-secret.sops.yaml

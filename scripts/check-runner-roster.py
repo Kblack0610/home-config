@@ -11,16 +11,22 @@ unity_ci_slots) plus the single-host runners pinned by their own plays (mac-mini
 CLOUD_HOSTS is checked the same way: it must equal the runner hosts whose inventory
 entry says unity_ci_lan: false, so a cloud host is declared once, in the inventory. The governor's standby list
 (apps/ci-runner-governor/config.json) is the third copy: it must name exactly those
-cloud hosts, each with max_admitted equal to its unity slots. A build host (unity_ci_build: true with
-unity_ci_pool: false, aws-build-1) is its own exporter pool, unity-build, and its standby entry carries
-that label and withheld_label <label>-withheld. The governor's "rates" must name exactly the
-roster's hosts, so every runner host has a $/h and a basis and none is priced that is gone.
+cloud hosts, each with max_admitted equal to its unity slots. A build host's first
+unity_ci_build_slots slots (aws-build-1) are their own exporter pool, unity-build, and the rest
+stay in unity, so one host can be in two pools; its standby entry carries that label and
+withheld_label <label>-withheld. The governor's "rates" must name exactly the roster's hosts, so
+every runner host has a $/h and a basis and none is priced that is gone.
+
+Two slots may share cores (ci_unity_slot_cpus) only where the governor's "pairs" pair them: a
+build slot and a test slot it never runs beside. Each paired test slot sits inside its build
+slot's cores, and a pair's test slots together fit under its build slot's memory cap, so a pair
+never asks more of the host than its build slot alone.
 
 A slot that carries unity-wide (unity_ci_wide, or unity-wide in unity_ci_slot_labels) needs
 ci_unity_slot_memory_max of at least WIDE_SLOT_MIN_GB: Multi, Soak, Two-process and Playloop
 build their players in the job, and the server build passed 16G (playground ucp-1830).
 
-A build host gives some of its slots, never all, the RELEASE_LABEL in unity_ci_slot_labels:
+A build host gives some of its build slots, never all, the RELEASE_LABEL in unity_ci_slot_labels:
 playground release.yml asks for it, so a release (one per game from ship.sh) holds those
 slots for hours while players.yml, which asks only unity-build, keeps the rest (hc-263).
 
@@ -31,7 +37,8 @@ and left here reads as permanently short.
 
 Stdlib only (runs in a bare python:alpine CI container), so inventory.yml is read by
 indentation, not by a YAML library. Exits non-zero on drift, or if it found nothing
-to compare - an empty parse must never pass.
+to compare - an empty parse must never pass. An argument names another governor config, so
+CI can show the check fails on a planted bad pair.
 """
 
 import json
@@ -42,7 +49,7 @@ import sys
 REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 INVENTORY = os.path.join(REPO, "ansible/inventory.yml")
 EXPORTER_DEPLOY = os.path.join(REPO, "apps/github-runner-exporter/deployment.yaml")
-GOVERNOR_CONFIG = os.path.join(REPO, "apps/ci-runner-governor/config.json")
+GOVERNOR_CONFIG = sys.argv[1] if len(sys.argv) > 1 else os.path.join(REPO, "apps/ci-runner-governor/config.json")
 
 # inventory group -> {slot var: exporter pool}
 GROUPS = {
@@ -63,7 +70,7 @@ RELEASE_LABEL = "unity-release"
 
 
 def inventory_roster(path):
-    out, cloud, build, group, in_hosts, host = {}, set(), set(), None, False, None
+    out, cloud, build, group, in_hosts, host = {}, set(), {}, None, False, None
     with open(path, encoding="utf-8") as fh:
         for raw in fh:
             line = raw.split("#", 1)[0].rstrip()
@@ -81,18 +88,40 @@ def inventory_roster(path):
                 out[(host, GROUPS[group][key])] = int(val.strip())
             elif group and host and indent == 10 and key == "unity_ci_lan" and val.strip() == "false":
                 cloud.add(host)
-            elif group and host and indent == 10 and key == "unity_ci_build" and val.strip() == "true":
-                build.add(host)
-    # A build-only host's slots are the unity-build pool's, not the gate pool's.
-    for h in build:
+            elif group and host and indent == 10 and key == "unity_ci_build_slots":
+                build[host] = int(val.strip())
+    # A build host's first slots are the unity-build pool's; the rest stay the gate pool's.
+    for h, n in build.items():
         if (h, "unity") in out:
-            out[(h, "unity-build")] = out.pop((h, "unity"))
+            out[(h, "unity-build")] = n
+            out[(h, "unity")] -= n
+            if not out[(h, "unity")]:
+                del out[(h, "unity")]
     return out, cloud
 
 
-def wide_slot_memory(path):
-    """{host: its slot memory cap in GB, or None} for every host with a unity-wide slot."""
-    wide, mem, group, host = set(), {}, None, None
+def flow_list(val):
+    """The items of a one-line YAML flow list (["1-10", "11-20"] or [36G, 16G])."""
+    return [v.strip().strip("'\"") for v in val.strip()[1:-1].split(",") if v.strip()]
+
+
+def gigabytes(val):
+    m = re.fullmatch(r"(\d+)G", val)
+    return int(m.group(1)) if m else None
+
+
+def cpu_set(spec):
+    out = set()
+    for part in spec.split(","):
+        a, _, b = part.strip().partition("-")
+        out |= set(range(int(a), int(b or a) + 1))
+    return out
+
+
+def slot_budgets(path):
+    """{host: (one core set per slot, or []; one memory cap in GB or None per slot, or a scalar
+    cap)} from ci_hosts' ci_unity_slot_cpus and ci_unity_slot_memory_max."""
+    cpus, mem, group, host = {}, {}, None, None
     with open(path, encoding="utf-8") as fh:
         for raw in fh:
             line = raw.split("#", 1)[0].rstrip()
@@ -105,21 +134,94 @@ def wide_slot_memory(path):
                 group, host = key, None
             elif indent == 8:
                 host = key
-            elif group == "unity_ci_runners" and host and indent == 10 and key == "unity_ci_wide" and val == "true":
-                wide.add(host)
-            elif group == "unity_ci_runners" and host and indent == 12 and re.search(r"\bunity-wide\b", val):
-                wide.add(host)
+            elif group == "ci_hosts" and host and indent == 10 and key == "ci_unity_slot_cpus":
+                cpus[host] = [cpu_set(c) for c in flow_list(val)]
             elif group == "ci_hosts" and host and indent == 10 and key == "ci_unity_slot_memory_max":
-                m = re.fullmatch(r"(\d+)G", val)
-                mem[host] = int(m.group(1)) if m else None
-    return {h: mem.get(h) for h in wide}
+                mem[host] = [gigabytes(m) for m in flow_list(val)] if val.startswith("[") else gigabytes(val)
+    return {h: (cpus.get(h, []), mem.get(h)) for h in set(cpus) | set(mem)}
+
+
+def wide_slot_memory(path, budgets):
+    """{host: the smallest memory cap in GB of its unity-wide slots, or None} for every host
+    with one: every pool slot with unity_ci_wide, else the slots unity_ci_slot_labels gives it."""
+    wide, slots, built, group, host = {}, {}, {}, None, None
+    with open(path, encoding="utf-8") as fh:
+        for raw in fh:
+            line = raw.split("#", 1)[0].rstrip()
+            if not line.strip():
+                continue
+            indent = len(line) - len(line.lstrip())
+            key, _, val = line.strip().partition(":")
+            val = val.strip()
+            if indent == 4:
+                group, host = key, None
+            elif indent == 8:
+                host = key
+            elif group != "unity_ci_runners" or not host:
+                continue
+            elif indent == 10 and key == "unity_ci_wide" and val == "true":
+                wide[host] = None
+            elif indent == 10 and key == "unity_ci_slots":
+                slots[host] = int(val)
+            elif indent == 10 and key == "unity_ci_build_slots":
+                built[host] = int(val)
+            elif indent == 12 and key.isdigit() and re.search(r"\bunity-wide\b", val) and wide.get(host, ()) is not None:
+                wide.setdefault(host, set()).add(int(key))
+    out = {}
+    for h, numbers in wide.items():
+        numbers = range(built.get(h, 0) + 1, slots.get(h, 0) + 1) if numbers is None else numbers
+        mem = (budgets.get(h) or ([], None))[1]
+        caps = [mem[n - 1] if isinstance(mem, list) and n <= len(mem) else None for n in numbers] \
+            if isinstance(mem, list) else [mem]
+        out[h] = None if None in caps or not caps else min(caps)
+    return out
+
+
+def check_pairs(host, pairs, build, slots, budget):
+    """Failures of one standby host's "pairs" against its inventory slots and budgets."""
+    cpus, mem = budget
+    mem = mem if isinstance(mem, list) else [mem] * slots
+    fails, seen = [], set()
+    if len(cpus) != slots or len(mem) != slots:
+        return [f"{host}: pairs need {slots} ci_unity_slot_cpus and ci_unity_slot_memory_max entries"]
+    # The governor tells a build slot from a test slot by the pairs' keys.
+    if {int(k) for k in pairs} != set(range(1, build + 1)):
+        fails.append(f"{host}: pairs keys are {sorted(int(k) for k in pairs)}, its build slots 1-{build}")
+    for key, tests in sorted(pairs.items()):
+        b = int(key)
+        if not 1 <= b <= build:
+            fails.append(f"{host}: pairs key {b} is not a build slot (1-{build})")
+            continue
+        for t in tests:
+            if not build < t <= slots:
+                fails.append(f"{host}: pair {b} names {t}, not a test slot ({build + 1}-{slots})")
+            elif t in seen:
+                fails.append(f"{host}: test slot {t} is in two pairs")
+            elif not cpus[t - 1] <= cpus[b - 1]:
+                fails.append(f"{host}: test slot {t}'s cores are not inside build slot {b}'s")
+            seen.add(t)
+        used = [mem[t - 1] for t in tests if build < t <= slots]
+        if None in used or mem[b - 1] is None:
+            fails.append(f"{host}: pair {b}'s memory caps are not in whole G")
+        elif sum(used) > mem[b - 1]:
+            fails.append(f"{host}: pair {b}'s test slots take {sum(used)}G, over build slot {b}'s {mem[b - 1]}G")
+    return fails
+
+
+def overlaps(host, pairs, budget):
+    """Two slots of one host that share cores and that the governor does not pair."""
+    cpus = budget[0]
+    paired = {(int(b), t) for b, ts in (pairs or {}).items() for t in ts}
+    return [f"{host}: slots {i} and {j} share cores and the governor does not pair them"
+            for i in range(1, len(cpus) + 1) for j in range(i + 1, len(cpus) + 1)
+            if cpus[i - 1] & cpus[j - 1] and (i, j) not in paired]
 
 
 def build_release_slots(path):
-    """{host: (its unity slots, how many of slots 1..N carry RELEASE_LABEL in unity_ci_slot_labels)}
-    for every build host. A label on a slot past unity_ci_slots never reaches a runner, so it
-    does not count."""
-    build, slots, labelled, group, host, in_labels = set(), {}, {}, None, None, False
+    """{host: (its build slots, how many of them carry RELEASE_LABEL in unity_ci_slot_labels)}
+    for every build host. A label on a slot past unity_ci_build_slots is on a test slot, where
+    no build asks for it, so it does not count."""
+    build, labelled, group, host, in_labels = {}, {}, None, None, False
     with open(path, encoding="utf-8") as fh:
         for raw in fh:
             line = raw.split("#", 1)[0].rstrip()
@@ -136,16 +238,13 @@ def build_release_slots(path):
                 in_labels = False
             if group != "unity_ci_runners" or not host or indent <= 8:
                 continue
-            if indent == 10 and key == "unity_ci_build" and val == "true":
-                build.add(host)
-            elif indent == 10 and key == "unity_ci_slots":
-                slots[host] = int(val)
+            if indent == 10 and key == "unity_ci_build_slots":
+                build[host] = int(val)
             elif indent == 10 and key == "unity_ci_slot_labels":
                 in_labels = True
             elif in_labels and indent == 12 and key.isdigit() and RELEASE_LABEL in re.findall(r"[\w-]+", val):
                 labelled.setdefault(host, set()).add(int(key))
-    return {h: (slots.get(h, 0), sum(1 for n in labelled.get(h, ()) if 1 <= n <= slots.get(h, 0)))
-            for h in build}
+    return {h: (n, sum(1 for s in labelled.get(h, ()) if 1 <= s <= n)) for h, n in build.items()}
 
 
 def env_value(text, name, path):
@@ -186,21 +285,46 @@ def main():
     if set(governor.get("rates", {})) != roster_hosts:
         rc = 1
         print(f"FAIL: governor rates name {sorted(governor.get('rates', {}))}, RUNNER_ROSTER hosts are {sorted(roster_hosts)}")
-    standby = {s["host"]: (s["max_admitted"], (s.get("labels") or ["unity"])[0]) for s in entries}
+    standby = {s["host"]: s["max_admitted"] for s in entries}
     for s in entries:
         # Without its own withheld label a dedicated host's withheld slots read as the gate pool's.
         if s.get("labels") and s.get("withheld_label") != s["labels"][0] + "-withheld":
             rc = 1
             print(f"FAIL: {s['host']}: a dedicated standby host needs withheld_label {s['labels'][0]}-withheld")
+        if s.get("labels") and (s["host"], s["labels"][0]) not in want:
+            rc = 1
+            print(f"FAIL: {s['host']}: a dedicated standby host, but the inventory gives it no {s['labels'][0]} slots")
     if set(standby) != want_cloud:
         rc = 1
         print(f"FAIL: governor standby is {sorted(standby)}, inventory unity_ci_lan: false hosts are {sorted(want_cloud)}")
     for host in sorted(set(standby) & want_cloud):
-        cap, pool = standby[host]
-        if cap != want.get((host, pool)):
+        slots = sum(n for (h, _), n in want.items() if h == host)
+        if standby[host] != slots:
             rc = 1
-            print(f"FAIL: {host}: governor max_admitted is {cap}, inventory {pool} slots {want.get((host, pool))}")
-    wide = wide_slot_memory(INVENTORY)
+            print(f"FAIL: {host}: governor max_admitted is {standby[host]}, inventory unity slots {slots}")
+    budgets = slot_budgets(INVENTORY)
+    builds = build_release_slots(INVENTORY)
+    pairs = {s["host"]: s["pairs"] for s in entries if s.get("pairs")}
+    for host in sorted(set(pairs) - set(builds)):
+        rc = 1
+        print(f"FAIL: {host}: governor pairs, but the inventory gives it no unity_ci_build_slots")
+    # Without pairs the governor reads every slot of a dedicated host as a build slot.
+    for host in sorted(set(builds) - set(pairs)):
+        total = sum(n for (h, _), n in want.items() if h == host)
+        if builds[host][0] < total:
+            rc = 1
+            print(f"FAIL: {host}: {builds[host][0]} build slots of {total}, but no governor pairs for the rest")
+    fails = [f for host in sorted(set(pairs) & set(builds)) for f in check_pairs(
+        host, pairs[host], builds[host][0], sum(n for (h, _), n in want.items() if h == host),
+        budgets.get(host, ([], None)))]
+    fails += [f for host in sorted(budgets) for f in overlaps(host, pairs.get(host), budgets[host])]
+    for f in fails:
+        rc = 1
+        print(f"FAIL: {f}")
+    if not pairs:
+        rc = 1
+        print("FAIL: parsed no governor pairs; the parser is broken, not the roster")
+    wide = wide_slot_memory(INVENTORY, budgets)
     if not wide:
         rc = 1
         print("FAIL: parsed no unity-wide slot out of the inventory; the parser is broken, not the roster")
@@ -210,18 +334,17 @@ def main():
             have = "unset or not in whole G" if gb is None else f"{gb}G"
             print(f"FAIL: {host} carries unity-wide, but its ci_unity_slot_memory_max is {have}, "
                   f"under the {WIDE_SLOT_MIN_GB}G a player build in the job needs")
-    builds = build_release_slots(INVENTORY)
     if not builds:
         rc = 1
         print("FAIL: parsed no build host out of the inventory; the parser is broken, not the roster")
     for host, (slots, release) in sorted(builds.items()):
         if not 0 < release < slots:
             rc = 1
-            print(f"FAIL: {host}: {release} of its {slots} build slots (unity_ci_slots) carry {RELEASE_LABEL} "
+            print(f"FAIL: {host}: {release} of its {slots} build slots (unity_ci_build_slots) carry {RELEASE_LABEL} "
                   f"in unity_ci_slot_labels; a release must have at least one and leave players.yml at least one")
     if rc == 0:
         print(f"ok: {len(want)} host/pool slot counts agree, cloud hosts {sorted(want_cloud)} match the governor standby, "
-              f"build hosts leave Players a slot: {sorted(builds)}")
+              f"build hosts leave Players a slot: {sorted(builds)}, pairs fit their build slots: {sorted(pairs)}")
     return rc
 
 

@@ -15,10 +15,12 @@ only; CI runs it in the checks workflow.
 import io
 import json
 import os
+import random
 import sys
 import time
 import unittest
 import urllib.error
+import urllib.parse
 from unittest import mock
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
@@ -111,6 +113,116 @@ class FakeEc2:
 
     def stop(self, iid):
         self.calls.append(("stop", iid))
+
+
+# aws-build-1's nine slots as the play registers them: 1-3 build slots (1-2 also unity-release),
+# 4-9 test slots, paired 1: 4-5, 2: 6-7, 3: 8-9 (config.json "pairs").
+BUILD_JOB = frozenset({"self-hosted", "linux", "unity-build"})
+PAIRS = {1: [4, 5], 2: [6, 7], 3: [8, 9]}
+PAIRED_BASE = frozenset({"self-hosted", "linux", "x64", "host-aws-build-1"})
+PAIRED_OWN = {s: frozenset({"unity-build"} | ({"unity-release"} if s <= 2 else set())) if s <= 3
+              else frozenset({"unity", "unity-full", "unity-gate"}) for s in range(1, 10)}
+PAIRED_LABELS = PAIRED_BASE.union(*PAIRED_OWN.values()) | {"unity-withheld", "unity-build-withheld"}
+
+
+
+def slot_name(s):
+    return f"aws-build-1-unity-pool-{s}"
+
+
+def paired_labels(s, withheld):
+    """Slot s's labels: as registered, or with the governor's withhold swap."""
+    if not withheld:
+        return PAIRED_BASE | PAIRED_OWN[s]
+    if s <= 3:
+        return PAIRED_BASE | PAIRED_OWN[s] - {"unity-build"} | {"unity-build-withheld"}
+    return PAIRED_BASE | PAIRED_OWN[s] - {"unity", "unity-full"} | {"unity-withheld"}
+
+
+def paired_slots(spec):
+    """spec: one character per slot 1-9. "." withheld and idle, "h" withheld and busy, "i"
+    admitted and idle, "b" admitted and busy, "-" rostered but not registered yet."""
+    return {slot_name(s): {"host": "aws-build-1", "busy": c in "hb", "elapsed": 100 - s, "withheld": c in ".h",
+                           "labels": paired_labels(s, c in ".h")}
+            for s, c in enumerate(spec, 1) if c != "-"}
+
+
+def spec_of(runners):
+    out = ""
+    for s in range(1, 10):
+        r = runners.get(slot_name(s))
+        out += "-" if r is None else ".hib"[2 * (not r["withheld"]) + r["busy"]]
+    return out
+
+
+def settle(cfg, spec, waiting, pins=None, cycles=12):
+    """spec after cycles of decide() and its label changes, with no job starting or ending."""
+    runners = paired_slots(spec)
+    inst = {"aws-build-1": {"state": "running", "busy_at": 10_000, "labels": PAIRED_LABELS}}
+    for _ in range(cycles):
+        for h, a, r, _, _ in governor.decide(cfg, STEADY, runners, waiting, {}, 10_000, inst, pins):
+            if h == "aws-build-1" and a in ("admit", "withhold"):
+                held = a == "withhold"
+                runners[r].update(withheld=held, labels=paired_labels(int(r.rsplit("-", 1)[1]), held))
+    return spec_of(runners)
+
+
+def simulate(cfg, seed, cycles=400):
+    """aws-build-1's nine slots through cycles of random arrivals and finishes: decide() and
+    apply() against a fake GitHub that holds each runner's labels, and each waiting job goes to
+    an idle runner whose labels cover it, as GitHub assigns them. The slots start as the play
+    registers them (every one admitted). Returns (the first (cycle, build slot) where a build
+    slot and one of its test slots both run a job, or None; counts of what ran)."""
+    rnd = random.Random(seed)
+    names = [slot_name(s) for s in range(1, 10)]
+    labels = {slot_name(s): set(paired_labels(s, False)) for s in range(1, 10)}
+    busy, waiting = {}, []
+    stats = {"build_cycles": 0, "four_tests_beside_a_build": 0, "six_tests": 0}
+
+    def gh(method, path, body=None):
+        if method == "GET":
+            return {"runners": [{"id": i, "name": n, "labels": [{"name": l} for l in sorted(labels[n])]}
+                                for i, n in enumerate(names)] if "page=1" in path else []}
+        n = names[int(path.split("/runners/")[1].split("/")[0])]
+        if method == "POST":
+            labels[n] |= set(body["labels"])
+        else:
+            labels[n].discard(urllib.parse.unquote(path.rsplit("/", 1)[1]))
+        return None
+
+    inst = {"aws-build-1": {"state": "running", "busy_at": 10_000, "labels": PAIRED_LABELS}}
+    pool_jobs = [UNITY_JOB, UNITY_JOB | {"unity-gate"}, UNITY_JOB | {"unity-full"}]
+    with mock.patch.object(governor, "gh", gh):
+        for c in range(cycles):
+            now = 10_000 + 60 * c
+            inst["aws-build-1"]["busy_at"] = now
+            if len(waiting) < 20:
+                waiting += [rnd.choice(pool_jobs) for _ in range(rnd.choice((0, 0, 1, 2, 4)))]
+            if rnd.random() < 0.08:
+                waiting.append(rnd.choice((BUILD_JOB, BUILD_JOB | {"unity-release"})))
+            runners = {n: {"host": "aws-build-1", "busy": n in busy, "elapsed": now - busy.get(n, now),
+                           "withheld": bool(labels[n] & {"unity-withheld", "unity-build-withheld"}),
+                           "labels": frozenset(labels[n])} for n in names}
+            for h, a, r, _, _ in governor.decide(cfg, STEADY, runners, list(waiting), {}, now, inst, None):
+                if h == "aws-build-1" and r:
+                    governor.apply(cfg, a, r, h)
+            for need in list(waiting):
+                free = [n for n in names if n not in busy and need <= labels[n]]
+                if free:
+                    busy[rnd.choice(free)] = now
+                    waiting.remove(need)
+            running = {int(n.rsplit("-", 1)[1]) for n in busy}
+            for b, tests in PAIRS.items():
+                if b in running and running & set(tests):
+                    return (c, b), stats
+            tests = len(running - set(PAIRS))
+            stats["build_cycles"] += bool(running & set(PAIRS))
+            stats["four_tests_beside_a_build"] += bool(running & set(PAIRS)) and tests >= 4
+            stats["six_tests"] += tests == 6
+            for n in list(busy):
+                if rnd.random() < (0.05 if int(n.rsplit("-", 1)[1]) in PAIRS else 0.25):
+                    del busy[n]
+    return None, stats
 
 
 RESTORED = governor.restored
@@ -1021,85 +1133,135 @@ class GovernorTest(unittest.TestCase):
             governor.host_labels(self.BUILD, "aws-build-1")
         self.assertIn('pool=~"unity|unity-build"', prom.call_args.args[0])
 
-    # A dedicated host that lends (aws-build-1, "lends" in config.json): builds first, the
-    # pool otherwise, never both at once.
-    LENDS = ["unity", "unity-full", "unity-gate"]
-    LEND = {**CFG, "standby": {
-        **AWS["standby"],
-        "aws-build-1": {"max_admitted": 3, "labels": ["unity-build"], "withheld_label": "unity-build-withheld",
-                        "lends": LENDS, "power": {**POWER, "instance_id": "i-0bld"}}}}
-    KIND = {"build": frozenset({"unity-build"}), "pool": frozenset(LENDS), "held": frozenset({"unity-build-withheld"})}
+    # A paired host (aws-build-1, "pairs" in config.json): build slots 1-3 each share their cores
+    # and memory with two test slots, and a build and a test never run in one pair.
+    PAIRED = {**CFG, "standby": {"aws-build-1": {
+        "max_admitted": 9, "labels": ["unity-build"], "withheld_label": "unity-build-withheld",
+        "pairs": {"1": [4, 5], "2": [6, 7], "3": [8, 9]}, "power": {**POWER, "instance_id": "i-0bld"}}}}
+    RELEASE_JOB = BUILD_JOB | {"unity-release"}
 
-    def lender(self, *slots):
-        """slots: (kind, busy); each runner carries that kind's labels."""
-        return {f"bld-{i}": {"host": "aws-build-1", "busy": busy, "elapsed": 100 - i, "withheld": kind == "held",
-                             "labels": self.KIND[kind] | {"self-hosted", "linux", "host-aws-build-1"}}
-                for i, (kind, busy) in enumerate(slots)}
+    def paired(self, spec, waiting, cfg=None, pins=None, **inst):
+        """This cycle's actions on aws-build-1, as (action, slot number)."""
+        up = {"aws-build-1": {"state": "running", "busy_at": 10_000, "labels": PAIRED_LABELS, **inst}}
+        return sorted((a, int(r.rsplit("-", 1)[1]) if r else 0)
+                      for h, a, r, _, _ in decide(self.STEADY, paired_slots(spec), cfg=cfg or self.PAIRED,
+                                                  instances=up, waiting=waiting, pins=pins)
+                      if h == "aws-build-1" and a != "hold")
 
-    def lend_up(self, idle=0):
-        return {"aws-build-1": {"state": "running", "busy_at": 10_000 - idle,
-                                "labels": self.BUILD_LABELS | frozenset(self.LENDS)},
-                "aws-burst-1": {"state": "running", "busy_at": 10_000, "labels": AWS_LABELS}}
+    def test_no_build_admits_six_test_slots_and_no_build_slot(self):
+        self.assertEqual(settle(self.PAIRED, ".........", [UNITY_JOB] * 10), "...iiiiii")
+        # As the play registers them, every slot admitted: the build slots step aside.
+        self.assertEqual(settle(self.PAIRED, "iiiiiiiii", [UNITY_JOB] * 10), "...iiiiii")
 
-    def test_a_lender_lends_a_slot_when_no_build_waits(self):
-        got = actions(self.STEADY, {**self.lender(("held", False)), **self.FULL}, cfg=self.LEND,
-                      instances=self.lend_up(), queue=5)
-        self.assertEqual(got["aws-build-1"], ("lend", "bld-0"))
+    def test_a_waiting_build_takes_pair_1_once_both_its_tests_end(self):
+        # Both of pair 1's test slots step aside in one cycle, and the other four are left alone.
+        self.assertEqual(self.paired("...bbbbbb", [BUILD_JOB]), [("withhold", 4), ("withhold", 5)])
+        self.assertEqual(self.paired("...hhbbbb", [BUILD_JOB]), [])
+        self.assertEqual(self.paired("....hbbbb", [BUILD_JOB]), [])
+        self.assertEqual(self.paired(".....bbbb", [BUILD_JOB]), [("admit", 1)])
 
-    def test_a_waiting_build_withholds_a_lent_slot_first(self):
-        got = actions(self.STEADY, {**self.lender(("pool", True), ("held", False)), **self.FULL}, cfg=self.LEND,
-                      instances=self.lend_up(), waiting=[self.BUILD_JOB] + [UNITY_JOB] * 5)
-        self.assertEqual(got["aws-build-1"], ("withhold", "bld-0"))
+    def test_a_build_takes_the_pair_with_the_fewest_busy_tests(self):
+        self.assertEqual(self.paired("...bbbbii", [BUILD_JOB]), [("withhold", 8), ("withhold", 9)])
+        # A release build asks unity-release, which slot 3 lacks, so it takes pair 1 instead.
+        self.assertEqual(self.paired("...bbbbii", [self.RELEASE_JOB] + [UNITY_JOB] * 2), [("withhold", 4), ("withhold", 5)])
 
-    def test_a_build_waits_for_the_last_ci_job(self):
-        # Negative control for the next test: the CI job still runs on a withheld slot, so no
-        # build is admitted beside it.
-        got = actions(self.STEADY, {**self.lender(("held", True), ("held", False)), **self.FULL}, cfg=self.LEND,
-                      instances=self.lend_up(), waiting=[self.BUILD_JOB])
-        self.assertEqual(got["aws-build-1"], ("hold", ""))
+    def test_two_builds_leave_two_test_slots(self):
+        self.assertEqual(settle(self.PAIRED, "...iiiiii", [BUILD_JOB] * 2 + [UNITY_JOB] * 10), "ii.....ii")
+        self.assertEqual(settle(self.PAIRED, ".........", [BUILD_JOB] * 3 + [UNITY_JOB] * 10), "iii......")
 
-    def test_a_build_is_admitted_once_no_ci_job_runs(self):
-        got = actions(self.STEADY, {**self.lender(("held", False), ("held", False)), **self.FULL}, cfg=self.LEND,
-                      instances=self.lend_up(), waiting=[self.BUILD_JOB] + [UNITY_JOB] * 5)
-        self.assertEqual(got["aws-build-1"], ("admit", "bld-0"))
-
-    def test_a_running_build_keeps_the_pool_off_the_host(self):
-        got = actions(self.STEADY, {**self.lender(("build", True), ("held", False)), **self.FULL}, cfg=self.LEND,
-                      instances=self.lend_up(), queue=5)
-        self.assertEqual(got["aws-build-1"], ("hold", ""))
+    def test_a_busy_build_keeps_its_pair(self):
+        # No build waits and pair 1 has the most idle test slots, yet its build keeps it.
+        self.assertEqual(settle(self.PAIRED, "b....iibb", [UNITY_JOB] * 10), "b....iibb")
+        # A second build takes pair 2, the one with no busy test, and pair 1 is untouched.
+        self.assertEqual(settle(self.PAIRED, "b....iibb", [BUILD_JOB] + [UNITY_JOB] * 10), "bi.....bb")
 
     def test_an_idle_build_slot_steps_aside_when_no_build_waits(self):
-        got = actions(self.STEADY, {**self.lender(("build", False), ("held", False)), **self.FULL}, cfg=self.LEND,
-                      instances=self.lend_up(), queue=5)
-        self.assertEqual(got["aws-build-1"], ("withhold", "bld-0"))
+        self.assertEqual(self.paired("i....bbbb", [UNITY_JOB] * 5), [("withhold", 1)])
+        # Its test slots come in only once it reads withheld.
+        self.assertEqual(self.paired(".....bbbb", [UNITY_JOB] * 5), [("admit", 4)])
 
-    def test_lent_slots_count_toward_the_pool_cap(self):
-        cfg = {**self.LEND, "pool_max_admitted": 2}
-        runners = {**self.lender(("pool", True), ("pool", True), ("held", False)), **self.FULL}
-        got = actions(self.STEADY, runners, cfg=cfg, instances=self.lend_up(), queue=5)
-        self.assertEqual(got["aws-build-1"], ("hold", ""))
+    def test_slots_not_registered_yet(self):
+        # The roster is deployed before the play registers the slots.
+        self.assertEqual(self.paired("...------", [BUILD_JOB]), [("admit", 1)])
+        self.assertEqual(settle(self.PAIRED, "---......", [UNITY_JOB] * 10), "---iiiiii")
+        self.assertEqual(self.paired("---iiiiii", [BUILD_JOB] + [UNITY_JOB] * 6), [])
 
-    def test_lend_labels_swap_both_kinds(self):
-        for action, has, added, removed in (
-                ("lend", ["unity-build-withheld"], self.LENDS, ["unity-build-withheld"]),
-                ("admit", ["unity-build-withheld"], ["unity-build"], ["unity-build-withheld"]),
-                ("withhold", ["unity", "unity-full", "unity-gate"], ["unity-build-withheld"],
-                 ["unity", "unity-full", "unity-gate"])):
+    def test_a_pin_caps_the_test_slots_only(self):
+        self.assertEqual(settle(self.PAIRED, ".........", [UNITY_JOB] * 10, pins={"aws-build-1": 2}), "...ii....")
+        self.assertEqual(settle(self.PAIRED, "...iiiiii", [BUILD_JOB] + [UNITY_JOB] * 10, pins={"aws-build-1": 0}),
+                         "i........")
+        # A pin at or over the six test slots caps nothing, so it is not reported as PINNED.
+        up = {"aws-build-1": {"state": "running", "busy_at": 10_000, "labels": PAIRED_LABELS}}
+        verdicts = {v for h, _, _, v, _ in decide(self.STEADY, paired_slots("...iiiiii"), cfg=self.PAIRED,
+                                                  instances=up, waiting=[UNITY_JOB] * 10, pins={"aws-build-1": 7})
+                    if h == "aws-build-1"}
+        self.assertNotIn("PINNED", verdicts)
+
+    def test_test_slots_count_toward_the_pool_cap(self):
+        cfg = {**self.PAIRED, "pool_max_admitted": 2}
+        self.assertEqual(self.paired("...bb....", [UNITY_JOB] * 5, cfg=cfg), [])
+
+    def test_idle_off_drains_every_slot_then_stops(self):
+        self.assertEqual(self.paired("i..iiiiii", [], busy_at=10_000 - 1200), [("withhold", 1)])
+        self.assertEqual(self.paired(".........", [], busy_at=10_000 - 1200), [("stop", 0)])
+
+    def test_a_build_and_a_test_never_share_a_pair(self):
+        # Random arrivals and finishes against the live config. Run against #823's lend mode it
+        # failed at once: it lent build slot 1 to the pool beside busy test slots 4 and 5.
+        cfg = {**CFG, "standby": {"aws-build-1": LIVE["standby"]["aws-build-1"]}}
+        total = {}
+        for seed in range(20):
+            clash, stats = simulate(cfg, seed)
+            self.assertIsNone(clash, f"seed {seed}: (cycle, build slot) running beside its test slot")
+            total = {k: total.get(k, 0) + v for k, v in stats.items()}
+        # Not vacuous: builds ran, four test slots ran beside one, and all six ran with none.
+        self.assertTrue(all(total.values()), total)
+
+    def test_paired_slots_swap_their_own_labels(self):
+        for action, name, has, added, removed in (
+                ("admit", slot_name(1), "unity-build-withheld", ["unity-build"], ["unity-build-withheld"]),
+                ("withhold", slot_name(1), "unity-build", ["unity-build-withheld"], ["unity-build"]),
+                ("admit", slot_name(4), "unity-withheld", ["unity", "unity-full"], ["unity-withheld"]),
+                ("withhold", slot_name(4), "unity", ["unity-withheld"], ["unity"])):
             calls = []
 
             def gh(method, path, body=None):
                 calls.append((method, path, body))
                 if method == "GET":
-                    return {"runners": [{"id": 9, "name": "bld-1",
-                                         "labels": [{"name": "self-hosted"}] + [{"name": l} for l in has]}]}
+                    return {"runners": [{"id": 9, "name": name,
+                                         "labels": [{"name": "self-hosted"}, {"name": "unity-gate"}, {"name": has}]}]}
                 return None
-            governor.gh = gh
-            governor.apply(self.LEND, action, "bld-1", "aws-build-1")
-            self.assertEqual(calls[1][2], {"labels": sorted(added)}, action)
-            self.assertEqual(sorted(c[1].rsplit("/", 1)[1] for c in calls if c[0] == "DELETE"), sorted(removed), action)
+            with mock.patch.object(governor, "gh", gh):
+                governor.apply(self.PAIRED, action, name, "aws-build-1")
+            self.assertEqual(calls[1][2], {"labels": added}, (action, name))
+            self.assertEqual([c[1].rsplit("/", 1)[1] for c in calls if c[0] == "DELETE"], removed, (action, name))
 
-    def test_the_live_build_host_lends(self):
-        self.assertEqual(governor.lends(LIVE, "aws-build-1"), ["unity", "unity-full", "unity-gate"])
+    def test_a_step_aside_renders_one_decision_row(self):
+        runners = paired_slots("...bbbbbb")
+        up = {"aws-build-1": {"state": "running", "busy_at": 10_000, "labels": PAIRED_LABELS}}
+        decisions = decide(self.STEADY, runners, cfg=self.PAIRED, instances=up, waiting=[BUILD_JOB])
+        out = governor.render(self.PAIRED, self.STEADY, runners, 0, decisions, True)
+        self.assertEqual(sum(1 for l in out.splitlines() if l.startswith('ci_governor_decision{host="aws-build-1"')), 1)
+
+    def test_a_stopped_paired_host_starts_for_tests_on_pool_thresholds(self):
+        # Its build thresholds are 1 job and 60 s; for tests it waits for 4 and 300 s, as the
+        # burst hosts do.
+        cfg = {**self.PAIRED, "standby": {"aws-build-1": {
+            **self.PAIRED["standby"]["aws-build-1"], "power": {**POWER, "start_min_excess": 1, "start_after_seconds": 60}}}}
+
+        def start(held, **kw):
+            stopped = {"aws-build-1": {"state": "stopped", "busy_at": 10_000, "labels": PAIRED_LABELS,
+                                       "want_since": 10_000 - held}}
+            return actions(self.STEADY, self.FULL, cfg=cfg, instances=stopped, **kw)["aws-build-1"][0]
+        # Held past both waits, so only the job count can hold it: 3 is under the pool's 4.
+        self.assertEqual(start(400, queue=3), "hold")
+        self.assertEqual(start(400, queue=4), "start")
+        # Held 120 s: under the pool's 300 s, past the build's 60 s.
+        self.assertEqual(start(120, queue=6), "hold")
+        self.assertEqual(start(120, waiting=[BUILD_JOB]), "start")
+
+    def test_the_live_build_host_pairs(self):
+        self.assertEqual(governor.pairs(LIVE, "aws-build-1"), PAIRS)
 
     def test_admit_leaves_full_off_a_host_that_takes_no_full_runs(self):
         calls = []

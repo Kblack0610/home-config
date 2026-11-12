@@ -18,10 +18,12 @@ ci_memory_max: 24G
 ci_unity_cpus: ""
 ci_unity_memory_max: 16G
 # Optional: one CPU list per Unity pool slot (["2-4,10-12", "5-7,13-15"]), each
-# inside ci_unity_cpus and not overlapping. Slot n then runs in its own
-# ci-unity-<n>.slice, a child of ci-unity.slice, so two slots never take each
-# other's cores: PlayMode tests run in real time and failed when two jobs shared
-# eight threads (asus, 2026-10-06). Empty = every slot shares ci-unity.slice.
+# inside ci_unity_cpus. Slot n then runs in its own ci-unity-<n>.slice, a child of
+# ci-unity.slice, so two slots never take each other's cores: PlayMode tests run in
+# real time and failed when two jobs shared eight threads (asus, 2026-10-06). Two
+# slots overlap only where ci-runner-governor pairs them (config.json "pairs": a
+# build slot and the test slots it never runs beside, aws-build-1), which
+# scripts/check-runner-roster.py checks. Empty = every slot shares ci-unity.slice.
 # Its length must equal unity_ci_slots.
 ci_unity_slot_cpus: []
 # Memory cap of each of those slot slices, so a runaway Unity dies at this size
@@ -29,6 +31,7 @@ ci_unity_slot_cpus: []
 # than the Unity cap. Peaks count page cache, which a cap reclaims first, so a
 # peak under no pressure overstates what a job needs: razer, with room to spare,
 # saw 13 of 202 containers over 16G and killed none, including a 38.2G one.
+# A list gives each slot its own, one entry per ci_unity_slot_cpus entry.
 ci_unity_slot_memory_max: 32G
 # Unity's share of contended CPUs against the platform slice (systemd default
 # 100). Platform jobs still use Unity's CPUs when Unity is idle; when both want

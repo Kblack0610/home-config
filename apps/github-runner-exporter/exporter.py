@@ -329,15 +329,6 @@ def pool_of(labels):
     return "windows" if any(l.lower() == "windows" for l in labels) else "other"
 
 
-def runner_pool(name, labels):
-    """A runner's pool: its labels' pool, unless its host is rostered in exactly one other
-    pool. ci-runner-governor lends aws-build-1's slots to the unity pool between builds
-    (config.json "lends"), and a lent slot is still one of the unity-build pool's three."""
-    host, pool_ = host_of(name, labels), pool_of(labels)
-    home = {p for h, p, _ in ROSTER if h == host}
-    return next(iter(home)) if len(home) == 1 and pool_ not in home else pool_
-
-
 def host_of(name, labels):
     # The unity pool role stamps host-<inventory_hostname>; the others do not,
     # but name the runner <inventory_hostname>-..., so match roster hosts as
@@ -898,7 +889,7 @@ def render():
     by_state, online = {}, {}
     for scope, r in sorted(seen.values(), key=lambda s: s[1]["name"]):
         names = [l["name"] for l in r.get("labels", [])]
-        host, pool_ = host_of(r["name"], names), runner_pool(r["name"], names)
+        host, pool_ = host_of(r["name"], names), pool_of(names)
         # labels: what ci-runner-governor matches waiting jobs against, offline runners too.
         lab = {"name": r["name"], "host": host, "pool": pool_, "site": site_of(host), "scope": scope,
                "labels": ",".join(sorted(names)),
@@ -940,7 +931,7 @@ def render():
         registered = {}
         for scope, r in seen.values():
             names = [l["name"] for l in r.get("labels", [])]
-            k = (host_of(r["name"], names), runner_pool(r["name"], names))
+            k = (host_of(r["name"], names), pool_of(names))
             registered[k] = registered.get(k, 0) + 1
         for host, pool_, slots in ROSTER:
             for n in range(registered.get((host, pool_), 0), slots):
@@ -1025,7 +1016,7 @@ def render():
     # hand-written description that drifts from the workflow files.
     pool_of_runner = {}
     for scope, r in seen.values():
-        pool_of_runner[r["name"]] = runner_pool(r["name"], [l["name"] for l in r.get("labels", [])])
+        pool_of_runner[r["name"]] = pool_of([l["name"] for l in r.get("labels", [])])
     last, pool_wf = {}, {}
     for a in acts:
         for run in a["history"]:

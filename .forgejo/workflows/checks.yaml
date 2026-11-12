@@ -35,6 +35,15 @@ jobs:
         run: python3 scripts/check-fleet-roster.py
       - name: Runner roster agrees with the ansible inventory
         run: python3 scripts/check-runner-roster.py
+      # An if, not "! cmd": sh -e ignores a "!" pipeline's status, so a "!" step passes either way.
+      - name: Negative control - the roster check fails on aws-build-1 pairs swapped off their build slots' cores
+        run: |
+          python3 -c 'import json; c = json.load(open("apps/ci-runner-governor/config.json")); [s for s in c["standby"] if s.get("pairs")][0]["pairs"].update({"1": [4, 6], "2": [5, 7]}); json.dump(c, open("planted-pairs.json", "w"))'
+          rc=0; python3 scripts/check-runner-roster.py planted-pairs.json > planted-pairs.out 2>&1 || rc=$?
+          rm planted-pairs.json; cat planted-pairs.out
+          [ "$rc" -ne 0 ] || { echo "the check passed a planted bad pair"; exit 1; }
+          grep -q "cores are not inside build slot" planted-pairs.out || { echo "the check failed, but not on the planted pair"; exit 1; }
+          rm planted-pairs.out
       - name: github-runner-exporter offline tests
         run: python3 apps/github-runner-exporter/test_exporter.py
       - name: forgejo-mirror-exporter offline tests

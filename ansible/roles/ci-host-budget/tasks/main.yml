@@ -26,11 +26,12 @@
       - _ci_unity_eff | intersect(_ci_cpu_sets.linux) | length == 0
       - _ci_cpu_sets.slots | difference(_ci_unity_eff) | length == 0
       - _ci_cpu_sets.k3s | intersect(_ci_cpu_sets.ci) | length == 0
+      - ci_unity_slot_memory_max is string or ci_unity_slot_memory_max | length == ci_unity_slot_cpus | length
     fail_msg: >-
       {{ inventory_hostname }}: ci_unity_cpus (all of ci_cpus when empty) and
       ci_linux_cpus must sit inside ci_cpus and not overlap, every
-      ci_unity_slot_cpus entry inside Unity's, and k3s_cpus outside ci_cpus
-      ({{ _ci_cpu_sets }}).
+      ci_unity_slot_cpus entry inside Unity's, k3s_cpus outside ci_cpus, and a
+      ci_unity_slot_memory_max list one entry per slot ({{ _ci_cpu_sets }}).
     quiet: true
   vars:
     _ci_unity_eff: "{{ _ci_cpu_sets.unity or _ci_cpu_sets.ci }}"

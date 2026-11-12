@@ -91,15 +91,17 @@ spec:
             max by (item) (label_replace(((mqtt_tripped{topic=~"agents_.+_watch_(gateway_errors)"} and on (topic) cc:agents_topic_live) * 1 > 0) or ((mqtt_stale{topic=~"agents_.+_watch_(gateway_errors)"} and on (topic) cc:agents_topic_live) > 0), "item", "$1", "topic", "agents_.+_watch_(.+)"))
         # a watch no domain above claims still counts, so a new manifest is never invisible here.
         # aws_burst_power trips whenever the burst runner runs: it pages on start and stop, and is no fault.
+        # Neptune (the 3D printer) warns and never reds: it is off or asleep most days and rarely used (human, 2026-11-12).
         - record: cc:watch_state
           labels: {domain: other}
           expr: >-
-            max by (item) (label_replace(((mqtt_tripped{topic=~"agents_.+_watch_.+",topic!~"agents_.+_watch_aws_burst_power"} and on (topic) cc:agents_topic_live) * 2 > 0) or ((mqtt_stale{topic=~"agents_.+_watch_.+",topic!~"agents_.+_watch_aws_burst_power"} and on (topic) cc:agents_topic_live) > 0), "item", "$1", "topic", "agents_.+_watch_(.+)")) unless on (item) cc:watch_state{domain!="other"}
+            max by (item) (label_replace(((mqtt_tripped{topic=~"agents_.+_watch_.+",topic!~"agents_.+_watch_(aws_burst_power|neptune_.+)"} and on (topic) cc:agents_topic_live) * 2 > 0) or ((mqtt_tripped{topic=~"agents_.+_watch_neptune_.+"} and on (topic) cc:agents_topic_live) > 0) or ((mqtt_stale{topic=~"agents_.+_watch_.+",topic!~"agents_.+_watch_aws_burst_power"} and on (topic) cc:agents_topic_live) > 0), "item", "$1", "topic", "agents_.+_watch_(.+)")) unless on (item) cc:watch_state{domain!="other"}
         # Home Assistant's connectivity sensors, the wall pill's "N down": fleet_alerts.yaml publishes each one
+        # Neptune's sensors warn, not red, like its watches in other.
         - record: cc:watch_state
           labels: {domain: home}
           expr: >-
-            max by (item) (label_replace((mqtt_tripped{topic=~"agents_hass_conn_.+"} and on (topic) cc:agents_topic_live) * 2 > 0, "item", "$1", "topic", "agents_hass_conn_(.+)"))
+            max by (item) (label_replace(((mqtt_tripped{topic=~"agents_hass_conn_.+",topic!~"agents_hass_conn_neptune_.+"} and on (topic) cc:agents_topic_live) * 2 > 0) or ((mqtt_tripped{topic=~"agents_hass_conn_neptune_.+"} and on (topic) cc:agents_topic_live) > 0), "item", "$1", "topic", "agents_hass_conn_(.+)"))
         - record: cc:component_status
           labels: {domain: k3s, component: watches}
           expr: >-

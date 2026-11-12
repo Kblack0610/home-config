@@ -457,6 +457,36 @@ tests:
           - labels: 'cc:red_now{item="watch voice_bedroom_puck"}'
             value: 1
 
+  - name: Neptune down warns but never makes the system red
+    interval: 1m
+    input_series:
+      - series: 'mqtt_tripped{topic="agents_hass_conn_neptune_kblab_me"}'
+        values: '1x10'
+      - series: 'mqtt_message_total{topic="agents_hass_conn_neptune_kblab_me"}'
+        values: '0+1x10'
+      - series: 'mqtt_tripped{topic="agents_h_watch_neptune_health"}'
+        values: '1x10'
+      - series: 'mqtt_message_total{topic="agents_h_watch_neptune_health"}'
+        values: '0+1x10'
+    promql_expr_test:
+      - expr: cc:watch_state{item=~"neptune.+"}
+        eval_time: 5m
+        exp_samples:
+          - labels: 'cc:watch_state{domain="home",item="neptune_kblab_me"}'
+            value: 1
+          - labels: 'cc:watch_state{domain="other",item="neptune_health"}'
+            value: 1
+      - expr: cc:domain_status{domain=~"home|other"}
+        eval_time: 5m
+        exp_samples:
+          - labels: 'cc:domain_status{domain="home"}'
+            value: 1
+          - labels: 'cc:domain_status{domain="other"}'
+            value: 1
+      - expr: cc:red_now{item=~".*neptune.*"}
+        eval_time: 5m
+        exp_samples: []
+
   - name: home warns when Home Assistant stops reporting, rather than reading up
     interval: 1m
     input_series:

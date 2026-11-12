@@ -329,6 +329,27 @@ class ExporterTest(unittest.TestCase):
         (gone,) = [r for r in state if 'host="gone"' in r]
         self.assertIn('site="cloud"', gone)
 
+    def test_a_feed_repo_feeds_the_feed_and_is_no_runner_source_and_no_metric(self):
+        # acme/game read only for the feed: never asked for runners, which needs admin on it (a
+        # runner source that cannot answer would blank the pool counts), and none of its jobs
+        # count in the pool's metrics.
+        with mock.patch.object(exporter, "RUN_REPOS", ["acme/web"]), \
+                mock.patch.object(exporter, "FEED_REPOS", ["acme/game"]):
+            out = self.render(broken=("repos/acme/game/actions/runners",))
+            page = exporter.feed_page(0, 100)
+        self.assertFalse(any(c.startswith("repos/acme/game/actions/runners") for c in exporter.get.calls))
+        self.assertNotIn('source="repos/acme/game",kind="runners"', out)
+        self.assertIn('github_runner_exporter_api_ok{source="repos/acme/game",kind="runs",forge="github"} 1', out)
+        self.assertTrue(rows(out, "github_runner_pool_online"))
+        self.assertFalse([r for r in out.splitlines() if not r.startswith(("#", "github_runner_exporter_api_ok")) and 'repo="game"' in r])
+        self.assertEqual(page["repos"], ["acme/web", "acme/game"])
+        self.assertIn("acme/game", {r["repo"] for r in page["runs"]})
+        # Negative control: as a pool repo, the same broken listing blanks the pool counts and its jobs count.
+        out = self.render(broken=("repos/acme/game/actions/runners",))
+        self.assertIn('github_runner_exporter_api_ok{source="repos/acme/game",kind="runners",forge="github"} 0', out)
+        self.assertFalse(rows(out, "github_runner_pool_online"))
+        self.assertIn('github_hosted_jobs_running{repo="game"} 1', out)
+
     def test_github_hosted_jobs_running_counts_only_githubs_runners(self):
         out = self.render()
         self.assertIn('github_hosted_jobs_running{repo="game"} 1', out)

@@ -194,6 +194,25 @@
     creates: "{{ ansible_env.HOME }}/Library/LaunchAgents/{{ gh_runner_mac_svc_name }}.plist"
   when: not ansible_check_mode
 
+# svc.sh writes RunAtLoad only, and runsvc.sh exits 0 when its node wrapper is signalled, so
+# a killed runner stayed down until the next boot (2026-11-12: an agent's `pkill -x node` took
+# both mac-mini runners offline for 45 minutes). KeepAlive has launchd start it again; svc.sh
+# stop unloads the job, so a deliberate stop still holds.
+- name: Read the LaunchAgent's KeepAlive
+  ansible.builtin.command:
+    argv: [plutil, -extract, KeepAlive, raw, "{{ ansible_env.HOME }}/Library/LaunchAgents/{{ gh_runner_mac_svc_name }}.plist"]
+  register: _gh_mac_keepalive_now
+  changed_when: false
+  failed_when: false
+  check_mode: false
+
+- name: Restart the runner whenever its process exits (KeepAlive)
+  ansible.builtin.command:
+    argv: [plutil, -replace, KeepAlive, -bool, "true", "{{ ansible_env.HOME }}/Library/LaunchAgents/{{ gh_runner_mac_svc_name }}.plist"]
+  register: _gh_mac_keepalive
+  changed_when: true
+  when: _gh_mac_keepalive_now.stdout | trim != 'true'
+
 # The runner reads .env and .path when it starts, so a change needs a restart. A restart
 # kills the job the runner is running, so it waits for an idle runner; one skipped under
 # a job is kept in a marker file, since the next apply would otherwise see no change.
@@ -214,7 +233,7 @@
 
 - name: Decide whether the runner restarts now
   ansible.builtin.set_fact:
-    _gh_mac_restart: "{{ _gh_mac_env_file is changed or _gh_mac_path_file is changed or _gh_mac_pending.stat.exists }}"
+    _gh_mac_restart: "{{ _gh_mac_env_file is changed or _gh_mac_path_file is changed or _gh_mac_keepalive is changed or _gh_mac_pending.stat.exists }}"
     _gh_mac_is_busy: "{{ _gh_mac_busy.rc == 0 }}"
 
 # Reported as changed, so a deferred restart shows in ConvergenceDrift until it runs.

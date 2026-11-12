@@ -51,11 +51,13 @@
   register: macos_autologin_user
   changed_when: false
   failed_when: false
+  check_mode: false  # read-only; skipped, the assert below fails every --check run
 
 - name: Read FileVault status
   ansible.builtin.command: fdesetup status
   register: macos_filevault
   changed_when: false
+  check_mode: false
 
 - name: Assert unattended-restart prerequisites (auto-login on, FileVault off)
   ansible.builtin.assert:

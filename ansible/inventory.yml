@@ -185,14 +185,27 @@ all:
           ci_heavy_slots: 1
         # The heavy slot was 0 for a few hours on 2026-11-03 while two Unity
         # slots filled its 20G ci.slice; with Unity gone it fits again.
+        # Five light slots since 2026-11-12, was two. Light is the front door of
+        # Unity CI: in 6h it ran 220 jobs (9.3 runner-hours, 1.6 slots busy on
+        # average), 105 PlayMode plan (avg 1.8 min) and about 93 report jobs, so
+        # it starves in bursts (23 waiting at once; waiting 11% of 7 days, 5+
+        # waiting 2.7%), not on throughput. Light jobs are small: 0.5-0.6G anon
+        # each here (memory.stat; the 7.4G MemoryPeak was mostly page cache),
+        # 0.4 cores average, p95 about 2.2. This host has room: load5 p95 9.3 on
+        # 16 CI CPUs, ci-linux.slice anon 1.1G with 3 runners busy, cap 20G.
+        # Revisit a 6th slot after a day of load and temperature at 5.
         hp-victus:
-          ci_light_slots: 2
+          ci_light_slots: 5
           ci_heavy_slots: 1
-        # One of each since 2026-11-10, on cores of their own (ci_linux_cpus in
+        # One of each from 2026-11-10, on cores of their own (ci_linux_cpus in
         # ci_hosts). Three light and a heavy shared Unity's cores at a quarter of
-        # its weight and blew their caps (platform #1488, #1489).
+        # its weight and blew their caps (platform #1488, #1489). Two light since
+        # 2026-11-12 for the light bursts (see hp-victus): the light runners have
+        # their own 6 threads (ci_linux_cpus 5-7,13-15) and 40G, and a light job
+        # is 0.5-0.6G anon. Heavy stays at one: it waited 6% of 7 days with
+        # bursts to 18, but heavy jobs publish fixed host ports.
         razer-laptop:
-          ci_light_slots: 1
+          ci_light_slots: 2
           ci_heavy_slots: 1
 
     # BNB Unity runner pool (added 2026-10-05; the "Unity CI runner pool" play in

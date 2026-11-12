@@ -80,11 +80,15 @@ spec:
         - record: cc:watch_state
           labels: {domain: spend}
           expr: >-
-            max by (item) (label_replace(((mqtt_tripped{topic=~"agents_.+_watch_(lazer_pool_pace|gh_actions_budget_pace|claude_spend_(?:hourly|daily)|claude_account_pace|claude_acct_usage)"} and on (topic) cc:agents_topic_live) * 1 > 0) or ((mqtt_stale{topic=~"agents_.+_watch_(lazer_pool_pace|gh_actions_budget_pace|claude_spend_(?:hourly|daily)|claude_account_pace|claude_acct_usage)"} and on (topic) cc:agents_topic_live) > 0), "item", "$1", "topic", "agents_.+_watch_(.+)"))
+            max by (item) (label_replace(((mqtt_tripped{topic=~"agents_.+_watch_(source_pace|gh_actions_budget_pace|fleet_budget_pace|claude_spend_(?:hourly|daily)|claude_account_pace|claude_acct_usage)"} and on (topic) cc:agents_topic_live) * 1 > 0) or ((mqtt_stale{topic=~"agents_.+_watch_(source_pace|gh_actions_budget_pace|fleet_budget_pace|claude_spend_(?:hourly|daily)|claude_account_pace|claude_acct_usage)"} and on (topic) cc:agents_topic_live) > 0), "item", "$1", "topic", "agents_.+_watch_(.+)"))
         - record: cc:watch_state
           labels: {domain: platform}
           expr: >-
-            max by (item) (label_replace(((mqtt_tripped{topic=~"agents_.+_watch_(skill_drift|mem0_search_path|deploy_drift|fleet_liveness)"} and on (topic) cc:agents_topic_live) * 1 > 0) or ((mqtt_stale{topic=~"agents_.+_watch_(skill_drift|mem0_search_path|deploy_drift|fleet_liveness)"} and on (topic) cc:agents_topic_live) > 0), "item", "$1", "topic", "agents_.+_watch_(.+)"))
+            max by (item) (label_replace(((mqtt_tripped{topic=~"agents_.+_watch_(skill_drift|mem0_search_path|deploy_drift|fleet_liveness|release_drift|release_links)"} and on (topic) cc:agents_topic_live) * 1 > 0) or ((mqtt_stale{topic=~"agents_.+_watch_(skill_drift|mem0_search_path|deploy_drift|fleet_liveness|release_drift|release_links)"} and on (topic) cc:agents_topic_live) > 0), "item", "$1", "topic", "agents_.+_watch_(.+)"))
+        - record: cc:watch_state
+          labels: {domain: llm}
+          expr: >-
+            max by (item) (label_replace(((mqtt_tripped{topic=~"agents_.+_watch_(gateway_errors)"} and on (topic) cc:agents_topic_live) * 1 > 0) or ((mqtt_stale{topic=~"agents_.+_watch_(gateway_errors)"} and on (topic) cc:agents_topic_live) > 0), "item", "$1", "topic", "agents_.+_watch_(.+)"))
         # a watch no domain above claims still counts, so a new manifest is never invisible here.
         # aws_burst_power trips whenever the burst runner runs: it pages on start and stop, and is no fault.
         - record: cc:watch_state
@@ -124,6 +128,10 @@ spec:
           labels: {domain: platform, component: watches}
           expr: >-
             max(cc:watch_state{domain="platform"}) or vector(0)
+        - record: cc:component_status
+          labels: {domain: llm, component: watches}
+          expr: >-
+            max(cc:watch_state{domain="llm"}) or vector(0)
         - record: cc:component_status
           labels: {domain: other, component: watches}
           expr: >-
@@ -175,18 +183,15 @@ spec:
             (((time() - max(mqtt_updated_epoch{topic=~"agents_.+_runner_sentinel"}) > 1800) * 0 + 2)
               unless on () (cc:component_status{domain="agents",component="feed"} > 0))
             or (absent(mqtt_updated_epoch{topic=~"agents_.+_runner_sentinel"}) * 2) or vector(0)
-    - name: command-center.rollup
-      interval: 1m
-      rules:
+        # The rollups stay in this group, after the rules they read: a group evaluates in order at one
+        # timestamp, while a separate group reads the previous tick, so a cleared watch left "home"
+        # DOWN for a minute with no watch or component to name why (2026-11-12).
         - record: cc:domain_status
           expr: max by (domain) (cc:component_status)
         - record: cc:overall_status
           expr: max(cc:domain_status)
-    # What is red right now, value 1 per item. The dashboard's "What is red" table, the hub
-    # board's red-now line and the waybar day chip read this one series, so they cannot disagree.
-    - name: command-center.red
-      interval: 1m
-      rules:
+        # What is red right now, value 1 per item. The dashboard's "What is red" table, the hub
+        # board's red-now line and the waybar day chip read this one series, so they cannot disagree.
         - record: cc:red_now
           expr: >-
             clamp_max(count by (item) (

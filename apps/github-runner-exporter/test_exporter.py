@@ -1076,13 +1076,44 @@ class DetailFeedTest(unittest.TestCase):
         # Finished and out of the cached lists, it stays a window for the reader.
         self.assertIn(5, exporter.RUN_FEED)
 
-    def test_a_capped_active_list_reads_no_lost_run(self):
+    def test_lost_reads_take_turns_and_a_run_github_lost_is_dropped(self):
         self.render()
+        for rid in (5, 6):
+            exporter.run_feed_store("acme/web", {"id": rid, "name": "Nightly", "status": "in_progress", "created_at": OLD})
+        gone = urllib.error.HTTPError("x", 404, "Not Found", {}, None)
+
+        class Getter(Fake):
+            def __call__(self, path, kind="other"):
+                if path == "repos/acme/web/actions/runs/6":
+                    self.calls.append(path)
+                    raise gone
+                return super().__call__(path, kind)
+        lost = lambda g: [c for c in g.calls if c in ("repos/acme/web/actions/runs/5", "repos/acme/web/actions/runs/6")]
+        with mock.patch.object(exporter, "HISTORY_CALL_BUDGET", 1):
+            self.expire_history()
+            exporter.get = first = Getter()
+            exporter.render()  # 5 is read (no answer: it stays open)
+            self.expire_history()
+            exporter.get = second = Getter()
+            exporter.render()  # then 6, not 5 again: GitHub says 404, so it goes
+        self.assertEqual((lost(first), lost(second)), (["repos/acme/web/actions/runs/5"], ["repos/acme/web/actions/runs/6"]))
+        self.assertIn(5, exporter.RUN_FEED)
+        self.assertNotIn(6, exporter.RUN_FEED)
+
+    def test_an_open_record_unread_for_a_week_is_dropped(self):
         exporter.run_feed_store("acme/web", {"id": 5, "name": "Nightly", "status": "in_progress", "created_at": OLD})
-        self.expire_history()
-        capped = {"total_count": 40, "workflow_runs": []}
-        get = self.render({"repos/acme/web/actions/runs?status=queued&per_page=15": capped})
-        self.assertNotIn("repos/acme/web/actions/runs/5", get.calls)
+        exporter.run_feed_store("acme/web", {"id": 6, "name": "Nightly", "status": "in_progress", "created_at": OLD})
+        exporter.RUN_FEED[5]["stored_at"] -= exporter.RUN_FEED_OPEN_SECS + 1
+        self.render()
+        self.assertNotIn(5, exporter.RUN_FEED)
+        self.assertIn(6, exporter.RUN_FEED)
+
+    def test_an_older_read_of_the_same_state_does_not_overwrite_a_newer_one(self):
+        run = {"id": 5, "name": "N", "status": "in_progress", "created_at": T0, "updated_at": T2}
+        exporter.run_feed_store("acme/web", run)
+        seq = exporter.RUN_FEED[5]["seq"]
+        exporter.run_feed_store("acme/web", dict(run, updated_at=T1, run_started_at=T0))
+        self.assertEqual(exporter.RUN_FEED[5]["seq"], seq)
 
     def test_a_rerun_is_fetched_for_its_new_attempt(self):
         self.render()

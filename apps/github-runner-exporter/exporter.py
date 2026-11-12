@@ -465,6 +465,11 @@ def feed_store(repo, run, jobs, complete):
 STATUS_RANK = {"requested": 0, "waiting": 0, "pending": 0, "queued": 1, "in_progress": 2, "completed": 3}
 
 
+# An open run record older than this is dropped unread: no run of ours stays open a week,
+# and one GitHub never answers for must not be held (and read) forever.
+RUN_FEED_OPEN_SECS = 7 * 86400
+
+
 def run_state(run):
     """What has to change for a run to be served again: the ledger's row changes with it."""
     done = run.get("status") == "completed"
@@ -472,17 +477,19 @@ def run_state(run):
             run.get("run_started_at"), run.get("updated_at") if done else None)
 
 
+def run_order(run):
+    """Where a read of a run sits in its life; a read behind the stored one is older news."""
+    return (run.get("run_attempt") or 1, STATUS_RANK.get(run.get("status"), 0), run.get("updated_at") or "")
+
+
 def run_feed_store(repo, run):
-    rec = slim(run, RUN_KEYS)
     with FEED_LOCK:
         old = RUN_FEED.get(run["id"])
-        if old and run_state(old["run"])[:2] > run_state(rec)[:2]:
-            return
-        if old and run_state(old["run"]) == run_state(rec):
+        if old and (run_order(old["run"]) > run_order(run) or run_state(old["run"]) == run_state(run)):
             return
         FEED_SEQ[0] += 1
         RUN_FEED[run["id"]] = {"seq": FEED_SEQ[0], "forge": "github", "repo": repo, "stored_at": int(time.time()),
-                               "run": rec}
+                               "run": slim(run, RUN_KEYS)}
 
 
 def feed_page(cursor, limit):
@@ -498,21 +505,29 @@ def feed_page(cursor, limit):
             "next": page[-1][0] if page else cursor, "more": len(recs) > limit, "records": records, "runs": runs}
 
 
-def lost_runs(repo, active, counts, now):
-    """Runs the feed holds open that left the active lists and are older than the window,
-    so the completed list will never show how they ended: each is read by id, from the
-    history budget, until a read says it finished. Only when both active lists were read
-    whole (a capped list may have left a live run off)."""
-    if any(n > MAX_RUNS_PER_REPO for n in counts.values()):
-        return []
+def lost_runs(repo, active, now):
+    """Runs the feed holds open that are off the active lists read this scrape and older than
+    the window, so the completed list will never show how they ended: each is read by id,
+    from the history budget, the longest unread first, until a read says it finished. A run
+    a capped active list left off is read too, and stays open. One GitHub no longer has (404)
+    is dropped."""
     edge, ids = now - HISTORY_WINDOW_SECS, {r["id"] for r in active}
     with FEED_LOCK:
-        lost = [r["run"] for r in RUN_FEED.values() if r["repo"] == repo and r["run"].get("status") != "completed"
-                and r["run"]["id"] not in ids and (ts(r["run"].get("created_at")) or 0) < edge]
+        lost = sorted((r for r in RUN_FEED.values() if r["repo"] == repo and r["run"].get("status") != "completed"
+                       and r["run"]["id"] not in ids and (ts(r["run"].get("created_at")) or 0) < edge),
+                      key=lambda r: r.get("tried", 0))
+        lost = lost[:spend(len(lost))]
+        for r in lost:
+            r["tried"] = now
     out = []
-    for run in lost[:spend(len(lost))]:
+    for rec in lost:
+        rid = rec["run"]["id"]
         try:
-            out.append(get(f"repos/{repo}/actions/runs/{run['id']}", "lost_runs"))
+            out.append(get(f"repos/{repo}/actions/runs/{rid}", "lost_runs"))
+        except urllib.error.HTTPError as e:
+            if e.code == 404:
+                with FEED_LOCK:
+                    RUN_FEED.pop(rid, None)
         except API_ERRORS:
             pass
     return out
@@ -598,6 +613,10 @@ def repo_activity(repo, now):
         out["recent"] = out["history"][:RECENT_PER_REPO]
         for run in out["history"]:
             run_feed_store(repo, run)
+        # Before the job detail, which can spend the whole budget on a cold or busy scrape;
+        # with the history refresh, every HISTORY_REFRESH_SECS, not every scrape.
+        for run in lost_runs(repo, active, now) if refreshed else ():
+            run_feed_store(repo, run)
         # Uncached finished runs in parallel, newest first, within the scrape's
         # budget (see HISTORY_CALL_BUDGET): sequentially, 60 of them took 51s.
         # A run is fetched again when its attempt moved (a re-run finished) or
@@ -621,10 +640,6 @@ def repo_activity(repo, now):
             for run, got in zip(todo, ex.map(jobs_of, todo)):
                 if got is not None:
                     feed_store(repo, run, [slim_job(j) for j in got[0]], got[1])
-        # After the job detail, from what budget it left; with the history refresh,
-        # every HISTORY_REFRESH_SECS, not every scrape.
-        for run in lost_runs(repo, active, out["counts"], now) if refreshed else ():
-            run_feed_store(repo, run)
     except API_ERRORS:
         out["ok"] = False
     return out
@@ -1150,10 +1165,10 @@ def render():
             FEED.pop(rid, None)
         # A run record goes a window after its last change once it is finished and out of
         # the cached lists (a lost run's end is out of them from the start); an open one
-        # stays until a read says how it ended (lost_runs).
-        edge = time.time() - HISTORY_WINDOW_SECS
-        for rid in [k for k, r in RUN_FEED.items()
-                    if k not in live and r["run"].get("status") == "completed" and r["stored_at"] < edge]:
+        # stays until a read says how it ended (lost_runs), or RUN_FEED_OPEN_SECS.
+        t = time.time()
+        for rid in [k for k, r in RUN_FEED.items() if k not in live and r["stored_at"] < t - (
+                HISTORY_WINDOW_SECS if r["run"].get("status") == "completed" else RUN_FEED_OPEN_SECS)]:
             del RUN_FEED[rid]
     return "\n".join(L) + "\n"
 

@@ -21,6 +21,7 @@ resources:
   - markets-compact-cronjob.yaml
   - markets-history-cronjob.yaml
   - trader-markets-s3-secret.sops.yaml
+  - trader-odds-api-secret.sops.yaml
   - trader-brokers-secret.sops.yaml
   - broker-cronjob.yaml
   - trader-kalshi-demo-secret.sops.yaml

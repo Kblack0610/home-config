@@ -25,7 +25,7 @@ def scratch_db(path, secrets, two_factor=0):
         CREATE TABLE two_factor (id INTEGER PRIMARY KEY);
         CREATE TABLE push_mirror (id INTEGER PRIMARY KEY, private_key BLOB);
         CREATE TABLE webhook (id INTEGER PRIMARY KEY, header_authorization_encrypted TEXT);
-        CREATE TABLE login_source (id INTEGER PRIMARY KEY);
+        CREATE TABLE login_source (id INTEGER PRIMARY KEY, type INTEGER);
         CREATE TABLE task (id INTEGER PRIMARY KEY, status INTEGER);
         """
     )
@@ -74,10 +74,9 @@ class Rfc8439(unittest.TestCase):
             rotate.xchacha_decrypt(key, bytes(sealed), b"data:1")
 
     def test_hkdf_vector(self):
-        # RFC 5869 test case 3 (empty salt and info), first 32 bytes.
-        ikm = bytes([0x0B] * 22)
-        prk = rotate.hmac.new(b"\x00" * 32, ikm, rotate.hashlib.sha256).digest()
-        self.assertEqual(prk.hex(), "19ef24a32c717b167f33a91d6f648bdf96596776afdb6377ac434c1c293ccb04")
+        # RFC 5869 test case 3 (empty salt and info): the first 32 bytes of its OKM.
+        okm = rotate.hkdf_sha256_32(bytes([0x0B] * 22), b"")
+        self.assertEqual(okm.hex(), "8da4e775a563c18f715f802a063c5a31b8a11f5c5ee1879ec3454e5f3c738d2d")
 
 
 class Rotate(unittest.TestCase):
@@ -111,6 +110,32 @@ class Rotate(unittest.TestCase):
         with mock.patch.dict(os.environ, {"OLD_SECRET_KEY": "not-the-key", "NEW_SECRET_KEY": NEW}):
             with self.assertRaises(SystemExit):
                 rotate.main([self.db, "--apply"])
+
+    def test_short_new_key_refuses_on_dry_run(self):
+        scratch_db(self.db, {1: b"alpha"})
+        with mock.patch.dict(os.environ, {"NEW_SECRET_KEY": "short"}):
+            with self.assertRaises(SystemExit):
+                rotate.main([self.db])
+
+    def test_oauth_login_source_does_not_block(self):
+        scratch_db(self.db, {1: b"alpha"})
+        db = sqlite3.connect(self.db)
+        db.execute("INSERT INTO login_source VALUES (1, 6)")
+        db.commit()
+        self.assertEqual(rotate.main([self.db]), 0)
+        db.execute("INSERT INTO login_source VALUES (2, 2)")
+        db.commit()
+        with self.assertRaises(SystemExit):
+            rotate.main([self.db])
+
+    def test_null_row_refuses_cleanly(self):
+        scratch_db(self.db, {1: b"alpha"})
+        db = sqlite3.connect(self.db)
+        db.execute("INSERT INTO secret VALUES (2, NULL)")
+        db.commit()
+        with self.assertRaises(SystemExit) as cm:
+            rotate.main([self.db])
+        self.assertIn("secret id 2", str(cm.exception.code))
 
     def test_other_secret_key_data_refuses(self):
         scratch_db(self.db, {1: b"alpha"}, two_factor=1)

@@ -43,8 +43,10 @@ Commit and push, then delete the pod, because a changed Secret does not restart 
 
 1. Put the new key in `secret.sops.yaml` without printing it: `kubectl -n forgejo exec deploy/forgejo -c forgejo -- forgejo generate secret SECRET_KEY | python3 -c 'import json,sys; print(json.dumps(sys.stdin.read().strip()))' | sops set --value-stdin apps/forgejo/secret.sops.yaml '["stringData"]["FORGEJO__security__SECRET_KEY"]'`, then open the PR.
 2. `flux suspend kustomization apps`, merge, `flux reconcile source git flux-system`, then `kubectl -n forgejo scale deploy/forgejo --replicas=0`.
-3. On hp-victus, copy `/srv/forgejo/data/gitea/gitea.db` aside (the rollback), then run the tool as uid 1000 with `OLD_SECRET_KEY` (omit while it is the default) and `NEW_SECRET_KEY` in the environment: once without `--apply` (every row must decrypt), then with it.
+3. On hp-victus, copy `/srv/forgejo/data/gitea/gitea.db` aside (the rollback), then run the tool as uid 1000 with `OLD_SECRET_KEY` (omit while it is the default) and `NEW_SECRET_KEY` in the environment, both from `sops -d --extract '["stringData"]["FORGEJO__security__SECRET_KEY"]'` piped into the remote environment, never typed: once without `--apply` (every row must decrypt and the new key must pass its checks), then with it. Do not resume until `--apply` prints that every row read back.
 4. `flux resume kustomization apps`. Check with a `workflow_dispatch` of `mirror-to-github`, which reads the `MIRROR_DEPLOY_KEY` secret.
+
+Snapshots and nightly fulls from before the rotation hold secrets sealed under the old key: restoring one needs that key back in the Secret, or the tool run again. Sessions, cookies and email codes do not use `SECRET_KEY` in 14.x, so nobody is logged out.
 
 Rollback: stop Forgejo, put the copied db back, revert the key, start it.
 

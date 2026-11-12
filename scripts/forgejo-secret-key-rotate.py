@@ -122,14 +122,19 @@ def aead_decrypt(key, nonce12, sealed, ad):
     return chacha20_xor(key, 1, nonce12, ct)
 
 
+def hkdf_sha256_32(ikm, info):
+    # RFC 5869 with an empty salt (HashLen zero bytes) and L=32, so Expand is T(1).
+    prk = hmac.new(b"\x00" * 32, ikm, hashlib.sha256).digest()
+    return hmac.new(prk, info + b"\x01", hashlib.sha256).digest()
+
+
 def derive_key(secret_key, context):
-    # Go's hkdf.Extract with a nil salt (32 zero bytes), then hkdf.Expand(info=context, 32).
-    prk = hmac.new(b"\x00" * 32, secret_key.encode(), hashlib.sha256).digest()
-    return hmac.new(prk, context + b"\x01", hashlib.sha256).digest()
+    # modules/keying: hkdf.Extract(sha256, SECRET_KEY, nil), then Expand(info=context).
+    return hkdf_sha256_32(secret_key.encode(), context)
 
 
 def xchacha_decrypt(key, sealed, ad):
-    if len(sealed) <= NONCE_SIZE + 16:
+    if len(sealed) < NONCE_SIZE + 16:
         raise ValueError("ciphertext shorter than its nonce and tag")
     nonce = sealed[:NONCE_SIZE]
     return aead_decrypt(hchacha20(key, nonce[:16]), b"\x00" * 4 + nonce[16:], sealed[NONCE_SIZE:], ad)
@@ -145,12 +150,13 @@ def column_and_id(column, row_id):
     return column.encode() + b":" + struct.pack(">Q", row_id)
 
 
-# Other data sealed with SECRET_KEY; this tool migrates none of it.
+# Every other in-tree SECRET_KEY user in 14.0.4 (keying.* and secret.EncryptSecret
+# callers); this tool migrates none of it. Sessions and cookies do not use the key.
 UNHANDLED = {
     "two_factor (TOTP)": "SELECT count(*) FROM two_factor",
     "push_mirror private keys": "SELECT count(*) FROM push_mirror WHERE coalesce(length(private_key), 0) > 0",
     "webhook auth headers": "SELECT count(*) FROM webhook WHERE coalesce(header_authorization_encrypted, '') != ''",
-    "login_source (LDAP bind)": "SELECT count(*) FROM login_source",
+    "login_source (LDAP bind)": "SELECT count(*) FROM login_source WHERE type IN (2, 5)",  # LDAP, DLDAP
     "pending migrate tasks": "SELECT count(*) FROM task WHERE status IN (0, 1)",
 }
 
@@ -163,15 +169,21 @@ def main(argv=None):
 
     old = os.environ.get("OLD_SECRET_KEY") or FORGEJO_DEFAULT_SECRET_KEY
     new = os.environ.get("NEW_SECRET_KEY", "")
-    if args.apply and len(new) < 32:
+    # Checked whenever it is set, so the dry run catches a bad key before the downtime.
+    if (args.apply or new) and len(new) < 32:
         sys.exit("NEW_SECRET_KEY is unset or shorter than 32 characters")
-    if args.apply and new == old:
+    if new == old:
         sys.exit("NEW_SECRET_KEY equals the old key")
 
-    db = sqlite3.connect(args.db, isolation_level=None)
+    # timeout: wait out the hourly snapshot's VACUUM INTO instead of failing on a busy db.
+    db = sqlite3.connect(args.db, isolation_level=None, timeout=120)
+    if args.apply:
+        # Held from the first read to the commit, so no row can change or appear in between.
+        db.execute("BEGIN EXCLUSIVE")
     blockers = {name: db.execute(q).fetchone()[0] for name, q in UNHANDLED.items()}
     blockers = {k: v for k, v in blockers.items() if v}
     if blockers:
+        db.close()
         sys.exit(f"refusing: other SECRET_KEY data exists that this tool does not migrate: {blockers}")
 
     old_key = derive_key(old, ACTION_SECRET_CONTEXT)
@@ -180,14 +192,14 @@ def main(argv=None):
     for row_id, data in rows:
         try:
             plain[row_id] = xchacha_decrypt(old_key, bytes(data), column_and_id("data", row_id))
-        except ValueError as exc:
+        except (ValueError, TypeError) as exc:
+            db.close()
             sys.exit(f"secret id {row_id} does not decrypt under the old key ({type(exc).__name__}); nothing changed")
     print(f"{len(plain)} secrets decrypt under the old key")
     if not args.apply:
         return 0
 
     new_key = derive_key(new, ACTION_SECRET_CONTEXT)
-    db.execute("BEGIN EXCLUSIVE")
     try:
         for row_id, pt in plain.items():
             ad = column_and_id("data", row_id)

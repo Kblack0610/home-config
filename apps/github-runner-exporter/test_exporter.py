@@ -466,8 +466,11 @@ class ExporterTest(unittest.TestCase):
         with mock.patch.object(exporter, "ROSTER", [("aws-build-1", "unity-build", 3), ("razer", "light", 1),
                                                     ("razer", "unity", 1)]):
             self.assertEqual(exporter.runner_pool("aws-build-1-unity-pool-1", lent), "unity-build")
-            # Negative control: a host rostered in more than one pool keeps its labels' pool.
+            # Negative controls: a host rostered in more than one pool, or in one that is not
+            # unity-build, keeps its labels' pool.
             self.assertEqual(exporter.runner_pool("razer-unity-pool-1", ["self-hosted", "unity", "host-razer"]), "unity")
+        with mock.patch.object(exporter, "ROSTER", [("mini", "macos", 2)]):
+            self.assertEqual(exporter.runner_pool("mini-1", ["self-hosted", "unity", "host-mini"]), "unity")
 
     def test_no_token_everything_failed(self):
         out = self.render(broken=("orgs/", "repos/"))

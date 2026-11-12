@@ -1069,6 +1069,70 @@ class GovernorTest(unittest.TestCase):
             self.assertEqual(calls[1][2], {"labels": sorted(added)}, action)
             self.assertEqual(sorted(c[1].rsplit("/", 1)[1] for c in calls if c[0] == "DELETE"), sorted(removed), action)
 
+    def test_a_waiting_build_withholds_every_lent_slot_at_once(self):
+        # One per cycle would leave a slot that frees meanwhile to take the next pool job.
+        runners = {**self.lender(("pool", True), ("pool", True), ("pool", False)), **self.FULL}
+        got = [(a, r) for h, a, r, _, _ in decide(self.STEADY, runners, cfg=self.LEND, instances=self.lend_up(),
+                                                  waiting=[self.BUILD_JOB] + [UNITY_JOB] * 20) if h == "aws-build-1"]
+        self.assertEqual(sorted(got), [("withhold", "bld-0"), ("withhold", "bld-1"), ("withhold", "bld-2")])
+
+    def test_a_switch_renders_one_decision_row(self):
+        runners = {**self.lender(("pool", True), ("pool", True)), **self.FULL}
+        decisions = decide(self.STEADY, runners, cfg=self.LEND, instances=self.lend_up(), waiting=[self.BUILD_JOB])
+        out = governor.render(self.LEND, self.STEADY, runners, 0, decisions, True)
+        self.assertEqual(sum(1 for l in out.splitlines()
+                             if l.startswith('ci_governor_decision{host="aws-build-1"')), 1)
+
+    def lend_hours(self, hours, override=None):
+        inst = self.lend_up()
+        inst["aws-build-1"].update(hours_today=hours, override=override)
+        return inst
+
+    def test_lending_stops_at_its_hours_and_keeps_the_rest_for_builds(self):
+        cfg = {**self.LEND, "standby": {**self.LEND["standby"], "aws-build-1": {
+            **self.LEND["standby"]["aws-build-1"], "power": {**POWER, "max_hours_day": 12, "lend_hours_day": 8}}}}
+        lent = {**self.lender(("pool", False), ("held", False)), **self.FULL}
+        got = actions(self.STEADY, lent, cfg=cfg, instances=self.lend_hours(8.5), queue=20)
+        self.assertEqual(got["aws-build-1"], ("withhold", "bld-0"))
+        held = {**self.lender(("held", False), ("held", False)), **self.FULL}
+        self.assertEqual(actions(self.STEADY, held, cfg=cfg, instances=self.lend_hours(8.5), queue=20)["aws-build-1"],
+                         ("hold", ""))
+        # Negative controls: under its lending hours it lends, past them a build still admits,
+        # and an "on" override has no day cap to protect.
+        self.assertEqual(actions(self.STEADY, held, cfg=cfg, instances=self.lend_hours(7), queue=20)["aws-build-1"],
+                         ("lend", "bld-0"))
+        self.assertEqual(actions(self.STEADY, held, cfg=cfg, instances=self.lend_hours(8.5),
+                                 waiting=[self.BUILD_JOB])["aws-build-1"], ("admit", "bld-0"))
+        self.assertEqual(actions(self.STEADY, held, cfg=cfg, instances=self.lend_hours(8.5, "on"),
+                                 queue=20)["aws-build-1"], ("lend", "bld-0"))
+
+    def test_an_on_override_lends_with_no_pool_job_waiting(self):
+        held = {**self.lender(("held", False)), **self.FULL}
+        got = actions(self.STEADY, held, cfg=self.LEND, instances=self.lend_hours(0, "on"), queue=0)
+        self.assertEqual(got["aws-build-1"], ("lend", "bld-0"))
+
+    def test_the_day_cap_drains_a_lent_slot(self):
+        runners = {**self.lender(("pool", True)), **self.FULL}
+        got = actions(self.STEADY, runners, cfg=self.LEND, instances=self.lend_hours(12), queue=20)
+        self.assertEqual(got["aws-build-1"], ("withhold", "bld-0"))
+
+    def test_a_stopped_lender_starts_for_the_pool_on_pool_thresholds(self):
+        # Its build thresholds are 1 job and 60 s; for the pool it waits for 4 and 300 s, as
+        # the burst hosts do.
+        cfg = {**self.LEND, "standby": {"aws-build-1": {
+            **self.LEND["standby"]["aws-build-1"], "power": {**POWER, "start_min_excess": 1, "start_after_seconds": 60}}}}
+        stopped = {"aws-build-1": {"state": "stopped", "busy_at": 10_000,
+                                   "labels": self.BUILD_LABELS | frozenset(self.LENDS), "want_since": 10_000 - 400}}
+        # Held past both waits, so only the job count can hold it: 3 is under the pool's 4.
+        got = actions(self.STEADY, self.FULL, cfg=cfg, instances=stopped, queue=3)
+        self.assertEqual(got["aws-build-1"], ("hold", ""))
+        # Held 120 s: under the pool's 300 s, past the build's 60 s.
+        stopped["aws-build-1"]["want_since"] = 10_000 - 120
+        got = actions(self.STEADY, self.FULL, cfg=cfg, instances=stopped, queue=6)
+        self.assertEqual(got["aws-build-1"], ("hold", ""))
+        got = actions(self.STEADY, self.FULL, cfg=cfg, instances=stopped, waiting=[self.BUILD_JOB])
+        self.assertEqual(got["aws-build-1"], ("start", ""))
+
     def test_the_live_build_host_lends(self):
         self.assertEqual(governor.lends(LIVE, "aws-build-1"), ["unity", "unity-full", "unity-gate"])
 

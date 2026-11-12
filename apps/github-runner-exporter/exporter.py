@@ -320,12 +320,12 @@ def pool_of(labels):
 
 
 def runner_pool(name, labels):
-    """A runner's pool: its labels' pool, unless its host is rostered in exactly one other
-    pool. ci-runner-governor lends aws-build-1's slots to the unity pool between builds
-    (config.json "lends"), and a lent slot is still one of the unity-build pool's three."""
+    """A runner's pool: its labels' pool, except a lent build slot. ci-runner-governor lends
+    aws-build-1's slots to the unity pool between builds (config.json "lends"), and a lent
+    slot is still one of its host's rostered unity-build slots. No other host is re-pooled."""
     host, pool_ = host_of(name, labels), pool_of(labels)
     home = {p for h, p, _ in ROSTER if h == host}
-    return next(iter(home)) if len(home) == 1 and pool_ not in home else pool_
+    return "unity-build" if home == {"unity-build"} and pool_ == "unity" else pool_
 
 
 def host_of(name, labels):

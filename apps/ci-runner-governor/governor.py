@@ -69,9 +69,13 @@ the same as any powered host's.
 A dedicated host with "lends" (aws-build-1) also serves the shared pool, one kind at a time,
 builds first: while a build waits or a slot is busy carrying its own label it is a dedicated
 host as above, and otherwise it is the last standby pool host, whose admit ("lend") gives a
-slot the lends labels. Each runner's labels say which kind it is serving. A slot of the other
-kind steps aside first (withheld, a busy one finishing its job), and the host admits into
+slot the lends labels. Each runner's labels say which kind it is serving. Every slot of the
+other kind steps aside in the cycle that switches (withheld, a busy one finishing its job),
+so a freed lent slot never takes one more pool job ahead of a build, and the host admits into
 either kind only once no slot outside it is busy, so a build and a CI job never share it.
+Lending stops at the power block's lend_hours_day (below max_hours_day, so hours stay for a
+late build) unless an "on" override holds it, and a stopped lender starts for the pool on the
+pool's start thresholds (POWER_DEFAULTS, as the burst hosts), not its build ones.
 
 "standby" is an ordered list, Spot first (aws-burst-2, then the on-demand aws-burst-1). A
 host further down starts only for the jobs the hosts ahead of it cannot take: a stopped
@@ -452,7 +456,7 @@ def decide(cfg, hosts, runners, waiting, last_action, now, instances=None, pins=
         ded = host in own
         # Every slot not withheld, whatever kind it serves: what a drain takes back.
         up = on
-        stray, blocked = [], 0
+        stray, blocked, closed = [], 0, False
         if ded and lends(cfg, host):
             # One kind at a time, builds first: a waiting build or a busy build slot makes it
             # a build host, else it is a pool host. A slot serving the other kind steps aside,
@@ -463,11 +467,20 @@ def decide(cfg, hosts, runners, waiting, last_action, now, instances=None, pins=
                 r["busy"] for n, r in mine.items() if kind(n) == "build")
             mode = "build" if building else "pool"
             ded = building
-            stray = [n for n in on if kind(n) != mode]
-            on = [n for n in on if kind(n) == mode]
+            # Past its lending hours the host serves builds only, so the day cap keeps hours
+            # for a late one; an "on" override has no day cap to protect.
+            closed = (mode == "pool" and over != "on" and inst is not None
+                      and inst.get("hours_today", 0) >= p.get("lend_hours_day", p["max_hours_day"]))
+            stray = [n for n in on if kind(n) != mode or closed]
+            on = [n for n in on if kind(n) == mode and not closed]
             blocked = sum(1 for n, r in mine.items() if r["busy"] and n not in on)
+            if mode == "pool":
+                p = {**p, "start_min_excess": POWER_DEFAULTS["start_min_excess"],
+                     "start_after_seconds": POWER_DEFAULTS["start_after_seconds"]}
         jobs = [need for need in waiting_all if need & own[host]] if ded else waiting
         q, cov = (len(jobs), 0) if ded else (queue, covered)
+        if closed:
+            jobs, q = [], 0
         takes = sum(1 for need in jobs if need <= inst["labels"]) if inst else 0
         # Only a stopped host is passed over: AWS restarts a persistent Spot one by itself
         # when capacity returns, and then it counts like any running host.
@@ -492,8 +505,11 @@ def decide(cfg, hosts, runners, waiting, last_action, now, instances=None, pins=
             else:
                 action, why = "stop", drain
         elif stray:
+            # All at once: a slot left lent one more cycle takes the next pool job.
             action, runner = "withhold", stray[0]
-            why = "a build waits or runs, so a pool slot steps aside" if ded else "no build waits or runs, so a build slot steps aside"
+            why = ("past its lending hours, so a pool slot steps aside" if closed else
+                   "a build waits or runs, so a pool slot steps aside" if ded else
+                   "no build waits or runs, so a build slot steps aside")
         elif len(on) > cap:
             action, runner, why = "withhold", on[0], f"over its {cap} cap"
         elif blocked and off and inst and inst["state"] == "running":
@@ -573,6 +589,8 @@ def decide(cfg, hosts, runners, waiting, last_action, now, instances=None, pins=
                     ahead[host] = (max(0, cap - len(on) - (action in ("admit", "lend")))
                                    + sum(1 for n in on if not mine[n]["busy"]))
         out.append((host, action, runner, "STANDBY", why))
+        if action == "withhold" and runner == (stray or [""])[0]:
+            out += [(host, "withhold", n, "STANDBY", why) for n in stray[1:]]
     return out
 
 
@@ -1043,7 +1061,8 @@ def render(cfg, hosts, runners, queue, decisions, ok, instances=None, budget=Non
         L.append(f'ci_governor_disk_held{{host="{host}"}} {1 if held else 0}')
     # The reason is in the log, not a label: it changes every cycle.
     L += ["# HELP ci_governor_decision This cycle's verdict and action per host", "# TYPE ci_governor_decision gauge"]
-    for host, action, _, v, _ in decisions:
+    # A switching lender withholds several slots in one cycle: one row per host and action.
+    for host, action, v in dict.fromkeys((h, a, v) for h, a, _, v, _ in decisions):
         L.append(f'ci_governor_decision{{host="{host}",verdict="{v}",action="{action}"}} 1')
     # A powered host, for the agent-web Infra page and Sentinel's start/stop notice. reason is
     # why the governor last started or stopped it (queue, idle, cap, override), "none" before

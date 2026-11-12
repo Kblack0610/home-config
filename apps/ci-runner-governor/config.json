@@ -23,7 +23,7 @@
     {"host": "aws-build-1", "max_admitted": 3, "labels": ["unity-build"], "withheld_label": "unity-build-withheld",
      "lends": ["unity", "unity-full", "unity-gate"],
      "power": {"provider": "aws", "instance_id": "i-0856b245ff7a81321", "region": "us-east-2", "idle_off_seconds": 900,
-               "start_min_excess": 1, "start_after_seconds": 60, "max_hours_day": 12,
+               "start_min_excess": 1, "start_after_seconds": 60, "max_hours_day": 12, "lend_hours_day": 8,
                "fallback_seconds": 3600, "live": true}}
   ],
   "workers": [],

@@ -9,15 +9,16 @@ On 2026-07-09 the forgejo nightly backup (a 55G hostPath tarball on its own node
 ## What it does
 
 - Installs `nfs-utils`.
-- Creates `{{ nfs_backup_export_path }}` (default `/srv/backups`) plus a subdir per producer (default `forgejo`).
-- Writes `/etc/exports` exporting the root to the LAN (default `192.168.1.0/24`, `rw,sync,no_subtree_check,no_root_squash`).
+- Creates each root in `nfs_exports` and a subdir per producer under `/srv/backups` (`nfs_backup_subdirs`, default `forgejo`).
+- Writes `/etc/exports` with one line per `nfs_exports` entry: `/srv/backups` read-write to the LAN, and `/srv/forgejo` (Forgejo's live data and hourly DB snapshots) read-only to asus-laptop only.
 - Enables + starts `nfs-server`, and self-heals the export live-state on rerun.
 
 `no_root_squash` is used because the forgejo backup job runs as root and writes root-owned tarballs; acceptable on a LAN-only export. k3s pods egress SNAT'd to their node IP, so the server sees `192.168.1.x` (the node), not the pod IP.
 
 ## Consumers
 
-- `apps/forgejo/backup-cronjob.yaml` mounts `nfs://<hp-victus>/srv/backups/forgejo` and copies the newest full + db there after writing the local copy (see that file's `OFFBOX` step).
+- `/srv/forgejo`: `apps/forgejo/backup-cronjob.yaml` (the nightly full), `apps/nas/forgejo-packages-backup-cronjob.yaml` and `apps/nas/backup-verify-cronjob.yaml`, all running on asus-laptop.
+- `/srv/backups/forgejo`: the old off-box copy, unused once Forgejo lives on hp-victus; its entry goes when the copy is deleted.
 
 ## Bound in
 

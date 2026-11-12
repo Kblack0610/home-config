@@ -1,17 +1,25 @@
 ---
-# Root directory exported over NFS for off-box backups. Lives on the host's
-# own disk (hp-victus: 938G ext4 root). Backup jobs in k3s mount a subdir.
-nfs_backup_export_path: /srv/backups
+# What this host serves over NFS, one entry per export. Each path lives on the
+# host's own disk (hp-victus: 938G ext4 root).
+#
+# k3s pods egress SNAT'd to their node IP, so the server sees the node's
+# 192.168.1.x address, never the pod IP: clients are node addresses.
+#
+# no_root_squash because the backup jobs run as root: they write root-owned
+# tarballs, and read Forgejo files owned by uid 1000 in 0700 dirs.
+nfs_exports:
+  # Off-box backup copies, one subdir per producer (nfs_backup_subdirs).
+  - path: /srv/backups
+    clients: "192.168.1.0/24"
+    opts: "rw,sync,no_subtree_check,no_root_squash"
+  # Forgejo's live data (data/, the forgejo-data-hp-victus PV) and its hourly
+  # DB snapshots (snapshots/). Read-only, to asus-laptop only: the backup jobs
+  # there (forgejo-backup, nas forgejo-packages-backup, backup-verify) read it
+  # and write to that host's backup disks.
+  - path: /srv/forgejo
+    clients: "192.168.1.152"
+    opts: "ro,sync,no_subtree_check,no_root_squash"
 
-# Who may mount it. LAN-only: k3s pods egress SNAT'd to their node IP, so the
-# NFS server sees the node's 192.168.1.x address, not the pod IP. Restrict to
-# the home subnet.
-nfs_backup_export_clients: "192.168.1.0/24"
-
-# Export options. no_root_squash because the forgejo backup job runs as root
-# and writes root-owned tarballs; acceptable on a trusted LAN-only export.
-nfs_backup_export_opts: "rw,sync,no_subtree_check,no_root_squash"
-
-# Subdirectories to pre-create under the export root (one per backup producer).
+# Subdirectories to pre-create under /srv/backups (one per backup producer).
 nfs_backup_subdirs:
   - forgejo

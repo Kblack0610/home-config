@@ -39,6 +39,9 @@ usb_backup_subvolumes:
   - { subvol: "@phones-snapshots", path: /mnt/backup-8t/phones-snapshots }
   - { subvol: "@forgejo-packages", path: /mnt/backup-8t/forgejo-packages }
   - { subvol: "@forgejo-packages-snapshots", path: /mnt/backup-8t/forgejo-packages-snapshots }
+  # The off-box copy of the nightly Forgejo full (forgejo-backup-offbox) since
+  # Forgejo moved to hp-victus on 2026-11-11: the old copy target was hp-victus.
+  - { subvol: "@forgejo-backups", path: /mnt/backup-8t/forgejo-backups }
   - { subvol: "@nas-backups", path: /mnt/backup-8t/nas-backups }
   - { subvol: "@nas-backups-snapshots", path: /mnt/backup-8t/nas-backups-snapshots }
   - { subvol: "@harvest", path: /mnt/backup-8t/harvest }

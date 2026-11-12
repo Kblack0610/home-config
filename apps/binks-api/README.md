@@ -17,6 +17,8 @@ LLM chat backend for `binks.chat`. TypeScript replacement for the legacy Rust `b
 3. Same workflow bumps `images[].newTag` in this directory's `kustomization.yaml` and pushes to `home-config@master`.
 4. Flux reconciles within ~1 min.
 
+The `binks-chat` SPA follows the same steps with a `binks-chat-v<x.y.z>` tag and `deploy-binks-chat.yml`, which bumps its own `images[]` entry. Its manifest names `:latest`, so without that entry prod floats on an unnamed image and the `release-drift` watch trips.
+
 ## Secrets
 
 `secrets.yaml` is SOPS-encrypted with the home-k3s Age recipient. Holds:

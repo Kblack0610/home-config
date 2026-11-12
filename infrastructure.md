@@ -230,7 +230,7 @@ All K8s manifests deployed to the **home-k3s cluster** live in this repo (`home-
 | K8s manifests (all cluster services) | `home-config` | Single Flux source of truth, self-healing via `prune: true` |
 | Cloudflare tunnel Terraform | `bnb/platform` | Tunnel provisioning is infrastructure owned by the platform team |
 | Application source code | `bnb/platform` | App code, Dockerfiles, build pipelines |
-| Container images | Local registry (`192.168.1.20:30500`) | Built from `bnb/platform`, pushed to local registry, consumed by home-config manifests |
+| Container images | Forgejo container registry (`git.kblab.me`) | Built by app CI, pushed to Forgejo, consumed by home-config manifests |
 | DigitalOcean deployments | `bnb/platform` | DO App Platform specs for production apps |
 
 **Key rule:** If it runs on home-k3s, the manifest lives in `home-config`. If it runs on DigitalOcean, the manifest lives in `bnb/platform`. Cloudflare tunnel config (Terraform) stays in `bnb/platform` since it bridges external DNS to the cluster.

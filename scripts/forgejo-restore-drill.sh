@@ -39,7 +39,9 @@ if [ -z "${IMAGE:-}" ]; then
   IMAGE=$(sed -n 's|^ *image: *\(.*forgejo/forgejo:.*\)$|\1|p' "$manifest" | head -1)
   [ -n "$IMAGE" ] || fail "no forgejo image in $manifest"
 fi
-TAG=${IMAGE##*:}
+# The tag, without the @sha256 pin deployment.yaml carries.
+TAG=${IMAGE%%@*}
+TAG=${TAG##*:}
 
 exec 9>/run/lock/forgejo-restore-drill.lock
 flock -n 9 || fail "another drill is running"
@@ -80,10 +82,7 @@ chown 1000:1000 "$WORK/data/gitea/gitea.db"
 echo "drill: unpacked in $(( $(date +%s) - START ))s, $(du -sh "$WORK/data" | cut -f1)"
 
 if ! docker image inspect "$IMAGE" >/dev/null 2>&1; then
-  # codeberg 404s the 14.0.4 amd64 manifest (hc-294), so fall back to the copy k3s holds.
-  docker pull -q "$IMAGE" >/dev/null 2>&1 ||
-    k3s ctr -n k8s.io images export --platform linux/amd64 - "$IMAGE" | docker load >/dev/null ||
-    fail "cannot get $IMAGE from its registry or from k3s containerd"
+  docker pull -q "$IMAGE" >/dev/null || fail "cannot pull $IMAGE"
 fi
 
 docker run -d --name "$NAME" --network none \

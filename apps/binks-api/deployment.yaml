@@ -62,7 +62,7 @@ spec:
             - name: LITELLM_URL
               value: http://litellm.ai-gateway.svc.cluster.local:4000
             - name: DEFAULT_MODEL
-              value: 'fast'
+              value: 'binks-chat'
             - name: CORS_ORIGINS
               value: https://binks.chat
           envFrom:

@@ -652,6 +652,60 @@ model_list:
         json_mode: true
       supports_function_calling: true
 
+  # binks.chat product routes (binks brief, "Model and unit economics"), on the
+  # winners of the 2026-11-12 eval: 20 prompts through binks-api, judged blind
+  # against the Gemini app (lab binks docs/eval/2026-11-12-binks-model-eval.md).
+  # Default glm-5.3-flash (quality 0.78, $0.19 per 1k turns); escalation
+  # deepseek-flash (0.85, $0.38). First-party keys only: product chats never ride
+  # the OpenCode Go plan or Lazer. Only the binks-issuer and binks-anon keys
+  # reach these (README, key table). Keys DEEPSEEK_API_KEY (rbw
+  # deepseek-api-key) and ZAI_API_KEY (rbw zai-api-key) in secret.sops.yaml.
+  - model_name: "binks-chat"
+    litellm_params:
+      model: "openai/glm-5.3-flash"
+      api_base: https://api.z.ai/api/paas/v4
+      api_key: os.environ/ZAI_API_KEY
+      # Z.ai list price, $/1M: in 0.15 out 0.50 cache_read 0.03 (2026-11-11).
+      input_cost_per_token: 0.00000015
+      output_cost_per_token: 0.0000005
+      cache_read_input_token_cost: 0.00000003
+      tpm: 400000
+      rpm: 60
+    model_info:
+      mode: chat
+      tags: ["paid", "binks", "first-party"]
+      capabilities:
+        tools: true
+        code: true
+        vision: false
+        reasoning: true
+        json_mode: true
+      supports_function_calling: true
+
+  # DeepSeek charges double at peak (weekdays 01-04 and 06-10 UTC); the gateway
+  # charges peak all day, so budgets trip early, never late.
+  - model_name: "binks-chat-hard"
+    litellm_params:
+      model: "deepseek/deepseek-flash"
+      api_key: os.environ/DEEPSEEK_API_KEY
+      # DeepSeek list price at peak, $/1M: in 0.30 out 1.20 cache_read 0.006
+      # (api-docs.deepseek.com/quick_start/pricing, 2026-11-11).
+      input_cost_per_token: 0.0000003
+      output_cost_per_token: 0.0000012
+      cache_read_input_token_cost: 0.000000006
+      tpm: 400000
+      rpm: 60
+    model_info:
+      mode: chat
+      tags: ["paid", "binks", "first-party"]
+      capabilities:
+        tools: true
+        code: true
+        vision: false
+        reasoning: true
+        json_mode: true
+      supports_function_calling: true
+
 router_settings:
   routing_strategy: "simple-shuffle"
   timeout: 900
@@ -688,6 +742,9 @@ router_settings:
     # Binks (HA voice): Gemini family key (primary) -> Lazer gpt-oss-120b
     # (verified tool-calling). Keeps voice up across one provider's outage.
     - {"assist (gemini-flash)": ["fast (gpt-oss-120b)"]}
+    # binks.chat: the default falls to the escalation route, never to Lazer,
+    # Go or Gemini.
+    - {"binks-chat": ["binks-chat-hard"]}
 
 litellm_settings:
   drop_params: true

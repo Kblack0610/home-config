@@ -49,15 +49,15 @@ Bare-metal Pis have **four different names** for the same box, each resolved by 
 
 | Where | Name shape | Example | Resolved by |
 |-------|-----------|---------|-------------|
-| `ansible/inventory.yml` `--limit` | bare alias | `pi5-master`, `pi5-worker2`, `pi4-worker4` | Ansible only - **not** DNS-resolvable |
+| `ansible/inventory.yml` `--limit`, and `ssh` from the workstation | bare alias | `pi5-master`, `pi5-worker2`, `pi4-worker4` | Ansible, and the workstation's `/etc/ssh/ssh_config.d/40-home-inventory.conf` (role `ssh-client-inventory`) - **not** DNS |
 | `ssh`, `kubectl`, `curl`, `nc`, etc. | DHCP name | `pi5-master-lan`, `pi5-worker2-lan` | OpenWRT dnsmasq via `infrastructure/dhcp/devices.yaml` |
 | `kubectl get nodes`, `kubectl debug node/...` | k8s node name | `raspberrypi`, `raspberrypi-e3a771f1` | OS hostname (Pis kept default `raspberrypi[-suffix]`) |
 | Always works | IP | `192.168.1.20` (master), `.21-.24, .124` (workers) | - |
 
-Macs use SSH-config aliases (`m1`, `mac-mini`) instead - see `docs/mac-machines.md`. The `-lan` suffix is a Pi/x86 convention only.
+Every inventory alias with an IP `ansible_host` (Macs and laptops too, with their port and user, plus extra names from `ssh_aliases` such as `m1`) is an ssh alias on the workstation. The `-lan` suffix is a Pi/x86 convention only.
 
 Rule of thumb:
-- runbook or shell command -> use `-lan` or IP
+- runbook or shell command -> `-lan` or IP; on the workstation the bare alias works too
 - ansible `--limit` -> bare alias
 - `kubectl debug node/...` (the SSH-broken escape hatch) -> k8s node name from `kubectl get nodes`
 

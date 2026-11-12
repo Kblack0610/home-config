@@ -65,6 +65,16 @@ spec:
                   name: github-runner-exporter
                   key: github-token
                   optional: true
+            # The Kblack0610 repos' token: the Kblack0610 gh CLI OAuth token (scopes repo,
+            # workflow), since the BlackNBrownStudios PAT cannot read Kblack0610's private
+            # repos. exporter.py sends GITHUB_TOKEN_<OWNER> for that owner's repos.
+            # Rotate: docs/credentials.md.
+            - name: GITHUB_TOKEN_KBLACK0610
+              valueFrom:
+                secretKeyRef:
+                  name: github-runner-exporter
+                  key: github-token-kblack0610
+                  optional: true
             # Org-scoped runners (the Unity pool). Repo-scoped runners are read
             # from every repo in RUN_REPOS.
             - name: RUNNER_ORGS
@@ -73,9 +83,9 @@ spec:
               value: "BlackNBrownStudios/platform BlackNBrownStudios/unity-core BlackNBrownStudios/unity-core-harness BlackNBrownStudios/unity-core-playground"
             # Read only for the run feed schedules-sync writes its run ledger from (it polls
             # none of these itself): no runners, no metrics. Every personal GitHub repo with
-            # CI the token reads; the private Kblack0610 repos need a token that account owns.
+            # CI, read with GITHUB_TOKEN_KBLACK0610.
             - name: FEED_REPOS
-              value: "Kblack0610/.dotfiles Kblack0610/freqtrade_trading_attempt Kblack0610/android-suite Kblack0610/zmk_config Kblack0610/openmptcsetup"
+              value: "Kblack0610/.dotfiles Kblack0610/freqtrade_trading_attempt Kblack0610/android-suite Kblack0610/zmk_config Kblack0610/openmptcsetup Kblack0610/.dotfiles-private Kblack0610/ebay-lister Kblack0610/gungan-speak Kblack0610/playtest-bot"
             # host:pool:slots. Mirrors ansible/inventory.yml (linux_ci_runners
             # ci_*_slots, unity_ci_runners and unity_ci_mac_runners unity_ci_slots), the mac-mini's
             # two runners (mac-mini-mac, m1-playground-mac) and the opt-in windows-media test runner.

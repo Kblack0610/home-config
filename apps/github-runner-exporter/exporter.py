@@ -97,6 +97,12 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 API = os.environ.get("GITHUB_API", "https://api.github.com").rstrip("/")
 TOKEN = os.environ.get("GITHUB_TOKEN", "")
+# Owner -> the token for that owner's repos, from GITHUB_TOKEN_<OWNER> (the owner
+# upper-cased): a fine-grained PAT reads only its resource owner's private repos,
+# so another owner's private repos need a token of their own. Any other path
+# (orgs/, an owner with none) uses GITHUB_TOKEN.
+OWNER_TOKENS = {k[len("GITHUB_TOKEN_"):].lower(): v for k, v in os.environ.items()
+                if k.startswith("GITHUB_TOKEN_") and v}
 PORT = int(os.environ.get("PORT", "9320"))
 ORGS = os.environ.get("RUNNER_ORGS", "BlackNBrownStudios").split()
 # Repos whose repo-scoped runners, active runs and recent runs are read.
@@ -239,6 +245,12 @@ def note_rate(scope, headers, code=None):
                              else time.time() + (int(retry) if retry.isdigit() else 60))
 
 
+def token_for(path):
+    parts = path.split("/", 2)
+    owner = parts[1].lower() if parts[0] == "repos" and len(parts) > 1 else ""
+    return OWNER_TOKENS.get(owner, TOKEN)
+
+
 def get(path, kind="other"):
     scope = path.split("/", 1)[0]
     if time.time() < rate(scope)["until"]:
@@ -246,8 +258,9 @@ def get(path, kind="other"):
     req = urllib.request.Request(f"{API}/{path}")
     req.add_header("Accept", "application/vnd.github+json")
     req.add_header("X-GitHub-Api-Version", "2022-11-28")
-    if TOKEN:
-        req.add_header("Authorization", f"Bearer {TOKEN}")
+    token = token_for(path)
+    if token:
+        req.add_header("Authorization", f"Bearer {token}")
     with LOCK:
         cached = ETAGS.get(path) if kind in ETAG_KINDS else None
     if cached:
@@ -1224,7 +1237,7 @@ def server(addr):
 if __name__ == "__main__":
     print(
         f"github-runner-exporter: orgs={ORGS} repos={len(RUN_REPOS)} feed_repos={len(FEED_REPOS)} roster={len(ROSTER)} "
-        f"token={'set' if TOKEN else 'MISSING'} port={PORT}",
+        f"token={'set' if TOKEN else 'MISSING'} owner_tokens={sorted(OWNER_TOKENS)} port={PORT}",
         flush=True,
     )
     server(("", PORT)).serve_forever()

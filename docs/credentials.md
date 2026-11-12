@@ -34,6 +34,7 @@ GitHub is a service we do not run, but these tokens exist: reuse the narrowest o
 | Token | Kind | Expires | Used by |
 |---|---|---|---|
 | `apps/github-runner-exporter/github-runner-exporter-secret.yaml` `github-token` | fine-grained | - | github-runner-exporter; its copy is the Renovate Actions secret `RENOVATE_GITHUB_COM_TOKEN` |
+| `apps/github-runner-exporter/github-runner-exporter-secret.yaml` `github-token-kblack0610` | the Kblack0610 gh CLI OAuth token: repo, workflow | - | github-runner-exporter, as `GITHUB_TOKEN_KBLACK0610`, for the Kblack0610 repos in FEED_REPOS (the private ones need it). Not a minted PAT: rotating it is `gh auth token` piped into `sops set --value-stdin` on that key (base64, JSON-quoted), never through rbw or a plain file. A `gh auth logout` or re-login revokes it |
 | `apps/ci-runner-governor/ci-runner-governor-secret.yaml` `github-token` | classic: admin:org, repo, workflow | - | ci-runner-governor. Too broad to reuse |
 | rbw `github-runner-exporter-pat` (BlackNBrownStudios) | fine-grained | 2027-10-07 | not the exporter's current token |
 | `ansible/group_vars/ci_hosts/vault.sops.yaml` `vault_github_pat` | PAT | - | `ansible/roles/github-actions-runner-linux` runner registration |

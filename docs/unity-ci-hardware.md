@@ -8,7 +8,7 @@ CPU and heat. Measured on the workstation 2026-10-29: each batch Unity editor he
 
 Sizing per slot: 3 physical cores of its own and 14 GB RAM. Timed PlayMode tests fail when slots share cores, and while a batch editor sits at 4-6 GB, a PlayMode shard peaks at 13.9 GB and was OOM-killed at 14 GB four times between 10-26 and 10-28 on hp-victus. Hyperthreads do not count as cores. A fast NVMe matters too, since every runner keeps its own `Library/` per project and a cold import is mostly disk.
 
-Before buying for parallelism, check the license ceiling: the governor caps the pool at 16 admitted runners (8 before the Mac Studio joined, 2026-10-29), and about 15 Unity activations in 90 minutes is where activation trouble starts. At that cap a new host only helps by finishing each job faster, which favours one fast box over several slow ones.
+Before buying for parallelism, check the license ceiling: the governor caps the pool at `pool_max_admitted` admitted runners (24 in `apps/ci-runner-governor/config.json`), and about 15 Unity activations in 90 minutes is where activation trouble starts. At that cap a new host only helps by finishing each job faster, which favours one fast box over several slow ones.
 
 ## Checklist
 
@@ -44,7 +44,7 @@ Buy one of a cheap model first, add it as one slot, and time a pinned PlayMode s
 
 ## Buying in the RAM shortage
 
-Researched 2026-11-10 to replace the Mac Studio's slots (sold that day; aws-burst-2 Spot holds them meanwhile). That load is about 5 slots around the clock, so every rental reaches a home box's price in 2-11 months (full comparison: `~/.agent/research/2026-11-10_ci-runners-buy-vs-rent.md`).
+Researched 2026-11-10 to replace the Mac Studio's slots (sold that day; the AWS hosts hold them meanwhile, aws-burst-2 on-demand since 2026-11-11). That load is about 5 slots around the clock, so every rental reaches a home box's price in 2-11 months (full comparison: `~/.agent/research/2026-11-10_ci-runners-buy-vs-rent.md`).
 
 RAM sets the price. A 96 GB DDR5 SODIMM kit was $195 in May 2025 and is $1,280-1,700 now; the only in-stock kit seen on a fetched page was Corsair CMSX96GX5M2A4800C40 at $1,467.99 (corsair.com). Desktop DDR5 is no cheaper per GB: the cheapest new 64 GB (2x32 GB) kit is $870-930 (Corsair DDR5-5600 CL40 $869.99 at Newegg per bytesizeddeals, Corsair Vengeance DDR5-6000 CL40 $929.99 at Newegg per pgrid, checked 2026-11-10), against $1,468 for 96 GB of SODIMM; an earlier $520 figure (rampricesusa) was wrong. A 32 GB (2x16 GB) DDR5-5600 SODIMM kit is $520-585 (Crucial CT2K16G56C46S5, Amazon $522.85 on 2026-11-06). 64 GB DDR4-3200 was $446 and has not been rechecked. DDR4 server RDIMM is no longer cheap: 32 GB is $300-385 (TechMikeNY, PCSP), so the RDIMM builds below now cost $1,000-1,500 more than listed. TrendForce sees prices high through 2027, and Micron sees supply tight through 2028.
 
@@ -91,7 +91,7 @@ Ruled out:
 - Threadripper 9960X: $6,400-8,600 for 7 slots, because the DDR5 RDIMM costs more than the CPU and board.
 - Dell R7525 and other 2U servers: 50-70 dBA under load, closet or garage only.
 
-Before ordering, settle the cap: today's 14 slots plus 8 is over the 16-runner cap, so with the Mac Studio sold (2026-11-10) the new box replaces aws-burst-2's slots, or the cap and the license question move. Then buy one box, run it at 4 slots, time a pinned PlayMode shard against razer-laptop, and ramp to 8.
+Before ordering, settle the cap: the new box's slots plus the pool's registered slots must fit under `pool_max_admitted` (24 in `apps/ci-runner-governor/config.json`); if they do not, the new box replaces AWS slots, or the cap and the license question move. Then buy one box, run it at 4 slots, time a pinned PlayMode shard against razer-laptop, and ramp to 8.
 
 ## Laptops as runners
 
@@ -119,8 +119,9 @@ Checked 2026-11-11: moving Unity jobs from the AWS hosts to GitHub-hosted runner
 | Where | $ per slot-hour | Basis |
 |---|---|---|
 | Owned hosts | 0 at the margin | governor `rates` |
-| aws-burst-2 (Spot, 6 slots) | ~0.11 | $0.65/h `spot-estimate` |
-| aws-burst-1, aws-build-1 (on-demand m7a.8xlarge) | ~0.37 | $1.855/h over 5 slots |
+| aws-burst-2, aws-burst-3 (on-demand m7a.8xlarge, 6 slots each) | ~0.31 | $1.855/h over 6 slots |
+| aws-burst-1 (on-demand m7a.8xlarge, 5 slots) | ~0.37 | $1.855/h over 5 slots |
+| aws-build-1 (on-demand m7a.8xlarge, 3 slots) | ~0.62 | $1.855/h over 3 slots |
 | GitHub Linux 4-core, 16 GB | 0.72 | $0.012/min |
 | GitHub Linux 8-core, 32 GB | 1.32 | $0.022/min |
 

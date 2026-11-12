@@ -85,7 +85,7 @@ Flux picks up the ConfigMap change → deployment hash rotates → pod rolls →
 5. Agents: session counts, sessions late against their ETA, and the first KPI off target with its limit and how many more.
 6. Queue: running, ready and held, then how long the oldest ready item has waited and cost per PR against 28 days. Then CI, naming only what is down.
 7. Projects: how many have work in flight, then the first two in flight, each with its percent, ETA and sessions.
-8. Claude: each account's weekly use, amber when one is over pace, the earliest run-out, and 24h spend.
+8. Claude: each Claude account's weekly use (not the codex or LiteLLM sources), amber when one has no room, and 24h spend.
 9. The house: weather and the next event across every calendar.
 
 Every section opens with a bold `Title: value`. Colour marks only what is wrong: a title goes amber or red with its section, and only red items stay red in full, so amber never covers a whole block. Detail lines under a title are grey, so the titles and their values stand out.
@@ -105,6 +105,7 @@ Setup on the phone: long-press the home screen -> Widgets -> Home Assistant -> T
 | A red line has no age | Its watch has no `since_epoch` and no matching `binary_sensor`, or it is a node or feed row. Those sort first. A `binary_sensor` age restarts with Home Assistant. |
 | The bottom lines are cut off | The widget does not scroll, so the least important lines go first. Make it taller or pick a smaller text size. |
 | `System ?` in amber | `sensor.system_health` got no rows. It is `unavailable` when Prometheus did not answer Home Assistant; when it answers, query `cc:domain_status` for the rules in `apps/monitoring/prometheus-rules-command-center.yaml`. |
+| The Claude line lists codex, lazer or other sources, or an account that was removed | The REST query lost its `kind="claude"` filter, or the render is old: the time on the System line says when it last rendered, and tapping the widget renders it now. |
 | The accounts line reads `unknown` | The `Agent accounts` REST sensor got no data. Query `claude_account_week_used_percent` in Prometheus; when it is empty, `claude-acct-usage.timer` on the workstation has stopped writing. |
 
 ### 3D Printer Monitoring

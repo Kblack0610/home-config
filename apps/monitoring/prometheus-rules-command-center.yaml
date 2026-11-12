@@ -80,11 +80,15 @@ spec:
         - record: cc:watch_state
           labels: {domain: spend}
           expr: >-
-            max by (item) (label_replace(((mqtt_tripped{topic=~"agents_.+_watch_(lazer_pool_pace|gh_actions_budget_pace|claude_spend_(?:hourly|daily)|claude_account_pace|claude_acct_usage)"} and on (topic) cc:agents_topic_live) * 1 > 0) or ((mqtt_stale{topic=~"agents_.+_watch_(lazer_pool_pace|gh_actions_budget_pace|claude_spend_(?:hourly|daily)|claude_account_pace|claude_acct_usage)"} and on (topic) cc:agents_topic_live) > 0), "item", "$1", "topic", "agents_.+_watch_(.+)"))
+            max by (item) (label_replace(((mqtt_tripped{topic=~"agents_.+_watch_(lazer_pool_pace|gh_actions_budget_pace|fleet_budget_pace|claude_spend_(?:hourly|daily)|claude_account_pace|claude_acct_usage)"} and on (topic) cc:agents_topic_live) * 1 > 0) or ((mqtt_stale{topic=~"agents_.+_watch_(lazer_pool_pace|gh_actions_budget_pace|fleet_budget_pace|claude_spend_(?:hourly|daily)|claude_account_pace|claude_acct_usage)"} and on (topic) cc:agents_topic_live) > 0), "item", "$1", "topic", "agents_.+_watch_(.+)"))
         - record: cc:watch_state
           labels: {domain: platform}
           expr: >-
-            max by (item) (label_replace(((mqtt_tripped{topic=~"agents_.+_watch_(skill_drift|mem0_search_path|deploy_drift|fleet_liveness)"} and on (topic) cc:agents_topic_live) * 1 > 0) or ((mqtt_stale{topic=~"agents_.+_watch_(skill_drift|mem0_search_path|deploy_drift|fleet_liveness)"} and on (topic) cc:agents_topic_live) > 0), "item", "$1", "topic", "agents_.+_watch_(.+)"))
+            max by (item) (label_replace(((mqtt_tripped{topic=~"agents_.+_watch_(skill_drift|mem0_search_path|deploy_drift|fleet_liveness|release_drift|release_links)"} and on (topic) cc:agents_topic_live) * 1 > 0) or ((mqtt_stale{topic=~"agents_.+_watch_(skill_drift|mem0_search_path|deploy_drift|fleet_liveness|release_drift|release_links)"} and on (topic) cc:agents_topic_live) > 0), "item", "$1", "topic", "agents_.+_watch_(.+)"))
+        - record: cc:watch_state
+          labels: {domain: llm}
+          expr: >-
+            max by (item) (label_replace(((mqtt_tripped{topic=~"agents_.+_watch_(gateway_errors)"} and on (topic) cc:agents_topic_live) * 1 > 0) or ((mqtt_stale{topic=~"agents_.+_watch_(gateway_errors)"} and on (topic) cc:agents_topic_live) > 0), "item", "$1", "topic", "agents_.+_watch_(.+)"))
         # a watch no domain above claims still counts, so a new manifest is never invisible here.
         # aws_burst_power trips whenever the burst runner runs: it pages on start and stop, and is no fault.
         - record: cc:watch_state
@@ -124,6 +128,10 @@ spec:
           labels: {domain: platform, component: watches}
           expr: >-
             max(cc:watch_state{domain="platform"}) or vector(0)
+        - record: cc:component_status
+          labels: {domain: llm, component: watches}
+          expr: >-
+            max(cc:watch_state{domain="llm"}) or vector(0)
         - record: cc:component_status
           labels: {domain: other, component: watches}
           expr: >-

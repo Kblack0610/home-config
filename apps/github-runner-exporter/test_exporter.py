@@ -703,6 +703,29 @@ class RateLimitTest(unittest.TestCase):
             exporter.get("repos/acme/web/actions/runners", "runners")
         self.assertEqual(exporter.rate("repos")["until"], 0.0)
 
+    def test_each_owners_repos_use_that_owners_token(self):
+        # A fine-grained PAT cannot read another owner's private repos, so that
+        # owner's repos and org go out with GITHUB_TOKEN_<OWNER>; the rest keep GITHUB_TOKEN.
+        sent = {}
+
+        def urlopen(req, timeout=None):
+            sent[req.full_url.split("/", 3)[3]] = req.get_header("Authorization")
+            r = io.BytesIO(b"{}")
+            r.headers = {"X-RateLimit-Remaining": "4000"}
+            return r
+        exporter.urllib.request.urlopen = urlopen
+        tokens = exporter.owner_tokens({"GITHUB_TOKEN": "org-pat", "GITHUB_TOKEN_KBLACK0610": "own",
+                                        "GITHUB_TOKEN_MY_ORG": "mine", "GITHUB_TOKEN_EMPTY": ""})
+        self.assertEqual(tokens, {"KBLACK0610": "own", "MY_ORG": "mine"})
+        with mock.patch.multiple(exporter, TOKEN="org-pat", OWNER_TOKENS=tokens):
+            for path in ("repos/Kblack0610/ebay-lister/actions/runs", "repos/acme/web/actions/runs",
+                         "orgs/my-org/actions/runners", "orgs/acme/actions/runners"):
+                exporter.get(path)
+        self.assertEqual(sent, {"repos/Kblack0610/ebay-lister/actions/runs": "Bearer own",
+                                "repos/acme/web/actions/runs": "Bearer org-pat",
+                                "orgs/my-org/actions/runners": "Bearer mine",
+                                "orgs/acme/actions/runners": "Bearer org-pat"})
+
     def serve(self, body, etag):
         """GitHub as seen by one path: 200 with the ETag, 304 when it is sent back."""
         self.sent = []
@@ -1018,6 +1041,8 @@ class DetailFeedTest(unittest.TestCase):
         self.render({"repos/acme/web/actions/runs/9/jobs?per_page=100": jobs9})
         page = exporter.feed_page(0, 100)
         self.assertEqual(page["repos"], exporter.RUN_REPOS)
+        with mock.patch.object(exporter, "FORGEJO_REPOS", ["o/fj"]):  # the Forgejo half of the one list
+            self.assertEqual(exporter.feed_page(0, 100)["forgejo_repos"], ["o/fj"])
         by_id = {r["run_id"]: r for r in page["records"]}
         self.assertEqual(set(by_id), {9, 8})  # 7 is outside the window
         rec = by_id[9]

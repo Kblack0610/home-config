@@ -56,7 +56,9 @@ moves (queued, in progress, completed, a new attempt), from the reads above at n
 extra call, so schedules-sync can write its run ledger from here instead of
 polling actions/runs itself. A run that leaves the active lists while older than
 the window, which the completed list cannot show (a re-run of an old run), is read
-by id with the history, from its budget, until it reads finished.
+by id with the history, from its budget, until it reads finished. `repos` and
+`forgejo_repos` are the one list of CI repos schedules-sync syncs: it polls the
+Forgejo ones itself (their runs are not in this feed).
 
 Those totals are trailing-window gauges: runs enter and leave them at once, so
 no PromQL over them can say when anything happened. github_runs_by_hour and
@@ -97,6 +99,24 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 API = os.environ.get("GITHUB_API", "https://api.github.com").rstrip("/")
 TOKEN = os.environ.get("GITHUB_TOKEN", "")
+
+
+def env_key(owner):
+    """An owner as an env var suffix: upper-cased, anything but a letter or digit as _."""
+    return re.sub(r"[^A-Z0-9]", "_", owner.upper())
+
+
+def owner_tokens(env):
+    """{GITHUB_TOKEN_<OWNER> suffix: token} for every non-empty one."""
+    return {k[len("GITHUB_TOKEN_"):]: v for k, v in env.items() if k.startswith("GITHUB_TOKEN_") and v}
+
+
+# The token for one owner's repos and org, from GITHUB_TOKEN_<OWNER> (env_key): a
+# fine-grained PAT reads only its resource owner's private repos, so another
+# owner's private repos need a token of their own. An owner with none uses
+# GITHUB_TOKEN. Every token here is one user's (Kblack0610), so all of them draw
+# on one 5000/h pool, and RATE stays keyed by scope, not by token.
+OWNER_TOKENS = owner_tokens(os.environ)
 PORT = int(os.environ.get("PORT", "9320"))
 ORGS = os.environ.get("RUNNER_ORGS", "BlackNBrownStudios").split()
 # Repos whose repo-scoped runners, active runs and recent runs are read.
@@ -138,7 +158,8 @@ FEED_SEQ = [0]
 FEED_LOCK = threading.Lock()
 EPOCH = int(time.time())
 FEED_LIMIT = 100
-# The token's 5000 calls/h are per USER, shared with every gh session on the
+# The tokens' 5000 calls/h are per USER, one pool for GITHUB_TOKEN and every
+# GITHUB_TOKEN_<OWNER> (all Kblack0610's), shared with every gh session on the
 # account and with apps/ci-runner-governor, and live runner state must never
 # starve for history. So history's job fetches (the only part that grows with
 # the backlog: a cold cache is ~500 calls) get a fixed budget per scrape, shared
@@ -239,6 +260,12 @@ def note_rate(scope, headers, code=None):
                              else time.time() + (int(retry) if retry.isdigit() else 60))
 
 
+def token_for(path):
+    parts = path.split("/", 2)
+    owner = env_key(parts[1]) if parts[0] in ("repos", "orgs") and len(parts) > 1 else ""
+    return OWNER_TOKENS.get(owner, TOKEN)
+
+
 def get(path, kind="other"):
     scope = path.split("/", 1)[0]
     if time.time() < rate(scope)["until"]:
@@ -246,8 +273,9 @@ def get(path, kind="other"):
     req = urllib.request.Request(f"{API}/{path}")
     req.add_header("Accept", "application/vnd.github+json")
     req.add_header("X-GitHub-Api-Version", "2022-11-28")
-    if TOKEN:
-        req.add_header("Authorization", f"Bearer {TOKEN}")
+    token = token_for(path)
+    if token:
+        req.add_header("Authorization", f"Bearer {token}")
     with LOCK:
         cached = ETAGS.get(path) if kind in ETAG_KINDS else None
     if cached:
@@ -497,7 +525,8 @@ def feed_page(cursor, limit):
         page = recs[:limit]
         records = [{**r, "jobs": DONE_JOBS.get(r["run_id"], [])} for _, half, r in page if half == 0]
         runs = [r for _, half, r in page if half == 1]
-    return {"epoch": EPOCH, "repos": RUN_REPOS + FEED_REPOS, "window_secs": HISTORY_WINDOW_SECS,
+    return {"epoch": EPOCH, "repos": RUN_REPOS + FEED_REPOS, "forgejo_repos": FORGEJO_REPOS,
+            "window_secs": HISTORY_WINDOW_SECS,
             "next": page[-1][0] if page else cursor, "more": len(recs) > limit, "records": records, "runs": runs}
 
 
@@ -1224,7 +1253,7 @@ def server(addr):
 if __name__ == "__main__":
     print(
         f"github-runner-exporter: orgs={ORGS} repos={len(RUN_REPOS)} feed_repos={len(FEED_REPOS)} roster={len(ROSTER)} "
-        f"token={'set' if TOKEN else 'MISSING'} port={PORT}",
+        f"token={'set' if TOKEN else 'MISSING'} owner_tokens={sorted(OWNER_TOKENS)} port={PORT}",
         flush=True,
     )
     server(("", PORT)).serve_forever()

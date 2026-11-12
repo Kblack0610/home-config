@@ -13,4 +13,4 @@ configMapGenerator:
 
 resources:
   - deployment.yaml
-  - github-runner-exporter-secret.yaml   # PAT, vault: github-runner-exporter-pat
+  - github-runner-exporter-secret.yaml   # github-token, github-token-kblack0610, forgejo-token: docs/credentials.md

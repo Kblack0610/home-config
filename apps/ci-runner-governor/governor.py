@@ -312,20 +312,25 @@ def serves_pool(cfg, host, name=""):
 
 def lent(cfg, runners):
     """{runner: (host, "tests" or "build")}: the withheld slots of a paired host whose cores
-    another slot of their pair is using. A build slot is lent to tests while one of its test
-    slots is admitted; a test slot is lent to a build while its build slot is admitted. Read
-    from this cycle's labels alone, so it holds across restarts. Any other withheld slot is
-    held for load, a pin, a drain or nothing waiting, and is not lent."""
+    another slot of their pair is using (admitted, or busy finishing a job). A build slot is
+    lent to tests while one of its test slots uses the cores; a test slot is lent to a build
+    while its build slot does. It says where the cores are, so it wins over a pin or a drain
+    that would also hold the slot. Read from this cycle's labels alone, so it holds across
+    restarts. Any other withheld slot is held for load, a pin, a drain or no work."""
     out = {}
     for host in cfg["standby"]:
         P = pairs(cfg, host)
-        by = {slot_of(n): n for n, r in runners.items() if r["host"] == host}
-        up = lambda s: s in by and not runners[by[s]]["withheld"]
+        if not P:
+            continue
+        mine = {slot_of(n): r for n, r in runners.items() if r["host"] == host}
+        uses = lambda s, mine=mine: s in mine and (mine[s]["busy"] or not mine[s]["withheld"])
+        held = lambda s, mine=mine: s in mine and mine[s]["withheld"]
+        name = {slot_of(n): n for n, r in runners.items() if r["host"] == host}
         for b, tests in P.items():
-            if b in by and not up(b) and any(up(t) for t in tests):
-                out[by[b]] = (host, "tests")
-            if up(b):
-                out |= {by[t]: (host, "build") for t in tests if t in by and not up(t)}
+            if held(b) and any(uses(t) for t in tests):
+                out[name[b]] = (host, "tests")
+            if uses(b):
+                out |= {name[t]: (host, "build") for t in tests if held(t)}
     return out
 
 

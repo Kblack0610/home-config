@@ -80,6 +80,8 @@ tests:
         values: '1x5'
       - series: 'ci_governor_lent{name="e",host="h",to="build",instance="y"}'
         values: '1x5'
+      - series: 'ci_governor_lent{name="b",host="h",to="build",instance="y"}'
+        values: '1x5'
     promql_expr_test:
       - expr: cc:pool_slots
         eval_time: 2m

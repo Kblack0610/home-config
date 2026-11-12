@@ -340,6 +340,24 @@ grafana:
           cpu: 5m
           memory: 128Mi
 
+# Head-series trim (hc-303): histogram buckets of the control plane are ~60k of
+# the 386k head series on 2026-11-11, and no rule or dashboard reads them
+# (kubeApiserver* rules are off above). k3s serves apiserver, etcd client and
+# scheduler metrics from one endpoint, so every *_bucket on the apiserver job
+# goes. Setting metricRelabelings replaces the chart's default bucket drop.
+# Counters and gauges (apiserver_request_total, etc.) are kept.
+kubeApiServer:
+  serviceMonitor:
+    metricRelabelings:
+      - action: drop
+        sourceLabels: [__name__]
+        regex: .+_bucket|apiserver_request_sli_.*
+kubelet:
+  serviceMonitor:
+    metricRelabelings:
+      - action: drop
+        sourceLabels: [__name__]
+        regex: (workqueue|rest_client|kubelet_runtime_operations)_.*_bucket
 kubeControllerManager:
   enabled: false
 kubeEtcd:
@@ -385,8 +403,9 @@ prometheus:
     retentionSize: 5GB
     # Long-term copy: 7d stays hot here, everything goes to VictoriaMetrics on
     # asus-laptop (apps/victoria-metrics, 2y). The drop list is control-plane
-    # histogram buckets - about 70k of the 238k head series on 2026-10-29 - that
-    # only matter for live debugging, which the 7d here still covers.
+    # histogram buckets that only matter for live debugging, which the 7d here
+    # still covers. The apiserver and kubelet ones are now dropped at scrape
+    # (kubeApiServer, kubelet below); this still catches the other jobs.
     remoteWrite:
       - name: victoria-metrics
         url: http://victoria-metrics.monitoring.svc:8428/api/v1/write
@@ -394,15 +413,18 @@ prometheus:
           - sourceLabels: [__name__]
             regex: (apiserver|etcd|workqueue|rest_client|kubelet_runtime_operations)_.*_bucket|apiserver_request_sli_.*
             action: drop
-    # 1Gi OOMKilled it at the 2-hourly head compaction (peak 1015Mi with
-    # ~225k head series, 35 restarts by 2026-10-27, all at odd hours :00 UTC).
+    # OOMKilled at the 2-hourly head compaction: 1Gi at ~225k head series
+    # (10-27), 2Gi at 386k (11-11, ~6KB per series, 2.11GB working set). The
+    # scrape-time bucket drops cut ~60k series; 3Gi keeps compaction headroom
+    # (hp-victus has 32GB, 36% used). Re-measure
+    # `max_over_time(container_memory_working_set_bytes{container="prometheus"}[6h])`.
     resources:
       limits:
         cpu: 1000m
-        memory: 2Gi
+        memory: 3Gi
       requests:
         cpu: 200m
-        memory: 1Gi
+        memory: 2Gi
     storageSpec:
       volumeClaimTemplate:
         spec:

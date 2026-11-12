@@ -20,8 +20,9 @@
   # so ConvergenceDrift fired on every host nightly: only an installed package is one.
   changed_when: _nfs_pkgs.packages | default([]) | length > 0
 
-# Only the export roots: the dirs under /srv/forgejo hold Forgejo's own
-# ownership and modes, which this role must never reset.
+# Only the export roots, which are root-owned parents: the dirs under
+# /srv/forgejo (data/, snapshots/) hold Forgejo's own ownership and modes,
+# which this role never touches.
 - name: Ensure export roots exist
   ansible.builtin.file:
     path: "{{ item.path }}"
@@ -76,7 +77,7 @@
 - name: Re-apply exports if a path is not live
   ansible.builtin.command:
     cmd: exportfs -ra
-  when: nfs_exports | map(attribute='path') | reject('in', nfs_live_exports.stdout) | list | length > 0
+  when: nfs_exports | map(attribute='path') | difference(nfs_live_exports.stdout_lines | map('split') | map('first') | list) | length > 0
   changed_when: true
 
 - name: Verify the export is being served
@@ -84,4 +85,4 @@
     cmd: exportfs -s
   register: nfs_verify_exports
   changed_when: false
-  failed_when: nfs_exports | map(attribute='path') | reject('in', nfs_verify_exports.stdout) | list | length > 0
+  failed_when: nfs_exports | map(attribute='path') | difference(nfs_verify_exports.stdout_lines | map('split') | map('first') | list) | length > 0

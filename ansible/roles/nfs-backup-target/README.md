@@ -17,8 +17,8 @@ On 2026-07-09 the forgejo nightly backup (a 55G hostPath tarball on its own node
 
 ## Consumers
 
-- `/srv/forgejo`: `apps/forgejo/backup-cronjob.yaml` (the nightly full), `apps/nas/forgejo-packages-backup-cronjob.yaml` and `apps/nas/backup-verify-cronjob.yaml`, all running on asus-laptop.
-- `/srv/backups/forgejo`: the old off-box copy, unused once Forgejo lives on hp-victus; its entry goes when the copy is deleted.
+- `/srv/forgejo`, from the Forgejo cutover PR on: `apps/forgejo/backup-cronjob.yaml` (the nightly full), `apps/nas/forgejo-packages-backup-cronjob.yaml` and `apps/nas/backup-verify-cronjob.yaml`, all running on asus-laptop.
+- `/srv/backups/forgejo`: `forgejo-backup-offbox` and `backup-verify` until the cutover PR moves the off-box copy to the 8TB drive; its entry goes when the old copy is deleted.
 
 ## Bound in
 

@@ -17,7 +17,7 @@ nfs_exports:
   # there (forgejo-backup, nas forgejo-packages-backup, backup-verify) read it
   # and write to that host's backup disks.
   - path: /srv/forgejo
-    clients: "192.168.1.152"
+    clients: "{{ hostvars['asus-laptop'].ansible_host }}"
     opts: "ro,sync,no_subtree_check,no_root_squash"
 
 # Subdirectories to pre-create under /srv/backups (one per backup producer).

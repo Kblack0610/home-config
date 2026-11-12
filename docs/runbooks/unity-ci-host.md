@@ -112,6 +112,7 @@ apps/ci-runner-governor powers it (config.json `standby` -> `aws-burst-1` -> `po
 | Starts fail with `UnauthorizedOperation` | The $180 budget action attached `ci-burst-deny-start` | Budget stop above |
 | It ran past 12h | An "on" override, or a pod restart that could not read Prometheus (log: `earlier run time and cause unread`) | Expected for the override; the AWS budget is the cap that cannot forget |
 | Offline runners `aws-burst-1-unity-pool-7`, `-8` with no `unity` label | #525 cut `unity_ci_slots` from 8 to 6 and left those two registered; a lowered count removes nothing (top of this page) | Deregistered 2026-11-04. Next time, run `scripts/unity-ci-runner-remove.sh --host <host> --slot N` for each dropped slot |
+| A `unity-ci` apply under a `"slots":0` pin still leaves `.restart-pending` on a slot | The pin swaps only the pool labels (`unity-withheld` in, pool labels out): a slot keeps `host-aws-burst-1`, `hd-library` and `unity-gate`, so jobs that ask for those (method.yml, hd.yml, `multi.yml host=aws-burst-1`, gate classes) still land on it | Before the apply, check every slot reads `busy: false` (`gh api orgs/BlackNBrownStudios/actions/runners`) as well as no `Runner.Worker`; a slot that took one of those jobs is restarted by a later apply once it is idle, and the other slots need nothing more |
 
 ## The AWS build host (aws-build-1)
 

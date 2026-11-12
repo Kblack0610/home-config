@@ -97,7 +97,7 @@ jobs:
     steps:
       # GNU tools, as on the CI hosts the script runs on.
       - name: Install deps
-        run: apk add --no-cache git nodejs coreutils findutils procps
+        run: apk add --no-cache git nodejs coreutils findutils procps bash curl
       - name: Checkout
         uses: actions/checkout@v4
       - name: ci-disk-prune offline test
@@ -106,6 +106,8 @@ jobs:
         run: sh ansible/roles/unity-ci-host-mac/files/test-ci-tree-prune.sh
       - name: node-disk-metrics offline test
         run: sh ansible/roles/node-disk-metrics/files/test-node-disk-metrics.sh
+      - name: forgejo-restore-drill runner offline test
+        run: sh ansible/roles/forgejo-restore-drill/files/test-forgejo-restore-drill-run.sh
       - name: ci-runner-cpu offline test
         run: sh ansible/roles/ci-runner-cpu/files/test-ci-runner-cpu.sh
       - name: emotiv-bridge offline tests

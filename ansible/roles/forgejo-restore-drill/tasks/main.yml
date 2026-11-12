@@ -1,0 +1,77 @@
+---
+# Weekly proof that the newest Forgejo backup restores (scripts/forgejo-restore-drill.sh).
+# The drill script is copied from scripts/, its one home; the runner records the outcome
+# for node-exporter. See README.md.
+- name: Create the drill directory
+  ansible.builtin.file:
+    path: /usr/local/lib/forgejo-restore-drill
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+
+- name: Install the drill and its runner
+  ansible.builtin.copy:
+    src: "{{ item.src }}"
+    dest: "/usr/local/lib/forgejo-restore-drill/{{ item.dest }}"
+    owner: root
+    group: root
+    mode: "0755"
+  loop:
+    - src: "{{ playbook_dir }}/../../scripts/forgejo-restore-drill.sh"
+      dest: forgejo-restore-drill.sh
+    - src: forgejo-restore-drill-run.sh
+      dest: forgejo-restore-drill-run
+  loop_control:
+    label: "{{ item.dest }}"
+
+- name: Install the service and timer
+  ansible.builtin.copy:
+    dest: "/etc/systemd/system/{{ item.name }}"
+    owner: root
+    group: root
+    mode: "0644"
+    content: "{{ item.content }}"
+  loop:
+    - name: forgejo-restore-drill.service
+      content: |
+        # Managed by ansible (roles/forgejo-restore-drill). Do not edit by hand.
+        [Unit]
+        Description=Restore the newest Forgejo backup into a network-less container and check it
+        After=docker.service network-online.target
+        Wants=network-online.target
+        RequiresMountsFor=/mnt/backups
+
+        [Service]
+        Type=oneshot
+        Nice=10
+        IOSchedulingClass=best-effort
+        IOSchedulingPriority=7
+        # 232s on 2026-11-11 (51G unpacked); the drill's own healthz wait is 10 min.
+        TimeoutStartSec=2h
+        ExecStart=/usr/local/lib/forgejo-restore-drill/forgejo-restore-drill-run {{ forgejo_restore_drill_textfile_dir }} {{ forgejo_restore_drill_url }} {{ forgejo_restore_drill_image_repo }}
+    - name: forgejo-restore-drill.timer
+      content: |
+        # Managed by ansible (roles/forgejo-restore-drill). Do not edit by hand.
+        [Unit]
+        Description=Weekly Forgejo restore drill
+
+        [Timer]
+        OnCalendar={{ forgejo_restore_drill_on_calendar }}
+        Persistent=true
+        RandomizedDelaySec=10min
+
+        [Install]
+        WantedBy=timers.target
+  loop_control:
+    label: "{{ item.name }}"
+  notify: Reload systemd for forgejo-restore-drill
+
+- name: Apply unit changes before starting the timer
+  ansible.builtin.meta: flush_handlers
+
+- name: Enable the timer
+  ansible.builtin.systemd:
+    name: forgejo-restore-drill.timer
+    enabled: true
+    state: started

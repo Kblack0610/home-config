@@ -1141,6 +1141,11 @@ class DetailFeedTest(unittest.TestCase):
         self.render({"repos/acme/web/actions/runs?status=completed&per_page=100&page=1": listing})
         runs = exporter.feed_page(cursor, 100)["runs"]
         self.assertEqual([(r["run"]["id"], r["run"]["display_title"]) for r in runs], [(9, "fix: the new title")])
+        # read again unchanged: nothing new to serve
+        cursor = exporter.feed_page(0, 100)["next"]
+        self.expire_history()
+        self.render({"repos/acme/web/actions/runs?status=completed&per_page=100&page=1": listing})
+        self.assertEqual(exporter.feed_page(cursor, 100)["runs"], [])
 
     def test_a_run_with_more_than_100_jobs_pages_and_a_failed_page_stays_partial(self):
         page1 = {"total_count": 150, "jobs": [{"id": i, "name": f"j{i}"} for i in range(100)]}

@@ -121,7 +121,7 @@ Checked 2026-11-11: moving Unity jobs from the AWS hosts to GitHub-hosted runner
 | Owned hosts | 0 at the margin | governor `rates` |
 | aws-burst-2 (on-demand m7a.8xlarge, 6 slots) | ~0.31 | $1.855/h over 6 slots |
 | aws-burst-1 (on-demand m7a.8xlarge, 5 slots) | ~0.37 | $1.855/h over 5 slots |
-| aws-build-1 (on-demand m7a.8xlarge, 3 slots) | ~0.62 | $1.855/h over 3 slots |
+| aws-build-1 (on-demand m7a.8xlarge, 6 test slots, a build in place of two) | ~0.31 to 0.62 | $1.855/h over 6 slots running tests, 3 when every pair builds |
 | GitHub Linux 4-core, 16 GB | 0.72 | $0.012/min |
 | GitHub Linux 8-core, 32 GB | 1.32 | $0.022/min |
 

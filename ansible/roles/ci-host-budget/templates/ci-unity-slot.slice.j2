@@ -10,4 +10,4 @@ Before=slices.target
 CPUAccounting=true
 AllowedCPUs={{ ci_unity_slot_cpus[ci_unity_slot - 1] }}
 MemoryAccounting=true
-MemoryMax={{ ci_unity_slot_memory_max }}
+MemoryMax={{ ci_unity_slot_memory_max if ci_unity_slot_memory_max is string else ci_unity_slot_memory_max[ci_unity_slot - 1] }}

@@ -313,10 +313,12 @@ all:
           unity_ci_hd_library: true
         # The player-build host (platform infra/aws-ci-burst, added 2026-11-10): an
         # on-demand m7a.8xlarge with a 600G volume, reached like aws-burst-1 (SSM, the
-        # same instance profile and library bucket). Its runners carry unity-build and
-        # no unity or unity-full (unity_ci_pool, unity_ci_build), so playground
-        # release.yml's builds run here and no gate or nightly can. The governor starts
-        # it when a build waits (apps/ci-runner-governor/config.json, dedicated).
+        # same instance profile and library bucket). Slots 1-3 carry unity-build
+        # (unity_ci_build_slots), so playground release.yml's builds run there and no gate
+        # or nightly can; slots 4-9 are pool test slots (unity, unity-full, unity-gate). Each
+        # build slot shares its cores with two test slots, and the governor never runs a
+        # build and a test in one pair (apps/ci-runner-governor/config.json "pairs"). It
+        # starts the host when a build waits, and for tests as the last standby host.
         # Default image list: desktop builds need the windows flavor.
         aws-build-1:
           ansible_host: i-0856b245ff7a81321
@@ -324,16 +326,15 @@ all:
           ansible_ssh_common_args: >-
             -o ProxyCommand="aws ssm start-session --profile bnb --region us-east-2
             --target %h --document-name AWS-StartSSHSession --parameters portNumber=%p"
-          unity_ci_slots: 3
+          unity_ci_slots: 9
+          unity_ci_build_slots: 3
           # Releases take slots 1-2 only (playground release.yml asks unity-release),
           # so a release, or one per game from ship.sh, never holds the slot players.yml
           # builds on; a release alone had all three for hours on 2026-11-11 (hc-263).
           unity_ci_slot_labels:
             1: [unity-release]
             2: [unity-release]
-          unity_ci_pool: false
-          unity_ci_build: true
-          unity_ci_full: false
+          unity_ci_gate: true
           unity_ci_images_pull: true
           unity_ci_lan: false
           unity_ci_library_s3: aws-burst-1-libraries-311141527647
@@ -453,16 +454,18 @@ all:
           ci_unity_slot_cpus: ["1-10", "11-15", "16-20", "21-25", "26-30"]
           ci_unity_memory_max: 100G
           ci_unity_slot_memory_max: 20G
-        # aws-build-1, the same m7a.8xlarge: three slots of 10 cores for whole-game
+        # aws-build-1, the same m7a.8xlarge: build slots 1-3 of 10 cores for whole-game
         # player builds, 36G each (a build SIGKILLed at 14G on aws-burst-1, #1817;
-        # razer builds in 20G). Core 0 and core 31 as on aws-burst-1.
+        # razer builds in 20G), and test slots 4-9 of 5 cores and 16G, two on each build
+        # slot's cores (the governor's "pairs", so a pair's 32G fits its build slot's 36G).
+        # Core 0 and core 31 as on aws-burst-1.
         aws-build-1:
           ci_cpus: 1-31
           ci_memory_max: 116G
           ci_unity_cpus: 1-30
-          ci_unity_slot_cpus: ["1-10", "11-20", "21-30"]
+          ci_unity_slot_cpus: ["1-10", "11-20", "21-30", "1-5", "6-10", "11-15", "16-20", "21-25", "26-30"]
           ci_unity_memory_max: 108G
-          ci_unity_slot_memory_max: 36G
+          ci_unity_slot_memory_max: [36G, 36G, 36G, 16G, 16G, 16G, 16G, 16G, 16G]
         # Twin of aws-burst-1, the same 32 cores and 128 GiB: six slots of five
         # cores, each stopping at 16G (a PlayMode shard peaks at 13.9G), 96G of the
         # 100G Unity budget.

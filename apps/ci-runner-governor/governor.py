@@ -66,12 +66,16 @@ host covers, so one waiting build starts it; it stays out of the pool's queue, f
 max_admitted cap and the standby order. Its idle-off, daily cap, override and drain are
 the same as any powered host's.
 
-A dedicated host with "lends" (aws-build-1) also serves the shared pool, one kind at a time,
-builds first: while a build waits or a slot is busy carrying its own label it is a dedicated
-host as above, and otherwise it is the last standby pool host, whose admit ("lend") gives a
-slot the lends labels. Each runner's labels say which kind it is serving. A slot of the other
-kind steps aside first (withheld, a busy one finishing its job), and the host admits into
-either kind only once no slot outside it is busy, so a build and a CI job never share it.
+A paired host ("pairs" in its entry: aws-build-1) runs both kinds at once. Its build slots
+(the pairs' keys) carry the dedicated label and its test slots (the values) the pool's, each
+by its own static labels; each build slot shares its cores and memory with its test slots,
+so a build and a test never run in one pair. A busy build slot keeps its pair, and each
+waiting build claims a free pair whose build slot can take it, the most constrained job first
+(a release build needs slot 1 or 2). In a claimed pair every admitted test slot steps aside
+in one cycle, and the build slot is admitted once none is busy or admitted. In every other
+pair the build slot is withheld, and once it is its test slots are the pool's, the last
+standby pool host's, under its max_admitted and any pin. A stopped paired host starts on
+its own thresholds for a waiting build and on the default pool ones for tests.
 
 "standby" is an ordered list, Spot first (aws-burst-2, then the on-demand aws-burst-1). A
 host further down starts only for the jobs the hosts ahead of it cannot take: a stopped
@@ -286,13 +290,27 @@ def pool_jobs(waiting, own):
     return [need for need in waiting if not need & marks]
 
 
-def lends(cfg, host):
-    """The pool labels a dedicated host's slots carry while lent to the shared pool
-    (aws-build-1: unity, unity-full, unity-gate), or None when it serves only its own jobs."""
-    return (cfg["standby"].get(host) or {}).get("lends")
+def pairs(cfg, host):
+    """A paired host's build slots and the test slots that share each one's cores and memory
+    (aws-build-1: {1: [4, 5], 2: [6, 7], 3: [8, 9]}), or {}."""
+    return {int(b): [int(t) for t in ts] for b, ts in ((cfg["standby"].get(host) or {}).get("pairs") or {}).items()}
 
 
-def withheld_label(cfg, host):
+def slot_of(name):
+    """A runner's slot number, the end of its name (aws-build-1-unity-pool-4: 4), or 0."""
+    tail = name.rsplit("-", 1)[-1]
+    return int(tail) if tail.isdigit() else 0
+
+
+def serves_pool(cfg, host, name=""):
+    """Whether a runner carries the pool's labels: every one off a dedicated host, and a
+    paired host's test slots. With no name, whether the host's own kind is the pool's."""
+    return not dedicated(cfg, host) or (bool(name) and bool(pairs(cfg, host)) and slot_of(name) not in pairs(cfg, host))
+
+
+def withheld_label(cfg, host, name=""):
+    if serves_pool(cfg, host, name) and pairs(cfg, host):
+        return cfg["withheld_label"]
     return (cfg["standby"].get(host) or {}).get("withheld_label", cfg["withheld_label"])
 
 
@@ -325,10 +343,10 @@ def label_set(joined):
     return frozenset(l.lower() for l in joined.split(",") if l)
 
 
-def admit_labels(cfg, host):
+def admit_labels(cfg, host, name=""):
     """The labels a runner on host gets back on admit. "full": false in its hosts entry leaves
     out the full label: unity_ci_full false in inventory.yml, so no full run lands there."""
-    if dedicated(cfg, host):
+    if not serves_pool(cfg, host, name):
         return list(dedicated(cfg, host))
     full = cfg["hosts"].get(host, {}).get("full", True)
     return [cfg["pool_label"]] + ([cfg["full_label"]] if full else [])
@@ -341,7 +359,7 @@ def host_labels(cfg, host):
     have = set()
     for r in prom(f'github_runner_state{{host="{host}",pool=~"{"|".join(pools(cfg))}"}}'):
         have |= label_set(r["metric"].get("labels", ""))
-    back = admit_labels(cfg, host) + (lends(cfg, host) or [])
+    back = admit_labels(cfg, host) + ([cfg["pool_label"], cfg["full_label"]] if pairs(cfg, host) else [])
     return frozenset(have | label_set(",".join(back))) if have else frozenset()
 
 
@@ -380,9 +398,8 @@ def decide(cfg, hosts, runners, waiting, last_action, now, instances=None, pins=
     own = build_marks(cfg)
     waiting_all, waiting = waiting, pool_jobs(waiting, own)
     queue = len(waiting)
-    # A lent slot of a dedicated host is a pool slot like any other.
-    admitted = sum(1 for r in runners.values() if not r["withheld"]
-                   and (r["host"] not in own or cfg["pool_label"] in r.get("labels", ())))
+    # A paired host's test slots are pool slots like any other.
+    admitted = sum(1 for n, r in runners.items() if not r["withheld"] and serves_pool(cfg, r["host"], n))
     # A standby host can go to zero, so only the other hosts hold the pool's floor.
     floor_held = sum(1 for r in runners.values() if not r["withheld"] and r["host"] in cfg["hosts"])
     plans = []
@@ -460,20 +477,26 @@ def decide(cfg, hosts, runners, waiting, last_action, now, instances=None, pins=
         ded = host in own
         # Every slot not withheld, whatever kind it serves: what a drain takes back.
         up = on
-        stray, blocked = [], 0
-        if ded and lends(cfg, host):
-            # One kind at a time, builds first: a waiting build or a busy build slot makes it
-            # a build host, else it is a pool host. A slot serving the other kind steps aside,
-            # and nothing is admitted while a slot outside the current kind is still busy.
-            kind = lambda n: "build" if mine[n].get("labels", frozenset()) & own[host] else (
-                "pool" if cfg["pool_label"] in mine[n].get("labels", ()) else "")
-            building = any(need & own[host] for need in waiting_all) or any(
-                r["busy"] for n, r in mine.items() if kind(n) == "build")
-            mode = "build" if building else "pool"
-            ded = building
-            stray = [n for n in on if kind(n) != mode]
-            on = [n for n in on if kind(n) == mode]
-            blocked = sum(1 for n, r in mine.items() if r["busy"] and n not in on)
+        aside, builds_in, stepped = [], [], 0
+        if pairs(cfg, host):
+            # Both kinds at once, a pair at a time: the pairs move by pair_plan() (every
+            # step-aside in one cycle), and the pool's rules below move its test slots.
+            builds = [need for need in waiting_all if need & own[host]]
+            builds_in, aside, eligible = pair_plan(cfg, host, mine, builds)
+            stepping = {n for n, _ in aside}
+            on = [n for n in on if serves_pool(cfg, host, n) and n not in stepping]
+            off = [n for n in off if n in eligible]
+            stepped = sum(1 for n in stepping if serves_pool(cfg, host, n))
+            admitted -= stepped
+            # max_admitted counts every slot; the pool's rules move only the test slots.
+            cap = min(cap, cfg["standby"][host]["max_admitted"] - len(pairs(cfg, host)))
+            # Stopped, it starts for a waiting build on its own thresholds and for tests on
+            # the pool's (a burst host's), since one waiting build is worth a start and one
+            # test is not.
+            ded = bool(builds) and bool(inst) and inst["state"] == "stopped"
+            if not ded:
+                p = {**p, "start_min_excess": POWER_DEFAULTS["start_min_excess"],
+                     "start_after_seconds": POWER_DEFAULTS["start_after_seconds"]}
         jobs = [need for need in waiting_all if need & own[host]] if ded else waiting
         q, cov = (len(jobs), 0) if ded else (queue, covered)
         takes = sum(1 for need in jobs if need <= inst["labels"]) if inst else 0
@@ -499,13 +522,8 @@ def decide(cfg, hosts, runners, waiting, last_action, now, instances=None, pins=
                 why = f"{drain}; {busy} jobs finishing"
             else:
                 action, why = "stop", drain
-        elif stray:
-            action, runner = "withhold", stray[0]
-            why = "a build waits or runs, so a pool slot steps aside" if ded else "no build waits or runs, so a build slot steps aside"
         elif len(on) > cap:
             action, runner, why = "withhold", on[0], f"pinned to {cap}" if pinned else f"over its {cap} cap"
-        elif blocked and off and inst and inst["state"] == "running":
-            why = f"{blocked} slots finish the other kind's jobs first"
         elif over == "on" and inst and inst["state"] == "running" and off and len(on) < cap:
             if ded or admitted < cfg["pool_max_admitted"]:
                 action, runner, why = "admit", off[0], "override on"
@@ -562,8 +580,6 @@ def decide(cfg, hosts, runners, waiting, last_action, now, instances=None, pins=
                     why += f"; held {int(now - since)}s of {p['start_after_seconds']}s"
         elif inst and inst["state"] != "running":
             why = f"instance {inst['state']}"
-        if action == "admit" and lends(cfg, host) and not ded:
-            action = "lend"
         if inst is not None:
             inst["draining"] = bool(drain)
             if not wanting:
@@ -580,10 +596,59 @@ def decide(cfg, hosts, runners, waiting, last_action, now, instances=None, pins=
                 if inst["state"] == "stopped" and inst.get("hours_today", 0) < p["max_hours_day"]:
                     ahead[host] = cap
                 elif inst["state"] in ("pending", "running"):
-                    ahead[host] = (max(0, cap - len(on) - (action in ("admit", "lend")))
+                    ahead[host] = (max(0, cap - len(on) - (action == "admit"))
                                    + sum(1 for n in on if not mine[n]["busy"]))
-        out.append((host, action, runner, "PINNED" if pinned else "STANDBY", why))
+        v = "PINNED" if pinned else "STANDBY"
+        if drain:
+            aside, builds_in, admitted = [], [], admitted + stepped
+        # A pair's moves all go in this cycle, step-asides first; a hold beside them says nothing.
+        out += [(host, "withhold", n, v, w) for n, w in aside]
+        if action != "hold" or not (aside or builds_in):
+            out.append((host, action, runner, v, why))
+        out += [(host, "admit", n, v, w) for n, w in builds_in]
     return out
+
+
+def pair_plan(cfg, host, mine, builds):
+    """A paired host's moves this cycle: (build slots to admit, slots that step aside, each
+    with its reason; the test slots the pool may admit). mine is its online runners, builds
+    the waiting jobs that ask for its label. A runner not registered yet is quiet and takes
+    no job."""
+    P = pairs(cfg, host)
+    by = {slot_of(n): n for n in mine}
+    busy = lambda s: s in by and mine[by[s]]["busy"]
+    up = lambda s: s in by and not mine[by[s]]["withheld"]
+    quiet = lambda s: not busy(s) and not up(s)
+    held = {withheld_label(cfg, host).lower(), cfg["withheld_label"].lower()}
+    own = frozenset(l.lower() for l in dedicated(cfg, host))
+    # A withheld build slot can take what its labels ask once admitted.
+    can = lambda b, need: b in by and need <= (frozenset(mine[by[b]].get("labels", ())) - held) | own
+    # A busy build slot keeps its pair. Each waiting build claims a free pair whose slot can
+    # take it, the most constrained first; an admitted build slot, then one whose test slots
+    # already stepped aside, then the fewest busy tests, so a claim holds across cycles.
+    claimed, wanted = {b for b in P if busy(b)}, set()
+    for need in sorted(builds, key=lambda need: sum(can(b, need) for b in P)):
+        free = [b for b in P if b not in claimed and can(b, need)]
+        if free:
+            b = min(free, key=lambda b: (not up(b), any(up(t) for t in P[b]), sum(busy(t) for t in P[b]), b))
+            claimed.add(b)
+            wanted.add(b)
+    admit, aside, eligible = [], [], set()
+    for b, tests in sorted(P.items()):
+        if b in claimed:
+            reason = f"a build {'runs' if busy(b) else 'waits'}, pair {b}'s test slots step aside"
+            aside += [(by[t], reason) for t in tests if up(t)]
+            if b in wanted and not up(b) and all(quiet(t) for t in tests):
+                admit.append((by[b], f"a build waits and pair {b}'s test slots are clear"))
+            elif up(b) and not busy(b) and not all(quiet(t) for t in tests):
+                aside.append((by[b], f"pair {b}'s test slots are not clear yet"))
+        elif up(b) and not busy(b):
+            aside.append((by[b], f"no build waits for pair {b}, its test slots serve the pool"))
+        elif quiet(b):
+            eligible |= {by[t] for t in tests if t in by}
+    paired = set(P).union(*P.values())
+    eligible |= {n for n in mine if slot_of(n) not in paired and serves_pool(cfg, host, n)}
+    return admit, aside, eligible
 
 
 def gh(method, path, body=None):
@@ -609,15 +674,15 @@ def runner_id(org, name):
 
 
 def apply(cfg, action, name, host):
-    """Swap the pool labels for the withheld one, or back ("lend": a dedicated host's lends
-    labels instead of its own). Adds before it removes, so a runner is never left with neither."""
-    org, held = cfg["org"], withheld_label(cfg, host)
-    pool = (dedicated(cfg, host) or [cfg["pool_label"], cfg["full_label"]]) + (lends(cfg, host) or [])
+    """Swap the runner's own labels (the pool's, or a build slot's dedicated ones) for its
+    withheld one, or back. Adds before it removes, so a runner is never left with neither."""
+    org, held = cfg["org"], withheld_label(cfg, host, name)
+    own = [cfg["pool_label"], cfg["full_label"]] if serves_pool(cfg, host, name) else dedicated(cfg, host)
     rid, have = runner_id(org, name)
     if action == "withhold":
-        add, drop = [held], pool
+        add, drop = [held], own
     else:
-        add, drop = (lends(cfg, host) if action == "lend" else admit_labels(cfg, host)), [held]
+        add, drop = admit_labels(cfg, host, name), [held]
     if set(add) - have:
         gh("POST", f"orgs/{org}/actions/runners/{rid}/labels", {"labels": sorted(set(add) - have)})
     for label in drop:
@@ -1053,7 +1118,8 @@ def render(cfg, hosts, runners, queue, decisions, ok, instances=None, budget=Non
         L.append(f'ci_governor_disk_held{{host="{host}"}} {1 if held else 0}')
     # The reason is in the log, not a label: it changes every cycle.
     L += ["# HELP ci_governor_decision This cycle's verdict and action per host", "# TYPE ci_governor_decision gauge"]
-    for host, action, _, v, _ in decisions:
+    # A paired host moves several slots in one cycle: one row per host, verdict and action.
+    for host, action, v in dict.fromkeys((h, a, v) for h, a, _, v, _ in decisions):
         L.append(f'ci_governor_decision{{host="{host}",verdict="{v}",action="{action}"}} 1')
     # A powered host, for the agent-web Infra page and Sentinel's start/stop notice. reason is
     # why the governor last started or stopped it (queue, idle, cap, override), "none" before

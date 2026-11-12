@@ -1,0 +1,76 @@
+# The Kalshi demo order drill (strategy repo lab/markets/kalshi_trade.py, docs/markets.md Demo orders). KalshiDemo refuses
+# any host but the demo exchange's, so this key and job cannot reach real money. The live Kalshi key is not deployed:
+# nothing reads a live account yet, and live orders wait on lab/live.py (tr-48).
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: trader-kalshi-demo-drill
+spec:
+  # Kalshi demo exchange only (mock funds): rest one yes contract at $0.01 post only, read it back, cancel it (demo_orders)
+  schedule: "50 14 * * *"
+  timeZone: "Etc/UTC"
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      backoffLimit: 0
+      activeDeadlineSeconds: 300
+      template:
+        metadata:
+          labels:
+            app: trader-kalshi-demo-drill
+        spec:
+          restartPolicy: Never
+          affinity:
+            nodeAffinity:
+              requiredDuringSchedulingIgnoredDuringExecution:
+                nodeSelectorTerms:
+                  - matchExpressions:
+                      - {key: kubernetes.io/arch, operator: In, values: [amd64]}
+                      - {key: kubernetes.io/hostname, operator: NotIn, values: [hp-victus]}
+          securityContext:
+            runAsUser: 1000
+            runAsGroup: 1000
+            fsGroup: 1000
+          initContainers:
+            - name: migrate
+              image: trader
+              command: ["python", "/repo/lab/migrate.py"]
+              env:
+                - name: DATABASE_URL
+                  valueFrom:
+                    secretKeyRef: {name: trader-db, key: database-url}
+              resources:
+                requests:
+                  cpu: 20m
+                  memory: 64Mi
+                limits:
+                  memory: 256Mi
+          containers:
+            - name: drill
+              image: trader
+              command: ["python", "-m", "lab.markets.kalshi_trade", "drill"]
+              env:
+                - name: KALSHI_DEMO_KEY_ID
+                  valueFrom:
+                    secretKeyRef: {name: trader-kalshi-demo, key: KALSHI_DEMO_KEY_ID}
+                - name: KALSHI_DEMO_KEY_FILE
+                  value: /keys/key.pem
+                - name: DATABASE_URL
+                  valueFrom:
+                    secretKeyRef: {name: trader-db, key: database-url}
+              volumeMounts:
+                - {name: kalshi-demo-key, mountPath: /keys, readOnly: true}
+              resources:
+                requests:
+                  cpu: 20m
+                  memory: 96Mi
+                limits:
+                  memory: 256Mi
+          volumes:
+            - name: kalshi-demo-key
+              secret:
+                secretName: trader-kalshi-demo
+                items: [{key: key.pem, path: key.pem}]
+                defaultMode: 0440

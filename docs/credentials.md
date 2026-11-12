@@ -35,7 +35,6 @@ GitHub is a service we do not run, but these tokens exist: reuse the narrowest o
 | `apps/github-runner-exporter/github-runner-exporter-secret.yaml` `github-token` | fine-grained | - | github-runner-exporter; its copy is the Renovate Actions secret `RENOVATE_GITHUB_COM_TOKEN` |
 | `apps/ci-runner-governor/ci-runner-governor-secret.yaml` `github-token` | classic: admin:org, repo, workflow | - | ci-runner-governor. Too broad to reuse |
 | rbw `github-runner-exporter-pat` (BlackNBrownStudios) | fine-grained | 2027-10-07 | not the exporter's current token |
-| `ansible/group_vars/ci_hosts/vault.sops.yaml` `vault_github_pat`, `linux_bare_metal` `vault_github_dodginballs_pat` | PAT | - | `ansible/roles/github-actions-runner-linux` runner registration |
-| env `GITHUB_PAT_DODGINBALLS_CI` | fine-grained | 2027-02-28 | in the workstation shell env; where it is set is not traced |
+| `ansible/group_vars/ci_hosts/vault.sops.yaml` `vault_github_pat` | PAT | - | `ansible/roles/github-actions-runner-linux` runner registration |
 
 A UI-only path (Immich, Karakeep) is still the agent's when the admin login is in SOPS or rbw; when it is not, ask the human for that one login and mint every key with it.

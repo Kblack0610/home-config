@@ -10,7 +10,7 @@ gh_runner_url: "https://github.com/{{ gh_runner_owner }}{{ '' if gh_runner_scope
 gh_runner_api_path: "{{ 'orgs/' ~ gh_runner_owner if gh_runner_scope == 'org' else 'repos/' ~ gh_runner_owner ~ '/' ~ gh_runner_repo }}"
 
 # PAT override — per-play, for hosts that register against a DIFFERENT repo
-# than the default `vault_github_pat` covers (e.g. dodginballs). Undefined by
+# than the default `vault_github_pat` covers (e.g. a game repo). Undefined by
 # default; the role falls back to `vault_github_pat` when unset. See role
 # tasks/main.yml for the resolution logic.
 # gh_runner_pat: "{{ vault_github_<repo>_pat }}"
@@ -40,8 +40,7 @@ gh_runner_work_dir: _work
 gh_runner_user_home: "{{ gh_runner_home }}"
 
 # Where the registration token comes from:
-#   pat - vault_github_pat (or the gh_runner_pat override). Default; this is
-#         what the dodginballs Unity binding uses.
+#   pat - vault_github_pat (or the gh_runner_pat override). Default.
 #   gh  - mint a short-lived token on the control node with the already
 #         authenticated `gh` CLI, so no standing secret is needed (same as the
 #         github-actions-runner-mac role).

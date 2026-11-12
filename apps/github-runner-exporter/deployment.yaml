@@ -85,7 +85,7 @@ spec:
             # Forgejo repos whose Actions jobs and tasks are read; the forgejo-runner
             # pods are the runners (pool="forgejo", forge="forgejo").
             - name: FORGEJO_REPOS
-              value: "kblack0610/platform kblack0610/home-config kblack0610/bnb-game-servers kblack0610/personal-sites kblack0610/dodginballs"
+              value: "kblack0610/platform kblack0610/home-config kblack0610/bnb-game-servers kblack0610/personal-sites"
             # Forgejo access token of kblack0610, scope read:repository only: the
             # jobs list is owner-only (Forgejo v14 api.go: reqOwner) and needs a
             # token even on a public repo. Minted by a human, then:

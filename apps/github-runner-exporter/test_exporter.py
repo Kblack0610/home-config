@@ -704,8 +704,8 @@ class RateLimitTest(unittest.TestCase):
         self.assertEqual(exporter.rate("repos")["until"], 0.0)
 
     def test_each_owners_repos_use_that_owners_token(self):
-        # A fine-grained PAT cannot read another owner's private repos, so those
-        # repos go out with GITHUB_TOKEN_<OWNER>; everything else keeps GITHUB_TOKEN.
+        # A fine-grained PAT cannot read another owner's private repos, so that
+        # owner's repos and org go out with GITHUB_TOKEN_<OWNER>; the rest keep GITHUB_TOKEN.
         sent = {}
 
         def urlopen(req, timeout=None):
@@ -714,13 +714,17 @@ class RateLimitTest(unittest.TestCase):
             r.headers = {"X-RateLimit-Remaining": "4000"}
             return r
         exporter.urllib.request.urlopen = urlopen
-        with mock.patch.multiple(exporter, TOKEN="org-pat", OWNER_TOKENS={"kblack0610": "own"}):
+        tokens = exporter.owner_tokens({"GITHUB_TOKEN": "org-pat", "GITHUB_TOKEN_KBLACK0610": "own",
+                                        "GITHUB_TOKEN_MY_ORG": "mine", "GITHUB_TOKEN_EMPTY": ""})
+        self.assertEqual(tokens, {"KBLACK0610": "own", "MY_ORG": "mine"})
+        with mock.patch.multiple(exporter, TOKEN="org-pat", OWNER_TOKENS=tokens):
             for path in ("repos/Kblack0610/ebay-lister/actions/runs", "repos/acme/web/actions/runs",
-                         "orgs/kblack0610/actions/runners"):
+                         "orgs/my-org/actions/runners", "orgs/acme/actions/runners"):
                 exporter.get(path)
         self.assertEqual(sent, {"repos/Kblack0610/ebay-lister/actions/runs": "Bearer own",
                                 "repos/acme/web/actions/runs": "Bearer org-pat",
-                                "orgs/kblack0610/actions/runners": "Bearer org-pat"})
+                                "orgs/my-org/actions/runners": "Bearer mine",
+                                "orgs/acme/actions/runners": "Bearer org-pat"})
 
     def serve(self, body, etag):
         """GitHub as seen by one path: 200 with the ETag, 304 when it is sent back."""

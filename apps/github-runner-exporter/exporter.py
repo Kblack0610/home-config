@@ -97,12 +97,24 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 API = os.environ.get("GITHUB_API", "https://api.github.com").rstrip("/")
 TOKEN = os.environ.get("GITHUB_TOKEN", "")
-# Owner -> the token for that owner's repos, from GITHUB_TOKEN_<OWNER> (the owner
-# upper-cased): a fine-grained PAT reads only its resource owner's private repos,
-# so another owner's private repos need a token of their own. Any other path
-# (orgs/, an owner with none) uses GITHUB_TOKEN.
-OWNER_TOKENS = {k[len("GITHUB_TOKEN_"):].lower(): v for k, v in os.environ.items()
-                if k.startswith("GITHUB_TOKEN_") and v}
+
+
+def env_key(owner):
+    """An owner as an env var suffix: upper-cased, anything but a letter or digit as _."""
+    return re.sub(r"[^A-Z0-9]", "_", owner.upper())
+
+
+def owner_tokens(env):
+    """{GITHUB_TOKEN_<OWNER> suffix: token} for every non-empty one."""
+    return {k[len("GITHUB_TOKEN_"):]: v for k, v in env.items() if k.startswith("GITHUB_TOKEN_") and v}
+
+
+# The token for one owner's repos and org, from GITHUB_TOKEN_<OWNER> (env_key): a
+# fine-grained PAT reads only its resource owner's private repos, so another
+# owner's private repos need a token of their own. An owner with none uses
+# GITHUB_TOKEN. Every token here is one user's (Kblack0610), so all of them draw
+# on one 5000/h pool, and RATE stays keyed by scope, not by token.
+OWNER_TOKENS = owner_tokens(os.environ)
 PORT = int(os.environ.get("PORT", "9320"))
 ORGS = os.environ.get("RUNNER_ORGS", "BlackNBrownStudios").split()
 # Repos whose repo-scoped runners, active runs and recent runs are read.
@@ -144,7 +156,8 @@ FEED_SEQ = [0]
 FEED_LOCK = threading.Lock()
 EPOCH = int(time.time())
 FEED_LIMIT = 100
-# The token's 5000 calls/h are per USER, shared with every gh session on the
+# The tokens' 5000 calls/h are per USER, one pool for GITHUB_TOKEN and every
+# GITHUB_TOKEN_<OWNER> (all Kblack0610's), shared with every gh session on the
 # account and with apps/ci-runner-governor, and live runner state must never
 # starve for history. So history's job fetches (the only part that grows with
 # the backlog: a cold cache is ~500 calls) get a fixed budget per scrape, shared
@@ -247,7 +260,7 @@ def note_rate(scope, headers, code=None):
 
 def token_for(path):
     parts = path.split("/", 2)
-    owner = parts[1].lower() if parts[0] == "repos" and len(parts) > 1 else ""
+    owner = env_key(parts[1]) if parts[0] in ("repos", "orgs") and len(parts) > 1 else ""
     return OWNER_TOKENS.get(owner, TOKEN)
 
 

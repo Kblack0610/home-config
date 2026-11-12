@@ -44,21 +44,3 @@ spec:
   resources:
     requests:
       storage: 600Gi
----
-# The pre-move volume on asus-laptop, unused since 2026-11-11 and kept as the
-# rollback until 2026-11-18; its PV was patched to Retain before the move.
-# Delete this claim after that date.
-apiVersion: v1
-kind: PersistentVolumeClaim
-metadata:
-  name: forgejo-data
-  namespace: forgejo
-  labels:
-    app.kubernetes.io/name: forgejo
-spec:
-  accessModes:
-    - ReadWriteOnce
-  storageClassName: local-path
-  resources:
-    requests:
-      storage: 20Gi

@@ -10,7 +10,7 @@ and repository mirroring enabled.
 |------|---------|
 | `kustomization.yaml` | Reconciles namespace, app, services, ingress, backup, and runner |
 | `configmap.yaml` | Forgejo `app.ini` — Actions, Packages, Mirroring enabled |
-| `secret.sops.yaml` | SOPS-encrypted `LFS_JWT_SECRET`, `INTERNAL_TOKEN` and `JWT_SECRET`, as `FORGEJO__<section>__<key>` env vars |
+| `secret.sops.yaml` | SOPS-encrypted `LFS_JWT_SECRET`, `INTERNAL_TOKEN`, `JWT_SECRET` and `SECRET_KEY`, as `FORGEJO__<section>__<key>` env vars |
 | `deployment.yaml` | Main Forgejo workload with config-seed init container |
 | `service-http.yaml` | HTTP service on port `3000` |
 | `service-ssh.yaml` | In-cluster SSH service on port `22` |
@@ -36,6 +36,17 @@ sops apps/forgejo/secret.sops.yaml   # paste values from: forgejo generate secre
 ```
 
 Commit and push, then delete the pod, because a changed Secret does not restart it. Rotating `LFS_JWT_SECRET` fails any LFS transfer in flight; `JWT_SECRET` ends OAuth2 and Actions job tokens.
+
+### Rotating SECRET_KEY
+
+`SECRET_KEY` seals stored data (Actions secrets, TOTP, push mirror keys, webhook auth headers, LDAP bind passwords), so a new key alone leaves every Actions secret unreadable. Until 2026-11-11 it was unset and Forgejo used its built-in default. `scripts/forgejo-secret-key-rotate.py` re-encrypts the `secret` table from the old key to the new one, and refuses if any of the other sealed data exists, because it does not migrate it. Run it only while Forgejo is stopped:
+
+1. Put the new key in `secret.sops.yaml` without printing it: `kubectl -n forgejo exec deploy/forgejo -c forgejo -- forgejo generate secret SECRET_KEY | python3 -c 'import json,sys; print(json.dumps(sys.stdin.read().strip()))' | sops set --value-stdin apps/forgejo/secret.sops.yaml '["stringData"]["FORGEJO__security__SECRET_KEY"]'`, then open the PR.
+2. `flux suspend kustomization apps`, merge, `flux reconcile source git flux-system`, then `kubectl -n forgejo scale deploy/forgejo --replicas=0`.
+3. On hp-victus, copy `/srv/forgejo/data/gitea/gitea.db` aside (the rollback), then run the tool as uid 1000 with `OLD_SECRET_KEY` (omit while it is the default) and `NEW_SECRET_KEY` in the environment: once without `--apply` (every row must decrypt), then with it.
+4. `flux resume kustomization apps`. Check with a `workflow_dispatch` of `mirror-to-github`, which reads the `MIRROR_DEPLOY_KEY` secret.
+
+Rollback: stop Forgejo, put the copied db back, revert the key, start it.
 
 Key config sections:
 

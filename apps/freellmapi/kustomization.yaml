@@ -1,0 +1,11 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+# Beside LiteLLM in ai-gateway (its namespace.yaml owns the Namespace): LiteLLM is the only client.
+namespace: ai-gateway
+
+resources:
+  - secret.sops.yaml
+  - pvc.yaml
+  - deployment.yaml
+  - service.yaml

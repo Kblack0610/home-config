@@ -657,7 +657,7 @@ model_list:
   # beam-free returned usage.cost 0). The anonymous Zen endpoint refuses them
   # (429 FreeUsageLimitError). Their providers may train on prompts, and the
   # human chose to keep that on (2026-11-11), so they carry PUBLIC input only:
-  # only the fleet-oc-free key reaches them, and fleet-dispatch starts its
+  # only the fleet-ocfree key reaches them, and fleet-dispatch starts its
   # harness only for an allowlisted public project (README, OpenCode free key).
   # The list rotates: a model OpenCode drops answers 400 "Model is unavailable".
   # No fallback edge: a refusal fails the call, never reaches a paid route.

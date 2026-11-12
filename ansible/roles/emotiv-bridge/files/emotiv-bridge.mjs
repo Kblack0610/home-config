@@ -2,8 +2,8 @@
 // emotiv-bridge: while the EPOC X is connected in the EMOTIV Launcher, records every Cortex
 // stream the license allows into gzip JSONL chunks, encrypts each closed chunk with age to the
 // EEG recipient (the mini holds no identity, so it cannot read what it wrote), and pushes it to
-// the NAS over rsync with a key that rrsync confines to the archive directory. A heartbeat goes
-// to MQTT. No dependencies beyond Node (WebSocket is built in) and the age and rsync binaries.
+// the NAS over rsync with a key that rrsync confines to the archive directory. A heartbeat
+// and per-second live summaries (band power, metrics, facial events, motion, contact) go to MQTT. No dependencies beyond Node (WebSocket is built in) and the age and rsync binaries.
 //
 // Usage: node emotiv-bridge.mjs <config.json>   (rendered by roles/emotiv-bridge)
 // Tests: node --test test-emotiv-bridge.mjs (beside this file).
@@ -212,10 +212,90 @@ export class Mqtt {
     this.proc = p;
   }
 
-  publish(topic, obj) { this.pipe?.write(mqttPublish(topic, JSON.stringify(obj), true)); }
+  publish(topic, obj, retain = true) { this.pipe?.write(mqttPublish(topic, JSON.stringify(obj), retain)); }
 
   // DISCONNECT makes the broker close the connection, so nc exits once it has sent everything.
   stop() { this.stopped = true; this.pipe?.end(MQTT_DISCONNECT); }
+}
+
+// The live view: small per-second summaries of the derived streams for MQTT and Grafana.
+// Raw values stay in the archive; these are lossy and never the record. Columns come from the
+// subscribe answer, so a Cortex that reorders them still lands each value under its name.
+const BANDS = { theta: 'theta', alpha: 'alpha', betaL: 'beta_l', betaH: 'beta_h', gamma: 'gamma' };
+const METRICS = { attention: 'attention', eng: 'engagement', exc: 'excitement', lex: 'long_excitement', str: 'stress', rel: 'relaxation', int: 'interest' };
+// Facial actions Cortex names in fac (eyeAct, uAct, lAct). Each starts at 0 so its series exists
+// before the first event; an action not listed here is counted once it appears.
+const FACIAL = ['blink', 'winkL', 'winkR', 'lookL', 'lookR', 'surprise', 'frown', 'clench', 'smile', 'laugh', 'smirkLeft', 'smirkRight'];
+const snake = (s) => s.replace(/([a-z])([A-Z])/g, '$1_$2').toLowerCase();
+
+export class Summary {
+  constructor() {
+    this.cols = {};
+    // Counters live for the bridge process, so a clench between two scrapes still shows as an increase.
+    this.facial = Object.fromEntries(FACIAL.map((a) => [snake(a), 0]));
+    this.lastFac = {};
+    this.reset();
+  }
+
+  reset() { this.pow = []; this.acc = []; this.dev = null; this.eq = null; this.met = null; }
+
+  setCols(stream, cols) { this.cols[stream] = cols; }
+
+  add(stream, data) {
+    const cols = this.cols[stream];
+    if (!cols || !Array.isArray(data)) return;
+    const at = (name) => data[cols.indexOf(name)];
+    if (stream === 'pow') this.pow.push(data);
+    else if (stream === 'mot') {
+      const [x, y, z] = ['ACCX', 'ACCY', 'ACCZ'].map(at);
+      if ([x, y, z].every(Number.isFinite)) this.acc.push(Math.hypot(x, y, z));
+    } else if (stream === 'dev') {
+      const cq = data[2];
+      this.dev = { battery_percent: at('BatteryPercent'), signal: at('Signal'),
+        contact_good: Array.isArray(cq) ? cq.slice(0, -1).filter((v) => v === 4).length : null,
+        contact_sensors: Array.isArray(cq) ? cq.length - 1 : null,
+        contact_overall: Array.isArray(cq) ? cq.at(-1) : null };
+    } else if (stream === 'eq') this.eq = { eeg_quality: at('overall'), sample_rate_quality: at('sampleRateQuality') };
+    else if (stream === 'met') {
+      this.met = {};
+      cols.forEach((c, i) => { if (METRICS[c] && Number.isFinite(data[i])) this.met[METRICS[c]] = data[i]; });
+    } else if (stream === 'fac') {
+      for (const slot of ['eyeAct', 'uAct', 'lAct']) {
+        const v = at(slot);
+        // fac repeats the current action at 32 Hz, so an event is a change into a non-neutral action.
+        if (typeof v === 'string' && v !== 'neutral' && v !== this.lastFac[slot]) {
+          const k = snake(v);
+          this.facial[k] = (this.facial[k] ?? 0) + 1;
+        }
+        this.lastFac[slot] = v;
+      }
+    }
+  }
+
+  // Returns [subtopic, payload] pairs for the window since the last call, and starts a new one.
+  take() {
+    const out = [];
+    const powCols = this.cols.pow ?? [];
+    if (this.pow.length) {
+      const bands = {};
+      for (const [band, key] of Object.entries(BANDS)) {
+        const idx = powCols.flatMap((c, i) => (c.endsWith(`/${band}`) ? [i] : []));
+        const vals = this.pow.flatMap((row) => idx.map((i) => row[i])).filter(Number.isFinite);
+        if (vals.length) bands[key] = vals.reduce((a, b) => a + b, 0) / vals.length;
+      }
+      out.push(['pow', bands]);
+    }
+    if (this.acc.length) {
+      const mean = this.acc.reduce((a, b) => a + b, 0) / this.acc.length;
+      const sd = Math.sqrt(this.acc.reduce((a, b) => a + (b - mean) ** 2, 0) / this.acc.length);
+      out.push(['mot', { acc_magnitude: mean, motion: sd }]);
+    }
+    if (this.dev || this.eq) out.push(['dev', { ...this.dev, ...this.eq }]);
+    if (this.met && Object.keys(this.met).length) out.push(['met', this.met]);
+    out.push(['fac', { ...this.facial }]);
+    this.reset();
+    return out;
+  }
 }
 
 // The Cortex side: one websocket, one activated session per wear.
@@ -225,6 +305,8 @@ export class Bridge {
     this.creds = creds;
     this.WebSocket = deps.WebSocket ?? globalThis.WebSocket;
     this.uploader = deps.uploader ?? new Uploader(cfg, (r) => this.onUpload(r));
+    this.summary = new Summary();
+    this.onChange = () => {}; // main publishes the heartbeat at once when a wear starts or ends
     this.ws = null;
     this.id = 0;
     this.pending = new Map();
@@ -298,7 +380,7 @@ export class Bridge {
     const s = this.session;
     if (!s || (m.sid && m.sid !== s.id)) return;
     for (const stream of this.cfg.streams) {
-      if (stream in m) { s.chunks.write(stream, m.time, m[stream]); return; }
+      if (stream in m) { s.chunks.write(stream, m.time, m[stream]); this.summary.add(stream, m[stream]); return; }
     }
   }
 
@@ -354,13 +436,18 @@ export class Bridge {
     const subscribed = [];
     for (const stream of this.cfg.streams) {
       const r = await this.call('subscribe', { cortexToken: this.token, session: cs.result.id, streams: [stream] });
-      for (const ok of r.result?.success ?? []) { chunks.setCols(ok.streamName, ok.cols); subscribed.push(ok.streamName); }
+      for (const ok of r.result?.success ?? []) {
+        chunks.setCols(ok.streamName, ok.cols);
+        this.summary.setCols(ok.streamName, ok.cols);
+        subscribed.push(ok.streamName);
+      }
       for (const f of r.result?.failure ?? []) log('subscribe', stream, 'refused:', f.code, f.message);
       if (r.error) log('subscribe', stream, 'error:', JSON.stringify(r.error));
     }
     log('session', cs.result.id, 'on', headset, 'streams', subscribed.join(','));
     this.session.rotateTimer = setInterval(() => this.rotate(), this.cfg.chunk_seconds * 1000);
     await this.readLicense();
+    this.onChange();
   }
 
   async rotate() {
@@ -375,6 +462,8 @@ export class Bridge {
     this.session = null;
     clearInterval(s.rotateTimer);
     log('session', s.id, 'ended:', reason);
+    this.summary.reset();
+    this.onChange();
     if (closeInCortex && this.token) await this.call('updateSession', { cortexToken: this.token, session: s.id, status: 'close' });
     await s.chunks.rotate();
     this.uploader.kick();
@@ -413,14 +502,22 @@ async function main(configPath) {
   setInterval(() => bridge.reconcile(), cfg.scan_interval_seconds * 1000);
   const mqtt = new Mqtt(cfg.mqtt);
   mqtt.connect();
+  const beat = () => mqtt.publish(`${cfg.mqtt.prefix}/bridge`, bridge.heartbeat());
+  bridge.onChange = beat;
   // The heartbeat is a liveness signal for Prometheus, so it is published on a fixed cadence.
-  setInterval(() => mqtt.publish(cfg.mqtt.topic, bridge.heartbeat()), cfg.heartbeat_seconds * 1000);
+  setInterval(beat, cfg.heartbeat_seconds * 1000);
+  // Summaries are averages over a fixed window, so they too go out on a cadence, and only while
+  // worn. Not retained: after a restart a reader must not see an old wear as live.
+  setInterval(() => {
+    if (!bridge.session) return;
+    for (const [sub, payload] of bridge.summary.take()) mqtt.publish(`${cfg.mqtt.prefix}/${sub}`, payload, false);
+  }, cfg.summary_seconds * 1000);
   let stopping = false;
   const stop = async () => {
     if (stopping) return;
     stopping = true;
     await bridge.stop();
-    mqtt.publish(cfg.mqtt.topic, { ...bridge.heartbeat(), up: 0 });
+    mqtt.publish(`${cfg.mqtt.prefix}/bridge`, { ...bridge.heartbeat(), up: 0 });
     mqtt.stop();
     await bridge.uploader.kick();
     process.exit(0);

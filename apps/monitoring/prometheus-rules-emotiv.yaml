@@ -1,0 +1,62 @@
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: homelab-emotiv
+  namespace: monitoring
+  labels:
+    app.kubernetes.io/name: homelab-emotiv
+    app.kubernetes.io/part-of: monitoring
+    # Required: the Prometheus ruleSelector matches release=kube-prometheus-stack.
+    release: kube-prometheus-stack
+spec:
+  groups:
+    # The Emotiv bridge on mac-mini (ansible/roles/emotiv-bridge). It publishes a retained
+    # heartbeat to emotiv/mini/bridge every 60s, which mqtt2prom turns into
+    # mqtt_<key>{topic="emotiv_mini_bridge"} gauges and a mqtt_message_total counter.
+    # Tests: tests/emotiv.test.yaml (scripts/test-prometheus-rules.sh).
+    - name: homelab-emotiv.alerts
+      rules:
+        # No heartbeat for 5m. mqtt2prom keeps the last value of a gauge forever, so the
+        # message counter is the only signal that the bridge still talks. absent() covers a
+        # restarted mqtt2prom that has not heard from the bridge since. A clean stop
+        # (heartbeat up=0) stops the counter too, so it trips the same rule.
+        - alert: EmotivBridgeStale
+          expr: >-
+            increase(mqtt_message_total{topic="emotiv_mini_bridge"}[5m]) == 0
+            or absent(mqtt_message_total{topic="emotiv_mini_bridge"})
+          for: 5m
+          labels:
+            severity: warning
+            category: node-health
+          annotations:
+            summary: "Emotiv bridge on mac-mini sent no heartbeat for 10m: nothing is being recorded"
+            description: "No message on emotiv/mini/bridge for 10 minutes. Check the LaunchAgent and its log: ansible/roles/emotiv-bridge/README.md, Check it."
+        # Chunks wait in the mini's spool: either a lot of them, or some for over an hour
+        # after the wear ended. The spool keeps everything, so this is a backlog, not a loss.
+        - alert: EmotivUploadBacklog
+          expr: >-
+            mqtt_spool_bytes{topic="emotiv_mini_bridge"} > 500e6
+            or (
+              mqtt_spool_bytes{topic="emotiv_mini_bridge"} > 0
+              and mqtt_wearing{topic="emotiv_mini_bridge"} == 0
+              and time() - mqtt_last_upload_epoch{topic="emotiv_mini_bridge"} > 3600
+            )
+          for: 15m
+          labels:
+            severity: warning
+            category: node-health
+          annotations:
+            summary: "Emotiv archive uploads from mac-mini are backed up ({{ $value | humanize1024 }}B or over an hour old)"
+            description: "The bridge spool holds chunks the NAS has not received. The bridge log names the rsync exit code: ansible/roles/emotiv-bridge/README.md, Troubleshooting."
+        # The Cortex app's license, read by the bridge on every connect. A dead license
+        # stops every recording. (localQuota is 0 with no session limit on the Basic
+        # license, P1 of the emotiv-stream plan, so there is no quota alert.)
+        - alert: EmotivLicenseExpiring
+          expr: mqtt_license_valid_to_epoch{topic="emotiv_mini_bridge"} - time() < 14 * 86400
+          for: 1h
+          labels:
+            severity: warning
+            category: node-health
+          annotations:
+            summary: "Emotiv Cortex license for Home-EEG ends in {{ $value | humanizeDuration }}"
+            description: "Renew or re-sign the Home-EEG Cortex app at emotiv.com (EmotivID kblack0610); rbw emotiv-cortex holds the app."

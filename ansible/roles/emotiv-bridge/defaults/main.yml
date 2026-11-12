@@ -42,4 +42,7 @@ emotiv_bridge_upload_host_key: "[192.168.1.152]:2222 ssh-ed25519 AAAAC3NzaC1lZDI
 
 emotiv_bridge_mqtt_host: mosquitto.kblab.me
 emotiv_bridge_mqtt_port: 31883
-emotiv_bridge_mqtt_topic: emotiv/mini/bridge
+# Topics under it: bridge (retained heartbeat) and, while worn, pow, met, fac, mot, dev.
+emotiv_bridge_mqtt_prefix: emotiv/mini
+# Live summaries are averaged over this window; Prometheus keeps one value per 30s scrape.
+emotiv_bridge_summary_seconds: 1

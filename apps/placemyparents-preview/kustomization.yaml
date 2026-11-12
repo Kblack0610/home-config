@@ -15,21 +15,23 @@ resources:
   - ingress.yaml
   - ingress-gallery.yaml
 
-# The images are amd64-only. With hp-victus off the LAN (2026-11-12) the
-# scheduler put web and mobile-web on Pis and they crash-looped on
-# "exec format error".
+# The app images are built for amd64 only; on a Pi they exit with
+# "exec format error". The strategic-merge patch adds the key and keeps any
+# nodeSelector a Deployment sets itself.
 patches:
   - target:
       kind: Deployment
     patch: |-
-      - op: add
-        path: /spec/template/spec/nodeSelector
-        value:
-          kubernetes.io/arch: amd64
+      apiVersion: apps/v1
+      kind: Deployment
+      metadata:
+        name: any
+      spec:
+        template:
+          spec:
+            nodeSelector:
+              kubernetes.io/arch: amd64
 
-# The Forgejo workflow .forgejo/workflows/deploy-placemyparents-preview.yml
-# (in the platform repo) rewrites these newTag values on every push to main
-# via `awk`, then commits the bump back to home-config@master.
 images:
   - name: git.kblab.me/kblack0610/placemyparents-api
     newTag: pre-9eb5534

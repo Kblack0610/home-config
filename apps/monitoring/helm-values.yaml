@@ -395,9 +395,11 @@ prometheus:
     enableRemoteWriteReceiver: true
     evaluationInterval: 30s
     # On asus-laptop with the rest of the monitoring stack (VictoriaMetrics,
-    # Loki, Grafana, Alertmanager, Gatus), off the CI build host: on 2026-11-12
-    # hp-victus lost its switch port and every waybar chip and status read went
-    # blank with it. The local-path PVC follows this node.
+    # Loki, Grafana, Alertmanager, Gatus), off the hp-victus CI build host, so a
+    # CI-host outage does not blank every status read. Trade-off: monitoring is
+    # one failure domain, asus-laptop. The local-path PV is pinned to the node
+    # it was made on: changing this host means deleting the old PVC (7d hot
+    # data; VictoriaMetrics keeps the 2y copy) so the StatefulSet makes a new one.
     nodeSelector:
       kubernetes.io/hostname: asus-laptop
     podMonitorSelectorNilUsesHelmValues: false
@@ -420,7 +422,7 @@ prometheus:
     # OOMKilled at the 2-hourly head compaction: 1Gi at ~225k head series
     # (10-27), 2Gi at 386k (11-11, ~6KB per series, 2.11GB working set). The
     # scrape-time bucket drops cut ~60k series; 3Gi keeps compaction headroom
-    # (asus-laptop has 64GB). Re-measure
+    # (asus-laptop has 64GB, 21% used on 2026-11-12). Re-measure
     # `max_over_time(container_memory_working_set_bytes{container="prometheus"}[6h])`.
     resources:
       limits:

@@ -1129,6 +1129,19 @@ class DetailFeedTest(unittest.TestCase):
         (rec,) = exporter.feed_page(cursor, 100)["records"]
         self.assertEqual((rec["run_id"], rec["attempt"]), (9, 2))
 
+    def test_a_finished_run_whose_pr_is_retitled_is_served_again(self):
+        # A pull_request run's display_title is the PR's title now: a retitle changes it
+        # and leaves updated_at alone, and the run ledger must take the new title.
+        self.render()
+        listing = dict(FAKE["repos/acme/web/actions/runs?status=completed&per_page=100&page=1"])
+        listing["workflow_runs"] = [dict(r, display_title="fix: the new title") if r["id"] == 9 else r
+                                    for r in listing["workflow_runs"]]
+        self.expire_history()
+        cursor = exporter.feed_page(0, 100)["next"]
+        self.render({"repos/acme/web/actions/runs?status=completed&per_page=100&page=1": listing})
+        runs = exporter.feed_page(cursor, 100)["runs"]
+        self.assertEqual([(r["run"]["id"], r["run"]["display_title"]) for r in runs], [(9, "fix: the new title")])
+
     def test_a_run_with_more_than_100_jobs_pages_and_a_failed_page_stays_partial(self):
         page1 = {"total_count": 150, "jobs": [{"id": i, "name": f"j{i}"} for i in range(100)]}
         base = "repos/acme/web/actions/runs/9/attempts/1/jobs?per_page=100"

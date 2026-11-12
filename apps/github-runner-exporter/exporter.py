@@ -471,10 +471,11 @@ RUN_FEED_OPEN_SECS = 7 * 86400
 
 
 def run_state(run):
-    """What has to change for a run to be served again: the ledger's row changes with it."""
+    """What has to change for a run to be served again: the ledger's row changes with it. A
+    pull_request run's display_title is its PR's title now, so a retitle moves it and not updated_at."""
     done = run.get("status") == "completed"
     return (run.get("run_attempt") or 1, STATUS_RANK.get(run.get("status"), 0), run.get("conclusion") if done else None,
-            run.get("run_started_at"), run.get("updated_at") if done else None)
+            run.get("run_started_at"), run.get("updated_at") if done else None, run.get("display_title"))
 
 
 def run_order(run):

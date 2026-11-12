@@ -318,8 +318,9 @@ model_list:
   # send a stable `x-opencode-session` per conversation. opencode sends that
   # header on every call; litellm_settings.model_group_settings forwards the
   # client's x- headers for these routes only, so Go sees opencode's own
-  # session id. Go refuses a call without one (400 MissingSessionID), so a
-  # probe sends its own.
+  # session id. Go refuses a call without one (400 MissingSessionID), and each
+  # such 400 trips the gateway-errors watch, so probe a route with `llm-probe`
+  # (dotfiles-private), which sends one, never a hand-written curl.
   # The Authorization and x-api-key headers are never forwarded (LiteLLM strips
   # them), so the gateway key does not leave the cluster.
   #

@@ -1,0 +1,87 @@
+# Weekly gate calibration (lab/calibration.py): a synthetic universe of null strategies and
+# planted edges of known size runs through the real analysis, walk-forward and confidence in the
+# scratch schema calibration_scratch of the trader database, so it never touches the trial register.
+# Each gate's pass rate on nulls (false positive rate) and on edges (power) lands in the
+# calibration table, exported as trader_calibration_fpr and trader_calibration_power. A universe
+# carries on across weeks, stopping each run at WF_BUDGET_S, until its folds are done; the next
+# run then starts a new one. Candles are generated on the pod's disk, so it needs no lab PVC and
+# runs on any amd64 node but hp-victus (its memory is overcommitted: markets-recorder-cronjob.yaml).
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: freqtrade-calibration
+spec:
+  schedule: "0 10 * * 6"  # Saturday, after the nightly walk-forward (01:00 to 09:00 at most)
+  timeZone: "Etc/UTC"  # unset means the controller zone, America/Los_Angeles
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      backoffLimit: 0  # next week is the retry; the universe resumes where this run stopped
+      activeDeadlineSeconds: 28800  # ends by 18:00 UTC
+      template:
+        metadata:
+          labels:
+            app: freqtrade-calibration
+        spec:
+          restartPolicy: Never
+          priorityClassName: trader-lab
+          affinity:
+            nodeAffinity:
+              requiredDuringSchedulingIgnoredDuringExecution:
+                nodeSelectorTerms:
+                  - matchExpressions:
+                      - {key: kubernetes.io/arch, operator: In, values: [amd64]}
+                      - {key: kubernetes.io/hostname, operator: NotIn, values: [hp-victus]}
+          securityContext:
+            runAsUser: 1000
+            runAsGroup: 1000
+            fsGroup: 1000
+          initContainers:
+            - name: migrate
+              image: trader
+              command: ["python", "/repo/lab/migrate.py"]
+              env:
+                - name: DATABASE_URL
+                  valueFrom:
+                    secretKeyRef: {name: trader-db, key: database-url}
+              resources:
+                requests:
+                  cpu: 20m
+                  memory: 64Mi
+                limits:
+                  memory: 256Mi
+          containers:
+            - name: calibration
+              image: trader
+              command: ["python", "/repo/lab/calibration.py"]
+              env:
+                - name: DATABASE_URL
+                  valueFrom:
+                    secretKeyRef: {name: trader-db, key: database-url}
+                - name: CALIBRATION_WORK  # the synthetic repo, candles and results, on the pod's disk
+                  value: /work
+                - name: ANALYZE_WORKERS
+                  value: "2"  # matches the 2-CPU limit
+                - name: ANALYZE_MEMORY_GB
+                  value: "4"
+                - name: WF_WORKERS
+                  value: "2"
+                - name: WF_MEMORY_GB
+                  value: "4"
+                - name: WF_BUDGET_S  # starts no fold after this: the deadline less WF_TIMEOUT (10800) and 2.5 h for the analysis and post steps
+                  value: "9000"
+              resources:
+                requests:
+                  cpu: "1"
+                  memory: 8Gi  # equal to the limit, so the scheduler sees what it uses
+                limits:
+                  cpu: "2"
+                  memory: 8Gi  # a 4 GB task budget plus the interpreter, the candle generation and estimate error; not measured yet
+              volumeMounts:
+                - {name: work, mountPath: /work}
+          volumes:
+            - name: work
+              emptyDir:
+                sizeLimit: 8Gi  # 1m candles for 3 synthetic pairs over about 6 years, plus backtest results; not measured yet

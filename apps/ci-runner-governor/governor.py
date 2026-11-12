@@ -76,6 +76,8 @@ in one cycle, and the build slot is admitted once none is busy or admitted. In e
 pair the build slot is withheld, and once it is its test slots are the pool's, the last
 standby pool host's, under its max_admitted and any pin. A stopped paired host starts on
 its own thresholds for a waiting build and on the default pool ones for tests.
+A slot withheld while its pair uses the cores is exported as ci_governor_lent (to tests, or
+to a build), so the dashboards can tell it from a slot held back for load.
 
 "standby" is an ordered list, Spot first (aws-burst-2, then the on-demand aws-burst-1). A
 host further down starts only for the jobs the hosts ahead of it cannot take: a stopped
@@ -306,6 +308,30 @@ def serves_pool(cfg, host, name=""):
     """Whether a runner carries the pool's labels: every one off a dedicated host, and a
     paired host's test slots. With no name, whether the host's own kind is the pool's."""
     return not dedicated(cfg, host) or (bool(name) and bool(pairs(cfg, host)) and slot_of(name) not in pairs(cfg, host))
+
+
+def lent(cfg, runners):
+    """{runner: (host, "tests" or "build")}: the withheld slots of a paired host whose cores
+    another slot of their pair is using (admitted, or busy finishing a job). A build slot is
+    lent to tests while one of its test slots uses the cores; a test slot is lent to a build
+    while its build slot does. It says where the cores are, so it wins over a pin or a drain
+    that would also hold the slot. Read from this cycle's labels alone, so it holds across
+    restarts. Any other withheld slot is held for load, a pin, a drain or no work."""
+    out = {}
+    for host in cfg["standby"]:
+        P = pairs(cfg, host)
+        if not P:
+            continue
+        mine = {slot_of(n): r for n, r in runners.items() if r["host"] == host}
+        uses = lambda s, mine=mine: s in mine and (mine[s]["busy"] or not mine[s]["withheld"])
+        held = lambda s, mine=mine: s in mine and mine[s]["withheld"]
+        name = {slot_of(n): n for n, r in runners.items() if r["host"] == host}
+        for b, tests in P.items():
+            if held(b) and any(uses(t) for t in tests):
+                out[name[b]] = (host, "tests")
+            if uses(b):
+                out |= {name[t]: (host, "build") for t in tests if held(t)}
+    return out
 
 
 def withheld_label(cfg, host, name=""):
@@ -1117,6 +1143,12 @@ def render(cfg, hosts, runners, queue, decisions, ok, instances=None, budget=Non
         held = (disk is not None and disk < cfg["hosts"][host]["admit"]["disk"]
                 and any(r["withheld"] for r in runners.values() if r["host"] == host))
         L.append(f'ci_governor_disk_held{{host="{host}"}} {1 if held else 0}')
+    # A paired slot held back while its pair uses the cores is normal work, not a hold for
+    # load: the dashboards say "lent" for these and "withheld" for the rest.
+    L += ["# HELP ci_governor_lent 1 for a withheld paired slot whose cores its pair is using (to: tests or build)",
+          "# TYPE ci_governor_lent gauge"]
+    for name, (host, to) in sorted(lent(cfg, runners).items()):
+        L.append(f'ci_governor_lent{{host="{host}",name="{name}",to="{to}"}} 1')
     # The reason is in the log, not a label: it changes every cycle.
     L += ["# HELP ci_governor_decision This cycle's verdict and actions per host (a paired host can show several)", "# TYPE ci_governor_decision gauge"]
     # A paired host moves several slots in one cycle: one row per host, verdict and action.

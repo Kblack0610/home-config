@@ -434,11 +434,21 @@ spec:
               (github_runner_state{state="running"})
               or (max without (instance, pod, job, namespace, service, endpoint, container) (github_runner_state{state="idle"})
                 unless on (name) (max without (instance, pod, job, namespace, service, endpoint, container) (github_runner_withheld) == 1)))
+        # Withheld splits in two: lent (a paired slot whose cores its pair uses, normal work,
+        # ci_governor_lent) and withheld (held back for load, a pin, a drain or no work).
         - record: cc:pool_withheld
           expr: >-
             count by (pool) (max without (instance, pod, job, namespace, service, endpoint, container)
               (github_runner_state{state="idle"})
-              and on (name) (max without (instance, pod, job, namespace, service, endpoint, container) (github_runner_withheld) == 1))
+              and on (name) (max without (instance, pod, job, namespace, service, endpoint, container) (github_runner_withheld) == 1)
+              unless on (name) (max without (instance, pod, job, namespace, service, endpoint, container) (ci_governor_lent) == 1))
+            or cc:pool_slots * 0
+        - record: cc:pool_lent
+          expr: >-
+            count by (pool) (max without (instance, pod, job, namespace, service, endpoint, container)
+              (github_runner_state{state="idle"})
+              and on (name) (max without (instance, pod, job, namespace, service, endpoint, container) (github_runner_withheld) == 1)
+              and on (name) (max without (instance, pod, job, namespace, service, endpoint, container) (ci_governor_lent) == 1))
             or cc:pool_slots * 0
         - record: cc:pool_busy
           expr: >-

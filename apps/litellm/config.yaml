@@ -308,7 +308,7 @@ model_list:
   # each, DeepSeek V4.1 Flash $100/mo), spent in windows of 20% per 5h, 50% per week, 100% per month. Go has
   # no usage API, so each route carries Go's list price: gateway spend then
   # equals what Go counts against the allowance; each route's 5h budget below
-  # and the `fleet-go` key's week budget (README) mirror the windows. Extra Usage stays off in the OpenCode
+  # and each Go key's week budget (`fleet-go`, `opencode-go`: README) mirror the windows. Extra Usage stays off in the OpenCode
   # console, so a spent window is a refusal there, never a charge.
   #
   # NO fallback edge on any of these (router_settings.fallbacks): a Go refusal

@@ -460,6 +460,15 @@ class ExporterTest(unittest.TestCase):
         self.assertTrue(any('pool="unity-build"' in r and 'host="bld"' in r for r in rows(out, "github_runner_state")))
         self.assertFalse(any('pool="unity"' in r and 'host="bld"' in r for r in rows(out, "github_runner_state")))
 
+    def test_a_lent_build_runner_stays_in_its_rostered_pool(self):
+        # ci-runner-governor lends aws-build-1's slots to the unity pool between builds.
+        lent = ["self-hosted", "linux", "unity", "unity-full", "unity-gate", "host-aws-build-1"]
+        with mock.patch.object(exporter, "ROSTER", [("aws-build-1", "unity-build", 3), ("razer", "light", 1),
+                                                    ("razer", "unity", 1)]):
+            self.assertEqual(exporter.runner_pool("aws-build-1-unity-pool-1", lent), "unity-build")
+            # Negative control: a host rostered in more than one pool keeps its labels' pool.
+            self.assertEqual(exporter.runner_pool("razer-unity-pool-1", ["self-hosted", "unity", "host-razer"]), "unity")
+
     def test_no_token_everything_failed(self):
         out = self.render(broken=("orgs/", "repos/"))
         self.assertEqual(rows(out, "github_runner_state"), [])

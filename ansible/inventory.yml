@@ -349,6 +349,25 @@ all:
             - unityci/editor:ubuntu-6000.3.27f1-base-3
           unity_ci_lan: false
           unity_ci_library_s3: aws-burst-1-libraries-311141527647
+        # The third burst host (platform infra/aws-ci-burst, applied 2026-11-11 on the
+        # human's order): a twin of aws-burst-2, on-demand from the start, so it is a
+        # gate host too. Same six plain slots, images and library bucket.
+        aws-burst-3:
+          ansible_host: i-0c0d08bcee5ce4d4a
+          ansible_user: ubuntu
+          ansible_ssh_common_args: >-
+            -o ProxyCommand="aws ssm start-session --profile bnb --region us-east-2
+            --target %h --document-name AWS-StartSSHSession --parameters portNumber=%p"
+          unity_ci_slots: 6
+          unity_ci_gate: true
+          unity_ci_full: true
+          unity_ci_images_pull: true
+          unity_ci_images:
+            - unityci/editor:ubuntu-6000.0.72f1-base-3
+            - unityci/editor:ubuntu-6000.0.85f1-base-3
+            - unityci/editor:ubuntu-6000.3.27f1-base-3
+          unity_ci_lan: false
+          unity_ci_library_s3: aws-burst-1-libraries-311141527647
 
     # macOS hosts in the same Unity pool (site.yml, "Unity CI runner pool
     # (macOS)"). Native editor, no container, so no ci_hosts budget: macOS has
@@ -452,6 +471,14 @@ all:
         # cores, each stopping at 16G (a PlayMode shard peaks at 13.9G), 96G of the
         # 100G Unity budget.
         aws-burst-2:
+          ci_cpus: 1-31
+          ci_memory_max: 112G
+          ci_unity_cpus: 1-30
+          ci_unity_slot_cpus: ["1-5", "6-10", "11-15", "16-20", "21-25", "26-30"]
+          ci_unity_memory_max: 100G
+          ci_unity_slot_memory_max: 16G
+        # aws-burst-3, the same shape as aws-burst-2.
+        aws-burst-3:
           ci_cpus: 1-31
           ci_memory_max: 112G
           ci_unity_cpus: 1-30

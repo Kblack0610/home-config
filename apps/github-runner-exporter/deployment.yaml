@@ -76,12 +76,12 @@ spec:
             # two runners (mac-mini-mac, m1-playground-mac) and the opt-in windows-media test runner.
             # Change a slot count there, change it here.
             - name: RUNNER_ROSTER
-              value: "asus-laptop:light:2 asus-laptop:heavy:1 hp-victus:light:2 hp-victus:heavy:1 razer-laptop:light:1 razer-laptop:heavy:1 razer-laptop:unity:1 cachyos-x8664-main:unity:2 aws-burst-1:unity:5 aws-burst-2:unity:6 aws-build-1:unity-build:3 mac-mini:macos:2 windows-media:windows:1"
+              value: "asus-laptop:light:2 asus-laptop:heavy:1 hp-victus:light:2 hp-victus:heavy:1 razer-laptop:light:1 razer-laptop:heavy:1 razer-laptop:unity:1 cachyos-x8664-main:unity:2 aws-burst-1:unity:5 aws-burst-2:unity:6 aws-burst-3:unity:6 aws-build-1:unity-build:3 mac-mini:macos:2 windows-media:windows:1"
             # Runner hosts off the home LAN, so the runner rows say site="cloud" and the
             # hover and board can count cloud vs local. Mirrors the inventory hosts with
             # unity_ci_lan: false; scripts/check-runner-roster.py fails if they drift.
             - name: CLOUD_HOSTS
-              value: "aws-burst-1 aws-burst-2 aws-build-1"
+              value: "aws-burst-1 aws-burst-2 aws-burst-3 aws-build-1"
             # Forgejo repos whose Actions jobs and tasks are read; the forgejo-runner
             # pods are the runners (pool="forgejo", forge="forgejo").
             - name: FORGEJO_REPOS

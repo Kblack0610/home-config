@@ -65,6 +65,17 @@ spec:
               value: 'binks-chat'
             - name: CORS_ORIGINS
               value: https://binks.chat
+            # Square billing, sandbox. Real money is the owner's switch:
+            # rerun square:setup with the production token, swap these and
+            # the SOPS values (apps/binks/api/README.md in the platform repo).
+            - name: SQUARE_ENVIRONMENT
+              value: sandbox
+            - name: SQUARE_LOCATION_ID
+              value: LSV4ZKQ05760V
+            - name: SQUARE_PLAN_VARIATION_ID
+              value: KXHAMBKBADN4PY6TCGGU5VL3
+            - name: BINKS_PRICE_CENTS
+              value: '800'
           envFrom:
             - secretRef:
                 name: binks-api-secret

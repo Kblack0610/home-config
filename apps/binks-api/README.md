@@ -7,7 +7,7 @@ LLM chat backend for `binks.chat`. TypeScript replacement for the legacy Rust `b
 - **Namespace**: `binks-api`
 - **Image**: `git.kblab.me/kblack0610/binks-api` (Forgejo registry — `forgejo-registry` imagePullSecret)
 - **DB**: in-namespace `binks-postgres` StatefulSet on a 5Gi PVC. Anonymous and signed-in chats both persisted here.
-- **LLM gateway**: `http://litellm.ai-gateway.svc.cluster.local:4000`, routes `binks-chat` (default) and `binks-chat-hard`. Signed-in users get their own $2 / 1mo key, minted with `binks-api-secret/LITELLM_ISSUER_KEY`; anonymous chats use `LITELLM_API_KEY` (`binks-anon`). See `apps/litellm/README.md`, "binks.chat keys"
+- **LLM gateway**: `http://litellm.ai-gateway.svc.cluster.local:4000`, routes `binks-chat` (default) and `binks-chat-hard`. Signed-in users with an active $8/mo Square subscription get their own $2 / 1mo key, minted with `binks-api-secret/LITELLM_ISSUER_KEY`; anonymous chats use `LITELLM_API_KEY` (`binks-anon`). See `apps/litellm/README.md`, "binks.chat keys"
 - **Ingress**: `binks.chat` (Traefik IngressRoute `binks-chat` in `ingress.yaml`): the SPA on `/`, the API on `/api` and `/ws`. TLS ends at Cloudflare.
 
 ## Deploy lifecycle
@@ -24,6 +24,6 @@ The `binks-chat` SPA follows the same steps with a `binks-chat-v<x.y.z>` tag and
 `secrets.yaml` is SOPS-encrypted with the home-k3s Age recipient. Holds:
 
 - `binks-postgres-secret`: `username`, `password` for the in-namespace Postgres
-- `binks-api-secret`: `DATABASE_URL`, `JWT_SECRET`, `LITELLM_API_KEY` (rbw `litellm-binks-anon-key`), `LITELLM_ISSUER_KEY` (rbw `litellm-binks-issuer-key`)
+- `binks-api-secret`: `DATABASE_URL`, `JWT_SECRET`, `LITELLM_API_KEY` (rbw `litellm-binks-anon-key`), `LITELLM_ISSUER_KEY` (rbw `litellm-binks-issuer-key`), `SQUARE_ACCESS_TOKEN` (rbw `square_sandbox`), `SQUARE_WEBHOOK_SIGNATURE_KEY` (printed by the platform repo's `square:setup`)
 
-The `JWT_SECRET` is binks-only in v1 (no shared SSO with PlaceMyParents yet — that's the post-v1 paid-tier work, requires deciding on a cross-cluster secret strategy).
+The `JWT_SECRET` belongs to Binks alone; tokens carry `aud: binks`. Square runs in sandbox: the plain env in `deployment.yaml` says so, and the switch to real money (production token, plan and webhook) is the owner's, per `apps/binks/api/README.md` in the platform repo.

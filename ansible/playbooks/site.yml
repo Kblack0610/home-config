@@ -516,8 +516,7 @@
         gh_runner_mac_home: "{{ unity_ci_mac_root }}/unity-pool-{{ unity_slot }}"
         gh_runner_mac_name: "{{ inventory_hostname }}-unity-pool-{{ unity_slot }}"
         # No self-hosted/macOS/ARM64: with them an org slot here would take the
-        # platform repo's [self-hosted, macOS] iOS jobs and dodginballs'
-        # [self-hosted, unity] game-ci (docker) jobs. Only jobs that ask for the
+        # platform repo's [self-hosted, macOS] iOS jobs. Only jobs that ask for the
         # pool labels alone land here (unity-core-playground test.yml EditMode).
         gh_runner_mac_no_default_labels: true
         gh_runner_mac_labels: "{{ [ 'unity', 'unity-native', 'host-' ~ inventory_hostname ] + ([ 'unity-full' ] if unity_ci_full | default(true) else []) }}"

@@ -217,7 +217,7 @@ Endpoints:
 - GNU tar exit 1 ("file changed as we read it") counts as success, since the archive is complete and Forgejo keeps writing during the backup. Exit 2 fails the job.
 - `gitea/data/packages` (178G) is excluded. `forgejo-packages-backup` in the `nas` namespace mirrors it weekly to the 8TB drive.
 - `forgejo-backup-offbox` runs at `04:30` and keeps the newest **3** fulls on the 8TB drive (`/mnt/backup-8t/forgejo-backups`). It reads only completed archives, checks size and `gzip -t`, and aborts if the copy would leave the drive under 500G free. The off-site copy is the Hetzner standby to come (plan `can-we-setup-forgejo-snazzy-hopper` P9).
-- `scripts/forgejo-restore-drill.sh` (root, on asus) restores the newest full and its snapshot into a network-less container and checks it boots and every repo passes `git fsck`; what it leaves out is in `docs/backup-runbook.md`.
+- `scripts/forgejo-restore-drill.sh` (root, on asus) restores the newest full and its snapshot into a network-less container and checks it boots and every repo passes `git fsck`; what it leaves out is in `docs/backup-runbook.md`. It runs every Saturday from `ansible/roles/forgejo-restore-drill`, and the Sentinel watch `forgejo-restore-drill` pages when a run fails or none passed in 8 days.
 - `nas-backup-verify` checks all of this weekly, including off-box size against the primary.
 - History: on 2026-07-09 a retention of 30 (~1.6TiB of daily fulls) filled asus-laptop's root disk, tripped kubelet DiskPressure, and evicted the entire home-k3s workload cluster for ~6h. Retention was cut to 7 and a prune-first + free-space guard added. Longer-term recovery points belong off-box (MinIO/S3), not on the same disk as the data they protect.
 

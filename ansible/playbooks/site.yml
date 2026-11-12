@@ -117,6 +117,16 @@
     - role: disk-health
       tags: [disk-health, storage]
 
+- name: Weekly Forgejo restore drill on asus-laptop
+  # See roles/forgejo-restore-drill/README.md. A backup nobody restores is a guess;
+  # this restores the newest one every week and records the outcome for Sentinel.
+  hosts: asus-laptop
+  become: true
+  gather_facts: false
+  roles:
+    - role: forgejo-restore-drill
+      tags: [forgejo-restore-drill, storage]
+
 - name: Disable lid-close / suspend on laptop k3s nodes and CI hosts
   # See ansible/roles/k3s-node-no-suspend/README.md — without this, closing
   # a laptop lid removes the node from the cluster (the 2026-05 hp-victus

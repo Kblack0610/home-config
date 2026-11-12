@@ -15,9 +15,23 @@ resources:
   - ingress.yaml
   - ingress-gallery.yaml
 
-# The Forgejo workflow .forgejo/workflows/deploy-placemyparents-preview.yml
-# (in the platform repo) rewrites these newTag values on every push to main
-# via `awk`, then commits the bump back to home-config@master.
+# The app images are built for amd64 only; on a Pi they exit with
+# "exec format error". The strategic-merge patch adds the key and keeps any
+# nodeSelector a Deployment sets itself.
+patches:
+  - target:
+      kind: Deployment
+    patch: |-
+      apiVersion: apps/v1
+      kind: Deployment
+      metadata:
+        name: any
+      spec:
+        template:
+          spec:
+            nodeSelector:
+              kubernetes.io/arch: amd64
+
 images:
   - name: git.kblab.me/kblack0610/placemyparents-api
     newTag: pre-9eb5534

@@ -12,6 +12,7 @@ resources:
   - lab-priorityclass.yaml
   - candles-publish-cronjob.yaml
   - walkforward-cronjob.yaml
+  - calibration-cronjob.yaml
   - ingest-cronjob.yaml
   - backfill-cronjob.yaml
   - backfill-research-cronjob.yaml

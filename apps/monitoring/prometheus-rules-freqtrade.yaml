@@ -150,8 +150,11 @@ spec:
 
         # Analysis (18h guard) and walk-forward (8h guard) are both nightly. A walk-forward catching up
         # after a freqtrade bump stops at its guard before it records a success, so this fires until it catches up.
+        # Calibration is weekly (Saturday 10:00), so it is stale after 8 days.
         - alert: TraderRunStale
-          expr: time() - trader_run_last_ok_timestamp_seconds{kind=~"analysis|walkforward"} > 50 * 3600
+          expr: |
+            time() - trader_run_last_ok_timestamp_seconds{kind=~"analysis|walkforward"} > 50 * 3600
+              or time() - trader_run_last_ok_timestamp_seconds{kind="calibration"} > 8 * 86400
           for: 15m
           labels:
             severity: warning

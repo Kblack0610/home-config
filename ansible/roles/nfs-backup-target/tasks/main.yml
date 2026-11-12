@@ -20,17 +20,21 @@
   # so ConvergenceDrift fired on every host nightly: only an installed package is one.
   changed_when: _nfs_pkgs.packages | default([]) | length > 0
 
-- name: Ensure export root exists
+# Only the export roots, which are root-owned parents: the dirs under
+# /srv/forgejo (data/, snapshots/) hold Forgejo's own ownership and modes,
+# which this role never touches.
+- name: Ensure export roots exist
   ansible.builtin.file:
-    path: "{{ nfs_backup_export_path }}"
+    path: "{{ item.path }}"
     state: directory
     mode: "0755"
     owner: root
     group: root
+  loop: "{{ nfs_exports }}"
 
 - name: Ensure per-producer backup subdirs exist
   ansible.builtin.file:
-    path: "{{ nfs_backup_export_path }}/{{ item }}"
+    path: "/srv/backups/{{ item }}"
     state: directory
     mode: "0755"
     owner: root
@@ -46,7 +50,9 @@
     content: |
       # Managed by Ansible role nfs-backup-target. Off-box backup target for
       # k3s workloads (see ansible/roles/nfs-backup-target/).
-      {{ nfs_backup_export_path }} {{ nfs_backup_export_clients }}({{ nfs_backup_export_opts }})
+      {% for e in nfs_exports %}
+      {{ e.path }} {{ e.clients }}({{ e.opts }})
+      {% endfor %}
   notify: Reload NFS exports
 
 - name: Enable and start nfs-server
@@ -68,10 +74,10 @@
   register: nfs_live_exports
   changed_when: false
 
-- name: Re-apply exports if the path is not live
+- name: Re-apply exports if a path is not live
   ansible.builtin.command:
     cmd: exportfs -ra
-  when: nfs_backup_export_path not in nfs_live_exports.stdout
+  when: nfs_exports | map(attribute='path') | difference(nfs_live_exports.stdout_lines | map('split') | map('first') | list) | length > 0
   changed_when: true
 
 - name: Verify the export is being served
@@ -79,4 +85,4 @@
     cmd: exportfs -s
   register: nfs_verify_exports
   changed_when: false
-  failed_when: nfs_backup_export_path not in nfs_verify_exports.stdout
+  failed_when: nfs_exports | map(attribute='path') | difference(nfs_verify_exports.stdout_lines | map('split') | map('first') | list) | length > 0

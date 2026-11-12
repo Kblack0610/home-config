@@ -1,0 +1,19 @@
+# Managed by ansible (unity-ci-host, tasks/accelerator.yml). Unity Accelerator for
+# this host's runner slots, reached at {{ unity_ci_accelerator }} (UNITY_CACHE_SERVER).
+[Unit]
+Description=Unity Accelerator (cache server) for the runner slots
+Requires=docker.service
+After=docker.service
+
+[Service]
+Restart=always
+RestartSec=10
+ExecStartPre=-/usr/bin/docker rm -f unity-accelerator
+# A failed pull is not fatal: the digest-pinned image is already on the host after the first start.
+ExecStartPre=-/usr/bin/docker pull {{ unity_ci_accelerator_image }}
+ExecStartPre=/usr/bin/docker run --rm -v {{ unity_ci_accelerator_dir }}:/agent {{ unity_ci_accelerator_image }} sh -c 'unity-accelerator config set --persist /agent CacheMaxUsedBytes {{ unity_ci_accelerator_max_bytes }} && unity-accelerator config set --persist /agent CacheMinFreePercent {{ unity_ci_accelerator_min_free_percent }} && unity-accelerator config set --persist /agent CacheEvictUntilFreePercent {{ unity_ci_accelerator_evict_until_free_percent }}'
+ExecStart=/usr/bin/docker run --rm --name unity-accelerator -e DISABLE_USAGE_STATS=true -v {{ unity_ci_accelerator_dir }}:/agent -p {{ unity_ci_accelerator }}:10080 {{ unity_ci_accelerator_image }}
+ExecStop=/usr/bin/docker stop unity-accelerator
+
+[Install]
+WantedBy=multi-user.target

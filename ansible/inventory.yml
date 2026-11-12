@@ -324,6 +324,8 @@ all:
           unity_ci_images_pull: true
           unity_ci_lan: false
           unity_ci_library_s3: aws-burst-1-libraries-311141527647
+          # Every cold release tree fetches the imports another tree made (playground ucp-1913).
+          unity_ci_accelerator: 172.17.0.1:10080
         # The second burst host (platform infra/aws-ci-burst, applied 2026-11-10 when the
         # Mac Studio's six slots left the pool): same m7a.8xlarge, its own 400G data volume.
         # On-demand since 2026-11-11 (was Spot: no capacity or reclaimed all day while

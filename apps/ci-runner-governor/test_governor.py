@@ -73,7 +73,9 @@ POWER = {"provider": "aws", "instance_id": "i-0abc", "region": "us-east-2", "idl
          "start_min_excess": 1, "start_after_seconds": 0}
 AWS = {**CFG, "standby": {"aws-burst-1": {"max_admitted": 8, "power": POWER}}}
 LIVE_POWER = {**governor.POWER_DEFAULTS, **LIVE["standby"]["aws-burst-1"]["power"]}
-HEAVY = {**CFG, "standby": {"aws-burst-1": {"max_admitted": 6, "power": {**LIVE_POWER, "instance_id": "i-0abc"}}}}
+# A 12h day cap of its own: the live hosts run uncapped (24h), and the cap tests need one.
+HEAVY = {**CFG, "standby": {"aws-burst-1": {"max_admitted": 6, "power": {**LIVE_POWER, "instance_id": "i-0abc",
+                                                                       "max_hours_day": 12}}}}
 
 
 # What host_labels() reads for aws-burst-1: its runners' labels (off the LAN, so no `lan`)
@@ -352,7 +354,7 @@ class GovernorTest(unittest.TestCase):
     def test_live_gate_values(self):
         self.assertEqual({k: LIVE_POWER[k] for k in governor.POWER_DEFAULTS},
                          {"idle_off_seconds": 900, "start_min_excess": 4, "start_after_seconds": 300,
-                          "max_hours_day": 12, "fallback_seconds": 3600})
+                          "max_hours_day": 24, "fallback_seconds": 3600})
 
     def test_no_start_below_the_excess(self):
         inst = instance("stopped", want_since=1)

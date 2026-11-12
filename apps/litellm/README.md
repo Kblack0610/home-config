@@ -8,7 +8,7 @@ LLM gateway deployment in the `ai-gateway` namespace, exposed through Traefik at
 |------|---------|
 | `kustomization.yaml` | Reconciles the namespace, app, service, and ingress |
 | `configmap.yaml` | LiteLLM config mounted into the container |
-| `secret.sops.yaml` | SOPS-encrypted `litellm-db-secrets`: DATABASE_URL, salt key, UI creds, Lazer, Gemini, OpenCode Go and NVIDIA NIM keys |
+| `secret.sops.yaml` | SOPS-encrypted `litellm-db-secrets`: DATABASE_URL, salt key, UI creds, Lazer, Gemini, OpenCode Go, NVIDIA NIM, DeepSeek and Z.ai keys |
 | `deployment.yaml` | Main gateway workload and health checks |
 | `service.yaml` | Cluster service on port `4000` |
 | `ingress.yaml` | TLS ingress for `llm.kblab.me`, kept off public DNS |
@@ -65,9 +65,20 @@ The `go (...)` routes spend the OpenCode Go plan ($10/mo flat, key `OPENCODE_GO_
 
 The seven routes tagged `binks-eval` (GLM-5.3-Flash, Qwen3.8-Flash, Qwen3.7-Plus, MiniMax M3 and M3.1 Flash, MiMo-V2.6-Flash, LongCat-2.0) exist for the binks model eval and carry a $1 per 5h cap instead of a Go allowance. The budgets mirror Go's windows a little under the plan, so the gateway refuses before Go does and the refusal reads as a budget, not an upstream error. Go gives GLM-5.3, Kimi K3 and Haiku 5.5 $15/mo each and DeepSeek V4.1 Flash $100/mo (docs/go, Go column), spent 20% per 5h and 50% per week. The 5h window is each route's deployment budget (`max_budget` 2.85, `budget_duration` 5h in `litellm_params`, 19%): a key's per-model `model_max_budget` needs a LiteLLM Enterprise license (`/key/generate` refuses it), and only `fleet-go` can reach these routes anyway. The week is the key's `max_budget`, 95% of the four models' weekly allowances ($7.50 x 3 + $50 = $72.50, rounded down), and the month is left to Go itself (Extra Usage off in the OpenCode console, so a spent window is a refusal there, never a charge). LiteLLM's windows reset on a fixed clock where Go's may roll, and the deployment spend is held in memory, so a pod restart clears the 5h counter. Go refuses a call with no `x-opencode-session` header (400 MissingSessionID): opencode sends one, a hand probe must too. Add a route: give it the same `max_budget` / `budget_duration`, add it to the key's `models` (`/key/update`) and raise the key's `max_budget` by 95% of its weekly allowance.
 
+### binks.chat keys
+
+`binks-chat` (Z.ai `glm-5.3-flash`) and `binks-chat-hard` (DeepSeek `deepseek-flash`) are the binks.chat product routes, on first-party keys `ZAI_API_KEY` and `DEEPSEEK_API_KEY` (rbw `zai-api-key`, `deepseek-api-key`); `binks-chat` falls back to `binks-chat-hard`. They are reached only through the gateway user `binks-issuer` (internal_user, models limited to those two routes, `max_budget` $50 / 1mo). That budget is the ceiling for all binks.chat spend, because every binks key belongs to that user. LiteLLM team admins are an Enterprise feature, so the issuer is a user, not a team: an internal_user may mint keys only for itself, and its `models` bound every key it mints.
+
+| Key | Models | Budgets | Consumer | Key file |
+|---|---|---|---|---|
+| `binks-issuer` | the two binks routes | the user's $50 / 1mo | binks-api `LITELLM_ISSUER_KEY`: mints `binks-user-<id>` keys ($2 / 1mo each, `metadata.binks_user_id`) | rbw `litellm-binks-issuer-key` |
+| `binks-anon` | the two binks routes | `max_budget` $10 / 1mo, rpm 30 | binks-api `LITELLM_API_KEY`: anonymous chats and every chat when the issuer key is unset | rbw `litellm-binks-anon-key` |
+
+Revoke one user's key with `/key/delete` on its alias; binks-api mints a new one on the next turn.
+
 `eval-reader` is a `proxy_admin_viewer`: it reads keys, teams and spend but calls no model. Set a new key's `team_id`, `metadata.consumer` and `metadata.priority` when you mint it.
 
-> **Category aliases:** `router_settings.model_group_alias` in `config.yaml` exposes short stable names (`code`, `reasoning`, `fast`, `vlm`, `embedding`, `stt`) that resolve to whichever concrete route a category points at. A key that allows the concrete route can call its alias (the `local-only` key calls `fast` through `fast (gpt-oss-120b)`). Retarget an alias in one line -> reconcile -> every consumer follows with no per-app edit. mem0 (`MEM0_DEFAULT_LLM_MODEL`), binks-api (`DEFAULT_MODEL`) and karakeep (`INFERENCE_TEXT_MODEL`) call `fast`.
+> **Category aliases:** `router_settings.model_group_alias` in `config.yaml` exposes short stable names (`code`, `reasoning`, `fast`, `vlm`, `embedding`, `stt`) that resolve to whichever concrete route a category points at. A key that allows the concrete route can call its alias (the `local-only` key calls `fast` through `fast (gpt-oss-120b)`). Retarget an alias in one line -> reconcile -> every consumer follows with no per-app edit. mem0 (`MEM0_DEFAULT_LLM_MODEL`) and karakeep (`INFERENCE_TEXT_MODEL`) call `fast`; binks-api calls `binks-chat`.
 >
 > **Embedding is intentionally NOT wired to any stateful consumer via its alias.** mem0/karakeep pin `embedding (gemini-001)` because a vector store cannot hot-swap embedder dimensions (pgvector column = 768). Chat/vision/stt are stateless and safe to retarget; embedding is stateful and stays pinned.
 >

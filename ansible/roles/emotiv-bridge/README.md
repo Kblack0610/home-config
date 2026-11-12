@@ -46,11 +46,19 @@ ansible-playbook playbooks/site.yml --limit mac-mini --tags emotiv
 
 ## Read a session (workstation)
 
+`scripts/eeg-review.py` (a uv script; mne and numpy come with it) fetches a session from the NAS, decrypts it in memory with the EEG identity piped from sops, and writes to `~/eeg/review/<session>/`:
+
 ```bash
-ssh -p 2222 192.168.1.152 'sudo tar -C /mnt/nas/private/eeg -cf - 2026-11-11' | tar -xf - -C ~/eeg
-age -d -i <(sops decrypt --extract '["identity"]' ansible/roles/emotiv-bridge/eeg-identity.sops.yaml) \
-  ~/eeg/2026-11-11/<session>/mot-0001.jsonl.gz.age | zcat | head
+scripts/eeg-review.py 2026-11-11/20261111T120000-1a2b3c4d   # <date>/<session> under /mnt/nas/private/eeg
+scripts/eeg-review.py ~/eeg/some-local-session-dir          # or a local copy, encrypted or plain
 ```
+
+- `events.csv`: one row per action, the input for later Home Assistant actions. Columns `onset_epoch, offset_s, duration_s, kind, source, strength`. `kind` is Cortex's own action name (`blink`, `winkL`, `lookR`, `surprise`, `frown`, `clench`, `smile`, `laugh`, `smirkLeft`, a mental command such as `push`), or `head_move` from the motion quaternion. `strength` is the peak Cortex power in the run (1.0 for eye actions), or the peak angular speed in deg/s for `head_move`. One row per run of the same action, the same way the live `fac` counters count.
+- `cleaned_raw.fif`: band power (70 channels), motion, contact quality, metrics and head angular speed on one 8 Hz grid, as MNE `misc` channels. Events are annotations; poor contact (`eq` overall under 50) is `BAD_contact` and a band-power gap over 0.5 s is `BAD_gap`, so `reject_by_annotation` drops them.
+- `eeg_raw.fif`: only when the archive has raw `eeg`, which the Basic license refuses. Band-passed 1-45 Hz and notched at 60 Hz.
+- `summary.json`: samples, span and rate per stream, the numbers the wear check compares with duration x rate.
+
+The thresholds (`HEAD_MOVE_DEG_S`, `CONTACT_MIN`, `GAP_S`) are constants at the top of the script. Tests: `python3 scripts/test_eeg_review.py` (stdlib only, CI `fleet-roster` job).
 
 ## Check it
 

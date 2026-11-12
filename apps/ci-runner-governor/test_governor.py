@@ -416,6 +416,25 @@ class GovernorTest(unittest.TestCase):
         full = {**self.aws(on_idle=6), **self.FULL}
         self.assertEqual(self.heavy(inst, runners=full, queue=0)[0], "hold")
 
+    def test_a_pin_drains_a_standby_host_under_override_on(self):
+        inst = instance("running", override="on")
+        busy = {**self.aws(on_busy=2, on_idle=1, off=3), **self.FULL}
+        got = decide(self.STEADY, busy, cfg=HEAVY, instances=inst, pins={"aws-burst-1": 0})
+        self.assertIn(("aws-burst-1", "withhold", "aws-idle-0", "PINNED", "pinned to 0"), got)
+        drained = {**self.aws(off=6), **self.FULL}
+        self.assertEqual(self.heavy(inst, runners=drained)[:2], ("admit", "aws-off-0"))  # no pin: override on admits
+        got = decide(self.STEADY, drained, cfg=HEAVY, instances=inst, pins={"aws-burst-1": 0})
+        self.assertIn(("aws-burst-1", "hold", "", "PINNED", "overflow"), got)
+
+    def test_a_pin_caps_a_standby_host_admits(self):
+        inst = instance("running")
+        two = {**self.aws(on_busy=2, off=4), **self.FULL}
+        self.assertEqual(self.heavy(inst, runners=two, queue=9)[0], "admit")
+        got = decide(self.STEADY, two, cfg=HEAVY, instances=inst, pins={"aws-burst-1": 2})
+        self.assertEqual([d[1] for d in got if d[0] == "aws-burst-1"], ["hold"])
+        got = decide(self.STEADY, two, cfg=HEAVY, instances=inst, pins={"aws-burst-1": 9})
+        self.assertIn(("aws-burst-1", "admit", "aws-off-0", "STANDBY"), [d[:4] for d in got])
+
     def test_override_off_drains_then_stops(self):
         inst = instance("running", override="off")
         busy = {**self.aws(on_busy=2, off=4), **self.FULL}
@@ -540,6 +559,14 @@ class GovernorTest(unittest.TestCase):
         self.assertEqual(len([l for l in lines if "pin unreadable" in l]), 4)
         self.assertEqual(len([l for l in lines if "reservation unreadable" in l]), 2)
         self.assertEqual(len([l for l in lines if "override unreadable" in l]), 2)
+
+    def test_read_pins_covers_standby_hosts(self):
+        import tempfile
+        with tempfile.TemporaryDirectory() as d, mock.patch.object(governor, "OVERRIDE_DIR", d):
+            with open(os.path.join(d, "aws-burst-1"), "w") as f:
+                f.write('{"action": "on", "until": 5000, "slots": 0}')
+            self.assertEqual(governor.read_pins(AWS, 1000), {"aws-burst-1": 0})
+            self.assertEqual(governor.read_override("aws-burst-1", 1000), ("on", 5000.0))
 
     def test_run_time_counts_per_utc_day(self):
         t, day = {}, 1_762_214_400  # 2025-11-04T00:00:00Z

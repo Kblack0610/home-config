@@ -83,6 +83,7 @@ apps/ci-runner-governor powers it (config.json `standby` -> `aws-burst-1` -> `po
 - A pinned host moves one slot per cycle toward N, past its cooldown and in either direction, and these moves happen even with `DRY_RUN=1`. A busy slot finishes its job first. The pool floor and cap still hold, and a FULL host keeps its verdict.
 - The pin has no end time. A host with no pin, or an unreadable one, is back on its verdict, which under a dry run re-admits nothing, so set the mode back rather than deleting the key.
 - The log says `PINNED`, and `ci_governor_decision{verdict="PINNED"}` shows it.
+- On a standby (AWS) host a pin is a lower cap that also holds under an "on" override, so it drains the host for an apply that restarts slots: add `"slots":0` to the host's key next to `action` and `until` (`kubectl -n monitoring patch cm ci-runner-governor-override --type merge -p '{"data":{"aws-burst-1":"{\"action\":\"on\",\"until\":<epoch>,\"slots\":0}"}}'`), wait for no `Runner.Worker` on the host, apply, then write the key back without `slots`.
 
 ### The month's budget
 

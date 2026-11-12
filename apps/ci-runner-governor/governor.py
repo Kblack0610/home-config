@@ -87,7 +87,9 @@ since it says what the machine is for and not how loaded it is. A release reserv
 key of its own, "<host>.reserve" holding {"until": <epoch>} (machine-mode release-lane), so the
 power override's until and agent-web's whole-key write never touch it: until then it pins
 the host to 0, so gates go to other hosts while release.yml jobs, which ask for the host
-label alone, take its withheld slots. Past its end it reads as no reservation. A pinned host moves one
+label alone, take its withheld slots. Past its end it reads as no reservation. On a standby host a
+pin is a lower cap (one slot withheld per cycle, a busy one after its job; no admit past it, an
+"on" override's included), so a slot-restarting apply can drain it. A pinned host moves one
 slot per cycle toward N, in either direction, past its cooldown and instead of its verdict,
 and these moves happen even in a dry run, because nothing else re-admits a slot then. Only
 the pool floor and cap hold, and a FULL host keeps its own verdict unless the pin withholds
@@ -425,6 +427,11 @@ def decide(cfg, hosts, runners, waiting, last_action, now, instances=None, pins=
                     key=lambda n: (mine[n]["busy"], -mine[n]["elapsed"], n))
         off = sorted(n for n, r in mine.items() if r["withheld"])
         cap = cfg["standby"][host]["max_admitted"]
+        # A pin on a standby host is a lower cap: the cap branch below withholds one slot per
+        # cycle (a busy one finishes its job) and no admit passes it.
+        pin = (pins or {}).get(host)
+        pinned = pin is not None and pin < cap
+        cap = min(cap, pin) if pinned else cap
         inst = (instances or {}).get(host)
         p = power_of(cfg, host)
         action, runner, why = "hold", "", "overflow"
@@ -459,8 +466,8 @@ def decide(cfg, hosts, runners, waiting, last_action, now, instances=None, pins=
             else:
                 action, why = "stop", drain
         elif len(on) > cap:
-            action, runner, why = "withhold", on[0], f"over its {cap} cap"
-        elif over == "on" and inst and inst["state"] == "running" and off:
+            action, runner, why = "withhold", on[0], f"pinned to {cap}" if pinned else f"over its {cap} cap"
+        elif over == "on" and inst and inst["state"] == "running" and off and len(on) < cap:
             if ded or admitted < cfg["pool_max_admitted"]:
                 action, runner, why = "admit", off[0], "override on"
                 if not ded:
@@ -532,7 +539,7 @@ def decide(cfg, hosts, runners, waiting, last_action, now, instances=None, pins=
                 elif inst["state"] in ("pending", "running"):
                     ahead[host] = (max(0, cap - len(on) - (action == "admit"))
                                    + sum(1 for n in on if not mine[n]["busy"]))
-        out.append((host, action, runner, "STANDBY", why))
+        out.append((host, action, runner, "PINNED" if pinned else "STANDBY", why))
     return out
 
 
@@ -773,7 +780,7 @@ def read_pins(cfg, now):
     release reservation, "<host>.reserve" holding {"until": <epoch>}, pins the host to 0 over
     any pin of its own; past its end, or unreadable (logged), it is no reservation."""
     pins = {}
-    for host in cfg["hosts"]:
+    for host in [*cfg["hosts"], *cfg["standby"]]:
         slots = override_key(host).get("slots")
         if type(slots) is int and slots >= 0:
             pins[host] = slots

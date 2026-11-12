@@ -56,7 +56,7 @@ spec:
             - name: SERVER_DEV_CONTROLS
               value: "1"
             - name: SERVER_NAME
-              value: Playground server
+              value: Home server
             # Its identity in the registry: the session id comes out as
             # <yymmdd>-playground-home-<n>-<node>, and provider_ref is what the Fleet
             # page matches against zomboid-control's namespace/deployment. A build from

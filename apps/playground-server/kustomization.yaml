@@ -20,4 +20,5 @@ images:
   # scripts/build/games/<id>.json "image"; none for the playground itself) and newTag
   # the release it runs. The playground repo's scripts/server/roll.sh <tag> moves newTag.
   - name: git.kblab.me/kblack0610/unity-playground-server
-    newTag: "0.4.0"
+    newName: git.kblab.me/kblack0610/unity-dodginballs-server
+    newTag: "0.5.0-dodginballs7"

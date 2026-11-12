@@ -15,6 +15,7 @@ Sources, and who publishes them:
 Long ranges: switch the Prometheus datasource variable to "VictoriaMetrics (long)" (2y)."""
 
 import json
+import math
 import os
 import sys
 
@@ -25,10 +26,11 @@ CH = {"type": "grafana-clickhouse-datasource", "uid": "langfuse-clickhouse"}
 CLAUDE = '{service_name=~"claude-code|claude-agentctl"}'
 # Textfile metrics come from one host; drop its scrape labels so a series is one session.
 WS = "max without (instance, job, host) "
-# Home's Vitals section, a panel each: the question, then what it asks.
-VITALS = (("You", "How much does the fleet ask of the human?"),
-          ("Outcome", "Do requests start and do landed changes get verified?"),
-          ("Quality", "Does work land right the first time?"), ("Cost", "What does a merged item cost in dollars?"))
+# Home's Vitals section, a panel each: the question, what it asks, and the unit of its KPIs.
+VITALS = (("You", "How much does the fleet ask of the human?", "none"),
+          ("Outcome", "Do requests start and do landed changes get verified?", "none"),
+          ("Quality", "Does work land right the first time?", "none"),
+          ("Cost", "What does a merged item cost in dollars?", "currencyUSD"))
 # mqtt2prom scrape labels, so one row per topic.
 MQ = "max without (instance, pod, container, endpoint, job, namespace, service) "
 LANGFUSE_TRACE = "https://langfuse.kblab.me/project/${__data.fields.project_id}/traces/${__data.fields.trace_id}"
@@ -290,13 +292,14 @@ def overview():
     # agent_bench_vital gauge, so BENCH_VITALS decides what each panel shows.
     panels.append(row("Vitals", y))
     y += 1
-    for i, (q, says) in enumerate(VITALS):
+    across, tall = 4, 7
+    for i, (q, says, unit) in enumerate(VITALS):
         panels.append(ts(q, f"{says} The 7d value of each KPI BENCH_VITALS names for this question "
                          "(fleet-bench, agent_bench_kpi); Home shows the same numbers now.",
                          [prom(f'{WS}(agent_bench_kpi{{window="7d"}}) and on (kpi) {WS}(agent_bench_vital{{question="{q.lower()}"}})',
                                legend="{{kpi}}")],
-                         pos(i % 4 * 6, y + i // 4 * 7, 6, 7), decimals=2))
-    y += -(-len(VITALS) // 4) * 7
+                         pos(i % across * (24 // across), y + i // across * tall, 24 // across, tall), unit=unit, decimals=2))
+    y += math.ceil(len(VITALS) / across) * tall
     panels += [
         ts("Cost per hour by project", "Spend per hour, one series per canonical project (claude-telemetry.sh sets it). "
            "Sessions started outside the claude wrappers carry no project and show as the empty series.",

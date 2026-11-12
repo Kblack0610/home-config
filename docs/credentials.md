@@ -13,6 +13,7 @@ Each row links the steps; it does not restate them. A service with no steps yet:
 | Renovate bot | Forgejo bot user and API token | [renovate.md](./renovate.md) | the Renovate Actions secret |
 | mem0 API keys | `POST /api-keys` with the admin JWT, over a port-forward | [mem0 README](../apps/mem0/README.md#auth-model--admin-bootstrap-important--not-admin_api_key-as-bearer) | `apps/mem0/client-credentials.secret.yaml` (`MEM0_API_KEY`) |
 | LiteLLM virtual keys | `POST /key/generate` with the master key | [litellm README](../apps/litellm/README.md#create-a-key) | the consumer's secret; master key in `apps/litellm/litellm-secrets.sops.yaml` |
+| freellmapi client key | `scripts/freellmapi-bootstrap.sh --client-key` (admin login from SOPS) | [freellmapi README](../apps/freellmapi/README.md#setup-and-changes) | `FREELLMAPI_API_KEY` in `apps/litellm/secret.sops.yaml`; admin login in `apps/freellmapi/secret.sops.yaml` |
 | Headscale pre-auth keys | `headscale preauthkeys create` by `kubectl exec` | [headscale-setup.md](./headscale-setup.md#create-pre-auth-key) | `apps/headscale/tailscale-secret.yaml` (`TS_AUTHKEY`) |
 | CrowdSec bouncer key | sops edit, then restart | [crowdsec README](../apps/crowdsec/README.md#rotate-the-bouncer-api-key) | `apps/crowdsec/secret.yaml` |
 | notes-sync-bridge HMAC | random bytes, then the Forgejo hooks API | [notes-sync-bridge README](../apps/notes-sync-bridge/README.md#secrets) | `apps/notes-sync-bridge/secret.yaml` |

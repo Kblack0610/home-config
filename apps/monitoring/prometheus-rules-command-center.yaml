@@ -6,7 +6,7 @@
 #
 #   cc:component_status{domain,component}  0 ok, 1 warn, 2 red, one row per input
 #   cc:domain_status{domain}               worst component in the domain
-#   cc:overall_status                       worst domain
+#   cc:overall_status                       worst domain, printer left out
 #   cc:agents_topic_live{topic}             1 per agents topic published in 20 min; readers join on it
 #   cc:watch_state{domain,item}             what is not ok inside a domain: 2 down, 1 warn, one row per item
 #   cc:red_now{item}                        what is red right now, one row per item (dashboard table, hub board, waybar day and health chips)
@@ -89,19 +89,24 @@ spec:
           labels: {domain: llm}
           expr: >-
             max by (item) (label_replace(((mqtt_tripped{topic=~"agents_.+_watch_(gateway_errors)"} and on (topic) cc:agents_topic_live) * 1 > 0) or ((mqtt_stale{topic=~"agents_.+_watch_(gateway_errors)"} and on (topic) cc:agents_topic_live) > 0), "item", "$1", "topic", "agents_.+_watch_(.+)"))
+        # Neptune, the 3D printer: its Home Assistant sensor and its watches (down, stale or tripped) warn in
+        # their own domain, which cc:overall_status leaves out. It is off most days and rarely used, so it
+        # shows on the health hover and the board but never colours the heart (human, 2026-11-12).
+        - record: cc:watch_state
+          labels: {domain: printer}
+          expr: >-
+            max by (item) (label_replace(((mqtt_tripped{topic=~"agents_hass_conn_neptune_.+"} and on (topic) cc:agents_topic_live) > 0), "item", "$1", "topic", "agents_hass_conn_(.+)") or label_replace(((mqtt_tripped{topic=~"agents_.+_watch_neptune_.+"} and on (topic) cc:agents_topic_live) > 0) or ((mqtt_stale{topic=~"agents_.+_watch_neptune_.+"} and on (topic) cc:agents_topic_live) > 0), "item", "$1", "topic", "agents_.+_watch_(.+)")) * 0 + 1
         # a watch no domain above claims still counts, so a new manifest is never invisible here.
         # aws_burst_power trips whenever the burst runner runs: it pages on start and stop, and is no fault.
-        # Neptune (the 3D printer) warns and never reds: it is off or asleep most days and rarely used (human, 2026-11-12).
         - record: cc:watch_state
           labels: {domain: other}
           expr: >-
-            max by (item) (label_replace(((mqtt_tripped{topic=~"agents_.+_watch_.+",topic!~"agents_.+_watch_(aws_burst_power|neptune_.+)"} and on (topic) cc:agents_topic_live) * 2 > 0) or ((mqtt_tripped{topic=~"agents_.+_watch_neptune_.+"} and on (topic) cc:agents_topic_live) > 0) or ((mqtt_stale{topic=~"agents_.+_watch_.+",topic!~"agents_.+_watch_aws_burst_power"} and on (topic) cc:agents_topic_live) > 0), "item", "$1", "topic", "agents_.+_watch_(.+)")) unless on (item) cc:watch_state{domain!="other"}
+            max by (item) (label_replace(((mqtt_tripped{topic=~"agents_.+_watch_.+",topic!~"agents_.+_watch_(aws_burst_power|neptune_.+)"} and on (topic) cc:agents_topic_live) * 2 > 0) or ((mqtt_stale{topic=~"agents_.+_watch_.+",topic!~"agents_.+_watch_(aws_burst_power|neptune_.+)"} and on (topic) cc:agents_topic_live) > 0), "item", "$1", "topic", "agents_.+_watch_(.+)")) unless on (item) cc:watch_state{domain!="other"}
         # Home Assistant's connectivity sensors, the wall pill's "N down": fleet_alerts.yaml publishes each one
-        # Neptune's sensors warn, not red, like its watches in other.
         - record: cc:watch_state
           labels: {domain: home}
           expr: >-
-            max by (item) (label_replace(((mqtt_tripped{topic=~"agents_hass_conn_.+",topic!~"agents_hass_conn_neptune_.+"} and on (topic) cc:agents_topic_live) * 2 > 0) or ((mqtt_tripped{topic=~"agents_hass_conn_neptune_.+"} and on (topic) cc:agents_topic_live) > 0), "item", "$1", "topic", "agents_hass_conn_(.+)"))
+            max by (item) (label_replace((mqtt_tripped{topic=~"agents_hass_conn_.+",topic!~"agents_hass_conn_neptune_.+"} and on (topic) cc:agents_topic_live) * 2 > 0, "item", "$1", "topic", "agents_hass_conn_(.+)"))
         - record: cc:component_status
           labels: {domain: k3s, component: watches}
           expr: >-
@@ -138,6 +143,10 @@ spec:
           labels: {domain: other, component: watches}
           expr: >-
             max(cc:watch_state{domain="other"}) or vector(0)
+        - record: cc:component_status
+          labels: {domain: printer, component: watches}
+          expr: >-
+            max(cc:watch_state{domain="printer"}) or vector(0)
         - record: cc:component_status
           labels: {domain: home, component: connectivity}
           expr: >-
@@ -190,8 +199,9 @@ spec:
         # DOWN for a minute with no watch or component to name why (2026-11-12).
         - record: cc:domain_status
           expr: max by (domain) (cc:component_status)
+        # printer is left out: it is shown, never judged (see its cc:watch_state above)
         - record: cc:overall_status
-          expr: max(cc:domain_status)
+          expr: max(cc:domain_status{domain!="printer"})
         # What is red right now, value 1 per item. The dashboard's "What is red" table, the hub
         # board's red-now line and the waybar day chip read this one series, so they cannot disagree.
         - record: cc:red_now

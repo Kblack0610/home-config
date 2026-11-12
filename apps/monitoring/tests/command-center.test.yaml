@@ -470,7 +470,7 @@ tests:
           - labels: 'cc:red_now{item="watch voice_bedroom_puck"}'
             value: 1
 
-  - name: Neptune down warns but never makes the system red
+  - name: Neptune down shows amber on its own printer row and leaves the overall status alone
     interval: 1m
     input_series:
       - series: 'mqtt_tripped{topic="agents_hass_conn_neptune_kblab_me"}'
@@ -481,22 +481,36 @@ tests:
         values: '1x10'
       - series: 'mqtt_message_total{topic="agents_h_watch_neptune_health"}'
         values: '0+1x10'
+      # everything else healthy, so the overall reads only what the printer adds
+      - series: 'mqtt_message_total{topic="agents_h_summary_asks_open"}'
+        values: '0+1x10'
+      - series: 'mqtt_updated_epoch{topic="agents_h_runner_sentinel"}'
+        values: '0+60x10'
+      - series: 'up{job="litellm"}'
+        values: '1x10'
     promql_expr_test:
       - expr: cc:watch_state{item=~"neptune.+"}
         eval_time: 5m
         exp_samples:
-          - labels: 'cc:watch_state{domain="home",item="neptune_kblab_me"}'
+          - labels: 'cc:watch_state{domain="printer",item="neptune_kblab_me"}'
             value: 1
-          - labels: 'cc:watch_state{domain="other",item="neptune_health"}'
+          - labels: 'cc:watch_state{domain="printer",item="neptune_health"}'
             value: 1
-      - expr: cc:domain_status{domain=~"home|other"}
+      - expr: cc:domain_status{domain=~"home|other|printer"}
         eval_time: 5m
         exp_samples:
           - labels: 'cc:domain_status{domain="home"}'
-            value: 1
+            value: 0
           - labels: 'cc:domain_status{domain="other"}'
+            value: 0
+          - labels: 'cc:domain_status{domain="printer"}'
             value: 1
-      - expr: cc:red_now{item=~".*neptune.*"}
+      - expr: cc:overall_status
+        eval_time: 5m
+        exp_samples:
+          - labels: 'cc:overall_status'
+            value: 0
+      - expr: cc:red_now
         eval_time: 5m
         exp_samples: []
 

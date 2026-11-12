@@ -10,7 +10,7 @@ and repository mirroring enabled.
 |------|---------|
 | `kustomization.yaml` | Reconciles namespace, app, services, ingress, backup, and runner |
 | `configmap.yaml` | Forgejo `app.ini` — Actions, Packages, Mirroring enabled |
-| `secret.sops.yaml` | SOPS-encrypted `LFS_JWT_SECRET`, `INTERNAL_TOKEN` and `JWT_SECRET`, as `FORGEJO__<section>__<key>` env vars |
+| `secret.sops.yaml` | SOPS-encrypted `LFS_JWT_SECRET`, `INTERNAL_TOKEN`, `JWT_SECRET` and `SECRET_KEY`, as `FORGEJO__<section>__<key>` env vars |
 | `deployment.yaml` | Main Forgejo workload with config-seed init container |
 | `service-http.yaml` | HTTP service on port `3000` |
 | `service-ssh.yaml` | In-cluster SSH service on port `22` |
@@ -37,6 +37,19 @@ sops apps/forgejo/secret.sops.yaml   # paste values from: forgejo generate secre
 
 Commit and push, then delete the pod, because a changed Secret does not restart it. Rotating `LFS_JWT_SECRET` fails any LFS transfer in flight; `JWT_SECRET` ends OAuth2 and Actions job tokens.
 
+### Rotating SECRET_KEY
+
+`SECRET_KEY` seals stored data (Actions secrets, TOTP, push mirror keys, webhook auth headers, LDAP bind passwords), so a new key alone leaves every Actions secret unreadable. Until 2026-11-11 it was unset and Forgejo used its built-in default. `scripts/forgejo-secret-key-rotate.py` re-encrypts the `secret` table from the old key to the new one, and refuses if any of the other sealed data exists, because it does not migrate it. Run it only while Forgejo is stopped:
+
+1. Put the new key in `secret.sops.yaml` without printing it: `kubectl -n forgejo exec deploy/forgejo -c forgejo -- forgejo generate secret SECRET_KEY | python3 -c 'import json,sys; print(json.dumps(sys.stdin.read().strip()))' | sops set --value-stdin apps/forgejo/secret.sops.yaml '["stringData"]["FORGEJO__security__SECRET_KEY"]'`, then open the PR.
+2. `flux suspend kustomization apps`, merge, `flux reconcile source git flux-system`, then `kubectl -n forgejo scale deploy/forgejo --replicas=0`.
+3. On hp-victus, copy `/srv/forgejo/data/gitea/gitea.db` aside (the rollback), then run the tool as uid 1000 with `OLD_SECRET_KEY` (omit while it is the default) and `NEW_SECRET_KEY` in the environment, both from `sops -d --extract '["stringData"]["FORGEJO__security__SECRET_KEY"]'` piped into the remote environment, never typed: once without `--apply` (every row must decrypt and the new key must pass its checks), then with it. Do not resume until `--apply` prints that every row read back.
+4. `flux resume kustomization apps`. Check with a `workflow_dispatch` of `mirror-to-github`, which reads the `MIRROR_DEPLOY_KEY` secret.
+
+Snapshots and nightly fulls from before the rotation hold secrets sealed under the old key: restoring one needs that key back in the Secret, or the tool run again. Sessions, cookies and email codes do not use `SECRET_KEY` in 14.x, so nobody is logged out.
+
+Rollback: stop Forgejo, put the copied db back, revert the key, start it.
+
 Key config sections:
 
 | Section | Purpose |
@@ -59,7 +72,7 @@ Key config sections:
 ## Runner
 
 Instance-level runners serve all repos on the Forgejo instance, each with a
-Docker-in-Docker sidecar for container-based CI workflows.
+Docker-in-Docker sidecar for container-based CI workflows. DinD is a native sidecar (an init container with `restartPolicy: Always`), so the runner starts only after `docker info` answers and stops before DinD does. Runners register against the in-cluster Service `http://forgejo-http.forgejo.svc.cluster.local:3000`, not `git.kblab.me`, so polling, logs and artifacts skip Traefik; jobs still clone from `ROOT_URL`.
 
 It runs **2 replicas, one on asus-laptop and one on razer-laptop**. `runner-deployment.yaml` requires an amd64 workstation node (`node-role.kubernetes.io/workstation`) that is not hp-victus (the Forgejo node), and a required `podAntiAffinity` puts the two pods on different nodes. hp-victus is excluded because Forgejo's data PV is pinned there: with the old soft rule both runners sat on the Forgejo node, so one disk stall took out the forge and all of CI together. If one runner node dies, the other replica is already live; the dead node's replica stays Pending until it returns, by design. Rollouts replace one pod at a time (`maxSurge: 0`), because a surge pod has no free node to land on. Each pod
 registers under its own pod name (`--name "$POD_NAME"` via the downward API),
@@ -204,6 +217,7 @@ Endpoints:
 - GNU tar exit 1 ("file changed as we read it") counts as success, since the archive is complete and Forgejo keeps writing during the backup. Exit 2 fails the job.
 - `gitea/data/packages` (178G) is excluded. `forgejo-packages-backup` in the `nas` namespace mirrors it weekly to the 8TB drive.
 - `forgejo-backup-offbox` runs at `04:30` and keeps the newest **3** fulls on the 8TB drive (`/mnt/backup-8t/forgejo-backups`). It reads only completed archives, checks size and `gzip -t`, and aborts if the copy would leave the drive under 500G free. The off-site copy is the Hetzner standby to come (plan `can-we-setup-forgejo-snazzy-hopper` P9).
+- `scripts/forgejo-restore-drill.sh` (root, on asus) restores the newest full and its snapshot into a network-less container and checks it boots and every repo passes `git fsck`; what it leaves out is in `docs/backup-runbook.md`.
 - `nas-backup-verify` checks all of this weekly, including off-box size against the primary.
 - History: on 2026-07-09 a retention of 30 (~1.6TiB of daily fulls) filled asus-laptop's root disk, tripped kubelet DiskPressure, and evicted the entire home-k3s workload cluster for ~6h. Retention was cut to 7 and a prune-first + free-space guard added. Longer-term recovery points belong off-box (MinIO/S3), not on the same disk as the data they protect.
 

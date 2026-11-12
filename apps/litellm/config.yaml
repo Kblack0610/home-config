@@ -449,6 +449,263 @@ model_list:
       supports_function_calling: true
       supports_vision: true
 
+  # binks model eval candidates (binks brief, "Model and unit economics": the
+  # default is chosen by measurement). Same Go plan and headers as the routes
+  # above. Each carries a small eval cap, not Go's allowance, which docs/go does
+  # not list per model for these; raise it only with that number.
+  - model_name: "go (glm-5.3-flash)"
+    litellm_params:
+      model: "openai/glm-5.3-flash"
+      api_base: https://opencode.ai/inference/go/openai/v1
+      api_key: os.environ/OPENCODE_GO_API_KEY
+      extra_headers: {"User-Agent": "kblab-litellm-gateway/1.0"}
+      # Go list price, $/1M: in 0.15 out 0.50 cache_read 0.03 (Go /v1/models, 2026-11-11).
+      input_cost_per_token: 0.00000015
+      output_cost_per_token: 0.0000005
+      cache_read_input_token_cost: 0.00000003
+      tpm: 200000
+      rpm: 30
+      max_budget: 1
+      budget_duration: 5h
+    model_info:
+      mode: chat
+      tags: ["flat", "opencode-go", "binks-eval"]
+      capabilities:
+        tools: true
+        code: true
+        vision: true
+        reasoning: true
+        json_mode: true
+      supports_function_calling: true
+  - model_name: "go (qwen3.8-flash)"
+    litellm_params:
+      model: "openai/qwen3.8-flash"
+      api_base: https://opencode.ai/inference/go/openai/v1
+      api_key: os.environ/OPENCODE_GO_API_KEY
+      extra_headers: {"User-Agent": "kblab-litellm-gateway/1.0"}
+      # Go list price, $/1M: in 0.15 out 0.47 cache_read 0.016 (Go /v1/models, 2026-11-11).
+      input_cost_per_token: 0.00000015
+      output_cost_per_token: 0.00000047
+      cache_read_input_token_cost: 0.000000016
+      tpm: 200000
+      rpm: 30
+      max_budget: 1
+      budget_duration: 5h
+    model_info:
+      mode: chat
+      tags: ["flat", "opencode-go", "binks-eval"]
+      capabilities:
+        tools: true
+        code: true
+        vision: true
+        reasoning: true
+        json_mode: true
+      supports_function_calling: true
+  - model_name: "go (qwen3.7-plus)"
+    litellm_params:
+      model: "openai/qwen3.7-plus"
+      api_base: https://opencode.ai/inference/go/openai/v1
+      api_key: os.environ/OPENCODE_GO_API_KEY
+      extra_headers: {"User-Agent": "kblab-litellm-gateway/1.0"}
+      # Go list price, $/1M: in 0.40 out 1.60 cache_read 0.04 (Go /v1/models, 2026-11-11).
+      input_cost_per_token: 0.0000004
+      output_cost_per_token: 0.0000016
+      cache_read_input_token_cost: 0.00000004
+      tpm: 200000
+      rpm: 30
+      max_budget: 1
+      budget_duration: 5h
+    model_info:
+      mode: chat
+      tags: ["flat", "opencode-go", "binks-eval"]
+      capabilities:
+        tools: true
+        code: true
+        vision: true
+        reasoning: true
+        json_mode: true
+      supports_function_calling: true
+  - model_name: "go (minimax-m3)"
+    litellm_params:
+      model: "openai/minimax-m3"
+      api_base: https://opencode.ai/inference/go/openai/v1
+      api_key: os.environ/OPENCODE_GO_API_KEY
+      extra_headers: {"User-Agent": "kblab-litellm-gateway/1.0"}
+      # Go list price, $/1M: in 0.30 out 1.20 cache_read 0.06 (Go /v1/models, 2026-11-11).
+      input_cost_per_token: 0.0000003
+      output_cost_per_token: 0.0000012
+      cache_read_input_token_cost: 0.00000006
+      tpm: 200000
+      rpm: 30
+      max_budget: 1
+      budget_duration: 5h
+    model_info:
+      mode: chat
+      tags: ["flat", "opencode-go", "binks-eval"]
+      capabilities:
+        tools: true
+        code: true
+        vision: true
+        reasoning: true
+        json_mode: true
+      supports_function_calling: true
+  - model_name: "go (minimax-m3.1-flash)"
+    litellm_params:
+      model: "openai/minimax-m3.1-flash"
+      api_base: https://opencode.ai/inference/go/openai/v1
+      api_key: os.environ/OPENCODE_GO_API_KEY
+      extra_headers: {"User-Agent": "kblab-litellm-gateway/1.0"}
+      # Go list price, $/1M: in 0.15 out 0.60 cache_read 0.015 (Go /v1/models, 2026-11-11).
+      input_cost_per_token: 0.00000015
+      output_cost_per_token: 0.0000006
+      cache_read_input_token_cost: 0.000000015
+      tpm: 200000
+      rpm: 30
+      max_budget: 1
+      budget_duration: 5h
+    model_info:
+      mode: chat
+      tags: ["flat", "opencode-go", "binks-eval"]
+      capabilities:
+        tools: true
+        code: true
+        vision: true
+        reasoning: true
+        json_mode: true
+      supports_function_calling: true
+  - model_name: "go (mimo-v2.6-flash)"
+    litellm_params:
+      model: "openai/mimo-v2.6-flash"
+      api_base: https://opencode.ai/inference/go/openai/v1
+      api_key: os.environ/OPENCODE_GO_API_KEY
+      extra_headers: {"User-Agent": "kblab-litellm-gateway/1.0"}
+      # Go list price, $/1M: in 0.14 out 0.28 cache_read 0.0028 (Go /v1/models, 2026-11-11).
+      input_cost_per_token: 0.00000014
+      output_cost_per_token: 0.00000028
+      cache_read_input_token_cost: 0.0000000028
+      tpm: 200000
+      rpm: 30
+      max_budget: 1
+      budget_duration: 5h
+    model_info:
+      mode: chat
+      tags: ["flat", "opencode-go", "binks-eval"]
+      capabilities:
+        tools: true
+        code: true
+        vision: true
+        reasoning: true
+        json_mode: true
+      supports_function_calling: true
+  - model_name: "go (longcat-2.0)"
+    litellm_params:
+      model: "openai/longcat-2.0"
+      api_base: https://opencode.ai/inference/go/openai/v1
+      api_key: os.environ/OPENCODE_GO_API_KEY
+      extra_headers: {"User-Agent": "kblab-litellm-gateway/1.0"}
+      # Go list price, $/1M: in 0.30 out 1.20 cache_read 0.006 (Go /v1/models, 2026-11-11).
+      input_cost_per_token: 0.0000003
+      output_cost_per_token: 0.0000012
+      cache_read_input_token_cost: 0.000000006
+      tpm: 200000
+      rpm: 30
+      max_budget: 1
+      budget_duration: 5h
+    model_info:
+      mode: chat
+      tags: ["flat", "opencode-go", "binks-eval"]
+      capabilities:
+        tools: true
+        code: true
+        vision: false
+        reasoning: true
+        json_mode: true
+      supports_function_calling: true
+
+  # ============================================================
+  # Free route via the NVIDIA NIM API catalog (integrate.api.nvidia.com)
+  # ============================================================
+  # NIM's free tier: about 40 requests/min shared by every model on one key,
+  # no card, framed by NVIDIA as evaluation, not production: personal fleet
+  # trial work only, never client work. Priced at 0, so spend reads $0 and only
+  # rpm (35, under NIM's 40) limits it. Key NVIDIA_NIM_API_KEY in
+  # secret.sops.yaml (rbw `nvidia-nim-api-key`); gateway key `fleet-nim`.
+  #
+  # NO fallback edge (router_settings.fallbacks): a NIM 429 must fail the call,
+  # not spill free-tier work onto paid Lazer.
+  - model_name: "free-deepseek (deepseek-v4.1-flash)"
+    litellm_params:
+      model: "openai/deepseek-ai/deepseek-v4.1-flash"
+      api_base: https://integrate.api.nvidia.com/v1
+      api_key: os.environ/NVIDIA_NIM_API_KEY
+      input_cost_per_token: 0
+      output_cost_per_token: 0
+      rpm: 35
+    model_info:
+      mode: chat
+      tags: ["free", "nvidia-nim"]
+      capabilities:
+        tools: true
+        code: true
+        vision: false
+        reasoning: true
+        json_mode: true
+      supports_function_calling: true
+
+  # binks.chat product routes (binks brief, "Model and unit economics"), on the
+  # winners of the 2026-11-12 eval: 20 prompts through binks-api, judged blind
+  # against the Gemini app (lab binks docs/eval/2026-11-12-binks-model-eval.md).
+  # Default glm-5.3-flash (quality 0.78, $0.19 per 1k turns); escalation
+  # deepseek-flash (0.85, $0.38). First-party keys only: product chats never ride
+  # the OpenCode Go plan or Lazer. Only the binks-issuer and binks-anon keys
+  # reach these (README, key table). Keys DEEPSEEK_API_KEY (rbw
+  # deepseek-api-key) and ZAI_API_KEY (rbw zai-api-key) in secret.sops.yaml.
+  - model_name: "binks-chat"
+    litellm_params:
+      model: "openai/glm-5.3-flash"
+      api_base: https://api.z.ai/api/paas/v4
+      api_key: os.environ/ZAI_API_KEY
+      # Z.ai list price, $/1M: in 0.15 out 0.50 cache_read 0.03 (2026-11-11).
+      input_cost_per_token: 0.00000015
+      output_cost_per_token: 0.0000005
+      cache_read_input_token_cost: 0.00000003
+      tpm: 400000
+      rpm: 60
+    model_info:
+      mode: chat
+      tags: ["paid", "binks", "first-party"]
+      capabilities:
+        tools: true
+        code: true
+        vision: false
+        reasoning: true
+        json_mode: true
+      supports_function_calling: true
+
+  # DeepSeek charges double at peak (weekdays 01-04 and 06-10 UTC); the gateway
+  # charges peak all day, so budgets trip early, never late.
+  - model_name: "binks-chat-hard"
+    litellm_params:
+      model: "deepseek/deepseek-flash"
+      api_key: os.environ/DEEPSEEK_API_KEY
+      # DeepSeek list price at peak, $/1M: in 0.30 out 1.20 cache_read 0.006
+      # (api-docs.deepseek.com/quick_start/pricing, 2026-11-11).
+      input_cost_per_token: 0.0000003
+      output_cost_per_token: 0.0000012
+      cache_read_input_token_cost: 0.000000006
+      tpm: 400000
+      rpm: 60
+    model_info:
+      mode: chat
+      tags: ["paid", "binks", "first-party"]
+      capabilities:
+        tools: true
+        code: true
+        vision: false
+        reasoning: true
+        json_mode: true
+      supports_function_calling: true
+
 router_settings:
   routing_strategy: "simple-shuffle"
   timeout: 900
@@ -485,6 +742,9 @@ router_settings:
     # Binks (HA voice): Gemini family key (primary) -> Lazer gpt-oss-120b
     # (verified tool-calling). Keeps voice up across one provider's outage.
     - {"assist (gemini-flash)": ["fast (gpt-oss-120b)"]}
+    # binks.chat: the default falls to the escalation route, never to Lazer,
+    # Go or Gemini.
+    - {"binks-chat": ["binks-chat-hard"]}
 
 litellm_settings:
   drop_params: true
@@ -520,6 +780,13 @@ litellm_settings:
       - "go (kimi-k3)"
       - "go (claude-haiku-5-5)"
       - "go (deepseek-v4.1-flash)"
+      - "go (glm-5.3-flash)"
+      - "go (qwen3.8-flash)"
+      - "go (qwen3.7-plus)"
+      - "go (minimax-m3)"
+      - "go (minimax-m3.1-flash)"
+      - "go (mimo-v2.6-flash)"
+      - "go (longcat-2.0)"
 
 general_settings:
   master_key: os.environ/LITELLM_MASTER_KEY

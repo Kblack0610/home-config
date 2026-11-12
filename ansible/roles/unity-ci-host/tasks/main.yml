@@ -192,3 +192,8 @@
   when:
     - _unity_ci_local
     - not ansible_check_mode
+
+# The host's Unity Accelerator, when the inventory gives it an address: tasks/accelerator.yml.
+- name: Run the Unity Accelerator
+  ansible.builtin.include_tasks: accelerator.yml
+  when: unity_ci_accelerator | length > 0

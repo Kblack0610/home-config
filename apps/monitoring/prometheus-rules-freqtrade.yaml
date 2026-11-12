@@ -162,6 +162,19 @@ spec:
           annotations:
             summary: "No successful {{ $labels.kind }} run for {{ $value | humanizeDuration }}"
 
+        # Shadow paper accounts (strategy repo lab/shadow.py, a step of the nightly analysis) gain a mark for
+        # yesterday each night, so the newest mark is under about 45 h old even when the run ends late. Past 50 h
+        # the step marked nothing: a missed night, or the step failing inside a run that otherwise ended ok.
+        # Only while an account is open; when every account has retired the newest mark rightly stops moving.
+        - alert: TraderShadowMarksStale
+          expr: trader_shadow_marked_age_seconds > 50 * 3600 and on () sum(trader_shadow_accounts{state!="retired"}) > 0
+          for: 15m
+          labels:
+            severity: warning
+            category: trading
+          annotations:
+            summary: "The newest shadow account mark is {{ $value | humanizeDuration }} old: the analysis shadow step marked nothing; see the shadow_* keys in the newest analysis run and trader.kblab.me/accounts"
+
         # A lab pod the scheduler cannot place. The default KubePodNotReady skips Job pods, and
         # TraderRunStale waits 50 h, so on 2026-11-11 both nightly pods sat Pending 7 h unseen after
         # razer-laptop's allocatable CPU fell below their request (home-config #732). `fleet: fix` sends

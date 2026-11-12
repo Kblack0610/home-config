@@ -274,3 +274,35 @@ tests:
           - exp_labels: {alertname: TraderMarketsGlobalSweepSlow, severity: warning, category: trading, venue: polymarket, job: trader-web}
             exp_annotations:
               summary: "polymarket recorder sweep took 13m 0s, close to the 15 minute deadline that kills the job"
+
+  - name: shadow marks older than 50 hours warn while an account is open
+    interval: 5m
+    input_series:
+      - series: 'trader_shadow_marked_age_seconds{job="trader-web"}'
+        values: '176400+300x30'
+      - series: 'trader_shadow_accounts{cohort="short",state="trial",job="trader-web"}'
+        values: '3x30'
+      - series: 'trader_shadow_accounts{cohort="long",state="retired",job="trader-web"}'
+        values: '5x30'
+    alert_rule_test:
+      - eval_time: 50m
+        alertname: TraderShadowMarksStale
+        exp_alerts: []
+      - eval_time: 90m
+        alertname: TraderShadowMarksStale
+        exp_alerts:
+          - exp_labels: {alertname: TraderShadowMarksStale, severity: warning, category: trading, job: trader-web}
+            exp_annotations:
+              summary: "The newest shadow account mark is 2d 2h 30m 0s old: the analysis shadow step marked nothing; see the shadow_* keys in the newest analysis run and trader.kblab.me/accounts"
+
+  - name: old shadow marks do not warn once every account has retired
+    interval: 5m
+    input_series:
+      - series: 'trader_shadow_marked_age_seconds{job="trader-web"}'
+        values: '176400+300x30'
+      - series: 'trader_shadow_accounts{cohort="long",state="retired",job="trader-web"}'
+        values: '5x30'
+    alert_rule_test:
+      - eval_time: 90m
+        alertname: TraderShadowMarksStale
+        exp_alerts: []

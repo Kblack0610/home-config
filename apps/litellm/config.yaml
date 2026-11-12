@@ -723,6 +723,13 @@ litellm_settings:
       - "go (kimi-k3)"
       - "go (claude-haiku-5-5)"
       - "go (deepseek-v4.1-flash)"
+      - "go (glm-5.3-flash)"
+      - "go (qwen3.8-flash)"
+      - "go (qwen3.7-plus)"
+      - "go (minimax-m3)"
+      - "go (minimax-m3.1-flash)"
+      - "go (mimo-v2.6-flash)"
+      - "go (longcat-2.0)"
 
 general_settings:
   master_key: os.environ/LITELLM_MASTER_KEY

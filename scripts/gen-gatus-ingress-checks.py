@@ -19,8 +19,11 @@ that app's status page (agents.kblab.me/#apps/<key>) instead of the generic `ing
     metadata:
       annotations:
         gatus.kblab.me/group: "black-dev"
+
+`--check` exits 1 when the committed block differs from what the ingresses say.
 """
 
+import argparse
 import glob
 import os
 import re
@@ -32,13 +35,7 @@ REPO = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 CONFIGMAP = os.path.join(REPO, "apps/gatus/config.yaml")
 INGRESS_GLOB = os.path.join(REPO, "apps/*/ingress*.yaml")
 INDENT = " " * 2  # matches the indentation of entries in apps/gatus/config.yaml
-# Was 6 while that file was embedded in a ConfigMap under data.config.yaml; it is a
-# standalone file now, and the script had been failing on both path and indent since
-# the split - so the generated block has drifted a long way from the ingresses.
-#
-# Careful before rerunning: the block currently holds hand-tuned checks that this
-# script cannot reproduce (binks.chat's body assertions, llm.kblab.me). Regenerating
-# deletes them. Reconciling that drift is its own change.
+GROUP_RE = re.compile(r"^[a-z0-9]([-a-z0-9]*[a-z0-9])?$")  # a tracker key: DNS-1123 label
 BEGIN_MARK = "# BEGIN_GENERATED_INGRESS"
 END_MARK = "# END_GENERATED_INGRESS"
 
@@ -55,10 +52,15 @@ def extract_hosts() -> dict[str, str]:
                 if annotations.get("gatus.kblab.me/monitor") == "false":
                     continue
                 group = annotations.get("gatus.kblab.me/group", "ingress")
+                if not isinstance(group, str) or not GROUP_RE.match(group):
+                    sys.exit(f"ERROR: {path}: gatus.kblab.me/group {group!r} is not a tracker key")
                 for rule in (doc.get("spec") or {}).get("rules") or []:
                     host = rule.get("host")
-                    if host:
-                        hosts[host] = group
+                    if not host:
+                        continue
+                    if hosts.get(host, group) != group:
+                        sys.exit(f"ERROR: {host} is in groups {hosts[host]!r} and {group!r}; one Ingress must own it")
+                    hosts[host] = group
     return dict(sorted(hosts.items()))
 
 
@@ -84,6 +86,9 @@ def render_block(hosts: dict[str, str]) -> str:
 
 
 def main() -> int:
+    ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
+    ap.add_argument("--check", action="store_true", help="fail if the committed block is stale")
+    args = ap.parse_args()
     with open(CONFIGMAP) as fp:
         content = fp.read()
 
@@ -101,10 +106,13 @@ def main() -> int:
         )
         return 1
 
-    new_content = pattern.sub(block, content)
+    new_content = pattern.sub(lambda _: block, content)
     if new_content == content:
         print(f"No changes ({len(hosts)} hosts).")
         return 0
+    if args.check:
+        print(f"ERROR: {CONFIGMAP} is stale; run scripts/gen-gatus-ingress-checks.py", file=sys.stderr)
+        return 1
 
     with open(CONFIGMAP, "w") as fp:
         fp.write(new_content)

@@ -36,7 +36,11 @@ metrics: true
 #
 # An app's checks sit in a group named by its project-map tracker key (`placemyparents`,
 # `binks`, ...), and `<key>-<channel>` for a non-prod channel (`placemyparents-preview`).
-# The group IS the join: agent-web's per-app status page (agents.kblab.me/#apps/<key>)
+# The match is exact, never a prefix: an app's groups are its key plus `<key>-<channel>`
+# for each channel its project-map targets declare, so `binks-chat` (its own tracker) is
+# not a channel of `binks`. Ingress hosts take the group from the Ingress annotation
+# `gatus.kblab.me/group`; hand-written checks (IngressRoute apps such as binks) follow
+# the same rule. The group IS the join: agent-web's per-app status page (agents.kblab.me/#apps/<key>)
 # reads gatus_results_total by group, so renaming a group moves its checks off that page.
 #
 # The fleet / mac-machines / iot-fleet groups used to be here, which meant

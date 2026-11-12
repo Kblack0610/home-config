@@ -16,7 +16,7 @@ spec:
   endpoints:
     - port: http
       path: /metrics
-      interval: 30s
+      interval: 60s  # the app checks run every 60s or slower
       scrapeTimeout: 10s
   selector:
     matchLabels:

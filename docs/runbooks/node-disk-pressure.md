@@ -19,7 +19,6 @@ Largest first, from razer and hp-victus on 2026-10-31:
 - `/var/lib/actions-runner/unity-pool-*/_work/*/*/Builds`: perf and release trees, 40G to 60G each. `ci-disk-prune.sh` removes perf trees after 1 day, release trees after 7 days idle, and every copy of a release tree but the newest per target, hourly, on idle slots only.
 - `/var/lib/containerd` and docker images: Unity editor and test images, 15G to 30G each. Editor images are never pruned.
 - `/var/lib/rancher/k3s/storage`: local-path PVs. Size is not enforced, so a PV can pass its request (Frigate reached 153G in an 80Gi PV).
-- `/srv/backups/forgejo` on hp-victus: the two newest Forgejo off-box copies. The job refuses to go under 20% free.
 
 ## When it pages
 

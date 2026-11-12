@@ -394,8 +394,12 @@ prometheus:
     # Required for the Claude Code OTel pipeline (Phase 2 observability).
     enableRemoteWriteReceiver: true
     evaluationInterval: 30s
+    # On asus-laptop with the rest of the monitoring stack (VictoriaMetrics,
+    # Loki, Grafana, Alertmanager, Gatus), off the CI build host: on 2026-11-12
+    # hp-victus lost its switch port and every waybar chip and status read went
+    # blank with it. The local-path PVC follows this node.
     nodeSelector:
-      kubernetes.io/arch: amd64
+      kubernetes.io/hostname: asus-laptop
     podMonitorSelectorNilUsesHelmValues: false
     serviceMonitorSelectorNilUsesHelmValues: false
     scrapeInterval: 30s
@@ -416,7 +420,7 @@ prometheus:
     # OOMKilled at the 2-hourly head compaction: 1Gi at ~225k head series
     # (10-27), 2Gi at 386k (11-11, ~6KB per series, 2.11GB working set). The
     # scrape-time bucket drops cut ~60k series; 3Gi keeps compaction headroom
-    # (hp-victus has 32GB, 36% used). Re-measure
+    # (asus-laptop has 64GB). Re-measure
     # `max_over_time(container_memory_working_set_bytes{container="prometheus"}[6h])`.
     resources:
       limits:

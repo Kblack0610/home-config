@@ -48,10 +48,10 @@ finished run's jobs are fetched once and cached.
 The same cache is served as JSON at /api/ci/details?cursor=&limit=100: each
 finished run in the window with every job of its exact attempt (paged, steps
 slimmed), whether that read was complete, and a changes cursor. It is the one
-collector of job detail for the RUN_REPOS repos; schedules-sync reads it through
+collector of job detail for the RUN_REPOS and FEED_REPOS repos; schedules-sync reads it through
 the API server's Service proxy every 10 minutes and keeps the 90-day archive, and
 fetches job detail itself only for repos outside the `repos` list this serves.
-The feed's `runs` are the run half: each run of RUN_REPOS each time its state
+The feed's `runs` are the run half: each run of either list each time its state
 moves (queued, in progress, completed, a new attempt), from the reads above at no
 extra call, so schedules-sync can write its run ledger from here instead of
 polling actions/runs itself. A run that leaves the active lists while older than
@@ -99,12 +99,12 @@ API = os.environ.get("GITHUB_API", "https://api.github.com").rstrip("/")
 TOKEN = os.environ.get("GITHUB_TOKEN", "")
 PORT = int(os.environ.get("PORT", "9320"))
 ORGS = os.environ.get("RUNNER_ORGS", "BlackNBrownStudios").split()
-# Repos whose active runs and recent runs are read.
+# Repos whose repo-scoped runners, active runs and recent runs are read.
 RUN_REPOS = os.environ.get("RUN_REPOS", "BlackNBrownStudios/platform").split()
-# Repos whose repo-scoped runners are read (default RUN_REPOS). Listing them needs admin on the
-# repo, and pool counts need every runner source to answer, so a repo read only for its runs
-# stays out of this list.
-RUNNER_REPOS = os.environ.get("RUNNER_REPOS", " ".join(RUN_REPOS)).split()
+# Repos read only for the /api/ci/details feed, their runs and job detail for schedules-sync:
+# no runner listing (that needs admin on the repo, and the pool counts need every runner source
+# to answer) and none of the metrics, which stay the pool's, RUN_REPOS'.
+FEED_REPOS = [r for r in os.environ.get("FEED_REPOS", "").split() if r not in RUN_REPOS]
 RECENT_PER_REPO = int(os.environ.get("RECENT_PER_REPO", "15"))
 # Finished work is every completed run created in this window: the span pass %,
 # queue time and "what does this runner / pool run" are judged over.
@@ -497,7 +497,7 @@ def feed_page(cursor, limit):
         page = recs[:limit]
         records = [{**r, "jobs": DONE_JOBS.get(r["run_id"], [])} for _, half, r in page if half == 0]
         runs = [r for _, half, r in page if half == 1]
-    return {"epoch": EPOCH, "repos": RUN_REPOS, "window_secs": HISTORY_WINDOW_SECS,
+    return {"epoch": EPOCH, "repos": RUN_REPOS + FEED_REPOS, "window_secs": HISTORY_WINDOW_SECS,
             "next": page[-1][0] if page else cursor, "more": len(recs) > limit, "records": records, "runs": runs}
 
 
@@ -841,12 +841,12 @@ def forgejo_rows(runners_fut, repo_futs, now):
 
 def render():
     now = time.time()
-    sources = [f"orgs/{o}" for o in ORGS] + [f"repos/{r}" for r in RUNNER_REPOS]
+    sources = [f"orgs/{o}" for o in ORGS] + [f"repos/{r}" for r in RUN_REPOS]
     BUDGET["left"] = 0 if low_budget() else HISTORY_CALL_BUDGET
     BUDGET["until"] = now + HISTORY_DEADLINE_SECS
     with ThreadPoolExecutor(max_workers=8) as pool:
         runner_futs = {s: pool.submit(runners, s) for s in sources}
-        repo_futs = [pool.submit(repo_activity, r, now) for r in RUN_REPOS]
+        repo_futs = [pool.submit(repo_activity, r, now) for r in RUN_REPOS + FEED_REPOS]
         fj_runners = pool.submit(forgejo_runners) if FORGEJO_REPOS else None
         fj_repos = [pool.submit(forgejo_repo, r, now) for r in FORGEJO_REPOS]
         acts = [f.result() for f in repo_futs]
@@ -870,6 +870,7 @@ def render():
         L.append(f'github_runner_exporter_api_ok{{source="{esc(src)}",kind="runners",forge="github"}} {ok}')
     for a in acts:
         L.append(f'github_runner_exporter_api_ok{{source="repos/{esc(a["repo"])}",kind="runs",forge="github"}} {1 if a["ok"] else 0}')
+    acts = [a for a in acts if a["repo"] in RUN_REPOS]  # a FEED_REPOS repo has fed the feed above: no metrics
     for src, kind, ok in fj_ok:
         L.append(f'github_runner_exporter_api_ok{{source="{esc(src)}",kind="{kind}",forge="forgejo"}} {ok}')
 
@@ -1222,7 +1223,7 @@ def server(addr):
 
 if __name__ == "__main__":
     print(
-        f"github-runner-exporter: orgs={ORGS} repos={len(RUN_REPOS)} roster={len(ROSTER)} "
+        f"github-runner-exporter: orgs={ORGS} repos={len(RUN_REPOS)} feed_repos={len(FEED_REPOS)} roster={len(ROSTER)} "
         f"token={'set' if TOKEN else 'MISSING'} port={PORT}",
         flush=True,
     )

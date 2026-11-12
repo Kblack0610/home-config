@@ -1,0 +1,26 @@
+# Scrape the apps Gatus so its check results outlive its own sqlite: Prometheus keeps 7d
+# and remote-writes to VictoriaMetrics (2 years), which is where agent-web's per-app
+# status page reads uptime, daily bars, latency and incidents from.
+#
+# Requires `metrics: true` in config.yaml, or /metrics 404s and this scrapes nothing.
+# No `release:` label needed: this cluster's Prometheus selects every ServiceMonitor in
+# every namespace (see apps/gatus-fleet/servicemonitor.yaml).
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: gatus
+  namespace: gatus
+  labels:
+    app.kubernetes.io/name: gatus
+spec:
+  endpoints:
+    - port: http
+      path: /metrics
+      interval: 30s
+      scrapeTimeout: 10s
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: gatus
+  namespaceSelector:
+    matchNames:
+      - gatus

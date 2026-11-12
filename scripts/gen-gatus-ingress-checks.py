@@ -13,6 +13,12 @@ Opt out per Ingress with:
     metadata:
       annotations:
         gatus.kblab.me/monitor: "false"
+
+An app's Ingress names its group, the project-map tracker key, so its checks land on
+that app's status page (agents.kblab.me/#apps/<key>) instead of the generic `ingress`:
+    metadata:
+      annotations:
+        gatus.kblab.me/group: "black-dev"
 """
 
 import glob
@@ -37,8 +43,9 @@ BEGIN_MARK = "# BEGIN_GENERATED_INGRESS"
 END_MARK = "# END_GENERATED_INGRESS"
 
 
-def extract_hosts() -> list[str]:
-    hosts: set[str] = set()
+def extract_hosts() -> dict[str, str]:
+    """Each monitored host and its Gatus group."""
+    hosts: dict[str, str] = {}
     for path in sorted(glob.glob(INGRESS_GLOB)):
         with open(path) as fp:
             for doc in yaml.safe_load_all(fp):
@@ -47,21 +54,22 @@ def extract_hosts() -> list[str]:
                 annotations = (doc.get("metadata") or {}).get("annotations") or {}
                 if annotations.get("gatus.kblab.me/monitor") == "false":
                     continue
+                group = annotations.get("gatus.kblab.me/group", "ingress")
                 for rule in (doc.get("spec") or {}).get("rules") or []:
                     host = rule.get("host")
                     if host:
-                        hosts.add(host)
-    return sorted(hosts)
+                        hosts[host] = group
+    return dict(sorted(hosts.items()))
 
 
-def render_block(hosts: list[str]) -> str:
+def render_block(hosts: dict[str, str]) -> str:
     lines = [
         f"{INDENT}{BEGIN_MARK} (regenerate via scripts/gen-gatus-ingress-checks.py)",
     ]
-    for host in hosts:
+    for host, group in hosts.items():
         lines += [
             f"{INDENT}- name: {host}",
-            f"{INDENT}  group: ingress",
+            f"{INDENT}  group: {group}",
             f'{INDENT}  url: "https://{host}"',
             f"{INDENT}  interval: 300s",
             f"{INDENT}  client:",

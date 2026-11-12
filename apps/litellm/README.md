@@ -8,7 +8,7 @@ LLM gateway deployment in the `ai-gateway` namespace, exposed through Traefik at
 |------|---------|
 | `kustomization.yaml` | Reconciles the namespace, app, service, and ingress |
 | `configmap.yaml` | LiteLLM config mounted into the container |
-| `secret.sops.yaml` | SOPS-encrypted `litellm-db-secrets`: DATABASE_URL, salt key, UI creds, Lazer, Gemini and OpenCode Go keys |
+| `secret.sops.yaml` | SOPS-encrypted `litellm-db-secrets`: DATABASE_URL, salt key, UI creds, Lazer, Gemini, OpenCode Go and NVIDIA NIM keys |
 | `deployment.yaml` | Main gateway workload and health checks |
 | `service.yaml` | Cluster service on port `4000` |
 | `ingress.yaml` | TLS ingress for `llm.kblab.me`, kept off public DNS |
@@ -71,6 +71,14 @@ The budgets mirror Go's windows a little under the plan, so the gateway refuses 
 > **Embedding is intentionally NOT wired to any stateful consumer via its alias.** mem0/karakeep pin `embedding (gemini-001)` because a vector store cannot hot-swap embedder dimensions (pgvector column = 768). Chat/vision/stt are stateless and safe to retarget; embedding is stateful and stays pinned.
 >
 > A model a key does not allow is a 403, not a fallback: add the route to the key (`/key/update`, `models`) before a consumer names it. Karakeep's key lacked the alias from 2026-07-19 to 2026-09-29 and every tagging job failed silently.
+
+### NVIDIA NIM key
+
+`free-deepseek (deepseek-v4.1-flash)` is NVIDIA's free API catalog tier (key `NVIDIA_NIM_API_KEY`, from rbw `nvidia-nim-api-key`): about 40 requests/min shared across the key, $0, evaluation terms, so fleet trial work only and never client work. Its key sits in no team, like `fleet-go`. The route is priced at 0 and capped at rpm 35, so a refusal is a 429 that fails the call: no fallback edge.
+
+| Key | Models | Budgets | Consumer | Key file |
+|---|---|---|---|---|
+| `fleet-nim` | `free-deepseek (deepseek-v4.1-flash)` | none (free; rpm 35 on the route) | fleet-dispatch harness `nim` (priority low) | `~/.local/state/agentctl/fleet-nim.key` |
 
 ### Create a key
 

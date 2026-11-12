@@ -417,6 +417,37 @@ model_list:
         json_mode: true
       supports_function_calling: true
 
+
+  # ============================================================
+  # Free route via the NVIDIA NIM API catalog (integrate.api.nvidia.com)
+  # ============================================================
+  # NIM's free tier: about 40 requests/min shared by every model on one key,
+  # no card, framed by NVIDIA as evaluation, not production: personal fleet
+  # trial work only, never client work. Priced at 0, so spend reads $0 and only
+  # rpm (35, under NIM's 40) limits it. Key NVIDIA_NIM_API_KEY in
+  # secret.sops.yaml (rbw `nvidia-nim-api-key`); gateway key `fleet-nim`.
+  #
+  # NO fallback edge (router_settings.fallbacks): a NIM 429 must fail the call,
+  # not spill free-tier work onto paid Lazer.
+  - model_name: "free-deepseek (deepseek-v4.1-flash)"
+    litellm_params:
+      model: "openai/deepseek-ai/deepseek-v4.1-flash"
+      api_base: https://integrate.api.nvidia.com/v1
+      api_key: os.environ/NVIDIA_NIM_API_KEY
+      input_cost_per_token: 0
+      output_cost_per_token: 0
+      rpm: 35
+    model_info:
+      mode: chat
+      tags: ["free", "nvidia-nim"]
+      capabilities:
+        tools: true
+        code: true
+        vision: false
+        reasoning: true
+        json_mode: true
+      supports_function_calling: true
+
 router_settings:
   routing_strategy: "simple-shuffle"
   timeout: 900

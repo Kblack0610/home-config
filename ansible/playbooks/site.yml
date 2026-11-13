@@ -48,6 +48,18 @@
     - role: ssh-client-inventory
       tags: [ssh-aliases]
 
+- name: Unity CI host monitoring (node_exporter, windows-media-ci)
+  # So ci-runner-governor and cc:host_* read the VM's idle, PSI and memory: it is
+  # not a k3s node, so the DaemonSet does not scrape it; Prometheus reaches it
+  # through standalone-nodes (apps/monitoring/external-standalone-nodes.yaml).
+  #   ansible-playbook playbooks/site.yml --limit windows-media-ci --tags monitoring
+  hosts: windows-media-ci
+  become: true
+  gather_facts: true
+  roles:
+    - role: node-exporter-linux
+      tags: [monitoring, unity-ci]
+
 - name: Keep Linux host clocks synced (systemd-timesyncd)
   # See ansible/roles/time-sync/README.md. hp-victus was found ~102s behind the
   # rest of the cluster with NO time daemon at all, while every other node sat

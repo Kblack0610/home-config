@@ -49,7 +49,6 @@ unity_ci_lfs_store_source: /home/kblack0610/.cache/bnb/asset-library-lfs
 # hosts off the LAN (aws-burst-1), whose pull does not take the broken IPv6 path.
 unity_ci_images_pull: false
 unity_ci_images:
-  - unityci/editor:ubuntu-6000.0.72f1-base-3
   - unityci/editor:ubuntu-6000.0.85f1-base-3
   - unityci/editor:ubuntu-6000.3.27f1-base-3
   - unityci/editor:ubuntu-6000.3.27f1-windows-mono-3

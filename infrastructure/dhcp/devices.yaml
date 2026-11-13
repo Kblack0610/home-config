@@ -96,6 +96,15 @@ devices:
     ip: "192.168.1.26"
     category: servers
 
+  # windows-media-ci: the Ubuntu 24.04 Hyper-V VM on windows-media, a Unity CI
+  # host (unity_ci_runners). The MAC is the VM's static one (Set-VMNetworkAdapter
+  # -StaticMacAddress), on the external switch LAN over windows-media's Realtek
+  # 2.5GbE. See docs/windows-machines.md.
+  - hostname: windows-media-ci
+    mac: "00:15:5D:01:C1:A1"
+    ip: "192.168.1.27"
+    category: servers
+
   - hostname: pi5-worker1-lan
     mac: "2C:CF:67:36:09:5F"
     ip: "192.168.1.21"

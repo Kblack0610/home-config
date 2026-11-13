@@ -271,6 +271,19 @@ all:
           unity_ci_slots: 2
           unity_ci_full: false
           unity_ci_gate: true
+        # The Ubuntu 24.04 Hyper-V VM on windows-media (Ryzen 9 5900XT, 64G),
+        # added 2026-11-13: 24 vCPUs and 50G static of the host's 32 threads and
+        # 64G. Hyper-V does not pin vCPUs, so Windows and the TV share the cores
+        # by scheduler, with 14G of memory of their own. Three slots
+        # of three cores and 14G each, with three cores and 8G for the guest OS
+        # (docs/unity-ci-hardware.md sizing). Full runs and gates: it is owned and
+        # never preempted. Not unity-wide until it passes the ucp-1521 probes.
+        # Setup and the VM itself: docs/windows-machines.md.
+        windows-media-ci:
+          ansible_host: 192.168.1.27   # windows-media-ci (DHCP reservation)
+          unity_ci_slots: 3
+          unity_ci_full: true
+          unity_ci_gate: true
         # The AWS overflow box (platform infra/aws-ci-burst, Terraform), added
         # 2026-11-03: an on-demand m7a.8xlarge in us-east-2a with six slots (five since 11-10). It
         # has no inbound port; SSH runs through SSM Session Manager with the bnb
@@ -302,7 +315,6 @@ all:
           # The windows, mac and android flavors held 63G of its 400G CI volume when
           # it filled on 2026-11-05 (playground ucp-790).
           unity_ci_images:
-            - unityci/editor:ubuntu-6000.0.72f1-base-3
             - unityci/editor:ubuntu-6000.0.85f1-base-3
             - unityci/editor:ubuntu-6000.3.27f1-base-3
           unity_ci_lan: false
@@ -361,7 +373,6 @@ all:
           unity_ci_full: true
           unity_ci_images_pull: true
           unity_ci_images:
-            - unityci/editor:ubuntu-6000.0.72f1-base-3
             - unityci/editor:ubuntu-6000.0.85f1-base-3
             - unityci/editor:ubuntu-6000.3.27f1-base-3
           unity_ci_lan: false
@@ -380,7 +391,6 @@ all:
           unity_ci_full: true
           unity_ci_images_pull: true
           unity_ci_images:
-            - unityci/editor:ubuntu-6000.0.72f1-base-3
             - unityci/editor:ubuntu-6000.0.85f1-base-3
             - unityci/editor:ubuntu-6000.3.27f1-base-3
           unity_ci_lan: false
@@ -446,7 +456,8 @@ all:
           k3s_cpus: 0-1,8-9
           ci_unity_slot_memory_max: 20G
           ci_linux_memory_max: 40G
-        # The workstation: Ryzen 9 7900X, 12 cores / 24 threads, SMT siblings are
+        # The workstation: Ryzen 9 9900X (7900X until 2026-11-13, the same
+        # layout), 12 cores / 24 threads, SMT siblings are
         # n and n+12, 124G. Cores 0-1 and 8-11 (CPUs 0-1, 8-13, 20-23) stay with
         # the human's desktop and agents. Each Unity slot gets three cores of its
         # own and stops at 16G; the two together stop at 32G, a quarter of the
@@ -458,6 +469,18 @@ all:
           ci_unity_slot_cpus: ["2-4,14-16", "5-7,17-19"]
           ci_unity_memory_max: 32G
           ci_unity_slot_memory_max: 16G
+        # windows-media-ci, the Hyper-V VM: 12 vcores / 24 threads, SMT siblings
+        # are n and n+1 (lscpu), 49G. Cores 0-2 (CPUs 0-5) stay with the guest OS,
+        # docker and the runner agents; each Unity slot gets three cores and stops
+        # at 14G. No temperature: a VM has no k10temp, so the governor admits on
+        # idle, PSI and memory alone.
+        windows-media-ci:
+          ci_cpus: 6-23
+          ci_memory_max: 42G
+          ci_unity_cpus: 6-23
+          ci_unity_slot_cpus: ["6-11", "12-17", "18-23"]
+          ci_unity_memory_max: 42G
+          ci_unity_slot_memory_max: 14G
         # m7a.8xlarge on-demand (platform infra/aws-ci-burst, since 11-04: Spot
         # reclaimed the 12xlarge 4 times in 9 h): 32 real cores (no SMT), 128 GiB.
         # Core 0 stays with the OS and the SSM agent; cores 1-30 go to one slot of

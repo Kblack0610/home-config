@@ -328,11 +328,8 @@ views:
                 icon: mdi:bullhorn-variant
                 icon_color: amber
                 tap_action:
-                  action: call-service
-                  service: script.tts_announce_all_cast
-                  data:
-                    message: "{{ states('input_text.voice_announce_message') }}"
-                    language: "{{ states('input_select.voice_announce_language') }}"
+                  action: perform-action
+                  perform_action: script.tts_announce
       # ROOMS: devices grouped by their HA area, shared with the Overview home view
       # and the screensaver. Tap toggles a plug or opens more-info.
       - type: grid

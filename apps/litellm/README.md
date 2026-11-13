@@ -101,6 +101,14 @@ The three `opencode-free (...)` routes are OpenCode's free models (beam-free, lo
 |---|---|---|---|---|
 | `fleet-ocfree` | the three `opencode-free (...)` routes | $1 / 7d, a tripwire only (the routes are priced 0; rpm 20 each) | fleet-dispatch harness `ocfree` (priority low) | `~/.local/state/agentctl/fleet-ocfree.key` |
 
+### Local model key
+
+`local (qwen3.5-9b)` is the one self-hosted route: Qwen3.5-9B under llama-server on the workstation's RTX 4060 Ti (`192.168.1.2:8780`, dotfiles `llama-server.service`, usage in dotfiles `docs/operations/local-llm.md`). Nothing leaves the LAN, so personal data may use it; it is priced 0 and has no fallback edge, so when the workstation is off or asleep the call fails instead of moving to a paid route. Its key sits in no team. A consumer that already holds a key adds the route to it (`/key/update`, `models`) instead of minting another.
+
+| Key | Models | Budgets | Consumer | Key file |
+|---|---|---|---|---|
+| `ask-local` | `local (qwen3.5-9b)` | $1 / 30d, a tripwire only (the route is priced 0) | dotfiles `ask-local` and the `local-model` skill, through the agent-run route `gateway-local` | `~/.local/state/ask-local/litellm.key` |
+
 ### Create a key
 
 The LiteLLM admin UI is reachable at `https://llm.kblab.me/ui/` (Tailscale-gated). Log in with `UI_USERNAME` / `UI_PASSWORD` from `litellm-db-secrets`. Or via API:

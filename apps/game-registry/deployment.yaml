@@ -23,7 +23,7 @@ spec:
         - name: forgejo-registry
       containers:
         - name: registry
-          image: git.kblab.me/kblack0610/bnb-game-servers/registry:registry-v1.19.1
+          image: git.kblab.me/kblack0610/bnb-game-servers/registry:registry-v1.20.0
           ports:
             - name: http
               containerPort: 8080
@@ -87,6 +87,23 @@ spec:
               value: playground=unity-playground,dodginballs=unity-dodginballs,apociseum=unity-apociseum,shapecity=unity-barrage
             - name: EDGEGAP_MAX
               value: "2"
+            # The spend estimate and its caps (registry README, env table). Prices read
+            # 2026-11-12: Edgegap pay-as-you-go $0.00115 per vCPU-minute and $0.10/GB egress
+            # (edgegap.com/pricing); the fixed host is a Hetzner EX44 at EUR 59 (about $68), the
+            # break-even line. Research: unity-core-playground lab
+            # docs/research/game-server-hosting-costs-2026-11.md. Start refuses at either cap.
+            - name: EDGEGAP_DAILY_USD
+              value: "10"
+            - name: EDGEGAP_MONTHLY_USD
+              value: "50"
+            - name: EDGEGAP_USD_PER_VCPU_HOUR
+              value: "0.069"
+            - name: EDGEGAP_EGRESS_USD_PER_GB
+              value: "0.10"
+            - name: EDGEGAP_EGRESS_MB_PER_PLAYER_MIN
+              value: "0.75"
+            - name: FIXED_HOST_USD_MONTH
+              value: "68"
             # Steam purchases (registry README, "Steam purchases"). STEAM_WEB_API_KEY comes from
             # admin-secret.yaml, a publisher key of the Steamworks group dodginballs-registry-mtx.
             # Sandbox moves no money; going to production is the owner's decision.

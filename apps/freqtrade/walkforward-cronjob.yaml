@@ -27,6 +27,15 @@ spec:
       completions: 4  # equal to WF_SHARDS below
       parallelism: 4
       backoffLimitPerIndex: 0  # the next night is the retry; a failed shard leaves the others running
+      # A shard preempted (priority -100: the 02:45 analysis on razer, trivy scans on asus) is not a failure: its index
+      # gets a new pod, which stops at WF_BUDGET_S counted from the Job's first shard start (trader lab/walkforward.py). Without this
+      # every index failed on 2026-11-12 and 11-13 and no shard wrote finished_at.
+      podFailurePolicy:
+        rules:
+          - action: Ignore
+            onPodConditions:
+              - type: DisruptionTarget
+                status: "True"
       activeDeadlineSeconds: 28800  # ends by 09:00 UTC; WF_BUDGET_S stops a run in time, so a first run (about 53 h of folds) is several recorded nights
       template:
         metadata:

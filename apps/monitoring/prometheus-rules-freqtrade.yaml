@@ -132,6 +132,7 @@ spec:
           labels:
             severity: warning
             category: trading
+            fleet: fix  # a failed nightly run is an agent's to fix, like TraderRunStale
           annotations:
             summary: "The newest {{ $labels.kind }} run failed: its runs row on trader.kblab.me/runs says why"
 
@@ -148,17 +149,19 @@ spec:
           annotations:
             summary: "{{ $value }} cached result(s) did not reproduce: see the newest reproduce run on trader.kblab.me/runs"
 
-        # Analysis (18h guard) and walk-forward (8h guard) are both nightly. A walk-forward catching up
-        # after a freqtrade bump stops at its guard before it records a success, so this fires until it catches up.
+        # Analysis (02:45, 18h guard) and walk-forward (01:00, 8h guard, WF_BUDGET_S records a catching-up run as a
+        # success) are both nightly, so two ok runs are at most about 35 h apart: past 36 h one night produced nothing.
+        # At 50 h with no `fleet: fix`, the 2026-11-12 and 11-13 outage reached no agent and fired only on day two.
         # Calibration is weekly (Saturday 10:00), so it is stale after 8 days.
         - alert: TraderRunStale
           expr: |
-            time() - trader_run_last_ok_timestamp_seconds{kind=~"analysis|walkforward"} > 50 * 3600
+            time() - trader_run_last_ok_timestamp_seconds{kind=~"analysis|walkforward"} > 36 * 3600
               or time() - trader_run_last_ok_timestamp_seconds{kind="calibration"} > 8 * 86400
           for: 15m
           labels:
             severity: warning
             category: trading
+            fleet: fix
           annotations:
             summary: "No successful {{ $labels.kind }} run for {{ $value | humanizeDuration }}"
 
@@ -176,7 +179,7 @@ spec:
             summary: "The newest shadow account mark is {{ $value | humanizeDuration }} old: the analysis shadow step marked nothing; see the shadow_* keys in the newest analysis run and trader.kblab.me/accounts"
 
         # A lab pod the scheduler cannot place. The default KubePodNotReady skips Job pods, and
-        # TraderRunStale waits 50 h, so on 2026-11-11 both nightly pods sat Pending 7 h unseen after
+        # TraderRunStale then waited 50 h, so on 2026-11-11 both nightly pods sat Pending 7 h unseen after
         # razer-laptop's allocatable CPU fell below their request (home-config #732). `fleet: fix` sends
         # it to the agent fleet (see homelab-capacity.disk): the fix is in apps/freqtrade/README.md.
         - alert: TraderLabPodUnschedulable

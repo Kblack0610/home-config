@@ -24,7 +24,7 @@ spec:
             kubernetes.io/hostname: asus-laptop
           containers:
             - name: backup
-              image: alpine:3.24.1
+              image: alpine:3.24.4
               command:
                 - /bin/sh
                 - -c
@@ -167,7 +167,7 @@ spec:
             kubernetes.io/hostname: asus-laptop
           containers:
             - name: offbox
-              image: alpine:3.24.1
+              image: alpine:3.24.4
               command:
                 - /bin/sh
                 - -c

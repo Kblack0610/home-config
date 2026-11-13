@@ -22,14 +22,14 @@ spec:
           # The snapshot dir is ours alone, so it is created and owned here.
           initContainers:
             - name: snapshot-dir
-              image: alpine:3.24.1
+              image: alpine:3.24.4
               command: ["install", "-d", "-o", "1000", "-g", "1000", "-m", "0755", "/snapshots"]
               volumeMounts:
                 - name: snapshots
                   mountPath: /snapshots
           containers:
             - name: snapshot
-              image: alpine:3.24.1
+              image: alpine:3.24.4
               command:
                 - /bin/sh
                 - -c

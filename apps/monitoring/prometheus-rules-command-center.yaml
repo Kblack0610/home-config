@@ -58,11 +58,19 @@ spec:
         # fleet-shepherd infra reads a red k3s domain as a cluster outage and holds every fleet-dispatch
         # start. Its own Sentinel page and the HomelabCriticalVulnerability alert still report a trip.
         # Weight 2 is for a user-facing outage (prod, the k3s cluster, CI runners offline) or a dead
-        # alert path (pager_undelivered, alertmanager_fleet: with it down, no other page arrives); every
+        # alert path (pager_undelivered: with it down, no other page arrives; alertmanager_fleet after 2h); every
         # other watch warns in its domain. A watch no domain names falls to `other`, where it is down.
         # queue_starved warns: dispatch held for account room is load, not an outage, and source_pace
         # already reports it; promote it back to 2 once source_pace has read ok for 7 days (human,
         # 2026-11-12). playground_server_behind is a release lag, not an outage: it warns in ci.
+        # alertmanager_fleet warns first and is down only after 2h tripped without a break: a fleet=fix
+        # alert is an agent's to fix, and fixes took 70 to 100 min on 11-10 and 11-11, so 2h tripped
+        # means the fix failed or never started. The offset 2h guard keeps a short-history series from
+        # escalating at once. The 2h runs on the one aggregate watch, so alerts that overlap without a
+        # clear between them add up, and a scrape gap is not a break. Alertmanager unreachable (probe
+        # exit 2) trips the same series and also waits 2h: Sentinel still pages that trip straight to
+        # ntfy, so the human hears of it before the chip turns red.
+        # Provisional: revisit if a fix lands in under 1h or a red ran past 2h unseen.
         - record: cc:watch_state
           labels: {domain: k3s}
           expr: >-
@@ -90,7 +98,7 @@ spec:
         - record: cc:watch_state
           labels: {domain: platform}
           expr: >-
-            max by (item) (label_replace(((mqtt_tripped{topic=~"agents_.+_watch_(pager_undelivered|alertmanager_fleet)"} and on (topic) cc:agents_topic_live) * 2 > 0) or ((mqtt_tripped{topic=~"agents_.+_watch_(skill_drift|mem0_search_path|deploy_drift|fleet_liveness|release_drift|release_links|provider_status|agent_web_liveness|systemd_user_failed|main_checkout_branch|schedules_fresh|runner_score|lane_sandbox_refusals|claude_startup|platform_dependabot_runtime)"} and on (topic) cc:agents_topic_live) * 1 > 0) or ((mqtt_stale{topic=~"agents_.+_watch_(skill_drift|mem0_search_path|deploy_drift|fleet_liveness|release_drift|release_links|provider_status|pager_undelivered|alertmanager_fleet|agent_web_liveness|systemd_user_failed|main_checkout_branch|schedules_fresh|runner_score|lane_sandbox_refusals|claude_startup|platform_dependabot_runtime)"} and on (topic) cc:agents_topic_live) > 0), "item", "$1", "topic", "agents_.+_watch_(.+)"))
+            max by (item) (label_replace(((mqtt_tripped{topic=~"agents_.+_watch_(pager_undelivered)"} and on (topic) cc:agents_topic_live) * 2 > 0) or ((min_over_time(mqtt_tripped{topic=~"agents_.+_watch_(alertmanager_fleet)"}[2h]) and on (topic) (mqtt_tripped{topic=~"agents_.+_watch_(alertmanager_fleet)"} offset 2h > 0) and on (topic) cc:agents_topic_live) * 2 > 0) or ((mqtt_tripped{topic=~"agents_.+_watch_(alertmanager_fleet|skill_drift|mem0_search_path|deploy_drift|fleet_liveness|release_drift|release_links|provider_status|agent_web_liveness|systemd_user_failed|main_checkout_branch|schedules_fresh|runner_score|lane_sandbox_refusals|claude_startup|platform_dependabot_runtime)"} and on (topic) cc:agents_topic_live) * 1 > 0) or ((mqtt_stale{topic=~"agents_.+_watch_(skill_drift|mem0_search_path|deploy_drift|fleet_liveness|release_drift|release_links|provider_status|pager_undelivered|alertmanager_fleet|agent_web_liveness|systemd_user_failed|main_checkout_branch|schedules_fresh|runner_score|lane_sandbox_refusals|claude_startup|platform_dependabot_runtime)"} and on (topic) cc:agents_topic_live) > 0), "item", "$1", "topic", "agents_.+_watch_(.+)"))
         - record: cc:watch_state
           labels: {domain: llm}
           expr: >-

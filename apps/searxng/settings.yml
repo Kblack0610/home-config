@@ -42,3 +42,112 @@ search:
 engines:
   - name: bing
     disabled: false
+
+# Search APIs, one engine each. All are disabled: a default query (Home
+# Assistant's included) never runs them, so they spend no quota; binks-api picks
+# one per search with engines=<name>, in the order of SEARCH_PROVIDERS
+# (apps/binks-api/deployment.yaml). Keys are @NAME_API_KEY@ placeholders that the
+# init container fills from secret.sops.yaml; a provider with no key yet keeps its
+# placeholder and fails auth if picked. Logins: accounts.sops.yaml.
+# json_engine URL-encodes {query} into request_body (spaces arrive as "+").
+# Limits and terms read 2026-11-13 on each provider's own pages:
+#   linkup     $20 credit/month free, $5 per 1k standard, 10 qps per org.
+#              Terms: results serve end users inside our product; no wrapper of
+#              the API; no attribution.
+#   firecrawl  1,000 credits/month free (2 credits per search), 10 searches/min
+#              on the free plan. Terms 5.d.1: commercial use "except as
+#              expressly authorized"; built for LLM input; no attribution.
+#   tavily     1,000/month free, $8 per 1k. Signup needs a human (CAPTCHA).
+#   you        $100 one-time credit, $5 per 1k. Terms bar scripted signup;
+#              results must keep their source links.
+#   serper     2,500 one-time free, $1 per 1k prepaid. Signup needs a human.
+#   exa        $10 credit/month free, $7 per 1k fast. Signup needs a human.
+  - name: linkup
+    engine: json_engine
+    shortcut: lku
+    categories: [general]
+    disabled: true
+    timeout: 6.0
+    method: POST
+    search_url: https://api.linkup.so/v1/search
+    headers:
+      Authorization: "Bearer @LINKUP_API_KEY@"
+      Content-Type: application/json
+    request_body: '{{"q": "{query}", "depth": "standard", "outputType": "searchResults", "includeImages": false, "maxResults": 10}}'
+    results_query: results
+    url_query: url
+    title_query: name
+    content_query: content
+  - name: firecrawl
+    engine: json_engine
+    shortcut: fcr
+    categories: [general]
+    disabled: true
+    timeout: 6.0
+    method: POST
+    search_url: https://api.firecrawl.dev/v2/search
+    headers:
+      Authorization: "Bearer @FIRECRAWL_API_KEY@"
+      Content-Type: application/json
+    request_body: '{{"query": "{query}", "limit": 10, "sources": ["web"]}}'
+    results_query: data/web
+    url_query: url
+    title_query: title
+    content_query: description
+  - name: tavily
+    engine: json_engine
+    shortcut: tvl
+    categories: [general]
+    disabled: true
+    timeout: 6.0
+    method: POST
+    search_url: https://api.tavily.com/search
+    headers:
+      Authorization: "Bearer @TAVILY_API_KEY@"
+      Content-Type: application/json
+    request_body: '{{"query": "{query}", "search_depth": "basic", "max_results": 10}}'
+    results_query: results
+    url_query: url
+    title_query: title
+    content_query: content
+  - name: you
+    engine: json_engine
+    shortcut: ydc
+    categories: [general]
+    disabled: true
+    timeout: 6.0
+    method: POST
+    search_url: https://ydc-index.io/v1/search
+    headers:
+      X-API-Key: "@YOU_API_KEY@"
+      Content-Type: application/json
+    request_body: '{{"query": "{query}", "count": 10}}'
+    results_query: results/web
+    url_query: url
+    title_query: title
+    content_query: description
+    thumbnail_query: thumbnail_url
+  - name: serper
+    engine: json_engine
+    shortcut: spr
+    categories: [general]
+    disabled: true
+    timeout: 6.0
+    method: POST
+    search_url: https://google.serper.dev/search
+    headers:
+      X-API-KEY: "@SERPER_API_KEY@"
+      Content-Type: application/json
+    request_body: '{{"q": "{query}", "num": 10}}'
+    results_query: organic
+    url_query: link
+    title_query: title
+    content_query: snippet
+  - name: exa
+    engine: exaapi
+    shortcut: exa
+    disabled: true
+    timeout: 6.0
+    api_key: "@EXA_API_KEY@"
+    search_type: auto
+    results_per_page: 10

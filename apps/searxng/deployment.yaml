@@ -18,6 +18,64 @@ spec:
       # Voice-turn latency path: keep it off the Pis' SD-card nodes.
       nodeSelector:
         kubernetes.io/arch: amd64
+      # The search API keys live in the SOPS Secret, never in git (this repo is
+      # public): settings.yml carries @NAME_API_KEY@ placeholders, filled here into
+      # a copy the server reads. A key not in the Secret leaves its placeholder, and
+      # that engine stays disabled. scripts/check-secret-store.py checks settings.yml.
+      initContainers:
+        - name: render-settings
+          image: searxng/searxng:2026.9.8-3fdc6d753
+          command:
+            - /usr/local/searxng/.venv/bin/python3
+            - -c
+            - |
+              import os, re
+              src = open("/seed/settings.yml").read()
+              out = re.sub(r"@([A-Z_]+_API_KEY)@", lambda m: os.environ.get(m.group(1)) or m.group(0), src)
+              open("/rendered/settings.yml", "w").write(out)
+          env:
+            - name: SERPER_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: searxng
+                  key: SERPER_API_KEY
+                  optional: true
+            - name: EXA_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: searxng
+                  key: EXA_API_KEY
+                  optional: true
+            - name: TAVILY_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: searxng
+                  key: TAVILY_API_KEY
+                  optional: true
+            - name: LINKUP_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: searxng
+                  key: LINKUP_API_KEY
+                  optional: true
+            - name: YOU_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: searxng
+                  key: YOU_API_KEY
+                  optional: true
+            - name: FIRECRAWL_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: searxng
+                  key: FIRECRAWL_API_KEY
+                  optional: true
+          volumeMounts:
+            - name: settings
+              mountPath: /seed
+              readOnly: true
+            - name: rendered
+              mountPath: /rendered
       containers:
         - name: searxng
           image: searxng/searxng:2026.9.8-3fdc6d753
@@ -31,7 +89,7 @@ spec:
                   name: searxng
                   key: secret-key
           volumeMounts:
-            - name: settings
+            - name: rendered
               mountPath: /etc/searxng/settings.yml
               subPath: settings.yml
           resources:
@@ -57,3 +115,5 @@ spec:
         - name: settings
           configMap:
             name: searxng-settings
+        - name: rendered
+          emptyDir: {}

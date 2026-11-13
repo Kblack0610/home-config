@@ -88,6 +88,16 @@
     - role: node-disk-metrics
       tags: [disk-metrics]
 
+- name: Kubelet image GC under the disk alert (Pi k3s nodes)
+  # See roles/k3s-image-gc/README.md. Kubelet's default 85% sat above NodeDiskLow's 80%.
+  #   ansible-playbook playbooks/site.yml --limit pi_k3s --tags image-gc
+  hosts: pi_k3s
+  become: true
+  gather_facts: false
+  roles:
+    - role: k3s-image-gc
+      tags: [image-gc, k3s]
+
 - name: CPU per CI runner (Linux runner hosts)
   # The Infra tab's cores per runner: each runner unit's cgroup plus its job
   # container's, every 15s, into node-exporter's textfile dir.

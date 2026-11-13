@@ -1,0 +1,51 @@
+# Cross-venue links (strategy repo lab/markets/links.py, docs/markets.md Links): rules link each recorded odds_api
+# game to its Kalshi game-winner event and confirm what they make, then the resolution check confirms or rejects
+# every link. The gap family trades only rule links, so it needs this. 30 min after the odds_api recorder (7 */6), so
+# each run sees that sweep's games. No LITELLM_API_KEY here yet, so the LLM proposal pass skips and says so; rules
+# and the check still run. Database only, no venue calls. Migrations come from the recorder's init container.
+# Kept off hp-victus, whose memory limits are overcommitted (plan id-like-to-setup-abundant-seahorse).
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: trader-markets-links
+spec:
+  schedule: "37 */6 * * *"
+  timeZone: "Etc/UTC"  # unset means the controller zone, America/Los_Angeles
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      backoffLimit: 1
+      activeDeadlineSeconds: 1800  # guard: rules and the check are SQL over the recorder's tables
+      template:
+        metadata:
+          labels:
+            app: trader-markets-links
+        spec:
+          restartPolicy: Never
+          affinity:
+            nodeAffinity:
+              requiredDuringSchedulingIgnoredDuringExecution:
+                nodeSelectorTerms:
+                  - matchExpressions:
+                      - {key: kubernetes.io/arch, operator: In, values: [amd64]}
+                      - {key: kubernetes.io/hostname, operator: NotIn, values: [hp-victus]}
+          securityContext:
+            runAsUser: 1000
+            runAsGroup: 1000
+            fsGroup: 1000
+          containers:
+            - name: links
+              image: trader
+              command: ["python", "-m", "lab.markets.links"]
+              env:
+                - name: DATABASE_URL
+                  valueFrom:
+                    secretKeyRef: {name: trader-db, key: database-url}
+              resources:
+                requests:
+                  cpu: 100m
+                  memory: 256Mi
+                limits:
+                  memory: 1Gi

@@ -1,0 +1,70 @@
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  # The name must contain "backup": HomelabBackupStale
+  # (apps/monitoring/prometheus-rules-backup-drive.yaml) matches .*backup.* and
+  # pages when the last success is older than 36h. It lives outside the nas
+  # namespace on purpose, because nas jobs get the 9-day weekly threshold.
+  name: offsite-backup
+  namespace: offsite-backup
+spec:
+  # 1:00 AM, before the 8TB mirror jobs (3:30 to 6:15), so it reads the
+  # previous night's finished snapshots and never a mirror mid-write.
+  schedule: "0 1 * * *"
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      backoffLimit: 1
+      # 20h: a normal night takes minutes; this only bounds a hung run. The
+      # first upload is a one-off job with a longer deadline (runbook).
+      activeDeadlineSeconds: 72000
+      template:
+        spec:
+          nodeSelector:
+            kubernetes.io/hostname: asus-laptop
+            storage.role/nas: "true"
+          securityContext:
+            runAsUser: 0
+          containers:
+            - name: restic
+              image: restic/restic:0.19.1
+              # Privileged: required for the bind mounts that give restic a
+              # stable path per dataset (see offsite-backup.sh).
+              securityContext:
+                privileged: true
+              command: ["/bin/sh", "/scripts/offsite-backup.sh"]
+              envFrom:
+                - secretRef:
+                    name: offsite-backup
+              env:
+                - name: RESTIC_CACHE_DIR
+                  value: /cache
+                - name: LIMIT_UPLOAD_KIB
+                  value: "0"
+              volumeMounts:
+                - name: script
+                  mountPath: /scripts
+                  readOnly: true
+                - name: browse
+                  mountPath: /browse
+                  readOnly: true
+                - name: cache
+                  mountPath: /cache
+          restartPolicy: Never
+          volumes:
+            - name: script
+              configMap:
+                name: offsite-backup-script
+            # The whole 8TB filesystem, read-only (roles/usb-backup-mounts).
+            - name: browse
+              hostPath:
+                path: /mnt/backup-8t/browse
+                type: Directory
+            # restic's local index cache, a few GB on the root disk. Losing it
+            # only makes the next run slower.
+            - name: cache
+              hostPath:
+                path: /var/cache/restic-offsite
+                type: DirectoryOrCreate

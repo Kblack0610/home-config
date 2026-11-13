@@ -69,7 +69,7 @@ tests:
       - eval_time: 3m
         alertname: TraderRunFailed
         exp_alerts:
-          - exp_labels: {alertname: TraderRunFailed, severity: warning, category: trading, kind: analysis, job: trader-web}
+          - exp_labels: {alertname: TraderRunFailed, severity: warning, category: trading, fleet: fix, kind: analysis, job: trader-web}
             exp_annotations: {summary: "The newest analysis run failed: its runs row on trader.kblab.me/runs says why"}
       - eval_time: 8m
         alertname: TraderRunFailed
@@ -93,7 +93,7 @@ tests:
         alertname: TraderReproMismatch
         exp_alerts: []
 
-  - name: a nightly run kind with no success for 50 hours is stale
+  - name: a nightly run kind with no success for 36 hours is stale
     interval: 1m
     input_series:
       # both last succeeded at t=0 (epoch 0), evaluated 3 days later
@@ -102,15 +102,15 @@ tests:
       - series: 'trader_run_last_ok_timestamp_seconds{kind="walkforward",job="trader-web"}'
         values: '0x4400'
     alert_rule_test:
-      - eval_time: 49h
+      - eval_time: 35h
         alertname: TraderRunStale
         exp_alerts: []
       - eval_time: 72h
         alertname: TraderRunStale
         exp_alerts:
-          - exp_labels: {alertname: TraderRunStale, severity: warning, category: trading, kind: analysis, job: trader-web}
+          - exp_labels: {alertname: TraderRunStale, severity: warning, category: trading, fleet: fix, kind: analysis, job: trader-web}
             exp_annotations: {summary: "No successful analysis run for 3d 0h 0m 0s"}
-          - exp_labels: {alertname: TraderRunStale, severity: warning, category: trading, kind: walkforward, job: trader-web}
+          - exp_labels: {alertname: TraderRunStale, severity: warning, category: trading, fleet: fix, kind: walkforward, job: trader-web}
             exp_annotations: {summary: "No successful walkforward run for 3d 0h 0m 0s"}
 
   - name: weekly calibration with no success for 8 days is stale, one 7 days old is not
@@ -125,7 +125,7 @@ tests:
       - eval_time: 9d
         alertname: TraderRunStale
         exp_alerts:
-          - exp_labels: {alertname: TraderRunStale, severity: warning, category: trading, kind: calibration, job: trader-web}
+          - exp_labels: {alertname: TraderRunStale, severity: warning, category: trading, fleet: fix, kind: calibration, job: trader-web}
             exp_annotations: {summary: "No successful calibration run for 9d 0h 0m 0s"}
 
   - name: a lab pod unschedulable for 30 minutes warns, a scheduled one does not

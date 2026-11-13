@@ -44,11 +44,15 @@ adding `PUSH_INSTALLATION_ID` / `PUSH_INSTALLATION_KEY` from
 
 ## Backup & restore
 
-`backup-cronjob.yaml` runs daily at 03:00: `tar -czf` of `/data` (SQLite db +
-attachments + RSA keys) to hostPath `/var/backups/vaultwarden` (30 retained),
-then a best-effort `smbclient` push to the NAS at
-`//nas.nas.svc.cluster.local/private/backups/home-k3s/vaultwarden/`. The local
-backup succeeds independently of NAS availability.
+`backup-cronjob.yaml` runs daily at 03:00. It takes a consistent copy of the
+SQLite db with `sqlite3 .backup` (the live db is in WAL mode, so a plain tar can
+be torn), checks it (`PRAGMA integrity_check` and a live item count, both
+logged), and tars it with the RSA keys, attachments and sends to hostPath
+`/var/backups/vaultwarden` (30 retained). It then pushes to the NAS at
+`//nas.nas.svc.cluster.local/private/backups/home-k3s/vaultwarden/` and verifies
+the size there. A failed NAS copy fails the job (`HomelabCronJobFailed`): the
+local copy sits on the one node holding the PVC. The NAS tree is mirrored to the
+8TB drive by `nas-backups-mirror`.
 
 Ad-hoc backup:
 
@@ -57,9 +61,26 @@ kubectl -n vaultwarden create job --from=cronjob/vaultwarden-backup vw-backup-no
 kubectl -n vaultwarden logs job/vw-backup-now
 ```
 
-Restore: scale the deployment to 0, extract a `vaultwarden-*.tar.gz` over the
-PVC contents (from `/var/backups/vaultwarden` on the PVC's node, or pulled from
-NAS), scale back to 1. See `docs/backup-runbook.md` for the general pattern.
+Restore: scale the deployment to 0, delete `db.sqlite3`, `db.sqlite3-wal` and
+`db.sqlite3-shm` from the PVC (a stale WAL would be replayed over the restored
+db), extract a `vaultwarden-*.tar.gz` over the PVC contents (from
+`/var/backups/vaultwarden` on the PVC's node, or from the NAS), scale back to 1.
+Archives from before 2026-11-13 are raw tars of the live files and carry their
+own `-wal`/`-shm`; keep those together.
+
+Restore drill (2026-11-13, passed): the newest NAS archive extracted into a
+scratch dir and served by the pinned image under docker on the workstation,
+bound to 127.0.0.1 with a throwaway `ADMIN_TOKEN`. `/alive` returned 200, the
+admin API listed the account, and the restored db held the same live item count
+(108) as the job log. Repeat it after any change to the backup job:
+
+```bash
+d=$(mktemp -d) && tar -xzf <archive> -C "$d"
+docker run --rm -d --name vw-restore-drill -p 127.0.0.1:18080:80 -v "$d":/data <image from deployment.yaml>
+curl -s http://127.0.0.1:18080/alive
+sqlite3 "file:$d/db.sqlite3?mode=ro" 'SELECT count(*) FROM ciphers WHERE deleted_at IS NULL;'
+docker stop vw-restore-drill && rm -rf "$d"
+```
 
 ## Secrets
 

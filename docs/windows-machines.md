@@ -8,7 +8,7 @@ What "on the fleet" means today: the PC pushes a liveness heartbeat every 60s to
 
 | Name (fleet key) | Windows hostname | IP | User | Notes |
 |------------------|------------------|----|------|-------|
-| `windows-media` (`homelab_windows-media`) | `WINDOWS-MEDIA` | 192.168.1.8 (`windows-media-lan`) | `hughl` (Microsoft account, admin) | The living-room Windows and media box, and the infra Windows test host: agents drive it over SSH ([Driving it from an agent](#driving-it-from-an-agent)) and it is an opt-in runner ([Windows test runner](#windows-test-runner)). Ryzen 5 5500, 64 GB, RTX 3050, TV at 3840x2160 and 300% scale. Wi-Fi only (Intel AX210). Win10 Pro 22H2, legacy BIOS boot, SVM off. Enrolled 2026-10-16 as `living-room-pc` (`DESKTOP-BPLB04U`, .121), renamed 2026-10-26 |
+| `windows-media` (`homelab_windows-media`) | `WINDOWS-MEDIA` | 192.168.1.8 (`windows-media-lan`) | `hughl` (Microsoft account, admin) | The living-room Windows and media box, and the infra Windows test host: agents drive it over SSH ([Driving it from an agent](#driving-it-from-an-agent)) and it is an opt-in runner ([Windows test runner](#windows-test-runner)). Ryzen 9 5900XT (16 cores, since 2026-11-12), 64 GB DDR4-3600, RTX 3050, TV at 3840x2160 and 300% scale. Ethernet (Realtek 2.5GbE) since 2026-10-29. Win10 Pro 22H2, BIOS 3645, legacy BIOS boot (CSM on), SVM on. Hosts the Unity CI VM `windows-media-ci` ([Unity CI VM](#unity-ci-vm-windows-media-ci)). Enrolled 2026-10-16 as `living-room-pc` (`DESKTOP-BPLB04U`, .121), renamed 2026-10-26 |
 
 ## The path
 
@@ -202,28 +202,55 @@ jobs:
 
 - It runs in hughl's desktop session (scheduled task `actions-runner`, started at logon), not as a Windows service, so job steps can open windows on the TV and use the GPU. It is offline whenever nobody is logged on.
 - Every job step runs at below-normal priority (Task Scheduler priority 7, for CPU, I/O and memory), so what is on the TV wins.
-- Not part of the Unity pool, and there is no Unity editor on the PC: Windows players are cross-built on the Linux pool (dodginballs `build-windows`), and this box runs them.
+- This runner is not part of the Unity pool, and there is no Unity editor on Windows: Windows players are cross-built on the Linux pool (dodginballs `build-windows`), and this box runs them. The pool slots on this PC are in the Linux VM ([Unity CI VM](#unity-ci-vm-windows-media-ci)).
 - Role: `ansible/roles/github-actions-runner-windows`. It counts in `apps/github-runner-exporter` as `windows-media:windows:1`.
 
 ## Hardware notes
 
 - GPU: ASUS GeForce RTX 3050 6 GB (`PCI\VEN_10DE&DEV_2584`), the only video out: neither the 5500 nor the 5900XT has an iGPU, so the BIOS shows only on the TV through the card, never the board's HDMI. The TV (Samsung) ran 3840x2160 at 30 Hz on 2026-11-12 (`Win32_VideoController`); 60 Hz needs a Premium or Ultra High Speed HDMI cable and the TV input's enhanced HDMI setting on.
 - BIOS input: the Logitech USB receiver (`VID_046D&PID_C52B`) works before boot; the Bluetooth keyboards and the MX Master 3S do not.
-- The 64 GB (Corsair CMG64GX4M2D3600C18, 2x32 GB DDR4-3600) runs at 2133 because DOCP is off in the firmware (read over SSH 2026-11-10, `Win32_PhysicalMemory`). Turning DOCP on in the BIOS gives the rated 3600. Two of the four DIMM slots are free.
+- The 64 GB (Corsair CMG64GX4M2D3600C18, 2x32 GB DDR4-3600) runs at 3600 with D.O.C.P. on since 2026-11-12 (`Win32_PhysicalMemory` `ConfiguredClockSpeed`); it ran at 2133 before. Two of the four DIMM slots are free.
+- Disk: one Crucial P3 1 TB (`CT1000P3SSD8`, QLC) holds Windows and the VM. The Crucial E100 2 TB bought for CI is not installed yet ([Unity CI VM](#unity-ci-vm-windows-media-ci)).
 - Why it gets a 16-core CPU: [unity-ci-hardware.md](unity-ci-hardware.md#buying-in-the-ram-shortage).
 
 ## CPU upgrade to the Ryzen 9 5900XT
 
-A 5900XT and a Crucial E100 2 TB were ordered 2026-11-10 to make this a 3-4 slot Unity CI host. Read over SSH that day: BitLocker is off (no recovery key prompt after the flash), the disk is MBR and Windows boots legacy (`winload.exe`), and BIOS 3645 is staged at `C:\BIOS\3645\TUF-GAMING-B550-PLUS-WIFI-II-ASUS-3645.CAP` (from the ASUS support API, `GetPDBIOS`). The 5900XT comes without a cooler; the PC already has a Thermalright Phantom Spirit 120 EVO (157 mm, rated 280 W) on the 5500, which carries over, so the swap needs only fresh paste.
+Done 2026-11-12: BIOS 3645 flashed by EZ Flash 3 from a FAT32 stick, the 5900XT in on the existing Thermalright Phantom Spirit 120 EVO, then in the BIOS: the fTPM reset answered Y, D.O.C.P. on, SVM Mode on, CSM on (the disk is MBR and Windows boots legacy, so with CSM off it finds no boot device). A flash resets every setting, so check those four after any future flash.
 
-1. Agent, over SSH: copy the `.CAP` to a FAT32 USB stick in the PC (EZ Flash 3 reads FAT32), then check it with an unbuffered SHA256 read (`FileOptions` `0x20000000`) against the source. Done 2026-11-12: a stick labelled `BIOS`, hash matched. Optional, to fold in the Windows 11 visit below: `mbr2gpt /validate /allowFullOS`, then `/convert`; after that the PC boots only with CSM off.
-2. Human, 5500 still installed: Del into the BIOS, F7, Tool -> ASUS EZ Flash 3, pick the `.CAP`, do not cut power while it runs. The flash resets every setting; if it then finds no boot device, Boot -> CSM -> Launch CSM -> Enabled (or Disabled, if step 1 converted the disk). Boot Windows once, shut down.
-3. Human, unplugged: run the PC a few minutes first so the paste is warm, then twist the cooler off (cold paste can pull an AM4 CPU out of a closed socket). Swap the CPU (gold triangle to the socket mark, no pressure), clean and re-paste, refit the cooler, fans on CPU_FAN.
-4. Human, first boot: answer Y to the fTPM reset prompt (safe with BitLocker off; the Windows Hello PIN may need setting again). Ai Tweaker -> Ai Overclock Tuner -> D.O.C.P. (RAM to 3600), Advanced -> CPU Configuration -> SVM Mode -> Enabled, check the CSM setting from step 2, F10.
-5. Agent, over SSH: confirm the CPU (`Win32_Processor`), the RAM speed (`Win32_PhysicalMemory`) and virtualization, then install WSL2 and the runners per queue item `deskslim-ci-host`, and update the Inventory row above.
+A flash that fails partway is recoverable: rename the `.CAP` with the `BIOSRenamer.exe` beside it in `C:\BIOS\3645\`, put it on a FAT32 stick in the FlashBack port and hold the BIOS FlashBack button; it needs no working CPU.
 
-A flash that fails partway is recoverable: rename the `.CAP` with the `BIOSRenamer.exe` beside it, put it on a FAT32 stick in the FlashBack port and hold the BIOS FlashBack button; it needs no working CPU.
+## Unity CI VM (windows-media-ci)
+
+`windows-media-ci` is an Ubuntu 24.04 Hyper-V VM on this PC and a Unity CI pool host with 3 slots, managed like the other Linux pool hosts ([unity-ci-host.md](runbooks/unity-ci-host.md); its entries are in `ansible/inventory.yml` `unity_ci_runners` and `ci_hosts`). Hyper-V and not WSL2: WSL2 on Windows 10 sits behind NAT with an address that changes, and runs only while someone is signed in, while the VM has its own LAN address and starts at boot with nobody at the TV.
+
+| | |
+|---|---|
+| Address | 192.168.1.27 (`windows-media-ci.lan`), DHCP reservation for its static MAC `00:15:5D:01:C1:A1` in `infrastructure/dhcp/devices.yaml` |
+| Login | `kblack0610`, the workstation's `~/.ssh/id_ed25519.pub`, passwordless sudo, no password login |
+| Size | Gen 2, 24 vCPUs (12 cores, SMT siblings n and n+1), 50 GB static memory, which leaves Windows 14 GB |
+| Disk | `C:\Hyper-V\windows-media-ci\noble.vhdx`, dynamic, 300 GB, on the P3; checkpoints off |
+| Network | external switch `LAN` on `Ethernet 2` (the Realtek), shared with Windows (`AllowManagementOS`) |
+| Start and stop | `AutomaticStartAction Start` (30 s delay), `AutomaticStopAction ShutDown` |
+| Console | COM1 on the pipe `\\.\pipe\windows-media-ci-com1`, the way in when SSH is down |
+| Metrics | node_exporter (play "Unity CI host monitoring" in `site.yml`), scraped through `apps/monitoring/external-standalone-nodes.yaml`; no temperature, a VM has no k10temp |
+
+Slots: three of three cores and 14 GB each, with three cores and 8 GB for the guest (`ci_unity_slot_cpus` in `ci_hosts`). Two more 32 GB DDR4-3600 sticks (the same Corsair kit, in the two free slots) give the memory for 5, but 5 slots of three cores plus the guest's is 18 of the PC's 16 cores, so a fourth slot is the most the CPU carries; decide it after a day of load with the TV in use.
+
+Day to day, in an Administrator PowerShell over SSH: `Get-VM windows-media-ci`, `Start-VM`, `Stop-VM` (a clean shutdown), `Restart-VM`. A Windows update reboot shuts the VM down and starts it again, so slots go offline for that time.
+
+### Moving to the E100
+
+The P3 is QLC, which wears out under CI writes. Once the E100 2 TB is in: format it NTFS (say `D:`), then with the VM running, `Move-VMStorage -VMName windows-media-ci -DestinationStoragePath D:\Hyper-V\windows-media-ci`, then grow the disk with `Resize-VHD` while the VM is off and `growpart /dev/sda 1 && resize2fs /dev/sda1` inside it.
+
+### Rebuilding it
+
+1. Hyper-V: `Enable-WindowsOptionalFeature -Online -FeatureName Microsoft-Hyper-V -All`, then reboot.
+2. The switch: `New-VMSwitch -Name LAN -NetAdapterName 'Ethernet 2' -AllowManagementOS $true`. It drops the PC's network for a few seconds and the SSH session with it, so run it from a `.ps1` as a SYSTEM scheduled task, with `Start-Transcript` to read the result afterwards.
+3. The disk, on the workstation: download `noble-server-cloudimg-amd64.img` and check it against Ubuntu's `SHA256SUMS`, `qemu-img resize` it to 300G (qemu-img cannot resize a vhdx), then `qemu-img convert -O vhdx -o subformat=dynamic`, and copy it to `C:\Hyper-V\windows-media-ci\`.
+4. The cloud-init seed: `user-data` (hostname, the `kblack0610` user with the SSH key and `NOPASSWD` sudo, `ssh_pwauth: false`) and `meta-data` (`instance-id`, `local-hostname`) on a 64 MB fixed VHDX, MBR, FAT32, label `CIDATA` (`New-VHD`, `Mount-VHD`, `Format-Volume`), attached as a second disk. cloud-init's NoCloud source reads it at first boot.
+5. The VM: `New-VM -Generation 2 -MemoryStartupBytes 50GB -VHDPath ...noble.vhdx -SwitchName LAN`, `Set-VM -ProcessorCount 24 -StaticMemory -AutomaticStartAction Start -AutomaticStartDelay 30 -AutomaticStopAction ShutDown -CheckpointType Disabled`, `Set-VMFirmware -SecureBootTemplate MicrosoftUEFICertificateAuthority` (the default Windows template does not boot Ubuntu), `Set-VMNetworkAdapter -StaticMacAddress 00155D01C1A1`, `Set-VMComPort -Number 1 -Path \\.\pipe\windows-media-ci-com1`, `Start-VM`.
+6. From `ansible/`: `ansible-playbook playbooks/site.yml --limit windows-media-ci --tags monitoring`, then `--tags unity-ci`. A rebuilt VM is a new Unity machine: it gets a new machine id, so return the old activation on the Unity ID portal.
 
 ## Windows 10 end of support
 
-windows-media runs Windows 10 22H2. Consumer Extended Security Updates ended 2026-10-13, so it no longer gets security patches; Defender definitions still update. The CPU and TPM qualify for Windows 11, but the PC boots in legacy BIOS mode with SVM (CPU virtualization) off. One visit to the BIOS (CSM off, UEFI and Secure Boot on, SVM on) followed by `mbr2gpt /convert /allowFullOS` over SSH unlocks both an in-place Windows 11 upgrade and WSL2. Until then neither is possible.
+windows-media runs Windows 10 22H2. Consumer Extended Security Updates ended 2026-10-13, so it no longer gets security patches; Defender definitions still update. The CPU and TPM qualify for Windows 11, but the PC boots in legacy BIOS mode from an MBR disk. `mbr2gpt /validate /allowFullOS` then `/convert /allowFullOS` over SSH, followed by one visit to the BIOS (CSM off, Secure Boot on), unlocks an in-place Windows 11 upgrade; after that the PC boots only with CSM off. SVM has been on since 2026-11-12, so Hyper-V runs either way.

@@ -39,6 +39,7 @@
     "cachyos-x8664-main": {"usd_per_hour": 0, "basis": "owned"},
     "mac-mini": {"usd_per_hour": 0, "basis": "owned"},
     "windows-media": {"usd_per_hour": 0, "basis": "owned"},
+    "windows-media-ci": {"usd_per_hour": 0, "basis": "owned"},
     "aws-burst-1": {"usd_per_hour": 1.855, "basis": "on-demand"},
     "aws-build-1": {"usd_per_hour": 1.855, "basis": "on-demand"},
     "aws-burst-2": {"usd_per_hour": 1.855, "basis": "on-demand"},
@@ -46,6 +47,7 @@
   },
   "hosts": {
     "cachyos-x8664-main": {"full": false, "min_admitted": 0, "admit": {"idle": 0.5, "tctl": 80}, "withhold": {"idle": 0.3, "tctl": 88}},
-    "razer-laptop": {}
+    "razer-laptop": {},
+    "windows-media-ci": {}
   }
 }

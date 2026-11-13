@@ -32,3 +32,9 @@ search:
     - html
     - json
   safe_search: 1
+# Bing is the one web engine that still answers from the home IP at binks
+# search volume. Brave and Google CSE suspend on 429s, DuckDuckGo and Qwant deny
+# access, Startpage fails to parse (2026-11-13, about 45 queries in 5 minutes).
+engines:
+  - name: bing
+    disabled: false

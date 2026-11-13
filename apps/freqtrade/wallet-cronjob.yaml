@@ -1,0 +1,70 @@
+# Watch-only Trezor balances (strategy repo lab/wallet.py, docs/platforms.md, Trezor): each account's public key
+# lives in Secret trader-wallet as accounts.tsv, mounted at /etc/trader-wallet. A public key cannot sign, so nothing
+# here can spend; it does reveal every address and balance, which is why it is a Secret and never a log line.
+# Same image, database, init migration and node rule as trader-broker-read.
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: trader-wallet-read
+spec:
+  # one wallet_balances row per account each hour; blockstream.info at 1 req/s (lab/wallet.toml), and a scan of
+  # four accounts is about 160 address reads, so the deadline leaves room for used addresses and retries
+  schedule: "29 * * * *"
+  timeZone: "Etc/UTC"
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      backoffLimit: 0
+      activeDeadlineSeconds: 1200
+      template:
+        metadata:
+          labels:
+            app: trader-wallet-read
+        spec:
+          restartPolicy: Never
+          affinity:
+            nodeAffinity:
+              requiredDuringSchedulingIgnoredDuringExecution:
+                nodeSelectorTerms:
+                  - matchExpressions:
+                      - {key: kubernetes.io/arch, operator: In, values: [amd64]}
+                      - {key: kubernetes.io/hostname, operator: NotIn, values: [hp-victus]}
+          securityContext:
+            runAsUser: 1000
+            runAsGroup: 1000
+            fsGroup: 1000
+          volumes:
+            - name: accounts
+              secret: {secretName: trader-wallet}
+          initContainers:
+            - name: migrate
+              image: trader
+              command: ["python", "/repo/lab/migrate.py"]
+              env:
+                - name: DATABASE_URL
+                  valueFrom:
+                    secretKeyRef: {name: trader-db, key: database-url}
+              resources:
+                requests:
+                  cpu: 20m
+                  memory: 64Mi
+                limits:
+                  memory: 256Mi
+          containers:
+            - name: wallet
+              image: trader
+              command: ["python", "-m", "lab.wallet"]
+              volumeMounts:
+                - {name: accounts, mountPath: /etc/trader-wallet, readOnly: true}
+              env:
+                - name: DATABASE_URL
+                  valueFrom:
+                    secretKeyRef: {name: trader-db, key: database-url}
+              resources:
+                requests:
+                  cpu: 20m
+                  memory: 96Mi
+                limits:
+                  memory: 256Mi

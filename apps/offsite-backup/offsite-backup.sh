@@ -57,6 +57,13 @@ done
 # The repository is created once by hand (runbook "Offsite (B2)"), never here:
 # an init against a wrong URL or password would quietly start a second repo.
 restic unlock
+# unlock removes only stale locks, so a lock left now belongs to a live run,
+# such as a manual job, which concurrencyPolicy: Forbid does not see. Two runs
+# would upload the same data twice.
+if [ -n "$(restic list locks --no-lock -q)" ]; then
+  echo "ERROR: another restic run holds the repository. Aborting."
+  exit 1
+fi
 restic backup --host asus-laptop --tag nightly \
   --limit-upload "$LIMIT_UPLOAD_KIB" /data
 

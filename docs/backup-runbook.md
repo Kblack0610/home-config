@@ -212,17 +212,16 @@ If the house is lost, Vaultwarden (and so rbw) and the SOPS age key on the works
 
 ### First upload
 
-The first run sends about 0.6 TB, around two days on the 36 Mbps uplink. Run it as a one-off job with a longer deadline and an upload cap, so the house keeps working:
+The first run sends about 0.6 TB, around two days at the job's 3500 KiB/s upload limit. Start it as a one-off copy of the CronJob, which carries the 3-day deadline and the limit:
 
 ```bash
-kubectl -n offsite-backup create job offsite-seed --from=cronjob/offsite-backup --dry-run=client -o json \
-  | jq '.spec.activeDeadlineSeconds = 345600
-        | (.spec.template.spec.containers[0].env[] | select(.name == "LIMIT_UPLOAD_KIB") | .value) = "3500"' \
-  | kubectl create -f -
+kubectl -n offsite-backup create job offsite-seed --from=cronjob/offsite-backup
 kubectl -n offsite-backup logs -f job/offsite-seed
 ```
 
-restic keeps the data it has already uploaded, so a seed that is interrupted only needs to be started again.
+The CronJob does not count a manual job as its own run, so the 1 AM runs during the seed start anyway, find the seed's lock and fail on purpose rather than upload the same data twice. Expect those failures until the seed completes. restic keeps the data it has already uploaded, so a seed that is interrupted only needs to be started again.
+
+If a run fails with `storage cap exceeded`, the B2 account's storage cap is too low: raise it on the B2 Caps & Alerts page. A new account stops at the 10 GB free tier until a payment method is on file and the cap is raised.
 
 ### Use the repository by hand
 

@@ -17,9 +17,9 @@ spec:
   jobTemplate:
     spec:
       backoffLimit: 1
-      # 20h: a normal night takes minutes; this only bounds a hung run. The
-      # first upload is a one-off job with a longer deadline (runbook).
-      activeDeadlineSeconds: 72000
+      # 3 days: a normal night takes minutes; this bounds a hung run and still
+      # fits the first upload, about 2 days at the upload limit below.
+      activeDeadlineSeconds: 259200
       template:
         spec:
           nodeSelector:
@@ -41,8 +41,10 @@ spec:
               env:
                 - name: RESTIC_CACHE_DIR
                   value: /cache
+                # 3500 KiB/s, about 80% of the 36 Mbps uplink, so a long upload
+                # leaves room for the house. A normal night sends little.
                 - name: LIMIT_UPLOAD_KIB
-                  value: "0"
+                  value: "3500"
               volumeMounts:
                 - name: script
                   mountPath: /scripts

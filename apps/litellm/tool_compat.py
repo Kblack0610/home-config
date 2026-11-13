@@ -38,14 +38,30 @@ because the bridge builds response_format after async_pre_call_hook, and the
 new dict keeps the name for any fallback to a route that needs it. Revisit when
 a named json_schema to `claude-sonnet-5` stops returning that 400: then the
 strip can go.
+
+4. OpenCode Go refuses a call without an x-opencode-session header:
+
+Go answers 400 "Request is missing x-opencode-session" (MissingSessionID).
+opencode sends a stable one per conversation and the gateway forwards it, but
+any other client of an OpenAI-compatible endpoint has no reason to know about
+the header: a scratch eval script on the binks-eval key sent 8 such 400s on
+2026-11-13, after a doc and llm-probe (2026-11-12) had told callers to add it.
+The hook gives a call that arrives without one a fresh per-request id, on the
+routes listed in model_group_settings.forward_client_headers_to_llm_api (the
+Go and opencode-free routes; that list is the one place that names them). A
+caller's own non-empty header always wins. It goes into data["headers"], the dict
+LiteLLM fills with the forwarded client headers before this hook runs.
 """
 
 import json
+import uuid
 from typing import Any
 
+import litellm
 from litellm.integrations.custom_logger import CustomLogger
 
 LAZER_HOST = "proxy.lazertechnologies.com"
+SESSION_HEADER = "x-opencode-session"
 
 
 def strip_required_only_branches(schema: Any) -> Any:
@@ -67,8 +83,27 @@ def strip_required_only_branches(schema: Any) -> Any:
     return out
 
 
+def header_forwarding_groups() -> list:
+    settings = getattr(litellm, "model_group_settings", None)
+    return getattr(settings, "forward_client_headers_to_llm_api", None) or []
+
+
+def default_opencode_session(data: dict) -> None:
+    if data.get("model") not in header_forwarding_groups():
+        return
+    headers = data.get("headers")
+    if not isinstance(headers, dict):
+        headers = data["headers"] = {}
+    for key in [k for k in headers if k.lower() == SESSION_HEADER]:
+        if headers[key]:
+            return
+        del headers[key]
+    headers[SESSION_HEADER] = str(uuid.uuid4())
+
+
 class ToolCompat(CustomLogger):
     async def async_pre_call_hook(self, user_api_key_dict, cache, data: dict, call_type):
+        default_opencode_session(data)
         for msg in data.get("messages") or []:
             if isinstance(msg, dict) and msg.get("role") == "tool":
                 content = msg.get("content")

@@ -315,12 +315,11 @@ model_list:
   # must fail the call, not spill flat-plan work onto paid Lazer.
   #
   # Third-party clients must name themselves in User-Agent (static below) and
-  # send a stable `x-opencode-session` per conversation. opencode sends that
-  # header on every call; litellm_settings.model_group_settings forwards the
-  # client's x- headers for these routes only, so Go sees opencode's own
-  # session id. Go refuses a call without one (400 MissingSessionID), and each
-  # such 400 trips the gateway-errors watch, so probe a route with `llm-probe`
-  # (dotfiles-private), which sends one, never a hand-written curl.
+  # send an `x-opencode-session`. opencode sends a stable one per conversation;
+  # litellm_settings.model_group_settings forwards the client's x- headers for
+  # these routes only, so Go sees opencode's own session id. Go refuses a call
+  # without one (400 MissingSessionID), so tool_compat gives a call that has
+  # none a fresh per-request id on every route in that forwarding list.
   # The Authorization and x-api-key headers are never forwarded (LiteLLM strips
   # them), so the gateway key does not leave the cluster.
   #
@@ -827,7 +826,8 @@ litellm_settings:
   # tool_compat: JSON-encodes object tool results (OpenAI-compatible upstreams
   # like Lazer require strings) and drops anyOf branches that only say
   # `required` (Gemini rejects them; HA timer tools), and drops the json_schema
-  # name on Lazer's Claude routes (Lazer passes it to Anthropic, which 400s). The
+  # name on Lazer's Claude routes (Lazer passes it to Anthropic, which 400s), and
+  # adds an x-opencode-session to a Go call that lacks one (Go 400s it). The
   # module sits next to this file in /etc/litellm (tool_compat.py).
   callbacks: ["prometheus", "langfuse_otel", "tool_compat.proxy_handler_instance"]
   # /metrics/ needs no key. LiteLLM only accepts a PROXY ADMIN key there, and a scrape
@@ -841,7 +841,8 @@ litellm_settings:
   # absent after every restart until that team next sends traffic.
   prometheus_initialize_budget_metrics: true
   # Forward the client's x- headers (x-opencode-session above) to these routes
-  # only. Other upstreams never see client headers.
+  # only. Other upstreams never see client headers. tool_compat reads this list
+  # to know which routes need a default x-opencode-session.
   model_group_settings:
     forward_client_headers_to_llm_api:
       - "go (glm-5.3)"

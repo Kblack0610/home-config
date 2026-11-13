@@ -60,6 +60,8 @@ spec:
         # Weight 2 is for a user-facing outage (prod, the k3s cluster, CI runners offline) or a dead
         # alert path (pager_undelivered, alertmanager_fleet: with it down, no other page arrives); every
         # other watch warns in its domain. A watch no domain names falls to `other`, where it is down.
+        # queue_starved warns: dispatch held for account room is load, not an outage, and source_pace
+        # already reports it; promote it back once the fleet runs inside its pace (human, 2026-11-12).
         - record: cc:watch_state
           labels: {domain: k3s}
           expr: >-
@@ -71,11 +73,11 @@ spec:
         - record: cc:watch_state
           labels: {domain: ci}
           expr: >-
-            max by (item) (label_replace(((mqtt_tripped{topic=~"agents_.+_watch_(.+_runners?_online|playground_nightly)"} and on (topic) cc:agents_topic_live) * 2 > 0) or ((mqtt_tripped{topic=~"agents_.+_watch_(playground_main_checks|playground_gate_spread|playground_release_ready|playground_release_runs|playground_train_stuck|playloop|dotfiles_gate_budget|m1_playground_mac_online)"} and on (topic) cc:agents_topic_live) * 1 > 0) or ((mqtt_stale{topic=~"agents_.+_watch_(.+_runners?_online|playground_nightly|playground_main_checks|playground_gate_spread|playground_release_ready|playground_release_runs|playground_train_stuck|playloop|dotfiles_gate_budget|m1_playground_mac_online)"} and on (topic) cc:agents_topic_live) > 0), "item", "$1", "topic", "agents_.+_watch_(.+)"))
+            max by (item) (label_replace(((mqtt_tripped{topic=~"agents_.+_watch_(.+_runners?_online|playground_nightly)"} and on (topic) cc:agents_topic_live) * 2 > 0) or ((mqtt_tripped{topic=~"agents_.+_watch_(playground_main_checks|playground_gate_spread|playground_release_ready|playground_release_runs|playground_train_stuck|playground_server_behind|playloop|dotfiles_gate_budget|m1_playground_mac_online)"} and on (topic) cc:agents_topic_live) * 1 > 0) or ((mqtt_stale{topic=~"agents_.+_watch_(.+_runners?_online|playground_nightly|playground_main_checks|playground_gate_spread|playground_release_ready|playground_release_runs|playground_train_stuck|playground_server_behind|playloop|dotfiles_gate_budget|m1_playground_mac_online)"} and on (topic) cc:agents_topic_live) > 0), "item", "$1", "topic", "agents_.+_watch_(.+)"))
         - record: cc:watch_state
           labels: {domain: queue}
           expr: >-
-            max by (item) (label_replace(((mqtt_tripped{topic=~"agents_.+_watch_(queue_starved|shepherd_stuck)"} and on (topic) cc:agents_topic_live) * 2 > 0) or ((mqtt_tripped{topic=~"agents_.+_watch_(heal_flapping|board_chain|board_open|intake_stuck|queue_limit_ends)"} and on (topic) cc:agents_topic_live) * 1 > 0) or ((mqtt_stale{topic=~"agents_.+_watch_(queue_starved|shepherd_stuck|heal_flapping|board_chain|board_open|intake_stuck|queue_limit_ends)"} and on (topic) cc:agents_topic_live) > 0), "item", "$1", "topic", "agents_.+_watch_(.+)"))
+            max by (item) (label_replace(((mqtt_tripped{topic=~"agents_.+_watch_(shepherd_stuck)"} and on (topic) cc:agents_topic_live) * 2 > 0) or ((mqtt_tripped{topic=~"agents_.+_watch_(queue_starved|heal_flapping|board_chain|board_open|intake_stuck|queue_limit_ends)"} and on (topic) cc:agents_topic_live) * 1 > 0) or ((mqtt_stale{topic=~"agents_.+_watch_(queue_starved|shepherd_stuck|heal_flapping|board_chain|board_open|intake_stuck|queue_limit_ends)"} and on (topic) cc:agents_topic_live) > 0), "item", "$1", "topic", "agents_.+_watch_(.+)"))
         - record: cc:watch_state
           labels: {domain: machines}
           expr: >-

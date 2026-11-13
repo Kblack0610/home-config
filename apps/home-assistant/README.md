@@ -233,6 +233,13 @@ kubectl logs -n home-assistant -l app.kubernetes.io/name=home-assistant
 kubectl logs -n home-assistant deploy/home-assistant -c sync-managed-config
 ```
 
+### Announce does nothing
+
+| Symptom | Fix |
+|---|---|
+| Log: `Language '{{ states(...) }}' not supported` | A dashboard passes templates in `tap_action` data, which the frontend never renders. Call `script.tts_announce` with no data; it reads the Announce helpers itself. |
+| No error, no sound | The rooms list in `packages/voice_targets.yaml` names players that are gone or all `unavailable`. Compare it with `media_player.*` in Developer Tools > States. |
+
 ### Restart Home Assistant
 
 ```bash

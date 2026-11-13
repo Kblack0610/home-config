@@ -37,14 +37,11 @@ sections:
           - entity: input_text.voice_announce_message
           - entity: input_select.voice_announce_language
       - type: button
-        name: Announce to all cast devices
+        name: Announce to all speakers
         icon: mdi:bullhorn-variant
         tap_action:
-          action: call-service
-          service: script.tts_announce_all_cast
-          data:
-            message: "{{ states('input_text.voice_announce_message') }}"
-            language: "{{ states('input_select.voice_announce_language') }}"
+          action: perform-action
+          perform_action: script.tts_announce
 
   - type: grid
     cards:

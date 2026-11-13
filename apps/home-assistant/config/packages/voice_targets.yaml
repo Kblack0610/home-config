@@ -1,14 +1,9 @@
-# Voice targets — Cast + TTS to Google Home / Nest / Chromecast devices.
+# Voice targets: spoken announcements on the house speakers.
 #
-# The `cast` integration is bundled in default_config: and auto-discovers
-# Google Cast endpoints on the LAN via mDNS. Each discovered device shows up
-# as a `media_player.*` entity. This package wires the TTS engine and a
-# reusable announce script that any dashboard / automation can call.
-
-tts:
-  - platform: google_translate
-    service_name: google_say
-    language: en
+# The house speakers are Music Assistant players (Snapcast rooms). The script
+# speaks through the Google Translate TTS entity from the onboarding config
+# entry, with announce: true so Music Assistant pauses the music and resumes it.
+# Dashboards call script.tts_announce with no data; it reads the two helpers.
 
 input_text:
   voice_announce_message:
@@ -29,53 +24,46 @@ input_select:
 script:
   tts_announce:
     alias: TTS Announce
-    description: Speak a message on a specific media_player (cast device).
+    description: >-
+      Speak a message on the house speakers. With no data it speaks the
+      Announce message helper, in the Language helper, on every available room.
     mode: parallel
     max: 10
     fields:
       target:
-        description: media_player entity_id to speak on (e.g. media_player.office_nest_mini).
-        example: media_player.office_nest_mini
-        required: true
+        description: media_player entity_id(s) to speak on. Default is every available house room.
+        example: media_player.office
       message:
-        description: What to say.
-        example: "Cluster reconcile complete."
-        required: true
+        description: What to say. Default is input_text.voice_announce_message.
+        example: "Dinner is ready."
       language:
-        description: TTS language code.
+        description: TTS language code. Default is input_select.voice_announce_language.
         example: en
-        default: en
-    sequence:
-      - service: tts.google_say
-        target:
-          entity_id: "{{ target }}"
-        data:
-          message: "{{ message }}"
-          language: "{{ language | default('en') }}"
-
-  tts_announce_all_cast:
-    alias: TTS Announce — all cast devices
-    description: Speak a message on every discovered cast media_player at once.
-    mode: parallel
-    max: 5
-    fields:
-      message:
-        description: What to say.
-        required: true
-      language:
-        description: TTS language code.
-        default: en
     sequence:
       - variables:
-          cast_targets: >-
-            {{ states.media_player
-               | selectattr('attributes.device_class', 'undefined')
-               | map(attribute='entity_id')
-               | select('match', 'media_player\\..*')
-               | list }}
-      - service: tts.google_say
+          # The house rooms. Unavailable players are skipped so one dead room
+          # does not fail the whole announcement.
+          rooms:
+            - media_player.kitchen
+            - media_player.living_room
+            - media_player.audio_bedroom
+            - media_player.office
+          players: >-
+            {{ target if target is defined and target
+               else rooms | reject('is_state', ['unavailable', 'unknown']) | list }}
+          msg: >-
+            {{ message if message is defined and message
+               else states('input_text.voice_announce_message') }}
+          lang: >-
+            {{ language if language is defined and language
+               else states('input_select.voice_announce_language') }}
+      - condition: template
+        value_template: "{{ players | count > 0 and msg | length > 0 }}"
+      - action: media_player.play_media
         target:
-          entity_id: "{{ cast_targets }}"
+          entity_id: "{{ players }}"
         data:
-          message: "{{ message }}"
-          language: "{{ language | default('en') }}"
+          media_content_id: >-
+            media-source://tts/tts.google_translate_en_com?message={{ msg | urlencode }}&language={{ lang }}
+          media_content_type: music
+          announce: true

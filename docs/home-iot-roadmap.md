@@ -23,7 +23,7 @@ the right things, presence drives screen wake + lighting, and any new device
 |---|---|---|
 | Home Assistant (k3s) | `apps/home-assistant/`, `hass.kblab.me` | Running. YAML-managed Lovelace, packages, dashboards. |
 | 3D-printer monitoring | Bambu A1 + Neptune via `printing_neptune.yaml` | Running. |
-| Cast + TTS to Google Homes | `voice_targets.yaml` package + Voice dashboard | **Phase 1 shipped 2026-06-03 (PR #23).** |
+| Cast + TTS to Google Homes | `voice_targets.yaml` package + Voice dashboard | **Phase 1 shipped 2026-06-03 (PR #23).** Since 2026-11-13 announcements go to the Music Assistant rooms, not cast. |
 | External access | LAN only (`hass.kblab.me` via AdGuard rewrite) | Phase 2 pending — Tailscale + CF Tunnel. |
 | Voice control via "Hey Google" | None | Phase 3 pending. |
 | Nest thermostats / cameras in HA | None | Phase 4 pending. |
@@ -39,7 +39,7 @@ Land each phase as its own PR, green before the next begins.
 
 | # | Phase | What ships | Status |
 |---|---|---|---|
-| 1 | **Cast + TTS to Google Homes** | `cast:` discovery, `tts.google_translate_say`, `script.tts_announce`, `script.tts_announce_all_cast`, Voice dashboard | ✅ PR #23 merged 2026-06-03 |
+| 1 | **Cast + TTS to Google Homes** | `cast:` discovery, `script.tts_announce` (now on the Music Assistant rooms), Voice dashboard | ✅ PR #23 merged 2026-06-03 |
 | 1.5 | **mDNS for cast discovery** (open decision) | One of: `hostNetwork: true` on HA Deployment, manual `cast:` hosts, Avahi reflector DaemonSet | ⏳ decision pending |
 | 2 | **Tailscale Operator + mobile access** | Tailscale Operator Flux Kustomization, HA Service annotated, `internal_url`/`external_url`/`trusted_proxies`, mobile Companion app works off-LAN | ⏳ pending |
 | 3 | **Google Assistant Smart Home Action** | `hass.kennethblack.me` via cloudflared, Google Cloud project + Actions Console, `google_assistant:` package, SOPS service-account secret | ⏳ pending |

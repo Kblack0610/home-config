@@ -1,9 +1,10 @@
 #!/usr/bin/env python3
 """Every route on the OpenCode Go base must be on forward_client_headers_to_llm_api.
 
-Go refuses a call without the client's x-opencode-session header, and LiteLLM
-forwards client headers only to the routes on that list, so a go route left
-off it fails every call (seven binks eval routes shipped that way, #830). The
+Go refuses a call without an x-opencode-session header. LiteLLM forwards the
+client's header only to the routes on that list, and tool_compat adds a default
+one only on them, so a go route left off it fails every call (seven binks eval
+routes shipped that way, #830). The
 opencode-free routes use the same base and key, and carry public input only,
 so none may sit on a fallback edge or an alias either way.
 Parsed with a regex so CI needs no PyYAML.

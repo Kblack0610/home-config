@@ -786,17 +786,17 @@ model_list:
       api_key: "none"
       input_cost_per_token: 0
       output_cost_per_token: 0
-      timeout: 300
+      timeout: 120
     model_info:
       mode: chat
       tags: ["free", "local"]
       capabilities:
-        tools: true
+        tools: false
         code: false
         vision: false
         reasoning: false
         json_mode: true
-      supports_function_calling: true
+      supports_function_calling: false
 
 router_settings:
   routing_strategy: "simple-shuffle"

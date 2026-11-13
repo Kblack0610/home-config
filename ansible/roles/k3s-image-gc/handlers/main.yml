@@ -1,0 +1,6 @@
+---
+# KillMode=process: a restart leaves the running containers alone.
+- name: Restart k3s
+  ansible.builtin.systemd_service:
+    name: "k3s{{ '-agent' if k3s_role | default('agent') == 'agent' else '' }}"
+    state: restarted

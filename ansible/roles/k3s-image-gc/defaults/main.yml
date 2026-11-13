@@ -1,0 +1,9 @@
+---
+# Kubelet removes unused images once the image disk passes the high mark, down to the
+# low mark. Its defaults are 85 and 80, so a node whose disk fills with images sits
+# between 80% and 85% used with NodeDiskLow (under 20% free) firing and kubelet doing
+# nothing: pi5-worker3 held 18% free on 2026-11-13, and `crictl rmi --prune` took it
+# to 47%. The high mark must stay under NodeDiskLow's 80% used
+# (apps/monitoring/prometheus-rules-capacity.yaml).
+k3s_image_gc_high: 75
+k3s_image_gc_low: 70

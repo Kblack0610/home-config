@@ -69,3 +69,18 @@ spec:
           annotations:
             summary: "Edgegap server {{ $labels.id }} is running empty"
             description: "{{ $labels.game }} at {{ $labels.site }} has had no players for 30 minutes and is still deployed (and billed)."
+
+        # The registry refuses new online games once the month's estimated Edgegap spend
+        # reaches EDGEGAP_MONTHLY_USD (apps/game-registry/deployment.yaml); this is the warning
+        # before players are turned away. A cap of 0 is skipped.
+        - alert: GameServerEdgegapMonthlyBudget
+          expr: |
+            bnb_edgegap_spend_usd_month >= 0.8 * bnb_edgegap_monthly_cap_usd
+              and bnb_edgegap_monthly_cap_usd > 0
+          for: 5m
+          labels:
+            severity: warning
+            category: cost
+          annotations:
+            summary: "Edgegap spend is at {{ $value | printf \"%.2f\" }} USD this month"
+            description: "Estimated Edgegap spend has passed 80% of EDGEGAP_MONTHLY_USD; at 100% the registry refuses new online games until the 1st (UTC). Raise the cap or right-size the servers."

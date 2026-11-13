@@ -1,0 +1,40 @@
+# promtool test rules. Run with scripts/test-prometheus-rules.sh.
+rule_files:
+  - game-servers.rules.yaml
+evaluation_interval: 1m
+
+tests:
+  - name: the monthly budget alert fires at 80% of the cap, not below it, and never on a cap of 0
+    interval: 1m
+    input_series:
+      # Spend climbs from 30 to 45 of a 50 cap at minute 10.
+      - series: 'bnb_edgegap_spend_usd_month{job="game-registry"}'
+        values: '30x9 45x30'
+      - series: 'bnb_edgegap_monthly_cap_usd{job="game-registry"}'
+        values: '50x40'
+    alert_rule_test:
+      - eval_time: 9m
+        alertname: GameServerEdgegapMonthlyBudget
+        exp_alerts: []
+      - eval_time: 20m
+        alertname: GameServerEdgegapMonthlyBudget
+        exp_alerts:
+          - exp_labels:
+              severity: warning
+              category: cost
+              job: game-registry
+            exp_annotations:
+              summary: "Edgegap spend is at 45.00 USD this month"
+              description: "Estimated Edgegap spend has passed 80% of EDGEGAP_MONTHLY_USD; at 100% the registry refuses new online games until the 1st (UTC). Raise the cap or right-size the servers."
+
+  - name: a cap of 0 does not fire
+    interval: 1m
+    input_series:
+      - series: 'bnb_edgegap_spend_usd_month{job="game-registry"}'
+        values: '5x30'
+      - series: 'bnb_edgegap_monthly_cap_usd{job="game-registry"}'
+        values: '0x30'
+    alert_rule_test:
+      - eval_time: 20m
+        alertname: GameServerEdgegapMonthlyBudget
+        exp_alerts: []

@@ -67,6 +67,11 @@ spec:
               value: http://searxng.home-assistant.svc.cluster.local:8080
             - name: CORS_ORIGINS
               value: https://binks.chat
+            # Base for the Google and Apple OAuth callbacks
+            # (<PUBLIC_URL>/api/auth/{google,apple}/callback). Their client
+            # values come from binks-api-secret through envFrom (README, Secrets).
+            - name: PUBLIC_URL
+              value: https://binks.chat
             # Square billing, sandbox. Real money is the owner's switch:
             # rerun square:setup with the production token, swap these and
             # the SOPS values (apps/binks/api/README.md in the platform repo).

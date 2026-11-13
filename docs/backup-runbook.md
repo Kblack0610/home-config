@@ -195,6 +195,7 @@ Every copy in this table lives in this house. There is no offsite tier: see the 
 | `actual-budget-backup` | **Job fails, `HomelabCronJobFailed` pages.** Deliberate exception, see above. |
 | `karakeep-backup` | **Job fails.** Its PVCs and local backups share a disk, so the NAS copy is the only protection. |
 | `postgres-backup` | **Job fails.** The NAS is its only destination. |
+| `vaultwarden-backup` | **Job fails.** The local copy sits on the one node holding the PVC, and losing the vault loses every credential. |
 | everything else | Job exits 0, warning in the log only (best-effort). |
 
 ## Retention

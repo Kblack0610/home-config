@@ -773,6 +773,31 @@ model_list:
         json_mode: true
       supports_function_calling: true
 
+  # The one self-hosted model: Qwen3.5-9B under llama-server on the
+  # workstation's RTX 4060 Ti (dotfiles llama-server.service). Nothing leaves
+  # the LAN, so personal data may use it; it is down when the workstation is.
+  # NO fallback edge (router_settings.fallbacks): a down model fails the call
+  # instead of spilling personal work onto a paid route. llama-server checks
+  # no key (UFW opens 8780 to the LAN only); api_key is the client's placeholder.
+  - model_name: "local (qwen3.5-9b)"
+    litellm_params:
+      model: "openai/qwen3.5-9b"
+      api_base: http://192.168.1.2:8780/v1
+      api_key: "none"
+      input_cost_per_token: 0
+      output_cost_per_token: 0
+      timeout: 120
+    model_info:
+      mode: chat
+      tags: ["free", "local"]
+      capabilities:
+        tools: false
+        code: false
+        vision: false
+        reasoning: false
+        json_mode: true
+      supports_function_calling: false
+
 router_settings:
   routing_strategy: "simple-shuffle"
   timeout: 900

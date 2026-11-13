@@ -162,9 +162,9 @@ FEED_LIMIT = 100
 # GITHUB_TOKEN_<OWNER> (all Kblack0610's), shared with every gh session on the
 # account and with apps/ci-runner-governor, and live runner state must never
 # starve for history. So history's job fetches (the only part that grows with
-# the backlog: a cold cache is ~500 calls) get a fixed budget per scrape, shared
-# by all repos and spent newest run first, and stop altogether while GitHub says
-# fewer than HISTORY_FLOOR calls are left. A cold start fills over ~10 scrapes.
+# the backlog: a cold cache is ~2,400 calls) get a fixed budget per scrape, shared
+# by all repos one run from each in turn (fetch_details), and stop altogether while GitHub says
+# fewer than HISTORY_FLOOR calls are left. A cold start fills over ~50 scrapes.
 # Until a run's jobs are cached it counts in the run-level series and is
 # missing from the job-level ones. The run list itself is not budgeted: it is
 # at most 10 pages per repo per HISTORY_REFRESH_SECS.
@@ -438,8 +438,10 @@ RUN_KEYS = ("id", "name", "status", "conclusion", "created_at", "updated_at", "r
             "html_url", "run_attempt", "head_sha", "path", "display_title")
 JOB_KEYS = ("id", "name", "conclusion", "runner_name", "labels", "created_at", "started_at", "completed_at", "html_url",
             "run_attempt")
-# Steps are kept for the feed (the opened run's step fold), slimmed: a raw step
-# list is ~2 KB a job and the pod's limit is 96Mi.
+# Steps are kept for the feed (the opened run's step fold), slimmed and held as one
+# compact JSON blob per job, decoded only when the feed serves it: as dicts a
+# 26-step job held ~12 KB, and the window's ~2,400 runs (~3 jobs each, 13 repos)
+# filled the job cache past the pod's 96Mi before it reached the playground's runs.
 STEP_KEYS = ("number", "name", "conclusion", "started_at", "completed_at")
 # The conclusions listed run by run. A cancelled run is counted but not listed:
 # most are a push superseding its own earlier run.
@@ -451,7 +453,12 @@ def slim(d, keys):
 
 
 def slim_job(j):
-    return {**slim(j, JOB_KEYS), "steps": [slim(s, STEP_KEYS) for s in j.get("steps") or []]}
+    steps = [slim(s, STEP_KEYS) for s in j.get("steps") or []]
+    return {**slim(j, JOB_KEYS), "steps": json.dumps(steps, separators=(",", ":")).encode()}
+
+
+def feed_job(j):
+    return {**j, "steps": json.loads(j["steps"])}
 
 
 def attempt_jobs(repo, run):
@@ -523,7 +530,8 @@ def feed_page(cursor, limit):
         recs = sorted([(r["seq"], 0, r) for r in FEED.values() if r["seq"] > cursor]
                       + [(r["seq"], 1, r) for r in RUN_FEED.values() if r["seq"] > cursor], key=lambda x: x[0])
         page = recs[:limit]
-        records = [{**r, "jobs": DONE_JOBS.get(r["run_id"], [])} for _, half, r in page if half == 0]
+        records = [{**r, "jobs": [feed_job(j) for j in DONE_JOBS.get(r["run_id"], [])]}
+                   for _, half, r in page if half == 0]
         runs = [r for _, half, r in page if half == 1]
     return {"epoch": EPOCH, "repos": RUN_REPOS + FEED_REPOS, "forgejo_repos": FORGEJO_REPOS,
             "window_secs": HISTORY_WINDOW_SECS,
@@ -581,6 +589,41 @@ def finished_runs(repo, now):
             pages += [runs for _, runs in ex.map(page, range(2, n + 1))]
     runs = {r["id"]: r for pg in pages for r in pg}
     return [runs[i] for i in sorted(runs, reverse=True)]
+
+
+def stale_detail(run):
+    """A finished run is read again when its attempt moved (a re-run finished) or the
+    last read was partial."""
+    rec = FEED.get(run["id"])
+    return not rec or not rec["complete"] or rec["attempt"] != (run.get("run_attempt") or 1)
+
+
+def fetch_details(acts):
+    """Every repo's uncached finished runs, within the scrape's budget (see
+    HISTORY_CALL_BUDGET): one from each repo in turn, each repo's newest first,
+    so a repo with a deep backlog gets its share from the first scrape. Taken
+    first-come by each repo as it finished its own listing, the slowest one (the
+    playground: 30 active runs and 10 history pages) reached the budget last on
+    every scrape and none of its ~1000 runs a day was ever read (2026-11-12).
+    In parallel: sequentially, 60 of them took 51s."""
+    queues = [(a["repo"], a.get("todo") or []) for a in acts]
+    order = [(repo, q[i]) for i in range(max((len(q) for _, q in queues), default=0))
+             for repo, q in queues if i < len(q)]
+    order = order[:spend(len(order))]
+
+    def jobs_of(item):
+        # One failed call must not discard the ones that answered; one not
+        # started by the deadline waits for a later scrape (HISTORY_DEADLINE_SECS).
+        if time.time() >= BUDGET["until"]:
+            return None
+        try:
+            return attempt_jobs(*item)
+        except API_ERRORS:
+            return None
+    with ThreadPoolExecutor(max_workers=6) as ex:
+        for (repo, run), got in zip(order, ex.map(jobs_of, order)):
+            if got is not None:
+                feed_store(repo, run, [slim_job(j) for j in got[0]], got[1])
 
 
 def low_budget():
@@ -642,29 +685,10 @@ def repo_activity(repo, now):
         # with the history refresh, every HISTORY_REFRESH_SECS, not every scrape.
         for run in lost_runs(repo, active, now) if refreshed else ():
             run_feed_store(repo, run)
-        # Uncached finished runs in parallel, newest first, within the scrape's
-        # budget (see HISTORY_CALL_BUDGET): sequentially, 60 of them took 51s.
-        # A run is fetched again when its attempt moved (a re-run finished) or
-        # the last read was partial.
-        def stale_detail(run):
-            rec = FEED.get(run["id"])
-            return not rec or not rec["complete"] or rec["attempt"] != (run.get("run_attempt") or 1)
-        todo = [run for run in out["history"] if stale_detail(run)]
-        todo = todo[:spend(len(todo))]
-
-        def jobs_of(run):
-            # One failed call must not discard the ones that answered; one not
-            # started by the deadline waits for a later scrape (HISTORY_DEADLINE_SECS).
-            if time.time() >= BUDGET["until"]:
-                return None
-            try:
-                return attempt_jobs(repo, run)
-            except API_ERRORS:
-                return None
-        with ThreadPoolExecutor(max_workers=6) as ex:
-            for run, got in zip(todo, ex.map(jobs_of, todo)):
-                if got is not None:
-                    feed_store(repo, run, [slim_job(j) for j in got[0]], got[1])
+        # The runs whose job detail is missing or stale, newest first: read by
+        # fetch_details once every repo has answered, so no repo's place in the
+        # scrape decides whether it gets any of the budget.
+        out["todo"] = [run for run in out["history"] if stale_detail(run)]
     except API_ERRORS:
         out["ok"] = False
     return out
@@ -879,6 +903,7 @@ def render():
         fj_runners = pool.submit(forgejo_runners) if FORGEJO_REPOS else None
         fj_repos = [pool.submit(forgejo_repo, r, now) for r in FORGEJO_REPOS]
         acts = [f.result() for f in repo_futs]
+        fetch_details(acts)
     fj, fj_ok = forgejo_rows(fj_runners, fj_repos, now) if FORGEJO_REPOS else ({}, [])
 
     def forgejo(metric):

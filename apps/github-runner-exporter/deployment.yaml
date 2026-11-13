@@ -121,14 +121,18 @@ spec:
               mountPath: /app
               readOnly: true
           resources:
-            # 34Mi in use before the /api/ci/details feed (2026-11-11), 50Mi with its job
-            # records (each finished job's steps over the 24h window); its run records add
-            # about 1 KB per run of the window, ~2 MB.
+            # 34Mi in use before the /api/ci/details feed (2026-11-11). Its job records are
+            # the window's ~2,400 runs, ~3 jobs each, across RUN_REPOS and FEED_REPOS:
+            # filled, they grew a python:3.12-alpine process by 48Mi as step dicts and 30Mi
+            # as the step blobs slim_job keeps now (2026-11-12). At 96Mi the pod was
+            # OOMKilled every ~1.5-2h with the cache still filling, so the playground's
+            # jobs were never read; a full cache is ~80Mi, and 128Mi leaves a run-list
+            # refresh (10 pages of ~1.5 MB each, parsed at once) room above it.
             requests:
-              memory: "32Mi"
+              memory: "64Mi"
               cpu: "10m"
             limits:
-              memory: "96Mi"
+              memory: "128Mi"
               cpu: "100m"
           livenessProbe:
             httpGet:

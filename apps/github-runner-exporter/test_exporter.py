@@ -12,6 +12,7 @@ import json
 import os
 import re
 import sys
+import threading
 import time
 import unittest
 import urllib.error
@@ -388,7 +389,6 @@ class ExporterTest(unittest.TestCase):
         self.assertIn(9, exporter.DONE_JOBS)
 
     def test_health_answers_while_a_scrape_renders(self):
-        import threading
         import urllib.request
         entered, release = threading.Event(), threading.Event()
         real = exporter.render
@@ -636,6 +636,56 @@ class ColdStartBudgetTest(unittest.TestCase):
         self.fake()
         out = exporter.render()
         self.assertIn(f'github_runs_finished{{repo="game",workflow="Tests",conclusion="success",scope="branch"}} {self.RUNS}', out)
+
+
+class FairBudgetTest(unittest.TestCase):
+    """Each repo's backlog bigger than the scrape's budget, and acme/web done listing
+    before acme/game starts, as the platform always beat the playground: game must
+    get its share of the budget on the first scrape, not whatever web left."""
+
+    RUNS = 60
+
+    def setUp(self):
+        for d in (exporter.DONE_JOBS, exporter.FEED, exporter.RUN_FEED, exporter.HISTORY, exporter.CALLS, exporter.RATE):
+            d.clear()
+        self.saved = exporter.get
+
+    def tearDown(self):
+        exporter.get = self.saved
+
+    def test_the_slowest_repo_gets_its_share(self):
+        base = {"acme/web": 1000, "acme/game": 2000}
+
+        def get(path, kind="other"):
+            if "/actions/runners" in path:
+                return {"total_count": 0, "runners": []}
+            m = re.match(r"repos/(acme/\w+)/actions/runs\?status=completed.*&page=1$", path)
+            if m:
+                ids = range(base[m.group(1)] + self.RUNS, base[m.group(1)], -1)
+                return {"total_count": self.RUNS, "workflow_runs": [
+                    {"id": i, "name": "CI", "conclusion": "success", "created_at": T0} for i in ids]}
+            if "status=" in path:
+                return {"total_count": 0, "workflow_runs": []}
+            return {"jobs": [{"name": "j", "conclusion": "success", "runner_name": "x",
+                              "created_at": T0, "started_at": T1, "completed_at": T2}]}
+        exporter.get = get
+        web_done, original = threading.Event(), exporter.repo_activity
+
+        def ordered(repo, now):
+            if repo == "acme/game":
+                web_done.wait()
+            out = original(repo, now)
+            if repo == "acme/web":
+                web_done.set()
+            return out
+        with mock.patch.object(exporter, "repo_activity", ordered):
+            out = exporter.render()
+        cached = {repo: sorted(r for r in exporter.DONE_JOBS if b < r <= b + self.RUNS) for repo, b in base.items()}
+        half = exporter.HISTORY_CALL_BUDGET // 2
+        self.assertEqual({r: len(c) for r, c in cached.items()}, {"acme/web": half, "acme/game": half})
+        # Each repo's newest first.
+        self.assertEqual(cached["acme/game"][-1], base["acme/game"] + self.RUNS)
+        self.assertTrue(any('repo="game"' in r for r in rows(out, "github_jobs_finished")))
 
 
 class RateLimitTest(unittest.TestCase):

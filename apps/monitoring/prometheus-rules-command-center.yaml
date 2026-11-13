@@ -61,7 +61,8 @@ spec:
         # alert path (pager_undelivered, alertmanager_fleet: with it down, no other page arrives); every
         # other watch warns in its domain. A watch no domain names falls to `other`, where it is down.
         # queue_starved warns: dispatch held for account room is load, not an outage, and source_pace
-        # already reports it; promote it back once the fleet runs inside its pace (human, 2026-11-12).
+        # already reports it; promote it back to 2 once source_pace has read ok for 7 days (human,
+        # 2026-11-12). playground_server_behind is a release lag, not an outage: it warns in ci.
         - record: cc:watch_state
           labels: {domain: k3s}
           expr: >-

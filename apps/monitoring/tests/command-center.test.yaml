@@ -802,6 +802,11 @@ tests:
         exp_samples:
           - labels: 'cc:watch_state{domain="prod",item="binks_key_issue_failed"}'
             value: 2
+      - expr: cc:watch_state{domain="ci",item="playground_gate_budget"}
+        eval_time: 5m
+        exp_samples:
+          - labels: 'cc:watch_state{domain="ci",item="playground_gate_budget"}'
+            value: 1
       - expr: cc:watch_state{domain="ci",item="unity_queue_wait"}
         eval_time: 5m
         exp_samples:

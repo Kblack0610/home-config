@@ -66,7 +66,11 @@ spec:
         # alertmanager_fleet warns first and is down only after 2h tripped without a break: a fleet=fix
         # alert is an agent's to fix, and fixes took 70 to 100 min on 11-10 and 11-11, so 2h tripped
         # means the fix failed or never started. The offset 2h guard keeps a short-history series from
-        # escalating at once. Provisional: revisit if a fix lands in under 1h or a red ran past 2h unseen.
+        # escalating at once. The 2h runs on the one aggregate watch, so alerts that overlap without a
+        # clear between them add up, and a scrape gap is not a break. Alertmanager unreachable (probe
+        # exit 2) trips the same series and also waits 2h: Sentinel still pages that trip straight to
+        # ntfy, so the human hears of it before the chip turns red.
+        # Provisional: revisit if a fix lands in under 1h or a red ran past 2h unseen.
         - record: cc:watch_state
           labels: {domain: k3s}
           expr: >-

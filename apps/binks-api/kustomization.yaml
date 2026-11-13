@@ -17,4 +17,4 @@ images:
   - name: git.kblab.me/kblack0610/binks-api
     newTag: v1.9.0
   - name: git.kblab.me/kblack0610/binks-chat
-    newTag: v1.6.0
+    newTag: v1.7.0

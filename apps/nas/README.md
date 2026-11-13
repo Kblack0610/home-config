@@ -40,6 +40,8 @@ The 8TB is a backup target, not extra NAS space. Anything stored only there has 
 | `app-config-backup-cronjob.yaml` | Weekly mirror of the media apps' config to the 8TB drive + snapshot (Sun 5:45 AM) |
 | `harvest-backup-cronjob.yaml` | Weekly mirror of files pulled off retired machines to the 8TB drive + snapshot (Sun 6 AM) |
 | `eeg-backup-cronjob.yaml` | Daily mirror of the encrypted Emotiv archive to the 8TB drive + snapshot (6:15 AM) |
+| `bark-archive-cronjob.yaml` | Hourly copy of Frigate's dog-bark clips and a CSV log to `/mnt/nas/private/dog-barks` (`bark-archive.sh`) |
+| `dog-barks-backup-cronjob.yaml` | Daily mirror of the dog-bark archive to the 8TB drive + snapshot (6:45 AM) |
 | `sops-backup-rbac.yaml` | ServiceAccount for SOPS key backup job |
 
 ## Backup Infrastructure
@@ -55,6 +57,8 @@ The NAS serves as the central backup target. App backup cronjobs write to `/mnt/
 | `app-config-backup` | Sun 5:45 AM | Mirrors `/mnt/media/app-config` to `/mnt/backup-8t/app-config` + dated snapshot, keeps last 14 |
 | `harvest-backup` | Sun 6 AM | Mirrors `/mnt/nas/private/harvest` to `/mnt/backup-8t/harvest` + dated snapshot, keeps last 14 |
 | `eeg-backup` | Daily 6:15 AM | Mirrors `/mnt/nas/private/eeg` (age-encrypted Emotiv chunks, `ansible/roles/emotiv-bridge`) to `/mnt/backup-8t/eeg` + dated snapshot, keeps last 14 |
+| `bark-archive` | Hourly :20 | Copies each new Frigate bark, yip and howl event (clip with 5 s padding, plus a row in `YYYY-MM/barks.csv`) from Frigate's API to `/mnt/nas/private/dog-barks`. See "Bark detection" in [apps/frigate/README.md](../frigate/README.md) |
+| `dog-barks-backup` | Daily 6:45 AM | Mirrors `/mnt/nas/private/dog-barks` to `/mnt/backup-8t/dog-barks` + dated snapshot, keeps last 14 |
 | `nas-backup-verify` | Mon 6 AM | Checks backup freshness (< 48h) and gzip integrity for home-assistant, actual-budget, music-assistant, snapcast, karakeep, postgres; verifies SOPS key backup exists |
 
 Verification results are appended to `/mnt/nas/private/backups/manifest.log`.

@@ -1,0 +1,132 @@
+# Dog barks: when the dog barks, for how long, and whether the cameras can hear.
+#
+# Frigate's audio detector (apps/frigate/config.yml `audio:`) listens to both
+# Amcrest cameras and the Frigate integration turns each label into a
+# binary_sensor.<camera>_<label>_sound. This package folds them into one
+# "Dog barking" sensor, counts episodes and minutes, and sends the 21:00 summary.
+# The evidence (every clip plus a CSV log) is not here: the bark-archive CronJob
+# copies it to /mnt/nas/private/dog-barks (apps/nas/bark-archive.sh). HA keeps
+# its default 10 days of history, so these counts are for today and this week.
+# A new camera or label adds its entity to the list in "Dog barking".
+# Runbook: "Bark detection" in apps/frigate/README.md.
+
+template:
+  - binary_sensor:
+      - name: "Dog barking"
+        unique_id: dog_barking
+        device_class: sound
+        icon: mdi:dog
+        state: >-
+          {{ expand(
+               'binary_sensor.amcrest_ptz_1_bark_sound',
+               'binary_sensor.amcrest_ptz_1_yip_sound',
+               'binary_sensor.amcrest_ptz_1_howl_sound',
+               'binary_sensor.amcrest_living_room_bark_sound',
+               'binary_sensor.amcrest_living_room_yip_sound',
+               'binary_sensor.amcrest_living_room_howl_sound')
+             | selectattr('state', 'eq', 'on') | list | count > 0 }}
+        attributes:
+          rooms: >-
+            {{ expand(
+                 'binary_sensor.amcrest_ptz_1_bark_sound',
+                 'binary_sensor.amcrest_ptz_1_yip_sound',
+                 'binary_sensor.amcrest_ptz_1_howl_sound',
+                 'binary_sensor.amcrest_living_room_bark_sound',
+                 'binary_sensor.amcrest_living_room_yip_sound',
+                 'binary_sensor.amcrest_living_room_howl_sound')
+               | selectattr('state', 'eq', 'on')
+               | map(attribute='entity_id')
+               | map('regex_replace', '^binary_sensor\.amcrest_(.+)_(bark|yip|howl)_sound$', '\\1')
+               | map('replace', '_', ' ') | unique | join(', ') }}
+
+      # Camera mic health, one per camera. Frigate reports each camera's audio
+      # level (dBFS) in its stats, polled by the integration. A live mic in a
+      # real room never reads the same level for 30 minutes; a dead audio
+      # process does. device_class connectivity puts these on fleet_alerts.yaml's
+      # down list and the Command Center home domain with no extra wiring.
+      - name: "Mic PTZ camera"
+        unique_id: mic_amcrest_ptz_1_live
+        device_class: connectivity
+        icon: mdi:microphone
+        state: >-
+          {% set s = states.sensor.amcrest_ptz_1_sound_level %}
+          {{ s is not none and s.state not in ['unknown', 'unavailable']
+             and now() - s.last_changed < timedelta(minutes=30) }}
+      - name: "Mic living room camera"
+        unique_id: mic_amcrest_living_room_live
+        device_class: connectivity
+        icon: mdi:microphone
+        state: >-
+          {% set s = states.sensor.amcrest_living_room_sound_level %}
+          {{ s is not none and s.state not in ['unknown', 'unavailable']
+             and now() - s.last_changed < timedelta(minutes=30) }}
+
+  # When the last episode started, kept across restarts (trigger-based
+  # template sensors restore their state).
+  - trigger:
+      - platform: state
+        entity_id: binary_sensor.dog_barking
+        to: "on"
+    sensor:
+      - name: "Dog last barked"
+        unique_id: dog_last_barked
+        device_class: timestamp
+        icon: mdi:dog
+        state: "{{ now().isoformat() }}"
+
+  - sensor:
+      - name: "Dog barking minutes today"
+        unique_id: dog_barking_minutes_today
+        unit_of_measurement: min
+        icon: mdi:timer-outline
+        state: "{{ (states('sensor.dog_barking_time_today') | float(0) * 60) | round(0) | int }}"
+
+sensor:
+  - platform: history_stats
+    name: Dog barks today
+    unique_id: dog_barks_today
+    entity_id: binary_sensor.dog_barking
+    state: "on"
+    type: count
+    start: "{{ today_at() }}"
+    end: "{{ now() }}"
+  - platform: history_stats
+    name: Dog barking time today
+    unique_id: dog_barking_time_today
+    entity_id: binary_sensor.dog_barking
+    state: "on"
+    type: time
+    start: "{{ today_at() }}"
+    end: "{{ now() }}"
+  - platform: history_stats
+    name: Dog barks this week
+    unique_id: dog_barks_this_week
+    entity_id: binary_sensor.dog_barking
+    state: "on"
+    type: count
+    start: "{{ today_at() - timedelta(days=6) }}"
+    end: "{{ now() }}"
+
+automation:
+  # One line a day, every day: "0 episodes" still arrives, which is the proof
+  # the counting works. Low priority and no wall-panel card (it is a digest).
+  - id: dog_barks_daily_summary
+    alias: "Dog barks: daily summary"
+    mode: single
+    trigger:
+      - platform: time
+        at: "21:00:00"
+    action:
+      - service: script.home_alert
+        data:
+          title: "Dog barks today"
+          message: >-
+            {% set n = states('sensor.dog_barks_today') | int(0) %}
+            {% set m = states('sensor.dog_barking_minutes_today') | int(0) %}
+            {% if n == 0 %}No barking heard today.
+            {% else %}{{ n }} barking episode{{ '' if n == 1 else 's' }}, {{ m }} min in total.
+            Last at {{ as_timestamp(states('sensor.dog_last_barked')) | timestamp_custom('%-I:%M %p') }}.
+            {{ states('sensor.dog_barks_this_week') }} this week.{% endif %}
+          priority: low
+          tags: dog
+          panel: false

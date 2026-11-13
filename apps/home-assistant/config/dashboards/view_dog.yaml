@@ -1,0 +1,84 @@
+# Shared view: included by BOTH dashboards/wall.yaml and dashboards/phone.yaml.
+# Navigation paths are RELATIVE so they resolve inside whichever dashboard shows it.
+# The dog: is it barking, how much today, can the cameras hear, and the bark clips.
+# Entities: packages/dog_barks.yaml. Clips: Frigate audio events, through the
+# Frigate integration. The full log (every clip and a CSV) is on the NAS at
+# /mnt/nas/private/dog-barks; this view shows what Frigate still holds (14 days).
+title: Dog
+path: dog
+icon: mdi:dog
+type: sections
+max_columns: 3
+sections:
+  - type: grid
+    cards:
+      - !include _home_button.yaml
+      - type: heading
+        heading: Barking
+        heading_style: title
+      - type: tile
+        entity: binary_sensor.dog_barking
+        name: Now
+        grid_options: { columns: full }
+      - type: tile
+        entity: sensor.dog_barks_today
+        name: Episodes today
+      - type: tile
+        entity: sensor.dog_barking_minutes_today
+        name: Minutes today
+      - type: tile
+        entity: sensor.dog_last_barked
+        name: Last barked
+      - type: tile
+        entity: sensor.dog_barks_this_week
+        name: Episodes this week
+      - type: heading
+        heading: Microphones
+        heading_style: subtitle
+      - type: tile
+        entity: binary_sensor.mic_living_room_camera
+        name: Living room
+      - type: tile
+        entity: binary_sensor.mic_ptz_camera
+        name: PTZ camera
+
+  - type: grid
+    cards:
+      - type: heading
+        heading: Last 24 hours
+        heading_style: title
+      - type: history-graph
+        hours_to_show: 24
+        entities:
+          - entity: binary_sensor.dog_barking
+            name: Barking
+        grid_options: { columns: full }
+      - type: history-graph
+        hours_to_show: 24
+        entities:
+          - entity: sensor.amcrest_living_room_sound_level
+            name: Living room
+          - entity: sensor.amcrest_ptz_1_sound_level
+            name: PTZ camera
+        grid_options: { columns: full }
+
+  - type: grid
+    cards:
+      - type: heading
+        heading: Bark clips
+        heading_style: title
+      # A clip gallery filtered to the dog sounds Frigate listens for. Tap a
+      # clip to play it with sound.
+      - type: custom:advanced-camera-card
+        grid_options: { columns: full }
+        cameras:
+          - camera_entity: camera.amcrest_living_room
+            frigate: { labels: [bark, yip, howl] }
+          - camera_entity: camera.amcrest_ptz_1
+            frigate: { labels: [bark, yip, howl] }
+        view:
+          default: clips
+        menu:
+          style: hidden
+          buttons:
+            expand: { enabled: true }

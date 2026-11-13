@@ -86,6 +86,8 @@ The Seagate Expansion USB HDD (label `backup8t`, uuid `99a8c3bb-b1d9-4a78-88de-6
 | `@harvest-snapshots` | `/mnt/backup-8t/harvest-snapshots` | Dated read-only btrfs snapshots (14 retained) |
 | `@eeg` | `/mnt/backup-8t/eeg` | rsync mirror of the age-encrypted Emotiv archive (`/mnt/nas/private/eeg`, `ansible/roles/emotiv-bridge`) |
 | `@eeg-snapshots` | `/mnt/backup-8t/eeg-snapshots` | Dated read-only btrfs snapshots (14 retained) |
+| `@dog-barks` | `/mnt/backup-8t/dog-barks` | rsync mirror of the dog-bark evidence archive (`/mnt/nas/private/dog-barks`, `apps/nas/bark-archive.sh`) |
+| `@dog-barks-snapshots` | `/mnt/backup-8t/dog-barks-snapshots` | Dated read-only btrfs snapshots (14 retained) |
 
 ### Reprovisioning (if drive is reformatted or replaced)
 
@@ -179,6 +181,7 @@ K3s app backups run on schedule via CronJobs. Each backup writes a local archive
 | `app-config-backup` | Sunday 5:45 AM | `nas` | 8TB `/mnt/backup-8t/app-config` + snapshots (mirror of `/mnt/media/app-config`) |
 | `harvest-backup` | Sunday 6 AM | `nas` | 8TB `/mnt/backup-8t/harvest` + snapshots (mirror of `/mnt/nas/private/harvest`) |
 | `eeg-backup` | Daily 6:15 AM | `nas` | 8TB `/mnt/backup-8t/eeg` + snapshots (mirror of `/mnt/nas/private/eeg`) |
+| `dog-barks-backup` | Daily 6:45 AM | `nas` | 8TB `/mnt/backup-8t/dog-barks` + snapshots (mirror of `/mnt/nas/private/dog-barks`) |
 | `offsite-backup` | Daily 1 AM | `offsite-backup` | Backblaze B2, restic, encrypted (the newest 8TB snapshot of every dataset above, plus `@immich-db` and `@forgejo-backups`) |
 | `zomboid-backup` | Daily 4:30 AM | `zomboid` | NAS **public** share `backups/zomboid/` |
 | `freqtrade-lab-backup` | Sunday 2:50 AM | `freqtrade` | NAS **public** share `backups/freqtrade/` (newest 4) |

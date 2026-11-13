@@ -1,0 +1,65 @@
+# The Manifold order drill (strategy repo lab/markets/manifold_trade.py, docs/platforms.md Manifold). Play money (mana)
+# only, and ManifoldBets refuses any host but api.manifold.markets, so this key cannot reach real money.
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: trader-manifold-drill
+spec:
+  # Rest one 1-mana YES limit bet at 1% on an open market, read it back, cancel it (demo_orders); /accounts reads it
+  schedule: "55 14 * * *"
+  timeZone: "Etc/UTC"
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      backoffLimit: 0
+      activeDeadlineSeconds: 300
+      template:
+        metadata:
+          labels:
+            app: trader-manifold-drill
+        spec:
+          restartPolicy: Never
+          affinity:
+            nodeAffinity:
+              requiredDuringSchedulingIgnoredDuringExecution:
+                nodeSelectorTerms:
+                  - matchExpressions:
+                      - {key: kubernetes.io/arch, operator: In, values: [amd64]}
+                      - {key: kubernetes.io/hostname, operator: NotIn, values: [hp-victus]}
+          securityContext:
+            runAsUser: 1000
+            runAsGroup: 1000
+            fsGroup: 1000
+          initContainers:
+            - name: migrate
+              image: trader
+              command: ["python", "/repo/lab/migrate.py"]
+              env:
+                - name: DATABASE_URL
+                  valueFrom:
+                    secretKeyRef: {name: trader-db, key: database-url}
+              resources:
+                requests:
+                  cpu: 20m
+                  memory: 64Mi
+                limits:
+                  memory: 256Mi
+          containers:
+            - name: drill
+              image: trader
+              command: ["python", "-m", "lab.markets.manifold_trade", "drill"]
+              env:
+                - name: MANIFOLD_API_KEY
+                  valueFrom:
+                    secretKeyRef: {name: trader-manifold, key: MANIFOLD_API_KEY}
+                - name: DATABASE_URL
+                  valueFrom:
+                    secretKeyRef: {name: trader-db, key: database-url}
+              resources:
+                requests:
+                  cpu: 20m
+                  memory: 96Mi
+                limits:
+                  memory: 256Mi

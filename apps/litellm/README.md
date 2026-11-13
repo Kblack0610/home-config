@@ -44,8 +44,8 @@ Two teams split the $250/mo Lazer allowance by priority (human, 2026-11-10). A k
 
 | Team | Budget | Holds |
 |---|---|---|
-| `lazer-core` | $200 / 1mo | `priority: must`: home services, comms triage and the version agents, knowledge-engine, lazer-eval |
-| `lazer-pool` | $50 / 1mo | `priority: low`: cl --lazer (`claude-reserve`, last priority), model-lane, opencode-paid, delivery-loop |
+| `lazer-core` | $200 / 1mo | `priority: must`: home services, comms triage and the version agents, knowledge-engine, lazer-eval, model-lane (moved 2026-11-13: every dispatch routing decision reads it) |
+| `lazer-pool` | $50 / 1mo | `priority: low`: cl --lazer (`claude-reserve`, last priority), opencode-paid, delivery-loop |
 
 Each key's consumer and priority live on the key itself (`metadata.consumer`, `metadata.priority`: must, low, off, reader), so the gateway is the one inventory. A key that is not a priority is blocked (`/key/block`, reversible with `/key/unblock`), as `glm-pilot` is since 2026-11-10. To see every key beside the agentctl runners that spend through it, with priority, budget, spend and fallback, open the Consumers section of the Costs tab (agent-web and the hub TUI, fed by `claude-acct gateway` every 15 min); a must consumer on a low-priority or capped budget shows there as MISMATCH. By hand, list every key, its team, cap, spend, consumer and priority:
 

@@ -16,7 +16,7 @@ There is no RAID: these are three independent btrfs filesystems, and redundancy 
 
 Health is watched by the `disk-health` Ansible role and `apps/monitoring/prometheus-rules-disk-health.yaml`: a monthly `btrfs scrub` per filesystem, SMART alerts for the two NVMe drives, and btrfs error alerts for all three. The USB bridge hides SMART, so a failing 8TB shows up only as btrfs errors, a scrub failure or a stale backup.
 
-Note: this is a same-box setup. It protects against one disk failing and against accidental deletion (via snapshots), but NOT against loss of the whole machine (fire, theft, surge). Offsite is not implemented.
+Note: this is a same-box setup. It protects against one disk failing and against accidental deletion (via snapshots), but NOT against loss of the whole machine (fire, theft, surge). That is the job of the offsite copy in Backblaze B2: see `Offsite (B2)`.
 
 ## If a drive fails
 
@@ -28,7 +28,7 @@ Apps on a failed disk go down, and a failed root disk takes this node's pods wit
 | NAS (`...7E07`) | Immich originals, phones, harvest, the Emotiv archive, 3D prints, the public share, all app backups on the NAS, Immich's live Postgres and the media apps' config, Forgejo local fulls | 8TB: every mirror's newest snapshot, `@immich-db` for the Immich database. Forgejo fulls come back at the next 3 AM run, and hp-victus keeps the newest 2 meanwhile | Changes since the last mirror (a day for Immich and the app backups, up to a week for the rest), the snapper history, and the Zomboid backup history on the public share (the live world is on the root disk, and the job writes a new backup nightly) |
 | 8TB (`backup8t`) | Every mirror and all snapshot history. No live data | Nothing to restore: the sources are all still live. Replace the drive and the jobs refill it | Point-in-time history. Until the new drive has filled, a second failure loses data, so replace it first |
 
-Two disks at once, or the whole machine: what remains is live Forgejo on hp-victus (its data has lived there since 2026-11-11) and the GitHub mirror of this repo. That is the gap the offsite decision is about.
+Two disks at once, or the whole machine: restore from the offsite copy in B2 (`Offsite (B2)`), which holds the previous night's 8TB snapshots. Live Forgejo on hp-victus and the GitHub mirror of this repo also survive.
 
 ### Replacing a disk
 
@@ -179,24 +179,72 @@ K3s app backups run on schedule via CronJobs. Each backup writes a local archive
 | `app-config-backup` | Sunday 5:45 AM | `nas` | 8TB `/mnt/backup-8t/app-config` + snapshots (mirror of `/mnt/media/app-config`) |
 | `harvest-backup` | Sunday 6 AM | `nas` | 8TB `/mnt/backup-8t/harvest` + snapshots (mirror of `/mnt/nas/private/harvest`) |
 | `eeg-backup` | Daily 6:15 AM | `nas` | 8TB `/mnt/backup-8t/eeg` + snapshots (mirror of `/mnt/nas/private/eeg`) |
+| `offsite-backup` | Daily 1 AM | `offsite-backup` | Backblaze B2, restic, encrypted (the newest 8TB snapshot of every dataset above, plus `@immich-db` and `@forgejo-backups`) |
 | `zomboid-backup` | Daily 4:30 AM | `zomboid` | NAS **public** share `backups/zomboid/` |
 | `freqtrade-lab-backup` | Sunday 2:50 AM | `freqtrade` | NAS **public** share `backups/freqtrade/` (newest 4) |
 | `nas-backup-cleanup` | Sunday 5 AM | `nas` | not applicable |
 | `nas-backup-verify` | Monday 6 AM | `nas` | writes `manifest.log` |
 
-Every copy in this table lives in this house. There is no offsite tier: see the note under `asus-laptop drive inventory`.
-
-**2026-08-25 decision: LAN-only is accepted, for now.** Offsite was considered for `actual-budget` (encrypted push to DO Spaces, a third LAN copy on hp-victus, or an encrypted archive in a private repo) and deliberately deferred, not overlooked. The exposure is a whole-house loss: fire, theft or flood takes every copy of the finance history, the Vaultwarden export and the Home Assistant config at once. Revisit when convenient. Until then, `actual-budget-backup` fails loudly if its off-box copy fails, because with no offsite tier the second machine is the only redundancy there is.
+Every copy in this table except `offsite-backup` lives in this house. `offsite-backup` copies the 8TB, so it is at most one day behind it, and a dataset that never reaches the 8TB never reaches B2 either. Media (`/mnt/media/library`, downloads) is replaceable and not copied offsite.
 
 ### Failure policy per job
 
 | Job | Off-box copy fails |
 |---|---|
-| `actual-budget-backup` | **Job fails, `HomelabCronJobFailed` pages.** Deliberate exception, see above. |
+| `actual-budget-backup` | **Job fails, `HomelabCronJobFailed` pages.** The finance history is the data least able to wait a day for the next 8TB and offsite runs. |
 | `karakeep-backup` | **Job fails.** Its PVCs and local backups share a disk, so the NAS copy is the only protection. |
 | `postgres-backup` | **Job fails.** The NAS is its only destination. |
 | `vaultwarden-backup` | **Job fails.** The local copy sits on the one node holding the PVC, and losing the vault loses every credential. |
 | everything else | Job exits 0, warning in the log only (best-effort). |
+
+## Offsite (B2)
+
+The third copy, outside the house. `offsite-backup` (namespace `offsite-backup`, `apps/offsite-backup/`) runs restic nightly at 1 AM on asus-laptop. It reads only the 8TB, read-only: the newest snapshot of `immich`, `phones`, `harvest`, `eeg`, `nas-backups`, `app-config`, `3d-prints` and `forgejo-packages`, plus `@immich-db` and `@forgejo-backups`, each bind-mounted at `/data/<name>` so restic sees a stable path. restic encrypts on the host; B2 never sees plaintext.
+
+- Retention: Sunday runs `forget --keep-daily 7 --keep-weekly 8 --keep-monthly 12 --prune`. The 1st of each month runs `check --read-data-subset=5%`, which re-downloads about 30 GB and verifies it.
+- Ransomware guard: the bucket has Object Lock (governance mode, 30-day default retention), and the job's key has no delete permission. So the job, or anyone holding its key, can only hide a file, never destroy a version; restic's prune works by hiding. The lifecycle rule deletes a hidden version 30 days after it was hidden, so a bad delete can be undone for 30 days. Tested 2026-11-12: a permanent delete with the job key returns 401 unauthorized, and with the master key 401 access_denied unless it passes `bypassGovernance`.
+- Alerting: `HomelabBackupStale` pages when the job has not succeeded in 36h. A failed check or prune fails the job, so it pages the same way.
+- Secret: `apps/offsite-backup/secret.sops.yaml` holds `RESTIC_REPOSITORY`, `RESTIC_PASSWORD`, `AWS_ACCESS_KEY_ID` and `AWS_SECRET_ACCESS_KEY` (the B2 application key `offsite-backup-job`: bucket `kblab-offsite-b17a11` only, list, read and write, no delete). The repository is `restic` in that bucket, region `us-east-005`. The master application key is in rbw as `backblaze_api` (the keyID after `key:` in the password, the key after `secret:` in the notes); it never goes into the cluster. Under `test/` in the bucket sits a 2 MB throwaway repository from the 2026-11-12 permission test; it expires with its lock and can be ignored.
+
+### Break-glass: the keys must be outside the house too
+
+If the house is lost, Vaultwarden (and so rbw) and the SOPS age key on the workstation are lost with it, and the B2 copy cannot be opened without them. Keep these together somewhere outside the house (printed in a safe place, or a cloud password manager): the restic password, the B2 account login, the `backblaze-b2` key, and the SOPS age key (`~/.config/sops/age/keys.txt`). Re-do this whenever one of them rotates. To read the restic password: `sops -d apps/offsite-backup/secret.sops.yaml | grep RESTIC_PASSWORD`.
+
+### First upload
+
+The first run sends about 0.6 TB, around two days on the 36 Mbps uplink. Run it as a one-off job with a longer deadline and an upload cap, so the house keeps working:
+
+```bash
+kubectl -n offsite-backup create job offsite-seed --from=cronjob/offsite-backup --dry-run=client -o json \
+  | jq '.spec.activeDeadlineSeconds = 345600
+        | (.spec.template.spec.containers[0].env[] | select(.name == "LIMIT_UPLOAD_KIB") | .value) = "3500"' \
+  | kubectl create -f -
+kubectl -n offsite-backup logs -f job/offsite-seed
+```
+
+restic keeps the data it has already uploaded, so a seed that is interrupted only needs to be started again.
+
+### Use the repository by hand
+
+From any machine with restic and the four values from the secret:
+
+```bash
+export $(sops -d apps/offsite-backup/secret.sops.yaml | yq -r '.stringData | to_entries[] | "\(.key)=\(.value)"')
+restic snapshots
+restic ls latest /data/actual-budget 2>/dev/null || restic ls latest /data/nas-backups | head
+```
+
+The repository was created once with `restic init` and the job never creates one, so a wrong URL or password fails instead of starting a second repository.
+
+### Restore from B2
+
+Restore to a scratch directory, never over live data:
+
+```bash
+restic restore latest --target /tmp/offsite-restore --include /data/nas-backups/home-k3s/actual-budget
+```
+
+Whole-house loss: restore `/data/immich` (originals, under `upload`), `/data/immich-db`, `/data/nas-backups` (every app dump) and `/data/forgejo-backups` first; then follow the per-app restore sections below. restic can also `restic mount /mnt/offsite` to browse every snapshot as files.
 
 ## Retention
 

@@ -52,6 +52,7 @@ resources:
   - ntfy
   - ntfy-public
   - nvidia-device-plugin
+  - offsite-backup
   - openwakeword
   - searxng
   - orcaslicer

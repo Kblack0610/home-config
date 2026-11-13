@@ -12,6 +12,7 @@ Frigate NVR on home-k3s, reconciled by Flux. Object detection runs on a Coral US
 | `ingress.yaml` | `frigate.kblab.me`, LAN only (external-dns skips it). |
 | `pvc.yaml` | `frigate-config` (db, model cache) and `frigate-media` (recordings), both local-path on hp-victus. |
 | `camera-secret.yaml` | SOPS. amcrest-ptz-1's `frigate` account as `FRIGATE_RTSP_USER` / `FRIGATE_RTSP_PASSWORD`, amcrest-living-room's `admin` account as `FRIGATE_LIVING_ROOM_USER` / `FRIGATE_LIVING_ROOM_PASSWORD`. |
+| `config.yml` `audio:` | Dog bark detection, see Bark detection below. |
 | `backup-cronjob.yaml` | Daily `sqlite3 .backup` of `frigate.db` + `config.yml` to the NAS. Recordings are not backed up. |
 
 ## Access
@@ -121,6 +122,23 @@ After a factory reset (hold the pinhole a full 30 s; a short press only reboots 
 2. Add it in the Amcrest Smart Home app on `BrownDooDoo`. When the app asks for the device password, use `amcrest-wifi-camera-password` from rbw. The app's other password prompt is the Amcrest cloud login, not the camera's.
 3. Check `admin`/`admin` is refused over ONVIF, with one call.
 4. Reapply the stream settings above over Media2 and confirm with `ffprobe`.
+
+## Bark detection
+
+Frigate's audio detector (YAMNet, on the CPU) listens to both cameras' main streams, which already carry AAC audio, and logs a `bark`, `yip` or `howl` event with a clip. It exists so we have a record of when the dog barks and for how long. `speech` and `yell` are left out of `audio.listen` on purpose, so conversations never become events.
+
+| Piece | Where | What it does |
+|-------|-------|--------------|
+| Detection | `config.yml` `audio:` and the `audio` input role | An event per episode; it ends after `max_not_heard` (30 s) of quiet. `min_volume` (500) skips audio quieter than a dog in the room |
+| Retention | `config.yml` `review.alerts.labels` | Bark clips are alerts, so Frigate keeps them 14 days, not the 1-day motion window |
+| Archive | `apps/nas/bark-archive.sh`, CronJob `bark-archive` hourly at :20 | Copies every clip (5 s padding) and one CSV row per episode to `/mnt/nas/private/dog-barks/YYYY-MM/`; kept forever |
+| Mirror | CronJob `dog-barks-backup`, 6:45 AM | btrfs snapshot copy to `/mnt/backup-8t/dog-barks`, 14 kept |
+| Home Assistant | `apps/home-assistant/config/packages/dog_barks.yaml` | `binary_sensor.dog_barking`, episodes and minutes today and this week, the 21:00 summary push (ntfy `home`), and a mic-live connectivity sensor per camera that pages when a camera's sound level stops updating |
+| Dashboard | `apps/home-assistant/config/dashboards/view_dog.yaml` | The Dog view on the wall panels and phone: now, today, mics, 24 h history, bark clips with sound |
+
+The CSV (`date,start,end,duration_s,camera,label,score_pct,clip`, local time) is the document to show anyone. YAMNet can tag a dog on TV as a bark: play the clip of any row you rely on, and raise `min_volume` or add an `audio.filters.bark.threshold` if false hits show up. Clips hold whatever else was audible for those seconds, voices included; deleting `/mnt/nas/private/dog-barks` and the `audio` role removes it all.
+
+Test: play a dog-bark recording near a camera. The Frigate UI shows an audio event, `binary_sensor.dog_barking` turns on, and `kubectl --context home-k3s -n nas create job --from=cronjob/bark-archive bark-archive-manual` writes the clip and a CSV row. Speech or music at the same volume must create no event.
 
 ## Verify
 

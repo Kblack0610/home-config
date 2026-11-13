@@ -254,7 +254,7 @@ views:
       layout: center
       card:
         type: grid
-        columns: 9
+        columns: 10
         square: false
         cards:
           - &nav
@@ -265,6 +265,11 @@ views:
             layout: vertical
             tap_action: { action: navigate, navigation_path: control }
           - { <<: *nav, primary: Devices, icon: mdi:robot-vacuum, tap_action: { action: navigate, navigation_path: devices } }
+          - <<: *nav
+            primary: Dog
+            icon: mdi:dog
+            icon_color: "{{ 'amber' if is_state('binary_sensor.dog_barking', 'on') else 'blue' }}"
+            tap_action: { action: navigate, navigation_path: dog }
           - { <<: *nav, primary: Music, icon: mdi:music, tap_action: { action: navigate, navigation_path: music } }
           - { <<: *nav, primary: Media, icon: mdi:play-box-multiple, tap_action: { action: navigate, navigation_path: media } }
           - { <<: *nav, primary: Local, icon: mdi:map-marker-radius, tap_action: { action: navigate, navigation_path: local } }
@@ -343,6 +348,7 @@ views:
   - !include view_devices.yaml
 
   - !include view_control.yaml
+  - !include view_dog.yaml
 
   - !include view_local.yaml
 

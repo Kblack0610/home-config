@@ -1,0 +1,46 @@
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: bark-archive
+  namespace: nas
+spec:
+  # Hourly, at :20. Copies Frigate's dog-bark audio events (clip + CSV row) to
+  # /mnt/nas/private/dog-barks, the evidence log for barking complaints. Frigate
+  # keeps a clip 14 days; this keeps all of them. Logic: bark-archive.sh.
+  schedule: "20 * * * *"
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      backoffLimit: 1
+      activeDeadlineSeconds: 1800
+      template:
+        spec:
+          # Runs on the NAS host so it writes the NAS disk directly, as the 8TB
+          # mirror jobs do; it reads Frigate over its in-cluster API.
+          nodeSelector:
+            kubernetes.io/hostname: asus-laptop
+            storage.role/nas: "true"
+          containers:
+            - name: archive
+              image: alpine:3.24.1
+              command: ["/bin/sh", "/scripts/bark-archive.sh"]
+              env:
+                - name: TZ
+                  value: America/Los_Angeles
+              volumeMounts:
+                - name: script
+                  mountPath: /scripts
+                  readOnly: true
+                - name: archive
+                  mountPath: /archive
+          restartPolicy: Never
+          volumes:
+            - name: script
+              configMap:
+                name: bark-archive-script
+            - name: archive
+              hostPath:
+                path: /mnt/nas/private/dog-barks
+                type: DirectoryOrCreate

@@ -1,0 +1,68 @@
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: dog-barks-backup
+  namespace: nas
+spec:
+  # Daily 6:45 AM. The dog-bark evidence archive (bark-archive-cronjob.yaml): clips
+  # and CSV log. Frigate drops its own copy after 14 days, so after that the NAS disk
+  # holds the only one and this mirror is the backup.
+  schedule: "45 6 * * *"
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      backoffLimit: 1
+      activeDeadlineSeconds: 21600
+      template:
+        spec:
+          nodeSelector:
+            kubernetes.io/hostname: asus-laptop
+            storage.role/nas: "true"
+          # Privileged: required for btrfs subvolume snapshot/delete commands
+          securityContext:
+            runAsUser: 0
+          containers:
+            - name: backup
+              image: alpine:3.24.1
+              securityContext:
+                privileged: true
+              # Guards, rsync, snapshot and prune live in mirror-snapshot.sh
+              # (the nas-mirror-script ConfigMap).
+              command: ["/bin/sh", "/scripts/mirror-snapshot.sh"]
+              env:
+                - name: NAME
+                  value: dog-barks
+                - name: KEEP
+                  value: "14"
+              volumeMounts:
+                - name: script
+                  mountPath: /scripts
+                  readOnly: true
+                - name: source
+                  mountPath: /source
+                  readOnly: true
+                - name: backup-dest
+                  mountPath: /backup-dest
+                - name: snapshots
+                  mountPath: /snapshots
+          restartPolicy: Never
+          volumes:
+            - name: script
+              configMap:
+                name: nas-mirror-script
+            - name: source
+              hostPath:
+                path: /mnt/nas/private/dog-barks
+                type: Directory
+            # Directory, not DirectoryOrCreate: the subvolumes come from the
+            # usb-backup-mounts role.
+            - name: backup-dest
+              hostPath:
+                path: /mnt/backup-8t/dog-barks
+                type: Directory
+            - name: snapshots
+              hostPath:
+                path: /mnt/backup-8t/dog-barks-snapshots
+                type: Directory

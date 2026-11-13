@@ -475,6 +475,7 @@ spec:
               cp /managed-config/package_fleet_alerts.yaml /config/packages/fleet_alerts.yaml
               cp /managed-config/package_home_alerts.yaml /config/packages/home_alerts.yaml
               cp /managed-config/package_voice_health.yaml /config/packages/voice_health.yaml
+              cp /managed-config/package_dog_barks.yaml /config/packages/dog_barks.yaml
               cp /managed-config/package_marine.yaml /config/packages/marine.yaml
               cp /managed-config/package_voice_satellite_binks.yaml /config/packages/voice_satellite_binks.yaml
               cp /managed-config/package_voice_pe_pucks.yaml /config/packages/voice_pe_pucks.yaml
@@ -545,6 +546,7 @@ spec:
               cp /managed-config/dashboard_view_agents.yaml /config/dashboards/view_agents.yaml
               cp /managed-config/dashboard_view_devices.yaml /config/dashboards/view_devices.yaml
               cp /managed-config/dashboard_view_control.yaml /config/dashboards/view_control.yaml
+              cp /managed-config/dashboard_view_dog.yaml /config/dashboards/view_dog.yaml
               cp /managed-config/dashboard_view_ci.yaml /config/dashboards/view_ci.yaml
               cp /managed-config/dashboard_view_local.yaml /config/dashboards/view_local.yaml
               cp /managed-config/dashboard_view_ops.yaml /config/dashboards/view_ops.yaml

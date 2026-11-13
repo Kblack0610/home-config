@@ -78,6 +78,33 @@ objects:
     - dog
     - cat
 
+# Dog bark detection (docs: "Bark detection" in README.md). Frigate's YAMNet
+# classifier listens to each camera's main stream (the `audio` role below) and
+# makes an audio event per barking episode; an episode ends after max_not_heard
+# seconds of quiet. Only dog sounds are listed: Frigate's default list also has
+# `speech` and `yell`, left out so no conversation becomes an event.
+# min_volume and the per-label threshold are tuned from the dBFS the cameras
+# report (sensor.<camera>_sound_level in HA): lower min_volume hears quieter barks.
+audio:
+  enabled: true
+  max_not_heard: 30
+  min_volume: 500
+  listen:
+    - bark
+    - yip
+    - howl
+
+# Barks are alerts, so their clips keep the 14-day alert retention (not the
+# 1-day motion window) and show in the Frigate UI's Alerts tab. Frigate's own
+# default here is [car, person]; car is never tracked.
+review:
+  alerts:
+    labels:
+      - person
+      - bark
+      - yip
+      - howl
+
 cameras:
   amcrest_ptz_1:
     ffmpeg:
@@ -86,6 +113,7 @@ cameras:
           input_args: preset-rtsp-restream
           roles:
             - record
+            - audio
         - path: rtsp://127.0.0.1:8554/amcrest_ptz_1_sub
           input_args: preset-rtsp-restream
           roles:
@@ -118,6 +146,7 @@ cameras:
           input_args: preset-rtsp-restream
           roles:
             - record
+            - audio
         - path: rtsp://127.0.0.1:8554/amcrest_living_room_sub
           input_args: preset-rtsp-restream
           roles:

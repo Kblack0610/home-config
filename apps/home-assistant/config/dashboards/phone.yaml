@@ -62,6 +62,7 @@ views:
               - { type: template, icon: mdi:robot, content: Agents, tap_action: { action: navigate, navigation_path: agents } }
               - { type: template, icon: mdi:tune, content: Controls, tap_action: { action: navigate, navigation_path: control } }
               - { type: template, icon: mdi:robot-vacuum, content: Devices, tap_action: { action: navigate, navigation_path: devices } }
+              - { type: template, icon: mdi:dog, content: Dog, tap_action: { action: navigate, navigation_path: dog } }
               - { type: template, icon: mdi:map-marker-radius, content: Local, tap_action: { action: navigate, navigation_path: local } }
               - { type: template, icon: mdi:server-network, content: Ops, tap_action: { action: navigate, navigation_path: ops } }
               - { type: template, icon: mdi:play-box-multiple, content: Media, tap_action: { action: navigate, navigation_path: media } }
@@ -121,6 +122,7 @@ views:
   - !include view_agents.yaml
   - !include view_devices.yaml
   - !include view_control.yaml
+  - !include view_dog.yaml
   - !include view_local.yaml
   - !include view_ops.yaml
   - !include view_ci.yaml

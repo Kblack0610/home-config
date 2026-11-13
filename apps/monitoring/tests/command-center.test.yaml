@@ -172,9 +172,9 @@ tests:
   - name: red now is one row per live item, from watches, runners, nodes and a frozen feed, never a deleted topic
     interval: 1m
     input_series:
-      - series: 'mqtt_tripped{topic="agents_h_watch_queue_starved",instance="a"}'
+      - series: 'mqtt_tripped{topic="agents_h_watch_shepherd_stuck",instance="a"}'
         values: '1x10'
-      - series: 'mqtt_tripped{topic="agents_h_watch_queue_starved",instance="b"}'
+      - series: 'mqtt_tripped{topic="agents_h_watch_shepherd_stuck",instance="b"}'
         values: '1x10'
       - series: 'mqtt_tripped{topic="agents_h_watch_ok_one"}'
         values: '0x10'
@@ -189,7 +189,7 @@ tests:
         values: '1x10'
       - series: 'mqtt_message_total{topic="agents_h_runner_gone"}'
         values: '7x30'
-      - series: 'mqtt_message_total{topic="agents_h_watch_queue_starved",instance="a"}'
+      - series: 'mqtt_message_total{topic="agents_h_watch_shepherd_stuck",instance="a"}'
         values: '0+1x10'
       - series: 'mqtt_message_total{topic="agents_h_watch_ok_one"}'
         values: '0+1x10'
@@ -199,7 +199,7 @@ tests:
       - expr: cc:red_now
         eval_time: 5m
         exp_samples:
-          - labels: 'cc:red_now{item="watch queue_starved"}'
+          - labels: 'cc:red_now{item="watch shepherd_stuck"}'
             value: 1
           - labels: 'cc:red_now{item="runner fleet_dispatch"}'
             value: 1
@@ -469,6 +469,29 @@ tests:
             value: 1
           - labels: 'cc:red_now{item="watch voice_bedroom_puck"}'
             value: 1
+
+  - name: a dispatch held for account room and the playground server watch warn, never red
+    interval: 1m
+    input_series:
+      - series: 'mqtt_tripped{topic="agents_h_watch_queue_starved"}'
+        values: '1x10'
+      - series: 'mqtt_tripped{topic="agents_h_watch_playground_server_behind"}'
+        values: '1x10'
+      - series: 'mqtt_message_total{topic="agents_h_watch_queue_starved"}'
+        values: '0+1x10'
+      - series: 'mqtt_message_total{topic="agents_h_watch_playground_server_behind"}'
+        values: '0+1x10'
+    promql_expr_test:
+      - expr: cc:watch_state
+        eval_time: 5m
+        exp_samples:
+          - labels: 'cc:watch_state{domain="queue",item="queue_starved"}'
+            value: 1
+          - labels: 'cc:watch_state{domain="ci",item="playground_server_behind"}'
+            value: 1
+      - expr: cc:red_now{item=~"watch .+"}
+        eval_time: 5m
+        exp_samples: []
 
   - name: Neptune down shows amber on its own printer row and leaves the overall status alone
     interval: 1m

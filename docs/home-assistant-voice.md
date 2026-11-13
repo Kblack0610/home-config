@@ -7,7 +7,7 @@ Built and shipped in stages so each layer is tested in isolation.
 
 | Stage | What | Status |
 |-------|------|--------|
-| 0 | Fix broken cast TTS announcements (`tts.google_say`) | ✅ shipped (PR #77) |
+| 0 | Announcements: `script.tts_announce` speaks on the Music Assistant rooms (`media_player.play_media`, `announce: true`) | ✅ shipped |
 | 1 | **Text chat** — Binks conversation agent + home control | ✅ shipped |
 | 2 | **Press-to-talk voice** — STT via LiteLLM whisper + Google TTS | ✅ shipped |
 | 3 | **Wake word (server)** — `wyoming-openwakeword` for *hardware* satellites; unused by the tablet card | ◑ server side shipped |

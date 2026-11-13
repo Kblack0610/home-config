@@ -493,6 +493,51 @@ tests:
         eval_time: 5m
         exp_samples: []
 
+  - name: alertmanager fleet warns while an agent fixes it and is down after 2h tripped without a break
+    interval: 1m
+    input_series:
+      - series: 'mqtt_tripped{topic="agents_h_watch_alertmanager_fleet"}'
+        values: '0x60 1x150'
+      - series: 'mqtt_message_total{topic="agents_h_watch_alertmanager_fleet"}'
+        values: '0+1x210'
+    promql_expr_test:
+      - expr: cc:watch_state{domain="platform"}
+        eval_time: 1h20m
+        exp_samples:
+          - labels: 'cc:watch_state{domain="platform",item="alertmanager_fleet"}'
+            value: 1
+      - expr: cc:watch_state{domain="platform"}
+        eval_time: 3h5m
+        exp_samples:
+          - labels: 'cc:watch_state{domain="platform",item="alertmanager_fleet"}'
+            value: 2
+  - name: alertmanager fleet with no 2h history or a one-minute clear in its window still warns
+    interval: 1m
+    input_series:
+      # tripped from the first sample, cleared at minute 81, tripped again from 82
+      - series: 'mqtt_tripped{topic="agents_h_watch_alertmanager_fleet"}'
+        values: '1x80 0 1x150'
+      - series: 'mqtt_message_total{topic="agents_h_watch_alertmanager_fleet"}'
+        values: '0+1x231'
+    promql_expr_test:
+      # no sample 2h back yet: the offset guard holds it at warn
+      - expr: cc:watch_state{domain="platform"}
+        eval_time: 1h
+        exp_samples:
+          - labels: 'cc:watch_state{domain="platform",item="alertmanager_fleet"}'
+            value: 1
+      # the minute-81 clear is inside the 2h window: still warn
+      - expr: cc:watch_state{domain="platform"}
+        eval_time: 3h
+        exp_samples:
+          - labels: 'cc:watch_state{domain="platform",item="alertmanager_fleet"}'
+            value: 1
+      # 2h tripped since the clear: down
+      - expr: cc:watch_state{domain="platform"}
+        eval_time: 3h25m
+        exp_samples:
+          - labels: 'cc:watch_state{domain="platform",item="alertmanager_fleet"}'
+            value: 2
   - name: Neptune down shows amber on its own printer row and leaves the overall status alone
     interval: 1m
     input_series:
@@ -783,7 +828,7 @@ tests:
         eval_time: 5m
         exp_samples:
           - labels: 'cc:watch_state{domain="platform",item="alertmanager_fleet"}'
-            value: 2
+            value: 1
           - labels: 'cc:watch_state{domain="platform",item="pager_undelivered"}'
             value: 2
       - expr: cc:watch_state{domain="llm",item="langfuse_read"}

@@ -6,7 +6,10 @@ use_default_settings:
     # Image results feed the tablet's picture grid. These engines answered
     # "chicken recipes" with museum art, icon sets and stock photos of raw meat
     # (2026-10-15); bing images, google cse images and pinterest return the
-    # actual dishes.
+    # actual dishes. devicons matched words like "handheld", "pixel" and
+    # "router" with logo SVGs, 415 of 466 results for "ASUS ROG Ally X
+    # handheld", so binks answers showed a logo instead of the product
+    # (2026-11-13).
     remove:
       - artic
       - lucide
@@ -14,6 +17,7 @@ use_default_settings:
       - flickr
       - pexels
       - wikicommons.images
+      - devicons
 
 general:
   instance_name: binks-search

@@ -57,8 +57,11 @@
     executable: /bin/bash
     creates: "{{ ansible_env.HOME }}/.local/bin/claude"
 
-# Kept on main: an older agent-queue there would write the queue on the worker
-# instead of forwarding it (fleet-dispatch's probe refuses such a worker).
+# Cloned at main, then kept there by the dotfiles' own dotfiles-autopull (every
+# shell start, at most each 6h), not by this task: main moves many times a day, so
+# update here would report a change on every --check. A worker left behind is
+# still caught: an older agent-queue writes the queue on the worker instead of
+# forwarding it, and fleet-dispatch's probe refuses such a worker.
 # No submodules: two are private ssh remotes a fresh worker cannot reach, and
 # a session needs none of them.
 - name: Clone the public dotfiles, at main
@@ -66,6 +69,7 @@
     repo: "{{ fleet_worker_dotfiles_repo }}"
     dest: "{{ ansible_env.HOME }}/.dotfiles"
     version: main
+    update: false
     recursive: false
 
 # apply_dotfiles removes a plain ~/.bashrc and ~/.zshrc before it stows, so a
@@ -165,7 +169,9 @@
 - name: Trust the state host's host key
   ansible.builtin.known_hosts:
     name: "{{ fleet_state_host }}"
-    key: "{{ lookup('ansible.builtin.pipe', 'ssh-keyscan -t ed25519 ' ~ fleet_state_host ~ ' 2>/dev/null') }}"
+    # OpenSSH 10 also prints a "# host:22 SSH-2.0-..." banner line on stdout; kept in
+    # the key, it never matches known_hosts and the task appends the pair on every run.
+    key: "{{ lookup('ansible.builtin.pipe', 'ssh-keyscan -t ed25519 ' ~ fleet_state_host ~ ' 2>/dev/null | grep -v ^#') }}"
     state: present
 
 - name: Read whether the worker reaches the state host

@@ -273,6 +273,14 @@ Move it (manual until plan `vectorized-pondering-turtle` P5 ships `scripts/forge
 4. Start: `systemctl start forgejo` on the new host; `forge-fence-check` there must print that the record names it. Wait out the 60 s TTL for the cluster to follow.
 5. Verify: the checks above, a push, a PR comment, `flux get sources git` fetching a new revision.
 
+A change that needs Flux paused (a merge that moves Forgejo, the in-cluster copy's Services, or its Deployment) resumes in this order, never the other way round:
+
+1. `flux resume source git flux-system`, then `flux reconcile source git flux-system`.
+2. Check the source holds the merge: `kubectl -n flux-system get gitrepository flux-system -o jsonpath='{.status.artifact.revision}'` is the merge commit or a descendant of it.
+3. Only then `flux resume kustomization apps`.
+
+Resuming the Kustomization first applies whatever revision the source fetched before the merge. On 2026-11-14 that was master from before #977: it scaled the asus Deployment back to 1 and pointed the Services at it, and for two minutes asus took writes (a PR took #986 again, reopened on hel1 as #991). Until cleanup deletes the in-cluster Deployment, any stale revision can do the same.
+
 Roll back to asus (until cleanup reaps the asus copy): stop forge-hel1 (`systemctl stop forgejo`), park the record on `192.0.2.1` (names no host) so the fence keeps it down, rsync `/mnt/forgejo/data/` back to `/mnt/backups/forgejo-live/data/` (writes since the cutover), revert the cutover PR (selector Services, `replicas: 1`, the CronJob suspends), and apply the Services by hand, since Flux cannot fetch while Forgejo is down.
 
 ### Troubleshooting
@@ -285,6 +293,7 @@ Roll back to asus (until cleanup reaps the asus copy): stop forge-hel1 (`systemc
 | Pods or Traefik reach `192.168.1.124` for `forgejo-http` | CoreDNS asked the LAN resolver, whose `*.kblab.me` wildcard answers every name | `kubectl -n kube-system get cm coredns-custom`; restart CoreDNS (`rollout restart deploy/coredns`) after a change to it |
 | Traefik 404 or `externalName services not allowed` | `allowExternalNameServices` missing from the Traefik args | `apps/crowdsec/helmchartconfig.yaml`; `kubectl -n kube-system get deploy traefik -o yaml \| grep -i externalname` |
 | Flux stuck on an old revision after a move | the new host is not answering yet | fix the host; Flux fetches on its next interval, or `flux reconcile source git flux-system` |
+| The asus Forgejo pod starts again after `flux resume` | the Kustomization was resumed before the source fetched the merge, so it applied an older master (replicas 1, selector Services) | `flux suspend kustomization apps`, `kubectl -n forgejo scale deploy/forgejo --replicas=0`, re-apply the ExternalName Services (`kubectl apply --server-side --field-manager=kustomize-controller --force-conflicts -f apps/forgejo/service-http.yaml`, same for ssh), list what asus wrote meanwhile (rows with `created_unix`/`updated_unix` past the freeze, refs newer than it) and carry each to the live host; then resume in the order above |
 | Two Forgejos answer | someone started a copy past the fence (override, or the old in-cluster Deployment) | stop the one the record does not name at once; the data has forked from that moment, so compare PR numbers as on 2026-11-13 (#961, #962) before anything else writes |
 
 ## Related Docs

@@ -1,0 +1,6 @@
+---
+# Auth key: rbw infra/tailscale-auth-key, minted by the human at
+# login.tailscale.com (an account we do not run), copied into
+# group_vars/all/vault.sops.yaml.
+tailscale_node_auth_key: "{{ vault_tailscale_auth_key }}"
+tailscale_node_hostname: "{{ inventory_hostname }}"

@@ -92,6 +92,26 @@ spec:
             fleet: fix
           annotations:
             summary: "ci-runner-governor has had no reading for 30 minutes, so no Unity slot is being pulled or returned. Check github_runner_exporter_api_ok and GitHub's API limit"
+        # One host's slots short of the roster for an hour: the per-host gap that
+        # unity-runners-online (zero online org-wide) cannot see. Not the opt-in windows pool
+        # (windows-media:windows, offline unless asked for) and not the hosts the governor
+        # powers (they carry ci_governor_power_state and are off by design). A 7-day replay to
+        # 2026-11-14: fires on windows-media-ci (unity-pool-3 down 15h, 11-14) and
+        # cachyos-x8664-main (7.5h, 11-13); the roster lag after a host leaves (under 1h) stays quiet.
+        - alert: CiHostRunnersOffline
+          expr: |
+            (
+              max by (host, pool) (github_runner_pool_expected{pool!="windows"})
+              - max by (host, pool) (github_runner_pool_online)
+            ) > 0
+            unless on (host) max by (host) (ci_governor_power_state)
+          for: 1h
+          labels:
+            severity: warning
+            category: capacity
+            fleet: fix
+          annotations:
+            summary: "{{ $labels.host }} has had {{ $value }} {{ $labels.pool }} runner(s) offline for an hour: docs/runbooks/unity-ci-host.md#a-host-short-of-its-runners"
         # A reclaim kills every job on the Spot host. More than 3 in a day means that type is
         # scarce: set its entry spot = false in platform infra/aws-ci-burst (2026-11-13 plan).
         - alert: CiSpotHostReclaimedOften

@@ -172,3 +172,8 @@
     state: restarted
   when: _ci_docker_config_age.stdout == 'stale'
 
+
+- name: Keep Ubuntu's unattended upgrades off running jobs
+  ansible.builtin.import_tasks: unattended.yml
+  when: ansible_os_family == "Debian"
+  tags: [unattended]

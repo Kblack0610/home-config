@@ -74,6 +74,52 @@ tests:
           - exp_labels: {alertname: CiGovernorBlind, severity: critical, category: capacity, fleet: fix}
             exp_annotations: {summary: "ci-runner-governor has had no reading for 30 minutes, so no Unity slot is being pulled or returned. Check github_runner_exporter_api_ok and GitHub's API limit"}
 
+  - name: a host short of its runners for an hour wakes an agent; opt-in and powered hosts stay quiet
+    interval: 1m
+    input_series:
+      - series: 'github_runner_pool_expected{host="windows-media-ci",pool="unity"}'
+        values: '3x90'
+      - series: 'github_runner_pool_online{host="windows-media-ci",pool="unity"}'
+        values: '2x90'
+      # Opt-in: offline unless asked for.
+      - series: 'github_runner_pool_expected{host="windows-media",pool="windows"}'
+        values: '1x90'
+      - series: 'github_runner_pool_online{host="windows-media",pool="windows"}'
+        values: '0x90'
+      # Powered off by the governor.
+      - series: 'github_runner_pool_expected{host="aws-burst-2",pool="unity"}'
+        values: '6x90'
+      - series: 'github_runner_pool_online{host="aws-burst-2",pool="unity"}'
+        values: '0x90'
+      - series: 'ci_governor_power_state{host="aws-burst-2"}'
+        values: '0x90'
+      # Full: no alert.
+      - series: 'github_runner_pool_expected{host="razer-laptop",pool="light"}'
+        values: '2x90'
+      - series: 'github_runner_pool_online{host="razer-laptop",pool="light"}'
+        values: '2x90'
+    alert_rule_test:
+      - eval_time: 55m
+        alertname: CiHostRunnersOffline
+        exp_alerts: []
+      - eval_time: 65m
+        alertname: CiHostRunnersOffline
+        exp_alerts:
+          - exp_labels: {alertname: CiHostRunnersOffline, severity: warning, category: capacity, fleet: fix, host: windows-media-ci, pool: unity}
+            exp_annotations: {summary: "windows-media-ci has had 1 unity runner(s) offline for an hour: docs/runbooks/unity-ci-host.md#a-host-short-of-its-runners"}
+
+  - name: a runner gap shorter than an hour stays quiet
+    interval: 1m
+    input_series:
+      - series: 'github_runner_pool_expected{host="hp-victus",pool="light"}'
+        values: '1x90'
+      - series: 'github_runner_pool_online{host="hp-victus",pool="light"}'
+        values: '0x55 1x35'
+    alert_rule_test:
+      - eval_time: 80m
+        alertname: CiHostRunnersOffline
+        exp_alerts: []
+
   - name: a low GitHub API bucket warns after 10 minutes, per scope, across a pod restart
     interval: 1m
     input_series:

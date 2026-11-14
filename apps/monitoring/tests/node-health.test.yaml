@@ -37,3 +37,54 @@ tests:
             exp_annotations:
               summary: "CPU hot on saw:9100 (peaks of 100C for 10m)"
               description: "The CPU package on saw:9100 has peaked above 90C in every 10m window for 10m. Run scripts/host-headroom.py on it and move work off; on a laptop, check thermal-cap.service applied after the last boot (systemctl status thermal-cap) and lower the cap in inventory.yml (thermal_capped) if it did."
+
+  # hp-victus on 2026-11-14: charger out, battery draining. A host with mains on, a
+  # mouse battery (scope Device) and a device battery on a host with no Mains fire nothing.
+  - name: a laptop off its charger warns, then pages when the battery runs low
+    interval: 1m
+    input_series:
+      - series: 'node_power_supply_online{instance="victus:9100",power_supply="ACAD"}'
+        values: '0x10'
+      - series: 'node_power_supply_info{instance="victus:9100",power_supply="ACAD",type="Mains"}'
+        values: '1x10'
+      - series: 'node_power_supply_capacity{instance="victus:9100",power_supply="BAT1"}'
+        values: '40 35 29 25 20 15 10 7 5 3 1'
+      - series: 'node_power_supply_info{instance="victus:9100",power_supply="BAT1",type="Battery"}'
+        values: '1x10'
+      - series: 'node_power_supply_capacity{instance="victus:9100",power_supply="hidpp_battery_0"}'
+        values: '5x10'
+      - series: 'node_power_supply_info{instance="victus:9100",power_supply="hidpp_battery_0",type="Battery",scope="Device"}'
+        values: '1x10'
+      - series: 'node_power_supply_online{instance="plugged:9100",power_supply="AC0"}'
+        values: '1x10'
+      - series: 'node_power_supply_info{instance="plugged:9100",power_supply="AC0",type="Mains"}'
+        values: '1x10'
+      - series: 'node_power_supply_capacity{instance="plugged:9100",power_supply="BAT0"}'
+        values: '10x10'
+      - series: 'node_power_supply_info{instance="plugged:9100",power_supply="BAT0",type="Battery"}'
+        values: '1x10'
+      - series: 'node_power_supply_online{instance="desk:9100",power_supply="hidpp_battery_0"}'
+        values: '0x10'
+      - series: 'node_power_supply_info{instance="desk:9100",power_supply="hidpp_battery_0",type="Battery"}'
+        values: '1x10'
+    alert_rule_test:
+      - eval_time: 3m
+        alertname: NodeOnBattery
+        exp_alerts: []
+      - eval_time: 6m
+        alertname: NodeOnBattery
+        exp_alerts:
+          - exp_labels: {alertname: NodeOnBattery, severity: warning, category: node-health, instance: "victus:9100", power_supply: ACAD}
+            exp_annotations:
+              summary: "victus:9100 is on battery (ACAD offline)"
+              description: "The mains supply ACAD on victus:9100 has read offline for 5m, so the host runs on its battery and goes down when it is flat (hp-victus lasted about 95 minutes on 2026-11-14). Check the charger is plugged in and seated."
+      - eval_time: 3m
+        alertname: NodeBatteryLow
+        exp_alerts: []
+      - eval_time: 5m
+        alertname: NodeBatteryLow
+        exp_alerts:
+          - exp_labels: {alertname: NodeBatteryLow, severity: critical, category: node-health, instance: "victus:9100", power_supply: BAT1}
+            exp_annotations:
+              summary: "victus:9100 battery at 15% off mains"
+              description: "BAT1 on victus:9100 is at 15% with the charger offline. The host goes down within minutes; plug the charger in now."

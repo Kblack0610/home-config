@@ -1,7 +1,9 @@
 ---
 - name: Packages (docker, compose, rsync for the seed and backups, sqlite3 for snapshots)
+  # docker-cli: Debian 13 split the `docker` binary out of docker.io, so without
+  # it forgejo.service's `docker compose` has no command to run.
   ansible.builtin.apt:
-    name: [docker.io, docker-compose, rsync, sqlite3, unattended-upgrades]
+    name: [docker.io, docker-cli, docker-compose, rsync, sqlite3, unattended-upgrades]
     state: present
     update_cache: true
     cache_valid_time: 3600

@@ -40,13 +40,14 @@ proc "$p" 100 nginx 1000 500 100 50
 proc "$p" 101 nginx 200 0 100 30
 proc "$p" 200 'a) "b\c' 10 0 100 1
 proc "$p" 201 "$(printf 'two\nline')" 10 0 100 1
+proc "$p" 202 "$(printf 'bad\377byte')" 10 0 100 1
 proc "$p" 300 reused 900 0 100 1
 run "$p" "$t/docker-up"; rc=$?
 [ "$rc" = 0 ] && echo "ok   first run exits 0" || { echo "FAIL first run exit $rc"; cat "$t/err"; fail=1; }
 hasnt "the first run has no cpu lines" 'node_process_cpu_cores{'
 has "the first run reports memory" "node_process_resident_bytes{comm=\"nginx\"} $((80 * page))"
 has "processes are counted by comm" 'node_process_count{comm="nginx"} 2'
-has "all processes are totalled" 'node_processes_total 5'
+has "all processes are totalled" 'node_processes_total 6'
 
 # Ten seconds on. nginx used 1000 ticks across two processes; pid 300 is now a different
 # process (later starttime) that counts its own 50 ticks, not 50 - 900; pid 400 started
@@ -65,6 +66,7 @@ has "a process started since counts its whole ticks" "node_process_cpu_cores{com
 has "a process with no baseline counts nothing" 'node_process_cpu_cores{comm="racer"} 0.000'
 has "quote, backslash and paren in a comm are escaped" 'node_process_count{comm="a) \"b\\c"} 1'
 has "a newline in a comm is escaped" 'node_process_count{comm="two\nline"} 1'
+has "a byte that is not printable ASCII is replaced" 'node_process_count{comm="bad?byte"} 1'
 has "running services are listed" 'node_service_running{unit="sshd.service"} 1'
 has "a backslash in a unit name is escaped" 'node_service_running{unit="systemd-fsck@dev-disk-by\\x2duuid-1.service"} 1'
 has "container cpu is percent over 100" 'node_docker_container_cpu_cores{name="mailpit",image="axllent/mailpit:v1.20"} 0.025'
@@ -84,7 +86,8 @@ run "$p" "$t/nowhere"; rc=$?
 [ "$rc" = 0 ] && echo "ok   no docker CLI exits 0" || { echo "FAIL no docker exit $rc"; cat "$t/err"; fail=1; }
 hasnt "no docker CLI has no docker lines" 'node_docker'
 
-# Cardinality: the top 15 comms by cpu union the top 15 by memory, of 40.
+# Cardinality: the top 15 comms by cpu union the top 15 by memory, of 40. busy01 is also
+# the largest, so the union is 29 and fat15 is out.
 q=$t/proc2; rm -f "$t/state"; mkdir -p "$q"; echo '2000.00 1.00' > "$q/uptime"
 i=1
 while [ $i -le 20 ]; do
@@ -93,15 +96,17 @@ while [ $i -le 20 ]; do
     proc "$q" $((2000 + i)) "fat$n" 0 0 100 $(( (21 - i) * 1000 ))
     i=$((i + 1))
 done
+proc "$q" 1001 busy01 0 0 100 100000
 run "$q" "$t/nowhere"
 echo '2010.00 1.00' > "$q/uptime"
 i=1
 while [ $i -le 20 ]; do proc "$q" $((1000 + i)) "busy$(printf '%02d' $i)" $(( (21 - i) * 10 )) 0 100 1; i=$((i + 1)); done
+proc "$q" 1001 busy01 200 0 100 100000
 run "$q" "$t/nowhere"
 has "all 40 processes are totalled" 'node_processes_total 40'
-[ "$(grep -c '^node_process_count{' "$t/out/node_inventory.prom")" = 30 ] && echo "ok   30 comms reported" || { echo "FAIL comms: $(grep -c '^node_process_count{' "$t/out/node_inventory.prom")"; fail=1; }
+[ "$(grep -c '^node_process_count{' "$t/out/node_inventory.prom")" = 29 ] && echo "ok   29 comms reported" || { echo "FAIL comms: $(grep -c '^node_process_count{' "$t/out/node_inventory.prom")"; fail=1; }
 has "the 15th busiest is in" 'node_process_count{comm="busy15"}'
 hasnt "the 16th busiest is out" 'comm="busy16"'
-has "the 15th largest is in" 'node_process_count{comm="fat15"}'
-hasnt "the 16th largest is out" 'comm="fat16"'
+has "the 14th largest fat is in" 'node_process_count{comm="fat14"}'
+hasnt "the 16th largest is out" 'comm="fat15"'
 exit $fail

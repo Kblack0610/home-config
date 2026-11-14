@@ -12,14 +12,15 @@ top=15
 work=$(mktemp -d)
 tmp="$out_dir/.node_inventory.prom.$$"
 trap 'rm -rf "$work" "$tmp" "$state.$$"' EXIT
+trap 'exit 1' HUP INT TERM    # dash runs the EXIT trap on a signal only through exit
 
 systemctl list-units --type=service --state=running --no-legend --plain | awk '{ print $1 }' > "$work/units"
 
 # Docker is optional: with no CLI, or a daemon that does not answer, the file has no docker lines.
 : > "$work/images"
 if ! { command -v docker >/dev/null 2>&1 &&
-    timeout 20 docker stats --no-stream --format '{{.Name}}\t{{.CPUPerc}}\t{{.MemUsage}}' > "$work/stats" 2>/dev/null &&
-    timeout 20 docker ps --format '{{.Names}}\t{{.Image}}' > "$work/images" 2>/dev/null; }; then
+    timeout 10 docker stats --no-stream --format '{{.Name}}\t{{.CPUPerc}}\t{{.MemUsage}}' > "$work/stats" 2>/dev/null &&
+    timeout 10 docker ps --format '{{.Names}}\t{{.Image}}' > "$work/images" 2>/dev/null; }; then
     : > "$work/stats"
 fi
 
@@ -31,17 +32,27 @@ printf '%s\n' "$proc"/[0-9]* |
     LC_ALL=C awk -v now="$(cut -d' ' -f1 "$proc/uptime")" -v hz="$(getconf CLK_TCK)" -v page="$(getconf PAGESIZE)" \
         -v prev="$state" -v next_="$state.$$" -v top="$top" -v units="$work/units" \
         -v stats="$work/stats" -v images="$work/images" '
-    # Prometheus label value escaping, a character at a time: awks disagree on backslashes in gsub.
+    # Prometheus label value escaping, a byte at a time (awks disagree on backslashes in gsub).
+    # A byte outside printable ASCII becomes "?": a comm can be any bytes, and one invalid
+    # UTF-8 label value makes node-exporter drop the whole file.
     function esc(s,   o, i, ch) {
         o = ""
         for (i = 1; i <= length(s); i++) {
             ch = substr(s, i, 1)
-            o = o (ch == "\\" ? "\\\\" : ch == "\"" ? "\\\"" : ch == "\n" ? "\\n" : ch)
+            o = o (ch == "\\" ? "\\\\" : ch == "\"" ? "\\\"" : ch == "\n" ? "\\n" : ch < " " || ch > "~" ? "?" : ch)
         }
         return o
     }
-    # The comm with the largest v[] above zero not yet in picked[], ties to the lower name.
-    function best(v,   c, b) { b = ""; for (c in v) if (v[c] > 0 && !(c in picked) && (b == "" || v[c] > v[b] || (v[c] == v[b] && c < b))) b = c; return b }
+    # Appends the top comms by v[] (above zero, ties to the lower name) to order[], once each.
+    function pick(v,   k, c, b, done) {
+        for (k = 0; k < top; k++) {
+            b = ""
+            for (c in v) if (v[c] > 0 && !(c in done) && (b == "" || v[c] > v[b] || (v[c] == v[b] && c < b))) b = c
+            if (b == "") return
+            done[b] = 1
+            if (!(b in picked)) { picked[b] = 1; order[++n] = b }
+        }
+    }
     BEGIN {
         while ((getline l < prev) > 0) { split(l, a, " "); if (a[1] == "T") then_ = a[2]; else seen[a[1] " " a[2]] = a[3] }
         close(prev)
@@ -74,13 +85,11 @@ printf '%s\n' "$proc"/[0-9]* |
     }
     END {
         for (c in busy) cpu[c] = busy[c] / hz / elapsed
-        n = 0
-        for (k = 0; k < top; k++) { c = best(cpu); if (c == "") break; picked[c] = 1; order[++n] = c }
-        for (k = 0; k < top; k++) { c = best(mem); if (c == "") break; picked[c] = 1; order[++n] = c }
+        n = 0; pick(cpu); pick(mem)
         print "# HELP node_processes_total Processes on the host"
         print "# TYPE node_processes_total gauge"
         printf "node_processes_total %d\n", total
-        print "# HELP node_process_cpu_cores CPU cores used by the processes with this comm since the previous run"
+        print "# HELP node_process_cpu_cores CPU cores used since the previous run by the processes with this comm still running"
         print "# TYPE node_process_cpu_cores gauge"
         for (k = 1; k <= n; k++) if (order[k] in cpu) printf "node_process_cpu_cores{comm=\"%s\"} %.3f\n", esc(order[k]), cpu[order[k]]
         print "# HELP node_process_resident_bytes Resident memory of the processes with this comm"
@@ -113,6 +122,6 @@ printf '%s\n' "$proc"/[0-9]* |
             for (k = 1; k <= nd; k++) print dmem[k]
         }
     }' > "$tmp"
-mv "$state.$$" "$state"
 chmod 644 "$tmp"
 mv "$tmp" "$out_dir/node_inventory.prom"
+mv "$state.$$" "$state"

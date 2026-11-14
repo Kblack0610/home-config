@@ -7,7 +7,7 @@ One-page index of services and their management plane. Use this to answer "where
 | **Kubernetes cluster workloads** | | | | |
 | Home Assistant | any pi | k3s pod | Flux | `apps/home-assistant/` |
 | Frigate NVR | hp-victus (pinned: the Coral USB is plugged in there) | k3s pod (privileged, USB Coral) | Flux | `apps/frigate/` |
-| Forgejo + runner | razer-laptop (the runner; Forgejo itself is on hp-victus) | k3s pod (DinD) | Flux | `apps/forgejo/` |
+| Forgejo + runner | razer-laptop (the runner; Forgejo itself is on asus-laptop) | k3s pod (DinD) | Flux | `apps/forgejo/` |
 | LiteLLM | hp-victus | k3s pod | Flux | `apps/litellm/` |
 | Immich | asus-laptop | k3s pod (AMD ROCm) | Flux | `apps/immich/` |
 | OrcaSlicer | asus-laptop | k3s pod (AMD GPU) | Flux | `apps/orcaslicer/` |

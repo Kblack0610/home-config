@@ -1,41 +1,12 @@
 ---
 # config.sh sets labels only when it registers, so an inventory label change has to be
 # pushed to a registered runner: on 2026-11-12 aws-build-1's build slots kept unity,
-# unity-full and unity-gate. PUT replaces every custom label; runner_labels_plan
-# (filter_plugins/) keeps a slot ci-runner-governor withholds withheld. Skipped in check
-# mode, like the registration token: the in-cluster drift check has no gh CLI.
-- name: Read the runner's labels with the PAT (token_source=pat)
-  ansible.builtin.uri:
-    url: "https://api.github.com/{{ gh_runner_api_path }}/actions/runners?name={{ gh_runner_name | urlencode }}"
-    headers:
-      Accept: application/vnd.github+json
-      Authorization: "Bearer {{ _effective_gh_runner_pat }}"
-      X-GitHub-Api-Version: "2022-11-28"
-    return_content: true
-  register: _gh_pat_runner
-  when:
-    - gh_runner_token_source == 'pat'
-    - not ansible_check_mode
-  no_log: true
-
-- name: Read the runner's labels with the control node's gh (token_source=gh)
-  ansible.builtin.command:
-    argv: [gh, api, "{{ gh_runner_api_path }}/actions/runners?name={{ gh_runner_name | urlencode }}"]
-  delegate_to: localhost
-  become: false
-  register: _gh_cli_runner
-  changed_when: false
-  when:
-    - gh_runner_token_source == 'gh'
-    - not ansible_check_mode
-
-# A registered runner GitHub no longer lists fails here: re-register it (README, Notes).
-- name: Find the runner in GitHub's list
-  ansible.builtin.set_fact:
-    _gh_runner_row: >-
-      {{ ((_gh_pat_runner.json if gh_runner_token_source == 'pat' else _gh_cli_runner.stdout | from_json).runners
-          | selectattr('name', 'equalto', gh_runner_name) | first) }}
-  when: not ansible_check_mode
+# unity-full and unity-gate. This reads the runner and plans its labels; main.yml PUTs them
+# (put_labels.yml) after the restart. runner_labels_plan (filter_plugins/) keeps a slot
+# ci-runner-governor withholds withheld. Skipped in check mode, like the registration
+# token: the in-cluster drift check has no gh CLI.
+- name: Read the runner from GitHub
+  ansible.builtin.import_tasks: read_runner.yml
 
 - name: Work out the labels the runner should carry
   ansible.builtin.set_fact:
@@ -43,32 +14,3 @@
       {{ _gh_runner_row | runner_labels_plan(gh_runner_labels, gh_runner_governed_labels,
                                              gh_runner_withheld_label, gh_runner_withheld_labels) }}
   when: not ansible_check_mode
-
-- name: Set the runner's labels with the PAT (token_source=pat)
-  ansible.builtin.uri:
-    url: "https://api.github.com/{{ gh_runner_api_path }}/actions/runners/{{ _gh_runner_row.id }}/labels"
-    method: PUT
-    headers:
-      Accept: application/vnd.github+json
-      Authorization: "Bearer {{ _effective_gh_runner_pat }}"
-      X-GitHub-Api-Version: "2022-11-28"
-    body_format: json
-    body: {labels: "{{ _gh_runner_plan.labels }}"}
-  changed_when: true
-  when:
-    - gh_runner_token_source == 'pat'
-    - not ansible_check_mode
-    - _gh_runner_plan.change
-  no_log: true
-
-- name: Set the runner's labels with the control node's gh (token_source=gh)
-  ansible.builtin.command:
-    argv: [gh, api, -X, PUT, "{{ gh_runner_api_path }}/actions/runners/{{ _gh_runner_row.id }}/labels", --input, "-"]
-    stdin: "{{ {'labels': _gh_runner_plan.labels} | to_json }}"
-  delegate_to: localhost
-  become: false
-  changed_when: true
-  when:
-    - gh_runner_token_source == 'gh'
-    - not ansible_check_mode
-    - _gh_runner_plan.change

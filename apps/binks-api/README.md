@@ -10,7 +10,7 @@ LLM chat backend for `binks.chat`. TypeScript replacement for the legacy Rust `b
 - **Alerts**: `apps/monitoring/prometheus-rules-binks.yaml`: chat-turn and LLM error rates, and the `binks-anon` budget (share left, and spend per hour).
 - **LLM gateway**: `http://litellm.ai-gateway.svc.cluster.local:4000`, routes `binks-chat` (default) and `binks-chat-hard`. Signed-in users with an active $8/mo Square subscription get their own $2 / 1mo key, minted with `binks-api-secret/LITELLM_ISSUER_KEY`; anonymous chats use `LITELLM_API_KEY` (`binks-anon`). See `apps/litellm/README.md`, "binks.chat keys"
 - **Replicas**: 2, with a PodDisruptionBudget (`pdb.yaml`, minAvailable 1). The HTTP limiter and the per-minute WS limit count per pod; the signed-out daily cap and the spend ceiling are in Postgres and shared.
-- **Capacity**: the launch limits (`RATE_LIMIT_MAX`, `ANON_TURNS_PER_IP_PER_DAY`, `DAILY_SPEND_CEILING_USD`, `WAITLIST_ENABLED`) take their defaults from the platform repo, `apps/binks/api/README.md` "Launch capacity". Set one in `deployment.yaml` `env` only to override it; `WAITLIST_ENABLED: 'true'` is the manual switch that stops new chats from non-subscribers.
+- **Capacity**: the launch limits (`RATE_LIMIT_MAX`, `ANON_TURNS_PER_IP_PER_DAY`, `DAILY_SPEND_CEILING_USD`, `WAITLIST_ENABLED`) take their defaults from the platform repo, `apps/binks/api/README.md` "Launch capacity". Set one in `deployment.yaml` `env` only to override it (the ceiling is set there to $2 a day); `WAITLIST_ENABLED: 'true'` is the manual switch that stops new chats from non-subscribers.
 - **Ingress**: `binks.chat` (Traefik IngressRoute `binks-chat` in `ingress.yaml`): the SPA on `/`, the API on `/api` and `/ws`. TLS ends at Cloudflare.
 
 ## Deploy lifecycle

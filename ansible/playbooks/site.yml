@@ -34,14 +34,21 @@
   hosts: cachyos-x8664-main
   become: true
   gather_facts: true
+  vars:
+    node_exporter_linux_textfile_dir: /var/lib/node_exporter/textfile
   roles:
     - role: node-exporter-linux
       tags: [monitoring]
       vars:
-        node_exporter_linux_textfile_dir: /var/lib/node_exporter/textfile
         node_exporter_linux_textfile_owner: kblack0610
     - role: desktop-firewall
       tags: [monitoring, firewall]
+    # Top processes, running services and Docker containers, for the hub machine page:
+    #   ansible-playbook playbooks/site.yml --limit cachyos-x8664-main --tags inventory-metrics -K
+    - role: node-inventory-metrics
+      tags: [inventory-metrics]
+      vars:
+        node_inventory_metrics_dir: "{{ node_exporter_linux_textfile_dir }}"
     # `ssh <inventory alias>` from this machine (razer-laptop, asus-laptop on
     # 2222, the Pis): /etc/ssh/ssh_config.d/40-home-inventory.conf from the
     # inventory. Apply: --limit cachyos-x8664-main --tags ssh-aliases -K
@@ -87,6 +94,16 @@
   roles:
     - role: node-disk-metrics
       tags: [disk-metrics]
+
+- name: Process, service and Docker container inventory (k3s nodes)
+  # For the hub machine page; the workstation's is in its monitoring play.
+  #   ansible-playbook playbooks/site.yml --limit 'hp-victus:asus-laptop:razer-laptop:pi_k3s' --tags inventory-metrics
+  hosts: hp-victus:asus-laptop:razer-laptop:pi_k3s
+  become: true
+  gather_facts: false
+  roles:
+    - role: node-inventory-metrics
+      tags: [inventory-metrics]
 
 - name: Kubelet image GC under the disk alert (Pi k3s nodes)
   # See roles/k3s-image-gc/README.md. Kubelet's default 85% sat above NodeDiskLow's 80%.

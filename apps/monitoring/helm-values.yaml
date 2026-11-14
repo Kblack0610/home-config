@@ -459,7 +459,9 @@ prometheus-node-exporter:
     - --collector.systemd
     - --collector.systemd.unit-include=^(actions\.runner\..*|docker|kubelet|node_exporter|sshd|forgejo-runner)\.service$
   extraHostVolumeMounts:
-    # ansible/roles/node-disk-metrics writes here: core dumps and local-path PV use.
+    # ansible/roles/node-disk-metrics writes here (node_disk.prom: core dumps and local-path PV
+    # use), and ansible/roles/node-inventory-metrics (node_inventory.prom: top processes,
+    # running services and Docker containers).
     - name: textfile
       hostPath: /var/lib/node-exporter-textfile
       mountPath: /var/lib/node-exporter-textfile

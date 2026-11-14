@@ -37,6 +37,25 @@ tests:
         alertname: CiHostHeldOutByDisk
         exp_alerts: []
 
+  - name: a Spot host reclaimed 4 times in a day warns, 3 times stays quiet
+    interval: 1h
+    input_series:
+      - series: 'ci_governor_fallback_total{host="aws-spot-1",reason="reclaim"}'
+        values: '0 1 2 3 4 4 4'
+      - series: 'ci_governor_fallback_total{host="aws-spot-2",reason="reclaim"}'
+        values: '0 1 2 3 3 3 3'
+      - series: 'ci_governor_fallback_total{host="aws-burst-1",reason="reclaim"}'
+        values: '0 2 4 6 8 8 8'
+    alert_rule_test:
+      - eval_time: 3h
+        alertname: CiSpotHostReclaimedOften
+        exp_alerts: []
+      - eval_time: 5h
+        alertname: CiSpotHostReclaimedOften
+        exp_alerts:
+          - exp_labels: {alertname: CiSpotHostReclaimedOften, severity: warning, category: capacity, fleet: fix, host: aws-spot-1, reason: reclaim}
+            exp_annotations: {summary: "aws-spot-1 was reclaimed by AWS more than 3 times in 24 h, each killing its jobs: set it on-demand in platform infra/aws-ci-burst variables.tf"}
+
   - name: a blind governor pages after 30 minutes, and a short gap stays quiet
     interval: 1m
     input_series:

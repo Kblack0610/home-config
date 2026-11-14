@@ -1,0 +1,7 @@
+# Managed by Ansible (roles/dgpu-off). The discrete GPU stays off on this host.
+# "install ... /bin/false" also stops an explicit modprobe (nvidia-smi,
+# nvidia-modprobe, the container runtime), which "blacklist" alone allows.
+{% for m in dgpu_off_modules %}
+blacklist {{ m }}
+install {{ m }} /bin/false
+{% endfor %}

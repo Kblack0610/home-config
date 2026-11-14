@@ -79,7 +79,7 @@ its own thresholds for a waiting build and on the default pool ones for tests.
 A slot withheld while its pair uses the cores is exported as ci_governor_lent (to tests, or
 to a build), so the dashboards can tell it from a slot held back for load.
 
-"standby" is an ordered list, Spot first (aws-burst-2, then the on-demand aws-burst-1). A
+"standby" is an ordered list, the Spot hosts first, then the on-demand ones (config.json). A
 host further down starts only for the jobs the hosts ahead of it cannot take: a stopped
 one ahead counts its max_admitted, one booting or running counts the slots it has not
 admitted yet plus its idle admitted ones, so a deep queue still starts both and a short one

@@ -1,0 +1,13 @@
+---
+# Kernel modules that must never load on a host with its discrete GPU off.
+# nouveau too, or it claims the card as soon as nvidia stops.
+dgpu_off_modules:
+  - nvidia_drm
+  - nvidia_uvm
+  - nvidia_modeset
+  - nvidia
+  - nouveau
+
+# PCI vendor ID of the card. Every function of it (VGA and HDMI audio) gets
+# runtime PM, since one awake function keeps the whole card out of D3cold.
+dgpu_off_pci_vendor: "0x10de"

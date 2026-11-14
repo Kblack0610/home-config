@@ -194,7 +194,9 @@ all:
         # each here (memory.stat; the 7.4G MemoryPeak was mostly page cache),
         # 0.4 cores average, p95 about 2.2. This host has room: load5 p95 9.3 on
         # 16 CI CPUs, ci-linux.slice anon 1.1G with 3 runners busy, cap 20G.
-        # Revisit a 6th slot after a day of load and temperature at 5.
+        # 2026-11-13, a day at 5: load 30-50, CPU 98C of 100C and DIMMs 80C of
+        # 85C, then the host hung (dGPU still on; roles/dgpu-off). No 6th slot.
+        # If the CPU still passes 95C with the dGPU off, drop to 3.
         hp-victus:
           ci_light_slots: 5
           ci_heavy_slots: 1
@@ -572,6 +574,13 @@ all:
     # (roles/thermal-cap). 2026-10-23: asus held 93-96C through the Unity
     # nightly and dropped off the LAN; hp-victus peaked at 98C of 100C crit.
     # Target: at most 85C sustained over a full nightly.
+    # Discrete GPU switched off (roles/dgpu-off). hp-victus is headless (CI,
+    # Forgejo) and nothing used its RTX 4060, but the driver's GSP faulted every
+    # few minutes and the card idled at 20 W on heatpipes shared with the CPU.
+    dgpu_off:
+      hosts:
+        hp-victus:
+
     thermal_capped:
       hosts:
         # AMD: no writable package power limit, so boost goes off. Already on

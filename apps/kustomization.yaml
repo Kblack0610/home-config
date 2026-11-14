@@ -51,7 +51,6 @@ resources:
   - notes-sync-bridge
   - ntfy
   - ntfy-public
-  - nvidia-device-plugin
   - offsite-backup
   - openwakeword
   - searxng

@@ -74,9 +74,12 @@ model_list:
   #                        (runtime state in the gateway DB, not here)
   #   - tpm/rpm:           runaway-loop / stuck-retry caps per route
   #   - per-virtual-key:   primary control via /key/generate
-  #                        allowed_models. binks-api + mem0 use the
-  #                        `local-only` key (named before the local tier
-  #                        went; it allows `fast (gpt-oss-120b)`);
+  #                        allowed_models. mem0 uses the `local-only` key
+  #                        (named before the local tier went; it allows
+  #                        `fast (gpt-oss-120b)`); binks-api uses
+  #                        `binks-anon` and mints per-user keys through the
+  #                        `binks-issuer` user, both bound to the two
+  #                        binks-chat routes (README, "binks.chat keys");
   #                        Karakeep gets its own `karakeep` key
   #                        (fast + embedding only).
 

@@ -37,7 +37,9 @@ spec:
     spec:
       # amd64-only image (single-arch manifest, no manifest list). Without this
       # the scheduler places the pod on an arm64 Pi and the container dies with
-      # `exec format error`. Remove once the image is rebuilt multi-arch.
+      # `exec format error`. Stays until .forgejo/workflows/deploy-binks-api.yml
+      # in the platform repo builds linux/arm64 too (it builds amd64 only as of
+      # 2026-11-14); remove it in the same PR that bumps to that first multi-arch tag.
       nodeSelector:
         kubernetes.io/arch: amd64
       tolerations:
@@ -46,9 +48,20 @@ spec:
           effect: NoSchedule
       imagePullSecrets:
         - name: forgejo-registry
+      securityContext:
+        # The image runs as node (1000); this makes a root image fail to start.
+        runAsNonRoot: true
+        runAsUser: 1000
+        runAsGroup: 1000
+        seccompProfile:
+          type: RuntimeDefault
       containers:
         - name: binks-api
           image: git.kblab.me/kblack0610/binks-api:latest
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ['ALL']
           ports:
             - name: http
               containerPort: 5005
@@ -110,9 +123,14 @@ spec:
               port: http
             initialDelaySeconds: 10
             periodSeconds: 10
+          # Liveness is a process check only. /ready queries Postgres, so as a
+          # liveness probe a DB blip restarted the pod and dropped every open
+          # chat socket; readiness alone takes it out of the Service until the
+          # DB is back. Every HTTP route in the image (/health too) touches the
+          # DB, so the check is the open port.
           livenessProbe:
-            httpGet:
-              path: /ready
+            tcpSocket:
               port: http
             initialDelaySeconds: 30
             periodSeconds: 30
+            failureThreshold: 3

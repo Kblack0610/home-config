@@ -91,7 +91,9 @@ def inventory_roster(path):
             elif group and in_hosts and indent == 8:
                 host = key
             elif group and host and indent == 10 and key in GROUPS[group]:
-                out[(host, GROUPS[group][key])] = int(val.strip())
+                # A pool with 0 slots (windows-media-ci's heavy) is no pool, as the exporter reads it.
+                if int(val.strip()):
+                    out[(host, GROUPS[group][key])] = int(val.strip())
             elif group and host and indent == 10 and key == "unity_ci_lan" and val.strip() == "false":
                 cloud.add(host)
             elif group and host and indent == 10 and key == "unity_ci_build_slots":

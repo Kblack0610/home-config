@@ -8,6 +8,7 @@ resources:
   - registry-secret.yaml
   - secrets.yaml
   - postgres-statefulset.yaml
+  - backup-cronjob.yaml
   - deployment.yaml
   - binks-chat-deployment.yaml
   - ingress.yaml

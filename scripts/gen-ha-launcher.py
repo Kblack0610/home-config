@@ -73,7 +73,6 @@ HOST_RE = re.compile(r"Host\(`([^`]+)`\)")
 NAMESPACE_GROUP = {
     "actual-budget": "Finance",
     "ai-gateway": "AI",
-    "ai-services": "AI",
     "apps": "Apps",
     "binks-api": "AI",
     "comfyui": "AI",

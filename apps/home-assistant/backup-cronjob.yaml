@@ -7,8 +7,14 @@ spec:
   schedule: "0 2 * * *"  # Daily at 2 AM
   successfulJobsHistoryLimit: 3
   failedJobsHistoryLimit: 1
+  concurrencyPolicy: Forbid
   jobTemplate:
     spec:
+      # One retry, not the default six: each attempt writes a 500 MB archive
+      # to pi5-master's SD card.
+      backoffLimit: 1
+      # Forbid would let one hung run skip every later night.
+      activeDeadlineSeconds: 3600
       template:
         spec:
           containers:
@@ -25,7 +31,7 @@ spec:
                 - -c
                 - |
                   set -eu
-                  apk add --no-cache tar gzip samba-client >/dev/null
+                  apk add --no-cache tar gzip samba-client sqlite >/dev/null
 
                   # Config has been a quarter of a GB for months. 1MB is a floor
                   # low enough never to false-trip and high enough to catch an
@@ -38,8 +44,44 @@ spec:
 
                   TIMESTAMP=$(date +%Y%m%d-%H%M%S)
                   BACKUP_FILE="home-assistant-${TIMESTAMP}.tar.gz"
-                  tar -czf "/backup/${BACKUP_FILE}" -C /data .
-                  size="$(wc -c < "/backup/${BACKUP_FILE}")"
+
+                  # Keep 7 here, not the 30 the other jobs keep: this hostPath is on
+                  # pi5-master's 29G SD card, and 30 archives of 300-420 MB each
+                  # (9.7G) tripped NodeDiskLow on 2026-11-10. The NAS keeps the
+                  # longer history. Rotate to 6 before writing the 7th, so a full
+                  # disk frees room instead of failing ahead of the rotation.
+                  ls -t /backup/home-assistant-*.tar.gz 2>/dev/null | tail -n +7 | xargs -r rm
+
+                  # Write under .partial and rename only once the archive passes,
+                  # so a failed attempt leaves nothing behind. On 2026-11-13/14
+                  # every retry left a 500 MB archive (21 files, 8.7G).
+                  rm -f /backup/*.partial
+                  PART="/backup/${BACKUP_FILE}.partial"
+                  trap 'rm -f "${PART}"' EXIT
+
+                  # home-assistant_v2.db is the live recorder DB (1.4G). tar of the
+                  # live file exits 1 ("file changed as we read it"), so copy it
+                  # with VACUUM INTO, one read transaction that HA's writes do not
+                  # restart (.backup does), and archive that copy in its place.
+                  # The log is excluded for the same reason.
+                  # /snap is an emptyDir, which outlives a container restart.
+                  # The copy is added without the ./ prefix, so the excludes for
+                  # the live files do not match it.
+                  rm -f /snap/home-assistant_v2.db
+                  SNAP=""
+                  if [ -f /data/home-assistant_v2.db ]; then
+                    sqlite3 -cmd '.timeout 60000' /data/home-assistant_v2.db "VACUUM INTO '/snap/home-assistant_v2.db'"
+                    SNAP="-C /snap home-assistant_v2.db"
+                  else
+                    log "WARN: /data/home-assistant_v2.db is missing; archiving the config without the recorder DB."
+                  fi
+                  tar -czf "${PART}" \
+                    --exclude=./home-assistant_v2.db --exclude=./home-assistant_v2.db-wal \
+                    --exclude=./home-assistant_v2.db-shm --exclude='./home-assistant.log*' \
+                    -C /data . ${SNAP}
+                  rm -f /snap/home-assistant_v2.db
+                  gzip -t "${PART}"
+                  size="$(wc -c < "${PART}")"
                   log "created ${BACKUP_FILE} (${size} bytes)"
                   # Writing a tiny "successful" archive and then rotating the good
                   # ones out behind it is the failure mode that hides for
@@ -48,12 +90,7 @@ spec:
                     log "ERROR: archive under ${MIN_BYTES} bytes is implausible - is the PVC mounted? Not uploading."
                     exit 1
                   fi
-
-                  # Keep 7 here, not the 30 the other jobs keep: this hostPath is on
-                  # pi5-master's 29G SD card, and 30 archives of 300-420 MB each
-                  # (9.7G) tripped NodeDiskLow on 2026-11-10. The NAS keeps the
-                  # longer history.
-                  ls -t /backup/home-assistant-*.tar.gz | tail -n +8 | xargs -r rm
+                  mv "${PART}" "/backup/${BACKUP_FILE}"
                   log "local backup complete: ${BACKUP_FILE}"
 
                   # Off-box copy. Best-effort by design (docs/backup-runbook.md):
@@ -101,11 +138,15 @@ spec:
                     log "WARN: off-box copy failed. The local copy on this node is good, but the OFF-BOX copy is missing."
                   fi
               volumeMounts:
+                # Read-write so sqlite can open the WAL index (-shm) beside the
+                # live DB for VACUUM INTO; it only reads the data. Read-only
+                # fails whenever HA is not holding the DB open.
                 - name: data
                   mountPath: /data
-                  readOnly: true
                 - name: backup
                   mountPath: /backup
+                - name: snap
+                  mountPath: /snap
           restartPolicy: OnFailure
           volumes:
             - name: data
@@ -115,3 +156,6 @@ spec:
               hostPath:
                 path: /var/backups/home-assistant
                 type: DirectoryOrCreate
+            - name: snap
+              emptyDir:
+                sizeLimit: 4Gi

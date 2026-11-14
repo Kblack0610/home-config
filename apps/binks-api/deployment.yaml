@@ -21,7 +21,8 @@ metadata:
   labels:
     app: binks-api
 spec:
-  replicas: 1
+  # Two pods so a node drain or a crash does not drop every chat (pdb.yaml).
+  replicas: 2
   strategy:
     type: RollingUpdate
     rollingUpdate:
@@ -46,6 +47,8 @@ spec:
         - key: node.cilium.io/agent-not-ready
           operator: Exists
           effect: NoSchedule
+      # preStop drain (10s) + the api's own 30s SHUTDOWN_TIMEOUT + margin.
+      terminationGracePeriodSeconds: 45
       imagePullSecrets:
         - name: forgejo-registry
       securityContext:
@@ -107,6 +110,10 @@ spec:
               value: KXHAMBKBADN4PY6TCGGU5VL3
             - name: BINKS_PRICE_CENTS
               value: '800'
+            # Free chats stop for the day once non-subscriber reply cost reaches
+            # this (UTC day); subscribers pass. Owner's pick 2026-11-14, ask 4pazNg.
+            - name: DAILY_SPEND_CEILING_USD
+              value: '2'
           envFrom:
             - secretRef:
                 name: binks-api-secret
@@ -117,6 +124,14 @@ spec:
             limits:
               cpu: 500m
               memory: 512Mi
+          # Traefik drops a terminating pod's endpoint a moment after the kubelet
+          # sends SIGTERM; without the wait the old pod closes its port first and
+          # Traefik 502s the requests still routed to it (bk-45: both tag smokes
+          # 2026-11-14 03:33Z). The kubelet waits here before SIGTERM.
+          lifecycle:
+            preStop:
+              sleep:
+                seconds: 10
           readinessProbe:
             httpGet:
               path: /ready

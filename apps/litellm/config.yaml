@@ -763,8 +763,14 @@ model_list:
       input_cost_per_token: 0.0000003
       output_cost_per_token: 0.0000012
       cache_read_input_token_cost: 0.000000006
-      tpm: 400000
-      rpm: 60
+      # DeepSeek publishes no rpm or tpm cap, only 2500 concurrent requests
+      # per account for deepseek-flash, 429 past it
+      # (api-docs.deepseek.com/quick_start/rate_limit, 2026-11-14). These
+      # caps fit a launch burst of 100 concurrent turns with tool rounds.
+      # binks-chat stays at 60: Z.ai's limit is behind its console, so its
+      # overflow falls back here.
+      tpm: 4000000
+      rpm: 600
     model_info:
       mode: chat
       tags: ["paid", "binks", "first-party"]

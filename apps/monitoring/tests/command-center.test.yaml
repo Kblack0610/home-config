@@ -669,6 +669,14 @@ tests:
         values: '1x10'
       - series: 'mqtt_message_total{topic="agents_h_watch_binks_chat_spend"}'
         values: '0+1x10'
+      - series: 'mqtt_tripped{topic="agents_h_watch_binks_spend_ceiling"}'
+        values: '1x10'
+      - series: 'mqtt_message_total{topic="agents_h_watch_binks_spend_ceiling"}'
+        values: '0+1x10'
+      - series: 'mqtt_tripped{topic="agents_h_watch_binks_waitlist_on"}'
+        values: '1x10'
+      - series: 'mqtt_message_total{topic="agents_h_watch_binks_waitlist_on"}'
+        values: '0+1x10'
       - series: 'mqtt_tripped{topic="agents_h_watch_binks_key_issue_failed"}'
         values: '1x10'
       - series: 'mqtt_message_total{topic="agents_h_watch_binks_key_issue_failed"}'
@@ -831,6 +839,16 @@ tests:
         eval_time: 5m
         exp_samples:
           - labels: 'cc:watch_state{domain="machines",item="emotiv_bridge"}'
+            value: 1
+      - expr: cc:watch_state{domain="spend",item="binks_spend_ceiling"}
+        eval_time: 5m
+        exp_samples:
+          - labels: 'cc:watch_state{domain="spend",item="binks_spend_ceiling"}'
+            value: 1
+      - expr: cc:watch_state{domain="spend",item="binks_waitlist_on"}
+        eval_time: 5m
+        exp_samples:
+          - labels: 'cc:watch_state{domain="spend",item="binks_waitlist_on"}'
             value: 1
       - expr: cc:watch_state{domain="spend",item="meshy_credits"}
         eval_time: 5m

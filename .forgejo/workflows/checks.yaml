@@ -135,6 +135,8 @@ jobs:
         run: sh ansible/roles/unity-ci-host-mac/files/test-ci-tree-prune.sh
       - name: node-disk-metrics offline test
         run: sh ansible/roles/node-disk-metrics/files/test-node-disk-metrics.sh
+      - name: node-inventory-metrics offline test
+        run: sh ansible/roles/node-inventory-metrics/files/test-node-inventory-metrics.sh
       - name: forgejo-restore-drill runner offline test
         run: sh ansible/roles/forgejo-restore-drill/files/test-forgejo-restore-drill-run.sh
       - name: ci-runner-cpu offline test

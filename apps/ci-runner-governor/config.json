@@ -7,6 +7,7 @@
   "pool_max_admitted": 24,
   "cooldown_seconds": 600,
   "dwell_seconds": 600,
+  "warm_idle_off_seconds": 2700,
   "pack_keep_labels": ["unity-wide"],
   "defaults": {
     "min_admitted": 1,

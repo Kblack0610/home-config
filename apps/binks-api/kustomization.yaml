@@ -10,6 +10,7 @@ resources:
   - postgres-statefulset.yaml
   - backup-cronjob.yaml
   - deployment.yaml
+  - pdb.yaml
   - binks-chat-deployment.yaml
   - ingress.yaml
   - servicemonitor.yaml

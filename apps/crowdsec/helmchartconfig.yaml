@@ -26,6 +26,14 @@ spec:
     # svclb pod forwards to the NodePort, and pod-originated traffic is not
     # limited by externalTrafficPolicy: Local. Traefik is stateless here
     # (emptyDir only), so replicas need no shared storage.
+    # ExternalName backends: forgejo-http and forgejo-ssh are ExternalNames
+    # of forge-primary.kblab.me, the record that names the live Forgejo host
+    # (apps/forgejo/README.md, "Where Forgejo runs and how to move it").
+    providers:
+      kubernetesCRD:
+        allowExternalNameServices: true
+      kubernetesIngress:
+        allowExternalNameServices: true
     deployment:
       replicas: 2
     podDisruptionBudget:

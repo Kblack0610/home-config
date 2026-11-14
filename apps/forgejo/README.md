@@ -17,7 +17,7 @@ and repository mirroring enabled.
 | `ingress.yaml` | TLS ingress for `git.kblab.me` (git, registry, API, Flux) |
 | `ingress-public.yaml` | TLS ingress for `git.kennethblack.me`, the `ROOT_URL` and the one browser hostname |
 | `ingressroute-browser-redirect.yaml` | Redirects browsers (`Accept: text/html`) on `git.kblab.me` to `git.kennethblack.me`, so one login cookie covers every page |
-| `pvc.yaml` | Forgejo's data: a static Retain PV, live at `/mnt/backups/forgejo-live/data` on asus-laptop since 2026-11-13 (the hp-victus PV is unused) |
+| `pvc.yaml` | Forgejo's data: a static Retain PV, live at `/mnt/backups/forgejo-live/data` on asus-laptop since 2026-11-13 |
 | `backup-cronjob.yaml` | Daily backup job for full data and SQLite snapshots |
 | `runner-deployment.yaml` | Forgejo Runner + DinD sidecar (razer-laptop only; asus-laptop and hp-victus are `no_ci_hosts`) |
 | `runner-config-cm.yaml` | Runner config with `docker` + `linux-amd64` labels |
@@ -43,7 +43,7 @@ Commit and push, then delete the pod, because a changed Secret does not restart 
 
 1. Put the new key in `secret.sops.yaml` without printing it: `kubectl -n forgejo exec deploy/forgejo -c forgejo -- forgejo generate secret SECRET_KEY | python3 -c 'import json,sys; print(json.dumps(sys.stdin.read().strip()))' | sops set --value-stdin apps/forgejo/secret.sops.yaml '["stringData"]["FORGEJO__security__SECRET_KEY"]'`, then open the PR.
 2. `flux suspend kustomization apps`, merge, `flux reconcile source git flux-system`, then `kubectl -n forgejo scale deploy/forgejo --replicas=0`.
-3. On hp-victus, copy `/srv/forgejo/data/gitea/gitea.db` aside (the rollback), then run the tool as uid 1000 with `OLD_SECRET_KEY` (omit while it is the default) and `NEW_SECRET_KEY` in the environment, both from `sops -d --extract '["stringData"]["FORGEJO__security__SECRET_KEY"]'` piped into the remote environment, never typed: once without `--apply` (every row must decrypt and the new key must pass its checks), then with it. Do not resume until `--apply` prints that every row read back.
+3. On the node `pvc.yaml` pins, copy `gitea/gitea.db` under the PV path aside (the rollback), then run the tool as uid 1000 with `OLD_SECRET_KEY` (omit while it is the default) and `NEW_SECRET_KEY` in the environment, both from `sops -d --extract '["stringData"]["FORGEJO__security__SECRET_KEY"]'` piped into the remote environment, never typed: once without `--apply` (every row must decrypt and the new key must pass its checks), then with it. Do not resume until `--apply` prints that every row read back.
 4. `flux resume kustomization apps`. Check with a `workflow_dispatch` of `mirror-to-github`, which reads the `MIRROR_DEPLOY_KEY` secret.
 
 Snapshots and nightly fulls from before the rotation hold secrets sealed under the old key: restoring one needs that key back in the Secret, or the tool run again. Sessions, cookies and email codes do not use `SECRET_KEY` in 14.x, so nobody is logged out.
@@ -68,6 +68,17 @@ Key config sections:
   ```bash
   kubectl --context home-k3s delete pod -n forgejo -l app.kubernetes.io/name=forgejo
   ```
+
+### Issue numbers after a restore
+
+A restore from an older backup restarts each repo's issue/PR counter (`issue_index.max_index`) at the backup's value, so new PRs reuse numbers the lost instance already gave out and master gets two commits per `(#N)`. That happened on 2026-11-14: the asus restore restarted home-config at #925 while hp-victus had reached #960, so #925-#932 exist twice. `scripts/forgejo-issue-index-raise.py` raises every repo's counter to the highest of its own and the lost instance's (`--from <its gitea.db>`, matched by owner/repo, read only), or to a number from master's top `(#N)` (`--set owner/repo=N`) when that db is gone. It never lowers one.
+
+1. Copy the lost instance's db next to the live one with `sqlite3 <db> ".backup hp.db"`, which folds in its WAL.
+2. Dry run against the live db (it only reads): `python3 forgejo-issue-index-raise.py <live gitea.db> --from hp.db`.
+3. `kubectl -n forgejo scale deploy/forgejo --replicas=0` (with `apps` suspended, or Flux scales it back), `sqlite3 <live gitea.db> ".backup <live dir>/../gitea.db.pre-issue-index-<date>"`, rerun with `--apply`, scale back to 1.
+4. The next PR on each raised repo gets the new number.
+
+Rollback: stop Forgejo, put the copied db back, start it. The host's login shell may be fish (asus-laptop): send multi-line steps through `ssh <host> bash -s`.
 
 ## Runner
 

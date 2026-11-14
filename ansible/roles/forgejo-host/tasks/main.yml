@@ -1,0 +1,81 @@
+---
+- name: Packages (docker, compose, rsync for the seed and backups, sqlite3 for snapshots)
+  ansible.builtin.apt:
+    name: [docker.io, docker-compose, rsync, sqlite3, unattended-upgrades]
+    state: present
+    update_cache: true
+    cache_valid_time: 3600
+
+- name: Find the Hetzner volume
+  ansible.builtin.find:
+    paths: /dev/disk/by-id
+    patterns: "scsi-0HC_Volume_*"
+    file_type: link
+  register: forgejo_host_volume
+
+- name: Exactly one volume is attached
+  ansible.builtin.assert:
+    that: forgejo_host_volume.files | length == 1
+    fail_msg: "expected one scsi-0HC_Volume_* link, found {{ forgejo_host_volume.files | map(attribute='path') | list }}"
+
+- name: Mount the volume at /mnt/forgejo
+  ansible.posix.mount:
+    path: /mnt/forgejo
+    src: "{{ (forgejo_host_volume.files | first).path }}"
+    fstype: ext4
+    opts: discard,nofail,defaults
+    state: mounted
+
+- name: Data and config directories
+  ansible.builtin.file:
+    path: "{{ item.path }}"
+    state: directory
+    owner: "{{ item.owner }}"
+    group: "{{ item.owner }}"
+    mode: "{{ item.mode }}"
+  loop:
+    - { path: "{{ forgejo_host_data }}", owner: "1000", mode: "0755" }
+    - { path: /etc/forgejo, owner: root, mode: "0750" }
+
+- name: app.ini from the cluster's ConfigMap (one source)
+  ansible.builtin.copy:
+    content: "{{ (lookup('file', playbook_dir ~ '/../../apps/forgejo/configmap.yaml') | from_yaml).data['app.ini'] }}"
+    dest: /etc/forgejo/app.ini
+    owner: "1000"
+    group: "1000"
+    mode: "0664"
+  notify: Restart forgejo
+
+- name: Secrets env (group_vars/hetzner/vault.sops.yaml vault_forgejo_env)
+  ansible.builtin.copy:
+    content: "{% for k, v in (vault_forgejo_env | default({})).items() %}{{ k }}={{ v }}\n{% endfor %}"
+    dest: /etc/forgejo/secrets.env
+    owner: root
+    group: root
+    mode: "0600"
+  no_log: true
+  notify: Restart forgejo
+
+- name: Compose file and unit
+  ansible.builtin.template:
+    src: "{{ item.src }}"
+    dest: "{{ item.dest }}"
+    mode: "0644"
+  loop:
+    - { src: compose.yaml.j2, dest: /etc/forgejo/compose.yaml }
+    - { src: forgejo.service.j2, dest: /etc/systemd/system/forgejo.service }
+  notify: Restart forgejo
+
+- name: Seed keys (asus-laptop's copy, temporary)
+  ansible.posix.authorized_key:
+    user: root
+    key: "{{ item }}"
+    key_options: 'restrict'
+  loop: "{{ forgejo_host_seed_keys }}"
+
+- name: Forgejo running only when forgejo_host_running
+  ansible.builtin.systemd:
+    name: forgejo
+    enabled: "{{ forgejo_host_running }}"
+    state: "{{ 'started' if forgejo_host_running else 'stopped' }}"
+    daemon_reload: true

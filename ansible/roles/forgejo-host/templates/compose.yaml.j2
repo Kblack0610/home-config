@@ -1,0 +1,15 @@
+# Managed by ansible roles/forgejo-host. app.ini is rendered from
+# apps/forgejo/configmap.yaml, so the cluster and this host read one file.
+services:
+  forgejo:
+    image: {{ forgejo_host_image }}
+    restart: unless-stopped
+    environment:
+      USER_UID: "1000"
+      USER_GID: "1000"
+    env_file: /etc/forgejo/secrets.env
+    ports:
+      - "{{ forgejo_host_http_bind }}:3000:3000"
+    volumes:
+      - {{ forgejo_host_data }}:/data
+      - /etc/forgejo/app.ini:/data/gitea/conf/app.ini

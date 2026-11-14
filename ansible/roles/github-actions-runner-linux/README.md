@@ -12,7 +12,8 @@ Mirrors `platform/tools/setup-mac-runner.sh` + `register-mac-runner.sh` for the 
 4. Downloads and extracts the pinned `actions/runner` tarball (sha256-verified) into `/var/lib/actions-runner`.
 5. Uses the PAT from vault to fetch a short-lived registration token from the GitHub API.
 6. Calls `./config.sh --unattended` to register the runner (idempotent via `.runner` marker file).
-7. Templates `/etc/systemd/system/actions.runner.<name>.service` and starts it.
+7. On every apply outside `--check`, reads the runner from GitHub and, when its custom labels differ from `gh_runner_labels`, replaces them with one PUT to `<api_path>/actions/runners/<id>/labels`. A runner ci-runner-governor withholds (it carries one of `gh_runner_withheld_labels`) gets `gh_runner_labels` without `gh_runner_governed_labels`, plus `gh_runner_withheld_label`, so an apply never admits it. The plan is `filter_plugins/runner_labels.py`, tested by `tests/test_runner_labels.py`.
+8. Templates `/etc/systemd/system/actions.runner.<name>.service` and starts it.
 
 ## Required variables
 

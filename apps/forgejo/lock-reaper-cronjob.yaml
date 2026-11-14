@@ -11,6 +11,9 @@ spec:
   # gc.auto=0 keeps git housekeeping out of the fetch path, but a node reboot or
   # OOM mid-operation can still orphan an index.lock or a ref lock.
   schedule: "17 * * * *"
+  # Suspended at the cutover to forge-hel1 (2026-11-14): it would read the frozen
+  # asus copy. The VM's timers and forgejo-backup-pull do this job now; removed at cleanup.
+  suspend: true
   timeZone: "Etc/UTC"
   concurrencyPolicy: Forbid
   successfulJobsHistoryLimit: 1

@@ -888,8 +888,8 @@
       tags: [tailscale]
 
 - name: Forgejo host on Hetzner (forge-hel1)
-  # Created by playbooks/hetzner-provision.yml. Forgejo stays stopped until the
-  # cutover sets forgejo_host_running (plan virtual-strolling-nova).
+  # Created by playbooks/hetzner-provision.yml. Forgejo starts only while
+  # forge-primary.kblab.me names this host (roles/forgejo-host, the fence).
   #   ansible-playbook playbooks/site.yml --limit forge-hel1
   hosts: hetzner
   become: true
@@ -901,3 +901,6 @@
     # The Hetzner firewall drops inbound 9100 on the public IP.
     - role: node-exporter-linux
       tags: [forgejo, monitoring]
+      vars:
+        # A failed snapshot or reaper run shows as node_systemd_unit_state failed.
+        node_exporter_linux_systemd_units: [forgejo.service, forgejo-db-snapshot.service, forgejo-lock-reaper.service]

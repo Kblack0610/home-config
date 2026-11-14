@@ -1097,9 +1097,10 @@ class GovernorTest(unittest.TestCase):
         self.assertEqual(got["aws-burst-1"], ("admit", "aws-off-0"))
 
     def test_the_build_host_goes_back_when_no_build_waits(self):
-        # Gate jobs wait, but none is the build host's.
-        got = actions(self.STEADY, {**self.build(on_idle=1), **self.FULL}, cfg=self.BUILD,
-                      instances=self.both(build="running"), queue=5)
+        # Gate jobs wait, but none is the build host's, and no build has waited for the dwell.
+        inst = self.both(build="running")
+        inst["aws-build-1"]["waited_at"] = 10_000 - DWELL
+        got = actions(self.STEADY, {**self.build(on_idle=1), **self.FULL}, cfg=self.BUILD, instances=inst, queue=5)
         self.assertEqual(got["aws-build-1"], ("withhold", "bld-idle-0"))
 
     def test_the_build_host_stops_when_idle(self):
@@ -1616,6 +1617,51 @@ class PackTest(unittest.TestCase):
             self.assertEqual([a for _, a, *_ in got if a in ("pack", "unpack")], [], t)
         self.assertEqual(self.moves(self.step(10_000 + 2 * DWELL), "aws-burst-1")[0], ("pack", ""))
 
+    def test_only_a_live_host_is_packed(self):
+        # A dry-run host's withholds only log, so it would never stop and would hold the one
+        # pack for good: the live host is packed instead.
+        cfg = {**TWO, "standby": {**TWO["standby"], "aws-burst-1": {"max_admitted": 6, "power": {**POWER, "live": False}}}}
+        with mock.patch.object(governor, "DRY_RUN", True):
+            got = self.step(10_000, cfg=cfg)
+        self.assertEqual(self.moves(got, "aws-burst-1"), [])
+        self.assertEqual(self.moves(got, "aws-burst-2")[0], ("pack", ""))
+        self.assertFalse(self.inst["aws-burst-1"].get("packed"))
+
+    def test_a_packed_withhold_frees_its_slot_in_the_pool_cap(self):
+        # The pool is at its cap (2 home + 3 + 1 admitted). aws-burst-2 comes first in the
+        # order, so without the packed host's withhold counted first its admit is refused.
+        cfg = {**TWO, "pool_max_admitted": 6}
+        self.step(10_000, cfg=cfg)
+        got = self.step(10_060, [UNITY_JOB], cfg=cfg)
+        self.assertEqual(self.moves(got, "aws-burst-2"), [("admit", "b2-off-0")])
+        self.assertEqual(self.moves(got, "aws-burst-1"), [("withhold", "b1-busy-0")])
+
+    def test_a_packed_entry_without_pack_at_does_not_crash_the_cycle(self):
+        self.inst["aws-burst-1"]["packed"] = True
+        got = self.step(10_000, [UNITY_JOB])
+        self.assertIn(("aws-burst-1", "unpack", "", "STANDBY", "1 jobs it can take wait"), got)
+
+    def test_the_other_host_draining_does_not_unpack_it(self):
+        self.step(10_000)
+        self.inst["aws-burst-2"]["draining"] = True
+        got = self.step(10_060)
+        self.assertEqual([a for _, a, *_ in got if a in ("pack", "unpack")], [])
+        self.assertTrue(self.inst["aws-burst-1"]["packed"])
+
+    def test_a_packed_host_is_no_capacity_for_the_hosts_behind_it(self):
+        # aws-burst-1 is packed with every slot withheld and one job it could take waits that a
+        # home slot covers; four wide jobs only aws-burst-3 takes. Counted as 6 coming slots,
+        # aws-burst-1 would keep aws-burst-3 from wanting a start.
+        cfg = {**TWO, "standby": {**TWO["standby"], "aws-burst-3": {"max_admitted": 6, "power": {**POWER, "instance_id": "i-0b3"}}}}
+        self.inst["aws-burst-3"] = {"state": "stopped", "busy_at": 10_000,
+                                    "labels": AWS_LABELS - {"host-aws-burst-1"} | {"host-aws-burst-3", "unity-wide"}}
+        self.inst["aws-burst-1"].update(packed=True, pack_at=10_000)
+        runners = {**HOME_BUSY, **pool(("razer-3", "razer-laptop", False, 0, False)),
+                   **burst("aws-burst-2", busy=6), **burst("aws-burst-1", off=6)}
+        self.step(10_060, [UNITY_JOB] + [WIDE_JOB] * 4, runners=runners, cfg=cfg)
+        self.assertTrue(self.inst["aws-burst-1"]["packed"])
+        self.assertEqual(self.inst["aws-burst-3"]["want"], 4)
+
     def test_a_pack_and_stop_cycle_shows_in_the_log(self):
         ec2 = FakeEc2("running", launched=1_000)
         labels = {"aws-burst-2": SPOT_LABELS, "aws-burst-1": AWS_LABELS}
@@ -1650,6 +1696,26 @@ class DwellTest(unittest.TestCase):
         for t, want in ((10_060, "hold"), (10_000 + DWELL - 1, "hold"), (10_000 + DWELL, "withhold")):
             got = governor.decide(AWS, STEADY, runners, [], {}, t, inst, {}, ())
             self.assertEqual([a for h, a, *_ in got if h == "aws-burst-1"], [want], t)
+
+    def test_a_restart_starts_a_full_dwell(self):
+        # First seen (a new pod): no waited_at yet, so the dwell starts now.
+        inst = instance("running")
+        runners = {**pool(("aws-idle-0", "aws-burst-1", False, 0, False)), **HOME_BUSY}
+        for t, want in ((10_000, "hold"), (10_000 + DWELL - 60, "hold"), (10_000 + DWELL, "withhold")):
+            got = governor.decide(AWS, STEADY, runners, [], {}, t, inst, {}, ())
+            self.assertEqual([a for h, a, *_ in got if h == "aws-burst-1"], [want], t)
+
+    def test_a_job_it_cannot_take_does_not_restart_the_dwell(self):
+        # A lan job waits a while, then goes: it was never one this host could take.
+        inst = instance("running", waited_at=10_000 - DWELL)
+        runners = {**pool(("aws-idle-0", "aws-burst-1", False, 0, False)), **HOME_BUSY}
+        governor.decide(AWS, STEADY, runners, [LAN_JOB], {}, 10_000, inst, {}, ())
+        got = governor.decide(AWS, STEADY, runners, [], {}, 10_060, inst, {}, ())
+        self.assertEqual([a for h, a, *_ in got if h == "aws-burst-1"], ["withhold"])
+        # Control: a job it could take does restart it.
+        governor.decide(AWS, STEADY, runners, [UNITY_JOB], {}, 10_120, inst, {}, ())
+        got = governor.decide(AWS, STEADY, runners, [], {}, 10_180, inst, {}, ())
+        self.assertEqual([a for h, a, *_ in got if h == "aws-burst-1"], ["hold"])
 
     def test_a_flapping_queue_withholds_nothing(self):
         inst = instance("running")

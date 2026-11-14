@@ -10,5 +10,8 @@ netconsole_src_port: 6665
 # errors). 5 passes ERR and WARNING too.
 netconsole_console_loglevel: 5
 
+# The undervoltage-latch half needs the Pi firmware (vcgencmd). Off on x86.
+crash_evidence_rpi_throttle: "{{ ansible_architecture is match('^(aarch64|arm)') }}"
+
 # node-exporter's textfile collector directory (Debian package default).
 crash_evidence_textfile_dir: /var/lib/prometheus/node-exporter

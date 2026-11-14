@@ -1,9 +1,9 @@
 ---
-- name: Packages (docker, compose, rsync for the seed and backups, sqlite3 for snapshots)
+- name: Packages (docker, compose, rsync for the seed and backups, sqlite3 for snapshots, dig for the fence)
   # docker-cli: Debian 13 split the `docker` binary out of docker.io, so without
   # it forgejo.service's `docker compose` has no command to run.
   ansible.builtin.apt:
-    name: [docker.io, docker-cli, docker-compose, rsync, sqlite3, unattended-upgrades]
+    name: [docker.io, docker-cli, docker-compose, rsync, sqlite3, bind9-dnsutils, unattended-upgrades]
     state: present
     update_cache: true
     cache_valid_time: 3600
@@ -101,11 +101,22 @@
     key_options: 'restrict'
   loop: "{{ forgejo_host_seed_keys }}"
 
-- name: Forgejo running only when forgejo_host_running
+- name: The fence (forge-primary.kblab.me decides which host runs Forgejo)
+  ansible.builtin.copy:
+    src: forge-fence-check
+    dest: /usr/local/sbin/forge-fence-check
+    owner: root
+    group: root
+    mode: "0755"
+
+# Enabled and started on every host: forgejo.service's ExecCondition is the
+# fence, so a host the record does not name skips the start (the unit is not
+# failed) and stays standby, at boot and on every play.
+- name: Forgejo enabled; the fence decides whether it starts
   ansible.builtin.systemd:
     name: forgejo
-    enabled: "{{ forgejo_host_running }}"
-    state: "{{ 'started' if forgejo_host_running else 'stopped' }}"
+    enabled: true
+    state: started
     daemon_reload: true
 
 - name: Backup pull key (asus-laptop, read-only rsync of /mnt/forgejo)
@@ -156,11 +167,11 @@
     label: "{{ item.0.name }}.{{ item.1 }}"
   register: forgejo_host_job_units
 
-- name: Host job timers run only where Forgejo runs
+- name: Host job timers (each run is skipped unless Forgejo runs here)
   ansible.builtin.systemd:
     name: "{{ item.name }}.timer"
-    enabled: "{{ forgejo_host_running }}"
-    state: "{{ 'started' if forgejo_host_running else 'stopped' }}"
+    enabled: true
+    state: started
     daemon_reload: true
   loop: "{{ forgejo_host_jobs }}"
   # A dry run has not written a new unit, so systemd cannot find it yet.

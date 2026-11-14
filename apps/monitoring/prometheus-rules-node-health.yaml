@@ -212,6 +212,26 @@ spec:
               throttle hard or shut down; asus-laptop dropped off the LAN after
               hours here on 2026-10-23, and hp-victus went NotReady on
               2026-11-13. Move work off it now.
+        # Margin from the drive's own warning threshold (temp1_max), which differs per
+        # model. hp-victus sat at 77-80C (max 84.85) for 70 min before its NVMe dropped
+        # off the bus and the node hung on 2026-11-13. Replay, 14 days to 2026-11-14:
+        # fires only on hp-victus, 11-13 22:33 to 23:43.
+        - alert: NodeNvmeHot
+          expr: >-
+            node_hwmon_temp_celsius{chip=~"nvme.*",sensor="temp1"}
+            > on (instance, chip, sensor)
+            (node_hwmon_temp_max_celsius{chip=~"nvme.*",sensor="temp1"} - 8)
+          for: 10m
+          labels:
+            severity: warning
+            category: node-health
+          annotations:
+            summary: "NVMe {{ $labels.chip }} at {{ $value }}C on {{ $labels.instance }}"
+            description: >-
+              {{ $labels.chip }} on {{ $labels.instance }} has been within 8C of
+              its warning temperature for 10m. An NVMe this hot can throttle or
+              drop off the PCIe bus; hp-victus did, and hung, on 2026-11-13.
+              Move work off the host and check its airflow and CPU load.
     - name: homelab-node-health.recording
       rules:
         - record: instance:node_cpu_package_temp:celsius

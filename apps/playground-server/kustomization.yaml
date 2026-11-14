@@ -15,7 +15,7 @@ resources:
 # Moved by the playground repo's scripts/shots/publish.sh after each shots run.
 images:
   - name: git.kblab.me/kblack0610/unity-playground-gallery
-    newTag: "4a2b986-209"
+    newTag: "c795215-210"
   # The home server: newName is the game's server image (the playground repo's
   # scripts/build/games/<id>.json "image"; none for the playground itself) and newTag
   # the release it runs. The playground repo's scripts/server/roll.sh <tag> moves newTag.

@@ -18,6 +18,7 @@ This directory augments the Prometheus stack with ingress, dashboards, alert rul
 | `prometheus-rules-game-servers.yaml` | Game servers from the game registry: metrics missing, a stale heartbeat, slow ticks (span p95 over 80% of the tick budget), an Edgegap server left running empty |
 | `prometheus-rules-freqtrade.yaml` | The Freqtrade dry-run league and lab, from the trader-web exporter: a bot not in dry run (pages), exporter missing, a bot API down two ingests in a row, ingest or candles stale, an analysis or walk-forward run failed or overdue; tests in `tests/freqtrade.test.yaml`, dashboard `dashboards/freqtrade.json` |
 | `prometheus-rules-emotiv.yaml` | The Emotiv bridge on mac-mini, from its MQTT heartbeat via mqtt2prom: no heartbeat for 10m, an upload backlog, the Cortex license ending; tests in `tests/emotiv.test.yaml`, dashboard `dashboards/emotiv-mini.json`, bridge `ansible/roles/emotiv-bridge` |
+| `prometheus-rules-binks.yaml` | binks.chat, from binks-api's binks_* metrics and the gateway key gauges: over 20% of chat turns ending in an error frame, over 20% of LLM calls failing, the `binks-anon` key (every anonymous chat) under 25% and 5% of its budget, or spending over 10% of it in an hour; tests in `tests/binks.test.yaml` |
 | `external-mac-nodes.yaml` | Scrape definitions for Apple Silicon hosts |
 | `external-standalone-nodes.yaml` | Scrape definitions for non-Kubernetes hosts |
 | `external-windows-nodes.yaml` | Scrape definitions for Windows PCs (windows_exporter, role `windows-exporter`) |

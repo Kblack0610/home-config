@@ -6,13 +6,14 @@ LLM chat backend for `binks.chat`. TypeScript replacement for the legacy Rust `b
 
 - **Namespace**: `binks-api`
 - **Image**: `git.kblab.me/kblack0610/binks-api` (Forgejo registry — `forgejo-registry` imagePullSecret)
-- **DB**: in-namespace `binks-postgres` StatefulSet on a 5Gi PVC. Anonymous and signed-in chats both persisted here.
+- **DB**: in-namespace `binks-postgres` StatefulSet on a 5Gi PVC. Anonymous and signed-in chats both persisted here. `binks-postgres-backup` (`backup-cronjob.yaml`) dumps it nightly at 2:25 to the NAS, `home-k3s/binks/`; restore: `docs/backup-runbook.md`, "Restore binks.chat".
+- **Alerts**: `apps/monitoring/prometheus-rules-binks.yaml`: chat-turn and LLM error rates, and the `binks-anon` budget (share left, and spend per hour).
 - **LLM gateway**: `http://litellm.ai-gateway.svc.cluster.local:4000`, routes `binks-chat` (default) and `binks-chat-hard`. Signed-in users with an active $8/mo Square subscription get their own $2 / 1mo key, minted with `binks-api-secret/LITELLM_ISSUER_KEY`; anonymous chats use `LITELLM_API_KEY` (`binks-anon`). See `apps/litellm/README.md`, "binks.chat keys"
 - **Ingress**: `binks.chat` (Traefik IngressRoute `binks-chat` in `ingress.yaml`): the SPA on `/`, the API on `/api` and `/ws`. TLS ends at Cloudflare.
 
 ## Deploy lifecycle
 
-1. Tag in `platform`: `git tag binks-api-v<x.y.z> && git push origin binks-api-v<x.y.z>`.
+1. Tag a commit on `develop` in `platform`: `git tag binks-api-v<x.y.z> && git push origin binks-api-v<x.y.z>`. The workflow's `gate` job refuses a ref not on `develop` and runs typecheck, lint and test before it builds.
 2. The Forgejo workflow [`deploy-binks-api.yml`](https://github.com/BlackNBrownStudios/platform/blob/develop/.forgejo/workflows/deploy-binks-api.yml) builds + pushes `git.kblab.me/kblack0610/binks-api:v<x.y.z>`.
 3. Same workflow bumps `images[].newTag` in this directory's `kustomization.yaml` and pushes to `home-config@master`.
 4. Flux reconciles within ~1 min.

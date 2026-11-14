@@ -181,6 +181,9 @@
     - not ansible_check_mode
   no_log: true
 
+- name: Reset a registered runner's labels to gh_runner_labels
+  ansible.builtin.import_tasks: labels.yml
+
 - name: Set extra job environment in the runner .env
   ansible.builtin.lineinfile:
     path: "{{ gh_runner_home }}/.env"

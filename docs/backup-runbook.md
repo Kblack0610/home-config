@@ -143,6 +143,7 @@ Note: `nofail` means an unplugged drive never blocks boot. The `immich-originals
 | Check recent backup jobs | `kubectl --context home-k3s get jobs -A --sort-by=.status.startTime | grep backup | tail -5` |
 | Restore Home Assistant | See `Restore Home Assistant` |
 | Restore LiteLLM | See `Restore LiteLLM` |
+| Restore binks.chat (accounts, chats) | See `Restore binks.chat` |
 | Restore the game registry | See `Restore the game registry` |
 | Restore Music Assistant | `apps/music-assistant/README.md` -> Backup and rebuild |
 | Restore Snapcast | `apps/snapcast/README.md` -> Backup and restore |
@@ -169,6 +170,7 @@ K3s app backups run on schedule via CronJobs. Each backup writes a local archive
 | `forgejo-backup` | Daily 3 AM | `forgejo` | asus-laptop `/mnt/backups/forgejo` (reads the live data on the same host; excludes `gitea/data/packages`; second copy is the separate job below) |
 | `immich-backup` | Daily 3 AM | `immich` | `/var/backups/immich` + NAS `home-k3s/immich/` (DB only) |
 | `postgres-backup` | Daily 2:20 AM | `databases` | NAS `home-k3s/postgres/` (`pg_dumpall` of every database and role) |
+| `binks-postgres-backup` | Daily 2:25 AM | `binks-api` | NAS `home-k3s/binks/` (`pg_dump` of the `binks` database in the standalone `binks-postgres`) |
 | `karakeep-backup` | Daily 3 AM | `karakeep` | `/var/backups/karakeep` + NAS `home-k3s/karakeep/` |
 | `vaultwarden-backup` | Daily 3 AM | `vaultwarden` | `/var/backups/vaultwarden` + NAS `home-k3s/vaultwarden/` |
 | `immich-originals-backup` | Daily 3:30 AM | `immich` | 8TB `/mnt/backup-8t/immich` + snapshots (originals + DB) |
@@ -198,6 +200,7 @@ Every copy in this table except `offsite-backup` lives in this house. `offsite-b
 | `actual-budget-backup` | **Job fails, `HomelabCronJobFailed` pages.** The finance history is the data least able to wait a day for the next 8TB and offsite runs. |
 | `karakeep-backup` | **Job fails.** Its PVCs and local backups share a disk, so the NAS copy is the only protection. |
 | `postgres-backup` | **Job fails.** The NAS is its only destination. |
+| `binks-postgres-backup` | **Job fails.** The NAS is its only destination, and a dump with no `messages` data fails too. |
 | `vaultwarden-backup` | **Job fails.** The local copy sits on the one node holding the PVC, and losing the vault loses every credential. |
 | everything else | Job exits 0, warning in the log only (best-effort). |
 
@@ -365,6 +368,27 @@ kubectl --context home-k3s scale deployment home-assistant -n home-assistant --r
 ## Restore LiteLLM
 
 LiteLLM keeps everything in the `litellm` database, so use `Restore shared Postgres`. The 104-byte archives in `/mnt/nas/private/backups/home-k3s/litellm/` are from the retired `litellm-backup` job, which tarred an empty PVC: they hold nothing.
+
+## Restore binks.chat
+
+Every binks.chat account, chat, message, subscription and connector is in the `binks` database of `binks-postgres` (namespace `binks-api`), a StatefulSet of its own that `postgres-backup` does not see. `binks-postgres-backup` dumps it with `pg_dump --no-owner --no-acl`, so the dump loads into any empty database as any role.
+
+```bash
+# 1. Pick a dump
+ssh -p 2222 192.168.1.152 sudo ls -lt /mnt/nas/private/backups/home-k3s/binks/ | head -5
+
+# 2. Stop the API so nothing writes, and recreate the database empty
+kubectl --context home-k3s -n binks-api scale deploy/binks-api --replicas=0
+kubectl --context home-k3s -n binks-api exec binks-postgres-0 -- sh -c \
+  'psql -U "$POSTGRES_USER" -d postgres -c "DROP DATABASE binks WITH (FORCE)" -c "CREATE DATABASE binks"'
+
+# 3. Load it, then start the API and check /ready
+ssh -p 2222 192.168.1.152 sudo cat /mnt/nas/private/backups/home-k3s/binks/binks-YYYYmmdd-HHMMSS.sql.gz \
+  | gunzip | kubectl --context home-k3s -n binks-api exec -i binks-postgres-0 -- sh -c 'psql -U "$POSTGRES_USER" -d binks -v ON_ERROR_STOP=1 -q'
+kubectl --context home-k3s -n binks-api scale deploy/binks-api --replicas=1
+```
+
+To test a dump without touching the live database, load it into a throwaway `postgres:15-alpine` container and compare `SELECT COUNT(*)` for `users`, `conversations` and `messages` with the live one. Done on 2026-11-14 with `binks-20261114-173755.sql.gz`: 8 users, 40 conversations, 65 messages, 3 subscriptions, all equal.
 
 ## Restore shared Postgres
 

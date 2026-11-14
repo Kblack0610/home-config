@@ -10,6 +10,7 @@ Each row links the steps; it does not restate them. A service with no steps yet:
 | Forgejo: runner registration | `forgejo forgejo-cli actions generate-runner-token` | [forgejo README](../apps/forgejo/README.md#runner) | `apps/forgejo/runner-secret.yaml` |
 | Forgejo: server secrets | `forgejo generate secret` | [forgejo README](../apps/forgejo/README.md#configuration) | `apps/forgejo/secret.sops.yaml` |
 | Forgejo: registry pull secrets | a token with `read:package` from the CLI above | not written yet | `apps/<app>/registry-secret.yaml` (dockerconfigjson) |
+| Forgejo: forge-hel1 tunnel token | platform `infra/forge-tunnel` apply, then `terraform output -raw tunnel_token` | [forge-tunnel README](https://github.com/BlackNBrownStudios/platform/blob/develop/infra/forge-tunnel/README.md) | `ansible/group_vars/hetzner/vault.sops.yaml` (`vault_forge_tunnel_token`) |
 | Renovate bot | Forgejo bot user and API token | [renovate.md](./renovate.md) | the Renovate Actions secret |
 | mem0 API keys | `POST /api-keys` with the admin JWT, over a port-forward | [mem0 README](../apps/mem0/README.md#auth-model--admin-bootstrap-important--not-admin_api_key-as-bearer) | `apps/mem0/client-credentials.secret.yaml` (`MEM0_API_KEY`) |
 | LiteLLM virtual keys | `POST /key/generate` with the master key | [litellm README](../apps/litellm/README.md#create-a-key) | the consumer's secret; master key in `apps/litellm/litellm-secrets.sops.yaml` |

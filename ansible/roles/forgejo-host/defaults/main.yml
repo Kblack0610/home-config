@@ -8,5 +8,8 @@ forgejo_host_running: false
 # Where Forgejo's HTTP port listens. Loopback until the tailnet is up; then
 # the host's tailnet IP, so the cluster's forgejo-http Service can reach it.
 forgejo_host_http_bind: 127.0.0.1
+# The connector for the forge-hel1 Cloudflare tunnel (platform infra/forge-tunnel),
+# same image as the cluster's public-sites connector, read from its Deployment.
+forgejo_host_cloudflared_image: "{{ (lookup('file', playbook_dir ~ '/../../apps/cloudflared-public-sites/deployment.yaml') | from_yaml).spec.template.spec.containers[0].image }}"
 # Extra root keys, only for the seed copy from asus-laptop; emptied after cutover.
 forgejo_host_seed_keys: []

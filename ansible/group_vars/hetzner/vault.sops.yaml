@@ -5,6 +5,7 @@ vault_forgejo_env:
     FORGEJO__security__SECRET_KEY: ENC[AES256_GCM,data:PNL041hdS5orcR92xdMnXCT+XDFKB+1GTaN+OykCVzO86dX33ozOnBT8Lw==,iv:Pwhj0zzt4LuO1aFbdpZ8rqaUlFAtlKt2mPtzMP1KW/I=,tag:R6UzoqbuixTf//yiluHmXw==,type:str]
     FORGEJO__server__LFS_JWT_SECRET: ENC[AES256_GCM,data:Yxni2dcbCgHw2mT0StQ8BRDHOiA4ZyryWXJ5mlZqSOjTmeSHnZ25Up8rWA==,iv:6CwiVojG/ghPEqjuZubJwJyCMFo3ApJizc9qYv4k9hI=,tag:wG5rEg/yv/cylMY0JjtCyA==,type:str]
 vault_home_wan_cidr: ENC[AES256_GCM,data:nDT1vw6/zRuzQrzaJPwyFg==,iv:sDbETsNwQnith094wmMyw3ei2pn1IMsZ+AVrTOqFlxk=,tag:C++ODjjJb8Xuhk2/41zBcg==,type:str]
+vault_forge_tunnel_token: ENC[AES256_GCM,data:Ct6255/z/gGx4/H9Ld1RfgQGNF36IzH0ddRyech6enOqvs5OJDhZzgNdLEQE83hewl83S+6aOQOtkGf0OWYEtDvhG3aOVnJW1e0JZWjspGetsbEreIghyTk=,iv:rx/VYOVZgVciMCujJvN4TnbzS9uaYNevkhcvH4DbabI=,tag:kgacvwfU0joK+aFlN8RTcA==,type:str]
 sops:
     age:
         - enc: |
@@ -25,7 +26,7 @@ sops:
             COzk1miJhIcT7WiXb/2gWazM0/iXE0ozj4fm6OtLv+KHTnVSc7jC3g==
             -----END AGE ENCRYPTED FILE-----
           recipient: age1q694uddq28kzxyteemaa4x5zxrnqlmhj0z336zmf6wpptq6ema5qcez399
-    lastmodified: "2026-11-14T03:02:48Z"
-    mac: ENC[AES256_GCM,data:EtvSxeGnnlDrR1E85EBwRujUDlrc6foWfd7BWc9zUBFdSctaeSuhH2e73P3gVE6DnMUNEp561MK7mCXG2HVpY00/jq5EdT6XTG7q2/wp8MdsUyDACieb8+pfiYLGEr8BnjAebPp14YocEMtpr6GdYNkpwPH7S5MGS3Zjjho/dhE=,iv:cG5n/Zj7a9Xc7zHs7S7fz0nUcDJHeSJTaUHfjRNqG/k=,tag:45sy7qdbwjGlIJakHWfhHw==,type:str]
+    lastmodified: "2026-11-14T17:24:45Z"
+    mac: ENC[AES256_GCM,data:4MGDCQayHYObHPyYlz09e99PIHQ75QiL4uo/z7dQMpnLK0Qw8RlOKnqqCfyoW0O0WDpVj96/+qYEz46Rurts74BNgMPY78j6v7eTUjj23KuyJdSBWy39Eook8UTXl8XiZ7kyA/eD23PtskIQM0r1auRdeF99R+NbGHM/ckqSA+Y=,iv:Olsy2qWsN2EpLvSD+7V7EGxUi+wdHNoJlLw1a+XwMu8=,tag:Agw++i6E3bsAsTWs/WbkhQ==,type:str]
     unencrypted_suffix: _unencrypted
     version: 3.13.3

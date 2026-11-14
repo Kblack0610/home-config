@@ -13,3 +13,14 @@ services:
     volumes:
       - {{ forgejo_host_data }}:/data
       - /etc/forgejo/app.ini:/data/gitea/conf/app.ini
+{% if forgejo_host_running %}
+  # Serves git.kennethblack.me through the forge-hel1 tunnel, whose ingress rule
+  # targets http://forgejo:3000 on this compose network. Token: vault_forge_tunnel_token.
+  cloudflared:
+    image: {{ forgejo_host_cloudflared_image }}
+    restart: unless-stopped
+    command: ["tunnel", "--no-autoupdate", "run"]
+    env_file: /etc/forgejo/cloudflared.env
+    depends_on:
+      - forgejo
+{% endif %}

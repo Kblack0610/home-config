@@ -56,6 +56,26 @@
   no_log: true
   notify: Restart forgejo
 
+- name: Tunnel token is the real one (platform infra/forge-tunnel `terraform output -raw tunnel_token`)
+  when: forgejo_host_running
+  ansible.builtin.assert:
+    that:
+      - vault_forge_tunnel_token is defined
+      - not vault_forge_tunnel_token.startswith('PLACEHOLDER')
+    fail_msg: "vault_forge_tunnel_token in group_vars/hetzner/vault.sops.yaml is still the placeholder; set it from terraform output (platform infra/forge-tunnel README)"
+    quiet: true
+
+- name: Tunnel token env for cloudflared
+  when: forgejo_host_running
+  ansible.builtin.copy:
+    content: "TUNNEL_TOKEN={{ vault_forge_tunnel_token }}\n"
+    dest: /etc/forgejo/cloudflared.env
+    owner: root
+    group: root
+    mode: "0600"
+  no_log: true
+  notify: Restart forgejo
+
 - name: Compose file and unit
   ansible.builtin.template:
     src: "{{ item.src }}"

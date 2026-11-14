@@ -735,9 +735,8 @@ all:
           hcloud_server_type: cx33
           hcloud_image: debian-13
           hcloud_volume_gb: 300
-          # The one live Forgejo since the cutover (2026-11-14). Ports bind on the
-          # tailnet IP only; the cluster's forgejo-http/ssh EndpointSlices point here.
-          forgejo_host_running: true
+          # Ports bind on the tailnet IP only. Whether Forgejo runs here is the
+          # fence's call: forge-primary.kblab.me names the live host (apps/forgejo/README.md).
           forgejo_host_http_bind: 100.125.203.14
           # asus-laptop root's key for the seed rsync of /mnt/backups/forgejo-live;
           # removed after cutover.

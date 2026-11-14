@@ -12,8 +12,8 @@ and repository mirroring enabled.
 | `configmap.yaml` | Forgejo `app.ini` — Actions, Packages, Mirroring enabled |
 | `secret.sops.yaml` | SOPS-encrypted `LFS_JWT_SECRET`, `INTERNAL_TOKEN`, `JWT_SECRET` and `SECRET_KEY`, as `FORGEJO__<section>__<key>` env vars |
 | `deployment.yaml` | The old in-cluster workload, at 0 replicas since the cutover; kept for rollback, removed at cleanup |
-| `service-http.yaml` | `forgejo-http:3000`, selectorless, with an EndpointSlice to forge-hel1's tailnet IP `100.125.203.14:3000` |
-| `service-ssh.yaml` | `forgejo-ssh:22`, selectorless, with an EndpointSlice to `100.125.203.14:2222` (the container's sshd) |
+| `service-http.yaml` | `forgejo-http:3000`, an ExternalName of `forge-primary.kblab.me`, the record that names the live host |
+| `service-ssh.yaml` | `forgejo-ssh:2222`, the same ExternalName; the host publishes the container's sshd on 2222 |
 | `ingress.yaml` | TLS ingress for `git.kblab.me` (git, registry, API, Flux) |
 | `ingress-public.yaml` | TLS ingress for `git.kennethblack.me`, the `ROOT_URL` and the one browser hostname |
 | `ingressroute-browser-redirect.yaml` | Redirects browsers (`Accept: text/html`) on `git.kblab.me` to `git.kennethblack.me`, so one login cookie covers every page |
@@ -234,7 +234,7 @@ Endpoints:
 
 ### On forge-hel1
 
-`ansible/roles/forgejo-host` runs these only when `forgejo_host_running` is true, and each run is skipped unless the compose `forgejo` container is up.
+`ansible/roles/forgejo-host` enables these timers on every host, and each run is skipped unless the compose `forgejo` container is up, so they run only where Forgejo runs.
 
 - `forgejo-db-snapshot.timer` (hourly :07) and `forgejo-lock-reaper.timer` (hourly :17) run the scripts from `db-snapshot-cronjob.yaml` and `lock-reaper-cronjob.yaml` in `docker run`, so one copy of each script exists. Snapshots land in `/mnt/forgejo/backups/snapshots`; the reaper pages through `https://ntfy.kblab.me/homelab-alerts`.
 - The mirror exporter is a second service in `/etc/forgejo/compose.yaml`, with image, command and env from `apps/forgejo-mirror-exporter/deployment.yaml`, on port 9310.
@@ -247,38 +247,45 @@ One Forgejo writes at a time, always. On 2026-11-13 a second copy on asus forked
 
 | What | Where |
 |------|-------|
-| The live Forgejo | forge-hel1 (Hetzner cx33, hel1), `docker compose` in `/etc/forgejo`, unit `forgejo.service`, data on the volume at `/mnt/forgejo/data` |
-| Its switch | `forgejo_host_running` for the host in `ansible/inventory.yml`; the role starts or stops Forgejo, its exporter and its timers from it |
-| How the cluster reaches it | `forgejo-http` and `forgejo-ssh` have no selector; their EndpointSlices name `100.125.203.14`, reached through each node's tailscale0 |
+| Which host is live | the Cloudflare A record `forge-primary.kblab.me` (DNS-only, TTL 60, record id `e136e5abd6105d75db0df0823d7be623`), holding that host's tailnet IP. It is the one source; nothing in git names the host |
+| The live Forgejo | forge-hel1 (Hetzner cx33, hel1, tailnet `100.125.203.14`), `docker compose` in `/etc/forgejo`, unit `forgejo.service`, data on the volume at `/mnt/forgejo/data` |
+| The fence | `/usr/local/sbin/forge-fence-check` (from the role's `files/`), the `ExecCondition` of `forgejo.service`. It reads the record from 1.1.1.1 and lets Forgejo start only on the host it names. Another host, or a record it cannot read, skips the start (the unit is not failed), so a standby or a dead primary that boots again stays down |
+| How the cluster reaches it | `forgejo-http` and `forgejo-ssh` are ExternalNames of the record. Pods resolve it through `apps/coredns` (straight to 1.1.1.1, past the LAN wildcard), Traefik follows it (`allowExternalNameServices` in `apps/crowdsec/helmchartconfig.yaml`), and the traffic goes over each node's tailscale0. The mirror exporter is scraped at `forge-primary.kblab.me:9310` (ScrapeConfig in `apps/forgejo-mirror-exporter`) |
 | How LAN users reach it | `git.kblab.me` resolves to Traefik (`192.168.1.124`), which proxies to `forgejo-http` |
 | The frozen copy | asus-laptop `/mnt/backups/forgejo-live/data` (PV `forgejo-data-asus`), as of the cutover; rollback source until cleanup |
+
+A move changes the record, never git. That matters because Flux pulls from this Forgejo (`clusters/home-k3s/flux-system/gotk-sync.yaml`): a pointer kept in git would need the Forgejo it points at to fetch its own fix.
 
 Check it:
 
 ```bash
-cd ansible && ansible forge-hel1 -m shell -a 'systemctl is-active forgejo; docker ps --format "{{.Names}} {{.Status}}"'
+dig +short @1.1.1.1 forge-primary.kblab.me          # the live host's tailnet IP
+cd ansible && ansible forge-hel1 -m shell -a 'systemctl is-active forgejo; forge-fence-check; docker ps --format "{{.Names}} {{.Status}}"'
 curl -s https://git.kblab.me/api/healthz
-kubectl --context home-k3s -n forgejo get endpointslices
 ```
 
-Move it (today a manual freeze; plan `vectorized-pondering-turtle` replaces this with `forge-move` and a DNS fence):
+Move it (manual until plan `vectorized-pondering-turtle` P5 ships `scripts/forge-move`; the new host must already run `ansible/roles/forgejo-host`):
 
-1. Freeze: `forgejo_host_running: false` on the old host and run its play, or `kubectl scale deploy/forgejo --replicas=0` for the in-cluster copy. Confirm nothing answers on the old address.
+1. Freeze: `systemctl stop forgejo` on the old host (or `kubectl -n forgejo scale deploy/forgejo --replicas=0` for the old in-cluster copy). Confirm nothing answers on the old address.
 2. Copy the delta: `rsync -aH --numeric-ids --delete` of the data tree from the old host to the new one, as root, with Forgejo stopped on both.
-3. Point the names: edit the addresses in the EndpointSlices in `service-http.yaml` and `service-ssh.yaml` (and the exporter's in `apps/forgejo-mirror-exporter/deployment.yaml`). Flux pulls from Forgejo itself, so while it is down apply them by hand (`kubectl apply -f`), then commit the same change once the new Forgejo is up.
-4. Start: `forgejo_host_running: true` on the new host and run its play.
+3. Flip the record to the new host's tailnet IP (a Cloudflare token with DNS edit on kblab.me):
+   `curl -X PATCH -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' https://api.cloudflare.com/client/v4/zones/<kblab.me zone id>/dns_records/e136e5abd6105d75db0df0823d7be623 -d '{"content":"<new tailnet IP>"}'`
+4. Start: `systemctl start forgejo` on the new host; `forge-fence-check` there must print that the record names it. Wait out the 60 s TTL for the cluster to follow.
 5. Verify: the checks above, a push, a PR comment, `flux get sources git` fetching a new revision.
 
-Roll back to asus (until cleanup reaps the asus copy): stop forge-hel1 (`forgejo_host_running: false`, play), rsync `/mnt/forgejo/data/` back to `/mnt/backups/forgejo-live/data/` (writes since the cutover), restore the selector on both Services and delete the EndpointSlices, `replicas: 1` on `deployment.yaml`, and undo the CronJob suspends.
+Roll back to asus (until cleanup reaps the asus copy): stop forge-hel1 (`systemctl stop forgejo`), park the record on `192.0.2.1` (names no host) so the fence keeps it down, rsync `/mnt/forgejo/data/` back to `/mnt/backups/forgejo-live/data/` (writes since the cutover), revert the cutover PR (selector Services, `replicas: 1`, the CronJob suspends), and apply the Services by hand, since Flux cannot fetch while Forgejo is down.
 
 ### Troubleshooting
 
 | Symptom | Cause | Fix |
 |---------|-------|-----|
 | `forgejo.service` fails with `docker: command not found` | Debian 13 moved the CLI out of `docker.io` | `docker-cli` is in the role since #966; re-run the play |
+| `forgejo.service` inactive, journal says `staying standby` | the fence: the record names another host, or could not be read | `dig +short @1.1.1.1 forge-primary.kblab.me`; if this host should be live, flip the record (step 3). If Cloudflare DNS itself is down, `forge-fence-check --override "<reason>"` lets this host start for one hour (logged), after you have confirmed no other host runs Forgejo |
 | Pods get connection refused or timeouts on `forgejo-http` | the node has no tailscale0 route to 100.64.0.0/10 | `tailscale status` on that node; the tailnet play: `--limit 'hetzner:linux_bare_metal:pi_k3s' --tags tailscale` |
-| Flux stuck on an old revision after a move | Flux fetches from the Forgejo it is pointing at | apply the EndpointSlices by hand, then `flux reconcile source git flux-system` |
-| Two Forgejos answer | someone started the old copy | stop it at once; the data has forked from that moment, so compare PR numbers as on 2026-11-13 (#961, #962) before anything else writes |
+| Pods or Traefik reach `192.168.1.124` for `forgejo-http` | CoreDNS asked the LAN resolver, whose `*.kblab.me` wildcard answers every name | `kubectl -n kube-system get cm coredns-custom`; restart CoreDNS (`rollout restart deploy/coredns`) after a change to it |
+| Traefik 404 or `externalName services not allowed` | `allowExternalNameServices` missing from the Traefik args | `apps/crowdsec/helmchartconfig.yaml`; `kubectl -n kube-system get deploy traefik -o yaml \| grep -i externalname` |
+| Flux stuck on an old revision after a move | the new host is not answering yet | fix the host; Flux fetches on its next interval, or `flux reconcile source git flux-system` |
+| Two Forgejos answer | someone started a copy past the fence (override, or the old in-cluster Deployment) | stop the one the record does not name at once; the data has forked from that moment, so compare PR numbers as on 2026-11-13 (#961, #962) before anything else writes |
 
 ## Related Docs
 

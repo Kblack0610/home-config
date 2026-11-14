@@ -1,0 +1,66 @@
+#!/bin/bash
+# forge-fence-check - may this host run the live Forgejo? Installed by ansible
+# roles/forgejo-host; forgejo.service runs it as its ExecCondition.
+#
+# forge-primary.kblab.me (Cloudflare, DNS-only, TTL 60) holds the tailnet IP of
+# the one host that runs Forgejo, and scripts/forge-move is its only writer.
+# Exit 0 when the record names this host. Exit 1 (systemd skips the start; the
+# unit is not failed) when it names another host or cannot be read: when
+# unsure, do not write, because two writers fork the data (2026-11-13).
+#
+#   forge-fence-check                    the check
+#   forge-fence-check --override REASON  let this host start without the record
+#                                        for the next hour (Cloudflare DNS down);
+#                                        logged to the journal
+# Runbook: home-config apps/forgejo/README.md, "Where Forgejo runs and how to move it".
+set -u
+
+RECORD=forge-primary.kblab.me
+RESOLVERS="1.1.1.1 1.0.0.1"   # Cloudflare's own, not the LAN resolver: its *.kblab.me wildcard would answer for any name
+OVERRIDE=/etc/forgejo/fence-override
+OVERRIDE_SEC=3600
+BACKOFF="2 4 8 16"            # about 30 s for tailscale and DNS to come up at boot, then give up closed
+
+say() { echo "forge-fence-check: $*" >&2; }
+
+own_ip() { tailscale ip -4 2>/dev/null | head -n1; }
+
+lookup() {
+  local r out
+  for r in $RESOLVERS; do
+    out="$(dig +short +time=3 +tries=1 "@$r" "$RECORD" A 2>/dev/null | grep -E '^[0-9.]+$')" && [ -n "$out" ] && { printf '%s\n' "$out"; return 0; }
+  done
+  return 1
+}
+
+if [ "${1:-}" = "--override" ]; then
+  shift
+  [ $# -gt 0 ] || { say "--override needs a reason"; exit 2; }
+  printf '%s %s\n' "$(( $(date +%s) + OVERRIDE_SEC ))" "$*" > "$OVERRIDE"
+  logger -t forge-fence-check -- "override for ${OVERRIDE_SEC}s by ${SUDO_USER:-$USER}: $*"
+  say "this host may start Forgejo without the record until $(date -d "@$(( $(date +%s) + OVERRIDE_SEC ))")"
+  exit 0
+fi
+
+if [ -r "$OVERRIDE" ]; then
+  read -r until reason < "$OVERRIDE"
+  if [ "${until:-0}" -gt "$(date +%s)" ] 2>/dev/null; then
+    say "override in force until $(date -d "@$until"): $reason"
+    exit 0
+  fi
+  rm -f "$OVERRIDE"
+fi
+
+me="" answer=""
+for wait in $BACKOFF ""; do
+  me="$(own_ip)"
+  answer="$(lookup)" || answer=""
+  [ -n "$me" ] && [ -n "$answer" ] && break
+  [ -n "$wait" ] && sleep "$wait"
+done
+
+[ -n "$me" ] || { say "no tailnet IP on this host (is tailscaled up?); staying standby"; exit 1; }
+[ -n "$answer" ] || { say "could not read $RECORD from $RESOLVERS; staying standby"; exit 1; }
+[ "$(printf '%s\n' "$answer" | wc -l)" -eq 1 ] || { say "$RECORD holds more than one address ($(tr '\n' ' ' <<<"$answer")); staying standby"; exit 1; }
+[ "$answer" = "$me" ] || { say "$RECORD names $answer, this host is $me; staying standby"; exit 1; }
+say "$RECORD names this host ($me)"

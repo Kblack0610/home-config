@@ -6,28 +6,16 @@ metadata:
   labels:
     app.kubernetes.io/name: forgejo
 spec:
-  type: ClusterIP
-  # No selector: Forgejo runs on forge-hel1 since 2026-11-14 (plan
-  # virtual-strolling-nova), and the EndpointSlice below points this name at
-  # its tailnet IP. Pods reach it through their node's tailscale0.
+  # Forgejo runs outside the cluster on whichever host forge-primary.kblab.me
+  # names (its tailnet IP; scripts/forge-move is the record's only writer), so
+  # a move changes nothing in git and Flux never needs Forgejo to fetch the
+  # fix. Pods resolve the record through apps/coredns, Traefik follows it with
+  # allowExternalNameServices, and the traffic goes over the node's tailscale0.
+  # apps/forgejo/README.md, "Where Forgejo runs and how to move it".
+  type: ExternalName
+  externalName: forge-primary.kblab.me
   ports:
+    # An ExternalName has no port mapping: clients dial the host's port. The
+    # container's sshd is published on 2222 because the host's own sshd has 22.
     - name: ssh
-      port: 22
-      targetPort: 22
-      protocol: TCP
----
-apiVersion: discovery.k8s.io/v1
-kind: EndpointSlice
-metadata:
-  name: forgejo-ssh-forge-hel1
-  namespace: forgejo
-  labels:
-    kubernetes.io/service-name: forgejo-ssh
-    endpointslice.kubernetes.io/managed-by: home-config
-addressType: IPv4
-ports:
-  - name: ssh
-    port: 2222   # the VM's own sshd has 22; the container's sshd is published on 2222
-    protocol: TCP
-endpoints:
-  - addresses: ["100.125.203.14"]   # forge-hel1, tailnet
+      port: 2222

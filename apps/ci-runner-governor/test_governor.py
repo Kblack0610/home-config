@@ -408,11 +408,12 @@ class GovernorTest(unittest.TestCase):
 
     def test_stop_after_idle_off_seconds(self):
         withheld = {**self.aws(off=8), **RUNNERS}  # razer-3 covers the one job
+        cold = {**AWS, "warm_idle_off_seconds": 0}  # no warm host: its own idle-off alone
         for idle, want in ((1199, ("hold", "")), (1200, ("stop", ""))):
-            got = actions(self.STEADY, withheld, queue=1, cfg=AWS, instances=instance("running", idle))
+            got = actions(self.STEADY, withheld, queue=1, cfg=cold, instances=instance("running", idle))
             self.assertEqual(got["aws-burst-1"], want)
         # Its slots go first, even with jobs waiting that it has not taken in that time.
-        got = actions(self.STEADY, {**self.aws(on_idle=1, off=7), **self.FULL}, queue=9, cfg=AWS,
+        got = actions(self.STEADY, {**self.aws(on_idle=1, off=7), **self.FULL}, queue=9, cfg=cold,
                       instances=instance("running", 1200))
         self.assertEqual(got["aws-burst-1"], ("withhold", "aws-idle-0"))
 
@@ -466,7 +467,8 @@ class GovernorTest(unittest.TestCase):
     def test_live_gate_values(self):
         self.assertEqual({k: LIVE_POWER[k] for k in governor.POWER_DEFAULTS},
                          {"idle_off_seconds": 900, "start_min_excess": 4, "start_after_seconds": 300,
-                          "max_hours_day": 24, "fallback_seconds": 3600})
+                          "start_now_excess": 8, "max_hours_day": 24, "fallback_seconds": 3600})
+        self.assertEqual(LIVE["warm_idle_off_seconds"], 2700)
 
     def test_no_start_below_the_excess(self):
         inst = instance("stopped", want_since=1)
@@ -513,10 +515,33 @@ class GovernorTest(unittest.TestCase):
         self.assertEqual(inst["aws-burst-1"]["next_cause"], "cap")
         self.assertTrue(inst["aws-burst-1"]["draining"])
 
-    def test_idle_off_is_900s_live(self):
+    def test_idle_off_is_900s_live_and_the_warm_host_waits_2700s(self):
         runners = {**self.aws(off=6), **RUNNERS}
-        self.assertEqual(self.heavy(instance("running", 899), runners=runners, queue=1)[0], "hold")
-        self.assertEqual(self.heavy(instance("running", 900), runners=runners, queue=1)[0], "stop")
+        # Another burst host busy later is the warm one, so aws-burst-1 stops at 900s.
+        later = {"aws-burst-2": {"state": "running", "busy_at": 10_000, "labels": AWS_LABELS}}
+        two = {**HEAVY, "standby": {**HEAVY["standby"], "aws-burst-2": {"max_admitted": 6, "power": {
+            **LIVE_POWER, "instance_id": "i-0def"}}}}
+        for idle, want in ((899, "hold"), (900, "stop")):
+            got = {h: a for h, a, *_ in decide(self.STEADY, runners, queue=1, cfg=two,
+                                               instances={**instance("running", idle), **later})}
+            self.assertEqual(got["aws-burst-1"], want)
+        # Alone, it is the warm host (2026-11-14: all four stopped by 08:59, 14 gates at 09:02).
+        self.assertEqual(self.heavy(instance("running", 2699), runners=runners, queue=1)[0], "hold")
+        self.assertEqual(self.heavy(instance("running", 2700), runners=runners, queue=1)[0], "stop")
+
+    def test_a_packed_host_is_never_the_warm_one(self):
+        insts = {**instance("running", 0, packed=True),
+                 "aws-burst-2": {"state": "running", "busy_at": 5_000, "labels": AWS_LABELS}}
+        cfg = {**HEAVY, "standby": {**HEAVY["standby"], "aws-burst-2": {"max_admitted": 6, "power": {
+            **LIVE_POWER, "instance_id": "i-0def"}}}}
+        self.assertEqual(governor.warm_host(cfg, insts), "aws-burst-2")
+        self.assertIsNone(governor.warm_host(cfg, instance("stopped")))
+
+    def test_a_deep_queue_starts_at_once(self):
+        # start_now_excess (8) past the other hosts skips the start hold; 7 still waits it out.
+        for queue, want in ((7, "hold"), (8, "start")):
+            inst = instance("stopped", want_since=10_000)
+            self.assertEqual(self.heavy(inst, queue=queue, runners=self.FULL)[0], want)
 
     def test_override_on_starts_with_nothing_waiting(self):
         inst = instance("stopped", override="on", hours_today=13.0)

@@ -7,6 +7,7 @@ namespace: monitoring
 
 resources:
   - configmap.yaml
+  - rules-host-kernel-faults.yaml
   - pvc.yaml
   - service.yaml
   - deployment.yaml

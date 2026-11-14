@@ -1,0 +1,61 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: loki-rules-host-kernel-faults
+  namespace: monitoring
+  labels:
+    app.kubernetes.io/name: loki
+data:
+  # The Loki ruler reads /rules/<tenant>/; with auth_enabled false the tenant is "fake".
+  # Mounted by deployment.yaml. Alerts go to the kube-prometheus-stack Alertmanager, so
+  # they route to ntfy like every other homelab alert.
+  #
+  # Why these exist: hp-victus hung 2026-11-12 and 2026-11-13 after the NVIDIA GSP
+  # firmware stopped answering. Its kernel had logged the same error since 2026-09-28,
+  # in Loki the whole time, and nothing read it. Metrics showed nothing: the CPU,
+  # memory and network were normal until the box died.
+  #
+  # Each filter is a top-level alternation of literal phrases. Loki 3.3 returns 0 for a
+  # `.*(a|b)` regex filter (tested 2026-11-13: "NVRM: .*(heartbeat timed out|Xid)" matched
+  # 0 of 309 lines that "heartbeat timed out" matched), so do not write one here.
+  #
+  # Backtest 2026-10-31..11-13, kernel transport, 6h windows: gpu fired only on hp-victus
+  # (11 windows, from 10-31); lockup 1 (asus 11-04); nic 4 (asus 11-05, hp-victus 11-05,
+  # 11-13); mce 0. Rerun: scripts/host-postmortem.
+  host-kernel-faults.yaml: |
+    groups:
+      - name: host-kernel-faults
+        interval: 1m
+        rules:
+          - alert: HostGpuFirmwareFault
+            expr: |
+              label_replace(sum by (host) (count_over_time({transport="kernel"} |~ "GSP RM heartbeat timed out|NVRM: Xid|NVRM: GPU has fallen off the bus|NV_ERR_NO_MEMORY" [10m])), "instance", "$1", "host", "(.*)") > 0
+            labels:
+              severity: warning
+              category: node-health
+            annotations:
+              summary: "GPU driver fault on {{ $labels.host }}: {{ $value }} NVRM errors in 10m. hp-victus hung after this twice (2026-11-12, 11-13)"
+          - alert: HostSoftLockup
+            expr: |
+              label_replace(sum by (host) (count_over_time({transport="kernel"} |~ "soft lockup - CPU|watchdog: BUG: soft lockup|hard LOCKUP|blocked for more than [0-9]+ seconds|rcu_sched self-detected stall|rcu_preempt self-detected stall" [10m])), "instance", "$1", "host", "(.*)") > 0
+            labels:
+              severity: critical
+              category: node-health
+            annotations:
+              summary: "Kernel lockup or hung task on {{ $labels.host }}: {{ $value }} lines in 10m"
+          - alert: HostNicDown
+            expr: |
+              label_replace(sum by (host) (count_over_time({transport="kernel"} |~ "Link is Down|NETDEV WATCHDOG|transmit queue [0-9]+ timed out" [10m])), "instance", "$1", "host", "(.*)") > 0
+            labels:
+              severity: warning
+              category: node-health
+            annotations:
+              summary: "NIC link down or TX timeout on {{ $labels.host }}: {{ $value }} lines in 10m"
+          - alert: HostMachineCheck
+            expr: |
+              label_replace(sum by (host) (count_over_time({transport="kernel"} |~ "mce: \\[Hardware Error\\]|Machine check events logged" [10m])), "instance", "$1", "host", "(.*)") > 0
+            labels:
+              severity: critical
+              category: node-health
+            annotations:
+              summary: "CPU or memory hardware error (MCE) on {{ $labels.host }}: {{ $value }} lines in 10m"

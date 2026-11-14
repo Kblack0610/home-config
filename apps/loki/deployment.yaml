@@ -62,10 +62,15 @@ spec:
               mountPath: /etc/loki
             - name: data
               mountPath: /loki
+            - name: rules-host-kernel-faults
+              mountPath: /rules/fake
       volumes:
         - name: config
           configMap:
             name: loki-config
+        - name: rules-host-kernel-faults
+          configMap:
+            name: loki-rules-host-kernel-faults
         - name: data
           persistentVolumeClaim:
             claimName: loki-data-nvme

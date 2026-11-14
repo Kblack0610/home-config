@@ -5,9 +5,9 @@
 # (/dest, /packages, /packages-snapshots) and SRC. The key's forced command is
 # `rrsync -ro /mnt/forgejo`, so remote paths are relative to that.
 #
-# The VM's volume has no room for a 45G full beside the data and the registry,
-# so the full is built here from a mirror of the tree, in forgejo-backup's
-# format, which nas-backup-verify and scripts/forgejo-restore-drill.sh read.
+# The full is built here from a mirror of the tree, so the VM runs only its
+# hourly snapshot; the format is forgejo-backup's, which nas-backup-verify and
+# scripts/forgejo-restore-drill.sh read.
 set -eu
 
 : "${SRC:?SRC is required}"

@@ -15,7 +15,8 @@ class Wait(unittest.TestCase):
         self.home = tempfile.mkdtemp()
         os.makedirs(os.path.join(self.home, "bin.2.337.0"))
         self.worker_bin = os.path.join(self.home, "bin.2.337.0", "Runner.Worker")
-        os.symlink(shutil.which("sleep"), self.worker_bin)
+        # A copy, not a symlink: busybox (the alpine CI image) picks its applet from argv0.
+        shutil.copy(sys.executable, self.worker_bin)
         self.pattern = f"^{self.home}/bin[^/]*/Runner.Worker"
         self.worker = None
 
@@ -29,8 +30,8 @@ class Wait(unittest.TestCase):
         return subprocess.Popen([sys.executable, WAIT, self.pattern, str(timeout)], stdout=subprocess.PIPE, text=True)
 
     def start_worker(self):
-        # The job: it runs until the test ends it.
-        self.worker = subprocess.Popen([self.worker_bin, "600"])
+        # The job: it blocks until the test kills it.
+        self.worker = subprocess.Popen([self.worker_bin, "-c", "import signal; signal.pause()"])
 
     def test_idle_slot_returns_at_once(self):
         waiter = self.wait(600)

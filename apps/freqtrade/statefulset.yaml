@@ -37,8 +37,18 @@ spec:
       labels:
         app: freqtrade-league
     spec:
-      nodeSelector:
-        kubernetes.io/arch: amd64
+      # Off hp-victus like every freqtrade CronJob: 9 league pods sat there
+      # beside Forgejo, Frigate and CI when it went NotReady (2026-11-13).
+      # asus-laptop stays allowed: a league pod is about 10m CPU and 300Mi,
+      # asus had 48G available, and the only other amd64 node is razer-laptop,
+      # the CI host, which would then hold all of them.
+      affinity:
+        nodeAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            nodeSelectorTerms:
+              - matchExpressions:
+                  - {key: kubernetes.io/arch, operator: In, values: [amd64]}
+                  - {key: kubernetes.io/hostname, operator: NotIn, values: [hp-victus]}
       securityContext:
         runAsUser: 1000
         runAsGroup: 1000

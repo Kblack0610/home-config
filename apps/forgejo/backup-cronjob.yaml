@@ -121,17 +121,17 @@ spec:
           # failed pod, taking its logs with it (see nas 3d-prints-backup).
           restartPolicy: Never
           volumes:
-            # IP not DNS: cluster DNS does not serve OpenWRT LAN names.
+            # Forgejo runs on asus-laptop since hp-victus hung on 2026-11-13, so
+            # the job reads its data locally. The 8TB off-box copy stays the
+            # second disk.
             - name: data
-              nfs:
-                server: 192.168.1.243
-                path: /srv/forgejo/data
-                readOnly: true
+              hostPath:
+                path: /mnt/backups/forgejo-live/data
+                type: Directory
             - name: snapshots
-              nfs:
-                server: 192.168.1.243
-                path: /srv/forgejo/snapshots
-                readOnly: true
+              hostPath:
+                path: /mnt/backups/forgejo-live/snapshots
+                type: DirectoryOrCreate
             - name: backup
               hostPath:
                 # asus-laptop 2nd disk (nvme1n1p2, @backups subvol mounted at

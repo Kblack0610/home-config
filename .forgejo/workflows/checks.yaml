@@ -77,6 +77,12 @@ jobs:
           ! python3 scripts/check-secret-store.py apps/forgejo/planted-control.ini
           rm apps/forgejo/planted-control.ini
 
+      - name: Negative control - the check fails on a planted search API key
+        run: |
+          printf '    headers:\n      X-API-KEY: "planted123"\n' > apps/searxng/planted-control.yml
+          ! python3 scripts/check-secret-store.py apps/searxng/planted-control.yml
+          rm apps/searxng/planted-control.yml
+
   zomboid-scripts:
     # The control and sleeper suites have existed since those scripts were written
     # and have only ever run when someone remembered to. They are stdlib-only and

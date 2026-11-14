@@ -18,6 +18,10 @@ creation_rules:
     age: >-
       age138x34tdqulknsj967wjv9urg9ucxtpkep2apzjmthta3xtjgvpgsm8k3a0,
       age1q694uddq28kzxyteemaa4x5zxrnqlmhj0z336zmf6wpptq6ema5qcez399
+  # Provider account logins (email, password, dashboard URL) that are not a
+  # Kubernetes Secret and are never deployed: every value is encrypted.
+  - path_regex: apps/[^/]+/accounts\.sops\.yaml$
+    age: age138x34tdqulknsj967wjv9urg9ucxtpkep2apzjmthta3xtjgvpgsm8k3a0
   # Encrypt only the 'data' and 'stringData' fields in Kubernetes secrets
   - path_regex: .*secret.*\.yaml$
     encrypted_regex: ^(data|stringData)$

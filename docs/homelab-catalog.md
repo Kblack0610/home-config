@@ -8,7 +8,7 @@ One-page index of services and their management plane. Use this to answer "where
 | Home Assistant | any pi | k3s pod | Flux | `apps/home-assistant/` |
 | Frigate NVR | hp-victus (pinned: the Coral USB is plugged in there) | k3s pod (privileged, USB Coral) | Flux | `apps/frigate/` |
 | Forgejo + runner | amd64 workstation nodes (asus-laptop, hp-victus, razer-laptop) | k3s pod (DinD) | Flux | `apps/forgejo/` |
-| LiteLLM | hp-victus | k3s pod (NVIDIA) | Flux | `apps/litellm/` |
+| LiteLLM | hp-victus | k3s pod | Flux | `apps/litellm/` |
 | Immich | asus-laptop | k3s pod (AMD ROCm) | Flux | `apps/immich/` |
 | OrcaSlicer | asus-laptop | k3s pod (AMD GPU) | Flux | `apps/orcaslicer/` |
 | NAS (Samba) | asus-laptop | k3s pod | Flux | `apps/nas/` |

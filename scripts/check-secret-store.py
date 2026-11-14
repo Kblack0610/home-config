@@ -30,6 +30,10 @@ THE INVARIANTS
   5. No file under apps/forgejo/ sets a signing secret in app.ini form (`LFS_JWT_SECRET = x`):
      those go in secret.sops.yaml as FORGEJO__<section>__<key> env vars. A stock app.ini
      carries them in plain text, so a pasted config would publish them again.
+  6. No file under apps/searxng/ (SOPS files aside) sets a search API key in plain text:
+     each `api_key`, `X-API-KEY` or `Authorization` value is an `@<NAME>_API_KEY@`
+     placeholder (after `Bearer ` for Authorization) that the init container fills from the
+     SOPS Secret. A provider's docs paste the live key into the example config.
 
 USAGE
 
@@ -57,6 +61,10 @@ PRINTER_SECRET = re.compile(
     r'|"\d+\.\d+\.\d+\.\d+"\s*:\s*"(?!@A1_)[^"]+"'
 )
 FORGEJO_DIR = "apps/forgejo/"
+SEARXNG_DIR = "apps/searxng/"
+SEARCH_KEY = re.compile(
+    r"""^\s*["']?(?:api_key|x-api-key|authorization)["']?\s*:\s*(?!["']?(?:Bearer\s+)?@[A-Z_]+_API_KEY@["']?\s*$)\S""", re.I
+)
 FORGEJO_INI_SECRET = re.compile(r"^\s*(?:LFS_JWT_SECRET|INTERNAL_TOKEN|JWT_SECRET|SECRET_KEY)\s*=\s*\S")
 
 
@@ -90,6 +98,8 @@ def main(argv):
                 problems.append(f"{name}:{n}: mentions ansible-vault, which is retired; use sops")
             if name.startswith(SLICER_DIR) and "secret" not in Path(name).name and PRINTER_SECRET.search(line):
                 problems.append(f"{name}:{n}: printer access code or serial in plain text; leave it empty or use the @A1_...@ placeholder")
+            if name.startswith(SEARXNG_DIR) and not name.endswith(".sops.yaml") and SEARCH_KEY.search(line):
+                problems.append(f"{name}:{n}: search API key in plain text; use an @<NAME>_API_KEY@ placeholder and put the key in secret.sops.yaml")
             if name.startswith(FORGEJO_DIR) and FORGEJO_INI_SECRET.search(line):
                 problems.append(f"{name}:{n}: Forgejo signing secret in plain text; use a FORGEJO__<section>__<key> env var from secret.sops.yaml")
 
@@ -102,7 +112,7 @@ def main(argv):
     if problems:
         print("\nSecrets in this repo are SOPS only. See ansible/README.md \"Secrets\".")
         return 1
-    print(f"ok: {len(files)} files, no ansible-vault, every *.sops.yaml encrypted, no printer codes in slicer profiles, no Forgejo signing secrets")
+    print(f"ok: {len(files)} files, no ansible-vault, every *.sops.yaml encrypted, no printer codes in slicer profiles, no Forgejo signing secrets, no plain search API keys")
     return 0
 
 

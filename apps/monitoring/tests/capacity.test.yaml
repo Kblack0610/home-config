@@ -86,18 +86,42 @@ tests:
         values: '1x90'
       - series: 'github_runner_pool_online{host="windows-media",pool="windows"}'
         values: '0x90'
-      # Powered off by the governor.
+      - series: 'ci_governor_rate_usd_per_hour{host="windows-media-ci",basis="owned"}'
+        values: '0x90'
+      - series: 'ci_governor_rate_usd_per_hour{host="windows-media",basis="owned"}'
+        values: '0x90'
+      # Powered off by the governor: quiet.
       - series: 'github_runner_pool_expected{host="aws-burst-2",pool="unity"}'
         values: '6x90'
       - series: 'github_runner_pool_online{host="aws-burst-2",pool="unity"}'
         values: '0x90'
-      - series: 'ci_governor_power_state{host="aws-burst-2"}'
+      - series: 'ci_governor_rate_usd_per_hour{host="aws-burst-2",basis="on-demand"}'
+        values: '1.6x90'
+      - series: 'ci_governor_power_state{host="aws-burst-2",state="stopped"}'
+        values: '1x90'
+      # Powered and running with a dead runner: fires.
+      - series: 'github_runner_pool_expected{host="aws-burst-3",pool="unity"}'
+        values: '6x90'
+      - series: 'github_runner_pool_online{host="aws-burst-3",pool="unity"}'
+        values: '5x90'
+      - series: 'ci_governor_rate_usd_per_hour{host="aws-burst-3",basis="on-demand"}'
+        values: '1.6x90'
+      - series: 'ci_governor_power_state{host="aws-burst-3",state="running"}'
+        values: '1x90'
+      # Powered, governor blind (no power_state): quiet, CiGovernorBlind owns it.
+      - series: 'github_runner_pool_expected{host="aws-spot-1",pool="unity"}'
+        values: '5x90'
+      - series: 'github_runner_pool_online{host="aws-spot-1",pool="unity"}'
         values: '0x90'
+      - series: 'ci_governor_rate_usd_per_hour{host="aws-spot-1",basis="spot-estimate"}'
+        values: '0.5x90'
       # Full: no alert.
       - series: 'github_runner_pool_expected{host="razer-laptop",pool="light"}'
         values: '2x90'
       - series: 'github_runner_pool_online{host="razer-laptop",pool="light"}'
         values: '2x90'
+      - series: 'ci_governor_rate_usd_per_hour{host="razer-laptop",basis="owned"}'
+        values: '0x90'
     alert_rule_test:
       - eval_time: 55m
         alertname: CiHostRunnersOffline
@@ -105,6 +129,8 @@ tests:
       - eval_time: 65m
         alertname: CiHostRunnersOffline
         exp_alerts:
+          - exp_labels: {alertname: CiHostRunnersOffline, severity: warning, category: capacity, fleet: fix, host: aws-burst-3, pool: unity}
+            exp_annotations: {summary: "aws-burst-3 has had 1 unity runner(s) offline for an hour: docs/runbooks/unity-ci-host.md#a-host-short-of-its-runners"}
           - exp_labels: {alertname: CiHostRunnersOffline, severity: warning, category: capacity, fleet: fix, host: windows-media-ci, pool: unity}
             exp_annotations: {summary: "windows-media-ci has had 1 unity runner(s) offline for an hour: docs/runbooks/unity-ci-host.md#a-host-short-of-its-runners"}
 
@@ -115,8 +141,10 @@ tests:
         values: '1x90'
       - series: 'github_runner_pool_online{host="hp-victus",pool="light"}'
         values: '0x55 1x35'
+      - series: 'ci_governor_rate_usd_per_hour{host="hp-victus",basis="owned"}'
+        values: '0x90'
     alert_rule_test:
-      - eval_time: 80m
+      - eval_time: 55m
         alertname: CiHostRunnersOffline
         exp_alerts: []
 

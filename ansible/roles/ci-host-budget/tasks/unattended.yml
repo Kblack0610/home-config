@@ -3,30 +3,37 @@
 # library. On windows-media-ci on 2026-11-13 the 14:03Z libc6/git/liblzma upgrade
 # restarted the three actions.runner units and containerd several times in four
 # minutes, and each restart killed the job that had just started (about 40 jobs,
-# most of the host's reds that day). The upgrades still install; the runners and
-# the container stack pick up the new libraries at the host's next reboot.
-- name: Stop needrestart restarting the runners and the container stack
+# most of the host's reds that day). On a CI host any service restart can land
+# under a job, so needrestart only lists: the upgrades still install, and the
+# services pick up the new libraries at the host's next reboot.
+- name: Ensure the needrestart config directory exists
+  ansible.builtin.file:
+    path: /etc/needrestart/conf.d
+    state: directory
+    mode: "0755"
+
+- name: Let needrestart list services, never restart them
   ansible.builtin.copy:
     dest: /etc/needrestart/conf.d/50-ci-runners.conf
     content: |
       # home-config ci-host-budget: a restart here kills the running CI job.
-      $nrconf{override_rc}{qr(^actions\.runner\.)} = 0;
-      $nrconf{override_rc}{qr(^containerd\.service$)} = 0;
-      $nrconf{override_rc}{qr(^docker\.(service|socket)$)} = 0;
+      $nrconf{restart} = 'l';
     mode: "0644"
 
-# The same restart from the other side: these packages restart their own daemon in
-# postinst, and dockerd runs with live-restore off (see above). They move with
-# a hand upgrade on an idle host: docs/runbooks/unity-ci-host.md#unattended-upgrades.
+# The same restart from the other side: Ubuntu's docker.io, containerd and runc
+# restart their own daemon in postinst, and dockerd runs with live-restore off
+# (see main.yml). Nothing upgrades them after this but a hand upgrade on an idle
+# host: docs/runbooks/unity-ci-host.md#unattended-upgrades. These hosts run
+# Ubuntu's docker.io, not Docker's docker-ce.
 - name: Keep the container stack out of unattended upgrades
   ansible.builtin.copy:
     dest: /etc/apt/apt.conf.d/51ci-hold-container-stack
     content: |
-      // home-config ci-host-budget: upgraded by the play, never under a running job.
+      // home-config ci-host-budget: upgraded by hand on an idle host, never under a running job.
       Unattended-Upgrade::Package-Blacklist {
-          "docker.io";
-          "docker-buildx";
-          "containerd";
-          "runc";
+          "^docker\.io$";
+          "^docker-buildx$";
+          "^containerd$";
+          "^runc$";
       };
     mode: "0644"

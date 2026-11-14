@@ -85,6 +85,7 @@ configMapGenerator:
       - dashboard_sessions_cards.yaml=config/dashboards/_sessions_cards.yaml
       - www_snapcast_tablet.js=config/www/snapcast-tablet.js
       - www_wall_icons.js=config/www/wall-icons.js
+      - www_announce_card.js=config/www/announce-card.js
 
 resources:
   - namespace.yaml

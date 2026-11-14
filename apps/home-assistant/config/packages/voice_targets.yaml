@@ -1,15 +1,27 @@
 # Voice targets: spoken announcements on the house speakers.
 #
-# The house speakers are Music Assistant players (Snapcast rooms). The script
-# speaks through the Google Translate TTS entity from the onboarding config
-# entry, with announce: true so Music Assistant pauses the music and resumes it.
-# Dashboards call script.tts_announce with no data; it reads the two helpers.
+# The house speakers are Music Assistant players (Snapcast rooms), listed once in
+# group.announce_rooms; the announce card (www/announce-card.js) shows them as
+# room chips under their friendly names below. The script speaks a message
+# through the Google Translate TTS entity from the onboarding config entry, or
+# plays a recorded clip, with announce: true so Music Assistant pauses the music
+# and resumes it.
 
-input_text:
-  voice_announce_message:
-    name: Announce message
-    initial: "Homelab announcement"
-    max: 240
+homeassistant:
+  customize:
+    media_player.kitchen: { friendly_name: Kitchen }
+    media_player.living_room: { friendly_name: Living room }
+    media_player.audio_bedroom: { friendly_name: Bedroom }
+    media_player.office: { friendly_name: Office }
+
+group:
+  announce_rooms:
+    name: Announce rooms
+    entities:
+      - media_player.kitchen
+      - media_player.living_room
+      - media_player.audio_bedroom
+      - media_player.office
 
 input_select:
   voice_announce_language:
@@ -25,45 +37,45 @@ script:
   tts_announce:
     alias: TTS Announce
     description: >-
-      Speak a message on the house speakers. With no data it speaks the
-      Announce message helper, in the Language helper, on every available room.
+      Speak a message, or play a recorded clip, on the house speakers. With no
+      target it uses every available room in group.announce_rooms.
     mode: parallel
     max: 10
     fields:
       target:
-        description: media_player entity_id(s) to speak on. Default is every available house room.
+        description: media_player entity_id(s) to speak on. Default is every available announce room.
         example: media_player.office
       message:
-        description: What to say. Default is input_text.voice_announce_message.
+        description: What to say.
         example: "Dinner is ready."
       language:
         description: TTS language code. Default is input_select.voice_announce_language.
         example: en
+      media:
+        description: A media-source id to play instead of a message (the announce card's recordings).
+        example: media-source://media_source/local/announce-1.webm
     sequence:
       - variables:
-          # The house rooms. Unavailable players are skipped so one dead room
-          # does not fail the whole announcement.
-          rooms:
-            - media_player.kitchen
-            - media_player.living_room
-            - media_player.audio_bedroom
-            - media_player.office
+          # Unavailable players are skipped so one dead room does not fail the
+          # whole announcement.
           players: >-
             {{ target if target is defined and target
-               else rooms | reject('is_state', ['unavailable', 'unknown']) | list }}
-          msg: >-
-            {{ message if message is defined and message
-               else states('input_text.voice_announce_message') }}
+               else state_attr('group.announce_rooms', 'entity_id') | default([], true)
+                    | reject('is_state', ['unavailable', 'unknown']) | list }}
           lang: >-
             {{ language if language is defined and language
                else states('input_select.voice_announce_language') }}
+          content: >-
+            {% if media is defined and media %}{{ media }}
+            {%- elif message is defined and message -%}
+            media-source://tts/tts.google_translate_en_com?message={{ message | urlencode }}&language={{ lang }}
+            {%- endif %}
       - condition: template
-        value_template: "{{ players | count > 0 and msg | length > 0 }}"
+        value_template: "{{ players | count > 0 and content | length > 0 }}"
       - action: media_player.play_media
         target:
           entity_id: "{{ players }}"
         data:
-          media_content_id: >-
-            media-source://tts/tts.google_translate_en_com?message={{ msg | urlencode }}&language={{ lang }}
+          media_content_id: "{{ content }}"
           media_content_type: music
           announce: true

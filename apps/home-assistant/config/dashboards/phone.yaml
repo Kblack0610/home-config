@@ -105,19 +105,7 @@ views:
         cards: !include _rooms_cards.yaml
       - type: grid
         cards:
-          - type: heading
-            heading: Announce
-            heading_style: title
-          - type: custom:mushroom-entity-card
-            entity: input_text.voice_announce_message
-            icon: mdi:message-text
-          - type: custom:mushroom-template-card
-            primary: Announce to all speakers
-            icon: mdi:bullhorn-variant
-            icon_color: amber
-            tap_action:
-              action: perform-action
-              perform_action: script.tts_announce
+          - type: custom:announce-card
 
   - !include view_agents.yaml
   - !include view_devices.yaml

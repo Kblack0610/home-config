@@ -315,26 +315,8 @@ views:
             icon_color: >-
               {{ 'disabled' if states('sensor.a1_03900d5b1110644_print_status') in ['unavailable', 'unknown'] else 'blue' }}
             tap_action: { action: navigate, navigation_path: device-bambu }
-          # Announce, folded away: it is used rarely and takes three rows open.
-          - type: custom:expander-card
-            title: Announce
-            icon: mdi:bullhorn-variant
-            expanded: false
-            storage-id: home-announce
-            grid_options: { columns: full }
-            cards:
-              - type: custom:mushroom-entity-card
-                entity: input_text.voice_announce_message
-                icon: mdi:message-text
-              - type: custom:mushroom-select-card
-                entity: input_select.voice_announce_language
-              - type: custom:mushroom-template-card
-                primary: Announce to all speakers
-                icon: mdi:bullhorn-variant
-                icon_color: amber
-                tap_action:
-                  action: perform-action
-                  perform_action: script.tts_announce
+          # Announce: room chips, a message box and a mic (www/announce-card.js).
+          - type: custom:announce-card
       # ROOMS: devices grouped by their HA area, shared with the Overview home view
       # and the screensaver. Tap toggles a plug or opens more-info.
       - type: grid

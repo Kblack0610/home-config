@@ -52,9 +52,16 @@
       WantedBy=multi-user.target
   notify: reload netconsole
 
+# 99- so it sorts after Raspberry Pi OS's 98-rpi.conf (kernel.printk = 3),
+# which otherwise wins every time systemd-sysctl reapplies.
+- name: Remove the old 91- file that 98-rpi.conf overrode
+  ansible.builtin.file:
+    path: /etc/sysctl.d/91-netconsole.conf
+    state: absent
+
 - name: Raise the console loglevel so ERR and WARNING reach netconsole
   ansible.builtin.copy:
-    dest: /etc/sysctl.d/91-netconsole.conf
+    dest: /etc/sysctl.d/99-netconsole.conf
     owner: root
     group: root
     mode: "0644"

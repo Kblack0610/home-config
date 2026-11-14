@@ -47,8 +47,6 @@
   "workers": [],
   "budget": {"name": "ci-burst-monthly", "account_id": "311141527647"},
   "rates": {
-    "asus-laptop": {"usd_per_hour": 0, "basis": "owned"},
-    "hp-victus": {"usd_per_hour": 0, "basis": "owned"},
     "razer-laptop": {"usd_per_hour": 0, "basis": "owned"},
     "cachyos-x8664-main": {"usd_per_hour": 0, "basis": "owned"},
     "mac-mini": {"usd_per_hour": 0, "basis": "owned"},

@@ -44,6 +44,14 @@ jobs:
           [ "$rc" -ne 0 ] || { echo "the check passed a planted bad pair"; exit 1; }
           grep -q "cores are not inside build slot" planted-pairs.out || { echo "the check failed, but not on the planted pair"; exit 1; }
           rm planted-pairs.out
+      - name: Negative control - the roster check fails on a service host planted in ci_hosts
+        run: |
+          python3 -c 's = open("ansible/inventory.yml").read(); open("planted-inv.yml", "w").write(s.replace("    ci_hosts:\n      hosts:\n", "    ci_hosts:\n      hosts:\n        hp-victus:\n", 1))'
+          rc=0; ROSTER_INVENTORY=planted-inv.yml python3 scripts/check-runner-roster.py > planted-inv.out 2>&1 || rc=$?
+          rm planted-inv.yml; cat planted-inv.out
+          [ "$rc" -ne 0 ] || { echo "the check passed a service host in ci_hosts"; exit 1; }
+          grep -q "hp-victus is in no_ci_hosts and in ci_hosts" planted-inv.out || { echo "the check failed, but not on the planted host"; exit 1; }
+          rm planted-inv.out
       - name: github-runner-exporter offline tests
         run: python3 apps/github-runner-exporter/test_exporter.py
       - name: forgejo-mirror-exporter offline tests

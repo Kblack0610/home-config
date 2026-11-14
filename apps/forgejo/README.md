@@ -19,7 +19,7 @@ and repository mirroring enabled.
 | `ingressroute-browser-redirect.yaml` | Redirects browsers (`Accept: text/html`) on `git.kblab.me` to `git.kennethblack.me`, so one login cookie covers every page |
 | `pvc.yaml` | Forgejo's data: a static Retain PV at `/srv/forgejo/data` on hp-victus |
 | `backup-cronjob.yaml` | Daily backup job for full data and SQLite snapshots |
-| `runner-deployment.yaml` | Forgejo Runner + DinD sidecar (asus-laptop and razer-laptop, never the Forgejo node) |
+| `runner-deployment.yaml` | Forgejo Runner + DinD sidecar (razer-laptop only; asus-laptop and hp-victus are `no_ci_hosts`) |
 | `runner-config-cm.yaml` | Runner config with `docker` + `linux-amd64` labels |
 | `runner-secret.yaml` | SOPS-encrypted instance-level runner registration token |
 
@@ -74,7 +74,7 @@ Key config sections:
 Instance-level runners serve all repos on the Forgejo instance, each with a
 Docker-in-Docker sidecar for container-based CI workflows. DinD is a native sidecar (an init container with `restartPolicy: Always`), so the runner starts only after `docker info` answers and stops before DinD does. Runners register against the in-cluster Service `http://forgejo-http.forgejo.svc.cluster.local:3000`, not `git.kblab.me`, so polling, logs and artifacts skip Traefik; jobs still clone from `ROOT_URL`.
 
-It runs **2 replicas, one on asus-laptop and one on razer-laptop**. `runner-deployment.yaml` requires an amd64 workstation node (`node-role.kubernetes.io/workstation`) that is not hp-victus (the Forgejo node), and a required `podAntiAffinity` puts the two pods on different nodes. hp-victus is excluded because Forgejo's data PV is pinned there: with the old soft rule both runners sat on the Forgejo node, so one disk stall took out the forge and all of CI together. If one runner node dies, the other replica is already live; the dead node's replica stays Pending until it returns, by design. Rollouts replace one pod at a time (`maxSurge: 0`), because a surge pod has no free node to land on. Each pod
+It runs **1 replica, on razer-laptop**. `runner-deployment.yaml` requires an amd64 workstation node (`node-role.kubernetes.io/workstation`) that is in neither `no_ci_hosts` host: not hp-victus (the Forgejo node, whose data PV is pinned there, so one disk stall would take out the forge and all of CI together) and not asus-laptop (databases and Forgejo backups); `no_ci_hosts` in `ansible/inventory.yml` says why. If razer-laptop dies, the replica stays Pending until it returns, by design. Rollouts replace the pod in place (`maxSurge: 0`), because a surge pod has no free node to land on. Each pod
 registers under its own pod name (`--name "$POD_NAME"` via the downward API),
 which is mandatory with more than one replica — otherwise both would register as
 `forgejo-runner` and collide.

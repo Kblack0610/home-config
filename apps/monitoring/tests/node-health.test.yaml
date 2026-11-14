@@ -1,23 +1,39 @@
 rule_files:
   - node-health.rules.yaml
 
+# A throttling CPU saws between its limit and a dip (saw), which the old instant rules
+# never fired on. One spike (spike) and the workstation (192.168.1.2) fire neither rule.
 tests:
-  - name: over 95C pages on a CI laptop, not on the workstation
+  - name: a sawtooth fires both heat rules, a single spike and the workstation fire neither
     interval: 1m
     input_series:
+      - series: 'node_hwmon_temp_celsius{instance="saw:9100",chip="k",sensor="temp1"}'
+        values: '85 100 85 100 85 100 85 100 85 100 85 100 85 100 85 100 85 100 85 100 85 100 85 100 85 100 85 100 85 100'
+      - series: 'node_hwmon_chip_names{instance="saw:9100",chip="k",chip_name="k10temp"}'
+        values: '1x30'
+      - series: 'node_hwmon_temp_celsius{instance="spike:9100",chip="c",sensor="temp1"}'
+        values: '70 70 70 100 70x26'
+      - series: 'node_hwmon_chip_names{instance="spike:9100",chip="c",chip_name="coretemp"}'
+        values: '1x30'
       - series: 'node_hwmon_temp_celsius{instance="192.168.1.2:9100",chip="k",sensor="temp1"}'
-        values: '99x10'
+        values: '99x30'
       - series: 'node_hwmon_chip_names{instance="192.168.1.2:9100",chip="k",chip_name="k10temp"}'
-        values: '1x10'
-      - series: 'node_hwmon_temp_celsius{instance="laptop:9100",chip="k",sensor="temp1"}'
-        values: '99x10'
-      - series: 'node_hwmon_chip_names{instance="laptop:9100",chip="k",chip_name="k10temp"}'
-        values: '1x10'
+        values: '1x30'
     alert_rule_test:
-      - eval_time: 5m
+      - eval_time: 3m
+        alertname: NodeCpuCritical
+        exp_alerts: []
+      - eval_time: 7m
         alertname: NodeCpuCritical
         exp_alerts:
-          - exp_labels: {alertname: NodeCpuCritical, severity: critical, category: node-health, instance: "laptop:9100"}
+          - exp_labels: {alertname: NodeCpuCritical, severity: critical, category: node-health, instance: "saw:9100"}
             exp_annotations:
-              summary: "CPU at 99C on laptop:9100"
-              description: "The CPU package on laptop:9100 has been above 95C for 2m, close to its thermal limit. The host may throttle hard or shut down; asus-laptop dropped off the LAN after hours here on 2026-10-23. Stop or cancel CI on it now."
+              summary: "CPU at 100C on saw:9100"
+              description: "The CPU package on saw:9100 has peaked above 95C in every 5m window for 5m, close to its thermal limit. The host may throttle hard or shut down; asus-laptop dropped off the LAN after hours here on 2026-10-23, and hp-victus went NotReady on 2026-11-13. Move work off it now."
+      - eval_time: 12m
+        alertname: NodeCpuHot
+        exp_alerts:
+          - exp_labels: {alertname: NodeCpuHot, severity: warning, category: node-health, instance: "saw:9100"}
+            exp_annotations:
+              summary: "CPU hot on saw:9100 (peaks of 100C for 10m)"
+              description: "The CPU package on saw:9100 has peaked above 90C in every 10m window for 10m. Run scripts/host-headroom.py on it and move work off; on a laptop, check thermal-cap.service applied after the last boot (systemctl status thermal-cap) and lower the cap in inventory.yml (thermal_capped) if it did."

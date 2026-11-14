@@ -20,6 +20,10 @@ Why: during the 2026-05 cleanup session, three concurrent agents (microbin, mini
 
 Three independent btrfs disks with no RAID, and the 8TB USB drive is a backup target, not NAS space. Inventory, jobs and what each disk failure loses: `docs/backup-runbook.md`.
 
+## Placing work on a host
+
+Before a PR adds load to a host (a runner slot, a pinned pod or PV, a game server, a fleet worker), run `scripts/host-headroom.py <host>` and paste its line in the PR body; FULL means it does not go there. hp-victus and asus-laptop are `no_ci_hosts` (`ansible/inventory.yml`) and take no CI, whatever the script says. Why: hp-victus got three more CI slots on an average, ran Forgejo, Frigate and six runners at 1.7x its CPUs and 100C, and went NotReady (2026-11-13).
+
 ## Canonical Remote - forgejo only
 
 This repo has two remotes: `forgejo` (canonical, Flux watches it) and `origin` (passive github mirror). **Always push to forgejo, never origin** - github is auto-mirrored on every push to master by `.forgejo/workflows/mirror-to-github.yaml`. Full doc: `docs/gitops.md#canonical-remote`.

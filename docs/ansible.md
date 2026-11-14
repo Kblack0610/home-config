@@ -39,7 +39,7 @@ ansible-playbook playbooks/site.yml --limit hp-victus --check --diff
 ansible-playbook playbooks/site.yml --limit hp-victus
 
 # Re-run just the runner role via tag
-ansible-playbook playbooks/site.yml --limit hp-victus --tags runner
+ansible-playbook playbooks/site.yml --limit razer-laptop --tags runner
 ```
 
 ## Secrets (SOPS)

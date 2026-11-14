@@ -66,7 +66,7 @@ ansible-playbook playbooks/site.yml --limit hp-victus --check --diff
 ansible-playbook playbooks/site.yml --limit hp-victus
 
 # Run only a specific role via tags
-ansible-playbook playbooks/site.yml --limit hp-victus --tags runner
+ansible-playbook playbooks/site.yml --limit razer-laptop --tags runner
 ```
 
 ## Phase A scope

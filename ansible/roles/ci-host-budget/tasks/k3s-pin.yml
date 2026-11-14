@@ -1,0 +1,62 @@
+---
+# k3s pin (k3s_cpus). The static CPU manager reserves every other CPU, which
+# also leaves len(k3s_cpus) allocatable, and strict-cpu-reservation takes the
+# reserved CPUs out of the shared pool, so BestEffort and Burstable pods run on
+# k3s_cpus only. Without that option the shared pool keeps every CPU, and a
+# kubepods.slice drop-in does not hold because kubelet rewrites AllowedCPUs on
+# each start (razer, 2026-11-10). Both proved on a scratch k3s v1.33.5 node
+# (hc-209). Empty k3s_cpus removes the args, which is the rollback.
+# To verify, read Cpus_allowed_list of the processes in kubepods.slice, not the
+# slice's cpuset.cpus.effective: kubelet pins each container, so the slice and
+# the idle pause sandboxes keep every CPU (all three hosts, 2026-11-11).
+- name: Create the k3s config drop-in directory
+  ansible.builtin.file:
+    path: /etc/rancher/k3s/config.yaml.d
+    state: directory
+    mode: "0755"
+  when: k3s_cpus | length > 0
+
+- name: Pin k3s pods to k3s_cpus
+  ansible.builtin.copy:
+    dest: /etc/rancher/k3s/config.yaml.d/50-ci-host-budget.yaml
+    content: |
+      # Managed by ansible (ci-host-budget). CPUs {{ ci_cpus }} are CI's, so pods
+      # run on, and the node offers, only k3s_cpus ({{ k3s_cpus }}).
+      kubelet-arg+:
+        - cpu-manager-policy=static
+        - reserved-cpus={{ range(ansible_facts.processor_nproc) | difference(_ci_cpu_sets.k3s) | join(',') }}
+        - cpu-manager-policy-options=strict-cpu-reservation=true
+    mode: "0644"
+  when: k3s_cpus | length > 0
+  register: _ci_k3s_config
+
+- name: Remove the k3s pin when k3s_cpus is unset
+  ansible.builtin.file:
+    path: /etc/rancher/k3s/config.yaml.d/50-ci-host-budget.yaml
+    state: absent
+  when: k3s_cpus | length == 0
+  register: _ci_k3s_removed
+
+# Kubelet refuses to start when its CPU manager policy or reserved set differs
+# from its checkpoint, so the checkpoint goes while k3s is stopped. Stopping the
+# agent leaves running containers alone (KillMode=process), and kubelet moves
+# them onto the new shared pool on the way up without a restart. A Guaranteed pod
+# with whole CPUs would lose its exclusive CPUs until it restarts; razer had none
+# (2026-11-11).
+- name: Stop k3s to change its CPU manager
+  ansible.builtin.systemd:
+    name: "{{ k3s_service }}"
+    state: stopped
+  when: _ci_k3s_config.changed or _ci_k3s_removed.changed
+
+- name: Remove the kubelet CPU manager checkpoint
+  ansible.builtin.file:
+    path: /var/lib/kubelet/cpu_manager_state
+    state: absent
+  when: _ci_k3s_config.changed or _ci_k3s_removed.changed
+
+- name: Start k3s with its new kubelet args
+  ansible.builtin.systemd:
+    name: "{{ k3s_service }}"
+    state: started
+  when: _ci_k3s_config.changed or _ci_k3s_removed.changed

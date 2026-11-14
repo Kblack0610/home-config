@@ -136,23 +136,43 @@ all:
         pi3-adguard:
           ansible_host: 192.168.1.193
 
-    # Pis that arm the SoC hardware watchdog (roles/hw-watchdog), so a freeze
+    # Hosts that arm their hardware watchdog (roles/hw-watchdog), so a freeze
     # resets the box instead of waiting for someone to pull the plug.
-    watchdog_pis:
+    watchdog_hosts:
       children:
         adguard:
+        watchdog_x86:
       hosts:
         audio-living:
         audio-bedroom:
 
-    # Pis that stream kernel messages to pi5-master and export the undervoltage
-    # latch (roles/crash-evidence). Wired only: netconsole needs netpoll, which
-    # the Pi Wi-Fi driver (brcmfmac) lacks, so audio-bedroom is not here.
+    # The x86 k3s nodes. hp-victus hung 2026-11-12 and 11-13 (NVIDIA GSP fault)
+    # and needed a hand power-cycle each time; it holds Forgejo. The chipset
+    # timers (iTCO on Intel, SP5100 TCO on AMD) allow far more than the Pi's 15s.
+    # softlockup_panic turns a stuck CPU into a panic, which kernel.panic reboots.
+    watchdog_x86:
+      hosts:
+        hp-victus:
+        razer-laptop:
+        asus-laptop:
+          # Present but not autoloaded on this board (checked 2026-11-13).
+          hw_watchdog_module: sp5100_tco
+      vars:
+        hw_watchdog_runtime_sec: 30s
+        hw_watchdog_softlockup_panic: 1
+
+    # Hosts that stream kernel messages to pi5-master (roles/crash-evidence), so
+    # the lines printed after the journal stops shipping still survive. Wired
+    # only: netconsole needs netpoll, which the Pi Wi-Fi driver (brcmfmac) lacks,
+    # so audio-bedroom is not here. The Pis also export the undervoltage latch.
     netconsole_senders:
       children:
         adguard:
       hosts:
         audio-living:
+        hp-victus:
+        razer-laptop:
+        asus-laptop:
 
     # NUT (Network UPS Tools) groups. The single CyberPower CP1500PFCLCDa plugs
     # into pi5-master via USB; pi5-master runs upsd + upsmon-primary and every

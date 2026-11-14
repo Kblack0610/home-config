@@ -57,7 +57,7 @@ scripts/test/fetch-image.py unityci/editor ubuntu-<version>-base-3 ~/.cache/unit
 - Off the LAN: no `lan` label (`unity_ci_lan: false`), and the libraries come through S3 (`unity_ci_library_s3`) instead of a tarball over ssh. So does the shared asset-library LFS store (`tasks/lfs-store.yml`, prefix `asset-library-lfs/objects`), seeded from the workstation's `~/.cache/bnb/asset-library-lfs`: a cold release tree fetching about 4 GB of LFS through the Cloudflare tunnel ended in `batch response: Authorization error` (aws-build-1, run 42905629793). Re-run `--tags unity-ci` after the asset-library pin moves and the workstation has pulled it, or a release fetches the new objects through the tunnel.
 - Each slot's first job imports its `Library/` cold, about 50 minutes; later jobs are warm (a PlayMode batch ran 10 minutes, against about 12 warm on mac-studio).
 - Watch jobs from the host. The GitHub jobs API shares one 5000/h limit with every session, and polling it drained that limit on 2026-11-03: `sudo journalctl -f -n 0 -u "actions.runner.*" | grep -E "Running job|completed with result"`.
-- A change to a runner unit or its `.env` restarts the slot and cancels its job. Drain first: remove `unity` with the org endpoint in Labels above (the repo endpoint answers 404 for org runners), wait for the slot to go idle, apply, add the label back.
+- A change to a runner unit or its `.env` restarts the slot, and the apply never cancels a job for it: under a job it drains the slot (every custom label removed through the org labels endpoint, so `host-<host>`, `hd-library` and `unity-gate` jobs stop landing too), waits for the job to end, restarts the slot and puts its labels back (`roles/github-actions-runner-linux/tasks/drain.yml`). The apply blocks until then, up to `gh_runner_drain_timeout` (360 minutes); past it the labels go back and `.restart-pending` stays for the next apply.
 
 ### What starts and stops it
 
@@ -87,7 +87,7 @@ apps/ci-runner-governor powers it (config.json `standby` -> `aws-burst-1` -> `po
 - A pinned host moves one slot per cycle toward N, past its cooldown and in either direction, and these moves happen even with `DRY_RUN=1`. A busy slot finishes its job first. The pool floor and cap still hold, and a FULL host keeps its verdict.
 - The pin has no end time. A host with no pin, or an unreadable one, is back on its verdict, which under a dry run re-admits nothing, so set the mode back rather than deleting the key.
 - The log says `PINNED`, and `ci_governor_decision{verdict="PINNED"}` shows it.
-- On a standby (AWS) host a pin is a lower cap that also holds under an "on" override, so it drains the host for an apply that restarts slots: add `"slots":0` to the host's key next to `action` and `until` (`kubectl -n monitoring patch cm ci-runner-governor-override --type merge -p '{"data":{"aws-burst-1":"{\"action\":\"on\",\"until\":<epoch>,\"slots\":0}"}}'`), wait for no `Runner.Worker` on the host, apply, then write the key back without `slots`.
+- On a standby (AWS) host a pin is a lower cap that also holds under an "on" override: add `"slots":0` to the host's key next to `action` and `until` (`kubectl -n monitoring patch cm ci-runner-governor-override --type merge -p '{"data":{"aws-burst-1":"{\"action\":\"on\",\"until\":<epoch>,\"slots\":0}"}}'`), and write the key back without `slots` to lift it. An apply that restarts slots needs no pin; it drains each slot itself (above).
 
 ### The month's budget
 
@@ -117,7 +117,6 @@ apps/ci-runner-governor powers it (config.json `standby` -> `aws-burst-1` -> `po
 | Starts fail with `UnauthorizedOperation` | The budget stop action attached `ci-burst-deny-start` | Budget stop above |
 | It ran past `max_hours_day` | An "on" override, or a pod restart that could not read Prometheus (log: `earlier run time and cause unread`) | Expected for the override; the AWS budget is the cap that cannot forget |
 | Offline runners `aws-burst-1-unity-pool-7`, `-8` with no `unity` label | #525 cut `unity_ci_slots` from 8 to 6 and left those two registered; a lowered count removes nothing (top of this page) | Deregistered 2026-11-04. Next time, run `scripts/unity-ci-runner-remove.sh --host <host> --slot N` for each dropped slot |
-| A `unity-ci` apply under a `"slots":0` pin still leaves `.restart-pending` on a slot | The pin swaps only the pool labels (`unity-withheld` in, pool labels out): a slot keeps `host-aws-burst-1`, `hd-library` and `unity-gate`, so jobs that ask for those (method.yml, hd.yml, `multi.yml host=aws-burst-1`, gate classes) still land on it | Before the apply, check every slot reads `busy: false` (`gh api orgs/BlackNBrownStudios/actions/runners`) as well as no `Runner.Worker`; a slot that took one of those jobs is restarted by a later apply once it is idle, and the other slots need nothing more |
 
 ## The AWS build host (aws-build-1)
 

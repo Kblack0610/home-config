@@ -1,0 +1,37 @@
+---
+# A restart kills the job a slot runs, and under a backlog a slot takes its next job within
+# seconds of its last, so an apply that restarts only an idle slot never finds one: on
+# 2026-11-13 razer-laptop unity-pool-1 kept ConvergenceDrift firing for its deferred .env
+# restart while 42 playground runs were queued. So the apply drains the slot: it removes every
+# custom label, so no queued job matches it, and waits for the running job's Runner.Worker to
+# exit. The caller then restarts the slot and puts its labels back.
+#
+# Inputs: those of read_runner.yml, _gh_runner_worker_pattern (pgrep -f of the slot's
+# Runner.Worker) and gh_runner_drain_timeout. Sets _gh_runner_drain_labels (the custom labels
+# before the drain, for a caller with no label plan) and _gh_runner_drain_idle (the job ended
+# in time). The github-actions-runner-mac role imports it too.
+- name: Read the runner from GitHub before the drain
+  ansible.builtin.import_tasks: read_runner.yml
+
+- name: Keep the labels the drain removes
+  ansible.builtin.set_fact:
+    _gh_runner_drain_labels: >-
+      {{ _gh_runner_row.labels | rejectattr('type', 'equalto', 'read-only') | map(attribute='name') | list }}
+
+- name: Remove the runner's custom labels, so it takes no new job
+  ansible.builtin.import_tasks: put_labels.yml
+  vars:
+    _gh_runner_put_labels: []
+
+# Waits on the process's exit event (files/wait_worker_exit.py), not a timer.
+- name: Wait for the job on the drained runner to end
+  ansible.builtin.script:
+    cmd: "wait_worker_exit.py {{ _gh_runner_worker_pattern | quote }} {{ gh_runner_drain_timeout }}"
+    executable: python3
+  register: _gh_runner_drain_wait
+  changed_when: false
+  failed_when: _gh_runner_drain_wait.rc not in [0, 124]
+
+- name: Record whether the job ended in time
+  ansible.builtin.set_fact:
+    _gh_runner_drain_idle: "{{ _gh_runner_drain_wait.rc == 0 }}"

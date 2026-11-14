@@ -257,6 +257,17 @@ endpoints:
       - "[STATUS] == 200"
       - "[RESPONSE_TIME] < 3000"
 
+  # Shared demos on their own site (ingress.yaml, binks-demos). A made-up id is 404 from
+  # binks-api; a 404 proves tunnel, DNS and route. Gatus has no header condition, so the
+  # CSP sandbox header is asserted by the platform's binks-production-smoke instead.
+  - name: play.kblack.dev /p/
+    group: binks
+    url: "https://play.kblack.dev/p/0000000000"
+    interval: 300s
+    conditions:
+      - "[STATUS] == 404"
+      - "[RESPONSE_TIME] < 3000"
+
   - name: Forgejo Registry
     group: apps
     url: "http://forgejo-http.forgejo.svc:3000/v2/"

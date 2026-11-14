@@ -114,6 +114,19 @@ spec:
             # this (UTC day); subscribers pass. Owner's pick 2026-11-14, ask 4pazNg.
             - name: DAILY_SPEND_CEILING_USD
               value: '2'
+            # Shared demos: Share in a chat preview publishes the page to
+            # https://play.kblack.dev/p/<id> (ingress.yaml, binks-demos). This
+            # host answers /p/<id> only and sends a CSP sandbox header on every
+            # response (platform apps/binks/api/README.md, Shareable demos).
+            # Who may publish and for how long are the owner's pick (ask filed
+            # 2026-11-14): plus = Binks Plus subscribers only; 'all' opens it to
+            # every signed-in user. DEMO_TTL_DAYS defaults to 30.
+            - name: PUBLISH_ENABLED
+              value: 'true'
+            - name: PUBLISH_HOST
+              value: play.kblack.dev
+            - name: DEMO_PUBLISH_TIER
+              value: plus
           envFrom:
             - secretRef:
                 name: binks-api-secret

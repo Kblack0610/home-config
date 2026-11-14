@@ -12,6 +12,7 @@ LLM chat backend for `binks.chat`. TypeScript replacement for the legacy Rust `b
 - **Replicas**: 2, with a PodDisruptionBudget (`pdb.yaml`, minAvailable 1). The HTTP limiter and the per-minute WS limit count per pod; the signed-out daily cap and the spend ceiling are in Postgres and shared.
 - **Capacity**: the launch limits (`RATE_LIMIT_MAX`, `ANON_TURNS_PER_IP_PER_DAY`, `DAILY_SPEND_CEILING_USD`, `WAITLIST_ENABLED`) take their defaults from the platform repo, `apps/binks/api/README.md` "Launch capacity". Set one in `deployment.yaml` `env` only to override it (the ceiling is set there to $2 a day); `WAITLIST_ENABLED: 'true'` is the manual switch that stops new chats from non-subscribers.
 - **Ingress**: `binks.chat` (Traefik IngressRoute `binks-chat` in `ingress.yaml`): the SPA on `/`, the API on `/api` and `/ws`. TLS ends at Cloudflare.
+- **Shared demos**: `play.kblack.dev` (IngressRoute `binks-demos` in `ingress.yaml`) routes only `/p/` to binks-api, which serves published pages there sandboxed (`PUBLISH_*` and `DEMO_*` env in `deployment.yaml`; platform `apps/binks/api/README.md`, Shareable demos). It is a separate site from binks.chat on purpose: a shared page never gets the chat's origin.
 
 ## Deploy lifecycle
 

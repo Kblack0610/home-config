@@ -25,3 +25,24 @@ spec:
       services:
         - name: binks-chat
           port: 80
+---
+# Shared demos (P3 of the binks preview plan): https://play.kblack.dev/p/<id>, a page a
+# user published from a chat preview. It lives on its own site, away from binks.chat, so
+# a hostile page never shares an origin with the chat or its sign-in. Only /p/ is
+# routed, and binks-api answers that Host with /p/<id> and nothing else (PUBLISH_HOST
+# in deployment.yaml). external-dns makes the proxied CNAME from this route, and
+# Cloudflare terminates TLS as it does for binks.chat.
+apiVersion: traefik.io/v1alpha1
+kind: IngressRoute
+metadata:
+  name: binks-demos
+  namespace: binks-api
+spec:
+  entryPoints:
+    - websecure
+  routes:
+    - match: Host(`play.kblack.dev`) && PathPrefix(`/p/`)
+      kind: Rule
+      services:
+        - name: binks-api
+          port: 80

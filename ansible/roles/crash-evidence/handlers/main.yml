@@ -13,7 +13,7 @@
 
 - name: Apply the console loglevel
   ansible.builtin.command:
-    cmd: /usr/sbin/sysctl -p /etc/sysctl.d/91-netconsole.conf
+    cmd: /usr/sbin/sysctl -p /etc/sysctl.d/99-netconsole.conf
   listen: apply console loglevel
   changed_when: true
   when: not ansible_check_mode

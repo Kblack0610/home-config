@@ -9,6 +9,23 @@
 # in 15s, but systemd ships with RuntimeWatchdogSec=0, so nothing ever armed it.
 # See roles/hw-watchdog/README.md.
 
+- name: Load the watchdog driver at every boot
+  ansible.builtin.copy:
+    dest: /etc/modules-load.d/hw-watchdog.conf
+    owner: root
+    group: root
+    mode: "0644"
+    content: |
+      # Managed by ansible (roles/hw-watchdog). Do not edit by hand.
+      {{ hw_watchdog_module }}
+  when: hw_watchdog_module | length > 0
+
+- name: Load the watchdog driver now
+  community.general.modprobe:
+    name: "{{ hw_watchdog_module }}"
+    state: present
+  when: hw_watchdog_module | length > 0
+
 - name: Check the host has a hardware watchdog device
   ansible.builtin.stat:
     path: /dev/watchdog0
@@ -20,7 +37,8 @@
   ansible.builtin.fail:
     msg: >-
       {{ inventory_hostname }} has no /dev/watchdog0. On a Raspberry Pi the
-      bcm2835-wdt driver should create it; check `dmesg | grep -i wdt`.
+      bcm2835-wdt driver should create it, on Intel iTCO_wdt; on AMD set
+      hw_watchdog_module to sp5100_tco. Check `dmesg | grep -i -E "wdt|tco"`.
   when: not hw_watchdog_dev.stat.exists
 
 - name: Ensure the systemd system.conf.d drop-in directory exists
@@ -64,6 +82,7 @@
     content: |
       # Managed by ansible (roles/hw-watchdog). Do not edit by hand.
       kernel.panic = {{ hw_watchdog_kernel_panic }}
+      kernel.softlockup_panic = {{ hw_watchdog_softlockup_panic }}
   notify: apply panic sysctl
 
 - name: Apply pending changes now so the read-back below sees them
@@ -77,8 +96,8 @@
   changed_when: false
   check_mode: false
 
-- name: Read back the live panic timeout
-  ansible.builtin.command: cat /proc/sys/kernel/panic
+- name: Read back the live panic settings
+  ansible.builtin.command: cat /proc/sys/kernel/panic /proc/sys/kernel/softlockup_panic
   register: hw_watchdog_panic
   changed_when: false
   check_mode: false
@@ -87,7 +106,8 @@
   ansible.builtin.debug:
     msg: >-
       {{ inventory_hostname }}: RuntimeWatchdog={{ hw_watchdog_armed.stdout | trim }}
-      kernel.panic={{ hw_watchdog_panic.stdout | trim }}
+      kernel.panic={{ hw_watchdog_panic.stdout_lines[0] }}
+      kernel.softlockup_panic={{ hw_watchdog_panic.stdout_lines[1] }}
 
 - name: Fail loudly if the watchdog is not armed
   # A dry run cannot re-exec systemd, so the old value is expected there.
@@ -99,3 +119,13 @@
   when:
     - not ansible_check_mode
     - (hw_watchdog_armed.stdout | trim) != hw_watchdog_runtime_sec
+
+- name: Fail loudly if the panic sysctls did not apply
+  ansible.builtin.fail:
+    msg: >-
+      {{ inventory_hostname }} reads kernel.panic={{ hw_watchdog_panic.stdout_lines[0] }}
+      kernel.softlockup_panic={{ hw_watchdog_panic.stdout_lines[1] }}, expected
+      {{ hw_watchdog_kernel_panic }} and {{ hw_watchdog_softlockup_panic }}.
+  when:
+    - not ansible_check_mode
+    - hw_watchdog_panic.stdout_lines != [hw_watchdog_kernel_panic | string, hw_watchdog_softlockup_panic | string]

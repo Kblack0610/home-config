@@ -1,6 +1,6 @@
 # crash-evidence
 
-Makes a host that dies without warning leave evidence behind. Bound to the `netconsole_senders` inventory group: pi3, because the whole house resolves through it, and the living-room audio box (`audio-living`), which hung after the 2026-10-20 power cut with nothing left to read. Wired hosts only: netconsole needs netpoll, which the Pi Wi-Fi driver lacks.
+Makes a host that dies without warning leave evidence behind. Bound to the `netconsole_senders` inventory group: pi3, because the whole house resolves through it, the living-room audio box (`audio-living`), which hung after the 2026-10-20 power cut with nothing left to read, and the x86 k3s nodes hp-victus, razer-laptop and asus-laptop, whose shipped journal stopped 11 minutes before hp-victus died on 2026-11-13. Wired hosts only: netconsole needs netpoll, which the Pi Wi-Fi driver lacks.
 
 ## Why
 
@@ -11,7 +11,7 @@ pi3 has frozen three times (2026-08-09, 2026-08-23, 2026-09-30) and each time it
 ## What it does
 
 1. **netconsole.** The kernel sends every console message over UDP to pi5-master (`roles/netconsole-receiver`) the moment it is printed. Lines written in the last second before a freeze survive even though they never reach this host's disk. The console loglevel is raised from the image's `quiet` 3 to 5, so ERR and WARNING lines (RCU stalls, hung tasks, mmc errors) are sent, not only CRIT and above.
-2. **Undervoltage latch.** `vcgencmd get_throttled` bits 16-19 latch from boot until the next reboot, so a dip lasting milliseconds still sets them. A one-minute timer exports them to node-exporter's textfile collector as `rpi_throttled{flag,when}`, and `PiUndervoltageSinceBoot` alerts on it.
+2. **Undervoltage latch (Raspberry Pi only).** Gated by `crash_evidence_rpi_throttle`, true on ARM hosts. `vcgencmd get_throttled` bits 16-19 latch from boot until the next reboot, so a dip lasting milliseconds still sets them. A one-minute timer exports them to node-exporter's textfile collector as `rpi_throttled{flag,when}`, and `PiUndervoltageSinceBoot` alerts on it.
 
 ## Reading the evidence
 

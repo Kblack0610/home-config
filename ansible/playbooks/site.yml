@@ -632,9 +632,9 @@
 # The living-room Giada (audio-living) hung the same way after the 2026-10-20
 # power blip and stayed off the LAN for 16h until it was unplugged.
 # See ansible/roles/hw-watchdog/README.md.
-#   ansible-playbook playbooks/site.yml --limit watchdog_pis --tags watchdog --check --diff
+#   ansible-playbook playbooks/site.yml --limit watchdog_hosts --tags watchdog --check --diff
 - name: Hardware watchdog (reboot itself on a freeze)
-  hosts: watchdog_pis
+  hosts: watchdog_hosts
   become: true
   gather_facts: false
   roles:

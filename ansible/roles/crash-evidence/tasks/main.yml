@@ -78,6 +78,7 @@
     owner: root
     group: root
     mode: "0755"
+  when: crash_evidence_rpi_throttle | bool
 
 - name: Install the throttle exporter units
   ansible.builtin.copy:
@@ -112,6 +113,7 @@
   loop_control:
     label: "{{ item.name }}"
   notify: reload throttle timer
+  when: crash_evidence_rpi_throttle | bool
 
 - name: Enable the throttle exporter timer
   ansible.builtin.systemd_service:
@@ -119,7 +121,9 @@
     enabled: true
     state: started
     daemon_reload: true
-  when: not ansible_check_mode
+  when:
+    - not ansible_check_mode
+    - crash_evidence_rpi_throttle | bool
 
 - name: Apply pending reloads before the read-back
   ansible.builtin.meta: flush_handlers
@@ -129,7 +133,9 @@
     name: rpi-throttled-textfile.service
     state: started
   changed_when: false
-  when: not ansible_check_mode
+  when:
+    - not ansible_check_mode
+    - crash_evidence_rpi_throttle | bool
 
 - name: Read back netconsole, loglevel and the exported metric
   ansible.builtin.shell: |
@@ -154,4 +160,4 @@
     - not ansible_check_mode
     - ('netconsole=loaded' not in crash_evidence_state.stdout)
       or ('printk=' ~ netconsole_console_loglevel not in crash_evidence_state.stdout_lines)
-      or ('throttle_series=8' not in crash_evidence_state.stdout_lines)
+      or (crash_evidence_rpi_throttle | bool and 'throttle_series=8' not in crash_evidence_state.stdout_lines)

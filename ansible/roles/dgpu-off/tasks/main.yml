@@ -31,7 +31,6 @@
     src: 80-dgpu-off.rules.j2
     dest: /etc/udev/rules.d/80-dgpu-off.rules
     mode: "0644"
-  register: _dgpu_off_udev
 
 # Absent on a host without nvidia-utils, hence no failure when it is missing.
 - name: Stop nvidia-persistenced
@@ -49,8 +48,10 @@
 - name: Unload the GPU modules
   ansible.builtin.shell: |
     set -eu
-    loaded=$(for m in {{ dgpu_off_modules | join(' ') }}; do
-      [ -d /sys/module/$m ] && printf '%s ' "$m"; done)
+    loaded=""
+    for m in {{ dgpu_off_modules | join(' ') }}; do
+      if [ -d "/sys/module/$m" ]; then loaded="$loaded $m"; fi
+    done
     [ -z "$loaded" ] && exit 0
     rmmod $loaded
     echo "unloaded: $loaded"
@@ -58,10 +59,17 @@
   changed_when: "'unloaded' in _dgpu_off_unload.stdout"
   when: not ansible_check_mode
 
+# The udev rule covers the next boot; this covers the running host, where the
+# unbound card sends no further bind event.
 - name: Apply runtime PM now
   ansible.builtin.shell: |
-    udevadm control --reload
-    udevadm trigger --subsystem-match=pci --attr-match=vendor={{ dgpu_off_pci_vendor }} --action=bind
-    udevadm settle
-  changed_when: true
-  when: _dgpu_off_udev.changed and not ansible_check_mode
+    set -eu
+    for d in /sys/bus/pci/devices/*; do
+      [ "$(cat "$d/vendor")" = "{{ dgpu_off_pci_vendor }}" ] || continue
+      [ "$(cat "$d/power/control")" = auto ] && continue
+      echo auto > "$d/power/control"
+      echo "auto: ${d##*/}"
+    done
+  register: _dgpu_off_pm
+  changed_when: _dgpu_off_pm.stdout | length > 0
+  when: not ansible_check_mode

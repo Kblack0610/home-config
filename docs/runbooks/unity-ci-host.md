@@ -146,6 +146,14 @@ A change to `ci-disk-prune.sh` or `unity-job-started.sh` reaches a host only whe
 
 The exporter's token has two 5000-an-hour buckets: `orgs/` calls (runners) and `repos/` calls (runs, jobs). When one hits 0 the exporter backs off until the hour resets, and the governor, which reads the exporter, stops moving Unity slots. `GithubApiRateLow` warns when a bucket stays under 500 for 10 minutes; `CiGovernorBlind` pages once the governor has been blind for 30. To find what spent it, compare `sum by (kind) (increase(github_runner_exporter_api_calls_total[1h]))` with `github_runner_exporter_api_not_modified_total` (free 304s): a cold cache after an exporter restart, or a new repo with a long run history, is the usual spender (`HISTORY_DEADLINE_SECS` in `apps/github-runner-exporter/exporter.py`). Another tool sharing the same token spends it too, and the exporter's counters do not show it.
 
+## Unattended upgrades
+
+Ubuntu CI hosts (windows-media-ci, the AWS hosts) keep Ubuntu's daily unattended-upgrade, but `ci-host-budget` (`tasks/unattended.yml`) sets needrestart to list services and never restart them, and holds Ubuntu's docker.io, docker-buildx, containerd and runc out of it. Without that, the 2026-11-13 14:03Z libc6 upgrade on windows-media-ci restarted all three runners several times in four minutes and killed about 40 jobs. A host is covered only once the play has run there; after a change, from `ansible/`: `ansible-playbook playbooks/site.yml --limit linux_ci_runners:unity_ci_runners --tags unattended` (runs only the three tasks in that file, which write config and restart nothing; Arch hosts skip them). Upgrade the held packages by hand when the host's runners are idle (`pgrep -x Runner.Worker` prints nothing): `sudo apt-get install --only-upgrade docker.io docker-buildx containerd runc`. `sudo needrestart -b` lists the services still on old libraries, which a reboot clears.
+
+## A host short of its runners
+
+`CiHostRunnersOffline` (prometheus-rules-capacity.yaml, `fleet: fix`, so an agent gets it as a red) fires when a host has had fewer runners online than `RUNNER_ROSTER` says for an hour. It covers owned hosts (`config.json` rates, basis owned) and powered hosts the governor reads as running, and skips the opt-in windows pool. Check `systemctl status 'actions.runner.*'` on the host: a unit disabled by hand needs either starting again or a roster and inventory change in one PR (`scripts/check-runner-roster.py`), never a roster left saying more than the host runs.
+
 ## Not CI hosts: asus-laptop and hp-victus
 
 Both are service hosts in `no_ci_hosts` (`ansible/inventory.yml`, which says why) and carry no CI of any kind: no Unity slots, no light/heavy runners, no Forgejo runner replica. `scripts/check-runner-roster.py` fails if either appears in a CI group. Before placing any work on a host, run `scripts/host-headroom.py <host>` and quote its load per CPU, temperature and memory. Do not add either back.

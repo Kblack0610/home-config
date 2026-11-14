@@ -13,6 +13,8 @@ spec:
       # One retry, not the default six: each attempt writes a 500 MB archive
       # to pi5-master's SD card.
       backoffLimit: 1
+      # Forbid would let one hung run skip every later night.
+      activeDeadlineSeconds: 3600
       template:
         spec:
           containers:
@@ -68,13 +70,17 @@ spec:
                   rm -f /snap/home-assistant_v2.db
                   SNAP=""
                   if [ -f /data/home-assistant_v2.db ]; then
-                    sqlite3 /data/home-assistant_v2.db "VACUUM INTO '/snap/home-assistant_v2.db'"
+                    sqlite3 -cmd '.timeout 60000' /data/home-assistant_v2.db "VACUUM INTO '/snap/home-assistant_v2.db'"
                     SNAP="-C /snap home-assistant_v2.db"
+                  else
+                    log "WARN: /data/home-assistant_v2.db is missing; archiving the config without the recorder DB."
                   fi
                   tar -czf "${PART}" \
                     --exclude=./home-assistant_v2.db --exclude=./home-assistant_v2.db-wal \
                     --exclude=./home-assistant_v2.db-shm --exclude='./home-assistant.log*' \
                     -C /data . ${SNAP}
+                  rm -f /snap/home-assistant_v2.db
+                  gzip -t "${PART}"
                   size="$(wc -c < "${PART}")"
                   log "created ${BACKUP_FILE} (${size} bytes)"
                   # Writing a tiny "successful" archive and then rotating the good
@@ -151,4 +157,5 @@ spec:
                 path: /var/backups/home-assistant
                 type: DirectoryOrCreate
             - name: snap
-              emptyDir: {}
+              emptyDir:
+                sizeLimit: 4Gi

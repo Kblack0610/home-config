@@ -654,6 +654,18 @@
     - role: thermal-cap
       tags: [thermal]
 
+# Keep a headless host's discrete GPU off: no driver, card in D3cold. Remove
+# anything holding /dev/nvidia* first, or the unload fails.
+# See ansible/roles/dgpu-off/README.md.
+#   ansible-playbook playbooks/site.yml --limit dgpu_off --tags dgpu-off --check --diff
+- name: Discrete GPU off (headless hosts)
+  hosts: dgpu_off
+  become: true
+  gather_facts: false
+  roles:
+    - role: dgpu-off
+      tags: [dgpu-off, thermal]
+
 # Make the next freeze explain itself: kernel messages stream to pi5-master
 # over netconsole, and the firmware's undervoltage latch is exported to
 # Prometheus. Receiver first, so the sender has somewhere to talk to.

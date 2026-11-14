@@ -1,0 +1,14 @@
+---
+galaxy_info:
+  role_name: dgpu_off
+  author: home-config
+  description: >-
+    Keeps a headless host's discrete NVIDIA GPU switched off: no driver loads,
+    nvidia-persistenced is off, and runtime PM drops the card to D3cold.
+  license: MIT
+  min_ansible_version: "2.14"
+  platforms:
+    - name: ArchLinux
+      versions:
+        - rolling
+dependencies: []

@@ -99,6 +99,11 @@ spec:
             # values come from binks-api-secret through envFrom (README, Secrets).
             - name: PUBLIC_URL
               value: https://binks.chat
+            # Email domains offered the Google Sheets / Drive connector preset.
+            # Google's Workspace MCP is a Developer Preview whose terms allow
+            # only our own domain (apps/binks/api/README.md in the platform repo).
+            - name: GOOGLE_WORKSPACE_MCP_DOMAINS
+              value: blacknbrownstudios.com
             # Square billing, sandbox. Real money is the owner's switch:
             # rerun square:setup with the production token, swap these and
             # the SOPS values (apps/binks/api/README.md in the platform repo).

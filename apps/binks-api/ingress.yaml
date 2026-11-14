@@ -43,6 +43,25 @@ spec:
   routes:
     - match: Host(`play.kblack.dev`) && PathPrefix(`/p/`)
       kind: Rule
+      middlewares:
+        - name: binks-demos-ratelimit
       services:
         - name: binks-api
           port: 80
+---
+# A demo is up to 1 MB and anyone may open it, so each visitor gets 60 page loads a
+# minute (burst 20) and the chat pod's bandwidth is not the attacker's. Keyed on the IP
+# Cloudflare writes: every request arrives through the tunnel, so the TCP peer is the
+# cloudflared pod and binks-api's own edge-secret check is set up for binks.chat only.
+apiVersion: traefik.io/v1alpha1
+kind: Middleware
+metadata:
+  name: binks-demos-ratelimit
+  namespace: binks-api
+spec:
+  rateLimit:
+    average: 60
+    period: 1m
+    burst: 20
+    sourceCriterion:
+      requestHeaderName: Cf-Connecting-Ip

@@ -65,6 +65,17 @@ spec:
               value: 'binks-chat'
             - name: SEARXNG_URL
               value: http://searxng.home-assistant.svc.cluster.local:8080
+            # web_search tries these SearXNG engines in order, each while its free
+            # quota lasts, then the default free engines (Bing). Limits read on the
+            # providers' pages 2026-11-13: linkup $20 credit a month (about 4,000
+            # searches), firecrawl 1,000 credits a month (about 500 searches, 10 a
+            # minute). No card on either account, so cap_usd_month stays 0. Order
+            # from the 2026-11-13 per-provider eval (lab docs/eval/). Engines and
+            # keys: apps/searxng/README.md. Empty value = default engines only.
+            - name: SEARCH_PROVIDERS
+              value: >-
+                [{"engine":"linkup","quota":4000,"period":"month","usd_per_1k":5,"cap_usd_month":0},
+                {"engine":"firecrawl","quota":500,"period":"month","usd_per_1k":7.6,"cap_usd_month":0}]
             - name: CORS_ORIGINS
               value: https://binks.chat
             # Base for the Google and Apple OAuth callbacks

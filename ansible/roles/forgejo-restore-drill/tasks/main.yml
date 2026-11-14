@@ -40,7 +40,7 @@
         Description=Restore the newest Forgejo backup into a network-less container and check it
         After=docker.service network-online.target
         Wants=network-online.target
-        RequiresMountsFor=/mnt/backups
+        RequiresMountsFor=/mnt/backups /mnt/backup-8t/forgejo-backups
 
         [Service]
         Type=oneshot

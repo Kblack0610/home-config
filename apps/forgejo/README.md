@@ -221,16 +221,35 @@ Endpoints:
 
 ## Backup Notes
 
-- Forgejo runs on asus-laptop since hp-victus hung on 2026-11-13, restored onto its backup disk (`/mnt/backups/forgejo-live`), and every backup job reads that copy locally.
+- Forgejo runs on asus-laptop since hp-victus hung on 2026-11-13, restored onto its backup disk (`/mnt/backups/forgejo-live`), and every in-cluster backup job reads that copy locally. Its next home is forge-hel1 (plan `virtual-strolling-nova`); the jobs for that are in place and off until the cutover below.
 - `forgejo-db-snapshot` runs hourly: `VACUUM INTO` plus `quick_check`, 48 kept in `/mnt/backups/forgejo-live/snapshots`.
 - `forgejo-backup` runs daily at `03:00` on asus and writes a full archive and the newest DB snapshot to `/mnt/backups/forgejo`. While Forgejo runs from the restore, that is the same disk as the live data (nvme0n1p2), so the 8TB copy below is the only one on another disk.
 - Retention: newest **7**. Archives are written to `*.tmp` and renamed on success, so a partial never looks like a backup. Pruning runs after a good backup, and the job aborts if `/backup` has under 100G free.
 - GNU tar exit 1 ("file changed as we read it") counts as success, since the archive is complete and Forgejo keeps writing during the backup. Exit 2 fails the job.
-- `gitea/data/packages` (178G) is excluded. `forgejo-packages-backup` in the `nas` namespace mirrors it weekly to the 8TB drive.
-- `forgejo-backup-offbox` runs at `04:30` and keeps the newest **3** fulls on the 8TB drive (`/mnt/backup-8t/forgejo-backups`). It reads only completed archives, checks size and `gzip -t`, and aborts if the copy would leave the drive under 500G free. The off-site copy is the Hetzner standby to come (plan `can-we-setup-forgejo-snazzy-hopper` P9).
-- `scripts/forgejo-restore-drill.sh` (root, on asus) restores the newest full and its snapshot into a network-less container and checks it boots and every repo passes `git fsck`; what it leaves out is in `docs/backup-runbook.md`. It runs every Saturday from `ansible/roles/forgejo-restore-drill`, and the Sentinel watch `forgejo-restore-drill` pages when a run fails or none passed in 8 days.
-- `nas-backup-verify` checks all of this weekly, including off-box size against the primary.
-- History: on 2026-07-09 a retention of 30 (~1.6TiB of daily fulls) filled asus-laptop's root disk, tripped kubelet DiskPressure, and evicted the entire home-k3s workload cluster for ~6h. Retention was cut to 7 and a prune-first + free-space guard added. Longer-term recovery points belong off-box (MinIO/S3), not on the same disk as the data they protect.
+- `gitea/data/packages` (218G) is excluded. `forgejo-packages-backup` in the `nas` namespace mirrors it weekly to the 8TB drive.
+- `forgejo-backup-offbox` runs at `04:30` and keeps the newest **3** fulls on the 8TB drive (`/mnt/backup-8t/forgejo-backups`). It reads only completed archives, checks size and `gzip -t`, and aborts if the copy would leave the drive under 500G free.
+- `scripts/forgejo-restore-drill.sh` (root, on asus) restores the newest full on the 8TB drive and its own snapshot into a network-less container and checks it boots and every repo passes `git fsck`; what it leaves out is in `docs/backup-runbook.md`. It runs every Saturday from `ansible/roles/forgejo-restore-drill`, and the Sentinel watch `forgejo-restore-drill` pages when a run fails or none passed in 8 days.
+- `nas-backup-verify` checks weekly that the newest full on the 8TB drive is under 48h old, passes `gzip -t`, and has its paired db.
+- History: on 2026-07-09 a retention of 30 (~1.6TiB of daily fulls) filled asus-laptop's root disk, tripped kubelet DiskPressure, and evicted the entire home-k3s workload cluster for ~6h. Retention was cut to 7 and a prune-first + free-space guard added.
+
+### On forge-hel1
+
+`ansible/roles/forgejo-host` runs these only when `forgejo_host_running` is true, and each run is skipped unless the compose `forgejo` container is up.
+
+- `forgejo-db-snapshot.timer` (hourly :07) and `forgejo-lock-reaper.timer` (hourly :17) run the scripts from `db-snapshot-cronjob.yaml` and `lock-reaper-cronjob.yaml` in `docker run`, so one copy of each script exists. Snapshots land in `/mnt/forgejo/backups/snapshots`; the reaper pages through `https://ntfy.kblab.me/homelab-alerts`.
+- The mirror exporter is a second service in `/etc/forgejo/compose.yaml`, with image, command and env from `apps/forgejo-mirror-exporter/deployment.yaml`, on port 9310.
+- No full is written on the VM: the registry fills most of its 295G volume. `forgejo-backup-pull` (asus, 04:30) builds it instead. Over the tailnet, with a root key whose forced command is `rrsync -ro /mnt/forgejo` (private half in `backup-pull-secret.sops.yaml`), it mirrors the hourly snapshots and the data tree into `/mnt/backup-8t/forgejo-backups/{snapshots,tree}`, then tars the tree into `forgejo-full-<ts>.tar.gz` with the newest snapshot as `forgejo-db-<ts>.db.gz`, 3 kept, 500G free floor. It refuses a snapshot over 2h old or a source that lists nothing.
+- The same job copies `data/gitea/data/packages` add-only (no deletes) into `/mnt/backup-8t/forgejo-packages` and takes the weekly `forgejo-packages-<ts>` snapshot, 4 kept. This is temporary: plan `vectorized-pondering-turtle` P2 moves packages to object storage with a B2 copy and deletes this pull path.
+
+### Cutover switches
+
+One change, at the cutover to forge-hel1:
+
+- `forgejo_host_running: true` and `forgejo_host_http_bind` set to the tailnet IP for forge-hel1, then the forge-hel1 play.
+- `suspend: false` on `forgejo-backup-pull`.
+- `suspend: true` on `forgejo-db-snapshot`, `forgejo-backup`, `forgejo-backup-offbox`, `forgejo-lock-reaper` and nas `forgejo-packages-backup`. From then on they read the frozen asus copy, and offbox's prune would delete pulled fulls in the shared 8TB directory.
+- `forgejo-mirror-exporter` Deployment to 0 replicas, and its Service made selectorless with an EndpointSlice to `100.125.203.14:9310`, so the `forgejo-mirror-exporter` job and its rules carry over unchanged.
+- `forgejo-db-snapshot.service` and `forgejo-lock-reaper.service` on forge-hel1's `node_exporter_linux_systemd_units` (the role asserts they appear, which fails while the timers are off).
 
 ## Related Docs
 

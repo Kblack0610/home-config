@@ -9,6 +9,8 @@
 # windows-media-ci (192.168.1.27): the Hyper-V Ubuntu VM on windows-media, a Unity
 #   CI host; node_exporter from the "Unity CI host monitoring" play in site.yml, so
 #   ci-runner-governor reads its idle, PSI and memory (a VM has no k10temp).
+# forge-hel1 (100.125.203.14, tailnet): the Hetzner VM that runs Forgejo,
+#   node_exporter from its play in site.yml, reached through the node's tailscale0.
 # razer-laptop left this list on 2026-10-26 when it joined k3s: the cluster's
 #   node-exporter DaemonSet scrapes it now, like hp-victus and asus-laptop.
 
@@ -47,6 +49,8 @@ subsets:
         hostname: workstation
       - ip: 192.168.1.27
         hostname: windows-media-ci
+      - ip: 100.125.203.14
+        hostname: forge-hel1
     ports:
       - name: metrics
         port: 9100

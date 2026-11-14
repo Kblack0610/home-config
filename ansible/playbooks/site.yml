@@ -862,3 +862,7 @@
   roles:
     - role: forgejo-host
       tags: [forgejo]
+    # Scraped over the tailnet by apps/monitoring/external-standalone-nodes.yaml.
+    # The Hetzner firewall drops inbound 9100 on the public IP.
+    - role: node-exporter-linux
+      tags: [forgejo, monitoring]

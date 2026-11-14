@@ -119,6 +119,8 @@ Checked 2026-11-11: moving Unity jobs from the AWS hosts to GitHub-hosted runner
 | Where | $ per slot-hour | Basis |
 |---|---|---|
 | Owned hosts | 0 at the margin | governor `rates` |
+| aws-spot-1 (Spot m6a.8xlarge, 5 slots) | ~0.06 | $0.28/h Spot price 2026-11-13 over 5 slots |
+| aws-spot-2, aws-spot-3 (Spot m7i and m6i .8xlarge, 5 slots each) | ~0.13 to 0.15 | $0.66 and $0.77/h Spot price 2026-11-13 over 5 slots |
 | aws-burst-2, aws-burst-3 (on-demand m7a.8xlarge, 6 slots each) | ~0.31 | $1.855/h over 6 slots |
 | aws-burst-1 (on-demand m7a.8xlarge, 5 slots) | ~0.37 | $1.855/h over 5 slots |
 | aws-build-1 (on-demand m7a.8xlarge, 6 test slots, a build in place of two) | ~0.31 to 0.62 | $1.855/h over 6 slots running tests, 3 when every pair builds |

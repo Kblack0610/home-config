@@ -12,6 +12,18 @@
     "withhold": {"idle": 0.15, "psi": 0.4, "tctl": 92, "mem": 0.1, "disk": 0.2}
   },
   "standby": [
+    {"host": "aws-spot-1", "max_admitted": 5, "power": {"provider": "aws", "instance_id": "i-0b4c89a54f8e25ad5",
+                                                       "region": "us-east-2", "idle_off_seconds": 900,
+                                                       "start_min_excess": 4, "start_after_seconds": 300, "max_hours_day": 24,
+                                                       "fallback_seconds": 3600, "live": true}},
+    {"host": "aws-spot-2", "max_admitted": 5, "power": {"provider": "aws", "instance_id": "i-0c244a80e9cf430b1",
+                                                       "region": "us-east-2", "idle_off_seconds": 900,
+                                                       "start_min_excess": 4, "start_after_seconds": 300, "max_hours_day": 24,
+                                                       "fallback_seconds": 3600, "live": true}},
+    {"host": "aws-spot-3", "max_admitted": 5, "power": {"provider": "aws", "instance_id": "i-04ca535b8876dff6f",
+                                                       "region": "us-east-2", "idle_off_seconds": 900,
+                                                       "start_min_excess": 4, "start_after_seconds": 300, "max_hours_day": 24,
+                                                       "fallback_seconds": 3600, "live": true}},
     {"host": "aws-burst-2", "max_admitted": 6, "power": {"provider": "aws", "instance_id": "i-000950e6c992b24bf",
                                                        "region": "us-east-2", "idle_off_seconds": 900,
                                                        "start_min_excess": 4, "start_after_seconds": 300, "max_hours_day": 24,
@@ -43,7 +55,10 @@
     "aws-burst-1": {"usd_per_hour": 1.855, "basis": "on-demand"},
     "aws-build-1": {"usd_per_hour": 1.855, "basis": "on-demand"},
     "aws-burst-2": {"usd_per_hour": 1.855, "basis": "on-demand"},
-    "aws-burst-3": {"usd_per_hour": 1.855, "basis": "on-demand"}
+    "aws-burst-3": {"usd_per_hour": 1.855, "basis": "on-demand"},
+    "aws-spot-1": {"usd_per_hour": 0.28, "basis": "spot-estimate"},
+    "aws-spot-2": {"usd_per_hour": 0.66, "basis": "spot-estimate"},
+    "aws-spot-3": {"usd_per_hour": 0.77, "basis": "spot-estimate"}
   },
   "hosts": {
     "cachyos-x8664-main": {"full": false, "min_admitted": 0, "admit": {"idle": 0.5, "tctl": 80}, "withhold": {"idle": 0.3, "tctl": 88}},

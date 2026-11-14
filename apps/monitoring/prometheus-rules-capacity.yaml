@@ -88,6 +88,16 @@ spec:
             fleet: fix
           annotations:
             summary: "ci-runner-governor has had no reading for 30 minutes, so no Unity slot is being pulled or returned. Check github_runner_exporter_api_ok and GitHub's API limit"
+        # A reclaim kills every job on the Spot host. More than 3 in a day means that type is
+        # scarce: set its entry spot = false in platform infra/aws-ci-burst (2026-11-13 plan).
+        - alert: CiSpotHostReclaimedOften
+          expr: increase(ci_governor_fallback_total{reason="reclaim",host=~"aws-spot-.*"}[24h]) > 3
+          labels:
+            severity: warning
+            category: capacity
+            fleet: fix
+          annotations:
+            summary: "{{ $labels.host }} was reclaimed by AWS more than 3 times in 24 h, each killing its jobs: set it on-demand in platform infra/aws-ci-burst variables.tf"
         # GitHub charges orgs/ and repos/ calls to separate 5000-an-hour buckets, and the
         # exporter, governor and boards all go blind when one hits 0. Warning, not a page:
         # it comes ahead of CiGovernorBlind, which only sees the outage after 30 minutes.

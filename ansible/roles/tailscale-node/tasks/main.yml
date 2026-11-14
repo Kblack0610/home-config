@@ -1,0 +1,49 @@
+---
+- name: Install
+  ansible.builtin.include_tasks: install.yml
+
+- name: Read the tailnet state
+  become: true
+  ansible.builtin.command: tailscale status --json --peers=false
+  register: tailscale_node_status
+  changed_when: false
+  failed_when: false
+  check_mode: false
+
+- name: The flags this host runs with
+  ansible.builtin.set_fact:
+    tailscale_node_flags: >-
+      {{ ['--hostname=' ~ tailscale_node_hostname, '--accept-dns=false'] }}
+    tailscale_node_running: >-
+      {{ tailscale_node_status.rc == 0
+         and (tailscale_node_status.stdout | from_json).BackendState == 'Running' }}
+
+# --accept-dns=false: MagicDNS would rewrite resolv.conf, and CoreDNS forwards
+# to the node's resolv.conf. --reset makes the flags above the whole config.
+- name: Join the tailnet
+  when: not tailscale_node_running | bool
+  become: true
+  ansible.builtin.command:
+    argv: "{{ ['tailscale', 'up', '--reset', '--auth-key=' ~ tailscale_node_auth_key] + tailscale_node_flags }}"
+  no_log: true
+  changed_when: true
+
+# A joined host keeps its key; flags that changed since are applied without it.
+- name: Apply the flags to a joined host
+  when: tailscale_node_running | bool
+  become: true
+  ansible.builtin.command:
+    argv: "{{ ['tailscale', 'set'] + tailscale_node_flags }}"
+  changed_when: false
+
+- name: Read the tailnet IPv4
+  become: true
+  ansible.builtin.command: tailscale ip -4
+  register: tailscale_node_ip
+  changed_when: false
+  check_mode: false
+  failed_when: false
+
+- name: Report the tailnet address
+  ansible.builtin.debug:
+    msg: "{{ inventory_hostname }} on the tailnet at {{ tailscale_node_ip.stdout | default('none (check mode or not joined)') }}"

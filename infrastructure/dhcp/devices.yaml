@@ -153,10 +153,8 @@ devices:
     category: workstations
     range_exception: true
 
-  # hp-victus: k3s workstation node and Forgejo's node (exports /srv/forgejo
-  # read-only to asus, ansible role nfs-backup-target). Pinned so the forgejo
-  # backup NFS mounts (apps/forgejo/backup-cronjob.yaml, server .243)
-  # can't break on a DHCP lease change. Keeps its existing .243 lease.
+  # hp-victus: k3s workstation node. Pinned at .243, which the LAN game-server
+  # DNS and port forwards name (infrastructure/openwrt/dns.yaml, firewall.yaml).
   - hostname: hp-victus
     mac: "E0:73:E7:F3:5B:65"
     ip: "192.168.1.243"

@@ -1,0 +1,14 @@
+[Unit]
+Description=Forgejo (docker compose, roles/forgejo-host)
+Requires=docker.service mnt-forgejo.mount
+After=docker.service mnt-forgejo.mount network-online.target
+
+[Service]
+Type=oneshot
+RemainAfterExit=true
+WorkingDirectory=/etc/forgejo
+ExecStart=/usr/bin/docker compose -f /etc/forgejo/compose.yaml up -d --remove-orphans
+ExecStop=/usr/bin/docker compose -f /etc/forgejo/compose.yaml down
+
+[Install]
+WantedBy=multi-user.target

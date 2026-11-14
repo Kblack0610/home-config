@@ -128,7 +128,7 @@ spec:
             name: forgejo-mirror-exporter-script
         - name: data
           persistentVolumeClaim:
-            claimName: forgejo-data-hp-victus
+            claimName: forgejo-data-asus
         - name: snapshot
           emptyDir:
             medium: Memory

@@ -22,7 +22,7 @@ spec:
         storage.role/nas: "true"
       containers:
         - name: gatus
-          image: twinproduction/gatus:v5.14.0
+          image: twinproduction/gatus:v5.38.0
           securityContext:
             allowPrivilegeEscalation: false
             readOnlyRootFilesystem: true

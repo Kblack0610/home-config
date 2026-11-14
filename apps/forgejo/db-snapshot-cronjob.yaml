@@ -18,7 +18,7 @@ spec:
       activeDeadlineSeconds: 900
       template:
         spec:
-          # No nodeSelector: the forgejo-data-hp-victus PV pins this to hp-victus.
+          # No nodeSelector: the forgejo-data-asus PV pins this to asus-laptop.
           # The snapshot dir is ours alone, so it is created and owned here.
           initContainers:
             - name: snapshot-dir
@@ -78,11 +78,10 @@ spec:
           volumes:
             - name: data
               persistentVolumeClaim:
-                claimName: forgejo-data-hp-victus
-            # Beside the PV on hp-victus's disk (the root disk, so creating it
-            # cannot fill a different one), exported read-only to asus-laptop
-            # with it (ansible role nfs-backup-target).
+                claimName: forgejo-data-asus
+            # Beside the PV on asus-laptop's backup disk since hp-victus hung
+            # on 2026-11-13; the backup job reads it there.
             - name: snapshots
               hostPath:
-                path: /srv/forgejo/snapshots
+                path: /mnt/backups/forgejo-live/snapshots
                 type: DirectoryOrCreate

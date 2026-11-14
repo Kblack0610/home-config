@@ -5,7 +5,8 @@ Run it first when a host hangs, reboots or goes NotReady. It prints, for the win
 after the time:
 
   1. A 5-minute table from Prometheus: up, CPU busy, load15 per CPU, available memory, swap,
-     memory and IO pressure, NIC traffic and errors, CPU package and NVMe temperature.
+     memory and IO pressure, NIC traffic and errors, CPU package and NVMe temperature, and on a
+     laptop whether it is on mains and its battery percent.
   2. The last minute node-exporter answered a scrape.
   3. Kernel lines matching each live Loki rule in group host-kernel-faults (read from Loki's
      ruler, so the regexes stay in apps/loki/rules-host-kernel-faults.yaml only).
@@ -57,6 +58,11 @@ COLUMNS = [
     ("cpuC", "max(node_hwmon_temp_celsius{%(i)s} * on (instance, chip) group_left (chip_name) "
              "node_hwmon_chip_names{%(i)s,chip_name=~\"coretemp|k10temp\"})", "{:.0f}"),
     ("nvmeC", "max(node_hwmon_temp_celsius{%(i)s,chip=~\"nvme.*\",sensor=\"temp1\"})", "{:.0f}"),
+    # Laptops only: 0 means off the charger. hp-victus ran flat on 2026-11-14 with this unread.
+    ("mains", "max(node_power_supply_online{%(i)s} and on (instance, power_supply) "
+              "node_power_supply_info{%(i)s,type=\"Mains\"})", "{:.0f}"),
+    ("bat%", "min(node_power_supply_capacity{%(i)s} and on (instance, power_supply) "
+             "node_power_supply_info{%(i)s,type=\"Battery\",scope=\"\"})", "{:.0f}"),
 ]
 
 

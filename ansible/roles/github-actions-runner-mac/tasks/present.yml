@@ -225,9 +225,13 @@
 
 # A running job is this runner's Runner.Worker; its path is <home>/bin/ or, after a
 # self-update, <home>/bin.<version>/.
+- name: Name the runner's job process
+  ansible.builtin.set_fact:
+    _gh_mac_worker_pattern: "^{{ gh_runner_mac_home }}/bin[^/]*/Runner.Worker"
+
 - name: Check whether the runner is running a job
   ansible.builtin.command:
-    argv: [pgrep, -f, "^{{ gh_runner_mac_home }}/bin[^/]*/Runner.Worker"]
+    argv: [pgrep, -f, "{{ _gh_mac_worker_pattern }}"]
   register: _gh_mac_busy
   changed_when: false
   failed_when: _gh_mac_busy.rc > 1
@@ -241,6 +245,7 @@
 - name: Decide whether to drain it first
   ansible.builtin.set_fact:
     _gh_mac_drain: "{{ _gh_mac_restart and _gh_mac_is_busy and not ansible_check_mode }}"
+    _gh_runner_drain_row: null
 
 - name: Restart the runner, draining it first under a job
   vars:
@@ -249,8 +254,14 @@
     gh_runner_token_source: "{{ gh_runner_mac_token_source }}"
     gh_runner_drain_timeout: "{{ gh_runner_mac_drain_timeout }}"
     _effective_gh_runner_pat: "{{ vault_github_pat | default('') }}"
-    _gh_runner_worker_pattern: "^{{ gh_runner_mac_home }}/bin[^/]*/Runner.Worker"
+    _gh_runner_worker_pattern: "{{ _gh_mac_worker_pattern }}"
   block:
+    - name: Read the busy runner from GitHub
+      ansible.builtin.import_role:
+        name: github-actions-runner-linux
+        tasks_from: read_runner
+      when: _gh_mac_drain
+
     - name: Drain the busy runner until its job ends
       ansible.builtin.import_role:
         name: github-actions-runner-linux
@@ -299,12 +310,22 @@
       changed_when: false
 
   # After the start, so the drained runner takes no job before it. Also when the restart
-  # fails, so a failed apply never leaves the runner drained.
+  # fails, so a failed apply never leaves the runner drained. A runner that has custom
+  # labels again (ci-runner-governor withheld it during the drain) keeps them.
   always:
+    - name: Read the drained runner again
+      ansible.builtin.import_role:
+        name: github-actions-runner-linux
+        tasks_from: read_runner
+      when: _gh_runner_drain_row is not none
+
     - name: Put the labels back after a drain
       ansible.builtin.import_role:
         name: github-actions-runner-linux
         tasks_from: put_labels
       vars:
-        _gh_runner_put_labels: "{{ _gh_runner_drain_labels }}"
-      when: _gh_mac_drain
+        _gh_runner_put_labels: >-
+          {{ _gh_runner_drain_row.labels | rejectattr('type', 'equalto', 'read-only') | map(attribute='name') | list }}
+      when:
+        - _gh_runner_drain_row is not none
+        - _gh_runner_row.labels | rejectattr('type', 'equalto', 'read-only') | list | length == 0

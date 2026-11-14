@@ -231,6 +231,7 @@
 - name: Decide whether to drain it first
   ansible.builtin.set_fact:
     _gh_runner_drain: "{{ _gh_runner_restart and _gh_runner_is_busy and not ansible_check_mode }}"
+    _gh_runner_drain_row: null
 
 - name: Read the runner's labels and plan gh_runner_labels
   ansible.builtin.import_tasks: labels.yml
@@ -276,10 +277,24 @@
   # After the restart, so a slot drained for it takes no job before it. Also when the
   # restart fails, so a failed apply never leaves the slot drained.
   always:
+    # ci-runner-governor may withhold the slot during a drain (it adds its withheld label),
+    # so the put-back plans from the labels before the drain plus the ones now.
+    - name: Read the drained runner again
+      ansible.builtin.import_tasks: read_runner.yml
+      when: _gh_runner_drain_row is not none
+
+    - name: Plan the drained runner's labels from before the drain and now
+      ansible.builtin.set_fact:
+        _gh_runner_plan: >-
+          {{ {'name': gh_runner_name, 'labels': _gh_runner_drain_row.labels + _gh_runner_row.labels}
+             | runner_labels_plan(gh_runner_labels, gh_runner_governed_labels,
+                                  gh_runner_withheld_label, gh_runner_withheld_labels) }}
+      when: _gh_runner_drain_row is not none
+
     - name: Put the labels back after a drain, or set gh_runner_labels
       ansible.builtin.import_tasks: put_labels.yml
       vars:
         _gh_runner_put_labels: "{{ _gh_runner_plan.labels }}"
       when:
         - not ansible_check_mode
-        - _gh_runner_drain or _gh_runner_plan.change
+        - _gh_runner_drain_row is not none or _gh_runner_plan.change

@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Block until no process matches PATTERN (pgrep -f), or TIMEOUT seconds pass.
 
-Exit 0 once none runs, 124 on timeout. It waits on each process's exit event (a pidfd
+Exit 0 once none runs, 124 on timeout, 2 on a Linux Python with no os.pidfd_open (3.9+). It waits on each process's exit event (a pidfd
 on Linux, kqueue on macOS), never on a timer. The drain in tasks/drain.yml runs it on a
 runner slot whose labels it has just removed, so once its Runner.Worker exits no new
 job can start there.
@@ -26,7 +26,9 @@ def exited(pid, timeout):
     """True once pid has exited, False if timeout seconds pass first."""
     if timeout <= 0:
         return False
-    if hasattr(os, "pidfd_open"):
+    if sys.platform.startswith("linux"):
+        if not hasattr(os, "pidfd_open"):
+            sys.exit(2)
         try:
             fd = os.pidfd_open(pid)
         except ProcessLookupError:
@@ -51,6 +53,7 @@ def main(pattern, timeout):
     deadline = time.monotonic() + timeout
     while pids := matching(pattern):
         for pid in pids:
+            print(f"waiting on {pid}", flush=True)
             if not exited(pid, deadline - time.monotonic()):
                 return 124
     return 0

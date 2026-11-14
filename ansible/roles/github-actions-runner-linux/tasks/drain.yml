@@ -6,17 +6,13 @@
 # custom label, so no queued job matches it, and waits for the running job's Runner.Worker to
 # exit. The caller then restarts the slot and puts its labels back.
 #
-# Inputs: those of read_runner.yml, _gh_runner_worker_pattern (pgrep -f of the slot's
-# Runner.Worker) and gh_runner_drain_timeout. Sets _gh_runner_drain_labels (the custom labels
-# before the drain, for a caller with no label plan) and _gh_runner_drain_idle (the job ended
-# in time). The github-actions-runner-mac role imports it too.
-- name: Read the runner from GitHub before the drain
-  ansible.builtin.import_tasks: read_runner.yml
-
-- name: Keep the labels the drain removes
+# Inputs: _gh_runner_row (read_runner.yml, read by the caller), those of put_labels.yml,
+# _gh_runner_worker_pattern (pgrep -f of the slot's Runner.Worker) and gh_runner_drain_timeout.
+# Sets _gh_runner_drain_row (the runner before the drain, for the put-back) and
+# _gh_runner_drain_idle (the job ended in time). The github-actions-runner-mac role imports it too.
+- name: Keep the runner's labels before the drain
   ansible.builtin.set_fact:
-    _gh_runner_drain_labels: >-
-      {{ _gh_runner_row.labels | rejectattr('type', 'equalto', 'read-only') | map(attribute='name') | list }}
+    _gh_runner_drain_row: "{{ _gh_runner_row }}"
 
 - name: Remove the runner's custom labels, so it takes no new job
   ansible.builtin.import_tasks: put_labels.yml
@@ -30,6 +26,7 @@
     executable: python3
   register: _gh_runner_drain_wait
   changed_when: false
+  # rc 2: a Linux Python older than 3.9, with no pidfd to wait on.
   failed_when: _gh_runner_drain_wait.rc not in [0, 124]
 
 - name: Record whether the job ended in time

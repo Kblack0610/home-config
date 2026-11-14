@@ -26,25 +26,32 @@ class Wait(unittest.TestCase):
         shutil.rmtree(self.home)
 
     def wait(self, timeout):
-        return subprocess.Popen([sys.executable, WAIT, self.pattern, str(timeout)])
+        return subprocess.Popen([sys.executable, WAIT, self.pattern, str(timeout)], stdout=subprocess.PIPE, text=True)
 
     def start_worker(self):
         # The job: it runs until the test ends it.
         self.worker = subprocess.Popen([self.worker_bin, "600"])
 
     def test_idle_slot_returns_at_once(self):
-        self.assertEqual(self.wait(600).wait(timeout=30), 0)
+        waiter = self.wait(600)
+        self.assertEqual(waiter.communicate(timeout=30)[0], "")
+        self.assertEqual(waiter.returncode, 0)
 
     def test_returns_when_the_job_ends(self):
         self.start_worker()
         waiter = self.wait(600)
+        # It names the job it blocks on before it blocks, so the kill lands mid-wait.
+        self.assertEqual(waiter.stdout.readline().strip(), f"waiting on {self.worker.pid}")
         self.worker.kill()
         self.worker.wait()
         self.assertEqual(waiter.wait(timeout=30), 0)
+        waiter.stdout.close()
 
     def test_times_out_under_a_job_that_outlasts_it(self):
         self.start_worker()
-        self.assertEqual(self.wait(0.5).wait(timeout=30), 124)
+        waiter = self.wait(0.5)
+        waiter.communicate(timeout=30)
+        self.assertEqual(waiter.returncode, 124)
 
 
 if __name__ == "__main__":

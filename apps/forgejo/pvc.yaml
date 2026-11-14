@@ -1,9 +1,7 @@
 # Forgejo's data lives on hp-victus since 2026-11-11: a static local PV at
 # /srv/forgejo/data, the node with the fewest Ready flaps (0 in 7d, against
 # asus-laptop's 2 and its NVMe resets, hc-25). Retain, not local-path's Delete:
-# deleting the claim must never delete every repo. hp-victus also exports
-# /srv/forgejo read-only to asus-laptop, where the backup jobs run (ansible
-# role nfs-backup-target).
+# deleting the claim must never delete every repo.
 apiVersion: v1
 kind: PersistentVolume
 metadata:

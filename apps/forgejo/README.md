@@ -17,7 +17,7 @@ and repository mirroring enabled.
 | `ingress.yaml` | TLS ingress for `git.kblab.me` (git, registry, API, Flux) |
 | `ingress-public.yaml` | TLS ingress for `git.kennethblack.me`, the `ROOT_URL` and the one browser hostname |
 | `ingressroute-browser-redirect.yaml` | Redirects browsers (`Accept: text/html`) on `git.kblab.me` to `git.kennethblack.me`, so one login cookie covers every page |
-| `pvc.yaml` | Forgejo's data: a static Retain PV at `/srv/forgejo/data` on hp-victus |
+| `pvc.yaml` | Forgejo's data: a static Retain PV, live at `/mnt/backups/forgejo-live/data` on asus-laptop since 2026-11-13 (the hp-victus PV is unused) |
 | `backup-cronjob.yaml` | Daily backup job for full data and SQLite snapshots |
 | `runner-deployment.yaml` | Forgejo Runner + DinD sidecar (razer-laptop only; asus-laptop and hp-victus are `no_ci_hosts`) |
 | `runner-config-cm.yaml` | Runner config with `docker` + `linux-amd64` labels |
@@ -221,9 +221,9 @@ Endpoints:
 
 ## Backup Notes
 
-- Forgejo lives on hp-victus (since 2026-11-11), and its backups run on asus-laptop: hp-victus exports `/srv/forgejo` read-only to asus (ansible role `nfs-backup-target`).
-- `forgejo-db-snapshot` runs hourly on hp-victus: `VACUUM INTO` plus `quick_check`, 48 kept in `/srv/forgejo/snapshots`.
-- `forgejo-backup` runs daily at `03:00` on asus, reads the data over NFS, and writes a full archive and the newest DB snapshot to `/mnt/backups/forgejo` on asus-laptop's second disk.
+- Forgejo runs on asus-laptop since hp-victus hung on 2026-11-13, restored onto its backup disk (`/mnt/backups/forgejo-live`), and every backup job reads that copy locally.
+- `forgejo-db-snapshot` runs hourly: `VACUUM INTO` plus `quick_check`, 48 kept in `/mnt/backups/forgejo-live/snapshots`.
+- `forgejo-backup` runs daily at `03:00` on asus and writes a full archive and the newest DB snapshot to `/mnt/backups/forgejo`. While Forgejo runs from the restore, that is the same disk as the live data (nvme0n1p2), so the 8TB copy below is the only one on another disk.
 - Retention: newest **7**. Archives are written to `*.tmp` and renamed on success, so a partial never looks like a backup. Pruning runs after a good backup, and the job aborts if `/backup` has under 100G free.
 - GNU tar exit 1 ("file changed as we read it") counts as success, since the archive is complete and Forgejo keeps writing during the backup. Exit 2 fails the job.
 - `gitea/data/packages` (178G) is excluded. `forgejo-packages-backup` in the `nas` namespace mirrors it weekly to the 8TB drive.

@@ -6,6 +6,8 @@
   "pool_min_admitted": 1,
   "pool_max_admitted": 24,
   "cooldown_seconds": 600,
+  "dwell_seconds": 600,
+  "pack_keep_labels": ["unity-wide"],
   "defaults": {
     "min_admitted": 1,
     "admit": {"idle": 0.35, "psi": 0.2, "tctl": 85, "mem": 0.25, "disk": 0.25},

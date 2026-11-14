@@ -209,6 +209,12 @@ all:
         razer-laptop:
           ci_light_slots: 2
           ci_heavy_slots: 1
+        # Four light slots, no heavy, on the cores of its third Unity slot since
+        # 2026-11-13 (unity_ci_runners says why). Light jobs average 0.4 cores and
+        # 0.6G, so four fit in three cores and 14G. Ubuntu: linux-ci-host's apt list.
+        windows-media-ci:
+          ci_light_slots: 4
+          ci_heavy_slots: 0
 
     # BNB Unity runner pool (added 2026-10-05; the "Unity CI runner pool" play in
     # site.yml). Org-scoped, label `unity`, for every game repo. Each slot runs
@@ -268,14 +274,18 @@ all:
         # The Ubuntu 24.04 Hyper-V VM on windows-media (Ryzen 9 5900XT, 64G),
         # added 2026-11-13: 24 vCPUs and 50G static of the host's 32 threads and
         # 64G. Hyper-V does not pin vCPUs, so Windows and the TV share the cores
-        # by scheduler, with 14G of memory of their own. Three slots
+        # by scheduler, with 14G of memory of their own. Two slots
         # of three cores and 14G each, with three cores and 8G for the guest OS
         # (docs/unity-ci-hardware.md sizing). Full runs and gates: it is owned and
         # never preempted. Not unity-wide until it passes the ucp-1521 probes.
+        # Three slots until 2026-11-13: the third's cores went to four light slots
+        # (linux_ci_runners), since light is the front door of every Unity gate
+        # and #953 left razer's two alone (25 waiting, up to 24 min) while AWS
+        # had 24 Unity slots idle. The host read FULL, so a swap, not an addition.
         # Setup and the VM itself: docs/windows-machines.md.
         windows-media-ci:
           ansible_host: 192.168.1.27   # windows-media-ci (DHCP reservation)
-          unity_ci_slots: 3
+          unity_ci_slots: 2
           unity_ci_full: true
           unity_ci_gate: true
         # The AWS overflow box (platform infra/aws-ci-burst, Terraform), added
@@ -502,15 +512,18 @@ all:
         # windows-media-ci, the Hyper-V VM: 12 vcores / 24 threads, SMT siblings
         # are n and n+1 (lscpu), 49G. Cores 0-2 (CPUs 0-5) stay with the guest OS,
         # docker and the runner agents; each Unity slot gets three cores and stops
-        # at 14G. No temperature: a VM has no k10temp, so the governor admits on
+        # at 14G, and the four light slots share cores 9-11 (CPUs 18-23) and 14G.
+        # No temperature: a VM has no k10temp, so the governor admits on
         # idle, PSI and memory alone.
         windows-media-ci:
           ci_cpus: 6-23
           ci_memory_max: 42G
-          ci_unity_cpus: 6-23
-          ci_unity_slot_cpus: ["6-11", "12-17", "18-23"]
-          ci_unity_memory_max: 42G
+          ci_unity_cpus: 6-17
+          ci_unity_slot_cpus: ["6-11", "12-17"]
+          ci_unity_memory_max: 28G
           ci_unity_slot_memory_max: 14G
+          ci_linux_cpus: 18-23
+          ci_linux_memory_max: 14G
         # m7a.8xlarge on-demand (platform infra/aws-ci-burst, since 11-04: Spot
         # reclaimed the 12xlarge 4 times in 9 h): 32 real cores (no SMT), 128 GiB.
         # Core 0 stays with the OS and the SSM agent; cores 1-30 go to one slot of

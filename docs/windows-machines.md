@@ -221,7 +221,7 @@ A flash that fails partway is recoverable: rename the `.CAP` with the `BIOSRenam
 
 ## Unity CI VM (windows-media-ci)
 
-`windows-media-ci` is an Ubuntu 24.04 Hyper-V VM on this PC and a Unity CI pool host with 3 slots, managed like the other Linux pool hosts ([unity-ci-host.md](runbooks/unity-ci-host.md); its entries are in `ansible/inventory.yml` `unity_ci_runners` and `ci_hosts`). Hyper-V and not WSL2: WSL2 on Windows 10 sits behind NAT with an address that changes, and runs only while someone is signed in, while the VM has its own LAN address and starts at boot with nobody at the TV.
+`windows-media-ci` is an Ubuntu 24.04 Hyper-V VM on this PC and a Unity CI pool host with 2 slots and 4 light slots (3 Unity slots until 2026-11-13), managed like the other Linux pool hosts ([unity-ci-host.md](runbooks/unity-ci-host.md); its entries are in `ansible/inventory.yml` `unity_ci_runners` and `ci_hosts`). Hyper-V and not WSL2: WSL2 on Windows 10 sits behind NAT with an address that changes, and runs only while someone is signed in, while the VM has its own LAN address and starts at boot with nobody at the TV.
 
 | | |
 |---|---|

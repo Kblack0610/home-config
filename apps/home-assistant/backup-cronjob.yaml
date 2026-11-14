@@ -38,7 +38,20 @@ spec:
 
                   TIMESTAMP=$(date +%Y%m%d-%H%M%S)
                   BACKUP_FILE="home-assistant-${TIMESTAMP}.tar.gz"
-                  tar -czf "/backup/${BACKUP_FILE}" -C /data .
+                  # Write under .partial and rename on success, so a failed or
+                  # killed attempt leaves nothing: restartPolicy OnFailure retries
+                  # up to 7 times, and on 2026-11-13/14 every retry left a 500 MB
+                  # archive the rotation below never saw, filling the SD card.
+                  rm -f /backup/*.partial
+                  PART="/backup/${BACKUP_FILE}.partial"
+                  trap 'rm -f "${PART}"' EXIT
+                  # home-assistant_v2.db is the live recorder DB (1.4G), so GNU tar
+                  # often reports "file changed as we read it" and exits 1. The
+                  # archive is still complete; HA rebuilds a recorder DB it finds
+                  # corrupt, and the config is what a restore needs. Exit 2 and up
+                  # is a real failure.
+                  tar --warning=no-file-changed -czf "${PART}" -C /data . || [ $? -eq 1 ]
+                  mv "${PART}" "/backup/${BACKUP_FILE}"
                   size="$(wc -c < "/backup/${BACKUP_FILE}")"
                   log "created ${BACKUP_FILE} (${size} bytes)"
                   # Writing a tiny "successful" archive and then rotating the good

@@ -1,0 +1,60 @@
+# Markets families walk-forward (strategy repo lab/markets/families.py, docs/markets.md Families): every variant of
+# each event-contract family runs on each whole backfilled month as a test window, one market_backtests row and one
+# trial each, and the readiness gate (suggest.toml [confidence]) writes market_readiness; the newest month is the
+# lockbox, read only by a variant that passes the rest. Kalshi only. A window already stored is not run again, and
+# a run starts no window after [families] budget_min (150), so a backlog drains over several nights.
+# Nightly at 12:30 UTC, off razer-laptop's 01:00-06:00 peak; kept off razer-laptop and hp-victus (the lab jobs and
+# overcommitted limits). Reads the history backfill's bars from MinIO; writes no venue.
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: trader-markets-families
+spec:
+  schedule: "30 12 * * *"
+  timeZone: "Etc/UTC"  # unset means the controller zone, America/Los_Angeles
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      backoffLimit: 0  # the next night resumes from the stored windows
+      activeDeadlineSeconds: 14400  # guard: 150 min budget plus the window in hand and the gate
+      template:
+        metadata:
+          labels:
+            app: trader-markets-families
+        spec:
+          restartPolicy: Never
+          affinity:
+            nodeAffinity:
+              requiredDuringSchedulingIgnoredDuringExecution:
+                nodeSelectorTerms:
+                  - matchExpressions:
+                      - {key: kubernetes.io/arch, operator: In, values: [amd64]}
+                      - {key: kubernetes.io/hostname, operator: NotIn, values: [hp-victus, razer-laptop]}
+          securityContext:
+            runAsUser: 1000
+            runAsGroup: 1000
+            fsGroup: 1000
+          containers:
+            - name: families
+              image: trader
+              command: ["python", "-m", "lab.markets.families"]
+              env:
+                - name: DATABASE_URL
+                  valueFrom:
+                    secretKeyRef: {name: trader-db, key: database-url}
+                - name: S3_ENDPOINT
+                  value: http://minio.minio.svc.cluster.local:9000
+                - name: S3_ACCESS_KEY
+                  valueFrom:
+                    secretKeyRef: {name: trader-markets-s3, key: S3_ACCESS_KEY}
+                - name: S3_SECRET_KEY
+                  valueFrom:
+                    secretKeyRef: {name: trader-markets-s3, key: S3_SECRET_KEY}
+              resources:
+                requests:
+                  cpu: "1"
+                  memory: 4Gi
+                limits:
+                  memory: 12Gi  # not measured yet: a month of Kalshi bars plus calibration's 30 training days, about 750k rows a settle date; set from the first real window

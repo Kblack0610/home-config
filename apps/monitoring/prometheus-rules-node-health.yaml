@@ -232,6 +232,47 @@ spec:
               its warning temperature for 10m. An NVMe this hot can throttle or
               drop off the PCIe bus; hp-victus did, and hung, on 2026-11-13.
               Move work off the host and check its airflow and CPU load.
+        # A laptop node lost its charger. hp-victus came back from a power-cycle
+        # on 2026-11-14 with the charger out, ran 95 minutes on battery at
+        # ~20 W and died at 01:41Z; nothing said so. Hosts with no Mains supply
+        # never match, and a device battery (scope Device, e.g. a mouse) is not
+        # the host's.
+        - alert: NodeOnBattery
+          expr: >-
+            node_power_supply_online == 0
+            and on (instance, power_supply) node_power_supply_info{type="Mains"}
+          for: 5m
+          labels:
+            severity: warning
+            category: node-health
+          annotations:
+            summary: "{{ $labels.instance }} is on battery ({{ $labels.power_supply }} offline)"
+            description: >-
+              The mains supply {{ $labels.power_supply }} on {{ $labels.instance }}
+              has read offline for 5m, so the host runs on its battery and goes
+              down when it is flat (hp-victus lasted about 95 minutes on
+              2026-11-14). Check the charger is plugged in and seated.
+        - alert: NodeBatteryLow
+          expr: >-
+            (
+              node_power_supply_capacity < 30
+              and on (instance, power_supply) node_power_supply_info{type="Battery",scope=""}
+            )
+            and on (instance)
+            count by (instance) (
+              node_power_supply_online == 0
+              and on (instance, power_supply) node_power_supply_info{type="Mains"}
+            )
+          for: 2m
+          labels:
+            severity: critical
+            category: node-health
+          annotations:
+            summary: "{{ $labels.instance }} battery at {{ $value }}% off mains"
+            description: >-
+              {{ $labels.power_supply }} on {{ $labels.instance }} is at
+              {{ $value }}% with the charger offline. The host goes down within
+              minutes; plug the charger in now.
     - name: homelab-node-health.recording
       rules:
         - record: instance:node_cpu_package_temp:celsius

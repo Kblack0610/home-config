@@ -17,11 +17,18 @@ SSH by IP or `-lan` name ([host-access.md](../host-access.md)): razer-laptop 192
 2. A pod: find the owner across the cluster: `count by (namespace, created_by_name, node) (max_over_time((kube_pod_container_status_terminated_reason{reason="OOMKilled"} * on(namespace,pod) group_left(created_by_name, node) kube_pod_info)[1d:15m]))`. A Job pod is never restarted, so its OOM shows only in `terminated_reason`.
 3. A runner slice: `ps -o user= -C ssh-agent | sort | uniq -c` first; leaked agents fill a slice over days.
 
+## A host hung, rebooted or went NotReady
+
+1. `scripts/host-postmortem.py <host> <time>` (ISO, or `now`) prints the hour before: a 5-minute metrics table (CPU, load, memory, swap, pressure, NIC traffic and errors, CPU and NVMe temperature), the last successful scrape, kernel lines matching each `host-kernel-faults` Loki rule, the last line the host shipped, and its netconsole lines on pi5-master.
+2. Netconsole lines after the last shipped line are the host's last words: the x86 nodes and the Pis in `netconsole_senders` send them (roles/crash-evidence).
+3. A boot that ended without a shutdown and with `kernel.panic`/watchdog armed (roles/hw-watchdog, `watchdog_hosts`) rebooted itself; `journalctl --list-boots` on the host shows the gap.
+
 ## Known causes
 
 | Alert | Process | Launched by | Owner |
 |---|---|---|---|
 | NodeCoreDumpStorm on every `light-*` runner host | `sleep 120`, SIGABRT | unity-core-playground harness tests: the fake editor in `scripts/test/tests/test_run.py` is aborted by the watchdog in `scripts/test/run.sh` | board row ucp-1836: the fake editor needs `ulimit -c 0` |
+| Host hang after `GSP RM heartbeat timed out` (HostGpuFirmwareFault) and an NVMe drop at 77-80C (NodeNvmeHot) | NVIDIA GSP firmware on hp-victus's RTX 4060 | the nvidia driver, GPU unused | dGPU switched off by roles/dgpu-off (#947) |
 | NodeCoreDumpStorm by bytes | `Unity` | crashed Unity editors on CI slots | delete old dumps (step 4 above) |
 | NodeOomKillStorm on razer and asus | `python` in `freqtrade/trader-markets-recorder` (Kalshi) | CronJob every 5 min (`apps/freqtrade/markets-recorder-cronjob.yaml`), sized from a measured peak; re-measure in a one-off Job with a higher limit before changing it | tr-184: page-scoped state reads cut a full 171,144-market sweep to 218,808 KiB RSS on ASUS (2026-11-11), down from 1,894 MB with full-venue reads; verify the image includes trader #125 before using the 1Gi limit |
 | NodeOomKillStorm on CI hosts | `ssh-agent` in `ci.slice` | jobs that start an agent and never kill it | board row hc-172 |

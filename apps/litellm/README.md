@@ -68,7 +68,7 @@ The seven routes tagged `binks-eval` (GLM-5.3-Flash, Qwen3.8-Flash, Qwen3.7-Plus
 
 ### binks.chat keys
 
-`binks-chat` (Z.ai `glm-5.3-flash`) and `binks-chat-hard` (DeepSeek `deepseek-flash`) are the binks.chat product routes, on first-party keys `ZAI_API_KEY` and `DEEPSEEK_API_KEY` (rbw `zai-api-key`, `deepseek-api-key`); `binks-chat` falls back to `binks-chat-hard`. They are reached only through the gateway user `binks-issuer` (internal_user, models limited to those two routes, `max_budget` $50 / 1mo). That budget is the ceiling for all binks.chat spend, because every binks key belongs to that user. LiteLLM team admins are an Enterprise feature, so the issuer is a user, not a team: an internal_user may mint keys only for itself, and its `models` bound every key it mints.
+`binks-chat` (Z.ai `glm-5.3-flash`) and `binks-chat-hard` (DeepSeek `deepseek-flash`) are the binks.chat product routes, on first-party keys `ZAI_API_KEY` and `DEEPSEEK_API_KEY` (rbw `zai-api-key`, `deepseek-api-key`); `binks-chat` falls back to `binks-chat-hard`, which also takes `binks-chat`'s overflow past its rpm 60 (`binks-chat-hard` is capped at rpm 600, tpm 4M; DeepSeek publishes only a 2500-concurrent account limit, read 2026-11-14). They are reached only through the gateway user `binks-issuer` (internal_user, models limited to those two routes, `max_budget` $50 / 1mo). That budget is the ceiling for all binks.chat spend, because every binks key belongs to that user. LiteLLM team admins are an Enterprise feature, so the issuer is a user, not a team: an internal_user may mint keys only for itself, and its `models` bound every key it mints.
 
 | Key | Models | Budgets | Consumer | Key file |
 |---|---|---|---|---|

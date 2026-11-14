@@ -3,14 +3,15 @@
 #
 #   KUBE_CONTEXT=home-k3s scripts/move-local-path-pvc.sh <ns> <pvc> <deployment> <target-node>
 #
-# Pass - as <deployment> for a PVC that only CronJobs mount: the script suspends them.
+# Pass - as <deployment> for a PVC that only CronJobs mount (the script suspends them)
+# or one a StatefulSet scaled to 0 holds (see the runbook's StatefulSet section).
 #
 # Suspend Flux first, or it recreates the PVC mid-move and the app starts empty.
 # Merge the matching nodeSelector before resuming. Procedure, rollback and cleanup:
 # docs/runbooks/move-local-path-pvc.md
 set -euo pipefail
 
-[ $# -eq 4 ] || { sed -n 2,7p "$0"; exit 2; }
+[ $# -eq 4 ] || { sed -n 2,8p "$0"; exit 2; }
 NS=$1 PVC=$2 DEPLOY=$3 NODE=$4
 K=(kubectl ${KUBE_CONTEXT:+--context "$KUBE_CONTEXT"})
 IMAGE=alpine:3.24.1

@@ -122,7 +122,7 @@ Phase B `k3s-agent` role exists under `ansible/roles/k3s-agent/` but is authored
 
 Only `asus-laptop` gives pods a GPU (AMD). `immich` and `orcaslicer` reach it as privileged pods pinned by `kubernetes.io/hostname: asus-laptop`; privileged containers get every host device in their `/dev`, as `apps/orcaslicer/deployment.yaml` explains. There is no device plugin, so an agent debugging "Immich's GPU isn't being used" should check that the pod runs privileged on `asus-laptop`, not look for `nvidia.com/gpu` resources.
 
-`hp-victus` has an RTX 4060 that is switched off (`ansible/roles/dgpu-off`): it is a headless CI and Forgejo host, the GPU sat unused, and its driver faulted every few minutes while adding heat to a box that hung at 98C. The NVIDIA device plugin went with it.
+`hp-victus` has an RTX 4060 that is switched off (`ansible/roles/dgpu-off`): it is a headless service host, the GPU sat unused, and its driver faulted every few minutes while adding heat to a box that hung at 98C. The NVIDIA device plugin went with it.
 
 ## Storage
 

@@ -830,6 +830,16 @@
     - role: login-passwords
       tags: [passwords]
 
+- name: Tailnet on the Forgejo VM and every k3s node
+  # Pods reach forge-hel1 at its tailnet IP through their node's tailscale0
+  # (plan virtual-strolling-nova). Auth key from group_vars/all/vault.sops.yaml.
+  #   ansible-playbook playbooks/site.yml --limit 'hetzner:linux_bare_metal:pi_k3s' --tags tailscale
+  hosts: hetzner:linux_bare_metal:pi_k3s
+  gather_facts: true
+  roles:
+    - role: tailscale-node
+      tags: [tailscale]
+
 - name: Forgejo host on Hetzner (forge-hel1)
   # Created by playbooks/hetzner-provision.yml. Forgejo stays stopped until the
   # cutover sets forgejo_host_running (plan virtual-strolling-nova).

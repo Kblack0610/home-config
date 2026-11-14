@@ -24,6 +24,6 @@ fleet_worker_packages_apt:
   - python3-yaml
   - gh
 # A cloud worker joins the tailnet to reach the state host and be reached by
-# fleet-dispatch: the role installs tailscale, and `tailscale up` is the human's.
+# fleet-dispatch, with the auth key from SOPS (role tailscale-node).
 fleet_tailscale: false
 fleet_worker_dotfiles_repo: https://github.com/Kblack0610/.dotfiles.git

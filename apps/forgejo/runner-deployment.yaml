@@ -6,13 +6,11 @@ metadata:
   labels:
     app.kubernetes.io/name: forgejo-runner
 spec:
-  # Two concurrent runners on two different nodes, neither of them the Forgejo
-  # node. When one node dies the other replica is already live, instead of the
-  # ~5-min eviction gap a single replica would suffer on a hard node death.
-  replicas: 2
-  # The anti-affinity below is required and only two nodes qualify, so a surge
-  # pod would have nowhere to go and a rollout would hang. Replace one pod at a
-  # time instead.
+  # One runner: razer-laptop is the only node that qualifies (see the affinity
+  # below). A second replica would sit Pending under the anti-affinity.
+  replicas: 1
+  # Only one node qualifies, so a surge pod would have nowhere to go and a
+  # rollout would hang. Replace the pod in place instead.
   strategy:
     type: RollingUpdate
     rollingUpdate:
@@ -28,10 +26,10 @@ spec:
     spec:
       affinity:
         # amd64 workstation nodes only: DinD needs amd64, privileged and 6Gi,
-        # which the arm64 Pis cannot give. Never hp-victus: Forgejo's data PV
-        # (forgejo-data-hp-victus) is there since 2026-11-11, so a runner on it
-        # shares Forgejo's disk, memory and fate. That leaves asus-laptop and
-        # razer-laptop.
+        # which the arm64 Pis cannot give. Never a no_ci_hosts host
+        # (ansible/inventory.yml; scripts/check-runner-roster.py checks this
+        # list against it): hp-victus holds Forgejo's data, asus-laptop the
+        # databases. That leaves razer-laptop.
         nodeAffinity:
           requiredDuringSchedulingIgnoredDuringExecution:
             nodeSelectorTerms:
@@ -42,9 +40,8 @@ spec:
                     operator: NotIn
                     values:
                       - hp-victus
-        # Required, not preferred: with the preferred rule both replicas sat on
-        # asus-laptop, so one node took out all of CI. If one of the two nodes
-        # is down, its replica stays Pending and the other keeps running.
+                      - asus-laptop
+        # Required, so a second replica added later never shares a node.
         podAntiAffinity:
           requiredDuringSchedulingIgnoredDuringExecution:
             - topologyKey: kubernetes.io/hostname

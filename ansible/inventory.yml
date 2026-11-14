@@ -136,23 +136,43 @@ all:
         pi3-adguard:
           ansible_host: 192.168.1.193
 
-    # Pis that arm the SoC hardware watchdog (roles/hw-watchdog), so a freeze
+    # Hosts that arm their hardware watchdog (roles/hw-watchdog), so a freeze
     # resets the box instead of waiting for someone to pull the plug.
-    watchdog_pis:
+    watchdog_hosts:
       children:
         adguard:
+        watchdog_x86:
       hosts:
         audio-living:
         audio-bedroom:
 
-    # Pis that stream kernel messages to pi5-master and export the undervoltage
-    # latch (roles/crash-evidence). Wired only: netconsole needs netpoll, which
-    # the Pi Wi-Fi driver (brcmfmac) lacks, so audio-bedroom is not here.
+    # The x86 k3s nodes. hp-victus hung 2026-11-12 and 11-13 (NVIDIA GSP fault)
+    # and needed a hand power-cycle each time; it holds Forgejo. The chipset
+    # timers (iTCO on Intel, SP5100 TCO on AMD) allow far more than the Pi's 15s.
+    # softlockup_panic turns a stuck CPU into a panic, which kernel.panic reboots.
+    watchdog_x86:
+      hosts:
+        hp-victus:
+        razer-laptop:
+        asus-laptop:
+          # Present but not autoloaded on this board (checked 2026-11-13).
+          hw_watchdog_module: sp5100_tco
+      vars:
+        hw_watchdog_runtime_sec: 30s
+        hw_watchdog_softlockup_panic: 1
+
+    # Hosts that stream kernel messages to pi5-master (roles/crash-evidence), so
+    # the lines printed after the journal stops shipping still survive. Wired
+    # only: netconsole needs netpoll, which the Pi Wi-Fi driver (brcmfmac) lacks,
+    # so audio-bedroom is not here. The Pis also export the undervoltage latch.
     netconsole_senders:
       children:
         adguard:
       hosts:
         audio-living:
+        hp-victus:
+        razer-laptop:
+        asus-laptop:
 
     # NUT (Network UPS Tools) groups. The single CyberPower CP1500PFCLCDa plugs
     # into pi5-master via USB; pi5-master runs upsd + upsmon-primary and every
@@ -176,32 +196,13 @@ all:
     # more than one heavy slot per host. CPU/memory caps are in ci_hosts below.
     # Slot counts are mirrored in apps/github-runner-exporter
     # RUNNER_ROSTER; scripts/check-runner-roster.py fails CI when they disagree.
+    # Never a host in no_ci_hosts (below); the same script fails CI on one.
     linux_ci_runners:
       hosts:
-        # Two light slots, was three until 2026-10-28: over the 24h before, asus
-        # averaged 60% CPU, peaked at load 57 on 16 threads and 94C, and it holds
-        # forgejo and the databases. The third slot moved to razer.
-        asus-laptop:
-          ci_light_slots: 2
-          ci_heavy_slots: 1
-        # The heavy slot was 0 for a few hours on 2026-11-03 while two Unity
-        # slots filled its 20G ci.slice; with Unity gone it fits again.
-        # Five light slots since 2026-11-12, was two. Light is the front door of
-        # Unity CI: in 6h it ran 220 jobs (9.3 runner-hours, 1.6 slots busy on
-        # average), 105 PlayMode plan (avg 1.8 min) and about 93 report jobs, so
-        # it starves in bursts (23 waiting at once; waiting 11% of 7 days, 5+
-        # waiting 2.7%), not on throughput. Light jobs are small: 0.5-0.6G anon
-        # each here (memory.stat; the 7.4G MemoryPeak was mostly page cache),
-        # 0.4 cores average, p95 about 2.2. This host has room: load5 p95 9.3 on
-        # 16 CI CPUs, ci-linux.slice anon 1.1G with 3 runners busy, cap 20G.
-        # Revisit a 6th slot after a day of load and temperature at 5.
-        hp-victus:
-          ci_light_slots: 5
-          ci_heavy_slots: 1
         # One of each from 2026-11-10, on cores of their own (ci_linux_cpus in
         # ci_hosts). Three light and a heavy shared Unity's cores at a quarter of
         # its weight and blew their caps (platform #1488, #1489). Two light since
-        # 2026-11-12 for the light bursts (see hp-victus): the light runners have
+        # 2026-11-12 for the light bursts: the light runners have
         # their own 6 threads (ci_linux_cpus 5-7,13-15) and 40G, and a light job
         # is 0.5-0.6G anon. Heavy stays at one: it waited 6% of 7 days with
         # bursts to 18, but heavy jobs publish fixed host ports.
@@ -216,14 +217,7 @@ all:
     # host here is one activation on the shared Unity serial.
     # Mirrored in RUNNER_ROSTER like linux_ci_runners above.
     #
-    # Not asus-laptop or hp-victus: since 2026-11-03 both are light/heavy
-    # platform workers only. They are k3s nodes, and Unity on them broke the
-    # cluster as well as the jobs. asus holds forgejo and the databases and ran
-    # at 90C with load 31-35 on 16 threads even with its Unity slot idle.
-    # hp-victus has 31G: two Unity slots peaked at 20.2G, its whole CI budget,
-    # with 279 OOM kills in the Unity slices from 10-29 to 11-03, and on three
-    # of those days the host ran out and the kernel killed litellm and
-    # prometheus. Do not add either back; aws-burst-1 is the overflow.
+    # Never a host in no_ci_hosts (below).
     unity_ci_runners:
       hosts:
         # One slot at first: the same 8 Unity threads as asus had. Its first pool shards
@@ -399,43 +393,79 @@ all:
     # macOS hosts in the same Unity pool (site.yml, "Unity CI runner pool
     # (macOS)"). Native editor, no container, so no ci_hosts budget: macOS has
     # no cpusets. Mirrored in RUNNER_ROSTER like unity_ci_runners.
+        # Spot hosts (platform infra/aws-ci-burst, 2026-11-13), one instance type each, ahead
+        # of the on-demand hosts in the governor standby. No unity_ci_gate: a reclaim kills
+        # what runs, so they take nightlies and bulk work, not merge gates (ucp-1778).
+        # 16 cores with SMT, so five slots of three cores (ci_hosts below).
+        aws-spot-1:
+          ansible_host: i-0b4c89a54f8e25ad5
+          ansible_user: ubuntu
+          ansible_ssh_common_args: >-
+            -o ProxyCommand="aws ssm start-session --profile bnb --region us-east-2
+            --target %h --document-name AWS-StartSSHSession --parameters portNumber=%p"
+          unity_ci_slots: 5
+          unity_ci_full: true
+          unity_ci_images_pull: true
+          unity_ci_images:
+            - unityci/editor:ubuntu-6000.0.85f1-base-3
+            - unityci/editor:ubuntu-6000.3.27f1-base-3
+          unity_ci_lan: false
+          unity_ci_library_s3: aws-burst-1-libraries-311141527647
+        aws-spot-2:
+          ansible_host: i-0c244a80e9cf430b1
+          ansible_user: ubuntu
+          ansible_ssh_common_args: >-
+            -o ProxyCommand="aws ssm start-session --profile bnb --region us-east-2
+            --target %h --document-name AWS-StartSSHSession --parameters portNumber=%p"
+          unity_ci_slots: 5
+          unity_ci_full: true
+          unity_ci_images_pull: true
+          unity_ci_images:
+            - unityci/editor:ubuntu-6000.0.85f1-base-3
+            - unityci/editor:ubuntu-6000.3.27f1-base-3
+          unity_ci_lan: false
+          unity_ci_library_s3: aws-burst-1-libraries-311141527647
+        aws-spot-3:
+          ansible_host: i-04ca535b8876dff6f
+          ansible_user: ubuntu
+          ansible_ssh_common_args: >-
+            -o ProxyCommand="aws ssm start-session --profile bnb --region us-east-2
+            --target %h --document-name AWS-StartSSHSession --parameters portNumber=%p"
+          unity_ci_slots: 5
+          unity_ci_full: true
+          unity_ci_images_pull: true
+          unity_ci_images:
+            - unityci/editor:ubuntu-6000.0.85f1-base-3
+            - unityci/editor:ubuntu-6000.3.27f1-base-3
+          unity_ci_lan: false
+          unity_ci_library_s3: aws-burst-1-libraries-311141527647
+
     unity_ci_mac_runners:
       # No Mac in the pool since 2026-11-10: the Mac Studio, its only host, was
       # sold and its six slots moved to aws-burst-2. Add a Mac here to bring the
       # pool back; RUNNER_ROSTER mirrors it.
       hosts: {}
 
+    # Service hosts: no CI of any kind (GitHub runners, Unity slots, the
+    # Forgejo runner). hp-victus holds Forgejo's data, Frigate and
+    # the game server; asus-laptop holds the databases and Forgejo's backups.
+    # On 2026-11-13 hp-victus ran those beside six runners at load15 41.5 on
+    # 24 threads and 90C, 31G and no swap, and went NotReady, taking Forgejo
+    # down; asus ran at load 21-29 on 16 threads and 90.8C with three. Neither
+    # alerted. scripts/check-runner-roster.py fails CI when a host here is in
+    # linux_ci_runners, unity_ci_runners or ci_hosts, and the "Retire CI on
+    # no_ci_hosts" play in site.yml removes what a host still runs. Before
+    # placing any work on any host, read scripts/host-headroom.py <host>.
+    no_ci_hosts:
+      hosts:
+        hp-victus:
+        asus-laptop:
+
     # One CPU and memory budget per CI host (roles/ci-host-budget): every runner
     # and container of every CI workload on the host shares it, and what is left
-    # stays with k3s and the OS. Until 2026-10-24 each workload had its own cap,
-    # and on asus they added up to 64G of its 62G before k3s, while hp-victus's
-    # Unity runners had no cap at all. Both are k3s nodes; asus holds forgejo,
-    # the databases and most PVs, so a CI meltdown there is a cluster outage.
-    # Starting values, tuned against a full nightly.
+    # stays with k3s and the OS. Starting values, tuned against a full nightly.
     ci_hosts:
       hosts:
-        # Ryzen 9 5900HX, 16 threads alike (SMT siblings n, n+1), 62 GB (+ zram).
-        # Platform jobs only (no Unity, see unity_ci_runners). k3s_cpus pins pods
-        # to cores 0-2: they request 5.2 CPUs, nearly all held here by hostname or
-        # a local-path PV, and used at most 2.8 over a week (2026-11-11).
-        asus-laptop:
-          ci_cpus: 6-15
-          k3s_cpus: 0-5
-          ci_memory_max: 36G
-          ci_linux_memory_max: 24G
-        # i7-13700HX: CPUs 0-15 are the P-core threads, 16-23 the E-cores.
-        # 31 GB, no swap; k3s pods take about 9G. P-core threads 12-15 are the
-        # game server's (game_server_cpus in game_server_nodes below), so CI skips
-        # them. k3s_cpus is everything CI does not take: the game servers are pods,
-        # so it holds 12-15, plus four E-cores. Pods request 1.85 CPUs, 4.85 with
-        # both game servers up (2026-11-11). Platform jobs only (no Unity, see
-        # unity_ci_runners), so they get the whole CI budget: a heavy job peaked
-        # at 11.3G.
-        hp-victus:
-          ci_cpus: 0-11,16-19
-          k3s_cpus: 12-15,20-23
-          ci_memory_max: 20G
-          ci_linux_memory_max: 20G
         # 8 cores / 16 threads, SMT siblings are n and n+8. Cores 0-1 (CPUs
         # 0-1, 8-9) are k3s and the OS; k3s_cpus pins pods there with 4 CPUs of
         # allocatable, after 6-CPU backtests landed beside CI and the 15-minute
@@ -527,6 +557,29 @@ all:
           ci_unity_slot_cpus: ["1-5", "6-10", "11-15", "16-20", "21-25", "26-30"]
           ci_unity_memory_max: 100G
           ci_unity_slot_memory_max: 16G
+        # The Spot hosts: 16 cores with SMT (vCPU n and n+16 share core n), core 0 and its
+        # twin left to the OS, five slots of three whole cores and 16G each.
+        aws-spot-1:
+          ci_cpus: 1-15,17-31
+          ci_memory_max: 112G
+          ci_unity_cpus: 1-15,17-31
+          ci_unity_slot_cpus: ["1-3,17-19", "4-6,20-22", "7-9,23-25", "10-12,26-28", "13-15,29-31"]
+          ci_unity_memory_max: 100G
+          ci_unity_slot_memory_max: 16G
+        aws-spot-2:
+          ci_cpus: 1-15,17-31
+          ci_memory_max: 112G
+          ci_unity_cpus: 1-15,17-31
+          ci_unity_slot_cpus: ["1-3,17-19", "4-6,20-22", "7-9,23-25", "10-12,26-28", "13-15,29-31"]
+          ci_unity_memory_max: 100G
+          ci_unity_slot_memory_max: 16G
+        aws-spot-3:
+          ci_cpus: 1-15,17-31
+          ci_memory_max: 112G
+          ci_unity_cpus: 1-15,17-31
+          ci_unity_slot_cpus: ["1-3,17-19", "4-6,20-22", "7-9,23-25", "10-12,26-28", "13-15,29-31"]
+          ci_unity_memory_max: 100G
+          ci_unity_slot_memory_max: 16G
 
     # Nodes that run the game servers (apps/playground-server pins to the
     # kblab.me/game-server label, roles/game-server-node sets it). Each host keeps
@@ -568,7 +621,14 @@ all:
         hp-victus:
           game_server_cpus: 12-15
 
-    # Hosts whose CPU power is capped so CI holds them below their thermal limit
+    # Discrete GPU switched off (roles/dgpu-off). hp-victus is headless (Forgejo,
+    # Frigate) and nothing used its RTX 4060, but the driver's GSP faulted every
+    # few minutes and the card idled at 20 W on heatpipes shared with the CPU.
+    dgpu_off:
+      hosts:
+        hp-victus:
+
+    # Hosts whose CPU power is capped to hold them below their thermal limit
     # (roles/thermal-cap). 2026-10-23: asus held 93-96C through the Unity
     # nightly and dropped off the LAN; hp-victus peaked at 98C of 100C crit.
     # Target: at most 85C sustained over a full nightly.

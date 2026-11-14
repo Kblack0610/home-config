@@ -37,6 +37,25 @@ tests:
         alertname: CiHostHeldOutByDisk
         exp_alerts: []
 
+  - name: a Spot host reclaimed 4 times in a day warns, 3 times stays quiet
+    interval: 1h
+    input_series:
+      - series: 'ci_governor_fallback_total{host="aws-spot-1",reason="reclaim"}'
+        values: '0 1 2 3 4 4 4'
+      - series: 'ci_governor_fallback_total{host="aws-spot-2",reason="reclaim"}'
+        values: '0 1 2 3 3 3 3'
+      - series: 'ci_governor_fallback_total{host="aws-burst-1",reason="reclaim"}'
+        values: '0 2 4 6 8 8 8'
+    alert_rule_test:
+      - eval_time: 3h
+        alertname: CiSpotHostReclaimedOften
+        exp_alerts: []
+      - eval_time: 5h
+        alertname: CiSpotHostReclaimedOften
+        exp_alerts:
+          - exp_labels: {alertname: CiSpotHostReclaimedOften, severity: warning, category: capacity, fleet: fix, host: aws-spot-1, reason: reclaim}
+            exp_annotations: {summary: "aws-spot-1 was reclaimed by AWS more than 3 times in 24 h, each killing its jobs: set it on-demand in platform infra/aws-ci-burst variables.tf"}
+
   - name: a blind governor pages after 30 minutes, and a short gap stays quiet
     interval: 1m
     input_series:
@@ -261,6 +280,44 @@ tests:
         exp_alerts:
           - exp_labels: {alertname: NodeCpuStarved, severity: critical, category: capacity, instance: starved}
             exp_annotations: {summary: "Tasks on starved have waited for CPU for over an hour"}
+
+  - name: load per CPU warns past 1x for 15m and pages past 1.5x for 10m
+    interval: 1m
+    input_series:
+      - series: 'node_load15{instance="hot"}'
+        values: '4x30'
+      - series: 'node_load15{instance="warm"}'
+        values: '2.2x30'
+      - series: 'node_load15{instance="edge"}'
+        values: '2x30'
+      - series: 'node_cpu_seconds_total{instance="hot",cpu="0",mode="idle"}'
+        values: '0x30'
+      - series: 'node_cpu_seconds_total{instance="hot",cpu="1",mode="idle"}'
+        values: '0x30'
+      - series: 'node_cpu_seconds_total{instance="warm",cpu="0",mode="idle"}'
+        values: '0x30'
+      - series: 'node_cpu_seconds_total{instance="warm",cpu="1",mode="idle"}'
+        values: '0x30'
+      - series: 'node_cpu_seconds_total{instance="edge",cpu="0",mode="idle"}'
+        values: '0x30'
+      - series: 'node_cpu_seconds_total{instance="edge",cpu="1",mode="idle"}'
+        values: '0x30'
+    alert_rule_test:
+      - eval_time: 9m
+        alertname: NodeLoadCritical
+        exp_alerts: []
+      - eval_time: 11m
+        alertname: NodeLoadCritical
+        exp_alerts:
+          - exp_labels: {alertname: NodeLoadCritical, severity: critical, category: capacity, fleet: fix, instance: hot}
+            exp_annotations: {summary: "hot load is 2x its CPUs: stop work on it now"}
+      - eval_time: 16m
+        alertname: NodeLoadHigh
+        exp_alerts:
+          - exp_labels: {alertname: NodeLoadHigh, severity: warning, category: capacity, fleet: fix, instance: hot}
+            exp_annotations: {summary: "hot load is 2x its CPUs for 15m: scripts/host-headroom.py, then move work off"}
+          - exp_labels: {alertname: NodeLoadHigh, severity: warning, category: capacity, fleet: fix, instance: warm}
+            exp_annotations: {summary: "warm load is 1.1x its CPUs for 15m: scripts/host-headroom.py, then move work off"}
 
   - name: oom kills, a few warn and a storm pages
     interval: 5m

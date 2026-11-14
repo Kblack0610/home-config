@@ -113,25 +113,16 @@ Goal: a fresh Intel NUC becomes a working k3s agent.
 3. Flux (if it's a k3s node)
    - Kubernetes sees the node via kubelet registration
    - Flux scheduler places pods that match the node's labels / capacity
-   - New labels (e.g., nvidia.com/gpu.present) light up DaemonSets like nvidia-device-plugin
+   - New labels (e.g., kblab.me/game-server) let pods with a matching nodeSelector land there
 ```
 
 Phase B `k3s-agent` role exists under `ansible/roles/k3s-agent/` but is authored-unbound — the inline PXE install in `cluster.sh` still owns this today. Full migration moves step 1's k3s install into step 2.
 
-## GPU wiring: NVIDIA vs AMD
+## GPU wiring
 
-Two different paths for two different GPU ecosystems:
+Only `asus-laptop` gives pods a GPU (AMD). `immich` and `orcaslicer` reach it as privileged pods pinned by `kubernetes.io/hostname: asus-laptop`; privileged containers get every host device in their `/dev`, as `apps/orcaslicer/deployment.yaml` explains. There is no device plugin, so an agent debugging "Immich's GPU isn't being used" should check that the pod runs privileged on `asus-laptop`, not look for `nvidia.com/gpu` resources.
 
-| Aspect | NVIDIA path | AMD path |
-|--------|-------------|----------|
-| Nodes | `hp-victus` | `asus-laptop` |
-| Apps | `litellm` | `immich`, `orcaslicer` |
-| Device plugin | `apps/nvidia-device-plugin/daemonset.yaml` (targets `nvidia.com/gpu.present: "true"`) | **None** — no AMD device plugin exists |
-| Pod access | Standard k8s resource request: `nvidia.com/gpu: "1"` + `runtimeClassName: nvidia` + `nodeSelector: nvidia.com/gpu.present` | Privileged pod + host `/dev` passthrough. Explicitly documented in `apps/orcaslicer/deployment.yaml` comments: "Privileged containers get all host devices auto-populated into the container's /dev tmpfs" |
-| Runtime | `nvidia-container-runtime` (auto-registered `nvidia` RuntimeClass by k3s) | Default containerd runtime + privileged mode |
-| Node label | `nvidia.com/gpu.present=true` (set by `infrastructure/pxe-server/.../nvidia-gpu.sh` or manually) | None — pinned by `kubernetes.io/hostname: asus-laptop` |
-
-Consequence: GPU-aware apps on `hp-victus` look like normal k8s GPU workloads. GPU-aware apps on `asus-laptop` look like privileged pods with hostname pinning. An agent debugging "Immich's GPU isn't being used" should NOT grep for device plugins — should check that the pod is running privileged and scheduled on `asus-laptop`.
+`hp-victus` has an RTX 4060 that is switched off (`ansible/roles/dgpu-off`): it is a headless CI and Forgejo host, the GPU sat unused, and its driver faulted every few minutes while adding heat to a box that hung at 98C. The NVIDIA device plugin went with it.
 
 ## Storage
 
@@ -191,7 +182,7 @@ Gatus (`apps/gatus/`) monitors every endpoint in this graph — the Gatus config
 
 | Component | What goes down immediately | What stays up |
 |-----------|----------------------------|---------------|
-| `pi5-master` (k3s server) | Every k3s pod on every node - no scheduler, no API | All bare-metal services: Mac runners, light/heavy CI runner slots on the laptops. OpenWRT DHCP/DNS. AdGuard Pi3. |
+| `pi5-master` (k3s server) | Every k3s pod on every node - no scheduler, no API | All bare-metal services: Mac runners, light/heavy CI runner slots on razer-laptop. OpenWRT DHCP/DNS. AdGuard Pi3. |
 | OpenWRT router (192.168.1.1) | DHCP new-client onboarding, DNS resolution via the router's dnsmasq | Static IPs keep routing LAN-to-LAN. External internet is gone (OpenWRT is the gateway). AdGuard Pi3 keeps answering for clients that hit it directly. |
 | AdGuard Home (pi3, 192.168.1.193) | **All DNS for every client**, not just `*.kblab.me`. The router runs `no-resolv` with AdGuard as its only upstream, so dnsmasq has nothing to fall back to and returns SERVFAIL for anything not already cached. | Established connections and anything addressed by IP. dnsmasq keeps answering `/lan/` names, `/etc/hosts`, and its static domain entries (`nas.lan`, `zomboid-play.kblab.me`, `playground-play.kblab.me`) from its own config. |
 | NAS (asus-laptop pod) | Actual Budget backup jobs, Jellyfin media, Immich library | Home Assistant (no NAS dep), Forgejo (backups queue, app keeps running) |

@@ -63,11 +63,14 @@ github_runner_state rows for the host, offline ones included, plus the pool labe
 withheld runner gets back on admit; with none read it is never started. So a job pinned
 to the LAN (`lan`) does not start an off-LAN host that could never take it. A start costs
 money, so it waits for start_min_excess jobs it can take past what the other hosts cover,
-held for start_after_seconds; a short burst never starts it. Its slots count as room only
-once their runners report online, so a start, or a failed one, is never room. Once no slot
-on it has been busy for idle_off_seconds, or it has run max_hours_day this UTC day, its
-slots are withheld one per cycle and the instance is stopped once none is busy, so a slot
-never loses a job to the stop and comes back withheld.
+held for start_after_seconds (start_now_excess or more starts it at once); a short burst
+never starts it. Its slots count as room only once their runners report online, so a start,
+or a failed one, is never room. Once no slot on it has been busy for idle_off_seconds, or it
+has run max_hours_day this UTC day, its slots are withheld one per cycle and the instance is
+stopped once none is busy, so a slot never loses a job to the stop and comes back withheld.
+The running burst host that was busy last, unpacked, is the warm one: it waits
+warm_idle_off_seconds instead, so the next burst does not wait on a cold start (2026-11-14:
+all four stopped by 08:59 and 14 gates came at 09:02).
 
 A dedicated standby host ("labels" and "withheld_label" in its entry: aws-build-1, the
 player-build host) carries its own label (unity-build) instead of the pool's and is its
@@ -182,6 +185,9 @@ START_CAUSES = ("queue", "demand", "override")
 # $1.85/h for aws-burst-1), so only a deep queue held this long starts one, and a day of
 # running time is capped; the month's cap is an AWS Budgets action (platform infra/aws-ci-burst).
 POWER_DEFAULTS = {"idle_off_seconds": 900, "start_min_excess": 4, "start_after_seconds": 300, "max_hours_day": 12,
+                  # A queue this much past the other hosts starts it at once, with no hold:
+                  # the hold is for short bursts, and this many jobs is not one.
+                  "start_now_excess": 8,
                   # How long a host whose start EC2 refused, or that AWS stopped, is passed
                   # over for the next host in the standby order.
                   "fallback_seconds": 3600}
@@ -495,6 +501,7 @@ def decide(cfg, hosts, runners, waiting, last_action, now, instances=None, pins=
     # now, as a home host's withhold is counted before any admit.
     admitted -= sum(1 for h, i in (instances or {}).items() if i.get("packed")
                     and any(r["host"] == h and not r["withheld"] for r in runners.values()))
+    warm = warm_host(cfg, instances or {})
     # Jobs the standby hosts ahead in the list will take once they are up: a host further
     # down starts only for what is left past these: host -> jobs.
     ahead = {}
@@ -545,6 +552,9 @@ def decide(cfg, hosts, runners, waiting, last_action, now, instances=None, pins=
         # Only a stopped host is passed over: AWS restarts a persistent Spot one by itself
         # when capacity returns, and then it counts like any running host.
         passed = bool(inst) and inst["state"] == "stopped" and inst.get("fallback_until", 0) > now
+        if inst is not None:
+            inst["idle_off_seconds"] = (max(p["idle_off_seconds"], cfg.get("warm_idle_off_seconds", 0))
+                                        if host == warm else p["idle_off_seconds"])
         if inst and inst["state"] == "running":
             # Before the job queue: a host told off, past its day, or idle this long cannot
             # take what waits (an idle one: a lan job).
@@ -552,7 +562,7 @@ def decide(cfg, hosts, runners, waiting, last_action, now, instances=None, pins=
                 drain, cause = "override off", "override"
             elif over != "on" and inst.get("hours_today", 0) >= p["max_hours_day"]:
                 drain, cause = f"ran {inst['hours_today']:.1f}h today, its {p['max_hours_day']}h cap", "cap"
-            elif over != "on" and now - inst["busy_at"] >= p["idle_off_seconds"]:
+            elif over != "on" and now - inst["busy_at"] >= inst["idle_off_seconds"]:
                 drain, cause = f"no slot busy for {int(now - inst['busy_at'])}s", "idle"
         if drain:
             # One slot per cycle, busy ones too (a withheld slot finishes its job), and the
@@ -630,7 +640,7 @@ def decide(cfg, hosts, runners, waiting, last_action, now, instances=None, pins=
                 wanting = True
                 since = inst["want_since"] = inst.get("want_since") or now
                 why = f"{q} jobs wait, {takes} it can take, the other hosts cover {cov}"
-                if now - since >= p["start_after_seconds"]:
+                if now - since >= p["start_after_seconds"] or want >= p["start_now_excess"]:
                     action, cause = "start", "queue"
                 else:
                     why += f"; held {int(now - since)}s of {p['start_after_seconds']}s"
@@ -674,6 +684,15 @@ def standby_cap(cfg, host, pins):
     pin = (pins or {}).get(host)
     pinned = pin is not None and pin < cap
     return (min(cap, pin) if pinned else cap), pinned
+
+
+def warm_host(cfg, instances):
+    """The running, unpacked burst host whose slots were busy last (the standby order breaks
+    a tie), or None: the one host the idle rule keeps for warm_idle_off_seconds."""
+    order = list(cfg["standby"])
+    up = [h for h in order if h in instances and not dedicated(cfg, h) and not pairs(cfg, h)
+          and instances[h]["state"] == "running" and not instances[h].get("packed")]
+    return max(up, key=lambda h: (instances[h].get("busy_at", 0), -order.index(h)), default=None)
 
 
 def pack_plan(cfg, runners, waiting, instances, covered, pins, now):
@@ -1293,7 +1312,8 @@ def render(cfg, hosts, runners, queue, decisions, ok, instances=None, budget=Non
         # Rule progress, each beside its line: idle against idle-off, jobs it could take past
         # the other hosts against the start excess, the start hold against its length. A worker
         # has no start hold, so it has no hold lines.
-        rules = [("idle_seconds", int(inst.get("idle_seconds", 0))), ("idle_off_seconds", p["idle_off_seconds"]),
+        rules = [("idle_seconds", int(inst.get("idle_seconds", 0))),
+                 ("idle_off_seconds", inst.get("idle_off_seconds", p["idle_off_seconds"])),
                  ("want", inst.get("want", 0)), ("start_min_excess", p["start_min_excess"])]
         if host in cfg["standby"]:
             rules += [("held_seconds", int(inst.get("held_seconds", 0))),

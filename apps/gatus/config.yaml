@@ -176,7 +176,8 @@ endpoints:
 
   - name: Forgejo SSH
     group: apps
-    url: "tcp://forgejo-ssh.forgejo.svc:22"
+    # 2222: forgejo-ssh is an ExternalName, and the host publishes the container sshd there.
+    url: "tcp://forgejo-ssh.forgejo.svc:2222"
     interval: 60s
     conditions:
       - "[CONNECTED] == true"

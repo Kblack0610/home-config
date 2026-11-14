@@ -1,4 +1,4 @@
-# Managed by ansible roles/forgejo-host. Enabled only when forgejo_host_running.
+# Managed by ansible roles/forgejo-host. Enabled on every host; the job skips itself unless Forgejo runs here.
 [Unit]
 Description={{ item.0.name }} timer ({{ item.0.on_calendar }}, host time UTC)
 

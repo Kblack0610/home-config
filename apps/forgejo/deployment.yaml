@@ -6,7 +6,9 @@ metadata:
   labels:
     app.kubernetes.io/name: forgejo
 spec:
-  replicas: 1
+  # 0 since the cutover to forge-hel1 (2026-11-14, plan virtual-strolling-nova):
+  # one writer, and it is the VM. Kept for rollback; removed at cleanup.
+  replicas: 0
   strategy:
     type: Recreate  # Required for ReadWriteOnce PVC
   selector:

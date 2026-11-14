@@ -10,6 +10,8 @@ services:
     env_file: /etc/forgejo/secrets.env
     ports:
       - "{{ forgejo_host_http_bind }}:3000:3000"
+      # git over ssh: the container's sshd, on 2222 because the host's own sshd has 22.
+      - "{{ forgejo_host_http_bind }}:{{ forgejo_host_ssh_port }}:22"
     volumes:
       - {{ forgejo_host_data }}:/data
       - /etc/forgejo/app.ini:/data/gitea/conf/app.ini

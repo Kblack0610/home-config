@@ -7,6 +7,9 @@ metadata:
     app.kubernetes.io/name: forgejo
 spec:
   schedule: "0 3 * * *"  # Daily at 3 AM
+  # Suspended at the cutover to forge-hel1 (2026-11-14): it would read the frozen
+  # asus copy. The VM's timers and forgejo-backup-pull do this job now; removed at cleanup.
+  suspend: true
   concurrencyPolicy: Forbid
   successfulJobsHistoryLimit: 3
   failedJobsHistoryLimit: 1
@@ -150,6 +153,9 @@ metadata:
     app.kubernetes.io/name: forgejo
 spec:
   schedule: "30 4 * * *"  # 90 min after the local backup (0 3 * * *), which takes under 1h
+  # Suspended at the cutover to forge-hel1 (2026-11-14): it would read the frozen
+  # asus copy. The VM's timers and forgejo-backup-pull do this job now; removed at cleanup.
+  suspend: true
   concurrencyPolicy: Forbid
   successfulJobsHistoryLimit: 3
   failedJobsHistoryLimit: 2

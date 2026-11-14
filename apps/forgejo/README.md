@@ -69,6 +69,17 @@ Key config sections:
   kubectl --context home-k3s delete pod -n forgejo -l app.kubernetes.io/name=forgejo
   ```
 
+### Issue numbers after a restore
+
+A restore from an older backup restarts each repo's issue/PR counter (`issue_index.max_index`) at the backup's value, so new PRs reuse numbers the lost instance already gave out and master gets two commits per `(#N)`. That happened on 2026-11-14: the asus restore restarted home-config at #925 while hp-victus had reached #960, so #925-#932 exist twice. `scripts/forgejo-issue-index-raise.py` raises every repo's counter to the highest of its own and the lost instance's (`--from <its gitea.db>`, matched by owner/repo, read only), or to a number from master's top `(#N)` (`--set owner/repo=N`) when that db is gone. It never lowers one.
+
+1. Copy the lost instance's db next to the live one with `sqlite3 <db> ".backup hp.db"`, which folds in its WAL.
+2. Dry run against the live db (it only reads): `python3 forgejo-issue-index-raise.py <live gitea.db> --from hp.db`.
+3. `kubectl -n forgejo scale deploy/forgejo --replicas=0` (with `apps` suspended, or Flux scales it back), `sqlite3 <live gitea.db> ".backup <live dir>/../gitea.db.pre-issue-index-<date>"`, rerun with `--apply`, scale back to 1.
+4. The next PR on each raised repo gets the new number.
+
+Rollback: stop Forgejo, put the copied db back, start it. The host's login shell may be fish (asus-laptop): send multi-line steps through `ssh <host> bash -s`.
+
 ## Runner
 
 Instance-level runners serve all repos on the Forgejo instance, each with a

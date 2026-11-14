@@ -1,6 +1,6 @@
 # Managed by ansible (linux-ci-host). Clears what CI jobs leave behind on a
-# persistent runner. It never runs `image prune -a`: hp-victus keeps ~49GB of
-# unityci editor images that its Unity pool slots need, so only dangling images
+# persistent runner. It never runs `image prune -a`: a Unity host keeps tens of GB of
+# unityci editor images that its pool slots need, so only dangling images
 # and those ci-disk-prune.sh names go.
 [Unit]
 Description=Prune leftovers from CI jobs

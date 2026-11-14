@@ -196,34 +196,13 @@ all:
     # more than one heavy slot per host. CPU/memory caps are in ci_hosts below.
     # Slot counts are mirrored in apps/github-runner-exporter
     # RUNNER_ROSTER; scripts/check-runner-roster.py fails CI when they disagree.
+    # Never a host in no_ci_hosts (below); the same script fails CI on one.
     linux_ci_runners:
       hosts:
-        # Two light slots, was three until 2026-10-28: over the 24h before, asus
-        # averaged 60% CPU, peaked at load 57 on 16 threads and 94C, and it holds
-        # forgejo and the databases. The third slot moved to razer.
-        asus-laptop:
-          ci_light_slots: 2
-          ci_heavy_slots: 1
-        # The heavy slot was 0 for a few hours on 2026-11-03 while two Unity
-        # slots filled its 20G ci.slice; with Unity gone it fits again.
-        # Five light slots since 2026-11-12, was two. Light is the front door of
-        # Unity CI: in 6h it ran 220 jobs (9.3 runner-hours, 1.6 slots busy on
-        # average), 105 PlayMode plan (avg 1.8 min) and about 93 report jobs, so
-        # it starves in bursts (23 waiting at once; waiting 11% of 7 days, 5+
-        # waiting 2.7%), not on throughput. Light jobs are small: 0.5-0.6G anon
-        # each here (memory.stat; the 7.4G MemoryPeak was mostly page cache),
-        # 0.4 cores average, p95 about 2.2. This host has room: load5 p95 9.3 on
-        # 16 CI CPUs, ci-linux.slice anon 1.1G with 3 runners busy, cap 20G.
-        # 2026-11-13, a day at 5: load 30-50, CPU 98C of 100C and DIMMs 80C of
-        # 85C, then the host hung (dGPU still on; roles/dgpu-off). No 6th slot.
-        # If the CPU still passes 95C with the dGPU off, drop to 3.
-        hp-victus:
-          ci_light_slots: 5
-          ci_heavy_slots: 1
         # One of each from 2026-11-10, on cores of their own (ci_linux_cpus in
         # ci_hosts). Three light and a heavy shared Unity's cores at a quarter of
         # its weight and blew their caps (platform #1488, #1489). Two light since
-        # 2026-11-12 for the light bursts (see hp-victus): the light runners have
+        # 2026-11-12 for the light bursts: the light runners have
         # their own 6 threads (ci_linux_cpus 5-7,13-15) and 40G, and a light job
         # is 0.5-0.6G anon. Heavy stays at one: it waited 6% of 7 days with
         # bursts to 18, but heavy jobs publish fixed host ports.
@@ -238,14 +217,7 @@ all:
     # host here is one activation on the shared Unity serial.
     # Mirrored in RUNNER_ROSTER like linux_ci_runners above.
     #
-    # Not asus-laptop or hp-victus: since 2026-11-03 both are light/heavy
-    # platform workers only. They are k3s nodes, and Unity on them broke the
-    # cluster as well as the jobs. asus holds forgejo and the databases and ran
-    # at 90C with load 31-35 on 16 threads even with its Unity slot idle.
-    # hp-victus has 31G: two Unity slots peaked at 20.2G, its whole CI budget,
-    # with 279 OOM kills in the Unity slices from 10-29 to 11-03, and on three
-    # of those days the host ran out and the kernel killed litellm and
-    # prometheus. Do not add either back; aws-burst-1 is the overflow.
+    # Never a host in no_ci_hosts (below).
     unity_ci_runners:
       hosts:
         # One slot at first: the same 8 Unity threads as asus had. Its first pool shards
@@ -474,37 +446,26 @@ all:
       # pool back; RUNNER_ROSTER mirrors it.
       hosts: {}
 
+    # Service hosts: no CI of any kind (GitHub runners, Unity slots, the
+    # Forgejo runner). hp-victus holds Forgejo's data, Frigate and
+    # the game server; asus-laptop holds the databases and Forgejo's backups.
+    # On 2026-11-13 hp-victus ran those beside six runners at load15 41.5 on
+    # 24 threads and 90C, 31G and no swap, and went NotReady, taking Forgejo
+    # down; asus ran at load 21-29 on 16 threads and 90.8C with three. Neither
+    # alerted. scripts/check-runner-roster.py fails CI when a host here is in
+    # linux_ci_runners, unity_ci_runners or ci_hosts, and the "Retire CI on
+    # no_ci_hosts" play in site.yml removes what a host still runs. Before
+    # placing any work on any host, read scripts/host-headroom.py <host>.
+    no_ci_hosts:
+      hosts:
+        hp-victus:
+        asus-laptop:
+
     # One CPU and memory budget per CI host (roles/ci-host-budget): every runner
     # and container of every CI workload on the host shares it, and what is left
-    # stays with k3s and the OS. Until 2026-10-24 each workload had its own cap,
-    # and on asus they added up to 64G of its 62G before k3s, while hp-victus's
-    # Unity runners had no cap at all. Both are k3s nodes; asus holds forgejo,
-    # the databases and most PVs, so a CI meltdown there is a cluster outage.
-    # Starting values, tuned against a full nightly.
+    # stays with k3s and the OS. Starting values, tuned against a full nightly.
     ci_hosts:
       hosts:
-        # Ryzen 9 5900HX, 16 threads alike (SMT siblings n, n+1), 62 GB (+ zram).
-        # Platform jobs only (no Unity, see unity_ci_runners). k3s_cpus pins pods
-        # to cores 0-2: they request 5.2 CPUs, nearly all held here by hostname or
-        # a local-path PV, and used at most 2.8 over a week (2026-11-11).
-        asus-laptop:
-          ci_cpus: 6-15
-          k3s_cpus: 0-5
-          ci_memory_max: 36G
-          ci_linux_memory_max: 24G
-        # i7-13700HX: CPUs 0-15 are the P-core threads, 16-23 the E-cores.
-        # 31 GB, no swap; k3s pods take about 9G. P-core threads 12-15 are the
-        # game server's (game_server_cpus in game_server_nodes below), so CI skips
-        # them. k3s_cpus is everything CI does not take: the game servers are pods,
-        # so it holds 12-15, plus four E-cores. Pods request 1.85 CPUs, 4.85 with
-        # both game servers up (2026-11-11). Platform jobs only (no Unity, see
-        # unity_ci_runners), so they get the whole CI budget: a heavy job peaked
-        # at 11.3G.
-        hp-victus:
-          ci_cpus: 0-11,16-19
-          k3s_cpus: 12-15,20-23
-          ci_memory_max: 20G
-          ci_linux_memory_max: 20G
         # 8 cores / 16 threads, SMT siblings are n and n+8. Cores 0-1 (CPUs
         # 0-1, 8-9) are k3s and the OS; k3s_cpus pins pods there with 4 CPUs of
         # allocatable, after 6-CPU backtests landed beside CI and the 15-minute
@@ -660,17 +621,17 @@ all:
         hp-victus:
           game_server_cpus: 12-15
 
-    # Hosts whose CPU power is capped so CI holds them below their thermal limit
-    # (roles/thermal-cap). 2026-10-23: asus held 93-96C through the Unity
-    # nightly and dropped off the LAN; hp-victus peaked at 98C of 100C crit.
-    # Target: at most 85C sustained over a full nightly.
-    # Discrete GPU switched off (roles/dgpu-off). hp-victus is headless (CI,
-    # Forgejo) and nothing used its RTX 4060, but the driver's GSP faulted every
+    # Discrete GPU switched off (roles/dgpu-off). hp-victus is headless (Forgejo,
+    # Frigate) and nothing used its RTX 4060, but the driver's GSP faulted every
     # few minutes and the card idled at 20 W on heatpipes shared with the CPU.
     dgpu_off:
       hosts:
         hp-victus:
 
+    # Hosts whose CPU power is capped to hold them below their thermal limit
+    # (roles/thermal-cap). 2026-10-23: asus held 93-96C through the Unity
+    # nightly and dropped off the LAN; hp-victus peaked at 98C of 100C crit.
+    # Target: at most 85C sustained over a full nightly.
     thermal_capped:
       hosts:
         # AMD: no writable package power limit, so boost goes off. Already on

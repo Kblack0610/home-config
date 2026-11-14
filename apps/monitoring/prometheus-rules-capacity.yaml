@@ -16,6 +16,10 @@ spec:
   groups:
     - name: homelab-capacity.recording
       rules:
+        # 15-minute load over the host's CPU count, for NodeLoadHigh/NodeLoadCritical
+        # and scripts/host-headroom.py.
+        - record: instance:node_load15_per_cpu:ratio
+          expr: node_load15 / on (instance) count by (instance) (node_cpu_seconds_total{mode="idle"})
         # One series per real device. Excluded: pseudo filesystems, network shares
         # (the server reports them), and Mac simulator and system volumes, which are
         # always full by design. `min by device` folds btrfs subvolumes into one.
@@ -267,6 +271,31 @@ spec:
             category: capacity
           annotations:
             summary: "Tasks on {{ $labels.instance }} have waited for CPU for over an hour"
+        # Load per CPU, which the PSI rules above miss: on 2026-11-13 hp-victus held
+        # load15 41.5 on 24 threads (1.7x) and asus 29 on 16 (1.8x) with CPU PSI under
+        # 0.6, and nothing fired before hp-victus went NotReady and took Forgejo down.
+        # Every node_exporter host, the workstation included. Replay, 7 days to
+        # 2026-11-13, minutes over 1.0x: asus 440, hp-victus 316, razer 139, mac-mini
+        # 68, workstation 54; over 1.5x: 54, 50, 0, 44, 15. Most of that was CI on
+        # asus and hp-victus, gone since (no_ci_hosts in ansible/inventory.yml).
+        - alert: NodeLoadHigh
+          expr: instance:node_load15_per_cpu:ratio > 1.0
+          for: 15m
+          labels:
+            severity: warning
+            category: capacity
+            fleet: fix
+          annotations:
+            summary: "{{ $labels.instance }} load is {{ $value | humanize }}x its CPUs for 15m: scripts/host-headroom.py, then move work off"
+        - alert: NodeLoadCritical
+          expr: instance:node_load15_per_cpu:ratio > 1.5
+          for: 10m
+          labels:
+            severity: critical
+            category: capacity
+            fleet: fix
+          annotations:
+            summary: "{{ $labels.instance }} load is {{ $value | humanize }}x its CPUs: stop work on it now"
         - alert: NodeOomKill
           expr: increase(node_vmstat_oom_kill[1h]) > 0
           labels:

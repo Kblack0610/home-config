@@ -236,6 +236,70 @@
           ACTIONS_RUNNER_HOOK_JOB_STARTED: "{{ linux_ci_job_started_hook }}"
       tags: [runner, ci, linux-ci]
 
+# Service hosts carry no CI (no_ci_hosts in inventory.yml says why). The CI
+# plays only add, so this one takes off whatever a host still has: every
+# actions.runner unit, the linux-ci homes and cleanup timer, the k3s CPU pin
+# that kept pods off CI's cores, and the org registrations (the workstation's
+# gh, admin:org). Idempotent; a clean host reports ok.
+#   ansible-playbook playbooks/site.yml --limit no_ci_hosts --tags no-ci
+- name: Retire CI on no_ci_hosts
+  hosts: no_ci_hosts
+  become: true
+  gather_facts: false
+  tags: [no-ci, ci]
+  tasks:
+    - name: Find runner units
+      ansible.builtin.find:
+        paths: /etc/systemd/system
+        patterns: "actions.runner.*.service"
+      register: _no_ci_units
+
+    - name: Stop and disable runner units and the docker cleanup timer
+      ansible.builtin.systemd:
+        name: "{{ item }}"
+        state: stopped
+        enabled: false
+      loop: "{{ _no_ci_units.files | map(attribute='path') | map('basename') | list
+                + ['linux-ci-docker-cleanup.timer', 'linux-ci-docker-cleanup.service'] }}"
+      failed_when: false
+
+    - name: Remove runner units, linux-ci homes and hooks
+      ansible.builtin.file:
+        path: "{{ item }}"
+        state: absent
+      loop: "{{ _no_ci_units.files | map(attribute='path') | list + [
+                '/etc/systemd/system/linux-ci-docker-cleanup.timer',
+                '/etc/systemd/system/linux-ci-docker-cleanup.service',
+                '/var/lib/linux-ci', '/usr/local/lib/linux-ci'] }}"
+      register: _no_ci_removed
+
+    - name: Reload systemd
+      ansible.builtin.systemd:
+        daemon_reload: true
+      when: _no_ci_removed.changed
+
+    # The role's own unpin: it also drops kubelet's CPU manager checkpoint,
+    # without which k3s will not start on the new policy (asus, 2026-11-13).
+    - name: Remove the k3s CPU pin
+      ansible.builtin.include_role:
+        name: ci-host-budget
+        tasks_from: k3s-pin
+      vars:
+        k3s_cpus: ""
+
+    - name: Deregister this host's org runners
+      ansible.builtin.shell: |
+        set -eu
+        gh api orgs/BlackNBrownStudios/actions/runners --paginate \
+          -q '.runners[] | select(.name | startswith("{{ inventory_hostname }}-")) | .id' |
+        while read -r id; do gh api -X DELETE "orgs/BlackNBrownStudios/actions/runners/$id"; echo "$id"; done
+      delegate_to: localhost
+      become: false
+      register: _no_ci_dereg
+      changed_when: _no_ci_dereg.stdout | length > 0
+      check_mode: false
+      when: not ansible_check_mode
+
 - name: Fleet workers (agent sessions fleet-dispatch places over ssh)
   # See docs/runbooks/fleet-worker.md. Per user, not root: the sessions run as
   # ansible_user, at the same paths as on the workstation. The role installs
@@ -646,7 +710,7 @@
 # LAN; hp-victus peaked at 98C of 100C). Knobs per host in inventory.yml
 # (thermal_capped). See ansible/roles/thermal-cap/README.md.
 #   ansible-playbook playbooks/site.yml --limit thermal_capped --tags thermal --check --diff
-- name: Thermal cap (CI laptops)
+- name: Thermal cap (x86 laptops)
   hosts: thermal_capped
   become: true
   gather_facts: false

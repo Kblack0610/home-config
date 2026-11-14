@@ -1,10 +1,10 @@
 # thermal-cap
 
-Caps CPU power on the laptops that run CI, so a long job holds them at a temperature they can live with instead of at their thermal limit. It also stops the battery charging at a set percent. A oneshot unit reapplies everything at boot, since it all lives in sysfs.
+Caps CPU power on the laptops, so a long load holds them at a temperature they can live with instead of at their thermal limit. It also stops the battery charging at a set percent. A oneshot unit reapplies everything at boot, since it all lives in sysfs.
 
 ## Why
 
-On 2026-10-23 the Unity nightly held asus-laptop (Ryzen 9 5900HX) at 93-96C for hours, and it dropped off the network about 21:40 UTC with nothing in its journal. hp-victus (i7-13700HX) spent 74 minutes above 90C that day and peaked at 98C, against a 100C critical limit. Neither host had any cap on clocks or power; the CI slices only capped cores and memory (see `roles/ci-host-budget`).
+Sustained CI load pushed asus-laptop (Ryzen 9 5900HX) to 93-96C and hp-victus (i7-13700HX) to 98C of a 100C critical limit, with no cap on clocks or power; the CI slices only capped cores and memory (see `roles/ci-host-budget`). asus-laptop and hp-victus now carry no CI (`no_ci_hosts` in `ansible/inventory.yml`), and the cap stays on them as a guard under any other load.
 
 ## Why power and not CPU time
 
@@ -35,4 +35,4 @@ ansible-playbook playbooks/site.yml --limit thermal_capped --tags thermal
 systemctl status thermal-cap.service     # active (exited); journal lists each value written
 ```
 
-Then watch a full nightly in Prometheus: `NodeCpuHot` (apps/monitoring/prometheus-rules-node-health.yaml) should stay quiet, and the target is at most 85C sustained. If it does not hold, lower the cap a step and compare shard times against the previous nightly.
+Then watch a full nightly on razer-laptop in Prometheus: `NodeCpuHot` (apps/monitoring/prometheus-rules-node-health.yaml) should stay quiet, and the target is at most 85C sustained. If it does not hold, lower the cap a step and compare shard times against the previous nightly.

@@ -30,6 +30,11 @@ A build host gives some of its build slots, never all, the RELEASE_LABEL in unit
 playground release.yml asks for it, so a release (one per game from ship.sh) holds those
 slots for hours while players.yml, which asks only unity-build, keeps the rest (hc-263).
 
+A host in no_ci_hosts (service hosts: Forgejo, Frigate, the databases) is in no CI group
+(linux_ci_runners, unity_ci_runners, unity_ci_mac_runners, ci_hosts), and the Forgejo runner's
+node affinity excludes every one of them. ROSTER_INVENTORY names another inventory, so CI can show
+the check fails on a planted service host.
+
 Same rule as check-fleet-roster.py: independent copies are the design, copies nobody
 compares are the bug. This compares them in BOTH directions, because both break: a
 host added to a pool and forgotten here reads as fully healthy, a host retired there
@@ -47,7 +52,8 @@ import re
 import sys
 
 REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-INVENTORY = os.path.join(REPO, "ansible/inventory.yml")
+INVENTORY = os.environ.get("ROSTER_INVENTORY") or os.path.join(REPO, "ansible/inventory.yml")
+FORGEJO_RUNNER = os.path.join(REPO, "apps/forgejo/runner-deployment.yaml")
 EXPORTER_DEPLOY = os.path.join(REPO, "apps/github-runner-exporter/deployment.yaml")
 GOVERNOR_CONFIG = sys.argv[1] if len(sys.argv) > 1 else os.path.join(REPO, "apps/ci-runner-governor/config.json")
 
@@ -98,6 +104,44 @@ def inventory_roster(path):
             if not out[(h, "unity")]:
                 del out[(h, "unity")]
     return out, cloud
+
+
+NO_CI_GROUP = "no_ci_hosts"
+CI_GROUPS = ("linux_ci_runners", "unity_ci_runners", "unity_ci_mac_runners", "ci_hosts")
+
+
+def group_hosts(path):
+    """{group: set of hosts} for every top-level inventory group with a hosts: map."""
+    out, group, in_hosts = {}, None, False
+    with open(path, encoding="utf-8") as fh:
+        for raw in fh:
+            line = raw.split("#", 1)[0].rstrip()
+            if not line.strip():
+                continue
+            indent = len(line) - len(line.lstrip())
+            key = line.strip().partition(":")[0]
+            if indent == 4:
+                group, in_hosts = key, False
+            elif group and indent == 6:
+                in_hosts = key == "hosts"
+            elif group and in_hosts and indent == 8:
+                out.setdefault(group, set()).add(key)
+    return out
+
+
+def no_ci_failures(path, forgejo_runner):
+    groups = group_hosts(path)
+    service = groups.get(NO_CI_GROUP, set())
+    if not service:
+        return [f"parsed no {NO_CI_GROUP} hosts out of {path}; the parser is broken, not the roster"]
+    fails = [f"{host} is in {NO_CI_GROUP} and in {g}: a service host carries no CI"
+             for g in CI_GROUPS for host in sorted(groups.get(g, set()) & service)]
+    text = open(forgejo_runner, encoding="utf-8").read()
+    m = re.search(r"key: kubernetes\.io/hostname\s+operator: NotIn\s+values:\s+((?:- \S+\s+)+)", text)
+    excluded = set(re.findall(r"- (\S+)", m.group(1))) if m else set()
+    fails += [f"{host} is in {NO_CI_GROUP}, but {os.path.relpath(forgejo_runner, REPO)} does not exclude it"
+              for host in sorted(service - excluded)]
+    return fails
 
 
 def flow_list(val):
@@ -342,9 +386,13 @@ def main():
             rc = 1
             print(f"FAIL: {host}: {release} of its {slots} build slots (unity_ci_build_slots) carry {RELEASE_LABEL} "
                   f"in unity_ci_slot_labels; a release must have at least one and leave players.yml at least one")
+    for f in no_ci_failures(INVENTORY, FORGEJO_RUNNER):
+        rc = 1
+        print(f"FAIL: {f}")
     if rc == 0:
         print(f"ok: {len(want)} host/pool slot counts agree, cloud hosts {sorted(want_cloud)} match the governor standby, "
-              f"build hosts leave Players a slot: {sorted(builds)}, pairs fit their build slots: {sorted(pairs)}")
+              f"build hosts leave Players a slot: {sorted(builds)}, pairs fit their build slots: {sorted(pairs)}, "
+              f"no CI on {sorted(group_hosts(INVENTORY)[NO_CI_GROUP])}")
     return rc
 
 

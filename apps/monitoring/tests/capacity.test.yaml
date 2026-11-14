@@ -281,6 +281,44 @@ tests:
           - exp_labels: {alertname: NodeCpuStarved, severity: critical, category: capacity, instance: starved}
             exp_annotations: {summary: "Tasks on starved have waited for CPU for over an hour"}
 
+  - name: load per CPU warns past 1x for 15m and pages past 1.5x for 10m
+    interval: 1m
+    input_series:
+      - series: 'node_load15{instance="hot"}'
+        values: '4x30'
+      - series: 'node_load15{instance="warm"}'
+        values: '2.2x30'
+      - series: 'node_load15{instance="edge"}'
+        values: '2x30'
+      - series: 'node_cpu_seconds_total{instance="hot",cpu="0",mode="idle"}'
+        values: '0x30'
+      - series: 'node_cpu_seconds_total{instance="hot",cpu="1",mode="idle"}'
+        values: '0x30'
+      - series: 'node_cpu_seconds_total{instance="warm",cpu="0",mode="idle"}'
+        values: '0x30'
+      - series: 'node_cpu_seconds_total{instance="warm",cpu="1",mode="idle"}'
+        values: '0x30'
+      - series: 'node_cpu_seconds_total{instance="edge",cpu="0",mode="idle"}'
+        values: '0x30'
+      - series: 'node_cpu_seconds_total{instance="edge",cpu="1",mode="idle"}'
+        values: '0x30'
+    alert_rule_test:
+      - eval_time: 9m
+        alertname: NodeLoadCritical
+        exp_alerts: []
+      - eval_time: 11m
+        alertname: NodeLoadCritical
+        exp_alerts:
+          - exp_labels: {alertname: NodeLoadCritical, severity: critical, category: capacity, fleet: fix, instance: hot}
+            exp_annotations: {summary: "hot load is 2x its CPUs: stop work on it now"}
+      - eval_time: 16m
+        alertname: NodeLoadHigh
+        exp_alerts:
+          - exp_labels: {alertname: NodeLoadHigh, severity: warning, category: capacity, fleet: fix, instance: hot}
+            exp_annotations: {summary: "hot load is 2x its CPUs for 15m: scripts/host-headroom.py, then move work off"}
+          - exp_labels: {alertname: NodeLoadHigh, severity: warning, category: capacity, fleet: fix, instance: warm}
+            exp_annotations: {summary: "warm load is 1.1x its CPUs for 15m: scripts/host-headroom.py, then move work off"}
+
   - name: oom kills, a few warn and a storm pages
     interval: 5m
     input_series:

@@ -6,7 +6,7 @@ What to buy or rent when adding a host to the Unity CI pool (`unity_ci_runners` 
 
 CPU and heat. Measured on the workstation 2026-10-29: each batch Unity editor held 3.8-6.4 GB, memory pressure was ~0.5% over 5 minutes with 73 of 124 GB free, and the morning hold fired on load 48.9 on 24 cores and tctl 95.6 C with 7 editors running. RAM was never the limit.
 
-Sizing per slot: 3 physical cores of its own and 14 GB RAM. Timed PlayMode tests fail when slots share cores, and while a batch editor sits at 4-6 GB, a PlayMode shard peaks at 13.9 GB and was OOM-killed at 14 GB four times between 10-26 and 10-28 on hp-victus. Hyperthreads do not count as cores. A fast NVMe matters too, since every runner keeps its own `Library/` per project and a cold import is mostly disk.
+Sizing per slot: 3 physical cores of its own and 14 GB RAM. Timed PlayMode tests fail when slots share cores, and while a batch editor sits at 4-6 GB, a PlayMode shard peaks at 13.9 GB and was OOM-killed at 14 GB four times between 10-26 and 10-28 on a host with 31 GB. Hyperthreads do not count as cores. A fast NVMe matters too, since every runner keeps its own `Library/` per project and a cold import is mostly disk.
 
 Before buying for parallelism, check the license ceiling: the governor caps the pool at `pool_max_admitted` admitted runners (24 in `apps/ci-runner-governor/config.json`), and about 15 Unity activations in 90 minutes is where activation trouble starts. At that cap a new host only helps by finishing each job faster, which favours one fast box over several slow ones.
 
@@ -95,7 +95,7 @@ Before ordering, settle the cap: the new box's slots plus the pool's registered 
 
 ## Laptops as runners
 
-razer-laptop is in the pool. asus-laptop and hp-victus left it on 2026-11-03: as k3s nodes, Unity load there took the cluster down with the jobs (asus ran at 90C, hp-victus's 31G ran out). Laptops work but throttle under sustained load and their batteries swell when held at 100%. Set a 60-80% charge limit in the BIOS (or `thinkpad_acpi` thresholds on Linux) and run with the lid open.
+razer-laptop is in the pool. asus-laptop and hp-victus are service hosts that carry no CI of any kind (`no_ci_hosts` in `ansible/inventory.yml` says why): as k3s nodes holding Forgejo, Frigate and the databases, CI load there took the cluster down with the jobs. Laptops work but throttle under sustained load and their batteries swell when held at 100%. Set a 60-80% charge limit in the BIOS (or `thinkpad_acpi` thresholds on Linux) and run with the lid open.
 
 ## Renting
 
@@ -135,7 +135,7 @@ Checked 2026-11-11: moving Unity jobs from the AWS hosts to GitHub-hosted runner
 
 Source: docs.github.com/en/billing/reference/actions-runner-pricing (Linux x64), `apps/ci-runner-governor/config.json` `rates`.
 
-A rented box joins like a home one: tailnet first (`docs/headscale-setup.md`, so it reaches `git.kblab.me`), then `unity_ci_runners` and `ci_hosts` in `ansible/inventory.yml`, the "Unity CI runner pool" play (`unity-ci-host` and `github-actions-runner-linux`), and the three rosters kept in step (`RUNNER_ROSTER` in `apps/github-runner-exporter/deployment.yaml`, the governor's `hosts`, the inventory; `scripts/check-runner-roster.py` fails CI on drift). Start it at about half its slots, prove it with one pinned PlayMode shard timed against hp-victus, then ramp. Add one host at a time, so the new activations do not all start together.
+A rented box joins like a home one: tailnet first (`docs/headscale-setup.md`, so it reaches `git.kblab.me`), then `unity_ci_runners` and `ci_hosts` in `ansible/inventory.yml`, the "Unity CI runner pool" play (`unity-ci-host` and `github-actions-runner-linux`), and the three rosters kept in step (`RUNNER_ROSTER` in `apps/github-runner-exporter/deployment.yaml`, the governor's `hosts`, the inventory; `scripts/check-runner-roster.py` fails CI on drift). Start it at about half its slots, prove it with one pinned PlayMode shard timed against razer-laptop, then ramp. Add one host at a time, so the new activations do not all start together.
 
 The pool already registers as many slots as `pool_max_admitted` allows (the numbers live in `ansible/inventory.yml` and `apps/ci-runner-governor/config.json`). A rented host adds parallel jobs only if the cap goes up, and the cap is there for the activation rate, so settle the license question first.
 

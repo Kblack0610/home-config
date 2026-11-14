@@ -165,8 +165,8 @@ K3s app backups run on schedule via CronJobs. Each backup writes a local archive
 | `snapcast-backup` | Daily 2:45 AM | `snapcast` | hp-victus `/var/backups/snapcast` + NAS `home-k3s/snapcast/` |
 | `game-saves-backup` | Daily 2:50 AM | `game-registry` | NAS `home-k3s/game-saves/` (registry Postgres dump + `game-saves` bucket mirror) |
 | `actual-budget-backup` | Daily 3 AM | `actual-budget` | `/var/backups/actual-budget` + NAS `home-k3s/actual-budget/` |
-| `forgejo-db-snapshot` | Hourly :07 | `forgejo` | hp-victus `/srv/forgejo/snapshots` (48 kept; the nightly ships the newest) |
-| `forgejo-backup` | Daily 3 AM | `forgejo` | asus-laptop `/mnt/backups/forgejo` (2nd disk; reads hp-victus over read-only NFS; excludes `gitea/data/packages`; second copy is the separate job below) |
+| `forgejo-db-snapshot` | Hourly :07 | `forgejo` | asus-laptop `/mnt/backups/forgejo-live/snapshots` (48 kept; the nightly ships the newest) |
+| `forgejo-backup` | Daily 3 AM | `forgejo` | asus-laptop `/mnt/backups/forgejo` (reads the live data on the same host; excludes `gitea/data/packages`; second copy is the separate job below) |
 | `immich-backup` | Daily 3 AM | `immich` | `/var/backups/immich` + NAS `home-k3s/immich/` (DB only) |
 | `postgres-backup` | Daily 2:20 AM | `databases` | NAS `home-k3s/postgres/` (`pg_dumpall` of every database and role) |
 | `karakeep-backup` | Daily 3 AM | `karakeep` | `/var/backups/karakeep` + NAS `home-k3s/karakeep/` |

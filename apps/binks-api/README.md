@@ -20,6 +20,8 @@ LLM chat backend for `binks.chat`. TypeScript replacement for the legacy Rust `b
 3. Same workflow bumps `images[].newTag` in this directory's `kustomization.yaml` and pushes to `home-config@master`.
 4. Flux reconciles within ~1 min.
 
+A rollout drops no requests: both Deployments wait 10s in `preStop` so Traefik removes a terminating pod's endpoint before it gets SIGTERM (without it, one request 502'd per rollout, bk-45). `terminationGracePeriodSeconds: 45` on binks-api covers that wait plus the api's 30s shutdown timeout.
+
 The `binks-chat` SPA follows the same steps with a `binks-chat-v<x.y.z>` tag and `deploy-binks-chat.yml`, which bumps its own `images[]` entry. Its manifest names `:latest`, so without that entry prod floats on an unnamed image and the `release-drift` watch trips.
 
 ## Secrets

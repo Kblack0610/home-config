@@ -1,0 +1,101 @@
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: binks
+  namespace: monitoring
+  labels:
+    app.kubernetes.io/name: binks
+    app.kubernetes.io/part-of: monitoring
+    # The Prometheus CR's ruleSelector; without it the rule is never evaluated.
+    release: kube-prometheus-stack
+spec:
+  groups:
+    # binks.chat, from the binks_* metrics binks-api serves on /metrics
+    # (apps/binks-api/servicemonitor.yaml) and the gateway's per-key budget
+    # gauges. Site down is HomelabAppDown and the binks.chat site probe; these
+    # catch the site that is up but cannot answer.
+    - name: binks.alerts
+      interval: 1m
+      rules:
+        # Every error frame the chat socket sends: the LLM failing, the gateway
+        # refusing the key, a bad model, the per-socket rate limit. Three in 15m
+        # so one user's bad request never pages.
+        - alert: BinksChatTurnErrors
+          expr: |
+            sum(increase(binks_ws_messages_total{direction="out",type="error"}[15m])) >= 3
+            and
+            sum(increase(binks_ws_messages_total{direction="out",type="error"}[15m]))
+            / clamp_min(sum(increase(binks_ws_messages_total{direction="in",type="message"}[15m])), 1) > 0.2
+          for: 10m
+          labels:
+            severity: warning
+            category: app
+          annotations:
+            summary: "binks.chat: over 20% of chat turns end in an error"
+            description: "{{ printf \"%.0f\" $value }} error frames in the last 15m, over 20% of messages sent. Check binks-api logs (kubectl --context home-k3s -n binks-api logs deploy/binks-api) and BinksLLMErrors."
+
+        # The model call itself failed (stream, empty, length, key_issue_failed).
+        # cancel is the user pressing stop, so it is not an error.
+        - alert: BinksLLMErrors
+          expr: |
+            sum(increase(binks_llm_errors_total{kind!="cancel"}[15m])) >= 3
+            and
+            sum(increase(binks_llm_errors_total{kind!="cancel"}[15m]))
+            / clamp_min(
+                sum(increase(binks_llm_errors_total{kind!="cancel"}[15m]))
+                + (sum(increase(binks_chat_completions_total{role="assistant"}[15m])) or vector(0)),
+                1
+              ) > 0.2
+          for: 10m
+          labels:
+            severity: warning
+            category: app
+          annotations:
+            summary: "binks.chat: over 20% of LLM calls fail"
+            description: "{{ printf \"%.0f\" $value }} failed LLM calls in the last 15m. By kind: sum by (model, kind) (increase(binks_llm_errors_total[15m])). key_issue_failed is the issuer key; stream and empty are the binks-chat routes in apps/litellm/config.yaml."
+
+        # binks-anon carries every anonymous chat, and every chat at all while
+        # sign-in is not shipped, on one $10 / 1mo key (apps/litellm/README.md,
+        # "binks.chat keys"). At 0 the gateway refuses it and binks.chat stops
+        # answering anyone, so one abuser can take the site down.
+        - alert: BinksAnonBudgetLow
+          expr: |
+            litellm_remaining_api_key_budget_metric{api_key_alias="binks-anon"}
+            / clamp_min(litellm_api_key_max_budget_metric{api_key_alias="binks-anon"}, 0.01) < 0.25
+          for: 10m
+          labels:
+            severity: warning
+            category: cost
+          annotations:
+            summary: "binks-anon has under 25% of its monthly budget left"
+            description: "binks-anon is at {{ humanizePercentage $value }} of its budget. At 0 binks.chat stops answering. Check litellm_api_key_budget_remaining_hours_metric for the reset, and BinksAnonBudgetBurn for abuse."
+
+        - alert: BinksAnonBudgetExhausted
+          expr: |
+            litellm_remaining_api_key_budget_metric{api_key_alias="binks-anon"}
+            / clamp_min(litellm_api_key_max_budget_metric{api_key_alias="binks-anon"}, 0.01) < 0.05
+          for: 5m
+          labels:
+            severity: critical
+            category: cost
+          annotations:
+            summary: "binks-anon budget nearly spent: binks.chat is about to stop answering"
+            description: "binks-anon is at {{ humanizePercentage $value }} of its budget. Raise it with /key/update on the gateway or find the abuser in the LiteLLM spend logs (apps/litellm/README.md)."
+
+        # Spend in the last hour as a share of the monthly budget. A normal day
+        # is well under 1% an hour; 10% in an hour is one client looping.
+        # max_over_time - now is never negative and stays right across the
+        # monthly reset, where remaining jumps back up.
+        - alert: BinksAnonBudgetBurn
+          expr: |
+            (
+              max_over_time(litellm_remaining_api_key_budget_metric{api_key_alias="binks-anon"}[1h])
+              - litellm_remaining_api_key_budget_metric{api_key_alias="binks-anon"}
+            )
+            / clamp_min(litellm_api_key_max_budget_metric{api_key_alias="binks-anon"}, 0.01) > 0.10
+          labels:
+            severity: warning
+            category: cost
+          annotations:
+            summary: "binks-anon spent over 10% of its monthly budget in an hour"
+            description: "{{ humanizePercentage $value }} of the budget in the last hour. At this rate the key is empty within a day. Find the caller in the LiteLLM spend logs for key binks-anon."

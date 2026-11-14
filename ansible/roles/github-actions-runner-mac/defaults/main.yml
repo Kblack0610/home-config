@@ -72,3 +72,7 @@ gh_runner_mac_token_source: gh
 # steady-state drift-checks stay idempotent no-ops. Pass
 # `-e gh_runner_mac_force_reregister=true` for the one-time recovery apply.
 gh_runner_mac_force_reregister: false
+
+# How long an apply waits for a busy runner's job to end before it restarts the runner
+# (github-actions-runner-linux tasks/drain.yml): GitHub's default job timeout, 360 minutes.
+gh_runner_mac_drain_timeout: 21600

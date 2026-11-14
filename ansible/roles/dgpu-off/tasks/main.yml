@@ -1,0 +1,67 @@
+---
+- name: Block the GPU kernel modules
+  ansible.builtin.template:
+    src: dgpu-off.conf.j2
+    dest: /etc/modprobe.d/dgpu-off.conf
+    mode: "0644"
+  notify: Rebuild initramfs
+
+# Written by the PXE nvidia-gpu.sh; options for a driver that no longer loads.
+- name: Remove the old nvidia modprobe files
+  ansible.builtin.file:
+    path: "/etc/modprobe.d/{{ item }}"
+    state: absent
+  loop:
+    - nvidia.conf
+    - nouveau-blacklist.conf
+  notify: Rebuild initramfs
+
+# mkinitcpio copies a MODULES entry into the image and loads it early, before
+# modprobe.d is read, so the modules come out of the list too.
+- name: Drop the GPU modules from the initramfs
+  ansible.builtin.replace:
+    path: /etc/mkinitcpio.conf
+    regexp: '^(MODULES=\(.*?)\s*\b{{ item }}\b(.*\))$'
+    replace: '\1\2'
+  loop: "{{ dgpu_off_modules }}"
+  notify: Rebuild initramfs
+
+- name: Allow runtime PM on the GPU
+  ansible.builtin.template:
+    src: 80-dgpu-off.rules.j2
+    dest: /etc/udev/rules.d/80-dgpu-off.rules
+    mode: "0644"
+  register: _dgpu_off_udev
+
+# Absent on a host without nvidia-utils, hence no failure when it is missing.
+- name: Stop nvidia-persistenced
+  ansible.builtin.systemd:
+    name: nvidia-persistenced.service
+    enabled: false
+    state: stopped
+  failed_when: false
+
+- name: Rebuild the initramfs before the unload
+  ansible.builtin.meta: flush_handlers
+
+# Unloads now instead of at the next boot. It fails, loudly, while something
+# holds /dev/nvidia* (the device plugin pod): remove that first.
+- name: Unload the GPU modules
+  ansible.builtin.shell: |
+    set -eu
+    loaded=$(for m in {{ dgpu_off_modules | join(' ') }}; do
+      [ -d /sys/module/$m ] && printf '%s ' "$m"; done)
+    [ -z "$loaded" ] && exit 0
+    rmmod $loaded
+    echo "unloaded: $loaded"
+  register: _dgpu_off_unload
+  changed_when: "'unloaded' in _dgpu_off_unload.stdout"
+  when: not ansible_check_mode
+
+- name: Apply runtime PM now
+  ansible.builtin.shell: |
+    udevadm control --reload
+    udevadm trigger --subsystem-match=pci --attr-match=vendor={{ dgpu_off_pci_vendor }} --action=bind
+    udevadm settle
+  changed_when: true
+  when: _dgpu_off_udev.changed and not ansible_check_mode

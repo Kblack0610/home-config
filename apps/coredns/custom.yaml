@@ -1,0 +1,21 @@
+# k3s CoreDNS imports every *.server key of this ConfigMap as its own server
+# block (the bundled Corefile ends in `import /etc/coredns/custom/*.server`).
+#
+# forge-primary.kblab.me names the host where the live Forgejo runs (its
+# tailnet IP; only scripts/forge-move writes it). The forgejo-http and
+# forgejo-ssh Services are ExternalNames of it, so pods must get the real
+# Cloudflare answer: the default upstream (OpenWrt) answers every *.kblab.me
+# with the LAN wildcard 192.168.1.124 (Traefik), which would loop Forgejo
+# traffic back into Traefik. See apps/forgejo/README.md.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: coredns-custom
+  namespace: kube-system
+data:
+  forge-primary.server: |
+    forge-primary.kblab.me:53 {
+        errors
+        forward . 1.1.1.1 1.0.0.1
+        cache 30
+    }

@@ -840,3 +840,14 @@
   roles:
     - role: login-passwords
       tags: [passwords]
+
+- name: Forgejo host on Hetzner (forge-hel1)
+  # Created by playbooks/hetzner-provision.yml. Forgejo stays stopped until the
+  # cutover sets forgejo_host_running (plan virtual-strolling-nova).
+  #   ansible-playbook playbooks/site.yml --limit forge-hel1
+  hosts: hetzner
+  become: true
+  gather_facts: true
+  roles:
+    - role: forgejo-host
+      tags: [forgejo]

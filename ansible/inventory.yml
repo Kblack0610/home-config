@@ -697,3 +697,29 @@ all:
         audio-bedroom:
           ansible_host: 192.168.1.122   # audio-bedroom-lan
           audio_endpoint_card_hint: "Headphones"
+
+    # Hetzner Cloud hosts, created by playbooks/hetzner-provision.yml through
+    # the Hetzner API (token: group_vars/hetzner/vault.sops.yaml). Not on the
+    # LAN: ansible_host is the public IPv4 until the host joins the tailnet.
+    hetzner:
+      vars:
+        ansible_user: root
+        hcloud_location: hel1
+        # Inbound SSH only from the home WAN IP, and only until the tailnet is
+        # up; then this list goes empty and the firewall drops all inbound.
+        # The home WAN IP lives in the vault because this repo is public.
+        hcloud_ssh_sources: ["{{ vault_home_wan_cidr }}"]
+        hcloud_ssh_public_key: "{{ lookup('file', '~/.ssh/id_ed25519.pub') }}"
+      hosts:
+        # Forgejo's primary home since 2026-11-13, after hp-victus hung twice
+        # (plan virtual-strolling-nova). cx33 had no capacity in nbg1 that day,
+        # so hel1 at the same price. The volume holds /mnt/forgejo/data.
+        forge-hel1:
+          ansible_host: 37.27.152.40   # public IPv4 from the provision play
+          hcloud_server_type: cx33
+          hcloud_image: debian-13
+          hcloud_volume_gb: 300
+          # asus-laptop root's key for the seed rsync of /mnt/backups/forgejo-live;
+          # removed after cutover.
+          forgejo_host_seed_keys:
+            - ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAICV9ptpa8CBromzDCkEEJ9lxkyDQlv2fWZwA7ncrmLSV asus-forge-seed

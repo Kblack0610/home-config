@@ -22,8 +22,10 @@ spec:
         # Defaults assume the key matrix in apps/litellm/README.md
         # (smallest budget = $50/30d for opencode-default). Adjust if you
         # provision a key with a max_budget below $10.
+        # binks-anon ($10 / 1mo) is left out: it sat below $10 from its first
+        # request, and prometheus-rules-binks.yaml alerts on its share left.
         - alert: LiteLLMVirtualKeyBudgetWarning
-          expr: litellm_remaining_api_key_budget_metric < 10
+          expr: litellm_remaining_api_key_budget_metric{api_key_alias!="binks-anon"} < 10
           for: 5m
           labels:
             severity: warning
@@ -33,7 +35,7 @@ spec:
             description: "Virtual key '{{ $labels.api_key_alias }}' (hash {{ $labels.hashed_api_key }}) has ${{ printf \"%.2f\" $value }} remaining in its current budget window. Reset cadence depends on the key's budget_duration."
 
         - alert: LiteLLMVirtualKeyBudgetCritical
-          expr: litellm_remaining_api_key_budget_metric < 2
+          expr: litellm_remaining_api_key_budget_metric{api_key_alias!="binks-anon"} < 2
           for: 5m
           labels:
             severity: critical
@@ -55,7 +57,7 @@ spec:
             category: cost
           annotations:
             summary: "Lazer core team under 30% of its monthly budget"
-            description: "lazer-core is at {{ humanizePercentage $value }} of its monthly budget. Must-not-stop consumers (karakeep, binks, mem0, Home Assistant, comms, knowledge-engine) stop at 0. Check who is spending: apps/litellm/README.md key list."
+            description: "lazer-core is at {{ humanizePercentage $value }} of its monthly budget. Must-not-stop consumers (karakeep, mem0, Home Assistant, comms, knowledge-engine) stop at 0. Check who is spending: apps/litellm/README.md key list."
 
         - alert: LiteLLMCoreTeamBudgetCritical
           expr: |

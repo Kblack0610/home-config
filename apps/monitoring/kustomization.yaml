@@ -25,6 +25,7 @@ resources:
   - prometheus-rules-game-servers.yaml
   - prometheus-rules-freqtrade.yaml
   - prometheus-rules-emotiv.yaml
+  - prometheus-rules-binks.yaml
   - probe-sites.yaml
   - probe-dns.yaml
   - probe-wan.yaml

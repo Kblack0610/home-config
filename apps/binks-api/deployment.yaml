@@ -21,7 +21,8 @@ metadata:
   labels:
     app: binks-api
 spec:
-  replicas: 1
+  # Two pods so a node drain or a crash does not drop every chat (pdb.yaml).
+  replicas: 2
   strategy:
     type: RollingUpdate
     rollingUpdate:

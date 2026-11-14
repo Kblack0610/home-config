@@ -618,17 +618,6 @@
           ASSET_LIBRARY_LFS_STORE: "{{ unity_ci_mac_lfs_store }}"
       tags: [runner, ci, unity-ci]
 
-# NFS backup source: hp-victus exports Forgejo's data (/srv/forgejo) read-only
-# to asus-laptop, where the backup jobs write to other disks than the data's.
-# See roles/nfs-backup-target/ and apps/forgejo/backup-cronjob.yaml.
-- name: NFS backup target (hp-victus)
-  hosts: hp-victus
-  become: true
-  gather_facts: true
-  roles:
-    - role: nfs-backup-target
-      tags: [nfs, backup]
-
 # Network UPS Tools (NUT) — single CyberPower CP1500PFCLCD plugged into
 # pi5-master drives a graceful shutdown of the whole k3s fleet when grid
 # power fails. The primary (server) runs upsd + upsmon-primary; every

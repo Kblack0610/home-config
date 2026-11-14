@@ -52,14 +52,13 @@ spec:
             - name: script
               configMap:
                 name: nas-mirror-script
-            # Forgejo's data lives on hp-victus since 2026-11-11, which exports
-            # it read-only to asus-laptop (ansible role nfs-backup-target). IP,
-            # not DNS: cluster DNS does not serve OpenWRT LAN names.
+            # Forgejo runs on asus-laptop since hp-victus hung on 2026-11-13
+            # (apps/forgejo/pvc.yaml, forgejo-data-asus), so this reads the
+            # live registry locally; the mount above is read-only.
             - name: source
-              nfs:
-                server: 192.168.1.243
-                path: /srv/forgejo/data/gitea/data/packages
-                readOnly: true
+              hostPath:
+                path: /mnt/backups/forgejo-live/data/gitea/data/packages
+                type: Directory
             # Directory, not DirectoryOrCreate: the subvolumes come from the
             # usb-backup-mounts role. To move this backup to a new disk, change
             # these two paths and that role.

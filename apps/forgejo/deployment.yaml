@@ -80,7 +80,7 @@ spec:
       volumes:
         - name: data
           persistentVolumeClaim:
-            claimName: forgejo-data-hp-victus
+            claimName: forgejo-data-asus
         - name: config
           configMap:
             name: forgejo-config

@@ -44,3 +44,49 @@ spec:
   resources:
     requests:
       storage: 600Gi
+---
+# hp-victus hung on 2026-11-13 with no remote power control, so Forgejo was
+# restored from that morning's nightly full onto asus-laptop's backup disk
+# (nvme0n1p2, not the root disk). The hp-victus PV above stays declared, unused,
+# until its newer data is merged back; Hetzner is the next home (plan
+# can-we-setup-forgejo-snazzy-hopper P9).
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: forgejo-data-asus
+  labels:
+    app.kubernetes.io/name: forgejo
+spec:
+  capacity:
+    storage: 600Gi
+  accessModes:
+    - ReadWriteOnce
+  persistentVolumeReclaimPolicy: Retain
+  storageClassName: ""
+  volumeMode: Filesystem
+  local:
+    path: /mnt/backups/forgejo-live/data
+  nodeAffinity:
+    required:
+      nodeSelectorTerms:
+        - matchExpressions:
+            - key: kubernetes.io/hostname
+              operator: In
+              values:
+                - asus-laptop
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: forgejo-data-asus
+  namespace: forgejo
+  labels:
+    app.kubernetes.io/name: forgejo
+spec:
+  accessModes:
+    - ReadWriteOnce
+  storageClassName: ""
+  volumeName: forgejo-data-asus
+  resources:
+    requests:
+      storage: 600Gi

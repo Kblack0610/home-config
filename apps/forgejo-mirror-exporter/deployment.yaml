@@ -6,7 +6,9 @@ metadata:
   labels:
     app.kubernetes.io/name: forgejo-mirror-exporter
 spec:
-  replicas: 1
+  # 0 since the cutover: the exporter runs beside Forgejo on forge-hel1 (compose),
+  # reached through the selectorless Service below. Removed at cleanup.
+  replicas: 0
   # Recreate rather than RollingUpdate: two pods briefly sharing the RWO PVC
   # during a rollout is avoidable risk for a metrics exporter, and a few seconds
   # of gap is far inside the 15m `for:` on ForgejoMirrorExporterDown.
@@ -142,13 +144,29 @@ metadata:
   labels:
     app.kubernetes.io/name: forgejo-mirror-exporter
 spec:
-  selector:
-    app.kubernetes.io/name: forgejo-mirror-exporter
+  # No selector: the exporter runs on forge-hel1, and the EndpointSlice below
+  # points this Service at its tailnet IP, so the scrape job and rules keep their names.
   ports:
     - name: metrics
       port: 9310
       targetPort: 9310
   type: ClusterIP
+---
+apiVersion: discovery.k8s.io/v1
+kind: EndpointSlice
+metadata:
+  name: forgejo-mirror-exporter-forge-hel1
+  namespace: forgejo
+  labels:
+    kubernetes.io/service-name: forgejo-mirror-exporter
+    endpointslice.kubernetes.io/managed-by: home-config
+addressType: IPv4
+ports:
+  - name: metrics
+    port: 9310
+    protocol: TCP
+endpoints:
+  - addresses: ["100.125.203.14"]   # forge-hel1, tailnet
 ---
 # No `release: kube-prometheus-stack` label here, and that is not an oversight:
 # apps/monitoring/helm-values.yaml sets serviceMonitorSelectorNilUsesHelmValues

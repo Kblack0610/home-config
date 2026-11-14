@@ -871,3 +871,6 @@
     # The Hetzner firewall drops inbound 9100 on the public IP.
     - role: node-exporter-linux
       tags: [forgejo, monitoring]
+      vars:
+        # A failed snapshot or reaper run shows as node_systemd_unit_state failed.
+        node_exporter_linux_systemd_units: [forgejo.service, forgejo-db-snapshot.service, forgejo-lock-reaper.service]

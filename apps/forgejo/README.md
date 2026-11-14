@@ -1,6 +1,6 @@
 # Forgejo
 
-Self-hosted Git forge running in the `forgejo` namespace at `git.kblab.me`.
+Self-hosted Git forge at `git.kblab.me` and `git.kennethblack.me`. Since 2026-11-14 it runs on forge-hel1, a Hetzner VM, from `ansible/roles/forgejo-host`; this directory keeps the cluster's view of it (Services, ingress, runner, backup pull). See "Where Forgejo runs and how to move it" below.
 Version 14.0.4 with Actions (CI/CD), Packages (container + language registries),
 and repository mirroring enabled.
 
@@ -11,13 +11,13 @@ and repository mirroring enabled.
 | `kustomization.yaml` | Reconciles namespace, app, services, ingress, backup, and runner |
 | `configmap.yaml` | Forgejo `app.ini` — Actions, Packages, Mirroring enabled |
 | `secret.sops.yaml` | SOPS-encrypted `LFS_JWT_SECRET`, `INTERNAL_TOKEN`, `JWT_SECRET` and `SECRET_KEY`, as `FORGEJO__<section>__<key>` env vars |
-| `deployment.yaml` | Main Forgejo workload with config-seed init container |
-| `service-http.yaml` | HTTP service on port `3000` |
-| `service-ssh.yaml` | In-cluster SSH service on port `22` |
+| `deployment.yaml` | The old in-cluster workload, at 0 replicas since the cutover; kept for rollback, removed at cleanup |
+| `service-http.yaml` | `forgejo-http:3000`, selectorless, with an EndpointSlice to forge-hel1's tailnet IP `100.125.203.14:3000` |
+| `service-ssh.yaml` | `forgejo-ssh:22`, selectorless, with an EndpointSlice to `100.125.203.14:2222` (the container's sshd) |
 | `ingress.yaml` | TLS ingress for `git.kblab.me` (git, registry, API, Flux) |
 | `ingress-public.yaml` | TLS ingress for `git.kennethblack.me`, the `ROOT_URL` and the one browser hostname |
 | `ingressroute-browser-redirect.yaml` | Redirects browsers (`Accept: text/html`) on `git.kblab.me` to `git.kennethblack.me`, so one login cookie covers every page |
-| `pvc.yaml` | Forgejo's data: a static Retain PV, live at `/mnt/backups/forgejo-live/data` on asus-laptop since 2026-11-13 |
+| `pvc.yaml` | The asus copy, frozen at the cutover (`/mnt/backups/forgejo-live/data`); the rollback source until cleanup |
 | `backup-cronjob.yaml` | Daily backup job for full data and SQLite snapshots |
 | `runner-deployment.yaml` | Forgejo Runner + DinD sidecar (razer-laptop only; asus-laptop and hp-victus are `no_ci_hosts`) |
 | `runner-config-cm.yaml` | Runner config with `docker` + `linux-amd64` labels |
@@ -221,7 +221,7 @@ Endpoints:
 
 ## Backup Notes
 
-- Forgejo runs on asus-laptop since hp-victus hung on 2026-11-13, restored onto its backup disk (`/mnt/backups/forgejo-live`), and every in-cluster backup job reads that copy locally. Its next home is forge-hel1 (plan `virtual-strolling-nova`); the jobs for that are in place and off until the cutover below.
+- Forgejo runs on forge-hel1 since 2026-11-14 (plan `virtual-strolling-nova`). The jobs that read its disk run there ("On forge-hel1" below) and `forgejo-backup-pull` copies them to asus. The in-cluster CronJobs listed next are suspended since the cutover: they would read the frozen asus copy. They are removed at cleanup.
 - `forgejo-db-snapshot` runs hourly: `VACUUM INTO` plus `quick_check`, 48 kept in `/mnt/backups/forgejo-live/snapshots`.
 - `forgejo-backup` runs daily at `03:00` on asus and writes a full archive and the newest DB snapshot to `/mnt/backups/forgejo`. While Forgejo runs from the restore, that is the same disk as the live data (nvme0n1p2), so the 8TB copy below is the only one on another disk.
 - Retention: newest **7**. Archives are written to `*.tmp` and renamed on success, so a partial never looks like a backup. Pruning runs after a good backup, and the job aborts if `/backup` has under 100G free.
@@ -241,15 +241,44 @@ Endpoints:
 - No full is written on the VM, which keeps it to the hourly snapshots and Forgejo itself. `forgejo-backup-pull` (asus, 04:30) builds it instead. Over the tailnet, with a root key whose forced command is `rrsync -ro /mnt/forgejo` (private half in `backup-pull-secret.sops.yaml`), it mirrors the hourly snapshots and the data tree into `/mnt/backup-8t/forgejo-backups/{snapshots,tree}`, then tars the tree into `forgejo-full-<ts>.tar.gz` with the newest snapshot as `forgejo-db-<ts>.db.gz`, 3 kept, 500G free floor. It refuses a snapshot over 2h old or a source that lists nothing.
 - The same job copies `data/gitea/data/packages` add-only (no deletes) into `/mnt/backup-8t/forgejo-packages` and takes the weekly `forgejo-packages-<ts>` snapshot, 4 kept. This is temporary: plan `vectorized-pondering-turtle` P2 moves packages to object storage with a B2 copy and deletes this pull path.
 
-### Cutover switches
+## Where Forgejo runs and how to move it
 
-One change, at the cutover to forge-hel1:
+One Forgejo writes at a time, always. On 2026-11-13 a second copy on asus forked the data (home-config PR numbers #925-#932 were used twice), so never start a second one by hand.
 
-- `forgejo_host_running: true` and `forgejo_host_http_bind` set to the tailnet IP for forge-hel1, then the forge-hel1 play.
-- `suspend: false` on `forgejo-backup-pull`.
-- `suspend: true` on `forgejo-db-snapshot`, `forgejo-backup`, `forgejo-backup-offbox`, `forgejo-lock-reaper` and nas `forgejo-packages-backup`. From then on they read the frozen asus copy, and offbox's prune would delete pulled fulls in the shared 8TB directory.
-- `forgejo-mirror-exporter` Deployment to 0 replicas, and its Service made selectorless with an EndpointSlice to `100.125.203.14:9310`, so the `forgejo-mirror-exporter` job and its rules carry over unchanged.
-- `forgejo-db-snapshot.service` and `forgejo-lock-reaper.service` on forge-hel1's `node_exporter_linux_systemd_units` (the role asserts they appear, which fails while the timers are off).
+| What | Where |
+|------|-------|
+| The live Forgejo | forge-hel1 (Hetzner cx33, hel1), `docker compose` in `/etc/forgejo`, unit `forgejo.service`, data on the volume at `/mnt/forgejo/data` |
+| Its switch | `forgejo_host_running` for the host in `ansible/inventory.yml`; the role starts or stops Forgejo, its exporter and its timers from it |
+| How the cluster reaches it | `forgejo-http` and `forgejo-ssh` have no selector; their EndpointSlices name `100.125.203.14`, reached through each node's tailscale0 |
+| How LAN users reach it | `git.kblab.me` resolves to Traefik (`192.168.1.124`), which proxies to `forgejo-http` |
+| The frozen copy | asus-laptop `/mnt/backups/forgejo-live/data` (PV `forgejo-data-asus`), as of the cutover; rollback source until cleanup |
+
+Check it:
+
+```bash
+cd ansible && ansible forge-hel1 -m shell -a 'systemctl is-active forgejo; docker ps --format "{{.Names}} {{.Status}}"'
+curl -s https://git.kblab.me/api/healthz
+kubectl --context home-k3s -n forgejo get endpointslices
+```
+
+Move it (today a manual freeze; plan `vectorized-pondering-turtle` replaces this with `forge-move` and a DNS fence):
+
+1. Freeze: `forgejo_host_running: false` on the old host and run its play, or `kubectl scale deploy/forgejo --replicas=0` for the in-cluster copy. Confirm nothing answers on the old address.
+2. Copy the delta: `rsync -aH --numeric-ids --delete` of the data tree from the old host to the new one, as root, with Forgejo stopped on both.
+3. Point the names: edit the addresses in the EndpointSlices in `service-http.yaml` and `service-ssh.yaml` (and the exporter's in `apps/forgejo-mirror-exporter/deployment.yaml`). Flux pulls from Forgejo itself, so while it is down apply them by hand (`kubectl apply -f`), then commit the same change once the new Forgejo is up.
+4. Start: `forgejo_host_running: true` on the new host and run its play.
+5. Verify: the checks above, a push, a PR comment, `flux get sources git` fetching a new revision.
+
+Roll back to asus (until cleanup reaps the asus copy): stop forge-hel1 (`forgejo_host_running: false`, play), rsync `/mnt/forgejo/data/` back to `/mnt/backups/forgejo-live/data/` (writes since the cutover), restore the selector on both Services and delete the EndpointSlices, `replicas: 1` on `deployment.yaml`, and undo the CronJob suspends.
+
+### Troubleshooting
+
+| Symptom | Cause | Fix |
+|---------|-------|-----|
+| `forgejo.service` fails with `docker: command not found` | Debian 13 moved the CLI out of `docker.io` | `docker-cli` is in the role since #966; re-run the play |
+| Pods get connection refused or timeouts on `forgejo-http` | the node has no tailscale0 route to 100.64.0.0/10 | `tailscale status` on that node; the tailnet play: `--limit 'hetzner:linux_bare_metal:pi_k3s' --tags tailscale` |
+| Flux stuck on an old revision after a move | Flux fetches from the Forgejo it is pointing at | apply the EndpointSlices by hand, then `flux reconcile source git flux-system` |
+| Two Forgejos answer | someone started the old copy | stop it at once; the data has forked from that moment, so compare PR numbers as on 2026-11-13 (#961, #962) before anything else writes |
 
 ## Related Docs
 

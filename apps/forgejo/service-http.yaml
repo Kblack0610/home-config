@@ -7,9 +7,26 @@ metadata:
     app.kubernetes.io/name: forgejo
 spec:
   type: ClusterIP
-  selector:
-    app.kubernetes.io/name: forgejo
+  # No selector: Forgejo runs on forge-hel1 since 2026-11-14 (plan
+  # virtual-strolling-nova), and the EndpointSlice below points this name at
+  # its tailnet IP. Pods reach it through their node's tailscale0.
   ports:
     - name: http
       port: 3000
       targetPort: 3000
+---
+apiVersion: discovery.k8s.io/v1
+kind: EndpointSlice
+metadata:
+  name: forgejo-http-forge-hel1
+  namespace: forgejo
+  labels:
+    kubernetes.io/service-name: forgejo-http
+    endpointslice.kubernetes.io/managed-by: home-config
+addressType: IPv4
+ports:
+  - name: http
+    port: 3000
+    protocol: TCP
+endpoints:
+  - addresses: ["100.125.203.14"]   # forge-hel1, tailnet

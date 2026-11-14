@@ -10,11 +10,10 @@ spec:
   # snapshots, its data tree and its package registry over the tailnet, then
   # build the nightly full here (backup-pull.sh). 04:30 is forgejo-backup-offbox's
   # slot, which this replaces.
-  # Suspended until the cutover, which also suspends forgejo-backup,
+  # Live since the cutover (2026-11-14), which suspended forgejo-backup,
   # forgejo-backup-offbox and nas forgejo-packages-backup: they read the asus
   # copy, frozen from then on, and offbox's prune shares this directory.
   schedule: "30 4 * * *"
-  suspend: true
   concurrencyPolicy: Forbid
   successfulJobsHistoryLimit: 3
   failedJobsHistoryLimit: 2

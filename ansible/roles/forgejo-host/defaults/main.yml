@@ -8,6 +8,9 @@ forgejo_host_running: false
 # Where Forgejo's HTTP port listens. Loopback until the tailnet is up; then
 # the host's tailnet IP, so the cluster's forgejo-http Service can reach it.
 forgejo_host_http_bind: 127.0.0.1
+# Where the container's sshd (git over ssh) is published, on the same bind.
+# The cluster's forgejo-ssh EndpointSlice points at it.
+forgejo_host_ssh_port: 2222
 # Extra root keys, only for the seed copy from asus-laptop; emptied after cutover.
 forgejo_host_seed_keys: []
 

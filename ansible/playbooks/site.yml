@@ -225,7 +225,8 @@
       {{ (range(1, ci_light_slots + 1) | map('regex_replace', '^', 'light-') | list)
          + (range(1, ci_heavy_slots + 1) | map('regex_replace', '^', 'heavy-') | list) }}
     # Each slot's share of the platform slice's CPUs (ci_linux_cpus, else
-    # ci_cpus), rounded up: CI_SLOT_CPUS in every job's env, which platform's
+    # ci_cpus), rounded down and at least 1, so the slots' caps never add up
+    # past the slice: CI_SLOT_CPUS in every job's env, which platform's
     # turbo runs take as --concurrency. Without it a turbo job started 10 tasks
     # on razer's 2-core share, its 6 platform cores sat at 94% CPU pressure and
     # the host's load15 reached 1.58x its CPUs with 45% of them idle (2026-11-14,
@@ -234,7 +235,7 @@
       {% set cpus = [] %}{% for part in ((ci_linux_cpus | default('')) or ci_cpus).split(',')
       if part | trim %}{% set ab = (part | trim).split('-') %}{% for c in range(ab[0] | int,
       (ab[-1] | int) + 1) %}{% set _ = cpus.append(c) %}{% endfor %}{% endfor %}{{ [1,
-      ((cpus | length) / (linux_ci_instances | length)) | round(0, 'ceil') | int] | max }}
+      ((cpus | length) / (linux_ci_instances | length)) | round(0, 'floor') | int] | max }}
   roles:
     - role: linux-ci-host
       tags: [runner, ci, linux-ci]

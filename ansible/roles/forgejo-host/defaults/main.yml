@@ -10,3 +10,35 @@ forgejo_host_running: false
 forgejo_host_http_bind: 127.0.0.1
 # Extra root keys, only for the seed copy from asus-laptop; emptied after cutover.
 forgejo_host_seed_keys: []
+
+# The cluster's hourly jobs, run here as systemd timers once Forgejo runs here.
+# Each takes its image, script and env from its CronJob in apps/forgejo, so one
+# copy of each script exists; `env` overrides a value the host needs
+# differently. The timers are enabled only when forgejo_host_running, and each
+# run is skipped unless the compose forgejo container is up.
+forgejo_host_backups: /mnt/forgejo/backups
+forgejo_host_jobs:
+  - name: forgejo-db-snapshot
+    cronjob: db-snapshot-cronjob.yaml
+    on_calendar: "*-*-* *:07:00"
+    timeout_sec: 900
+    volumes:
+      - "{{ forgejo_host_data }}:/data"
+      - "{{ forgejo_host_backups }}/snapshots:/snapshots"
+    env: {}
+  - name: forgejo-lock-reaper
+    cronjob: lock-reaper-cronjob.yaml
+    on_calendar: "*-*-* *:17:00"
+    timeout_sec: 900
+    volumes:
+      - "{{ forgejo_host_data }}:/data"
+    env:
+      # The public ntfy, as the VM has no cluster DNS; the topic name is the
+      # only token, as it is in-cluster.
+      NTFY_TOPIC: https://ntfy.kblab.me/homelab-alerts
+
+# asus-laptop's forgejo-backup-pull CronJob (apps/forgejo/backup-pull-cronjob.yaml).
+# Private half: apps/forgejo/backup-pull-secret.sops.yaml. A root key because
+# data/ssh holds root-owned 0600 host keys a full must carry; the forced
+# command makes it a read-only rsync of /mnt/forgejo and nothing else.
+forgejo_host_pull_key: ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIPDLUx/rMduoKIoX/u/op27mjNRk8GYr+5y45gE9LdPi forgejo-backup-pull@asus-laptop

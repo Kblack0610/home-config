@@ -5,9 +5,11 @@
 # db, and `git fsck` passing on every repository the db names. The scratch dir and
 # container are removed on every exit.
 #
-# Run as root on asus-laptop, the backup host (Forgejo itself is on hp-victus):
+# Run as root on asus-laptop, the backup host:
 #   sudo scripts/forgejo-restore-drill.sh [backup-dir]
-# backup-dir defaults to /mnt/backups/forgejo. IMAGE defaults to the image in
+# backup-dir defaults to the 8TB copy, /mnt/backup-8t/forgejo-backups, which
+# holds the fulls before and after Forgejo moves to forge-hel1 (offbox, then
+# forgejo-backup-pull). IMAGE defaults to the image in
 # apps/forgejo/deployment.yaml beside this script; set it when running a copy.
 #
 # --network none keeps the copy from pushing, mailing or taking jobs; cron, actions
@@ -15,7 +17,7 @@
 # not rehearse: docs/backup-runbook.md, the asus-laptop "Root" row.
 set -euo pipefail
 
-BACKUP_DIR=${1:-/mnt/backups/forgejo}
+BACKUP_DIR=${1:-/mnt/backup-8t/forgejo-backups}
 # The unpack goes here; it must not be the root disk (DiskPressure evicted the whole
 # cluster on 2026-07-09).
 DRILL_ROOT=${DRILL_ROOT:-/mnt/backups}

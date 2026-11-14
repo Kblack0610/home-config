@@ -38,6 +38,16 @@
   loop:
     - { path: "{{ forgejo_host_data }}", owner: "1000", mode: "0755" }
     - { path: /etc/forgejo, owner: root, mode: "0750" }
+    - { path: /etc/forgejo/jobs, owner: root, mode: "0750" }
+    - { path: "{{ forgejo_host_backups }}", owner: root, mode: "0755" }
+    # 1000, as the CronJob's init container made it: the snapshot runs as Forgejo's uid.
+    - { path: "{{ forgejo_host_backups }}/snapshots", owner: "1000", mode: "0755" }
+
+- name: Ports published on the tailnet IP bind before tailscale0 is up at boot
+  ansible.posix.sysctl:
+    name: net.ipv4.ip_nonlocal_bind
+    value: "1"
+    sysctl_file: /etc/sysctl.d/60-forgejo-host.conf
 
 - name: app.ini from the cluster's ConfigMap (one source)
   ansible.builtin.copy:
@@ -56,6 +66,22 @@
     group: root
     mode: "0600"
   no_log: true
+  notify: Restart forgejo
+
+- name: Mirror exporter, from apps/forgejo-mirror-exporter (one source)
+  ansible.builtin.set_fact:
+    forgejo_host_exporter: >-
+      {{ (lookup('file', playbook_dir ~ '/../../apps/forgejo-mirror-exporter/deployment.yaml')
+          | from_yaml_all | selectattr('kind', 'equalto', 'Deployment') | first)
+          .spec.template.spec.containers[0] }}
+
+- name: Mirror exporter script
+  ansible.builtin.copy:
+    src: "{{ playbook_dir }}/../../apps/forgejo-mirror-exporter/exporter.py"
+    dest: /etc/forgejo/exporter.py
+    owner: root
+    group: root
+    mode: "0644"
   notify: Restart forgejo
 
 - name: Compose file and unit
@@ -81,3 +107,63 @@
     enabled: "{{ forgejo_host_running }}"
     state: "{{ 'started' if forgejo_host_running else 'stopped' }}"
     daemon_reload: true
+
+- name: Backup pull key (asus-laptop, read-only rsync of /mnt/forgejo)
+  ansible.posix.authorized_key:
+    user: root
+    key: "{{ forgejo_host_pull_key }}"
+    key_options: 'restrict,command="/usr/bin/rrsync -ro /mnt/forgejo"'
+
+- name: Host jobs take image, script and env from their CronJob in apps/forgejo (one source)
+  ansible.builtin.set_fact:
+    forgejo_host_job_specs: >-
+      {{ forgejo_host_job_specs | default([]) + [item | combine({'container':
+          (lookup('file', playbook_dir ~ '/../../apps/forgejo/' ~ item.cronjob) | from_yaml)
+          .spec.jobTemplate.spec.template.spec.containers[0]})] }}
+  loop: "{{ forgejo_host_jobs }}"
+  loop_control:
+    label: "{{ item.name }}"
+
+- name: Host job scripts (the CronJob's `sh -c` script)
+  ansible.builtin.copy:
+    content: "{{ (item.container.command + (item.container.args | default([]))) | last }}"
+    dest: "/etc/forgejo/jobs/{{ item.name }}.sh"
+    owner: root
+    group: root
+    mode: "0644"
+  loop: "{{ forgejo_host_job_specs }}"
+  loop_control:
+    label: "{{ item.name }}"
+
+- name: Host job env (the CronJob's env, then the host's overrides)
+  ansible.builtin.copy:
+    content: "# Managed by ansible roles/forgejo-host, from apps/forgejo/{{ item.cronjob }}\n{% for k, v in ((item.container.env | default([]) | items2dict(key_name='name', value_name='value')) | combine(item.env)).items() %}{{ k }}={{ v }}\n{% endfor %}"
+    dest: "/etc/forgejo/jobs/{{ item.name }}.env"
+    owner: root
+    group: root
+    mode: "0644"
+  loop: "{{ forgejo_host_job_specs }}"
+  loop_control:
+    label: "{{ item.name }}"
+
+- name: Host job units
+  ansible.builtin.template:
+    src: "forgejo-job.{{ item.1 }}.j2"
+    dest: "/etc/systemd/system/{{ item.0.name }}.{{ item.1 }}"
+    mode: "0644"
+  loop: "{{ forgejo_host_job_specs | product(['service', 'timer']) | list }}"
+  loop_control:
+    label: "{{ item.0.name }}.{{ item.1 }}"
+  register: forgejo_host_job_units
+
+- name: Host job timers run only where Forgejo runs
+  ansible.builtin.systemd:
+    name: "{{ item.name }}.timer"
+    enabled: "{{ forgejo_host_running }}"
+    state: "{{ 'started' if forgejo_host_running else 'stopped' }}"
+    daemon_reload: true
+  loop: "{{ forgejo_host_jobs }}"
+  # A dry run has not written a new unit, so systemd cannot find it yet.
+  when: not (ansible_check_mode and forgejo_host_job_units is changed)
+  loop_control:
+    label: "{{ item.name }}"

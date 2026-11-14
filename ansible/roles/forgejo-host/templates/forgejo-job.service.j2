@@ -1,0 +1,16 @@
+# Managed by ansible roles/forgejo-host. Image, script and env come from the
+# CronJob in apps/forgejo/{{ item.0.cronjob }}, so this host and the cluster run one script.
+[Unit]
+Description={{ item.0.name }} (apps/forgejo/{{ item.0.cronjob }}, roles/forgejo-host)
+Requires=docker.service mnt-forgejo.mount
+After=docker.service mnt-forgejo.mount forgejo.service
+
+[Service]
+Type=oneshot
+# Skipped, not failed, unless Forgejo is up here: the job belongs to whichever
+# side runs Forgejo, and a stopped one has nothing to snapshot or reap.
+ExecCondition=/bin/sh -c 'test -n "$$(/usr/bin/docker compose -f /etc/forgejo/compose.yaml ps -q --status running forgejo)"'
+ExecStart=/usr/bin/docker run --rm --name {{ item.0.name }} --env-file /etc/forgejo/jobs/{{ item.0.name }}.env -v /etc/forgejo/jobs/{{ item.0.name }}.sh:/job.sh:ro{% for v in item.0.volumes %} -v {{ v }}{% endfor %} {{ item.0.container.image }} /bin/sh /job.sh
+# A timeout kills the docker client, not the container.
+ExecStopPost=-/usr/bin/docker rm -f {{ item.0.name }}
+TimeoutStartSec={{ item.0.timeout_sec }}

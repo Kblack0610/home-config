@@ -13,3 +13,25 @@ services:
     volumes:
       - {{ forgejo_host_data }}:/data
       - /etc/forgejo/app.ini:/data/gitea/conf/app.ini
+  # apps/forgejo-mirror-exporter, moved with the data: image, command and env
+  # from its deployment.yaml, the same hardening as its pod. Port 9310 is
+  # scraped through that app's Service once it points here (cutover).
+  mirror-exporter:
+    image: {{ forgejo_host_exporter.image }}
+    restart: unless-stopped
+    command: {{ forgejo_host_exporter.command | to_json }}
+    user: "1000:1000"
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
+    environment:
+{% for e in forgejo_host_exporter.env %}
+      {{ e.name }}: {{ e.value | to_json }}
+{% endfor %}
+    ports:
+      - "{{ forgejo_host_http_bind }}:9310:9310"
+    tmpfs:
+      - /tmp:size=256m
+    volumes:
+      - /etc/forgejo/exporter.py:/app/exporter.py:ro
+      - {{ forgejo_host_data }}:/data:ro

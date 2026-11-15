@@ -1,0 +1,16 @@
+# Tuning layouts the server saves (the game repo's docs/harness/tuning.md#layouts), so
+# tuning outlives the pod. local-path, so the data sits on the game-server node; moving the
+# server to another node starts it with no layouts (README, Moving it to another box).
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: playground-layouts
+  labels:
+    app: playground-server
+spec:
+  accessModes:
+    - ReadWriteOnce
+  storageClassName: local-path
+  resources:
+    requests:
+      storage: 256Mi

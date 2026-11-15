@@ -9,6 +9,7 @@ resources:
   - registry-secret.yaml
   - registry-token-secret.yaml
   - priorityclass.yaml
+  - layouts-pvc.yaml
   - deployment.yaml
   - gallery.yaml
 

@@ -58,7 +58,10 @@ nowhere (the thinkcentre power outage paged no one).
 - **Subscribe (phone/desktop):** open `https://ntfy.kblab.me/homelab-alerts` in
   the ntfy app, or `ntfy subscribe homelab-alerts` (LAN/Tailscale only).
 - **Criticals** (e.g. `NodeDown`) remind hourly until resolved; warnings every 12h.
-- **Digest, not page:** `category=security` (Trivy CVEs, one alert per image) goes to `ntfy-digest` at priority 2, at most daily, weekly reminder. Failed Jobs are `HomelabCronJobFailed` (one per CronJob, resolves on the next green run) and `HomelabJobFailed` (a Job no CronJob owns); the bundled `KubeJobFailed` is disabled because it never resolved.
+- Security CVEs go to `homelab-security` through `ntfy-digest`: priority 2, at most daily, weekly reminder. Paper-trading warnings and failed Freqtrade CronJobs go to `homelab-trading`, grouped by alert family with daily reminders. Subscribe to these topics when reviewing maintenance or the paper league.
+- `HomelabAppDown` and `KubeDeploymentReplicasMismatch` still reach `homelab-alerts` when desired capacity is unavailable. App readiness excludes deployments and StatefulSets whose desired replica count is zero.
+- Failed Jobs are `HomelabCronJobFailed` (one per CronJob, resolves on the next green run) and `HomelabJobFailed` (a Job no CronJob owns). Finance and backup failures retain default delivery. A `HomelabBackupStale` critical inhibits the duplicate `HomelabCronJobFailed` for the same namespace and CronJob; unrelated failures remain visible. Informational alerts remain in Alertmanager without ntfy delivery.
+- Verify routes with `python3 scripts/test-alertmanager-routes.py` (requires `amtool` and PyYAML), and rules with `scripts/test-prometheus-rules.sh`.
 - The receiver is plain webhook → ntfy renders the Alertmanager JSON payload.
   A formatting relay for prettier pages is a noted follow-up.
 
@@ -101,3 +104,11 @@ For ranges past 7 days switch the Metrics variable to "VictoriaMetrics (long)" (
 - [../../infrastructure.md](../../infrastructure.md)
 - [../../docs/mac-machines.md](../../docs/mac-machines.md)
 - [../../docs/gitops.md](../../docs/gitops.md)
+
+### Alert routing troubleshooting
+
+| Symptom | Check and fix |
+|---------|---------------|
+| CVEs or paper bots fill `homelab-alerts` | Check the loaded Alertmanager routes and receiver topics. Apply the committed Helm values with the pinned upgrade command; a git merge alone does not update this plain-Helm release. |
+| An intentionally stopped app reports down | Its desired replica count must be zero; the app readiness rules exclude zero desired capacity. Keep bundled replica mismatch alerts enabled for real shortfalls. |
+| A backup failure appears twice | The stale-backup critical and failed CronJob must share a nonempty namespace and owner_name for inhibition. |

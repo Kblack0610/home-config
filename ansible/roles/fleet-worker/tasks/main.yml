@@ -53,6 +53,13 @@
     update: false
     recursive: false
 
+- name: Disable submodule fetching in the public dotfiles
+  community.general.git_config:
+    repo: "{{ ansible_env.HOME }}/.dotfiles"
+    scope: local
+    name: fetch.recurseSubmodules
+    value: "false"
+
 # apply_dotfiles removes a plain ~/.bashrc and ~/.zshrc before it stows, so a
 # copy of each is kept first. Runs once: the stowed agent-queue marks it done.
 - name: Stow the dotfiles (apply_dotfiles)

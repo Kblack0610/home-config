@@ -37,7 +37,7 @@ Studies take feature times from `feed_items.ingested_at`, the server clock at in
 | Consumer | How it subscribes |
 |---|---|
 | MQTT | `mosquitto_sub -h mosquitto.mosquitto.svc.cluster.local -t 'feeds/#' -v`. mqtt2prom ignores `feeds/*`, because entity lists would mint a metric name per index, as Frigate's did. |
-| Home Assistant | Route `ha` announces `sensor.feed_ingest_<source>_latest` through MQTT discovery (retained). Its state is the newest watchlist headline and its attributes are the whole item; automations trigger on it, with no HA package edit. |
+| Home Assistant | Route `ha` announces `sensor.feed_ingest_feed_<source>_latest` (HA joins device name `feed-ingest` and entity name `Feed <source> latest`) through MQTT discovery (retained). Its state is the newest watchlist headline and its attributes are the whole item; automations trigger on it, with no HA package edit. |
 | ntfy | Route `ntfy-feeds` posts to topic `feeds` at priority 2, only for watchlist items tagged management, M&A, legal, regulatory, earnings or guidance with abs(sentiment) of at least 0.5. The `agents` pager budget is untouched. |
 | trader | Reads `feed_items` with `FEED_DATABASE_URL` from Secret `freqtrade/trader-feeds`. |
 

@@ -451,13 +451,11 @@ all:
         # 8 cores / 16 threads, SMT siblings are n and n+8. Cores 0-1 (CPUs
         # 0-1, 8-9) are k3s and the OS; k3s_cpus pins pods there with 4 CPUs of
         # allocatable, after 6-CPU backtests landed beside CI and the 15-minute
-        # load hit 18 (2026-11-10). Unity
-        # gets cores 2-4 for its one slot and the platform runners cores 5-7,
-        # each on its own, so neither is throttled by the other's weight.
-        # 93 GB usable, so CI gets most of it; a Unity job peaks around 8 GB. A
-        # slot stops at 20G: without a cap each took the 32G default, five could
-        # reach 160G against the 60G Unity budget, and one shard was killed on
-        # 11-02 after 462 s.
+        # load hit 18 (2026-11-10). The platform runners get cores 5-7 and their SMT
+        # siblings. Since 2026-11-15 the host has 32 GB (was 96 GB) and no Unity slot:
+        # one light slot capped at 6G, k3s and the OS about 12 GiB, the rest left for
+        # 4-6 Claude sessions. ci_unity_cpus stays set because ci-host-budget asserts it
+        # does not overlap ci_linux_cpus; the Unity slice holds no units.
         razer-laptop:
           ci_cpus: 2-7,10-15
           ci_memory_max: 6G
@@ -595,7 +593,7 @@ all:
             repo: https://github.com/Kblack0610/.dotfiles.git
       hosts:
         # The first worker (2026-11-07), picked for headroom: 16 threads and
-        # 96 GB. Not placed until the role reports it ready and the human has
+        # 96 GB (32 GB after 2026-11-15). Not placed until the role reports it ready and the human has
         # signed it in.
         razer-laptop:
           fleet_place: false

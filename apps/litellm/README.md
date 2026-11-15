@@ -47,7 +47,7 @@ Two teams split the $250/mo Lazer allowance by priority (human, 2026-11-10). A k
 | `lazer-core` | $200 / 1mo | `priority: must`: home services, comms triage and the version agents, knowledge-engine, lazer-eval, model-lane (moved 2026-11-13: every dispatch routing decision reads it) |
 | `lazer-pool` | $50 / 1mo | `priority: low`: cl --lazer (`claude-reserve`, last priority), opencode-paid, delivery-loop |
 
-Each key's consumer and priority live on the key itself (`metadata.consumer`, `metadata.priority`: must, low, off, reader), so the gateway is the one inventory. A key that is not a priority is blocked (`/key/block`, reversible with `/key/unblock`), as `glm-pilot` is since 2026-11-10. To see every key beside the agentctl runners that spend through it, with priority, budget, spend and fallback, open the Consumers section of the Costs tab (agent-web and the hub TUI, fed by `claude-acct gateway` every 15 min); a must consumer on a low-priority or capped budget shows there as MISMATCH. By hand, list every key, its team, cap, spend, consumer and priority:
+Each key's consumer and priority live on the key itself (`metadata.consumer`, `metadata.priority`: must, low, off, reader), so the gateway is the one inventory. A key that is not a priority is blocked (`/key/block`, reversible with `/key/unblock`). To see every key beside the agentctl runners that spend through it, with priority, budget, spend and fallback, open the Consumers section of the Costs tab (agent-web and the hub TUI, fed by `claude-acct gateway` every 15 min); a must consumer on a low-priority or capped budget shows there as MISMATCH. By hand, list every key, its team, cap, spend, consumer and priority:
 
 ```bash
 curl -s "https://llm.kblab.me/key/list?return_full_object=true&size=100" -H "Authorization: Bearer $(cat ~/.local/state/agentctl/eval-reader.key)" \
@@ -141,6 +141,8 @@ curl -sX POST https://llm.kblab.me/key/generate \
 The response contains `"key": "sk-..."` — store this where the consumer can read it. After creation, rotate the consumer's `LITELLM_API_KEY` Secret to this value (or place it in shell env for opencode).
 
 ### Inspect / retire
+
+`glm-pilot` was deleted through `/key/delete` on 2026-11-15 and `~/.local/state/agentctl/glm.key` removed. Its consumer, the glm harness, was replaced by `opencode-go` using `fleet-go.key` (dotfiles-private #791). Before deletion it was blocked, with $48.50 of its $50 cap spent and last activity at 2026-11-11T23:19:50Z; searches of active harness, account, OpenCode and systemd configuration found no remaining consumer. After deletion, `/key/list` had no `glm-pilot` alias and `/key/info` returned 404.
 
 ```bash
 # inspect

@@ -333,12 +333,15 @@ class Tagger:
     def tag(self, env: Envelope) -> dict:
         resp = http_post_json(
             self.url,
-            {"model": self.model, "temperature": 0, "max_tokens": 300,
+            {"model": self.model, "temperature": 0, "max_tokens": 1000,  # fast is a reasoning model; 300 ran out before the answer on long filings
              "messages": [{"role": "system", "content": TAG_PROMPT},
                           {"role": "user", "content": f"source: {env.source}\n{env.text[:4000]}"}]},
             {"Authorization": f"Bearer {self.api_key}"},
         )
-        return parse_tags(resp["choices"][0]["message"]["content"])
+        content = resp["choices"][0]["message"].get("content")
+        if not content:
+            raise ValueError(f"empty reply (finish_reason {resp['choices'][0].get('finish_reason')})")
+        return parse_tags(content)
 
 
 

@@ -1,0 +1,3 @@
+# Managed by Ansible (roles/dgpu-off). Let the kernel runtime-suspend every
+# function of the discrete GPU, so the unbound card drops to D3cold.
+ACTION=="add|bind", SUBSYSTEM=="pci", ATTR{vendor}=="{{ dgpu_off_pci_vendor }}", ATTR{power/control}="auto"

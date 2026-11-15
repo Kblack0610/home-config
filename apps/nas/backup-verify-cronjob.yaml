@@ -31,7 +31,7 @@ spec:
                   REPORT="=== Backup Verification Report $(date -Iseconds) ==="
 
                   # Check each app directory for recent backups (< 48h old)
-                  for APP in home-assistant actual-budget music-assistant snapcast karakeep postgres vaultwarden; do
+                  for APP in home-assistant actual-budget music-assistant snapcast karakeep postgres vaultwarden binks; do
                     APP_DIR="$BACKUP_ROOT/$APP"
                     if [ ! -d "$APP_DIR" ]; then
                       REPORT="$REPORT\nFAIL: $APP — backup directory missing"
@@ -63,8 +63,8 @@ spec:
                   done
 
                   # Forgejo keeps its backups off the NAS tree, so it gets its own checks.
-                  # Off-box copies were truncated for weeks because nothing compared them
-                  # to the primary.
+                  # They read the 8TB copy: forgejo-backup-offbox's until the cutover to
+                  # forge-hel1, then forgejo-backup-pull's, which builds the fulls there.
                   FJ_LATEST=$(ls -t /forgejo-backups/forgejo-full-*.tar.gz 2>/dev/null | head -1)
                   if [ -z "$FJ_LATEST" ]; then
                     REPORT="$REPORT\nFAIL: forgejo - no full backup found"
@@ -81,31 +81,12 @@ spec:
                       REPORT="$REPORT\nFAIL: forgejo - latest full is corrupt: $(basename "$FJ_LATEST")"
                       ERRORS=$((ERRORS + 1))
                     fi
-                  fi
-
-                  FJ_DB=$(ls -t /forgejo-backups/forgejo-db-*.db.gz 2>/dev/null | head -1)
-                  if [ -z "$FJ_DB" ] || ! gzip -t "$FJ_DB" 2>/dev/null; then
-                    REPORT="$REPORT\nFAIL: forgejo - latest db backup missing or corrupt: ${FJ_DB:-none}"
-                    ERRORS=$((ERRORS + 1))
-                  fi
-
-                  FJ_OFF=$(ls -t /forgejo-offbox/forgejo-full-*.tar.gz 2>/dev/null | head -1)
-                  if [ -z "$FJ_OFF" ]; then
-                    REPORT="$REPORT\nFAIL: forgejo-offbox - no off-box copy found"
-                    ERRORS=$((ERRORS + 1))
-                  else
-                    FJ_OFF_NAME=$(basename "$FJ_OFF")
-                    FJ_OFF_AGE=$(( $(date +%s) - $(stat -c %Y "$FJ_OFF") ))
-                    FJ_OFF_SIZE=$(stat -c %s "$FJ_OFF")
-                    FJ_SRC_SIZE=$(stat -c %s "/forgejo-backups/$FJ_OFF_NAME" 2>/dev/null || echo missing)
-                    if [ "$FJ_OFF_AGE" -gt 172800 ]; then
-                      REPORT="$REPORT\nFAIL: forgejo-offbox - latest copy is $(( FJ_OFF_AGE / 3600 ))h old (> 48h): $FJ_OFF_NAME"
+                    # The restore drill needs the full's own db, not just any db.
+                    FJ_TS=${FJ_LATEST##*/forgejo-full-}; FJ_TS=${FJ_TS%.tar.gz}
+                    FJ_DB=/forgejo-backups/forgejo-db-$FJ_TS.db.gz
+                    if ! gzip -t "$FJ_DB" 2>/dev/null; then
+                      REPORT="$REPORT\nFAIL: forgejo - db for $(basename "$FJ_LATEST") missing or corrupt: $(basename "$FJ_DB")"
                       ERRORS=$((ERRORS + 1))
-                    elif [ "$FJ_OFF_SIZE" != "$FJ_SRC_SIZE" ]; then
-                      REPORT="$REPORT\nFAIL: forgejo-offbox - $FJ_OFF_NAME is $FJ_OFF_SIZE bytes, primary is $FJ_SRC_SIZE"
-                      ERRORS=$((ERRORS + 1))
-                    else
-                      REPORT="$REPORT\nOK: forgejo-offbox - $FJ_OFF_NAME matches primary ($FJ_OFF_SIZE bytes)"
                     fi
                   fi
 
@@ -162,9 +143,6 @@ spec:
                 - name: forgejo-backups
                   mountPath: /forgejo-backups
                   readOnly: true
-                - name: forgejo-offbox
-                  mountPath: /forgejo-offbox
-                  readOnly: true
                 - name: browse
                   mountPath: /browse
                   readOnly: true
@@ -180,12 +158,6 @@ spec:
                 path: /mnt/nas/private
                 type: DirectoryOrCreate
             - name: forgejo-backups
-              hostPath:
-                path: /mnt/backups/forgejo
-                type: Directory
-            # The second copy of the Forgejo fulls, on the 8TB drive since
-            # 2026-11-11 (forgejo-backup-offbox).
-            - name: forgejo-offbox
               hostPath:
                 path: /mnt/backup-8t/forgejo-backups
                 type: Directory

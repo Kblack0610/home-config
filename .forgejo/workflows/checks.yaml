@@ -44,12 +44,26 @@ jobs:
           [ "$rc" -ne 0 ] || { echo "the check passed a planted bad pair"; exit 1; }
           grep -q "cores are not inside build slot" planted-pairs.out || { echo "the check failed, but not on the planted pair"; exit 1; }
           rm planted-pairs.out
+      - name: Negative control - the roster check fails on a service host planted in ci_hosts
+        run: |
+          python3 -c 's = open("ansible/inventory.yml").read(); open("planted-inv.yml", "w").write(s.replace("    ci_hosts:\n      hosts:\n", "    ci_hosts:\n      hosts:\n        hp-victus:\n", 1))'
+          rc=0; ROSTER_INVENTORY=planted-inv.yml python3 scripts/check-runner-roster.py > planted-inv.out 2>&1 || rc=$?
+          rm planted-inv.yml; cat planted-inv.out
+          [ "$rc" -ne 0 ] || { echo "the check passed a service host in ci_hosts"; exit 1; }
+          grep -q "hp-victus is in no_ci_hosts and in ci_hosts" planted-inv.out || { echo "the check failed, but not on the planted host"; exit 1; }
+          rm planted-inv.out
       - name: github-runner-exporter offline tests
         run: python3 apps/github-runner-exporter/test_exporter.py
       - name: forgejo-mirror-exporter offline tests
         run: python3 apps/forgejo-mirror-exporter/test_exporter.py
       - name: ci-runner-governor offline tests
         run: python3 apps/ci-runner-governor/test_governor.py
+      - name: github-actions-runner-linux label plan tests
+        run: python3 ansible/roles/github-actions-runner-linux/tests/test_runner_labels.py
+      - name: github-actions-runner-linux drain wait tests
+        run: python3 ansible/roles/github-actions-runner-linux/tests/test_wait_worker_exit.py
+      - name: feed-ingest offline tests
+        run: python3 apps/feed-ingest/test_ingest.py
       - name: litellm tool_compat offline tests
         run: python3 apps/litellm/test_tool_compat.py
       - name: litellm go routes forward the session header
@@ -58,6 +72,8 @@ jobs:
         run: python3 scripts/test_eeg_review.py
       - name: forgejo-secret-key-rotate offline tests
         run: python3 scripts/test_forgejo_secret_key_rotate.py
+      - name: forgejo-issue-index-raise offline tests
+        run: python3 scripts/test_forgejo_issue_index_raise.py
 
       - name: Home Assistant packages are all registered with the ConfigMap generator
         run: python3 scripts/check-ha-packages.py
@@ -121,6 +137,8 @@ jobs:
         run: sh ansible/roles/unity-ci-host-mac/files/test-ci-tree-prune.sh
       - name: node-disk-metrics offline test
         run: sh ansible/roles/node-disk-metrics/files/test-node-disk-metrics.sh
+      - name: node-inventory-metrics offline test
+        run: sh ansible/roles/node-inventory-metrics/files/test-node-inventory-metrics.sh
       - name: forgejo-restore-drill runner offline test
         run: sh ansible/roles/forgejo-restore-drill/files/test-forgejo-restore-drill-run.sh
       - name: ci-runner-cpu offline test

@@ -79,7 +79,8 @@ kind: CronJob
 metadata:
   name: trader-markets-recorder-polymarket
 spec:
-  # 234k markets in 2,343 keyset pages, about 10 min a sweep (measured 575 s on 2026-11-06)
+  # Gamma keyset, only markets with volume >= open_min_volume (trader lab/markets.toml, 1000): 19.7k of 200k active on 2026-11-13.
+  # The unfiltered walk took 575 s on 2026-11-06 and 815-886 s by 2026-11-13, too near the 900 s deadline.
   schedule: "*/15 * * * *"
   timeZone: "Etc/UTC"
   concurrencyPolicy: Forbid

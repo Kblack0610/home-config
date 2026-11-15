@@ -1,0 +1,17 @@
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: feed-ingest
+  namespace: feed-ingest
+  labels:
+    app.kubernetes.io/name: feed-ingest
+spec:
+  endpoints:
+    - port: metrics
+      interval: 60s
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: feed-ingest
+  namespaceSelector:
+    matchNames:
+      - feed-ingest

@@ -7,6 +7,9 @@ metadata:
     app.kubernetes.io/name: forgejo
 spec:
   schedule: "0 3 * * *"  # Daily at 3 AM
+  # Suspended at the cutover to forge-hel1 (2026-11-14): it would read the frozen
+  # asus copy. The VM's timers and forgejo-backup-pull do this job now; removed at cleanup.
+  suspend: true
   concurrencyPolicy: Forbid
   successfulJobsHistoryLimit: 3
   failedJobsHistoryLimit: 1
@@ -16,10 +19,9 @@ spec:
       activeDeadlineSeconds: 14400  # 4h; a normal run is under 1h
       template:
         spec:
-          # asus-laptop, not Forgejo's node: since 2026-11-11 Forgejo lives on
-          # hp-victus, and this job reads its data over NFS (read-only, served by
-          # hp-victus, ansible role nfs-backup-target) and writes to asus's
-          # second disk, so the backup is on a different machine from the data.
+          # asus-laptop: Forgejo runs there since hp-victus hung on 2026-11-13,
+          # so this job reads its data locally (volumes below) and writes to
+          # /mnt/backups/forgejo; the 8TB off-box copy is the second disk.
           nodeSelector:
             kubernetes.io/hostname: asus-laptop
           containers:
@@ -121,17 +123,17 @@ spec:
           # failed pod, taking its logs with it (see nas 3d-prints-backup).
           restartPolicy: Never
           volumes:
-            # IP not DNS: cluster DNS does not serve OpenWRT LAN names.
+            # Forgejo runs on asus-laptop since hp-victus hung on 2026-11-13, so
+            # the job reads its data locally. The 8TB off-box copy stays the
+            # second disk.
             - name: data
-              nfs:
-                server: 192.168.1.243
-                path: /srv/forgejo/data
-                readOnly: true
+              hostPath:
+                path: /mnt/backups/forgejo-live/data
+                type: Directory
             - name: snapshots
-              nfs:
-                server: 192.168.1.243
-                path: /srv/forgejo/snapshots
-                readOnly: true
+              hostPath:
+                path: /mnt/backups/forgejo-live/snapshots
+                type: DirectoryOrCreate
             - name: backup
               hostPath:
                 # asus-laptop 2nd disk (nvme1n1p2, @backups subvol mounted at
@@ -151,6 +153,9 @@ metadata:
     app.kubernetes.io/name: forgejo
 spec:
   schedule: "30 4 * * *"  # 90 min after the local backup (0 3 * * *), which takes under 1h
+  # Suspended at the cutover to forge-hel1 (2026-11-14): it would read the frozen
+  # asus copy. The VM's timers and forgejo-backup-pull do this job now; removed at cleanup.
+  suspend: true
   concurrencyPolicy: Forbid
   successfulJobsHistoryLimit: 3
   failedJobsHistoryLimit: 2

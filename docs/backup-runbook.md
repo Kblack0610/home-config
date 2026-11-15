@@ -24,15 +24,15 @@ Apps on a failed disk go down, and a failed root disk takes this node's pods wit
 
 | Failed disk | What is gone | Restore from | Lost for good |
 |---|---|---|---|
-| Root (`...7E1C`) | OS, every local-path PV on this node, `/var/backups/*` local copies | NAS `/mnt/nas/private/backups/home-k3s/` (app dumps), `/mnt/backups/forgejo` and the 8TB `forgejo-backups` (Forgejo backups; live Forgejo is on hp-victus since 2026-11-11), 8TB (Langfuse, VictoriaMetrics, Forgejo packages) | Changes since the last backup. No backup by design: Loki logs, Grafana UI edits, Alertmanager silences, Crowdsec state, Mosquitto retained messages, Trivy cache, the `placemyparents-preview` database. MinIO: Langfuse raw event bodies and the `terraform-state` bucket (rebuild `public-sites-tunnel` state with `terraform import`) |
-| NAS (`...7E07`) | Immich originals, phones, harvest, the Emotiv archive, 3D prints, the public share, all app backups on the NAS, Immich's live Postgres and the media apps' config, Forgejo local fulls | 8TB: every mirror's newest snapshot, `@immich-db` for the Immich database. Forgejo fulls come back at the next 3 AM run, and hp-victus keeps the newest 2 meanwhile | Changes since the last mirror (a day for Immich and the app backups, up to a week for the rest), the snapper history, and the Zomboid backup history on the public share (the live world is on the root disk, and the job writes a new backup nightly) |
+| Root (`...7E1C`) | OS, every local-path PV on this node, `/var/backups/*` local copies | NAS `/mnt/nas/private/backups/home-k3s/` (app dumps), `/mnt/backups/forgejo` and the 8TB `forgejo-backups` (Forgejo backups; live Forgejo runs from asus' `/mnt/backups/forgejo-live` since 2026-11-13, and moves to forge-hel1 at its cutover), 8TB (Langfuse, VictoriaMetrics, Forgejo packages) | Changes since the last backup. No backup by design: Loki logs, Grafana UI edits, Alertmanager silences, Crowdsec state, Mosquitto retained messages, Trivy cache, the `placemyparents-preview` database. MinIO: Langfuse raw event bodies and the `terraform-state` bucket (rebuild `public-sites-tunnel` state with `terraform import`) |
+| NAS (`...7E07`) | Immich originals, phones, harvest, the Emotiv archive, 3D prints, the public share, all app backups on the NAS, Immich's live Postgres and the media apps' config, Forgejo local fulls | 8TB: every mirror's newest snapshot, `@immich-db` for the Immich database. Forgejo: the 8TB `forgejo-backups` keeps the newest 3 fulls with their dbs | Changes since the last mirror (a day for Immich and the app backups, up to a week for the rest), the snapper history, and the Zomboid backup history on the public share (the live world is on the root disk, and the job writes a new backup nightly) |
 | 8TB (`backup8t`) | Every mirror and all snapshot history. No live data | Nothing to restore: the sources are all still live. Replace the drive and the jobs refill it | Point-in-time history. Until the new drive has filled, a second failure loses data, so replace it first |
 
-Two disks at once, or the whole machine: restore from the offsite copy in B2 (`Offsite (B2)`), which holds the previous night's 8TB snapshots. Live Forgejo on hp-victus and the GitHub mirror of this repo also survive.
+Two disks at once, or the whole machine: restore from the offsite copy in B2 (`Offsite (B2)`), which holds the previous night's 8TB snapshots. The GitHub mirror of this repo also survives; live Forgejo does not while it runs from asus (`apps/forgejo/pvc.yaml`).
 
 ### Replacing a disk
 
-**Root.** Install the OS, then run `ansible/playbooks/site.yml --limit asus-laptop` from your workstation and rejoin the node. Forgejo itself lives on hp-victus, so an asus loss leaves it running; only its backups are gone until the next nightly. To restore Forgejo after losing hp-victus: a `forgejo-full-*.tar.gz` is a tar of `/data`, so extract the newest one into `/srv/forgejo/data` on the node `apps/forgejo/pvc.yaml` pins, swap in the newest `forgejo-db-*.db.gz` as `gitea/gitea.db`, then copy `/mnt/backup-8t/forgejo-packages` to `gitea/data/packages`, which the fulls exclude. `sudo scripts/forgejo-restore-drill.sh` on asus rehearses the data half of this in a network-less container: the newest full with its snapshot must boot the deployed version, and every repository the db names must pass `git fsck`. It does not rehearse the packages copy, the hp-victus path and ownership (`/srv/forgejo/data`, uid 1000), or `forgejo-secrets`, which Flux applies from SOPS. A full taken before the 2026-11-12 SECRET_KEY rotation needs the old key (`apps/forgejo/README.md`, "Rotating SECRET_KEY"). Then follow each app's restore section in this file.
+**Root.** Install the OS, then run `ansible/playbooks/site.yml --limit asus-laptop` from your workstation and rejoin the node. While Forgejo runs from asus (`apps/forgejo/pvc.yaml`), an asus loss takes it down with its backups. To restore Forgejo: a `forgejo-full-*.tar.gz` is a tar of `/data`, so extract the newest one into the PV path on the node `apps/forgejo/pvc.yaml` pins, swap in the newest `forgejo-db-*.db.gz` as `gitea/gitea.db`, then copy `/mnt/backup-8t/forgejo-packages` to `gitea/data/packages`, which the fulls exclude. `sudo scripts/forgejo-restore-drill.sh` on asus rehearses the data half of this in a network-less container: the newest full with its snapshot must boot the deployed version, and every repository the db names must pass `git fsck`. It does not rehearse the packages copy, the PV path and ownership (uid 1000), or `forgejo-secrets`, which Flux applies from SOPS. A full taken before the 2026-11-12 SECRET_KEY rotation needs the old key (`apps/forgejo/README.md`, "Rotating SECRET_KEY"). Then follow each app's restore section in this file. After the cutover to forge-hel1 an asus loss takes only Forgejo's backups, and Forgejo keeps running. A restore of the VM extracts the same full into `/mnt/forgejo/data` there (owner 1000), with the db swapped in the same way, and copies the packages back to `/mnt/forgejo/data/gitea/data/packages`.
 
 **NAS.** No Ansible role builds this disk. Partition it, `mkfs.btrfs`, create the subvolumes `@public`, `@private`, `@backups`, `@media-library`, `@downloads` and `@app-config`, and put the new UUID in the `/etc/fstab` lines that hold the old one. Then copy back from the newest snapshot, with the matching apps stopped:
 
@@ -143,6 +143,7 @@ Note: `nofail` means an unplugged drive never blocks boot. The `immich-originals
 | Check recent backup jobs | `kubectl --context home-k3s get jobs -A --sort-by=.status.startTime | grep backup | tail -5` |
 | Restore Home Assistant | See `Restore Home Assistant` |
 | Restore LiteLLM | See `Restore LiteLLM` |
+| Restore binks.chat (accounts, chats) | See `Restore binks.chat` |
 | Restore the game registry | See `Restore the game registry` |
 | Restore Music Assistant | `apps/music-assistant/README.md` -> Backup and rebuild |
 | Restore Snapcast | `apps/snapcast/README.md` -> Backup and restore |
@@ -165,10 +166,11 @@ K3s app backups run on schedule via CronJobs. Each backup writes a local archive
 | `snapcast-backup` | Daily 2:45 AM | `snapcast` | hp-victus `/var/backups/snapcast` + NAS `home-k3s/snapcast/` |
 | `game-saves-backup` | Daily 2:50 AM | `game-registry` | NAS `home-k3s/game-saves/` (registry Postgres dump + `game-saves` bucket mirror) |
 | `actual-budget-backup` | Daily 3 AM | `actual-budget` | `/var/backups/actual-budget` + NAS `home-k3s/actual-budget/` |
-| `forgejo-db-snapshot` | Hourly :07 | `forgejo` | hp-victus `/srv/forgejo/snapshots` (48 kept; the nightly ships the newest) |
-| `forgejo-backup` | Daily 3 AM | `forgejo` | asus-laptop `/mnt/backups/forgejo` (2nd disk; reads hp-victus over read-only NFS; excludes `gitea/data/packages`; second copy is the separate job below) |
+| `forgejo-db-snapshot` | Hourly :07 | `forgejo` | asus-laptop `/mnt/backups/forgejo-live/snapshots` (48 kept; the nightly ships the newest) |
+| `forgejo-backup` | Daily 3 AM | `forgejo` | asus-laptop `/mnt/backups/forgejo` (reads the live data on the same host; excludes `gitea/data/packages`; second copy is the separate job below) |
 | `immich-backup` | Daily 3 AM | `immich` | `/var/backups/immich` + NAS `home-k3s/immich/` (DB only) |
 | `postgres-backup` | Daily 2:20 AM | `databases` | NAS `home-k3s/postgres/` (`pg_dumpall` of every database and role) |
+| `binks-postgres-backup` | Daily 2:25 AM | `binks-api` | NAS `home-k3s/binks/` (`pg_dump` of the `binks` database in the standalone `binks-postgres`) |
 | `karakeep-backup` | Daily 3 AM | `karakeep` | `/var/backups/karakeep` + NAS `home-k3s/karakeep/` |
 | `vaultwarden-backup` | Daily 3 AM | `vaultwarden` | `/var/backups/vaultwarden` + NAS `home-k3s/vaultwarden/` |
 | `immich-originals-backup` | Daily 3:30 AM | `immich` | 8TB `/mnt/backup-8t/immich` + snapshots (originals + DB) |
@@ -176,6 +178,7 @@ K3s app backups run on schedule via CronJobs. Each backup writes a local archive
 | `phones-backup` | Sunday 4:15 AM | `nas` | 8TB `/mnt/backup-8t/phones` + snapshots (mirror of `/mnt/nas/private/phones`) |
 | `sops-key-backup` | Sunday 4 AM | `nas` | NAS `home-k3s/sops/` |
 | `forgejo-backup-offbox` | Daily 4:30 AM | `forgejo` | asus-laptop 8TB `/mnt/backup-8t/forgejo-backups` (newest 3 fulls) |
+| `forgejo-backup-pull` | Daily 4:30 AM, suspended until the forge-hel1 cutover | `forgejo` | asus-laptop 8TB `/mnt/backup-8t/forgejo-backups`: pulls forge-hel1's hourly snapshots and data tree over the tailnet, builds the full there (newest 3), and copies the package registry add-only into `forgejo-packages` with a weekly snapshot. Replaces `forgejo-backup`, `forgejo-backup-offbox` and `forgejo-packages-backup` at the cutover; on the VM, `forgejo-db-snapshot.timer` and `forgejo-lock-reaper.timer` replace their CronJobs (`apps/forgejo/README.md`, "On forge-hel1") |
 | `forgejo-packages-backup` | Sunday 4:45 AM | `nas` | 8TB `/mnt/backup-8t/forgejo-packages` + snapshots (the Forgejo package registry) |
 | `nas-backups-mirror` | Daily 5:30 AM | `nas` | 8TB `/mnt/backup-8t/nas-backups` + snapshots (mirror of `/mnt/nas/private/backups`) |
 | `app-config-backup` | Sunday 5:45 AM | `nas` | 8TB `/mnt/backup-8t/app-config` + snapshots (mirror of `/mnt/media/app-config`) |
@@ -197,6 +200,7 @@ Every copy in this table except `offsite-backup` lives in this house. `offsite-b
 | `actual-budget-backup` | **Job fails, `HomelabCronJobFailed` pages.** The finance history is the data least able to wait a day for the next 8TB and offsite runs. |
 | `karakeep-backup` | **Job fails.** Its PVCs and local backups share a disk, so the NAS copy is the only protection. |
 | `postgres-backup` | **Job fails.** The NAS is its only destination. |
+| `binks-postgres-backup` | **Job fails.** The NAS is its only destination, and a dump with no `messages` data fails too. |
 | `vaultwarden-backup` | **Job fails.** The local copy sits on the one node holding the PVC, and losing the vault loses every credential. |
 | everything else | Job exits 0, warning in the log only (best-effort). |
 
@@ -364,6 +368,27 @@ kubectl --context home-k3s scale deployment home-assistant -n home-assistant --r
 ## Restore LiteLLM
 
 LiteLLM keeps everything in the `litellm` database, so use `Restore shared Postgres`. The 104-byte archives in `/mnt/nas/private/backups/home-k3s/litellm/` are from the retired `litellm-backup` job, which tarred an empty PVC: they hold nothing.
+
+## Restore binks.chat
+
+Every binks.chat account, chat, message, subscription and connector is in the `binks` database of `binks-postgres` (namespace `binks-api`), a StatefulSet of its own that `postgres-backup` does not see. `binks-postgres-backup` dumps it with `pg_dump --no-owner --no-acl`, so the dump loads into any empty database as any role.
+
+```bash
+# 1. Pick a dump
+ssh -p 2222 192.168.1.152 sudo ls -lt /mnt/nas/private/backups/home-k3s/binks/ | head -5
+
+# 2. Stop the API so nothing writes, and recreate the database empty
+kubectl --context home-k3s -n binks-api scale deploy/binks-api --replicas=0
+kubectl --context home-k3s -n binks-api exec binks-postgres-0 -- sh -c \
+  'psql -U "$POSTGRES_USER" -d postgres -c "DROP DATABASE binks WITH (FORCE)" -c "CREATE DATABASE binks"'
+
+# 3. Load it, then start the API and check /ready
+ssh -p 2222 192.168.1.152 sudo cat /mnt/nas/private/backups/home-k3s/binks/binks-YYYYmmdd-HHMMSS.sql.gz \
+  | gunzip | kubectl --context home-k3s -n binks-api exec -i binks-postgres-0 -- sh -c 'psql -U "$POSTGRES_USER" -d binks -v ON_ERROR_STOP=1 -q'
+kubectl --context home-k3s -n binks-api scale deploy/binks-api --replicas=1
+```
+
+To test a dump without touching the live database, load it into a throwaway `postgres:15-alpine` container and compare `SELECT COUNT(*)` for `users`, `conversations` and `messages` with the live one. Done on 2026-11-14 with `binks-20261114-173755.sql.gz`: 8 users, 40 conversations, 65 messages, 3 subscriptions, all equal.
 
 ## Restore shared Postgres
 

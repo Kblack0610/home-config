@@ -1,0 +1,72 @@
+---
+# What runs on the host: the busiest processes by comm, the running services and the Docker
+# containers, for the hub machine page. The systemd collector covers only the few units the
+# health checks name; this is the inventory.
+- name: Create the textfile directory
+  # No owner: on the workstation node-exporter-linux owns it, for the user who writes there.
+  ansible.builtin.file:
+    path: "{{ node_inventory_metrics_dir }}"
+    state: directory
+    mode: "0755"
+
+- name: Install the metrics script
+  ansible.builtin.copy:
+    src: node-inventory-metrics.sh
+    dest: /usr/local/bin/node-inventory-metrics
+    owner: root
+    group: root
+    mode: "0755"
+
+- name: Install the service and timer
+  ansible.builtin.copy:
+    dest: "/etc/systemd/system/{{ item.name }}"
+    owner: root
+    group: root
+    mode: "0644"
+    content: "{{ item.content }}"
+  loop:
+    - name: node-inventory-metrics.service
+      content: |
+        # Managed by ansible (roles/node-inventory-metrics). Do not edit by hand.
+        [Unit]
+        Description=Export top processes, running services and Docker containers for node-exporter
+
+        [Service]
+        Type=oneshot
+        Nice=19
+        IOSchedulingClass=idle
+        TimeoutStartSec=50s
+        ExecStart=/usr/local/bin/node-inventory-metrics {{ node_inventory_metrics_dir }}
+    - name: node-inventory-metrics.timer
+      content: |
+        # Managed by ansible (roles/node-inventory-metrics). Do not edit by hand.
+        # A timer because what runs on a host has no event to wait on.
+        [Unit]
+        Description=Export top processes, running services and Docker containers every minute
+
+        [Timer]
+        OnBootSec=1min
+        OnUnitActiveSec=1min
+        AccuracySec=5s
+
+        [Install]
+        WantedBy=timers.target
+  loop_control:
+    label: "{{ item.name }}"
+  notify: Reload systemd for node-inventory-metrics
+
+- name: Apply unit changes before starting the timer
+  ansible.builtin.meta: flush_handlers
+
+- name: Enable the timer
+  ansible.builtin.systemd:
+    name: node-inventory-metrics.timer
+    enabled: true
+    state: started
+  ignore_errors: "{{ ansible_check_mode }}"
+
+- name: Write the first reading now
+  ansible.builtin.systemd:
+    name: node-inventory-metrics.service
+    state: started
+  when: not ansible_check_mode

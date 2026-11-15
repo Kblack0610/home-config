@@ -8,13 +8,15 @@ resources:
   - registry-secret.yaml
   - secrets.yaml
   - postgres-statefulset.yaml
+  - backup-cronjob.yaml
   - deployment.yaml
+  - pdb.yaml
   - binks-chat-deployment.yaml
   - ingress.yaml
   - servicemonitor.yaml
 
 images:
   - name: git.kblab.me/kblack0610/binks-api
-    newTag: v1.11.0
+    newTag: v1.12.0
   - name: git.kblab.me/kblack0610/binks-chat
     newTag: v1.10.0

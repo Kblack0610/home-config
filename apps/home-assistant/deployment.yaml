@@ -565,6 +565,10 @@ spec:
               rm -rf /config/www/wall-icons
               mkdir -p /config/www/wall-icons
               cp /managed-config/www_wall_icons.js /config/www/wall-icons/wall-icons.js
+              # custom:announce-card, served at /local/announce-card/. The dir holds only git-managed files.
+              rm -rf /config/www/announce-card
+              mkdir -p /config/www/announce-card
+              cp /managed-config/www_announce_card.js /config/www/announce-card/announce-card.js
           volumeMounts:
             - name: config
               mountPath: /config

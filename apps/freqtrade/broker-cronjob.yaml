@@ -1,5 +1,5 @@
-# Broker accounts over their official APIs (strategy repo lab/broker.py, docs/platforms.md): Alpaca paper now;
-# SnapTrade (Fidelity, read connection) and Robinhood Crypto when their keys are added to trader-brokers. Every key
+# Broker accounts over their official APIs (strategy repo lab/broker.py, docs/platforms.md): Alpaca paper, and read
+# only SnapTrade (Fidelity), Robinhood Crypto, Kraken, Polymarket US and Tastytrade, each once its keys are in trader-brokers. Every key
 # in that Secret reaches the pod by envFrom, so adding a source is a Secret edit only; a source with no keys is skipped.
 # The real-account clients send only GET; the only client that can order is Alpaca paper, which refuses any host but
 # paper-api.alpaca.markets. Same image, database, init migration and node rule as the markets recorders.

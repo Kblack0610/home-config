@@ -66,6 +66,8 @@ frontend:
     - /local/snapcast-tablet/snapcast-tablet.js?v=4
     # The wall: icon set, for what MDI lacks. Bump ?v= on change, as above.
     - /local/wall-icons/wall-icons.js?v=1
+    # custom:announce-card (room chips, message, recording). Bump ?v= on change, as above.
+    - /local/announce-card/announce-card.js?v=1
 
 automation: !include automations.yaml
 script: !include scripts.yaml

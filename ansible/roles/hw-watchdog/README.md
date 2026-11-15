@@ -13,17 +13,22 @@ Evidence gathered afterwards:
 - The 2026-08-09 boot logged 145 `Undervoltage detected!` events, so the likely root cause is the power supply. This role does not fix that; it limits the damage.
 - `/dev/watchdog0` (bcm2835-wdt) was present the whole time, but systemd ships `RuntimeWatchdogSec=0`, so nothing ever armed it.
 
-2026-10-20 the living-room audio box (`audio-living`, Giada DN24, a Pi CM4) hung after a short power cut: power LED on, but no DHCP request and no ARP for 16 hours, until it was unplugged and replugged, after which it booted normally. It also never came back from a software `reboot` (2026-10-15). Both audio Pis are now in the `watchdog_pis` inventory group with pi3. `RebootWatchdogSec=2min` is the part aimed at the reboot hang. If the power-cut hang happens before Linux starts, this role cannot help; `StandaloneHostRebooted` and the netconsole log (roles/crash-evidence) tell the two cases apart next time.
+2026-10-20 the living-room audio box (`audio-living`, Giada DN24, a Pi CM4) hung after a short power cut: power LED on, but no DHCP request and no ARP for 16 hours, until it was unplugged and replugged, after which it booted normally. It also never came back from a software `reboot` (2026-10-15). Both audio Pis are now in the `watchdog_hosts` inventory group with pi3. `RebootWatchdogSec=2min` is the part aimed at the reboot hang. If the power-cut hang happens before Linux starts, this role cannot help; `StandaloneHostRebooted` and the netconsole log (roles/crash-evidence) tell the two cases apart next time.
+
+2026-11-12 and 2026-11-13 hp-victus, an x86 k3s node that carries Forgejo, hung twice after NVIDIA GSP firmware faults and an NVMe dropping off the bus. Each time a human had to power-cycle it. The x86 k3s nodes (hp-victus, razer-laptop, asus-laptop) are now in the `watchdog_x86` child group: a 30s runtime timeout, and `kernel.softlockup_panic=1` so a CPU stuck in the kernel panics, then reboots through `kernel.panic=10`. `hung_task_panic` stays off, because a slow NFS mount would reboot a healthy node.
 
 ## How it works
 
 The watchdog is a countdown timer inside the SoC, separate from the CPU cores. With `RuntimeWatchdogSec=15s`, systemd (PID 1) resets it every 7.5s. If the kernel freezes, PID 1 stops running, the countdown reaches zero and the timer pulls the chip's reset line. No software has to be alive for that to happen.
+
+On x86 the timer is the chipset TCO watchdog: `iTCO_wdt` on Intel (hp-victus), `sp5100_tco` on AMD. razer-laptop autoloads `sp5100_tco`; asus-laptop does not, so its inventory entry sets `hw_watchdog_module: sp5100_tco` and the role writes `/etc/modules-load.d/hw-watchdog.conf` and loads it.
 
 `kernel.panic=10` covers the other case: a kernel that panics but keeps the timer fed. The default of 0 means a panicked kernel sits there forever.
 
 ## What it does not cover
 
 - **AdGuard hung while the OS is fine.** PID 1 keeps petting the watchdog, so nothing reboots. The compose healthcheck marks the container `unhealthy`, but Docker's restart policy only acts on exit.
+- **A GPU firmware hang that leaves the scheduler running.** hp-victus still answered ping during its 11-13 hang, so PID 1 may keep feeding the timer. The Loki rule `HostGpuFirmwareFault` pages for that case instead.
 - **A brownout that wedges the SoC itself.** The timer lives on the same chip. Usually it still fires, but not always, which is why the power supply is the real fix.
 
 ## Run it
@@ -31,8 +36,8 @@ The watchdog is a countdown timer inside the SoC, separate from the CPU cores. W
 ```bash
 cd ansible   # ansible.cfg uses relative paths; see docs/ansible.md
 
-ansible-playbook playbooks/site.yml --limit watchdog_pis --tags watchdog --check --diff
-ansible-playbook playbooks/site.yml --limit watchdog_pis --tags watchdog
+ansible-playbook playbooks/site.yml --limit watchdog_hosts --tags watchdog --check --diff
+ansible-playbook playbooks/site.yml --limit watchdog_hosts --tags watchdog
 ```
 
 Applying it re-executes systemd in place (`daemon-reexec`). No services restart, so house DNS and the music keep playing.
@@ -42,6 +47,9 @@ Applying it re-executes systemd in place (`daemon-reexec`). No services restart,
 ```bash
 ssh kblack0610@192.168.1.193 'systemctl show -p RuntimeWatchdogUSec -p RebootWatchdogUSec; cat /proc/sys/kernel/panic; journalctl -b | grep -i "hardware watchdog"'
 # RuntimeWatchdogUSec=15s, RebootWatchdogUSec=2min, 10
+
+ssh kblack0610@192.168.1.243 'systemctl show -p RuntimeWatchdogUSec; cat /proc/sys/kernel/panic /proc/sys/kernel/softlockup_panic'
+# x86 nodes: RuntimeWatchdogUSec=30s, 10, 1
 ```
 
 This kernel is built without `CONFIG_WATCHDOG_SYSFS`, so `/sys/class/watchdog/watchdog0/` has no `state` or `timeout` files. Read the state from systemd, as above.

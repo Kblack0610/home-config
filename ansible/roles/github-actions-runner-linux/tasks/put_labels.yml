@@ -1,0 +1,29 @@
+---
+# PUT replaces every custom label of runner _gh_runner_row.id with _gh_runner_put_labels;
+# an empty list leaves only the read-only ones. The github-actions-runner-mac role imports it too.
+- name: Set the runner's labels with the PAT (token_source=pat)
+  ansible.builtin.uri:
+    url: "https://api.github.com/{{ gh_runner_api_path }}/actions/runners/{{ _gh_runner_row.id }}/labels"
+    method: PUT
+    headers:
+      Accept: application/vnd.github+json
+      Authorization: "Bearer {{ _effective_gh_runner_pat }}"
+      X-GitHub-Api-Version: "2022-11-28"
+    body_format: json
+    body: {labels: "{{ _gh_runner_put_labels }}"}
+  changed_when: true
+  when:
+    - gh_runner_token_source == 'pat'
+    - not ansible_check_mode
+  no_log: true
+
+- name: Set the runner's labels with the control node's gh (token_source=gh)
+  ansible.builtin.command:
+    argv: [gh, api, -X, PUT, "{{ gh_runner_api_path }}/actions/runners/{{ _gh_runner_row.id }}/labels", --input, "-"]
+    stdin: "{{ {'labels': _gh_runner_put_labels} | to_json }}"
+  delegate_to: localhost
+  become: false
+  changed_when: true
+  when:
+    - gh_runner_token_source == 'gh'
+    - not ansible_check_mode

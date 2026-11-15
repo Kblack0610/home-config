@@ -1,0 +1,39 @@
+# Managed by ansible roles/forgejo-host. app.ini is rendered from
+# apps/forgejo/configmap.yaml, so the cluster and this host read one file.
+services:
+  forgejo:
+    image: {{ forgejo_host_image }}
+    restart: unless-stopped
+    environment:
+      USER_UID: "1000"
+      USER_GID: "1000"
+    env_file: /etc/forgejo/secrets.env
+    ports:
+      - "{{ forgejo_host_http_bind }}:3000:3000"
+      # git over ssh: the container's sshd, on 2222 because the host's own sshd has 22.
+      - "{{ forgejo_host_http_bind }}:{{ forgejo_host_ssh_port }}:22"
+    volumes:
+      - {{ forgejo_host_data }}:/data
+      - /etc/forgejo/app.ini:/data/gitea/conf/app.ini
+  # apps/forgejo-mirror-exporter, moved with the data: image, command and env
+  # from its deployment.yaml, the same hardening as its pod. Port 9310 is
+  # scraped through that app's Service once it points here (cutover).
+  mirror-exporter:
+    image: {{ forgejo_host_exporter.image }}
+    restart: unless-stopped
+    command: {{ forgejo_host_exporter.command | to_json }}
+    user: "1000:1000"
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
+    environment:
+{% for e in forgejo_host_exporter.env %}
+      {{ e.name }}: {{ e.value | to_json }}
+{% endfor %}
+    ports:
+      - "{{ forgejo_host_http_bind }}:9310:9310"
+    tmpfs:
+      - /tmp:size=256m
+    volumes:
+      - /etc/forgejo/exporter.py:/app/exporter.py:ro
+      - {{ forgejo_host_data }}:/data:ro

@@ -237,8 +237,11 @@ kubectl logs -n home-assistant deploy/home-assistant -c sync-managed-config
 
 | Symptom | Fix |
 |---|---|
-| Log: `Language '{{ states(...) }}' not supported` | A dashboard passes templates in `tap_action` data, which the frontend never renders. Call `script.tts_announce` with no data; it reads the Announce helpers itself. |
-| No error, no sound | The rooms list in `packages/voice_targets.yaml` names players that are gone or all `unavailable`. Compare it with `media_player.*` in Developer Tools > States. |
+| Log: `Language '{{ states(...) }}' not supported` | A dashboard passes templates in `tap_action` data, which the frontend never renders. Use `custom:announce-card`, which sends plain values. |
+| No error, no sound | `group.announce_rooms` in `packages/voice_targets.yaml` names players that are gone or all `unavailable` (their chips show greyed out). Compare it with `media_player.*` in Developer Tools > States. |
+| Card says "recording needs an admin login" | HA allows media uploads only for admin users. Log the tablet into an admin profile, or send typed messages. |
+| Card says "Microphone unavailable: NotAllowedError" | The browser blocked the mic: the page must be HTTPS, and a wall tablet needs FreeKiosk 1.2.20 or newer (`docs/wall-panels.md`, voice section). |
+| Card change does not show on a tablet | Bump `?v=` on `announce-card.js` in `configuration.yaml`; the WebView caches `/local`. |
 
 ### Restart Home Assistant
 

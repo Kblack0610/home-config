@@ -1,0 +1,123 @@
+---
+# Create a Hetzner Cloud host and what it needs: SSH key, firewall, volume,
+# server. Calls the Hetzner API with ansible.builtin.uri, so no Python client
+# or collection is needed on the control node or the in-cluster runner. Each
+# object is looked up by name first, so a re-run changes nothing that exists.
+#
+#   ansible-playbook playbooks/hetzner-provision.yml --limit forge-hel1
+#
+# Prints the server's public IPv4; put it in inventory.yml ansible_host.
+# Firewall rules are re-applied on every run, so emptying hcloud_ssh_sources
+# and re-running closes inbound SSH.
+
+- name: Hetzner Cloud server, volume and firewall
+  hosts: hetzner
+  gather_facts: false
+  vars:
+    hcloud_api: https://api.hetzner.cloud/v1
+    hcloud_headers:
+      Authorization: "Bearer {{ vault_hcloud_token }}"
+      Content-Type: application/json
+  tasks:
+    - name: Find the SSH key, firewall, volume and server by name
+      delegate_to: localhost
+      ansible.builtin.uri:
+        url: "{{ hcloud_api }}/{{ item.kind }}?name={{ item.name }}"
+        headers: "{{ hcloud_headers }}"
+      loop:
+        - { kind: ssh_keys, name: "{{ inventory_hostname }}-admin" }
+        - { kind: firewalls, name: "{{ inventory_hostname }}" }
+        - { kind: volumes, name: "{{ inventory_hostname }}-data" }
+        - { kind: servers, name: "{{ inventory_hostname }}" }
+      register: hcloud_found
+
+    - name: Name what already exists
+      ansible.builtin.set_fact:
+        hc_key: "{{ hcloud_found.results[0].json.ssh_keys | first | default({}) }}"
+        hc_fw: "{{ hcloud_found.results[1].json.firewalls | first | default({}) }}"
+        hc_vol: "{{ hcloud_found.results[2].json.volumes | first | default({}) }}"
+        hc_srv: "{{ hcloud_found.results[3].json.servers | first | default({}) }}"
+        hc_rules: >-
+          {{ [] if not hcloud_ssh_sources else
+             [{'direction': 'in', 'protocol': 'tcp', 'port': '22', 'source_ips': hcloud_ssh_sources,
+               'description': 'admin ssh until the tailnet is up'}] }}
+
+    - name: Create the admin SSH key
+      when: hc_key.id is not defined
+      delegate_to: localhost
+      ansible.builtin.uri:
+        url: "{{ hcloud_api }}/ssh_keys"
+        method: POST
+        headers: "{{ hcloud_headers }}"
+        body_format: json
+        body: { name: "{{ inventory_hostname }}-admin", public_key: "{{ hcloud_ssh_public_key }}" }
+        status_code: 201
+      changed_when: true
+      register: hc_key_new
+
+    - name: Create the firewall
+      when: hc_fw.id is not defined
+      delegate_to: localhost
+      ansible.builtin.uri:
+        url: "{{ hcloud_api }}/firewalls"
+        method: POST
+        headers: "{{ hcloud_headers }}"
+        body_format: json
+        body: { name: "{{ inventory_hostname }}", rules: "{{ hc_rules }}" }
+        status_code: 201
+      changed_when: true
+      register: hc_fw_new
+
+    - name: Re-apply the firewall rules
+      when: hc_fw.id is defined
+      delegate_to: localhost
+      ansible.builtin.uri:
+        url: "{{ hcloud_api }}/firewalls/{{ hc_fw.id }}/actions/set_rules"
+        method: POST
+        headers: "{{ hcloud_headers }}"
+        body_format: json
+        body: { rules: "{{ hc_rules }}" }
+        status_code: 201
+
+    - name: Create the data volume (ext4, not attached yet)
+      when: hc_vol.id is not defined
+      delegate_to: localhost
+      ansible.builtin.uri:
+        url: "{{ hcloud_api }}/volumes"
+        method: POST
+        headers: "{{ hcloud_headers }}"
+        body_format: json
+        body:
+          name: "{{ inventory_hostname }}-data"
+          size: "{{ hcloud_volume_gb }}"
+          location: "{{ hcloud_location }}"
+          format: ext4
+        status_code: 201
+      changed_when: true
+      register: hc_vol_new
+
+    - name: Create the server with the key, firewall and volume
+      when: hc_srv.id is not defined
+      delegate_to: localhost
+      ansible.builtin.uri:
+        url: "{{ hcloud_api }}/servers"
+        method: POST
+        headers: "{{ hcloud_headers }}"
+        body_format: json
+        body:
+          name: "{{ inventory_hostname }}"
+          server_type: "{{ hcloud_server_type }}"
+          image: "{{ hcloud_image }}"
+          location: "{{ hcloud_location }}"
+          ssh_keys: ["{{ (hc_key or hc_key_new.json.ssh_key).id }}"]
+          firewalls: [{ firewall: "{{ (hc_fw or hc_fw_new.json.firewall).id }}" }]
+          volumes: ["{{ (hc_vol or hc_vol_new.json.volume).id }}"]
+          automount: false
+          public_net: { enable_ipv4: true, enable_ipv6: true }
+        status_code: 201
+      changed_when: true
+      register: hc_srv_new
+
+    - name: Report the server address
+      ansible.builtin.debug:
+        msg: "{{ inventory_hostname }} ipv4={{ (hc_srv or hc_srv_new.json.server).public_net.ipv4.ip }}"

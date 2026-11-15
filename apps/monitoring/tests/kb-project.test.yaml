@@ -130,6 +130,15 @@ tests:
         values: '1x400'
       - series: 'up{job="litellm"}'
         values: '1x400'
+      # The textfile sources stay fresh: their last run follows the clock, 300s a step.
+      - series: 'store_reviews_up{store="steam"}'
+        values: '1x400'
+      - series: 'store_reviews_generated_seconds'
+        values: '0+300x400'
+      - series: 'playtest_feedback_up'
+        values: '1x400'
+      - series: 'playtest_feedback_generated_seconds'
+        values: '0+300x400'
     alert_rule_test:
       - eval_time: 12h
         alertname: KbProjectSourceDown
@@ -144,7 +153,7 @@ tests:
               source: game-registry
             exp_annotations:
               summary: "Department tabs: source game-registry has had no numbers for a day"
-              description: "The scrape behind game-registry has been down for 24 hours, so the Analytics and Money tabs of the products it feeds read stale or empty."
+              description: "The scrape behind game-registry has been down for 24 hours, so the Analytics, Support and Money tabs of the products it feeds read stale or empty."
       # binks-api went down for 100 steps (8h20m) and came back: it never pages. A source
       # whose scrape target is gone entirely reads 0 (the rule's `or vector(0)`) and pages.
       - eval_time: 30h
@@ -157,7 +166,7 @@ tests:
               source: game-registry
             exp_annotations:
               summary: "Department tabs: source game-registry has had no numbers for a day"
-              description: "The scrape behind game-registry has been down for 24 hours, so the Analytics and Money tabs of the products it feeds read stale or empty."
+              description: "The scrape behind game-registry has been down for 24 hours, so the Analytics, Support and Money tabs of the products it feeds read stale or empty."
 
   - name: a source whose scrape target has vanished reads 0 and pages after a day
     interval: 5m
@@ -168,6 +177,14 @@ tests:
         values: '1x400'
       - series: 'up{job="blackbox-sites"}'
         values: '1x400'
+      - series: 'store_reviews_up{store="steam"}'
+        values: '1x400'
+      - series: 'store_reviews_generated_seconds'
+        values: '0+300x400'
+      - series: 'playtest_feedback_up'
+        values: '1x400'
+      - series: 'playtest_feedback_generated_seconds'
+        values: '0+300x400'
     promql_expr_test:
       - expr: kb_project_source_up{source="litellm"}
         eval_time: 10m
@@ -188,4 +205,75 @@ tests:
               source: litellm
             exp_annotations:
               summary: "Department tabs: source litellm has had no numbers for a day"
-              description: "The scrape behind litellm has been down for 24 hours, so the Analytics and Money tabs of the products it feeds read stale or empty."
+              description: "The scrape behind litellm has been down for 24 hours, so the Analytics, Support and Money tabs of the products it feeds read stale or empty."
+
+  - name: store reviews become one number per store and window, and the workstation's labels drop
+    interval: 5m
+    input_series:
+      - series: 'store_reviews{project="shape-city", store="steam", window="7d", job="workstation", instance="192.168.1.2:9100"}'
+        values: '4x4'
+      - series: 'store_reviews{project="shape-city", store="steam", window="all", job="workstation", instance="192.168.1.2:9100"}'
+        values: '40x4'
+      - series: 'store_reviews_positive{project="shape-city", store="steam", window="7d", job="workstation", instance="192.168.1.2:9100"}'
+        values: '3x4'
+      - series: 'store_reviews{project="placemyparents", store="app_store", window="7d", job="workstation", instance="192.168.1.2:9100"}'
+        values: '0x4'
+      - series: 'playtest_feedback_open{project="dodginballs", job="workstation", instance="192.168.1.2:9100"}'
+        values: '6x4'
+    promql_expr_test:
+      - expr: kb_project_number{dept="support"}
+        eval_time: 10m
+        exp_samples:
+          - labels: 'kb_project_number{dept="support", metric="reviews_steam_7d", project="shape-city"}'
+            value: 4
+          - labels: 'kb_project_number{dept="support", metric="reviews_steam_all", project="shape-city"}'
+            value: 40
+          - labels: 'kb_project_number{dept="support", metric="reviews_positive_steam_7d", project="shape-city"}'
+            value: 3
+          - labels: 'kb_project_number{dept="support", metric="reviews_app_store_7d", project="placemyparents"}'
+            value: 0
+          - labels: 'kb_project_number{dept="support", metric="playtest_feedback_open", project="dodginballs"}'
+            value: 6
+
+  - name: a textfile source is up while every store read on a run in the last day
+    interval: 5m
+    input_series:
+      - series: 'store_reviews_up{store="steam"}'
+        values: '1x400'
+      - series: 'store_reviews_up{store="play"}'
+        values: '1x400'
+      - series: 'store_reviews_generated_seconds'
+        values: '0+300x400'
+      # one sheet failed to read: the source is down though its last run is fresh
+      - series: 'playtest_feedback_up'
+        values: '0x400'
+      - series: 'playtest_feedback_generated_seconds'
+        values: '0+300x400'
+    promql_expr_test:
+      - expr: kb_project_source_up{source=~"store-reviews|playtest-feedback"}
+        eval_time: 10m
+        exp_samples:
+          - labels: 'kb_project_source_up{source="store-reviews"}'
+            value: 1
+          - labels: 'kb_project_source_up{source="playtest-feedback"}'
+            value: 0
+
+  - name: a textfile source whose last run is over a day old reads 0, even when it read everything
+    interval: 5m
+    input_series:
+      # the runner last ran at t=0 and stopped; its file (and the series) stays
+      - series: 'store_reviews_up{store="steam"}'
+        values: '1x400'
+      - series: 'store_reviews_generated_seconds'
+        values: '0x400'
+    promql_expr_test:
+      - expr: kb_project_source_up{source="store-reviews"}
+        eval_time: 23h
+        exp_samples:
+          - labels: 'kb_project_source_up{source="store-reviews"}'
+            value: 1
+      - expr: kb_project_source_up{source="store-reviews"}
+        eval_time: 25h
+        exp_samples:
+          - labels: 'kb_project_source_up{source="store-reviews"}'
+            value: 0

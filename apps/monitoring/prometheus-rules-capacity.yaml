@@ -193,6 +193,7 @@ spec:
           expr: node_coredumps_last_hour > 0
           labels:
             severity: warning
+            fleet: none  # NodeCoreDumpStorm (fleet: fix) is the level an agent acts on
             category: capacity
           annotations:
             summary: "{{ $labels.instance }} wrote {{ $value | humanize }} core dumps in the last hour"
@@ -214,6 +215,7 @@ spec:
           for: 1h
           labels:
             severity: warning
+            fleet: fix
             category: capacity
           annotations:
             summary: "{{ $labels.namespace }}/{{ $labels.persistentvolumeclaim }} uses {{ $value | humanizePercentage }} of what it requested"
@@ -228,6 +230,7 @@ spec:
           for: 1h
           labels:
             severity: critical
+            fleet: fix
             category: capacity
           annotations:
             summary: "{{ $labels.namespace }}/{{ $labels.persistentvolumeclaim }} uses {{ $value | humanizePercentage }} of what it requested, on a node under 20% free"
@@ -237,6 +240,7 @@ spec:
           for: 15m
           labels:
             severity: warning
+            fleet: fix
             category: capacity
           annotations:
             summary: "{{ $labels.instance }} has not updated its disk metrics for over an hour"
@@ -247,6 +251,7 @@ spec:
           for: 1h
           labels:
             severity: warning
+            fleet: fix
             category: capacity
           annotations:
             summary: "{{ $labels.instance }} has not run a disk reclaim pass for over 8 days"
@@ -255,6 +260,7 @@ spec:
           for: 24h
           labels:
             severity: warning
+            fleet: fix
             category: capacity
           annotations:
             summary: "Disk reclaim on {{ $labels.instance }} has been skipped for a day: {{ $labels.reason }}"
@@ -266,6 +272,7 @@ spec:
           for: 30m
           labels:
             severity: warning
+            fleet: none  # low free memory is often cache; NodeMemoryPressure (fleet: fix) is the fault
             category: capacity
           annotations:
             summary: "{{ $labels.instance }} has {{ $value | humanizePercentage }} of its memory available"
@@ -276,6 +283,7 @@ spec:
           for: 10m
           labels:
             severity: critical
+            fleet: fix
             category: capacity
           annotations:
             summary: "{{ $labels.instance }} is stalled on memory {{ $value | humanizePercentage }} of the time"
@@ -285,6 +293,7 @@ spec:
           for: 30m
           labels:
             severity: warning
+            fleet: none  # CI hosts run at full CPU by design; NodeLoadHigh and NodeCpuStarved (fleet: fix) are the faults
             category: capacity
           annotations:
             summary: "Tasks on {{ $labels.instance }} are waiting for CPU {{ $value | humanizePercentage }} of the time"
@@ -294,6 +303,7 @@ spec:
           for: 1h
           labels:
             severity: critical
+            fleet: fix
             category: capacity
           annotations:
             summary: "Tasks on {{ $labels.instance }} have waited for CPU for over an hour"
@@ -326,6 +336,7 @@ spec:
           expr: increase(node_vmstat_oom_kill[1h]) > 0
           labels:
             severity: warning
+            fleet: none  # NodeOomKillStorm (fleet: fix) is the level an agent acts on
             category: capacity
           annotations:
             summary: "{{ $labels.instance }} killed {{ $value | humanize }} processes for memory in the last hour"
@@ -345,6 +356,7 @@ spec:
           expr: increase(kube_pod_container_status_restarts_total[15m]) > 0 and on (namespace, pod, container) kube_pod_container_status_last_terminated_reason{reason="OOMKilled"} == 1
           labels:
             severity: warning
+            fleet: fix
             category: capacity
           annotations:
             summary: "{{ $labels.namespace }}/{{ $labels.pod }} was killed for memory"
@@ -357,6 +369,7 @@ spec:
           for: 15m
           labels:
             severity: critical
+            fleet: fix
             category: capacity
           annotations:
             summary: "No node-exporter data from {{ $labels.node }}"
@@ -369,6 +382,7 @@ spec:
           for: 1h
           labels:
             severity: critical
+            fleet: fix
             category: capacity
           annotations:
             summary: "{{ $labels.namespace }}/{{ $labels.pod }} has been crash looping for an hour"
@@ -380,6 +394,7 @@ spec:
           for: 10m
           labels:
             severity: critical
+            fleet: fix
             category: capacity
           annotations:
             summary: "{{ $labels.namespace }}/{{ $labels.pod }} cannot pull the image of {{ $labels.container }}"
@@ -389,6 +404,7 @@ spec:
           for: 1h
           labels:
             severity: warning
+            fleet: fix
             category: capacity
           annotations:
             summary: "The certificate for {{ $labels.instance }} expires in {{ $value | humanizeDuration }}"
@@ -397,6 +413,7 @@ spec:
           for: 1h
           labels:
             severity: critical
+            fleet: fix
             category: capacity
           annotations:
             summary: "The certificate for {{ $labels.instance }} expires in {{ $value | humanizeDuration }}"
@@ -407,6 +424,7 @@ spec:
           expr: kube_job_status_failed{namespace="nas", job_name=~"nas-backup-verify.*"} > 0 and on (namespace, job_name) (time() - kube_job_status_start_time < 36 * 3600)
           labels:
             severity: critical
+            fleet: fix
             category: backup
           annotations:
             summary: "{{ $labels.job_name }} failed: read its log"

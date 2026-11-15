@@ -240,6 +240,7 @@ spec:
           for: 10m
           labels:
             severity: critical
+            fleet: fix
           annotations:
             summary: The agent feed has published nothing in 30 minutes, so every watch, runner and queue number is frozen
             runbook: ~/.config/agentctl/SENTINEL.md (dotfiles-private), "Operate"
@@ -248,6 +249,7 @@ spec:
           for: 10m
           labels:
             severity: critical
+            fleet: none  # Sentinel delivers fleet: fix alerts, so a silent one cannot; the human hears it
           annotations:
             summary: Sentinel has not swept in 40 minutes while the feed is live, so no watch is being checked or paged
             runbook: ~/.config/agentctl/SENTINEL.md (dotfiles-private), "Operate"

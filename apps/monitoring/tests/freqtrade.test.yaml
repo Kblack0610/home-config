@@ -19,7 +19,7 @@ tests:
       - eval_time: 7m
         alertname: TraderBotNotDryRun
         exp_alerts:
-          - exp_labels: {alertname: TraderBotNotDryRun, severity: critical, category: trading, bot: kraken-s001, job: trader-web}
+          - exp_labels: {alertname: TraderBotNotDryRun, severity: critical, fleet: none, category: trading, bot: kraken-s001, job: trader-web}
             exp_annotations:
               summary: "Freqtrade bot kraken-s001 is NOT in dry run: stop the league now: flux suspend kustomization apps, then kubectl -n freqtrade scale sts freqtrade-league --replicas=0"
               description: "The newest ingest snapshot of kraken-s001 reports dry_run false, so it can place real orders. Suspend Flux and scale the league to 0, then find which config or roster change turned dry run off (apps/freqtrade/README.md, Troubleshooting)."
@@ -36,7 +36,7 @@ tests:
       - eval_time: 30m
         alertname: TraderMetricsMissing
         exp_alerts:
-          - exp_labels: {alertname: TraderMetricsMissing, severity: warning, category: trading}
+          - exp_labels: {alertname: TraderMetricsMissing, severity: warning, fleet: fix, category: trading}
             exp_annotations: {summary: "trader-web metrics are missing or cannot read the trader database: the not-dry-run page is blind"}
 
   - name: a bot API error alerts after two ingest runs, and not for a bot the not-dry-run page owns
@@ -57,7 +57,7 @@ tests:
       - eval_time: 90m
         alertname: TraderBotApiDown
         exp_alerts:
-          - exp_labels: {alertname: TraderBotApiDown, severity: warning, category: trading, bot: down, job: trader-web}
+          - exp_labels: {alertname: TraderBotApiDown, severity: warning, fleet: fix, category: trading, bot: down, job: trader-web}
             exp_annotations: {summary: "Freqtrade bot down did not answer two ingest runs in a row: kubectl -n freqtrade logs freqtrade-league-<row>"}
 
   - name: a failed run alerts, a later good run clears it
@@ -87,7 +87,7 @@ tests:
       - eval_time: 4m
         alertname: TraderReproMismatch
         exp_alerts:
-          - exp_labels: {alertname: TraderReproMismatch, severity: critical, category: trading, job: trader-web}
+          - exp_labels: {alertname: TraderReproMismatch, severity: critical, fleet: fix, category: trading, job: trader-web}
             exp_annotations: {summary: "2 cached result(s) did not reproduce: see the newest reproduce run on trader.kblab.me/runs"}
       - eval_time: 8m
         alertname: TraderReproMismatch
@@ -159,7 +159,7 @@ tests:
       - eval_time: 4h
         alertname: TraderFuturesStale
         exp_alerts:
-          - exp_labels: {alertname: TraderFuturesStale, severity: warning, category: trading, kind: funding, exchange: okx, job: trader-web}
+          - exp_labels: {alertname: TraderFuturesStale, severity: warning, fleet: fix, category: trading, kind: funding, exchange: okx, job: trader-web}
             exp_annotations:
               summary: "Newest okx funding row is 1d 9h 0m 0s old: check the freqtrade-futures CronJob"
 
@@ -179,7 +179,7 @@ tests:
       - eval_time: 10m
         alertname: TraderMarketsSweepSlow
         exp_alerts:
-          - exp_labels: {alertname: TraderMarketsSweepSlow, severity: warning, category: trading, venue: kalshi, job: trader-web}
+          - exp_labels: {alertname: TraderMarketsSweepSlow, severity: warning, fleet: fix, category: trading, venue: kalshi, job: trader-web}
             exp_annotations:
               summary: "kalshi recorder sweep took 5m 30s, past the 5 minute schedule: the next tick is skipped"
 
@@ -205,7 +205,7 @@ tests:
       - eval_time: 15m
         alertname: TraderMarketsRecorderStale
         exp_alerts:
-          - exp_labels: {alertname: TraderMarketsRecorderStale, severity: warning, category: trading, venue: kalshi, job: trader-web}
+          - exp_labels: {alertname: TraderMarketsRecorderStale, severity: warning, fleet: fix, category: trading, venue: kalshi, job: trader-web}
             exp_annotations:
               summary: "No good kalshi recorder sweep for 16m 0s: the paper league takes no entries there; failed sweeps and their errors are on trader.kblab.me/markets"
 
@@ -223,7 +223,7 @@ tests:
       - eval_time: 15m
         alertname: TraderMarketsAdapterErrors
         exp_alerts:
-          - exp_labels: {alertname: TraderMarketsAdapterErrors, severity: warning, category: trading, venue: kalshi, job: trader-web}
+          - exp_labels: {alertname: TraderMarketsAdapterErrors, severity: warning, fleet: fix, category: trading, venue: kalshi, job: trader-web}
             exp_annotations:
               summary: "3 kalshi recorder sweeps failed in the last hour: market_sweeps.error on trader.kblab.me/markets"
 
@@ -247,7 +247,7 @@ tests:
       - eval_time: 30m
         alertname: TraderPaperDrawdown
         exp_alerts:
-          - exp_labels: {alertname: TraderPaperDrawdown, severity: warning, category: trading, account: paper-a, job: trader-web}
+          - exp_labels: {alertname: TraderPaperDrawdown, severity: warning, fleet: none, category: trading, account: paper-a, job: trader-web}
             exp_annotations:
               summary: "Paper account paper-a is 18% of its capital below its peak: past the book's hard stop; trader.kblab.me/markets/book"
 
@@ -267,7 +267,7 @@ tests:
       - eval_time: 50m
         alertname: TraderMarketsRecorderStale
         exp_alerts:
-          - exp_labels: {alertname: TraderMarketsRecorderStale, severity: warning, category: trading, venue: polymarket, job: trader-web}
+          - exp_labels: {alertname: TraderMarketsRecorderStale, severity: warning, fleet: fix, category: trading, venue: polymarket, job: trader-web}
             exp_annotations:
               summary: "No good polymarket recorder sweep for 50m 0s: the paper league takes no entries there; failed sweeps and their errors are on trader.kblab.me/markets"
       - eval_time: 25m
@@ -279,7 +279,7 @@ tests:
       - eval_time: 65m
         alertname: TraderMarketsGlobalSweepSlow
         exp_alerts:
-          - exp_labels: {alertname: TraderMarketsGlobalSweepSlow, severity: warning, category: trading, venue: polymarket, job: trader-web}
+          - exp_labels: {alertname: TraderMarketsGlobalSweepSlow, severity: warning, fleet: fix, category: trading, venue: polymarket, job: trader-web}
             exp_annotations:
               summary: "polymarket recorder sweep took 13m 0s, close to the 15 minute deadline that kills the job"
 
@@ -299,7 +299,7 @@ tests:
       - eval_time: 90m
         alertname: TraderShadowMarksStale
         exp_alerts:
-          - exp_labels: {alertname: TraderShadowMarksStale, severity: warning, category: trading, job: trader-web}
+          - exp_labels: {alertname: TraderShadowMarksStale, severity: warning, fleet: fix, category: trading, job: trader-web}
             exp_annotations:
               summary: "The newest shadow account mark is 2d 2h 30m 0s old: the analysis shadow step marked nothing; see the shadow_* keys in the newest analysis run and trader.kblab.me/accounts"
 
@@ -328,16 +328,16 @@ tests:
       - eval_time: 25m
         alertname: TraderInputStale
         exp_alerts:
-          - exp_labels: {alertname: TraderInputStale, severity: warning, category: trading, input: other, job: trader-web}
+          - exp_labels: {alertname: TraderInputStale, severity: warning, fleet: fix, category: trading, input: other, job: trader-web}
             exp_annotations:
               summary: "other has no reading inside its fresh_min: weather takes no entries on it; check CronJob trader-inputs-nws in freqtrade"
       - eval_time: 45m
         alertname: TraderInputStale
         exp_alerts:
-          - exp_labels: {alertname: TraderInputStale, severity: warning, category: trading, input: nws_high, job: trader-web}
+          - exp_labels: {alertname: TraderInputStale, severity: warning, fleet: fix, category: trading, input: nws_high, job: trader-web}
             exp_annotations:
               summary: "nws_high has no reading inside its fresh_min: weather takes no entries on it; check CronJob trader-inputs-nws in freqtrade"
-          - exp_labels: {alertname: TraderInputStale, severity: warning, category: trading, input: other, job: trader-web}
+          - exp_labels: {alertname: TraderInputStale, severity: warning, fleet: fix, category: trading, input: other, job: trader-web}
             exp_annotations:
               summary: "other has no reading inside its fresh_min: weather takes no entries on it; check CronJob trader-inputs-nws in freqtrade"
 
@@ -361,7 +361,7 @@ tests:
       - eval_time: 391m
         alertname: TraderMarketsRecorderStale
         exp_alerts:
-          - exp_labels: {alertname: TraderMarketsRecorderStale, severity: warning, category: trading, venue: odds_api, job: trader-web}
+          - exp_labels: {alertname: TraderMarketsRecorderStale, severity: warning, fleet: fix, category: trading, venue: odds_api, job: trader-web}
             exp_annotations:
               summary: "No good odds_api recorder sweep for 6h 31m 0s: the paper league takes no entries there; failed sweeps and their errors are on trader.kblab.me/markets"
 
@@ -379,7 +379,7 @@ tests:
       - eval_time: 1m
         alertname: TraderMarketsRecorderStale
         exp_alerts:
-          - exp_labels: {alertname: TraderMarketsRecorderStale, severity: warning, category: trading, venue: odds_api, job: trader-web}
+          - exp_labels: {alertname: TraderMarketsRecorderStale, severity: warning, fleet: fix, category: trading, venue: odds_api, job: trader-web}
             exp_annotations:
               summary: "No good odds_api recorder sweep for 30m 0s: the paper league takes no entries there; failed sweeps and their errors are on trader.kblab.me/markets"
       - eval_time: 2m

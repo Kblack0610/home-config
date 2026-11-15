@@ -85,6 +85,7 @@ tests:
         platform: k8s
         workload_type: deployment
         severity: warning
+        fleet: fix
         category: app-health
       exp_annotations:
         summary: 'App down: test/down'
@@ -96,6 +97,7 @@ tests:
         platform: k8s
         workload_type: statefulset
         severity: warning
+        fleet: fix
         category: app-health
       exp_annotations:
         summary: 'App down: test/down-sts'

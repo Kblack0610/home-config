@@ -159,6 +159,7 @@ spec:
           for: 10m
           labels:
             severity: warning
+            fleet: fix
             category: app-health
           annotations:
             summary: "App down: {{ $labels.namespace }}/{{ $labels.workload }}"
@@ -168,6 +169,7 @@ spec:
           for: 15m
           labels:
             severity: warning
+            fleet: fix
             category: app-health
           annotations:
             summary: "App degraded: {{ $labels.namespace }}/{{ $labels.workload }}"
@@ -177,6 +179,7 @@ spec:
           for: 15m
           labels:
             severity: info
+            fleet: none  # info: HomelabAppDegraded and CriticalServiceCrashLooping carry a lasting fault
             category: app-health
           annotations:
             summary: "Restart spike: {{ $labels.namespace }}/{{ $labels.workload }}"

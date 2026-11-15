@@ -134,6 +134,13 @@ spec:
               value: play.kblack.dev
             - name: DEMO_PUBLISH_TIER
               value: plus
+            # Outside clients: the OAuth server, API tokens, consent page and /mcp
+            # (platform apps/binks/api/README.md, Client auth). It is the kill
+            # switch for all of them. Off until the owner releases a binks-api tag
+            # carrying platform #1573 and the bk-5 terms and privacy pages are live
+            # on binks.chat; CLIENT_TOKEN_SECRET is already in binks-api-secret.
+            - name: MCP_ENABLED
+              value: 'false'
           envFrom:
             - secretRef:
                 name: binks-api-secret

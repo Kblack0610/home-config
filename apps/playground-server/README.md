@@ -20,6 +20,7 @@ It is always on unless stopped from games.kblab.me, so friends join whenever the
 - **A pinned image tag**, named after the playground tag it was built from, so what is running is written down and a scale-up cannot quietly pick up a different build. Build with `scripts/build.sh <tag> server` (or the same `-executeMethod` against a checkout), push with `scripts/server/image.sh <tag>`, then bump this line.
 - **Its registry identity from the pod.** `SERVER_PROVIDER=home`, `SERVER_SITE` (the node name) and `SERVER_PROVIDER_REF` (`namespace/deployment/pod`) make its session id `<yymmdd>-playground-home-<n>-<node>` and let the Fleet page tie the Deployment to the session it registered as.
 - **A readiness probe on the UDP socket.** The server speaks UDP only, so readiness is the bound port in `/proc/net/udp`; it makes "starting" on the games page mean the Unity boot.
+- **Tuning layouts on a volume.** `layouts-pvc.yaml` is a local-path claim mounted at `/data/layouts`, and `SERVER_ARGS=-layoutsDir /data/layouts` points the server there, so tuning saved on the server (the game repo's `docs/harness/tuning.md#layouts`) outlives a pod replacement. `fsGroup: 10001` is the image's `playground` user. local-path keeps it on the node: moving the server to another node starts it with no layouts.
 
 ## Screens gallery
 

@@ -306,3 +306,29 @@ tests:
       - eval_time: 90m
         alertname: TraderShadowMarksStale
         exp_alerts: []
+
+  - name: an input past its fresh_min or never read alerts, a fresh one does not
+    interval: 1m
+    input_series:
+      - series: 'trader_input_age_seconds{input="nws_high",job="trader-web"}'
+        values: '9000+60x60'
+      - series: 'trader_input_fresh_seconds{input="nws_high",job="trader-web"}'
+        values: '10800x60'
+      - series: 'trader_input_fresh_seconds{input="other",job="trader-web"}'
+        values: '10800x60'
+    alert_rule_test:
+      - eval_time: 25m
+        alertname: TraderInputStale
+        exp_alerts:
+          - exp_labels: {alertname: TraderInputStale, severity: warning, category: trading, input: other, job: trader-web}
+            exp_annotations:
+              summary: "other has no reading inside its fresh_min: weather takes no entries on it; check CronJob trader-inputs-nws in freqtrade"
+      - eval_time: 45m
+        alertname: TraderInputStale
+        exp_alerts:
+          - exp_labels: {alertname: TraderInputStale, severity: warning, category: trading, input: nws_high, job: trader-web}
+            exp_annotations:
+              summary: "nws_high has no reading inside its fresh_min: weather takes no entries on it; check CronJob trader-inputs-nws in freqtrade"
+          - exp_labels: {alertname: TraderInputStale, severity: warning, category: trading, input: other, job: trader-web}
+            exp_annotations:
+              summary: "other has no reading inside its fresh_min: weather takes no entries on it; check CronJob trader-inputs-nws in freqtrade"

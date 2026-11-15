@@ -207,6 +207,20 @@ spec:
           annotations:
             summary: "No good {{ $labels.venue }} recorder sweep for {{ $value | humanizeDuration }}: the paper league takes no entries there; failed sweeps and their errors are on trader.kblab.me/markets"
 
+        # An input our own reader writes (trader lab/inputs.toml, a `reader` and `fresh_min`): its newest reading past
+        # fresh_min, or none at all (the exporter emits the limit for every reader, the age only once read). The
+        # weather family refuses a stale forecast, so this is the paper league going blind on it.
+        - alert: TraderInputStale
+          expr: >-
+            trader_input_age_seconds > trader_input_fresh_seconds
+            or (trader_input_fresh_seconds unless trader_input_age_seconds)
+          for: 10m
+          labels:
+            severity: warning
+            category: trading
+          annotations:
+            summary: "{{ $labels.input }} has no reading inside its fresh_min: weather takes no entries on it; check CronJob trader-inputs-nws in freqtrade"
+
         # A sweep is scheduled every 5 minutes with Forbid, so one that runs past 5 minutes makes the next
         # tick skip and thins the book. This reads the newest good sweep's run time.
         - alert: TraderMarketsSweepSlow

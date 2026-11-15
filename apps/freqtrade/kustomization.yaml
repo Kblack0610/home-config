@@ -23,6 +23,7 @@ resources:
   - markets-history-cronjob.yaml
   - markets-links-cronjob.yaml
   - markets-families-cronjob.yaml
+  - inputs-nws-cronjob.yaml
   - trader-markets-s3-secret.sops.yaml
   - trader-odds-api-secret.sops.yaml
   - trader-brokers-secret.sops.yaml

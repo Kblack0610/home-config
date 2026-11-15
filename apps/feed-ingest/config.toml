@@ -66,7 +66,7 @@ tickers = [
   { ticker = "MSTR", cik = "0001050446", names = ["MicroStrategy"] },
 ]
 
-# Home Assistant: one discovered sensor per source (sensor.feed_ingest_<source>_latest) holding the
+# Home Assistant: one discovered sensor per source (sensor.feed_ingest_feed_<source>_latest) holding the
 # newest watchlist item; automations trigger on it.
 [[routes]]
 name = "ha"

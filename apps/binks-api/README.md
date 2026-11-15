@@ -6,16 +6,22 @@ LLM chat backend for `binks.chat`. TypeScript replacement for the legacy Rust `b
 
 - **Namespace**: `binks-api`
 - **Image**: `git.kblab.me/kblack0610/binks-api` (Forgejo registry — `forgejo-registry` imagePullSecret)
-- **DB**: in-namespace `binks-postgres` StatefulSet on a 5Gi PVC. Anonymous and signed-in chats both persisted here.
+- **DB**: in-namespace `binks-postgres` StatefulSet on a 5Gi PVC. Anonymous and signed-in chats both persisted here. `binks-postgres-backup` (`backup-cronjob.yaml`) dumps it nightly at 2:25 to the NAS, `home-k3s/binks/`; restore: `docs/backup-runbook.md`, "Restore binks.chat".
+- **Alerts**: `apps/monitoring/prometheus-rules-binks.yaml`: chat-turn and LLM error rates, and the `binks-anon` budget (share left, and spend per hour).
 - **LLM gateway**: `http://litellm.ai-gateway.svc.cluster.local:4000`, routes `binks-chat` (default) and `binks-chat-hard`. Signed-in users with an active $8/mo Square subscription get their own $2 / 1mo key, minted with `binks-api-secret/LITELLM_ISSUER_KEY`; anonymous chats use `LITELLM_API_KEY` (`binks-anon`). See `apps/litellm/README.md`, "binks.chat keys"
+- **Replicas**: 2, with a PodDisruptionBudget (`pdb.yaml`, minAvailable 1). The HTTP limiter and the per-minute WS limit count per pod; the signed-out daily cap and the spend ceiling are in Postgres and shared.
+- **Capacity**: the launch limits (`RATE_LIMIT_MAX`, `ANON_TURNS_PER_IP_PER_DAY`, `DAILY_SPEND_CEILING_USD`, `WAITLIST_ENABLED`) take their defaults from the platform repo, `apps/binks/api/README.md` "Launch capacity". Set one in `deployment.yaml` `env` only to override it (the ceiling is set there to $2 a day); `WAITLIST_ENABLED: 'true'` is the manual switch that stops new chats from non-subscribers.
 - **Ingress**: `binks.chat` (Traefik IngressRoute `binks-chat` in `ingress.yaml`): the SPA on `/`, the API on `/api` and `/ws`. TLS ends at Cloudflare.
+- **Shared demos**: `play.kblack.dev` (IngressRoute `binks-demos` in `ingress.yaml`) routes only `/p/` to binks-api, which serves published pages there sandboxed (`PUBLISH_*` and `DEMO_*` env in `deployment.yaml`; platform `apps/binks/api/README.md`, Shareable demos). It is a separate site from binks.chat on purpose: a shared page never gets the chat's origin.
 
 ## Deploy lifecycle
 
-1. Tag in `platform`: `git tag binks-api-v<x.y.z> && git push origin binks-api-v<x.y.z>`.
+1. Tag a commit on `develop` in `platform`: `git tag binks-api-v<x.y.z> && git push origin binks-api-v<x.y.z>`. The workflow's `gate` job refuses a ref not on `develop` and runs typecheck, lint and test before it builds.
 2. The Forgejo workflow [`deploy-binks-api.yml`](https://github.com/BlackNBrownStudios/platform/blob/develop/.forgejo/workflows/deploy-binks-api.yml) builds + pushes `git.kblab.me/kblack0610/binks-api:v<x.y.z>`.
 3. Same workflow bumps `images[].newTag` in this directory's `kustomization.yaml` and pushes to `home-config@master`.
 4. Flux reconciles within ~1 min.
+
+A rollout drops no requests: both Deployments wait 10s in `preStop` so Traefik removes a terminating pod's endpoint before it gets SIGTERM (without it, one request 502'd per rollout, bk-45). `terminationGracePeriodSeconds: 45` on binks-api covers that wait plus the api's 30s shutdown timeout.
 
 The `binks-chat` SPA follows the same steps with a `binks-chat-v<x.y.z>` tag and `deploy-binks-chat.yml`, which bumps its own `images[]` entry. Its manifest names `:latest`, so without that entry prod floats on an unnamed image and the `release-drift` watch trips.
 

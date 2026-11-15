@@ -53,6 +53,11 @@ gh_runner_install_packages: true
 # Extra KEY=VALUE lines for the runner's .env (inherited by every job).
 gh_runner_env: {}
 
+# How long an apply waits for a busy slot's job to end before it restarts the slot
+# (tasks/drain.yml): GitHub's default job timeout, 360 minutes, so a job that sets none
+# ends first. Past it the apply puts the labels back and leaves .restart-pending.
+gh_runner_drain_timeout: 21600
+
 # Optional systemd slice for the unit (resource caps live on the slice).
 gh_runner_slice: ""
 
@@ -64,6 +69,13 @@ gh_runner_labels:
   - linux
   - x64
   - docker
+
+# The labels ci-runner-governor swaps for a withheld one (apps/ci-runner-governor/config.json):
+# a runner carrying any of gh_runner_withheld_labels keeps gh_runner_withheld_label, this
+# slot's kind, in their place when an apply resets its labels. Empty: no governor.
+gh_runner_governed_labels: []
+gh_runner_withheld_labels: []
+gh_runner_withheld_label: ""
 
 # System packages mirroring what platform/tools/setup-mac-runner.sh installs on
 # Mac (node@20, pnpm, jq) plus Linux-specific extras.

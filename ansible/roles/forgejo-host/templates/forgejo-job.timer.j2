@@ -1,0 +1,9 @@
+# Managed by ansible roles/forgejo-host. Enabled on every host; the job skips itself unless Forgejo runs here.
+[Unit]
+Description={{ item.0.name }} timer ({{ item.0.on_calendar }}, host time UTC)
+
+[Timer]
+OnCalendar={{ item.0.on_calendar }}
+
+[Install]
+WantedBy=timers.target

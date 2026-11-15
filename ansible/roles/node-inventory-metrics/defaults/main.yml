@@ -1,0 +1,5 @@
+---
+# node-exporter reads this directory (prometheus-node-exporter.extraArgs in
+# apps/monitoring/helm-values.yaml, which mounts it from the host). The workstation's
+# distro node_exporter reads its own (site.yml passes it).
+node_inventory_metrics_dir: /var/lib/node-exporter-textfile

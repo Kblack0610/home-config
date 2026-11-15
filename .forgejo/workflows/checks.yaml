@@ -58,6 +58,10 @@ jobs:
         run: python3 apps/forgejo-mirror-exporter/test_exporter.py
       - name: ci-runner-governor offline tests
         run: python3 apps/ci-runner-governor/test_governor.py
+      - name: github-actions-runner-linux label plan tests
+        run: python3 ansible/roles/github-actions-runner-linux/tests/test_runner_labels.py
+      - name: github-actions-runner-linux drain wait tests
+        run: python3 ansible/roles/github-actions-runner-linux/tests/test_wait_worker_exit.py
       - name: litellm tool_compat offline tests
         run: python3 apps/litellm/test_tool_compat.py
       - name: litellm go routes forward the session header
@@ -131,6 +135,8 @@ jobs:
         run: sh ansible/roles/unity-ci-host-mac/files/test-ci-tree-prune.sh
       - name: node-disk-metrics offline test
         run: sh ansible/roles/node-disk-metrics/files/test-node-disk-metrics.sh
+      - name: node-inventory-metrics offline test
+        run: sh ansible/roles/node-inventory-metrics/files/test-node-inventory-metrics.sh
       - name: forgejo-restore-drill runner offline test
         run: sh ansible/roles/forgejo-restore-drill/files/test-forgejo-restore-drill-run.sh
       - name: ci-runner-cpu offline test

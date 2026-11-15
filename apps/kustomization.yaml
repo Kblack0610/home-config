@@ -17,6 +17,7 @@ resources:
   - ci-runner-governor
   - cloudflared-public-sites
   - cluster-janitor
+  - coredns
   - crowdsec
   - external-dns
   - fleet-exporter

@@ -8,6 +8,9 @@ spec:
   # so it does not need the daily full. forgejo-backup excludes it for that
   # reason: at 178G it was 80% of each archive.
   schedule: "45 4 * * 0"
+  # Suspended at the cutover to forge-hel1 (2026-11-14): it would read the frozen
+  # asus copy. The VM's timers and forgejo-backup-pull do this job now; removed at cleanup.
+  suspend: true
   concurrencyPolicy: Forbid
   successfulJobsHistoryLimit: 3
   failedJobsHistoryLimit: 3

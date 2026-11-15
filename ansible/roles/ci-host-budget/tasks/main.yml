@@ -100,6 +100,11 @@
 - name: Pin or unpin k3s pods
   ansible.builtin.import_tasks: k3s-pin.yml
 
+- name: Keep Ubuntu's unattended upgrades off running jobs
+  ansible.builtin.import_tasks: unattended.yml
+  when: ansible_os_family == "Debian"
+  tags: [unattended]
+
 # Containers are children of dockerd, not of the runner that asked for them, so a
 # job's `docker run` lands in system.slice with no cap unless it passes
 # --cgroup-parent. Only the playground does; dodginballs (plain docker run and
@@ -171,4 +176,3 @@
     name: docker.service
     state: restarted
   when: _ci_docker_config_age.stdout == 'stale'
-

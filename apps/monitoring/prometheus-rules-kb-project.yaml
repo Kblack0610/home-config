@@ -135,9 +135,10 @@ spec:
         # ---- money: the games, from the game registry's /metrics ----
         # The registry's estimate since the first of the month, UTC, per game in its
         # EDGEGAP_APPS; a game with an app that has not run this month reads 0. The month
-        # resets on the 1st, so this is month-to-date, not a rolling 30 days.
+        # resets on the 1st, so this is month-to-date, not a rolling 30 days. Every registry
+        # pod reads the same database, so max, not sum.
         - record: kb_project_number
-          expr: sum by (project) (label_replace(bnb_edgegap_game_spend_usd_month, "project", "$1", "game", "(.*)"))
+          expr: max by (project) (label_replace(bnb_edgegap_game_spend_usd_month, "project", "$1", "game", "(.*)"))
           labels:
             dept: money
             metric: edgegap_usd_month

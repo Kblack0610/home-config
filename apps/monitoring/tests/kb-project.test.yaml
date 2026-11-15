@@ -122,7 +122,10 @@ tests:
   - name: Edgegap spend is the registry's month per game, a game that has not run reading 0
     interval: 5m
     input_series:
-      - series: 'bnb_edgegap_game_spend_usd_month{game="dodginballs", job="game-registry"}'
+      # Two pods during a rollout report the same database's number once.
+      - series: 'bnb_edgegap_game_spend_usd_month{game="dodginballs", job="game-registry", pod="a"}'
+        values: '4.25x6'
+      - series: 'bnb_edgegap_game_spend_usd_month{game="dodginballs", job="game-registry", pod="b"}'
         values: '4.25x6'
       - series: 'bnb_edgegap_game_spend_usd_month{game="shapecity", job="game-registry"}'
         values: '0x6'

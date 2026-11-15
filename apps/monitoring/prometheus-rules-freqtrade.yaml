@@ -192,15 +192,10 @@ spec:
           annotations:
             summary: "{{ $labels.pod }} cannot be scheduled: compare its requests with the nodes' allocatable (kubectl describe pod)"
 
-        # Event-contract markets (strategy repo lab/markets, docs/markets.md). A venue reports while
-        # it has a recorder sweep in the last 7 days, so removing a venue's CronJob ends its series
-        # instead of alerting forever. 15 minutes is the paper league's max_book_age_min: past it the
-        # league already takes no entries on that venue. Polymarket global sweeps every 15 minutes
-        # (about 10 a sweep), so it gets the same two missed ticks: 45 minutes.
+        # Only venues with a sweep in the last 7 days report. The exporter reads each venue's
+        # stale_after_min (or paper.max_book_age_min) from trader lab/markets.toml, as the site does.
         - alert: TraderMarketsRecorderStale
-          expr: >-
-            trader_markets_sweep_age_seconds{venue!="polymarket"} > 15 * 60
-            or trader_markets_sweep_age_seconds{venue="polymarket"} > 45 * 60
+          expr: trader_markets_sweep_age_seconds > trader_markets_sweep_stale_seconds
           labels:
             severity: warning
             category: trading

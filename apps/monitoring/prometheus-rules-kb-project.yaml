@@ -167,6 +167,7 @@ spec:
           for: 1d
           labels:
             severity: warning
+            fleet: fix
             category: availability
           annotations:
             summary: "Department tabs: source {{ $labels.source }} has had no numbers for a day"

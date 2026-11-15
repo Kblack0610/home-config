@@ -139,6 +139,7 @@ tests:
         exp_alerts:
           - exp_labels:
               severity: warning
+              fleet: fix
               category: availability
               source: game-registry
             exp_annotations:
@@ -151,6 +152,7 @@ tests:
         exp_alerts:
           - exp_labels:
               severity: warning
+              fleet: fix
               category: availability
               source: game-registry
             exp_annotations:
@@ -181,6 +183,7 @@ tests:
         exp_alerts:
           - exp_labels:
               severity: warning
+              fleet: fix
               category: availability
               source: litellm
             exp_annotations:

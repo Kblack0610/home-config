@@ -254,8 +254,14 @@ all:
         # slot was the limit, not its neighbours.
         # One since 2026-11-10: the second slot's three cores went to the
         # platform runners (linux_ci_runners), which had none of their own.
+        # Slot 1 carries slim-tour, so playground slim-tour.yml always lands on the one
+        # slot whose prune keeps its trees warm (site.yml's .keep-warm-trees, ucp-2062).
+        # Picked by disk on 2026-11-14: razer 365G free of 938G (39%); windows-media-ci
+        # 80G of 290G (27%) and aws-burst-1 23% with no tree, both under the 35% floor.
         razer-laptop:
           unity_ci_slots: 1
+          unity_ci_slot_labels:
+            1: [slim-tour]
           unity_ci_full: true
           unity_ci_wide: true
           unity_ci_gate: true

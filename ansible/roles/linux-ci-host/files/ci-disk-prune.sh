@@ -19,10 +19,17 @@ RELEASE_TREE_DAYS=${RELEASE_TREE_DAYS:-7}
 # copy and under 7 days old, so the age and copy rules removed nothing while the governor
 # withheld both slots.
 RELEASE_TREE_MIN_FREE_PCT=${RELEASE_TREE_MIN_FREE_PCT:-35}
+# A slot holding .keep-warm-trees (site.yml writes it on a slot labelled slim-tour) keeps its
+# release and HD trees through the age and copy rules, and through low disk down to 30% free,
+# so one 45G build on top of them still ends near the governor's 20% withhold line. Slim tour runs only by
+# hand before a cut, often more than 7 days apart, and every cold run spent 107 to 125 min
+# importing (playground docs/operations/ci-cost.md, ucp-1884).
+KEPT_TREE_MIN_FREE_PCT=${KEPT_TREE_MIN_FREE_PCT:-30}
 
 now=$(date +%s)
 # The runner keeps its binaries in bin.<version>, e.g. bin.2.338.0.
 busy() { pgrep -f "$1/bin[^/]*/Runner\.Worker" >/dev/null; }
+kept() { [ -e "${1%%/_work/*}/.keep-warm-trees" ]; }
 newest() { find "$1" -type f -exec stat -c %Y {} + | sort -n | tail -n 1; }
 # Warm trees a job keeps on purpose: a release tree per target, and the one HD tree hd.yml keeps
 # beside a slot's checkout (26G each; on 2026-11-11 two of them held aws-burst-1 at 100%).
@@ -91,7 +98,7 @@ for work in "$RUNNER_HOME"/unity-pool-*/_work; do
         [ -d "$tree" ] || continue
         case "$tree" in
             */perf-tree/*) days=$PERF_TREE_DAYS ;;
-            *) days=$RELEASE_TREE_DAYS ;;
+            *) kept "$tree" && continue; days=$RELEASE_TREE_DAYS ;;
         esac
         [ -z "$(find "$tree" -type f -mtime -"$days" -print -quit)" ] || continue
         echo "tree $tree"
@@ -118,6 +125,7 @@ done | sort -t "$tab" -k1,1 -k2,2nr | {
             echo "busy $slot"
             continue
         fi
+        kept "$tree" && continue
         echo "older copy $tree"
         rm -rf -- "$tree"
     done
@@ -130,12 +138,14 @@ done | sort -t "$tab" -k1,1 -k2,2nr | {
 free=$(free_pct)
 [ -n "$free" ] || { echo "no free space reading for $RUNNER_HOME"; exit 1; }
 [ "$free" -lt "$RELEASE_TREE_MIN_FREE_PCT" ] || exit 0
+# Kept trees sort last and go only under their lower floor.
 warm_trees | while read -r tree; do
     busy "${tree%%/_work/*}" && continue
     t=$(newest "$tree")
-    printf '%s\t%s\n' "${t:-0}" "$tree"
-done | sort -n | while IFS="$tab" read -r _ tree; do
-    [ "$(free_pct)" -lt "$RELEASE_TREE_MIN_FREE_PCT" ] || break
+    if kept "$tree"; then rank=1 floor=$KEPT_TREE_MIN_FREE_PCT; else rank=0 floor=$RELEASE_TREE_MIN_FREE_PCT; fi
+    printf '%s\t%s\t%s\t%s\n' "$rank" "${t:-0}" "$floor" "$tree"
+done | sort -t "$tab" -k1,1n -k2,2n | while IFS="$tab" read -r _ _ floor tree; do
+    [ "$(free_pct)" -lt "$floor" ] || continue
     echo "low disk $tree"
     rm -rf -- "$tree"
     # btrfs reports freed space only after a commit; without this df lags and more trees go.

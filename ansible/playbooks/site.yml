@@ -601,6 +601,19 @@
           ACTIONS_RUNNER_HOOK_JOB_STARTED: "{{ linux_ci_unity_job_started_hook }}"
       tags: [runner, ci, unity-ci]
 
+    # The slot labelled slim-tour (unity_ci_slot_labels) keeps its warm trees: ci-disk-prune.sh
+    # reads this marker. Every cold Slim tour spent 107 to 125 min importing (playground ucp-1884).
+    - name: Mark the slim-tour slot's trees as kept
+      ansible.builtin.file:
+        path: "{{ unity_ci_user_home }}/unity-pool-{{ item }}/.keep-warm-trees"
+        state: "{{ 'touch' if 'slim-tour' in (unity_ci_slot_labels | default({})).get(item, []) else 'absent' }}"
+        modification_time: preserve
+        access_time: preserve
+      loop: "{{ range(1, unity_ci_slots + 1) | list }}"
+      # A --check of a slot not yet registered has no slot directory to touch.
+      ignore_errors: "{{ ansible_check_mode }}"
+      tags: [runner, ci, unity-ci, ci-disk]
+
 # BNB Unity runner pool, macOS hosts (added 2026-10-29, mac-studio until it is
 # sold). The same org pool as above, labelled unity/unity-full, unity-native and
 # host-<name>, without GitHub's default labels: the jobs that need the Linux

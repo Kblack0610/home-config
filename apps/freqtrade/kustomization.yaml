@@ -25,6 +25,7 @@ resources:
   - markets-families-cronjob.yaml
   - inputs-nws-cronjob.yaml
   - trader-markets-s3-secret.sops.yaml
+  - trader-litellm-secret.sops.yaml
   - trader-odds-api-secret.sops.yaml
   - trader-brokers-secret.sops.yaml
   - broker-cronjob.yaml

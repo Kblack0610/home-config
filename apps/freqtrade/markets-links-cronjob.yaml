@@ -1,23 +1,27 @@
 # Cross-venue links (strategy repo lab/markets/links.py, docs/markets.md Links): rules link each recorded odds_api
 # game to its Kalshi game-winner event and confirm what they make, then the resolution check confirms or rejects
-# every link. The gap family trades only rule links, so it needs this. 30 min after the odds_api recorder (7 */6), so
-# each run sees that sweep's games. No LITELLM_API_KEY here yet, so the LLM proposal pass skips and says so; rules
-# and the check still run. Database only, no venue calls. Migrations come from the recorder's init container.
+# every link. The gap family trades only rule links, so it needs this. Hourly at :37, which includes the run 30 min
+# after the odds_api recorder (7 */6), so that sweep's games are seen. The LLM proposal pass asks the gateway route
+# `local (qwen3.5-9b)` (llama-server on the workstation 4060 Ti, no fallback edge) with LITELLM_API_KEY, a virtual
+# key that may call only that route ($1 / 30d tripwire; the route costs 0). With the workstation off each ask logs
+# an error, the pass stops after 3 in a row (trader [links.llm] max_failures), and the rules and the resolution check still
+# run; the job exits 0 either way, so look in its log. At most max_asks (50) answered asks a run. Database only, no
+# venue calls. Migrations come from the recorder's init container.
 # Kept off hp-victus, whose memory limits are overcommitted (plan id-like-to-setup-abundant-seahorse).
 apiVersion: batch/v1
 kind: CronJob
 metadata:
   name: trader-markets-links
 spec:
-  schedule: "37 */6 * * *"
+  schedule: "37 * * * *"
   timeZone: "Etc/UTC"  # unset means the controller zone, America/Los_Angeles
   concurrencyPolicy: Forbid
   successfulJobsHistoryLimit: 3
   failedJobsHistoryLimit: 3
   jobTemplate:
     spec:
-      backoffLimit: 1
-      activeDeadlineSeconds: 1800  # guard: rules and the check are SQL over the recorder's tables
+      backoffLimit: 0  # the next hour asks about the same unasked markets again
+      activeDeadlineSeconds: 3300  # guard: 50 asks at the 120 s timeout is 6000 s worst case, so a stuck model cannot overlap the next run
       template:
         metadata:
           labels:
@@ -43,6 +47,9 @@ spec:
                 - name: DATABASE_URL
                   valueFrom:
                     secretKeyRef: {name: trader-db, key: database-url}
+                - name: LITELLM_API_KEY
+                  valueFrom:
+                    secretKeyRef: {name: trader-litellm, key: LITELLM_API_KEY}
               resources:
                 requests:
                   cpu: 100m

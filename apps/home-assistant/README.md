@@ -266,6 +266,20 @@ When adding a new device or integration:
 3. Seed the config entry from a K8s Secret if the integration is config-flow-only
 4. Never install HACS or use the HA UI for configuration
 
+## Away alarm
+
+The Control and Dog views have the `alarm_control_panel.away` card. It can be armed or disarmed by hand without a code. Automatic arming requires `zone.home` to be 0 and every person to have a known state for ten continuous minutes; an unknown or unavailable person blocks it. Returning home disarms it. Frigate person occupancy on either camera triggers the armed alarm and a high-priority home push. Barking while armed sends a default-priority push at most once per 15 minutes. Arm and disarm pushes are low priority. The panel stays outside the Assist allow-list.
+
+Companion-app presence is still required for both people; the existing human-sheet row owns that setup. Persons and their trackers remain in HA runtime storage. After HA restarts or automations reload, the ten-minute presence window starts again.
+
+| Symptom | Check |
+|---|---|
+| Empty home does not arm | Check `zone.home` and every `person.*`; unknown or unavailable presence blocks automatic arming. Confirm companion-app location updates and tracker assignments. |
+| Dog movement triggers an alert | Check Frigate's person occupancy classification; generic motion is not an alarm input. |
+| Another bark sends no push | Check the bark automation's `last_triggered`; the cooldown is 15 minutes across arm/disarm cycles. |
+
+Validate the guard and cooldown in the HA image by copying `scripts/test-ha-away-alarm.py` and `config/packages/away_alarm.yaml` into a temporary directory in the pod and running `python test-ha-away-alarm.py away_alarm.yaml`. Run HA `check_config --fail-on-warnings` against a separate temporary config before deploying through Flux; without that flag a package schema error can still return exit code 0.
+
 ## Related Services
 
 | Service | Purpose |

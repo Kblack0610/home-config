@@ -476,6 +476,7 @@ spec:
               cp /managed-config/package_home_alerts.yaml /config/packages/home_alerts.yaml
               cp /managed-config/package_voice_health.yaml /config/packages/voice_health.yaml
               cp /managed-config/package_dog_barks.yaml /config/packages/dog_barks.yaml
+              cp /managed-config/package_away_alarm.yaml /config/packages/away_alarm.yaml
               cp /managed-config/package_marine.yaml /config/packages/marine.yaml
               cp /managed-config/package_voice_satellite_binks.yaml /config/packages/voice_satellite_binks.yaml
               cp /managed-config/package_voice_pe_pucks.yaml /config/packages/voice_pe_pucks.yaml

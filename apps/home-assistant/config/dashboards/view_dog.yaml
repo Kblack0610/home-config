@@ -13,6 +13,10 @@ sections:
   - type: grid
     cards:
       - !include _home_button.yaml
+      - type: alarm-panel
+        entity: alarm_control_panel.away
+        name: Away alarm
+        states: [arm_away]
       - type: heading
         heading: Barking
         heading_style: title

@@ -203,11 +203,13 @@ jobs:
         run: |
           set -eu
           rc=0
+          : > rendered.yaml  # read by the timeZone step below, so it checks exactly this render
           targets="apps $(ls -d clusters/*/ 2>/dev/null || true)"
           # An empty target list must FAIL, not pass vacuously.
           [ -n "$(echo "$targets" | tr -d ' ')" ] || { echo "FAIL: no build targets found"; exit 1; }
           for d in $targets; do
-            if kustomize build "$d" >/dev/null 2>build.err; then
+            if kustomize build "$d" >build.out 2>build.err; then
+              { cat build.out; echo ---; } >> rendered.yaml
               echo "ok: $d"
             else
               echo "FAIL: kustomize build $d"
@@ -221,7 +223,9 @@ jobs:
       # spec.timeZone the k3s controller schedules in its host's zone (Pacific) while KSM
       # computes kube_cronjob_next_schedule_time in UTC, so every daily job looked 8h
       # overdue and HomelabCronJobNotScheduling fired on 26 of them (ar-2510). Checks the
-      # rendered output, so a CronJob from a kustomize generator or patch counts too.
+      # rendered output, so a CronJob from a kustomize generator or patch counts too. A
+      # CronJob a HelmRelease chart creates is not rendered here and is not checked; none
+      # exists today (every live CronJob belongs to the apps Kustomization).
       - name: Every CronJob Flux builds sets spec.timeZone
         run: |
           set -eu
@@ -230,7 +234,8 @@ jobs:
           # Negative control: the filter must catch a planted CronJob, or it checks nothing.
           planted=$(printf 'kind: CronJob\nmetadata:\n  name: planted\n  namespace: ci\nspec:\n  schedule: "0 3 * * *"\n' | no_zone)
           [ "$planted" = "ci/planted" ] || { echo "FAIL: the filter missed a planted CronJob with no timeZone (got '$planted')"; exit 1; }
-          for d in apps $(ls -d clusters/*/); do kustomize build "$d"; echo ---; done > rendered.yaml
+          zoned=$(printf 'kind: CronJob\nmetadata:\n  name: zoned\n  namespace: ci\nspec:\n  schedule: "0 3 * * *"\n  timeZone: America/Los_Angeles\n' | no_zone)
+          [ -z "$zoned" ] || { echo "FAIL: the filter flagged a CronJob that sets timeZone (got '$zoned')"; exit 1; }
           found=$(yq ea -N 'select(.kind == "CronJob") | .metadata.name' rendered.yaml | grep -c . || true)
           missing=$(no_zone < rendered.yaml)
           rm rendered.yaml

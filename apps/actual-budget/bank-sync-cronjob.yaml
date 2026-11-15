@@ -3,7 +3,7 @@
 # Actual only pulls bank data when a client asks for it. Nobody opened the app
 # between 2026-08-27 and 2026-09-28, so five weeks of transactions sat unimported
 # while the SimpleFIN link itself was healthy the whole time. This job is the
-# "client" that asks every morning.
+# "client" that asks every day.
 #
 # It also fails when the newest transaction across ALL accounts is older than
 # STALE_DAYS, so a stall that the sync call itself does not report (a bank
@@ -24,7 +24,7 @@ metadata:
   name: actual-budget-bank-sync
   namespace: actual-budget
 spec:
-  schedule: "0 13 * * *"  # 13:00 Pacific, the time it has always run
+  schedule: "0 13 * * *"  # 13:00 Pacific
   timeZone: America/Los_Angeles
   concurrencyPolicy: Forbid
   successfulJobsHistoryLimit: 3

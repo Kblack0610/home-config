@@ -10,7 +10,7 @@ This document covers the self-hosted finance tools deployed in this home lab, re
 
 ### Actual Budget (Personal Finance)
 
-**Status:** ✅ Deployed
+**Status:** Yes Deployed
 **URL:** https://finance.kblab.me
 **Namespace:** `actual-budget`
 
@@ -18,11 +18,11 @@ Actual Budget is a local-first personal finance application focused on envelope 
 
 #### What It Does Well
 
-- **Bank Syncing**: Automated transaction imports via SimpleFIN (~$1.50/month)
-- **Envelope Budgeting**: Allocate money to categories, track spending
-- **Multi-device Sync**: Desktop and mobile apps sync to your server
-- **Privacy**: All data stays on your server
-- **Clean UI**: Modern, intuitive interface
+- Bank Syncing: Automated transaction imports via SimpleFIN (~$1.50/month)
+- Envelope Budgeting: Allocate money to categories, track spending
+- Multi-device Sync: Desktop and mobile apps sync to your server
+- Privacy: All data stays on your server
+- Clean UI: Modern, intuitive interface
 
 #### What It's For
 
@@ -35,7 +35,7 @@ Actual Budget is a local-first personal finance application focused on envelope 
 
 - Business invoicing
 - Client billing
-- Tax reporting
+- Filing tax returns (the [tax CSV](./tax-export.md) is a CPA handoff)
 - Project-based expense tracking
 - Time tracking
 
@@ -47,7 +47,7 @@ Actual Budget is a local-first personal finance application focused on envelope 
 4. Configure SimpleFIN:
    - Sign up at https://simplefin.org/
    - Link your bank accounts
-   - Copy access URL to Actual Budget → Settings → Linked Accounts
+   - Copy access URL to Actual Budget -> Settings -> Linked Accounts
 
 #### Budgets do not roll forward, so a job fills them
 
@@ -65,6 +65,10 @@ Weekly nudge: on Mondays the bank-sync job posts the last 14 days of uncategoriz
 
 Scripting rules through the bridge: send `"stage": null` for a default-stage rule. The bridge's swagger says `"default"`, but `PATCH /rules/{id}` with `"default"` answers 500 "Unknown error" (actual-http-api 26.8.1, 2026-10-27). To link two imported rows as one transfer, PATCH each with `transfer_id` set to the other row's id and `payee` set to the other account's transfer payee; this links them without creating a third row.
 
+#### Dev spend
+
+Keep Actual as the bank-transaction store for personal and business finances. The dev split and vendor rules are in [tax-categories.md](./tax-categories.md#dev-spend-migration-human-applied), including the human-applied 2026 migration and its verification checklist. The migration is pending until its completion record is filled in.
+
 #### Monthly routine (about 10 minutes)
 
 1. Clear the uncategorized count. Categorizing a payee by hand also teaches a rule.
@@ -81,15 +85,17 @@ The 2026-10-02 backfill used the bridge's `POST accounts/{id}/transactions/impor
 2. Categorize every imported row. An uncategorized row is outside the budget, so 352 of them made October's To Budget read -$26.6k until they were categorized.
 
 
-- **Backups**: Automated daily at 3 AM, 30-day local retention PLUS a best-effort off-box copy to the NAS (`backups/home-k3s/actual-budget/`). The budget SQLite lives on a single-node local-path PVC, so the NAS copy is the durability tier - a node loss no longer takes the data and every backup at once. Verified weekly by `nas-backup-verify`.
-- **Local location**: `/var/backups/actual-budget/` on the node holding the PVC
-- **Manual backup**: `kubectl --context home-k3s create job --from=cronjob/actual-budget-backup manual-backup-$(date +%s) -n actual-budget`
+#### Backups
+
+- Backups: Automated daily at 3 AM, 30-day local retention PLUS a best-effort off-box copy to the NAS (`backups/home-k3s/actual-budget/`). The budget SQLite lives on a single-node local-path PVC, so the NAS copy is the durability tier - a node loss no longer takes the data and every backup at once. Verified weekly by `nas-backup-verify`.
+- Local location: `/var/backups/actual-budget/` on the node holding the PVC
+- Manual backup: `kubectl --context home-k3s create job --from=cronjob/actual-budget-backup manual-backup-$(date +%s) -n actual-budget`
 
 ---
 
 ## C2C / Freelance Business Finance (Future)
 
-For contractor/consulting work (like Deel income), Actual Budget is insufficient. Below are recommended self-hosted alternatives.
+Actual retains bank transactions, business categories and the CPA-handoff CSV in one budget. Consider the tools below only if client invoicing or time tracking becomes necessary; none is required for tracking dev spend.
 
 ### Recommended: Invoice Ninja
 
@@ -173,45 +179,45 @@ database: MySQL/MariaDB or PostgreSQL
 
 ---
 
-## Recommended Finance Stack
+## Optional invoicing stack
 
-### For Your Situation (Deel + Consulting Income)
+### If client invoicing becomes necessary
 
 ```
-┌─────────────────────────────────────────────────────────┐
-│                    PERSONAL FINANCE                      │
-│                                                          │
-│  ┌─────────────────────────────────────────────────┐   │
-│  │              Actual Budget                        │   │
-│  │  • Bank accounts (checking, savings)             │   │
-│  │  • Credit cards                                  │   │
-│  │  • Personal budgeting                            │   │
-│  │  • SimpleFIN bank sync                           │   │
-│  └─────────────────────────────────────────────────┘   │
-│                         ▲                               │
-│                         │ Transfer to personal          │
-│                         │                               │
-├─────────────────────────┼───────────────────────────────┤
-│                    BUSINESS FINANCE                      │
-│                         │                               │
-│  ┌─────────────────────────────────────────────────┐   │
-│  │              Invoice Ninja                        │   │
-│  │  • Deel income tracking                          │   │
-│  │  • Client invoices                               │   │
-│  │  • Business expenses                             │   │
-│  │  • Tax reports                                   │   │
-│  │  • Time tracking                                 │   │
-│  └─────────────────────────────────────────────────┘   │
-│                                                          │
-└─────────────────────────────────────────────────────────┘
++---------------------------------------------------------+
+|                    PERSONAL FINANCE                      |
+|                                                          |
+|  +-------------------------------------------------+   |
+|  |              Actual Budget                        |   |
+|  |  - Bank accounts (checking, savings)             |   |
+|  |  - Credit cards                                  |   |
+|  |  - Personal budgeting                            |   |
+|  |  - SimpleFIN bank sync                           |   |
+|  +-------------------------------------------------+   |
+|                         ^                               |
+|                         | Transfer to personal          |
+|                         |                               |
++-------------------------+-------------------------------+
+|                    BUSINESS FINANCE                      |
+|                         |                               |
+|  +-------------------------------------------------+   |
+|  |              Invoice Ninja                        |   |
+|  |  - Deel income tracking                          |   |
+|  |  - Client invoices                               |   |
+|  |  - Business expenses                             |   |
+|  |  - Tax reports                                   |   |
+|  |  - Time tracking                                 |   |
+|  +-------------------------------------------------+   |
+|                                                          |
++---------------------------------------------------------+
 ```
 
 ### Why Separate Personal and Business?
 
-1. **Tax Compliance**: Clear separation for deductions
-2. **Audit Trail**: Business expenses documented properly
-3. **Simplicity**: Each tool does one thing well
-4. **Scalability**: Can add business partners, accountants later
+1. Tax Compliance: Clear separation for deductions
+2. Audit Trail: Business expenses documented properly
+3. Simplicity: Each tool does one thing well
+4. Scalability: Can add business partners, accountants later
 
 ---
 
@@ -220,15 +226,15 @@ database: MySQL/MariaDB or PostgreSQL
 | Feature | Actual Budget | Invoice Ninja | Akaunting | Crater |
 |---------|--------------|---------------|-----------|--------|
 | **Primary Use** | Personal | Freelance | Small Biz | Simple Invoice |
-| **Bank Sync** | ✅ SimpleFIN | ❌ | ✅ Plaid | ❌ |
-| **Invoicing** | ❌ | ✅ | ✅ | ✅ |
-| **Expenses** | ✅ Basic | ✅ | ✅ | ✅ |
-| **Time Tracking** | ❌ | ✅ | ❌ | ❌ |
-| **Projects** | ❌ | ✅ | ❌ | ❌ |
-| **Double-Entry** | ❌ | ❌ | ✅ | ❌ |
+| **Bank Sync** | Yes SimpleFIN | No | Yes Plaid | No |
+| **Invoicing** | No | Yes | Yes | Yes |
+| **Expenses** | Yes Basic | Yes | Yes | Yes |
+| **Time Tracking** | No | Yes | No | No |
+| **Projects** | No | Yes | No | No |
+| **Double-Entry** | No | No | Yes | No |
 | **Reports** | Basic | Good | Excellent | Basic |
-| **Multi-Currency** | ✅ | ✅ | ✅ | ✅ |
-| **Mobile Apps** | ✅ | ✅ | ✅ | ❌ |
+| **Multi-Currency** | Yes | Yes | Yes | Yes |
+| **Mobile Apps** | Yes | Yes | Yes | No |
 | **Complexity** | Low | Medium | High | Low |
 | **Resource Usage** | Light | Medium | Medium | Light |
 
@@ -243,7 +249,7 @@ database: MySQL/MariaDB or PostgreSQL
 - [x] Set up automated backups - now with off-box NAS copy + weekly verify
 - [x] Import existing accounts - done; ~2MB budget file with real history
 - [x] Configure SimpleFIN bank sync - all linked accounts `MATCH` as of 2026-09-28. Sync is now server-side and daily: `actual-budget-bank-sync` CronJob calls the actual-http-api bridge at 06:00 PDT and fails (so `HomelabCronJobFailed` pages) when nothing has imported for 5 days. Troubleshooting: [simplefin-reconnect.md](./simplefin-reconnect.md)
-- [ ] Set up budget categories for taxes - scheme documented in [tax-categories.md](./tax-categories.md); apply in-app
+- [ ] Apply the dev-spend category split and verify 2026 history - [migration checklist](./tax-categories.md#dev-spend-migration-human-applied)
 
 ### Phase 1b: Tax readiness (2026-07)
 
@@ -262,7 +268,7 @@ database: MySQL/MariaDB or PostgreSQL
 
 ### Phase 3: Integration (Future)
 
-- [ ] Document transfer workflow between business → personal
+- [ ] Document transfer workflow between business -> personal
 - [ ] Set up quarterly tax reminder automation
 - [ ] Create backup strategy for both systems
 - [ ] Optional: Connect to accounting software for tax prep

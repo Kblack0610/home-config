@@ -2,31 +2,20 @@
 
 Produces a per-year CSV of categorized transactions on the NAS - the artifact you hand a CPA. Built on an in-cluster `actual-http-api` bridge that wraps Actual's sync protocol in plain HTTP+JSON.
 
-## Status: activation-gated
+## Status: included in GitOps
 
-The manifests exist in `apps/actual-budget/` but are commented out in `apps/actual-budget/kustomization.yaml`. They deploy nothing until you activate them, because the bridge needs your Actual server password, which only you have. This is deliberate - it avoids shipping a non-functional, auth-broken pod into the auto-reconciling GitOps tree.
+The bridge and tax-export CronJob are listed in `apps/actual-budget/kustomization.yaml`. Flux owns their deployment on home-k3s. Inclusion in git does not prove a successful live export; validate the CSV before using it for reconciliation.
 
 Components (all in `apps/actual-budget/`):
-- `actual-http-api-deployment.yaml` + `actual-http-api-service.yaml` - the REST bridge (`jhonderson/actual-http-api:26.2.0`, ClusterIP :5007).
-- `finance-api-secret.yaml` - SOPS secret. `api-key` is a real generated bearer key; `actual-server-password` and `budget-sync-id` are placeholders you fill in.
+- `actual-http-api-deployment.yaml` + `actual-http-api-service.yaml` - the REST bridge (`jhonderson/actual-http-api:26.8.1`, ClusterIP :5007).
+- `finance-api-secret.yaml` - SOPS secret supplying the API key, Actual server password and budget sync ID.
 - `tax-export-cronjob.yaml` - quarterly job (1st of Jan/Apr/Jul/Oct, 04:00) that pulls the year's transactions and pushes `actual-tax-<year>.csv` to `backups/home-k3s/actual-budget/tax-exports/` on the NAS.
 
-## Activation
+## Category-to-tax-line map
 
-1. Populate the secret with your real values:
-   ```bash
-   export SOPS_AGE_KEY_FILE=~/.config/sops/age/keys.txt
-   sops apps/actual-budget/finance-api-secret.yaml
-   ```
-   Set `actual-server-password` (the Actual UI password) and `budget-sync-id` (Actual -> Settings -> "Sync ID", a UUID). Leave `api-key` as generated.
+[Tax categories](./tax-categories.md#group-business---schedule-c-self-employment-deel-consulting-bnb) owns the mapping used to interpret the CSV. The exporter includes every category and resolves category IDs to their current names; it does not filter the old software category or assign tax lines in code. `Biz: AI`, `Biz: CI & build` and `Biz: Hosting & infra` retain the old software category's 27a mapping in that table.
 
-2. Uncomment the four resources under the activation block in `apps/actual-budget/kustomization.yaml`.
-
-3. Commit, push to forgejo, reconcile:
-   ```bash
-   flux reconcile kustomization apps --with-source
-   kubectl --context home-k3s -n actual-budget get pods -l app=actual-http-api
-   ```
+For the human-applied split, follow the [2026 migration and before/after checks](./tax-categories.md#dev-spend-migration-human-applied). Export twice, keeping the pre-change CSV under a separate private name before the second run overwrites the NAS filename. Compare signed amounts in cents grouped by the documented tax-line mapping, including other 27a categories. This is a private reconciliation, with no transaction upload to the agent or dev-cost platform.
 
 ## Run it on demand
 
@@ -40,10 +29,10 @@ Export a specific past year by setting `TAX_YEAR` on the job (edit the env, or `
 
 ## Validate the first run
 
-The export script's jq field paths (`.payee`, `.category`, `.amount`, `.date`) match jhonderson/actual-http-api 26.2.0. Before trusting the CSV:
+The export script's jq field paths (`.payee`, `.category`, `.amount`, `.date`) were written for jhonderson/actual-http-api 26.2.0 and have not been rechecked against the pinned 26.8.1 bridge. Before trusting the CSV:
 - Confirm row count roughly matches the transactions you see in the UI for that year.
 - Confirm `amount` is in dollars (script divides integer cents by 100) and signs are right (outflows negative).
-- Confirm `payee` and `category` resolved to names, not raw UUIDs. If they show UUIDs, the categories/payees lookup call returned an unexpected shape - adjust the `.data[]` jq path to your version's response.
+- Confirm `payee` and `category` resolved to names. If they show UUIDs, the categories/payees lookup call returned an unexpected shape - adjust the `.data[]` jq path to your version's response.
 
 Fetch the CSV off the NAS:
 ```bash

@@ -6,7 +6,7 @@ Not tax advice. Category-to-line mappings are a starting point to confirm with a
 
 ## Model: one budget file, separated by category group
 
-Decision (2026-07): keep a SINGLE Actual budget file. SimpleFIN links per-file, so one file keeps bank sync simplest, and business vs personal separation is done by STRUCTURE, not by a second file. This stays clean to migrate to a dedicated tool (Invoice Ninja/Akaunting) later, because categories and accounts export independently.
+Decision (2026-07): keep a SINGLE Actual budget file. SimpleFIN links per-file, so one file keeps bank sync simplest, and category groups separate business and personal spending. This stays clean to migrate to a dedicated tool (Invoice Ninja/Akaunting) later, because categories and accounts export independently.
 
 Three levers, in order of importance:
 
@@ -32,7 +32,7 @@ Create these groups under Budget -> Categories. Personal groups you already have
 
 ### Group: "Business - Schedule C" (self-employment: Deel, consulting, BNB)
 
-Each category maps to a Schedule C Part II expense line. Name the Actual category with the line number so it self-documents.
+Each category maps to a Schedule C Part II expense line in this table. Keep the category names exact so reports and consumers can match them.
 
 | Actual category | Schedule C line | Notes |
 |---|---|---|
@@ -50,10 +50,12 @@ Each category maps to a Schedule C Part II expense line. Name the Actual categor
 | Biz: Travel | 24a | Airfare, lodging for business |
 | Biz: Meals (50%) | 24b | Business meals; deductible portion is usually 50% |
 | Biz: Utilities | 25 | Business-line phone/internet portion |
-| Biz: Software & subscriptions | 27a (Other) | SaaS, dev tools, hosting - itemize under Other expenses |
+| Biz: AI | 27a (Other) | AI subscriptions and API charges; Agents lane |
+| Biz: CI & build | 27a (Other) | CI runners and build services; CI lane |
+| Biz: Hosting & infra | 27a (Other) | Hosting, domains, DNS and bank-sync service; Infra lane |
 | Biz: Dues & memberships | 27a (Other) | Professional memberships |
 | Biz: Bank/merchant fees | 27a (Other) | Stripe/PayPal/processor fees |
-| Biz: Home office | Form 8829 | Tracked here, but computed on Form 8829, not Schedule C directly |
+| Biz: Home office | Form 8829 | Tracked here; computed on Form 8829 |
 | Biz: Income - Deel | Sch C line 1 | Gross receipts; keep income visible for quarterly estimates |
 | Biz: Income - Consulting | Sch C line 1 | Other client income |
 
@@ -70,6 +72,48 @@ Most filers take the standard deduction; populate this only if itemizing is like
 | Ded: Charitable - noncash | Gifts to charity (noncash) |
 
 Everything else stays in your normal personal budgeting groups (Groceries, Rent, etc.) and is simply not tax-relevant.
+
+## Dev spend migration (human-applied)
+
+Status: instructions prepared; Actual categories, rules and 2026 history have not been verified or changed by this PR. Apply this migration at https://finance.kblab.me in the existing budget. Keep personal finances and bank transactions in Actual. Employer and client work accounts, including Gigantic and its AWS accounts, are outside this migration.
+
+The three categories above replace `Biz: Software & subscriptions`. This table remains the tax-export category map: the [CSV exporter](../../apps/actual-budget/tax-export-cronjob.yaml) exports category names and has no separate hardcoded tax-line lookup. The split preserves the existing 27a mapping; CPA review of deductibility still applies.
+
+### Vendor rules
+
+Create one category rule per vendor/payee in Settings -> Rules. Match the exact payee already in Actual, and use the category below as its action. Registrar names and card descriptors must come from the UI; do not invent a payee or use a broad `Amazon` match. If a vendor has several payees, cover each observed payee. Retarget or remove the old category rules, including learned `payee is` rules that would outrank a new description rule.
+
+| Vendor/payee to confirm in Actual | Category | Scope |
+|---|---|---|
+| Anthropic | Biz: AI | Claude subscriptions and API charges |
+| OpenAI | Biz: AI | ChatGPT subscriptions and API charges; exclude Deel income |
+| AWS | Biz: CI & build | Personal dev CI-burst charges; review mixed-use invoices before assigning |
+| DigitalOcean | Biz: Hosting & infra | Hosting |
+| GitHub | Biz: CI & build | Actions and build-related charges |
+| Edgegap | Biz: Hosting & infra | Game-server hosting |
+| Cloudflare | Biz: Hosting & infra | Paid DNS, domains and infrastructure |
+| Each registrar shown in Actual | Biz: Hosting & infra | Business domain renewals; one rule per registrar/payee |
+| SimpleFIN | Biz: Hosting & infra | Bank-sync service |
+
+Review business use before adding a vendor-wide rule. A vendor that also bills personal purchases needs a narrower condition or manual categorization. Review remaining software vendors individually: assign each to the category matching its use, and resolve any expense that belongs elsewhere before retiring the old category. Refunds follow the original charge's category.
+
+### Apply and verify once
+
+1. Confirm a successful pre-change backup and its off-box NAS copy using the [backup procedure](./finance-stack.md#backups). Record the backup name and time locally. Do not proceed without a usable restore point.
+2. Before changing anything, save a 2026 tax CSV using the [tax-export procedure](./tax-export.md). Keep it private and use a different filename from the later export. Record the signed total of all categories mapped to 27a in the table above, the old category's total, and a personal control category's total (for example Groceries). Confirm the CSV agrees with Actual's category report; an empty or unresolved-category export is a failed baseline.
+3. Create `Biz: AI`, `Biz: CI & build` and `Biz: Hosting & infra` in `Business - Schedule C`. Keep the old category until all rows have been reviewed. Move any budgeted amounts and `#template` notes deliberately across the three categories, preserving their combined allocation; do not copy the old template into all three.
+4. Apply the vendor rules above, replacing their old category actions. Keep the income, transfer, personal and Tax Reserve rules intact. Check for conflicting learned rules before categorizing history.
+5. In Actual's transaction view, filter to 2026-01-01 through 2026-12-31 and the old category. Recategorize the existing transactions by payee using the table; inspect mixed purchases and split rows individually. Review remaining rows until the old category has zero transactions in the 2026 category report. Edit categories only, preserving dates, amounts, accounts, splits and transfer links. Leave every row categorized so To Budget does not move because of uncategorized spending.
+6. Save a second 2026 tax CSV and compare it with the baseline. The signed 27a total must match exactly in cents, and the personal control total must be unchanged. The old category must have zero 2026 rows, and each migrated charge or refund must appear once in the intended category. Confirm account balances and the combined budget allocation are unchanged. Investigate any difference before treating the migration as complete.
+7. After checking older history, future entries, category notes and rules, hide the empty old category. Do not delete or merge it in a way that assigns all history to one replacement category. Confirm one rule per vendor/payee sends a representative dev charge to the intended category, while OpenAI/Deel income and personal purchases retain their categories.
+
+Record completion here without bank data: application date, backup reference, whether the old category has zero 2026 rows, whether the 27a comparison and personal control passed, and whether vendor rules were checked. Keep CSVs, payee descriptors and amounts private. Until that record exists, the Actual migration is pending even if the documentation PR has merged.
+
+| Problem | Check and fix |
+|---|---|
+| New imports still use the old category | Retarget the exact-payee rule; it may outrank a description match. |
+| The 27a total changes | Compare the two private exports by transaction; find omitted, duplicated or incorrectly moved rows before continuing. |
+| To Budget changes unexpectedly | Find rows left uncategorized and review budget/template allocations; category edits must not alter balances. |
 
 ## Quarterly estimated taxes
 

@@ -782,6 +782,31 @@ model_list:
         json_mode: true
       supports_function_calling: true
 
+  # binks.chat image generation (generate_image tool, platform plan
+  # feat-binks-images P2). Gemini 3.1 Flash Image on a paid-tier key: the free
+  # tier has no image quota and trains on its input, so it cannot serve this.
+  # Reached only by keys whose models list it (binks-issuer once IMAGE_MODEL
+  # is set). The one route here with a route max_budget, an exception to the
+  # no-per-route-budget rule above: this route spends a Google key, not a
+  # Lazer team, so no team caps it. $20 / 30d per ask oPVN0y (2026-11-13).
+  # The counter is held in memory, so a pod restart clears it; the issuer's
+  # $50 / 1mo and binks-api's per-user daily cap are the durable bounds.
+  - model_name: "image (gemini-flash-image)"
+    litellm_params:
+      model: "gemini/gemini-3.1-flash-image"
+      api_key: os.environ/GEMINI_API_KEY_IMAGE
+      # Google paid price: in $0.50/1M, image out $60/1M, $0.067 per 1K image
+      # (ai.google.dev/gemini-api/docs/pricing, 2026-11-14). LiteLLM v1.96
+      # prices the call from the response's image tokens at the same rates,
+      # so no cost override is set here.
+      timeout: 120
+      rpm: 20
+      max_budget: 20
+      budget_duration: 30d
+    model_info:
+      mode: image_generation
+      tags: ["paid", "gemini", "binks", "image"]
+
   # The one self-hosted model: Qwen3.5-9B under llama-server on the
   # workstation's RTX 4060 Ti (dotfiles llama-server.service). Nothing leaves
   # the LAN, so personal data may use it; it is down when the workstation is.

@@ -77,6 +77,8 @@ The seven routes tagged `binks-eval` (GLM-5.3-Flash, Qwen3.8-Flash, Qwen3.7-Plus
 
 Revoke one user's key with `/key/delete` on its alias; binks-api mints a new one on the next turn.
 
+`image (gemini-flash-image)` is the binks.chat image route (Gemini `gemini-3.1-flash-image`, about $0.067 per 1K image), on `GEMINI_API_KEY_IMAGE` from a billing-enabled Google project (rbw `gemini-api-key-image`): both other Gemini keys are free tier, which has no image quota and trains on its input. It is the one route with its own `max_budget`, $20 / 30d; that counter is held in memory and a pod restart clears it, so the issuer's $50 and binks-api's per-user daily cap are the durable bounds. No key reaches it until `binks-issuer` gets it in `models` (`/user/update`), done when binks-api sets `IMAGE_MODEL`.
+
 `eval-reader` is a `proxy_admin_viewer`: it reads keys, teams and spend but calls no model. Set a new key's `team_id`, `metadata.consumer` and `metadata.priority` when you mint it.
 
 > **Category aliases:** `router_settings.model_group_alias` in `config.yaml` exposes short stable names (`code`, `reasoning`, `fast`, `vlm`, `embedding`, `stt`) that resolve to whichever concrete route a category points at. A key that allows the concrete route can call its alias (the `local-only` key calls `fast` through `fast (gpt-oss-120b)`). Retarget an alias in one line -> reconcile -> every consumer follows with no per-app edit. mem0 (`MEM0_DEFAULT_LLM_MODEL`) and karakeep (`INFERENCE_TEXT_MODEL`) call `fast`; binks-api calls `binks-chat`.

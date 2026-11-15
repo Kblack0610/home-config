@@ -9,9 +9,7 @@
 # A product with no source has no series, so its cell reads "off", never a zero.
 # Windows stay within Prometheus's 7d hot retention, because recording rules read it.
 #
-# Not here: Edgegap spend (bnb_edgegap_spend_usd_month carries no game label, so it
-# cannot be split per product until the registry adds one), and any number with no
-# series today (PostHog events, revenue: later exporters).
+# Not here: any number with no series today (PostHog events, revenue: later exporters).
 apiVersion: monitoring.coreos.com/v1
 kind: PrometheusRule
 metadata:
@@ -133,6 +131,17 @@ spec:
           labels:
             dept: money
             metric: subscribers_active
+
+        # ---- money: the games, from the game registry's /metrics ----
+        # The registry's estimate since the first of the month, UTC, per game in its
+        # EDGEGAP_APPS; a game with an app that has not run this month reads 0. The month
+        # resets on the 1st, so this is month-to-date, not a rolling 30 days. Every registry
+        # pod reads the same database, so max, not sum.
+        - record: kb_project_number
+          expr: max by (project) (label_replace(bnb_edgegap_game_spend_usd_month, "project", "$1", "game", "(.*)"))
+          labels:
+            dept: money
+            metric: edgegap_usd_month
 
         # Support comes from the workstation's exporters, through node_exporter's textfile.
         # store-reviews (dotfiles docs/operations/store-reviews.md) writes per product and

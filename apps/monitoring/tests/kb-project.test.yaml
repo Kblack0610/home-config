@@ -119,6 +119,28 @@ tests:
           - labels: 'kb_project_number{dept="money", metric="subscribers_active", project="binks-chat"}'
             value: 3
 
+  - name: Edgegap spend is the registry's month per game, a game that has not run reading 0
+    interval: 5m
+    input_series:
+      # Two pods during a rollout report the same database's number once.
+      - series: 'bnb_edgegap_game_spend_usd_month{game="dodginballs", job="game-registry", pod="a"}'
+        values: '4.25x6'
+      - series: 'bnb_edgegap_game_spend_usd_month{game="dodginballs", job="game-registry", pod="b"}'
+        values: '4.25x6'
+      - series: 'bnb_edgegap_game_spend_usd_month{game="shapecity", job="game-registry"}'
+        values: '0x6'
+      # The unlabelled total is not a product.
+      - series: 'bnb_edgegap_spend_usd_month{job="game-registry"}'
+        values: '9x6'
+    promql_expr_test:
+      - expr: kb_project_number{metric="edgegap_usd_month"}
+        eval_time: 30m
+        exp_samples:
+          - labels: 'kb_project_number{dept="money", metric="edgegap_usd_month", project="dodginballs"}'
+            value: 4.25
+          - labels: 'kb_project_number{dept="money", metric="edgegap_usd_month", project="shapecity"}'
+            value: 0
+
   - name: a source down for a day pages, and one that is back does not
     interval: 5m
     input_series:

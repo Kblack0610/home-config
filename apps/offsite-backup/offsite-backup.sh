@@ -56,13 +56,25 @@ done
 
 # The repository is created once by hand (runbook "Offsite (B2)"), never here:
 # an init against a wrong URL or password would quietly start a second repo.
+#
+# A live run, such as a manual job (concurrencyPolicy: Forbid does not see
+# one), must stop this run, or both upload the same data. unlock removes only
+# stale locks, and restic calls a lock stale only once it is 30 minutes past
+# its last refresh (a live run refreshes every 5). So a lock left after unlock
+# is a live run, or a run that died under 30 minutes ago: the pod a node
+# reboot killed, whose Job retry starts seconds later. Nothing signals that a
+# dead holder's lock has expired, so wait out restic's stale window once and
+# look again: a live run's lock is still fresh, a dead run's is gone.
+LOCK_STALE_WAIT_S=1860 # restic's StaleLockTimeout (30 min) plus a minute
 restic unlock
-# unlock removes only stale locks, so a lock left now belongs to a live run,
-# such as a manual job, which concurrencyPolicy: Forbid does not see. Two runs
-# would upload the same data twice.
 if [ -n "$(restic list locks --no-lock -q)" ]; then
-  echo "ERROR: another restic run holds the repository. Aborting."
-  exit 1
+  echo "A lock is held. Waiting ${LOCK_STALE_WAIT_S}s for it to go stale, in case its run is dead."
+  sleep "$LOCK_STALE_WAIT_S"
+  restic unlock
+  if [ -n "$(restic list locks --no-lock -q)" ]; then
+    echo "ERROR: another restic run holds the repository. Aborting."
+    exit 1
+  fi
 fi
 restic backup --host asus-laptop --tag nightly \
   --limit-upload "$LIMIT_UPLOAD_KIB" /data

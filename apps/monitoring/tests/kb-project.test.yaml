@@ -139,6 +139,10 @@ tests:
         values: '1x400'
       - series: 'playtest_feedback_generated_seconds'
         values: '0+300x400'
+      - series: 'sentry_issues_up'
+        values: '1x400'
+      - series: 'sentry_issues_generated_seconds'
+        values: '0+300x400'
     alert_rule_test:
       - eval_time: 12h
         alertname: KbProjectSourceDown
@@ -185,6 +189,10 @@ tests:
         values: '1x400'
       - series: 'playtest_feedback_generated_seconds'
         values: '0+300x400'
+      - series: 'sentry_issues_up'
+        values: '1x400'
+      - series: 'sentry_issues_generated_seconds'
+        values: '0+300x400'
     promql_expr_test:
       - expr: kb_project_source_up{source="litellm"}
         eval_time: 10m
@@ -220,6 +228,10 @@ tests:
         values: '0x4'
       - series: 'playtest_feedback_open{project="dodginballs", job="workstation", instance="192.168.1.2:9100"}'
         values: '6x4'
+      - series: 'sentry_issues_unresolved{project="placemyparents", job="workstation", instance="192.168.1.2:9100"}'
+        values: '12x4'
+      - series: 'sentry_issues_new{project="placemyparents", window="7d", job="workstation", instance="192.168.1.2:9100"}'
+        values: '0x4'
     promql_expr_test:
       - expr: kb_project_number{dept="support"}
         eval_time: 10m
@@ -234,6 +246,10 @@ tests:
             value: 0
           - labels: 'kb_project_number{dept="support", metric="playtest_feedback_open", project="dodginballs"}'
             value: 6
+          - labels: 'kb_project_number{dept="support", metric="sentry_unresolved", project="placemyparents"}'
+            value: 12
+          - labels: 'kb_project_number{dept="support", metric="sentry_new_7d", project="placemyparents"}'
+            value: 0
 
   - name: a textfile source is up while every store read on a run in the last day
     interval: 5m
@@ -249,13 +265,20 @@ tests:
         values: '0x400'
       - series: 'playtest_feedback_generated_seconds'
         values: '0+300x400'
+      # a Sentry project read with an error: the source is down though its last run is fresh
+      - series: 'sentry_issues_up'
+        values: '0x400'
+      - series: 'sentry_issues_generated_seconds'
+        values: '0+300x400'
     promql_expr_test:
-      - expr: kb_project_source_up{source=~"store-reviews|playtest-feedback"}
+      - expr: kb_project_source_up{source=~"store-reviews|playtest-feedback|sentry-issues"}
         eval_time: 10m
         exp_samples:
           - labels: 'kb_project_source_up{source="store-reviews"}'
             value: 1
           - labels: 'kb_project_source_up{source="playtest-feedback"}'
+            value: 0
+          - labels: 'kb_project_source_up{source="sentry-issues"}'
             value: 0
 
   - name: a textfile source whose last run is over a day old reads 0, even when it read everything
@@ -276,4 +299,23 @@ tests:
         eval_time: 25h
         exp_samples:
           - labels: 'kb_project_source_up{source="store-reviews"}'
+            value: 0
+
+  - name: sentry-issues is up while it read every project in the last day, and down once its last run is a day old
+    interval: 5m
+    input_series:
+      - series: 'sentry_issues_up'
+        values: '1x400'
+      - series: 'sentry_issues_generated_seconds'
+        values: '0x400'
+    promql_expr_test:
+      - expr: kb_project_source_up{source="sentry-issues"}
+        eval_time: 23h
+        exp_samples:
+          - labels: 'kb_project_source_up{source="sentry-issues"}'
+            value: 1
+      - expr: kb_project_source_up{source="sentry-issues"}
+        eval_time: 25h
+        exp_samples:
+          - labels: 'kb_project_source_up{source="sentry-issues"}'
             value: 0

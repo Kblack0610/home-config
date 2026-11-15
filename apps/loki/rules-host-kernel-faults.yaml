@@ -32,6 +32,7 @@ data:
               label_replace(sum by (host) (count_over_time({transport="kernel"} |~ "GSP RM heartbeat timed out|NVRM: Xid|NVRM: GPU has fallen off the bus|NV_ERR_NO_MEMORY" [10m])), "instance", "$1", "host", "(.*)") > 0
             labels:
               severity: warning
+              fleet: fix
               category: node-health
             annotations:
               summary: "GPU driver fault on {{ $labels.host }}: {{ $value }} NVRM errors in 10m. hp-victus hung after this twice (2026-11-12, 11-13)"
@@ -40,6 +41,7 @@ data:
               label_replace(sum by (host) (count_over_time({transport="kernel"} |~ "soft lockup - CPU|watchdog: BUG: soft lockup|hard LOCKUP|blocked for more than [0-9]+ seconds|rcu_sched self-detected stall|rcu_preempt self-detected stall" [10m])), "instance", "$1", "host", "(.*)") > 0
             labels:
               severity: critical
+              fleet: fix
               category: node-health
             annotations:
               summary: "Kernel lockup or hung task on {{ $labels.host }}: {{ $value }} lines in 10m"
@@ -48,6 +50,7 @@ data:
               label_replace(sum by (host) (count_over_time({transport="kernel"} |~ "Link is Down|NETDEV WATCHDOG|transmit queue [0-9]+ timed out" [10m])), "instance", "$1", "host", "(.*)") > 0
             labels:
               severity: warning
+              fleet: none  # a cable, switch port or NIC: the human checks it; NodeDown (fleet: fix) carries a host that drops off
               category: node-health
             annotations:
               summary: "NIC link down or TX timeout on {{ $labels.host }}: {{ $value }} lines in 10m"
@@ -56,6 +59,7 @@ data:
               label_replace(sum by (host) (count_over_time({transport="kernel"} |~ "mce: \\[Hardware Error\\]|Machine check events logged" [10m])), "instance", "$1", "host", "(.*)") > 0
             labels:
               severity: critical
+              fleet: none  # failing CPU or memory: the human replaces it
               category: node-health
             annotations:
               summary: "CPU or memory hardware error (MCE) on {{ $labels.host }}: {{ $value }} lines in 10m"

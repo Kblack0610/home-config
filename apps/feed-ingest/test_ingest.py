@@ -255,6 +255,17 @@ class Parsers(unittest.TestCase):
         tags = ingest.parse_tags('Sure: {"tickers": ["$nvda"], "event_type": "Coup", "sentiment": -3}')
         self.assertEqual(tags, {"tickers": ["NVDA"], "entities": [], "event_type": "other", "sentiment": -1.0})
 
+    def test_tagger_names_an_empty_reply(self):
+        # A reasoning model that spends max_tokens thinking returns content None.
+        reply = {"choices": [{"message": {"content": None}, "finish_reason": "length"}]}
+        orig = ingest.http_post_json
+        ingest.http_post_json = lambda *a, **k: reply
+        try:
+            with self.assertRaisesRegex(ValueError, "finish_reason length"):
+                ingest.Tagger("http://x", "fast", "k").tag(ingest.Envelope("edgar", "1", 0, "", "text"))
+        finally:
+            ingest.http_post_json = orig
+
     def test_config_parses_and_names_a_contact_user_agent(self):
         cfg = config()
         self.assertRegex(cfg["user_agent"], r"\S+@\S+\.\w+")

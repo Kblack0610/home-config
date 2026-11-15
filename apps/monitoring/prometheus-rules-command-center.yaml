@@ -57,6 +57,7 @@ spec:
         # home_k3s_trivy_criticals, a fixable-CVE ratchet, is posture and not an outage, so it warns:
         # fleet-shepherd infra reads a red k3s domain as a cluster outage and holds every fleet-dispatch
         # start. Its own Sentinel page and the HomelabCriticalVulnerability alert still report a trip.
+        # home_k3s_kubeconfig_cert warns too: it trips 30 days before the admin client cert expires.
         # Weight 2 is for a user-facing outage (prod, the k3s cluster, CI runners offline) or a dead
         # alert path (pager_undelivered: with it down, no other page arrives; alertmanager_fleet after 2h); every
         # other watch warns in its domain. A runner offline includes m1_playground_mac_online. Work posture
@@ -76,7 +77,7 @@ spec:
         - record: cc:watch_state
           labels: {domain: k3s}
           expr: >-
-            max by (item) (label_replace(((mqtt_tripped{topic=~"agents_.+_watch_(home_k3s_.+|cluster_janitor_alive)",topic!~"agents_.+_watch_home_k3s_trivy_criticals"} and on (topic) cc:agents_topic_live) * 2 > 0) or ((mqtt_tripped{topic=~"agents_.+_watch_(home_k3s_trivy_criticals|forgejo_restore_drill)"} and on (topic) cc:agents_topic_live) * 1 > 0) or ((mqtt_stale{topic=~"agents_.+_watch_(home_k3s_.+|cluster_janitor_alive|forgejo_restore_drill)"} and on (topic) cc:agents_topic_live) > 0), "item", "$1", "topic", "agents_.+_watch_(.+)"))
+            max by (item) (label_replace(((mqtt_tripped{topic=~"agents_.+_watch_(home_k3s_.+|cluster_janitor_alive)",topic!~"agents_.+_watch_home_k3s_(trivy_criticals|kubeconfig_cert)"} and on (topic) cc:agents_topic_live) * 2 > 0) or ((mqtt_tripped{topic=~"agents_.+_watch_(home_k3s_trivy_criticals|home_k3s_kubeconfig_cert|forgejo_restore_drill)"} and on (topic) cc:agents_topic_live) * 1 > 0) or ((mqtt_stale{topic=~"agents_.+_watch_(home_k3s_.+|cluster_janitor_alive|forgejo_restore_drill)"} and on (topic) cc:agents_topic_live) > 0), "item", "$1", "topic", "agents_.+_watch_(.+)"))
         - record: cc:watch_state
           labels: {domain: prod}
           expr: >-

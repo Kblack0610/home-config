@@ -109,6 +109,14 @@ The three `opencode-free (...)` routes are OpenCode's free models (beam-free, lo
 |---|---|---|---|---|
 | `ask-local` | `local (qwen3.5-9b)` | $1 / 30d, a tripwire only (the route is priced 0) | dotfiles `ask-local` and the `local-model` skill, through the agent-run route `gateway-local` | `~/.local/state/ask-local/litellm.key` |
 
+### feed-ingest key
+
+`apps/feed-ingest` tags news items through `fast` (its tier-2 step). Its key sits in `lazer-core` as a home service, with its own cap so a news day cannot spend the team's month; past the cap the gateway refuses, items publish untagged and `feed_ingest_tag_errors_total` counts them.
+
+| Key | Models | Budgets | Consumer | Key file |
+|---|---|---|---|---|
+| `feed-ingest` | `fast`, `fast (gpt-oss-120b)` | $10 / 30d, rpm 30, team `lazer-core` | feed-ingest tier-2 tags (priority must) | `apps/feed-ingest/feed-ingest-secret.sops.yaml` `LITELLM_API_KEY` |
+
 ### Create a key
 
 The LiteLLM admin UI is reachable at `https://llm.kblab.me/ui/` (Tailscale-gated). Log in with `UI_USERNAME` / `UI_PASSWORD` from `litellm-db-secrets`. Or via API:

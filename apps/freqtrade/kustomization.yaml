@@ -34,6 +34,7 @@ resources:
   - wallet-cronjob.yaml
   - futures-cronjob.yaml
   - trader-db-secret.sops.yaml
+  - trader-feeds-secret.sops.yaml   # FEED_DATABASE_URL: read-only feed-ingest ledger (apps/feed-ingest)
   - trader-web-oauth-secret.sops.yaml
   - watcher-deployment.yaml
   - web-deployment.yaml

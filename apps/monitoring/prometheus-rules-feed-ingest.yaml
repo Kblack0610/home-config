@@ -1,0 +1,46 @@
+# feed-ingest (apps/feed-ingest). Every series comes from its own /metrics. Each source exports its
+# cadence, so "silent" means no successful poll (or, for Jetstream, no message) in 3 cadences.
+# A crashlooping pod is covered elsewhere (KubePodCrashLooping); the ledger is in shared Postgres.
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: feed-ingest
+  namespace: monitoring
+  labels:
+    app.kubernetes.io/name: feed-ingest
+    app.kubernetes.io/part-of: monitoring
+    release: kube-prometheus-stack
+spec:
+  groups:
+    - name: feed-ingest.alerts
+      interval: 1m
+      rules:
+        - alert: FeedSourceSilent
+          expr: time() - feed_ingest_last_success_timestamp_seconds > 3 * feed_ingest_cadence_seconds
+          for: 5m
+          labels:
+            severity: warning
+            category: feeds
+          annotations:
+            summary: "feed-ingest source {{ $labels.source }} has not polled successfully for 3 cadences"
+            description: >-
+              Check the feed-ingest pod log for that source's poll errors (apps/feed-ingest/README.md,
+              Troubleshooting). Its items are missing from the ledger and MQTT until it recovers.
+
+        # A source that never started exports no timestamp, so the rule above cannot see it.
+        - alert: FeedIngestMetricsMissing
+          expr: absent(feed_ingest_cadence_seconds)
+          for: 15m
+          labels:
+            severity: warning
+            category: feeds
+          annotations:
+            summary: "feed-ingest exports no metrics: the pod is down or every source failed to start"
+
+        - alert: FeedIngestPipelineErrors
+          expr: increase(feed_ingest_pipeline_errors_total[30m]) > 0
+          labels:
+            severity: warning
+            category: feeds
+          annotations:
+            summary: "feed-ingest failed to write {{ $labels.source }} items to the ledger in the last 30 minutes"

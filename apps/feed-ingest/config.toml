@@ -1,0 +1,83 @@
+# feed-ingest content: sources, watchlist, routes. A config edit rolls the pod (configMapGenerator).
+# A new consumer is a [[routes]] entry or an MQTT subscription on feeds/#, never code.
+
+# SEC fair access requires a declared User-Agent with a contact (ask 0btoHr, 2026-11-13).
+user_agent = "BlackNBrown Studios feed-ingest kenneth.black@blacknbrownstudios.com"
+metrics_port = 9100
+
+[mqtt]
+host = "mosquitto.mosquitto.svc.cluster.local"
+port = 1883
+topic_prefix = "feeds"
+
+# Scoped key feed-ingest (apps/litellm/README.md, Keys): `fast` only, $10 / 30d.
+[tagger]
+enabled = true
+url = "http://litellm.ai-gateway.svc.cluster.local:4000/v1/chat/completions"
+model = "fast"
+
+# tag = false skips the model for a source (default true).
+# keep = "all" publishes every item; "watchlist" drops any item no watchlist ticker, name or
+# handle matches, before the ledger and before the model. interval_s is the poll cadence, and
+# for Jetstream the longest normal gap between messages; the silence alert fires at 3x it.
+[sources.edgar]
+# Every 8-K as filed. SEC allows 10 requests/s per host (sec.gov/os/accessing-edgar-data, read
+# 2026-11-14); one request per 2 minutes.
+url = "https://www.sec.gov/cgi-bin/browse-edgar?action=getcurrent&type=8-K&company=&dateb=&owner=include&start=0&count=100&output=atom"
+interval_s = 120
+keep = "all"
+
+[sources.gdelt]
+# GDELT 2.0 publishes a GKG batch every 15 minutes as static files (no key, no limiter; the DOC
+# API answers this IP 429). Poll lastupdate.txt every 5 minutes, read each new batch once.
+url = "http://data.gdeltproject.org/gdeltv2/lastupdate.txt"
+interval_s = 300
+keep = "watchlist"
+
+[sources.bluesky]
+# Jetstream is the whole Bluesky post stream (about 40 posts/s, 32 KiB/s, measured 2026-11-14), so
+# it is watchlist-only, and untagged: a news day brings about 10 watchlist posts a minute, which
+# would spend the key's budget alone. Posts still land in the ledger and on MQTT for counts.
+url = "wss://jetstream2.us-east.bsky.network/subscribe"
+resolver = "https://public.api.bsky.app/xrpc/com.atproto.identity.resolveHandle"
+interval_s = 60
+keep = "watchlist"
+tag = false
+
+[sources.rss]
+interval_s = 300
+keep = "all"
+feeds = [
+  { name = "marketwatch-top", url = "https://feeds.content.dowjones.io/public/rss/mw_topstories" },
+  { name = "cnbc-top", url = "https://search.cnbc.com/rs/search/combinedcms/view.xml?partnerId=wrss01&id=100003114" },
+]
+
+# Tickers match in capitals or as a cashtag, names in any case, CIK exactly (EDGAR).
+[watchlist]
+handles = []
+tickers = [
+  { ticker = "NVDA", cik = "0001045810", names = ["NVIDIA", "Jensen Huang"] },
+  { ticker = "SMH", names = ["VanEck Semiconductor"] },
+  { ticker = "AMD", cik = "0000002488", names = ["Advanced Micro Devices"] },
+  { ticker = "TSLA", cik = "0001318605", names = ["Tesla"] },
+  { ticker = "AAPL", cik = "0000320193", names = ["Apple Inc"] },
+  { ticker = "MSFT", cik = "0000789019", names = ["Microsoft"] },
+  { ticker = "COIN", cik = "0001679788", names = ["Coinbase"] },
+  { ticker = "MSTR", cik = "0001050446", names = ["MicroStrategy"] },
+]
+
+# Home Assistant: one discovered sensor per source (sensor.feed_ingest_<source>_latest) holding the
+# newest watchlist item; automations trigger on it.
+[[routes]]
+name = "ha"
+kind = "ha"
+discovery_prefix = "homeassistant"
+match = { watchlist = true }
+
+# ntfy topic `feeds`, its own topic so the `agents` pager budget is untouched; priority 2 (low).
+[[routes]]
+name = "ntfy-feeds"
+kind = "ntfy"
+url = "http://ntfy.ntfy.svc.cluster.local/feeds"
+priority = 2
+match = { watchlist = true, event_types = ["management", "m_and_a", "legal", "regulatory", "earnings", "guidance"], min_abs_sentiment = 0.5 }

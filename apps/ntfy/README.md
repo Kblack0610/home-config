@@ -37,6 +37,7 @@ init container reading from a SOPS-encrypted `secret.yaml`.
 | `notes-sync` | `notes-sync-bridge` on every `.notes` push | the `notes-ntfy` user service and the phone's sync | no buzz wanted, it is machine traffic |
 | `homelab-janitor` | `apps/cluster-janitor/cronjob.yaml` | Ken, when debugging the janitor | no |
 | `finance` | `apps/actual-budget/bank-sync-cronjob.yaml` | Ken | optional |
+| `feeds` | `apps/feed-ingest` route `ntfy-feeds`: watchlist news with a strong tag (config.toml), priority 2 | Ken | optional, no buzz |
 
 ### Priorities
 

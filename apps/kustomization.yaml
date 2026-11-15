@@ -24,6 +24,7 @@ resources:
   - flux-audit
   - forgejo
   - forgejo-mirror-exporter
+  - feed-ingest
   - freellmapi
   - frigate
   - github-runner-exporter

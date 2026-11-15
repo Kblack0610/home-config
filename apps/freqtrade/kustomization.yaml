@@ -50,13 +50,13 @@ images:
   # change; the tag is the strategy repo commit it was built from.
   - name: trader
     newName: ghcr.io/kblack0610/trader
-    digest: sha256:51376899f1941ae1960ba788d65a385a05cfe0137fb7fb637004ad87ef9c510c  # sha-0d1f1b5
+    digest: sha256:4b6e2b2e8aefad3d8cbc923942641125a950a9d9a6c6477c36378f6d2258cd1c  # sha-fa6d54e
   # The same repo on freqtrade's FreqAI base (lightgbm), 2.7 GB: only the
   # analysis job runs it, for the ML family. The strategy repo's bump PR moves
   # this digest with trader's.
   - name: trader-ml
     newName: ghcr.io/kblack0610/trader-ml
-    digest: sha256:46aeaab5f37425a3808f125f162e423d469139537e7a5f1bf4e67ac8e11bba53  # sha-0d1f1b5
+    digest: sha256:779867f8f767f60fcb671ce2b5bb77de8182dccd9aef9399757c58232375659b  # sha-fa6d54e
 
 configMapGenerator:
   # Rows here and replicas in statefulset.yaml move together.

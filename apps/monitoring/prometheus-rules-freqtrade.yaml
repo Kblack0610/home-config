@@ -60,14 +60,17 @@ spec:
               Check the freqtrade-watcher pod and its log. Every bot's equity is going unwatched
               (apps/freqtrade/README.md, Troubleshooting).
 
+        # The limit is the trader repo's (lab/suggest.toml [watcher] unseen_after_seconds, 5 minutes): a paper
+        # account is read when its venue's pass marks it, so the odds_api ones (swept every 6 h) get that venue's
+        # stale_after_min. A flat 300 called them blind for most of every day (ar-2510).
         - alert: TraderWatchBotBlind
-          expr: trader_watch_unseen_seconds > 300
+          expr: trader_watch_unseen_seconds > trader_watch_unseen_limit_seconds
           labels:
             severity: warning
             fleet: fix
             category: trading
           annotations:
-            summary: "The watcher has not read bot {{ $labels.bot }} for 5 minutes"
+            summary: "The watcher has not read bot {{ $labels.bot }} for {{ $value | humanizeDuration }}"
 
         - alert: TraderDailyLossBreach
           expr: trader_watch_breached == 1

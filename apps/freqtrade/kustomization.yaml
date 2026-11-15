@@ -36,6 +36,7 @@ resources:
   - futures-cronjob.yaml
   - trader-db-secret.sops.yaml
   - trader-feeds-secret.sops.yaml   # FEED_DATABASE_URL: read-only feed-ingest ledger (apps/feed-ingest)
+  - call-rules-cronjob.yaml   # reads trader-feeds: feed events to scored rule calls (trader lab/call_rules.py)
   - trader-web-oauth-secret.sops.yaml
   - watcher-deployment.yaml
   - web-deployment.yaml

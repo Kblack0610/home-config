@@ -1,0 +1,61 @@
+# Event-to-call rules (trader lab/call_rules.py): every 15 minutes, the tagged watchlist items feed-ingest stored in
+# the last day that a rule in lab/call_rules.toml matches become who=rule paper calls, scored by the nightly analysis.
+# Each rule is a registered trial. Reads the feeds ledger as feed_reader (Secret trader-feeds); writes only calls,
+# call_rule_events and trials in the trader DB. A failed run is HomelabCronJobFailed. Never places an order.
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: freqtrade-call-rules
+spec:
+  schedule: "7,22,37,52 * * * *"  # clear of the 5-minute ingest's migrate
+  timeZone: "Etc/UTC"
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      backoffLimit: 0  # the next quarter hour is the retry; a seen event is skipped, so a rerun makes no second call
+      activeDeadlineSeconds: 600  # guard: a run takes seconds
+      template:
+        metadata:
+          labels:
+            app: freqtrade-call-rules
+        spec:
+          restartPolicy: Never
+          nodeSelector:
+            kubernetes.io/arch: amd64
+          securityContext:
+            runAsUser: 1000
+            runAsGroup: 1000
+            fsGroup: 1000
+          initContainers:
+            - name: migrate
+              image: trader
+              command: ["python", "/repo/lab/migrate.py"]
+              env:
+                - name: DATABASE_URL
+                  valueFrom:
+                    secretKeyRef: {name: trader-db, key: database-url}
+              resources:
+                requests:
+                  cpu: 20m
+                  memory: 64Mi
+                limits:
+                  memory: 256Mi
+          containers:
+            - name: call-rules
+              image: trader
+              command: ["python", "-m", "lab.call_rules"]
+              env:
+                - name: DATABASE_URL
+                  valueFrom:
+                    secretKeyRef: {name: trader-db, key: database-url}
+                - name: FEED_DATABASE_URL
+                  valueFrom:
+                    secretKeyRef: {name: trader-feeds, key: FEED_DATABASE_URL}
+              resources:
+                requests:
+                  cpu: 20m
+                  memory: 128Mi
+                limits:
+                  memory: 512Mi

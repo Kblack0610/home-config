@@ -1,7 +1,8 @@
 # One shape for every per-product number the department tabs on agents.kblab.me read:
 # kb_project_number{project, dept, metric}, recorded here over series that already
-# exist. project is the project-map name; dept is analytics or money (the departments
-# with a source today); metric names the number and carries its window in the suffix.
+# exist. project is the project-map name; dept is analytics, support or money (the
+# departments with a source today); metric names the number and carries its window in
+# the suffix.
 # Prometheus remote-writes the result to VictoriaMetrics (apps/victoria-metrics), the
 # hub's reader. A new provider gets one exporter and one more rule here, not a new shape.
 #
@@ -10,7 +11,7 @@
 #
 # Not here: Edgegap spend (bnb_edgegap_spend_usd_month carries no game label, so it
 # cannot be split per product until the registry adds one), and any number with no
-# series today (PostHog events, revenue, store reviews: later exporters).
+# series today (PostHog events, revenue: later exporters).
 apiVersion: monitoring.coreos.com/v1
 kind: PrometheusRule
 metadata:
@@ -133,6 +134,32 @@ spec:
             dept: money
             metric: subscribers_active
 
+        # Support comes from the workstation's exporters, through node_exporter's textfile.
+        # store-reviews (dotfiles docs/operations/store-reviews.md) writes per product and
+        # store a count of reviews in the last 7 days and all time, and how many were
+        # positive. One metric per store and window: reviews_<store>_<window> and
+        # reviews_positive_<store>_<window> (reviews_steam_7d, reviews_positive_play_7d).
+        # label_join builds the name, since label_replace reads one label only. One rule
+        # for both, as above. An app the stores did not answer for writes no series.
+        - record: kb_project_number
+          expr: |
+            sum by (project, metric) (
+              label_join(label_replace(store_reviews, "kind", "reviews", "", ""), "metric", "_", "kind", "store", "window")
+            )
+            or
+            sum by (project, metric) (
+              label_join(label_replace(store_reviews_positive, "kind", "reviews_positive", "", ""), "metric", "_", "kind", "store", "window")
+            )
+          labels:
+            dept: support
+
+        # playtest-feedback: open playtester feedback on the game's playtest.md.
+        - record: kb_project_number
+          expr: sum by (project) (playtest_feedback_open)
+          labels:
+            dept: support
+            metric: playtest_feedback_open
+
         # ---- the sources themselves ----
         # 1 while the scrape behind a source is up. The hub shows a department's
         # sources beside its numbers, and KbProjectSourceDown is the page.
@@ -156,6 +183,20 @@ spec:
           labels:
             source: litellm
 
+        # A textfile source shares the workstation scrape with the whole node, so its own
+        # last run says whether it is up: 1 while every app or sheet read on a run in the
+        # last day. A day matches the alert's window; store-reviews runs every 6h and
+        # playtest-feedback hourly.
+        - record: kb_project_source_up
+          expr: (min(store_reviews_up) * (time() - max(store_reviews_generated_seconds) < bool 86400)) or vector(0)
+          labels:
+            source: store-reviews
+
+        - record: kb_project_source_up
+          expr: (min(playtest_feedback_up) * (time() - max(playtest_feedback_generated_seconds) < bool 86400)) or vector(0)
+          labels:
+            source: playtest-feedback
+
     - name: kb-project.alerts
       interval: 1m
       rules:
@@ -171,4 +212,4 @@ spec:
             category: availability
           annotations:
             summary: "Department tabs: source {{ $labels.source }} has had no numbers for a day"
-            description: "The scrape behind {{ $labels.source }} has been down for 24 hours, so the Analytics and Money tabs of the products it feeds read stale or empty."
+            description: "The scrape behind {{ $labels.source }} has been down for 24 hours, so the Analytics, Support and Money tabs of the products it feeds read stale or empty."

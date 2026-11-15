@@ -170,6 +170,12 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      - name: Install notification route test deps
+        run: apk add --no-cache alertmanager python3 py3-yaml
+
+      - name: Notification routes keep human warnings visible
+        run: python3 scripts/test-alertmanager-routes.py
+
       - name: Alert rules behave as their tests say
         run: scripts/test-prometheus-rules.sh
 

@@ -7,7 +7,7 @@ dir="$(cd "$(dirname "$0")/../apps/monitoring" && pwd)"
 tmp="$(mktemp -d)"
 trap 'rm -rf "$tmp"' EXIT
 
-for name in capacity pager emotiv node-health disk-health command-center freqtrade forgejo-mirrors site-availability jobs trivy game-servers binks; do
+for name in app-health capacity pager emotiv node-health disk-health command-center freqtrade forgejo-mirrors site-availability jobs trivy game-servers binks; do
   yq '.spec' "$dir/prometheus-rules-$name.yaml" > "$tmp/$name.rules.yaml"
 done
 cp "$dir"/tests/*.test.yaml "$tmp/"

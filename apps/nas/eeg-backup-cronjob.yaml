@@ -7,6 +7,7 @@ spec:
   # Daily 6:15 AM. The Emotiv archive (roles/emotiv-archive-target): age-encrypted
   # chunks the mac-mini deletes once uploaded, so the NAS copy is the only other one.
   schedule: "15 6 * * *"
+  timeZone: America/Los_Angeles
   concurrencyPolicy: Forbid
   successfulJobsHistoryLimit: 3
   failedJobsHistoryLimit: 3

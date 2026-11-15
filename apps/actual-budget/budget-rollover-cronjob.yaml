@@ -19,7 +19,8 @@ metadata:
   name: actual-budget-rollover
   namespace: actual-budget
 spec:
-  schedule: "0 15 1 * *"  # 15:00 UTC on the 1st = 08:00 PDT
+  schedule: "0 15 1 * *"  # 15:00 Pacific on the 1st, the time it has always run
+  timeZone: America/Los_Angeles
   concurrencyPolicy: Forbid
   successfulJobsHistoryLimit: 3
   failedJobsHistoryLimit: 1

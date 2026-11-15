@@ -7,6 +7,7 @@ spec:
   # Weekly, Sunday 5:45 AM. Config of the media apps, on the NAS disk. Immich's live
   # Postgres is in here, copied crash-consistent at best: restore it from @immich-db.
   schedule: "45 5 * * 0"
+  timeZone: America/Los_Angeles
   concurrencyPolicy: Forbid
   successfulJobsHistoryLimit: 3
   failedJobsHistoryLimit: 3

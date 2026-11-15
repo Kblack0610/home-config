@@ -24,7 +24,8 @@ metadata:
   name: actual-budget-bank-sync
   namespace: actual-budget
 spec:
-  schedule: "0 13 * * *"  # 13:00 UTC = 06:00 PDT, before the day starts
+  schedule: "0 13 * * *"  # 13:00 Pacific, the time it has always run
+  timeZone: America/Los_Angeles
   concurrencyPolicy: Forbid
   successfulJobsHistoryLimit: 3
   failedJobsHistoryLimit: 1

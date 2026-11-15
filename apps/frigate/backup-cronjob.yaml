@@ -5,6 +5,7 @@ metadata:
   namespace: frigate
 spec:
   schedule: "15 2 * * *"  # Daily at 2:15 AM
+  timeZone: America/Los_Angeles
   successfulJobsHistoryLimit: 3
   failedJobsHistoryLimit: 1
   jobTemplate:

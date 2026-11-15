@@ -59,23 +59,28 @@ done
 #
 # A live run, such as a manual job (concurrencyPolicy: Forbid does not see
 # one), must stop this run, or both upload the same data. unlock removes only
-# stale locks, and restic calls a lock stale only once it is 30 minutes past
-# its last refresh (a live run refreshes every 5). So a lock left after unlock
-# is a live run, or a run that died under 30 minutes ago: the pod a node
-# reboot killed, whose Job retry starts seconds later. Nothing signals that a
-# dead holder's lock has expired, so wait out restic's stale window once and
-# look again: a live run's lock is still fresh, a dead run's is gone.
+# stale locks, and restic calls a lock stale 30 minutes after its last refresh
+# (a live run refreshes every 5), so a run that died minutes ago (runbook
+# "First upload") still looks live. restic has no event for a lock going
+# stale, so poll: proceed once unlock clears the locks, abort if one is still
+# held after the stale window, which only a live run can do.
 LOCK_STALE_WAIT_S=1860 # restic's StaleLockTimeout (30 min) plus a minute
-restic unlock
-if [ -n "$(restic list locks --no-lock -q)" ]; then
-  echo "A lock is held. Waiting ${LOCK_STALE_WAIT_S}s for it to go stale, in case its run is dead."
-  sleep "$LOCK_STALE_WAIT_S"
+LOCK_POLL_S=60
+waited=0
+while :; do
   restic unlock
-  if [ -n "$(restic list locks --no-lock -q)" ]; then
+  # An assignment, so a failed listing stops the script under set -e instead
+  # of reading as "no lock".
+  locks=$(restic list locks --no-lock -q)
+  [ -z "$locks" ] && break
+  if [ "$waited" -ge "$LOCK_STALE_WAIT_S" ]; then
     echo "ERROR: another restic run holds the repository. Aborting."
     exit 1
   fi
-fi
+  echo "A lock is held; waiting up to $((LOCK_STALE_WAIT_S - waited))s for it to clear or go stale."
+  sleep "$LOCK_POLL_S"
+  waited=$((waited + LOCK_POLL_S))
+done
 restic backup --host asus-laptop --tag nightly \
   --limit-upload "$LIMIT_UPLOAD_KIB" /data
 

@@ -610,6 +610,8 @@
         modification_time: preserve
         access_time: preserve
       loop: "{{ range(1, unity_ci_slots + 1) | list }}"
+      # A --check of a slot not yet registered has no slot directory to touch.
+      ignore_errors: "{{ ansible_check_mode }}"
       tags: [runner, ci, unity-ci, ci-disk]
 
 # BNB Unity runner pool, macOS hosts (added 2026-10-29, mac-studio until it is

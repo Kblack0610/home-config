@@ -145,7 +145,7 @@ exec 8<&-
 [ "$rc" = 124 ] && echo "ok   a second run waits for the lock" || { echo "FAIL a second run did not wait (exit $rc)"; fail=1; }
 
 # A slot with .keep-warm-trees (the slim-tour slot): its trees outlive the age and copy rules,
-# and under low disk the other slots' trees go first, the kept ones only under 25% free.
+# and under low disk the other slots' trees go first, the kept ones only under 30% free.
 K="$t/kept"; rm -f "$t/removed"; touch "$t/removed"
 for copy in "unity-pool-1 release-tree/tour 30" "unity-pool-1 hd-tree 20" "unity-pool-3 release-tree/tour 2"; do
     set -- $copy
@@ -159,11 +159,11 @@ done
 # Three trees at 30 points: 10% free. pool-3's goes (40%, over 35): the kept ones stay.
 RUNNER_HOME=$K BUSY_HOME=$K DF_PER_TREE=30 PATH="$t/bin:$PATH" sh "$here/ci-disk-prune.sh" > "$t/log" 2>&1
 check "low disk takes the unkept tree first" '^low disk .*unity-pool-3/' "$t/log" 1
-check "low disk keeps kept trees over 25%"  '^low disk .*unity-pool-1/' "$t/log" 0
-# Two kept trees at 40 points: 20% free, under 25%. The older (release-tree/tour) goes.
+check "low disk keeps kept trees over 30%"  '^low disk .*unity-pool-1/' "$t/log" 0
+# Two kept trees at 40 points: 20% free, under 30%. The older (release-tree/tour) goes.
 RUNNER_HOME=$K BUSY_HOME=$K DF_PER_TREE=40 PATH="$t/bin:$PATH" sh "$here/ci-disk-prune.sh" > "$t/log" 2>&1
-check "under 25% the oldest kept tree goes"  '^low disk .*unity-pool-1/.*release-tree/tour$' "$t/log" 1
-check "and only until 25% is free"          '^low disk ' "$t/log" 1
+check "under 30% the oldest kept tree goes"  '^low disk .*unity-pool-1/.*release-tree/tour$' "$t/log" 1
+check "and only until 30% is free"          '^low disk ' "$t/log" 1
 
 # A host with no Unity slots has nothing to measure and exits clean.
 RUNNER_HOME="$t/none" DF_PER_TREE=20 PATH="$t/bin:$PATH" sh "$here/ci-disk-prune.sh" > "$t/log" 2>&1

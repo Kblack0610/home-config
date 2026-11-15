@@ -20,11 +20,11 @@ RELEASE_TREE_DAYS=${RELEASE_TREE_DAYS:-7}
 # withheld both slots.
 RELEASE_TREE_MIN_FREE_PCT=${RELEASE_TREE_MIN_FREE_PCT:-35}
 # A slot holding .keep-warm-trees (site.yml writes it on a slot labelled slim-tour) keeps its
-# release and HD trees through the age and copy rules, and through low disk down to the
-# governor's 25% re-admit line, so they never hold the host withheld. Slim tour runs only by
+# release and HD trees through the age and copy rules, and through low disk down to 30% free,
+# so one 45G build on top of them still ends near the governor's 20% withhold line. Slim tour runs only by
 # hand before a cut, often more than 7 days apart, and every cold run spent 107 to 125 min
 # importing (playground docs/operations/ci-cost.md, ucp-1884).
-KEPT_TREE_MIN_FREE_PCT=${KEPT_TREE_MIN_FREE_PCT:-25}
+KEPT_TREE_MIN_FREE_PCT=${KEPT_TREE_MIN_FREE_PCT:-30}
 
 now=$(date +%s)
 # The runner keeps its binaries in bin.<version>, e.g. bin.2.338.0.

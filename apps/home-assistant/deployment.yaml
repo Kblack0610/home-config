@@ -570,11 +570,18 @@ spec:
               rm -rf /config/www/announce-card
               mkdir -p /config/www/announce-card
               cp /managed-config/www_announce_card.js /config/www/announce-card/announce-card.js
+              # Audio clips, served at /local/sounds/ (the dog-bark calming clip). Own
+              # ConfigMap so a binary stays out of the managed text one.
+              rm -rf /config/www/sounds
+              mkdir -p /config/www/sounds
+              cp /managed-sounds/* /config/www/sounds/
           volumeMounts:
             - name: config
               mountPath: /config
             - name: managed-config
               mountPath: /managed-config
+            - name: managed-sounds
+              mountPath: /managed-sounds
         - name: seed-integrations
           image: ghcr.io/home-assistant/home-assistant:2026.9.4
           command:
@@ -2382,3 +2389,6 @@ spec:
         - name: managed-config
           configMap:
             name: home-assistant-managed-config
+        - name: managed-sounds
+          configMap:
+            name: home-assistant-sounds

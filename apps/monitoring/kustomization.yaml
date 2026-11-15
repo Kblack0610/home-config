@@ -27,6 +27,7 @@ resources:
   - prometheus-rules-feed-ingest.yaml
   - prometheus-rules-emotiv.yaml
   - prometheus-rules-binks.yaml
+  - prometheus-rules-kb-project.yaml
   - probe-sites.yaml
   - probe-dns.yaml
   - probe-wan.yaml

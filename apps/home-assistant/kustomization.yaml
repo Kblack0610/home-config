@@ -4,6 +4,9 @@ kind: Kustomization
 namespace: home-assistant
 
 configMapGenerator:
+  - name: home-assistant-sounds
+    files:
+      - calm.mp3=config/sounds/calm.mp3
   - name: home-assistant-managed-config
     files:
       - configuration.yaml=config/configuration.yaml

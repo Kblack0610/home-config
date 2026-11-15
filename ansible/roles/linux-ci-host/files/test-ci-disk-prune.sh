@@ -40,9 +40,10 @@ STUB
 # Free space falls DF_PER_TREE points with each release or HD tree left, from 100.
 cat > "$t/bin/df" <<'STUB'
 #!/bin/sh
-n=$(ls -d "$RUNNER_HOME"/*/_work/*/*/Builds/release-tree/* "$RUNNER_HOME"/*/_work/*/*/Builds/hd-tree 2>/dev/null | wc -l)
+n=$(ls -d "$RUNNER_HOME"/*/_work/*/*/Builds/release-tree/* "$RUNNER_HOME"/*/_work/*/*/Builds/players-tree/* "$RUNNER_HOME"/*/_work/*/*/Builds/hd-tree 2>/dev/null | wc -l)
 echo "Filesystem 1024-blocks Used Available Capacity Mounted"
-echo "fake 100 0 $(( 100 - ${DF_PER_TREE:-0} * n )) 0% /"
+c=$(find "$RUNNER_HOME" -type d \( -name players -o -name server -o -name two-process -o -name Bee -o -name BuildCache -o -name PlayerDataCache \) 2>/dev/null | wc -l)
+echo "fake 100 0 $(( 100 - ${DF_PER_TREE:-0} * n - ${DF_PER_CACHE:-0} * c )) 0% /"
 STUB
 chmod +x "$t/bin/docker" "$t/bin/pgrep" "$t/bin/df"
 touch "$t/removed"
@@ -50,6 +51,7 @@ touch "$t/removed"
 R="$t/runners"; repo=_work/game/game/Builds
 for tree in unity-pool-1/$repo/perf-tree/stale unity-pool-1/$repo/perf-tree/days3 unity-pool-1/$repo/perf-tree/today \
             unity-pool-1/$repo/release-tree/stale unity-pool-1/$repo/release-tree/fresh \
+            unity-pool-1/$repo/players-tree/stale \
             unity-pool-2/$repo/perf-tree/busy unity-pool-1/$repo/other/stale; do
     mkdir -p "$R/$tree"; touch -d '10 days ago' "$R/$tree/file"
 done
@@ -83,7 +85,7 @@ check "a similar name stays"             'unity-other' "$t/removed" 0
 check "alpine stays"                     'alpine' "$t/removed" 0
 check "an untagged image stays"          'gitleaks' "$t/removed" 0
 check "an image in use is reported"      'kept unity-core-playground-test:inuse' "$t/log" 1
-for gone in perf-tree/stale perf-tree/days3 release-tree/stale; do
+for gone in perf-tree/stale perf-tree/days3 release-tree/stale players-tree/stale; do
     if [ -e "$R/unity-pool-1/$repo/$gone" ]; then echo "FAIL $gone survived"; fail=1; else echo "ok   $gone removed"; fi
 done
 if [ -e "$R/unity-pool-1/$repo/release-tree/dup" ]; then echo "FAIL an older copy of a release tree survived"; fail=1; else echo "ok   an older copy of a release tree removed"; fi
@@ -164,6 +166,41 @@ check "low disk keeps kept trees over 30%"  '^low disk .*unity-pool-1/' "$t/log"
 RUNNER_HOME=$K BUSY_HOME=$K DF_PER_TREE=40 PATH="$t/bin:$PATH" sh "$here/ci-disk-prune.sh" > "$t/log" 2>&1
 check "under 30% the oldest kept tree goes"  '^low disk .*unity-pool-1/.*release-tree/tour$' "$t/log" 1
 check "and only until 30% is free"          '^low disk ' "$t/log" 1
+
+# The main checkout refills without any alternate warm tree: downloaded players,
+# generated players and Library build caches. Never remove imports, source or activation.
+C="$t/caches"
+for slot in unity-pool-1 unity-pool-2; do
+    checkout="$C/$slot/_work/game/game"
+    mkdir -p "$checkout/ProjectSettings"
+    touch "$checkout/ProjectSettings/ProjectVersion.txt"
+    for path in Builds/players Builds/server Builds/two-process Library/Bee Library/BuildCache Library/PlayerDataCache Library/Artifacts External/asset-library; do
+        mkdir -p "$checkout/$path"; touch "$checkout/$path/file"
+    done
+    mkdir -p "$C/$slot/.cache/unity-core-playground-test/home"
+    touch "$C/$slot/.cache/unity-core-playground-test/home/license"
+done
+# Six candidates per slot cost 7 points each: 16% free, so three idle outputs
+# reach 37%. The busy slot retains all six and the idle Library stays warm.
+RUNNER_HOME=$C BUSY_HOME=$C DF_PER_CACHE=7 PATH="$t/bin:$PATH" sh "$here/ci-disk-prune.sh" --before-job > "$t/log" 2>&1
+rc=$?
+[ "$rc" = 0 ] || { echo "FAIL cache prune exit $rc"; fail=1; }
+check "player outputs go before Library caches" '^low disk .*/Builds/' "$t/log" 3
+check "prune stops at the floor with warm Library caches" '^low disk .*/Library/' "$t/log" 0
+# Still under pressure: the three idle caches go, but never the busy slot's.
+RUNNER_HOME=$C BUSY_HOME=$C DF_PER_CACHE=10 PATH="$t/bin:$PATH" sh "$here/ci-disk-prune.sh" --before-job > "$t/log" 2>&1
+check "low disk reclaims idle Library build caches" '^low disk .*/Library/' "$t/log" 3
+for path in Builds/players Builds/server Builds/two-process Library/Bee Library/BuildCache Library/PlayerDataCache; do
+    [ ! -e "$C/unity-pool-1/_work/game/game/$path" ] || { echo "FAIL idle $path survived"; fail=1; }
+    [ -e "$C/unity-pool-2/_work/game/game/$path/file" ] || { echo "FAIL busy $path removed"; fail=1; }
+done
+for slot in unity-pool-1 unity-pool-2; do
+    for path in Library/Artifacts External/asset-library; do
+        [ -e "$C/$slot/_work/game/game/$path/file" ] || { echo "FAIL preserved $path removed"; fail=1; }
+    done
+    [ -e "$C/$slot/.cache/unity-core-playground-test/home/license" ] || { echo "FAIL activation removed"; fail=1; }
+done
+check "busy slot's build caches stay" '^low disk .*unity-pool-2/' "$t/log" 0
 
 # A host with no Unity slots has nothing to measure and exits clean.
 RUNNER_HOME="$t/none" DF_PER_TREE=20 PATH="$t/bin:$PATH" sh "$here/ci-disk-prune.sh" > "$t/log" 2>&1

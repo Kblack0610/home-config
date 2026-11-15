@@ -226,7 +226,9 @@ kubectl -n offsite-backup create job offsite-seed --from=cronjob/offsite-backup
 kubectl -n offsite-backup logs -f job/offsite-seed
 ```
 
-The CronJob does not count a manual job as its own run, so the 1 AM runs during the seed start anyway, find the seed's lock and fail on purpose rather than upload the same data twice. Expect those failures until the seed completes. restic keeps the data it has already uploaded, so a seed that is interrupted only needs to be started again. Keep the seed job until one nightly has succeeded: `create job --from` makes the CronJob its owner, so until then the seed is the only completed job `HomelabBackupStale` can see, and deleting it leaves the rule with no series at all.
+The CronJob does not count a manual job as its own run, so the 1 AM runs during the seed start anyway, find the seed's lock and fail on purpose (after the wait below) rather than upload the same data twice. Expect those failures until the seed completes. restic keeps the data it has already uploaded, so a seed that is interrupted only needs to be started again. Keep the seed job until one nightly has succeeded: `create job --from` makes the CronJob its owner, so until then the seed is the only completed job `HomelabBackupStale` can see, and deleting it leaves the rule with no series at all.
+
+A run that finds a lock checks again every minute, for up to `LOCK_STALE_WAIT_S` in the script (restic's 30-minute stale window plus one). It goes on as soon as the lock is gone: a run that finished, or a dead run's lock that `restic unlock` removes once it is stale, such as the pod an asus-laptop reboot killed, whose Job retry starts seconds later. A lock still held at the end belongs to a live run, and the run aborts. So during a seed each nightly pod, and its one retry, logs "A lock is held; waiting" for about 31 minutes before it fails: that is the guard, not a hang.
 
 If a run fails with `storage cap exceeded`, the B2 account's storage cap is too low: raise it on the B2 Caps & Alerts page. A new account stops at the 10 GB free tier until a payment method is on file and the cap is raised.
 

@@ -26,6 +26,7 @@ spec:
           for: 2m
           labels:
             severity: critical
+            fleet: fix
             category: node-health
           annotations:
             summary: "Node down: {{ $labels.instance }} ({{ $labels.job }})"
@@ -40,6 +41,7 @@ spec:
           for: 5m
           labels:
             severity: critical
+            fleet: fix
             category: node-health
           annotations:
             summary: "node-exporter scrape job is absent"
@@ -56,6 +58,7 @@ spec:
           for: 15m
           labels:
             severity: warning
+            fleet: fix
             category: node-health
           annotations:
             summary: "standalone-nodes scrape job is absent"
@@ -77,6 +80,7 @@ spec:
           for: 2m
           labels:
             severity: critical
+            fleet: none  # the home-k3s-node-disk watch and NodeDiskCritical (fleet: fix) already send this disk to an agent
             category: node-health
           annotations:
             summary: "DiskPressure on {{ $labels.node }}"
@@ -105,6 +109,7 @@ spec:
           for: 15m
           labels:
             severity: warning
+            fleet: fix
             category: node-health
           annotations:
             summary: "Clock not syncing on {{ $labels.instance }}"
@@ -124,6 +129,7 @@ spec:
           for: 10m
           labels:
             severity: warning
+            fleet: fix
             category: node-health
           annotations:
             summary: "Clock skew on {{ $labels.instance }}"
@@ -143,6 +149,7 @@ spec:
               - node_boot_time_seconds{job="standalone-nodes"}) < 1800
           labels:
             severity: warning
+            fleet: none  # an event, not a fault: NodeDown (fleet: fix) carries a host that stays down
             category: node-health
           annotations:
             summary: "{{ $labels.instance }} rebooted (watchdog, power, or by hand)"
@@ -160,6 +167,7 @@ spec:
           expr: rpi_throttled{flag="undervoltage",when="since_boot"} == 1
           labels:
             severity: warning
+            fleet: none  # hardware: the human swaps the power supply
             category: node-health
           annotations:
             summary: "Undervoltage on {{ $labels.instance }} since boot"
@@ -185,6 +193,7 @@ spec:
           for: 10m
           labels:
             severity: warning
+            fleet: none  # heat: the human decides (fleet-thermal, agentctl SENTINEL.md)
             category: node-health
           annotations:
             summary: "CPU hot on {{ $labels.instance }} (peaks of {{ $value }}C for 10m)"
@@ -203,6 +212,7 @@ spec:
           for: 5m
           labels:
             severity: critical
+            fleet: none  # heat: the human decides (fleet-thermal, agentctl SENTINEL.md)
             category: node-health
           annotations:
             summary: "CPU at {{ $value }}C on {{ $labels.instance }}"
@@ -224,6 +234,7 @@ spec:
           for: 10m
           labels:
             severity: warning
+            fleet: none  # heat: the human decides airflow
             category: node-health
           annotations:
             summary: "NVMe {{ $labels.chip }} at {{ $value }}C on {{ $labels.instance }}"
@@ -244,6 +255,7 @@ spec:
           for: 5m
           labels:
             severity: warning
+            fleet: none  # power: the human restores mains
             category: node-health
           annotations:
             summary: "{{ $labels.instance }} is on battery ({{ $labels.power_supply }} offline)"
@@ -266,6 +278,7 @@ spec:
           for: 2m
           labels:
             severity: critical
+            fleet: none  # power: the human restores mains
             category: node-health
           annotations:
             summary: "{{ $labels.instance }} battery at {{ $value }}% off mains"

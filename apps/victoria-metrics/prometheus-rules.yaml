@@ -19,6 +19,7 @@ spec:
           for: 1h
           labels:
             severity: warning
+            fleet: fix
             category: storage
           annotations:
             summary: "VictoriaMetrics disk under 150 GB free on asus-laptop"

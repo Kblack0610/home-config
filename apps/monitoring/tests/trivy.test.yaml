@@ -28,7 +28,7 @@ tests:
       - eval_time: 40m
         alertname: HomelabCriticalVulnerability
         exp_alerts:
-          - exp_labels: {alertname: HomelabCriticalVulnerability, severity: warning, category: security, image_registry: ghcr.io, image_repository: home-assistant/home-assistant, image_tag: "1"}
+          - exp_labels: {alertname: HomelabCriticalVulnerability, severity: warning, fleet: none, category: security, image_registry: ghcr.io, image_repository: home-assistant/home-assistant, image_tag: "1"}
             exp_annotations:
               summary: "3 critical CVEs in home-assistant/home-assistant:1"
               description: "ghcr.io/home-assistant/home-assistant:1 has 3 CRITICAL vulnerabilities with a fix available. Bump the pinned tag to a release that fixes them. Where it runs: kubectl get vulnerabilityreports -A -o wide | grep home-assistant/home-assistant"

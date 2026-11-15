@@ -234,7 +234,7 @@ tests:
       - eval_time: 45m
         alertname: SentinelSilent
         exp_alerts:
-          - exp_labels: {severity: critical, domain: agents, component: sentinel}
+          - exp_labels: {severity: critical, fleet: none, domain: agents, component: sentinel}
             exp_annotations:
               summary: Sentinel has not swept in 40 minutes while the feed is live, so no watch is being checked or paged
               runbook: ~/.config/agentctl/SENTINEL.md (dotfiles-private), "Operate"
@@ -253,7 +253,7 @@ tests:
       - eval_time: 50m
         alertname: AgentFeedFrozen
         exp_alerts:
-          - exp_labels: {severity: critical, domain: agents, component: feed}
+          - exp_labels: {severity: critical, fleet: fix, domain: agents, component: feed}
             exp_annotations:
               summary: The agent feed has published nothing in 30 minutes, so every watch, runner and queue number is frozen
               runbook: ~/.config/agentctl/SENTINEL.md (dotfiles-private), "Operate"

@@ -28,6 +28,7 @@ resources:
   - trader-odds-api-secret.sops.yaml
   - trader-brokers-secret.sops.yaml
   - broker-cronjob.yaml
+  - stocks-cronjob.yaml   # reads trader-brokers' two Alpaca paper keys: the stock league (trader lab/stocks.py)
   - trader-kalshi-demo-secret.sops.yaml
   - kalshi-demo-drill-cronjob.yaml
   - trader-manifold-secret.sops.yaml

@@ -188,10 +188,16 @@ tests:
     input_series:
       - series: 'trader_markets_sweep_age_seconds{venue="kalshi",job="trader-web"}'
         values: '60+60x20'
+      - series: 'trader_markets_sweep_stale_seconds{venue="kalshi",job="trader-web"}'
+        values: '900x20'
       - series: 'trader_markets_sweep_age_seconds{venue="manifold",job="trader-web"}'
         values: '120x20'
+      - series: 'trader_markets_sweep_stale_seconds{venue="manifold",job="trader-web"}'
+        values: '900x20'
       - series: 'trader_markets_sweep_age_seconds{venue="polymarket",job="trader-web"}'
         values: '60+60x20'
+      - series: 'trader_markets_sweep_stale_seconds{venue="polymarket",job="trader-web"}'
+        values: '2700x20'
     alert_rule_test:
       - eval_time: 13m
         alertname: TraderMarketsRecorderStale
@@ -250,6 +256,8 @@ tests:
     input_series:
       - series: 'trader_markets_sweep_age_seconds{venue="polymarket",job="trader-web"}'
         values: '0+300x12'
+      - series: 'trader_markets_sweep_stale_seconds{venue="polymarket",job="trader-web"}'
+        values: '2700x20'
       - series: 'trader_markets_sweep_duration_seconds{venue="polymarket",job="trader-web"}'
         values: '600x6 780x12'
     alert_rule_test:
@@ -332,3 +340,48 @@ tests:
           - exp_labels: {alertname: TraderInputStale, severity: warning, category: trading, input: other, job: trader-web}
             exp_annotations:
               summary: "other has no reading inside its fresh_min: weather takes no entries on it; check CronJob trader-inputs-nws in freqtrade"
+
+  - name: odds_api stays fresh through its six hour cadence and 390 minute boundary
+    interval: 1m
+    input_series:
+      - series: 'trader_markets_sweep_age_seconds{venue="odds_api",job="trader-web"}'
+        values: '0+60x391'
+      - series: 'trader_markets_sweep_stale_seconds{venue="odds_api",job="trader-web"}'
+        values: '23400x391'
+    alert_rule_test:
+      - eval_time: 16m
+        alertname: TraderMarketsRecorderStale
+        exp_alerts: []
+      - eval_time: 360m
+        alertname: TraderMarketsRecorderStale
+        exp_alerts: []
+      - eval_time: 390m
+        alertname: TraderMarketsRecorderStale
+        exp_alerts: []
+      - eval_time: 391m
+        alertname: TraderMarketsRecorderStale
+        exp_alerts:
+          - exp_labels: {alertname: TraderMarketsRecorderStale, severity: warning, category: trading, venue: odds_api, job: trader-web}
+            exp_annotations:
+              summary: "No good odds_api recorder sweep for 6h 31m 0s: the paper league takes no entries there; failed sweeps and their errors are on trader.kblab.me/markets"
+
+  - name: recorder freshness follows the exported threshold
+    interval: 1m
+    input_series:
+      - series: 'trader_markets_sweep_age_seconds{venue="odds_api",job="trader-web"}'
+        values: '1800x2'
+      - series: 'trader_markets_sweep_stale_seconds{venue="odds_api",job="trader-web"}'
+        values: '2400 1200 2400'
+    alert_rule_test:
+      - eval_time: 0m
+        alertname: TraderMarketsRecorderStale
+        exp_alerts: []
+      - eval_time: 1m
+        alertname: TraderMarketsRecorderStale
+        exp_alerts:
+          - exp_labels: {alertname: TraderMarketsRecorderStale, severity: warning, category: trading, venue: odds_api, job: trader-web}
+            exp_annotations:
+              summary: "No good odds_api recorder sweep for 30m 0s: the paper league takes no entries there; failed sweeps and their errors are on trader.kblab.me/markets"
+      - eval_time: 2m
+        alertname: TraderMarketsRecorderStale
+        exp_alerts: []

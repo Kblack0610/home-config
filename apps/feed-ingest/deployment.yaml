@@ -1,0 +1,65 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: feed-ingest
+  namespace: feed-ingest
+  labels:
+    app.kubernetes.io/name: feed-ingest
+spec:
+  replicas: 1   # the ledger has one writer; a second pod would double every poll
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: feed-ingest
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: feed-ingest
+    spec:
+      containers:
+        - name: ingest
+          image: python:3.12-alpine
+          imagePullPolicy: IfNotPresent
+          command: ["/bin/sh", "-c"]
+          args:
+            - |
+              set -e
+              # The three non-stdlib deps, installed at start as headwind-fleet-bridge does.
+              pip install --no-cache-dir --quiet "psycopg[binary]==3.2.*" "paho-mqtt==2.1.*" "websockets==15.*"
+              exec python -u /app/ingest.py
+          env:
+            - name: FEED_CONFIG
+              value: /app/config.toml
+          envFrom:
+            - secretRef:
+                name: feed-ingest-secret
+          ports:
+            - name: metrics
+              containerPort: 9100
+          volumeMounts:
+            - name: app
+              mountPath: /app
+              readOnly: true
+          resources:
+            requests:
+              memory: "64Mi"
+              cpu: "50m"    # Jetstream is about 40 posts/s of JSON
+            limits:
+              memory: "256Mi"
+              cpu: "500m"
+          startupProbe:
+            httpGet:
+              path: /health
+              port: 9100
+            periodSeconds: 10
+            failureThreshold: 30   # the install takes a while on a Pi
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 9100
+            periodSeconds: 30
+      volumes:
+        - name: app
+          configMap:
+            name: feed-ingest-app

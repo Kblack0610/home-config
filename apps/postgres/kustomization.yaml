@@ -19,3 +19,5 @@ resources:
   - registry-db-bootstrap-job.yaml
   - trader-db-secret.sops.yaml
   - trader-db-bootstrap-job.yaml
+  - feed-ingest-db-secret.sops.yaml
+  - feed-ingest-db-bootstrap-job.yaml

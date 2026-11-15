@@ -108,7 +108,7 @@ The three `opencode-free (...)` routes are OpenCode's free models (beam-free, lo
 | Key | Models | Budgets | Consumer | Key file |
 |---|---|---|---|---|
 | `ask-local` | `local (qwen3.5-9b)` | $1 / 30d, a tripwire only (the route is priced 0) | dotfiles `ask-local` and the `local-model` skill, through the agent-run route `gateway-local` | `~/.local/state/ask-local/litellm.key` |
-| `trader-links` | `local (qwen3.5-9b)` | $1 / 30d, a tripwire only, rpm 30, no team, `metadata.consumer` `trader-markets-links`, priority `low` (re-mint with those: `/key/generate` as above, then `sops` the new key into the secret and `/key/delete` the old) | the trader `trader-markets-links` CronJob (`apps/freqtrade`) | `apps/freqtrade/trader-litellm-secret.sops.yaml` |
+| `trader-links` | `local (qwen3.5-9b)` | $1 / 30d, a tripwire only, rpm 120 (30 429'd the pass after 30 asks in 51 s), no team, `metadata.consumer` `trader-markets-links`, priority `low` (re-mint with those: `/key/generate` as above, then `sops` the new key into the secret and `/key/delete` the old) | the trader `trader-markets-links` CronJob (`apps/freqtrade`) | `apps/freqtrade/trader-litellm-secret.sops.yaml` |
 
 ### feed-ingest key
 

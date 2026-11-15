@@ -290,6 +290,25 @@ tests:
           - labels: 'cc:component_status{domain="agents",component="runners"}'
             value: 0
 
+  - name: the kubeconfig cert 30-day warning warns in k3s, it is no cluster outage
+    interval: 1m
+    input_series:
+      - series: 'mqtt_tripped{topic="agents_h_watch_home_k3s_kubeconfig_cert"}'
+        values: '1x10'
+      - series: 'mqtt_message_total{topic="agents_h_watch_home_k3s_kubeconfig_cert"}'
+        values: '0+1x10'
+    promql_expr_test:
+      - expr: cc:watch_state{domain="k3s"}
+        eval_time: 5m
+        exp_samples:
+          - labels: 'cc:watch_state{domain="k3s",item="home_k3s_kubeconfig_cert"}'
+            value: 1
+      - expr: cc:domain_status{domain="k3s"}
+        eval_time: 5m
+        exp_samples:
+          - labels: 'cc:domain_status{domain="k3s"}'
+            value: 1
+
   - name: a k3s outage watch is red, the CVE ratchet only warns, tripped or stale
     interval: 1m
     input_series:

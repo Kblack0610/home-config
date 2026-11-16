@@ -34,3 +34,25 @@ fleet_worker_is_home: "{{ inventory_hostname == fleet_state_host.split('.')[0] }
 fleet_home_store_repo: ssh://git@{{ fleet_home_store_host }}:{{ fleet_home_store_port }}/kblack0610/.agent.git
 fleet_home_store_host: forge-primary.kblab.me
 fleet_home_store_port: 2222
+# The kubeconfig schedules-sync reads the exporter feed with on the home
+# (tasks/home.yml): the scoped account's token and the cluster CA from
+# group_vars/fleet_workers/vault.sops.yaml, the server from group_vars/all/k3s.yml.
+fleet_home_feed_kubeconfig:
+  apiVersion: v1
+  kind: Config
+  clusters:
+    - name: home-k3s
+      cluster:
+        server: "{{ k3s_url }}"
+        certificate-authority-data: "{{ vault_fleet_home_feed_ca | b64encode }}"
+  users:
+    - name: schedules-sync
+      user:
+        token: "{{ vault_fleet_home_feed_token }}"
+  contexts:
+    - name: home-k3s-feed
+      context:
+        cluster: home-k3s
+        user: schedules-sync
+        namespace: monitoring
+  current-context: home-k3s-feed

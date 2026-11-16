@@ -87,6 +87,54 @@
     executable: /bin/bash
     creates: "{{ ansible_env.HOME }}/.agent/.git"
 
+# schedules-sync reads the github-runner-exporter feed with kubectl through the
+# API server's Service proxy; without it no state.json is written and every
+# nightly: queue hold waits forever. The home has no admin kubeconfig, so it
+# gets one for the account that may read that proxy only
+# (apps/github-runner-exporter/feed-reader-rbac.yaml), in its own file:
+# ~/.kube/config is never written.
+- name: Install kubectl, which schedules-sync reads the feed with
+  when: ansible_facts.os_family == "Archlinux"
+  become: true
+  community.general.pacman:
+    name: kubectl
+    state: present
+
+- name: Make schedules-sync's config dir
+  ansible.builtin.file:
+    path: "{{ ansible_env.HOME }}/.config/schedules-sync"
+    state: directory
+    mode: "0700"
+
+- name: Write the kubeconfig schedules-sync reads the exporter feed with
+  ansible.builtin.copy:
+    dest: "{{ ansible_env.HOME }}/.config/schedules-sync/kubeconfig"
+    mode: "0600"
+    content: "{{ fleet_home_feed_kubeconfig | to_nice_yaml }}"
+  no_log: true
+
+- name: Make the schedules-sync unit's drop-in dir
+  ansible.builtin.file:
+    path: "{{ ansible_env.HOME }}/.config/systemd/user/schedules-sync.service.d"
+    state: directory
+    mode: "0755"
+
+- name: Point schedules-sync at that kubeconfig
+  ansible.builtin.copy:
+    dest: "{{ ansible_env.HOME }}/.config/systemd/user/schedules-sync.service.d/exporter-feed.conf"
+    mode: "0644"
+    content: |
+      # Written by home-config roles/fleet-worker (tasks/home.yml).
+      [Service]
+      Environment=KUBECONFIG=%h/.config/schedules-sync/kubeconfig
+  register: _fleet_home_feed_dropin
+
+- name: Reload the user units for that drop-in
+  when: _fleet_home_feed_dropin is changed
+  ansible.builtin.systemd_service:
+    scope: user
+    daemon_reload: true
+
 - name: Read whether agent-web has its OAuth client
   ansible.builtin.stat:
     path: "{{ ansible_env.HOME }}/.config/agent-web/oauth.json"

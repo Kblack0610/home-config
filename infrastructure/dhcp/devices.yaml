@@ -42,7 +42,7 @@ devices:
     managed: false
 
   - hostname: pc-home-cachy-main
-    mac: "9C:6B:00:35:B9:7C"
+    mac: "9C:6B:00:AC:91:20"
     ip: "192.168.1.2"
     category: workstations
     range_exception: true

@@ -1556,6 +1556,7 @@ DWELL = LIVE["dwell_seconds"]
 WIDE_JOB = frozenset({"self-hosted", "unity", "unity-wide"})
 WIDE_LABELS = AWS_LABELS | {"unity-wide", "host-aws-burst-1-wide"}
 NO_KEEP = {**TWO, "pack_keep_labels": []}
+THREE = {**TWO, "standby": {**TWO["standby"], "aws-burst-3": {"max_admitted": 6, "power": {**POWER, "instance_id": "i-0b3"}}}}
 
 
 def burst(host, busy=0, idle=0, off=0):
@@ -1602,6 +1603,35 @@ class PackTest(unittest.TestCase):
     def test_never_the_last_running_burst_host(self):
         self.inst["aws-burst-2"]["state"] = "stopped"
         self.assertEqual(self.moves(self.step(10_000), "aws-burst-1"), [])
+
+    def three(self, wide=()):
+        self.inst["aws-burst-3"] = {"state": "running", "busy_at": 10_000, "launched": 1_500,
+                                    "labels": AWS_LABELS - {"host-aws-burst-1"} | {"host-aws-burst-3"}}
+        for h in wide:
+            self.inst[h]["labels"] = self.inst[h]["labels"] | {"unity-wide"}
+        return {**HALF, **burst("aws-burst-3", idle=1, off=5)}
+
+    def test_an_empty_queue_packs_every_burst_host_but_the_busiest_at_once(self):
+        # 2026-11-16: one pack per dwell left three on-demand hosts up on a trickle for hours.
+        got = self.step(10_000, runners=self.three(), cfg=THREE)
+        self.assertEqual({h for h, a, *_ in got if a == "pack"}, {"aws-burst-1", "aws-burst-3"})
+        self.assertFalse(self.inst["aws-burst-2"].get("packed"))
+
+    def test_packed_hosts_are_no_room_and_unpack_one_counted_at_a_time(self):
+        runners = self.three()
+        self.step(10_000, runners=runners, cfg=THREE)
+        # 6 jobs; aws-burst-2 has 3 free. The busier packed host comes back first, and with its
+        # 4 slots counted the other stays packed.
+        got = self.step(10_060, [UNITY_JOB] * 6, runners=runners, cfg=THREE)
+        self.assertEqual([h for h, a, *_ in got if a == "unpack"], ["aws-burst-1"])
+        self.assertTrue(self.inst["aws-burst-3"]["packed"])
+
+    def test_the_last_wide_host_of_a_batch_is_kept(self):
+        # aws-burst-3 and aws-burst-1 carry unity-wide, nothing else does: packing the first
+        # makes the second the only one, so it stays and the busiest host packs instead.
+        got = self.step(10_000, runners=self.three(wide=("aws-burst-1", "aws-burst-3")), cfg=THREE)
+        self.assertEqual({h for h, a, *_ in got if a == "pack"}, {"aws-burst-3", "aws-burst-2"})
+        self.assertFalse(self.inst["aws-burst-1"].get("packed"))
 
     def test_a_job_it_can_take_blocks_the_pack_and_one_it_cannot_does_not(self):
         self.assertEqual([a for _, a, *_ in self.step(10_000, [UNITY_JOB]) if a == "pack"], [])
@@ -1718,7 +1748,7 @@ class PackTest(unittest.TestCase):
                 governor.cycle(TWO, {}, tracked)
             log += [c.args[0] for c in out.call_args_list]
         self.assertEqual([line for line in log if "aws-burst-1" in line], [
-            "pack aws-burst-1: no waiting job it can take, the fewest busy slots (1) of 2 running burst hosts; "
+            "pack aws-burst-1: no waiting job it can take, the fewest busy slots (1) of 2 unpacked burst hosts; "
             "its slots go and its idle rule stops it; queue 0",
             "withhold b1-busy-0 on aws-burst-1: PACKED, packed; queue 0",
             "stop i-0abc on aws-burst-1: PACKED, no slot busy for 1260s; queue 0"])

@@ -184,8 +184,8 @@ Traefik on the local network path behind `192.168.1.124`. All `*.kblab.me` local
 # trigger actual budget backup
 kubectl create job --from=cronjob/actual-budget-backup manual-backup-$(date +%s) -n actual-budget
 
-# trigger forgejo backup
-kubectl create job --from=cronjob/forgejo-backup manual-backup-$(date +%s) -n forgejo
+# pull the newest forgejo backup from forge-hel1 to asus
+kubectl create job --from=cronjob/forgejo-backup-pull manual-backup-$(date +%s) -n forgejo
 ```
 
 ---

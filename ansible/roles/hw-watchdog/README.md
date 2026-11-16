@@ -21,7 +21,7 @@ Evidence gathered afterwards:
 
 The watchdog is a countdown timer inside the SoC, separate from the CPU cores. With `RuntimeWatchdogSec=15s`, systemd (PID 1) resets it every 7.5s. If the kernel freezes, PID 1 stops running, the countdown reaches zero and the timer pulls the chip's reset line. No software has to be alive for that to happen.
 
-On x86 the timer is the chipset TCO watchdog: `iTCO_wdt` on Intel (hp-victus), `sp5100_tco` on AMD. razer-laptop autoloads `sp5100_tco`; asus-laptop does not, so its inventory entry sets `hw_watchdog_module: sp5100_tco` and the role writes `/etc/modules-load.d/hw-watchdog.conf` and loads it.
+On x86 the timer is the chipset TCO watchdog: `iTCO_wdt` on Intel (hp-victus), `sp5100_tco` on AMD. razer-laptop autoloads `sp5100_tco`; asus-laptop does not, so its inventory entry sets `hw_watchdog_module: sp5100_tco` and the role loads it from `hw-watchdog-module.service`, a oneshot `modprobe` at boot. Not `/etc/modules-load.d`: systemd-modules-load applies kmod's blacklist, and CachyOS (`cachyos-settings`, `/usr/lib/modprobe.d/blacklist.conf`) blacklists `sp5100_tco` and `iTCO_wdt`, so asus booted on 2026-11-15 with no `/dev/watchdog0`. `modprobe -n -v -b sp5100_tco` printing nothing shows a module the boot would skip.
 
 `kernel.panic=10` covers the other case: a kernel that panics but keeps the timer fed. The default of 0 means a panicked kernel sits there forever.
 

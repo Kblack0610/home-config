@@ -75,10 +75,10 @@ spec:
               or succeeding while writing nowhere - check the destination is
               really mounted, not merely listed as mounted.
 
-        # Split out because nas/ holds only WEEKLY cronjobs (0 5 * * 0 and
-        # friends). Folding them into the 36h rule above would page on all four
-        # every single week for being perfectly healthy - the same mistake that
-        # was caught and fixed in prometheus-rules-jobs.yaml.
+        # nas/ is judged apart, every CronJob in it at a flat 9d, from before the
+        # rule above read each schedule. It holds daily jobs too now. Folding it
+        # into that line is not done yet: it decides nas severity and which nas
+        # CronJobs count as backups.
         - alert: HomelabWeeklyBackupStale
           expr: |
             (

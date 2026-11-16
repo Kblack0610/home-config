@@ -50,6 +50,9 @@ ssh kblack0610@192.168.1.193 'systemctl show -p RuntimeWatchdogUSec -p RebootWat
 
 ssh kblack0610@192.168.1.243 'systemctl show -p RuntimeWatchdogUSec; cat /proc/sys/kernel/panic /proc/sys/kernel/softlockup_panic'
 # x86 nodes: RuntimeWatchdogUSec=30s, 10, 1
+
+ssh -p 2222 kblack0610@192.168.1.152 'systemctl is-active hw-watchdog-module; ls /dev/watchdog0; journalctl -b | grep -i "hardware watchdog"'
+# a host with hw_watchdog_module set: active, /dev/watchdog0, "Using hardware watchdog /dev/watchdog0: 'SP5100 TCO timer'"
 ```
 
 This kernel is built without `CONFIG_WATCHDOG_SYSFS`, so `/sys/class/watchdog/watchdog0/` has no `state` or `timeout` files. Read the state from systemd, as above.

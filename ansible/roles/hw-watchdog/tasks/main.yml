@@ -19,7 +19,7 @@
     state: absent
 
 - name: Load the watchdog driver at every boot
-  # modprobe by module name ignores the blacklist, which only applies to aliases.
+  # modprobe without -b loads a blacklisted module; systemd-modules-load does not.
   ansible.builtin.copy:
     dest: /etc/systemd/system/hw-watchdog-module.service
     owner: root
@@ -30,13 +30,12 @@
       [Unit]
       Description=Load the hardware watchdog driver {{ hw_watchdog_module }}
       DefaultDependencies=no
-      Conflicts=shutdown.target
-      Before=sysinit.target shutdown.target
+      Before=sysinit.target
 
       [Service]
       Type=oneshot
       RemainAfterExit=yes
-      ExecStart=modprobe {{ hw_watchdog_module }}
+      ExecStart=/usr/sbin/modprobe {{ hw_watchdog_module }}
 
       [Install]
       WantedBy=sysinit.target
@@ -44,11 +43,14 @@
   when: hw_watchdog_module | length > 0
 
 - name: Load the watchdog driver now
+  # PID 1 opens /dev/watchdog0 on its next ping once the driver creates it, so
+  # loading the driver after PID 1 started needs no re-exec.
   ansible.builtin.systemd_service:
     name: hw-watchdog-module.service
     enabled: true
-    state: started
-    daemon_reload: "{{ hw_watchdog_module_unit.changed }}"
+    # A restart when the unit changed, so a new hw_watchdog_module loads now.
+    state: "{{ 'restarted' if hw_watchdog_module_unit is changed else 'started' }}"
+    daemon_reload: true
   # A --check run before the first apply has no unit file to start.
   when:
     - hw_watchdog_module | length > 0

@@ -1,0 +1,104 @@
+# promtool test rules. Run with scripts/test-prometheus-rules.sh. HomelabBackupStale takes its
+# line from each CronJob's own schedule: one run interval plus 12h. Every Job here last
+# completed at time 0, so the stale age is the eval time.
+rule_files:
+  - backup-drive.rules.yaml
+evaluation_interval: 5m
+
+tests:
+  - name: a daily backup trips at 36h, suspended or not, and so does one with no schedule series
+    interval: 5m
+    input_series:
+      - series: 'kube_cronjob_info{namespace="immich",cronjob="immich-backup",schedule="0 3 * * *"}'
+        values: '1x500'
+      - series: 'kube_job_owner{namespace="immich",job_name="immich-backup-1",owner_kind="CronJob",owner_name="immich-backup"}'
+        values: '1x500'
+      - series: 'kube_job_status_completion_time{namespace="immich",job_name="immich-backup-1"}'
+        values: '0x500'
+      # offsite-backup is suspended on purpose as the negative control (hc-337): it must page.
+      - series: 'kube_cronjob_info{namespace="offsite-backup",cronjob="offsite-backup",schedule="0 1 * * *"}'
+        values: '1x500'
+      - series: 'kube_cronjob_spec_suspend{namespace="offsite-backup",cronjob="offsite-backup"}'
+        values: '1x500'
+      - series: 'kube_job_owner{namespace="offsite-backup",job_name="offsite-backup-1",owner_kind="CronJob",owner_name="offsite-backup"}'
+        values: '1x500'
+      - series: 'kube_job_status_completion_time{namespace="offsite-backup",job_name="offsite-backup-1"}'
+        values: '0x500'
+      # Weekdays only names a day range, not one day, so it keeps the daily line.
+      - series: 'kube_cronjob_info{namespace="langfuse",cronjob="langfuse-backup",schedule="15 3 * * 1-5"}'
+        values: '1x500'
+      - series: 'kube_job_owner{namespace="langfuse",job_name="langfuse-backup-1",owner_kind="CronJob",owner_name="langfuse-backup"}'
+        values: '1x500'
+      - series: 'kube_job_status_completion_time{namespace="langfuse",job_name="langfuse-backup-1"}'
+        values: '0x500'
+      # No kube_cronjob_info series: the line falls back to 36h rather than none.
+      - series: 'kube_job_owner{namespace="frigate",job_name="frigate-backup-1",owner_kind="CronJob",owner_name="frigate-backup"}'
+        values: '1x500'
+      - series: 'kube_job_status_completion_time{namespace="frigate",job_name="frigate-backup-1"}'
+        values: '0x500'
+    alert_rule_test:
+      - eval_time: 36h
+        alertname: HomelabBackupStale
+        exp_alerts: []
+      - eval_time: 37h
+        alertname: HomelabBackupStale
+        exp_alerts:
+          - exp_labels: {alertname: HomelabBackupStale, severity: critical, fleet: fix, category: backup, namespace: immich, owner_name: immich-backup}
+            exp_annotations:
+              summary: "Backup stale: immich/immich-backup"
+              description: "immich/immich-backup has not completed successfully in 133200 seconds, over one run interval plus 12h (36h daily, 7.5d weekly). The job may be failing, or succeeding while writing nowhere - check the destination is really mounted, not merely listed as mounted."
+          - exp_labels: {alertname: HomelabBackupStale, severity: critical, fleet: fix, category: backup, namespace: offsite-backup, owner_name: offsite-backup}
+            exp_annotations:
+              summary: "Backup stale: offsite-backup/offsite-backup"
+              description: "offsite-backup/offsite-backup has not completed successfully in 133200 seconds, over one run interval plus 12h (36h daily, 7.5d weekly). The job may be failing, or succeeding while writing nowhere - check the destination is really mounted, not merely listed as mounted."
+          - exp_labels: {alertname: HomelabBackupStale, severity: critical, fleet: fix, category: backup, namespace: langfuse, owner_name: langfuse-backup}
+            exp_annotations:
+              summary: "Backup stale: langfuse/langfuse-backup"
+              description: "langfuse/langfuse-backup has not completed successfully in 133200 seconds, over one run interval plus 12h (36h daily, 7.5d weekly). The job may be failing, or succeeding while writing nowhere - check the destination is really mounted, not merely listed as mounted."
+          - exp_labels: {alertname: HomelabBackupStale, severity: critical, fleet: fix, category: backup, namespace: frigate, owner_name: frigate-backup}
+            exp_annotations:
+              summary: "Backup stale: frigate/frigate-backup"
+              description: "frigate/frigate-backup has not completed successfully in 133200 seconds, over one run interval plus 12h (36h daily, 7.5d weekly). The job may be failing, or succeeding while writing nowhere - check the destination is really mounted, not merely listed as mounted."
+
+  - name: a weekly backup trips at 7d plus 12h, not at 36h
+    interval: 5m
+    input_series:
+      - series: 'kube_cronjob_info{namespace="freqtrade",cronjob="freqtrade-lab-backup",schedule="50 2 * * 0"}'
+        values: '1x2200'
+      - series: 'kube_job_owner{namespace="freqtrade",job_name="freqtrade-lab-backup-1",owner_kind="CronJob",owner_name="freqtrade-lab-backup"}'
+        values: '1x2200'
+      - series: 'kube_job_status_completion_time{namespace="freqtrade",job_name="freqtrade-lab-backup-1"}'
+        values: '0x2200'
+    alert_rule_test:
+      - eval_time: 37h
+        alertname: HomelabBackupStale
+        exp_alerts: []
+      - eval_time: 180h
+        alertname: HomelabBackupStale
+        exp_alerts: []
+      - eval_time: 181h
+        alertname: HomelabBackupStale
+        exp_alerts:
+          - exp_labels: {alertname: HomelabBackupStale, severity: critical, fleet: fix, category: backup, namespace: freqtrade, owner_name: freqtrade-lab-backup}
+            exp_annotations:
+              summary: "Backup stale: freqtrade/freqtrade-lab-backup"
+              description: "freqtrade/freqtrade-lab-backup has not completed successfully in 651600 seconds, over one run interval plus 12h (36h daily, 7.5d weekly). The job may be failing, or succeeding while writing nowhere - check the destination is really mounted, not merely listed as mounted."
+
+  - name: a newer success clears a stale daily backup
+    interval: 5m
+    input_series:
+      - series: 'kube_cronjob_info{namespace="immich",cronjob="immich-backup",schedule="0 3 * * *"}'
+        values: '1x500'
+      - series: 'kube_job_owner{namespace="immich",job_name="immich-backup-1",owner_kind="CronJob",owner_name="immich-backup"}'
+        values: '1x500'
+      - series: 'kube_job_status_completion_time{namespace="immich",job_name="immich-backup-1"}'
+        values: '0x500'
+      # A run that completes at 30h (108000s) appears from then on.
+      - series: 'kube_job_owner{namespace="immich",job_name="immich-backup-2",owner_kind="CronJob",owner_name="immich-backup"}'
+        values: '_x360 1x140'
+      - series: 'kube_job_status_completion_time{namespace="immich",job_name="immich-backup-2"}'
+        values: '_x360 108000x140'
+    alert_rule_test:
+      - eval_time: 37h
+        alertname: HomelabBackupStale
+        exp_alerts: []

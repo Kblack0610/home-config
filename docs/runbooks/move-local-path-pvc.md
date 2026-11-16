@@ -22,7 +22,7 @@ When an affinity change rules out the node that holds a claim, the pod stays Pen
 
 The local-path class cannot expand a claim, so a PV past its request (`LocalPathPvOverRequest`) gets a bigger request by rebinding the same PV to a new claim. The data stays in its host folder; the app is down for a few minutes.
 
-1. Open a PR that raises the request and sets `spec.volumeName: <pv>` in the PVC manifest. Wait for CI, and do not merge yet. The pin must be in git: Flux takes over the fields a hand `kubectl apply` set, so without it Flux tries to blank `volumeName` and `apps` fails on an immutable spec (2026-11-16, #1069). On a rebuilt cluster, drop the pin.
+1. Open a PR that raises the request and sets `spec.volumeName: <pv>` in the PVC manifest. Wait for CI, and do not merge yet. The pin must be in git: Flux takes over the fields a hand `kubectl apply` set (managedFields shows `kustomize-controller` owning `volumeName`), so without it Flux tries to blank `volumeName` and `apps` fails on an immutable spec. On a rebuilt cluster the PV is gone: remove the pin from the manifest before Flux's first apply, or the claim stays Pending.
 2. Suspend both Flux levels, as in step 2 above.
 3. `kubectl patch pv <pv> --type=merge -p '{"spec":{"persistentVolumeReclaimPolicy":"Retain"}}'`, and go on only once it reads `Retain`: a released PV on `Delete` loses its folder.
 4. Scale the workload to 0, wait for its pods to be gone, delete finished pods that mount the claim, then delete the PVC. Go on once the PV reads `Released`.

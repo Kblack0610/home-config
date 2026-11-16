@@ -601,6 +601,22 @@ class GovernorTest(unittest.TestCase):
                 self.assertEqual(governor.read_override("aws-burst-1", 100), want, body)
         self.assertEqual(len([c for c in out.call_args_list if "unreadable" in c.args[0]]), 2)
 
+    def test_cap_override_holds_on_to_the_cap_from_first_sight(self):
+        cap = 12 * 3600
+        with mock.patch("builtins.print") as out:
+            t = {}
+            # 19 h "on", the daily hand-written one: held to 12 h from the cycle it is first seen,
+            # and later cycles keep that first sight, so it ends then and does not slide.
+            self.assertEqual(governor.cap_override("h", t, "on", 19 * 3600, 0, cap), ("on", cap))
+            self.assertEqual(governor.cap_override("h", t, "on", 19 * 3600, 8 * 3600, cap), ("on", cap))
+            self.assertEqual(governor.cap_override("h", t, "on", 19 * 3600, cap, cap), ("", 0))
+            # A new end time is a new override; a short one runs to its own end.
+            self.assertEqual(governor.cap_override("h", t, "on", cap + 7200, cap, cap), ("on", cap + 7200))
+            # "off" is never capped, and none passes through.
+            self.assertEqual(governor.cap_override("h", t, "off", 30 * 3600, 0, cap), ("off", 30 * 3600))
+            self.assertEqual(governor.cap_override("h", t, "", 0, 0, cap), ("", 0))
+        self.assertEqual(len([c for c in out.call_args_list if "held to 12 h" in c.args[0]]), 1)
+
     # The human's machine-mode: a pinned host goes to its slots whatever the readings say.
     PINNED = pool(("hpv-1", "hp-victus", True, 50, False), ("hpv-2", "hp-victus", False, 0, False),
                   ("razer-1", "razer-laptop", False, 0, False), ("razer-2", "razer-laptop", False, 0, False),
@@ -1755,7 +1771,7 @@ class DwellTest(unittest.TestCase):
 # A cloud agent box: no runners, powered on fleet-dispatch's demand key.
 WORKER_POWER = {"provider": "aws", "instance_id": "i-0wrk", "region": "us-east-2", "idle_off_seconds": 1800,
                 "start_min_excess": 1, "live": True}
-WRK = {**CFG, "workers": {"fleet-worker-1": {"power": WORKER_POWER}}}
+WRK = {**CFG, "override_on_max_hours": 12, "workers": {"fleet-worker-1": {"power": WORKER_POWER}}}
 
 
 class WorkerTest(unittest.TestCase):

@@ -1,0 +1,9 @@
+---
+- name: Authorize the managed keys
+  ansible.posix.authorized_key:
+    user: "{{ authorized_keys_user }}"
+    key: "{{ item.key }}"
+    state: "{{ item.state | default('present') }}"
+  loop: "{{ authorized_keys_list }}"
+  loop_control:
+    label: "{{ item.comment }}"

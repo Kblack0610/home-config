@@ -1,0 +1,87 @@
+# emotiv-bridge
+
+Records the Emotiv EPOC X on mac-mini whenever it is connected in the EMOTIV Launcher, and archives every stream encrypted to the NAS. Plan: `~/.claude/plans/emotiv-stream.md` (P2). The NAS end is `roles/emotiv-archive-target`.
+
+## What it does
+
+One Node process (`files/emotiv-bridge.mjs`, no packages beyond Node), run by the LaunchAgent `com.kblab.emotiv-bridge`:
+
+1. Connects to Cortex at `wss://localhost:6868`, trusting the Emotiv CA exported from the System keychain.
+2. When a headset is `connected`, authorizes with `debit: 1` and opens one active session per wear, then subscribes each stream in `emotiv_bridge_streams`. Raw `eeg` is refused under the Basic license (-32016) and logged; everything else records.
+3. Writes each stream to `<spool>/<YYYY-MM-DD>/<start>-<session>/<stream>-<NNNN>.jsonl.gz`. Line 1 is a header (`stream`, `cols`, `session`, `headset`, `chunk`); every other line is `{"time": <epoch s>, "<stream>": [...]}` as Cortex sent it.
+4. Every 5 minutes, and when the headset disconnects, closes the chunks, encrypts each with `age` to the EEG recipient and deletes the plaintext.
+5. Uploads the `.age` files with rsync over ssh to `emotiv-archive@asus-laptop`, where rrsync confines the key to writing into `/mnt/nas/private/eeg`. rsync deletes a spool file only after it has been transferred and checked. A failed upload retries with backoff (30 s doubling to 15 min) and the spool keeps everything.
+6. Publishes a retained heartbeat every 60 s, and at once when a wear starts or ends, to `emotiv/mini/bridge` on the LAN broker, through `/usr/bin/nc` (see Troubleshooting): `up`, `wearing`, `session_seconds`, `spool_bytes`, `last_upload_epoch`, `last_error_code`, `local_quota`, `license_valid_to_epoch`.
+7. While worn, publishes live summaries every `emotiv_bridge_summary_seconds` (not retained, never raw values) under `emotiv/mini/`: `pow` (each band's mean over the 14 sensors), `met` (the performance metrics Cortex has active), `fac` (a counter per facial action, one per change into that action, kept for the life of the process), `mot` (accel magnitude and its spread, for head movement) and `dev` (battery, sensors at good contact, EEG quality).
+
+## Live view and alerts
+
+mqtt2prom turns each JSON number into `mqtt_<key>{topic="emotiv_mini_<sub>"}`. Grafana dashboard **Emotiv (mac-mini)** (`apps/monitoring/dashboards/emotiv-mini.json`, uid `emotiv-mini`) shows them, with the live panels blank while not worn. The rules are in `apps/monitoring/prometheus-rules-emotiv.yaml`: `EmotivBridgeStale` (no heartbeat for 10m), `EmotivUploadBacklog` (spool over 500 MB, or chunks left over an hour after a wear) and `EmotivLicenseExpiring` (under 14 days). There is no quota alert: the Basic license reports `localQuota` 0 and no session limit. Sentinel watch `~/.agent/watches/emotiv-bridge.yaml` checks the LaunchAgent over ssh every 15m, which still works when home-k3s is down.
+
+Cortex pushes warnings for connect (104), disconnect (102, 103), session closed (1) and streams stopped (0), and the bridge acts on them. Cortex sends nothing when a headset is switched on, so the bridge asks for a scan every `emotiv_bridge_scan_interval_seconds`.
+
+If `createSession` fails (EmotivPRO holding the headset, for one), the bridge does not try again until the headset disconnects, so it spends one debit per wear at most and gives way to EmotivPRO.
+
+## Keys
+
+| What | Where | Who can read it |
+|---|---|---|
+| EEG identity (decrypts the archive) | `eeg-identity.sops.yaml` here, keys `identity` and `recipient` | The main SOPS key only (`.sops.yaml` first rule). Never on the mini, not readable by the ansible-runner |
+| EEG recipient (encrypts) | `emotiv_bridge_age_recipient` in `defaults/main.yml` | Public |
+| Cortex app Home-EEG client id and secret | `vault_emotiv_cortex_client_*` in `group_vars/macos_hosts/vault.sops.yaml`; the human's copy is rbw `emotiv-cortex` | Rendered to `~/.config/emotiv-bridge/cortex.json` (0600) |
+| Upload ssh key | `vault_emotiv_archive_ssh_key` (same vault); public half in `roles/emotiv-archive-target` | Rendered to `~/.config/emotiv-bridge/archive_ed25519` (0600) |
+
+Losing the EEG identity makes the archive unreadable forever. It is backed up wherever this repo and the SOPS main key are.
+
+## Apply
+
+The NAS end first, then the bridge:
+
+```bash
+cd ansible
+ansible-playbook playbooks/site.yml --limit asus-laptop --tags emotiv
+ansible-playbook playbooks/site.yml --limit asus-laptop --tags backup-mounts   # @eeg subvolumes for the eeg-backup mirror
+ansible-playbook playbooks/site.yml --limit mac-mini --tags emotiv
+```
+
+## Read a session (workstation)
+
+`scripts/eeg-review.py` (a uv script; mne and numpy come with it) fetches a session from the NAS, decrypts it in memory with the EEG identity piped from sops, and writes to `~/eeg/review/<session>/`:
+
+```bash
+scripts/eeg-review.py 2026-11-11/20261111T120000-1a2b3c4d   # <date>/<session> under /mnt/nas/private/eeg
+scripts/eeg-review.py ~/eeg/some-local-session-dir          # or a local copy, encrypted or plain
+```
+
+- `events.csv`: one row per action, the input for later Home Assistant actions. Columns `onset_epoch, offset_s, duration_s, kind, source, strength`. `kind` is Cortex's own action name (`blink`, `winkL`, `lookR`, `surprise`, `frown`, `clench`, `smile`, `laugh`, `smirkLeft`, a mental command such as `push`), or `head_move` from the motion quaternion. `strength` is the peak Cortex power in the run (1.0 for eye actions), or the peak angular speed in deg/s for `head_move`. One row per run of the same action, the same way the live `fac` counters count.
+- `cleaned_raw.fif`: band power (70 channels), motion, contact quality, metrics and head angular speed on one 8 Hz grid, as MNE `misc` channels. Events are annotations; poor contact (`eq` overall under 50) is `BAD_contact` and a band-power gap over 0.5 s is `BAD_gap`, so `reject_by_annotation` drops them.
+- `eeg_raw.fif`: only when the archive has raw `eeg`, which the Basic license refuses. Band-passed 1-45 Hz and notched at 60 Hz.
+- `summary.json`: samples, span and rate per stream, the numbers the wear check compares with duration x rate.
+
+The thresholds (`HEAD_MOVE_DEG_S`, `CONTACT_MIN`, `GAP_S`) are constants at the top of the script. Tests: `python3 scripts/test_eeg_review.py` (stdlib only, CI `fleet-roster` job).
+
+## Check it
+
+```bash
+ssh mac-mini 'launchctl print gui/$(id -u)/com.kblab.emotiv-bridge | grep -E "state|pid"; tail -20 ~/Library/Logs/emotiv-bridge.log'
+ssh mac-mini 'find ~/Library/Application\ Support/emotiv-bridge/spool -type f | head'   # empty unless wearing or the NAS is unreachable
+mosquitto_sub -h mosquitto.kblab.me -p 31883 -t emotiv/mini/bridge -C 1
+mosquitto_sub -h mosquitto.kblab.me -p 31883 -t 'emotiv/mini/#' -v -C 6   # summaries arrive only while worn
+```
+
+Tests: `node --test ansible/roles/emotiv-bridge/files/test-emotiv-bridge.mjs` (CI job `ci-disk-prune`).
+
+## Rollback
+
+`launchctl bootout gui/$(id -u)/com.kblab.emotiv-bridge` on the mini and remove the role from the mac-mini play. The archive, the keys and the NAS user stay.
+
+## Troubleshooting
+
+| Symptom | Cause and fix |
+|---|---|
+| Log shows `authorize failed` with -32021 | Wrong client secret: compare the vault with rbw `emotiv-cortex`, re-apply |
+| Log shows `createSession failed` while wearing | EmotivPRO or another app holds the headset. The bridge waits for the next disconnect. Close the other app's session and switch the headset off and on |
+| `spool_bytes` grows while not wearing | Uploads failing: the log names the rsync exit code. 255 is ssh (asus down, host key changed: update `emotiv_bridge_upload_host_key`) |
+| LaunchAgent restarts every 30 s, `last exit code = 0`, empty log | The script was started through a symlinked path and skipped main(); fixed by the realpath guard. The bridge home stays under `~/Library/Application Support`, never `~/.local`, which on the mini is a symlink into the dotfiles repo |
+| Log shows `mqtt connect EHOSTUNREACH` from the bridge while `nc` over ssh reaches the broker | macOS Local Network privacy blocks Homebrew node in a LaunchAgent from the LAN ([mac-machines.md](../../../docs/mac-machines.md)). MQTT goes through Apple's `/usr/bin/nc` (`emotiv_bridge_nc`) and rsync through `/usr/bin/ssh`, which are exempt. Keep every LAN connection on an Apple binary |
+| rsync exit 255 with `Load key ... invalid format` | The rendered key lost its trailing newline; the role writes it with `trim` plus a newline |

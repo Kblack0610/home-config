@@ -6,6 +6,12 @@ metadata:
   annotations:
     kubernetes.io/ingress.class: traefik
     cert-manager.io/cluster-issuer: letsencrypt-dns
+    # Tailnet and LAN only: keep this host OFF public DNS. external-dns publishes
+    # every *.kblab.me Ingress through the wildcard tunnel unless its controller
+    # is not dns-controller; 2026-11-07 a scanner sent 190k guessed keys through
+    # that path (hc-213). Tailnet clients resolve it from the headscale
+    # extra_records. Both Ingresses on this host need it, or one republishes it.
+    external-dns.alpha.kubernetes.io/controller: none
 spec:
   rules:
     - host: llm.kblab.me

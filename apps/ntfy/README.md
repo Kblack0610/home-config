@@ -33,10 +33,13 @@ init container reading from a SOPS-encrypted `secret.yaml`.
 |---|---|---|---|
 | `agents` | `agent-notify` on the workstation (Sentinel watches, the Briefing, wave rolls, asks) | Ken | yes, Minimum priority High |
 | `homelab-alerts` | Alertmanager (`apps/monitoring/helm-values.yaml`) and Home Assistant `fleet_alerts.yaml` | Ken | yes, Minimum priority High |
+| `homelab-security` | Alertmanager security digest | Ken, during CVE maintenance | optional, low priority |
+| `homelab-trading` | Alertmanager paper-trading warnings and Freqtrade job failures | Ken, during paper-league review | optional, low priority |
 | `home` | Home Assistant `packages/home_alerts.yaml` (prints, vacuum, litter box, 08:00 digest) | anyone who lives here | optional, Minimum priority Default |
 | `notes-sync` | `notes-sync-bridge` on every `.notes` push | the `notes-ntfy` user service and the phone's sync | no buzz wanted, it is machine traffic |
 | `homelab-janitor` | `apps/cluster-janitor/cronjob.yaml` | Ken, when debugging the janitor | no |
 | `finance` | `apps/actual-budget/bank-sync-cronjob.yaml` | Ken | optional |
+| `feeds` | `apps/feed-ingest` route `ntfy-feeds`: watchlist news with a strong tag (config.toml), priority 2 | Ken | optional, no buzz |
 
 ### Priorities
 
@@ -49,7 +52,7 @@ ntfy priorities run 1 to 5. Every publisher here uses the same meaning, so one p
 | 3 | default | silent, listed in the app | progress and warnings: a wave rolled, a warning alert, a print finished |
 | 1-2 | min / low | silent, listed in the app | self-healing noise and digests |
 
-The `agents` levels are defined in `~/.dotfiles-private/.config/agentctl/SENTINEL.md` (section Paging). Alertmanager sends `severity: critical` at 5 and everything else at 3; `InfoInhibitor` and `Watchdog` are never sent.
+The `agents` levels are defined in `~/.dotfiles-private/.config/agentctl/SENTINEL.md` (section Paging). Alertmanager sends infrastructure criticals at 5, critical cost alerts at 4, security digests and paper-trading warnings at 2 on their own topics, and human warnings at 3. Informational alerts, `InfoInhibitor` and `Watchdog` are never sent.
 
 ### The backup channel
 

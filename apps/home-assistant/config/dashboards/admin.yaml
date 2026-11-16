@@ -37,22 +37,6 @@ sections:
   - type: grid
     cards:
       - type: heading
-        heading: Endpoints
-        icon: mdi:api
-      - type: entities
-        title: Model APIs
-        show_header_toggle: false
-        entities:
-          - entity: sensor.mlx_code_server
-            name: MLX Code
-          - entity: sensor.mlx_smart_server
-            name: MLX Smart
-          - entity: sensor.mlx_reasoning_server
-            name: MLX Reasoning
-
-  - type: grid
-    cards:
-      - type: heading
         heading: Notes
         icon: mdi:text-box-outline
       - type: markdown

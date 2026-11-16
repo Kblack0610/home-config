@@ -10,5 +10,8 @@ Before=slices.target
 
 [Slice]
 CPUAccounting=true
+{% if ci_linux_cpus %}
+AllowedCPUs={{ ci_linux_cpus }}
+{% endif %}
 MemoryAccounting=true
 MemoryMax={{ ci_linux_memory_max }}

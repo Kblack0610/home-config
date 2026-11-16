@@ -11,7 +11,7 @@ OrcaSlicer in the browser at `https://slicer.kblab.me` (linuxserver image, Selki
 | `kustomization.yaml` | Builds the `orcaslicer-profiles` ConfigMap from the two above (fixed name, `apps/print-service` mounts it) |
 | `deployment.yaml` | The app; its `seed-config` init container copies the presets in on every start |
 | `bambu-a1-secret.yaml` | SOPS: the A1 LAN access code and serial, filled into the `@A1_...@` placeholders at start |
-| `desktop-link.sh` | Points a desktop OrcaSlicer at `profiles/` (symlinks; the A1 preset is a local copy with the code filled from SOPS). Run with Orca closed; the dotfiles installer calls it from `setup_3d_printing` |
+| `check-presets.sh` | Updating step 1: proves every `inherits` resolves on an image tag, in a throwaway container |
 
 ## Presets
 
@@ -27,7 +27,7 @@ Every Neptune process names its gcode `{input_filename_base}_{nozzle_diameter[0]
 
 ## Changing a preset
 
-1. Change the file under `profiles/` (or save the preset in a desktop Orca whose `user/default` folders link here, via `desktop-link.sh`) and open a PR. The desktop A1 machine preset is a local copy holding the real code, so carry an A1 change into `profiles/machine/` by hand with the `@A1_...@` placeholders kept.
+1. Change the file under `profiles/` and open a PR. Keep the `@A1_...@` placeholders in the A1 machine preset; the real code is filled from `bambu-a1-secret.yaml` at start.
 2. After Flux applies it, restart the app so the init container copies the new files in: `kubectl --context home-k3s -n orcaslicer rollout restart deploy/orcaslicer`. `apps/print-service` reads the ConfigMap mount live.
 
 Every start overwrites the managed presets, so a preset changed only in the browser slicer is lost at the next restart. Presets with other names are left alone. Old strays were moved to `user/default/_retired-2026-11-04/` on the hostPath.
@@ -36,11 +36,11 @@ A new preset needs a line in the init container's list in `deployment.yaml` and 
 
 ## Updating
 
-The app and `apps/print-service` pin the same linuxserver tag (now `v2.4.2-ls47`); bump both in one PR. Before a bump:
+The app and `apps/print-service` pin the same linuxserver tag (now `v2.5.0-ls49`); bump both in one PR. Renovate opens that PR (`renovate/orcaslicer`, docs/renovate.md); before merging it:
 
-1. Check that every `inherits` in `profiles/` names a preset the new version ships, under `/opt/orcaslicer/resources/profiles/{Elegoo,BBL}/` in the image (`docker run --rm --entrypoint ls lscr.io/linuxserver/orcaslicer:<tag> ...`). OrcaSlicer 2.4 renamed the Elegoo presets (`Elegoo Neptune 4 Pro (0.4 nozzle)` -> `Elegoo Neptune 4 Pro 0.4 nozzle`, `@Elegoo Neptune4Pro (0.4 nozzle)` -> `@Elegoo N4Pro 0.4 nozzle`); the GUI maps old names through `renamed_from`, the print-service paths do not.
+1. Prove every `inherits` in `profiles/` still resolves: `apps/orcaslicer/check-presets.sh <tag>` (needs docker; pulls the image). Since 2.5.0 each vendor is an opaque `<vendor>.opc` (not zip) and `/opt/orcaslicer/resources/profiles/Elegoo/` holds no preset files, so `ls` over the image proves nothing. The script copies the vendor bundles into a throwaway datadir `system/`, puts `profiles/` in `user/default/`, and slices a cube with each machine/process/filament set with the image's own CLI (the A1 machine is resolved with `--export-settings`); a preset with a bogus `inherits` is the negative control and must fail. OrcaSlicer 2.4 renamed the Elegoo presets (`Elegoo Neptune 4 Pro (0.4 nozzle)` -> `Elegoo Neptune 4 Pro 0.4 nozzle`, `@Elegoo Neptune4Pro (0.4 nozzle)` -> `@Elegoo N4Pro 0.4 nozzle`); the GUI maps old names through `renamed_from`, the CLI does not. Fix a red by pointing `inherits` at the new name (the new names are in `apps/print-service/server.py`).
 2. Re-run the print-service slice check (`apps/print-service/README.md`, "Test / verify").
-3. Slice once in the GUI with each process preset in `profiles/process/`. print-service only uses the system process presets, so it cannot catch a value the new version rejects (2.4.2 refuses `small_perimeter_speed: "0"`).
+3. Slice once in the GUI with each process preset in `profiles/process/`. print-service only uses the system process presets, so it cannot catch a value the new version rejects (2.4.2 refused `small_perimeter_speed: "0"`; the check script slices a cube with them, which does not exercise every feature of each process preset).
 
 ## Verify
 
@@ -50,11 +50,27 @@ kubectl --context home-k3s -n orcaslicer exec deploy/orcaslicer -c orcaslicer --
 python3 scripts/check-secret-store.py
 ```
 
+## Stream and smoothness
+
+Checked 2026-11-11 on `v2.5.0-ls49`; nothing was changed. Selkies 2.2.1 streams over websockets from a Wayland session (labwc). The Radeon dGPU renders (`Renderer: GL on /dev/dri/renderD128` in the pod log) and encodes H.264 with VAAPI (`Render node 0 encodes H264, H265 on vaapi`). Idle, the pod uses about 11m CPU and 825 MiB.
+
+Two settings cap sharpness and smoothness, both from `3dba36e` (2026-04), when the CPU still encoded:
+
+- `SELKIES_IS_MANUAL_RESOLUTION_MODE=true` at 1280x720: the stream is stretched to the browser window, so it looks soft on a big monitor. To fix it, drop the three manual-resolution vars so the remote desktop takes the window size. Check a phone first, because the Orca UI may be too cramped at phone size; if it is, set manual mode to 1920x1080 instead.
+- `SELKIES_FRAMERATE=30`: 60 makes rotating the plate smoother, at the cost of more bandwidth through the public tunnel off the LAN. Try 45 if it stutters away from home.
+
+After a change, the Selkies start line in `kubectl --context home-k3s -n orcaslicer logs deploy/orcaslicer -c orcaslicer | grep "Selkies .* starting"` shows the resolution and framerate. Today it reads `encoder h264enc at 8-240 fps, fixed 1280x720`.
+
+For an app window with no tabs, use Chromium's "Install" button in the address bar (Selkies ships a `manifest.json`) or `chromium --app=https://slicer.kblab.me`.
+
+Selkies stays as the wrapper. Moonlight/Sunshine needs a client install and has no browser path, Selkies WebRTC mode needs a TURN server off the LAN (the tunnel carries only HTTP and websockets), and KasmVNC, noVNC and Guacamole are older and slower.
+
 ## Troubleshooting
 
 | Symptom | Cause | Fix |
 |---------|-------|-----|
 | A merged preset change does not show on `slicer.kblab.me` | The init container copies presets only at pod start | `rollout restart deploy/orcaslicer` |
-| A user filament preset is missing from the list, Orca logs `validate_preset: ... can not found preset and inherit in list` | Its `inherits` names a system preset that the Orca version does not ship (the old `Elegoo Generic PLA`) | Point `inherits` at a preset that exists in `/opt/orcaslicer/resources/profiles/Elegoo/` (`Generic PLA @Elegoo`) |
+| A user filament preset is missing from the list, Orca logs `validate_preset: ... can not found preset and inherit in list` | Its `inherits` names a system preset that the Orca version does not ship (the old `Elegoo Generic PLA`) | Point `inherits` at a preset the version ships (`Generic PLA @Elegoo`); `check-presets.sh <tag>` shows which names resolve |
 | Slicing fails with "Invalid parameter value(s)" (the CLI returns -18) | A preset key holds a value the Orca version no longer accepts | Find the key: apply the preset keys one at a time onto the system parent and slice with `/usr/bin/orca-slicer --slice 0`. Drop the key so it inherits, or set a valid value |
 | A gcode printed with the wrong nozzle | The name was read for the nozzle | Read `nozzle_diameter` from Moonraker metadata (above) |
+| The slicer went black or restarted on its own | On the X11 images (2.3.2 and earlier) the Xvfb server segfaulted: `(EE) Caught signal 11` in Loki on 2026-10-23 and 2026-11-04. The current images use Wayland, and there were no restarts from 2026-11-04 to 11-11 | Search Loki for `{namespace="orcaslicer",container="orcaslicer"} \|~ "(?i)segfault\|signal 11"`. If it is still crashing, add a Sentinel `kubectl` watch with `expect_restarts_max` on `home-k3s/orcaslicer/app.kubernetes.io/name=orcaslicer` |

@@ -1,0 +1,39 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>{{ emotiv_bridge_label }}</string>
+
+    <key>ProgramArguments</key>
+    <array>
+        <string>{{ emotiv_bridge_node }}</string>
+        <string>{{ emotiv_bridge_script }}</string>
+        <string>{{ emotiv_bridge_config_dir }}/config.json</string>
+    </array>
+
+    <!-- Cortex serves wss://localhost:6868 with a cert from the Emotiv CA in the System keychain. -->
+    <key>EnvironmentVariables</key>
+    <dict>
+        <key>NODE_EXTRA_CA_CERTS</key>
+        <string>{{ emotiv_bridge_config_dir }}/emotiv-ca.pem</string>
+    </dict>
+
+    <key>RunAtLoad</key>
+    <true/>
+
+    <!-- Restarted if it exits, at most every 30s, so a crash loop cannot storm the CI host. -->
+    <key>KeepAlive</key>
+    <true/>
+    <key>ThrottleInterval</key>
+    <integer>30</integer>
+
+    <key>Nice</key>
+    <integer>10</integer>
+
+    <key>StandardOutPath</key>
+    <string>{{ emotiv_bridge_log }}</string>
+    <key>StandardErrorPath</key>
+    <string>{{ emotiv_bridge_log }}</string>
+</dict>
+</plist>

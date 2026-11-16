@@ -5,6 +5,10 @@
 # cached by file, config and freqtrade version, so a normal night redoes only
 # the current year; the first run, or a freqtrade bump, redoes everything and
 # takes hours. Nothing here touches the bots.
+# It runs the trader-ml image (the same repo on freqtrade's FreqAI base), so the
+# ML family (user_data/strategies/ml) is backtested too; FreqAI keeps the models
+# it trains under user_data/models, here a folder on the lab PVC, so a night
+# retrains only the new weekly windows.
 apiVersion: batch/v1
 kind: CronJob
 metadata:
@@ -33,8 +37,9 @@ spec:
             fsGroup: 1000
           initContainers:
             - name: migrate
-              image: trader
-              command: ["python", "/repo/lab/migrate.py"]
+              image: trader-ml
+              # makes the models folder as uid 1000: a subPath kubelet makes is root's, and this PV is a hostPath
+              command: ["sh", "-c", "mkdir -p /lab/models && exec python /repo/lab/migrate.py"]
               env:
                 - name: DATABASE_URL
                   valueFrom:
@@ -45,28 +50,40 @@ spec:
                   memory: 64Mi
                 limits:
                   memory: 256Mi
+              volumeMounts:
+                - {name: lab, mountPath: /lab}
           containers:
             - name: analysis
-              image: trader
+              image: trader-ml
               command: ["python", "/repo/lab/analyze.py"]
               env:
                 - name: DATABASE_URL
                   valueFrom:
                     secretKeyRef: {name: trader-db, key: database-url}
+                - name: ALPACA_PAPER_KEY_ID
+                  valueFrom:
+                    secretKeyRef: {name: trader-brokers, key: ALPACA_PAPER_KEY_ID}
+                - name: ALPACA_PAPER_SECRET_KEY
+                  valueFrom:
+                    secretKeyRef: {name: trader-brokers, key: ALPACA_PAPER_SECRET_KEY}
                 - name: ANALYZE_EXCHANGES
                   value: "binanceus coinbase kraken okx kucoin"  # a venue x timeframe joins once every pair is backfilled to its oldest candle
                 - name: ANALYZE_WORKERS
-                  value: "10"
+                  value: "4"  # matches the 4-CPU limit
                 - name: ANALYZE_MEMORY_GB
                   value: "8"  # tasks are admitted by estimated memory; 4 GB under the limit for the parent process and estimate error
+                - name: ANALYZE_BUDGET_S  # starts no work after this: deadline (64800) less CHUNK_TIMEOUT (3600) and 2 h for derive/post/reproduce
+                  value: "54000"
               resources:
                 requests:
-                  cpu: "6"
-                  memory: 14Gi  # equal to the limit, so the scheduler sees what it uses: with the walk-forward's 14Gi that is 28 of razer-laptop's 93Gi, and both run at once
+                  cpu: "1"  # razer-laptop offers pods 4 CPUs since home-config #732, and the PVC pins this job there
+                  memory: 14Gi  # equal to the limit, so the scheduler sees what it uses
                 limits:
+                  cpu: "4"  # the whole k3s budget on razer-laptop; the walk-forward runs elsewhere since trader plan magical-stargazing-owl phase 3
                   memory: 14Gi  # ANALYZE_MEMORY_GB plus headroom; runs peak near 10.3 GiB at a budget of 8 (2026-11-06), a 5m year of 10 pairs at 1.1 GB, a 1m year at 4 GB
               volumeMounts:
                 - {name: lab, mountPath: /lab}
+                - {name: lab, mountPath: /repo/user_data/models, subPath: models}
           volumes:
             - name: lab
               persistentVolumeClaim:

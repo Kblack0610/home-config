@@ -5,6 +5,7 @@ metadata:
   namespace: nas
 spec:
   schedule: "45 3 * * 0"  # Weekly, Sunday 3:45 AM (prints change rarely; 14 weekly snapshots ~= 3 months of history)
+  timeZone: America/Los_Angeles
   successfulJobsHistoryLimit: 3
   failedJobsHistoryLimit: 3
   jobTemplate:

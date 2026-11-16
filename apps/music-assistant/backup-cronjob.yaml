@@ -5,6 +5,7 @@ metadata:
   namespace: music-assistant
 spec:
   schedule: "30 2 * * *"  # Daily at 2:30 AM, clear of the 2 AM HA/litellm and 3 AM jobs
+  timeZone: America/Los_Angeles
   successfulJobsHistoryLimit: 3
   failedJobsHistoryLimit: 1
   jobTemplate:

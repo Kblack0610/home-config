@@ -57,6 +57,12 @@ spec:
             limits:
               cpu: 100m
               memory: 64Mi
+          # Same drain as binks-api (deployment.yaml): wait until Traefik drops
+          # the endpoint before nginx gets SIGTERM, or / 502s mid-rollout.
+          lifecycle:
+            preStop:
+              sleep:
+                seconds: 10
           readinessProbe:
             httpGet:
               path: /

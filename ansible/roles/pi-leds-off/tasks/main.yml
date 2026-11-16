@@ -1,0 +1,31 @@
+---
+# Turn off a Raspberry Pi's onboard power (red) and activity (green) LEDs, for
+# a Pi in a room people sleep in. config.txt sets them at boot; the sysfs task
+# turns them off now without a reboot. The firmware still lights PWR for the
+# second or two before the kernel takes over.
+
+- name: LEDs off at boot (config.txt, [all] section)
+  ansible.builtin.blockinfile:
+    path: /boot/firmware/config.txt
+    marker: "# {mark} ANSIBLE MANAGED: pi-leds-off"
+    insertafter: EOF
+    block: |
+      dtparam=act_led_trigger=none
+      dtparam=act_led_activelow=off
+      dtparam=pwr_led_trigger=none
+      dtparam=pwr_led_activelow=off
+
+- name: LEDs off now (sysfs)
+  ansible.builtin.shell: |
+    set -e
+    changed=0
+    for led in ACT PWR; do
+      d=/sys/class/leds/$led
+      [ -d "$d" ] || continue
+      if ! grep -q '\[none\]' "$d/trigger" || [ "$(cat "$d/brightness")" != 0 ]; then
+        echo none > "$d/trigger"; echo 0 > "$d/brightness"; changed=1
+      fi
+    done
+    echo "changed=$changed"
+  register: pi_leds_now
+  changed_when: "'changed=1' in pi_leds_now.stdout"

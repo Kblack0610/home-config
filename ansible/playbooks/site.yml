@@ -9,7 +9,7 @@
 # The github-actions-runner-linux role runs the org light/heavy runner slots on
 # the linux_ci_runners group (the "Linux CI runners" play)
 # and the org Unity pool slots (the "Unity CI runner pool" play).
-# Future phases will add roles here (k3s-agent, launchd-mlx, openwrt-config, etc.).
+# Future phases will add roles here (k3s-agent, openwrt-config, etc.).
 
 - name: Local ASR dictation daemons (Parakeet + whisper.cpp) on this workstation
   # See roles/asr-servers/README.md. Parakeet (:8771) is the gungan default —
@@ -34,14 +34,38 @@
   hosts: cachyos-x8664-main
   become: true
   gather_facts: true
+  vars:
+    node_exporter_linux_textfile_dir: /var/lib/node_exporter/textfile
   roles:
     - role: node-exporter-linux
       tags: [monitoring]
       vars:
-        node_exporter_linux_textfile_dir: /var/lib/node_exporter/textfile
         node_exporter_linux_textfile_owner: kblack0610
     - role: desktop-firewall
       tags: [monitoring, firewall]
+    # Top processes, running services and Docker containers, for the hub machine page:
+    #   ansible-playbook playbooks/site.yml --limit cachyos-x8664-main --tags inventory-metrics -K
+    - role: node-inventory-metrics
+      tags: [inventory-metrics]
+      vars:
+        node_inventory_metrics_dir: "{{ node_exporter_linux_textfile_dir }}"
+    # `ssh <inventory alias>` from this machine (razer-laptop, asus-laptop on
+    # 2222, the Pis): /etc/ssh/ssh_config.d/40-home-inventory.conf from the
+    # inventory. Apply: --limit cachyos-x8664-main --tags ssh-aliases -K
+    - role: ssh-client-inventory
+      tags: [ssh-aliases]
+
+- name: Unity CI host monitoring (node_exporter, windows-media-ci)
+  # So ci-runner-governor and cc:host_* read the VM's idle, PSI and memory: it is
+  # not a k3s node, so the DaemonSet does not scrape it; Prometheus reaches it
+  # through standalone-nodes (apps/monitoring/external-standalone-nodes.yaml).
+  #   ansible-playbook playbooks/site.yml --limit windows-media-ci --tags monitoring
+  hosts: windows-media-ci
+  become: true
+  gather_facts: true
+  roles:
+    - role: node-exporter-linux
+      tags: [monitoring, unity-ci]
 
 - name: Keep Linux host clocks synced (systemd-timesyncd)
   # See ansible/roles/time-sync/README.md. hp-victus was found ~102s behind the
@@ -71,6 +95,26 @@
     - role: node-disk-metrics
       tags: [disk-metrics]
 
+- name: Process, service and Docker container inventory (k3s nodes)
+  # For the hub machine page; the workstation's is in its monitoring play.
+  #   ansible-playbook playbooks/site.yml --limit 'hp-victus:asus-laptop:razer-laptop:pi_k3s' --tags inventory-metrics
+  hosts: hp-victus:asus-laptop:razer-laptop:pi_k3s
+  become: true
+  gather_facts: false
+  roles:
+    - role: node-inventory-metrics
+      tags: [inventory-metrics]
+
+- name: Kubelet image GC under the disk alert (Pi k3s nodes)
+  # See roles/k3s-image-gc/README.md. Kubelet's default 85% sat above NodeDiskLow's 80%.
+  #   ansible-playbook playbooks/site.yml --limit pi_k3s --tags image-gc
+  hosts: pi_k3s
+  become: true
+  gather_facts: false
+  roles:
+    - role: k3s-image-gc
+      tags: [image-gc, k3s]
+
 - name: CPU per CI runner (Linux runner hosts)
   # The Infra tab's cores per runner: each runner unit's cgroup plus its job
   # container's, every 15s, into node-exporter's textfile dir.
@@ -96,6 +140,17 @@
     - role: usb-backup-mounts
       tags: [backup-mounts, storage]
 
+- name: Emotiv EEG archive on asus-laptop
+  # Where roles/emotiv-bridge on mac-mini uploads: a write-only rrsync user and
+  # /mnt/nas/private/eeg. Apply before the bridge, or its uploads queue in the spool.
+  #   ansible-playbook playbooks/site.yml --limit asus-laptop --tags emotiv
+  hosts: asus-laptop
+  become: true
+  gather_facts: false
+  roles:
+    - role: emotiv-archive-target
+      tags: [emotiv, storage]
+
 - name: Disk scrubs and SMART on asus-laptop
   # See roles/disk-health/README.md. Nothing scrubbed these filesystems before
   # 2026-10-31, so rot in a file nobody reads would have gone unnoticed.
@@ -105,6 +160,16 @@
   roles:
     - role: disk-health
       tags: [disk-health, storage]
+
+- name: Weekly Forgejo restore drill on asus-laptop
+  # See roles/forgejo-restore-drill/README.md. A backup nobody restores is a guess;
+  # this restores the newest one every week and records the outcome for Sentinel.
+  hosts: asus-laptop
+  become: true
+  gather_facts: false
+  roles:
+    - role: forgejo-restore-drill
+      tags: [forgejo-restore-drill, storage]
 
 - name: Disable lid-close / suspend on laptop k3s nodes and CI hosts
   # See ansible/roles/k3s-node-no-suspend/README.md — without this, closing
@@ -159,6 +224,18 @@
     linux_ci_instances: >-
       {{ (range(1, ci_light_slots + 1) | map('regex_replace', '^', 'light-') | list)
          + (range(1, ci_heavy_slots + 1) | map('regex_replace', '^', 'heavy-') | list) }}
+    # Each slot's share of the platform slice's CPUs (ci_linux_cpus, else
+    # ci_cpus), rounded down and at least 1, so the slots' caps never add up
+    # past the slice: CI_SLOT_CPUS in every job's env, which platform's
+    # turbo runs take as --concurrency. Without it a turbo job started 10 tasks
+    # on razer's 2-core share, its 6 platform cores sat at 94% CPU pressure and
+    # the host's load15 reached 1.58x its CPUs with 45% of them idle (2026-11-14,
+    # NodeLoadHigh, ar-2435).
+    linux_ci_slot_cpus: >-
+      {% set cpus = [] %}{% for part in ((ci_linux_cpus | default('')) or ci_cpus).split(',')
+      if part | trim %}{% set ab = (part | trim).split('-') %}{% for c in range(ab[0] | int,
+      (ab[-1] | int) + 1) %}{% set _ = cpus.append(c) %}{% endfor %}{% endfor %}{{ [1,
+      ((cpus | length) / (linux_ci_instances | length)) | round(0, 'floor') | int] | max }}
   roles:
     - role: linux-ci-host
       tags: [runner, ci, linux-ci]
@@ -186,7 +263,84 @@
         gh_runner_env:
           HOME: "{{ linux_ci_user_home }}/{{ ci_slot }}"
           ACTIONS_RUNNER_HOOK_JOB_STARTED: "{{ linux_ci_job_started_hook }}"
+          CI_SLOT_CPUS: "{{ linux_ci_slot_cpus }}"
       tags: [runner, ci, linux-ci]
+    # After the slots, which create the linux-ci user. Playground jobs clone
+    # their submodules over ssh (windows-media-ci's first light jobs failed
+    # "Host key verification failed" without this).
+    - name: Trust GitHub's host keys for the linux-ci user
+      ansible.builtin.import_role:
+        name: linux-ci-host
+        tasks_from: github-known-hosts
+      vars:
+        github_known_hosts_user: linux-ci
+        github_known_hosts_group: linux-ci
+        github_known_hosts_home: "{{ linux_ci_user_home }}"
+      tags: [runner, ci, linux-ci]
+
+# Service hosts carry no CI (no_ci_hosts in inventory.yml says why). The CI
+# plays only add, so this one takes off whatever a host still has: every
+# actions.runner unit, the linux-ci homes and cleanup timer, the k3s CPU pin
+# that kept pods off CI's cores, and the org registrations (the workstation's
+# gh, admin:org). Idempotent; a clean host reports ok.
+#   ansible-playbook playbooks/site.yml --limit no_ci_hosts --tags no-ci
+- name: Retire CI on no_ci_hosts
+  hosts: no_ci_hosts
+  become: true
+  gather_facts: false
+  tags: [no-ci, ci]
+  tasks:
+    - name: Find runner units
+      ansible.builtin.find:
+        paths: /etc/systemd/system
+        patterns: "actions.runner.*.service"
+      register: _no_ci_units
+
+    - name: Stop and disable runner units and the docker cleanup timer
+      ansible.builtin.systemd:
+        name: "{{ item }}"
+        state: stopped
+        enabled: false
+      loop: "{{ _no_ci_units.files | map(attribute='path') | map('basename') | list
+                + ['linux-ci-docker-cleanup.timer', 'linux-ci-docker-cleanup.service'] }}"
+      failed_when: false
+
+    - name: Remove runner units, linux-ci homes and hooks
+      ansible.builtin.file:
+        path: "{{ item }}"
+        state: absent
+      loop: "{{ _no_ci_units.files | map(attribute='path') | list + [
+                '/etc/systemd/system/linux-ci-docker-cleanup.timer',
+                '/etc/systemd/system/linux-ci-docker-cleanup.service',
+                '/var/lib/linux-ci', '/usr/local/lib/linux-ci'] }}"
+      register: _no_ci_removed
+
+    - name: Reload systemd
+      ansible.builtin.systemd:
+        daemon_reload: true
+      when: _no_ci_removed.changed
+
+    # The role's own unpin: it also drops kubelet's CPU manager checkpoint,
+    # without which k3s will not start on the new policy (asus, 2026-11-13).
+    - name: Remove the k3s CPU pin
+      ansible.builtin.include_role:
+        name: ci-host-budget
+        tasks_from: k3s-pin
+      vars:
+        k3s_cpus: ""
+
+    - name: Deregister this host's org runners
+      ansible.builtin.shell: |
+        set -eu
+        gh api orgs/BlackNBrownStudios/actions/runners --paginate \
+          -q '.runners[] | select(.name | startswith("{{ inventory_hostname }}-")) | .id' |
+        while read -r id; do gh api -X DELETE "orgs/BlackNBrownStudios/actions/runners/$id"; echo "$id"; done
+      delegate_to: localhost
+      become: false
+      register: _no_ci_dereg
+      changed_when: _no_ci_dereg.stdout | length > 0
+      check_mode: false
+      when: not ansible_check_mode
 
 - name: Fleet workers (agent sessions fleet-dispatch places over ssh)
   # See docs/runbooks/fleet-worker.md. Per user, not root: the sessions run as
@@ -198,13 +352,12 @@
     - role: fleet-worker
       tags: [fleet-worker, agents]
 
-# macOS build/CI boxes (mac-studio, mac-mini). Shared baseline on BOTH: brew
-# essentials, node_exporter, and macos-baseline (power policy + SSH key sync +
-# auto-login/FileVault assert). macos-baseline's pmset tasks self-elevate
-# (become: true), so applying the [mac]/[persistence] tags needs an interactive
-# sudo password: add `-K`. The role SPLIT (runner vs LLM node) lives in the two
-# per-host plays below. See docs/mac-machines.md.
-- name: macOS baseline + monitoring (both Macs)
+# macOS hosts (macos_hosts). Shared baseline: brew essentials, node_exporter,
+# and macos-baseline (power policy + SSH key sync + auto-login/FileVault
+# assert). macos-baseline's pmset tasks self-elevate (become: true), so applying
+# the [mac]/[persistence] tags needs an interactive sudo password: add `-K`.
+# See docs/mac-machines.md.
+- name: macOS baseline + monitoring
   hosts: macos_hosts
   gather_facts: true
   roles:
@@ -234,10 +387,8 @@
     - role: ci-runner-cpu
       tags: [runner-cpu]
 
-# 2026-07-18 ROLE SPLIT: mac-mini is the SOLE self-hosted mobile-CI runner;
-# mac-studio is a dedicated LLM inference node (its runner is torn down below).
-# No workflow pins a runner by name — only by the [self-hosted, macOS, arm64]
-# label set — so demoting mac-studio is transparent as long as mac-mini is up.
+# mac-mini is the sole self-hosted mobile-CI runner. No workflow pins a runner
+# by name, only by the [self-hosted, macOS, arm64] label set.
 - name: macOS CI runner (mac-mini only)
   hosts: mac-mini
   gather_facts: true
@@ -252,34 +403,28 @@
     # the person's one-time privacy grants and no screen lock.
     - role: macos-agent-tools
       tags: [mac, agent-tools]
+    # Records the Emotiv EPOC X while it is connected and uploads it encrypted
+    # to the NAS (roles/emotiv-bridge/README.md). The NAS end is the
+    # emotiv-archive-target play above.
+    - role: emotiv-bridge
+      tags: [mac, emotiv]
   tasks:
-    # Unity's iOS Build Support for the editors unity-ci-host-mac manages, for the
-    # playground's iOS builds on this box's m1-playground-mac runner. Asserts
-    # Xcode first. No sudo.
-    - name: Unity iOS Build Support
+    # Unity's iOS and Mac IL2CPP modules for the editors unity-ci-host-mac
+    # manages, for the playground's iOS and Mac builds on this box's
+    # m1-playground-mac runner. Asserts Xcode first. No sudo.
+    - name: Unity player modules
       ansible.builtin.import_role:
         name: unity-ci-host-mac
-        tasks_from: ios
-      tags: [mac, unity-ios]
+        tasks_from: modules
+      tags: [mac, unity-modules]
 
-# mac-studio LLM node: debloat + tune for MLX. Runs BEFORE the MLX server play
-# below so a full `--limit mac-studio` run cleans, then re-asserts MLX.
-# Destructive removals in macos-llm-node are opt-in here (default-false vars) —
-# `--check --diff` first. `-K` needed (become: pmset/sysctl/Xcode removal).
-# Its old platform runner was torn down 2026-07-18; since 2026-10-29 it is a
-# Unity pool host too (the macOS pool play below), whose slots live under
-# ~/actions-runner, so the runner dir is no longer removed.
-- name: Mac Studio LLM node (debloat + tuning)
-  hosts: mac-studio
-  gather_facts: true
-  roles:
-    - role: macos-llm-node
-      vars:
-        macos_llm_node_remove_xcode: true
-        macos_llm_node_remove_platform_checkout: true
-      # Per-concern tags (debloat / fs / os-toggles / llm-tuning) come from the
-      # role's import_tasks, so a run can stage them independently.
-      tags: [mac, llm-node]
+    # The hourly prune of m1-playground-mac's game build trees. Seven held 137G on
+    # 2026-11-10 and NodeDiskLow tripped (docs/mac-machines.md#build-tree-prune).
+    - name: Keep the build trees from filling the disk
+      ansible.builtin.import_role:
+        name: unity-ci-host-mac
+        tasks_from: disk
+      tags: [mac, ci-disk]
 
 # Phase B: k3s-agent role is AUTHORED but not bound. Applying it against
 # running cluster nodes reinstalls k3s — the user enables this binding when
@@ -369,10 +514,13 @@
   tasks:
     - name: Require one CPU list per Unity slot when slots have their own
       ansible.builtin.assert:
-        that: ci_unity_slot_cpus | length in [0, unity_ci_slots]
+        that:
+          - ci_unity_slot_cpus | length in [0, unity_ci_slots]
+          - unity_ci_build_slots | default(0) <= unity_ci_slots
         fail_msg: >-
           {{ inventory_hostname }} has unity_ci_slots {{ unity_ci_slots }} but
-          {{ ci_unity_slot_cpus | length }} entries in ci_unity_slot_cpus.
+          {{ ci_unity_slot_cpus | length }} entries in ci_unity_slot_cpus, or
+          unity_ci_build_slots {{ unity_ci_build_slots | default(0) }} over it.
       tags: [runner, ci, unity-ci]
 
     # The hourly prune and core-dump cap from linux-ci-host. Without them aws-burst-1,
@@ -382,6 +530,8 @@
       ansible.builtin.include_role:
         name: linux-ci-host
         tasks_from: disk
+        # The slots' job-started hook below reads linux_ci_unity_job_started_hook.
+        public: true
         apply:
           tags: [runner, ci, unity-ci, ci-disk]
       tags: [runner, ci, unity-ci, ci-disk]
@@ -404,25 +554,65 @@
         gh_runner_home: "{{ unity_ci_user_home }}/unity-pool-{{ unity_slot }}"
         gh_runner_name: "{{ inventory_hostname }}-unity-pool-{{ unity_slot }}"
         # unity-full: the hosts full suite runs may take (unity_ci_full in inventory.yml).
-        # A registered runner keeps its labels; add one to a live runner with
-        # gh api -X POST orgs/BlackNBrownStudios/actions/runners/<id>/labels -f 'labels[]=unity-full'.
+        # Each apply resets a registered runner's labels to these (the role's label reconcile).
         # lan: the slot is on the home LAN, so it can push to git.kblab.me (Shots'
         # gallery image); through Cloudflare a push over 100 MB fails. Off for
         # aws-burst-1 (unity_ci_lan in inventory.yml).
-        gh_runner_labels: "{{ [ 'self-hosted', 'linux', 'x64', 'unity', 'host-' ~ inventory_hostname ] + ([ 'unity-full' ] if unity_ci_full | default(true) else []) + ([ 'lan' ] if unity_ci_lan | default(true) else []) }}"
+        # unity-wide: slots with the CPU for real-time players (Multi, Soak, Playloop); only slots
+        # that passed the ucp-1521 probes (unity_ci_wide, default false, for every slot on the host;
+        # one slot alone through unity_ci_slot_labels, as aws-burst-1's slot 1). hd-library: the host
+        # holds asset-library-hd (HD, Slim tour); defaults to unity_ci_lan, since only LAN hosts
+        # got the tarball, and a cloud host sets unity_ci_hd_library once it reads it from S3.
+        # unity_ci_build_slots: slots 1..N carry unity-build in place of unity, unity-full,
+        # unity-wide and unity-gate, so no gate or nightly lands on them, and the rest are pool
+        # slots (aws-build-1: 3 build slots, 6 test slots; ci-runner-governor's "pairs" keep a
+        # build and a test off the same cores).
+        # unity_ci_slot_labels adds labels to one slot, so a comparison run can be pinned to it,
+        # or a job kept off it (aws-build-1: unity-release on slots 1-2 only).
+        # unity-gate: the non-preemptible hosts merge gates may take (unity_ci_gate, default false);
+        # a Spot host leaves it off, so a reclaim never kills a gate (playground ucp-1778).
+        gh_runner_labels: "{{ [ 'self-hosted', 'linux', 'x64', 'host-' ~ inventory_hostname ] + ([ 'unity-build' ] if unity_slot <= unity_ci_build_slots | default(0) else [ 'unity' ] + ([ 'unity-full' ] if unity_ci_full | default(true) else []) + ([ 'unity-wide' ] if unity_ci_wide | default(false) else []) + ([ 'unity-gate' ] if unity_ci_gate | default(false) else [])) + ([ 'lan' ] if unity_ci_lan | default(true) else []) + ([ 'hd-library' ] if unity_ci_hd_library | default(unity_ci_lan | default(true)) else []) + (unity_ci_slot_labels | default({})).get(unity_slot, []) }}"
+        # ci-runner-governor's admit labels and withheld labels (apps/ci-runner-governor/config.json
+        # pool_label, full_label, withheld_label, and aws-build-1's "labels" and "withheld_label"):
+        # an apply leaves a withheld slot withheld.
+        gh_runner_governed_labels: [unity, unity-full, unity-build]
+        gh_runner_withheld_labels: [unity-withheld, unity-build-withheld]
+        gh_runner_withheld_label: "{{ 'unity-build-withheld' if unity_slot <= unity_ci_build_slots | default(0) else 'unity-withheld' }}"
         # With ci_unity_slot_cpus each slot gets its own cores (roles/ci-host-budget).
         unity_slot_slice: >-
           {{ (ci_unity_slot_slice_prefix ~ unity_slot ~ '.slice') if ci_unity_slot_cpus | length else ci_unity_slice }}
         gh_runner_slice: "{{ unity_slot_slice }}"
-        gh_runner_env:
+        # UNITY_CACHE_SERVER only where the host runs an Accelerator (unity_ci_accelerator,
+        # roles/unity-ci-host), so the other hosts' env, and their slots, are unchanged.
+        gh_runner_env: >-
+          {{ unity_slot_env | combine({'UNITY_CACHE_SERVER': unity_ci_accelerator}
+          if unity_ci_accelerator | default('') | length else {}) }}
+        unity_slot_env:
           HOME: "{{ unity_ci_user_home }}/unity-pool-{{ unity_slot }}"
           UNITY_MACHINE_ID_FILE: "{{ unity_ci_machine_id_file }}"
           UNITY_CI_CGROUP_PARENT: "{{ unity_slot_slice }}"
           # One asset-library LFS store per host (scripts/setup/asset-library.sh in
           # the playground): with the default under each slot's HOME, a new slot
           # downloaded the whole 7.9 GB library before its first job could start.
-          ASSET_LIBRARY_LFS_STORE: "{{ unity_ci_user_home }}/.cache/bnb/asset-library-lfs"
+          ASSET_LIBRARY_LFS_STORE: "{{ unity_ci_lfs_store }}"
+          # Prunes idle slots' warm trees before the job when the disk is under the floor
+          # (roles/linux-ci-host, ci-disk-prune.sh --before-job). Changing this env restarts
+          # every slot and kills its job: apply it with the host's slots idle.
+          ACTIONS_RUNNER_HOOK_JOB_STARTED: "{{ linux_ci_unity_job_started_hook }}"
       tags: [runner, ci, unity-ci]
+
+    # The slot labelled slim-tour (unity_ci_slot_labels) keeps its warm trees: ci-disk-prune.sh
+    # reads this marker. Every cold Slim tour spent 107 to 125 min importing (playground ucp-1884).
+    - name: Mark the slim-tour slot's trees as kept
+      ansible.builtin.file:
+        path: "{{ unity_ci_user_home }}/unity-pool-{{ item }}/.keep-warm-trees"
+        state: "{{ 'touch' if 'slim-tour' in (unity_ci_slot_labels | default({})).get(item, []) else 'absent' }}"
+        modification_time: preserve
+        access_time: preserve
+      loop: "{{ range(1, unity_ci_slots + 1) | list }}"
+      # A --check of a slot not yet registered has no slot directory to touch.
+      ignore_errors: "{{ ansible_check_mode }}"
+      tags: [runner, ci, unity-ci, ci-disk]
 
 # BNB Unity runner pool, macOS hosts (added 2026-10-29, mac-studio until it is
 # sold). The same org pool as above, labelled unity/unity-full, unity-native and
@@ -477,8 +667,7 @@
         gh_runner_mac_home: "{{ unity_ci_mac_root }}/unity-pool-{{ unity_slot }}"
         gh_runner_mac_name: "{{ inventory_hostname }}-unity-pool-{{ unity_slot }}"
         # No self-hosted/macOS/ARM64: with them an org slot here would take the
-        # platform repo's [self-hosted, macOS] iOS jobs and dodginballs'
-        # [self-hosted, unity] game-ci (docker) jobs. Only jobs that ask for the
+        # platform repo's [self-hosted, macOS] iOS jobs. Only jobs that ask for the
         # pool labels alone land here (unity-core-playground test.yml EditMode).
         gh_runner_mac_no_default_labels: true
         gh_runner_mac_labels: "{{ [ 'unity', 'unity-native', 'host-' ~ inventory_hostname ] + ([ 'unity-full' ] if unity_ci_full | default(true) else []) }}"
@@ -488,20 +677,6 @@
           UNITY_CI_NATIVE: "1"
           ASSET_LIBRARY_LFS_STORE: "{{ unity_ci_mac_lfs_store }}"
       tags: [runner, ci, unity-ci]
-
-# NFS backup target — hp-victus exports /srv/backups so k3s workloads can keep
-# an OFF-BOX backup copy on a different machine than the one that produced them.
-# Motivating case: forgejo's nightly backup used to write only to a hostPath on
-# its own node (asus-laptop); on 2026-07-09 that filled the node's root disk and
-# evicted the whole cluster. See roles/nfs-backup-target/ and
-# apps/forgejo/backup-cronjob.yaml (the NFS off-box copy step).
-- name: NFS backup target (hp-victus — off-box k3s backups)
-  hosts: hp-victus
-  become: true
-  gather_facts: true
-  roles:
-    - role: nfs-backup-target
-      tags: [nfs, backup]
 
 # Network UPS Tools (NUT) — single CyberPower CP1500PFCLCD plugged into
 # pi5-master drives a graceful shutdown of the whole k3s fleet when grid
@@ -527,25 +702,6 @@
   roles:
     - role: nut
       tags: [nut, nut-client, ups]
-
-# Mac Studio MLX server — single mlx-openai-server (cubist38) process
-# serving chat, vision, and embedding models from one OpenAI-compatible
-# endpoint at :8090. Replaces the retired three-service launchd-mlx-services
-# layout (8080/8081/8082) and the standalone Ollama embedding LaunchAgent
-# on :11434.
-#
-# Also runs the powermetrics textfile sampler that feeds Apple Silicon
-# GPU/ANE/CPU power into the existing node_exporter on :9100. Bound only
-# to mac-studio because the mac-mini (iOS builder) doesn't run GPU
-# workloads — the metrics there would always read ~0.
-- name: Mac Studio MLX server (mlx-openai-server via launchd)
-  hosts: mac-studio
-  gather_facts: true
-  roles:
-    - role: launchd-mlx-server
-      tags: [mlx, mac, llm]
-    - role: launchd-powermetrics-textfile
-      tags: [powermetrics, monitoring, mac]
 
 # Phase C (started): OpenWrt router config via the community.openwrt collection
 # (pure-shell uci modules, no Python on the router). This first role isolates
@@ -589,9 +745,9 @@
 # The living-room Giada (audio-living) hung the same way after the 2026-10-20
 # power blip and stayed off the LAN for 16h until it was unplugged.
 # See ansible/roles/hw-watchdog/README.md.
-#   ansible-playbook playbooks/site.yml --limit watchdog_pis --tags watchdog --check --diff
+#   ansible-playbook playbooks/site.yml --limit watchdog_hosts --tags watchdog --check --diff
 - name: Hardware watchdog (reboot itself on a freeze)
-  hosts: watchdog_pis
+  hosts: watchdog_hosts
   become: true
   gather_facts: false
   roles:
@@ -603,13 +759,25 @@
 # LAN; hp-victus peaked at 98C of 100C). Knobs per host in inventory.yml
 # (thermal_capped). See ansible/roles/thermal-cap/README.md.
 #   ansible-playbook playbooks/site.yml --limit thermal_capped --tags thermal --check --diff
-- name: Thermal cap (CI laptops)
+- name: Thermal cap (x86 laptops)
   hosts: thermal_capped
   become: true
   gather_facts: false
   roles:
     - role: thermal-cap
       tags: [thermal]
+
+# Keep a headless host's discrete GPU off: no driver, card in D3cold. Remove
+# anything holding /dev/nvidia* first, or the unload fails.
+# See ansible/roles/dgpu-off/README.md.
+#   ansible-playbook playbooks/site.yml --limit dgpu_off --tags dgpu-off --check --diff
+- name: Discrete GPU off (headless hosts)
+  hosts: dgpu_off
+  become: true
+  gather_facts: false
+  roles:
+    - role: dgpu-off
+      tags: [dgpu-off, thermal]
 
 # Make the next freeze explain itself: kernel messages stream to pi5-master
 # over netconsole, and the firmware's undervoltage latch is exported to
@@ -664,6 +832,15 @@
       vars:
         node_exporter_linux_systemd_units: "{{ ['snapclient.service'] + (['audio-endpoint-capture.service'] if audio_endpoint_capture | default(false) else []) }}"
 
+# Bedroom Pi: onboard LEDs off, since people sleep in that room.
+- name: Bedroom Pi - LEDs off
+  hosts: audio-bedroom
+  become: true
+  gather_facts: false
+  roles:
+    - role: pi-leds-off
+      tags: [leds, audio]
+
 # Windows PCs over OpenSSH. windows-baseline is the lean debloat (Store apps,
 # telemetry, ASUS/OneDrive removal, power, cleanup) plus the computer name;
 # windows-agent-tools makes the PC drivable by an agent (PowerShell over SSH,
@@ -700,6 +877,15 @@
     - role: github-actions-runner-windows
       tags: [windows, runner]
 
+# The ssh keys that may log in, from roles/authorized-keys (additive).
+#   ansible-playbook playbooks/site.yml --limit linux_bare_metal --tags authorized-keys
+- name: Authorized keys (bare-metal Linux)
+  hosts: linux_bare_metal
+  gather_facts: false
+  roles:
+    - role: authorized-keys
+      tags: [authorized-keys]
+
 # Login passwords on the PXE-built Linux hosts: the user's from
 # vault_linux_login_password_hash, root's locked. Last on purpose: its assert
 # fails the play while the hash is missing, and a failed host is dropped from
@@ -712,3 +898,31 @@
   roles:
     - role: login-passwords
       tags: [passwords]
+
+- name: Tailnet on the Forgejo VM and every k3s node
+  # Pods reach forge-hel1 at its tailnet IP through their node's tailscale0
+  # (plan virtual-strolling-nova). Auth key from group_vars/all/vault.sops.yaml.
+  #   ansible-playbook playbooks/site.yml --limit 'hetzner:linux_bare_metal:pi_k3s' --tags tailscale
+  hosts: hetzner:linux_bare_metal:pi_k3s
+  gather_facts: true
+  roles:
+    - role: tailscale-node
+      tags: [tailscale]
+
+- name: Forgejo host on Hetzner (forge-hel1)
+  # Created by playbooks/hetzner-provision.yml. Forgejo starts only while
+  # forge-primary.kblab.me names this host (roles/forgejo-host, the fence).
+  #   ansible-playbook playbooks/site.yml --limit forge-hel1
+  hosts: hetzner
+  become: true
+  gather_facts: true
+  roles:
+    - role: forgejo-host
+      tags: [forgejo]
+    # Scraped over the tailnet by apps/monitoring/external-standalone-nodes.yaml.
+    # The Hetzner firewall drops inbound 9100 on the public IP.
+    - role: node-exporter-linux
+      tags: [forgejo, monitoring]
+      vars:
+        # A failed snapshot or reaper run shows as node_systemd_unit_state failed.
+        node_exporter_linux_systemd_units: [forgejo.service, forgejo-db-snapshot.service, forgejo-lock-reaper.service]

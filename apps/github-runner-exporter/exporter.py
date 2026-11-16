@@ -45,6 +45,21 @@ here rather than in PromQL because 24h of per-job samples is not in
 Prometheus. The run list is re-read every HISTORY_REFRESH_SECS, and each
 finished run's jobs are fetched once and cached.
 
+The same cache is served as JSON at /api/ci/details?cursor=&limit=100: each
+finished run in the window with every job of its exact attempt (paged, steps
+slimmed), whether that read was complete, and a changes cursor. It is the one
+collector of job detail for the RUN_REPOS and FEED_REPOS repos; schedules-sync reads it through
+the API server's Service proxy every 10 minutes and keeps the 90-day archive, and
+fetches job detail itself only for repos outside the `repos` list this serves.
+The feed's `runs` are the run half: each run of either list each time its state
+moves (queued, in progress, completed, a new attempt), from the reads above at no
+extra call, so schedules-sync can write its run ledger from here instead of
+polling actions/runs itself. A run that leaves the active lists while older than
+the window, which the completed list cannot show (a re-run of an old run), is read
+by id with the history, from its budget, until it reads finished. `repos` and
+`forgejo_repos` are the one list of CI repos schedules-sync syncs: it polls the
+Forgejo ones itself (their runs are not in this feed).
+
 Those totals are trailing-window gauges: runs enter and leave them at once, so
 no PromQL over them can say when anything happened. github_runs_by_hour and
 github_run_failed say that instead, from the same list and with no extra calls.
@@ -84,10 +99,32 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 API = os.environ.get("GITHUB_API", "https://api.github.com").rstrip("/")
 TOKEN = os.environ.get("GITHUB_TOKEN", "")
+
+
+def env_key(owner):
+    """An owner as an env var suffix: upper-cased, anything but a letter or digit as _."""
+    return re.sub(r"[^A-Z0-9]", "_", owner.upper())
+
+
+def owner_tokens(env):
+    """{GITHUB_TOKEN_<OWNER> suffix: token} for every non-empty one."""
+    return {k[len("GITHUB_TOKEN_"):]: v for k, v in env.items() if k.startswith("GITHUB_TOKEN_") and v}
+
+
+# The token for one owner's repos and org, from GITHUB_TOKEN_<OWNER> (env_key): a
+# fine-grained PAT reads only its resource owner's private repos, so another
+# owner's private repos need a token of their own. An owner with none uses
+# GITHUB_TOKEN. Every token here is one user's (Kblack0610), so all of them draw
+# on one 5000/h pool, and RATE stays keyed by scope, not by token.
+OWNER_TOKENS = owner_tokens(os.environ)
 PORT = int(os.environ.get("PORT", "9320"))
 ORGS = os.environ.get("RUNNER_ORGS", "BlackNBrownStudios").split()
 # Repos whose repo-scoped runners, active runs and recent runs are read.
 RUN_REPOS = os.environ.get("RUN_REPOS", "BlackNBrownStudios/platform").split()
+# Repos read only for the /api/ci/details feed, their runs and job detail for schedules-sync:
+# no runner listing (that needs admin on the repo, and the pool counts need every runner source
+# to answer) and none of the metrics, which stay the pool's, RUN_REPOS'.
+FEED_REPOS = [r for r in os.environ.get("FEED_REPOS", "").split() if r not in RUN_REPOS]
 RECENT_PER_REPO = int(os.environ.get("RECENT_PER_REPO", "15"))
 # Finished work is every completed run created in this window: the span pass %,
 # queue time and "what does this runner / pool run" are judged over.
@@ -105,12 +142,29 @@ HISTORY = {}
 # fetched once and the steady-state cost is one call per newly finished run.
 # Pruned every scrape to the runs still in the window.
 DONE_JOBS = {}
-# The token's 5000 calls/h are per USER, shared with every gh session on the
+# run id -> the record /api/ci/details serves for it: repo, run, attempt, whether
+# every job of that attempt was read, and seq, its place in the changes feed.
+# Pruned with DONE_JOBS. The feed is the window's job detail for the repos in
+# RUN_REPOS, for schedules-sync to archive; a reader that sends back the last
+# `next` it got sees only records stored or changed since. seq restarts with the
+# process, so each answer carries EPOCH and a reader that sees a new one starts
+# from 0 again.
+FEED = {}
+# run id -> the run record /api/ci/details serves in `runs`: seq, forge, repo and
+# the run (RUN_KEYS), stored again only when its state moved forward (STATUS_RANK,
+# then the attempt). Shares FEED_SEQ, so one cursor reads both halves in order.
+RUN_FEED = {}
+FEED_SEQ = [0]
+FEED_LOCK = threading.Lock()
+EPOCH = int(time.time())
+FEED_LIMIT = 100
+# The tokens' 5000 calls/h are per USER, one pool for GITHUB_TOKEN and every
+# GITHUB_TOKEN_<OWNER> (all Kblack0610's), shared with every gh session on the
 # account and with apps/ci-runner-governor, and live runner state must never
 # starve for history. So history's job fetches (the only part that grows with
-# the backlog: a cold cache is ~500 calls) get a fixed budget per scrape, shared
-# by all repos and spent newest run first, and stop altogether while GitHub says
-# fewer than HISTORY_FLOOR calls are left. A cold start fills over ~10 scrapes.
+# the backlog: a cold cache is ~2,400 calls) get a fixed budget per scrape, shared
+# by all repos one run from each in turn (fetch_details), and stop altogether while GitHub says
+# fewer than HISTORY_FLOOR calls are left. A cold start fills over ~50 scrapes.
 # Until a run's jobs are cached it counts in the run-level series and is
 # missing from the job-level ones. The run list itself is not budgeted: it is
 # at most 10 pages per repo per HISTORY_REFRESH_SECS.
@@ -173,7 +227,11 @@ def site_of(host):
     return "cloud" if host in CLOUD_HOSTS else "local"
 
 
-POOL_LABELS = ("light", "heavy", "unity")
+# unity-build: the player-build host (aws-build-1), a pool of its own so build waits stay
+# out of the gate pool's numbers.
+POOL_LABELS = ("light", "heavy", "unity", "unity-build")
+# The labels apps/ci-runner-governor swaps a runner's pool labels for while it holds it back.
+WITHHELD_LABELS = {"unity-withheld": "unity", "unity-build-withheld": "unity-build"}
 # A queued run with no jobs this old never gets a runner (GitHub creates a run's
 # jobs within seconds). It is labelled stuck="true" so boards can list it apart
 # instead of letting its age stand for the queue's.
@@ -202,6 +260,12 @@ def note_rate(scope, headers, code=None):
                              else time.time() + (int(retry) if retry.isdigit() else 60))
 
 
+def token_for(path):
+    parts = path.split("/", 2)
+    owner = env_key(parts[1]) if parts[0] in ("repos", "orgs") and len(parts) > 1 else ""
+    return OWNER_TOKENS.get(owner, TOKEN)
+
+
 def get(path, kind="other"):
     scope = path.split("/", 1)[0]
     if time.time() < rate(scope)["until"]:
@@ -209,8 +273,9 @@ def get(path, kind="other"):
     req = urllib.request.Request(f"{API}/{path}")
     req.add_header("Accept", "application/vnd.github+json")
     req.add_header("X-GitHub-Api-Version", "2022-11-28")
-    if TOKEN:
-        req.add_header("Authorization", f"Bearer {TOKEN}")
+    token = token_for(path)
+    if token:
+        req.add_header("Authorization", f"Bearer {token}")
     with LOCK:
         cached = ETAGS.get(path) if kind in ETAG_KINDS else None
     if cached:
@@ -283,10 +348,12 @@ def pool_of(labels):
         if p in labels:
             return p
     # Full suite runs ask for unity-full, which only unity pool runners carry.
-    # apps/ci-runner-governor swaps both for unity-withheld on a runner it holds
-    # back; that runner is still in the pool.
-    if "unity-full" in labels or "unity-withheld" in labels:
+    if "unity-full" in labels:
         return "unity"
+    # A runner apps/ci-runner-governor holds back is still in its pool.
+    for label, pool in WITHHELD_LABELS.items():
+        if label in labels:
+            return pool
     if "macOS" in labels:
         return "macos"
     # GitHub matches labels without regard to case, and the runner's own label
@@ -367,8 +434,15 @@ def run_scope(run):
     return "branch"
 
 
-RUN_KEYS = ("id", "name", "conclusion", "created_at", "updated_at", "run_started_at", "head_branch", "event", "html_url")
-JOB_KEYS = ("name", "conclusion", "runner_name", "labels", "created_at", "started_at", "completed_at", "html_url")
+RUN_KEYS = ("id", "name", "status", "conclusion", "created_at", "updated_at", "run_started_at", "head_branch", "event",
+            "html_url", "run_attempt", "head_sha", "path", "display_title")
+JOB_KEYS = ("id", "name", "conclusion", "runner_name", "labels", "created_at", "started_at", "completed_at", "html_url",
+            "run_attempt")
+# Steps are kept for the feed (the opened run's step fold), slimmed and held as one
+# compact JSON blob per job, decoded only when the feed serves it: as dicts a
+# 26-step job held ~12 KB, and the window's ~2,400 runs (~3 jobs each, 13 repos)
+# filled the job cache past the pod's 96Mi before it reached the playground's runs.
+STEP_KEYS = ("number", "name", "conclusion", "started_at", "completed_at")
 # The conclusions listed run by run. A cancelled run is counted but not listed:
 # most are a push superseding its own earlier run.
 FAILED_CONCLUSIONS = ("failure", "timed_out")
@@ -376,6 +450,120 @@ FAILED_CONCLUSIONS = ("failure", "timed_out")
 
 def slim(d, keys):
     return {k: d.get(k) for k in keys}
+
+
+def slim_job(j):
+    steps = [slim(s, STEP_KEYS) for s in j.get("steps") or []]
+    return {**slim(j, JOB_KEYS), "steps": json.dumps(steps, separators=(",", ":")).encode()}
+
+
+def feed_job(j):
+    return {**j, "steps": json.loads(j["steps"])}
+
+
+def attempt_jobs(repo, run):
+    """Every job of the run's exact attempt, paged. (jobs, complete): a page that
+    fails after the first keeps what was read and says it is partial."""
+    base = f"repos/{repo}/actions/runs/{run['id']}/attempts/{run.get('run_attempt') or 1}/jobs?per_page=100"
+    jobs, p = [], 1
+    while True:
+        if p > 1 and time.time() >= BUDGET["until"]:
+            return jobs, False
+        try:
+            data = get(f"{base}&page={p}", "history_jobs")
+        except API_ERRORS:
+            if p == 1:
+                raise
+            return jobs, False
+        page = data.get("jobs", [])
+        jobs += page
+        if not page or len(jobs) >= data.get("total_count", 0):
+            return jobs, True
+        p += 1
+
+
+def feed_store(repo, run, jobs, complete):
+    with FEED_LOCK:
+        FEED_SEQ[0] += 1
+        FEED[run["id"]] = {"seq": FEED_SEQ[0], "forge": "github", "repo": repo, "run_id": run["id"],
+                           "attempt": run.get("run_attempt") or 1, "complete": complete, "run": run}
+        DONE_JOBS[run["id"]] = jobs
+
+
+# Where a run's status sits in its life: a read that would move it back (a cached
+# completed list behind a re-run the active list already shows) is not stored.
+STATUS_RANK = {"requested": 0, "waiting": 0, "pending": 0, "queued": 1, "in_progress": 2, "completed": 3}
+
+
+# An open run record older than this is dropped unread: no run of ours stays open a week,
+# and one GitHub never answers for must not be held (and read) forever.
+RUN_FEED_OPEN_SECS = 7 * 86400
+
+
+def run_state(run):
+    """What has to change for a run to be served again: the ledger's row changes with it. A
+    pull_request run's display_title is its PR's title now, so a retitle moves it and not updated_at."""
+    done = run.get("status") == "completed"
+    return (run.get("run_attempt") or 1, STATUS_RANK.get(run.get("status"), 0), run.get("conclusion") if done else None,
+            run.get("run_started_at"), run.get("updated_at") if done else None, run.get("display_title"))
+
+
+def run_order(run):
+    """Where a read of a run sits in its life; a read behind the stored one is older news."""
+    return (run.get("run_attempt") or 1, STATUS_RANK.get(run.get("status"), 0), run.get("updated_at") or "")
+
+
+def run_feed_store(repo, run):
+    with FEED_LOCK:
+        old = RUN_FEED.get(run["id"])
+        if old and (run_order(old["run"]) > run_order(run) or run_state(old["run"]) == run_state(run)):
+            return
+        FEED_SEQ[0] += 1
+        RUN_FEED[run["id"]] = {"seq": FEED_SEQ[0], "forge": "github", "repo": repo, "stored_at": int(time.time()),
+                               "run": slim(run, RUN_KEYS)}
+
+
+def feed_page(cursor, limit):
+    """The changes feed: job records and run records with seq > cursor, oldest change
+    first, `limit` of the two together."""
+    with FEED_LOCK:
+        recs = sorted([(r["seq"], 0, r) for r in FEED.values() if r["seq"] > cursor]
+                      + [(r["seq"], 1, r) for r in RUN_FEED.values() if r["seq"] > cursor], key=lambda x: x[0])
+        page = recs[:limit]
+        records = [{**r, "jobs": [feed_job(j) for j in DONE_JOBS.get(r["run_id"], [])]}
+                   for _, half, r in page if half == 0]
+        runs = [r for _, half, r in page if half == 1]
+    return {"epoch": EPOCH, "repos": RUN_REPOS + FEED_REPOS, "forgejo_repos": FORGEJO_REPOS,
+            "window_secs": HISTORY_WINDOW_SECS,
+            "next": page[-1][0] if page else cursor, "more": len(recs) > limit, "records": records, "runs": runs}
+
+
+def lost_runs(repo, active, now):
+    """Runs the feed holds open that are off the active lists read this scrape and older than
+    the window, so the completed list will never show how they ended: each is read by id,
+    from the history budget, the longest unread first, until a read says it finished. A run
+    a capped active list left off is read too, and stays open. One GitHub no longer has (404)
+    is dropped."""
+    edge, ids = now - HISTORY_WINDOW_SECS, {r["id"] for r in active}
+    with FEED_LOCK:
+        lost = sorted((r for r in RUN_FEED.values() if r["repo"] == repo and r["run"].get("status") != "completed"
+                       and r["run"]["id"] not in ids and (ts(r["run"].get("created_at")) or 0) < edge),
+                      key=lambda r: r.get("tried", 0))
+        lost = lost[:spend(len(lost))]
+        for r in lost:
+            r["tried"] = now
+    out = []
+    for rec in lost:
+        rid = rec["run"]["id"]
+        try:
+            out.append(get(f"repos/{repo}/actions/runs/{rid}", "lost_runs"))
+        except urllib.error.HTTPError as e:
+            if e.code == 404:
+                with FEED_LOCK:
+                    RUN_FEED.pop(rid, None)
+        except API_ERRORS:
+            pass
+    return out
 
 
 def finished_runs(repo, now):
@@ -403,6 +591,41 @@ def finished_runs(repo, now):
     return [runs[i] for i in sorted(runs, reverse=True)]
 
 
+def stale_detail(run):
+    """A finished run is read again when its attempt moved (a re-run finished) or the
+    last read was partial."""
+    rec = FEED.get(run["id"])
+    return not rec or not rec["complete"] or rec["attempt"] != (run.get("run_attempt") or 1)
+
+
+def fetch_details(acts):
+    """Every repo's uncached finished runs, within the scrape's budget (see
+    HISTORY_CALL_BUDGET): one from each repo in turn, each repo's newest first,
+    so a repo with a deep backlog gets its share from the first scrape. Taken
+    first-come by each repo as it finished its own listing, the slowest one (the
+    playground: 30 active runs and 10 history pages) reached the budget last on
+    every scrape and none of its ~1000 runs a day was ever read (2026-11-12).
+    In parallel: sequentially, 60 of them took 51s."""
+    queues = [(a["repo"], a.get("todo") or []) for a in acts]
+    order = [(repo, q[i]) for i in range(max((len(q) for _, q in queues), default=0))
+             for repo, q in queues if i < len(q)]
+    order = order[:spend(len(order))]
+
+    def jobs_of(item):
+        # One failed call must not discard the ones that answered; one not
+        # started by the deadline waits for a later scrape (HISTORY_DEADLINE_SECS).
+        if time.time() >= BUDGET["until"]:
+            return None
+        try:
+            return attempt_jobs(*item)
+        except API_ERRORS:
+            return None
+    with ThreadPoolExecutor(max_workers=6) as ex:
+        for (repo, run), got in zip(order, ex.map(jobs_of, order)):
+            if got is not None:
+                feed_store(repo, run, [slim_job(j) for j in got[0]], got[1])
+
+
 def low_budget():
     # History reads only repos/ endpoints, so that bucket is the one to guard.
     left = rate("repos")["remaining"]
@@ -419,27 +642,36 @@ def repo_activity(repo, now):
             out["counts"][status] = data.get("total_count", 0)
             active += data.get("workflow_runs", [])
         # In parallel: one at a time, the playground's 30 active runs took 12s of a
-        # cold scrape (2026-11-03).
+        # cold scrape (2026-11-03). One run's failed read must not discard the
+        # repo: GitHub answers a stuck queued run's jobs with a 502 after 10s
+        # (playground, 2026-11-11), which blanked its runners and 24h history.
+        def run_jobs(run):
+            try:
+                return get(f"repos/{repo}/actions/runs/{run['id']}/jobs?per_page=100", "active_jobs").get("jobs", [])
+            except API_ERRORS:
+                return None
         with ThreadPoolExecutor(max_workers=6) as ex:
-            fetched = list(ex.map(
-                lambda run: get(f"repos/{repo}/actions/runs/{run['id']}/jobs?per_page=100", "active_jobs").get("jobs", []),
-                active))
+            fetched = list(ex.map(run_jobs, active))
+        for run in active:
+            run_feed_store(repo, run)
         for run, jobs in zip(active, fetched):
             if not jobs and run.get("status") == "queued":
-                # A queued run with no jobs never gets a runner. GitHub leaves
-                # these behind (one platform schedule run sat like this from
-                # 2026-09-13), and they hold the queued count up forever, so
-                # list it as a waiting row with its age rather than hide it.
-                jobs = [{"name": "(run has no jobs)", "status": "queued", "created_at": run.get("created_at"),
+                # A queued run with no jobs, or none GitHub will list, never gets
+                # a runner. GitHub leaves these behind (one platform schedule run
+                # sat like this from 2026-09-13), and they hold the queued count up
+                # forever, so list it as a waiting row with its age rather than hide it.
+                jobs = [{"name": "(run has no jobs)" if jobs is not None else "(jobs unreadable)",
+                         "status": "queued", "created_at": run.get("created_at"),
                          "head_branch": run.get("head_branch"), "labels": [], "html_url": run.get("html_url", ""),
                          "_jobless": True}]
-            for job in jobs:
+            for job in jobs or ():
                 job["_workflow"] = run.get("name") or job.get("workflow_name", "")
                 job["_run"] = run_labels(run)
                 out["jobs"].append(job)
         cached = HISTORY.get(repo)
         stale = not cached or (now - cached[0] >= HISTORY_REFRESH_SECS and time.time() < BUDGET["until"])
-        if stale and not low_budget():
+        refreshed = stale and not low_budget()
+        if refreshed:
             cached = HISTORY[repo] = (now, finished_runs(repo, now))
         if not cached:
             return out
@@ -447,24 +679,16 @@ def repo_activity(repo, now):
         # time between refreshes.
         out["history"] = [r for r in cached[1] if (ts(r.get("created_at")) or 0) >= now - HISTORY_WINDOW_SECS]
         out["recent"] = out["history"][:RECENT_PER_REPO]
-        # Uncached finished runs in parallel, newest first, within the scrape's
-        # budget (see HISTORY_CALL_BUDGET): sequentially, 60 of them took 51s.
-        todo = [run["id"] for run in out["history"] if run["id"] not in DONE_JOBS]
-        todo = todo[:spend(len(todo))]
-
-        def jobs_of(rid):
-            # One failed call must not discard the ones that answered; one not
-            # started by the deadline waits for a later scrape (HISTORY_DEADLINE_SECS).
-            if time.time() >= BUDGET["until"]:
-                return None
-            try:
-                return get(f"repos/{repo}/actions/runs/{rid}/jobs?per_page=100", "history_jobs").get("jobs", [])
-            except API_ERRORS:
-                return None
-        with ThreadPoolExecutor(max_workers=6) as ex:
-            for rid, jobs in zip(todo, ex.map(jobs_of, todo)):
-                if jobs is not None:
-                    DONE_JOBS[rid] = [slim(j, JOB_KEYS) for j in jobs]
+        for run in out["history"]:
+            run_feed_store(repo, run)
+        # Before the job detail, which can spend the whole budget on a cold or busy scrape;
+        # with the history refresh, every HISTORY_REFRESH_SECS, not every scrape.
+        for run in lost_runs(repo, active, now) if refreshed else ():
+            run_feed_store(repo, run)
+        # The runs whose job detail is missing or stale, newest first: read by
+        # fetch_details once every repo has answered, so no repo's place in the
+        # scrape decides whether it gets any of the budget.
+        out["todo"] = [run for run in out["history"] if stale_detail(run)]
     except API_ERRORS:
         out["ok"] = False
     return out
@@ -675,10 +899,11 @@ def render():
     BUDGET["until"] = now + HISTORY_DEADLINE_SECS
     with ThreadPoolExecutor(max_workers=8) as pool:
         runner_futs = {s: pool.submit(runners, s) for s in sources}
-        repo_futs = [pool.submit(repo_activity, r, now) for r in RUN_REPOS]
+        repo_futs = [pool.submit(repo_activity, r, now) for r in RUN_REPOS + FEED_REPOS]
         fj_runners = pool.submit(forgejo_runners) if FORGEJO_REPOS else None
         fj_repos = [pool.submit(forgejo_repo, r, now) for r in FORGEJO_REPOS]
         acts = [f.result() for f in repo_futs]
+        fetch_details(acts)
     fj, fj_ok = forgejo_rows(fj_runners, fj_repos, now) if FORGEJO_REPOS else ({}, [])
 
     def forgejo(metric):
@@ -699,6 +924,7 @@ def render():
         L.append(f'github_runner_exporter_api_ok{{source="{esc(src)}",kind="runners",forge="github"}} {ok}')
     for a in acts:
         L.append(f'github_runner_exporter_api_ok{{source="repos/{esc(a["repo"])}",kind="runs",forge="github"}} {1 if a["ok"] else 0}')
+    acts = [a for a in acts if a["repo"] in RUN_REPOS]  # a FEED_REPOS repo has fed the feed above: no metrics
     for src, kind, ok in fj_ok:
         L.append(f'github_runner_exporter_api_ok{{source="{esc(src)}",kind="{kind}",forge="forgejo"}} {ok}')
 
@@ -752,12 +978,12 @@ def render():
     L += forgejo("github_runner_state")
 
     L += [
-        "# HELP github_runner_withheld A unity pool runner apps/ci-runner-governor holds back from new jobs",
+        "# HELP github_runner_withheld A unity or unity-build runner apps/ci-runner-governor holds back from new jobs",
         "# TYPE github_runner_withheld gauge",
     ]
     for scope, r in sorted(seen.values(), key=lambda s: s[1]["name"]):
         names = [l["name"] for l in r.get("labels", [])]
-        if "unity-withheld" in names:
+        if WITHHELD_LABELS.keys() & set(names):
             L.append(f"github_runner_withheld{{{labels_str({'name': r['name'], 'host': host_of(r['name'], names)})}}} 1")
 
     if runners_ok:
@@ -984,14 +1210,28 @@ def render():
     # failed (rate limit, network) must not throw away a day of cached jobs and
     # spend ~500 calls refilling them.
     live = {run["id"] for _, runs in HISTORY.values() for run in runs}
-    for rid in [k for k in DONE_JOBS if k not in live]:
-        del DONE_JOBS[rid]
+    with FEED_LOCK:
+        for rid in [k for k in DONE_JOBS if k not in live]:
+            del DONE_JOBS[rid]
+            FEED.pop(rid, None)
+        # A run record goes a window after its last change once it is finished and out of
+        # the cached lists (a lost run's end is out of them from the start); an open one
+        # stays until a read says how it ended (lost_runs), or RUN_FEED_OPEN_SECS.
+        t = time.time()
+        for rid in [k for k, r in RUN_FEED.items() if k not in live and r["stored_at"] < t - (
+                HISTORY_WINDOW_SECS if r["run"].get("status") == "completed" else RUN_FEED_OPEN_SECS)]:
+            del RUN_FEED[rid]
     return "\n".join(L) + "\n"
 
 
 class H(BaseHTTPRequestHandler):
     def do_GET(self):
-        if self.path.startswith("/metrics"):
+        # Routed on the path alone: the API server's Service proxy can hand on
+        # a trailing slash or a query, and an exact match on self.path answered
+        # those 404 (hub-core reaches this pod only through that proxy).
+        url = urllib.parse.urlsplit(self.path)
+        path = url.path.rstrip("/") or "/"
+        if path == "/metrics":
             with RENDER_LOCK:
                 body = render().encode()
             self.send_response(200)
@@ -999,7 +1239,22 @@ class H(BaseHTTPRequestHandler):
             self.send_header("Content-Length", str(len(body)))
             self.end_headers()
             self.wfile.write(body)
-        elif self.path == "/health":
+        elif path == "/api/ci/details":
+            q = urllib.parse.parse_qs(url.query)
+            try:
+                cursor = int(q.get("cursor", ["0"])[0])
+                limit = max(1, min(FEED_LIMIT, int(q.get("limit", [str(FEED_LIMIT)])[0])))
+            except ValueError:
+                self.send_response(400)
+                self.end_headers()
+                return
+            body = json.dumps(feed_page(cursor, limit), separators=(",", ":")).encode()
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
+        elif path == "/health":
             # Server only, never the API: a GitHub-aware probe would pull the pod
             # out of the Service exactly when api_ok=0 is the thing to see.
             self.send_response(200)
@@ -1022,8 +1277,8 @@ def server(addr):
 
 if __name__ == "__main__":
     print(
-        f"github-runner-exporter: orgs={ORGS} repos={len(RUN_REPOS)} roster={len(ROSTER)} "
-        f"token={'set' if TOKEN else 'MISSING'} port={PORT}",
+        f"github-runner-exporter: orgs={ORGS} repos={len(RUN_REPOS)} feed_repos={len(FEED_REPOS)} roster={len(ROSTER)} "
+        f"token={'set' if TOKEN else 'MISSING'} owner_tokens={sorted(OWNER_TOKENS)} port={PORT}",
         flush=True,
     )
     server(("", PORT)).serve_forever()

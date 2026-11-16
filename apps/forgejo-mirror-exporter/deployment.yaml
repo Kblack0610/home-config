@@ -6,7 +6,9 @@ metadata:
   labels:
     app.kubernetes.io/name: forgejo-mirror-exporter
 spec:
-  replicas: 1
+  # 0 since the cutover: the exporter runs beside Forgejo in the forgejo-host
+  # compose, scraped by the ScrapeConfig below. Removed at cleanup.
+  replicas: 0
   # Recreate rather than RollingUpdate: two pods briefly sharing the RWO PVC
   # during a rollout is avoidable risk for a metrics exporter, and a few seconds
   # of gap is far inside the 15m `for:` on ForgejoMirrorExporterDown.
@@ -27,7 +29,7 @@ spec:
       # to outlive the observed, since "Forgejo is wedged" is a state this must
       # keep reporting. Mounting forgejo-data alongside the running Forgejo pod
       # is what apps/forgejo/backup-cronjob.yaml already does - RWO means one
-      # NODE, not one pod, and local-path's PV node affinity pins both without a
+      # NODE, not one pod, and the local PV's node affinity pins both without a
       # nodeSelector. Swapping local-path for a single-attach RWO CSI driver
       # would make this second long-lived mount deadlock Forgejo's rollout.
       securityContext:
@@ -128,49 +130,32 @@ spec:
             name: forgejo-mirror-exporter-script
         - name: data
           persistentVolumeClaim:
-            claimName: forgejo-data
+            claimName: forgejo-data-asus
         - name: snapshot
           emptyDir:
             medium: Memory
             sizeLimit: 256Mi
 ---
-apiVersion: v1
-kind: Service
+# Scraped where Forgejo runs: the exporter sits beside it in the forgejo-host
+# compose, on the host forge-primary.kblab.me names, so the target follows a
+# move with no change here (Prometheus resolves it at each scrape, through
+# apps/coredns). A ScrapeConfig rather than a ServiceMonitor because an
+# ExternalName Service has no endpoints to discover. jobName keeps
+# job="forgejo-mirror-exporter", which the rules in
+# apps/monitoring/prometheus-rules-forgejo-mirrors.yaml read. Prometheus selects
+# ScrapeConfigs by the release label (scrapeConfigSelector), unlike ServiceMonitors.
+apiVersion: monitoring.coreos.com/v1alpha1
+kind: ScrapeConfig
 metadata:
   name: forgejo-mirror-exporter
   namespace: forgejo
   labels:
     app.kubernetes.io/name: forgejo-mirror-exporter
+    release: kube-prometheus-stack
 spec:
-  selector:
-    app.kubernetes.io/name: forgejo-mirror-exporter
-  ports:
-    - name: metrics
-      port: 9310
-      targetPort: 9310
-  type: ClusterIP
----
-# No `release: kube-prometheus-stack` label here, and that is not an oversight:
-# apps/monitoring/helm-values.yaml sets serviceMonitorSelectorNilUsesHelmValues
-# false, so Prometheus selects every ServiceMonitor in every namespace. The
-# opposite is true of PrometheusRule, where ruleSelector.matchLabels.release IS
-# enforced - see apps/monitoring/prometheus-rules-forgejo-mirrors.yaml.
-apiVersion: monitoring.coreos.com/v1
-kind: ServiceMonitor
-metadata:
-  name: forgejo-mirror-exporter
-  namespace: forgejo
-  labels:
-    app.kubernetes.io/name: forgejo-mirror-exporter
-spec:
-  endpoints:
-    - port: metrics
-      path: /metrics
-      interval: 30s
-      scrapeTimeout: 10s
-  selector:
-    matchLabels:
-      app.kubernetes.io/name: forgejo-mirror-exporter
-  namespaceSelector:
-    matchNames:
-      - forgejo
+  jobName: forgejo-mirror-exporter
+  metricsPath: /metrics
+  scrapeInterval: 30s
+  scrapeTimeout: 10s
+  staticConfigs:
+    - targets: ["forge-primary.kblab.me:9310"]

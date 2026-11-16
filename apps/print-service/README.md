@@ -7,7 +7,7 @@ a `print` CLI, and a `print-mcp` MCP server are all thin clients of this service
 
 - Namespace: `orcaslicer` (co-located with the OrcaSlicer GUI so it reuses the
   `orcaslicer-profiles` ConfigMap and the NAS `3d-printing` hostPath).
-- Image: `lscr.io/linuxserver/orcaslicer:v2.4.2-ls47`, the same tag as
+- Image: `lscr.io/linuxserver/orcaslicer:v2.5.0-ls49`, the same tag as
   `apps/orcaslicer` (bump both together) — used only for the
   `orca-slicer` CLI binary and its bundled `python3`; the Selkies desktop
   entrypoint is bypassed (`command: python3 /app/server.py`).
@@ -37,36 +37,30 @@ intentionally not in the dispatch path yet.
 Options today: `process` = `standard` (0.20mm) | `fine` (0.12mm) | `draft`
 (0.24mm); `filament` = `pla` | `petg`.
 
-## Why the graft (the load-bearing detail)
+## Why the datadir (the load-bearing detail)
 
-OrcaSlicer's CLI (`orca-slicer --load-settings machine.json;process.json
---load-filaments f.json --slice 0 --outputdir DIR file.stl`) has two gotchas we
-hit and solved (verified 2026-07-17 on OrcaSlicer 2.3.2, re-verified 2026-11-04
-on 2.4.2):
+OrcaSlicer 2.5 ships each vendor as an opaque `<vendor>.opc` bundle, so the system
+preset files the service used to read (and graft the machine overrides onto) are gone.
+The CLI (`orca-slicer --datadir D --load-settings machine.json;process.json
+--load-filaments f.json --slice 0 --outputdir DIR file.stl`) resolves a user preset's
+`inherits` only when:
 
-1. **User presets fail a compatibility check.** Passing the seeded
-   `-OpenNept4une` user presets directly returns `The selected printer is not
-   compatible with the process preset`. The child's `compatible_printers`
-   override is *not* honored (the inherited parent's list wins), and forcing it
-   did not work. So the service loads the **system** Neptune-4-Pro machine /
-   process / filament (guaranteed compatible, they carry a `type` field) and
-   **grafts only the machine** overrides from the seeded `machine-neptune4pro.json`
-   onto the system machine, skipping identity keys (`name`, `inherits`, `from`,
-   `type`, `*_settings_id`). That preserves the critical OpenNept4une
-   `PRINT_START ... BED_MESH=adaptive` / `PRINT_END` gcode while keeping the
-   compatible system identity.
-2. **Do not graft process/filament.** Grafting the user process/filament onto the
-   2.3.2 base returns `Invalid parameter value(s) in the 3mf` (the seed files
-   carry keys/values the system base rejects). Process = layer height
-   (material-agnostic); material is chosen purely via the system filament preset
-   (`Generic PLA @Elegoo` vs `Generic PETG @Elegoo`, which sets the right
-   nozzle/bed temps — PLA 210, PETG 240, verified).
+1. the vendor bundle is in `D/system/` (the service copies `Elegoo.opc` there), and
+2. the preset sits in `D/user/default/<type>/`, its file name equals its `name`, and it
+   has a `version` key (without one it is skipped: "Preset was not found in the loaded bundle").
+
+So each slice builds a throwaway datadir holding the seeded OpenNept4une machine preset
+(it carries `PRINT_START ... BED_MESH=adaptive` / `PRINT_END` and inherits the system
+Neptune 4 Pro) and two stub presets that only inherit the system process and filament by
+name (`0.20mm Standard @Elegoo N4Pro 0.4 nozzle`, `Generic PLA @Elegoo`). The user
+process/filament files are not used: they carry values a new version can reject (2.4.2
+refused `small_perimeter_speed: "0"`). Process = layer height (material-agnostic); the
+filament picks the temps (verified on 2.5.0: PETG 240, PLA 205).
 
 OrcaSlicer 2.4 renamed the Elegoo system presets (`Elegoo Neptune 4 Pro (0.4
 nozzle)` -> `Elegoo Neptune 4 Pro 0.4 nozzle`, `@Elegoo Neptune4Pro (0.4 nozzle)`
--> `@Elegoo N4Pro 0.4 nozzle`), so the system paths in `server.py` follow the
-image tag; after a bump, check each path exists under
-`/opt/orcaslicer/resources/profiles/Elegoo/`.
+-> `@Elegoo N4Pro 0.4 nozzle`); the names in `server.py` follow the image tag, and
+`apps/orcaslicer/check-presets.sh <tag>` proves the user presets still resolve.
 
 Runs headless with `QT_QPA_PLATFORM=offscreen` and no `DISPLAY` (no X server).
 `--slice 0` emits `plate_1.gcode`, which the service renames to `<stl>.gcode` on

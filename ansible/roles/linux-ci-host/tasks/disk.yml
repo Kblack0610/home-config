@@ -17,6 +17,13 @@
     mode: "0755"
   tags: [ci-disk]
 
+- name: Install the Unity slots' job-started hook (prunes under the disk floor)
+  ansible.builtin.template:
+    src: unity-job-started.sh.j2
+    dest: "{{ linux_ci_unity_job_started_hook }}"
+    mode: "0755"
+  tags: [ci-disk]
+
 - name: Create the coredump drop-in directory
   ansible.builtin.file:
     path: /etc/systemd/coredump.conf.d

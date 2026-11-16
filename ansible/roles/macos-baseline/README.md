@@ -1,6 +1,6 @@
 # macos-baseline
 
-Host-OS persistence baseline for the headless Mac build/CI boxes (mac-studio, mac-mini). Makes a Mac survive a power failure and stay reachable, so it can act as an always-on GitHub Actions runner without a human in the loop. Pairs with `github-actions-runner-mac` (which installs the runner itself).
+Host-OS persistence baseline for the headless Mac build/CI boxes (mac-mini). Makes a Mac survive a power failure and stay reachable, so it can act as an always-on GitHub Actions runner without a human in the loop. Pairs with `github-actions-runner-mac` (which installs the runner itself).
 
 ## What it does
 
@@ -22,7 +22,7 @@ Auto-login and FileVault are one-time, GUI-driven, security-sensitive choices (F
 ## Requirements
 
 - `ansible.posix` collection (for `authorized_key`).
-- Become password (`-K` / `--ask-become-pass`), because `pmset -a` needs root. mac-studio has no NOPASSWD sudo; mac-mini has it from `macos-agent-tools`, so it needs the password only on its first apply.
+- Become password (`-K` / `--ask-become-pass`), because `pmset -a` needs root. mac-mini has NOPASSWD sudo from `macos-agent-tools`, so it needs the password only on its first apply.
 
 ## Verify
 

@@ -1,83 +1,41 @@
 # Mac Machines Setup Guide
 
-Two Apple-Silicon Macs on the home LAN, each with a **single dedicated role** since the 2026-07-18 split:
+One Apple-Silicon Mac on the home LAN is managed here, **mac-mini** (M1): the **sole self-hosted mobile-CI runner** (iOS/Android builds, TestFlight/Play upload) and the agent machine. The Mac Studio (M3 Ultra) is in the Unity CI pool only, until its sale (see [Unity CI pool](#unity-ci-pool-mac-studio-until-it-is-sold)).
 
-- **mac-studio** (M3 Ultra) — dedicated **LLM inference node** (MLX). No CI, deeply debloated, tuned for large models.
-- **mac-mini** (M1) — the **sole self-hosted mobile-CI runner** (iOS/Android builds, TestFlight/Play upload).
-
-They are **not** part of the K3s cluster (K3s is Linux-only). The Pi cluster handles containerized workloads; Macs handle Apple-native + GPU-inference workloads.
+The Macs are **not** part of the K3s cluster (K3s is Linux-only). The Pi cluster handles containerized workloads; the Mac handles Apple-native workloads.
 
 ## Inventory
 
 | Machine | Chip | RAM | IP | inventory host | scutil hostname | Role |
 |---------|------|-----|-----|----------------|-----------------|------|
-| Mac Studio | M3 Ultra | 512 GB | 192.168.1.4 | `mac-studio` | mac-studio | **LLM inference node (MLX)** |
 | Mac Mini | M1 | 16 GB | 192.168.1.7 | `mac-mini` | pc-home-m1-mini | **CI runner** |
 
-### What lives where (post-split manifest)
+The baseline play runs on `macos_hosts`, the runner play on `mac-mini` (`ansible/playbooks/site.yml`). No mobile workflow pins a runner by name, only by the `[self-hosted, macOS, arm64]` label set.
 
-| | mac-studio (LLM node) | mac-mini (CI node) |
-|---|---|---|
-| **Runs** | MLX server `com.mlx-server` :8090 (5 pinned + 5 on-demand candidates), Unity CI pool slots `mac-studio-unity-pool-1..6` (since 2026-10-29, until the sale), node_exporter :9100, powermetrics textfile sampler | GH Actions runner `mac-mini-mac`, node_exporter :9100, iOS toolchain (Xcode, CocoaPods, node/pnpm/yarn, JDK17) |
-| **Removed** | platform GH runner `mac-studio-mac` (torn down + deregistered); brew `node@20`/`pnpm`/`yarn`/`cocoapods`/`openjdk@17`; `Xcode.app`; `~/actions-runner`; (optional) `~/dev/bnb/platform` | — |
-| **Kept despite debloat** | `node` (used by `opencode`), `ruby` (used by `cocoapods`+`tmuxinator`), `node_exporter` | full toolchain |
-| **Tuned** | `iogpu.wired_limit_mb=491520` (480 GB); Spotlight/Time Machine/Siri/analytics/Power+App Nap off | — |
+## Headless prerequisites (or it won't recover unattended)
 
-The split is expressed as **per-host plays** in `ansible/playbooks/site.yml`. No mobile workflow pins a runner by name (only by the `[self-hosted, macOS, arm64]` label set), so demoting mac-studio is transparent to CI as long as mac-mini is online.
-
-## Role: LLM inference node (mac-studio)
-
-Runs a single `mlx-openai-server` (cubist38) process serving chat, vision, and embedding models from one OpenAI-compatible endpoint on `:8090`. (This replaced the retired three-service `com.mlx-lm.{code,smart,reasoning}` layout on 8080/8081/8082.)
-
-Served (`mlx_models` in `roles/launchd-mlx-server/defaults/main.yml`):
-
-- **Pinned (~73 GB, always resident):** `code` (Qwen3-Coder-Next-4bit), `reasoning` (Qwen3.6-35B-A3B-4bit), `fast` (Qwen3-4B, 4bit + 8bit), `embedding` (modernbert-embed-base-4bit).
-- **on_demand (JIT-loaded, idle-evicted — dual-tier A/B candidates, 2026-07):** `code` (Qwen3-Coder-Next-6bit), `code` (Qwen3-Coder-480B-A35B-4bit, ~250 GB), `reasoning` (Qwen3.5-397B-A17B-4bit, ~214 GB), `vlm` (Qwen3-VL-30B-A3B-8bit — needs `mlx-vlm>=0.6.5`), `embedding` (Qwen3-Embedding-0.6B).
-
-Each local model has a matching route in `apps/litellm/config.yaml`; the `router_settings.model_group_alias` block there toggles each category (`code`/`reasoning`/`fast`/`vlm`/`embedding`) between the local box and the paid Lazer/Gemini tier in one line. The 1T Kimi K2 flagship is a manual "flagship mode" (sole-resident), not a live entry — see `roles/launchd-mlx-server/README.md`.
-
-- **Python venv:** `~/mlx-env` (not created by Ansible; `launchd-mlx-server` asserts it exists)
-- **LaunchAgent:** `~/Library/LaunchAgents/com.mlx-server.plist` (per-user — Metal needs a logged-in GUI session, NOT a LaunchDaemon)
-
-```bash
-launchctl list | grep mlx-server        # com.mlx-server, numeric PID
-curl http://192.168.1.4:8090/v1/models  # list served models
-tail -f /tmp/mlx-server.log
-```
-
-### Ansible roles on this box
-
-- **`launchd-mlx-server`** — the MLX server itself (models, config, HF token).
-- **`launchd-powermetrics-textfile`** — feeds Apple-Silicon GPU/ANE/CPU power into node_exporter.
-- **`macos-llm-node`** — the *specialization*: removes CI/build bloat, applies reversible OS debloat, and installs the LLM tuning (`iogpu.wired_limit_mb`) as a root LaunchDaemon. See `roles/macos-llm-node/README.md` for the full var table + an "Unapply" section (every toggle is reversible).
-- **`macos-baseline`** (shared) — power persistence + SSH key sync + auto-login/FileVault assert.
-
-### LLM tuning: `iogpu.wired_limit_mb`
-
-macOS caps how much unified memory the GPU/Metal may wire for model weights (~65-75% by default). On a 512 GB M3 Ultra that fences off ~130-180 GB. `macos-llm-node` raises it to **491520 MB (480 GB)**, leaving a 32 GB OS reserve. macOS does not persist `sysctl -w` (and ignores `/etc/sysctl.conf`), so a root LaunchDaemon `com.kblab.llm-sysctl` (`RunAtLoad`) re-applies it at every boot; the role also applies it live so no reboot is needed to converge.
-
-```bash
-ssh mac-studio "sysctl iogpu.wired_limit_mb"   # 491520
-ssh mac-studio "cat /tmp/llm-sysctl.log"       # boot-time apply log
-```
-
-**Never approach the full 512 GB** — starving macOS of wired memory hard-hangs the box. Watch Activity Monitor memory pressure after changing it. Revert with `sudo sysctl -w iogpu.wired_limit_mb=0` (Apple default) + remove the LaunchDaemon.
-
-### Headless prerequisites (or it won't recover unattended)
-
-- **FileVault OFF + auto-login ON** — MLX/Metal needs a logged-in WindowServer session, and auto-login requires FileVault off. `macos-baseline` asserts this. **macOS 26 Tahoe re-enables FileVault by default** (incl. on upgrades); if `fdesetup status` shows On, run `sudo fdesetup disable` (interactive: admin pw + a secure-token user) + reboot before trusting recovery.
-- **1080p HDMI dummy plug** — with no display attached macOS gives only a low-res virtual framebuffer and can throttle Metal init. Fit a cheap **1080p** (not 4K) dummy plug and reboot once. (mac-studio currently reports a 1920x1080 display — satisfied.)
+- **FileVault OFF + auto-login ON** - the runners are per-user LaunchAgents and the agent desktop needs a logged-in WindowServer session, and auto-login requires FileVault off. `macos-baseline` asserts this. **macOS 26 Tahoe re-enables FileVault by default** (incl. on upgrades); if `fdesetup status` shows On, run `sudo fdesetup disable` (interactive: admin pw + a secure-token user) + reboot before trusting recovery.
 
 ## Role: CI runner (mac-mini)
 
 The sole self-hosted runner for `BlackNBrownStudios/platform` mobile CI. Native macOS workloads that can't run in a container: Xcode/iOS builds, Expo prebuild, CocoaPods, TestFlight submission.
 
 - **Runner:** `mac-mini-mac`, labels `[self-hosted, macOS, arm64]`, per-user LaunchAgent (`github-actions-runner-mac` role, `present` mode).
-- **Second runner:** `m1-playground-mac`, labels `[self-hosted, macOS, ARM64, unity-mac, host-mac-mini]`, scoped to `unity-core-playground`, builds the Mac player. No play manages it. `m1` is only an ssh alias for this machine, and the `host-mac-mini` label is what makes the exporter and the infra board count it here: without it the runner shows as a host called `m1`. Add it with `gh api -X POST repos/BlackNBrownStudios/unity-core-playground/actions/runners/<id>/labels -f 'labels[]=host-mac-mini'`.
-- **Unity iOS Build Support:** the mac-mini play adds it to each editor in `unity_ci_mac_editors` (`unity-ci-host-mac` `tasks/ios.yml`, tag `unity-ios`, no sudo), from Unity's pkg because the Hub refuses modules for an editor it did not install, and fails first if Xcode is missing or its license is not accepted: `ansible-playbook playbooks/site.yml --limit mac-mini --tags unity-ios`.
+- **Second runner:** `m1-playground-mac`, labels `[self-hosted, macOS, ARM64, unity-mac, host-mac-mini]`, scoped to `unity-core-playground`, builds the Mac player. No play manages it, so its LaunchAgent got `KeepAlive` by hand (2026-11-12, `plutil -replace KeepAlive -bool true`); re-set it if the runner is ever reinstalled. `m1` is only an ssh alias for this machine, and the `host-mac-mini` label is what makes the exporter and the infra board count it here: without it the runner shows as a host called `m1`. Add it with `gh api -X POST repos/BlackNBrownStudios/unity-core-playground/actions/runners/<id>/labels -f 'labels[]=host-mac-mini'`.
+- **Unity player modules (iOS, Mac IL2CPP):** the mac-mini play adds each module in `unity_ci_mac_modules` to each editor in `unity_ci_mac_editors` (`unity-ci-host-mac` `tasks/modules.yml`, tag `unity-modules`, no sudo), from Unity's pkg because the Hub refuses modules for an editor it did not install, and fails first if Xcode is missing or its license is not accepted: `ansible-playbook playbooks/site.yml --limit mac-mini --tags unity-modules`. The Mac player builds with IL2CPP, so without that module the Mac release job fails at the Addressables step with "Unable to build with the current configuration".
 - **Toolchain (installed by the platform repo's `tools/setup-mac-runner.sh`, not Ansible):** Xcode, CocoaPods, node/pnpm/yarn, JDK17, ruby.
 
 **Capacity note:** 16 GB RAM is the ceiling. Fine for single-stream iOS builds but tight — Xcode + a booted Simulator + Metal/UI tests push 16 GB into swap. Keep runner concurrency at 1 (a single runner process already = 1 concurrent job) and periodically clear DerivedData / simulator runtimes / npm+CocoaPods caches. If mobile CI volume grows, 16 GB is the first bottleneck.
+
+### Build-tree prune
+
+`m1-playground-mac` builds each game in a git worktree beside its checkout (unity-core-playground `scripts/build.sh`: `<checkout>-<game>`, `<checkout>-<game>-ios`) and keeps it, so that game's next build starts with its Library imported. Nothing removed them: on 2026-11-10 seven held 137G and NodeDiskLow tripped at 16% free. `unity-ci-host-mac` `tasks/disk.yml` (tag `ci-disk`) installs `files/ci-tree-prune.sh` as the hourly LaunchAgent `com.kblab.ci-tree-prune`, the Mac's counterpart of linux-ci-host's `ci-disk-prune.sh`. Each run:
+
+- skips a tree in use: a process names it in its arguments (Unity's `-projectPath`, `git -C`, xcodebuild) or works inside it, or the runner has a job and the tree was written in the last hour;
+- removes a tree idle for `unity_ci_mac_prune_tree_days` (7);
+- while the disk has under `unity_ci_mac_prune_free_pct` (25%) free, removes idle trees oldest first.
+
+The runner's checkout is never touched, and neither is a tree's `Builds/` alone: on APFS the player there is mostly clones of `Library/` data, so only the whole tree frees space. build.sh makes a removed tree again, so a prune costs that game's next build a Library import (up to an hour for DodginBalls). Log: `~/Library/Logs/kblab-ci-tree-prune.log`. Apply: `ansible-playbook playbooks/site.yml --limit mac-mini --tags ci-disk`.
 
 ### Workflows
 
@@ -92,38 +50,20 @@ The sole self-hosted runner for `BlackNBrownStudios/platform` mobile CI. Native 
 **iOS:** `KEYCHAIN_PASSWORD` (login pw for keychain unlock), `APPLE_ID`, `EXPO_APPLE_PASSWORD` (app-specific pw), `APPLE_TEAM_ID`.
 **Android:** `ANDROID_KEYSTORE_BASE64`, `ANDROID_KEYSTORE_PASSWORD`, `ANDROID_KEY_ALIAS`, `ANDROID_KEY_PASSWORD`, `GOOGLE_PLAY_SERVICE_ACCOUNT_KEY`.
 
-## Unity CI pool (mac-studio, until it is sold)
+## Unity CI pool on a Mac (none since 2026-11-10)
 
-Since 2026-10-29 the Studio also runs 6 slots of the org-scoped Unity CI pool, beside MLX. This reverses part of the split above for as long as the box is here; the platform repo's iOS runner stays on mac-mini.
+No Mac is in the Unity pool: the Mac Studio (M3 Ultra) ran 6 slots from 2026-10-29 until it was sold on 2026-11-10, and aws-burst-2 took its slots. The play and roles below stay for a future Mac; the platform repo's iOS runner stays on mac-mini.
 
 - Play "Unity CI runner pool (macOS)" in `ansible/playbooks/site.yml`, group `unity_ci_mac_runners` in `ansible/inventory.yml` (`unity_ci_slots`). Roles: `unity-ci-host-mac` (Homebrew GNU tools, Unity Hub, the editor at the project's version) and `github-actions-runner-mac` once per slot (`scope: org`, home `~/actions-runner/unity-pool-<n>`).
-- Labels are `unity, unity-native, host-mac-studio` (+ `unity-full`), registered with `--no-default-labels`: without it the slots also carry `self-hosted, macOS`, which takes the platform repo's iOS jobs and dodginballs' `[self-hosted, unity]` jobs. The playground runs the harness natively there (`UNITY_CI_NATIVE=1` in each slot's `.env`, see unity-core-playground `scripts/test/in-docker.sh`, and [runbooks/unity-ci-host.md](runbooks/unity-ci-host.md#the-mac-pool)).
-- Six slots, all taking pool jobs. Eight ran the box at load 115-157 on 32 cores with 0% idle (2026-10-31), and PlayMode throughput was no better than at 6 (about 20-28 jobs an hour against about 37, small sample), so slots 7-8 were withheld from 2026-11-02 and removed on 2026-11-03. The governor cannot judge a Mac's load (no CPU pressure or sensors), so the slot count is the limit.
-- Unity saves its license under `/Library/Application Support/Unity`, which needs sudo once: `ansible-playbook playbooks/site.yml --limit mac-studio --tags unity-ci-sudo -K`.
+- Labels are `unity, unity-native, host-<name>` (+ `unity-full`), registered with `--no-default-labels`: without it the slots also carry `self-hosted, macOS`, which takes the platform repo's iOS jobs. The playground runs the harness natively there (`UNITY_CI_NATIVE=1` in each slot's `.env`, see unity-core-playground `scripts/test/in-docker.sh`, and [runbooks/unity-ci-host.md](runbooks/unity-ci-host.md#the-mac-pool)).
+- The Studio ran six slots. Eight ran the box at load 115-157 on 32 cores with 0% idle (2026-10-31), and PlayMode throughput was no better than at 6 (about 20-28 jobs an hour against about 37, small sample), so slots 7-8 were withheld from 2026-11-02 and removed on 2026-11-03. The governor cannot judge a Mac's load (no CPU pressure or sensors), so the slot count is the limit.
+- Unity saves its license under `/Library/Application Support/Unity`, which needs sudo once: `ansible-playbook playbooks/site.yml --limit <mac> --tags unity-ci-sudo -K`.
 - The slots are LaunchAgents, so macOS Local Network privacy blocks their non-Apple binaries (Homebrew git, git-lfs) from the LAN: a fetch from `git.kblab.me` fails in a few ms with "Couldn't connect to server" while it works over ssh. Only Apple's binaries, root, and ssh sessions are exempt (Apple TN3179); a LaunchDaemon with `UserName` was blocked too, and `launchctl kickstart -k` did not clear it on the Studio (2026-10-29). The playground fetches through the public host instead (its `scripts/setup/forge-git-env.sh`), so do not move the slots to LaunchDaemons for this.
-- Before the sale: follow the retire steps in the play's header comment (`site.yml`): uninstall each slot with its `svc.sh`, delete the runners in the org settings, take the host out of `unity_ci_mac_runners` and `RUNNER_ROSTER`, and run `scripts/check-runner-roster.py`.
+- To retire a Mac: the retire steps in the play's header comment (`site.yml`), then take the host out of `unity_ci_mac_runners` and `RUNNER_ROSTER` and run `scripts/check-runner-roster.py`.
 
 ## Reprovision from bare metal
 
-Both flows start the same: on the new Mac, `git clone https://github.com/kblack0610/.dotfiles.git ~/.dotfiles && cd ~/.dotfiles/.local/src/installation_scripts && bash install.sh` (Homebrew, dev tools, macOS defaults, workstation SSH key). Then add/confirm the host in `ansible/inventory.yml` under `macos_hosts` and run from the workstation; secrets decrypt with the SOPS age key (become password for `-K` is rbw item `mac_fleet_password`).
-
-### LLM node (mac-studio)
-
-```bash
-# 1. MLX venv (native, one-time): python3.12 -m venv ~/mlx-env && ~/mlx-env/bin/pip install mlx-openai-server
-# 2. Confirm FileVault off + auto-login on + a 1080p display/dummy-plug attached.
-cd ~/dev/home/home-config/ansible
-ansible-playbook playbooks/site.yml --limit mac-studio --tags mac -K --check --diff   # review first
-ansible-playbook playbooks/site.yml --limit mac-studio --tags mac -K                  # apply
-# Verify:
-gh api repos/BlackNBrownStudios/platform/actions/runners --jq '.runners[]|.name'  # NO mac-studio-mac (the org pool's mac-studio-unity-pool-N are separate)
-ssh mac-studio "curl -s http://127.0.0.1:8090/v1/models | head -c 80"             # MLX serving
-ssh mac-studio "sysctl iogpu.wired_limit_mb"                                       # 491520
-```
-
-From a worktree, Ansible finds no collections (`collections_path` is the git-ignored `./collections`), so a run fails on `community.general.pacman`: prefix it with `ANSIBLE_COLLECTIONS_PATH=~/dev/home/home-config/ansible/collections`.
-
-The mac-studio play sets the destructive removal vars (`macos_llm_node_remove_xcode`, `..._platform_checkout`) true (`..._runner_dir` is off while the Unity pool slots live under `~/actions-runner`) — always `--check --diff` first, and note the checkout removal HARD-FAILS if `~/dev/bnb/platform` has uncommitted/unpushed work.
+On the new Mac, run `git clone https://github.com/kblack0610/.dotfiles.git ~/.dotfiles && cd ~/.dotfiles/.local/src/installation_scripts && bash install.sh` (Homebrew, dev tools, macOS defaults, workstation SSH key). Then add/confirm the host in `ansible/inventory.yml` under `macos_hosts` and run from the workstation; secrets decrypt with the SOPS age key (become password for `-K` is rbw item `mac_fleet_password`).
 
 ### CI node (mac-mini)
 
@@ -140,7 +80,7 @@ ssh mac-mini "launchctl list | grep actions.runner"   # numeric PID
 
 ## Power / persistence (survive a power failure)
 
-The load-bearing setting is `pmset autorestart 1`: after a power cut the Mac boots itself, auto-login reaches a logged-in session, and the per-user LaunchAgent (`RunAtLoad`) brings the workload (MLX or runner) back online — no human needed. `macos-baseline` sets and asserts this; `autorestart 0` is why both Macs previously stayed dark after outages (found 2026-07-17). FileVault MUST stay off and auto-login on, or the boot stops at the login window and nothing recovers.
+The load-bearing setting is `pmset autorestart 1`: after a power cut the Mac boots itself, auto-login reaches a logged-in session, and the per-user LaunchAgent (`RunAtLoad`) brings the runners back online - no human needed. `KeepAlive` (set by `github-actions-runner-mac`) brings a runner back when its process is killed while the Mac stays up: `runsvc.sh` exits 0 on a signal, so without it the runner stays offline until the next boot. `macos-baseline` sets and asserts this; `autorestart 0` is why the Macs previously stayed dark after outages (found 2026-07-17). FileVault MUST stay off and auto-login on, or the boot stops at the login window and nothing recovers.
 
 Proved on the mac-mini 2026-11-07 with `sudo -n shutdown -r now` and both runners idle, no touch: kernel up 22s after the command, ssh, console login and every Peekaboo grant by 39s, both runner listeners started at 52s, both runners online on GitHub by 94s. A true power cut is not yet proved: that needs someone to pull the plug.
 
@@ -158,12 +98,10 @@ Considered and rejected. MDM's unique capability is zero-touch DEP/ADE enrollmen
 | FileVault | Disabled | Allows auto-login on restart | install script (asserted by macos-baseline) |
 | Auto-login | Enabled (current user) | Unattended restarts after power outage | install script (asserted by macos-baseline) |
 | Screen lock and screensaver (mac-mini) | Off (`sysadminctl -screenLock off`, screensaver `idleTime` 0, `askForPassword` 0) | A locked session blocks the desktop and store-console tools; auto-login already gives a session to anyone at the Mac | screen lock: person, once; screensaver: macos-agent-tools sets both, and asserts the lock delay and that the console session is unlocked now (ioreg `CGSSessionScreenIsLocked`) |
-| Passwordless sudo (mac-mini) | Blanket, `/etc/sudoers.d/agent-machine` | Agents need root unattended; mac-studio keeps its password | macos-agent-tools |
+| Passwordless sudo (mac-mini) | Blanket, `/etc/sudoers.d/agent-machine` | Agents need root unattended | macos-agent-tools |
 | Spotlight index (mac-mini) | Off, index removed | It reached 51 GB; nothing here searches with it | macos-agent-tools |
 | Automatic macOS install (mac-mini) | Off, critical and config-data updates stay on | An update reboots mid-job and can drop the privacy grants | macos-agent-tools |
 | Homebrew Tailscale agent (mac-mini) | Stopped | It looped on needing root; the root daemon stays, logged out | macos-agent-tools |
-| **Spotlight index / Time Machine / Siri / analytics / Power+App Nap** | **Off** | **Headless LLM node debloat** | **macos-llm-node** (mac-studio only, all reversible) |
-| **iogpu.wired_limit_mb** | **491520 (480 GB)** | **Large-model MLX headroom** | **macos-llm-node** (LaunchDaemon) |
 
 Only user-space + supported knobs are touched (`defaults`/`mdutil`/`tmutil`/`pmset`/`sysctl`, and `bootout` of user agents). SIP-protected `/System/Library` daemons (`mDNSResponder`, `opendirectoryd`, `sshd`, `WindowServer`, ...) are NEVER touched — they break SSH/login/Metal and are SIP-revived anyway.
 
@@ -171,21 +109,9 @@ Only user-space + supported knobs are touched (`defaults`/`mdutil`/`tmutil`/`pms
 
 ```bash
 ssh m1            # Mac Mini M1  (user kennethblack, 192.168.1.7)
-ssh mac-studio    # Mac Studio M3 Ultra (user kblack0610, 192.168.1.4)
 ```
 
-SSH config (`~/.ssh/config`):
-```
-Host m1 mac-mini
-    HostName 192.168.1.7
-    User kennethblack
-    IdentityFile ~/.ssh/id_ed25519
-
-Host mac-studio
-    HostName 192.168.1.4
-    User kblack0610
-    IdentityFile ~/.ssh/id_ed25519
-```
+The alias comes from the inventory (`mac-mini`, plus `ssh_aliases: [m1]`), written to the workstation's `/etc/ssh/ssh_config.d/40-home-inventory.conf` by the `ssh-client-inventory` role.
 
 ## Driving it from an agent
 
@@ -201,12 +127,25 @@ The mac-mini is the agent machine: set aside for agents to have full control of 
 
 The desktop needs a one-time grant by a person, because macOS (TCC) lets only a click in System Settings allow screen capture and synthetic input, and refuses synthetic clicks on those switches. macOS attributes an ssh session's requests to `/usr/libexec/sshd-keygen-wrapper`, so that is what gets the grant: System Settings > Privacy & Security > Accessibility, and > Screen & System Audio Recording: + > Cmd+Shift+G > `/usr/libexec/sshd-keygen-wrapper` > switch it on. Click Allow on any "sshd-keygen-wrapper wants to control ..." prompt. `ansible-playbook playbooks/site.yml --limit mac-mini --tags agent-tools` (role `macos-agent-tools`) checks the grants and the screen lock and prints these steps when one is missing. The CI runner is a LaunchAgent, not sshd, so CI jobs do not get the grant.
 
+## Emotiv EEG headset (mac-mini)
+
+The mac-mini runs Emotiv Launcher and EmotivPRO for the EPOC-family headset (board row `hc-132`). There is no brew cask, so the install is manual: Emotiv-Installer-mac.dmg from emotiv.com (My Account > Downloads), with EmotivPRO ticked. It lands in `/Applications/EmotivApps/` (Launcher 4.13.6.528, EmotivPRO 4.13.6.578, plus EmotivBCI, BrainViz and the Maintenance Tool) and adds the "Emotiv CA Root" certificate to the System keychain, which Cortex needs for its local wss endpoint.
+
+It adds three launchd jobs: `~/Library/LaunchAgents/com.emotiv.emotivapp.plist` (the Launcher window at login) and `com.emotiv.cortexv2` and `com.emotiv.sync` (CortexService and CortexSync, KeepAlive). Idle they cost about 3% CPU and 290 MB RSS together, small enough to leave running beside CI.
+
+The Launcher is signed in to the human's EmotivID (`kblack0610`, since 2026-11-06) and stays signed in across restarts; rbw holds no Emotiv entry, so a new sign-in is the human's (see Troubleshooting). Account > My Licenses lists PRO Lite (1 device), BCI License (3 devices), a Studio Trial and a BrainViz Free Trial. Never buy a license from an agent session.
+
+While the headset is connected, the `emotiv-bridge` LaunchAgent records every stream the license allows and uploads it age-encrypted to the NAS (`/mnt/nas/private/eeg`). How it works, its keys, reading a session back and its troubleshooting: [`ansible/roles/emotiv-bridge/README.md`](../ansible/roles/emotiv-bridge/README.md).
+
+The Launcher also needs the Bluetooth privacy grant before it can see a headset over Bluetooth, and that grant is a person's one-time click (see Troubleshooting).
+
+Rollback: quit the apps, run `/Applications/EmotivApps/Emotiv Maintenance Tool.app` and choose remove all components, then check the three plists above are gone.
+
 ## Monitoring
 
-Both Macs run [node_exporter](https://github.com/prometheus/node_exporter) on `:9100` (managed by the `node-exporter-mac` role), scraped by cluster Prometheus via the `mac-nodes` ServiceMonitor (`apps/monitoring/external-mac-nodes.yaml`, every 30s). mac-studio additionally exports Apple-Silicon GPU/ANE/CPU power via the powermetrics textfile sampler.
+The mac-mini runs [node_exporter](https://github.com/prometheus/node_exporter) on `:9100` (managed by the `node-exporter-mac` role), scraped by cluster Prometheus via the `mac-nodes` ServiceMonitor (`apps/monitoring/external-mac-nodes.yaml`, every 30s).
 
 ```bash
-curl -s http://192.168.1.4:9100/metrics | head -5   # Mac Studio
 curl -s http://192.168.1.7:9100/metrics | head -5   # Mac Mini
 ```
 
@@ -217,11 +156,8 @@ curl -s http://192.168.1.7:9100/metrics | head -5   # Mac Mini
 
 ## Troubleshooting
 
-### MLX not serving (mac-studio)
-```bash
-ssh mac-studio "launchctl kickstart -k gui/$(id -u)/com.mlx-server"   # restart the LaunchAgent
-ssh mac-studio "tail -50 /tmp/mlx-server.log"
-```
+### Runner offline but the Mac is up (mac-mini)
+`launchctl list | grep actions.runner` shows `-` for the PID and the runner's stdout.log ends with "Runner listener exit with 0 return code, stop the service": something signalled its node wrapper (`RunnerService.js`). On 2026-11-12 it was an agent's `pkill -x node` after a store session. Start it with `launchctl kickstart gui/$(id -u)/<label>`, and check its plist has `KeepAlive` (`plutil -extract KeepAlive raw <plist>`); the role sets it, the playground runner needs it by hand.
 
 ### Runner offline after reboot (mac-mini)
 ```bash
@@ -254,6 +190,14 @@ rbw get mac_fleet_password | ssh -T mac-mini 'read -r v; caffeinate -u -t 2; sle
 
 "com.apple.sshd-session is requesting to bypass the system private window picker and directly access your screen and audio" follows the Screen Recording grant and comes back every 30 days, on the date in `kScreenCapturePrivacyHintDate` for `/usr/libexec/sshd-keygen-wrapper` in `~/Library/Group Containers/group.com.apple.replayd/ScreenCaptureApprovals.plist`. That file only reports the clock: edits to the hint date, the last-alerted date or the 30-day policy were all put back by the next capture on macOS 26.5.2, even with `replayd` stopped (tested 2026-11-06). Only a person's click resets it. It covers the middle of the screen until someone at the Mac clicks Allow; agents do not click consent prompts.
 
+### Emotiv Launcher needs to be signed in again (mac-mini)
+
+The Launcher's Sign in opens a Safari sheet on id.emotiv.com that does not share a browser's emotiv.com session, and rbw holds no EmotivID entry, so a person signs in once in that sheet with Remember me on. `grep 'login done' ~/Library/Application\ Support/Emotiv/EmotivApp/logs/*.txt` on the mini shows each successful sign-in with the account name.
+
+### Emotiv Launcher shows "needs your device's permission to use Bluetooth" (mac-mini)
+
+The yellow banner on Devices, and its Proceed button, lead to a System Settings privacy grant that macOS will not take from a synthetic click. A person opens System Settings > Privacy & Security > Bluetooth, adds `/Applications/EmotivApps/EMOTIV Launcher.app` and switches it on, then restarts the Launcher. If it still sees no headset, remove the Launcher entry there and add it again.
+
 ### Chrome starts but shows no window (mac-mini)
 
 On its first launch Chrome shows a Welcome dialog (default browser, usage statistics), and launched over ssh it can hang there with one process and no window. Quit it and launch it again from the desktop (Peekaboo `app launch "Google Chrome" --foreground`); untick both boxes and press OK.
@@ -267,5 +211,5 @@ security unlock-keychain ~/Library/Keychains/login.keychain-db
 
 - **Homebrew updates:** `brew update && brew upgrade`
 - **Runner updates (mac-mini):** auto-updates when GitHub releases a new version.
-- **Xcode (mac-mini only):** install from App Store, then `sudo xcode-select -s /Applications/Xcode.app`. mac-studio intentionally has no Xcode (CLT only).
+- **Xcode:** install from App Store, then `sudo xcode-select -s /Applications/Xcode.app`.
 - **Runner health:** `https://github.com/BlackNBrownStudios/platform/settings/actions/runners`

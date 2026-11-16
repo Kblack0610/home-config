@@ -21,7 +21,8 @@ metadata:
   labels:
     app: binks-api
 spec:
-  replicas: 1
+  # Two pods so a node drain or a crash does not drop every chat (pdb.yaml).
+  replicas: 2
   strategy:
     type: RollingUpdate
     rollingUpdate:
@@ -37,18 +38,33 @@ spec:
     spec:
       # amd64-only image (single-arch manifest, no manifest list). Without this
       # the scheduler places the pod on an arm64 Pi and the container dies with
-      # `exec format error`. Remove once the image is rebuilt multi-arch.
+      # `exec format error`. Stays until .forgejo/workflows/deploy-binks-api.yml
+      # in the platform repo builds linux/arm64 too (it builds amd64 only as of
+      # 2026-11-14); remove it in the same PR that bumps to that first multi-arch tag.
       nodeSelector:
         kubernetes.io/arch: amd64
       tolerations:
         - key: node.cilium.io/agent-not-ready
           operator: Exists
           effect: NoSchedule
+      # preStop drain (10s) + the api's own 30s SHUTDOWN_TIMEOUT + margin.
+      terminationGracePeriodSeconds: 45
       imagePullSecrets:
         - name: forgejo-registry
+      securityContext:
+        # The image runs as node (1000); this makes a root image fail to start.
+        runAsNonRoot: true
+        runAsUser: 1000
+        runAsGroup: 1000
+        seccompProfile:
+          type: RuntimeDefault
       containers:
         - name: binks-api
           image: git.kblab.me/kblack0610/binks-api:latest
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ['ALL']
           ports:
             - name: http
               containerPort: 5005
@@ -62,9 +78,69 @@ spec:
             - name: LITELLM_URL
               value: http://litellm.ai-gateway.svc.cluster.local:4000
             - name: DEFAULT_MODEL
-              value: 'fast (Qwen3-4B)'
+              value: 'binks-chat'
+            - name: SEARXNG_URL
+              value: http://searxng.home-assistant.svc.cluster.local:8080
+            # web_search tries these SearXNG engines in order, each while its free
+            # quota lasts, then the default free engines (Bing). Limits read on the
+            # providers' pages 2026-11-13: linkup $20 credit a month (about 4,000
+            # searches), firecrawl 1,000 credits a month (about 500 searches, 10 a
+            # minute). No card on either account, so cap_usd_month stays 0. Order
+            # from the 2026-11-13 per-provider eval (lab docs/eval/). Engines and
+            # keys: apps/searxng/README.md. Empty value = default engines only.
+            - name: SEARCH_PROVIDERS
+              value: >-
+                [{"engine":"linkup","quota":4000,"period":"month","usd_per_1k":5,"cap_usd_month":0},
+                {"engine":"firecrawl","quota":500,"period":"month","usd_per_1k":7.6,"cap_usd_month":0}]
             - name: CORS_ORIGINS
               value: https://binks.chat
+            # Base for the Google and Apple OAuth callbacks
+            # (<PUBLIC_URL>/api/auth/{google,apple}/callback). Their client
+            # values come from binks-api-secret through envFrom (README, Secrets).
+            - name: PUBLIC_URL
+              value: https://binks.chat
+            # Email domains offered the Google Sheets / Drive connector preset.
+            # Google's Workspace MCP is a Developer Preview whose terms allow
+            # only our own domain (apps/binks/api/README.md in the platform repo).
+            - name: GOOGLE_WORKSPACE_MCP_DOMAINS
+              value: blacknbrownstudios.com
+            # Square billing, sandbox. Real money is the owner's switch:
+            # rerun square:setup with the production token, swap these and
+            # the SOPS values (apps/binks/api/README.md in the platform repo).
+            - name: SQUARE_ENVIRONMENT
+              value: sandbox
+            - name: SQUARE_LOCATION_ID
+              value: LSV4ZKQ05760V
+            - name: SQUARE_PLAN_VARIATION_ID
+              value: KXHAMBKBADN4PY6TCGGU5VL3
+            - name: BINKS_PRICE_CENTS
+              value: '800'
+            # Free chats stop for the day once non-subscriber reply cost reaches
+            # this (UTC day); subscribers pass. Owner's pick 2026-11-14, ask 4pazNg.
+            - name: DAILY_SPEND_CEILING_USD
+              value: '2'
+            # Shared demos: Share in a chat preview publishes the page to
+            # https://play.kblack.dev/p/<id> (ingress.yaml, binks-demos). This
+            # host answers /p/<id> only and sends a CSP sandbox header on every
+            # response (platform apps/binks/api/README.md, Shareable demos).
+            # Off until the owner answers the asks filed 2026-11-14: whether
+            # demos may live on kblack.dev at all, and who may publish
+            # (plus = Binks Plus subscribers only, 'all' = every signed-in
+            # user). DEMO_TTL_DAYS defaults to 30. Off, the host still answers
+            # 404 with the sandbox header, so the route and Gatus check work.
+            - name: PUBLISH_ENABLED
+              value: 'false'
+            - name: PUBLISH_HOST
+              value: play.kblack.dev
+            - name: DEMO_PUBLISH_TIER
+              value: plus
+            # Outside clients: the OAuth server, API tokens, consent page and /mcp
+            # (platform apps/binks/api/README.md, Client auth). It is the kill
+            # switch for all of them. Off until the owner releases a binks-api tag
+            # carrying platform #1573 and the bk-5 terms and privacy pages are live
+            # on binks.chat; CLIENT_TOKEN_SECRET is already in binks-api-secret.
+            - name: MCP_ENABLED
+              value: 'false'
           envFrom:
             - secretRef:
                 name: binks-api-secret
@@ -75,15 +151,28 @@ spec:
             limits:
               cpu: 500m
               memory: 512Mi
+          # Traefik drops a terminating pod's endpoint a moment after the kubelet
+          # sends SIGTERM; without the wait the old pod closes its port first and
+          # Traefik 502s the requests still routed to it (bk-45: both tag smokes
+          # 2026-11-14 03:33Z). The kubelet waits here before SIGTERM.
+          lifecycle:
+            preStop:
+              sleep:
+                seconds: 10
           readinessProbe:
             httpGet:
               path: /ready
               port: http
             initialDelaySeconds: 10
             periodSeconds: 10
+          # Liveness is a process check only. /ready queries Postgres, so as a
+          # liveness probe a DB blip restarted the pod and dropped every open
+          # chat socket; readiness alone takes it out of the Service until the
+          # DB is back. Every HTTP route in the image (/health too) touches the
+          # DB, so the check is the open port.
           livenessProbe:
-            httpGet:
-              path: /ready
+            tcpSocket:
               port: http
             initialDelaySeconds: 30
             periodSeconds: 30
+            failureThreshold: 3

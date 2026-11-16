@@ -139,13 +139,15 @@ filters:
 {% endfor %}
 whitelist_filters: []
 {# An empty `key:` parses as null, not as an empty list, so emit [] explicitly. #}
-user_rules: {% if adguard_user_rules %}
-
+{% if adguard_user_rules %}
+user_rules:
+{# Quoted the way rewrite domains are, below: allow rules start with `@@`. #}
 {% for rule in adguard_user_rules %}
-  - {{ rule }}
+  - {% if rule[0] in '*&!%@`|>#-?:,[]{}' %}'{{ rule }}'{% else %}{{ rule }}{% endif %}
+
 {% endfor %}
 {% else %}
-[]
+user_rules: []
 {% endif %}
 dhcp:
   enabled: false

@@ -1,6 +1,6 @@
 # LiteLLM
 
-LLM gateway deployment in the `ai-gateway` namespace, exposed through Traefik at `llm.kblab.me`.
+LLM gateway deployment in the `ai-gateway` namespace, exposed through Traefik at `llm.kblab.me` on the LAN and the tailnet only.
 
 ## What This Directory Contains
 
@@ -8,44 +8,115 @@ LLM gateway deployment in the `ai-gateway` namespace, exposed through Traefik at
 |------|---------|
 | `kustomization.yaml` | Reconciles the namespace, app, service, and ingress |
 | `configmap.yaml` | LiteLLM config mounted into the container |
-| `secret.sops.yaml` | SOPS-encrypted `litellm-db-secrets`: DATABASE_URL, salt key, UI creds, Lazer key |
+| `secret.sops.yaml` | SOPS-encrypted `litellm-db-secrets`: DATABASE_URL, salt key, UI creds, Lazer, Gemini, OpenCode Go, NVIDIA NIM, DeepSeek and Z.ai keys |
 | `deployment.yaml` | Main gateway workload and health checks |
 | `service.yaml` | Cluster service on port `4000` |
-| `ingress.yaml` | TLS ingress for `llm.kblab.me` |
+| `ingress.yaml` | TLS ingress for `llm.kblab.me`, kept off public DNS |
+| `ingress-metrics-deny.yaml` | 403s `/metrics` on the ingress host |
 
 The litellm tenant role + database in Postgres is provisioned by `apps/postgres/litellm-db-bootstrap-job.yaml` (idempotent psql Job in the `databases` namespace).
+
+## Exposure
+
+`llm.kblab.me` has no public DNS record. LAN clients get it from AdGuard and tailnet clients from the headscale `extra_records` (`apps/headscale/configmap.yaml`), both pointing at Traefik. Both Ingresses carry `external-dns.alpha.kubernetes.io/controller: none`; drop it from either and external-dns republishes the host through the Cloudflare tunnel. Re-adding the annotation does not take a published host back off: external-dns runs `upsert-only` and never deletes, so remove the `llm.kblab.me` CNAME and its two `extdns-` TXT records in Cloudflare by hand.
+
+Why: while the host was public, a scanner sent 190,844 guessed keys in two hours on 2026-11-07 (wordlist aimed at LiteLLM: `berriai-litellm-2025`, `dify-lab`, `sk-...master`). None matched and spend stayed $0, but the client IP was lost, because tunnel traffic reaches Traefik from the cloudflared pod.
+
+`LiteLLMAuthFailureSpike` (`apps/monitoring/prometheus-rules-litellm.yaml`) fires on more than 30 rejected keys in 15 minutes, counted at Traefik. The keys tried are in Postgres:
+
+```bash
+kubectl -n databases exec deploy/postgres -- psql -U postgres -d litellm -c \
+  "select date_trunc('hour',\"startTime\"), count(*), count(distinct api_key) from \"LiteLLM_SpendLogs\"
+   where status='failure' and metadata->'error_information'->>'error_code'='401' group by 1 order by 1 desc limit 24"
+```
 
 ## Configuration and Secrets
 
 - `litellm-secrets` (out-of-band, holds `LITELLM_MASTER_KEY`) and `litellm-db-secrets` (SOPS, this directory) are both merged via `envFrom`.
 - Config lives in `config.yaml`, generated into the `litellm-config` ConfigMap (hash-suffixed, so an edit rolls the pod) and mounted at `/etc/litellm/config.yaml`.
-- Persistent state for keys/spend/budgets lives in Postgres (`postgres.databases.svc.cluster.local`); the `model_list` stays in `configmap.yaml` (`store_model_in_db: false`).
+- Persistent state for keys/spend/budgets lives in Postgres (`postgres.databases.svc.cluster.local`); the `model_list` stays in `config.yaml` (`store_model_in_db: false`).
 
 ## Virtual Keys (Cost & Rate Control)
 
 Every consumer of this gateway should hold a *scoped virtual key* — never `LITELLM_MASTER_KEY`. The master key creates/manages keys; runtime traffic uses the scoped keys.
 
-| Key alias | Allowed models | `max_budget` (30d) | `tpm` / `rpm` | Consumer |
-|---|---|---|---|---|
-| `karakeep-tagging` | `fast (Qwen3-4B)` | none (free upstream) | rpm 60 | `apps/karakeep/` |
-| `mem0-embeddings` | `embedding (modernbert-embed-base-4bit)`, `fast (Qwen3-4B)` | none (free upstream) | rpm 120 | `apps/mem0/` |
-| `opencode-default` | free local + the toggle aliases (`code`/`reasoning`/`fast`) | $50 | tpm 50k, rpm 30 | opencode default mode |
-| `opencode-paid` | the paid Lazer routes (`code (qwen-3-coder)`, `reasoning (glm-5.3)`, `fast (gpt-oss-120b)`, `vlm (gemini-3-flash)`) | $150 | tpm 100k | opencode build/escalation mode |
-| `model-lane` | `claude-haiku-4-5-20251001` (Lazer Haiku 5.5), team `lazer-pool` | $10 | rpm 30 | `model-lane classify` (dotfiles-private skill), key file `~/.local/state/model-lane/litellm.key` |
-| `claude-reserve` | `claude-sonnet-5`, `claude-haiku-4-5-20251001`, team `lazer-pool`; no Opus on purpose | $100 | none | Claude Code on Lazer when the subscription accounts are spent: `claude-lazer` / `cl --lazer` and model-lane's headless sonnet lane (dotfiles-private), key file `~/.local/state/claude-lazer/key` |
-| `lazer-eval` | `claude-sonnet-5`, `claude-haiku-4-5-20251001`, `code (qwen-3-coder)`, `reasoning (glm-5.3)`, `fast (gpt-oss-120b)`, team `lazer-pool`; no Opus on purpose | $150 lifetime (no `budget_duration`) | rpm 60 | the model and harness eval lane: `fleet-dispatch start --harness claude-lazer\|opencode`, key file `~/.local/state/agentctl/lazer-eval.key`. Each run sends `x-litellm-tags: queue:<slug>`, so spend joins the queue item |
-| `glm-pilot` | `reasoning (glm-5.3)` only, team `lazer-pool` | $50 (`budget_duration` 30d) | rpm 60 | the GLM canary and pilot: `fleet-dispatch start --harness glm`, key file `~/.local/state/agentctl/glm.key`. A key without this route gets 403, not a fallback; its spend and cap read from the `litellm_*_api_key_*` gauges on the Costs tab LAZER line |
-| `eval-reader` | none (`no-default-models`), on the `proxy_admin_viewer` user `eval-reader` | none | none | reads `/tag/daily/activity` for that join, key file `~/.local/state/agentctl/eval-reader.key`. A plain scoped key gets 401 on `/tag/*`; this one gets 403 on writes and completions |
+Two teams split the $250/mo Lazer allowance by priority (human, 2026-11-10). A key joins the team its consumer's priority names; a key in no team never reaches a Lazer route except through its own small cap.
 
-> **Toggle aliases (2026-07):** `router_settings.model_group_alias` in `configmap.yaml` exposes short stable names (`code`, `reasoning`, `fast`, `vlm`, `embedding`, `stt`) that resolve to whichever concrete route a category currently points at. Consumers/keys can allow the short alias and stay put while you flip local-vs-paid in one line. Each category also has explicit local (`... local model ...`) and paid (`... (lazer) ...`) routes for direct A/B testing.
+| Team | Budget | Holds |
+|---|---|---|
+| `lazer-core` | $200 / 1mo | `priority: must`: home services, comms triage and the version agents, knowledge-engine, lazer-eval, model-lane (moved 2026-11-13: every dispatch routing decision reads it) |
+| `lazer-pool` | $50 / 1mo | `priority: low`: cl --lazer (`claude-reserve`, last priority), opencode-paid, delivery-loop |
+
+Each key's consumer and priority live on the key itself (`metadata.consumer`, `metadata.priority`: must, low, off, reader), so the gateway is the one inventory. A key that is not a priority is blocked (`/key/block`, reversible with `/key/unblock`). To see every key beside the agentctl runners that spend through it, with priority, budget, spend and fallback, open the Consumers section of the Costs tab (agent-web and the hub TUI, fed by `claude-acct gateway` every 15 min); a must consumer on a low-priority or capped budget shows there as MISMATCH. By hand, list every key, its team, cap, spend, consumer and priority:
+
+```bash
+curl -s "https://llm.kblab.me/key/list?return_full_object=true&size=100" -H "Authorization: Bearer $(cat ~/.local/state/agentctl/eval-reader.key)" \
+  | jq -r '.keys[] | [.key_alias, (.team_id // "-")[0:8], (.max_budget // "-"), (.budget_duration // "-"), (.spend*100|round/100), (.blocked // false), .metadata.priority, .metadata.consumer] | @tsv' | column -t -s $'\t'
+```
+
+### OpenCode Go keys
+
+The `go (...)` routes spend the OpenCode Go plan ($10/mo flat, key `OPENCODE_GO_API_KEY`, from rbw `opencode-go-api-key`), not the Lazer allowance, so their keys sit in no team: a team over its budget (lazer-pool, 2026-11-11) refuses every key in it, whatever the route. Check `team_id` is null with `/key/info` before a key's first run.
+
+| Key | Models | Budgets | Consumer | Key file |
+|---|---|---|---|---|
+| `fleet-go` | the four `go (...)` routes | `max_budget` $68.80 / 7d (each route also has its own 5h budget in `config.yaml`: $2.85, deepseek $19) | fleet-dispatch harness `opencode-go` (priority low) | `~/.local/state/agentctl/fleet-go.key` |
+| `opencode-go` | the four `go (...)` routes | `max_budget` $68.80 / 7d, its own counter beside `fleet-go`'s; the per-route 5h budgets are shared; rpm 120. Mint recipe: dotfiles-private `.config/opencode/README.md` | hand opencode: the personal profile, the `~/.notes` guard and `go/*` in the client picker (priority must, still no team: a Go key never joins `lazer-core`) | `~/.local/state/opencode/litellm-go.key` |
+| `binks-eval` | the `go (...)` chat routes except Haiku, `assist (gemini-flash)`, `claude-sonnet-5` (the judge) | `max_budget` $10 / 30d, no team | binks-api `pnpm eval` (priority low), the binks model eval | rbw `litellm-binks-eval-key` |
+
+The seven routes tagged `binks-eval` (GLM-5.3-Flash, Qwen3.8-Flash, Qwen3.7-Plus, MiniMax M3 and M3.1 Flash, MiMo-V2.6-Flash, LongCat-2.0) exist for the binks model eval and carry a $1 per 5h cap instead of a Go allowance. The budgets mirror Go's windows a little under the plan, so the gateway refuses before Go does and the refusal reads as a budget, not an upstream error. That holds for the 5h window, which every key shares per route; the week is a counter per key, so `fleet-go` and `opencode-go` together can pass Go's week, and then the refusal comes from Go. Go gives GLM-5.3, Kimi K3 and Haiku 5.5 $15/mo each and DeepSeek V4.1 Flash $100/mo (docs/go, Go column), spent 20% per 5h and 50% per week. The 5h window is each route's deployment budget (`max_budget` 2.85, `budget_duration` 5h in `litellm_params`, 19%): a key's per-model `model_max_budget` needs a LiteLLM Enterprise license (`/key/generate` refuses it), and the deployment budget holds for every key that reaches the route. The week is each key's `max_budget`, 95% of the four models' weekly allowances ($7.50 x 3 + $50 = $72.50, rounded down), and the month is left to Go itself (Extra Usage off in the OpenCode console, so a spent window is a refusal there, never a charge). LiteLLM's windows reset on a fixed clock where Go's may roll, and the deployment spend is held in memory, so a pod restart clears the 5h counter. Go refuses a call with no `x-opencode-session` header (400 MissingSessionID): opencode sends one per conversation, and `tool_compat.py` gives any other call on these routes a fresh one, so a hand probe needs none. Add a route: give it the same `max_budget` / `budget_duration`, add it to both keys' `models` (`/key/update` on `fleet-go` and `opencode-go`) and raise each key's `max_budget` by 95% of its weekly allowance.
+
+### binks.chat keys
+
+`binks-chat` (Z.ai `glm-5.3-flash`) and `binks-chat-hard` (DeepSeek `deepseek-flash`) are the binks.chat product routes, on first-party keys `ZAI_API_KEY` and `DEEPSEEK_API_KEY` (rbw `zai-api-key`, `deepseek-api-key`); `binks-chat` falls back to `binks-chat-hard`, which also takes `binks-chat`'s overflow past its rpm 60 (`binks-chat-hard` is capped at rpm 600, tpm 4M; DeepSeek publishes only a 2500-concurrent account limit, read 2026-11-14). They are reached only through the gateway user `binks-issuer` (internal_user, models limited to those two routes, `max_budget` $50 / 1mo). That budget is the ceiling for all binks.chat spend, because every binks key belongs to that user. LiteLLM team admins are an Enterprise feature, so the issuer is a user, not a team: an internal_user may mint keys only for itself, and its `models` bound every key it mints.
+
+| Key | Models | Budgets | Consumer | Key file |
+|---|---|---|---|---|
+| `binks-issuer` | the two binks routes | the user's $50 / 1mo | binks-api `LITELLM_ISSUER_KEY`: mints `binks-user-<id>` keys ($2 / 1mo each, `metadata.binks_user_id`) | rbw `litellm-binks-issuer-key` |
+| `binks-anon` | the two binks routes | `max_budget` $10 / 1mo, rpm 30 | binks-api `LITELLM_API_KEY`: anonymous chats and every chat when the issuer key is unset | rbw `litellm-binks-anon-key` |
+
+Revoke one user's key with `/key/delete` on its alias; binks-api mints a new one on the next turn.
+
+`eval-reader` is a `proxy_admin_viewer`: it reads keys, teams and spend but calls no model. Set a new key's `team_id`, `metadata.consumer` and `metadata.priority` when you mint it.
+
+> **Category aliases:** `router_settings.model_group_alias` in `config.yaml` exposes short stable names (`code`, `reasoning`, `fast`, `vlm`, `embedding`, `stt`) that resolve to whichever concrete route a category points at. A key that allows the concrete route can call its alias (the `local-only` key calls `fast` through `fast (gpt-oss-120b)`). Retarget an alias in one line -> reconcile -> every consumer follows with no per-app edit. mem0 (`MEM0_DEFAULT_LLM_MODEL`) and karakeep (`INFERENCE_TEXT_MODEL`) call `fast`; binks-api calls `binks-chat`.
 >
-> **Consumers now call the aliases (so a flip actually reaches them):** mem0 (`MEM0_DEFAULT_LLM_MODEL: "fast"`) references a category alias rather than a pinned route name. Karakeep is the exception: it stays pinned to `fast (Qwen3-4B)` because its key only allows that route (calling the alias 403d every tagging job from 2026-07-19 to 2026-09-29). Flip a `model_group_alias` value -> reconcile -> every consumer follows with no per-app edit.
+> **Embedding is intentionally NOT wired to any stateful consumer via its alias.** mem0/karakeep pin `embedding (gemini-001)` because a vector store cannot hot-swap embedder dimensions (pgvector column = 768). Chat/vision/stt are stateless and safe to retarget; embedding is stateful and stays pinned.
 >
-> **Two safety rails that make a local flip non-destructive:**
-> - `router_settings.fallbacks` has local->cloud chains keyed by each local route (e.g. `fast (Qwen3-4B-8bit)` -> `fast (gpt-oss-120b)` -> `assist (gemini-flash)`), so a down box or a cold on_demand timeout spills to cloud instead of erroring.
-> - **Embedding is intentionally NOT wired to any stateful consumer via its alias.** mem0/karakeep pin an explicit embedder because a vector store cannot hot-swap embedder dimensions (local Qwen3 = 1024-dim, pgvector column = 768). Chat/vision/stt are stateless and safe to toggle; embedding is stateful and stays pinned.
->
-> **How to flip a category to local** (once the Mac Studio box is verified up for it): set the alias value to the local route, e.g. `fast: "fast (Qwen3-4B-8bit)"`, then `git push forgejo master && flux reconcile kustomization apps --with-source && kubectl -n ai-gateway delete pod -l app=litellm` (configmap remount). Revert the one line to roll back.
+> A model a key does not allow is a 403, not a fallback: add the route to the key (`/key/update`, `models`) before a consumer names it. Karakeep's key lacked the alias from 2026-07-19 to 2026-09-29 and every tagging job failed silently.
+
+### NVIDIA NIM key
+
+`free-deepseek (deepseek-v4.1-flash)` is NVIDIA's free API catalog tier (key `NVIDIA_NIM_API_KEY`, from rbw `nvidia-nim-api-key`): about 40 requests/min shared across the key, $0, evaluation terms, so fleet trial work only and never client work. Its key sits in no team, like `fleet-go`. The route is priced at 0 and capped at rpm 35, so a refusal is a 429 that fails the call: no fallback edge.
+
+| Key | Models | Budgets | Consumer | Key file |
+|---|---|---|---|---|
+| `fleet-nim` | `free-deepseek (deepseek-v4.1-flash)` | none (free; rpm 35 on the route) | fleet-dispatch harness `nim` (priority low) | `~/.local/state/agentctl/fleet-nim.key` |
+
+### OpenCode free key
+
+The three `opencode-free (...)` routes are OpenCode's free models (beam-free, longcat-2.5-free, iceman-contributor-free) on the Go base and `OPENCODE_GO_API_KEY`, priced 0 by Go and here; the anonymous Zen endpoint refuses them with 429 FreeUsageLimitError. Their providers may train on prompts, which the human accepted on 2026-11-11 for public input only: public repos, canary replays of public PRs, web summaries, never a private or client repo. Three fences hold that: only `fleet-ocfree` lists the routes, so any other key gets a 403 (on 2026-11-11 every one of the 21 keys carried a model list; teams `lazer-core` and `lazer-pool` allow every model, so a key minted into one of them without a model list, or the master key, would reach the routes too); its one consumer, fleet-dispatch harness `ocfree`, starts only for a project in that harness's `projects` allowlist (dotfiles-private `.config/agentctl/harnesses.json`); and its runs load no global opencode, Claude Code or home-dir rules (the harness's `config_dir`), so no private instructions ride along. OpenCode rotates the free list, so a dropped model answers 400 "Model is unavailable"; delete its route then. No fallback edge, like the Go routes.
+
+| Key | Models | Budgets | Consumer | Key file |
+|---|---|---|---|---|
+| `fleet-ocfree` | the three `opencode-free (...)` routes | $1 / 7d, a tripwire only (the routes are priced 0; rpm 20 each) | fleet-dispatch harness `ocfree` (priority low) | `~/.local/state/agentctl/fleet-ocfree.key` |
+
+### Local model key
+
+`local (qwen3.5-9b)` is the one self-hosted route: Qwen3.5-9B under llama-server on the workstation's RTX 4060 Ti (`192.168.1.2:8780`, dotfiles `llama-server.service`, usage in dotfiles `docs/operations/local-llm.md`). Nothing leaves the LAN, so personal data may use it; it is priced 0 and has no fallback edge, so when the workstation is off or asleep the call fails instead of moving to a paid route. Its key sits in no team. A consumer that already holds a key adds the route to it (`/key/update`, `models`) instead of minting another.
+
+| Key | Models | Budgets | Consumer | Key file |
+|---|---|---|---|---|
+| `ask-local` | `local (qwen3.5-9b)` | $1 / 30d, a tripwire only (the route is priced 0) | dotfiles `ask-local` and the `local-model` skill, through the agent-run route `gateway-local` | `~/.local/state/ask-local/litellm.key` |
+| `trader-links` | `local (qwen3.5-9b)` | $1 / 30d, a tripwire only, rpm 120 (30 429'd the pass after 30 asks in 51 s), no team, `metadata.consumer` `trader-markets-links`, priority `low` (re-mint with those: `/key/generate` as above, then `sops` the new key into the secret and `/key/delete` the old) | the trader `trader-markets-links` CronJob (`apps/freqtrade`) | `apps/freqtrade/trader-litellm-secret.sops.yaml` |
+
+### feed-ingest key
+
+`apps/feed-ingest` tags news items through `fast` (its tier-2 step). Its key sits in `lazer-core` as a home service, with its own cap so a news day cannot spend the team's month; past the cap the gateway refuses, items publish untagged and `feed_ingest_tag_errors_total` counts them.
+
+| Key | Models | Budgets | Consumer | Key file |
+|---|---|---|---|---|
+| `feed-ingest` | `fast`, `fast (gpt-oss-120b)` | $10 / 30d, rpm 30, team `lazer-core` | feed-ingest tier-2 tags (priority must) | `apps/feed-ingest/feed-ingest-secret.sops.yaml` `LITELLM_API_KEY` |
 
 ### Create a key
 
@@ -60,7 +131,7 @@ curl -sX POST https://llm.kblab.me/key/generate \
   -H "Content-Type: application/json" \
   -d '{
     "key_alias": "opencode-default",
-    "models": ["code (Qwen3-Coder-Next-4bit)", "fast (Qwen3-4B)", "reasoning (Qwen3.6-35B-A3B-4bit)", "code (qwen-3-coder)"],
+    "models": ["code", "fast", "reasoning", "code (qwen-3-coder)"],
     "max_budget": 50.00,
     "budget_duration": "30d",
     "tpm_limit": 50000,
@@ -71,6 +142,8 @@ curl -sX POST https://llm.kblab.me/key/generate \
 The response contains `"key": "sk-..."` — store this where the consumer can read it. After creation, rotate the consumer's `LITELLM_API_KEY` Secret to this value (or place it in shell env for opencode).
 
 ### Inspect / retire
+
+`glm-pilot` was deleted through `/key/delete` on 2026-11-15 and `~/.local/state/agentctl/glm.key` removed. Its consumer, the glm harness, was replaced by `opencode-go` using `fleet-go.key` (dotfiles-private #791). Before deletion it was blocked, with $48.50 of its $50 cap spent and last activity at 2026-11-11T23:19:50Z; searches of active harness, account, OpenCode and systemd configuration found no remaining consumer. After deletion, `/key/list` had no `glm-pilot` alias and `/key/info` returned 404.
 
 ```bash
 # inspect

@@ -22,6 +22,8 @@ metadata:
   namespace: ai-gateway
   annotations:
     kubernetes.io/ingress.class: traefik
+    # Off public DNS, same as ingress.yaml (hc-213).
+    external-dns.alpha.kubernetes.io/controller: none
     traefik.ingress.kubernetes.io/router.middlewares: ai-gateway-litellm-metrics-deny@kubernetescrd
 spec:
   rules:

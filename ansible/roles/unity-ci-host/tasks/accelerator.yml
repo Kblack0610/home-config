@@ -1,0 +1,25 @@
+---
+# Unity Accelerator on the docker bridge only (unity_ci_accelerator, defaults/main.yml).
+- name: Create the Unity Accelerator store
+  ansible.builtin.file:
+    path: "{{ unity_ci_accelerator_dir }}"
+    state: directory
+    owner: root
+    group: root
+    mode: "0700"
+
+- name: Write the Unity Accelerator unit
+  ansible.builtin.template:
+    src: unity-accelerator.service.j2
+    dest: /etc/systemd/system/unity-accelerator.service
+    owner: root
+    group: root
+    mode: "0644"
+  notify: Restart unity-accelerator
+
+- name: Run the Unity Accelerator
+  ansible.builtin.systemd:
+    name: unity-accelerator.service
+    enabled: true
+    state: started
+    daemon_reload: true

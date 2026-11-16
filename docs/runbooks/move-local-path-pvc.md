@@ -12,6 +12,12 @@ A local-path PV is pinned to one node, and everything on it goes down with that 
 
 Merge before resuming. Otherwise Flux removes the `nodeSelector`.
 
+## StatefulSet volumes
+
+A StatefulSet's claim (`<template>-<sts>-<ordinal>`) moves with `-` as the deployment, because the script cannot scale a StatefulSet itself. Suspend Flux (step 2), run `kubectl -n <ns> scale sts <sts> --replicas=0` and wait until its pods are gone, run the script once per claim, then scale back to the manifest's count and resume Flux. The recreated claim keeps its name and labels, so the StatefulSet adopts it and each pod follows its new PV. No `nodeSelector` PR is needed when the StatefulSet's affinity already allows the target.
+
+When an affinity change rules out the node that holds a claim, the pod stays Pending (`volume node affinity conflict`) until the claim moves. Move the claims before that change merges, or right after it. On 2026-11-14, 9 `freqtrade-league` claims stayed on hp-victus after #953 excluded it, and those bots were down for 16 hours.
+
 ## If the script stops midway
 
 The app is scaled to 0 and the old data is intact. Rerunning does not work once the old PVC is gone, because the script reads the old PV from it. Finish by hand from the script's own steps: recreate the PVC, run the two copy pods, compare hashes, then scale the app back up.

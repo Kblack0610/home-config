@@ -1,0 +1,9 @@
+---
+- name: Write the inventory ssh aliases
+  ansible.builtin.template:
+    src: home-inventory.conf.j2
+    dest: "{{ ssh_client_inventory_path }}"
+    owner: root
+    group: root
+    mode: "0644"
+  become: true

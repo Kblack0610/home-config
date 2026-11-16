@@ -1,0 +1,6 @@
+---
+- name: Restart unity-accelerator
+  ansible.builtin.systemd:
+    name: unity-accelerator.service
+    state: restarted
+    daemon_reload: true

@@ -12,6 +12,7 @@ import json
 import os
 import re
 import sys
+import threading
 import time
 import unittest
 import urllib.error
@@ -65,11 +66,11 @@ FAKE = {
     # Run 7 is older than the window: GitHub would not list it, but the cached list
     # holds runs that age out between refreshes, and it must not count.
     "repos/acme/web/actions/runs?status=completed&per_page=100&page=1": {"total_count": 3, "workflow_runs": [
-        {"id": 9, "name": "CI", "head_branch": "main", "event": "push", "conclusion": "failure", "created_at": T0,
+        {"id": 9, "name": "CI", "status": "completed", "head_branch": "main", "event": "push", "conclusion": "failure", "created_at": T0,
          "updated_at": T0, "run_started_at": T0, "html_url": "https://x/run/9"},
-        {"id": 8, "name": "CI", "head_branch": "main", "event": "pull_request", "conclusion": "cancelled", "created_at": T0,
+        {"id": 8, "name": "CI", "status": "completed", "head_branch": "main", "event": "pull_request", "conclusion": "cancelled", "created_at": T0,
          "updated_at": T0, "run_started_at": T0, "html_url": "https://x/run/8"},
-        {"id": 7, "name": "CI", "head_branch": "main", "event": "push", "conclusion": "success", "created_at": OLD,
+        {"id": 7, "name": "CI", "status": "completed", "head_branch": "main", "event": "push", "conclusion": "success", "created_at": OLD,
          "updated_at": OLD, "run_started_at": OLD, "html_url": "https://x/run/7"}]},
     "repos/acme/web/actions/runs/9/jobs?per_page=100": {"jobs": [
         {"name": "lint", "status": "completed", "conclusion": "failure", "runner_name": "box-light-1",
@@ -98,7 +99,16 @@ class Fake:
         self.calls.append(path)
         if any(path.startswith(b) for b in self.broken):
             raise urllib.error.URLError("boom")
-        return FAKE[re.sub(r"&created=[^&]*", "", path)]
+        return FAKE[norm(path)]
+
+
+def norm(path):
+    # History reads an attempt's jobs page by page; the fixtures list each run's
+    # jobs once, under the plain path, as one page.
+    path = re.sub(r"&created=[^&]*", "", path)
+    if path in FAKE:
+        return path
+    return re.sub(r"/attempts/\d+/jobs\?per_page=100&page=1$", "/jobs?per_page=100", path)
 
 
 def rows(text, metric):
@@ -108,6 +118,8 @@ def rows(text, metric):
 class ExporterTest(unittest.TestCase):
     def setUp(self):
         exporter.DONE_JOBS.clear()
+        exporter.FEED.clear()
+        exporter.RUN_FEED.clear()
         exporter.HISTORY.clear()
         exporter.CALLS.clear()
         exporter.RATE.clear()
@@ -168,6 +180,15 @@ class ExporterTest(unittest.TestCase):
         self.assertEqual(len(waiting), 2)
         self.assertTrue(any('job_name="PlayMode 2"' in r and 'labels="self-hosted,unity"' in r for r in waiting))
         self.assertTrue(any('job_name="(run has no jobs)"' in r and 'workflow="Drift"' in r for r in waiting))
+
+    def test_one_unreadable_run_keeps_the_repo(self):
+        # GitHub 502s a stuck queued run's jobs: that run is a waiting row of its own,
+        # and the repo's running jobs and history still read.
+        out = self.render(broken=("repos/acme/web/actions/runs/20/jobs",))
+        self.assertIn('github_runner_exporter_api_ok{source="repos/acme/web",kind="runs",forge="github"} 1', out)
+        waiting = rows(out, "github_actions_job_waiting")
+        self.assertTrue(any('job_name="(jobs unreadable)"' in r and 'workflow="Drift"' in r for r in waiting))
+        self.assertEqual(len(rows(out, "github_actions_run_recent")), 2)
 
     def test_waiting_jobs_carry_pool_and_stuck(self):
         waiting = rows(self.render(), "github_actions_job_waiting")
@@ -309,6 +330,27 @@ class ExporterTest(unittest.TestCase):
         (gone,) = [r for r in state if 'host="gone"' in r]
         self.assertIn('site="cloud"', gone)
 
+    def test_a_feed_repo_feeds_the_feed_and_is_no_runner_source_and_no_metric(self):
+        # acme/game read only for the feed: never asked for runners, which needs admin on it (a
+        # runner source that cannot answer would blank the pool counts), and none of its jobs
+        # count in the pool's metrics.
+        with mock.patch.object(exporter, "RUN_REPOS", ["acme/web"]), \
+                mock.patch.object(exporter, "FEED_REPOS", ["acme/game"]):
+            out = self.render(broken=("repos/acme/game/actions/runners",))
+            page = exporter.feed_page(0, 100)
+        self.assertFalse(any(c.startswith("repos/acme/game/actions/runners") for c in exporter.get.calls))
+        self.assertNotIn('source="repos/acme/game",kind="runners"', out)
+        self.assertIn('github_runner_exporter_api_ok{source="repos/acme/game",kind="runs",forge="github"} 1', out)
+        self.assertTrue(rows(out, "github_runner_pool_online"))
+        self.assertFalse([r for r in out.splitlines() if not r.startswith(("#", "github_runner_exporter_api_ok")) and 'repo="game"' in r])
+        self.assertEqual(page["repos"], ["acme/web", "acme/game"])
+        self.assertIn("acme/game", {r["repo"] for r in page["runs"]})
+        # Negative control: as a pool repo, the same broken listing blanks the pool counts and its jobs count.
+        out = self.render(broken=("repos/acme/game/actions/runners",))
+        self.assertIn('github_runner_exporter_api_ok{source="repos/acme/game",kind="runners",forge="github"} 0', out)
+        self.assertFalse(rows(out, "github_runner_pool_online"))
+        self.assertIn('github_hosted_jobs_running{repo="game"} 1', out)
+
     def test_github_hosted_jobs_running_counts_only_githubs_runners(self):
         out = self.render()
         self.assertIn('github_hosted_jobs_running{repo="game"} 1', out)
@@ -347,7 +389,6 @@ class ExporterTest(unittest.TestCase):
         self.assertIn(9, exporter.DONE_JOBS)
 
     def test_health_answers_while_a_scrape_renders(self):
-        import threading
         import urllib.request
         entered, release = threading.Event(), threading.Event()
         real = exporter.render
@@ -394,9 +435,11 @@ class ExporterTest(unittest.TestCase):
 
     def test_finished_jobs_are_fetched_once(self):
         self.render()
+        first = exporter.get
         exporter.get = Fake()
         exporter.render()
-        self.assertNotIn("repos/acme/web/actions/runs/9/jobs?per_page=100", exporter.get.calls)
+        self.assertIn("repos/acme/web/actions/runs/9/attempts/1/jobs?per_page=100&page=1", first.calls)
+        self.assertNotIn("repos/acme/web/actions/runs/9/attempts/1/jobs?per_page=100&page=1", exporter.get.calls)
         self.assertIn("repos/acme/game/actions/runs/10/jobs?per_page=100", exporter.get.calls)  # active: always refetched
 
     def test_pool_of_pinned_runners(self):
@@ -405,6 +448,8 @@ class ExporterTest(unittest.TestCase):
         self.assertEqual(exporter.pool_of(["self-hosted", "Linux", "X64"]), "other")
         self.assertEqual(exporter.pool_of(["self-hosted", "linux", "unity-full"]), "unity")
         self.assertEqual(exporter.pool_of(["self-hosted", "linux", "unity-withheld", "host-box"]), "unity")
+        self.assertEqual(exporter.pool_of(["self-hosted", "linux", "unity-build", "host-aws-build-1"]), "unity-build")
+        self.assertEqual(exporter.pool_of(["self-hosted", "linux", "unity-build-withheld", "host-aws-build-1"]), "unity-build")
 
     def test_host_label_beats_the_name_so_one_machine_is_one_host(self):
         self.assertEqual(exporter.host_of("m1-playground-mac", ["self-hosted", "macOS", "host-mac-mini"]), "mac-mini")
@@ -424,6 +469,26 @@ class ExporterTest(unittest.TestCase):
         self.assertFalse(any('state="missing"' in r and 'host="box"' in r and 'pool="unity"' in r
                              for r in rows(out, "github_runner_state")))
 
+    def test_withheld_build_runner_stays_in_the_build_pool(self):
+        org = "orgs/acme/actions/runners?per_page=100&page=1"
+        saved = FAKE[org]
+        FAKE[org] = {"total_count": 1, "runners": [
+            runner(1, "bld-unity-pool-1", ["self-hosted", "unity-build-withheld", "host-bld"], busy=False)]}
+        try:
+            out = self.render()
+        finally:
+            FAKE[org] = saved
+        self.assertEqual(rows(out, "github_runner_withheld"), ['github_runner_withheld{name="bld-unity-pool-1",host="bld"} 1'])
+        self.assertTrue(any('pool="unity-build"' in r and 'host="bld"' in r for r in rows(out, "github_runner_state")))
+        self.assertFalse(any('pool="unity"' in r and 'host="bld"' in r for r in rows(out, "github_runner_state")))
+
+    def test_a_paired_host_runs_two_pools_by_each_runners_labels(self):
+        # aws-build-1: build slots in unity-build, test slots in unity, withheld or not.
+        base = ["self-hosted", "linux", "host-aws-build-1"]
+        for labels, pool in ((["unity-build", "unity-release"], "unity-build"), (["unity-build-withheld"], "unity-build"),
+                             (["unity", "unity-full", "unity-gate"], "unity"), (["unity-withheld", "unity-gate"], "unity")):
+            self.assertEqual(exporter.pool_of(base + labels), pool, labels)
+
     def test_no_token_everything_failed(self):
         out = self.render(broken=("orgs/", "repos/"))
         self.assertEqual(rows(out, "github_runner_state"), [])
@@ -442,7 +507,7 @@ class ByHourTest(unittest.TestCase):
         return time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(t))
 
     def setUp(self):
-        for d in (exporter.DONE_JOBS, exporter.HISTORY, exporter.CALLS, exporter.RATE):
+        for d in (exporter.DONE_JOBS, exporter.FEED, exporter.RUN_FEED, exporter.HISTORY, exporter.CALLS, exporter.RATE):
             d.clear()
 
     def render(self, runs):
@@ -513,6 +578,8 @@ class ColdStartBudgetTest(unittest.TestCase):
 
     def setUp(self):
         exporter.DONE_JOBS.clear()
+        exporter.FEED.clear()
+        exporter.RUN_FEED.clear()
         exporter.HISTORY.clear()
         exporter.CALLS.clear()
         exporter.RATE.clear()
@@ -569,6 +636,56 @@ class ColdStartBudgetTest(unittest.TestCase):
         self.fake()
         out = exporter.render()
         self.assertIn(f'github_runs_finished{{repo="game",workflow="Tests",conclusion="success",scope="branch"}} {self.RUNS}', out)
+
+
+class FairBudgetTest(unittest.TestCase):
+    """Each repo's backlog bigger than the scrape's budget, and acme/web done listing
+    before acme/game starts, as the platform always beat the playground: game must
+    get its share of the budget on the first scrape, not whatever web left."""
+
+    RUNS = 60
+
+    def setUp(self):
+        for d in (exporter.DONE_JOBS, exporter.FEED, exporter.RUN_FEED, exporter.HISTORY, exporter.CALLS, exporter.RATE):
+            d.clear()
+        self.saved = exporter.get
+
+    def tearDown(self):
+        exporter.get = self.saved
+
+    def test_the_slowest_repo_gets_its_share(self):
+        base = {"acme/web": 1000, "acme/game": 2000}
+
+        def get(path, kind="other"):
+            if "/actions/runners" in path:
+                return {"total_count": 0, "runners": []}
+            m = re.match(r"repos/(acme/\w+)/actions/runs\?status=completed.*&page=1$", path)
+            if m:
+                ids = range(base[m.group(1)] + self.RUNS, base[m.group(1)], -1)
+                return {"total_count": self.RUNS, "workflow_runs": [
+                    {"id": i, "name": "CI", "conclusion": "success", "created_at": T0} for i in ids]}
+            if "status=" in path:
+                return {"total_count": 0, "workflow_runs": []}
+            return {"jobs": [{"name": "j", "conclusion": "success", "runner_name": "x",
+                              "created_at": T0, "started_at": T1, "completed_at": T2}]}
+        exporter.get = get
+        web_done, original = threading.Event(), exporter.repo_activity
+
+        def ordered(repo, now):
+            if repo == "acme/game":
+                web_done.wait()
+            out = original(repo, now)
+            if repo == "acme/web":
+                web_done.set()
+            return out
+        with mock.patch.object(exporter, "repo_activity", ordered):
+            out = exporter.render()
+        cached = {repo: sorted(r for r in exporter.DONE_JOBS if b < r <= b + self.RUNS) for repo, b in base.items()}
+        half = exporter.HISTORY_CALL_BUDGET // 2
+        self.assertEqual({r: len(c) for r, c in cached.items()}, {"acme/web": half, "acme/game": half})
+        # Each repo's newest first.
+        self.assertEqual(cached["acme/game"][-1], base["acme/game"] + self.RUNS)
+        self.assertTrue(any('repo="game"' in r for r in rows(out, "github_jobs_finished")))
 
 
 class RateLimitTest(unittest.TestCase):
@@ -635,6 +752,29 @@ class RateLimitTest(unittest.TestCase):
         with self.assertRaises(urllib.error.HTTPError):
             exporter.get("repos/acme/web/actions/runners", "runners")
         self.assertEqual(exporter.rate("repos")["until"], 0.0)
+
+    def test_each_owners_repos_use_that_owners_token(self):
+        # A fine-grained PAT cannot read another owner's private repos, so that
+        # owner's repos and org go out with GITHUB_TOKEN_<OWNER>; the rest keep GITHUB_TOKEN.
+        sent = {}
+
+        def urlopen(req, timeout=None):
+            sent[req.full_url.split("/", 3)[3]] = req.get_header("Authorization")
+            r = io.BytesIO(b"{}")
+            r.headers = {"X-RateLimit-Remaining": "4000"}
+            return r
+        exporter.urllib.request.urlopen = urlopen
+        tokens = exporter.owner_tokens({"GITHUB_TOKEN": "org-pat", "GITHUB_TOKEN_KBLACK0610": "own",
+                                        "GITHUB_TOKEN_MY_ORG": "mine", "GITHUB_TOKEN_EMPTY": ""})
+        self.assertEqual(tokens, {"KBLACK0610": "own", "MY_ORG": "mine"})
+        with mock.patch.multiple(exporter, TOKEN="org-pat", OWNER_TOKENS=tokens):
+            for path in ("repos/Kblack0610/ebay-lister/actions/runs", "repos/acme/web/actions/runs",
+                         "orgs/my-org/actions/runners", "orgs/acme/actions/runners"):
+                exporter.get(path)
+        self.assertEqual(sent, {"repos/Kblack0610/ebay-lister/actions/runs": "Bearer own",
+                                "repos/acme/web/actions/runs": "Bearer org-pat",
+                                "orgs/my-org/actions/runners": "Bearer mine",
+                                "orgs/acme/actions/runners": "Bearer org-pat"})
 
     def serve(self, body, etag):
         """GitHub as seen by one path: 200 with the ETag, 304 when it is sent back."""
@@ -926,5 +1066,220 @@ class ForgejoPagingTest(unittest.TestCase):
 
 ORIGINAL_GET = exporter.get
 
+
+class DetailFeedTest(unittest.TestCase):
+    """/api/ci/details: the window's job detail per exact attempt, as a changes feed."""
+
+    def setUp(self):
+        for d in (exporter.DONE_JOBS, exporter.FEED, exporter.RUN_FEED, exporter.HISTORY, exporter.CALLS, exporter.RATE):
+            d.clear()
+        self.saved = exporter.get
+
+    def tearDown(self):
+        exporter.get = self.saved
+
+    def render(self, extra=None):
+        with mock.patch.dict(FAKE, extra or {}):
+            exporter.get = Fake()
+            exporter.render()
+        return exporter.get
+
+    def test_feed_serves_each_finished_run_with_its_jobs_and_steps(self):
+        steps = [{"number": 1, "name": "checkout", "conclusion": "success", "started_at": T0, "completed_at": T1,
+                  "status": "completed", "log": "x" * 50}]
+        jobs9 = {"jobs": [dict(j, steps=steps) for j in FAKE["repos/acme/web/actions/runs/9/jobs?per_page=100"]["jobs"]]}
+        self.render({"repos/acme/web/actions/runs/9/jobs?per_page=100": jobs9})
+        page = exporter.feed_page(0, 100)
+        self.assertEqual(page["repos"], exporter.RUN_REPOS)
+        with mock.patch.object(exporter, "FORGEJO_REPOS", ["o/fj"]):  # the Forgejo half of the one list
+            self.assertEqual(exporter.feed_page(0, 100)["forgejo_repos"], ["o/fj"])
+        by_id = {r["run_id"]: r for r in page["records"]}
+        self.assertEqual(set(by_id), {9, 8})  # 7 is outside the window
+        rec = by_id[9]
+        self.assertEqual((rec["forge"], rec["repo"], rec["attempt"], rec["complete"]), ("github", "acme/web", 1, True))
+        self.assertEqual(rec["jobs"][0]["steps"][0], {k: steps[0][k] for k in exporter.STEP_KEYS})
+        # The cursor: nothing new after the last record, and an unchanged run is not served twice.
+        self.assertEqual(exporter.feed_page(page["next"], 100)["records"], [])
+        self.render()
+        self.assertEqual(exporter.feed_page(page["next"], 100)["records"], [])
+
+    def test_feed_pages_by_limit(self):
+        self.render()
+        # Two job records and four run records (20, 10, 9, 8), one cursor for both.
+        cursor, seen = 0, []
+        while True:
+            page = exporter.feed_page(cursor, 1)
+            got = [("job", r["run_id"]) for r in page["records"]] + [("run", r["run"]["id"]) for r in page["runs"]]
+            self.assertEqual(len(got), 1)
+            seen += got
+            cursor = page["next"]
+            if not page["more"]:
+                break
+        self.assertEqual(sorted(seen), [("job", 8), ("job", 9), ("run", 8), ("run", 9), ("run", 10), ("run", 20)])
+        self.assertEqual(exporter.feed_page(cursor, 1)["runs"], [])
+
+    def expire_history(self):
+        for repo in list(exporter.HISTORY):
+            at, runs = exporter.HISTORY[repo]
+            exporter.HISTORY[repo] = (at - exporter.HISTORY_REFRESH_SECS, runs)
+
+    def test_runs_are_served_once_per_state_change(self):
+        self.render()
+        runs = {r["run"]["id"]: r for r in exporter.feed_page(0, 100)["runs"]}
+        self.assertEqual(set(runs), {20, 10, 9, 8})  # 7 is outside the window
+        self.assertEqual({k: runs[20][k] for k in ("forge", "repo")}, {"forge": "github", "repo": "acme/web"})
+        self.assertEqual(runs[20]["run"]["status"], "queued")
+        self.assertEqual(runs[10]["run"]["display_title"], FAKE["repos/acme/game/actions/runs?status=in_progress&per_page=15"]
+                         ["workflow_runs"][0]["display_title"])
+        self.assertEqual(runs[9]["run"]["conclusion"], "failure")
+        cursor = exporter.feed_page(0, 100)["next"]
+        self.render()
+        self.assertEqual(exporter.feed_page(cursor, 100)["runs"], [])
+        started = {"total_count": 1, "workflow_runs": [dict(FAKE["repos/acme/web/actions/runs?status=queued&per_page=15"]
+                                                             ["workflow_runs"][0], status="in_progress", run_started_at=T1)]}
+        self.render({"repos/acme/web/actions/runs?status=queued&per_page=15": {"total_count": 0, "workflow_runs": []},
+                     "repos/acme/web/actions/runs?status=in_progress&per_page=15": started})
+        (rec,) = exporter.feed_page(cursor, 100)["runs"]
+        self.assertEqual((rec["run"]["id"], rec["run"]["status"], rec["run"]["run_started_at"]), (20, "in_progress", T1))
+
+    def test_a_cached_completed_list_does_not_move_a_rerun_back(self):
+        self.render()
+        rerun = dict(FAKE["repos/acme/web/actions/runs?status=completed&per_page=100&page=1"]["workflow_runs"][0],
+                     status="in_progress", conclusion=None, run_attempt=2)
+        cursor = exporter.feed_page(0, 100)["next"]
+        self.render({"repos/acme/web/actions/runs?status=in_progress&per_page=15": {"total_count": 1, "workflow_runs": [rerun]},
+                     "repos/acme/web/actions/runs/9/jobs?per_page=100": {"jobs": []}})
+        (rec,) = exporter.feed_page(cursor, 100)["runs"]
+        self.assertEqual((rec["run"]["id"], rec["run"]["run_attempt"], rec["run"]["status"]), (9, 2, "in_progress"))
+        self.assertEqual(exporter.RUN_FEED[9]["run"]["run_attempt"], 2)
+
+    def test_a_lost_run_is_read_by_id_with_the_history(self):
+        self.render()
+        lost = {"id": 5, "name": "Nightly", "status": "in_progress", "created_at": OLD, "run_attempt": 2}
+        exporter.run_feed_store("acme/web", lost)
+        cursor = exporter.feed_page(0, 100)["next"]
+        by_id = "repos/acme/web/actions/runs/5"
+        # Not yet due: the lost read rides the history refresh.
+        get = self.render({by_id: dict(lost, status="completed", conclusion="success")})
+        self.assertNotIn(by_id, get.calls)
+        self.expire_history()
+        get = self.render({by_id: dict(lost, status="completed", conclusion="success")})
+        self.assertIn(by_id, get.calls)
+        (rec,) = exporter.feed_page(cursor, 100)["runs"]
+        self.assertEqual((rec["run"]["id"], rec["run"]["conclusion"]), (5, "success"))
+        # Finished and out of the cached lists, it stays a window for the reader.
+        self.assertIn(5, exporter.RUN_FEED)
+
+    def test_lost_reads_take_turns_and_a_run_github_lost_is_dropped(self):
+        self.render()
+        for rid in (5, 6):
+            exporter.run_feed_store("acme/web", {"id": rid, "name": "Nightly", "status": "in_progress", "created_at": OLD})
+        gone = urllib.error.HTTPError("x", 404, "Not Found", {}, None)
+
+        class Getter(Fake):
+            def __call__(self, path, kind="other"):
+                if path == "repos/acme/web/actions/runs/6":
+                    self.calls.append(path)
+                    raise gone
+                return super().__call__(path, kind)
+        lost = lambda g: [c for c in g.calls if c in ("repos/acme/web/actions/runs/5", "repos/acme/web/actions/runs/6")]
+        with mock.patch.object(exporter, "HISTORY_CALL_BUDGET", 1):
+            self.expire_history()
+            exporter.get = first = Getter()
+            exporter.render()  # 5 is read (no answer: it stays open)
+            self.expire_history()
+            exporter.get = second = Getter()
+            exporter.render()  # then 6, not 5 again: GitHub says 404, so it goes
+        self.assertEqual((lost(first), lost(second)), (["repos/acme/web/actions/runs/5"], ["repos/acme/web/actions/runs/6"]))
+        self.assertIn(5, exporter.RUN_FEED)
+        self.assertNotIn(6, exporter.RUN_FEED)
+
+    def test_an_open_record_unread_for_a_week_is_dropped(self):
+        exporter.run_feed_store("acme/web", {"id": 5, "name": "Nightly", "status": "in_progress", "created_at": OLD})
+        exporter.run_feed_store("acme/web", {"id": 6, "name": "Nightly", "status": "in_progress", "created_at": OLD})
+        exporter.RUN_FEED[5]["stored_at"] -= exporter.RUN_FEED_OPEN_SECS + 1
+        self.render()
+        self.assertNotIn(5, exporter.RUN_FEED)
+        self.assertIn(6, exporter.RUN_FEED)
+
+    def test_an_older_read_of_the_same_state_does_not_overwrite_a_newer_one(self):
+        run = {"id": 5, "name": "N", "status": "in_progress", "created_at": T0, "updated_at": T2}
+        exporter.run_feed_store("acme/web", run)
+        seq = exporter.RUN_FEED[5]["seq"]
+        exporter.run_feed_store("acme/web", dict(run, updated_at=T1, run_started_at=T0))
+        self.assertEqual(exporter.RUN_FEED[5]["seq"], seq)
+
+    def test_a_rerun_is_fetched_for_its_new_attempt(self):
+        self.render()
+        listing = dict(FAKE["repos/acme/web/actions/runs?status=completed&per_page=100&page=1"])
+        listing["workflow_runs"] = [dict(r, run_attempt=2) if r["id"] == 9 else r for r in listing["workflow_runs"]]
+        for repo in list(exporter.HISTORY):
+            at, _ = exporter.HISTORY[repo]
+            exporter.HISTORY[repo] = (at - exporter.HISTORY_REFRESH_SECS, [])
+        cursor = exporter.feed_page(0, 100)["next"]
+        get = self.render({"repos/acme/web/actions/runs?status=completed&per_page=100&page=1": listing,
+                           "repos/acme/web/actions/runs/9/attempts/2/jobs?per_page=100&page=1": {"total_count": 0, "jobs": []}})
+        self.assertIn("repos/acme/web/actions/runs/9/attempts/2/jobs?per_page=100&page=1", get.calls)
+        (rec,) = exporter.feed_page(cursor, 100)["records"]
+        self.assertEqual((rec["run_id"], rec["attempt"]), (9, 2))
+
+    def test_a_finished_run_whose_pr_is_retitled_is_served_again(self):
+        # A pull_request run's display_title is the PR's title now: a retitle changes it
+        # and leaves updated_at alone, and the run ledger must take the new title.
+        self.render()
+        listing = dict(FAKE["repos/acme/web/actions/runs?status=completed&per_page=100&page=1"])
+        listing["workflow_runs"] = [dict(r, display_title="fix: the new title") if r["id"] == 9 else r
+                                    for r in listing["workflow_runs"]]
+        self.expire_history()
+        cursor = exporter.feed_page(0, 100)["next"]
+        self.render({"repos/acme/web/actions/runs?status=completed&per_page=100&page=1": listing})
+        runs = exporter.feed_page(cursor, 100)["runs"]
+        self.assertEqual([(r["run"]["id"], r["run"]["display_title"]) for r in runs], [(9, "fix: the new title")])
+        # read again unchanged: nothing new to serve
+        cursor = exporter.feed_page(0, 100)["next"]
+        self.expire_history()
+        self.render({"repos/acme/web/actions/runs?status=completed&per_page=100&page=1": listing})
+        self.assertEqual(exporter.feed_page(cursor, 100)["runs"], [])
+
+    def test_a_run_with_more_than_100_jobs_pages_and_a_failed_page_stays_partial(self):
+        page1 = {"total_count": 150, "jobs": [{"id": i, "name": f"j{i}"} for i in range(100)]}
+        base = "repos/acme/web/actions/runs/9/attempts/1/jobs?per_page=100"
+        broken = Fake(broken=(base + "&page=2",))
+        with mock.patch.dict(FAKE, {base + "&page=1": page1}):
+            exporter.get = broken
+            exporter.render()
+        rec = {r["run_id"]: r for r in exporter.feed_page(0, 100)["records"]}[9]
+        self.assertFalse(rec["complete"])
+        self.assertEqual(len(rec["jobs"]), 100)
+        page2 = {"total_count": 150, "jobs": [{"id": i, "name": f"j{i}"} for i in range(100, 150)]}
+        cursor = exporter.feed_page(0, 100)["next"]
+        with mock.patch.dict(FAKE, {base + "&page=1": page1, base + "&page=2": page2}):
+            exporter.get = Fake()
+            exporter.render()
+        (rec,) = exporter.feed_page(cursor, 100)["records"]
+        self.assertTrue(rec["complete"])
+        self.assertEqual(len(rec["jobs"]), 150)
+
+    def test_routes_ignore_a_trailing_slash_and_a_query(self):
+        import threading
+        import urllib.request
+        srv = exporter.server(("127.0.0.1", 0))
+        threading.Thread(target=srv.serve_forever, daemon=True).start()
+        base = f"http://127.0.0.1:{srv.server_port}"
+        try:
+            for path in ("/health", "/health/", "/health?x=1"):
+                with urllib.request.urlopen(base + path, timeout=2) as r:
+                    self.assertEqual(r.read(), b"ok", path)
+            with urllib.request.urlopen(base + "/api/ci/details/?cursor=0&limit=5", timeout=2) as r:
+                body = json.loads(r.read())
+            self.assertEqual(body["epoch"], exporter.EPOCH)
+            with self.assertRaises(urllib.error.HTTPError) as e:
+                urllib.request.urlopen(base + "/api/ci/details?cursor=x", timeout=2)
+            self.assertEqual(e.exception.code, 400)
+        finally:
+            srv.shutdown()
+            srv.server_close()
+
 if __name__ == "__main__":
     unittest.main(verbosity=1)
+

@@ -1,6 +1,7 @@
 ---
 # What a session on a fleet worker runs: tmux and wt (from the dotfiles), the
-# three harnesses, gh for its PRs, and python-yaml and jq for fleet-hosts.sh.
+# three harnesses, gh for its PRs, python-yaml and jq for fleet-hosts.sh, and
+# rust and gcc to build agent-panel.
 fleet_worker_packages:
   - git
   - tmux
@@ -8,6 +9,8 @@ fleet_worker_packages:
   - jq
   - python-yaml
   - github-cli
+  - rust
+  - gcc
   - openai-codex
   - opencode
 # Ubuntu, the cloud worker (platform infra/aws-ci-burst, fleet-worker-1). It takes
@@ -21,6 +24,35 @@ fleet_worker_packages_apt:
   - python3-yaml
   - gh
 # A cloud worker joins the tailnet to reach the state host and be reached by
-# fleet-dispatch: the role installs tailscale, and `tailscale up` is the human's.
+# fleet-dispatch, with the auth key from SOPS (role tailscale-node).
 fleet_tailscale: false
 fleet_worker_dotfiles_repo: https://github.com/Kblack0610/.dotfiles.git
+# The fleet home is the worker fleet_state_host names (inventory.yml). It also
+# holds the agent store and serves agent-web: tasks/home.yml.
+fleet_worker_is_home: "{{ inventory_hostname == fleet_state_host.split('.')[0] }}"
+# forge-primary is the live Forgejo; its ssh is on 2222 (apps/forgejo/README.md).
+fleet_home_store_repo: ssh://git@{{ fleet_home_store_host }}:{{ fleet_home_store_port }}/kblack0610/.agent.git
+fleet_home_store_host: forge-primary.kblab.me
+fleet_home_store_port: 2222
+# The kubeconfig schedules-sync reads the exporter feed with on the home
+# (tasks/home.yml): the scoped account's token and the cluster CA from
+# group_vars/fleet_workers/vault.sops.yaml, the server from group_vars/all/k3s.yml.
+fleet_home_feed_kubeconfig:
+  apiVersion: v1
+  kind: Config
+  clusters:
+    - name: home-k3s
+      cluster:
+        server: "{{ k3s_url }}"
+        certificate-authority-data: "{{ vault_fleet_home_feed_ca | b64encode }}"
+  users:
+    - name: schedules-sync
+      user:
+        token: "{{ vault_fleet_home_feed_token }}"
+  contexts:
+    - name: home-k3s-feed
+      context:
+        cluster: home-k3s
+        user: schedules-sync
+        namespace: monitoring
+  current-context: home-k3s-feed

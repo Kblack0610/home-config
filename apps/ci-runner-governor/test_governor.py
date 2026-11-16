@@ -15,20 +15,23 @@ only; CI runs it in the checks workflow.
 import io
 import json
 import os
+import random
 import sys
 import time
 import unittest
 import urllib.error
+import urllib.parse
 from unittest import mock
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import governor  # noqa: E402
 
-# The live thresholds with a fixed host list, so a change to the real roster
-# (config.json "hosts" and "standby") does not change what these tests mean.
+# The live thresholds with a fixed host list and the pool floor that roster was written
+# for, so a change to the real roster (config.json "hosts", "standby", "pool_min_admitted")
+# does not change what these tests mean.
 CONFIG = os.path.join(os.path.dirname(os.path.abspath(__file__)), "config.json")
 LIVE = governor.load_config(CONFIG)
-CFG = governor.with_defaults({**LIVE, "standby": {"mac-studio": {"max_admitted": 6}}, "hosts": {
+CFG = governor.with_defaults({**LIVE, "pool_min_admitted": 2, "standby": {"mac-studio": {"max_admitted": 6}}, "hosts": {
     "asus-laptop": {"min_admitted": 0, "admit": {"tctl": 80}, "withhold": {"idle": 0.25, "tctl": 90}},
     "hp-victus": {},
     "razer-laptop": {},
@@ -72,7 +75,9 @@ POWER = {"provider": "aws", "instance_id": "i-0abc", "region": "us-east-2", "idl
          "start_min_excess": 1, "start_after_seconds": 0}
 AWS = {**CFG, "standby": {"aws-burst-1": {"max_admitted": 8, "power": POWER}}}
 LIVE_POWER = {**governor.POWER_DEFAULTS, **LIVE["standby"]["aws-burst-1"]["power"]}
-HEAVY = {**CFG, "standby": {"aws-burst-1": {"max_admitted": 6, "power": {**LIVE_POWER, "instance_id": "i-0abc"}}}}
+# A 12h day cap of its own: the live hosts run uncapped (24h), and the cap tests need one.
+HEAVY = {**CFG, "standby": {"aws-burst-1": {"max_admitted": 6, "power": {**LIVE_POWER, "instance_id": "i-0abc",
+                                                                       "max_hours_day": 12}}}}
 
 
 # What host_labels() reads for aws-burst-1: its runners' labels (off the LAN, so no `lan`)
@@ -108,6 +113,126 @@ class FakeEc2:
 
     def stop(self, iid):
         self.calls.append(("stop", iid))
+
+
+# aws-build-1's nine slots as the play registers them: 1-3 build slots (1-2 also unity-release),
+# 4-9 test slots, paired 1: 4-5, 2: 6-7, 3: 8-9 (config.json "pairs").
+BUILD_JOB = frozenset({"self-hosted", "linux", "unity-build"})
+PAIRS = {1: [4, 5], 2: [6, 7], 3: [8, 9]}
+PAIRED_BASE = frozenset({"self-hosted", "linux", "x64", "host-aws-build-1"})
+PAIRED_OWN = {s: frozenset({"unity-build"} | ({"unity-release"} if s <= 2 else set())) if s <= 3
+              else frozenset({"unity", "unity-full", "unity-gate"}) for s in range(1, 10)}
+PAIRED_LABELS = PAIRED_BASE.union(*PAIRED_OWN.values()) | {"unity-withheld", "unity-build-withheld"}
+
+
+
+def slot_name(s):
+    return f"aws-build-1-unity-pool-{s}"
+
+
+def paired_labels(s, withheld):
+    """Slot s's labels: as registered, or with the governor's withhold swap."""
+    if not withheld:
+        return PAIRED_BASE | PAIRED_OWN[s]
+    if s <= 3:
+        return PAIRED_BASE | PAIRED_OWN[s] - {"unity-build"} | {"unity-build-withheld"}
+    return PAIRED_BASE | PAIRED_OWN[s] - {"unity", "unity-full"} | {"unity-withheld"}
+
+
+def paired_slots(spec):
+    """spec: one character per slot 1-9. "." withheld and idle, "h" withheld and busy, "i"
+    admitted and idle, "b" admitted and busy, "-" rostered but not registered yet."""
+    return {slot_name(s): {"host": "aws-build-1", "busy": c in "hb", "elapsed": 100 - s, "withheld": c in ".h",
+                           "labels": paired_labels(s, c in ".h")}
+            for s, c in enumerate(spec, 1) if c != "-"}
+
+
+def spec_of(runners):
+    out = ""
+    for s in range(1, 10):
+        r = runners.get(slot_name(s))
+        out += "-" if r is None else ".hib"[2 * (not r["withheld"]) + r["busy"]]
+    return out
+
+
+def settle(cfg, spec, waiting, pins=None, cycles=12):
+    """spec after cycles of decide() and its label changes, with no job starting or ending."""
+    runners = paired_slots(spec)
+    inst = {"aws-build-1": {"state": "running", "busy_at": 10_000, "labels": PAIRED_LABELS}}
+    for _ in range(cycles):
+        for h, a, r, _, _ in governor.decide(cfg, STEADY, runners, waiting, {}, 10_000, inst, pins):
+            if h == "aws-build-1" and a in ("admit", "withhold"):
+                held = a == "withhold"
+                runners[r].update(withheld=held, labels=paired_labels(int(r.rsplit("-", 1)[1]), held))
+    return spec_of(runners)
+
+
+def simulate(cfg, seed, cycles=400):
+    """aws-build-1's nine slots through cycles of random arrivals and finishes: decide() and
+    apply() against a fake GitHub that holds each runner's labels, and each waiting job goes to
+    an idle runner whose labels cover it, as GitHub assigns them. The slots start as the play
+    registers them (every one admitted). Returns (the first (cycle, build slot) where a build
+    slot and one of its test slots both run a job, or None; counts of what ran)."""
+    rnd = random.Random(seed)
+    names = [slot_name(s) for s in range(1, 10)]
+    labels = {slot_name(s): set(paired_labels(s, False)) for s in range(1, 10)}
+    busy, waiting = {}, []
+    stats = {"build_cycles": 0, "four_tests_beside_a_build": 0, "six_tests": 0}
+
+    def gh(method, path, body=None):
+        if method == "GET":
+            return {"runners": [{"id": i, "name": n, "labels": [{"name": l} for l in sorted(labels[n])]}
+                                for i, n in enumerate(names)] if "page=1" in path else []}
+        n = names[int(path.split("/runners/")[1].split("/")[0])]
+        if method == "POST":
+            labels[n] |= set(body["labels"])
+        else:
+            labels[n].discard(urllib.parse.unquote(path.rsplit("/", 1)[1]))
+        return None
+
+    inst = {"aws-build-1": {"state": "running", "busy_at": 10_000, "labels": PAIRED_LABELS}}
+    pool_jobs = [UNITY_JOB, UNITY_JOB | {"unity-gate"}, UNITY_JOB | {"unity-full"}]
+    with mock.patch.object(governor, "gh", gh):
+        for c in range(cycles):
+            now = 10_000 + 60 * c
+            inst["aws-build-1"]["busy_at"] = now
+            if len(waiting) < 20:
+                waiting += [rnd.choice(pool_jobs) for _ in range(rnd.choice((0, 0, 1, 2, 4)))]
+            if rnd.random() < 0.08:
+                waiting.append(rnd.choice((BUILD_JOB, BUILD_JOB | {"unity-release"})))
+            runners = {n: {"host": "aws-build-1", "busy": n in busy, "elapsed": now - busy.get(n, now),
+                           "withheld": bool(labels[n] & {"unity-withheld", "unity-build-withheld"}),
+                           "labels": frozenset(labels[n])} for n in names}
+            for h, a, r, _, _ in governor.decide(cfg, STEADY, runners, list(waiting), {}, now, inst, None):
+                if h == "aws-build-1" and r:
+                    governor.apply(cfg, a, r, h)
+            for need in list(waiting):
+                free = [n for n in names if n not in busy and need <= labels[n]]
+                if free:
+                    busy[rnd.choice(free)] = now
+                    waiting.remove(need)
+            running = {int(n.rsplit("-", 1)[1]) for n in busy}
+            for b, tests in PAIRS.items():
+                if b in running and running & set(tests):
+                    return (c, b), stats
+            tests = len(running - set(PAIRS))
+            stats["build_cycles"] += bool(running & set(PAIRS))
+            stats["four_tests_beside_a_build"] += bool(running & set(PAIRS)) and tests >= 4
+            stats["six_tests"] += tests == 6
+            for n in list(busy):
+                if rnd.random() < (0.05 if int(n.rsplit("-", 1)[1]) in PAIRS else 0.25):
+                    del busy[n]
+    return None, stats
+
+
+RESTORED = governor.restored
+
+
+def setUpModule():
+    # No test reads Prometheus: a first sight restores nothing unless a test says so.
+    p = mock.patch.object(governor, "restored", return_value=(0.0, "", False))
+    p.start()
+    unittest.addModuleCleanup(p.stop)
 
 
 class GovernorTest(unittest.TestCase):
@@ -283,11 +408,12 @@ class GovernorTest(unittest.TestCase):
 
     def test_stop_after_idle_off_seconds(self):
         withheld = {**self.aws(off=8), **RUNNERS}  # razer-3 covers the one job
+        cold = {**AWS, "warm_idle_off_seconds": 0}  # no warm host: its own idle-off alone
         for idle, want in ((1199, ("hold", "")), (1200, ("stop", ""))):
-            got = actions(self.STEADY, withheld, queue=1, cfg=AWS, instances=instance("running", idle))
+            got = actions(self.STEADY, withheld, queue=1, cfg=cold, instances=instance("running", idle))
             self.assertEqual(got["aws-burst-1"], want)
         # Its slots go first, even with jobs waiting that it has not taken in that time.
-        got = actions(self.STEADY, {**self.aws(on_idle=1, off=7), **self.FULL}, queue=9, cfg=AWS,
+        got = actions(self.STEADY, {**self.aws(on_idle=1, off=7), **self.FULL}, queue=9, cfg=cold,
                       instances=instance("running", 1200))
         self.assertEqual(got["aws-burst-1"], ("withhold", "aws-idle-0"))
 
@@ -341,7 +467,8 @@ class GovernorTest(unittest.TestCase):
     def test_live_gate_values(self):
         self.assertEqual({k: LIVE_POWER[k] for k in governor.POWER_DEFAULTS},
                          {"idle_off_seconds": 900, "start_min_excess": 4, "start_after_seconds": 300,
-                          "max_hours_day": 12, "fallback_seconds": 3600})
+                          "start_now_excess": 8, "max_hours_day": 24, "fallback_seconds": 3600})
+        self.assertEqual(LIVE["warm_idle_off_seconds"], 2700)
 
     def test_no_start_below_the_excess(self):
         inst = instance("stopped", want_since=1)
@@ -388,10 +515,33 @@ class GovernorTest(unittest.TestCase):
         self.assertEqual(inst["aws-burst-1"]["next_cause"], "cap")
         self.assertTrue(inst["aws-burst-1"]["draining"])
 
-    def test_idle_off_is_900s_live(self):
+    def test_idle_off_is_900s_live_and_the_warm_host_waits_2700s(self):
         runners = {**self.aws(off=6), **RUNNERS}
-        self.assertEqual(self.heavy(instance("running", 899), runners=runners, queue=1)[0], "hold")
-        self.assertEqual(self.heavy(instance("running", 900), runners=runners, queue=1)[0], "stop")
+        # Another burst host busy later is the warm one, so aws-burst-1 stops at 900s.
+        later = {"aws-burst-2": {"state": "running", "busy_at": 10_000, "labels": AWS_LABELS}}
+        two = {**HEAVY, "standby": {**HEAVY["standby"], "aws-burst-2": {"max_admitted": 6, "power": {
+            **LIVE_POWER, "instance_id": "i-0def"}}}}
+        for idle, want in ((899, "hold"), (900, "stop")):
+            got = {h: a for h, a, *_ in decide(self.STEADY, runners, queue=1, cfg=two,
+                                               instances={**instance("running", idle), **later})}
+            self.assertEqual(got["aws-burst-1"], want)
+        # Alone, it is the warm host (2026-11-14: all four stopped by 08:59, 14 gates at 09:02).
+        self.assertEqual(self.heavy(instance("running", 2699), runners=runners, queue=1)[0], "hold")
+        self.assertEqual(self.heavy(instance("running", 2700), runners=runners, queue=1)[0], "stop")
+
+    def test_a_packed_host_is_never_the_warm_one(self):
+        insts = {**instance("running", 0, packed=True),
+                 "aws-burst-2": {"state": "running", "busy_at": 5_000, "labels": AWS_LABELS}}
+        cfg = {**HEAVY, "standby": {**HEAVY["standby"], "aws-burst-2": {"max_admitted": 6, "power": {
+            **LIVE_POWER, "instance_id": "i-0def"}}}}
+        self.assertEqual(governor.warm_host(cfg, insts), "aws-burst-2")
+        self.assertIsNone(governor.warm_host(cfg, instance("stopped")))
+
+    def test_a_deep_queue_starts_at_once(self):
+        # start_now_excess (8) past the other hosts skips the start hold; 7 still waits it out.
+        for queue, want in ((7, "hold"), (8, "start")):
+            inst = instance("stopped", want_since=10_000)
+            self.assertEqual(self.heavy(inst, queue=queue, runners=self.FULL)[0], want)
 
     def test_override_on_starts_with_nothing_waiting(self):
         inst = instance("stopped", override="on", hours_today=13.0)
@@ -404,6 +554,25 @@ class GovernorTest(unittest.TestCase):
         self.assertEqual(self.heavy(inst, runners=runners, queue=0)[:2], ("admit", "aws-off-0"))
         full = {**self.aws(on_idle=6), **self.FULL}
         self.assertEqual(self.heavy(inst, runners=full, queue=0)[0], "hold")
+
+    def test_a_pin_drains_a_standby_host_under_override_on(self):
+        inst = instance("running", override="on")
+        busy = {**self.aws(on_busy=2, on_idle=1, off=3), **self.FULL}
+        got = decide(self.STEADY, busy, cfg=HEAVY, instances=inst, pins={"aws-burst-1": 0})
+        self.assertIn(("aws-burst-1", "withhold", "aws-idle-0", "PINNED", "pinned to 0"), got)
+        drained = {**self.aws(off=6), **self.FULL}
+        self.assertEqual(self.heavy(inst, runners=drained)[:2], ("admit", "aws-off-0"))  # no pin: override on admits
+        got = decide(self.STEADY, drained, cfg=HEAVY, instances=inst, pins={"aws-burst-1": 0})
+        self.assertIn(("aws-burst-1", "hold", "", "PINNED", "overflow"), got)
+
+    def test_a_pin_caps_a_standby_host_admits(self):
+        inst = instance("running")
+        two = {**self.aws(on_busy=2, off=4), **self.FULL}
+        self.assertEqual(self.heavy(inst, runners=two, queue=9)[0], "admit")
+        got = decide(self.STEADY, two, cfg=HEAVY, instances=inst, pins={"aws-burst-1": 2})
+        self.assertEqual([d[1] for d in got if d[0] == "aws-burst-1"], ["hold"])
+        got = decide(self.STEADY, two, cfg=HEAVY, instances=inst, pins={"aws-burst-1": 9})
+        self.assertIn(("aws-burst-1", "admit", "aws-off-0", "STANDBY"), [d[:4] for d in got])
 
     def test_override_off_drains_then_stops(self):
         inst = instance("running", override="off")
@@ -431,6 +600,22 @@ class GovernorTest(unittest.TestCase):
                     f.write(body)
                 self.assertEqual(governor.read_override("aws-burst-1", 100), want, body)
         self.assertEqual(len([c for c in out.call_args_list if "unreadable" in c.args[0]]), 2)
+
+    def test_cap_override_holds_on_to_the_cap_from_first_sight(self):
+        cap = 12 * 3600
+        with mock.patch("builtins.print") as out:
+            t = {}
+            # 19 h "on", the daily hand-written one: held to 12 h from the cycle it is first seen,
+            # and later cycles keep that first sight, so it ends then and does not slide.
+            self.assertEqual(governor.cap_override("h", t, "on", 19 * 3600, 0, cap), ("on", cap))
+            self.assertEqual(governor.cap_override("h", t, "on", 19 * 3600, 8 * 3600, cap), ("on", cap))
+            self.assertEqual(governor.cap_override("h", t, "on", 19 * 3600, cap, cap), ("", 0))
+            # A new end time is a new override; a short one runs to its own end.
+            self.assertEqual(governor.cap_override("h", t, "on", cap + 7200, cap, cap), ("on", cap + 7200))
+            # "off" is never capped, and none passes through.
+            self.assertEqual(governor.cap_override("h", t, "off", 30 * 3600, 0, cap), ("off", 30 * 3600))
+            self.assertEqual(governor.cap_override("h", t, "", 0, 0, cap), ("", 0))
+        self.assertEqual(len([c for c in out.call_args_list if "held to 12 h" in c.args[0]]), 1)
 
     # The human's machine-mode: a pinned host goes to its slots whatever the readings say.
     PINNED = pool(("hpv-1", "hp-victus", True, 50, False), ("hpv-2", "hp-victus", False, 0, False),
@@ -471,6 +656,13 @@ class GovernorTest(unittest.TestCase):
         hosts = readings(**{"razer-laptop": COOL, "asus-laptop": COOL, "hp-victus": FULL})
         out = decide(hosts, self.PINNED, pins={"hp-victus": 2})
         self.assertEqual([(a, v) for h, a, _, v, _ in out if h == "hp-victus"], [("withhold", "FULL")])
+
+    def test_a_pin_withholds_on_a_full_host(self):
+        # A release reservation (pin 0) on a full razer: the withhold is the pin's, so a dry
+        # run applies it; a FULL withhold there would only log.
+        hosts = readings(**{"razer-laptop": COOL, "asus-laptop": COOL, "hp-victus": FULL})
+        out = decide(hosts, self.PINNED, pins={"hp-victus": 0})
+        self.assertEqual([(a, r, v) for h, a, r, v, _ in out if h == "hp-victus"], [("withhold", "hpv-2", "PINNED")])
 
     def test_an_unpinned_host_is_unchanged(self):
         hosts = readings(**{"razer-laptop": HOT, "asus-laptop": COOL, "hp-victus": COOL})
@@ -523,6 +715,14 @@ class GovernorTest(unittest.TestCase):
         self.assertEqual(len([l for l in lines if "reservation unreadable" in l]), 2)
         self.assertEqual(len([l for l in lines if "override unreadable" in l]), 2)
 
+    def test_read_pins_covers_standby_hosts(self):
+        import tempfile
+        with tempfile.TemporaryDirectory() as d, mock.patch.object(governor, "OVERRIDE_DIR", d):
+            with open(os.path.join(d, "aws-burst-1"), "w") as f:
+                f.write('{"action": "on", "until": 5000, "slots": 0}')
+            self.assertEqual(governor.read_pins(AWS, 1000), {"aws-burst-1": 0})
+            self.assertEqual(governor.read_override("aws-burst-1", 1000), ("on", 5000.0))
+
     def test_run_time_counts_per_utc_day(self):
         t, day = {}, 1_762_214_400  # 2025-11-04T00:00:00Z
         governor.count_run_time(t, "running", day + 60)
@@ -546,10 +746,100 @@ class GovernorTest(unittest.TestCase):
         governor.count_run_time(t, "stopped", day + 3600, launched=day + 60)  # stopped: nothing to book
         self.assertEqual(t["hours_today"], 0)
 
+    def test_a_restart_restores_the_run_time_and_cause_earlier_pods_exported(self):
+        day = 1_762_214_400
+        pods = [{"metric": {}, "value": [0, "7.9"]}]
+        last = [{"metric": {"host": "aws-burst-1", "state": "running", "reason": "queue"}, "value": [0, "1"]}]
+        with mock.patch.object(governor, "prom", side_effect=[pods, last]) as prom:
+            seconds, cause, up = RESTORED("aws-burst-1", day + 10 * 3600)
+        self.assertAlmostEqual(seconds, 7.9 * 3600)
+        self.assertEqual((cause, up), ("queue", True))
+        self.assertIn(f"[{10 * 3600 - 2 * governor.CYCLE_SECONDS}s]", prom.call_args_list[0].args[0])
+        with mock.patch.object(governor, "prom", side_effect=[[], []]):  # no cause on record
+            self.assertEqual(RESTORED("aws-burst-1", day + 3600), (0.0, "", False))
+        with mock.patch.object(governor, "prom") as prom:  # just past midnight, not up: ask again
+            self.assertIsNone(RESTORED("aws-burst-1", day + 60))
+        prom.assert_not_called()
+        with mock.patch.object(governor, "prom", side_effect=urllib.error.URLError("down")), \
+                mock.patch("builtins.print"):
+            self.assertIsNone(RESTORED("aws-burst-1", day + 3600))
+
+    def test_a_restart_finds_the_start_cause_since_the_launch_past_none_and_midnight(self):
+        # hc-223: started by an override before midnight, then pods that exported "none".
+        day = 1_762_214_400
+        last = [{"metric": {"host": "aws-burst-1", "state": "running", "reason": "override"}, "value": [0, "1"]}]
+        with mock.patch.object(governor, "prom", side_effect=[last]) as prom:
+            back = RESTORED("aws-burst-1", day + 60, launched=day - 8 * 3600)
+        self.assertEqual(back, (0.0, "override", True))
+        query = prom.call_args.args[0]  # the day's hours are not read this close to midnight
+        self.assertIn('reason!="none"', query)
+        self.assertIn(f"[{8 * 3600 + 60 + 2 * governor.CYCLE_SECONDS}s:]", query)
+        with mock.patch.object(governor, "prom", side_effect=[[], last]) as prom:  # restart 10s after a start
+            self.assertEqual(RESTORED("aws-burst-1", day + 3600, launched=day + 3590), (0.0, "override", True))
+        self.assertIn(f"[{10 + 2 * governor.CYCLE_SECONDS}s:]", prom.call_args.args[0])
+
+    def test_a_stopped_host_reads_todays_stop_reason_not_back_to_its_old_launch(self):
+        now = time.time()
+        with mock.patch.object(governor, "restored", return_value=(0.0, "idle", False)) as back, \
+                mock.patch.object(governor, "power_provider",
+                                  return_value=(FakeEc2("stopped", launched=now - 21 * 86_400), "")), \
+                mock.patch.object(governor, "host_labels", return_value=AWS_LABELS):
+            t = {}
+            governor.power_readings(AWS, {}, {"aws-burst-1": t}, now)
+        self.assertEqual(back.call_args.args[2], 0.0)
+        self.assertEqual(t["cause"], "idle")
+
+    def test_a_restart_in_the_start_call_keeps_its_cause_though_the_sample_read_stopped(self):
+        # hc-223: aws-build-1's last sample before a deploy was "stopped queue", the start
+        # call's own cycle; the instance was running by the new pod's first cycle.
+        now = time.time()
+        with mock.patch.object(governor, "restored", return_value=(0.0, "queue", False)), \
+                mock.patch.object(governor, "power_provider",
+                                  return_value=(FakeEc2("running", launched=now - 30), "")), \
+                mock.patch.object(governor, "host_labels", return_value=AWS_LABELS):
+            t = {}
+            governor.power_readings(AWS, {}, {"aws-burst-1": t}, now)
+        self.assertEqual(t["cause"], "queue")
+        with mock.patch.object(governor, "restored", return_value=(0.0, "idle", False)), \
+                mock.patch.object(governor, "power_provider",
+                                  return_value=(FakeEc2("running", launched=now - 30), "")), \
+                mock.patch.object(governor, "host_labels", return_value=AWS_LABELS):
+            t = {}
+            governor.power_readings(AWS, {}, {"aws-burst-1": t}, now)
+        self.assertNotIn("cause", t)  # the stop before this launch is not why it started
+
+    def test_a_first_sight_keeps_the_larger_day_and_a_cause_that_matches_the_state(self):
+        def first_sight(state, back, launched=0.0, now=time.time()):
+            t = {}
+            with mock.patch.object(governor, "restored", return_value=back), \
+                    mock.patch.object(governor, "power_provider", return_value=(FakeEc2(state, launched=launched), "")), \
+                    mock.patch.object(governor, "host_labels", return_value=AWS_LABELS):
+                governor.power_readings(AWS, {}, {"aws-burst-1": t}, now)
+            return t
+        now = time.time()
+        midnight = now - now % 86_400
+        t = first_sight("running", (5 * 3600.0, "queue", True), launched=midnight + 60, now=midnight + 3600)
+        self.assertEqual((t["hours_today"], t["cause"]), (5, "queue"))  # earlier pods counted more
+        t = first_sight("running", (60.0, "queue", True), launched=midnight + 60, now=midnight + 3600)
+        self.assertAlmostEqual(t["hours_today"], (3600 - 60) / 3600)  # the launch time counts more
+        t = first_sight("stopped", (2 * 3600.0, "queue", True))
+        self.assertEqual(t["hours_today"], 2)
+        self.assertNotIn("cause", t)  # it was up, it is down now: the old cause is not this state's
+
+    def test_a_failed_restore_is_asked_again_until_one_answers(self):
+        t, ec2 = {}, FakeEc2("running")
+        with mock.patch.object(governor, "restored", side_effect=[None, (3 * 3600.0, "queue", True)]) as back, \
+                mock.patch.object(governor, "power_provider", return_value=(ec2, "")), \
+                mock.patch.object(governor, "host_labels", return_value=AWS_LABELS):
+            for _ in range(3):
+                governor.power_readings(AWS, {}, {"aws-burst-1": t}, time.time())
+        self.assertEqual(back.call_count, 2)  # unread, then read once and never again
+        self.assertEqual((t["cause"], round(t["hours_today"])), ("queue", 3))
+
     def test_power_metrics_after_a_live_stop(self):
         ec2 = FakeEc2("running")
         hosts = readings(**{"razer-laptop": BUSY, "asus-laptop": BUSY, "hp-victus": BUSY})
-        tracked = {"aws-burst-1": {"busy_at": 0, "day": time.strftime("%Y-%m-%d"), "run_seconds": 7200.0}}
+        tracked = {"aws-burst-1": {"busy_at": 0, "day": time.strftime("%Y-%m-%d", time.gmtime()), "run_seconds": 7200.0}}
         self.power_cycle(ec2, observed=(hosts, {**self.aws(off=8), **self.FULL}, []), tracked=tracked)
         self.assertIn(("stop", "i-0abc"), ec2.calls)
         m = governor.State.metrics
@@ -756,7 +1046,7 @@ class GovernorTest(unittest.TestCase):
         self.assertEqual((inst["aws-burst-1"]["want"], inst["aws-burst-1"]["held_seconds"]), (9, 120))
 
     def test_rule_metrics_live_flags_and_last_change(self):
-        cfg = {**AWS, "standby": {"aws-burst-1": {"max_admitted": 8, "power": {**POWER, "usd_per_hour": 1.855}}}}
+        cfg = {**AWS, "rates": {"aws-burst-1": {"usd_per_hour": 1.855, "basis": "on-demand"}}}
         tracked = {}
         with mock.patch.object(governor.time, "time", return_value=10_000):
             self.power_cycle(FakeEc2("stopped"), cfg, tracked=tracked)
@@ -795,6 +1085,240 @@ class GovernorTest(unittest.TestCase):
         self.assertEqual([c[0] for c in calls], ["GET", "POST", "DELETE"])
         self.assertEqual(calls[1][2], {"labels": ["unity", "unity-full"]})
         self.assertTrue(calls[2][1].endswith("/7/labels/unity-withheld"))
+
+    # A dedicated host (aws-build-1): its own label and withheld label, only its own jobs,
+    # outside the shared pool's queue, floor, cap and standby order.
+    BUILD_JOB = frozenset({"self-hosted", "linux", "unity-build"})
+    BUILD_LABELS = frozenset({"self-hosted", "linux", "x64", "host-aws-build-1", "unity-build-withheld", "unity-build"})
+    BUILD = {**CFG, "standby": {
+        "aws-build-1": {"max_admitted": 3, "labels": ["unity-build"], "withheld_label": "unity-build-withheld",
+                        "power": {**POWER, "instance_id": "i-0bld"}},
+        **AWS["standby"]}}
+
+    def both(self, build="stopped", burst="stopped", idle=0):
+        return {"aws-build-1": {"state": build, "busy_at": 10_000 - idle, "labels": self.BUILD_LABELS},
+                "aws-burst-1": {"state": burst, "busy_at": 10_000 - idle, "labels": AWS_LABELS}}
+
+    def build(self, on_busy=0, on_idle=0, off=0):
+        specs = [(f"bld-{i}", "aws-build-1", True, 100 - i, False) for i in range(on_busy)]
+        specs += [(f"bld-idle-{i}", "aws-build-1", False, 0, False) for i in range(on_idle)]
+        specs += [(f"bld-off-{i}", "aws-build-1", False, 0, True) for i in range(off)]
+        return pool(*specs)
+
+    def test_a_waiting_build_starts_the_build_host_only(self):
+        # razer-3 is idle, which would cover one pool job: it covers no build.
+        got = actions(self.STEADY, RUNNERS, cfg=self.BUILD, instances=self.both(), waiting=[self.BUILD_JOB])
+        self.assertEqual(got["aws-build-1"], ("start", ""))
+        self.assertEqual(got["aws-burst-1"], ("hold", ""))
+
+    def test_gate_jobs_never_start_the_build_host(self):
+        # Negative control: a full pool queue starts aws-burst-1, and aws-build-1, first in the
+        # standby order, neither starts nor stands ahead of it.
+        got = actions(self.STEADY, self.FULL, cfg=self.BUILD, instances=self.both(), queue=5)
+        self.assertEqual(got["aws-build-1"], ("hold", ""))
+        self.assertEqual(got["aws-burst-1"], ("start", ""))
+
+    def test_a_build_does_not_admit_a_pool_slot(self):
+        runners = {**self.aws(off=2), **self.FULL}
+        got = actions(self.STEADY, runners, cfg=self.BUILD, instances=self.both(burst="running"),
+                      waiting=[self.BUILD_JOB])
+        self.assertEqual(got["aws-burst-1"], ("hold", ""))
+
+    def test_the_build_host_admits_past_the_pool_cap(self):
+        cfg = {**self.BUILD, "pool_max_admitted": 0}
+        got = actions(self.STEADY, {**self.build(off=3), **self.FULL}, cfg=cfg,
+                      instances=self.both(build="running"), waiting=[self.BUILD_JOB])
+        self.assertEqual(got["aws-build-1"], ("admit", "bld-off-0"))
+
+    def test_build_slots_do_not_count_toward_the_pool_cap(self):
+        # Two pool runners admitted and a cap of 3: three busy build slots leave room for one more.
+        cfg = {**self.BUILD, "pool_max_admitted": 3}
+        runners = {**self.build(on_busy=3), **self.aws(off=2), **self.FULL}
+        got = actions(self.STEADY, runners, cfg=cfg, instances=self.both(build="running", burst="running"), queue=5)
+        self.assertEqual(got["aws-burst-1"], ("admit", "aws-off-0"))
+
+    def test_the_build_host_goes_back_when_no_build_waits(self):
+        # Gate jobs wait, but none is the build host's, and no build has waited for the dwell.
+        inst = self.both(build="running")
+        inst["aws-build-1"]["waited_at"] = 10_000 - DWELL
+        got = actions(self.STEADY, {**self.build(on_idle=1), **self.FULL}, cfg=self.BUILD, instances=inst, queue=5)
+        self.assertEqual(got["aws-build-1"], ("withhold", "bld-idle-0"))
+
+    def test_the_build_host_stops_when_idle(self):
+        got = actions(self.STEADY, {**self.build(off=3), **self.FULL}, cfg=self.BUILD,
+                      instances=self.both(build="running", idle=1200), queue=5)
+        self.assertEqual(got["aws-build-1"], ("stop", ""))
+
+    def test_build_host_labels_swap_only_its_own(self):
+        for action, has, added, removed in (("admit", "unity-build-withheld", "unity-build", "unity-build-withheld"),
+                                            ("withhold", "unity-build", "unity-build-withheld", "unity-build")):
+            calls = []
+
+            def gh(method, path, body=None):
+                calls.append((method, path, body))
+                if method == "GET":
+                    return {"runners": [{"id": 9, "name": "bld-1",
+                                         "labels": [{"name": "self-hosted"}, {"name": has}]}]}
+                return None
+            governor.gh = gh
+            governor.apply(self.BUILD, action, "bld-1", "aws-build-1")
+            self.assertEqual(calls[1][2], {"labels": [added]}, action)
+            self.assertEqual([c[1].rsplit("/", 1)[1] for c in calls if c[0] == "DELETE"], [removed], action)
+
+    def test_a_waiting_build_is_not_in_the_pool_queue(self):
+        jobs = [self.BUILD_JOB, UNITY_JOB, self.BUILD_JOB]
+        self.assertEqual(governor.pool_jobs(jobs, governor.build_marks(self.BUILD)), [UNITY_JOB])
+
+    def test_the_build_pool_is_read(self):
+        self.assertEqual(governor.pools(self.BUILD), ["unity", "unity-build"])
+        with mock.patch.object(governor, "prom", return_value=[]) as prom:
+            governor.host_labels(self.BUILD, "aws-build-1")
+        self.assertIn('pool=~"unity|unity-build"', prom.call_args.args[0])
+
+    # A paired host (aws-build-1, "pairs" in config.json): build slots 1-3 each share their cores
+    # and memory with two test slots, and a build and a test never run in one pair.
+    PAIRED = {**CFG, "standby": {"aws-build-1": {
+        "max_admitted": 9, "labels": ["unity-build"], "withheld_label": "unity-build-withheld",
+        "pairs": {"1": [4, 5], "2": [6, 7], "3": [8, 9]}, "power": {**POWER, "instance_id": "i-0bld"}}}}
+    RELEASE_JOB = BUILD_JOB | {"unity-release"}
+
+    def paired(self, spec, waiting, cfg=None, pins=None, **inst):
+        """This cycle's actions on aws-build-1, as (action, slot number)."""
+        up = {"aws-build-1": {"state": "running", "busy_at": 10_000, "labels": PAIRED_LABELS, **inst}}
+        return sorted((a, int(r.rsplit("-", 1)[1]) if r else 0)
+                      for h, a, r, _, _ in decide(self.STEADY, paired_slots(spec), cfg=cfg or self.PAIRED,
+                                                  instances=up, waiting=waiting, pins=pins)
+                      if h == "aws-build-1" and a != "hold")
+
+    def test_no_build_admits_six_test_slots_and_no_build_slot(self):
+        self.assertEqual(settle(self.PAIRED, ".........", [UNITY_JOB] * 10), "...iiiiii")
+        # As the play registers them, every slot admitted: the build slots step aside.
+        self.assertEqual(settle(self.PAIRED, "iiiiiiiii", [UNITY_JOB] * 10), "...iiiiii")
+
+    def test_a_waiting_build_takes_pair_1_once_both_its_tests_end(self):
+        # Both of pair 1's test slots step aside in one cycle, and the other four are left alone.
+        self.assertEqual(self.paired("...bbbbbb", [BUILD_JOB]), [("withhold", 4), ("withhold", 5)])
+        self.assertEqual(self.paired("...hhbbbb", [BUILD_JOB]), [])
+        self.assertEqual(self.paired("....hbbbb", [BUILD_JOB]), [])
+        self.assertEqual(self.paired(".....bbbb", [BUILD_JOB]), [("admit", 1)])
+
+    def test_a_build_takes_the_pair_with_the_fewest_busy_tests(self):
+        self.assertEqual(self.paired("...bbbbii", [BUILD_JOB]), [("withhold", 8), ("withhold", 9)])
+        # A release build asks unity-release, which slot 3 lacks, so it takes pair 1 instead.
+        self.assertEqual(self.paired("...bbbbii", [self.RELEASE_JOB] + [UNITY_JOB] * 2), [("withhold", 4), ("withhold", 5)])
+
+    def test_two_builds_leave_two_test_slots(self):
+        self.assertEqual(settle(self.PAIRED, "...iiiiii", [BUILD_JOB] * 2 + [UNITY_JOB] * 10), "ii.....ii")
+        self.assertEqual(settle(self.PAIRED, ".........", [BUILD_JOB] * 3 + [UNITY_JOB] * 10), "iii......")
+
+    def test_a_busy_build_keeps_its_pair(self):
+        # No build waits and pair 1 has the most idle test slots, yet its build keeps it.
+        self.assertEqual(settle(self.PAIRED, "b....iibb", [UNITY_JOB] * 10), "b....iibb")
+        # A second build takes pair 2, the one with no busy test, and pair 1 is untouched.
+        self.assertEqual(settle(self.PAIRED, "b....iibb", [BUILD_JOB] + [UNITY_JOB] * 10), "bi.....bb")
+
+    def test_an_idle_build_slot_steps_aside_when_no_build_waits(self):
+        self.assertEqual(self.paired("i....bbbb", [UNITY_JOB] * 5), [("withhold", 1)])
+        # Its test slots come in only once it reads withheld.
+        self.assertEqual(self.paired(".....bbbb", [UNITY_JOB] * 5), [("admit", 4)])
+
+    def test_slots_not_registered_yet(self):
+        # The roster is deployed before the play registers the slots.
+        self.assertEqual(self.paired("...------", [BUILD_JOB]), [("admit", 1)])
+        self.assertEqual(settle(self.PAIRED, "---......", [UNITY_JOB] * 10), "---iiiiii")
+        self.assertEqual(self.paired("---iiiiii", [BUILD_JOB] + [UNITY_JOB] * 6), [])
+
+    def test_a_pin_caps_the_test_slots_only(self):
+        self.assertEqual(settle(self.PAIRED, ".........", [UNITY_JOB] * 10, pins={"aws-build-1": 2}), "...ii....")
+        self.assertEqual(settle(self.PAIRED, "...iiiiii", [BUILD_JOB] + [UNITY_JOB] * 10, pins={"aws-build-1": 0}),
+                         "i........")
+        # A pin at or over the six test slots caps nothing, so it is not reported as PINNED.
+        up = {"aws-build-1": {"state": "running", "busy_at": 10_000, "labels": PAIRED_LABELS}}
+        verdicts = {v for h, _, _, v, _ in decide(self.STEADY, paired_slots("...iiiiii"), cfg=self.PAIRED,
+                                                  instances=up, waiting=[UNITY_JOB] * 10, pins={"aws-build-1": 7})
+                    if h == "aws-build-1"}
+        self.assertNotIn("PINNED", verdicts)
+
+    def test_test_slots_count_toward_the_pool_cap(self):
+        cfg = {**self.PAIRED, "pool_max_admitted": 2}
+        self.assertEqual(self.paired("...bb....", [UNITY_JOB] * 5, cfg=cfg), [])
+
+    def test_idle_off_drains_every_slot_then_stops(self):
+        self.assertEqual(self.paired("i..iiiiii", [], busy_at=10_000 - 1200), [("withhold", 1)])
+        self.assertEqual(self.paired(".........", [], busy_at=10_000 - 1200), [("stop", 0)])
+
+    def test_a_build_and_a_test_never_share_a_pair(self):
+        # Random arrivals and finishes against the live config. Run against #823's lend mode it
+        # failed at once: it lent build slot 1 to the pool beside busy test slots 4 and 5.
+        cfg = {**CFG, "standby": {"aws-build-1": LIVE["standby"]["aws-build-1"]}}
+        total = {}
+        for seed in range(20):
+            clash, stats = simulate(cfg, seed)
+            self.assertIsNone(clash, f"seed {seed}: (cycle, build slot) running beside its test slot")
+            total = {k: total.get(k, 0) + v for k, v in stats.items()}
+        # Not vacuous: builds ran, four test slots ran beside one, and all six ran with none.
+        self.assertTrue(all(total.values()), total)
+
+    def test_paired_slots_swap_their_own_labels(self):
+        for action, name, has, added, removed in (
+                ("admit", slot_name(1), "unity-build-withheld", ["unity-build"], ["unity-build-withheld"]),
+                ("withhold", slot_name(1), "unity-build", ["unity-build-withheld"], ["unity-build"]),
+                ("admit", slot_name(4), "unity-withheld", ["unity", "unity-full"], ["unity-withheld"]),
+                ("withhold", slot_name(4), "unity", ["unity-withheld"], ["unity"])):
+            calls = []
+
+            def gh(method, path, body=None):
+                calls.append((method, path, body))
+                if method == "GET":
+                    return {"runners": [{"id": 9, "name": name,
+                                         "labels": [{"name": "self-hosted"}, {"name": "unity-gate"}, {"name": has}]}]}
+                return None
+            with mock.patch.object(governor, "gh", gh):
+                governor.apply(self.PAIRED, action, name, "aws-build-1")
+            self.assertEqual(calls[1][2], {"labels": added}, (action, name))
+            self.assertEqual([c[1].rsplit("/", 1)[1] for c in calls if c[0] == "DELETE"], removed, (action, name))
+
+    def test_a_step_aside_renders_one_decision_row(self):
+        runners = paired_slots("...bbbbbb")
+        up = {"aws-build-1": {"state": "running", "busy_at": 10_000, "labels": PAIRED_LABELS}}
+        decisions = decide(self.STEADY, runners, cfg=self.PAIRED, instances=up, waiting=[BUILD_JOB])
+        out = governor.render(self.PAIRED, self.STEADY, runners, 0, decisions, True)
+        self.assertEqual(sum(1 for l in out.splitlines() if l.startswith('ci_governor_decision{host="aws-build-1"')), 1)
+
+    def test_a_slot_held_for_its_pair_is_lent_and_one_held_for_load_is_not(self):
+        lent = lambda spec: {governor.slot_of(n): to for n, (_, to) in governor.lent(self.PAIRED, paired_slots(spec)).items()}
+        # No build: the build slots are lent to tests; pair 3's tests are both held, so slot 3 is not.
+        self.assertEqual(lent("...iiii.."), {1: "tests", 2: "tests"})
+        # A build runs in pair 1: its test slots are lent to it; pair 2 lends its build slot.
+        self.assertEqual(lent("b....i..."), {4: "build", 5: "build", 2: "tests"})
+        # A slot still busy finishing a job uses the cores, withheld or not.
+        self.assertEqual(lent("h........"), {4: "build", 5: "build"})
+        self.assertEqual(lent("...h....."), {1: "tests"})
+        # A drained host lends nothing, and so renders no lent row.
+        self.assertEqual(lent("........."), {})
+        out = governor.render(self.PAIRED, self.STEADY, paired_slots("...iiiiii"), 0, [], True)
+        self.assertIn('ci_governor_lent{host="aws-build-1",name="%s",to="tests"} 1' % slot_name(1), out)
+        self.assertEqual(sum(l.startswith("ci_governor_lent{") for l in out.splitlines()), 3)
+
+    def test_a_stopped_paired_host_starts_for_tests_on_pool_thresholds(self):
+        # Its build thresholds are 1 job and 60 s; for tests it waits for 4 and 300 s, as the
+        # burst hosts do.
+        cfg = {**self.PAIRED, "standby": {"aws-build-1": {
+            **self.PAIRED["standby"]["aws-build-1"], "power": {**POWER, "start_min_excess": 1, "start_after_seconds": 60}}}}
+
+        def start(held, **kw):
+            stopped = {"aws-build-1": {"state": "stopped", "busy_at": 10_000, "labels": PAIRED_LABELS,
+                                       "want_since": 10_000 - held}}
+            return actions(self.STEADY, self.FULL, cfg=cfg, instances=stopped, **kw)["aws-build-1"][0]
+        # Held past both waits, so only the job count can hold it: 3 is under the pool's 4.
+        self.assertEqual(start(400, queue=3), "hold")
+        self.assertEqual(start(400, queue=4), "start")
+        # Held 120 s: under the pool's 300 s, past the build's 60 s.
+        self.assertEqual(start(120, queue=6), "hold")
+        self.assertEqual(start(120, waiting=[BUILD_JOB]), "start")
+
+    def test_the_live_build_host_pairs(self):
+        self.assertEqual(governor.pairs(LIVE, "aws-build-1"), PAIRS)
 
     def test_admit_leaves_full_off_a_host_that_takes_no_full_runs(self):
         calls = []
@@ -905,9 +1429,12 @@ class StandbyOrderTest(unittest.TestCase):
         got = self.got(2, two(fallback_until=10_000, fallback_why="capacity"))
         self.assertEqual((got["aws-burst-2"][0], got["aws-burst-1"][0]), ("start", "hold"))
 
-    def test_override_on_beats_a_pass_over(self):
+    def test_a_pass_over_beats_override_on(self):
+        # hc-277: an "on" restarted a just-reclaimed or refused host every cycle.
         got = self.got(0, two(fallback_until=20_000, fallback_why="reclaim", override="on"))
-        self.assertEqual(got["aws-burst-2"][0], "start")
+        self.assertEqual(got["aws-burst-2"], ("hold", "passed over after a reclaim for 10000s more"))
+        got = self.got(0, two(fallback_until=10_000, fallback_why="reclaim", override="on"))
+        self.assertEqual(got["aws-burst-2"][0], "start")  # negative control: the pass-over ran out
 
     def test_a_spot_told_off_or_past_its_day_is_not_ahead(self):
         self.assertEqual(self.got(2, two(override="off"))["aws-burst-1"][0], "start")
@@ -1024,10 +1551,227 @@ class StandbyOrderTest(unittest.TestCase):
             self.assertEqual(governor.Ec2("us-east-2", "k", "s").state("i-0spot"),
                              ("stopped", 0.0, "Server.SpotInstanceShutdown"))
 
+# Packing (pack_plan): two running burst hosts, aws-burst-1 the less busy and started later.
+DWELL = LIVE["dwell_seconds"]
+WIDE_JOB = frozenset({"self-hosted", "unity", "unity-wide"})
+WIDE_LABELS = AWS_LABELS | {"unity-wide", "host-aws-burst-1-wide"}
+NO_KEEP = {**TWO, "pack_keep_labels": []}
+
+
+def burst(host, busy=0, idle=0, off=0):
+    tag = host[-1]
+    return pool(*[(f"b{tag}-busy-{i}", host, True, 100 - i, False) for i in range(busy)],
+                *[(f"b{tag}-idle-{i}", host, False, 0, False) for i in range(idle)],
+                *[(f"b{tag}-off-{i}", host, False, 0, True) for i in range(off)])
+
+
+HALF = {**HOME_BUSY, **burst("aws-burst-2", busy=3, off=3), **burst("aws-burst-1", busy=1, off=4)}
+RAZER_WIDE = {"razer-w": {"host": "razer-laptop", "busy": True, "elapsed": 10, "withheld": False,
+                          "labels": frozenset({"self-hosted", "unity", "unity-wide"})}}
+
+
+class PackTest(unittest.TestCase):
+    def setUp(self):
+        self.inst = two("running", "running", launched=1_000)
+        self.inst["aws-burst-1"]["launched"] = 2_000
+
+    def step(self, now, waiting=(), runners=HALF, cfg=TWO):
+        for host, inst in self.inst.items():  # as power_readings() keeps it
+            if any(r["busy"] for r in runners.values() if r["host"] == host):
+                inst["busy_at"] = now
+        return governor.decide(cfg, STEADY, runners, list(waiting), {}, now, self.inst, {}, ())
+
+    def moves(self, got, host):
+        return [(a, r) for h, a, r, _, _ in got if h == host and a != "hold"]
+
+    def test_an_empty_queue_packs_the_least_busy_burst_host(self):
+        got = self.step(10_000)
+        self.assertEqual(self.moves(got, "aws-burst-1"), [("pack", ""), ("withhold", "b1-busy-0")])
+        self.assertIn(("aws-burst-1", "withhold", "b1-busy-0", "PACKED", "packed"), got)
+        self.assertEqual(self.moves(got, "aws-burst-2"), [])
+        # Packed, no slot of it comes back while the other host has room for what waits.
+        got = self.step(10_060, [UNITY_JOB])
+        self.assertEqual(self.moves(got, "aws-burst-1"), [("withhold", "b1-busy-0")])
+        self.assertEqual(self.moves(got, "aws-burst-2"), [("admit", "b2-off-0")])
+
+    def test_a_tie_packs_the_one_started_last(self):
+        runners = {**HOME_BUSY, **burst("aws-burst-2", busy=1, off=5), **burst("aws-burst-1", busy=1, off=4)}
+        self.inst["aws-burst-2"]["launched"] = 3_000
+        self.assertEqual(self.moves(self.step(10_000, runners=runners), "aws-burst-2")[0], ("pack", ""))
+
+    def test_never_the_last_running_burst_host(self):
+        self.inst["aws-burst-2"]["state"] = "stopped"
+        self.assertEqual(self.moves(self.step(10_000), "aws-burst-1"), [])
+
+    def test_a_job_it_can_take_blocks_the_pack_and_one_it_cannot_does_not(self):
+        self.assertEqual([a for _, a, *_ in self.step(10_000, [UNITY_JOB]) if a == "pack"], [])
+        self.assertEqual(self.moves(self.step(10_000, [LAN_JOB]), "aws-burst-1")[0], ("pack", ""))
+
+    def test_negative_control_a_queued_wide_job_keeps_its_only_wide_host(self):
+        self.inst["aws-burst-1"]["labels"] = WIDE_LABELS
+        # The queue alone protects it (no keep labels): while the wide job waits aws-burst-1
+        # is never packed and never withheld (it admits a slot for the job instead).
+        for t in range(10_000, 10_000 + 3 * DWELL, 60):
+            got = self.step(t, [WIDE_JOB], cfg=NO_KEEP)
+            self.assertEqual([a for a, _ in self.moves(got, "aws-burst-1") if a != "admit"], [], t)
+        # Control: with nothing waiting the same host is packed.
+        self.setUp()
+        self.inst["aws-burst-1"]["labels"] = WIDE_LABELS
+        self.assertEqual(self.moves(self.step(10_000, cfg=NO_KEEP), "aws-burst-1")[0], ("pack", ""))
+
+    def test_the_only_wide_host_is_kept_for_a_wide_job_to_come(self):
+        self.inst["aws-burst-1"]["labels"] = WIDE_LABELS
+        got = self.step(10_000)
+        self.assertEqual(self.moves(got, "aws-burst-1"), [])
+        self.assertEqual(self.moves(got, "aws-burst-2")[0], ("pack", ""))
+        # With razer's wide slot online it is not the only one, so it packs.
+        self.setUp()
+        self.inst["aws-burst-1"]["labels"] = WIDE_LABELS
+        self.assertEqual(self.moves(self.step(10_000, runners={**HALF, **RAZER_WIDE}), "aws-burst-1")[0],
+                         ("pack", ""))
+
+    def test_a_waiting_job_only_it_can_take_unpacks_it_at_once(self):
+        self.inst["aws-burst-1"]["labels"] = WIDE_LABELS
+        self.step(10_000, cfg=NO_KEEP)
+        got = self.step(10_060, [WIDE_JOB], cfg=NO_KEEP)
+        self.assertIn(("aws-burst-1", "unpack", "", "STANDBY", "1 waiting jobs no other host can take"), got)
+        self.assertFalse(self.inst["aws-burst-1"]["packed"])
+
+    def test_more_jobs_than_the_other_hosts_have_room_for_unpack_it_at_once(self):
+        self.step(10_000)
+        got = self.step(10_060, [UNITY_JOB] * 8)  # aws-burst-2 has 3 slots to admit
+        self.assertIn(("aws-burst-1", "unpack", "", "STANDBY", "8 jobs it can take wait, the other hosts have 3 free slots"), got)
+        self.assertEqual(self.moves(got, "aws-burst-1")[1], ("admit", "b1-off-0"))
+
+    def test_a_flapping_queue_inside_the_dwell_does_not_flip(self):
+        self.step(10_000)
+        for i, t in enumerate(range(10_060, 10_000 + DWELL, 60)):
+            got = self.step(t, [UNITY_JOB] if i % 2 else [])
+            self.assertEqual([a for _, a, *_ in got if a in ("pack", "unpack")], [], t)
+        self.assertTrue(self.inst["aws-burst-1"]["packed"])
+        # Past the dwell a job it could take unpacks it, and the flapping queue cannot pack it
+        # (or another host) again until the dwell has passed once more.
+        got = self.step(10_000 + DWELL, [UNITY_JOB])
+        self.assertIn(("aws-burst-1", "unpack", "", "STANDBY", "1 jobs it can take wait"), got)
+        for i, t in enumerate(range(10_000 + DWELL + 60, 10_000 + 2 * DWELL, 60)):
+            got = self.step(t, [] if i % 2 == 0 else [LAN_JOB])
+            self.assertEqual([a for _, a, *_ in got if a in ("pack", "unpack")], [], t)
+        self.assertEqual(self.moves(self.step(10_000 + 2 * DWELL), "aws-burst-1")[0], ("pack", ""))
+
+    def test_only_a_live_host_is_packed(self):
+        # A dry-run host's withholds only log, so it would never stop and would hold the one
+        # pack for good: the live host is packed instead.
+        cfg = {**TWO, "standby": {**TWO["standby"], "aws-burst-1": {"max_admitted": 6, "power": {**POWER, "live": False}}}}
+        with mock.patch.object(governor, "DRY_RUN", True):
+            got = self.step(10_000, cfg=cfg)
+        self.assertEqual(self.moves(got, "aws-burst-1"), [])
+        self.assertEqual(self.moves(got, "aws-burst-2")[0], ("pack", ""))
+        self.assertFalse(self.inst["aws-burst-1"].get("packed"))
+
+    def test_a_packed_withhold_frees_its_slot_in_the_pool_cap(self):
+        # The pool is at its cap (2 home + 3 + 1 admitted). aws-burst-2 comes first in the
+        # order, so without the packed host's withhold counted first its admit is refused.
+        cfg = {**TWO, "pool_max_admitted": 6}
+        self.step(10_000, cfg=cfg)
+        got = self.step(10_060, [UNITY_JOB], cfg=cfg)
+        self.assertEqual(self.moves(got, "aws-burst-2"), [("admit", "b2-off-0")])
+        self.assertEqual(self.moves(got, "aws-burst-1"), [("withhold", "b1-busy-0")])
+
+    def test_a_packed_entry_without_pack_at_does_not_crash_the_cycle(self):
+        self.inst["aws-burst-1"]["packed"] = True
+        got = self.step(10_000, [UNITY_JOB])
+        self.assertIn(("aws-burst-1", "unpack", "", "STANDBY", "1 jobs it can take wait"), got)
+
+    def test_the_other_host_draining_does_not_unpack_it(self):
+        self.step(10_000)
+        self.inst["aws-burst-2"]["draining"] = True
+        got = self.step(10_060)
+        self.assertEqual([a for _, a, *_ in got if a in ("pack", "unpack")], [])
+        self.assertTrue(self.inst["aws-burst-1"]["packed"])
+
+    def test_a_packed_host_is_no_capacity_for_the_hosts_behind_it(self):
+        # aws-burst-1 is packed with every slot withheld and one job it could take waits that a
+        # home slot covers; four wide jobs only aws-burst-3 takes. Counted as 6 coming slots,
+        # aws-burst-1 would keep aws-burst-3 from wanting a start.
+        cfg = {**TWO, "standby": {**TWO["standby"], "aws-burst-3": {"max_admitted": 6, "power": {**POWER, "instance_id": "i-0b3"}}}}
+        self.inst["aws-burst-3"] = {"state": "stopped", "busy_at": 10_000,
+                                    "labels": AWS_LABELS - {"host-aws-burst-1"} | {"host-aws-burst-3", "unity-wide"}}
+        self.inst["aws-burst-1"].update(packed=True, pack_at=10_000)
+        runners = {**HOME_BUSY, **pool(("razer-3", "razer-laptop", False, 0, False)),
+                   **burst("aws-burst-2", busy=6), **burst("aws-burst-1", off=6)}
+        self.step(10_060, [UNITY_JOB] + [WIDE_JOB] * 4, runners=runners, cfg=cfg)
+        self.assertTrue(self.inst["aws-burst-1"]["packed"])
+        self.assertEqual(self.inst["aws-burst-3"]["want"], 4)
+
+    def test_a_pack_and_stop_cycle_shows_in_the_log(self):
+        ec2 = FakeEc2("running", launched=1_000)
+        labels = {"aws-burst-2": SPOT_LABELS, "aws-burst-1": AWS_LABELS}
+        done = {**HOME_BUSY, **burst("aws-burst-2", busy=3, off=3), **burst("aws-burst-1", off=5)}
+        tracked, log = {}, []
+        for now, runners in ((10_000, HALF), (10_060, done), (11_260, done)):
+            with mock.patch.object(governor, "observe", return_value=(STEADY, runners, [])), \
+                    mock.patch.object(governor, "power_provider", return_value=(ec2, "")), \
+                    mock.patch.object(governor, "host_labels", side_effect=lambda cfg, h: labels[h]), \
+                    mock.patch.object(governor, "restored", return_value=None), \
+                    mock.patch.object(governor.time, "time", return_value=now), \
+                    mock.patch.object(governor, "apply"), mock.patch("builtins.print") as out:
+                governor.cycle(TWO, {}, tracked)
+            log += [c.args[0] for c in out.call_args_list]
+        self.assertEqual([line for line in log if "aws-burst-1" in line], [
+            "pack aws-burst-1: no waiting job it can take, the fewest busy slots (1) of 2 running burst hosts; "
+            "its slots go and its idle rule stops it; queue 0",
+            "withhold b1-busy-0 on aws-burst-1: PACKED, packed; queue 0",
+            "stop i-0abc on aws-burst-1: PACKED, no slot busy for 1260s; queue 0"])
+        self.assertIn(("stop", "i-0abc"), ec2.calls)
+        self.assertIn('ci_governor_decision{host="aws-burst-1",verdict="PACKED",action="stop"} 1',
+                      governor.State.metrics)
+
+
+class DwellTest(unittest.TestCase):
+    """The standby withhold that flapped: an idle slot goes back only once nothing has waited
+    for dwell_seconds."""
+
+    def test_an_idle_slot_waits_out_the_dwell(self):
+        inst = instance("running", waited_at=10_000)
+        runners = {**pool(("aws-idle-0", "aws-burst-1", False, 0, False)), **HOME_BUSY}
+        for t, want in ((10_060, "hold"), (10_000 + DWELL - 1, "hold"), (10_000 + DWELL, "withhold")):
+            got = governor.decide(AWS, STEADY, runners, [], {}, t, inst, {}, ())
+            self.assertEqual([a for h, a, *_ in got if h == "aws-burst-1"], [want], t)
+
+    def test_a_restart_starts_a_full_dwell(self):
+        # First seen (a new pod): no waited_at yet, so the dwell starts now.
+        inst = instance("running")
+        runners = {**pool(("aws-idle-0", "aws-burst-1", False, 0, False)), **HOME_BUSY}
+        for t, want in ((10_000, "hold"), (10_000 + DWELL - 60, "hold"), (10_000 + DWELL, "withhold")):
+            got = governor.decide(AWS, STEADY, runners, [], {}, t, inst, {}, ())
+            self.assertEqual([a for h, a, *_ in got if h == "aws-burst-1"], [want], t)
+
+    def test_a_job_it_cannot_take_does_not_restart_the_dwell(self):
+        # A lan job waits a while, then goes: it was never one this host could take.
+        inst = instance("running", waited_at=10_000 - DWELL)
+        runners = {**pool(("aws-idle-0", "aws-burst-1", False, 0, False)), **HOME_BUSY}
+        governor.decide(AWS, STEADY, runners, [LAN_JOB], {}, 10_000, inst, {}, ())
+        got = governor.decide(AWS, STEADY, runners, [], {}, 10_060, inst, {}, ())
+        self.assertEqual([a for h, a, *_ in got if h == "aws-burst-1"], ["withhold"])
+        # Control: a job it could take does restart it.
+        governor.decide(AWS, STEADY, runners, [UNITY_JOB], {}, 10_120, inst, {}, ())
+        got = governor.decide(AWS, STEADY, runners, [], {}, 10_180, inst, {}, ())
+        self.assertEqual([a for h, a, *_ in got if h == "aws-burst-1"], ["hold"])
+
+    def test_a_flapping_queue_withholds_nothing(self):
+        inst = instance("running")
+        runners = {**pool(("aws-idle-0", "aws-burst-1", False, 0, False)), **HOME_BUSY}
+        # A job every 5 minutes, under the 20-minute idle-off, so only the dwell can withhold.
+        for i, t in enumerate(range(10_000, 10_000 + 2 * DWELL, 60)):
+            waiting = [UNITY_JOB] if i % 5 == 0 else []
+            got = governor.decide(AWS, STEADY, runners, waiting, {}, t, inst, {}, ())
+            self.assertNotIn("withhold", [a for h, a, *_ in got if h == "aws-burst-1"], t)
+
+
 # A cloud agent box: no runners, powered on fleet-dispatch's demand key.
 WORKER_POWER = {"provider": "aws", "instance_id": "i-0wrk", "region": "us-east-2", "idle_off_seconds": 1800,
                 "start_min_excess": 1, "live": True}
-WRK = {**CFG, "workers": {"fleet-worker-1": {"power": WORKER_POWER}}}
+WRK = {**CFG, "override_on_max_hours": 12, "workers": {"fleet-worker-1": {"power": WORKER_POWER}}}
 
 
 class WorkerTest(unittest.TestCase):
@@ -1144,6 +1888,16 @@ class WorkerTest(unittest.TestCase):
         self.assertEqual(self.ops(ec2), [("start", "i-0wrk")])
         self.assertEqual(tracked["fleet-worker-1"]["fallback_why"], "capacity")
 
+    def test_a_passed_over_worker_set_on_waits(self):
+        passed = lambda until: {"fleet-worker-1": {"state": "stopped", "busy_at": time.time(),
+                                                   "fallback_until": until, "fallback_why": "capacity"}}
+        ec2 = FakeEc2("stopped")
+        self.cycles(ec2, override="on", tracked=passed(time.time() + 3600))
+        self.assertEqual(self.ops(ec2), [])
+        ec2 = FakeEc2("stopped")
+        self.cycles(ec2, override="on", tracked=passed(time.time() - 1))
+        self.assertEqual(self.ops(ec2), [("start", "i-0wrk")])
+
     def test_dry_run_only_logs(self):
         ec2 = FakeEc2("stopped")
         cfg = {**WRK, "workers": {"fleet-worker-1": {"power": {**WORKER_POWER, "live": False}}}}
@@ -1157,6 +1911,22 @@ class WorkerTest(unittest.TestCase):
         got = decide(STEADY, HOME_BUSY, queue=0, cfg=WRK, instances=inst)
         self.assertNotIn("fleet-worker-1", [h for h, *_ in got])
 
+
+
+class RatesTest(unittest.TestCase):
+    """config.json "rates": every host's $/h with its basis, in one place."""
+
+    def test_every_rate_is_exported_with_its_basis(self):
+        out = governor.render(LIVE, {"disk": {}}, {}, 0, [], True)
+        for host, r in LIVE["rates"].items():
+            self.assertIn(f'ci_governor_rate_usd_per_hour{{host="{host}",basis="{r["basis"]}"}} {r["usd_per_hour"]}', out)
+
+    def test_a_rate_in_a_power_block_or_without_a_basis_is_refused(self):
+        bad_power = {**LIVE, "standby": {"aws-burst-1": {"max_admitted": 5, "power": {**POWER, "usd_per_hour": 1}}}}
+        with self.assertRaisesRegex(ValueError, "belongs in rates"):
+            governor.check_rates(bad_power)
+        with self.assertRaisesRegex(ValueError, "basis"):
+            governor.check_rates({**LIVE, "rates": {"x": {"usd_per_hour": 1}}})
 
 if __name__ == "__main__":
     unittest.main(verbosity=1)

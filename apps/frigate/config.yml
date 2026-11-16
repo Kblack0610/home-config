@@ -19,24 +19,14 @@ auth:
   trusted_proxies:
     - 10.42.0.0/16
 
-# The one block that changes if Frigate moves off the GPU (e.g. a Pi with a
-# Hailo-8L or Coral). The model is fetched by the init container: see
-# apps/frigate/model/build.sh and MODEL_URL in deployment.yaml.
+# The USB Coral plugged into hp-victus. With no `model:` block Frigate uses the
+# MobileDet model bundled in the image (/edgetpu_model.tflite), the one its docs
+# recommend for the Edge TPU. Decode runs on the CPU: two 640x480 detect
+# streams at 5 fps are a few percent of one core, and it keeps the 4060 free.
 detectors:
-  onnx:
-    type: onnx
-
-model:
-  model_type: yolo-generic
-  width: 320
-  height: 320
-  input_tensor: nchw
-  input_dtype: float
-  path: /config/model_cache/yolov9-s-320.onnx
-  labelmap_path: /labelmap/coco-80.txt
-
-ffmpeg:
-  hwaccel_args: preset-nvidia
+  coral:
+    type: edgetpu
+    device: usb
 
 go2rtc:
   streams:
@@ -88,6 +78,33 @@ objects:
     - dog
     - cat
 
+# Dog bark detection (docs: "Bark detection" in README.md). Frigate's YAMNet
+# classifier listens to each camera's main stream (the `audio` role below) and
+# makes an audio event per barking episode; an episode ends after max_not_heard
+# seconds of quiet. Only dog sounds are listed: Frigate's default list also has
+# `speech` and `yell`, left out so no conversation becomes an event.
+# min_volume and the per-label threshold are tuned from the dBFS the cameras
+# report (sensor.<camera>_sound_level in HA): lower min_volume hears quieter barks.
+audio:
+  enabled: true
+  max_not_heard: 30
+  min_volume: 500
+  listen:
+    - bark
+    - yip
+    - howl
+
+# Barks are alerts, so their clips keep the 14-day alert retention (not the
+# 1-day motion window) and show in the Frigate UI's Alerts tab. Frigate's own
+# default here is [car, person]; car is never tracked.
+review:
+  alerts:
+    labels:
+      - person
+      - bark
+      - yip
+      - howl
+
 cameras:
   amcrest_ptz_1:
     ffmpeg:
@@ -96,6 +113,7 @@ cameras:
           input_args: preset-rtsp-restream
           roles:
             - record
+            - audio
         - path: rtsp://127.0.0.1:8554/amcrest_ptz_1_sub
           input_args: preset-rtsp-restream
           roles:
@@ -128,6 +146,7 @@ cameras:
           input_args: preset-rtsp-restream
           roles:
             - record
+            - audio
         - path: rtsp://127.0.0.1:8554/amcrest_living_room_sub
           input_args: preset-rtsp-restream
           roles:

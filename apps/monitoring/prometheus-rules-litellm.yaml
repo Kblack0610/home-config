@@ -22,25 +22,58 @@ spec:
         # Defaults assume the key matrix in apps/litellm/README.md
         # (smallest budget = $50/30d for opencode-default). Adjust if you
         # provision a key with a max_budget below $10.
+        # binks-anon ($10 / 1mo) is left out: it sat below $10 from its first
+        # request, and prometheus-rules-binks.yaml alerts on its share left.
         - alert: LiteLLMVirtualKeyBudgetWarning
-          expr: litellm_remaining_api_key_budget_metric < 10
+          expr: litellm_remaining_api_key_budget_metric{api_key_alias!="binks-anon"} < 10
           for: 5m
           labels:
             severity: warning
+            fleet: none  # spend: the human sets key budgets
             category: cost
           annotations:
             summary: "LiteLLM key {{ $labels.api_key_alias }} has < $10 remaining"
             description: "Virtual key '{{ $labels.api_key_alias }}' (hash {{ $labels.hashed_api_key }}) has ${{ printf \"%.2f\" $value }} remaining in its current budget window. Reset cadence depends on the key's budget_duration."
 
         - alert: LiteLLMVirtualKeyBudgetCritical
-          expr: litellm_remaining_api_key_budget_metric < 2
+          expr: litellm_remaining_api_key_budget_metric{api_key_alias!="binks-anon"} < 2
           for: 5m
           labels:
             severity: critical
+            fleet: none  # spend: the human sets key budgets
             category: cost
           annotations:
             summary: "LiteLLM key {{ $labels.api_key_alias }} budget nearly exhausted (< $2)"
             description: "Virtual key '{{ $labels.api_key_alias }}' has only ${{ printf \"%.2f\" $value }} left. Requests will start being rejected with budget_exceeded once it hits 0."
+
+        # The must-not-stop team (home services, comms, knowledge-engine,
+        # lazer-eval; apps/litellm/README.md). The low-priority lazer-pool
+        # team has no alert on purpose: running out there is expected.
+        - alert: LiteLLMCoreTeamBudgetWarning
+          expr: |
+            litellm_remaining_team_budget_metric{team_alias="lazer-core"}
+            / clamp_min(litellm_team_max_budget_metric{team_alias="lazer-core"}, 1) < 0.30
+          for: 10m
+          labels:
+            severity: warning
+            fleet: none  # spend: the human sets the team budget
+            category: cost
+          annotations:
+            summary: "Lazer core team under 30% of its monthly budget"
+            description: "lazer-core is at {{ humanizePercentage $value }} of its monthly budget. Must-not-stop consumers (karakeep, mem0, Home Assistant, comms, knowledge-engine) stop at 0. Check who is spending: apps/litellm/README.md key list."
+
+        - alert: LiteLLMCoreTeamBudgetCritical
+          expr: |
+            litellm_remaining_team_budget_metric{team_alias="lazer-core"}
+            / clamp_min(litellm_team_max_budget_metric{team_alias="lazer-core"}, 1) < 0.10
+          for: 5m
+          labels:
+            severity: critical
+            fleet: none  # spend: the human sets the team budget
+            category: cost
+          annotations:
+            summary: "Lazer core team under 10% of its monthly budget"
+            description: "lazer-core is nearly spent. Must-not-stop consumers start failing with budget_exceeded at 0; fast falls back to Gemini only on an upstream error, not on a budget refusal."
 
         # Catches runaway loops — spend > $1.50/min sustained for 10m means
         # >$2k/day burn rate. The threshold is a sanity check on automation,
@@ -51,6 +84,7 @@ spec:
           for: 10m
           labels:
             severity: warning
+            fleet: none  # spend: the human decides whether a burn is wanted
             category: cost
           annotations:
             summary: "LiteLLM key {{ $labels.api_key_alias }} burning $/min very fast"
@@ -63,10 +97,11 @@ spec:
           for: 5m
           labels:
             severity: warning
+            fleet: fix
             category: availability
           annotations:
             summary: "LiteLLM upstream {{ $labels.litellm_model_name }} unhealthy (state {{ $value }})"
-            description: "Upstream '{{ $labels.litellm_model_name }}' (provider {{ $labels.api_provider }}) is in deployment_state {{ $value }} — LiteLLM is shedding traffic from it. Check api_base reachability and upstream service logs."
+            description: "Upstream '{{ $labels.litellm_model_name }}' (provider {{ $labels.api_provider }}) at {{ $labels.api_base }} is in deployment_state {{ $value }}: LiteLLM is shedding traffic from it. Check api_base reachability and upstream service logs."
 
         # Proxy-side failure rate across all routes. Catches gateway-level
         # auth/config/database problems that aren't tied to a single upstream.
@@ -79,7 +114,48 @@ spec:
           for: 10m
           labels:
             severity: warning
+            fleet: fix
             category: availability
           annotations:
             summary: "LiteLLM proxy failure rate > 10% for 10m"
             description: "Across all virtual keys and models, {{ humanizePercentage $value }} of requests are failing. Check `kubectl -n ai-gateway logs deploy/litellm` for auth, DB, or upstream errors."
+
+        # The same ratio per requested route: a quota-capped route (the OpenCode
+        # Go routes refuse past their plan window) failing while the rest are
+        # fine, which the all-routes ratio drowns. The volume floor keeps one
+        # failed probe on an idle route from firing it; a sparse route that is
+        # fully down is LiteLLMUpstreamUnhealthy's job.
+        - alert: LiteLLMRouteHighFailureRate
+          expr: |
+            (
+              sum by (requested_model) (rate(litellm_proxy_failed_requests_metric_total[10m]))
+              /
+              clamp_min(sum by (requested_model) (rate(litellm_proxy_total_requests_metric_total[10m])), 0.001)
+              > 0.10
+            )
+            and on (requested_model)
+            sum by (requested_model) (increase(litellm_proxy_total_requests_metric_total[10m])) >= 5
+          for: 10m
+          labels:
+            severity: warning
+            fleet: fix
+            category: availability
+          annotations:
+            summary: "LiteLLM route {{ $labels.requested_model }} failure rate > 10% for 10m"
+            description: "{{ humanizePercentage $value }} of requests to '{{ $labels.requested_model }}' are failing. Check `kubectl -n ai-gateway logs deploy/litellm` for auth, DB, budget or upstream errors."
+
+        # Guessed-key probing. Counts 401s at Traefik, because LiteLLM's own
+        # failed-requests metric misses invalid-key 401s. Baseline is about 17 a
+        # day (agents calling admin routes); 2026-11-07 a scanner sent 190k in
+        # two hours (hc-213). A counter over a window, no hold, so a short burst
+        # still fires.
+        - alert: LiteLLMAuthFailureSpike
+          expr: |
+            sum(increase(traefik_service_requests_total{service="ai-gateway-litellm-4000@kubernetes",code="401"}[15m])) > 30
+          labels:
+            severity: warning
+            fleet: fix
+            category: security
+          annotations:
+            summary: "LiteLLM gateway: {{ $value | printf \"%.0f\" }} rejected keys in 15m"
+            description: "Something is sending keys the gateway does not know. Spend is safe (an unknown key gets nothing), but find the caller: the keys tried are in LiteLLM_SpendLogs (status failure, error_code 401), and llm.kblab.me should have no public DNS record (dig +short llm.kblab.me @1.1.1.1 prints nothing). apps/litellm/README.md, Exposure."

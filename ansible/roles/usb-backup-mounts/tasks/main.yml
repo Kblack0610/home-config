@@ -39,10 +39,12 @@
   changed_when: "'Create subvolume' in usb_backup_subvol_create.stdout"
 
 - name: Ensure the mountpoint directories exist
+  # No mode: once mounted, the path is the subvolume root, whose mode belongs to
+  # the job that writes it. The eeg mirror's rsync -a copies its 0750 source root
+  # every day, so a mode here would report a change on every --check.
   ansible.builtin.file:
     path: "{{ item.path }}"
     state: directory
-    mode: "0755"
   loop: "{{ usb_backup_subvolumes }}"
   loop_control:
     label: "{{ item.path }}"

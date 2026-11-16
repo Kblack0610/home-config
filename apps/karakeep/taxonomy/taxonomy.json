@@ -1,6 +1,19 @@
 {
-  "_comment": "Karakeep tag taxonomy: single source of truth. top = the 10 main tags (every bookmark gets at least one); folders = old Firefox archive folder name -> tags (ancestors add theirs too). Detail tags are whatever the folders map produces. reserved = tags other tools attach: never pruned, and kept out of the AI tagging set. Applied by ./retag.",
+  "_comment": "Karakeep tag taxonomy: single source of truth. top = the 10 main tags (every bookmark gets at least one); folders = old Firefox archive folder name -> tags (ancestors add theirs too). Detail tags are whatever the folders map produces. reserved = tags other tools attach: never pruned, and kept out of the AI tagging set. strays = an AI tag outside the taxonomy -> the taxonomy tags it means, attached before --prune deletes it. Applied by ./retag.",
   "reserved": ["tab-sweep"],
+  "strays": {
+    "coding": ["dev"],
+    "code": ["dev"],
+    "python": ["dev"],
+    "typesafe": ["dev"],
+    "backend": ["dev", "web"],
+    "next-js": ["dev", "web"],
+    "container": ["dev", "devops"],
+    "ansible": ["dev", "devops"],
+    "mcp": ["dev", "ai"],
+    "prompting": ["dev", "ai"],
+    "keyboards": ["hardware", "keyboard"]
+  },
   "top": [
     "dev",
     "gamedev",

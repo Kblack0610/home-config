@@ -56,6 +56,36 @@ alertmanager:
         # iot-pi-nodes sleep by design.
         - matchers: [alertname = "TargetDown", job = "iot-pi-nodes"]
           receiver: "null"
+        # CVEs use a separate topic so the human alert feed stays readable.
+        # Up to 10 images, at most once a day while the list changes,
+        # else weekly. The full list: alertmanager.kblab.me, filter
+        # category=security.
+        # On the page route they were 174 of 290 firing alerts and buried a
+        # real NodeDiskLow (2026-11-10).
+        - matchers: [category = "security"]
+          receiver: ntfy-digest
+          group_by: [alertname]
+          group_interval: 24h
+          repeat_interval: 168h
+        # Paper trading failures belong with the lab, including its CronJobs.
+        # Critical trading safety alerts still reach the critical route below.
+        - matchers: [category = "trading", severity = "warning"]
+          receiver: ntfy-trading
+          group_by: [alertname]
+          group_interval: 1h
+          repeat_interval: 24h
+        - matchers: [namespace = "freqtrade", category = "scheduled-jobs", severity = "warning"]
+          receiver: ntfy-trading
+          group_by: [alertname, namespace, owner_name, cronjob]
+          repeat_interval: 24h
+        # Informational alerts remain available in Alertmanager.
+        - matchers: [severity = "info"]
+          receiver: "null"
+        # One group per CronJob, Job or host, so a new failure is its own message.
+        - matchers: [category = "scheduled-jobs"]
+          receiver: ntfy
+          group_by: [alertname, namespace, owner_name, job_name, cronjob, host]
+          repeat_interval: 24h
         # Spend over budget needs you today, not hourly, and is no outage.
         - matchers: [severity = "critical", category = "cost"]
           receiver: ntfy-high
@@ -74,6 +104,16 @@ alertmanager:
         webhook_configs:
           - url: "http://ntfy.ntfy.svc.cluster.local/homelab-alerts?tpl=yes&t=%7B%7Bif%20eq%20.status%20%22resolved%22%7D%7DResolved%7B%7Belse%7D%7DFiring%7B%7Bend%7D%7D%3A%20%7B%7B.commonLabels.alertname%7D%7D&m=%7B%7Brange%20.alerts%7D%7D%7B%7Bif%20eq%20.status%20%22resolved%22%7D%7DOK%3A%20%7B%7Bend%7D%7D%7B%7Bor%20.annotations.summary%20.labels.alertname%7D%7D%0A%7B%7Bend%7D%7D%7B%7Bif%20.truncatedAlerts%7D%7D%2B%7B%7B.truncatedAlerts%7D%7D%20more%7B%7Bend%7D%7D&p=default"
             send_resolved: true
+            max_alerts: 10
+      - name: ntfy-digest
+        webhook_configs:
+          - url: "http://ntfy.ntfy.svc.cluster.local/homelab-security?tpl=yes&t=%7B%7Bif%20eq%20.status%20%22resolved%22%7D%7DResolved%7B%7Belse%7D%7DFiring%7B%7Bend%7D%7D%3A%20%7B%7B.commonLabels.alertname%7D%7D&m=%7B%7Brange%20.alerts%7D%7D%7B%7Bif%20eq%20.status%20%22resolved%22%7D%7DOK%3A%20%7B%7Bend%7D%7D%7B%7Bor%20.annotations.summary%20.labels.alertname%7D%7D%0A%7B%7Bend%7D%7D%7B%7Bif%20.truncatedAlerts%7D%7D%2B%7B%7B.truncatedAlerts%7D%7D%20more%7B%7Bend%7D%7D&p=low"
+            send_resolved: false
+            max_alerts: 10
+      - name: ntfy-trading
+        webhook_configs:
+          - url: "http://ntfy.ntfy.svc.cluster.local/homelab-trading?tpl=yes&t=%7B%7Bif%20eq%20.status%20%22resolved%22%7D%7DResolved%7B%7Belse%7D%7DFiring%7B%7Bend%7D%7D%3A%20%7B%7B.commonLabels.alertname%7D%7D&m=%7B%7Brange%20.alerts%7D%7D%7B%7Bif%20eq%20.status%20%22resolved%22%7D%7DOK%3A%20%7B%7Bend%7D%7D%7B%7Bor%20.annotations.summary%20.labels.alertname%7D%7D%0A%7B%7Bend%7D%7D%7B%7Bif%20.truncatedAlerts%7D%7D%2B%7B%7B.truncatedAlerts%7D%7D%20more%7B%7Bend%7D%7D&p=low"
+            send_resolved: false
             max_alerts: 10
       - name: ntfy-high
         webhook_configs:
@@ -97,6 +137,14 @@ alertmanager:
       - source_matchers: [severity = "critical"]
         target_matchers: [severity = "warning"]
         equal: [alertname, instance]
+      # The stale-backup critical already names the failing CronJob.
+      - source_matchers: [alertname = "HomelabBackupStale", namespace != "", owner_name != ""]
+        target_matchers: [alertname = "HomelabCronJobFailed"]
+        equal: [namespace, owner_name]
+      # With the uplink down every site reached through the internet fails too;
+      # WANDown is the one page, and the PublicSiteDown pile waits for it to clear.
+      - source_matchers: [alertname = "WANDown"]
+        target_matchers: [alertname = "PublicSiteDown"]
   alertmanagerSpec:
     # Mounted at /etc/alertmanager/secrets/<name>/. Flux must have created it
     # before a helm upgrade adds it here, or the pod cannot start.
@@ -139,6 +187,10 @@ defaultRules:
     NodeFilesystemSpaceFillingUp: true
     NodeFilesystemAlmostOutOfFiles: true
     NodeFilesystemFilesFillingUp: true
+    # Replaced by HomelabCronJobFailed and HomelabJobFailed in
+    # prometheus-rules-jobs.yaml: this one fires per failed Job object, and a
+    # later green run never resolves it.
+    KubeJobFailed: true
   rules:
     alertmanager: true
     configReloaders: true
@@ -311,6 +363,24 @@ grafana:
           cpu: 5m
           memory: 128Mi
 
+# Head-series trim (hc-303): histogram buckets of the control plane are ~60k of
+# the 386k head series on 2026-11-11, and no rule or dashboard reads them
+# (kubeApiserver* rules are off above). k3s serves apiserver, etcd client and
+# scheduler metrics from one endpoint, so every *_bucket on the apiserver job
+# goes. Setting metricRelabelings replaces the chart's default bucket drop.
+# Counters and gauges (apiserver_request_total, etc.) are kept.
+kubeApiServer:
+  serviceMonitor:
+    metricRelabelings:
+      - action: drop
+        sourceLabels: [__name__]
+        regex: .+_bucket|apiserver_request_sli_.*
+kubelet:
+  serviceMonitor:
+    metricRelabelings:
+      - action: drop
+        sourceLabels: [__name__]
+        regex: (workqueue|rest_client|kubelet_runtime_operations)_.*_bucket
 kubeControllerManager:
   enabled: false
 kubeEtcd:
@@ -347,8 +417,14 @@ prometheus:
     # Required for the Claude Code OTel pipeline (Phase 2 observability).
     enableRemoteWriteReceiver: true
     evaluationInterval: 30s
+    # On asus-laptop with the rest of the monitoring stack (VictoriaMetrics,
+    # Loki, Grafana, Alertmanager, Gatus), off the hp-victus CI build host, so a
+    # CI-host outage does not blank every status read. Trade-off: monitoring is
+    # one failure domain, asus-laptop. The local-path PV is pinned to the node
+    # it was made on: changing this host means deleting the old PVC (7d hot
+    # data; VictoriaMetrics keeps the 2y copy) so the StatefulSet makes a new one.
     nodeSelector:
-      kubernetes.io/arch: amd64
+      kubernetes.io/hostname: asus-laptop
     podMonitorSelectorNilUsesHelmValues: false
     serviceMonitorSelectorNilUsesHelmValues: false
     scrapeInterval: 30s
@@ -356,8 +432,9 @@ prometheus:
     retentionSize: 5GB
     # Long-term copy: 7d stays hot here, everything goes to VictoriaMetrics on
     # asus-laptop (apps/victoria-metrics, 2y). The drop list is control-plane
-    # histogram buckets - about 70k of the 238k head series on 2026-10-29 - that
-    # only matter for live debugging, which the 7d here still covers.
+    # histogram buckets that only matter for live debugging, which the 7d here
+    # still covers. The apiserver and kubelet ones are now dropped at scrape
+    # (kubeApiServer, kubelet below); this still catches the other jobs.
     remoteWrite:
       - name: victoria-metrics
         url: http://victoria-metrics.monitoring.svc:8428/api/v1/write
@@ -365,15 +442,18 @@ prometheus:
           - sourceLabels: [__name__]
             regex: (apiserver|etcd|workqueue|rest_client|kubelet_runtime_operations)_.*_bucket|apiserver_request_sli_.*
             action: drop
-    # 1Gi OOMKilled it at the 2-hourly head compaction (peak 1015Mi with
-    # ~225k head series, 35 restarts by 2026-10-27, all at odd hours :00 UTC).
+    # OOMKilled at the 2-hourly head compaction: 1Gi at ~225k head series
+    # (10-27), 2Gi at 386k (11-11, ~6KB per series, 2.11GB working set). The
+    # scrape-time bucket drops cut ~60k series; 3Gi keeps compaction headroom
+    # (asus-laptop has 64GB, 21% used on 2026-11-12). Re-measure
+    # `max_over_time(container_memory_working_set_bytes{container="prometheus"}[6h])`.
     resources:
       limits:
         cpu: 1000m
-        memory: 2Gi
+        memory: 3Gi
       requests:
         cpu: 200m
-        memory: 1Gi
+        memory: 2Gi
     storageSpec:
       volumeClaimTemplate:
         spec:
@@ -402,7 +482,9 @@ prometheus-node-exporter:
     - --collector.systemd
     - --collector.systemd.unit-include=^(actions\.runner\..*|docker|kubelet|node_exporter|sshd|forgejo-runner)\.service$
   extraHostVolumeMounts:
-    # ansible/roles/node-disk-metrics writes here: core dumps and local-path PV use.
+    # ansible/roles/node-disk-metrics writes here (node_disk.prom: core dumps and local-path PV
+    # use), and ansible/roles/node-inventory-metrics (node_inventory.prom: top processes,
+    # running services and Docker containers).
     - name: textfile
       hostPath: /var/lib/node-exporter-textfile
       mountPath: /var/lib/node-exporter-textfile

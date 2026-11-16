@@ -12,7 +12,8 @@ Mirrors `platform/tools/setup-mac-runner.sh` + `register-mac-runner.sh` for the 
 4. Downloads and extracts the pinned `actions/runner` tarball (sha256-verified) into `/var/lib/actions-runner`.
 5. Uses the PAT from vault to fetch a short-lived registration token from the GitHub API.
 6. Calls `./config.sh --unattended` to register the runner (idempotent via `.runner` marker file).
-7. Templates `/etc/systemd/system/actions.runner.<name>.service` and starts it.
+7. On every apply outside `--check`, reads the runner from GitHub and, when its custom labels differ from `gh_runner_labels`, replaces them with one PUT to `<api_path>/actions/runners/<id>/labels`. A runner ci-runner-governor withholds (it carries one of `gh_runner_withheld_labels`) gets `gh_runner_labels` without `gh_runner_governed_labels`, plus `gh_runner_withheld_label`, so an apply never admits it. The plan is `filter_plugins/runner_labels.py`, tested by `tests/test_runner_labels.py`.
+8. Templates `/etc/systemd/system/actions.runner.<name>.service` and starts it.
 
 ## Required variables
 
@@ -30,6 +31,8 @@ With `gh_runner_token_source: gh` no PAT is needed: the registration token is mi
 
 Set `gh_runner_user_home` to a shared directory and `gh_runner_home` to a per-instance directory under it, and apply the role once per instance (the "Linux CI runners" play in `playbooks/site.yml` loops it with `include_role`). Each instance gets its own systemd unit, `.runner` marker and work dir. `gh_runner_env` writes extra `KEY=VALUE` lines into the instance's `.env`; the Linux CI runners play sets `HOME` per instance so parallel jobs never share a pnpm store or `~/setup-pnpm`. `gh_runner_slice` puts the unit in a systemd slice (the `ci-host-budget` role owns `ci.slice` and its `ci-unity.slice` / `ci-linux.slice` children, and their caps).
 
+A unit or `.env` change restarts the runner, and the apply never kills a job for it. Under a job (a `Runner.Worker` under its `bin*/`) it drains the runner: one PUT of an empty custom-label set to `<api_path>/actions/runners/<id>/labels`, so no queued job matches it, then a wait on the worker's exit (`files/wait_worker_exit.py` in github-actions-runner-linux: a pidfd on Linux, kqueue on macOS, tested by `tests/test_wait_worker_exit.py`), then the restart, then a PUT of its labels back (the plan of step 7, from its labels before the drain and after, so a governor withhold during the drain holds). The apply blocks until the job ends, up to `gh_runner_drain_timeout` (360 minutes, GitHub's default job timeout). Past it the labels go back, `.restart-pending` stays in the runner home and the task reports changed, so ConvergenceDrift shows the pending restart until a later apply finishes it. An interrupted apply (Ctrl-C mid-wait) can leave the runner drained; re-run the apply.
+
 All other variables have sensible defaults in `defaults/main.yml`.
 
 ## Verify
@@ -46,7 +49,7 @@ In GitHub: `https://github.com/BlackNBrownStudios/platform/settings/actions/runn
 ## Notes
 
 - The GitHub runner binary **auto-updates itself in place** during normal operation. The `gh_runner_version` default is only consulted on fresh provisioning (before `config.sh` exists). Don't try to hold the binary version by re-running this role.
-- To rotate / re-register a runner, delete `/var/lib/actions-runner/.runner` on the host and remove the matching runner in the GitHub UI, then re-run the playbook.
+- To re-register a runner (its listener logs "The runner registration has been deleted from the server"), remove it in the GitHub UI if it is still listed, stop its unit, delete `.runner`, `.runner_migrated`, `.credentials` and `.credentials_rsaparams` in its `gh_runner_home` (for example `/var/lib/linux-ci/light-1`), then re-run the playbook. The runner keeps `.runner_migrated` as a second marker, so deleting `.runner` alone fails `config.sh` with "already configured" (razer, 2026-11-10).
 - To uninstall a single runner: `systemctl disable --now actions.runner.<name>.service`, remove it in the GitHub UI, and delete its directory. `rm -rf /var/lib/actions-runner` is safe only when no other runner on the host uses it.
 
 ## Uninstall

@@ -16,7 +16,7 @@ There is no RAID: these are three independent btrfs filesystems, and redundancy 
 
 Health is watched by the `disk-health` Ansible role and `apps/monitoring/prometheus-rules-disk-health.yaml`: a monthly `btrfs scrub` per filesystem, SMART alerts for the two NVMe drives, and btrfs error alerts for all three. The USB bridge hides SMART, so a failing 8TB shows up only as btrfs errors, a scrub failure or a stale backup.
 
-Note: this is a same-box setup. It protects against one disk failing and against accidental deletion (via snapshots), but NOT against loss of the whole machine (fire, theft, surge). Offsite is not implemented.
+Note: this is a same-box setup. It protects against one disk failing and against accidental deletion (via snapshots), but NOT against loss of the whole machine (fire, theft, surge). That is the job of the offsite copy in Backblaze B2: see `Offsite (B2)`.
 
 ## If a drive fails
 
@@ -24,15 +24,15 @@ Apps on a failed disk go down, and a failed root disk takes this node's pods wit
 
 | Failed disk | What is gone | Restore from | Lost for good |
 |---|---|---|---|
-| Root (`...7E1C`) | OS, every local-path PV on this node, `/var/backups/*` local copies | NAS `/mnt/nas/private/backups/home-k3s/` (app dumps), `/mnt/backups/forgejo` or hp-victus (Forgejo), 8TB (Langfuse, VictoriaMetrics, Forgejo packages) | Changes since the last backup. No backup by design: Loki logs, Grafana UI edits, Alertmanager silences, Crowdsec state, Mosquitto retained messages, Trivy cache, the `placemyparents-preview` database. MinIO: Langfuse raw event bodies and the `terraform-state` bucket (rebuild `public-sites-tunnel` state with `terraform import`) |
-| NAS (`...7E07`) | Immich originals, phones, harvest, 3D prints, the public share, all app backups on the NAS, Immich's live Postgres and the media apps' config, Forgejo local fulls | 8TB: every mirror's newest snapshot, `@immich-db` for the Immich database. Forgejo fulls come back at the next 3 AM run, and hp-victus keeps the newest 2 meanwhile | Changes since the last mirror (a day for Immich and the app backups, up to a week for the rest), the snapper history, and the Zomboid backup history on the public share (the live world is on the root disk, and the job writes a new backup nightly) |
+| Root (`...7E1C`) | OS, every local-path PV on this node, `/var/backups/*` local copies | NAS `/mnt/nas/private/backups/home-k3s/` (app dumps), `/mnt/backups/forgejo` and the 8TB `forgejo-backups` (Forgejo backups; live Forgejo runs from asus' `/mnt/backups/forgejo-live` since 2026-11-13, and moves to forge-hel1 at its cutover), 8TB (Langfuse, VictoriaMetrics, Forgejo packages) | Changes since the last backup. No backup by design: Loki logs, Grafana UI edits, Alertmanager silences, Crowdsec state, Mosquitto retained messages, Trivy cache, the `placemyparents-preview` database. MinIO: Langfuse raw event bodies and the `terraform-state` bucket (rebuild `public-sites-tunnel` state with `terraform import`) |
+| NAS (`...7E07`) | Immich originals, phones, harvest, the Emotiv archive, 3D prints, the public share, all app backups on the NAS, Immich's live Postgres and the media apps' config, Forgejo local fulls | 8TB: every mirror's newest snapshot, `@immich-db` for the Immich database. Forgejo: the 8TB `forgejo-backups` keeps the newest 3 fulls with their dbs | Changes since the last mirror (a day for Immich and the app backups, up to a week for the rest), the snapper history, and the Zomboid backup history on the public share (the live world is on the root disk, and the job writes a new backup nightly) |
 | 8TB (`backup8t`) | Every mirror and all snapshot history. No live data | Nothing to restore: the sources are all still live. Replace the drive and the jobs refill it | Point-in-time history. Until the new drive has filled, a second failure loses data, so replace it first |
 
-Two disks at once, or the whole machine: what remains is the Forgejo copy on hp-victus and the GitHub mirror of this repo. That is the gap the offsite decision is about.
+Two disks at once, or the whole machine: restore from the offsite copy in B2 (`Offsite (B2)`), which holds the previous night's 8TB snapshots. The GitHub mirror of this repo also survives; live Forgejo does not while it runs from asus (`apps/forgejo/pvc.yaml`).
 
 ### Replacing a disk
 
-**Root.** Install the OS, then run `ansible/playbooks/site.yml --limit asus-laptop` from your workstation and rejoin the node. Restore Forgejo before anything else, because Flux reads this repo from it and the cluster pulls images from it. A `forgejo-full-*.tar.gz` is a tar of `/data`, so extract the newest one into the empty `forgejo-data` PV, then copy `/mnt/backup-8t/forgejo-packages` to `gitea/data/packages`, which the fulls exclude. This restore has not been rehearsed. Then follow each app's restore section in this file.
+**Root.** Install the OS, then run `ansible/playbooks/site.yml --limit asus-laptop` from your workstation and rejoin the node. While Forgejo runs from asus (`apps/forgejo/pvc.yaml`), an asus loss takes it down with its backups. To restore Forgejo: a `forgejo-full-*.tar.gz` is a tar of `/data`, so extract the newest one into the PV path on the node `apps/forgejo/pvc.yaml` pins, swap in the newest `forgejo-db-*.db.gz` as `gitea/gitea.db`, then copy `/mnt/backup-8t/forgejo-packages` to `gitea/data/packages`, which the fulls exclude. `sudo scripts/forgejo-restore-drill.sh` on asus rehearses the data half of this in a network-less container: the newest full with its snapshot must boot the deployed version, and every repository the db names must pass `git fsck`. It does not rehearse the packages copy, the PV path and ownership (uid 1000), or `forgejo-secrets`, which Flux applies from SOPS. A full taken before the 2026-11-12 SECRET_KEY rotation needs the old key (`apps/forgejo/README.md`, "Rotating SECRET_KEY"). Then follow each app's restore section in this file. After the cutover to forge-hel1 an asus loss takes only Forgejo's backups, and Forgejo keeps running. A restore of the VM extracts the same full into `/mnt/forgejo/data` there (owner 1000), with the db swapped in the same way, and copies the packages back to `/mnt/forgejo/data/gitea/data/packages`.
 
 **NAS.** No Ansible role builds this disk. Partition it, `mkfs.btrfs`, create the subvolumes `@public`, `@private`, `@backups`, `@media-library`, `@downloads` and `@app-config`, and put the new UUID in the `/etc/fstab` lines that hold the old one. Then copy back from the newest snapshot, with the matching apps stopped:
 
@@ -84,6 +84,10 @@ The Seagate Expansion USB HDD (label `backup8t`, uuid `99a8c3bb-b1d9-4a78-88de-6
 | `@nas-backups-snapshots` | `/mnt/backup-8t/nas-backups-snapshots` | Dated read-only btrfs snapshots (14 retained) |
 | `@harvest` | `/mnt/backup-8t/harvest` | rsync mirror of files pulled off retired machines (`/mnt/nas/private/harvest`) |
 | `@harvest-snapshots` | `/mnt/backup-8t/harvest-snapshots` | Dated read-only btrfs snapshots (14 retained) |
+| `@eeg` | `/mnt/backup-8t/eeg` | rsync mirror of the age-encrypted Emotiv archive (`/mnt/nas/private/eeg`, `ansible/roles/emotiv-bridge`) |
+| `@eeg-snapshots` | `/mnt/backup-8t/eeg-snapshots` | Dated read-only btrfs snapshots (14 retained) |
+| `@dog-barks` | `/mnt/backup-8t/dog-barks` | rsync mirror of the dog-bark evidence archive (`/mnt/nas/private/dog-barks`, `apps/nas/bark-archive.sh`) |
+| `@dog-barks-snapshots` | `/mnt/backup-8t/dog-barks-snapshots` | Dated read-only btrfs snapshots (14 retained) |
 
 ### Reprovisioning (if drive is reformatted or replaced)
 
@@ -139,6 +143,7 @@ Note: `nofail` means an unplugged drive never blocks boot. The `immich-originals
 | Check recent backup jobs | `kubectl --context home-k3s get jobs -A --sort-by=.status.startTime | grep backup | tail -5` |
 | Restore Home Assistant | See `Restore Home Assistant` |
 | Restore LiteLLM | See `Restore LiteLLM` |
+| Restore binks.chat (accounts, chats) | See `Restore binks.chat` |
 | Restore the game registry | See `Restore the game registry` |
 | Restore Music Assistant | `apps/music-assistant/README.md` -> Backup and rebuild |
 | Restore Snapcast | `apps/snapcast/README.md` -> Backup and restore |
@@ -161,37 +166,95 @@ K3s app backups run on schedule via CronJobs. Each backup writes a local archive
 | `snapcast-backup` | Daily 2:45 AM | `snapcast` | hp-victus `/var/backups/snapcast` + NAS `home-k3s/snapcast/` |
 | `game-saves-backup` | Daily 2:50 AM | `game-registry` | NAS `home-k3s/game-saves/` (registry Postgres dump + `game-saves` bucket mirror) |
 | `actual-budget-backup` | Daily 3 AM | `actual-budget` | `/var/backups/actual-budget` + NAS `home-k3s/actual-budget/` |
-| `forgejo-backup` | Daily 3 AM | `forgejo` | asus-laptop `/mnt/backups/forgejo` (2nd disk; excludes `gitea/data/packages`; off-box copy is the separate job below) |
+| `forgejo-db-snapshot` | Hourly :07 | `forgejo` | asus-laptop `/mnt/backups/forgejo-live/snapshots` (48 kept; the nightly ships the newest) |
+| `forgejo-backup` | Daily 3 AM | `forgejo` | asus-laptop `/mnt/backups/forgejo` (reads the live data on the same host; excludes `gitea/data/packages`; second copy is the separate job below) |
 | `immich-backup` | Daily 3 AM | `immich` | `/var/backups/immich` + NAS `home-k3s/immich/` (DB only) |
 | `postgres-backup` | Daily 2:20 AM | `databases` | NAS `home-k3s/postgres/` (`pg_dumpall` of every database and role) |
+| `binks-postgres-backup` | Daily 2:25 AM | `binks-api` | NAS `home-k3s/binks/` (`pg_dump` of the `binks` database in the standalone `binks-postgres`) |
 | `karakeep-backup` | Daily 3 AM | `karakeep` | `/var/backups/karakeep` + NAS `home-k3s/karakeep/` |
 | `vaultwarden-backup` | Daily 3 AM | `vaultwarden` | `/var/backups/vaultwarden` + NAS `home-k3s/vaultwarden/` |
 | `immich-originals-backup` | Daily 3:30 AM | `immich` | 8TB `/mnt/backup-8t/immich` + snapshots (originals + DB) |
 | `3d-prints-backup` | Sunday 3:45 AM | `nas` | 8TB `/mnt/backup-8t/3d-prints` + snapshots (mirror of `/mnt/nas/public/3d-printing`) |
 | `phones-backup` | Sunday 4:15 AM | `nas` | 8TB `/mnt/backup-8t/phones` + snapshots (mirror of `/mnt/nas/private/phones`) |
 | `sops-key-backup` | Sunday 4 AM | `nas` | NAS `home-k3s/sops/` |
-| `forgejo-backup-offbox` | Daily 4:30 AM | `forgejo` | hp-victus NFS `192.168.1.243:/srv/backups/forgejo` (newest 2 fulls) |
+| `forgejo-backup-offbox` | Daily 4:30 AM | `forgejo` | asus-laptop 8TB `/mnt/backup-8t/forgejo-backups` (newest 3 fulls) |
+| `forgejo-backup-pull` | Daily 4:30 AM, suspended until the forge-hel1 cutover | `forgejo` | asus-laptop 8TB `/mnt/backup-8t/forgejo-backups`: pulls forge-hel1's hourly snapshots and data tree over the tailnet, builds the full there (newest 3), and copies the package registry add-only into `forgejo-packages` with a weekly snapshot. Replaces `forgejo-backup`, `forgejo-backup-offbox` and `forgejo-packages-backup` at the cutover; on the VM, `forgejo-db-snapshot.timer` and `forgejo-lock-reaper.timer` replace their CronJobs (`apps/forgejo/README.md`, "On forge-hel1") |
 | `forgejo-packages-backup` | Sunday 4:45 AM | `nas` | 8TB `/mnt/backup-8t/forgejo-packages` + snapshots (the Forgejo package registry) |
 | `nas-backups-mirror` | Daily 5:30 AM | `nas` | 8TB `/mnt/backup-8t/nas-backups` + snapshots (mirror of `/mnt/nas/private/backups`) |
 | `app-config-backup` | Sunday 5:45 AM | `nas` | 8TB `/mnt/backup-8t/app-config` + snapshots (mirror of `/mnt/media/app-config`) |
 | `harvest-backup` | Sunday 6 AM | `nas` | 8TB `/mnt/backup-8t/harvest` + snapshots (mirror of `/mnt/nas/private/harvest`) |
+| `eeg-backup` | Daily 6:15 AM | `nas` | 8TB `/mnt/backup-8t/eeg` + snapshots (mirror of `/mnt/nas/private/eeg`) |
+| `dog-barks-backup` | Daily 6:45 AM | `nas` | 8TB `/mnt/backup-8t/dog-barks` + snapshots (mirror of `/mnt/nas/private/dog-barks`) |
+| `offsite-backup` | Daily 1 AM | `offsite-backup` | Backblaze B2, restic, encrypted (the newest 8TB snapshot of every dataset above, plus `@immich-db` and `@forgejo-backups`) |
 | `zomboid-backup` | Daily 4:30 AM | `zomboid` | NAS **public** share `backups/zomboid/` |
 | `freqtrade-lab-backup` | Sunday 2:50 AM | `freqtrade` | NAS **public** share `backups/freqtrade/` (newest 4) |
 | `nas-backup-cleanup` | Sunday 5 AM | `nas` | not applicable |
 | `nas-backup-verify` | Monday 6 AM | `nas` | writes `manifest.log` |
 
-Every copy in this table lives in this house. There is no offsite tier: see the note under `asus-laptop drive inventory`.
-
-**2026-08-25 decision: LAN-only is accepted, for now.** Offsite was considered for `actual-budget` (encrypted push to DO Spaces, a third LAN copy on hp-victus, or an encrypted archive in a private repo) and deliberately deferred, not overlooked. The exposure is a whole-house loss: fire, theft or flood takes every copy of the finance history, the Vaultwarden export and the Home Assistant config at once. Revisit when convenient. Until then, `actual-budget-backup` fails loudly if its off-box copy fails, because with no offsite tier the second machine is the only redundancy there is.
+Every copy in this table except `offsite-backup` lives in this house. `offsite-backup` copies the 8TB, so it is at most one day behind it, and a dataset that never reaches the 8TB never reaches B2 either. Media (`/mnt/media/library`, downloads) is replaceable and not copied offsite.
 
 ### Failure policy per job
 
 | Job | Off-box copy fails |
 |---|---|
-| `actual-budget-backup` | **Job fails, `KubeJobFailed` pages.** Deliberate exception, see above. |
+| `actual-budget-backup` | **Job fails, `HomelabCronJobFailed` pages.** The finance history is the data least able to wait a day for the next 8TB and offsite runs. |
 | `karakeep-backup` | **Job fails.** Its PVCs and local backups share a disk, so the NAS copy is the only protection. |
 | `postgres-backup` | **Job fails.** The NAS is its only destination. |
+| `binks-postgres-backup` | **Job fails.** The NAS is its only destination, and a dump with no `messages` data fails too. |
+| `vaultwarden-backup` | **Job fails.** The local copy sits on the one node holding the PVC, and losing the vault loses every credential. |
 | everything else | Job exits 0, warning in the log only (best-effort). |
+
+## Offsite (B2)
+
+The third copy, outside the house. `offsite-backup` (namespace `offsite-backup`, `apps/offsite-backup/`) runs restic nightly at 1 AM on asus-laptop. It reads only the 8TB, read-only: the newest snapshot of `immich`, `phones`, `harvest`, `eeg`, `nas-backups`, `app-config`, `3d-prints` and `forgejo-packages`, plus `@immich-db` and `@forgejo-backups`, each bind-mounted at `/data/<name>` so restic sees a stable path. restic encrypts on the host; B2 never sees plaintext.
+
+- Retention: Sunday runs `forget --keep-daily 7 --keep-weekly 8 --keep-monthly 12 --prune`. The 1st of each month runs `check --read-data-subset=5%`, which re-downloads about 30 GB and verifies it.
+- Ransomware guard: the bucket has Object Lock (governance mode, 30-day default retention), and the job's key has no delete permission. So the job, or anyone holding its key, can only hide a file, never destroy a version; restic's prune works by hiding. The lifecycle rule deletes a hidden version 30 days after it was hidden, so a bad delete can be undone for 30 days. Tested 2026-11-12: a permanent delete with the job key returns 401 unauthorized, and with the master key 401 access_denied unless it passes `bypassGovernance`.
+- Alerting: `HomelabBackupStale` pages when the job has not succeeded in 36h. A failed check or prune fails the job, so it pages the same way.
+- Secret: `apps/offsite-backup/secret.sops.yaml` holds `RESTIC_REPOSITORY`, `RESTIC_PASSWORD`, `AWS_ACCESS_KEY_ID` and `AWS_SECRET_ACCESS_KEY` (the B2 application key `offsite-backup-job`: bucket `kblab-offsite-b17a11` only, list, read and write, no delete). The repository is `restic` in that bucket, region `us-east-005`. The master application key is in rbw as `backblaze_api` (the keyID after `key:` in the password, the key after `secret:` in the notes); it never goes into the cluster. Under `test/` in the bucket sits a 2 MB throwaway repository from the 2026-11-12 permission test; it expires with its lock and can be ignored.
+
+### Break-glass: the keys must be outside the house too
+
+If the house is lost, Vaultwarden (and so rbw) and the SOPS age key on the workstation are lost with it, and the B2 copy cannot be opened without them. Keep these together somewhere outside the house (printed in a safe place, or a cloud password manager): the restic password, the B2 account login, the `backblaze-b2` key, and the SOPS age key (`~/.config/sops/age/keys.txt`). Re-do this whenever one of them rotates. To read the restic password: `sops -d apps/offsite-backup/secret.sops.yaml | grep RESTIC_PASSWORD`.
+
+### First upload
+
+The first run sends about 0.6 TB, around two days at the job's 3500 KiB/s upload limit. Measured 2026-11-13 to 2026-11-15: 529 GiB read, 451.5 GiB stored after dedup and compression, in 39h04m (snapshot `05a7bb11`, 181,767 files). Start it as a one-off copy of the CronJob, which carries the 3-day deadline and the limit:
+
+```bash
+kubectl -n offsite-backup create job offsite-seed --from=cronjob/offsite-backup
+kubectl -n offsite-backup logs -f job/offsite-seed
+```
+
+The CronJob does not count a manual job as its own run, so the 1 AM runs during the seed start anyway, find the seed's lock and fail on purpose (after the wait below) rather than upload the same data twice. Expect those failures until the seed completes. restic keeps the data it has already uploaded, so a seed that is interrupted only needs to be started again. Keep the seed job until one nightly has succeeded: `create job --from` makes the CronJob its owner, so until then the seed is the only completed job `HomelabBackupStale` can see, and deleting it leaves the rule with no series at all.
+
+A run that finds a lock checks again every minute, for up to `LOCK_STALE_WAIT_S` in the script (restic's 30-minute stale window plus one). It goes on as soon as the lock is gone: a run that finished, or a dead run's lock that `restic unlock` removes once it is stale, such as the pod an asus-laptop reboot killed, whose Job retry starts seconds later. A lock still held at the end belongs to a live run, and the run aborts. So during a seed each nightly pod, and its one retry, logs "A lock is held; waiting" for about 31 minutes before it fails: that is the guard, not a hang.
+
+If a run fails with `storage cap exceeded`, the B2 account's storage cap is too low: raise it on the B2 Caps & Alerts page. A new account stops at the 10 GB free tier until a payment method is on file and the cap is raised.
+
+### Use the repository by hand
+
+From any machine with restic and the four values from the secret:
+
+```bash
+export $(sops -d apps/offsite-backup/secret.sops.yaml | yq -r '.stringData | to_entries[] | "\(.key)=\(.value)"')
+restic snapshots
+restic ls latest /data/actual-budget 2>/dev/null || restic ls latest /data/nas-backups | head
+```
+
+The repository was created once with `restic init` and the job never creates one, so a wrong URL or password fails instead of starting a second repository.
+
+### Restore from B2
+
+Restore to a scratch directory, never over live data:
+
+```bash
+restic restore latest --target /tmp/offsite-restore --include /data/nas-backups/home-k3s/actual-budget
+```
+
+Restore drill (2026-11-15, passed, repeat quarterly): on hp-victus, with no restic installed, `docker run --rm --env-file <file from the secret, mode 600> -v <scratch>:/restore restic/restic:0.19.1 restore latest --target /restore --include <path>`. A random Immich original matched the NAS copy by sha256; the newest actual-budget and vaultwarden archives matched the 8TB copies by sha256; actual-server 26.8.1 served the budget (`/health` UP, 1523 transactions) and the pinned vaultwarden image served its archive (`/alive` 200, 93 live items) per `apps/vaultwarden/README.md` Restore drill.
+
+Whole-house loss: restore `/data/immich` (originals, under `upload`), `/data/immich-db`, `/data/nas-backups` (every app dump) and `/data/forgejo-backups` first; then follow the per-app restore sections below. restic can also `restic mount /mnt/offsite` to browse every snapshot as files.
 
 ## Retention
 
@@ -309,6 +372,27 @@ kubectl --context home-k3s scale deployment home-assistant -n home-assistant --r
 ## Restore LiteLLM
 
 LiteLLM keeps everything in the `litellm` database, so use `Restore shared Postgres`. The 104-byte archives in `/mnt/nas/private/backups/home-k3s/litellm/` are from the retired `litellm-backup` job, which tarred an empty PVC: they hold nothing.
+
+## Restore binks.chat
+
+Every binks.chat account, chat, message, subscription and connector is in the `binks` database of `binks-postgres` (namespace `binks-api`), a StatefulSet of its own that `postgres-backup` does not see. `binks-postgres-backup` dumps it with `pg_dump --no-owner --no-acl`, so the dump loads into any empty database as any role.
+
+```bash
+# 1. Pick a dump
+ssh -p 2222 192.168.1.152 sudo ls -lt /mnt/nas/private/backups/home-k3s/binks/ | head -5
+
+# 2. Stop the API so nothing writes, and recreate the database empty
+kubectl --context home-k3s -n binks-api scale deploy/binks-api --replicas=0
+kubectl --context home-k3s -n binks-api exec binks-postgres-0 -- sh -c \
+  'psql -U "$POSTGRES_USER" -d postgres -c "DROP DATABASE binks WITH (FORCE)" -c "CREATE DATABASE binks"'
+
+# 3. Load it, then start the API and check /ready
+ssh -p 2222 192.168.1.152 sudo cat /mnt/nas/private/backups/home-k3s/binks/binks-YYYYmmdd-HHMMSS.sql.gz \
+  | gunzip | kubectl --context home-k3s -n binks-api exec -i binks-postgres-0 -- sh -c 'psql -U "$POSTGRES_USER" -d binks -v ON_ERROR_STOP=1 -q'
+kubectl --context home-k3s -n binks-api scale deploy/binks-api --replicas=1
+```
+
+To test a dump without touching the live database, load it into a throwaway `postgres:15-alpine` container and compare `SELECT COUNT(*)` for `users`, `conversations` and `messages` with the live one. Done on 2026-11-14 with `binks-20261114-173755.sql.gz`: 8 users, 40 conversations, 65 messages, 3 subscriptions, all equal.
 
 ## Restore shared Postgres
 

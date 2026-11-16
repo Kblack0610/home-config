@@ -20,6 +20,10 @@ Why: during the 2026-05 cleanup session, three concurrent agents (microbin, mini
 
 Three independent btrfs disks with no RAID, and the 8TB USB drive is a backup target, not NAS space. Inventory, jobs and what each disk failure loses: `docs/backup-runbook.md`.
 
+## Placing work on a host
+
+Before a PR adds load to a host (a runner slot, a pinned pod or PV, a game server, a fleet worker), run `scripts/host-headroom.py <host>` and paste its line in the PR body; FULL means it does not go there. hp-victus and asus-laptop are `no_ci_hosts` (`ansible/inventory.yml`) and take no CI, whatever the script says. Why: hp-victus got three more CI slots on an average, ran Forgejo, Frigate and six runners at 1.7x its CPUs and 100C, and went NotReady (2026-11-13).
+
 ## Canonical Remote - forgejo only
 
 This repo has two remotes: `forgejo` (canonical, Flux watches it) and `origin` (passive github mirror). **Always push to forgejo, never origin** - github is auto-mirrored on every push to master by `.forgejo/workflows/mirror-to-github.yaml`. Full doc: `docs/gitops.md#canonical-remote`.
@@ -49,26 +53,26 @@ Bare-metal Pis have **four different names** for the same box, each resolved by 
 
 | Where | Name shape | Example | Resolved by |
 |-------|-----------|---------|-------------|
-| `ansible/inventory.yml` `--limit` | bare alias | `pi5-master`, `pi5-worker2`, `pi4-worker4` | Ansible only - **not** DNS-resolvable |
+| `ansible/inventory.yml` `--limit`, and `ssh` from the workstation | bare alias | `pi5-master`, `pi5-worker2`, `pi4-worker4` | Ansible, and the workstation's `/etc/ssh/ssh_config.d/40-home-inventory.conf` (role `ssh-client-inventory`) - **not** DNS |
 | `ssh`, `kubectl`, `curl`, `nc`, etc. | DHCP name | `pi5-master-lan`, `pi5-worker2-lan` | OpenWRT dnsmasq via `infrastructure/dhcp/devices.yaml` |
 | `kubectl get nodes`, `kubectl debug node/...` | k8s node name | `raspberrypi`, `raspberrypi-e3a771f1` | OS hostname (Pis kept default `raspberrypi[-suffix]`) |
 | Always works | IP | `192.168.1.20` (master), `.21-.24, .124` (workers) | - |
 
-Macs use SSH-config aliases (`m1`, `mac-studio`) instead - see `docs/mac-machines.md`. The `-lan` suffix is a Pi/x86 convention only.
+Every inventory alias with an IP `ansible_host` (Macs and laptops too, with their port and user, plus extra names from `ssh_aliases` such as `m1`) is an ssh alias on the workstation. The `-lan` suffix is a Pi/x86 convention only.
 
 Rule of thumb:
-- runbook or shell command -> use `-lan` or IP
+- runbook or shell command -> `-lan` or IP; on the workstation the bare alias works too
 - ansible `--limit` -> bare alias
 - `kubectl debug node/...` (the SSH-broken escape hatch) -> k8s node name from `kubectl get nodes`
 
 Full mapping table + the `kubectl debug node/<name> --profile=sysadmin -- chroot /host` recipe for fixing dead-SSH nodes lives in [`docs/host-access.md`](./docs/host-access.md).
 
-## Local LLM routing
+## LLM routing
 
-Anything that needs a self-hosted model calls the **LiteLLM gateway** (`apps/litellm`, OpenAI-compatible `/v1`). Never curl a model host by IP:port, and never `ollama pull` as a workaround when an endpoint is unreachable.
+Anything that needs a model calls the **LiteLLM gateway** (`apps/litellm`, OpenAI-compatible `/v1`). Never curl a model host by IP:port, and never `ollama pull` as a workaround when an endpoint is unreachable.
 
-- **Ollama is decommissioned.** Mac Studio serves models via `mlx-server` (:8090), fronted by LiteLLM. A hardcoded `:11434` is always stale.
-- **LiteLLM fronts three tiers:** local MLX (free), Gemini (free tier), and paid **Lazer** (`proxy.lazertechnologies.com`). Lazer is the user's own AI allowance ($250/mo, LiteLLM team `lazer-pool`), not a client proxy, and personal data may use it. Reach it through the gateway with a scoped key so spend is metered.
+- **One self-hosted model, reached only as the route `local (qwen3.5-9b)`.** It is llama-server on the workstation's RTX 4060 Ti (dotfiles `llama-server.service`), home-only, $0, and with no fallback edge, so it fails when the workstation is off. Every other route is a cloud upstream. A hardcoded `:11434` (Ollama), `:8090` (MLX) or `:8780` endpoint in a consumer is always wrong: call the route.
+- **LiteLLM fronts four tiers:** Gemini (free tier), paid **Lazer** (`proxy.lazertechnologies.com`), the **OpenCode Go** flat plan (`go (...)` routes, `opencode.ai`) and the **NVIDIA NIM** free tier (`free-deepseek (...)`). Lazer is the user's own AI allowance ($250/mo, LiteLLM team `lazer-pool`), not a client proxy, and personal data may use it. Go and NIM are third-party tiers for fleet trial work only (keys `fleet-go`, `fleet-nim`, no team); do not assume personal data may go there. Reach every tier through the gateway with a scoped key so spend is metered.
 - **Consumers hold a scoped virtual key, never the master key.** Scope `allowed_models` to the tiers that consumer may use, so a wrong model name fails closed at the gateway instead of leaking content to a paid or cloud upstream. Minting: `apps/litellm/README.md` -> Create a key.
 - **Config points at the gateway, not a host.** If a config key names a model endpoint, verify something actually reads it; a documented-but-dead key hides the real endpoint in a code default.
 
@@ -76,6 +80,7 @@ Why: 2026-07-20 the `comms` email-triage skill classified tier-2 against `192.16
 
 ## Secrets
 
+- **An agent mints the credential for any service we run, through its admin path, into SOPS; never send the human to a UI for one.** Each service's admin path and steps: `docs/credentials.md`. Only accounts at services we do not run are the human's.
 - **One store for secrets in git: SOPS + age.** Kubernetes Secrets (Flux decrypts at apply time) and Ansible's `vault_*` vars (`ansible/group_vars/<group>/vault.sops.yaml`, decrypted at playbook run time by the `community.sops` vars plugin) are both SOPS files. ansible-vault is retired; see `ansible/README.md` "Secrets".
 - **SOPS age key**: `~/.config/sops/age/keys.txt`. Decrypts every `*.sops.yaml` and the in-cluster ansible-runner Secret. Without it, `flux bootstrap` works but SOPS-encrypted Kustomizations fail to decrypt, and `ansible-playbook` stops at "Failed to get the data key". Full key-rotation procedure in `docs/gitops.md`.
 - **The ansible-runner holds a second, Ansible-only age key** (`apps/ansible-runner/secret.yaml` key `sops-age-key`). The Ansible files are encrypted to both keys, so the runner can read them and no Kubernetes Secret.

@@ -1,0 +1,150 @@
+# promtool test rules. Run with scripts/test-prometheus-rules.sh.
+rule_files:
+  - binks.rules.yaml
+evaluation_interval: 1m
+
+tests:
+  - name: chat turns failing at 50% for 30m fires BinksChatTurnErrors
+    interval: 1m
+    input_series:
+      - series: 'binks_ws_messages_total{direction="in",type="message"}'
+        values: '0+2x40'
+      - series: 'binks_ws_messages_total{direction="out",type="error"}'
+        values: '0+1x40'
+    alert_rule_test:
+      - eval_time: 30m
+        alertname: BinksChatTurnErrors
+        exp_alerts:
+          - exp_labels:
+              severity: warning
+              fleet: fix
+              category: app
+            exp_annotations:
+              summary: "binks.chat: over 20% of chat turns end in an error"
+              description: "15 error frames in the last 15m, over 20% of messages sent. Check binks-api logs (kubectl --context home-k3s -n binks-api logs deploy/binks-api) and BinksLLMErrors."
+
+  - name: two error frames in 15m do not fire, however few the messages
+    interval: 1m
+    input_series:
+      - series: 'binks_ws_messages_total{direction="in",type="message"}'
+        values: '0x40'
+      - series: 'binks_ws_messages_total{direction="out",type="error"}'
+        values: '0x20 1x5 2x15'
+    alert_rule_test:
+      - eval_time: 35m
+        alertname: BinksChatTurnErrors
+        exp_alerts: []
+
+  - name: LLM failures fire BinksLLMErrors, and stop cancels do not count
+    interval: 1m
+    input_series:
+      - series: 'binks_chat_completions_total{model="binks-chat",role="assistant"}'
+        values: '0+1x40'
+      - series: 'binks_llm_errors_total{model="binks-chat",kind="stream"}'
+        values: '0+1x40'
+      - series: 'binks_llm_errors_total{model="binks-chat",kind="cancel"}'
+        values: '0+5x40'
+    alert_rule_test:
+      - eval_time: 30m
+        alertname: BinksLLMErrors
+        exp_alerts:
+          - exp_labels:
+              severity: warning
+              fleet: fix
+              category: app
+            exp_annotations:
+              summary: "binks.chat: over 20% of LLM calls fail"
+              description: "15 failed LLM calls in the last 15m. By kind: sum by (model, kind) (increase(binks_llm_errors_total[15m])). key_issue_failed is the issuer key; stream and empty are the binks-chat routes in apps/litellm/config.yaml."
+
+  - name: cancels alone never fire BinksLLMErrors
+    interval: 1m
+    input_series:
+      - series: 'binks_chat_completions_total{model="binks-chat",role="assistant"}'
+        values: '0+1x40'
+      - series: 'binks_llm_errors_total{model="binks-chat",kind="cancel"}'
+        values: '0+5x40'
+    alert_rule_test:
+      - eval_time: 30m
+        alertname: BinksLLMErrors
+        exp_alerts: []
+
+  - name: binks-anon under 25% warns, under 5% is critical
+    interval: 1m
+    input_series:
+      - series: 'litellm_api_key_max_budget_metric{api_key_alias="binks-anon"}'
+        values: '10x60'
+      - series: 'litellm_remaining_api_key_budget_metric{api_key_alias="binks-anon"}'
+        values: '2x30 0.3x30'
+    alert_rule_test:
+      - eval_time: 20m
+        alertname: BinksAnonBudgetLow
+        exp_alerts:
+          - exp_labels:
+              severity: warning
+              fleet: none
+              category: cost
+              api_key_alias: binks-anon
+            exp_annotations:
+              summary: "binks-anon has under 25% of its monthly budget left"
+              description: "binks-anon is at 20% of its budget. At 0 binks.chat stops answering. Check litellm_api_key_budget_remaining_hours_metric for the reset, and BinksAnonBudgetBurn for abuse."
+      - eval_time: 20m
+        alertname: BinksAnonBudgetExhausted
+        exp_alerts: []
+      - eval_time: 45m
+        alertname: BinksAnonBudgetExhausted
+        exp_alerts:
+          - exp_labels:
+              severity: critical
+              fleet: none
+              category: cost
+              api_key_alias: binks-anon
+            exp_annotations:
+              summary: "binks-anon budget nearly spent: binks.chat is about to stop answering"
+              description: "binks-anon is at 3% of its budget. Raise it with /key/update on the gateway or find the abuser in the LiteLLM spend logs (apps/litellm/README.md)."
+
+  - name: a nearly full binks-anon (today's state, 9.92 of 10) fires nothing
+    interval: 1m
+    input_series:
+      - series: 'litellm_api_key_max_budget_metric{api_key_alias="binks-anon"}'
+        values: '10x90'
+      - series: 'litellm_remaining_api_key_budget_metric{api_key_alias="binks-anon"}'
+        values: '9.92x90'
+    alert_rule_test:
+      - eval_time: 80m
+        alertname: BinksAnonBudgetLow
+        exp_alerts: []
+      - eval_time: 80m
+        alertname: BinksAnonBudgetBurn
+        exp_alerts: []
+
+  - name: spending $1.50 of $10 in an hour fires BinksAnonBudgetBurn
+    interval: 1m
+    input_series:
+      - series: 'litellm_api_key_max_budget_metric{api_key_alias="binks-anon"}'
+        values: '10x70'
+      - series: 'litellm_remaining_api_key_budget_metric{api_key_alias="binks-anon"}'
+        values: '9x10 9-0.025x60'
+    alert_rule_test:
+      - eval_time: 70m
+        alertname: BinksAnonBudgetBurn
+        exp_alerts:
+          - exp_labels:
+              severity: warning
+              fleet: none
+              category: cost
+              api_key_alias: binks-anon
+            exp_annotations:
+              summary: "binks-anon spent over 10% of its monthly budget in an hour"
+              description: "14.75% of the budget in the last hour. At this rate the key is empty within a day. Find the caller in the LiteLLM spend logs for key binks-anon."
+
+  - name: the monthly reset is not a burn
+    interval: 1m
+    input_series:
+      - series: 'litellm_api_key_max_budget_metric{api_key_alias="binks-anon"}'
+        values: '10x70'
+      - series: 'litellm_remaining_api_key_budget_metric{api_key_alias="binks-anon"}'
+        values: '0.5x30 10x40'
+    alert_rule_test:
+      - eval_time: 65m
+        alertname: BinksAnonBudgetBurn
+        exp_alerts: []

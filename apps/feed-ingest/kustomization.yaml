@@ -1,0 +1,19 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+# Social and news sources -> one ledger (database feeds) -> MQTT feeds/# and config routes.
+# configMapGenerator: an ingest.py or config.toml edit rolls the pod. README.md has the rest.
+namespace: feed-ingest
+
+configMapGenerator:
+  - name: feed-ingest-app
+    files:
+      - ingest.py
+      - config.toml
+
+resources:
+  - namespace.yaml
+  - feed-ingest-secret.sops.yaml   # DATABASE_URL, LITELLM_API_KEY
+  - deployment.yaml
+  - service.yaml
+  - servicemonitor.yaml

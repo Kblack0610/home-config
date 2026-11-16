@@ -107,16 +107,7 @@ external-endpoints:
 # --- POLL: machines we can reach, already exporting, no agent to install ---
 endpoints:
   # Macs: node_exporter via the node-exporter-mac ansible role (site.yml).
-  # Deliberately poll-only - there are TWO Macs, so a single pushed `mac`
-  # endpoint would have both writing the same key and each masking the other's
-  # death.
-  - name: mac-studio
-    group: homelab
-    url: "http://192.168.1.4:9100/metrics"
-    interval: 60s
-    conditions:
-      - "[STATUS] == 200"
-
+  # Polled, so the Mac needs no push agent.
   - name: mac-mini
     group: homelab
     url: "http://192.168.1.7:9100/metrics"

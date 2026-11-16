@@ -6,11 +6,16 @@ metadata:
   labels:
     app.kubernetes.io/name: forgejo
 spec:
-  type: ClusterIP
-  selector:
-    app.kubernetes.io/name: forgejo
+  # Forgejo runs outside the cluster on whichever host forge-primary.kblab.me
+  # names (its tailnet IP; scripts/forge-move is the record's only writer), so
+  # a move changes nothing in git and Flux never needs Forgejo to fetch the
+  # fix. Pods resolve the record through apps/coredns, Traefik follows it with
+  # allowExternalNameServices, and the traffic goes over the node's tailscale0.
+  # apps/forgejo/README.md, "Where Forgejo runs and how to move it".
+  type: ExternalName
+  externalName: forge-primary.kblab.me
   ports:
+    # An ExternalName has no port mapping: clients dial the host's port. The
+    # container's sshd is published on 2222 because the host's own sshd has 22.
     - name: ssh
-      port: 22
-      targetPort: 22
-      protocol: TCP
+      port: 2222

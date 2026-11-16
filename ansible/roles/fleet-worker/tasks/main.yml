@@ -12,6 +12,10 @@
     name: "{{ fleet_worker_packages }}"
     state: present
     update_cache: true
+  register: _fleet_worker_pkgs
+  # update_cache counts a refreshed sync db as a change, and --check always does,
+  # so ConvergenceDrift fired on every host nightly: only an installed package is one.
+  changed_when: _fleet_worker_pkgs.packages | default([]) | length > 0
 
 - name: Install the session toolchain (Ubuntu)
   when: ansible_facts.os_family == "Debian"
@@ -21,31 +25,12 @@
     state: present
     update_cache: true
 
-# The login link `tailscale up` prints is the human's to open, so no auth key
-# passes through ansible.
-- name: Install tailscale (a cloud worker)
+- name: Join the tailnet (a cloud worker)
   when: fleet_tailscale | bool
-  become: true
-  ansible.builtin.shell: set -o pipefail && curl -fsSL https://tailscale.com/install.sh | sh
-  args:
-    executable: /bin/bash
-    creates: /usr/bin/tailscale
-
-- name: Run tailscaled
-  when: fleet_tailscale | bool and not ansible_check_mode
-  become: true
-  ansible.builtin.systemd:
-    name: tailscaled
-    enabled: true
-    state: started
-
-- name: Read whether the worker is on the tailnet
-  when: fleet_tailscale | bool
-  ansible.builtin.command: tailscale ip -4
-  register: fleet_worker_tailnet
-  changed_when: false
-  failed_when: false
-  check_mode: false
+  ansible.builtin.include_role:
+    name: tailscale-node
+  vars:
+    tailscale_node_hostname: "{{ fleet_ssh_host | default(inventory_hostname) }}"
 
 - name: Install Claude Code (its native installer, per user)
   ansible.builtin.shell: set -o pipefail && curl -fsSL https://claude.ai/install.sh | bash
@@ -53,8 +38,11 @@
     executable: /bin/bash
     creates: "{{ ansible_env.HOME }}/.local/bin/claude"
 
-# Kept on main: an older agent-queue there would write the queue on the worker
-# instead of forwarding it (fleet-dispatch's probe refuses such a worker).
+# Cloned at main, then kept there by the dotfiles' own dotfiles-autopull (every
+# shell start, at most each 6h), not by this task: main moves many times a day, so
+# update here would report a change on every --check. A worker left behind is
+# still caught: an older agent-queue writes the queue on the worker instead of
+# forwarding it, and fleet-dispatch's probe refuses such a worker.
 # No submodules: two are private ssh remotes a fresh worker cannot reach, and
 # a session needs none of them.
 - name: Clone the public dotfiles, at main
@@ -62,7 +50,15 @@
     repo: "{{ fleet_worker_dotfiles_repo }}"
     dest: "{{ ansible_env.HOME }}/.dotfiles"
     version: main
+    update: false
     recursive: false
+
+- name: Disable submodule fetching in the public dotfiles
+  community.general.git_config:
+    repo: "{{ ansible_env.HOME }}/.dotfiles"
+    scope: local
+    name: fetch.recurseSubmodules
+    value: "false"
 
 # apply_dotfiles removes a plain ~/.bashrc and ~/.zshrc before it stows, so a
 # copy of each is kept first. Runs once: the stowed agent-queue marks it done.
@@ -77,6 +73,28 @@
   args:
     executable: /bin/bash
     creates: "{{ ansible_env.HOME }}/.local/bin/agent-queue"
+
+# agent-panel lists this worker's sessions: the workstation's fleet-sessions runs
+# `agent-panel list --json` over ssh, and a worker without it never shows any.
+# A narrow task, not the dotfiles' build_local_rust_tools: that also builds
+# agent-web, hub and timebox, which a worker does not run. Arch only: apt's
+# cargo (1.75 on Ubuntu 24.04) is older than the Cargo.lock v4 and clap 4.6 here.
+# A rebuild on each play is incremental; no timer rebuilds it between plays yet.
+- name: Build agent-panel (cargo, as the user)
+  when: ansible_facts.os_family == "Archlinux"
+  ansible.builtin.command: cargo build --release
+  args:
+    chdir: "{{ ansible_env.HOME }}/.dotfiles/.local/src/agent-panel"
+  register: _fleet_worker_panel
+  changed_when: "'Compiling' in _fleet_worker_panel.stderr"
+
+- name: Link agent-panel onto PATH
+  when: ansible_facts.os_family == "Archlinux"
+  ansible.builtin.file:
+    src: "{{ ansible_env.HOME }}/.dotfiles/.local/src/agent-panel/target/release/agent-panel"
+    dest: "{{ ansible_env.HOME }}/.local/bin/agent-panel"
+    state: link
+    force: true
 
 - name: Read whether GitHub is signed in (the private overlay and every PR need it)
   ansible.builtin.command: gh auth status
@@ -136,18 +154,27 @@
   args:
     creates: "{{ ansible_env.HOME }}/.ssh/id_ed25519"
 
+# The home is the state host itself: nothing to reach.
 - name: Trust the state host's host key
+  when: not fleet_worker_is_home | bool
   ansible.builtin.known_hosts:
     name: "{{ fleet_state_host }}"
-    key: "{{ lookup('ansible.builtin.pipe', 'ssh-keyscan -t ed25519 ' ~ fleet_state_host ~ ' 2>/dev/null') }}"
+    # OpenSSH 10 also prints a "# host:22 SSH-2.0-..." banner line on stdout; kept in
+    # the key, it never matches known_hosts and the task appends the pair on every run.
+    key: "{{ lookup('ansible.builtin.pipe', 'ssh-keyscan -t ed25519 ' ~ fleet_state_host ~ ' 2>/dev/null | grep -v ^#') }}"
     state: present
 
 - name: Read whether the worker reaches the state host
+  when: not fleet_worker_is_home | bool
   ansible.builtin.command: ssh -o BatchMode=yes -o ConnectTimeout=5 {{ fleet_state_host }} true
   register: fleet_worker_state_ssh
   changed_when: false
   failed_when: false
   check_mode: false
+
+- name: Set up the fleet home
+  when: fleet_worker_is_home | bool
+  ansible.builtin.include_tasks: home.yml
 
 - name: Read whether each account is signed in
   ansible.builtin.stat:
@@ -165,18 +192,18 @@
   vars:
     fleet_worker_unsigned: "{{ fleet_worker_signed.results | rejectattr('stat.exists') | map(attribute='item') | list }}"
     fleet_worker_left: >-
-      {{ ([] if not fleet_tailscale | bool or fleet_worker_tailnet.rc | default(1) == 0 else
-            ['sudo tailscale up --hostname ' ~ (fleet_ssh_host | default(inventory_hostname))
-             ~ ', open the login link it prints, then re-run this play'])
-         + ([] if fleet_worker_gh.rc == 0 else ['gh auth login, then re-run this play for the private overlay'])
-         + ([] if fleet_worker_state_ssh.rc | default(1) == 0 else
+      {{ ([] if fleet_worker_gh.rc == 0 else ['gh auth login, then re-run this play for the private overlay'])
+         + ([] if fleet_worker_is_home | bool or fleet_worker_state_ssh.rc | default(1) == 0 else
             ['on ' ~ fleet_state_host ~ ', add this key to ~/.ssh/authorized_keys: '
              ~ (fleet_worker_pub.content | default('') | b64decode | trim)])
          + (fleet_worker_unsigned | map('regex_replace', '^', 'sign in: CLAUDE_CONFIG_DIR=') | map('regex_replace', '$', ' claude, then /login') | list)
          + (fleet_worker_clones.results | rejectattr('stat.exists') | map(attribute='item.dest')
-            | map('regex_replace', '^', 'not cloned: ') | list) }}
+            | map('regex_replace', '^', 'not cloned: ') | list)
+         + (fleet_home_left | default([])) }}
   ansible.builtin.debug:
     msg: >-
-      {{ 'Ready: set fleet_place: true for ' ~ inventory_hostname ~ ' in inventory.yml to let fleet-dispatch place sessions here.'
+      {{ ('Ready: ' ~ inventory_hostname ~ ' is the fleet home; run agentctl reload there to arm the lanes.')
+         if fleet_worker_is_home | bool and fleet_worker_left | length == 0 else
+         'Ready: set fleet_place: true for ' ~ inventory_hostname ~ ' in inventory.yml to let fleet-dispatch place sessions here.'
          if fleet_worker_left | length == 0 else
          'Left for the human on ' ~ inventory_hostname ~ ': ' ~ (fleet_worker_left | join('; ')) }}

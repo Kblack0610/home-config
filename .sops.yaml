@@ -2,6 +2,12 @@
 # See: https://github.com/getsops/sops
 
 creation_rules:
+  # The EEG archive's age identity (roles/emotiv-bridge). Main key only: the
+  # ansible-runner must not be able to read it, and it is never deployed to the
+  # mac-mini, which holds only the public recipient. First, so the ansible rule
+  # below does not add the runner key.
+  - path_regex: ansible/roles/emotiv-bridge/eeg-identity\.sops\.yaml$
+    age: age138x34tdqulknsj967wjv9urg9ucxtpkep2apzjmthta3xtjgvpgsm8k3a0
   # Ansible secrets (group_vars/<group>/vault.sops.yaml, read by the
   # community.sops vars plugin). Every value is encrypted. Two recipients: the
   # main key (workstation, Flux backup) and an Ansible-only key that the nightly
@@ -12,6 +18,10 @@ creation_rules:
     age: >-
       age138x34tdqulknsj967wjv9urg9ucxtpkep2apzjmthta3xtjgvpgsm8k3a0,
       age1q694uddq28kzxyteemaa4x5zxrnqlmhj0z336zmf6wpptq6ema5qcez399
+  # Provider account logins (email, password, dashboard URL) that are not a
+  # Kubernetes Secret and are never deployed: every value is encrypted.
+  - path_regex: apps/[^/]+/accounts\.sops\.yaml$
+    age: age138x34tdqulknsj967wjv9urg9ucxtpkep2apzjmthta3xtjgvpgsm8k3a0
   # Encrypt only the 'data' and 'stringData' fields in Kubernetes secrets
   - path_regex: .*secret.*\.yaml$
     encrypted_regex: ^(data|stringData)$

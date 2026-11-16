@@ -1,0 +1,98 @@
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: binks-postgres-backup
+  namespace: binks-api
+  labels:
+    app.kubernetes.io/name: binks-postgres-backup
+    app.kubernetes.io/component: backup
+spec:
+  # Every binks.chat account, chat and message lives in binks-postgres, a
+  # standalone StatefulSet that apps/postgres/backup-cronjob.yaml does not see.
+  # This dumps the binks database to the NAS:
+  # /mnt/nas/private/backups/home-k3s/binks. nas-backup-cleanup keeps the newest
+  # 14, nas-backup-verify checks the newest weekly, nas-backups-mirror copies it
+  # to the 8TB and offsite-backup to B2. Restore: docs/backup-runbook.md,
+  # "Restore binks.chat".
+  schedule: "25 2 * * *"
+  timeZone: America/Los_Angeles
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 3
+  # Never, not OnFailure, so a failed pod keeps its logs.
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      backoffLimit: 1
+      activeDeadlineSeconds: 1800
+      template:
+        metadata:
+          labels:
+            # Not app: binks-postgres, which is the Service's selector.
+            app.kubernetes.io/name: binks-postgres-backup
+        spec:
+          # The NAS disk is in asus-laptop.
+          nodeSelector:
+            kubernetes.io/hostname: asus-laptop
+            storage.role/nas: "true"
+          restartPolicy: Never
+          securityContext:
+            runAsUser: 0
+          containers:
+            - name: pg-dump
+              # Same image as binks-postgres, so pg_dump is never older than the server.
+              image: postgres:15-alpine
+              imagePullPolicy: IfNotPresent
+              env:
+                - name: PGHOST
+                  value: binks-postgres
+                - name: PGDATABASE
+                  value: binks
+                - name: PGUSER
+                  valueFrom:
+                    secretKeyRef:
+                      name: binks-postgres-secret
+                      key: username
+                - name: PGPASSWORD
+                  valueFrom:
+                    secretKeyRef:
+                      name: binks-postgres-secret
+                      key: password
+              command:
+                - /bin/sh
+                - -c
+                - |
+                  set -eu
+                  log() { echo "[$(date -Iseconds)] $*"; }
+                  # backups/home-k3s exists only on the NAS disk, so a missing one
+                  # means the disk is not mounted: stop rather than fill the root disk.
+                  [ -d /nas/backups/home-k3s ] || { log "FATAL: /nas/backups/home-k3s missing, NAS not mounted"; exit 1; }
+                  OUT=/nas/backups/home-k3s/binks
+                  mkdir -p "$OUT"
+                  FILE="$OUT/binks-$(date +%Y%m%d-%H%M%S).sql.gz"
+                  trap 'rm -f "$FILE.tmp"' EXIT
+                  # .tmp until it is whole: cleanup and verify only look at *.sql.gz.
+                  # --no-owner so the dump loads into any database as any role. -Z
+                  # writes gzip itself: this image has no bash, so no pipefail, and a
+                  # pipe into gzip would hide a failed pg_dump.
+                  pg_dump --no-owner --no-acl -Z 6 -f "$FILE.tmp"
+                  gzip -t "$FILE.tmp"
+                  # A schema-only dump is about 2.6 KB gzipped, so size alone does not
+                  # prove data; the messages table's COPY block does.
+                  gunzip -c "$FILE.tmp" | grep -q '^COPY public.messages ' || { log "FATAL: no messages data in dump"; exit 1; }
+                  SIZE="$(wc -c < "$FILE.tmp")"
+                  mv "$FILE.tmp" "$FILE"
+                  log "binks: $FILE ($SIZE bytes)"
+              resources:
+                requests:
+                  cpu: 50m
+                  memory: 64Mi
+                limits:
+                  memory: 256Mi
+              volumeMounts:
+                - name: nas
+                  mountPath: /nas
+          volumes:
+            - name: nas
+              hostPath:
+                path: /mnt/nas/private
+                type: Directory

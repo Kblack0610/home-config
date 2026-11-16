@@ -8,6 +8,10 @@ spec:
   # so it does not need the daily full. forgejo-backup excludes it for that
   # reason: at 178G it was 80% of each archive.
   schedule: "45 4 * * 0"
+  timeZone: America/Los_Angeles
+  # Suspended at the cutover to forge-hel1 (2026-11-14): it would read the frozen
+  # asus copy. The VM's timers and forgejo-backup-pull do this job now; removed at cleanup.
+  suspend: true
   concurrencyPolicy: Forbid
   successfulJobsHistoryLimit: 3
   failedJobsHistoryLimit: 3
@@ -52,11 +56,12 @@ spec:
             - name: script
               configMap:
                 name: nas-mirror-script
-            # The Forgejo data PV is local-path on asus-laptop, so the mirror
-            # reads it from the node instead of a second mount of the PVC.
+            # Forgejo runs on asus-laptop since hp-victus hung on 2026-11-13
+            # (apps/forgejo/pvc.yaml, forgejo-data-asus), so this reads the
+            # live registry locally; the mount above is read-only.
             - name: source
               hostPath:
-                path: /var/lib/rancher/k3s/storage/pvc-85cd4c8e-b60d-46be-a67e-c4369cd5f9ef_forgejo_forgejo-data/gitea/data/packages
+                path: /mnt/backups/forgejo-live/data/gitea/data/packages
                 type: Directory
             # Directory, not DirectoryOrCreate: the subvolumes come from the
             # usb-backup-mounts role. To move this backup to a new disk, change

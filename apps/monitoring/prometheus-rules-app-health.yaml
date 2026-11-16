@@ -35,7 +35,7 @@ spec:
                 label_replace(
                   clamp_max(
                     kube_deployment_status_replicas_available{namespace!~"kube-system|flux-system"}
-                    / clamp_min(kube_deployment_spec_replicas{namespace!~"kube-system|flux-system"}, 1),
+                    / (kube_deployment_spec_replicas{namespace!~"kube-system|flux-system"} > 0),
                     1
                   ),
                   "workload",
@@ -60,7 +60,7 @@ spec:
                 label_replace(
                   clamp_max(
                     kube_statefulset_status_replicas_ready{namespace!~"kube-system|flux-system"}
-                    / clamp_min(kube_statefulset_replicas{namespace!~"kube-system|flux-system"}, 1),
+                    / (kube_statefulset_replicas{namespace!~"kube-system|flux-system"} > 0),
                     1
                   ),
                   "workload",
@@ -159,6 +159,7 @@ spec:
           for: 10m
           labels:
             severity: warning
+            fleet: fix
             category: app-health
           annotations:
             summary: "App down: {{ $labels.namespace }}/{{ $labels.workload }}"
@@ -168,6 +169,7 @@ spec:
           for: 15m
           labels:
             severity: warning
+            fleet: fix
             category: app-health
           annotations:
             summary: "App degraded: {{ $labels.namespace }}/{{ $labels.workload }}"
@@ -177,6 +179,7 @@ spec:
           for: 15m
           labels:
             severity: info
+            fleet: none  # info: HomelabAppDegraded and CriticalServiceCrashLooping carry a lasting fault
             category: app-health
           annotations:
             summary: "Restart spike: {{ $labels.namespace }}/{{ $labels.workload }}"

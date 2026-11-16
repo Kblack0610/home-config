@@ -39,10 +39,18 @@ usb_backup_subvolumes:
   - { subvol: "@phones-snapshots", path: /mnt/backup-8t/phones-snapshots }
   - { subvol: "@forgejo-packages", path: /mnt/backup-8t/forgejo-packages }
   - { subvol: "@forgejo-packages-snapshots", path: /mnt/backup-8t/forgejo-packages-snapshots }
+  # The off-box copy of the nightly Forgejo full (forgejo-backup-offbox) since
+  # Forgejo moved to hp-victus on 2026-11-11: the old copy target was hp-victus.
+  - { subvol: "@forgejo-backups", path: /mnt/backup-8t/forgejo-backups }
   - { subvol: "@nas-backups", path: /mnt/backup-8t/nas-backups }
   - { subvol: "@nas-backups-snapshots", path: /mnt/backup-8t/nas-backups-snapshots }
   - { subvol: "@harvest", path: /mnt/backup-8t/harvest }
   - { subvol: "@harvest-snapshots", path: /mnt/backup-8t/harvest-snapshots }
+  - { subvol: "@eeg", path: /mnt/backup-8t/eeg }
+  - { subvol: "@eeg-snapshots", path: /mnt/backup-8t/eeg-snapshots }
+  # The dog-bark evidence archive (apps/nas/dog-barks-backup-cronjob.yaml).
+  - { subvol: "@dog-barks", path: /mnt/backup-8t/dog-barks }
+  - { subvol: "@dog-barks-snapshots", path: /mnt/backup-8t/dog-barks-snapshots }
   - { subvol: "@langfuse", path: /mnt/backup-8t/langfuse }
   - { subvol: "@victoria-metrics", path: /mnt/backup-8t/victoria-metrics }
   # Not a subvolume: the whole filesystem, read-only, so one path shows every

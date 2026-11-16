@@ -11,6 +11,8 @@
 linux_ci_user_home: /var/lib/linux-ci
 linux_ci_job_started_hook: /usr/local/lib/linux-ci/job-started.sh
 linux_ci_disk_prune: /usr/local/lib/linux-ci/ci-disk-prune.sh
+# Every Unity slot's job-started hook: prunes before the job when the disk is under the floor.
+linux_ci_unity_job_started_hook: /usr/local/lib/linux-ci/unity-job-started.sh
 linux_ci_coredump_max_use: 5G
 
 # What a light/heavy CI job expects (platform's pnpm and Playwright jobs set the bar) beyond the runner itself. No node/pnpm: the
@@ -48,3 +50,38 @@ linux_ci_packages:
   - cairo
   - ttf-liberation
   - noto-fonts
+
+# The same set on Ubuntu (windows-media-ci, the AWS hosts). Docker is the Unity
+# role's there (docker.io and docker-buildx are already on an Ubuntu Unity host),
+# and kubectl is not in Ubuntu's archive, so it comes from dl.k8s.io below.
+linux_ci_packages_apt:
+  - git
+  - git-lfs
+  - jq
+  - curl
+  - unzip
+  - zip
+  - gh
+  - python3
+  - python3-yaml
+  - python3-venv
+  # Playwright Chromium runtime
+  - libnss3
+  - libnspr4
+  - libasound2t64
+  - libatk-bridge2.0-0t64
+  - libcups2t64
+  - libdrm2
+  - libxkbcommon0
+  - libxcomposite1
+  - libxdamage1
+  - libxrandr2
+  - libxfixes3
+  - libxshmfence1
+  - libgbm1
+  - libpango-1.0-0
+  - libcairo2
+  - fonts-liberation
+  - fonts-noto-core
+# release-drift.yml runs kubectl on a light slot. Match the k3s minor.
+linux_ci_kubectl_version: v1.34.4

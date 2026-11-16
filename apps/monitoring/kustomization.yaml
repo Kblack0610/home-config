@@ -10,6 +10,7 @@ resources:
   - ingress-alertmanager.yaml
   - prometheus-rules-app-health.yaml
   - prometheus-rules-litellm.yaml
+  - podmonitor-traefik.yaml
   - prometheus-rules-node-health.yaml
   - prometheus-rules-site-availability.yaml
   - prometheus-rules-jobs.yaml
@@ -23,8 +24,13 @@ resources:
   - prometheus-rules-capacity.yaml
   - prometheus-rules-game-servers.yaml
   - prometheus-rules-freqtrade.yaml
+  - prometheus-rules-feed-ingest.yaml
+  - prometheus-rules-emotiv.yaml
+  - prometheus-rules-binks.yaml
+  - prometheus-rules-kb-project.yaml
   - probe-sites.yaml
   - probe-dns.yaml
+  - probe-wan.yaml
   - external-mac-nodes.yaml
   - external-standalone-nodes.yaml
   - external-windows-nodes.yaml

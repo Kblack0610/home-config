@@ -26,6 +26,7 @@ spec:
           for: 2m
           labels:
             severity: critical
+            fleet: fix
             category: node-health
           annotations:
             summary: "Node down: {{ $labels.instance }} ({{ $labels.job }})"
@@ -40,6 +41,7 @@ spec:
           for: 5m
           labels:
             severity: critical
+            fleet: fix
             category: node-health
           annotations:
             summary: "node-exporter scrape job is absent"
@@ -56,6 +58,7 @@ spec:
           for: 15m
           labels:
             severity: warning
+            fleet: fix
             category: node-health
           annotations:
             summary: "standalone-nodes scrape job is absent"
@@ -77,6 +80,7 @@ spec:
           for: 2m
           labels:
             severity: critical
+            fleet: none  # the home-k3s-node-disk watch and NodeDiskCritical (fleet: fix) already send this disk to an agent
             category: node-health
           annotations:
             summary: "DiskPressure on {{ $labels.node }}"
@@ -105,6 +109,7 @@ spec:
           for: 15m
           labels:
             severity: warning
+            fleet: fix
             category: node-health
           annotations:
             summary: "Clock not syncing on {{ $labels.instance }}"
@@ -124,6 +129,7 @@ spec:
           for: 10m
           labels:
             severity: warning
+            fleet: fix
             category: node-health
           annotations:
             summary: "Clock skew on {{ $labels.instance }}"
@@ -143,6 +149,7 @@ spec:
               - node_boot_time_seconds{job="standalone-nodes"}) < 1800
           labels:
             severity: warning
+            fleet: none  # an event, not a fault: NodeDown (fleet: fix) carries a host that stays down
             category: node-health
           annotations:
             summary: "{{ $labels.instance }} rebooted (watchdog, power, or by hand)"
@@ -160,6 +167,7 @@ spec:
           expr: rpi_throttled{flag="undervoltage",when="since_boot"} == 1
           labels:
             severity: warning
+            fleet: none  # hardware: the human swaps the power supply
             category: node-health
           annotations:
             summary: "Undervoltage on {{ $labels.instance }} since boot"
@@ -172,44 +180,118 @@ spec:
         # CPU package temperature (Intel coretemp, AMD k10temp), any node that
         # exports it. 2026-10-23 the Unity nightly held asus-laptop at 93-96C
         # for hours before it dropped off the LAN, and hp-victus peaked at 98C
-        # of its 100C crit; nothing paged. ansible/roles/thermal-cap caps the
-        # CI laptops to stay near 85C, so firing means the cap is not holding.
+        # of its 100C crit; nothing paged. Both rules read the peak over a
+        # window, not the instant: a throttling CPU saws between its limit and
+        # the 70s, which reset the old instant rules' `for:` every dip. On
+        # 2026-11-13 hp-victus spent 29 min above 90C, peaked at 100C and went
+        # NotReady while those rules sat pending. Replay, 7 days to 2026-11-13:
+        # this one 1165 min on asus-laptop and 660 on hp-victus, the old one 0.
+        # Not the workstation, for the reason under NodeCpuCritical.
         - alert: NodeCpuHot
+          expr: >-
+            max_over_time(instance:node_cpu_package_temp:celsius{instance!="192.168.1.2:9100"}[10m]) > 90
+          for: 10m
+          labels:
+            severity: warning
+            fleet: none  # heat: the human decides (fleet-thermal, agentctl SENTINEL.md)
+            category: node-health
+          annotations:
+            summary: "CPU hot on {{ $labels.instance }} (peaks of {{ $value }}C for 10m)"
+            description: >-
+              The CPU package on {{ $labels.instance }} has peaked above 90C in
+              every 10m window for 10m. Run scripts/host-headroom.py on it and
+              move work off; on a laptop, check thermal-cap.service applied after
+              the last boot (systemctl status thermal-cap) and lower the cap in
+              inventory.yml (thermal_capped) if it did.
+        # Not the workstation: a 7900X sits at 95C under load by design, which paged 33
+        # times in 2 days to 2026-10-31, and the fleet-thermal watch already owns it.
+        # Replay, 7 days to 2026-11-13: 90 min on hp-victus, 0 elsewhere.
+        - alert: NodeCpuCritical
+          expr: >-
+            max_over_time(instance:node_cpu_package_temp:celsius{instance!="192.168.1.2:9100"}[5m]) > 95
+          for: 5m
+          labels:
+            severity: critical
+            fleet: none  # heat: the human decides (fleet-thermal, agentctl SENTINEL.md)
+            category: node-health
+          annotations:
+            summary: "CPU at {{ $value }}C on {{ $labels.instance }}"
+            description: >-
+              The CPU package on {{ $labels.instance }} has peaked above 95C in
+              every 5m window for 5m, close to its thermal limit. The host may
+              throttle hard or shut down; asus-laptop dropped off the LAN after
+              hours here on 2026-10-23, and hp-victus went NotReady on
+              2026-11-13. Move work off it now.
+        # Margin from the drive's own warning threshold (temp1_max), which differs per
+        # model. hp-victus sat at 77-80C (max 84.85) for 70 min before its NVMe dropped
+        # off the bus and the node hung on 2026-11-13. Replay, 14 days to 2026-11-14:
+        # fires only on hp-victus, 11-13 22:33 to 23:43.
+        - alert: NodeNvmeHot
+          expr: >-
+            node_hwmon_temp_celsius{chip=~"nvme.*",sensor="temp1"}
+            > on (instance, chip, sensor)
+            (node_hwmon_temp_max_celsius{chip=~"nvme.*",sensor="temp1"} - 8)
+          for: 10m
+          labels:
+            severity: warning
+            fleet: none  # heat: the human decides airflow
+            category: node-health
+          annotations:
+            summary: "NVMe {{ $labels.chip }} at {{ $value }}C on {{ $labels.instance }}"
+            description: >-
+              {{ $labels.chip }} on {{ $labels.instance }} has been within 8C of
+              its warning temperature for 10m. An NVMe this hot can throttle or
+              drop off the PCIe bus; hp-victus did, and hung, on 2026-11-13.
+              Move work off the host and check its airflow and CPU load.
+        # A laptop node lost its charger. hp-victus came back from a power-cycle
+        # on 2026-11-14 with the charger out, ran 95 minutes on battery at
+        # ~20 W and died at 01:41Z; nothing said so. Hosts with no Mains supply
+        # never match, and a device battery (scope Device, e.g. a mouse) is not
+        # the host's.
+        - alert: NodeOnBattery
+          expr: >-
+            node_power_supply_online == 0
+            and on (instance, power_supply) node_power_supply_info{type="Mains"}
+          for: 5m
+          labels:
+            severity: warning
+            fleet: none  # power: the human restores mains
+            category: node-health
+          annotations:
+            summary: "{{ $labels.instance }} is on battery ({{ $labels.power_supply }} offline)"
+            description: >-
+              The mains supply {{ $labels.power_supply }} on {{ $labels.instance }}
+              has read offline for 5m, so the host runs on its battery and goes
+              down when it is flat (hp-victus lasted about 95 minutes on
+              2026-11-14). Check the charger is plugged in and seated.
+        - alert: NodeBatteryLow
+          expr: >-
+            (
+              node_power_supply_capacity < 30
+              and on (instance, power_supply) node_power_supply_info{type="Battery",scope=""}
+            )
+            and on (instance)
+            count by (instance) (
+              node_power_supply_online == 0
+              and on (instance, power_supply) node_power_supply_info{type="Mains"}
+            )
+          for: 2m
+          labels:
+            severity: critical
+            fleet: none  # power: the human restores mains
+            category: node-health
+          annotations:
+            summary: "{{ $labels.instance }} battery at {{ $value }}% off mains"
+            description: >-
+              {{ $labels.power_supply }} on {{ $labels.instance }} is at
+              {{ $value }}% with the charger offline. The host goes down within
+              minutes; plug the charger in now.
+    - name: homelab-node-health.recording
+      rules:
+        - record: instance:node_cpu_package_temp:celsius
           expr: >-
             max by (instance) (
               node_hwmon_temp_celsius
               * on (instance, chip) group_left (chip_name)
               node_hwmon_chip_names{chip_name=~"coretemp|k10temp"}
-            ) > 90
-          for: 10m
-          labels:
-            severity: warning
-            category: node-health
-          annotations:
-            summary: "CPU hot on {{ $labels.instance }} ({{ $value }}C for 10m)"
-            description: >-
-              The CPU package on {{ $labels.instance }} has been above 90C for
-              10m. On a CI laptop, check what is running (Unity jobs, platform
-              slots) and whether thermal-cap.service applied after the last boot
-              (systemctl status thermal-cap). Lower the cap in inventory.yml
-              (thermal_capped) if it did.
-        # Not the workstation: a 7900X sits at 95C under load by design, which paged 33
-        # times in 2 days to 2026-10-31, and the fleet-thermal watch already owns it.
-        - alert: NodeCpuCritical
-          expr: >-
-            max by (instance) (
-              node_hwmon_temp_celsius{instance!="192.168.1.2:9100"}
-              * on (instance, chip) group_left (chip_name)
-              node_hwmon_chip_names{chip_name=~"coretemp|k10temp"}
-            ) > 95
-          for: 2m
-          labels:
-            severity: critical
-            category: node-health
-          annotations:
-            summary: "CPU at {{ $value }}C on {{ $labels.instance }}"
-            description: >-
-              The CPU package on {{ $labels.instance }} has been above 95C for 2m,
-              close to its thermal limit. The host may throttle hard or shut
-              down; asus-laptop dropped off the LAN after hours here on
-              2026-10-23. Stop or cancel CI on it now.
+            )

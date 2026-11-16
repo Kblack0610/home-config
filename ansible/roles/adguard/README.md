@@ -120,7 +120,9 @@ d = yaml.safe_load(open('roles/adguard/defaults/main.yml'))
 d['adguard_existing_users'] = [{'name': 'x', 'password': 'x'}]
 env = Environment(loader=FileSystemLoader('roles/adguard/templates'),
                   trim_blocks=True, lstrip_blocks=True, keep_trailing_newline=True)
-print(env.get_template('AdGuardHome.yaml.j2').render(**d))
+out = env.get_template('AdGuardHome.yaml.j2').render(**d)
+yaml.safe_load(out)  # AdGuard will not start on a file that does not parse
+print(out)
 PY
 ```
 
@@ -132,6 +134,10 @@ so any comment reappears as a diff on the next converge - the role would report
 changed forever and restart AdGuard, dropping house DNS, on every drift check.
 Use Jinja `{# #}` comments, which never reach the output. The on-host warning
 lives in `files/README.ANSIBLE`, which AdGuard does not touch.
+
+**Allow or block a host in `adguard_user_rules`, never in the UI**: the next
+converge renders the whole file and drops a UI edit. The template quotes a rule
+the way it quotes a rewrite domain, since an allow rule starts with `@@`.
 
 **Quote rewrite domains only where YAML requires it.** AdGuard's emitter writes
 `'*.kblab.me'` but plain `kblab.me`. Always-quoting caused the same
@@ -158,4 +164,4 @@ likely to need changing:
 | `adguard_image` | `adguard/adguardhome:v0.107.72` | Pinned. Bump with `adguard_schema_version` together, after reading release notes. |
 | `adguard_upstream_dns` | Quad9 + Cloudflare | Deliberately different operators; a second Quad9 address would fail in the same windows. |
 | `adguard_querylog_interval` | `168h` | See "Query logs are not backed up". |
-| `adguard_rewrites` | `*.kblab.me` -> .124 | `zomboid-play.kblab.me` and `playground-play.kblab.me` are NOT here - they are dnsmasq entries, because the games are UDP on hp-victus. |
+| `adguard_rewrites` | `*.kblab.me` -> .124, except `forge-primary.kblab.me` (answer `A`, the public record: the live Forgejo's tailnet IP) | `zomboid-play.kblab.me` and `playground-play.kblab.me` are NOT here - they are dnsmasq entries, because the games are UDP on hp-victus. |

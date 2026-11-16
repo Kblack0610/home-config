@@ -7,6 +7,10 @@
     name: "{{ asr_system_packages }}"
     state: present
     update_cache: true
+  register: _asr_pkgs
+  # update_cache counts a refreshed sync db as a change, and --check always does,
+  # so ConvergenceDrift fired on every host nightly: only an installed package is one.
+  changed_when: _asr_pkgs.packages | default([]) | length > 0
   become: true
 
 # --- Parakeet ONNX daemon ----------------------------------------------------

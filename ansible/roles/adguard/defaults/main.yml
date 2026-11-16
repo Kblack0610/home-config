@@ -99,6 +99,13 @@ adguard_filters:
 # domain entries authoritatively, so that specific name never reaches AdGuard
 # and wins over the wildcard below.
 adguard_rewrites:
+  # forge-primary.kblab.me names the live Forgejo by its tailnet IP and is the
+  # one source for that (apps/forgejo/README.md). The wildcard below sent it to
+  # Traefik, which carries no ssh, so LAN hosts could not reach Forgejo's ssh on
+  # 2222. Answer `A` keeps the upstream record; an exact name wins over a wildcard.
+  - domain: forge-primary.kblab.me
+    answer: A
+    enabled: true
   - domain: '*.kblab.me'
     answer: 192.168.1.124
     enabled: true
@@ -106,7 +113,18 @@ adguard_rewrites:
     answer: 192.168.1.124
     enabled: true
 
-adguard_user_rules: []
+# The AdGuard DNS filter blocks the Unity Editor's own analytics hosts. When
+# they resolve to 0.0.0.0, Unity 6000.3 on macOS recurses on the failed post
+# (DataDispatcher::HandlePostRequestDone -> WebRequestRestClient::Abort) until
+# the thread stack overflows, so every editor and batchmode build on a Mac
+# dies with "Illegal instruction: 4". Unity Ads and mediation hosts stay
+# blocked. Drop these once a Unity release survives a failed analytics post.
+adguard_user_rules:
+  - '@@||cdp.cloud.unity3d.com^'
+  - '@@||config.uca.cloud.unity3d.com^'
+  - '@@||api.uca.cloud.unity3d.com^'
+  - '@@||data-optout-service.uca.cloud.unity3d.com^'
+  - '@@||perf-events.cloud.unity3d.com^'
 
 # --- Host hygiene ----------------------------------------------------------
 # Pointless on a wired, headless DNS appliance; each is a service that can fail

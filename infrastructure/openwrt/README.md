@@ -161,7 +161,7 @@ the IoT that can't do anything else. Source of truth for the device list is
 
 | Band | SSID | Devices |
 |------|------|---------|
-| **5GHz** | `BrownLightning` | Phones (pixel-10-pro-fold, s22, s21, z-fold5); laptops/Macs (mac-home-m3, pc-mac-m1, asus-laptop, pc-laptop-cachy) |
+| **5GHz** | `BrownLightning` | Phones (pixel-10-pro-fold, s22, s21, z-fold5); laptops/Macs (pc-mac-m1, asus-laptop, pc-laptop-cachy) |
 | **2.4GHz** | `BrownThunder` | All IoT — shelly plugs ×2, Athom ESP32-C3 plugs, broadlink-rm4-pro, fumoi-litter-box, bambu/neptune 3D printers, rv30 vacuum, brother printer (2.4-only, stay put) |
 | **Wired** | — | K3s nodes (pi5 ×4, pi4 ×2), switch, desktops (m1-mini, cachy-main) |
 

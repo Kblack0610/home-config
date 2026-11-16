@@ -2,12 +2,12 @@
 
 Produces a per-year CSV of categorized transactions on the NAS - the artifact you hand a CPA. Built on an in-cluster `actual-http-api` bridge that wraps Actual's sync protocol in plain HTTP+JSON.
 
-## Status: activation-gated
+## Status: active
 
-The manifests exist in `apps/actual-budget/` but are commented out in `apps/actual-budget/kustomization.yaml`. They deploy nothing until you activate them, because the bridge needs your Actual server password, which only you have. This is deliberate - it avoids shipping a non-functional, auth-broken pod into the auto-reconciling GitOps tree.
+The manifests are live in `apps/actual-budget/` (listed in `kustomization.yaml`). The activation steps below are kept for a rebuild from scratch.
 
 Components (all in `apps/actual-budget/`):
-- `actual-http-api-deployment.yaml` + `actual-http-api-service.yaml` - the REST bridge (`jhonderson/actual-http-api:26.2.0`, ClusterIP :5007).
+- `actual-http-api-deployment.yaml` + `actual-http-api-service.yaml` - the REST bridge (`jhonderson/actual-http-api:26.8.1`, ClusterIP :5007).
 - `finance-api-secret.yaml` - SOPS secret. `api-key` is a real generated bearer key; `actual-server-password` and `budget-sync-id` are placeholders you fill in.
 - `tax-export-cronjob.yaml` - quarterly job (1st of Jan/Apr/Jul/Oct, 04:00) that pulls the year's transactions and pushes `actual-tax-<year>.csv` to `backups/home-k3s/actual-budget/tax-exports/` on the NAS.
 
@@ -40,7 +40,7 @@ Export a specific past year by setting `TAX_YEAR` on the job (edit the env, or `
 
 ## Validate the first run
 
-The export script's jq field paths (`.payee`, `.category`, `.amount`, `.date`) match jhonderson/actual-http-api 26.2.0. Before trusting the CSV:
+Validated against actual-http-api 26.8.1 on 2026-11-15 (1544 rows for 2026, names resolved, columns aligned; uncategorized rows have an empty category). jq does the lookups and CSV quoting. To re-validate after a bridge upgrade:
 - Confirm row count roughly matches the transactions you see in the UI for that year.
 - Confirm `amount` is in dollars (script divides integer cents by 100) and signs are right (outflows negative).
 - Confirm `payee` and `category` resolved to names, not raw UUIDs. If they show UUIDs, the categories/payees lookup call returned an unexpected shape - adjust the `.data[]` jq path to your version's response.

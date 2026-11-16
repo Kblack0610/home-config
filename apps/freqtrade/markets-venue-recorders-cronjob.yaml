@@ -2,7 +2,10 @@
 # by name on its own cadence (strategy repo docs/markets.md, Recorder). Same image, database, bucket, init migration
 # and node rule as trader-markets-recorder. A sweep must end inside 15 min, the compact job's grace (markets.toml
 # [compact] grace_h). Memory is sized from the market counts, not measured: Kalshi peaked at 470 MB on 179k markets.
-# The Odds API recorder is not here: its key and cadence are a human money decision (docs/markets.md, Sportsbook odds).
+# The Odds API runs every 6 h: 4 credits a sweep for one sport with h2h and totals (markets.toml [venues.odds_api]) is
+# 480 a month on the free tier's 500. More sports or a faster cadence needs a paid plan, the person's money call.
+# After its sweep it runs the odds_api paper league pass (lab/markets/paper.py, tt_totals forward accounts; tr-271),
+# as trader-markets-recorder does for Kalshi: paper money only, nothing is ever placed at a sportsbook.
 apiVersion: batch/v1
 kind: CronJob
 metadata:
@@ -78,7 +81,8 @@ kind: CronJob
 metadata:
   name: trader-markets-recorder-polymarket
 spec:
-  # 234k markets in 2,343 keyset pages, about 10 min a sweep (measured 575 s on 2026-11-06)
+  # Gamma keyset, only markets with volume >= open_min_volume (trader lab/markets.toml, 1000): 19.7k of 200k active on 2026-11-13.
+  # The unfiltered walk took 575 s on 2026-11-06 and 815-886 s by 2026-11-13, too near the 900 s deadline.
   schedule: "*/15 * * * *"
   timeZone: "Etc/UTC"
   concurrencyPolicy: Forbid
@@ -282,3 +286,76 @@ spec:
                   memory: 256Mi
                 limits:
                   memory: 1Gi
+---
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: trader-markets-recorder-odds-api
+spec:
+  # one /odds and one /scores GET per sport; credits, not rate, are the limit
+  schedule: "7 */6 * * *"
+  timeZone: "Etc/UTC"
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      backoffLimit: 0
+      activeDeadlineSeconds: 600
+      template:
+        metadata:
+          labels:
+            app: trader-markets-recorder
+            venue: odds-api
+        spec:
+          restartPolicy: Never
+          affinity:
+            nodeAffinity:
+              requiredDuringSchedulingIgnoredDuringExecution:
+                nodeSelectorTerms:
+                  - matchExpressions:
+                      - {key: kubernetes.io/arch, operator: In, values: [amd64]}
+                      - {key: kubernetes.io/hostname, operator: NotIn, values: [hp-victus]}
+          securityContext:
+            runAsUser: 1000
+            runAsGroup: 1000
+            fsGroup: 1000
+          initContainers:
+            - name: migrate
+              image: trader
+              command: ["python", "/repo/lab/migrate.py"]
+              env:
+                - name: DATABASE_URL
+                  valueFrom:
+                    secretKeyRef: {name: trader-db, key: database-url}
+              resources:
+                requests:
+                  cpu: 20m
+                  memory: 64Mi
+                limits:
+                  memory: 256Mi
+          containers:
+            - name: recorder
+              image: trader
+              command: ["sh", "-c", "python -m lab.markets.recorder odds_api; sweep=$?; python -m lab.markets.paper --venue odds_api || exit 1; exit $sweep"]
+              env:
+                - name: DATABASE_URL
+                  valueFrom:
+                    secretKeyRef: {name: trader-db, key: database-url}
+                - name: ODDS_API_KEY
+                  valueFrom:
+                    secretKeyRef: {name: trader-odds-api, key: ODDS_API_KEY}
+                - name: S3_ENDPOINT
+                  value: http://minio.minio.svc.cluster.local:9000
+                - name: S3_ACCESS_KEY
+                  valueFrom:
+                    secretKeyRef: {name: trader-markets-s3, key: S3_ACCESS_KEY}
+                - name: S3_SECRET_KEY
+                  valueFrom:
+                    secretKeyRef: {name: trader-markets-s3, key: S3_SECRET_KEY}
+              resources:
+                requests:
+                  cpu: 100m
+                  memory: 256Mi
+                limits:
+                  memory: 512Mi

@@ -14,14 +14,15 @@ Endpoints:
   GET  /status?printer=neptune        -> Moonraker print_stats/webhooks state
   POST /cancel  {printer}             -> Moonraker cancel
 
-Slicing recipe (verified 2026-07-17 on 2.3.2 and 2026-11-04 on 2.4.2, see README "Why the graft"):
-  OrcaSlicer's CLI --load-settings rejects our user presets on a compatibility
-  check (the child's compatible_printers does not override the inherited parent).
-  So we load the *system* Neptune-4-Pro machine/process/filament (guaranteed
-  compatible) and graft every user override from the seeded profiles onto them,
-  skipping identity keys. That yields correct OpenNept4une PRINT_START/PRINT_END
-  gcode while keeping the compatible system identity. Runs headless with
-  QT_QPA_PLATFORM=offscreen (no X server).
+Slicing recipe (2.5.0, verified 2026-11-10; see README "Why the datadir"):
+  OrcaSlicer 2.5 ships each vendor as an opaque <vendor>.opc, so there are no
+  system preset files to read. The CLI resolves a user preset's `inherits` only
+  when the preset file sits in <datadir>/user/default/<type>/ and the vendor
+  bundle sits in <datadir>/system/. So each slice builds a throwaway datadir:
+  the Elegoo bundle, the seeded OpenNept4une machine preset (it carries the
+  PRINT_START/PRINT_END gcode and inherits the system Neptune 4 Pro), and thin
+  stub process/filament presets that only inherit the system ones by name.
+  Runs headless with QT_QPA_PLATFORM=offscreen (no X server).
 """
 import glob
 import json
@@ -35,38 +36,31 @@ import uuid
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 ORCA = "/opt/orcaslicer/bin/orca-slicer"
-SYS = "/opt/orcaslicer/resources/profiles/Elegoo"
+BUNDLE = "/opt/orcaslicer/resources/profiles/Elegoo.opc"
 SEED = os.environ.get("SEED_DIR", "/seed")        # mounted orcaslicer-profiles configmap
 PRINTS = os.environ.get("PRINTS_DIR", "/prints")  # NAS 3d-printing share
 LISTEN_PORT = int(os.environ.get("PORT", "8080"))
 
-# Keys that identify a preset; grafting these from the user override would break
-# the system preset's compatibility identity, so they are never copied.
-IDENTITY_KEYS = {"name", "from", "inherits", "type", "setting_id", "printer_settings_id"}
-
 # Printer registry. Neptune first; Bambu is a documented follow-up (FTP+MQTT, not
 # Moonraker) so it is intentionally absent from the dispatch path here.
 #
-# Only the MACHINE is grafted (system base + the seeded OpenNept4une overrides,
-# which carry the critical PRINT_START/PRINT_END gcode). PROCESS and FILAMENT are
-# pure system presets: grafting the user process/filament onto the 2.3.2 base was
-# rejected ("Invalid parameter value(s) in the 3mf") because those seed files
-# carry keys/values the system base does not accept. Process = layer height
-# (material-agnostic); material is selected purely via the filament preset.
+# MACHINE is the seeded OpenNept4une user preset. PROCESS and FILAMENT are stubs that
+# inherit the system presets by name: the user process/filament files carry values a
+# new Orca version can reject (2.4.2 refused small_perimeter_speed "0"), and process =
+# layer height (material-agnostic) while the filament picks the temps (PLA 210, PETG 240).
 PRINTERS = {
     "neptune": {
         "label": "Elegoo Neptune 4 Pro",
         "moonraker": os.environ.get("NEPTUNE_MOONRAKER_URL", "http://neptune.neptune.svc.cluster.local:7125"),
-        "sys_machine": f"{SYS}/machine/EN4SERIES/Elegoo Neptune 4 Pro 0.4 nozzle.json",
         "seed_machine": f"{SEED}/machine-neptune4pro.json",
         "processes": {
-            "standard": f"{SYS}/process/EN4SERIES/0.20mm Standard @Elegoo N4Pro 0.4 nozzle.json",
-            "fine": f"{SYS}/process/EN4SERIES/0.12mm Fine @Elegoo N4Pro 0.4 nozzle.json",
-            "draft": f"{SYS}/process/EN4SERIES/0.24mm Draft @Elegoo N4Pro 0.4 nozzle.json",
+            "standard": "0.20mm Standard @Elegoo N4Pro 0.4 nozzle",
+            "fine": "0.12mm Fine @Elegoo N4Pro 0.4 nozzle",
+            "draft": "0.24mm Draft @Elegoo N4Pro 0.4 nozzle",
         },
         "filaments": {
-            "pla": f"{SYS}/filament/Generic/Generic PLA @Elegoo.json",
-            "petg": f"{SYS}/filament/Generic/Generic PETG @Elegoo.json",
+            "pla": "Generic PLA @Elegoo",
+            "petg": "Generic PETG @Elegoo",
         },
     },
 }
@@ -74,15 +68,18 @@ DEFAULT_PRINTER = "neptune"
 
 
 # ---------------------------------------------------------------- slicing ----
-def _graft(base_path, seed_path, ptype):
-    """Load a system base preset and graft user overrides (minus identity keys)."""
-    d = json.load(open(base_path))
-    if seed_path and os.path.exists(seed_path):
-        for k, v in json.load(open(seed_path)).items():
-            if k not in IDENTITY_KEYS:
-                d[k] = v
-    d["type"] = ptype
-    return d
+def _stub(ptype, parent):
+    """A user preset that only inherits a system preset by name.
+
+    The CLI finds a user preset by file name == preset name, and skips one with no "version"."""
+    return {"type": ptype, "name": f"ps-{ptype}", "from": "User", "version": "1.9.0.2", "inherits": parent}
+
+
+def _write(path, data):
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    with open(path, "w") as fh:
+        json.dump(data, fh)
+    return path
 
 
 def _safe_stl(name):
@@ -104,13 +101,14 @@ def slice_stl(name, printer=DEFAULT_PRINTER, filament="pla", process="standard")
     stl = _safe_stl(name)
     tmp = tempfile.mkdtemp(prefix="slice-")
     try:
-        m = _graft(cfg["sys_machine"], cfg["seed_machine"], "machine")   # only the machine is grafted
-        p = _graft(cfg["processes"][process], None, "process")           # pure system preset
-        f = _graft(cfg["filaments"][filament], None, "filament")         # pure system preset
-        mp, pp, fp = f"{tmp}/machine.json", f"{tmp}/process.json", f"{tmp}/filament.json"
-        json.dump(m, open(mp, "w")); json.dump(p, open(pp, "w")); json.dump(f, open(fp, "w"))
-        datadir = f"{tmp}/datadir"; outdir = f"{tmp}/out"
-        os.makedirs(datadir); os.makedirs(outdir)
+        datadir = f"{tmp}/datadir"; outdir = f"{tmp}/out"; user = f"{datadir}/user/default"
+        os.makedirs(f"{datadir}/system"); os.makedirs(outdir)
+        shutil.copy(BUNDLE, f"{datadir}/system/")
+        with open(cfg["seed_machine"]) as fh:
+            seed = json.load(fh)
+        mp = _write(f"{user}/machine/{seed['name']}.json", {**seed, "type": "machine"})
+        pp = _write(f"{user}/process/ps-process.json", _stub("process", cfg["processes"][process]))
+        fp = _write(f"{user}/filament/ps-filament.json", _stub("filament", cfg["filaments"][filament]))
         env = dict(os.environ); env.pop("DISPLAY", None); env.pop("WAYLAND_DISPLAY", None)
         env["QT_QPA_PLATFORM"] = "offscreen"
         r = subprocess.run(

@@ -9,7 +9,10 @@ resources:
   - statefulset.yaml
   - lab-pvc.yaml
   - analysis-cronjob.yaml
+  - lab-priorityclass.yaml
+  - candles-publish-cronjob.yaml
   - walkforward-cronjob.yaml
+  - calibration-cronjob.yaml
   - ingest-cronjob.yaml
   - backfill-cronjob.yaml
   - backfill-research-cronjob.yaml
@@ -17,9 +20,26 @@ resources:
   - markets-recorder-cronjob.yaml
   - markets-venue-recorders-cronjob.yaml
   - markets-compact-cronjob.yaml
+  - markets-history-cronjob.yaml
+  - markets-links-cronjob.yaml
+  - markets-families-cronjob.yaml
+  - inputs-nws-cronjob.yaml
   - trader-markets-s3-secret.sops.yaml
+  - trader-litellm-secret.sops.yaml
+  - trader-odds-api-secret.sops.yaml
+  - trader-brokers-secret.sops.yaml
+  - broker-cronjob.yaml
+  - stocks-cronjob.yaml   # reads trader-brokers' two Alpaca paper keys: the stock league (trader lab/stocks.py)
+  - trader-kalshi-demo-secret.sops.yaml
+  - kalshi-demo-drill-cronjob.yaml
+  - trader-manifold-secret.sops.yaml
+  - manifold-drill-cronjob.yaml
+  - trader-wallet-secret.sops.yaml
+  - wallet-cronjob.yaml
   - futures-cronjob.yaml
   - trader-db-secret.sops.yaml
+  - trader-feeds-secret.sops.yaml   # FEED_DATABASE_URL: read-only feed-ingest ledger (apps/feed-ingest)
+  - call-rules-cronjob.yaml   # reads trader-feeds: feed events to scored rule calls (trader lab/call_rules.py)
   - trader-web-oauth-secret.sops.yaml
   - watcher-deployment.yaml
   - web-deployment.yaml
@@ -32,7 +52,13 @@ images:
   # change; the tag is the strategy repo commit it was built from.
   - name: trader
     newName: ghcr.io/kblack0610/trader
-    digest: sha256:e5a2bab2bf0722751c28f105eb16445355cdd17780e8b1404832fc5375f32d7f  # sha-6082806
+    digest: sha256:e3196bf7e62a77f29c209aa00a8c59b2fbf09944180b30d7675f5879c5521d86  # sha-27c2121
+  # The same repo on freqtrade's FreqAI base (lightgbm), 2.7 GB: only the
+  # analysis job runs it, for the ML family. The strategy repo's bump PR moves
+  # this digest with trader's.
+  - name: trader-ml
+    newName: ghcr.io/kblack0610/trader-ml
+    digest: sha256:2ecfd52cecf985a3234c06090a11b98bcdc9eaaa191e95ce76b1f0b480d0aa7a  # sha-27c2121
 
 configMapGenerator:
   # Rows here and replicas in statefulset.yaml move together.

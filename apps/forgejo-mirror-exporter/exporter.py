@@ -39,6 +39,17 @@ The PrometheusRule correlates them: agreement escalates to critical.
 A THIRD, for the link that actually hurt: last Actions run per repo, from the
 action_run table, so "the commit arrived but no build followed" is measurable
 rather than something you notice two weeks later.
+
+A FOURTH, for merges Forgejo reports and master does not keep. On 2026-11-09
+home-config #697 answered merged=true at 23:55:14 and master went back to the
+merge's parent two seconds later. The server reflog said why: "update by push",
+written by a push mirror whose remote carried `fetch = +refs/*:refs/*`. When
+that `git push` finished, git updated the "tracking ref" for what it pushed,
+and with that refspec the tracking ref IS refs/heads/master, so master was set
+back to the value the mirror read when it started. Sixteen rewinds of master
+since June came from it, and two merges (#440, #498) never came back. The API
+cannot see this: the PR stays merged. So the reflog of each default branch is
+read here, and a remote that would do it again is named from the repo config.
 """
 import os
 import re
@@ -76,6 +87,11 @@ SNAPSHOT_MAX = int(os.environ.get("SNAPSHOT_MAX_BYTES", str(256 * 1024 * 1024)))
 # "snapshot" only to take one path out of play during an investigation.
 DB_READ_MODE = os.environ.get("DB_READ_MODE", "auto")
 PORT = int(os.environ.get("PORT", "9310"))
+
+# A default-branch rewind counts while it is younger than this. Long enough to
+# be seen and re-landed, short enough that one incident is not a week of page.
+REWIND_WINDOW = int(os.environ.get("REWIND_WINDOW_SECONDS", "86400"))
+ZERO_SHA = "0" * 40
 
 # Only well-known git lock names get a dedicated label. Everything else is
 # bucketed, because a label value taken from a filename is an unbounded
@@ -324,6 +340,8 @@ def _scan_repo(path, now):
                         print(f"gc.log {path}: {fh.read()[:500]!r}", flush=True)
                 except OSError:
                     pass
+    rec["branch"], rec["rewinds"] = _branch_rewinds(path, now)
+    rec["clobbering_remotes"] = _clobbering_remotes(path)
     objects = os.path.join(path, "objects")
     for d in ("%02x" % i for i in range(256)):
         try:
@@ -331,6 +349,104 @@ def _scan_repo(path, now):
         except OSError:
             pass
     return rec
+
+
+def _branch_exists(path, branch):
+    if os.path.isfile(os.path.join(path, "refs", "heads", branch)):
+        return True
+    try:
+        with open(os.path.join(path, "packed-refs")) as fh:
+            return any(line.rstrip("\n").endswith(f" refs/heads/{branch}") for line in fh)
+    except OSError:
+        return False
+
+
+def _branch_rewinds(path, now):
+    """(default branch, rewinds) for one bare repo.
+
+    rewinds is None when the branch exists but has no reflog (nothing can be
+    said, and saying 0 would be the lie), or a dict with the count inside
+    REWIND_WINDOW and the newest rewind ever. The branch is None for an empty
+    repo or a detached HEAD.
+
+    A rewind is an update whose new tip was first seen BEFORE the tip it
+    replaced: the branch went back to an older commit. A fast-forward always
+    moves to a commit the log has not seen yet, and re-landing a dropped merge
+    moves forward to it again, so neither counts. No git binary is needed,
+    which keeps this image stdlib python.
+    """
+    try:
+        with open(os.path.join(path, "HEAD")) as fh:
+            head = fh.read().strip()
+    except OSError:
+        return None, None
+    if not head.startswith("ref: refs/heads/"):
+        return None, None
+    branch = head[len("ref: refs/heads/"):]
+    if not _branch_exists(path, branch):
+        return None, None
+    log = os.path.join(path, "logs", "refs", "heads", branch)
+    try:
+        fh = open(log, errors="replace")
+    except OSError:
+        return branch, None
+    first, count, newest = {}, 0, 0.0
+    with fh:
+        for line in fh:
+            f = line.split("\t", 1)[0].split()
+            if len(f) < 4:
+                continue
+            old, new = f[0], f[1]
+            try:
+                ts = float(f[-2])
+            except ValueError:
+                continue
+            for sha in (old, new):
+                if sha != ZERO_SHA:
+                    first.setdefault(sha, len(first))
+            if old == ZERO_SHA or new == ZERO_SHA or first[new] >= first[old]:
+                continue
+            newest = max(newest, ts)
+            if now - ts <= REWIND_WINDOW:
+                count += 1
+                # The dropped sha is the diagnosis; a label would be unbounded.
+                print(f"rewind {path} {branch}: {old} -> {new} at {ts:.0f}", flush=True)
+    return branch, {"count": count, "newest": newest}
+
+
+def _clobbering_remotes(path):
+    """Remotes this repo pushes to whose fetch refspec lands on refs/heads/.
+
+    After a push, git writes each pushed ref's value to the matching tracking
+    ref. With `fetch = +refs/*:refs/*` that tracking ref is the local branch,
+    so a push that started before a merge resets the branch when it finishes.
+    A pull mirror maps refs/* on purpose and never pushes, so it is not named.
+    """
+    remotes, cur = {}, None
+    try:
+        with open(os.path.join(path, "config"), errors="replace") as fh:
+            lines = fh.readlines()
+    except OSError:
+        return []
+    for line in lines:
+        s = line.strip()
+        m = re.match(r'\[remote "(.+)"\]$', s)
+        if m:
+            cur = remotes.setdefault(m.group(1), {"push": False, "heads": False})
+            continue
+        if s.startswith("["):
+            cur = None
+            continue
+        if cur is None or "=" not in s:
+            continue
+        key, val = (x.strip() for x in s.split("=", 1))
+        if key == "push":
+            cur["push"] = True
+        elif key == "fetch":
+            dst = val.lstrip("+").split(":", 1)[-1]
+            if dst.startswith(("refs/*", "refs/heads/")):
+                cur["heads"] = True
+    return sorted(n for n, r in remotes.items() if r["push"] and r["heads"])
 
 
 def refresh_fs():
@@ -486,8 +602,29 @@ def render():
       "gc --auto - the loop that made the 2026-09-08 outage self-sustaining. "
       "Note git's own need_to_gc() samples objects/17/ x256 rather than counting "
       "all of them, so this honest total and git's trigger can disagree.")
+    h("forgejo_repo_default_branch_reflog_present", "gauge",
+      "1 if the default branch has a reflog. Without one a rewind cannot be seen "
+      "and forgejo_repo_default_branch_rewinds is not emitted.")
+    h("forgejo_repo_default_branch_rewinds", "gauge",
+      f"Updates in the last {REWIND_WINDOW}s that moved the default branch back to "
+      "an older commit, so whatever was on top is gone from it while Forgejo still "
+      "shows its PR merged. The dropped sha is in this pod's log.")
+    h("forgejo_repo_default_branch_last_rewind_timestamp_seconds", "gauge",
+      "When the default branch last moved back to an older commit, 0 if never")
+    h("forgejo_repo_push_remote_rewrites_branches", "gauge",
+      "1 per remote that is pushed to and whose fetch refspec maps onto "
+      "refs/heads/: every push to it can reset a local branch it raced.")
     for repo, rec in sorted((fs["data"] or {}).items()):
         e = _esc(repo)
+        if rec["branch"] is not None:
+            b = _esc(rec["branch"])
+            rw = rec["rewinds"]
+            L.append(f'forgejo_repo_default_branch_reflog_present{{repo="{e}",branch="{b}"}} {0 if rw is None else 1}')
+            if rw is not None:
+                L.append(f'forgejo_repo_default_branch_rewinds{{repo="{e}",branch="{b}"}} {rw["count"]}')
+                L.append(f'forgejo_repo_default_branch_last_rewind_timestamp_seconds{{repo="{e}",branch="{b}"}} {rw["newest"]:.0f}')
+        for remote in rec["clobbering_remotes"]:
+            L.append(f'forgejo_repo_push_remote_rewrites_branches{{repo="{e}",remote="{_esc(remote)}"}} 1')
         for t, (count, oldest) in sorted(rec["locks"].items()):
             L.append(f'forgejo_repo_stale_lock_files{{repo="{e}",lock_type="{t}"}} {count}')
             L.append(f'forgejo_repo_stale_lock_age_seconds{{repo="{e}",lock_type="{t}"}} {oldest:.0f}')

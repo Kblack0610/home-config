@@ -34,7 +34,7 @@ pi3 is the odd one out: it is not in the cluster, so there is no k8s node name a
 when it is down name resolution fails for everything - including whatever you
 were about to use to debug it. Reach it by IP.
 
-Macs use `~/.ssh/config` aliases (`m1`, `mac-studio`) — see `docs/mac-machines.md`. The `-lan` suffix is a Pi/x86 convention only.
+Macs use `~/.ssh/config` aliases (`m1`, `mac-mini`) - see `docs/mac-machines.md`. The `-lan` suffix is a Pi/x86 convention only.
 
 ## Quick decision tree
 
@@ -46,6 +46,8 @@ Need to touch a node:
 └── Is the node up but `kubectl get node <k8s-name>` shows NotReady?
     └── If k3s is sick, kubectl debug won't work either. Last resort: console / IPMI / unplug.
 ```
+
+From a machine whose own key a host refuses (a new laptop, or the workstation is down), the ansible-runner key gets in first: every PXE-built host trusts it. With the SOPS age key at `~/.config/sops/age/keys.txt`, decrypt `ssh-privkey` from `apps/ansible-runner/secret.yaml` into a 0700 scratch dir, pass it as `--private-key` to the play, and delete it after. Then add the machine's key to `authorized_keys_list` in `ansible/roles/authorized-keys/defaults/main.yml` and run `--tags authorized-keys`, so the next visit needs no SOPS.
 
 If SSH is dead but the kubelet is alive, **`kubectl debug node/...` is the escape hatch**. It schedules a privileged pod on the node with the host filesystem mounted at `/host`, no network access to the workstation needed beyond the k8s API.
 

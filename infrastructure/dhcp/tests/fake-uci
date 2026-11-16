@@ -1,0 +1,86 @@
+#!/usr/bin/env python3
+"""Stand-in for OpenWRT `uci`, enough of it for dhcp.sh sync.
+
+State lives in $FAKE_UCI_STATE in `uci -X show` form. Anonymous sections
+(cfgXXXXXX ids) print as @type[N] without -X and resolve from @type[N] and
+@type[-1] with the index taken at call time, as the real uci does: that
+shifting is the behaviour the sync test exists to catch.
+"""
+import os
+import re
+import sys
+
+STATE = os.environ["FAKE_UCI_STATE"]
+ANON = re.compile(r"^cfg[0-9a-f]{6}$")
+
+
+def load():
+    sections = []
+    for line in open(STATE):
+        line = line.rstrip("\n")
+        if not line:
+            continue
+        key, val = line.split("=", 1)
+        parts = key.split(".")
+        if len(parts) == 2:
+            sections.append({"id": parts[1], "type": val, "opts": {}})
+        else:
+            next(s for s in sections if s["id"] == parts[1])["opts"][parts[2]] = val.strip("'")
+    return sections
+
+
+def save(sections):
+    with open(STATE, "w") as f:
+        for s in sections:
+            f.write(f"dhcp.{s['id']}={s['type']}\n")
+            for k, v in s["opts"].items():
+                f.write(f"dhcp.{s['id']}.{k}='{v}'\n")
+
+
+def resolve(sections, ref):
+    m = re.fullmatch(r"@(\w+)\[(-?\d+)\]", ref)
+    if not m:
+        return next(s for s in sections if s["id"] == ref)
+    same = [s for s in sections if s["type"] == m.group(1) and ANON.match(s["id"])]
+    return same[int(m.group(2))]
+
+
+def show_name(sections, s):
+    if not ANON.match(s["id"]):
+        return s["id"]
+    same = [x for x in sections if x["type"] == s["type"] and ANON.match(x["id"])]
+    return f"@{s['type']}[{same.index(s)}]"
+
+
+def main(argv):
+    extended = "-X" not in argv
+    argv = [a for a in argv if a != "-X"]
+    cmd, args = argv[0], argv[1:]
+    sections = load()
+    if cmd in ("show", "export"):
+        for s in sections:
+            name = show_name(sections, s) if extended else s["id"]
+            print(f"dhcp.{name}={s['type']}")
+            for k, v in s["opts"].items():
+                print(f"dhcp.{name}.{k}='{v}'")
+    elif cmd == "delete":
+        _, ref = args[0].split(".", 1)
+        sections.remove(resolve(sections, ref))
+        save(sections)
+    elif cmd == "set":
+        key, val = args[0].split("=", 1)
+        _, ref, opt = key.split(".", 2)
+        resolve(sections, ref)["opts"][opt] = val.strip("'")
+        save(sections)
+    elif cmd == "add":
+        new_id = "cfg%06x" % (0xF00000 + len(sections))
+        sections.append({"id": new_id, "type": args[1], "opts": {}})
+        save(sections)
+        print(new_id)
+    elif cmd == "commit":
+        pass
+    else:
+        sys.exit(f"fake-uci: unsupported command {cmd}")
+
+
+main(sys.argv[1:])

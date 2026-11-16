@@ -27,7 +27,21 @@ alerting:
       success-threshold: 2
       send-on-resolved: true
 
+# Expose /metrics so Prometheus keeps the history (servicemonitor.yaml) and remote-writes
+# it to VictoriaMetrics, which keeps 2 years. Gatus's own sqlite keeps only the last
+# results per check, too few for the per-app page's 90-day bars.
+metrics: true
+
 # This instance is APPS. Machines live on fleet.kblab.me (apps/gatus-fleet/).
+#
+# An app's checks sit in a group named by its project-map tracker key (`placemyparents`,
+# `binks`, ...), and `<key>-<channel>` for a non-prod channel (`placemyparents-preview`).
+# The match is exact, never a prefix: an app's groups are its key plus `<key>-<channel>`
+# for each channel its project-map targets declare, so `binks-chat` (its own tracker) is
+# not a channel of `binks`. Ingress hosts take the group from the Ingress annotation
+# `gatus.kblab.me/group`; hand-written checks (IngressRoute apps such as binks) follow
+# the same rule. The group IS the join: agent-web's per-app status page (agents.kblab.me/#apps/<key>)
+# reads gatus_results_total by group, so renaming a group moves its checks off that page.
 #
 # The fleet / mac-machines / iot-fleet groups used to be here, which meant
 # machine liveness was scattered across three groups on the apps dashboard.
@@ -83,6 +97,10 @@ endpoints:
     interval: 120s
     conditions:
       - "[CONNECTED] == true"
+    # Prometheus has no NAS probe, so this check is the NAS page. 3 x 120s = 6 min.
+    alerts:
+      - type: ntfy
+        failure-threshold: 3
 
   - name: CrowdSec LAPI
     group: home-k3s
@@ -158,7 +176,8 @@ endpoints:
 
   - name: Forgejo SSH
     group: apps
-    url: "tcp://forgejo-ssh.forgejo.svc:22"
+    # 2222: forgejo-ssh is an ExternalName, and the host publishes the container sshd there.
+    url: "tcp://forgejo-ssh.forgejo.svc:2222"
     interval: 60s
     conditions:
       - "[CONNECTED] == true"
@@ -178,7 +197,7 @@ endpoints:
       - "[STATUS] < 500"
 
   - name: PlaceMyParents API
-    group: apps
+    group: placemyparents-preview
     url: "http://placemyparents-api.placemyparents-preview.svc/api/health"
     interval: 60s
     conditions:
@@ -186,7 +205,7 @@ endpoints:
       - "[BODY].status == ok"
 
   - name: PlaceMyParents Web
-    group: apps
+    group: placemyparents-preview
     url: "http://placemyparents-web.placemyparents-preview.svc/"
     interval: 60s
     conditions:
@@ -194,10 +213,10 @@ endpoints:
       - "[STATUS] < 500"
 
   # --- placemyparents production (DigitalOcean, external) ---
-  # The two endpoints above are the home-k3s PREVIEW deployment. Without these,
+  # The endpoints above are the home-k3s PREVIEW deployment. Without these,
   # an outage of the real public site or API goes unnoticed here.
   - name: placemyparents.com (prod web)
-    group: placemyparents-prod
+    group: placemyparents
     url: "https://placemyparents.com/api/health"
     interval: 60s
     conditions:
@@ -207,7 +226,7 @@ endpoints:
       - "[RESPONSE_TIME] < 3000"
 
   - name: api.placemyparents.com (prod API)
-    group: placemyparents-prod
+    group: placemyparents
     url: "https://api.placemyparents.com/api/health"
     interval: 60s
     conditions:
@@ -215,6 +234,39 @@ endpoints:
       - "[BODY].status == ok"
       - "[BODY].environment == production"
       - "[CERTIFICATE_EXPIRATION] > 240h"
+      - "[RESPONSE_TIME] < 3000"
+
+  # --- binks (home-k3s, public through the Cloudflare tunnel) ---
+  # Probed on the public host, so a broken tunnel or IngressRoute reads as down: that is
+  # what a user sees. /api/health always says status ok; `database` is the real SELECT 1
+  # (bnb platform apps/binks/api/src/routes/health.ts), so that is the field asserted.
+  - name: binks.chat /api/health
+    group: binks
+    url: "https://binks.chat/api/health"
+    interval: 60s
+    conditions:
+      - "[STATUS] == 200"
+      - "[BODY].database == true"
+      - "[RESPONSE_TIME] < 3000"
+
+  # The chat SPA itself (nginx), served on / by the binks-chat Deployment.
+  - name: binks.chat
+    group: binks-chat
+    url: "https://binks.chat/"
+    interval: 60s
+    conditions:
+      - "[STATUS] == 200"
+      - "[RESPONSE_TIME] < 3000"
+
+  # Shared demos on their own site (ingress.yaml, binks-demos). A made-up id is 404 from
+  # binks-api; a 404 proves tunnel, DNS and route. Gatus has no header condition, so the
+  # CSP sandbox header is asserted by the platform's binks-production-smoke instead.
+  - name: play.kblack.dev /p/
+    group: binks
+    url: "https://play.kblack.dev/p/0000000000"
+    interval: 300s
+    conditions:
+      - "[STATUS] == 404"
       - "[RESPONSE_TIME] < 3000"
 
   - name: Forgejo Registry
@@ -226,7 +278,7 @@ endpoints:
 
   # --- databases ---
   - name: PlaceMyParents DB
-    group: databases
+    group: placemyparents-preview
     url: "tcp://placemyparents-postgres.placemyparents-preview.svc:5432"
     interval: 120s
     conditions:
@@ -360,7 +412,7 @@ endpoints:
       - "[CERTIFICATE_EXPIRATION] > 720h"
 
   - name: blacknbrownstudios.com
-    group: ingress
+    group: bnb-studios
     url: "https://blacknbrownstudios.com"
     interval: 300s
     client:
@@ -500,7 +552,7 @@ endpoints:
       - "[CERTIFICATE_EXPIRATION] > 720h"
 
   - name: kblack.dev
-    group: ingress
+    group: black-dev
     url: "https://kblack.dev"
     interval: 300s
     client:
@@ -510,7 +562,7 @@ endpoints:
       - "[CERTIFICATE_EXPIRATION] > 720h"
 
   - name: kennethblack.me
-    group: ingress
+    group: kenneth-black-portfolio
     url: "https://kennethblack.me"
     interval: 300s
     client:
@@ -760,7 +812,7 @@ endpoints:
       - "[CERTIFICATE_EXPIRATION] > 720h"
 
   - name: www.blacknbrownstudios.com
-    group: ingress
+    group: bnb-studios
     url: "https://www.blacknbrownstudios.com"
     interval: 300s
     client:
@@ -770,7 +822,7 @@ endpoints:
       - "[CERTIFICATE_EXPIRATION] > 720h"
 
   - name: www.kblack.dev
-    group: ingress
+    group: black-dev
     url: "https://www.kblack.dev"
     interval: 300s
     client:
@@ -780,7 +832,7 @@ endpoints:
       - "[CERTIFICATE_EXPIRATION] > 720h"
 
   - name: www.kennethblack.me
-    group: ingress
+    group: kenneth-black-portfolio
     url: "https://www.kennethblack.me"
     interval: 300s
     client:

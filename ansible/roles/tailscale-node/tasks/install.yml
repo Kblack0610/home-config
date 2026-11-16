@@ -1,0 +1,30 @@
+---
+# Arch ships tailscale in extra; Debian and Ubuntu get it from Tailscale's apt
+# repo, which install.sh adds.
+- name: Install tailscale (Arch)
+  when: ansible_facts.os_family == "Archlinux"
+  become: true
+  community.general.pacman:
+    name: tailscale
+    state: present
+    # A stale sync db names a package version the mirrors have dropped (404).
+    update_cache: true
+  register: tailscale_node_pkg
+  # A refreshed sync db is not a change; only an installed package is.
+  changed_when: tailscale_node_pkg.packages | default([]) | length > 0
+
+- name: Install tailscale (Debian)
+  when: ansible_facts.os_family == "Debian"
+  become: true
+  ansible.builtin.shell: set -o pipefail && curl -fsSL https://tailscale.com/install.sh | sh
+  args:
+    executable: /bin/bash
+    creates: /usr/bin/tailscale
+
+- name: Run tailscaled
+  when: not ansible_check_mode
+  become: true
+  ansible.builtin.systemd:
+    name: tailscaled
+    enabled: true
+    state: started

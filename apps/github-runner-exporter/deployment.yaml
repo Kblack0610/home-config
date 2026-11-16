@@ -65,27 +65,42 @@ spec:
                   name: github-runner-exporter
                   key: github-token
                   optional: true
+            # The Kblack0610 repos' token: the Kblack0610 gh CLI OAuth token (scopes repo,
+            # workflow), since the BlackNBrownStudios PAT cannot read Kblack0610's private
+            # repos. exporter.py sends GITHUB_TOKEN_<OWNER> for that owner's repos.
+            # Rotate: docs/credentials.md.
+            - name: GITHUB_TOKEN_KBLACK0610
+              valueFrom:
+                secretKeyRef:
+                  name: github-runner-exporter
+                  key: github-token-kblack0610
+                  optional: true
             # Org-scoped runners (the Unity pool). Repo-scoped runners are read
             # from every repo in RUN_REPOS.
             - name: RUNNER_ORGS
               value: "BlackNBrownStudios"
             - name: RUN_REPOS
-              value: "BlackNBrownStudios/platform BlackNBrownStudios/unity-core BlackNBrownStudios/unity-core-harness BlackNBrownStudios/unity-core-playground BlackNBrownStudios/dodginballs"
+              value: "BlackNBrownStudios/platform BlackNBrownStudios/unity-core BlackNBrownStudios/unity-core-harness BlackNBrownStudios/unity-core-playground"
+            # Read only for the run feed schedules-sync writes its run ledger from (it polls
+            # none of these itself): no runners, no metrics. Every personal GitHub repo with
+            # CI, read with GITHUB_TOKEN_KBLACK0610.
+            - name: FEED_REPOS
+              value: "Kblack0610/.dotfiles Kblack0610/freqtrade_trading_attempt Kblack0610/android-suite Kblack0610/zmk_config Kblack0610/openmptcsetup Kblack0610/.dotfiles-private Kblack0610/ebay-lister Kblack0610/gungan-speak Kblack0610/playtest-bot"
             # host:pool:slots. Mirrors ansible/inventory.yml (linux_ci_runners
             # ci_*_slots, unity_ci_runners and unity_ci_mac_runners unity_ci_slots), the mac-mini's
             # two runners (mac-mini-mac, m1-playground-mac) and the opt-in windows-media test runner.
             # Change a slot count there, change it here.
             - name: RUNNER_ROSTER
-              value: "asus-laptop:light:2 asus-laptop:heavy:1 hp-victus:light:2 hp-victus:heavy:1 razer-laptop:light:3 razer-laptop:heavy:1 razer-laptop:unity:2 cachyos-x8664-main:unity:2 aws-burst-1:unity:6 mac-studio:unity:6 mac-mini:macos:2 windows-media:windows:1"
+              value: "razer-laptop:light:1 cachyos-x8664-main:unity:2 windows-media-ci:light:4 windows-media-ci:unity:2 aws-burst-1:unity:5 aws-burst-2:unity:6 aws-burst-3:unity:6 aws-spot-1:unity:5 aws-spot-2:unity:5 aws-spot-3:unity:5 aws-build-1:unity-build:3 aws-build-1:unity:6 mac-mini:macos:2 windows-media:windows:1"
             # Runner hosts off the home LAN, so the runner rows say site="cloud" and the
             # hover and board can count cloud vs local. Mirrors the inventory hosts with
             # unity_ci_lan: false; scripts/check-runner-roster.py fails if they drift.
             - name: CLOUD_HOSTS
-              value: "aws-burst-1"
+              value: "aws-burst-1 aws-burst-2 aws-burst-3 aws-build-1 aws-spot-1 aws-spot-2 aws-spot-3"
             # Forgejo repos whose Actions jobs and tasks are read; the forgejo-runner
             # pods are the runners (pool="forgejo", forge="forgejo").
             - name: FORGEJO_REPOS
-              value: "kblack0610/platform kblack0610/home-config kblack0610/bnb-game-servers kblack0610/personal-sites kblack0610/dodginballs"
+              value: "kblack0610/platform kblack0610/home-config kblack0610/bnb-game-servers kblack0610/personal-sites"
             # Forgejo access token of kblack0610, scope read:repository only: the
             # jobs list is owner-only (Forgejo v14 api.go: reqOwner) and needs a
             # token even on a public repo. Minted by a human, then:
@@ -106,11 +121,18 @@ spec:
               mountPath: /app
               readOnly: true
           resources:
+            # 34Mi in use before the /api/ci/details feed (2026-11-11). Its job records are
+            # the window's ~2,400 runs, ~3 jobs each, across RUN_REPOS and FEED_REPOS:
+            # filled, they grew a python:3.12-alpine process by 48Mi as step dicts and 30Mi
+            # as the step blobs slim_job keeps now (2026-11-12). At 96Mi the pod was
+            # OOMKilled every ~1.5-2h with the cache still filling, so the playground's
+            # jobs were never read; a full cache is ~80Mi, and 128Mi leaves a run-list
+            # refresh (10 pages of ~1.5 MB each, parsed at once) room above it.
             requests:
-              memory: "24Mi"
+              memory: "64Mi"
               cpu: "10m"
             limits:
-              memory: "64Mi"
+              memory: "128Mi"
               cpu: "100m"
           livenessProbe:
             httpGet:
@@ -145,8 +167,9 @@ spec:
       targetPort: 9320
   type: ClusterIP
 ---
-# 60s, not 30s: a scrape is ~20-40 GitHub API calls (runners per repo, active
-# runs and their jobs), ~2400/h at most against the PAT's 5000/h. The 24h
+# 60s, not 30s: a scrape is ~30-50 GitHub API calls (runners per repo, active
+# runs of RUN_REPOS and FEED_REPOS and their jobs), ~3000/h at most against the
+# PAT's 5000/h. The 24h
 # finished-run list adds ~60/h (re-read every 10 min) plus one call per newly
 # finished run, and a cold start ~500 once, at most HISTORY_CALL_BUDGET (50) per
 # scrape and none below HISTORY_FLOOR (1000) remaining. The 5000/h is per USER,

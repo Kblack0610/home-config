@@ -52,8 +52,7 @@ Custom components (e.g. `ha-bambulab`) are installed via init containers with pi
 |----------|-------------|
 | Cluster status | CPU, RAM, and disk sensors for nodes 1-5 |
 | Service health | Home Assistant, Traefik, and LiteLLM container metrics |
-| Mac monitoring | Mac Studio and Mac Mini node exporter metrics |
-| AI endpoints | MLX model endpoint model counts |
+| Mac monitoring | Mac Mini node exporter metrics |
 
 ### Launcher (auto-generated)
 
@@ -86,7 +85,7 @@ Flux picks up the ConfigMap change → deployment hash rotates → pod rolls →
 5. Agents: session counts, sessions late against their ETA, and the first KPI off target with its limit and how many more.
 6. Queue: running, ready and held, then how long the oldest ready item has waited and cost per PR against 28 days. Then CI, naming only what is down.
 7. Projects: how many have work in flight, then the first two in flight, each with its percent, ETA and sessions.
-8. Claude: each account's weekly use, amber when one is over pace, the earliest run-out, and 24h spend.
+8. Claude: each Claude account's weekly use (not the codex or LiteLLM sources), amber when one has no room, and 24h spend.
 9. The house: weather and the next event across every calendar.
 
 Every section opens with a bold `Title: value`. Colour marks only what is wrong: a title goes amber or red with its section, and only red items stay red in full, so amber never covers a whole block. Detail lines under a title are grey, so the titles and their values stand out.
@@ -106,6 +105,7 @@ Setup on the phone: long-press the home screen -> Widgets -> Home Assistant -> T
 | A red line has no age | Its watch has no `since_epoch` and no matching `binary_sensor`, or it is a node or feed row. Those sort first. A `binary_sensor` age restarts with Home Assistant. |
 | The bottom lines are cut off | The widget does not scroll, so the least important lines go first. Make it taller or pick a smaller text size. |
 | `System ?` in amber | `sensor.system_health` got no rows. It is `unavailable` when Prometheus did not answer Home Assistant; when it answers, query `cc:domain_status` for the rules in `apps/monitoring/prometheus-rules-command-center.yaml`. |
+| The Claude line lists codex, lazer or other sources, or an account that was removed | The REST query lost its `kind="claude"` filter, or the render is old: the time on the System line says when it last rendered, and tapping the widget renders it now. |
 | The accounts line reads `unknown` | The `Agent accounts` REST sensor got no data. Query `claude_account_week_used_percent` in Prometheus; when it is empty, `claude-acct-usage.timer` on the workstation has stopped writing. |
 
 ### 3D Printer Monitoring
@@ -233,6 +233,16 @@ kubectl logs -n home-assistant -l app.kubernetes.io/name=home-assistant
 kubectl logs -n home-assistant deploy/home-assistant -c sync-managed-config
 ```
 
+### Announce does nothing
+
+| Symptom | Fix |
+|---|---|
+| Log: `Language '{{ states(...) }}' not supported` | A dashboard passes templates in `tap_action` data, which the frontend never renders. Use `custom:announce-card`, which sends plain values. |
+| No error, no sound | `group.announce_rooms` in `packages/voice_targets.yaml` names players that are gone or all `unavailable` (their chips show greyed out). Compare it with `media_player.*` in Developer Tools > States. |
+| Card says "recording needs an admin login" | HA allows media uploads only for admin users. Log the tablet into an admin profile, or send typed messages. |
+| Card says "Microphone unavailable: NotAllowedError" | The browser blocked the mic: the page must be HTTPS, and a wall tablet needs FreeKiosk 1.2.20 or newer (`docs/wall-panels.md`, voice section). |
+| Card change does not show on a tablet | Bump `?v=` on `announce-card.js` in `configuration.yaml`; the WebView caches `/local`. |
+
 ### Restart Home Assistant
 
 ```bash
@@ -255,6 +265,20 @@ When adding a new device or integration:
 2. If a custom component is required, add an init container to download a pinned release
 3. Seed the config entry from a K8s Secret if the integration is config-flow-only
 4. Never install HACS or use the HA UI for configuration
+
+## Away alarm
+
+The Control and Dog views have the `alarm_control_panel.away` card. It can be armed or disarmed by hand without a code. Automatic arming requires `zone.home` to be 0 and every person to have a known state for ten continuous minutes; an unknown or unavailable person blocks it. Returning home disarms it. Frigate person occupancy on either camera triggers the armed alarm and a high-priority home push. Barking while armed sends a default-priority push at most once per 15 minutes. Arm and disarm pushes are low priority. The panel stays outside the Assist allow-list.
+
+Companion-app presence is still required for both people; the existing human-sheet row owns that setup. Persons and their trackers remain in HA runtime storage. After HA restarts or automations reload, the ten-minute presence window starts again.
+
+| Symptom | Check |
+|---|---|
+| Empty home does not arm | Check `zone.home` and every `person.*`; unknown or unavailable presence blocks automatic arming. Confirm companion-app location updates and tracker assignments. |
+| Dog movement triggers an alert | Check Frigate's person occupancy classification; generic motion is not an alarm input. |
+| Another bark sends no push | Check the bark automation's `last_triggered`; the cooldown is 15 minutes across arm/disarm cycles. |
+
+Validate the guard and cooldown in the HA image by copying `scripts/test-ha-away-alarm.py` and `config/packages/away_alarm.yaml` into a temporary directory in the pod and running `python test-ha-away-alarm.py away_alarm.yaml`. Run HA `check_config --fail-on-warnings` against a separate temporary config before deploying through Flux; without that flag a package schema error can still return exit code 0.
 
 ## Related Services
 

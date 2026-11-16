@@ -1,0 +1,161 @@
+# Markets history backfill (strategy repo lab/markets/history.py, docs/markets.md History): what the recorder
+# cannot see, the markets that settled before it started. settled walks each venue's settled markets into the
+# trader database; bars and trades write one parquet a venue and settle date into MinIO bucket trader-markets
+# under history/. Each run stops after [history] budget_min (50) and the next resumes from market_backfill, so
+# a job runs until its log reports nothing left ("left": 0, or settled "done": true), then only the new day.
+# Staggered on a 3 h cycle (settled, then bars, then trades) with a 2 h guard, so at most two page Kalshi at once
+# beside the recorder, under its 20 requests/s. Migrations come from the recorder's init container.
+# Kept off hp-victus, whose memory limits are overcommitted (plan id-like-to-setup-abundant-seahorse).
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: trader-markets-history-settled
+spec:
+  schedule: "0 */3 * * *"
+  timeZone: "Etc/UTC"  # unset means the controller zone, America/Los_Angeles
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      backoffLimit: 0  # the next run resumes; a retry would only page the venue again
+      activeDeadlineSeconds: 7200  # guard: the run stops itself after 50 min plus the page or date in hand
+      template:
+        metadata:
+          labels:
+            app: trader-markets-history-settled
+        spec:
+          restartPolicy: Never
+          affinity:
+            nodeAffinity:
+              requiredDuringSchedulingIgnoredDuringExecution:
+                nodeSelectorTerms:
+                  - matchExpressions:
+                      - {key: kubernetes.io/arch, operator: In, values: [amd64]}
+                      - {key: kubernetes.io/hostname, operator: NotIn, values: [hp-victus]}
+          securityContext:
+            runAsUser: 1000
+            runAsGroup: 1000
+            fsGroup: 1000
+          containers:
+            - name: history
+              image: trader
+              command: ["python", "-m", "lab.markets.history", "settled"]
+              env:
+                - name: DATABASE_URL
+                  valueFrom:
+                    secretKeyRef: {name: trader-db, key: database-url}
+              resources:
+                requests:
+                  cpu: 100m
+                  memory: 256Mi
+                limits:
+                  memory: 1Gi
+---
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: trader-markets-history-bars
+spec:
+  schedule: "0 1-23/3 * * *"
+  timeZone: "Etc/UTC"  # unset means the controller zone, America/Los_Angeles
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      backoffLimit: 0  # the next run resumes; a retry would only page the venue again
+      activeDeadlineSeconds: 7200  # guard: the run stops itself after 50 min plus the page or date in hand
+      template:
+        metadata:
+          labels:
+            app: trader-markets-history-bars
+        spec:
+          restartPolicy: Never
+          affinity:
+            nodeAffinity:
+              requiredDuringSchedulingIgnoredDuringExecution:
+                nodeSelectorTerms:
+                  - matchExpressions:
+                      - {key: kubernetes.io/arch, operator: In, values: [amd64]}
+                      - {key: kubernetes.io/hostname, operator: NotIn, values: [hp-victus]}
+          securityContext:
+            runAsUser: 1000
+            runAsGroup: 1000
+            fsGroup: 1000
+          containers:
+            - name: history
+              image: trader
+              command: ["python", "-m", "lab.markets.history", "bars"]
+              env:
+                - name: DATABASE_URL
+                  valueFrom:
+                    secretKeyRef: {name: trader-db, key: database-url}
+                - name: S3_ENDPOINT
+                  value: http://minio.minio.svc.cluster.local:9000
+                - name: S3_ACCESS_KEY
+                  valueFrom:
+                    secretKeyRef: {name: trader-markets-s3, key: S3_ACCESS_KEY}
+                - name: S3_SECRET_KEY
+                  valueFrom:
+                    secretKeyRef: {name: trader-markets-s3, key: S3_SECRET_KEY}
+              resources:
+                requests:
+                  cpu: 100m
+                  memory: 256Mi
+                limits:
+                  memory: 1Gi
+---
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: trader-markets-history-trades
+spec:
+  schedule: "0 2-23/3 * * *"
+  timeZone: "Etc/UTC"  # unset means the controller zone, America/Los_Angeles
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      backoffLimit: 0  # the next run resumes; a retry would only page the venue again
+      activeDeadlineSeconds: 7200  # guard: the run stops itself after 50 min plus the page or date in hand
+      template:
+        metadata:
+          labels:
+            app: trader-markets-history-trades
+        spec:
+          restartPolicy: Never
+          affinity:
+            nodeAffinity:
+              requiredDuringSchedulingIgnoredDuringExecution:
+                nodeSelectorTerms:
+                  - matchExpressions:
+                      - {key: kubernetes.io/arch, operator: In, values: [amd64]}
+                      - {key: kubernetes.io/hostname, operator: NotIn, values: [hp-victus]}
+          securityContext:
+            runAsUser: 1000
+            runAsGroup: 1000
+            fsGroup: 1000
+          containers:
+            - name: history
+              image: trader
+              command: ["python", "-m", "lab.markets.history", "trades"]
+              env:
+                - name: DATABASE_URL
+                  valueFrom:
+                    secretKeyRef: {name: trader-db, key: database-url}
+                - name: S3_ENDPOINT
+                  value: http://minio.minio.svc.cluster.local:9000
+                - name: S3_ACCESS_KEY
+                  valueFrom:
+                    secretKeyRef: {name: trader-markets-s3, key: S3_ACCESS_KEY}
+                - name: S3_SECRET_KEY
+                  valueFrom:
+                    secretKeyRef: {name: trader-markets-s3, key: S3_SECRET_KEY}
+              resources:
+                requests:
+                  cpu: 100m
+                  memory: 256Mi
+                limits:
+                  memory: 1Gi

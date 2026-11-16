@@ -42,6 +42,9 @@ configMapGenerator:
   - name: grafana-dashboard-command-center
     files:
       - command-center.json
+  - name: grafana-dashboard-kb-project
+    files:
+      - kb-project.json
   - name: grafana-dashboard-game-fleet
     files:
       - game-fleet.json
@@ -63,3 +66,6 @@ configMapGenerator:
   - name: grafana-dashboard-freqtrade
     files:
       - freqtrade.json
+  - name: grafana-dashboard-emotiv-mini
+    files:
+      - emotiv-mini.json

@@ -28,23 +28,7 @@ sections:
 
   - type: grid
     cards:
-      - type: heading
-        heading: Quick Announce
-        icon: mdi:bullhorn
-      - type: entities
-        show_header_toggle: false
-        entities:
-          - entity: input_text.voice_announce_message
-          - entity: input_select.voice_announce_language
-      - type: button
-        name: Announce to all cast devices
-        icon: mdi:bullhorn-variant
-        tap_action:
-          action: call-service
-          service: script.tts_announce_all_cast
-          data:
-            message: "{{ states('input_text.voice_announce_message') }}"
-            language: "{{ states('input_select.voice_announce_language') }}"
+      - type: custom:announce-card
 
   - type: grid
     cards:

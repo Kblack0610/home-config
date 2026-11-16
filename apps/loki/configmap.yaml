@@ -60,12 +60,17 @@ data:
       delete_request_store: filesystem
       compaction_interval: 10m
 
+    # Rules come from the loki-rules-* ConfigMaps mounted at /rules/fake (deployment.yaml),
+    # not the PVC, so git is their one source.
     ruler:
       storage:
         type: local
         local:
-          directory: /loki/rules
+          directory: /rules
       rule_path: /loki/rules-temp
+      alertmanager_url: http://kube-prometheus-stack-alertmanager.monitoring.svc:9093
+      enable_api: true
+      enable_alertmanager_v2: true
 
     # Disable phone-home analytics for a self-hosted homelab.
     analytics:

@@ -1,0 +1,90 @@
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: forgejo-backup-pull
+  namespace: forgejo
+  labels:
+    app.kubernetes.io/name: forgejo
+spec:
+  # Forgejo's backup once it runs on forge-hel1: pull the VM's hourly db
+  # snapshots, its data tree and its package registry over the tailnet, then
+  # build the nightly full here (backup-pull.sh). 04:30 is forgejo-backup-offbox's
+  # slot, which this replaces.
+  # Live since the cutover (2026-11-14), which suspended forgejo-backup,
+  # forgejo-backup-offbox and nas forgejo-packages-backup: they read the asus
+  # copy, frozen from then on, and offbox's prune shares this directory.
+  schedule: "30 4 * * *"
+  timeZone: America/Los_Angeles
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 2
+  jobTemplate:
+    spec:
+      backoffLimit: 1
+      activeDeadlineSeconds: 21600  # 6h; the first run pulls the whole 51G tree
+      template:
+        spec:
+          nodeSelector:
+            kubernetes.io/hostname: asus-laptop
+          # Root and privileged for `btrfs subvolume snapshot` and to keep the
+          # tree's owners (uid 1000, and root for data/ssh).
+          securityContext:
+            runAsUser: 0
+          containers:
+            - name: pull
+              image: alpine:3.24.1
+              securityContext:
+                privileged: true
+              command: ["/bin/sh", "/scripts/backup-pull.sh"]
+              env:
+                # forge-hel1's tailnet IP; known_hosts in the Secret pins its key.
+                - name: SRC
+                  value: root@100.125.203.14
+                - name: KEEP
+                  value: "3"
+                - name: MIN_FREE_GB
+                  value: "500"
+              volumeMounts:
+                - name: script
+                  mountPath: /scripts
+                  readOnly: true
+                - name: ssh
+                  mountPath: /ssh
+                  readOnly: true
+                - name: dest
+                  mountPath: /dest
+                - name: packages
+                  mountPath: /packages
+                - name: packages-snapshots
+                  mountPath: /packages-snapshots
+              resources:
+                requests:
+                  memory: 128Mi
+                  cpu: 100m
+                limits:
+                  memory: 1Gi
+          # Never, not OnFailure: OnFailure deletes the failed pod and its logs.
+          restartPolicy: Never
+          volumes:
+            - name: script
+              configMap:
+                name: forgejo-backup-pull-script
+            - name: ssh
+              secret:
+                secretName: forgejo-backup-pull
+                defaultMode: 0400
+            # Directory, not DirectoryOrCreate: the subvolumes come from the
+            # usb-backup-mounts role, so a missing drive fails the job instead
+            # of filling the root disk.
+            - name: dest
+              hostPath:
+                path: /mnt/backup-8t/forgejo-backups
+                type: Directory
+            - name: packages
+              hostPath:
+                path: /mnt/backup-8t/forgejo-packages
+                type: Directory
+            - name: packages-snapshots
+              hostPath:
+                path: /mnt/backup-8t/forgejo-packages-snapshots
+                type: Directory

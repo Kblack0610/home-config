@@ -15,8 +15,16 @@ resources:
   - ingress-public.yaml
   - ingressroute-browser-redirect.yaml
   - backup-cronjob.yaml
+  - db-snapshot-cronjob.yaml
   - lock-reaper-cronjob.yaml
+  - backup-pull-cronjob.yaml
+  - backup-pull-secret.sops.yaml
   - runner-config-cm.yaml
   - runner-secret.yaml
   - runner-deployment.yaml
   - runner-reader-rbac.yaml
+
+configMapGenerator:
+  - name: forgejo-backup-pull-script
+    files:
+      - backup-pull.sh

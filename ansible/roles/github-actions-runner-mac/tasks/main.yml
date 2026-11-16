@@ -3,8 +3,7 @@
 #   present (default) — download, register, and run the runner (present.yml).
 #   absent            — stop + uninstall the LaunchAgent, deregister from
 #                       GitHub, and remove local markers (absent.yml). Used to
-#                       demote a host that is no longer a CI runner (mac-studio
-#                       became a dedicated LLM node 2026-07-18).
+#                       demote a host that is no longer a CI runner.
 # import_tasks is static, so the `when` propagates to every task in the file.
 
 - name: Ensure the runner is present (register + run)

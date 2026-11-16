@@ -6,6 +6,36 @@
       {{ inventory_hostname }} has no ci_cpus. Add it to the ci_hosts group in
       inventory.yml with the CPUs CI may use.
 
+# Each CPU list as numbers, so the checks below compare cores, not strings.
+- name: Expand the host's CPU lists
+  ansible.builtin.set_fact:
+    _ci_cpu_sets: >-
+      {% set out = {} %}{% for name, spec in {'ci': ci_cpus, 'unity': ci_unity_cpus,
+      'linux': ci_linux_cpus, 'k3s': k3s_cpus,
+      'slots': ci_unity_slot_cpus | join(',')}.items() %}{% set cpus = [] %}{%
+      for part in (spec | string).split(',') if part | trim %}{% set ab = part | trim
+      %}{% set ab = ab.split('-') %}{% for c in range(ab[0] | int, (ab[-1] | int) + 1)
+      %}{% set _ = cpus.append(c) %}{% endfor %}{% endfor %}{% set _ = out.update({name: cpus})
+      %}{% endfor %}{{ out }}
+
+- name: Require the CPU lists to split the host cleanly
+  ansible.builtin.assert:
+    that:
+      - _ci_cpu_sets.unity | difference(_ci_cpu_sets.ci) | length == 0
+      - _ci_cpu_sets.linux | difference(_ci_cpu_sets.ci) | length == 0
+      - _ci_unity_eff | intersect(_ci_cpu_sets.linux) | length == 0
+      - _ci_cpu_sets.slots | difference(_ci_unity_eff) | length == 0
+      - _ci_cpu_sets.k3s | intersect(_ci_cpu_sets.ci) | length == 0
+      - ci_unity_slot_memory_max is string or ci_unity_slot_memory_max | length == ci_unity_slot_cpus | length
+    fail_msg: >-
+      {{ inventory_hostname }}: ci_unity_cpus (all of ci_cpus when empty) and
+      ci_linux_cpus must sit inside ci_cpus and not overlap, every
+      ci_unity_slot_cpus entry inside Unity's, k3s_cpus outside ci_cpus, and a
+      ci_unity_slot_memory_max list one entry per slot ({{ _ci_cpu_sets }}).
+    quiet: true
+  vars:
+    _ci_unity_eff: "{{ _ci_cpu_sets.unity or _ci_cpu_sets.ci }}"
+
 - name: Install the CI slices
   ansible.builtin.template:
     src: "{{ item.src }}"
@@ -64,6 +94,16 @@
   when: >-
     _ci_slice_units.changed or _ci_retired_units.changed
     or _ci_slot_units.changed or _ci_slot_removed.changed
+
+# k3s pin (k3s_cpus), its own file so the "Retire CI on no_ci_hosts" play in
+# site.yml can run the removal half with k3s_cpus unset.
+- name: Pin or unpin k3s pods
+  ansible.builtin.import_tasks: k3s-pin.yml
+
+- name: Keep Ubuntu's unattended upgrades off running jobs
+  ansible.builtin.import_tasks: unattended.yml
+  when: ansible_os_family == "Debian"
+  tags: [unattended]
 
 # Containers are children of dockerd, not of the runner that asked for them, so a
 # job's `docker run` lands in system.slice with no cap unless it passes
@@ -136,4 +176,3 @@
     name: docker.service
     state: restarted
   when: _ci_docker_config_age.stdout == 'stale'
-

@@ -33,6 +33,13 @@ unity_ci_library_s3: ""
 unity_ci_library_s3_profile: bnb
 unity_ci_library_s3_region: us-east-2
 
+# One asset-library LFS store per host, shared by every slot (ASSET_LIBRARY_LFS_STORE,
+# site.yml). Off the LAN it is seeded from the workstation's own store through the
+# same bucket (tasks/lfs-store.yml), so a release tree never fetches LFS through the
+# Cloudflare tunnel, which cut a cold 4.2 GB fetch off with "Authorization error".
+unity_ci_lfs_store: "{{ unity_ci_user_home }}/.cache/bnb/asset-library-lfs"
+unity_ci_lfs_store_source: /home/kblack0610/.cache/bnb/asset-library-lfs
+
 # Editor images the jobs build on. Pulling these on the LAN fails (the IPv6 path
 # corrupts long downloads), so a missing one is copied from the workstation's
 # docker with docker save | docker load. Add the new tags on a Unity upgrade.
@@ -42,7 +49,6 @@ unity_ci_library_s3_region: us-east-2
 # hosts off the LAN (aws-burst-1), whose pull does not take the broken IPv6 path.
 unity_ci_images_pull: false
 unity_ci_images:
-  - unityci/editor:ubuntu-6000.0.72f1-base-3
   - unityci/editor:ubuntu-6000.0.85f1-base-3
   - unityci/editor:ubuntu-6000.3.27f1-base-3
   - unityci/editor:ubuntu-6000.3.27f1-windows-mono-3
@@ -66,3 +72,20 @@ unity_ci_packages_debian:
   - git-lfs
   - jq
   - curl
+  - unzip
+
+# Unity Accelerator (cache server), as host:port on the docker bridge, for example
+# 172.17.0.1:10080. Empty = none. Set per host in the inventory: the role runs it
+# (tasks/accelerator.yml) and site.yml puts the same value in every slot's
+# UNITY_CACHE_SERVER, which the playground's build scripts pass to Unity. A cold
+# release tree imported about 40,000 assets in 21 to 32 min before (playground
+# docs/operations/ci-cost.md log, ucp-1913). Runbook: docs/runbooks/unity-ci-host.md.
+unity_ci_accelerator: ""
+unity_ci_accelerator_image: unity/accelerator@sha256:378a318e05f9789a1a4f74784769aa6d6de5037a4cdc2d7aa57e9e39372f2e31
+# On the data volume beside the release trees; ci-disk-prune.sh never touches it.
+unity_ci_accelerator_dir: "{{ unity_ci_user_home }}/unity-accelerator"
+# Cap and floors: it evicts at 150 GiB, or when the disk is under 25% free (to 30%),
+# below the 35% floor at which ci-disk-prune.sh drops idle trees, so trees go first.
+unity_ci_accelerator_max_bytes: 161061273600
+unity_ci_accelerator_min_free_percent: 25
+unity_ci_accelerator_evict_until_free_percent: 30

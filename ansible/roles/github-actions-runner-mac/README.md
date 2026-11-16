@@ -9,7 +9,7 @@ Retires the manual flow at `BlackNBrownStudios/platform/tools/{setup-mac-runner,
 `gh_runner_mac_state` selects the desired end-state on the host:
 
 - **`present`** (default) — obtain a token, download/extract the pinned runner, `config.sh --unattended`, and `svc.sh install`/`start`. See **What it does (present)**.
-- **`absent`** — stop + uninstall the LaunchAgent, mint a *removal* token, `config.sh remove` (deregister GitHub-side), and wipe local markers. Best-effort + idempotent: a clean box is a no-op. Bind the role in absent mode to **demote** a host from being a runner. `mac-studio` uses this (it became a dedicated LLM node 2026-07-18); `mac-mini` is the sole `present` runner.
+- **`absent`** - stop + uninstall the LaunchAgent, mint a *removal* token, `config.sh remove` (deregister GitHub-side), and wipe local markers. Best-effort + idempotent: a clean box is a no-op. Bind the role in absent mode to **demote** a host from being a runner. `mac-mini` is the sole `present` runner.
 
 ## What it does (present)
 
@@ -49,10 +49,7 @@ In GitHub: `https://github.com/BlackNBrownStudios/platform/settings/actions/runn
 
 ## Binding in site.yml
 
-Bound in **two** per-host plays (2026-07-18 role split):
-
-- **`hosts: mac-mini`** (`present`, default) — the sole self-hosted mobile-CI runner. Apply with the `mac` or `runner` tag. A recovery apply against a stale/orphaned registration needs `-e gh_runner_mac_force_reregister=true`; review `--check --diff` first.
-- **`hosts: mac-studio`** (`gh_runner_mac_state: absent`) — tears the runner down so the LLM node stops being a CI target. Runs before the `macos-llm-node` + MLX plays.
+Bound in the `hosts: mac-mini` play (`present`, default), the sole self-hosted mobile-CI runner. Apply with the `mac` or `runner` tag. A recovery apply against a stale/orphaned registration needs `-e gh_runner_mac_force_reregister=true`; review `--check --diff` first.
 
 The runner tasks run as the login user (no `become`), so `-K` is only needed for `macos-baseline`'s pmset tasks in the shared baseline play.
 
@@ -60,3 +57,7 @@ The runner tasks run as the login user (no `become`), so `-K` is only needed for
 
 - The runner binary auto-updates in place at runtime. The version default is only consulted on fresh install.
 - Manual reset: `~/actions-runner/svc.sh uninstall && rm -rf ~/actions-runner && <remove runner in GitHub UI>`, then re-run this role. The `absent` state does this for you (and deregisters GitHub-side).
+
+## Restarts
+
+A `.env` or `.path` change restarts the runner, and the apply never kills a job for it. Under a job (a `Runner.Worker` under its `bin*/`) it drains the runner: one PUT of an empty custom-label set to `<api_path>/actions/runners/<id>/labels`, so no queued job matches it, then a wait on the worker's exit (`files/wait_worker_exit.py` in github-actions-runner-linux: a pidfd on Linux, kqueue on macOS, tested by `tests/test_wait_worker_exit.py`), then the restart, then a PUT of the labels it had back, unless ci-runner-governor relabeled it meanwhile. The apply blocks until the job ends, up to `gh_runner_mac_drain_timeout` (360 minutes, GitHub's default job timeout). Past it the labels go back, `.restart-pending` stays in the runner home and the task reports changed, so ConvergenceDrift shows the pending restart until a later apply finishes it. An interrupted apply (Ctrl-C mid-wait) can leave the runner drained; re-run the apply.

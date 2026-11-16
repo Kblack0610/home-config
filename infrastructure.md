@@ -53,7 +53,7 @@
 | namespace | purpose | status |
 |-----------|---------|--------|
 | actual-budget | Personal finance (Actual Budget) | active |
-| agents | Ingress + endpoints for agent-web on the desktop | active |
+| agents | Ingress + endpoints for agent-web on the fleet home (the workstation) | active |
 | apps | PlaceMyParents (API + Web + DB) | active |
 | forgejo | Git hosting (Forgejo) | active |
 | home-assistant | Smart home hub | active |
@@ -106,11 +106,10 @@
 | Kenneth Black Portfolio | home-k3s | portfolio | Deployment | active |
 | BNB Studios | home-k3s | bnb-studios | Deployment | active |
 | kblack.dev | home-k3s | black-dev | Deployment | active |
-| Frigate NVR | standalone | -- | Docker Compose | active |
+| Frigate NVR | home-k3s | frigate | Deployment | active |
 | Pi3 AdGuard Home | standalone | -- | Docker Compose | active |
 | ESP32 Smart Switch | standalone | -- | Embedded (Rust) | active |
 | GitHub Actions Runner | mac-machines | -- | LaunchDaemon | active |
-| MLX LLM Inference | mac-machines | -- | Native (launchd) | active |
 | node_exporter | mac-machines | -- | Homebrew service | active |
 
 ---
@@ -119,8 +118,8 @@
 
 | property | value |
 |----------|-------|
-| machines | Mac Studio M3 Ultra (512GB), Mac Mini M1 (16GB) |
-| purpose | iOS builds, Expo, GitHub Actions CI/CD, LLM inference |
+| machines | Mac Mini M1 (16GB) |
+| purpose | iOS builds, Expo, GitHub Actions CI/CD |
 | monitoring | node_exporter (port 9100) → Prometheus (ServiceMonitor) → Grafana / HA |
 | not in K3s | Native macOS workloads only (K3s is Linux-only) |
 
@@ -128,7 +127,6 @@
 
 | machine | chip | ram | ip | hostname | role |
 |---------|------|-----|-----|----------|------|
-| Mac Studio | M3 Ultra | 512 GB | 192.168.1.4 | mac-studio | MLX inference, iOS builds, GH Actions runner |
 | Mac Mini | M1 | 16 GB | 192.168.1.7 | pc-home-m1-mini | iOS builds, Expo, GH Actions runner |
 
 #### setup docs
@@ -160,7 +158,7 @@ Traefik on the local network path behind `192.168.1.124`. All `*.kblab.me` local
 
 | hostname | service | cluster | notes |
 |----------|---------|---------|-------|
-| agents.kblab.me | agent-web (Claude sessions, runs on the desktop) | home-k3s | Traefik Ingress -> 192.168.1.2:8790; public through the tunnel, crowdsec plus Sign in with Forgejo |
+| agents.kblab.me | agent-web (Claude sessions, runs on the workstation, the fleet home) | home-k3s | Traefik Ingress -> 192.168.1.2:8790; public through the tunnel, crowdsec plus Sign in with Forgejo |
 | hass.kblab.me | Home Assistant | home-k3s | Traefik Ingress |
 | grafana.kblab.me | Grafana | home-k3s | Traefik Ingress |
 | prometheus.kblab.me | Prometheus | home-k3s | Traefik Ingress |
@@ -232,7 +230,7 @@ All K8s manifests deployed to the **home-k3s cluster** live in this repo (`home-
 | K8s manifests (all cluster services) | `home-config` | Single Flux source of truth, self-healing via `prune: true` |
 | Cloudflare tunnel Terraform | `bnb/platform` | Tunnel provisioning is infrastructure owned by the platform team |
 | Application source code | `bnb/platform` | App code, Dockerfiles, build pipelines |
-| Container images | Local registry (`192.168.1.20:30500`) | Built from `bnb/platform`, pushed to local registry, consumed by home-config manifests |
+| Container images | Forgejo container registry (`git.kblab.me`) | Built by app CI, pushed to Forgejo, consumed by home-config manifests |
 | DigitalOcean deployments | `bnb/platform` | DO App Platform specs for production apps |
 
 **Key rule:** If it runs on home-k3s, the manifest lives in `home-config`. If it runs on DigitalOcean, the manifest lives in `bnb/platform`. Cloudflare tunnel config (Terraform) stays in `bnb/platform` since it bridges external DNS to the cluster.

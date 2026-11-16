@@ -26,7 +26,7 @@ spec:
           type: RuntimeDefault
       containers:
         - name: control
-          image: python:3.12.7-slim
+          image: python:3.12.16-slim
           command: ["python3", "/app/server.py"]
           env:
             # Which server the legacy routes (/status, /start, ...) act on. Every

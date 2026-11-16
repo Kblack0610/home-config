@@ -9,6 +9,9 @@ configMapGenerator:
   - name: nas-mirror-script
     files:
       - mirror-snapshot.sh
+  - name: bark-archive-script
+    files:
+      - bark-archive.sh
 
 resources:
   - namespace.yaml
@@ -25,3 +28,6 @@ resources:
   - nas-backups-mirror-cronjob.yaml
   - app-config-backup-cronjob.yaml
   - harvest-backup-cronjob.yaml
+  - eeg-backup-cronjob.yaml
+  - bark-archive-cronjob.yaml
+  - dog-barks-backup-cronjob.yaml

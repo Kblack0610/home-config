@@ -1,18 +1,18 @@
 # Frigate
 
-Frigate NVR on home-k3s, reconciled by Flux. Object detection runs on hp-victus's GPU (RTX 4060 Laptop) through the ONNX detector in the `-tensorrt` image, and video decode uses NVDEC. Events go to Home Assistant over MQTT (`apps/mosquitto`) and the Frigate integration.
+Frigate NVR on home-k3s, reconciled by Flux. Object detection runs on a Coral USB Accelerator plugged into hp-victus, and video decode runs on the CPU, so Frigate uses none of the node's GPU. Events go to Home Assistant over MQTT (`apps/mosquitto`) and the Frigate integration.
 
 ## Files
 
 | File | Purpose |
 |------|---------|
 | `config.yml` | Frigate config, copied over `/config/config.yml` on every pod start. Git wins: edits made in the Frigate UI config editor are lost on restart unless brought back here. |
-| `deployment.yaml` | One replica pinned to hp-victus, `runtimeClassName: nvidia`, one GPU. Init containers seed the config and fetch the model. |
-| `model/build.sh` | Builds and publishes the YOLOv9 ONNX model (see Model below). |
+| `deployment.yaml` | One replica pinned to hp-victus, privileged with `/dev/bus/usb` mounted for the Coral. An init container seeds the config. |
 | `service.yaml` | ClusterIP for the UI (8971), the internal API (5000) and the go2rtc restream (8554); a LoadBalancer for WebRTC (8555). |
 | `ingress.yaml` | `frigate.kblab.me`, LAN only (external-dns skips it). |
 | `pvc.yaml` | `frigate-config` (db, model cache) and `frigate-media` (recordings), both local-path on hp-victus. |
 | `camera-secret.yaml` | SOPS. amcrest-ptz-1's `frigate` account as `FRIGATE_RTSP_USER` / `FRIGATE_RTSP_PASSWORD`, amcrest-living-room's `admin` account as `FRIGATE_LIVING_ROOM_USER` / `FRIGATE_LIVING_ROOM_PASSWORD`. |
+| `config.yml` `audio:` | Dog bark detection, see Bark detection below. |
 | `backup-cronjob.yaml` | Daily `sqlite3 .backup` of `frigate.db` + `config.yml` to the NAS. Recordings are not backed up. |
 
 ## Access
@@ -28,13 +28,18 @@ local-path does not enforce PVC sizes, so `frigate-media` can grow until the hp-
 kubectl --context home-k3s get --raw /api/v1/nodes/hp-victus/proxy/stats/summary | jq '.node.fs | {availableGB: (.availableBytes/1e9), capacityGB: (.capacityBytes/1e9)}'
 ```
 
-## Model
+## Detector
 
-Frigate 0.18 ships no GPU model. `model/build.sh` exports YOLOv9-s at 320x320 with the recipe from Frigate's docs (pinned yolov9 commit, classic docker builder) and publishes it to the Forgejo generic registry. The `fetch-model` init container downloads it into `/config/model_cache/` and checks `MODEL_SHA256`, re-fetching on mismatch and failing the pod if the hash still does not match.
+The Coral is a USB Accelerator in hp-victus's USB 3 port. Frigate's `edgetpu` detector runs the MobileDet model bundled in the image (`/edgetpu_model.tflite`), the one Frigate's docs recommend for the Edge TPU, so there is no model to build or fetch. It is less accurate than the YOLOv9-s ONNX model that ran on the 4060 until 2026-11-11 (in git history, with its `model/build.sh`), mostly on small or distant objects and at night.
 
-To change the model: run `model/build.sh <size> <imgsize>`, publish with `FORGEJO_TOKEN=... model/build.sh --publish <file>`, then update `MODEL_URL` / `MODEL_SHA256` in `deployment.yaml` and `model.path` / `width` / `height` in `config.yml` together.
+The Coral changes its USB ID when Frigate loads its firmware (`1a6e:089a` before, `18d1:9302` after), which is why the pod mounts the whole `/dev/bus/usb` and runs privileged rather than mapping one device node. Run it from a USB 3 port: on USB 2 it works at a fraction of the speed.
 
-Moving off the GPU later (a Pi with a Hailo-8L or Coral): change the `detectors` + `model` blocks in `config.yml`, the image tag, and the `nodeSelector` / `runtimeClassName` / GPU limit in `deployment.yaml`.
+If the detector fails to start (`No EdgeTPU was detected` in the log), check the host sees it, then roll the pod:
+
+```bash
+ssh kblack0610@192.168.1.243 'grep -l -e 1a6e -e 18d1 /sys/bus/usb/devices/*/idVendor'
+kubectl --context home-k3s -n frigate rollout restart deploy/frigate
+```
 
 ## Cameras
 
@@ -117,6 +122,24 @@ After a factory reset (hold the pinhole a full 30 s; a short press only reboots 
 2. Add it in the Amcrest Smart Home app on `BrownDooDoo`. When the app asks for the device password, use `amcrest-wifi-camera-password` from rbw. The app's other password prompt is the Amcrest cloud login, not the camera's.
 3. Check `admin`/`admin` is refused over ONVIF, with one call.
 4. Reapply the stream settings above over Media2 and confirm with `ffprobe`.
+
+## Bark detection
+
+Frigate's audio detector (YAMNet, on the CPU) listens to both cameras' main streams, which already carry AAC audio, and logs a `bark`, `yip` or `howl` event with a clip. It exists so we have a record of when the dog barks and for how long. `speech` and `yell` are left out of `audio.listen` on purpose, so conversations never become events.
+
+| Piece | Where | What it does |
+|-------|-------|--------------|
+| Detection | `config.yml` `audio:` and the `audio` input role | An event per episode; it ends after `max_not_heard` (30 s) of quiet. `min_volume` (500) skips audio quieter than a dog in the room |
+| Retention | `config.yml` `review.alerts.labels` | Bark clips are alerts, so Frigate keeps them 14 days, not the 1-day motion window |
+| Archive | `apps/nas/bark-archive.sh`, CronJob `bark-archive` hourly at :20 | Copies every clip (5 s padding) and one CSV row per episode to `/mnt/nas/private/dog-barks/YYYY-MM/`; kept forever |
+| Mirror | CronJob `dog-barks-backup`, 6:45 AM | btrfs snapshot copy to `/mnt/backup-8t/dog-barks`, 14 kept |
+| Home Assistant | `apps/home-assistant/config/packages/dog_barks.yaml` | `binary_sensor.dog_barking`, episodes and minutes today and this week, the 21:00 summary push (ntfy `home`), and a mic-live connectivity sensor per camera that pages when a camera's sound level stops updating |
+| Dashboard | `apps/home-assistant/config/dashboards/view_dog.yaml` | The Dog view on the wall panels and phone: now, today, mics, 24 h history, bark clips with sound |
+| Calming clip | `dog_barks.yaml`, clip in `apps/home-assistant/config/sounds/calm.mp3` (ConfigMap `home-assistant-sounds`, served at `/local/sounds/`) | While `alarm_control_panel.away` is armed, an episode start plays the clip on both Voice PE pucks via `script.tts_announce`: 10 min apart at least, 4 per away window. The 21:00 summary adds plays and the bark minutes in the 10 min after each. The shipped clip is a synthesized pad (ours, royalty-free); replace `calm.mp3` with a recorded voice clip |
+
+The CSV (`date,start,end,duration_s,camera,label,score_pct,clip`, local time) is the document to show anyone. YAMNet can tag a dog on TV as a bark: play the clip of any row you rely on, and raise `min_volume` or add an `audio.filters.bark.threshold` if false hits show up. Clips hold whatever else was audible for those seconds, voices included; deleting `/mnt/nas/private/dog-barks` and the `audio` role removes it all.
+
+Test: play a dog-bark recording near a camera. The Frigate UI shows an audio event, `binary_sensor.dog_barking` turns on, and `kubectl --context home-k3s -n nas create job --from=cronjob/bark-archive bark-archive-manual` writes the clip and a CSV row. Speech or music at the same volume must create no event.
 
 ## Verify
 

@@ -6,6 +6,8 @@ metadata:
     app: portfolio-web
   annotations:
     cert-manager.io/cluster-issuer: letsencrypt-dns
+    # Gatus group = project-map tracker key; see scripts/gen-gatus-ingress-checks.py.
+    gatus.kblab.me/group: "kenneth-black-portfolio"
 spec:
   ingressClassName: traefik
   tls:

@@ -7,8 +7,8 @@
 # --cgroup-parent ci-unity.slice). Set per host in inventory.yml (ci_hosts).
 
 # CPUs CI may use, as an AllowedCPUs list ("4-15"). The rest stay with k3s and
-# the OS. A list and not a count because the hosts differ: on hp-victus the last
-# eight CPUs are E-cores, on asus all sixteen are alike.
+# the OS. A list and not a count because the hosts differ: some have E-cores
+# among their CPUs, others have cores that are all alike.
 ci_cpus: ""
 # Memory for all CI together. Leave room for k3s pods and the OS.
 ci_memory_max: 24G
@@ -18,10 +18,12 @@ ci_memory_max: 24G
 ci_unity_cpus: ""
 ci_unity_memory_max: 16G
 # Optional: one CPU list per Unity pool slot (["2-4,10-12", "5-7,13-15"]), each
-# inside ci_unity_cpus and not overlapping. Slot n then runs in its own
-# ci-unity-<n>.slice, a child of ci-unity.slice, so two slots never take each
-# other's cores: PlayMode tests run in real time and failed when two jobs shared
-# eight threads (asus, 2026-10-06). Empty = every slot shares ci-unity.slice.
+# inside ci_unity_cpus. Slot n then runs in its own ci-unity-<n>.slice, a child of
+# ci-unity.slice, so two slots never take each other's cores: PlayMode tests run in
+# real time and failed when two jobs shared eight threads (2026-10-06). Two
+# slots overlap only where ci-runner-governor pairs them (config.json "pairs": a
+# build slot and the test slots it never runs beside, aws-build-1), which
+# scripts/check-runner-roster.py checks. Empty = every slot shares ci-unity.slice.
 # Its length must equal unity_ci_slots.
 ci_unity_slot_cpus: []
 # Memory cap of each of those slot slices, so a runaway Unity dies at this size
@@ -29,16 +31,29 @@ ci_unity_slot_cpus: []
 # than the Unity cap. Peaks count page cache, which a cap reclaims first, so a
 # peak under no pressure overstates what a job needs: razer, with room to spare,
 # saw 13 of 202 containers over 16G and killed none, including a 38.2G one.
+# A list gives each slot its own, one entry per ci_unity_slot_cpus entry.
 ci_unity_slot_memory_max: 32G
 # Unity's share of contended CPUs against the platform slice (systemd default
 # 100). Platform jobs still use Unity's CPUs when Unity is idle; when both want
 # them, Unity gets about 80%, so a platform burst slows its timed tests less.
-# A weight and not a CPU split, which would leave razer's three platform slots
-# four threads.
+# Moot on a host that gives the platform slice CPUs of its own (ci_linux_cpus),
+# as razer does since 2026-11-10.
 ci_unity_cpu_weight: 400
 
-# Light/heavy runners: memory cap of their own; they use all of ci_cpus.
+# Light/heavy runners: memory cap of their own, and optional CPUs of their own
+# inside ci_cpus (empty = all of ci_cpus, shared with Unity at its weight). Give
+# them their own when Unity's slots are pinned over the rest: at weight 100 against
+# Unity's 400 razer's platform jobs blew their caps on 2026-11-10 (platform #1488).
 ci_linux_memory_max: 16G
+ci_linux_cpus: ""
+
+# CPUs the host's k3s pods run on, outside ci_cpus (empty = no pin). Set, the
+# role makes the kubelet reserve every other CPU, so pods run only here and the
+# scheduler stops placing more than fits: razer took 6-CPU freqtrade backtests
+# beside its CI slots and the 15-minute load hit 18 (2026-11-10).
+k3s_cpus: ""
+# The k3s unit to restart for its kubelet args (k3s-agent on agents).
+k3s_service: "k3s{{ '-agent' if (k3s_role | default('agent')) == 'agent' else '' }}.service"
 
 # Slice names. systemd nests by name: ci-unity.slice is a child of ci.slice.
 # The runner units (gh_runner_slice) and the Unity containers

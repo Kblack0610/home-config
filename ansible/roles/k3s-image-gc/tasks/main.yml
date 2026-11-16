@@ -1,0 +1,18 @@
+---
+- name: Create the k3s config drop-in directory
+  ansible.builtin.file:
+    path: /etc/rancher/k3s/config.yaml.d
+    state: directory
+    mode: "0755"
+
+- name: Set kubelet's image GC marks under the disk alert
+  ansible.builtin.copy:
+    dest: /etc/rancher/k3s/config.yaml.d/40-image-gc.yaml
+    mode: "0644"
+    content: |
+      # Managed by ansible (k3s-image-gc). Unused images go at {{ k3s_image_gc_high }}% used,
+      # under NodeDiskLow's 80%; kubelet's default 85% sat above it.
+      kubelet-arg+:
+        - image-gc-high-threshold={{ k3s_image_gc_high }}
+        - image-gc-low-threshold={{ k3s_image_gc_low }}
+  notify: Restart k3s

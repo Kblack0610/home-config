@@ -1,0 +1,18 @@
+[Unit]
+Description=Forgejo (docker compose, roles/forgejo-host)
+Requires=docker.service mnt-forgejo.mount
+Wants=network-online.target
+After=docker.service mnt-forgejo.mount network-online.target tailscaled.service
+
+[Service]
+Type=oneshot
+RemainAfterExit=true
+WorkingDirectory=/etc/forgejo
+# The fence: start only when forge-primary.kblab.me names this host. Exit 1
+# skips the start without failing the unit, so a standby boots clean.
+ExecCondition=/usr/local/sbin/forge-fence-check
+ExecStart=/usr/bin/docker compose -f /etc/forgejo/compose.yaml up -d --remove-orphans
+ExecStop=/usr/bin/docker compose -f /etc/forgejo/compose.yaml down
+
+[Install]
+WantedBy=multi-user.target

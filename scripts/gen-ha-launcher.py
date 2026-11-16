@@ -73,7 +73,6 @@ HOST_RE = re.compile(r"Host\(`([^`]+)`\)")
 NAMESPACE_GROUP = {
     "actual-budget": "Finance",
     "ai-gateway": "AI",
-    "ai-services": "AI",
     "apps": "Apps",
     "binks-api": "AI",
     "comfyui": "AI",
@@ -135,7 +134,6 @@ HOST_ICON = {
 INVENTORY_TILES = {
     "hp-victus":   ("HP Victus",   "http://192.168.1.243:9100/metrics", "mdi:server"),
     "asus-laptop": ("Asus Laptop", "http://192.168.1.152:9100/metrics", "mdi:laptop"),
-    "mac-studio":  ("Mac Studio",  "http://192.168.1.4:9100/metrics",   "mdi:apple"),
     "mac-mini":    ("Mac Mini",    "http://192.168.1.7:9100/metrics",   "mdi:apple"),
     "pi5-master":  ("Pi5 Master",  "http://192.168.1.20:9100/metrics",  "mdi:raspberry-pi"),
     "pi5-worker1": ("Pi5 Worker1", "http://192.168.1.21:9100/metrics",  "mdi:raspberry-pi"),

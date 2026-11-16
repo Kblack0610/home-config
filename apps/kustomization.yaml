@@ -17,12 +17,15 @@ resources:
   - ci-runner-governor
   - cloudflared-public-sites
   - cluster-janitor
+  - coredns
   - crowdsec
   - external-dns
   - fleet-exporter
   - flux-audit
   - forgejo
   - forgejo-mirror-exporter
+  - feed-ingest
+  - freellmapi
   - frigate
   - github-runner-exporter
   - gatus
@@ -50,7 +53,7 @@ resources:
   - notes-sync-bridge
   - ntfy
   - ntfy-public
-  - nvidia-device-plugin
+  - offsite-backup
   - openwakeword
   - searxng
   - orcaslicer

@@ -119,6 +119,6 @@ ansible-playbook playbooks/site.yml --tags nut --limit pi5-master
 ## Followups (not done yet)
 
 - **pi5-worker1**: SSH key auth from the workstation is broken. Add it to the `nut_clients` group in `inventory.yml` once that's fixed.
-- **mac-studio, mac-mini**: if they sit on the same UPS, install `nut` via Homebrew and add them to a `nut_clients_macos` group. Same `upsmon.client.conf` shape, different package + service paths.
+- **mac-mini**: if it sits on the same UPS, install `nut` via Homebrew and add it to a `nut_clients_macos` group. Same `upsmon.client.conf` shape, different package + service paths.
 - **openwrt-router**: OpenWRT has the `nut` package. Different config dir (`/etc/config/nut_*`); separate role pass.
 - **Prometheus exporter**: `nut_exporter` running next to upsd would feed `battery.charge`, `ups.load`, `input.voltage` into the Homelab dashboard. Today we only get the event log.

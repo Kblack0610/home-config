@@ -16,15 +16,15 @@ coinbase-s001        coinbase   Strategy001
 kraken-supertrend    kraken     Supertrend
 binanceus-supertrend binanceus  Supertrend
 coinbase-supertrend  coinbase   Supertrend
-agg-binanceus-binhv45 binanceus BinHV45 aggressive base
-agg-coinbase-binhv45 coinbase BinHV45 aggressive base
-agg-kraken-binhv45 kraken BinHV45 aggressive base
-agg-binanceus-combinedbinhandcluc binanceus CombinedBinHAndCluc aggressive base
-agg-coinbase-combinedbinhandcluc coinbase CombinedBinHAndCluc aggressive base
-agg-kraken-combinedbinhandcluc kraken CombinedBinHAndCluc aggressive base
-agg-binanceus-clucmay72018 binanceus ClucMay72018 aggressive base
-agg-coinbase-clucmay72018 coinbase ClucMay72018 aggressive base
-agg-kraken-clucmay72018 kraken ClucMay72018 aggressive base
+agg-binanceus-binhv45-89287667 binanceus BinHV45 aggressive 89287667
+agg-coinbase-binhv45-89287667 coinbase BinHV45 aggressive 89287667
+agg-kraken-binhv45-89287667 kraken BinHV45 aggressive 89287667
+agg-binanceus-combinedbinhandcluc-98de77f2 binanceus CombinedBinHAndCluc aggressive 98de77f2
+agg-coinbase-combinedbinhandcluc-98de77f2 coinbase CombinedBinHAndCluc aggressive 98de77f2
+agg-kraken-combinedbinhandcluc-98de77f2 kraken CombinedBinHAndCluc aggressive 98de77f2
+agg-binanceus-clucmay72018-76524a07 binanceus ClucMay72018 aggressive 76524a07
+agg-coinbase-clucmay72018-76524a07 coinbase ClucMay72018 aggressive 76524a07
+agg-kraken-clucmay72018-76524a07 kraken ClucMay72018 aggressive 76524a07
 agg-binanceus-binhv27 binanceus BinHV27 aggressive base
 agg-coinbase-binhv27 coinbase BinHV27 aggressive base
 agg-kraken-binhv27 kraken BinHV27 aggressive base

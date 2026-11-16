@@ -12,3 +12,12 @@ hw_watchdog_reboot_sec: 2min
 # is 0, which means "hang forever" - the watchdog does not help there, because
 # some panics leave the timer being fed.
 hw_watchdog_kernel_panic: 10
+
+# A kernel module that provides /dev/watchdog0 but is not autoloaded (asus-laptop:
+# sp5100_tco). Empty: the driver loads on its own (bcm2835-wdt, iTCO_wdt).
+hw_watchdog_module: ""
+
+# 1 makes a soft lockup (a CPU stuck in the kernel for 20s+) panic, so
+# kernel.panic reboots it. 0 on the Pis, which have not shown one; 1 on the
+# x86 k3s nodes (inventory group watchdog_x86).
+hw_watchdog_softlockup_panic: 0

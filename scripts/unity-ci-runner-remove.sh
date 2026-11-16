@@ -6,6 +6,7 @@
 #   bash scripts/unity-ci-runner-remove.sh            # every slot on this host
 #   bash scripts/unity-ci-runner-remove.sh --slot 2   # just slot 2
 #   bash scripts/unity-ci-runner-remove.sh --host asus-laptop --slot 2
+#   ... --force                                        # even a slot mid-job
 #
 # First take the slots out of unity_ci_runners in ansible/inventory.yml (and
 # RUNNER_ROSTER in apps/github-runner-exporter/deployment.yaml), or the next
@@ -17,12 +18,15 @@ ORG=BlackNBrownStudios
 RUNNER_HOME=/var/lib/actions-runner
 HOST=${HOSTNAME%%.*}  # bash's own: hp-victus has no hostname binary
 SLOTS=()
+FORCE=0
+SKIPPED=()
 
 while [ $# -gt 0 ]; do
   case "$1" in
     --host) HOST=$2; shift 2 ;;
     --slot) SLOTS+=("$2"); shift 2 ;;
-    -h|--help) sed -n '2,14p' "$0"; exit 0 ;;
+    --force) FORCE=1; shift ;;
+    -h|--help) sed -n '2,15p' "$0"; exit 0 ;;
     *) echo "unknown argument: $1" >&2; exit 2 ;;
   esac
 done
@@ -44,13 +48,22 @@ for n in "${SLOTS[@]}"; do
   name="$HOST-unity-pool-$n"
   unit="actions.runner.$name.service"
   echo "== slot $n ($name)"
+  # A Runner.Worker is a job in flight; stopping the unit cancels it. Without this
+  # a slot that took a job between the idle check and the run lost a Slim tour
+  # job on razer (2026-11-10).
+  if [ "$FORCE" = 0 ] && pgrep -f "$RUNNER_HOME/unity-pool-$n/bin[^ ]*/Runner.Worker" >/dev/null; then
+    echo "  running a job: skipped. Run again when it finishes, or pass --force."
+    SKIPPED+=("$n")
+    continue
+  fi
   # Stops the listener; its job's container (docker owns it) is stopped below.
   sudo systemctl disable --now "$unit" 2>/dev/null || true
   sudo rm -f "/etc/systemd/system/$unit"
   sudo rm -rf "$RUNNER_HOME/unity-pool-$n"
   id=""
   if command -v gh >/dev/null; then
-    id=$(gh api "orgs/$ORG/actions/runners" --paginate --jq ".runners[]|select(.name==\"$name\").id" 2>/dev/null)
+    # On a 403 gh prints the error body to stdout, so keep it only on success.
+    id=$(gh api "orgs/$ORG/actions/runners" --paginate --jq ".runners[]|select(.name==\"$name\").id" 2>/dev/null) || id=""
   fi
   if [ -n "$id" ]; then
     gh api -X DELETE "orgs/$ORG/actions/runners/$id" && echo "deregistered $name"
@@ -88,5 +101,9 @@ if command -v gh >/dev/null; then
   else
     echo "gh here cannot list org runners (no admin:org); check from the workstation"
   fi
+fi
+if [ ${#SKIPPED[@]} -gt 0 ]; then
+  echo "== not removed (mid-job): slot ${SKIPPED[*]}"
+  exit 1
 fi
 echo "== done"

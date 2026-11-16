@@ -62,7 +62,7 @@ spec:
       clusterComplianceEnabled: false
       rbacAssessmentScannerEnabled: false
       metricsFindingsEnabled: true
-      # Leave the high-cardinality per-CVE metrics off. The alert below only
+      # Leave the high-cardinality per-CVE metrics off. HomelabCriticalVulnerability only
       # needs counts by severity; enabling these multiplies series by every
       # CVE id in the fleet.
       metricsVulnIdEnabled: false
@@ -85,6 +85,9 @@ spec:
       # manifest before now.
       image:
         tag: "0.69.3"
+      # Report only CVEs that have a fixed version. An unfixable critical has
+      # no action, and HomelabCriticalVulnerability promises a tag bump.
+      ignoreUnfixed: true
       storageClassEnabled: true
       storageClassName: local-path
       storageSize: "5Gi"

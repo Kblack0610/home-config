@@ -1,0 +1,16 @@
+---
+# config.sh sets labels only when it registers, so an inventory label change has to be
+# pushed to a registered runner: on 2026-11-12 aws-build-1's build slots kept unity,
+# unity-full and unity-gate. This reads the runner and plans its labels; main.yml PUTs them
+# (put_labels.yml) after the restart. runner_labels_plan (filter_plugins/) keeps a slot
+# ci-runner-governor withholds withheld. Skipped in check mode, like the registration
+# token: the in-cluster drift check has no gh CLI.
+- name: Read the runner from GitHub
+  ansible.builtin.import_tasks: read_runner.yml
+
+- name: Work out the labels the runner should carry
+  ansible.builtin.set_fact:
+    _gh_runner_plan: >-
+      {{ _gh_runner_row | runner_labels_plan(gh_runner_labels, gh_runner_governed_labels,
+                                             gh_runner_withheld_label, gh_runner_withheld_labels) }}
+  when: not ansible_check_mode

@@ -1,0 +1,13 @@
+# Desired state for test-sync.sh: router.uci-show minus the two adjacent
+# mac-home-m3 hosts, keep-b moved, new-c added.
+network:
+  router_host: "192.168.1.1"
+  router_user: "root"
+ranges:
+  infrastructure: { start: 1, end: 9 }
+  workstations: { start: 30, end: 49 }
+devices:
+  - { hostname: keep-a, mac: "AA:00:00:00:00:04", ip: "192.168.1.4" }
+  - { hostname: pc-mac-m1, mac: "AA:00:00:00:00:06", ip: "192.168.1.6" }
+  - { hostname: keep-b, mac: "AA:00:00:00:00:40", ip: "192.168.1.41" }
+  - { hostname: new-c, mac: "AA:00:00:00:00:42", ip: "192.168.1.42" }

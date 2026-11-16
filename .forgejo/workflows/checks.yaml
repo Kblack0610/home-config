@@ -35,6 +35,17 @@ jobs:
         run: python3 scripts/check-fleet-roster.py
       - name: Runner roster agrees with the ansible inventory
         run: python3 scripts/check-runner-roster.py
+      - name: Freqtrade roster has no bot that repeats another's exchange, strategy and overlay
+        run: python3 scripts/check-freqtrade-roster.py
+      - name: Negative control - the freqtrade roster check fails on a planted duplicate row
+        run: |
+          cp apps/freqtrade/roster.tsv planted-roster.tsv
+          echo "planted-dup binanceus BinHV27 aggressive base" >> planted-roster.tsv
+          rc=0; python3 scripts/check-freqtrade-roster.py planted-roster.tsv > planted-roster.out 2>&1 || rc=$?
+          rm planted-roster.tsv; cat planted-roster.out
+          [ "$rc" -ne 0 ] || { echo "the check passed a planted duplicate"; exit 1; }
+          grep -q "planted-dup runs" planted-roster.out || { echo "the check failed, but not on the planted row"; exit 1; }
+          rm planted-roster.out
       # An if, not "! cmd": sh -e ignores a "!" pipeline's status, so a "!" step passes either way.
       - name: Negative control - the roster check fails on aws-build-1 pairs swapped off their build slots' cores
         run: |

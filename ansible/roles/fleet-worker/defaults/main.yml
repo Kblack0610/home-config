@@ -27,3 +27,8 @@ fleet_worker_packages_apt:
 # fleet-dispatch, with the auth key from SOPS (role tailscale-node).
 fleet_tailscale: false
 fleet_worker_dotfiles_repo: https://github.com/Kblack0610/.dotfiles.git
+# The fleet home is the worker fleet_state_host names (inventory.yml). It also
+# holds the agent store and serves agent-web: tasks/home.yml.
+fleet_worker_is_home: "{{ inventory_hostname == fleet_state_host.split('.')[0] }}"
+fleet_home_store_repo: ssh://git@git.kblab.me/kblack0610/.agent.git
+fleet_home_store_host: git.kblab.me

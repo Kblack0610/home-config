@@ -4,9 +4,9 @@ Hosts that fleet-dispatch places agent sessions on, over ssh. The roster is the 
 
 ## What a worker takes
 
-- A light claude queue item with no plan and no `#cloud-ok` tag, in a repo listed in the host's `fleet_repos`, when this workstation is over its load or idle pace. Heavy (Unity) items, plan items and other harnesses stay on the workstation.
+- A light claude queue item with no plan and no `#cloud-ok` tag, in a repo listed in the host's `fleet_repos`, when the fleet home is over its load or idle pace. Heavy (Unity) items, plan items and other harnesses stay on the home.
 - At most `fleet_max_live` sessions at once, and none while its own 1-minute load per core is over the dispatch pace (`DISPATCH_MAX_LOAD`).
-- A session there runs with `AGENT_STATE_HOST=<fleet_state_host>` on its launch line, so its `agent-queue` and `agent-ask` calls run on the workstation over ssh. The queue and the asks stay in one store.
+- A session there runs with `AGENT_STATE_HOST=<fleet_state_host>` on its launch line, so its `agent-queue` and `agent-ask` calls run on the fleet home over ssh. The queue and the asks stay in one store.
 
 ## Add a worker
 
@@ -17,6 +17,20 @@ Hosts that fleet-dispatch places agent sessions on, over ssh. The roster is the 
    - Add the worker's public key, which the task prints, to `~/.ssh/authorized_keys` on the state host.
    - Sign in each account: `claude`, then `/login`, once per account dir (`CLAUDE_CONFIG_DIR=<dir> claude` for each one but the main).
 4. When the play prints `Ready`, set `fleet_place: true` for the host and merge. fleet-dispatch reads the inventory as this repo's checkout's upstream branch holds it, fetched on each pass, so no pull is needed. On the workstation, `fleet-dispatch hosts` shows the worker as `open`, or the reason it takes nothing.
+
+## The fleet home
+
+The worker named by the group's `fleet_state_host` is the fleet home: `razer-laptop` since 2026-11-15, when the workstation died. Other hosts forward their queue and ask writes to it, it serves agent-web (`apps/agents`), and the singleton lanes (dispatch, sentinel, fleet-state, git-sync) run only there. It keeps `fleet_place: false`: sessions run on it as the home, not as placed work.
+
+The same play sets it up. On the home the role skips the state-host key steps (it is the state host) and runs `tasks/home.yml`, which:
+- enables lingering, so user units run with nobody logged in;
+- builds `agent-web` and links it to `~/.local/bin/agent-web`;
+- makes `~/.ssh/id_agent_sync`, the key `git-sync-agent.sh` pushes the store with, and clones Forgejo `kblack0610/.agent` into `~/.agent` once that key is a write deploy key there (a plain `~/.agent` from before is kept as `~/.agent.pre-home`);
+- starts `agent-web.service` once `~/.config/agent-web/oauth.json` exists.
+
+Left for the human, printed by the play: the deploy key, `oauth.json` from rbw item `agent-web-oauth-client` (`{"client_id": ..., "client_secret": ...}`, mode 0600), the sign-ins, then `agentctl reload` on the home to arm the lanes.
+
+Moving the home: change `fleet_state_host` and the Endpoints IP in `apps/agents/service.yaml` in one PR, run the play on the new host, and stop the lanes on the old one.
 
 ## Cloud worker
 
@@ -38,7 +52,7 @@ Hosts that fleet-dispatch places agent sessions on, over ssh. The roster is the 
      ansible_ssh_common_args: <the SSM ProxyCommand aws-burst-1 has>
      fleet_tailscale: true
      fleet_ssh_host: fleet-worker-1         # its tailnet name: fleet-dispatch ssh goes there
-     fleet_state_host: cachyos-x8664-main   # the workstation's tailnet name
+     fleet_state_host: razer-laptop         # the fleet home's tailnet name
      fleet_power: governor
      fleet_place: false                     # no fleet_repos: the group's list (no Unity repo) is its own
    ```

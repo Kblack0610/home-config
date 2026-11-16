@@ -492,6 +492,8 @@ all:
         # slot stops at 20G: without a cap each took the 32G default, five could
         # reach 160G against the 60G Unity budget, and one shard was killed on
         # 11-02 after 462 s.
+        # These caps hold until the RAM move to 32 GB (hc-328); #1038 has the 32 GB
+        # layout (one light slot, 6G, no Unity slot) to re-apply with the swap.
         razer-laptop:
           ci_cpus: 2-7,10-15
           ci_memory_max: 72G
@@ -633,7 +635,7 @@ all:
             repo: https://github.com/Kblack0610/.dotfiles.git
       hosts:
         # The first worker (2026-11-07): wired and always on, 16 threads and
-        # 96 GB (32 GB after the RAM move, hc-328). It held the fleet home 2026-11-15 to
+        # 96 GB until the RAM move to 32 GB (hc-328). It held the fleet home 2026-11-15 to
         # 11-16 while the workstation was down; not placed yet.
         razer-laptop:
           fleet_place: false

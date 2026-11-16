@@ -9,22 +9,52 @@
 # in 15s, but systemd ships with RuntimeWatchdogSec=0, so nothing ever armed it.
 # See roles/hw-watchdog/README.md.
 
+- name: Drop the modules-load.d entry the boot unit below replaces
+  # systemd-modules-load applies kmod's blacklist, and CachyOS's cachyos-settings
+  # blacklists sp5100_tco and iTCO_wdt (/usr/lib/modprobe.d/blacklist.conf). It
+  # skipped this file without a word at asus-laptop's 2026-11-15 boot, so the
+  # host ran with no /dev/watchdog0 until the next convergence check failed.
+  ansible.builtin.file:
+    path: /etc/modules-load.d/hw-watchdog.conf
+    state: absent
+
 - name: Load the watchdog driver at every boot
+  # modprobe without -b loads a blacklisted module; systemd-modules-load does not.
   ansible.builtin.copy:
-    dest: /etc/modules-load.d/hw-watchdog.conf
+    dest: /etc/systemd/system/hw-watchdog-module.service
     owner: root
     group: root
     mode: "0644"
     content: |
       # Managed by ansible (roles/hw-watchdog). Do not edit by hand.
-      {{ hw_watchdog_module }}
+      [Unit]
+      Description=Load the hardware watchdog driver {{ hw_watchdog_module }}
+      DefaultDependencies=no
+      Before=sysinit.target
+
+      [Service]
+      Type=oneshot
+      RemainAfterExit=yes
+      ExecStart=/usr/sbin/modprobe {{ hw_watchdog_module }}
+
+      [Install]
+      WantedBy=sysinit.target
+  register: hw_watchdog_module_unit
   when: hw_watchdog_module | length > 0
 
 - name: Load the watchdog driver now
-  community.general.modprobe:
-    name: "{{ hw_watchdog_module }}"
-    state: present
-  when: hw_watchdog_module | length > 0
+  # PID 1 opens /dev/watchdog0 on its next ping once the driver creates it, so
+  # loading the driver after PID 1 started needs no re-exec.
+  ansible.builtin.systemd_service:
+    name: hw-watchdog-module.service
+    enabled: true
+    # A restart when the unit changed, so a new hw_watchdog_module loads now.
+    state: "{{ 'restarted' if hw_watchdog_module_unit is changed else 'started' }}"
+    daemon_reload: true
+  # A --check run before the first apply has no unit file to start.
+  when:
+    - hw_watchdog_module | length > 0
+    - not (ansible_check_mode and hw_watchdog_module_unit is changed)
 
 - name: Check the host has a hardware watchdog device
   ansible.builtin.stat:

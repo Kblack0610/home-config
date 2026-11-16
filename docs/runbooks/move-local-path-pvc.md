@@ -28,7 +28,7 @@ The local-path class cannot expand a claim, so a PV past its request (`LocalPath
 4. Scale the workload to 0, wait for its pods to be gone, delete finished pods that mount the claim, then delete the PVC. Go on once the PV reads `Released`.
 5. `kubectl patch pv <pv> --type=json -p '[{"op":"replace","path":"/spec/claimRef","value":{"namespace":"<ns>","name":"<pvc>"}},{"op":"replace","path":"/spec/capacity/storage","value":"<size>"}]'`. Go on once the PV reads `Available`: the claimRef without a uid reserves it for that claim name, so no other pending claim takes it.
 6. Apply the PR's PVC by hand with `spec.volumeName: <pv>` added. `kubectl -n <ns> get pvc <pvc>` must show `Bound`, the same PV and the new size. Scale back up and check the data.
-7. Only then set the PV back to `Delete`. Merge the PR, then resume Flux.
+7. Merge the PR, resume Flux, and check the claim is still `Bound` to the same PV after the reconcile. Only then set the PV back to `Delete`.
 
 If the claim does not bind, scale nothing up: the PV stays `Retain` with its data. Delete the new claim and repeat steps 5 and 6.
 

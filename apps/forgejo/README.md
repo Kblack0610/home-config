@@ -18,7 +18,6 @@ and repository mirroring enabled.
 | `ingress-public.yaml` | TLS ingress for `git.kennethblack.me`, the `ROOT_URL` and the one browser hostname |
 | `ingressroute-browser-redirect.yaml` | Redirects browsers (`Accept: text/html`) on `git.kblab.me` to `git.kennethblack.me`, so one login cookie covers every page |
 | `pvc.yaml` | The asus copy, frozen at the cutover (`/mnt/backups/forgejo-live/data`); the rollback source until cleanup |
-| `backup-cronjob.yaml` | Daily backup job for full data and SQLite snapshots |
 | `runner-deployment.yaml` | Forgejo Runner + DinD sidecar (razer-laptop only; asus-laptop and hp-victus are `no_ci_hosts`) |
 | `runner-config-cm.yaml` | Runner config with `docker` + `linux-amd64` labels |
 | `runner-secret.yaml` | SOPS-encrypted instance-level runner registration token |
@@ -221,7 +220,7 @@ Endpoints:
 
 ## Backup Notes
 
-- Forgejo runs on forge-hel1 since 2026-11-14 (plan `virtual-strolling-nova`). The jobs that read its disk run there ("On forge-hel1" below) and `forgejo-backup-pull` copies them to asus. The in-cluster CronJobs listed next are suspended since the cutover: they would read the frozen asus copy. They are removed at cleanup.
+- Forgejo runs on forge-hel1 since 2026-11-14 (plan `virtual-strolling-nova`). The jobs that read its disk run there ("On forge-hel1" below) and `forgejo-backup-pull` copies them to asus. The in-cluster CronJobs listed next are suspended since the cutover: they would read the frozen asus copy. They are removed at cleanup; `forgejo-backup` and `forgejo-backup-offbox` already were (2026-11-16, `backup-cronjob.yaml` in git history), since their old Jobs kept `HomelabBackupStale` firing.
 - `forgejo-db-snapshot` runs hourly: `VACUUM INTO` plus `quick_check`, 48 kept in `/mnt/backups/forgejo-live/snapshots`.
 - `forgejo-backup` runs daily at `03:00` on asus and writes a full archive and the newest DB snapshot to `/mnt/backups/forgejo`. While Forgejo runs from the restore, that is the same disk as the live data (nvme0n1p2), so the 8TB copy below is the only one on another disk.
 - Retention: newest **7**. Archives are written to `*.tmp` and renamed on success, so a partial never looks like a backup. Pruning runs after a good backup, and the job aborts if `/backup` has under 100G free.

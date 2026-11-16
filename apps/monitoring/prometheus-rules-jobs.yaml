@@ -48,6 +48,7 @@ spec:
           for: 15m
           labels:
             severity: warning
+            fleet: fix
             category: scheduled-jobs
           annotations:
             summary: "CronJob failing: {{ $labels.namespace }}/{{ $labels.owner_name }}"
@@ -66,6 +67,7 @@ spec:
           for: 15m
           labels:
             severity: warning
+            fleet: fix
             category: scheduled-jobs
           annotations:
             summary: "Job failed: {{ $labels.namespace }}/{{ $labels.job_name }}"
@@ -90,6 +92,7 @@ spec:
           for: 1h
           labels:
             severity: warning
+            fleet: fix
             category: scheduled-jobs
           annotations:
             summary: "CronJob overdue: {{ $labels.namespace }}/{{ $labels.cronjob }}"

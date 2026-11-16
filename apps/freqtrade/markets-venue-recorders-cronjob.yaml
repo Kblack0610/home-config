@@ -2,8 +2,10 @@
 # by name on its own cadence (strategy repo docs/markets.md, Recorder). Same image, database, bucket, init migration
 # and node rule as trader-markets-recorder. A sweep must end inside 15 min, the compact job's grace (markets.toml
 # [compact] grace_h). Memory is sized from the market counts, not measured: Kalshi peaked at 470 MB on 179k markets.
-# The Odds API runs every 6 h: 3 credits a sweep for one sport (markets.toml [venues.odds_api]) is 360 a month on
-# the free tier's 500. More sports or a faster cadence needs a paid plan, the person's money call.
+# The Odds API runs every 6 h: 4 credits a sweep for one sport with h2h and totals (markets.toml [venues.odds_api]) is
+# 480 a month on the free tier's 500. More sports or a faster cadence needs a paid plan, the person's money call.
+# After its sweep it runs the odds_api paper league pass (lab/markets/paper.py, tt_totals forward accounts; tr-271),
+# as trader-markets-recorder does for Kalshi: paper money only, nothing is ever placed at a sportsbook.
 apiVersion: batch/v1
 kind: CronJob
 metadata:
@@ -335,7 +337,7 @@ spec:
           containers:
             - name: recorder
               image: trader
-              command: ["python", "-m", "lab.markets.recorder", "odds_api"]
+              command: ["sh", "-c", "python -m lab.markets.recorder odds_api; sweep=$?; python -m lab.markets.paper --venue odds_api || exit 1; exit $sweep"]
               env:
                 - name: DATABASE_URL
                   valueFrom:

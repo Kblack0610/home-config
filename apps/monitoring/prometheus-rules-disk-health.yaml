@@ -18,6 +18,7 @@ spec:
           for: 5m
           labels:
             severity: critical
+            fleet: none  # failing hardware: the human replaces the drive
             category: disk-health
           annotations:
             summary: "SMART says {{ $labels.device }} is failing"
@@ -30,6 +31,7 @@ spec:
           for: 5m
           labels:
             severity: critical
+            fleet: none  # failing hardware: the human replaces the drive
             category: disk-health
           annotations:
             summary: "NVMe critical warning on {{ $labels.device }}"
@@ -41,6 +43,7 @@ spec:
           for: 5m
           labels:
             severity: critical
+            fleet: none  # failing hardware: the human replaces the drive
             category: disk-health
           annotations:
             summary: "{{ $value }} media errors on {{ $labels.device }}"
@@ -53,6 +56,7 @@ spec:
           expr: increase(node_btrfs_device_errors_total{type=~"corruption|generation"}[1h]) > 0
           labels:
             severity: critical
+            fleet: none  # failing hardware or corrupt data: the human decides the restore
             category: disk-health
           annotations:
             summary: "btrfs {{ $labels.type }} errors on {{ $labels.device }}"
@@ -66,6 +70,7 @@ spec:
           expr: increase(node_btrfs_device_errors_total{type=~"read|write|flush"}[1h]) > 0
           labels:
             severity: warning
+            fleet: none  # failing hardware: the human replaces the drive
             category: disk-health
           annotations:
             summary: "btrfs {{ $labels.type }} errors on {{ $labels.device }}"
@@ -81,6 +86,7 @@ spec:
           for: 30m
           labels:
             severity: warning
+            fleet: fix
             category: disk-health
           annotations:
             summary: "SMART metrics missing for an NVMe drive on asus-laptop"

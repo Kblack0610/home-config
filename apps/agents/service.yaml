@@ -12,8 +12,9 @@ spec:
       port: 80
       targetPort: 8790
 ---
-# agent-web runs on the desktop (pc-home-cachy-main), not in the cluster: it needs the
-# desktop's tmux sockets and ~/.claude. This Service only gives Traefik a backend.
+# agent-web runs on the fleet home (razer-laptop, the inventory fleet_state_host), not in
+# the cluster: it needs that host's tmux sockets and ~/.claude. This Service only gives
+# Traefik a backend; move the IP with fleet_state_host.
 apiVersion: v1
 kind: Endpoints
 metadata:
@@ -23,7 +24,7 @@ metadata:
     app.kubernetes.io/name: agents
 subsets:
   - addresses:
-      - ip: 192.168.1.2
+      - ip: 192.168.1.26
     ports:
       - name: http
         port: 8790

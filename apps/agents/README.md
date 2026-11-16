@@ -1,8 +1,8 @@
 # Agents
 
-Reverse proxy for agent-web, the web view of the Claude agent sessions running in tmux on the desktop. From any browser, on or off the LAN, it lets you read a session's transcript or live screen, type into it, and answer the headless `agent-ask` queue.
+Reverse proxy for agent-web, the web view of the Claude agent sessions running in tmux on the fleet home. From any browser, on or off the LAN, it lets you read a session's transcript or live screen, type into it, and answer the headless `agent-ask` queue.
 
-The server runs on `pc-home-cachy-main` (`192.168.1.2:8790`) as the `agent-web` systemd user unit, because it needs the desktop's tmux sockets and `~/.claude`. Source: `~/.dotfiles/.local/src/agent-web` (unit in `~/.dotfiles-private`). The cluster only terminates TLS at `https://agents.kblab.me` and forwards.
+The server runs on the fleet home, `razer-laptop` (`192.168.1.26:8790`) since 2026-11-15, as the `agent-web` systemd user unit, because it needs that host's tmux sockets and `~/.claude`. The home is the host the inventory's `fleet_state_host` names; role `fleet-worker` (`tasks/home.yml`) builds agent-web there and starts it. Source: `~/.dotfiles/.local/src/agent-web` (unit in `~/.dotfiles-private`). The cluster only terminates TLS at `https://agents.kblab.me` and forwards.
 
 ## Access
 
@@ -11,7 +11,7 @@ The server runs on `pc-home-cachy-main` (`192.168.1.2:8790`) as the `agent-web` 
 - This page can type into live agent sessions, and the Forgejo account does not have 2FA on yet (2026-10-31), so its password is the only gate. Enabling it is an open item. Check: the 2FA column of `forgejo admin user list` in the Forgejo pod.
 - The `crowdsec-bouncer` middleware sits in front. `local-network-only` would do nothing here, because tunnel traffic arrives from a cluster IP (`apps/gatus-fleet/ingress.yaml`).
 
-The desktop runs ufw; the allow rule for port 8790 from the LAN is the `desktop-firewall` role in `ansible/`.
+razer runs no host firewall (checked 2026-11-15), so nothing opens 8790. If one is added, its allow rule for 8790 from the LAN belongs in the `desktop-firewall` role in `ansible/`.
 
 ## Files
 
@@ -19,7 +19,7 @@ The desktop runs ufw; the allow rule for port 8790 from the LAN is the `desktop-
 |------|---------|
 | `kustomization.yaml` | Reconciles the namespace, service/endpoints, and ingress |
 | `namespace.yaml` | Creates the `agents` namespace |
-| `service.yaml` | ClusterIP service plus manual endpoints for the desktop's LAN IP |
+| `service.yaml` | ClusterIP service plus manual endpoints for the fleet home's LAN IP |
 | `ingress.yaml` | TLS ingress for `agents.kblab.me`, published through the tunnel, behind crowdsec |
 
 ## Verify
@@ -30,4 +30,6 @@ curl -s https://agents.kblab.me/healthz            # ok
 curl -s -o /dev/null -w '%{http_code}\n' https://agents.kblab.me/api/agents   # 401 without a session
 ```
 
-A `502` means Traefik cannot reach the desktop: check `systemctl --user status agent-web` and the ufw rule.
+A `502` means Traefik cannot reach the home: on razer, check `systemctl --user status agent-web` and that `~/.config/agent-web/oauth.json` exists (the play starts the unit only then).
+
+Moving the home: change `fleet_state_host` in `ansible/inventory.yml` and the Endpoints IP in `service.yaml` together, run the fleet-worker play on the new host, and copy `oauth.json` from rbw item `agent-web-oauth-client`.

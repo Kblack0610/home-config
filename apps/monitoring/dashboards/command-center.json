@@ -87,7 +87,7 @@
       "id": 2,
       "type": "stat",
       "title": "Overall",
-      "description": "Worst domain below. Every tile on this board reads the cc:* recording rules in apps/monitoring/prometheus-rules-command-center.yaml.",
+      "description": "RED when any domain below is red, else OK: a warn shows on its own row and never colours this tile. Every tile on this board reads the cc:* recording rules in apps/monitoring/prometheus-rules-command-center.yaml.",
       "datasource": {
         "type": "prometheus",
         "uid": "${datasource}"

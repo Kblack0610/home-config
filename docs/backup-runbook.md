@@ -219,14 +219,16 @@ If the house is lost, Vaultwarden (and so rbw) and the SOPS age key on the works
 
 ### First upload
 
-The first run sends about 0.6 TB, around two days at the job's 3500 KiB/s upload limit. Start it as a one-off copy of the CronJob, which carries the 3-day deadline and the limit:
+The first run sends about 0.6 TB, around two days at the job's 3500 KiB/s upload limit. Measured 2026-11-13 to 2026-11-15: 529 GiB read, 451.5 GiB stored after dedup and compression, in 39h04m (snapshot `05a7bb11`, 181,767 files). Start it as a one-off copy of the CronJob, which carries the 3-day deadline and the limit:
 
 ```bash
 kubectl -n offsite-backup create job offsite-seed --from=cronjob/offsite-backup
 kubectl -n offsite-backup logs -f job/offsite-seed
 ```
 
-The CronJob does not count a manual job as its own run, so the 1 AM runs during the seed start anyway, find the seed's lock and fail on purpose rather than upload the same data twice. Expect those failures until the seed completes. restic keeps the data it has already uploaded, so a seed that is interrupted only needs to be started again.
+The CronJob does not count a manual job as its own run, so the 1 AM runs during the seed start anyway, find the seed's lock and fail on purpose (after the wait below) rather than upload the same data twice. Expect those failures until the seed completes. restic keeps the data it has already uploaded, so a seed that is interrupted only needs to be started again. Keep the seed job until one nightly has succeeded: `create job --from` makes the CronJob its owner, so until then the seed is the only completed job `HomelabBackupStale` can see, and deleting it leaves the rule with no series at all.
+
+A run that finds a lock checks again every minute, for up to `LOCK_STALE_WAIT_S` in the script (restic's 30-minute stale window plus one). It goes on as soon as the lock is gone: a run that finished, or a dead run's lock that `restic unlock` removes once it is stale, such as the pod an asus-laptop reboot killed, whose Job retry starts seconds later. A lock still held at the end belongs to a live run, and the run aborts. So during a seed each nightly pod, and its one retry, logs "A lock is held; waiting" for about 31 minutes before it fails: that is the guard, not a hang.
 
 If a run fails with `storage cap exceeded`, the B2 account's storage cap is too low: raise it on the B2 Caps & Alerts page. A new account stops at the 10 GB free tier until a payment method is on file and the cap is raised.
 
@@ -249,6 +251,8 @@ Restore to a scratch directory, never over live data:
 ```bash
 restic restore latest --target /tmp/offsite-restore --include /data/nas-backups/home-k3s/actual-budget
 ```
+
+Restore drill (2026-11-15, passed, repeat quarterly): on hp-victus, with no restic installed, `docker run --rm --env-file <file from the secret, mode 600> -v <scratch>:/restore restic/restic:0.19.1 restore latest --target /restore --include <path>`. A random Immich original matched the NAS copy by sha256; the newest actual-budget and vaultwarden archives matched the 8TB copies by sha256; actual-server 26.8.1 served the budget (`/health` UP, 1523 transactions) and the pinned vaultwarden image served its archive (`/alive` 200, 93 live items) per `apps/vaultwarden/README.md` Restore drill.
 
 Whole-house loss: restore `/data/immich` (originals, under `upload`), `/data/immich-db`, `/data/nas-backups` (every app dump) and `/data/forgejo-backups` first; then follow the per-app restore sections below. restic can also `restic mount /mnt/offsite` to browse every snapshot as files.
 

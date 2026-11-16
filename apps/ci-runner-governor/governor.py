@@ -104,8 +104,9 @@ next host takes the queue at once. ci_governor_fallback_total{host,reason} count
 pass-over once. Two failures are no fallback: the budget's deny policy (UnauthorizedOperation),
 which every host shares, and a network error, which says nothing about the host. The ConfigMap
 ci-runner-governor-override (the agent-web Infra page's button) beats all of that until its
-end time: "on" starts it and keeps it from idle-off and the day cap, "off" drains and stops
-it and keeps it stopped. Only a pass-over beats "on": a passed-over host waits out its
+end time: "on" starts it and keeps it from idle-off and the day cap, for at most
+override_on_max_hours (config.json) from when the governor first sees it; "off" drains and
+stops it and keeps it stopped. Only a pass-over beats "on": a passed-over host waits out its
 fallback_seconds before an "on" starts it again. The month's cap is an AWS Budgets action, outside the governor.
 
 A host's key in that ConfigMap can instead hold {"slots": N}, written by the workstation's
@@ -1031,6 +1032,24 @@ def read_override(host, now):
     return (action, until) if action in ("on", "off") and until > now else ("", 0)
 
 
+def cap_override(host, t, action, until, now, cap):
+    """(action, until) with an "on" held to cap seconds from the cycle this governor first saw
+    that end time (kept in t), the agent-web button's own limit. Uncapped, a hand-written "on"
+    beats idle-off and the day cap for as long as it says: one set daily to 02:00 kept four
+    AWS hosts up and idle all day (2026-11-12 to 11-15). "off" is never capped."""
+    if action != "on":
+        t.pop("override_seen", None)
+        return action, until
+    seen = t.get("override_seen")
+    if not seen or seen[0] != until:
+        seen = t["override_seen"] = (until, now)
+        if until - now > cap:
+            print(f"{host}: override on runs {(until - now) / 3600:.1f} h, held to {cap / 3600:g} h",
+                  flush=True)
+    end = min(until, seen[1] + cap)
+    return ("on", end) if end > now else ("", 0)
+
+
 def read_demand(host, now):
     """Items fleet-dispatch has for worker host, from its "<host>.demand" key:
     {"demand": N, "until": <epoch>}, N a whole number from 0. 0 when there is none, it has
@@ -1174,7 +1193,8 @@ def power_readings(cfg, runners, tracked, now):
             # a known launch takes a down sample's start cause too, never a stop's.
             if cause and (was_up == up or (up and launched and cause in START_CAUSES)):
                 t.setdefault("cause", cause)
-        t["override"], t["override_until"] = read_override(host, now)
+        t["override"], t["override_until"] = cap_override(
+            host, t, *read_override(host, now), now, cfg.get("override_on_max_hours", 12) * 3600)
         t.update(state=state, labels=labels, client=client, launched=launched)
         out[host] = t
     return out

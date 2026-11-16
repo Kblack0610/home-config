@@ -106,8 +106,7 @@ model_list:
         json_mode: true
       supports_function_calling: true
 
-  # reasoning paid: glm-5.3, named for what it serves. The scoped `glm-pilot` key
-  # (README) allows only this name, so a GLM canary spends against its own cap.
+  # reasoning paid: glm-5.3.
   # Thinking-mode model.
   - model_name: "reasoning (glm-5.3)"
     litellm_params:

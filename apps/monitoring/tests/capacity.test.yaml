@@ -321,12 +321,12 @@ tests:
       - eval_time: 35m
         alertname: NodeMemoryLow
         exp_alerts:
-          - exp_labels: {alertname: NodeMemoryLow, severity: warning, category: capacity, instance: low, job: node-exporter}
+          - exp_labels: {alertname: NodeMemoryLow, severity: warning, fleet: none, category: capacity, instance: low, job: node-exporter}
             exp_annotations: {summary: "low has 14% of its memory available"}
       - eval_time: 20m
         alertname: NodeMemoryPressure
         exp_alerts:
-          - exp_labels: {alertname: NodeMemoryPressure, severity: critical, category: capacity, instance: stalled}
+          - exp_labels: {alertname: NodeMemoryPressure, severity: critical, fleet: fix, category: capacity, instance: stalled}
             exp_annotations: {summary: "stalled is stalled on memory 30% of the time"}
 
   - name: cpu pressure
@@ -342,9 +342,9 @@ tests:
       - eval_time: 40m
         alertname: NodeCpuSaturated
         exp_alerts:
-          - exp_labels: {alertname: NodeCpuSaturated, severity: warning, category: capacity, instance: starved}
+          - exp_labels: {alertname: NodeCpuSaturated, severity: warning, fleet: none, category: capacity, instance: starved}
             exp_annotations: {summary: "Tasks on starved are waiting for CPU 95% of the time"}
-          - exp_labels: {alertname: NodeCpuSaturated, severity: warning, category: capacity, instance: busy}
+          - exp_labels: {alertname: NodeCpuSaturated, severity: warning, fleet: none, category: capacity, instance: busy}
             exp_annotations: {summary: "Tasks on busy are waiting for CPU 70% of the time"}
       - eval_time: 40m
         alertname: NodeCpuStarved
@@ -352,7 +352,7 @@ tests:
       - eval_time: 70m
         alertname: NodeCpuStarved
         exp_alerts:
-          - exp_labels: {alertname: NodeCpuStarved, severity: critical, category: capacity, instance: starved}
+          - exp_labels: {alertname: NodeCpuStarved, severity: critical, fleet: fix, category: capacity, instance: starved}
             exp_annotations: {summary: "Tasks on starved have waited for CPU for over an hour"}
 
   - name: load per CPU warns past 1x for 15m and pages past 1.5x for 10m
@@ -434,7 +434,7 @@ tests:
       - eval_time: 20m
         alertname: NodeExporterMissing
         exp_alerts:
-          - exp_labels: {alertname: NodeExporterMissing, severity: critical, category: capacity, node: evicted, internal_ip: 10.0.0.3}
+          - exp_labels: {alertname: NodeExporterMissing, severity: critical, fleet: fix, category: capacity, node: evicted, internal_ip: 10.0.0.3}
             exp_annotations: {summary: "No node-exporter data from evicted"}
 
   - name: crash loops page only in the namespaces that matter
@@ -451,7 +451,7 @@ tests:
       - eval_time: 65m
         alertname: CriticalServiceCrashLooping
         exp_alerts:
-          - exp_labels: {alertname: CriticalServiceCrashLooping, severity: critical, category: capacity, reason: CrashLoopBackOff, namespace: ntfy, pod: p, container: c}
+          - exp_labels: {alertname: CriticalServiceCrashLooping, severity: critical, fleet: fix, category: capacity, reason: CrashLoopBackOff, namespace: ntfy, pod: p, container: c}
             exp_annotations: {summary: "ntfy/p has been crash looping for an hour"}
 
   - name: an image pull failure pages only in the namespaces that matter
@@ -468,7 +468,7 @@ tests:
       - eval_time: 11m
         alertname: CriticalServiceImagePullFailing
         exp_alerts:
-          - exp_labels: {alertname: CriticalServiceImagePullFailing, severity: critical, category: capacity, reason: ImagePullBackOff, namespace: forgejo, pod: f, container: forgejo}
+          - exp_labels: {alertname: CriticalServiceImagePullFailing, severity: critical, fleet: fix, category: capacity, reason: ImagePullBackOff, namespace: forgejo, pod: f, container: forgejo}
             exp_annotations: {summary: "forgejo/f cannot pull the image of forgejo"}
 
   - name: a recent failed verify pages, the 229-day-old Job does not
@@ -490,7 +490,7 @@ tests:
       - eval_time: 2m
         alertname: BackupVerifyFailed
         exp_alerts:
-          - exp_labels: {alertname: BackupVerifyFailed, severity: critical, category: backup, namespace: nas, job_name: nas-backup-verify-new}
+          - exp_labels: {alertname: BackupVerifyFailed, severity: critical, fleet: fix, category: backup, namespace: nas, job_name: nas-backup-verify-new}
             exp_annotations: {summary: "nas-backup-verify-new failed: read its log"}
 
   - name: core dumps warn on any, page past 5 an hour or 10G
@@ -512,9 +512,9 @@ tests:
       - eval_time: 10m
         alertname: NodeCoreDumps
         exp_alerts:
-          - exp_labels: {alertname: NodeCoreDumps, severity: warning, category: capacity, instance: many}
+          - exp_labels: {alertname: NodeCoreDumps, severity: warning, fleet: none, category: capacity, instance: many}
             exp_annotations: {summary: "many wrote 6 core dumps in the last hour"}
-          - exp_labels: {alertname: NodeCoreDumps, severity: warning, category: capacity, instance: one}
+          - exp_labels: {alertname: NodeCoreDumps, severity: warning, fleet: none, category: capacity, instance: one}
             exp_annotations: {summary: "one wrote 1 core dumps in the last hour"}
       - eval_time: 10m
         alertname: NodeCoreDumpStorm
@@ -563,18 +563,18 @@ tests:
       - eval_time: 65m
         alertname: LocalPathPvFarOverRequest
         exp_alerts:
-          - exp_labels: {alertname: LocalPathPvFarOverRequest, severity: critical, category: capacity, namespace: n, claim_namespace: n, persistentvolumeclaim: far, volumename: pvc-c, instance: "tight:9100"}
+          - exp_labels: {alertname: LocalPathPvFarOverRequest, severity: critical, fleet: fix, category: capacity, namespace: n, claim_namespace: n, persistentvolumeclaim: far, volumename: pvc-c, instance: "tight:9100"}
             exp_annotations: {summary: "n/far uses 160% of what it requested, on a node under 20% free"}
       - eval_time: 65m
         alertname: LocalPathPvOverRequest
         exp_alerts:
-          - exp_labels: {alertname: LocalPathPvOverRequest, severity: warning, category: capacity, namespace: n, claim_namespace: n, persistentvolumeclaim: edge, volumename: pvc-d}
+          - exp_labels: {alertname: LocalPathPvOverRequest, severity: warning, fleet: fix, category: capacity, namespace: n, claim_namespace: n, persistentvolumeclaim: edge, volumename: pvc-d}
             exp_annotations: {summary: "n/edge uses 150% of what it requested"}
-          - exp_labels: {alertname: LocalPathPvOverRequest, severity: warning, category: capacity, namespace: n, claim_namespace: n, persistentvolumeclaim: far, volumename: pvc-c, instance: "tight:9100"}
+          - exp_labels: {alertname: LocalPathPvOverRequest, severity: warning, fleet: fix, category: capacity, namespace: n, claim_namespace: n, persistentvolumeclaim: far, volumename: pvc-c, instance: "tight:9100"}
             exp_annotations: {summary: "n/far uses 160% of what it requested"}
-          - exp_labels: {alertname: LocalPathPvOverRequest, severity: warning, category: capacity, namespace: n, claim_namespace: n, persistentvolumeclaim: over, volumename: pvc-b}
+          - exp_labels: {alertname: LocalPathPvOverRequest, severity: warning, fleet: fix, category: capacity, namespace: n, claim_namespace: n, persistentvolumeclaim: over, volumename: pvc-b}
             exp_annotations: {summary: "n/over uses 120% of what it requested"}
-          - exp_labels: {alertname: LocalPathPvOverRequest, severity: warning, category: capacity, namespace: n, claim_namespace: n, persistentvolumeclaim: roomy, volumename: pvc-e, instance: "roomy:9100"}
+          - exp_labels: {alertname: LocalPathPvOverRequest, severity: warning, fleet: fix, category: capacity, namespace: n, claim_namespace: n, persistentvolumeclaim: roomy, volumename: pvc-e, instance: "roomy:9100"}
             exp_annotations: {summary: "n/roomy uses 900% of what it requested"}
 
   - name: a stopped metrics timer warns after an hour
@@ -591,7 +591,7 @@ tests:
       - eval_time: 80m
         alertname: NodeDiskMetricsStale
         exp_alerts:
-          - exp_labels: {alertname: NodeDiskMetricsStale, severity: warning, category: capacity, instance: a, file: /var/lib/node-exporter-textfile/node_disk.prom}
+          - exp_labels: {alertname: NodeDiskMetricsStale, severity: warning, fleet: fix, category: capacity, instance: a, file: /var/lib/node-exporter-textfile/node_disk.prom}
             exp_annotations: {summary: "a has not updated its disk metrics for over an hour"}
 
   - name: a failed webhook pages, a healthy one does not
@@ -608,7 +608,7 @@ tests:
       - eval_time: 15m
         alertname: AlertmanagerPageNotDelivered
         exp_alerts:
-          - exp_labels: {alertname: AlertmanagerPageNotDelivered, severity: critical, integration: webhook}
+          - exp_labels: {alertname: AlertmanagerPageNotDelivered, severity: critical, fleet: none, integration: webhook}
             exp_annotations:
               summary: Alertmanager failed to deliver a page through webhook
               runbook: apps/ntfy/README.md
@@ -627,7 +627,7 @@ tests:
       - eval_time: 200h
         alertname: DiskReclaimStale
         exp_alerts:
-          - exp_labels: {alertname: DiskReclaimStale, severity: warning, category: capacity, instance: a}
+          - exp_labels: {alertname: DiskReclaimStale, severity: warning, fleet: fix, category: capacity, instance: a}
             exp_annotations: {summary: "a has not run a disk reclaim pass for over 8 days"}
 
   - name: a reclaim held off for a day warns, a run that clears inside the day does not
@@ -644,5 +644,5 @@ tests:
       - eval_time: 30h
         alertname: DiskReclaimSkipped
         exp_alerts:
-          - exp_labels: {alertname: DiskReclaimSkipped, severity: warning, category: capacity, instance: a, reason: ci_running}
+          - exp_labels: {alertname: DiskReclaimSkipped, severity: warning, fleet: fix, category: capacity, instance: a, reason: ci_running}
             exp_annotations: {summary: "Disk reclaim on a has been skipped for a day: ci_running"}

@@ -25,6 +25,7 @@ tests:
         exp_alerts:
           - exp_labels:
               severity: critical
+              fleet: none
               category: site-availability
             exp_annotations:
               summary: "Internet down: every WAN probe target has failed for 3m"

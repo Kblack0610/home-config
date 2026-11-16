@@ -864,7 +864,7 @@
     {
       "title": "Venues with a stale recorder",
       "type": "stat",
-      "description": "TraderMarketsRecorderStale: last good sweep over 15m old.",
+      "description": "TraderMarketsRecorderStale: last good sweep past the venue's stale_after_min in trader lab/markets.toml.",
       "gridPos": {
         "h": 4,
         "w": 6,
@@ -908,7 +908,7 @@
       },
       "targets": [
         {
-          "expr": "count(trader_markets_sweep_age_seconds > 900) or vector(0)",
+          "expr": "count(trader_markets_sweep_age_seconds > trader_markets_sweep_stale_seconds) or vector(0)",
           "refId": "A",
           "instant": true
         }

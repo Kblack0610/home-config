@@ -8,6 +8,7 @@
   "cooldown_seconds": 600,
   "dwell_seconds": 600,
   "warm_idle_off_seconds": 2700,
+  "override_on_max_hours": 12,
   "pack_keep_labels": ["unity-wide"],
   "defaults": {
     "min_admitted": 1,
@@ -63,7 +64,6 @@
   },
   "hosts": {
     "cachyos-x8664-main": {"full": false, "min_admitted": 0, "admit": {"idle": 0.5, "tctl": 80}, "withhold": {"idle": 0.3, "tctl": 88}},
-    "razer-laptop": {},
     "windows-media-ci": {}
   }
 }

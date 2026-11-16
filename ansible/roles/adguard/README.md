@@ -164,4 +164,4 @@ likely to need changing:
 | `adguard_image` | `adguard/adguardhome:v0.107.72` | Pinned. Bump with `adguard_schema_version` together, after reading release notes. |
 | `adguard_upstream_dns` | Quad9 + Cloudflare | Deliberately different operators; a second Quad9 address would fail in the same windows. |
 | `adguard_querylog_interval` | `168h` | See "Query logs are not backed up". |
-| `adguard_rewrites` | `*.kblab.me` -> .124 | `zomboid-play.kblab.me` and `playground-play.kblab.me` are NOT here - they are dnsmasq entries, because the games are UDP on hp-victus. |
+| `adguard_rewrites` | `*.kblab.me` -> .124, except `forge-primary.kblab.me` (answer `A`, the public record: the live Forgejo's tailnet IP) | `zomboid-play.kblab.me` and `playground-play.kblab.me` are NOT here - they are dnsmasq entries, because the games are UDP on hp-victus. |

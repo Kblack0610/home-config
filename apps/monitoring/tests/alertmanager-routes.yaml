@@ -1,0 +1,49 @@
+- labels: [alertname=HomelabCriticalVulnerability, category=security, severity=warning]
+  receiver: ntfy-digest
+  topic: homelab-security
+- labels: [alertname=TraderWatchBotBlind, category=trading, severity=warning]
+  receiver: ntfy-trading
+  topic: homelab-trading
+- labels: [alertname=TraderDailyLossBreach, category=trading, severity=warning]
+  receiver: ntfy-trading
+- labels: [alertname=TraderWatcherDown, category=trading, severity=critical]
+  receiver: ntfy-critical
+  topic: homelab-alerts
+- labels: [alertname=TraderBotNotDryRun, category=trading, severity=critical]
+  receiver: ntfy-critical
+- labels: [alertname=HomelabCronJobFailed, category=scheduled-jobs, namespace=freqtrade, severity=warning]
+  receiver: ntfy-trading
+  topic: homelab-trading
+- labels: [alertname=HomelabCronJobFailed, category=scheduled-jobs, namespace=actual-budget, severity=warning]
+  receiver: ntfy
+  topic: homelab-alerts
+- labels: [alertname=HomelabCronJobFailed, category=scheduled-jobs, namespace=home-assistant, severity=warning]
+  receiver: ntfy
+- labels: [alertname=HomelabCronJobNotScheduling, category=scheduled-jobs, namespace=actual-budget, severity=warning]
+  receiver: ntfy
+- labels: [alertname=HomelabAppDown, category=app-health, severity=warning]
+  receiver: ntfy
+  topic: homelab-alerts
+- labels: [alertname=KubeDeploymentReplicasMismatch, namespace=actual-budget, severity=warning]
+  receiver: ntfy
+- labels: [alertname=NodeCpuHot, category=node-health, severity=warning]
+  receiver: ntfy
+  topic: homelab-alerts
+- labels: [alertname=NodeDown, category=node-health, severity=critical]
+  receiver: ntfy-critical
+- labels: [alertname=HomelabBackupStale, category=backup, severity=critical]
+  receiver: ntfy-critical
+- labels: [alertname=LiteLLMVirtualKeyBudgetCritical, category=cost, severity=critical]
+  receiver: ntfy-high
+- labels: [alertname=CPUThrottlingHigh, severity=info]
+  receiver: 'null'
+- labels: [alertname=ForgejoRepoLooseObjectsHigh, severity=info]
+  receiver: 'null'
+- labels: [alertname=Watchdog, severity=none]
+  receiver: 'null'
+- labels: [alertname=InfoInhibitor, severity=none]
+  receiver: 'null'
+- labels: [alertname=TargetDown, job=iot-pi-nodes, severity=warning]
+  receiver: 'null'
+- labels: [alertname=TargetDown, job=standalone-nodes, severity=warning]
+  receiver: ntfy

@@ -17,6 +17,7 @@ tests:
         exp_alerts:
           - exp_labels:
               severity: warning
+              fleet: fix
               category: app
             exp_annotations:
               summary: "binks.chat: over 20% of chat turns end in an error"
@@ -49,6 +50,7 @@ tests:
         exp_alerts:
           - exp_labels:
               severity: warning
+              fleet: fix
               category: app
             exp_annotations:
               summary: "binks.chat: over 20% of LLM calls fail"
@@ -79,6 +81,7 @@ tests:
         exp_alerts:
           - exp_labels:
               severity: warning
+              fleet: none
               category: cost
               api_key_alias: binks-anon
             exp_annotations:
@@ -92,6 +95,7 @@ tests:
         exp_alerts:
           - exp_labels:
               severity: critical
+              fleet: none
               category: cost
               api_key_alias: binks-anon
             exp_annotations:
@@ -126,6 +130,7 @@ tests:
         exp_alerts:
           - exp_labels:
               severity: warning
+              fleet: none
               category: cost
               api_key_alias: binks-anon
             exp_annotations:

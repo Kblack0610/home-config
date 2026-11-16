@@ -14,5 +14,6 @@
     {{ game_server_kubectl }} label node {{ inventory_hostname }}
     {{ game_server_label }}={{ (game_server_enabled | bool) | ternary('true', 'false') }} --overwrite
   delegate_to: "{{ game_server_kubectl_host }}"
+  become: true
   register: _game_server_label
   changed_when: "'not labeled' not in _game_server_label.stdout"

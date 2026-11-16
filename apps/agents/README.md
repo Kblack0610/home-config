@@ -2,7 +2,7 @@
 
 Reverse proxy for agent-web, the web view of the Claude agent sessions running in tmux on the fleet home. From any browser, on or off the LAN, it lets you read a session's transcript or live screen, type into it, and answer the headless `agent-ask` queue.
 
-The server runs on the fleet home, the workstation `pc-home-cachy-main` (`192.168.1.2:8790`), as the `agent-web` systemd user unit, because it needs that host's tmux sockets and `~/.claude`. The home is the host the inventory's `fleet_state_host` names; role `fleet-worker` (`tasks/home.yml`) builds agent-web there and starts it. Source: `~/.dotfiles/.local/src/agent-web` (unit in `~/.dotfiles-private`). The cluster only terminates TLS at `https://agents.kblab.me` and forwards.
+The server runs on the fleet home, the workstation `pc-home-cachy-main` (`192.168.1.2:8790`), as the `agent-web` systemd user unit, because it needs that host's tmux sockets and `~/.claude`. The home is the host the inventory's `fleet_state_host` names; when that is a fleet worker, role `fleet-worker` (`tasks/home.yml`) builds agent-web there and starts it. Source: `~/.dotfiles/.local/src/agent-web` (unit in `~/.dotfiles-private`). The cluster only terminates TLS at `https://agents.kblab.me` and forwards.
 
 ## Access
 
@@ -11,7 +11,7 @@ The server runs on the fleet home, the workstation `pc-home-cachy-main` (`192.16
 - This page can type into live agent sessions, and the Forgejo account does not have 2FA on yet (2026-10-31), so its password is the only gate. Enabling it is an open item. Check: the 2FA column of `forgejo admin user list` in the Forgejo pod.
 - The `crowdsec-bouncer` middleware sits in front. `local-network-only` would do nothing here, because tunnel traffic arrives from a cluster IP (`apps/gatus-fleet/ingress.yaml`).
 
-The workstation runs ufw; the allow rule for port 8790 from the LAN is the `desktop-firewall` role in `ansible/`.
+The workstation runs ufw; the allow rule for port 8790 from the LAN is the `desktop-firewall` role in `ansible/` (checked 2026-11-16: razer, a cluster node, reaches `192.168.1.2:8790/healthz`).
 
 ## Files
 

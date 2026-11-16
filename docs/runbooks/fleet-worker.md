@@ -20,9 +20,9 @@ Hosts that fleet-dispatch places agent sessions on, over ssh. The roster is the 
 
 ## The fleet home
 
-The worker named by the group's `fleet_state_host` is the fleet home: the workstation, `pc-home-cachy-main` (`razer-laptop` held it 2026-11-15 to 11-16 while the workstation was down). Other hosts forward their queue and ask writes to it, it serves agent-web (`apps/agents`), and the singleton lanes (dispatch, sentinel, fleet-state, git-sync) run only there. It keeps `fleet_place: false`: sessions run on it as the home, not as placed work.
+The machine named by the group's `fleet_state_host` is the fleet home: the workstation, `pc-home-cachy-main` (`razer-laptop` held it 2026-11-15 to 11-16 while the workstation was down). Other hosts forward their queue and ask writes to it, it serves agent-web (`apps/agents`), and the singleton lanes (dispatch, sentinel, fleet-state, git-sync) run only there. A worker that is the home keeps `fleet_place: false`: sessions run on it as the home, not as placed work.
 
-The same play sets it up. On the home the role skips the state-host key steps (it is the state host) and runs `tasks/home.yml`, which:
+When the home is a fleet worker, the same play sets it up; the workstation is set up by its own play and dotfiles. On a worker home the role skips the state-host key steps (it is the state host) and runs `tasks/home.yml`, which:
 - enables lingering, so user units run with nobody logged in;
 - builds `agent-web` and links it to `~/.local/bin/agent-web`;
 - makes `~/.ssh/id_agent_sync`, the key `git-sync-agent.sh` pushes the store with, and clones Forgejo `kblack0610/.agent` into `~/.agent` once that key is a write deploy key there (a plain `~/.agent` from before is kept as `~/.agent.pre-home`);

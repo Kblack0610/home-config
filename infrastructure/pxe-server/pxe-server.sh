@@ -352,7 +352,7 @@ Commands:
 Environment Variables:
   PXE_SERVER_IP    Override auto-detected server IP
   PXE_INTERFACE    Override auto-detected network interface
-  PXE_HTTP_PORT    Override HTTP port (default: 8080)
+  PXE_HTTP_PORT    Override HTTP port (default: 9080)
 
 Examples:
   pxe-server start              # Start the PXE server

@@ -115,6 +115,7 @@ download_ipxe() {
     log_section "Downloading iPXE Binaries"
 
     local ipxe_url="https://boot.ipxe.org"
+    # The EFI builds moved under x86_64-efi/; the old top-level URLs return 404.
 
     # UEFI binary
     local uefi_bin="$PXE_BOOT_DIR/uefi/ipxe.efi"
@@ -122,7 +123,7 @@ download_ipxe() {
         log_info "ipxe.efi already exists"
     else
         log_info "Downloading ipxe.efi..."
-        if curl -sL "$ipxe_url/ipxe.efi" -o "$uefi_bin"; then
+        if curl -fsSL "$ipxe_url/x86_64-efi/ipxe.efi" -o "$uefi_bin"; then
             log_success "Downloaded ipxe.efi"
         else
             log_error "Failed to download ipxe.efi"
@@ -135,7 +136,7 @@ download_ipxe() {
         log_info "ipxe.lkrn already exists"
     else
         log_info "Downloading ipxe.lkrn..."
-        if curl -sL "$ipxe_url/ipxe.lkrn" -o "$bios_lkrn"; then
+        if curl -fsSL "$ipxe_url/ipxe.lkrn" -o "$bios_lkrn"; then
             log_success "Downloaded ipxe.lkrn"
         else
             log_error "Failed to download ipxe.lkrn"
@@ -146,7 +147,7 @@ download_ipxe() {
     local snp_bin="$PXE_BOOT_DIR/uefi/snponly.efi"
     if [[ ! -f "$snp_bin" ]]; then
         log_info "Downloading snponly.efi..."
-        curl -sL "$ipxe_url/snponly.efi" -o "$snp_bin" 2>/dev/null || true
+        curl -fsSL "$ipxe_url/x86_64-efi/snponly.efi" -o "$snp_bin" || log_error "Failed to download snponly.efi"
     fi
 }
 

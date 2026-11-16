@@ -50,7 +50,7 @@ item --gap --             ========================================
 item cachyos-desktop      [1] Desktop - Full (Hyprland + Sunshine)
 item cachyos-laptop       [2] Laptop - Optimized (no Sunshine)
 item cachyos-headless     [3] Server - Headless (SSH only)
-item cachyos-cluster      [4] Cluster - k3s Worker Node
+item cachyos-cluster      [4] Cluster - k3s node (Ansible joins it)
 item cachyos-manual       [5] Manual - Interactive archiso
 item cachyos-dryrun       [6] Dry Run - Test autoinstall (no disk writes)
 item --gap --             ----------------------------------------
@@ -100,8 +100,9 @@ goto cachyos-boot
 
 :cachyos-cluster
 echo
-echo Selected: CachyOS Cluster Node (k3s Worker)
-echo Profile includes: SSH, k3s agent, minimal packages
+echo Selected: CachyOS Cluster Node (k3s, joined by Ansible)
+echo Profile includes: SSH, storage clients, minimal packages
+echo After install, Ansible joins it to k3s at the pinned version
 echo
 set profile cluster
 set autoinstall 1

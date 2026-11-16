@@ -8,7 +8,7 @@ Network boot CachyOS to any device on your LAN with full automation - from bare 
 - **Multiple Profiles**: Desktop, Laptop, Headless, or Manual installation
 - **Full Automation**: Installs OS, clones dotfiles, applies configuration
 - **UEFI & BIOS Support**: Works with modern UEFI and legacy BIOS systems
-- **OpenWRT Integration**: Single DHCP option to configure
+- **No router change**: dnsmasq runs as proxy-DHCP next to the router's DHCP server
 
 ## Quick Start
 
@@ -19,16 +19,19 @@ Network boot CachyOS to any device on your LAN with full automation - from bare 
 # 2. Download CachyOS images (~3-4 GB)
 pxe-server prepare
 
-# 3. Configure your OpenWRT router (one-time)
-ssh root@192.168.1.1
-uci add_list dhcp.@dnsmasq[0].dhcp_option='66,YOUR_WORKSTATION_IP'
-uci commit dhcp && /etc/init.d/dnsmasq restart
+# 3. Open the PXE ports on the workstation (one-time; desktop-firewall role)
+cd ~/dev/home/home-config/ansible
+ansible-playbook playbooks/site.yml --limit cachyos-x8664-main --tags pxe -K
 
 # 4. Start the server
 pxe-server start
 
-# 5. Boot target machine from network (F12/F2 at BIOS)
+# 5. At the target: BIOS network boot on, Secure Boot off, boot from network
 ```
+
+Run `install.sh` and `prepare` from the main checkout (`~/dev/home/home-config`): the images are gitignored, so a worktree has none.
+
+The menu defaults to local boot after 10 seconds, so a machine left on network boot never reinstalls itself. To install, pick a profile; for a k3s node pick **[4] Cluster**. The install wipes the largest internal disk.
 
 ## Commands
 
@@ -48,6 +51,7 @@ pxe-server config     # Show configuration
 | Desktop | Full setup with Hyprland, Sunshine, development tools |
 | Laptop | Optimized for battery, TLP, no Sunshine |
 | Headless | Server mode - SSH, Docker, no GUI |
+| Cluster | k3s node - SSH, storage clients; Ansible joins it to k3s afterwards (`roles/k3s-agent`) |
 | Manual | Interactive archiso for manual installation |
 
 ## Architecture
@@ -55,15 +59,15 @@ pxe-server config     # Show configuration
 ```
 Target Device
     │
-    ├── DHCP Request ──────────► OpenWRT (IP + next-server option)
+    ├── DHCP Request ──────────► OpenWRT (IP only)
     │
-    ├── PXE Boot Request ──────► Workstation dnsmasq (TFTP)
-    │                            └── Sends ipxe.efi or pxelinux.0
+    ├── PXE Boot Request ──────► Workstation dnsmasq (proxy-DHCP + TFTP)
+    │                            └── Sends snponly.efi or pxelinux.0
     │
-    ├── iPXE Menu Request ─────► Workstation HTTP :8080
+    ├── iPXE Menu Request ─────► Workstation HTTP :9080
     │                            └── Sends menu.ipxe
     │
-    ├── Kernel/Initrd Download ► Workstation HTTP :8080
+    ├── Kernel/Initrd Download ► Workstation HTTP :9080
     │                            └── Sends vmlinuz, initramfs
     │
     └── CachyOS Live Boot
@@ -80,7 +84,7 @@ Target Device
 ## Directory Structure
 
 ```
-.local/src/pxe-server/
+infrastructure/pxe-server/
 ├── pxe-server.sh          # Main control script
 ├── base_functions.sh      # Shared utilities
 ├── install.sh             # Setup script
@@ -104,7 +108,8 @@ Target Device
 
 - **Server**: dnsmasq, python3, curl
 - **Optional**: syslinux (BIOS), qemu (testing), edk2-ovmf (UEFI testing)
-- **Router**: OpenWRT (or any router supporting DHCP option 66)
+- **Router**: any; proxy-DHCP needs no router option
+- **Firewall**: 67/udp and 4011/udp from any source, 69/udp and 9080/tcp from the LAN (`ansible/roles/desktop-firewall`)
 
 ## Reinstall a running machine
 
@@ -134,7 +139,7 @@ The installer sets root and the login user to `changeme`, only so the console wo
 ```bash
 PXE_SERVER_IP=192.168.1.100   # Override auto-detected IP
 PXE_INTERFACE=enp5s0          # Override network interface
-PXE_HTTP_PORT=8080            # Override HTTP port
+PXE_HTTP_PORT=9080            # Override HTTP port
 ```
 
 ## Troubleshooting
@@ -143,12 +148,13 @@ PXE_HTTP_PORT=8080            # Override HTTP port
 
 1. Check BIOS settings - enable network boot
 2. Verify `pxe-server status` shows servers running
-3. Check OpenWRT has DHCP option 66 set
+3. Check Secure Boot is off
+4. Watch `pxe-server logs` for the client's DHCP request; none means ufw is dropping 67/4011
 
 ### iPXE shows but can't load menu
 
-1. Verify HTTP server is accessible: `curl http://YOUR_IP:8080/ipxe/menu.ipxe`
-2. Check firewall allows port 8080
+1. Verify HTTP server is accessible: `curl http://YOUR_IP:9080/ipxe/menu.ipxe`
+2. Check the firewall allows 9080/tcp from the LAN
 
 ### CachyOS won't load root filesystem
 

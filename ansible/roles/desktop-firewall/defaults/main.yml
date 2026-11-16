@@ -14,3 +14,22 @@ desktop_firewall_rules:
     proto: tcp
     from: 192.168.1.0/24
     comment: node-exporter
+  # PXE install server (infrastructure/pxe-server), only listening while
+  # `pxe-server start` runs. A booting client's first DHCP discover comes from
+  # 0.0.0.0, so the proxy-DHCP ports cannot be limited to the LAN range.
+  - port: "67"
+    proto: udp
+    from: any
+    comment: pxe-proxy-dhcp
+  - port: "4011"
+    proto: udp
+    from: any
+    comment: pxe-proxy-dhcp-4011
+  - port: "69"
+    proto: udp
+    from: 192.168.1.0/24
+    comment: pxe-tftp
+  - port: "9080"
+    proto: tcp
+    from: 192.168.1.0/24
+    comment: pxe-http

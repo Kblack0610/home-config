@@ -1,4 +1,5 @@
 ---
+game_server_enabled: true
 # The label apps/playground-server's nodeSelector matches.
 game_server_label: kblab.me/game-server
 # Where kubectl runs: the k3s server carries it.

@@ -5,8 +5,8 @@ metadata:
   labels:
     app: playground-server
 spec:
-  # No replicas field on purpose: a new Deployment starts at 1 and stays on, and a
-  # Stop on games.kblab.me (or `ctl.sh down`) sticks, since Flux does not own the count.
+  # Paused until a dedicated game host passes admission (ask OqbBvu).
+  replicas: 0
   selector:
     matchLabels:
       app: playground-server

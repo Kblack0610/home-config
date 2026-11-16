@@ -27,6 +27,8 @@ patches:
       metadata:
         name: any
       spec:
+        # Paused until dedicated capacity is ready (ask OqbBvu).
+        replicas: 0
         template:
           spec:
             nodeSelector:

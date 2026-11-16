@@ -429,8 +429,8 @@ all:
       hosts: {}
 
     # Service hosts: no CI of any kind (GitHub runners, Unity slots, the
-    # Forgejo runner). hp-victus holds Forgejo's data, Frigate and
-    # the game server; asus-laptop holds the databases and Forgejo's backups.
+    # Forgejo runner). hp-victus holds Frigate; asus-laptop holds the
+    # databases and the home Forgejo copy.
     # On 2026-11-13 hp-victus ran those beside six runners at load15 41.5 on
     # 24 threads and 90C, 31G and no swap, and went NotReady, taking Forgejo
     # down; asus ran at load 21-29 on 16 threads and 90.8C with three. Neither
@@ -601,10 +601,12 @@ all:
         razer-laptop:
           fleet_place: false
 
+    # Managed game-server labels, including disabled hosts so retirement converges.
+    # No admitted game host until dedicated capacity is commissioned (ask OqbBvu).
     game_server_nodes:
       hosts:
         hp-victus:
-          game_server_cpus: 12-15
+          game_server_enabled: false
 
     # Discrete GPU switched off (roles/dgpu-off). hp-victus is headless (Forgejo,
     # Frigate) and nothing used its RTX 4060, but the driver's GSP faulted every

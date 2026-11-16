@@ -1771,7 +1771,7 @@ class DwellTest(unittest.TestCase):
 # A cloud agent box: no runners, powered on fleet-dispatch's demand key.
 WORKER_POWER = {"provider": "aws", "instance_id": "i-0wrk", "region": "us-east-2", "idle_off_seconds": 1800,
                 "start_min_excess": 1, "live": True}
-WRK = {**CFG, "workers": {"fleet-worker-1": {"power": WORKER_POWER}}}
+WRK = {**CFG, "override_on_max_hours": 12, "workers": {"fleet-worker-1": {"power": WORKER_POWER}}}
 
 
 class WorkerTest(unittest.TestCase):

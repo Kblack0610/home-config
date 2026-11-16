@@ -30,7 +30,7 @@ The same play sets it up. On the home the role skips the state-host key steps (i
 
 Left for the human, printed by the play: the deploy key, `oauth.json` from rbw item `agent-web-oauth-client` (`{"client_id": ..., "client_secret": ...}`, mode 0600), the sign-ins, then `agentctl reload` on the home to arm the lanes.
 
-Moving the home: change `fleet_state_host` and the Endpoints IP in `apps/agents/service.yaml` in one PR, run the play on the new host, and stop the lanes on the old one.
+Moving the home: on the old home run `git-sync-agent.sh` once so the store on Forgejo holds every queue and ask write, then stop its lanes. Change `fleet_state_host` and the Endpoints IP in `apps/agents/service.yaml` in one PR and run the play on the new host; it makes the new home its own `id_agent_sync` and prints it for the deploy key. Delete the old home's deploy key on Forgejo `kblack0610/.agent`.
 
 ## Cloud worker
 

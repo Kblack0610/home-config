@@ -12,7 +12,9 @@
   args:
     creates: /var/lib/systemd/linger/{{ ansible_user_id }}
 
+# Arch only, like agent-panel in main.yml: apt's cargo is too old for it.
 - name: Build agent-web (cargo, as the user)
+  when: ansible_facts.os_family == "Archlinux"
   ansible.builtin.command: cargo build --release
   args:
     chdir: "{{ ansible_env.HOME }}/.dotfiles/.local/src/agent-web"
@@ -20,6 +22,7 @@
   changed_when: "'Compiling' in _fleet_home_web.stderr"
 
 - name: Link agent-web onto PATH
+  when: ansible_facts.os_family == "Archlinux"
   ansible.builtin.file:
     src: "{{ ansible_env.HOME }}/.dotfiles/.local/src/agent-web/target/release/agent-web"
     dest: "{{ ansible_env.HOME }}/.local/bin/agent-web"
@@ -34,10 +37,20 @@
   args:
     creates: "{{ ansible_env.HOME }}/.ssh/id_agent_sync"
 
+# Scanned from the home itself, which is what dials Forgejo; the controller may
+# resolve the name differently or not reach the tailnet at all.
+- name: Scan Forgejo's host key from the home
+  ansible.builtin.command: ssh-keyscan -t ed25519 -p {{ fleet_home_store_port }} {{ fleet_home_store_host }}
+  register: _fleet_home_forge_key
+  changed_when: false
+  failed_when: false
+  check_mode: false
+
 - name: Trust Forgejo's host key
+  when: _fleet_home_forge_key.stdout | trim | length > 0
   ansible.builtin.known_hosts:
     name: "[{{ fleet_home_store_host }}]:{{ fleet_home_store_port }}"
-    key: "{{ lookup('ansible.builtin.pipe', 'ssh-keyscan -t ed25519 -p ' ~ fleet_home_store_port ~ ' ' ~ fleet_home_store_host ~ ' 2>/dev/null | grep -v ^#') }}"
+    key: "{{ _fleet_home_forge_key.stdout_lines | reject('match', '^#') | first }}"
     state: present
 
 - name: Read whether the store is cloned
@@ -57,12 +70,16 @@
 
 # A host that ran the lanes before it was home has a plain ~/.agent of its own
 # runtime state. It is kept beside the clone, not merged: the store is the record.
+# The lanes and agent-web stop first so nothing writes into the dir being moved;
+# `agentctl reload` re-arms them once the human has signed in (the report says so).
 - name: Clone the store into ~/.agent (the old dir is kept as ~/.agent.pre-home)
   when:
     - not fleet_home_store.stat.exists
     - fleet_home_store_reach.rc | default(1) == 0
   ansible.builtin.shell: |
     set -eo pipefail
+    systemctl --user stop 'agentctl@*.timer' 'agentctl@*.service' agent-web.service || true
+    if [ -e "$HOME/.agent.pre-home" ]; then echo "~/.agent.pre-home exists; move it aside first" >&2; exit 1; fi
     if [ -e "$HOME/.agent" ]; then mv "$HOME/.agent" "$HOME/.agent.pre-home"; fi
     GIT_SSH_COMMAND="ssh -i $HOME/.ssh/id_agent_sync -o IdentitiesOnly=yes -o BatchMode=yes" \
       git clone {{ fleet_home_store_repo }} "$HOME/.agent"
@@ -75,13 +92,26 @@
     path: "{{ ansible_env.HOME }}/.config/agent-web/oauth.json"
   register: fleet_home_oauth
 
+# The unit and its EnvironmentFile come from the private overlay, stowed only
+# once gh is signed in.
+- name: Read whether agent-web's unit and env file are stowed
+  ansible.builtin.stat:
+    path: "{{ ansible_env.HOME }}/{{ item }}"
+  loop:
+    - .config/systemd/user/agent-web.service
+    - .config/agent-web/env
+  register: fleet_home_web_files
+
 - name: Start agent-web
-  when: fleet_home_oauth.stat.exists
+  when:
+    - fleet_home_oauth.stat.exists
+    - fleet_home_web_files.results | rejectattr('stat.exists') | list | length == 0
   ansible.builtin.systemd_service:
     name: agent-web.service
     scope: user
     enabled: true
-    state: started
+    # A rebuilt binary reaches the running service only through a restart.
+    state: "{{ 'restarted' if _fleet_home_web is changed else 'started' }}"
     daemon_reload: true
 
 - name: Read the sync key's public half
@@ -97,4 +127,6 @@
           ['add this as a write deploy key on Forgejo kblack0610/.agent, then re-run: '
            ~ (fleet_home_sync_pub.content | default('') | b64decode | trim)])
          + ([] if fleet_home_oauth.stat.exists else
-          ['write ~/.config/agent-web/oauth.json (0600) from rbw item agent-web-oauth-client, then re-run']) }}
+          ['write ~/.config/agent-web/oauth.json (0600) from rbw item agent-web-oauth-client, then re-run'])
+         + ([] if fleet_home_web_files.results | rejectattr('stat.exists') | list | length == 0 else
+          ['stow the private overlay (gh auth login, then re-run): agent-web needs its unit and ~/.config/agent-web/env']) }}

@@ -296,6 +296,10 @@ Roll back to asus (until cleanup reaps the asus copy): stop forge-hel1 (`systemc
 | The asus Forgejo pod starts again after `flux resume` | the Kustomization was resumed before the source fetched the merge, so it applied an older master (replicas 1, selector Services) | `flux suspend kustomization apps`, `kubectl -n forgejo scale deploy/forgejo --replicas=0`, re-apply the ExternalName Services (`kubectl apply --server-side --field-manager=kustomize-controller --force-conflicts -f apps/forgejo/service-http.yaml`, same for ssh), list what asus wrote meanwhile (rows with `created_unix`/`updated_unix` past the freeze, refs newer than it) and carry each to the live host; then resume in the order above |
 | Two Forgejos answer | someone started a copy past the fence (override, or the old in-cluster Deployment) | stop the one the record does not name at once; the data has forked from that moment, so compare PR numbers as on 2026-11-13 (#961, #962) before anything else writes |
 
+## Lost Actions assignments
+
+Forgejo 15.0.11 LTS and runner 13.2.1 recover a task when its FetchTask reply is lost. Both sides are required; the host image is applied through Ansible and the runner through Flux. See [the diagnosis and upgrade procedure](../../docs/forgejo-actions-recovery.md) before activating the database migration.
+
 ## Related Docs
 
 - [../../docs/gitops.md](../../docs/gitops.md)

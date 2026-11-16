@@ -5,6 +5,7 @@ metadata:
   namespace: immich
 spec:
   schedule: "30 3 * * *"  # Daily at 3:30 AM (offset from DB dump at 3 AM)
+  timeZone: America/Los_Angeles
   successfulJobsHistoryLimit: 3
   failedJobsHistoryLimit: 3
   jobTemplate:

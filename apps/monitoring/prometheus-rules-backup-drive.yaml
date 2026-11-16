@@ -43,6 +43,7 @@ spec:
           labels:
             # Critical, repeated daily by the category=backup route in helm-values.
             severity: critical
+            fleet: fix
             category: backup
           annotations:
             summary: "Backup stale: {{ $labels.namespace }}/{{ $labels.owner_name }}"
@@ -69,6 +70,7 @@ spec:
           for: 1h
           labels:
             severity: warning
+            fleet: fix
             category: backup
           annotations:
             summary: "Weekly backup stale: {{ $labels.namespace }}/{{ $labels.owner_name }}"

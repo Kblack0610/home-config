@@ -6,7 +6,7 @@
 Description=Snapcast client (PipeWire via pulse, room {{ audio_endpoint_snapclient_host_id }})
 Documentation=man:snapclient(1)
 Wants=pipewire-pulse.service
-After=pipewire-pulse.service network-online.target
+After=pipewire-pulse.service
 
 [Service]
 # snapclient reconnects to the server by itself; Restart covers crashes.

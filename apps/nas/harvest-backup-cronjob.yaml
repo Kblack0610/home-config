@@ -7,6 +7,7 @@ spec:
   # Weekly, Sunday 6:00 AM. Files pulled off retired machines: the NAS holds the
   # only other copy.
   schedule: "0 6 * * 0"
+  timeZone: America/Los_Angeles
   concurrencyPolicy: Forbid
   successfulJobsHistoryLimit: 3
   failedJobsHistoryLimit: 3

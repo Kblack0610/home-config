@@ -22,7 +22,7 @@ Frigate NVR on home-k3s, reconciled by Flux. Object detection runs on a Coral US
 
 ## Storage
 
-local-path does not enforce PVC sizes, so `frigate-media` can grow until the hp-victus disk is full. Frigate's cleanup only steps in when free space on that whole filesystem gets low. Retention in `config.yml` is the real cap: motion 3 days, alerts 14, detections 7, no continuous recording. hp-victus had 169G free (82% used) on 2026-10-17. Check before adding cameras or raising retention:
+local-path does not enforce PVC sizes, so `frigate-media` can grow until the hp-victus disk is full. Frigate's cleanup only steps in when free space on that whole filesystem gets low. Retention in `config.yml` is the real cap: motion 3 days, alerts 14, detections 7, no continuous recording. hp-victus had 298G free on 2026-11-16, with `frigate-media` at 105G against its 150Gi request. Check before adding cameras or raising retention:
 
 ```bash
 kubectl --context home-k3s get --raw /api/v1/nodes/hp-victus/proxy/stats/summary | jq '.node.fs | {availableGB: (.availableBytes/1e9), capacityGB: (.capacityBytes/1e9)}'
@@ -135,6 +135,7 @@ Frigate's audio detector (YAMNet, on the CPU) listens to both cameras' main stre
 | Mirror | CronJob `dog-barks-backup`, 6:45 AM | btrfs snapshot copy to `/mnt/backup-8t/dog-barks`, 14 kept |
 | Home Assistant | `apps/home-assistant/config/packages/dog_barks.yaml` | `binary_sensor.dog_barking`, episodes and minutes today and this week, the 21:00 summary push (ntfy `home`), and a mic-live connectivity sensor per camera that pages when a camera's sound level stops updating |
 | Dashboard | `apps/home-assistant/config/dashboards/view_dog.yaml` | The Dog view on the wall panels and phone: now, today, mics, 24 h history, bark clips with sound |
+| Calming clip | `dog_barks.yaml`, clip in `apps/home-assistant/config/sounds/calm.mp3` (ConfigMap `home-assistant-sounds`, served at `/local/sounds/`) | While `alarm_control_panel.away` is armed, an episode start plays the clip on both Voice PE pucks via `script.tts_announce`: 10 min apart at least, 4 per away window. The 21:00 summary adds plays and the bark minutes in the 10 min after each. The shipped clip is a synthesized pad (ours, royalty-free); replace `calm.mp3` with a recorded voice clip |
 
 The CSV (`date,start,end,duration_s,camera,label,score_pct,clip`, local time) is the document to show anyone. YAMNet can tag a dog on TV as a bark: play the clip of any row you rely on, and raise `min_volume` or add an `audio.filters.bark.threshold` if false hits show up. Clips hold whatever else was audible for those seconds, voices included; deleting `/mnt/nas/private/dog-barks` and the `audio` role removes it all.
 

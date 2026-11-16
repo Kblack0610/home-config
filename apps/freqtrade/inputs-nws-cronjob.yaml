@@ -1,0 +1,64 @@
+# The NWS forecast high of each station Kalshi's daily high markets settle on (strategy repo lab/nws.py and
+# lab/inputs.toml nws_high; docs/markets.md, Inputs). api.weather.gov is free and keyless: two GETs a station, 14 a
+# run. The weather family refuses a reading older than fresh_min (180 min), so hourly leaves two misses of slack.
+# Same image, database, init migration and node rule as trader-markets-recorder; no bucket.
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: trader-inputs-nws
+spec:
+  schedule: "17 * * * *"
+  timeZone: "Etc/UTC"
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      backoffLimit: 0
+      activeDeadlineSeconds: 600
+      template:
+        metadata:
+          labels:
+            app: trader-inputs
+            input: nws-high
+        spec:
+          restartPolicy: Never
+          affinity:
+            nodeAffinity:
+              requiredDuringSchedulingIgnoredDuringExecution:
+                nodeSelectorTerms:
+                  - matchExpressions:
+                      - {key: kubernetes.io/arch, operator: In, values: [amd64]}
+                      - {key: kubernetes.io/hostname, operator: NotIn, values: [hp-victus]}
+          securityContext:
+            runAsUser: 1000
+            runAsGroup: 1000
+            fsGroup: 1000
+          initContainers:
+            - name: migrate
+              image: trader
+              command: ["python", "/repo/lab/migrate.py"]
+              env:
+                - name: DATABASE_URL
+                  valueFrom:
+                    secretKeyRef: {name: trader-db, key: database-url}
+              resources:
+                requests:
+                  cpu: 20m
+                  memory: 64Mi
+                limits:
+                  memory: 256Mi
+          containers:
+            - name: nws
+              image: trader
+              command: ["python", "-m", "lab.nws"]
+              env:
+                - name: DATABASE_URL
+                  valueFrom:
+                    secretKeyRef: {name: trader-db, key: database-url}
+              resources:
+                requests:
+                  cpu: 20m
+                  memory: 128Mi
+                limits:
+                  memory: 512Mi

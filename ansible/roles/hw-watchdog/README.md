@@ -21,7 +21,7 @@ Evidence gathered afterwards:
 
 The watchdog is a countdown timer inside the SoC, separate from the CPU cores. With `RuntimeWatchdogSec=15s`, systemd (PID 1) resets it every 7.5s. If the kernel freezes, PID 1 stops running, the countdown reaches zero and the timer pulls the chip's reset line. No software has to be alive for that to happen.
 
-On x86 the timer is the chipset TCO watchdog: `iTCO_wdt` on Intel (hp-victus), `sp5100_tco` on AMD. razer-laptop autoloads `sp5100_tco`; asus-laptop does not, so its inventory entry sets `hw_watchdog_module: sp5100_tco` and the role writes `/etc/modules-load.d/hw-watchdog.conf` and loads it.
+On x86 the timer is the chipset TCO watchdog: `iTCO_wdt` on Intel (hp-victus), `sp5100_tco` on AMD. razer-laptop autoloads `sp5100_tco`; asus-laptop does not, so its inventory entry sets `hw_watchdog_module: sp5100_tco` and the role loads it from `hw-watchdog-module.service`, a oneshot `modprobe` at boot. Not `/etc/modules-load.d`: systemd-modules-load applies kmod's blacklist, and CachyOS (`cachyos-settings`, `/usr/lib/modprobe.d/blacklist.conf`) blacklists `sp5100_tco` and `iTCO_wdt`, so asus booted on 2026-11-15 with no `/dev/watchdog0`. `modprobe -n -v -b sp5100_tco` printing nothing shows a module the boot would skip.
 
 `kernel.panic=10` covers the other case: a kernel that panics but keeps the timer fed. The default of 0 means a panicked kernel sits there forever.
 
@@ -50,6 +50,9 @@ ssh kblack0610@192.168.1.193 'systemctl show -p RuntimeWatchdogUSec -p RebootWat
 
 ssh kblack0610@192.168.1.243 'systemctl show -p RuntimeWatchdogUSec; cat /proc/sys/kernel/panic /proc/sys/kernel/softlockup_panic'
 # x86 nodes: RuntimeWatchdogUSec=30s, 10, 1
+
+ssh -p 2222 kblack0610@192.168.1.152 'systemctl is-active hw-watchdog-module; ls /dev/watchdog0; journalctl -b | grep -i "hardware watchdog"'
+# a host with hw_watchdog_module set: active, /dev/watchdog0, "Using hardware watchdog /dev/watchdog0: 'SP5100 TCO timer'"
 ```
 
 This kernel is built without `CONFIG_WATCHDOG_SYSFS`, so `/sys/class/watchdog/watchdog0/` has no `state` or `timeout` files. Read the state from systemd, as above.

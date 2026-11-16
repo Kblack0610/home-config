@@ -21,6 +21,7 @@ spec:
           for: 5m
           labels:
             severity: critical
+            fleet: none  # the pager-undelivered sentinel watch already sends this fault to an agent
           annotations:
             summary: Alertmanager failed to deliver a page through {{ $labels.integration }}
             runbook: apps/ntfy/README.md

@@ -37,6 +37,10 @@
     mode: "{{ item.mode }}"
   loop:
     - { path: "{{ forgejo_host_data }}", owner: "1000", mode: "0755" }
+    # The registry is seeded and restored from its own mirror, a root-owned
+    # btrfs subvolume, and `rsync -a src/ dst/` gives dst that owner. Root
+    # here fails every package upload at mkdir packages/tmp (hc-433).
+    - { path: "{{ forgejo_host_data }}/gitea/data/packages", owner: "1000", mode: "0755" }
     - { path: /etc/forgejo, owner: root, mode: "0750" }
     - { path: /etc/forgejo/jobs, owner: root, mode: "0750" }
     - { path: "{{ forgejo_host_backups }}", owner: root, mode: "0755" }

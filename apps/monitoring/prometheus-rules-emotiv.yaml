@@ -27,6 +27,7 @@ spec:
           for: 5m
           labels:
             severity: warning
+            fleet: none  # the emotiv-bridge sentinel watch already sends this fault to an agent
             category: node-health
           annotations:
             summary: "Emotiv bridge on mac-mini sent no heartbeat for 10m: nothing is being recorded"
@@ -44,6 +45,7 @@ spec:
           for: 15m
           labels:
             severity: warning
+            fleet: fix
             category: node-health
           annotations:
             summary: "Emotiv archive uploads from mac-mini are backed up ({{ $value | humanize1024 }}B or over an hour old)"
@@ -56,6 +58,7 @@ spec:
           for: 1h
           labels:
             severity: warning
+            fleet: none  # money: the human renews the licence
             category: node-health
           annotations:
             summary: "Emotiv Cortex license for Home-EEG ends in {{ $value | humanizeDuration }}"

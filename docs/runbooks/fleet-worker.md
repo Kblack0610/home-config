@@ -4,9 +4,9 @@ Hosts that fleet-dispatch places agent sessions on, over ssh. The roster is the 
 
 ## What a worker takes
 
-- A light claude queue item with no plan and no `#cloud-ok` tag, in a repo listed in the host's `fleet_repos`, when this workstation is over its load or idle pace. Heavy (Unity) items, plan items and other harnesses stay on the workstation.
+- A light claude queue item with no plan and no `#cloud-ok` tag, in a repo listed in the host's `fleet_repos`, when the fleet home is over its load or idle pace. Heavy (Unity) items, plan items and other harnesses stay on the home.
 - At most `fleet_max_live` sessions at once, and none while its own 1-minute load per core is over the dispatch pace (`DISPATCH_MAX_LOAD`).
-- A session there runs with `AGENT_STATE_HOST=<fleet_state_host>` on its launch line, so its `agent-queue` and `agent-ask` calls run on the workstation over ssh. The queue and the asks stay in one store.
+- A session there runs with `AGENT_STATE_HOST=<fleet_state_host>` on its launch line, so its `agent-queue` and `agent-ask` calls run on the fleet home over ssh. The queue and the asks stay in one store.
 
 ## Add a worker
 
@@ -17,6 +17,29 @@ Hosts that fleet-dispatch places agent sessions on, over ssh. The roster is the 
    - Add the worker's public key, which the task prints, to `~/.ssh/authorized_keys` on the state host.
    - Sign in each account: `claude`, then `/login`, once per account dir (`CLAUDE_CONFIG_DIR=<dir> claude` for each one but the main).
 4. When the play prints `Ready`, set `fleet_place: true` for the host and merge. fleet-dispatch reads the inventory as this repo's checkout's upstream branch holds it, fetched on each pass, so no pull is needed. On the workstation, `fleet-dispatch hosts` shows the worker as `open`, or the reason it takes nothing.
+
+## The fleet home
+
+The machine named by the group's `fleet_state_host` is the fleet home: the workstation, `pc-home-cachy-main` (`razer-laptop` held it 2026-11-15 to 11-16 while the workstation was down). Other hosts forward their queue and ask writes to it, it serves agent-web (`apps/agents`), and the singleton lanes (dispatch, sentinel, fleet-state, git-sync) run only there. A worker that is the home keeps `fleet_place: false`: sessions run on it as the home, not as placed work.
+
+When the home is a fleet worker, the same play sets it up; the workstation is set up by its own play and dotfiles. On a worker home the role skips the state-host key steps (it is the state host) and runs `tasks/home.yml`, which:
+- enables lingering, so user units run with nobody logged in;
+- builds `agent-web` and links it to `~/.local/bin/agent-web`;
+- makes `~/.ssh/id_agent_sync`, the key `git-sync-agent.sh` pushes the store with, and clones Forgejo `kblack0610/.agent` into `~/.agent` once that key is a write deploy key there (a plain `~/.agent` from before is kept as `~/.agent.pre-home`);
+- writes `~/.config/schedules-sync/kubeconfig` for the `monitoring/schedules-sync` account, which may only read the github-runner-exporter feed (`apps/github-runner-exporter/feed-reader-rbac.yaml`), and a `schedules-sync.service` drop-in that sets `KUBECONFIG` to it. Without it the feed never answers, no `~/.local/state/schedules/state.json` is written, and every `nightly:` queue hold waits on "no schedules state". `~/.kube/config` is not touched;
+- starts `agent-web.service` once `~/.config/agent-web/oauth.json` exists.
+
+Left for the human, printed by the play: the deploy key, `oauth.json` from rbw item `agent-web-oauth-client` (`{"client_id": ..., "client_secret": ...}`, mode 0600), the sign-ins, then `agentctl reload` on the home to arm the lanes.
+
+Moving the home: on the old home run `git-sync-agent.sh` once so the store on Forgejo holds every queue and ask write, then stop its lanes. Change `fleet_state_host` and the Endpoints IP in `apps/agents/service.yaml` in one PR and run the play on the new host; it makes the new home its own `id_agent_sync` and prints it for the deploy key. Delete the old home's deploy key on Forgejo `kblack0610/.agent`.
+
+### Rotate the feed token
+
+The old token stops working at step 1, so the home's passes fail on the feed until step 3; it catches up from its cursor afterwards.
+
+1. `kubectl -n monitoring delete secret schedules-sync-token`, `flux reconcile kustomization apps`, then `kubectl -n monitoring wait --for=jsonpath='{.data.token}' secret/schedules-sync-token`: the token controller fills the new Secret.
+2. Store its `token` and `ca.crt` (both base64-decoded) as `vault_fleet_home_feed_token` and `vault_fleet_home_feed_ca`: `sops ansible/group_vars/fleet_workers/vault.sops.yaml`. Check it first: `kubectl --kubeconfig=/dev/null --server=<k3s_url> --certificate-authority=<ca file> --token=<token> get --raw '/api/v1/namespaces/monitoring/services/github-runner-exporter:9320/proxy/api/ci/details?cursor=0&limit=1'` prints the feed.
+3. Re-run the play on the home (`--tags fleet-worker -l <home>`), then `systemctl --user start schedules-sync` there and check `~/.local/state/schedules/state.json` moved.
 
 ## Cloud worker
 
@@ -62,4 +85,4 @@ Hosts that fleet-dispatch places agent sessions on, over ssh. The roster is the 
 | A session's `agent-queue` call prints `the state host ... did not answer over ssh` | The worker's key is not in the state host's `authorized_keys`, or its host key changed | Step 3 of "Add a worker"; re-run the play for the host key |
 | `fleet-dispatch hosts` says `no fleet workers`, or shows an old `fleet_place` | The workstation's dotfiles predate the upstream read, or its fetch of this repo fails | `git -C ~/dev/home/home-config fetch` must succeed; `fleet-dispatch hosts` fetches before it reads |
 | `fleet-sessions` lists the worker as silent, `agent-panel` exits 127 | The play has not run since the role learned to build it, or the build failed | Re-run the play; `cargo build --release` in `~/.dotfiles/.local/src/agent-panel` on the worker shows the error |
-| The play stops at `Clone the public dotfiles` with `Local modifications exist` | An older role cloned the dotfiles submodules and one stopped half checked out | On the worker: `git -C ~/.dotfiles submodule deinit -f <path>`, then re-run the play |
+| `Clone the public dotfiles` or a later pull fails with `Local modifications exist` or an SSH submodule fetch error | A copied `~/.dotfiles` has local edits or initialized submodules with stale SSH URLs | On the worker, inspect `git -C ~/.dotfiles status` and `git -C ~/.dotfiles submodule foreach git status`; preserve any submodule work before deinitializing. Stash parent-repo edits with `git -C ~/.dotfiles stash push -u`, then run `git -C ~/.dotfiles submodule deinit -f --all` and re-run the play. The role sets repo-local `fetch.recurseSubmodules=false` for later pulls; review the saved stash before restoring edits |

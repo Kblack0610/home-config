@@ -34,6 +34,20 @@ spec:
         allowExternalNameServices: true
       kubernetesIngress:
         allowExternalNameServices: true
+    # Traefik 3 caps reading a whole request, body included, at 60s by
+    # default. Since Forgejo moved to forge-hel1 an upload crosses the home
+    # uplink, so a 1.3 GB package PUT took longer and got a 502 at 60s
+    # (hc-433). 30m still bounds a stalled client and covers a 2 GB body at
+    # about 1 MB/s.
+    ports:
+      web:
+        transport:
+          respondingTimeouts:
+            readTimeout: 30m
+      websecure:
+        transport:
+          respondingTimeouts:
+            readTimeout: 30m
     deployment:
       replicas: 2
     podDisruptionBudget:

@@ -24,6 +24,7 @@ spec:
   # itself before the first join and the client just saw "server failed to
   # respond". The wake-to-join path has to fit comfortably inside this.
   schedule: "*/5 * * * *"
+  timeZone: America/Los_Angeles
   concurrencyPolicy: Forbid
   successfulJobsHistoryLimit: 1
   failedJobsHistoryLimit: 3

@@ -9,6 +9,7 @@ spec:
   # Hourly, so a restore loses at most an hour of PRs, issues and Actions state.
   # The nightly forgejo-backup ships the newest of these to asus-laptop.
   schedule: "7 * * * *"
+  timeZone: America/Los_Angeles
   # Suspended at the cutover to forge-hel1 (2026-11-14): it would read the frozen
   # asus copy. The VM's timers and forgejo-backup-pull do this job now; removed at cleanup.
   suspend: true

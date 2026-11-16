@@ -21,7 +21,7 @@ tests:
       - eval_time: 42m
         alertname: EmotivBridgeStale
         exp_alerts:
-          - exp_labels: {alertname: EmotivBridgeStale, severity: warning, category: node-health, topic: emotiv_mini_bridge, job: mqtt2prom}
+          - exp_labels: {alertname: EmotivBridgeStale, severity: warning, fleet: none, category: node-health, topic: emotiv_mini_bridge, job: mqtt2prom}
             exp_annotations:
               summary: "Emotiv bridge on mac-mini sent no heartbeat for 10m: nothing is being recorded"
               description: "No message on emotiv/mini/bridge for 10 minutes. Check the LaunchAgent and its log: ansible/roles/emotiv-bridge/README.md, Check it."
@@ -35,7 +35,7 @@ tests:
       - eval_time: 10m
         alertname: EmotivBridgeStale
         exp_alerts:
-          - exp_labels: {alertname: EmotivBridgeStale, severity: warning, category: node-health, topic: emotiv_mini_bridge}
+          - exp_labels: {alertname: EmotivBridgeStale, severity: warning, fleet: none, category: node-health, topic: emotiv_mini_bridge}
             exp_annotations:
               summary: "Emotiv bridge on mac-mini sent no heartbeat for 10m: nothing is being recorded"
               description: "No message on emotiv/mini/bridge for 10 minutes. Check the LaunchAgent and its log: ansible/roles/emotiv-bridge/README.md, Check it."
@@ -62,7 +62,7 @@ tests:
       - eval_time: 110m
         alertname: EmotivUploadBacklog
         exp_alerts:
-          - exp_labels: {alertname: EmotivUploadBacklog, severity: warning, category: node-health, topic: emotiv_mini_bridge, job: mqtt2prom}
+          - exp_labels: {alertname: EmotivUploadBacklog, severity: warning, fleet: fix, category: node-health, topic: emotiv_mini_bridge, job: mqtt2prom}
             exp_annotations:
               summary: "Emotiv archive uploads from mac-mini are backed up (4.883kiB or over an hour old)"
               description: "The bridge spool holds chunks the NAS has not received. The bridge log names the rsync exit code: ansible/roles/emotiv-bridge/README.md, Troubleshooting."
@@ -80,7 +80,7 @@ tests:
       - eval_time: 20m
         alertname: EmotivUploadBacklog
         exp_alerts:
-          - exp_labels: {alertname: EmotivUploadBacklog, severity: warning, category: node-health, topic: emotiv_mini_bridge, job: mqtt2prom}
+          - exp_labels: {alertname: EmotivUploadBacklog, severity: warning, fleet: fix, category: node-health, topic: emotiv_mini_bridge, job: mqtt2prom}
             exp_annotations:
               summary: "Emotiv archive uploads from mac-mini are backed up (572.2MiB or over an hour old)"
               description: "The bridge spool holds chunks the NAS has not received. The bridge log names the rsync exit code: ansible/roles/emotiv-bridge/README.md, Troubleshooting."
@@ -111,7 +111,7 @@ tests:
       - eval_time: 70m
         alertname: EmotivLicenseExpiring
         exp_alerts:
-          - exp_labels: {alertname: EmotivLicenseExpiring, severity: warning, category: node-health, topic: emotiv_mini_bridge, job: mqtt2prom}
+          - exp_labels: {alertname: EmotivLicenseExpiring, severity: warning, fleet: none, category: node-health, topic: emotiv_mini_bridge, job: mqtt2prom}
             exp_annotations:
               summary: "Emotiv Cortex license for Home-EEG ends in 9d 22h 50m 0s"
               description: "Renew or re-sign the Home-EEG Cortex app at emotiv.com (EmotivID kblack0610); rbw emotiv-cortex holds the app."

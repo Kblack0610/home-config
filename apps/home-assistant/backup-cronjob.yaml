@@ -5,6 +5,7 @@ metadata:
   namespace: home-assistant
 spec:
   schedule: "0 2 * * *"  # Daily at 2 AM
+  timeZone: America/Los_Angeles
   successfulJobsHistoryLimit: 3
   failedJobsHistoryLimit: 1
   concurrencyPolicy: Forbid

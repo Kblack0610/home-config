@@ -15,9 +15,8 @@ k3s_install_version: ""
 # rest of the fleet joins as agents.
 k3s_role: agent
 
-# Default server endpoint. `pi5-master` per ansible/inventory.yml.
-# Override in group_vars or host_vars when introducing a second control plane.
-k3s_url: "https://192.168.1.20:6443"
+# The server endpoint, k3s_url, is in group_vars/all/k3s.yml: the fleet-worker
+# role's kubeconfig reads it too.
 
 # Node-token the installer validates against the control-plane. Comes from the
 # SOPS file ansible/group_vars/{linux_bare_metal,pi_k3s}/vault.sops.yaml, as

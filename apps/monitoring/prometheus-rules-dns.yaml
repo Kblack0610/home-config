@@ -32,6 +32,7 @@ spec:
             # critical routes to the 1h-repeat_interval Alertmanager branch, so
             # it keeps reminding rather than paging once and going quiet.
             severity: critical
+            fleet: fix
             category: dns
           annotations:
             summary: "House DNS is down"
@@ -49,6 +50,7 @@ spec:
           for: 10m
           labels:
             severity: warning
+            fleet: fix
             category: dns
           annotations:
             summary: "DNS is resolving but no longer filtering"
@@ -73,6 +75,7 @@ spec:
           for: 10m
           labels:
             severity: warning
+            fleet: fix
             category: dns
           annotations:
             summary: "Internal *.kblab.me DNS rewrite is broken"
@@ -91,6 +94,7 @@ spec:
           for: 15m
           labels:
             severity: warning
+            fleet: fix
             category: dns
           annotations:
             summary: "House DNS probes have disappeared from Prometheus"

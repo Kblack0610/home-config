@@ -1,0 +1,6 @@
+---
+# The home-k3s API server, `pi5-master` per inventory.yml. Agents join it
+# (roles/k3s-agent) and the fleet home reads the exporter feed through it
+# (roles/fleet-worker tasks/home.yml). Override in host_vars when introducing a
+# second control plane.
+k3s_url: "https://192.168.1.20:6443"

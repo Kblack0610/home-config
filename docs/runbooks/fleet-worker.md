@@ -20,7 +20,7 @@ Hosts that fleet-dispatch places agent sessions on, over ssh. The roster is the 
 
 ## The fleet home
 
-The worker named by the group's `fleet_state_host` is the fleet home: `razer-laptop` since 2026-11-15, when the workstation died. Other hosts forward their queue and ask writes to it, it serves agent-web (`apps/agents`), and the singleton lanes (dispatch, sentinel, fleet-state, git-sync) run only there. It keeps `fleet_place: false`: sessions run on it as the home, not as placed work.
+The worker named by the group's `fleet_state_host` is the fleet home: the workstation, `pc-home-cachy-main` (`razer-laptop` held it 2026-11-15 to 11-16 while the workstation was down). Other hosts forward their queue and ask writes to it, it serves agent-web (`apps/agents`), and the singleton lanes (dispatch, sentinel, fleet-state, git-sync) run only there. It keeps `fleet_place: false`: sessions run on it as the home, not as placed work.
 
 The same play sets it up. On the home the role skips the state-host key steps (it is the state host) and runs `tasks/home.yml`, which:
 - enables lingering, so user units run with nobody logged in;
@@ -52,7 +52,7 @@ Moving the home: on the old home run `git-sync-agent.sh` once so the store on Fo
      ansible_ssh_common_args: <the SSM ProxyCommand aws-burst-1 has>
      fleet_tailscale: true
      fleet_ssh_host: fleet-worker-1         # its tailnet name: fleet-dispatch ssh goes there
-     fleet_state_host: razer-laptop         # the fleet home's tailnet name
+     fleet_state_host: cachyos-x8664-main   # the workstation's tailnet name
      fleet_power: governor
      fleet_place: false                     # no fleet_repos: the group's list (no Unity repo) is its own
    ```

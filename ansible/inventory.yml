@@ -468,7 +468,12 @@ all:
     # On 2026-11-13 hp-victus ran those beside six runners at load15 41.5 on
     # 24 threads and 90C, 31G and no swap, and went NotReady, taking Forgejo
     # down; asus ran at load 21-29 on 16 threads and 90.8C with three. Neither
-    # alerted. scripts/check-runner-roster.py fails CI when a host here is in
+    # alerted. In the 48h after #953 took CI off asus (11-14 to 11-16), its
+    # IO full pressure averaged 5.7% (1h peak 20%) against 40-58% on 11-10 to
+    # 11-13, and Prometheus there had no liveness kill (two before): its three
+    # restarts were two asus reboots and one clean exit shared with
+    # victoria-metrics (asus-prometheus-48h-verify).
+    # scripts/check-runner-roster.py fails CI when a host here is in
     # linux_ci_runners, unity_ci_runners or ci_hosts, and the "Retire CI on
     # no_ci_hosts" play in site.yml removes what a host still runs. Before
     # placing any work on any host, read scripts/host-headroom.py <host>.

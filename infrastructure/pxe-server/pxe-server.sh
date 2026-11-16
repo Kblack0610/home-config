@@ -148,12 +148,14 @@ check_boot_files() {
     log_info "Boot files:"
 
     # UEFI boot files
-    if [[ -f "$PXE_BOOT_DIR/uefi/ipxe.efi" ]]; then
-        echo "  [OK] uefi/ipxe.efi"
-    else
-        echo "  [MISSING] uefi/ipxe.efi"
-        all_ok=false
-    fi
+    for f in snponly.efi ipxe.efi; do
+        if [[ -f "$PXE_BOOT_DIR/uefi/$f" ]]; then
+            echo "  [OK] uefi/$f"
+        else
+            echo "  [MISSING] uefi/$f (tools/build-ipxe.sh)"
+            all_ok=false
+        fi
+    done
 
     # BIOS boot files
     local bios_files=("pxelinux.0" "ldlinux.c32" "menu.c32" "ipxe.lkrn")

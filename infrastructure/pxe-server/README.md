@@ -90,7 +90,7 @@ infrastructure/pxe-server/
 ├── install.sh             # Setup script
 ├── boot/
 │   ├── bios/              # PXELINUX boot files
-│   └── uefi/              # iPXE UEFI binary
+│   └── uefi/              # snponly.efi, ipxe.efi (built by tools/build-ipxe.sh)
 ├── config/
 │   ├── dnsmasq.conf       # Server config template
 │   └── openwrt/           # Router setup docs
@@ -100,6 +100,8 @@ infrastructure/pxe-server/
 │   └── kickstart/         # Post-install automation
 ├── images/                # Downloaded ISOs (gitignored)
 └── tools/
+    ├── build-ipxe.sh      # Pinned iPXE build, menu chain embedded
+    ├── make-usb.sh        # USB stick that chains the menu
     ├── prepare-images.sh  # ISO download/extract
     └── test-vm.sh         # QEMU testing
 ```
@@ -108,6 +110,7 @@ infrastructure/pxe-server/
 
 - **Server**: dnsmasq, python3, curl
 - **Optional**: syslinux (BIOS), qemu (testing), edk2-ovmf (UEFI testing)
+- **Rebuilding iPXE** (`tools/build-ipxe.sh`, only to change the server address or bump the pinned commit): git, base-devel
 - **Router**: any; proxy-DHCP needs no router option
 - **Firewall**: 67/udp and 4011/udp from any source, 69/udp and 9080/tcp from the LAN (`ansible/roles/desktop-firewall`)
 
@@ -161,6 +164,7 @@ PXE_HTTP_PORT=9080            # Override HTTP port
 1. Ensure `pxe-server prepare` completed successfully
 2. Check `pxe-server status` shows all files [OK]
 3. Verify sufficient RAM on target (4GB+ recommended)
+4. `Initramfs unpacking failed: invalid magic` then a panic: the iPXE binaries are not from `tools/build-ipxe.sh`. Rebuild them, and bump `IPXE_COMMIT` only after a `test-vm.sh` boot reaches the airootfs download
 
 ### Install fails at "Installing Base System" with "required key missing from keyring"
 

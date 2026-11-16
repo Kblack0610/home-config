@@ -4,7 +4,7 @@
 #
 # This script sets up the PXE server by:
 # 1. Checking and installing dependencies
-# 2. Downloading iPXE binaries
+# 2. Checking the iPXE binaries (tools/build-ipxe.sh builds them)
 # 3. Setting up SYSLINUX for BIOS boot
 # 4. Creating symlinks
 # 5. Installing systemd service (optional)
@@ -112,22 +112,14 @@ create_directories() {
 }
 
 download_ipxe() {
-    log_section "Downloading iPXE Binaries"
+    log_section "iPXE Binaries"
 
-    local ipxe_url="https://boot.ipxe.org"
-    # The EFI builds moved under x86_64-efi/; the old top-level URLs return 404.
-
-    # UEFI binary
-    local uefi_bin="$PXE_BOOT_DIR/uefi/ipxe.efi"
-    if [[ -f "$uefi_bin" ]]; then
-        log_info "ipxe.efi already exists"
+    # The EFI binaries are built from a pinned commit with the chain script
+    # embedded, and committed; boot.ipxe.org builds would boot an empty shell.
+    if [[ -f "$PXE_BOOT_DIR/uefi/snponly.efi" && -f "$PXE_BOOT_DIR/uefi/ipxe.efi" ]]; then
+        log_info "snponly.efi and ipxe.efi present"
     else
-        log_info "Downloading ipxe.efi..."
-        if curl -fsSL "$ipxe_url/x86_64-efi/ipxe.efi" -o "$uefi_bin"; then
-            log_success "Downloaded ipxe.efi"
-        else
-            log_error "Failed to download ipxe.efi"
-        fi
+        "$SCRIPT_DIR/tools/build-ipxe.sh"
     fi
 
     # BIOS chainload kernel
@@ -136,18 +128,11 @@ download_ipxe() {
         log_info "ipxe.lkrn already exists"
     else
         log_info "Downloading ipxe.lkrn..."
-        if curl -fsSL "$ipxe_url/ipxe.lkrn" -o "$bios_lkrn"; then
+        if curl -fsSL "https://boot.ipxe.org/ipxe.lkrn" -o "$bios_lkrn"; then
             log_success "Downloaded ipxe.lkrn"
         else
             log_error "Failed to download ipxe.lkrn"
         fi
-    fi
-
-    # UEFI SNP binary (alternative)
-    local snp_bin="$PXE_BOOT_DIR/uefi/snponly.efi"
-    if [[ ! -f "$snp_bin" ]]; then
-        log_info "Downloading snponly.efi..."
-        curl -fsSL "$ipxe_url/x86_64-efi/snponly.efi" -o "$snp_bin" || log_error "Failed to download snponly.efi"
     fi
 }
 

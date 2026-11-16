@@ -99,6 +99,13 @@ adguard_filters:
 # domain entries authoritatively, so that specific name never reaches AdGuard
 # and wins over the wildcard below.
 adguard_rewrites:
+  # forge-primary.kblab.me names the live Forgejo by its tailnet IP and is the
+  # one source for that (apps/forgejo/README.md). The wildcard below sent it to
+  # Traefik, which carries no ssh, so LAN hosts could not reach Forgejo's ssh on
+  # 2222. Answer `A` keeps the upstream record; an exact name wins over a wildcard.
+  - domain: forge-primary.kblab.me
+    answer: A
+    enabled: true
   - domain: '*.kblab.me'
     answer: 192.168.1.124
     enabled: true

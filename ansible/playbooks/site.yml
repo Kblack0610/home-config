@@ -877,6 +877,15 @@
     - role: github-actions-runner-windows
       tags: [windows, runner]
 
+# The ssh keys that may log in, from roles/authorized-keys (additive).
+#   ansible-playbook playbooks/site.yml --limit linux_bare_metal --tags authorized-keys
+- name: Authorized keys (bare-metal Linux)
+  hosts: linux_bare_metal
+  gather_facts: false
+  roles:
+    - role: authorized-keys
+      tags: [authorized-keys]
+
 # Login passwords on the PXE-built Linux hosts: the user's from
 # vault_linux_login_password_hash, root's locked. Last on purpose: its assert
 # fails the play while the hash is missing, and a failed host is dropped from

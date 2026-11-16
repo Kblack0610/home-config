@@ -13,4 +13,5 @@ configMapGenerator:
 
 resources:
   - deployment.yaml
+  - feed-reader-rbac.yaml   # the account schedules-sync reads the feed with on the fleet home
   - github-runner-exporter-secret.yaml   # github-token, github-token-kblack0610, forgejo-token: docs/credentials.md

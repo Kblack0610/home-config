@@ -36,8 +36,8 @@
 
 - name: Trust Forgejo's host key
   ansible.builtin.known_hosts:
-    name: "{{ fleet_home_store_host }}"
-    key: "{{ lookup('ansible.builtin.pipe', 'ssh-keyscan -t ed25519 ' ~ fleet_home_store_host ~ ' 2>/dev/null | grep -v ^#') }}"
+    name: "[{{ fleet_home_store_host }}]:{{ fleet_home_store_port }}"
+    key: "{{ lookup('ansible.builtin.pipe', 'ssh-keyscan -t ed25519 -p ' ~ fleet_home_store_port ~ ' ' ~ fleet_home_store_host ~ ' 2>/dev/null | grep -v ^#') }}"
     state: present
 
 - name: Read whether the store is cloned

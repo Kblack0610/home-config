@@ -30,5 +30,7 @@ fleet_worker_dotfiles_repo: https://github.com/Kblack0610/.dotfiles.git
 # The fleet home is the worker fleet_state_host names (inventory.yml). It also
 # holds the agent store and serves agent-web: tasks/home.yml.
 fleet_worker_is_home: "{{ inventory_hostname == fleet_state_host.split('.')[0] }}"
-fleet_home_store_repo: ssh://git@git.kblab.me/kblack0610/.agent.git
-fleet_home_store_host: git.kblab.me
+# forge-primary is the live Forgejo; its ssh is on 2222 (apps/forgejo/README.md).
+fleet_home_store_repo: ssh://git@{{ fleet_home_store_host }}:{{ fleet_home_store_port }}/kblack0610/.agent.git
+fleet_home_store_host: forge-primary.kblab.me
+fleet_home_store_port: 2222

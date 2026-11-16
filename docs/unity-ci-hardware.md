@@ -97,7 +97,7 @@ Before ordering, settle the cap: the new box's slots plus the pool's registered 
 
 ## Laptops as runners
 
-razer-laptop left the pool 2026-11-15 (RAM 96 GB -> 32 GB; one light slot only). asus-laptop and hp-victus are service hosts that carry no CI of any kind (`no_ci_hosts` in `ansible/inventory.yml` says why): as k3s nodes holding Forgejo, Frigate and the databases, CI load there took the cluster down with the jobs. Laptops work but throttle under sustained load and their batteries swell when held at 100%. Set a 60-80% charge limit in the BIOS (or `thinkpad_acpi` thresholds on Linux) and run with the lid open.
+razer-laptop is in the pool. asus-laptop and hp-victus are service hosts that carry no CI of any kind (`no_ci_hosts` in `ansible/inventory.yml` says why): as k3s nodes holding Forgejo, Frigate and the databases, CI load there took the cluster down with the jobs. Laptops work but throttle under sustained load and their batteries swell when held at 100%. Set a 60-80% charge limit in the BIOS (or `thinkpad_acpi` thresholds on Linux) and run with the lid open.
 
 ## Renting
 

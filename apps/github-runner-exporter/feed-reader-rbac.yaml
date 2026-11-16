@@ -1,0 +1,47 @@
+# schedules-sync (dotfiles .local/bin/schedules-sync) reads this exporter's
+# changes feed through the API server's Service proxy. The fleet home has no
+# admin kubeconfig, so it reads with this account, which may get that one proxy
+# and nothing else. Its token and the cluster CA are in
+# ansible/group_vars/fleet_workers/vault.sops.yaml; the fleet-worker role
+# writes the kubeconfig (tasks/home.yml). Rotate: docs/credentials.md.
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: schedules-sync
+  namespace: monitoring
+---
+# A long-lived token: the controller fills in token and ca.crt.
+apiVersion: v1
+kind: Secret
+metadata:
+  name: schedules-sync-token
+  namespace: monitoring
+  annotations:
+    kubernetes.io/service-account.name: schedules-sync
+type: kubernetes.io/service-account-token
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: exporter-feed-reader
+  namespace: monitoring
+rules:
+  # A proxy request's name is <service>:<port>, as schedules-sync's FEED path has it.
+  - apiGroups: [""]
+    resources: ["services/proxy"]
+    resourceNames: ["github-runner-exporter:9320"]
+    verbs: ["get"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: schedules-sync
+  namespace: monitoring
+subjects:
+  - kind: ServiceAccount
+    name: schedules-sync
+    namespace: monitoring
+roleRef:
+  kind: Role
+  name: exporter-feed-reader
+  apiGroup: rbac.authorization.k8s.io

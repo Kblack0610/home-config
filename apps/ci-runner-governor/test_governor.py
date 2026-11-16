@@ -1612,7 +1612,6 @@ class PackTest(unittest.TestCase):
         return {**HALF, **burst("aws-burst-3", idle=1, off=5)}
 
     def test_an_empty_queue_packs_every_burst_host_but_the_busiest_at_once(self):
-        # 2026-11-16: one pack per dwell left three on-demand hosts up on a trickle for hours.
         got = self.step(10_000, runners=self.three(), cfg=THREE)
         self.assertEqual({h for h, a, *_ in got if a == "pack"}, {"aws-burst-1", "aws-burst-3"})
         self.assertFalse(self.inst["aws-burst-2"].get("packed"))
@@ -1635,7 +1634,18 @@ class PackTest(unittest.TestCase):
 
     def test_a_job_it_can_take_blocks_the_pack_and_one_it_cannot_does_not(self):
         self.assertEqual([a for _, a, *_ in self.step(10_000, [UNITY_JOB]) if a == "pack"], [])
+        self.setUp()
         self.assertEqual(self.moves(self.step(10_000, [LAN_JOB]), "aws-burst-1")[0], ("pack", ""))
+
+    def test_a_one_cycle_gap_in_the_queue_packs_nothing(self):
+        # Between bursts the queue reads 0 for a minute: no pack until it has been quiet a dwell.
+        runners = self.three()
+        self.step(10_000, [UNITY_JOB], runners=runners, cfg=THREE)
+        for t in range(10_060, 10_000 + DWELL, 60):
+            got = self.step(t, runners=runners, cfg=THREE)
+            self.assertEqual([a for _, a, *_ in got if a == "pack"], [], t)
+        got = self.step(10_000 + DWELL, runners=runners, cfg=THREE)
+        self.assertEqual({h for h, a, *_ in got if a == "pack"}, {"aws-burst-1", "aws-burst-3"})
 
     def test_negative_control_a_queued_wide_job_keeps_its_only_wide_host(self):
         self.inst["aws-burst-1"]["labels"] = WIDE_LABELS
@@ -1748,7 +1758,7 @@ class PackTest(unittest.TestCase):
                 governor.cycle(TWO, {}, tracked)
             log += [c.args[0] for c in out.call_args_list]
         self.assertEqual([line for line in log if "aws-burst-1" in line], [
-            "pack aws-burst-1: no waiting job it can take, the fewest busy slots (1) of 2 unpacked burst hosts; "
+            f"pack aws-burst-1: no job it can take waited for {DWELL}s, 1 busy slots, 1 burst hosts left unpacked; "
             "its slots go and its idle rule stops it; queue 0",
             "withhold b1-busy-0 on aws-burst-1: PACKED, packed; queue 0",
             "stop i-0abc on aws-burst-1: PACKED, no slot busy for 1260s; queue 0"])

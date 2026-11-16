@@ -579,9 +579,9 @@ all:
     #   fleet_repos      what it clones, and the repos whose items it takes;
     #                    dest is the same path as on the workstation
     #   fleet_state_host where its queue and ask writes go (AGENT_STATE_HOST).
-    #                    The worker it names is the fleet home: it also holds
+    #                    The machine it names is the fleet home: it also holds
     #                    the store, serves agent-web and runs the singleton
-    #                    lanes (roles/fleet-worker tasks/home.yml)
+    #                    lanes (roles/fleet-worker tasks/home.yml on a worker)
     #   fleet_ssh_host  where fleet-dispatch ssh goes when ansible_host is not
     #                    it (a cloud worker: an instance id behind SSM)
     #   fleet_power      governor: the ci-runner-governor starts and stops it
@@ -589,15 +589,15 @@ all:
     #   fleet_tailscale  true joins the tailnet (role tailscale-node)
     fleet_workers:
       vars:
-        fleet_state_host: razer-laptop.lan
+        fleet_state_host: pc-home-cachy-main.lan
         fleet_max_live: 1
         fleet_repos:
           - dest: ~/.dotfiles
             repo: https://github.com/Kblack0610/.dotfiles.git
       hosts:
-        # The fleet home since 2026-11-15, when the workstation died: wired and
-        # always on, 16 threads and 96 GB (32 GB after the RAM move, hc-328).
-        # Sessions run on it as the home, so it is never a placement target.
+        # The first worker (2026-11-07): wired and always on, 16 threads and
+        # 32 GB since the RAM move (hc-328). It held the fleet home 2026-11-15 to
+        # 11-16 while the workstation was down; not placed yet.
         razer-laptop:
           fleet_place: false
 

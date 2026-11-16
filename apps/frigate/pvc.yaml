@@ -1,7 +1,7 @@
 # Both PVCs bind on hp-victus (local-path is WaitForFirstConsumer and the pod is
 # pinned there). local-path does NOT enforce the size: the media volume can grow
 # until the node disk is full, so record retention in config.yml is the real cap.
-# hp-victus had 169G free (82% used) on 2026-10-17.
+# hp-victus had 298G free on 2026-11-16.
 apiVersion: v1
 kind: PersistentVolumeClaim
 metadata:
@@ -30,4 +30,4 @@ spec:
   storageClassName: local-path
   resources:
     requests:
-      storage: 80Gi
+      storage: 150Gi

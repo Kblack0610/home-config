@@ -8,7 +8,7 @@
   "cooldown_seconds": 600,
   "dwell_seconds": 600,
   "warm_idle_off_seconds": 2700,
-  "override_on_max_hours": 12,
+  "override_on_max_hours": 0,
   "pack_keep_labels": ["unity-wide"],
   "defaults": {
     "min_admitted": 1,

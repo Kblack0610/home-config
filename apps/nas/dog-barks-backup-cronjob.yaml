@@ -8,6 +8,7 @@ spec:
   # and CSV log. Frigate drops its own copy after 14 days, so after that the NAS disk
   # holds the only one and this mirror is the backup.
   schedule: "45 6 * * *"
+  timeZone: America/Los_Angeles
   concurrencyPolicy: Forbid
   successfulJobsHistoryLimit: 3
   failedJobsHistoryLimit: 3

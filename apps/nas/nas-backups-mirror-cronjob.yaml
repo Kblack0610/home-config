@@ -7,6 +7,7 @@ spec:
   # Daily 5:30 AM, after the app jobs and the Sunday cleanup. The app backups are on
   # the NAS disk, so without this copy losing that disk loses every one of them.
   schedule: "30 5 * * *"
+  timeZone: America/Los_Angeles
   concurrencyPolicy: Forbid
   successfulJobsHistoryLimit: 3
   failedJobsHistoryLimit: 3

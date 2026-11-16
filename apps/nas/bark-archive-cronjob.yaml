@@ -8,6 +8,7 @@ spec:
   # /mnt/nas/private/dog-barks, the evidence log for barking complaints. Frigate
   # keeps a clip 14 days; this keeps all of them. Logic: bark-archive.sh.
   schedule: "20 * * * *"
+  timeZone: America/Los_Angeles
   concurrencyPolicy: Forbid
   successfulJobsHistoryLimit: 3
   failedJobsHistoryLimit: 3

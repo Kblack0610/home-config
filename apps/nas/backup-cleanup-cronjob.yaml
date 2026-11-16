@@ -5,6 +5,7 @@ metadata:
   namespace: nas
 spec:
   schedule: "0 5 * * 0"  # Sunday at 5 AM (weekly)
+  timeZone: America/Los_Angeles
   successfulJobsHistoryLimit: 3
   failedJobsHistoryLimit: 1
   jobTemplate:

@@ -48,11 +48,11 @@ the governor's start, after a restart). Only a host with a "power" block keeps t
 one without goes back the first cycle nothing waits. A job pinned to its host label needs no
 pool label, so a withheld slot takes it.
 
-With two or more powered burst hosts running and no waiting job one of them can take, the
-least busy live one (tie: the one started last) is PACKED: its slots are withheld one per cycle and
-its idle rule stops it. One host at a time, never the last, never the only running host
+With two or more powered burst hosts running and no job they can take waiting for
+dwell_seconds, every live one but the busiest is PACKED in the same cycle: each one's slots
+are withheld one per cycle and its idle rule stops it. Never the last unpacked one, never the only running host
 offering a pack_keep_labels label (unity-wide), and never one a waiting job needs. It
-unpacks at once when a waiting job has no other taker or its jobs outnumber the other
+unpacks at once when a waiting job has no unpacked taker or its jobs outnumber the unpacked
 hosts' free slots, otherwise once its jobs have waited dwell_seconds. A new pack also waits
 out dwell_seconds since the last pack or unpack.
 
@@ -702,15 +702,18 @@ def pack_plan(cfg, runners, waiting, instances, covered, pins, now):
 
     A running burst host bills by the hour however few of its slots are busy, and a job lands
     on any admitted slot, so with a trickle every host stays half busy and none goes idle. So
-    while no waiting job is one a running burst host could take, the live one (a dry-run host
-    would never stop) with the fewest busy slots (a tie: the one started last) is packed: decide() withholds its slots and admits
-    none, and its idle rule stops it once its jobs end. One host at a time, never the last
-    running one, and never the only host whose runners carry a label in pack_keep_labels (a
-    wide job could arrive at any time). It is unpacked by an override, by becoming that only
-    host, or once a waiting job is one it could take, and is then back in the admit order. A pack or unpack holds for dwell_seconds, so a queue that
-    flickers between empty and not moves nothing, except that a packed host is unpacked at once
-    when a waiting job has no other host that could take it or more of its jobs wait than the
-    other hosts have free slots (covered: the home hosts' idle slots and this cycle's admits)."""
+    once no job a running burst host could take has waited for dwell_seconds, every such live one
+    (a dry-run host would never stop) but the busiest is packed in the same cycle, fewest busy
+    slots first (a tie: the one started last): decide() withholds its slots and admits none, and
+    its idle rule stops it once its jobs end. Never the last unpacked running one, and never the only host
+    whose runners carry a label in pack_keep_labels (a wide job could arrive at any time). A
+    packed host is no taker and no free room in another's tests. It is unpacked by an override,
+    by becoming that only host, or once a waiting job is one it could take, and is then back in
+    the admit order; packed hosts are weighed busiest first, each unpack counted before the next.
+    A pack or unpack holds for dwell_seconds, so a queue that flickers between empty and not
+    moves nothing, except that a packed host is unpacked at once when a waiting job has no
+    unpacked host that could take it or more of its jobs wait than the unpacked hosts have free
+    slots (covered: the home hosts' idle slots and this cycle's admits)."""
     dwell, keep = cfg["dwell_seconds"], frozenset(l.lower() for l in cfg["pack_keep_labels"])
     burst = {h: i for h, i in instances.items() if h in cfg["standby"] and not dedicated(cfg, h) and not pairs(cfg, h)}
     for i in burst.values():
@@ -729,18 +732,19 @@ def pack_plan(cfg, runners, waiting, instances, covered, pins, now):
         cap = min(standby_cap(cfg, h, pins)[0], len(mine[h]))
         return max(0, cap - len(on)) + sum(1 for r in on if not r["busy"])
 
+    serving = {h for h, i in up.items() if not i.get("packed")}
+
     def others(h):
-        return [o for g, o in offers.items() if g != h]
+        return [o for g, o in offers.items() if g != h and (g in cfg["hosts"] or g in serving)]
 
     def scarce(h):
         return sorted(keep & up[h]["labels"] - frozenset().union(*others(h)))
 
     flips = {}
-    for h, i in up.items():
-        if not i.get("packed"):
-            continue
+    for h in sorted(up.keys() - serving, key=lambda h: (-busy[h], h)):
+        i = up[h]
         jobs = [need for need in waiting if need <= i["labels"]]
-        free = covered + sum(room(g) for g in up if g != h)
+        free = covered + sum(room(g) for g in serving)
         alone = [need for need in jobs if not any(need <= o for o in others(h))]
         if i.get("override"):
             why = f"override {i['override']}"
@@ -755,17 +759,23 @@ def pack_plan(cfg, runners, waiting, instances, covered, pins, now):
         else:
             continue
         i["packed"], i["pack_at"] = False, now
+        serving.add(h)
         flips[h] = ("unpack", why)
     last = max((i.get("pack_at", 0) for i in burst.values()), default=0)
-    if len(up) < 2 or any(i.get("packed") for i in burst.values()) or now - last < dwell:
+    if now - last < dwell:
         return flips
-    fit = [h for h, i in up.items() if live(cfg, h) and not i.get("override") and not scarce(h)
-           and not any(need <= i["labels"] for need in waiting)]
-    if fit:
-        h = min(fit, key=lambda h: (busy[h], -up[h].get("launched", 0), h))
+    # Quiet for a dwell (waited_at, kept by decide()), not just this cycle: the queue reads 0
+    # for a minute between bursts, and a batch pack on that would drain the pool.
+    fit = [h for h in serving if live(cfg, h) and not up[h].get("override")
+           and now - up[h].get("waited_at", 0) >= dwell
+           and not any(need <= up[h]["labels"] for need in waiting)]
+    for h in sorted(fit, key=lambda h: (busy[h], -up[h].get("launched", 0), h)):
+        if len(serving) < 2 or scarce(h):
+            continue
+        serving.discard(h)
         up[h]["packed"], up[h]["pack_at"] = True, now
-        flips[h] = ("pack", f"no waiting job it can take, the fewest busy slots ({busy[h]}) of {len(up)} "
-                            "running burst hosts; its slots go and its idle rule stops it")
+        flips[h] = ("pack", f"no job it can take waited for {dwell}s, {busy[h]} busy slots, "
+                            f"{len(serving)} burst hosts left unpacked; its slots go and its idle rule stops it")
     return flips
 
 

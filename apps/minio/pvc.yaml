@@ -12,3 +12,6 @@ spec:
   resources:
     requests:
       storage: 100Gi
+  # The bound PV; Flux owns this field. Drop it in a move PR or on a rebuilt cluster
+  # (docs/runbooks/move-local-path-pvc.md).
+  volumeName: pvc-597d9f4e-e74e-4238-b5b9-1f9517078b7a

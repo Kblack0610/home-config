@@ -18,6 +18,20 @@ A StatefulSet's claim (`<template>-<sts>-<ordinal>`) moves with `-` as the deplo
 
 When an affinity change rules out the node that holds a claim, the pod stays Pending (`volume node affinity conflict`) until the claim moves. Move the claims before that change merges, or right after it. On 2026-11-14, 9 `freqtrade-league` claims stayed on hp-victus after #953 excluded it, and those bots were down for 16 hours.
 
+## Raise a request in place
+
+The local-path class cannot expand a claim, so a PV past its request (`LocalPathPvOverRequest`) gets a bigger request by rebinding the same PV to a new claim. The data stays in its host folder; the app is down for a few minutes.
+
+1. Open a PR that raises the request in the PVC manifest. Wait for CI, and do not merge yet. Leave `volumeName` out of git: the controller sets it on the bound claim, and a pin goes stale after a move and leaves a rebuilt cluster's claim Pending.
+2. Suspend both Flux levels, as in step 2 above.
+3. `kubectl patch pv <pv> --type=merge -p '{"spec":{"persistentVolumeReclaimPolicy":"Retain"}}'`, and go on only once it reads `Retain`: a released PV on `Delete` loses its folder.
+4. Scale the workload to 0, wait for its pods to be gone, delete finished pods that mount the claim, then delete the PVC. Go on once the PV reads `Released`.
+5. `kubectl patch pv <pv> --type=json -p '[{"op":"replace","path":"/spec/claimRef","value":{"namespace":"<ns>","name":"<pvc>"}},{"op":"replace","path":"/spec/capacity/storage","value":"<size>"}]'`. Go on once the PV reads `Available`: the claimRef without a uid reserves it for that claim name, so no other pending claim takes it.
+6. Apply the PR's PVC by hand with `spec.volumeName: <pv>` added. `kubectl -n <ns> get pvc <pvc>` must show `Bound`, the same PV and the new size. Scale back up and check the data.
+7. Merge the PR, resume Flux, and check the claim is still `Bound` to the same PV after the reconcile. Only then set the PV back to `Delete`.
+
+If the claim does not bind, scale nothing up: the PV stays `Retain` with its data. Delete the new claim and repeat steps 5 and 6.
+
 ## If the script stops midway
 
 The app is scaled to 0 and the old data is intact. Rerunning does not work once the old PVC is gone, because the script reads the old PV from it. Finish by hand from the script's own steps: recreate the PVC, run the two copy pods, compare hashes, then scale the app back up.

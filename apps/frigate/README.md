@@ -22,7 +22,7 @@ Frigate NVR on home-k3s, reconciled by Flux. Object detection runs on a Coral US
 
 ## Storage
 
-local-path does not enforce PVC sizes, so `frigate-media` can grow until the hp-victus disk is full. Frigate's cleanup only steps in when free space on that whole filesystem gets low. Retention in `config.yml` is the real cap: motion 3 days, alerts 14, detections 7, no continuous recording. hp-victus had 169G free (82% used) on 2026-10-17. Check before adding cameras or raising retention:
+local-path does not enforce PVC sizes, so `frigate-media` can grow until the hp-victus disk is full. Frigate's cleanup only steps in when free space on that whole filesystem gets low. Retention in `config.yml` is the real cap: motion 3 days, alerts 14, detections 7, no continuous recording. hp-victus had 298G free on 2026-11-16, with `frigate-media` at 105G against its 150Gi request. Check before adding cameras or raising retention:
 
 ```bash
 kubectl --context home-k3s get --raw /api/v1/nodes/hp-victus/proxy/stats/summary | jq '.node.fs | {availableGB: (.availableBytes/1e9), capacityGB: (.capacityBytes/1e9)}'

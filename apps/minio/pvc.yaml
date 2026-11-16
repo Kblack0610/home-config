@@ -12,3 +12,4 @@ spec:
   resources:
     requests:
       storage: 100Gi
+  volumeName: pvc-597d9f4e-e74e-4238-b5b9-1f9517078b7a

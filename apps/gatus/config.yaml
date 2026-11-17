@@ -671,36 +671,6 @@ endpoints:
       - "[STATUS] < 500"
       - "[CERTIFICATE_EXPIRATION] > 720h"
 
-  - name: placemyparents-api.blacknbrownstudios.com
-    group: ingress
-    url: "https://placemyparents-api.blacknbrownstudios.com"
-    interval: 300s
-    client:
-      insecure: true
-    conditions:
-      - "[STATUS] < 500"
-      - "[CERTIFICATE_EXPIRATION] > 720h"
-
-  - name: placemyparents-mobile.blacknbrownstudios.com
-    group: ingress
-    url: "https://placemyparents-mobile.blacknbrownstudios.com"
-    interval: 300s
-    client:
-      insecure: true
-    conditions:
-      - "[STATUS] < 500"
-      - "[CERTIFICATE_EXPIRATION] > 720h"
-
-  - name: placemyparents.blacknbrownstudios.com
-    group: ingress
-    url: "https://placemyparents.blacknbrownstudios.com"
-    interval: 300s
-    client:
-      insecure: true
-    conditions:
-      - "[STATUS] < 500"
-      - "[CERTIFICATE_EXPIRATION] > 720h"
-
   - name: print.kblab.me
     group: ingress
     url: "https://print.kblab.me"

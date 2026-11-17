@@ -32,7 +32,7 @@ The home server is paused until dedicated capacity is ready (ask OqbBvu, 2026-11
 |---|---|
 | Load tests | Explicit admitted load host only; hp-victus and asus-laptop are protected service hosts. Active examples and the host guard live in playground `scripts/load/` and `docs/development/scaling.md`. No load is placed while dedicated capacity is unavailable. |
 | Playground server | Paused here until a dedicated game host passes admission. Preserve layouts, then move their PVC, the game label, DNS and UDP forwarding together before resuming. |
-| PlaceMyParents previews | All preview app Deployments paused by `apps/placemyparents-preview/kustomization.yaml`. Postgres stays on its existing asus-laptop volume. Remove that replicas patch when capacity is admitted. |
+| PlaceMyParents previews | All preview app Deployments paused by `apps/placemyparents-preview/kustomization.yaml`. Postgres stays on its existing asus-laptop volume. Its `ingress.yaml` opts the three hosts out of the probes and launcher meanwhile. Remove that replicas patch and those two annotations when capacity is admitted. |
 | GitHub and Unity runners | Already removed from hp-victus; `no_ci_hosts` prevents their return. New slots belong to the dedicated CI bring-up after the DeskSlims arrive and pass admission; no temporary slots on service hosts. |
 | Freqtrade leagues | Already excluded from hp-victus by required affinity in `apps/freqtrade/statefulset.yaml`; their claims have moved. Keep this placement. |
 | Frigate and Forgejo | Frigate stays on hp-victus. Forgejo has already left it; its migration is independent of the optional workload pause. |

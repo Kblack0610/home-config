@@ -27,7 +27,8 @@ patches:
       metadata:
         name: any
       spec:
-        # Paused until dedicated capacity is ready (ask OqbBvu).
+        # Paused until dedicated capacity is ready (ask OqbBvu). ingress.yaml opts its
+        # hosts out of the probes meanwhile; resume removes those annotations too.
         replicas: 0
         template:
           spec:

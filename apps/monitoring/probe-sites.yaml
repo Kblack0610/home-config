@@ -1,7 +1,7 @@
 # blackbox-exporter Probe for all public + private site URLs.
 #
 # The `static` target list below is GENERATED from apps/*/ingress*.yaml by
-# scripts/gen-ha-launcher.py (same source as the HA launcher + status sensors).
+# scripts/gen-ha-launcher.py (same source as the kblab.me front door + HA status sensors).
 # Edit ingresses + rerun the script; do not hand-edit the target list.
 #
 # The `release: kube-prometheus-stack` label is required: the operator's default
@@ -34,7 +34,6 @@ spec:
         - https://fleet.kblab.me
         - https://frigate.kblab.me
         - https://git.kblab.me
-        - https://git.kennethblack.me
         - https://grafana.kblab.me
         - https://hass.kblab.me
         - https://headscale-ui.kblab.me
@@ -53,6 +52,7 @@ spec:
         - https://notes-sync-bridge.kblab.me
         - https://ntfy.kblab.me
         - https://photos.kblab.me
+        - https://play.kblack.dev
         - https://print.kblab.me
         - https://prometheus.kblab.me
         - https://s3.kblab.me

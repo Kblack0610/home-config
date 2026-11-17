@@ -72,13 +72,6 @@ rest:
           {% set r = value_json.data.result | selectattr('metric.instance', 'eq', 'https://git.kblab.me') | list %}
           {% set c = (r[0].value[1] | int(0)) if r | length > 0 else 0 %}
           {{ 0 < c < 500 }}
-      - name: "git.kennethblack.me"
-        unique_id: site_up_git_kennethblack_me
-        device_class: connectivity
-        value_template: >-
-          {% set r = value_json.data.result | selectattr('metric.instance', 'eq', 'https://git.kennethblack.me') | list %}
-          {% set c = (r[0].value[1] | int(0)) if r | length > 0 else 0 %}
-          {{ 0 < c < 500 }}
       - name: "grafana.kblab.me"
         unique_id: site_up_grafana_kblab_me
         device_class: connectivity
@@ -203,6 +196,13 @@ rest:
         device_class: connectivity
         value_template: >-
           {% set r = value_json.data.result | selectattr('metric.instance', 'eq', 'https://photos.kblab.me') | list %}
+          {% set c = (r[0].value[1] | int(0)) if r | length > 0 else 0 %}
+          {{ 0 < c < 500 }}
+      - name: "play.kblack.dev"
+        unique_id: site_up_play_kblack_dev
+        device_class: connectivity
+        value_template: >-
+          {% set r = value_json.data.result | selectattr('metric.instance', 'eq', 'https://play.kblack.dev') | list %}
           {% set c = (r[0].value[1] | int(0)) if r | length > 0 else 0 %}
           {{ 0 < c < 500 }}
       - name: "print.kblab.me"

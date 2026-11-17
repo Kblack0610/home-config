@@ -1,0 +1,17 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+namespace: front-door
+
+resources:
+  - namespace.yaml
+  - front-door.yaml
+
+# Generated, so a new page or kit pin gets a new name and rolls the pod.
+configMapGenerator:
+  - name: front-door-files
+    files:
+      - index.html
+      - nginx.conf
+      - kit.lock
+      - fetch-kit.sh

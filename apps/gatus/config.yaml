@@ -198,6 +198,8 @@ endpoints:
 
   - name: PlaceMyParents API
     group: placemyparents-preview
+    # Paused with the preview Deployments (apps/placemyparents-preview/kustomization.yaml).
+    enabled: false
     url: "http://placemyparents-api.placemyparents-preview.svc/api/health"
     interval: 60s
     conditions:
@@ -206,6 +208,8 @@ endpoints:
 
   - name: PlaceMyParents Web
     group: placemyparents-preview
+    # Paused with the preview Deployments (apps/placemyparents-preview/kustomization.yaml).
+    enabled: false
     url: "http://placemyparents-web.placemyparents-preview.svc/"
     interval: 60s
     conditions:

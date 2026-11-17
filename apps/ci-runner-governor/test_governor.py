@@ -74,7 +74,7 @@ def actions(*args, **kw):
 POWER = {"provider": "aws", "instance_id": "i-0abc", "region": "us-east-2", "idle_off_seconds": 1200, "live": True,
          "start_min_excess": 1, "start_after_seconds": 0}
 AWS = {**CFG, "standby": {"aws-burst-1": {"max_admitted": 8, "power": POWER}}}
-LIVE_POWER = {**governor.POWER_DEFAULTS, **LIVE["standby"]["aws-burst-1"]["power"]}
+LIVE_POWER = {**governor.POWER_DEFAULTS, **LIVE["standby"]["aws-spot-1"]["power"]}
 # A 12h day cap of its own: the live hosts run uncapped (24h), and the cap tests need one.
 HEAVY = {**CFG, "standby": {"aws-burst-1": {"max_admitted": 6, "power": {**LIVE_POWER, "instance_id": "i-0abc",
                                                                        "max_hours_day": 12}}}}

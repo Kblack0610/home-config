@@ -75,3 +75,15 @@
     - ansible_os_family == 'Darwin'
     - not ansible_check_mode
     - nut_plist is changed
+
+# killpower cuts the outlets even when it was a false alarm, and a Mac stays off
+# afterwards unless autorestart is set (the mac-mini did, 2026-11-17).
+- name: Power back on when the outlets come back (macOS)
+  ansible.builtin.shell: |
+    pmset -g | grep -Eq '^ *autorestart +1' && exit 0
+    pmset -a autorestart 1 && echo changed
+  register: nut_autorestart
+  changed_when: "'changed' in nut_autorestart.stdout"
+  when:
+    - ansible_os_family == 'Darwin'
+    - not ansible_check_mode

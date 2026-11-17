@@ -36,8 +36,8 @@ nut_server_host: "{{ hostvars['pi5-master'].ansible_host }}"
 # How long power must stay out before the primary shuts every machine on the
 # UPS down. 300s, chosen 2026-11-17 (ask UsbEaS): the 2026-11-17 outage lasted
 # about 2 minutes with ~950s of runtime left, and the 60s it replaced shut
-# everything down for nothing. LOWBATT (the UPS's battery.runtime.low, 300s)
-# still forces the shutdown early in a long outage.
+# everything down for nothing. On battery, low battery (battery.runtime.low, 300s)
+# still ends it early: upsmon treats OB+LB as critical on its own.
 nut_onbatt_settle_seconds: 300
 
 # Seconds the primary waits after the FSD broadcast before it halts itself.

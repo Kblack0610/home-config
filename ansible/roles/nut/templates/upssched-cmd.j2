@@ -17,10 +17,6 @@ case "${EVENT}" in
         log "settling timer expired: running cluster-graceful-shutdown.sh"
         /etc/nut/cluster-graceful-shutdown.sh "onbatt-settle"
         ;;
-    early-shutdown)
-        log "LOWBATT received: running cluster-graceful-shutdown.sh now"
-        /etc/nut/cluster-graceful-shutdown.sh "lowbatt"
-        ;;
     commbad-warn)
         log "WARN: communication with upsd lost"
         ;;

@@ -31,12 +31,9 @@ fleet_worker_dotfiles_repo: https://github.com/Kblack0610/.dotfiles.git
 # as the workstation's checkout; git.kennethblack.me does not serve it until #967 cuts over.
 fleet_worker_roster_repo: https://git.kblab.me/kblack0610/home-config.git
 # The fleet home is the worker fleet_state_host names (inventory.yml). It also
-# holds the agent store and serves agent-web: tasks/home.yml.
+# takes the forwarded queue writes and serves agent-web: tasks/home.yml. The
+# store's URLs are not here: every worker reads them from store.env (tasks/store.yml).
 fleet_worker_is_home: "{{ inventory_hostname == fleet_state_host.split('.')[0] }}"
-# forge-primary is the live Forgejo; its ssh is on 2222 (apps/forgejo/README.md).
-fleet_home_store_repo: ssh://git@{{ fleet_home_store_host }}:{{ fleet_home_store_port }}/kblack0610/.agent.git
-fleet_home_store_host: forge-primary.kblab.me
-fleet_home_store_port: 2222
 # The kubeconfig schedules-sync reads the exporter feed with on the home
 # (tasks/home.yml): the scoped account's token and the cluster CA from
 # group_vars/fleet_workers/vault.sops.yaml, the server from group_vars/all/k3s.yml.

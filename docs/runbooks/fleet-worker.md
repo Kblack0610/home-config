@@ -2,6 +2,8 @@
 
 Hosts that fleet-dispatch places agent sessions on, over ssh. The roster is the `fleet_workers` group in [`ansible/inventory.yml`](../../ansible/inventory.yml), and the dotfiles read it from that file alone (`.local/lib/fleet-hosts.sh`), so its vars stay there, not in `group_vars/`. The dispatch side, what it places and why: dotfiles-private `.config/agentctl/QUEUE.md`, "Fleet workers".
 
+A machine the human drives the fleet from, but that runs no session, goes in `fleet_controllers` instead (today `cachyos-rog`, the ROG Flow). No play targets that group and `fleet-hosts.sh` never places work there. Never move a controller into `fleet_workers` to give it a session.
+
 ## What a worker takes
 
 - A light claude queue item with no plan and no `#cloud-ok` tag, in a repo listed in the host's `fleet_repos`, when the fleet home is over its load or idle pace. Heavy (Unity) items, plan items and other harnesses stay on the home.
@@ -26,6 +28,7 @@ When the home is a fleet worker, the same play sets it up; the workstation is se
 - enables lingering, so user units run with nobody logged in;
 - builds `agent-web` and links it to `~/.local/bin/agent-web`;
 - builds `hub` (the hub-tui crate) and links it to `~/.local/bin/hub`, which `fleet-state.service` runs after each tick (`hub needs --page`). Arch only, like agent-web, and re-run the play after a dotfiles change to hub-core or `channels.toml` to rebuild it. Without it the unit logs "Unable to locate executable hub" every minute (razer-laptop, 2026-11-15). The first tick with the binary pages once for the NEEDS YOU rows already open, at most 3 named, under the score bar and daily cap in `channels.toml` `[pager.needs]`;
+- builds `notes` with `notes-bootstrap --build-only` (the private overlay's installer: it builds the notes-cli crate, publishes it to `~/.local/lib/notes` and links `~/.local/bin/notes`), which `agent-queue` runs to file a board row on add and close it on done. Arch only, and skipped until the overlay is stowed; it also links `notes-sync`, `notes-watch` and `~/.config/notes`, and exits 0 when its build fails, so the play reads `~/.local/bin/notes` back and the report names a missing one. Without it `agent-queue add` says "no story row filed: no notes on PATH" and `agent-queue done` says "notes: command not found", and no item files or closes its row (razer-laptop, 2026-11-15 to 11-16). The binary alone files nothing: the rows live in the `~/.notes` store, which the play does not clone, so a home with no `~/.notes` still files no rows;
 - makes `~/.ssh/id_agent_sync`, the key `git-sync-agent.sh` pushes the store with, and clones Forgejo `kblack0610/.agent` into `~/.agent` once that key is a write deploy key there (a plain `~/.agent` from before is kept as `~/.agent.pre-home`);
 - writes `~/.config/schedules-sync/kubeconfig` for the `monitoring/schedules-sync` account, which may only read the github-runner-exporter feed (`apps/github-runner-exporter/feed-reader-rbac.yaml`), and a `schedules-sync.service` drop-in that sets `KUBECONFIG` to it. Without it the feed never answers, no `~/.local/state/schedules/state.json` is written, and every `nightly:` queue hold waits on "no schedules state". `~/.kube/config` is not touched;
 - starts `agent-web.service` once `~/.config/agent-web/oauth.json` exists.

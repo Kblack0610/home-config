@@ -28,9 +28,9 @@ spec:
                 requests:
                   cpu: 50m
                   memory: 128Mi
-                # 128Mi OOMKilled the audit (exit 137) on 2026-11-17 and on two
-                # earlier nights: it loads every ConfigMap and Secret in the
-                # cluster as JSON, and the cluster outgrew it. 512Mi ran clean.
+                # Memory scales with the total size of every ConfigMap and Secret
+                # in the cluster: audit.py loads each kind as one JSON document.
+                # Exit 137 here means the cluster outgrew this limit.
                 limits:
                   cpu: 200m
                   memory: 512Mi

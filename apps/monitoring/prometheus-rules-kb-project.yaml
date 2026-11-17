@@ -27,7 +27,7 @@ spec:
       rules:
         # ---- analytics: the games, from the game registry's /metrics ----
         # The registry's game id is the project name (dodginballs, time-tangle).
-        # A metric named by its label: one number per opt-in event kind and per binks-chat
+        # A metric named by its label: one number per opt-in event kind and per binks
         # tool (a tool is a feature of the chat). One rule for both, because promtool lints
         # two records of one name with the same static labels as duplicates. An event kind
         # is free-form up to 32 chars, at most 200 (game, kind) series (registry
@@ -43,7 +43,7 @@ spec:
             or
             sum by (project, metric) (
               label_replace(
-                label_replace(increase(binks_tool_calls_total[24h]), "project", "binks-chat", "", ""),
+                label_replace(increase(binks_tool_calls_total[24h]), "project", "binks", "", ""),
                 "metric", "tool_${1}_24h", "tool", "(.*)"
               )
             )
@@ -95,31 +95,31 @@ spec:
             min by (project) (
               label_replace(
                 avg_over_time(probe_success{job="blackbox-sites", instance="https://binks.chat"}[7d]),
-                "project", "binks-chat", "", ""
+                "project", "binks", "", ""
               )
             )
           labels:
             dept: analytics
             metric: uptime_7d
 
-        # ---- analytics: binks-chat, from binks-api's /metrics ----
+        # ---- analytics: binks, from binks-api's /metrics ----
         - record: kb_project_number
           expr: |
             label_replace(
               sum(increase(binks_chat_completions_total{role="assistant"}[24h])),
-              "project", "binks-chat", "", ""
+              "project", "binks", "", ""
             )
           labels:
             dept: analytics
             metric: chat_turns_24h
 
-        # ---- money: binks-chat ----
+        # ---- money: binks ----
         # Every gateway key the app and its evals hold is named binks-*.
         - record: kb_project_number
           expr: |
             label_replace(
               sum(increase(litellm_spend_metric_total{api_key_alias=~"binks-.*"}[7d])),
-              "project", "binks-chat", "", ""
+              "project", "binks", "", ""
             )
           labels:
             dept: money
@@ -127,7 +127,7 @@ spec:
 
         # Two api pods report the same gauge, so max, not sum.
         - record: kb_project_number
-          expr: label_replace(max(binks_billing_active_subscribers), "project", "binks-chat", "", "")
+          expr: label_replace(max(binks_billing_active_subscribers), "project", "binks", "", "")
           labels:
             dept: money
             metric: subscribers_active

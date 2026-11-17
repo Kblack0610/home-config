@@ -33,7 +33,7 @@ One-page index of services and their management plane. Use this to answer "where
 | **Routing and DNS** | | | | |
 | OpenWRT (router, DHCP, DNS) | 192.168.1.1 | host OS | `infrastructure/openwrt/openwrt.sh` ; Ansible skeleton in draft PR | `infrastructure/openwrt/` ; `ansible/roles/openwrt-config/` |
 | DHCP reservations | 192.168.1.1 | OpenWRT dnsmasq | `infrastructure/dhcp/dhcp.sh` ; Ansible skeleton in draft PR | `infrastructure/dhcp/devices.yaml` ; `ansible/roles/openwrt-dhcp/` |
-| k3s agent (install + join) | every k3s node | host systemd | PXE inline install (hp-victus, asus-laptop, the Pis) ; Ansible role bound for razer-laptop | `infrastructure/pxe-server/http/kickstart/profiles/cluster.sh` ; `ansible/roles/k3s-agent/` |
+| k3s agent (install + join + upgrade) | every k3s node | host systemd | Ansible role, version pinned in `ansible/group_vars/all/k3s.yml` | `ansible/roles/k3s-agent/` |
 | Traefik (ingress controller) | k3s cluster | k3s pod | k3s built-in / `infrastructure/traefik/` | `infrastructure/traefik/` |
 | Cloudflare tunnel | asus-laptop/hp-victus | k3s pod | Flux (in `apps/` somewhere) | — |
 | **Provisioning** | | | | |

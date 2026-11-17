@@ -440,29 +440,26 @@
         tasks_from: disk
       tags: [mac, ci-disk]
 
-# Phase B: k3s-agent role is AUTHORED but not bound. Applying it against
-# running cluster nodes reinstalls k3s — the user enables this binding when
-# they are ready to converge the fleet (set vault_k3s_token first).
-#
-# - name: k3s cluster nodes (pi_k3s + linux_bare_metal)
-#   hosts: pi_k3s:linux_bare_metal
-#   become: true
-#   gather_facts: true
-#   roles:
-#     - role: k3s-agent
-#       tags: [k3s]
-
-# The first host the k3s-agent role joins. hp-victus and asus-laptop were joined
-# by the PXE cluster profile before the role existed; add them here once their
-# agents are pinned to the server's version (they run v1.34.4 against a v1.33.5
-# server, so a converge would downgrade them). After the first join, label the
-# node by hand, since a kubelet may not set node-role labels on itself:
-#   kubectl label node razer-laptop node-role.kubernetes.io/workstation=true
-#   ansible-playbook playbooks/site.yml --limit razer-laptop --tags k3s --check --diff
-- name: k3s agent (razer-laptop)
-  hosts: razer-laptop
+# Every k3s node runs k3s_install_version (group_vars/all/k3s.yml). The server
+# goes first: a kubelet may never be newer than the apiserver. Then the agents,
+# one at a time, stopping at the first failure. After a new node joins, label it
+# by hand (a kubelet may not set node-role labels on itself):
+#   kubectl label node <host> node-role.kubernetes.io/workstation=true
+- name: k3s server (pi5-master)
+  hosts: pi5-master
   become: true
   gather_facts: true
+  any_errors_fatal: true
+  roles:
+    - role: k3s-agent
+      tags: [k3s]
+
+- name: k3s agents, one at a time
+  hosts: pi_k3s:linux_bare_metal:!pi5-master
+  become: true
+  gather_facts: true
+  serial: 1
+  max_fail_percentage: 0
   roles:
     - role: k3s-agent
       tags: [k3s]

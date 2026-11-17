@@ -82,7 +82,7 @@ Running services show up in the Grafana dashboard **Homelab: Bare-metal services
 | Phase | Status | Scope |
 |-------|--------|-------|
 | **A** | shipped | `github-actions-runner-linux` on thinkcentre (host retired 2026-10-12). Ansible skeleton. `ansible-runner` CronJob for drift detection. Runner picks up Linux jobs **only after** a `platform` workflow is migrated to `runs-on: [self-hosted, linux, x64]` — the runner comes up online but idle until then. |
-| **B** | authored, unbound | `k3s-agent` role extracted from the PXE kickstart (`infrastructure/pxe-server/http/kickstart/profiles/cluster.sh:64-84`). Role is present at `ansible/roles/k3s-agent/` and lint-clean, but the `site.yml` binding is commented out — applying it against a running cluster node reinvokes the k3s installer. Enable by uncommenting the role block in `site.yml` and seeding `vault_k3s_token` in `group_vars/{linux_bare_metal,pi_k3s}/vault.sops.yaml`. The inline install in `cluster.sh` stays during the transition. |
+| **B** | shipped | `k3s-agent` joins every k3s node and keeps it on `k3s_install_version` (`group_vars/all/k3s.yml`), server first, then agents one at a time (`site.yml`). The PXE install no longer installs k3s. See `ansible/roles/k3s-agent/README.md`. |
 | C | not started | Port `infrastructure/{openwrt,dhcp}/*.sh` to Ansible roles. |
 | **D** | shipped | macOS roles: `github-actions-runner-mac`, `brew-common`, `node-exporter-mac`, `macos-baseline`, bound in `site.yml`. See `docs/mac-machines.md`. |
 | **E** | shipped | `k3s-node-no-suspend` (laptop lid-close keeps node online) and `nut` (UPS-driven graceful cluster shutdown, primary on `pi5-master`, secondaries on all 5 Pi workers). See `docs/nut-ups.md`. |

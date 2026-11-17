@@ -206,16 +206,14 @@
   args:
     creates: "{{ ansible_env.HOME }}/.ssh/id_ed25519"
 
-# The home is the state host itself: nothing to reach.
-- name: Trust the state host's host key
-  when: not fleet_worker_is_home | bool
-  ansible.builtin.known_hosts:
-    name: "{{ fleet_state_host }}"
-    # OpenSSH 10 also prints a "# host:22 SSH-2.0-..." banner line on stdout; kept in
-    # the key, it never matches known_hosts and the task appends the pair on every run.
-    key: "{{ lookup('ansible.builtin.pipe', 'ssh-keyscan -t ed25519 ' ~ fleet_state_host ~ ' 2>/dev/null | grep -v ^#') }}"
-    state: present
+# The state host's key, with every roster machine's, comes from the inventory (ssh_host_ed25519),
+# never a scan, so a home move or a host that is off cannot leave it untrusted.
+- name: Trust the roster's host keys
+  ansible.builtin.import_role:
+    name: host-identity
+    tasks_from: known_hosts
 
+# The home is the state host itself: nothing to reach.
 - name: Read whether the worker reaches the state host
   when: not fleet_worker_is_home | bool
   ansible.builtin.command: ssh -o BatchMode=yes -o ConnectTimeout=5 {{ fleet_state_host }} true

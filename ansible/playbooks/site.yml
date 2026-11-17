@@ -777,9 +777,9 @@
       tags: [thermal]
 
 # Tools for scripts/host-qualify.py (stress-ng, fio, smartctl). See roles/host-qualify.
-#   ansible-playbook playbooks/site.yml --limit linux_bare_metal --tags host-qualify --check --diff
+#   ansible-playbook playbooks/site.yml --limit linux_bare_metal:pi_k3s --tags host-qualify --check --diff
 - name: Host qualification tools
-  hosts: linux_bare_metal
+  hosts: linux_bare_metal:pi_k3s
   become: true
   gather_facts: true
   roles:

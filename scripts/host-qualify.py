@@ -57,6 +57,7 @@ KUBE_CONTEXT = postmortem.KUBE_CONTEXT
 DEGRADED_TAINT = "kblab.me/degraded"         # written by cluster-janitor's quarantine step
 
 PASSIVE = r"""
+PATH="$PATH:/usr/sbin:/sbin"  # Debian keeps smartctl in /usr/sbin, off a non-root PATH
 missing=""; for t in stress-ng fio smartctl; do command -v $t >/dev/null || missing="$missing $t"; done
 echo "===missing$missing"
 echo "===watchdog $(systemctl show -p RuntimeWatchdogUSec --value) $(test -e /dev/watchdog0 && echo dev || echo nodev)"
@@ -136,6 +137,8 @@ def passive_checks(host, inst):
     checks.append(check("headroom", state == "ROOM", headroom.line(host, r).split(None, 1)[1], CORE))
 
     end = dt.datetime.now(dt.timezone.utc)
+    shipped = postmortem.loki("/loki/api/v1/query", time=postmortem.ns(end),
+                              query=f'sum(count_over_time({{host="{host}",transport="kernel"}} [{FAULT_DAYS}d]))')
     counts = {}
     for rule, regex in postmortem.fault_rules():
         expr = (f'sum(count_over_time({{host="{host}",transport="kernel"}} |~ {json.dumps(regex)}'
@@ -143,9 +146,13 @@ def passive_checks(host, inst):
         res = postmortem.loki("/loki/api/v1/query", query=expr, time=postmortem.ns(end))["result"]
         counts[rule] = int(float(res[0]["value"][1])) if res else 0
     hits = {k: v for k, v in counts.items() if v}
-    checks.append(check(f"kernel faults {FAULT_DAYS}d", not hits,
-                        ", ".join(f"{k} {v}" for k, v in hits.items()) or f"none of {', '.join(counts)}",
-                        STANDARD))
+    if not shipped["result"]:
+        # A host that ships no kernel log to Loki cannot show it had no fault.
+        checks.append(check(f"kernel faults {FAULT_DAYS}d", False, "no kernel log in Loki for this host", STANDARD))
+    else:
+        checks.append(check(f"kernel faults {FAULT_DAYS}d", not hits,
+                            ", ".join(f"{k} {v}" for k, v in hits.items()) or f"none of {', '.join(counts)}",
+                            STANDARD))
 
     i = f'instance="{inst}"'
     boot = headroom.scalar(f"node_boot_time_seconds{{{i}}}")
@@ -172,7 +179,9 @@ def passive_checks(host, inst):
         elif kind == "smart" and args[1] in SMART_TRANSPORTS:
             checks.append(smart_check(args[0], args[1], body))
     if not any(c["name"].startswith("smart ") for c in checks):
-        checks.append(check("smart", False, "no internal disk answered", STANDARD))
+        other = [" ".join(h.split()[1:]) for h in heads if h.startswith("smart ")]
+        detail = f"no SMART-capable disk ({', '.join(other)})" if other else "no internal disk answered"
+        checks.append(check("smart", False, detail, STANDARD))
     return checks
 
 
@@ -245,6 +254,14 @@ def release(host, ip, record):
     print(f"{host}: released node {node} from quarantine")
 
 
+def host_instance(host, ip, known):
+    """The scrape instance for an inventory host. cc:host_instance keys k3s nodes by node name,
+    so a Pi (inventory pi5-master, node raspberrypi) is found by its inventory IP."""
+    if host in known:
+        return known[host]
+    return next((inst for inst in known.values() if ip and inst.rsplit(":", 1)[0] == ip), None)
+
+
 def parse_minutes(s):
     return int(s[:-1]) * {"m": 60, "h": 3600}[s[-1]]
 
@@ -261,10 +278,9 @@ def main(argv=None):
     hosts, _ = load_inventory(a.inventory)
     if a.host not in hosts:
         sys.exit(f"FAIL: {a.host} is not in {a.inventory}")
-    known = headroom.hosts()
-    if a.host not in known:
-        sys.exit(f"FAIL: {a.host} is not a cc:host_instance host")
-    inst = known[a.host]
+    inst = host_instance(a.host, hosts[a.host].get("ansible_host"), headroom.hosts())
+    if inst is None:
+        sys.exit(f"FAIL: {a.host} is not a cc:host_instance host, by name or inventory IP")
 
     checks = passive_checks(a.host, inst)
     if a.no_burn_in:

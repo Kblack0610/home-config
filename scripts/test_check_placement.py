@@ -252,6 +252,16 @@ class PlacementTests(unittest.TestCase):
         self.qualify("safe", "core", 1)
         self.assertEqual(self.qualification(), [])  # "unsafe" is standard and has none
 
+    def test_standard_with_probation_record_is_reported(self):
+        self.qualify("safe", "core", 1)
+        self.qualify("unsafe", "probation", 1)
+        self.assertEqual(self.qualification(), ["unsafe: standard tier, but its qualification record qualifies it for probation"])
+
+    def test_standard_with_standard_record_passes(self):
+        self.qualify("safe", "core", 1)
+        self.qualify("unsafe", "standard", 1)
+        self.assertEqual(self.qualification(), [])
+
     def test_strict_cli_fails_on_unqualified_core_host(self):
         rc, output = self.run_cli(self.workload("standard"))
         self.assertEqual(rc, 1)

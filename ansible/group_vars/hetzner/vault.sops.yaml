@@ -4,6 +4,7 @@ vault_forgejo_env:
     FORGEJO__security__INTERNAL_TOKEN: ENC[AES256_GCM,data:PJmjRYDNKQe5UOsUDYr4fOuJdIYmAW6X80smAEDEVLQRoTPjyiEA74R/KbVOXsVCeuX1U2UJpRnALhUknvoXHZvPWi2JBDjxFZF2dRPzXYobpADu+8oZxAZL5NUj3pV9fPwlRhFAyE7T,iv:JY3uJ77JqaTXL7GLN0oi93J4AgSexZOBOeKnz4duNkE=,tag:rNBoUFHGN2PK4S9/WXugBQ==,type:str]
     FORGEJO__security__SECRET_KEY: ENC[AES256_GCM,data:PNL041hdS5orcR92xdMnXCT+XDFKB+1GTaN+OykCVzO86dX33ozOnBT8Lw==,iv:Pwhj0zzt4LuO1aFbdpZ8rqaUlFAtlKt2mPtzMP1KW/I=,tag:R6UzoqbuixTf//yiluHmXw==,type:str]
     FORGEJO__server__LFS_JWT_SECRET: ENC[AES256_GCM,data:Yxni2dcbCgHw2mT0StQ8BRDHOiA4ZyryWXJ5mlZqSOjTmeSHnZ25Up8rWA==,iv:6CwiVojG/ghPEqjuZubJwJyCMFo3ApJizc9qYv4k9hI=,tag:wG5rEg/yv/cylMY0JjtCyA==,type:str]
+    FORGEJO__database__PASSWD: ENC[AES256_GCM,data:tSkZh4Ih7oubcLc1yFWhkzdTSlxM6RAgmZesFBnqdfy4jeJizqyRD/pN3Q+RVG53,iv:KBmshzqaWYn9bJRWBQudgCp3spAiNZaXQu/M1Jnz2AQ=,tag:zh6PxUBX/kHVr0i92aq7vg==,type:str]
 vault_home_wan_cidr: ENC[AES256_GCM,data:nDT1vw6/zRuzQrzaJPwyFg==,iv:sDbETsNwQnith094wmMyw3ei2pn1IMsZ+AVrTOqFlxk=,tag:C++ODjjJb8Xuhk2/41zBcg==,type:str]
 sops:
     age:
@@ -25,7 +26,7 @@ sops:
             COzk1miJhIcT7WiXb/2gWazM0/iXE0ozj4fm6OtLv+KHTnVSc7jC3g==
             -----END AGE ENCRYPTED FILE-----
           recipient: age1q694uddq28kzxyteemaa4x5zxrnqlmhj0z336zmf6wpptq6ema5qcez399
-    lastmodified: "2026-11-14T03:02:48Z"
-    mac: ENC[AES256_GCM,data:EtvSxeGnnlDrR1E85EBwRujUDlrc6foWfd7BWc9zUBFdSctaeSuhH2e73P3gVE6DnMUNEp561MK7mCXG2HVpY00/jq5EdT6XTG7q2/wp8MdsUyDACieb8+pfiYLGEr8BnjAebPp14YocEMtpr6GdYNkpwPH7S5MGS3Zjjho/dhE=,iv:cG5n/Zj7a9Xc7zHs7S7fz0nUcDJHeSJTaUHfjRNqG/k=,tag:45sy7qdbwjGlIJakHWfhHw==,type:str]
+    lastmodified: "2026-11-17T19:04:27Z"
+    mac: ENC[AES256_GCM,data:RCGaqkwSifwZitl1Ytjqdi6fUEkjzx2B9ysh8hBrxJs3PwQqYo28Gevb5wf1ha/QpRaFXdaZsZ3b0TRgdkBCC2JxbuxXwF2SV8TfgNifF3WmtQb6aIEBRMfnL4I8MO3E8aShVWOoFrC9YgkwiFR692gHmX0TJpbxDoVW+5PGhnQ=,iv:4q93ppP04GYi4jl6EKsmqMhHZmGF3CMgmtREjiAdOtA=,tag:pxOmbwG3uNecExjEvD8KOQ==,type:str]
     unencrypted_suffix: _unencrypted
     version: 3.13.3

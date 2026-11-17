@@ -480,6 +480,53 @@
       }
     },
     {
+      "id": 15,
+      "type": "timeseries",
+      "title": "Store revenue, yesterday",
+      "description": "What each product's apps made on the App Store (proceeds), Google Play (charged) and Steam (net) the day before, one series per store and currency. A store that did not read shows no series, not zero: store_sales_up says which.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "victoriametrics"
+      },
+      "gridPos": {
+        "h": 7,
+        "w": 24,
+        "x": 0,
+        "y": 31
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "victoriametrics"
+          },
+          "editorMode": "code",
+          "expr": "kb_project_number{project=~\"$project\", dept=\"money\", metric=~\"revenue_.*\"}",
+          "legendFormat": "{{project}} {{metric}}",
+          "refId": "A",
+          "instant": false,
+          "range": true,
+          "format": "time_series"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "none",
+          "noValue": "no data"
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom"
+        },
+        "tooltip": {
+          "mode": "multi"
+        }
+      }
+    },
+    {
       "id": 13,
       "type": "row",
       "title": "Sources",
@@ -488,7 +535,7 @@
         "h": 1,
         "w": 24,
         "x": 0,
-        "y": 31
+        "y": 38
       },
       "panels": []
     },
@@ -505,7 +552,7 @@
         "h": 4,
         "w": 24,
         "x": 0,
-        "y": 32
+        "y": 39
       },
       "targets": [
         {

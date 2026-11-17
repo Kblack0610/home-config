@@ -25,6 +25,7 @@ The machine named by the group's `fleet_state_host` is the fleet home: the works
 When the home is a fleet worker, the same play sets it up; the workstation is set up by its own play and dotfiles. On a worker home the role skips the state-host key steps (it is the state host) and runs `tasks/home.yml`, which:
 - enables lingering, so user units run with nobody logged in;
 - builds `agent-web` and links it to `~/.local/bin/agent-web`;
+- builds `hub` (the hub-tui crate) and links it to `~/.local/bin/hub`, which `fleet-state.service` runs after each tick (`hub needs --page`); without it the unit logs "Unable to locate executable hub" every minute;
 - makes `~/.ssh/id_agent_sync`, the key `git-sync-agent.sh` pushes the store with, and clones Forgejo `kblack0610/.agent` into `~/.agent` once that key is a write deploy key there (a plain `~/.agent` from before is kept as `~/.agent.pre-home`);
 - writes `~/.config/schedules-sync/kubeconfig` for the `monitoring/schedules-sync` account, which may only read the github-runner-exporter feed (`apps/github-runner-exporter/feed-reader-rbac.yaml`), and a `schedules-sync.service` drop-in that sets `KUBECONFIG` to it. Without it the feed never answers, no `~/.local/state/schedules/state.json` is written, and every `nightly:` queue hold waits on "no schedules state". `~/.kube/config` is not touched;
 - starts `agent-web.service` once `~/.config/agent-web/oauth.json` exists.

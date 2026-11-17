@@ -3,7 +3,7 @@
 # Managed by ansible/roles/nut. Do not edit by hand.
 #
 # Runs on the NUT primary (pi5-master), as the nut user, when the ONBATT
-# settling timer expires or LOWBATT fires. It pages, then broadcasts FSD:
+# settling timer expires. It pages, then broadcasts FSD:
 # every secondary runs its worker-shutdown.sh, and the primary halts after
 # FINALDELAY ({{ nut_primary_finaldelay }}s) through primary-shutdown.sh, which
 # ends in killpower.

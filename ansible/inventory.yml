@@ -182,6 +182,24 @@ all:
           host_tier: standard
           ansible_host: 192.168.1.193
 
+    # Every Raspberry Pi: each exports its firmware undervoltage latch
+    # (roles/rpi-throttle-metric), which PiUndervoltageSinceBoot alerts on.
+    rpi_hosts:
+      children:
+        pi_k3s:
+        rpi_standalone:
+
+    # Pis outside k3s. Their node-exporter is Debian's package, which reads its
+    # textfile dir at /var/lib/prometheus/node-exporter, not the DaemonSet's.
+    rpi_standalone:
+      vars:
+        rpi_throttle_textfile_dir: /var/lib/prometheus/node-exporter
+      children:
+        adguard:
+      hosts:
+        audio-living:
+        audio-bedroom:
+
     # Hosts that arm their hardware watchdog (roles/hw-watchdog), so a freeze
     # resets the box instead of waiting for someone to pull the plug.
     watchdog_hosts:
@@ -272,9 +290,15 @@ all:
         # their own 6 threads (ci_linux_cpus 5-7,13-15) and 40G, and a light job
         # is 0.5-0.6G anon. Heavy stays at one: it waited 6% of 7 days with
         # bursts to 18, but heavy jobs publish fixed host ports.
+        # ci_repo_runners: runners for one personal repo, which cannot use the
+        # org's slots. GitHub bills hosted minutes on a private repo and refused
+        # every .dotfiles-private job from 2026-11-15 once the month's allowance
+        # ran out. Its jobs are lint and unit runs of seconds and under 1G, so
+        # one runner on each of two hosts, in the light slots' slice.
         razer-laptop:
           ci_light_slots: 2
           ci_heavy_slots: 1
+          ci_repo_runners: [{repo: Kblack0610/.dotfiles-private, slot: dotfiles-private-1}]
         # Four light slots, no heavy, on the cores of its third Unity slot since
         # 2026-11-13 (unity_ci_runners says why). Light jobs average 0.4 cores and
         # 0.6G, so four fit in three cores and 14G. Ubuntu: linux-ci-host's apt list.
@@ -282,6 +306,7 @@ all:
           host_tier: standard
           ci_light_slots: 4
           ci_heavy_slots: 0
+          ci_repo_runners: [{repo: Kblack0610/.dotfiles-private, slot: dotfiles-private-1}]
 
     # BNB Unity runner pool (added 2026-10-05; the "Unity CI runner pool" play in
     # site.yml). Org-scoped, label `unity`, for every game repo. Each slot runs

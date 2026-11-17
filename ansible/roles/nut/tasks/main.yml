@@ -28,6 +28,16 @@
     state: present
   when: ansible_os_family != 'Darwin'
 
+# Every NUT unit is WantedBy nut.target. Debian enables it; Arch ships it disabled,
+# so upsmon never started at boot on ms-a2 and deskslim-2 (2026-11-17).
+- name: Enable nut.target so the NUT units start at boot
+  ansible.builtin.systemd:
+    name: nut.target
+    enabled: true
+  when:
+    - not ansible_check_mode
+    - ansible_os_family != "Darwin"
+
 - name: Include server tasks
   ansible.builtin.include_tasks: server.yml
   when: nut_role == 'server'

@@ -75,3 +75,15 @@
     - ansible_os_family == 'Darwin'
     - not ansible_check_mode
     - nut_plist is changed
+
+# worker-shutdown.sh sleeps a Mac rather than halting it, so killpower cuts it
+# while it is on; autorestart is what boots it when the outlets come back.
+- name: Power back on when the outlets come back (macOS)
+  ansible.builtin.shell: |
+    pmset -g | grep -Eq '^ *autorestart +1' && exit 0
+    pmset -a autorestart 1 && echo changed
+  register: nut_autorestart
+  changed_when: "'changed' in nut_autorestart.stdout"
+  when:
+    - ansible_os_family == 'Darwin'
+    - not ansible_check_mode

@@ -77,7 +77,7 @@
 # agent-panel lists this worker's sessions: the workstation's fleet-sessions runs
 # `agent-panel list --json` over ssh, and a worker without it never shows any.
 # A narrow task, not the dotfiles' build_local_rust_tools: that also builds
-# agent-web, hub and timebox, which only the fleet home runs (tasks/home.yml builds agent-web and hub). Arch only: apt's
+# agent-web, hub and timebox, which only the fleet home runs (tasks/home.yml builds agent-web, hub and notes). Arch only: apt's
 # cargo (1.75 on Ubuntu 24.04) is older than the Cargo.lock v4 and clap 4.6 here.
 # A rebuild on each play is incremental; no timer rebuilds it between plays yet.
 - name: Build agent-panel (cargo, as the user)

@@ -48,6 +48,22 @@
     state: link
     force: true
 
+# agent-queue files a board row on add and closes it on done through `notes ptask`; without the
+# binary it logs "no story row filed: no notes on PATH" and "notes: command not found" and the
+# item never gets or closes its row (razer-laptop, 2026-11-15 to 11-16). notes-bootstrap
+# --build-only is the one installer of the CLI (builds it, publishes it to ~/.local/lib/notes,
+# links ~/.local/bin/notes); it lives in the private overlay, which the report names when missing.
+- name: Find the notes installer (the private overlay's notes-bootstrap)
+  ansible.builtin.stat:
+    path: "{{ ansible_env.HOME }}/.local/bin/notes-bootstrap"
+  register: _fleet_home_notes_boot
+
+- name: Build and link the notes CLI (notes-bootstrap --build-only)
+  when: ansible_facts.os_family == "Archlinux" and _fleet_home_notes_boot.stat.exists
+  ansible.builtin.command: "{{ ansible_env.HOME }}/.local/bin/notes-bootstrap --build-only"
+  register: _fleet_home_notes
+  changed_when: "'Compiling' in _fleet_home_notes.stderr"
+
 # git-sync-agent.sh pushes the store with this key and nothing else. Its public
 # half is a write deploy key on Forgejo kblack0610/.agent; the report prints it
 # until the store clones.

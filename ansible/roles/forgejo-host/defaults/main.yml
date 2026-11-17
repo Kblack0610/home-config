@@ -1,7 +1,7 @@
 ---
 # Forgejo on a plain Docker host (forge-hel1). Data lives on the Hetzner volume.
 forgejo_host_data: /mnt/forgejo/data
-# Keep the host and rollback deployment on the same pinned image (apps/forgejo/deployment.yaml).
+# The one pin; scripts/forgejo-restore-drill.sh reads it from here too.
 forgejo_host_image: data.forgejo.org/forgejo/forgejo:15.0.11@sha256:5d050e6d623e540923ff54b1c0c7acf41c3f9174a6c7ad515cc0c63d703fcd22
 # Where Forgejo's HTTP port listens. Loopback until the tailnet is up; then
 # the host's tailnet IP, so the cluster's forgejo-http Service can reach it.
@@ -21,31 +21,61 @@ forgejo_host_postgres_data: /mnt/forgejo/postgres
 # Extra root keys, only for the seed copy from asus-laptop; emptied after cutover.
 forgejo_host_seed_keys: []
 
-# The cluster's hourly jobs, run here as systemd timers once Forgejo runs here.
-# Each takes its image, script and env from its CronJob in apps/forgejo, so one
-# copy of each script exists; `env` overrides a value the host needs
-# differently. The timers are enabled on every host, and each
-# run is skipped unless the compose forgejo container is up.
+# Hourly jobs as systemd timers, each running files/jobs/<name>.sh in `image`
+# with `env`. The timers are enabled on every host, and each run is skipped
+# unless the compose forgejo container is up.
 forgejo_host_backups: /mnt/forgejo/backups
 forgejo_host_jobs:
+  # VACUUM INTO plus quick_check, 48 kept, so a restore loses at most an hour
+  # of PRs, issues and Actions state. forgejo-backup-pull ships them home.
   - name: forgejo-db-snapshot
-    cronjob: db-snapshot-cronjob.yaml
+    image: alpine:3.24.1
     on_calendar: "*-*-* *:07:00"
     timeout_sec: 900
     volumes:
       - "{{ forgejo_host_data }}:/data"
       - "{{ forgejo_host_backups }}/snapshots:/snapshots"
     env: {}
+  # Clears orphaned git locks (closed allowlist, age-gated) and reports each
+  # reap to ntfy, so a crash mid-fetch costs at most an hour of mirror sync.
   - name: forgejo-lock-reaper
-    cronjob: lock-reaper-cronjob.yaml
+    image: alpine:3.24.1
     on_calendar: "*-*-* *:17:00"
     timeout_sec: 900
     volumes:
       - "{{ forgejo_host_data }}:/data"
     env:
       # The public ntfy, as the VM has no cluster DNS; the topic name is the
-      # only token, as it is in-cluster.
+      # only token.
       NTFY_TOPIC: https://ntfy.kblab.me/homelab-alerts
+      # Minutes. Must equal the exporter's STALE_LOCK_AFTER (7200s) below, so
+      # the detector and the remediator agree on what "orphaned" means. 120 is
+      # 2x [git.timeout] MIGRATE=3600 (files/app.ini), the longest a git
+      # process Forgejo starts can live; the job cannot see Forgejo's PIDs, so
+      # this age gate is the guard against reaping a live lock.
+      STALE_MINUTES: "120"
+
+# The mirror exporter (files/mirror-exporter/exporter.py, stdlib python),
+# a compose service beside Forgejo; apps/forgejo/scrapeconfig-mirror-exporter.yaml
+# scrapes it on 9310.
+forgejo_host_exporter_image: python:3.12-alpine
+forgejo_host_exporter_env:
+  FORGEJO_DB_PATH: /data/gitea/gitea.db
+  FORGEJO_REPO_ROOT: /data/git/repositories
+  # 2x [git.timeout] MIGRATE=3600 in files/app.ini; older locks were left by a
+  # dead process. Raise it with [git.timeout] and STALE_MINUTES above.
+  STALE_LOCK_AFTER: "7200"
+  DB_REFRESH_SECONDS: "120"
+  FS_REFRESH_SECONDS: "600"
+  # A direct read-only open works against a WAL database on a read-only mount
+  # while Forgejo runs (the -shm exists); against a hot rollback journal, the
+  # state a crashed writer leaves, the snapshot copy takes over. Watch
+  # forgejo_mirror_exporter_db_read_mode for the live path.
+  DB_READ_MODE: auto
+  SNAPSHOT_DIR: /tmp/snap
+  # 3x the ~61MB database; past it the snapshot path fails loudly
+  # (scrape_ok=0, reason=too_large) instead of filling the 256m tmpfs.
+  SNAPSHOT_MAX_BYTES: "201326592"
 
 # asus-laptop's forgejo-backup-pull CronJob (apps/forgejo/backup-pull-cronjob.yaml).
 # Private half: apps/forgejo/backup-pull-secret.sops.yaml. A root key because

@@ -45,11 +45,8 @@ all:
         # a USB-C ethernet dongle; the DHCP reservation follows that dongle's MAC.
         razer-laptop:
           ansible_host: 192.168.1.26
-          # A k3s agent since 2026-10-26, like hp-victus and asus-laptop. Pinned
-          # to the server's version: an agent newer than the server is outside
-          # the supported skew (hp/asus run v1.34.4 against a v1.33.5 server).
+          # A k3s agent since 2026-10-26, like hp-victus and asus-laptop.
           k3s_role: agent
-          k3s_install_version: v1.33.5+k3s1
           k3s_extra_args:
             - --node-label=node.kubernetes.io/friendly-name=razer-laptop
           # Its power button is a keyboard key and it sits stacked, lid shut:
@@ -101,21 +98,27 @@ all:
         pi5-master:
           ansible_host: 192.168.1.20
           k3s_role: server
+          k3s_extra_args: [--tls-san, 192.168.1.20]
         pi5-worker1:
           ansible_host: 192.168.1.21
           k3s_role: agent
+          k3s_extra_args: [--with-node-id]
         pi5-worker2:
           ansible_host: 192.168.1.22
           k3s_role: agent
+          k3s_extra_args: [--with-node-id]
         pi5-worker3:
           ansible_host: 192.168.1.23
           k3s_role: agent
+          k3s_extra_args: [--with-node-id]
         pi4-worker4:
           ansible_host: 192.168.1.24
           k3s_role: agent
+          k3s_extra_args: [--with-node-id]
         pi4-worker5:
           ansible_host: 192.168.1.124
           k3s_role: agent
+          k3s_extra_args: [--with-node-id]
 
     openwrt:
       hosts:

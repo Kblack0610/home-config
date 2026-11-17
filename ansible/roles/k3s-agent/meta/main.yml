@@ -3,9 +3,8 @@ galaxy_info:
   role_name: k3s_agent
   author: home-config
   description: >-
-    Install a k3s node (agent or server) joining the home-k3s cluster.
-    Phase B extraction of the k3s install logic from
-    infrastructure/pxe-server/http/kickstart/profiles/cluster.sh.
+    Join a k3s node (agent or server) to home-k3s and keep it on the one
+    pinned version, k3s_install_version in group_vars/all/k3s.yml.
   license: MIT
   min_ansible_version: "2.14"
   platforms:

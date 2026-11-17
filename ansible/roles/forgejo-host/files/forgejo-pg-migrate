@@ -1,0 +1,98 @@
+#!/bin/bash
+# forgejo-pg-migrate - copy Forgejo's SQLite DB into Postgres and prove the copy
+# is whole: Forgejo's own `migrate` makes the schema, forgejo-pg-copy copies the
+# rows, every table's row count must match, then `forgejo doctor` runs. gitea.db
+# is never written. Installed by roles/forgejo-host for the Postgres switch.
+#
+#   forgejo-pg-migrate rehearse   online copy into a throwaway Postgres; Forgejo keeps running
+#   forgejo-pg-migrate load       into the compose postgres; refuses while Forgejo runs
+#
+# Runbook: home-config apps/forgejo/README.md, "Where Forgejo runs and how to move it".
+set -euo pipefail
+
+MODE="${1:-}"
+DATA=/mnt/forgejo/data
+WORK=/mnt/forgejo/pgmig
+COMPOSE=/etc/forgejo/compose.yaml
+FORGEJO_IMAGE="$(awk '/^  forgejo:/{f=1} f&&/image:/{print $2; exit}' "$COMPOSE")"
+PG_IMAGE="$(awk '/^  postgres:/{f=1} f&&/image:/{print $2; exit}' "$COMPOSE")"
+PG_PASS="$(sed -n 's/^FORGEJO__database__PASSWD=//p' /etc/forgejo/secrets.env)"
+
+say() { echo "forgejo-pg-migrate: $*" >&2; }
+die() { say "$*"; exit 1; }
+
+[ -n "$PG_PASS" ] || die "no FORGEJO__database__PASSWD in /etc/forgejo/secrets.env"
+[ -n "$PG_IMAGE" ] || die "no postgres service in $COMPOSE"
+
+# NET and PG_HOST are how Forgejo's container reaches Postgres; PG_CTR is the
+# container this host runs psql in and copies into.
+case "$MODE" in
+  rehearse)
+    NET=forgejo-pgmig PG_HOST=forgejo-pgmig-pg PG_CTR=forgejo-pgmig-pg
+    cleanup() { docker rm -f "$PG_CTR" >/dev/null 2>&1 || true; docker network rm "$NET" >/dev/null 2>&1 || true; rm -rf "$WORK"; }
+    trap cleanup EXIT
+    cleanup
+    mkdir -p "$WORK/work"
+    docker network create "$NET" >/dev/null
+    docker run -d --name "$PG_CTR" --network "$NET" --tmpfs /var/lib/postgresql/data:size=4g \
+      -e POSTGRES_USER=forgejo -e POSTGRES_PASSWORD="$PG_PASS" -e POSTGRES_DB=forgejo "$PG_IMAGE" >/dev/null
+    say "online copy of gitea.db (Forgejo keeps running)"
+    ;;
+  load)
+    NET=forgejo_default PG_HOST=postgres
+    [ -z "$(docker compose -f "$COMPOSE" ps -q --status running forgejo)" ] || die "Forgejo is running; stop it first (a load under live writes loses them)"
+    PG_CTR="$(docker compose -f "$COMPOSE" ps -q --status running postgres)"
+    [ -n "$PG_CTR" ] || die "the compose postgres service is not running"
+    trap 'rm -rf "$WORK"' EXIT
+    rm -rf "$WORK"; mkdir -p "$WORK/work"
+    ;;
+  *) sed -n '2,10p' "$0" >&2; exit 2 ;;
+esac
+sqlite3 "$DATA/gitea/gitea.db" ".backup '$WORK/gitea.db'"
+chown -R 1000:1000 "$WORK"
+
+psql() { docker exec -i -e PGPASSWORD="$PG_PASS" "$PG_CTR" psql -h 127.0.0.1 -U forgejo -d "${PSQL_DB:-forgejo}" -v ON_ERROR_STOP=1 -qAt "$@"; }
+
+for _ in $(seq 30); do psql -c 'select 1' >/dev/null 2>&1 && break; sleep 1; done   # a fresh container has no ready event; 30 s bound
+psql -c 'select 1' >/dev/null || die "postgres in $PG_CTR does not answer"
+
+# The database starts empty every time: a half-done earlier load is redone, not merged.
+PSQL_DB=postgres psql -c 'DROP DATABASE IF EXISTS forgejo WITH (FORCE)' -c 'CREATE DATABASE forgejo OWNER forgejo'
+
+# app.ini with [database] pointed at this Postgres; everything else as live.
+awk -v host="$PG_HOST:5432" -v pass="$PG_PASS" '
+  /^\[/ { skip = ($0 == "[database]") }
+  /^\[database\]$/ { print; print "DB_TYPE = postgres"; print "HOST = " host; print "NAME = forgejo"; print "USER = forgejo"; print "PASSWD = " pass; print "SSL_MODE = disable"; next }
+  !skip' /etc/forgejo/app.ini > "$WORK/app.ini"
+grep -q '^DB_TYPE = postgres$' "$WORK/app.ini" || die "app.ini has no [database] section to repoint"
+chown 1000:1000 "$WORK/app.ini"; chmod 0600 "$WORK/app.ini"
+
+forgejo() {
+  docker run --rm --network "$NET" --user 1000:1000 --entrypoint forgejo \
+    -v "$DATA:/data:ro" -v "$WORK/work:/data/gitea" -v "$WORK/app.ini:/etc/forgejo-pgmig.ini:ro" \
+    "$FORGEJO_IMAGE" --config /etc/forgejo-pgmig.ini --work-path /data/gitea "$@"
+}
+
+say "schema from Forgejo's own migrate"
+forgejo migrate
+
+say "rows via forgejo-pg-copy"
+PG_IP="$(docker inspect -f '{{range .NetworkSettings.Networks}}{{.IPAddress}} {{end}}' "$PG_CTR" | awk '{print $1}')"
+PGPASSWORD="$PG_PASS" /usr/local/sbin/forgejo-pg-copy "$WORK/gitea.db" "host=$PG_IP port=5432 dbname=forgejo user=forgejo sslmode=disable" > "$WORK/copy.log"
+
+say "row counts, every table"
+bad=0 n=0
+for t in $(sqlite3 "$WORK/gitea.db" "select name from sqlite_master where type='table' and name not like 'sqlite_%' order by name"); do
+  s="$(sqlite3 "$WORK/gitea.db" "select count(*) from \"$t\"")"
+  p="$(psql -c "select count(*) from \"$t\"" 2>/dev/null || echo missing)"
+  [ "$s" = "$p" ] || { say "MISMATCH $t: sqlite $s, postgres $p"; bad=1; }
+  n=$((n + 1))
+done
+[ "$bad" = 0 ] || die "row counts differ; nothing switched"
+say "row counts equal in $n tables ($(awk '{s+=$2} END {print s}' "$WORK/copy.log") rows)"
+
+say "forgejo doctor check against the copy"
+forgejo doctor check --run check-db-version --run check-db-consistency --run check-user-type --run check-user-email   # the DB checks; repos are mounted read-only on purpose
+say "OK ($MODE): Postgres holds every row of gitea.db"
+[ "$MODE" = load ] && say "next: DB_TYPE = postgres in apps/forgejo/configmap.yaml, play roles/forgejo-host, start Forgejo"
+exit 0

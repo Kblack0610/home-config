@@ -51,11 +51,14 @@
 # agent-queue files a board row on add and closes it on done through `notes ptask`; without the
 # binary it logs "no story row filed: no notes on PATH" and "notes: command not found" and the
 # item never gets or closes its row (razer-laptop, 2026-11-15 to 11-16). notes-bootstrap
-# --build-only is the one installer of the CLI (builds it, publishes it to ~/.local/lib/notes,
-# links ~/.local/bin/notes); it lives in the private overlay, which the report names when missing.
+# --build-only is the one installer of the CLI: it builds it, publishes it to ~/.local/lib/notes
+# and links ~/.local/bin/notes, and also links notes-sync, notes-watch and ~/.config/notes. It
+# lives in the private overlay and exits 0 when its build fails, so the binary is read back
+# after it and a missing one goes to the report.
 - name: Find the notes installer (the private overlay's notes-bootstrap)
   ansible.builtin.stat:
     path: "{{ ansible_env.HOME }}/.local/bin/notes-bootstrap"
+    follow: true
   register: _fleet_home_notes_boot
 
 - name: Build and link the notes CLI (notes-bootstrap --build-only)
@@ -63,6 +66,12 @@
   ansible.builtin.command: "{{ ansible_env.HOME }}/.local/bin/notes-bootstrap --build-only"
   register: _fleet_home_notes
   changed_when: "'Compiling' in _fleet_home_notes.stderr"
+
+- name: Read whether the notes CLI is installed
+  ansible.builtin.stat:
+    path: "{{ ansible_env.HOME }}/.local/bin/notes"
+    follow: true
+  register: _fleet_home_notes_bin
 
 # git-sync-agent.sh pushes the store with this key and nothing else. Its public
 # half is a write deploy key on Forgejo kblack0610/.agent; the report prints it
@@ -212,4 +221,6 @@
          + ([] if fleet_home_oauth.stat.exists else
           ['write ~/.config/agent-web/oauth.json (0600) from rbw item agent-web-oauth-client, then re-run'])
          + ([] if fleet_home_web_files.results | rejectattr('stat.exists') | list | length == 0 else
-          ['stow the private overlay (gh auth login, then re-run): agent-web needs its unit and ~/.config/agent-web/env']) }}
+          ['stow the private overlay (gh auth login, then re-run): agent-web needs its unit and ~/.config/agent-web/env'])
+         + ([] if _fleet_home_notes_bin.stat.exists else
+          ['notes is not installed (agent-queue files and closes no board row without it): stow the private overlay, then re-run; if it is stowed, run notes-bootstrap --build-only and read its WARN']) }}

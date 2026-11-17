@@ -81,8 +81,7 @@ def render(hosts, groups):
             slots += [{"name": f"{host}-{r['slot']}", "caps": ["light"], "repo": r["repo"]} for r in v.get("ci_repo_runners", [])]
         unity = any(host in groups.get(g, ()) for g in UNITY_GROUPS)
         if unity:
-            total, build = int(v.get("unity_ci_slots", 0)), int(v.get("unity_ci_build_slots", 0))
-            group = {int(b): [int(t) for t in ts] for b, ts in (v.get("unity_ci_slot_groups") or {}).items()}
+            total, build, group = unity_layout(v)
             if build and set(group) != set(range(1, build + 1)):
                 fails.append(f"{host}: unity_ci_slot_groups keys are {sorted(group)}, its build slots 1-{build}")
             if group and not build:
@@ -111,6 +110,12 @@ def render(hosts, groups):
     return {"hosts": topo}, fails
 
 
+def unity_layout(v):
+    """A host's Unity slot count, build slot count and slot groups (build slot -> its test slots)."""
+    group = {int(b): [int(t) for t in ts] for b, ts in (v.get("unity_ci_slot_groups") or {}).items()}
+    return int(v.get("unity_ci_slots", 0)), int(v.get("unity_ci_build_slots", 0)), group
+
+
 def slot_budget(v, total):
     """One core set per Unity slot ([] without ci_unity_slot_cpus) and one memory cap in G per slot."""
     cpus = [cpu_set(c) for c in v.get("ci_unity_slot_cpus") or []]
@@ -124,8 +129,7 @@ def fit_failures(hosts, groups):
     fails = []
     for host in sorted(set().union(*(groups.get(g, set()) for g in UNITY_GROUPS))):
         v = hosts[host]
-        total, build = int(v.get("unity_ci_slots", 0)), int(v.get("unity_ci_build_slots", 0))
-        group = {int(b): [int(t) for t in ts] for b, ts in (v.get("unity_ci_slot_groups") or {}).items()}
+        total, build, group = unity_layout(v)
         cpus, mem = slot_budget(v, total)
         if group and (len(cpus) != total or len(mem) != total):
             fails.append(f"{host}: slot groups need {total} ci_unity_slot_cpus and ci_unity_slot_memory_max entries")
@@ -158,12 +162,11 @@ def fit_failures(hosts, groups):
     return fails
 
 
-def no_ci_failures(path, forgejo_runner):
-    hosts, groups = load_inventory(path)
+def no_ci_failures(hosts, groups, forgejo_runner):
     core = {host for host, variables in hosts.items() if variables.get("host_tier") == "core"}
     service = groups.get(NO_CI_GROUP, set())
     if not service:
-        return [f"parsed no {NO_CI_GROUP} hosts out of {path}; the parser is broken, not the inventory"]
+        return [f"parsed no {NO_CI_GROUP} hosts; the parser is broken, not the inventory"]
     pinned = {host for host, variables in hosts.items() if variables.get("ci_pinned_runners")}
     fails = tier_errors(hosts)
     fails += [f"{host} is in {NO_CI_GROUP} and in {g}: a service host carries no CI"
@@ -212,7 +215,7 @@ def main():
     args = ap.parse_args()
     hosts, groups = load_inventory(args.inventory)
     topo, fails = render(hosts, groups)
-    fails += fit_failures(hosts, groups) + no_ci_failures(args.inventory, FORGEJO_RUNNER)
+    fails += fit_failures(hosts, groups) + no_ci_failures(hosts, groups, FORGEJO_RUNNER)
     if not fails and not any(s.get("group") for h in topo["hosts"].values() for s in h["slots"]):
         fails.append("rendered no slot group; the parser is broken, not the inventory")
     for f in fails:

@@ -405,7 +405,7 @@ def observe(pool_labels):
     pool_label = "|".join(pool_labels)
     hosts = {k: by_host(prom(q)) for k, q in QUERIES.items()}
     runners = {}
-    for r in prom(f'github_runner_state{{state=~"running|idle"}} and on (name) github_runner_pool_slot{{pool=~"{pool_label}"}}'):
+    for r in prom(f'github_runner_state{{state=~"running|idle"}} and on (name) github_runner_pool_slot{{pool=~"{pool_label}",state=~"running|idle"}}'):
         m = r["metric"]
         if m.get("scope") == "org":
             runners[m["name"]] = {"host": m["host"], "busy": m["state"] == "running",
@@ -442,7 +442,7 @@ def host_labels(cfg, host):
     stay registered, offline), plus the pool labels a withheld one gets back on admit.
     Empty when no runner of it is listed."""
     have = set()
-    for r in prom(f'github_runner_state{{host="{host}"}} and on (name) github_runner_pool_slot{{pool=~"{"|".join(pools(cfg))}"}}'):
+    for r in prom(f'github_runner_state{{host="{host}"}} and on (name) github_runner_pool_slot{{host="{host}",pool=~"{"|".join(pools(cfg))}"}}'):
         have |= label_set(r["metric"].get("labels", ""))
     back = admit_labels(cfg, host) + ([cfg["pool_label"], cfg["full_label"]] if pairs(cfg, host) else [])
     return frozenset(have | label_set(",".join(back))) if have else frozenset()

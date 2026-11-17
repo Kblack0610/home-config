@@ -90,7 +90,7 @@ import re
 import ssl
 import threading
 import time
-from collections import OrderedDict
+from collections import Counter, OrderedDict
 import urllib.error
 import urllib.parse
 import urllib.request
@@ -427,8 +427,8 @@ def runner_label_sets(seen):
 
 def wait_kind(repo, job, takers):
     """The pool label of a waiting job: the cap it asks for, or the first cap of a runner
-    that can take it when it names none (runs-on: self-hosted). "github-hosted" for
-    GitHub's own runners, "jobless" for a run with no jobs yet, and "unserved" when no
+    that can take it when it names none (runs-on: self-hosted; the lowest by name, so it holds
+    between scrapes). "github-hosted" for GitHub's own runners, "jobless" for a run with no jobs yet, and "unserved" when no
     registered runner this repo may use carries every label it asks for, so it waits
     forever (ar-1872). takers is runner_label_sets(), or None while a runner source
     failed, when nothing is called unserved."""
@@ -446,7 +446,7 @@ def wait_kind(repo, job, takers):
             if (scope == repo or (scope == "org" and org_ok)) and want <= have]
     if not fits:
         return "unserved"
-    return cap if cap != "other" else fits[0][0]
+    return cap if cap != "other" else min(caps[0] for caps in fits)
 
 
 def quantile(xs, q):
@@ -1091,10 +1091,7 @@ def render():
         "# HELP github_runner_pool_online Online runners on this host that take this cap; absent while any runner source failed",
         "# TYPE github_runner_pool_online gauge",
     ]
-    expected = {}
-    for slot in SLOTS.values():
-        for cap in slot["caps"]:
-            expected[(slot["host"], cap)] = expected.get((slot["host"], cap), 0) + 1
+    expected = Counter((s["host"], cap) for s in SLOTS.values() for cap in s["caps"])
     for (host, cap), n in sorted(expected.items()):
         L.append(f'github_runner_pool_expected{{host="{host}",pool="{cap}"}} {n}')
     if runners_ok:

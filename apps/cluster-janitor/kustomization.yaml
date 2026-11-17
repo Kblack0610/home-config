@@ -6,3 +6,9 @@ resources:
   - rbac.yaml
   - configmap.yaml
   - cronjob.yaml
+# quarantine.py is a file so test_quarantine.py can import it; the hash suffix rolls the
+# CronJob when it changes.
+configMapGenerator:
+  - name: cluster-janitor-quarantine
+    files:
+      - quarantine.py

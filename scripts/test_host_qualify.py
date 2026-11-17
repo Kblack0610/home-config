@@ -41,6 +41,16 @@ class QualifyTests(unittest.TestCase):
     def test_smart_fails_without_json(self):
         self.assertFalse(qualify.smart_check("sda", "sata", "smartctl: permission denied")["pass"])
 
+    def test_release_needs_the_inventory_tier(self):
+        self.assertTrue(qualify.releases("core", "core"))
+        self.assertFalse(qualify.releases("standard", "core"))
+        self.assertTrue(qualify.releases("standard", "standard"))
+
+    def test_release_never_below_standard(self):
+        # hp-victus is probation; a probation record (fault history) must not release it.
+        self.assertFalse(qualify.releases("probation", "probation"))
+        self.assertTrue(qualify.releases("standard", "probation"))
+
     def test_sections_split_marked_output(self):
         text = "noise\n===fio 0\n{\"jobs\": []}\n===stress 2\nline\n===kernel\n"
         self.assertEqual(qualify.sections(text), [("fio 0", '{"jobs": []}'), ("stress 2", "line"), ("kernel", "")])

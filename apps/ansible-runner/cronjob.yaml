@@ -89,7 +89,7 @@ spec:
                   # by nature.
                   # alias=ip[:port]. asus-laptop's sshd is on 2222 (inventory.yml);
                   # scanning it on 22 skipped it as "unreachable" every night.
-                  HOSTS="hp-victus=192.168.1.243 asus-laptop=192.168.1.152:2222 razer-laptop=192.168.1.26"
+                  HOSTS="hp-victus=192.168.1.243 asus-laptop=192.168.1.152:2222 razer-laptop=192.168.1.26 ms-a2=192.168.1.28 deskslim-2=192.168.1.29"
 
                   REACHABLE=""
                   SKIPPED=""

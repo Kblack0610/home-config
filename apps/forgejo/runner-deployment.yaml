@@ -6,11 +6,9 @@ metadata:
   labels:
     app.kubernetes.io/name: forgejo-runner
 spec:
-  # One runner: razer-laptop is the only node that qualifies (see the affinity
-  # below). A second replica would sit Pending under the anti-affinity.
+  # One runner, on one of the nodes the affinity below allows.
   replicas: 1
-  # Only one node qualifies, so a surge pod would have nowhere to go and a
-  # rollout would hang. Replace the pod in place instead.
+  # Replace the pod in place: a surge pod would hold a second 6Gi DinD on a CI host.
   strategy:
     type: RollingUpdate
     rollingUpdate:
@@ -29,7 +27,7 @@ spec:
         # which the arm64 Pis cannot give. Never a no_ci_hosts host
         # (ansible/inventory.yml; scripts/check-runner-roster.py checks this
         # list against it): hp-victus holds Forgejo's data, asus-laptop the
-        # databases. That leaves razer-laptop.
+        # databases. That leaves razer-laptop, ms-a2 and deskslim-2.
         nodeAffinity:
           requiredDuringSchedulingIgnoredDuringExecution:
             nodeSelectorTerms:

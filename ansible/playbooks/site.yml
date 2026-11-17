@@ -92,7 +92,7 @@
   # Targets the Pis too even though they are already synced: the role is
   # idempotent there, and a drifting clock should be prevented fleet-wide rather
   # than fixed per-host after it bites.
-  hosts: hp-victus:asus-laptop:razer-laptop:pi_k3s
+  hosts: linux_bare_metal:pi_k3s
   become: true
   gather_facts: true
   roles:
@@ -101,8 +101,8 @@
 
 - name: Core dump and local-path PV metrics (k3s nodes)
   # Run before the chart change that mounts the directory.
-  #   ansible-playbook playbooks/site.yml --limit 'hp-victus:asus-laptop:razer-laptop:pi_k3s' --tags disk-metrics
-  hosts: hp-victus:asus-laptop:razer-laptop:pi_k3s
+  #   ansible-playbook playbooks/site.yml --limit 'linux_bare_metal:pi_k3s' --tags disk-metrics
+  hosts: linux_bare_metal:pi_k3s
   become: true
   gather_facts: false
   roles:
@@ -111,8 +111,8 @@
 
 - name: Process, service and Docker container inventory (k3s nodes)
   # For the hub machine page; the workstation's is in its monitoring play.
-  #   ansible-playbook playbooks/site.yml --limit 'hp-victus:asus-laptop:razer-laptop:pi_k3s' --tags inventory-metrics
-  hosts: hp-victus:asus-laptop:razer-laptop:pi_k3s
+  #   ansible-playbook playbooks/site.yml --limit 'linux_bare_metal:pi_k3s' --tags inventory-metrics
+  hosts: linux_bare_metal:pi_k3s
   become: true
   gather_facts: false
   roles:
@@ -189,7 +189,7 @@
   # See ansible/roles/k3s-node-no-suspend/README.md — without this, closing
   # a laptop lid removes the node from the cluster (the 2026-05 hp-victus
   # incident took 4 workloads offline for ~2 weeks).
-  hosts: hp-victus:asus-laptop:razer-laptop
+  hosts: linux_bare_metal
   become: true
   gather_facts: true
   roles:

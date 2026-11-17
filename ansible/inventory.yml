@@ -60,6 +60,23 @@ all:
           # Its power button is a keyboard key and it sits stacked, lid shut:
           # a short press powered it off on 2026-10-24. Hold to force off.
           k3s_no_suspend_power_key: ignore
+        # The Unity CI boxes bought 2026-11-10 (docs/unity-ci-hardware.md),
+        # installed headless by PXE 2026-11-16 and k3s agents since. ms-a2:
+        # Minisforum MS-A2, Ryzen 9 9955HX (16 cores), 91G, one of four ports cabled.
+        ms-a2:
+          host_tier: standard
+          ansible_host: 192.168.1.28
+          k3s_role: agent
+          k3s_extra_args:
+            - --node-label=node.kubernetes.io/friendly-name=ms-a2
+        # ASRock DeskSlim X600, Ryzen 9 9900X (12 cores), 60G. Its twin deskslim-1
+        # (7900X, DHCP .19) joins once its replacement RAM is in.
+        deskslim-2:
+          host_tier: standard
+          ansible_host: 192.168.1.29
+          k3s_role: agent
+          k3s_extra_args:
+            - --node-label=node.kubernetes.io/friendly-name=deskslim-2
 
     # This workstation, managed over a local connection (no SSH). Hosts the
     # gungan dictation ASR daemons (see roles/asr-servers).
@@ -185,6 +202,9 @@ all:
       hosts:
         hp-victus:
         razer-laptop:
+        # sp5100_tco autoloads on both (/dev/watchdog0, checked 2026-11-16).
+        ms-a2:
+        deskslim-2:
         asus-laptop:
           # Present but not autoloaded on this board (checked 2026-11-13).
           hw_watchdog_module: sp5100_tco
@@ -203,6 +223,8 @@ all:
         audio-living:
         hp-victus:
         razer-laptop:
+        ms-a2:
+        deskslim-2:
         asus-laptop:
 
     # NUT (Network UPS Tools) groups. The single CyberPower CP1500PFCLCDa plugs
@@ -296,6 +318,19 @@ all:
             1: [slim-tour]
           unity_ci_full: true
           unity_ci_wide: true
+          unity_ci_gate: true
+        # The 2026-11-10 purchases, joined 2026-11-16. Full runs and gates: owned
+        # and never preempted. One slot fewer than the purchase plan on each, so
+        # k3s keeps two cores of its own (ci_hosts below); ramp per
+        # docs/runbooks/unity-ci-host.md. Not unity-wide until each passes the
+        # ucp-1521 probes.
+        ms-a2:
+          unity_ci_slots: 4
+          unity_ci_full: true
+          unity_ci_gate: true
+        deskslim-2:
+          unity_ci_slots: 3
+          unity_ci_full: true
           unity_ci_gate: true
         # The workstation, the human's work machine: merge gates only
         # (unity_ci_full false, so no nightly, release or Multi run lands here).
@@ -548,6 +583,31 @@ all:
           k3s_cpus: 0-1,8-9
           ci_unity_slot_memory_max: 20G
           ci_linux_memory_max: 40G
+        # ms-a2: 16 cores / 32 threads, SMT siblings n and n+16 (sysfs,
+        # 2026-11-16), 91G. Cores 0-1 are k3s and the OS, as on razer. Each Unity
+        # slot gets three cores and 16G (docs/unity-ci-hardware.md sizing), cores
+        # 2-13. Cores 14-15 (CPUs 14-15,30-31) stay outside CI for now: room
+        # for the platform runners when razer-laptop gives up its own.
+        ms-a2:
+          ci_cpus: 2-13,18-29
+          ci_memory_max: 64G
+          ci_unity_cpus: 2-13,18-29
+          ci_unity_slot_cpus: ["2-4,18-20", "5-7,21-23", "8-10,24-26", "11-13,27-29"]
+          ci_unity_memory_max: 64G
+          ci_unity_slot_memory_max: 16G
+          k3s_cpus: 0-1,16-17
+        # deskslim-2: 12 cores / 24 threads, SMT siblings n and n+12, 60G. Cores
+        # 0-1 are k3s and the OS; three slots of three cores and 14G on cores
+        # 2-10, which leaves core 11 and 18G for the host. A fourth slot would take
+        # k3s's cores.
+        deskslim-2:
+          ci_cpus: 2-10,14-22
+          ci_memory_max: 42G
+          ci_unity_cpus: 2-10,14-22
+          ci_unity_slot_cpus: ["2-4,14-16", "5-7,17-19", "8-10,20-22"]
+          ci_unity_memory_max: 42G
+          ci_unity_slot_memory_max: 14G
+          k3s_cpus: 0-1,12-13
         # The workstation: Ryzen 9 9950X3D, 16 cores / 32 threads, SMT
         # siblings n and n+16 (lscpu -e and sysfs L3 caches, 2026-11-16), 124G.
         # Keep the 96 MiB V-cache CCD (CPUs 0-7,16-23) for the human's desktop

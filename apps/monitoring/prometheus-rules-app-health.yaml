@@ -144,12 +144,15 @@ spec:
               2 * ((homelab_app_ready_ratio >= bool 1) * (homelab_app_restarts_1h < bool 3))
             )
             +
-            (
-              1 * (
-                ((homelab_app_ready_ratio > bool 0) * (homelab_app_ready_ratio < bool 1))
-                or
-                ((homelab_app_ready_ratio > bool 0) * (homelab_app_restarts_1h >= bool 3))
-              )
+            # Degraded is partial capacity or ready but restarting. The two terms are added and
+            # capped at 1, not joined by `or`: a bool comparison returns a 0 sample for every
+            # series, so `or` never took the right side and a ready app restarting 3+ times an
+            # hour read 0, App down.
+            clamp_max(
+              ((homelab_app_ready_ratio > bool 0) * (homelab_app_ready_ratio < bool 1))
+              +
+              ((homelab_app_ready_ratio > bool 0) * (homelab_app_restarts_1h >= bool 3)),
+              1
             )
     - name: homelab-app-health.alerts
       interval: 1m

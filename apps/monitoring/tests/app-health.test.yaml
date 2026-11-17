@@ -102,3 +102,26 @@ tests:
       exp_annotations:
         summary: 'App down: test/down-sts'
         description: statefulset test/down-sts has had zero ready capacity for at least 10 minutes.
+- name: a ready app restarting 3+ times an hour is degraded, not down
+  interval: 1m
+  input_series:
+  - series: kube_deployment_spec_replicas{namespace="test",deployment="flapping"}
+    values: 1x30
+  - series: kube_deployment_status_replicas_available{namespace="test",deployment="flapping"}
+    values: 1x30
+  - series: kube_pod_container_status_restarts_total{namespace="test",pod="flapping-pod",container="app"}
+    values: 0+1x30
+  - series: kube_pod_owner{namespace="test",pod="flapping-pod",owner_kind="ReplicaSet",owner_name="flapping-rs"}
+    values: 1x30
+  - series: kube_replicaset_owner{namespace="test",replicaset="flapping-rs",owner_kind="Deployment",owner_name="flapping"}
+    values: 1x30
+  promql_expr_test:
+  - expr: homelab_app_health_state
+    eval_time: 20m
+    exp_samples:
+    - labels: homelab_app_health_state{app_id="test/flapping", namespace="test", platform="k8s", workload="flapping", workload_type="deployment"}
+      value: 1
+  alert_rule_test:
+  - eval_time: 20m
+    alertname: HomelabAppDown
+    exp_alerts: []

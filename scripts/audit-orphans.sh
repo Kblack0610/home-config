@@ -56,9 +56,17 @@ ALLOWLIST_NS = {
     'kube-system', 'kube-public', 'kube-node-lease', 'flux-system', 'default',
 }
 
+# Helm release secrets are skipped by type below anyway, and each one holds a
+# whole gzipped chart (traefik-crd ~1 MB, kube-prometheus-stack ~0.5 MB times
+# its history): 11.5 of the 12.3 MB that `get secret -A` returned on 2026-11-17.
+# Loaded and parsed, they pushed the pod past its 128Mi limit (OOMKilled), so
+# the API server drops them before they reach kubectl.
+FIELD_SELECTOR = {'secret': 'type!=helm.sh/release.v1'}
+
 def kget(kind):
+    sel = ['--field-selector', FIELD_SELECTOR[kind]] if kind in FIELD_SELECTOR else []
     out = subprocess.run(
-        ['kubectl', context, 'get', kind, '-A', '-o', 'json'],
+        ['kubectl', context, 'get', kind, '-A', '-o', 'json'] + sel,
         capture_output=True, text=True, check=True,
     )
     return json.loads(out.stdout).get('items', [])

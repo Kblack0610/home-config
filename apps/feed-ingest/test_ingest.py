@@ -13,6 +13,7 @@ import pathlib
 import sys
 import tomllib
 import unittest
+import urllib.error
 import zipfile
 
 sys.path.insert(0, str(pathlib.Path(__file__).parent))
@@ -241,6 +242,30 @@ class Parsers(unittest.TestCase):
         wl = ingest.Watchlist(config()["watchlist"])
         env.text = "Board shake-up"  # an organization alone is a watchlist match
         self.assertEqual(wl.match(env), ["NVDA"])
+
+    def test_gdelt_reads_newest_served_batch(self):
+        lastupdate = b"2 b http://h/gdeltv2/20261117211500.gkg.csv.zip\n"
+        served = {"http://h/gdeltv2/20261117204500.gkg.csv.zip": b"zip45"}
+
+        def fetch(url):
+            if url not in served:
+                raise urllib.error.HTTPError(url, 404, "Not Found", {}, None)
+            return served[url]
+
+        # the listed batch and the one before it are not served yet: read the newest that is
+        self.assertEqual(ingest.gdelt_newest_served(lastupdate, None, fetch),
+                         ("http://h/gdeltv2/20261117204500.gkg.csv.zip", b"zip45"))
+        # already read: caught up, nothing to fetch
+        self.assertEqual(ingest.gdelt_newest_served(lastupdate, "http://h/gdeltv2/20261117210000.gkg.csv.zip", fetch),
+                         ("http://h/gdeltv2/20261117210000.gkg.csv.zip", None))
+        served.clear()  # nothing served in the window is a failed poll
+        with self.assertRaises(LookupError):
+            ingest.gdelt_newest_served(lastupdate, None, fetch)
+
+        def down(url):
+            raise urllib.error.HTTPError(url, 503, "Unavailable", {}, None)
+        with self.assertRaises(urllib.error.HTTPError):
+            ingest.gdelt_newest_served(lastupdate, None, down)
 
     def test_jetstream_keeps_post_creates_only(self):
         post = {"did": "did:plc:a", "time_us": 1, "kind": "commit", "commit": {

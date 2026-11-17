@@ -25,6 +25,7 @@ import re
 import threading
 import time
 import tomllib
+import urllib.error
 import urllib.parse
 import urllib.request
 import xml.etree.ElementTree as ET
@@ -193,6 +194,32 @@ def gdelt_latest_gkg(lastupdate: bytes) -> str:
         if line.endswith(".gkg.csv.zip"):
             return line.split()[2]
     raise ValueError("lastupdate.txt names no gkg file")
+
+
+GDELT_BATCH = dt.timedelta(minutes=15)
+# lastupdate.txt names a batch before its file is served: the listed gkg answered 404 for 15+ minutes
+# while the batches before it were served (2026-11-17). Look back this many batches for a served one.
+GDELT_LAG_BATCHES = 8
+
+
+def gdelt_newest_served(lastupdate: bytes, cursor: str | None, fetch) -> tuple[str, bytes | None]:
+    """The newest GKG batch GDELT serves, newest first from the listed one back GDELT_LAG_BATCHES.
+
+    Returns (url, zip), or (cursor, None) when the newest served batch is the one already read.
+    Raises when none of them is served, so a real outage still fails the poll."""
+    latest = gdelt_latest_gkg(lastupdate)
+    head, name = latest.rsplit("/", 1)
+    stamp = dt.datetime.strptime(name[:14], "%Y%m%d%H%M%S")
+    for back in range(GDELT_LAG_BATCHES):
+        url = f"{head}/{(stamp - back * GDELT_BATCH):%Y%m%d%H%M%S}{name[14:]}"
+        if url == cursor:
+            return url, None
+        try:
+            return url, fetch(url)
+        except urllib.error.HTTPError as exc:
+            if exc.code != 404:
+                raise
+    raise LookupError(f"no gkg batch served from {latest} back {GDELT_LAG_BATCHES} batches")
 
 
 def parse_gdelt_gkg(zipped: bytes) -> list[Envelope]:
@@ -539,9 +566,10 @@ def poll_loop(name: str, scfg: dict, cfg: dict, store, out: queue.Queue, stop: t
                 items = parse_edgar_atom(http_get(scfg["url"], ua, "application/atom+xml"))
             elif name == "gdelt":
                 # A batch is read once; a batch published while the pod was down is skipped.
-                batch = gdelt_latest_gkg(http_get(scfg["url"], ua))
-                fresh = batch != store.get_cursor("gdelt")
-                items = parse_gdelt_gkg(http_get(batch, ua)) if fresh else []
+                batch, zipped = gdelt_newest_served(http_get(scfg["url"], ua), store.get_cursor("gdelt"),
+                                                    lambda u: http_get(u, ua))
+                fresh = zipped is not None
+                items = parse_gdelt_gkg(zipped) if fresh else []
             elif name == "rss":
                 items = []
                 for feed in scfg["feeds"]:

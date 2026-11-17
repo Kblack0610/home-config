@@ -8,6 +8,15 @@ import yaml
 TIERS = {"core", "standard", "probation"}
 
 
+def cpu_set(spec):
+    """{5, 6, 7, 13} from a cpuset like "5-7,13"."""
+    out = set()
+    for part in str(spec).split(","):
+        a, _, b = part.strip().partition("-")
+        out |= set(range(int(a), int(b or a) + 1))
+    return out
+
+
 def load_inventory(path):
     data = yaml.safe_load(Path(path).read_text(encoding="utf-8"))
     if not isinstance(data, dict) or not isinstance(data.get("all"), dict):

@@ -13,7 +13,6 @@ data:
     ALLOWLIST_NAME = re.compile(
         r'^('
         r'kube-root-ca\.crt'
-        r'|sh\.helm\.release\..*'
         r'|.*-tls'
         r'|.*-ca'
         r'|.*account-key'
@@ -28,15 +27,18 @@ data:
     ALLOWLIST_TYPE = {
         'kubernetes.io/tls',
         'kubernetes.io/service-account-token',
-        'helm.sh/release.v1',
     }
     ALLOWLIST_NS = {
         'kube-system', 'kube-public', 'kube-node-lease', 'flux-system', 'default',
     }
 
+    # Helm release secrets each hold a whole gzipped chart (several MB together), so the
+    # API server leaves them out instead of kubectl loading them into this 128Mi pod.
+    SELECTOR = {'secret': ['--field-selector', 'type!=helm.sh/release.v1']}
+
     def kget(kind):
         out = subprocess.run(
-            ['kubectl', 'get', kind, '-A', '-o', 'json'],
+            ['kubectl', 'get', kind, '-A', '-o', 'json'] + SELECTOR.get(kind, []),
             capture_output=True, text=True, check=True,
         )
         return json.loads(out.stdout).get('items', [])

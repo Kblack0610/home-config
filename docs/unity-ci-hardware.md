@@ -70,6 +70,8 @@ Decided 2026-11-10 (ask QfY0Fp), 12-13 slots: an MS-A2 9955HX barebone with raze
 
 Measured without the Mac Studio, 2026-11-13 to 11-14: the 24h rolling Unity wait p90 (the exporter's `github_job_queue_seconds{pool="unity",quantile="0.9"}`, recorded from 11-13 06:00 UTC) stayed over 30 min from then to 11-14 14:00 UTC, peaking at 92 min. That was with aws-burst-1, aws-burst-2, aws-burst-3 and aws-build-1 (about 23 slots) each on 14-24 h a day, so the Studio's load is larger than the 5 round-the-clock slots estimated above. aws-burst-2 alone does not replace it, and the 11-10 hardware stays the replacement.
 
+Retired 2026-11-16 at the human's request: the on-demand aws-burst-1, -2 and -3 (17 slots at $1.855/h a host), once ms-a2 (4 slots) and deskslim-2 (3) were in the pool. Overflow past the home hosts is now the Spot hosts (15 slots, when AWS has Spot room) and aws-build-1's six test slots, so a night queue that finds no Spot room waits longer than the p90 above.
+
 ## 6-8 slots in one box
 
 Researched 2026-11-03 for "6-8 more slots, a few thousand dollars". Prices are eBay and retailer asking prices from search results (eBay refused direct fetches), so check the Sold filter before buying. Power and single-thread figures are estimates from TDP and clocks. Single-thread is relative to a Zen 4 desktop part.
@@ -123,8 +125,8 @@ Checked 2026-11-11: moving Unity jobs from the AWS hosts to GitHub-hosted runner
 | Owned hosts | 0 at the margin | governor `rates` |
 | aws-spot-1 (Spot m6a.8xlarge, 5 slots) | ~0.06 | $0.28/h Spot price 2026-11-13 over 5 slots |
 | aws-spot-2, aws-spot-3 (Spot m7i and m6i .8xlarge, 5 slots each) | ~0.13 to 0.15 | $0.66 and $0.77/h Spot price 2026-11-13 over 5 slots |
-| aws-burst-2, aws-burst-3 (on-demand m7a.8xlarge, 6 slots each) | ~0.31 | $1.855/h over 6 slots |
-| aws-burst-1 (on-demand m7a.8xlarge, 5 slots) | ~0.37 | $1.855/h over 5 slots |
+| aws-burst-2, aws-burst-3 (on-demand m7a.8xlarge, 6 slots each, retired 2026-11-16) | ~0.31 | $1.855/h over 6 slots |
+| aws-burst-1 (on-demand m7a.8xlarge, 5 slots, retired 2026-11-16) | ~0.37 | $1.855/h over 5 slots |
 | aws-build-1 (on-demand m7a.8xlarge, 6 test slots, a build in place of two) | ~0.31 to 0.62 | $1.855/h over 6 slots running tests, 3 when every pair builds |
 | GitHub Linux 4-core, 16 GB | 0.72 | $0.012/min |
 | GitHub Linux 8-core, 32 GB | 1.32 | $0.022/min |

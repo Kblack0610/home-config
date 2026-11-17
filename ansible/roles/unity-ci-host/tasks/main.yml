@@ -5,7 +5,7 @@
     state: present
   when: ansible_os_family == "Archlinux"
 
-# The cloud burst host (aws-burst-1) runs the Ubuntu AMI.
+# The AWS hosts (aws-spot-*, aws-build-1) run the Ubuntu AMI.
 - name: Install Unity CI packages (Ubuntu)
   ansible.builtin.apt:
     name: "{{ unity_ci_packages_debian }}"

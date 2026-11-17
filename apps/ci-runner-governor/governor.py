@@ -56,7 +56,7 @@ unpacks at once when a waiting job has no unpacked taker or its jobs outnumber t
 hosts' free slots, otherwise once its jobs have waited dwell_seconds. A new pack also waits
 out dwell_seconds since the last pack or unpack.
 
-A standby host with a "power" block (aws-burst-1) is also switched on and off. When a
+A standby host with a "power" block (aws-spot-1) is also switched on and off. When a
 standby admit would want it, its instance is stopped and a waiting job asks only for labels
 its runners carry, the instance is started. Those labels are read from the exporter's
 github_runner_state rows for the host, offline ones included, plus the pool labels a
@@ -183,7 +183,7 @@ CYCLE_SECONDS = 60
 # The causes decide() and decide_workers() give a start (stops: idle, cap, reclaim, override).
 START_CAUSES = ("queue", "demand", "override")
 # A power block's settings when config.json leaves one out. A start costs money (about
-# $1.85/h for aws-burst-1), so only a deep queue held this long starts one, and a day of
+# $1.85/h for on-demand aws-build-1), so only a deep queue held this long starts one, and a day of
 # running time is capped; the month's cap is an AWS Budgets action (platform infra/aws-ci-burst).
 POWER_DEFAULTS = {"idle_off_seconds": 900, "start_min_excess": 4, "start_after_seconds": 300, "max_hours_day": 12,
                   # A queue this much past the other hosts starts it at once, with no hold:

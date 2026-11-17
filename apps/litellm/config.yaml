@@ -782,29 +782,26 @@ model_list:
       supports_function_calling: true
 
   # binks.chat image generation (generate_image tool, platform plan
-  # feat-binks-images P2). Gemini 3.1 Flash Image on a paid-tier key: the free
-  # tier has no image quota and trains on its input, so it cannot serve this.
+  # feat-binks-images P2): Z.ai GLM-Image on the binks Z.ai key, $0.015 per
+  # image (docs.z.ai/guides/overview/pricing, 2026-11-16). Picked over Gemini
+  # Flash Image ($0.067, needs a paid Google key) by ask 1ugS6u (2026-11-16).
   # Reached only by keys whose models list it (binks-issuer once IMAGE_MODEL
-  # is set). The one route here with a route max_budget, an exception to the
-  # no-per-route-budget rule above: this route spends a Google key, not a
-  # Lazer team, so no team caps it. $20 / 30d per ask oPVN0y (2026-11-13).
-  # The counter is held in memory, so a pod restart clears it; the issuer's
-  # $50 / 1mo and binks-api's per-user daily cap are the durable bounds.
-  - model_name: "image (gemini-flash-image)"
+  # is set). NO route max_budget and no cost override: LiteLLM v1.96 has no
+  # price for glm-image and ignores a per-deployment price on image calls, so
+  # it records this route's spend as $0 and a gateway budget would never trip
+  # (README, binks.chat keys). binks-api's per-user daily image cap is the
+  # bound. The response is a Z.ai URL, not base64; binks-api fetches and
+  # stores it.
+  - model_name: "image (glm-image)"
     litellm_params:
-      model: "gemini/gemini-3.1-flash-image"
-      api_key: os.environ/GEMINI_API_KEY_IMAGE
-      # Google paid price: in $0.50/1M, image out $60/1M, $0.067 per 1K image
-      # (ai.google.dev/gemini-api/docs/pricing, 2026-11-14). LiteLLM v1.96
-      # prices the call from the response's image tokens at the same rates,
-      # so no cost override is set here.
+      model: "openai/glm-image"
+      api_base: https://api.z.ai/api/paas/v4
+      api_key: os.environ/ZAI_API_KEY
       timeout: 120
       rpm: 20
-      max_budget: 20
-      budget_duration: 30d
     model_info:
       mode: image_generation
-      tags: ["paid", "gemini", "binks", "image"]
+      tags: ["paid", "binks", "first-party", "image"]
 
   # The one self-hosted model: Qwen3.5-9B under llama-server on the
   # workstation's RTX 4060 Ti (dotfiles llama-server.service). Nothing leaves

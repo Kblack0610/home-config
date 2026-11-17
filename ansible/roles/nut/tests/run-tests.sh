@@ -91,8 +91,6 @@ setup() {  # setup <case> <seq text> [extra upssched.conf line]
         render "$t.j2" "/etc/nut/$t"
     done
     render upsmon.server.conf.j2 /etc/nut/upsmon.conf
-    # Production monitors the default port; the test's upsd is on $PORT.
-    sed -i "s/^MONITOR cyberpower@localhost /MONITOR $UPS /" /etc/nut/upsmon.conf
     grep -q "^MONITOR $UPS " /etc/nut/upsmon.conf || return 1
     [ -n "${3:-}" ] && echo "$3" >> /etc/nut/upssched.conf
     # ntfy is not reachable here; the page is recorded instead.

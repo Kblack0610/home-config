@@ -1,0 +1,50 @@
+---
+# Chrome's managed policy, so a Chrome update cannot drop the Playwright
+# Extension the store-console skill drives (Chrome marked it corrupted on
+# 2026-11-14 and it took a reinstall by desktop clicks). Chrome re-fetches and
+# repairs a force-installed extension on its own; a hand-installed one is not.
+#
+# Chrome reads /Library/Managed Preferences/com.google.Chrome.plist as mandatory
+# policy, with no MDM. The file lives outside the app bundle and the profile, so
+# neither a Chrome update nor a profile reset removes it.
+- name: Make the Chrome managed-preferences directory
+  become: true
+  ansible.builtin.file:
+    path: /Library/Managed Preferences
+    state: directory
+    owner: root
+    group: wheel
+    mode: "0755"
+
+# This role owns the whole file: a new Chrome policy is a new key in this
+# template, not a hand edit on the Mac (the next apply would replace it).
+# `validate` lints the plist before it replaces the live file.
+- name: Force-install the Playwright Extension in Chrome
+  become: true
+  ansible.builtin.copy:
+    dest: /Library/Managed Preferences/com.google.Chrome.plist
+    owner: root
+    group: wheel
+    mode: "0644"
+    validate: plutil -lint %s
+    content: |
+      <?xml version="1.0" encoding="UTF-8"?>
+      <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+      <plist version="1.0">
+      <dict>
+        <key>ExtensionInstallForcelist</key>
+        <array>
+      {% for ext in agent_tools_chrome_forced_extensions %}
+          <string>{{ (ext ~ ';' ~ agent_tools_chrome_update_url) | e }}</string>
+      {% endfor %}
+        </array>
+      </dict>
+      </plist>
+  register: agent_tools_chrome_policy
+
+# Chrome reads policy at launch: a running Chrome picks the extension up on its
+# next start. Say so rather than quit a Chrome with signed-in consoles.
+- name: Say when Chrome needs a restart
+  ansible.builtin.debug:
+    msg: Chrome reads the policy at launch; quit and reopen it to install the extension now.
+  when: agent_tools_chrome_policy is changed

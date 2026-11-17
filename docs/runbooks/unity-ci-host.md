@@ -20,7 +20,7 @@ Operating the hosts of the org-wide Unity runner pool (label `unity`). Which job
 - `unity-ci-host` puts the asset-library-hd copy (`/var/lib/actions-runner/asset-library-hd`) and the editor images on each host, copied from the workstation. Re-run it with `--tags unity-ci-host` after asset-library-hd's packages change and on a Unity upgrade.
 - Unity upgrade: add the new tags to `unity_ci_images` (`ansible/roles/unity-ci-host/defaults/main.yml`), `docker load` them on the workstation, and run the role on every host before the upgrade merges. The `windows-mono`, `mac-mono` and `android` tags player builds use belong there too, or the build dies pulling its image.
 - By hand, when the role cannot run or the workstation's checkout holds an uncommitted change (the role packs all of `Packages/`; tar only the new package folders then), from the workstation:
-  - razer-laptop: `tar -C ~/dev/bnb/games/engine/asset-library-hd -cf - Packages | ssh kblack0610@192.168.1.26 'sudo tar -C /var/lib/actions-runner/asset-library-hd -xf - && sudo chown -R actions-runner:actions-runner /var/lib/actions-runner/asset-library-hd'`
+  - ms-a2 (the slim-tour slot): `tar -C ~/dev/bnb/games/engine/asset-library-hd -cf - Packages | ssh kblack0610@192.168.1.28 'sudo tar -C /var/lib/actions-runner/asset-library-hd -xf - && sudo chown -R actions-runner:actions-runner /var/lib/actions-runner/asset-library-hd'`
   - Then compare `ls Packages | wc -l` and `find Packages -type f | wc -l` on the host with the workstation's.
 
 ## Editor images over IPv4

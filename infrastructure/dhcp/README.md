@@ -63,6 +63,6 @@ dhcp sync
 
 ## Files
 
-- `devices.yaml` — Single source-of-truth device inventory
+- `devices.yaml`: single source-of-truth device inventory. Ansible role `host-identity` fails any inventory host whose NICs carry none of the MAC its entry reserves (docs/runbooks/fleet-worker.md, "Host keys and NIC reservations")
 - `backups/` — UCI config snapshots taken before each sync (gitignored)
 - `tests/` — `test-sync.sh` with a fake `ssh` and `uci` and a `uci -X show` fixture

@@ -1,0 +1,15 @@
+---
+- name: Trust the roster's host keys
+  ansible.builtin.import_tasks: known_hosts.yml
+
+# Last, so a host the inventory misdescribes still gets the others' keys. A failure here stops
+# only this play: it is the last one in site.yml.
+- name: Check the host key and the NICs against the inventory and devices.yaml
+  vars:
+    host_identity_problems: >-
+      {{ ansible_facts | identity_problems(inventory_hostname, hostvars[inventory_hostname],
+           host_identity_devices | host_device(inventory_hostname, hostvars[inventory_hostname]),
+           inventory_hostname in host_identity_roster) }}
+  ansible.builtin.fail:
+    msg: "{{ host_identity_problems | join('; ') }}"
+  when: host_identity_problems | length > 0

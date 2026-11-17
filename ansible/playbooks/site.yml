@@ -995,3 +995,15 @@
       vars:
         # A failed snapshot or reaper run shows as node_systemd_unit_state failed.
         node_exporter_linux_systemd_units: [forgejo.service, forgejo-db-snapshot.service, forgejo-lock-reaper.service]
+
+- name: Host identity (roster host keys, NIC reservations)
+  # Every roster machine trusts the others' ssh host keys from the inventory, and any host whose
+  # live host key or NICs disagree with inventory.yml or infrastructure/dhcp/devices.yaml fails,
+  # naming the line to change. Last in this file, so that failure stops no other play. -K for
+  # /etc/ssh/ssh_known_hosts:
+  #   ansible-playbook playbooks/site.yml --limit <host> --tags host-identity -K
+  hosts: linux_bare_metal:pi_k3s:desktop_workstations:fleet_workers:fleet_controllers
+  gather_facts: true
+  roles:
+    - role: host-identity
+      tags: [host-identity]

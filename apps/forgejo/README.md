@@ -15,7 +15,6 @@ and repository mirroring enabled.
 | `service-http.yaml` | `forgejo-http:3000`, an ExternalName of `forge-primary.kblab.me`, the record that names the live host |
 | `service-ssh.yaml` | `forgejo-ssh:2222`, the same ExternalName; the host publishes the container's sshd on 2222 |
 | `ingress.yaml` | TLS ingress for `git.kblab.me` (git, registry, API, Flux) |
-| `ingress-public.yaml` | TLS ingress for `git.kennethblack.me`, the `ROOT_URL` and the one browser hostname |
 | `ingressroute-browser-redirect.yaml` | Redirects browsers (`Accept: text/html`) on `git.kblab.me` to `git.kennethblack.me`, so one login cookie covers every page |
 | `pvc.yaml` | The asus copy, frozen at the cutover (`/mnt/backups/forgejo-live/data`); the rollback source until cleanup |
 | `runner-deployment.yaml` | Forgejo Runner + DinD sidecar (razer-laptop only; asus-laptop and hp-victus are `no_ci_hosts`) |
@@ -213,6 +212,7 @@ curl -s https://git.kblab.me/api/healthz
 Endpoints:
 
 - Web UI: `https://git.kennethblack.me` (a browser on `git.kblab.me` is redirected there; log in once with "Remember this device" and it holds for a year)
+- Public name: `git.kennethblack.me` (the `ROOT_URL` and the one browser hostname) is served by the `forge-hel1` Cloudflare tunnel straight to the VM, not through home-k3s: tunnel and CNAME in platform `infra/forge-tunnel`, connector in `ansible/roles/forgejo-host` (`docs/public-sites.md`, the exception)
 - API: `https://git.kblab.me/api/v1`
 - Container Registry: `git.kblab.me` (docker login)
 - In-cluster HTTP: `forgejo-http.forgejo.svc:3000`

@@ -12,7 +12,6 @@ resources:
   - service-http.yaml
   - service-ssh.yaml
   - ingress.yaml
-  - ingress-public.yaml
   - ingressroute-browser-redirect.yaml
   - db-snapshot-cronjob.yaml
   - lock-reaper-cronjob.yaml

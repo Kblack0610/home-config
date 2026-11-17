@@ -52,3 +52,23 @@ def load_inventory(path):
 def tier_errors(hosts):
     return [f"{host}: host_tier must be one of {', '.join(sorted(TIERS))}"
             for host, values in sorted(hosts.items()) if values.get("host_tier") not in TIERS]
+
+
+# The record scripts/host-qualify.py writes and check-placement.py reads.
+TIER_ORDER = ("probation", "standard", "core")
+QUALIFICATION_DAYS = 30
+QUALIFICATION_KEY = "host_qualification"
+
+
+def qualification_path(host_vars, host):
+    return Path(host_vars) / host / "qualification.yml"
+
+
+def load_qualification(host_vars, host):
+    path = qualification_path(host_vars, host)
+    if not path.is_file():
+        return None
+    record = (yaml.safe_load(path.read_text(encoding="utf-8")) or {}).get(QUALIFICATION_KEY)
+    if not isinstance(record, dict):
+        raise ValueError(f"{path}: expected a {QUALIFICATION_KEY} mapping")
+    return record

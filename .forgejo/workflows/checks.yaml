@@ -48,10 +48,12 @@ jobs:
           [ "$rc" -ne 0 ] || { echo "the check passed a planted duplicate"; exit 1; }
           grep -q "planted-dup runs" planted-roster.out || { echo "the check failed, but not on the planted row"; exit 1; }
           rm planted-roster.out
-      - name: Placement report (qualification and migration remain P2/P5)
+      - name: Placement report, including core hosts with no fresh core qualification (migration is P5)
         run: python3 scripts/check-placement.py --report
       - name: Placement checker tests and planted violation
         run: python3 scripts/test_check_placement.py
+      - name: Host qualification verdict and parser tests
+        run: python3 scripts/test_host_qualify.py
       # An if, not "! cmd": sh -e ignores a "!" pipeline's status, so a "!" step passes either way.
       - name: Negative control - the roster check fails on aws-build-1 pairs swapped off their build slots' cores
         run: |

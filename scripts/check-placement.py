@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
-"""Check active stateful workloads' declared criticality and required node tier.
+"""Check active stateful workloads' declared criticality and required node tier, and that
+every core host holds a core qualification record from scripts/host-qualify.py.
 
 Source manifests are followed through Kustomization.resources. Helm checks inspect
 explicit persistence in values, including monitoring/helm-values.yaml; chart
@@ -7,12 +8,14 @@ defaults, generated manifests and patches require a rendered-chart audit.
 """
 
 import argparse
+import datetime as dt
 from pathlib import Path
 import sys
 
 import yaml
 
-from host_inventory import load_inventory, tier_errors
+from host_inventory import (QUALIFICATION_DAYS, load_inventory, load_qualification, qualification_path,
+                            tier_errors)
 
 
 REPO = Path(__file__).resolve().parent.parent
@@ -179,6 +182,27 @@ def check_documents(documents, hosts):
     return errors, checked, workloads
 
 
+def qualification_errors(hosts, host_vars, now):
+    """A core host needs a host-qualify record for core from the last QUALIFICATION_DAYS."""
+    errors = []
+    for host in sorted(h for h, values in hosts.items() if values.get("host_tier") == "core"):
+        record = load_qualification(host_vars, host)
+        where = qualification_path(host_vars, host)
+        if record is None:
+            errors.append(f"{host}: core tier has no qualification record at {where}; run scripts/host-qualify.py")
+            continue
+        date = record.get("date")
+        date = date if isinstance(date, dt.datetime) else dt.datetime.fromisoformat(str(date))
+        if date.tzinfo is None:
+            raise ValueError(f"{where}: date has no time zone")
+        if record.get("qualified_for") != "core":
+            errors.append(f"{host}: core tier, but its qualification record qualifies it for "
+                          f"{record.get('qualified_for')}")
+        elif now - date > dt.timedelta(days=QUALIFICATION_DAYS):
+            errors.append(f"{host}: core qualification from {date:%Y-%m-%d} is older than {QUALIFICATION_DAYS} days")
+    return errors
+
+
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--apps", type=Path, default=REPO / "apps")
@@ -191,6 +215,8 @@ def main(argv=None):
         if invalid:
             raise ValueError("; ".join(invalid))
         errors, checked, workloads = check_documents(active_documents(args.apps), hosts)
+        # Ansible reads host_vars beside the inventory, so the record lives there too.
+        errors += qualification_errors(hosts, args.inventory.parent / "host_vars", dt.datetime.now(dt.timezone.utc))
     except (OSError, ValueError, TypeError, AttributeError, yaml.YAMLError) as exc:
         print(f"ERROR: {exc}", file=sys.stderr)
         return 2

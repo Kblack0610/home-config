@@ -1,0 +1,5 @@
+---
+- name: Install the qualification tools
+  ansible.builtin.package:
+    name: "{{ host_qualify_packages }}"
+    state: present

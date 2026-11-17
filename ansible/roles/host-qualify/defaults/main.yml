@@ -1,0 +1,4 @@
+---
+# What scripts/host-qualify.py runs on the host: stress-ng and fio for the burn-in,
+# smartctl for disk health. Same package names on Arch and Debian.
+host_qualify_packages: [stress-ng, fio, smartmontools]

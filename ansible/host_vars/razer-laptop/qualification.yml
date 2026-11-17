@@ -1,0 +1,68 @@
+# Written by scripts/host-qualify.py (docs/host-tiers.md). Do not edit; rerun it.
+host_qualification:
+  date: '2026-11-17T01:50:56Z'
+  qualified_for: standard
+  inventory_tier: standard
+  checks:
+  - name: headroom
+    pass: false
+    gates:
+    - core
+    detail: FULL  cpus 16  load/cpu p95 1.08 max 1.58  spare cpus -6.0  temp max 68C  mem avail min 20%  oom 0  [load_p95 1.08 > 0.7; load_max 1.58 > 1.0]
+  - name: kernel faults 14d
+    pass: true
+    gates:
+    - standard
+    - core
+    detail: none of HostGpuFirmwareFault, HostSoftLockup, HostNicDown, HostMachineCheck
+  - name: uptime 14d
+    pass: false
+    gates:
+    - core
+    detail: 0.1 days
+  - name: on mains
+    pass: true
+    gates:
+    - core
+    detail: online 1
+  - name: watchdog
+    pass: true
+    gates:
+    - standard
+    - core
+    detail: RuntimeWatchdog 30s, /dev/watchdog0 present
+  - name: netconsole
+    pass: true
+    gates:
+    - core
+    detail: unit active
+  - name: smart nvme0n1
+    pass: true
+    gates:
+    - standard
+    - core
+    detail: 'nvme: overall PASSED, critical_warning 0, media_errors 0'
+  - name: burn-in fio
+    pass: true
+    gates:
+    - standard
+    - core
+    detail: exit 0, 54117 write IOPS, 0 errors, verified
+  - name: burn-in stress-ng
+    pass: true
+    gates:
+    - standard
+    - core
+    detail: 'exit 0, 600s cpu all + vm 25% --verify: [''stress-ng: info:  [976592] successful run completed in 10 mins'']'
+  - name: burn-in kernel faults
+    pass: true
+    gates:
+    - standard
+    - core
+    detail: none in 46 kernel lines
+  - name: burn-in peak cpu temperature
+    pass: true
+    gates:
+    - standard
+    - core
+    detail: 68C, limit 90C

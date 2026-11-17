@@ -1,0 +1,11 @@
+#!/bin/sh
+# {{ ansible_managed }}
+# Managed by ansible/roles/nut. Do not edit by hand.
+#
+# The primary's SHUTDOWNCMD. upsmon's root parent runs it, after FSD and
+# FINALDELAY. It leaves a marker so nut-outage-report.service can page on the
+# next boot: the outage page itself may not get out while the power is down.
+
+date '+%Y-%m-%d %H:%M:%S %Z' > /var/lib/nut-outage/fsd-at
+logger -t nut-primary-shutdown -p daemon.notice "NUT shutdown: halting the primary; killpower follows"
+exec /sbin/shutdown -h +0 "NUT initiated shutdown (primary)"

@@ -19,7 +19,17 @@
     state: restarted
     daemon_reload: true
   listen: restart nut-monitor
-  when: not ansible_check_mode
+  when:
+    - not ansible_check_mode
+    - ansible_os_family != 'Darwin'
+
+- name: Restart upsmon (macOS)
+  ansible.builtin.command: launchctl kickstart -k system/{{ nut_launchd_label }}
+  listen: restart nut-monitor
+  changed_when: true
+  when:
+    - not ansible_check_mode
+    - ansible_os_family == 'Darwin'
 
 - name: Restart nut-driver
   ansible.builtin.systemd:
@@ -29,4 +39,19 @@
     state: restarted
     daemon_reload: true
   listen: restart nut-driver
+  when: not ansible_check_mode
+
+- name: Restart journald
+  ansible.builtin.systemd:
+    name: systemd-journald.service
+    state: restarted
+  listen: restart journald
+  when: not ansible_check_mode
+
+# A restarted journald keeps writing to /run until asked to flush; at boot
+# systemd-journal-flush.service asks, so only a live change needs this.
+- name: Flush the journal to /var/log/journal
+  ansible.builtin.command: journalctl --flush
+  listen: restart journald
+  changed_when: true
   when: not ansible_check_mode

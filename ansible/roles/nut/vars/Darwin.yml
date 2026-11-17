@@ -1,0 +1,7 @@
+---
+# Homebrew's nut: config under its etc/, no nut user (upsmon starts as root
+# from launchd and drops to nobody), no systemd.
+nut_confdir: /opt/homebrew/etc/nut
+nut_conf_group: wheel
+nut_brew_prefix: /opt/homebrew
+nut_launchd_label: me.kblab.nut-upsmon

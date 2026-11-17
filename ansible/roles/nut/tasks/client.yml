@@ -1,29 +1,47 @@
 ---
+- name: Install NUT from Homebrew (macOS)
+  community.general.homebrew:
+    name: nut
+    state: present
+  # Homebrew refuses to run as root.
+  become: false
+  when: ansible_os_family == 'Darwin'
+
+- name: Ensure Homebrew's NUT state and pid dirs exist (macOS)
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: directory
+    mode: "0755"
+  loop:
+    - "{{ nut_brew_prefix | default('') }}/var/state/ups"
+    - "{{ nut_brew_prefix | default('') }}/var/run"
+  when: ansible_os_family == 'Darwin'
+
 - name: Render nut.conf (netclient mode)
   ansible.builtin.template:
     src: nut.conf.j2
-    dest: /etc/nut/nut.conf
+    dest: "{{ nut_confdir }}/nut.conf"
     owner: root
-    group: nut
+    group: "{{ nut_conf_group }}"
     mode: "0640"
   notify: restart nut-monitor
 
 - name: Render upsmon.conf (secondary)
   ansible.builtin.template:
     src: upsmon.client.conf.j2
-    dest: /etc/nut/upsmon.conf
+    dest: "{{ nut_confdir }}/upsmon.conf"
     owner: root
-    group: nut
+    group: "{{ nut_conf_group }}"
     mode: "0640"
   no_log: true
   notify: restart nut-monitor
 
-- name: Install worker-shutdown.sh (graceful k3s-agent stop)
+- name: Install worker-shutdown.sh (the secondary's SHUTDOWNCMD)
   ansible.builtin.template:
     src: worker-shutdown.sh.j2
-    dest: /etc/nut/worker-shutdown.sh
+    dest: "{{ nut_confdir }}/worker-shutdown.sh"
     owner: root
-    group: nut
+    group: "{{ nut_conf_group }}"
     mode: "0750"
 
 - name: Enable + start nut-monitor
@@ -34,4 +52,26 @@
     daemon_reload: true
   # See server.yml for the rationale — package not installed in check mode
   # means systemd unit doesn't exist yet. Same pattern as roles/k3s-agent.
-  when: not ansible_check_mode
+  when:
+    - not ansible_check_mode
+    - ansible_os_family != 'Darwin'
+
+- name: Render the upsmon LaunchDaemon (macOS)
+  ansible.builtin.template:
+    src: nut-upsmon.plist.j2
+    dest: "/Library/LaunchDaemons/{{ nut_launchd_label }}.plist"
+    owner: root
+    group: wheel
+    mode: "0644"
+  register: nut_plist
+  when: ansible_os_family == 'Darwin'
+
+- name: Load the upsmon LaunchDaemon when it is new or changed (macOS)
+  ansible.builtin.shell: |
+    launchctl bootout system/{{ nut_launchd_label }} 2>/dev/null || true
+    launchctl bootstrap system /Library/LaunchDaemons/{{ nut_launchd_label }}.plist
+  changed_when: true
+  when:
+    - ansible_os_family == 'Darwin'
+    - not ansible_check_mode
+    - nut_plist is changed

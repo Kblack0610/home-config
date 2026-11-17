@@ -1,0 +1,6 @@
+---
+# Arch ships client and server in one package; its units match Debian's.
+nut_confdir: /etc/nut
+nut_conf_group: nut
+nut_client_packages: [nut]
+nut_server_packages: [nut, usbutils]

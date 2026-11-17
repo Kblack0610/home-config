@@ -2,9 +2,19 @@
 # {{ ansible_managed }}
 # Managed by ansible/roles/nut. Do not edit by hand.
 #
-# upsmon hands us $NOTIFYTYPE in argv[1] and the human-readable message in $1.
-# We forward the event name to upssched, which decides what (if anything)
-# to do based on upssched.conf.
+# upsmon runs this as the nut user for every event flagged EXEC, with the event
+# in $NOTIFYTYPE and the human-readable message in $1. It pages the events a
+# person should hear about, then hands the event to upssched for the timers.
 
 logger -t nut-notifycmd -p daemon.notice "event=${NOTIFYTYPE} msg=$*"
+
+case "${NOTIFYTYPE}" in
+    ONBATT)
+        /etc/nut/ntfy-page.sh "UPS on battery" "$*. Every machine on the UPS shuts down in {{ nut_onbatt_settle_seconds }}s unless power returns." &
+        ;;
+    ONLINE|LOWBATT|FSD|COMMBAD|NOCOMM|REPLBATT)
+        /etc/nut/ntfy-page.sh "UPS ${NOTIFYTYPE}" "$*" &
+        ;;
+esac
+
 exec /usr/sbin/upssched

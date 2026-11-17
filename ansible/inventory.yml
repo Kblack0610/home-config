@@ -228,18 +228,31 @@ all:
         asus-laptop:
 
     # NUT (Network UPS Tools) groups. The single CyberPower CP1500PFCLCDa plugs
-    # into pi5-master via USB; pi5-master runs upsd + upsmon-primary and every
-    # other Pi runs upsmon-secondary to honour the FSD broadcast.
+    # into pi5-master via USB; pi5-master runs upsd + upsmon-primary, and every
+    # host on a UPS outlet runs upsmon-secondary, because the primary's shutdown
+    # ends in killpower, which cuts every battery outlet. A host on the UPS that
+    # is not listed here is hard-cut: that took the workstation down 2026-11-17.
+    # Which outlet each host is on: docs/nut-ups.md, "Hosts on the UPS".
     nut_server:
       hosts:
         pi5-master:
     nut_clients:
       hosts:
+        # The Pi workers dropped the instant the power went on 2026-11-17, so
+        # they are not on battery outlets (docs/nut-ups.md). Kept as clients so
+        # they shut down cleanly once they are.
         pi5-worker1:
         pi5-worker2:
         pi5-worker3:
         pi4-worker4:
         pi4-worker5:
+        # On battery outlets, added 2026-11-17 (hc-480).
+        pi3-adguard:
+        ms-a2:
+        deskslim-2:
+        mac-mini:
+        # Local connection: apply with -K (sudo password).
+        cachyos-x8664-main:
 
     # Self-hosted GitHub Actions runners for BlackNBrownStudios/platform
     # (see the "Linux CI runners" play in site.yml).
@@ -259,9 +272,15 @@ all:
         # their own 6 threads (ci_linux_cpus 5-7,13-15) and 40G, and a light job
         # is 0.5-0.6G anon. Heavy stays at one: it waited 6% of 7 days with
         # bursts to 18, but heavy jobs publish fixed host ports.
+        # ci_repo_runners: runners for one personal repo, which cannot use the
+        # org's slots. GitHub bills hosted minutes on a private repo and refused
+        # every .dotfiles-private job from 2026-11-15 once the month's allowance
+        # ran out. Its jobs are lint and unit runs of seconds and under 1G, so
+        # one runner on each of two hosts, in the light slots' slice.
         razer-laptop:
           ci_light_slots: 2
           ci_heavy_slots: 1
+          ci_repo_runners: [{repo: Kblack0610/.dotfiles-private, slot: dotfiles-private-1}]
         # Four light slots, no heavy, on the cores of its third Unity slot since
         # 2026-11-13 (unity_ci_runners says why). Light jobs average 0.4 cores and
         # 0.6G, so four fit in three cores and 14G. Ubuntu: linux-ci-host's apt list.
@@ -269,6 +288,7 @@ all:
           host_tier: standard
           ci_light_slots: 4
           ci_heavy_slots: 0
+          ci_repo_runners: [{repo: Kblack0610/.dotfiles-private, slot: dotfiles-private-1}]
 
     # BNB Unity runner pool (added 2026-10-05; the "Unity CI runner pool" play in
     # site.yml). Org-scoped, label `unity`, for every game repo. Each slot runs

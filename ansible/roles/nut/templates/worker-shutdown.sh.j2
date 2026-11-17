@@ -5,7 +5,9 @@
 # upsmon-secondary SHUTDOWNCMD on {{ inventory_hostname }}.
 # Invoked by upsmon when FSD is received from the primary. Goal: stop
 # k3s-agent so pods receive a graceful SIGTERM with their
-# terminationGracePeriodSeconds before the kernel halts.
+# terminationGracePeriodSeconds before the kernel halts. On the desktops and
+# the mac-mini there is no k3s-agent (or no systemctl), so it goes straight
+# to the halt.
 
 set -u
 

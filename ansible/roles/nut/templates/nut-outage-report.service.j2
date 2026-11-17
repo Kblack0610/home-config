@@ -1,0 +1,14 @@
+# {{ ansible_managed }}
+# Managed by ansible/roles/nut. Do not edit by hand.
+[Unit]
+Description=Page that the last NUT power-loss shutdown has recovered
+Wants=network-online.target
+After=network-online.target
+ConditionPathExists=/var/lib/nut-outage/fsd-at
+
+[Service]
+Type=exec
+ExecStart=/etc/nut/outage-report.sh
+
+[Install]
+WantedBy=multi-user.target

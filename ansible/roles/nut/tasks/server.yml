@@ -1,34 +1,4 @@
 ---
-- name: Detect the flux binary on the master (used by graceful shutdown script)
-  ansible.builtin.stat:
-    path: /usr/local/bin/flux
-  register: nut_flux_stat
-
-- name: Detect the kubectl binary on the master
-  ansible.builtin.stat:
-    path: /usr/local/bin/kubectl
-  register: nut_kubectl_stat
-
-- name: Probe for k3s-bundled kubectl if /usr/local/bin/kubectl missing
-  ansible.builtin.stat:
-    path: /usr/local/bin/k3s
-  register: nut_k3s_stat
-  when: not nut_kubectl_stat.stat.exists
-
-- name: Resolve kubectl invocation for the cluster-graceful script
-  ansible.builtin.set_fact:
-    nut_kubectl_cmd: >-
-      {{ '/usr/local/bin/kubectl' if nut_kubectl_stat.stat.exists
-         else ('/usr/local/bin/k3s kubectl' if (nut_k3s_stat.stat.exists | default(false))
-         else '') }}
-
-- name: Warn if neither kubectl nor k3s binary was found on the master
-  ansible.builtin.debug:
-    msg: >-
-      Neither kubectl nor k3s found on {{ inventory_hostname }} — the
-      cluster-graceful shutdown script will skip the cordon step.
-  when: nut_kubectl_cmd | length == 0
-
 - name: Render ups.conf (driver definition)
   ansible.builtin.template:
     src: ups.conf.j2
@@ -101,13 +71,79 @@
     group: nut
     mode: "0750"
 
-- name: Install cluster-graceful-shutdown.sh
+- name: Install cluster-graceful-shutdown.sh (pages, then broadcasts FSD)
   ansible.builtin.template:
     src: cluster-graceful-shutdown.sh.j2
     dest: /etc/nut/cluster-graceful-shutdown.sh
     owner: root
     group: nut
     mode: "0750"
+
+- name: Install ntfy-page.sh (the one way the role pages)
+  ansible.builtin.template:
+    src: ntfy-page.sh.j2
+    dest: /etc/nut/ntfy-page.sh
+    owner: root
+    group: nut
+    mode: "0750"
+
+- name: Install the primary's SHUTDOWNCMD and the after-boot outage report
+  ansible.builtin.template:
+    src: "{{ item }}.j2"
+    dest: "/etc/nut/{{ item }}"
+    owner: root
+    group: root
+    mode: "0750"
+  loop:
+    - primary-shutdown.sh
+    - outage-report.sh
+
+- name: Ensure the outage marker dir exists
+  ansible.builtin.file:
+    path: /var/lib/nut-outage
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+
+- name: Install nut-outage-report.service
+  ansible.builtin.template:
+    src: nut-outage-report.service.j2
+    dest: /etc/systemd/system/nut-outage-report.service
+    owner: root
+    group: root
+    mode: "0644"
+
+- name: Enable nut-outage-report.service (runs at boot, only after a NUT shutdown)
+  ansible.builtin.systemd:
+    name: nut-outage-report.service
+    enabled: true
+    daemon_reload: true
+  when: not ansible_check_mode
+
+- name: Ensure journald.conf.d exists
+  ansible.builtin.file:
+    path: /etc/systemd/journald.conf.d
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+
+# Raspberry Pi OS ships Storage=volatile (40-rpi-volatile-storage.conf), so the
+# primary's record of the 2026-11-17 outage died with the outage. This drop-in
+# sorts after it and wins.
+- name: Keep the primary's journal across reboots
+  ansible.builtin.copy:
+    dest: /etc/systemd/journald.conf.d/60-nut-persistent.conf
+    owner: root
+    group: root
+    mode: "0644"
+    content: |
+      # Managed by ansible/roles/nut. The NUT primary's outage log must outlive the outage.
+      [Journal]
+      Storage=persistent
+      SystemMaxUse=200M
+  notify: restart journald
 
 - name: Ensure /var/run/nut exists for upssched socket
   ansible.builtin.file:

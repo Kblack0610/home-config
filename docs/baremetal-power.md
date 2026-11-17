@@ -59,13 +59,10 @@ battery), so a desktop node should be on a battery-backed outlet.
 1. On the CP1500 rear, the outlets are split into a **Battery+Surge** bank and a
    **Surge-only** bank. Plug the desktop into a **Battery+Surge** outlet.
 2. Check headroom: a CP1500 (~900W / 1500VA) already drives the Pi fleet + UPS
-   electronics. A desktop under load can be 100–250W — confirm the runtime on the
+   electronics. A desktop under load can be 100 to 250W: confirm the runtime on the
    LCD stays sane (several minutes) after adding it. If runtime drops too low,
    don't add it; note the limit here instead.
-3. Once it's on battery, bring it under **NUT** so it shuts down gracefully on a
-   sustained outage instead of hard-dropping — add the host to `nut_clients`
-   in `ansible/inventory.yml` and re-run the NUT play (deferred follow-up; see
-   [`nut-ups.md`](./nut-ups.md)).
+3. Once it is on battery, it MUST be a **NUT** secondary: the primary cuts every battery outlet at the end of its shutdown, so a host that is not one gets hard-cut (the 2026-11-17 outage). Add the host to `nut_clients` in `ansible/inventory.yml`, re-run the NUT play, and add its row to "Hosts on the UPS" in [`nut-ups.md`](./nut-ups.md).
 
 ---
 

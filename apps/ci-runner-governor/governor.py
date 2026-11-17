@@ -39,8 +39,8 @@ in a job. Only the pool floor holds. Kubelet evicts at 5% free and does not stop
 and on 2026-10-31 that took the cluster's monitoring and pager down for 8 hours. A host
 comes back only above the higher admit line.
 
-A standby host (config "standby", for a host with no CPU pressure or sensors to
-judge; none since 2026-11-03) is overflow: GitHub has no way to prefer a runner, so its
+A standby host (every cloud host with a Unity slot in the topology, apps/ci-topology) is
+overflow: GitHub has no way to prefer a runner, so its
 slots stay withheld until more jobs wait than the other hosts' idle slots and this
 cycle's admits can take. Then one slot per cycle comes in, up to the host's
 max_admitted, and goes back once no job it could take has waited for dwell_seconds (from
@@ -72,15 +72,16 @@ The running burst host that was busy last, unpacked, is the warm one: it waits
 warm_idle_off_seconds instead, so the next burst does not wait on a cold start (2026-11-14:
 all four stopped by 08:59 and 14 gates came at 09:02).
 
-A dedicated standby host ("labels" and "withheld_label" in its entry: aws-build-1, the
-player-build host) carries its own label (unity-build) instead of the pool's and is its
+A dedicated standby host (one with build_label slots: aws-build-1, the player-build
+host) carries its own label (unity-build) instead of the pool's and is its
 own exporter pool. It takes only the waiting jobs that ask for that label, which no other
 host covers, so one waiting build starts it; it stays out of the pool's queue, floor,
 max_admitted cap and the standby order. Its idle-off, daily cap, override and drain are
 the same as any powered host's.
 
-A paired host ("pairs" in its entry: aws-build-1) runs both kinds at once. Its build slots
-(the pairs' keys) carry the dedicated label and its test slots (the values) the pool's, each
+A paired host (aws-build-1: build slots with a slot group in inventory unity_ci_slot_groups,
+read through the topology) runs both kinds at once. Its build slots carry the dedicated
+label and the test slots of their groups the pool's, each
 by its own static labels; each build slot shares its cores and memory with its test slots,
 so a build and a test never run in one pair. A busy build slot keeps its pair, and each
 waiting build claims a free pair whose build slot can take it, the most constrained job first
@@ -92,8 +93,8 @@ its own thresholds for a waiting build and on the default pool ones for tests.
 A slot withheld while its pair uses the cores is exported as ci_governor_lent (to tests, or
 to a build), so the dashboards can tell it from a slot held back for load.
 
-"standby" is an ordered list, the Spot hosts first, then the on-demand ones (config.json). A
-host further down starts only for the jobs the hosts ahead of it cannot take: a stopped
+The standby hosts go in start order, cheapest usd_per_hour first (config.json "rates"),
+so Spot before on-demand. A host further down starts only for the jobs the hosts ahead of it cannot take: a stopped
 one ahead counts its max_admitted, one booting or running counts the slots it has not
 admitted yet plus its idle admitted ones, so a deep queue still starts both and a short one
 starts only the first. A stopped host ahead drops out of that count for fallback_seconds
@@ -177,6 +178,8 @@ TOKEN = os.environ.get("GITHUB_TOKEN", "")
 DRY_RUN = os.environ.get("DRY_RUN", "1") != "0"
 PORT = int(os.environ.get("PORT", "9321"))
 CONFIG = os.environ.get("GOVERNOR_CONFIG", "/app/config.json")
+# Every CI host's site and slots with their caps and groups, rendered from inventory.
+TOPOLOGY = os.environ.get("TOPOLOGY", "/topology/topology.json")
 AWS_KEY = os.environ.get("AWS_ACCESS_KEY_ID", "")
 AWS_SECRET = os.environ.get("AWS_SECRET_ACCESS_KEY", "")
 CYCLE_SECONDS = 60
@@ -220,14 +223,52 @@ QUERIES = {
 }
 
 
-def load_config(path):
-    """config.json with each host's thresholds filled in, and "standby", a list in start
-    order, and "workers" (none when left out), as dicts by host in that order (the shape
-    decide() and the tests use)."""
+def load_config(path, topology_path=None):
+    """config.json plus the slot layout from topology.json (apps/ci-topology, rendered from
+    ansible/inventory.yml), in the shape decide() and the tests use:
+    - "standby": every cloud host with a Unity slot, by host in start order (cheapest
+      usd_per_hour first), each {max_admitted: its Unity slot count, power: its config.json
+      "power" block, and on a host with build_label slots labels, withheld_label and
+      "groups" (build slot -> the test slots sharing its cores, from the slot groups)}
+    - "hosts": every LAN host with a Unity slot, config.json "hosts" thresholds on top of
+      the defaults, "full" from the topology
+    - "workers" by host (none when left out)
+    - "rates": config.json's, plus {0, owned} for every LAN topology host."""
     with open(path) as f:
         cfg = json.load(f)
-    for key in ("standby", "workers"):
-        cfg[key] = {s["host"]: {k: v for k, v in s.items() if k != "host"} for s in cfg.get(key, [])}
+    with open(topology_path or TOPOLOGY) as f:
+        topo = json.load(f)["hosts"]
+    cfg["workers"] = {s["host"]: {k: v for k, v in s.items() if k != "host"} for s in cfg.get("workers", [])}
+    governed = {cfg["pool_label"], cfg["build_label"]}
+    unity = {h: [s for s in e["slots"] if governed & set(s["caps"])] for h, e in topo.items()}
+    unity = {h: slots for h, slots in unity.items() if slots}
+    lan = sorted(h for h, e in topo.items() if e["site"] != "cloud")
+    cfg["rates"] = {**{h: {"usd_per_hour": 0, "basis": "owned"} for h in lan}, **cfg.get("rates", {})}
+    cloud = [h for h in unity if topo[h]["site"] == "cloud"]
+    unrated = [h for h in cloud if h not in cfg["rates"]]
+    if unrated:
+        raise ValueError(f"cloud CI hosts with no rates entry: {', '.join(sorted(unrated))}")
+    cfg["standby"] = {}
+    for host in sorted(cloud, key=lambda h: (cfg["rates"][h]["usd_per_hour"], h)):
+        entry = {"max_admitted": len(unity[host])}
+        if host in cfg.get("power", {}):
+            entry["power"] = cfg["power"][host]
+        builds = [s for s in unity[host] if cfg["build_label"] in s["caps"]]
+        if builds:
+            entry["labels"] = [cfg["build_label"]]
+            entry["withheld_label"] = cfg["build_withheld_label"]
+            groups = {slot_of(s["name"]): [slot_of(t) for t in s["group"]] for s in builds if s.get("group")}
+            if groups:
+                entry["groups"] = groups
+        cfg["standby"][host] = entry
+    stray = set(cfg.get("power", {})) - set(cfg["standby"])
+    if stray:
+        raise ValueError(f"power blocks for no cloud Unity host: {', '.join(sorted(stray))}")
+    local = sorted(h for h in unity if topo[h]["site"] != "cloud")
+    stray = set(cfg["hosts"]) - set(local)
+    if stray:
+        raise ValueError(f"hosts entries for no LAN Unity host: {', '.join(sorted(stray))}")
+    cfg["hosts"] = {h: {**cfg["hosts"].get(h, {}), "full": bool(topo[h].get("full", True))} for h in local}
     both = cfg["standby"].keys() & cfg["workers"].keys()
     if both:
         raise ValueError(f"in both standby and workers: {', '.join(sorted(both))}")
@@ -311,8 +352,9 @@ def pool_jobs(waiting, own):
 
 def pairs(cfg, host):
     """A paired host's build slots and the test slots that share each one's cores and memory
-    (aws-build-1: {1: [4, 5], 2: [6, 7], 3: [8, 9]}), or {}."""
-    return {int(b): [int(t) for t in ts] for b, ts in ((cfg["standby"].get(host) or {}).get("pairs") or {}).items()}
+    (aws-build-1: {1: [4, 5], 2: [6, 7], 3: [8, 9]}), or {}: its entry's "groups", which
+    load_config() reads from the topology's slot groups (inventory unity_ci_slot_groups)."""
+    return {int(b): [int(t) for t in ts] for b, ts in ((cfg["standby"].get(host) or {}).get("groups") or {}).items()}
 
 
 def slot_of(name):
@@ -363,7 +405,7 @@ def observe(pool_labels):
     pool_label = "|".join(pool_labels)
     hosts = {k: by_host(prom(q)) for k, q in QUERIES.items()}
     runners = {}
-    for r in prom(f'github_runner_state{{pool=~"{pool_label}",state=~"running|idle"}}'):
+    for r in prom(f'github_runner_state{{state=~"running|idle"}} and on (name) github_runner_pool_slot{{pool=~"{pool_label}"}}'):
         m = r["metric"]
         if m.get("scope") == "org":
             runners[m["name"]] = {"host": m["host"], "busy": m["state"] == "running",
@@ -400,7 +442,7 @@ def host_labels(cfg, host):
     stay registered, offline), plus the pool labels a withheld one gets back on admit.
     Empty when no runner of it is listed."""
     have = set()
-    for r in prom(f'github_runner_state{{host="{host}",pool=~"{"|".join(pools(cfg))}"}}'):
+    for r in prom(f'github_runner_state{{host="{host}"}} and on (name) github_runner_pool_slot{{pool=~"{"|".join(pools(cfg))}"}}'):
         have |= label_set(r["metric"].get("labels", ""))
     back = admit_labels(cfg, host) + ([cfg["pool_label"], cfg["full_label"]] if pairs(cfg, host) else [])
     return frozenset(have | label_set(",".join(back))) if have else frozenset()

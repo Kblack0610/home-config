@@ -101,6 +101,11 @@ all:
           # The store-console skill drives this Chrome over ssh with the
           # Playwright Extension; the person signs in to the store consoles here.
           brew_extra_casks: [google-chrome]
+          # Its two runners, for the CI topology (scripts/render-ci-topology.py): mac-mini-mac is
+          # the "macOS CI runner" play's, m1-playground-mac has no play (docs/mac-machines.md).
+          ci_pinned_runners:
+            - {name: mac-mini-mac, cap: macos, repo: BlackNBrownStudios/platform}
+            - {name: m1-playground-mac, cap: macos, repo: BlackNBrownStudios/unity-core-playground}
 
     # Windows PCs, managed over Windows OpenSSH (see docs/windows-machines.md
     # for the one-time paste that enables sshd and trusts the workstation key).
@@ -124,6 +129,9 @@ all:
           # Agents need a signed-in desktop; this brings it back after a reboot
           # or power cut with no one at the TV.
           windows_baseline_autologon: true
+          # The "Windows test runner" play's org runner, for the CI topology.
+          ci_pinned_runners:
+            - {name: windows-media, cap: windows}
 
     # Nodes whose tier labels Ansible owns. IP matching resolves Pi aliases
     # to their actual Kubernetes names; this group does not install k3s.
@@ -282,8 +290,8 @@ all:
     # the next job - so the slot counts ARE the priority. heavy jobs publish
     # fixed host ports (postgres 5432, mailpit 1025/8025, app ports), so never
     # more than one heavy slot per host. CPU/memory caps are in ci_hosts below.
-    # Slot counts are mirrored in apps/github-runner-exporter
-    # RUNNER_ROSTER; scripts/check-runner-roster.py fails CI when they disagree.
+    # The exporter and governor read these slots from apps/ci-topology/topology.json,
+    # which scripts/render-ci-topology.py renders from here; CI fails when it is stale.
     # Never a host in no_ci_hosts (below); the same script fails CI on one.
     linux_ci_runners:
       hosts:
@@ -324,7 +332,7 @@ all:
     # one Unity job at a time (a PlayMode shard, an EditMode run, a DodginBalls
     # build), about 4-6 GB each. CPU/memory caps are in ci_hosts below. Every
     # host here is one activation on the shared Unity serial.
-    # Mirrored in RUNNER_ROSTER like linux_ci_runners above.
+    # Rendered into the CI topology like linux_ci_runners above.
     #
     # Never a host in no_ci_hosts (below).
     unity_ci_runners:
@@ -383,7 +391,7 @@ all:
           unity_ci_gate: true
         # The workstation, the human's work machine: merge gates only
         # (unity_ci_full false, so no nightly, release or Multi run lands here).
-        # apps/ci-runner-governor/config.json repeats this as "full": false for its admit.
+        # The governor reads it from the CI topology for its admit.
         # Each slot has its own three-core cpuset and a 16G cap (ci_hosts below).
         # Uncapped slots took 12 cores and 48G in October; the human asked for
         # these two again on 2026-11-03, once unity-core-playground stopped
@@ -416,7 +424,7 @@ all:
         # (unity_ci_build_slots), so playground release.yml's builds run there and no gate
         # or nightly can; slots 4-9 are pool test slots (unity, unity-full, unity-gate). Each
         # build slot shares its cores with two test slots, and the governor never runs a
-        # build and a test in one pair (apps/ci-runner-governor/config.json "pairs"). It
+        # build and a test in one group (unity_ci_slot_groups). It
         # starts the host when a build waits, and for tests as the last standby host.
         # Default image list: desktop builds need the windows flavor.
         aws-build-1:
@@ -428,6 +436,9 @@ all:
             --target %h --document-name AWS-StartSSHSession --parameters portNumber=%p"
           unity_ci_slots: 9
           unity_ci_build_slots: 3
+          # Build slot -> the test slots on its cores (ci_unity_slot_cpus below): the governor
+          # admits a build slot or its test slots, never both.
+          unity_ci_slot_groups: {1: [4, 5], 2: [6, 7], 3: [8, 9]}
           # Releases take slots 1-2 only (playground release.yml asks unity-release),
           # so a release, or one per game from ship.sh, never holds the slot players.yml
           # builds on; a release alone had all three for hours on 2026-11-11 (hc-263).
@@ -441,7 +452,7 @@ all:
           # Every cold release tree fetches the imports another tree made (playground ucp-1913).
           unity_ci_accelerator: 172.17.0.1:10080
         # Spot hosts (platform infra/aws-ci-burst, 2026-11-13), one instance type each, ahead
-        # of aws-build-1 in the governor standby (the on-demand burst hosts were retired 2026-11-16). No unity_ci_gate: a reclaim kills
+        # of aws-build-1 in the governor's start order, cheapest first (the on-demand burst hosts were retired 2026-11-16). No unity_ci_gate: a reclaim kills
         # what runs, so they take nightlies and bulk work, not merge gates (ucp-1778).
         # 16 cores with SMT, so five slots of three cores (ci_hosts below).
         aws-spot-1:
@@ -493,11 +504,11 @@ all:
 
     # macOS hosts in the same Unity pool (site.yml, "Unity CI runner pool
     # (macOS)"). Native editor, no container, so no ci_hosts budget: macOS has
-    # no cpusets. Mirrored in RUNNER_ROSTER like unity_ci_runners.
+    # no cpusets. Rendered into the CI topology like unity_ci_runners.
     unity_ci_mac_runners:
       # No Mac in the pool since 2026-11-10: the Mac Studio, its only host, was
       # sold. Add a Mac here to bring the
-      # pool back; RUNNER_ROSTER mirrors it.
+      # pool back.
       hosts: {}
 
     # Service hosts: no CI of any kind (GitHub runners, Unity slots, the
@@ -511,7 +522,7 @@ all:
     # 11-13, and Prometheus there had no liveness kill (two before): its three
     # restarts were two asus reboots and one clean exit shared with
     # victoria-metrics (asus-prometheus-48h-verify).
-    # scripts/check-runner-roster.py fails CI when a host here is in
+    # scripts/render-ci-topology.py fails CI when a host here is in
     # linux_ci_runners, unity_ci_runners or ci_hosts, and the "Retire CI on
     # no_ci_hosts" play in site.yml removes what a host still runs. Before
     # placing any work on any host, read scripts/host-headroom.py <host>.
@@ -606,7 +617,7 @@ all:
         # aws-build-1, the same m7a.8xlarge: build slots 1-3 of 10 cores for whole-game
         # player builds, 36G each (a build SIGKILLed at 14G on aws-burst-1, #1817;
         # razer builds in 20G), and test slots 4-9 of 5 cores and 16G, two on each build
-        # slot's cores (the governor's "pairs", so a pair's 32G fits its build slot's 36G).
+        # slot's cores (unity_ci_slot_groups, so a group's 32G fits its build slot's 36G).
         # Core 0 stays with the OS and the SSM agent, core 31 is spare.
         aws-build-1:
           ci_cpus: 1-31

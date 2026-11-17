@@ -60,13 +60,13 @@ tests:
   - name: a withheld idle runner is not a pool slot, a withheld runner still draining a job is, a lent one counts apart
     interval: 1m
     input_series:
-      - series: 'github_runner_state{name="a",pool="unity",state="running",instance="x"}'
+      - series: 'github_runner_pool_slot{name="a",pool="unity",state="running",instance="x"}'
         values: '1x5'
-      - series: 'github_runner_state{name="b",pool="unity",state="idle",instance="x"}'
+      - series: 'github_runner_pool_slot{name="b",pool="unity",state="idle",instance="x"}'
         values: '0x5'
-      - series: 'github_runner_state{name="c",pool="unity",state="idle",instance="x"}'
+      - series: 'github_runner_pool_slot{name="c",pool="unity",state="idle",instance="x"}'
         values: '0x5'
-      - series: 'github_runner_state{name="d",pool="unity",state="running",instance="x"}'
+      - series: 'github_runner_pool_slot{name="d",pool="unity",state="running",instance="x"}'
         values: '1x5'
       - series: 'github_runner_withheld{name="c",instance="x"}'
         values: '1x5'
@@ -74,7 +74,7 @@ tests:
         values: '1x5'
       - series: 'github_runner_withheld{name="b",instance="x"}'
         values: '0x5'
-      - series: 'github_runner_state{name="e",pool="unity",state="idle",instance="x"}'
+      - series: 'github_runner_pool_slot{name="e",pool="unity",state="idle",instance="x"}'
         values: '0x5'
       - series: 'github_runner_withheld{name="e",instance="x"}'
         values: '1x5'
@@ -103,6 +103,31 @@ tests:
         exp_samples:
           - labels: 'cc:pool_busy{pool="unity"}'
             value: 2
+
+  - name: a slot with two caps is a slot of each pool, and a missing slot is in none
+    interval: 1m
+    input_series:
+      - series: 'github_runner_pool_slot{name="m",host="h",pool="light",state="running",instance="x"}'
+        values: '1x5'
+      - series: 'github_runner_pool_slot{name="m",host="h",pool="unity",state="running",instance="x"}'
+        values: '1x5'
+      - series: 'github_runner_pool_slot{name="n",host="h",pool="unity",state="missing",instance="x"}'
+        values: '0x5'
+    promql_expr_test:
+      - expr: cc:pool_slots
+        eval_time: 2m
+        exp_samples:
+          - labels: 'cc:pool_slots{pool="light"}'
+            value: 1
+          - labels: 'cc:pool_slots{pool="unity"}'
+            value: 1
+      - expr: cc:pool_busy
+        eval_time: 2m
+        exp_samples:
+          - labels: 'cc:pool_busy{pool="light"}'
+            value: 1
+          - labels: 'cc:pool_busy{pool="unity"}'
+            value: 1
 
   - name: site slots and busy split local from cloud, withheld idle left out, local gates added to local
     interval: 1m

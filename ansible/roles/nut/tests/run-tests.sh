@@ -41,22 +41,27 @@ SAMPLE=0.5
 # Absence of a shutdown can only be shown over a window: three of upsmon's
 # 5 s polls (POLLFREQALERT) after the event it would have acted on.
 HOLD=15
+# CI job containers share the runner's host network (runner-config-cm.yaml,
+# `network: host`, capacity 2), so two concurrent runs on 3493 answered each
+# other's upsc and upsmon (2026-11-17, runs 3820 and 3824). One free port per run.
+PORT=$(python3 -c 'import socket; s=socket.socket(); s.bind(("127.0.0.1", 0)); print(s.getsockname()[1])')
+UPS=cyberpower@localhost:$PORT
 
 OUT=/tmp/nut-replay
 LOG=$OUT/syslog
 failures=0
 
 render() {  # render <template> <dest>
-    python3 - "$ROLE/templates/$1" "$2" "$SETTLE" "$FINALDELAY" <<'EOF'
+    python3 - "$ROLE/templates/$1" "$2" "$SETTLE" "$FINALDELAY" "$PORT" <<'EOF'
 import sys, jinja2
-src, dest, settle, finaldelay = sys.argv[1:]
+src, dest, settle, finaldelay, port = sys.argv[1:]
 env = jinja2.Environment(keep_trailing_newline=True, undefined=jinja2.StrictUndefined)
 text = env.from_string(open(src).read()).render(
     ansible_managed="rendered by tests/run-tests.sh", inventory_hostname="replay",
     ansible_host="127.0.0.1", ansible_os_family="Debian", nut_role="server",
     nut_ups_name="cyberpower", nut_upsmon_user="upsmon",
     nut_upsmon_password="replay-test-password", nut_listen_address="127.0.0.1",
-    nut_listen_port=3493, nut_onbatt_settle_seconds=int(settle),
+    nut_listen_port=int(port), nut_onbatt_settle_seconds=int(settle),
     nut_primary_finaldelay=int(finaldelay), nut_ntfy_url="http://127.0.0.1:9/none",
     nut_confdir="/etc/nut")
 open(dest, "w").write(text)
@@ -97,7 +102,7 @@ setup() {  # setup <case> <seq text> [extra upssched.conf line]
     "$NUTBIN/dummy-ups" -a cyberpower -u root >/dev/null 2>&1 &
     wait_for "driver up" 20 test -S /run/nut/dummy-ups-cyberpower || return 1
     upsd -u root >/dev/null 2>&1
-    wait_for "upsd up" 20 upsc cyberpower@localhost ups.status || return 1
+    wait_for "upsd up" 20 upsc "$UPS" ups.status || return 1
     upsmon >/dev/null 2>&1
     echo "-- $1"
 }
@@ -114,7 +119,7 @@ wait_for() {  # wait_for <what> <timeout s> <command...>: true once command succ
 }
 
 logged() { grep -q -- "$1" "$LOG"; }
-fsd_set() { upsc cyberpower@localhost ups.status 2>/dev/null | grep -qw FSD; }
+fsd_set() { upsc "$UPS" ups.status 2>/dev/null | grep -qw FSD; }
 shutdown_ran() { [ -f "$OUT/shutdown-called" ]; }
 
 pass() { echo "   ok: $1"; }

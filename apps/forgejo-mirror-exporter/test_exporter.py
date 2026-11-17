@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Offline tests for the default-branch rewind and ref-clobbering remote signals.
+"""Offline tests for mirror database reads, branch rewinds and remote refspecs.
 
 Builds bare-repo-shaped directories (HEAD, refs, logs, config) in a temp dir;
 no git binary, no Forgejo. The reflog cases are the shapes seen on home-config's
@@ -10,10 +10,12 @@ in the checks workflow.
 import contextlib
 import io
 import os
+import sqlite3
 import sys
 import tempfile
 import time
 import unittest
+from unittest import mock
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import exporter  # noqa: E402
@@ -126,6 +128,48 @@ class ClobberingRemoteTest(unittest.TestCase):
         cfg = ('[remote "gh"]\n\turl = git@github.com:o/r.git\n'
                "\tfetch = +refs/heads/*:refs/remotes/gh/*\n\tpush = refs/heads/master\n")
         self.assertEqual(self.remotes(cfg), [])
+
+
+class MirrorSchemaTest(unittest.TestCase):
+    def check_schema(self, address_column):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = os.path.join(tmp, "gitea.db")
+            with sqlite3.connect(path) as conn:
+                conn.executescript(f"""
+                    CREATE TABLE mirror (repo_id INTEGER, interval INTEGER,
+                        updated_unix INTEGER, next_update_unix INTEGER, {address_column});
+                    CREATE TABLE repository (id INTEGER, owner_name TEXT, name TEXT,
+                        is_archived INTEGER, original_url TEXT);
+                    CREATE TABLE push_mirror (repo_id INTEGER, remote_name TEXT,
+                        interval INTEGER, last_update INTEGER, last_error TEXT);
+                    CREATE TABLE action_run (repo_id INTEGER, created INTEGER);
+                """)
+                conn.execute("INSERT INTO mirror VALUES (1, 300000000000, 100, 400, NULL)")
+                conn.execute("INSERT INTO repository VALUES (1, 'o', 'r', 0, ?)",
+                             ("https://user:private-token@github.com/o/r.git?token=private-query",))
+                conn.execute("INSERT INTO action_run VALUES (1, 150)")
+            with mock.patch.object(exporter, "DB_PATH", path), \
+                 mock.patch.object(exporter, "_snapshot") as snapshot:
+                exporter.refresh_db()
+                snapshot.assert_not_called()
+            with exporter.LOCK:
+                db = exporter.STATE["db"]
+                self.assertEqual(db["ok"], 1)
+                self.assertEqual(db["mode"], "open_direct")
+                mirror = db["data"]["mirrors"][0]
+                self.assertEqual(mirror["remote"], ("https", "github.com"))
+                self.assertEqual(mirror["interval"], 300)
+                self.assertEqual(mirror["expected_next"], 400)
+                self.assertEqual(db["data"]["runs"], {"o/r": 150})
+            rendered = exporter.render()
+            self.assertNotIn("private-token", rendered)
+            self.assertNotIn("private-query", rendered)
+
+    def test_forgejo15_encrypted_address_uses_public_repository_url(self):
+        self.check_schema("encrypted_remote_address BLOB")
+
+    def test_forgejo14_address_column_remains_compatible(self):
+        self.check_schema("remote_address TEXT")
 
 
 class RenderTest(unittest.TestCase):

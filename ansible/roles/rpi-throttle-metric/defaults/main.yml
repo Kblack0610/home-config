@@ -1,0 +1,6 @@
+---
+# node-exporter's textfile collector directory. This default is the k3s
+# node-exporter DaemonSet's hostPath (apps/monitoring/helm-values.yaml). The
+# Pis outside k3s run Debian's prometheus-node-exporter package and set
+# /var/lib/prometheus/node-exporter in ansible/inventory.yml (rpi_standalone).
+rpi_throttle_textfile_dir: /var/lib/node-exporter-textfile

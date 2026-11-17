@@ -2,7 +2,8 @@
 # Role: nut
 #
 # Variables here are safe defaults. Override per-group via group_vars/nut_server
-# and group_vars/nut_clients, or per-host in inventory.
+# and group_vars/nut_clients, or per-host in inventory. Per-OS paths and
+# packages live in vars/<os_family>.yml.
 
 # 'server' | 'client'. The server runs upsd + drives the USB UPS; clients
 # only run upsmon and shut down on FSD.
@@ -32,14 +33,18 @@ nut_upsmon_password: "{{ vault_nut_upsmon_password }}"
 # pi5-master's static lease.
 nut_server_host: "{{ hostvars['pi5-master'].ansible_host }}"
 
-# Shutdown thresholds (server-side). Settling timer fires N seconds after
-# ONBATT before the cluster-graceful script runs. Tune so a 30s brownout
-# doesn't trigger a full shutdown.
-nut_onbatt_settle_seconds: 60
+# How long power must stay out before the primary shuts every machine on the
+# UPS down. 300s, chosen 2026-11-17 (ask UsbEaS): the 2026-11-17 outage lasted
+# about 2 minutes with ~950s of runtime left, and the 60s it replaced shut
+# everything down for nothing. On battery, low battery (battery.runtime.low, 300s)
+# still ends it early: upsmon treats OB+LB as critical on its own.
+nut_onbatt_settle_seconds: 300
 
-# Whether the graceful shutdown should call `flux suspend`. Set false if the
-# flux binary isn't on the master's PATH (the role probes for it anyway).
-nut_graceful_flux_suspend: true
+# Seconds the primary waits after the FSD broadcast before it halts itself.
+# Its halt ends in killpower, which cuts every battery outlet ~20s later
+# (ups.delay.shutdown), so this is the head start the desktops on the UPS get
+# to finish shutting down.
+nut_primary_finaldelay: 60
 
-# Kubeconfig the cluster-graceful script uses to cordon nodes.
-nut_kubeconfig: /etc/rancher/k3s/k3s.yaml
+# Where UPS pages go: the homelab alerts topic (subscribe in the ntfy app).
+nut_ntfy_url: https://ntfy.kblab.me/homelab-alerts

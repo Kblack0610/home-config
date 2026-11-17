@@ -62,7 +62,7 @@ spec:
                   name: ci-runner-governor
                   key: github-token
                   optional: true
-            # The ci-governor IAM key for the aws-burst-1 power hook (config.json
+            # The ci-governor IAM key for the AWS hosts' power hook (config.json
             # "power"). Tag-scoped: start, stop and describe on ci-burst=true instances only.
             - name: AWS_ACCESS_KEY_ID
               valueFrom:

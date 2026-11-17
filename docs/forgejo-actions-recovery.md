@@ -37,3 +37,4 @@ This change needs approval for the database migration before merge and activatio
 | Slow FetchTask logs appear below the fetch deadline | Inspect the router logger's StillExecutingEvent and nearby context errors | Treat the message as an in-progress sample; do not infer a completed response |
 | Runner is upgraded but empty-log zombie failures continue | Read the version from the live server | Apply the approved host upgrade through Ansible |
 | New runner rejects a workflow | Read the validation error and runner release notes | Correct the workflow syntax or legacy commands before reopening its gate |
+| Mirror exporter reports `too_large` after the server upgrade | Run its direct database query; Forgejo 15 replaces `mirror.remote_address` with encrypted data | Read the public upstream URL from `repository.original_url`; the exporter needs no decryption key or larger snapshot limit |

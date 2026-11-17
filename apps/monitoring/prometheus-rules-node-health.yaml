@@ -165,7 +165,7 @@ spec:
 
         # The Pi firmware latched an undervoltage event since boot. The latch
         # holds until reboot, so this catches a brownout too short for any
-        # one-minute sample to see. Metric: roles/crash-evidence.
+        # one-minute sample to see. Metric: roles/rpi-throttle-metric, on every Pi.
         - alert: PiUndervoltageSinceBoot
           expr: rpi_throttled{flag="undervoltage",when="since_boot"} == 1
           labels:

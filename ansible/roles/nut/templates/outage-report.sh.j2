@@ -1,0 +1,14 @@
+#!/bin/sh
+# {{ ansible_managed }}
+# Managed by ansible/roles/nut. Do not edit by hand.
+#
+# Runs once at boot when primary-shutdown.sh left a marker. ntfy lives in the
+# cluster, which takes minutes to come back after a power cut, hence the
+# retries (40 x 15s, about 10 minutes, bounded).
+
+MARKER=/var/lib/nut-outage/fsd-at
+AT=$(cat "${MARKER}")
+rm -f "${MARKER}"
+logger -t nut-outage-report -p daemon.notice "booted after the NUT shutdown at ${AT}"
+/etc/nut/ntfy-page.sh "UPS shutdown recovered" \
+    "NUT shut every machine on the UPS down at ${AT}. pi5-master is back up since $(uptime -s). Check the rest came back." 40

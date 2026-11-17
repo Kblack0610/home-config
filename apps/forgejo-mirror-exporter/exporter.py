@@ -136,7 +136,7 @@ def _esc(v):
 
 
 def _sanitize(addr):
-    """scheme + host only. mirror.remote_address can embed credentials, and a
+    """scheme + host only. An upstream URL can embed credentials, and a
     Prometheus label is forever: it gets scraped, stored, and screenshotted."""
     try:
         u = urlsplit(addr or "")
@@ -206,7 +206,7 @@ def _query(conn):
     # result set and take its alert with it.
     for repo_id, ival, upd, nxt, addr, owner, name, arch in conn.execute(
         """SELECT m.repo_id, m.interval, m.updated_unix, m.next_update_unix,
-                  m.remote_address, r.owner_name, r.name,
+                  r.original_url, r.owner_name, r.name,
                   COALESCE(r.is_archived, 0)
            FROM mirror m LEFT JOIN repository r ON r.id = m.repo_id"""
     ):
@@ -531,7 +531,7 @@ def render():
 
     # --- per-mirror, enumerated from the DB so a new mirror needs no config.
     h("forgejo_mirror_info", "gauge",
-      "One series per configured mirror. Credentials stripped from remote_address.")
+      "One series per configured mirror. Credentials stripped from repository.original_url.")
     h("forgejo_mirror_monitored", "gauge",
       "1 if this mirror should be held to a schedule: interval>0 AND next update "
       "scheduled AND repo row exists AND not archived. interval==0 is manual-only "

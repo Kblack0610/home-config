@@ -227,9 +227,10 @@
 # from the control node's `gh` CLI, which needs admin:org for an org runner
 # (roles/github-actions-runner-linux/README.md), so there is no standing PAT.
 #
-# Lowering a slot count does NOT remove the old slot: stop and disable
-# actions.runner.<host>-<slot>.service, delete it in the org's runner settings,
-# and rm -rf /var/lib/linux-ci/<slot>.
+# Lowering a slot count, or dropping a ci_repo_runners entry, does NOT remove
+# the old slot: stop and disable actions.runner.<host>-<slot>.service, delete
+# it in the org's runner settings (a repo slot: that repo's settings), and
+# rm -rf /var/lib/linux-ci/<slot>.
 - name: Linux CI runners (light / heavy)
   hosts: linux_ci_runners
   become: true
@@ -279,6 +280,43 @@
           HOME: "{{ linux_ci_user_home }}/{{ ci_slot }}"
           ACTIONS_RUNNER_HOOK_JOB_STARTED: "{{ linux_ci_job_started_hook }}"
           CI_SLOT_CPUS: "{{ linux_ci_slot_cpus }}"
+      tags: [runner, ci, linux-ci]
+    # A personal repo cannot see org runners, so each ci_repo_runners entry
+    # registers against its one repo (inventory.yml says why), with the
+    # workstation's gh as the repo owner. It runs as linux-ci like the org
+    # slots: the role puts every runner user in the docker group, which is
+    # root on the host, so a second user would isolate nothing. Its jobs use
+    # no secrets and read-only tokens, and the job-completed hook empties the
+    # workspace as soon as a job ends, so no private checkout stays on disk.
+    # CI_SLOT_CPUS is 1: its jobs are seconds of lint, and counting it in
+    # linux_ci_slot_cpus would halve razer-laptop's platform slots.
+    - name: Register the personal repo runner slots
+      ansible.builtin.include_role:
+        name: github-actions-runner-linux
+        apply:
+          tags: [runner, ci, linux-ci]
+      loop: "{{ ci_repo_runners | default([]) }}"
+      loop_control:
+        loop_var: ci_repo
+        label: "{{ ci_repo.repo }} {{ ci_repo.slot }}"
+      vars:
+        gh_runner_scope: repo
+        gh_runner_owner: "{{ ci_repo.repo.split('/')[0] }}"
+        gh_runner_repo: "{{ ci_repo.repo.split('/')[1] }}"
+        gh_runner_token_source: gh
+        gh_runner_install_packages: false
+        gh_runner_user: linux-ci
+        gh_runner_group: linux-ci
+        gh_runner_user_home: "{{ linux_ci_user_home }}"
+        gh_runner_home: "{{ linux_ci_user_home }}/{{ ci_repo.slot }}"
+        gh_runner_name: "{{ inventory_hostname }}-{{ ci_repo.slot }}"
+        gh_runner_labels: [self-hosted, linux, x64, light]
+        gh_runner_slice: "{{ ci_linux_slice }}"
+        gh_runner_env:
+          HOME: "{{ linux_ci_user_home }}/{{ ci_repo.slot }}"
+          ACTIONS_RUNNER_HOOK_JOB_STARTED: "{{ linux_ci_job_started_hook }}"
+          ACTIONS_RUNNER_HOOK_JOB_COMPLETED: "{{ linux_ci_job_started_hook }}"
+          CI_SLOT_CPUS: "1"
       tags: [runner, ci, linux-ci]
     # After the slots, which create the linux-ci user. Playground jobs clone
     # their submodules over ssh (windows-media-ci's first light jobs failed
@@ -567,10 +605,10 @@
         # Each apply resets a registered runner's labels to these (the role's label reconcile).
         # lan: the slot is on the home LAN, so it can push to git.kblab.me (Shots'
         # gallery image); through Cloudflare a push over 100 MB fails. Off for
-        # aws-burst-1 (unity_ci_lan in inventory.yml).
+        # the AWS hosts (unity_ci_lan in inventory.yml).
         # unity-wide: slots with the CPU for real-time players (Multi, Soak, Playloop); only slots
         # that passed the ucp-1521 probes (unity_ci_wide, default false, for every slot on the host;
-        # one slot alone through unity_ci_slot_labels, as aws-burst-1's slot 1). hd-library: the host
+        # one slot alone through unity_ci_slot_labels). hd-library: the host
         # holds asset-library-hd (HD, Slim tour); defaults to unity_ci_lan, since only LAN hosts
         # got the tarball, and a cloud host sets unity_ci_hd_library once it reads it from S3.
         # unity_ci_build_slots: slots 1..N carry unity-build in place of unity, unity-full,
@@ -688,15 +726,11 @@
           ASSET_LIBRARY_LFS_STORE: "{{ unity_ci_mac_lfs_store }}"
       tags: [runner, ci, unity-ci]
 
-# Network UPS Tools (NUT) — single CyberPower CP1500PFCLCD plugged into
-# pi5-master drives a graceful shutdown of the whole k3s fleet when grid
-# power fails. The primary (server) runs upsd + upsmon-primary; every
-# secondary (client) runs upsmon and halts on FSD broadcast.
-#
-# All five workers (incl. pi5-worker1) are nut_clients — see inventory.yml.
-# (pi5-worker1's SSH-key auth was fixed and it was added to the group; the old
-# "intentionally excluded" note was stale, cf. docs/nut-ups.md.)
-# Verify with `upsc cyberpower` on pi5-master after first apply.
+# Network UPS Tools (NUT): a single CyberPower CP1500PFCLCD plugged into
+# pi5-master shuts down every machine on the UPS when grid power stays out.
+# The primary (server) runs upsd + upsmon-primary; every secondary (client)
+# runs upsmon and halts on FSD broadcast. Hosts: nut_clients in inventory.yml.
+# The workstation is local: add -K. Docs: docs/nut-ups.md.
 - name: NUT primary (UPS server on pi5-master)
   hosts: nut_server
   become: true
@@ -705,7 +739,7 @@
     - role: nut
       tags: [nut, nut-server, ups]
 
-- name: NUT secondaries (Pi workers)
+- name: NUT secondaries (every other host on the UPS)
   hosts: nut_clients
   become: true
   gather_facts: true
@@ -800,8 +834,7 @@
       tags: [dgpu-off, thermal]
 
 # Make the next freeze explain itself: kernel messages stream to pi5-master
-# over netconsole, and the firmware's undervoltage latch is exported to
-# Prometheus. Receiver first, so the sender has somewhere to talk to.
+# over netconsole. Receiver first, so the sender has somewhere to talk to.
 # See ansible/roles/crash-evidence/README.md.
 #   ansible-playbook playbooks/site.yml --limit pi5-master,netconsole_senders --tags crash-evidence --check --diff
 - name: netconsole receiver (pi5-master - collects kernel logs from the senders)
@@ -812,13 +845,24 @@
     - role: netconsole-receiver
       tags: [crash-evidence, netconsole]
 
-- name: Crash evidence (netconsole sender + undervoltage latch metric)
+- name: Crash evidence (netconsole sender)
   hosts: netconsole_senders
   become: true
   gather_facts: true
   roles:
     - role: crash-evidence
       tags: [crash-evidence, netconsole]
+
+# Every Pi exports its firmware undervoltage latch; PiUndervoltageSinceBoot
+# alerts on it. See ansible/roles/rpi-throttle-metric/README.md.
+#   ansible-playbook playbooks/site.yml --limit rpi_hosts --tags rpi-throttle --check --diff
+- name: Pi undervoltage latch metric (every Pi)
+  hosts: rpi_hosts
+  become: true
+  gather_facts: false
+  roles:
+    - role: rpi-throttle-metric
+      tags: [rpi-throttle, crash-evidence]
 
 # Whole-house audio endpoints: each host is one room of the Snapcast system
 # (apps/snapcast). alsa backend = a dedicated Pi/Armbian box whose system
@@ -897,10 +941,11 @@
     - role: github-actions-runner-windows
       tags: [windows, runner]
 
-# The ssh keys that may log in, from roles/authorized-keys (additive).
-#   ansible-playbook playbooks/site.yml --limit linux_bare_metal --tags authorized-keys
-- name: Authorized keys (bare-metal Linux)
-  hosts: linux_bare_metal
+# The ssh keys that may log in, from roles/authorized-keys (additive). Every
+# Linux node, the Pis included, so cluster admin never hangs on one machine.
+#   ansible-playbook playbooks/site.yml --limit linux_bare_metal:pi_k3s:adguard --tags authorized-keys
+- name: Authorized keys (Linux nodes)
+  hosts: linux_bare_metal:pi_k3s:adguard
   gather_facts: false
   roles:
     - role: authorized-keys

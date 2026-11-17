@@ -65,7 +65,7 @@ tests:
       - expr: kb_project_number{metric="uptime_7d"}
         eval_time: 55m
         exp_samples:
-          - labels: 'kb_project_number{dept="analytics", metric="uptime_7d", project="binks-chat"}'
+          - labels: 'kb_project_number{dept="analytics", metric="uptime_7d", project="binks"}'
             value: 1
           # The api host passed 9 of 12 probes; the two healthy hosts do not hide it.
           - labels: 'kb_project_number{dept="analytics", metric="uptime_7d", project="placemyparents"}'
@@ -87,7 +87,7 @@ tests:
         eval_time: 30m
         exp_samples: []
 
-  - name: binks-chat turns, tools, spend and subscribers
+  - name: binks turns, tools, spend and subscribers
     interval: 5m
     input_series:
       - series: 'binks_chat_completions_total{role="assistant", pod="p1", job="binks-api"}'
@@ -105,18 +105,18 @@ tests:
       - series: 'binks_billing_active_subscribers{pod="p2", job="binks-api"}'
         values: '3x300'
     promql_expr_test:
-      - expr: kb_project_number{project="binks-chat", metric=~"chat_turns_24h|tool_web_search_24h|llm_usd_7d|subscribers_active"}
+      - expr: kb_project_number{project="binks", metric=~"chat_turns_24h|tool_web_search_24h|llm_usd_7d|subscribers_active"}
         eval_time: 1d
         exp_samples:
           # 288 five-minute steps in 24h, one turn each.
-          - labels: 'kb_project_number{dept="analytics", metric="chat_turns_24h", project="binks-chat"}'
+          - labels: 'kb_project_number{dept="analytics", metric="chat_turns_24h", project="binks"}'
             value: 288
-          - labels: 'kb_project_number{dept="analytics", metric="tool_web_search_24h", project="binks-chat"}'
+          - labels: 'kb_project_number{dept="analytics", metric="tool_web_search_24h", project="binks"}'
             value: 288
           # Only the binks-* key counts: 288 steps x 0.25 over the day the series has.
-          - labels: 'kb_project_number{dept="money", metric="llm_usd_7d", project="binks-chat"}'
+          - labels: 'kb_project_number{dept="money", metric="llm_usd_7d", project="binks"}'
             value: 72
-          - labels: 'kb_project_number{dept="money", metric="subscribers_active", project="binks-chat"}'
+          - labels: 'kb_project_number{dept="money", metric="subscribers_active", project="binks"}'
             value: 3
 
   - name: Edgegap spend is the registry's month per game, a game that has not run reading 0

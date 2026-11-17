@@ -53,27 +53,6 @@ sections:
           action: url
           url_path: https://mem0.kennethblack.me
       - type: tile
-        entity: binary_sensor.placemyparents_api_blacknbrownstudios_com
-        name: placemyparents-api.blacknbrownstudios.com
-        icon: mdi:api
-        tap_action:
-          action: url
-          url_path: https://placemyparents-api.blacknbrownstudios.com
-      - type: tile
-        entity: binary_sensor.placemyparents_mobile_blacknbrownstudios_com
-        name: placemyparents-mobile.blacknbrownstudios.com
-        icon: mdi:web
-        tap_action:
-          action: url
-          url_path: https://placemyparents-mobile.blacknbrownstudios.com
-      - type: tile
-        entity: binary_sensor.placemyparents_blacknbrownstudios_com
-        name: placemyparents.blacknbrownstudios.com
-        icon: mdi:account-group
-        tap_action:
-          action: url
-          url_path: https://placemyparents.blacknbrownstudios.com
-      - type: tile
         entity: binary_sensor.ship_blacknbrownstudios_com
         name: ship.blacknbrownstudios.com
         icon: mdi:web

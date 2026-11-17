@@ -1,0 +1,13 @@
+#!/bin/sh
+# {{ ansible_managed }}
+# Managed by ansible/roles/nut. Do not edit by hand.
+#
+# Usage: ntfy-page.sh <title> <message> [retries]
+# Posts one high-priority page to {{ nut_ntfy_url }}. ntfy runs in the cluster,
+# so during an outage it may be unreachable; retries (15s apart) are for the
+# after-boot report, which waits for the cluster to come back.
+
+curl -fsS --max-time 10 --retry "${3:-0}" --retry-delay 15 --retry-all-errors \
+    -H "Title: $1" -H "Priority: high" -H "Tags: zap" \
+    -d "$2 (from $(hostname))" "{{ nut_ntfy_url }}" >/dev/null 2>&1 \
+    || logger -t nut-page -p daemon.warning "could not post '$1' to ntfy"

@@ -9,7 +9,7 @@
 # read, with no event to wait on.
 set -eu
 
-out_dir="${1:-/var/lib/prometheus/node-exporter}"
+out_dir="${1:?usage: rpi-throttled-textfile <textfile dir>}"
 raw="$(vcgencmd get_throttled)"
 val=$(( ${raw#*=} ))
 

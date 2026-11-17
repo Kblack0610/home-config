@@ -222,7 +222,7 @@
       "id": 6,
       "type": "timeseries",
       "title": "Chat turns and tools, 24h",
-      "description": "binks-chat: assistant turns in the last 24 hours, and each chat tool used.",
+      "description": "binks: assistant turns in the last 24 hours, and each chat tool used.",
       "datasource": {
         "type": "prometheus",
         "uid": "victoriametrics"

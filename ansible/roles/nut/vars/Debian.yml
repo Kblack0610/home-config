@@ -1,0 +1,5 @@
+---
+nut_confdir: /etc/nut
+nut_conf_group: nut
+nut_client_packages: [nut-client]
+nut_server_packages: [nut, nut-client, nut-server, usbutils]

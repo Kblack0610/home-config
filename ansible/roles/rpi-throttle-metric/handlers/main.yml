@@ -1,0 +1,8 @@
+---
+- name: Reload the throttle timer
+  ansible.builtin.systemd_service:
+    name: rpi-throttled-textfile.timer
+    state: restarted
+    daemon_reload: true
+  listen: reload throttle timer
+  when: not ansible_check_mode

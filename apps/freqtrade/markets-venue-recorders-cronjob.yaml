@@ -4,8 +4,10 @@
 # [compact] grace_h). Memory is sized from the market counts, not measured: Kalshi peaked at 470 MB on 179k markets.
 # The Odds API runs every 6 h: 4 credits a sweep for one sport with h2h and totals (markets.toml [venues.odds_api]) is
 # 480 a month on the free tier's 500. More sports or a faster cadence needs a paid plan, the person's money call.
-# After its sweep it runs the odds_api paper league pass (lab/markets/paper.py, tt_totals forward accounts; tr-271),
-# as trader-markets-recorder does for Kalshi: paper money only, nothing is ever placed at a sportsbook.
+# Each venue in the strategy repo's lab/markets.toml [paper] venues (odds_api, polymarket_us, predictit here) runs its
+# paper league pass after its sweep (lab/markets/paper.py --venue V; tr-271, tr-325), as trader-markets-recorder does
+# for Kalshi: paper money only, nothing is ever placed at a venue or a sportsbook. A venue added there needs its line
+# here too, or its accounts never trade (the trader-paper-volume watch, ar-2743).
 apiVersion: batch/v1
 kind: CronJob
 metadata:
@@ -56,7 +58,7 @@ spec:
           containers:
             - name: recorder
               image: trader
-              command: ["python", "-m", "lab.markets.recorder", "polymarket_us"]
+              command: ["sh", "-c", "python -m lab.markets.recorder polymarket_us; sweep=$?; python -m lab.markets.paper --venue polymarket_us || exit 1; exit $sweep"]
               env:
                 - name: DATABASE_URL
                   valueFrom:
@@ -197,7 +199,7 @@ spec:
           containers:
             - name: recorder
               image: trader
-              command: ["python", "-m", "lab.markets.recorder", "predictit"]
+              command: ["sh", "-c", "python -m lab.markets.recorder predictit; sweep=$?; python -m lab.markets.paper --venue predictit || exit 1; exit $sweep"]
               env:
                 - name: DATABASE_URL
                   valueFrom:

@@ -78,7 +78,7 @@ jobs:
       - name: github-runner-exporter offline tests
         run: python3 apps/github-runner-exporter/test_exporter.py
       - name: forgejo-mirror-exporter offline tests
-        run: python3 apps/forgejo-mirror-exporter/test_exporter.py
+        run: python3 ansible/roles/forgejo-host/files/mirror-exporter/test_exporter.py
       - name: ci-runner-governor offline tests
         run: python3 apps/ci-runner-governor/test_governor.py
       - name: github-actions-runner-linux label plan tests

@@ -17,11 +17,13 @@ OrcaSlicer in the browser at `https://slicer.kblab.me` (linuxserver image, Selki
 
 | Printer | Machine | Process | Filament |
 |---------|---------|---------|----------|
-| Neptune 4 Pro, 0.4 nozzle | `Elegoo Neptune 4 Pro (0.4 nozzle)-OpenNept4une` | `0.20mm Standard ...(0.4 nozzle)-OpenNept4une`, `0.20mm PETG ...` | `Elegoo Generic PLA-OpenNept4une` (210), `Elegoo Generic PETG-OpenNept4une` (240) |
+| Neptune 4 Pro, 0.4 nozzle | `Elegoo Neptune 4 Pro (0.4 nozzle)-OpenNept4une` | `0.20mm Standard ...(0.4 nozzle)-OpenNept4une`, `0.20mm PETG ...`, `0.12mm Seashell ...` | `Elegoo Generic PLA-OpenNept4une` (210), `Elegoo Generic PETG-OpenNept4une` (240), `Elegoo Silk PLA-OpenNept4une` (220) |
 | Neptune 4 Pro, 0.8 nozzle | `Elegoo Neptune 4 Pro (0.8 nozzle)-OpenNept4une` | `0.40mm Standard ...(0.8 nozzle)-OpenNept4une` | same |
-| Bambu Lab A1 | `Bambu Lab A1 (0.4 nozzle)-LAN` | system presets | system presets |
+| Bambu Lab A1 | `Bambu Lab A1 (0.4 nozzle)-LAN` | system presets, `0.12mm Seashell @BBL A1-LAN` | system presets (silk: `Bambu PLA Silk @BBL A1`) |
 
-Both Neptune machine presets carry the OpenNept4une `PRINT_START ... BED_MESH=adaptive` / `PRINT_END` gcode and firmware retraction. The two Neptune filaments show only for the Neptune (`printer_model` condition).
+Both Neptune machine presets carry the OpenNept4une `PRINT_START ... BED_MESH=adaptive` / `PRINT_END` gcode and firmware retraction. The Neptune filaments show only for the Neptune (`printer_model` condition).
+
+The two `0.12mm Seashell` processes are one look for small organic prints in silk PLA (the 2026-11 wedding shells), kept identical across printers so a set matches: 0.12 mm layers, Arachne, 3 walls, outer wall 50 mm/s for the sheen, back seam with scarf, 15% gyroid, organic tree supports from the plate only. `Elegoo Silk PLA` adds 220 C, 8 mm3/s, fan 80-100% and a 10 s minimum layer time for the spikes.
 
 Every Neptune process names its gcode `{input_filename_base}_{nozzle_diameter[0]}n_{layer_height}mm_{filament_type[0]}_{print_time}.gcode`, for example `Benchy_0.4n_0.2mm_PLA_50m22s.gcode`. The layer height in a name says nothing about the nozzle; to check an old file, read `nozzle_diameter` from `curl -s 'http://192.168.1.54:7125/server/files/metadata?filename=<name>'`.
 

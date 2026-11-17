@@ -34,9 +34,15 @@ configMapGenerator:
       - filament-pla.info=profiles/filament/Elegoo Generic PLA-OpenNept4une.info
       - filament-petg.json=profiles/filament/Elegoo Generic PETG-OpenNept4une.json
       - filament-petg.info=profiles/filament/Elegoo Generic PETG-OpenNept4une.info
+      - filament-silk-pla.json=profiles/filament/Elegoo Silk PLA-OpenNept4une.json
+      - filament-silk-pla.info=profiles/filament/Elegoo Silk PLA-OpenNept4une.info
       - process-standard.json=profiles/process/0.20mm Standard @Elegoo Neptune4Pro (0.4 nozzle)-OpenNept4une.json
       - process-standard.info=profiles/process/0.20mm Standard @Elegoo Neptune4Pro (0.4 nozzle)-OpenNept4une.info
       - process-petg.json=profiles/process/0.20mm PETG @Elegoo Neptune4Pro (0.4 nozzle)-OpenNept4une.json
       - process-petg.info=profiles/process/0.20mm PETG @Elegoo Neptune4Pro (0.4 nozzle)-OpenNept4une.info
       - process-standard-08.json=profiles/process/0.40mm Standard @Elegoo Neptune4Pro (0.8 nozzle)-OpenNept4une.json
       - process-standard-08.info=profiles/process/0.40mm Standard @Elegoo Neptune4Pro (0.8 nozzle)-OpenNept4une.info
+      - process-seashell.json=profiles/process/0.12mm Seashell @Elegoo Neptune4Pro (0.4 nozzle)-OpenNept4une.json
+      - process-seashell.info=profiles/process/0.12mm Seashell @Elegoo Neptune4Pro (0.4 nozzle)-OpenNept4une.info
+      - process-seashell-a1.json=profiles/process/0.12mm Seashell @BBL A1-LAN.json
+      - process-seashell-a1.info=profiles/process/0.12mm Seashell @BBL A1-LAN.info

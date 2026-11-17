@@ -1,0 +1,13 @@
+---
+# The known_hosts the ansible-runner pod's convergence-check dials with: the keys of every host in
+# host_identity_runner_groups, from the inventory, never scanned. Run on the runner's localhost
+# (playbooks/runner-known-hosts.yml), so it never touches /etc/ssh.
+- name: Read the DHCP reservations
+  ansible.builtin.set_fact:
+    host_identity_devices: "{{ (lookup('ansible.builtin.file', host_identity_devices_file) | from_yaml).devices }}"
+
+- name: Write the runner's known_hosts from the inventory
+  ansible.builtin.copy:
+    dest: "{{ host_identity_runner_known_hosts_path }}"
+    mode: "0644"
+    content: "{{ hostvars | roster_known_hosts(groups, host_identity_runner_groups, host_identity_devices) | join('\n') }}\n"

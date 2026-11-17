@@ -82,10 +82,17 @@ spec:
           labels: {domain: prod}
           expr: >-
             max by (item) (label_replace(((mqtt_tripped{topic=~"agents_.+_watch_(pmp_.+|prod_mercury_payouts|posthog_prod_guard|binks_key_issue_failed)"} and on (topic) cc:agents_topic_live) * 2 > 0) or ((mqtt_stale{topic=~"agents_.+_watch_(pmp_.+|prod_mercury_payouts|posthog_prod_guard|binks_key_issue_failed)"} and on (topic) cc:agents_topic_live) > 0), "item", "$1", "topic", "agents_.+_watch_(.+)"))
+        # ci is the runner fleet: runners online and the Unity queue wait. A project's own CI
+        # (nightly, gates, release train) is the projects domain below, so a red nightly no longer
+        # paints the CI chip amber for days (2026-11-17: ci never green in 7 days).
         - record: cc:watch_state
           labels: {domain: ci}
           expr: >-
-            max by (item) (label_replace(((mqtt_tripped{topic=~"agents_.+_watch_(.+_runners?_online|m1_playground_mac_online)"} and on (topic) cc:agents_topic_live) * 2 > 0) or ((mqtt_tripped{topic=~"agents_.+_watch_(playground_nightly|playground_main_checks|playground_gate_spread|playground_release_ready|playground_release_runs|playground_train_stuck|playground_server_behind|playground_gate_budget|unity_queue_wait|playloop|dotfiles_gate_budget)"} and on (topic) cc:agents_topic_live) * 1 > 0) or ((mqtt_stale{topic=~"agents_.+_watch_(.+_runners?_online|playground_nightly|playground_main_checks|playground_gate_spread|playground_release_ready|playground_release_runs|playground_train_stuck|playground_server_behind|playground_gate_budget|unity_queue_wait|playloop|dotfiles_gate_budget|m1_playground_mac_online)"} and on (topic) cc:agents_topic_live) > 0), "item", "$1", "topic", "agents_.+_watch_(.+)"))
+            max by (item) (label_replace(((mqtt_tripped{topic=~"agents_.+_watch_(.+_runners?_online|m1_playground_mac_online)"} and on (topic) cc:agents_topic_live) * 2 > 0) or ((mqtt_tripped{topic=~"agents_.+_watch_(unity_queue_wait)"} and on (topic) cc:agents_topic_live) * 1 > 0) or ((mqtt_stale{topic=~"agents_.+_watch_(.+_runners?_online|unity_queue_wait|m1_playground_mac_online)"} and on (topic) cc:agents_topic_live) > 0), "item", "$1", "topic", "agents_.+_watch_(.+)"))
+        - record: cc:watch_state
+          labels: {domain: projects}
+          expr: >-
+            max by (item) (label_replace(((mqtt_tripped{topic=~"agents_.+_watch_(playground_nightly|playground_main_checks|playground_gate_spread|playground_release_ready|playground_release_runs|playground_train_stuck|playground_server_behind|playground_gate_budget|playloop|dotfiles_gate_budget)"} and on (topic) cc:agents_topic_live) * 1 > 0) or ((mqtt_stale{topic=~"agents_.+_watch_(playground_nightly|playground_main_checks|playground_gate_spread|playground_release_ready|playground_release_runs|playground_train_stuck|playground_server_behind|playground_gate_budget|playloop|dotfiles_gate_budget)"} and on (topic) cc:agents_topic_live) > 0), "item", "$1", "topic", "agents_.+_watch_(.+)"))
         - record: cc:watch_state
           labels: {domain: queue}
           expr: >-
@@ -136,6 +143,10 @@ spec:
           labels: {domain: ci, component: watches}
           expr: >-
             max(cc:watch_state{domain="ci"}) or vector(0)
+        - record: cc:component_status
+          labels: {domain: projects, component: watches}
+          expr: >-
+            max(cc:watch_state{domain="projects"}) or vector(0)
         - record: cc:component_status
           labels: {domain: queue, component: watches}
           expr: >-
@@ -188,11 +199,16 @@ spec:
           labels: {domain: llm, component: gateway}
           expr: >-
             (clamp_max(count(up{job="litellm"} == 0), 1) * 2) or (absent(up{job="litellm"}) * 2) or vector(0)
-        # any host/pool below its expected size -> 1 (per host: one dead laptop must not hide behind another's full pool)
+        # any host/pool below its expected size -> 1 (per host: one dead laptop must not hide behind another's full pool).
+        # A cloud host the CI governor stopped is meant to be offline, so it is left out, the same guard
+        # as prometheus-rules-node-health.yaml; it counts again once the governor reports it running.
         - record: cc:component_status
           labels: {domain: ci, component: pools}
           expr: >-
-            clamp_max(count(max by (host, pool) (github_runner_pool_online) < max by (host, pool) (github_runner_pool_expected)), 1) or vector(0)
+            clamp_max(count(
+              (max by (host, pool) (github_runner_pool_online) < max by (host, pool) (github_runner_pool_expected))
+              unless on (host) max by (host) (ci_governor_power_state{state=~"stopped|starting|stopping"} == 1)
+            ), 1) or vector(0)
         # any agentctl runner in error or whose last run STALLED -> 1
         - record: cc:component_status
           labels: {domain: agents, component: runners}

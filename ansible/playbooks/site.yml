@@ -227,9 +227,10 @@
 # from the control node's `gh` CLI, which needs admin:org for an org runner
 # (roles/github-actions-runner-linux/README.md), so there is no standing PAT.
 #
-# Lowering a slot count does NOT remove the old slot: stop and disable
-# actions.runner.<host>-<slot>.service, delete it in the org's runner settings,
-# and rm -rf /var/lib/linux-ci/<slot>.
+# Lowering a slot count, or dropping a ci_repo_runners entry, does NOT remove
+# the old slot: stop and disable actions.runner.<host>-<slot>.service, delete
+# it in the org's runner settings (a repo slot: that repo's settings), and
+# rm -rf /var/lib/linux-ci/<slot>.
 - name: Linux CI runners (light / heavy)
   hosts: linux_ci_runners
   become: true
@@ -282,7 +283,13 @@
       tags: [runner, ci, linux-ci]
     # A personal repo cannot see org runners, so each ci_repo_runners entry
     # registers against its one repo (inventory.yml says why), with the
-    # workstation's gh as the repo owner.
+    # workstation's gh as the repo owner. It runs as linux-ci like the org
+    # slots: the role puts every runner user in the docker group, which is
+    # root on the host, so a second user would isolate nothing. Its jobs use
+    # no secrets and read-only tokens, and the job-completed hook empties the
+    # workspace as soon as a job ends, so no private checkout stays on disk.
+    # CI_SLOT_CPUS is 1: its jobs are seconds of lint, and counting it in
+    # linux_ci_slot_cpus would halve razer-laptop's platform slots.
     - name: Register the personal repo runner slots
       ansible.builtin.include_role:
         name: github-actions-runner-linux
@@ -308,7 +315,8 @@
         gh_runner_env:
           HOME: "{{ linux_ci_user_home }}/{{ ci_repo.slot }}"
           ACTIONS_RUNNER_HOOK_JOB_STARTED: "{{ linux_ci_job_started_hook }}"
-          CI_SLOT_CPUS: "{{ linux_ci_slot_cpus }}"
+          ACTIONS_RUNNER_HOOK_JOB_COMPLETED: "{{ linux_ci_job_started_hook }}"
+          CI_SLOT_CPUS: "1"
       tags: [runner, ci, linux-ci]
     # After the slots, which create the linux-ci user. Playground jobs clone
     # their submodules over ssh (windows-media-ci's first light jobs failed

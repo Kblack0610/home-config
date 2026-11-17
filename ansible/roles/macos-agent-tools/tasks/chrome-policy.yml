@@ -16,6 +16,9 @@
     group: wheel
     mode: "0755"
 
+# This role owns the whole file: a new Chrome policy is a new key in this
+# template, not a hand edit on the Mac (the next apply would replace it).
+# `validate` lints the plist before it replaces the live file.
 - name: Force-install the Playwright Extension in Chrome
   become: true
   ansible.builtin.copy:
@@ -23,6 +26,7 @@
     owner: root
     group: wheel
     mode: "0644"
+    validate: plutil -lint %s
     content: |
       <?xml version="1.0" encoding="UTF-8"?>
       <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
@@ -31,7 +35,7 @@
         <key>ExtensionInstallForcelist</key>
         <array>
       {% for ext in agent_tools_chrome_forced_extensions %}
-          <string>{{ ext }};{{ agent_tools_chrome_update_url }}</string>
+          <string>{{ (ext ~ ';' ~ agent_tools_chrome_update_url) | e }}</string>
       {% endfor %}
         </array>
       </dict>
@@ -44,8 +48,3 @@
   ansible.builtin.debug:
     msg: Chrome reads the policy at launch; quit and reopen it to install the extension now.
   when: agent_tools_chrome_policy is changed
-
-- name: Assert Chrome parses the policy
-  ansible.builtin.command: plutil -lint "/Library/Managed Preferences/com.google.Chrome.plist"
-  changed_when: false
-  when: not ansible_check_mode

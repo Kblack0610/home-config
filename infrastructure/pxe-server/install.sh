@@ -114,8 +114,8 @@ create_directories() {
 download_ipxe() {
     log_section "iPXE Binaries"
 
-    # The EFI binaries are built from a pinned commit with the chain script
-    # embedded, and committed; boot.ipxe.org builds would boot an empty shell.
+    # The EFI binaries are built from a pinned commit and committed; they run
+    # boot/autoexec.ipxe over TFTP, which chains the menu.
     if [[ -f "$PXE_BOOT_DIR/uefi/snponly.efi" && -f "$PXE_BOOT_DIR/uefi/ipxe.efi" ]]; then
         log_info "snponly.efi and ipxe.efi present"
     else

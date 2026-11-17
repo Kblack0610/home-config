@@ -2,7 +2,7 @@
 #
 # Create an iPXE USB Boot Image
 #
-# Builds the pinned iPXE EFI binary (build-ipxe.sh) with an embedded script that
+# Builds the pinned iPXE EFI binary (build-ipxe.sh) plus an autoexec.ipxe that
 # auto-chains to your PXE server, then packages it as a bootable
 # disk image you can dd onto a USB drive.
 #
@@ -106,7 +106,8 @@ check_build_deps() {
 build_ipxe() {
     log_section "Building iPXE EFI Binary"
     log_info "PXE Server: ${SERVER_IP}:${HTTP_PORT}"
-    "$SCRIPT_DIR/build-ipxe.sh" --server "$SERVER_IP" --port "$HTTP_PORT" --out "$BUILD_DIR"
+    "$SCRIPT_DIR/build-ipxe.sh" --out "$BUILD_DIR"
+    sed "s|192.168.1.2:9080|${SERVER_IP}:${HTTP_PORT}|g" "$PXE_BOOT_DIR/autoexec.ipxe" >"$BUILD_DIR/autoexec.ipxe"
 }
 
 create_image() {
@@ -139,6 +140,7 @@ SFDISK
     MTOOLS_SKIP_CHECK=1 mmd -i "$OUTPUT_IMG@@$offset_bytes" ::/EFI
     MTOOLS_SKIP_CHECK=1 mmd -i "$OUTPUT_IMG@@$offset_bytes" ::/EFI/BOOT
     MTOOLS_SKIP_CHECK=1 mcopy -i "$OUTPUT_IMG@@$offset_bytes" "$efi_binary" ::/EFI/BOOT/BOOTX64.EFI
+    MTOOLS_SKIP_CHECK=1 mcopy -i "$OUTPUT_IMG@@$offset_bytes" "$BUILD_DIR/autoexec.ipxe" ::/autoexec.ipxe
 
     # Verify
     log_info "Verifying image contents..."

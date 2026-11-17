@@ -153,7 +153,9 @@ echo Downloading initramfs...
 initrd ${http-root}/cachyos/initramfs-linux-cachyos.img || goto initrd-failed
 
 echo Configuring boot parameters...
+# The kernel's EFI stub loads the initramfs this initrd= names.
 imgargs vmlinuz-linux-cachyos \
+    initrd=initramfs-linux-cachyos.img \
     archisobasedir=cachyos \
     archiso_http_srv=${http-root}/ \
     ip=dhcp \

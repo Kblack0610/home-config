@@ -1,18 +1,16 @@
 #!/usr/bin/env bash
 #
-# Build the iPXE EFI binaries this server boots, from a pinned upstream commit,
-# with a script embedded that takes DHCP and chains the menu.
+# Build the iPXE EFI binaries this server boots, from a pinned upstream commit.
 #
 # Writes snponly.efi (the default UEFI boot file, drives the NIC the firmware
 # booted from) and ipxe.efi (the fallback with its own NIC drivers, also used
-# by make-usb.sh) into --out, default boot/uefi/.
+# by make-usb.sh) into --out, default boot/uefi/. Both run boot/autoexec.ipxe,
+# which chains the menu; nothing is embedded, because iPXE hands an embedded
+# script to the kernel as part of the initramfs and the kernel panics.
 #
-# Usage: build-ipxe.sh [--server <ip>] [--port <port>] [--out <dir>]
+# Usage: build-ipxe.sh [--out <dir>]
 #
-# Why a pinned build: the February 2026 binaries handed a corrupt initramfs to
-# the kernel ("Initramfs unpacking failed: invalid magic"), and boot.ipxe.org
-# builds carry no embedded script. Bump IPXE_COMMIT only after a test-vm.sh
-# boot reaches the airootfs download.
+# Bump IPXE_COMMIT only after a test-vm.sh boot reaches the airootfs download.
 #
 
 set -euo pipefail
@@ -29,18 +27,13 @@ source "$SCRIPT_DIR/../base_functions.sh"
 # Upstream ipxe/ipxe master on 2026-11-16; booted CachyOS in OVMF that day.
 IPXE_COMMIT="9261ebe38af0c0b38ac332adeec125a518845013"
 
-# menu.ipxe hard-codes the same address, since next-server can be the router.
-SERVER_IP="${PXE_SERVER_IP:-192.168.1.2}"
-HTTP_PORT="${PXE_HTTP_PORT:-9080}"
 OUT_DIR="$PXE_BOOT_DIR/uefi"
 SRC_DIR="${XDG_CACHE_HOME:-$HOME/.cache}/pxe-server/ipxe-$IPXE_COMMIT"
 
 while [[ $# -gt 0 ]]; do
     case "$1" in
-        --server|-s) SERVER_IP="$2"; shift 2 ;;
-        --port|-p)   HTTP_PORT="$2"; shift 2 ;;
         --out|-o)    OUT_DIR="$2"; shift 2 ;;
-        --help|-h)   sed -n '2,16p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
+        --help|-h)   sed -n '2,14p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
         *)           log_error "Unknown option: $1"; exit 1 ;;
     esac
 done
@@ -57,28 +50,8 @@ if [[ ! -d "$SRC_DIR/src" ]]; then
     git -C "$SRC_DIR" checkout -q FETCH_HEAD
 fi
 
-menu_url="http://${SERVER_IP}:${HTTP_PORT}/ipxe/menu.ipxe"
-cat > "$SRC_DIR/src/chain-pxe.ipxe" <<IPXE
-#!ipxe
-
-:retry
-dhcp || goto retry_wait
-echo Chaining to ${menu_url}
-chain ${menu_url} || goto failed
-
-:retry_wait
-echo DHCP failed, retrying in 3 seconds...
-sleep 3
-goto retry
-
-:failed
-echo Failed to reach the PXE server at ${SERVER_IP}:${HTTP_PORT}. Is pxe-server running?
-echo Manual: dhcp, then chain ${menu_url}
-shell
-IPXE
-
-log_info "Building snponly.efi and ipxe.efi (chain: $menu_url)..."
-make -C "$SRC_DIR/src" -j"$(nproc)" EMBED=chain-pxe.ipxe \
+log_info "Building snponly.efi and ipxe.efi..."
+make -C "$SRC_DIR/src" -j"$(nproc)" EMBED= \
     bin-x86_64-efi/snponly.efi bin-x86_64-efi/ipxe.efi >"$SRC_DIR/build.log" 2>&1 || {
     log_error "Build failed; see $SRC_DIR/build.log"
     exit 1

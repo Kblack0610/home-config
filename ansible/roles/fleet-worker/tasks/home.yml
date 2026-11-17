@@ -29,6 +29,25 @@
     state: link
     force: true
 
+# fleet-state.service runs `hub needs --page` after each tick (the page for what is new on
+# hub Home's NEEDS YOU list); without the binary the unit logs "Unable to locate executable
+# hub" every minute (razer-laptop, 2026-11-15). hub-tui builds the `hub` binary.
+- name: Build hub (cargo, as the user)
+  when: ansible_facts.os_family == "Archlinux"
+  ansible.builtin.command: cargo build --release
+  args:
+    chdir: "{{ ansible_env.HOME }}/.dotfiles/.local/src/hub-tui"
+  register: _fleet_home_hub
+  changed_when: "'Compiling' in _fleet_home_hub.stderr"
+
+- name: Link hub onto PATH
+  when: ansible_facts.os_family == "Archlinux"
+  ansible.builtin.file:
+    src: "{{ ansible_env.HOME }}/.dotfiles/.local/src/hub-tui/target/release/hub"
+    dest: "{{ ansible_env.HOME }}/.local/bin/hub"
+    state: link
+    force: true
+
 # git-sync-agent.sh pushes the store with this key and nothing else. Its public
 # half is a write deploy key on Forgejo kblack0610/.agent; the report prints it
 # until the store clones.

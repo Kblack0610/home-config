@@ -673,8 +673,11 @@ all:
     fleet_controllers:
       hosts:
         cachyos-rog:
-          host_tier: probation  # runs nothing placed; a roaming laptop holds no PV
-          ansible_host: cachyos-rog
+          # check-placement needs a tier on every host; probation is the
+          # narrowest, and this host is in no group any workload is placed on.
+          host_tier: probation
+          # Tailnet IP: it roams off the LAN, and no DNS here resolves its name.
+          ansible_host: 100.102.154.120
           ansible_user: kblack0610
 
     # No admitted game host until dedicated capacity is commissioned (ask OqbBvu).

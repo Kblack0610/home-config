@@ -24,7 +24,7 @@ resources:
   - flux-audit
   - forgejo
   - forgejo-mirror-exporter
-  - freellmapi
+  - feed-ingest
   - frigate
   - github-runner-exporter
   - gatus
@@ -37,6 +37,7 @@ resources:
   - immich-kiosk
   - wall-ambient
   - jellyfin
+  - k3s-server-backup
   - karakeep
   - langfuse
   - litellm

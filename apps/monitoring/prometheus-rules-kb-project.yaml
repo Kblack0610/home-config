@@ -1,0 +1,271 @@
+# One shape for every per-product number the department tabs on agents.kblab.me read:
+# kb_project_number{project, dept, metric}, recorded here over series that already
+# exist. project is the project-map name; dept is analytics, support or money (the
+# departments with a source today); metric names the number and carries its window in
+# the suffix.
+# Prometheus remote-writes the result to VictoriaMetrics (apps/victoria-metrics), the
+# hub's reader. A new provider gets one exporter and one more rule here, not a new shape.
+#
+# A product with no source has no series, so its cell reads "off", never a zero.
+# Windows stay within Prometheus's 7d hot retention, because recording rules read it.
+#
+# Not here: any number with no series today (PostHog events: a later exporter).
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: kb-project
+  namespace: monitoring
+  labels:
+    app.kubernetes.io/name: kb-project
+    app.kubernetes.io/part-of: monitoring
+    # Required by the operator's ruleSelector, or the rules are never evaluated.
+    release: kube-prometheus-stack
+spec:
+  groups:
+    - name: kb-project.records
+      interval: 1m
+      rules:
+        # ---- analytics: the games, from the game registry's /metrics ----
+        # The registry's game id is the project name (dodginballs, time-tangle).
+        # A metric named by its label: one number per opt-in event kind and per binks
+        # tool (a tool is a feature of the chat). One rule for both, because promtool lints
+        # two records of one name with the same static labels as duplicates. An event kind
+        # is free-form up to 32 chars, at most 200 (game, kind) series (registry
+        # metricsEventRows), so the set is bounded.
+        - record: kb_project_number
+          expr: |
+            sum by (project, metric) (
+              label_replace(
+                label_replace(bnb_events_24h, "project", "$1", "game", "(.*)"),
+                "metric", "events_${1}_24h", "kind", "(.*)"
+              )
+            )
+            or
+            sum by (project, metric) (
+              label_replace(
+                label_replace(increase(binks_tool_calls_total[24h]), "project", "binks", "", ""),
+                "metric", "tool_${1}_24h", "tool", "(.*)"
+              )
+            )
+          labels:
+            dept: analytics
+
+        - record: kb_project_number
+          expr: sum by (project) (label_replace(bnb_event_installs_24h, "project", "$1", "game", "(.*)"))
+          labels:
+            dept: analytics
+            metric: installs_24h
+
+        - record: kb_project_number
+          expr: sum by (project) (label_replace(bnb_server_players, "project", "$1", "game", "(.*)"))
+          labels:
+            dept: analytics
+            metric: players_now
+
+        - record: kb_project_number
+          expr: count by (project) (label_replace(bnb_server_info, "project", "$1", "game", "(.*)"))
+          labels:
+            dept: analytics
+            metric: servers_live
+
+        # The busiest sample of the week, read from the players_now record above so the
+        # week is not re-scanned as a subquery. It starts when this rule deploys.
+        - record: kb_project_number
+          expr: |
+            max by (project) (
+              max_over_time(kb_project_number{dept="analytics", metric="players_now"}[7d])
+            )
+          labels:
+            dept: analytics
+            metric: players_peak_7d
+
+        # ---- analytics: the sites, from the blackbox probes ----
+        # The share of passing probes of a product's worst host, so one dead API is not
+        # hidden by two healthy sites. The project of a probed URL is named here: a URL does not say
+        # which product it serves.
+        - record: kb_project_number
+          expr: |
+            min by (project) (
+              label_replace(
+                avg_over_time(probe_success{job="blackbox-sites", instance=~"https://placemyparents(-api|-mobile)?[.]blacknbrownstudios[.]com"}[7d]),
+                "project", "placemyparents", "", ""
+              )
+            )
+            or
+            min by (project) (
+              label_replace(
+                avg_over_time(probe_success{job="blackbox-sites", instance="https://binks.chat"}[7d]),
+                "project", "binks", "", ""
+              )
+            )
+          labels:
+            dept: analytics
+            metric: uptime_7d
+
+        # ---- analytics: binks, from binks-api's /metrics ----
+        - record: kb_project_number
+          expr: |
+            label_replace(
+              sum(increase(binks_chat_completions_total{role="assistant"}[24h])),
+              "project", "binks", "", ""
+            )
+          labels:
+            dept: analytics
+            metric: chat_turns_24h
+
+        # ---- money: binks ----
+        # Every gateway key the app and its evals hold is named binks-*.
+        - record: kb_project_number
+          expr: |
+            label_replace(
+              sum(increase(litellm_spend_metric_total{api_key_alias=~"binks-.*"}[7d])),
+              "project", "binks", "", ""
+            )
+          labels:
+            dept: money
+            metric: llm_usd_7d
+
+        # Two api pods report the same gauge, so max, not sum.
+        - record: kb_project_number
+          expr: label_replace(max(binks_billing_active_subscribers), "project", "binks", "", "")
+          labels:
+            dept: money
+            metric: subscribers_active
+
+        # ---- money: the games, from the game registry's /metrics ----
+        # The registry's estimate since the first of the month, UTC, per game in its
+        # EDGEGAP_APPS; a game with an app that has not run this month reads 0. The month
+        # resets on the 1st, so this is month-to-date, not a rolling 30 days. Every registry
+        # pod reads the same database, so max, not sum.
+        - record: kb_project_number
+          expr: max by (project) (label_replace(bnb_edgegap_game_spend_usd_month, "project", "$1", "game", "(.*)"))
+          labels:
+            dept: money
+            metric: edgegap_usd_month
+
+        # Money from the app stores: store-sales (dotfiles docs/operations/store-sales.md, ask
+        # xU5sxt) writes per product, store and currency what the product's apps made
+        # yesterday: App Store proceeds, Play
+        # charged, Steam net. One metric per store and currency, revenue_<store>_<currency>_1d
+        # (revenue_steam_usd_1d, revenue_app_store_eur_1d); label_join builds the name, and
+        # currencies are never added together. A store that did not read, or read empty, writes no series, so
+        # its cell reads "off", never a zero. The workstation's job and instance labels drop in
+        # the sum. The day itself is store_sales_day_seconds.
+        - record: kb_project_number
+          expr: |
+            sum by (project, metric) (
+              label_join(label_replace(label_replace(store_sales_amount, "kind", "revenue", "", ""), "window", "1d", "", ""),
+                         "metric", "_", "kind", "store", "currency", "window")
+            )
+          labels:
+            dept: money
+
+        # Support comes from the workstation's exporters, through node_exporter's textfile.
+        # store-reviews (dotfiles docs/operations/store-reviews.md) writes per product and
+        # store a count of reviews in the last 7 days and all time, and how many were
+        # positive. One metric per store and window: reviews_<store>_<window> and
+        # reviews_positive_<store>_<window> (reviews_steam_7d, reviews_positive_play_7d).
+        # label_join builds the name, since label_replace reads one label only. One rule
+        # for both, as above. An app the stores did not answer for writes no series.
+        - record: kb_project_number
+          expr: |
+            sum by (project, metric) (
+              label_join(label_replace(store_reviews, "kind", "reviews", "", ""), "metric", "_", "kind", "store", "window")
+            )
+            or
+            sum by (project, metric) (
+              label_join(label_replace(store_reviews_positive, "kind", "reviews_positive", "", ""), "metric", "_", "kind", "store", "window")
+            )
+          labels:
+            dept: support
+
+        # playtest-feedback: open playtester feedback on the game's playtest.md.
+        - record: kb_project_number
+          expr: sum by (project) (playtest_feedback_open)
+          labels:
+            dept: support
+            metric: playtest_feedback_open
+
+        # sentry-issues (dotfiles docs/operations/store-reviews.md, "Sentry issues") writes per
+        # product the unresolved issues with activity in the last 90 days and the issues first
+        # seen in the last 7 days, summed over the product's Sentry projects. A product with no
+        # Sentry project, or one that did not read, writes no series, so its cell reads off.
+        # Two records, each with its own static metric label.
+        - record: kb_project_number
+          expr: sum by (project) (sentry_issues_unresolved)
+          labels:
+            dept: support
+            metric: sentry_unresolved
+
+        - record: kb_project_number
+          expr: sum by (project) (sentry_issues_new{window="7d"})
+          labels:
+            dept: support
+            metric: sentry_new_7d
+
+        # ---- the sources themselves ----
+        # 1 while the scrape behind a source is up. The hub shows a department's
+        # sources beside its numbers, and KbProjectSourceDown is the page.
+        - record: kb_project_source_up
+          expr: max(up{job="game-registry"}) or vector(0)
+          labels:
+            source: game-registry
+
+        - record: kb_project_source_up
+          expr: max(up{job="binks-api"}) or vector(0)
+          labels:
+            source: binks-api
+
+        - record: kb_project_source_up
+          expr: max(up{job="blackbox-sites"}) or vector(0)
+          labels:
+            source: blackbox-sites
+
+        - record: kb_project_source_up
+          expr: max(up{job="litellm"}) or vector(0)
+          labels:
+            source: litellm
+
+        # A textfile source shares the workstation scrape with the whole node, so its own
+        # last run says whether it is up: 1 while every app or sheet read on a run in the
+        # last day. A day matches the alert's window; store-reviews, store-sales and
+        # sentry-issues run every 6h and playtest-feedback hourly.
+        - record: kb_project_source_up
+          expr: (min(store_reviews_up) * (time() - max(store_reviews_generated_seconds) < bool 86400)) or vector(0)
+          labels:
+            source: store-reviews
+
+        # store-sales is up while any store read: Play answers "no sales report" for an account
+        # with no paid sale, which reads as not read for good and must not page. Which store
+        # did not read is store_sales_up{store}, on the dashboard.
+        - record: kb_project_source_up
+          expr: (max(store_sales_up) * (time() - max(store_sales_generated_seconds) < bool 86400)) or vector(0)
+          labels:
+            source: store-sales
+
+        - record: kb_project_source_up
+          expr: (min(playtest_feedback_up) * (time() - max(playtest_feedback_generated_seconds) < bool 86400)) or vector(0)
+          labels:
+            source: playtest-feedback
+
+        - record: kb_project_source_up
+          expr: (min(sentry_issues_up) * (time() - max(sentry_issues_generated_seconds) < bool 86400)) or vector(0)
+          labels:
+            source: sentry-issues
+
+    - name: kb-project.alerts
+      interval: 1m
+      rules:
+        # A day, not minutes: the page for the scrape itself is the app's own (for
+        # example GameRegistryMetricsMissing). This one says a department tab has had
+        # no numbers for a day.
+        - alert: KbProjectSourceDown
+          expr: kb_project_source_up == 0
+          for: 1d
+          labels:
+            severity: warning
+            fleet: fix
+            category: availability
+          annotations:
+            summary: "Department tabs: source {{ $labels.source }} has had no numbers for a day"
+            description: "The scrape behind {{ $labels.source }} has been down for 24 hours, so the Analytics, Support and Money tabs of the products it feeds read stale or empty."

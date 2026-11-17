@@ -22,19 +22,42 @@ jobs:
     container:
       # Alpine + explicit git/nodejs is this repo's convention for a checkout-capable
       # container; actions/checkout needs both.
-      image: python:3.12-alpine
+      image: alpine:3.22
     steps:
       - name: Install checkout deps
-        run: apk add --no-cache git nodejs age  # age: eeg-review's decrypt test
+        run: apk add --no-cache git nodejs age python3 py3-yaml  # age: eeg-review's decrypt test
 
       - name: Checkout
         uses: actions/checkout@v4
 
-      # Stdlib only, so there is no pip step to break and no lockfile to drift.
+      # Roster and placement checks compare inventory with app declarations.
       - name: Fleet roster agrees with the gatus declarations
         run: python3 scripts/check-fleet-roster.py
       - name: Runner roster agrees with the ansible inventory
         run: python3 scripts/check-runner-roster.py
+      - name: Runner tier exclusions survive alternative affinity terms
+        run: python3 scripts/test_check_runner_tiers.py
+      - name: Freqtrade roster has no bot that repeats another's exchange, strategy and overlay
+        run: python3 scripts/check-freqtrade-roster.py
+      - name: Negative control - the freqtrade roster check fails on a planted duplicate row
+        run: |
+          cp apps/freqtrade/roster.tsv planted-roster.tsv
+          echo "planted-dup binanceus BinHV27 aggressive base" >> planted-roster.tsv
+          rc=0; python3 scripts/check-freqtrade-roster.py planted-roster.tsv > planted-roster.out 2>&1 || rc=$?
+          rm planted-roster.tsv; cat planted-roster.out
+          [ "$rc" -ne 0 ] || { echo "the check passed a planted duplicate"; exit 1; }
+          grep -q "planted-dup runs" planted-roster.out || { echo "the check failed, but not on the planted row"; exit 1; }
+          rm planted-roster.out
+      - name: Placement report, including core hosts with no fresh core qualification (migration is P5)
+        run: python3 scripts/check-placement.py --report
+      - name: Placement checker tests and planted violation
+        run: python3 scripts/test_check_placement.py
+      - name: Host qualification verdict and parser tests
+        run: python3 scripts/test_host_qualify.py
+      - name: ci-slot-effect classification and host reading tests
+        run: python3 scripts/test_ci_slot_effect.py
+      - name: cluster-janitor quarantine trigger and cap tests
+        run: python3 apps/cluster-janitor/test_quarantine.py
       # An if, not "! cmd": sh -e ignores a "!" pipeline's status, so a "!" step passes either way.
       - name: Negative control - the roster check fails on aws-build-1 pairs swapped off their build slots' cores
         run: |
@@ -62,6 +85,8 @@ jobs:
         run: python3 ansible/roles/github-actions-runner-linux/tests/test_runner_labels.py
       - name: github-actions-runner-linux drain wait tests
         run: python3 ansible/roles/github-actions-runner-linux/tests/test_wait_worker_exit.py
+      - name: feed-ingest offline tests
+        run: python3 apps/feed-ingest/test_ingest.py
       - name: litellm tool_compat offline tests
         run: python3 apps/litellm/test_tool_compat.py
       - name: litellm go routes forward the session header
@@ -156,6 +181,24 @@ jobs:
       - name: dhcp.sh sync against a fake router
         run: infrastructure/dhcp/tests/test-sync.sh
 
+  nut-replay:
+    runs-on: docker
+    container:
+      # The NUT the primary runs: Debian trixie's 2.8.1 package.
+      image: debian:trixie
+    steps:
+      - name: Install deps
+        run: |
+          apt-get update -qq
+          DEBIAN_FRONTEND=noninteractive apt-get install -y -qq --no-install-recommends \
+            git nodejs ca-certificates nut-server nut-client python3-jinja2 busybox bsdutils procps
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Replay UPS status sequences through NUT
+        run: bash ansible/roles/nut/tests/run-tests.sh
+        env:
+          NUT_REPLAY_IN_CONTAINER: "1"
+
   prometheus-rules:
     runs-on: docker
     container:
@@ -168,6 +211,12 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      - name: Install notification route test deps
+        run: apk add --no-cache alertmanager python3 py3-yaml
+
+      - name: Notification routes keep human warnings visible
+        run: python3 scripts/test-alertmanager-routes.py
+
       - name: Alert rules behave as their tests say
         run: scripts/test-prometheus-rules.sh
 
@@ -177,7 +226,7 @@ jobs:
       image: alpine:3.20
     steps:
       - name: Install deps
-        run: apk add --no-cache git nodejs kustomize
+        run: apk add --no-cache git nodejs kustomize yq-go
 
       - name: Checkout
         uses: actions/checkout@v4
@@ -195,11 +244,13 @@ jobs:
         run: |
           set -eu
           rc=0
+          : > rendered.yaml  # read by the timeZone step below, so it checks exactly this render
           targets="apps $(ls -d clusters/*/ 2>/dev/null || true)"
           # An empty target list must FAIL, not pass vacuously.
           [ -n "$(echo "$targets" | tr -d ' ')" ] || { echo "FAIL: no build targets found"; exit 1; }
           for d in $targets; do
-            if kustomize build "$d" >/dev/null 2>build.err; then
+            if kustomize build "$d" >build.out 2>build.err; then
+              { cat build.out; echo ---; } >> rendered.yaml
               echo "ok: $d"
             else
               echo "FAIL: kustomize build $d"
@@ -208,3 +259,27 @@ jobs:
             fi
           done
           exit $rc
+
+      # The controller and kube-state-metrics must agree on a CronJob's zone. With no
+      # spec.timeZone the k3s controller schedules in its host's zone (Pacific) while KSM
+      # computes kube_cronjob_next_schedule_time in UTC, so every daily job looked 8h
+      # overdue and HomelabCronJobNotScheduling fired on 26 of them (ar-2510). Checks the
+      # rendered output, so a CronJob from a kustomize generator or patch counts too. A
+      # CronJob a HelmRelease chart creates is not rendered here and is not checked; none
+      # exists today (every live CronJob belongs to the apps Kustomization).
+      - name: Every CronJob Flux builds sets spec.timeZone
+        run: |
+          set -eu
+          # A CronJob's namespace/name, one per line, for each one with no spec.timeZone.
+          no_zone() { yq ea -N 'select(.kind == "CronJob" and (.spec.timeZone // "") == "") | (.metadata.namespace // "-") + "/" + .metadata.name' -; }
+          # Negative control: the filter must catch a planted CronJob, or it checks nothing.
+          planted=$(printf 'kind: CronJob\nmetadata:\n  name: planted\n  namespace: ci\nspec:\n  schedule: "0 3 * * *"\n' | no_zone)
+          [ "$planted" = "ci/planted" ] || { echo "FAIL: the filter missed a planted CronJob with no timeZone (got '$planted')"; exit 1; }
+          zoned=$(printf 'kind: CronJob\nmetadata:\n  name: zoned\n  namespace: ci\nspec:\n  schedule: "0 3 * * *"\n  timeZone: America/Los_Angeles\n' | no_zone)
+          [ -z "$zoned" ] || { echo "FAIL: the filter flagged a CronJob that sets timeZone (got '$zoned')"; exit 1; }
+          found=$(yq ea -N 'select(.kind == "CronJob") | .metadata.name' rendered.yaml | grep -c . || true)
+          missing=$(no_zone < rendered.yaml)
+          rm rendered.yaml
+          [ "$found" -gt 0 ] || { echo "FAIL: no CronJobs rendered, so the check checked nothing"; exit 1; }
+          [ -z "$missing" ] || { echo "FAIL: these CronJobs set no spec.timeZone; add timeZone: America/Los_Angeles (the zone they run in without it):"; echo "$missing"; exit 1; }
+          echo "ok: $found CronJobs, each sets spec.timeZone"

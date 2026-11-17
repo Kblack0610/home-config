@@ -30,6 +30,14 @@ spec:
         # path is legitimately unmounted until first access and the
         # node_filesystem_* series legitimately come and go. That alert would
         # have fired after every reboot.
+        #
+        # The line follows the CronJob's own schedule (kube_cronjob_info), so the
+        # cadence has one source: one run interval plus 12h of slack. A schedule
+        # that names one day of the week is weekly, 7d + 12h; every other backup,
+        # and any whose CronJob series is missing, keeps 36h. A flat 36h paged on
+        # the weekly freqtrade-lab-backup five days in seven (2026-11-16, ar-2510).
+        # A suspended CronJob keeps its schedule, so it still trips its line.
+        # Tests: apps/monitoring/tests/backup-drive.test.yaml.
         - alert: HomelabBackupStale
           expr: |
             (
@@ -38,25 +46,39 @@ spec:
                 * on (namespace, job_name) group_left(owner_name)
                   kube_job_owner{owner_kind="CronJob", owner_name=~".*backup.*"}
               )
-            ) > 36 * 3600
+            )
+            > on (namespace, owner_name)
+            (
+              max by (namespace, owner_name) (
+                label_replace(
+                  kube_cronjob_info{schedule=~"[^ ]+ [^ ]+ [*] [*] ([0-7]|[A-Za-z]{3})|@weekly"},
+                  "owner_name", "$1", "cronjob", "(.+)"
+                )
+              ) * 0 + (7 * 24 + 12) * 3600
+              or
+              max by (namespace, owner_name) (
+                kube_job_owner{owner_kind="CronJob", owner_name=~".*backup.*"}
+              ) * 0 + 36 * 3600
+            )
           for: 30m
           labels:
             # Critical, repeated daily by the category=backup route in helm-values.
             severity: critical
+            fleet: fix
             category: backup
           annotations:
             summary: "Backup stale: {{ $labels.namespace }}/{{ $labels.owner_name }}"
             description: >-
               {{ $labels.namespace }}/{{ $labels.owner_name }} has not completed
-              successfully in {{ printf "%.0f" $value }} seconds (>36h for a
-              daily job). The job may be failing, or succeeding while writing
-              nowhere - check the destination is really mounted, not merely
-              listed as mounted.
+              successfully in {{ printf "%.0f" $value }} seconds, over one run
+              interval plus 12h (36h daily, 7.5d weekly). The job may be failing,
+              or succeeding while writing nowhere - check the destination is
+              really mounted, not merely listed as mounted.
 
-        # Split out because nas/ holds only WEEKLY cronjobs (0 5 * * 0 and
-        # friends). Folding them into the 36h rule above would page on all four
-        # every single week for being perfectly healthy - the same mistake that
-        # was caught and fixed in prometheus-rules-jobs.yaml.
+        # nas/ is judged apart, every CronJob in it at a flat 9d, from before the
+        # rule above read each schedule. It holds daily jobs too now. Folding it
+        # into that line is not done yet: it decides nas severity and which nas
+        # CronJobs count as backups.
         - alert: HomelabWeeklyBackupStale
           expr: |
             (
@@ -69,6 +91,7 @@ spec:
           for: 1h
           labels:
             severity: warning
+            fleet: fix
             category: backup
           annotations:
             summary: "Weekly backup stale: {{ $labels.namespace }}/{{ $labels.owner_name }}"

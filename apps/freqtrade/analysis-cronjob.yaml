@@ -12,6 +12,8 @@
 apiVersion: batch/v1
 kind: CronJob
 metadata:
+  annotations:
+    kblab.me/criticality: standard
   name: freqtrade-analysis
 spec:
   schedule: "45 2 * * *"  # clear of the :20 backfill
@@ -60,12 +62,20 @@ spec:
                 - name: DATABASE_URL
                   valueFrom:
                     secretKeyRef: {name: trader-db, key: database-url}
+                - name: ALPACA_PAPER_KEY_ID
+                  valueFrom:
+                    secretKeyRef: {name: trader-brokers, key: ALPACA_PAPER_KEY_ID}
+                - name: ALPACA_PAPER_SECRET_KEY
+                  valueFrom:
+                    secretKeyRef: {name: trader-brokers, key: ALPACA_PAPER_SECRET_KEY}
                 - name: ANALYZE_EXCHANGES
                   value: "binanceus coinbase kraken okx kucoin"  # a venue x timeframe joins once every pair is backfilled to its oldest candle
                 - name: ANALYZE_WORKERS
                   value: "4"  # matches the 4-CPU limit
                 - name: ANALYZE_MEMORY_GB
                   value: "8"  # tasks are admitted by estimated memory; 4 GB under the limit for the parent process and estimate error
+                - name: ANALYZE_BUDGET_S  # starts no work after this: deadline (64800) less CHUNK_TIMEOUT (3600) and 2 h for derive/post/reproduce
+                  value: "54000"
               resources:
                 requests:
                   cpu: "1"  # razer-laptop offers pods 4 CPUs since home-config #732, and the PVC pins this job there

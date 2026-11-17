@@ -31,6 +31,22 @@ patches:
           spec:
             nodeSelector:
               kubernetes.io/arch: amd64
+  # Paused until dedicated capacity is ready (ask OqbBvu). The static screens gallery keeps
+  # running: it requests 10m CPU and serves the root of apps.kblab.me (ask OS6Z6X).
+  # Meanwhile ingress.yaml opts the paused hosts out of the probes and the launcher, and
+  # apps/gatus/config.yaml disables the in-cluster API and Web checks; resume undoes both.
+  # The sentinel watch pmp-mercury-preview-auth is paused too: resume steps in
+  # apps/playground-server/README.md, PlaceMyParents previews row.
+  - target:
+      kind: Deployment
+      labelSelector: app!=placemyparents-gallery
+    patch: |-
+      apiVersion: apps/v1
+      kind: Deployment
+      metadata:
+        name: any
+      spec:
+        replicas: 0
 
 images:
   - name: git.kblab.me/kblack0610/placemyparents-api

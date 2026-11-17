@@ -1,6 +1,6 @@
 # Credentials for services we run
 
-An agent mints, rotates and stores the credential for every service in this table itself, through that service's admin path, into SOPS (or rbw where the row says so). It never asks the human to click through a UI for one. The human's are only an account at a service we do not run (GitHub, Steam, app stores, brokers, SaaS) and their own logins. Why: a README that said "only the owner can mint it" kept Renovate off for three months.
+An agent mints, rotates and stores the credential for every service in this table itself, through that service's admin path, into SOPS (or rbw where the row says so). It never asks the human to click through a UI for one. At a service we do not run (GitHub, Cloudflare, Steam, app stores, brokers, SaaS) the human's part is the account and its login, saved in rbw; an agent signs in with it on the agent machine and makes the API keys itself (the `agent-machine` skill, step 5 and Gates, which also define a `type:google` login). Why: a README that said "only the owner can mint it" kept Renovate off for three months.
 
 Each row links the steps; it does not restate them. A service with no steps yet: do it through the admin path, write the steps into its README, and link them here in the same PR.
 
@@ -14,7 +14,6 @@ Each row links the steps; it does not restate them. A service with no steps yet:
 | Renovate bot | Forgejo bot user and API token | [renovate.md](./renovate.md) | the Renovate Actions secret |
 | mem0 API keys | `POST /api-keys` with the admin JWT, over a port-forward | [mem0 README](../apps/mem0/README.md#auth-model--admin-bootstrap-important--not-admin_api_key-as-bearer) | `apps/mem0/client-credentials.secret.yaml` (`MEM0_API_KEY`) |
 | LiteLLM virtual keys | `POST /key/generate` with the master key | [litellm README](../apps/litellm/README.md#create-a-key) | the consumer's secret; master key in `apps/litellm/litellm-secrets.sops.yaml` |
-| freellmapi client key | `scripts/freellmapi-bootstrap.sh --client-key` (admin login from SOPS) | [freellmapi README](../apps/freellmapi/README.md#setup-and-changes) | `FREELLMAPI_API_KEY` in `apps/litellm/secret.sops.yaml`; admin login in `apps/freellmapi/secret.sops.yaml` |
 | Headscale pre-auth keys | `headscale preauthkeys create` by `kubectl exec` | [headscale-setup.md](./headscale-setup.md#create-pre-auth-key) | `apps/headscale/tailscale-secret.yaml` (`TS_AUTHKEY`) |
 | CrowdSec bouncer key | sops edit, then restart | [crowdsec README](../apps/crowdsec/README.md#rotate-the-bouncer-api-key) | `apps/crowdsec/secret.yaml` |
 | notes-sync-bridge HMAC | random bytes, then the Forgejo hooks API | [notes-sync-bridge README](../apps/notes-sync-bridge/README.md#secrets) | `apps/notes-sync-bridge/secret.yaml` |
@@ -26,6 +25,7 @@ Each row links the steps; it does not restate them. A service with no steps yet:
 | Karakeep API keys | admin UI | [karakeep README](../apps/karakeep/README.md#first-run) | not stored in this repo |
 | Langfuse project keys | first-boot seed from the secret | not written yet | `apps/langfuse/secret.sops.yaml` |
 | gatus-fleet token | one shared token | not written yet | `apps/gatus-fleet/fleet-token-secret.sops.yaml` |
+| schedules-sync feed token (fleet home) | the `monitoring/schedules-sync-token` ServiceAccount token Secret | [fleet-worker runbook](./runbooks/fleet-worker.md#rotate-the-feed-token) | `ansible/group_vars/fleet_workers/vault.sops.yaml` |
 | ntfy-public publisher | htpasswd into the configmap | [ntfy-public README](../apps/ntfy-public/README.md) ("To rotate the publisher password") | `apps/ntfy-public/configmap.yaml`; the plaintext is a GitHub secret |
 
 ## GitHub tokens we already hold

@@ -5,7 +5,8 @@
 # upsmon-secondary SHUTDOWNCMD on {{ inventory_hostname }}.
 # Invoked by upsmon when FSD is received from the primary. Goal: stop
 # k3s-agent so pods receive a graceful SIGTERM with their
-# terminationGracePeriodSeconds before the kernel halts.
+# terminationGracePeriodSeconds before the kernel halts. On the desktops there
+# is no k3s-agent, so it goes straight to the halt; a Mac sleeps instead (below).
 
 set -u
 
@@ -25,5 +26,14 @@ else
     log "k3s-agent not active; nothing to stop"
 fi
 
+{% if ansible_os_family == 'Darwin' %}
+# A Mac sleeps instead of halting (the human's call, 2026-11-17). A Mac that
+# halted stays off when the outlets come back, autorestart or not; one that is
+# asleep when killpower cuts the outlets has lost power while on, so
+# autorestart boots it once they return, like the Linux hosts.
+log "sleeping; killpower cuts the outlets next and autorestart boots it after"
+exec /usr/bin/pmset sleepnow
+{% else %}
 log "halting"
 exec /sbin/shutdown -h +0 "NUT FSD"
+{% endif %}

@@ -19,6 +19,7 @@ This directory augments the Prometheus stack with ingress, dashboards, alert rul
 | `prometheus-rules-freqtrade.yaml` | The Freqtrade dry-run league and lab, from the trader-web exporter: a bot not in dry run (pages), exporter missing, a bot API down two ingests in a row, ingest or candles stale, an analysis or walk-forward run failed or overdue; tests in `tests/freqtrade.test.yaml`, dashboard `dashboards/freqtrade.json` |
 | `prometheus-rules-emotiv.yaml` | The Emotiv bridge on mac-mini, from its MQTT heartbeat via mqtt2prom: no heartbeat for 10m, an upload backlog, the Cortex license ending; tests in `tests/emotiv.test.yaml`, dashboard `dashboards/emotiv-mini.json`, bridge `ansible/roles/emotiv-bridge` |
 | `prometheus-rules-binks.yaml` | binks.chat, from binks-api's binks_* metrics and the gateway key gauges: over 20% of chat turns ending in an error frame, over 20% of LLM calls failing, the `binks-anon` key (every anonymous chat) under 25% and 5% of its budget, or spending over 10% of it in an hour; tests in `tests/binks.test.yaml` |
+| `prometheus-rules-kb-project.yaml` | The per-product numbers the department tabs on agents.kblab.me read, all one series, `kb_project_number{project, dept, metric}`, recorded over existing series: game opt-in events by kind, installs, players and servers, site uptime, binks-chat turns and tools, its LLM spend and subscribers, each game's Edgegap spend this month (registry `bnb_edgegap_game_spend_usd_month`), and Support: store reviews, open playtest feedback and Sentry issues, from the workstation textfile exporters `store-reviews`, `playtest-feedback` and `sentry-issues` (dotfiles `docs/operations/store-reviews.md`). Plus `kb_project_source_up{source}` per scrape or textfile exporter behind them, and `KbProjectSourceDown` (a day). A product with no source has no series, so its cell reads off. Add a number as one more record here, a new provider as one exporter; tests in `tests/kb-project.test.yaml`, dashboard `dashboards/kb-project.json` (uid `kb-project`, VictoriaMetrics, `$project`). |
 | `external-mac-nodes.yaml` | Scrape definitions for Apple Silicon hosts |
 | `external-standalone-nodes.yaml` | Scrape definitions for non-Kubernetes hosts |
 | `external-windows-nodes.yaml` | Scrape definitions for Windows PCs (windows_exporter, role `windows-exporter`) |
@@ -58,7 +59,11 @@ nowhere (the thinkcentre power outage paged no one).
 - **Subscribe (phone/desktop):** open `https://ntfy.kblab.me/homelab-alerts` in
   the ntfy app, or `ntfy subscribe homelab-alerts` (LAN/Tailscale only).
 - **Criticals** (e.g. `NodeDown`) remind hourly until resolved; warnings every 12h.
-- **Digest, not page:** `category=security` (Trivy CVEs, one alert per image) goes to `ntfy-digest` at priority 2, at most daily, weekly reminder. Failed Jobs are `HomelabCronJobFailed` (one per CronJob, resolves on the next green run) and `HomelabJobFailed` (a Job no CronJob owns); the bundled `KubeJobFailed` is disabled because it never resolved.
+- Security CVEs go to `homelab-security` through `ntfy-digest`: priority 2, at most daily, weekly reminder. Paper-trading warnings and failed Freqtrade CronJobs go to `homelab-trading`, grouped by alert family with daily reminders. Subscribe to these topics when reviewing maintenance or the paper league.
+- `HomelabAppDown` and `KubeDeploymentReplicasMismatch` still reach `homelab-alerts` when desired capacity is unavailable. App readiness excludes deployments and StatefulSets whose desired replica count is zero.
+- Failed Jobs are `HomelabCronJobFailed` (one per CronJob, resolves on the next green run) and `HomelabJobFailed` (a Job no CronJob owns). Finance and backup failures retain default delivery. A `HomelabBackupStale` critical inhibits the duplicate `HomelabCronJobFailed` for the same namespace and CronJob; unrelated failures remain visible. Informational alerts remain in Alertmanager without ntfy delivery.
+- Every alert (`apps/*/prometheus-rules*.yaml`, and the Loki ruler's `apps/loki/rules-*.yaml`) declares its agent route. `fleet: fix` means the sentinel watch `alertmanager-fleet` reads it while active and queues a red item for an agent (fix-red); use it for a software, config or pipeline fault an agent can fix from this repo and a runbook. `fleet: none  # <why>` keeps it with the human (money, hardware, power, heat, trading results), or says which fleet: fix alert or sentinel watch already routes the same fault. `scripts/test-prometheus-rules.sh` fails on an alert with neither, or a `none` with no comment.
+- Verify routes with `python3 scripts/test-alertmanager-routes.py` (requires `amtool` and PyYAML), and rules with `scripts/test-prometheus-rules.sh`.
 - The receiver is plain webhook → ntfy renders the Alertmanager JSON payload.
   A formatting relay for prettier pages is a noted follow-up.
 
@@ -101,3 +106,11 @@ For ranges past 7 days switch the Metrics variable to "VictoriaMetrics (long)" (
 - [../../infrastructure.md](../../infrastructure.md)
 - [../../docs/mac-machines.md](../../docs/mac-machines.md)
 - [../../docs/gitops.md](../../docs/gitops.md)
+
+### Alert routing troubleshooting
+
+| Symptom | Check and fix |
+|---------|---------------|
+| CVEs or paper bots fill `homelab-alerts` | Check the loaded Alertmanager routes and receiver topics. Apply the committed Helm values with the pinned upgrade command; a git merge alone does not update this plain-Helm release. |
+| An intentionally stopped app reports down | Its desired replica count must be zero; the app readiness rules exclude zero desired capacity. Keep bundled replica mismatch alerts enabled for real shortfalls. |
+| A backup failure appears twice | The stale-backup critical and failed CronJob must share a nonempty namespace and owner_name for inhibition. |

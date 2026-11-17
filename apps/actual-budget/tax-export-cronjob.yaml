@@ -2,15 +2,10 @@
 # actual-http-api bridge and writes a per-year CSV to the NAS, next to the
 # backups. This is the CPA-handoff artifact.
 #
-# ACTIVATION-GATED: not listed in kustomization.yaml until finance-api-secret.yaml
-# holds the real Actual password + budget-sync-id. Run on-demand once activated:
+# Active (listed in kustomization.yaml). Run on demand:
 #   kubectl --context home-k3s create job --from=cronjob/actual-budget-tax-export \
 #     tax-export-$(date +%s) -n actual-budget
-#
-# NOTE: the jq field paths below were written against jhonderson/actual-http-api
-# 26.2.0's response shape and have NOT been re-checked against the 26.8.1 image now
-# pinned in actual-http-api-deployment.yaml. Validate the FIRST run's CSV against
-# your real budget and adjust field names if they moved (see docs/finance/tax-export.md).
+# Field paths checked against actual-http-api 26.8.1 on 2026-11-15 (docs/finance/tax-export.md).
 apiVersion: batch/v1
 kind: CronJob
 metadata:
@@ -18,6 +13,7 @@ metadata:
   namespace: actual-budget
 spec:
   schedule: "0 4 1 1,4,7,10 *"  # 04:00 on the 1st of Jan/Apr/Jul/Oct
+  timeZone: America/Los_Angeles
   successfulJobsHistoryLimit: 3
   failedJobsHistoryLimit: 1
   jobTemplate:
@@ -63,26 +59,26 @@ spec:
                   AUTH="x-api-key: ${API_KEY}"
 
                   # id -> name lookup tables for categories and payees
-                  curl -fsS -H "$AUTH" "$API/budgets/$SID/categories" \
-                    | jq -r '.data[]? | [.id,.name] | @tsv' > /tmp/cats.tsv || true
-                  curl -fsS -H "$AUTH" "$API/budgets/$SID/payees" \
-                    | jq -r '.data[]? | [.id,.name] | @tsv' > /tmp/payees.tsv || true
-                  lookup() { awk -F'\t' -v id="$2" '$1==id{print $2; f=1} END{if(!f)print ""}' "$1"; }
+                  curl -fsS -H "$AUTH" "$API/budgets/$SID/categories" > /tmp/cats.json
+                  curl -fsS -H "$AUTH" "$API/budgets/$SID/payees" > /tmp/payees.json
+                  curl -fsS -H "$AUTH" "$API/budgets/$SID/accounts" > /tmp/accounts.json
 
+                  # jq does the id lookups and the CSV quoting. The old shell loop
+                  # never wrote rows to $OUT (zero rows, job failed) and its tab-IFS
+                  # `read` collapsed empty fields, shifting every later column.
                   echo "date,account,payee,category,amount,notes,cleared" > "$OUT"
-                  curl -fsS -H "$AUTH" "$API/budgets/$SID/accounts" \
-                    | jq -r '.data[]? | [.id,.name] | @tsv' \
+                  jq -r '.data[]? | [.id,.name] | @tsv' /tmp/accounts.json \
                     | while IFS="$(printf '\t')" read -r AID ANAME; do
                         curl -fsS -H "$AUTH" "$API/budgets/$SID/accounts/$AID/transactions?since_date=$SINCE" \
-                          | jq -r --arg until "$UNTIL" '.data[]? | select(.date <= $until)
-                              | [.date, (.payee//""), (.category//""), (.amount//0),
-                                 ((.notes//"")|gsub(",";";")), (.cleared//false)] | @tsv' \
-                          | while IFS="$(printf '\t')" read -r D PID CID AMT NOTE CLR; do
-                              PN=$(lookup /tmp/payees.tsv "$PID"); [ -z "$PN" ] && PN="$PID"
-                              CN=$(lookup /tmp/cats.tsv "$CID"); [ -z "$CN" ] && CN="$CID"
-                              DOLLARS=$(awk -v a="$AMT" 'BEGIN{printf "%.2f", a/100}')
-                              echo "$D,\"$ANAME\",\"$PN\",\"$CN\",$DOLLARS,\"$NOTE\",$CLR"
-                            done
+                          | jq -r --arg until "$UNTIL" --arg acct "$ANAME" \
+                              --slurpfile cats /tmp/cats.json --slurpfile payees /tmp/payees.json '
+                              (($cats[0].data // []) | map({(.id): .name}) | add // {}) as $C
+                              | (($payees[0].data // []) | map({(.id): .name}) | add // {}) as $P
+                              | .data[]? | select(.date <= $until)
+                              | [.date, $acct, ($P[.payee // ""] // .payee // ""),
+                                 ($C[.category // ""] // .category // ""),
+                                 ((.amount // 0) / 100), (.notes // ""), (.cleared // false)]
+                              | @csv' >> "$OUT"
                       done
                   ROWS=$(( $(wc -l < "$OUT") - 1 ))
                   echo "Exported $ROWS transactions for tax year $YEAR"

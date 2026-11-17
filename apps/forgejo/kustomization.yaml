@@ -13,7 +13,6 @@ resources:
   - service-ssh.yaml
   - ingress.yaml
   - ingressroute-browser-redirect.yaml
-  - backup-cronjob.yaml
   - db-snapshot-cronjob.yaml
   - lock-reaper-cronjob.yaml
   - backup-pull-cronjob.yaml

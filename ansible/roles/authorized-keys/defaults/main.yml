@@ -1,0 +1,16 @@
+---
+# The keys that may log in as the login user. Additive: a key not listed here
+# stays until it is listed with state: absent, so a host is never locked out by
+# a short list. The PXE kickstart writes the first two at install time
+# (infrastructure/pxe-server/http/kickstart/disk-install.sh, AUTHORIZED_KEYS);
+# this role keeps every managed host in step after that.
+authorized_keys_user: "{{ ansible_user }}"
+authorized_keys_list:
+  - comment: the workstation (cachyos-x8664-main)
+    key: ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIM6yTlK3GCzXC2+njcPtTucjwxb53Sb0+JT+TuTD78Jh kblack0610@gmail.com
+  - comment: the nightly convergence check (apps/ansible-runner)
+    key: ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIAm2iORKcEev3hnxx5sXtYvA4wcO2Xp+dnarHP7/4db1 ansible-runner@home-k3s
+  # The human's client since 2026-11-15; it forwards queue and ask writes to
+  # the fleet home over ssh.
+  - comment: the laptop (cachyos-rog)
+    key: ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIEa1tNutFNZHbM0r/0t6MS+iViigfyLK/p0Nulh+R0Wn kblack0610@gmail.com

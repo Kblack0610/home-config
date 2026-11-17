@@ -1,12 +1,14 @@
 apiVersion: apps/v1
 kind: Deployment
 metadata:
+  annotations:
+    kblab.me/criticality: standard
   name: playground-server
   labels:
     app: playground-server
 spec:
-  # No replicas field on purpose: a new Deployment starts at 1 and stays on, and a
-  # Stop on games.kblab.me (or `ctl.sh down`) sticks, since Flux does not own the count.
+  # Paused until a dedicated game host passes admission (ask OqbBvu).
+  replicas: 0
   selector:
     matchLabels:
       app: playground-server
@@ -28,6 +30,9 @@ spec:
       hostNetwork: true
       dnsPolicy: ClusterFirstWithHostNet
       terminationGracePeriodSeconds: 30
+      # The image runs as playground (uid 10001); fsGroup makes the layouts volume its own.
+      securityContext:
+        fsGroup: 10001
       imagePullSecrets:
         - name: forgejo-registry
       containers:
@@ -57,6 +62,10 @@ spec:
               value: "1"
             - name: SERVER_NAME
               value: Home server
+            # Tuning layouts go on the volume below, not in the pod's persistentDataPath,
+            # so they last past a pod replacement.
+            - name: SERVER_ARGS
+              value: -layoutsDir /data/layouts
             # Its identity in the registry: the session id comes out as
             # <yymmdd>-playground-home-<n>-<node>, and provider_ref is what the Fleet
             # page matches against zomboid-control's namespace/deployment. A build from
@@ -78,6 +87,9 @@ spec:
                 secretKeyRef:
                   name: game-registry-token
                   key: SERVER_TOKEN
+          volumeMounts:
+            - name: layouts
+              mountPath: /data/layouts
           ports:
             - containerPort: 7770
               hostPort: 7770
@@ -106,3 +118,7 @@ spec:
               memory: 2Gi
             limits:
               memory: 2Gi
+      volumes:
+        - name: layouts
+          persistentVolumeClaim:
+            claimName: playground-layouts

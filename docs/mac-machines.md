@@ -52,7 +52,7 @@ The runner's checkout is never touched, and neither is a tree's `Builds/` alone:
 
 ## Unity CI pool on a Mac (none since 2026-11-10)
 
-No Mac is in the Unity pool: the Mac Studio (M3 Ultra) ran 6 slots from 2026-10-29 until it was sold on 2026-11-10, and aws-burst-2 took its slots. The play and roles below stay for a future Mac; the platform repo's iOS runner stays on mac-mini.
+No Mac is in the Unity pool: the Mac Studio (M3 Ultra) ran 6 slots from 2026-10-29 until it was sold on 2026-11-10. The play and roles below stay for a future Mac; the platform repo's iOS runner stays on mac-mini.
 
 - Play "Unity CI runner pool (macOS)" in `ansible/playbooks/site.yml`, group `unity_ci_mac_runners` in `ansible/inventory.yml` (`unity_ci_slots`). Roles: `unity-ci-host-mac` (Homebrew GNU tools, Unity Hub, the editor at the project's version) and `github-actions-runner-mac` once per slot (`scope: org`, home `~/actions-runner/unity-pool-<n>`).
 - Labels are `unity, unity-native, host-<name>` (+ `unity-full`), registered with `--no-default-labels`: without it the slots also carry `self-hosted, macOS`, which takes the platform repo's iOS jobs. The playground runs the harness natively there (`UNITY_CI_NATIVE=1` in each slot's `.env`, see unity-core-playground `scripts/test/in-docker.sh`, and [runbooks/unity-ci-host.md](runbooks/unity-ci-host.md#the-mac-pool)).
@@ -101,6 +101,7 @@ Considered and rejected. MDM's unique capability is zero-touch DEP/ADE enrollmen
 | Passwordless sudo (mac-mini) | Blanket, `/etc/sudoers.d/agent-machine` | Agents need root unattended | macos-agent-tools |
 | Spotlight index (mac-mini) | Off, index removed | It reached 51 GB; nothing here searches with it | macos-agent-tools |
 | Automatic macOS install (mac-mini) | Off, critical and config-data updates stay on | An update reboots mid-job and can drop the privacy grants | macos-agent-tools |
+| Chrome policy, Playwright Extension force-installed (mac-mini) | `ExtensionInstallForcelist` in `/Library/Managed Preferences/com.google.Chrome.plist` | A Chrome update dropped the hand-installed extension (2026-11-14); a force-installed one is repaired by Chrome | macos-agent-tools |
 | Homebrew Tailscale agent (mac-mini) | Stopped | It looped on needing root; the root daemon stays, logged out | macos-agent-tools |
 
 Only user-space + supported knobs are touched (`defaults`/`mdutil`/`tmutil`/`pmset`/`sysctl`, and `bootout` of user agents). SIP-protected `/System/Library` daemons (`mDNSResponder`, `opendirectoryd`, `sshd`, `WindowServer`, ...) are NEVER touched — they break SSH/login/Metal and are SIP-revived anyway.
@@ -201,6 +202,14 @@ The yellow banner on Devices, and its Proceed button, lead to a System Settings 
 ### Chrome starts but shows no window (mac-mini)
 
 On its first launch Chrome shows a Welcome dialog (default browser, usage statistics), and launched over ssh it can hang there with one process and no window. Quit it and launch it again from the desktop (Peekaboo `app launch "Google Chrome" --foreground`); untick both boxes and press OK.
+
+### The Playwright Extension is gone or "corrupted" in Chrome (mac-mini)
+
+`stores-browser` never connects when Chrome has lost the Playwright Extension (`mmlmfjhmonkocbjadbfplnigmagldckm`); a Chrome update did this on 2026-11-14. `macos-agent-tools` (`tasks/chrome-policy.yml`, vars `agent_tools_chrome_forced_extensions`) writes `/Library/Managed Preferences/com.google.Chrome.plist` with `ExtensionInstallForcelist`, which Chrome reads as mandatory policy on this unmanaged Mac. The file sits outside the app bundle and the profile, so an update or a profile reset leaves it, and Chrome re-fetches a missing or corrupted force-installed extension on its own. Do not reinstall it by clicking.
+
+- Not back after a Chrome restart: `ssh mac-mini 'plutil -p "/Library/Managed Preferences/com.google.Chrome.plist"'`; a missing file means `ansible-playbook playbooks/site.yml --limit mac-mini --tags agent-tools` has not run (no `-K`, the mini's sudo is passwordless). Chrome reads policy at launch only, so quit and reopen it after the first apply.
+- Proved 2026-11-16 on a scratch profile (`--user-data-dir`, never the signed-in one): a fresh profile installed the extension from the policy alone, and with `lib/ui/connect.js` tampered Chrome marked it corrupted and reinstalled it as `0.5.0_1` with the original hash. A real Chrome release update was not run: the signed-in Chrome stays running, so the next update is the live test.
+- A reinstall makes a new `auth-token`, so `~/.config/playwright-mcp/extension-token` on the mini may need re-reading: the `store-console` skill, step 1.
 
 ### Build fails with code signing error (mac-mini)
 ```bash

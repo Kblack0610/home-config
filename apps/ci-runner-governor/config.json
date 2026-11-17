@@ -8,6 +8,7 @@
   "cooldown_seconds": 600,
   "dwell_seconds": 600,
   "warm_idle_off_seconds": 2700,
+  "override_on_max_hours": 12,
   "pack_keep_labels": ["unity-wide"],
   "defaults": {
     "min_admitted": 1,
@@ -27,18 +28,6 @@
                                                        "region": "us-east-2", "idle_off_seconds": 900,
                                                        "start_min_excess": 4, "start_after_seconds": 300, "max_hours_day": 24,
                                                        "fallback_seconds": 3600, "live": true}},
-    {"host": "aws-burst-2", "max_admitted": 6, "power": {"provider": "aws", "instance_id": "i-000950e6c992b24bf",
-                                                       "region": "us-east-2", "idle_off_seconds": 900,
-                                                       "start_min_excess": 4, "start_after_seconds": 300, "max_hours_day": 24,
-                                                       "fallback_seconds": 3600, "live": true}},
-    {"host": "aws-burst-1", "max_admitted": 5, "power": {"provider": "aws", "instance_id": "i-0f1ecf35dc0e78146",
-                                                       "region": "us-east-2", "idle_off_seconds": 900,
-                                                       "start_min_excess": 4, "start_after_seconds": 300, "max_hours_day": 24,
-                                                       "fallback_seconds": 3600, "live": true}},
-    {"host": "aws-burst-3", "max_admitted": 6, "power": {"provider": "aws", "instance_id": "i-0dd679759235519a5",
-                                                       "region": "us-east-2", "idle_off_seconds": 900,
-                                                       "start_min_excess": 4, "start_after_seconds": 300, "max_hours_day": 12,
-                                                       "fallback_seconds": 3600, "live": true}},
     {"host": "aws-build-1", "max_admitted": 9, "labels": ["unity-build"], "withheld_label": "unity-build-withheld",
      "pairs": {"1": [4, 5], "2": [6, 7], "3": [8, 9]},
      "power": {"provider": "aws", "instance_id": "i-0856b245ff7a81321", "region": "us-east-2", "idle_off_seconds": 900,
@@ -53,10 +42,9 @@
     "mac-mini": {"usd_per_hour": 0, "basis": "owned"},
     "windows-media": {"usd_per_hour": 0, "basis": "owned"},
     "windows-media-ci": {"usd_per_hour": 0, "basis": "owned"},
-    "aws-burst-1": {"usd_per_hour": 1.855, "basis": "on-demand"},
+    "ms-a2": {"usd_per_hour": 0, "basis": "owned"},
+    "deskslim-2": {"usd_per_hour": 0, "basis": "owned"},
     "aws-build-1": {"usd_per_hour": 1.855, "basis": "on-demand"},
-    "aws-burst-2": {"usd_per_hour": 1.855, "basis": "on-demand"},
-    "aws-burst-3": {"usd_per_hour": 1.855, "basis": "on-demand"},
     "aws-spot-1": {"usd_per_hour": 0.28, "basis": "spot-estimate"},
     "aws-spot-2": {"usd_per_hour": 0.66, "basis": "spot-estimate"},
     "aws-spot-3": {"usd_per_hour": 0.77, "basis": "spot-estimate"}
@@ -64,6 +52,8 @@
   "hosts": {
     "cachyos-x8664-main": {"full": false, "min_admitted": 0, "admit": {"idle": 0.5, "tctl": 80}, "withhold": {"idle": 0.3, "tctl": 88}},
     "razer-laptop": {},
-    "windows-media-ci": {}
+    "windows-media-ci": {},
+    "ms-a2": {},
+    "deskslim-2": {}
   }
 }

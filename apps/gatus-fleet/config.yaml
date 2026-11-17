@@ -190,6 +190,21 @@ endpoints:
     conditions:
       - "[STATUS] == 200"
 
+  # The Unity CI boxes, k3s agents since 2026-11-16.
+  - name: ms-a2
+    group: k3s
+    url: "http://192.168.1.28:9100/metrics"
+    interval: 60s
+    conditions:
+      - "[STATUS] == 200"
+
+  - name: deskslim-2
+    group: k3s
+    url: "http://192.168.1.29:9100/metrics"
+    interval: 60s
+    conditions:
+      - "[STATUS] == 200"
+
   # Whole-house audio boxes (docs/whole-house-audio.md). node_exporter from the
   # node-exporter-linux ansible role, which also exports snapclient's unit
   # state: a room that is up but silent is the failure that matters here, so

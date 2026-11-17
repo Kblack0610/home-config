@@ -14,13 +14,13 @@ LOCKFN /var/run/nut/upssched.lock
 # ONBATT: start the settling timer. If it expires we run the graceful path.
 AT ONBATT  * START-TIMER onbatt-settle {{ nut_onbatt_settle_seconds }}
 
-# ONLINE: power restored — cancel the timer. No shutdown.
+# ONLINE: power restored, cancel the timer. No shutdown.
 AT ONLINE  * CANCEL-TIMER onbatt-settle
 
-# LOWBATT: jump straight to the graceful path regardless of the timer.
-AT LOWBATT * EXECUTE early-shutdown
+# No LOWBATT rule: upsmon itself shuts down on OB+LB. A rule here also fired on
+# LB while on line power, which shut every host down with no outage (2026-11-17 08:37).
 
-# COMMBAD: lose contact with upsd — log + warn but don't shut down (could be
+# COMMBAD: lose contact with upsd, log + warn but don't shut down (could be
 # a transient network blip).
 AT COMMBAD * EXECUTE commbad-warn
 AT COMMOK  * EXECUTE commok-clear

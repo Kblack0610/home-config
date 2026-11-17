@@ -10,8 +10,9 @@ pi3 has frozen three times (2026-08-09, 2026-08-23, 2026-09-30) and each time it
 
 ## What it does
 
-1. **netconsole.** The kernel sends every console message over UDP to pi5-master (`roles/netconsole-receiver`) the moment it is printed. Lines written in the last second before a freeze survive even though they never reach this host's disk. The console loglevel is raised from the image's `quiet` 3 to 5, so ERR and WARNING lines (RCU stalls, hung tasks, mmc errors) are sent, not only CRIT and above.
-2. **Undervoltage latch (Raspberry Pi only).** Gated by `crash_evidence_rpi_throttle`, true on ARM hosts. `vcgencmd get_throttled` bits 16-19 latch from boot until the next reboot, so a dip lasting milliseconds still sets them. A one-minute timer exports them to node-exporter's textfile collector as `rpi_throttled{flag,when}`, and `PiUndervoltageSinceBoot` alerts on it.
+**netconsole.** The kernel sends every console message over UDP to pi5-master (`roles/netconsole-receiver`) the moment it is printed. Lines written in the last second before a freeze survive even though they never reach this host's disk. The console loglevel is raised from the image's `quiet` 3 to 5, so ERR and WARNING lines (RCU stalls, hung tasks, mmc errors) are sent, not only CRIT and above.
+
+The Pi undervoltage latch, the other half of a freeze's evidence, is `roles/rpi-throttle-metric`, on every Pi.
 
 ## Reading the evidence
 
@@ -19,8 +20,6 @@ pi3 has frozen three times (2026-08-09, 2026-08-23, 2026-09-30) and each time it
 # Kernel messages from pi3, stamped with the time pi5-master received them
 ssh kblack0610@192.168.1.20 'journalctl -u netconsole-receiver --since "-1h"'
 
-# Throttle flags right now
-curl -s 'http://192.168.1.20:30090/api/v1/query?query=rpi_throttled' | jq -r '.data.result[] | "\(.metric.flag) \(.metric.when) \(.value[1])"'
 ```
 
 `netcheck` (infrastructure/infra) prints the last netconsole lines as part of its evidence section.

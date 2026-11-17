@@ -100,13 +100,13 @@ Goal: a fresh Intel NUC becomes a working k3s agent.
    - Plug NUC into switch, power on, PXE-boot from pc-home-cachy-main workstation
    - infrastructure/pxe-server/install.sh serves an Arch kickstart
    - kickstart installs CachyOS, enables sshd, seeds kblack0610's authorized_keys
-   - (today, from cluster.sh:64-84) inline k3s install with K3S_URL + K3S_TOKEN
-   - node reboots, joins cluster as k3s agent
+   - node reboots into CachyOS, reachable over SSH; PXE installs no k3s
 
 2. Ansible (day 1+)
    - Add a host entry to ansible/inventory.yml under linux_bare_metal
    - Seed ansible/group_vars/linux_bare_metal/vault.sops.yaml if any secret is needed
-   - Optionally bind roles: github-actions-runner-linux, k3s-agent, etc.
+   - k3s nodes: site.yml --tags k3s joins it at k3s_install_version (roles/k3s-agent)
+   - Optionally bind roles: github-actions-runner-linux, etc.
    - Run: ansible-playbook playbooks/site.yml --limit <host> --check --diff
    - Apply, then verify via systemctl / kubectl get nodes
 
@@ -116,7 +116,7 @@ Goal: a fresh Intel NUC becomes a working k3s agent.
    - New labels (e.g., kblab.me/game-server) let pods with a matching nodeSelector land there
 ```
 
-Phase B `k3s-agent` role exists under `ansible/roles/k3s-agent/` but is authored-unbound — the inline PXE install in `cluster.sh` still owns this today. Full migration moves step 1's k3s install into step 2.
+`roles/k3s-agent` owns every k3s install and upgrade; PXE only installs the OS.
 
 ## GPU wiring
 
@@ -197,8 +197,8 @@ Gatus (`apps/gatus/`) monitors every endpoint in this graph — the Gatus config
 Full sequence for "the home-k3s cluster is wiped and needs to come back." Drawn from `docs/gitops.md:78-110` (bootstrap) + `docs/backup-runbook.md` (data restore) + PXE/Ansible.
 
 1. **Workstation prerequisites.** Ensure `flux`, `sops`, `age`, `kubectl`, `ansible` CLIs available and the Age private key (`~/.config/sops/age/keys.txt`) is restored from backup. Without the Age key, committed secrets cannot be decrypted — they are not recoverable from git alone.
-2. **Rebuild a control-plane node.** PXE-boot `pi5-master` from the workstation → cluster.sh kickstart installs k3s as server with `K3S_TOKEN` → node reaches Ready.
-3. **(Optional) rebuild agent nodes.** Same PXE flow with `K3S_URL` pointing at `pi5-master`.
+2. **Rebuild a control-plane node.** PXE-boot `pi5-master` from the workstation (Headless), then `ansible-playbook playbooks/site.yml --limit pi5-master --tags k3s` installs the server at `k3s_install_version` with its `k3s_extra_args` -> node reaches Ready.
+3. **(Optional) rebuild agent nodes.** Same PXE flow, then `--tags k3s` joins each as an agent.
 4. **Flux bootstrap.** From the workstation with `KUBECONFIG` pointing at the new cluster:
    ```
    kubectl create secret generic sops-age \

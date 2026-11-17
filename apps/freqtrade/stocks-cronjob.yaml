@@ -1,0 +1,72 @@
+# The stock league (strategy repo lab/stocks.py, lab/stocks.toml; README Stocks): ETF paper accounts, simulated fills
+# on Alpaca latest quotes and daily bars, GET to data.alpaca.markets only, every entry and exit a decisions row.
+# Every 5 minutes, every day: a stock account is unseen past the trader repo's [watcher] unseen_after_seconds
+# (TraderWatchBotBlind), so passes
+# outside the session still mark at the last close and write funnel market_closed. Only the two Alpaca paper keys
+# come from trader-brokers, by key, not the whole Secret. Same image, database, init migration and node rule as
+# trader-inputs-nws.
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: trader-stocks
+spec:
+  schedule: "*/5 * * * *"
+  timeZone: "Etc/UTC"
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      backoffLimit: 0
+      activeDeadlineSeconds: 240
+      template:
+        metadata:
+          labels:
+            app: trader-stocks
+        spec:
+          restartPolicy: Never
+          affinity:
+            nodeAffinity:
+              requiredDuringSchedulingIgnoredDuringExecution:
+                nodeSelectorTerms:
+                  - matchExpressions:
+                      - {key: kubernetes.io/arch, operator: In, values: [amd64]}
+                      - {key: kblab.me/tier, operator: NotIn, values: [probation]}
+          securityContext:
+            runAsUser: 1000
+            runAsGroup: 1000
+            fsGroup: 1000
+          initContainers:
+            - name: migrate
+              image: trader
+              command: ["python", "/repo/lab/migrate.py"]
+              env:
+                - name: DATABASE_URL
+                  valueFrom:
+                    secretKeyRef: {name: trader-db, key: database-url}
+              resources:
+                requests:
+                  cpu: 20m
+                  memory: 64Mi
+                limits:
+                  memory: 256Mi
+          containers:
+            - name: stocks
+              image: trader
+              command: ["python", "-m", "lab.stocks"]
+              env:
+                - name: DATABASE_URL
+                  valueFrom:
+                    secretKeyRef: {name: trader-db, key: database-url}
+                - name: ALPACA_PAPER_KEY_ID
+                  valueFrom:
+                    secretKeyRef: {name: trader-brokers, key: ALPACA_PAPER_KEY_ID}
+                - name: ALPACA_PAPER_SECRET_KEY
+                  valueFrom:
+                    secretKeyRef: {name: trader-brokers, key: ALPACA_PAPER_SECRET_KEY}
+              resources:
+                requests:
+                  cpu: 20m
+                  memory: 128Mi
+                limits:
+                  memory: 512Mi

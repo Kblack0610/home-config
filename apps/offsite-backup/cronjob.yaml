@@ -1,6 +1,8 @@
 apiVersion: batch/v1
 kind: CronJob
 metadata:
+  annotations:
+    kblab.me/criticality: standard
   # The name must contain "backup": HomelabBackupStale
   # (apps/monitoring/prometheus-rules-backup-drive.yaml) matches .*backup.* and
   # pages when the last success is older than 36h. It lives outside the nas
@@ -11,6 +13,8 @@ spec:
   # 1:00 AM, before the 8TB mirror jobs (3:30 to 6:15), so it reads the
   # previous night's finished snapshots and never a mirror mid-write.
   schedule: "0 1 * * *"
+  timeZone: America/Los_Angeles
+  suspend: false
   concurrencyPolicy: Forbid
   successfulJobsHistoryLimit: 3
   failedJobsHistoryLimit: 3

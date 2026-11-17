@@ -47,7 +47,7 @@ Two teams split the $250/mo Lazer allowance by priority (human, 2026-11-10). A k
 | `lazer-core` | $200 / 1mo | `priority: must`: home services, comms triage and the version agents, knowledge-engine, lazer-eval, model-lane (moved 2026-11-13: every dispatch routing decision reads it) |
 | `lazer-pool` | $50 / 1mo | `priority: low`: cl --lazer (`claude-reserve`, last priority), opencode-paid, delivery-loop |
 
-Each key's consumer and priority live on the key itself (`metadata.consumer`, `metadata.priority`: must, low, off, reader), so the gateway is the one inventory. A key that is not a priority is blocked (`/key/block`, reversible with `/key/unblock`), as `glm-pilot` is since 2026-11-10. To see every key beside the agentctl runners that spend through it, with priority, budget, spend and fallback, open the Consumers section of the Costs tab (agent-web and the hub TUI, fed by `claude-acct gateway` every 15 min); a must consumer on a low-priority or capped budget shows there as MISMATCH. By hand, list every key, its team, cap, spend, consumer and priority:
+Each key's consumer and priority live on the key itself (`metadata.consumer`, `metadata.priority`: must, low, off, reader), so the gateway is the one inventory. A key that is not a priority is blocked (`/key/block`, reversible with `/key/unblock`). To see every key beside the agentctl runners that spend through it, with priority, budget, spend and fallback, open the Consumers section of the Costs tab (agent-web and the hub TUI, fed by `claude-acct gateway` every 15 min); a must consumer on a low-priority or capped budget shows there as MISMATCH. By hand, list every key, its team, cap, spend, consumer and priority:
 
 ```bash
 curl -s "https://llm.kblab.me/key/list?return_full_object=true&size=100" -H "Authorization: Bearer $(cat ~/.local/state/agentctl/eval-reader.key)" \
@@ -76,6 +76,8 @@ The seven routes tagged `binks-eval` (GLM-5.3-Flash, Qwen3.8-Flash, Qwen3.7-Plus
 | `binks-anon` | the two binks routes | `max_budget` $10 / 1mo, rpm 30 | binks-api `LITELLM_API_KEY`: anonymous chats and every chat when the issuer key is unset | rbw `litellm-binks-anon-key` |
 
 Revoke one user's key with `/key/delete` on its alias; binks-api mints a new one on the next turn.
+
+`image (glm-image)` is the binks.chat image route: Z.ai GLM-Image on `ZAI_API_KEY`, $0.015 per image (read 2026-11-16). The gateway cannot meter it: LiteLLM v1.96 has no price for `glm-image` and drops a per-deployment price on image calls, so its spend records as $0, and no route, key or `binks-issuer` budget counts it. binks-api's per-user daily image cap is the bound until that is fixed. No key reaches the route until `binks-issuer` gets it in `models` (`/user/update`), done when binks-api sets `IMAGE_MODEL`.
 
 `eval-reader` is a `proxy_admin_viewer`: it reads keys, teams and spend but calls no model. Set a new key's `team_id`, `metadata.consumer` and `metadata.priority` when you mint it.
 
@@ -108,6 +110,15 @@ The three `opencode-free (...)` routes are OpenCode's free models (beam-free, lo
 | Key | Models | Budgets | Consumer | Key file |
 |---|---|---|---|---|
 | `ask-local` | `local (qwen3.5-9b)` | $1 / 30d, a tripwire only (the route is priced 0) | dotfiles `ask-local` and the `local-model` skill, through the agent-run route `gateway-local` | `~/.local/state/ask-local/litellm.key` |
+| `trader-links` | `local (qwen3.5-9b)` | $1 / 30d, a tripwire only, rpm 120 (30 429'd the pass after 30 asks in 51 s), no team, `metadata.consumer` `trader-markets-links`, priority `low` (re-mint with those: `/key/generate` as above, then `sops` the new key into the secret and `/key/delete` the old) | the trader `trader-markets-links` CronJob (`apps/freqtrade`) | `apps/freqtrade/trader-litellm-secret.sops.yaml` |
+
+### feed-ingest key
+
+`apps/feed-ingest` tags news items through `fast` (its tier-2 step). Its key sits in `lazer-core` as a home service, with its own cap so a news day cannot spend the team's month; past the cap the gateway refuses, items publish untagged and `feed_ingest_tag_errors_total` counts them.
+
+| Key | Models | Budgets | Consumer | Key file |
+|---|---|---|---|---|
+| `feed-ingest` | `fast`, `fast (gpt-oss-120b)` | $10 / 30d, rpm 30, team `lazer-core` | feed-ingest tier-2 tags (priority must) | `apps/feed-ingest/feed-ingest-secret.sops.yaml` `LITELLM_API_KEY` |
 
 ### Create a key
 
@@ -133,6 +144,8 @@ curl -sX POST https://llm.kblab.me/key/generate \
 The response contains `"key": "sk-..."` — store this where the consumer can read it. After creation, rotate the consumer's `LITELLM_API_KEY` Secret to this value (or place it in shell env for opencode).
 
 ### Inspect / retire
+
+`glm-pilot` was deleted through `/key/delete` on 2026-11-15 and `~/.local/state/agentctl/glm.key` removed. Its consumer, the glm harness, was replaced by `opencode-go` using `fleet-go.key` (dotfiles-private #791). Before deletion it was blocked, with $48.50 of its $50 cap spent and last activity at 2026-11-11T23:19:50Z; searches of active harness, account, OpenCode and systemd configuration found no remaining consumer. After deletion, `/key/list` had no `glm-pilot` alias and `/key/info` returned 404.
 
 ```bash
 # inspect

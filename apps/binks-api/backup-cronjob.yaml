@@ -1,6 +1,8 @@
 apiVersion: batch/v1
 kind: CronJob
 metadata:
+  annotations:
+    kblab.me/criticality: high
   name: binks-postgres-backup
   namespace: binks-api
   labels:
@@ -15,6 +17,7 @@ spec:
   # to the 8TB and offsite-backup to B2. Restore: docs/backup-runbook.md,
   # "Restore binks.chat".
   schedule: "25 2 * * *"
+  timeZone: America/Los_Angeles
   concurrencyPolicy: Forbid
   successfulJobsHistoryLimit: 3
   # Never, not OnFailure, so a failed pod keeps its logs.

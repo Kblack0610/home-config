@@ -23,7 +23,7 @@
     - role: asr-servers
       tags: [asr, ml, dictation]
     - role: desktop-firewall
-      tags: [firewall, agent-web]
+      tags: [firewall, agent-web, pxe]
 
 - name: Workstation monitoring (node_exporter)
   # So cc:host_* and the hub:infra board see this machine's load, memory and
@@ -67,6 +67,20 @@
     - role: node-exporter-linux
       tags: [monitoring, unity-ci]
 
+- name: Cloud Unity CI host monitoring over the tailnet
+  hosts: unity_ci_runners
+  become: true
+  gather_facts: true
+  roles:
+    - role: tailscale-node
+      when: not (unity_ci_lan | default(true) | bool)
+      tags: [monitoring]
+    - role: node-exporter-linux
+      when: not (unity_ci_lan | default(true) | bool)
+      tags: [monitoring]
+      vars:
+        node_exporter_linux_textfile_dir: /var/lib/node-exporter-textfile
+
 - name: Keep Linux host clocks synced (systemd-timesyncd)
   # See ansible/roles/time-sync/README.md. hp-victus was found ~102s behind the
   # rest of the cluster with NO time daemon at all, while every other node sat
@@ -78,7 +92,7 @@
   # Targets the Pis too even though they are already synced: the role is
   # idempotent there, and a drifting clock should be prevented fleet-wide rather
   # than fixed per-host after it bites.
-  hosts: hp-victus:asus-laptop:razer-laptop:pi_k3s
+  hosts: linux_bare_metal:pi_k3s
   become: true
   gather_facts: true
   roles:
@@ -87,8 +101,8 @@
 
 - name: Core dump and local-path PV metrics (k3s nodes)
   # Run before the chart change that mounts the directory.
-  #   ansible-playbook playbooks/site.yml --limit 'hp-victus:asus-laptop:razer-laptop:pi_k3s' --tags disk-metrics
-  hosts: hp-victus:asus-laptop:razer-laptop:pi_k3s
+  #   ansible-playbook playbooks/site.yml --limit 'linux_bare_metal:pi_k3s' --tags disk-metrics
+  hosts: linux_bare_metal:pi_k3s
   become: true
   gather_facts: false
   roles:
@@ -97,8 +111,8 @@
 
 - name: Process, service and Docker container inventory (k3s nodes)
   # For the hub machine page; the workstation's is in its monitoring play.
-  #   ansible-playbook playbooks/site.yml --limit 'hp-victus:asus-laptop:razer-laptop:pi_k3s' --tags inventory-metrics
-  hosts: hp-victus:asus-laptop:razer-laptop:pi_k3s
+  #   ansible-playbook playbooks/site.yml --limit 'linux_bare_metal:pi_k3s' --tags inventory-metrics
+  hosts: linux_bare_metal:pi_k3s
   become: true
   gather_facts: false
   roles:
@@ -175,7 +189,7 @@
   # See ansible/roles/k3s-node-no-suspend/README.md — without this, closing
   # a laptop lid removes the node from the cluster (the 2026-05 hp-victus
   # incident took 4 workloads offline for ~2 weeks).
-  hosts: hp-victus:asus-laptop:razer-laptop
+  hosts: linux_bare_metal
   become: true
   gather_facts: true
   roles:
@@ -213,9 +227,10 @@
 # from the control node's `gh` CLI, which needs admin:org for an org runner
 # (roles/github-actions-runner-linux/README.md), so there is no standing PAT.
 #
-# Lowering a slot count does NOT remove the old slot: stop and disable
-# actions.runner.<host>-<slot>.service, delete it in the org's runner settings,
-# and rm -rf /var/lib/linux-ci/<slot>.
+# Lowering a slot count, or dropping a ci_repo_runners entry, does NOT remove
+# the old slot: stop and disable actions.runner.<host>-<slot>.service, delete
+# it in the org's runner settings (a repo slot: that repo's settings), and
+# rm -rf /var/lib/linux-ci/<slot>.
 - name: Linux CI runners (light / heavy)
   hosts: linux_ci_runners
   become: true
@@ -230,7 +245,8 @@
     # turbo runs take as --concurrency. Without it a turbo job started 10 tasks
     # on razer's 2-core share, its 6 platform cores sat at 94% CPU pressure and
     # the host's load15 reached 1.58x its CPUs with 45% of them idle (2026-11-14,
-    # NodeLoadHigh, ar-2435).
+    # NodeLoadHigh, ar-2435). Measure a change to it or to the slot counts with
+    # scripts/ci-slot-effect.py.
     linux_ci_slot_cpus: >-
       {% set cpus = [] %}{% for part in ((ci_linux_cpus | default('')) or ci_cpus).split(',')
       if part | trim %}{% set ab = (part | trim).split('-') %}{% for c in range(ab[0] | int,
@@ -264,6 +280,43 @@
           HOME: "{{ linux_ci_user_home }}/{{ ci_slot }}"
           ACTIONS_RUNNER_HOOK_JOB_STARTED: "{{ linux_ci_job_started_hook }}"
           CI_SLOT_CPUS: "{{ linux_ci_slot_cpus }}"
+      tags: [runner, ci, linux-ci]
+    # A personal repo cannot see org runners, so each ci_repo_runners entry
+    # registers against its one repo (inventory.yml says why), with the
+    # workstation's gh as the repo owner. It runs as linux-ci like the org
+    # slots: the role puts every runner user in the docker group, which is
+    # root on the host, so a second user would isolate nothing. Its jobs use
+    # no secrets and read-only tokens, and the job-completed hook empties the
+    # workspace as soon as a job ends, so no private checkout stays on disk.
+    # CI_SLOT_CPUS is 1: its jobs are seconds of lint, and counting it in
+    # linux_ci_slot_cpus would halve razer-laptop's platform slots.
+    - name: Register the personal repo runner slots
+      ansible.builtin.include_role:
+        name: github-actions-runner-linux
+        apply:
+          tags: [runner, ci, linux-ci]
+      loop: "{{ ci_repo_runners | default([]) }}"
+      loop_control:
+        loop_var: ci_repo
+        label: "{{ ci_repo.repo }} {{ ci_repo.slot }}"
+      vars:
+        gh_runner_scope: repo
+        gh_runner_owner: "{{ ci_repo.repo.split('/')[0] }}"
+        gh_runner_repo: "{{ ci_repo.repo.split('/')[1] }}"
+        gh_runner_token_source: gh
+        gh_runner_install_packages: false
+        gh_runner_user: linux-ci
+        gh_runner_group: linux-ci
+        gh_runner_user_home: "{{ linux_ci_user_home }}"
+        gh_runner_home: "{{ linux_ci_user_home }}/{{ ci_repo.slot }}"
+        gh_runner_name: "{{ inventory_hostname }}-{{ ci_repo.slot }}"
+        gh_runner_labels: [self-hosted, linux, x64, light]
+        gh_runner_slice: "{{ ci_linux_slice }}"
+        gh_runner_env:
+          HOME: "{{ linux_ci_user_home }}/{{ ci_repo.slot }}"
+          ACTIONS_RUNNER_HOOK_JOB_STARTED: "{{ linux_ci_job_started_hook }}"
+          ACTIONS_RUNNER_HOOK_JOB_COMPLETED: "{{ linux_ci_job_started_hook }}"
+          CI_SLOT_CPUS: "1"
       tags: [runner, ci, linux-ci]
     # After the slots, which create the linux-ci user. Playground jobs clone
     # their submodules over ssh (windows-media-ci's first light jobs failed
@@ -426,29 +479,26 @@
         tasks_from: disk
       tags: [mac, ci-disk]
 
-# Phase B: k3s-agent role is AUTHORED but not bound. Applying it against
-# running cluster nodes reinstalls k3s — the user enables this binding when
-# they are ready to converge the fleet (set vault_k3s_token first).
-#
-# - name: k3s cluster nodes (pi_k3s + linux_bare_metal)
-#   hosts: pi_k3s:linux_bare_metal
-#   become: true
-#   gather_facts: true
-#   roles:
-#     - role: k3s-agent
-#       tags: [k3s]
-
-# The first host the k3s-agent role joins. hp-victus and asus-laptop were joined
-# by the PXE cluster profile before the role existed; add them here once their
-# agents are pinned to the server's version (they run v1.34.4 against a v1.33.5
-# server, so a converge would downgrade them). After the first join, label the
-# node by hand, since a kubelet may not set node-role labels on itself:
-#   kubectl label node razer-laptop node-role.kubernetes.io/workstation=true
-#   ansible-playbook playbooks/site.yml --limit razer-laptop --tags k3s --check --diff
-- name: k3s agent (razer-laptop)
-  hosts: razer-laptop
+# Every k3s node runs k3s_install_version (group_vars/all/k3s.yml). The server
+# goes first: a kubelet may never be newer than the apiserver. Then the agents,
+# one at a time, stopping at the first failure. After a new node joins, label it
+# by hand (a kubelet may not set node-role labels on itself):
+#   kubectl label node <host> node-role.kubernetes.io/workstation=true
+- name: k3s server (pi5-master)
+  hosts: pi5-master
   become: true
   gather_facts: true
+  any_errors_fatal: true
+  roles:
+    - role: k3s-agent
+      tags: [k3s]
+
+- name: k3s agents, one at a time
+  hosts: pi_k3s:linux_bare_metal:!pi5-master
+  become: true
+  gather_facts: true
+  serial: 1
+  max_fail_percentage: 0
   roles:
     - role: k3s-agent
       tags: [k3s]
@@ -468,16 +518,14 @@
 #     - role: osquery-agent
 #       tags: [fleet, osquery]
 
-# Game server nodes (game_server_nodes in inventory.yml): the label the
-# playground server's Deployment pins to. The cores it keeps are left out of the
-# host's ci_cpus, which the CI plays apply.
-- name: Game server nodes
-  hosts: game_server_nodes
+# Tier and game-server labels share one delegated kubectl path.
+- name: Kubernetes node labels
+  hosts: k3s_nodes
   become: false
   gather_facts: false
   roles:
-    - role: game-server-node
-      tags: [game-server]
+    - role: node-labels
+      tags: [node-labels, game-server]
 
 # BNB Unity runner pool: org-scoped runners every BlackNBrownStudios repo can use
 # with runs-on [self-hosted, linux, unity] (added 2026-10-05). Slots per host live
@@ -557,10 +605,10 @@
         # Each apply resets a registered runner's labels to these (the role's label reconcile).
         # lan: the slot is on the home LAN, so it can push to git.kblab.me (Shots'
         # gallery image); through Cloudflare a push over 100 MB fails. Off for
-        # aws-burst-1 (unity_ci_lan in inventory.yml).
+        # the AWS hosts (unity_ci_lan in inventory.yml).
         # unity-wide: slots with the CPU for real-time players (Multi, Soak, Playloop); only slots
         # that passed the ucp-1521 probes (unity_ci_wide, default false, for every slot on the host;
-        # one slot alone through unity_ci_slot_labels, as aws-burst-1's slot 1). hd-library: the host
+        # one slot alone through unity_ci_slot_labels). hd-library: the host
         # holds asset-library-hd (HD, Slim tour); defaults to unity_ci_lan, since only LAN hosts
         # got the tarball, and a cloud host sets unity_ci_hd_library once it reads it from S3.
         # unity_ci_build_slots: slots 1..N carry unity-build in place of unity, unity-full,
@@ -600,6 +648,19 @@
           # every slot and kills its job: apply it with the host's slots idle.
           ACTIONS_RUNNER_HOOK_JOB_STARTED: "{{ linux_ci_unity_job_started_hook }}"
       tags: [runner, ci, unity-ci]
+
+    # The slot labelled slim-tour (unity_ci_slot_labels) keeps its warm trees: ci-disk-prune.sh
+    # reads this marker. Every cold Slim tour spent 107 to 125 min importing (playground ucp-1884).
+    - name: Mark the slim-tour slot's trees as kept
+      ansible.builtin.file:
+        path: "{{ unity_ci_user_home }}/unity-pool-{{ item }}/.keep-warm-trees"
+        state: "{{ 'touch' if 'slim-tour' in (unity_ci_slot_labels | default({})).get(item, []) else 'absent' }}"
+        modification_time: preserve
+        access_time: preserve
+      loop: "{{ range(1, unity_ci_slots + 1) | list }}"
+      # A --check of a slot not yet registered has no slot directory to touch.
+      ignore_errors: "{{ ansible_check_mode }}"
+      tags: [runner, ci, unity-ci, ci-disk]
 
 # BNB Unity runner pool, macOS hosts (added 2026-10-29, mac-studio until it is
 # sold). The same org pool as above, labelled unity/unity-full, unity-native and
@@ -665,15 +726,11 @@
           ASSET_LIBRARY_LFS_STORE: "{{ unity_ci_mac_lfs_store }}"
       tags: [runner, ci, unity-ci]
 
-# Network UPS Tools (NUT) — single CyberPower CP1500PFCLCD plugged into
-# pi5-master drives a graceful shutdown of the whole k3s fleet when grid
-# power fails. The primary (server) runs upsd + upsmon-primary; every
-# secondary (client) runs upsmon and halts on FSD broadcast.
-#
-# All five workers (incl. pi5-worker1) are nut_clients — see inventory.yml.
-# (pi5-worker1's SSH-key auth was fixed and it was added to the group; the old
-# "intentionally excluded" note was stale, cf. docs/nut-ups.md.)
-# Verify with `upsc cyberpower` on pi5-master after first apply.
+# Network UPS Tools (NUT): a single CyberPower CP1500PFCLCD plugged into
+# pi5-master shuts down every machine on the UPS when grid power stays out.
+# The primary (server) runs upsd + upsmon-primary; every secondary (client)
+# runs upsmon and halts on FSD broadcast. Hosts: nut_clients in inventory.yml.
+# The workstation is local: add -K. Docs: docs/nut-ups.md.
 - name: NUT primary (UPS server on pi5-master)
   hosts: nut_server
   become: true
@@ -682,7 +739,7 @@
     - role: nut
       tags: [nut, nut-server, ups]
 
-- name: NUT secondaries (Pi workers)
+- name: NUT secondaries (every other host on the UPS)
   hosts: nut_clients
   become: true
   gather_facts: true
@@ -754,6 +811,16 @@
     - role: thermal-cap
       tags: [thermal]
 
+# Tools for scripts/host-qualify.py (stress-ng, fio, smartctl). See roles/host-qualify.
+#   ansible-playbook playbooks/site.yml --limit linux_bare_metal:pi_k3s --tags host-qualify --check --diff
+- name: Host qualification tools
+  hosts: linux_bare_metal:pi_k3s
+  become: true
+  gather_facts: true
+  roles:
+    - role: host-qualify
+      tags: [host-qualify]
+
 # Keep a headless host's discrete GPU off: no driver, card in D3cold. Remove
 # anything holding /dev/nvidia* first, or the unload fails.
 # See ansible/roles/dgpu-off/README.md.
@@ -767,8 +834,7 @@
       tags: [dgpu-off, thermal]
 
 # Make the next freeze explain itself: kernel messages stream to pi5-master
-# over netconsole, and the firmware's undervoltage latch is exported to
-# Prometheus. Receiver first, so the sender has somewhere to talk to.
+# over netconsole. Receiver first, so the sender has somewhere to talk to.
 # See ansible/roles/crash-evidence/README.md.
 #   ansible-playbook playbooks/site.yml --limit pi5-master,netconsole_senders --tags crash-evidence --check --diff
 - name: netconsole receiver (pi5-master - collects kernel logs from the senders)
@@ -779,13 +845,24 @@
     - role: netconsole-receiver
       tags: [crash-evidence, netconsole]
 
-- name: Crash evidence (netconsole sender + undervoltage latch metric)
+- name: Crash evidence (netconsole sender)
   hosts: netconsole_senders
   become: true
   gather_facts: true
   roles:
     - role: crash-evidence
       tags: [crash-evidence, netconsole]
+
+# Every Pi exports its firmware undervoltage latch; PiUndervoltageSinceBoot
+# alerts on it. See ansible/roles/rpi-throttle-metric/README.md.
+#   ansible-playbook playbooks/site.yml --limit rpi_hosts --tags rpi-throttle --check --diff
+- name: Pi undervoltage latch metric (every Pi)
+  hosts: rpi_hosts
+  become: true
+  gather_facts: false
+  roles:
+    - role: rpi-throttle-metric
+      tags: [rpi-throttle, crash-evidence]
 
 # Whole-house audio endpoints: each host is one room of the Snapcast system
 # (apps/snapcast). alsa backend = a dedicated Pi/Armbian box whose system
@@ -863,6 +940,16 @@
   roles:
     - role: github-actions-runner-windows
       tags: [windows, runner]
+
+# The ssh keys that may log in, from roles/authorized-keys (additive). Every
+# Linux node, the Pis included, so cluster admin never hangs on one machine.
+#   ansible-playbook playbooks/site.yml --limit linux_bare_metal:pi_k3s:adguard --tags authorized-keys
+- name: Authorized keys (Linux nodes)
+  hosts: linux_bare_metal:pi_k3s:adguard
+  gather_facts: false
+  roles:
+    - role: authorized-keys
+      tags: [authorized-keys]
 
 # Login passwords on the PXE-built Linux hosts: the user's from
 # vault_linux_login_password_hash, root's locked. Last on purpose: its assert

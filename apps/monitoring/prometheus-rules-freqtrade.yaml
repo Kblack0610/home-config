@@ -25,6 +25,7 @@ spec:
           expr: trader_bot_dry_run == 0
           labels:
             severity: critical
+            fleet: none  # live money: only the human stops the league
             category: trading
           annotations:
             summary: "Freqtrade bot {{ $labels.bot }} is NOT in dry run: stop the league now: flux suspend kustomization apps, then kubectl -n freqtrade scale sts freqtrade-league --replicas=0"
@@ -39,6 +40,7 @@ spec:
           for: 15m
           labels:
             severity: warning
+            fleet: fix
             category: trading
           annotations:
             summary: "trader-web metrics are missing or cannot read the trader database: the not-dry-run page is blind"
@@ -50,6 +52,7 @@ spec:
           expr: trader_watch_age_seconds > 300
           labels:
             severity: critical
+            fleet: fix
             category: trading
           annotations:
             summary: "The freqtrade watcher has not finished a pass for 5 minutes: no daily loss check is running"
@@ -57,18 +60,26 @@ spec:
               Check the freqtrade-watcher pod and its log. Every bot's equity is going unwatched
               (apps/freqtrade/README.md, Troubleshooting).
 
+        # Each bot's limit is trader_watch_unseen_limit_seconds, owned by the trader repo (web/exporter.py, README
+        # metrics table): a paper account is read only when its venue's pass marks it, so a slow venue gets that
+        # venue's limit. A bot with no limit series falls back to 300 s, so an exporter that drops the series cannot
+        # silence the alert. Matched on every label, not on(bot): two trader-web pods overlap in a rollout (ar-2510).
         - alert: TraderWatchBotBlind
-          expr: trader_watch_unseen_seconds > 300
+          expr: >-
+            trader_watch_unseen_seconds > trader_watch_unseen_limit_seconds
+            or (trader_watch_unseen_seconds > 300 unless trader_watch_unseen_limit_seconds)
           labels:
             severity: warning
+            fleet: fix
             category: trading
           annotations:
-            summary: "The watcher has not read bot {{ $labels.bot }} for 5 minutes"
+            summary: "The watcher has not read bot {{ $labels.bot }} within its limit"
 
         - alert: TraderDailyLossBreach
           expr: trader_watch_breached == 1
           labels:
             severity: warning
+            fleet: none  # a trading result, not a fault: it clears at 00:00 UTC
             category: trading
           annotations:
             summary: "Bot {{ $labels.bot }} broke the daily loss limit (or a drill forced it); clears at 00:00 UTC"
@@ -79,6 +90,7 @@ spec:
           for: 30m
           labels:
             severity: warning
+            fleet: fix
             category: trading
           annotations:
             summary: "Bot {{ $labels.bot }} has been paused or stopped for 30 minutes: python lab/watcher.py --drill-end {{ $labels.bot }} if a drill was left on"
@@ -91,6 +103,7 @@ spec:
           for: 70m
           labels:
             severity: warning
+            fleet: fix
             category: trading
           annotations:
             summary: "Freqtrade bot {{ $labels.bot }} did not answer two ingest runs in a row: kubectl -n freqtrade logs freqtrade-league-<row>"
@@ -100,6 +113,7 @@ spec:
           for: 5m
           labels:
             severity: warning
+            fleet: fix
             category: trading
           annotations:
             summary: "No bot snapshot for {{ $value | humanizeDuration }}: check the freqtrade-ingest CronJob"
@@ -111,6 +125,7 @@ spec:
           for: 30m
           labels:
             severity: warning
+            fleet: fix
             category: trading
           annotations:
             summary: "Newest {{ $labels.exchange }} candle is {{ $value | humanizeDuration }} old: check the freqtrade-backfill CronJob"
@@ -123,6 +138,7 @@ spec:
           for: 30m
           labels:
             severity: warning
+            fleet: fix
             category: trading
           annotations:
             summary: "Newest {{ $labels.exchange }} {{ $labels.kind }} row is {{ $value | humanizeDuration }} old: check the freqtrade-futures CronJob"
@@ -145,6 +161,7 @@ spec:
           expr: trader_repro_mismatch > 0
           labels:
             severity: critical
+            fleet: fix
             category: trading
           annotations:
             summary: "{{ $value }} cached result(s) did not reproduce: see the newest reproduce run on trader.kblab.me/runs"
@@ -174,6 +191,7 @@ spec:
           for: 15m
           labels:
             severity: warning
+            fleet: fix
             category: trading
           annotations:
             summary: "The newest shadow account mark is {{ $value | humanizeDuration }} old: the analysis shadow step marked nothing; see the shadow_* keys in the newest analysis run and trader.kblab.me/accounts"
@@ -192,20 +210,31 @@ spec:
           annotations:
             summary: "{{ $labels.pod }} cannot be scheduled: compare its requests with the nodes' allocatable (kubectl describe pod)"
 
-        # Event-contract markets (strategy repo lab/markets, docs/markets.md). A venue reports while
-        # it has a recorder sweep in the last 7 days, so removing a venue's CronJob ends its series
-        # instead of alerting forever. 15 minutes is the paper league's max_book_age_min: past it the
-        # league already takes no entries on that venue. Polymarket global sweeps every 15 minutes
-        # (about 10 a sweep), so it gets the same two missed ticks: 45 minutes.
+        # Only venues with a sweep in the last 7 days report. The exporter reads each venue's
+        # stale_after_min (or paper.max_book_age_min) from trader lab/markets.toml, as the site does.
         - alert: TraderMarketsRecorderStale
-          expr: >-
-            trader_markets_sweep_age_seconds{venue!="polymarket"} > 15 * 60
-            or trader_markets_sweep_age_seconds{venue="polymarket"} > 45 * 60
+          expr: trader_markets_sweep_age_seconds > trader_markets_sweep_stale_seconds
           labels:
             severity: warning
+            fleet: fix
             category: trading
           annotations:
             summary: "No good {{ $labels.venue }} recorder sweep for {{ $value | humanizeDuration }}: the paper league takes no entries there; failed sweeps and their errors are on trader.kblab.me/markets"
+
+        # An input our own reader writes (trader lab/inputs.toml, a `reader` and `fresh_min`): its newest reading past
+        # fresh_min, or none at all (the exporter emits the limit for every reader, the age only once read). The
+        # weather family refuses a stale forecast, so this is the paper league going blind on it.
+        - alert: TraderInputStale
+          expr: >-
+            trader_input_age_seconds > trader_input_fresh_seconds
+            or (trader_input_fresh_seconds unless trader_input_age_seconds)
+          for: 10m
+          labels:
+            severity: warning
+            fleet: fix
+            category: trading
+          annotations:
+            summary: "{{ $labels.input }} has no reading inside its fresh_min: weather takes no entries on it; check CronJob trader-inputs-nws in freqtrade"
 
         # A sweep is scheduled every 5 minutes with Forbid, so one that runs past 5 minutes makes the next
         # tick skip and thins the book. This reads the newest good sweep's run time.
@@ -214,6 +243,7 @@ spec:
           for: 10m
           labels:
             severity: warning
+            fleet: fix
             category: trading
           annotations:
             summary: "{{ $labels.venue }} recorder sweep took {{ $value | humanizeDuration }}, past the 5 minute schedule: the next tick is skipped"
@@ -225,6 +255,7 @@ spec:
           for: 30m
           labels:
             severity: warning
+            fleet: fix
             category: trading
           annotations:
             summary: "polymarket recorder sweep took {{ $value | humanizeDuration }}, close to the 15 minute deadline that kills the job"
@@ -235,6 +266,7 @@ spec:
           expr: trader_markets_sweeps_failed_1h >= 3
           labels:
             severity: warning
+            fleet: fix
             category: trading
           annotations:
             summary: "{{ $value }} {{ $labels.venue }} recorder sweeps failed in the last hour: market_sweeps.error on trader.kblab.me/markets"
@@ -246,6 +278,7 @@ spec:
           for: 15m
           labels:
             severity: warning
+            fleet: none  # a trading result: the strategy call is the human's
             category: trading
           annotations:
             summary: "Paper account {{ $labels.account }} is {{ $value | humanizePercentage }} of its capital below its peak: past the book's hard stop; trader.kblab.me/markets/book"

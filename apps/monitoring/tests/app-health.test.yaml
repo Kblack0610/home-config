@@ -1,0 +1,104 @@
+# Run with scripts/test-prometheus-rules.sh.
+rule_files:
+- app-health.rules.yaml
+evaluation_interval: 1m
+tests:
+- name: intentionally stopped workloads stay quiet; desired unavailable workloads still alert
+  interval: 1m
+  input_series:
+  - series: kube_deployment_spec_replicas{namespace="test",deployment="stopped"}
+    values: '0x30'
+  - series: kube_deployment_status_replicas_available{namespace="test",deployment="stopped"}
+    values: '0x30'
+  - series: kube_pod_container_status_restarts_total{namespace="test",pod="stopped-pod",container="app"}
+    values: '0x30'
+  - series: kube_pod_owner{namespace="test",pod="stopped-pod",owner_kind="ReplicaSet",owner_name="stopped-rs"}
+    values: 1x30
+  - series: kube_replicaset_owner{namespace="test",replicaset="stopped-rs",owner_kind="Deployment",owner_name="stopped"}
+    values: 1x30
+  - series: kube_deployment_spec_replicas{namespace="test",deployment="down"}
+    values: 1x30
+  - series: kube_deployment_status_replicas_available{namespace="test",deployment="down"}
+    values: '0x30'
+  - series: kube_pod_container_status_restarts_total{namespace="test",pod="down-pod",container="app"}
+    values: '0x30'
+  - series: kube_pod_owner{namespace="test",pod="down-pod",owner_kind="ReplicaSet",owner_name="down-rs"}
+    values: 1x30
+  - series: kube_replicaset_owner{namespace="test",replicaset="down-rs",owner_kind="Deployment",owner_name="down"}
+    values: 1x30
+  - series: kube_deployment_spec_replicas{namespace="test",deployment="healthy"}
+    values: 1x30
+  - series: kube_deployment_status_replicas_available{namespace="test",deployment="healthy"}
+    values: 1x30
+  - series: kube_pod_container_status_restarts_total{namespace="test",pod="healthy-pod",container="app"}
+    values: '0x30'
+  - series: kube_pod_owner{namespace="test",pod="healthy-pod",owner_kind="ReplicaSet",owner_name="healthy-rs"}
+    values: 1x30
+  - series: kube_replicaset_owner{namespace="test",replicaset="healthy-rs",owner_kind="Deployment",owner_name="healthy"}
+    values: 1x30
+  - series: kube_deployment_spec_replicas{namespace="test",deployment="partial"}
+    values: 2x30
+  - series: kube_deployment_status_replicas_available{namespace="test",deployment="partial"}
+    values: 1x30
+  - series: kube_pod_container_status_restarts_total{namespace="test",pod="partial-pod",container="app"}
+    values: '0x30'
+  - series: kube_pod_owner{namespace="test",pod="partial-pod",owner_kind="ReplicaSet",owner_name="partial-rs"}
+    values: 1x30
+  - series: kube_replicaset_owner{namespace="test",replicaset="partial-rs",owner_kind="Deployment",owner_name="partial"}
+    values: 1x30
+  - series: kube_statefulset_replicas{namespace="test",statefulset="stopped-sts"}
+    values: '0x30'
+  - series: kube_statefulset_status_replicas_ready{namespace="test",statefulset="stopped-sts"}
+    values: '0x30'
+  - series: kube_pod_container_status_restarts_total{namespace="test",pod="stopped-sts-pod",container="app"}
+    values: '0x30'
+  - series: kube_pod_owner{namespace="test",pod="stopped-sts-pod",owner_kind="StatefulSet",owner_name="stopped-sts"}
+    values: 1x30
+  - series: kube_statefulset_replicas{namespace="test",statefulset="down-sts"}
+    values: 1x30
+  - series: kube_statefulset_status_replicas_ready{namespace="test",statefulset="down-sts"}
+    values: '0x30'
+  - series: kube_pod_container_status_restarts_total{namespace="test",pod="down-sts-pod",container="app"}
+    values: '0x30'
+  - series: kube_pod_owner{namespace="test",pod="down-sts-pod",owner_kind="StatefulSet",owner_name="down-sts"}
+    values: 1x30
+  promql_expr_test:
+  - expr: homelab_app_ready_ratio
+    eval_time: 20m
+    exp_samples:
+    - labels: homelab_app_ready_ratio{app_id="test/down", namespace="test", platform="k8s", workload="down", workload_type="deployment"}
+      value: 0.0
+    - labels: homelab_app_ready_ratio{app_id="test/healthy", namespace="test", platform="k8s", workload="healthy", workload_type="deployment"}
+      value: 1.0
+    - labels: homelab_app_ready_ratio{app_id="test/partial", namespace="test", platform="k8s", workload="partial", workload_type="deployment"}
+      value: 0.5
+    - labels: homelab_app_ready_ratio{app_id="test/down-sts", namespace="test", platform="k8s", workload="down-sts", workload_type="statefulset"}
+      value: 0.0
+  alert_rule_test:
+  - eval_time: 20m
+    alertname: HomelabAppDown
+    exp_alerts:
+    - exp_labels:
+        namespace: test
+        workload: down
+        app_id: test/down
+        platform: k8s
+        workload_type: deployment
+        severity: warning
+        fleet: fix
+        category: app-health
+      exp_annotations:
+        summary: 'App down: test/down'
+        description: deployment test/down has had zero ready capacity for at least 10 minutes.
+    - exp_labels:
+        namespace: test
+        workload: down-sts
+        app_id: test/down-sts
+        platform: k8s
+        workload_type: statefulset
+        severity: warning
+        fleet: fix
+        category: app-health
+      exp_annotations:
+        summary: 'App down: test/down-sts'
+        description: statefulset test/down-sts has had zero ready capacity for at least 10 minutes.

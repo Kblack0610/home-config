@@ -14,12 +14,8 @@ log() { logger -t "${LOG_TAG}" -p daemon.notice "$*"; }
 
 case "${EVENT}" in
     onbatt-settle)
-        log "settling timer expired — running cluster-graceful-shutdown.sh"
+        log "settling timer expired: running cluster-graceful-shutdown.sh"
         /etc/nut/cluster-graceful-shutdown.sh "onbatt-settle"
-        ;;
-    early-shutdown)
-        log "LOWBATT received — running cluster-graceful-shutdown.sh immediately"
-        /etc/nut/cluster-graceful-shutdown.sh "lowbatt"
         ;;
     commbad-warn)
         log "WARN: communication with upsd lost"

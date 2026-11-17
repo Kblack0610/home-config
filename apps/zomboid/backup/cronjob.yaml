@@ -1,6 +1,8 @@
 apiVersion: batch/v1
 kind: CronJob
 metadata:
+  annotations:
+    kblab.me/criticality: standard
   name: zomboid-backup
   namespace: zomboid
   labels:
@@ -10,6 +12,7 @@ spec:
   # zero (nobody plays at 04:30), which makes the on-disk save quiescent and the
   # copy exact. Also avoids 03:45, when the 3d-prints job is hitting the same NAS.
   schedule: "30 4 * * *"
+  timeZone: America/Los_Angeles
   concurrencyPolicy: Forbid
   successfulJobsHistoryLimit: 3
   failedJobsHistoryLimit: 3

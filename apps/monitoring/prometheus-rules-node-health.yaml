@@ -22,16 +22,21 @@ spec:
         # paged on the thinkcentre power outage. iot-pi-nodes (sleepy Pi Zeros)
         # are intentionally excluded to avoid false pages.
         - alert: NodeDown
-          expr: up{job=~"node-exporter|mac-nodes|standalone-nodes"} == 0
+          # AWS hosts stop between jobs. Unknown power state remains a failure.
+          expr: >-
+            (up{job=~"node-exporter|mac-nodes|standalone-nodes"} == 0)
+            or ((up{job="aws-ci-nodes"} == 0)
+              unless on (host) max by (host) (ci_governor_power_state{state=~"stopped|starting|stopping"} == 1))
           for: 2m
           labels:
             severity: critical
+            fleet: fix
             category: node-health
           annotations:
             summary: "Node down: {{ $labels.instance }} ({{ $labels.job }})"
             description: >-
               node-exporter target {{ $labels.instance }} (job {{ $labels.job }})
-              has been unreachable for 2m — the host may be powered off, crashed,
+              has been unreachable for 2m; the host may be powered off, crashed,
               or off the network.
         # The whole node-exporter scrape job vanished — Prometheus lost its
         # targets, or every k3s node-exporter is gone. Monitoring is blind.
@@ -40,6 +45,7 @@ spec:
           for: 5m
           labels:
             severity: critical
+            fleet: fix
             category: node-health
           annotations:
             summary: "node-exporter scrape job is absent"
@@ -51,20 +57,20 @@ spec:
         # not: if the pi3 target disappeared from Prometheus entirely, NodeDown
         # would stop matching and nothing would say so. That box runs the LAN's
         # only DNS resolver, so it is the worst one to go quietly unmonitored.
+        # AWS targets have their own job, so losing that job needs the same check.
         - alert: StandaloneNodeExporterAbsent
-          expr: absent(up{job="standalone-nodes"})
+          expr: absent(up{job="standalone-nodes"}) or absent(up{job="aws-ci-nodes"})
           for: 15m
           labels:
             severity: warning
+            fleet: fix
             category: node-health
           annotations:
-            summary: "standalone-nodes scrape job is absent"
+            summary: "{{ $labels.job }} scrape job is absent"
             description: >-
-              No standalone-nodes targets are being scraped, so pi3 (AdGuard,
-              192.168.1.193) is unmonitored and NodeDown cannot fire for it.
-              Check apps/monitoring/external-standalone-nodes.yaml and that
-              prometheus-node-exporter is running on the host; it is installed
-              by ansible/roles/adguard.
+              No {{ $labels.job }} targets are being scraped, so NodeDown is blind
+              to this job's hosts. Check apps/monitoring/external-standalone-nodes.yaml
+              and that prometheus-node-exporter is running on each host.
         # kubelet raised DiskPressure on a node -> it taints the node and evicts
         # pods. On 2026-07-09 this took down the whole workload cluster (forgejo
         # backups filled asus-laptop's root disk). This is the fast, direct signal
@@ -77,6 +83,7 @@ spec:
           for: 2m
           labels:
             severity: critical
+            fleet: none  # the home-k3s-node-disk watch and NodeDiskCritical (fleet: fix) already send this disk to an agent
             category: node-health
           annotations:
             summary: "DiskPressure on {{ $labels.node }}"
@@ -105,6 +112,7 @@ spec:
           for: 15m
           labels:
             severity: warning
+            fleet: fix
             category: node-health
           annotations:
             summary: "Clock not syncing on {{ $labels.instance }}"
@@ -124,6 +132,7 @@ spec:
           for: 10m
           labels:
             severity: warning
+            fleet: fix
             category: node-health
           annotations:
             summary: "Clock skew on {{ $labels.instance }}"
@@ -143,6 +152,7 @@ spec:
               - node_boot_time_seconds{job="standalone-nodes"}) < 1800
           labels:
             severity: warning
+            fleet: none  # an event, not a fault: NodeDown (fleet: fix) carries a host that stays down
             category: node-health
           annotations:
             summary: "{{ $labels.instance }} rebooted (watchdog, power, or by hand)"
@@ -155,11 +165,12 @@ spec:
 
         # The Pi firmware latched an undervoltage event since boot. The latch
         # holds until reboot, so this catches a brownout too short for any
-        # one-minute sample to see. Metric: roles/crash-evidence.
+        # one-minute sample to see. Metric: roles/rpi-throttle-metric, on every Pi.
         - alert: PiUndervoltageSinceBoot
           expr: rpi_throttled{flag="undervoltage",when="since_boot"} == 1
           labels:
             severity: warning
+            fleet: none  # hardware: the human swaps the power supply
             category: node-health
           annotations:
             summary: "Undervoltage on {{ $labels.instance }} since boot"
@@ -185,6 +196,7 @@ spec:
           for: 10m
           labels:
             severity: warning
+            fleet: none  # heat: the human decides (fleet-thermal, agentctl SENTINEL.md)
             category: node-health
           annotations:
             summary: "CPU hot on {{ $labels.instance }} (peaks of {{ $value }}C for 10m)"
@@ -203,6 +215,7 @@ spec:
           for: 5m
           labels:
             severity: critical
+            fleet: none  # heat: the human decides (fleet-thermal, agentctl SENTINEL.md)
             category: node-health
           annotations:
             summary: "CPU at {{ $value }}C on {{ $labels.instance }}"
@@ -224,6 +237,7 @@ spec:
           for: 10m
           labels:
             severity: warning
+            fleet: none  # heat: the human decides airflow
             category: node-health
           annotations:
             summary: "NVMe {{ $labels.chip }} at {{ $value }}C on {{ $labels.instance }}"
@@ -244,6 +258,7 @@ spec:
           for: 5m
           labels:
             severity: warning
+            fleet: none  # power: the human restores mains
             category: node-health
           annotations:
             summary: "{{ $labels.instance }} is on battery ({{ $labels.power_supply }} offline)"
@@ -266,6 +281,7 @@ spec:
           for: 2m
           labels:
             severity: critical
+            fleet: none  # power: the human restores mains
             category: node-health
           annotations:
             summary: "{{ $labels.instance }} battery at {{ $value }}% off mains"
@@ -273,6 +289,55 @@ spec:
               {{ $labels.power_supply }} on {{ $labels.instance }} is at
               {{ $value }}% with the charger offline. The host goes down within
               minutes; plug the charger in now.
+        # cluster-janitor's quarantine step (apps/cluster-janitor/quarantine.py) tainted a
+        # node that faulted. The taint blocks new pods and evicts nothing, so pods pinned
+        # to the node by a local-path PV cannot restart elsewhere or roll out. fleet: fix
+        # opens the queue item each quarantine needs.
+        - alert: NodeQuarantined
+          expr: max by (node) (kube_node_spec_taint{key="kblab.me/degraded"})
+          labels:
+            severity: critical
+            fleet: fix
+            category: node-health
+          annotations:
+            summary: "{{ $labels.node }} is quarantined (kblab.me/degraded): no new pods land on it"
+            description: >-
+              cluster-janitor tainted {{ $labels.node }} after a kernel fault, Ready
+              flaps or a mains loss; the node's kblab.me/degraded-reason annotation
+              says which. Pods running there keep running; pods pinned there by a
+              local-path PV stay Pending if they restart. Fix or move per
+              docs/host-tiers.md "Quarantine", then rerun scripts/host-qualify.py,
+              which lifts the taint on a passing record.
+        # A node's kubelet differs from the apiserver's version. Kubernetes skew policy
+        # forbids a kubelet newer than the apiserver, and every node should sit on the
+        # one pin, k3s_install_version in ansible/group_vars/all/k3s.yml. Replaces the
+        # stock KubeVersionMismatch (disabled in helm-values.yaml), which never named
+        # the node and fired unowned 2026-11-12 to 11-16. for: 30m covers a serial
+        # rollout of every node. The last line keeps it silent when the apiserver
+        # series is missing, which KubeAPIDown owns.
+        - alert: KubeletVersionSkew
+          expr: >-
+            (
+              max by (node, kubelet_version) (kube_node_info)
+              unless on (kubelet_version)
+              label_replace(max by (git_version) (kubernetes_build_info{job="apiserver"}),
+                "kubelet_version", "$1", "git_version", "(.*)")
+            )
+            and on () (count(kubernetes_build_info{job="apiserver"}) > 0)
+          for: 30m
+          labels:
+            severity: warning
+            fleet: fix
+            category: node-health
+          annotations:
+            summary: "{{ $labels.node }} runs k3s {{ $labels.kubelet_version }}, not the apiserver's version"
+            description: >-
+              The kubelet on {{ $labels.node }} is {{ $labels.kubelet_version }} and
+              differs from the apiserver. Every node runs k3s_install_version from
+              ansible/group_vars/all/k3s.yml: from ansible/, run
+              ansible-playbook playbooks/site.yml --limit <its inventory host> --tags k3s
+              (the server first if the pin moved; roles/k3s-agent README). A Pi's node
+              name is not its inventory name; match it by IP in inventory.yml.
     - name: homelab-node-health.recording
       rules:
         - record: instance:node_cpu_package_temp:celsius

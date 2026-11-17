@@ -3,13 +3,13 @@
 #
 # upsmon-secondary on {{ inventory_hostname }} ({{ ansible_host | default(inventory_hostname) }}).
 #
-# Talks to upsd on the NUT server. On FSD broadcast, runs worker-shutdown.sh
-# which stops k3s-agent gracefully before halting.
+# Talks to upsd on the NUT server. On FSD broadcast, runs worker-shutdown.sh,
+# which stops k3s-agent first where there is one, then halts.
 
 MONITOR {{ nut_ups_name }}@{{ nut_server_host }} 1 {{ nut_upsmon_user }} {{ nut_upsmon_password }} secondary
 
 MINSUPPLIES 1
-SHUTDOWNCMD "/etc/nut/worker-shutdown.sh"
+SHUTDOWNCMD "{{ nut_confdir }}/worker-shutdown.sh"
 
 POLLFREQ 5
 POLLFREQALERT 5

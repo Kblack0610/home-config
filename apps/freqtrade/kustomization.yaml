@@ -21,11 +21,15 @@ resources:
   - markets-venue-recorders-cronjob.yaml
   - markets-compact-cronjob.yaml
   - markets-history-cronjob.yaml
+  - markets-links-cronjob.yaml
   - markets-families-cronjob.yaml
+  - inputs-nws-cronjob.yaml
   - trader-markets-s3-secret.sops.yaml
+  - trader-litellm-secret.sops.yaml
   - trader-odds-api-secret.sops.yaml
   - trader-brokers-secret.sops.yaml
   - broker-cronjob.yaml
+  - stocks-cronjob.yaml   # reads trader-brokers' two Alpaca paper keys: the stock league (trader lab/stocks.py)
   - trader-kalshi-demo-secret.sops.yaml
   - kalshi-demo-drill-cronjob.yaml
   - trader-manifold-secret.sops.yaml
@@ -34,6 +38,8 @@ resources:
   - wallet-cronjob.yaml
   - futures-cronjob.yaml
   - trader-db-secret.sops.yaml
+  - trader-feeds-secret.sops.yaml   # FEED_DATABASE_URL: read-only feed-ingest ledger (apps/feed-ingest)
+  - call-rules-cronjob.yaml   # reads trader-feeds: feed events to scored rule calls (trader lab/call_rules.py)
   - trader-web-oauth-secret.sops.yaml
   - watcher-deployment.yaml
   - web-deployment.yaml
@@ -46,13 +52,13 @@ images:
   # change; the tag is the strategy repo commit it was built from.
   - name: trader
     newName: ghcr.io/kblack0610/trader
-    digest: sha256:17540f8ed2f0e9f1159970d94a286e9bdb9f37a362d4547ecc5469cbbbe33648  # sha-7ecfac1
+    digest: sha256:90ac90db3bc50d204b9bfe74ea070849a6eb9b9d922601d820f10cf4f97d9cb0  # sha-693d49d
   # The same repo on freqtrade's FreqAI base (lightgbm), 2.7 GB: only the
   # analysis job runs it, for the ML family. The strategy repo's bump PR moves
   # this digest with trader's.
   - name: trader-ml
     newName: ghcr.io/kblack0610/trader-ml
-    digest: sha256:37ee4443543cab5a72e6e70ff47f33f76daa62456e7a4fe3f313e6fc16d34344  # sha-7ecfac1
+    digest: sha256:31ad7592717e4bd57418e9f2af8733f00032bb20b53b70e904ac199ae407c029  # sha-693d49d
 
 configMapGenerator:
   # Rows here and replicas in statefulset.yaml move together.

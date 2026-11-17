@@ -21,6 +21,7 @@ tests:
         exp_alerts:
           - exp_labels:
               severity: warning
+              fleet: none
               category: cost
               job: game-registry
             exp_annotations:

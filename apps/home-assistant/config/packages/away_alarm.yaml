@@ -1,0 +1,114 @@
+alarm_control_panel:
+  - platform: manual
+    name: Away
+    unique_id: away
+    code_arm_required: false
+    arming_states: [armed_away]
+    arming_time: 0
+    delay_time: 0
+
+automation:
+  - id: away_alarm_arm
+    alias: "Away alarm: empty home for ten minutes"
+    mode: single
+    trigger:
+      - platform: template
+        value_template: &presence_ready >-
+          {{ is_state('zone.home', '0')
+             and states.person | list | count > 0
+             and states.person | selectattr('state', 'in', ['unknown', 'unavailable']) | list | count == 0 }}
+        for: "00:10:00"
+    condition:
+      - condition: template
+        value_template: *presence_ready
+      - condition: state
+        entity_id: alarm_control_panel.away
+        state: disarmed
+    action:
+      - service: alarm_control_panel.alarm_arm_away
+        target: { entity_id: alarm_control_panel.away }
+
+  - id: away_alarm_disarm
+    alias: "Away alarm: someone returned"
+    mode: single
+    trigger:
+      - platform: template
+        value_template: "{{ states('zone.home') | float(0) > 0 }}"
+    action:
+      - service: alarm_control_panel.alarm_disarm
+        target: { entity_id: alarm_control_panel.away }
+
+  - id: away_alarm_person
+    alias: "Away alarm: person detected"
+    mode: single
+    trigger:
+      - platform: state
+        entity_id:
+          - binary_sensor.amcrest_ptz_1_person_occupancy
+          - binary_sensor.amcrest_living_room_person_occupancy
+        to: "on"
+      # Catch a person already in view when the panel is armed by hand.
+      - platform: state
+        entity_id: alarm_control_panel.away
+        from: disarmed
+        to: armed_away
+    condition:
+      - condition: state
+        entity_id: alarm_control_panel.away
+        state: armed_away
+      - condition: template
+        value_template: >-
+          {{ is_state('binary_sensor.amcrest_ptz_1_person_occupancy', 'on')
+             or is_state('binary_sensor.amcrest_living_room_person_occupancy', 'on') }}
+    action:
+      - service: alarm_control_panel.alarm_trigger
+        target: { entity_id: alarm_control_panel.away }
+      - service: script.home_alert
+        data:
+          title: "Away alarm: person detected"
+          message: >-
+            Person in view: {{ 'PTZ camera' if is_state('binary_sensor.amcrest_ptz_1_person_occupancy', 'on') else 'living room camera' }}.
+          priority: high
+
+  - id: away_alarm_bark
+    alias: "Away alarm: dog barking"
+    mode: single
+    trigger:
+      - platform: state
+        entity_id: binary_sensor.dog_barking
+        to: "on"
+    condition:
+      - condition: state
+        entity_id: alarm_control_panel.away
+        state: armed_away
+      - condition: template
+        value_template: >-
+          {{ this.attributes.last_triggered is none
+             or as_timestamp(now()) - as_timestamp(this.attributes.last_triggered) >= 900 }}
+    action:
+      - service: script.home_alert
+        data:
+          title: "Dog barking while away"
+          message: "Barking heard in {{ state_attr('binary_sensor.dog_barking', 'rooms') or 'the house' }}."
+          priority: default
+          tags: dog
+
+  - id: away_alarm_status
+    alias: "Away alarm: armed or disarmed"
+    mode: queued
+    trigger:
+      - platform: state
+        entity_id: alarm_control_panel.away
+        from: disarmed
+        to: armed_away
+      - platform: state
+        entity_id: alarm_control_panel.away
+        from: [armed_away, triggered, pending, arming]
+        to: disarmed
+    action:
+      - service: script.home_alert
+        data:
+          title: "Away alarm"
+          message: "{{ 'Armed away.' if trigger.to_state.state == 'armed_away' else 'Disarmed.' }}"
+          priority: low
+          panel: false

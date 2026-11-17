@@ -1,0 +1,429 @@
+# promtool test rules. Run with scripts/test-prometheus-rules.sh.
+rule_files:
+  - kb-project.rules.yaml
+evaluation_interval: 5m
+
+tests:
+  - name: registry events become one number per kind, summed over the game's servers
+    interval: 5m
+    input_series:
+      - series: 'bnb_events_24h{game="dodginballs", kind="match_start", job="game-registry"}'
+        values: '12x4'
+      - series: 'bnb_events_24h{game="dodginballs", kind="session_end", job="game-registry"}'
+        values: '7x4'
+      - series: 'bnb_events_24h{game="time-tangle", kind="match_start", job="game-registry"}'
+        values: '3x4'
+      - series: 'bnb_event_installs_24h{game="dodginballs", job="game-registry"}'
+        values: '5x4'
+    promql_expr_test:
+      - expr: kb_project_number{dept="analytics", metric=~"events_.*|installs_24h"}
+        eval_time: 10m
+        exp_samples:
+          - labels: 'kb_project_number{dept="analytics", metric="events_match_start_24h", project="dodginballs"}'
+            value: 12
+          - labels: 'kb_project_number{dept="analytics", metric="events_session_end_24h", project="dodginballs"}'
+            value: 7
+          - labels: 'kb_project_number{dept="analytics", metric="events_match_start_24h", project="time-tangle"}'
+            value: 3
+          - labels: 'kb_project_number{dept="analytics", metric="installs_24h", project="dodginballs"}'
+            value: 5
+
+  - name: players and servers are per game, and the week's peak is the busiest sum
+    interval: 5m
+    input_series:
+      - series: 'bnb_server_info{game="dodginballs", id="a", job="game-registry"}'
+        values: '1x6'
+      - series: 'bnb_server_info{game="dodginballs", id="b", job="game-registry"}'
+        values: '1x6'
+      - series: 'bnb_server_players{game="dodginballs", id="a", job="game-registry"}'
+        values: '2 4 4 1 1 1 1'
+      - series: 'bnb_server_players{game="dodginballs", id="b", job="game-registry"}'
+        values: '0 3 1 1 1 1 1'
+    promql_expr_test:
+      - expr: kb_project_number{metric=~"players_now|servers_live|players_peak_7d"}
+        eval_time: 30m
+        exp_samples:
+          - labels: 'kb_project_number{dept="analytics", metric="players_now", project="dodginballs"}'
+            value: 2
+          - labels: 'kb_project_number{dept="analytics", metric="servers_live", project="dodginballs"}'
+            value: 2
+          - labels: 'kb_project_number{dept="analytics", metric="players_peak_7d", project="dodginballs"}'
+            value: 7
+
+  - name: uptime is the worst host's share of passing probes, per named product, and no other site counts
+    interval: 5m
+    input_series:
+      - series: 'probe_success{job="blackbox-sites", instance="https://placemyparents.blacknbrownstudios.com"}'
+        values: '1x12'
+      - series: 'probe_success{job="blackbox-sites", instance="https://placemyparents-api.blacknbrownstudios.com"}'
+        values: '1 1 1 1 1 1 1 1 1 0 0 0'
+      - series: 'probe_success{job="blackbox-sites", instance="https://binks.chat"}'
+        values: '1x12'
+      - series: 'probe_success{job="blackbox-sites", instance="https://grafana.kblab.me"}'
+        values: '0x12'
+    promql_expr_test:
+      - expr: kb_project_number{metric="uptime_7d"}
+        eval_time: 55m
+        exp_samples:
+          - labels: 'kb_project_number{dept="analytics", metric="uptime_7d", project="binks"}'
+            value: 1
+          # The api host passed 9 of 12 probes; the two healthy hosts do not hide it.
+          - labels: 'kb_project_number{dept="analytics", metric="uptime_7d", project="placemyparents"}'
+            value: 0.75
+
+  - name: a product with no source has no series, so its cell can read off
+    interval: 5m
+    input_series:
+      - series: 'bnb_server_info{game="dodginballs", id="a", job="game-registry"}'
+        values: '1x6'
+      - series: 'probe_success{job="blackbox-sites", instance="https://grafana.kblab.me"}'
+        values: '1x6'
+    promql_expr_test:
+      - expr: kb_project_number{project="ndt-calculator"}
+        eval_time: 30m
+        exp_samples: []
+      # dodginballs has servers but sent no events: those numbers are absent, not 0.
+      - expr: kb_project_number{project="dodginballs", metric=~"events_.*|installs_24h"}
+        eval_time: 30m
+        exp_samples: []
+
+  - name: binks turns, tools, spend and subscribers
+    interval: 5m
+    input_series:
+      - series: 'binks_chat_completions_total{role="assistant", pod="p1", job="binks-api"}'
+        values: '0+1x300'
+      - series: 'binks_chat_completions_total{role="user", pod="p1", job="binks-api"}'
+        values: '0+5x300'
+      - series: 'binks_tool_calls_total{tool="web_search", pod="p1", job="binks-api"}'
+        values: '0+1x300'
+      - series: 'litellm_spend_metric_total{api_key_alias="binks-anon", job="litellm"}'
+        values: '0+0.25x300'
+      - series: 'litellm_spend_metric_total{api_key_alias="comms-triage", job="litellm"}'
+        values: '0+9x300'
+      - series: 'binks_billing_active_subscribers{pod="p1", job="binks-api"}'
+        values: '3x300'
+      - series: 'binks_billing_active_subscribers{pod="p2", job="binks-api"}'
+        values: '3x300'
+    promql_expr_test:
+      - expr: kb_project_number{project="binks", metric=~"chat_turns_24h|tool_web_search_24h|llm_usd_7d|subscribers_active"}
+        eval_time: 1d
+        exp_samples:
+          # 288 five-minute steps in 24h, one turn each.
+          - labels: 'kb_project_number{dept="analytics", metric="chat_turns_24h", project="binks"}'
+            value: 288
+          - labels: 'kb_project_number{dept="analytics", metric="tool_web_search_24h", project="binks"}'
+            value: 288
+          # Only the binks-* key counts: 288 steps x 0.25 over the day the series has.
+          - labels: 'kb_project_number{dept="money", metric="llm_usd_7d", project="binks"}'
+            value: 72
+          - labels: 'kb_project_number{dept="money", metric="subscribers_active", project="binks"}'
+            value: 3
+
+  - name: Edgegap spend is the registry's month per game, a game that has not run reading 0
+    interval: 5m
+    input_series:
+      # Two pods during a rollout report the same database's number once.
+      - series: 'bnb_edgegap_game_spend_usd_month{game="dodginballs", job="game-registry", pod="a"}'
+        values: '4.25x6'
+      - series: 'bnb_edgegap_game_spend_usd_month{game="dodginballs", job="game-registry", pod="b"}'
+        values: '4.25x6'
+      - series: 'bnb_edgegap_game_spend_usd_month{game="shapecity", job="game-registry"}'
+        values: '0x6'
+      # The unlabelled total is not a product.
+      - series: 'bnb_edgegap_spend_usd_month{job="game-registry"}'
+        values: '9x6'
+    promql_expr_test:
+      - expr: kb_project_number{metric="edgegap_usd_month"}
+        eval_time: 30m
+        exp_samples:
+          - labels: 'kb_project_number{dept="money", metric="edgegap_usd_month", project="dodginballs"}'
+            value: 4.25
+          - labels: 'kb_project_number{dept="money", metric="edgegap_usd_month", project="shapecity"}'
+            value: 0
+
+  - name: a source down for a day pages, and one that is back does not
+    interval: 5m
+    input_series:
+      - series: 'up{job="game-registry"}'
+        values: '0x400'
+      - series: 'up{job="binks-api"}'
+        values: '0x100 1x300'
+      - series: 'up{job="blackbox-sites"}'
+        values: '1x400'
+      - series: 'up{job="litellm"}'
+        values: '1x400'
+      # The textfile sources stay fresh: their last run follows the clock, 300s a step.
+      - series: 'store_reviews_up{store="steam"}'
+        values: '1x400'
+      - series: 'store_reviews_generated_seconds'
+        values: '0+300x400'
+      - series: 'store_sales_up{store="steam"}'
+        values: '1x400'
+      - series: 'store_sales_generated_seconds'
+        values: '0+300x400'
+      - series: 'playtest_feedback_up'
+        values: '1x400'
+      - series: 'playtest_feedback_generated_seconds'
+        values: '0+300x400'
+      - series: 'sentry_issues_up'
+        values: '1x400'
+      - series: 'sentry_issues_generated_seconds'
+        values: '0+300x400'
+    alert_rule_test:
+      - eval_time: 12h
+        alertname: KbProjectSourceDown
+        exp_alerts: []
+      - eval_time: 26h
+        alertname: KbProjectSourceDown
+        exp_alerts:
+          - exp_labels:
+              severity: warning
+              fleet: fix
+              category: availability
+              source: game-registry
+            exp_annotations:
+              summary: "Department tabs: source game-registry has had no numbers for a day"
+              description: "The scrape behind game-registry has been down for 24 hours, so the Analytics, Support and Money tabs of the products it feeds read stale or empty."
+      # binks-api went down for 100 steps (8h20m) and came back: it never pages. A source
+      # whose scrape target is gone entirely reads 0 (the rule's `or vector(0)`) and pages.
+      - eval_time: 30h
+        alertname: KbProjectSourceDown
+        exp_alerts:
+          - exp_labels:
+              severity: warning
+              fleet: fix
+              category: availability
+              source: game-registry
+            exp_annotations:
+              summary: "Department tabs: source game-registry has had no numbers for a day"
+              description: "The scrape behind game-registry has been down for 24 hours, so the Analytics, Support and Money tabs of the products it feeds read stale or empty."
+
+  - name: a source whose scrape target has vanished reads 0 and pages after a day
+    interval: 5m
+    input_series:
+      - series: 'up{job="game-registry"}'
+        values: '1x400'
+      - series: 'up{job="binks-api"}'
+        values: '1x400'
+      - series: 'up{job="blackbox-sites"}'
+        values: '1x400'
+      - series: 'store_reviews_up{store="steam"}'
+        values: '1x400'
+      - series: 'store_reviews_generated_seconds'
+        values: '0+300x400'
+      - series: 'store_sales_up{store="steam"}'
+        values: '1x400'
+      - series: 'store_sales_generated_seconds'
+        values: '0+300x400'
+      - series: 'playtest_feedback_up'
+        values: '1x400'
+      - series: 'playtest_feedback_generated_seconds'
+        values: '0+300x400'
+      - series: 'sentry_issues_up'
+        values: '1x400'
+      - series: 'sentry_issues_generated_seconds'
+        values: '0+300x400'
+    promql_expr_test:
+      - expr: kb_project_source_up{source="litellm"}
+        eval_time: 10m
+        exp_samples:
+          - labels: 'kb_project_source_up{source="litellm"}'
+            value: 0
+    alert_rule_test:
+      - eval_time: 20h
+        alertname: KbProjectSourceDown
+        exp_alerts: []
+      - eval_time: 26h
+        alertname: KbProjectSourceDown
+        exp_alerts:
+          - exp_labels:
+              severity: warning
+              fleet: fix
+              category: availability
+              source: litellm
+            exp_annotations:
+              summary: "Department tabs: source litellm has had no numbers for a day"
+              description: "The scrape behind litellm has been down for 24 hours, so the Analytics, Support and Money tabs of the products it feeds read stale or empty."
+
+  - name: store reviews become one number per store and window, and the workstation's labels drop
+    interval: 5m
+    input_series:
+      - series: 'store_reviews{project="shape-city", store="steam", window="7d", job="workstation", instance="192.168.1.2:9100"}'
+        values: '4x4'
+      - series: 'store_reviews{project="shape-city", store="steam", window="all", job="workstation", instance="192.168.1.2:9100"}'
+        values: '40x4'
+      - series: 'store_reviews_positive{project="shape-city", store="steam", window="7d", job="workstation", instance="192.168.1.2:9100"}'
+        values: '3x4'
+      - series: 'store_reviews{project="placemyparents", store="app_store", window="7d", job="workstation", instance="192.168.1.2:9100"}'
+        values: '0x4'
+      - series: 'playtest_feedback_open{project="dodginballs", job="workstation", instance="192.168.1.2:9100"}'
+        values: '6x4'
+      - series: 'sentry_issues_unresolved{project="placemyparents", job="workstation", instance="192.168.1.2:9100"}'
+        values: '12x4'
+      - series: 'sentry_issues_new{project="placemyparents", window="7d", job="workstation", instance="192.168.1.2:9100"}'
+        values: '0x4'
+    promql_expr_test:
+      - expr: kb_project_number{dept="support"}
+        eval_time: 10m
+        exp_samples:
+          - labels: 'kb_project_number{dept="support", metric="reviews_steam_7d", project="shape-city"}'
+            value: 4
+          - labels: 'kb_project_number{dept="support", metric="reviews_steam_all", project="shape-city"}'
+            value: 40
+          - labels: 'kb_project_number{dept="support", metric="reviews_positive_steam_7d", project="shape-city"}'
+            value: 3
+          - labels: 'kb_project_number{dept="support", metric="reviews_app_store_7d", project="placemyparents"}'
+            value: 0
+          - labels: 'kb_project_number{dept="support", metric="playtest_feedback_open", project="dodginballs"}'
+            value: 6
+          - labels: 'kb_project_number{dept="support", metric="sentry_unresolved", project="placemyparents"}'
+            value: 12
+          - labels: 'kb_project_number{dept="support", metric="sentry_new_7d", project="placemyparents"}'
+            value: 0
+
+  - name: a textfile source is up while every store read on a run in the last day
+    interval: 5m
+    input_series:
+      - series: 'store_reviews_up{store="steam"}'
+        values: '1x400'
+      - series: 'store_reviews_up{store="play"}'
+        values: '1x400'
+      - series: 'store_reviews_generated_seconds'
+        values: '0+300x400'
+      # one sheet failed to read: the source is down though its last run is fresh
+      - series: 'playtest_feedback_up'
+        values: '0x400'
+      - series: 'playtest_feedback_generated_seconds'
+        values: '0+300x400'
+      # a Sentry project read with an error: the source is down though its last run is fresh
+      - series: 'sentry_issues_up'
+        values: '0x400'
+      - series: 'sentry_issues_generated_seconds'
+        values: '0+300x400'
+    promql_expr_test:
+      - expr: kb_project_source_up{source=~"store-reviews|playtest-feedback|sentry-issues"}
+        eval_time: 10m
+        exp_samples:
+          - labels: 'kb_project_source_up{source="store-reviews"}'
+            value: 1
+          - labels: 'kb_project_source_up{source="playtest-feedback"}'
+            value: 0
+          - labels: 'kb_project_source_up{source="sentry-issues"}'
+            value: 0
+
+  - name: a textfile source whose last run is over a day old reads 0, even when it read everything
+    interval: 5m
+    input_series:
+      # the runner last ran at t=0 and stopped; its file (and the series) stays
+      - series: 'store_reviews_up{store="steam"}'
+        values: '1x400'
+      - series: 'store_reviews_generated_seconds'
+        values: '0x400'
+    promql_expr_test:
+      - expr: kb_project_source_up{source="store-reviews"}
+        eval_time: 23h
+        exp_samples:
+          - labels: 'kb_project_source_up{source="store-reviews"}'
+            value: 1
+      - expr: kb_project_source_up{source="store-reviews"}
+        eval_time: 25h
+        exp_samples:
+          - labels: 'kb_project_source_up{source="store-reviews"}'
+            value: 0
+
+  - name: sentry-issues is up while it read every project in the last day, and down once its last run is a day old
+    interval: 5m
+    input_series:
+      - series: 'sentry_issues_up'
+        values: '1x400'
+      - series: 'sentry_issues_generated_seconds'
+        values: '0x400'
+    promql_expr_test:
+      - expr: kb_project_source_up{source="sentry-issues"}
+        eval_time: 23h
+        exp_samples:
+          - labels: 'kb_project_source_up{source="sentry-issues"}'
+            value: 1
+      - expr: kb_project_source_up{source="sentry-issues"}
+        eval_time: 25h
+        exp_samples:
+          - labels: 'kb_project_source_up{source="sentry-issues"}'
+            value: 0
+
+  - name: store revenue becomes one number per store and currency, and the workstation's labels drop
+    interval: 5m
+    input_series:
+      - series: 'store_sales_amount{project="shape-city", store="steam", currency="usd", job="workstation", instance="192.168.1.2:9100"}'
+        values: '8.99x4'
+      - series: 'store_sales_amount{project="shape-city", store="app_store", currency="eur", job="workstation", instance="192.168.1.2:9100"}'
+        values: '4.2x4'
+      - series: 'store_sales_amount{project="shape-city", store="app_store", currency="usd", job="workstation", instance="192.168.1.2:9100"}'
+        values: '1.4x4'
+      # a read store with nothing sold writes 0; an unread store writes nothing, so no series
+      - series: 'store_sales_amount{project="apociseum", store="steam", currency="usd", job="workstation", instance="192.168.1.2:9100"}'
+        values: '0x4'
+    promql_expr_test:
+      - expr: kb_project_number{dept="money", metric=~"revenue_.*"}
+        eval_time: 10m
+        exp_samples:
+          - labels: 'kb_project_number{dept="money", metric="revenue_steam_usd_1d", project="shape-city"}'
+            value: 8.99
+          - labels: 'kb_project_number{dept="money", metric="revenue_app_store_eur_1d", project="shape-city"}'
+            value: 4.2
+          - labels: 'kb_project_number{dept="money", metric="revenue_app_store_usd_1d", project="shape-city"}'
+            value: 1.4
+          - labels: 'kb_project_number{dept="money", metric="revenue_steam_usd_1d", project="apociseum"}'
+            value: 0
+      - expr: kb_project_number{dept="money", metric=~"revenue_play.*"}
+        eval_time: 10m
+        exp_samples: []
+
+  - name: the store-sales source is up while any store read, though another store never does
+    interval: 5m
+    input_series:
+      # Play never reads (no paid sale), Steam does: the source stays up
+      - series: 'store_sales_up{store="play"}'
+        values: '0x400'
+      - series: 'store_sales_up{store="steam"}'
+        values: '1x400'
+      - series: 'store_sales_generated_seconds'
+        values: '0+300x400'
+    promql_expr_test:
+      - expr: kb_project_source_up{source="store-sales"}
+        eval_time: 10m
+        exp_samples:
+          - labels: 'kb_project_source_up{source="store-sales"}'
+            value: 1
+
+  - name: the store-sales source reads 0 when no store read
+    interval: 5m
+    input_series:
+      - series: 'store_sales_up{store="steam"}'
+        values: '0x400'
+      - series: 'store_sales_generated_seconds'
+        values: '0+300x400'
+    promql_expr_test:
+      - expr: kb_project_source_up{source="store-sales"}
+        eval_time: 10m
+        exp_samples:
+          - labels: 'kb_project_source_up{source="store-sales"}'
+            value: 0
+
+  - name: the store-sales source reads 0 once its last run is over a day old, though a store read then
+    interval: 5m
+    input_series:
+      - series: 'store_sales_up{store="steam"}'
+        values: '1x400'
+      - series: 'store_sales_generated_seconds'
+        values: '0x400'
+    promql_expr_test:
+      - expr: kb_project_source_up{source="store-sales"}
+        eval_time: 23h
+        exp_samples:
+          - labels: 'kb_project_source_up{source="store-sales"}'
+            value: 1
+      - expr: kb_project_source_up{source="store-sales"}
+        eval_time: 25h
+        exp_samples:
+          - labels: 'kb_project_source_up{source="store-sales"}'
+            value: 0

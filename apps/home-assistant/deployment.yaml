@@ -1,6 +1,8 @@
 apiVersion: apps/v1
 kind: Deployment
 metadata:
+  annotations:
+    kblab.me/criticality: high
   name: home-assistant
   namespace: home-assistant
   labels:
@@ -476,6 +478,7 @@ spec:
               cp /managed-config/package_home_alerts.yaml /config/packages/home_alerts.yaml
               cp /managed-config/package_voice_health.yaml /config/packages/voice_health.yaml
               cp /managed-config/package_dog_barks.yaml /config/packages/dog_barks.yaml
+              cp /managed-config/package_away_alarm.yaml /config/packages/away_alarm.yaml
               cp /managed-config/package_marine.yaml /config/packages/marine.yaml
               cp /managed-config/package_voice_satellite_binks.yaml /config/packages/voice_satellite_binks.yaml
               cp /managed-config/package_voice_pe_pucks.yaml /config/packages/voice_pe_pucks.yaml
@@ -569,11 +572,18 @@ spec:
               rm -rf /config/www/announce-card
               mkdir -p /config/www/announce-card
               cp /managed-config/www_announce_card.js /config/www/announce-card/announce-card.js
+              # Audio clips, served at /local/sounds/ (the dog-bark calming clip). Own
+              # ConfigMap so a binary stays out of the managed text one.
+              rm -rf /config/www/sounds
+              mkdir -p /config/www/sounds
+              cp /managed-sounds/* /config/www/sounds/
           volumeMounts:
             - name: config
               mountPath: /config
             - name: managed-config
               mountPath: /managed-config
+            - name: managed-sounds
+              mountPath: /managed-sounds
         - name: seed-integrations
           image: ghcr.io/home-assistant/home-assistant:2026.9.4
           command:
@@ -2381,3 +2391,6 @@ spec:
         - name: managed-config
           configMap:
             name: home-assistant-managed-config
+        - name: managed-sounds
+          configMap:
+            name: home-assistant-sounds

@@ -26,9 +26,17 @@
   ansible.builtin.set_fact:
     _fleet_store_has: "{{ dict(_fleet_store_files.results | map(attribute='item') | zip(_fleet_store_files.results | map(attribute='stat.exists'))) }}"
 
+# The key is data (fleet_store_host_key), never a scan or a first-use accept, so
+# store-sync's accept-new finds it already trusted.
+- name: Trust Forgejo's host key
+  ansible.builtin.known_hosts:
+    name: "[{{ fleet_store_host }}]:{{ fleet_store_port }}"
+    key: "[{{ fleet_store_host }}]:{{ fleet_store_port }} {{ fleet_store_host_key }}"
+    state: present
+
 # The URL is store.env's, the one store-sync reads, and the key is the one it
-# uses for origin; host keys are accepted on first use, as store-sync does. The
-# play joins only once origin takes the key, so no peer starts on the backup.
+# uses for origin. The play joins only once origin takes the key, so no peer
+# starts on the backup.
 - name: Read whether the sync key reaches the store
   when:
     - not _fleet_store_has['.agent/.sync/peer']
@@ -40,7 +48,7 @@
   args:
     executable: /bin/bash
   environment:
-    GIT_SSH_COMMAND: ssh -T -i {{ ansible_env.HOME }}/.ssh/id_agent_sync -o IdentitiesOnly=yes -o BatchMode=yes -o ConnectTimeout=10 -o StrictHostKeyChecking=accept-new
+    GIT_SSH_COMMAND: ssh -T -i {{ ansible_env.HOME }}/.ssh/id_agent_sync -o IdentitiesOnly=yes -o BatchMode=yes -o ConnectTimeout=10 -o StrictHostKeyChecking=yes
   register: _fleet_store_reach
   changed_when: false
   failed_when: false

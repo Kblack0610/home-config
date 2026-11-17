@@ -113,6 +113,16 @@ class RealInventory(unittest.TestCase):
         home = next(l for l in lines if l.startswith("cachyos-x8664-main,"))
         self.assertIn(hv["razer-laptop"]["fleet_state_host"], home.split()[0].split(","))
 
+    def test_every_host_the_runner_checks_has_a_key(self):
+        hv, groups = load_inventory(os.path.join(REPO, "ansible", "inventory.yml"))
+        devices = load(os.path.join(REPO, "infrastructure", "dhcp", "devices.yaml"))["devices"]
+        cron = open(os.path.join(REPO, "apps", "ansible-runner", "cronjob.yaml")).read()
+        checked = [h for h in groups["linux_bare_metal"] if h + "=" in cron]
+        self.assertGreaterEqual(len(checked), 5)
+        lines = roster_known_hosts(hv, groups, ["linux_bare_metal"], devices)
+        keyless = [h for h in checked if not any(l.startswith((h + ",", "[" + h + "]:")) for l in lines)]
+        self.assertEqual(keyless, [], "set ssh_host_ed25519 for these hosts in ansible/inventory.yml")
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -73,7 +73,7 @@ The janitor writes `kblab.me/degraded-at` and `kblab.me/degraded-reason` on the 
 
 `NodeQuarantined` pages ntfy-critical, and with `fleet: fix` it opens a queue item. The taint evicts nothing, but two effects matter. A pod pinned to the node by a local-path PV stays Pending if it restarts or rolls out. A DaemonSet pod that does not tolerate NoSchedule (svclb, crowdsec-agent) does not come back to the node once it is deleted. alloy and node-exporter tolerate it, so the node stays observed.
 
-The taint comes off when `scripts/host-qualify.py <host>` writes a record that meets the host's inventory tier, and at least `standard`. The script then lifts the taint and stamps `kblab.me/qualified-at`. The standard bar requires 14 days with no kernel fault, so a node quarantined for a lockup stays out for at least that long. To bring it back sooner, for example a core host whose pinned apps must roll out, a human runs `kubectl --context home-k3s taint node <node> kblab.me/degraded-` and owns that decision.
+The taint comes off when `scripts/host-qualify.py <host>` writes a record that meets the host's inventory tier, and at least `standard`. The script then lifts the taint and stamps `kblab.me/qualified-at`. The standard bar requires 14 days with no kernel fault, so a node quarantined for a lockup stays out for at least that long. To bring it back sooner, for example a core host whose pinned apps must roll out, a human runs `kubectl --context home-k3s taint node <node> kblab.me/degraded-` and owns that decision. With the first records above, only razer-laptop meets its release bar, so any other host leaves quarantine by hand until it qualifies.
 
 ## Placement check
 

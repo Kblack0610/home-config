@@ -59,6 +59,16 @@ scripts/test/fetch-image.py unityci/editor ubuntu-<version>-base-3 ~/.cache/unit
 - Watch jobs from the host. The GitHub jobs API shares one 5000/h limit with every session, and polling it drained that limit on 2026-11-03: `sudo journalctl -f -n 0 -u "actions.runner.*" | grep -E "Running job|completed with result"`.
 - A change to a runner unit or its `.env` restarts the slot, and the apply never cancels a job for it: under a job it drains the slot (every custom label removed through the org labels endpoint, so `host-<host>`, `hd-library` and `unity-gate` jobs stop landing too), waits for the job to end, restarts the slot and puts its labels back (`roles/github-actions-runner-linux/tasks/drain.yml`). The apply blocks until then, up to `gh_runner_drain_timeout` (360 minutes); past it the labels go back and `.restart-pending` stays for the next apply.
 
+### Host telemetry
+
+The cloud Unity monitoring play in `ansible/playbooks/site.yml` reuses `tailscale-node` and `node-exporter-linux` for hosts with `unity_ci_lan: false`. Apply from `ansible/` with `ansible-playbook playbooks/site.yml --limit <host> --tags monitoring --check --diff`, review the diff, then run without `--check --diff`. It restarts neither runners nor Docker. It needs the existing SOPS tailnet key. No public metrics port is opened.
+
+Add the assigned tailnet IPv4 and inventory hostname to `apps/monitoring/external-standalone-nodes.yaml` after the play reports the address. Flux deploys that endpoint. AWS targets use the `aws-ci-nodes` job; `cc:host_instance` reads the inventory name from its `host` label. The node_exporter textfile collector reads the existing runner CPU directory, `/var/lib/node-exporter-textfile`. `NodeDown` alerts on failed AWS scrapes unless the governor reports the host stopped, starting or stopping; missing power telemetry still alerts. The redundant aggregate `TargetDown` is muted for this job in the plain-Helm Alertmanager config (`apps/monitoring/helm-values.yaml`), which needs its documented Helm upgrade.
+
+The first target is aws-build-1. aws-burst-1 awaits release of its explicit governor off override before installation.
+
+Before widening a slot, run `scripts/host-headroom.py <host>` after `up{job="aws-ci-nodes",host="<host>"}` and `cc:host_instance{host="<host>"}` appear in Prometheus. New targets have only the history collected since installation, so record that observation window with the result.
+
 ### What starts and stops it
 
 apps/ci-runner-governor powers it (config.json `standby` -> `aws-burst-1` -> `power`). The governor's docstring is the full rule; in short:
@@ -103,6 +113,7 @@ apps/ci-runner-governor powers it (config.json `standby` -> `aws-burst-1` -> `po
 
 | Symptom | Cause | Fix |
 |---|---|---|
+| An AWS CI host is absent from `cc:host_instance` and host-headroom fails | No node_exporter scrape path from home-k3s | Follow [Host telemetry](#host-telemetry), then verify `up` and the host mapping before placement |
 | Play or job fails with "no space left on device" | Docker 29 keeps images in `/var/lib/containerd`, on the 38G root disk | The Terraform user data binds it to the data volume (platform #1459) |
 | A slot GitHub shows idle still runs Unity: a `unity-test-<pid>` container whose `<pid>` is gone (aws-burst-1 and aws-burst-2, 2026-11-11) | The job was cancelled and the runner killed playground `scripts/test/in-docker.sh` before its exit trap removed the container | The next job on that checkout removes it (in-docker.sh). By hand, once `ps -p <pid>` shows nothing: `sudo docker rm -f unity-test-<pid>` |
 | aws-burst-1 runners die mid-run ("lost communication", bee "Request cancelled while reading the binlog", then ENOSPC) | `/var/lib/ci` full: `Builds/release-tree`, `Builds/hd-tree`, player outputs and main-checkout Library build caches accumulate alongside editor images | `df -h /var/lib/ci`; the job-started hook and the hourly prune remove idle slots' trees (Disk, below), including main-checkout outputs and build caches under low disk; busy slots stay untouched, and the host pulls base images only (`unity_ci_images` in inventory.yml). Remove unlisted `unityci/editor` images by hand: the prune never removes them |

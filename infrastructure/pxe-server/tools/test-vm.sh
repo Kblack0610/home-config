@@ -58,6 +58,7 @@ export QEMU_DISABLE_IO_URING=1
 # Find OVMF firmware for UEFI
 find_ovmf() {
     local paths=(
+        "/usr/share/edk2/x64/OVMF.4m.fd"
         "/usr/share/ovmf/x64/OVMF.fd"
         "/usr/share/OVMF/OVMF_CODE.fd"
         "/usr/share/edk2-ovmf/x64/OVMF.fd"

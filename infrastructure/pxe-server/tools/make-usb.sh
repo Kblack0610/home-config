@@ -2,7 +2,7 @@
 #
 # Create an iPXE USB Boot Image
 #
-# Builds a custom iPXE EFI binary with an embedded script that
+# Builds the pinned iPXE EFI binary (build-ipxe.sh) plus an autoexec.ipxe that
 # auto-chains to your PXE server, then packages it as a bootable
 # disk image you can dd onto a USB drive.
 #
@@ -38,7 +38,8 @@ OUTPUT_IMG="/tmp/ipxe-boot.img"
 FLASH_DEV=""
 SERVER_IP="${PXE_SERVER_IP:-$(get_local_ip)}"
 HTTP_PORT="${PXE_HTTP_PORT:-9080}"
-BUILD_DIR="/tmp/ipxe-build"
+BUILD_DIR="$(mktemp -d)"
+trap 'rm -rf "$BUILD_DIR"' EXIT
 IMG_SIZE_MB=16
 
 # Parse arguments
@@ -102,78 +103,17 @@ check_build_deps() {
     fi
 }
 
-clone_ipxe() {
-    if [[ -d "$BUILD_DIR/src" ]]; then
-        log_info "iPXE source already exists at $BUILD_DIR"
-        return 0
-    fi
-
-    log_info "Cloning iPXE source..."
-    git clone --depth 1 https://github.com/ipxe/ipxe.git "$BUILD_DIR"
-    log_success "iPXE source cloned"
-}
-
 build_ipxe() {
-    log_section "Building Custom iPXE EFI Binary"
-
-    local script_file="$BUILD_DIR/src/chain-pxe.ipxe"
-    local menu_url="http://${SERVER_IP}:${HTTP_PORT}/ipxe/menu.ipxe"
-
+    log_section "Building iPXE EFI Binary"
     log_info "PXE Server: ${SERVER_IP}:${HTTP_PORT}"
-    log_info "Chain URL:  $menu_url"
-
-    # Write the embedded script
-    cat > "$script_file" <<IPXE
-#!ipxe
-
-echo
-echo ==========================================
-echo  iPXE USB Boot - PXE Server Chainloader
-echo ==========================================
-echo  Server: ${SERVER_IP}:${HTTP_PORT}
-echo ==========================================
-echo
-
-:retry
-dhcp || goto retry_wait
-echo DHCP acquired: \${net0/ip}
-echo
-
-echo Chaining to PXE server...
-chain ${menu_url} || goto failed
-
-:retry_wait
-echo DHCP failed, retrying in 3 seconds...
-sleep 3
-goto retry
-
-:failed
-echo
-echo Failed to reach PXE server at ${SERVER_IP}!
-echo Dropping to iPXE shell...
-echo
-echo Manual commands:
-echo   dhcp
-echo   chain ${menu_url}
-echo
-shell
-IPXE
-
-    log_info "Compiling iPXE with embedded chainload script..."
-    make -C "$BUILD_DIR/src" bin-x86_64-efi/ipxe.efi EMBED=chain-pxe.ipxe -j"$(nproc)" 2>&1 | tail -3
-
-    if [[ ! -f "$BUILD_DIR/src/bin-x86_64-efi/ipxe.efi" ]]; then
-        log_error "Build failed"
-        exit 1
-    fi
-
-    log_success "iPXE EFI binary built"
+    "$SCRIPT_DIR/build-ipxe.sh" --out "$BUILD_DIR"
+    sed "s|192.168.1.2:9080|${SERVER_IP}:${HTTP_PORT}|g" "$PXE_BOOT_DIR/autoexec.ipxe" >"$BUILD_DIR/autoexec.ipxe"
 }
 
 create_image() {
     log_section "Creating Bootable USB Image"
 
-    local efi_binary="$BUILD_DIR/src/bin-x86_64-efi/ipxe.efi"
+    local efi_binary="$BUILD_DIR/ipxe.efi"
 
     # Create empty image with space for GPT + EFI partition
     log_info "Creating ${IMG_SIZE_MB}MB GPT disk image..."
@@ -200,6 +140,7 @@ SFDISK
     MTOOLS_SKIP_CHECK=1 mmd -i "$OUTPUT_IMG@@$offset_bytes" ::/EFI
     MTOOLS_SKIP_CHECK=1 mmd -i "$OUTPUT_IMG@@$offset_bytes" ::/EFI/BOOT
     MTOOLS_SKIP_CHECK=1 mcopy -i "$OUTPUT_IMG@@$offset_bytes" "$efi_binary" ::/EFI/BOOT/BOOTX64.EFI
+    MTOOLS_SKIP_CHECK=1 mcopy -i "$OUTPUT_IMG@@$offset_bytes" "$BUILD_DIR/autoexec.ipxe" ::/autoexec.ipxe
 
     # Verify
     log_info "Verifying image contents..."
@@ -252,7 +193,6 @@ main() {
     log_section "iPXE USB Boot Image Builder"
 
     check_build_deps
-    clone_ipxe
     build_ipxe
     create_image
     flash_usb

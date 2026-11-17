@@ -23,7 +23,7 @@
     - role: asr-servers
       tags: [asr, ml, dictation]
     - role: desktop-firewall
-      tags: [firewall, agent-web]
+      tags: [firewall, agent-web, pxe]
 
 - name: Workstation monitoring (node_exporter)
   # So cc:host_* and the hub:infra board see this machine's load, memory and
@@ -66,6 +66,20 @@
   roles:
     - role: node-exporter-linux
       tags: [monitoring, unity-ci]
+
+- name: Cloud Unity CI host monitoring over the tailnet
+  hosts: unity_ci_runners
+  become: true
+  gather_facts: true
+  roles:
+    - role: tailscale-node
+      when: not (unity_ci_lan | default(true) | bool)
+      tags: [monitoring]
+    - role: node-exporter-linux
+      when: not (unity_ci_lan | default(true) | bool)
+      tags: [monitoring]
+      vars:
+        node_exporter_linux_textfile_dir: /var/lib/node-exporter-textfile
 
 - name: Keep Linux host clocks synced (systemd-timesyncd)
   # See ansible/roles/time-sync/README.md. hp-victus was found ~102s behind the

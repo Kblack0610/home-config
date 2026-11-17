@@ -74,7 +74,7 @@ Measured without the Mac Studio, 2026-11-13 to 11-14: the 24h rolling Unity wait
 
 Researched 2026-11-03 for "6-8 more slots, a few thousand dollars". Prices are eBay and retailer asking prices from search results (eBay refused direct fetches), so check the Sold filter before buying. Power and single-thread figures are estimates from TDP and clocks. Single-thread is relative to a Zen 4 desktop part.
 
-6-8 slots needs 24 or more physical cores and 128 GB. In 2026 the RAM decides the price: a 128 GB desktop DDR5 kit costs $2,087-2,800, a 32 GB DDR5 RDIMM $934-1,470, while a 16 GB DDR4 RDIMM was $60-90 (it has since roughly tripled; see [Buying in the RAM shortage](#buying-in-the-ram-shortage)). So buy a box that already has 128 GB in it. One big box also beats two small ones: each host is one Unity activation, and the pool is capped at 16 admitted runners for that reason (see [Unity license](#unity-license)).
+6-8 slots needs 24 or more physical cores and 128 GB. In 2026 the RAM decides the price: a 128 GB desktop DDR5 kit costs $2,087-2,800, a 32 GB DDR5 RDIMM $934-1,470, while a 16 GB DDR4 RDIMM was $60-90 (it has since roughly tripled; see [Buying in the RAM shortage](#buying-in-the-ram-shortage)). So buy a box that already has 128 GB in it. One big box also beats two small ones: each host is one Unity activation, and the pool is capped at `pool_max_admitted` admitted runners (`apps/ci-runner-governor/config.json`) for that reason (see [Unity license](#unity-license)).
 
 | Option | All-in | Cores / slots | 1T vs Zen 4 | Load power | Notes |
 |---|---|---|---|---|---|
@@ -131,11 +131,28 @@ Checked 2026-11-11: moving Unity jobs from the AWS hosts to GitHub-hosted runner
 
 - 4-core is the smallest that fits a slot (3 cores, 14 GB; a PlayMode shard peaks at 13.9 GB), and only just. The 2-core standard runner does not fit.
 - On top of the rate, every hosted job imports a cold `Library/`, activates Unity again (see [Unity license](#unity-license)), and is billed in whole minutes. Jobs that need `lan` (Multi, player builds, git.kblab.me pushes) cannot run there at all.
-- At the pool's 150-260 runner-hours a day (playground `docs/operations/ci-cost.md`, 2026-11-06), GitHub 4-core would cost about $3,200-5,600 a month, against the `ci-burst-monthly` cap on AWS (platform `infra/aws-ci-burst/variables.tf` `budget_monthly_usd`, $900 since 2026-11-13).
+- At the pool's 150-260 runner-hours a day (playground `docs/operations/ci-cost.md`, 2026-11-06), GitHub 4-core would cost about $3,200-5,600 a month, against the `ci-burst-monthly` cap on AWS (platform `infra/aws-ci-burst/variables.tf` `budget_monthly_usd` on `develop`).
 - Non-Unity jobs already use hosted runners (`LINUX_RUNNER_LIGHT`, else `ubuntu-latest`), which is where hosted runners make sense.
 - To spend less, prefer Spot over on-demand and buy owned slots ([Options by value](#options-by-value)).
 
 Source: docs.github.com/en/billing/reference/actions-runner-pricing (Linux x64), `apps/ci-runner-governor/config.json` `rates`.
+
+### Spot-first re-measure, read 2026-11-16
+
+Target from #940: AWS $ per busy slot-hour under $0.25, from a baseline of $0.74 (11-12). Missed: Spot took almost no work in the window.
+
+| UTC day | On-demand machine-h | Spot machine-h | Busy slot-h | Est. $ (hours x governor rate) | $ per busy slot-h |
+|---|---|---|---|---|---|
+| 11-13 (before #940 went live) | 84.0 | 0 | 281 | 156 | 0.55 |
+| 11-14 | 67.6 | 3.3 | 203 | 127 | 0.63 |
+| 11-15 | 93.6 | 2.0 | 235 | 174 | 0.74 |
+
+- Sources: `ci_governor_power_hours_today` at each day's end, `github_runner_state{state="running"}` samples at the exporter's 60 s scrape, `ci_governor_rate_usd_per_hour`. The $ column is an estimate at list rate, not a bill.
+- `aws ce` has nothing past 11-13 (11-14 to 11-16 read $0, `Estimated`), so the bill side cannot be read yet; re-read it once Cost Explorer catches up. Its 11-11 and 11-12 days were $88.76 and $161.45. The exporter holds no per-host series that far back, so $0.74 stays the baseline.
+- Cause: the on-demand hosts were held up by a standing governor override "on" from 11-13 to 11-16 (lesson 2026-11-16), so the queue was always covered and the Spot hosts, first in `standby`, never started. aws-spot-2 and aws-spot-3 did not run after the 11-13 probes; aws-spot-1 ran 2 h on 11-15. This measures the override, not Spot. Re-measure on a window with no override.
+- Reclaims (`ci_governor_fallback_total`, 3 d): aws-spot-1 1 (the 11-13 23:16 UTC probe reclaim), aws-spot-2 0, aws-spot-3 0; `capacity` and `refused` 0 on every host. No host is past 3 reclaims a day, so none flips to `spot = false`.
+- aws-spot-1 probe, unity-core-playground run 43529344154 (`Tests (affected, spike SPOT_PROBE=1b)`): completed success, last update 2026-11-14 01:07 UTC. Its 23:46 UTC failure was Forgejo down with hp-victus (asset-library clone), not the host.
+- Light and heavy CI is razer-laptop only since the Spot slots are Unity only (dotfiles-d6, #953).
 
 A rented box joins like a home one: tailnet first (`docs/headscale-setup.md`, so it reaches `git.kblab.me`), then `unity_ci_runners` and `ci_hosts` in `ansible/inventory.yml`, the "Unity CI runner pool" play (`unity-ci-host` and `github-actions-runner-linux`), and the three rosters kept in step (`RUNNER_ROSTER` in `apps/github-runner-exporter/deployment.yaml`, the governor's `hosts`, the inventory; `scripts/check-runner-roster.py` fails CI on drift). Start it at about half its slots, prove it with one pinned PlayMode shard timed against razer-laptop, then ramp. Add one host at a time, so the new activations do not all start together.
 

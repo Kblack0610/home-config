@@ -7,6 +7,10 @@ metadata:
     app: placemyparents-preview
   annotations:
     cert-manager.io/cluster-issuer: letsencrypt-dns
+    # Paused with the Deployments (kustomization.yaml, ask OqbBvu): no backend answers, so
+    # probing these hosts only fires PublicSiteDown. Remove both with the replicas patch.
+    gatus.kblab.me/monitor: "false"
+    homepage.kblab.me/launcher: "false"
 spec:
   ingressClassName: traefik
   tls:

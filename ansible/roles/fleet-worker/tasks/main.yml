@@ -245,7 +245,11 @@
       {{ ([] if fleet_worker_gh.rc == 0 else ['gh auth login, then re-run this play for the private overlay'])
          + ([] if fleet_worker_is_home | bool or fleet_worker_state_ssh.rc | default(1) == 0 else
             ['on ' ~ fleet_state_host ~ ', add this key to ~/.ssh/authorized_keys: '
-             ~ (fleet_worker_pub.content | default('') | b64decode | trim)])
+             ~ (fleet_worker_pub.content | default('') | b64decode | trim)]
+            if 'Permission denied' in (fleet_worker_state_ssh.stderr | default('')) else
+            [fleet_state_host ~ ' did not let this worker in ('
+             ~ (fleet_worker_state_ssh.stderr | default('') | trim or 'no answer')
+             ~ '): bring it up, or if it says Host key verification failed, give it ssh_host_ed25519 in inventory.yml; then re-run this play'])
          + (fleet_worker_unsigned | map('regex_replace', '^', 'sign in: CLAUDE_CONFIG_DIR=') | map('regex_replace', '$', ' claude, then /login') | list)
          + (fleet_worker_clones.results | rejectattr('stat.exists') | map(attribute='item.dest')
             | map('regex_replace', '^', 'not cloned: ') | list)

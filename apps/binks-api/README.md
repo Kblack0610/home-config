@@ -41,10 +41,10 @@ The `JWT_SECRET` belongs to Binks alone; tokens carry `aud: binks`. Square runs 
 
 The fleet publishes demos (`binks-demo publish`, the `quick-demo` skill) as its own binks user, `fleet-demos@fleet.invalid` (not a real mailbox, so nobody can sign up as it), with a `bk_pat_` API token. `/api/demos` takes that token directly (platform #1590), so it works with `MCP_ENABLED` off.
 
-- Mint or rotate: `scripts/binks-mint-pat.sh fleet-demos@fleet.invalid binks-demo-fleet 365` creates the user if missing, stores only the sha256 of the token in Postgres by `kubectl exec`, and prints the token once. Pipe it straight into SOPS and never echo it: `printf 'BINKS_DEMO_TOKEN: %s\n' "$tok" | sops -e --filename-override apps/binks-api/accounts.sops.yaml --input-type yaml --output-type yaml /dev/stdin > apps/binks-api/accounts.sops.yaml`.
+- Mint or rotate, from the repo root: `scripts/binks-mint-pat.sh fleet-demos@fleet.invalid binks-demo-fleet 365 apps/binks-api/accounts.sops.yaml`. One run creates the user if missing, stores only the token's sha256 in Postgres by `kubectl exec`, revokes the user's older tokens of that name in the same transaction, and writes the new token into the SOPS file. The token is never printed; a failed `sops` aborts before the database is touched.
 - Where it lives: `apps/binks-api/accounts.sops.yaml`, key `BINKS_DEMO_TOKEN`, main age key only, never deployed. `~/.config/binks-demo/env` (private dotfiles overlay) names that file in `BINKS_DEMO_SECRET`.
-- Life: 365 days. Rotate by minting a new one into the same file, then revoke the old row (`UPDATE personal_access_tokens SET revoked_at = now() WHERE name = 'binks-demo-fleet' AND token_hash <> '<new hash>'` over `kubectl exec`).
-- Revoke now: the same `UPDATE` without the hash filter; the next publish gets 401.
+- Life: 365 days (the script takes any whole number of days from 1). Rotate a month early by running the same command.
+- Revoke now, over `kubectl exec` into `binks-postgres-0`: `UPDATE personal_access_tokens SET revoked_at = CURRENT_TIMESTAMP WHERE name = 'binks-demo-fleet' AND revoked_at IS NULL`; the next publish gets 401.
 
 | Symptom | Cause and fix |
 |---|---|

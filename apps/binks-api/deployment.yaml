@@ -129,7 +129,7 @@ spec:
             # to 30. Set PUBLISH_ENABLED back to 'false' to turn publishing off:
             # the host then answers 404 with the sandbox header, so the route and
             # Gatus check keep working. The fleet publishes as its own user with
-            # a bk_pat_ token (docs/credentials.md, "binks demo token").
+            # a bk_pat_ token (apps/binks-api/README.md, "Binks demo token").
             - name: PUBLISH_ENABLED
               value: 'true'
             - name: PUBLISH_HOST

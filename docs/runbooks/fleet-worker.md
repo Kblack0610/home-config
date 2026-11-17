@@ -22,7 +22,7 @@ A machine the human drives the fleet from, but that runs no session, goes in `fl
 
 ## The fleet home
 
-The machine named by the group's `fleet_state_host` is the fleet home: the workstation, `pc-home-cachy-main` (`razer-laptop` held it 2026-11-15 to 11-16 while the workstation was down). Other hosts forward their queue and ask writes to it, it serves agent-web (`apps/agents`), and the singleton lanes (dispatch, sentinel, fleet-state, git-sync) run only there. A worker that is the home keeps `fleet_place: false`: sessions run on it as the home, not as placed work.
+The machine named by the group's `fleet_state_host` is the fleet home: the workstation, `pc-home-cachy-main` (`razer-laptop` held it 2026-11-15 to 11-16 while the workstation was down). Other hosts forward their queue and ask writes to it, it serves agent-web (`apps/agents`), and the singleton lanes (dispatch, sentinel, fleet-state, git-sync) run only there. A worker that is the home keeps `fleet_place: false`: sessions run on it as the home, not as placed work. A machine knows it is the home when `fleet_state_host`, up to its first dot, is its hostname, or the whole name is its `ansible_host`, or its `fleet_ssh_host` (the workstation's entry gives `pc-home-cachy-main.lan`, its DHCP name), with no DNS lookup; a home named any other way stands down.
 
 When the home is a fleet worker, the same play sets it up; the workstation is set up by its own play and dotfiles. On a worker home the role skips the state-host key steps (it is the state host) and runs `tasks/home.yml`, which:
 - enables lingering, so user units run with nobody logged in;

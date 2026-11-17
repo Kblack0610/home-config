@@ -56,9 +56,12 @@ spec:
               machine-bambu-a1|machine|Bambu Lab A1 (0.4 nozzle)-LAN
               filament-pla|filament|Elegoo Generic PLA-OpenNept4une
               filament-petg|filament|Elegoo Generic PETG-OpenNept4une
+              filament-silk-pla|filament|Elegoo Silk PLA-OpenNept4une
               process-standard|process|0.20mm Standard @Elegoo Neptune4Pro (0.4 nozzle)-OpenNept4une
               process-petg|process|0.20mm PETG @Elegoo Neptune4Pro (0.4 nozzle)-OpenNept4une
               process-standard-08|process|0.40mm Standard @Elegoo Neptune4Pro (0.8 nozzle)-OpenNept4une
+              process-seashell|process|0.12mm Seashell @Elegoo Neptune4Pro (0.4 nozzle)-OpenNept4une
+              process-seashell-a1|process|0.12mm Seashell @BBL A1-LAN
               PRESETS
               # The A1 LAN code and serial live in the SOPS Secret, never in git;
               # the profiles carry @A1_...@ placeholders (scripts/check-secret-store.py).

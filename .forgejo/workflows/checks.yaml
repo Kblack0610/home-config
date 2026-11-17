@@ -91,6 +91,9 @@ jobs:
         run: python3 apps/ci-runner-governor/test_governor.py
       - name: github-actions-runner-linux label plan tests
         run: python3 ansible/roles/github-actions-runner-linux/tests/test_runner_labels.py
+      # Every roster machine in the inventory has a host key the others can trust.
+      - name: host-identity known_hosts and NIC check tests
+        run: python3 ansible/roles/host-identity/tests/test_host_identity.py
       - name: github-actions-runner-linux drain wait tests
         run: python3 ansible/roles/github-actions-runner-linux/tests/test_wait_worker_exit.py
       - name: feed-ingest offline tests

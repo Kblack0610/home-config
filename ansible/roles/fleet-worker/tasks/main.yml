@@ -77,7 +77,7 @@
 # agent-panel lists this worker's sessions: the workstation's fleet-sessions runs
 # `agent-panel list --json` over ssh, and a worker without it never shows any.
 # A narrow task, not the dotfiles' build_local_rust_tools: that also builds
-# agent-web, hub and timebox, which only the fleet home runs (tasks/home.yml builds agent-web and hub). Arch only: apt's
+# agent-web, hub and timebox, which only the fleet home runs (tasks/home.yml builds agent-web and hub, and installs notes). Arch only: apt's
 # cargo (1.75 on Ubuntu 24.04) is older than the Cargo.lock v4 and clap 4.6 here.
 # A rebuild on each play is incremental; no timer rebuilds it between plays yet.
 - name: Build agent-panel (cargo, as the user)
@@ -206,26 +206,14 @@
   args:
     creates: "{{ ansible_env.HOME }}/.ssh/id_ed25519"
 
-# The home is the state host itself: nothing to reach. The scan runs on the worker,
-# the side that ssh's there. A state host that gives no key (off, unresolvable) must
-# not fail the play; the report below names it, with the scan's own error.
-- name: Read the state host's host key
-  when: not fleet_worker_is_home | bool
-  ansible.builtin.command: ssh-keyscan -T 5 -t ed25519 {{ fleet_state_host }}
-  register: fleet_worker_state_key
-  changed_when: false
-  failed_when: false
-  check_mode: false
+# The state host's key, with every roster machine's, comes from the inventory (ssh_host_ed25519),
+# never a scan, so a home move or a host that is off cannot leave it untrusted.
+- name: Trust the roster's host keys
+  ansible.builtin.import_role:
+    name: host-identity
+    tasks_from: known_hosts
 
-# OpenSSH 10 also prints a "# host:22 SSH-2.0-..." banner line on stdout; kept in
-# the key, it never matches known_hosts and the task appends the pair on every run.
-- name: Trust the state host's host key
-  when: not fleet_worker_is_home | bool and fleet_worker_state_key.stdout_lines | reject('match', '^#') | list | length > 0
-  ansible.builtin.known_hosts:
-    name: "{{ fleet_state_host }}"
-    key: "{{ fleet_worker_state_key.stdout_lines | reject('match', '^#') | first }}"
-    state: present
-
+# The home is the state host itself: nothing to reach.
 - name: Read whether the worker reaches the state host
   when: not fleet_worker_is_home | bool
   ansible.builtin.command: ssh -o BatchMode=yes -o ConnectTimeout=5 {{ fleet_state_host }} true
@@ -256,13 +244,12 @@
     fleet_worker_left: >-
       {{ ([] if fleet_worker_gh.rc == 0 else ['gh auth login, then re-run this play for the private overlay'])
          + ([] if fleet_worker_is_home | bool or fleet_worker_state_ssh.rc | default(1) == 0 else
-            [fleet_state_host ~ ' gave this worker no host key ('
-             ~ ((fleet_worker_state_key.stderr | default('') | trim)
-                or ('no answer' if fleet_worker_state_key.rc | default(1) == 1 else fleet_worker_state_key.msg | default('')))
-             ~ '): bring it up, then re-run this play']
-            if fleet_worker_state_key.stdout_lines | default([]) | reject('match', '^#') | list | length == 0 else
             ['on ' ~ fleet_state_host ~ ', add this key to ~/.ssh/authorized_keys: '
-             ~ (fleet_worker_pub.content | default('') | b64decode | trim)])
+             ~ (fleet_worker_pub.content | default('') | b64decode | trim)]
+            if 'Permission denied' in (fleet_worker_state_ssh.stderr | default('')) else
+            [fleet_state_host ~ ' did not let this worker in ('
+             ~ (fleet_worker_state_ssh.stderr | default('') | trim or 'no answer')
+             ~ '): bring it up, or if it says Host key verification failed, give it ssh_host_ed25519 in inventory.yml; then re-run this play'])
          + (fleet_worker_unsigned | map('regex_replace', '^', 'sign in: CLAUDE_CONFIG_DIR=') | map('regex_replace', '$', ' claude, then /login') | list)
          + (fleet_worker_clones.results | rejectattr('stat.exists') | map(attribute='item.dest')
             | map('regex_replace', '^', 'not cloned: ') | list)

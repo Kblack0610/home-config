@@ -239,6 +239,7 @@ One Forgejo writes at a time, always. On 2026-11-13 a second copy on asus forked
 | How the cluster reaches it | `forgejo-http` and `forgejo-ssh` are ExternalNames of the record. Pods resolve it through `apps/coredns` (straight to 1.1.1.1, past the LAN wildcard), Traefik follows it (`allowExternalNameServices` in `apps/crowdsec/helmchartconfig.yaml`), and the traffic goes over each node's tailscale0. The mirror exporter is scraped at `forge-primary.kblab.me:9310` (`apps/forgejo/scrapeconfig-mirror-exporter.yaml`) |
 | How LAN users reach it | `git.kblab.me` resolves to Traefik (`192.168.1.124`), which proxies to `forgejo-http` |
 | The frozen copy | asus-laptop `/mnt/backups/forgejo-live/data`, as of the cutover, left on disk until the reap on 2026-11-27 (queue item `forgejo-asus-copy-reap`); nothing in the cluster runs it |
+| Records (users, PRs, issues) | SQLite `/mnt/forgejo/data/gitea/gitea.db` until the Postgres switch below. The compose `postgres` service (data `/mnt/forgejo/postgres`, password `FORGEJO__database__PASSWD` in `ansible/group_vars/hetzner/vault.sops.yaml`) runs beside it, empty until then |
 
 A move changes the record, never git. That matters because Flux pulls from this Forgejo (`clusters/home-k3s/flux-system/gotk-sync.yaml`): a pointer kept in git would need the Forgejo it points at to fetch its own fix.
 
@@ -269,10 +270,25 @@ Resuming the Kustomization first applies whatever revision the source fetched be
 
 To fall back to home, restore a backup onto a host that runs the `forgejo-host` role and flip the record ("Move it" above). Park the record on `192.0.2.1` (names no host) while forge-hel1 is stopped so the fence keeps every host down.
 
+### Switching the records from SQLite to Postgres
+
+`forgejo-pg-migrate` (from the role's `files/`) copies `gitea.db` into Postgres and proves the copy: Forgejo's own `migrate` makes the schema, `forgejo-pg-copy` copies the rows in one transaction (each value converted to its Postgres column's type, then every foreign key checked), every table's row count must equal SQLite's, then `forgejo doctor` runs its database checks on the copy. It never writes `gitea.db`, which stays as the rollback.
+
+1. Rehearse, with Forgejo running (it reads an online `.backup` copy into a throwaway Postgres): `forgejo-pg-migrate rehearse` on the live host. Exit 0 and `row counts equal in N tables` is the go. On 2026-11-17 it took 34 s for 128 tables and 312,777 rows, so the freeze below is about a minute.
+2. Freeze: `docker compose -f /etc/forgejo/compose.yaml stop forgejo` (the compose `postgres` keeps running).
+3. Load: `forgejo-pg-migrate load`. It refuses while Forgejo runs, and it drops and recreates the `forgejo` database first, so a rerun starts clean.
+4. Switch: on a branch, `[database]` in `ansible/roles/forgejo-host/files/app.ini` becomes `DB_TYPE = postgres`, `HOST = postgres:5432`, `NAME = forgejo`, `USER = forgejo`, `SSL_MODE = disable` (the password comes from the vault), and in the same branch the db-snapshot job becomes a `pg_dump` from the compose `postgres` (its script is `ansible/roles/forgejo-host/files/jobs/forgejo-db-snapshot.sh`), and `apps/forgejo/backup-pull.sh` checks for and pulls the dumps instead of `gitea.db` and `forgejo-db-*.db.gz`. Play `roles/forgejo-host` from that branch's checkout (Forgejo is down, so nothing can fetch master), which starts Forgejo on Postgres.
+5. Verify a push, a PR comment and an old PR's page, then land the branch. Land it only after step 3: the drift check plays master, and master saying postgres before the load would start Forgejo on an empty database.
+
+Roll back: `DB_TYPE = sqlite3` again and play the role; `gitea.db` is as it was at the freeze, so only writes made on Postgres since are lost.
+
 ### Troubleshooting
 
 | Symptom | Cause | Fix |
 |---------|-------|-----|
+| `forgejo-pg-copy` exits with `orphan rows (SQLite let them in, Postgres will not)` | SQLite never enforced Forgejo's foreign keys, so a row can name a deleted user or repo | nothing was written (one transaction). Read the named constraint and key, delete those rows from a copy of `gitea.db` only if Forgejo's `doctor check --run check-db-consistency --fix` on the live SQLite would, then rehearse again |
+| `forgejo-pg-migrate` prints `MISMATCH <table>` | the copy did not commit, or a table changed shape between SQLite and Forgejo's migrate | nothing switched. Rerun `rehearse`; a table missing in Postgres means the image in `compose.yaml` is not the one that wrote `gitea.db` |
+| pgloader for this migration | tried 2026-11-17: it ran out of heap, then hung on the constraint step | not used; `forgejo-pg-copy` replaces it |
 | `forgejo.service` fails with `docker: command not found` | Debian 13 moved the CLI out of `docker.io` | `docker-cli` is in the role since #966; re-run the play |
 | `forgejo.service` inactive, journal says `staying standby` | the fence: the record names another host, or could not be read | `dig +short @1.1.1.1 forge-primary.kblab.me`; if this host should be live, flip the record (step 3). If Cloudflare DNS itself is down, `forge-fence-check --override "<reason>"` lets this host start for one hour (logged), after you have confirmed no other host runs Forgejo |
 | Pods get connection refused or timeouts on `forgejo-http` | the node has no tailscale0 route to 100.64.0.0/10 | `tailscale status` on that node; the tailnet play: `--limit 'hetzner:linux_bare_metal:pi_k3s' --tags tailscale` |

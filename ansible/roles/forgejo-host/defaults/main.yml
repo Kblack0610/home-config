@@ -12,6 +12,12 @@ forgejo_host_cloudflared_image: "{{ (lookup('file', playbook_dir ~ '/../../apps/
 # Where the container's sshd (git over ssh) is published, on the same bind.
 # The cluster's forgejo-ssh Service (an ExternalName of forge-primary.kblab.me) reaches it.
 forgejo_host_ssh_port: 2222
+# Postgres for Forgejo's records (SQLite until the switch; forgejo-pg-migrate
+# moves the rows). In the compose file, on the volume, reachable only on the
+# compose network until standbys stream from it.
+forgejo_host_postgres_image: postgres:17-alpine@sha256:a77aa70e641402a21411b92b721c58d10f23b50ae5fdd2333efd22d166e1e5f7
+forgejo_host_postgres_data: /mnt/forgejo/postgres
+
 # Extra root keys, only for the seed copy from asus-laptop; emptied after cutover.
 forgejo_host_seed_keys: []
 

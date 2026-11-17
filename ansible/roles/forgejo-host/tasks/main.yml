@@ -1,9 +1,9 @@
 ---
-- name: Packages (docker, compose, rsync for the seed and backups, sqlite3 for snapshots, dig for the fence)
+- name: Packages (docker, compose, rsync for the seed and backups, sqlite3 for snapshots, dig for the fence, psycopg for forgejo-pg-copy)
   # docker-cli: Debian 13 split the `docker` binary out of docker.io, so without
   # it forgejo.service's `docker compose` has no command to run.
   ansible.builtin.apt:
-    name: [docker.io, docker-cli, docker-compose, rsync, sqlite3, bind9-dnsutils, unattended-upgrades]
+    name: [docker.io, docker-cli, docker-compose, rsync, sqlite3, bind9-dnsutils, unattended-upgrades, python3-psycopg]
     state: present
     update_cache: true
     cache_valid_time: 3600
@@ -44,6 +44,8 @@
     - { path: /etc/forgejo, owner: root, mode: "0750" }
     - { path: /etc/forgejo/jobs, owner: root, mode: "0750" }
     - { path: "{{ forgejo_host_backups }}", owner: root, mode: "0755" }
+    # 70: the postgres alpine image's uid, which its entrypoint chowns this to anyway.
+    - { path: "{{ forgejo_host_postgres_data }}", owner: "70", mode: "0700" }
     # 1000, as the CronJob's init container made it: the snapshot runs as Forgejo's uid.
     - { path: "{{ forgejo_host_backups }}/snapshots", owner: "1000", mode: "0755" }
 
@@ -74,6 +76,19 @@
   no_log: true
   notify: Restart forgejo
 
+- name: Postgres env (the same vault_forgejo_env password Forgejo logs in with)
+  ansible.builtin.copy:
+    content: |
+      POSTGRES_USER=forgejo
+      POSTGRES_DB=forgejo
+      POSTGRES_PASSWORD={{ vault_forgejo_env.FORGEJO__database__PASSWD }}
+    dest: /etc/forgejo/postgres.env
+    owner: root
+    group: root
+    mode: "0600"
+  no_log: true
+  notify: Restart forgejo
+
 - name: Tunnel token is the real one (platform infra/forge-tunnel `terraform output -raw tunnel_token`)
   ansible.builtin.assert:
     that:
@@ -91,6 +106,15 @@
     mode: "0600"
   no_log: true
   notify: Restart forgejo
+
+- name: forgejo-pg-migrate and its row copier (SQLite -> Postgres, rehearse and load)
+  ansible.builtin.copy:
+    src: "{{ item }}"
+    dest: "/usr/local/sbin/{{ item }}"
+    owner: root
+    group: root
+    mode: "0755"
+  loop: [forgejo-pg-migrate, forgejo-pg-copy]
 
 - name: Mirror exporter script
   ansible.builtin.copy:

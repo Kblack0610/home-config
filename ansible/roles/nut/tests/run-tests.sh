@@ -41,15 +41,17 @@ SAMPLE=0.5
 # Absence of a shutdown can only be shown over a window: three of upsmon's
 # 5 s polls (POLLFREQALERT) after the event it would have acted on.
 HOLD=15
-# CI job containers share the runner's host network (runner-config-cm.yaml,
-# `network: host`, capacity 2), so two concurrent runs on 3493 answered each
-# other's upsc and upsmon (2026-11-17, runs 3820 and 3824). One free port per run.
-PORT=$(python3 -c 'import socket; s=socket.socket(); s.bind(("127.0.0.1", 0)); print(s.getsockname()[1])')
-UPS=cyberpower@localhost:$PORT
 
 OUT=/tmp/nut-replay
 LOG=$OUT/syslog
 failures=0
+
+# CI job containers on one runner pod share its network, so two replays at once
+# both bind 127.0.0.1:3493 and one reads the other's UPS. Each run takes a free port.
+port_free() { ! (exec 3<>"/dev/tcp/127.0.0.1/$1") 2>/dev/null; }
+for _ in $(seq 20); do PORT=$((20000 + RANDOM % 20000)); port_free "$PORT" && break; done
+port_free "$PORT" || { echo "no free port for upsd" >&2; exit 2; }
+UPS="cyberpower@localhost:$PORT"
 
 render() {  # render <template> <dest>
     python3 - "$ROLE/templates/$1" "$2" "$SETTLE" "$FINALDELAY" "$PORT" <<'EOF'
@@ -89,6 +91,9 @@ setup() {  # setup <case> <seq text> [extra upssched.conf line]
         render "$t.j2" "/etc/nut/$t"
     done
     render upsmon.server.conf.j2 /etc/nut/upsmon.conf
+    # Production monitors the default port; the test's upsd is on $PORT.
+    sed -i "s/^MONITOR cyberpower@localhost /MONITOR $UPS /" /etc/nut/upsmon.conf
+    grep -q "^MONITOR $UPS " /etc/nut/upsmon.conf || return 1
     [ -n "${3:-}" ] && echo "$3" >> /etc/nut/upssched.conf
     # ntfy is not reachable here; the page is recorded instead.
     printf '#!/bin/sh\nlogger -t nut-page "page: $1"\n' > /etc/nut/ntfy-page.sh
@@ -101,7 +106,7 @@ setup() {  # setup <case> <seq text> [extra upssched.conf line]
     chmod 0755 /sbin/shutdown
     "$NUTBIN/dummy-ups" -a cyberpower -u root >/dev/null 2>&1 &
     wait_for "driver up" 20 test -S /run/nut/dummy-ups-cyberpower || return 1
-    upsd -u root >/dev/null 2>&1
+    upsd -u root >/dev/null 2>&1 || return 1
     wait_for "upsd up" 20 upsc "$UPS" ups.status || return 1
     upsmon >/dev/null 2>&1
     echo "-- $1"

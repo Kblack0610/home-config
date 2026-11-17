@@ -14,7 +14,7 @@ import sys
 
 import yaml
 
-from host_inventory import (QUALIFICATION_DAYS, load_inventory, load_qualification, qualification_path,
+from host_inventory import (QUALIFICATION_DAYS, TIER_ORDER, load_inventory, load_qualification, qualification_path,
                             tier_errors)
 
 
@@ -183,8 +183,14 @@ def check_documents(documents, hosts):
 
 
 def qualification_errors(hosts, host_vars, now):
-    """A core host needs a host-qualify record for core from the last QUALIFICATION_DAYS."""
+    """A core host needs a host-qualify record for core from the last QUALIFICATION_DAYS, and any
+    host with a record may not sit above the tier the record qualifies it for."""
     errors = []
+    for host in sorted(h for h, values in hosts.items() if values.get("host_tier") == "standard"):
+        record = load_qualification(host_vars, host)
+        if record and TIER_ORDER.index(record.get("qualified_for")) < TIER_ORDER.index("standard"):
+            errors.append(f"{host}: standard tier, but its qualification record qualifies it for "
+                          f"{record.get('qualified_for')}")
     for host in sorted(h for h, values in hosts.items() if values.get("host_tier") == "core"):
         record = load_qualification(host_vars, host)
         where = qualification_path(host_vars, host)

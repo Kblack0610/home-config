@@ -1,6 +1,6 @@
 # Host tiers
 
-`host_tier` in [the inventory](../ansible/inventory.yml) records each host's placement tier. P1 assignments are provisional: `asus-laptop` is `core` under the accepted mains and battery-alert exception, `hp-victus` is `probation`, and other hosts are `standard`. A host earns a tier through a [qualification record](#qualification); P5 of the host-tiers plan reassigns every host from those records.
+`host_tier` in [the inventory](../ansible/inventory.yml) records each host's placement tier. P1 assignments are provisional: `asus-laptop` is `core` under the accepted mains and battery-alert exception, `hp-victus` is `probation`, and other hosts are `standard`. A host earns a tier through a [qualification record](#qualification). Every host's record and the gap to its tier: [First tiering](#first-tiering-p5-2026-11-17).
 
 | Tier | Work |
 |---|---|
@@ -41,7 +41,22 @@ Apply labels before merging a scheduling restriction that reads them. Labels and
 
 The burn-in runs only when the passive checks meet the standard bar, so a host with a fault history is not stressed. It loads the whole host: cordon a host first if its slowed workloads matter. A host holding core state takes `--no-burn-in`, which records the passive checks and cannot qualify; qualify it before it takes that state. `--dry-run` prints the record without writing it.
 
-`check-placement.py` refuses a `core` host with no record, with a record for a lower tier, or with a record older than 30 days. The rule ships in report mode with the rest of the check until P5.
+`check-placement.py` refuses a `core` host with no record, with a record for a lower tier, or with a record older than 30 days, and a `standard` host whose record qualifies it only for `probation`. The rule ships in report mode with the rest of the check until the move list below is cleared.
+
+A host is found in Prometheus by its inventory name, else by its inventory IP (the Pis are scraped under their node names). The kernel-fault check fails when Loki holds no kernel log from the host, so a host that ships none cannot pass on silence.
+
+## First tiering (P5, 2026-11-17)
+
+Every k3s node has a record. The inventory keeps the provisional P1 tiers (ask `VLzmss`, answer `a`): labels never move running pods, and relabelling from the records would make asus `probation`, CI-eligible by tier and closed to freqtrade. `check-placement.py` reports each gap, and a host's tier changes only in a PR that commits the record earning it.
+
+| Host | Inventory tier | Record | What fails |
+|---|---|---|---|
+| razer-laptop | standard | standard | core: headroom, uptime |
+| asus-laptop | core | probation | kernel faults (HostSoftLockup 1, HostNicDown 4), headroom (92C, 4 OOM kills), uptime |
+| hp-victus | probation | probation | kernel faults (HostGpuFirmwareFault 393), headroom (100C) |
+| pi5-master, pi5-worker1-3, pi4-worker4-5 | standard | probation | no kernel log in Loki, SD card with no SMART, netconsole |
+
+No host qualifies for `core`, so every high-criticality workload has no qualified destination. The move list is `python3 scripts/check-placement.py --report`: the high-criticality workloads (hc-353 and hc-94 move them) and the host-tier gaps. A Pi reaches `standard` only once it ships its kernel log to Loki and the SD-card disk check has a bar that can pass.
 
 ## Placement check
 
@@ -67,5 +82,6 @@ The `fleet-roster` CI job uses report mode until P5 clears existing placement vi
 | High-criticality placement is reported | Keep the finding for P5's move list; qualify a destination before changing the workload's pin or PV. |
 | `host-qualify` says the host lacks stress-ng, fio or smartctl | Apply `roles/host-qualify` to it (add its group to that play first if it is not in `linux_bare_metal`). |
 | Applying `roles/host-qualify` stops at `community.general.pacman` not resolved | Run the playbook with `ANSIBLE_COLLECTIONS_PATH` pointing at the installed collections, as for `node-labels`. |
+| `host-qualify` says it is not a cc:host_instance host | Check the inventory `ansible_host` IP matches the node-exporter instance; Pis are found only by IP. |
 | A core host is reported with no fresh qualification | Run `scripts/host-qualify.py <host>` (cordon it if its workloads matter during the burn-in) and commit the record. |
 | New pod is Pending after an affinity change | Confirm every intended node has its inventory tier label and inspect the pod's scheduling event. |

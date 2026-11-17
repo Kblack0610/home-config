@@ -53,7 +53,7 @@ A new consumer is a `[[routes]]` entry (kinds `ha`, `ntfy`) or an MQTT subscript
 
 | Symptom | Cause and fix |
 |---|---|
-| `FeedSourceSilent` for `gdelt` | The poll reads static files, so it is GDELT down or the egress. `lastupdate.txt` names a batch before its file is served (404 for 15+ minutes), so the poll reads the newest served batch up to 2 hours back (`GDELT_LAG_BATCHES`) and fails only when none is served (2026-11-17). The DOC API (`api.gdeltproject.org`) answers this IP 429 even on single spaced requests (2026-11-14), which is why it is not used. |
+| `FeedSourceSilent` for `gdelt` | The poll reads static files, so it is GDELT down or the egress. `lastupdate.txt` names a batch before its file is served (404 for 15+ minutes), so the poll reads every served batch after its cursor, from the listed batch and the 7 before it (`GDELT_LAG_BATCHES`), and retries an unserved one next poll. It fails when the newest batch read is over 2 hours old (2026-11-17). The DOC API (`api.gdeltproject.org`) answers this IP 429 even on single spaced requests (2026-11-14), which is why it is not used. |
 | `FeedSourceSilent` for `edgar` | SEC blocks a request without a declared contact User-Agent. `user_agent` in `config.toml` must carry an email. |
 | Items arrive with `tags: null` | `feed_ingest_tag_errors_total` is rising: the `feed-ingest` key is over its $10 / 30d cap, or the gateway is down. Check `/key/info` (`apps/litellm/README.md`). |
 | `tag failed ... empty reply (finish_reason length)` | `fast` is a reasoning model and spent `max_tokens` thinking before it answered. Raise `max_tokens` in `Tagger.tag` (1000 since 2026-11-14; 300 failed on long 8-Ks). |

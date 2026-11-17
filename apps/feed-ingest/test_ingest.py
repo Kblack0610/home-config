@@ -243,29 +243,24 @@ class Parsers(unittest.TestCase):
         env.text = "Board shake-up"  # an organization alone is a watchlist match
         self.assertEqual(wl.match(env), ["NVDA"])
 
-    def test_gdelt_reads_newest_served_batch(self):
-        lastupdate = b"2 b http://h/gdeltv2/20261117211500.gkg.csv.zip\n"
-        served = {"http://h/gdeltv2/20261117204500.gkg.csv.zip": b"zip45"}
+    def test_gdelt_unread_batches_and_freshness(self):
+        batch = "http://h/gdeltv2/20261117{}.gkg.csv.zip".format
+        latest = batch("211500")
+        # after the cursor, oldest first: a batch listed but not served yet is retried, never skipped
+        self.assertEqual(ingest.gdelt_unread(latest, batch("204500")), [batch("210000"), batch("211500")])
+        self.assertEqual(ingest.gdelt_unread(latest, latest), [])
+        # no cursor, or one older than the window: the listed batch and the 7 before it
+        window = ingest.gdelt_unread(latest, None)
+        self.assertEqual((len(window), window[0], window[-1]), (8, batch("193000"), latest))
+        self.assertEqual(ingest.gdelt_unread(latest, batch("120000")), window)
+        with self.assertRaises(ValueError):
+            ingest.gdelt_batch_time("http://h/gdeltv2/lastupdate.txt")
 
-        def fetch(url):
-            if url not in served:
-                raise urllib.error.HTTPError(url, 404, "Not Found", {}, None)
-            return served[url]
-
-        # the listed batch and the one before it are not served yet: read the newest that is
-        self.assertEqual(ingest.gdelt_newest_served(lastupdate, None, fetch),
-                         ("http://h/gdeltv2/20261117204500.gkg.csv.zip", b"zip45"))
-        # already read: caught up, nothing to fetch
-        self.assertEqual(ingest.gdelt_newest_served(lastupdate, "http://h/gdeltv2/20261117210000.gkg.csv.zip", fetch),
-                         ("http://h/gdeltv2/20261117210000.gkg.csv.zip", None))
-        served.clear()  # nothing served in the window is a failed poll
-        with self.assertRaises(LookupError):
-            ingest.gdelt_newest_served(lastupdate, None, fetch)
-
-        def down(url):
-            raise urllib.error.HTTPError(url, 503, "Unavailable", {}, None)
-        with self.assertRaises(urllib.error.HTTPError):
-            ingest.gdelt_newest_served(lastupdate, None, down)
+        now = dt.datetime(2026, 11, 17, 21, 20, tzinfo=dt.timezone.utc)
+        ingest.gdelt_check_fresh(batch("204500"), now)  # a lagging listed batch is not a failure
+        for stale in (None, batch("191500")):  # nothing read, or GDELT stalled for 2 hours
+            with self.assertRaises(LookupError):
+                ingest.gdelt_check_fresh(stale, now)
 
     def test_jetstream_keeps_post_creates_only(self):
         post = {"did": "did:plc:a", "time_us": 1, "kind": "commit", "commit": {

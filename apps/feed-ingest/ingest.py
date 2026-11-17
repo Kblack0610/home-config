@@ -198,28 +198,34 @@ def gdelt_latest_gkg(lastupdate: bytes) -> str:
 
 GDELT_BATCH = dt.timedelta(minutes=15)
 # lastupdate.txt names a batch before its file is served: the listed gkg answered 404 for 15+ minutes
-# while the batches before it were served (2026-11-17). Look back this many batches for a served one.
+# while the batches before it were served (2026-11-17). The poll reads the listed batch and the 7
+# before it, and fails when the newest batch read is older than 2 hours (a stalled feed).
 GDELT_LAG_BATCHES = 8
+GDELT_MAX_AGE = GDELT_LAG_BATCHES * GDELT_BATCH
 
 
-def gdelt_newest_served(lastupdate: bytes, cursor: str | None, fetch) -> tuple[str, bytes | None]:
-    """The newest GKG batch GDELT serves, newest first from the listed one back GDELT_LAG_BATCHES.
+def gdelt_batch_time(url: str) -> dt.datetime:
+    """A GKG batch URL's timestamp: .../20261117211500.gkg.csv.zip."""
+    name = url.rsplit("/", 1)[-1]
+    try:
+        return dt.datetime.strptime(name[:14], "%Y%m%d%H%M%S").replace(tzinfo=dt.timezone.utc)
+    except ValueError:
+        raise ValueError(f"gkg batch {url!r} has no timestamp") from None
 
-    Returns (url, zip), or (cursor, None) when the newest served batch is the one already read.
-    Raises when none of them is served, so a real outage still fails the poll."""
-    latest = gdelt_latest_gkg(lastupdate)
+
+def gdelt_unread(latest: str, cursor: str | None) -> list[str]:
+    """Batch URLs after the cursor up to the listed one, oldest first, at most GDELT_LAG_BATCHES."""
     head, name = latest.rsplit("/", 1)
-    stamp = dt.datetime.strptime(name[:14], "%Y%m%d%H%M%S")
-    for back in range(GDELT_LAG_BATCHES):
-        url = f"{head}/{(stamp - back * GDELT_BATCH):%Y%m%d%H%M%S}{name[14:]}"
-        if url == cursor:
-            return url, None
-        try:
-            return url, fetch(url)
-        except urllib.error.HTTPError as exc:
-            if exc.code != 404:
-                raise
-    raise LookupError(f"no gkg batch served from {latest} back {GDELT_LAG_BATCHES} batches")
+    stamp = gdelt_batch_time(latest)
+    after = gdelt_batch_time(cursor) if cursor else None
+    urls = [f"{head}/{stamp - back * GDELT_BATCH:%Y%m%d%H%M%S}{name[14:]}" for back in range(GDELT_LAG_BATCHES)]
+    return [u for u in reversed(urls) if after is None or gdelt_batch_time(u) > after]
+
+
+def gdelt_check_fresh(cursor: str | None, now: dt.datetime) -> None:
+    """Fail the poll when no batch was read in GDELT_MAX_AGE: GDELT stalled, or its files never appeared."""
+    if cursor is None or now - gdelt_batch_time(cursor) > GDELT_MAX_AGE:
+        raise LookupError(f"newest gkg batch read is {cursor}, older than {GDELT_MAX_AGE}")
 
 
 def parse_gdelt_gkg(zipped: bytes) -> list[Envelope]:
@@ -565,11 +571,21 @@ def poll_loop(name: str, scfg: dict, cfg: dict, store, out: queue.Queue, stop: t
             if name == "edgar":
                 items = parse_edgar_atom(http_get(scfg["url"], ua, "application/atom+xml"))
             elif name == "gdelt":
-                # A batch is read once; a batch published while the pod was down is skipped.
-                batch, zipped = gdelt_newest_served(http_get(scfg["url"], ua), store.get_cursor("gdelt"),
-                                                    lambda u: http_get(u, ua))
-                fresh = zipped is not None
-                items = parse_gdelt_gkg(zipped) if fresh else []
+                # Each served batch after the cursor is read once, oldest first, one at a time (the pod
+                # has 256Mi). One not served yet is retried next poll; older than the window is skipped.
+                latest = gdelt_latest_gkg(http_get(scfg["url"], ua))
+                for batch in gdelt_unread(latest, store.get_cursor("gdelt")):
+                    try:
+                        zipped = http_get(batch, ua)
+                    except urllib.error.HTTPError as exc:
+                        if exc.code != 404:
+                            raise
+                        continue
+                    for env in reversed(parse_gdelt_gkg(zipped)):
+                        out.put(env)
+                    store.set_cursor("gdelt", batch)
+                gdelt_check_fresh(store.get_cursor("gdelt"), dt.datetime.now(dt.timezone.utc))
+                items = []
             elif name == "rss":
                 items = []
                 for feed in scfg["feeds"]:
@@ -578,8 +594,6 @@ def poll_loop(name: str, scfg: dict, cfg: dict, store, out: queue.Queue, stop: t
                 raise ValueError(f"no poller for source {name!r}")
             for env in reversed(items):  # oldest first, so the ledger order follows publication order
                 out.put(env)
-            if name == "gdelt" and fresh:
-                store.set_cursor("gdelt", batch)
             mark_ok(name)
         except Exception as exc:
             log.warning("poll %s failed: %s", name, exc)

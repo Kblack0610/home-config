@@ -43,13 +43,16 @@ PLA="Elegoo Generic PLA-OpenNept4une"; PETG="Elegoo Generic PETG-OpenNept4une"
 try "0.4 standard PLA" "$N4" "$S4" "$PLA"
 try "0.4 PETG PETG"   "$N4" "$P4" "$PETG"
 try "0.8 standard PLA" "$N8" "$S8" "$PLA"
-resolve() { # label machine: the parent resolved when printer_model is filled from it
+try "0.4 seashell silk" "$N4" "0.12mm Seashell @Elegoo Neptune4Pro (0.4 nozzle)-OpenNept4une" "Elegoo Silk PLA-OpenNept4une"
+resolve() { # label machine [process]: the parents resolved when the export exists with printer_model filled
+  # The CLI loads no BBL filament, so the A1 presets are proved by resolving, not slicing.
   n=$((n+1)); rm -f /tmp/m.json
-  /opt/orcaslicer/bin/orca-slicer --datadir $D --load-settings "$U/machine/$2.json" --export-settings /tmp/m.json >/tmp/log 2>&1 || true
+  /opt/orcaslicer/bin/orca-slicer --datadir $D --load-settings "$U/machine/$2.json${3:+;$U/process/$3.json}" --export-settings /tmp/m.json >/tmp/log 2>&1 || true
   if grep -q "\"printer_model\": \"[A-Za-z]" /tmp/m.json 2>/dev/null; then echo "ok   $1"; return 0; fi
   echo "FAIL $1: $(tail -2 /tmp/log | head -1 | cut -c1-160)"; return 1
 }
 resolve "A1 machine" "Bambu Lab A1 (0.4 nozzle)-LAN" || fail=1
+resolve "A1 seashell process" "Bambu Lab A1 (0.4 nozzle)-LAN" "0.12mm Seashell @BBL A1-LAN" || fail=1
 if resolve "negative control" ZZ-negative-control >/dev/null; then echo "FAIL negative control resolved: the check proves nothing"; fail=1; else echo "ok   negative control rejected"; fi
 exit $fail
 '

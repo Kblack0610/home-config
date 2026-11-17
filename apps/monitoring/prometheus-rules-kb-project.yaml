@@ -187,11 +187,10 @@ spec:
             metric: playtest_feedback_open
 
         # sentry-issues (dotfiles docs/operations/store-reviews.md, "Sentry issues") writes per
-        # product the unresolved issues and the issues first seen in the last 7 days, summed
-        # over the product's Sentry projects. A product with no Sentry project, or one that
-        # did not read, writes no series, so its cell reads off. Two records with their own
-        # static metric label: two records of one name with the same static labels are a
-        # duplicate to promtool and to the group's evaluation.
+        # product the unresolved issues with activity in the last 90 days and the issues first
+        # seen in the last 7 days, summed over the product's Sentry projects. A product with no
+        # Sentry project, or one that did not read, writes no series, so its cell reads off.
+        # Two records, each with its own static metric label.
         - record: kb_project_number
           expr: sum by (project) (sentry_issues_unresolved)
           labels:
@@ -229,8 +228,8 @@ spec:
 
         # A textfile source shares the workstation scrape with the whole node, so its own
         # last run says whether it is up: 1 while every app or sheet read on a run in the
-        # last day. A day matches the alert's window; store-reviews, store-sales and sentry-issues run
-        # every 6h and playtest-feedback hourly.
+        # last day. A day matches the alert's window; store-reviews, store-sales and
+        # sentry-issues run every 6h and playtest-feedback hourly.
         - record: kb_project_source_up
           expr: (min(store_reviews_up) * (time() - max(store_reviews_generated_seconds) < bool 86400)) or vector(0)
           labels:

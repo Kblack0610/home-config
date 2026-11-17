@@ -52,7 +52,7 @@ import sys
 
 import yaml
 
-from host_inventory import load_inventory, tier_errors
+from host_inventory import cpu_set, load_inventory, tier_errors
 
 REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 INVENTORY = os.environ.get("ROSTER_INVENTORY") or os.path.join(REPO, "ansible/inventory.yml")
@@ -156,14 +156,6 @@ def flow_list(val):
 def gigabytes(val):
     m = re.fullmatch(r"(\d+)G", val)
     return int(m.group(1)) if m else None
-
-
-def cpu_set(spec):
-    out = set()
-    for part in spec.split(","):
-        a, _, b = part.strip().partition("-")
-        out |= set(range(int(a), int(b or a) + 1))
-    return out
 
 
 def slot_budgets(path):

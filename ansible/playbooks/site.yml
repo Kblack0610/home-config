@@ -244,7 +244,8 @@
     # turbo runs take as --concurrency. Without it a turbo job started 10 tasks
     # on razer's 2-core share, its 6 platform cores sat at 94% CPU pressure and
     # the host's load15 reached 1.58x its CPUs with 45% of them idle (2026-11-14,
-    # NodeLoadHigh, ar-2435).
+    # NodeLoadHigh, ar-2435). Measure a change to it or to the slot counts with
+    # scripts/ci-slot-effect.py.
     linux_ci_slot_cpus: >-
       {% set cpus = [] %}{% for part in ((ci_linux_cpus | default('')) or ci_cpus).split(',')
       if part | trim %}{% set ab = (part | trim).split('-') %}{% for c in range(ab[0] | int,

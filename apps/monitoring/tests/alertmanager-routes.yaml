@@ -47,3 +47,7 @@
   receiver: 'null'
 - labels: [alertname=TargetDown, job=standalone-nodes, severity=warning]
   receiver: ntfy
+- labels: [alertname=TargetDown, job=aws-ci-nodes, severity=warning]
+  receiver: 'null'
+- labels: [alertname=NodeDown, job=aws-ci-nodes, category=node-health, severity=critical]
+  receiver: ntfy-critical

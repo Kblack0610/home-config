@@ -22,7 +22,11 @@ spec:
         # paged on the thinkcentre power outage. iot-pi-nodes (sleepy Pi Zeros)
         # are intentionally excluded to avoid false pages.
         - alert: NodeDown
-          expr: up{job=~"node-exporter|mac-nodes|standalone-nodes"} == 0
+          # AWS hosts stop between jobs. Unknown power state remains a failure.
+          expr: >-
+            (up{job=~"node-exporter|mac-nodes|standalone-nodes"} == 0)
+            or ((up{job="aws-ci-nodes"} == 0)
+              unless on (host) max by (host) (ci_governor_power_state{state=~"stopped|starting|stopping"} == 1))
           for: 2m
           labels:
             severity: critical
@@ -32,7 +36,7 @@ spec:
             summary: "Node down: {{ $labels.instance }} ({{ $labels.job }})"
             description: >-
               node-exporter target {{ $labels.instance }} (job {{ $labels.job }})
-              has been unreachable for 2m — the host may be powered off, crashed,
+              has been unreachable for 2m; the host may be powered off, crashed,
               or off the network.
         # The whole node-exporter scrape job vanished — Prometheus lost its
         # targets, or every k3s node-exporter is gone. Monitoring is blind.
@@ -53,21 +57,20 @@ spec:
         # not: if the pi3 target disappeared from Prometheus entirely, NodeDown
         # would stop matching and nothing would say so. That box runs the LAN's
         # only DNS resolver, so it is the worst one to go quietly unmonitored.
+        # AWS targets have their own job, so losing that job needs the same check.
         - alert: StandaloneNodeExporterAbsent
-          expr: absent(up{job="standalone-nodes"})
+          expr: absent(up{job="standalone-nodes"}) or absent(up{job="aws-ci-nodes"})
           for: 15m
           labels:
             severity: warning
             fleet: fix
             category: node-health
           annotations:
-            summary: "standalone-nodes scrape job is absent"
+            summary: "{{ $labels.job }} scrape job is absent"
             description: >-
-              No standalone-nodes targets are being scraped, so pi3 (AdGuard,
-              192.168.1.193) is unmonitored and NodeDown cannot fire for it.
-              Check apps/monitoring/external-standalone-nodes.yaml and that
-              prometheus-node-exporter is running on the host; it is installed
-              by ansible/roles/adguard.
+              No {{ $labels.job }} targets are being scraped, so NodeDown is blind
+              to this job's hosts. Check apps/monitoring/external-standalone-nodes.yaml
+              and that prometheus-node-exporter is running on each host.
         # kubelet raised DiskPressure on a node -> it taints the node and evicts
         # pods. On 2026-07-09 this took down the whole workload cluster (forgejo
         # backups filled asus-laptop's root disk). This is the fast, direct signal

@@ -1,0 +1,107 @@
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  annotations:
+    # Standard: it holds no state past a run (the snapshot is deleted on
+    # exit), and it cannot move to a core host: the datastore is on this Pi.
+    kblab.me/criticality: standard
+  # The name must contain "backup": HomelabBackupStale
+  # (apps/monitoring/prometheus-rules-backup-drive.yaml) reads this daily
+  # schedule and pages when the last success is older than 36h.
+  name: k3s-server-backup
+spec:
+  # The k3s server's restore set (kine state.db, token, tls, unit files) to
+  # the NAS, backups/home-k3s/k3s-server/<UTC date>/. It is a CronJob, not an
+  # Ansible timer, so it deploys, alerts and keeps logs like every other
+  # backup; it only reads the host. nas-backup-cleanup keeps the newest 14
+  # dated directories, and nas-backups-mirror carries them to the 8TB and B2.
+  # Script and why VACUUM INTO: k3s-server-backup.sh. Restore:
+  # docs/backup-runbook.md, "Restore the k3s server".
+  schedule: "30 1 * * *"
+  timeZone: America/Los_Angeles
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      backoffLimit: 1
+      # A normal run takes under a minute; this bounds a hung SMB upload.
+      activeDeadlineSeconds: 1800
+      template:
+        spec:
+          # The datastore is on the server's own disk: kubernetes.io/hostname
+          # is the k8s node name of inventory host pi5-master.
+          nodeSelector:
+            kubernetes.io/hostname: raspberrypi
+          # Never, not OnFailure, so a failed pod keeps its logs.
+          restartPolicy: Never
+          securityContext:
+            runAsUser: 0
+          containers:
+            - name: backup
+              image: alpine:3.24.1
+              command: ["/bin/sh", "/scripts/k3s-server-backup.sh"]
+              env:
+                - name: NAS_SMB_PASSWORD
+                  valueFrom:
+                    secretKeyRef:
+                      name: backup-nas-credentials
+                      key: smb-password
+              resources:
+                requests:
+                  cpu: 50m
+                  memory: 64Mi
+                # The control-plane Pi has 8GB and k3s itself has reached 5.6GB.
+                limits:
+                  memory: 512Mi
+              volumeMounts:
+                - name: script
+                  mountPath: /scripts
+                  readOnly: true
+                # Read-write so sqlite can open the WAL index (-shm) beside
+                # the live DB for VACUUM INTO; it only reads the data.
+                - name: db
+                  mountPath: /k3s/db
+                - name: token
+                  mountPath: /k3s/token
+                  readOnly: true
+                - name: tls
+                  mountPath: /k3s/tls
+                  readOnly: true
+                - name: unit
+                  mountPath: /unit/k3s.service
+                  readOnly: true
+                - name: unit-env
+                  mountPath: /unit/k3s.service.env
+                  readOnly: true
+                - name: work
+                  mountPath: /work
+          volumes:
+            - name: script
+              configMap:
+                name: k3s-server-backup-script
+            - name: db
+              hostPath:
+                path: /var/lib/rancher/k3s/server/db
+                type: Directory
+            - name: token
+              hostPath:
+                path: /var/lib/rancher/k3s/server/token
+                type: File
+            - name: tls
+              hostPath:
+                path: /var/lib/rancher/k3s/server/tls
+                type: Directory
+            - name: unit
+              hostPath:
+                path: /etc/systemd/system/k3s.service
+                type: File
+            - name: unit-env
+              hostPath:
+                path: /etc/systemd/system/k3s.service.env
+                type: File
+            # Holds the snapshot (about 160 MB) and the archive only while the
+            # script runs; it deletes both on exit. The SD card has about 9 GB free.
+            - name: work
+              emptyDir:
+                sizeLimit: 2Gi

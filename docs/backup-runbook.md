@@ -145,6 +145,7 @@ Note: `nofail` means an unplugged drive never blocks boot. The `immich-originals
 | Restore LiteLLM | See `Restore LiteLLM` |
 | Restore binks.chat (accounts, chats) | See `Restore binks.chat` |
 | Restore the game registry | See `Restore the game registry` |
+| Restore the k3s server (cluster state, CA, token) | See `Restore the k3s server` |
 | Restore Music Assistant | `apps/music-assistant/README.md` -> Backup and rebuild |
 | Restore Snapcast | `apps/snapcast/README.md` -> Backup and restore |
 | Recover the SOPS Age key | See `Restore SOPS Age Key` |
@@ -161,6 +162,7 @@ K3s app backups run on schedule via CronJobs. Each backup writes a local archive
 
 | CronJob | Schedule | Namespace | Target |
 |---------|----------|-----------|--------|
+| `k3s-server-backup` | Daily 1:30 AM | `k3s-server-backup` | NAS `home-k3s/k3s-server/<UTC date>/` (`VACUUM INTO` snapshot of kine `state.db`, token, tls, unit files; runs on `raspberrypi`) |
 | `home-assistant-backup` | Daily 2 AM | `home-assistant` | NAS `home-k3s/home-assistant/` |
 | `music-assistant-backup` | Daily 2:30 AM | `music-assistant` | `/var/backups/music-assistant` + NAS `home-k3s/music-assistant/` |
 | `snapcast-backup` | Daily 2:45 AM | `snapcast` | hp-victus `/var/backups/snapcast` + NAS `home-k3s/snapcast/` |
@@ -202,6 +204,7 @@ Every copy in this table except `offsite-backup` lives in this house. `offsite-b
 | `postgres-backup` | **Job fails.** The NAS is its only destination. |
 | `binks-postgres-backup` | **Job fails.** The NAS is its only destination, and a dump with no `messages` data fails too. |
 | `vaultwarden-backup` | **Job fails.** The local copy sits on the one node holding the PVC, and losing the vault loses every credential. |
+| `k3s-server-backup` | **Job fails.** The NAS is its only destination; no copy stays on the Pi's SD card. |
 | everything else | Job exits 0, warning in the log only (best-effort). |
 
 ## Offsite (B2)
@@ -261,7 +264,7 @@ Whole-house loss: restore `/data/immich` (originals, under `upload`), `/data/imm
 | Location | Retention |
 |----------|-----------|
 | Local node storage | 30 backups per app |
-| NAS backups | 14 backups per app |
+| NAS backups | 14 backups per app (k3s-server: 14 dated directories) |
 | 8TB btrfs snapshots (immich, 3d-prints, phones) | 14 snapshots each |
 | SOPS key copies | 4 copies |
 
@@ -294,6 +297,9 @@ kubectl --context home-k3s create job --from=cronjob/3d-prints-backup manual-bac
 
 # Phone archives: mirror /mnt/nas/private/phones to the 8TB + snapshot
 kubectl --context home-k3s create job --from=cronjob/phones-backup manual-backup-$(date +%s) -n nas
+
+# k3s server datastore, token and tls (run before any k3s upgrade)
+kubectl --context home-k3s create job --from=cronjob/k3s-server-backup manual-backup-$(date +%s) -n k3s-server-backup
 
 # SOPS key
 kubectl --context home-k3s create job --from=cronjob/sops-key-backup manual-sops-backup-$(date +%s) -n nas
@@ -338,6 +344,41 @@ ssh -p 2222 192.168.1.152 bash -c "'for d in /mnt/nas/private/backups/home-k3s/*
 # Local node copies for Home Assistant
 ssh raspberrypi 'ls -lt /var/backups/home-assistant/ | head -3'
 ```
+
+## Restore the k3s server
+
+`k3s-server-backup` holds everything the single k3s server (`pi5-master`, 192.168.1.20, node `raspberrypi`) needs to come back with the same cluster: every Kubernetes object, the cluster CA and the join token. Each `k3s-server/<date>/k3s-server-backup.tgz` unpacks flat to `state.db` (a `VACUUM INTO` snapshot of `/var/lib/rancher/k3s/server/db/state.db`, integrity-checked before upload), `token`, `tls/`, `k3s.service` and `k3s.service.env`. Never take a copy with sqlite `.backup`: kine writes constantly and the online-backup API restarts on every write, so it never finishes on this DB.
+
+Restore on the same k3s version the backup was taken on (`k3s --version`; the pin is `k3s_install_version`, `ansible/roles/k3s-agent/README.md`). The token must go back with the DB: k3s encrypts its bootstrap data in the datastore with it. On a fresh Pi, first run the role (`ansible-playbook playbooks/site.yml --limit pi5-master --tags k3s`) so the pinned k3s is installed, then restore over the empty cluster it creates.
+
+```bash
+# 1. Pick a set, check it, copy it to the Pi
+ssh -p 2222 192.168.1.152 sudo ls /mnt/nas/private/backups/home-k3s/k3s-server/
+D=YYYY-MM-DD
+ssh -p 2222 192.168.1.152 "sudo sh -c 'cd /mnt/nas/private/backups/home-k3s/k3s-server/$D && sha256sum -c SHA256SUMS'"
+ssh -p 2222 192.168.1.152 "sudo cat /mnt/nas/private/backups/home-k3s/k3s-server/$D/k3s-server-backup.tgz" | ssh pi5-master 'cat > /var/tmp/k3s-server-backup.tgz'
+
+# 2. On pi5-master: stop k3s, move the old DB aside with its -wal and -shm, put the set back
+sudo systemctl stop k3s
+sudo mkdir -p /var/tmp/k3s-restore /var/tmp/k3s-pre-restore
+sudo tar -xzf /var/tmp/k3s-server-backup.tgz -C /var/tmp/k3s-restore
+S=/var/lib/rancher/k3s/server   # root 0700: absolute paths, no cd
+sudo mv $S/db/state.db $S/db/state.db-wal $S/db/state.db-shm /var/tmp/k3s-pre-restore/
+sudo install -m 644 /var/tmp/k3s-restore/state.db $S/db/state.db
+sudo install -m 600 /var/tmp/k3s-restore/token $S/token
+sudo mv $S/tls /var/tmp/k3s-pre-restore/tls && sudo cp -a /var/tmp/k3s-restore/tls $S/tls
+# Fresh Pi only: the unit and its env as they were
+sudo install -m 644 /var/tmp/k3s-restore/k3s.service /etc/systemd/system/k3s.service
+sudo install -m 600 /var/tmp/k3s-restore/k3s.service.env /etc/systemd/system/k3s.service.env
+sudo systemctl daemon-reload
+sudo systemctl start k3s
+
+# 3. Check, then clean up the SD card
+kubectl --context home-k3s get nodes
+sudo rm -rf /var/tmp/k3s-restore /var/tmp/k3s-pre-restore /var/tmp/k3s-server-backup.tgz
+```
+
+Objects created after the backup are gone; Flux re-applies what is in git on its next reconcile. Agents reconnect on their own: their token and the CA are unchanged.
 
 ## Restore Home Assistant
 

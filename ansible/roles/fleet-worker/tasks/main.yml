@@ -200,6 +200,13 @@
     mode: "0700"
   loop: "{{ ['~/.claude'] + fleet_worker_accounts.stdout_lines }}"
 
+# Every roster machine's key comes from the inventory (ssh_host_ed25519), never a scan, so the
+# lease holder's fleet-dispatch reaches each worker, and a host that is off cannot leave it untrusted.
+- name: Trust the roster's host keys
+  ansible.builtin.import_role:
+    name: host-identity
+    tasks_from: known_hosts
+
 - name: Make this worker a peer of the agent store, able to hold the fleet lease
   ansible.builtin.include_tasks: peer.yml
 

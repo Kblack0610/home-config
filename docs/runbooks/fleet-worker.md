@@ -2,7 +2,7 @@
 
 Hosts that fleet-dispatch places agent sessions on, over ssh. The roster is the `fleet_workers` group in [`ansible/inventory.yml`](../../ansible/inventory.yml), and the dotfiles read it from that file alone (`.local/lib/fleet-hosts.sh`), so its vars stay there, not in `group_vars/`. The dispatch side, what it places and why: dotfiles-private `.config/agentctl/QUEUE.md`, "Fleet workers".
 
-A machine the human drives the fleet from, but that runs no session, goes in `fleet_controllers` instead (today `cachyos-rog`, the ROG Flow). No play targets that group and `fleet-hosts.sh` never places work there. Never move a controller into `fleet_workers` to give it a session.
+A machine the human drives the fleet from, but that runs no session, goes in `fleet_controllers` instead (today `cachyos-rog`, the ROG Flow). Only the host-identity play targets that group (host keys, see "Host keys and NIC reservations"), and `fleet-hosts.sh` never places work there. Never move a controller into `fleet_workers` to give it a session.
 
 ## What a worker takes
 
@@ -12,8 +12,8 @@ A machine the human drives the fleet from, but that runs no session, goes in `fl
 
 ## Add a worker
 
-1. Add the host under `fleet_workers` with `fleet_place: false`. Its `ansible_host` can come from another group.
-2. From `ansible/`: `ansible-playbook playbooks/site.yml --limit <host> --tags fleet-worker`. Role `fleet-worker` installs tmux, stow, gh, codex, opencode, a Rust toolchain and Claude Code, stows the dotfiles (a plain `~/.zshrc` or `~/.bashrc` is kept as `*.pre-dotfiles`), clones `fleet_repos`, clones home-config to `~/dev/home/home-config` (anonymous HTTPS, remote `forgejo`) with `fleet-roster-fetch.timer` fetching it every 10 minutes, so the worker reads the roster too (without it fleet-dispatch there, when it holds the lease, sees no other worker), creates the account dirs `claude-acct` knows, builds `agent-panel` from the dotfiles (`cargo build --release`, as the user, on Arch only) and links it to `~/.local/bin/agent-panel` for the workstation's `fleet-sessions`, and makes the worker a peer of the store ("Every worker a peer" below).
+1. Add the host under `fleet_workers` with `fleet_place: false`, and its `ssh_host_ed25519` (its `/etc/ssh/ssh_host_ed25519_key.pub`, read over ssh you already trust). Its `ansible_host` can come from another group.
+2. From `ansible/`: `ansible-playbook playbooks/site.yml --limit <host> --tags fleet-worker`. Role `fleet-worker` installs tmux, stow, gh, codex, opencode, a Rust toolchain and Claude Code, stows the dotfiles (a plain `~/.zshrc` or `~/.bashrc` is kept as `*.pre-dotfiles`), clones `fleet_repos`, clones home-config to `~/dev/home/home-config` (anonymous HTTPS, remote `forgejo`) with `fleet-roster-fetch.timer` fetching it every 10 minutes, so the worker reads the roster too (without it fleet-dispatch there, when it holds the lease, sees no other worker), creates the account dirs `claude-acct` knows, builds `agent-panel` from the dotfiles (`cargo build --release`, as the user, on Arch only) and links it to `~/.local/bin/agent-panel` for the workstation's `fleet-sessions`, writes every roster machine's host key into `/etc/ssh/ssh_known_hosts` (see "Host keys" below), and makes the worker a peer of the store ("Every worker a peer" below).
 3. The play's last task prints what is left, all of it the human's (no agent copies a token):
    - `gh auth login` on the worker, then re-run the play: that stows the private overlay and clones a private repo.
    - Sign in each account: `claude`, then `/login`, once per account dir (`CLAUDE_CONFIG_DIR=<dir> claude` for each one but the main).
@@ -75,6 +75,12 @@ The old token stops working at step 1, so the lease holder's schedules-sync pass
 - `fleet-sessions` lists a worker's sessions with their host; their targets read `<host>@lab/<session>:<window>`. It runs `agent-panel list --json` on the worker, so `fleet_host_run <host> agent-panel list --json` must exit 0 or 3 (3 is no sessions).
 - A worker that does not answer ssh takes nothing, and reap leaves its items running until it answers again.
 
+## Host keys and NIC reservations
+
+Role `host-identity` (the last play in `site.yml`, tag `host-identity`; `fleet-worker` imports its known_hosts half) writes one block into `/etc/ssh/ssh_known_hosts` on each machine in `desktop_workstations`, `fleet_workers` and `fleet_controllers`. The block holds every one of those machines' `ssh_host_ed25519` from the inventory, under each name it may be dialed by: its inventory name, `ansible_host`, `fleet_ssh_host`, its `devices.yaml` name and IP, and both names with `.lan`. So a machine that is off when the play runs is still trusted, and the lease moving to any of them needs no new trust. Keys are never scanned off the network. The file is system-wide, so no user's `~/.ssh` is touched, and ssh accepts a key there even when a stale one sits in `~/.ssh/known_hosts`.
+
+The same play fails a host whose live host key is not its inventory `ssh_host_ed25519` (a rebuild), or whose NICs carry none of the MAC its `infrastructure/dhcp/devices.yaml` entry reserves (a new motherboard or dongle). The message names the line to change. The nightly `ansible-runner` check runs it on the LAN servers. Apply: `ansible-playbook playbooks/site.yml --limit <host> --tags host-identity -K`, then the same for every other roster machine after a key changes.
+
 ## Troubleshooting
 
 | Symptom | Cause | Fix |
@@ -84,6 +90,8 @@ The old token stops working at step 1, so the lease holder's schedules-sync pass
 | The cloud worker never starts with items waiting | No demand key: fleet-dispatch has no `CC_KUBE_CONTEXT`, a global gate holds, the lease holder is under its gate, or no waiting item is in its `fleet_repos` | `ci_governor_power_demand{host="fleet-worker-1"}`; the dispatch log's demand line says what it wrote and why |
 | The cloud worker stops with a session on it | fleet-dispatch stopped writing demand (the key ran out), or its `max_hours_day` | `systemctl --user status fleet-dispatch.timer` on the workstation; the governor log's stop line names the cause |
 | `fleet-lease status` on a worker says it cannot tell who holds the lease | Neither store remote answers from it: the sync key is not a deploy key on `kblack0610/.agent`, or Forgejo is down and `store.env` names no backup | `git -C ~/.agent ls-remote origin lease/fleet` on the worker; re-run the play for the key it prints |
+| The host-identity play fails `<host>'s ssh host key is not the inventory's` | The host was rebuilt and sshd made a new key | Set the `ssh_host_ed25519` it prints after checking it on the host's console or over ssh you already trust, merge, then re-run `--tags host-identity` on every roster machine |
+| The host-identity play fails `devices.yaml reserves ... which no NIC on <host> has` | Its NIC changed (motherboard swap, new dongle), so the next lease renewal moves it off its IP | Set the `mac` it lists in `infrastructure/dhcp/devices.yaml`, merge, then `dhcp sync` |
 | `fleet-dispatch hosts` says `no fleet workers`, or shows an old `fleet_place` | The workstation's dotfiles predate the upstream read, or its fetch of this repo fails | `git -C ~/dev/home/home-config fetch` must succeed; `fleet-dispatch hosts` fetches before it reads |
 | `fleet-dispatch hosts` on a worker holding the lease lists nobody | The worker has no `~/dev/home/home-config`, or its fetch fails, so it reads no roster | Re-run the play; on the worker `git -C ~/dev/home/home-config fetch forgejo master` must succeed |
 | `fleet-sessions` lists the worker as silent, `agent-panel` exits 127 | The play has not run since the role learned to build it, or the build failed | Re-run the play; `cargo build --release` in `~/.dotfiles/.local/src/agent-panel` on the worker shows the error |

@@ -1,0 +1,14 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+namespace: k3s-server-backup
+
+configMapGenerator:
+  - name: k3s-server-backup-script
+    files:
+      - k3s-server-backup.sh
+
+resources:
+  - namespace.yaml
+  - secret.sops.yaml
+  - cronjob.yaml

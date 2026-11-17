@@ -24,7 +24,7 @@ Per-host `k3s_role` and `k3s_extra_args` (the flags a fresh install gets, such a
 
 ## Upgrade the cluster
 
-1. Back up the server datastore to the NAS (`backups/home-k3s/k3s-server/<date>/`: `server/db` via sqlite `.backup`, `server/token`, `server/tls`).
+1. Run `k3s-server-backup` by hand and wait for it to succeed (`docs/backup-runbook.md`, "Manual Backup"); restore is "Restore the k3s server" there.
 2. Raise `k3s_install_version` by one minor in a PR and merge it.
 3. `ansible-playbook playbooks/site.yml --limit pi5-master --tags k3s`, then `--limit 'pi_k3s:linux_bare_metal' --tags k3s`.
 4. `kubectl get nodes` shows the pin on every node.

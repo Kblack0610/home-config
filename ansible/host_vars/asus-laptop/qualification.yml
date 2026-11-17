@@ -1,0 +1,56 @@
+# Written by scripts/host-qualify.py (docs/host-tiers.md). Do not edit; rerun it.
+host_qualification:
+  date: '2026-11-17T02:06:03Z'
+  qualified_for: probation
+  inventory_tier: core
+  checks:
+  - name: headroom
+    pass: false
+    gates:
+    - core
+    detail: FULL  cpus 16  load/cpu p95 1.17 max 1.78  spare cpus -7.6  temp max 92C  mem avail min 42%  oom 4  [load_p95 1.17 > 0.7; load_max 1.78 > 1.0; temp_max 91.62 > 85.0; oom_kills 4.00 > 0]
+  - name: kernel faults 14d
+    pass: false
+    gates:
+    - standard
+    - core
+    detail: HostSoftLockup 1, HostNicDown 4
+  - name: uptime 14d
+    pass: false
+    gates:
+    - core
+    detail: 0.3 days
+  - name: on mains
+    pass: true
+    gates:
+    - core
+    detail: online 1
+  - name: watchdog
+    pass: true
+    gates:
+    - standard
+    - core
+    detail: RuntimeWatchdog 30s, /dev/watchdog0 present
+  - name: netconsole
+    pass: true
+    gates:
+    - core
+    detail: unit active
+  - name: smart nvme0n1
+    pass: true
+    gates:
+    - standard
+    - core
+    detail: 'nvme: overall PASSED, critical_warning 0, media_errors 0'
+  - name: smart nvme1n1
+    pass: true
+    gates:
+    - standard
+    - core
+    detail: 'nvme: overall PASSED, critical_warning 0, media_errors 0'
+  - name: burn-in
+    pass: false
+    gates:
+    - standard
+    - core
+    detail: not run (--no-burn-in)

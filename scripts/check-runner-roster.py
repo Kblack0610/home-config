@@ -30,7 +30,7 @@ A build host gives some of its build slots, never all, the RELEASE_LABEL in unit
 playground release.yml asks for it, so a release (one per game from ship.sh) holds those
 slots for hours while players.yml, which asks only unity-build, keeps the rest (hc-263).
 
-A host in no_ci_hosts (service hosts: Forgejo, Frigate, the databases) is in no CI group
+A core host or a host in no_ci_hosts (service hosts: Forgejo, Frigate, the databases) is in no CI group
 (linux_ci_runners, unity_ci_runners, unity_ci_mac_runners, ci_hosts), and the Forgejo runner's
 node affinity excludes every one of them. ROSTER_INVENTORY names another inventory, so CI can show
 the check fails on a planted service host.
@@ -40,8 +40,7 @@ compares are the bug. This compares them in BOTH directions, because both break:
 host added to a pool and forgotten here reads as fully healthy, a host retired there
 and left here reads as permanently short.
 
-Stdlib only (runs in a bare python:alpine CI container), so inventory.yml is read by
-indentation, not by a YAML library. Exits non-zero on drift, or if it found nothing
+Slot maps are read by indentation; tier eligibility uses the shared structural inventory reader. Exits non-zero on drift, or if it found nothing
 to compare - an empty parse must never pass. An argument names another governor config, so
 CI can show the check fails on a planted bad pair.
 """
@@ -50,6 +49,10 @@ import json
 import os
 import re
 import sys
+
+import yaml
+
+from host_inventory import cpu_set, load_inventory, tier_errors
 
 REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 INVENTORY = os.environ.get("ROSTER_INVENTORY") or os.path.join(REPO, "ansible/inventory.yml")
@@ -112,37 +115,36 @@ NO_CI_GROUP = "no_ci_hosts"
 CI_GROUPS = ("linux_ci_runners", "unity_ci_runners", "unity_ci_mac_runners", "ci_hosts")
 
 
-def group_hosts(path):
-    """{group: set of hosts} for every top-level inventory group with a hosts: map."""
-    out, group, in_hosts = {}, None, False
-    with open(path, encoding="utf-8") as fh:
-        for raw in fh:
-            line = raw.split("#", 1)[0].rstrip()
-            if not line.strip():
-                continue
-            indent = len(line) - len(line.lstrip())
-            key = line.strip().partition(":")[0]
-            if indent == 4:
-                group, in_hosts = key, False
-            elif group and indent == 6:
-                in_hosts = key == "hosts"
-            elif group and in_hosts and indent == 8:
-                out.setdefault(group, set()).add(key)
-    return out
-
-
 def no_ci_failures(path, forgejo_runner):
-    groups = group_hosts(path)
+    hosts, groups = load_inventory(path)
+    core = {host for host, variables in hosts.items() if variables.get("host_tier") == "core"}
     service = groups.get(NO_CI_GROUP, set())
     if not service:
         return [f"parsed no {NO_CI_GROUP} hosts out of {path}; the parser is broken, not the roster"]
-    fails = [f"{host} is in {NO_CI_GROUP} and in {g}: a service host carries no CI"
-             for g in CI_GROUPS for host in sorted(groups.get(g, set()) & service)]
-    text = open(forgejo_runner, encoding="utf-8").read()
-    m = re.search(r"key: kubernetes\.io/hostname\s+operator: NotIn\s+values:\s+((?:- \S+\s+)+)", text)
-    excluded = set(re.findall(r"- (\S+)", m.group(1))) if m else set()
-    fails += [f"{host} is in {NO_CI_GROUP}, but {os.path.relpath(forgejo_runner, REPO)} does not exclude it"
-              for host in sorted(service - excluded)]
+    fails = tier_errors(hosts)
+    fails += [f"{host} is in {NO_CI_GROUP} and in {g}: a service host carries no CI"
+              for g in CI_GROUPS for host in sorted(groups.get(g, set()) & service)]
+    fails += [f"{host} has core tier and is in {g}: core hosts carry no CI"
+              for g in CI_GROUPS for host in sorted(groups.get(g, set()) & core)]
+    fails += [f"{host} carries pinned CI but is core or in {NO_CI_GROUP}"
+              for host, _ in PINNED if host in core | service]
+    with open(forgejo_runner, encoding="utf-8") as fh:
+        runner = yaml.safe_load(fh)
+    terms = runner["spec"]["template"]["spec"].get("affinity", {}).get("nodeAffinity", {}).get(
+        "requiredDuringSchedulingIgnoredDuringExecution", {}).get("nodeSelectorTerms", [])
+    if not terms:
+        fails.append("Forgejo runner needs required affinity excluding core and no_ci_hosts")
+    for term in terms:
+        expressions = term.get("matchExpressions", [])
+        if not any(e.get("key") == "kblab.me/tier" and e.get("operator") == "NotIn"
+                   and "core" in e.get("values", []) for e in expressions):
+            fails.append("Forgejo runner must exclude core tier in every required affinity term")
+        excluded = {host for e in expressions
+                    if e.get("key") == "kubernetes.io/hostname" and e.get("operator") == "NotIn"
+                    for host in e.get("values", [])}
+        fails += [f"{host} is in {NO_CI_GROUP}, but {os.path.relpath(forgejo_runner, REPO)} "
+                  "does not exclude it in every required affinity term"
+                  for host in sorted(service - excluded)]
     return fails
 
 
@@ -154,14 +156,6 @@ def flow_list(val):
 def gigabytes(val):
     m = re.fullmatch(r"(\d+)G", val)
     return int(m.group(1)) if m else None
-
-
-def cpu_set(spec):
-    out = set()
-    for part in spec.split(","):
-        a, _, b = part.strip().partition("-")
-        out |= set(range(int(a), int(b or a) + 1))
-    return out
 
 
 def slot_budgets(path):
@@ -394,7 +388,7 @@ def main():
     if rc == 0:
         print(f"ok: {len(want)} host/pool slot counts agree, cloud hosts {sorted(want_cloud)} match the governor standby, "
               f"build hosts leave Players a slot: {sorted(builds)}, pairs fit their build slots: {sorted(pairs)}, "
-              f"no CI on {sorted(group_hosts(INVENTORY)[NO_CI_GROUP])}")
+              f"no CI on {sorted(load_inventory(INVENTORY)[1][NO_CI_GROUP])}")
     return rc
 
 

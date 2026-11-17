@@ -2,7 +2,8 @@
 #
 # PXE Profile: Cluster Node
 #
-# Minimal setup for k3s worker node. SSH, networking, and k3s agent.
+# Minimal setup for a k3s worker node: SSH, networking and the storage clients.
+# Ansible joins it to the cluster afterwards.
 # No GUI, no dev tools beyond essentials.
 #
 
@@ -61,26 +62,8 @@ if id kblack0610 &>/dev/null; then
     usermod -aG wheel kblack0610 2>/dev/null || true
 fi
 
-# Install k3s agent
-# Reads K3S_URL and K3S_TOKEN from environment or kernel cmdline
-K3S_URL="${K3S_URL:-https://192.168.1.20:6443}"
-K3S_TOKEN="${K3S_TOKEN:-}"
-
-# Try to get token from kernel cmdline if not set
-if [[ -z "$K3S_TOKEN" ]] && [[ -f /proc/cmdline ]]; then
-    K3S_TOKEN=$(tr ' ' '\n' < /proc/cmdline | grep "^k3s_token=" | cut -d= -f2 | head -1)
-fi
-
-if [[ -n "$K3S_TOKEN" ]]; then
-    echo "[Profile: Cluster] Installing k3s agent..."
-    curl -sfL https://get.k3s.io | K3S_URL="$K3S_URL" K3S_TOKEN="$K3S_TOKEN" sh - || {
-        echo "[Profile: Cluster] k3s install failed - will need manual setup"
-        echo "[Profile: Cluster] Run: curl -sfL https://get.k3s.io | K3S_URL=$K3S_URL K3S_TOKEN=<token> sh -"
-    }
-else
-    echo "[Profile: Cluster] No K3S_TOKEN provided - skipping k3s install"
-    echo "[Profile: Cluster] After boot, run:"
-    echo "  curl -sfL https://get.k3s.io | K3S_URL=$K3S_URL K3S_TOKEN=<token> sh -"
-fi
+# k3s is not installed here. Ansible joins the node (roles/k3s-agent), at the
+# one pinned version every node runs; an install here was unpinned and put
+# hp-victus and asus-laptop a minor version ahead of the server.
 
 echo "[Profile: Cluster] Configuration complete"

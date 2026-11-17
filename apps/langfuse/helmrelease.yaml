@@ -1,6 +1,8 @@
 apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 metadata:
+  annotations:
+    kblab.me/criticality: standard
   name: langfuse
   namespace: langfuse
 spec:

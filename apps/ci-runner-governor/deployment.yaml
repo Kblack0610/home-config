@@ -46,8 +46,7 @@ spec:
             # 1 logs and exports every decision and changes no runner. Dry run
             # since 2026-11-02: it held at most 3 of 13 slots while about 65 jobs
             # waited, so every registered slot carries the pool labels and none is
-            # withheld (since 2026-11-03 the pool is mac-studio 6, razer none since 11-15, the
-            # workstation 2 and aws-burst-1); its logs decide by 2026-11-09 whether
+            # withheld; its logs decide by 2026-11-09 whether
             # the verdicts go live. The pod stays either way: a host pin (machine-mode
             # on the workstation) is acted on even in a dry run. The token
             # is the control node's `gh auth token` (admin:org, what the Unity
@@ -63,7 +62,7 @@ spec:
                   name: ci-runner-governor
                   key: github-token
                   optional: true
-            # The ci-governor IAM key for the aws-burst-1 power hook (config.json
+            # The ci-governor IAM key for the AWS hosts' power hook (config.json
             # "power"). Tag-scoped: start, stop and describe on ci-burst=true instances only.
             - name: AWS_ACCESS_KEY_ID
               valueFrom:

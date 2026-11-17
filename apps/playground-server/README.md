@@ -2,11 +2,11 @@
 
 Dedicated server for `unity-core-playground`, so the ParrelSync clones, the Quests and anything else, at home or away, can play against a server nobody has to host.
 
-The home server is paused until dedicated capacity is ready (ask OqbBvu, 2026-11-16). Flux holds it at zero replicas, and Ansible disables the game-server label on hp-victus. Keep its layouts PVC intact. `scripts/server/ctl.sh status|logs` in the playground repo watches it.
+The home server is paused until dedicated capacity is ready (ask OqbBvu, 2026-11-16). Flux holds it at zero replicas, and Ansible removes the game-server label on hp-victus. Keep its layouts PVC intact. `scripts/server/ctl.sh status|logs` in the playground repo watches it.
 
 | | |
 |---|---|
-| Node | No enabled node; hp-victus is disabled in inventory |
+| Node | No enabled node; hp-victus is outside the game-server group |
 | Address for clients | `playground-play.kblab.me:7770` (UDP, FishNet Tugboat), from anywhere |
 | Image | `git.kblab.me/kblack0610/unity-playground-server`, built from a tag by `scripts/build.sh <tag> server` and pushed by `scripts/server/image.sh` |
 
@@ -14,9 +14,9 @@ The home server is paused until dedicated capacity is ready (ask OqbBvu, 2026-11
 
 ## Why it looks like this
 
-- The pause is held in git with `replicas: 0`. A Start action cannot run it on hp-victus once the disabled label converges. After admitting a new host, remove the replicas field to return count ownership to the games page.
-- The game-server label admits a node. A Unity Linux server build is x86_64 only, and the cluster is mostly Raspberry Pis. Ansible's `game_server_nodes` group manages `kblab.me/game-server` (`roles/game-server-node`); only enabled hosts get `true`, and that host's `game_server_cpus` stay out of its `ci_cpus`, so CI cannot take the cores a tick runs on. The pod requests two cores with no CPU limit (a limit is a CFS quota, which stalls a tick once spent), and its `game-server` PriorityClass makes it the last pod evicted.
-- To resume on dedicated capacity, run `scripts/host-headroom.py <host>` first; FULL disallows placement. Add the admitted host to `game_server_nodes` with `game_server_cpus` and `game_server_enabled: true`, keep hp-victus disabled, and run the `game-server` tag of `playbooks/site.yml`. Move the layouts PVC with `docs/runbooks/move-local-path-pvc.md` before changing placement. Then point the LAN answer (`infrastructure/openwrt/dns.yaml`) and the UDP 7770 forward (`infrastructure/openwrt/firewall.yaml`) at the new node's address. `hostNetwork` binds the node's own LAN address, which avoids servicelb's per-node UDP proxy pods, so those two follow the node.
+- The pause is held in git with `replicas: 0`. A Start action cannot run it on hp-victus once its label removal converges. After admitting a new host, remove the replicas field to return count ownership to the games page.
+- The game-server label admits a node. A Unity Linux server build is x86_64 only, and the cluster is mostly Raspberry Pis. Ansible's `game_server_nodes` group manages `kblab.me/game-server` (`roles/node-labels`); only group members get `true`, and that host's `game_server_cpus` stay out of its `ci_cpus`, so CI cannot take the cores a tick runs on. The pod requests two cores with no CPU limit (a limit is a CFS quota, which stalls a tick once spent), and its `game-server` PriorityClass makes it the last pod evicted.
+- To resume on dedicated capacity, run `scripts/host-headroom.py <host>` first; FULL disallows placement. Add the admitted host to `game_server_nodes` with `game_server_cpus`, keep hp-victus outside the group, and run the `game-server` tag of `playbooks/site.yml`. Move the layouts PVC with `docs/runbooks/move-local-path-pvc.md` before changing placement. Then point the LAN answer (`infrastructure/openwrt/dns.yaml`) and the UDP 7770 forward (`infrastructure/openwrt/firewall.yaml`) at the new node's address. `hostNetwork` binds the node's own LAN address, which avoids servicelb's per-node UDP proxy pods, so those two follow the node.
 - **A pinned image tag**, named after the playground tag it was built from, so what is running is written down and a scale-up cannot quietly pick up a different build. Build with `scripts/build.sh <tag> server` (or the same `-executeMethod` against a checkout), push with `scripts/server/image.sh <tag>`, then bump this line.
 - **Its registry identity from the pod.** `SERVER_PROVIDER=home`, `SERVER_SITE` (the node name) and `SERVER_PROVIDER_REF` (`namespace/deployment/pod`) make its session id `<yymmdd>-playground-home-<n>-<node>` and let the Fleet page tie the Deployment to the session it registered as.
 - **A readiness probe on the UDP socket.** The server speaks UDP only, so readiness is the bound port in `/proc/net/udp`; it makes "starting" on the games page mean the Unity boot.

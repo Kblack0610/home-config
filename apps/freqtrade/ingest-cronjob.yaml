@@ -5,6 +5,8 @@
 apiVersion: batch/v1
 kind: CronJob
 metadata:
+  annotations:
+    kblab.me/criticality: standard
   name: freqtrade-ingest
 spec:
   schedule: "*/5 * * * *"

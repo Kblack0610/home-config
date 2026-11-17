@@ -1,0 +1,87 @@
+#!/usr/bin/python3
+"""forgejo-pg-copy SQLITE_DB PG_DSN - copy every row of Forgejo's SQLite DB into
+the empty schema Forgejo's `migrate` made in Postgres. forgejo-pg-migrate runs it.
+
+Each value is converted to the type of its Postgres column (SQLite keeps
+booleans as 0/1 and has no bytea), so the schema stays the one Forgejo made.
+One transaction: a failure leaves the database as Forgejo's migrate made it.
+"""
+import sqlite3
+import sys
+
+import psycopg
+
+src = sqlite3.connect(f"file:{sys.argv[1]}?mode=ro", uri=True)
+rows = sqlite3.connect(f"file:{sys.argv[1]}?mode=ro", uri=True)
+rows.text_factory = bytes  # decoded in convert(), so a bad byte names its table instead of aborting the read
+dst = psycopg.connect(sys.argv[2], autocommit=True)  # so transaction() below is BEGIN..COMMIT, not a savepoint
+
+tables = [r[0] for r in src.execute(
+    "select name from sqlite_master where type='table' and name not like 'sqlite_%' order by name")]
+pg_types = {}
+for t, c, typ in dst.execute(
+        "select table_name, column_name, data_type from information_schema.columns where table_schema='public'"):
+    pg_types.setdefault(t, {})[c] = typ
+
+missing = [t for t in tables if t not in pg_types]
+if missing:
+    sys.exit(f"tables in SQLite but not in Postgres: {missing}")
+
+
+def convert(value, typ):
+    if value is None:
+        return None
+    if typ == "boolean":
+        return bool(int(value))
+    if typ == "bytea":
+        return value if isinstance(value, bytes) else str(value).encode()
+    if isinstance(value, bytes):
+        value = value.decode("utf-8", errors="strict")
+        if "\x00" in value:
+            raise UnicodeDecodeError("utf-8", b"", 0, 1, "NUL byte, which Postgres text cannot hold")
+    return value
+
+
+with dst.transaction():
+    # SQLite never enforced Forgejo's foreign keys, so rows go in with FK
+    # triggers off (any table order), and each FK is re-added after the copy:
+    # adding one checks every row, so an orphan fails here, named, not later.
+    fks = dst.execute(
+        "select conrelid::regclass::text, conname, pg_get_constraintdef(oid) from pg_constraint "
+        "where contype = 'f' and connamespace = 'public'::regnamespace").fetchall()
+    dst.execute("set local session_replication_role = replica")
+    dst.execute("truncate " + ", ".join(f'"{t}"' for t in tables) + " restart identity")
+    for t in tables:
+        cols = [r[1] for r in src.execute(f'pragma table_info("{t}")')]
+        extra = [c for c in cols if c not in pg_types[t]]
+        if extra:
+            sys.exit(f"{t}: columns in SQLite but not in Postgres: {extra}")
+        types = [pg_types[t][c] for c in cols]
+        collist = ", ".join(f'"{c}"' for c in cols)
+        n = 0
+        with dst.cursor().copy(f'copy "{t}" ({collist}) from stdin') as cp:
+            for row in rows.execute(f'select {collist} from "{t}"'):
+                try:
+                    cp.write_row([convert(v, typ) for v, typ in zip(row, types)])
+                except UnicodeDecodeError as e:
+                    sys.exit(f"{t}: a text value is not UTF-8 ({e})")
+                n += 1
+        print(f"{t} {n}", flush=True)
+    dst.execute("set local session_replication_role = origin")
+    orphans = []
+    for t, name, definition in fks:
+        try:
+            with dst.transaction():
+                dst.execute(f'alter table {t} drop constraint "{name}"')
+                dst.execute(f'alter table {t} add constraint "{name}" {definition}')
+        except psycopg.errors.ForeignKeyViolation as e:
+            orphans.append(f"{name}: {e.diag.message_detail}")
+    if orphans:
+        sys.exit("orphan rows (SQLite let them in, Postgres will not):\n  " + "\n  ".join(orphans))
+    # Sequences follow the copied ids, so the next insert does not reuse one.
+    for t, c in dst.execute(
+            "select table_name, column_name from information_schema.columns "
+            "where table_schema='public' and column_default like 'nextval%'").fetchall():
+        dst.execute(
+            f"select setval(pg_get_serial_sequence(%s, %s), coalesce((select max(\"{c}\") from \"{t}\"), 0) + 1, false)",
+            (f'"{t}"', c))

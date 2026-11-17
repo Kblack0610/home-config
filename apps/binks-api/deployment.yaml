@@ -119,6 +119,12 @@ spec:
             # this (UTC day); subscribers pass. Owner's pick 2026-11-14, ask 4pazNg.
             - name: DAILY_SPEND_CEILING_USD
               value: '2'
+            # Image generation (platform #1585, images plan P2): the gateway route
+            # signed-in users' generate_image tool calls. binks-issuer's models list
+            # it (apps/litellm/README.md). Empty turns the tool off. Ignored by
+            # images built before #1585 (binks-api v1.12.0 and older).
+            - name: IMAGE_MODEL
+              value: 'image (glm-image)'
             # Shared demos: Share in a chat preview publishes the page to
             # https://play.kblack.dev/p/<id> (ingress.yaml, binks-demos). This
             # host answers /p/<id> only and sends a CSP sandbox header on every

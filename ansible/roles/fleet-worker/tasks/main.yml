@@ -77,7 +77,7 @@
 # agent-panel lists this worker's sessions: the workstation's fleet-sessions runs
 # `agent-panel list --json` over ssh, and a worker without it never shows any.
 # A narrow task, not the dotfiles' build_local_rust_tools: that also builds
-# agent-web, hub and timebox, which a worker does not run. Arch only: apt's
+# agent-web, hub and timebox, which only the fleet home runs (tasks/home.yml builds agent-web and hub). Arch only: apt's
 # cargo (1.75 on Ubuntu 24.04) is older than the Cargo.lock v4 and clap 4.6 here.
 # A rebuild on each play is incremental; no timer rebuilds it between plays yet.
 - name: Build agent-panel (cargo, as the user)
@@ -124,6 +124,58 @@
   loop_control:
     label: "{{ item.dest }}"
   failed_when: false   # a private repo needs gh auth first; the report names it
+
+# fleet-hosts.sh reads the roster (inventory.yml) from this checkout's forgejo/master,
+# found by its path in the project map. Without it fleet-is-home passes on every
+# worker, since no roster names a home, and fleet-dispatch on the home sees no
+# workers. Public on Forgejo, so no key. Kept fetched by fleet-roster-fetch.timer.
+- name: Clone home-config, where the fleet roster is read
+  ansible.builtin.git:
+    repo: "{{ fleet_worker_roster_repo }}"
+    dest: "{{ ansible_env.HOME }}/dev/home/home-config"
+    remote: forgejo
+    version: master
+    update: false
+
+# fleet-hosts also fetches on a read once the last fetch is FLEET_ROSTER_MAX_SECS
+# old, but a sandboxed lane cannot take its lock and reads the ref as it is.
+- name: Install the roster fetch timer
+  ansible.builtin.copy:
+    dest: "{{ ansible_env.HOME }}/.config/systemd/user/{{ item.name }}"
+    mode: "0644"
+    content: "{{ item.content }}"
+  loop:
+    - name: fleet-roster-fetch.service
+      content: |
+        # Written by home-config roles/fleet-worker (tasks/main.yml).
+        [Unit]
+        Description=Fetch the fleet roster (home-config forgejo/master)
+        [Service]
+        Type=oneshot
+        ExecStart=/bin/bash -c '. %h/.dotfiles/.local/lib/fleet-hosts.sh && fleet_roster_fetch'
+    - name: fleet-roster-fetch.timer
+      content: |
+        # Written by home-config roles/fleet-worker (tasks/main.yml).
+        [Unit]
+        Description=Fetch the fleet roster every 10 minutes, inside fleet-hosts' 15-minute max age
+        [Timer]
+        OnBootSec=1min
+        OnUnitActiveSec=10min
+        [Install]
+        WantedBy=timers.target
+  loop_control:
+    label: "{{ item.name }}"
+  register: _fleet_worker_roster_units
+
+# --check writes no unit, so systemd would not find one it has not seen yet.
+- name: Start the roster fetch timer
+  when: not (ansible_check_mode and _fleet_worker_roster_units is changed)
+  ansible.builtin.systemd_service:
+    name: fleet-roster-fetch.timer
+    scope: user
+    enabled: true
+    state: started
+    daemon_reload: "{{ _fleet_worker_roster_units is changed }}"
 
 - name: Read which repos are cloned
   ansible.builtin.stat:

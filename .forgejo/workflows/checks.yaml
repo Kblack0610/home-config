@@ -37,7 +37,7 @@ jobs:
         run: python3 scripts/render-ci-topology.py --check
       - name: Negative control - the topology check fails on a slot count edited without a re-render
         run: |
-          sed '0,/unity_ci_slots: 4/s//unity_ci_slots: 5/' ansible/inventory.yml > planted-count.yml
+          python3 -c 's = open("ansible/inventory.yml").read(); open("planted-count.yml", "w").write(s.replace("unity_ci_slots: 4", "unity_ci_slots: 5", 1))'
           rc=0; python3 scripts/render-ci-topology.py --check --inventory planted-count.yml > planted-count.out 2>&1 || rc=$?
           rm planted-count.yml; cat planted-count.out
           [ "$rc" -ne 0 ] || { echo "the check passed a stale topology.json"; exit 1; }

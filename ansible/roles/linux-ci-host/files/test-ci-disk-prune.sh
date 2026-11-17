@@ -139,12 +139,35 @@ rc=$?
 [ -e "$J/unity-pool-1/$repo/release-tree/old/file" ] && echo "ok   before-job above the floor kept a 30-day tree" || { echo "FAIL before-job above the floor removed a tree"; fail=1; }
 check "before-job above the floor removes no image" '.' "$t/removed" 0
 
-# One run at a time: while another holds the lock on the runner home, a run waits.
+# One run at a time: while another holds the lock on the runner home, a run waits. Driven by
+# events, not a clock: a flock wrapper first tries the run's lock without blocking, which
+# fails only if the test's lock covers it ("held"), tells the test over a FIFO that the run
+# reached its lock, and then blocks on the real flock until the test releases.
+real_flock=$(command -v flock) || { echo "FAIL no flock on PATH"; exit 1; }
+mkdir "$t/lockbin"; mkfifo "$t/at-lock"
+cat > "$t/lockbin/flock" <<STUB
+#!/bin/sh
+if $real_flock -n "\$@"; then state=free; else state=held; fi
+mkdir "$t/signalled" 2>/dev/null && echo at-lock > "$t/at-lock"
+[ \$state = free ] || $real_flock "\$@" || exit
+echo \$state > "$t/got-lock"
+STUB
+chmod +x "$t/lockbin/flock"
 exec 8<"$J"; flock 8
-RUNNER_HOME=$J BUSY_HOME=$J DF_PER_TREE=0 PATH="$t/bin:$PATH" timeout 2 sh "$here/ci-disk-prune.sh" --before-job > "$t/log" 2>&1
-rc=$?
-exec 8<&-
-[ "$rc" = 124 ] && echo "ok   a second run waits for the lock" || { echo "FAIL a second run did not wait (exit $rc)"; fail=1; }
+# 8<&-: the run must not inherit the holder's descriptor, or closing ours would not unlock.
+RUNNER_HOME=$J BUSY_HOME=$J DF_PER_TREE=0 PATH="$t/lockbin:$t/bin:$PATH" sh "$here/ci-disk-prune.sh" --before-job > "$t/log" 2>&1 8<&- &
+run=$!
+# The timeout only guards a run that never takes the lock; a correct run signals at once.
+if timeout 30 cat "$t/at-lock" > /dev/null; then
+    exec 8<&-
+    wait "$run"; rc=$?
+    [ "$rc" = 0 ] && [ "$(cat "$t/got-lock" 2>/dev/null)" = held ] \
+        && echo "ok   a second run waits for the lock" \
+        || { echo "FAIL a second run did not wait (exit $rc, lock $(cat "$t/got-lock" 2>/dev/null)): $(head -n 1 "$t/log")"; fail=1; }
+else
+    exec 8<&-; kill "$run" 2>/dev/null; wait "$run"
+    echo "FAIL a second run never took the lock: $(head -n 1 "$t/log")"; fail=1
+fi
 
 # A slot with .keep-warm-trees (the slim-tour slot): its trees outlive the age and copy rules,
 # and under low disk the other slots' trees go first, the kept ones only under 30% free.

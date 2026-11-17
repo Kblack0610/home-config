@@ -545,17 +545,17 @@ all:
           k3s_cpus: 0-1,8-9
           ci_unity_slot_memory_max: 20G
           ci_linux_memory_max: 40G
-        # The workstation: Ryzen 9 9900X (7900X until 2026-11-13, the same
-        # layout), 12 cores / 24 threads, SMT siblings are
-        # n and n+12, 124G. Cores 0-1 and 8-11 (CPUs 0-1, 8-13, 20-23) stay with
-        # the human's desktop and agents. Each Unity slot gets three cores of its
-        # own and stops at 16G; the two together stop at 32G, a quarter of the
-        # machine. No platform runners.
+        # The workstation: Ryzen 9 9950X3D, 16 cores / 32 threads, SMT
+        # siblings n and n+16 (lscpu -e and sysfs L3 caches, 2026-11-16), 124G.
+        # Keep the 96 MiB V-cache CCD (CPUs 0-7,16-23) for the human's desktop
+        # and agents. CI uses six whole cores on the 32 MiB CCD; cores 14-15
+        # (CPUs 14-15,30-31) also stay outside CI. Each Unity slot gets three
+        # cores and 16G; the two together stop at 32G. No platform runners.
         cachyos-x8664-main:
-          ci_cpus: 2-7,14-19
+          ci_cpus: 8-13,24-29
           ci_memory_max: 32G
-          ci_unity_cpus: 2-7,14-19
-          ci_unity_slot_cpus: ["2-4,14-16", "5-7,17-19"]
+          ci_unity_cpus: 8-13,24-29
+          ci_unity_slot_cpus: ["8-10,24-26", "11-13,27-29"]
           ci_unity_memory_max: 32G
           ci_unity_slot_memory_max: 16G
         # windows-media-ci, the Hyper-V VM: 12 vcores / 24 threads, SMT siblings

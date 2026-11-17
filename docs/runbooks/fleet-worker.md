@@ -2,7 +2,7 @@
 
 Hosts that fleet-dispatch places agent sessions on, over ssh. The roster is the `fleet_workers` group in [`ansible/inventory.yml`](../../ansible/inventory.yml), and the dotfiles read it from that file alone (`.local/lib/fleet-hosts.sh`), so its vars stay there, not in `group_vars/`. The dispatch side, what it places and why: dotfiles-private `.config/agentctl/QUEUE.md`, "Fleet workers".
 
-A machine the human drives the fleet from, but that runs no session, goes in `fleet_controllers` instead (today `cachyos-rog`, the ROG Flow). No play targets that group and `fleet-hosts.sh` never places work there. Never move a controller into `fleet_workers` to give it a session.
+A machine the human drives the fleet from, but that runs no session, goes in `fleet_controllers` instead (today `cachyos-rog`, the ROG Flow). Only the host-identity play targets that group (host keys, see "Host keys and NIC reservations"), and `fleet-hosts.sh` never places work there. Never move a controller into `fleet_workers` to give it a session.
 
 ## What a worker takes
 

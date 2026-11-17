@@ -678,8 +678,8 @@ all:
           ssh_host_ed25519: ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAINmhQxBIidZJ6HtH0d5CRf4sj0l1CPYymCrvN/dcypAa
 
     # Machines the human drives the fleet from: they read and start sessions
-    # but never run one, so they are not fleet_workers and no play targets this
-    # group. cachyos-rog (ROG Flow, 16 GB) is the mobile seat for when the human
+    # but never run one, so they are not fleet_workers and only the host-identity
+    # play targets this group. cachyos-rog (ROG Flow, 16 GB) is the mobile seat for when the human
     # is not on Moonlight to the workstation. It roams and sleeps, so it is not
     # on the fleet-pulse roster. Host-key trust between roster machines is built
     # from this inventory (fleet-home-resilience P4).
@@ -693,6 +693,7 @@ all:
           # Tailnet IP: it roams off the LAN, and no DNS here resolves its name.
           ansible_host: 100.102.154.120
           ansible_user: kblack0610
+          ssh_host_ed25519: ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIK39bl75NdWXxa1SKSpgnH1Vg2Jr+WYYHXmK+povqIes
 
     # No admitted game host until dedicated capacity is commissioned (ask OqbBvu).
     game_server_nodes:

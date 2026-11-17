@@ -1,6 +1,8 @@
 apiVersion: batch/v1
 kind: CronJob
 metadata:
+  annotations:
+    kblab.me/criticality: standard
   # The name must contain "backup": HomelabBackupStale
   # (apps/monitoring/prometheus-rules-backup-drive.yaml) matches .*backup.* and
   # pages when the last success is older than 36h. It lives outside the nas

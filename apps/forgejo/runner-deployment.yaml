@@ -36,6 +36,9 @@ spec:
               - matchExpressions:
                   - key: node-role.kubernetes.io/workstation
                     operator: Exists
+                  - key: kblab.me/tier
+                    operator: NotIn
+                    values: [core]
                   - key: kubernetes.io/hostname
                     operator: NotIn
                     values:

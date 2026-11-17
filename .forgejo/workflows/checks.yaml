@@ -22,19 +22,21 @@ jobs:
     container:
       # Alpine + explicit git/nodejs is this repo's convention for a checkout-capable
       # container; actions/checkout needs both.
-      image: python:3.12-alpine
+      image: alpine:3.22
     steps:
       - name: Install checkout deps
-        run: apk add --no-cache git nodejs age  # age: eeg-review's decrypt test
+        run: apk add --no-cache git nodejs age python3 py3-yaml  # age: eeg-review's decrypt test
 
       - name: Checkout
         uses: actions/checkout@v4
 
-      # Stdlib only, so there is no pip step to break and no lockfile to drift.
+      # Roster and placement checks compare inventory with app declarations.
       - name: Fleet roster agrees with the gatus declarations
         run: python3 scripts/check-fleet-roster.py
       - name: Runner roster agrees with the ansible inventory
         run: python3 scripts/check-runner-roster.py
+      - name: Runner tier exclusions survive alternative affinity terms
+        run: python3 scripts/test_check_runner_tiers.py
       - name: Freqtrade roster has no bot that repeats another's exchange, strategy and overlay
         run: python3 scripts/check-freqtrade-roster.py
       - name: Negative control - the freqtrade roster check fails on a planted duplicate row
@@ -46,6 +48,10 @@ jobs:
           [ "$rc" -ne 0 ] || { echo "the check passed a planted duplicate"; exit 1; }
           grep -q "planted-dup runs" planted-roster.out || { echo "the check failed, but not on the planted row"; exit 1; }
           rm planted-roster.out
+      - name: Placement report (qualification and migration remain P2/P5)
+        run: python3 scripts/check-placement.py --report
+      - name: Placement checker tests and planted violation
+        run: python3 scripts/test_check_placement.py
       # An if, not "! cmd": sh -e ignores a "!" pipeline's status, so a "!" step passes either way.
       - name: Negative control - the roster check fails on aws-build-1 pairs swapped off their build slots' cores
         run: |

@@ -482,16 +482,14 @@
 #     - role: osquery-agent
 #       tags: [fleet, osquery]
 
-# Game server nodes (game_server_nodes in inventory.yml): the label the
-# playground server's Deployment pins to. The cores it keeps are left out of the
-# host's ci_cpus, which the CI plays apply.
-- name: Game server nodes
-  hosts: game_server_nodes
+# Tier and game-server labels share one delegated kubectl path.
+- name: Kubernetes node labels
+  hosts: k3s_nodes
   become: false
   gather_facts: false
   roles:
-    - role: game-server-node
-      tags: [game-server]
+    - role: node-labels
+      tags: [node-labels, game-server]
 
 # BNB Unity runner pool: org-scoped runners every BlackNBrownStudios repo can use
 # with runs-on [self-hosted, linux, unity] (added 2026-10-05). Slots per host live

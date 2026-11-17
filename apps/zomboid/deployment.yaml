@@ -29,6 +29,8 @@
 apiVersion: apps/v1
 kind: Deployment
 metadata:
+  annotations:
+    kblab.me/criticality: standard
   name: zomboid
   namespace: zomboid
   labels:

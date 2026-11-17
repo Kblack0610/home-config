@@ -1,0 +1,54 @@
+"""Read the inventory's host variables and group memberships for offline checks."""
+
+from pathlib import Path
+
+import yaml
+
+
+TIERS = {"core", "standard", "probation"}
+
+
+def load_inventory(path):
+    data = yaml.safe_load(Path(path).read_text(encoding="utf-8"))
+    if not isinstance(data, dict) or not isinstance(data.get("all"), dict):
+        raise ValueError(f"{path}: expected an all inventory group")
+    hosts, groups, children = {}, {}, {}
+
+    def visit(name, group, parents, inherited):
+        if not isinstance(group, dict):
+            raise ValueError(f"{path}: invalid inventory group {name}")
+        members = groups.setdefault(name, set())
+        defaults = inherited | (group.get("vars") or {})
+        for host, values in (group.get("hosts") or {}).items():
+            if values is not None and not isinstance(values, dict):
+                raise ValueError(f"{path}: invalid host variables for {host}")
+            previous = hosts.get(host, {}).get("host_tier")
+            declared = (values or {}).get("host_tier")
+            if previous is not None and declared is not None and previous != declared:
+                raise ValueError(f"{path}: conflicting host_tier declarations for {host}")
+            hosts[host] = defaults | hosts.get(host, {}) | (values or {})
+            members.add(host)
+            for parent in parents:
+                groups[parent].add(host)
+        for child, value in (group.get("children") or {}).items():
+            children.setdefault(name, set()).add(child)
+            visit(child, value or {}, parents + [name], defaults)
+
+    visit("all", data["all"], [], {})
+    if not hosts:
+        raise ValueError(f"{path}: parsed no hosts")
+    # Ansible permits an empty child-group reference before its declaration.
+    changed = True
+    while changed:
+        changed = False
+        for name, descendants in children.items():
+            members = set().union(*(groups[child] for child in descendants))
+            if not members.issubset(groups[name]):
+                groups[name].update(members)
+                changed = True
+    return hosts, groups
+
+
+def tier_errors(hosts):
+    return [f"{host}: host_tier must be one of {', '.join(sorted(TIERS))}"
+            for host, values in sorted(hosts.items()) if values.get("host_tier") not in TIERS]

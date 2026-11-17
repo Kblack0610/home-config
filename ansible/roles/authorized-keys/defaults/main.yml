@@ -5,6 +5,9 @@
 # (infrastructure/pxe-server/http/kickstart/disk-install.sh, AUTHORIZED_KEYS);
 # this role keeps every managed host in step after that.
 authorized_keys_user: "{{ ansible_user }}"
+# Set to a keys file to manage it directly instead of the user's
+# ~/.ssh/authorized_keys (OpenWrt: /etc/dropbear/authorized_keys).
+authorized_keys_file: ""
 authorized_keys_list:
   - comment: the workstation (cachyos-x8664-main)
     key: ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIM6yTlK3GCzXC2+njcPtTucjwxb53Sb0+JT+TuTD78Jh kblack0610@gmail.com

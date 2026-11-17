@@ -54,10 +54,10 @@ If SSH is dead but the kubelet is alive, **`kubectl debug node/...` is the escap
 Admin access must not depend on one box. Three ways in, cheapest first:
 
 1. **rbw.** The admin kubeconfig (server `https://192.168.1.20:6443`, context `home-k3s`) is in rbw as `infra/home-k3s-kubeconfig`, base64 on one line. The dotfiles installer (`k8s-clusters-setup.sh`, option 3) writes it to `~/.kube/clusters/home-k3s.yaml` and merges it into `~/.kube/config`. By hand: `rbw get --folder infra home-k3s-kubeconfig | base64 -d > ~/.kube/clusters/home-k3s.yaml`. rbw serves its local cache when Vaultwarden (in the cluster) is down.
-2. **A trusted key.** Every Linux node (the `authorized-keys` play: `linux_bare_metal`, `pi_k3s`, `adguard`) trusts the workstation, the laptop (cachyos-rog) and the ansible-runner key. From either machine, `ssh pi5-master-lan sudo cat /etc/rancher/k3s/k3s.yaml`, then replace `127.0.0.1` with `192.168.1.20` and `default` with `home-k3s`.
+2. **A trusted key.** Every Linux node (the `authorized-keys` play: `linux_bare_metal`, `pi_k3s`, `adguard`) trusts the workstation, the laptop (cachyos-rog) and the ansible-runner key; so does the router (`openwrt`, as root, in dropbear's `/etc/dropbear/authorized_keys`). From either machine, `ssh pi5-master-lan sudo cat /etc/rancher/k3s/k3s.yaml`, then replace `127.0.0.1` with `192.168.1.20` and `default` with `home-k3s`.
 3. **No trusted key and no rbw.** The ansible-runner key gets in, with passwordless sudo, on every node. It is `ssh-privkey` in `apps/ansible-runner/secret.yaml`, which needs the SOPS age key. If `~/.config/sops/age/keys.txt` is gone with the workstation, the nightly `sops-key-backup` CronJob (`apps/nas/sops-backup-cronjob.yaml`) keeps the last four copies of the `sops-age` Secret on the asus NAS at `/mnt/nas/private/backups/home-k3s/sops/sops-age-*.yaml` (root-owned; `ssh -p 2222` to asus-laptop, sudo with rbw `linux_fleet_password`). Its `data` value base64-decodes to the age key. Decrypt `ssh-privkey` into a 0700 scratch dir, use it as `-i` (or `--private-key` for a play), read the kubeconfig as in 2, and delete the scratch dir.
 
-A new machine: add its key to `authorized_keys_list` in `ansible/roles/authorized-keys/defaults/main.yml` and run `ansible-playbook playbooks/site.yml --limit linux_bare_metal:pi_k3s:adguard --tags authorized-keys`, so the next visit needs no SOPS.
+A new machine: add its key to `authorized_keys_list` in `ansible/roles/authorized-keys/defaults/main.yml` and run `ansible-playbook playbooks/site.yml --limit linux_bare_metal:pi_k3s:adguard:openwrt --tags authorized-keys`, so the next visit needs no SOPS.
 
 ## The escape hatch: `kubectl debug node/<k8s-name>`
 
@@ -159,7 +159,7 @@ Be deliberate about destructive operations from here — there's no audit log of
 
 ## What this is NOT a substitute for
 
-- **An Ansible role for SSH key management.** The recipe above is the rescue path, not the standing-state. If we keep re-using it, that's a signal to write `ansible/roles/authorized-keys` instead.
+- **The `authorized-keys` role.** The recipe above is the rescue path; the standing key list is `ansible/roles/authorized-keys`.
 - **Recovering from a dead kubelet.** If the node shows `NotReady` in `kubectl get nodes`, the debug pod won't schedule there. You'd need IPMI / console / a PXE re-image.
 - **Touching k8s workloads.** For pod-level shell-in operations see `docs/container-access.md` — `kubectl exec`, ephemeral debug containers, `kubectl cp`.
 

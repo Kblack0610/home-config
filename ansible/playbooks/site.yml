@@ -776,6 +776,16 @@
     - role: thermal-cap
       tags: [thermal]
 
+# Tools for scripts/host-qualify.py (stress-ng, fio, smartctl). See roles/host-qualify.
+#   ansible-playbook playbooks/site.yml --limit linux_bare_metal --tags host-qualify --check --diff
+- name: Host qualification tools
+  hosts: linux_bare_metal
+  become: true
+  gather_facts: true
+  roles:
+    - role: host-qualify
+      tags: [host-qualify]
+
 # Keep a headless host's discrete GPU off: no driver, card in D3cold. Remove
 # anything holding /dev/nvidia* first, or the unload fails.
 # See ansible/roles/dgpu-off/README.md.

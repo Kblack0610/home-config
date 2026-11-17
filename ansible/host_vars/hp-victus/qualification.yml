@@ -1,0 +1,50 @@
+# Written by scripts/host-qualify.py (docs/host-tiers.md). Do not edit; rerun it.
+host_qualification:
+  date: '2026-11-17T01:31:17Z'
+  qualified_for: probation
+  inventory_tier: probation
+  checks:
+  - name: headroom
+    pass: false
+    gates:
+    - core
+    detail: FULL  cpus 24  load/cpu p95 1.11 max 1.71  spare cpus -9.8  temp max 100C  mem avail min 24%  oom 6  [load_p95 1.11 > 0.7; load_max 1.71 > 1.0; temp_max 100.00 > 85.0; oom_kills 6.00 > 0]
+  - name: kernel faults 14d
+    pass: false
+    gates:
+    - standard
+    - core
+    detail: HostGpuFirmwareFault 393, HostNicDown 5
+  - name: uptime 14d
+    pass: false
+    gates:
+    - core
+    detail: 2.4 days
+  - name: on mains
+    pass: true
+    gates:
+    - core
+    detail: online 1
+  - name: watchdog
+    pass: true
+    gates:
+    - standard
+    - core
+    detail: RuntimeWatchdog 30s, /dev/watchdog0 present
+  - name: netconsole
+    pass: true
+    gates:
+    - core
+    detail: unit active
+  - name: smart nvme0n1
+    pass: true
+    gates:
+    - standard
+    - core
+    detail: 'nvme: overall PASSED, critical_warning 0, media_errors 0'
+  - name: burn-in
+    pass: false
+    gates:
+    - standard
+    - core
+    detail: 'not run: the passive checks fail the standard bar'

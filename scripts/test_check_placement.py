@@ -1,6 +1,7 @@
 """Placement policy tests with isolated manifest and inventory fixtures."""
 
 import contextlib
+import datetime as dt
 import importlib.util
 import io
 from pathlib import Path
@@ -9,7 +10,9 @@ import unittest
 
 import yaml
 
-from host_inventory import load_inventory, tier_errors
+from host_inventory import QUALIFICATION_KEY, load_inventory, qualification_path, tier_errors
+
+NOW = dt.datetime(2026, 11, 16, tzinfo=dt.timezone.utc)
 
 
 SPEC = importlib.util.spec_from_file_location("placement", Path(__file__).with_name("check-placement.py"))
@@ -219,6 +222,40 @@ class PlacementTests(unittest.TestCase):
         self.inventory.write_text("all:\n  children:\n    first:\n      hosts:\n        one:\n          host_tier: standard\n    second:\n      hosts:\n        one:\n          host_tier: core\n")
         with self.assertRaisesRegex(ValueError, "conflicting host_tier"):
             load_inventory(self.inventory)
+
+    def qualify(self, host, qualified_for, age_days):
+        path = qualification_path(self.root / "host_vars", host)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        date = NOW - dt.timedelta(days=age_days)
+        path.write_text(yaml.safe_dump({QUALIFICATION_KEY: {
+            "date": date.strftime("%Y-%m-%dT%H:%M:%SZ"), "qualified_for": qualified_for, "checks": []}}))
+
+    def qualification(self):
+        return placement.qualification_errors(self.hosts, self.root / "host_vars", NOW)
+
+    def test_core_without_record_is_refused(self):
+        self.assertIn("safe: core tier has no qualification record", self.qualification()[0])
+
+    def test_core_with_fresh_core_record_passes(self):
+        self.qualify("safe", "core", 29)
+        self.assertEqual(self.qualification(), [])
+
+    def test_core_with_stale_record_is_refused(self):
+        self.qualify("safe", "core", 31)
+        self.assertIn("older than 30 days", self.qualification()[0])
+
+    def test_core_with_standard_record_is_refused(self):
+        self.qualify("safe", "standard", 1)
+        self.assertIn("qualifies it for standard", self.qualification()[0])
+
+    def test_standard_host_needs_no_record(self):
+        self.qualify("safe", "core", 1)
+        self.assertEqual(self.qualification(), [])  # "unsafe" is standard and has none
+
+    def test_strict_cli_fails_on_unqualified_core_host(self):
+        rc, output = self.run_cli(self.workload("standard"))
+        self.assertEqual(rc, 1)
+        self.assertIn("FAIL: safe: core tier has no qualification record", output)
 
 
 if __name__ == "__main__":

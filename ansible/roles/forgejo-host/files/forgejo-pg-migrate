@@ -94,5 +94,5 @@ say "row counts equal in $n tables ($(awk '{s+=$2} END {print s}' "$WORK/copy.lo
 say "forgejo doctor check against the copy"
 forgejo doctor check --run check-db-version --run check-db-consistency --run check-user-type --run check-user-email   # the DB checks; repos are mounted read-only on purpose
 say "OK ($MODE): Postgres holds every row of gitea.db"
-[ "$MODE" = load ] && say "next: DB_TYPE = postgres in apps/forgejo/configmap.yaml, play roles/forgejo-host, start Forgejo"
+[ "$MODE" = load ] && say "next: DB_TYPE = postgres in ansible/roles/forgejo-host/files/app.ini, play roles/forgejo-host, start Forgejo"
 exit 0

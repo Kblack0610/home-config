@@ -63,7 +63,7 @@ from urllib.parse import urlsplit
 DB_PATH = os.environ.get("FORGEJO_DB_PATH", "/data/gitea/gitea.db")
 REPO_ROOT = os.environ.get("FORGEJO_REPO_ROOT", "/data/git/repositories")
 SNAPSHOT_DIR = os.environ.get("SNAPSHOT_DIR", "/tmp/snap")
-# 2x the longest [git.timeout] in apps/forgejo/configmap.yaml (MIGRATE = 3600).
+# 2x the longest [git.timeout] in the forgejo-host role's files/app.ini (MIGRATE = 3600).
 # Forgejo hard-kills git at the context deadline, so nothing it invokes can hold
 # a lock past 3600s plus teardown. 2x covers clock skew between this pod's
 # time.time() and the file's mtime, a slow SIGKILL cleanup, and an operator

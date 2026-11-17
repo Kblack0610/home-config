@@ -13,6 +13,7 @@ metadata:
   namespace: actual-budget
 spec:
   schedule: "0 4 1 1,4,7,10 *"  # 04:00 on the 1st of Jan/Apr/Jul/Oct
+  timeZone: America/Los_Angeles
   successfulJobsHistoryLimit: 3
   failedJobsHistoryLimit: 1
   jobTemplate:

@@ -24,6 +24,9 @@ data:
     #      (kubernetes.io/docs/tasks/run-application/force-delete-stateful-set-pod).
     #   3. Report (never touch) pods stuck Terminating on a READY node - that is a
     #      finalizer or kubelet problem a human has to look at.
+    #   4. Quarantine a node that faults: taint it kblab.me/degraded=true:NoSchedule
+    #      (quarantine.py, docs/host-tiers.md). It runs last, so a failed query fails
+    #      the Job only after the pod steps are done.
     set -eu
 
     now=$(date +%s)
@@ -81,5 +84,8 @@ data:
         post 3 "NEEDS YOU: pod $ns/$name stuck Terminating on Ready node $node (finalizer/kubelet issue) - not touched"
       fi
     done
+
+    # 4. Quarantine.
+    python3 /scripts/quarantine.py
 
     echo "janitor pass done (dry_run=$DRY_RUN)"

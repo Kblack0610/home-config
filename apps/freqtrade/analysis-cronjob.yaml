@@ -12,6 +12,8 @@
 apiVersion: batch/v1
 kind: CronJob
 metadata:
+  annotations:
+    kblab.me/criticality: standard
   name: freqtrade-analysis
 spec:
   schedule: "45 2 * * *"  # clear of the :20 backfill

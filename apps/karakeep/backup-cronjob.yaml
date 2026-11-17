@@ -1,12 +1,15 @@
 apiVersion: batch/v1
 kind: CronJob
 metadata:
+  annotations:
+    kblab.me/criticality: standard
   name: karakeep-backup
   namespace: karakeep
   labels:
     app.kubernetes.io/name: karakeep
 spec:
   schedule: "0 3 * * *"  # Daily at 3 AM
+  timeZone: America/Los_Angeles
   successfulJobsHistoryLimit: 3
   failedJobsHistoryLimit: 1
   jobTemplate:

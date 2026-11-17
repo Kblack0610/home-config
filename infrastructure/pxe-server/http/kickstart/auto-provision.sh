@@ -158,7 +158,7 @@ setup_user() {
         fi
     fi
 
-    # Ensure passwordless sudo for initial setup
+    # Passwordless sudo for wheel, the fleet standard (roles/login-passwords README)
     log "Enabling passwordless sudo for wheel group..."
     if [[ -f "${INSTALL_ROOT:-}/etc/sudoers.d/wheel-nopasswd" ]]; then
         log "Passwordless sudo already configured"
@@ -355,13 +355,8 @@ setup_nvidia_gpu() {
 finalize() {
     log_section "Finalizing Installation"
 
-    # Remove passwordless sudo (require password after setup)
-    log "Removing passwordless sudo..."
-    rm -f "${INSTALL_ROOT}/etc/sudoers.d/wheel-nopasswd"
-
-    # Standard sudoers for wheel
-    echo "%wheel ALL=(ALL:ALL) ALL" > "${INSTALL_ROOT}/etc/sudoers.d/wheel"
-    chmod 440 "${INSTALL_ROOT}/etc/sudoers.d/wheel"
+    # wheel-nopasswd from setup_user stays: Ansible runs unattended with no
+    # become password, and login-passwords replaces changeme on the first run.
 
     # Generate machine-id if needed
     if [[ ! -s "${INSTALL_ROOT}/etc/machine-id" ]]; then

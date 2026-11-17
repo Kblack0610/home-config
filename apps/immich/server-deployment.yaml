@@ -1,6 +1,8 @@
 apiVersion: apps/v1
 kind: Deployment
 metadata:
+  annotations:
+    kblab.me/criticality: high
   name: immich-server
   namespace: immich
   labels:

@@ -10,7 +10,7 @@
 # one place (menu.ipxe).
 
 echo
-echo Unattended install: cluster node (k3s worker)
+echo Unattended install: cluster node (Ansible joins k3s)
 echo No keypress required - installing without a console.
 echo
 

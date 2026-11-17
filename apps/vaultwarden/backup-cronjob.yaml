@@ -1,10 +1,13 @@
 apiVersion: batch/v1
 kind: CronJob
 metadata:
+  annotations:
+    kblab.me/criticality: high
   name: vaultwarden-backup
   namespace: vaultwarden
 spec:
   schedule: "0 3 * * *"  # Daily at 3 AM
+  timeZone: America/Los_Angeles
   successfulJobsHistoryLimit: 3
   failedJobsHistoryLimit: 1
   jobTemplate:

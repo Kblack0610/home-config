@@ -19,6 +19,7 @@ spec:
   # Residential IPs move rarely but without warning. Every 5 minutes bounds the
   # outage to about that long, and the job is a no-op when nothing has changed.
   schedule: "*/5 * * * *"
+  timeZone: America/Los_Angeles
   concurrencyPolicy: Forbid
   successfulJobsHistoryLimit: 1
   failedJobsHistoryLimit: 3

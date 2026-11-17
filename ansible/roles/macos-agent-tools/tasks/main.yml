@@ -10,6 +10,9 @@
 - name: Set up the Mac for agents
   ansible.builtin.import_tasks: agent-machine.yml
 
+- name: Force-install the Playwright Extension in Chrome
+  ansible.builtin.import_tasks: chrome-policy.yml
+
 - name: Read Peekaboo's permission report (Screen Recording, Accessibility)
   ansible.builtin.command: >-
     {{ agent_tools_npx }} -y -p @steipete/peekaboo@{{ agent_tools_peekaboo_version }}

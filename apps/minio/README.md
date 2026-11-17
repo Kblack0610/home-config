@@ -46,6 +46,6 @@ terraform {
 
 ## Storage
 
-10Gi PVC on the default `local-path` storage class. State files are tiny so
-this is generous. PVC is on whichever node MinIO ends up on — if that node
+100Gi PVC on the default `local-path` storage class, on asus-laptop. Langfuse events and
+`trader-markets` hold most of the 30G used on 2026-11-16. If that node
 is lost, state is lost. Consider periodic backups via the `nas` Samba export.

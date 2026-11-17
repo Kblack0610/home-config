@@ -1,6 +1,8 @@
 apiVersion: batch/v1
 kind: CronJob
 metadata:
+  annotations:
+    kblab.me/criticality: high
   name: postgres-backup
   labels:
     app.kubernetes.io/name: postgres
@@ -12,6 +14,7 @@ spec:
   # either. nas-backup-cleanup keeps the newest 14. Restore: docs/backup-runbook.md,
   # "Restore shared Postgres".
   schedule: "20 2 * * *"
+  timeZone: America/Los_Angeles
   concurrencyPolicy: Forbid
   successfulJobsHistoryLimit: 3
   # Never, not OnFailure, so a failed pod keeps its logs.

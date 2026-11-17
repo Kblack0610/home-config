@@ -1,0 +1,50 @@
+# Written by scripts/host-qualify.py (docs/host-tiers.md). Do not edit; rerun it.
+host_qualification:
+  date: '2026-11-17T02:06:24Z'
+  qualified_for: probation
+  inventory_tier: standard
+  checks:
+  - name: headroom
+    pass: true
+    gates:
+    - core
+    detail: ROOM  cpus 4  load/cpu p95 0.07 max 0.11  spare cpus 2.5  temp max -C  mem avail min 69%  oom 0
+  - name: kernel faults 14d
+    pass: false
+    gates:
+    - standard
+    - core
+    detail: no kernel log in Loki for this host
+  - name: uptime 14d
+    pass: false
+    gates:
+    - core
+    detail: 11.9 days
+  - name: on mains
+    pass: true
+    gates:
+    - core
+    detail: no battery
+  - name: watchdog
+    pass: true
+    gates:
+    - standard
+    - core
+    detail: RuntimeWatchdog 1min, /dev/watchdog0 present
+  - name: netconsole
+    pass: false
+    gates:
+    - core
+    detail: unit inactive
+  - name: smart
+    pass: false
+    gates:
+    - standard
+    - core
+    detail: no SMART-capable disk (mmcblk0 mmc)
+  - name: burn-in
+    pass: false
+    gates:
+    - standard
+    - core
+    detail: 'not run: the passive checks fail the standard bar'

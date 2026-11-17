@@ -289,6 +289,25 @@ spec:
               {{ $labels.power_supply }} on {{ $labels.instance }} is at
               {{ $value }}% with the charger offline. The host goes down within
               minutes; plug the charger in now.
+        # cluster-janitor's quarantine step (apps/cluster-janitor/quarantine.py) tainted a
+        # node that faulted. The taint blocks new pods and evicts nothing, so pods pinned
+        # to the node by a local-path PV cannot restart elsewhere or roll out. fleet: fix
+        # opens the queue item each quarantine needs.
+        - alert: NodeQuarantined
+          expr: max by (node) (kube_node_spec_taint{key="kblab.me/degraded"})
+          labels:
+            severity: critical
+            fleet: fix
+            category: node-health
+          annotations:
+            summary: "{{ $labels.node }} is quarantined (kblab.me/degraded): no new pods land on it"
+            description: >-
+              cluster-janitor tainted {{ $labels.node }} after a kernel fault, Ready
+              flaps or a mains loss; the node's kblab.me/degraded-reason annotation
+              says which. Pods running there keep running; pods pinned there by a
+              local-path PV stay Pending if they restart. Fix or move per
+              docs/host-tiers.md "Quarantine", then rerun scripts/host-qualify.py,
+              which lifts the taint on a passing record.
     - name: homelab-node-health.recording
       rules:
         - record: instance:node_cpu_package_temp:celsius

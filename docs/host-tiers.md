@@ -58,6 +58,23 @@ Every k3s node has a record. The inventory keeps the provisional P1 tiers (ask `
 
 No host qualifies for `core`, so every high-criticality workload has no qualified destination. The move list is `python3 scripts/check-placement.py --report`: the high-criticality workloads (hc-353 and hc-94 move them) and the host-tier gaps. A Pi reaches `standard` only once it ships its kernel log to Loki and the SD-card disk check has a bar that can pass.
 
+## Quarantine
+
+Every 15 minutes `cluster-janitor` ([quarantine.py](../apps/cluster-janitor/quarantine.py)) taints a node `kblab.me/degraded=true:NoSchedule` when it shows any of these in the last 24 hours:
+
+| Trigger | Source | Threshold |
+|---|---|---|
+| HostSoftLockup, HostMachineCheck | Loki rule group `host-kernel-faults`, run as the ruler holds it | one 10m window |
+| HostGpuFirmwareFault | the same | two 10m windows |
+| Ready condition dropped | `kube_node_status_condition` | 2 drops |
+| On battery | `node_power_supply_online` for a Mains supply | offline for 5m |
+
+The janitor writes `kblab.me/degraded-at` and `kblab.me/degraded-reason` on the node. Only faults after the later of `kblab.me/qualified-at` and `kblab.me/degraded-at` count, so a released node is not tainted again for a fault that has already been handled. The janitor taints at most 2 nodes. Past that cap it posts NEEDS YOU on `homelab-janitor` and taints nothing, because a broken query must not take the cluster's capacity. A failed Prometheus or Loki query fails the Job, and the janitor never taints on a missing reading.
+
+`NodeQuarantined` pages ntfy-critical, and with `fleet: fix` it opens a queue item. The taint evicts nothing, but two effects matter. A pod pinned to the node by a local-path PV stays Pending if it restarts or rolls out. A DaemonSet pod that does not tolerate NoSchedule (svclb, crowdsec-agent) does not come back to the node once it is deleted. alloy and node-exporter tolerate it, so the node stays observed.
+
+The taint comes off when `scripts/host-qualify.py <host>` writes a record that meets the host's inventory tier, and at least `standard`. The script then lifts the taint and stamps `kblab.me/qualified-at`. The standard bar requires 14 days with no kernel fault, so a node quarantined for a lockup stays out for at least that long. To bring it back sooner, for example a core host whose pinned apps must roll out, a human runs `kubectl --context home-k3s taint node <node> kblab.me/degraded-` and owns that decision. With the first records above, only razer-laptop meets its release bar, so any other host leaves quarantine by hand until it qualifies.
+
 ## Placement check
 
 Stateful native workloads declare `metadata.annotations.kblab.me/criticality` as `high` or `standard`. High includes finance, Forgejo, identity state, Home Assistant, primary databases and photo originals. Rebuildable state and backed-up application data are standard. Declare the annotation on a workload rather than its pod template when placement is unchanged.
@@ -84,4 +101,8 @@ The `fleet-roster` CI job uses report mode until P5 clears existing placement vi
 | Applying `roles/host-qualify` stops at `community.general.pacman` not resolved | Run the playbook with `ANSIBLE_COLLECTIONS_PATH` pointing at the installed collections, as for `node-labels`. |
 | `host-qualify` says it is not a cc:host_instance host | Check the inventory `ansible_host` IP matches the node-exporter instance; Pis are found only by IP. |
 | A core host is reported with no fresh qualification | Run `scripts/host-qualify.py <host>` (cordon it if its workloads matter during the burn-in) and commit the record. |
+| `NodeQuarantined` fired | Read `kubectl get node <n> -o jsonpath='{.metadata.annotations}'` for the reason, fix the host, then rerun `scripts/host-qualify.py <host>`. |
+| A pod is Pending with `untolerated taint {kblab.me/degraded: true}` | Its node is quarantined. Move it per the PV runbook, or remove the taint by hand if the human accepts the risk. |
+| The janitor Job fails in its quarantine step | Prometheus or Loki did not answer, or the Loki ruler lost a `host-kernel-faults` rule; read the Job log. Nothing was tainted. |
+| `host-qualify` says the node stays quarantined | The record is below the host's tier or below standard; the failing checks are in its output. |
 | New pod is Pending after an affinity change | Confirm every intended node has its inventory tier label and inspect the pod's scheduling event. |

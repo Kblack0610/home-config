@@ -4,8 +4,8 @@ metadata:
   name: cluster-janitor
   namespace: cluster-janitor
 ---
-# Narrow on purpose: read nodes, read/delete pods. No patch, no create,
-# nothing on workloads.
+# Narrow on purpose: read and patch nodes (patch only for the quarantine taint and its
+# annotations, quarantine.py), read/delete pods. No create, nothing on workloads.
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole
 metadata:
@@ -13,7 +13,7 @@ metadata:
 rules:
   - apiGroups: [""]
     resources: ["nodes"]
-    verbs: ["get", "list"]
+    verbs: ["get", "list", "patch"]
   - apiGroups: [""]
     resources: ["pods"]
     verbs: ["get", "list", "delete"]

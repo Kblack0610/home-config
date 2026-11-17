@@ -14,7 +14,9 @@ peak CPU temperature is read from Prometheus and the kernel log is matched again
 fault rules.
 
 Each check gates a tier (the bars are in docs/host-tiers.md). The record names the highest tier
-whose every check passed and goes to ansible/host_vars/<host>/qualification.yml. The burn-in
+whose every check passed and goes to ansible/host_vars/<host>/qualification.yml. A record that
+meets the host's tier (and at least standard) also lifts cluster-janitor's quarantine taint
+from its node: this is the only automated way it comes off. The burn-in
 tools come from roles/host-qualify. Runs from the workstation: ssh to the inventory alias,
 Prometheus, and kubectl to home-k3s for Loki.
 """
@@ -51,6 +53,8 @@ FAULT_DAYS = 14          # the core bar's "14 days with no kernel fault", applie
 UPTIME_DAYS = 14         # the core bar's "14 days with no unplanned reboot"
 PEAK_TEMP_C = 90.0       # NodeCpuHot's threshold: a burn-in that would page fails
 SMART_TRANSPORTS = {"nvme", "sata", "sas"}  # internal disks; a USB backup drive is not the host
+KUBE_CONTEXT = postmortem.KUBE_CONTEXT
+DEGRADED_TAINT = "kblab.me/degraded"         # written by cluster-janitor's quarantine step
 
 PASSIVE = r"""
 PATH="$PATH:/usr/sbin:/sbin"  # Debian keeps smartctl in /usr/sbin, off a non-root PATH
@@ -218,6 +222,38 @@ def burn_in_checks(host, inst, seconds, rules):
     return checks
 
 
+def release_tier(inventory_tier):
+    """A quarantined node comes back only on a record that meets its tier, and never below standard."""
+    return TIER_ORDER[max(TIER_ORDER.index(inventory_tier or "probation"), TIER_ORDER.index("standard"))]
+
+
+def releases(qualified, inventory_tier):
+    return TIER_ORDER.index(qualified) >= TIER_ORDER.index(release_tier(inventory_tier))
+
+
+def release(host, ip, record):
+    """Lift the janitor's quarantine taint and stamp the requalification (apps/cluster-janitor/quarantine.py)."""
+    nodes = json.loads(subprocess.run(["kubectl", "--context", KUBE_CONTEXT, "get", "nodes", "-o", "json"],
+                                      check=True, capture_output=True, text=True).stdout)["items"]
+    match = [n for n in nodes if any(a["address"] == ip for a in n["status"].get("addresses", []))]
+    if len(match) != 1:
+        print(f"{host}: {len(match)} nodes have InternalIP {ip}; nothing released")
+        return
+    node = match[0]["metadata"]["name"]
+    if not any(t.get("key") == DEGRADED_TAINT for t in match[0]["spec"].get("taints") or []):
+        print(f"{host}: node {node} is not quarantined")
+        return
+    if not releases(record["qualified_for"], record["inventory_tier"]):
+        print(f"{host}: node {node} stays quarantined: qualified for {record['qualified_for']}, "
+              f"needs {release_tier(record['inventory_tier'])}")
+        return
+    kubectl = ["kubectl", "--context", KUBE_CONTEXT]
+    subprocess.run(kubectl + ["annotate", "node", node, "--overwrite", f"kblab.me/qualified-at={record['date']}"],
+                   check=True)
+    subprocess.run(kubectl + ["taint", "node", node, f"{DEGRADED_TAINT}-"], check=True)
+    print(f"{host}: released node {node} from quarantine")
+
+
 def host_instance(host, ip, known):
     """The scrape instance for an inventory host. cc:host_instance keys k3s nodes by node name,
     so a Pi (inventory pi5-master, node raspberrypi) is found by its inventory IP."""
@@ -273,6 +309,7 @@ def main(argv=None):
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(text, encoding="utf-8")
     print(f"wrote {path}")
+    release(a.host, hosts[a.host].get("ansible_host"), record[QUALIFICATION_KEY])
     return 0
 
 

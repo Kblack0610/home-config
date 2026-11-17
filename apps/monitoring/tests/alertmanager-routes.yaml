@@ -51,3 +51,5 @@
   receiver: 'null'
 - labels: [alertname=NodeDown, job=aws-ci-nodes, category=node-health, severity=critical]
   receiver: ntfy-critical
+- labels: [alertname=NodeQuarantined, category=node-health, severity=critical, fleet=fix]
+  receiver: ntfy-critical

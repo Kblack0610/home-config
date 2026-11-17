@@ -232,3 +232,24 @@ tests:
         exp_annotations:
           summary: standalone-nodes scrape job is absent
           description: No standalone-nodes targets are being scraped, so NodeDown is blind to this job's hosts. Check apps/monitoring/external-standalone-nodes.yaml and that prometheus-node-exporter is running on each host.
+  - name: a quarantine taint pages critical once per node, other taints do not
+    interval: 1m
+    input_series:
+    - series: kube_node_spec_taint{node="hp-victus",key="kblab.me/degraded",value="true",effect="NoSchedule",pod="ksm-a"}
+      values: 1x5
+    - series: kube_node_spec_taint{node="hp-victus",key="kblab.me/degraded",value="true",effect="NoSchedule",pod="ksm-b"}
+      values: 1x5
+    - series: kube_node_spec_taint{node="razer-laptop",key="node.kubernetes.io/unschedulable",value="",effect="NoSchedule",pod="ksm-a"}
+      values: 1x5
+    alert_rule_test:
+    - eval_time: 1m
+      alertname: NodeQuarantined
+      exp_alerts:
+      - exp_labels:
+          node: hp-victus
+          severity: critical
+          fleet: fix
+          category: node-health
+        exp_annotations:
+          summary: "hp-victus is quarantined (kblab.me/degraded): no new pods land on it"
+          description: cluster-janitor tainted hp-victus after a kernel fault, Ready flaps or a mains loss; the node's kblab.me/degraded-reason annotation says which. Pods running there keep running; pods pinned there by a local-path PV stay Pending if they restart. Fix or move per docs/host-tiers.md "Quarantine", then rerun scripts/host-qualify.py, which lifts the taint on a passing record.

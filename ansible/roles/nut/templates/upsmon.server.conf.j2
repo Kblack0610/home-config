@@ -6,14 +6,14 @@
 # This monitor:
 #   - Watches the local UPS via the local upsd.
 #   - Is allowed to initiate FSD (Forced ShutDown) — primary role.
-#   - Forwards ONBATT / ONLINE / LOWBATT events to upssched via NOTIFYCMD,
-#     where a settling timer decides whether to run the cluster-graceful
-#     shutdown script.
+#   - Forwards events to notifycmd.sh, which pages the ones a person should
+#     hear about and hands them to upssched, where a settling timer decides
+#     whether to run the cluster-graceful shutdown script.
 
 MONITOR {{ nut_ups_name }}@localhost 1 {{ nut_upsmon_user }} {{ nut_upsmon_password }} primary
 
 MINSUPPLIES 1
-SHUTDOWNCMD "/sbin/shutdown -h +0 'NUT initiated shutdown (primary)'"
+SHUTDOWNCMD "/etc/nut/primary-shutdown.sh"
 NOTIFYCMD /etc/nut/notifycmd.sh
 
 POLLFREQ 5
@@ -32,10 +32,12 @@ NOTIFYFLAG FSD      SYSLOG+WALL+EXEC
 NOTIFYFLAG COMMOK   SYSLOG+EXEC
 NOTIFYFLAG COMMBAD  SYSLOG+WALL+EXEC
 NOTIFYFLAG SHUTDOWN SYSLOG+WALL+EXEC
-NOTIFYFLAG REPLBATT SYSLOG+WALL
-NOTIFYFLAG NOCOMM   SYSLOG+WALL
+NOTIFYFLAG REPLBATT SYSLOG+WALL+EXEC
+NOTIFYFLAG NOCOMM   SYSLOG+WALL+EXEC
 NOTIFYFLAG NOPARENT SYSLOG
 
 RBWARNTIME 43200
 NOCOMMWARNTIME 300
-FINALDELAY 5
+# The secondaries' head start: the primary halts this long after FSD, and its
+# halt ends in killpower (see nut_primary_finaldelay).
+FINALDELAY {{ nut_primary_finaldelay }}

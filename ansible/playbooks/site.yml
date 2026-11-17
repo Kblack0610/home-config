@@ -688,15 +688,11 @@
           ASSET_LIBRARY_LFS_STORE: "{{ unity_ci_mac_lfs_store }}"
       tags: [runner, ci, unity-ci]
 
-# Network UPS Tools (NUT) — single CyberPower CP1500PFCLCD plugged into
-# pi5-master drives a graceful shutdown of the whole k3s fleet when grid
-# power fails. The primary (server) runs upsd + upsmon-primary; every
-# secondary (client) runs upsmon and halts on FSD broadcast.
-#
-# All five workers (incl. pi5-worker1) are nut_clients — see inventory.yml.
-# (pi5-worker1's SSH-key auth was fixed and it was added to the group; the old
-# "intentionally excluded" note was stale, cf. docs/nut-ups.md.)
-# Verify with `upsc cyberpower` on pi5-master after first apply.
+# Network UPS Tools (NUT): a single CyberPower CP1500PFCLCD plugged into
+# pi5-master shuts down every machine on the UPS when grid power stays out.
+# The primary (server) runs upsd + upsmon-primary; every secondary (client)
+# runs upsmon and halts on FSD broadcast. Hosts: nut_clients in inventory.yml.
+# The workstation is local: add -K. Docs: docs/nut-ups.md.
 - name: NUT primary (UPS server on pi5-master)
   hosts: nut_server
   become: true
@@ -705,7 +701,7 @@
     - role: nut
       tags: [nut, nut-server, ups]
 
-- name: NUT secondaries (Pi workers)
+- name: NUT secondaries (every other host on the UPS)
   hosts: nut_clients
   become: true
   gather_facts: true

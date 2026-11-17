@@ -3,9 +3,10 @@
   ansible.builtin.assert:
     that:
       - nut_role in ['server', 'client']
+      - nut_role == 'client' or ansible_os_family != 'Darwin'
     fail_msg: >-
-      nut_role must be 'server' or 'client' (got: {{ nut_role | default('<unset>') }}).
-      Set it in group_vars/nut_server or group_vars/nut_clients.
+      nut_role must be 'server' or 'client' (got: {{ nut_role | default('<unset>') }}),
+      and a macOS host can only be a client.
 
 - name: Assert upsmon password is provided by the vault
   ansible.builtin.assert:
@@ -18,14 +19,14 @@
       placeholder. Set it in group_vars/all/vault.sops.yaml with `sops`.
       See docs/nut-ups.md.
 
+- name: Load the per-OS paths and packages
+  ansible.builtin.include_vars: "{{ ansible_os_family }}.yml"
+
 - name: Install NUT packages
   ansible.builtin.package:
-    name: "{{ nut_packages }}"
+    name: "{{ nut_server_packages if nut_role == 'server' else nut_client_packages }}"
     state: present
-  vars:
-    nut_packages: >-
-      {{ ['nut', 'nut-client', 'nut-server', 'usbutils']
-         if nut_role == 'server' else ['nut-client'] }}
+  when: ansible_os_family != 'Darwin'
 
 - name: Include server tasks
   ansible.builtin.include_tasks: server.yml

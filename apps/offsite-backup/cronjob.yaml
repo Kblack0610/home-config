@@ -14,11 +14,7 @@ spec:
   # previous night's finished snapshots and never a mirror mid-write.
   schedule: "0 1 * * *"
   timeZone: America/Los_Angeles
-  # Negative control for HomelabBackupStale (plan async-honking-wave, hc-337):
-  # skip one cycle so the alert must fire about 2026-11-16 13:20 UTC, 36h after
-  # the seed's success plus the rule's 30m. A follow-up PR sets this back to
-  # false. A hand `kubectl patch` would be reverted by flux within the hour.
-  suspend: true
+  suspend: false
   concurrencyPolicy: Forbid
   successfulJobsHistoryLimit: 3
   failedJobsHistoryLimit: 3

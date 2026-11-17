@@ -4,6 +4,7 @@ vault_forgejo_env:
     FORGEJO__security__INTERNAL_TOKEN: ENC[AES256_GCM,data:PJmjRYDNKQe5UOsUDYr4fOuJdIYmAW6X80smAEDEVLQRoTPjyiEA74R/KbVOXsVCeuX1U2UJpRnALhUknvoXHZvPWi2JBDjxFZF2dRPzXYobpADu+8oZxAZL5NUj3pV9fPwlRhFAyE7T,iv:JY3uJ77JqaTXL7GLN0oi93J4AgSexZOBOeKnz4duNkE=,tag:rNBoUFHGN2PK4S9/WXugBQ==,type:str]
     FORGEJO__security__SECRET_KEY: ENC[AES256_GCM,data:PNL041hdS5orcR92xdMnXCT+XDFKB+1GTaN+OykCVzO86dX33ozOnBT8Lw==,iv:Pwhj0zzt4LuO1aFbdpZ8rqaUlFAtlKt2mPtzMP1KW/I=,tag:R6UzoqbuixTf//yiluHmXw==,type:str]
     FORGEJO__server__LFS_JWT_SECRET: ENC[AES256_GCM,data:Yxni2dcbCgHw2mT0StQ8BRDHOiA4ZyryWXJ5mlZqSOjTmeSHnZ25Up8rWA==,iv:6CwiVojG/ghPEqjuZubJwJyCMFo3ApJizc9qYv4k9hI=,tag:wG5rEg/yv/cylMY0JjtCyA==,type:str]
+    FORGEJO__database__PASSWD: ENC[AES256_GCM,data:9S7zD5CAttNG3B6YtewLauFOdh9PiXFrPdPfX6pHa2om80nWpb7nFM+2R47jzvxh,iv:9r9JSXgjyxyDg22aCPQxI/2xzT3U6FaEnVCgdlpGOrs=,tag:Gtvu5dY3FpVqMgvvFx6nlg==,type:str]
 vault_home_wan_cidr: ENC[AES256_GCM,data:nDT1vw6/zRuzQrzaJPwyFg==,iv:sDbETsNwQnith094wmMyw3ei2pn1IMsZ+AVrTOqFlxk=,tag:C++ODjjJb8Xuhk2/41zBcg==,type:str]
 vault_forge_tunnel_token: ENC[AES256_GCM,data:J4v/MdvIPtCs6p4ME0S/Yl4u8UmefawDphBoYSg0u4qo5st2SkICyhSNlP5Pykt+OR3ATKFvCEEQrvggqgMSRzuBG/FsgLB2Nk239gLVx1vjoja/Ot6Z82HZeBE8ehbUN2FfrltregyePE/qlYBtW6R/5vSmXC0pM3/4ZvfolALWxuG/AvkRLgrARTK+sv5ayP3RV5Ms8rq/QUJ7/8yoCl+dUAbi64v1lQCuBcQrqEeZiyss,iv:2ACqTlgMezel8NsH5JNcIvtlbfqhy6irILvGpLE2EBI=,tag:xRZMcha9KgsWjtV8BlkEbw==,type:str]
 sops:
@@ -26,7 +27,7 @@ sops:
             COzk1miJhIcT7WiXb/2gWazM0/iXE0ozj4fm6OtLv+KHTnVSc7jC3g==
             -----END AGE ENCRYPTED FILE-----
           recipient: age1q694uddq28kzxyteemaa4x5zxrnqlmhj0z336zmf6wpptq6ema5qcez399
-    lastmodified: "2026-11-17T19:30:41Z"
-    mac: ENC[AES256_GCM,data:7SaQXI/rAEcKue1HgdadNJgI07LC59gabl+JnSJ7iepnz9tBdgRpv56xoEYz2ky43swWECca1iizl0tuJ+G+X65ZF/R9v3QI8DyTiuUHrcy4O3iYNkK7NhPcLHl1YAuNXrCs6IRCd0KVk64IADovXzwjhTdo7+GLTQQRRlcA1YM=,iv:jJiZHZtuEe/oAatzWN4pnE2NygxTd6K4tywzcnNUKL4=,tag:yYIM5Aj860ehy7+zFA/5Ug==,type:str]
+    lastmodified: "2026-11-17T19:39:35Z"
+    mac: ENC[AES256_GCM,data:Ex7lcPWf0eEyP6rRYWjnXNcp4dP920kKUov/ANNTpEPTSP4WmvyhUw6iBDDWpWYaOLRxSOtHyLpf0rjEjgzlX4/c6dSdMC9wwXcU3sIEFiq9nLM443zha0rpkGiIx/2duvQQhgbXgAAB4xwpMu4dN64P46pJqqb4JQeqseNvzuA=,iv:pHH5RrwDiyAKY+YlGAk36VhIkNB2aRMkhOGxAmEakYs=,tag:BV8r31eyPw+f3zEylBslPQ==,type:str]
     unencrypted_suffix: _unencrypted
     version: 3.13.3

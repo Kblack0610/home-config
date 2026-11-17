@@ -181,6 +181,24 @@ jobs:
       - name: dhcp.sh sync against a fake router
         run: infrastructure/dhcp/tests/test-sync.sh
 
+  nut-replay:
+    runs-on: docker
+    container:
+      # The NUT the primary runs: Debian trixie's 2.8.1 package.
+      image: debian:trixie
+    steps:
+      - name: Install deps
+        run: |
+          apt-get update -qq
+          DEBIAN_FRONTEND=noninteractive apt-get install -y -qq --no-install-recommends \
+            git nodejs ca-certificates nut-server nut-client python3-jinja2 busybox bsdutils procps
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Replay UPS status sequences through NUT
+        run: bash ansible/roles/nut/tests/run-tests.sh
+        env:
+          NUT_REPLAY_IN_CONTAINER: "1"
+
   prometheus-rules:
     runs-on: docker
     container:

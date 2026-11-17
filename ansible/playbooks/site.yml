@@ -834,8 +834,7 @@
       tags: [dgpu-off, thermal]
 
 # Make the next freeze explain itself: kernel messages stream to pi5-master
-# over netconsole, and the firmware's undervoltage latch is exported to
-# Prometheus. Receiver first, so the sender has somewhere to talk to.
+# over netconsole. Receiver first, so the sender has somewhere to talk to.
 # See ansible/roles/crash-evidence/README.md.
 #   ansible-playbook playbooks/site.yml --limit pi5-master,netconsole_senders --tags crash-evidence --check --diff
 - name: netconsole receiver (pi5-master - collects kernel logs from the senders)
@@ -846,13 +845,24 @@
     - role: netconsole-receiver
       tags: [crash-evidence, netconsole]
 
-- name: Crash evidence (netconsole sender + undervoltage latch metric)
+- name: Crash evidence (netconsole sender)
   hosts: netconsole_senders
   become: true
   gather_facts: true
   roles:
     - role: crash-evidence
       tags: [crash-evidence, netconsole]
+
+# Every Pi exports its firmware undervoltage latch; PiUndervoltageSinceBoot
+# alerts on it. See ansible/roles/rpi-throttle-metric/README.md.
+#   ansible-playbook playbooks/site.yml --limit rpi_hosts --tags rpi-throttle --check --diff
+- name: Pi undervoltage latch metric (every Pi)
+  hosts: rpi_hosts
+  become: true
+  gather_facts: false
+  roles:
+    - role: rpi-throttle-metric
+      tags: [rpi-throttle, crash-evidence]
 
 # Whole-house audio endpoints: each host is one room of the Snapcast system
 # (apps/snapcast). alsa backend = a dedicated Pi/Armbian box whose system

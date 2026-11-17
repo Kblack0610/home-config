@@ -1,10 +1,8 @@
 ---
-# Leave evidence behind when this host dies without warning. Two halves:
-#   1. netconsole streams kernel messages to another box as they are printed,
-#      so the lines written in the last second before a freeze survive even
-#      though they never reach this host's SD card.
-#   2. the firmware's undervoltage latch is exported to Prometheus, so a
-#      brownout too short to sample still shows up as a metric and an alert.
+# Leave evidence behind when this host dies without warning: netconsole
+# streams kernel messages to another box as they are printed, so the lines
+# written in the last second before a freeze survive even though they never
+# reach this host's SD card. The Pi undervoltage latch is roles/rpi-throttle-metric.
 # See roles/crash-evidence/README.md.
 
 - name: Resolve the netconsole target address from the inventory
@@ -78,78 +76,11 @@
     daemon_reload: true
   when: not ansible_check_mode
 
-- name: Install the throttle exporter script
-  ansible.builtin.copy:
-    src: rpi-throttled-textfile.sh
-    dest: /usr/local/bin/rpi-throttled-textfile
-    owner: root
-    group: root
-    mode: "0755"
-  when: crash_evidence_rpi_throttle | bool
-
-- name: Install the throttle exporter units
-  ansible.builtin.copy:
-    dest: "/etc/systemd/system/{{ item.name }}"
-    owner: root
-    group: root
-    mode: "0644"
-    content: "{{ item.content }}"
-  loop:
-    - name: rpi-throttled-textfile.service
-      content: |
-        # Managed by ansible (roles/crash-evidence). Do not edit by hand.
-        [Unit]
-        Description=Export Raspberry Pi throttle flags for node-exporter
-
-        [Service]
-        Type=oneshot
-        ExecStart=/usr/local/bin/rpi-throttled-textfile {{ crash_evidence_textfile_dir }}
-    - name: rpi-throttled-textfile.timer
-      content: |
-        # Managed by ansible (roles/crash-evidence). Do not edit by hand.
-        [Unit]
-        Description=Export Raspberry Pi throttle flags every minute
-
-        [Timer]
-        OnBootSec=30s
-        OnUnitActiveSec=60s
-        AccuracySec=5s
-
-        [Install]
-        WantedBy=timers.target
-  loop_control:
-    label: "{{ item.name }}"
-  notify: reload throttle timer
-  when: crash_evidence_rpi_throttle | bool
-
-- name: Enable the throttle exporter timer
-  ansible.builtin.systemd_service:
-    name: rpi-throttled-textfile.timer
-    enabled: true
-    state: started
-    daemon_reload: true
-  when:
-    - not ansible_check_mode
-    - crash_evidence_rpi_throttle | bool
-
-- name: Apply pending reloads before the read-back
-  ansible.builtin.meta: flush_handlers
-
-- name: Write the throttle metric once now, so the read-back has something to read
-  ansible.builtin.systemd_service:
-    name: rpi-throttled-textfile.service
-    state: started
-  changed_when: false
-  when:
-    - not ansible_check_mode
-    - crash_evidence_rpi_throttle | bool
-
-- name: Read back netconsole, loglevel and the exported metric
+- name: Read back netconsole and loglevel
   ansible.builtin.shell: |
     set -o pipefail
     test -d /sys/module/netconsole && echo netconsole=loaded || echo netconsole=MISSING
     echo "printk=$(cut -f1 /proc/sys/kernel/printk)"
-    grep -c '^rpi_throttled{' {{ crash_evidence_textfile_dir }}/rpi_throttled.prom 2>/dev/null | sed 's/^/throttle_series=/' || echo throttle_series=0
   args:
     executable: /bin/bash
   register: crash_evidence_state
@@ -160,11 +91,10 @@
   ansible.builtin.debug:
     msg: "{{ inventory_hostname }}: {{ crash_evidence_state.stdout_lines | join(' ') }}"
 
-- name: Fail if any half is not live
+- name: Fail if netconsole is not live
   ansible.builtin.fail:
     msg: "{{ inventory_hostname }} crash-evidence not live: {{ crash_evidence_state.stdout_lines | join(' ') }}"
   when:
     - not ansible_check_mode
     - ('netconsole=loaded' not in crash_evidence_state.stdout)
       or ('printk=' ~ netconsole_console_loglevel not in crash_evidence_state.stdout_lines)
-      or (crash_evidence_rpi_throttle | bool and 'throttle_series=8' not in crash_evidence_state.stdout_lines)

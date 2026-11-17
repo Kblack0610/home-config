@@ -9,3 +9,8 @@
     driver = {{ nut_ups_driver }}
     port = {{ nut_ups_port }}
     desc = "{{ nut_ups_description }}"
+    # CyberPower's USB controller drops off the bus when it is not polled
+    # often enough; the usbhid-ups man page recommends these two for CPS, and
+    # NUT 2.8.3 made 12 s the CPS default. Debian trixie ships 2.8.1 (30 s).
+    pollonly
+    pollfreq = 12

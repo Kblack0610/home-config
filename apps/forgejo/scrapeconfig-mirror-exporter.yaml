@@ -1,0 +1,24 @@
+# The mirror exporter (forgejo-host role, files/mirror-exporter) is scraped
+# where Forgejo runs: it sits beside it in the forgejo-host
+# compose, on the host forge-primary.kblab.me names, so the target follows a
+# move with no change here (Prometheus resolves it at each scrape, through
+# apps/coredns). A ScrapeConfig rather than a ServiceMonitor because an
+# ExternalName Service has no endpoints to discover. jobName keeps
+# job="forgejo-mirror-exporter", which the rules in
+# apps/monitoring/prometheus-rules-forgejo-mirrors.yaml read. Prometheus selects
+# ScrapeConfigs by the release label (scrapeConfigSelector), unlike ServiceMonitors.
+apiVersion: monitoring.coreos.com/v1alpha1
+kind: ScrapeConfig
+metadata:
+  name: forgejo-mirror-exporter
+  namespace: forgejo
+  labels:
+    app.kubernetes.io/name: forgejo-mirror-exporter
+    release: kube-prometheus-stack
+spec:
+  jobName: forgejo-mirror-exporter
+  metricsPath: /metrics
+  scrapeInterval: 30s
+  scrapeTimeout: 10s
+  staticConfigs:
+    - targets: ["forge-primary.kblab.me:9310"]

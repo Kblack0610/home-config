@@ -56,7 +56,7 @@
     sysctl_file: /etc/sysctl.d/60-forgejo-host.conf
 
 # 0600, the mode Forgejo saves it with; it carries the secrets now.
-- name: app.ini from the cluster's ConfigMap, plus what Forgejo writes back
+- name: app.ini from files/app.ini, plus what Forgejo writes back
   ansible.builtin.template:
     src: app.ini.j2
     dest: /etc/forgejo/app.ini
@@ -116,16 +116,9 @@
     mode: "0755"
   loop: [forgejo-pg-migrate, forgejo-pg-copy]
 
-- name: Mirror exporter, from apps/forgejo-mirror-exporter (one source)
-  ansible.builtin.set_fact:
-    forgejo_host_exporter: >-
-      {{ (lookup('file', playbook_dir ~ '/../../apps/forgejo-mirror-exporter/deployment.yaml')
-          | from_yaml_all | selectattr('kind', 'equalto', 'Deployment') | first)
-          .spec.template.spec.containers[0] }}
-
 - name: Mirror exporter script
   ansible.builtin.copy:
-    src: "{{ playbook_dir }}/../../apps/forgejo-mirror-exporter/exporter.py"
+    src: mirror-exporter/exporter.py
     dest: /etc/forgejo/exporter.py
     owner: root
     group: root
@@ -173,35 +166,25 @@
     key: "{{ forgejo_host_pull_key }}"
     key_options: 'restrict,command="/usr/bin/rrsync -ro /mnt/forgejo"'
 
-- name: Host jobs take image, script and env from their CronJob in apps/forgejo (one source)
-  ansible.builtin.set_fact:
-    forgejo_host_job_specs: >-
-      {{ forgejo_host_job_specs | default([]) + [item | combine({'container':
-          (lookup('file', playbook_dir ~ '/../../apps/forgejo/' ~ item.cronjob) | from_yaml)
-          .spec.jobTemplate.spec.template.spec.containers[0]})] }}
-  loop: "{{ forgejo_host_jobs }}"
-  loop_control:
-    label: "{{ item.name }}"
-
-- name: Host job scripts (the CronJob's `sh -c` script)
+- name: Host job scripts
   ansible.builtin.copy:
-    content: "{{ (item.container.command + (item.container.args | default([]))) | last }}"
+    src: "jobs/{{ item.name }}.sh"
     dest: "/etc/forgejo/jobs/{{ item.name }}.sh"
     owner: root
     group: root
     mode: "0644"
-  loop: "{{ forgejo_host_job_specs }}"
+  loop: "{{ forgejo_host_jobs }}"
   loop_control:
     label: "{{ item.name }}"
 
-- name: Host job env (the CronJob's env, then the host's overrides)
+- name: Host job env
   ansible.builtin.copy:
-    content: "# Managed by ansible roles/forgejo-host, from apps/forgejo/{{ item.cronjob }}\n{% for k, v in ((item.container.env | default([]) | items2dict(key_name='name', value_name='value')) | combine(item.env)).items() %}{{ k }}={{ v }}\n{% endfor %}"
+    content: "# Managed by ansible roles/forgejo-host (forgejo_host_jobs)\n{% for k, v in item.env.items() %}{{ k }}={{ v }}\n{% endfor %}"
     dest: "/etc/forgejo/jobs/{{ item.name }}.env"
     owner: root
     group: root
     mode: "0644"
-  loop: "{{ forgejo_host_job_specs }}"
+  loop: "{{ forgejo_host_jobs }}"
   loop_control:
     label: "{{ item.name }}"
 
@@ -210,7 +193,7 @@
     src: "forgejo-job.{{ item.1 }}.j2"
     dest: "/etc/systemd/system/{{ item.0.name }}.{{ item.1 }}"
     mode: "0644"
-  loop: "{{ forgejo_host_job_specs | product(['service', 'timer']) | list }}"
+  loop: "{{ forgejo_host_jobs | product(['service', 'timer']) | list }}"
   loop_control:
     label: "{{ item.0.name }}.{{ item.1 }}"
   register: forgejo_host_job_units

@@ -7,3 +7,17 @@
   loop: "{{ authorized_keys_list }}"
   loop_control:
     label: "{{ item.comment }}"
+  when: authorized_keys_file | length == 0
+
+# OpenWrt: no Python, and dropbear reads one root keys file. The play must run
+# community.openwrt.init first (see the OpenWrt play in playbooks/site.yml).
+- name: Authorize the managed keys (dropbear)
+  community.openwrt.lineinfile:
+    path: "{{ authorized_keys_file }}"
+    line: "{{ item.key }}"
+    state: "{{ item.state | default('present') }}"
+    create: true
+  loop: "{{ authorized_keys_list }}"
+  loop_control:
+    label: "{{ item.comment }}"
+  when: authorized_keys_file | length > 0

@@ -763,6 +763,10 @@
       tags: always
     - role: openwrt-iot-vlan
       tags: [openwrt, iot-vlan]
+    # The same key list as every Linux node, in dropbear's file.
+    #   ansible-playbook playbooks/site.yml --limit openwrt --tags authorized-keys
+    - role: authorized-keys
+      tags: [openwrt, authorized-keys]
 
 # AdGuard Home on pi3 - the LAN's filtering resolver, outside k3s on purpose.
 #

@@ -1,0 +1,23 @@
+#!ipxe
+#
+# iPXE (boot/uefi/*.efi, tools/build-ipxe.sh) fetches this over TFTP at start,
+# and make-usb.sh puts it on the stick. It is never embedded in the binary:
+# an embedded script is handed to the kernel as part of the initramfs, which
+# then panics ("Initramfs unpacking failed: invalid magic").
+#
+# The address matches menu.ipxe, since next-server can be the router.
+
+:retry
+dhcp || goto retry_wait
+echo Chaining to http://192.168.1.2:9080/ipxe/menu.ipxe
+chain http://192.168.1.2:9080/ipxe/menu.ipxe || goto failed
+
+:retry_wait
+echo DHCP failed, retrying in 3 seconds...
+sleep 3
+goto retry
+
+:failed
+echo Failed to reach the PXE server at 192.168.1.2:9080. Is pxe-server running?
+echo Manual: dhcp, then chain http://192.168.1.2:9080/ipxe/menu.ipxe
+shell

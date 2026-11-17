@@ -47,19 +47,19 @@ menu CachyOS Network Boot
 item --gap --             ========================================
 item --gap --             CachyOS Installation Options
 item --gap --             ========================================
-item cachyos-desktop      [1] Desktop - Full (Hyprland + Sunshine)
-item cachyos-laptop       [2] Laptop - Optimized (no Sunshine)
-item cachyos-headless     [3] Server - Headless (SSH only)
-item cachyos-cluster      [4] Cluster - k3s Worker Node
-item cachyos-manual       [5] Manual - Interactive archiso
-item cachyos-dryrun       [6] Dry Run - Test autoinstall (no disk writes)
+item --key 1 cachyos-desktop      [1] Desktop - Full (Hyprland + Sunshine)
+item --key 2 cachyos-laptop       [2] Laptop - Optimized (no Sunshine)
+item --key 3 cachyos-headless     [3] Server - Headless (SSH only)
+item --key 4 cachyos-cluster      [4] Cluster - k3s node (Ansible joins it)
+item --key 5 cachyos-manual       [5] Manual - Interactive archiso
+item --key 6 cachyos-dryrun       [6] Dry Run - Test autoinstall (no disk writes)
 item --gap --             ----------------------------------------
 item --gap --             Utilities
 item --gap --             ----------------------------------------
-item memtest              [M] Memory Test (memtest86+)
-item shell                [S] iPXE Shell
-item localboot            [L] Boot from Local Disk
-item reboot               [R] Reboot
+item --key m memtest              [M] Memory Test (memtest86+)
+item --key s shell                [S] iPXE Shell
+item --key l localboot            [L] Boot from Local Disk
+item --key r reboot               [R] Reboot
 item --gap --             ========================================
 choose --timeout 10000 --default localboot selected || goto localboot
 goto ${selected}
@@ -100,8 +100,9 @@ goto cachyos-boot
 
 :cachyos-cluster
 echo
-echo Selected: CachyOS Cluster Node (k3s Worker)
-echo Profile includes: SSH, k3s agent, minimal packages
+echo Selected: CachyOS Cluster Node (k3s, joined by Ansible)
+echo Profile includes: SSH, storage clients, minimal packages
+echo After install, Ansible joins it to k3s at the pinned version
 echo
 set profile cluster
 set autoinstall 1
@@ -152,7 +153,9 @@ echo Downloading initramfs...
 initrd ${http-root}/cachyos/initramfs-linux-cachyos.img || goto initrd-failed
 
 echo Configuring boot parameters...
+# The kernel's EFI stub loads the initramfs this initrd= names.
 imgargs vmlinuz-linux-cachyos \
+    initrd=initramfs-linux-cachyos.img \
     archisobasedir=cachyos \
     archiso_http_srv=${http-root}/ \
     ip=dhcp \

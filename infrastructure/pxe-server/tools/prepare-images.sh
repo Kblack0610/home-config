@@ -210,7 +210,12 @@ extract_boot_files() {
     fi
 
     # Set permissions
-    chmod 644 "$HTTP_CACHYOS_DIR"/*
+    find "$HTTP_CACHYOS_DIR" -maxdepth 1 -type f -exec chmod 644 {} +
+
+    # archiso fetches ${archiso_http_srv}${archisobasedir}/x86_64/airootfs.sfs.
+    # The other tools read cachyos/airootfs.sfs, so link it there.
+    mkdir -p "$HTTP_CACHYOS_DIR/x86_64"
+    ln -sfn ../airootfs.sfs "$HTTP_CACHYOS_DIR/x86_64/airootfs.sfs"
 
     # Unmount
     sudo umount "$MOUNT_POINT"

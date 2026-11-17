@@ -23,7 +23,7 @@
     - role: asr-servers
       tags: [asr, ml, dictation]
     - role: desktop-firewall
-      tags: [firewall, agent-web]
+      tags: [firewall, agent-web, pxe]
 
 - name: Workstation monitoring (node_exporter)
   # So cc:host_* and the hub:infra board see this machine's load, memory and

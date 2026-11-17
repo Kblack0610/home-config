@@ -253,3 +253,37 @@ tests:
         exp_annotations:
           summary: "hp-victus is quarantined (kblab.me/degraded): no new pods land on it"
           description: cluster-janitor tainted hp-victus after a kernel fault, Ready flaps or a mains loss; the node's kblab.me/degraded-reason annotation says which. Pods running there keep running; pods pinned there by a local-path PV stay Pending if they restart. Fix or move per docs/host-tiers.md "Quarantine", then rerun scripts/host-qualify.py, which lifts the taint on a passing record.
+
+  # hp-victus ran a newer kubelet than the apiserver for days (2026-11-12 to 11-16).
+  # The node on the apiserver's version stays silent, and a missing apiserver
+  # series fires nothing, since every node would otherwise look skewed.
+  - name: a node off the apiserver's version fires after 30m, naming it
+    interval: 1m
+    input_series:
+      - series: 'kubernetes_build_info{job="apiserver",instance="192.168.1.20:6443",git_version="v1.34.13+k3s1"}'
+        values: '1x40'
+      - series: 'kube_node_info{node="raspberrypi",kubelet_version="v1.34.13+k3s1"}'
+        values: '1x40'
+      - series: 'kube_node_info{node="hp-victus",kubelet_version="v1.34.4+k3s1"}'
+        values: '1x40'
+    alert_rule_test:
+      - eval_time: 29m
+        alertname: KubeletVersionSkew
+        exp_alerts: []
+      - eval_time: 31m
+        alertname: KubeletVersionSkew
+        exp_alerts:
+          - exp_labels: {alertname: KubeletVersionSkew, severity: warning, fleet: fix, category: node-health, node: hp-victus, kubelet_version: "v1.34.4+k3s1"}
+            exp_annotations:
+              summary: "hp-victus runs k3s v1.34.4+k3s1, not the apiserver's version"
+              description: "The kubelet on hp-victus is v1.34.4+k3s1 and differs from the apiserver. Every node runs k3s_install_version from ansible/group_vars/all/k3s.yml: from ansible/, run ansible-playbook playbooks/site.yml --limit <its inventory host> --tags k3s (the server first if the pin moved; roles/k3s-agent README). A Pi's node name is not its inventory name; match it by IP in inventory.yml."
+
+  - name: no apiserver build info fires no skew alert
+    interval: 1m
+    input_series:
+      - series: 'kube_node_info{node="hp-victus",kubelet_version="v1.34.4+k3s1"}'
+        values: '1x40'
+    alert_rule_test:
+      - eval_time: 35m
+        alertname: KubeletVersionSkew
+        exp_alerts: []

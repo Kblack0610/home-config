@@ -308,6 +308,36 @@ spec:
               local-path PV stay Pending if they restart. Fix or move per
               docs/host-tiers.md "Quarantine", then rerun scripts/host-qualify.py,
               which lifts the taint on a passing record.
+        # A node's kubelet differs from the apiserver's version. Kubernetes skew policy
+        # forbids a kubelet newer than the apiserver, and every node should sit on the
+        # one pin, k3s_install_version in ansible/group_vars/all/k3s.yml. Replaces the
+        # stock KubeVersionMismatch (disabled in helm-values.yaml), which never named
+        # the node and fired unowned 2026-11-12 to 11-16. for: 30m covers a serial
+        # rollout of every node. The last line keeps it silent when the apiserver
+        # series is missing, which KubeAPIDown owns.
+        - alert: KubeletVersionSkew
+          expr: >-
+            (
+              max by (node, kubelet_version) (kube_node_info)
+              unless on (kubelet_version)
+              label_replace(max by (git_version) (kubernetes_build_info{job="apiserver"}),
+                "kubelet_version", "$1", "git_version", "(.*)")
+            )
+            and on () (count(kubernetes_build_info{job="apiserver"}) > 0)
+          for: 30m
+          labels:
+            severity: warning
+            fleet: fix
+            category: node-health
+          annotations:
+            summary: "{{ $labels.node }} runs k3s {{ $labels.kubelet_version }}, not the apiserver's version"
+            description: >-
+              The kubelet on {{ $labels.node }} is {{ $labels.kubelet_version }} and
+              differs from the apiserver. Every node runs k3s_install_version from
+              ansible/group_vars/all/k3s.yml: from ansible/, run
+              ansible-playbook playbooks/site.yml --limit <its inventory host> --tags k3s
+              (the server first if the pin moved; roles/k3s-agent README). A Pi's node
+              name is not its inventory name; match it by IP in inventory.yml.
     - name: homelab-node-health.recording
       rules:
         - record: instance:node_cpu_package_temp:celsius

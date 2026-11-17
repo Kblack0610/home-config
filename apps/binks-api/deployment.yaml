@@ -141,6 +141,8 @@ spec:
             # on binks.chat; CLIENT_TOKEN_SECRET is already in binks-api-secret.
             - name: MCP_ENABLED
               value: 'false'
+          # binks-api-secret carries every secret key, CF_EDGE_SECRET included
+          # (README, Secrets): production refuses to start without it.
           envFrom:
             - secretRef:
                 name: binks-api-secret

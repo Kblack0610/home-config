@@ -1,8 +1,9 @@
 ---
 # A fleet worker takes light claude sessions that fleet-dispatch places over
 # ssh (dotfiles .local/lib/fleet-hosts.sh). This role installs what such a
-# session runs and reports what only the human can do: sign each account in
-# and let the worker's key reach the state host. It copies no token.
+# session runs, joins the agent store as a peer (tasks/store.yml) and reports
+# what only the human can do: sign each account in, let the worker's key reach
+# the state host and add its store key on Forgejo. It copies no token.
 # Runbook: docs/runbooks/fleet-worker.md.
 
 - name: Install the session toolchain
@@ -137,6 +138,15 @@
     version: master
     update: false
 
+# Without lingering, every user unit (the roster fetch, store-sync, and on the
+# home agent-web and the lanes) stops when the last login ends, and a headless
+# worker has no login.
+- name: Keep the user's units running with nobody logged in (linger)
+  become: true
+  ansible.builtin.command: loginctl enable-linger {{ ansible_user_id }}
+  args:
+    creates: /var/lib/systemd/linger/{{ ansible_user_id }}
+
 # fleet-hosts also fetches on a read once the last fetch is FLEET_ROSTER_MAX_SECS
 # old, but a sandboxed lane cannot take its lock and reads the ref as it is.
 - name: Install the roster fetch timer
@@ -222,6 +232,10 @@
   failed_when: false
   check_mode: false
 
+# Before home.yml: a join stops agent-web, which home.yml starts again.
+- name: Join the agent store as a peer
+  ansible.builtin.include_tasks: store.yml
+
 - name: Set up the fleet home
   when: fleet_worker_is_home | bool
   ansible.builtin.include_tasks: home.yml
@@ -253,6 +267,7 @@
          + (fleet_worker_unsigned | map('regex_replace', '^', 'sign in: CLAUDE_CONFIG_DIR=') | map('regex_replace', '$', ' claude, then /login') | list)
          + (fleet_worker_clones.results | rejectattr('stat.exists') | map(attribute='item.dest')
             | map('regex_replace', '^', 'not cloned: ') | list)
+         + fleet_store_left
          + (fleet_home_left | default([])) }}
   ansible.builtin.debug:
     msg: >-

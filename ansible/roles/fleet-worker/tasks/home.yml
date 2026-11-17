@@ -1,16 +1,9 @@
 ---
 # The fleet home: the one worker named by fleet_state_host. Besides what every
-# worker runs, it holds the agent store (~/.agent, the queue and asks other
-# hosts forward to) and serves agent-web (agents.kblab.me, apps/agents points
-# its Endpoints here). Runbook: docs/runbooks/fleet-worker.md, "The fleet home".
-
-# Without lingering, every user unit (agent-web, the lanes, git-sync) stops when
-# the last login ends, and a headless home has no login.
-- name: Keep the user's units running with nobody logged in (linger)
-  become: true
-  ansible.builtin.command: loginctl enable-linger {{ ansible_user_id }}
-  args:
-    creates: /var/lib/systemd/linger/{{ ansible_user_id }}
+# worker runs (its store peer clone included, tasks/store.yml), it takes the
+# queue and ask writes other hosts forward to it and serves agent-web
+# (agents.kblab.me, apps/agents points its Endpoints here). Runbook:
+# docs/runbooks/fleet-worker.md, "The fleet home".
 
 # Arch only, like agent-panel in main.yml: apt's cargo is too old for it.
 - name: Build agent-web (cargo, as the user)
@@ -72,56 +65,6 @@
     path: "{{ ansible_env.HOME }}/.local/bin/notes"
     follow: true
   register: _fleet_home_notes_bin
-
-# git-sync-agent.sh pushes the store with this key and nothing else. Its public
-# half is a write deploy key on Forgejo kblack0610/.agent; the report prints it
-# until the store clones.
-- name: Make the key the store syncs with
-  ansible.builtin.command: ssh-keygen -q -t ed25519 -N '' -C "agent-sync {{ inventory_hostname }}" -f {{ ansible_env.HOME }}/.ssh/id_agent_sync
-  args:
-    creates: "{{ ansible_env.HOME }}/.ssh/id_agent_sync"
-
-# The key is data (fleet_home_store_host_key), never a scan: an empty scan used to leave
-# Forgejo untrusted with no error.
-- name: Trust Forgejo's host key
-  ansible.builtin.known_hosts:
-    name: "[{{ fleet_home_store_host }}]:{{ fleet_home_store_port }}"
-    key: "[{{ fleet_home_store_host }}]:{{ fleet_home_store_port }} {{ fleet_home_store_host_key }}"
-    state: present
-
-- name: Read whether the store is cloned
-  ansible.builtin.stat:
-    path: "{{ ansible_env.HOME }}/.agent/.git"
-  register: fleet_home_store
-
-- name: Read whether the sync key reaches the store
-  when: not fleet_home_store.stat.exists
-  ansible.builtin.command: git ls-remote {{ fleet_home_store_repo }} HEAD
-  environment:
-    GIT_SSH_COMMAND: ssh -i {{ ansible_env.HOME }}/.ssh/id_agent_sync -o IdentitiesOnly=yes -o BatchMode=yes -o ConnectTimeout=10
-  register: fleet_home_store_reach
-  changed_when: false
-  failed_when: false
-  check_mode: false
-
-# A host that ran the lanes before it was home has a plain ~/.agent of its own
-# runtime state. It is kept beside the clone, not merged: the store is the record.
-# The lanes and agent-web stop first so nothing writes into the dir being moved;
-# `agentctl reload` re-arms them once the human has signed in (the report says so).
-- name: Clone the store into ~/.agent (the old dir is kept as ~/.agent.pre-home)
-  when:
-    - not fleet_home_store.stat.exists
-    - fleet_home_store_reach.rc | default(1) == 0
-  ansible.builtin.shell: |
-    set -eo pipefail
-    systemctl --user stop 'agentctl@*.timer' 'agentctl@*.service' agent-web.service || true
-    if [ -e "$HOME/.agent.pre-home" ]; then echo "~/.agent.pre-home exists; move it aside first" >&2; exit 1; fi
-    if [ -e "$HOME/.agent" ]; then mv "$HOME/.agent" "$HOME/.agent.pre-home"; fi
-    GIT_SSH_COMMAND="ssh -i $HOME/.ssh/id_agent_sync -o IdentitiesOnly=yes -o BatchMode=yes" \
-      git clone {{ fleet_home_store_repo }} "$HOME/.agent"
-  args:
-    executable: /bin/bash
-    creates: "{{ ansible_env.HOME }}/.agent/.git"
 
 # schedules-sync reads the github-runner-exporter feed with kubectl through the
 # API server's Service proxy; without it no state.json is written and every
@@ -198,19 +141,10 @@
     state: "{{ 'restarted' if _fleet_home_web is changed else 'started' }}"
     daemon_reload: true
 
-- name: Read the sync key's public half
-  ansible.builtin.slurp:
-    src: "{{ ansible_env.HOME }}/.ssh/id_agent_sync.pub"
-  register: fleet_home_sync_pub
-  failed_when: false
-
 - name: Collect what only the human can do on the home
   ansible.builtin.set_fact:
     fleet_home_left: >-
-      {{ ([] if fleet_home_store.stat.exists or fleet_home_store_reach.rc | default(1) == 0 else
-          ['add this as a write deploy key on Forgejo kblack0610/.agent, then re-run: '
-           ~ (fleet_home_sync_pub.content | default('') | b64decode | trim)])
-         + ([] if fleet_home_oauth.stat.exists else
+      {{ ([] if fleet_home_oauth.stat.exists else
           ['write ~/.config/agent-web/oauth.json (0600) from rbw item agent-web-oauth-client, then re-run'])
          + ([] if fleet_home_web_files.results | rejectattr('stat.exists') | list | length == 0 else
           ['stow the private overlay (gh auth login, then re-run): agent-web needs its unit and ~/.config/agent-web/env'])

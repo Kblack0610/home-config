@@ -206,14 +206,24 @@
   args:
     creates: "{{ ansible_env.HOME }}/.ssh/id_ed25519"
 
-# The home is the state host itself: nothing to reach.
-- name: Trust the state host's host key
+# The home is the state host itself: nothing to reach. The scan runs on the worker,
+# the side that ssh's there. A state host that gives no key (off, unresolvable) must
+# not fail the play; the report below names it, with the scan's own error.
+- name: Read the state host's host key
   when: not fleet_worker_is_home | bool
+  ansible.builtin.command: ssh-keyscan -T 5 -t ed25519 {{ fleet_state_host }}
+  register: fleet_worker_state_key
+  changed_when: false
+  failed_when: false
+  check_mode: false
+
+# OpenSSH 10 also prints a "# host:22 SSH-2.0-..." banner line on stdout; kept in
+# the key, it never matches known_hosts and the task appends the pair on every run.
+- name: Trust the state host's host key
+  when: not fleet_worker_is_home | bool and fleet_worker_state_key.stdout_lines | reject('match', '^#') | list | length > 0
   ansible.builtin.known_hosts:
     name: "{{ fleet_state_host }}"
-    # OpenSSH 10 also prints a "# host:22 SSH-2.0-..." banner line on stdout; kept in
-    # the key, it never matches known_hosts and the task appends the pair on every run.
-    key: "{{ lookup('ansible.builtin.pipe', 'ssh-keyscan -t ed25519 ' ~ fleet_state_host ~ ' 2>/dev/null | grep -v ^#') }}"
+    key: "{{ fleet_worker_state_key.stdout_lines | reject('match', '^#') | first }}"
     state: present
 
 - name: Read whether the worker reaches the state host
@@ -246,6 +256,11 @@
     fleet_worker_left: >-
       {{ ([] if fleet_worker_gh.rc == 0 else ['gh auth login, then re-run this play for the private overlay'])
          + ([] if fleet_worker_is_home | bool or fleet_worker_state_ssh.rc | default(1) == 0 else
+            [fleet_state_host ~ ' gave this worker no host key ('
+             ~ ((fleet_worker_state_key.stderr | default('') | trim)
+                or ('no answer' if fleet_worker_state_key.rc | default(1) == 1 else fleet_worker_state_key.msg | default('')))
+             ~ '): bring it up, then re-run this play']
+            if fleet_worker_state_key.stdout_lines | default([]) | reject('match', '^#') | list | length == 0 else
             ['on ' ~ fleet_state_host ~ ', add this key to ~/.ssh/authorized_keys: '
              ~ (fleet_worker_pub.content | default('') | b64decode | trim)])
          + (fleet_worker_unsigned | map('regex_replace', '^', 'sign in: CLAUDE_CONFIG_DIR=') | map('regex_replace', '$', ' claude, then /login') | list)

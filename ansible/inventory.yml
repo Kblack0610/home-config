@@ -670,6 +670,23 @@ all:
         razer-laptop:
           fleet_place: false
 
+    # Machines the human drives the fleet from: they read and start sessions
+    # but never run one, so they are not fleet_workers and no play targets this
+    # group. cachyos-rog (ROG Flow, 16 GB) is the mobile seat for when the human
+    # is not on Moonlight to the workstation. It roams and sleeps, so it is not
+    # on the fleet-pulse roster. Host-key trust between roster machines is built
+    # from this inventory (fleet-home-resilience P4).
+    # Plan: ~/.claude/plans/feat-fleet-one-agent-container-image-tha.md (p1).
+    fleet_controllers:
+      hosts:
+        cachyos-rog:
+          # check-placement needs a tier on every host; probation is the
+          # narrowest, and this host is in no group any workload is placed on.
+          host_tier: probation
+          # Tailnet IP: it roams off the LAN, and no DNS here resolves its name.
+          ansible_host: 100.102.154.120
+          ansible_user: kblack0610
+
     # No admitted game host until dedicated capacity is commissioned (ask OqbBvu).
     game_server_nodes:
       hosts: {}

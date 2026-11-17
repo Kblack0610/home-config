@@ -307,6 +307,13 @@ all:
           ci_light_slots: 4
           ci_heavy_slots: 0
           ci_repo_runners: [{repo: Kblack0610/.dotfiles-private, slot: dotfiles-private-1}]
+        # Two light slots on cores 14-15 since 2026-11-17, the cores ci_hosts kept
+        # outside its Unity slots for the platform runners. Not on the Unity slots
+        # themselves: playground's light jobs clean and sparse-check-out the same repo
+        # dir, which would wipe that slot's warm Library.
+        ms-a2:
+          ci_light_slots: 2
+          ci_heavy_slots: 0
 
     # BNB Unity runner pool (added 2026-10-05; the "Unity CI runner pool" play in
     # site.yml). Org-scoped, label `unity`, for every game repo. Each slot runs
@@ -539,11 +546,14 @@ all:
         # ms-a2: 16 cores / 32 threads, SMT siblings n and n+16 (sysfs,
         # 2026-11-16), 91G. Cores 0-1 are k3s and the OS, as on razer. Each Unity
         # slot gets three cores and 16G (docs/unity-ci-hardware.md sizing), cores
-        # 2-13. Cores 14-15 (CPUs 14-15,30-31) stay outside CI for now: room
-        # for the platform runners when razer-laptop gives up its own.
+        # 2-13. Cores 14-15 (CPUs 14-15,30-31) are the two light slots'
+        # (linux_ci_runners), 6G between them (a light job is about 0.6G), which
+        # leaves 21G for the host and k3s.
         ms-a2:
-          ci_cpus: 2-13,18-29
-          ci_memory_max: 64G
+          ci_cpus: 2-15,18-31
+          ci_memory_max: 70G
+          ci_linux_cpus: 14-15,30-31
+          ci_linux_memory_max: 6G
           ci_unity_cpus: 2-13,18-29
           ci_unity_slot_cpus: ["2-4,18-20", "5-7,21-23", "8-10,24-26", "11-13,27-29"]
           ci_unity_memory_max: 64G

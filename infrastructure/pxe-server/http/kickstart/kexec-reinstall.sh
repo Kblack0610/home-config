@@ -21,12 +21,17 @@ esac
 
 command -v kexec >/dev/null || pacman -S --needed --noconfirm kexec-tools
 
+# BOOTIF names the NIC that reaches the server, so the installer's DHCP runs on
+# that one instead of every NIC (menu.ipxe passes the same).
+dev=$(ip -o route get "$PXE_SERVER" | awk '{for (i = 1; i < NF; i++) if ($i == "dev") print $(i + 1)}')
+mac=$(cat "/sys/class/net/$dev/address")
+
 work=$(mktemp -d)
 curl -fsS -o "$work/vmlinuz" "$HTTP_ROOT/cachyos/vmlinuz-linux-cachyos"
 curl -fsS -o "$work/initrd" "$HTTP_ROOT/cachyos/initramfs-linux-cachyos.img"
 
 kexec -l "$work/vmlinuz" --initrd="$work/initrd" --append="archisobasedir=cachyos \
-archiso_http_srv=$HTTP_ROOT/ ip=dhcp cow_spacesize=4G copytoram=n \
+archiso_http_srv=$HTTP_ROOT/ ip=dhcp BOOTIF=01-$mac cow_spacesize=4G copytoram=n \
 pxe_server=$PXE_SERVER pxe_profile=$PROFILE pxe_autoinstall=1 pxe_dryrun=0 \
 pxe_disk=auto pxe_force=1"
 

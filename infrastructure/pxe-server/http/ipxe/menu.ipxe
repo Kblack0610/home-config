@@ -154,11 +154,14 @@ initrd ${http-root}/cachyos/initramfs-linux-cachyos.img || goto initrd-failed
 
 echo Configuring boot parameters...
 # The kernel's EFI stub loads the initramfs this initrd= names.
+# BOOTIF names the NIC iPXE booted from; without it the archiso hook runs DHCP
+# on every NIC and gives up on a multi-port box (MS-A2, 2026-11-16).
 imgargs vmlinuz-linux-cachyos \
     initrd=initramfs-linux-cachyos.img \
     archisobasedir=cachyos \
     archiso_http_srv=${http-root}/ \
     ip=dhcp \
+    BOOTIF=01-${netX/mac:hexhyp} \
     cow_spacesize=4G \
     copytoram=n \
     pxe_server=${pxe-server} \

@@ -9,8 +9,12 @@
 
 :retry
 dhcp || goto retry_wait
-echo Chaining to http://192.168.1.2:9080/ipxe/menu.ipxe
-chain http://192.168.1.2:9080/ipxe/menu.ipxe || goto failed
+echo Fetching http://192.168.1.2:9080/ipxe/menu.ipxe
+imgfetch --name menu http://192.168.1.2:9080/ipxe/menu.ipxe || goto failed
+# The menu returns only for "boot from local disk" (its exit 1). Pass that on,
+# so the firmware boots its next entry instead of reporting a server failure.
+chain menu || exit 1
+exit 1
 
 :retry_wait
 echo DHCP failed, retrying in 3 seconds...

@@ -102,26 +102,95 @@ tests:
       exp_annotations:
         summary: 'App down: test/down-sts'
         description: statefulset test/down-sts has had zero ready capacity for at least 10 minutes.
-- name: a ready app restarting 3+ times an hour is degraded, not down
+- name: health state is 2 healthy, 1 partial or restarting, 0 down, including a workload with no pods
   interval: 1m
   input_series:
   - series: kube_deployment_spec_replicas{namespace="test",deployment="flapping"}
-    values: 1x30
+    values: 1x40
   - series: kube_deployment_status_replicas_available{namespace="test",deployment="flapping"}
-    values: 1x30
+    values: 1x40
   - series: kube_pod_container_status_restarts_total{namespace="test",pod="flapping-pod",container="app"}
-    values: 0+1x30
+    values: 0+1x40
   - series: kube_pod_owner{namespace="test",pod="flapping-pod",owner_kind="ReplicaSet",owner_name="flapping-rs"}
-    values: 1x30
+    values: 1x40
   - series: kube_replicaset_owner{namespace="test",replicaset="flapping-rs",owner_kind="Deployment",owner_name="flapping"}
-    values: 1x30
+    values: 1x40
+  - series: kube_deployment_spec_replicas{namespace="test",deployment="healthy"}
+    values: 1x40
+  - series: kube_deployment_status_replicas_available{namespace="test",deployment="healthy"}
+    values: 1x40
+  - series: kube_pod_container_status_restarts_total{namespace="test",pod="healthy-pod",container="app"}
+    values: '0x40'
+  - series: kube_pod_owner{namespace="test",pod="healthy-pod",owner_kind="ReplicaSet",owner_name="healthy-rs"}
+    values: 1x40
+  - series: kube_replicaset_owner{namespace="test",replicaset="healthy-rs",owner_kind="Deployment",owner_name="healthy"}
+    values: 1x40
+  - series: kube_deployment_spec_replicas{namespace="test",deployment="partial"}
+    values: 2x40
+  - series: kube_deployment_status_replicas_available{namespace="test",deployment="partial"}
+    values: 1x40
+  - series: kube_pod_container_status_restarts_total{namespace="test",pod="partial-pod",container="app"}
+    values: '0x40'
+  - series: kube_pod_owner{namespace="test",pod="partial-pod",owner_kind="ReplicaSet",owner_name="partial-rs"}
+    values: 1x40
+  - series: kube_replicaset_owner{namespace="test",replicaset="partial-rs",owner_kind="Deployment",owner_name="partial"}
+    values: 1x40
+  - series: kube_deployment_spec_replicas{namespace="test",deployment="nopods"}
+    values: 1x40
+  - series: kube_deployment_status_replicas_available{namespace="test",deployment="nopods"}
+    values: '0x40'
   promql_expr_test:
   - expr: homelab_app_health_state
-    eval_time: 20m
+    eval_time: 25m
     exp_samples:
     - labels: homelab_app_health_state{app_id="test/flapping", namespace="test", platform="k8s", workload="flapping", workload_type="deployment"}
       value: 1
+    - labels: homelab_app_health_state{app_id="test/healthy", namespace="test", platform="k8s", workload="healthy", workload_type="deployment"}
+      value: 2
+    - labels: homelab_app_health_state{app_id="test/partial", namespace="test", platform="k8s", workload="partial", workload_type="deployment"}
+      value: 1
+    - labels: homelab_app_health_state{app_id="test/nopods", namespace="test", platform="k8s", workload="nopods", workload_type="deployment"}
+      value: 0
   alert_rule_test:
-  - eval_time: 20m
+  - eval_time: 25m
     alertname: HomelabAppDown
-    exp_alerts: []
+    exp_alerts:
+    - exp_labels:
+        namespace: test
+        workload: nopods
+        app_id: test/nopods
+        platform: k8s
+        workload_type: deployment
+        severity: warning
+        fleet: fix
+        category: app-health
+      exp_annotations:
+        summary: 'App down: test/nopods'
+        description: deployment test/nopods has had zero ready capacity for at least 10 minutes.
+  - eval_time: 25m
+    alertname: HomelabAppDegraded
+    exp_alerts:
+    - exp_labels:
+        namespace: test
+        workload: flapping
+        app_id: test/flapping
+        platform: k8s
+        workload_type: deployment
+        severity: warning
+        fleet: fix
+        category: app-health
+      exp_annotations:
+        summary: 'App degraded: test/flapping'
+        description: deployment test/flapping is partially ready or restarting too often.
+    - exp_labels:
+        namespace: test
+        workload: partial
+        app_id: test/partial
+        platform: k8s
+        workload_type: deployment
+        severity: warning
+        fleet: fix
+        category: app-health
+      exp_annotations:
+        summary: 'App degraded: test/partial'
+        description: deployment test/partial is partially ready or restarting too often.

@@ -196,6 +196,9 @@ defaultRules:
     # prometheus-rules-jobs.yaml: this one fires per failed Job object, and a
     # later green run never resolves it.
     KubeJobFailed: true
+    # Replaced by KubeletVersionSkew in prometheus-rules-node-health.yaml, which
+    # names the node and the fix.
+    KubeVersionMismatch: true
   rules:
     alertmanager: true
     configReloaders: true

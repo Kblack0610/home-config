@@ -10,11 +10,10 @@ metadata:
 spec:
   # Forgejo's backup once it runs on forge-hel1: pull the VM's hourly db
   # snapshots, its data tree and its package registry over the tailnet, then
-  # build the nightly full here (backup-pull.sh). 04:30 is forgejo-backup-offbox's
-  # slot, which this replaces.
-  # Live since the cutover (2026-11-14), which suspended forgejo-backup,
-  # forgejo-backup-offbox and nas forgejo-packages-backup: they read the asus
-  # copy, frozen from then on, and offbox's prune shares this directory.
+  # build the nightly full here (backup-pull.sh). 04:30 was forgejo-backup-offbox's
+  # slot.
+  # Live since the cutover (2026-11-14). It replaced forgejo-backup,
+  # forgejo-backup-offbox and nas forgejo-packages-backup, now removed.
   schedule: "30 4 * * *"
   timeZone: America/Los_Angeles
   concurrencyPolicy: Forbid

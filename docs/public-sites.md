@@ -15,7 +15,9 @@ That's it. There is no step 3. No tunnel edit, no DNS record to create, no Cloud
 token anywhere in this flow.
 
 Mirror an existing one: `apps/scratch/` (simple), `apps/mem0/ingress-public.yaml`
-(with middlewares), `apps/forgejo/ingress-public.yaml` (with crowdsec).
+(with middlewares).
+
+**The one exception: `git.kennethblack.me`.** The forge lives on the Hetzner VM forge-hel1, not in home-k3s, so its public name has its own tunnel, `forge-hel1`, whose connector is a `cloudflared` container in the VM's compose file (`ansible/roles/forgejo-host`). The tunnel and the CNAME are Terraform in `bnb/platform/infra/forge-tunnel`, not external-dns, so the name keeps working with home dark. Do not add an Ingress for that host: external-dns would upsert the CNAME back to the home tunnel within a minute.
 
 ## Why that's all it takes — the architecture
 
@@ -40,6 +42,7 @@ Two systems, each with **one** job and **one** source of truth:
 | **DNS** (the proxied CNAME → tunnel) | the same **Ingress** | `external-dns` derives it automatically, all public zones |
 | **TLS** | cert-manager `letsencrypt-dns` | per-host cert from the Ingress |
 | **The tunnel itself** | Terraform `bnb/platform/infra/public-sites-tunnel` | the connector + the single wildcard rule; rarely touched |
+| **git.kennethblack.me** (the exception above) | Terraform `bnb/platform/infra/forge-tunnel` | its own tunnel, rule and CNAME; connector on forge-hel1 |
 
 The tunnel holds **exactly one** ingress rule (the wildcard). Per-host tunnel routes do
 not exist anymore — that was the legacy method that required a rotating
@@ -65,7 +68,7 @@ make the change, then remove it again.
 ## Zones
 
 `external-dns` (`apps/external-dns/`) owns DNS for every Cloudflare zone in the account (no
-`--domain-filter`, policy `upsert-only`): **kennethblack.me**, **blacknbrownstudios.com**,
+`--domain-filter`, policy `upsert-only`, so it never deletes a record: removing an Ingress leaves its CNAME behind): **kennethblack.me**, **blacknbrownstudios.com**,
 **binks.chat**, **kblack.dev**, and **kblab.me**. It reads standard Ingresses **and** Traefik
 `IngressRoute`s (`--source=traefik-proxy`, for binks.chat).
 

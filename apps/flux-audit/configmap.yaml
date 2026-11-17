@@ -13,7 +13,6 @@ data:
     ALLOWLIST_NAME = re.compile(
         r'^('
         r'kube-root-ca\.crt'
-        r'|sh\.helm\.release\..*'
         r'|.*-tls'
         r'|.*-ca'
         r'|.*account-key'
@@ -28,23 +27,18 @@ data:
     ALLOWLIST_TYPE = {
         'kubernetes.io/tls',
         'kubernetes.io/service-account-token',
-        'helm.sh/release.v1',
     }
     ALLOWLIST_NS = {
         'kube-system', 'kube-public', 'kube-node-lease', 'flux-system', 'default',
     }
 
-    # Helm release secrets are skipped by type below anyway, and each one holds a
-    # whole gzipped chart (traefik-crd ~1 MB, kube-prometheus-stack ~0.5 MB times
-    # its history): 11.5 of the 12.3 MB that `get secret -A` returned on 2026-11-17.
-    # Loaded and parsed, they pushed the pod past its 128Mi limit (OOMKilled), so
-    # the API server drops them before they reach kubectl.
-    FIELD_SELECTOR = {'secret': 'type!=helm.sh/release.v1'}
+    # Helm release secrets each hold a whole gzipped chart (several MB together), so the
+    # API server leaves them out instead of kubectl loading them into this 128Mi pod.
+    SELECTOR = {'secret': ['--field-selector', 'type!=helm.sh/release.v1']}
 
     def kget(kind):
-        sel = ['--field-selector', FIELD_SELECTOR[kind]] if kind in FIELD_SELECTOR else []
         out = subprocess.run(
-            ['kubectl', 'get', kind, '-A', '-o', 'json'] + sel,
+            ['kubectl', 'get', kind, '-A', '-o', 'json'] + SELECTOR.get(kind, []),
             capture_output=True, text=True, check=True,
         )
         return json.loads(out.stdout).get('items', [])

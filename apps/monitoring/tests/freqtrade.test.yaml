@@ -39,6 +39,40 @@ tests:
           - exp_labels: {alertname: TraderMetricsMissing, severity: warning, fleet: fix, category: trading}
             exp_annotations: {summary: "trader-web metrics are missing or cannot read the trader database: the not-dry-run page is blind"}
 
+  - name: a bot is blind past its own limit, and one with no limit series past 300 s
+    interval: 1m
+    input_series:
+      - series: 'trader_watch_unseen_seconds{bot="kraken-s001",job="trader-web"}'
+        values: '0+60x15'
+      - series: 'trader_watch_unseen_limit_seconds{bot="kraken-s001",job="trader-web"}'
+        values: '300x15'
+      - series: 'trader_watch_unseen_seconds{bot="paper-tt_totals-08903f77",job="trader-web"}'
+        values: '0+60x15'
+      - series: 'trader_watch_unseen_limit_seconds{bot="paper-tt_totals-08903f77",job="trader-web"}'
+        values: '600x15'
+      - series: 'trader_watch_unseen_seconds{bot="no-limit",job="trader-web"}'
+        values: '0+60x15'
+    alert_rule_test:
+      - eval_time: 5m  # unseen equal to the limit is not blind
+        alertname: TraderWatchBotBlind
+        exp_alerts: []
+      - eval_time: 6m
+        alertname: TraderWatchBotBlind
+        exp_alerts:
+          - exp_labels: {alertname: TraderWatchBotBlind, severity: warning, fleet: fix, category: trading, bot: kraken-s001, job: trader-web}
+            exp_annotations: {summary: "The watcher has not read bot kraken-s001 within its limit"}
+          - exp_labels: {alertname: TraderWatchBotBlind, severity: warning, fleet: fix, category: trading, bot: no-limit, job: trader-web}
+            exp_annotations: {summary: "The watcher has not read bot no-limit within its limit"}
+      - eval_time: 11m
+        alertname: TraderWatchBotBlind
+        exp_alerts:
+          - exp_labels: {alertname: TraderWatchBotBlind, severity: warning, fleet: fix, category: trading, bot: kraken-s001, job: trader-web}
+            exp_annotations: {summary: "The watcher has not read bot kraken-s001 within its limit"}
+          - exp_labels: {alertname: TraderWatchBotBlind, severity: warning, fleet: fix, category: trading, bot: no-limit, job: trader-web}
+            exp_annotations: {summary: "The watcher has not read bot no-limit within its limit"}
+          - exp_labels: {alertname: TraderWatchBotBlind, severity: warning, fleet: fix, category: trading, bot: paper-tt_totals-08903f77, job: trader-web}
+            exp_annotations: {summary: "The watcher has not read bot paper-tt_totals-08903f77 within its limit"}
+
   - name: a bot API error alerts after two ingest runs, and not for a bot the not-dry-run page owns
     interval: 1m
     input_series:

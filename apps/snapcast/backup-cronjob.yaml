@@ -1,10 +1,13 @@
 apiVersion: batch/v1
 kind: CronJob
 metadata:
+  annotations:
+    kblab.me/criticality: standard
   name: snapcast-backup
   namespace: snapcast
 spec:
   schedule: "45 2 * * *"  # Daily at 2:45 AM, after music-assistant (2:30) and clear of the 2 AM and 3 AM jobs
+  timeZone: America/Los_Angeles
   successfulJobsHistoryLimit: 3
   failedJobsHistoryLimit: 1
   jobTemplate:

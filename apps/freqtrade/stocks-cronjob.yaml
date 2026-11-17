@@ -1,6 +1,7 @@
 # The stock league (strategy repo lab/stocks.py, lab/stocks.toml; README Stocks): ETF paper accounts, simulated fills
 # on Alpaca latest quotes and daily bars, GET to data.alpaca.markets only, every entry and exit a decisions row.
-# Every 5 minutes, every day: the watcher counts a stock account unseen past 300 s (TraderWatchBotBlind), so passes
+# Every 5 minutes, every day: a stock account is unseen past the trader repo's [watcher] unseen_after_seconds
+# (TraderWatchBotBlind), so passes
 # outside the session still mark at the last close and write funnel market_closed. Only the two Alpaca paper keys
 # come from trader-brokers, by key, not the whole Secret. Same image, database, init migration and node rule as
 # trader-inputs-nws.
@@ -30,7 +31,7 @@ spec:
                 nodeSelectorTerms:
                   - matchExpressions:
                       - {key: kubernetes.io/arch, operator: In, values: [amd64]}
-                      - {key: kubernetes.io/hostname, operator: NotIn, values: [hp-victus]}
+                      - {key: kblab.me/tier, operator: NotIn, values: [probation]}
           securityContext:
             runAsUser: 1000
             runAsGroup: 1000

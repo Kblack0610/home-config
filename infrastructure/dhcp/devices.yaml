@@ -42,7 +42,7 @@ devices:
     managed: false
 
   - hostname: pc-home-cachy-main
-    mac: "9C:6B:00:35:B9:7C"
+    mac: "9C:6B:00:AC:91:20"
     ip: "192.168.1.2"
     category: workstations
     range_exception: true
@@ -103,6 +103,26 @@ devices:
   - hostname: windows-media-ci
     mac: "00:15:5D:01:C1:A1"
     ip: "192.168.1.27"
+    category: servers
+
+  # The Unity CI boxes bought 2026-11-10 (docs/unity-ci-hardware.md), installed
+  # headless by PXE 2026-11-16, k3s agents. ms-a2: Minisforum MS-A2, the MAC of
+  # enp4s0, the one cabled port of its four.
+  - hostname: ms-a2
+    mac: "38:05:25:3B:F0:C0"
+    ip: "192.168.1.28"
+    category: servers
+
+  - hostname: deskslim-2
+    mac: "9C:6B:00:DB:93:04"
+    ip: "192.168.1.29"
+    category: servers
+
+  # deskslim-1 (7900X) is off until its replacement RAM arrives; reserved now so
+  # it comes up here.
+  - hostname: deskslim-1
+    mac: "9C:6B:00:DB:92:C2"
+    ip: "192.168.1.19"
     category: servers
 
   - hostname: pi5-worker1-lan

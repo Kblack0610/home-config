@@ -119,6 +119,28 @@ tests:
           - labels: 'kb_project_number{dept="money", metric="subscribers_active", project="binks-chat"}'
             value: 3
 
+  - name: Edgegap spend is the registry's month per game, a game that has not run reading 0
+    interval: 5m
+    input_series:
+      # Two pods during a rollout report the same database's number once.
+      - series: 'bnb_edgegap_game_spend_usd_month{game="dodginballs", job="game-registry", pod="a"}'
+        values: '4.25x6'
+      - series: 'bnb_edgegap_game_spend_usd_month{game="dodginballs", job="game-registry", pod="b"}'
+        values: '4.25x6'
+      - series: 'bnb_edgegap_game_spend_usd_month{game="shapecity", job="game-registry"}'
+        values: '0x6'
+      # The unlabelled total is not a product.
+      - series: 'bnb_edgegap_spend_usd_month{job="game-registry"}'
+        values: '9x6'
+    promql_expr_test:
+      - expr: kb_project_number{metric="edgegap_usd_month"}
+        eval_time: 30m
+        exp_samples:
+          - labels: 'kb_project_number{dept="money", metric="edgegap_usd_month", project="dodginballs"}'
+            value: 4.25
+          - labels: 'kb_project_number{dept="money", metric="edgegap_usd_month", project="shapecity"}'
+            value: 0
+
   - name: a source down for a day pages, and one that is back does not
     interval: 5m
     input_series:
@@ -134,6 +156,10 @@ tests:
       - series: 'store_reviews_up{store="steam"}'
         values: '1x400'
       - series: 'store_reviews_generated_seconds'
+        values: '0+300x400'
+      - series: 'store_sales_up{store="steam"}'
+        values: '1x400'
+      - series: 'store_sales_generated_seconds'
         values: '0+300x400'
       - series: 'playtest_feedback_up'
         values: '1x400'
@@ -184,6 +210,10 @@ tests:
       - series: 'store_reviews_up{store="steam"}'
         values: '1x400'
       - series: 'store_reviews_generated_seconds'
+        values: '0+300x400'
+      - series: 'store_sales_up{store="steam"}'
+        values: '1x400'
+      - series: 'store_sales_generated_seconds'
         values: '0+300x400'
       - series: 'playtest_feedback_up'
         values: '1x400'
@@ -318,4 +348,82 @@ tests:
         eval_time: 25h
         exp_samples:
           - labels: 'kb_project_source_up{source="sentry-issues"}'
+            value: 0
+
+  - name: store revenue becomes one number per store and currency, and the workstation's labels drop
+    interval: 5m
+    input_series:
+      - series: 'store_sales_amount{project="shape-city", store="steam", currency="usd", job="workstation", instance="192.168.1.2:9100"}'
+        values: '8.99x4'
+      - series: 'store_sales_amount{project="shape-city", store="app_store", currency="eur", job="workstation", instance="192.168.1.2:9100"}'
+        values: '4.2x4'
+      - series: 'store_sales_amount{project="shape-city", store="app_store", currency="usd", job="workstation", instance="192.168.1.2:9100"}'
+        values: '1.4x4'
+      # a read store with nothing sold writes 0; an unread store writes nothing, so no series
+      - series: 'store_sales_amount{project="apociseum", store="steam", currency="usd", job="workstation", instance="192.168.1.2:9100"}'
+        values: '0x4'
+    promql_expr_test:
+      - expr: kb_project_number{dept="money", metric=~"revenue_.*"}
+        eval_time: 10m
+        exp_samples:
+          - labels: 'kb_project_number{dept="money", metric="revenue_steam_usd_1d", project="shape-city"}'
+            value: 8.99
+          - labels: 'kb_project_number{dept="money", metric="revenue_app_store_eur_1d", project="shape-city"}'
+            value: 4.2
+          - labels: 'kb_project_number{dept="money", metric="revenue_app_store_usd_1d", project="shape-city"}'
+            value: 1.4
+          - labels: 'kb_project_number{dept="money", metric="revenue_steam_usd_1d", project="apociseum"}'
+            value: 0
+      - expr: kb_project_number{dept="money", metric=~"revenue_play.*"}
+        eval_time: 10m
+        exp_samples: []
+
+  - name: the store-sales source is up while any store read, though another store never does
+    interval: 5m
+    input_series:
+      # Play never reads (no paid sale), Steam does: the source stays up
+      - series: 'store_sales_up{store="play"}'
+        values: '0x400'
+      - series: 'store_sales_up{store="steam"}'
+        values: '1x400'
+      - series: 'store_sales_generated_seconds'
+        values: '0+300x400'
+    promql_expr_test:
+      - expr: kb_project_source_up{source="store-sales"}
+        eval_time: 10m
+        exp_samples:
+          - labels: 'kb_project_source_up{source="store-sales"}'
+            value: 1
+
+  - name: the store-sales source reads 0 when no store read
+    interval: 5m
+    input_series:
+      - series: 'store_sales_up{store="steam"}'
+        values: '0x400'
+      - series: 'store_sales_generated_seconds'
+        values: '0+300x400'
+    promql_expr_test:
+      - expr: kb_project_source_up{source="store-sales"}
+        eval_time: 10m
+        exp_samples:
+          - labels: 'kb_project_source_up{source="store-sales"}'
+            value: 0
+
+  - name: the store-sales source reads 0 once its last run is over a day old, though a store read then
+    interval: 5m
+    input_series:
+      - series: 'store_sales_up{store="steam"}'
+        values: '1x400'
+      - series: 'store_sales_generated_seconds'
+        values: '0x400'
+    promql_expr_test:
+      - expr: kb_project_source_up{source="store-sales"}
+        eval_time: 23h
+        exp_samples:
+          - labels: 'kb_project_source_up{source="store-sales"}'
+            value: 1
+      - expr: kb_project_source_up{source="store-sales"}
+        eval_time: 25h
+        exp_samples:
+          - labels: 'kb_project_source_up{source="store-sales"}'
             value: 0

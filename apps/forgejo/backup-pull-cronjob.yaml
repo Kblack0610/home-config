@@ -1,6 +1,8 @@
 apiVersion: batch/v1
 kind: CronJob
 metadata:
+  annotations:
+    kblab.me/criticality: high
   name: forgejo-backup-pull
   namespace: forgejo
   labels:
@@ -14,6 +16,7 @@ spec:
   # forgejo-backup-offbox and nas forgejo-packages-backup: they read the asus
   # copy, frozen from then on, and offbox's prune shares this directory.
   schedule: "30 4 * * *"
+  timeZone: America/Los_Angeles
   concurrencyPolicy: Forbid
   successfulJobsHistoryLimit: 3
   failedJobsHistoryLimit: 2

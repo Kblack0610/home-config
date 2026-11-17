@@ -47,6 +47,8 @@ Need to touch a node:
     └── If k3s is sick, kubectl debug won't work either. Last resort: console / IPMI / unplug.
 ```
 
+From a machine whose own key a host refuses (a new laptop, or the workstation is down), the ansible-runner key gets in first: every PXE-built host trusts it. With the SOPS age key at `~/.config/sops/age/keys.txt`, decrypt `ssh-privkey` from `apps/ansible-runner/secret.yaml` into a 0700 scratch dir, pass it as `--private-key` to the play, and delete it after. Then add the machine's key to `authorized_keys_list` in `ansible/roles/authorized-keys/defaults/main.yml` and run `--tags authorized-keys`, so the next visit needs no SOPS.
+
 If SSH is dead but the kubelet is alive, **`kubectl debug node/...` is the escape hatch**. It schedules a privileged pod on the node with the host filesystem mounted at `/host`, no network access to the workstation needed beyond the k8s API.
 
 ## The escape hatch: `kubectl debug node/<k8s-name>`

@@ -1,12 +1,15 @@
 apiVersion: batch/v1
 kind: CronJob
 metadata:
+  annotations:
+    kblab.me/criticality: standard
   name: harvest-backup
   namespace: nas
 spec:
   # Weekly, Sunday 6:00 AM. Files pulled off retired machines: the NAS holds the
   # only other copy.
   schedule: "0 6 * * 0"
+  timeZone: America/Los_Angeles
   concurrencyPolicy: Forbid
   successfulJobsHistoryLimit: 3
   failedJobsHistoryLimit: 3

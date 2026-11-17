@@ -53,13 +53,15 @@
     value: "1"
     sysctl_file: /etc/sysctl.d/60-forgejo-host.conf
 
-- name: app.ini from the cluster's ConfigMap (one source)
-  ansible.builtin.copy:
-    content: "{{ (lookup('file', playbook_dir ~ '/../../apps/forgejo/configmap.yaml') | from_yaml).data['app.ini'] }}"
+# 0600, the mode Forgejo saves it with; it carries the secrets now.
+- name: app.ini from the cluster's ConfigMap, plus what Forgejo writes back
+  ansible.builtin.template:
+    src: app.ini.j2
     dest: /etc/forgejo/app.ini
     owner: "1000"
     group: "1000"
-    mode: "0664"
+    mode: "0600"
+  no_log: true
   notify: Restart forgejo
 
 - name: Secrets env (group_vars/hetzner/vault.sops.yaml vault_forgejo_env)

@@ -23,7 +23,7 @@
     - role: asr-servers
       tags: [asr, ml, dictation]
     - role: desktop-firewall
-      tags: [firewall, agent-web]
+      tags: [firewall, agent-web, pxe]
 
 - name: Workstation monitoring (node_exporter)
   # So cc:host_* and the hub:infra board see this machine's load, memory and
@@ -67,6 +67,20 @@
     - role: node-exporter-linux
       tags: [monitoring, unity-ci]
 
+- name: Cloud Unity CI host monitoring over the tailnet
+  hosts: unity_ci_runners
+  become: true
+  gather_facts: true
+  roles:
+    - role: tailscale-node
+      when: not (unity_ci_lan | default(true) | bool)
+      tags: [monitoring]
+    - role: node-exporter-linux
+      when: not (unity_ci_lan | default(true) | bool)
+      tags: [monitoring]
+      vars:
+        node_exporter_linux_textfile_dir: /var/lib/node-exporter-textfile
+
 - name: Keep Linux host clocks synced (systemd-timesyncd)
   # See ansible/roles/time-sync/README.md. hp-victus was found ~102s behind the
   # rest of the cluster with NO time daemon at all, while every other node sat
@@ -78,7 +92,7 @@
   # Targets the Pis too even though they are already synced: the role is
   # idempotent there, and a drifting clock should be prevented fleet-wide rather
   # than fixed per-host after it bites.
-  hosts: hp-victus:asus-laptop:razer-laptop:pi_k3s
+  hosts: linux_bare_metal:pi_k3s
   become: true
   gather_facts: true
   roles:
@@ -87,8 +101,8 @@
 
 - name: Core dump and local-path PV metrics (k3s nodes)
   # Run before the chart change that mounts the directory.
-  #   ansible-playbook playbooks/site.yml --limit 'hp-victus:asus-laptop:razer-laptop:pi_k3s' --tags disk-metrics
-  hosts: hp-victus:asus-laptop:razer-laptop:pi_k3s
+  #   ansible-playbook playbooks/site.yml --limit 'linux_bare_metal:pi_k3s' --tags disk-metrics
+  hosts: linux_bare_metal:pi_k3s
   become: true
   gather_facts: false
   roles:
@@ -97,8 +111,8 @@
 
 - name: Process, service and Docker container inventory (k3s nodes)
   # For the hub machine page; the workstation's is in its monitoring play.
-  #   ansible-playbook playbooks/site.yml --limit 'hp-victus:asus-laptop:razer-laptop:pi_k3s' --tags inventory-metrics
-  hosts: hp-victus:asus-laptop:razer-laptop:pi_k3s
+  #   ansible-playbook playbooks/site.yml --limit 'linux_bare_metal:pi_k3s' --tags inventory-metrics
+  hosts: linux_bare_metal:pi_k3s
   become: true
   gather_facts: false
   roles:
@@ -175,7 +189,7 @@
   # See ansible/roles/k3s-node-no-suspend/README.md — without this, closing
   # a laptop lid removes the node from the cluster (the 2026-05 hp-victus
   # incident took 4 workloads offline for ~2 weeks).
-  hosts: hp-victus:asus-laptop:razer-laptop
+  hosts: linux_bare_metal
   become: true
   gather_facts: true
   roles:
@@ -230,7 +244,8 @@
     # turbo runs take as --concurrency. Without it a turbo job started 10 tasks
     # on razer's 2-core share, its 6 platform cores sat at 94% CPU pressure and
     # the host's load15 reached 1.58x its CPUs with 45% of them idle (2026-11-14,
-    # NodeLoadHigh, ar-2435).
+    # NodeLoadHigh, ar-2435). Measure a change to it or to the slot counts with
+    # scripts/ci-slot-effect.py.
     linux_ci_slot_cpus: >-
       {% set cpus = [] %}{% for part in ((ci_linux_cpus | default('')) or ci_cpus).split(',')
       if part | trim %}{% set ab = (part | trim).split('-') %}{% for c in range(ab[0] | int,
@@ -426,29 +441,26 @@
         tasks_from: disk
       tags: [mac, ci-disk]
 
-# Phase B: k3s-agent role is AUTHORED but not bound. Applying it against
-# running cluster nodes reinstalls k3s — the user enables this binding when
-# they are ready to converge the fleet (set vault_k3s_token first).
-#
-# - name: k3s cluster nodes (pi_k3s + linux_bare_metal)
-#   hosts: pi_k3s:linux_bare_metal
-#   become: true
-#   gather_facts: true
-#   roles:
-#     - role: k3s-agent
-#       tags: [k3s]
-
-# The first host the k3s-agent role joins. hp-victus and asus-laptop were joined
-# by the PXE cluster profile before the role existed; add them here once their
-# agents are pinned to the server's version (they run v1.34.4 against a v1.33.5
-# server, so a converge would downgrade them). After the first join, label the
-# node by hand, since a kubelet may not set node-role labels on itself:
-#   kubectl label node razer-laptop node-role.kubernetes.io/workstation=true
-#   ansible-playbook playbooks/site.yml --limit razer-laptop --tags k3s --check --diff
-- name: k3s agent (razer-laptop)
-  hosts: razer-laptop
+# Every k3s node runs k3s_install_version (group_vars/all/k3s.yml). The server
+# goes first: a kubelet may never be newer than the apiserver. Then the agents,
+# one at a time, stopping at the first failure. After a new node joins, label it
+# by hand (a kubelet may not set node-role labels on itself):
+#   kubectl label node <host> node-role.kubernetes.io/workstation=true
+- name: k3s server (pi5-master)
+  hosts: pi5-master
   become: true
   gather_facts: true
+  any_errors_fatal: true
+  roles:
+    - role: k3s-agent
+      tags: [k3s]
+
+- name: k3s agents, one at a time
+  hosts: pi_k3s:linux_bare_metal:!pi5-master
+  become: true
+  gather_facts: true
+  serial: 1
+  max_fail_percentage: 0
   roles:
     - role: k3s-agent
       tags: [k3s]
@@ -468,16 +480,14 @@
 #     - role: osquery-agent
 #       tags: [fleet, osquery]
 
-# Game server nodes (game_server_nodes in inventory.yml): the label the
-# playground server's Deployment pins to. The cores it keeps are left out of the
-# host's ci_cpus, which the CI plays apply.
-- name: Game server nodes
-  hosts: game_server_nodes
+# Tier and game-server labels share one delegated kubectl path.
+- name: Kubernetes node labels
+  hosts: k3s_nodes
   become: false
   gather_facts: false
   roles:
-    - role: game-server-node
-      tags: [game-server]
+    - role: node-labels
+      tags: [node-labels, game-server]
 
 # BNB Unity runner pool: org-scoped runners every BlackNBrownStudios repo can use
 # with runs-on [self-hosted, linux, unity] (added 2026-10-05). Slots per host live
@@ -767,6 +777,16 @@
     - role: thermal-cap
       tags: [thermal]
 
+# Tools for scripts/host-qualify.py (stress-ng, fio, smartctl). See roles/host-qualify.
+#   ansible-playbook playbooks/site.yml --limit linux_bare_metal:pi_k3s --tags host-qualify --check --diff
+- name: Host qualification tools
+  hosts: linux_bare_metal:pi_k3s
+  become: true
+  gather_facts: true
+  roles:
+    - role: host-qualify
+      tags: [host-qualify]
+
 # Keep a headless host's discrete GPU off: no driver, card in D3cold. Remove
 # anything holding /dev/nvidia* first, or the unload fails.
 # See ansible/roles/dgpu-off/README.md.
@@ -876,6 +896,15 @@
   roles:
     - role: github-actions-runner-windows
       tags: [windows, runner]
+
+# The ssh keys that may log in, from roles/authorized-keys (additive).
+#   ansible-playbook playbooks/site.yml --limit linux_bare_metal --tags authorized-keys
+- name: Authorized keys (bare-metal Linux)
+  hosts: linux_bare_metal
+  gather_facts: false
+  roles:
+    - role: authorized-keys
+      tags: [authorized-keys]
 
 # Login passwords on the PXE-built Linux hosts: the user's from
 # vault_linux_login_password_hash, root's locked. Last on purpose: its assert

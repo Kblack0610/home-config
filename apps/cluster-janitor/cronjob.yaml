@@ -48,5 +48,9 @@ spec:
                   mountPath: /scripts
           volumes:
             - name: scripts
-              configMap:
-                name: cluster-janitor-script
+              projected:
+                sources:
+                  - configMap:
+                      name: cluster-janitor-script
+                  - configMap:
+                      name: cluster-janitor-quarantine

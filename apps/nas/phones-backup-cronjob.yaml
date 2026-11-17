@@ -1,6 +1,8 @@
 apiVersion: batch/v1
 kind: CronJob
 metadata:
+  annotations:
+    kblab.me/criticality: standard
   name: phones-backup
   namespace: nas
 spec:
@@ -8,6 +10,7 @@ spec:
   # runs `phone-backup <name>` with the phone plugged in, so weekly is plenty;
   # 14 weekly snapshots ~= 3 months of history.
   schedule: "15 4 * * 0"
+  timeZone: America/Los_Angeles
   successfulJobsHistoryLimit: 3
   failedJobsHistoryLimit: 3
   jobTemplate:

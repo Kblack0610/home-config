@@ -60,14 +60,20 @@ spec:
               Check the freqtrade-watcher pod and its log. Every bot's equity is going unwatched
               (apps/freqtrade/README.md, Troubleshooting).
 
+        # Each bot's limit is trader_watch_unseen_limit_seconds, owned by the trader repo (web/exporter.py, README
+        # metrics table): a paper account is read only when its venue's pass marks it, so a slow venue gets that
+        # venue's limit. A bot with no limit series falls back to 300 s, so an exporter that drops the series cannot
+        # silence the alert. Matched on every label, not on(bot): two trader-web pods overlap in a rollout (ar-2510).
         - alert: TraderWatchBotBlind
-          expr: trader_watch_unseen_seconds > 300
+          expr: >-
+            trader_watch_unseen_seconds > trader_watch_unseen_limit_seconds
+            or (trader_watch_unseen_seconds > 300 unless trader_watch_unseen_limit_seconds)
           labels:
             severity: warning
             fleet: fix
             category: trading
           annotations:
-            summary: "The watcher has not read bot {{ $labels.bot }} for 5 minutes"
+            summary: "The watcher has not read bot {{ $labels.bot }} within its limit"
 
         - alert: TraderDailyLossBreach
           expr: trader_watch_breached == 1

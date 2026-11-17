@@ -1,0 +1,11 @@
+---
+# The home-k3s API server, `pi5-master` per inventory.yml. Agents join it
+# (roles/k3s-agent) and the fleet home reads the exporter feed through it
+# (roles/fleet-worker tasks/home.yml). Override in host_vars when introducing a
+# second control plane.
+k3s_url: "https://192.168.1.20:6443"
+
+# The one k3s version for every node (roles/k3s-agent): fresh joins install it,
+# existing nodes are upgraded to it in place. Step one minor at a time, server
+# first (playbooks/site.yml runs it before the agents), and never lower it.
+k3s_install_version: v1.34.13+k3s1

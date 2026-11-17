@@ -123,17 +123,19 @@ spec:
             # https://play.kblack.dev/p/<id> (ingress.yaml, binks-demos). This
             # host answers /p/<id> only and sends a CSP sandbox header on every
             # response (platform apps/binks/api/README.md, Shareable demos).
-            # Off until the owner answers the asks filed 2026-11-14: whether
-            # demos may live on kblack.dev at all, and who may publish
-            # (plus = Binks Plus subscribers only, 'all' = every signed-in
-            # user). DEMO_TTL_DAYS defaults to 30. Off, the host still answers
-            # 404 with the sandbox header, so the route and Gatus check work.
+            # On from the binks tag that carries platform #1567 and #1590 (the
+            # human's go, 2026-11-17: demos on play.kblack.dev, every signed-in
+            # user may publish, plus = Binks Plus only). DEMO_TTL_DAYS defaults
+            # to 30. Set PUBLISH_ENABLED back to 'false' to turn publishing off:
+            # the host then answers 404 with the sandbox header, so the route and
+            # Gatus check keep working. The fleet publishes as its own user with
+            # a bk_pat_ token (docs/credentials.md, "binks demo token").
             - name: PUBLISH_ENABLED
-              value: 'false'
+              value: 'true'
             - name: PUBLISH_HOST
               value: play.kblack.dev
             - name: DEMO_PUBLISH_TIER
-              value: plus
+              value: all
             # Outside clients: the OAuth server, API tokens, consent page and /mcp
             # (platform apps/binks/api/README.md, Client auth). It is the kill
             # switch for all of them. Off until the owner releases a binks-api tag

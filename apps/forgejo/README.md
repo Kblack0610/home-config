@@ -9,42 +9,38 @@ and repository mirroring enabled.
 | File | Purpose |
 |------|---------|
 | `kustomization.yaml` | Reconciles namespace, app, services, ingress, backup, and runner |
-| `configmap.yaml` | Forgejo `app.ini` — Actions, Packages, Mirroring enabled |
-| `secret.sops.yaml` | SOPS-encrypted `LFS_JWT_SECRET`, `INTERNAL_TOKEN`, `JWT_SECRET` and `SECRET_KEY`, as `FORGEJO__<section>__<key>` env vars |
-| `deployment.yaml` | The old in-cluster workload, at 0 replicas since the cutover; kept for rollback, removed at cleanup |
 | `service-http.yaml` | `forgejo-http:3000`, an ExternalName of `forge-primary.kblab.me`, the record that names the live host |
 | `service-ssh.yaml` | `forgejo-ssh:2222`, the same ExternalName; the host publishes the container's sshd on 2222 |
 | `ingress.yaml` | TLS ingress for `git.kblab.me` (git, registry, API, Flux) |
 | `ingressroute-browser-redirect.yaml` | Redirects browsers (`Accept: text/html`) on `git.kblab.me` to `git.kennethblack.me`, so one login cookie covers every page |
-| `pvc.yaml` | The asus copy, frozen at the cutover (`/mnt/backups/forgejo-live/data`); the rollback source until cleanup |
+| `scrapeconfig-mirror-exporter.yaml` | Prometheus scrape of the mirror exporter on forge-hel1 (`forge-primary.kblab.me:9310`) |
 | `runner-deployment.yaml` | Forgejo Runner + DinD sidecar (razer-laptop only; asus-laptop and hp-victus are `no_ci_hosts`) |
 | `runner-config-cm.yaml` | Runner config with `docker` + `linux-amd64` labels |
 | `runner-secret.yaml` | SOPS-encrypted instance-level runner registration token |
 
 ## Configuration
 
-The configmap mounts to `/etc/gitea/app.ini`. An **init container** (`config-seed`)
-copies it to `/data/gitea/conf/app.ini` on every pod start, because Forgejo reads
-config from the PVC path, not the configmap mount.
+`app.ini` is `ansible/roles/forgejo-host/files/app.ini`, rendered by `templates/app.ini.j2` into `/etc/forgejo/app.ini` on the host and mounted at `/data/gitea/conf/app.ini`. To change it, edit the file and re-run the play, which restarts Forgejo on a change: `cd ansible && ansible-playbook playbooks/site.yml --limit forge-hel1`.
 
-That copy overwrites `app.ini`, so a generated secret that lives only there is regenerated on every start. Secrets go in `secret.sops.yaml`: the image's `environment-to-ini` writes each `FORGEJO__<section>__<key>` env var into the seeded file before Forgejo starts. `scripts/check-secret-store.py` fails CI if one of them appears in plain text. To rotate:
+The server secrets (`SECRET_KEY`, `INTERNAL_TOKEN`, `JWT_SECRET`, `LFS_JWT_SECRET`) live in `vault_forgejo_env` in `ansible/group_vars/hetzner/vault.sops.yaml`, as `FORGEJO__<section>__<KEY>` names that the template writes into `app.ini`. `scripts/check-secret-store.py` fails CI if one appears in plain text. To rotate:
 
 ```bash
-sops apps/forgejo/secret.sops.yaml   # paste values from: forgejo generate secret <LFS_JWT_SECRET|INTERNAL_TOKEN|JWT_SECRET>
+sops ansible/group_vars/hetzner/vault.sops.yaml   # paste values from: forgejo generate secret <LFS_JWT_SECRET|INTERNAL_TOKEN|JWT_SECRET>
+cd ansible && ansible-playbook playbooks/site.yml --limit forge-hel1
 ```
 
-Commit and push, then delete the pod, because a changed Secret does not restart it. Rotating `LFS_JWT_SECRET` fails any LFS transfer in flight; `JWT_SECRET` ends OAuth2 and Actions job tokens.
+The play restarts Forgejo. Rotating `LFS_JWT_SECRET` fails any LFS transfer in flight; `JWT_SECRET` ends OAuth2 and Actions job tokens.
 
 ### Rotating SECRET_KEY
 
 `SECRET_KEY` seals stored data (Actions secrets, TOTP, push mirror keys, webhook auth headers, LDAP bind passwords), so a new key alone leaves every Actions secret unreadable. Until 2026-11-11 it was unset and Forgejo used its built-in default. `scripts/forgejo-secret-key-rotate.py` re-encrypts the `secret` table from the old key to the new one, and refuses if any of the other sealed data exists, because it does not migrate it. Run it only while Forgejo is stopped:
 
-1. Put the new key in `secret.sops.yaml` without printing it: `kubectl -n forgejo exec deploy/forgejo -c forgejo -- forgejo generate secret SECRET_KEY | python3 -c 'import json,sys; print(json.dumps(sys.stdin.read().strip()))' | sops set --value-stdin apps/forgejo/secret.sops.yaml '["stringData"]["FORGEJO__security__SECRET_KEY"]'`, then open the PR.
-2. `flux suspend kustomization apps`, merge, `flux reconcile source git flux-system`, then `kubectl -n forgejo scale deploy/forgejo --replicas=0`.
-3. On the node `pvc.yaml` pins, copy `gitea/gitea.db` under the PV path aside (the rollback), then run the tool as uid 1000 with `OLD_SECRET_KEY` (omit while it is the default) and `NEW_SECRET_KEY` in the environment, both from `sops -d --extract '["stringData"]["FORGEJO__security__SECRET_KEY"]'` piped into the remote environment, never typed: once without `--apply` (every row must decrypt and the new key must pass its checks), then with it. Do not resume until `--apply` prints that every row read back.
-4. `flux resume kustomization apps`. Check with a `workflow_dispatch` of `mirror-to-github`, which reads the `MIRROR_DEPLOY_KEY` secret.
+1. Put the new key in `vault_forgejo_env` (`FORGEJO__security__SECRET_KEY`) without printing it: generate it with `ssh forge-hel1 docker compose -f /etc/forgejo/compose.yaml exec -u git forgejo forgejo generate secret SECRET_KEY` piped into `sops set` on `ansible/group_vars/hetzner/vault.sops.yaml`, then open the PR. Do not apply the play yet.
+2. On forge-hel1, `systemctl stop forgejo`.
+3. Copy `gitea/gitea.db` under `/mnt/forgejo/data` aside (the rollback), then run the tool as uid 1000 with `OLD_SECRET_KEY` (omit while it is the default) and `NEW_SECRET_KEY` in the environment, both from `sops -d --extract` of the vault, piped into the remote environment, never typed: once without `--apply` (every row must decrypt and the new key must pass its checks), then with it. Do not start Forgejo until `--apply` prints that every row read back.
+4. Run the play (`cd ansible && ansible-playbook playbooks/site.yml --limit forge-hel1`), which writes the new key and starts Forgejo. Check with a `workflow_dispatch` of `mirror-to-github`, which reads the `MIRROR_DEPLOY_KEY` secret.
 
-Snapshots and nightly fulls from before the rotation hold secrets sealed under the old key: restoring one needs that key back in the Secret, or the tool run again. Sessions, cookies and email codes do not use `SECRET_KEY` in 14.x, so nobody is logged out.
+Snapshots and nightly fulls from before the rotation hold secrets sealed under the old key: restoring one needs that key back in `vault_forgejo_env`, or the tool run again. Sessions, cookies and email codes do not use `SECRET_KEY` in 14.x, so nobody is logged out.
 
 Rollback: stop Forgejo, put the copied db back, revert the key, start it.
 
@@ -61,11 +57,6 @@ Key config sections:
 
 - `START_SSH_SERVER = false` — the container's OpenSSH handles port 22. Forgejo's
   built-in SSH server conflicts with it on the same port.
-- **subPath configmap mounts don't auto-update.** After changing `configmap.yaml`,
-  you must delete the pod to pick up changes:
-  ```bash
-  kubectl --context home-k3s delete pod -n forgejo -l app.kubernetes.io/name=forgejo
-  ```
 
 ### Issue numbers after a restore
 
@@ -73,7 +64,7 @@ A restore from an older backup restarts each repo's issue/PR counter (`issue_ind
 
 1. Copy the lost instance's db next to the live one with `sqlite3 <db> ".backup hp.db"`, which folds in its WAL.
 2. Dry run against the live db (it only reads): `python3 forgejo-issue-index-raise.py <live gitea.db> --from hp.db`.
-3. `kubectl -n forgejo scale deploy/forgejo --replicas=0` (with `apps` suspended, or Flux scales it back), `sqlite3 <live gitea.db> ".backup <live dir>/../gitea.db.pre-issue-index-<date>"`, rerun with `--apply`, scale back to 1.
+3. `systemctl stop forgejo` on the host, `sqlite3 <live gitea.db> ".backup <live dir>/../gitea.db.pre-issue-index-<date>"`, rerun with `--apply`, `systemctl start forgejo`.
 4. The next PR on each raised repo gets the new number.
 
 Rollback: stop Forgejo, put the copied db back, start it. The host's login shell may be fish (asus-laptop): send multi-line steps through `ssh <host> bash -s`.
@@ -83,7 +74,7 @@ Rollback: stop Forgejo, put the copied db back, start it. The host's login shell
 Instance-level runners serve all repos on the Forgejo instance, each with a
 Docker-in-Docker sidecar for container-based CI workflows. DinD is a native sidecar (an init container with `restartPolicy: Always`), so the runner starts only after `docker info` answers and stops before DinD does. Runners register against the in-cluster Service `http://forgejo-http.forgejo.svc.cluster.local:3000`, not `git.kblab.me`, so polling, logs and artifacts skip Traefik; jobs still clone from `ROOT_URL`.
 
-It runs **1 replica, on razer-laptop**. `runner-deployment.yaml` requires an amd64 workstation node (`node-role.kubernetes.io/workstation`) that is in neither `no_ci_hosts` host: not hp-victus (the Forgejo node, whose data PV is pinned there, so one disk stall would take out the forge and all of CI together) and not asus-laptop (databases and Forgejo backups); `no_ci_hosts` in `ansible/inventory.yml` says why. If razer-laptop dies, the replica stays Pending until it returns, by design. Rollouts replace the pod in place (`maxSurge: 0`), because a surge pod has no free node to land on. Each pod
+It runs **1 replica, on razer-laptop**. `runner-deployment.yaml` requires an amd64 workstation node (`node-role.kubernetes.io/workstation`) that is in neither `no_ci_hosts` host: not hp-victus (it runs Frigate and other heavy pods, and went NotReady under CI on 2026-11-13) and not asus-laptop (databases and Forgejo backups); `no_ci_hosts` in `ansible/inventory.yml` says why. If razer-laptop dies, the replica stays Pending until it returns, by design. Rollouts replace the pod in place (`maxSurge: 0`), because a surge pod has no free node to land on. Each pod
 registers under its own pod name (`--name "$POD_NAME"` via the downward API),
 which is mandatory with more than one replica — otherwise both would register as
 `forgejo-runner` and collide.
@@ -97,8 +88,8 @@ which is mandatory with more than one replica — otherwise both would register 
 Generate a new registration token (if needed):
 
 ```bash
-kubectl --context home-k3s exec -n forgejo deploy/forgejo -- \
-  su-exec git forgejo forgejo-cli actions generate-runner-token
+ssh forge-hel1 docker compose -f /etc/forgejo/compose.yaml exec -u git forgejo \
+  forgejo actions generate-runner-token
 ```
 
 Check runner status:
@@ -165,8 +156,8 @@ Runners need no work: they register instance-level (`owner_id=0, repo_id=0`), so
 Mint a token with the admin CLI rather than the UI when scripting:
 
 ```bash
-kubectl --context home-k3s exec -n forgejo deploy/forgejo -c forgejo -- \
-  su-exec git forgejo admin user generate-access-token \
+ssh forge-hel1 docker compose -f /etc/forgejo/compose.yaml exec -u git forgejo \
+  forgejo admin user generate-access-token \
     -u kblack0610 -t <name> --scopes write:repository --raw
 ```
 
@@ -195,14 +186,15 @@ flux reconcile kustomization apps --with-source --context home-k3s
 ## Verify
 
 ```bash
-# Pod health
-kubectl --context home-k3s get pods -n forgejo
-kubectl --context home-k3s logs -n forgejo deploy/forgejo --tail=50
+# Forgejo health
+ssh forge-hel1 docker compose -f /etc/forgejo/compose.yaml ps
+ssh forge-hel1 docker compose -f /etc/forgejo/compose.yaml logs forgejo --tail=50
+ssh forge-hel1 docker compose -f /etc/forgejo/compose.yaml logs mirror-exporter --tail=20
 
 # Runner status
 kubectl --context home-k3s logs -n forgejo deploy/forgejo-runner -c runner --tail=10
 
-# Backup jobs
+# Backup pull job
 kubectl --context home-k3s get cronjob -n forgejo
 
 # Web UI
@@ -220,13 +212,7 @@ Endpoints:
 
 ## Backup Notes
 
-- Forgejo runs on forge-hel1 since 2026-11-14 (plan `virtual-strolling-nova`). The jobs that read its disk run there ("On forge-hel1" below) and `forgejo-backup-pull` copies them to asus. The in-cluster CronJobs listed next are suspended since the cutover: they would read the frozen asus copy. They are removed at cleanup; `forgejo-backup` and `forgejo-backup-offbox` already were (2026-11-16, `backup-cronjob.yaml` in git history), since their old Jobs kept `HomelabBackupStale` firing.
-- `forgejo-db-snapshot` runs hourly: `VACUUM INTO` plus `quick_check`, 48 kept in `/mnt/backups/forgejo-live/snapshots`.
-- `forgejo-backup` runs daily at `03:00` on asus and writes a full archive and the newest DB snapshot to `/mnt/backups/forgejo`. While Forgejo runs from the restore, that is the same disk as the live data (nvme0n1p2), so the 8TB copy below is the only one on another disk.
-- Retention: newest **7**. Archives are written to `*.tmp` and renamed on success, so a partial never looks like a backup. Pruning runs after a good backup, and the job aborts if `/backup` has under 100G free.
-- GNU tar exit 1 ("file changed as we read it") counts as success, since the archive is complete and Forgejo keeps writing during the backup. Exit 2 fails the job.
-- `gitea/data/packages` (218G) is excluded. `forgejo-packages-backup` in the `nas` namespace mirrors it weekly to the 8TB drive.
-- `forgejo-backup-offbox` runs at `04:30` and keeps the newest **3** fulls on the 8TB drive (`/mnt/backup-8t/forgejo-backups`). It reads only completed archives, checks size and `gzip -t`, and aborts if the copy would leave the drive under 500G free.
+- Forgejo runs on forge-hel1 since 2026-11-14 (plan `virtual-strolling-nova`). The jobs that read its disk run there ("On forge-hel1" below) and `forgejo-backup-pull` copies them to asus.
 - `scripts/forgejo-restore-drill.sh` (root, on asus) restores the newest full on the 8TB drive and its own snapshot into a network-less container and checks it boots and every repo passes `git fsck`; what it leaves out is in `docs/backup-runbook.md`. It runs every Saturday from `ansible/roles/forgejo-restore-drill`, and the Sentinel watch `forgejo-restore-drill` pages when a run fails or none passed in 8 days.
 - `nas-backup-verify` checks weekly that the newest full on the 8TB drive is under 48h old, passes `gzip -t`, and has its paired db.
 - History: on 2026-07-09 a retention of 30 (~1.6TiB of daily fulls) filled asus-laptop's root disk, tripped kubelet DiskPressure, and evicted the entire home-k3s workload cluster for ~6h. Retention was cut to 7 and a prune-first + free-space guard added.
@@ -235,9 +221,9 @@ Endpoints:
 
 `ansible/roles/forgejo-host` enables these timers on every host, and each run is skipped unless the compose `forgejo` container is up, so they run only where Forgejo runs.
 
-- `forgejo-db-snapshot.timer` (hourly :07) and `forgejo-lock-reaper.timer` (hourly :17) run the scripts from `db-snapshot-cronjob.yaml` and `lock-reaper-cronjob.yaml` in `docker run`, so one copy of each script exists. Snapshots land in `/mnt/forgejo/backups/snapshots`; the reaper pages through `https://ntfy.kblab.me/homelab-alerts`.
-- `/etc/forgejo/app.ini` (0600) is `configmap.yaml`'s app.ini plus what Forgejo writes back at start: `WORK_PATH` and each `FORGEJO__*` key of `vault_forgejo_env` (`templates/app.ini.j2`). Forgejo saves the file only when one of those is missing or differs, so it stays as rendered and the play reports no change. A JWT secret that is not 32 bytes of base64url is regenerated and saved, which drifts again.
-- The mirror exporter is a second service in `/etc/forgejo/compose.yaml`, with image, command and env from `apps/forgejo-mirror-exporter/deployment.yaml`, on port 9310.
+- `forgejo-db-snapshot.timer` (hourly :07) and `forgejo-lock-reaper.timer` (hourly :17) run `files/jobs/forgejo-db-snapshot.sh` and `files/jobs/forgejo-lock-reaper.sh` in `docker run` (image and env in `forgejo_host_jobs` in the role's `defaults/main.yml`). Snapshots land in `/mnt/forgejo/backups/snapshots`; the reaper pages through `https://ntfy.kblab.me/homelab-alerts`.
+- `/etc/forgejo/app.ini` (0600) is the role's `files/app.ini` plus what Forgejo writes back at start: `WORK_PATH` and each `FORGEJO__*` key of `vault_forgejo_env` (`templates/app.ini.j2`). Forgejo saves the file only when one of those is missing or differs, so it stays as rendered and the play reports no change. A JWT secret that is not 32 bytes of base64url is regenerated and saved, which drifts again.
+- The mirror exporter is a second service in `/etc/forgejo/compose.yaml`, named `mirror-exporter`, with its script in `files/mirror-exporter/`, image in `forgejo_host_exporter_image`, env in `forgejo_host_exporter_env`, on port 9310.
 - No full is written on the VM, which keeps it to the hourly snapshots and Forgejo itself. `forgejo-backup-pull` (asus, 04:30) builds it instead. Over the tailnet, with a root key whose forced command is `rrsync -ro /mnt/forgejo` (private half in `backup-pull-secret.sops.yaml`), it mirrors the hourly snapshots and the data tree into `/mnt/backup-8t/forgejo-backups/{snapshots,tree}`, then tars the tree into `forgejo-full-<ts>.tar.gz` with the newest snapshot as `forgejo-db-<ts>.db.gz`, 3 kept, 500G free floor. It refuses a snapshot over 2h old or a source that lists nothing.
 - The same job copies `data/gitea/data/packages` add-only (no deletes) into `/mnt/backup-8t/forgejo-packages` and takes the weekly `forgejo-packages-<ts>` snapshot, 4 kept. This is temporary: plan `vectorized-pondering-turtle` P2 moves packages to object storage with a B2 copy and deletes this pull path.
 
@@ -250,9 +236,9 @@ One Forgejo writes at a time, always. On 2026-11-13 a second copy on asus forked
 | Which host is live | the Cloudflare A record `forge-primary.kblab.me` (DNS-only, TTL 60, record id `e136e5abd6105d75db0df0823d7be623`), holding that host's tailnet IP. It is the one source; nothing in git names the host |
 | The live Forgejo | forge-hel1 (Hetzner cx33, hel1, tailnet `100.125.203.14`), `docker compose` in `/etc/forgejo`, unit `forgejo.service`, data on the volume at `/mnt/forgejo/data` |
 | The fence | `/usr/local/sbin/forge-fence-check` (from the role's `files/`), the `ExecCondition` of `forgejo.service`. It reads the record from 1.1.1.1 and lets Forgejo start only on the host it names. Another host, or a record it cannot read, skips the start (the unit is not failed), so a standby or a dead primary that boots again stays down |
-| How the cluster reaches it | `forgejo-http` and `forgejo-ssh` are ExternalNames of the record. Pods resolve it through `apps/coredns` (straight to 1.1.1.1, past the LAN wildcard), Traefik follows it (`allowExternalNameServices` in `apps/crowdsec/helmchartconfig.yaml`), and the traffic goes over each node's tailscale0. The mirror exporter is scraped at `forge-primary.kblab.me:9310` (ScrapeConfig in `apps/forgejo-mirror-exporter`) |
+| How the cluster reaches it | `forgejo-http` and `forgejo-ssh` are ExternalNames of the record. Pods resolve it through `apps/coredns` (straight to 1.1.1.1, past the LAN wildcard), Traefik follows it (`allowExternalNameServices` in `apps/crowdsec/helmchartconfig.yaml`), and the traffic goes over each node's tailscale0. The mirror exporter is scraped at `forge-primary.kblab.me:9310` (`apps/forgejo/scrapeconfig-mirror-exporter.yaml`) |
 | How LAN users reach it | `git.kblab.me` resolves to Traefik (`192.168.1.124`), which proxies to `forgejo-http` |
-| The frozen copy | asus-laptop `/mnt/backups/forgejo-live/data` (PV `forgejo-data-asus`), as of the cutover; rollback source until cleanup |
+| The frozen copy | asus-laptop `/mnt/backups/forgejo-live/data`, as of the cutover, left on disk until the reap on 2026-11-27 (queue item `forgejo-asus-copy-reap`); nothing in the cluster runs it |
 
 A move changes the record, never git. That matters because Flux pulls from this Forgejo (`clusters/home-k3s/flux-system/gotk-sync.yaml`): a pointer kept in git would need the Forgejo it points at to fetch its own fix.
 
@@ -266,22 +252,22 @@ curl -s https://git.kblab.me/api/healthz
 
 Move it (manual until plan `vectorized-pondering-turtle` P5 ships `scripts/forge-move`; the new host must already run `ansible/roles/forgejo-host`):
 
-1. Freeze: `systemctl stop forgejo` on the old host (or `kubectl -n forgejo scale deploy/forgejo --replicas=0` for the old in-cluster copy). Confirm nothing answers on the old address.
+1. Freeze: `systemctl stop forgejo` on the old host. Confirm nothing answers on the old address.
 2. Copy the delta: `rsync -aH --numeric-ids --delete` of the data tree from the old host to the new one, as root, with Forgejo stopped on both.
 3. Flip the record to the new host's tailnet IP (a Cloudflare token with DNS edit on kblab.me):
    `curl -X PATCH -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' https://api.cloudflare.com/client/v4/zones/<kblab.me zone id>/dns_records/e136e5abd6105d75db0df0823d7be623 -d '{"content":"<new tailnet IP>"}'`
 4. Start: `systemctl start forgejo` on the new host; `forge-fence-check` there must print that the record names it. Wait out the 60 s TTL for the cluster to follow.
 5. Verify: the checks above, a push, a PR comment, `flux get sources git` fetching a new revision.
 
-A change that needs Flux paused (a merge that moves Forgejo, the in-cluster copy's Services, or its Deployment) resumes in this order, never the other way round:
+A change that needs Flux paused (a merge that moves Forgejo or its Services) resumes in this order, never the other way round:
 
 1. `flux resume source git flux-system`, then `flux reconcile source git flux-system`.
 2. Check the source holds the merge: `kubectl -n flux-system get gitrepository flux-system -o jsonpath='{.status.artifact.revision}'` is the merge commit or a descendant of it.
 3. Only then `flux resume kustomization apps`.
 
-Resuming the Kustomization first applies whatever revision the source fetched before the merge. On 2026-11-14 that was master from before #977: it scaled the asus Deployment back to 1 and pointed the Services at it, and for two minutes asus took writes (a PR took #986 again, reopened on hel1 as #991). Until cleanup deletes the in-cluster Deployment, any stale revision can do the same.
+Resuming the Kustomization first applies whatever revision the source fetched before the merge. On 2026-11-14 that was master from before #977: it scaled the asus Deployment back to 1 and pointed the Services at it, and for two minutes asus took writes (a PR took #986 again, reopened on hel1 as #991).
 
-Roll back to asus (until cleanup reaps the asus copy): stop forge-hel1 (`systemctl stop forgejo`), park the record on `192.0.2.1` (names no host) so the fence keeps it down, rsync `/mnt/forgejo/data/` back to `/mnt/backups/forgejo-live/data/` (writes since the cutover), revert the cutover PR (selector Services, `replicas: 1`, the CronJob suspends), and apply the Services by hand, since Flux cannot fetch while Forgejo is down.
+To fall back to home, restore a backup onto a host that runs the `forgejo-host` role and flip the record ("Move it" above). Park the record on `192.0.2.1` (names no host) while forge-hel1 is stopped so the fence keeps every host down.
 
 ### Troubleshooting
 
@@ -294,8 +280,7 @@ Roll back to asus (until cleanup reaps the asus copy): stop forge-hel1 (`systemc
 | Traefik 404 or `externalName services not allowed` | `allowExternalNameServices` missing from the Traefik args | `apps/crowdsec/helmchartconfig.yaml`; `kubectl -n kube-system get deploy traefik -o yaml \| grep -i externalname` |
 | A large package PUT gets 502 at exactly 60s | Traefik 3's entrypoint `readTimeout` (60s default) bounds the whole body, and an upload to forge-hel1 runs at uplink speed | `readTimeout: 30m` on `web` and `websecure` in `apps/crowdsec/helmchartconfig.yaml` (hc-433); check `kubectl -n kube-system get deploy traefik -o yaml \| grep readTimeout` |
 | Flux stuck on an old revision after a move | the new host is not answering yet | fix the host; Flux fetches on its next interval, or `flux reconcile source git flux-system` |
-| The asus Forgejo pod starts again after `flux resume` | the Kustomization was resumed before the source fetched the merge, so it applied an older master (replicas 1, selector Services) | `flux suspend kustomization apps`, `kubectl -n forgejo scale deploy/forgejo --replicas=0`, re-apply the ExternalName Services (`kubectl apply --server-side --field-manager=kustomize-controller --force-conflicts -f apps/forgejo/service-http.yaml`, same for ssh), list what asus wrote meanwhile (rows with `created_unix`/`updated_unix` past the freeze, refs newer than it) and carry each to the live host; then resume in the order above |
-| Two Forgejos answer | someone started a copy past the fence (override, or the old in-cluster Deployment) | stop the one the record does not name at once; the data has forked from that moment, so compare PR numbers as on 2026-11-13 (#961, #962) before anything else writes |
+| Two Forgejos answer | someone started a copy past the fence (a fence override) | stop the one the record does not name at once; the data has forked from that moment, so compare PR numbers as on 2026-11-13 (#961, #962) before anything else writes |
 
 ## Lost Actions assignments
 

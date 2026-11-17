@@ -1,11 +1,11 @@
 {#
-  apps/forgejo/configmap.yaml's app.ini (one source), plus what Forgejo writes
+  files/app.ini (no secrets: the repo is public), plus what Forgejo writes
   back into it at start: WORK_PATH, and each FORGEJO__<section>__<KEY> in
   secrets.env (the image's environment-to-ini). Both save only when a value is
   missing or differs, so with them already here Forgejo leaves the file alone
   and the play converges to no change.
 #}
-{% set ini = (lookup('file', playbook_dir ~ '/../../apps/forgejo/configmap.yaml') | from_yaml).data['app.ini'] %}
+{% set ini = lookup('file', role_path ~ '/files/app.ini') %}
 {% set env = {} %}
 {% for name, value in (vault_forgejo_env | default({})).items() if name.startswith('FORGEJO__') %}
 {% set parts = name.split('__') %}

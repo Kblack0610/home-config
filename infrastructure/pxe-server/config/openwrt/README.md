@@ -1,5 +1,7 @@
 # OpenWRT PXE Configuration
 
+**Not needed for this setup.** `pxe-server` runs dnsmasq as proxy-DHCP (`config/dnsmasq.conf`), which answers PXE clients next to the router's DHCP server, so the router needs no option. This guide is only for running without proxy-DHCP.
+
 This guide explains how to configure your OpenWRT router to enable PXE booting
 from your workstation.
 
@@ -115,30 +117,26 @@ When a client boots, you should see DHCP DISCOVER/OFFER/ACK messages.
 
 3. Ensure boot files exist:
    ```bash
-   ls -la ~/.local/src/pxe-server/boot/uefi/
-   ls -la ~/.local/src/pxe-server/boot/bios/
+   ls -la ~/dev/home/home-config/infrastructure/pxe-server/boot/uefi/
+   ls -la ~/dev/home/home-config/infrastructure/pxe-server/boot/bios/
    ```
 
 ### Firewall Issues
 
 If using a firewall on your workstation, ensure these ports are open:
 
-- **UDP 67** - DHCP (proxy mode)
+- **UDP 67** and **UDP 4011** - DHCP (proxy mode), from any source
 - **UDP 69** - TFTP
-- **TCP 8080** - HTTP (boot files and menu)
+- **TCP 9080** - HTTP (boot files and menu)
 
-For `ufw`:
-```bash
-sudo ufw allow 67/udp
-sudo ufw allow 69/udp
-sudo ufw allow 8080/tcp
-```
+On the workstation, `ufw` gets these from the `desktop-firewall` Ansible role (`--tags pxe`); do not add them by hand.
 
 For `firewalld`:
 ```bash
 sudo firewall-cmd --add-service=dhcp --permanent
 sudo firewall-cmd --add-service=tftp --permanent
-sudo firewall-cmd --add-port=8080/tcp --permanent
+sudo firewall-cmd --add-port=9080/tcp --permanent
+sudo firewall-cmd --add-port=4011/udp --permanent
 sudo firewall-cmd --reload
 ```
 

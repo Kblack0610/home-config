@@ -74,7 +74,7 @@ def actions(*args, **kw):
 POWER = {"provider": "aws", "instance_id": "i-0abc", "region": "us-east-2", "idle_off_seconds": 1200, "live": True,
          "start_min_excess": 1, "start_after_seconds": 0}
 AWS = {**CFG, "standby": {"aws-burst-1": {"max_admitted": 8, "power": POWER}}}
-LIVE_POWER = {**governor.POWER_DEFAULTS, **LIVE["standby"]["aws-burst-1"]["power"]}
+LIVE_POWER = {**governor.POWER_DEFAULTS, **LIVE["standby"]["aws-spot-1"]["power"]}
 # A 12h day cap of its own: the live hosts run uncapped (24h), and the cap tests need one.
 HEAVY = {**CFG, "standby": {"aws-burst-1": {"max_admitted": 6, "power": {**LIVE_POWER, "instance_id": "i-0abc",
                                                                        "max_hours_day": 12}}}}
@@ -1556,6 +1556,7 @@ DWELL = LIVE["dwell_seconds"]
 WIDE_JOB = frozenset({"self-hosted", "unity", "unity-wide"})
 WIDE_LABELS = AWS_LABELS | {"unity-wide", "host-aws-burst-1-wide"}
 NO_KEEP = {**TWO, "pack_keep_labels": []}
+THREE = {**TWO, "standby": {**TWO["standby"], "aws-burst-3": {"max_admitted": 6, "power": {**POWER, "instance_id": "i-0b3"}}}}
 
 
 def burst(host, busy=0, idle=0, off=0):
@@ -1603,9 +1604,48 @@ class PackTest(unittest.TestCase):
         self.inst["aws-burst-2"]["state"] = "stopped"
         self.assertEqual(self.moves(self.step(10_000), "aws-burst-1"), [])
 
+    def three(self, wide=()):
+        self.inst["aws-burst-3"] = {"state": "running", "busy_at": 10_000, "launched": 1_500,
+                                    "labels": AWS_LABELS - {"host-aws-burst-1"} | {"host-aws-burst-3"}}
+        for h in wide:
+            self.inst[h]["labels"] = self.inst[h]["labels"] | {"unity-wide"}
+        return {**HALF, **burst("aws-burst-3", idle=1, off=5)}
+
+    def test_an_empty_queue_packs_every_burst_host_but_the_busiest_at_once(self):
+        got = self.step(10_000, runners=self.three(), cfg=THREE)
+        self.assertEqual({h for h, a, *_ in got if a == "pack"}, {"aws-burst-1", "aws-burst-3"})
+        self.assertFalse(self.inst["aws-burst-2"].get("packed"))
+
+    def test_packed_hosts_are_no_room_and_unpack_one_counted_at_a_time(self):
+        runners = self.three()
+        self.step(10_000, runners=runners, cfg=THREE)
+        # 6 jobs; aws-burst-2 has 3 free. The busier packed host comes back first, and with its
+        # 4 slots counted the other stays packed.
+        got = self.step(10_060, [UNITY_JOB] * 6, runners=runners, cfg=THREE)
+        self.assertEqual([h for h, a, *_ in got if a == "unpack"], ["aws-burst-1"])
+        self.assertTrue(self.inst["aws-burst-3"]["packed"])
+
+    def test_the_last_wide_host_of_a_batch_is_kept(self):
+        # aws-burst-3 and aws-burst-1 carry unity-wide, nothing else does: packing the first
+        # makes the second the only one, so it stays and the busiest host packs instead.
+        got = self.step(10_000, runners=self.three(wide=("aws-burst-1", "aws-burst-3")), cfg=THREE)
+        self.assertEqual({h for h, a, *_ in got if a == "pack"}, {"aws-burst-3", "aws-burst-2"})
+        self.assertFalse(self.inst["aws-burst-1"].get("packed"))
+
     def test_a_job_it_can_take_blocks_the_pack_and_one_it_cannot_does_not(self):
         self.assertEqual([a for _, a, *_ in self.step(10_000, [UNITY_JOB]) if a == "pack"], [])
+        self.setUp()
         self.assertEqual(self.moves(self.step(10_000, [LAN_JOB]), "aws-burst-1")[0], ("pack", ""))
+
+    def test_a_one_cycle_gap_in_the_queue_packs_nothing(self):
+        # Between bursts the queue reads 0 for a minute: no pack until it has been quiet a dwell.
+        runners = self.three()
+        self.step(10_000, [UNITY_JOB], runners=runners, cfg=THREE)
+        for t in range(10_060, 10_000 + DWELL, 60):
+            got = self.step(t, runners=runners, cfg=THREE)
+            self.assertEqual([a for _, a, *_ in got if a == "pack"], [], t)
+        got = self.step(10_000 + DWELL, runners=runners, cfg=THREE)
+        self.assertEqual({h for h, a, *_ in got if a == "pack"}, {"aws-burst-1", "aws-burst-3"})
 
     def test_negative_control_a_queued_wide_job_keeps_its_only_wide_host(self):
         self.inst["aws-burst-1"]["labels"] = WIDE_LABELS
@@ -1718,7 +1758,7 @@ class PackTest(unittest.TestCase):
                 governor.cycle(TWO, {}, tracked)
             log += [c.args[0] for c in out.call_args_list]
         self.assertEqual([line for line in log if "aws-burst-1" in line], [
-            "pack aws-burst-1: no waiting job it can take, the fewest busy slots (1) of 2 running burst hosts; "
+            f"pack aws-burst-1: no job it can take waited for {DWELL}s, 1 busy slots, 1 burst hosts left unpacked; "
             "its slots go and its idle rule stops it; queue 0",
             "withhold b1-busy-0 on aws-burst-1: PACKED, packed; queue 0",
             "stop i-0abc on aws-burst-1: PACKED, no slot busy for 1260s; queue 0"])

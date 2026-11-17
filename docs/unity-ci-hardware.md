@@ -66,15 +66,17 @@ Small boxes that take desktop DDR5 (checked 2026-11-10): the DeskMeet X600 and D
 
 windows-media (Ryzen 5 5500, 6 cores, 64 GB, ASUS TUF GAMING B550-PLUS WIFI II) gives one slot as it is: two slots on six cores leave nothing for the TV. A 16-core AM4 CPU in the same board makes 3-4 slots on the RAM it already has. The board's BIOS 3645 (2026-09-14, AGESA ComboV2 PI 1.2.0.12) supports the 5900XT; it is not on the PC's 3607, so the flash comes first. The pool's runners are Linux containers, so since 2026-11-13 they run in a Hyper-V Ubuntu VM on it, `windows-media-ci`, with 3 slots (WSL2 on Windows 10 is NAT-only and needs a signed-in session); it is the first pool host that is also someone's TV. The VM: [windows-machines.md](windows-machines.md#unity-ci-vm-windows-media-ci).
 
-Decided 2026-11-10 (ask QfY0Fp), 12-13 slots: an MS-A2 9955HX barebone with razer-laptop's 96 GB SODIMM (5 slots), razer-laptop back to a 32 GB kit (G.Skill F5-5600S4040A16GX2 2x16 GB, $319 used, was the pick) for its 1 Unity slot, one DeskSlim X600 with a 9900X and 64 GB DDR5 (4 slots), and a Ryzen 9 5900XT for windows-media (3-4 slots). Ordered that day: the MS-A2 barebone, a Samsung 990 EVO Plus 2 TB for it, the 5900XT, and a Crucial E100 2 TB for windows-media; the DeskSlim parts and both RAM kits were still being chosen. Each CI disk needs a published high TBW: the E100 is rated 100 TBW at 2 TB and DRAM-less, so it goes on the light host, against 1,200 TBW for a 990 EVO Plus, SN850X or 990 Pro; QLC drives such as the fanxiang S501Q are out. Desktop DDR5 on eBay is often server RDIMM sold as "desktop": buy only a stick whose label ends -UA0/-UB0 (SK Hynix HMCG88MEBUA081N for 32 GB), never R or E. Bring-up is queue item `deskslim-ci-host` (board hc-231).
+Decided 2026-11-10 (ask QfY0Fp), 12-13 slots: an MS-A2 9955HX barebone with razer-laptop's 96 GB SODIMM (5 slots), razer-laptop back to a 32 GB kit (G.Skill F5-5600S4040A16GX2 2x16 GB, $319 used, was the pick) for its 1 Unity slot, one DeskSlim X600 with a 9900X and 64 GB DDR5 (4 slots), and a Ryzen 9 5900XT for windows-media (3-4 slots). Ordered that day: the MS-A2 barebone, a Samsung 990 EVO Plus 2 TB for it, the 5900XT, and a Crucial E100 2 TB for windows-media; the DeskSlim parts and both RAM kits were still being chosen. Each CI disk needs a published high TBW: the E100 is rated 100 TBW at 2 TB and DRAM-less, so it goes on the light host, against 1,200 TBW for a 990 EVO Plus, SN850X or 990 Pro; QLC drives such as the fanxiang S501Q are out. Desktop DDR5 on eBay is often server RDIMM sold as "desktop": buy only a stick whose label ends -UA0/-UB0 (SK Hynix HMCG88MEBUA081N for 32 GB), never R or E. Bring-up is queue item `deskslim-ci-host` (board hc-231). Joined 2026-11-16, both installed headless by PXE: ms-a2 with 4 slots and deskslim-2 (the 9900X) with 3, one fewer than planned on each so k3s keeps two cores (`ci_hosts` in `ansible/inventory.yml`). deskslim-1 (the 7900X) waits on replacement RAM.
 
 Measured without the Mac Studio, 2026-11-13 to 11-14: the 24h rolling Unity wait p90 (the exporter's `github_job_queue_seconds{pool="unity",quantile="0.9"}`, recorded from 11-13 06:00 UTC) stayed over 30 min from then to 11-14 14:00 UTC, peaking at 92 min. That was with aws-burst-1, aws-burst-2, aws-burst-3 and aws-build-1 (about 23 slots) each on 14-24 h a day, so the Studio's load is larger than the 5 round-the-clock slots estimated above. aws-burst-2 alone does not replace it, and the 11-10 hardware stays the replacement.
+
+Retired 2026-11-16 at the human's request: the on-demand aws-burst-1, -2 and -3 (17 slots at $1.855/h a host), once ms-a2 (4 slots) and deskslim-2 (3) were in the pool. Overflow past the home hosts is now the Spot hosts (15 slots, when AWS has Spot room) and aws-build-1's six test slots, so a night queue that finds no Spot room waits longer than the p90 above.
 
 ## 6-8 slots in one box
 
 Researched 2026-11-03 for "6-8 more slots, a few thousand dollars". Prices are eBay and retailer asking prices from search results (eBay refused direct fetches), so check the Sold filter before buying. Power and single-thread figures are estimates from TDP and clocks. Single-thread is relative to a Zen 4 desktop part.
 
-6-8 slots needs 24 or more physical cores and 128 GB. In 2026 the RAM decides the price: a 128 GB desktop DDR5 kit costs $2,087-2,800, a 32 GB DDR5 RDIMM $934-1,470, while a 16 GB DDR4 RDIMM was $60-90 (it has since roughly tripled; see [Buying in the RAM shortage](#buying-in-the-ram-shortage)). So buy a box that already has 128 GB in it. One big box also beats two small ones: each host is one Unity activation, and the pool is capped at 16 admitted runners for that reason (see [Unity license](#unity-license)).
+6-8 slots needs 24 or more physical cores and 128 GB. In 2026 the RAM decides the price: a 128 GB desktop DDR5 kit costs $2,087-2,800, a 32 GB DDR5 RDIMM $934-1,470, while a 16 GB DDR4 RDIMM was $60-90 (it has since roughly tripled; see [Buying in the RAM shortage](#buying-in-the-ram-shortage)). So buy a box that already has 128 GB in it. One big box also beats two small ones: each host is one Unity activation, and the pool is capped at `pool_max_admitted` admitted runners (`apps/ci-runner-governor/config.json`) for that reason (see [Unity license](#unity-license)).
 
 | Option | All-in | Cores / slots | 1T vs Zen 4 | Load power | Notes |
 |---|---|---|---|---|---|
@@ -97,7 +99,7 @@ Before ordering, settle the cap: the new box's slots plus the pool's registered 
 
 ## Laptops as runners
 
-razer-laptop left the pool 2026-11-15 (RAM 96 GB -> 32 GB; one light slot only). asus-laptop and hp-victus are service hosts that carry no CI of any kind (`no_ci_hosts` in `ansible/inventory.yml` says why): as k3s nodes holding Forgejo, Frigate and the databases, CI load there took the cluster down with the jobs. Laptops work but throttle under sustained load and their batteries swell when held at 100%. Set a 60-80% charge limit in the BIOS (or `thinkpad_acpi` thresholds on Linux) and run with the lid open.
+razer-laptop is in the pool. asus-laptop and hp-victus are service hosts that carry no CI of any kind (`no_ci_hosts` in `ansible/inventory.yml` says why): as k3s nodes holding Forgejo, Frigate and the databases, CI load there took the cluster down with the jobs. Laptops work but throttle under sustained load and their batteries swell when held at 100%. Set a 60-80% charge limit in the BIOS (or `thinkpad_acpi` thresholds on Linux) and run with the lid open.
 
 ## Renting
 
@@ -123,19 +125,36 @@ Checked 2026-11-11: moving Unity jobs from the AWS hosts to GitHub-hosted runner
 | Owned hosts | 0 at the margin | governor `rates` |
 | aws-spot-1 (Spot m6a.8xlarge, 5 slots) | ~0.06 | $0.28/h Spot price 2026-11-13 over 5 slots |
 | aws-spot-2, aws-spot-3 (Spot m7i and m6i .8xlarge, 5 slots each) | ~0.13 to 0.15 | $0.66 and $0.77/h Spot price 2026-11-13 over 5 slots |
-| aws-burst-2, aws-burst-3 (on-demand m7a.8xlarge, 6 slots each) | ~0.31 | $1.855/h over 6 slots |
-| aws-burst-1 (on-demand m7a.8xlarge, 5 slots) | ~0.37 | $1.855/h over 5 slots |
+| aws-burst-2, aws-burst-3 (on-demand m7a.8xlarge, 6 slots each, retired 2026-11-16) | ~0.31 | $1.855/h over 6 slots |
+| aws-burst-1 (on-demand m7a.8xlarge, 5 slots, retired 2026-11-16) | ~0.37 | $1.855/h over 5 slots |
 | aws-build-1 (on-demand m7a.8xlarge, 6 test slots, a build in place of two) | ~0.31 to 0.62 | $1.855/h over 6 slots running tests, 3 when every pair builds |
 | GitHub Linux 4-core, 16 GB | 0.72 | $0.012/min |
 | GitHub Linux 8-core, 32 GB | 1.32 | $0.022/min |
 
 - 4-core is the smallest that fits a slot (3 cores, 14 GB; a PlayMode shard peaks at 13.9 GB), and only just. The 2-core standard runner does not fit.
 - On top of the rate, every hosted job imports a cold `Library/`, activates Unity again (see [Unity license](#unity-license)), and is billed in whole minutes. Jobs that need `lan` (Multi, player builds, git.kblab.me pushes) cannot run there at all.
-- At the pool's 150-260 runner-hours a day (playground `docs/operations/ci-cost.md`, 2026-11-06), GitHub 4-core would cost about $3,200-5,600 a month, against the `ci-burst-monthly` cap on AWS (platform `infra/aws-ci-burst/variables.tf` `budget_monthly_usd`, $900 since 2026-11-13).
+- At the pool's 150-260 runner-hours a day (playground `docs/operations/ci-cost.md`, 2026-11-06), GitHub 4-core would cost about $3,200-5,600 a month, against the `ci-burst-monthly` cap on AWS (platform `infra/aws-ci-burst/variables.tf` `budget_monthly_usd` on `develop`).
 - Non-Unity jobs already use hosted runners (`LINUX_RUNNER_LIGHT`, else `ubuntu-latest`), which is where hosted runners make sense.
 - To spend less, prefer Spot over on-demand and buy owned slots ([Options by value](#options-by-value)).
 
 Source: docs.github.com/en/billing/reference/actions-runner-pricing (Linux x64), `apps/ci-runner-governor/config.json` `rates`.
+
+### Spot-first re-measure, read 2026-11-16
+
+Target from #940: AWS $ per busy slot-hour under $0.25, from a baseline of $0.74 (11-12). Missed: Spot took almost no work in the window.
+
+| UTC day | On-demand machine-h | Spot machine-h | Busy slot-h | Est. $ (hours x governor rate) | $ per busy slot-h |
+|---|---|---|---|---|---|
+| 11-13 (before #940 went live) | 84.0 | 0 | 281 | 156 | 0.55 |
+| 11-14 | 67.6 | 3.3 | 203 | 127 | 0.63 |
+| 11-15 | 93.6 | 2.0 | 235 | 174 | 0.74 |
+
+- Sources: `ci_governor_power_hours_today` at each day's end, `github_runner_state{state="running"}` samples at the exporter's 60 s scrape, `ci_governor_rate_usd_per_hour`. The $ column is an estimate at list rate, not a bill.
+- `aws ce` has nothing past 11-13 (11-14 to 11-16 read $0, `Estimated`), so the bill side cannot be read yet; re-read it once Cost Explorer catches up. Its 11-11 and 11-12 days were $88.76 and $161.45. The exporter holds no per-host series that far back, so $0.74 stays the baseline.
+- Cause: the on-demand hosts were held up by a standing governor override "on" from 11-13 to 11-16 (lesson 2026-11-16), so the queue was always covered and the Spot hosts, first in `standby`, never started. aws-spot-2 and aws-spot-3 did not run after the 11-13 probes; aws-spot-1 ran 2 h on 11-15. This measures the override, not Spot. Re-measure on a window with no override.
+- Reclaims (`ci_governor_fallback_total`, 3 d): aws-spot-1 1 (the 11-13 23:16 UTC probe reclaim), aws-spot-2 0, aws-spot-3 0; `capacity` and `refused` 0 on every host. No host is past 3 reclaims a day, so none flips to `spot = false`.
+- aws-spot-1 probe, unity-core-playground run 43529344154 (`Tests (affected, spike SPOT_PROBE=1b)`): completed success, last update 2026-11-14 01:07 UTC. Its 23:46 UTC failure was Forgejo down with hp-victus (asset-library clone), not the host.
+- Light and heavy CI is razer-laptop only since the Spot slots are Unity only (dotfiles-d6, #953).
 
 A rented box joins like a home one: tailnet first (`docs/headscale-setup.md`, so it reaches `git.kblab.me`), then `unity_ci_runners` and `ci_hosts` in `ansible/inventory.yml`, the "Unity CI runner pool" play (`unity-ci-host` and `github-actions-runner-linux`), and the three rosters kept in step (`RUNNER_ROSTER` in `apps/github-runner-exporter/deployment.yaml`, the governor's `hosts`, the inventory; `scripts/check-runner-roster.py` fails CI on drift). Start it at about half its slots, prove it with one pinned PlayMode shard timed against razer-laptop, then ramp. Add one host at a time, so the new activations do not all start together.
 

@@ -29,6 +29,8 @@ spec:
 apiVersion: apps/v1
 kind: StatefulSet
 metadata:
+  annotations:
+    kblab.me/criticality: standard
   name: langfuse-ch
   namespace: langfuse
 spec:

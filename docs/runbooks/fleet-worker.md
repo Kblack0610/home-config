@@ -58,7 +58,7 @@ The old token stops working at step 1, so the home's passes fail on the feed unt
    fleet-worker-1:
      ansible_host: <instance id>
      ansible_user: ubuntu
-     ansible_ssh_common_args: <the SSM ProxyCommand aws-burst-1 has>
+     ansible_ssh_common_args: <the SSM ProxyCommand aws-spot-1 has>
      fleet_tailscale: true
      fleet_ssh_host: fleet-worker-1         # its tailnet name: fleet-dispatch ssh goes there
      fleet_state_host: cachyos-x8664-main   # the workstation's tailnet name

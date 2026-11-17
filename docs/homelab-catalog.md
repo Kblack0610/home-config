@@ -7,7 +7,7 @@ One-page index of services and their management plane. Use this to answer "where
 | **Kubernetes cluster workloads** | | | | |
 | Home Assistant | any pi | k3s pod | Flux | `apps/home-assistant/` |
 | Frigate NVR | hp-victus (pinned: the Coral USB is plugged in there) | k3s pod (privileged, USB Coral) | Flux | `apps/frigate/` |
-| Forgejo + runner | razer-laptop (the runner; Forgejo itself is on asus-laptop) | k3s pod (DinD) | Flux | `apps/forgejo/` |
+| Forgejo + runner | razer-laptop, ms-a2 or deskslim-2 (the runner; Forgejo itself is on asus-laptop) | k3s pod (DinD) | Flux | `apps/forgejo/` |
 | LiteLLM | hp-victus | k3s pod | Flux | `apps/litellm/` |
 | Immich | asus-laptop | k3s pod (AMD ROCm) | Flux | `apps/immich/` |
 | OrcaSlicer | asus-laptop | k3s pod (AMD GPU) | Flux | `apps/orcaslicer/` |
@@ -20,12 +20,12 @@ One-page index of services and their management plane. Use this to answer "where
 | **Bare-metal (non-cluster) services** | | | | |
 | NUT primary (UPS server, USB-attached CyberPower CP1500PFCLCDa) | pi5-master | systemd `nut-driver@cyberpower`, `nut-server`, `nut-monitor` | Ansible (this repo) | `ansible/roles/nut/` ; `docs/nut-ups.md` |
 | NUT secondaries (graceful shutdown on FSD broadcast) | pi5-worker{1..3}, pi4-worker{4,5} | systemd `nut-monitor` | Ansible (this repo) | `ansible/roles/nut/` ; `docs/nut-ups.md` |
-| Laptop no-suspend (lid-close stays-online) | hp-victus, asus-laptop, razer-laptop | systemd-logind dropin | Ansible (this repo) | `ansible/roles/k3s-node-no-suspend/` |
+| Laptop no-suspend (lid-close stays-online) | every `linux_bare_metal` host: hp-victus, asus-laptop, razer-laptop, ms-a2, deskslim-2 | systemd-logind dropin | Ansible (this repo) | `ansible/roles/k3s-node-no-suspend/` |
 | GitHub Actions runner (macOS) | mac-mini | LaunchAgent | Ansible (this repo), play "macOS CI runner (mac-mini only)" | `ansible/roles/github-actions-runner-mac/` |
 | node_exporter (macOS) | mac-mini | LaunchAgent (port 9100) | Ansible (this repo), play "macOS baseline + monitoring" | `ansible/roles/node-exporter-mac/` |
 | Homebrew baseline | mac-mini | user-scoped brew install | Ansible (this repo), play "macOS baseline + monitoring" | `ansible/roles/brew-common/` |
 | GitHub Actions runners, light/heavy CI (Linux, org-scoped) | razer-laptop (slots per host: `linux_ci_runners` in `ansible/inventory.yml`; asus-laptop and hp-victus are `no_ci_hosts`, which says why) | systemd `actions.runner.<host>-<slot>.service` in `ci-linux.slice`, inside the host's `ci.slice` budget; on razer-laptop the slice has cores of its own (`ci_linux_cpus`); on every CI host k3s pods are pinned to the CPUs outside CI (`k3s_cpus`, the static CPU manager with strict-cpu-reservation, role `ci-host-budget`); containers a job starts run in `ci.slice` on all CI cores | Ansible (this repo), play "Linux CI runners" | `ansible/roles/github-actions-runner-linux/` + `ansible/roles/linux-ci-host/` |
-| GitHub Actions Unity runner pool (org-wide, label `unity`) | aws-burst-1, aws-burst-2, aws-burst-3, and the workstation for gates only (slots per host: `unity_ci_slots` in `ansible/inventory.yml`), the Linux slots each in its own `ci-unity-<n>.slice` cpuset. asus-laptop and hp-victus carry no CI (`no_ci_hosts`) | systemd `actions.runner.<host>-unity-pool-<n>.service` in `ci-unity.slice`, inside the host's `ci.slice` budget; Unity containers in the same slice | Ansible (this repo), play "Unity CI runner pool" | `ansible/roles/unity-ci-host/` + `ansible/roles/github-actions-runner-linux/` ; `docs/runbooks/unity-ci-host.md` |
+| GitHub Actions Unity runner pool (org-wide, label `unity`) | razer-laptop, ms-a2, deskslim-2, windows-media-ci, the Spot hosts aws-spot-1..3 and aws-build-1's test slots, and the workstation for gates only (slots per host: `unity_ci_slots` in `ansible/inventory.yml`), the Linux slots each in its own `ci-unity-<n>.slice` cpuset. asus-laptop and hp-victus carry no CI (`no_ci_hosts`) | systemd `actions.runner.<host>-unity-pool-<n>.service` in `ci-unity.slice`, inside the host's `ci.slice` budget; Unity containers in the same slice | Ansible (this repo), play "Unity CI runner pool" | `ansible/roles/unity-ci-host/` + `ansible/roles/github-actions-runner-linux/` ; `docs/runbooks/unity-ci-host.md` |
 | ci-runner-governor (which Unity pool runners take jobs) | k8s Deployment in `monitoring` | k8s pod | Flux | `apps/ci-runner-governor/` (dry run: logs and exports `ci_governor_*` decisions, changes no runner; live swaps `unity`/`unity-full` for `unity-withheld` on a hot host's runner and back when it has room and jobs wait) |
 | Fluidd / Moonraker (live) | neptune-3d-printer (192.168.1.54) | embedded (on printer) | — | — |
 | AdGuard Home | pi3 (192.168.1.193) | docker-compose | In-repo compose, bootstrapped via `flash-pi.sh` + `setup.sh` | `apps/pi3-adguard-home/` |
@@ -33,7 +33,7 @@ One-page index of services and their management plane. Use this to answer "where
 | **Routing and DNS** | | | | |
 | OpenWRT (router, DHCP, DNS) | 192.168.1.1 | host OS | `infrastructure/openwrt/openwrt.sh` ; Ansible skeleton in draft PR | `infrastructure/openwrt/` ; `ansible/roles/openwrt-config/` |
 | DHCP reservations | 192.168.1.1 | OpenWRT dnsmasq | `infrastructure/dhcp/dhcp.sh` ; Ansible skeleton in draft PR | `infrastructure/dhcp/devices.yaml` ; `ansible/roles/openwrt-dhcp/` |
-| k3s agent (install + join) | every k3s node | host systemd | PXE inline install (hp-victus, asus-laptop, the Pis) ; Ansible role bound for razer-laptop | `infrastructure/pxe-server/http/kickstart/profiles/cluster.sh` ; `ansible/roles/k3s-agent/` |
+| k3s agent (install + join + upgrade) | every k3s node | host systemd | Ansible role, version pinned in `ansible/group_vars/all/k3s.yml` | `ansible/roles/k3s-agent/` |
 | Traefik (ingress controller) | k3s cluster | k3s pod | k3s built-in / `infrastructure/traefik/` | `infrastructure/traefik/` |
 | Cloudflare tunnel | asus-laptop/hp-victus | k3s pod | Flux (in `apps/` somewhere) | — |
 | **Provisioning** | | | | |

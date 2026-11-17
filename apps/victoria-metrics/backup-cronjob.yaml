@@ -1,6 +1,8 @@
 apiVersion: batch/v1
 kind: CronJob
 metadata:
+  annotations:
+    kblab.me/criticality: standard
   name: victoria-metrics-backup
   namespace: monitoring
   labels:

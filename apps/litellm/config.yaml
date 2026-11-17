@@ -781,6 +781,28 @@ model_list:
         json_mode: true
       supports_function_calling: true
 
+  # binks.chat image generation (generate_image tool, platform plan
+  # feat-binks-images P2): Z.ai GLM-Image on the binks Z.ai key, $0.015 per
+  # image (docs.z.ai/guides/overview/pricing, 2026-11-16). Picked over Gemini
+  # Flash Image ($0.067, needs a paid Google key) by ask 1ugS6u (2026-11-16).
+  # Reached only by keys whose models list it (binks-issuer once IMAGE_MODEL
+  # is set). NO route max_budget and no cost override: LiteLLM v1.96 has no
+  # price for glm-image and ignores a per-deployment price on image calls, so
+  # it records this route's spend as $0 and a gateway budget would never trip
+  # (README, binks.chat keys). binks-api's per-user daily image cap is the
+  # bound. The response is a Z.ai URL, not base64; binks-api fetches and
+  # stores it.
+  - model_name: "image (glm-image)"
+    litellm_params:
+      model: "openai/glm-image"
+      api_base: https://api.z.ai/api/paas/v4
+      api_key: os.environ/ZAI_API_KEY
+      timeout: 120
+      rpm: 20
+    model_info:
+      mode: image_generation
+      tags: ["paid", "binks", "first-party", "image"]
+
   # The one self-hosted model: Qwen3.5-9B under llama-server on the
   # workstation's RTX 4060 Ti (dotfiles llama-server.service). Nothing leaves
   # the LAN, so personal data may use it; it is down when the workstation is.

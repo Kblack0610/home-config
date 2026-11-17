@@ -88,3 +88,202 @@ tests:
             exp_annotations:
               summary: "victus:9100 battery at 15% off mains"
               description: "BAT1 on victus:9100 is at 15% with the charger offline. The host goes down within minutes; plug the charger in now."
+
+  - name: AWS expected power transitions stay quiet while running and unknown failures page
+    interval: 1m
+    input_series:
+    - series: up{job="aws-ci-nodes",host="aws-stopped",instance="stopped:9100"}
+      values: '0x10'
+    - series: ci_governor_power_state{host="aws-stopped",state="stopped"}
+      values: 1x10
+    - series: up{job="aws-ci-nodes",host="aws-starting",instance="starting:9100"}
+      values: '0x10'
+    - series: ci_governor_power_state{host="aws-starting",state="starting"}
+      values: 1x10
+    - series: up{job="aws-ci-nodes",host="aws-stopping",instance="stopping:9100"}
+      values: '0x10'
+    - series: ci_governor_power_state{host="aws-stopping",state="stopping"}
+      values: 1x10
+    - series: up{job="aws-ci-nodes",host="aws-running",instance="running:9100"}
+      values: '0x10'
+    - series: ci_governor_power_state{host="aws-running",state="running"}
+      values: 1x10
+    - series: up{job="aws-ci-nodes",host="aws-unknown",instance="unknown:9100"}
+      values: '0x10'
+    - series: up{job="aws-ci-nodes",host="aws-zero",instance="zero:9100"}
+      values: '0x10'
+    - series: ci_governor_power_state{host="aws-zero",state="running"}
+      values: '0x10'
+    - series: up{job="aws-ci-nodes",host="aws-healthy",instance="healthy:9100"}
+      values: 1x10
+    - series: up{job="standalone-nodes",host="aws-stopped",instance="standalone:9100"}
+      values: '0x10'
+    - series: up{job="node-exporter",instance="k3s:9100"}
+      values: '0x10'
+    - series: up{job="mac-nodes",instance="mac:9100"}
+      values: '0x10'
+    alert_rule_test:
+    - eval_time: 3m
+      alertname: NodeDown
+      exp_alerts:
+      - exp_labels:
+          job: aws-ci-nodes
+          host: aws-running
+          instance: running:9100
+          severity: critical
+          fleet: fix
+          category: node-health
+        exp_annotations:
+          summary: 'Node down: running:9100 (aws-ci-nodes)'
+          description: node-exporter target running:9100 (job aws-ci-nodes) has been unreachable for 2m; the host may be powered off, crashed, or off the network.
+      - exp_labels:
+          job: aws-ci-nodes
+          host: aws-unknown
+          instance: unknown:9100
+          severity: critical
+          fleet: fix
+          category: node-health
+        exp_annotations:
+          summary: 'Node down: unknown:9100 (aws-ci-nodes)'
+          description: node-exporter target unknown:9100 (job aws-ci-nodes) has been unreachable for 2m; the host may be powered off, crashed, or off the network.
+      - exp_labels:
+          job: aws-ci-nodes
+          host: aws-zero
+          instance: zero:9100
+          severity: critical
+          fleet: fix
+          category: node-health
+        exp_annotations:
+          summary: 'Node down: zero:9100 (aws-ci-nodes)'
+          description: node-exporter target zero:9100 (job aws-ci-nodes) has been unreachable for 2m; the host may be powered off, crashed, or off the network.
+      - exp_labels:
+          job: standalone-nodes
+          instance: standalone:9100
+          severity: critical
+          fleet: fix
+          category: node-health
+          host: aws-stopped
+        exp_annotations:
+          summary: 'Node down: standalone:9100 (standalone-nodes)'
+          description: node-exporter target standalone:9100 (job standalone-nodes) has been unreachable for 2m; the host may be powered off, crashed, or off the network.
+      - exp_labels:
+          job: node-exporter
+          instance: k3s:9100
+          severity: critical
+          fleet: fix
+          category: node-health
+        exp_annotations:
+          summary: 'Node down: k3s:9100 (node-exporter)'
+          description: node-exporter target k3s:9100 (job node-exporter) has been unreachable for 2m; the host may be powered off, crashed, or off the network.
+      - exp_labels:
+          job: mac-nodes
+          instance: mac:9100
+          severity: critical
+          fleet: fix
+          category: node-health
+        exp_annotations:
+          summary: 'Node down: mac:9100 (mac-nodes)'
+          description: node-exporter target mac:9100 (job mac-nodes) has been unreachable for 2m; the host may be powered off, crashed, or off the network.
+
+  - name: standalone targets remain while the AWS scrape job disappears
+    interval: 1m
+    input_series:
+    - series: up{job="standalone-nodes",instance="standalone:9100"}
+      values: 1x20
+    alert_rule_test:
+    - eval_time: 16m
+      alertname: StandaloneNodeExporterAbsent
+      exp_alerts:
+      - exp_labels:
+          job: aws-ci-nodes
+          severity: warning
+          fleet: fix
+          category: node-health
+        exp_annotations:
+          summary: aws-ci-nodes scrape job is absent
+          description: No aws-ci-nodes targets are being scraped, so NodeDown is blind to this job's hosts. Check apps/monitoring/external-standalone-nodes.yaml and that prometheus-node-exporter is running on each host.
+  - name: configured stopped AWS targets prevent the absent-job alert
+    interval: 1m
+    input_series:
+    - series: up{job="standalone-nodes",instance="standalone:9100"}
+      values: 1x20
+    - series: up{job="aws-ci-nodes",host="aws-burst-1",instance="aws:9100"}
+      values: '0x20'
+    - series: ci_governor_power_state{host="aws-burst-1",state="stopped"}
+      values: 1x20
+    alert_rule_test:
+    - eval_time: 16m
+      alertname: StandaloneNodeExporterAbsent
+      exp_alerts: []
+  - name: AWS targets remain while the standalone scrape job disappears
+    interval: 1m
+    input_series:
+    - series: up{job="aws-ci-nodes",host="aws-build-1",instance="aws:9100"}
+      values: 1x20
+    alert_rule_test:
+    - eval_time: 16m
+      alertname: StandaloneNodeExporterAbsent
+      exp_alerts:
+      - exp_labels:
+          job: standalone-nodes
+          severity: warning
+          fleet: fix
+          category: node-health
+        exp_annotations:
+          summary: standalone-nodes scrape job is absent
+          description: No standalone-nodes targets are being scraped, so NodeDown is blind to this job's hosts. Check apps/monitoring/external-standalone-nodes.yaml and that prometheus-node-exporter is running on each host.
+  - name: a quarantine taint pages critical once per node, other taints do not
+    interval: 1m
+    input_series:
+    - series: kube_node_spec_taint{node="hp-victus",key="kblab.me/degraded",value="true",effect="NoSchedule",pod="ksm-a"}
+      values: 1x5
+    - series: kube_node_spec_taint{node="hp-victus",key="kblab.me/degraded",value="true",effect="NoSchedule",pod="ksm-b"}
+      values: 1x5
+    - series: kube_node_spec_taint{node="razer-laptop",key="node.kubernetes.io/unschedulable",value="",effect="NoSchedule",pod="ksm-a"}
+      values: 1x5
+    alert_rule_test:
+    - eval_time: 1m
+      alertname: NodeQuarantined
+      exp_alerts:
+      - exp_labels:
+          node: hp-victus
+          severity: critical
+          fleet: fix
+          category: node-health
+        exp_annotations:
+          summary: "hp-victus is quarantined (kblab.me/degraded): no new pods land on it"
+          description: cluster-janitor tainted hp-victus after a kernel fault, Ready flaps or a mains loss; the node's kblab.me/degraded-reason annotation says which. Pods running there keep running; pods pinned there by a local-path PV stay Pending if they restart. Fix or move per docs/host-tiers.md "Quarantine", then rerun scripts/host-qualify.py, which lifts the taint on a passing record.
+
+  # hp-victus ran a newer kubelet than the apiserver for days (2026-11-12 to 11-16).
+  # The node on the apiserver's version stays silent, and a missing apiserver
+  # series fires nothing, since every node would otherwise look skewed.
+  - name: a node off the apiserver's version fires after 30m, naming it
+    interval: 1m
+    input_series:
+      - series: 'kubernetes_build_info{job="apiserver",instance="192.168.1.20:6443",git_version="v1.34.13+k3s1"}'
+        values: '1x40'
+      - series: 'kube_node_info{node="raspberrypi",kubelet_version="v1.34.13+k3s1"}'
+        values: '1x40'
+      - series: 'kube_node_info{node="hp-victus",kubelet_version="v1.34.4+k3s1"}'
+        values: '1x40'
+    alert_rule_test:
+      - eval_time: 29m
+        alertname: KubeletVersionSkew
+        exp_alerts: []
+      - eval_time: 31m
+        alertname: KubeletVersionSkew
+        exp_alerts:
+          - exp_labels: {alertname: KubeletVersionSkew, severity: warning, fleet: fix, category: node-health, node: hp-victus, kubelet_version: "v1.34.4+k3s1"}
+            exp_annotations:
+              summary: "hp-victus runs k3s v1.34.4+k3s1, not the apiserver's version"
+              description: "The kubelet on hp-victus is v1.34.4+k3s1 and differs from the apiserver. Every node runs k3s_install_version from ansible/group_vars/all/k3s.yml: from ansible/, run ansible-playbook playbooks/site.yml --limit <its inventory host> --tags k3s (the server first if the pin moved; roles/k3s-agent README). A Pi's node name is not its inventory name; match it by IP in inventory.yml."
+
+  - name: no apiserver build info fires no skew alert
+    interval: 1m
+    input_series:
+      - series: 'kube_node_info{node="hp-victus",kubelet_version="v1.34.4+k3s1"}'
+        values: '1x40'
+    alert_rule_test:
+      - eval_time: 35m
+        alertname: KubeletVersionSkew
+        exp_alerts: []

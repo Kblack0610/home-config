@@ -1,0 +1,45 @@
+---
+- name: Validate tier and game server budget
+  ansible.builtin.assert:
+    that:
+      - host_tier in ['core', 'standard', 'probation']
+      - inventory_hostname not in groups.get('game_server_nodes', []) or game_server_cpus | default('') | length > 0
+    fail_msg: Each node needs a valid host_tier, and game server nodes need game_server_cpus.
+
+# Pi inventory aliases differ from OS node names. Match the inventory IP rather
+# than labelling an alias that may identify no node or the wrong node.
+- name: Read registered nodes
+  ansible.builtin.command:
+    argv: "{{ node_labels_kubectl_argv + ['get', 'nodes', '-o', 'json'] }}"
+  delegate_to: "{{ node_labels_kubectl_host }}"
+  become: true
+  run_once: true
+  register: _registered_nodes
+  changed_when: false
+  check_mode: false
+
+- name: Resolve node by its inventory IP
+  ansible.builtin.set_fact:
+    _node_matches: >-
+      {{ (_registered_nodes.stdout | from_json)['items']
+         | selectattr('status.addresses', 'defined')
+         | selectattr('status.addresses', 'contains', {'type': 'InternalIP', 'address': ansible_host})
+         | map(attribute='metadata.name') | list }}
+
+- name: Require one matching node
+  ansible.builtin.assert:
+    that: _node_matches | length == 1
+    fail_msg: "Expected one Kubernetes node at {{ ansible_host }}, found {{ _node_matches }}."
+
+- name: Apply inventory node labels
+  ansible.builtin.command:
+    argv: >-
+      {{ node_labels_kubectl_argv + ['label', 'node', _node_matches[0],
+         'kblab.me/tier=' + host_tier,
+         ('kblab.me/game-server=true' if inventory_hostname in groups.get('game_server_nodes', []) else 'kblab.me/game-server-'),
+         '--overwrite'] + (['--dry-run=server'] if ansible_check_mode else []) }}
+  delegate_to: "{{ node_labels_kubectl_host }}"
+  become: true
+  check_mode: false
+  register: _node_labels
+  changed_when: "'not labeled' not in _node_labels.stdout"

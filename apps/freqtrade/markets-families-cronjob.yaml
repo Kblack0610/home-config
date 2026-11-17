@@ -31,7 +31,8 @@ spec:
                 nodeSelectorTerms:
                   - matchExpressions:
                       - {key: kubernetes.io/arch, operator: In, values: [amd64]}
-                      - {key: kubernetes.io/hostname, operator: NotIn, values: [hp-victus, razer-laptop]}
+                      - {key: kblab.me/tier, operator: NotIn, values: [probation]}
+                      - {key: kubernetes.io/hostname, operator: NotIn, values: [razer-laptop]}
           securityContext:
             runAsUser: 1000
             runAsGroup: 1000

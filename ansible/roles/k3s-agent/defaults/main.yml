@@ -1,35 +1,39 @@
 ---
-# Upstream installer. The k3s project serves a self-pinning shell installer
-# that reads INSTALL_K3S_* and K3S_* env vars. We keep `stable` as the channel
-# default to mirror what `infrastructure/pxe-server/http/kickstart/profiles/cluster.sh`
-# does today (it calls the installer with no version pin → stable channel).
+# Upstream installer, used only to join a node that has no k3s yet. It reads
+# INSTALL_K3S_VERSION, K3S_URL and K3S_TOKEN.
 k3s_install_url: https://get.k3s.io
-k3s_install_channel: stable
 
-# Pin a specific version like v1.30.5+k3s1 via host_vars to lock the fleet.
-# Leave empty to follow the channel.
-k3s_install_version: ""
+# The version every node runs is k3s_install_version in group_vars/all/k3s.yml,
+# the one place it is set. The role refuses to run without it, and never
+# follows a channel.
+
+# Release binaries for upgrading a node in place, with their sha256sum files.
+k3s_release_url: "https://github.com/k3s-io/k3s/releases/download/{{ k3s_install_version | urlencode }}"
+k3s_arch: "{{ {'x86_64': 'amd64', 'aarch64': 'arm64', 'armv7l': 'arm'}[ansible_architecture] }}"
+k3s_asset: "{{ 'k3s' if k3s_arch == 'amd64' else 'k3s-arm64' if k3s_arch == 'arm64' else 'k3s-armhf' }}"
 
 # Cluster topology. `k3s_role` is set per-host in inventory.yml (server | agent).
 # The default here is `agent` because the server is a single pi5-master and the
 # rest of the fleet joins as agents.
 k3s_role: agent
+k3s_service: "k3s{{ '-agent' if k3s_role == 'agent' else '' }}.service"
+
+# The inventory host of the one control plane; agents check its version first.
+k3s_server_host: pi5-master
 
 # The server endpoint, k3s_url, is in group_vars/all/k3s.yml: the fleet-worker
 # role's kubeconfig reads it too.
 
 # Node-token the installer validates against the control-plane. Comes from the
-# SOPS file ansible/group_vars/{linux_bare_metal,pi_k3s}/vault.sops.yaml, as
+# SOPS file ansible/group_vars/linux_bare_metal/vault.sops.yaml, as
 # `vault_k3s_token: <token>` (the server prints it to /var/lib/rancher/k3s/server/node-token).
+# Only a fresh agent join reads it.
 k3s_token: "{{ vault_k3s_token }}"
 
-# Extra install-time flags passed to the installer. Kept empty by default so
-# the role matches cluster.sh semantics exactly. Typical overrides:
+# Flags passed to the installer on a fresh join. inventory.yml records each
+# node's flags, so a node rebuilt from the repo comes back the same:
 #   k3s_extra_args:
-#     - --node-label=gpu=nvidia
-#     - --flannel-iface=eth0
+#     - --node-label=node.kubernetes.io/friendly-name=<host>
 k3s_extra_args: []
 
-# Marker file the installer drops once it has finished. Used for idempotency
-# so re-running the role is a no-op on already-joined nodes.
 k3s_binary_path: /usr/local/bin/k3s

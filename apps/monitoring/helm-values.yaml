@@ -56,6 +56,9 @@ alertmanager:
         # iot-pi-nodes sleep by design.
         - matchers: [alertname = "TargetDown", job = "iot-pi-nodes"]
           receiver: "null"
+        # NodeDown covers AWS targets individually and excludes expected power stops.
+        - matchers: [alertname = "TargetDown", job = "aws-ci-nodes"]
+          receiver: "null"
         # CVEs use a separate topic so the human alert feed stays readable.
         # Up to 10 images, at most once a day while the list changes,
         # else weekly. The full list: alertmanager.kblab.me, filter
@@ -146,6 +149,8 @@ alertmanager:
       - source_matchers: [alertname = "WANDown"]
         target_matchers: [alertname = "PublicSiteDown"]
   alertmanagerSpec:
+    podAnnotations:
+      kblab.me/criticality: standard
     # Mounted at /etc/alertmanager/secrets/<name>/. Flux must have created it
     # before a helm upgrade adds it here, or the pod cannot start.
     secrets:
@@ -191,6 +196,9 @@ defaultRules:
     # prometheus-rules-jobs.yaml: this one fires per failed Job object, and a
     # later green run never resolves it.
     KubeJobFailed: true
+    # Replaced by KubeletVersionSkew in prometheus-rules-node-health.yaml, which
+    # names the node and the fix.
+    KubeVersionMismatch: true
   rules:
     alertmanager: true
     configReloaders: true
@@ -216,6 +224,8 @@ defaultRules:
     prometheusOperator: true
 
 grafana:
+  podAnnotations:
+    kblab.me/criticality: standard
   enabled: true
   # First-boot value only. Grafana keeps the admin password in its own DB after
   # that, so this is NOT the current password: the real one is the vault entry
@@ -413,6 +423,8 @@ nodeExporter:
 prometheus:
   enabled: true
   prometheusSpec:
+    podAnnotations:
+      kblab.me/criticality: standard
     # Allow Alloy (and any other OTLP bridge) to push metrics via remote-write.
     # Required for the Claude Code OTel pipeline (Phase 2 observability).
     enableRemoteWriteReceiver: true

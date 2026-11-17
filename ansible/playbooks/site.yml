@@ -893,10 +893,11 @@
     - role: github-actions-runner-windows
       tags: [windows, runner]
 
-# The ssh keys that may log in, from roles/authorized-keys (additive).
-#   ansible-playbook playbooks/site.yml --limit linux_bare_metal --tags authorized-keys
-- name: Authorized keys (bare-metal Linux)
-  hosts: linux_bare_metal
+# The ssh keys that may log in, from roles/authorized-keys (additive). Every
+# Linux node, the Pis included, so cluster admin never hangs on one machine.
+#   ansible-playbook playbooks/site.yml --limit linux_bare_metal:pi_k3s:adguard --tags authorized-keys
+- name: Authorized keys (Linux nodes)
+  hosts: linux_bare_metal:pi_k3s:adguard
   gather_facts: false
   roles:
     - role: authorized-keys

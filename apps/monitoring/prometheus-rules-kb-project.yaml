@@ -148,7 +148,7 @@ spec:
         # yesterday: App Store proceeds, Play
         # charged, Steam net. One metric per store and currency, revenue_<store>_<currency>_1d
         # (revenue_steam_usd_1d, revenue_app_store_eur_1d); label_join builds the name, and
-        # currencies are never added together. A store that did not read writes no series, so
+        # currencies are never added together. A store that did not read, or read empty, writes no series, so
         # its cell reads "off", never a zero. The workstation's job and instance labels drop in
         # the sum. The day itself is store_sales_day_seconds.
         - record: kb_project_number

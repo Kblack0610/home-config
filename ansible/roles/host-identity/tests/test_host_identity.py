@@ -13,7 +13,9 @@ def load(path):
 HERE = os.path.dirname(os.path.abspath(__file__))
 REPO = os.path.join(HERE, "..", "..", "..", "..")
 sys.path.insert(0, os.path.join(HERE, "..", "filter_plugins"))
+sys.path.insert(0, os.path.join(REPO, "scripts"))
 from host_identity import host_device, host_names, identity_problems, roster_hosts, roster_known_hosts  # noqa: E402
+from host_inventory import load_inventory  # noqa: E402  the inventory reader every offline check shares
 
 ROSTER = ["desktop_workstations", "fleet_workers", "fleet_controllers"]
 KEY_A = "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIGaTLqfJOaCga5UzV+WsuxyRSRPcUY5GMUFloCREQ9aE"
@@ -99,30 +101,9 @@ class Problems(unittest.TestCase):
         self.assertEqual(identity_problems(facts(KEY_A, eth0="00:11:22:33:44:55"), "x", {}, {"ip": "192.168.1.1", "mac": ""}, False), [])
 
 
-def inventory_hosts(path):
-    """{host: merged vars} and {group: [hosts]} for the inventory, as Ansible merges this file's shape."""
-    root = (load(path) or {}).get("all") or {}
-    hv, members = {}, {}
-
-    def walk(name, node, chain):
-        node = node or {}
-        path = chain + [(name, node.get("vars") or {})]
-        for h, v in (node.get("hosts") or {}).items():
-            merged = hv.setdefault(h, {"_groups": {}, "_own": {}})
-            for g, gv in path:
-                merged["_groups"].update(gv)
-                members.setdefault(g, []).append(h)
-            merged["_own"].update(v or {})
-        for c, cn in (node.get("children") or {}).items():
-            walk(c, cn, path)
-
-    walk("all", root, [])
-    return {h: dict(v["_groups"], **v["_own"]) for h, v in hv.items()}, members
-
-
 class RealInventory(unittest.TestCase):
     def test_every_roster_machine_has_a_trusted_key(self):
-        hv, groups = inventory_hosts(os.path.join(REPO, "ansible", "inventory.yml"))
+        hv, groups = load_inventory(os.path.join(REPO, "ansible", "inventory.yml"))
         devices = load(os.path.join(REPO, "infrastructure", "dhcp", "devices.yaml"))["devices"]
         roster = roster_hosts(groups, ROSTER)
         self.assertIn("cachyos-x8664-main", roster)

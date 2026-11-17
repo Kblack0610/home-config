@@ -105,9 +105,12 @@ spec:
 
         # Proxy-side failure rate across all routes. Catches gateway-level
         # auth/config/database problems that aren't tied to a single upstream.
+        # A budget refusal (BudgetExceededError) is spend policy working: key
+        # budgets have their own alerts above and lazer-pool runs out by
+        # design, so neither failure ratio counts it.
         - alert: LiteLLMHighFailureRate
           expr: |
-            sum(rate(litellm_proxy_failed_requests_metric_total[10m]))
+            sum(rate(litellm_proxy_failed_requests_metric_total{exception_class!="BudgetExceededError"}[10m]))
             /
             clamp_min(sum(rate(litellm_proxy_total_requests_metric_total[10m])), 0.001)
             > 0.10
@@ -128,7 +131,7 @@ spec:
         - alert: LiteLLMRouteHighFailureRate
           expr: |
             (
-              sum by (requested_model) (rate(litellm_proxy_failed_requests_metric_total[10m]))
+              sum by (requested_model) (rate(litellm_proxy_failed_requests_metric_total{exception_class!="BudgetExceededError"}[10m]))
               /
               clamp_min(sum by (requested_model) (rate(litellm_proxy_total_requests_metric_total[10m])), 0.001)
               > 0.10

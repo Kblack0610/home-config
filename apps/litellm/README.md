@@ -77,6 +77,8 @@ The seven routes tagged `binks-eval` (GLM-5.3-Flash, Qwen3.8-Flash, Qwen3.7-Plus
 
 Revoke one user's key with `/key/delete` on its alias; binks-api mints a new one on the next turn.
 
+`image (glm-image)` is the binks.chat image route: Z.ai GLM-Image on `ZAI_API_KEY`, $0.015 per image (read 2026-11-16). The gateway cannot meter it: LiteLLM v1.96 has no price for `glm-image` and drops a per-deployment price on image calls, so its spend records as $0, and no route, key or `binks-issuer` budget counts it. binks-api's per-user daily image cap is the bound until that is fixed. No key reaches the route until `binks-issuer` gets it in `models` (`/user/update`), done when binks-api sets `IMAGE_MODEL`.
+
 `eval-reader` is a `proxy_admin_viewer`: it reads keys, teams and spend but calls no model. Set a new key's `team_id`, `metadata.consumer` and `metadata.priority` when you mint it.
 
 > **Category aliases:** `router_settings.model_group_alias` in `config.yaml` exposes short stable names (`code`, `reasoning`, `fast`, `vlm`, `embedding`, `stt`) that resolve to whichever concrete route a category points at. A key that allows the concrete route can call its alias (the `local-only` key calls `fast` through `fast (gpt-oss-120b)`). Retarget an alias in one line -> reconcile -> every consumer follows with no per-app edit. mem0 (`MEM0_DEFAULT_LLM_MODEL`) and karakeep (`INFERENCE_TEXT_MODEL`) call `fast`; binks-api calls `binks-chat`.

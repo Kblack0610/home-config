@@ -76,8 +76,8 @@
     - not ansible_check_mode
     - nut_plist is changed
 
-# killpower cuts the outlets even when it was a false alarm, and a Mac stays off
-# afterwards unless autorestart is set (the mac-mini did, 2026-11-17).
+# worker-shutdown.sh sleeps a Mac rather than halting it, so killpower cuts it
+# while it is on; autorestart is what boots it when the outlets come back.
 - name: Power back on when the outlets come back (macOS)
   ansible.builtin.shell: |
     pmset -g | grep -Eq '^ *autorestart +1' && exit 0

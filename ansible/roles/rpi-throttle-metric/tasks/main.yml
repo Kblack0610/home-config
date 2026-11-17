@@ -1,0 +1,98 @@
+---
+# Export the Pi firmware's throttle flags, including the undervoltage latch,
+# to node-exporter's textfile collector. PiUndervoltageSinceBoot
+# (apps/monitoring/prometheus-rules-node-health.yaml) alerts on it.
+# See roles/rpi-throttle-metric/README.md.
+
+- name: Create the textfile directory
+  ansible.builtin.file:
+    path: "{{ rpi_throttle_textfile_dir }}"
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+
+- name: Install the throttle exporter script
+  ansible.builtin.copy:
+    src: rpi-throttled-textfile.sh
+    dest: /usr/local/bin/rpi-throttled-textfile
+    owner: root
+    group: root
+    mode: "0755"
+
+- name: Install the throttle exporter units
+  ansible.builtin.copy:
+    dest: "/etc/systemd/system/{{ item.name }}"
+    owner: root
+    group: root
+    mode: "0644"
+    content: "{{ item.content }}"
+  loop:
+    - name: rpi-throttled-textfile.service
+      content: |
+        # Managed by ansible (roles/rpi-throttle-metric). Do not edit by hand.
+        [Unit]
+        Description=Export Raspberry Pi throttle flags for node-exporter
+
+        [Service]
+        Type=oneshot
+        ExecStart=/usr/local/bin/rpi-throttled-textfile {{ rpi_throttle_textfile_dir }}
+    - name: rpi-throttled-textfile.timer
+      content: |
+        # Managed by ansible (roles/rpi-throttle-metric). Do not edit by hand.
+        # A timer because the firmware exposes the flags only as a register
+        # to read, with no event to wait on; bits 16-19 latch, so a one-minute
+        # read loses nothing.
+        [Unit]
+        Description=Export Raspberry Pi throttle flags every minute
+
+        [Timer]
+        OnBootSec=30s
+        OnUnitActiveSec=60s
+        AccuracySec=5s
+
+        [Install]
+        WantedBy=timers.target
+  loop_control:
+    label: "{{ item.name }}"
+  notify: reload throttle timer
+
+- name: Enable the throttle exporter timer
+  ansible.builtin.systemd_service:
+    name: rpi-throttled-textfile.timer
+    enabled: true
+    state: started
+    daemon_reload: true
+  when: not ansible_check_mode
+
+- name: Apply pending reloads before the read-back
+  ansible.builtin.meta: flush_handlers
+
+- name: Write the throttle metric once now, so the read-back has something to read
+  ansible.builtin.systemd_service:
+    name: rpi-throttled-textfile.service
+    state: started
+  changed_when: false
+  when: not ansible_check_mode
+
+- name: Read back the exported metric
+  ansible.builtin.shell: |
+    set -o pipefail
+    grep -c '^rpi_throttled{' {{ rpi_throttle_textfile_dir }}/rpi_throttled.prom 2>/dev/null | sed 's/^/throttle_series=/' || echo throttle_series=0
+    grep '^rpi_throttled{flag="undervoltage"' {{ rpi_throttle_textfile_dir }}/rpi_throttled.prom 2>/dev/null || true
+  args:
+    executable: /bin/bash
+  register: rpi_throttle_state
+  changed_when: false
+  check_mode: false
+
+- name: Report the throttle state
+  ansible.builtin.debug:
+    msg: "{{ inventory_hostname }}: {{ rpi_throttle_state.stdout_lines | join(' ') }}"
+
+- name: Fail if the metric is not live
+  ansible.builtin.fail:
+    msg: "{{ inventory_hostname }} rpi_throttled not exported: {{ rpi_throttle_state.stdout_lines | join(' ') }}"
+  when:
+    - not ansible_check_mode
+    - "'throttle_series=8' not in rpi_throttle_state.stdout_lines"

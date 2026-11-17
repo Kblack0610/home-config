@@ -51,7 +51,7 @@ Load at idle with all of the above is about 38% of 1000 W, with about 950 s of r
 
     ```bash
     ssh pi5-master-lan 'lsusb | grep -i cyber'
-    # Bus 001 Device 003: ID 0764:0501 Cyber Power System, Inc. CP1500PFCLCD
+    # Bus 003 Device 002: ID 0764:0601 Cyber Power System, Inc. PR1500LCDRT2U UPS
     ```
 
     If you don't see it, the cable isn't seated or the kernel didn't enumerate. Fix that before continuing: Ansible can't make a USB cable plug itself in.
@@ -102,7 +102,7 @@ Schedule this for a quiet hour. Every host on the UPS shuts down and reboots, in
 
     You'll see `ONBATT` immediately and get the "UPS on battery" page. After 300s (the settling timer), `nut-upssched-cmd` runs and you'll see `power-loss shutdown (reason=onbatt-settle): broadcasting FSD`, then `FSD broadcast ok`.
 
-4. Secondaries start halting within a few seconds of FSD. The master halts 60s later (`FINALDELAY`), and the UPS outlets click off about 20s after that (`ups.delay.shutdown`).
+4. Secondaries start halting within a few seconds of FSD; the mac-mini sleeps instead. The master halts 60s later (`FINALDELAY`), and the UPS outlets click off about 20s after that (`ups.delay.shutdown`).
 
 5. **Plug the UPS back in.** The outlets re-energise once the UPS finishes its boot self-test (10 to 30s). Hosts boot and rejoin the cluster; within about 10 minutes the "UPS shutdown recovered" page arrives.
 
@@ -148,9 +148,11 @@ ansible-playbook playbooks/site.yml --tags nut --limit cachyos-x8664-main -K
 | A host on the UPS went dark about a minute into an outage with no clean shutdown in its journal, and the UPS still had most of its battery (2026-11-17, 01:39 PST: the workstation, mac-mini, ms-a2, deskslim-2, pi3-adguard) | The primary's FSD ran after the 60s settle, and its killpower cut every battery outlet. Only the Pis were NUT secondaries, so the rest were hard-cut. | Every host on a battery outlet is now in `nut_clients`, and the settle is 300s. Check `upsc -c cyberpower` lists each host. |
 | An outage left no record anywhere | The master's journal was volatile and nothing paged. | Persistent journal on the master, ntfy pages, and the after-boot "UPS shutdown recovered" page (see Alerts). |
 | Pi workers die the instant the power goes, before any NUT event | They are not on battery outlets (2026-11-17: .22 to .24 by 01:38:29, .21 and .124 by 01:38:47). | Move them to the UPS's Battery+Surge bank; nothing in software can fix it. |
-| Every host shut down at once with no outage: master log shows `LOWBATT` with no `ONBATT` before it (2026-11-17 08:37) | The UPS raised LB while on line power, and an upssched `AT LOWBATT` rule ran the shutdown on it. The same minute the master logged Pi undervoltage and the UPS USB link reset. | Rule removed; upsmon acts on LB only together with OB. If `vcgencmd get_throttled` on the master is not `0x0`, replace its 5V supply (official 27W). |
+| Every host shut down at once with no outage: master log shows `LOWBATT` with no `ONBATT` before it (2026-11-17 08:37) | The UPS raises LB on line power whenever `battery.runtime` falls to `battery.runtime.low` (300 s), which a full battery reaches near 78% load; an upssched `AT LOWBATT` rule ran the shutdown on it. | Rule removed; upsmon acts on LB only together with OB (`tests/run-tests.sh` replays both). LB on line power still pages: it means the load leaves 5 minutes of runtime. |
 | A secondary is up after an outage but missing from `upsc -c cyberpower` | Arch ships `nut.target` disabled and `nut-monitor` is WantedBy it, so upsmon never started at boot (ms-a2, deskslim-2, 2026-11-17). | The role enables `nut.target`. Check with `systemctl is-active nut-monitor`. |
-| The mac-mini stayed off after the outlets came back | macOS stays off after a power cut unless `autorestart` is set. | The role sets `pmset -a autorestart 1`; check `pmset -g | grep autorestart`. |
+| The mac-mini stayed off after the outlets came back, though `autorestart` was 1 (2026-11-17) | NUT halted it cleanly before killpower, and macOS boots after a power loss only if it was on when the power went. | Its `worker-shutdown.sh` runs `pmset sleepnow` instead of halting, so killpower cuts it while asleep and `autorestart 1` (set by the role) boots it. Check `pmset -g \| grep autorestart`. |
+| The UPS USB link drops every few minutes (`nut_libusb_get_interrupt: No such device`, kernel `USB disconnect` with no reset or EMI line) and the driver comes back reading `OL+DISCHRG` | The UPS drops off the bus itself: the drops kept coming on 2026-11-17 after the master moved to another supply and read `0x0`. CyberPower's USB side sleeps when polled too rarely. | `ups.conf` sets `pollonly` and `pollfreq = 12` (the CPS default from NUT 2.8.3). If `journalctl -k \| grep 'usb 3-1: USB disconnect'` still grows, stop the driver for 30 minutes: drops with nothing polling mean the cable, port or UPS, so move it to the black USB 2 port on a short shielded cable. |
+| A Pi logs undervoltage (`vcgencmd get_throttled` not `0x0`, `vcgencmd pmic_read_adc EXT5V_V` under 5.0V) | Its 5V supply sags. On 2026-11-17 the master's supply was the culprit; swapped onto pi5-worker3, the sag followed it. | Replace the supply (official 27W, 5.1V 5A). `PiUndervoltageSinceBoot` fires for any Pi on a weak supply (`roles/rpi-throttle-metric`). |
 | The cluster stays cordoned or Flux suspended after an outage | Older versions of `cluster-graceful-shutdown.sh` tried to cordon and suspend; removed 2026-11-17 because they never ran (the nut user cannot read the kubeconfig) and could not be undone automatically. | `kubectl uncordon <node>`, `flux resume kustomization --all`. |
 
 ## Followups (not done yet)

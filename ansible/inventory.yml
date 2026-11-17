@@ -182,6 +182,24 @@ all:
           host_tier: standard
           ansible_host: 192.168.1.193
 
+    # Every Raspberry Pi: each exports its firmware undervoltage latch
+    # (roles/rpi-throttle-metric), which PiUndervoltageSinceBoot alerts on.
+    rpi_hosts:
+      children:
+        pi_k3s:
+        rpi_standalone:
+
+    # Pis outside k3s. Their node-exporter is Debian's package, which reads its
+    # textfile dir at /var/lib/prometheus/node-exporter, not the DaemonSet's.
+    rpi_standalone:
+      vars:
+        rpi_throttle_textfile_dir: /var/lib/prometheus/node-exporter
+      children:
+        adguard:
+      hosts:
+        audio-living:
+        audio-bedroom:
+
     # Hosts that arm their hardware watchdog (roles/hw-watchdog), so a freeze
     # resets the box instead of waiting for someone to pull the plug.
     watchdog_hosts:

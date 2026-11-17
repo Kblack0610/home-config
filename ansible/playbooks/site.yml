@@ -280,6 +280,36 @@
           ACTIONS_RUNNER_HOOK_JOB_STARTED: "{{ linux_ci_job_started_hook }}"
           CI_SLOT_CPUS: "{{ linux_ci_slot_cpus }}"
       tags: [runner, ci, linux-ci]
+    # A personal repo cannot see org runners, so each ci_repo_runners entry
+    # registers against its one repo (inventory.yml says why), with the
+    # workstation's gh as the repo owner.
+    - name: Register the personal repo runner slots
+      ansible.builtin.include_role:
+        name: github-actions-runner-linux
+        apply:
+          tags: [runner, ci, linux-ci]
+      loop: "{{ ci_repo_runners | default([]) }}"
+      loop_control:
+        loop_var: ci_repo
+        label: "{{ ci_repo.repo }} {{ ci_repo.slot }}"
+      vars:
+        gh_runner_scope: repo
+        gh_runner_owner: "{{ ci_repo.repo.split('/')[0] }}"
+        gh_runner_repo: "{{ ci_repo.repo.split('/')[1] }}"
+        gh_runner_token_source: gh
+        gh_runner_install_packages: false
+        gh_runner_user: linux-ci
+        gh_runner_group: linux-ci
+        gh_runner_user_home: "{{ linux_ci_user_home }}"
+        gh_runner_home: "{{ linux_ci_user_home }}/{{ ci_repo.slot }}"
+        gh_runner_name: "{{ inventory_hostname }}-{{ ci_repo.slot }}"
+        gh_runner_labels: [self-hosted, linux, x64, light]
+        gh_runner_slice: "{{ ci_linux_slice }}"
+        gh_runner_env:
+          HOME: "{{ linux_ci_user_home }}/{{ ci_repo.slot }}"
+          ACTIONS_RUNNER_HOOK_JOB_STARTED: "{{ linux_ci_job_started_hook }}"
+          CI_SLOT_CPUS: "{{ linux_ci_slot_cpus }}"
+      tags: [runner, ci, linux-ci]
     # After the slots, which create the linux-ci user. Playground jobs clone
     # their submodules over ssh (windows-media-ci's first light jobs failed
     # "Host key verification failed" without this).

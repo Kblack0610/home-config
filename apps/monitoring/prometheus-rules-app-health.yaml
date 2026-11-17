@@ -140,16 +140,19 @@ spec:
             )
         - record: homelab_app_health_state
           expr: |
-            (
-              2 * ((homelab_app_ready_ratio >= bool 1) * (homelab_app_restarts_1h < bool 3))
+            # 2 healthy, 1 degraded (serving, but partial or restarting), 0 down. A workload with
+            # no pods has no restart series, so restarts default to 0 rather than dropping it.
+            # The degraded conditions are summed and capped, never joined by `or`: a bool
+            # comparison yields a 0 sample for every series, so `or` never takes its right side.
+            2 * (
+              (homelab_app_ready_ratio >= bool 1)
+              * ((homelab_app_restarts_1h or homelab_app_ready_ratio * 0) < bool 3)
             )
             +
-            (
-              1 * (
-                ((homelab_app_ready_ratio > bool 0) * (homelab_app_ready_ratio < bool 1))
-                or
-                ((homelab_app_ready_ratio > bool 0) * (homelab_app_restarts_1h >= bool 3))
-              )
+            (homelab_app_ready_ratio > bool 0) * clamp_max(
+              (homelab_app_ready_ratio < bool 1)
+              + ((homelab_app_restarts_1h or homelab_app_ready_ratio * 0) >= bool 3),
+              1
             )
     - name: homelab-app-health.alerts
       interval: 1m

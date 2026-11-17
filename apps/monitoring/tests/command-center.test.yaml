@@ -442,7 +442,7 @@ tests:
       - expr: cc:watch_state
         eval_time: 5m
         exp_samples:
-          - labels: 'cc:watch_state{domain="ci",item="playground_nightly"}'
+          - labels: 'cc:watch_state{domain="projects",item="playground_nightly"}'
             value: 1
           - labels: 'cc:watch_state{domain="k3s",item="home_k3s_trivy_criticals"}'
             value: 1
@@ -460,12 +460,14 @@ tests:
             value: 2
           - labels: 'cc:watch_state{domain="home",item="voice_bedroom_puck"}'
             value: 2
-      - expr: cc:domain_status{domain=~"k3s|ci|queue|machines|spend|other|home|platform"}
+      - expr: cc:domain_status{domain=~"k3s|ci|projects|queue|machines|spend|other|home|platform"}
         eval_time: 5m
         exp_samples:
           - labels: 'cc:domain_status{domain="k3s"}'
             value: 1
           - labels: 'cc:domain_status{domain="ci"}'
+            value: 0
+          - labels: 'cc:domain_status{domain="projects"}'
             value: 1
           - labels: 'cc:domain_status{domain="queue"}'
             value: 1
@@ -504,7 +506,7 @@ tests:
         exp_samples:
           - labels: 'cc:watch_state{domain="queue",item="queue_starved"}'
             value: 1
-          - labels: 'cc:watch_state{domain="ci",item="playground_server_behind"}'
+          - labels: 'cc:watch_state{domain="projects",item="playground_server_behind"}'
             value: 1
       - expr: cc:red_now{item=~"watch .+"}
         eval_time: 5m
@@ -626,10 +628,10 @@ tests:
       - series: 'up{job="litellm"}'
         values: '1x10'
     promql_expr_test:
-      - expr: cc:domain_status{domain=~"ci|spend|platform"}
+      - expr: cc:domain_status{domain=~"projects|spend|platform"}
         eval_time: 5m
         exp_samples:
-          - labels: 'cc:domain_status{domain="ci"}'
+          - labels: 'cc:domain_status{domain="projects"}'
             value: 1
           - labels: 'cc:domain_status{domain="spend"}'
             value: 1
@@ -897,20 +899,20 @@ tests:
         exp_samples:
           - labels: 'cc:watch_state{domain="prod",item="binks_key_issue_failed"}'
             value: 2
-      - expr: cc:watch_state{domain="ci",item="playground_gate_budget"}
+      - expr: cc:watch_state{domain="projects",item="playground_gate_budget"}
         eval_time: 5m
         exp_samples:
-          - labels: 'cc:watch_state{domain="ci",item="playground_gate_budget"}'
+          - labels: 'cc:watch_state{domain="projects",item="playground_gate_budget"}'
             value: 1
       - expr: cc:watch_state{domain="ci",item="unity_queue_wait"}
         eval_time: 5m
         exp_samples:
           - labels: 'cc:watch_state{domain="ci",item="unity_queue_wait"}'
             value: 1
-      - expr: cc:watch_state{domain="ci",item="playground_main_checks"}
+      - expr: cc:watch_state{domain="projects",item="playground_main_checks"}
         eval_time: 5m
         exp_samples:
-          - labels: 'cc:watch_state{domain="ci",item="playground_main_checks"}'
+          - labels: 'cc:watch_state{domain="projects",item="playground_main_checks"}'
             value: 1
       - expr: cc:watch_state{domain="k3s",item="forgejo_restore_drill"}
         eval_time: 5m
@@ -963,4 +965,42 @@ tests:
         eval_time: 5m
         exp_samples:
           - labels: 'cc:watch_state{domain="llm",item="langfuse_read"}'
+            value: 1
+
+  - name: the ci pools row warns for a running host short of runners, never for a cloud host the governor stopped
+    interval: 1m
+    input_series:
+      # stopped by the governor: meant to be offline, no warn
+      - series: 'github_runner_pool_online{host="aws-spot-1",pool="unity"}'
+        values: '0x10'
+      - series: 'github_runner_pool_expected{host="aws-spot-1",pool="unity"}'
+        values: '1x10'
+      - series: 'ci_governor_power_state{host="aws-spot-1",state="stopped"}'
+        values: '1x10'
+      - series: 'ci_governor_power_state{host="aws-spot-1",state="running"}'
+        values: '0x10'
+      # full pool: no warn
+      - series: 'github_runner_pool_online{host="deskslim-2",pool="unity"}'
+        values: '3x10'
+      - series: 'github_runner_pool_expected{host="deskslim-2",pool="unity"}'
+        values: '3x10'
+      # the governor started this one at minute 5 and its runner never came up: warn from then
+      - series: 'github_runner_pool_online{host="aws-spot-2",pool="unity"}'
+        values: '0x10'
+      - series: 'github_runner_pool_expected{host="aws-spot-2",pool="unity"}'
+        values: '1x10'
+      - series: 'ci_governor_power_state{host="aws-spot-2",state="stopped"}'
+        values: '1x4 0x5'
+      - series: 'ci_governor_power_state{host="aws-spot-2",state="running"}'
+        values: '0x4 1x5'
+    promql_expr_test:
+      - expr: cc:component_status{domain="ci",component="pools"}
+        eval_time: 3m
+        exp_samples:
+          - labels: 'cc:component_status{domain="ci",component="pools"}'
+            value: 0
+      - expr: cc:component_status{domain="ci",component="pools"}
+        eval_time: 7m
+        exp_samples:
+          - labels: 'cc:component_status{domain="ci",component="pools"}'
             value: 1

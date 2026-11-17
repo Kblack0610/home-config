@@ -55,8 +55,9 @@ JOBS = {
 
 
 def ts(text):
-    """Epoch seconds of an ISO time; a trailing Z is UTC."""
-    return dt.datetime.fromisoformat(text.replace("Z", "+00:00")).timestamp()
+    """Epoch seconds of an ISO time; one with no offset is UTC, never local time."""
+    when = dt.datetime.fromisoformat(text.replace("Z", "+00:00"))
+    return (when if when.tzinfo else when.replace(tzinfo=dt.timezone.utc)).timestamp()
 
 
 def window(text):
@@ -70,29 +71,43 @@ def window(text):
 
 
 def pct(xs, p):
+    """Linearly interpolated percentile, so pct(xs, .5) is the median."""
     xs = sorted(xs)
-    return xs[min(len(xs) - 1, int(p * len(xs)))] if xs else None
+    if not xs:
+        return None
+    k = (len(xs) - 1) * p
+    lo = int(k)
+    return xs[lo] + (xs[min(lo + 1, len(xs) - 1)] - xs[lo]) * (k - lo)
 
 
 def gh_json(path):
-    out = subprocess.run(["gh", "api", path], capture_output=True, text=True, timeout=120, check=True)
+    out = subprocess.run(["gh", "api", path], capture_output=True, text=True, timeout=120)
+    if out.returncode:
+        sys.exit(f"FAIL: gh api {path}: {out.stderr.strip()}")
     return json.loads(out.stdout)
 
 
-def fetch_jobs(repo, workflow, start, end):
-    """[(run event, job)] of every run of the workflow created between start and end."""
-    day = lambda t: dt.datetime.fromtimestamp(t, dt.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
-    runs, page = [], 1
+def paged(path, key):
+    """Every item under key across the pages of a GitHub list endpoint."""
+    items, page = [], 1
     while True:
-        body = gh_json(f"repos/{repo}/actions/workflows/{workflow}/runs?per_page=100&page={page}"
-                       f"&created={day(start)}..{day(end)}")
-        runs += body["workflow_runs"]
-        if len(body["workflow_runs"]) < 100:
-            break
+        batch = gh_json(f"{path}&per_page=100&page={page}")[key]
+        items += batch
+        if len(batch) < 100:
+            return items
         page += 1
+
+
+def fetch_jobs(repo, workflow, start, end):
+    """[(run event, job)] of every run of the workflow created in [start - 1h, end]: a run queued
+    just before the window can start its jobs inside it."""
+    iso = lambda t: dt.datetime.fromtimestamp(t, dt.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+    runs = paged(f"repos/{repo}/actions/workflows/{workflow}/runs?created={iso(start - 3600)}..{iso(end)}", "workflow_runs")
+    if len(runs) >= 1000:
+        sys.exit(f"FAIL: {len(runs)} runs in one window; GitHub returns at most 1000 for a created filter, so use a shorter window")
     with concurrent.futures.ThreadPoolExecutor(6) as pool:
-        bodies = pool.map(lambda r: gh_json(f"repos/{repo}/actions/runs/{r['id']}/jobs?filter=all&per_page=100"), runs)
-        return [(run["event"], job) for run, body in zip(runs, bodies) for job in body["jobs"]]
+        bodies = pool.map(lambda r: paged(f"repos/{repo}/actions/runs/{r['id']}/jobs?filter=all", "jobs"), runs)
+        return [(run["event"], job) for run, jobs in zip(runs, bodies) for job in jobs]
 
 
 def prom_range(expr, start, end):
@@ -127,6 +142,8 @@ def classify(event, job):
         return None
     label, prefixes = label_steps
     steps = [s for s in job.get("steps") or [] if s["name"].startswith(prefixes) and s.get("conclusion") == "success"]
+    if not steps:  # its main step was skipped or renamed: no time to compare
+        return None
     secs = sum(ts(s["completed_at"]) - ts(s["started_at"]) for s in steps)
     if label == "Test":
         full = any(s["name"].startswith("Run tests") for s in steps)
@@ -171,9 +188,9 @@ def print_jobs(rows, hosts, windows):
                         continue
                     lone = sum(r["others"] < LONE_BELOW for r in xs)
                     print(f"{host:<18}{label:<10}{scope:<9}{win:<8}{len(xs):>4}{lone:>5}"
-                          f"{minutes(statistics.median(r['step'] for r in xs)):>9}{minutes(pct([r['step'] for r in xs], .9)):>6}"
-                          f"{minutes(statistics.median(r['run'] for r in xs)):>8}"
-                          f"{minutes(statistics.median(r['queue'] for r in xs)):>10}{minutes(pct([r['queue'] for r in xs], .9)):>6}"
+                          f"{minutes(pct([r['step'] for r in xs], .5)):>9}{minutes(pct([r['step'] for r in xs], .9)):>6}"
+                          f"{minutes(pct([r['run'] for r in xs], .5)):>8}"
+                          f"{minutes(pct([r['queue'] for r in xs], .5)):>10}{minutes(pct([r['queue'] for r in xs], .9)):>6}"
                           f"{statistics.mean(r['others'] for r in xs):>7.1f}")
 
 
@@ -208,7 +225,7 @@ def host_rows(host, inst, slice_cpus, windows, busy):
         out[win] = host_summary(
             one(f'node_load15{{{i}}} / scalar(count(node_cpu_seconds_total{{{i},mode="idle"}}))'),
             one(f'sum(1 - rate(node_cpu_seconds_total{{{i},mode="idle",cpu=~"{cpus}"}}[2m]))'),
-            one(f'rate(node_pressure_cpu_waiting_seconds_total{{{i}}}[2m])'),
+            one(f'max(rate(node_pressure_cpu_waiting_seconds_total{{{i}}}[2m]))'),
             one(f'max(ALERTS{{alertname="NodeLoadHigh",alertstate="firing",{i}}})'),
             busy, start, end)
     return out
@@ -243,7 +260,7 @@ def main(argv=None):
     ap.add_argument("--workflow", default="ci.yml")
     args = ap.parse_args(argv)
     windows = {"before": args.before, "after": args.after}
-    hosts = args.hosts.split(",")
+    hosts = [h.strip() for h in args.hosts.split(",") if h.strip()]
     inv, _ = load_inventory(INVENTORY)
     slice_cpus = {}
     for h in hosts:
@@ -252,14 +269,20 @@ def main(argv=None):
         slice_cpus[h] = inv[h]["ci_linux_cpus"]
     inst = {r["metric"]["host"]: r["metric"]["instance"] for r in json.load(urllib.request.urlopen(
         f"{PROM}/api/v1/query?" + urllib.parse.urlencode({"query": "cc:host_instance"}), timeout=30))["data"]["result"]}
-    lo, hi = min(a for a, _ in windows.values()), max(b for _, b in windows.values())
-    busy = {}
-    for h in hosts:
-        busy[h] = {}
-        for a, b in windows.values():
-            for name, times in busy_slots(h, a, b).items():
+    if missing := [h for h in hosts if h not in inst]:
+        sys.exit(f"FAIL: {', '.join(missing)} not in cc:host_instance")
+    busy = {h: {} for h in hosts}
+    for win, (a, b) in windows.items():
+        for h in hosts:
+            slots = busy_slots(h, a, b)
+            if not slots:
+                sys.exit(f"FAIL: no github_runner_state for {h} in the {win} window (past retention?);"
+                         " without it every job would read as lone")
+            for name, times in slots.items():
                 busy[h].setdefault(name, set()).update(times)
-    rows = job_rows(fetch_jobs(args.repo, args.workflow, lo, hi), hosts, windows, busy)
+    jobs = [j for a, b in windows.values() for j in fetch_jobs(args.repo, args.workflow, a, b)]
+    jobs = list({j["id"]: (event, j) for event, j in jobs}.values())  # windows may share runs
+    rows = job_rows(jobs, hosts, windows, busy)
     print_jobs(rows, hosts, windows)
     print_hosts({h: host_rows(h, inst[h], slice_cpus[h], windows, busy[h]) for h in hosts}, slice_cpus)
     return 0

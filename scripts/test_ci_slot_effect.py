@@ -59,6 +59,20 @@ class ClassifyTests(unittest.TestCase):
         self.assertIsNone(effect.classify("push", job("\U0001f512 Security Audit", "r", 0, 60, [])))
         self.assertIsNone(effect.classify("push", job("\U0001f528 Build", "r", 0, 60, [], conclusion="failure")))
 
+    def test_a_job_whose_main_step_did_not_run_is_not_timed_as_zero(self):
+        skipped = job("\U0001f528 Build", "r", 0, 60, [step("Build all packages", 0, 0, "skipped")])
+        self.assertIsNone(effect.classify("push", skipped))
+
+
+class HelperTests(unittest.TestCase):
+    def test_a_time_with_no_offset_is_utc(self):
+        self.assertEqual(effect.ts("2026-11-15T00:00:00"), T0)
+
+    def test_pct_interpolates_and_its_p50_is_the_median(self):
+        self.assertEqual(effect.pct([1, 2, 3, 4], .5), 2.5)
+        self.assertEqual(effect.pct([5], .9), 5)
+        self.assertIsNone(effect.pct([], .5))
+
 
 class ContentionTests(unittest.TestCase):
     def test_counts_other_slots_only(self):

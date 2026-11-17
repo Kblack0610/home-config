@@ -27,10 +27,13 @@ spec:
               resources:
                 requests:
                   cpu: 50m
-                  memory: 64Mi
+                  memory: 128Mi
+                # 128Mi OOMKilled the audit (exit 137) on 2026-11-17 and on two
+                # earlier nights: it loads every ConfigMap and Secret in the
+                # cluster as JSON, and the cluster outgrew it. 512Mi ran clean.
                 limits:
                   cpu: 200m
-                  memory: 128Mi
+                  memory: 512Mi
               env:
                 # `homelab-alerts` is the topic a phone is actually subscribed
                 # to - it is where Alertmanager sends everything

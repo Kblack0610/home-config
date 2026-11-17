@@ -6,9 +6,9 @@ Each row links the steps; it does not restate them. A service with no steps yet:
 
 | Service | Admin path | Steps | Where it lives |
 |---|---|---|---|
-| Forgejo: access tokens, bot users | admin CLI by `kubectl exec`, then the REST API for scoped tokens | [forgejo README](../apps/forgejo/README.md#onboarding-a-repo-that-needs-forgejo-actions); bot users: the `forgejo-ops` skill, REST API | rbw (`forgejo_repo_admin`, `forgejo_deploy`, `forgejo_npm_*`) or the consumer's SOPS secret |
+| Forgejo: access tokens, bot users | admin CLI by `docker compose exec` on forge-hel1, then the REST API for scoped tokens | [forgejo README](../apps/forgejo/README.md#onboarding-a-repo-that-needs-forgejo-actions); bot users: the `forgejo-ops` skill, REST API | rbw (`forgejo_repo_admin`, `forgejo_deploy`, `forgejo_npm_*`) or the consumer's SOPS secret |
 | Forgejo: runner registration | `forgejo forgejo-cli actions generate-runner-token` | [forgejo README](../apps/forgejo/README.md#runner) | `apps/forgejo/runner-secret.yaml` |
-| Forgejo: server secrets | `forgejo generate secret` | [forgejo README](../apps/forgejo/README.md#configuration) | `apps/forgejo/secret.sops.yaml` |
+| Forgejo: server secrets | `forgejo generate secret` | [forgejo README](../apps/forgejo/README.md#configuration) | `vault_forgejo_env` in `ansible/group_vars/hetzner/vault.sops.yaml` |
 | Forgejo: registry pull secrets | a token with `read:package` from the CLI above | not written yet | `apps/<app>/registry-secret.yaml` (dockerconfigjson) |
 | Forgejo: forge-hel1 tunnel token | platform `infra/forge-tunnel` apply, then `terraform output -raw tunnel_token` | [forge-tunnel README](https://github.com/BlackNBrownStudios/platform/blob/develop/infra/forge-tunnel/README.md) | `ansible/group_vars/hetzner/vault.sops.yaml` (`vault_forge_tunnel_token`) |
 | Renovate bot | Forgejo bot user and API token | [renovate.md](./renovate.md) | the Renovate Actions secret |

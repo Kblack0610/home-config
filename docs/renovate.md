@@ -21,9 +21,9 @@ Renovate opens PRs on git.kblab.me when an image pinned in this repo has a newer
 ### Rotate the token
 
 ```bash
-K="kubectl --context home-k3s exec -n forgejo deploy/forgejo -c forgejo --"
+K="ssh forge-hel1 docker compose -f /etc/forgejo/compose.yaml exec -u git forgejo"
 PW=$(openssl rand -base64 33 | tr -d '/+=' | cut -c1-32)
-$K su-exec git forgejo admin user change-password --username renovate --password "$PW" --must-change-password=false
+$K forgejo admin user change-password --username renovate --password "$PW" --must-change-password=false
 NEW=$(curl -s -u "renovate:$PW" -H 'Content-Type: application/json' -X POST \
   https://git.kblab.me/api/v1/users/renovate/tokens \
   -d '{"name":"renovate-home-config-'"$(date +%Y%m%d)"'","scopes":["read:user","write:repository","write:issue","read:organization"]}' | jq -r .sha1)

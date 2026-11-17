@@ -83,8 +83,8 @@ spec:
               retries gc and dies on that lock. Refs may look current and the
               API's mirror_updated will look fresh; both lie. Forgejo marks the
               sync FAILED and never emits the mirror-sync event, so no Actions
-              run fires and anything downstream freezes. Fix: kubectl -n forgejo
-              exec deploy/forgejo -c forgejo -- sh -c 'cd
+              run fires and anything downstream freezes. Fix: ssh forge-hel1
+              docker compose -f /etc/forgejo/compose.yaml exec -u git forgejo sh -c 'cd
               /data/git/repositories/{{ $labels.repo }}.git && find . -name
               "*.lock" -mmin +120 -delete && rm -f
               objects/info/commit-graphs/tmp_graph_* objects/info/gc.log && git
@@ -112,7 +112,7 @@ spec:
               are failing or not running. Do NOT check mirror_updated in the
               API - it advances on failure. No stale lock was found, so look at
               credentials, the remote host, or whether Forgejo is up:
-              kubectl -n forgejo logs deploy/forgejo | grep -i mirror
+              ssh forge-hel1 docker compose -f /etc/forgejo/compose.yaml logs forgejo | grep -i mirror
 
         - alert: ForgejoMirrorSyncStuck
           expr: forgejo_mirror:overdue_budget_ratio > 8
@@ -174,7 +174,7 @@ spec:
               Check forgejo_mirror:overdue_budget_ratio for this repo first.
 
         # The precondition that made the incident self-sustaining, and the
-        # trade-off guard for gc.auto=0 in apps/forgejo/configmap.yaml: with
+        # trade-off guard for gc.auto=0 in the forgejo-host role's files/app.ini: with
         # auto-gc off, this is what proves the scheduled cron is keeping up.
         # info, not warning: a busy repo legitimately crosses 6700 between gc
         # runs, so only 6h of persistence means gc is not working at all.
@@ -190,7 +190,7 @@ spec:
             description: >-
               {{ $labels.repo }} holds {{ $value | printf "%.0f" }} loose
               objects (git's gc.auto default is 6700) and has for 6 hours. With
-              gc.auto=0 set in apps/forgejo/configmap.yaml this means
+              gc.auto=0 set in the forgejo-host role's files/app.ini this means
               [cron.git_gc_repos] is not keeping up or is not running.
 
         - alert: ForgejoRepoGcFailing
@@ -206,8 +206,8 @@ spec:
               objects/info/gc.log exists in {{ $labels.repo }}: git's own
               auto-gc failed and recorded why, and will now REFUSE to retry for
               gc.logExpiry (1 day) while loose objects accumulate. The error
-              text is in the exporter's log: kubectl -n forgejo logs
-              deploy/forgejo-mirror-exporter | grep gc.log
+              text is in the exporter's log: ssh forge-hel1
+              docker compose -f /etc/forgejo/compose.yaml logs mirror-exporter | grep gc.log
 
         - alert: ForgejoPushMirrorError
           expr: forgejo_mirror_last_error_present{kind="push"} == 1
@@ -241,7 +241,7 @@ spec:
               {{ $value }} update(s) in the last 24h set {{ $labels.repo }}
               {{ $labels.branch }} back to an older commit, so what was on top
               (often a merged PR) is no longer on the branch. The dropped sha:
-              kubectl -n forgejo logs deploy/forgejo-mirror-exporter | grep rewind.
+              ssh forge-hel1 docker compose -f /etc/forgejo/compose.yaml logs mirror-exporter | grep rewind.
               Re-land it by fast-forward push if it is still a child of the tip,
               else as a new PR. See docs/gitops.md "Lost merges".
 

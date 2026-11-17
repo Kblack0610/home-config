@@ -81,20 +81,12 @@
   args:
     creates: "{{ ansible_env.HOME }}/.ssh/id_agent_sync"
 
-# Scanned from the home itself, which is what dials Forgejo; the controller may
-# resolve the name differently or not reach the tailnet at all.
-- name: Scan Forgejo's host key from the home
-  ansible.builtin.command: ssh-keyscan -t ed25519 -p {{ fleet_home_store_port }} {{ fleet_home_store_host }}
-  register: _fleet_home_forge_key
-  changed_when: false
-  failed_when: false
-  check_mode: false
-
+# The key is data (fleet_home_store_host_key), never a scan: an empty scan used to leave
+# Forgejo untrusted with no error.
 - name: Trust Forgejo's host key
-  when: _fleet_home_forge_key.stdout | trim | length > 0
   ansible.builtin.known_hosts:
     name: "[{{ fleet_home_store_host }}]:{{ fleet_home_store_port }}"
-    key: "{{ _fleet_home_forge_key.stdout_lines | reject('match', '^#') | first }}"
+    key: "[{{ fleet_home_store_host }}]:{{ fleet_home_store_port }} {{ fleet_home_store_host_key }}"
     state: present
 
 - name: Read whether the store is cloned

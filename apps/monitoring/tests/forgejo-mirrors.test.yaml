@@ -1,5 +1,5 @@
 # promtool test rules. Run with scripts/test-prometheus-rules.sh. Covers the lost-merge
-# alerts; the series are what apps/forgejo-mirror-exporter emits.
+# alerts; the series are what ansible/roles/forgejo-host/files/mirror-exporter/exporter.py emits.
 rule_files:
   - forgejo-mirrors.rules.yaml
 evaluation_interval: 1m
@@ -22,7 +22,7 @@ tests:
           - exp_labels: {alertname: ForgejoDefaultBranchRewound, severity: critical, fleet: fix, category: git-integrity, repo: kblack0610/home-config, branch: master, job: forgejo-mirror-exporter}
             exp_annotations:
               summary: "kblack0610/home-config master moved back to an older commit"
-              description: "1 update(s) in the last 24h set kblack0610/home-config master back to an older commit, so what was on top (often a merged PR) is no longer on the branch. The dropped sha: kubectl -n forgejo logs deploy/forgejo-mirror-exporter | grep rewind. Re-land it by fast-forward push if it is still a child of the tip, else as a new PR. See docs/gitops.md \"Lost merges\"."
+              description: "1 update(s) in the last 24h set kblack0610/home-config master back to an older commit, so what was on top (often a merged PR) is no longer on the branch. The dropped sha: ssh forge-hel1 docker compose -f /etc/forgejo/compose.yaml logs mirror-exporter | grep rewind. Re-land it by fast-forward push if it is still a child of the tip, else as a new PR. See docs/gitops.md \"Lost merges\"."
 
   - name: a ref-clobbering push remote warns after 15 minutes
     interval: 1m

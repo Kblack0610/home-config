@@ -1,6 +1,8 @@
 apiVersion: batch/v1
 kind: CronJob
 metadata:
+  annotations:
+    kblab.me/criticality: high
   name: actual-budget-backup
   namespace: actual-budget
 spec:

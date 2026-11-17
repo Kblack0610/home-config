@@ -25,9 +25,15 @@ all:
     ansible_user: kblack0610
 
   children:
+    # Provisional tiers for placement records; P2 qualification and P5 review
+    # own admission proof. core: single-writer state, no CI/GPU/load tests;
+    # standard: ordinary apps and CI; probation: scratch/CI only, no PVs.
+    # asus core is the accepted mains/battery-alert exception (ask dd4Hhw).
+    # no_ci_hosts remains an independent prohibition (ask vy3RRu).
     linux_bare_metal:
       hosts:
         hp-victus:
+          host_tier: probation
           ansible_host: 192.168.1.243
         # asus-laptop listens on 2222, not 22 (that part of the 2026-04-01 note
         # still holds). The `unreachable: true` flag was removed 2026-08-12:
@@ -38,12 +44,14 @@ all:
         # it with, and the mounts had to be repaired by hand. It now carries the
         # usb-backup-mounts role.
         asus-laptop:
+          host_tier: core
           ansible_host: 192.168.1.152
           ansible_port: 2222
         # Razer Blade 14 (Ryzen 9 8945HS, 96 GB), reinstalled headless by PXE
         # kexec 2026-10-24 as a CI host, and a k3s agent since 2026-10-26. On the LAN through
         # a USB-C ethernet dongle; the DHCP reservation follows that dongle's MAC.
         razer-laptop:
+          host_tier: standard
           ansible_host: 192.168.1.26
           # A k3s agent since 2026-10-26, like hp-victus and asus-laptop.
           k3s_role: agent
@@ -58,12 +66,14 @@ all:
     desktop_workstations:
       hosts:
         cachyos-x8664-main:
+          host_tier: standard
           ansible_connection: local
           ansible_python_interpreter: /usr/bin/python3
 
     macos_hosts:
       hosts:
         mac-mini:
+          host_tier: standard
           ansible_host: 192.168.1.7
           ansible_user: kennethblack
           ssh_aliases: [m1]
@@ -86,6 +96,7 @@ all:
         # opt-in org runner for Windows-only issues, the way mac-mini is for
         # macOS. Not a CI gate. Was living-room-pc (.121) until 2026-10-26.
         windows-media:
+          host_tier: standard
           ansible_host: 192.168.1.8   # windows-media-lan
           ansible_user: hughl
           windows_hostname: WINDOWS-MEDIA
@@ -93,29 +104,42 @@ all:
           # or power cut with no one at the TV.
           windows_baseline_autologon: true
 
+    # Nodes whose tier labels Ansible owns. IP matching resolves Pi aliases
+    # to their actual Kubernetes names; this group does not install k3s.
+    k3s_nodes:
+      children:
+        pi_k3s:
+        watchdog_x86:
+
     pi_k3s:
       hosts:
         pi5-master:
+          host_tier: standard
           ansible_host: 192.168.1.20
           k3s_role: server
           k3s_extra_args: [--tls-san, 192.168.1.20]
         pi5-worker1:
+          host_tier: standard
           ansible_host: 192.168.1.21
           k3s_role: agent
           k3s_extra_args: [--with-node-id]
         pi5-worker2:
+          host_tier: standard
           ansible_host: 192.168.1.22
           k3s_role: agent
           k3s_extra_args: [--with-node-id]
         pi5-worker3:
+          host_tier: standard
           ansible_host: 192.168.1.23
           k3s_role: agent
           k3s_extra_args: [--with-node-id]
         pi4-worker4:
+          host_tier: standard
           ansible_host: 192.168.1.24
           k3s_role: agent
           k3s_extra_args: [--with-node-id]
         pi4-worker5:
+          host_tier: standard
           ansible_host: 192.168.1.124
           k3s_role: agent
           k3s_extra_args: [--with-node-id]
@@ -123,6 +147,7 @@ all:
     openwrt:
       hosts:
         openwrt-router:
+          host_tier: standard
           ansible_host: 192.168.1.1
           ansible_user: root
 
@@ -137,6 +162,7 @@ all:
     adguard:
       hosts:
         pi3-adguard:
+          host_tier: standard
           ansible_host: 192.168.1.193
 
     # Hosts that arm their hardware watchdog (roles/hw-watchdog), so a freeze
@@ -147,7 +173,9 @@ all:
         watchdog_x86:
       hosts:
         audio-living:
+          host_tier: standard
         audio-bedroom:
+          host_tier: standard
 
     # The x86 k3s nodes. hp-victus hung 2026-11-12 and 11-13 (NVIDIA GSP fault)
     # and needed a hand power-cycle each time; it holds Forgejo. The chipset
@@ -216,6 +244,7 @@ all:
         # 2026-11-13 (unity_ci_runners says why). Light jobs average 0.4 cores and
         # 0.6G, so four fit in three cores and 14G. Ubuntu: linux-ci-host's apt list.
         windows-media-ci:
+          host_tier: standard
           ci_light_slots: 4
           ci_heavy_slots: 0
 
@@ -307,6 +336,7 @@ all:
         # and stops it (docs/runbooks/unity-ci-host.md); start it before running
         # the play against it.
         aws-burst-1:
+          host_tier: standard
           ansible_host: i-0f1ecf35dc0e78146
           ansible_user: ubuntu
           ansible_ssh_common_args: >-
@@ -347,6 +377,7 @@ all:
         # starts the host when a build waits, and for tests as the last standby host.
         # Default image list: desktop builds need the windows flavor.
         aws-build-1:
+          host_tier: standard
           ansible_host: i-0856b245ff7a81321
           ansible_user: ubuntu
           ansible_ssh_common_args: >-
@@ -376,6 +407,7 @@ all:
         # unity_ci_gate since 2026-11-11: Spot kept gates off it (a reclaim kills a gate,
         # playground ucp-1778); on-demand, it is the fourth gate host.
         aws-burst-2:
+          host_tier: standard
           ansible_host: i-000950e6c992b24bf
           ansible_user: ubuntu
           ansible_ssh_common_args: >-
@@ -394,6 +426,7 @@ all:
         # human's order): a twin of aws-burst-2, on-demand from the start, so it is a
         # gate host too. Same six plain slots, images and library bucket.
         aws-burst-3:
+          host_tier: standard
           ansible_host: i-0dd679759235519a5
           ansible_user: ubuntu
           ansible_ssh_common_args: >-
@@ -417,6 +450,7 @@ all:
         # what runs, so they take nightlies and bulk work, not merge gates (ucp-1778).
         # 16 cores with SMT, so five slots of three cores (ci_hosts below).
         aws-spot-1:
+          host_tier: standard
           ansible_host: i-0b4c89a54f8e25ad5
           ansible_user: ubuntu
           ansible_ssh_common_args: >-
@@ -431,6 +465,7 @@ all:
           unity_ci_lan: false
           unity_ci_library_s3: aws-burst-1-libraries-311141527647
         aws-spot-2:
+          host_tier: standard
           ansible_host: i-0c244a80e9cf430b1
           ansible_user: ubuntu
           ansible_ssh_common_args: >-
@@ -445,6 +480,7 @@ all:
           unity_ci_lan: false
           unity_ci_library_s3: aws-burst-1-libraries-311141527647
         aws-spot-3:
+          host_tier: standard
           ansible_host: i-04ca535b8876dff6f
           ansible_user: ubuntu
           ansible_ssh_common_args: >-
@@ -611,7 +647,7 @@ all:
           ci_unity_slot_memory_max: 16G
 
     # Nodes that run the game servers (apps/playground-server pins to the
-    # kblab.me/game-server label, roles/game-server-node sets it). Each host keeps
+    # kblab.me/game-server label, roles/node-labels sets it). Each host keeps
     # game_server_cpus out of its ci_cpus, so a CI burst cannot take the cores a
     # game's tick runs on. Moving the server to another box (a mini PC, the
     # Razer) is this group, that host's ci_cpus, and the router's LAN answer and
@@ -747,6 +783,7 @@ all:
         # (plan virtual-strolling-nova). cx33 had no capacity in nbg1 that day,
         # so hel1 at the same price. The volume holds /mnt/forgejo/data.
         forge-hel1:
+          host_tier: standard
           ansible_host: 37.27.152.40   # public IPv4 from the provision play
           # On the tailnet at 100.125.203.14 since 2026-11-14 (role tailscale-node).
           # ansible_host and hcloud_ssh_sources move to it once asus' seed rsync,

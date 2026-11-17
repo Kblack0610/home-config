@@ -7,6 +7,8 @@
 apiVersion: batch/v1
 kind: CronJob
 metadata:
+  annotations:
+    kblab.me/criticality: standard
   name: freqtrade-candles-publish
 spec:
   schedule: "45 0 * * *"  # after the 00:20 backfill, before the 01:00 walk-forward

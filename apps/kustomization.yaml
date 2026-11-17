@@ -23,7 +23,6 @@ resources:
   - fleet-exporter
   - flux-audit
   - forgejo
-  - forgejo-mirror-exporter
   - feed-ingest
   - frigate
   - github-runner-exporter

@@ -183,7 +183,7 @@ The field that actually answers the question is `mirror.next_update_unix`, which
 
 This matters because it is the natural thing to check. Anyone writing a mirror healthcheck reaches for `mirror_updated` first, and it would have read green for the entire two-week outage.
 
-**What watches it now.** `apps/forgejo-mirror-exporter/` reads Forgejo's own SQLite and the bare repos on disk, and emits two deliberately independent signals: a database-derived overdue measure against a self-scaling budget of `max(3 * interval, 900s)`, and a filesystem scan for orphaned git `*.lock` and `tmp_*` files older than 7200s. Alerts live in `apps/monitoring/prometheus-rules-forgejo-mirrors.yaml` and page ntfy `homelab-alerts`. Agreement between the two escalates to critical, because two unrelated sources concurring is not a lie. `ForgejoActionsRunsStalled` is a third, independent path covering the downstream CI link. New mirrors are enumerated from the database, so they are covered with no config.
+**What watches it now.** `ansible/roles/forgejo-host/files/mirror-exporter/exporter.py` (the `mirror-exporter` compose service on forge-hel1) reads Forgejo's own SQLite and the bare repos on disk, and emits two deliberately independent signals: a database-derived overdue measure against a self-scaling budget of `max(3 * interval, 900s)`, and a filesystem scan for orphaned git `*.lock` and `tmp_*` files older than 7200s. Alerts live in `apps/monitoring/prometheus-rules-forgejo-mirrors.yaml` and page ntfy `homelab-alerts`. Agreement between the two escalates to critical, because two unrelated sources concurring is not a lie. `ForgejoActionsRunsStalled` is a third, independent path covering the downstream CI link. New mirrors are enumerated from the database, so they are covered with no config.
 
 ### Why a crashed git used to wedge a mirror forever
 
@@ -193,7 +193,7 @@ It could not self-heal. The repo held 7291 loose objects, over git's `gc.auto` d
 
 The structural fault was not the crash. It was that git housekeeping ran *inside* `git fetch`, so replication and housekeeping shared a code path and a lock.
 
-`gc.auto = 0` in `apps/forgejo/configmap.yaml`, plus `[cron.git_gc_repos]` enabled, moves packing to scheduled maintenance where a failure costs one housekeeping run instead of the mirror. The trade-off is that nothing packs these repos except the cron, so `ForgejoRepoLooseObjectsHigh` watches for it falling behind. Do not remove one without the other.
+`gc.auto = 0` in `ansible/roles/forgejo-host/files/app.ini`, plus `[cron.git_gc_repos]` enabled, moves packing to scheduled maintenance where a failure costs one housekeeping run instead of the mirror. The trade-off is that nothing packs these repos except the cron, so `ForgejoRepoLooseObjectsHigh` watches for it falling behind. Do not remove one without the other.
 
 **But that only closes half the path, and the half that did not crash.** The debris was the *split* chain (`commit-graphs/commit-graph-chain.lock` plus `tmp_graph_*`), which is written by `git fetch` itself under `fetch.writeCommitGraph`, not by gc, whose single-file `objects/info/commit-graph` completed fine.
 
@@ -203,22 +203,22 @@ So a mirror fetch can still crash mid commit-graph write. What changed is the bl
 
 `[git.timeout] GC` is 600, not the stock 60, because Forgejo hard-kills git at that deadline and a gc killed mid commit-graph write produces the same orphaned lock by a different route. A real gc on `platform` measured 10.8s.
 
-`forgejo-lock-reaper` (`apps/forgejo/lock-reaper-cronjob.yaml`) sweeps hourly for whatever still orphans, against a closed allowlist of filenames and an age gate of 2x `[git.timeout] MIGRATE`. It deliberately never touches anything under `refs/` or `objects/pack/`: removing a ref lock under a live writer is data loss, not cleanup. Every reap pages, because a repo needing it twice means something upstream is dying.
+`forgejo-lock-reaper` (`ansible/roles/forgejo-host/files/jobs/forgejo-lock-reaper.sh`, the `forgejo-lock-reaper.timer` on forge-hel1) sweeps hourly for whatever still orphans, against a closed allowlist of filenames and an age gate of 2x `[git.timeout] MIGRATE`. It deliberately never touches anything under `refs/` or `objects/pack/`: removing a ref lock under a live writer is data loss, not cleanup. Every reap pages, because a repo needing it twice means something upstream is dying.
 
 **Manual recovery**, if you ever need it before the reaper runs:
 
 ```bash
-kubectl --context home-k3s -n forgejo exec deploy/forgejo -c forgejo -- sh -c '
+ssh forge-hel1 docker compose -f /etc/forgejo/compose.yaml exec -u git forgejo sh -c '
   cd /data/git/repositories/<owner>/<repo>.git &&
   find . -name "*.lock" -mmin +120 -delete &&
   rm -f objects/info/commit-graphs/tmp_graph_* objects/info/gc.log &&
   git gc'
 ```
 
-**Changing any of this requires a pod restart.** `app.ini` is mounted with `subPath`, and an init container copies it onto the PVC, so a ConfigMap change alone leaves the running pod on the old config indefinitely. This trap bit the rollout of the very fix described above: Flux reconciled green, the ConfigMap held the new values, and the running Forgejo still read `GC = 60`. Confirm against the file Forgejo actually materialises, not the ConfigMap:
+**Changing any of this means re-running the play.** Edit `ansible/roles/forgejo-host/files/app.ini` and run `cd ansible && ansible-playbook playbooks/site.yml --limit forge-hel1`, which restarts Forgejo on a change. When Forgejo ran in the cluster, a ConfigMap change alone left the running pod on the old config (`GC = 60` after Flux reconciled green), so confirm against the file Forgejo actually materialises, not the source:
 
 ```bash
-kubectl --context home-k3s -n forgejo exec deploy/forgejo -c forgejo -- \
+ssh forge-hel1 docker compose -f /etc/forgejo/compose.yaml exec -u git forgejo \
   cat /data/gitea/data/home/.gitconfig
 ```
 
@@ -228,10 +228,10 @@ kubectl --context home-k3s -n forgejo exec deploy/forgejo -c forgejo -- \
 
 home-config has no push mirror now: `mirror-to-github.yaml` above is the only GitHub mirror, and it pushes from a fresh clone, so it cannot write back. Do not add a push mirror to a repo that has merges. If one is ever needed, unset its fetch refspec in the bare repo (`git config --unset-all remote.<name>.fetch`). Deleting a push mirror through the API removes its database row but leaves the git remote in `config`, so remove that too (`git remote remove <name>`; it does not touch `refs/heads/`).
 
-What watches it: `apps/forgejo-mirror-exporter/` reads each repo's default-branch reflog and counts moves back to an older commit (`ForgejoDefaultBranchRewound`, critical, 24h window), names any pushed-to remote whose fetch refspec lands on `refs/heads/` (`ForgejoPushRemoteRewritesBranches`), and flags a default branch with no reflog, which would hide both (`ForgejoDefaultBranchReflogMissing`). To find a dropped sha by hand:
+What watches it: the mirror exporter (`ansible/roles/forgejo-host/files/mirror-exporter/exporter.py`) reads each repo's default-branch reflog and counts moves back to an older commit (`ForgejoDefaultBranchRewound`, critical, 24h window), names any pushed-to remote whose fetch refspec lands on `refs/heads/` (`ForgejoPushRemoteRewritesBranches`), and flags a default branch with no reflog, which would hide both (`ForgejoDefaultBranchReflogMissing`). To find a dropped sha by hand:
 
 ```bash
-kubectl --context home-k3s -n forgejo exec deploy/forgejo -c forgejo -- \
+ssh forge-hel1 docker compose -f /etc/forgejo/compose.yaml exec -u git forgejo \
   grep -n "update by push" /data/git/repositories/<owner>/<repo>.git/logs/refs/heads/master
 ```
 

@@ -14,7 +14,7 @@ set -eu
 KEEP=${KEEP:-3}                 # fulls kept; the drive is shared with every other mirror
 MIN_FREE_GB=${MIN_FREE_GB:-500} # left free after the new full, for the other tenants
 SNAP_MAX_AGE=${SNAP_MAX_AGE:-7200}   # the VM's db snapshot runs hourly
-PKG_KEEP=${PKG_KEEP:-4}         # weekly registry snapshots, as forgejo-packages-backup kept
+PKG_KEEP=${PKG_KEEP:-4}         # weekly registry snapshots, as the retired nas forgejo-packages-backup kept
 PKG_EVERY_DAYS=7
 
 apk add --no-cache rsync openssh-client tar gzip coreutils btrfs-progs
@@ -94,7 +94,7 @@ ls -t /dest/forgejo-db-*.db.gz | tail -n +$((KEEP+1)) | xargs -r rm -v
 pull -a --ignore-existing --numeric-ids --partial-dir=.rsync-partial --exclude='.*' \
   "$SRC:data/gitea/data/packages/" /packages/
 
-# A weekly read-only snapshot, named as forgejo-packages-backup named them, so
+# A weekly read-only snapshot, named as the retired nas forgejo-packages-backup named them, so
 # nas-backup-verify's forgejo-packages check reads it unchanged.
 # shellcheck disable=SC2012  # names are forgejo-packages-<ts>
 NEWEST_PKG=$(ls -d /packages-snapshots/forgejo-packages-* 2>/dev/null | sort | tail -1 || true)

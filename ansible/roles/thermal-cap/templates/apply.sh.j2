@@ -23,6 +23,12 @@ else
   put /sys/devices/system/cpu/cpufreq/boost 0
 fi
 {% endif %}
+{% if thermal_cap_max_freq_khz %}
+# After boost, since the boost switch moves each policy's top clock.
+for policy in /sys/devices/system/cpu/cpufreq/policy*; do
+  put "$policy/scaling_max_freq" {{ thermal_cap_max_freq_khz }}
+done
+{% endif %}
 {% if thermal_cap_rapl_long_watts %}
 for zone in /sys/class/powercap/intel-rapl:0 /sys/class/powercap/intel-rapl-mmio:0; do
   [ -d "$zone" ] || continue

@@ -68,12 +68,20 @@ class RenderTests(unittest.TestCase):
         hosts["desk"]["fleet_pulse_name"] = "Desk Key"
         hosts["room"]["fleet_pulse_name"] = "node-a"
         del self.inventory["all"]["children"]["k3s"]
+        hosts["desk"]["fleet_pulse_display"] = "my box"
         self.inventory["all"]["children"]["fleet_pulse"]["vars"]["fleet_pulse_groups"] = {"iot": "iot"}
         fails = fleet_pulse.failures(*self.members())
         self.assertTrue(any("not kebab-case" in f for f in fails), fails)
         self.assertTrue(any("declared twice" in f for f in fails), fails)
         self.assertTrue(any("no ansible_host" in f for f in fails), fails)
         self.assertTrue(any("fleet_pulse_groups names 'iot'" in f for f in fails), fails)
+        self.assertTrue(any("is not one word" in f for f in fails), fails)
+
+    def test_refuses_a_device_without_a_group(self):
+        del self.inventory["all"]["children"]["fleet_pulse"]["vars"]["fleet_pulse_devices"][0]["group"]
+        with self.assertRaises(SystemExit) as raised:
+            self.members()
+        self.assertIn("needs a name and a group", str(raised.exception))
 
     def test_refuses_a_templated_value(self):
         self.inventory["all"]["children"]["k3s"]["hosts"]["node-a"]["ansible_host"] = "{{ lan_ip }}"

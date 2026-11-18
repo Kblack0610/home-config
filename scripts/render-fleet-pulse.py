@@ -37,6 +37,8 @@ GATUS_OUT = os.path.join(REPO, "apps/gatus-fleet/config.yaml")
 ROSTER_OUT = os.path.join(REPO, "apps/fleet-exporter/roster.json")
 # The bars split the roster on whitespace and match names exactly, so a name is kebab-case.
 NAME_RE = re.compile(r"^[a-z0-9][a-z0-9-]*$")
+# A label sits after the = of a display token the bars split on whitespace.
+LABEL_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.-]*$")
 NODE_EXPORTER_PORT = 9100
 POLL_INTERVAL = "60s"
 
@@ -73,6 +75,8 @@ def members(path):
             "host": host,
         })
     for d in gvars.get("fleet_pulse_devices") or []:
+        if not (isinstance(d, dict) and d.get("name") and d.get("group")):
+            raise SystemExit(f"FAIL: a fleet_pulse_devices entry needs a name and a group: {d!r}")
         out.append({
             "name": d["name"], "group": d["group"], "push": True, "units": [],
             "roster": d.get("roster", True) is not False, "display": d.get("display"),
@@ -93,9 +97,13 @@ def failures(ms, groups):
             fails.append(f"{m['host']}: polled, but has no ansible_host to poll")
         if m["units"] and m["push"]:
             fails.append(f"{m['host']}: fleet_pulse_units needs a polled host")
+        if m["display"] is not None and not LABEL_RE.match(str(m["display"])):
+            fails.append(f"{m['host']}: display label {m['display']!r} is not one word")
         if "{{" in json.dumps([m["name"], m["addr"], m["display"]]):
             fails.append(f"{m['host']}: a fleet_pulse value is templated; give it literally")
-    for g in groups:
+    for g, label in groups.items():
+        if not LABEL_RE.match(str(label)):
+            fails.append(f"fleet_pulse_groups label {label!r} for {g!r} is not one word")
         if not any(m["group"] == g for m in ms if m["roster"]):
             fails.append(f"fleet_pulse_groups names {g!r}, which no rostered machine is in")
     return fails

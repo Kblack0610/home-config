@@ -16,6 +16,9 @@ spec:
       app.kubernetes.io/name: ci-artifacts
   template:
     metadata:
+      annotations:
+        # Bump when secret.sops.yaml changes: a Secret edit alone does not restart the pod.
+        kblab.me/secret-rev: "2"
       labels:
         app.kubernetes.io/name: ci-artifacts
     spec:

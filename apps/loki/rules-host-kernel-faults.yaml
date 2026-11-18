@@ -76,3 +76,14 @@ data:
               category: node-health
             annotations:
               summary: "CyberPower UPS USB link on {{ $labels.host }} re-enumerated {{ $value }} times in 30m: the UPS may be beeping and NUT may miss events. docs/nut-ups.md#troubleshooting"
+          - alert: HostFsVerityCorruption
+            # fs-verity logs "FILE CORRUPTED" for each verified read that fails its Merkle tree:
+            # 223 lines on the workstation 2026-11-16 20:51 to 11-17 01:03, unalerted.
+            expr: |
+              label_replace(sum by (host) (count_over_time({transport="kernel"} |= "FILE CORRUPTED" [10m])), "instance", "$1", "host", "(.*)") > 0
+            labels:
+              severity: warning
+              fleet: none  # a disk or filesystem fault: the human checks the drive and the file
+              category: node-health
+            annotations:
+              summary: "fs-verity FILE CORRUPTED on {{ $labels.host }}: {{ $value }} lines in 10m"

@@ -52,20 +52,18 @@ OUT = os.path.join(REPO, "apps/ci-topology/topology.json")
 WIDE_SLOT_MIN_GB = 20
 RELEASE_LABEL = "unity-release"
 NO_CI_GROUP = "no_ci_hosts"
-CI_GROUPS = ("linux_ci_runners", "unity_ci_runners", "unity_ci_mac_runners", "ci_hosts")
+CI_GROUPS = ("unity_ci_runners", "unity_ci_mac_runners", "ci_hosts")
 UNITY_GROUPS = ("unity_ci_runners", "unity_ci_mac_runners")
 # The inventory keys this reads; a Jinja value in one would render as its literal text.
-KEYS = ("ci_light_slots", "ci_heavy_slots", "ci_repo_runners", "ci_pinned_runners", "unity_ci_slots",
+KEYS = ("ci_repo_runners", "ci_pinned_runners", "unity_ci_slots",
         "unity_ci_slot_groups", "unity_ci_wide_slots", "unity_ci_lan", "unity_ci_full", "unity_ci_wide",
         "unity_ci_slot_labels", "ci_unity_slot_cpus", "ci_unity_slot_memory_max", "ci_caps")
 # What a host may be tagged for (ci_caps): each of its slots takes every job kind its host is
-# tagged for that the slot can hold. A light or heavy slot also takes light jobs; a Unity test
-# slot also takes SHARED_CAPS; a build slot takes builds alone, so a build never waits behind
-# a small job. A forgejo seat runs on a Unity test slot the governor lends it (seats()). Every light and heavy slot carries fresh-workspace (site.yml): its job-started
-# hook gives each job an empty workspace, which the Unity repos' light jobs ask for, since on a
-# Unity slot their checkout would clean the warm Library.
+# tagged for that the slot can hold. A Unity test slot takes unity and SHARED_CAPS; a build slot
+# takes builds alone, so a build never waits behind a small job. No slot is a small kind's alone:
+# a Unity repo's light job parks the warm tree's untracked state first (roles/ci-host,
+# ci-fresh-workspace). A seat runs on a Unity test slot the governor lends it (seats()).
 HOST_CAPS = ("light", "heavy", "unity", "unity-build", "unity-wide", "forgejo")
-SLOT_CAPS = {"light": ["light"], "heavy": ["heavy", "light"]}
 # Heavy is shared since platform's heavy jobs, the only ones that ask for heavy, take ephemeral
 # service and app ports (BlackNBrownStudios/platform#1592 on main, #1599 on develop), so two heavy
 # jobs on one host no longer clash. Revisit if a heavy job fails on an address already in use.
@@ -96,13 +94,10 @@ def render(hosts, groups):
         fails += [f"{host}: ci_caps names {c}, not one of {list(HOST_CAPS)}" for c in caps if c not in HOST_CAPS]
         if v.get("unity_ci_lan", True) is False and set(caps) & {*SHARED_CAPS, "forgejo"}:
             fails.append(f"{host}: a cloud host's ci_caps carry no light, heavy or forgejo, so a small job never powers a paid host")
-        if host in groups.get("linux_ci_runners", ()):
-            for kind in ("light", "heavy"):
-                slots += [{"name": f"{host}-{kind}-{n}", "caps": SLOT_CAPS[kind]} for n in range(1, int(v.get(f"ci_{kind}_slots", 0)) + 1)]
-            slots += [{"name": f"{host}-{r['slot']}", "caps": SLOT_CAPS["light"], "repo": r["repo"],
-                       "borrows": unity_slot(host, r["borrows"])} for r in v.get("ci_repo_runners", []) if "borrows" in r]
-            fails += [f"{host}: ci_repo_runners {r['slot']} has no borrows (the Unity slot it runs on)"
-                      for r in v.get("ci_repo_runners", []) if "borrows" not in r]
+        slots += [{"name": f"{host}-{r['slot']}", "caps": ["light"], "repo": r["repo"],
+                   "borrows": unity_slot(host, r["borrows"])} for r in v.get("ci_repo_runners", []) if "borrows" in r]
+        fails += [f"{host}: ci_repo_runners {r['slot']} has no borrows (the Unity slot it runs on)"
+                  for r in v.get("ci_repo_runners", []) if "borrows" not in r]
         unity = any(host in groups.get(g, ()) for g in UNITY_GROUPS)
         if unity:
             total, group = unity_layout(v)

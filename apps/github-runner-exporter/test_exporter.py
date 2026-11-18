@@ -1081,6 +1081,17 @@ class ForgejoTest(unittest.TestCase):
         self.render(jobs=[])
         self.assertEqual(list(exporter.FJ_SEEN), [])
 
+    def test_a_seat_that_never_ran_has_no_labels_yet_so_no_wait_is_stuck(self):
+        # A one-job seat declares its labels only when it starts a job; Forgejo answers
+        # labels: null until then. The arm wait (no live runner takes it) stays unjudged.
+        undeclared = {**fj_runner(5, "box-forgejo-1", "offline"), "labels": None}
+        page = "admin/actions/runners?limit=50&page=1"
+        with mock.patch.dict(FJ, {page: [undeclared, *FJ[page][1:]]}):
+            out = self.render()
+        wait = [r for r in rows(out, "github_actions_job_waiting") if 'forge="forgejo"' in r]
+        self.assertTrue(wait)
+        self.assertTrue(all('stuck="false"' in r for r in wait), wait)
+
     def queue(self, out):
         return {re.search(r'quantile="([^"]+)"', r).group(1): int(r.rsplit(" ", 1)[1])
                 for r in rows(out, "github_job_queue_seconds") if 'forge="forgejo"' in r}

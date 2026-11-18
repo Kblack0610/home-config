@@ -6,9 +6,9 @@
 #   ansible-playbook playbooks/site.yml --limit hp-victus
 #   ansible-playbook playbooks/site.yml --limit hp-victus --check --diff
 #
-# The github-actions-runner-linux role runs the org light/heavy runner slots on
-# the linux_ci_runners group and the org Unity pool slots,
-# all in the "CI runners (light, heavy and Unity slots)" play.
+# The github-actions-runner-linux role runs the org runners on
+# the Unity pool slots and the seats that borrow them, all in the "CI runners
+# (Unity slots and the seats that borrow them)" play.
 # Future phases will add roles here (k3s-agent, openwrt-config, etc.).
 
 - name: Local ASR dictation daemons (Parakeet + whisper.cpp) on this workstation
@@ -212,68 +212,30 @@
     - role: nic-unused-down
       tags: [nic-unused]
 
-# Linux CI runners (light / heavy), org-scoped for every BlackNBrownStudios
-# repo. Added 2026-09-28 for the platform repo only; org-scoped 2026-11-03 so the
-# game repos' small jobs (checks, plan and report steps) stop billing hosted
-# minutes. The Unity pool's slots are registered by the same play, below them.
-#
-# History: the thinkcentre [self-hosted, linux] runner was decommissioned
-# 2026-06-18 after a power outage froze a release gate queued on it (#833), and
-# the direction became "Forgejo local, GitHub cloud". That is REVERSED for
-# ordinary CI only: hosted minutes hit the org's $200 Actions budget in
-# September 2026 (agent PR volume, ~86 billed min per landed PR), while
-# self-hosted minutes cost $0. What keeps the June failure from coming back:
-#   - release/deploy jobs (platform deploy-production, release gates, mobile
-#     promote; playground steam.yml) stay on ubuntu-latest;
-#   - every moved job reads its runs-on from the LINUX_RUNNER_LIGHT /
-#     LINUX_RUNNER_HEAVY org variables (["self-hosted","linux","light"] and
-#     ["self-hosted","linux","heavy"]), and deleting them sends everything back
-#     to ubuntu-latest. A repo variable of the same name overrides the org one:
-#     the Unity repos (unity-core-playground, unity-core) set LINUX_RUNNER_LIGHT
-#     to ["self-hosted","linux","light","fresh-workspace"], so their light jobs
-#     take only slots whose workspace starts empty, never a Unity slot, where the
-#     checkout's clean would delete the warm Library. Every other repo uses the
-#     org ones, and its light and heavy jobs take any slot of a host tagged for them,
-#     Unity slots too (ci_caps in inventory.yml).
-#
-# Slots per host live in inventory.yml (linux_ci_runners); the host's CI
-# CPU and memory budget in ci_hosts (roles/ci-host-budget). Each slot is its own
-# runner under one `linux-ci` user, with HOME set to the slot's own dir so
-# parallel jobs never share a pnpm store, Playwright cache or ~/setup-pnpm, and
-# a job hook empties the workspace before and after every job
-# (roles/ci-host/templates/job-started.sh.j2). Registration tokens come
-# from the control node's `gh` CLI, which needs admin:org for an org runner
-# (roles/github-actions-runner-linux/README.md), so there is no standing PAT.
-#
-# Lowering a slot count, or dropping a ci_repo_runners entry, does NOT remove
-# the old slot: stop and disable actions.runner.<host>-<slot>.service, delete
-# it in the org's runner settings (a repo slot: that repo's settings), and
-# rm -rf /var/lib/linux-ci/<slot>.
-- name: CI runners (light, heavy and Unity slots)
-  hosts: linux_ci_runners:unity_ci_runners
+# CI runners, org-scoped for every BlackNBrownStudios repo: the slots of inventory.yml
+# unity_ci_runners, each taking Unity, light and heavy jobs as its host's ci_caps allow,
+# and the seats that borrow them (Forgejo, the personal repo runners). Self-hosted
+# minutes cost $0; hosted ones hit the org's $200 Actions budget in September 2026. A
+# local outage froze a release gate on the thinkcentre runner (2026-06-18, #833), so
+# release and deploy jobs stay on ubuntu-latest, and every moved job reads runs-on from
+# the LINUX_RUNNER_LIGHT / LINUX_RUNNER_HEAVY org variables: deleting them sends it all
+# back to ubuntu-latest.
+# Each slot is a runner with HOME in its own dir, so jobs never share a pnpm store or
+# Playwright cache; a job hook empties a non-Unity workspace around every job, and a
+# light job's first step parks a warm Unity tree's untracked state (roles/ci-host).
+# Tokens come from the control node's gh (admin:org), so there is no standing PAT.
+# Dropping a Unity slot leaves its runner: scripts/unity-ci-runner-remove.sh. Dropping a
+# ci_repo_runners entry too: stop its unit, delete it in the repo's runner settings, rm its dir.
+- name: CI runners (Unity slots and the seats that borrow them)
+  hosts: unity_ci_runners
   become: true
   gather_facts: true
   vars:
-    linux_ci_instances: >-
-      {{ (range(1, (ci_light_slots | default(0)) + 1) | map('regex_replace', '^', 'light-') | list)
-         + (range(1, (ci_heavy_slots | default(0)) + 1) | map('regex_replace', '^', 'heavy-') | list) }}
-    # Each slot's share of the platform slice's CPUs (ci_linux_cpus, else
-    # ci_cpus), rounded down and at least 1, so the slots' caps never add up
-    # past the slice: CI_SLOT_CPUS in every job's env, which platform's
-    # turbo runs take as --concurrency. Without it a turbo job started 10 tasks
-    # on razer's 2-core share, its 6 platform cores sat at 94% CPU pressure and
-    # the host's load15 reached 1.58x its CPUs with 45% of them idle (2026-11-14,
-    # NodeLoadHigh, ar-2435). Measure a change to it or to the slot counts with
-    # scripts/ci-slot-effect.py.
-    linux_ci_slot_cpus: >-
-      {% set cpus = [] %}{% for part in ((ci_linux_cpus | default('')) or ci_cpus).split(',')
-      if part | trim %}{% set ab = (part | trim).split('-') %}{% for c in range(ab[0] | int,
-      (ab[-1] | int) + 1) %}{% set _ = cpus.append(c) %}{% endfor %}{% endfor %}{{ [1,
-      ((cpus | length) / (linux_ci_instances | length))
-      | round(0, 'floor') | int] | max }}
     # Unity slot unity_slot's slice and CPU count, for the slot and for the seats that borrow
     # it (ci_seats): with ci_unity_slot_cpus each slot gets its own cores (roles/ci-host-budget),
-    # else the slots share the Unity slice. The count is CI_SLOT_CPUS (linux_ci_slot_cpus says why).
+    # else the slots share the Unity slice. The count is CI_SLOT_CPUS in every job's env, which
+    # platform's turbo runs take as --concurrency: without a cap a turbo job started 10 tasks on
+    # a 2-core share and the host's load15 reached 1.58x its CPUs (2026-11-14, ar-2435).
     unity_slot_slice: >-
       {{ (ci_unity_slot_slice_prefix ~ (unity_slot | int) ~ '.slice') if ci_unity_slot_cpus | length else ci_unity_slice }}
     unity_slot_cpus: >-
@@ -291,37 +253,10 @@
     - role: ci-host
       tags: [runner, ci]
   tasks:
-    - name: Register the light and heavy runner slots
-      ansible.builtin.include_role:
-        name: github-actions-runner-linux
-        apply:
-          tags: [runner, ci, linux-ci]
-      loop: "{{ linux_ci_instances }}"
-      loop_control:
-        loop_var: ci_slot
-      vars:
-        gh_runner_scope: org
-        gh_runner_token_source: gh
-        gh_runner_install_packages: false
-        gh_runner_user: linux-ci
-        gh_runner_group: linux-ci
-        gh_runner_user_home: "{{ linux_ci_user_home }}"
-        gh_runner_home: "{{ linux_ci_user_home }}/{{ ci_slot }}"
-        gh_runner_name: "{{ inventory_hostname }}-{{ ci_slot }}"
-        # The slot's caps (ci_slot_caps, from topology.json), and fresh-workspace: the
-        # job-started hook empties the workspace, which the Unity repos' light jobs ask for.
-        gh_runner_labels: "{{ ['self-hosted', 'linux', 'x64', 'fresh-workspace'] + ci_slot_caps[gh_runner_name] }}"
-        gh_runner_slice: "{{ ci_linux_slice }}"
-        gh_runner_env:
-          HOME: "{{ linux_ci_user_home }}/{{ ci_slot }}"
-          ACTIONS_RUNNER_HOOK_JOB_STARTED: "{{ linux_ci_job_started_hook }}"
-          ACTIONS_RUNNER_HOOK_JOB_COMPLETED: "{{ linux_ci_job_completed_hook }}"
-          CI_SLOT_CPUS: "{{ linux_ci_slot_cpus }}"
-      tags: [runner, ci, linux-ci]
     # A personal repo cannot see org runners, so each ci_repo_runners entry
     # registers against its one repo (inventory.yml says why), with the
-    # workstation's gh as the repo owner. It runs as linux-ci like the org
-    # slots: the role puts every runner user in the docker group, which is
+    # workstation's gh as the repo owner. It runs as linux-ci like the Forgejo
+    # seats: the role puts every runner user in the docker group, which is
     # root on the host, so a second user would isolate nothing. Its jobs use
     # no secrets and read-only tokens, and the job-completed hook empties the
     # workspace as soon as a job ends, so no private checkout stays on disk.
@@ -350,7 +285,7 @@
         gh_runner_user_home: "{{ linux_ci_user_home }}"
         gh_runner_home: "{{ linux_ci_user_home }}/{{ ci_repo.slot }}"
         gh_runner_name: "{{ inventory_hostname }}-{{ ci_repo.slot }}"
-        gh_runner_labels: "{{ ['self-hosted', 'linux', 'x64', 'fresh-workspace'] + ci_slot_caps[gh_runner_name] }}"
+        gh_runner_labels: "{{ ['self-hosted', 'linux', 'x64'] + ci_slot_caps[gh_runner_name] }}"
         # The governor's seat labels (config.json seat_withheld_label).
         gh_runner_governed_labels: [light]
         gh_runner_withheld_labels: [light-withheld]
@@ -363,15 +298,6 @@
           ACTIONS_RUNNER_HOOK_JOB_COMPLETED: "{{ linux_ci_job_completed_hook }}"
           CI_SLOT_CPUS: "{{ unity_slot_cpus }}"
       tags: [runner, ci, linux-ci]
-
-    # A seat borrows a Unity slot's cores, slice and disk, so only a host with Unity slots
-    # can hold one (scripts/render-ci-topology.py places them there; this guards a hand edit).
-    - name: Require Unity slots on a host with seats
-      ansible.builtin.assert:
-        that: "'unity_ci_runners' in group_names"
-        fail_msg: "{{ inventory_hostname }} has Forgejo seats or repo runners but no Unity slot to lend them."
-      when: ci_seats | length > 0
-      tags: [runner, ci, forgejo-ci, linux-ci]
 
     # Every host in the play, so one that loses its seats loses their units too.
     - name: Retire the Forgejo units this host no longer runs
@@ -386,9 +312,7 @@
       tags: [runner, ci, forgejo-ci]
 
     # The Forgejo seats: one on each lendable Unity slot of a host whose ci_caps carry
-    # forgejo (scripts/render-ci-topology.py). They replaced the k3s runner pod (plan
-    # make-logical-possum phase 6), then the forgejo_slots daemons in ci-linux.slice (plan
-    # ci-one-pool-per-host p4). A seat's supervisor runs a job only while the governor lends
+    # forgejo (scripts/render-ci-topology.py). A seat's supervisor runs a job only while the governor lends
     # it the slot, so a down governor stops Forgejo CI and leaves GitHub CI running.
     - name: Register the Forgejo seats
       ansible.builtin.include_role:
@@ -408,7 +332,7 @@
         forgejo_runner_slice: "{{ unity_slot_slice }}"
       tags: [runner, ci, forgejo-ci]
 
-    # After the slots, which create the linux-ci user. Playground jobs clone
+    # After the seats, whose roles create the linux-ci user. Playground jobs clone
     # their submodules over ssh (windows-media-ci's first light jobs failed
     # "Host key verification failed" without this).
     - name: Trust GitHub's host keys for the linux-ci user
@@ -419,7 +343,7 @@
         github_known_hosts_user: linux-ci
         github_known_hosts_group: linux-ci
         github_known_hosts_home: "{{ linux_ci_user_home }}"
-      when: linux_ci_instances | length > 0 or ci_repo_runners | default([]) | length > 0
+      when: ci_seats | length > 0
       tags: [runner, ci, linux-ci]
 
     # BNB Unity runner pool: org-scoped runners every BlackNBrownStudios repo can use
@@ -454,8 +378,6 @@
           {{ inventory_hostname }} has unity_ci_slots {{ unity_ci_slots }} but
           {{ ci_unity_slot_cpus | length }} entries in ci_unity_slot_cpus, or a build slot
           (a unity_ci_slot_groups key) outside 1-{{ unity_ci_slots }}.
-      # The play also runs on light-only hosts (razer-laptop), which define no unity_ci_slots.
-      when: "'unity_ci_runners' in group_names"
       tags: [runner, ci, unity-ci]
 
     - name: Register the Unity pool slots
@@ -495,8 +417,6 @@
         # a Spot host leaves it off, so a reclaim never kills a gate (playground ucp-1778).
         # The slot's caps come from topology.json (ci_slot_caps): unity-build on a build slot,
         # unity plus the host's light and heavy on a test slot (scripts/render-ci-topology.py HOST_CAPS).
-        # No Unity slot carries fresh-workspace, so a Unity repo's light job never lands in its
-        # warm tree.
         gh_runner_labels: "{{ [ 'self-hosted', 'linux', 'x64', 'host-' ~ inventory_hostname ] + ci_slot_caps[gh_runner_name] + ([] if unity_slot in unity_ci_slot_groups | default({}) else ([ 'unity-full' ] if unity_ci_full | default(true) else []) + ([ 'unity-wide' ] if unity_ci_wide | default(false) else []) + ([ 'unity-gate' ] if unity_ci_gate | default(false) else [])) + ([ 'unity' ] + ([ 'unity-full' ] if unity_ci_full | default(true) else []) if 'unity-wide' in ci_slot_caps[gh_runner_name] else []) + ([ 'lan' ] if unity_ci_lan | default(true) else []) + ([ 'hd-library' ] if unity_ci_hd_library | default(unity_ci_lan | default(true)) else []) + (unity_ci_slot_labels | default({})).get(unity_slot, []) }}"
         # ci-runner-governor's admit labels and withheld labels (apps/ci-runner-governor/config.json
         # pool_label, full_label, withheld_label, and aws-build-1's "labels" and "withheld_label"),
@@ -532,8 +452,6 @@
           # The slot's CPU count (unity_slot_cpus), which platform's turbo runs take as
           # --concurrency when a light job lands here.
           CI_SLOT_CPUS: "{{ unity_slot_cpus }}"
-      # The play also runs on light-only hosts (razer-laptop), which define no unity_ci_slots.
-      when: "'unity_ci_runners' in group_names"
       tags: [runner, ci, unity-ci]
 
     # The Unity slots' old hook, replaced by job-started.sh above once the slots run with it.
@@ -554,8 +472,6 @@
       loop: "{{ range(1, unity_ci_slots + 1) | list }}"
       # A --check of a slot not yet registered has no slot directory to touch.
       ignore_errors: "{{ ansible_check_mode }}"
-      # The play also runs on light-only hosts (razer-laptop), which define no unity_ci_slots.
-      when: "'unity_ci_runners' in group_names"
       tags: [runner, ci, unity-ci, ci-disk]
 
 # Service hosts carry no CI (no_ci_hosts in inventory.yml says why). The CI

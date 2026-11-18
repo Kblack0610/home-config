@@ -138,6 +138,53 @@
     version: master
     update: false
 
+# A worker has no rbw, so a session there pushes and opens home-config PRs as the bot
+# fleet_worker_forgejo_user, with its token from SOPS. forgejo-token (dotfiles) reads this file
+# after FORGEJO_TOKEN and before rbw, for agent-land and schedules-sync. Runbook:
+# docs/runbooks/fleet-worker.md, "Forgejo bot token".
+- name: Make the Forgejo token dir
+  ansible.builtin.file:
+    path: "{{ ansible_env.HOME }}/.config/forgejo"
+    state: directory
+    mode: "0700"
+
+- name: Write the Forgejo bot token
+  ansible.builtin.copy:
+    dest: "{{ ansible_env.HOME }}/.config/forgejo/token"
+    mode: "0600"
+    content: "{{ vault_fleet_forgejo_token }}\n"
+  no_log: true
+
+# Repo-local, so the token answers only for this clone and the worktrees made from it, never
+# for another repo. It is read at push time, so a rotated token needs only this play's file.
+- name: Point the home-config clone's git credential at forgejo-token
+  community.general.git_config:
+    scope: local
+    repo: "{{ ansible_env.HOME }}/dev/home/home-config"
+    name: credential.{{ fleet_worker_forgejo_url }}.helper
+    value: >-
+      !f() { [ "$1" = get ] || return 0; t=$("$HOME/.dotfiles/.local/bin/forgejo-token") || return 1;
+      printf 'username=%s\npassword=%s\n' {{ fleet_worker_forgejo_user }} "$t"; }; f
+
+# A wrong, expired or under-scoped token stops the setup here, not a session at its push.
+- name: Ask Forgejo what the bot token may do on home-config
+  ansible.builtin.uri:
+    url: "{{ fleet_worker_forgejo_url }}/api/v1/repos/kblack0610/home-config"
+    headers:
+      Authorization: "token {{ vault_fleet_forgejo_token }}"
+  register: _fleet_forgejo_repo
+  check_mode: false
+  failed_when: false
+  no_log: true
+
+- name: Check the bot token can push home-config
+  ansible.builtin.assert:
+    that: _fleet_forgejo_repo.json.permissions.push | default(false)
+    fail_msg: >-
+      the Forgejo bot token cannot push kblack0610/home-config (HTTP {{ _fleet_forgejo_repo.status | default('none') }}):
+      rotate vault_fleet_forgejo_token, docs/runbooks/fleet-worker.md "Forgejo bot token"
+    quiet: true
+
 # Without lingering, every user unit (the roster fetch, store-sync, and on the lease
 # holder agent-web and the lanes) stops when the last login ends, and a headless
 # worker has no login.

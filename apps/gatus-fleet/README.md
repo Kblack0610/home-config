@@ -54,6 +54,8 @@ Worked example: `lazer-machine` (the Deloitte VDI) was retired on 2026-08-17 whe
 
 `monitoring-local-network-only` is a **verified no-op** on any `*.kblab.me` host. Traefik here has no `forwardedHeaders`/`trustedIPs`, so `ipAllowList` matches the *connecting* IP — for tunnel traffic that's the cloudflared pod at `10.42.x.x`, inside its own `10.0.0.0/8` range. Every tunnel request looks LAN-local to it. Confirmed live: `fleet.kblab.me` carried that middleware and still answered HTTP 200 from the Cloudflare edge. crowdsec works because its middleware sets `trustForwardHeader: true` and reads the real client IP from `X-Forwarded-For`.
 
+Both Ingresses on this host, `gatus-fleet` and `gatus-fleet-roster` (the `/roster` path, split out for its router priority), carry the same crowdsec middleware.
+
 This host **is** internet-reachable — external-dns runs with no `--domain-filter` and the tunnel is a wildcard catch-all, so every `*.kblab.me` Ingress is public whether intended or not. That's exactly why the work laptop can reach it. The dashboard being publicly *readable* is an accepted trade, identical to `status.kblab.me` today.
 
 ## Known limitations

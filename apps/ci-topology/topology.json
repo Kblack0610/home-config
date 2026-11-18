@@ -57,12 +57,9 @@
       {"name": "ms-a2-unity-pool-3", "caps": ["unity", "light", "heavy"]},
       {"name": "ms-a2-unity-pool-4", "caps": ["unity", "light", "heavy"]}
     ]},
-    "razer-laptop": {"site": "local", "full": true, "slots": [
+    "razer-laptop": {"site": "local", "slots": [
       {"name": "razer-laptop-light-1", "caps": ["light"]},
-      {"name": "razer-laptop-light-2", "caps": ["light"]},
-      {"name": "razer-laptop-heavy-1", "caps": ["heavy", "light"]},
-      {"name": "razer-laptop-dotfiles-private-1", "caps": ["light"], "repo": "Kblack0610/.dotfiles-private"},
-      {"name": "razer-laptop-unity-pool-1", "caps": ["unity", "light", "heavy"]}
+      {"name": "razer-laptop-dotfiles-private-1", "caps": ["light"], "repo": "Kblack0610/.dotfiles-private"}
     ]},
     "windows-media": {"site": "local", "slots": [
       {"name": "windows-media", "caps": ["windows"]}

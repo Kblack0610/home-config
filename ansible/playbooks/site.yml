@@ -105,9 +105,6 @@
   hosts: linux_bare_metal:pi_k3s
   become: true
   gather_facts: false
-  vars:
-    # A fleet worker's own units write claude_acct.prom and fleet_local.prom here.
-    node_disk_metrics_owner: "{{ ansible_user if inventory_hostname in groups['fleet_workers'] else 'root' }}"
   roles:
     - role: node-disk-metrics
       tags: [disk-metrics]

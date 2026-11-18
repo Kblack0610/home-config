@@ -33,7 +33,7 @@ spec:
             runAsUser: 0
           containers:
             - name: pull
-              image: alpine:3.24.1
+              image: alpine:3.24.4
               securityContext:
                 privileged: true
               command: ["/bin/sh", "/scripts/backup-pull.sh"]

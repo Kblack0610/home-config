@@ -145,7 +145,7 @@ apps/ci-runner-governor powers it (config.json `power` -> `<host>`; every cloud 
 ## A LAN build slot (ms-a2 slot 5)
 
 - ms-a2 slot 5 is a build slot (`unity_ci_slot_groups: {5: [3, 4]}`) on test slots 3 and 4's cores (`8-13,24-29`, 32G). The governor pairs it as it pairs aws-build-1's, in the LAN loop: a waiting build steps 3 and 4 aside, and slot 5 comes in once both are idle. A build the LAN pair claims with slots 3 and 4 idle is out of aws-build-1's queue, so the paid host does not start for it. While a test job still runs on 3 or 4, the build stays in aws-build-1's queue too, and whichever slot is up first takes it.
-- A HOT or FULL ms-a2, or one pinned to 0 (a release reservation), claims no build, so a build then waits for aws-build-1. Slot 5 has no `unity-release`, so releases stay on aws-build-1 slots 1 and 2.
+- A HOT or FULL ms-a2, or one pinned to 0 (a release reservation), claims no build, so a build then waits for aws-build-1. Slot 5 carries `unity-release` (since 2026-11-18), so a release runs here or on aws-build-1 slots 1 and 2, and aws-build-1 slot 3 stays the one slot only `players.yml` builds take.
 - Slot 1 keeps `slim-tour` and its warm trees (`.keep-warm-trees`): a cold Slim tour imports for 107-125 minutes, which is why the build slot is 5 and not 1.
 
 ## Secrets the playground workflows need
@@ -171,7 +171,11 @@ Ubuntu CI hosts (windows-media-ci, the AWS hosts) keep Ubuntu's daily unattended
 
 ## A host short of its runners
 
-`CiHostRunnersOffline` (prometheus-rules-capacity.yaml, `fleet: fix`, so an agent gets it as a red) fires when a host has had fewer runners online than its topology slots (the exporter's `state="missing"` rows name them) for an hour. It covers owned hosts (`config.json` rates, basis owned) and powered hosts the governor reads as running, and skips the opt-in windows pool. Check `systemctl status 'actions.runner.*'` on the host: a unit disabled by hand needs either starting again or an inventory change and a re-rendered topology in one PR, never an inventory left saying more than the host runs.
+`CiHostRunnersOffline` (prometheus-rules-capacity.yaml, `fleet: fix`, so an agent gets it as a red) fires when a host has had fewer runners online than its topology slots (the exporter's `state="missing"` rows name them) for an hour. It covers owned hosts (`config.json` rates, basis owned) and powered hosts the governor reads as running, and skips the opt-in windows pool. The slots include the repo-scoped runners (`ci_repo_runners`, such as `<host>-dotfiles-private-1`), which take only their one repo's jobs, so a dead one queues that repo's jobs even while the host's org slots are idle. Only runners a topology slot names count as online, so a runner registered by hand cannot hide a dead slot. The exporter's `github_runner_state` rows name the slot: `state="missing"` means no runner of that name registered (for a repo runner, its `--tags linux-ci` play has not run on the host since the slot was added), `state="offline"` means it registered and its unit is down. For an offline one, check `systemctl status 'actions.runner.*'` on the host: a unit disabled by hand needs either starting again or an inventory change and a re-rendered topology in one PR, never an inventory left saying more than the host runs.
+
+## A host stuck starting or stopping
+
+`CiHostPowerStuck` (prometheus-rules-capacity.yaml, `fleet: fix`, critical) fires when the governor has reported a powered host as `starting` (EC2 `pending`) or `stopping` for 15 minutes; both normally clear inside one scrape. Nothing else shows it: the command-center ci pools row leaves out powered hosts not reported running. Read the instance first: `aws ec2 describe-instances --profile bnb --region us-east-2 --instance-ids <id> --query 'Reservations[].Instances[].[State.Name,StateReason.Message]'` (the id is in `ansible/inventory.yml`). If EC2 agrees it is stuck, a hung stop takes `aws ec2 stop-instances --force` on that id, and a hung start takes a stop and lets the governor start it again or pass to the next host. If EC2 says running or stopped and the metric does not, the governor's view is stale: check its log (`kubectl -n monitoring logs deploy/ci-runner-governor`) for the EC2 describe error.
 
 ## A job no runner serves
 

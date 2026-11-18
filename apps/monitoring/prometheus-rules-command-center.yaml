@@ -82,13 +82,13 @@ spec:
           labels: {domain: prod}
           expr: >-
             max by (item) (label_replace(((mqtt_tripped{topic=~"agents_.+_watch_(pmp_.+|prod_mercury_payouts|posthog_prod_guard|binks_key_issue_failed)"} and on (topic) cc:agents_topic_live) * 2 > 0) or ((mqtt_stale{topic=~"agents_.+_watch_(pmp_.+|prod_mercury_payouts|posthog_prod_guard|binks_key_issue_failed)"} and on (topic) cc:agents_topic_live) > 0), "item", "$1", "topic", "agents_.+_watch_(.+)"))
-        # ci is the runner fleet: runners online and the Unity queue wait. A project's own CI
+        # ci is the runner fleet: runners online, the Unity queue wait and each host's job pass. A project's own CI
         # (nightly, gates, release train) is the projects domain below, so a red nightly no longer
         # paints the CI chip amber for days (2026-11-17: ci never green in 7 days).
         - record: cc:watch_state
           labels: {domain: ci}
           expr: >-
-            max by (item) (label_replace(((mqtt_tripped{topic=~"agents_.+_watch_(.+_runners?_online|m1_playground_mac_online)"} and on (topic) cc:agents_topic_live) * 2 > 0) or ((mqtt_tripped{topic=~"agents_.+_watch_(unity_queue_wait)"} and on (topic) cc:agents_topic_live) * 1 > 0) or ((mqtt_stale{topic=~"agents_.+_watch_(.+_runners?_online|unity_queue_wait|m1_playground_mac_online)"} and on (topic) cc:agents_topic_live) > 0), "item", "$1", "topic", "agents_.+_watch_(.+)"))
+            max by (item) (label_replace(((mqtt_tripped{topic=~"agents_.+_watch_(.+_runners?_online|m1_playground_mac_online)"} and on (topic) cc:agents_topic_live) * 2 > 0) or ((mqtt_tripped{topic=~"agents_.+_watch_(unity_queue_wait|ci_host_pass)"} and on (topic) cc:agents_topic_live) * 1 > 0) or ((mqtt_stale{topic=~"agents_.+_watch_(.+_runners?_online|unity_queue_wait|ci_host_pass|m1_playground_mac_online)"} and on (topic) cc:agents_topic_live) > 0), "item", "$1", "topic", "agents_.+_watch_(.+)"))
         - record: cc:watch_state
           labels: {domain: projects}
           expr: >-
@@ -317,11 +317,11 @@ spec:
         - record: cc:sessions_attention
           expr: >-
             sum(mqtt_attention{topic=~"agents_.+_summary_sessions"})
-        # Rostered slots only, so online/expected compare like with like: the exporter also
-        # reports online runners for a host/pool no topology slot (apps/ci-topology) names.
+        # Rostered slots only: the exporter counts online only the runners a topology slot
+        # (apps/ci-topology) names, so online and expected compare like with like.
         - record: cc:ci_online
           expr: >-
-            sum(max by (host, pool) (github_runner_pool_online) and on (host, pool) max by (host, pool) (github_runner_pool_expected))
+            sum(max by (host, pool) (github_runner_pool_online))
         - record: cc:ci_expected
           expr: >-
             sum(max by (host, pool) (github_runner_pool_expected))

@@ -169,6 +169,10 @@ tests:
         values: '1x400'
       - series: 'sentry_issues_generated_seconds'
         values: '0+300x400'
+      - series: 'mkt_metrics_up{source="steam"}'
+        values: '1x400'
+      - series: 'mkt_metrics_generated_seconds'
+        values: '0+300x400'
     alert_rule_test:
       - eval_time: 12h
         alertname: KbProjectSourceDown
@@ -183,7 +187,7 @@ tests:
               source: game-registry
             exp_annotations:
               summary: "Department tabs: source game-registry has had no numbers for a day"
-              description: "The scrape behind game-registry has been down for 24 hours, so the Analytics, Support and Money tabs of the products it feeds read stale or empty."
+              description: "The scrape behind game-registry has been down for 24 hours, so the Analytics, Support, Money and Marketing tabs of the products it feeds read stale or empty."
       # binks-api went down for 100 steps (8h20m) and came back: it never pages. A source
       # whose scrape target is gone entirely reads 0 (the rule's `or vector(0)`) and pages.
       - eval_time: 30h
@@ -196,7 +200,7 @@ tests:
               source: game-registry
             exp_annotations:
               summary: "Department tabs: source game-registry has had no numbers for a day"
-              description: "The scrape behind game-registry has been down for 24 hours, so the Analytics, Support and Money tabs of the products it feeds read stale or empty."
+              description: "The scrape behind game-registry has been down for 24 hours, so the Analytics, Support, Money and Marketing tabs of the products it feeds read stale or empty."
 
   - name: a source whose scrape target has vanished reads 0 and pages after a day
     interval: 5m
@@ -223,6 +227,10 @@ tests:
         values: '1x400'
       - series: 'sentry_issues_generated_seconds'
         values: '0+300x400'
+      - series: 'mkt_metrics_up{source="steam"}'
+        values: '1x400'
+      - series: 'mkt_metrics_generated_seconds'
+        values: '0+300x400'
     promql_expr_test:
       - expr: kb_project_source_up{source="litellm"}
         eval_time: 10m
@@ -243,7 +251,7 @@ tests:
               source: litellm
             exp_annotations:
               summary: "Department tabs: source litellm has had no numbers for a day"
-              description: "The scrape behind litellm has been down for 24 hours, so the Analytics, Support and Money tabs of the products it feeds read stale or empty."
+              description: "The scrape behind litellm has been down for 24 hours, so the Analytics, Support, Money and Marketing tabs of the products it feeds read stale or empty."
 
   - name: store reviews become one number per store and window, and the workstation's labels drop
     interval: 5m
@@ -299,6 +307,10 @@ tests:
       - series: 'sentry_issues_up'
         values: '0x400'
       - series: 'sentry_issues_generated_seconds'
+        values: '0+300x400'
+      - series: 'mkt_metrics_up{source="steam"}'
+        values: '1x400'
+      - series: 'mkt_metrics_generated_seconds'
         values: '0+300x400'
     promql_expr_test:
       - expr: kb_project_source_up{source=~"store-reviews|playtest-feedback|sentry-issues"}
@@ -426,4 +438,68 @@ tests:
         eval_time: 25h
         exp_samples:
           - labels: 'kb_project_source_up{source="store-sales"}'
+            value: 0
+
+  - name: marketing numbers become one number per name with its day, and the workstation's labels drop
+    interval: 5m
+    input_series:
+      - series: 'mkt_metrics_value{project="dodginballs", source="steam", metric="wishlist_adds", job="workstation", instance="192.168.1.2:9100"}'
+        values: '12x4'
+      - series: 'mkt_metrics_value{project="dodginballs", source="steam", metric="wishlist_deletes", job="workstation", instance="192.168.1.2:9100"}'
+        values: '0x4'
+      - series: 'mkt_metrics_value{project="binks", source="search", metric="search_clicks", job="workstation", instance="192.168.1.2:9100"}'
+        values: '6x4'
+    promql_expr_test:
+      - expr: kb_project_number{dept="marketing"}
+        eval_time: 10m
+        exp_samples:
+          - labels: 'kb_project_number{dept="marketing", metric="wishlist_adds_1d", project="dodginballs"}'
+            value: 12
+          - labels: 'kb_project_number{dept="marketing", metric="wishlist_deletes_1d", project="dodginballs"}'
+            value: 0
+          - labels: 'kb_project_number{dept="marketing", metric="search_clicks_1d", project="binks"}'
+            value: 6
+
+  - name: the mkt-metrics source is up while any source read, and down once no source read or its last run is over 26 hours old
+    interval: 5m
+    input_series:
+      # Search Console has no credential yet, Steam reads: the source stays up
+      - series: 'mkt_metrics_up{source="search"}'
+        values: '0x700'
+      - series: 'mkt_metrics_up{source="steam"}'
+        values: '1x700'
+      - series: 'mkt_metrics_generated_seconds'
+        values: '0x700'
+    promql_expr_test:
+      - expr: kb_project_source_up{source="mkt-metrics"}
+        eval_time: 10m
+        exp_samples:
+          - labels: 'kb_project_source_up{source="mkt-metrics"}'
+            value: 1
+      # a daily run is still fresh a day and a bit later
+      - expr: kb_project_source_up{source="mkt-metrics"}
+        eval_time: 25h
+        exp_samples:
+          - labels: 'kb_project_source_up{source="mkt-metrics"}'
+            value: 1
+      - expr: kb_project_source_up{source="mkt-metrics"}
+        eval_time: 27h
+        exp_samples:
+          - labels: 'kb_project_source_up{source="mkt-metrics"}'
+            value: 0
+
+  - name: the mkt-metrics source reads 0 when no source read
+    interval: 5m
+    input_series:
+      - series: 'mkt_metrics_up{source="steam"}'
+        values: '0x10'
+      - series: 'mkt_metrics_up{source="search"}'
+        values: '0x10'
+      - series: 'mkt_metrics_generated_seconds'
+        values: '0+300x10'
+    promql_expr_test:
+      - expr: kb_project_source_up{source="mkt-metrics"}
+        eval_time: 10m
+        exp_samples:
+          - labels: 'kb_project_source_up{source="mkt-metrics"}'
             value: 0

@@ -383,13 +383,15 @@ all:
         # Slot 5 of ms-a2 is a player-build slot (make-logical-possum phase 5, 2026-11-18) on
         # test slots 3 and 4's cores, so it adds no load: the governor runs the build or those
         # two tests, never both, and claims a waiting build here before it starts aws-build-1.
-        # Picked by heat: 68C max since the thermal cap (hc-553), deskslim-2 71C. No
-        # unity-release, so a release never holds the LAN build slot.
+        # Picked by heat: 68C max since the thermal cap (hc-553), deskslim-2 71C. It takes
+        # releases too (unity-release, 2026-11-18): any build slot with room takes any build,
+        # and aws-build-1 slot 3 keeps players.yml a slot of its own.
         ms-a2:
           unity_ci_slots: 5
           unity_ci_slot_groups: {5: [3, 4]}
           unity_ci_slot_labels:
             1: [slim-tour]
+            5: [unity-release]
           unity_ci_full: true
           unity_ci_gate: true
         deskslim-2:

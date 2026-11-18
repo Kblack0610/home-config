@@ -140,6 +140,20 @@ spec:
             fleet: fix
           annotations:
             summary: "{{ $labels.host }} was reclaimed by AWS more than 3 times in 24 h, each killing its jobs: set it on-demand in platform infra/aws-ci-burst variables.tf"
+        # EC2 pending or stopping clears inside one scrape: the 7 days to 2026-11-18 hold no
+        # starting or stopping sample at all. The command-center ci pools row leaves out any
+        # powered host not reported running (#1122), so a hung start or stop shows nowhere
+        # else, and a hung start keeps the governor from passing the queue to the next host.
+        # max by drops reason and the pod, so a governor restart does not reset the 15m.
+        - alert: CiHostPowerStuck
+          expr: max by (host, state) (ci_governor_power_state{state=~"starting|stopping"}) == 1
+          for: 15m
+          labels:
+            severity: critical
+            category: capacity
+            fleet: fix
+          annotations:
+            summary: "{{ $labels.host }} has been {{ $labels.state }} for 15 minutes: docs/runbooks/unity-ci-host.md#a-host-stuck-starting-or-stopping"
         # GitHub charges orgs/ and repos/ calls to separate 5000-an-hour buckets, and the
         # exporter, governor and boards all go blind when one hits 0. Warning, not a page:
         # it comes ahead of CiGovernorBlind, which only sees the outage after 30 minutes.

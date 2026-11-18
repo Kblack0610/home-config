@@ -196,6 +196,17 @@
     - role: k3s-node-no-suspend
       tags: [no-suspend, k3s]
 
+- name: Unused NIC ports stay down (hosts that list nic_unused_interfaces)
+  # See roles/nic-unused-down/README.md: an uncabled r8169 port NetworkManager sets up logs
+  # "Link is Down" every boot, which HostNicDown and host-qualify count as a NIC fault.
+  #   ansible-playbook playbooks/site.yml --limit ms-a2 --tags nic-unused
+  hosts: linux_bare_metal
+  become: true
+  gather_facts: false
+  roles:
+    - role: nic-unused-down
+      tags: [nic-unused, network]
+
 # Linux CI runners (light / heavy), org-scoped for every BlackNBrownStudios
 # repo. Added 2026-09-28 for the platform repo only; org-scoped 2026-11-03 so the
 # game repos' small jobs (checks, plan and report steps) stop billing hosted

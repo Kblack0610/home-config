@@ -1,0 +1,4 @@
+---
+# Ports with no cable that NetworkManager must leave alone and down. Set per host in
+# inventory.yml. Empty (the default): the role changes nothing.
+nic_unused_interfaces: []

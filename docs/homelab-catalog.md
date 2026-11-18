@@ -21,6 +21,7 @@ One-page index of services and their management plane. Use this to answer "where
 | NUT primary (UPS server, USB-attached CyberPower CP1500PFCLCDa) | pi5-master | systemd `nut-driver@cyberpower`, `nut-server`, `nut-monitor` | Ansible (this repo) | `ansible/roles/nut/` ; `docs/nut-ups.md` |
 | NUT secondaries (graceful shutdown on FSD broadcast) | pi5-worker{1..3}, pi4-worker{4,5} | systemd `nut-monitor` | Ansible (this repo) | `ansible/roles/nut/` ; `docs/nut-ups.md` |
 | Laptop no-suspend (lid-close stays-online) | every `linux_bare_metal` host: hp-victus, asus-laptop, razer-laptop, ms-a2, deskslim-2 | systemd-logind dropin | Ansible (this repo) | `ansible/roles/k3s-node-no-suspend/` |
+| Unused NIC ports kept down (no false HostNicDown at boot) | hosts that set `nic_unused_interfaces`: ms-a2 (enp3s0) | NetworkManager unmanaged-devices dropin | Ansible (this repo) | `ansible/roles/nic-unused-down/` |
 | GitHub Actions runner (macOS) | mac-mini | LaunchAgent | Ansible (this repo), play "macOS CI runner (mac-mini only)" | `ansible/roles/github-actions-runner-mac/` |
 | node_exporter (macOS) | mac-mini | LaunchAgent (port 9100) | Ansible (this repo), play "macOS baseline + monitoring" | `ansible/roles/node-exporter-mac/` |
 | Homebrew baseline | mac-mini | user-scoped brew install | Ansible (this repo), play "macOS baseline + monitoring" | `ansible/roles/brew-common/` |

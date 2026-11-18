@@ -1,0 +1,40 @@
+---
+- name: Leave the unused ports unmanaged by NetworkManager
+  ansible.builtin.copy:
+    dest: /etc/NetworkManager/conf.d/90-nic-unused-down.conf
+    mode: "0644"
+    owner: root
+    group: root
+    content: |
+      # Managed by Ansible role nic-unused-down. Ports with no cable: NetworkManager
+      # never sets them up, so the driver never logs "Link is Down" for them.
+      [keyfile]
+      unmanaged-devices={{ nic_unused_interfaces | map('regex_replace', '^', 'interface-name:') | join(';') }}
+  when: nic_unused_interfaces | length > 0
+  notify: Reload NetworkManager
+
+- name: Remove the drop-in from a host that lists no unused port
+  ansible.builtin.file:
+    path: /etc/NetworkManager/conf.d/90-nic-unused-down.conf
+    state: absent
+  when: nic_unused_interfaces | length == 0
+  notify: Reload NetworkManager
+
+- name: Apply the NetworkManager reload before setting the links down
+  ansible.builtin.meta: flush_handlers
+
+- name: Read the unused ports' link state
+  ansible.builtin.command: ip -o link show dev {{ item }}
+  loop: "{{ nic_unused_interfaces }}"
+  register: nic_unused_state
+  changed_when: false
+
+# A boot leaves an unmanaged port down; this covers the run that first unmanages one
+# NetworkManager had already set up.
+- name: Set an unused port down
+  ansible.builtin.command: ip link set dev {{ item.item }} down
+  loop: "{{ nic_unused_state.results }}"
+  loop_control:
+    label: "{{ item.item }}"
+  when: item.stdout is search('[<,]UP[,>]')
+  changed_when: true

@@ -983,8 +983,11 @@ def render():
     seen, runners_ok = {}, True
     for src, fut in runner_futs.items():
         try:
+            # A runner id is unique within one owner only: a personal repo's runner can share
+            # an id with an org repo's, so the owner is part of the key.
             for r in fut.result():
-                seen.setdefault(r["id"], ("org" if src.startswith("orgs/") else src.split("/", 1)[1], r))
+                seen.setdefault((src.split("/")[1], r["id"]),
+                                ("org" if src.startswith("orgs/") else src.split("/", 1)[1], r))
             ok = 1
         except API_ERRORS:
             ok, runners_ok = 0, False

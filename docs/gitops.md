@@ -157,9 +157,10 @@ home-config's own mirror runs forgejo -> github (above). Some repos go the other
 Never push or merge to `kblack0610/platform` on Forgejo: the next sync is rejected as a non-fast-forward and the GitHub run fails until the stray commit is removed. A failed `Forgejo Sync` run on GitHub is the first place to look when Forgejo is behind.
 
 ```bash
-# Are both sides on the same develop? (FJ token: rbw forgejo_platform_sync, user kblack0610)
-git ls-remote https://github.com/BlackNBrownStudios/platform.git refs/heads/develop
-git ls-remote https://git.kblab.me/kblack0610/platform.git refs/heads/develop
+# Are both sides on the same develop? The Forgejo repo is private: an anonymous read is a 404.
+gh api repos/BlackNBrownStudios/platform/branches/develop --jq .commit.sha
+curl -s -H "Authorization: token $(rbw get forgejo_platform_sync)" \
+  https://git.kblab.me/api/v1/repos/kblack0610/platform/branches/develop | jq -r .commit.id
 gh run list -R BlackNBrownStudios/platform --workflow forgejo-sync.yml -L 5
 ```
 
@@ -171,7 +172,7 @@ The field that actually answers the question is `mirror.next_update_unix`, which
 
 This matters because it is the natural thing to check. Anyone writing a mirror healthcheck reaches for `mirror_updated` first, and it would have read green for the entire two-week outage.
 
-**What watches it now.** `ansible/roles/forgejo-host/files/mirror-exporter/exporter.py` (the `mirror-exporter` compose service on forge-hel1) reads Forgejo's own SQLite and the bare repos on disk, and emits two deliberately independent signals: a database-derived overdue measure against a self-scaling budget of `max(3 * interval, 900s)`, and a filesystem scan for orphaned git `*.lock` and `tmp_*` files older than 7200s. Alerts live in `apps/monitoring/prometheus-rules-forgejo-mirrors.yaml` and page ntfy `homelab-alerts`. Agreement between the two escalates to critical, because two unrelated sources concurring is not a lie. `ForgejoActionsRunsStalled` is a third, independent path covering the downstream CI link. New mirrors are enumerated from the database, so they are covered with no config.
+**What watches it now.** `ansible/roles/forgejo-host/files/mirror-exporter/exporter.py` (the `mirror-exporter` compose service on forge-hel1) reads Forgejo's own SQLite and the bare repos on disk, and emits two deliberately independent signals: a database-derived overdue measure against a self-scaling budget of `max(3 * interval, 900s)`, and a filesystem scan for orphaned git `*.lock` and `tmp_*` files older than 7200s. Alerts live in `apps/monitoring/prometheus-rules-forgejo-mirrors.yaml` and page ntfy `homelab-alerts`. Agreement between the two escalates to critical, because two unrelated sources concurring is not a lie. `ForgejoActionsRunsStalled` is a third, independent path covering the downstream CI link. New mirrors are enumerated from the database, so they are covered with no config. Since 2026-11-18 the instance has no mirrors (the exporter reports no `forgejo_mirror_info`, pull or push), so these mirror alerts watch nothing today, and nothing yet alerts when `platform` on Forgejo falls behind GitHub: only a failed `Forgejo Sync` run on GitHub shows it.
 
 ### Why a crashed git used to wedge a mirror forever
 

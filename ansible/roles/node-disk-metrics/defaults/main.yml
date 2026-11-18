@@ -2,3 +2,7 @@
 # node-exporter reads this directory (prometheus-node-exporter.extraArgs in
 # apps/monitoring/helm-values.yaml, which mounts it from the host).
 node_disk_metrics_dir: /var/lib/node-exporter-textfile
+# Who owns the directory. A fleet home on a k3s node publishes its own .prom files here
+# (claude_acct, fleet_local), so it must be able to write: site.yml sets this to the
+# host's login user on fleet_workers. Root-run writers (this role, ci-runner-cpu) are unaffected.
+node_disk_metrics_owner: root

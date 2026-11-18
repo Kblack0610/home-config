@@ -526,6 +526,15 @@ class ExporterTest(unittest.TestCase):
         self.assertEqual(exporter.wait_kind("acme/game", {"labels": ["self-hosted", "unity", "unity-full"]}, t), "unity")
         self.assertEqual(exporter.wait_kind("acme/game", {"labels": ["self-hosted", "unity-build"]}, t), "unserved")
 
+    def test_a_repo_runner_waiting_for_its_lend_still_serves_its_repo(self):
+        # The governor admits a repo runner only while it lends it a Unity slot, so a wait is light, not unserved.
+        held = ("acme/web", {"name": "box-web-1", "labels": [{"name": l} for l in ("self-hosted", "light-withheld")]})
+        slot = {"box-web-1": {"host": "box", "caps": ["light"], "repo": "acme/web", "forge": "github"}}
+        with mock.patch.dict(exporter.SLOTS, slot):
+            t = self.takers(held)
+            self.assertEqual(exporter.wait_kind("acme/web", {"labels": ["self-hosted", "light"]}, t), "light")
+            self.assertEqual(exporter.wait_kind("acme/game", {"labels": ["self-hosted", "light"]}, t), "unserved")
+
     def test_withheld_runner_stays_in_the_pool(self):
         org = "orgs/acme/actions/runners?per_page=100&page=1"
         saved = FAKE[org]

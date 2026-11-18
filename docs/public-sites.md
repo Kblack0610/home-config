@@ -70,7 +70,7 @@ make the change, then remove it again.
 `external-dns` (`apps/external-dns/`) owns DNS for every Cloudflare zone in the account (no
 `--domain-filter`, policy `upsert-only`, so it never deletes a record: removing an Ingress leaves its CNAME behind): **kennethblack.me**, **blacknbrownstudios.com**,
 **binks.chat**, **kblack.dev**, and **kblab.me**. It reads standard Ingresses **and** Traefik
-`IngressRoute`s (`--source=traefik-proxy`, for binks.chat).
+`IngressRoute`s (`--source=traefik-proxy`). An IngressRoute has no status address, so the traefik-proxy source builds no record from it unless it carries `external-dns.alpha.kubernetes.io/target: <the --default-targets tunnel>` (`--default-targets` only rewrites records a source already built; external-dns v0.15.0 `source/traefik_proxy.go` endpointsFromIngressRoute). `apps/binks-api/ingress.yaml` binks-demos is the pattern; binks.chat's own record predates this and was made by hand.
 
 **`*.kblab.me` is not LAN-only by default.** AdGuard answers it on the LAN, but every
 `*.kblab.me` Ingress is also published through the wildcard Cloudflare tunnel (for example

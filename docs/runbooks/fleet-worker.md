@@ -46,7 +46,7 @@ The old token stops working at step 1, so the lease holder's schedules-sync pass
 
 ### Forgejo bot token
 
-A worker has no rbw, so a session there pushes home-config and opens, reads and lands its PRs as the bot `fleet-worker`: not an admin, write collaborator on `kblack0610/home-config` only, read collaborator on `kblack0610/platform` and `kblack0610/personal-sites` (for schedules-sync). Its token, scopes `write:repository,read:user`, is `vault_fleet_forgejo_token` in `ansible/group_vars/fleet_workers/vault.sops.yaml`. The play writes it to `~/.config/forgejo/token` (0600), where dotfiles `forgejo-token` reads it after `FORGEJO_TOKEN` and before rbw, and sets the home-config clone's repo-local `credential.https://git.kblab.me.helper` to answer git with it. Its last task asks Forgejo for the repo and fails the play unless the token can push.
+A worker has no rbw, so a session there pushes home-config and opens, reads and lands its PRs as the bot `fleet-worker`: not an admin, write collaborator on `kblack0610/home-config` only, read collaborator on `kblack0610/platform` and `kblack0610/personal-sites` (for schedules-sync). Its token, scopes `write:repository,read:user`, is `vault_fleet_forgejo_token` in `ansible/group_vars/fleet_workers/vault.sops.yaml`. The play writes it to `~/.config/forgejo/token` (0600), where dotfiles `forgejo-token` reads it after `FORGEJO_TOKEN` and before rbw, and sets the home-config clone's repo-local `credential.https://git.kblab.me.helper` to answer git with it. The role's last task asks Forgejo for the repo and fails the play unless the token can push.
 
 Rotate it (the old token keeps working until step 3, so nothing breaks in between):
 

@@ -157,33 +157,32 @@
 
 # Repo-local, so the token answers only for this clone and the worktrees made from it, never
 # for another repo. It is read at push time, so a rotated token needs only this play's file.
-- name: Point the home-config clone's git credential at forgejo-token
-  community.general.git_config:
-    scope: local
-    repo: "{{ ansible_env.HOME }}/dev/home/home-config"
-    name: credential.{{ fleet_worker_forgejo_url }}.helper
-    value: >-
+- name: Set the git credential helper this clone answers Forgejo with
+  ansible.builtin.set_fact:
+    _fleet_forgejo_helper: >-
       !f() { [ "$1" = get ] || return 0; t=$("$HOME/.dotfiles/.local/bin/forgejo-token") || return 1;
       printf 'username=%s\npassword=%s\n' {{ fleet_worker_forgejo_user }} "$t"; }; f
 
-# A wrong, expired or under-scoped token stops the setup here, not a session at its push.
-- name: Ask Forgejo what the bot token may do on home-config
-  ansible.builtin.uri:
-    url: "{{ fleet_worker_forgejo_url }}/api/v1/repos/kblack0610/home-config"
-    headers:
-      Authorization: "token {{ vault_fleet_forgejo_token }}"
-  register: _fleet_forgejo_repo
+- name: Read the clone's git credential helpers for Forgejo
+  ansible.builtin.command: git -C {{ ansible_env.HOME }}/dev/home/home-config config --local --get-all credential.{{ fleet_worker_forgejo_url }}.helper
+  register: _fleet_forgejo_helpers
+  changed_when: false
+  failed_when: _fleet_forgejo_helpers.rc not in [0, 1]
   check_mode: false
-  failed_when: false
-  no_log: true
 
-- name: Check the bot token can push home-config
-  ansible.builtin.assert:
-    that: _fleet_forgejo_repo.json.permissions.push | default(false)
-    fail_msg: >-
-      the Forgejo bot token cannot push kblack0610/home-config (HTTP {{ _fleet_forgejo_repo.status | default('none') }}):
-      rotate vault_fleet_forgejo_token, docs/runbooks/fleet-worker.md "Forgejo bot token"
-    quiet: true
+# The empty entry first resets the list, so the global `store` helper (the private overlay's
+# ~/.config/git/private.inc) neither answers for this clone nor saves a second copy of the
+# token in ~/.git-credentials, which a rotation would leave stale and git would try first.
+- name: Point the clone's git credential for Forgejo at forgejo-token, and only it
+  when: _fleet_forgejo_helpers.stdout_lines != ['', _fleet_forgejo_helper]
+  ansible.builtin.shell: |
+    git -C "$R" config --local --unset-all "$K" || true
+    git -C "$R" config --local --add "$K" ''
+    git -C "$R" config --local --add "$K" "$V"
+  environment:
+    R: "{{ ansible_env.HOME }}/dev/home/home-config"
+    K: credential.{{ fleet_worker_forgejo_url }}.helper
+    V: "{{ _fleet_forgejo_helper }}"
 
 # Without lingering, every user unit (the roster fetch, store-sync, and on the lease
 # holder agent-web and the lanes) stops when the last login ends, and a headless
@@ -344,3 +343,23 @@
       {{ ('Ready: ' ~ inventory_hostname ~ ' is a peer of the store; set fleet_place: true in inventory.yml to let fleet-dispatch place sessions here.')
          if fleet_worker_left | length == 0 else
          'Left for the human on ' ~ inventory_hostname ~ ': ' ~ (fleet_worker_left | join('; ')) }}
+
+# Last, so a wrong, expired or under-scoped bot token (tasks above, "Write the Forgejo bot
+# token") fails the play loudly after everything else is set up, not a session at its push.
+- name: Ask Forgejo what the bot token may do on home-config
+  ansible.builtin.uri:
+    url: "{{ fleet_worker_forgejo_url }}/api/v1/repos/kblack0610/home-config"
+    headers:
+      Authorization: "token {{ vault_fleet_forgejo_token }}"
+  register: _fleet_forgejo_repo
+  check_mode: false
+  failed_when: false
+  no_log: true
+
+- name: Check the bot token can push home-config
+  ansible.builtin.assert:
+    that: _fleet_forgejo_repo.json.permissions.push | default(false)
+    fail_msg: >-
+      the Forgejo bot token cannot push kblack0610/home-config (HTTP {{ _fleet_forgejo_repo.status | default('none') }}):
+      rotate vault_fleet_forgejo_token, docs/runbooks/fleet-worker.md "Forgejo bot token"
+    quiet: true

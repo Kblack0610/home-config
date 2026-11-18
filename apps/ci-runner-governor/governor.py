@@ -90,6 +90,11 @@ in one cycle, and the build slot is admitted once none is busy or admitted. In e
 pair the build slot is withheld, and once it is its test slots are the pool's, the last
 standby pool host's, under its max_admitted and any pin. A stopped paired host starts on
 its own thresholds for a waiting build and on the default pool ones for tests.
+A group's lead is a build slot (unity-build) or a wide slot (config "wide_label", unity-wide:
+Multi, Soak, Playloop); the topology says which, and lead_labels() is what it carries admitted
+(a wide slot: unity-wide, unity and, on a full host, unity-full). A wide job claims a free
+group with a wide lead, a build one with a build lead, the same way, so a wide slot is
+admitted only while a wide job waits, and otherwise its test slots serve the pool.
 A slot withheld while its pair uses the cores is exported as ci_governor_lent (to tests, or
 to a build), so the dashboards can tell it from a slot held back for load.
 
@@ -242,7 +247,7 @@ def load_config(path, topology_path=None):
     with open(topology_path or TOPOLOGY) as f:
         topo = json.load(f)["hosts"]
     cfg["workers"] = {s["host"]: {k: v for k, v in s.items() if k != "host"} for s in cfg.get("workers", [])}
-    governed = {cfg["pool_label"], cfg["build_label"]}
+    governed = {cfg["pool_label"], cfg["build_label"], cfg["wide_label"]}
     unity = {h: [s for s in e["slots"] if governed & set(s["caps"])] for h, e in topo.items()}
     unity = {h: slots for h, slots in unity.items() if slots}
     cfg["shared"] = {s["name"]: [c for c in s["caps"] if c not in governed]
@@ -255,11 +260,17 @@ def load_config(path, topology_path=None):
         raise ValueError(f"cloud CI hosts with no rates entry: {', '.join(sorted(unrated))}")
     def build_slots(host):
         """A host with build slots: their label, withheld label and slot groups, on LAN and cloud alike."""
-        builds = [s for s in unity[host] if cfg["build_label"] in s["caps"]]
+        builds = [s for s in unity[host] if {cfg["build_label"], cfg["wide_label"]} & set(s["caps"])]
         if not builds:
             return {}
         groups = {slot_of(s["name"]): [slot_of(t) for t in s["group"]] for s in builds if s.get("group")}
-        return {"labels": [cfg["build_label"]], "withheld_label": cfg["build_withheld_label"],
+        # What a lead slot carries once admitted: a build slot its one label, a wide slot the
+        # label and the pool's (a wide job asks for unity too), unity-full on a full host.
+        full = topo[host].get("full", True) is not False
+        leads = {slot_of(s["name"]): [cfg["build_label"]] if cfg["build_label"] in s["caps"]
+                 else [cfg["wide_label"], cfg["pool_label"]] + ([cfg["full_label"]] if full else []) for s in builds}
+        return {"labels": sorted({cfg["build_label"], cfg["wide_label"]} & {c for s in builds for c in s["caps"]}),
+                "leads": leads, "withheld_label": cfg["build_withheld_label"],
                 **({"groups": groups} if groups else {})}
 
     cfg["standby"] = {}
@@ -355,6 +366,12 @@ def dedicated(cfg, host):
     carry these instead of the pool's and take only the jobs that ask for one; an unpaired
     one stays out of the shared pool's queue, floor, cap and standby order."""
     return entry_of(cfg, host).get("labels")
+
+
+def lead_labels(cfg, host, name):
+    """The labels a group's lead slot carries while admitted, bar its shared caps: a build
+    slot's unity-build, a wide slot's unity-wide, unity and unity-full on a full host."""
+    return list(entry_of(cfg, host).get("leads", {}).get(slot_of(name)) or dedicated(cfg, host))
 
 
 def build_marks(cfg):
@@ -471,7 +488,7 @@ def admit_labels(cfg, host, name=""):
     false in inventory.yml, so no full run lands there."""
     shared = list(cfg.get("shared", {}).get(name, []))
     if not serves_pool(cfg, host, name):
-        return list(dedicated(cfg, host)) + shared
+        return lead_labels(cfg, host, name) + shared
     full = cfg["hosts"].get(host, {}).get("full", True)
     return [cfg["pool_label"]] + ([cfg["full_label"]] if full else []) + shared
 
@@ -910,9 +927,9 @@ def pair_plan(cfg, host, mine, builds):
     up = lambda s: s in by and not mine[by[s]]["withheld"]
     quiet = lambda s: not busy(s) and not up(s)
     held = {withheld_label(cfg, host).lower(), cfg["withheld_label"].lower()}
-    own = frozenset(l.lower() for l in dedicated(cfg, host))
-    # A withheld build slot can take what its labels ask once admitted.
-    can = lambda b, need: b in by and need <= (frozenset(mine[by[b]].get("labels", ())) - held) | own
+    # A withheld lead slot can take what its labels ask once admitted.
+    can = lambda b, need: b in by and need <= (frozenset(mine[by[b]].get("labels", ())) - held) | frozenset(
+        l.lower() for l in lead_labels(cfg, host, by[b]))
     # A busy build slot keeps its pair. Each waiting build claims a free pair whose slot can
     # take it, the most constrained first; an admitted build slot, then one whose test slots
     # already stepped aside, then the fewest busy tests, so a claim holds across cycles.
@@ -969,7 +986,7 @@ def apply(cfg, action, name, host):
     shared caps its slot takes) for its withheld one, or back. Adds before it removes, so a
     runner is never left with neither. A withheld slot takes no job of any kind."""
     org, held = cfg["org"], withheld_label(cfg, host, name)
-    own = ([cfg["pool_label"], cfg["full_label"]] if serves_pool(cfg, host, name) else list(dedicated(cfg, host))) \
+    own = ([cfg["pool_label"], cfg["full_label"]] if serves_pool(cfg, host, name) else lead_labels(cfg, host, name)) \
         + list(cfg.get("shared", {}).get(name, []))
     rid, have = runner_id(org, name)
     if action == "withhold":

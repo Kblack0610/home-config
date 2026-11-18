@@ -229,9 +229,9 @@ def site_of(host):
     return TOPOLOGY.get(host, {}).get("site", "local")
 
 
-# unity-build: the player-build host (aws-build-1), a pool of its own so build waits stay
-# out of the gate pool's numbers.
-POOL_LABELS = ("light", "heavy", "unity", "unity-build")
+# unity-build and unity-wide (a group's lead slot: aws-build-1, ms-a2), pools of their own so build and wide waits stay
+# out of the gate pool's numbers. unity-wide is before unity: a wide job asks for both.
+POOL_LABELS = ("light", "heavy", "unity-wide", "unity", "unity-build")
 # The labels apps/ci-runner-governor swaps a runner's pool labels for while it holds it back.
 WITHHELD_LABELS = {"unity-withheld": "unity", "unity-build-withheld": "unity-build"}
 # A queued run with no jobs this old never gets a runner (GitHub creates a run's

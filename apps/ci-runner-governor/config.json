@@ -5,6 +5,7 @@
   "withheld_label": "unity-withheld",
   "build_label": "unity-build",
   "build_withheld_label": "unity-build-withheld",
+  "wide_label": "unity-wide",
   "pool_min_admitted": 1,
   "pool_max_admitted": 24,
   "cooldown_seconds": 600,

@@ -7,6 +7,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."
 from runner_labels import runner_labels_plan  # noqa: E402
 
 GOVERNED = ["unity", "unity-full", "unity-build"]
+WIDE_GOVERNED = GOVERNED + ["unity-wide"]
 WITHHELD_ALL = ["unity-withheld", "unity-build-withheld"]
 BASE = ["self-hosted", "linux", "x64", "host-aws-build-1"]
 
@@ -16,9 +17,9 @@ def runner(*custom):
     return {"name": "aws-build-1-unity-pool-1", "labels": ro + [{"id": 0, "name": n, "type": "custom"} for n in custom]}
 
 
-def plan(r, desired, withheld="unity-build-withheld"):
+def plan(r, desired, withheld="unity-build-withheld", governed=GOVERNED):
     """The labels to PUT, or None when the runner needs none."""
-    out = runner_labels_plan(r, desired, GOVERNED, withheld, WITHHELD_ALL)
+    out = runner_labels_plan(r, desired, governed, withheld, WITHHELD_ALL)
     return out["labels"] if out["change"] else None
 
 
@@ -52,6 +53,15 @@ class Plan(unittest.TestCase):
         # unity-withheld would never be dropped.
         r = runner("host-aws-build-1", "unity-withheld", "unity-gate")
         self.assertEqual(plan(r, BASE + ["unity-build"]), ["host-aws-build-1", "unity-build-withheld"])
+
+    def test_withheld_wide_lead_stays_withheld_and_keeps_none_of_its_governed_labels(self):
+        # A wide lead is admitted by the governor with unity, unity-full and unity-wide; an apply
+        # must not hand them back while the slot is held.
+        r = runner("host-aws-build-1", "unity-build-withheld")
+        self.assertIsNone(plan(r, BASE + ["unity", "unity-full", "unity-wide"], governed=WIDE_GOVERNED))
+        r = runner("host-aws-build-1", "unity", "unity-full", "unity-wide", "unity-build-withheld")
+        self.assertEqual(plan(r, BASE + ["unity", "unity-full", "unity-wide"], governed=WIDE_GOVERNED),
+                         ["host-aws-build-1", "unity-build-withheld"])
 
     def test_admitted_slot_gets_governed_labels(self):
         r = runner("host-razer-laptop", "unity")

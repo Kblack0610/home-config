@@ -145,6 +145,36 @@ class CapTests(unittest.TestCase):
         self.hosts["ms-a2"]["unity_ci_slot_labels"] = {5: ["unity-release"]}
         self.assertTrue(any("4 of the pool's 4 build slots" in f for f in topology.fit_failures(self.hosts, self.groups)))
 
+    def wide_ms_a2(self):
+        """ms-a2 with a wide slot 6 over test slots 1 and 2's cores (cores 2-7), beside build slot 5."""
+        v = self.hosts["ms-a2"]
+        v.update(unity_ci_slots=6, unity_ci_slot_groups={5: [3, 4], 6: [1, 2]}, unity_ci_wide_slots=[6],
+                 ci_unity_slot_cpus=[*v["ci_unity_slot_cpus"], "2-7,18-23"],
+                 ci_unity_slot_memory_max=[*v["ci_unity_slot_memory_max"], "32G"],
+                 ci_caps=[*v["ci_caps"], "unity-wide"])
+
+    def test_a_wide_lead_is_a_unity_wide_slot_with_its_group(self):
+        self.wide_ms_a2()
+        topo, fails = topology.render(self.hosts, self.groups)
+        self.assertEqual(fails + topology.fit_failures(self.hosts, self.groups), [])
+        slots = {s["name"]: s for s in topo["hosts"]["ms-a2"]["slots"]}
+        self.assertEqual(slots["ms-a2-unity-pool-6"]["caps"], ["unity-wide"])
+        self.assertEqual(slots["ms-a2-unity-pool-6"]["group"], ["ms-a2-unity-pool-1", "ms-a2-unity-pool-2"])
+        self.assertEqual(slots["ms-a2-unity-pool-5"]["caps"], ["unity-build"])
+
+    def test_a_wide_lead_does_not_count_as_a_build_slot_for_the_release_rule(self):
+        self.wide_ms_a2()
+        self.assertEqual(topology.fit_failures(self.hosts, self.groups), [])
+
+    def test_a_wide_slot_outside_a_group_or_under_the_memory_bar_fails(self):
+        self.wide_ms_a2()
+        self.hosts["ms-a2"]["unity_ci_wide_slots"] = [6, 2]
+        _, fails = topology.render(self.hosts, self.groups)
+        self.assertIn("ms-a2: wide slot 2 (unity_ci_wide_slots) is not a unity_ci_slot_groups key", fails)
+        self.hosts["ms-a2"]["unity_ci_wide_slots"] = [6]
+        self.hosts["ms-a2"]["ci_unity_slot_memory_max"][5] = "16G"
+        self.assertTrue(any("ms-a2 carries unity-wide" in f for f in topology.fit_failures(self.hosts, self.groups)))
+
 
 if __name__ == "__main__":
     unittest.main()

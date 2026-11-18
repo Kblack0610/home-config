@@ -1,0 +1,80 @@
+---
+# The removal half of main.yml, for the "Retire CI on no_ci_hosts" play in site.yml:
+# the CI slices, and docker's default cgroup parent, without which every container
+# the host still runs stays capped by a CI budget meant for runners it no longer has
+# (razer-laptop, an agent host: 6G and twelve CPUs for all its docker, 2026-11-18).
+- name: Find the CI slices
+  ansible.builtin.find:
+    paths: /etc/systemd/system
+    patterns: "{{ [ci_slice, ci_unity_slice, ci_linux_slice, ci_unity_slot_slice_prefix ~ '*.slice']
+                  + ci_retired_slices }}"
+  register: _ci_retire_slices
+
+- name: Remove the CI slices
+  ansible.builtin.file:
+    path: "{{ item.path }}"
+    state: absent
+  loop: "{{ _ci_retire_slices.files }}"
+  loop_control:
+    label: "{{ item.path | basename }}"
+  register: _ci_retire_removed
+
+- name: Reload systemd after the slices went
+  ansible.builtin.systemd:
+    daemon_reload: true
+  when: _ci_retire_removed.changed
+
+- name: Read the docker daemon config
+  ansible.builtin.slurp:
+    src: /etc/docker/daemon.json
+  register: _ci_retire_docker_json
+  failed_when: false
+
+- name: Drop docker's CI cgroup parent
+  ansible.builtin.copy:
+    dest: /etc/docker/daemon.json
+    content: >-
+      {{ _ci_retire_docker | dict2items | rejectattr('key', 'eq', 'cgroup-parent')
+         | items2dict | to_nice_json }}
+    mode: "0644"
+  vars:
+    _ci_retire_docker: "{{ (_ci_retire_docker_json.content | b64decode | from_json)
+                           if _ci_retire_docker_json.content is defined else {} }}"
+  when: _ci_retire_docker.get('cgroup-parent') in [ci_slice, ci_unity_slice, ci_linux_slice]
+
+# State, not the copy's changed: a refused restart must still be pending on the next run.
+# A docker that is not running starts with the new config, so it is never stale.
+- name: Check whether dockerd predates its config
+  ansible.builtin.shell: |
+    set -eu
+    systemctl is-active -q docker.service && [ -f /etc/docker/daemon.json ] || { echo current; exit 0; }
+    started=$(date -d "$(systemctl show docker.service -p ActiveEnterTimestamp --value)" +%s)
+    [ "$(stat -c %Y /etc/docker/daemon.json)" -gt "$started" ] && echo stale || echo current
+  register: _ci_retire_docker_age
+  changed_when: false
+  check_mode: false
+
+# live-restore is off, so a restart kills every container: refuse while any runs,
+# since on a host with no CI they are someone's own work.
+- name: List running containers before restarting docker
+  ansible.builtin.command: docker ps -q
+  register: _ci_retire_docker_running
+  changed_when: false
+  check_mode: false
+  when: _ci_retire_docker_age.stdout == 'stale'
+
+- name: Refuse to restart docker under running containers
+  ansible.builtin.assert:
+    that: _ci_retire_docker_running.stdout | length == 0
+    fail_msg: >-
+      {{ inventory_hostname }} runs {{ _ci_retire_docker_running.stdout_lines | length }}
+      containers, and docker must restart to drop its CI cgroup parent. Re-run this play
+      when they are done; the restart stays pending until then.
+    quiet: true
+  when: _ci_retire_docker_age.stdout == 'stale' and not ansible_check_mode
+
+- name: Restart docker to load its config
+  ansible.builtin.systemd:
+    name: docker.service
+    state: restarted
+  when: _ci_retire_docker_age.stdout == 'stale'

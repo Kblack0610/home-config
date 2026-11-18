@@ -2,8 +2,9 @@
 # A fleet worker takes light claude sessions that fleet-dispatch places over
 # ssh (dotfiles .local/lib/fleet-hosts.sh). This role installs what such a
 # session runs, joins the agent store as a peer (tasks/store.yml), sets up what the
-# fleet lease's holder runs (tasks/peer.yml) and reports what only the human can do:
-# sign each account in and add its store key on Forgejo. It copies no token.
+# fleet lease's holder runs (tasks/peer.yml), puts each Claude account's long-lived token on it
+# (`claude-acct token push`, from the controller's unlocked rbw) and reports what only the human
+# can do: add its store key on Forgejo.
 # Runbook: docs/runbooks/fleet-worker.md.
 
 - name: Install the session toolchain
@@ -203,7 +204,7 @@
   failed_when: false
   check_mode: false
 
-- name: Create each account dir, empty (the human signs each one in)
+- name: Create each account dir, empty (the session signs in with the pushed token)
   ansible.builtin.file:
     path: "{{ item | regex_replace('^~', ansible_env.HOME) }}"
     state: directory
@@ -224,18 +225,23 @@
 - name: Set up what the fleet lease's holder runs (agent-web, the lanes, schedules-sync)
   ansible.builtin.include_tasks: peer.yml
 
-- name: Read whether each account is signed in
-  ansible.builtin.stat:
-    path: "{{ item | regex_replace('^~', ansible_env.HOME) }}/.credentials.json"
-  loop: "{{ ['~/.claude'] + fleet_worker_accounts.stdout_lines }}"
-  register: fleet_worker_signed
+# The worker has no unlocked rbw (headless, rebooted with nobody to unlock it), so the
+# controller's claude-acct copies every account's token to it over ssh stdin and reads each back
+# through the worker's own claude-acct. Runs after the dotfiles are on the worker. A locked rbw
+# on the controller is reported, not fatal. Doc: dotfiles docs/operations/claude-acct-tokens.md.
+- name: Put the Claude account tokens on the worker
+  ansible.builtin.command: claude-acct token push {{ fleet_ssh_host | default(inventory_hostname) }}
+  delegate_to: localhost
+  register: fleet_worker_tokens
+  changed_when: false
+  failed_when: false
+  check_mode: false
 
 - name: Report what only the human can do
   vars:
-    fleet_worker_unsigned: "{{ fleet_worker_signed.results | rejectattr('stat.exists') | map(attribute='item') | list }}"
     fleet_worker_left: >-
       {{ ([] if fleet_worker_gh.rc == 0 else ['gh auth login, then re-run this play for the private overlay'])
-         + (fleet_worker_unsigned | map('regex_replace', '^', 'sign in: CLAUDE_CONFIG_DIR=') | map('regex_replace', '$', ' claude, then /login') | list)
+         + ([] if fleet_worker_tokens.rc == 0 else ['Claude tokens not pushed (' ~ (fleet_worker_tokens.stderr_lines | last | default('rc ' ~ fleet_worker_tokens.rc)) ~ '): rbw unlock on this machine, re-run'])
          + (fleet_worker_clones.results | rejectattr('stat.exists') | map(attribute='item.dest')
             | map('regex_replace', '^', 'not cloned: ') | list)
          + fleet_store_left

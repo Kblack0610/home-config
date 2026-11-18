@@ -41,6 +41,7 @@ Start with the service README in its manifest directory when you are editing or 
 | Service | Path |
 |---------|------|
 | Agents (agent-web) | [../apps/agents/README.md](../apps/agents/README.md) |
+| Front door (kblab.me) | [../apps/front-door/README.md](../apps/front-door/README.md) |
 | Freqtrade league and trader.kblab.me | [../apps/freqtrade/README.md](../apps/freqtrade/README.md) |
 | Home Assistant | [../apps/home-assistant/README.md](../apps/home-assistant/README.md) |
 | Frigate | [../apps/frigate/README.md](../apps/frigate/README.md) |

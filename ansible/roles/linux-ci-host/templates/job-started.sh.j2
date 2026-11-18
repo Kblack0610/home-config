@@ -1,29 +1,42 @@
 #!/usr/bin/env bash
-# Managed by ansible (linux-ci-host). ACTIONS_RUNNER_HOOK_JOB_STARTED for
-# every light/heavy CI slot: empty the job's workspace before it runs.
+# Managed by ansible (linux-ci-host). ACTIONS_RUNNER_HOOK_JOB_STARTED for every CI slot,
+# light, heavy and Unity (playbooks/site.yml). Tests: test-job-started.sh beside the prune script.
 #
-# Why: these runners are persistent, and the workflows were written for a fresh
-# VM. On 2026-09-29 the Vikunja PR gate's sparse checkout left
-# core.sparsecheckout=true in the slot's clone; actions/checkout in the next
-# job reused the clone without undoing it, so `pnpm install` found no
-# package.json. Emptying the workspace gives every job a fresh checkout. The
-# pnpm store and Playwright cache live in the slot's HOME, not here, so
-# installs still reuse them.
+# A Unity slot (CI_SLOT_UNITY=1) first prunes idle slots' warm trees when the disk is under
+# the floor (ci-disk-prune.sh --before-job); a failed prune never fails the job, the hourly
+# run is still there.
 #
-# A file the slot cannot delete (root-owned, left by a `docker run` without
-# --user) fails the job loudly here instead of corrupting the next one.
+# Then it empties the job's workspace, because the runners are persistent and the workflows
+# were written for a fresh VM: on 2026-09-29 the Vikunja PR gate's sparse checkout left
+# core.sparsecheckout=true in the slot's clone, and the next job's `pnpm install` found no
+# package.json. The pnpm store and Playwright cache live in the slot's HOME, so installs
+# still reuse them. A workspace holding a Unity project is never emptied: its git-ignored
+# Library is the warm import a Unity job reuses, and the runner gives every job of one repo
+# the same workspace, so a light job of a Unity repo on a Unity slot would land in it (the
+# Unity repos' light jobs ask for fresh-workspace, which no Unity slot carries).
+#
+# A file the slot cannot delete (root-owned, left by a `docker run` without --user) fails
+# the job loudly here instead of corrupting the next one.
 set -euo pipefail
+
+if [ "${CI_SLOT_UNITY:-}" = 1 ]; then
+  {{ linux_ci_disk_prune }} --before-job || echo "job-started: ci-disk-prune.sh exited $?; the job goes on" >&2
+fi
 
 ws="${GITHUB_WORKSPACE:-}"
 case "$ws" in
-  {{ linux_ci_user_home }}/*/_work/*) ;;
+  "${HOME:-/nonexistent}"/_work/*) ;;
   *)
-    echo "linux-ci job-started: GITHUB_WORKSPACE='${ws}' is outside {{ linux_ci_user_home }}; not cleaning" >&2
+    echo "job-started: GITHUB_WORKSPACE='${ws}' is outside this slot's HOME (${HOME:-unset}); not cleaning" >&2
     exit 0
     ;;
 esac
+[ -d "$ws" ] || exit 0
 
-if [ -d "$ws" ]; then
-  find "$ws" -mindepth 1 -maxdepth 1 -exec rm -rf {} +
-  echo "linux-ci job-started: emptied ${ws}"
+unity=$(find "$ws" -maxdepth 4 -path '*/ProjectSettings/ProjectVersion.txt' -print -quit)
+if [ -n "$unity" ]; then
+  echo "job-started: ${ws} holds a Unity project (${unity#"$ws"/}); kept"
+  exit 0
 fi
+find "$ws" -mindepth 1 -maxdepth 1 -exec rm -rf {} +
+echo "job-started: emptied ${ws}"

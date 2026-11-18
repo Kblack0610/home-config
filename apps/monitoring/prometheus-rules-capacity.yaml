@@ -118,6 +118,18 @@ spec:
             fleet: fix
           annotations:
             summary: "{{ $labels.host }} has had {{ $value }} {{ $labels.pool }} runner(s) offline for an hour: docs/runbooks/unity-ci-host.md#a-host-short-of-its-runners"
+        # A job waiting 30 minutes that no registered runner its repo may use carries every
+        # label of (the exporter's pool="unserved"): no slot will ever take it, so it waits
+        # until someone notices. ar-1872: dotfiles-private "shell tests" sat 13-14h on
+        # pool="other" with nothing saying why. Not a stuck jobless run (stuck="true").
+        - alert: CiJobUnserved
+          expr: max by (repo, workflow, job_name, labels) (github_actions_job_waiting{pool="unserved",stuck!="true"}) > 1800
+          labels:
+            severity: warning
+            category: capacity
+            fleet: fix
+          annotations:
+            summary: "{{ $labels.repo }} {{ $labels.job_name }} has waited {{ $value | humanizeDuration }} for labels {{ $labels.labels }} that no runner it may use carries: docs/runbooks/unity-ci-host.md#a-job-no-runner-serves"
         # A reclaim kills every job on the Spot host. More than 3 in a day means that type is
         # scarce: set its entry spot = false in platform infra/aws-ci-burst (2026-11-13 plan).
         - alert: CiSpotHostReclaimedOften

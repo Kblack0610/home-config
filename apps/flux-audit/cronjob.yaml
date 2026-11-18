@@ -27,10 +27,13 @@ spec:
               resources:
                 requests:
                   cpu: 50m
-                  memory: 64Mi
+                  memory: 128Mi
+                # Memory scales with the total size of every ConfigMap and Secret
+                # in the cluster: audit.py loads each kind as one JSON document.
+                # Exit 137 here means the cluster outgrew this limit.
                 limits:
                   cpu: 200m
-                  memory: 128Mi
+                  memory: 512Mi
               env:
                 # `homelab-alerts` is the topic a phone is actually subscribed
                 # to - it is where Alertmanager sends everything

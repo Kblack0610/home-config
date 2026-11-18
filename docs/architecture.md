@@ -170,10 +170,8 @@ LAN apps behind AdGuard rewrite (*.kblab.me → 192.168.1.124):
   hass, grafana, prometheus, slicer, finance, git, neptune, gatus, ...
        → Traefik → target Service
 
-Apex redirect (kblab.me → HA Launcher):
-  kblab.me → Traefik → home-assistant-apex Ingress
-       → `kblab-apex-redirect` Middleware (RedirectRegex)
-       → 307 → https://hass.kblab.me/lovelace/launcher
+Front door (kblab.me, a list of every system):
+  kblab.me -> Traefik -> front-door Ingress -> nginx (apps/front-door)
 ```
 
 Gatus (`apps/gatus/`) monitors every endpoint in this graph — the Gatus configmap is the concrete enumeration of "what depends on what network-reachability-wise."

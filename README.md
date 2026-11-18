@@ -48,7 +48,7 @@ kustomize build clusters/home-k3s >/dev/null
 
 ```bash
 python3 scripts/check-fleet-roster.py
-python3 scripts/check-runner-roster.py
+python3 scripts/render-ci-topology.py --check
 python3 scripts/check-ha-packages.py
 python3 scripts/check-secret-store.py
 python3 apps/github-runner-exporter/test_exporter.py

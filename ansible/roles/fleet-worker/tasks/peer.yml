@@ -1,16 +1,8 @@
 ---
-# Every worker is a peer of the agent store (~/.agent, a full clone that pushes each
-# write) and may hold the fleet lease, so it builds and enables everything the lease's
-# holder runs: agent-web, the singleton lanes, schedules-sync. There is no fleet home.
-# Runbook: docs/runbooks/fleet-worker.md, "Every worker a peer".
-
-# Without lingering, every user unit (agent-web, the lanes, store-sync) stops when
-# the last login ends, and a headless worker has no login.
-- name: Keep the user's units running with nobody logged in (linger)
-  become: true
-  ansible.builtin.command: loginctl enable-linger {{ ansible_user_id }}
-  args:
-    creates: /var/lib/systemd/linger/{{ ansible_user_id }}
+# Every worker is a peer of the agent store (tasks/store.yml) and may hold the fleet lease,
+# so it builds and enables everything the lease's holder runs: agent-web, the singleton
+# lanes, schedules-sync. There is no fleet home. Runbook: docs/runbooks/fleet-worker.md,
+# "Every worker a peer".
 
 # Arch only, like agent-panel in main.yml: apt's cargo is too old for it.
 - name: Build agent-web (cargo, as the user)
@@ -73,77 +65,10 @@
     follow: true
   register: _fleet_home_notes_bin
 
-# store-sync and fleet-lease push the store's origin (Forgejo) with this key and nothing else
-# (dotfiles .local/lib/store-remote.sh). Its public half is a write deploy key on Forgejo
-# kblack0610/.agent; the report prints it until the store clones.
-- name: Make the key the store syncs with
-  ansible.builtin.command: ssh-keygen -q -t ed25519 -N '' -C "agent-sync {{ inventory_hostname }}" -f {{ ansible_env.HOME }}/.ssh/id_agent_sync
-  args:
-    creates: "{{ ansible_env.HOME }}/.ssh/id_agent_sync"
-
-# The key is data (fleet_home_store_host_key), never a scan: an empty scan used to leave
-# Forgejo untrusted with no error.
-- name: Trust Forgejo's host key
-  ansible.builtin.known_hosts:
-    name: "[{{ fleet_home_store_host }}]:{{ fleet_home_store_port }}"
-    key: "[{{ fleet_home_store_host }}]:{{ fleet_home_store_port }} {{ fleet_home_store_host_key }}"
-    state: present
-
-- name: Read whether the store is a peer clone
-  ansible.builtin.stat:
-    path: "{{ ansible_env.HOME }}/.agent/.sync/peer"
-  register: fleet_home_store
-
-# The store's remotes come from the private overlay's ~/.config/agentctl/store.env, the one place
-# they are written, so the probe below dials the same URL store-sync does.
-- name: Read whether the store's remotes are stowed
-  ansible.builtin.stat:
-    path: "{{ ansible_env.HOME }}/.config/agentctl/store.env"
-  register: fleet_home_store_conf
-
-- name: Read whether the sync key reaches the store
-  when: not fleet_home_store.stat.exists and fleet_home_store_conf.stat.exists
-  ansible.builtin.shell: |
-    set -eo pipefail
-    . "$HOME/.config/agentctl/store.env"
-    git ls-remote "$STORE_PRIMARY_URL" HEAD
-  args:
-    executable: /bin/bash
-  environment:
-    GIT_SSH_COMMAND: ssh -i {{ ansible_env.HOME }}/.ssh/id_agent_sync -o IdentitiesOnly=yes -o BatchMode=yes -o ConnectTimeout=10
-  register: fleet_home_store_reach
-  changed_when: false
-  failed_when: false
-  check_mode: false
-
-# store-sync join makes ~/.agent a peer clone: a clean clone joins in place, anything else
-# moves to ~/.agent.pre-peer-<stamp> beside a fresh clone, so a stale store is never merged
-# blind (dotfiles-private QUEUE.md, "The store: every machine a peer"). The lanes and
-# agent-web stop first so nothing writes into the dir being moved.
-- name: Join the store (store-sync join)
-  when:
-    - not fleet_home_store.stat.exists
-    - fleet_home_store_reach.rc | default(1) == 0
-    - fleet_home_store_conf.stat.exists
-  ansible.builtin.shell: |
-    set -eo pipefail
-    systemctl --user stop 'agentctl@*.timer' 'agentctl@*.service' agent-web.service || true
-    "$HOME/.local/bin/store-sync" join
-  args:
-    executable: /bin/bash
-    creates: "{{ ansible_env.HOME }}/.agent/.sync/peer"
-  register: _fleet_home_join
-  failed_when: false   # the stat below reads the result, and the report names a failed join
-
-- name: Read whether the store joined
-  ansible.builtin.stat:
-    path: "{{ ansible_env.HOME }}/.agent/.sync/peer"
-  register: fleet_home_peer
-
 # A peer fleet_lease is false for never holds the lease (dotfiles fleet-lease, the no-lease
 # marker): its gate skips every singleton and its renew never takes the lease.
 - name: Mark whether this peer may hold the fleet lease (fleet_lease)
-  when: fleet_home_peer.stat.exists
+  when: _fleet_store_peer.stat.exists
   ansible.builtin.file:
     path: "{{ ansible_env.HOME }}/.agent/.sync/no-lease"
     state: "{{ 'absent' if fleet_lease | bool else 'touch' }}"
@@ -151,19 +76,16 @@
     modification_time: preserve
     access_time: preserve
 
-# Every peer syncs the store and may hold the fleet lease, which runs the singleton lanes
-# and agent-web on exactly one machine (dotfiles fleet-lease).
-- name: Sync the store and renew the fleet lease (store-sync.timer, fleet-lease.timer)
-  when: fleet_home_peer.stat.exists
+# The lease runs the singleton lanes and agent-web on exactly one peer (dotfiles fleet-lease);
+# store.yml starts store-sync.timer.
+- name: Renew the fleet lease (fleet-lease.timer)
+  when: _fleet_store_peer.stat.exists
   ansible.builtin.systemd_service:
-    name: "{{ item }}"
+    name: fleet-lease.timer
     scope: user
     enabled: true
     state: started
     daemon_reload: true
-  loop:
-    - store-sync.timer
-    - fleet-lease.timer
 
 # schedules-sync reads the github-runner-exporter feed with kubectl through the
 # API server's Service proxy; without it no state.json is written and every
@@ -243,23 +165,10 @@
     state: "{{ 'restarted' if _fleet_home_web is changed else omit }}"
     daemon_reload: true
 
-- name: Read the sync key's public half
-  ansible.builtin.slurp:
-    src: "{{ ansible_env.HOME }}/.ssh/id_agent_sync.pub"
-  register: fleet_home_sync_pub
-  failed_when: false
-
 - name: Collect what only the human can do for this peer
   ansible.builtin.set_fact:
     fleet_home_left: >-
-      {{ ([] if fleet_home_store.stat.exists or not fleet_home_store_conf.stat.exists or fleet_home_store_reach.rc | default(1) == 0 else
-          ['add this as a write deploy key on Forgejo kblack0610/.agent, then re-run: '
-           ~ (fleet_home_sync_pub.content | default('') | b64decode | trim)])
-         + ([] if fleet_home_peer.stat.exists or not fleet_home_store_conf.stat.exists or fleet_home_store_reach.rc | default(0) != 0 else
-          ['store-sync join did not make ~/.agent a peer clone: ' ~ ((_fleet_home_join.stderr_lines | default([]) | last) | default('run it there and read its ERROR', true))])
-         + ([] if fleet_home_store_conf.stat.exists else
-          ['stow the private overlay (gh auth login, then re-run): store-sync join needs ~/.config/agentctl/store.env'])
-         + ([] if fleet_home_oauth.stat.exists else
+      {{ ([] if fleet_home_oauth.stat.exists else
           ['write ~/.config/agent-web/oauth.json (0600) from rbw item agent-web-oauth-client, then re-run'])
          + ([] if fleet_home_web_files.results | rejectattr('stat.exists') | list | length == 0 else
           ['stow the private overlay (gh auth login, then re-run): agent-web needs its unit and ~/.config/agent-web/env'])

@@ -54,7 +54,7 @@ In GitHub: `https://github.com/BlackNBrownStudios/platform/settings/actions/runn
 
 ## Uninstall
 
-The playbooks only add runners. To remove Unity CI pool slots (the "Unity CI runner pool" play), first take them out of `unity_ci_runners` in `ansible/inventory.yml` and `RUNNER_ROSTER` in `apps/github-runner-exporter/deployment.yaml`, then run this on the host as yourself:
+The playbooks only add runners. To remove Unity CI pool slots (the "Unity CI runner pool" play), first take them out of `unity_ci_runners` in `ansible/inventory.yml` and re-run `scripts/render-ci-topology.py`, then run this on the host as yourself:
 
 ```bash
 bash scripts/unity-ci-runner-remove.sh            # every Unity slot on this host

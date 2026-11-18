@@ -212,8 +212,13 @@
 #   - every moved job reads its runs-on from the LINUX_RUNNER_LIGHT /
 #     LINUX_RUNNER_HEAVY org variables (["self-hosted","linux","light"] and
 #     ["self-hosted","linux","heavy"]), and deleting them sends everything back
-#     to ubuntu-latest. A repo variable of the same name overrides the org one,
-#     so no repo sets its own.
+#     to ubuntu-latest. A repo variable of the same name overrides the org one:
+#     the Unity repos (unity-core-playground, unity-core) set LINUX_RUNNER_LIGHT
+#     to ["self-hosted","linux","light","fresh-workspace"], so their light jobs
+#     take only slots whose workspace starts empty, never a Unity slot, where the
+#     checkout's clean would delete the warm Library. Every other repo uses the
+#     org ones, and its light jobs take any slot of a light host, Unity slots too
+#     (ci_caps in inventory.yml).
 #
 # Heavy jobs publish fixed host ports (postgres 5432, mailpit 1025/8025, app
 # ports), so never more than one heavy slot per host.
@@ -273,8 +278,9 @@
         gh_runner_user_home: "{{ linux_ci_user_home }}"
         gh_runner_home: "{{ linux_ci_user_home }}/{{ ci_slot }}"
         gh_runner_name: "{{ inventory_hostname }}-{{ ci_slot }}"
-        # light or heavy, from the slot name.
-        gh_runner_labels: [self-hosted, linux, x64, "{{ ci_slot.split('-')[0] }}"]
+        # The slot's caps (ci_slot_caps, from topology.json), and fresh-workspace: the
+        # job-started hook empties the workspace, which the Unity repos' light jobs ask for.
+        gh_runner_labels: "{{ ['self-hosted', 'linux', 'x64', 'fresh-workspace'] + ci_slot_caps[gh_runner_name] }}"
         gh_runner_slice: "{{ ci_linux_slice }}"
         gh_runner_env:
           HOME: "{{ linux_ci_user_home }}/{{ ci_slot }}"
@@ -310,7 +316,7 @@
         gh_runner_user_home: "{{ linux_ci_user_home }}"
         gh_runner_home: "{{ linux_ci_user_home }}/{{ ci_repo.slot }}"
         gh_runner_name: "{{ inventory_hostname }}-{{ ci_repo.slot }}"
-        gh_runner_labels: [self-hosted, linux, x64, light]
+        gh_runner_labels: "{{ ['self-hosted', 'linux', 'x64', 'fresh-workspace'] + ci_slot_caps[gh_runner_name] }}"
         gh_runner_slice: "{{ ci_linux_slice }}"
         gh_runner_env:
           HOME: "{{ linux_ci_user_home }}/{{ ci_repo.slot }}"
@@ -571,14 +577,16 @@
           unity_ci_build_slots {{ unity_ci_build_slots | default(0) }} over it.
       tags: [runner, ci, unity-ci]
 
-    # The hourly prune and core-dump cap from linux-ci-host. Without them aws-burst-1,
-    # Unity-only and so not in linux_ci_runners, filled its 400G CI volume on 2026-11-05
-    # with release-tree copies, and every runner died on "No space left on device".
-    - name: Keep the disk from filling
+    # The hourly prune, core-dump cap and job-started hook from linux-ci-host. Without them
+    # aws-burst-1, Unity-only and so not in linux_ci_runners, filled its 400G CI volume on
+    # 2026-11-05 with release-tree copies, and every runner died on "No space left on device".
+    # A host whose Unity slots also take light or heavy jobs (ci_caps) gets the whole role:
+    # the packages a platform job expects, too.
+    - name: Keep the disk from filling, and the packages light and heavy jobs need
       ansible.builtin.include_role:
         name: linux-ci-host
-        tasks_from: disk
-        # The slots' job-started hook below reads linux_ci_unity_job_started_hook.
+        tasks_from: "{{ 'main' if ci_caps | default([]) | intersect(['light', 'heavy']) else 'disk' }}"
+        # The slots' job-started hook below reads linux_ci_job_started_hook.
         public: true
         apply:
           tags: [runner, ci, unity-ci, ci-disk]
@@ -613,17 +621,22 @@
         # got the tarball, and a cloud host sets unity_ci_hd_library once it reads it from S3.
         # unity_ci_build_slots: slots 1..N carry unity-build in place of unity, unity-full,
         # unity-wide and unity-gate, so no gate or nightly lands on them, and the rest are pool
-        # slots (aws-build-1: 3 build slots, 6 test slots; ci-runner-governor's "pairs" keep a
+        # slots (aws-build-1: 3 build slots, 6 test slots; unity_ci_slot_groups keep a
         # build and a test off the same cores).
         # unity_ci_slot_labels adds labels to one slot, so a comparison run can be pinned to it,
         # or a job kept off it (aws-build-1: unity-release on slots 1-2 only).
         # unity-gate: the non-preemptible hosts merge gates may take (unity_ci_gate, default false);
         # a Spot host leaves it off, so a reclaim never kills a gate (playground ucp-1778).
-        gh_runner_labels: "{{ [ 'self-hosted', 'linux', 'x64', 'host-' ~ inventory_hostname ] + ([ 'unity-build' ] if unity_slot <= unity_ci_build_slots | default(0) else [ 'unity' ] + ([ 'unity-full' ] if unity_ci_full | default(true) else []) + ([ 'unity-wide' ] if unity_ci_wide | default(false) else []) + ([ 'unity-gate' ] if unity_ci_gate | default(false) else [])) + ([ 'lan' ] if unity_ci_lan | default(true) else []) + ([ 'hd-library' ] if unity_ci_hd_library | default(unity_ci_lan | default(true)) else []) + (unity_ci_slot_labels | default({})).get(unity_slot, []) }}"
+        # The slot's caps come from topology.json (ci_slot_caps): unity-build on a build slot,
+        # unity plus the host's light on a test slot (scripts/render-ci-topology.py HOST_CAPS).
+        # No Unity slot carries fresh-workspace, so a Unity repo's light job never lands in its
+        # warm tree.
+        gh_runner_labels: "{{ [ 'self-hosted', 'linux', 'x64', 'host-' ~ inventory_hostname ] + ci_slot_caps[gh_runner_name] + ([] if unity_slot <= unity_ci_build_slots | default(0) else ([ 'unity-full' ] if unity_ci_full | default(true) else []) + ([ 'unity-wide' ] if unity_ci_wide | default(false) else []) + ([ 'unity-gate' ] if unity_ci_gate | default(false) else [])) + ([ 'lan' ] if unity_ci_lan | default(true) else []) + ([ 'hd-library' ] if unity_ci_hd_library | default(unity_ci_lan | default(true)) else []) + (unity_ci_slot_labels | default({})).get(unity_slot, []) }}"
         # ci-runner-governor's admit labels and withheld labels (apps/ci-runner-governor/config.json
-        # pool_label, full_label, withheld_label, and aws-build-1's "labels" and "withheld_label"):
-        # an apply leaves a withheld slot withheld.
-        gh_runner_governed_labels: [unity, unity-full, unity-build]
+        # pool_label, full_label, withheld_label, and aws-build-1's "labels" and "withheld_label"),
+        # plus the shared caps a slot takes (governor.py "shared"): an apply leaves a withheld slot
+        # withheld for every kind.
+        gh_runner_governed_labels: [unity, unity-full, unity-build, light, heavy]
         gh_runner_withheld_labels: [unity-withheld, unity-build-withheld]
         gh_runner_withheld_label: "{{ 'unity-build-withheld' if unity_slot <= unity_ci_build_slots | default(0) else 'unity-withheld' }}"
         # With ci_unity_slot_cpus each slot gets its own cores (roles/ci-host-budget).
@@ -643,10 +656,27 @@
           # the playground): with the default under each slot's HOME, a new slot
           # downloaded the whole 7.9 GB library before its first job could start.
           ASSET_LIBRARY_LFS_STORE: "{{ unity_ci_lfs_store }}"
-          # Prunes idle slots' warm trees before the job when the disk is under the floor
-          # (roles/linux-ci-host, ci-disk-prune.sh --before-job). Changing this env restarts
-          # every slot and kills its job: apply it with the host's slots idle.
-          ACTIONS_RUNNER_HOOK_JOB_STARTED: "{{ linux_ci_unity_job_started_hook }}"
+          # Every slot's hook (roles/linux-ci-host job-started.sh): with CI_SLOT_UNITY it prunes
+          # idle slots' warm trees before the job when the disk is under the floor, and it never
+          # empties a workspace holding a Unity project. Changing this env restarts every slot
+          # and kills its job: apply it with the host's slots idle.
+          ACTIONS_RUNNER_HOOK_JOB_STARTED: "{{ linux_ci_job_started_hook }}"
+          CI_SLOT_UNITY: "1"
+          # The slot's CPU count, which platform's turbo runs take as --concurrency when a
+          # light job lands here (the Linux play's linux_ci_slot_cpus says why).
+          CI_SLOT_CPUS: >-
+            {% set spec = ci_unity_slot_cpus[unity_slot - 1] if ci_unity_slot_cpus | length
+            else (ci_unity_cpus or ci_cpus) %}{% set n = namespace(c=0) %}{% for part in spec.split(',')
+            if part | trim %}{% set ab = (part | trim).split('-') %}{% set n.c = n.c + (ab[-1] | int)
+            - (ab[0] | int) + 1 %}{% endfor %}{{ [1, (n.c / (1 if ci_unity_slot_cpus | length
+            else unity_ci_slots)) | int] | max }}
+      tags: [runner, ci, unity-ci]
+
+    # The Unity slots' old hook, replaced by job-started.sh above once the slots run with it.
+    - name: Remove the old Unity job-started hook
+      ansible.builtin.file:
+        path: /usr/local/lib/linux-ci/unity-job-started.sh
+        state: absent
       tags: [runner, ci, unity-ci]
 
     # The slot labelled slim-tour (unity_ci_slot_labels) keeps its warm trees: ci-disk-prune.sh
@@ -673,7 +703,7 @@
 #
 # To retire a host (the Studio's sale): stop and uninstall each slot with
 # ~/actions-runner/unity-pool-<n>/svc.sh, delete the runners in the org's
-# settings, and remove the host from unity_ci_mac_runners and RUNNER_ROSTER.
+# settings, and remove the host from unity_ci_mac_runners and re-run scripts/render-ci-topology.py.
 - name: Unity CI runner pool (macOS)
   hosts: unity_ci_mac_runners
   gather_facts: true

@@ -8,9 +8,9 @@ import unittest
 
 import yaml
 
-SPEC = importlib.util.spec_from_file_location("roster", Path(__file__).with_name("check-runner-roster.py"))
-roster = importlib.util.module_from_spec(SPEC)
-SPEC.loader.exec_module(roster)
+SPEC = importlib.util.spec_from_file_location("topology", Path(__file__).with_name("render-ci-topology.py"))
+topology = importlib.util.module_from_spec(SPEC)
+SPEC.loader.exec_module(topology)
 ROOT = Path(__file__).resolve().parents[1]
 
 
@@ -29,7 +29,7 @@ class RunnerTierTests(unittest.TestCase):
         runner = self.path / "runner.yml"
         inventory.write_text(yaml.safe_dump(self.inventory))
         runner.write_text(yaml.safe_dump(self.runner))
-        return roster.no_ci_failures(inventory, runner)
+        return topology.no_ci_failures(*topology.load_inventory(inventory), runner)
 
     def test_current_exclusions(self):
         self.assertEqual(self.failures(), [])
@@ -61,3 +61,41 @@ class RunnerTierTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class CapTests(unittest.TestCase):
+    def setUp(self):
+        self.hosts, self.groups = topology.load_inventory(ROOT / "ansible/inventory.yml")
+
+    def slots(self):
+        topo, fails = topology.render(self.hosts, self.groups)
+        return {s["name"]: s["caps"] for h in topo.get("hosts", {}).values() for s in h["slots"]}, fails
+
+    def test_unity_test_slot_takes_its_hosts_light(self):
+        slots, fails = self.slots()
+        self.assertEqual(fails, [])
+        self.assertEqual(slots["ms-a2-unity-pool-1"], ["unity", "light"])
+        self.assertEqual(slots["razer-laptop-heavy-1"], ["heavy", "light"])
+
+    def test_heavy_waits_for_ephemeral_ports(self):
+        slots, _ = self.slots()
+        self.assertNotIn("heavy", slots["razer-laptop-unity-pool-1"])
+
+    def test_build_slot_takes_builds_alone(self):
+        slots, _ = self.slots()
+        self.assertEqual(slots["aws-build-1-unity-pool-1"], ["unity-build"])
+
+    def test_cloud_host_never_takes_light(self):
+        self.hosts["aws-spot-1"]["ci_caps"] = ["unity", "light"]
+        _, fails = self.slots()
+        self.assertTrue(any("aws-spot-1: a cloud host" in f for f in fails))
+
+    def test_slot_kind_missing_from_caps(self):
+        self.hosts["ms-a2"]["ci_caps"] = ["unity"]
+        _, fails = self.slots()
+        self.assertIn("ms-a2: has light slots, but ci_caps leaves out light", fails)
+
+    def test_unknown_cap(self):
+        self.hosts["ms-a2"]["ci_caps"] = ["light", "unity", "gpu"]
+        _, fails = self.slots()
+        self.assertTrue(any("ci_caps names gpu" in f for f in fails))

@@ -11,6 +11,8 @@ linux_ci_job_started_hook: /usr/local/lib/linux-ci/job-started.sh
 # The same script under the name that makes it the job-end pass (templates/job-started.sh.j2).
 linux_ci_job_completed_hook: /usr/local/lib/linux-ci/job-completed.sh
 linux_ci_disk_prune: /usr/local/lib/linux-ci/ci-disk-prune.sh
+# On PATH: a Unity repo's light and heavy jobs run it as their first step (files/ci-fresh-workspace.sh).
+linux_ci_fresh_workspace: /usr/local/bin/ci-fresh-workspace
 linux_ci_coredump_max_use: 5G
 
 # What a light/heavy CI job expects (platform's pnpm and Playwright jobs set the bar) beyond the runner itself. No node/pnpm: the

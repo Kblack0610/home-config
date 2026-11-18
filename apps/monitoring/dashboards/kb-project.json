@@ -1,7 +1,7 @@
 {
   "uid": "kb-project",
   "title": "Project departments",
-  "description": "The per-product numbers behind the department tabs on agents.kblab.me (Analytics, Support, Money), recorded as kb_project_number{project, dept, metric} by apps/monitoring/prometheus-rules-kb-project.yaml. Pick a product; a product with no source has no lines. Linked from every department tab.",
+  "description": "The per-product numbers behind the department tabs on agents.kblab.me (Analytics, Support, Money, Marketing), recorded as kb_project_number{project, dept, metric} by apps/monitoring/prometheus-rules-kb-project.yaml. Pick a product; a product with no source has no lines. Linked from every department tab.",
   "tags": [
     "projects",
     "departments"
@@ -527,6 +527,113 @@
       }
     },
     {
+      "id": 16,
+      "type": "row",
+      "title": "Marketing: what the posts brought in",
+      "collapsed": false,
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 38
+      },
+      "panels": []
+    },
+    {
+      "id": 17,
+      "type": "timeseries",
+      "title": "Steam wishlists, by day",
+      "description": "Wishlist adds, deletes, purchases and gifts per product on Steam, one series each, for the last day mkt-metrics read (Steam days are GMT). A product with no Steam app, or a day that did not read, shows no series, not zero: mkt_metrics_up{source=\"steam\"} says which.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "victoriametrics"
+      },
+      "gridPos": {
+        "h": 7,
+        "w": 12,
+        "x": 0,
+        "y": 39
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "victoriametrics"
+          },
+          "editorMode": "code",
+          "expr": "kb_project_number{project=~\"$project\", dept=\"marketing\", metric=~\"wishlist_.*\"}",
+          "legendFormat": "{{project}} {{metric}}",
+          "refId": "A",
+          "instant": false,
+          "range": true,
+          "format": "time_series"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "none",
+          "noValue": "no data"
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom"
+        },
+        "tooltip": {
+          "mode": "multi"
+        }
+      }
+    },
+    {
+      "id": 18,
+      "type": "timeseries",
+      "title": "Search clicks and impressions, by day",
+      "description": "Google Search Console clicks and impressions per product site, on the last day Search Console had finished counting (about 2 days back). No series until the search_console credential is set up: mkt_metrics_up{source=\"search\"} says which.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "victoriametrics"
+      },
+      "gridPos": {
+        "h": 7,
+        "w": 12,
+        "x": 12,
+        "y": 39
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "victoriametrics"
+          },
+          "editorMode": "code",
+          "expr": "kb_project_number{project=~\"$project\", dept=\"marketing\", metric=~\"search_.*\"}",
+          "legendFormat": "{{project}} {{metric}}",
+          "refId": "A",
+          "instant": false,
+          "range": true,
+          "format": "time_series"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "none",
+          "noValue": "no data"
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom"
+        },
+        "tooltip": {
+          "mode": "multi"
+        }
+      }
+    },
+    {
       "id": 13,
       "type": "row",
       "title": "Sources",
@@ -535,7 +642,7 @@
         "h": 1,
         "w": 24,
         "x": 0,
-        "y": 38
+        "y": 46
       },
       "panels": []
     },
@@ -552,7 +659,7 @@
         "h": 4,
         "w": 24,
         "x": 0,
-        "y": 39
+        "y": 47
       },
       "targets": [
         {

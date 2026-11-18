@@ -3,8 +3,7 @@
   ansible.builtin.file:
     path: "{{ ci_runner_cpu_linux_textfile_dir }}"
     state: directory
-    owner: root
-    group: root
+    owner: "{{ ci_runner_cpu_linux_textfile_owner }}"
     mode: "0755"
 
 - name: Install the script

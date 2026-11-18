@@ -6,10 +6,10 @@
     owner: root
     group: root
     content: |
-      # Managed by Ansible role nic-unused-down. Ports with no cable: NetworkManager
+      # Managed by Ansible role nic-unused-down (+= keeps any other file's list). Ports with no cable: NetworkManager
       # never sets them up, so the driver never logs "Link is Down" for them.
       [keyfile]
-      unmanaged-devices={{ nic_unused_interfaces | map('regex_replace', '^', 'interface-name:') | join(';') }}
+      unmanaged-devices+={{ nic_unused_interfaces | map('regex_replace', '^', 'interface-name:') | join(';') }}
   when: nic_unused_interfaces | length > 0
   notify: Reload NetworkManager
 
@@ -28,6 +28,7 @@
   loop: "{{ nic_unused_interfaces }}"
   register: nic_unused_state
   changed_when: false
+  check_mode: false
 
 # A boot leaves an unmanaged port down; this covers the run that first unmanages one
 # NetworkManager had already set up.

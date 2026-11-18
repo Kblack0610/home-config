@@ -205,7 +205,7 @@
   gather_facts: false
   roles:
     - role: nic-unused-down
-      tags: [nic-unused, network]
+      tags: [nic-unused]
 
 # Linux CI runners (light / heavy), org-scoped for every BlackNBrownStudios
 # repo. Added 2026-09-28 for the platform repo only; org-scoped 2026-11-03 so the

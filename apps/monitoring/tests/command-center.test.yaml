@@ -1029,3 +1029,66 @@ tests:
         exp_samples:
           - labels: 'cc:component_status{domain="ci",component="pools"}'
             value: 1
+
+  # ar-2795: mkt_costs_stale (severity: low, notify_kind: fyi) held cc:overall_status red for
+  # months through this catch-all. A low watch warns; normal and up, or no rank published, is down.
+  - name: the other catch-all warns on a tripped low watch and is down on any other
+    interval: 1m
+    input_series:
+      - series: 'mqtt_tripped{topic="agents_h_watch_mkt_costs_stale"}'
+        values: '1x10'
+      - series: 'mqtt_severity_rank{topic="agents_h_watch_mkt_costs_stale"}'
+        values: '1x10'
+      - series: 'mqtt_message_total{topic="agents_h_watch_mkt_costs_stale"}'
+        values: '0+1x10'
+      - series: 'mqtt_tripped{topic="agents_h_watch_urgent_new"}'
+        values: '1x10'
+      - series: 'mqtt_severity_rank{topic="agents_h_watch_urgent_new"}'
+        values: '4x10'
+      - series: 'mqtt_message_total{topic="agents_h_watch_urgent_new"}'
+        values: '0+1x10'
+      - series: 'mqtt_tripped{topic="agents_h_watch_unranked_new"}'
+        values: '1x10'
+      - series: 'mqtt_message_total{topic="agents_h_watch_unranked_new"}'
+        values: '0+1x10'
+      - series: 'mqtt_tripped{topic="agents_h_watch_high_new"}'
+        values: '1x10'
+      - series: 'mqtt_severity_rank{topic="agents_h_watch_high_new"}'
+        values: '3x10'
+      - series: 'mqtt_message_total{topic="agents_h_watch_high_new"}'
+        values: '0+1x10'
+      # a low watch that is ok shows nothing
+      - series: 'mqtt_tripped{topic="agents_h_watch_low_ok"}'
+        values: '0x10'
+      - series: 'mqtt_severity_rank{topic="agents_h_watch_low_ok"}'
+        values: '1x10'
+      - series: 'mqtt_message_total{topic="agents_h_watch_low_ok"}'
+        values: '0+1x10'
+    promql_expr_test:
+      - expr: cc:watch_state{domain="other"}
+        eval_time: 5m
+        exp_samples:
+          - labels: 'cc:watch_state{domain="other",item="mkt_costs_stale"}'
+            value: 1
+          - labels: 'cc:watch_state{domain="other",item="urgent_new"}'
+            value: 2
+          - labels: 'cc:watch_state{domain="other",item="unranked_new"}'
+            value: 2
+          - labels: 'cc:watch_state{domain="other",item="high_new"}'
+            value: 2
+
+  - name: a tripped low watch alone leaves the other domain at warn
+    interval: 1m
+    input_series:
+      - series: 'mqtt_tripped{topic="agents_h_watch_mkt_costs_stale"}'
+        values: '1x10'
+      - series: 'mqtt_severity_rank{topic="agents_h_watch_mkt_costs_stale"}'
+        values: '1x10'
+      - series: 'mqtt_message_total{topic="agents_h_watch_mkt_costs_stale"}'
+        values: '0+1x10'
+    promql_expr_test:
+      - expr: cc:domain_status{domain="other"}
+        eval_time: 5m
+        exp_samples:
+          - labels: 'cc:domain_status{domain="other"}'
+            value: 1

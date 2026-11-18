@@ -1538,23 +1538,32 @@ class StandbyOrderTest(unittest.TestCase):
 
     def test_a_budget_deny_starts_nothing(self):
         # Negative control: the deny policy covers every host, so it is no fallback.
-        self.addCleanup(setattr, governor.State, "denied", False)
         ec2 = FakeEc2("stopped", fail={"i-0spot": "UnauthorizedOperation"})
         tracked, log = self.cycles(ec2, n=3)
         self.assertEqual(self.starts(ec2), ["i-0spot"] * 3)
         self.assertNotIn("fallback_until", tracked["aws-burst-2"])
         self.assertIn('ci_governor_fallback_total{host="aws-burst-2",reason="capacity"} 0', governor.State.metrics)
-        # hc-614: three tries log the first decision and one short line, not a decision and AWS's
-        # encoded message each cycle.
-        starts = [line for line in log if "i-0spot" in line]
-        self.assertEqual(len(starts), 2)
-        self.assertTrue(starts[0].startswith("start i-0spot on aws-burst-2: STANDBY"))
-        self.assertEqual(starts[1], "start i-0spot on aws-burst-2: the budget deny holds (UnauthorizedOperation), "
-                                    "quiet until a start goes through; queue 2")
+        # hc-614: three denied tries log the decision and the failure once, not every cycle.
+        spot = [line for line in log if "i-0spot" in line]
+        self.assertEqual(len(spot), 2)
+        self.assertTrue(spot[0].startswith("start i-0spot on aws-burst-2: STANDBY"))
+        self.assertEqual(spot[1], "start i-0spot failed: UnauthorizedOperation: no; quiet while it holds")
+        # The host stops asking (no queue), then asks again: a new deny is logged again.
+        tracked, _ = self.cycles(ec2, tracked=tracked, waiting=[])
+        tracked, log = self.cycles(ec2, tracked=tracked)
+        self.assertEqual(len([line for line in log if "i-0spot" in line]), 2)
         ec2.fail = {}
         _, log = self.cycles(ec2, tracked=tracked)
-        self.assertIn("start i-0spot on aws-burst-2: the budget deny lifted; queue 2", log)
-        self.assertFalse(governor.State.denied)
+        self.assertIn("start i-0spot on aws-burst-2: the deny lifted; queue 2", log)
+        self.assertNotIn("denied", tracked["aws-burst-2"])
+
+    def test_an_ec2_error_drops_the_encoded_detail(self):
+        e = governor.Ec2Error("UnauthorizedOperation", "You are not authorized to perform this operation. "
+                              "User: x with an explicit deny in an identity-based policy: arn:aws:iam::1:policy/"
+                              "ci-burst-deny-start. Encoded authorization failure message: AbC123" + "x" * 1000)
+        self.assertTrue(str(e).endswith("policy/ci-burst-deny-start."))
+        self.assertEqual(str(governor.Ec2Error("InsufficientInstanceCapacity", "none left")),
+                         "InsufficientInstanceCapacity: none left")
 
     def test_a_refused_spot_start_falls_back_too(self):
         # A Spot-only refusal (price, request state, vCPU limit) must not starve the next host.

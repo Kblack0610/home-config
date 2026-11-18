@@ -1004,8 +1004,11 @@ def sigv4(service, region, key, secret, host, body, t, extra=None,
 
 
 class Ec2Error(ValueError):
-    """An EC2 API error, with AWS's code (InsufficientInstanceCapacity, UnauthorizedOperation)."""
+    """An EC2 API error, with AWS's code (InsufficientInstanceCapacity, UnauthorizedOperation).
+    A deny's message ends in a kilobyte of encoded detail only `aws sts decode-authorization-message`
+    reads; the text before it names the policy, so that is all a log line keeps."""
     def __init__(self, code, message):
+        message = message.split(" Encoded authorization failure message:")[0]
         super().__init__(f"{code}: {message}")
         self.code = code
 
@@ -1400,9 +1403,6 @@ def decide_workers(cfg, instances, now):
 class State:
     lock = Lock()
     metrics = "ci_governor_up 0\n"
-    # The budget's deny policy is in force. The start is still tried each cycle (that is how
-    # the governor sees the deny lift), but it is logged once when it lands and once when it lifts.
-    denied = False
 
 
 def render(cfg, hosts, runners, queue, decisions, ok, instances=None, budget=None):
@@ -1533,6 +1533,8 @@ def cycle(cfg, last_action, tracked=None, budget=None):
     decisions = decide(cfg, hosts, runners, waiting, last_action, now, instances, read_pins(cfg, now), restore, shared_waiting)
     decisions += decide_workers(cfg, instances, now)
     for host, action, runner, v, why in decisions:
+        if action != "start" and host in instances:
+            instances[host].pop("denied", None)  # a deny is logged again once the host asks anew
         if action == "hold":
             continue
         if action in ("pack", "unpack"):
@@ -1542,7 +1544,9 @@ def cycle(cfg, last_action, tracked=None, budget=None):
         power = action in ("start", "stop")
         target = powered(cfg, host)["power"]["instance_id"] if power else runner
         dry = not live(cfg, host) and v not in ("PINNED", "RESTORE")
-        if dry or not (action == "start" and State.denied):
+        # The deny is retried each cycle (that is how the governor sees it lift), but logged once.
+        denied = power and not dry and instances[host].get("denied")
+        if not (action == "start" and denied):
             print(f"{'would ' if dry else ''}{action} {target} on {host}: {v}, {why}; queue {queue}", flush=True)
         if dry:
             last_action[host] = now
@@ -1551,22 +1555,18 @@ def cycle(cfg, last_action, tracked=None, budget=None):
             if power:
                 getattr(instances[host]["client"], action)(target)
                 instances[host].update(cause=instances[host].get("next_cause", ""), changed=action, changed_at=now)
-                if action == "start" and State.denied:
-                    State.denied = False
-                    print(f"start {target} on {host}: the budget deny lifted; queue {queue}", flush=True)
+                if instances[host].pop("denied", None):
+                    print(f"start {target} on {host}: the deny lifted; queue {queue}", flush=True)
             else:
                 apply(cfg, action, runner, host)
             last_action[host] = now
         except POWER_ERRORS as e:
             code = getattr(e, "code", "")
-            if action == "start" and code in DENY_CODES:
-                # AWS's message carries a kilobyte of encoded detail each time; the code says it all.
-                if not State.denied:
-                    State.denied = True
-                    print(f"start {target} on {host}: the budget deny holds ({code}), "
-                          f"quiet until a start goes through; queue {queue}", flush=True)
-            else:
-                print(f"{action} {target} failed: {e}", flush=True)
+            deny = action == "start" and code in DENY_CODES
+            if not (deny and denied):
+                print(f"{action} {target} failed: {e}" + ("; quiet while it holds" if deny else ""), flush=True)
+            if deny:
+                instances[host]["denied"] = True
             if action == "start" and isinstance(e, Ec2Error) and code not in DENY_CODES:
                 why = "capacity" if code in CAPACITY_CODES else "refused"
                 fall_back(instances[host], power_of(cfg, host), why, now)

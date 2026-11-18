@@ -1,7 +1,6 @@
 ---
-# What keeps a CI host from filling its disk, and every slot's job-started hook. Also run by
-# the Unity pool play (playbooks/site.yml), so a Unity-only host such as aws-spot-1 gets it
-# without the light/heavy packages.
+# What keeps a CI host from filling its disk, and every slot's job-started hook. Every CI
+# host gets it (tasks/main.yml), a Unity-only one such as aws-spot-1 too.
 - name: Create the disk prune script's and hook's directory
   ansible.builtin.file:
     path: "{{ linux_ci_disk_prune | dirname }}"
@@ -35,7 +34,7 @@
     dest: /etc/systemd/coredump.conf.d/50-disk-cap.conf
     mode: "0644"
     content: |
-      # Managed by ansible (linux-ci-host).
+      # Managed by ansible (ci-host).
       [Coredump]
       MaxUse={{ linux_ci_coredump_max_use }}
   tags: [ci-disk]

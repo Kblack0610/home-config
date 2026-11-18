@@ -345,6 +345,22 @@ spec:
               ansible-playbook playbooks/site.yml --limit <its inventory host> --tags k3s
               (the server first if the pin moved; roles/k3s-agent README). A Pi's node
               name is not its inventory name; match it by IP in inventory.yml.
+        # A house power cut reboots many hosts at once, and each host alone looks like a
+        # restart. 2026-11-04 19:35 and 2026-11-17 01:40 both went unpaged. AWS CI hosts
+        # stop and start by design, so they are left out.
+        - alert: HostPowerEvent
+          expr: >-
+            count(changes(node_boot_time_seconds{job=~"node-exporter|mac-nodes|standalone-nodes"}[5m]) > 0) >= 3
+          labels:
+            severity: critical
+            fleet: none  # a power cut or UPS fault: the human checks the UPS and the breaker (docs/nut-ups.md)
+            category: node-health
+          annotations:
+            summary: "Power event: {{ $value }} hosts rebooted within 5m"
+            description: >-
+              {{ $value }} hosts' node_boot_time moved in the last 5m. Several
+              reboots at once point at power, not at one host. Check the UPS
+              (docs/nut-ups.md) and which hosts came back: node_boot_time_seconds.
     - name: homelab-node-health.recording
       rules:
         - record: instance:node_cpu_package_temp:celsius

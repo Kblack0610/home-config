@@ -235,6 +235,9 @@ def setUpModule():
     p = mock.patch.object(governor, "restored", return_value=(0.0, "", False))
     p.start()
     unittest.addModuleCleanup(p.stop)
+    p = mock.patch.object(governor, "observe_shared", return_value=[])
+    p.start()
+    unittest.addModuleCleanup(p.stop)
 
 
 class GovernorTest(unittest.TestCase):
@@ -251,6 +254,20 @@ class GovernorTest(unittest.TestCase):
         hosts = readings(**{"razer-laptop": BUSY, "asus-laptop": BUSY, "hp-victus": COOL})
         self.assertEqual(actions(hosts)["hp-victus"], ("admit", "hpv-2"))
         self.assertEqual(actions(hosts, queue=0)["hp-victus"], ("hold", ""))
+
+    def test_a_waiting_job_on_a_shared_cap_is_room_for_a_withheld_slot_that_takes_it(self):
+        hosts = readings(**{"razer-laptop": BUSY, "asus-laptop": BUSY, "hp-victus": COOL})
+        cfg = {**CFG, "shared": {"hpv-2": ["light", "heavy"]}}
+        light = frozenset({"self-hosted", "light"})
+        got = lambda shared: {h: (a, r) for h, a, r, _, _ in governor.decide(
+            cfg, hosts, RUNNERS, [], {}, 10_000, shared_waiting=shared)}["hp-victus"]
+        self.assertEqual(got([light]), ("admit", "hpv-2"))
+        self.assertEqual(got([frozenset({"self-hosted", "heavy"})]), ("admit", "hpv-2"))
+        self.assertEqual(got([]), ("hold", ""))
+        self.assertEqual(got([frozenset({"self-hosted", "macos"})]), ("hold", ""))
+        # A slot with no shared cap gains nothing from a light job.
+        self.assertEqual(governor.decide({**CFG, "shared": {}}, hosts, RUNNERS, [], {}, 10_000,
+                                         shared_waiting=[light])[-1][1:3], ("hold", ""))
 
     def test_host_floor(self):
         runners = pool(("razer-1", "razer-laptop", True, 9, False), ("asus-1", "asus-laptop", True, 9, False),
@@ -1336,9 +1353,9 @@ class GovernorTest(unittest.TestCase):
         governor.apply(cfg, "admit", "ws-1", "ws")
         self.assertEqual(calls[1][2], {"labels": ["unity"]})
 
-    def test_the_live_shared_caps_are_lan_only(self):
+    def test_the_live_shared_caps_are_lan_light_only(self):
         shared = governor.load_config(CONFIG)["shared"]
-        self.assertEqual(shared["ms-a2-unity-pool-1"], ["light", "heavy"])
+        self.assertEqual(shared["ms-a2-unity-pool-1"], ["light"])
         self.assertFalse([n for n in shared if n.startswith("aws-")])
         self.assertNotIn("cachyos-x8664-main-unity-pool-1", shared)
 
@@ -1361,7 +1378,7 @@ class GovernorTest(unittest.TestCase):
 
     def test_admit_gives_every_cap_back(self):
         calls = self.every_cap("admit", ["self-hosted", "unity-withheld", "lan"])
-        self.assertEqual(calls[1][2], {"labels": ["heavy", "light", "unity", "unity-full"]})
+        self.assertEqual(calls[1][2], {"labels": ["light", "unity", "unity-full"]})
         self.assertTrue(calls[2][1].endswith("/7/labels/unity-withheld"))
 
     def test_the_live_config_keeps_full_runs_off_the_workstation(self):

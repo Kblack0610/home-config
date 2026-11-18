@@ -1,0 +1,24 @@
+# Managed by ansible (forgejo-runner-linux).
+[Unit]
+Description=Forgejo Actions runner ({{ forgejo_runner_name }})
+After=network-online.target docker.service
+Wants=network-online.target
+Requires=docker.service
+
+[Service]
+Type=simple
+User={{ forgejo_runner_user }}
+Group={{ forgejo_runner_group }}
+WorkingDirectory={{ forgejo_runner_home }}
+Environment=HOME={{ forgejo_runner_home }}
+ExecStart={{ forgejo_runner_bin }} daemon --config {{ forgejo_runner_home }}/config.yaml
+Restart=always
+RestartSec=5
+# The slot's CPU set and memory cap (roles/ci-host-budget), shared with the light and
+# heavy runners. Job containers join it through the config's --cgroup-parent.
+Slice={{ forgejo_runner_slice }}
+# Let a running job finish its step on a restart; the runner reports it as cancelled.
+TimeoutStopSec=5min
+
+[Install]
+WantedBy=multi-user.target

@@ -296,3 +296,30 @@ tests:
       - eval_time: 35m
         alertname: KubeletVersionSkew
         exp_alerts: []
+
+  # Three hosts' boot times move together (a power cut); one alone, and an AWS host, do not.
+  - name: three hosts rebooting at once fire HostPowerEvent, one host does not
+    interval: 1m
+    input_series:
+      - series: 'node_boot_time_seconds{instance="a:9100",job="node-exporter"}'
+        values: '100x5 200x10'
+      - series: 'node_boot_time_seconds{instance="b:9100",job="node-exporter"}'
+        values: '100x5 200x10'
+      - series: 'node_boot_time_seconds{instance="c:9100",job="mac-nodes"}'
+        values: '100x5 200x10'
+      - series: 'node_boot_time_seconds{instance="d:9100",job="aws-ci-nodes"}'
+        values: '100x5 200x10'
+    alert_rule_test:
+      - eval_time: 4m
+        alertname: HostPowerEvent
+        exp_alerts: []
+      - eval_time: 7m
+        alertname: HostPowerEvent
+        exp_alerts:
+          - exp_labels: {severity: critical, fleet: none, category: node-health}
+            exp_annotations:
+              summary: "Power event: 3 hosts rebooted within 5m"
+              description: "3 hosts' node_boot_time moved in the last 5m. Several reboots at once point at power, not at one host. Check the UPS (docs/nut-ups.md) and which hosts came back: node_boot_time_seconds."
+      - eval_time: 14m
+        alertname: HostPowerEvent
+        exp_alerts: []

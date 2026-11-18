@@ -36,10 +36,9 @@ def host_device(devices, name, hv):
 
 def host_names(name, hv, device=None):
     """Every name a roster machine may be dialed by, as known_hosts writes it: its inventory name,
-    ansible_host and fleet_ssh_host, its DHCP name and IP, and both names with .lan. Whichever
-    name the fleet dials it by is trusted. "[name]:port" when
-    sshd is not on 22."""
-    raw = [name, name + ".lan", hv.get("ansible_host"), hv.get("fleet_ssh_host")]
+    ansible_host, fleet_ssh_host and ssh_aliases, its DHCP name and IP, and both names with .lan.
+    Whichever name the fleet dials it by is trusted. "[name]:port" when sshd is not on 22."""
+    raw = [name, name + ".lan", hv.get("ansible_host"), hv.get("fleet_ssh_host")] + list(hv.get("ssh_aliases") or [])
     if device and device.get("hostname"):
         raw += [device["hostname"], device["hostname"] + ".lan", device.get("ip")]
     port = int(hv.get("ansible_port") or 22)

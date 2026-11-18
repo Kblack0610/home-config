@@ -217,8 +217,8 @@
 #     to ["self-hosted","linux","light","fresh-workspace"], so their light jobs
 #     take only slots whose workspace starts empty, never a Unity slot, where the
 #     checkout's clean would delete the warm Library. Every other repo uses the
-#     org ones, and its light and heavy jobs take any slot of a host tagged for them,
-#     Unity slots too (ci_caps in inventory.yml).
+#     org ones, and its light jobs take any slot of a host tagged for them, Unity slots too
+#     (heavy joins after make-logical-possum-p4-apply; ci_caps in inventory.yml).
 #
 # Slots per host live in inventory.yml (linux_ci_runners); the host's CI
 # CPU and memory budget in ci_hosts (roles/ci-host-budget). Each slot is its own
@@ -325,6 +325,32 @@
           ACTIONS_RUNNER_HOOK_JOB_COMPLETED: "{{ linux_ci_job_completed_hook }}"
           CI_SLOT_CPUS: "1"
       tags: [runner, ci, linux-ci]
+    # Forgejo Actions slots (forgejo_slots, inventory.yml): one forge per slot, run as
+    # linux-ci in the light and heavy slots' slice, after those slots create the user.
+    # They replaced the k3s runner pod (plan make-logical-possum phase 6). Lowering the
+    # count does not remove a slot: stop and disable forgejo-runner-<host>-forgejo-<n>,
+    # delete the runner in Forgejo's Site Administration, rm -rf its dir.
+    - name: Require light or heavy slots on a host with Forgejo slots
+      ansible.builtin.assert:
+        that: linux_ci_instances | length > 0
+        fail_msg: "{{ inventory_hostname }} has forgejo_slots but no light or heavy slot to create the linux-ci user."
+      when: forgejo_slots | default(0) > 0
+      tags: [runner, ci, forgejo-ci]
+
+    - name: Register the Forgejo slots
+      ansible.builtin.include_role:
+        name: forgejo-runner-linux
+        apply:
+          tags: [runner, ci, forgejo-ci]
+      loop: "{{ range(1, (forgejo_slots | default(0)) + 1) | list }}"
+      loop_control:
+        loop_var: forgejo_slot
+      vars:
+        forgejo_runner_name: "{{ inventory_hostname }}-forgejo-{{ forgejo_slot }}"
+        forgejo_runner_home: "{{ linux_ci_user_home }}/forgejo-{{ forgejo_slot }}"
+        forgejo_runner_slice: "{{ ci_linux_slice }}"
+      tags: [runner, ci, forgejo-ci]
+
     # After the slots, which create the linux-ci user. Playground jobs clone
     # their submodules over ssh (windows-media-ci's first light jobs failed
     # "Host key verification failed" without this).
@@ -371,6 +397,8 @@
           {{ inventory_hostname }} has unity_ci_slots {{ unity_ci_slots }} but
           {{ ci_unity_slot_cpus | length }} entries in ci_unity_slot_cpus, or
           unity_ci_build_slots {{ unity_ci_build_slots | default(0) }} over it.
+      # The play also runs on light-only hosts (razer-laptop), which define no unity_ci_slots.
+      when: "'unity_ci_runners' in group_names"
       tags: [runner, ci, unity-ci]
 
     - name: Register the Unity pool slots
@@ -409,7 +437,7 @@
         # unity-gate: the non-preemptible hosts merge gates may take (unity_ci_gate, default false);
         # a Spot host leaves it off, so a reclaim never kills a gate (playground ucp-1778).
         # The slot's caps come from topology.json (ci_slot_caps): unity-build on a build slot,
-        # unity plus the host's light and heavy on a test slot (scripts/render-ci-topology.py HOST_CAPS).
+        # unity plus the host's shared caps (SHARED_CAPS) on a test slot (scripts/render-ci-topology.py HOST_CAPS).
         # No Unity slot carries fresh-workspace, so a Unity repo's light job never lands in its
         # warm tree.
         gh_runner_labels: "{{ [ 'self-hosted', 'linux', 'x64', 'host-' ~ inventory_hostname ] + ci_slot_caps[gh_runner_name] + ([] if unity_slot <= unity_ci_build_slots | default(0) else ([ 'unity-full' ] if unity_ci_full | default(true) else []) + ([ 'unity-wide' ] if unity_ci_wide | default(false) else []) + ([ 'unity-gate' ] if unity_ci_gate | default(false) else [])) + ([ 'lan' ] if unity_ci_lan | default(true) else []) + ([ 'hd-library' ] if unity_ci_hd_library | default(unity_ci_lan | default(true)) else []) + (unity_ci_slot_labels | default({})).get(unity_slot, []) }}"
@@ -453,6 +481,8 @@
             if part | trim %}{% set ab = (part | trim).split('-') %}{% set n.c = n.c + (ab[-1] | int)
             - (ab[0] | int) + 1 %}{% endfor %}{{ [1, (n.c / (1 if ci_unity_slot_cpus | length
             else unity_ci_slots)) | int] | max }}
+      # The play also runs on light-only hosts (razer-laptop), which define no unity_ci_slots.
+      when: "'unity_ci_runners' in group_names"
       tags: [runner, ci, unity-ci]
 
     # The Unity slots' old hook, replaced by job-started.sh above once the slots run with it.
@@ -473,6 +503,8 @@
       loop: "{{ range(1, unity_ci_slots + 1) | list }}"
       # A --check of a slot not yet registered has no slot directory to touch.
       ignore_errors: "{{ ansible_check_mode }}"
+      # The play also runs on light-only hosts (razer-laptop), which define no unity_ci_slots.
+      when: "'unity_ci_runners' in group_names"
       tags: [runner, ci, unity-ci, ci-disk]
 
 # Service hosts carry no CI (no_ci_hosts in inventory.yml says why). The CI
@@ -542,7 +574,8 @@
 - name: Fleet workers (agent sessions fleet-dispatch places over ssh)
   # See docs/runbooks/fleet-worker.md. Per user, not root: the sessions run as
   # ansible_user, at the same paths as on the workstation. The role installs
-  # and reports; signing the accounts in is the human's.
+  # pushes the Claude account tokens from this machine's rbw, and reports what
+  # is left for the human.
   hosts: fleet_workers
   gather_facts: true
   roles:

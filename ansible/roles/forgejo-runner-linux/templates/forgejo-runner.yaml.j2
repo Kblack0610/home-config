@@ -1,0 +1,26 @@
+# Managed by ansible (forgejo-runner-linux) for {{ forgejo_runner_name }}.
+log:
+  level: info
+runner:
+  file: {{ forgejo_runner_home }}/.runner
+  # One job at a time: the slot is the unit of budget, as for every GitHub slot.
+  capacity: 1
+  timeout: 3h
+  labels:
+{% for label in forgejo_runner_labels %}
+    - "{{ label }}"
+{% endfor %}
+cache:
+  enabled: true
+  dir: {{ forgejo_runner_home }}/cache
+container:
+  # A network per job, so concurrent jobs never share localhost ports or the host's.
+  network: ""
+  privileged: false
+  # The host's docker socket inside each job container (docker build and push jobs).
+  docker_host: automount
+  # Job containers run in the slot's slice, inside its CPU set and memory cap.
+  options: --cgroup-parent={{ forgejo_runner_slice }}
+  valid_volumes: []
+host:
+  workdir_parent: {{ forgejo_runner_home }}/work

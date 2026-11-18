@@ -49,7 +49,7 @@ all:
           ansible_host: 192.168.1.152
           ansible_port: 2222
           ssh_host_ed25519: ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAICsWV1oEbjGp4NMxRE6W4wamxt8KJ3PIIuXaUO/1qsXS
-        # Razer Blade 14 (Ryzen 9 8945HS, 96 GB), reinstalled headless by PXE
+        # Razer Blade 14 (Ryzen 9 8945HS, 32 GB since 2026-11-17, 96 GB before), reinstalled headless by PXE
         # kexec 2026-10-24 as a CI host, and a k3s agent since 2026-10-26. On the LAN through
         # a USB-C ethernet dongle; the DHCP reservation follows that dongle's MAC.
         razer-laptop:
@@ -103,6 +103,9 @@ all:
           ansible_host: 192.168.1.7
           ansible_user: kennethblack
           ssh_aliases: [m1]
+          # /etc/ssh/ssh_host_ed25519_key.pub: roster machines trust it under every name it is dialed by
+          # (host_identity_dial_target_groups, roles/host-identity).
+          ssh_host_ed25519: ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIBSevnCCl7D8zA29C912Sa2isbGS9eTzhotSXl1TgUlh
           # The store-console skill drives this Chrome over ssh with the
           # Playwright Extension; the person signs in to the store consoles here.
           brew_extra_casks: [google-chrome]
@@ -303,19 +306,21 @@ all:
         # ci_hosts). Three light and a heavy shared Unity's cores at a quarter of
         # its weight and blew their caps (platform #1488, #1489). Two light since
         # 2026-11-12 for the light bursts: the light runners have
-        # their own 6 threads (ci_linux_cpus 5-7,13-15) and 40G, and a light job
+        # their own 6 threads (ci_linux_cpus 5-7,13-15) (40G then, 6G since 2026-11-17), and a light job
         # is 0.5-0.6G anon. Heavy: razer's one heavy slot waited 6% of 7 days with
         # bursts to 18, so since 2026-11-17 ms-a2 and windows-media-ci carry one heavy
-        # slot each, and since heavy jobs take ephemeral ports every Unity test slot
-        # on a heavy host takes heavy too (scripts/render-ci-topology.py SHARED_CAPS).
+        # slot each; heavy jobs take ephemeral ports, so Unity test slots on a heavy host
+        # take heavy once make-logical-possum-p4-apply runs (scripts/render-ci-topology.py SHARED_CAPS).
+        # razer has one light slot and no heavy since 2026-11-17: 32 GB, k3s and the
+        # OS take about 12 GiB, the rest stays with 4-6 Claude sessions.
         # ci_repo_runners: runners for one personal repo, which cannot use the
         # org's slots. GitHub bills hosted minutes on a private repo and refused
         # every .dotfiles-private job from 2026-11-15 once the month's allowance
         # ran out. Its jobs are lint and unit runs of seconds and under 1G, so
         # one runner on each of two hosts, in the light slots' slice.
         razer-laptop:
-          ci_light_slots: 2
-          ci_heavy_slots: 1
+          ci_light_slots: 1
+          ci_heavy_slots: 0
           ci_repo_runners: [{repo: Kblack0610/.dotfiles-private, slot: dotfiles-private-1}]
         # Four light slots and one heavy on the cores of its third Unity slot since
         # 2026-11-13 (unity_ci_runners says why). Light jobs average 0.4 cores and
@@ -329,9 +334,16 @@ all:
         # outside its Unity slots for the platform runners. Not on the Unity slots
         # themselves: playground's light jobs clean and sparse-check-out the same repo
         # dir, which would wipe that slot's warm Library.
+        # forgejo_slots: Forgejo Actions runners, one forge per slot, in the same
+        # ci-linux.slice budget as the light and heavy slots (roles/forgejo-runner-linux).
+        # Two, both on ms-a2, since 2026-11-18: they replaced the k3s runner pod
+        # (capacity 2), which ran on ms-a2's k3s cores, so its jobs moved into the CI
+        # budget instead of adding load; every CI host read FULL that day. The total
+        # is FORGEJO_SLOTS in scripts/render-ci-topology.py.
         ms-a2:
           ci_light_slots: 2
           ci_heavy_slots: 1
+          forgejo_slots: 2
 
     # BNB Unity runner pool (added 2026-10-05; the "CI runners (light, heavy and Unity slots)" play in
     # site.yml). Org-scoped, label `unity`, for every game repo. Each slot runs
@@ -343,45 +355,12 @@ all:
     # Never a host in no_ci_hosts (below).
     unity_ci_runners:
       hosts:
-        # One slot at first: the same 8 Unity threads as asus had. Its first pool shards
-        # (2026-10-24 PlayMode 4 green, 2026-10-26 PlayMode 3 one flaky timed
-        # test) match the other hosts, which each fail one different timed test
-        # per run.
-        # Takes full runs too (unity_ci_full defaults to true). It was reserved
-        # for merge gates 2026-10-26 to 10-27; since playground gates run on the
-        # pool with a narrow pick, the reservation only slowed the nightly.
-        # Several slots since 2026-10-28, each on cores of its own
-        # (ci_unity_slot_cpus in ci_hosts), so they cannot starve each other's
-        # real-time tests the way asus's two did. In the 24h before, razer
-        # averaged 31% CPU, peaked at 65C and used at most 31% of its memory,
-        # while about 30 Unity jobs waited on average. Two slots of three cores
-        # each the first evening, three of two cores each from 20:00 the same
-        # day with about 40 jobs queued. If razer's timed tests fail more often
-        # than the other hosts', go back to two.
-        # Five since 2026-10-29: slots 4 and 5 float over all of razer's Unity
-        # cores and only take work while ci-runner-governor admits them (it
-        # withholds a slot when CPU pressure or idle say the host is full). 37
-        # jobs queued with razer at 34% CPU and 76G free; the governor, not a
-        # fixed count, decides how many of the five run.
-        # Two since 2026-11-02, three cores each, as the rule above says: over
-        # 10-28 to 11-02 a razer PlayMode job failed 24% of the time against
-        # mac-studio's 7%, every FAIL of the 11-02 nightly ran on razer, and the
-        # classes were timed ones (GadgetMoves, WeightedStart, SkylineMoves).
-        # Failures did not grow with more razer jobs at once, so the two-core
-        # slot was the limit, not its neighbours.
-        # One since 2026-11-10: the second slot's three cores went to the
-        # platform runners (linux_ci_runners), which had none of their own.
-        # Slot 1 carries slim-tour, so playground slim-tour.yml always lands on the one
-        # slot whose prune keeps its trees warm (site.yml's .keep-warm-trees, ucp-2062).
-        # Picked by disk on 2026-11-14: razer 365G free of 938G (39%); windows-media-ci
-        # 80G of 290G (27%) and aws-burst-1 23% with no tree, both under the 35% floor.
-        razer-laptop:
-          unity_ci_slots: 1
-          unity_ci_slot_labels:
-            1: [slim-tour]
-          unity_ci_full: true
-          unity_ci_wide: true
-          unity_ci_gate: true
+        # razer-laptop has no Unity slot since 2026-11-17: its RAM dropped from 96 GB to
+        # 32 GB (the 96 GB kit went to the MS-A2) and it stays a usable Claude runner.
+        # Slot 1 of ms-a2 carries slim-tour, so playground slim-tour.yml always lands on the
+        # one slot whose prune keeps its trees warm (site.yml's .keep-warm-trees, ucp-2062).
+        # Picked by disk on 2026-11-17: ms-a2 1.6T free of 1.8T (88%), unity-full, on the LAN
+        # (hd-library). It took the label from razer-laptop slot 1.
         # The 2026-11-10 purchases, joined 2026-11-16. Full runs and gates: owned
         # and never preempted. One slot fewer than the purchase plan on each, so
         # k3s keeps two cores of its own (ci_hosts below); ramp per
@@ -389,6 +368,8 @@ all:
         # ucp-1521 probes.
         ms-a2:
           unity_ci_slots: 4
+          unity_ci_slot_labels:
+            1: [slim-tour]
           unity_ci_full: true
           unity_ci_gate: true
         deskslim-2:
@@ -545,10 +526,10 @@ all:
     # One CPU and memory budget per CI host (roles/ci-host-budget): every runner
     # and container of every CI workload on the host shares it, and what is left
     # stays with k3s and the OS. Starting values, tuned against a full nightly.
-    # ci_caps: the job kinds the host can run (light, heavy, unity, unity-build).
+    # ci_caps: the job kinds the host can run (light, heavy, unity, unity-build, forgejo).
     # Every slot takes each of them its kind can hold (scripts/render-ci-topology.py
-    # HOST_CAPS says which), so a Unity test slot also takes its host's light and heavy
-    # jobs. A host's own slots of a kind need that kind here; a cloud host takes no
+    # HOST_CAPS says which), so a Unity test slot also takes its host's light (and heavy, after
+    # make-logical-possum-p4-apply) jobs. A host's own slots of a kind need that kind here; a cloud host takes no
     # light or heavy, so a small job never powers a paid host. Drop a cap and
     # re-apply to take it off every slot of the host.
     ci_hosts:
@@ -556,26 +537,21 @@ all:
         # 8 cores / 16 threads, SMT siblings are n and n+8. Cores 0-1 (CPUs
         # 0-1, 8-9) are k3s and the OS; k3s_cpus pins pods there with 4 CPUs of
         # allocatable, after 6-CPU backtests landed beside CI and the 15-minute
-        # load hit 18 (2026-11-10). Unity
-        # gets cores 2-4 for its one slot and the platform runners cores 5-7,
-        # each on its own, so neither is throttled by the other's weight.
-        # 93 GB usable, so CI gets most of it; a Unity job peaks around 8 GB. A
-        # slot stops at 20G: without a cap each took the 32G default, five could
-        # reach 160G against the 60G Unity budget, and one shard was killed on
-        # 11-02 after 462 s.
-        # These caps hold until the RAM move to 32 GB (hc-328); #1038 has the 32 GB
-        # layout (one light slot, 6G, no Unity slot) to re-apply with the swap.
+        # load hit 18 (2026-11-10). The platform runners get cores 5-7 and their SMT
+        # siblings. Since 2026-11-17 the host has 32 GB (was 96 GB) and no Unity slot:
+        # one light slot capped at 6G, k3s and the OS about 12 GiB, the rest left for
+        # 4-6 Claude sessions. ci_unity_cpus stays set because ci-host-budget asserts it
+        # does not overlap ci_linux_cpus; the Unity slice holds no units.
         razer-laptop:
-          ci_caps: [light, heavy, unity]
+          ci_caps: [light]
           ci_cpus: 2-7,10-15
-          ci_memory_max: 72G
+          ci_memory_max: 6G
           ci_unity_cpus: 2-4,10-12
-          ci_unity_slot_cpus: ["2-4,10-12"]
-          ci_unity_memory_max: 60G
+          ci_unity_slot_cpus: []
+          ci_unity_memory_max: 6G
           ci_linux_cpus: 5-7,13-15
           k3s_cpus: 0-1,8-9
-          ci_unity_slot_memory_max: 20G
-          ci_linux_memory_max: 40G
+          ci_linux_memory_max: 6G
         # ms-a2: 16 cores / 32 threads, SMT siblings n and n+16 (sysfs,
         # 2026-11-16), 91G. Cores 0-1 are k3s and the OS, as on razer. Each Unity
         # slot gets three cores and 16G (docs/unity-ci-hardware.md sizing), cores
@@ -583,7 +559,7 @@ all:
         # heavy slot's (linux_ci_runners), 16G between them (a light job is about
         # 0.6G), which leaves 21G for the host and k3s.
         ms-a2:
-          ci_caps: [light, heavy, unity]
+          ci_caps: [light, heavy, unity, forgejo]
           ci_cpus: 2-15,18-31
           ci_memory_max: 70G
           ci_linux_cpus: 14-15,30-31
@@ -686,7 +662,7 @@ all:
     # Fleet workers: hosts fleet-dispatch places light claude sessions on, over
     # ssh. dotfiles .local/lib/fleet-hosts.sh reads this group from this file
     # alone, so its vars stay here and never move to group_vars/. Provisioned
-    # by roles/fleet-worker; the human signs each account in once. Runbook:
+    # by roles/fleet-worker; claude-acct token push gives it each Claude account's token. Runbook:
     # docs/runbooks/fleet-worker.md.
     #   fleet_place      false keeps a provisioned host out of placement
     #   fleet_max_live   sessions at once on it (a light item is one run unit)
@@ -711,7 +687,7 @@ all:
             repo: https://github.com/Kblack0610/.dotfiles.git
       hosts:
         # The first worker (2026-11-07): wired and always on, 16 threads and
-        # 96 GB until the RAM move to 32 GB (hc-328). It ran the singleton lanes 2026-11-15 to
+        # 32 GB since the RAM move (hc-328), 96 GB before. It ran the singleton lanes 2026-11-15 to
         # 11-16 while the workstation was down; not placed yet.
         razer-laptop:
           fleet_place: false

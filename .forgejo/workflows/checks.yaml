@@ -43,7 +43,7 @@ jobs:
           [ "$rc" -ne 0 ] || { echo "the check passed a stale topology.json"; exit 1; }
           grep -q "is not what" planted-count.out || { echo "the check failed, but not on the stale file"; exit 1; }
           rm planted-count.out
-      - name: Topology renderer tests, tier exclusions across alternative affinity terms
+      - name: Topology renderer tests, tier exclusions and slot caps
         run: cd scripts && python3 -m unittest test_render_ci_topology
       - name: Freqtrade roster has no bot that repeats another's exchange, strategy and overlay
         run: python3 scripts/check-freqtrade-roster.py

@@ -4,6 +4,7 @@ import importlib.util
 import json
 from pathlib import Path
 import unittest
+from unittest import mock
 
 SPEC = importlib.util.spec_from_file_location("qualify", Path(__file__).with_name("host-qualify.py"))
 qualify = importlib.util.module_from_spec(SPEC)
@@ -52,10 +53,35 @@ class QualifyTests(unittest.TestCase):
         self.assertTrue(qualify.releases("standard", "probation"))
 
     def test_instance_by_name_then_inventory_ip(self):
-        known = {"razer-laptop": "192.168.1.26:9100", "raspberrypi": "192.168.1.20:9100"}
-        self.assertEqual(qualify.host_instance("razer-laptop", "192.168.1.26", known), "192.168.1.26:9100")
-        self.assertEqual(qualify.host_instance("pi5-master", "192.168.1.20", known), "192.168.1.20:9100")
+        # The returned name is the node name, which Loki's journal streams carry as `host`.
+        known = {"razer-laptop": "192.168.1.26:9100", "raspberrypi": "192.168.1.20:9100",
+                 "raspberrypi-771be84c": "192.168.1.23:9100"}
+        self.assertEqual(qualify.host_instance("razer-laptop", "192.168.1.26", known),
+                         ("razer-laptop", "192.168.1.26:9100"))
+        self.assertEqual(qualify.host_instance("pi5-master", "192.168.1.20", known),
+                         ("raspberrypi", "192.168.1.20:9100"))
+        self.assertEqual(qualify.host_instance("pi5-worker3", "192.168.1.23", known),
+                         ("raspberrypi-771be84c", "192.168.1.23:9100"))
         self.assertIsNone(qualify.host_instance("pi5-master", "192.168.1.2", known))
+
+    def test_kernel_check_queries_loki_by_node_name(self):
+        exprs = []
+
+        def loki(path, **params):
+            exprs.append(params["query"])
+            return {"result": []}
+
+        headroom = mock.Mock(**{"verdict.return_value": ("ROOM", ""), "line.return_value": "x ok",
+                                "scalar.return_value": None})
+        with mock.patch.object(qualify, "headroom", headroom), \
+                mock.patch.object(qualify.postmortem, "loki", loki), \
+                mock.patch.object(qualify.postmortem, "fault_rules", lambda: [("HostSoftLockup", "soft lockup")]), \
+                mock.patch.object(qualify, "ssh", lambda host, script, timeout: "===missing\n"):
+            checks = qualify.passive_checks("pi5-worker3", "raspberrypi-771be84c", "192.168.1.23:9100")
+        self.assertTrue(exprs)
+        self.assertTrue(all('host="raspberrypi-771be84c"' in e for e in exprs), exprs)
+        kernel = next(c for c in checks if c["name"].startswith("kernel faults"))
+        self.assertIn("raspberrypi-771be84c", kernel["detail"])
 
     def test_sections_split_marked_output(self):
         text = "noise\n===fio 0\n{\"jobs\": []}\n===stress 2\nline\n===kernel\n"

@@ -1195,7 +1195,7 @@ class GovernorTest(unittest.TestCase):
         self.assertEqual(governor.pools(self.BUILD), ["unity", "unity-build", "unity-wide"])
         with mock.patch.object(governor, "prom", return_value=[]) as prom:
             governor.host_labels(self.BUILD, "aws-build-1")
-        self.assertIn('pool=~"unity|unity-build"', prom.call_args.args[0])
+        self.assertIn('pool=~"unity|unity-build|unity-wide"', prom.call_args.args[0])
 
     # A paired host (aws-build-1, slot groups in the topology): build slots 1-3 each share their cores
     # and memory with two test slots, and a build and a test never run in one pair.

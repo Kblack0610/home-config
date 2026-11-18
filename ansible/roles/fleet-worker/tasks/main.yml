@@ -121,6 +121,7 @@
   ansible.builtin.git:
     repo: "{{ item.repo }}"
     dest: "{{ item.dest }}"
+    remote: "{{ item.remote | default(omit) }}"
     update: false
   loop: "{{ fleet_repos | default([]) }}"
   loop_control:

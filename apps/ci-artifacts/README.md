@@ -30,7 +30,7 @@ sops -d apps/ci-artifacts/secret.sops.yaml
 
 ```bash
 kubectl --context home-k3s get pods -n ci-artifacts -o wide
-kubectl --context home-k3s logs -n ci-artifacts job/ci-artifacts-bucket-1
+kubectl --context home-k3s logs -n ci-artifacts job/ci-artifacts-bucket-2
 curl -s -o /dev/null -w '%{http_code}\n' http://192.168.1.152:30900/minio/health/live   # 200
 ```
 

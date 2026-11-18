@@ -568,7 +568,8 @@
 - name: Fleet workers (agent sessions fleet-dispatch places over ssh)
   # See docs/runbooks/fleet-worker.md. Per user, not root: the sessions run as
   # ansible_user, at the same paths as on the workstation. The role installs
-  # and reports; signing the accounts in is the human's.
+  # pushes the Claude account tokens from this machine's rbw, and reports what
+  # is left for the human.
   hosts: fleet_workers
   gather_facts: true
   roles:

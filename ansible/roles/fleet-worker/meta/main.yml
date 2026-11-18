@@ -5,8 +5,8 @@ galaxy_info:
   description: >-
     Makes a host one that fleet-dispatch can place agent sessions on: the
     session toolchain, the dotfiles, the repos in fleet_repos and the empty
-    account dirs. The human signs each account in once; the role reports what
-    is still missing.
+    account dirs, and each account's token pushed from the controller's rbw;
+    the role reports what is still missing.
   license: MIT
   min_ansible_version: "2.14"
   platforms:

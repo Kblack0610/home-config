@@ -662,7 +662,7 @@ all:
     # Fleet workers: hosts fleet-dispatch places light claude sessions on, over
     # ssh. dotfiles .local/lib/fleet-hosts.sh reads this group from this file
     # alone, so its vars stay here and never move to group_vars/. Provisioned
-    # by roles/fleet-worker; the human signs each account in once. Runbook:
+    # by roles/fleet-worker; claude-acct token push gives it each Claude account's token. Runbook:
     # docs/runbooks/fleet-worker.md.
     #   fleet_place      false keeps a provisioned host out of placement
     #   fleet_max_live   sessions at once on it (a light item is one run unit)

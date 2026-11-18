@@ -7,7 +7,8 @@
 `scripts/gen-ha-launcher.py` walks every Flux-deployed ingress (`apps/*/ingress*.yaml`) and the bare-metal hosts in `ansible/inventory.yml`, and writes `index.html` here, together with HA's site status sensors and the blackbox probe list, so all three name the same hosts. Nobody edits `index.html` by hand.
 
 - Groups: `NAMESPACE_GROUP` at the top of the script. Every namespace with a private host must be in it; an unmapped one stops the script with the namespace named, so a new app is never left uncategorized. Public domains form the Public group; the inventory hosts form Bare metal.
-- Opt a host out with `homepage.kblab.me/launcher: "false"` on its ingress.
+- Opt a host out with `homepage.kblab.me/launcher: "false"` on its ingress. That also drops its probe and status sensor.
+- A host with nothing to open in a browser (a webhook receiver, an S3 or control-plane API) gets `homepage.kblab.me/api: "true"` instead: it is listed as plain text marked API, left out of `--list-sites`, and still probed.
 - Run it after adding, renaming or removing an ingress or inventory host, then commit the outputs. A second run prints `No changes.`
 
 ```bash

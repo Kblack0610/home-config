@@ -558,14 +558,22 @@ class ExporterTest(unittest.TestCase):
         # short, so CiHostRunnersOffline still sees the dead slot.
         repo = "repos/acme/web/actions/runners?per_page=100&page=1"
         saved = FAKE[repo]
+        # The same holds for a hand-made org runner, a second registration of the live
+        # box-light-1's name, and a GitHub runner named like a Forgejo slot.
+        org = "orgs/acme/actions/runners?per_page=100&page=1"
+        saved, saved_org = FAKE[repo], FAKE[org]
         FAKE[repo] = {"total_count": 3, "runners": saved["runners"] + [runner(4, "box-light-2-hand", ["self-hosted", "light"])]}
+        FAKE[org] = {"total_count": 4, "runners": saved_org["runners"] + [
+            runner(5, "box-light-org-hand", ["self-hosted", "light"]), runner(6, "box-light-1", ["self-hosted", "light"]),
+            runner(7, "box-forgejo-1", ["self-hosted", "light"])]}
         try:
             out = self.render()
         finally:
-            FAKE[repo] = saved
+            FAKE[repo], FAKE[org] = saved, saved_org
         self.assertTrue(any('name="box-light-2-hand"' in r and 'state="idle"' in r for r in rows(out, "github_runner_state")))
         self.assertIn('github_runner_pool_expected{host="box",pool="light"} 2', out)
         self.assertIn('github_runner_pool_online{host="box",pool="light"} 1', out)
+        self.assertFalse([r for r in rows(out, "github_runner_pool_online") if 'pool="forgejo"' in r])
 
     def test_withheld_build_runner_stays_in_the_build_pool(self):
         org = "orgs/acme/actions/runners?per_page=100&page=1"

@@ -992,13 +992,14 @@ def render():
                 lab["repo"] = "(not watched)"
         else:
             lab["state"] = "idle"
-        # Online counts only runners a topology slot names, as expected does: a runner
-        # registered by hand next to a dead slot (an org one, or a ci_repo_runners one
-        # whose repo has no other runner) would otherwise fill the gap and keep
-        # CiHostRunnersOffline quiet while that slot's jobs wait.
-        if lab["state"] != "offline" and r["name"] in SLOTS:
+        # Online counts each GitHub topology slot once, as expected does: a runner
+        # registered by hand next to a dead slot (an org one, or a ci_repo_runners one),
+        # or a second registration of a live slot's name, would otherwise fill the gap
+        # and keep CiHostRunnersOffline quiet while that slot's jobs wait. pool_slot rows
+        # and the unserved takers still count a hand-made runner: it does take jobs.
+        if lab["state"] != "offline" and SLOTS.get(r["name"], {}).get("forge") == "github":
             for cap in caps:
-                online[(host, cap)] = online.get((host, cap), 0) + 1
+                online.setdefault((host, cap), set()).add(r["name"])
         by_state[lab["state"]] = by_state.get(lab["state"], 0) + 1
         L.append(f"github_runner_state{{{labels_str(lab)}}} {value}")
         slot_rows += [slot_row(lab, cap, value) for cap in caps]
@@ -1055,7 +1056,7 @@ def render():
         L.append(f'github_runner_pool_expected{{host="{host}",pool="{cap}"}} {n}')
     if runners_ok:
         for host, cap in sorted(set(expected) | set(online)):
-            L.append(f'github_runner_pool_online{{host="{host}",pool="{cap}"}} {online.get((host, cap), 0)}')
+            L.append(f'github_runner_pool_online{{host="{host}",pool="{cap}"}} {len(online.get((host, cap), ()))}')
 
     L += [
         "# HELP github_actions_job_waiting A job waiting for a runner; value is seconds since it was queued",

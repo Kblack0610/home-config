@@ -94,7 +94,7 @@ def render(hosts, groups):
         v, slots = hosts[host], []
         caps = list(v.get("ci_caps") or [])
         fails += [f"{host}: ci_caps names {c}, not one of {list(HOST_CAPS)}" for c in caps if c not in HOST_CAPS]
-        if v.get("unity_ci_lan", True) is False and set(caps) & {*SHARED_CAPS, "forgejo"}:
+        if v.get("unity_ci_lan", True) is False and set(caps) & {"light", "heavy", "forgejo"}:
             fails.append(f"{host}: a cloud host's ci_caps carry no light, heavy or forgejo, so a small job never powers a paid host")
         if host in groups.get("linux_ci_runners", ()):
             for kind in ("light", "heavy"):

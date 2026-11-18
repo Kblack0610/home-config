@@ -59,8 +59,6 @@ class RunnerTierTests(unittest.TestCase):
         self.assertTrue(any("mac-mini carries pinned CI" in error for error in self.failures()))
 
 
-if __name__ == "__main__":
-    unittest.main()
 
 
 class CapTests(unittest.TestCase):
@@ -74,12 +72,19 @@ class CapTests(unittest.TestCase):
     def test_unity_test_slot_takes_its_hosts_light(self):
         slots, fails = self.slots()
         self.assertEqual(fails, [])
-        self.assertEqual(slots["ms-a2-unity-pool-1"], ["unity", "light"])
+        self.assertIn("light", slots["deskslim-2-unity-pool-1"])
         self.assertEqual(slots["razer-laptop-heavy-1"], ["heavy", "light"])
 
-    def test_heavy_waits_for_ephemeral_ports(self):
-        slots, _ = self.slots()
-        self.assertNotIn("heavy", slots["razer-laptop-unity-pool-1"])
+    def test_unity_slot_takes_heavy_only_on_a_heavy_host(self):
+        self.hosts["deskslim-2"]["ci_caps"] = ["light", "unity"]
+        slots, fails = self.slots()
+        self.assertEqual(fails, [])
+        self.assertEqual(slots["deskslim-2-unity-pool-1"], ["unity", "light"])
+        self.hosts["deskslim-2"]["ci_caps"] = ["light", "heavy", "unity"]
+        slots, fails = self.slots()
+        self.assertEqual(fails, [])
+        self.assertEqual(slots["deskslim-2-unity-pool-1"], ["unity", "light", "heavy"])
+        self.assertEqual(slots["ms-a2-unity-pool-1"], ["unity", "light", "heavy"])
 
     def test_build_slot_takes_builds_alone(self):
         slots, _ = self.slots()
@@ -99,3 +104,7 @@ class CapTests(unittest.TestCase):
         self.hosts["ms-a2"]["ci_caps"] = ["light", "unity", "gpu"]
         _, fails = self.slots()
         self.assertTrue(any("ci_caps names gpu" in f for f in fails))
+
+
+if __name__ == "__main__":
+    unittest.main()

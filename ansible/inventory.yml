@@ -292,9 +292,8 @@ all:
     # Self-hosted GitHub Actions runners for BlackNBrownStudios/platform
     # (see the "CI runners (light, heavy and Unity slots)" play in site.yml).
     # GitHub has no runner priority - an idle runner with matching labels takes
-    # the next job - so the slot counts ARE the priority. heavy jobs publish
-    # fixed host ports (postgres 5432, mailpit 1025/8025, app ports), so never
-    # more than one heavy slot per host. CPU/memory caps are in ci_hosts below.
+    # the next job - so the slot counts ARE the priority. CPU/memory caps are in
+    # ci_hosts below.
     # The exporter and governor read these slots from apps/ci-topology/topology.json,
     # which scripts/render-ci-topology.py renders from here; CI fails when it is stale.
     # Never a host in no_ci_hosts (below); the same script fails CI on one.
@@ -305,10 +304,10 @@ all:
         # its weight and blew their caps (platform #1488, #1489). Two light since
         # 2026-11-12 for the light bursts: the light runners have
         # their own 6 threads (ci_linux_cpus 5-7,13-15) and 40G, and a light job
-        # is 0.5-0.6G anon. Heavy stays at one: it waited 6% of 7 days with
-        # bursts to 18. Heavy jobs publish fixed host ports, so each host runs at
-        # most one heavy slot; from 2026-11-17 ms-a2 and windows-media-ci carry one
-        # each, after 18 heavy jobs waited up to 1h37m on razer's one slot.
+        # is 0.5-0.6G anon. Heavy: razer's one heavy slot waited 6% of 7 days with
+        # bursts to 18, so since 2026-11-17 ms-a2 and windows-media-ci carry one heavy
+        # slot each, and since heavy jobs take ephemeral ports every Unity test slot
+        # on a heavy host takes heavy too (scripts/render-ci-topology.py SHARED_CAPS).
         # ci_repo_runners: runners for one personal repo, which cannot use the
         # org's slots. GitHub bills hosted minutes on a private repo and refused
         # every .dotfiles-private job from 2026-11-15 once the month's allowance
@@ -548,7 +547,7 @@ all:
     # stays with k3s and the OS. Starting values, tuned against a full nightly.
     # ci_caps: the job kinds the host can run (light, heavy, unity, unity-build).
     # Every slot takes each of them its kind can hold (scripts/render-ci-topology.py
-    # HOST_CAPS says which), so a Unity test slot on a light host also takes light
+    # HOST_CAPS says which), so a Unity test slot also takes its host's light and heavy
     # jobs. A host's own slots of a kind need that kind here; a cloud host takes no
     # light or heavy, so a small job never powers a paid host. Drop a cap and
     # re-apply to take it off every slot of the host.

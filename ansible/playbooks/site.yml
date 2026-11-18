@@ -417,12 +417,12 @@
         # a Spot host leaves it off, so a reclaim never kills a gate (playground ucp-1778).
         # The slot's caps come from topology.json (ci_slot_caps): unity-build on a build slot,
         # unity plus the host's light and heavy on a test slot (scripts/render-ci-topology.py HOST_CAPS).
-        gh_runner_labels: "{{ [ 'self-hosted', 'linux', 'x64', 'host-' ~ inventory_hostname ] + ci_slot_caps[gh_runner_name] + ([] if unity_slot in unity_ci_slot_groups | default({}) else ([ 'unity-full' ] if unity_ci_full | default(true) else []) + ([ 'unity-wide' ] if unity_ci_wide | default(false) else []) + ([ 'unity-gate' ] if unity_ci_gate | default(false) else [])) + ([ 'lan' ] if unity_ci_lan | default(true) else []) + ([ 'hd-library' ] if unity_ci_hd_library | default(unity_ci_lan | default(true)) else []) + (unity_ci_slot_labels | default({})).get(unity_slot, []) }}"
+        gh_runner_labels: "{{ [ 'self-hosted', 'linux', 'x64', 'host-' ~ inventory_hostname ] + ci_slot_caps[gh_runner_name] + ([] if unity_slot in unity_ci_slot_groups | default({}) else ([ 'unity-full' ] if unity_ci_full | default(true) else []) + ([ 'unity-wide' ] if unity_ci_wide | default(false) else []) + ([ 'unity-gate' ] if unity_ci_gate | default(false) else [])) + ([ 'unity' ] + ([ 'unity-full' ] if unity_ci_full | default(true) else []) if 'unity-wide' in ci_slot_caps[gh_runner_name] else []) + ([ 'lan' ] if unity_ci_lan | default(true) else []) + ([ 'hd-library' ] if unity_ci_hd_library | default(unity_ci_lan | default(true)) else []) + (unity_ci_slot_labels | default({})).get(unity_slot, []) }}"
         # ci-runner-governor's admit labels and withheld labels (apps/ci-runner-governor/config.json
         # pool_label, full_label, withheld_label, and aws-build-1's "labels" and "withheld_label"),
         # plus the shared caps a slot takes (governor.py "shared"): an apply leaves a withheld slot
         # withheld for every kind.
-        gh_runner_governed_labels: [unity, unity-full, unity-build, light, heavy]
+        gh_runner_governed_labels: "{{ [ 'unity', 'unity-full', 'unity-build', 'light', 'heavy' ] + ([ 'unity-wide' ] if 'unity-wide' in ci_slot_caps[gh_runner_name] else []) }}"
         gh_runner_withheld_labels: [unity-withheld, unity-build-withheld]
         gh_runner_withheld_label: "{{ 'unity-build-withheld' if unity_slot in unity_ci_slot_groups | default({}) else 'unity-withheld' }}"
         # The governor's lend mark: an apply never takes back a slot it lent to a seat.

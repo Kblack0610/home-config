@@ -1192,10 +1192,10 @@ class GovernorTest(unittest.TestCase):
         self.assertEqual(governor.pool_jobs(jobs, governor.build_marks(self.BUILD)), [UNITY_JOB])
 
     def test_the_build_pool_is_read(self):
-        self.assertEqual(governor.pools(self.BUILD), ["unity", "unity-build"])
+        self.assertEqual(governor.pools(self.BUILD), ["unity", "unity-build", "unity-wide"])
         with mock.patch.object(governor, "prom", return_value=[]) as prom:
             governor.host_labels(self.BUILD, "aws-build-1")
-        self.assertIn('pool=~"unity|unity-build"', prom.call_args.args[0])
+        self.assertIn('pool=~"unity|unity-build|unity-wide"', prom.call_args.args[0])
 
     # A paired host (aws-build-1, slot groups in the topology): build slots 1-3 each share their cores
     # and memory with two test slots, and a build and a test never run in one pair.
@@ -2148,6 +2148,71 @@ class LanPairTest(unittest.TestCase):
     def test_a_busy_build_keeps_its_pair(self):
         self.assertEqual(self.run_lan("ii..b", [UNITY_JOB] * 3)[0], [])
         self.assertEqual(self.run_lan("iiiib", [UNITY_JOB] * 3)[0], [("withhold", 3), ("withhold", 4)])
+
+
+class WideLeadTest(unittest.TestCase):
+    """ms-a2 with a wide slot 6 on test slots 1 and 2's cores beside build slot 5 on 3 and 4's."""
+    WIDE_JOB = frozenset({"self-hosted", "unity", "unity-wide"})
+
+    def setUp(self):
+        with open(CONFIG) as f:
+            conf = json.load(f)
+        with open(os.environ["TOPOLOGY"]) as f:
+            topo = json.load(f)
+        topo["hosts"]["ms-a2"]["slots"].append({"name": "ms-a2-unity-pool-6", "caps": ["unity-wide"],
+                                                "group": ["ms-a2-unity-pool-1", "ms-a2-unity-pool-2"]})
+        self.cfg = load_files(conf, topo)
+
+    def slots(self, spec):
+        """spec: one character per slot 1-6: i idle admitted, b busy admitted, . idle withheld."""
+        out = {}
+        for s, c in enumerate(spec, 1):
+            held = c == "."
+            lead = {5: {"unity-build"}, 6: {"unity-wide", "unity", "unity-full"}}.get(s)
+            if lead:
+                own = {"unity-build-withheld"} if held else lead
+            else:
+                own = {"unity-withheld"} if held else {"unity", "unity-full", "light"}
+            out[f"ms-a2-unity-pool-{s}"] = {"host": "ms-a2", "busy": c == "b", "elapsed": 100 - s,
+                                            "withheld": held, "labels": LAN_BASE | own}
+        return out
+
+    def run_wide(self, spec, waiting):
+        inst = {"aws-build-1": {"state": "stopped", "busy_at": 0, "labels": PAIRED_LABELS}}
+        got = governor.decide(self.cfg, readings(**{"ms-a2": COOL}), self.slots(spec), waiting, {}, 10_000, inst, {})
+        return sorted((a, int(r.rsplit("-", 1)[1])) for h, a, r, _, _ in got if h == "ms-a2" and a != "hold"), inst
+
+    def test_the_wide_slot_is_a_lead_with_its_own_labels(self):
+        self.assertEqual(governor.pairs(self.cfg, "ms-a2"), {5: [3, 4], 6: [1, 2]})
+        self.assertEqual(governor.admit_labels(self.cfg, "ms-a2", "ms-a2-unity-pool-6"), ["unity-wide", "unity", "unity-full"])
+        self.assertEqual(governor.admit_labels(self.cfg, "ms-a2", "ms-a2-unity-pool-5"), ["unity-build"])
+        self.assertEqual(governor.withheld_label(self.cfg, "ms-a2", "ms-a2-unity-pool-6"), "unity-build-withheld")
+        self.assertIn("unity-wide", governor.pools(self.cfg))
+        self.assertFalse(governor.serves_pool(self.cfg, "ms-a2", "ms-a2-unity-pool-6"))
+
+    def test_a_waiting_wide_job_steps_its_pair_aside_and_only_its_pair(self):
+        got, inst = self.run_wide("iiii..", [self.WIDE_JOB])
+        self.assertEqual(got, [("withhold", 1), ("withhold", 2)])
+        self.assertEqual(inst["aws-build-1"]["want"], 0)
+
+    def test_the_wide_slot_comes_in_once_its_pair_is_clear_and_not_before(self):
+        self.assertEqual(self.run_wide("..ii..", [self.WIDE_JOB])[0], [("admit", 6)])
+        self.assertNotIn(("admit", 6), self.run_wide(".bii..", [self.WIDE_JOB])[0])
+
+    def test_no_wide_job_waits_the_wide_slot_steps_aside_and_its_tests_come_back(self):
+        self.assertEqual(self.run_wide("iiii.i", [UNITY_JOB])[0], [("withhold", 6)])
+        self.assertEqual(self.run_wide("..ii..", [UNITY_JOB] * 3)[0], [("admit", 1)])
+
+    def test_a_busy_wide_slot_keeps_its_pair(self):
+        self.assertEqual(self.run_wide("..ii.b", [UNITY_JOB] * 3)[0], [])
+
+    def test_a_build_job_never_claims_the_wide_slot(self):
+        got, _ = self.run_wide("iiii..", [BUILD_JOB])
+        self.assertEqual(got, [("withhold", 3), ("withhold", 4)])
+
+    def test_the_wide_job_is_not_the_pools(self):
+        marks = governor.build_marks(self.cfg)
+        self.assertEqual(governor.pool_jobs([self.WIDE_JOB, UNITY_JOB], marks), [UNITY_JOB])
 
 
 # LENDING: one LAN host, box, with three Unity slots. Its Forgejo seat borrows slot 1 and a

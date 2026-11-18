@@ -233,9 +233,9 @@ def site_of(host):
     return TOPOLOGY.get(host, {}).get("site", "local")
 
 
-# unity-build: the player-build host (aws-build-1), a pool of its own so build waits stay
-# out of the gate pool's numbers.
-POOL_LABELS = ("light", "heavy", "unity", "unity-build")
+# unity-build and unity-wide (a group's lead slot: aws-build-1, ms-a2), pools of their own so build and wide waits stay
+# out of the gate pool's numbers. unity-wide is before unity: a wide job asks for both.
+POOL_LABELS = ("light", "heavy", "unity-wide", "unity", "unity-build")
 # The labels apps/ci-runner-governor swaps a runner's pool labels for while it holds it back.
 # light-withheld: a repo runner while the governor has not lent it the Unity slot it borrows.
 WITHHELD_LABELS = {"unity-withheld": "unity", "unity-build-withheld": "unity-build", "light-withheld": "light"}
@@ -420,7 +420,10 @@ def runner_label_sets(seen):
         have = {l.lower() for l in names}
         if WITHHELD_LABELS.keys() & have:
             have |= set(caps)
-            if "unity" in caps and TOPOLOGY.get(host_of(r["name"], names), {}).get("full"):
+            # A wide lead asks for unity too when admitted (governor lead_labels()).
+            if "unity-wide" in caps:
+                have.add("unity")
+            if {"unity", "unity-wide"} & set(caps) and TOPOLOGY.get(host_of(r["name"], names), {}).get("full"):
                 have.add("unity-full")
         out.append((scope, caps, have))
     return out

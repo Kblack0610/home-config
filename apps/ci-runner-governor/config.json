@@ -5,6 +5,7 @@
   "withheld_label": "unity-withheld",
   "build_label": "unity-build",
   "build_withheld_label": "unity-build-withheld",
+  "wide_label": "unity-wide",
   "lent_label": "unity-lent",
   "seat_withheld_label": "light-withheld",
   "pool_min_admitted": 1,

@@ -486,6 +486,7 @@ class ExporterTest(unittest.TestCase):
         self.assertEqual(exporter.pool_of(["self-hosted", "Windows", "X64", "host-windows-media"]), "windows")
         self.assertEqual(exporter.pool_of(["self-hosted", "Linux", "X64"]), "other")
         self.assertEqual(exporter.pool_of(["self-hosted", "linux", "unity-full"]), "unity")
+        self.assertEqual(exporter.pool_of(["self-hosted", "linux", "unity", "unity-wide"]), "unity-wide")
         self.assertEqual(exporter.pool_of(["self-hosted", "linux", "unity-withheld", "host-box"]), "unity")
         self.assertEqual(exporter.pool_of(["self-hosted", "linux", "unity-build", "host-aws-build-1"]), "unity-build")
         self.assertEqual(exporter.pool_of(["self-hosted", "linux", "unity-build-withheld", "host-aws-build-1"]), "unity-build")
@@ -525,6 +526,17 @@ class ExporterTest(unittest.TestCase):
         # gone is a full host: its unity slot gets unity and unity-full back on admit.
         self.assertEqual(exporter.wait_kind("acme/game", {"labels": ["self-hosted", "unity", "unity-full"]}, t), "unity")
         self.assertEqual(exporter.wait_kind("acme/game", {"labels": ["self-hosted", "unity-build"]}, t), "unserved")
+
+    def test_a_withheld_wide_lead_still_serves_a_wide_job(self):
+        # The governor admits a wide lead only for a wide job it sees waiting; the job asks for unity too.
+        held = ("org", {"name": "gone-unity-pool-6",
+                        "labels": [{"name": l} for l in ("self-hosted", "unity-build-withheld", "host-gone")]})
+        slot = {"host": "gone", "caps": ["unity-wide"], "repo": None, "forge": "github"}
+        with mock.patch.dict(exporter.SLOTS, {"gone-unity-pool-6": slot}), \
+                mock.patch.dict(exporter.TOPOLOGY, {"gone": {"site": "local", "full": True}}):
+            t = self.takers(held)
+            job = {"labels": ["self-hosted", "unity", "unity-wide"]}
+            self.assertEqual(exporter.wait_kind("acme/game", job, t), "unity-wide")
 
     def test_a_repo_runner_waiting_for_its_lend_still_serves_its_repo(self):
         # The governor admits a repo runner only while it lends it a Unity slot, so a wait is light, not unserved.

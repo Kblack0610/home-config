@@ -73,7 +73,7 @@ The seven routes tagged `binks-eval` (GLM-5.3-Flash, Qwen3.8-Flash, Qwen3.7-Plus
 | Key | Models | Budgets | Consumer | Key file |
 |---|---|---|---|---|
 | `binks-issuer` | the two binks routes and `image (glm-image)` (added 2026-11-17, `/user/update` and `/key/update`) | the user's $50 / 1mo | binks-api `LITELLM_ISSUER_KEY`: mints `binks-user-<id>` keys ($2 / 1mo each, `metadata.binks_user_id`) | rbw `litellm-binks-issuer-key` |
-| `binks-anon` | the two binks routes | `max_budget` $10 / 1mo, rpm 30 | binks-api `LITELLM_API_KEY`: anonymous chats and every chat when the issuer key is unset | rbw `litellm-binks-anon-key` |
+| `binks-anon` | the two binks routes | `max_budget` $10 / 1mo, rpm 300 (raised from 30 on 2026-11-18: a 100-turn burst on binks.chat needs over 100 a minute; it stays under the two routes' 660 combined) | binks-api `LITELLM_API_KEY`: anonymous chats and every chat when the issuer key is unset | rbw `litellm-binks-anon-key` |
 
 Revoke one user's key with `/key/delete` on its alias; binks-api mints a new one on the next turn.
 

@@ -25,7 +25,7 @@ Each row links the steps; it does not restate them. A service with no steps yet:
 | Karakeep API keys | admin UI | [karakeep README](../apps/karakeep/README.md#first-run) | not stored in this repo |
 | Langfuse project keys | first-boot seed from the secret | not written yet | `apps/langfuse/secret.sops.yaml` |
 | gatus-fleet token | one shared token | not written yet | `apps/gatus-fleet/fleet-token-secret.sops.yaml` |
-| schedules-sync feed token (fleet home) | the `monitoring/schedules-sync-token` ServiceAccount token Secret | [fleet-worker runbook](./runbooks/fleet-worker.md#rotate-the-feed-token) | `ansible/group_vars/fleet_workers/vault.sops.yaml` |
+| schedules-sync feed token (every fleet worker; reads the exporter feed and moves the `agents/agents` Endpoints) | the `monitoring/schedules-sync-token` ServiceAccount token Secret | [fleet-worker runbook](./runbooks/fleet-worker.md#rotate-the-feed-token) | `ansible/group_vars/fleet_workers/vault.sops.yaml` |
 | ntfy-public publisher | htpasswd into the configmap | [ntfy-public README](../apps/ntfy-public/README.md) ("To rotate the publisher password") | `apps/ntfy-public/configmap.yaml`; the plaintext is a GitHub secret |
 | binks demo token (fleet `bk_pat_`) | `scripts/binks-mint-pat.sh`, by `kubectl exec` into binks Postgres | [binks-api README](../apps/binks-api/README.md#binks-demo-token) | `apps/binks-api/accounts.sops.yaml` (`BINKS_DEMO_TOKEN`) |
 

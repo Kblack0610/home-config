@@ -1,9 +1,9 @@
 ---
 # A fleet worker takes light claude sessions that fleet-dispatch places over
 # ssh (dotfiles .local/lib/fleet-hosts.sh). This role installs what such a
-# session runs, joins the agent store as a peer (tasks/store.yml) and reports
-# what only the human can do: sign each account in, let the worker's key reach
-# the state host and add its store key on Forgejo. It copies no token.
+# session runs, joins the agent store as a peer (tasks/store.yml), sets up what the
+# fleet lease's holder runs (tasks/peer.yml) and reports what only the human can do:
+# sign each account in and add its store key on Forgejo. It copies no token.
 # Runbook: docs/runbooks/fleet-worker.md.
 
 - name: Install the session toolchain
@@ -78,7 +78,7 @@
 # agent-panel lists this worker's sessions: the workstation's fleet-sessions runs
 # `agent-panel list --json` over ssh, and a worker without it never shows any.
 # A narrow task, not the dotfiles' build_local_rust_tools: that also builds
-# agent-web, hub and timebox, which only the fleet home runs (tasks/home.yml builds agent-web and hub, and installs notes). Arch only: apt's
+# agent-web, hub and timebox; tasks/peer.yml builds agent-web and hub and installs notes. Arch only: apt's
 # cargo (1.75 on Ubuntu 24.04) is older than the Cargo.lock v4 and clap 4.6 here.
 # A rebuild on each play is incremental; no timer rebuilds it between plays yet.
 - name: Build agent-panel (cargo, as the user)
@@ -127,9 +127,8 @@
   failed_when: false   # a private repo needs gh auth first; the report names it
 
 # fleet-hosts.sh reads the roster (inventory.yml) from this checkout's forgejo/master,
-# found by its path in the project map. Without it fleet-is-home passes on every
-# worker, since no roster names a home, and fleet-dispatch on the home sees no
-# workers. Public on Forgejo, so no key. Kept fetched by fleet-roster-fetch.timer.
+# found by its path in the project map. Without it fleet-dispatch on this worker,
+# when it holds the fleet lease, sees no other workers. Public on Forgejo, so no key. Kept fetched by fleet-roster-fetch.timer.
 - name: Clone home-config, where the fleet roster is read
   ansible.builtin.git:
     repo: "{{ fleet_worker_roster_repo }}"
@@ -138,8 +137,8 @@
     version: master
     update: false
 
-# Without lingering, every user unit (the roster fetch, store-sync, and on the
-# home agent-web and the lanes) stops when the last login ends, and a headless
+# Without lingering, every user unit (the roster fetch, store-sync, and on the lease
+# holder agent-web and the lanes) stops when the last login ends, and a headless
 # worker has no login.
 - name: Keep the user's units running with nobody logged in (linger)
   become: true
@@ -211,34 +210,19 @@
     mode: "0700"
   loop: "{{ ['~/.claude'] + fleet_worker_accounts.stdout_lines }}"
 
-- name: Make the key this worker reaches the state host with
-  ansible.builtin.command: ssh-keygen -q -t ed25519 -N '' -C "fleet-worker {{ inventory_hostname }}" -f {{ ansible_env.HOME }}/.ssh/id_ed25519
-  args:
-    creates: "{{ ansible_env.HOME }}/.ssh/id_ed25519"
-
-# The state host's key, with every roster machine's, comes from the inventory (ssh_host_ed25519),
-# never a scan, so a home move or a host that is off cannot leave it untrusted.
+# Every roster machine's key comes from the inventory (ssh_host_ed25519), never a scan, so the
+# lease holder's fleet-dispatch reaches each worker, and a host that is off cannot leave it untrusted.
 - name: Trust the roster's host keys
   ansible.builtin.import_role:
     name: host-identity
     tasks_from: known_hosts
 
-# The home is the state host itself: nothing to reach.
-- name: Read whether the worker reaches the state host
-  when: not fleet_worker_is_home | bool
-  ansible.builtin.command: ssh -o BatchMode=yes -o ConnectTimeout=5 {{ fleet_state_host }} true
-  register: fleet_worker_state_ssh
-  changed_when: false
-  failed_when: false
-  check_mode: false
-
-# Before home.yml: a join stops agent-web, which home.yml starts again.
+# Before peer.yml: a join stops agent-web, which peer.yml starts again.
 - name: Join the agent store as a peer
   ansible.builtin.include_tasks: store.yml
 
-- name: Set up the fleet home
-  when: fleet_worker_is_home | bool
-  ansible.builtin.include_tasks: home.yml
+- name: Set up what the fleet lease's holder runs (agent-web, the lanes, schedules-sync)
+  ansible.builtin.include_tasks: peer.yml
 
 - name: Read whether each account is signed in
   ansible.builtin.stat:
@@ -246,24 +230,11 @@
   loop: "{{ ['~/.claude'] + fleet_worker_accounts.stdout_lines }}"
   register: fleet_worker_signed
 
-- name: Read the worker's public key
-  ansible.builtin.slurp:
-    src: "{{ ansible_env.HOME }}/.ssh/id_ed25519.pub"
-  register: fleet_worker_pub
-  failed_when: false
-
 - name: Report what only the human can do
   vars:
     fleet_worker_unsigned: "{{ fleet_worker_signed.results | rejectattr('stat.exists') | map(attribute='item') | list }}"
     fleet_worker_left: >-
       {{ ([] if fleet_worker_gh.rc == 0 else ['gh auth login, then re-run this play for the private overlay'])
-         + ([] if fleet_worker_is_home | bool or fleet_worker_state_ssh.rc | default(1) == 0 else
-            ['on ' ~ fleet_state_host ~ ', add this key to ~/.ssh/authorized_keys: '
-             ~ (fleet_worker_pub.content | default('') | b64decode | trim)]
-            if 'Permission denied' in (fleet_worker_state_ssh.stderr | default('')) else
-            [fleet_state_host ~ ' did not let this worker in ('
-             ~ (fleet_worker_state_ssh.stderr | default('') | trim or 'no answer')
-             ~ '): bring it up, or if it says Host key verification failed, give it ssh_host_ed25519 in inventory.yml; then re-run this play'])
          + (fleet_worker_unsigned | map('regex_replace', '^', 'sign in: CLAUDE_CONFIG_DIR=') | map('regex_replace', '$', ' claude, then /login') | list)
          + (fleet_worker_clones.results | rejectattr('stat.exists') | map(attribute='item.dest')
             | map('regex_replace', '^', 'not cloned: ') | list)
@@ -271,8 +242,6 @@
          + (fleet_home_left | default([])) }}
   ansible.builtin.debug:
     msg: >-
-      {{ ('Ready: ' ~ inventory_hostname ~ ' is the fleet home; run agentctl reload there to arm the lanes.')
-         if fleet_worker_is_home | bool and fleet_worker_left | length == 0 else
-         'Ready: set fleet_place: true for ' ~ inventory_hostname ~ ' in inventory.yml to let fleet-dispatch place sessions here.'
+      {{ ('Ready: ' ~ inventory_hostname ~ ' is a peer of the store; set fleet_place: true in inventory.yml to let fleet-dispatch place sessions here.')
          if fleet_worker_left | length == 0 else
          'Left for the human on ' ~ inventory_hostname ~ ': ' ~ (fleet_worker_left | join('; ')) }}

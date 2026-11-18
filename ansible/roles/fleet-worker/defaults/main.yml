@@ -23,17 +23,13 @@ fleet_worker_packages_apt:
   - jq
   - python3-yaml
   - gh
-# A cloud worker joins the tailnet to reach the state host and be reached by
+# A cloud worker joins the tailnet to reach the store and be reached by
 # fleet-dispatch, with the auth key from SOPS (role tailscale-node).
 fleet_tailscale: false
 fleet_worker_dotfiles_repo: https://github.com/Kblack0610/.dotfiles.git
 # Where fleet-hosts.sh reads the roster from (tasks/main.yml). The same remote and URL
 # as the workstation's checkout; git.kennethblack.me does not serve it until #967 cuts over.
 fleet_worker_roster_repo: https://git.kblab.me/kblack0610/home-config.git
-# The fleet home is the worker fleet_state_host names (inventory.yml). It also
-# takes the forwarded queue writes and serves agent-web: tasks/home.yml. The
-# store's URLs are not here: every worker reads them from store.env (tasks/store.yml).
-fleet_worker_is_home: "{{ inventory_hostname == fleet_state_host.split('.')[0] }}"
 # The host every worker trusts for the store (tasks/store.yml): forge-primary is the
 # live Forgejo, its ssh on 2222 (apps/forgejo/README.md), the host of store.env's
 # STORE_PRIMARY_URL. A store.env that names another host fails the reach check on
@@ -42,8 +38,8 @@ fleet_store_host: forge-primary.kblab.me
 fleet_store_port: 2222
 # Forgejo's /data/ssh ed25519 host public key (apps/forgejo): rotate it here when the pod's key does.
 fleet_store_host_key: ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIIHxSGZIZ3Eu5n4h+J9mB0wCBBTjqZMTJCAzvGXnKwHx
-# The kubeconfig schedules-sync reads the exporter feed with on the home
-# (tasks/home.yml): the scoped account's token and the cluster CA from
+# The kubeconfig schedules-sync and agent-web-record use on every worker
+# (tasks/peer.yml): the scoped account's token and the cluster CA from
 # group_vars/fleet_workers/vault.sops.yaml, the server from group_vars/all/k3s.yml.
 fleet_home_feed_kubeconfig:
   apiVersion: v1
@@ -64,3 +60,7 @@ fleet_home_feed_kubeconfig:
         user: schedules-sync
         namespace: monitoring
   current-context: home-k3s-feed
+# Whether this peer may hold the fleet lease and so run the singleton lanes and agent-web
+# (tasks/peer.yml writes the no-lease marker when false). A governor-powered worker sleeps
+# between demands, and a non-Arch one builds no agent-web, so neither holds it by default.
+fleet_lease: "{{ ansible_facts.os_family == 'Archlinux' and (fleet_power | default('')) != 'governor' }}"

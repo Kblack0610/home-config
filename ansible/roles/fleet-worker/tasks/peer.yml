@@ -1,9 +1,8 @@
 ---
-# The fleet home: the one worker named by fleet_state_host. Besides what every
-# worker runs (its store peer clone included, tasks/store.yml), it takes the
-# queue and ask writes other hosts forward to it and serves agent-web
-# (agents.kblab.me, apps/agents points its Endpoints here). Runbook:
-# docs/runbooks/fleet-worker.md, "The fleet home".
+# Every worker is a peer of the agent store (tasks/store.yml) and may hold the fleet lease,
+# so it builds and enables everything the lease's holder runs: agent-web, the singleton
+# lanes, schedules-sync. There is no fleet home. Runbook: docs/runbooks/fleet-worker.md,
+# "Every worker a peer".
 
 # Arch only, like agent-panel in main.yml: apt's cargo is too old for it.
 - name: Build agent-web (cargo, as the user)
@@ -66,9 +65,31 @@
     follow: true
   register: _fleet_home_notes_bin
 
+# A peer fleet_lease is false for never holds the lease (dotfiles fleet-lease, the no-lease
+# marker): its gate skips every singleton and its renew never takes the lease.
+- name: Mark whether this peer may hold the fleet lease (fleet_lease)
+  when: _fleet_store_peer.stat.exists
+  ansible.builtin.file:
+    path: "{{ ansible_env.HOME }}/.agent/.sync/no-lease"
+    state: "{{ 'absent' if fleet_lease | bool else 'touch' }}"
+    mode: "0644"
+    modification_time: preserve
+    access_time: preserve
+
+# The lease runs the singleton lanes and agent-web on exactly one peer (dotfiles fleet-lease);
+# store.yml starts store-sync.timer.
+- name: Renew the fleet lease (fleet-lease.timer)
+  when: _fleet_store_peer.stat.exists
+  ansible.builtin.systemd_service:
+    name: fleet-lease.timer
+    scope: user
+    enabled: true
+    state: started
+    daemon_reload: true
+
 # schedules-sync reads the github-runner-exporter feed with kubectl through the
 # API server's Service proxy; without it no state.json is written and every
-# nightly: queue hold waits forever. The home has no admin kubeconfig, so it
+# nightly: queue hold waits forever. A worker has no admin kubeconfig, so it
 # gets one for the account that may read that proxy only
 # (apps/github-runner-exporter/feed-reader-rbac.yaml), in its own file:
 # ~/.kube/config is never written.
@@ -103,7 +124,7 @@
     dest: "{{ ansible_env.HOME }}/.config/systemd/user/schedules-sync.service.d/exporter-feed.conf"
     mode: "0644"
     content: |
-      # Written by home-config roles/fleet-worker (tasks/home.yml).
+      # Written by home-config roles/fleet-worker (tasks/peer.yml).
       [Service]
       Environment=KUBECONFIG=%h/.config/schedules-sync/kubeconfig
   register: _fleet_home_feed_dropin
@@ -129,7 +150,10 @@
     - .config/agent-web/env
   register: fleet_home_web_files
 
-- name: Start agent-web
+# Enabled on every peer, started only where the fleet lease is held: fleet-lease renew starts it
+# on the holder, and its ExecCondition skips a start anywhere else. On start, agent-web-record
+# points the Endpoints agents/agents at this machine with the kubeconfig above.
+- name: Enable agent-web
   when:
     - fleet_home_oauth.stat.exists
     - fleet_home_web_files.results | rejectattr('stat.exists') | list | length == 0
@@ -138,10 +162,10 @@
     scope: user
     enabled: true
     # A rebuilt binary reaches the running service only through a restart.
-    state: "{{ 'restarted' if _fleet_home_web is changed else 'started' }}"
+    state: "{{ 'restarted' if _fleet_home_web is changed else omit }}"
     daemon_reload: true
 
-- name: Collect what only the human can do on the home
+- name: Collect what only the human can do for this peer
   ansible.builtin.set_fact:
     fleet_home_left: >-
       {{ ([] if fleet_home_oauth.stat.exists else

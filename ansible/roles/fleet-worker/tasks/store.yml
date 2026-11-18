@@ -57,8 +57,8 @@
 # A clone that is clean and not ahead of origin joins in place; anything else
 # becomes a fresh clone, and the old dir is kept as ~/.agent.pre-peer-<stamp>.
 # The lanes and agent-web stop first so nothing writes into a dir being moved;
-# home.yml starts agent-web again, and `agentctl reload` re-arms the lanes (the
-# report says so on the home, and on a failed join). A session still running
+# fleet-lease renew starts agent-web again on the lease holder (peer.yml), and
+# `agentctl reload` re-arms the lanes (the report says so on a failed join). A session still running
 # here would write into the kept copy: the runbook says to join a machine with
 # none live.
 - name: Join the store as a peer (store-sync join)

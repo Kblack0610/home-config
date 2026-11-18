@@ -111,7 +111,7 @@ class RealInventory(unittest.TestCase):
         keyless = [h for h in roster if not any(l.startswith(h + ",") for l in lines)]
         self.assertEqual(keyless, [], "set ssh_host_ed25519 for these roster machines in ansible/inventory.yml")
         home = next(l for l in lines if l.startswith("cachyos-x8664-main,"))
-        self.assertIn(hv["razer-laptop"]["fleet_state_host"], home.split()[0].split(","))
+        self.assertIn(hv["cachyos-x8664-main"]["fleet_ssh_host"], home.split()[0].split(","))
 
     def test_every_host_the_runner_checks_has_a_key(self):
         hv, groups = load_inventory(os.path.join(REPO, "ansible", "inventory.yml"))

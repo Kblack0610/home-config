@@ -27,7 +27,7 @@ SSH by IP or `-lan` name ([host-access.md](../host-access.md)): razer-laptop 192
 
 | Alert | Process | Launched by | Owner |
 |---|---|---|---|
-| NodeCoreDumpStorm on every `light-*` runner host | `sleep 120`, SIGABRT | unity-core-playground harness tests: the fake editor in `scripts/test/tests/test_run.py` is aborted by the watchdog in `scripts/test/run.sh` | board row ucp-1836: the fake editor needs `ulimit -c 0` |
+| NodeCoreDumpStorm on every host whose slots take light jobs | `sleep 120`, SIGABRT | unity-core-playground harness tests: the fake editor in `scripts/test/tests/test_run.py` is aborted by the watchdog in `scripts/test/run.sh` | board row ucp-1836: the fake editor needs `ulimit -c 0` |
 | Host hang after `GSP RM heartbeat timed out` (HostGpuFirmwareFault) and an NVMe drop at 77-80C (NodeNvmeHot) | NVIDIA GSP firmware on hp-victus's RTX 4060 | the nvidia driver, GPU unused | dGPU switched off by roles/dgpu-off (#947) |
 | Laptop node drops off the LAN at idle, no kernel or netconsole line (NodeOnBattery, NodeBatteryLow) | the battery ran flat: hp-victus came back from a power-cycle on 2026-11-14 with its charger out (`mains 0`, `bat%` falling in host-postmortem) | the human, at the power-cycle | plug the charger in and seat it |
 | NodeCoreDumpStorm by bytes | `Unity` | crashed Unity editors on CI slots | delete old dumps (step 4 above) |

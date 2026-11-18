@@ -7,3 +7,4 @@ resources:
   - namespace.yaml
   - service.yaml
   - ingress.yaml
+  - record-rbac.yaml   # lets agent-web-record move the Endpoints to the lease holder

@@ -12,14 +12,18 @@ spec:
       port: 80
       targetPort: 8790
 ---
-# agent-web runs on the fleet home (pc-home-cachy-main, the inventory fleet_state_host), not in
-# the cluster: it needs that host's tmux sockets and ~/.claude. This Service only gives
-# Traefik a backend; move the IP with fleet_state_host.
+# agent-web runs on whichever machine holds the fleet lease, not in the cluster: it needs that
+# machine's tmux sockets and ~/.claude. This Service only gives Traefik a backend. The holder
+# owns the address: agent-web-record (dotfiles, run as agent-web starts) patches it to its own
+# LAN IP (record-rbac.yaml), and Flux creates the object only when it is missing
+# (ssa: IfNotPresent), so a reconcile never moves it back. The IP below seeds a fresh cluster.
 apiVersion: v1
 kind: Endpoints
 metadata:
   name: agents
   namespace: agents
+  annotations:
+    kustomize.toolkit.fluxcd.io/ssa: IfNotPresent
   labels:
     app.kubernetes.io/name: agents
 subsets:

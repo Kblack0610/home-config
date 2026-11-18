@@ -37,6 +37,10 @@ Opt out per Ingress/IngressRoute with:
       annotations:
         homepage.kblab.me/launcher: "false"
 
+A host with nothing to open in a browser (a webhook receiver, an S3 or control-plane
+API) carries `homepage.kblab.me/api: "true"`: the page lists it as plain text marked
+API, `--list-sites` leaves it out, and it is still probed and has a status sensor.
+
 Classification: a host ending in `.kblab.me` (or the apex `kblab.me`) is private;
 everything else is treated as a public/internet domain. `www.` hosts are skipped
 as duplicates of their apex.
@@ -84,7 +88,7 @@ NAMESPACE_GROUP = {
     "frigate": "Home",
     "freqtrade": "Finance",
     "gatus": "Ops",
-    "gatus-fleet": "Agents",
+    "gatus-fleet": "Ops",
     "headscale": "Ops",
     "headwind-mdm": "Home",
     "home-assistant": "Home",
@@ -146,7 +150,7 @@ def flux_apps() -> set[str]:
 
 
 def iter_ingress_hosts():
-    """Yield (host, namespace) from Ingress + IngressRoute, honoring the opt-out."""
+    """Yield (host, namespace, api) from Ingress + IngressRoute, honoring the opt-out."""
     deployed = flux_apps()
     for path in sorted(glob.glob(INGRESS_GLOB)):
         if os.path.basename(os.path.dirname(path)) not in deployed:
@@ -161,22 +165,23 @@ def iter_ingress_hosts():
                 if annotations.get("homepage.kblab.me/launcher") == "false":
                     continue
                 namespace = meta.get("namespace") or ""
+                api = annotations.get("homepage.kblab.me/api") == "true"
                 spec = doc.get("spec") or {}
                 if kind == "Ingress":
                     for rule in spec.get("rules") or []:
                         host = rule.get("host")
                         if host:
-                            yield host, namespace
+                            yield host, namespace, api
                 elif kind == "IngressRoute":
                     for route in spec.get("routes") or []:
                         for host in HOST_RE.findall(route.get("match") or ""):
-                            yield host, namespace
+                            yield host, namespace, api
 
 
 def extract_tiles() -> list[dict]:
-    """Return [{host, group, public, slug, url, display}, ...]."""
+    """Return [{host, group, public, api, slug, url, display}, ...]."""
     tiles: dict[str, dict] = {}
-    for host, namespace in iter_ingress_hosts():
+    for host, namespace, api in iter_ingress_hosts():
         if host in tiles or host.startswith("www."):
             continue
         public = not is_private(host)
@@ -189,6 +194,7 @@ def extract_tiles() -> list[dict]:
             "host": host,
             "group": PUBLIC_GROUP if public else NAMESPACE_GROUP[namespace],
             "public": public,
+            "api": api,
             "slug": slugify(host),
             "url": f"https://{host}",
             "display": host if public else pretty_name(host),
@@ -234,7 +240,8 @@ def anchor(group: str) -> str:
 
 def render_page(tiles: list[dict]) -> str:
     """The front door: web-kit's <kb-shell> with one sidebar link per group, and
-    one list per group: each name a link over its host (none when they match)."""
+    one list per group: each name a link over its host (none when they match);
+    an API's name is plain text marked API, since there is nothing to open."""
     sections = grouped(tiles)
     nav = "\n".join(
         f'    <a href="#{anchor(g)}">{esc(g)}</a>' for g, _ in sections
@@ -248,7 +255,11 @@ def render_page(tiles: list[dict]) -> str:
         )
         for t in rows:
             host = "" if t["host"] == t["display"] else f"<span>{esc(t['host'])}</span>"
-            body.append(f'      <li><a href="{esc(t["url"])}">{esc(t["display"])}</a>{host}</li>')
+            if t.get("api"):
+                name = f'<div>{esc(t["display"])} <small>API</small></div>'
+            else:
+                name = f'<a href="{esc(t["url"])}">{esc(t["display"])}</a>'
+            body.append(f"      <li>{name}{host}</li>")
         body.append("    </ul>\n  </section>")
     return PAGE_TEMPLATE.format(
         count=sum(len(r) for _, r in sections), nav=nav, body="\n".join(body)
@@ -282,6 +293,7 @@ PAGE_TEMPLATE = """<!doctype html>
   li {{ padding: 6px 0; border-bottom: 1px solid var(--line); min-width: 0; }}
   li > * {{ display: block; overflow-wrap: anywhere; }}
   li span {{ font-family: var(--mono); font-size: var(--fs-sm); color: var(--muted); }}
+  small {{ font-size: var(--fs-sm); color: var(--muted); }}
   a {{ color: var(--accent); text-decoration: none; }}
   a:hover {{ text-decoration: underline; }}
 </style>
@@ -386,7 +398,7 @@ def main() -> int:
     tiles = extract_tiles()
     if "--list-sites" in sys.argv[1:]:
         for tile in tiles:
-            if not tile["public"]:
+            if not tile["public"] and not tile["api"]:
                 print(f'{tile["display"]}\t{tile["group"]}\t{tile["url"]}')
         return 0
 

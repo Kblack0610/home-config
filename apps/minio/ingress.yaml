@@ -6,6 +6,8 @@ metadata:
   labels:
     app.kubernetes.io/name: minio
   annotations:
+    # Nothing to open in a browser: the front door lists it as an API, unlinked.
+    homepage.kblab.me/api: "true"
     kubernetes.io/ingress.class: traefik
     cert-manager.io/cluster-issuer: letsencrypt-dns
     traefik.ingress.kubernetes.io/router.entrypoints: web,websecure

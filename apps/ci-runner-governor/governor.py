@@ -352,8 +352,8 @@ def by_host(result):
 
 def pools(cfg):
     """The exporter pools the governor runs: the shared pool and each dedicated host's own."""
-    return [cfg["pool_label"]] + sorted({l for s in (*cfg["standby"].values(), *cfg["hosts"].values())
-                                         for l in s.get("labels", [])})
+    return [cfg["pool_label"]] + sorted({cfg["wide_label"]} | {l for s in (*cfg["standby"].values(), *cfg["hosts"].values())
+                                                                for l in s.get("labels", [])})
 
 
 def entry_of(cfg, host):

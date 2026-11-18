@@ -527,6 +527,17 @@ class ExporterTest(unittest.TestCase):
         self.assertEqual(exporter.wait_kind("acme/game", {"labels": ["self-hosted", "unity", "unity-full"]}, t), "unity")
         self.assertEqual(exporter.wait_kind("acme/game", {"labels": ["self-hosted", "unity-build"]}, t), "unserved")
 
+    def test_a_withheld_wide_lead_still_serves_a_wide_job(self):
+        # The governor admits a wide lead only for a wide job it sees waiting; the job asks for unity too.
+        held = ("org", {"name": "gone-unity-pool-6",
+                        "labels": [{"name": l} for l in ("self-hosted", "unity-build-withheld", "host-gone")]})
+        slot = {"host": "gone", "caps": ["unity-wide"], "repo": None, "forge": "github"}
+        with mock.patch.dict(exporter.SLOTS, {"gone-unity-pool-6": slot}), \
+                mock.patch.dict(exporter.TOPOLOGY, {"gone": {"site": "local", "full": True}}):
+            t = self.takers(held)
+            job = {"labels": ["self-hosted", "unity", "unity-wide"]}
+            self.assertEqual(exporter.wait_kind("acme/game", job, t), "unity-wide")
+
     def test_withheld_runner_stays_in_the_pool(self):
         org = "orgs/acme/actions/runners?per_page=100&page=1"
         saved = FAKE[org]

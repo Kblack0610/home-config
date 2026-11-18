@@ -1192,7 +1192,7 @@ class GovernorTest(unittest.TestCase):
         self.assertEqual(governor.pool_jobs(jobs, governor.build_marks(self.BUILD)), [UNITY_JOB])
 
     def test_the_build_pool_is_read(self):
-        self.assertEqual(governor.pools(self.BUILD), ["unity", "unity-build"])
+        self.assertEqual(governor.pools(self.BUILD), ["unity", "unity-build", "unity-wide"])
         with mock.patch.object(governor, "prom", return_value=[]) as prom:
             governor.host_labels(self.BUILD, "aws-build-1")
         self.assertIn('pool=~"unity|unity-build"', prom.call_args.args[0])

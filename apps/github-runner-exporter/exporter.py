@@ -415,7 +415,10 @@ def runner_label_sets(seen):
         have = {l.lower() for l in names}
         if WITHHELD_LABELS.keys() & have:
             have |= set(caps)
-            if "unity" in caps and TOPOLOGY.get(host_of(r["name"], names), {}).get("full"):
+            # A wide lead asks for unity too when admitted (governor lead_labels()).
+            if "unity-wide" in caps:
+                have.add("unity")
+            if {"unity", "unity-wide"} & set(caps) and TOPOLOGY.get(host_of(r["name"], names), {}).get("full"):
                 have.add("unity-full")
         out.append((scope, caps, have))
     return out

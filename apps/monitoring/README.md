@@ -25,6 +25,7 @@ This directory augments the Prometheus stack with ingress, dashboards, alert rul
 | `external-windows-nodes.yaml` | Scrape definitions for Windows PCs (windows_exporter, role `windows-exporter`) |
 | `external-iot-nodes.yaml` | Scrape definitions for IoT devices |
 | `dashboards/` | Grafana dashboards committed with the repo |
+| `scripts/health-heart-hours.py` | Hours the health heart (`cc:overall_status`) spent red and amber over a window, and the items, domains and fleet=fix alerts that held it red; run it before and after a command-center rule change |
 
 ## Deploy
 

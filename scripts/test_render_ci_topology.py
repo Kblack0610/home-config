@@ -59,11 +59,11 @@ class CapTests(unittest.TestCase):
         self.assertEqual(slots["ms-a2-heavy-1"], ["heavy", "light"])
 
     def test_unity_slot_takes_heavy_only_on_a_heavy_host(self):
-        self.hosts["deskslim-2"]["ci_caps"] = ["light", "unity"]
+        self.hosts["deskslim-2"]["ci_caps"] = ["light", "unity", "forgejo"]
         slots, fails = self.slots()
         self.assertEqual(fails, [])
         self.assertEqual(slots["deskslim-2-unity-pool-1"], ["unity", "light"])
-        self.hosts["deskslim-2"]["ci_caps"] = ["light", "heavy", "unity"]
+        self.hosts["deskslim-2"]["ci_caps"] = ["light", "heavy", "unity", "forgejo"]
         slots, fails = self.slots()
         self.assertEqual(fails, [])
         self.assertEqual(slots["deskslim-2-unity-pool-1"], ["unity", "light", "heavy"])
@@ -109,7 +109,7 @@ class CapTests(unittest.TestCase):
         topo, fails = topology.render(self.hosts, self.groups)
         self.assertEqual(fails, [])
         hosts = {h for h, v in topo["hosts"].items() for s in v["slots"] if s.get("forge") == "forgejo"}
-        self.assertEqual(hosts, {"ms-a2", "windows-media-ci"})
+        self.assertEqual(hosts, {"ms-a2", "windows-media-ci", "deskslim-2"})
 
     def test_forgejo_slot_count_is_the_rule(self):
         self.hosts["ms-a2"]["forgejo_slots"] = topology.FORGEJO_SLOTS + 1

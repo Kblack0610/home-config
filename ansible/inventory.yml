@@ -314,19 +314,21 @@ all:
         # bursts to 18, so since 2026-11-17 ms-a2 and windows-media-ci carry one heavy
         # slot each, and since heavy jobs take ephemeral ports every Unity test slot
         # on a heavy host takes heavy too (scripts/render-ci-topology.py SHARED_CAPS).
-        # razer has one light slot and no heavy since 2026-11-17: 32 GB, k3s and the
-        # OS take about 12 GiB, the rest stays with 4-6 Claude sessions.
         # ci_repo_runners: runners for one personal repo, which cannot use the
         # org's slots. GitHub bills hosted minutes on a private repo and refused
         # every .dotfiles-private job from 2026-11-15 once the month's allowance
         # ran out. Its jobs are lint and unit runs of seconds and under 1G, so
         # one runner on each of two hosts, in the light slots' slice. gungan-speak
         # takes the same shape (hc-496, ask bcN3iL): a uv pytest run of about 11 s, 6
-        # runs from 2026-10-18 to 11-18. Both hosts read FULL then; the slice's cores
-        # bound these runners, so they add jobs, not cores. One list, anchored here.
-        razer-laptop:
+        # runs from 2026-10-18 to 11-18. The slice's cores bound these runners, so
+        # they add jobs, not cores. One list, anchored here.
+        # deskslim-2 since 2026-11-18: a light slot, two Forgejo slots and the personal
+        # repo runners on core 11, the core its Unity slots left free, so ms-a2, windows-media-ci
+        # and deskslim-2 each take light, heavy, Unity and Forgejo (razer-laptop left CI that day).
+        deskslim-2:
           ci_light_slots: 1
           ci_heavy_slots: 0
+          forgejo_slots: 2
           ci_repo_runners: &personal_repo_runners
             - {repo: Kblack0610/.dotfiles-private, slot: dotfiles-private-1}
             - {repo: Kblack0610/gungan-speak, slot: gungan-speak-1}
@@ -353,7 +355,8 @@ all:
         # Two on ms-a2 since 2026-11-18: they replaced the k3s runner pod
         # (capacity 2), which ran on ms-a2's k3s cores, so its jobs moved into the CI
         # budget instead of adding load; every CI host read FULL that day. The total
-        # is FORGEJO_SLOTS in scripts/render-ci-topology.py, now four with windows-media-ci's.
+        # is FORGEJO_SLOTS in scripts/render-ci-topology.py: two each on ms-a2,
+        # windows-media-ci and deskslim-2.
         ms-a2:
           ci_light_slots: 2
           ci_heavy_slots: 1
@@ -370,7 +373,7 @@ all:
     unity_ci_runners:
       hosts:
         # razer-laptop has no Unity slot since 2026-11-17: its RAM dropped from 96 GB to
-        # 32 GB (the 96 GB kit went to the MS-A2) and it stays a usable Claude runner.
+        # 32 GB (the 96 GB kit went to the MS-A2) and it runs agents, never CI (no_ci_hosts, 2026-11-18).
         # Slot 1 of ms-a2 carries slim-tour, so playground slim-tour.yml always lands on the
         # one slot whose prune keeps its trees warm (site.yml's .keep-warm-trees, ucp-2062).
         # Picked by disk on 2026-11-17: ms-a2 1.6T free of 1.8T (88%), unity-full, on the LAN
@@ -534,6 +537,9 @@ all:
       hosts:
         hp-victus:
         asus-laptop:
+        # Agents only, never a CI pool of any kind (the human, 2026-11-18): its RAM and
+        # cores belong to the Claude sessions fleet_workers places on it.
+        razer-laptop:
 
     # One CPU and memory budget per CI host (roles/ci-host-budget): every runner
     # and container of every CI workload on the host shares it, and what is left
@@ -546,26 +552,8 @@ all:
     # re-apply to take it off every slot of the host.
     ci_hosts:
       hosts:
-        # 8 cores / 16 threads, SMT siblings are n and n+8. Cores 0-1 (CPUs
-        # 0-1, 8-9) are k3s and the OS; k3s_cpus pins pods there with 4 CPUs of
-        # allocatable, after 6-CPU backtests landed beside CI and the 15-minute
-        # load hit 18 (2026-11-10). The platform runners get cores 5-7 and their SMT
-        # siblings. Since 2026-11-17 the host has 32 GB (was 96 GB) and no Unity slot:
-        # one light slot capped at 6G, k3s and the OS about 12 GiB, the rest left for
-        # 4-6 Claude sessions. ci_unity_cpus stays set because ci-host-budget asserts it
-        # does not overlap ci_linux_cpus; the Unity slice holds no units.
-        razer-laptop:
-          ci_caps: [light]
-          ci_cpus: 2-7,10-15
-          ci_memory_max: 6G
-          ci_unity_cpus: 2-4,10-12
-          ci_unity_slot_cpus: []
-          ci_unity_memory_max: 6G
-          ci_linux_cpus: 5-7,13-15
-          k3s_cpus: 0-1,8-9
-          ci_linux_memory_max: 6G
         # ms-a2: 16 cores / 32 threads, SMT siblings n and n+16 (sysfs,
-        # 2026-11-16), 91G. Cores 0-1 are k3s and the OS, as on razer. Each Unity
+        # 2026-11-16), 91G. Cores 0-1 are k3s and the OS. Each Unity
         # test slot gets three cores and 16G (docs/unity-ci-hardware.md sizing), cores
         # 2-13; build slot 5 takes test slots 3 and 4's six cores and their 32G (a build was
         # killed at 14G, razer built in 20G). Cores 14-15 (CPUs 14-15,30-31) are the two light slots' and the
@@ -583,13 +571,16 @@ all:
           ci_unity_slot_memory_max: [16G, 16G, 16G, 16G, 32G]
           k3s_cpus: 0-1,16-17
         # deskslim-2: 12 cores / 24 threads, SMT siblings n and n+12, 60G. Cores
-        # 0-1 are k3s and the OS; three slots of three cores and 14G on cores
-        # 2-10, which leaves core 11 and 18G for the host. A fourth slot would take
-        # k3s's cores. Its Unity slots take light and heavy jobs (ci_caps).
+        # 0-1 are k3s and the OS; three Unity slots of three cores and 14G on cores
+        # 2-10. Core 11 (CPUs 11,23) is the light slot's, the two Forgejo slots' and
+        # the personal repo runners' (linux_ci_runners), 6G between them, which leaves
+        # 12G for the host and k3s. Its Unity slots take light and heavy jobs (ci_caps).
         deskslim-2:
-          ci_caps: [light, heavy, unity]
-          ci_cpus: 2-10,14-22
-          ci_memory_max: 42G
+          ci_caps: [light, heavy, unity, forgejo]
+          ci_cpus: 2-11,14-23
+          ci_memory_max: 48G
+          ci_linux_cpus: 11,23
+          ci_linux_memory_max: 6G
           ci_unity_cpus: 2-10,14-22
           ci_unity_slot_cpus: ["2-4,14-16", "5-7,17-19", "8-10,20-22"]
           ci_unity_memory_max: 42G

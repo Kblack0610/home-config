@@ -38,6 +38,11 @@
       {"name": "cachyos-x8664-main-unity-pool-2", "caps": ["unity"]}
     ]},
     "deskslim-2": {"site": "local", "full": true, "slots": [
+      {"name": "deskslim-2-light-1", "caps": ["light"]},
+      {"name": "deskslim-2-dotfiles-private-1", "caps": ["light"], "repo": "Kblack0610/.dotfiles-private"},
+      {"name": "deskslim-2-gungan-speak-1", "caps": ["light"], "repo": "Kblack0610/gungan-speak"},
+      {"name": "deskslim-2-forgejo-1", "caps": ["forgejo"], "forge": "forgejo"},
+      {"name": "deskslim-2-forgejo-2", "caps": ["forgejo"], "forge": "forgejo"},
       {"name": "deskslim-2-unity-pool-1", "caps": ["unity", "light", "heavy"]},
       {"name": "deskslim-2-unity-pool-2", "caps": ["unity", "light", "heavy"]},
       {"name": "deskslim-2-unity-pool-3", "caps": ["unity", "light", "heavy"]}
@@ -57,11 +62,6 @@
       {"name": "ms-a2-unity-pool-3", "caps": ["unity", "light", "heavy"]},
       {"name": "ms-a2-unity-pool-4", "caps": ["unity", "light", "heavy"]},
       {"name": "ms-a2-unity-pool-5", "caps": ["unity-build"], "group": ["ms-a2-unity-pool-3", "ms-a2-unity-pool-4"]}
-    ]},
-    "razer-laptop": {"site": "local", "slots": [
-      {"name": "razer-laptop-light-1", "caps": ["light"]},
-      {"name": "razer-laptop-dotfiles-private-1", "caps": ["light"], "repo": "Kblack0610/.dotfiles-private"},
-      {"name": "razer-laptop-gungan-speak-1", "caps": ["light"], "repo": "Kblack0610/gungan-speak"}
     ]},
     "windows-media": {"site": "local", "slots": [
       {"name": "windows-media", "caps": ["windows"]}

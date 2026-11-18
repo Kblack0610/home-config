@@ -1,6 +1,6 @@
 # Managed by ansible (forgejo-runner-linux).
 [Unit]
-Description=Forgejo Actions runner ({{ forgejo_runner_name }})
+Description=Forgejo seat {{ forgejo_runner_name }} on {{ forgejo_runner_slot }}
 After=network-online.target docker.service
 Wants=network-online.target
 Requires=docker.service
@@ -11,11 +11,16 @@ User={{ forgejo_runner_user }}
 Group={{ forgejo_runner_group }}
 WorkingDirectory={{ forgejo_runner_home }}
 Environment=HOME={{ forgejo_runner_home }}
-ExecStart={{ forgejo_runner_bin }} daemon --config {{ forgejo_runner_home }}/config.yaml
+Environment=FORGEJO_SEAT_LEASE_URL={{ forgejo_runner_lease_url }}
+Environment=FORGEJO_SEAT_SLOT={{ forgejo_runner_slot }}
+Environment=FORGEJO_SEAT_BIN={{ forgejo_runner_bin }}
+Environment=FORGEJO_SEAT_CONFIG={{ forgejo_runner_home }}/config.yaml
+# Runs one job at a time, and only while ci-runner-governor lends it the slot (forgejo-seat.py).
+ExecStart=/usr/bin/python3 {{ forgejo_seat_bin }}
 Restart=always
 RestartSec=5
-# The slot's CPU set and memory cap (roles/ci-host-budget), shared with the light and
-# heavy runners. Job containers join it through the config's --cgroup-parent.
+# The borrowed Unity slot's CPU set and memory cap (roles/ci-host-budget). Job containers
+# join it through the config's --cgroup-parent.
 Slice={{ forgejo_runner_slice }}
 # Let a running job finish its step on a restart; the runner reports it as cancelled.
 TimeoutStopSec=5min

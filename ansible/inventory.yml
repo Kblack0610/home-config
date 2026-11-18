@@ -318,49 +318,37 @@ all:
         # org's slots. GitHub bills hosted minutes on a private repo and refused
         # every .dotfiles-private job from 2026-11-15 once the month's allowance
         # ran out. Its jobs are lint and unit runs of seconds and under 1G, so
-        # one runner on each of two hosts, in the light slots' slice. gungan-speak
-        # takes the same shape (hc-496, ask bcN3iL): a uv pytest run of about 11 s, 6
-        # runs from 2026-10-18 to 11-18. The slice's cores bound these runners, so
-        # they add jobs, not cores. One list, anchored here.
-        # deskslim-2 since 2026-11-18: a light slot, two Forgejo slots and the personal
-        # repo runners on core 11, the core its Unity slots left free, so ms-a2, windows-media-ci
-        # and deskslim-2 each take light, heavy, Unity and Forgejo (razer-laptop left CI that day).
+        # one runner on each of two hosts. gungan-speak takes the same shape (hc-496,
+        # ask bcN3iL): a uv pytest run of about 11 s, 6 runs from 2026-10-18 to 11-18.
+        # borrows: the Unity test slot the runner runs on. It registers withheld, and the
+        # governor admits it only while it has lent that slot to it, so it adds jobs,
+        # never cores (apps/ci-runner-governor, "Lending"). One list, anchored here.
+        # The Forgejo seats need no entry: scripts/render-ci-topology.py puts one on
+        # every lendable Unity slot of a host whose ci_caps carry forgejo.
         deskslim-2:
           ci_light_slots: 1
           ci_heavy_slots: 0
-          forgejo_slots: 2
           ci_repo_runners: &personal_repo_runners
-            - {repo: Kblack0610/.dotfiles-private, slot: dotfiles-private-1}
-            - {repo: Kblack0610/gungan-speak, slot: gungan-speak-1}
+            - {repo: Kblack0610/.dotfiles-private, slot: dotfiles-private-1, borrows: 1}
+            - {repo: Kblack0610/gungan-speak, slot: gungan-speak-1, borrows: 2}
         # Light and heavy slots on the cores of its third Unity slot since
         # 2026-11-13 (unity_ci_runners says why). Light jobs average 0.4 cores and
-        # 0.6G. Since 2026-11-18 two of the four light slots are Forgejo slots, so the
-        # slice holds as many slots as before (two light, one heavy, two Forgejo), and
-        # light jobs also take every Unity test slot (SHARED_CAPS). The VM is not on the
-        # tailnet, so its Forgejo slots register through the LAN ingress, which follows
-        # forge-primary too. Ubuntu: ci-host's apt list.
+        # 0.6G, and light jobs also take every Unity test slot (SHARED_CAPS). The VM
+        # is not on the tailnet, so its Forgejo seats register through the LAN
+        # ingress, which follows forge-primary too. Ubuntu: ci-host's apt list.
         windows-media-ci:
           host_tier: standard
           ci_light_slots: 2
           ci_heavy_slots: 1
-          forgejo_slots: 2
           forgejo_runner_instance: https://git.kblab.me
           ci_repo_runners: *personal_repo_runners
         # Two light slots on cores 14-15 since 2026-11-17, the cores ci_hosts kept
         # outside its Unity slots for the platform runners. Not on the Unity slots
         # themselves: playground's light jobs clean and sparse-check-out the same repo
         # dir, which would wipe that slot's warm Library.
-        # forgejo_slots: Forgejo Actions runners, one forge per slot, in the same
-        # ci-linux.slice budget as the light and heavy slots (roles/forgejo-runner-linux).
-        # Two on ms-a2 since 2026-11-18: they replaced the k3s runner pod
-        # (capacity 2), which ran on ms-a2's k3s cores, so its jobs moved into the CI
-        # budget instead of adding load; every CI host read FULL that day. The total
-        # is FORGEJO_SLOTS in scripts/render-ci-topology.py: two each on ms-a2,
-        # windows-media-ci and deskslim-2.
         ms-a2:
           ci_light_slots: 2
           ci_heavy_slots: 1
-          forgejo_slots: 2
 
     # BNB Unity runner pool (added 2026-10-05; the "CI runners (light, heavy and Unity slots)" play in
     # site.yml). Org-scoped, label `unity`, for every game repo. Each slot runs
@@ -572,9 +560,9 @@ all:
           k3s_cpus: 0-1,16-17
         # deskslim-2: 12 cores / 24 threads, SMT siblings n and n+12, 60G. Cores
         # 0-1 are k3s and the OS; three Unity slots of three cores and 14G on cores
-        # 2-10. Core 11 (CPUs 11,23) is the light slot's, the two Forgejo slots' and
-        # the personal repo runners' (linux_ci_runners), 6G between them, which leaves
-        # 12G for the host and k3s. Its Unity slots take light and heavy jobs (ci_caps).
+        # 2-10. Core 11 (CPUs 11,23) is the light slot's (linux_ci_runners), 6G, which
+        # leaves 12G for the host and k3s. Its Unity slots take light and heavy jobs
+        # (ci_caps), and the governor lends them to Forgejo and the personal repo runners.
         deskslim-2:
           ci_caps: [light, heavy, unity, forgejo]
           ci_cpus: 2-11,14-23
@@ -603,7 +591,7 @@ all:
         # windows-media-ci, the Hyper-V VM: 12 vcores / 24 threads, SMT siblings
         # are n and n+1 (lscpu), 49G. Cores 0-2 (CPUs 0-5) stay with the guest OS,
         # docker and the runner agents; each Unity slot gets three cores and stops
-        # at 14G, and the two light slots, the heavy and the two Forgejo slots share
+        # at 14G, and the two light slots and the heavy share
         # cores 9-11 (CPUs 18-23) and 20G.
         # No temperature: a VM has no k10temp, so the governor admits on
         # idle, PSI and memory alone.
@@ -692,15 +680,17 @@ all:
       hosts:
         # The first worker (2026-11-07): wired and always on, 16 threads and
         # 32 GB since the RAM move (hc-328), 96 GB before. It ran the singleton lanes 2026-11-15 to
-        # 11-16 while the workstation was down. Placed 2026-11-18 at 3: 52 freqtrade pods hold
-        # about 10.7 GB, so 3 sessions at 2-3 GB each leave it over fleet-dispatch's 20% free-memory
-        # floor (DISPATCH_HOST_MEM_MIN_PCT). Provisional, medium confidence; revisit when
-        # host-headroom razer-laptop reads ROOM over a week, or freqtrade moves off it.
+        # 11-16 while the workstation was down. Placed at 5: with 52 freqtrade pods (about 10.7 GB) and 2
+        # live sessions (770 MB together) it had 17.9 of 32 GB free at load 0.3 on 2026-11-18, so 3 more at the
+        # 3 GB worst case of a session building leave 8.9 GB (28%), over fleet-dispatch's 20%
+        # free-memory floor (DISPATCH_HOST_MEM_MIN_PCT); 4 more would leave 18%. Each start also
+        # reads that floor and the load pace again. Provisional, medium confidence; revisit when
+        # host-headroom razer-laptop reads ROOM over a week at 5 live, or freqtrade moves off it.
         # Its repos are the ones the night canaries run in (agent-runtime is ~/.dotfiles).
         # Canary and night items go here before the workstation (fleet_first, dotfiles #2418).
         razer-laptop:
           fleet_place: true
-          fleet_max_live: 3
+          fleet_max_live: 5
           fleet_first: [canary, night]
           fleet_repos:
             - dest: ~/.dotfiles

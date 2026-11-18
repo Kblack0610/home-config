@@ -86,7 +86,7 @@ spec:
             - name: FEED_REPOS
               value: "Kblack0610/.dotfiles Kblack0610/freqtrade_trading_attempt Kblack0610/android-suite Kblack0610/zmk_config Kblack0610/openmptcsetup Kblack0610/.dotfiles-private Kblack0610/ebay-lister Kblack0610/gungan-speak Kblack0610/playtest-bot"
             # Forgejo repos whose Actions jobs and tasks are read; the topology's
-            # forgejo slots are the runners (pool="forgejo", forge="forgejo").
+            # Forgejo seats are the runners (pool="forgejo", forge="forgejo").
             - name: FORGEJO_REPOS
               value: "kblack0610/platform kblack0610/home-config kblack0610/bnb-game-servers kblack0610/personal-sites kblack0610/tilecast kblack0610/audio kblack0610/asset-library kblack0610/.notes"
             # Forgejo access token of kblack0610 (the admin), scopes read:repository

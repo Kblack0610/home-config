@@ -60,11 +60,15 @@
   # not a k3s node, so the DaemonSet does not scrape it; Prometheus reaches it
   # through standalone-nodes (apps/monitoring/external-standalone-nodes.yaml).
   #   ansible-playbook playbooks/site.yml --limit windows-media-ci --tags monitoring
+  # The textfile directory is the one roles/ci-runner-cpu writes ci_runner.prom to,
+  # which on the k3s CI hosts the DaemonSet's node-exporter reads.
   hosts: windows-media-ci
   become: true
   gather_facts: true
   roles:
     - role: node-exporter-linux
+      node_exporter_linux_textfile_dir: /var/lib/node-exporter-textfile
+      node_exporter_linux_textfile_owner: "{{ k3s_textfile_owner }}"
       tags: [monitoring, unity-ci]
 
 - name: Cloud Unity CI host monitoring over the tailnet
@@ -130,8 +134,9 @@
       tags: [image-gc, k3s]
 
 - name: CPU per CI runner (Linux runner hosts)
-  # The Infra tab's cores per runner: each runner unit's cgroup plus its job
-  # container's, every 15s, into node-exporter's textfile dir.
+  # The Infra tab's cores and memory per runner: each runner unit's cgroup plus its
+  # job containers', every 15s, and each runner home's disk hourly, into
+  # node-exporter's textfile dir.
   #   ansible-playbook playbooks/site.yml --limit ci_hosts --tags runner-cpu
   hosts: ci_hosts
   become: true
@@ -264,7 +269,21 @@
       {% set cpus = [] %}{% for part in ((ci_linux_cpus | default('')) or ci_cpus).split(',')
       if part | trim %}{% set ab = (part | trim).split('-') %}{% for c in range(ab[0] | int,
       (ab[-1] | int) + 1) %}{% set _ = cpus.append(c) %}{% endfor %}{% endfor %}{{ [1,
-      ((cpus | length) / (linux_ci_instances | length)) | round(0, 'floor') | int] | max }}
+      ((cpus | length) / (linux_ci_instances | length))
+      | round(0, 'floor') | int] | max }}
+    # Unity slot unity_slot's slice and CPU count, for the slot and for the seats that borrow
+    # it (ci_seats): with ci_unity_slot_cpus each slot gets its own cores (roles/ci-host-budget),
+    # else the slots share the Unity slice. The count is CI_SLOT_CPUS (linux_ci_slot_cpus says why).
+    unity_slot_slice: >-
+      {{ (ci_unity_slot_slice_prefix ~ (unity_slot | int) ~ '.slice') if ci_unity_slot_cpus | length else ci_unity_slice }}
+    unity_slot_cpus: >-
+      {% set spec = ci_unity_slot_cpus[(unity_slot | int) - 1] if ci_unity_slot_cpus | length
+      else (ci_unity_cpus or ci_cpus) %}{% set n = namespace(c=0) %}{% for part in spec.split(',')
+      if part | trim %}{% set ab = (part | trim).split('-') %}{% set n.c = n.c + (ab[-1] | int)
+      - (ab[0] | int) + 1 %}{% endfor %}{{ [1, (n.c / (1 if ci_unity_slot_cpus | length
+      else unity_ci_slots)) | int] | max }}
+    # The Unity slot number a seat borrows ("borrows" is that slot's runner name).
+    ci_seat_slot: "{{ ci_seat.borrows | regex_replace('^' ~ inventory_hostname ~ '-unity-pool-', '') | int }}"
   roles:
     # What the host's ci_caps need (roles/ci-host). Its own tags pick a part:
     # --tags unity-ci-host refreshes the asset-library copy and editor images
@@ -306,9 +325,11 @@
     # root on the host, so a second user would isolate nothing. Its jobs use
     # no secrets and read-only tokens, and the job-completed hook empties the
     # workspace as soon as a job ends, so no private checkout stays on disk.
-    # CI_SLOT_CPUS is 1: its jobs are seconds of lint, and counting it in
-    # linux_ci_slot_cpus would halve razer-laptop's platform slots.
-    - name: Register the personal repo runner slots
+    # A seat (ci_seats): it has no slot of its own and runs on the Unity test slot it
+    # borrows, in that slot's slice and with its CPU count, so it adds jobs, never cores. It
+    # registers withheld, and ci-runner-governor admits it only while it lends it that slot
+    # (apps/ci-runner-governor, "Lending").
+    - name: Register the personal repo runner seats
       ansible.builtin.include_role:
         name: github-actions-runner-linux
         apply:
@@ -318,6 +339,7 @@
         loop_var: ci_repo
         label: "{{ ci_repo.repo }} {{ ci_repo.slot }}"
       vars:
+        unity_slot: "{{ ci_repo.borrows }}"
         gh_runner_scope: repo
         gh_runner_owner: "{{ ci_repo.repo.split('/')[0] }}"
         gh_runner_repo: "{{ ci_repo.repo.split('/')[1] }}"
@@ -329,37 +351,61 @@
         gh_runner_home: "{{ linux_ci_user_home }}/{{ ci_repo.slot }}"
         gh_runner_name: "{{ inventory_hostname }}-{{ ci_repo.slot }}"
         gh_runner_labels: "{{ ['self-hosted', 'linux', 'x64', 'fresh-workspace'] + ci_slot_caps[gh_runner_name] }}"
-        gh_runner_slice: "{{ ci_linux_slice }}"
+        # The governor's seat labels (config.json seat_withheld_label).
+        gh_runner_governed_labels: [light]
+        gh_runner_withheld_labels: [light-withheld]
+        gh_runner_withheld_label: light-withheld
+        gh_runner_register_withheld: true
+        gh_runner_slice: "{{ unity_slot_slice }}"
         gh_runner_env:
           HOME: "{{ linux_ci_user_home }}/{{ ci_repo.slot }}"
           ACTIONS_RUNNER_HOOK_JOB_STARTED: "{{ linux_ci_job_started_hook }}"
           ACTIONS_RUNNER_HOOK_JOB_COMPLETED: "{{ linux_ci_job_completed_hook }}"
-          CI_SLOT_CPUS: "1"
+          CI_SLOT_CPUS: "{{ unity_slot_cpus }}"
       tags: [runner, ci, linux-ci]
-    # Forgejo Actions slots (forgejo_slots, inventory.yml): one forge per slot, run as
-    # linux-ci in the light and heavy slots' slice, after those slots create the user.
-    # They replaced the k3s runner pod (plan make-logical-possum phase 6). Lowering the
-    # count does not remove a slot: stop and disable forgejo-runner-<host>-forgejo-<n>,
-    # delete the runner in Forgejo's Site Administration, rm -rf its dir.
-    - name: Require light or heavy slots on a host with Forgejo slots
+
+    # A seat borrows a Unity slot's cores, slice and disk, so only a host with Unity slots
+    # can hold one (scripts/render-ci-topology.py places them there; this guards a hand edit).
+    - name: Require Unity slots on a host with seats
       ansible.builtin.assert:
-        that: linux_ci_instances | length > 0
-        fail_msg: "{{ inventory_hostname }} has forgejo_slots but no light or heavy slot to create the linux-ci user."
-      when: forgejo_slots | default(0) > 0
+        that: "'unity_ci_runners' in group_names"
+        fail_msg: "{{ inventory_hostname }} has Forgejo seats or repo runners but no Unity slot to lend them."
+      when: ci_seats | length > 0
+      tags: [runner, ci, forgejo-ci, linux-ci]
+
+    # Every host in the play, so one that loses its seats loses their units too.
+    - name: Retire the Forgejo units this host no longer runs
+      ansible.builtin.include_role:
+        name: forgejo-runner-linux
+        tasks_from: retire
+        apply:
+          tags: [runner, ci, forgejo-ci]
+      vars:
+        forgejo_seat_names: "{{ ci_seats | selectattr('forge', 'defined') | selectattr('forge', 'eq', 'forgejo') | map(attribute='name') | list }}"
+        forgejo_runner_user_home: "{{ linux_ci_user_home }}"
       tags: [runner, ci, forgejo-ci]
 
-    - name: Register the Forgejo slots
+    # The Forgejo seats: one on each lendable Unity slot of a host whose ci_caps carry
+    # forgejo (scripts/render-ci-topology.py). They replaced the k3s runner pod (plan
+    # make-logical-possum phase 6), then the forgejo_slots daemons in ci-linux.slice (plan
+    # ci-one-pool-per-host p4). A seat's supervisor runs a job only while the governor lends
+    # it the slot, so a down governor stops Forgejo CI and leaves GitHub CI running.
+    - name: Register the Forgejo seats
       ansible.builtin.include_role:
         name: forgejo-runner-linux
         apply:
           tags: [runner, ci, forgejo-ci]
-      loop: "{{ range(1, (forgejo_slots | default(0)) + 1) | list }}"
+      loop: "{{ ci_seats | selectattr('forge', 'defined') | selectattr('forge', 'eq', 'forgejo') | list }}"
       loop_control:
-        loop_var: forgejo_slot
+        loop_var: ci_seat
+        label: "{{ ci_seat.name }}"
       vars:
-        forgejo_runner_name: "{{ inventory_hostname }}-forgejo-{{ forgejo_slot }}"
-        forgejo_runner_home: "{{ linux_ci_user_home }}/forgejo-{{ forgejo_slot }}"
-        forgejo_runner_slice: "{{ ci_linux_slice }}"
+        unity_slot: "{{ ci_seat_slot }}"
+        forgejo_runner_name: "{{ ci_seat.name }}"
+        forgejo_runner_home: "{{ linux_ci_user_home }}/{{ ci_seat.name | regex_replace('^' ~ inventory_hostname ~ '-', '') }}"
+        forgejo_runner_user_home: "{{ linux_ci_user_home }}"
+        forgejo_runner_slot: "{{ ci_seat.borrows }}"
+        forgejo_runner_slice: "{{ unity_slot_slice }}"
       tags: [runner, ci, forgejo-ci]
 
     # After the slots, which create the linux-ci user. Playground jobs clone
@@ -459,9 +505,8 @@
         gh_runner_governed_labels: "{{ [ 'unity', 'unity-full', 'unity-build', 'light', 'heavy' ] + ([ 'unity-wide' ] if 'unity-wide' in ci_slot_caps[gh_runner_name] else []) }}"
         gh_runner_withheld_labels: [unity-withheld, unity-build-withheld]
         gh_runner_withheld_label: "{{ 'unity-build-withheld' if unity_slot in unity_ci_slot_groups | default({}) else 'unity-withheld' }}"
-        # With ci_unity_slot_cpus each slot gets its own cores (roles/ci-host-budget).
-        unity_slot_slice: >-
-          {{ (ci_unity_slot_slice_prefix ~ unity_slot ~ '.slice') if ci_unity_slot_cpus | length else ci_unity_slice }}
+        # The governor's lend mark: an apply never takes back a slot it lent to a seat.
+        gh_runner_kept_labels: [unity-lent]
         gh_runner_slice: "{{ unity_slot_slice }}"
         # UNITY_CACHE_SERVER only where the host runs an Accelerator (unity_ci_accelerator,
         # roles/ci-host), so the other hosts' env, and their slots, are unchanged.
@@ -484,14 +529,9 @@
           ACTIONS_RUNNER_HOOK_JOB_STARTED: "{{ linux_ci_job_started_hook }}"
           ACTIONS_RUNNER_HOOK_JOB_COMPLETED: "{{ linux_ci_job_completed_hook }}"
           CI_SLOT_UNITY: "1"
-          # The slot's CPU count, which platform's turbo runs take as --concurrency when a
-          # light job lands here (the Linux play's linux_ci_slot_cpus says why).
-          CI_SLOT_CPUS: >-
-            {% set spec = ci_unity_slot_cpus[unity_slot - 1] if ci_unity_slot_cpus | length
-            else (ci_unity_cpus or ci_cpus) %}{% set n = namespace(c=0) %}{% for part in spec.split(',')
-            if part | trim %}{% set ab = (part | trim).split('-') %}{% set n.c = n.c + (ab[-1] | int)
-            - (ab[0] | int) + 1 %}{% endfor %}{{ [1, (n.c / (1 if ci_unity_slot_cpus | length
-            else unity_ci_slots)) | int] | max }}
+          # The slot's CPU count (unity_slot_cpus), which platform's turbo runs take as
+          # --concurrency when a light job lands here.
+          CI_SLOT_CPUS: "{{ unity_slot_cpus }}"
       # The play also runs on light-only hosts (razer-laptop), which define no unity_ci_slots.
       when: "'unity_ci_runners' in group_names"
       tags: [runner, ci, unity-ci]
@@ -520,7 +560,7 @@
 
 # Service hosts carry no CI (no_ci_hosts in inventory.yml says why). The CI
 # plays only add, so this one takes off whatever a host still has: every
-# actions.runner unit, the linux-ci homes and cleanup timer, the CI slices and
+# actions.runner and forgejo-runner unit, the linux-ci homes and cleanup timer, the CI slices and
 # docker's CI cgroup parent, the CI CPU exporter, the k3s CPU pin that kept pods
 # off CI's cores, and the org registrations (the workstation's gh, admin:org).
 # Idempotent; a clean host reports ok.
@@ -534,7 +574,7 @@
     - name: Find runner units
       ansible.builtin.find:
         paths: /etc/systemd/system
-        patterns: "actions.runner.*.service"
+        patterns: ["actions.runner.*.service", "forgejo-runner-*.service"]
       register: _no_ci_units
 
     - name: Stop and disable runner units and the docker cleanup timer

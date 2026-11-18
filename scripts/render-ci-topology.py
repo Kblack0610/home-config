@@ -10,11 +10,12 @@ Per host: site (cloud when unity_ci_lan is false, else local), full (unity_ci_fu
 hosts only) and its slots. Per slot: the runner name the play registers, its caps (the job
 kinds it takes: light, heavy, unity, unity-build, unity-wide, forgejo, macos, windows; HOST_CAPS says
 which of the host's ci_caps each slot gets), the repo of a repo-scoped runner, the forge of a
-slot that serves Forgejo (github otherwise), and for a lead slot the test slots in its group. A
-host's lead slots are the keys of its unity_ci_slot_groups, each with the test slots that share
-its cores (the governor never runs a lead beside them), [] for a lead with cores of its own. A lead
-is a build slot (unity-build) unless unity_ci_wide_slots names it: then it is a wide slot (unity-wide,
-for Multi, Soak and Playloop), which the governor admits only while a wide job waits.
+seat that serves Forgejo (github otherwise), the Unity slot a seat borrows ("borrows"), and for a
+lead slot the test slots in its group. A host's lead slots are the keys of its unity_ci_slot_groups,
+each with the test slots that share its cores (the governor never runs a lead beside them), [] for a
+lead with cores of its own. A lead is a build slot (unity-build) unless unity_ci_wide_slots names it:
+then it is a wide slot (unity-wide, for Multi, Soak and Playloop), which the governor admits only
+while a wide job waits.
 
 Rendering also checks what the inventory must hold for the slots to fit their host:
 - A group's test slots sit inside their build slot's cores, and their memory caps sum to no
@@ -24,7 +25,9 @@ Rendering also checks what the inventory must hold for the slots to fit their ho
 - The pool's build slots carry RELEASE_LABEL on at least one and leave it off at least one,
   so a release always has a slot and never holds every slot players.yml builds on (hc-263).
 - A core host or a host in no_ci_hosts carries no CI.
-- Forgejo slots sit on LAN hosts only, and there are FORGEJO_SLOTS of them.
+- A seat borrows one Unity test slot of its own LAN host, outside every slot group: the governor
+  lends that slot to a Forgejo seat (one on each such slot of a host tagged forgejo) or to a
+  repo runner (ci_repo_runners "borrows") while no GitHub job holds it, so no seat has cores of its own.
 
     render-ci-topology.py           write topology.json
     render-ci-topology.py --check   fail when topology.json is not what the inventory renders (the CI gate)
@@ -48,23 +51,17 @@ OUT = os.path.join(REPO, "apps/ci-topology/topology.json")
 # 2026-11-11 (ucp-1830); the wide slots that build green (razer-laptop, aws-burst-1 slot 1) have 20G.
 WIDE_SLOT_MIN_GB = 20
 RELEASE_LABEL = "unity-release"
-# Provisional, medium confidence: six Forgejo slots, two on ms-a2 (the capacity of the k3s runner
-# pod they replaced, plan make-logical-possum phase 6) and two each on windows-media-ci and deskslim-2 since 2026-11-18,
-# when the human asked for Forgejo on more than one host. Each slot serves one forge, so no lock or
-# dispatcher shares a slot between forges. Revisit when Forgejo queue wait is over budget for
-# 7 days while GitHub slots on the same host sit idle over 50%.
-FORGEJO_SLOTS = 6
 NO_CI_GROUP = "no_ci_hosts"
 CI_GROUPS = ("linux_ci_runners", "unity_ci_runners", "unity_ci_mac_runners", "ci_hosts")
 UNITY_GROUPS = ("unity_ci_runners", "unity_ci_mac_runners")
 # The inventory keys this reads; a Jinja value in one would render as its literal text.
 KEYS = ("ci_light_slots", "ci_heavy_slots", "ci_repo_runners", "ci_pinned_runners", "unity_ci_slots",
         "unity_ci_slot_groups", "unity_ci_wide_slots", "unity_ci_lan", "unity_ci_full", "unity_ci_wide",
-        "unity_ci_slot_labels", "ci_unity_slot_cpus", "ci_unity_slot_memory_max", "ci_caps", "forgejo_slots")
+        "unity_ci_slot_labels", "ci_unity_slot_cpus", "ci_unity_slot_memory_max", "ci_caps")
 # What a host may be tagged for (ci_caps): each of its slots takes every job kind its host is
 # tagged for that the slot can hold. A light or heavy slot also takes light jobs; a Unity test
 # slot also takes SHARED_CAPS; a build slot takes builds alone, so a build never waits behind
-# a small job. A forgejo slot serves Forgejo Actions alone (one forge per slot). Every light and heavy slot carries fresh-workspace (site.yml): its job-started
+# a small job. A forgejo seat runs on a Unity test slot the governor lends it (seats()). Every light and heavy slot carries fresh-workspace (site.yml): its job-started
 # hook gives each job an empty workspace, which the Unity repos' light jobs ask for, since on a
 # Unity slot their checkout would clean the warm Library.
 HOST_CAPS = ("light", "heavy", "unity", "unity-build", "unity-wide", "forgejo")
@@ -102,9 +99,10 @@ def render(hosts, groups):
         if host in groups.get("linux_ci_runners", ()):
             for kind in ("light", "heavy"):
                 slots += [{"name": f"{host}-{kind}-{n}", "caps": SLOT_CAPS[kind]} for n in range(1, int(v.get(f"ci_{kind}_slots", 0)) + 1)]
-            slots += [{"name": f"{host}-{r['slot']}", "caps": SLOT_CAPS["light"], "repo": r["repo"]} for r in v.get("ci_repo_runners", [])]
-            slots += [{"name": f"{host}-forgejo-{n}", "caps": ["forgejo"], "forge": "forgejo"}
-                      for n in range(1, int(v.get("forgejo_slots", 0)) + 1)]
+            slots += [{"name": f"{host}-{r['slot']}", "caps": SLOT_CAPS["light"], "repo": r["repo"],
+                       "borrows": unity_slot(host, r["borrows"])} for r in v.get("ci_repo_runners", []) if "borrows" in r]
+            fails += [f"{host}: ci_repo_runners {r['slot']} has no borrows (the Unity slot it runs on)"
+                      for r in v.get("ci_repo_runners", []) if "borrows" not in r]
         unity = any(host in groups.get(g, ()) for g in UNITY_GROUPS)
         if unity:
             total, group = unity_layout(v)
@@ -127,6 +125,9 @@ def render(hosts, groups):
                 if group.get(n):
                     slot["group"] = [unity_slot(host, t) for t in group[n]]
                 slots.append(slot)
+            slots += seats(host, v, caps, total, group, slots, fails)
+        elif any(s.get("borrows") for s in slots):
+            fails.append(f"{host}: a repo runner borrows a Unity slot, but the host has none")
         slots += [{"name": p["name"], "caps": [p["cap"]], **({"repo": p["repo"]} if p.get("repo") else {})}
                   for p in v.get("ci_pinned_runners", [])]
         kinds = {c for s in slots for c in s["caps"] if c in HOST_CAPS}
@@ -137,11 +138,22 @@ def render(hosts, groups):
                           **({"full": v.get("unity_ci_full", True) is not False} if unity else {}),
                           "slots": slots}
     names = [s["name"] for h in topo.values() for s in h["slots"]]
-    forgejo = sum(1 for h in topo.values() for s in h["slots"] if s.get("forge") == "forgejo")
-    if forgejo != FORGEJO_SLOTS:
-        fails.append(f"{forgejo} forgejo slots (forgejo_slots), not FORGEJO_SLOTS={FORGEJO_SLOTS}; change both together")
     fails += [f"slot {n} is declared twice" for n in sorted({n for n in names if names.count(n) > 1})]
     return {"hosts": topo}, fails
+
+
+def seats(host, v, caps, total, group, slots, fails):
+    """A Forgejo seat on each lendable slot of a LAN host tagged forgejo, plus the failures of
+    the repo runners' "borrows". A lendable slot is a test slot in no slot group: a grouped one
+    already lends its cores to its build slot, and a slot has one lender at a time."""
+    grouped = set(group) | {t for ts in group.values() for t in ts}
+    lendable = [unity_slot(host, n) for n in range(1, total + 1) if n not in grouped]
+    lan = v.get("unity_ci_lan", True) is not False
+    fails += [f"{host}: {s['name']} borrows {s['borrows']}, not one of its lendable LAN slots {lendable}"
+              for s in slots if s.get("borrows") and not (lan and s["borrows"] in lendable)]
+    if "forgejo" not in caps or not lan:
+        return []
+    return [{"name": f"{n}-forgejo", "caps": ["forgejo"], "forge": "forgejo", "borrows": n} for n in lendable]
 
 
 def unity_layout(v):

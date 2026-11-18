@@ -1,0 +1,41 @@
+---
+# Takes off the Forgejo units and dirs this host no longer runs: forgejo_seat_names is every
+# seat it keeps (empty on a host with none). Before 2026-11-18 a host ran forgejo_slots
+# daemons of its own, forgejo-runner-<host>-forgejo-<n> in /var/lib/linux-ci/forgejo-<n>; a
+# seat's dir is named for the slot it borrows, so those dirs are never a seat's.
+# Their Forgejo registrations stay listed until removed in Site Administration, Actions, Runners.
+- name: Find the Forgejo units and the old slot dirs
+  ansible.builtin.find:
+    paths: "{{ item.path }}"
+    patterns: "{{ item.pattern }}"
+    file_type: "{{ item.type }}"
+  loop:
+    - {path: /etc/systemd/system, pattern: "forgejo-runner-*.service", type: file}
+    - {path: "{{ forgejo_runner_user_home }}", pattern: "forgejo-[0-9]*", type: directory}
+  register: _forgejo_found
+
+- name: Pick the retired units
+  ansible.builtin.set_fact:
+    _forgejo_retired_units: >-
+      {{ _forgejo_found.results[0].files | map(attribute='path')
+         | reject('in', forgejo_seat_names | map('regex_replace', '^(.*)$', '/etc/systemd/system/forgejo-runner-\1.service') | list)
+         | list }}
+
+- name: Stop and disable the retired Forgejo units
+  ansible.builtin.systemd:
+    name: "{{ item | basename }}"
+    state: stopped
+    enabled: false
+  loop: "{{ _forgejo_retired_units }}"
+
+- name: Remove the retired Forgejo units and dirs
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: absent
+  loop: "{{ _forgejo_retired_units + (_forgejo_found.results[1].files | map(attribute='path') | list) }}"
+  register: _forgejo_removed
+
+- name: Reload systemd after a retired unit
+  ansible.builtin.systemd:
+    daemon_reload: true
+  when: _forgejo_removed is changed

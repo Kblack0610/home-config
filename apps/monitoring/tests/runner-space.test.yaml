@@ -1,0 +1,138 @@
+# promtool test rules. Run with scripts/test-prometheus-rules.sh.
+# The machine page's Space line and Slots table: memory and disk per runner and per host.
+rule_files:
+  - command-center.rules.yaml
+  - capacity.rules.yaml
+evaluation_interval: 1m
+
+tests:
+  - name: per-runner memory and its cap join the textfile to its host and drop a stale file
+    interval: 1m
+    input_series:
+      - series: 'node_uname_info{instance="lin:9100",host="lin",job="standalone-nodes"}'
+        values: '1x10'
+      - series: 'node_uname_info{instance="old:9100",host="old",job="standalone-nodes"}'
+        values: '1x10'
+      - series: 'ci_runner_memory_bytes{instance="lin:9100",runner="lin-unity-pool-1"}'
+        values: '5000x10'
+      - series: 'ci_runner_memory_max_bytes{instance="lin:9100",runner="lin-unity-pool-1"}'
+        values: '15032385536x10'
+      - series: 'node_textfile_mtime_seconds{instance="lin:9100",file="/var/lib/node-exporter-textfile/ci_runner.prom"}'
+        values: '0+60x10'
+      # the timer stopped at minute 0, so by minute 5 this host's reading is stale
+      - series: 'ci_runner_memory_bytes{instance="old:9100",runner="old-unity-pool-1"}'
+        values: '9000x10'
+      - series: 'node_textfile_mtime_seconds{instance="old:9100",file="/var/lib/node-exporter-textfile/ci_runner.prom"}'
+        values: '0x10'
+    promql_expr_test:
+      - expr: cc:runner_mem_bytes
+        eval_time: 5m
+        exp_samples:
+          - labels: 'cc:runner_mem_bytes{host="lin",runner="lin-unity-pool-1"}'
+            value: 5000
+      - expr: cc:runner_mem_max_bytes
+        eval_time: 5m
+        exp_samples:
+          - labels: 'cc:runner_mem_max_bytes{host="lin",runner="lin-unity-pool-1"}'
+            value: 15032385536
+
+  - name: per-runner disk keeps an hourly figure for two hours and says its age
+    interval: 10m
+    input_series:
+      - series: 'node_uname_info{instance="lin:9100",host="lin",job="standalone-nodes"}'
+        values: '1x20'
+      - series: 'ci_runner_disk_bytes{instance="lin:9100",runner="lin-unity-pool-1"}'
+        values: '60000000000x20'
+      # measured at time 0 and never again: still a figure at 50m, gone at 150m
+      - series: 'ci_runner_disk_measured_seconds{instance="lin:9100"}'
+        values: '0x20'
+      - series: 'node_textfile_mtime_seconds{instance="lin:9100",file="/var/lib/node-exporter-textfile/ci_runner_disk.prom"}'
+        values: '0x20'
+    promql_expr_test:
+      - expr: cc:runner_disk_bytes
+        eval_time: 50m
+        exp_samples:
+          - labels: 'cc:runner_disk_bytes{host="lin",runner="lin-unity-pool-1"}'
+            value: 60000000000
+      - expr: cc:runner_disk_age_seconds
+        eval_time: 50m
+        exp_samples:
+          - labels: 'cc:runner_disk_age_seconds{host="lin",runner="lin-unity-pool-1"}'
+            value: 3000
+      - expr: cc:runner_disk_bytes
+        eval_time: 150m
+        exp_samples: []
+
+  - name: host memory in bytes on Linux, macOS and Windows
+    interval: 1m
+    input_series:
+      - series: 'node_uname_info{instance="lin:9100",host="lin",job="standalone-nodes"}'
+        values: '1x5'
+      - series: 'node_uname_info{instance="mac:9100",host="mac",job="standalone-nodes"}'
+        values: '1x5'
+      - series: 'node_memory_MemTotal_bytes{instance="lin:9100"}'
+        values: '64000x5'
+      - series: 'node_memory_MemAvailable_bytes{instance="lin:9100"}'
+        values: '25000x5'
+      - series: 'node_memory_total_bytes{instance="mac:9100"}'
+        values: '32000x5'
+      - series: 'node_memory_active_bytes{instance="mac:9100"}'
+        values: '1000x5'
+      - series: 'node_memory_wired_bytes{instance="mac:9100"}'
+        values: '2000x5'
+      - series: 'node_memory_compressed_bytes{instance="mac:9100"}'
+        values: '3000x5'
+      - series: 'windows_memory_physical_total_bytes{host="win"}'
+        values: '16000x5'
+      - series: 'windows_memory_physical_free_bytes{host="win"}'
+        values: '4000x5'
+    promql_expr_test:
+      - expr: cc:host_mem_total_bytes
+        eval_time: 2m
+        exp_samples:
+          - labels: 'cc:host_mem_total_bytes{host="lin"}'
+            value: 64000
+          - labels: 'cc:host_mem_total_bytes{host="mac"}'
+            value: 32000
+          - labels: 'cc:host_mem_total_bytes{host="win"}'
+            value: 16000
+      - expr: cc:host_mem_used_bytes
+        eval_time: 2m
+        exp_samples:
+          - labels: 'cc:host_mem_used_bytes{host="lin"}'
+            value: 39000
+          - labels: 'cc:host_mem_used_bytes{host="mac"}'
+            value: 6000
+          - labels: 'cc:host_mem_used_bytes{host="win"}'
+            value: 12000
+
+  - name: host disk bytes are the emptiest real filesystem's, the one the disk ratio reads
+    interval: 1m
+    input_series:
+      - series: 'node_uname_info{instance="lin:9100",host="lin",job="standalone-nodes"}'
+        values: '1x5'
+      # root is 50% free, the CI data disk 20% free, so the data disk is the one shown
+      - series: 'node_filesystem_avail_bytes{instance="lin:9100",device="/dev/nvme0n1p2",mountpoint="/",fstype="btrfs",job="standalone-nodes"}'
+        values: '500x5'
+      - series: 'node_filesystem_size_bytes{instance="lin:9100",device="/dev/nvme0n1p2",mountpoint="/",fstype="btrfs",job="standalone-nodes"}'
+        values: '1000x5'
+      - series: 'node_filesystem_avail_bytes{instance="lin:9100",device="/dev/sda1",mountpoint="/var/lib/ci",fstype="ext4",job="standalone-nodes"}'
+        values: '400x5'
+      - series: 'node_filesystem_size_bytes{instance="lin:9100",device="/dev/sda1",mountpoint="/var/lib/ci",fstype="ext4",job="standalone-nodes"}'
+        values: '2000x5'
+      # a tmpfs is never the disk, however full
+      - series: 'node_filesystem_avail_bytes{instance="lin:9100",device="tmpfs",mountpoint="/run",fstype="tmpfs",job="standalone-nodes"}'
+        values: '1x5'
+      - series: 'node_filesystem_size_bytes{instance="lin:9100",device="tmpfs",mountpoint="/run",fstype="tmpfs",job="standalone-nodes"}'
+        values: '100x5'
+    promql_expr_test:
+      - expr: cc:host_disk_avail_bytes
+        eval_time: 3m
+        exp_samples:
+          - labels: 'cc:host_disk_avail_bytes{host="lin"}'
+            value: 400
+      - expr: cc:host_disk_size_bytes
+        eval_time: 3m
+        exp_samples:
+          - labels: 'cc:host_disk_size_bytes{host="lin"}'
+            value: 2000

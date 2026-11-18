@@ -41,8 +41,9 @@ end() { HOME="$home" GITHUB_WORKSPACE="$1" CI_SLOT_UNITY=1 "$t/job-completed.sh"
 rm -f "$t/pruned"; mkdir -p "$plat/node_modules" "$home/setup-pnpm/store"
 end "$plat"; ok "the job-end pass empties the workspace and setup-pnpm, and never prunes" '[ -z "$(ls -A "$plat")" ] && [ ! -e "$home/setup-pnpm" ] && [ ! -e "$t/pruned" ]'
 end "$game"; ok "the job-end pass keeps a Unity project's Library" '[ -e "$game/Library/warm" ]'
-mkdir -p "$plat/stuck/file"; chmod 500 "$plat/stuck"
-end "$plat"; ok "a job-end cleanup that fails never fails the job" '[ $? -eq 0 ]'
-run "$plat"; ok "the same failure at job start fails the job" '[ $? -ne 0 ]'
-chmod 700 "$plat/stuck"
+# An rm that fails on one path, standing in for a root-owned file (CI runs this as root).
+mkdir -p "$t/bin" "$plat/stuck"; real_rm=$(command -v rm)
+printf '#!/bin/sh\ncase "$*" in *stuck*) exit 1;; esac\nexec %s "$@"\n' "$real_rm" > "$t/bin/rm"; chmod +x "$t/bin/rm"
+PATH="$t/bin:$PATH" end "$plat"; ok "a job-end cleanup that fails never fails the job" '[ $? -eq 0 ]'
+PATH="$t/bin:$PATH" run "$plat"; ok "the same failure at job start fails the job" '[ $? -ne 0 ]'
 exit $fail

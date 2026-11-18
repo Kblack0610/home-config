@@ -427,6 +427,23 @@ def observe(pool_labels):
     return hosts, runners, waiting
 
 
+def observe_shared(cfg):
+    """One label set per job waiting on a shared cap (light, heavy) that a LAN Unity slot
+    also takes. Kept out of observe()'s pool queue so the standby hosts never count them."""
+    caps = sorted({c for shared in cfg.get("shared", {}).values() for c in shared})
+    if not caps:
+        return []
+    return [label_set(r["metric"].get("labels", ""))
+            for r in prom(f'github_actions_job_waiting{{pool=~"{"|".join(caps)}",stuck!="true"}}')]
+
+
+def shared_demand(cfg, host, runners, shared_waiting):
+    """How many waiting jobs on a shared cap a slot of host takes: demand a withheld LAN
+    Unity slot would serve once admitted, though no unity job waits."""
+    caps = {c for n, r in runners.items() if r["host"] == host for c in cfg.get("shared", {}).get(n, [])}
+    return sum(1 for need in shared_waiting if need & caps)
+
+
 def label_set(joined):
     # GitHub matches labels without regard to case.
     return frozenset(l.lower() for l in joined.split(",") if l)
@@ -479,13 +496,15 @@ def verdict(h, t):
     return "STEADY", f"idle {idle:.2f}, cpu pressure {psi:.2f}"
 
 
-def decide(cfg, hosts, runners, waiting, last_action, now, instances=None, pins=None, restore=()):
+def decide(cfg, hosts, runners, waiting, last_action, now, instances=None, pins=None, restore=(), shared_waiting=()):
     """[(host, action, runner, verdict, why)]: at most one action per host, except that a
     paired host also withholds every slot stepping aside and admits each build slot whose
     pair is clear in the same cycle; withholds first so a re-admit elsewhere can use the room the pool keeps. waiting is one label
     set per waiting job, the pool's and the dedicated hosts'; instances is power_readings() for the standby hosts with a
     power block; pins is read_pins(); restore names the hosts whose verdicts are not
-    applied (a dry run), which get back what a pin withheld once no pin holds them."""
+    applied (a dry run), which get back what a pin withheld once no pin holds them.
+    shared_waiting is observe_shared(): a LAN host admits for the jobs on its shared caps
+    too, not only the unity queue."""
     # Jobs that ask for a dedicated host's label are that host's alone; the rest are the pool's.
     own = build_marks(cfg)
     waiting_all, waiting = waiting, pool_jobs(waiting, own)
@@ -528,7 +547,7 @@ def decide(cfg, hosts, runners, waiting, last_action, now, instances=None, pins=
             action, runner = "withhold", on[0]
             admitted -= 1
             floor_held -= 1
-        elif v == "ROOM" and off and queue > 0:
+        elif v == "ROOM" and off and queue + shared_demand(cfg, host, runners, shared_waiting) > 0:
             action, runner = "admit", off[0]
         elif v in ("HOT", "FULL") and on:
             why += "; at the floor"
@@ -1440,6 +1459,7 @@ def cycle(cfg, last_action, tracked=None, budget=None):
     now = time.time()
     try:
         hosts, runners, waiting = observe(pools(cfg))
+        shared_waiting = observe_shared(cfg)
     except API_ERRORS as e:
         print(f"blind cycle, deciding nothing: {e}", flush=True)
         with State.lock:
@@ -1450,7 +1470,7 @@ def cycle(cfg, last_action, tracked=None, budget=None):
     queue = len(pool_jobs(waiting, build_marks(cfg)))
     instances = power_readings(cfg, runners, {} if tracked is None else tracked, now)
     restore = {h for h in cfg["hosts"] if not live(cfg, h)}
-    decisions = decide(cfg, hosts, runners, waiting, last_action, now, instances, read_pins(cfg, now), restore)
+    decisions = decide(cfg, hosts, runners, waiting, last_action, now, instances, read_pins(cfg, now), restore, shared_waiting)
     decisions += decide_workers(cfg, instances, now)
     for host, action, runner, v, why in decisions:
         if action == "hold":

@@ -235,6 +235,9 @@ def setUpModule():
     p = mock.patch.object(governor, "restored", return_value=(0.0, "", False))
     p.start()
     unittest.addModuleCleanup(p.stop)
+    p = mock.patch.object(governor, "observe_shared", return_value=[])
+    p.start()
+    unittest.addModuleCleanup(p.stop)
 
 
 class GovernorTest(unittest.TestCase):
@@ -251,6 +254,20 @@ class GovernorTest(unittest.TestCase):
         hosts = readings(**{"razer-laptop": BUSY, "asus-laptop": BUSY, "hp-victus": COOL})
         self.assertEqual(actions(hosts)["hp-victus"], ("admit", "hpv-2"))
         self.assertEqual(actions(hosts, queue=0)["hp-victus"], ("hold", ""))
+
+    def test_a_waiting_job_on_a_shared_cap_is_room_for_a_withheld_slot_that_takes_it(self):
+        hosts = readings(**{"razer-laptop": BUSY, "asus-laptop": BUSY, "hp-victus": COOL})
+        cfg = {**CFG, "shared": {"hpv-2": ["light", "heavy"]}}
+        light = frozenset({"self-hosted", "light"})
+        got = lambda shared: {h: (a, r) for h, a, r, _, _ in governor.decide(
+            cfg, hosts, RUNNERS, [], {}, 10_000, shared_waiting=shared)}["hp-victus"]
+        self.assertEqual(got([light]), ("admit", "hpv-2"))
+        self.assertEqual(got([frozenset({"self-hosted", "heavy"})]), ("admit", "hpv-2"))
+        self.assertEqual(got([]), ("hold", ""))
+        self.assertEqual(got([frozenset({"self-hosted", "macos"})]), ("hold", ""))
+        # A slot with no shared cap gains nothing from a light job.
+        self.assertEqual(governor.decide({**CFG, "shared": {}}, hosts, RUNNERS, [], {}, 10_000,
+                                         shared_waiting=[light])[-1][1:3], ("hold", ""))
 
     def test_host_floor(self):
         runners = pool(("razer-1", "razer-laptop", True, 9, False), ("asus-1", "asus-laptop", True, 9, False),

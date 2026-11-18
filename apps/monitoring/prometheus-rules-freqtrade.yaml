@@ -61,8 +61,9 @@ spec:
               (apps/freqtrade/README.md, Troubleshooting).
 
         # Each bot's limit is trader_watch_unseen_limit_seconds, owned by the trader repo (web/exporter.py, README
-        # metrics table): a paper account is read only when its venue's pass marks it, so a slow venue gets that
-        # venue's limit. A bot with no limit series falls back to 300 s, so an exporter that drops the series cannot
+        # metrics table): a paper or stock account is read only when its league's pass marks it, so it gets the
+        # league's own freshness limit when that is over 300 s (900 s, three 5-minute passes,
+        # for every 5-minute league). A bot with no limit series falls back to 300 s, so an exporter that drops the series cannot
         # silence the alert. Matched on every label, not on(bot): two trader-web pods overlap in a rollout (ar-2510).
         - alert: TraderWatchBotBlind
           expr: >-

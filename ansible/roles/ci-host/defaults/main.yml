@@ -1,11 +1,88 @@
 ---
-# Host prep for the BNB Unity runner pool (the "Unity CI runner pool" play in
-# site.yml). The runner slots themselves come from github-actions-runner-linux.
-# Operating a host: docs/runbooks/unity-ci-host.md.
+# Host prep for every Linux CI host, by its ci_caps (inventory.yml). The runner
+# slots themselves come from the github-actions-runner-linux role, applied once per
+# slot by the "CI runners" play in site.yml. CPU and memory caps live in
+# roles/ci-host-budget, a dependency of this role. Operating a host:
+# docs/runbooks/unity-ci-host.md.
 
-# CPU and memory caps for the Unity runners and their containers live in
-# roles/ci-host-budget (ci-unity.slice), a dependency of this role.
+# Runner user home; each light and heavy slot lives under it.
+linux_ci_user_home: /var/lib/linux-ci
+linux_ci_job_started_hook: /usr/local/lib/linux-ci/job-started.sh
+linux_ci_disk_prune: /usr/local/lib/linux-ci/ci-disk-prune.sh
+linux_ci_coredump_max_use: 5G
 
+# What a light/heavy CI job expects (platform's pnpm and Playwright jobs set the bar) beyond the runner itself. No node/pnpm: the
+# workflows install their own with actions/setup-node + pnpm/action-setup.
+# The Chromium libraries stand in for `playwright install --with-deps`, which
+# only knows apt.
+linux_ci_packages:
+  - docker
+  - docker-buildx
+  - git
+  - git-lfs
+  - jq
+  - curl
+  - unzip
+  - zip
+  - github-cli
+  - kubectl
+  - python
+  - python-yaml
+  # Playwright Chromium runtime
+  - nss
+  - nspr
+  - alsa-lib
+  - at-spi2-core
+  - libcups
+  - libdrm
+  - libxkbcommon
+  - libxcomposite
+  - libxdamage
+  - libxrandr
+  - libxfixes
+  - libxshmfence
+  - mesa
+  - pango
+  - cairo
+  - ttf-liberation
+  - noto-fonts
+
+# The same set on Ubuntu (windows-media-ci, the AWS hosts). Docker comes from
+# unity_ci_packages_debian there (docker.io and docker-buildx are already on an Ubuntu Unity host),
+# and kubectl is not in Ubuntu's archive, so it comes from dl.k8s.io below.
+linux_ci_packages_apt:
+  - git
+  - git-lfs
+  - jq
+  - curl
+  - unzip
+  - zip
+  - gh
+  - python3
+  - python3-yaml
+  - python3-venv
+  # Playwright Chromium runtime
+  - libnss3
+  - libnspr4
+  - libasound2t64
+  - libatk-bridge2.0-0t64
+  - libcups2t64
+  - libdrm2
+  - libxkbcommon0
+  - libxcomposite1
+  - libxdamage1
+  - libxrandr2
+  - libxfixes3
+  - libxshmfence1
+  - libgbm1
+  - libpango-1.0-0
+  - libcairo2
+  - fonts-liberation
+  - fonts-noto-core
+# release-drift.yml runs kubectl on a light slot. Match the k3s minor.
+linux_ci_kubectl_version: v1.34.4
+
+# Unity slots: their user, machine id, asset libraries and editor images.
 unity_ci_user: actions-runner
 unity_ci_group: actions-runner
 unity_ci_user_home: /var/lib/actions-runner

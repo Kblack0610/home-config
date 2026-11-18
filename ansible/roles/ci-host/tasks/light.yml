@@ -25,15 +25,3 @@
     dest: /usr/local/bin/kubectl
     mode: "0755"
   when: ansible_os_family == "Debian"
-
-- name: Ensure docker is enabled and running
-  ansible.builtin.systemd:
-    name: docker.service
-    enabled: true
-    state: started
-  # In --check the package step above is simulated, so a fresh host has no unit yet.
-  ignore_errors: "{{ ansible_check_mode }}"
-
-- name: Keep the disk from filling
-  ansible.builtin.import_tasks: disk.yml
-  tags: [ci-disk]

@@ -1,6 +1,6 @@
 ---
 # GitHub's SSH host keys for a runner user, shared by the Unity pool
-# (unity-ci-host) and the light/heavy slots (the Linux CI play in site.yml).
+# (tasks/unity.yml) and the light/heavy slots (the CI runners play in site.yml).
 # Each slot's HOME is its own dir, so the jobs' ssh-agent action writes GitHub's
 # host keys there; ssh itself reads known_hosts from the user's passwd home
 # instead, and refuses the submodule clone without them ("Host key verification

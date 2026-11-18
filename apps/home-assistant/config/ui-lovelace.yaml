@@ -3,7 +3,6 @@ views:
   # Overview (glance) leads the tab bar; Devices is second — matching the wall.
   - !include dashboards/overview.yaml
   - !include dashboards/devices.yaml
-  - !include dashboards/launcher.yaml
   - !include dashboards/local.yaml
   - !include dashboards/ops.yaml
   - !include dashboards/view_ci.yaml

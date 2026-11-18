@@ -537,7 +537,6 @@ spec:
               cp /managed-config/dashboard_local.yaml /config/dashboards/local.yaml
               cp /managed-config/dashboard_ops.yaml /config/dashboards/ops.yaml
               cp /managed-config/dashboard_admin.yaml /config/dashboards/admin.yaml
-              cp /managed-config/dashboard_launcher.yaml /config/dashboards/launcher.yaml
               cp /managed-config/dashboard_wall.yaml /config/dashboards/wall.yaml
               # Devices hub + shared per-device detail subviews
               cp /managed-config/dashboard_devices.yaml /config/dashboards/devices.yaml

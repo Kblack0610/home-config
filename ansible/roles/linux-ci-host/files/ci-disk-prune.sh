@@ -58,7 +58,7 @@ if [ -d "$RUNNER_HOME" ]; then
     exec 9<"$RUNNER_HOME"
     flock 9
 fi
-# --before-job: a Unity slot's job-started hook (unity-job-started.sh). It prunes only under the
+# --before-job: a Unity slot's job-started hook (job-started.sh). It prunes only under the
 # floor. The hourly run skips busy slots and nothing else held a full host back: on 2026-11-11
 # aws-burst-1 sat at 0 bytes free for 30 minutes after #792, and every job there died before
 # its first test. The governor cannot withhold it, since Prometheus has no node_exporter

@@ -7,7 +7,6 @@ Home Assistant deployment for the home K3s cluster with Git-managed dashboards a
 | Method | URL |
 |--------|-----|
 | Canonical | `https://hass.kblab.me` |
-| Apex redirect | `https://kblab.me` → 307 → `https://hass.kblab.me/lovelace/launcher` (Traefik `kblab-apex-redirect` Middleware on the `home-assistant-apex` Ingress) |
 | Port Forward | `kubectl port-forward -n home-assistant svc/home-assistant 8123:8123` then `http://localhost:8123` |
 
 ### DNS Setup
@@ -37,7 +36,7 @@ Repo-managed Home Assistant files live under `apps/home-assistant/config/`:
 - `configuration.yaml`: base HA config, proxies, Lovelace mode
 - `packages/`: Prometheus-backed REST sensors and derived template sensors
 - `ui-lovelace.yaml`: default dashboard definition
-- `dashboards/`: views in tab order — `Launcher` (auto-generated tile grid, default landing), `Overview`, `Ops`, `Admin`, `3D Printing`
+- `dashboards/`: views in tab order: `Overview`, `Devices`, `Local`, `Ops`, `CI`, `Admin`
 - `automations.yaml`, `scripts.yaml`, `scenes.yaml`: checked-in defaults so a fresh PVC can boot cleanly
 
 These files are bundled into a generated ConfigMap and synced into the HA PVC on each rollout. Runtime state such as `.storage` stays on the PVC and is not repo-managed.
@@ -54,25 +53,9 @@ Custom components (e.g. `ha-bambulab`) are installed via init containers with pi
 | Service health | Home Assistant, Traefik, and LiteLLM container metrics |
 | Mac monitoring | Mac Mini node exporter metrics |
 
-### Launcher (auto-generated)
+### Site status (generated)
 
-The first tab, `Launcher`, is an auto-generated tile grid that aggregates every ingress under `apps/*/ingress*.yaml` plus every bare-metal host in `ansible/inventory.yml`.
-
-- Generator: [`scripts/gen-ha-launcher.py`](../../scripts/gen-ha-launcher.py) (mirrors `scripts/gen-gatus-ingress-checks.py` — same source-of-truth + marker pattern).
-- Output: `config/dashboards/launcher.yaml` between `# BEGIN_GENERATED_LAUNCHER` / `# END_GENERATED_LAUNCHER` markers. File header (`title`, `path`, `icon`, `max_columns`) is preserved across regenerations.
-- Grouping: namespace → group via the `NAMESPACE_GROUP` dict at the top of the script. Unknown namespaces fall back to `Other`.
-- Icons: host prefix → MDI icon via the `HOST_ICON` dict. Unknown hosts fall back to `mdi:application`.
-- Bare-metal hosts: an `INVENTORY_TILES` dict maps each Ansible inventory host to a `(label, URL, icon)` tuple — edit to add a new bare-metal target.
-- Opt out per Ingress: `metadata.annotations.homepage.kblab.me/launcher: "false"` (matches the `gatus.kblab.me/monitor: "false"` convention).
-
-When to regenerate: after any `apps/*/ingress*.yaml` or `ansible/inventory.yml` change that affects tiles. The script is idempotent — a no-op run reports `No changes.`.
-
-```bash
-./scripts/gen-ha-launcher.py
-git add apps/home-assistant/config/dashboards/launcher.yaml
-```
-
-Flux picks up the ConfigMap change → deployment hash rotates → pod rolls → the `sync-managed-config` init container copies `dashboard_launcher.yaml` to `/config/dashboards/launcher.yaml` on the PVC → HA serves the new view on next render.
+`config/packages/site_status.yaml` holds one `binary_sensor` per site, read from the blackbox probes; `fleet_alerts.yaml` and `voice_health.yaml` use them. [`scripts/gen-ha-launcher.py`](../../scripts/gen-ha-launcher.py) writes it from the ingresses, together with the kblab.me front door and the probe list ([`apps/front-door/README.md`](../front-door/README.md)), so do not edit it by hand.
 
 ### Phone overview widget
 
@@ -173,8 +156,6 @@ kubectl kustomize infra/flux/apps/prod
 | `deployment.yaml` | Main HA deployment with managed config sync init container |
 | `service.yaml` | ClusterIP service on port 8123 |
 | `ingress.yaml` | Traefik-routed Ingress for `hass.kblab.me` |
-| `ingress-apex.yaml` | Second Ingress on `kblab.me` apex that routes to this same Service; paired with `middleware-apex-redirect.yaml` so hitting the apex rewrites to `/lovelace/launcher` |
-| `middleware-apex-redirect.yaml` | Traefik `Middleware` (RedirectRegex) used by `ingress-apex.yaml` |
 | `kustomization.yaml` | Generates the managed config ConfigMap from checked-in files |
 
 ## Configuration

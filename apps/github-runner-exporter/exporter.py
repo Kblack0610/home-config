@@ -20,13 +20,14 @@ GitHub's runner object does not carry its current job, so that comes from the
 other side: every in-progress run in $RUN_REPOS, its jobs, matched on
 job.runner_name.
 
-ROSTER-FIRST for slot counts, same reason as apps/fleet-exporter: GitHub only
-lists runners that registered, so a slot whose ansible play never ran would
-otherwise be invisible. $RUNNER_ROSTER mirrors ansible/inventory.yml and
-scripts/check-runner-roster.py keeps them equal. Each missing slot is a
-state="missing" row. Runners outside the roster are listed but not counted
-against anything. m1-playground-mac is in the roster though no play manages it:
-it runs on the mac-mini and says so with a host-mac-mini label.
+TOPOLOGY-FIRST for slots, same reason as apps/fleet-exporter: GitHub only lists
+runners that registered, so a slot whose ansible play never ran would otherwise
+be invisible. $TOPOLOGY is apps/ci-topology/topology.json, rendered from
+ansible/inventory.yml by scripts/render-ci-topology.py: every slot's name, host,
+caps (the job kinds it takes) and, for a repo runner, its repo. Each slot with no
+registered runner of its name is a state="missing" row. A runner is counted once
+per cap (github_runner_pool_slot, pool=<cap>); one no slot names is listed but
+counted against nothing.
 
 Fetched on every scrape, no background loop: Prometheus's scrape interval is the
 cadence (GitHub has no push API for runner state). Calls run on a small thread
@@ -89,7 +90,7 @@ import re
 import ssl
 import threading
 import time
-from collections import OrderedDict
+from collections import Counter, OrderedDict
 import urllib.error
 import urllib.parse
 import urllib.request
@@ -119,8 +120,23 @@ def owner_tokens(env):
 OWNER_TOKENS = owner_tokens(os.environ)
 PORT = int(os.environ.get("PORT", "9320"))
 ORGS = os.environ.get("RUNNER_ORGS", "BlackNBrownStudios").split()
-# Repos whose repo-scoped runners, active runs and recent runs are read.
+
+def load_topology(path):
+    """apps/ci-topology/topology.json, rendered from ansible/inventory.yml: every CI host's
+    site and the slots it gives CI, each with its caps (the job kinds it takes)."""
+    with open(path) as f:
+        return json.load(f)["hosts"]
+
+
+TOPOLOGY = load_topology(os.environ.get("TOPOLOGY", "/topology/topology.json"))
+# slot name -> {host, caps, repo}
+SLOTS = {s["name"]: {"host": h, "caps": s["caps"], "repo": s.get("repo")}
+         for h, e in TOPOLOGY.items() for s in e["slots"]}
+TOPOLOGY_HOSTS = sorted(TOPOLOGY, key=len, reverse=True)
+# Repos whose repo-scoped runners, active runs and recent runs are read: RUN_REPOS, plus
+# every repo a topology slot registers its runner to (a repo runner is listed only there).
 RUN_REPOS = os.environ.get("RUN_REPOS", "BlackNBrownStudios/platform").split()
+RUN_REPOS += sorted({s["repo"] for s in SLOTS.values() if s["repo"]} - set(RUN_REPOS))
 # Repos read only for the /api/ci/details feed, their runs and job detail for schedules-sync:
 # no runner listing (that needs admin on the repo, and the pool counts need every runner source
 # to answer) and none of the metrics, which stay the pool's, RUN_REPOS'.
@@ -211,20 +227,11 @@ RENDER_LOCK = threading.Lock()
 # Bounds the jobs fan-out per repo per status, so one repo with a deep queue
 # cannot eat the API budget or the scrape timeout.
 MAX_RUNS_PER_REPO = int(os.environ.get("MAX_RUNS_PER_REPO", "15"))
-# host:pool:slots, whitespace separated.
-ROSTER = []
-for entry in os.environ.get("RUNNER_ROSTER", "").split():
-    host, pool, slots = entry.split(":")
-    ROSTER.append((host, pool, int(slots)))
-ROSTER_HOSTS = sorted({h for h, _, _ in ROSTER}, key=len, reverse=True)
-# Hosts off the home LAN (cloud machines), whitespace separated. Mirrors the
-# inventory hosts with unity_ci_lan: false; scripts/check-runner-roster.py
-# keeps them equal. Every runner row says site="cloud" or site="local".
-CLOUD_HOSTS = frozenset(os.environ.get("CLOUD_HOSTS", "").split())
 
 
 def site_of(host):
-    return "cloud" if host in CLOUD_HOSTS else "local"
+    """"cloud" for a topology host off the home LAN, "local" for every other."""
+    return TOPOLOGY.get(host, {}).get("site", "local")
 
 
 # unity-build: the player-build host (aws-build-1), a pool of its own so build waits stay
@@ -361,15 +368,24 @@ def pool_of(labels):
     return "windows" if any(l.lower() == "windows" for l in labels) else "other"
 
 
+def caps_of(name, labels):
+    """The job kinds a runner takes: its topology slot's caps, or for a runner no slot
+    names (registered by hand, or since removed from inventory) the one its labels say."""
+    slot = SLOTS.get(name)
+    return slot["caps"] if slot else [pool_of(labels)]
+
+
 def host_of(name, labels):
-    # The unity pool role stamps host-<inventory_hostname>; the others do not,
-    # but name the runner <inventory_hostname>-..., so match roster hosts as
-    # name prefixes (longest first). Unrostered names fall back to the text
-    # before the first pool-ish word.
+    # A topology slot names its host. Otherwise: the unity pool role stamps
+    # host-<inventory_hostname>; the others name the runner <inventory_hostname>-...,
+    # so match topology hosts as name prefixes (longest first). Other names fall
+    # back to the text before the first pool-ish word.
+    if name in SLOTS:
+        return SLOTS[name]["host"]
     for l in labels:
         if l.startswith("host-"):
             return l[5:]
-    for h in ROSTER_HOSTS:
+    for h in TOPOLOGY_HOSTS:
         if name == h or name.startswith(h + "-"):
             return h
     m = re.match(r"(.+?)-(light|heavy|unity|playground|mac)\b", name)
@@ -382,6 +398,55 @@ def github_hosted(job):
         return job["runner_group_name"] == "GitHub Actions"
     labels = job.get("labels") or []
     return bool(labels) and "self-hosted" not in labels
+
+
+SLOT_KEYS = ("name", "host", "site", "state", "scope", "forge")
+
+
+def slot_row(lab, cap, value):
+    """A github_runner_pool_slot line: one runner row's identity, once per cap it takes."""
+    return f"github_runner_pool_slot{{{labels_str({**{k: lab[k] for k in SLOT_KEYS}, 'pool': cap})}}} {value}"
+
+
+def runner_label_sets(seen):
+    """(scope, caps, lowercased labels) per registered runner, offline ones too (a stopped
+    instance's runners stay registered). A runner the governor withholds counts the labels
+    it gets back on admit: its caps, and unity-full on a full host's unity slot."""
+    out = []
+    for scope, r in seen:
+        names = [l["name"] for l in r.get("labels", [])]
+        caps = caps_of(r["name"], names)
+        have = {l.lower() for l in names}
+        if WITHHELD_LABELS.keys() & have:
+            have |= set(caps)
+            if "unity" in caps and TOPOLOGY.get(host_of(r["name"], names), {}).get("full"):
+                have.add("unity-full")
+        out.append((scope, caps, have))
+    return out
+
+
+def wait_kind(repo, job, takers):
+    """The pool label of a waiting job: the cap it asks for, or the first cap of a runner
+    that can take it when it names none (runs-on: self-hosted; the lowest by name, so it holds
+    between scrapes). "github-hosted" for GitHub's own runners, "jobless" for a run with no jobs yet, and "unserved" when no
+    registered runner this repo may use carries every label it asks for, so it waits
+    forever (ar-1872). takers is runner_label_sets(), or None while a runner source
+    failed, when nothing is called unserved."""
+    labels = job.get("labels") or []
+    if job.get("_jobless"):
+        return "jobless"
+    if github_hosted(job):
+        return "github-hosted"
+    cap = pool_of(labels)
+    if takers is None:
+        return cap
+    want = {l.lower() for l in labels}
+    org_ok = repo.split("/", 1)[0] in ORGS
+    fits = [caps for scope, caps, have in takers
+            if (scope == repo or (scope == "org" and org_ok)) and want <= have]
+    if not fits:
+        return "unserved"
+    return cap if cap != "other" else min(caps[0] for caps in fits)
 
 
 def quantile(xs, q):
@@ -857,6 +922,8 @@ def forgejo_rows(runners_fut, repo_futs, now):
                     started = ts(t.get("run_started_at"))
                     value = int(now - started) if started else 0
                 add("github_runner_state", lab, value)
+                add("github_runner_pool_slot", {**{k: lab[k] for k in SLOT_KEYS if k != "forge"}, "pool": "forgejo"},
+                    value)
                 by_state[lab["state"]] += 1
             last = max(((ts(t.get("updated_at")) or 0, repo, t) for repo, t in finished if t["id"] in r["tasks"]),
                        key=lambda x: x[0], default=None)
@@ -945,12 +1012,13 @@ def render():
         "# HELP github_runner_state One row per runner: state is running|idle|offline|missing; value is seconds the current job has run (0 otherwise)",
         "# TYPE github_runner_state gauge",
     ]
-    by_state, online = {}, {}
+    by_state, online, slot_rows = {}, {}, []
     for scope, r in sorted(seen.values(), key=lambda s: s[1]["name"]):
         names = [l["name"] for l in r.get("labels", [])]
-        host, pool_ = host_of(r["name"], names), pool_of(names)
+        host, caps = host_of(r["name"], names), caps_of(r["name"], names)
         # labels: what ci-runner-governor matches waiting jobs against, offline runners too.
-        lab = {"name": r["name"], "host": host, "pool": pool_, "site": site_of(host), "scope": scope,
+        # pool: the runner's first cap; github_runner_pool_slot has a row for each.
+        lab = {"name": r["name"], "host": host, "pool": caps[0], "site": site_of(host), "scope": scope,
                "labels": ",".join(sorted(names)),
                "state": "", "repo": "", "workflow": "", "job_name": "", "branch": "", "url": "", **NO_RUN,
                "forge": "github"}
@@ -972,10 +1040,31 @@ def render():
         else:
             lab["state"] = "idle"
         if lab["state"] != "offline":
-            online[(host, pool_)] = online.get((host, pool_), 0) + 1
+            for cap in caps:
+                online[(host, cap)] = online.get((host, cap), 0) + 1
         by_state[lab["state"]] = by_state.get(lab["state"], 0) + 1
         L.append(f"github_runner_state{{{labels_str(lab)}}} {value}")
+        slot_rows += [slot_row(lab, cap, value) for cap in caps]
+    if runners_ok:
+        # A topology slot with no registered runner of its name: its play never ran, or
+        # its runner was removed. Unknown while a source failed, so no row then.
+        registered = {r["name"] for _, r in seen.values()}
+        for name, slot in sorted(SLOTS.items()):
+            if name in registered:
+                continue
+            lab = {"name": name, "host": slot["host"], "pool": slot["caps"][0], "site": site_of(slot["host"]),
+                   "scope": "topology", "labels": "",
+                   "state": "missing", "repo": "", "workflow": "", "job_name": "", "branch": "", "url": "", **NO_RUN,
+                   "forge": "github"}
+            by_state["missing"] = by_state.get("missing", 0) + 1
+            L.append(f"github_runner_state{{{labels_str(lab)}}} 0")
+            slot_rows += [slot_row(lab, cap, 0) for cap in slot["caps"]]
     L += forgejo("github_runner_state")
+
+    L += [
+        "# HELP github_runner_pool_slot One row per runner per cap (job kind) it takes, pool=<cap>; value as github_runner_state",
+        "# TYPE github_runner_pool_slot gauge",
+    ] + slot_rows + forgejo("github_runner_pool_slot")
 
     L += [
         "# HELP github_runner_withheld A unity or unity-build runner apps/ci-runner-governor holds back from new jobs",
@@ -985,21 +1074,6 @@ def render():
         names = [l["name"] for l in r.get("labels", [])]
         if WITHHELD_LABELS.keys() & set(names):
             L.append(f"github_runner_withheld{{{labels_str({'name': r['name'], 'host': host_of(r['name'], names)})}}} 1")
-
-    if runners_ok:
-        registered = {}
-        for scope, r in seen.values():
-            names = [l["name"] for l in r.get("labels", [])]
-            k = (host_of(r["name"], names), pool_of(names))
-            registered[k] = registered.get(k, 0) + 1
-        for host, pool_, slots in ROSTER:
-            for n in range(registered.get((host, pool_), 0), slots):
-                lab = {"name": f"{host} {pool_} slot {n + 1}", "host": host, "pool": pool_, "site": site_of(host),
-                       "scope": "roster", "labels": "",
-                       "state": "missing", "repo": "", "workflow": "", "job_name": "", "branch": "", "url": "", **NO_RUN,
-                       "forge": "github"}
-                by_state["missing"] = by_state.get("missing", 0) + 1
-                L.append(f"github_runner_state{{{labels_str(lab)}}} 0")
 
     L += [
         "# HELP github_runners_by_state Count of runners in each state (absent while a runner source failed for missing)",
@@ -1012,27 +1086,30 @@ def render():
     L += forgejo("github_runners_by_state")
 
     L += [
-        "# HELP github_runner_pool_expected Slots the roster says this host runs in this pool",
+        "# HELP github_runner_pool_expected Topology slots on this host that take this cap (pool=<cap>)",
         "# TYPE github_runner_pool_expected gauge",
-        "# HELP github_runner_pool_online Online runners in this host/pool; absent while any runner source failed",
+        "# HELP github_runner_pool_online Online runners on this host that take this cap; absent while any runner source failed",
         "# TYPE github_runner_pool_online gauge",
     ]
-    for host, pool_, slots in ROSTER:
-        L.append(f'github_runner_pool_expected{{host="{host}",pool="{pool_}"}} {slots}')
+    expected = Counter((s["host"], cap) for s in SLOTS.values() for cap in s["caps"])
+    for (host, cap), n in sorted(expected.items()):
+        L.append(f'github_runner_pool_expected{{host="{host}",pool="{cap}"}} {n}')
     if runners_ok:
-        for host, pool_ in sorted({(h, p) for h, p, _ in ROSTER} | set(online)):
-            L.append(f'github_runner_pool_online{{host="{host}",pool="{pool_}"}} {online.get((host, pool_), 0)}')
+        for host, cap in sorted(set(expected) | set(online)):
+            L.append(f'github_runner_pool_online{{host="{host}",pool="{cap}"}} {online.get((host, cap), 0)}')
 
     L += [
         "# HELP github_actions_job_waiting A job waiting for a runner; value is seconds since it was queued",
         "# TYPE github_actions_job_waiting gauge",
     ]
+    takers = runner_label_sets(seen.values())
     for repo, j in waiting:
         created = ts(j.get("created_at"))
         age = int(now - created) if created else 0
         lab = {"repo": repo.split("/", 1)[1], "workflow": j["_workflow"], "job_name": j.get("name", ""),
                "branch": j.get("head_branch") or "", "status": j.get("status", ""),
-               "labels": ",".join(j.get("labels") or []), "pool": pool_of(j.get("labels") or []),
+               "labels": ",".join(j.get("labels") or []),
+               "pool": wait_kind(repo, j, takers if runners_ok else None),
                "stuck": "true" if j.get("_jobless") and age > JOBLESS_STUCK_SECS else "false",
                "url": j.get("html_url", ""), **j["_run"], "forge": "github"}
         L.append(f"github_actions_job_waiting{{{labels_str(lab)}}} {age}")
@@ -1075,7 +1152,7 @@ def render():
     # hand-written description that drifts from the workflow files.
     pool_of_runner = {}
     for scope, r in seen.values():
-        pool_of_runner[r["name"]] = pool_of([l["name"] for l in r.get("labels", [])])
+        pool_of_runner[r["name"]] = caps_of(r["name"], [l["name"] for l in r.get("labels", [])])[0]
     last, pool_wf = {}, {}
     for a in acts:
         for run in a["history"]:
@@ -1277,7 +1354,7 @@ def server(addr):
 
 if __name__ == "__main__":
     print(
-        f"github-runner-exporter: orgs={ORGS} repos={len(RUN_REPOS)} feed_repos={len(FEED_REPOS)} roster={len(ROSTER)} "
+        f"github-runner-exporter: orgs={ORGS} repos={len(RUN_REPOS)} feed_repos={len(FEED_REPOS)} slots={len(SLOTS)} "
         f"token={'set' if TOKEN else 'MISSING'} owner_tokens={sorted(OWNER_TOKENS)} port={PORT}",
         flush=True,
     )

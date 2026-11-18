@@ -148,6 +148,25 @@ tests:
         alertname: CiHostRunnersOffline
         exp_alerts: []
 
+  - name: a job no runner serves warns after 30 minutes, a served or jobless wait stays quiet
+    interval: 1m
+    input_series:
+      - series: 'github_actions_job_waiting{repo=".dotfiles-private",workflow="ci",job_name="shell tests",labels="self-hosted,linux",pool="unserved",stuck="false"}'
+        values: '0+60x40'
+      - series: 'github_actions_job_waiting{repo="unity-core",workflow="ci",job_name="test",labels="unity",pool="unity",stuck="false"}'
+        values: '0+60x40'
+      - series: 'github_actions_job_waiting{repo="x",workflow="ci",job_name="",labels="",pool="jobless",stuck="true"}'
+        values: '0+60x40'
+    alert_rule_test:
+      - eval_time: 29m
+        alertname: CiJobUnserved
+        exp_alerts: []
+      - eval_time: 35m
+        alertname: CiJobUnserved
+        exp_alerts:
+          - exp_labels: {alertname: CiJobUnserved, severity: warning, category: capacity, fleet: fix, repo: .dotfiles-private, workflow: ci, job_name: shell tests, labels: "self-hosted,linux"}
+            exp_annotations: {summary: ".dotfiles-private shell tests has waited 35m 0s for labels self-hosted,linux that no runner it may use carries: docs/runbooks/unity-ci-host.md#a-job-no-runner-serves"}
+
   - name: a low GitHub API bucket warns after 10 minutes, per scope, across a pod restart
     interval: 1m
     input_series:

@@ -3,7 +3,7 @@
 
 Covers the logic a quiet afternoon cannot show on the live API: a busy runner
 gets the job it is running, a queued job and a job-less ghost run show as
-waiting, a never-registered roster slot is a `missing` row, and a failed
+waiting, a never-registered topology slot is a `missing` row, and a failed
 source makes runners absent and suppresses missing rows instead of reading as
 offline. Stdlib only; CI runs it in the checks workflow.
 """
@@ -12,21 +12,33 @@ import json
 import os
 import re
 import sys
+import tempfile
 import threading
 import time
 import unittest
 import urllib.error
 from unittest import mock
 
+TOPOLOGY = {"hosts": {
+    "box": {"site": "local", "slots": [
+        {"name": "box-light-1", "caps": ["light"], "repo": "acme/web"},
+        {"name": "box-light-2", "caps": ["light"], "repo": "acme/web"},
+        {"name": "box-unity-pool-1", "caps": ["unity"]}]},
+    "gone": {"site": "cloud", "full": True, "slots": [{"name": "gone-unity-pool-1", "caps": ["unity"]}]},
+}}
+_topology = tempfile.NamedTemporaryFile("w", suffix=".json", delete=False)
+json.dump(TOPOLOGY, _topology)
+_topology.close()
 os.environ.update(
     RUNNER_ORGS="acme",
     RUN_REPOS="acme/web acme/game",
-    RUNNER_ROSTER="box:light:2 box:unity:1 gone:unity:1",
-    CLOUD_HOSTS="gone",
+    TOPOLOGY=_topology.name,
     RECENT_PER_REPO="2",
 )
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import exporter  # noqa: E402
+
+os.unlink(_topology.name)  # read once, at import
 
 T0 = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(time.time() - 600))
 T1 = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(time.time() - 540))
@@ -158,12 +170,34 @@ class ExporterTest(unittest.TestCase):
         state = rows(out, "github_runner_state")
         self.assertTrue(any('name="box-light-1"' in r and 'state="idle"' in r for r in state))
         self.assertTrue(any('name="box-light-2"' in r and 'state="offline"' in r for r in state))
-        # box:light has 2 registered (one offline) -> nothing missing there;
-        # gone:unity has none -> one missing row.
+        # box's slots are all registered (one offline) -> nothing missing there;
+        # gone-unity-pool-1 never registered -> one missing row, named for its slot.
         missing = [r for r in state if 'state="missing"' in r]
         self.assertEqual(len(missing), 1)
-        self.assertIn('host="gone"', missing[0])
+        for want in ('name="gone-unity-pool-1"', 'host="gone"', 'pool="unity"', 'scope="topology"'):
+            self.assertIn(want, missing[0])
         self.assertIn('github_runners_by_state{state="missing",forge="github"} 1', out)
+
+    def test_a_slot_with_several_caps_counts_once_per_cap(self):
+        flex = {"host": "box", "caps": ["light", "unity"], "repo": None}
+        with mock.patch.dict(exporter.SLOTS, {"box-unity-pool-1": flex}):
+            out = self.render()
+        slot = [r for r in rows(out, "github_runner_pool_slot") if 'name="box-unity-pool-1"' in r]
+        self.assertEqual(len(slot), 2)
+        self.assertTrue(any('pool="light"' in r and 'state="running"' in r for r in slot))
+        self.assertTrue(any('pool="unity"' in r and 'state="running"' in r for r in slot))
+        (st,) = [r for r in rows(out, "github_runner_state") if 'name="box-unity-pool-1"' in r]
+        self.assertIn('pool="light"', st)  # its first cap
+        self.assertIn('github_runner_pool_expected{host="box",pool="light"} 3', out)
+        self.assertIn('github_runner_pool_expected{host="box",pool="unity"} 1', out)
+        # box-light-1 and the busy flex slot are online in light; box-light-2 is offline.
+        self.assertIn('github_runner_pool_online{host="box",pool="light"} 2', out)
+        self.assertIn('github_runner_pool_online{host="box",pool="unity"} 1', out)
+
+    def test_a_missing_slot_has_a_pool_slot_row_per_cap(self):
+        slot = [r for r in rows(self.render(), "github_runner_pool_slot") if 'name="gone-unity-pool-1"' in r]
+        self.assertEqual(slot, ['github_runner_pool_slot{name="gone-unity-pool-1",host="gone",site="cloud",'
+                                'state="missing",scope="topology",forge="github",pool="unity"} 0'])
 
     def test_runner_rows_carry_their_labels_offline_too(self):
         # ci-runner-governor reads these to tell which waiting jobs a stopped host could take.
@@ -198,6 +232,7 @@ class ExporterTest(unittest.TestCase):
         # The ghost run is 10 minutes old in the fixture: jobless, but not stuck yet.
         ghost = next(r for r in waiting if 'job_name="(run has no jobs)"' in r)
         self.assertIn('stuck="false"', ghost)
+        self.assertIn('pool="jobless"', ghost)
         old = exporter.JOBLESS_STUCK_SECS
         try:
             exporter.JOBLESS_STUCK_SECS = 60
@@ -454,6 +489,38 @@ class ExporterTest(unittest.TestCase):
     def test_host_label_beats_the_name_so_one_machine_is_one_host(self):
         self.assertEqual(exporter.host_of("m1-playground-mac", ["self-hosted", "macOS", "host-mac-mini"]), "mac-mini")
         self.assertEqual(exporter.host_of("m1-playground-mac", ["self-hosted", "macOS"]), "m1")
+        # A topology slot names its host, whatever its labels say.
+        with mock.patch.dict(exporter.SLOTS, {"m1-playground-mac": {"host": "mac-mini", "caps": ["macos"], "repo": None}}):
+            self.assertEqual(exporter.host_of("m1-playground-mac", ["self-hosted", "macOS"]), "mac-mini")
+
+    def takers(self, *runners_):
+        return exporter.runner_label_sets(runners_)
+
+    def test_a_wait_no_registered_runner_serves_is_unserved(self):
+        # ar-1872: a job asking for a label no runner this repo may use carries waits forever.
+        org = ("org", {"name": "box-unity-pool-1", "labels": [{"name": l} for l in ("self-hosted", "unity", "host-box")]})
+        web = ("acme/web", {"name": "box-light-1", "labels": [{"name": l} for l in ("self-hosted", "Linux", "light")]})
+        t = self.takers(org, web)
+        kind = exporter.wait_kind
+        self.assertEqual(kind("acme/game", {"labels": ["self-hosted", "unity"]}, t), "unity")
+        self.assertEqual(kind("acme/game", {"labels": ["self-hosted", "unity", "host-gone"]}, t), "unserved")
+        # A repo runner serves its own repo only, and an org runner only the org's repos.
+        self.assertEqual(kind("acme/game", {"labels": ["self-hosted", "light"]}, t), "unserved")
+        self.assertEqual(kind("other/repo", {"labels": ["self-hosted", "unity"]}, t), "unserved")
+        # GitHub matches labels without regard to case; runs-on: self-hosted takes the runner's cap.
+        self.assertEqual(kind("acme/web", {"labels": ["self-hosted", "linux"]}, t), "light")
+        self.assertEqual(kind("acme/web", {"labels": ["ubuntu-24.04"]}, t), "github-hosted")
+        self.assertEqual(kind("acme/web", {"labels": [], "_jobless": True}, t), "jobless")
+        # While a runner source failed nothing is called unserved.
+        self.assertEqual(kind("acme/game", {"labels": ["self-hosted", "unity", "host-gone"]}, None), "unity")
+
+    def test_a_withheld_runner_still_serves_what_it_gets_back(self):
+        held = ("org", {"name": "gone-unity-pool-1",
+                        "labels": [{"name": l} for l in ("self-hosted", "unity-withheld", "host-gone")]})
+        t = self.takers(held)
+        # gone is a full host: its unity slot gets unity and unity-full back on admit.
+        self.assertEqual(exporter.wait_kind("acme/game", {"labels": ["self-hosted", "unity", "unity-full"]}, t), "unity")
+        self.assertEqual(exporter.wait_kind("acme/game", {"labels": ["self-hosted", "unity-build"]}, t), "unserved")
 
     def test_withheld_runner_stays_in_the_pool(self):
         org = "orgs/acme/actions/runners?per_page=100&page=1"

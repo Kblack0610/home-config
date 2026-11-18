@@ -121,6 +121,29 @@ class CapTests(unittest.TestCase):
         _, fails = self.slots()
         self.assertTrue(any("aws-spot-1: a cloud host" in f for f in fails))
 
+    def test_a_lan_build_slot_is_its_group_key_on_its_tests_cores(self):
+        topo, fails = topology.render(self.hosts, self.groups)
+        self.assertEqual(fails + topology.fit_failures(self.hosts, self.groups), [])
+        slots = {s["name"]: s for s in topo["hosts"]["ms-a2"]["slots"]}
+        self.assertEqual(slots["ms-a2-unity-pool-5"]["caps"], ["unity-build"])
+        self.assertEqual(slots["ms-a2-unity-pool-5"]["group"], ["ms-a2-unity-pool-3", "ms-a2-unity-pool-4"])
+        self.assertEqual(slots["ms-a2-unity-pool-1"]["caps"], ["unity", "light", "heavy"])
+
+    def test_a_group_off_its_build_slots_cores_fails(self):
+        self.hosts["ms-a2"]["unity_ci_slot_groups"] = {5: [1, 2]}
+        fails = topology.fit_failures(self.hosts, self.groups)
+        self.assertIn("ms-a2: test slot 1's cores are not inside build slot 5's", fails)
+        self.assertIn("ms-a2: slots 3 and 5 share cores and are not one slot group", fails)
+
+    def test_the_release_rule_is_pool_wide(self):
+        # ms-a2's one build slot has no unity-release; aws-build-1's slots 1-2 do.
+        self.assertEqual(topology.fit_failures(self.hosts, self.groups), [])
+        self.hosts["aws-build-1"]["unity_ci_slot_labels"] = {}
+        self.assertTrue(any("0 of the pool's 4 build slots" in f for f in topology.fit_failures(self.hosts, self.groups)))
+        self.hosts["aws-build-1"]["unity_ci_slot_labels"] = {n: ["unity-release"] for n in (1, 2, 3)}
+        self.hosts["ms-a2"]["unity_ci_slot_labels"] = {5: ["unity-release"]}
+        self.assertTrue(any("4 of the pool's 4 build slots" in f for f in topology.fit_failures(self.hosts, self.groups)))
+
 
 if __name__ == "__main__":
     unittest.main()

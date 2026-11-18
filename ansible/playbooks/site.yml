@@ -403,11 +403,11 @@
       ansible.builtin.assert:
         that:
           - ci_unity_slot_cpus | length in [0, unity_ci_slots | default(0)]
-          - unity_ci_build_slots | default(0) <= unity_ci_slots | default(0)
+          - (unity_ci_slot_groups | default({})).keys() | reject('in', range(1, unity_ci_slots | default(0) + 1)) | list | length == 0
         fail_msg: >-
           {{ inventory_hostname }} has unity_ci_slots {{ unity_ci_slots }} but
-          {{ ci_unity_slot_cpus | length }} entries in ci_unity_slot_cpus, or
-          unity_ci_build_slots {{ unity_ci_build_slots | default(0) }} over it.
+          {{ ci_unity_slot_cpus | length }} entries in ci_unity_slot_cpus, or a build slot
+          (a unity_ci_slot_groups key) outside 1-{{ unity_ci_slots }}.
       # The play also runs on light-only hosts (razer-laptop), which define no unity_ci_slots.
       when: "'unity_ci_runners' in group_names"
       tags: [runner, ci, unity-ci]
@@ -439,10 +439,10 @@
         # one slot alone through unity_ci_slot_labels). hd-library: the host
         # holds asset-library-hd (HD, Slim tour); defaults to unity_ci_lan, since only LAN hosts
         # got the tarball, and a cloud host sets unity_ci_hd_library once it reads it from S3.
-        # unity_ci_build_slots: slots 1..N carry unity-build in place of unity, unity-full,
-        # unity-wide and unity-gate, so no gate or nightly lands on them, and the rest are pool
-        # slots (aws-build-1: 3 build slots, 6 test slots; unity_ci_slot_groups keep a
-        # build and a test off the same cores).
+        # Build slots, the keys of unity_ci_slot_groups, carry unity-build in place of unity,
+        # unity-full, unity-wide and unity-gate, so no gate or nightly lands on them, and the rest
+        # are pool slots (aws-build-1: build slots 1-3, test slots 4-9; ms-a2: build slot 5 on
+        # test slots 3-4's cores). The governor keeps a build and a test off the same cores.
         # unity_ci_slot_labels adds labels to one slot, so a comparison run can be pinned to it,
         # or a job kept off it (aws-build-1: unity-release on slots 1-2 only).
         # unity-gate: the non-preemptible hosts merge gates may take (unity_ci_gate, default false);
@@ -451,14 +451,14 @@
         # unity plus the host's light and heavy on a test slot (scripts/render-ci-topology.py HOST_CAPS).
         # No Unity slot carries fresh-workspace, so a Unity repo's light job never lands in its
         # warm tree.
-        gh_runner_labels: "{{ [ 'self-hosted', 'linux', 'x64', 'host-' ~ inventory_hostname ] + ci_slot_caps[gh_runner_name] + ([] if unity_slot <= unity_ci_build_slots | default(0) else ([ 'unity-full' ] if unity_ci_full | default(true) else []) + ([ 'unity-wide' ] if unity_ci_wide | default(false) else []) + ([ 'unity-gate' ] if unity_ci_gate | default(false) else [])) + ([ 'lan' ] if unity_ci_lan | default(true) else []) + ([ 'hd-library' ] if unity_ci_hd_library | default(unity_ci_lan | default(true)) else []) + (unity_ci_slot_labels | default({})).get(unity_slot, []) }}"
+        gh_runner_labels: "{{ [ 'self-hosted', 'linux', 'x64', 'host-' ~ inventory_hostname ] + ci_slot_caps[gh_runner_name] + ([] if unity_slot in unity_ci_slot_groups | default({}) else ([ 'unity-full' ] if unity_ci_full | default(true) else []) + ([ 'unity-wide' ] if unity_ci_wide | default(false) else []) + ([ 'unity-gate' ] if unity_ci_gate | default(false) else [])) + ([ 'lan' ] if unity_ci_lan | default(true) else []) + ([ 'hd-library' ] if unity_ci_hd_library | default(unity_ci_lan | default(true)) else []) + (unity_ci_slot_labels | default({})).get(unity_slot, []) }}"
         # ci-runner-governor's admit labels and withheld labels (apps/ci-runner-governor/config.json
         # pool_label, full_label, withheld_label, and aws-build-1's "labels" and "withheld_label"),
         # plus the shared caps a slot takes (governor.py "shared"): an apply leaves a withheld slot
         # withheld for every kind.
         gh_runner_governed_labels: [unity, unity-full, unity-build, light, heavy]
         gh_runner_withheld_labels: [unity-withheld, unity-build-withheld]
-        gh_runner_withheld_label: "{{ 'unity-build-withheld' if unity_slot <= unity_ci_build_slots | default(0) else 'unity-withheld' }}"
+        gh_runner_withheld_label: "{{ 'unity-build-withheld' if unity_slot in unity_ci_slot_groups | default({}) else 'unity-withheld' }}"
         # With ci_unity_slot_cpus each slot gets its own cores (roles/ci-host-budget).
         unity_slot_slice: >-
           {{ (ci_unity_slot_slice_prefix ~ unity_slot ~ '.slice') if ci_unity_slot_cpus | length else ci_unity_slice }}

@@ -380,8 +380,14 @@ all:
         # k3s keeps two cores of its own (ci_hosts below); ramp per
         # docs/runbooks/unity-ci-host.md. Not unity-wide until each passes the
         # ucp-1521 probes.
+        # Slot 5 of ms-a2 is a player-build slot (make-logical-possum phase 5, 2026-11-18) on
+        # test slots 3 and 4's cores, so it adds no load: the governor runs the build or those
+        # two tests, never both, and claims a waiting build here before it starts aws-build-1.
+        # Picked by heat: 68C max since the thermal cap (hc-553), deskslim-2 71C. No
+        # unity-release, so a release never holds the LAN build slot.
         ms-a2:
-          unity_ci_slots: 4
+          unity_ci_slots: 5
+          unity_ci_slot_groups: {5: [3, 4]}
           unity_ci_slot_labels:
             1: [slim-tour]
           unity_ci_full: true
@@ -423,7 +429,7 @@ all:
         # The player-build host (platform infra/aws-ci-burst, added 2026-11-10): an
         # on-demand m7a.8xlarge with a 900G volume, reached through SSM with the
         # same instance profile and library bucket as the Spot hosts. Slots 1-3 carry unity-build
-        # (unity_ci_build_slots), so playground release.yml's builds run there and no gate
+        # (the unity_ci_slot_groups keys), so playground release.yml's builds run there and no gate
         # or nightly can; slots 4-9 are pool test slots (unity, unity-full, unity-gate). Each
         # build slot shares its cores with two test slots, and the governor never runs a
         # build and a test in one group (unity_ci_slot_groups). It
@@ -438,7 +444,6 @@ all:
             -o ProxyCommand="aws ssm start-session --profile bnb --region us-east-2
             --target %h --document-name AWS-StartSSHSession --parameters portNumber=%p"
           unity_ci_slots: 9
-          unity_ci_build_slots: 3
           # Build slot -> the test slots on its cores (ci_unity_slot_cpus below): the governor
           # admits a build slot or its test slots, never both.
           unity_ci_slot_groups: {1: [4, 5], 2: [6, 7], 3: [8, 9]}
@@ -568,20 +573,21 @@ all:
           ci_linux_memory_max: 6G
         # ms-a2: 16 cores / 32 threads, SMT siblings n and n+16 (sysfs,
         # 2026-11-16), 91G. Cores 0-1 are k3s and the OS, as on razer. Each Unity
-        # slot gets three cores and 16G (docs/unity-ci-hardware.md sizing), cores
-        # 2-13. Cores 14-15 (CPUs 14-15,30-31) are the two light slots' and the
+        # test slot gets three cores and 16G (docs/unity-ci-hardware.md sizing), cores
+        # 2-13; build slot 5 takes test slots 3 and 4's six cores and their 32G (a build was
+        # killed at 14G, razer built in 20G). Cores 14-15 (CPUs 14-15,30-31) are the two light slots' and the
         # heavy slot's (linux_ci_runners), 16G between them (a light job is about
         # 0.6G), which leaves 21G for the host and k3s.
         ms-a2:
-          ci_caps: [light, heavy, unity, forgejo]
+          ci_caps: [light, heavy, unity, unity-build, forgejo]
           ci_cpus: 2-15,18-31
           ci_memory_max: 70G
           ci_linux_cpus: 14-15,30-31
           ci_linux_memory_max: 16G
           ci_unity_cpus: 2-13,18-29
-          ci_unity_slot_cpus: ["2-4,18-20", "5-7,21-23", "8-10,24-26", "11-13,27-29"]
+          ci_unity_slot_cpus: ["2-4,18-20", "5-7,21-23", "8-10,24-26", "11-13,27-29", "8-13,24-29"]
           ci_unity_memory_max: 54G
-          ci_unity_slot_memory_max: 16G
+          ci_unity_slot_memory_max: [16G, 16G, 16G, 16G, 32G]
           k3s_cpus: 0-1,16-17
         # deskslim-2: 12 cores / 24 threads, SMT siblings n and n+12, 60G. Cores
         # 0-1 are k3s and the OS; three slots of three cores and 14G on cores

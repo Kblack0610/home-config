@@ -12,6 +12,7 @@ standby list starts Spot first and falls back to the next host on no capacity or
 reclaim but not on a budget deny, and a live action adds the new label before it removes the old. Stdlib
 only; CI runs it in the checks workflow.
 """
+import copy
 import io
 import json
 import os
@@ -2032,6 +2033,100 @@ class RatesTest(unittest.TestCase):
             governor.check_rates(bad_power)
         with self.assertRaisesRegex(ValueError, "basis"):
             governor.check_rates({**LIVE, "rates": {"x": {"usd_per_hour": 1}}})
+
+
+# ms-a2 as the topology renders it: test slots 1-4, build slot 5 on test slots 3 and 4's cores.
+LAN_BASE = frozenset({"self-hosted", "linux", "x64", "host-ms-a2", "lan", "hd-library"})
+
+
+def lan_slots(spec):
+    """spec: one character per ms-a2 slot 1-5, as paired_slots() reads it."""
+    out = {}
+    for s, c in enumerate(spec, 1):
+        if c == "-":
+            continue
+        held = c in ".h"
+        own = ({"unity-build-withheld"} if held else {"unity-build"}) if s == 5 else \
+            ({"unity-withheld"} if held else {"unity", "unity-full", "light"})
+        out[f"ms-a2-unity-pool-{s}"] = {"host": "ms-a2", "busy": c in "hb", "elapsed": 100 - s,
+                                        "withheld": held, "labels": LAN_BASE | own}
+    return out
+
+
+class LanPairTest(unittest.TestCase):
+    BUILD = {"aws-build-1": {"state": "stopped", "busy_at": 0, "labels": PAIRED_LABELS}}
+
+    def run_lan(self, spec, waiting, lan=COOL, last=None, pins=None):
+        inst = copy.deepcopy(self.BUILD)
+        got = governor.decide(LIVE, readings(**{"ms-a2": lan}), lan_slots(spec), waiting, last or {}, 10_000, inst,
+                              pins or {})
+        return sorted((a, int(r.rsplit("-", 1)[1])) for h, a, r, _, _ in got if h == "ms-a2" and a != "hold"), inst
+
+    def test_the_topology_gives_ms_a2_its_pair(self):
+        self.assertEqual(governor.pairs(LIVE, "ms-a2"), {5: [3, 4]})
+        self.assertEqual(governor.admit_labels(LIVE, "ms-a2", "ms-a2-unity-pool-5"), ["unity-build"])
+        self.assertEqual(governor.withheld_label(LIVE, "ms-a2", "ms-a2-unity-pool-5"), "unity-build-withheld")
+        self.assertEqual(governor.admit_labels(LIVE, "ms-a2", "ms-a2-unity-pool-3"),
+                         ["unity", "unity-full", "light", "heavy"])
+        self.assertEqual(governor.withheld_label(LIVE, "ms-a2", "ms-a2-unity-pool-3"), "unity-withheld")
+        self.assertIn("unity-build", governor.pools(LIVE))
+
+    def test_a_waiting_build_takes_the_lan_pair_and_no_paid_start(self):
+        # Pair 5's test slots step aside in one cycle; aws-build-1 is not wanted for the build.
+        got, inst = self.run_lan("iiii.", [BUILD_JOB])
+        self.assertEqual(got, [("withhold", 3), ("withhold", 4)])
+        self.assertEqual(inst["aws-build-1"]["want"], 0)
+        # Once both read withheld and idle, the build slot is admitted, past any cooldown.
+        got, _ = self.run_lan("ii...", [BUILD_JOB], last={"ms-a2": 10_000})
+        self.assertEqual(got, [("admit", 5)])
+
+    def test_a_release_build_is_not_the_lan_slots(self):
+        got, inst = self.run_lan("iiii.", [BUILD_JOB | {"unity-release"}])
+        self.assertEqual(got, [])
+        self.assertEqual(inst["aws-build-1"]["want"], 1)
+
+    def test_a_hot_host_claims_no_build(self):
+        got, inst = self.run_lan("iiii.", [BUILD_JOB], lan=HOT)
+        self.assertNotIn(("withhold", 3), got)
+        self.assertEqual(inst["aws-build-1"]["want"], 1)
+
+    def test_no_build_waits_the_build_slot_steps_aside_and_its_tests_come_back(self):
+        # As the play registers them, every slot admitted: the build slot steps aside.
+        self.assertEqual(self.run_lan("iiiii", [UNITY_JOB])[0], [("withhold", 5)])
+        # The test slots of a quiet pair are the pool's again.
+        self.assertEqual(self.run_lan("ii...", [UNITY_JOB] * 3)[0], [("admit", 3)])
+
+    def test_a_claim_on_busy_tests_leaves_the_build_to_the_paid_host_too(self):
+        got, inst = self.run_lan("iiih.", [BUILD_JOB])
+        self.assertEqual(got, [("withhold", 3)])
+        self.assertEqual(inst["aws-build-1"]["want"], 1)
+
+    def test_a_host_pinned_to_0_claims_no_build(self):
+        got, inst = self.run_lan("iiii.", [BUILD_JOB], pins={"ms-a2": 0})
+        self.assertNotIn(("withhold", 3), got)
+        self.assertEqual(inst["aws-build-1"]["want"], 1)
+
+    def test_a_lent_or_idle_build_slot_is_not_held_for_disk(self):
+        def gauge(spec):
+            hosts = readings(**{"ms-a2": {**COOL, "disk": 0.23}})
+            return 'ci_governor_disk_held{host="ms-a2"} 1' in governor.render(LIVE, hosts, lan_slots(spec), 3, [], True)
+        self.assertFalse(gauge("iiii."))
+        self.assertFalse(gauge("ii..b"))
+        self.assertTrue(gauge("i...."))
+
+    def test_a_lan_build_slot_in_no_group_fails_the_config(self):
+        with open(CONFIG) as f:
+            conf = json.load(f)
+        with open(os.environ["TOPOLOGY"]) as f:
+            topo = json.load(f)
+        for slot in topo["hosts"]["ms-a2"]["slots"]:
+            slot.pop("group", None)
+        with self.assertRaisesRegex(ValueError, "LAN hosts with a build slot in no slot group: ms-a2"):
+            load_files(conf, topo)
+
+    def test_a_busy_build_keeps_its_pair(self):
+        self.assertEqual(self.run_lan("ii..b", [UNITY_JOB] * 3)[0], [])
+        self.assertEqual(self.run_lan("iiiib", [UNITY_JOB] * 3)[0], [("withhold", 3), ("withhold", 4)])
 
 if __name__ == "__main__":
     unittest.main(verbosity=1)

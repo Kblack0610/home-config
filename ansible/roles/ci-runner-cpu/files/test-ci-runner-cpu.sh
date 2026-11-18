@@ -20,9 +20,9 @@ list-units) printf '%s\n' 'actions.runner.h-unity-pool-1.service loaded active r
                          'forgejo-runner-h-forgejo-2.service loaded active running Forgejo runner' ;;
 show) case "$*" in
       *unity-pool-1*) printf '%s\n' 'ControlGroup=/ci.slice/u1/actions.runner.h-unity-pool-1.service' 'WorkingDirectory=/w/unity-pool-1' ;;
-      *light-1*) printf '%s\n' 'ControlGroup=/ci.slice/ci-linux.slice/actions.runner.h-light-1.service' 'WorkingDirectory=/w/light-1' ;;
-      *forgejo-1*) printf '%s\n' 'ControlGroup=/ci.slice/ci-linux.slice/forgejo-runner-h-forgejo-1.service' 'WorkingDirectory=/w/forgejo-1' ;;
-      *forgejo-2*) printf '%s\n' 'ControlGroup=/ci.slice/ci-linux.slice/forgejo-runner-h-forgejo-2.service' 'WorkingDirectory=/w/forgejo-2' ;;
+      *light-1*) printf '%s\n' 'ControlGroup=/ci.slice/u2/actions.runner.h-light-1.service' 'WorkingDirectory=/w/light-1' ;;
+      *forgejo-1*) printf '%s\n' 'ControlGroup=/ci.slice/u2/forgejo-runner-h-forgejo-1.service' 'WorkingDirectory=/w/forgejo-1' ;;
+      *forgejo-2*) printf '%s\n' 'ControlGroup=/ci.slice/u2/forgejo-runner-h-forgejo-2.service' 'WorkingDirectory=/w/forgejo-2' ;;
       esac ;;
 esac
 EOF
@@ -52,17 +52,17 @@ cg() { mkdir -p "$t/cg$1"; echo "usage_usec $2" > "$t/cg$1/cpu.stat"; }
 echo '0::/ci.slice/u1/docker-c1.scope' > "$t/proc/101/cgroup"
 echo '0::/ci.slice/docker-c2.scope' > "$t/proc/102/cgroup"
 echo '0::/ci.slice/u10/docker-c3.scope' > "$t/proc/103/cgroup"
-echo '0::/ci.slice/ci-linux.slice/docker-c4.scope' > "$t/proc/104/cgroup"
-echo '0::/ci.slice/ci-linux.slice/docker-c5.scope' > "$t/proc/105/cgroup"
+echo '0::/ci.slice/u2/docker-c4.scope' > "$t/proc/104/cgroup"
+echo '0::/ci.slice/u2/docker-c5.scope' > "$t/proc/105/cgroup"
 cg /ci.slice/u1/actions.runner.h-unity-pool-1.service 1000000
-cg /ci.slice/ci-linux.slice/actions.runner.h-light-1.service 1000000
-cg /ci.slice/ci-linux.slice/forgejo-runner-h-forgejo-1.service 1000000
-cg /ci.slice/ci-linux.slice/forgejo-runner-h-forgejo-2.service 1000000
+cg /ci.slice/u2/actions.runner.h-light-1.service 1000000
+cg /ci.slice/u2/forgejo-runner-h-forgejo-1.service 1000000
+cg /ci.slice/u2/forgejo-runner-h-forgejo-2.service 1000000
 cg /ci.slice/u1/docker-c1.scope 1000000
 cg /ci.slice/docker-c2.scope 1000000
 cg /ci.slice/u10/docker-c3.scope 1000000
-cg /ci.slice/ci-linux.slice/docker-c4.scope 1000000
-cg /ci.slice/ci-linux.slice/docker-c5.scope 1000000
+cg /ci.slice/u2/docker-c4.scope 1000000
+cg /ci.slice/u2/docker-c5.scope 1000000
 echo '2-4,10-12' > "$t/cg/ci.slice/u1/actions.runner.h-unity-pool-1.service/cpuset.cpus.effective"
 linux() {
     echo "$1 0" > "$t/proc/uptime"
@@ -83,9 +83,9 @@ cg /ci.slice/docker-c2.scope 51000000
 cg /ci.slice/u10/docker-c3.scope 51000000
 # forgejo-1's daemon used 0.5 CPU-seconds and its task's container 5, so 1.1 cores;
 # c5 used 50, which no runner owns.
-cg /ci.slice/ci-linux.slice/forgejo-runner-h-forgejo-1.service 1500000
-cg /ci.slice/ci-linux.slice/docker-c4.scope 6000000
-cg /ci.slice/ci-linux.slice/docker-c5.scope 51000000
+cg /ci.slice/u2/forgejo-runner-h-forgejo-1.service 1500000
+cg /ci.slice/u2/docker-c4.scope 6000000
+cg /ci.slice/u2/docker-c5.scope 51000000
 linux 105.00; rc=$?
 [ "$rc" = 0 ] && echo "ok   second sample exits 0" || { echo "FAIL second sample exit $rc"; cat "$t/err"; fail=1; }
 has "unit plus its job container" '^ci_runner_cores_busy\{runner="h-unity-pool-1"\} 3\.00$'
@@ -94,16 +94,16 @@ has "a Forgejo runner plus its task's container" '^ci_runner_cores_busy\{runner=
 has "a Forgejo runner whose task ended reads zero" '^ci_runner_cores_busy\{runner="h-forgejo-2"\} 0\.00$'
 [ "$(ls -A "$t/out" | wc -l)" = 1 ] && echo "ok   no temp file left" || { echo "FAIL temp file left"; fail=1; }
 
-# Memory: pool-1's slice u1 caps it alone at 14G; ci-linux.slice caps three runners together.
+# Memory: pool-1's slice u1 caps it alone at 14G; u2 caps three runners together.
 echo 1000 > "$t/cg/ci.slice/u1/actions.runner.h-unity-pool-1.service/memory.current"
 # c1 holds 5000 of which 1000 is inactive page cache, so its working set is 4000.
 echo 5000 > "$t/cg/ci.slice/u1/docker-c1.scope/memory.current"
 printf 'active_file 200\ninactive_file 1000\n' > "$t/cg/ci.slice/u1/docker-c1.scope/memory.stat"
 echo 8000 > "$t/cg/ci.slice/u10/docker-c3.scope/memory.current"
-echo 300 > "$t/cg/ci.slice/ci-linux.slice/actions.runner.h-light-1.service/memory.current"
+echo 300 > "$t/cg/ci.slice/u2/actions.runner.h-light-1.service/memory.current"
 echo max > "$t/cg/ci.slice/u1/actions.runner.h-unity-pool-1.service/memory.max"
 echo 15032385536 > "$t/cg/ci.slice/u1/memory.max"
-echo 21474836480 > "$t/cg/ci.slice/ci-linux.slice/memory.max"
+echo 21474836480 > "$t/cg/ci.slice/u2/memory.max"
 linux 110.00
 has "a runner's memory is its unit plus its job container" '^ci_runner_memory_bytes\{runner="h-unity-pool-1"\} 5000$'
 has "a runner with no container is its unit's memory" '^ci_runner_memory_bytes\{runner="h-light-1"\} 300$'

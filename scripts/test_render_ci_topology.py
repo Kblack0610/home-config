@@ -56,7 +56,13 @@ class CapTests(unittest.TestCase):
         slots, fails = self.slots()
         self.assertEqual(fails, [])
         self.assertIn("light", slots["deskslim-2-unity-pool-1"])
-        self.assertEqual(slots["ms-a2-heavy-1"], ["heavy", "light"])
+
+    def test_no_slot_has_cores_for_small_jobs_alone(self):
+        topo, fails = topology.render(self.hosts, self.groups)
+        self.assertEqual(fails, [])
+        small = [s["name"] for h in topo["hosts"].values() for s in h["slots"]
+                 if set(s["caps"]) <= {"light", "heavy", "forgejo"} and not s.get("borrows")]
+        self.assertEqual(small, [])
 
     def test_unity_slot_takes_heavy_only_on_a_heavy_host(self):
         self.hosts["deskslim-2"]["ci_caps"] = ["light", "unity", "forgejo"]
@@ -89,9 +95,9 @@ class CapTests(unittest.TestCase):
         self.assertTrue(any("aws-spot-1: a cloud host" in f for f in fails))
 
     def test_slot_kind_missing_from_caps(self):
-        self.hosts["ms-a2"]["ci_caps"] = ["unity"]
+        self.hosts["deskslim-2"]["ci_caps"] = ["unity", "forgejo"]
         _, fails = self.slots()
-        self.assertIn("ms-a2: has light slots, but ci_caps leaves out light", fails)
+        self.assertIn("deskslim-2: has light slots, but ci_caps leaves out light", fails)
 
     def test_unknown_cap(self):
         self.hosts["ms-a2"]["ci_caps"] = ["light", "unity", "gpu"]
@@ -105,7 +111,7 @@ class CapTests(unittest.TestCase):
         # ms-a2's slots 3-4 are build slot 5's group, so only 1-2 lend.
         self.assertEqual(sorted(s["borrows"] for s in fj.values()), sorted(
             [f"ms-a2-unity-pool-{n}" for n in (1, 2)] + [f"deskslim-2-unity-pool-{n}" for n in (1, 2, 3)]
-            + [f"windows-media-ci-unity-pool-{n}" for n in (1, 2)]))
+            + [f"windows-media-ci-unity-pool-{n}" for n in (1, 2, 3)]))
         self.assertTrue(all(s["caps"] == ["forgejo"] and n == s["borrows"] + "-forgejo" for n, s in fj.items()))
 
     def test_every_repo_runner_borrows_a_unity_slot(self):

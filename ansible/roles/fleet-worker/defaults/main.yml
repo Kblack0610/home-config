@@ -29,7 +29,12 @@ fleet_tailscale: false
 fleet_worker_dotfiles_repo: https://github.com/Kblack0610/.dotfiles.git
 # Where fleet-hosts.sh reads the roster from (tasks/main.yml). The same remote and URL
 # as the workstation's checkout; git.kennethblack.me does not serve it until #967 cuts over.
-fleet_worker_roster_repo: https://git.kblab.me/kblack0610/home-config.git
+fleet_worker_forgejo_url: https://git.kblab.me
+fleet_worker_roster_repo: "{{ fleet_worker_forgejo_url }}/kblack0610/home-config.git"
+# The Forgejo bot a session on a worker pushes and opens home-config PRs as (tasks/main.yml):
+# write on kblack0610/home-config only, read on platform and personal-sites; its token is
+# vault_fleet_forgejo_token. docs/runbooks/fleet-worker.md, "Forgejo bot token".
+fleet_worker_forgejo_user: fleet-worker
 # The host every worker trusts for the store (tasks/store.yml): forge-primary is the
 # live Forgejo, its ssh on 2222 (apps/forgejo/README.md), the host of store.env's
 # STORE_PRIMARY_URL. A store.env that names another host fails the reach check on

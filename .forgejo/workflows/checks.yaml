@@ -103,8 +103,6 @@ jobs:
           rm planted-knob.out
       - name: Host qualification verdict and parser tests
         run: python3 scripts/test_host_qualify.py
-      - name: ci-slot-effect classification and host reading tests
-        run: python3 scripts/test_ci_slot_effect.py
       - name: ci-pool-idle tally tests
         run: python3 scripts/test_ci_pool_idle.py
       - name: cluster-janitor quarantine trigger and cap tests

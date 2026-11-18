@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Remove Unity CI pool slots from the host this runs on. The inverse of the
-# "CI runners (light, heavy and Unity slots)" play (roles ci-host + github-actions-runner-linux),
+# "CI runners (Unity slots and the seats that borrow them)" play (roles ci-host + github-actions-runner-linux),
 # which has no removal path of its own.
 #
 #   bash scripts/unity-ci-runner-remove.sh            # every slot on this host

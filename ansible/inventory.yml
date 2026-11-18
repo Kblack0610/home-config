@@ -323,8 +323,8 @@ all:
         # runs from 2026-10-18 to 11-18. The slice's cores bound these runners, so
         # they add jobs, not cores. One list, anchored here.
         # deskslim-2 since 2026-11-18: a light slot, two Forgejo slots and the personal
-        # repo runners on core 11, the core its Unity slots left free, so every LAN CI
-        # host serves every pool its hardware can (razer-laptop left CI that day).
+        # repo runners on core 11, the core its Unity slots left free, so ms-a2, windows-media-ci
+        # and deskslim-2 each take light, heavy, Unity and Forgejo (razer-laptop left CI that day).
         deskslim-2:
           ci_light_slots: 1
           ci_heavy_slots: 0
@@ -373,7 +373,7 @@ all:
     unity_ci_runners:
       hosts:
         # razer-laptop has no Unity slot since 2026-11-17: its RAM dropped from 96 GB to
-        # 32 GB (the 96 GB kit went to the MS-A2) and it stays a usable Claude runner.
+        # 32 GB (the 96 GB kit went to the MS-A2) and it runs agents, never CI (no_ci_hosts, 2026-11-18).
         # Slot 1 of ms-a2 carries slim-tour, so playground slim-tour.yml always lands on the
         # one slot whose prune keeps its trees warm (site.yml's .keep-warm-trees, ucp-2062).
         # Picked by disk on 2026-11-17: ms-a2 1.6T free of 1.8T (88%), unity-full, on the LAN
@@ -553,7 +553,7 @@ all:
     ci_hosts:
       hosts:
         # ms-a2: 16 cores / 32 threads, SMT siblings n and n+16 (sysfs,
-        # 2026-11-16), 91G. Cores 0-1 are k3s and the OS, as on razer. Each Unity
+        # 2026-11-16), 91G. Cores 0-1 are k3s and the OS. Each Unity
         # test slot gets three cores and 16G (docs/unity-ci-hardware.md sizing), cores
         # 2-13; build slot 5 takes test slots 3 and 4's six cores and their 32G (a build was
         # killed at 14G, razer built in 20G). Cores 14-15 (CPUs 14-15,30-31) are the two light slots' and the
@@ -573,14 +573,14 @@ all:
         # deskslim-2: 12 cores / 24 threads, SMT siblings n and n+12, 60G. Cores
         # 0-1 are k3s and the OS; three Unity slots of three cores and 14G on cores
         # 2-10. Core 11 (CPUs 11,23) is the light slot's, the two Forgejo slots' and
-        # the personal repo runners' (linux_ci_runners), 4G between them, which leaves
-        # 14G for the host and k3s. Its Unity slots take light and heavy jobs (ci_caps).
+        # the personal repo runners' (linux_ci_runners), 6G between them, which leaves
+        # 12G for the host and k3s. Its Unity slots take light and heavy jobs (ci_caps).
         deskslim-2:
           ci_caps: [light, heavy, unity, forgejo]
           ci_cpus: 2-11,14-23
-          ci_memory_max: 46G
+          ci_memory_max: 48G
           ci_linux_cpus: 11,23
-          ci_linux_memory_max: 4G
+          ci_linux_memory_max: 6G
           ci_unity_cpus: 2-10,14-22
           ci_unity_slot_cpus: ["2-4,14-16", "5-7,17-19", "8-10,20-22"]
           ci_unity_memory_max: 42G

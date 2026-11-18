@@ -160,7 +160,8 @@ join the org pool (GitHub lists a repo runner only to its repo), which is why it
 A seat's demand is its waiting jobs (github-runner-exporter: forge="forgejo", or the repo).
 The kind whose job has waited longest goes first, and a slot is lent only while no GitHub
 job it could take has waited longer, only on a live, unpinned host that is not HOT or FULL,
-one per host per cycle past its cooldown, and never past the pool floor. A lend has three
+one per host per cycle past its cooldown, and never past the pool floor. An idle slot goes
+first; with none, the busy one nearest its end is lent and drains into the seat. A lend has three
 steps, each read back from GitHub before the next, so a slot never runs two jobs:
   lend    the slot's own labels go (withheld, as a withhold does) and it is marked lent
           (lent_label), so it takes no new GitHub job;
@@ -1231,13 +1232,16 @@ def lend_plan(cfg, hosts, runners, seat_state, waits, lends, leases, pins, last_
     for kind in sorted(oldest, key=lambda k: (-oldest[k], k)):
         need = want[kind] - len([s for s in have.get(kind, []) if s not in back])
         mine = sorted((s["slot"], seat) for seat, s in seats.items() if seat_kind(cfg, seat) == kind)
-        # A slot that is idle capacity already (withheld, with room) before one serving GitHub.
-        mine.sort(key=lambda p: (not runners.get(p[0], {}).get("withheld"), p[0]))
+        # Idle capacity already (withheld, with room) first, then an idle slot serving GitHub,
+        # then a busy one nearest its end: the lend withholds it, so it drains into the seat's
+        # job. Lending only idle slots starved Forgejo while GitHub kept every slot busy.
+        rank = lambda r: (r.get("busy", False), not r.get("withheld"), -r.get("elapsed", 0))
+        mine.sort(key=lambda p: (*rank(runners.get(p[0], {})), p[0]))
         for slot, seat in mine:
             r, host = runners.get(slot), host_of[slot]
             if need <= 0:
                 break
-            if slot in lends or slot in paired or host in moved or unfit(host) or not r or r["busy"]:
+            if slot in lends or slot in paired or host in moved or unfit(host) or not r:
                 continue
             if seat not in seat_state or (seats[seat]["forge"] != "forgejo" and not seat_state[seat]["online"]):
                 continue
@@ -1271,7 +1275,8 @@ def seat_labels(cfg, seat, action):
 
 def lend_apply(cfg, steps, lends, leases, now, last_action):
     """Carry out lend_plan()'s steps. Each re-reads the slot from GitHub first: a lend or a
-    grant waits while it is busy, an unlend while a repo seat of it is."""
+    grant waits while it is busy, an unlend while a repo seat of it is; a busy slot's lend
+    withholds it, so it drains."""
     org, seats = f"orgs/{cfg['org']}", cfg["seats"]
     for step, slot, seat, why in steps:
         # A lend found by its mark may be on a slot no seat borrows any more: its host by name.
@@ -1305,8 +1310,8 @@ def lend_apply(cfg, steps, lends, leases, now, last_action):
                 lends[slot].update(phase="returning", at=now)
                 continue
             rid, have, busy = find_runner(org, slot)
-            if busy:
-                print(f"{step} {slot}: it is busy, next cycle", flush=True)
+            if busy and step == "grant":
+                print(f"grant {slot}: it is busy, next cycle", flush=True)
                 continue
             if step == "lend":
                 # Recorded first, so a relabel that fails half-way is a held lend that goes back

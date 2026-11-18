@@ -1044,7 +1044,8 @@ def own_labels(cfg, host, name):
 # The longest a /lease long-poll is held: a supervisor asks again after it.
 LEASE_WAIT_MAX = 300
 # A granted Forgejo lend whose supervisor has not asked for its lease this long, and whose
-# seat is not busy, goes back: a dead supervisor must not keep a slot from GitHub.
+# seat is not busy, goes back, and a returning one is unlent without its ack: a dead
+# supervisor must not keep a slot from GitHub.
 LEASE_STALE_SECONDS = 600
 LEASES = ("github", "forgejo")
 
@@ -1165,10 +1166,13 @@ def lend_plan(cfg, hosts, runners, seat_state, waits, lends, leases, pins, last_
             return f"{host} is pinned"
         return f"{host} is {verdicts[host]}" if verdicts[host] in ("HOT", "FULL") else ""
 
-    def given_back(slot, seat):
+    def given_back(slot, seat, at):
         if seats[seat]["forge"] == "forgejo":
-            lease, ack, _ = leases.get(slot)
-            return lease == "github" and ack == "github"
+            lease, ack, seen = leases.get(slot)
+            if st(seat).get("busy"):
+                return False  # an ack while its job runs is not the seat's
+            # A supervisor that died before it acked never will.
+            return (lease == "github" and ack == "github") or now - max(seen, at) >= LEASE_STALE_SECONDS
         return not st(seat) or (st(seat)["withheld"] and not st(seat)["busy"])
 
     jobs = {}
@@ -1214,9 +1218,11 @@ def lend_plan(cfg, hosts, runners, seat_state, waits, lends, leases, pins, last_
             steps.append(("return" if lend["phase"] == "granted" else "unlend", slot, seat, back[slot]))
         elif lend["phase"] == "returning":
             mine = [seat] if seat else by_slot.get(slot, [])
-            if all(given_back(slot, s) for s in mine):
+            if all(given_back(slot, s, lend["at"]) for s in mine):
                 steps.append(("unlend", slot, seat, "its seat gave it back"))
-        elif lend["phase"] == "held" and r and r["withheld"] and mark in r["labels"] and not r["busy"]:
+        # None of its own labels left either: a lend whose relabel failed half-way is not granted.
+        elif lend["phase"] == "held" and r and r["withheld"] and mark in r["labels"] and not r["busy"] \
+                and not set(own_labels(cfg, host_of[slot], slot)) & r["labels"]:
             steps.append(("grant", slot, seat, "the slot shows withheld, lent and idle"))
 
     floor = sum(1 for n, r in runners.items() if not r["withheld"] and r["host"] in cfg["hosts"]
@@ -1268,7 +1274,10 @@ def lend_apply(cfg, steps, lends, leases, now, last_action):
     grant waits while it is busy, an unlend while a repo seat of it is."""
     org, seats = f"orgs/{cfg['org']}", cfg["seats"]
     for step, slot, seat, why in steps:
-        host = seats[seat]["host"] if seat else next((s["host"] for s in seats.values() if s["slot"] == slot), "")
+        # A lend found by its mark may be on a slot no seat borrows any more: its host by name.
+        host = seats[seat]["host"] if seat else next((s["host"] for s in seats.values() if s["slot"] == slot),
+                                                     max((h for h in cfg["hosts"] if slot.startswith(h + "-")),
+                                                         key=len, default=""))
         dry = not live(cfg, host)
         print(f"{'would ' if dry else ''}{step} {slot or seat}{f' for {seat}' if seat and slot else ''} on {host}: {why}",
               flush=True)
@@ -1300,10 +1309,12 @@ def lend_apply(cfg, steps, lends, leases, now, last_action):
                 print(f"{step} {slot}: it is busy, next cycle", flush=True)
                 continue
             if step == "lend":
-                relabel(org, rid, have, [withheld_label(cfg, host, slot), cfg["lent_label"]],
-                        own_labels(cfg, host, slot))
+                # Recorded first, so a relabel that fails half-way is a held lend that goes back
+                # when no job needs it, never a lent mark the governor does not know.
                 lends[slot] = {"seat": seat, "phase": "held", "at": now}
                 last_action[host] = now
+                relabel(org, rid, have, [withheld_label(cfg, host, slot), cfg["lent_label"]],
+                        own_labels(cfg, host, slot))
             elif step == "grant":
                 if forgejo:
                     leases.set(slot, "forgejo")

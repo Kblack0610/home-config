@@ -98,7 +98,9 @@ def render(hosts, groups):
             for kind in ("light", "heavy"):
                 slots += [{"name": f"{host}-{kind}-{n}", "caps": SLOT_CAPS[kind]} for n in range(1, int(v.get(f"ci_{kind}_slots", 0)) + 1)]
             slots += [{"name": f"{host}-{r['slot']}", "caps": SLOT_CAPS["light"], "repo": r["repo"],
-                       "borrows": unity_slot(host, r.get("borrows", 0))} for r in v.get("ci_repo_runners", [])]
+                       "borrows": unity_slot(host, r["borrows"])} for r in v.get("ci_repo_runners", []) if "borrows" in r]
+            fails += [f"{host}: ci_repo_runners {r['slot']} has no borrows (the Unity slot it runs on)"
+                      for r in v.get("ci_repo_runners", []) if "borrows" not in r]
         unity = any(host in groups.get(g, ()) for g in UNITY_GROUPS)
         if unity:
             total, group = unity_layout(v)

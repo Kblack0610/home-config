@@ -97,3 +97,5 @@
     state: >-
       {{ 'restarted' if (_forgejo_runner_config is changed or _forgejo_runner_unit is changed
          or _forgejo_seat_bin is changed) else 'started' }}
+  # In --check a new seat's unit is simulated, so systemd has none to start.
+  ignore_errors: "{{ ansible_check_mode }}"

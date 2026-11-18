@@ -124,6 +124,11 @@ class CapTests(unittest.TestCase):
                 _, fails = self.slots()
                 self.assertTrue(any(f"{host}-x-1 borrows {host}-unity-pool-{n}, not one of" in f for f in fails), fails)
 
+    def test_a_repo_runner_without_borrows_fails(self):
+        self.hosts["deskslim-2"]["ci_repo_runners"] = [{"repo": "Kblack0610/x", "slot": "x-1"}]
+        _, fails = self.slots()
+        self.assertIn("deskslim-2: ci_repo_runners x-1 has no borrows (the Unity slot it runs on)", fails)
+
     def test_a_host_without_forgejo_in_ci_caps_gets_no_seat(self):
         self.hosts["ms-a2"]["ci_caps"] = ["light", "heavy", "unity", "unity-build"]
         slots, fails = self.slots()

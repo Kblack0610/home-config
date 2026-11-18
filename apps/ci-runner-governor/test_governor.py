@@ -2321,6 +2321,36 @@ class LendTest(unittest.TestCase):
         box.step(job, 10_060)
         self.assertEqual(box.plan(job, 10_060 + governor.LEASE_STALE_SECONDS - 1), [])
         self.assertEqual([s for s, *_ in box.plan(job, 10_060 + governor.LEASE_STALE_SECONDS)], ["return"])
+        # Returned, it never acks: the slot is unlent once it is stale again, not kept lent.
+        box.step(job, 10_060 + governor.LEASE_STALE_SECONDS)
+        back = 10_060 + 2 * governor.LEASE_STALE_SECONDS
+        self.assertEqual(box.plan([], back - 1), [])
+        self.assertEqual(box.step([], back), [("unlend", S1)])
+        self.assertEqual(box.labels(), DRAINED)
+
+    def test_an_ack_while_its_seat_is_busy_does_not_unlend(self):
+        box = Box(s1=DRAINED | {"unity-lent"})
+        box.lends[S1] = {"seat": FJ_SEAT, "phase": "returning", "at": 10_000}
+        box.fj["busy"] = True
+        box.leases.wait(S1, "github", 0)  # any LAN client can ask, the seat or not
+        self.assertEqual(box.plan([], 10_060), [])
+        box.fj["busy"] = False
+        self.assertEqual(box.plan([], 10_060)[0][0], "unlend")
+
+    def test_a_lend_whose_relabel_failed_half_way_is_never_granted(self):
+        box, job = Box(), [("forgejo", frozenset({"docker"}), 60)]
+        box.lends[S1] = {"seat": FJ_SEAT, "phase": "held", "at": 10_000}
+        box.gh.scopes[ORG][S1]["labels"] = DRAINED | {"unity-lent", "light"}
+        self.assertEqual(box.plan(job, 10_060), [])
+        box.gh.scopes[ORG][S1]["labels"] = DRAINED | {"unity-lent"}
+        self.assertEqual(box.plan(job, 10_060)[0][0], "grant")
+
+    def test_a_mark_on_a_slot_no_seat_borrows_is_dropped_on_its_host(self):
+        box = Box()
+        box.gh.scopes[ORG][S3]["labels"] = DRAINED | {"unity-lent"}
+        box.lends[S3] = {"seat": None, "phase": "returning", "at": 10_000}
+        self.assertEqual(box.step([]), [("unlend", S3)])
+        self.assertEqual(box.labels(S3), DRAINED)
 
     def test_a_repo_seat_runs_only_while_its_slot_is_lent(self):
         box, job = Box(s1=ADMITTED, s2=DRAINED), [(REPO, REPO_JOB, 60)]

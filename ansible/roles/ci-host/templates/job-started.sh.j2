@@ -5,7 +5,7 @@
 #
 # At job start a Unity slot (CI_SLOT_UNITY=1) first runs ci-disk-prune.sh --before-job, which
 # prunes idle slots under the floor; a failed prune never fails the job. Then both events run
-# ci-fresh-workspace --job-hook, which owns the workspace rules: it puts back a Unity tree a light
+# ci-fresh-workspace --job-hook, which owns the workspace rules: it puts back the untracked state a light
 # job parked, removes ~/setup-pnpm (3G, reinstalled by pnpm/action-setup every run), keeps a Unity
 # project's workspace for its warm Library and empties any other, since the workflows were
 # written for a fresh VM. The end-of-job pass frees space instead of leaving it on an idle slot

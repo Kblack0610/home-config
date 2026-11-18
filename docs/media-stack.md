@@ -62,7 +62,7 @@ The removal commit touched these files:
 cd ~/dev/home/home-config
 git revert <removal-commit-sha>
 # resolve any conflicts (unlikely — all removals)
-./scripts/gen-ha-launcher.py   # regenerate launcher
+./scripts/gen-ha-launcher.py   # regenerate the front door
 git push
 # merge the revert PR → Flux reconciles → pods come back
 ```

@@ -74,7 +74,11 @@ offline, and a slot whose name never registered reads missing. Forgejo has no AP
 that says which runner runs which task, so a running slot carries no job, and no
 slot carries a last job.
 The API gives no time a job was queued, so a waiting job's age is from the first
-scrape that saw it (reset on an exporter restart). Finished work is every task
+scrape that saw it (reset on an exporter restart). github_job_queue_seconds for
+pool="forgejo" is the same clock: a job that left the waiting list waited from the
+first scrape that saw it to the first that missed it (a cancelled one counts too),
+and a task no scrape saw waiting counts 0, so a wait reads within one scrape
+interval (60s). It covers jobs since the exporter started, at most the window. Finished work is every task
 created in the window, by its status. Off unless $FORGEJO_REPOS is set.
 
 Alerting is NOT here. Sentinel (~/.agent/watches/*runners-online.yaml) is the
@@ -772,6 +776,10 @@ FJ_TASKS = {}
 FJ_REFRESHED = {}
 # waiting job id -> when a scrape first saw it waiting.
 FJ_SEEN = {}
+# (when a scrape first missed it, seconds it was seen waiting), for each job that left the
+# waiting list in the window: Forgejo's queue time, which its API does not keep (a task is
+# created when a runner takes the job, so a task's created_at is its start).
+FJ_WAITED = []
 FJ_TASK_KEYS = ("id", "name", "head_branch", "event", "display_title", "status", "workflow_id", "url",
                 "created_at", "updated_at", "run_started_at")
 FJ_DONE = frozenset({"success", "failure", "cancelled", "skipped"})
@@ -871,10 +879,18 @@ def forgejo_rows(runners_fut, repo_futs, now):
                      "url": f"{FORGEJO_WEB}/{f['repo']}/actions", **NO_RUN}, age)
     if all(f["ok"] for f in facts):
         for jid in [k for k in FJ_SEEN if k not in waiting_ids]:
-            del FJ_SEEN[jid]
+            FJ_WAITED.append((now, int(now - FJ_SEEN.pop(jid))))
+    FJ_WAITED[:] = [w for w in FJ_WAITED if w[0] >= now - HISTORY_WINDOW_SECS]
 
     finished = [(r.split("/", 1)[1], t) for r, tasks in FJ_TASKS.items() if r in FORGEJO_REPOS
                 for t in tasks.values() if t.get("status") in FJ_DONE]
+    # Every task started since the exporter did is a job a runner took; one no scrape saw
+    # waiting was taken between two scrapes, so it waited under one scrape interval: 0.
+    started = sum(1 for r, tasks in FJ_TASKS.items() if r in FORGEJO_REPOS for t in tasks.values()
+                  if (ts(t.get("created_at")) or 0) >= max(EPOCH, now - HISTORY_WINDOW_SECS))
+    waits = sorted([w for _, w in FJ_WAITED] + [0] * max(0, started - len(FJ_WAITED)))
+    for q in QUANTILES if waits else ():
+        add("github_job_queue_seconds", {"pool": "forgejo", "quantile": q}, int(quantile(waits, float(q))))
     if fr is not None:
         by_state = dict.fromkeys(("running", "idle", "offline", "missing"), 0)
         for r in fr:
@@ -1215,6 +1231,7 @@ def render():
         xs.sort()
         for q in QUANTILES:
             L.append(f'github_job_queue_seconds{{{labels_str({"pool": pool_, "quantile": q})}}} {int(quantile(xs, float(q)))}')
+    L += forgejo("github_job_queue_seconds")
     L += [
         "# HELP github_job_duration_seconds How long a finished job (last 24h) ran, completed_at - started_at",
         "# TYPE github_job_duration_seconds gauge",

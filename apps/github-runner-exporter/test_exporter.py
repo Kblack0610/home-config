@@ -1002,7 +1002,7 @@ class FakeForge:
 class ForgejoTest(unittest.TestCase):
     def setUp(self):
         for cache in (exporter.DONE_JOBS, exporter.HISTORY, exporter.CALLS, exporter.RATE,
-                      exporter.FJ_TASKS, exporter.FJ_REFRESHED, exporter.FJ_SEEN):
+                      exporter.FJ_TASKS, exporter.FJ_REFRESHED, exporter.FJ_SEEN, exporter.FJ_WAITED):
             cache.clear()
         self.repos = mock.patch.object(exporter, "FORGEJO_REPOS", ["kb/ci", "kb/site"])
         self.repos.start()
@@ -1059,6 +1059,22 @@ class ForgejoTest(unittest.TestCase):
         # Gone from the list (picked up): forgotten, so a later wait starts at 0.
         self.render(jobs=[])
         self.assertEqual(list(exporter.FJ_SEEN), [])
+
+    def queue(self, out):
+        return {re.search(r'quantile="([^"]+)"', r).group(1): int(r.rsplit(" ", 1)[1])
+                for r in rows(out, "github_job_queue_seconds") if 'forge="forgejo"' in r}
+
+    def test_queue_seconds_are_the_waits_the_scrapes_saw(self):
+        # Every task predates the exporter (EPOCH) and no job has left the waiting list: no row.
+        self.assertEqual(self.queue(self.render()), {})
+        exporter.FJ_SEEN[2] -= 120
+        exporter.FJ_SEEN[3] -= 600
+        with mock.patch.object(exporter, "EPOCH", 0):
+            # Both left the waiting list, after 120s and 600s. The window's three tasks are
+            # those two jobs plus one no scrape saw waiting, which counts 0: [0, 120, 600].
+            q = self.queue(self.render(jobs=[]))
+        self.assertEqual([w for _, w in exporter.FJ_WAITED], [120, 600])
+        self.assertEqual(q, {"0.5": 120, "0.9": 600})
 
     def test_a_failed_repo_keeps_the_first_seen_times(self):
         self.render()

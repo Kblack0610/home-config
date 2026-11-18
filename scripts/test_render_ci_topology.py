@@ -105,6 +105,12 @@ class CapTests(unittest.TestCase):
         self.assertEqual(len(fj), topology.FORGEJO_SLOTS)
         self.assertTrue(all(s["caps"] == ["forgejo"] for s in fj))
 
+    def test_forgejo_runs_on_more_than_one_host(self):
+        topo, fails = topology.render(self.hosts, self.groups)
+        self.assertEqual(fails, [])
+        hosts = {h for h, v in topo["hosts"].items() for s in v["slots"] if s.get("forge") == "forgejo"}
+        self.assertEqual(hosts, {"ms-a2", "windows-media-ci"})
+
     def test_forgejo_slot_count_is_the_rule(self):
         self.hosts["ms-a2"]["forgejo_slots"] = topology.FORGEJO_SLOTS + 1
         _, fails = self.slots()

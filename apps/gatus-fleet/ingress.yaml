@@ -31,16 +31,6 @@ spec:
     - host: fleet.kblab.me
       http:
         paths:
-          # The roster the status bars count against, served by fleet-exporter
-          # (scripts/render-fleet-pulse.py renders it from the inventory). Every
-          # machine that renders the glyph reaches this host, home-config or not.
-          - path: /roster
-            pathType: Exact
-            backend:
-              service:
-                name: fleet-exporter
-                port:
-                  number: 9300
           - path: /
             pathType: Prefix
             backend:
@@ -48,6 +38,42 @@ spec:
                 name: gatus-fleet
                 port:
                   number: 8080
+  tls:
+    - hosts:
+        - fleet.kblab.me
+      secretName: gatus-fleet-tls
+---
+# The roster the status bars count against, served by fleet-exporter
+# (scripts/render-fleet-pulse.py renders it from the inventory). Every machine that
+# renders the glyph reaches this host, home-config or not.
+#
+# Its own Ingress for the priority annotation, which Traefik applies to every router
+# of an Ingress. Without one, Traefik ranks routers by rule length, and Path(`/roster`)
+# and PathPrefix(`/`) under this host are both 41 characters, a tie each Traefik
+# replica breaks its own way. 100 is above the rule length of every route on this host.
+# The middleware must match the gatus-fleet Ingress above (its comment says why crowdsec).
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: gatus-fleet-roster
+  namespace: gatus-fleet
+  annotations:
+    kubernetes.io/ingress.class: traefik
+    traefik.ingress.kubernetes.io/router.priority: "100"
+    traefik.ingress.kubernetes.io/router.middlewares: crowdsec-crowdsec-bouncer@kubernetescrd
+spec:
+  rules:
+    - host: fleet.kblab.me
+      http:
+        paths:
+          - path: /roster
+            pathType: Exact
+            backend:
+              service:
+                name: fleet-exporter
+                port:
+                  number: 9300
+  # The certificate is the one the gatus-fleet Ingress requests; no second issuer here.
   tls:
     - hosts:
         - fleet.kblab.me

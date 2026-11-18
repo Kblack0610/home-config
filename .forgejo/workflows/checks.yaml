@@ -64,7 +64,7 @@ jobs:
         run: python3 scripts/check-thermal-standard.py
       - name: Negative control - the thermal check fails on the workstation dropped from thermal_capped
         run: |
-          python3 -c 's = open("ansible/inventory.yml").read(); open("planted-thermal.yml", "w").write(s.replace("        watchdog_x86:\n        desktop_workstations:\n      vars:", "        watchdog_x86:\n      vars:", 1))'
+          python3 -c 's = open("ansible/inventory.yml").read(); t = s.replace("        watchdog_x86:\n        desktop_workstations:\n      vars:", "        watchdog_x86:\n      vars:", 1); assert t != s, "the plant did not apply: thermal_capped children moved"; open("planted-thermal.yml", "w").write(t)'
           rc=0; python3 scripts/check-thermal-standard.py --inventory planted-thermal.yml > planted-thermal.out 2>&1 || rc=$?
           rm planted-thermal.yml; cat planted-thermal.out
           [ "$rc" -eq 1 ] || { echo "the check passed an uncapped host"; exit 1; }

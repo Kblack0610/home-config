@@ -210,8 +210,9 @@ spec:
               every 10m window for 10m. Check thermal-cap.service applied after
               the last boot (systemctl status thermal-cap) and the host is in
               inventory.yml thermal_capped; if it is capped and still hot, lower
-              its cap (ansible/roles/thermal-cap/README.md). Run
-              scripts/host-headroom.py on it before moving work off.
+              its cap (ansible/roles/thermal-cap/README.md). The workstation's
+              apply needs the human's sudo: file the README's command as an ask.
+              Run scripts/host-headroom.py on it before moving work off.
         # The workstation counts here too, for the reason under NodeCpuHot.
         # Replay, 7 days to 2026-11-13, while the workstation was left out: 90 min
         # on hp-victus, 0 elsewhere.

@@ -6,7 +6,7 @@ The fleet's thermal standard: every x86 Linux machine that carries load has its 
 
 Group `thermal_capped` in `ansible/inventory.yml` takes its hosts from child groups (`linux_bare_metal`, `watchdog_x86`, `desktop_workstations`), so a host added to any of them is capped by the next apply with no edit to the group. An x86 Linux host outside them sets `thermal_cap_exempt: <why>` instead (a cloud VM, whose cooling the provider owns). `scripts/check-thermal-standard.py`, run in CI, fails on an x86 Linux host with neither, and on a capped host missing from the convergence check's `HOSTS` (`apps/ansible-runner/cronjob.yaml`). Pis, Macs, Windows and the router are out of scope: the role writes Linux x86 sysfs knobs.
 
-A machine off the standard is red, by the human's ask of 2026-11-17: `NodeCpuHot` (`apps/monitoring/prometheus-rules-node-health.yaml`, above 90C for 10m) and `ConvergenceDrift` (a host where this role's apply would change something) are both `fleet: fix`, so the `alertmanager-fleet` watch queues a red item for an agent. The lever for either is this role.
+A machine off the standard is red, by the human's ask of 2026-11-17: `NodeCpuHot` (`apps/monitoring/prometheus-rules-node-health.yaml`, above 90C for 10m) and `ConvergenceDrift` (a host where this role's apply would change something) are both `fleet: fix`, so the `alertmanager-fleet` watch queues a red item for an agent. The lever for either is this role. `ConvergenceDrift` sees a missing script or unit and a unit that failed at boot, not a sysfs value changed by hand after boot; `NodeCpuHot` catches that one by its heat.
 
 ## Why
 
@@ -35,11 +35,11 @@ Boost off costs speed: cores run at base clock, 2.5GHz on ms-a2's 9955HX (boost 
 
 ```bash
 cd ansible
-ansible-playbook playbooks/site.yml --limit thermal_capped --tags thermal --check --diff
-ansible-playbook playbooks/site.yml --limit thermal_capped --tags thermal
+ansible-playbook playbooks/site.yml --limit 'thermal_capped:!desktop_workstations' --tags thermal --check --diff
+ansible-playbook playbooks/site.yml --limit 'thermal_capped:!desktop_workstations' --tags thermal
 ```
 
-The workstation is managed over a local connection and its sudo asks for a password, so the human applies it: `ansible-playbook playbooks/site.yml --limit cachyos-x8664-main --tags thermal --ask-become-pass`.
+The workstation is managed over a local connection and its sudo asks for a password, so the human applies it: `ansible-playbook playbooks/site.yml --limit cachyos-x8664-main --tags thermal --ask-become-pass`. An agent with a `NodeCpuHot` red on the workstation files that command as an ask.
 
 ## Verify
 
@@ -48,4 +48,4 @@ systemctl status thermal-cap.service     # active (exited); journal lists each v
 cat /sys/devices/system/cpu/cpufreq/boost   # 0 on a boost-capped host
 ```
 
-Then watch the host under load in Prometheus (`instance:node_cpu_package_temp:celsius`): `NodeCpuHot` should stay quiet, and the target is at most 85C sustained. If it does not hold, lower the cap a step and compare shard times against the previous nightly.
+Then watch the host under load in Prometheus (`instance:node_cpu_package_temp:celsius`): `NodeCpuHot` should stay quiet, and the target is at most 85C sustained. If it does not hold, lower the cap a step and compare shard times against the previous nightly. An AMD host with no platform profile (ms-a2, deskslim-2, the workstation, razer-laptop) has no lower step yet once boost is off: the next lever is a new knob, such as a `scaling_max_freq` ceiling, added to this role.

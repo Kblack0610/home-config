@@ -1,4 +1,5 @@
 ---
+# One seat (defaults/main.yml says what a seat is). The play calls tasks/retire.yml first.
 - name: Download the forgejo-runner binary
   ansible.builtin.get_url:
     url: "{{ forgejo_runner_url }}"
@@ -6,7 +7,33 @@
     checksum: "sha256:{{ forgejo_runner_sha256 }}"
     mode: "0755"
 
-- name: Create the slot's runner dirs
+- name: Install the seat supervisor
+  ansible.builtin.copy:
+    src: forgejo-seat.py
+    dest: "{{ forgejo_seat_bin }}"
+    mode: "0755"
+  register: _forgejo_seat_bin
+
+# The same user as the GitHub slots, so a host whose only CI user would be a seat's still
+# has it. The docker group runs the job containers.
+- name: Create the runner group
+  ansible.builtin.group:
+    name: "{{ forgejo_runner_group }}"
+    system: true
+    state: present
+
+- name: Create the runner user
+  ansible.builtin.user:
+    name: "{{ forgejo_runner_user }}"
+    group: "{{ forgejo_runner_group }}"
+    groups: [docker]
+    append: true
+    home: "{{ forgejo_runner_user_home }}"
+    shell: /bin/bash
+    system: true
+    create_home: true
+
+- name: Create the seat's runner dirs
   ansible.builtin.file:
     path: "{{ item }}"
     state: directory
@@ -18,7 +45,7 @@
     - "{{ forgejo_runner_home }}/work"
     - "{{ forgejo_runner_home }}/cache"
 
-- name: Write the slot's runner config
+- name: Write the seat's runner config
   ansible.builtin.template:
     src: forgejo-runner.yaml.j2
     dest: "{{ forgejo_runner_home }}/config.yaml"
@@ -27,9 +54,9 @@
     mode: "0640"
   register: _forgejo_runner_config
 
-# Once per slot: .runner holds the runner's own credentials afterwards. To re-register
+# Once per seat: .runner holds the runner's own credentials afterwards. To re-register
 # (a new instance, a deleted runner), remove it and re-apply.
-- name: Register the slot with Forgejo
+- name: Register the seat with Forgejo
   ansible.builtin.command:
     argv:
       - "{{ forgejo_runner_bin }}"
@@ -53,16 +80,20 @@
   # In --check the dirs above are simulated, so chdir has nothing to enter.
   ignore_errors: "{{ ansible_check_mode }}"
 
-- name: Install the slot's runner unit
+- name: Install the seat's unit
   ansible.builtin.template:
     src: forgejo-runner.service.j2
     dest: "/etc/systemd/system/forgejo-runner-{{ forgejo_runner_name }}.service"
     mode: "0644"
   register: _forgejo_runner_unit
 
-- name: Start the slot's runner, restarted on a config or unit change
+# A restart stops a running job (TimeoutStopSec in the unit): apply a change with the seat
+# on github, which is every seat the governor has not lent.
+- name: Start the seat, restarted on a config, unit or supervisor change
   ansible.builtin.systemd:
     name: "forgejo-runner-{{ forgejo_runner_name }}.service"
     enabled: true
     daemon_reload: "{{ _forgejo_runner_unit is changed }}"
-    state: "{{ 'restarted' if (_forgejo_runner_config is changed or _forgejo_runner_unit is changed) else 'started' }}"
+    state: >-
+      {{ 'restarted' if (_forgejo_runner_config is changed or _forgejo_runner_unit is changed
+         or _forgejo_seat_bin is changed) else 'started' }}

@@ -2149,5 +2149,299 @@ class LanPairTest(unittest.TestCase):
         self.assertEqual(self.run_lan("ii..b", [UNITY_JOB] * 3)[0], [])
         self.assertEqual(self.run_lan("iiiib", [UNITY_JOB] * 3)[0], [("withhold", 3), ("withhold", 4)])
 
+
+# LENDING: one LAN host, box, with three Unity slots. Its Forgejo seat borrows slot 1 and a
+# personal repo's runner borrows slot 2; slot 3 holds the pool floor.
+ORG = f"orgs/{LIVE['org']}"
+REPO = "Kblack0610/game"
+FJ_SEAT, REPO_SEAT = "box-unity-pool-1-forgejo", "box-game-1"
+S1, S2, S3 = (f"box-unity-pool-{n}" for n in (1, 2, 3))
+LCFG = governor.with_defaults({**LIVE, "standby": {}, "workers": {}, "hosts": {"box": {}}, "pool_min_admitted": 1,
+                               "shared": {s: ["light"] for s in (S1, S2, S3)},
+                               "seats": {FJ_SEAT: {"host": "box", "slot": S1, "forge": "forgejo", "repo": None,
+                                                   "caps": ["forgejo"]},
+                                         REPO_SEAT: {"host": "box", "slot": S2, "forge": "github", "repo": REPO,
+                                                     "caps": ["light"]}}})
+ADMITTED = {"self-hosted", "host-box", "unity", "unity-full", "light"}
+DRAINED = {"self-hosted", "host-box", "unity-withheld"}
+GITHUB_JOB = (frozenset({"self-hosted", "unity"}),)
+REPO_JOB = frozenset({"self-hosted", "light"})
+
+
+class FakeGitHub:
+    """The runners API over {scope: {name: {"labels": set, "busy": bool}}}, labels changed in place."""
+
+    def __init__(self, scopes):
+        self.scopes, self.calls = scopes, []
+
+    def __call__(self, method, path, body=None):
+        self.calls.append((method, path, body))
+        scope, rest = path.split("/actions/runners")
+        names = sorted(self.scopes[scope])
+        if method == "GET":
+            page = urllib.parse.parse_qs(urllib.parse.urlsplit(rest).query)["page"][0]
+            mine = self.scopes[scope]
+            return {"runners": [] if page != "1" else [
+                {"id": i, "name": n, "busy": mine[n]["busy"], "labels": [{"name": l} for l in sorted(mine[n]["labels"])]}
+                for i, n in enumerate(names)]}
+        parts = rest.split("/")
+        r = self.scopes[scope][names[int(parts[1])]]
+        if method == "POST":
+            r["labels"] |= set(body["labels"])
+        else:
+            r["labels"].discard(urllib.parse.unquote(parts[3]))
+        return {}
+
+
+class Box:
+    """box's slots and seats as GitHub holds them, and what the exporter would read from that."""
+
+    def __init__(self, s1=DRAINED, s2=ADMITTED, s1_busy=False, seat=frozenset({"self-hosted", "light-withheld"})):
+        self.gh = FakeGitHub({ORG: {S1: {"labels": set(s1), "busy": s1_busy},
+                                    S2: {"labels": set(s2), "busy": False},
+                                    S3: {"labels": set(ADMITTED), "busy": False}},
+                              f"repos/{REPO}": {REPO_SEAT: {"labels": set(seat), "busy": False}}})
+        self.fj = {"busy": False, "online": True}
+        self.leases, self.lends, self.last = governor.Leases([S1]), {}, {}
+
+    def runners(self):
+        return {n: {"host": "box", "busy": r["busy"], "elapsed": 0, "labels": frozenset(r["labels"]),
+                    "withheld": any(l.endswith("-withheld") for l in r["labels"])}
+                for n, r in self.gh.scopes[ORG].items()}
+
+    def seat_state(self):
+        r = self.gh.scopes[f"repos/{REPO}"][REPO_SEAT]
+        return {FJ_SEAT: {**self.fj, "withheld": False},
+                REPO_SEAT: {"busy": r["busy"], "online": True, "withheld": "light-withheld" in r["labels"]}}
+
+    def plan(self, waits, now=10_000, hosts=None, pins=None, dry=False):
+        with mock.patch.object(governor, "DRY_RUN", dry):
+            return governor.lend_plan(LCFG, hosts or readings(box=COOL), self.runners(), self.seat_state(), waits,
+                                      self.lends, self.leases, pins, self.last, now)
+
+    def step(self, waits, now=10_000, hosts=None):
+        steps = self.plan(waits, now, hosts)
+        with mock.patch.object(governor, "gh", self.gh), mock.patch.object(governor, "DRY_RUN", False), \
+                mock.patch("builtins.print"):
+            governor.lend_apply(LCFG, steps, self.lends, self.leases, now, self.last)
+        return [(s, slot or seat) for s, slot, seat, _ in steps]
+
+    def labels(self, name=S1):
+        return self.gh.scopes[ORG][name]["labels"]
+
+
+class LendTest(unittest.TestCase):
+    def test_both_forges_want_one_drained_slot_and_the_older_wait_wins(self):
+        older_github = [("github", GITHUB_JOB[0], 300), ("forgejo", frozenset({"docker"}), 100)]
+        self.assertEqual(Box().plan(older_github), [])
+        box = Box()
+        self.assertEqual(box.step([("github", GITHUB_JOB[0], 100), ("forgejo", frozenset({"docker"}), 300)]),
+                         [("lend", S1)])
+        self.assertEqual(box.labels(), DRAINED | {"unity-lent"})
+        # The lend left box in its cooldown, so decide() does not admit another slot for the GitHub job.
+        self.assertEqual(box.last, {"box": 10_000})
+
+    def test_a_github_job_the_slot_cannot_take_is_no_rival(self):
+        build = [("github", frozenset({"self-hosted", "unity-build"}), 900), ("forgejo", frozenset({"docker"}), 100)]
+        self.assertEqual([s for s, *_ in Box().plan(build)], ["lend"])
+
+    def test_a_forgejo_lend_runs_lend_grant_return_unlend_and_the_lease_follows_github(self):
+        box, job = Box(), [("forgejo", frozenset({"docker"}), 60)]
+        self.assertEqual(box.step(job), [("lend", S1)])
+        self.assertEqual(box.leases.get(S1)[0], "github")
+        # The exporter shows it withheld and lent: only now does the lease turn.
+        self.assertEqual(box.step(job, 10_060), [("grant", S1)])
+        self.assertEqual(box.leases.get(S1)[0], "forgejo")
+        self.assertNotIn("unity", box.labels())
+        self.assertEqual(box.leases.wait(S1, "forgejo", 0), "forgejo")
+        box.fj["busy"] = True
+        self.assertEqual(box.step([], 10_120), [])  # its job runs, so nothing is left to give back
+        box.fj["busy"] = False
+        self.assertEqual(box.step([], 10_180), [("return", S1)])
+        self.assertEqual(box.leases.get(S1)[:2], ("github", None))
+        # The mark stays until the supervisor, between jobs, says it holds github.
+        self.assertEqual(box.step([], 10_240), [])
+        self.assertIn("unity-lent", box.labels())
+        self.assertEqual(box.leases.wait(S1, "forgejo", 0), "github")
+        self.assertEqual(box.step([], 10_300), [])
+        self.assertEqual(box.leases.wait(S1, "github", 0), "github")
+        self.assertEqual(box.step([], 10_360), [("unlend", S1)])
+        self.assertEqual(box.labels(), DRAINED)
+        self.assertEqual(box.lends, {})
+
+    def test_a_busy_slot_is_never_lent_or_granted(self):
+        job = [("forgejo", frozenset({"docker"}), 60)]
+        self.assertEqual(Box(s1_busy=True).plan(job), [])
+        # The exporter says idle, GitHub says busy: the live read wins.
+        box = Box()
+        box.gh.scopes[ORG][S1]["busy"] = True
+        with mock.patch.object(box, "runners", return_value={**Box().runners()}):
+            self.assertEqual(box.step(job), [("lend", S1)])
+        self.assertEqual(box.lends, {})
+        self.assertEqual(box.labels(), DRAINED)
+        box.gh.scopes[ORG][S1]["busy"] = False
+        box.step(job)
+        box.gh.scopes[ORG][S1]["busy"] = True  # a GitHub job it took before the lend landed
+        self.assertEqual(box.plan(job, 10_060), [])
+        with mock.patch.object(box, "runners", return_value={**Box(s1=DRAINED | {"unity-lent"}).runners()}):
+            box.step(job, 10_060)
+        self.assertEqual(box.leases.get(S1)[0], "github")
+        self.assertEqual(box.lends[S1]["phase"], "held")
+
+    def test_an_admitted_slot_is_lent_only_above_the_pool_floor(self):
+        job = [("forgejo", frozenset({"docker"}), 60)]
+        self.assertEqual(Box(s1=ADMITTED).step(job), [("lend", S1)])
+        box = Box(s1=ADMITTED, s2=DRAINED)
+        box.gh.scopes[ORG][S3]["labels"] = set(DRAINED)
+        self.assertEqual(box.plan(job), [])
+
+    def test_a_hot_pinned_or_cooling_host_lends_nothing_and_gives_back_what_it_lent(self):
+        job = [("forgejo", frozenset({"docker"}), 60)]
+        self.assertEqual(Box().plan(job, hosts=readings(box=HOT)), [])
+        self.assertEqual(Box().plan(job, pins={"box": 1}), [])
+        box = Box()
+        box.last["box"] = 9_900
+        self.assertEqual(box.plan(job), [])
+        box = Box()
+        box.step(job)
+        box.step(job, 10_060)
+        self.assertEqual([s for s, *_ in box.plan(job, 10_120, readings(box=HOT))], ["return"])
+
+    def test_an_older_github_job_takes_an_idle_lent_slot_back(self):
+        box = Box()
+        box.step([("forgejo", frozenset({"docker"}), 60)])
+        box.step([("forgejo", frozenset({"docker"}), 120)], 10_060)
+        rival = [("github", GITHUB_JOB[0], 500), ("forgejo", frozenset({"docker"}), 180)]
+        self.assertEqual(box.step(rival, 10_120), [("return", S1)])
+        self.assertEqual(box.leases.get(S1)[0], "github")
+
+    def test_a_dead_supervisor_gives_its_slot_back(self):
+        box, job = Box(), [("forgejo", frozenset({"docker"}), 60)]
+        box.step(job)
+        box.step(job, 10_060)
+        self.assertEqual(box.plan(job, 10_060 + governor.LEASE_STALE_SECONDS - 1), [])
+        self.assertEqual([s for s, *_ in box.plan(job, 10_060 + governor.LEASE_STALE_SECONDS)], ["return"])
+
+    def test_a_repo_seat_runs_only_while_its_slot_is_lent(self):
+        box, job = Box(s1=ADMITTED, s2=DRAINED), [(REPO, REPO_JOB, 60)]
+        self.assertEqual(box.step(job), [("lend", S2)])
+        self.assertIn("light-withheld", box.gh.scopes[f"repos/{REPO}"][REPO_SEAT]["labels"])
+        self.assertEqual(box.step(job, 10_060), [("grant", S2)])
+        self.assertEqual(box.gh.scopes[f"repos/{REPO}"][REPO_SEAT]["labels"], {"self-hosted", "light"})
+        self.assertEqual(box.step([], 10_120), [("return", S2)])
+        self.assertEqual(box.gh.scopes[f"repos/{REPO}"][REPO_SEAT]["labels"], {"self-hosted", "light-withheld"})
+        self.assertEqual(box.step([], 10_180), [("unlend", S2)])
+        self.assertEqual(box.labels(S2), DRAINED)
+
+    def test_a_repo_seat_admitted_with_no_lend_is_withheld(self):
+        box = Box(seat={"self-hosted", "light"})
+        self.assertEqual(box.step([]), [("withhold", REPO_SEAT)])
+        self.assertEqual(box.gh.scopes[f"repos/{REPO}"][REPO_SEAT]["labels"], {"self-hosted", "light-withheld"})
+
+    def test_a_dry_run_lends_nothing(self):
+        self.assertEqual(Box().plan([("forgejo", frozenset({"docker"}), 60)], dry=True), [])
+        box = Box(seat={"self-hosted", "light"})
+        with mock.patch.object(governor, "gh", box.gh), mock.patch.object(governor, "DRY_RUN", True), \
+                mock.patch("builtins.print"):
+            governor.lend_apply(LCFG, box.plan([], dry=True), box.lends, box.leases, 10_000, box.last)
+        self.assertEqual([c for c in box.gh.calls if c[0] != "GET"], [])
+
+    def cycle(self, box, waiting, seat_waits):
+        with mock.patch.object(governor, "observe", return_value=(readings(box=COOL), box.runners(), waiting)), \
+                mock.patch.object(governor, "observe_seats", return_value=(box.seat_state(), seat_waits)), \
+                mock.patch.object(governor, "read_pins", return_value={}), \
+                mock.patch.object(governor, "gh", box.gh), mock.patch.object(governor, "DRY_RUN", False), \
+                mock.patch.object(governor.time, "time", return_value=10_000), mock.patch("builtins.print"):
+            governor.cycle(LCFG, box.last, {}, None, (box.leases, box.lends))
+
+    def test_a_cycle_lends_before_decide_and_decide_never_admits_the_lent_slot(self):
+        box = Box()
+        self.cycle(box, list(GITHUB_JOB) * 3, [("github", GITHUB_JOB[0], 100), ("forgejo", frozenset({"docker"}), 300)])
+        self.assertEqual(box.labels(), DRAINED | {"unity-lent"})
+        self.assertIn('ci_governor_lent{host="box",name="box-unity-pool-1",to="forgejo",seat="box-unity-pool-1-forgejo"} 1',
+                      governor.State.metrics)
+
+    def test_a_restart_finds_a_lent_slot_by_its_mark_and_returns_it(self):
+        box = Box(s1=DRAINED | {"unity-lent"})
+        self.cycle(box, list(GITHUB_JOB) * 3, [])
+        self.assertEqual(box.lends[S1]["phase"], "returning")
+        self.assertIn("unity-lent", box.labels())  # its supervisor has not said github yet
+        box.leases.wait(S1, "github", 0)
+        self.cycle(box, list(GITHUB_JOB) * 3, [])
+        self.assertEqual(box.lends, {})
+        # The pool's again in the same cycle: decide() admits it for the waiting GitHub jobs.
+        self.assertEqual(box.labels(), ADMITTED)
+
+
+class LeaseTest(unittest.TestCase):
+    def test_wait_answers_at_once_on_a_change_and_have_on_its_timeout(self):
+        leases = governor.Leases(["s"])
+        self.assertEqual(leases.wait("s", "github", 0), "github")
+        self.assertEqual(leases.get("s")[1], "github")
+        self.assertEqual(leases.wait("s", "forgejo", 0), "github")  # asked with a lease it does not hold
+        got = []
+        t = __import__("threading").Thread(target=lambda: got.append(leases.wait("s", "github", 120)))
+        start = time.monotonic()
+        t.start()
+        leases.set("s", "forgejo")
+        t.join(10)  # a guard only: the set wakes it
+        self.assertEqual(got, ["forgejo"])
+        self.assertLess(time.monotonic() - start, 10)
+        self.assertEqual(leases.get("s")[1], None)  # a change clears the ack until the supervisor holds it
+        leases.wait("s", "forgejo", 0)
+        self.assertEqual(leases.get("s")[1], "forgejo")
+
+    def test_the_lease_endpoint(self):
+        from http.server import ThreadingHTTPServer
+        import threading
+        leases = governor.Leases(["box-unity-pool-1"])
+        server = ThreadingHTTPServer(("127.0.0.1", 0), governor.Handler)
+        server.daemon_threads = True
+        threading.Thread(target=server.serve_forever, daemon=True).start()
+        self.addCleanup(server.server_close)
+        self.addCleanup(server.shutdown)
+        base = f"http://127.0.0.1:{server.server_address[1]}/lease"
+
+        def ask(query):
+            try:
+                with urllib.request.urlopen(f"{base}?{query}", timeout=10) as r:
+                    return r.status, r.read().decode()
+            except urllib.error.HTTPError as e:
+                e.close()
+                return e.code, ""
+        self.assertEqual(ask("slot=box-unity-pool-1&have=github&wait=0")[0], 404)  # no leases yet
+        with mock.patch.object(governor.Handler, "leases", leases):
+            self.assertEqual(ask("slot=box-unity-pool-9&have=github&wait=0")[0], 404)
+            self.assertEqual(ask("slot=box-unity-pool-1&have=docker&wait=0")[0], 400)
+            self.assertEqual(ask("slot=box-unity-pool-1&have=github&wait=soon")[0], 400)
+            self.assertEqual(ask("slot=box-unity-pool-1&have=github&wait=0"), (200, "github\n"))
+            got = []
+            t = threading.Thread(target=lambda: got.append(ask("slot=box-unity-pool-1&have=github&wait=120")))
+            t.start()
+            leases.set("box-unity-pool-1", "forgejo")
+            t.join(10)
+            self.assertEqual(got, [(200, "forgejo\n")])
+
+
+class SeatConfigTest(unittest.TestCase):
+    def test_the_live_seats_borrow_lan_unity_slots(self):
+        seats = LIVE["seats"]
+        self.assertTrue(any(s["forge"] == "forgejo" for s in seats.values()))
+        self.assertTrue(any(s["repo"] for s in seats.values()))
+        slots = {n for h in LIVE["hosts"] for n in governor.load_config(CONFIG).get("shared", {}) if n.startswith(h)}
+        self.assertTrue(all(s["slot"] in slots for s in seats.values()))
+        self.assertNotIn("razer-laptop", {s["host"] for s in seats.values()})
+
+    def test_a_seat_that_borrows_no_lan_unity_slot_fails(self):
+        topo = {"hosts": {"box": {"site": "lan", "slots": [
+            {"name": S1, "caps": ["unity", "light"]},
+            {"name": FJ_SEAT, "caps": ["forgejo"], "forge": "forgejo", "borrows": "box-unity-pool-7"}]}}}
+        conf = {**live_config(), "hosts": {}, "power": {}, "rates": {}}
+        with self.assertRaisesRegex(ValueError, "seats that borrow no LAN Unity slot: box-unity-pool-1-forgejo"):
+            load_files(conf, topo)
+        topo["hosts"]["box"]["slots"][1]["borrows"] = S1
+        self.assertEqual(load_files(conf, topo)["seats"][FJ_SEAT]["slot"], S1)
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=1)

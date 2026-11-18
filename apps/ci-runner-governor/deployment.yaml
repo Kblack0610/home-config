@@ -135,6 +135,26 @@ spec:
       targetPort: 9321
   type: ClusterIP
 ---
+apiVersion: v1
+kind: Service
+metadata:
+  name: ci-runner-governor-lease
+  namespace: monitoring
+  labels:
+    app.kubernetes.io/name: ci-runner-governor
+spec:
+  # The Forgejo seats' supervisors (ansible role forgejo-runner-linux) long-poll /lease for up
+  # to 300s, past Traefik's 60s timeout, so a NodePort and no ingress: LAN hosts ask at
+  # pi5-master's address (forgejo_runner_lease_url). Only /lease is for them.
+  type: NodePort
+  selector:
+    app.kubernetes.io/name: ci-runner-governor
+  ports:
+    - name: lease
+      port: 9321
+      targetPort: 9321
+      nodePort: 30321
+---
 apiVersion: monitoring.coreos.com/v1
 kind: ServiceMonitor
 metadata:

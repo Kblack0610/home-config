@@ -98,23 +98,37 @@ class CapTests(unittest.TestCase):
         _, fails = self.slots()
         self.assertTrue(any("ci_caps names gpu" in f for f in fails))
 
-    def test_forgejo_slots_serve_forgejo_alone(self):
+    def test_a_forgejo_seat_borrows_each_ungrouped_test_slot_and_has_no_cores_of_its_own(self):
         topo, fails = topology.render(self.hosts, self.groups)
         self.assertEqual(fails, [])
-        fj = [s for h in topo["hosts"].values() for s in h["slots"] if s.get("forge") == "forgejo"]
-        self.assertEqual(len(fj), topology.FORGEJO_SLOTS)
-        self.assertTrue(all(s["caps"] == ["forgejo"] for s in fj))
+        fj = {s["name"]: s for h in topo["hosts"].values() for s in h["slots"] if s.get("forge") == "forgejo"}
+        # ms-a2's slots 3-4 are build slot 5's group, so only 1-2 lend.
+        self.assertEqual(sorted(s["borrows"] for s in fj.values()), sorted(
+            [f"ms-a2-unity-pool-{n}" for n in (1, 2)] + [f"deskslim-2-unity-pool-{n}" for n in (1, 2, 3)]
+            + [f"windows-media-ci-unity-pool-{n}" for n in (1, 2)]))
+        self.assertTrue(all(s["caps"] == ["forgejo"] and n == s["borrows"] + "-forgejo" for n, s in fj.items()))
 
-    def test_forgejo_runs_on_more_than_one_host(self):
+    def test_every_repo_runner_borrows_a_unity_slot(self):
         topo, fails = topology.render(self.hosts, self.groups)
         self.assertEqual(fails, [])
-        hosts = {h for h, v in topo["hosts"].items() for s in v["slots"] if s.get("forge") == "forgejo"}
-        self.assertEqual(hosts, {"ms-a2", "windows-media-ci", "deskslim-2"})
+        repo = [s for h in topo["hosts"].values() for s in h["slots"]
+                if s.get("repo", "").startswith("Kblack0610/")]
+        self.assertTrue(repo)
+        self.assertTrue(all(s.get("borrows") for s in repo))
 
-    def test_forgejo_slot_count_is_the_rule(self):
-        self.hosts["ms-a2"]["forgejo_slots"] = topology.FORGEJO_SLOTS + 1
-        _, fails = self.slots()
-        self.assertTrue(any("not FORGEJO_SLOTS" in f for f in fails))
+    def test_a_repo_runner_on_a_grouped_or_missing_slot_fails(self):
+        for host, n in (("deskslim-2", 4), ("ms-a2", 3)):
+            with self.subTest(host=host, n=n):
+                self.setUp()
+                self.hosts[host]["ci_repo_runners"] = [{"repo": "Kblack0610/x", "slot": "x-1", "borrows": n}]
+                _, fails = self.slots()
+                self.assertTrue(any(f"{host}-x-1 borrows {host}-unity-pool-{n}, not one of" in f for f in fails), fails)
+
+    def test_a_host_without_forgejo_in_ci_caps_gets_no_seat(self):
+        self.hosts["ms-a2"]["ci_caps"] = ["light", "heavy", "unity", "unity-build"]
+        slots, fails = self.slots()
+        self.assertEqual(fails, [])
+        self.assertFalse([n for n, caps in slots.items() if n.startswith("ms-a2-") and "forgejo" in caps])
 
     def test_cloud_host_never_takes_forgejo(self):
         self.hosts["aws-spot-1"]["ci_caps"] = ["unity", "forgejo"]

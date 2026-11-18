@@ -84,14 +84,21 @@
   when: _ci_retire_docker_age.stdout == 'stale'
 
 # A slice that was active when its file went stays loaded until stopped, and a later run
-# finds no file to act on. Stop each one that holds no task: pids.current counts the
-# children, so a slice whose container still waits on the refused docker restart stays.
+# finds no file to act on. Stop each one whose cgroup tree holds no process, read from
+# cgroup.procs rather than TasksCurrent, which is unset without accounting: a slice whose
+# container still waits on the refused docker restart stays.
 - name: Stop the CI slices still loaded
   ansible.builtin.shell: |
     set -eu
-    for s in $(systemctl list-units --all --plain --no-legend --type=slice {{ _ci_retire_patterns | map('quote') | join(' ') }} | awk '{print $1}'); do
-      [ "$(systemctl show "$s" -p TasksCurrent --value)" = 0 ] || continue
-      systemctl stop "$s" && echo "$s"
+    units=$(systemctl list-units --all --plain --no-legend --type=slice {{ _ci_retire_patterns | map('quote') | join(' ') }})
+    for s in $(printf '%s\n' "$units" | awk '{print $1}'); do
+      cg=$(systemctl show "$s" -p ControlGroup --value)
+      if [ -n "$cg" ] && [ -d "/sys/fs/cgroup$cg" ] \
+         && find "/sys/fs/cgroup$cg" -name cgroup.procs -exec cat {} + | grep -q .; then
+        continue
+      fi
+      systemctl stop "$s"
+      echo "$s"
     done
   register: _ci_retire_stopped
   changed_when: _ci_retire_stopped.stdout | length > 0

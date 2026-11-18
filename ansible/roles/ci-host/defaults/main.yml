@@ -123,17 +123,23 @@ unity_ci_lfs_store_source: /home/kblack0610/.cache/bnb/asset-library-lfs
 # Editor images the jobs build on. Pulling these on the LAN fails (the IPv6 path
 # corrupts long downloads), so a missing one is copied from the workstation's
 # docker with docker save | docker load. Add the new tags on a Unity upgrade.
-# A player build asks for its platform's flavor (playground perf-round.yml, release.yml);
-# without it the job pulls, and dies on the corrupted download.
 # Pull the images on the host instead of copying them from the workstation. For
 # hosts off the LAN (the AWS hosts), whose pull does not take the broken IPv6 path.
 unity_ci_images_pull: false
-unity_ci_images:
+unity_ci_test_images:
   - unityci/editor:ubuntu-6000.0.85f1-base-3
   - unityci/editor:ubuntu-6000.3.27f1-base-3
+# A player build asks for its platform's flavor (playground perf-round.yml, release.yml,
+# players.yml); without it the job pulls, and dies on the corrupted download. Only a
+# unity-build slot takes one, so only a host with that cap holds them: 17-28G each, and on
+# 2026-11-18 they held test-only windows-media-ci under the governor's disk admit line with
+# 24 cores idle and Unity jobs waiting. tasks/unity.yml removes an image a host stops listing.
+unity_ci_build_images:
   - unityci/editor:ubuntu-6000.3.27f1-windows-mono-3
   - unityci/editor:ubuntu-6000.3.27f1-mac-mono-3
   - unityci/editor:ubuntu-6000.3.27f1-android-3
+unity_ci_images: >-
+  {{ unity_ci_test_images + (unity_ci_build_images if 'unity-build' in (ci_caps | default([])) else []) }}
 
 unity_ci_packages:
   - docker

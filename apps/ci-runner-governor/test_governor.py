@@ -1355,9 +1355,9 @@ class GovernorTest(unittest.TestCase):
         governor.apply(cfg, "admit", "ws-1", "ws")
         self.assertEqual(calls[1][2], {"labels": ["unity"]})
 
-    def test_the_live_shared_caps_are_lan_light_only(self):
+    def test_the_live_shared_caps_are_lan_only(self):
         shared = governor.load_config(CONFIG)["shared"]
-        self.assertEqual(shared["ms-a2-unity-pool-1"], ["light"])
+        self.assertEqual(shared["ms-a2-unity-pool-1"], ["light", "heavy"])
         self.assertFalse([n for n in shared if n.startswith("aws-")])
         self.assertNotIn("cachyos-x8664-main-unity-pool-1", shared)
 
@@ -1380,7 +1380,7 @@ class GovernorTest(unittest.TestCase):
 
     def test_admit_gives_every_cap_back(self):
         calls = self.every_cap("admit", ["self-hosted", "unity-withheld", "lan"])
-        self.assertEqual(calls[1][2], {"labels": ["light", "unity", "unity-full"]})
+        self.assertEqual(calls[1][2], {"labels": ["heavy", "light", "unity", "unity-full"]})
         self.assertTrue(calls[2][1].endswith("/7/labels/unity-withheld"))
 
     def test_the_live_config_keeps_full_runs_off_the_workstation(self):

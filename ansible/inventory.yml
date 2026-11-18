@@ -309,8 +309,8 @@ all:
         # their own 6 threads (ci_linux_cpus 5-7,13-15) (40G then, 6G since 2026-11-17), and a light job
         # is 0.5-0.6G anon. Heavy: razer's one heavy slot waited 6% of 7 days with
         # bursts to 18, so since 2026-11-17 ms-a2 and windows-media-ci carry one heavy
-        # slot each; heavy jobs take ephemeral ports, so Unity test slots on a heavy host
-        # take heavy once make-logical-possum-p4-apply runs (scripts/render-ci-topology.py SHARED_CAPS).
+        # slot each, and since heavy jobs take ephemeral ports every Unity test slot
+        # on a heavy host takes heavy too (scripts/render-ci-topology.py SHARED_CAPS).
         # razer has one light slot and no heavy since 2026-11-17: 32 GB, k3s and the
         # OS take about 12 GiB, the rest stays with 4-6 Claude sessions.
         # ci_repo_runners: runners for one personal repo, which cannot use the
@@ -533,8 +533,8 @@ all:
     # stays with k3s and the OS. Starting values, tuned against a full nightly.
     # ci_caps: the job kinds the host can run (light, heavy, unity, unity-build, forgejo).
     # Every slot takes each of them its kind can hold (scripts/render-ci-topology.py
-    # HOST_CAPS says which), so a Unity test slot also takes its host's light (and heavy, after
-    # make-logical-possum-p4-apply) jobs. A host's own slots of a kind need that kind here; a cloud host takes no
+    # HOST_CAPS says which), so a Unity test slot also takes its host's light and heavy
+    # jobs. A host's own slots of a kind need that kind here; a cloud host takes no
     # light or heavy, so a small job never powers a paid host. Drop a cap and
     # re-apply to take it off every slot of the host.
     ci_hosts:
@@ -577,9 +577,9 @@ all:
         # deskslim-2: 12 cores / 24 threads, SMT siblings n and n+12, 60G. Cores
         # 0-1 are k3s and the OS; three slots of three cores and 14G on cores
         # 2-10, which leaves core 11 and 18G for the host. A fourth slot would take
-        # k3s's cores.
+        # k3s's cores. Its Unity slots take light and heavy jobs (ci_caps).
         deskslim-2:
-          ci_caps: [light, unity]
+          ci_caps: [light, heavy, unity]
           ci_cpus: 2-10,14-22
           ci_memory_max: 42G
           ci_unity_cpus: 2-10,14-22

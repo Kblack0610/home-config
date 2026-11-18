@@ -217,8 +217,8 @@
 #     to ["self-hosted","linux","light","fresh-workspace"], so their light jobs
 #     take only slots whose workspace starts empty, never a Unity slot, where the
 #     checkout's clean would delete the warm Library. Every other repo uses the
-#     org ones, and its light jobs take any slot of a host tagged for them, Unity slots too
-#     (heavy joins after make-logical-possum-p4-apply; ci_caps in inventory.yml).
+#     org ones, and its light and heavy jobs take any slot of a host tagged for them,
+#     Unity slots too (ci_caps in inventory.yml).
 #
 # Slots per host live in inventory.yml (linux_ci_runners); the host's CI
 # CPU and memory budget in ci_hosts (roles/ci-host-budget). Each slot is its own
@@ -437,7 +437,7 @@
         # unity-gate: the non-preemptible hosts merge gates may take (unity_ci_gate, default false);
         # a Spot host leaves it off, so a reclaim never kills a gate (playground ucp-1778).
         # The slot's caps come from topology.json (ci_slot_caps): unity-build on a build slot,
-        # unity plus the host's shared caps (SHARED_CAPS) on a test slot (scripts/render-ci-topology.py HOST_CAPS).
+        # unity plus the host's light and heavy on a test slot (scripts/render-ci-topology.py HOST_CAPS).
         # No Unity slot carries fresh-workspace, so a Unity repo's light job never lands in its
         # warm tree.
         gh_runner_labels: "{{ [ 'self-hosted', 'linux', 'x64', 'host-' ~ inventory_hostname ] + ci_slot_caps[gh_runner_name] + ([] if unity_slot <= unity_ci_build_slots | default(0) else ([ 'unity-full' ] if unity_ci_full | default(true) else []) + ([ 'unity-wide' ] if unity_ci_wide | default(false) else []) + ([ 'unity-gate' ] if unity_ci_gate | default(false) else [])) + ([ 'lan' ] if unity_ci_lan | default(true) else []) + ([ 'hd-library' ] if unity_ci_hd_library | default(unity_ci_lan | default(true)) else []) + (unity_ci_slot_labels | default({})).get(unity_slot, []) }}"
@@ -467,8 +467,8 @@
           ASSET_LIBRARY_LFS_STORE: "{{ unity_ci_lfs_store }}"
           # Every slot's hook (roles/ci-host job-started.sh): with CI_SLOT_UNITY it prunes
           # idle slots' warm trees before the job when the disk is under the floor, and it never
-          # empties a workspace holding a Unity project. At job end it frees what a light job
-          # left. Changing this env restarts every slot and kills its job: apply it with the
+          # empties a workspace holding a Unity project. At job end it frees what a light or
+          # heavy job left (docker containers included). Changing this env restarts every slot and kills its job: apply it with the
           # host's slots idle.
           ACTIONS_RUNNER_HOOK_JOB_STARTED: "{{ linux_ci_job_started_hook }}"
           ACTIONS_RUNNER_HOOK_JOB_COMPLETED: "{{ linux_ci_job_completed_hook }}"

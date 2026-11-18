@@ -38,9 +38,9 @@
       {"name": "cachyos-x8664-main-unity-pool-2", "caps": ["unity"]}
     ]},
     "deskslim-2": {"site": "local", "full": true, "slots": [
-      {"name": "deskslim-2-unity-pool-1", "caps": ["unity", "light"]},
-      {"name": "deskslim-2-unity-pool-2", "caps": ["unity", "light"]},
-      {"name": "deskslim-2-unity-pool-3", "caps": ["unity", "light"]}
+      {"name": "deskslim-2-unity-pool-1", "caps": ["unity", "light", "heavy"]},
+      {"name": "deskslim-2-unity-pool-2", "caps": ["unity", "light", "heavy"]},
+      {"name": "deskslim-2-unity-pool-3", "caps": ["unity", "light", "heavy"]}
     ]},
     "mac-mini": {"site": "local", "slots": [
       {"name": "mac-mini-mac", "caps": ["macos"], "repo": "BlackNBrownStudios/platform"},
@@ -52,10 +52,10 @@
       {"name": "ms-a2-heavy-1", "caps": ["heavy", "light"]},
       {"name": "ms-a2-forgejo-1", "caps": ["forgejo"], "forge": "forgejo"},
       {"name": "ms-a2-forgejo-2", "caps": ["forgejo"], "forge": "forgejo"},
-      {"name": "ms-a2-unity-pool-1", "caps": ["unity", "light"]},
-      {"name": "ms-a2-unity-pool-2", "caps": ["unity", "light"]},
-      {"name": "ms-a2-unity-pool-3", "caps": ["unity", "light"]},
-      {"name": "ms-a2-unity-pool-4", "caps": ["unity", "light"]}
+      {"name": "ms-a2-unity-pool-1", "caps": ["unity", "light", "heavy"]},
+      {"name": "ms-a2-unity-pool-2", "caps": ["unity", "light", "heavy"]},
+      {"name": "ms-a2-unity-pool-3", "caps": ["unity", "light", "heavy"]},
+      {"name": "ms-a2-unity-pool-4", "caps": ["unity", "light", "heavy"]}
     ]},
     "razer-laptop": {"site": "local", "slots": [
       {"name": "razer-laptop-light-1", "caps": ["light"]},
@@ -73,8 +73,8 @@
       {"name": "windows-media-ci-gungan-speak-1", "caps": ["light"], "repo": "Kblack0610/gungan-speak"},
       {"name": "windows-media-ci-forgejo-1", "caps": ["forgejo"], "forge": "forgejo"},
       {"name": "windows-media-ci-forgejo-2", "caps": ["forgejo"], "forge": "forgejo"},
-      {"name": "windows-media-ci-unity-pool-1", "caps": ["unity", "light"]},
-      {"name": "windows-media-ci-unity-pool-2", "caps": ["unity", "light"]}
+      {"name": "windows-media-ci-unity-pool-1", "caps": ["unity", "light", "heavy"]},
+      {"name": "windows-media-ci-unity-pool-2", "caps": ["unity", "light", "heavy"]}
     ]}
   }
 }

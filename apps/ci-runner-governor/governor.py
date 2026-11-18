@@ -235,7 +235,7 @@ def load_config(path, topology_path=None):
     - "workers" by host (none when left out)
     - "rates": config.json's, plus {0, owned} for every LAN topology host
     - "shared": by runner, the caps its slot takes besides the governed ones (a LAN Unity test
-      slot's light), which a withhold drops and an admit gives back with the rest."""
+      slot's light and heavy), which a withhold drops and an admit gives back with the rest."""
     with open(path) as f:
         cfg = json.load(f)
     with open(topology_path or TOPOLOGY) as f:
@@ -490,10 +490,13 @@ def verdict(h, t):
         return "HOT", f"tctl {tctl:.0f} >= {w['tctl']}"
     if mem < w["mem"]:
         return "HOT", f"free memory {mem:.2f} < {w['mem']}"
-    if (idle >= a["idle"] and psi <= a["psi"] and mem >= a["mem"] and (tctl is None or tctl < a["tctl"])
-            and disk is not None and disk >= a["disk"]):
+    short = [k for k, miss in (("idle", idle < a["idle"]), ("psi", psi > a["psi"]), ("mem", mem < a["mem"]),
+                               ("tctl", tctl is not None and tctl >= a["tctl"]),
+                               ("disk", disk is not None and disk < a["disk"]), ("disk reading", disk is None))
+             if miss]
+    if not short:
         return "ROOM", f"idle {idle:.2f}, cpu pressure {psi:.2f}"
-    return "STEADY", f"idle {idle:.2f}, cpu pressure {psi:.2f}"
+    return "STEADY", f"idle {idle:.2f}, cpu pressure {psi:.2f}; short of admit on {'+'.join(short)}"
 
 
 def decide(cfg, hosts, runners, waiting, last_action, now, instances=None, pins=None, restore=(), shared_waiting=()):

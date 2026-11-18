@@ -64,6 +64,22 @@ data:
               category: node-health
             annotations:
               summary: "CPU or memory hardware error (MCE) on {{ $labels.host }}: {{ $value }} lines in 10m"
+          - alert: HostFsVerityCorruption
+            # fs-verity logs "FILE CORRUPTED" for each verified read that fails its Merkle tree:
+            # 223 lines on the workstation 2026-11-16 20:51 to 11-17 01:03, unalerted.
+            expr: |
+              label_replace(sum by (host) (count_over_time({transport="kernel"} |= "FILE CORRUPTED" [10m])), "instance", "$1", "host", "(.*)") > 0
+            labels:
+              severity: warning
+              fleet: none  # a disk or filesystem fault: the human checks the drive and the file
+              category: node-health
+            annotations:
+              summary: "fs-verity FILE CORRUPTED on {{ $labels.host }}: {{ $value }} lines in 10m"
+      # Its own group: every rule in host-kernel-faults is a host fault to host-qualify.py, which
+      # counts single lines, and one "Manufacturer: CPS" is logged on every boot of the UPS's host.
+      - name: ups-usb
+        interval: 1m
+        rules:
           - alert: UpsUsbFlapping
             # Each time the UPS re-enumerates, the kernel logs "Manufacturer: CPS" once; a boot logs it
             # once, so more than 2 in 30m is the link dropping. NUT misses a drop it recovers from, and the
@@ -76,14 +92,3 @@ data:
               category: node-health
             annotations:
               summary: "CyberPower UPS USB link on {{ $labels.host }} re-enumerated {{ $value }} times in 30m: the UPS may be beeping and NUT may miss events. docs/nut-ups.md#troubleshooting"
-          - alert: HostFsVerityCorruption
-            # fs-verity logs "FILE CORRUPTED" for each verified read that fails its Merkle tree:
-            # 223 lines on the workstation 2026-11-16 20:51 to 11-17 01:03, unalerted.
-            expr: |
-              label_replace(sum by (host) (count_over_time({transport="kernel"} |= "FILE CORRUPTED" [10m])), "instance", "$1", "host", "(.*)") > 0
-            labels:
-              severity: warning
-              fleet: none  # a disk or filesystem fault: the human checks the drive and the file
-              category: node-health
-            annotations:
-              summary: "fs-verity FILE CORRUPTED on {{ $labels.host }}: {{ $value }} lines in 10m"

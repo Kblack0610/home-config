@@ -31,7 +31,7 @@ Apply labels before merging a scheduling restriction that reads them. Labels and
 | Check | Source | Gates |
 |---|---|---|
 | Headroom ROOM | `host-headroom.py`, 7 days | core |
-| No kernel fault in 14 days | Loki rule group `host-kernel-faults`, as `host-postmortem.py` reads it | standard, core |
+| No kernel fault in 14 days | Loki rule group `host-kernel-faults`, as `host-postmortem.py` reads it: one matching line of any rule there fails it, so a rule that is not a host fault (UpsUsbFlapping) sits in its own group; `test_host_qualify.py` parses every rule in it | standard, core |
 | Uptime 14 days | `node_boot_time_seconds` | core |
 | On mains, or no battery | `node_power_supply_online` | core |
 | Watchdog armed | `RuntimeWatchdogUSec` and `/dev/watchdog0` | standard, core |

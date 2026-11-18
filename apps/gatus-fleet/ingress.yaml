@@ -48,10 +48,10 @@ spec:
 # renders the glyph reaches this host, home-config or not.
 #
 # Its own Ingress for the priority annotation, which Traefik applies to every router
-# of an Ingress. Traefik ranks routers by rule length, and Path(`/roster`) and
-# PathPrefix(`/`) under this host are both 41 characters: the tie went one way on
-# one Traefik replica and the other way on the second, so /roster answered from
-# gatus as a 404 on every other request (2026-11-18).
+# of an Ingress. Without one, Traefik ranks routers by rule length, and Path(`/roster`)
+# and PathPrefix(`/`) under this host are both 41 characters, a tie each Traefik
+# replica breaks its own way. 100 is above the rule length of every route on this host.
+# The middleware must match the gatus-fleet Ingress above (its comment says why crowdsec).
 apiVersion: networking.k8s.io/v1
 kind: Ingress
 metadata:

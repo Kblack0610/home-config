@@ -143,36 +143,24 @@ diff <(git ls-remote forgejo master | cut -f1) \
 # Expect: no output. If different, the mirror workflow is stalled.
 ```
 
-### Reverse mirrors: external GitHub repos pulled INTO Forgejo
+### GitHub-first repos pushed INTO Forgejo
 
-home-config's own mirror runs forgejo -> github (above). The Forgejo instance ALSO hosts the opposite direction for a few external repos: a **pull mirror** that copies a GitHub repo INTO Forgejo. This is home-infra, not app-repo config, so it is documented here rather than in the app repos.
+home-config's own mirror runs forgejo -> github (above). Some repos go the other way: the BNB `platform` monorepo merges its PRs on GitHub, but its CI needs **LAN-only** home services a GitHub-hosted runner cannot see (the home-k3s preview environment, the Forgejo container registry), so a copy on Forgejo runs those workflows on Forgejo Actions runners. This is home-infra, not app-repo config, so it is documented here rather than in the app repos.
 
-**Why this exists.** Some repos (e.g. the BNB `platform` monorepo) merge their PRs on GitHub, but their CI needs to reach **LAN-only** home services that a GitHub-hosted runner cannot see: the home-k3s preview environment (preview-smoke), and the Forgejo container registry (image push). Pull-mirroring the repo into Forgejo lets in-cluster Forgejo Actions (the HA runner, `apps/forgejo/runner-deployment.yaml`) run on every synced push and reach those services directly over cluster networking. No Cloudflare tunnel, no public ingress, no token round-trip.
-
-| Direction | Example | Purpose |
+| Direction | Example | How |
 |---|---|---|
-| forgejo -> github (push) | `home-config` -> `github.com/Kblack0610/home-config` | passive DR mirror (above) |
-| github -> forgejo (pull) | `github.com/BlackNBrownStudios/platform` -> `git.kblab.me/kblack0610/platform` | let in-cluster CI reach the LAN-only preview env / registry |
+| forgejo -> github | `home-config` -> `github.com/Kblack0610/home-config` | `.forgejo/workflows/mirror-to-github.yaml` (above) |
+| github -> forgejo | `github.com/BlackNBrownStudios/platform` -> `kblack0610/platform` | platform `.github/workflows/forgejo-sync.yml` |
 
-The pull mirror is configured **inside Forgejo** (repo DB, set via UI/API), NOT as a file in this repo. Current config for `kblack0610/platform`: `mirror_interval: 5m0s`, `original_url: https://github.com/BlackNBrownStudios/platform.git`. Mirror syncs on this Forgejo DO trigger Actions `push` workflows (confirmed: the `preview-smoke` workflow fires on every synced push).
+`kblack0610/platform` is a **normal repo, not a mirror**. It was a 5-minute pull mirror until Forgejo 15 rejected its `ssh://` GitHub URL; an https pull mirror of a private GitHub repo would need a GitHub credential stored inside Forgejo, so on 2026-11-18 it was converted (`POST /api/v1/repos/kblack0610/platform/convert`) and GitHub pushes to it instead. The workflow pushes develop, main and every tag on each GitHub push or delete, plus an hourly run for refs that moved with no event, fast-forward only, with GitHub secret `FORGEJO_SYNC_TOKEN` (a kblack0610 token limited to `kblack0610/platform`, `write:repository`, rbw `forgejo_platform_sync`; platform `docs/operations/CREDENTIALS.md`). Each push starts Forgejo's `push` workflows (develop deploys, `binks-v*` and `bnb-studios-v*` tag deploys) as a mirror sync did.
 
-**A pull mirror is asynchronous:** a merge on GitHub lands in Forgejo, and its `push`-triggered workflows run, **0 to 5 minutes later** (the sync interval). A workflow that has not run yet is not proof the mirror is broken.
-
-**Do NOT** conclude "the mirror is missing" from an anonymous 404 on `git.kblab.me/api/v1/repos/search` -- private mirrors are invisible unauthenticated. Diagnose it authenticated:
+Never push or merge to `kblack0610/platform` on Forgejo: the next sync is rejected as a non-fast-forward and the GitHub run fails until the stray commit is removed. A failed `Forgejo Sync` run on GitHub is the first place to look when Forgejo is behind.
 
 ```bash
-# API token lives in ~/.git-credentials for git.kblab.me (user:token@host).
-USERTOK=$(grep git.kblab.me ~/.git-credentials | sed -E 's#https://([^@]+)@.*#\1#')
-FJ=https://git.kblab.me/api/v1
-
-# Does the mirror exist? (NOT whether it is healthy - see "Mirror health" below:
-# mirror_updated / updated_at advance on FAILED syncs and cannot answer that.)
-curl -s -u "$USERTOK" "$FJ/repos/kblack0610/platform" \
-  | jq '{mirror, mirror_interval, original_url}'
-
-# Are the mirror's push workflows actually running (and on what commits)?
-curl -s -u "$USERTOK" "$FJ/repos/kblack0610/platform/actions/tasks?limit=10" \
-  | jq '.workflow_runs[] | {name, event, status, head_sha, run_started_at}'
+# Are both sides on the same develop? (FJ token: rbw forgejo_platform_sync, user kblack0610)
+git ls-remote https://github.com/BlackNBrownStudios/platform.git refs/heads/develop
+git ls-remote https://git.kblab.me/kblack0610/platform.git refs/heads/develop
+gh run list -R BlackNBrownStudios/platform --workflow forgejo-sync.yml -L 5
 ```
 
 ### Mirror health: the field that lies, and what to use instead

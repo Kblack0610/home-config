@@ -44,10 +44,10 @@ spec:
                 - ALL
           env:
             # 1 logs and exports every decision and changes no runner. Dry run
-            # since 2026-11-02: it held at most 3 of 13 slots while about 65 jobs
-            # waited, so every registered slot carries the pool labels and none is
-            # withheld; its logs decide by 2026-11-09 whether
-            # the verdicts go live. The pod stays either way: a host pin (machine-mode
+            # since 2026-11-02. The verdicts go live once replay.py, run over 7 days
+            # of readings, passes on every governed LAN host: ms-a2 and deskslim-2
+            # report only since 2026-11-16, so not before 2026-11-24
+            # (make-logical-possum phase 3). The pod stays either way: a host pin (machine-mode
             # on the workstation) is acted on even in a dry run. The token
             # is the control node's `gh auth token` (admin:org, what the Unity
             # pool play registers runners with), SOPS-encrypted the same way as

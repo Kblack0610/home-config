@@ -388,11 +388,12 @@ def host_of(name, labels):
 
 
 def github_hosted(job):
-    """A job on GitHub's own runners: its runner group says so, or it never asked for self-hosted."""
+    """A job on GitHub's own runners: its runner group says so, or it asks for neither
+    self-hosted nor a pool of ours (runs-on: [unity, unity-gate] is ours)."""
     if job.get("runner_group_name"):
         return job["runner_group_name"] == "GitHub Actions"
     labels = job.get("labels") or []
-    return bool(labels) and "self-hosted" not in labels
+    return bool(labels) and "self-hosted" not in labels and pool_of(labels) == "other"
 
 
 SLOT_KEYS = ("name", "host", "site", "state", "scope", "forge")

@@ -26,7 +26,7 @@ Each row links the steps; it does not restate them. A service with no steps yet:
 | Langfuse project keys | first-boot seed from the secret | not written yet | `apps/langfuse/secret.sops.yaml` |
 | gatus-fleet token | one shared token | not written yet | `apps/gatus-fleet/fleet-token-secret.sops.yaml` |
 | schedules-sync feed token (every fleet worker; reads the exporter feed and moves the `agents/agents` Endpoints) | the `monitoring/schedules-sync-token` ServiceAccount token Secret | [fleet-worker runbook](./runbooks/fleet-worker.md#rotate-the-feed-token) | `ansible/group_vars/fleet_workers/vault.sops.yaml` |
-| Forgejo bot token for fleet workers (push and PRs on home-config, reads platform and personal-sites) | `forgejo admin user generate-access-token` for the bot `fleet-worker` | [fleet-worker runbook](./runbooks/fleet-worker.md#forgejo-bot-token) | `ansible/group_vars/fleet_workers/vault.sops.yaml` (`vault_fleet_forgejo_token`) |
+| Forgejo bot token for fleet workers (push and PRs on home-config, reads the feed's private Forgejo repos) | `forgejo admin user generate-access-token` for the bot `fleet-worker` | [fleet-worker runbook](./runbooks/fleet-worker.md#forgejo-bot-token) | `ansible/group_vars/fleet_workers/vault.sops.yaml` (`vault_fleet_forgejo_token`) |
 | ntfy-public publisher | htpasswd into the configmap | [ntfy-public README](../apps/ntfy-public/README.md) ("To rotate the publisher password") | `apps/ntfy-public/configmap.yaml`; the plaintext is a GitHub secret |
 | binks demo token (fleet `bk_pat_`) | `scripts/binks-mint-pat.sh`, by `kubectl exec` into binks Postgres | [binks-api README](../apps/binks-api/README.md#binks-demo-token) | `apps/binks-api/accounts.sops.yaml` (`BINKS_DEMO_TOKEN`) |
 

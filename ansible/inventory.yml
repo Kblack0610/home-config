@@ -775,10 +775,17 @@ all:
       hosts:
         # AMD. Already on the balanced profile when it hit 94C. Charge limit: on
         # the charger 24/7. 2026-11-02: still 94C peak over 12h with boost off on
-        # balanced, so quiet.
+        # balanced, so quiet. 2026-11-17: quiet with boost off still sat at
+        # 90.5C (10m minimum) through the whole walkforward window (01:00-06:30
+        # UTC, two to four shards, 27-50% CPU busy) every night, the firmware's
+        # own limit, so a clock ceiling under the 3.3GHz base clock. The firmware
+        # was already throttling to about 2.3GHz there; at 2.2GHz the 15m max was
+        # 78.9C with walkforward on 3.3 cores (busy 40%, load15 6.8). Revisit if
+        # a 15m max passes 85C under load, or the asus shards finish fewer folds.
         asus-laptop:
           thermal_cap_platform_profile: quiet
           thermal_cap_charge_limit: 80
+          thermal_cap_max_freq_khz: 2200000
         # Intel: firmware PL1 is 55W (MSR; MMIO says 130W). Roughly 1.2C per
         # watt above ambient at 55W/98C, so ~40W should land near 85C. No
         # platform profile and no charge threshold in its firmware.

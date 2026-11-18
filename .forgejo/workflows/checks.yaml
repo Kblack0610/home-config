@@ -70,6 +70,19 @@ jobs:
           [ "$rc" -eq 1 ] || { echo "the check passed an uncapped host"; exit 1; }
           grep -q "cachyos-x8664-main is an x86 Linux host in no thermal_capped group" planted-thermal.out || { echo "the check failed, but not on the planted host"; exit 1; }
           rm planted-thermal.out
+      - name: Negative control - the thermal check fails on a misspelled cap knob, which Ansible would ignore, and on a ceiling in MHz
+        run: |
+          python3 -c 's = open("ansible/inventory.yml").read(); t = s.replace("          thermal_cap_max_freq_khz:", "          thermal_cap_max_freq:", 1); assert t != s, "the plant did not apply: asus-laptop has no thermal_cap_max_freq_khz"; open("planted-knob.yml", "w").write(t)'
+          rc=0; python3 scripts/check-thermal-standard.py --inventory planted-knob.yml > planted-knob.out 2>&1 || rc=$?
+          rm planted-knob.yml; cat planted-knob.out
+          [ "$rc" -eq 1 ] || { echo "the check passed a misspelled knob"; exit 1; }
+          grep -q "sets thermal_cap_max_freq, which roles/thermal-cap does not read" planted-knob.out || { echo "the check failed, but not on the planted knob"; exit 1; }
+          python3 -c 'import re; s = open("ansible/inventory.yml").read(); t = re.sub(r"(          thermal_cap_max_freq_khz:) \d+", r"\1 2200", s, count=1); assert t != s, "the plant did not apply"; open("planted-knob.yml", "w").write(t)'
+          rc=0; python3 scripts/check-thermal-standard.py --inventory planted-knob.yml > planted-knob.out 2>&1 || rc=$?
+          rm planted-knob.yml; cat planted-knob.out
+          [ "$rc" -eq 1 ] || { echo "the check passed a ceiling in MHz"; exit 1; }
+          grep -q "sets thermal_cap_max_freq_khz: 2200; it is a clock in kHz" planted-knob.out || { echo "the check failed, but not on the planted unit slip"; exit 1; }
+          rm planted-knob.out
       - name: Host qualification verdict and parser tests
         run: python3 scripts/test_host_qualify.py
       - name: ci-slot-effect classification and host reading tests

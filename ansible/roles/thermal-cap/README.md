@@ -4,7 +4,7 @@ The fleet's thermal standard: every x86 Linux machine that carries load has its 
 
 ## Who gets it
 
-Group `thermal_capped` in `ansible/inventory.yml` takes its hosts from child groups (`linux_bare_metal`, `watchdog_x86`, `desktop_workstations`), so a host added to any of them is capped by the next apply with no edit to the group. An x86 Linux host outside them sets `thermal_cap_exempt: <why>` instead (a cloud VM, whose cooling the provider owns). `scripts/check-thermal-standard.py`, run in CI, fails on an x86 Linux host with neither, and on a capped host missing from the convergence check's `HOSTS` (`apps/ansible-runner/cronjob.yaml`). Pis, Macs, Windows and the router are out of scope: the role writes Linux x86 sysfs knobs.
+Group `thermal_capped` in `ansible/inventory.yml` takes its hosts from child groups (`linux_bare_metal`, `watchdog_x86`, `desktop_workstations`), so a host added to any of them is capped by the next apply with no edit to the group. An x86 Linux host outside them sets `thermal_cap_exempt: <why>` instead (a cloud VM, whose cooling the provider owns). `scripts/check-thermal-standard.py`, run in CI, fails on an x86 Linux host with neither, and on a capped host missing from the convergence check's `HOSTS` (`apps/ansible-runner/cronjob.yaml`), and on a `thermal_cap_*` variable this role does not read (Ansible ignores a misspelled knob, so the cap would silently not apply). Pis, Macs, Windows and the router are out of scope: the role writes Linux x86 sysfs knobs.
 
 A machine off the standard is red, by the human's ask of 2026-11-17: `NodeCpuHot` (`apps/monitoring/prometheus-rules-node-health.yaml`, above 90C for 10m) and `ConvergenceDrift` (a host where this role's apply would change something) are both `fleet: fix`, so the `alertmanager-fleet` watch queues a red item for an agent. The lever for either is this role. `ConvergenceDrift` sees a missing script or unit and a unit that failed at boot, not a sysfs value changed by hand after boot; `NodeCpuHot` catches that one by its heat.
 
@@ -26,8 +26,9 @@ The group sets `thermal_cap_boost: false`, the lever on AMD. A host with a bette
 | `thermal_cap_boost: false` | amd-pstate `cpufreq/boost=0`, or intel_pstate `no_turbo=1` | AMD, which has no writable package power limit (the RAPL zone has no constraint files); the group default |
 | `thermal_cap_rapl_long_watts` / `_short_watts` | Intel RAPL PL1/PL2 on both the MSR and MMIO zones | Intel; the efficient cap, since the last watts buy the least speed |
 | `thermal_cap_charge_limit` | `BAT*/charge_control_end_threshold` | Laptops on the charger 24/7 (asus has it; hp-victus does not) |
+| `thermal_cap_max_freq_khz` | every `cpufreq/policy*/scaling_max_freq`, in kHz | AMD, the step below boost off: a lower clock runs at a lower voltage (asus: 2.2GHz) |
 
-A knob that is set but whose file is missing, or that will not take the value (a BIOS-locked RAPL MSR, say), fails the unit and the play.
+A knob that is set but whose file is missing, or that will not take the value (a BIOS-locked RAPL MSR, say), fails the unit and the play. A knob set back to its default leaves the last value in sysfs until the next boot, since the script writes only set knobs: raise a clock ceiling to the base clock rather than dropping it, or reboot.
 
 Boost off costs speed: cores run at base clock, 2.5GHz on ms-a2's 9955HX (boost to 5.06GHz), 4.4GHz on deskslim-2's 9900X, 4.3GHz on the workstation's 9950X3D. Compare shard times against the previous nightly after a change.
 
@@ -48,4 +49,4 @@ systemctl status thermal-cap.service     # active (exited); journal lists each v
 cat /sys/devices/system/cpu/cpufreq/boost   # 0 on a boost-capped host
 ```
 
-Then watch the host under load in Prometheus (`instance:node_cpu_package_temp:celsius`): `NodeCpuHot` should stay quiet, and the target is at most 85C sustained. If it does not hold, lower the cap a step and compare shard times against the previous nightly. An AMD host with no platform profile (ms-a2, deskslim-2, the workstation, razer-laptop) has no lower step yet once boost is off: the next lever is a new knob, such as a `scaling_max_freq` ceiling, added to this role.
+Then watch the host under load in Prometheus (`instance:node_cpu_package_temp:celsius`): `NodeCpuHot` should stay quiet, and the target is at most 85C sustained. If it does not hold, lower the cap a step and compare shard times against the previous nightly. An AMD host with no platform profile (ms-a2, deskslim-2, the workstation, razer-laptop) has one lower step once boost is off: `thermal_cap_max_freq_khz`, lowered a few hundred MHz at a time.

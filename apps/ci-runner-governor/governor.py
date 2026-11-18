@@ -233,7 +233,9 @@ def load_config(path, topology_path=None):
     - "hosts": every LAN host with a Unity slot, config.json "hosts" thresholds on top of
       the defaults, "full" from the topology
     - "workers" by host (none when left out)
-    - "rates": config.json's, plus {0, owned} for every LAN topology host."""
+    - "rates": config.json's, plus {0, owned} for every LAN topology host
+    - "shared": by runner, the caps its slot takes besides the governed ones (a LAN Unity test
+      slot's light), which a withhold drops and an admit gives back with the rest."""
     with open(path) as f:
         cfg = json.load(f)
     with open(topology_path or TOPOLOGY) as f:
@@ -242,6 +244,8 @@ def load_config(path, topology_path=None):
     governed = {cfg["pool_label"], cfg["build_label"]}
     unity = {h: [s for s in e["slots"] if governed & set(s["caps"])] for h, e in topo.items()}
     unity = {h: slots for h, slots in unity.items() if slots}
+    cfg["shared"] = {s["name"]: [c for c in s["caps"] if c not in governed]
+                     for slots in unity.values() for s in slots if set(s["caps"]) - governed}
     lan = sorted(h for h, e in topo.items() if e["site"] != "cloud")
     cfg["rates"] = {**{h: {"usd_per_hour": 0, "basis": "owned"} for h in lan}, **cfg.get("rates", {})}
     cloud = [h for h in unity if topo[h]["site"] == "cloud"]
@@ -429,12 +433,14 @@ def label_set(joined):
 
 
 def admit_labels(cfg, host, name=""):
-    """The labels a runner on host gets back on admit. "full": false in its hosts entry leaves
-    out the full label: unity_ci_full false in inventory.yml, so no full run lands there."""
+    """The labels a runner on host gets back on admit: its kind's, plus the shared caps its
+    slot takes. "full": false in its hosts entry leaves out the full label: unity_ci_full
+    false in inventory.yml, so no full run lands there."""
+    shared = list(cfg.get("shared", {}).get(name, []))
     if not serves_pool(cfg, host, name):
-        return list(dedicated(cfg, host))
+        return list(dedicated(cfg, host)) + shared
     full = cfg["hosts"].get(host, {}).get("full", True)
-    return [cfg["pool_label"]] + ([cfg["full_label"]] if full else [])
+    return [cfg["pool_label"]] + ([cfg["full_label"]] if full else []) + shared
 
 
 def host_labels(cfg, host):
@@ -886,10 +892,12 @@ def runner_id(org, name):
 
 
 def apply(cfg, action, name, host):
-    """Swap the runner's own labels (the pool's, or a build slot's dedicated ones) for its
-    withheld one, or back. Adds before it removes, so a runner is never left with neither."""
+    """Swap the runner's own labels (the pool's, or a build slot's dedicated ones, and the
+    shared caps its slot takes) for its withheld one, or back. Adds before it removes, so a
+    runner is never left with neither. A withheld slot takes no job of any kind."""
     org, held = cfg["org"], withheld_label(cfg, host, name)
-    own = [cfg["pool_label"], cfg["full_label"]] if serves_pool(cfg, host, name) else dedicated(cfg, host)
+    own = ([cfg["pool_label"], cfg["full_label"]] if serves_pool(cfg, host, name) else list(dedicated(cfg, host))) \
+        + list(cfg.get("shared", {}).get(name, []))
     rid, have = runner_id(org, name)
     if action == "withhold":
         add, drop = [held], own

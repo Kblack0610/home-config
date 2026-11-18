@@ -8,7 +8,9 @@
 # the job's workspace, since the workflows were written for a fresh VM, and remove ~/setup-pnpm
 # (3G, reinstalled by pnpm/action-setup every run). The end-of-job pass frees both instead of
 # leaving them on an idle slot (docs/runbooks/node-disk-pressure.md); the start pass catches a job
-# whose end never ran. A Unity project's workspace is kept: its Library is the warm import.
+# whose end never ran. A Unity project's workspace is kept: its Library is the warm import. A light
+# job that ran ci-fresh-workspace parked that tree aside; both events first move it back
+# (ci-fresh-workspace --restore), so the light job's checkout goes and the warm tree stays.
 #
 # A file the slot cannot delete (root-owned, from a `docker run` without --user) fails the next
 # job loudly at its start instead of corrupting it; at job end it is logged, never failing a job
@@ -32,6 +34,7 @@ case "$ws" in
     ;;
 esac
 rm -rf -- "$HOME/setup-pnpm"
+{{ linux_ci_fresh_workspace }} --restore
 [ -d "$ws" ] || exit 0
 
 unity=$(find "$ws" -maxdepth 4 -path '*/ProjectSettings/ProjectVersion.txt' -print -quit)

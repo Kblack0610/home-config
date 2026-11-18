@@ -7,7 +7,7 @@ A machine the human drives the fleet from, but that runs no session, goes in `fl
 ## What a worker takes
 
 - A light claude queue item with no plan and no `#cloud-ok` tag, in a repo listed in the host's `fleet_repos`, when the machine holding the fleet lease, which runs dispatch, is over its load or idle pace. Heavy (Unity) items, plan items and other harnesses stay on the holder.
-- At most `fleet_max_live` sessions at once, and none while its own 1-minute load per core is over the dispatch pace (`DISPATCH_MAX_LOAD`).
+- At most `fleet_max_live` sessions at once, and none while its own 1-minute load per core is over the dispatch pace (`DISPATCH_MAX_LOAD`) or its MemAvailable is under `DISPATCH_HOST_MEM_MIN_PCT` (20%) of its memory.
 - A session there writes the queue and its asks into the worker's own store clone, which `store-sync` pushes at once, so every peer reads one store.
 
 ## Add a worker
@@ -95,6 +95,7 @@ The same play fails a host whose live host key is not its inventory `ssh_host_ed
 |---|---|---|
 | `fleet-dispatch hosts` says `<host> did not answer over ssh` | The host is down, or the workstation's key is not on it | `ssh <ansible_user>@<ansible_host> true` from the workstation |
 | `<host> has no wt, no claude, or a store that is not a peer clone (store-sync join)` | The play has not run, the stow did not finish, or the store has not joined | Re-run the play and read its report; check `~/.local/bin/wt`, `~/.local/bin/claude` and `~/.agent/.sync/peer` on the host |
+| `<host>: N% memory free is under the 20% floor` | Something else on the host holds its memory (on razer-laptop, the freqtrade pods, about 10.7 GB in 2026-11) | `free -m` and the top RSS on the host; move or shrink what holds it, or lower its `fleet_max_live`. Never lower the floor to get a session placed |
 | The cloud worker never starts with items waiting | No demand key: fleet-dispatch has no `CC_KUBE_CONTEXT`, a global gate holds, the lease holder is under its gate, or no waiting item is in its `fleet_repos` | `ci_governor_power_demand{host="fleet-worker-1"}`; the dispatch log's demand line says what it wrote and why |
 | The cloud worker stops with a session on it | fleet-dispatch stopped writing demand (the key ran out), or its `max_hours_day` | `systemctl --user status fleet-dispatch.timer` on the workstation; the governor log's stop line names the cause |
 | `fleet-lease status` on a worker says it cannot tell who holds the lease | Neither store remote answers from it: the sync key is not a deploy key on `kblack0610/.agent`, or Forgejo is down and `store.env` names no backup | `git -C ~/.agent ls-remote origin lease/fleet` on the worker; re-run the play for the key it prints |

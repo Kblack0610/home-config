@@ -692,15 +692,16 @@ all:
       hosts:
         # The first worker (2026-11-07): wired and always on, 16 threads and
         # 32 GB since the RAM move (hc-328), 96 GB before. It ran the singleton lanes 2026-11-15 to
-        # 11-16 while the workstation was down. Placed 2026-11-18 at 3: 52 freqtrade pods hold
-        # about 10.7 GB, so 3 sessions at 2-3 GB each leave it over fleet-dispatch's 20% free-memory
-        # floor (DISPATCH_HOST_MEM_MIN_PCT). Provisional, medium confidence; revisit when
-        # host-headroom razer-laptop reads ROOM over a week, or freqtrade moves off it.
+        # 11-16 while the workstation was down. Placed at 6: with 52 freqtrade pods (about 10.7 GB) and 2
+        # live sessions (770 MB together) it had 17.9 of 32 GB free at load 0.3 (2026-11-18), so 4
+        # more at a worst case of 3 GB each leave about 27%, over fleet-dispatch's 20% free-memory
+        # floor (DISPATCH_HOST_MEM_MIN_PCT), which every start reads again. Provisional, medium
+        # confidence; revisit when a start here is refused on that floor, or freqtrade moves off it.
         # Its repos are the ones the night canaries run in (agent-runtime is ~/.dotfiles).
         # Canary and night items go here before the workstation (fleet_first, dotfiles #2418).
         razer-laptop:
           fleet_place: true
-          fleet_max_live: 3
+          fleet_max_live: 6
           fleet_first: [canary, night]
           fleet_repos:
             - dest: ~/.dotfiles

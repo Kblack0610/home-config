@@ -55,17 +55,40 @@ class QualifyTests(unittest.TestCase):
         self.assertFalse(qualify.releases("probation", "probation"))
         self.assertTrue(qualify.releases("standard", "probation"))
 
-    def test_instance_by_name_then_inventory_ip(self):
+    def test_instance_by_name_then_inventory_address(self):
         # The returned name is the node name, which Loki's journal streams carry as `host`.
         known = {"razer-laptop": "192.168.1.26:9100", "raspberrypi": "192.168.1.20:9100",
-                 "raspberrypi-771be84c": "192.168.1.23:9100"}
-        self.assertEqual(qualify.host_instance("razer-laptop", "192.168.1.26", known),
+                 "raspberrypi-771be84c": "192.168.1.23:9100", "workstation": "192.168.1.2:9100"}
+        hi = qualify.host_instance
+        self.assertEqual(hi("razer-laptop", {"ansible_host": "192.168.1.26"}, known),
                          ("razer-laptop", "192.168.1.26:9100"))
-        self.assertEqual(qualify.host_instance("pi5-master", "192.168.1.20", known),
+        self.assertEqual(hi("raspberrypi", None, known), ("raspberrypi", "192.168.1.20:9100"))
+        self.assertEqual(hi("pi5-master", {"ansible_host": "192.168.1.20"}, known),
                          ("raspberrypi", "192.168.1.20:9100"))
-        self.assertEqual(qualify.host_instance("pi5-worker3", "192.168.1.23", known),
+        self.assertEqual(hi("pi5-worker3", {"ansible_host": "192.168.1.23"}, known),
                          ("raspberrypi-771be84c", "192.168.1.23:9100"))
-        self.assertIsNone(qualify.host_instance("pi5-master", "192.168.1.2", known))
+        self.assertIsNone(hi("pi5-master", {"ansible_host": "192.168.1.3"}, known))
+        self.assertIsNone(hi("nowhere", None, known))
+        # The workstation is a local connection with no ansible_host, only fleet_ssh_host.
+        with mock.patch("socket.gethostbyname", return_value="192.168.1.2"):
+            self.assertEqual(hi("cachyos-x8664-main", {"fleet_ssh_host": "pc-home-cachy-main.lan"}, known),
+                             ("workstation", "192.168.1.2:9100"))
+        with mock.patch("socket.gethostbyname", side_effect=OSError):
+            self.assertIsNone(hi("cachyos-x8664-main", {"fleet_ssh_host": "gone.lan"}, known))
+
+    def test_postmortem_resolves_inventory_names(self):
+        # 2026-11-17: pi5-master and cachyos-x8664-main both failed with no cc:host_instance series.
+        series = [{"metric": {"host": "raspberrypi", "instance": "192.168.1.20:9100"}},
+                  {"metric": {"host": "workstation", "instance": "192.168.1.2:9100"}}]
+        pm = qualify.postmortem
+        with mock.patch.object(pm, "prom", return_value=series), \
+             mock.patch("socket.gethostbyname", side_effect=lambda a: "192.168.1.2" if a.endswith(".lan") else a):
+            at = pm.parse_time("now")
+            self.assertEqual(pm.instance_of("pi5-master", at), ("raspberrypi", "192.168.1.20:9100"))
+            self.assertEqual(pm.instance_of("cachyos-x8664-main", at), ("workstation", "192.168.1.2:9100"))
+            self.assertEqual(pm.instance_of("raspberrypi", at), ("raspberrypi", "192.168.1.20:9100"))
+            with self.assertRaises(SystemExit):
+                pm.instance_of("pi5-nope", at)
 
     def test_kernel_check_queries_loki_by_node_name(self):
         exprs = []

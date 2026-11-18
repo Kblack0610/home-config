@@ -1,5 +1,6 @@
 """Read the inventory's host variables and group memberships for offline checks."""
 
+import socket
 from pathlib import Path
 
 import yaml
@@ -56,6 +57,25 @@ def load_inventory(path):
                 groups[name].update(members)
                 changed = True
     return hosts, groups
+
+
+def host_instance(host, values, known):
+    """(cc:host_instance host, scrape instance) for a host, or None.
+
+    `known` maps each cc:host_instance host to its instance. That name is the k8s node name for
+    a k3s node and the Endpoints hostname for a static target, and also the Loki journal `host`
+    (apps/alloy/config.alloy). It is not always the inventory name (pi5-master is raspberrypi,
+    cachyos-x8664-main is workstation), so an inventory host is found by its address:
+    ansible_host, else fleet_ssh_host (the workstation, a local connection, has only that).
+    """
+    if host in known:
+        return host, known[host]
+    addr = (values or {}).get("ansible_host") or (values or {}).get("fleet_ssh_host")
+    try:
+        ip = socket.gethostbyname(addr) if addr else None
+    except OSError:
+        return None
+    return next(((name, inst) for name, inst in known.items() if ip and inst.rsplit(":", 1)[0] == ip), None)
 
 
 def tier_errors(hosts):

@@ -1,0 +1,139 @@
+---
+- name: Require a CPU list for agent work on this host
+  ansible.builtin.assert:
+    that: agent_cpus | length > 0
+    fail_msg: >-
+      {{ inventory_hostname }} runs agent sessions but has no agent_cpus. Set it
+      in inventory.yml: about 85-90% of its CPUs, ci_cpus inside it, k3s_cpus outside.
+
+# Each CPU list as numbers, so the checks below compare CPUs, not strings.
+- name: Expand the host's CPU lists
+  ansible.builtin.set_fact:
+    _agent_cpu_sets: >-
+      {% set out = {} %}{% for name, spec in {'agent': agent_cpus,
+      'ci': ci_cpus | default(''), 'k3s': k3s_cpus | default('')}.items() %}{% set cpus = [] %}{%
+      for part in (spec | string).split(',') if part | trim %}{% set ab = (part | trim).split('-')
+      %}{% for c in range(ab[0] | int, (ab[-1] | int) + 1) %}{% set _ = cpus.append(c)
+      %}{% endfor %}{% endfor %}{% set _ = out.update({name: cpus}) %}{% endfor %}{{ out }}
+
+- name: Require agent_cpus to hold CI, miss k3s and leave the reserve
+  ansible.builtin.assert:
+    that:
+      - _agent_cpu_sets.ci | difference(_agent_cpu_sets.agent) | length == 0
+      - _agent_cpu_sets.k3s | intersect(_agent_cpu_sets.agent) | length == 0
+      - _agent_cpu_sets.agent | max < ansible_facts.processor_nproc
+      - ansible_facts.processor_nproc - (_agent_cpu_sets.agent | union(_agent_cpu_sets.k3s) | length) >= agent_cpus_reserve_min
+    fail_msg: >-
+      {{ inventory_hostname }} ({{ ansible_facts.processor_nproc }} CPUs): agent_cpus
+      {{ agent_cpus }} must contain ci_cpus ({{ ci_cpus | default('none') }}), miss
+      k3s_cpus ({{ k3s_cpus | default('none') }}), name only CPUs the host has, and
+      leave at least {{ agent_cpus_reserve_min }} CPUs outside it and k3s_cpus.
+    quiet: true
+
+- name: Create each agent unit's drop-in directory
+  ansible.builtin.file:
+    path: "/etc/systemd/user/{{ item }}.d"
+    state: directory
+    mode: "0755"
+  loop: "{{ agent_cpu_units }}"
+
+- name: Pin each agent unit to agent_cpus
+  ansible.builtin.template:
+    src: agent-cpus.conf.j2
+    dest: "/etc/systemd/user/{{ item }}.d/{{ agent_cpus_dropin }}"
+    mode: "0644"
+  loop: "{{ agent_cpu_units }}"
+  register: _agent_cpu_dropins
+
+- name: Find agent CPU drop-ins
+  ansible.builtin.find:
+    paths: /etc/systemd/user
+    recurse: true
+    patterns: "{{ agent_cpus_dropin }}"
+  register: _agent_cpu_found
+
+- name: Remove the drop-in of a unit no longer in agent_cpu_units
+  ansible.builtin.file:
+    path: "{{ item.path }}"
+    state: absent
+  loop: "{{ _agent_cpu_found.files }}"
+  loop_control:
+    label: "{{ item.path }}"
+  when: (item.path | dirname | basename | regex_replace('\.d$', '')) not in agent_cpu_units
+  register: _agent_cpu_removed
+
+- name: Create user@.service's drop-in directory
+  ansible.builtin.file:
+    path: /etc/systemd/system/user@.service.d
+    state: directory
+    mode: "0755"
+
+- name: Hand the cpuset controller to every user manager
+  ansible.builtin.template:
+    src: user-delegate.conf.j2
+    dest: /etc/systemd/system/user@.service.d/50-agent-cpuset.conf
+    mode: "0644"
+  register: _agent_cpu_delegate
+
+- name: Reload systemd onto the delegation
+  ansible.builtin.systemd_service:
+    daemon_reload: true
+  when: _agent_cpu_delegate.changed
+
+- name: List the running user managers
+  ansible.builtin.command: loginctl list-users --no-legend
+  register: _agent_cpu_users
+  changed_when: false
+  check_mode: false
+
+# A daemon-reload applies the drop-ins to units already running, panes
+# included, so no session restarts (checked live on the workstation,
+# 2026-11-18). A user manager started before cpuset was delegated to it only
+# takes the controller up on a re-exec, which keeps every unit running.
+- name: Reload each user manager onto the drop-ins
+  ansible.builtin.command: >-
+    systemctl --user -M {{ item.split()[1] }}@
+    {{ 'daemon-reexec' if _agent_cpu_delegate.changed else 'daemon-reload' }}
+  loop: "{{ _agent_cpu_users.stdout_lines }}"
+  loop_control:
+    label: "{{ item.split()[1] }}"
+  when:
+    - _agent_cpu_delegate.changed or _agent_cpu_dropins.changed or _agent_cpu_removed.changed
+    - not ansible_check_mode
+  changed_when: true
+
+# The proof: the kernel's cpuset of every running pane and lane is agent_cpus.
+# EffectiveCPUs, not AllowedCPUs: systemd records AllowedCPUs even where the
+# controller is missing and nothing is pinned. A unit that reads anything else is
+# outside the cap, and the apply fails on it.
+- name: Read the CPUs each running agent unit gets
+  ansible.builtin.shell: |
+    set -o pipefail
+    for u in $(systemctl --user -M {{ item.split()[1] }}@ list-units --no-legend --plain \
+        --state=active 'tmux-spawn-*.scope' 'app-agentctl.slice' | awk '{print $1}'); do
+      printf '%s %s\n' "$u" "$(systemctl --user -M {{ item.split()[1] }}@ show "$u" -p EffectiveCPUs --value)"
+    done
+  args:
+    executable: /bin/bash
+  loop: "{{ _agent_cpu_users.stdout_lines }}"
+  loop_control:
+    label: "{{ item.split()[1] }}"
+  register: _agent_cpu_live
+  changed_when: false
+  check_mode: false
+  when: not ansible_check_mode
+
+# systemd prints a cpuset space-separated and merged ("2-15 18-31"), so
+# agent_cpus is written the same way with commas.
+- name: Require every running agent unit to sit inside agent_cpus
+  ansible.builtin.assert:
+    that: _agent_cpu_unpinned | length == 0
+    fail_msg: "Agent units whose CPUs are not agent_cpus {{ agent_cpus }}: {{ _agent_cpu_unpinned }}"
+    quiet: true
+  vars:
+    _agent_cpu_want: "{{ agent_cpus | replace(',', ' ') }}"
+    _agent_cpu_unpinned: >-
+      {{ _agent_cpu_live.results | default([]) | selectattr('stdout_lines', 'defined')
+         | map(attribute='stdout_lines') | flatten
+         | reject('match', '^\S+ ' ~ (_agent_cpu_want | regex_escape) ~ '$') | list }}
+  when: not ansible_check_mode

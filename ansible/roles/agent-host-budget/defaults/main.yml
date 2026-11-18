@@ -1,0 +1,38 @@
+---
+# One hard CPU ceiling for all agent work on a host that runs agent sessions
+# (fleet_workers and desktop_workstations). The human, 2026-11-18: one cap over
+# all agent work, with CI and every local run (bats, cargo, Unity) counted under
+# it, at about 85-90% of the host's CPUs. A cpuset, not a quota: CPUQuota froze
+# whole slices once they spent their share (ci-host-budget, 2026-10-05).
+#
+# The CPUs agent work may use, as an AllowedCPUs list ("2-15,18-31"). Set per
+# host in inventory.yml. On a CI host ci_cpus must sit inside it, so CI and the
+# agents share the one ceiling; k3s_cpus must sit outside it. The CPUs in
+# neither stay free for the desktop and the OS.
+agent_cpus: ""
+# The fewest CPUs left outside agent_cpus and k3s_cpus for the desktop and the
+# OS. Two threads is one core on an SMT host.
+agent_cpus_reserve_min: 2
+
+# The user units that are agent work, each pinned by a drop-in under
+# /etc/systemd/user, so it holds for every user manager on the host and for
+# units started later. A name with a dash before its suffix is a systemd prefix
+# drop-in: tmux-spawn-.scope covers every tmux-spawn-<uuid>.scope. Everything a
+# unit starts inherits its cpuset, so a pane's claude, cargo, bats and Unity are
+# all inside. Desktop units (the compositor, the shell bar, Sunshine, pipewire)
+# stay out, so they keep the reserve.
+agent_cpu_units:
+  # Every tmux pane: tmux 3.8 puts each in its own tmux-spawn-<uuid>.scope.
+  - tmux-spawn-.scope
+  # agentctl@<runner>.service, the scheduled lanes.
+  - app-agentctl.slice
+  # The fleet's own timers and daemons (dotfiles .config/systemd/user).
+  - fleet-.service
+  - agent-.service
+  - claude-acct-.service
+  - schedules-sync.service
+  - store-sync.service
+
+# The drop-in's file name in each unit's .d directory; a unit that leaves
+# agent_cpu_units loses it on the next apply.
+agent_cpus_dropin: 50-agent-cpus.conf

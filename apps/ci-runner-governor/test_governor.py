@@ -2214,6 +2214,7 @@ class WideLeadTest(unittest.TestCase):
         marks = governor.build_marks(self.cfg)
         self.assertEqual(governor.pool_jobs([self.WIDE_JOB, UNITY_JOB], marks), [UNITY_JOB])
 
+
 # LENDING: one LAN host, box, with three Unity slots. Its Forgejo seat borrows slot 1 and a
 # personal repo's runner borrows slot 2; slot 3 holds the pool floor.
 ORG = f"orgs/{LIVE['org']}"

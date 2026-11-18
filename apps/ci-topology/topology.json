@@ -55,7 +55,8 @@
       {"name": "ms-a2-unity-pool-1", "caps": ["unity", "light", "heavy"]},
       {"name": "ms-a2-unity-pool-2", "caps": ["unity", "light", "heavy"]},
       {"name": "ms-a2-unity-pool-3", "caps": ["unity", "light", "heavy"]},
-      {"name": "ms-a2-unity-pool-4", "caps": ["unity", "light", "heavy"]}
+      {"name": "ms-a2-unity-pool-4", "caps": ["unity", "light", "heavy"]},
+      {"name": "ms-a2-unity-pool-5", "caps": ["unity-build"], "group": ["ms-a2-unity-pool-3", "ms-a2-unity-pool-4"]}
     ]},
     "razer-laptop": {"site": "local", "slots": [
       {"name": "razer-laptop-light-1", "caps": ["light"]},

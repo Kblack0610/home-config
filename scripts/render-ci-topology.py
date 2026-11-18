@@ -10,15 +10,17 @@ Per host: site (cloud when unity_ci_lan is false, else local), full (unity_ci_fu
 hosts only) and its slots. Per slot: the runner name the play registers, its caps (the job
 kinds it takes: light, heavy, unity, unity-build, forgejo, macos, windows; HOST_CAPS says
 which of the host's ci_caps each slot gets), the repo of a repo-scoped runner, the forge of a
-slot that serves Forgejo (github otherwise), and for a build slot the test slots in its group (unity_ci_slot_groups: they share
-its cores, so the governor never runs a build beside them).
+slot that serves Forgejo (github otherwise), and for a build slot the test slots in its group. A
+host's build slots are the keys of its unity_ci_slot_groups, each with the test slots that share
+its cores (the governor never runs a build beside them), [] for a build slot with cores of its own.
 
 Rendering also checks what the inventory must hold for the slots to fit their host:
 - A group's test slots sit inside their build slot's cores, and their memory caps sum to no
   more than the build slot's, so a group never asks more of the host than its build slot alone.
 - Two slots of a host share cores (ci_unity_slot_cpus) only inside one group.
 - A unity-wide slot has at least WIDE_SLOT_MIN_GB.
-- A build host gives RELEASE_LABEL to some of its build slots, never all (hc-263).
+- The pool's build slots carry RELEASE_LABEL on at least one and leave it off at least one,
+  so a release always has a slot and never holds every slot players.yml builds on (hc-263).
 - A core host or a host in no_ci_hosts carries no CI.
 - Forgejo slots sit on LAN hosts only, and there are FORGEJO_SLOTS of them.
 
@@ -55,7 +57,7 @@ CI_GROUPS = ("linux_ci_runners", "unity_ci_runners", "unity_ci_mac_runners", "ci
 UNITY_GROUPS = ("unity_ci_runners", "unity_ci_mac_runners")
 # The inventory keys this reads; a Jinja value in one would render as its literal text.
 KEYS = ("ci_light_slots", "ci_heavy_slots", "ci_repo_runners", "ci_pinned_runners", "unity_ci_slots",
-        "unity_ci_build_slots", "unity_ci_slot_groups", "unity_ci_lan", "unity_ci_full", "unity_ci_wide",
+        "unity_ci_slot_groups", "unity_ci_lan", "unity_ci_full", "unity_ci_wide",
         "unity_ci_slot_labels", "ci_unity_slot_cpus", "ci_unity_slot_memory_max", "ci_caps", "forgejo_slots")
 # What a host may be tagged for (ci_caps): each of its slots takes every job kind its host is
 # tagged for that the slot can hold. A light or heavy slot also takes light jobs; a Unity test
@@ -103,22 +105,20 @@ def render(hosts, groups):
                       for n in range(1, int(v.get("forgejo_slots", 0)) + 1)]
         unity = any(host in groups.get(g, ()) for g in UNITY_GROUPS)
         if unity:
-            total, build, group = unity_layout(v)
-            if build and set(group) != set(range(1, build + 1)):
-                fails.append(f"{host}: unity_ci_slot_groups keys are {sorted(group)}, its build slots 1-{build}")
-            if group and not build:
-                fails.append(f"{host}: unity_ci_slot_groups, but no unity_ci_build_slots")
+            total, group = unity_layout(v)
+            fails += [f"{host}: build slot {b} (a unity_ci_slot_groups key) is not one of its slots 1-{total}"
+                      for b in sorted(group) if not 1 <= b <= total]
             seen = set()
             for b, tests in sorted(group.items()):
                 for t in tests:
-                    if not build < t <= total:
-                        fails.append(f"{host}: group {b} names {t}, not a test slot ({build + 1}-{total})")
+                    if not 1 <= t <= total or t in group:
+                        fails.append(f"{host}: group {b} names {t}, not a test slot")
                     elif t in seen:
                         fails.append(f"{host}: test slot {t} is in two groups")
                     seen.add(t)
             for n in range(1, total + 1):
                 slot = {"name": unity_slot(host, n),
-                        "caps": ["unity-build"] if n <= build else ["unity"] + [c for c in SHARED_CAPS if c in caps]}
+                        "caps": ["unity-build"] if n in group else ["unity"] + [c for c in SHARED_CAPS if c in caps]}
                 if group.get(n):
                     slot["group"] = [unity_slot(host, t) for t in group[n]]
                 slots.append(slot)
@@ -140,9 +140,9 @@ def render(hosts, groups):
 
 
 def unity_layout(v):
-    """A host's Unity slot count, build slot count and slot groups (build slot -> its test slots)."""
+    """A host's Unity slot count and slot groups (build slot -> its test slots)."""
     group = {int(b): [int(t) for t in ts] for b, ts in (v.get("unity_ci_slot_groups") or {}).items()}
-    return int(v.get("unity_ci_slots", 0)), int(v.get("unity_ci_build_slots", 0)), group
+    return int(v.get("unity_ci_slots", 0)), group
 
 
 def slot_budget(v, total):
@@ -154,17 +154,20 @@ def slot_budget(v, total):
 
 
 def fit_failures(hosts, groups):
-    """Where a host's slots do not fit it: group cores and memory, shared cores, wide memory, release slots."""
-    fails = []
+    """Where a host's slots do not fit it: group cores and memory, shared cores, wide memory; and
+    where the pool's build slots leave a release, or players.yml, none."""
+    fails, release, builds = [], 0, 0
     for host in sorted(set().union(*(groups.get(g, set()) for g in UNITY_GROUPS))):
         v = hosts[host]
-        total, build, group = unity_layout(v)
+        total, group = unity_layout(v)
         cpus, mem = slot_budget(v, total)
         if group and (len(cpus) != total or len(mem) != total):
             fails.append(f"{host}: slot groups need {total} ci_unity_slot_cpus and ci_unity_slot_memory_max entries")
             continue
         for b, tests in sorted(group.items()):
-            tests = [t for t in tests if build < t <= total]
+            tests = [t for t in tests if 1 <= t <= total and t not in group]
+            if not 1 <= b <= total:
+                continue
             fails += [f"{host}: test slot {t}'s cores are not inside build slot {b}'s"
                       for t in tests if not cpus[t - 1] <= cpus[b - 1]]
             used = [mem[t - 1] for t in tests]
@@ -172,22 +175,23 @@ def fit_failures(hosts, groups):
                 fails.append(f"{host}: group {b}'s memory caps are not in whole G")
             elif sum(used) > mem[b - 1]:
                 fails.append(f"{host}: group {b}'s test slots take {sum(used)}G, over build slot {b}'s {mem[b - 1]}G")
-        grouped = {(b, t) for b, ts in group.items() for t in ts}
+        grouped = {pair for b, ts in group.items() for t in ts for pair in ((b, t), (t, b))}
         fails += [f"{host}: slots {i} and {j} share cores and are not one slot group"
                   for i in range(1, len(cpus) + 1) for j in range(i + 1, len(cpus) + 1)
                   if cpus[i - 1] & cpus[j - 1] and (i, j) not in grouped]
         labels = {int(k): ls for k, ls in (v.get("unity_ci_slot_labels") or {}).items()}
-        wide = [n for n in range(1, total + 1) if n > build and v.get("unity_ci_wide")
+        wide = [n for n in range(1, total + 1) if n not in group and v.get("unity_ci_wide")
                 or "unity-wide" in labels.get(n, [])]
         caps = [mem[n - 1] if n <= len(mem) else None for n in wide]
         if wide and (None in caps or min(caps) < WIDE_SLOT_MIN_GB):
             have = "unset or not in whole G" if None in caps else f"{min(caps)}G"
             fails.append(f"{host} carries unity-wide, but its ci_unity_slot_memory_max is {have}, "
                          f"under the {WIDE_SLOT_MIN_GB}G a player build in the job needs")
-        release = sum(1 for n in range(1, build + 1) if RELEASE_LABEL in labels.get(n, []))
-        if build and not 0 < release < build:
-            fails.append(f"{host}: {release} of its {build} build slots (unity_ci_build_slots) carry {RELEASE_LABEL} "
-                         f"in unity_ci_slot_labels; a release must have at least one and leave players.yml at least one")
+        release += sum(1 for n in group if RELEASE_LABEL in labels.get(n, []))
+        builds += len(group)
+    if builds and not 0 < release < builds:
+        fails.append(f"{release} of the pool's {builds} build slots (unity_ci_slot_groups keys) carry {RELEASE_LABEL} "
+                     f"in unity_ci_slot_labels; a release must have at least one and leave players.yml at least one")
     return fails
 
 

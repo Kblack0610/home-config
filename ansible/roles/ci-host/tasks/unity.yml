@@ -150,6 +150,24 @@
     - _unity_ci_local
     - not ansible_check_mode
 
+# An editor image the host no longer lists (a test host's build flavors, a retired Unity
+# version) is disk the governor's admit line counts. Not on the workstation: the LAN
+# hosts copy their images from its docker. A container still using one keeps it.
+- name: List the editor images the host holds
+  ansible.builtin.command:
+    cmd: !unsafe "docker image ls --format '{{.Repository}}:{{.Tag}}' unityci/editor"
+  changed_when: false
+  check_mode: false
+  register: _unity_ci_held
+  when: not _unity_ci_local
+
+- name: Remove editor images the host no longer lists
+  ansible.builtin.command: docker image rm {{ item }}
+  loop: "{{ (_unity_ci_held.stdout_lines | default([])) | difference(unity_ci_images) }}"
+  register: _unity_ci_removed
+  failed_when: _unity_ci_removed.rc != 0 and 'conflict' not in _unity_ci_removed.stderr
+  when: not _unity_ci_local
+
 # The host's Unity Accelerator, when the inventory gives it an address: tasks/accelerator.yml.
 - name: Run the Unity Accelerator
   ansible.builtin.include_tasks: accelerator.yml

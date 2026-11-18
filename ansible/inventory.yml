@@ -476,9 +476,6 @@ all:
           unity_ci_slots: 5
           unity_ci_full: true
           unity_ci_images_pull: true
-          unity_ci_images:
-            - unityci/editor:ubuntu-6000.0.85f1-base-3
-            - unityci/editor:ubuntu-6000.3.27f1-base-3
           unity_ci_lan: false
           unity_ci_library_s3: aws-burst-1-libraries-311141527647
         aws-spot-2:
@@ -492,9 +489,6 @@ all:
           unity_ci_slots: 5
           unity_ci_full: true
           unity_ci_images_pull: true
-          unity_ci_images:
-            - unityci/editor:ubuntu-6000.0.85f1-base-3
-            - unityci/editor:ubuntu-6000.3.27f1-base-3
           unity_ci_lan: false
           unity_ci_library_s3: aws-burst-1-libraries-311141527647
         aws-spot-3:
@@ -508,9 +502,6 @@ all:
           unity_ci_slots: 5
           unity_ci_full: true
           unity_ci_images_pull: true
-          unity_ci_images:
-            - unityci/editor:ubuntu-6000.0.85f1-base-3
-            - unityci/editor:ubuntu-6000.3.27f1-base-3
           unity_ci_lan: false
           unity_ci_library_s3: aws-burst-1-libraries-311141527647
 

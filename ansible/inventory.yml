@@ -698,9 +698,11 @@ all:
         # floor (DISPATCH_HOST_MEM_MIN_PCT). Provisional, medium confidence; revisit when
         # host-headroom razer-laptop reads ROOM over a week, or freqtrade moves off it.
         # Its repos are the ones the night canaries run in (agent-runtime is ~/.dotfiles).
+        # Canary and night items go here before the workstation (fleet_first, dotfiles #2418).
         razer-laptop:
           fleet_place: true
           fleet_max_live: 3
+          fleet_first: [canary, night]
           fleet_repos:
             - dest: ~/.dotfiles
               repo: https://github.com/Kblack0610/.dotfiles.git

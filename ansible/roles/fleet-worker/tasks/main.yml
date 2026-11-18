@@ -40,11 +40,10 @@
     executable: /bin/bash
     creates: "{{ ansible_env.HOME }}/.local/bin/claude"
 
-# Cloned at main, then kept there by the dotfiles' own dotfiles-autopull (every
-# shell start, at most each 6h), not by this task: main moves many times a day, so
-# update here would report a change on every --check. A worker left behind is
-# still caught: an older agent-queue writes the queue on the worker instead of
-# forwarding it, and fleet-dispatch's probe refuses such a worker.
+# Cloned at main, then kept there by the dotfiles' own dotfiles-autopull, which
+# dotfiles-autopull.timer below runs (no shell starts on a headless worker), not by
+# this task: main moves many times a day, so update here would report a change on
+# every --check.
 # No submodules: two are private ssh remotes a fresh worker cannot reach, and
 # a session needs none of them.
 - name: Clone the public dotfiles, at main
@@ -187,6 +186,46 @@
     enabled: true
     state: started
     daemon_reload: "{{ _fleet_worker_roster_units is changed }}"
+
+# The dotfiles pull themselves at an interactive shell start (~/.zshrc), and a headless
+# worker opens none: razer-laptop sat 27 commits behind from 11-08 to 11-18, so
+# store-sync never got linked. Hourly; the script's own 6h throttle sets the real pace.
+- name: Install the dotfiles pull timer
+  ansible.builtin.copy:
+    dest: "{{ ansible_env.HOME }}/.config/systemd/user/{{ item.name }}"
+    mode: "0644"
+    content: "{{ item.content }}"
+  loop:
+    - name: dotfiles-autopull.service
+      content: |
+        # Written by home-config roles/fleet-worker (tasks/main.yml).
+        [Unit]
+        Description=Bring ~/.dotfiles and ~/.dotfiles-private to main and link what they add
+        [Service]
+        Type=oneshot
+        ExecStart=%h/.local/bin/dotfiles-autopull
+    - name: dotfiles-autopull.timer
+      content: |
+        # Written by home-config roles/fleet-worker (tasks/main.yml).
+        [Unit]
+        Description=Pull the dotfiles hourly; dotfiles-autopull itself skips a pass under 6h old
+        [Timer]
+        OnBootSec=5min
+        OnUnitActiveSec=1h
+        [Install]
+        WantedBy=timers.target
+  loop_control:
+    label: "{{ item.name }}"
+  register: _fleet_worker_pull_units
+
+- name: Start the dotfiles pull timer
+  when: not (ansible_check_mode and _fleet_worker_pull_units is changed)
+  ansible.builtin.systemd_service:
+    name: dotfiles-autopull.timer
+    scope: user
+    enabled: true
+    state: started
+    daemon_reload: "{{ _fleet_worker_pull_units is changed }}"
 
 - name: Read which repos are cloned
   ansible.builtin.stat:

@@ -33,6 +33,7 @@ agent_cpu_units:
   - schedules-sync.service
   - store-sync.service
 
-# The drop-in's file name in each unit's .d directory; a unit that leaves
-# agent_cpu_units loses it on the next apply.
+# The drop-in's file name in each unit's .d directory. A unit that leaves
+# agent_cpu_units loses it on the next apply; one already running keeps its
+# cpuset until it restarts.
 agent_cpus_dropin: 50-agent-cpus.conf

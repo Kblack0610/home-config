@@ -99,8 +99,8 @@ all:
           ssh_host_ed25519: ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIGaTLqfJOaCga5UzV+WsuxyRSRPcUY5GMUFloCREQ9aE
           ansible_python_interpreter: /usr/bin/python3
           # Agent work (every tmux pane, agentctl lane and fleet timer, roles/agent-host-budget):
-          # 28 of 32 CPUs, CI's 8-13,24-29 inside it. CPUs 0-1,16-17 (one V-cache core and
-          # its sibling, two cores) stay with the desktop and the OS. 87.5%, the human's
+          # 28 of 32 CPUs, CI's 8-13,24-29 inside it. CPUs 0-1,16-17 (V-cache cores 0 and 1
+          # with their SMT siblings) stay with the desktop and the OS. 87.5%, the human's
           # 85-90% (2026-11-18), after 64 minutes over 90% busy that afternoon.
           agent_cpus: 2-15,18-31
 
@@ -695,7 +695,8 @@ all:
         # Canary and night items go here before the workstation (fleet_first, dotfiles #2418).
         razer-laptop:
           # 8945HS, 8 cores / 16 threads, siblings n and n+8 (lscpu -e, 2026-11-18). Agent
-          # work gets 14 of 16 (87.5%); core 0 (CPUs 0,8) stays with the OS and k3s's freqtrade pods.
+          # work gets 14 of 16 (87.5%); core 0 (CPUs 0,8) stays with the OS. Its k3s pods
+          # (freqtrade) are not pinned (no k3s_cpus), so they share all 16 with agent work.
           agent_cpus: 1-7,9-15
           fleet_place: true
           fleet_max_live: 5

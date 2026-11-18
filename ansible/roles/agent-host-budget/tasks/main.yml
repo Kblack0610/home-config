@@ -62,57 +62,99 @@
   when: (item.path | dirname | basename | regex_replace('\.d$', '')) not in agent_cpu_units
   register: _agent_cpu_removed
 
+# One source for the delegation: a distro that already hands cpuset to user@
+# (CachyOS, cachyos-settings' delegate.conf) keeps its own, and this role writes
+# one only where none does (Arch on razer-laptop, 2026-11-18).
+- name: Find a vendor drop-in that delegates cpuset to user@.service
+  ansible.builtin.shell: >-
+    grep -lsE '^Delegate=.*\bcpuset\b' /usr/lib/systemd/system/user@.service.d/*.conf
+  register: _agent_cpu_vendor
+  changed_when: false
+  failed_when: false
+  check_mode: false
+
 - name: Create user@.service's drop-in directory
   ansible.builtin.file:
     path: /etc/systemd/system/user@.service.d
     state: directory
     mode: "0755"
+  when: _agent_cpu_vendor.rc != 0
 
-- name: Hand the cpuset controller to every user manager
+- name: Hand the cpuset controller to every user manager, where the vendor does not
   ansible.builtin.template:
     src: user-delegate.conf.j2
     dest: /etc/systemd/system/user@.service.d/50-agent-cpuset.conf
     mode: "0644"
+  when: _agent_cpu_vendor.rc != 0
   register: _agent_cpu_delegate
+
+- name: Drop this role's delegation where the vendor ships one
+  ansible.builtin.file:
+    path: /etc/systemd/system/user@.service.d/50-agent-cpuset.conf
+    state: absent
+  when: _agent_cpu_vendor.rc == 0
+  register: _agent_cpu_delegate_gone
 
 - name: Reload systemd onto the delegation
   ansible.builtin.systemd_service:
     daemon_reload: true
-  when: _agent_cpu_delegate.changed
+  when: _agent_cpu_delegate.changed or _agent_cpu_delegate_gone.changed
 
+# Login users only (UID 1000 and up): a greeter or a system account's manager is
+# no agent host, and reloading one that is closing would fail the play.
 - name: List the running user managers
-  ansible.builtin.command: loginctl list-users --no-legend
+  ansible.builtin.shell: |
+    set -o pipefail
+    loginctl list-users --no-legend | awk '$1 >= 1000 { print $1, $2 }'
+  args:
+    executable: /bin/bash
   register: _agent_cpu_users
   changed_when: false
   check_mode: false
 
-# A daemon-reload applies the drop-ins to units already running, panes
-# included, so no session restarts (checked live on the workstation,
-# 2026-11-18). A user manager started before cpuset was delegated to it only
-# takes the controller up on a re-exec, which keeps every unit running.
+# Every run, so a re-run heals a host whatever an earlier run left: a
+# daemon-reload applies the drop-ins to units already running, panes included,
+# with no restart (checked live on the workstation, 2026-11-18). A user manager
+# whose cgroup does not hand cpuset down (started before the delegation) takes
+# it up only on a re-exec, which keeps every unit running.
 - name: Reload each user manager onto the drop-ins
-  ansible.builtin.command: >-
-    systemctl --user -M {{ item.split()[1] }}@
-    {{ 'daemon-reexec' if _agent_cpu_delegate.changed else 'daemon-reload' }}
+  ansible.builtin.shell: |
+    set -o pipefail
+    mgr=/sys/fs/cgroup/user.slice/user-{{ item.split()[0] }}.slice/user@{{ item.split()[0] }}.service
+    if ! grep -qw cpuset "$mgr/cgroup.subtree_control"; then
+      systemctl --user -M {{ item.split()[1] }}@ daemon-reexec && echo reexec
+    fi
+    systemctl --user -M {{ item.split()[1] }}@ daemon-reload
+  args:
+    executable: /bin/bash
   loop: "{{ _agent_cpu_users.stdout_lines }}"
   loop_control:
     label: "{{ item.split()[1] }}"
-  when:
-    - _agent_cpu_delegate.changed or _agent_cpu_dropins.changed or _agent_cpu_removed.changed
-    - not ansible_check_mode
-  changed_when: true
+  register: _agent_cpu_reload
+  changed_when: "'reexec' in _agent_cpu_reload.stdout or _agent_cpu_dropins.changed or _agent_cpu_removed.changed"
+  when: not ansible_check_mode
 
-# The proof: the kernel's cpuset of every running pane and lane is agent_cpus.
-# EffectiveCPUs, not AllowedCPUs: systemd records AllowedCPUs even where the
-# controller is missing and nothing is pinned. A unit that reads anything else is
-# outside the cap, and the apply fails on it.
-- name: Read the CPUs each running agent unit gets
+# The proof: the kernel's cpuset of every running pane and lane is agent_cpus,
+# compared as CPU sets (systemd prints one merged and space-separated). It lists
+# only the units that differ. EffectiveCPUs, not AllowedCPUs: systemd records
+# AllowedCPUs even where the controller is missing and nothing is pinned. Any
+# unit it lists is outside the cap, and the apply fails on it.
+- name: Find running agent units outside agent_cpus
   ansible.builtin.shell: |
     set -o pipefail
     for u in $(systemctl --user -M {{ item.split()[1] }}@ list-units --no-legend --plain \
         --state=active 'tmux-spawn-*.scope' 'app-agentctl.slice' | awk '{print $1}'); do
       printf '%s %s\n' "$u" "$(systemctl --user -M {{ item.split()[1] }}@ show "$u" -p EffectiveCPUs --value)"
-    done
+    done | awk -v want='{{ agent_cpus }}' '
+      function set(spec,   p, n, i, ab, c, s, seen) {
+        n = split(spec, p, /[ ,]+/)
+        for (i = 1; i <= n; i++) if (p[i] != "") {
+          split(p[i], ab, "-"); if (ab[2] == "") ab[2] = ab[1]
+          for (c = ab[1] + 0; c <= ab[2] + 0; c++) seen[c] = 1 }
+        for (c = 0; c < 4096; c++) if (c in seen) s = s c ","
+        return s }
+      BEGIN { w = set(want) }
+      NF { u = $1; $1 = ""; if (set($0) != w) print u " on" $0 }'
   args:
     executable: /bin/bash
   loop: "{{ _agent_cpu_users.stdout_lines }}"
@@ -123,17 +165,13 @@
   check_mode: false
   when: not ansible_check_mode
 
-# systemd prints a cpuset space-separated and merged ("2-15 18-31"), so
-# agent_cpus is written the same way with commas.
 - name: Require every running agent unit to sit inside agent_cpus
   ansible.builtin.assert:
     that: _agent_cpu_unpinned | length == 0
     fail_msg: "Agent units whose CPUs are not agent_cpus {{ agent_cpus }}: {{ _agent_cpu_unpinned }}"
     quiet: true
   vars:
-    _agent_cpu_want: "{{ agent_cpus | replace(',', ' ') }}"
     _agent_cpu_unpinned: >-
       {{ _agent_cpu_live.results | default([]) | selectattr('stdout_lines', 'defined')
-         | map(attribute='stdout_lines') | flatten
-         | reject('match', '^\S+ ' ~ (_agent_cpu_want | regex_escape) ~ '$') | list }}
+         | map(attribute='stdout_lines') | flatten | list }}
   when: not ansible_check_mode

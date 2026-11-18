@@ -244,7 +244,7 @@
   failed_when: false
   check_mode: false
 
-- name: Create each account dir, empty (the session signs in with the pushed token)
+- name: Create each account dir (the session signs in with the pushed token; fleet-dispatch start runs claude-acct link there, which shares the setup and marks first-run done)
   ansible.builtin.file:
     path: "{{ item | regex_replace('^~', ansible_env.HOME) }}"
     state: directory

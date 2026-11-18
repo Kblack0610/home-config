@@ -1,7 +1,10 @@
 #!/bin/sh
 # CPU each CI runner is using, for node-exporter's textfile collector (the Infra tab's cores
-# per job). A runner's CPU is its unit's cgroup plus the cgroups of the job containers that
-# mount its work directory. Containers come and go, so this reports the cores used since the
+# per job). A runner's CPU is its unit's cgroup plus the cgroups of its job containers: for a
+# GitHub runner the containers that mount its work directory, for a Forgejo runner the
+# FORGEJO-ACTIONS-TASK-<task>_ container of the task its journal last says it took (its job
+# containers mount only docker volumes, and it takes one task at a time, so that is the one
+# running). Containers come and go, so this reports the cores used since the
 # previous sample, a gauge: a counter summed over them would fall each time one exits.
 # Tests: test-ci-runner-cpu.sh beside this file.
 set -eu
@@ -17,11 +20,19 @@ trap 'rm -rf "$work"' EXIT
 : > "$work/units"
 : > "$work/dirs"
 : > "$work/cgroups"
+: > "$work/tasks"
 
 # runner name <tab> cgroup, for each runner unit and each job container it started.
-for unit in $(systemctl list-units 'actions.runner.*' --no-legend --plain --state=running | awk '{print $1}'); do
+for unit in $(systemctl list-units 'actions.runner.*' 'forgejo-runner-*' --no-legend --plain --state=running | awk '{print $1}'); do
     name=${unit#actions.runner.}
+    name=${name#forgejo-runner-}
     name=${name%.service}
+    case $unit in forgejo-runner-*)
+        # The task id of the runner's last "task <id> repo is" line, the one it runs.
+        task=$(journalctl -u "$unit" -g ' msg="task [0-9]+ repo is ' -n 1 -o cat --no-pager 2>/dev/null |
+            sed -n 's/.* msg="task \([0-9]*\) repo is .*/\1/p')
+        if [ -n "$task" ]; then printf '%s\t%s\n' "$task" "$name" >> "$work/tasks"; fi ;;
+    esac
     props=$(systemctl show -p ControlGroup -p WorkingDirectory "$unit")
     cgroup=$(printf '%s\n' "$props" | sed -n 's/^ControlGroup=//p')
     dir=$(printf '%s\n' "$props" | sed -n 's/^WorkingDirectory=//p')
@@ -32,15 +43,18 @@ done
 cat "$work/units" > "$work/cgroups"
 
 ids=$(docker ps -q 2>/dev/null || true)
-if [ -n "$ids" ] && [ -s "$work/dirs" ]; then
+if [ -n "$ids" ] && [ -s "$work/units" ]; then
     # shellcheck disable=SC2086 # one argument per container id
-    docker inspect -f '{{.State.Pid}}{{range .Mounts}} {{.Source}}{{end}}' $ids 2>/dev/null |
-        while read -r pid mounts; do
+    docker inspect -f '{{.State.Pid}} {{.Name}}{{range .Mounts}} {{.Source}}{{end}}' $ids 2>/dev/null |
+        while read -r pid cname mounts; do
             path=$(sed -n 's/^0:://p' "$proc/$pid/cgroup" 2>/dev/null || true)
             [ -n "$path" ] || continue
-            # The runner whose work directory holds one of the container's mounts.
+            # The Forgejo runner whose task the container runs, else the runner whose work
+            # directory holds one of the container's mounts.
+            task=$(printf '%s\n' "$cname" | sed -n 's|^/FORGEJO-ACTIONS-TASK-\([0-9]*\)_.*|\1|p')
+            name=$(awk -F'\t' -v t="$task" 't != "" && $1 == t { print $2; exit }' "$work/tasks")
             # shellcheck disable=SC2086 # one mount per line
-            name=$(printf '%s\n' $mounts | awk -F'\t' -v dirs="$work/dirs" '
+            [ -n "$name" ] || name=$(printf '%s\n' $mounts | awk -F'\t' -v dirs="$work/dirs" '
                 BEGIN { while ((getline l < dirs) > 0) { split(l, a, "\t"); d[a[1]] = a[2] } }
                 { for (k in d) if (index($0 "/", k "/") == 1) { print d[k]; exit } }')
             if [ -n "$name" ]; then printf '%s\t%s\n' "$name" "$path" >> "$work/cgroups"; fi

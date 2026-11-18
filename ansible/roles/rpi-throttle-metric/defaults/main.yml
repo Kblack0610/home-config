@@ -4,3 +4,5 @@
 # Pis outside k3s run Debian's prometheus-node-exporter package and set
 # /var/lib/prometheus/node-exporter in ansible/inventory.yml (rpi_standalone).
 rpi_throttle_textfile_dir: /var/lib/node-exporter-textfile
+# Same owner as roles/node-disk-metrics creates the dir with (group_vars/all/k3s.yml).
+rpi_throttle_textfile_owner: "{{ k3s_textfile_owner }}"

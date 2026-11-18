@@ -8,8 +8,7 @@
   ansible.builtin.file:
     path: "{{ rpi_throttle_textfile_dir }}"
     state: directory
-    owner: root
-    group: root
+    owner: "{{ rpi_throttle_textfile_owner }}"
     mode: "0755"
 
 - name: Install the throttle exporter script

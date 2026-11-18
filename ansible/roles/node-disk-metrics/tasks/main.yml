@@ -7,7 +7,6 @@
     path: "{{ node_disk_metrics_dir }}"
     state: directory
     owner: "{{ node_disk_metrics_owner }}"
-    group: "{{ node_disk_metrics_owner }}"
     mode: "0755"
 
 - name: Install the metrics script

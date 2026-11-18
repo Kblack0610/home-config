@@ -136,9 +136,10 @@ class CapTests(unittest.TestCase):
         self.assertIn("ms-a2: slots 3 and 5 share cores and are not one slot group", fails)
 
     def test_the_release_rule_is_pool_wide(self):
-        # ms-a2's one build slot has no unity-release; aws-build-1's slots 1-2 do.
+        # ms-a2's build slot 5 and aws-build-1's slots 1-2 carry unity-release; aws-build-1 slot 3 does not.
         self.assertEqual(topology.fit_failures(self.hosts, self.groups), [])
         self.hosts["aws-build-1"]["unity_ci_slot_labels"] = {}
+        self.hosts["ms-a2"]["unity_ci_slot_labels"] = {1: ["slim-tour"]}
         self.assertTrue(any("0 of the pool's 4 build slots" in f for f in topology.fit_failures(self.hosts, self.groups)))
         self.hosts["aws-build-1"]["unity_ci_slot_labels"] = {n: ["unity-release"] for n in (1, 2, 3)}
         self.hosts["ms-a2"]["unity_ci_slot_labels"] = {5: ["unity-release"]}

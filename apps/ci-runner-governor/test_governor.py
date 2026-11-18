@@ -324,7 +324,9 @@ class GovernorTest(unittest.TestCase):
 
     def test_disk_between_the_lines_withholds_nothing_and_admits_nothing(self):
         between = {**COOL, "disk": 0.22}
-        self.assertEqual(governor.verdict(between, CFG["hosts"]["hp-victus"])[0], "STEADY")
+        v, why = governor.verdict(between, CFG["hosts"]["hp-victus"])
+        self.assertEqual(v, "STEADY")
+        self.assertTrue(why.endswith("short of admit on disk"), why)
         got = actions(readings(**{"razer-laptop": BUSY, "asus-laptop": BUSY, "hp-victus": between}))
         self.assertEqual(got["hp-victus"], ("hold", ""))
 

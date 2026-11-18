@@ -43,19 +43,17 @@ spec:
               drop:
                 - ALL
           env:
-            # 1 logs and exports every decision and changes no runner. Dry run
-            # since 2026-11-02. The verdicts go live once replay.py, run over 7 days
-            # of readings, passes on every governed LAN host: ms-a2 and deskslim-2
-            # report only since 2026-11-16, so not before 2026-11-24
-            # (make-logical-possum phase 3). The pod stays either way: a host pin (machine-mode
-            # on the workstation) is acted on even in a dry run. The token
+            # 0 (live) acts on every host; 1 logs and exports every decision and
+            # changes no runner except pins and power blocks with "live": true.
+            # Live since 2026-11-18 (make-logical-possum phase 3, ask LX8Tco
+            # answer c), without passing the replay bar: that replay (replay.py
+            # over 7 days) is the baseline phase 7 measures against. The token
             # is the control node's `gh auth token` (admin:org, what the Unity
             # pool play registers runners with), SOPS-encrypted the same way as
             # apps/github-runner-exporter's; after `gh auth refresh` re-run that
-            # recipe with --from-literal=github-token="$(gh auth token)". A standby
-            # host whose power block says "live": true is acted on for real anyway.
+            # recipe with --from-literal=github-token="$(gh auth token)".
             - name: DRY_RUN
-              value: "1"
+              value: "0"
             - name: GITHUB_TOKEN
               valueFrom:
                 secretKeyRef:

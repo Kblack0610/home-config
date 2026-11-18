@@ -113,9 +113,10 @@ unity_ci_library_s3_profile: bnb
 unity_ci_library_s3_region: us-east-2
 
 # One asset-library LFS store per host, shared by every slot (ASSET_LIBRARY_LFS_STORE,
-# site.yml). Off the LAN it is seeded from the workstation's own store through the
-# same bucket (tasks/lfs-store.yml), so a release tree never fetches LFS through the
-# Cloudflare tunnel, which cut a cold 4.2 GB fetch off with "Authorization error".
+# site.yml), seeded from the workstation's own store (tasks/lfs-store.yml): through
+# the same bucket off the LAN, rsync on it. Forgejo's LFS downloads go through the
+# Cloudflare tunnel even from the LAN, which cut a cold 4.2 GB fetch off with
+# "Authorization error" and held a LAN host's cold fetch past the job timeout.
 unity_ci_lfs_store: "{{ unity_ci_user_home }}/.cache/bnb/asset-library-lfs"
 unity_ci_lfs_store_source: /home/kblack0610/.cache/bnb/asset-library-lfs
 
@@ -140,6 +141,8 @@ unity_ci_packages:
   - git-lfs
   - jq
   - curl
+  # The LFS store seed on a LAN host (tasks/lfs-store.yml).
+  - rsync
 # The same packages by their Ubuntu names (docker is a different package there).
 # docker-buildx: Ubuntu's docker.io has no BuildKit, and the legacy builder let
 # four slots building one tag at once race on it (aws-burst-1, 2026-11-03: a
@@ -152,6 +155,7 @@ unity_ci_packages_debian:
   - jq
   - curl
   - unzip
+  - rsync
 
 # Unity Accelerator (cache server), as host:port on the docker bridge, for example
 # 172.17.0.1:10080. Empty = none. Set per host in the inventory: the role runs it

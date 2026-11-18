@@ -227,7 +227,7 @@
 # CPU and memory budget in ci_hosts (roles/ci-host-budget). Each slot is its own
 # runner under one `linux-ci` user, with HOME set to the slot's own dir so
 # parallel jobs never share a pnpm store, Playwright cache or ~/setup-pnpm, and
-# a job-started hook empties the workspace before every job
+# a job hook empties the workspace before and after every job
 # (roles/ci-host/templates/job-started.sh.j2). Registration tokens come
 # from the control node's `gh` CLI, which needs admin:org for an org runner
 # (roles/github-actions-runner-linux/README.md), so there is no standing PAT.
@@ -288,6 +288,7 @@
         gh_runner_env:
           HOME: "{{ linux_ci_user_home }}/{{ ci_slot }}"
           ACTIONS_RUNNER_HOOK_JOB_STARTED: "{{ linux_ci_job_started_hook }}"
+          ACTIONS_RUNNER_HOOK_JOB_COMPLETED: "{{ linux_ci_job_completed_hook }}"
           CI_SLOT_CPUS: "{{ linux_ci_slot_cpus }}"
       tags: [runner, ci, linux-ci]
     # A personal repo cannot see org runners, so each ci_repo_runners entry
@@ -324,7 +325,7 @@
         gh_runner_env:
           HOME: "{{ linux_ci_user_home }}/{{ ci_repo.slot }}"
           ACTIONS_RUNNER_HOOK_JOB_STARTED: "{{ linux_ci_job_started_hook }}"
-          ACTIONS_RUNNER_HOOK_JOB_COMPLETED: "{{ linux_ci_job_started_hook }}"
+          ACTIONS_RUNNER_HOOK_JOB_COMPLETED: "{{ linux_ci_job_completed_hook }}"
           CI_SLOT_CPUS: "1"
       tags: [runner, ci, linux-ci]
     # After the slots, which create the linux-ci user. Playground jobs clone
@@ -441,9 +442,11 @@
           ASSET_LIBRARY_LFS_STORE: "{{ unity_ci_lfs_store }}"
           # Every slot's hook (roles/ci-host job-started.sh): with CI_SLOT_UNITY it prunes
           # idle slots' warm trees before the job when the disk is under the floor, and it never
-          # empties a workspace holding a Unity project. Changing this env restarts every slot
-          # and kills its job: apply it with the host's slots idle.
+          # empties a workspace holding a Unity project. At job end it frees what a light job
+          # left. Changing this env restarts every slot and kills its job: apply it with the
+          # host's slots idle.
           ACTIONS_RUNNER_HOOK_JOB_STARTED: "{{ linux_ci_job_started_hook }}"
+          ACTIONS_RUNNER_HOOK_JOB_COMPLETED: "{{ linux_ci_job_completed_hook }}"
           CI_SLOT_UNITY: "1"
           # The slot's CPU count, which platform's turbo runs take as --concurrency when a
           # light job lands here (the Linux play's linux_ci_slot_cpus says why).

@@ -1,25 +1,25 @@
 #!/usr/bin/env bash
-# Managed by ansible (ci-host). ACTIONS_RUNNER_HOOK_JOB_STARTED for every CI slot,
-# light, heavy and Unity (playbooks/site.yml). Tests: test-job-started.sh beside the prune script.
+# Managed by ansible (ci-host). Every CI slot's ACTIONS_RUNNER_HOOK_JOB_STARTED, and through the
+# job-completed.sh link its _JOB_COMPLETED (playbooks/site.yml); the name says which event ran.
+# Tests: test-job-started.sh beside the prune script.
 #
-# A Unity slot (CI_SLOT_UNITY=1) first prunes idle slots' warm trees when the disk is under
-# the floor (ci-disk-prune.sh --before-job); a failed prune never fails the job, the hourly
-# run is still there.
+# At job start a Unity slot (CI_SLOT_UNITY=1) first runs ci-disk-prune.sh --before-job, which
+# prunes idle slots under the floor; a failed prune never fails the job. Then both events empty
+# the job's workspace, since the workflows were written for a fresh VM, and remove ~/setup-pnpm
+# (3G, reinstalled by pnpm/action-setup every run). The end-of-job pass frees both instead of
+# leaving them on an idle slot (docs/runbooks/node-disk-pressure.md); the start pass catches a job
+# whose end never ran. A Unity project's workspace is kept: its Library is the warm import.
 #
-# Then it empties the job's workspace, because the runners are persistent and the workflows
-# were written for a fresh VM: on 2026-09-29 the Vikunja PR gate's sparse checkout left
-# core.sparsecheckout=true in the slot's clone, and the next job's `pnpm install` found no
-# package.json. The pnpm store and Playwright cache live in the slot's HOME, so installs
-# still reuse them. A workspace holding a Unity project is never emptied: its git-ignored
-# Library is the warm import a Unity job reuses, and the runner gives every job of one repo
-# the same workspace, so a light job of a Unity repo on a Unity slot would land in it (the
-# Unity repos' light jobs ask for fresh-workspace, which no Unity slot carries).
-#
-# A file the slot cannot delete (root-owned, left by a `docker run` without --user) fails
-# the job loudly here instead of corrupting the next one.
+# A file the slot cannot delete (root-owned, from a `docker run` without --user) fails the next
+# job loudly at its start instead of corrupting it; at job end it is logged, never failing a job
+# whose steps passed.
 set -euo pipefail
 
-if [ "${CI_SLOT_UNITY:-}" = 1 ]; then
+event=job-started
+if [ "${0##*/}" = job-completed.sh ]; then
+  event=job-completed
+  trap 'rc=$?; [ "$rc" = 0 ] || echo "job-completed: cleanup exited $rc; the next job start retries it" >&2; exit 0' EXIT
+elif [ "${CI_SLOT_UNITY:-}" = 1 ]; then
   {{ linux_ci_disk_prune }} --before-job || echo "job-started: ci-disk-prune.sh exited $?; the job goes on" >&2
 fi
 
@@ -27,16 +27,17 @@ ws="${GITHUB_WORKSPACE:-}"
 case "$ws" in
   "${HOME:-/nonexistent}"/_work/*) ;;
   *)
-    echo "job-started: GITHUB_WORKSPACE='${ws}' is outside this slot's HOME (${HOME:-unset}); not cleaning" >&2
+    echo "$event: GITHUB_WORKSPACE='${ws}' is outside this slot's HOME (${HOME:-unset}); not cleaning" >&2
     exit 0
     ;;
 esac
+rm -rf -- "$HOME/setup-pnpm"
 [ -d "$ws" ] || exit 0
 
 unity=$(find "$ws" -maxdepth 4 -path '*/ProjectSettings/ProjectVersion.txt' -print -quit)
 if [ -n "$unity" ]; then
-  echo "job-started: ${ws} holds a Unity project (${unity#"$ws"/}); kept"
+  echo "$event: ${ws} holds a Unity project (${unity#"$ws"/}); kept"
   exit 0
 fi
 find "$ws" -mindepth 1 -maxdepth 1 -exec rm -rf {} +
-echo "job-started: emptied ${ws}"
+echo "$event: emptied ${ws}"

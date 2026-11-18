@@ -53,6 +53,17 @@ class Plan(unittest.TestCase):
         r = runner("host-aws-build-1", "unity-withheld", "unity-gate")
         self.assertEqual(plan(r, BASE + ["unity-build"]), ["host-aws-build-1", "unity-build-withheld"])
 
+    def test_a_lent_slot_keeps_its_mark_and_stays_withheld(self):
+        # The governor lent the slot to a Forgejo or repo seat: an apply keeps both.
+        r = runner("host-ms-a2", "unity-withheld", "unity-lent")
+        desired = ["self-hosted", "host-ms-a2", "unity", "unity-full", "light"]
+        out = runner_labels_plan(r, desired, GOVERNED + ["light"], "unity-withheld", WITHHELD_ALL, ["unity-lent"])
+        self.assertEqual(out, {"change": False, "labels": ["host-ms-a2", "unity-lent", "unity-withheld"]})
+        # Without the mark, nothing adds it.
+        r = runner("host-ms-a2", "unity-withheld")
+        out = runner_labels_plan(r, desired, GOVERNED + ["light"], "unity-withheld", WITHHELD_ALL, ["unity-lent"])
+        self.assertEqual(out["labels"], ["host-ms-a2", "unity-withheld"])
+
     def test_admitted_slot_gets_governed_labels(self):
         r = runner("host-razer-laptop", "unity")
         self.assertEqual(plan(r, ["self-hosted", "host-razer-laptop", "unity", "unity-full"], "unity-withheld"),

@@ -153,8 +153,8 @@
 # A running job, one line each, not any container: a workstation keeps its own
 # long-lived containers (a dev database, mailpit) that are not CI. A GitHub job is
 # a Runner.Worker process. A Forgejo job is a FORGEJO-ACTIONS-TASK-* container
-# (docker label) or a child process of its runner's daemon (host label); an idle
-# daemon has no children.
+# (docker label) or runs under its seat's supervisor (host label), whose only child is
+# forgejo-runner one-job while the governor lends the seat its slot; an unlent seat has none.
 - name: List running CI jobs before restarting docker
   ansible.builtin.shell: |
     set -eu

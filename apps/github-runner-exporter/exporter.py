@@ -237,7 +237,8 @@ def site_of(host):
 # out of the gate pool's numbers.
 POOL_LABELS = ("light", "heavy", "unity", "unity-build")
 # The labels apps/ci-runner-governor swaps a runner's pool labels for while it holds it back.
-WITHHELD_LABELS = {"unity-withheld": "unity", "unity-build-withheld": "unity-build"}
+# light-withheld: a repo runner while the governor has not lent it the Unity slot it borrows.
+WITHHELD_LABELS = {"unity-withheld": "unity", "unity-build-withheld": "unity-build", "light-withheld": "light"}
 # A queued run with no jobs this old never gets a runner (GitHub creates a run's
 # jobs within seconds). It is labelled stuck="true" so boards can list it apart
 # instead of letting its age stand for the queue's.
@@ -765,7 +766,7 @@ FORGEJO_REPOS = os.environ.get("FORGEJO_REPOS", "").split()
 FORGEJO_API = os.environ.get("FORGEJO_API", "http://forgejo-http.forgejo.svc:3000/api/v1").rstrip("/")
 FORGEJO_WEB = os.environ.get("FORGEJO_WEB", "https://git.kblab.me").rstrip("/")
 FORGEJO_TOKEN = os.environ.get("FORGEJO_TOKEN", "")
-# The topology's Forgejo slots; each one is a runner of that name.
+# The topology's Forgejo seats; each one is a runner of that name.
 FJ_SLOTS = sorted(n for n, s in SLOTS.items() if s["forge"] == "forgejo")
 FJ_STATE = {"active": "running", "idle": "idle", "offline": "offline"}
 # Forgejo's largest page. Asking for more is not an error: it answers with every
@@ -1027,7 +1028,7 @@ def render():
         registered = {r["name"] for _, r in seen.values()}
         for name, slot in sorted(SLOTS.items()):
             if slot["forge"] != "github":
-                continue  # forgejo_rows says which Forgejo slots are missing
+                continue  # forgejo_rows says which Forgejo seats are missing
             if name in registered:
                 continue
             lab = {"name": name, "host": slot["host"], "pool": slot["caps"][0], "site": site_of(slot["host"]),
@@ -1045,7 +1046,7 @@ def render():
     ] + slot_rows + forgejo("github_runner_pool_slot")
 
     L += [
-        "# HELP github_runner_withheld A unity or unity-build runner apps/ci-runner-governor holds back from new jobs",
+        "# HELP github_runner_withheld A runner apps/ci-runner-governor holds back from new jobs: a Unity slot, or a repo runner with no slot lent to it",
         "# TYPE github_runner_withheld gauge",
     ]
     for scope, r in sorted(seen.values(), key=lambda s: s[1]["name"]):

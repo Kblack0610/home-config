@@ -6,7 +6,7 @@
     name: "{{ item }}"
     state: stopped
     enabled: false
-  loop: [ci-runner-cpu.timer, ci-runner-cpu.service]
+  loop: [ci-runner-cpu.timer, ci-runner-cpu.service, ci-runner-disk.timer, ci-runner-disk.service]
   failed_when: false
 
 - name: Remove the CI CPU exporter and its last reading
@@ -16,8 +16,11 @@
   loop:
     - /etc/systemd/system/ci-runner-cpu.timer
     - /etc/systemd/system/ci-runner-cpu.service
+    - /etc/systemd/system/ci-runner-disk.timer
+    - /etc/systemd/system/ci-runner-disk.service
     - /usr/local/bin/ci-runner-cpu
     - "{{ ci_runner_cpu_linux_textfile_dir }}/ci_runner.prom"
+    - "{{ ci_runner_cpu_linux_textfile_dir }}/ci_runner_disk.prom"
   register: _ci_runner_cpu_retired
 
 - name: Reload systemd after the exporter went

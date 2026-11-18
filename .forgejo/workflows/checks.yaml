@@ -53,6 +53,14 @@ jobs:
           [ "$rc" -ne 0 ] || { echo "the check passed a stale topology.json"; exit 1; }
           grep -q "is not what" planted-count.out || { echo "the check failed, but not on the stale file"; exit 1; }
           rm planted-count.out
+      - name: Negative control - the topology check fails on a repo runner that borrows a slot its host does not have
+        run: |
+          python3 -c 's = open("ansible/inventory.yml").read(); t = s.replace("slot: gungan-speak-1, borrows: 2}", "slot: gungan-speak-1, borrows: 9}", 1); assert t != s, "the plant did not apply"; open("planted-borrow.yml", "w").write(t)'
+          rc=0; python3 scripts/render-ci-topology.py --check --inventory planted-borrow.yml > planted-borrow.out 2>&1 || rc=$?
+          rm planted-borrow.yml; cat planted-borrow.out
+          [ "$rc" -ne 0 ] || { echo "the check passed a repo runner on no lendable slot"; exit 1; }
+          grep -q "gungan-speak-1 borrows deskslim-2-unity-pool-9, not one of its lendable" planted-borrow.out || { echo "the check failed, but not on the planted slot"; exit 1; }
+          rm planted-borrow.out
       - name: Topology renderer tests, tier exclusions and slot caps
         run: cd scripts && python3 -m unittest test_render_ci_topology
       - name: Freqtrade roster has no bot that repeats another's exchange, strategy and overlay
@@ -95,8 +103,8 @@ jobs:
           rm planted-knob.out
       - name: Host qualification verdict and parser tests
         run: python3 scripts/test_host_qualify.py
-      - name: ci-slot-effect classification and host reading tests
-        run: python3 scripts/test_ci_slot_effect.py
+      - name: ci-pool-idle tally tests
+        run: python3 scripts/test_ci_pool_idle.py
       - name: cluster-janitor quarantine trigger and cap tests
         run: python3 apps/cluster-janitor/test_quarantine.py
       # An if, not "! cmd": sh -e ignores a "!" pipeline's status, so a "!" step passes either way.
@@ -126,6 +134,9 @@ jobs:
         run: python3 apps/ci-runner-governor/test_replay.py
       - name: github-actions-runner-linux label plan tests
         run: python3 ansible/roles/github-actions-runner-linux/tests/test_runner_labels.py
+      # The seat supervisor against the governor's own /lease handler, in this job's container.
+      - name: forgejo-seat supervisor tests
+        run: python3 ansible/roles/forgejo-runner-linux/tests/test_forgejo_seat.py
       - name: ci-host GitHub host-key read tests
         run: python3 ansible/roles/ci-host/tests/test_github_known_hosts.py
       # Every roster machine in the inventory has a host key the others can trust.

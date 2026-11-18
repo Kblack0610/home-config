@@ -74,7 +74,11 @@ offline, and a slot whose name never registered reads missing. Forgejo has no AP
 that says which runner runs which task, so a running slot carries no job, and no
 slot carries a last job.
 The API gives no time a job was queued, so a waiting job's age is from the first
-scrape that saw it (reset on an exporter restart). Finished work is every task
+scrape that saw it (reset on an exporter restart). github_job_queue_seconds for
+pool="forgejo" is the same clock: a job that left the waiting list waited from the
+first scrape that saw it to the first that missed it (a cancelled one counts too),
+and a task no scrape saw waiting counts 0, so a wait reads within one scrape
+interval (60s). It covers jobs since the exporter started, at most the window. Finished work is every task
 created in the window, by its status. Off unless $FORGEJO_REPOS is set.
 
 Alerting is NOT here. Sentinel (~/.agent/watches/*runners-online.yaml) is the
@@ -233,7 +237,8 @@ def site_of(host):
 # out of the gate pool's numbers. unity-wide is before unity: a wide job asks for both.
 POOL_LABELS = ("light", "heavy", "unity-wide", "unity", "unity-build")
 # The labels apps/ci-runner-governor swaps a runner's pool labels for while it holds it back.
-WITHHELD_LABELS = {"unity-withheld": "unity", "unity-build-withheld": "unity-build"}
+# light-withheld: a repo runner while the governor has not lent it the Unity slot it borrows.
+WITHHELD_LABELS = {"unity-withheld": "unity", "unity-build-withheld": "unity-build", "light-withheld": "light"}
 # A queued run with no jobs this old never gets a runner (GitHub creates a run's
 # jobs within seconds). It is labelled stuck="true" so boards can list it apart
 # instead of letting its age stand for the queue's.
@@ -764,7 +769,7 @@ FORGEJO_REPOS = os.environ.get("FORGEJO_REPOS", "").split()
 FORGEJO_API = os.environ.get("FORGEJO_API", "http://forgejo-http.forgejo.svc:3000/api/v1").rstrip("/")
 FORGEJO_WEB = os.environ.get("FORGEJO_WEB", "https://git.kblab.me").rstrip("/")
 FORGEJO_TOKEN = os.environ.get("FORGEJO_TOKEN", "")
-# The topology's Forgejo slots; each one is a runner of that name.
+# The topology's Forgejo seats; each one is a runner of that name.
 FJ_SLOTS = sorted(n for n, s in SLOTS.items() if s["forge"] == "forgejo")
 FJ_STATE = {"active": "running", "idle": "idle", "offline": "offline"}
 # Forgejo's largest page. Asking for more is not an error: it answers with every
@@ -775,6 +780,10 @@ FJ_TASKS = {}
 FJ_REFRESHED = {}
 # waiting job id -> when a scrape first saw it waiting.
 FJ_SEEN = {}
+# (when a scrape first missed it, seconds it was seen waiting), for each job that left the
+# waiting list in the window: Forgejo's queue time, which its API does not keep (a task is
+# created when a runner takes the job, so a task's created_at is its start).
+FJ_WAITED = []
 FJ_TASK_KEYS = ("id", "name", "head_branch", "event", "display_title", "status", "workflow_id", "url",
                 "created_at", "updated_at", "run_started_at")
 FJ_DONE = frozenset({"success", "failure", "cancelled", "skipped"})
@@ -807,7 +816,10 @@ def forgejo_runners():
         r = newest.get(name)
         out.append({"name": name, "host": SLOTS[name]["host"],
                     "state": FJ_STATE.get(r["status"], "offline") if r else "missing",
-                    "labels": sorted(r.get("labels") or []) if r else []})
+                    "labels": sorted(r.get("labels") or []) if r else [],
+                    # None until the runner first runs: Forgejo learns labels from its Declare call,
+                    # which a one-job seat makes only when it starts a job (register sends none).
+                    "declared": bool(r) and r.get("labels") is not None})
     return out
 
 
@@ -855,8 +867,13 @@ def forgejo_rows(runners_fut, repo_futs, now):
     except API_ERRORS:
         fr = None
         ok.append(("forgejo:admin/actions/runners", "runners", 0))
-    # The labels some live runner takes: a waiting job asking for any other is stuck.
-    taken = {lab for r in fr or [] if r["state"] != "missing" for lab in r["labels"]}
+    # The labels some live runner takes: a waiting job asking for any other is stuck. A
+    # registered runner that has not declared its labels yet may take any, so while one
+    # exists nothing is called stuck (the governor skips a stuck wait, and a seat it never
+    # lends never declares).
+    live = [r for r in fr or [] if r["state"] != "missing"]
+    taken = {lab for r in live for lab in r["labels"]}
+    judged = fr is not None and all(r["declared"] for r in live)
     facts = [f.result() for f in repo_futs]
     waiting_ids = set()
     for f in facts:
@@ -867,17 +884,25 @@ def forgejo_rows(runners_fut, repo_futs, now):
                 waiting_ids.add(j["id"])
                 age = int(now - FJ_SEEN.setdefault(j["id"], now))
                 runs_on = j.get("runs_on") or []
-                stuck = fr is not None and not set(runs_on) <= taken
+                stuck = judged and not set(runs_on) <= taken
                 add("github_actions_job_waiting",
                     {"repo": short, "workflow": "", "job_name": j.get("name", ""), "branch": "", "status": "waiting",
                      "labels": ",".join(runs_on), "pool": "forgejo", "stuck": "true" if stuck else "false",
                      "url": f"{FORGEJO_WEB}/{f['repo']}/actions", **NO_RUN}, age)
     if all(f["ok"] for f in facts):
         for jid in [k for k in FJ_SEEN if k not in waiting_ids]:
-            del FJ_SEEN[jid]
+            FJ_WAITED.append((now, int(now - FJ_SEEN.pop(jid))))
+    FJ_WAITED[:] = [w for w in FJ_WAITED if w[0] >= now - HISTORY_WINDOW_SECS]
 
     finished = [(r.split("/", 1)[1], t) for r, tasks in FJ_TASKS.items() if r in FORGEJO_REPOS
                 for t in tasks.values() if t.get("status") in FJ_DONE]
+    # Every task started since the exporter did is a job a runner took; one no scrape saw
+    # waiting was taken between two scrapes, so it waited under one scrape interval: 0.
+    started = sum(1 for r, tasks in FJ_TASKS.items() if r in FORGEJO_REPOS for t in tasks.values()
+                  if (ts(t.get("created_at")) or 0) >= max(EPOCH, now - HISTORY_WINDOW_SECS))
+    waits = sorted([w for _, w in FJ_WAITED] + [0] * max(0, started - len(FJ_WAITED)))
+    for q in QUANTILES if waits else ():
+        add("github_job_queue_seconds", {"pool": "forgejo", "quantile": q}, int(quantile(waits, float(q))))
     if fr is not None:
         by_state = dict.fromkeys(("running", "idle", "offline", "missing"), 0)
         for r in fr:
@@ -1014,7 +1039,7 @@ def render():
         registered = {r["name"] for _, r in seen.values()}
         for name, slot in sorted(SLOTS.items()):
             if slot["forge"] != "github":
-                continue  # forgejo_rows says which Forgejo slots are missing
+                continue  # forgejo_rows says which Forgejo seats are missing
             if name in registered:
                 continue
             lab = {"name": name, "host": slot["host"], "pool": slot["caps"][0], "site": site_of(slot["host"]),
@@ -1032,7 +1057,7 @@ def render():
     ] + slot_rows + forgejo("github_runner_pool_slot")
 
     L += [
-        "# HELP github_runner_withheld A unity or unity-build runner apps/ci-runner-governor holds back from new jobs",
+        "# HELP github_runner_withheld A runner apps/ci-runner-governor holds back from new jobs: a Unity slot, or a repo runner with no slot lent to it",
         "# TYPE github_runner_withheld gauge",
     ]
     for scope, r in sorted(seen.values(), key=lambda s: s[1]["name"]):
@@ -1218,6 +1243,7 @@ def render():
         xs.sort()
         for q in QUANTILES:
             L.append(f'github_job_queue_seconds{{{labels_str({"pool": pool_, "quantile": q})}}} {int(quantile(xs, float(q)))}')
+    L += forgejo("github_job_queue_seconds")
     L += [
         "# HELP github_job_duration_seconds How long a finished job (last 24h) ran, completed_at - started_at",
         "# TYPE github_job_duration_seconds gauge",

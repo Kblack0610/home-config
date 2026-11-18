@@ -15,6 +15,13 @@
     mode: "0755"
   tags: [ci-disk]
 
+- name: Install ci-fresh-workspace (parks a Unity checkout's untracked state for a light job; the hook restores it)
+  ansible.builtin.copy:
+    src: ci-fresh-workspace.sh
+    dest: "{{ linux_ci_fresh_workspace }}"
+    mode: "0755"
+  tags: [ci-disk]
+
 - name: Install every slot's job hook (prunes on a Unity slot, empties a non-Unity workspace)
   ansible.builtin.template:
     src: job-started.sh.j2

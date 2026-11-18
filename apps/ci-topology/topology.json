@@ -38,44 +38,40 @@
       {"name": "cachyos-x8664-main-unity-pool-2", "caps": ["unity"]}
     ]},
     "deskslim-2": {"site": "local", "full": true, "slots": [
-      {"name": "deskslim-2-light-1", "caps": ["light"]},
-      {"name": "deskslim-2-dotfiles-private-1", "caps": ["light"], "repo": "Kblack0610/.dotfiles-private"},
-      {"name": "deskslim-2-gungan-speak-1", "caps": ["light"], "repo": "Kblack0610/gungan-speak"},
-      {"name": "deskslim-2-forgejo-1", "caps": ["forgejo"], "forge": "forgejo"},
-      {"name": "deskslim-2-forgejo-2", "caps": ["forgejo"], "forge": "forgejo"},
+      {"name": "deskslim-2-dotfiles-private-1", "caps": ["light"], "repo": "Kblack0610/.dotfiles-private", "borrows": "deskslim-2-unity-pool-1"},
+      {"name": "deskslim-2-gungan-speak-1", "caps": ["light"], "repo": "Kblack0610/gungan-speak", "borrows": "deskslim-2-unity-pool-2"},
       {"name": "deskslim-2-unity-pool-1", "caps": ["unity", "light", "heavy"]},
       {"name": "deskslim-2-unity-pool-2", "caps": ["unity", "light", "heavy"]},
-      {"name": "deskslim-2-unity-pool-3", "caps": ["unity", "light", "heavy"]}
+      {"name": "deskslim-2-unity-pool-3", "caps": ["unity", "light", "heavy"]},
+      {"name": "deskslim-2-unity-pool-1-forgejo", "caps": ["forgejo"], "forge": "forgejo", "borrows": "deskslim-2-unity-pool-1"},
+      {"name": "deskslim-2-unity-pool-2-forgejo", "caps": ["forgejo"], "forge": "forgejo", "borrows": "deskslim-2-unity-pool-2"},
+      {"name": "deskslim-2-unity-pool-3-forgejo", "caps": ["forgejo"], "forge": "forgejo", "borrows": "deskslim-2-unity-pool-3"}
     ]},
     "mac-mini": {"site": "local", "slots": [
       {"name": "mac-mini-mac", "caps": ["macos"], "repo": "BlackNBrownStudios/platform"},
       {"name": "m1-playground-mac", "caps": ["macos"], "repo": "BlackNBrownStudios/unity-core-playground"}
     ]},
     "ms-a2": {"site": "local", "full": true, "slots": [
-      {"name": "ms-a2-light-1", "caps": ["light"]},
-      {"name": "ms-a2-light-2", "caps": ["light"]},
-      {"name": "ms-a2-heavy-1", "caps": ["heavy", "light"]},
-      {"name": "ms-a2-forgejo-1", "caps": ["forgejo"], "forge": "forgejo"},
-      {"name": "ms-a2-forgejo-2", "caps": ["forgejo"], "forge": "forgejo"},
       {"name": "ms-a2-unity-pool-1", "caps": ["unity", "light", "heavy"]},
       {"name": "ms-a2-unity-pool-2", "caps": ["unity", "light", "heavy"]},
       {"name": "ms-a2-unity-pool-3", "caps": ["unity", "light", "heavy"]},
       {"name": "ms-a2-unity-pool-4", "caps": ["unity", "light", "heavy"]},
-      {"name": "ms-a2-unity-pool-5", "caps": ["unity-build"], "group": ["ms-a2-unity-pool-3", "ms-a2-unity-pool-4"]}
+      {"name": "ms-a2-unity-pool-5", "caps": ["unity-build"], "group": ["ms-a2-unity-pool-3", "ms-a2-unity-pool-4"]},
+      {"name": "ms-a2-unity-pool-1-forgejo", "caps": ["forgejo"], "forge": "forgejo", "borrows": "ms-a2-unity-pool-1"},
+      {"name": "ms-a2-unity-pool-2-forgejo", "caps": ["forgejo"], "forge": "forgejo", "borrows": "ms-a2-unity-pool-2"}
     ]},
     "windows-media": {"site": "local", "slots": [
       {"name": "windows-media", "caps": ["windows"]}
     ]},
     "windows-media-ci": {"site": "local", "full": true, "slots": [
-      {"name": "windows-media-ci-light-1", "caps": ["light"]},
-      {"name": "windows-media-ci-light-2", "caps": ["light"]},
-      {"name": "windows-media-ci-heavy-1", "caps": ["heavy", "light"]},
-      {"name": "windows-media-ci-dotfiles-private-1", "caps": ["light"], "repo": "Kblack0610/.dotfiles-private"},
-      {"name": "windows-media-ci-gungan-speak-1", "caps": ["light"], "repo": "Kblack0610/gungan-speak"},
-      {"name": "windows-media-ci-forgejo-1", "caps": ["forgejo"], "forge": "forgejo"},
-      {"name": "windows-media-ci-forgejo-2", "caps": ["forgejo"], "forge": "forgejo"},
+      {"name": "windows-media-ci-dotfiles-private-1", "caps": ["light"], "repo": "Kblack0610/.dotfiles-private", "borrows": "windows-media-ci-unity-pool-1"},
+      {"name": "windows-media-ci-gungan-speak-1", "caps": ["light"], "repo": "Kblack0610/gungan-speak", "borrows": "windows-media-ci-unity-pool-2"},
       {"name": "windows-media-ci-unity-pool-1", "caps": ["unity", "light", "heavy"]},
-      {"name": "windows-media-ci-unity-pool-2", "caps": ["unity", "light", "heavy"]}
+      {"name": "windows-media-ci-unity-pool-2", "caps": ["unity", "light", "heavy"]},
+      {"name": "windows-media-ci-unity-pool-3", "caps": ["unity", "light", "heavy"]},
+      {"name": "windows-media-ci-unity-pool-1-forgejo", "caps": ["forgejo"], "forge": "forgejo", "borrows": "windows-media-ci-unity-pool-1"},
+      {"name": "windows-media-ci-unity-pool-2-forgejo", "caps": ["forgejo"], "forge": "forgejo", "borrows": "windows-media-ci-unity-pool-2"},
+      {"name": "windows-media-ci-unity-pool-3-forgejo", "caps": ["forgejo"], "forge": "forgejo", "borrows": "windows-media-ci-unity-pool-3"}
     ]}
   }
 }

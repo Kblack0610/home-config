@@ -392,7 +392,7 @@
     {
       "type": "table",
       "title": "Machines: load on every host that runs CI",
-      "description": "One row per CI host: CPU busy now and averaged over 6h (the headroom a rebalance is judged on), 1-minute load against its cores, memory used, CPU package temperature, and how many of its runners are busy (for the workstation, how many of its local Unity gate slots are held). '-' = that host exports no such series (macOS has no temperature sensor in node_exporter).",
+      "description": "One row per CI host: CPU busy now and averaged over 6h (the headroom a rebalance is judged on), 1-minute load against its cores, memory used (as a share and in bytes of its total), disk free on its emptiest real filesystem against that filesystem's size, CPU package temperature, and how many of its runners are busy (for the workstation, how many of its local Unity gate slots are held). '-' = that host exports no such series (macOS has no temperature sensor in node_exporter).",
       "gridPos": {
         "h": 8,
         "w": 24,
@@ -471,7 +471,7 @@
             "uid": "${datasource}"
           },
           "editorMode": "code",
-          "expr": "cc:host_temp_c and on (host) (max by (host) (github_runner_pool_expected) or cc:host_local_slots)",
+          "expr": "cc:host_mem_used_bytes and on (host) (max by (host) (github_runner_pool_expected) or cc:host_local_slots)",
           "format": "table",
           "instant": true,
           "range": false,
@@ -484,12 +484,64 @@
             "uid": "${datasource}"
           },
           "editorMode": "code",
-          "expr": "count by (host) (max without (instance, pod, job, namespace, service, endpoint, container) (github_runner_state{state=\"running\"})) or cc:host_local_busy",
+          "expr": "cc:host_mem_total_bytes and on (host) (max by (host) (github_runner_pool_expected) or cc:host_local_slots)",
           "format": "table",
           "instant": true,
           "range": false,
           "legendFormat": "__auto",
           "refId": "G"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "editorMode": "code",
+          "expr": "cc:host_disk_avail_bytes and on (host) (max by (host) (github_runner_pool_expected) or cc:host_local_slots)",
+          "format": "table",
+          "instant": true,
+          "range": false,
+          "legendFormat": "__auto",
+          "refId": "H"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "editorMode": "code",
+          "expr": "cc:host_disk_size_bytes and on (host) (max by (host) (github_runner_pool_expected) or cc:host_local_slots)",
+          "format": "table",
+          "instant": true,
+          "range": false,
+          "legendFormat": "__auto",
+          "refId": "I"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "editorMode": "code",
+          "expr": "cc:host_temp_c and on (host) (max by (host) (github_runner_pool_expected) or cc:host_local_slots)",
+          "format": "table",
+          "instant": true,
+          "range": false,
+          "legendFormat": "__auto",
+          "refId": "J"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "editorMode": "code",
+          "expr": "count by (host) (max without (instance, pod, job, namespace, service, endpoint, container) (github_runner_state{state=\"running\"})) or cc:host_local_busy",
+          "format": "table",
+          "instant": true,
+          "range": false,
+          "legendFormat": "__auto",
+          "refId": "K"
         }
       ],
       "transformations": [
@@ -512,7 +564,10 @@
               "Time 5": true,
               "Time 6": true,
               "Time 7": true,
-              "Time 8": true
+              "Time 8": true,
+              "Time 9": true,
+              "Time 10": true,
+              "Time 11": true
             },
             "renameByName": {
               "Value #A": "cpu",
@@ -520,8 +575,12 @@
               "Value #C": "load",
               "Value #D": "cores",
               "Value #E": "mem",
-              "Value #F": "temp",
-              "Value #G": "busy runners"
+              "Value #F": "mem used",
+              "Value #G": "mem total",
+              "Value #H": "disk free",
+              "Value #I": "disk size",
+              "Value #J": "temp",
+              "Value #K": "busy runners"
             }
           }
         }
@@ -621,6 +680,70 @@
               {
                 "id": "decimals",
                 "value": 0
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "mem used"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "bytes"
+              },
+              {
+                "id": "decimals",
+                "value": 1
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "mem total"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "bytes"
+              },
+              {
+                "id": "decimals",
+                "value": 1
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "disk free"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "bytes"
+              },
+              {
+                "id": "decimals",
+                "value": 1
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "disk size"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "bytes"
+              },
+              {
+                "id": "decimals",
+                "value": 1
               }
             ]
           },
@@ -1105,7 +1228,7 @@
     {
       "type": "table",
       "title": "Runners: what is running where",
-      "description": "One row per runner. RUNNING rows show the job and how long it has been going; the 'last' columns show the last job it finished, which is what that runner is actually used for. Click a job to open it on GitHub. MISSING = a slot the roster expects that never registered.",
+      "description": "One row per runner. RUNNING rows show the job and how long it has been going; the 'last' columns show the last job it finished, which is what that runner is actually used for. cores, mem and disk are what the runner and its job containers take of its machine now: cores busy of the CPUs its cgroup allows, memory of the cap of a cgroup it holds alone, and the bytes under its home (the checkout, warm Unity Library and _work), measured hourly (disk measured says how long ago). '-' = no reading (macOS runners have no cgroups). Click a job to open it on GitHub. MISSING = a slot the roster expects that never registered.",
       "gridPos": {
         "h": 13,
         "w": 24,
@@ -1138,6 +1261,84 @@
           "range": false,
           "legendFormat": "__auto",
           "refId": "B"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "editorMode": "code",
+          "expr": "max by (name) (label_replace(cc:runner_cores_busy, \"name\", \"$1\", \"runner\", \"(.+)\"))",
+          "format": "table",
+          "instant": true,
+          "range": false,
+          "legendFormat": "__auto",
+          "refId": "C"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "editorMode": "code",
+          "expr": "max by (name) (label_replace(cc:runner_cores_allowed, \"name\", \"$1\", \"runner\", \"(.+)\"))",
+          "format": "table",
+          "instant": true,
+          "range": false,
+          "legendFormat": "__auto",
+          "refId": "D"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "editorMode": "code",
+          "expr": "max by (name) (label_replace(cc:runner_mem_bytes, \"name\", \"$1\", \"runner\", \"(.+)\"))",
+          "format": "table",
+          "instant": true,
+          "range": false,
+          "legendFormat": "__auto",
+          "refId": "E"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "editorMode": "code",
+          "expr": "max by (name) (label_replace(cc:runner_mem_max_bytes, \"name\", \"$1\", \"runner\", \"(.+)\"))",
+          "format": "table",
+          "instant": true,
+          "range": false,
+          "legendFormat": "__auto",
+          "refId": "F"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "editorMode": "code",
+          "expr": "max by (name) (label_replace(cc:runner_disk_bytes, \"name\", \"$1\", \"runner\", \"(.+)\"))",
+          "format": "table",
+          "instant": true,
+          "range": false,
+          "legendFormat": "__auto",
+          "refId": "G"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "editorMode": "code",
+          "expr": "max by (name) (label_replace(cc:runner_disk_age_seconds, \"name\", \"$1\", \"runner\", \"(.+)\"))",
+          "format": "table",
+          "instant": true,
+          "range": false,
+          "legendFormat": "__auto",
+          "refId": "H"
         }
       ],
       "transformations": [
@@ -1155,6 +1356,12 @@
               "Time": true,
               "Time 1": true,
               "Time 2": true,
+              "Time 3": true,
+              "Time 4": true,
+              "Time 5": true,
+              "Time 6": true,
+              "Time 7": true,
+              "Time 8": true,
               "__name__": true,
               "scope": true,
               "event": true,
@@ -1172,13 +1379,19 @@
               "workflow": 8,
               "job_name": 9,
               "Value #A": 10,
-              "last_conclusion": 11,
-              "last_repo": 12,
-              "last_workflow": 13,
-              "last_job": 14,
-              "Value #B": 15,
-              "url": 16,
-              "last_url": 17
+              "Value #C": 11,
+              "Value #D": 12,
+              "Value #E": 13,
+              "Value #F": 14,
+              "Value #G": 15,
+              "Value #H": 16,
+              "last_conclusion": 17,
+              "last_repo": 18,
+              "last_workflow": 19,
+              "last_job": 20,
+              "Value #B": 21,
+              "url": 22,
+              "last_url": 23
             },
             "renameByName": {
               "name": "runner",
@@ -1188,7 +1401,13 @@
               "last_repo": "last repo",
               "last_workflow": "last workflow",
               "last_job": "last job",
-              "Value #B": "last finished"
+              "Value #B": "last finished",
+              "Value #C": "cores",
+              "Value #D": "cores allowed",
+              "Value #E": "mem",
+              "Value #F": "mem cap",
+              "Value #G": "disk",
+              "Value #H": "disk measured"
             }
           }
         }
@@ -1405,6 +1624,102 @@
               {
                 "id": "unit",
                 "value": "dateTimeFromNow"
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "cores"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "none"
+              },
+              {
+                "id": "decimals",
+                "value": 1
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "cores allowed"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "none"
+              },
+              {
+                "id": "decimals",
+                "value": 1
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "mem"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "bytes"
+              },
+              {
+                "id": "decimals",
+                "value": 1
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "mem cap"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "bytes"
+              },
+              {
+                "id": "decimals",
+                "value": 1
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "disk"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "bytes"
+              },
+              {
+                "id": "decimals",
+                "value": 1
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "disk measured"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "dtdurations"
+              },
+              {
+                "id": "decimals",
+                "value": 1
               }
             ]
           },

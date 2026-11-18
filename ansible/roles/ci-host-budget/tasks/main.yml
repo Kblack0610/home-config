@@ -11,7 +11,7 @@
   ansible.builtin.set_fact:
     _ci_cpu_sets: >-
       {% set out = {} %}{% for name, spec in {'ci': ci_cpus, 'unity': ci_unity_cpus,
-      'linux': ci_linux_cpus, 'k3s': k3s_cpus,
+      'k3s': k3s_cpus,
       'slots': ci_unity_slot_cpus | join(',')}.items() %}{% set cpus = [] %}{%
       for part in (spec | string).split(',') if part | trim %}{% set ab = part | trim
       %}{% set ab = ab.split('-') %}{% for c in range(ab[0] | int, (ab[-1] | int) + 1)
@@ -22,16 +22,13 @@
   ansible.builtin.assert:
     that:
       - _ci_cpu_sets.unity | difference(_ci_cpu_sets.ci) | length == 0
-      - _ci_cpu_sets.linux | difference(_ci_cpu_sets.ci) | length == 0
-      - _ci_unity_eff | intersect(_ci_cpu_sets.linux) | length == 0
       - _ci_cpu_sets.slots | difference(_ci_unity_eff) | length == 0
       - _ci_cpu_sets.k3s | intersect(_ci_cpu_sets.ci) | length == 0
       - ci_unity_slot_memory_max is string or ci_unity_slot_memory_max | length == ci_unity_slot_cpus | length
     fail_msg: >-
-      {{ inventory_hostname }}: ci_unity_cpus (all of ci_cpus when empty) and
-      ci_linux_cpus must sit inside ci_cpus and not overlap, every
-      ci_unity_slot_cpus entry inside Unity's, k3s_cpus outside ci_cpus, and a
-      ci_unity_slot_memory_max list one entry per slot ({{ _ci_cpu_sets }}).
+      {{ inventory_hostname }}: ci_unity_cpus (all of ci_cpus when empty) must sit
+      inside ci_cpus, every ci_unity_slot_cpus entry inside Unity's, k3s_cpus outside
+      ci_cpus, and a ci_unity_slot_memory_max list one entry per slot ({{ _ci_cpu_sets }}).
     quiet: true
   vars:
     _ci_unity_eff: "{{ _ci_cpu_sets.unity or _ci_cpu_sets.ci }}"
@@ -44,7 +41,6 @@
   loop:
     - { src: ci.slice.j2, name: "{{ ci_slice }}" }
     - { src: ci-unity.slice.j2, name: "{{ ci_unity_slice }}" }
-    - { src: ci-linux.slice.j2, name: "{{ ci_linux_slice }}" }
   loop_control:
     label: "{{ item.name }}"
   register: _ci_slice_units
@@ -79,8 +75,8 @@
     > (ci_unity_slot_cpus | length)
   register: _ci_slot_removed
 
-# A unit still inside a retired slice keeps running there until the runner role
-# restarts it into the new one (its unit file changes, so it does).
+# A unit still inside a retired slice keeps running there until it restarts: the runner role
+# restarts a unit it still owns into the new one; a runner the play dropped is retired first.
 - name: Remove the retired per-workload slices
   ansible.builtin.file:
     path: "/etc/systemd/system/{{ item }}"
@@ -150,13 +146,28 @@
   changed_when: false
   check_mode: false
 
-# A running job is a Runner.Worker process, not any container: a workstation
-# keeps its own long-lived containers (a dev database, mailpit) that are not CI.
+# A running job, one line each, not any container: a workstation keeps its own
+# long-lived containers (a dev database, mailpit) that are not CI. A GitHub job is
+# a Runner.Worker process. A Forgejo job is a FORGEJO-ACTIONS-TASK-* container
+# (docker label) or runs under its seat's supervisor (host label), whose only child is
+# forgejo-runner one-job while the governor lends the seat its slot; an unlent seat has none.
 - name: List running CI jobs before restarting docker
-  ansible.builtin.command: pgrep -x Runner.Worker
+  ansible.builtin.shell: |
+    set -eu
+    # Each source is its own assignment, so a failed read fails the task instead
+    # of reading as no jobs (a pipe would hide it).
+    workers=$(pgrep -x Runner.Worker || true)
+    containers=$(docker ps -q --filter name=^FORGEJO-ACTIONS-TASK-)
+    units=$(systemctl list-units 'forgejo-runner-*' --state=running --plain --no-legend)
+    for p in $workers; do echo "github Runner.Worker $p"; done
+    for c in $containers; do echo "forgejo container $c"; done
+    for u in $(printf '%s\n' "$units" | awk '{print $1}'); do
+      pid=$(systemctl show "$u" -p MainPID --value)
+      [ "${pid:-0}" -gt 0 ] || continue
+      for p in $(pgrep -P "$pid" || true); do echo "forgejo $u host job $p"; done
+    done
   register: _ci_docker_running
   changed_when: false
-  failed_when: _ci_docker_running.rc > 1
   check_mode: false
   when: _ci_docker_config_age.stdout == 'stale'
 
@@ -165,9 +176,9 @@
     that: _ci_docker_running.stdout | length == 0
     fail_msg: >-
       A CI job is running on {{ inventory_hostname }}
-      ({{ _ci_docker_running.stdout_lines | length }} Runner.Worker), and docker
+      ({{ _ci_docker_running.stdout_lines | join('; ') }}), and docker
       must restart to pick up its new config. Re-run this play when the host's
-      runners are idle; the restart stays pending until then.
+      GitHub and Forgejo runners are idle; the restart stays pending until then.
     quiet: true
   when: _ci_docker_config_age.stdout == 'stale' and not ansible_check_mode
 

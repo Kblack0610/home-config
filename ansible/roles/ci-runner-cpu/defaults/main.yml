@@ -6,6 +6,10 @@
 # neither cgroups nor ps push a change; node-exporter cannot read either itself.
 ci_runner_cpu_interval_seconds: 15
 
+# Disk under each runner's home (ci_runner_disk.prom): hourly, the CI disk prune's cadence,
+# since a du of a warm Unity Library takes seconds to minutes. A timer: disk use has no event.
+ci_runner_disk_interval: 1h
+
 # Linux: the k3s node-exporter mounts this (same dir as roles/node-disk-metrics).
 ci_runner_cpu_linux_textfile_dir: /var/lib/node-exporter-textfile
 # Same owner as roles/node-disk-metrics creates it with (group_vars/all/k3s.yml).

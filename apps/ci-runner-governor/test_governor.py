@@ -2269,17 +2269,26 @@ class LendTest(unittest.TestCase):
         self.assertEqual(box.labels(), DRAINED)
         self.assertEqual(box.lends, {})
 
-    def test_a_busy_slot_is_never_lent_or_granted(self):
+    def test_a_busy_slot_is_lent_to_drain_and_never_granted_while_busy(self):
         job = [("forgejo", frozenset({"docker"}), 60)]
-        self.assertEqual(Box(s1_busy=True).plan(job), [])
-        # The exporter says idle, GitHub says busy: the live read wins.
-        box = Box()
-        box.gh.scopes[ORG][S1]["busy"] = True
-        with mock.patch.object(box, "runners", return_value={**Box().runners()}):
-            self.assertEqual(box.step(job), [("lend", S1)])
-        self.assertEqual(box.lends, {})
-        self.assertEqual(box.labels(), DRAINED)
+        # Every slot busy (the GitHub queue keeps them so): the lend drains one.
+        box = Box(s1=ADMITTED, s1_busy=True)
+        self.assertEqual(box.step(job), [("lend", S1)])
+        self.assertEqual(box.labels(), DRAINED | {"unity-lent"})
+        self.assertEqual(box.plan(job, 10_060), [])
         box.gh.scopes[ORG][S1]["busy"] = False
+        self.assertEqual(box.step(job, 10_060), [("grant", S1)])
+        self.assertEqual(box.leases.get(S1)[0], "forgejo")
+        # An idle slot goes before a busy one.
+        box = Box(s1=ADMITTED, s1_busy=True)
+        box.leases = governor.Leases([S1, S2])
+        seat2 = "box-unity-pool-2-forgejo"
+        state = {**box.seat_state(), seat2: {"busy": False, "online": True, "withheld": False}}
+        with mock.patch.dict(LCFG["seats"], {seat2: {"host": "box", "slot": S2, "forge": "forgejo"}}), \
+                mock.patch.object(box, "seat_state", return_value=state):
+            self.assertEqual(box.plan(job)[0][:2], ("lend", S2))
+        # GitHub says busy at grant time, though the exporter said idle: the live read wins.
+        box = Box()
         box.step(job)
         box.gh.scopes[ORG][S1]["busy"] = True  # a GitHub job it took before the lend landed
         self.assertEqual(box.plan(job, 10_060), [])

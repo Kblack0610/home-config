@@ -706,6 +706,7 @@ all:
               repo: https://github.com/Kblack0610/.dotfiles.git
             - dest: ~/dev/home/home-config
               repo: https://git.kblab.me/kblack0610/home-config.git
+              remote: forgejo   # the name fleet-hosts.sh and fleet-roster-fetch.timer read
             - dest: ~/dev/crypto/freqtrade_trading_attempt
               repo: https://github.com/Kblack0610/freqtrade_trading_attempt.git
           ssh_host_ed25519: ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAINmhQxBIidZJ6HtH0d5CRf4sj0l1CPYymCrvN/dcypAa

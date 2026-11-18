@@ -555,6 +555,19 @@ class ExporterTest(unittest.TestCase):
         self.assertEqual(len([r for r in state if 'name="box-light-1"' in r and 'scope="acme/web"' in r]), 1, state)
         self.assertEqual(len([r for r in state if 'name="box-tools-1"' in r and 'scope="other/tools"' in r]), 1, state)
 
+    def test_same_runner_id_in_two_repos_of_one_owner_counts_both(self):
+        # A repo runner's id counts within its repo: acme/game's runner 2 is not acme/web's.
+        repo = "repos/acme/game/actions/runners?per_page=100&page=1"
+        saved = FAKE[repo]
+        FAKE[repo] = {"total_count": 1, "runners": [runner(2, "box-game-1", ["self-hosted", "light"])]}
+        try:
+            out = self.render()
+        finally:
+            FAKE[repo] = saved
+        state = rows(out, "github_runner_state")
+        self.assertEqual(len([r for r in state if 'name="box-light-1"' in r and 'scope="acme/web"' in r]), 1, state)
+        self.assertEqual(len([r for r in state if 'name="box-game-1"' in r and 'scope="acme/game"' in r]), 1, state)
+
     def test_a_hand_made_runner_does_not_hide_a_dead_repo_slot(self):
         # box-light-2, a repo slot of acme/web, is offline. A runner registered by hand on
         # the same host (no topology slot) is online: it is listed, but the pool stays one

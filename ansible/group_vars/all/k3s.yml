@@ -9,3 +9,9 @@ k3s_url: "https://192.168.1.20:6443"
 # existing nodes are upgraded to it in place. Step one minor at a time, server
 # first (playbooks/site.yml runs it before the agents), and never lower it.
 k3s_install_version: v1.34.13+k3s1
+
+# Who owns /var/lib/node-exporter-textfile, the k3s node-exporter's textfile dir. Two roles
+# create it (node-disk-metrics, ci-runner-cpu), so the owner is set once here. A fleet home on a
+# node publishes its own claude_acct.prom and fleet_local.prom there and needs to write; every
+# other node keeps it root. Root-run writers are unaffected.
+k3s_textfile_owner: "{{ ansible_user if inventory_hostname in groups['fleet_workers'] else 'root' }}"

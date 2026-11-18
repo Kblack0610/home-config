@@ -1,7 +1,8 @@
 ---
 # Hold a host to a sustained temperature it can live with, by capping power
-# rather than time-slicing CPU (see README). Every knob is optional and off by
-# default; set the ones a host's firmware has in inventory.yml (thermal_capped).
+# rather than time-slicing CPU (see README). Every knob is off in the role; the
+# fleet default (boost off) is the thermal_capped group's vars in inventory.yml,
+# where a host also sets the knobs its firmware has.
 # A knob that is set but missing on the host fails the apply, so a cap never
 # silently does nothing.
 

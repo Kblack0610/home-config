@@ -561,11 +561,6 @@
         daemon_reload: true
       when: _no_ci_removed.changed
 
-    - name: Remove the CI slices and docker's CI cgroup parent
-      ansible.builtin.include_role:
-        name: ci-host-budget
-        tasks_from: retire
-
     - name: Remove the CI CPU exporter
       ansible.builtin.include_role:
         name: ci-runner-cpu
@@ -592,6 +587,12 @@
       changed_when: _no_ci_dereg.stdout | length > 0
       check_mode: false
       when: not ansible_check_mode
+
+    # Last: it refuses to restart docker under running containers, which fails the host.
+    - name: Remove the CI slices and docker's CI cgroup parent
+      ansible.builtin.include_role:
+        name: ci-host-budget
+        tasks_from: retire
 
 - name: Fleet workers (agent sessions fleet-dispatch places over ssh)
   # See docs/runbooks/fleet-worker.md. Per user, not root: the sessions run as

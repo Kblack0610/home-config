@@ -6,11 +6,8 @@
 - name: Find the CI slices
   ansible.builtin.find:
     paths: /etc/systemd/system
-    patterns:
-      - "{{ ci_slice }}"
-      - "{{ ci_unity_slice }}"
-      - "{{ ci_linux_slice }}"
-      - "{{ ci_unity_slot_slice_prefix }}*.slice"
+    patterns: "{{ [ci_slice, ci_unity_slice, ci_linux_slice, ci_unity_slot_slice_prefix ~ '*.slice']
+                  + ci_retired_slices }}"
   register: _ci_retire_slices
 
 - name: Remove the CI slices
@@ -41,17 +38,16 @@
          | items2dict | to_nice_json }}
     mode: "0644"
   vars:
-    _ci_retire_docker: "{{ _ci_retire_docker_json.content | b64decode | from_json }}"
-  when: >-
-    _ci_retire_docker_json.content is defined
-    and (_ci_retire_docker_json.content | b64decode | from_json).get('cgroup-parent')
-    in [ci_slice, ci_unity_slice, ci_linux_slice]
+    _ci_retire_docker: "{{ (_ci_retire_docker_json.content | b64decode | from_json)
+                           if _ci_retire_docker_json.content is defined else {} }}"
+  when: _ci_retire_docker.get('cgroup-parent') in [ci_slice, ci_unity_slice, ci_linux_slice]
 
 # State, not the copy's changed: a refused restart must still be pending on the next run.
+# A docker that is not running starts with the new config, so it is never stale.
 - name: Check whether dockerd predates its config
   ansible.builtin.shell: |
     set -eu
-    systemctl cat docker.service >/dev/null 2>&1 && [ -f /etc/docker/daemon.json ] || { echo current; exit 0; }
+    systemctl is-active -q docker.service && [ -f /etc/docker/daemon.json ] || { echo current; exit 0; }
     started=$(date -d "$(systemctl show docker.service -p ActiveEnterTimestamp --value)" +%s)
     [ "$(stat -c %Y /etc/docker/daemon.json)" -gt "$started" ] && echo stale || echo current
   register: _ci_retire_docker_age

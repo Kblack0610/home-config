@@ -17,7 +17,8 @@ after the time:
   scripts/host-postmortem.py hp-victus 2026-11-13T23:30Z
   scripts/host-postmortem.py razer-laptop now --before 2h
 
-Hosts are the `host` names of cc:host_instance, the same names as the inventory. Stdlib only.
+Hosts are the `host` names of cc:host_instance: the k8s node name, which is also the Loki journal
+`host` (a Pi is raspberrypi-<id>, not its inventory name). Stdlib only.
 PROMETHEUS_URL overrides https://prometheus.kblab.me (7 days of retention). Loki is read
 through the home-k3s API server proxy with kubectl.
 
@@ -185,7 +186,7 @@ def netconsole(inst, start, end):
 
 def main():
     ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])
-    ap.add_argument("host", help="inventory host name, e.g. hp-victus")
+    ap.add_argument("host", help="k8s node name (cc:host_instance host), e.g. hp-victus or raspberrypi-771be84c")
     ap.add_argument("time", help="ISO time (2026-11-13T23:30Z; no zone means local) or 'now'")
     ap.add_argument("--before", default="60m", help="window before the time (e.g. 60m, 2h)")
     ap.add_argument("--after", default="15m", help="window after the time")

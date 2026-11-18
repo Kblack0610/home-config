@@ -50,10 +50,6 @@ loki.relabel "journal" {
     target_label  = "unit"
   }
   rule {
-    source_labels = ["__journal__hostname"]
-    target_label  = "host"
-  }
-  rule {
     source_labels = ["__journal__transport"]
     target_label  = "transport"
   }
@@ -63,11 +59,21 @@ loki.relabel "journal" {
   }
 }
 
+// No `path`: Alloy then opens the local journal in both /var/log/journal and
+// /run/log/journal (daemonset.yaml mounts both plus /etc/machine-id). Raspberry
+// Pi OS keeps journald volatile, so a worker Pi's journal is only in /run; a
+// persistent host has nothing left in /run once journald flushes, so no line is
+// read twice.
+//
+// `host` is the k8s node name, not the journal hostname: every Pi calls itself
+// raspberrypi and k3s (--with-node-id) makes the node names unique; on every
+// other node the two are equal. The static label is set before relabeling, so
+// no rule may write `host`. cluster-janitor's quarantine keys kernel-fault
+// alerts by node name, and cc:host_instance's `host` is the node name too.
 loki.source.journal "host" {
   max_age       = "12h"
-  path          = "/var/log/journal"
   relabel_rules = loki.relabel.journal.rules
-  labels        = { job = "systemd-journal" }
+  labels        = { job = "systemd-journal", host = sys.env("NODE_NAME") }
   forward_to    = [loki.process.redact.receiver]
 }
 

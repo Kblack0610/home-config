@@ -69,17 +69,24 @@ CI_HOSTS = " and on (host) (max by (host) (github_runner_pool_expected) or cc:ho
 MACHINE_COLS = [("cc:host_cpu_busy_ratio", "cpu", "percentunit"), ("cc:host_cpu_busy_ratio:avg6h", "cpu 6h", "percentunit"),
                 ("cc:host_load1", "load", "none"),
                 ("cc:host_cores", "cores", "none"), ("cc:host_mem_used_ratio", "mem", "percentunit"),
+                ("cc:host_mem_used_bytes", "mem used", "bytes"), ("cc:host_mem_total_bytes", "mem total", "bytes"),
+                ("cc:host_disk_avail_bytes", "disk free", "bytes"), ("cc:host_disk_size_bytes", "disk size", "bytes"),
                 ("cc:host_temp_c", "temp", "celsius")]
+# Each runner's share of its machine (cc:runner_* in prometheus-rules-command-center.yaml):
+# cores and memory from the 15s textfile, disk from the hourly du. ref, rule, column, unit.
+SLOT_SPACE = [("C", "cc:runner_cores_busy", "cores", "none"), ("D", "cc:runner_cores_allowed", "cores allowed", "none"),
+              ("E", "cc:runner_mem_bytes", "mem", "bytes"), ("F", "cc:runner_mem_max_bytes", "mem cap", "bytes"),
+              ("G", "cc:runner_disk_bytes", "disk", "bytes")]
 
 
 def machines(y):
-    refs = "ABCDEFG"
+    refs = "ABCDEFGHIJK"
     targets = [tgt(f"{m}{CI_HOSTS}", refs[i]) for i, (m, _, _) in enumerate(MACHINE_COLS)]
     # Runners busy, or for the workstation its local gate slots held.
     targets.append(tgt('count by (host) (' + W + '(github_runner_state{state="running"})) or cc:host_local_busy', refs[len(MACHINE_COLS)]))
     rename = {f"Value #{refs[i]}": col for i, (_, col, _) in enumerate(MACHINE_COLS)}
     rename[f"Value #{refs[len(MACHINE_COLS)]}"] = "busy runners"
-    units = [{"matcher": {"id": "byName", "options": col}, "properties": [{"id": "unit", "value": u}, {"id": "decimals", "value": 0 if u != "none" else 1}]}
+    units = [{"matcher": {"id": "byName", "options": col}, "properties": [{"id": "unit", "value": u}, {"id": "decimals", "value": 1 if u in ("none", "bytes") else 0}]}
              for _, col, u in MACHINE_COLS]
     heat = [{"matcher": {"id": "byName", "options": col}, "properties": [
         {"id": "custom.cellOptions", "value": {"type": "color-text"}}, {"id": "color", "value": {"mode": "thresholds"}},
@@ -87,10 +94,10 @@ def machines(y):
         (("cpu", (("text", None), ("orange", 0.7), ("red", 0.9))), ("cpu 6h", (("text", None), ("orange", 0.7), ("red", 0.9))), ("mem", (("text", None), ("orange", 0.8), ("red", 0.92))),
          ("temp", (("text", None), ("orange", 85), ("red", 95))))]
     return P({"type": "table", "title": "Machines: load on every host that runs CI",
-              "description": "One row per CI host: CPU busy now and averaged over 6h (the headroom a rebalance is judged on), 1-minute load against its cores, memory used, CPU package temperature, and how many of its runners are busy (for the workstation, how many of its local Unity gate slots are held). '-' = that host exports no such series (macOS has no temperature sensor in node_exporter).",
+              "description": "One row per CI host: CPU busy now and averaged over 6h (the headroom a rebalance is judged on), 1-minute load against its cores, memory used (as a share and in bytes of its total), disk free on its emptiest real filesystem against that filesystem's size, CPU package temperature, and how many of its runners are busy (for the workstation, how many of its local Unity gate slots are held). '-' = that host exports no such series (macOS has no temperature sensor in node_exporter).",
               "gridPos": {"h": 8, "w": 24, "x": 0, "y": y}, "targets": targets,
               "transformations": [{"id": "joinByField", "options": {"byField": "host", "mode": "outer"}},
-                                  {"id": "organize", "options": {"excludeByName": {"Time": True, **{f"Time {i}": True for i in range(1, 9)}},
+                                  {"id": "organize", "options": {"excludeByName": {"Time": True, **{f"Time {i}": True for i in range(1, len(MACHINE_COLS) + 2)}},
                                                                  "renameByName": rename}}],
               "options": {"showHeader": True, "cellHeight": "sm", "sortBy": [{"displayName": "cpu", "desc": True}]},
               "fieldConfig": {"defaults": {"noValue": "-", "custom": {"align": "left"}}, "overrides": units + heat}})
@@ -173,17 +180,21 @@ panels = [
     pools(12),
 
     P({"type": "table", "title": "Runners: what is running where",
-       "description": "One row per runner. RUNNING rows show the job and how long it has been going; the 'last' columns show the last job it finished, which is what that runner is actually used for. Click a job to open it on GitHub. MISSING = a slot the roster expects that never registered.",
+       "description": "One row per runner. RUNNING rows show the job and how long it has been going; the 'last' columns show the last job it finished, which is what that runner is actually used for. cores, mem and disk are what the runner and its job containers take of its machine now: cores busy of the CPUs its cgroup allows, memory of the cap of a cgroup it holds alone, and the bytes under its home (the checkout, warm Unity Library and _work), measured hourly. '-' = no reading (macOS runners have no cgroups). Click a job to open it on GitHub. MISSING = a slot the roster expects that never registered.",
        "gridPos": {"h": 13, "w": 24, "x": 0, "y": 20},
-       "targets": [tgt(W + "(github_runner_state)", "A"), tgt(W + "(github_runner_last_job) * 1000", "B")],
+       "targets": [tgt(W + "(github_runner_state)", "A"), tgt(W + "(github_runner_last_job) * 1000", "B")]
+                  + [tgt(f'max by (name) (label_replace({m}, "name", "$1", "runner", "(.+)"))', ref) for ref, m, _, _ in SLOT_SPACE],
        "transformations": [{"id": "joinByField", "options": {"byField": "name", "mode": "outer"}},
                            {"id": "organize", "options": {
-           "excludeByName": {"Time": True, "Time 1": True, "Time 2": True, "__name__": True, "scope": True, "event": True, "labels": True},
+           "excludeByName": {"Time": True, **{f"Time {i}": True for i in range(1, len(SLOT_SPACE) + 3)},
+                             "__name__": True, "scope": True, "event": True, "labels": True},
            "indexByName": {"state": 0, "name": 1, "host": 2, "pool": 3, "repo": 4, "pr": 5, "branch": 6, "title": 7, "workflow": 8,
-                           "job_name": 9, "Value #A": 10, "last_conclusion": 11, "last_repo": 12, "last_workflow": 13, "last_job": 14,
-                           "Value #B": 15, "url": 16, "last_url": 17},
+                           "job_name": 9, "Value #A": 10, **{f"Value #{ref}": 11 + i for i, (ref, _, _, _) in enumerate(SLOT_SPACE)},
+                           "last_conclusion": 16, "last_repo": 17, "last_workflow": 18, "last_job": 19,
+                           "Value #B": 20, "url": 21, "last_url": 22},
            "renameByName": {"name": "runner", "job_name": "job", "Value #A": "running for", "last_conclusion": "last result",
-                            "last_repo": "last repo", "last_workflow": "last workflow", "last_job": "last job", "Value #B": "last finished"}}}],
+                            "last_repo": "last repo", "last_workflow": "last workflow", "last_job": "last job", "Value #B": "last finished",
+                            **{f"Value #{ref}": col for ref, _, col, _ in SLOT_SPACE}}}}],
        "options": {"showHeader": True, "cellHeight": "sm", "sortBy": [{"displayName": "running for", "desc": True}]},
        "fieldConfig": {"defaults": {"noValue": "-", "custom": {"align": "left"}},
                        "overrides": [
@@ -203,7 +214,8 @@ panels = [
                                {"id": "custom.cellOptions", "value": {"type": "color-text"}},
                                {"id": "custom.width", "value": 100}]},
                            {"matcher": {"id": "byName", "options": "last finished"}, "properties": [{"id": "unit", "value": "dateTimeFromNow"}]},
-                       ] + hide("url", "last_url")}}),
+                       ] + [{"matcher": {"id": "byName", "options": col}, "properties": [{"id": "unit", "value": u}, {"id": "decimals", "value": 1}]}
+                            for _, _, col, u in SLOT_SPACE] + hide("url", "last_url")}}),
 
     P({"type": "table", "title": "What each pool runs",
        "description": "Workflows each runner pool finished in the last 24h, newest first. Read from job history, so it stays true when the workflow files change.",

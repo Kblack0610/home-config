@@ -94,6 +94,47 @@ has "a Forgejo runner plus its task's container" '^ci_runner_cores_busy\{runner=
 has "a Forgejo runner whose task ended reads zero" '^ci_runner_cores_busy\{runner="h-forgejo-2"\} 0\.00$'
 [ "$(ls -A "$t/out" | wc -l)" = 1 ] && echo "ok   no temp file left" || { echo "FAIL temp file left"; fail=1; }
 
+# Memory: pool-1's slice u1 caps it alone at 14G; ci-linux.slice caps three runners together.
+echo 1000 > "$t/cg/ci.slice/u1/actions.runner.h-unity-pool-1.service/memory.current"
+echo 4000 > "$t/cg/ci.slice/u1/docker-c1.scope/memory.current"
+echo 8000 > "$t/cg/ci.slice/u10/docker-c3.scope/memory.current"
+echo 300 > "$t/cg/ci.slice/ci-linux.slice/actions.runner.h-light-1.service/memory.current"
+echo max > "$t/cg/ci.slice/u1/actions.runner.h-unity-pool-1.service/memory.max"
+echo 15032385536 > "$t/cg/ci.slice/u1/memory.max"
+echo 21474836480 > "$t/cg/ci.slice/ci-linux.slice/memory.max"
+linux 110.00
+has "a runner's memory is its unit plus its job container" '^ci_runner_memory_bytes\{runner="h-unity-pool-1"\} 5000$'
+has "a runner with no container is its unit's memory" '^ci_runner_memory_bytes\{runner="h-light-1"\} 300$'
+has "the cap is the nearest cgroup above with one" '^ci_runner_memory_max_bytes\{runner="h-unity-pool-1"\} 15032385536$'
+hasnt "a cap three runners share is no one runner's" 'memory_max_bytes\{runner="h-light-1"\}'
+
+# --disk: bytes under each runner's working directory.
+mkdir -p "$t/w/unity-pool-1/_work/Library" "$t/w/light-1"
+head -c 300000 /dev/zero > "$t/w/unity-pool-1/_work/Library/a"
+cat > "$t/bin/systemctl" <<EOF
+#!/bin/sh
+case "\$1" in
+list-units) printf '%s\n' 'actions.runner.h-unity-pool-1.service loaded active running GitHub runner' \
+                         'actions.runner.h-light-1.service loaded active running GitHub runner' \
+                         'actions.runner.h-gone-1.service loaded active running GitHub runner' ;;
+show) case "\$*" in
+      *unity-pool-1*) printf '%s\n' 'ControlGroup=/u1' 'WorkingDirectory=$t/w/unity-pool-1' ;;
+      *light-1*) printf '%s\n' 'ControlGroup=/l1' 'WorkingDirectory=$t/w/light-1' ;;
+      *gone-1*) printf '%s\n' 'ControlGroup=/g1' 'WorkingDirectory=$t/w/gone-1' ;;
+      esac ;;
+esac
+EOF
+PATH="$t/bin:$PATH" CGROUP_ROOT="$t/cg" PROC_ROOT="$t/proc" CI_RUNNER_CPU_STATE="$t/state" \
+    sh "$here/ci-runner-cpu-linux.sh" --disk "$t/out" 2> "$t/err"; rc=$?
+[ "$rc" = 0 ] && echo "ok   disk exits 0" || { echo "FAIL disk exit $rc"; cat "$t/err"; fail=1; }
+d="$t/out/ci_runner_disk.prom"
+bytes=$(sed -n 's/^ci_runner_disk_bytes{runner="h-unity-pool-1"} //p' "$d")
+[ "${bytes:-0}" -ge 300000 ] && echo "ok   a slot's disk counts its Library" || { echo "FAIL pool-1 disk ${bytes:-none}"; cat "$d"; fail=1; }
+grep -q '^ci_runner_disk_bytes{runner="h-light-1"} ' "$d" && echo "ok   an empty home still reads" || { echo "FAIL light-1 missing"; fail=1; }
+grep -q 'runner="h-gone-1"' "$d" && { echo "FAIL a missing directory reads a figure"; fail=1; } || echo "ok   a missing directory reads no figure"
+grep -Eq '^ci_runner_disk_measured_seconds [0-9]+$' "$d" && echo "ok   the run says when it measured" || { echo "FAIL no measured time"; fail=1; }
+grep -q '^ci_runner_cores_busy' "$d" && { echo "FAIL disk mode wrote CPU"; fail=1; } || echo "ok   disk mode leaves the CPU file alone"
+
 # --- macOS -------------------------------------------------------------------------------
 rm -rf "${t:?}/out" "${t:?}/bin"
 mkdir -p "$t/out" "$t/bin" "$t/r/pool-1" "$t/r/pool-2"

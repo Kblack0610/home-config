@@ -12,10 +12,6 @@ resources:
   - scrapeconfig-mirror-exporter.yaml
   - backup-pull-cronjob.yaml
   - backup-pull-secret.sops.yaml
-  - runner-config-cm.yaml
-  - runner-secret.yaml
-  - runner-deployment.yaml
-  - runner-reader-rbac.yaml
 
 configMapGenerator:
   - name: forgejo-backup-pull-script

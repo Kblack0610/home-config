@@ -1,6 +1,6 @@
 # Forgejo
 
-Self-hosted Git forge at `git.kblab.me` and `git.kennethblack.me`. Since 2026-11-14 it runs on forge-hel1, a Hetzner VM, from `ansible/roles/forgejo-host`; this directory keeps the cluster's view of it (Services, ingress, runner, backup pull). See "Where Forgejo runs and how to move it" below.
+Self-hosted Git forge at `git.kblab.me` and `git.kennethblack.me`. Since 2026-11-14 it runs on forge-hel1, a Hetzner VM, from `ansible/roles/forgejo-host`; this directory keeps the cluster's view of it (Services, ingress, backup pull). See "Where Forgejo runs and how to move it" below.
 Version 14.0.4 with Actions (CI/CD), Packages (container + language registries),
 and repository mirroring enabled.
 
@@ -8,15 +8,12 @@ and repository mirroring enabled.
 
 | File | Purpose |
 |------|---------|
-| `kustomization.yaml` | Reconciles namespace, app, services, ingress, backup, and runner |
+| `kustomization.yaml` | Reconciles namespace, services, ingress and backup |
 | `service-http.yaml` | `forgejo-http:3000`, an ExternalName of `forge-primary.kblab.me`, the record that names the live host |
 | `service-ssh.yaml` | `forgejo-ssh:2222`, the same ExternalName; the host publishes the container's sshd on 2222 |
 | `ingress.yaml` | TLS ingress for `git.kblab.me` (git, registry, API, Flux) |
 | `ingressroute-browser-redirect.yaml` | Redirects browsers (`Accept: text/html`) on `git.kblab.me` to `git.kennethblack.me`, so one login cookie covers every page |
 | `scrapeconfig-mirror-exporter.yaml` | Prometheus scrape of the mirror exporter on forge-hel1 (`forge-primary.kblab.me:9310`) |
-| `runner-deployment.yaml` | Forgejo Runner + DinD sidecar (razer-laptop only; asus-laptop and hp-victus are `no_ci_hosts`) |
-| `runner-config-cm.yaml` | Runner config with `docker` + `linux-amd64` labels |
-| `runner-secret.yaml` | SOPS-encrypted instance-level runner registration token |
 
 ## Configuration
 
@@ -71,37 +68,26 @@ Rollback: stop Forgejo, put the copied db back, start it. The host's login shell
 
 ## Runner
 
-Instance-level runners serve all repos on the Forgejo instance, each with a
-Docker-in-Docker sidecar for container-based CI workflows. DinD is a native sidecar (an init container with `restartPolicy: Always`), so the runner starts only after `docker info` answers and stops before DinD does. Runners register against the in-cluster Service `http://forgejo-http.forgejo.svc.cluster.local:3000`, not `git.kblab.me`, so polling, logs and artifacts skip Traefik; jobs still clone from `ROOT_URL`.
+Forgejo jobs run on host slots, not in the cluster. Each inventory host with `forgejo_slots: N` under `linux_ci_runners` (today ms-a2, 2 slots) runs N `forgejo-runner` processes, one task each, from the `ansible/roles/forgejo-runner-linux` role in the "CI runners" play. A slot runs as `linux-ci` in `ci-linux.slice`, and its job containers start with `--cgroup-parent=ci-linux.slice`, so Forgejo work shares the host's CI cores and memory cap with the GitHub slots. Each slot serves Forgejo only; the slot count is `FORGEJO_SLOTS` in `scripts/render-ci-topology.py`, which says why and when to revisit it.
 
-It runs **1 replica, on razer-laptop**. `runner-deployment.yaml` requires an amd64 workstation node (`node-role.kubernetes.io/workstation`) that is in neither `no_ci_hosts` host: not hp-victus (it runs Frigate and other heavy pods, and went NotReady under CI on 2026-11-13) and not asus-laptop (databases and Forgejo backups); `no_ci_hosts` in `ansible/inventory.yml` says why. If razer-laptop dies, the replica stays Pending until it returns, by design. Rollouts replace the pod in place (`maxSurge: 0`), because a surge pod has no free node to land on. Each pod
-registers under its own pod name (`--name "$POD_NAME"` via the downward API),
-which is mandatory with more than one replica — otherwise both would register as
-`forgejo-runner` and collide.
+A slot registers once as `<host>-forgejo-<n>` against `http://forge-primary.kblab.me:3000`, with the labels `docker` and `linux-amd64`. Jobs reach the host's Docker through the mounted socket (`docker_host: automount`), so a workflow needs no `DOCKER_HOST`. The registration token is `vault_forgejo_runner_registration_token` in `ansible/group_vars/ci_hosts/vault.sops.yaml`.
 
-> **Stale runners after a reschedule:** when a pod lands on a new node it
-> re-registers under its new pod name, so the Forgejo admin runner list (Site
-> Administration → Actions → Runners) may show offline `forgejo-runner-*` entries
-> from previous pods. These are cosmetic — offline runners pick up no jobs —
-> delete them from the admin UI when convenient.
+Add or move a slot: change `forgejo_slots` in `ansible/inventory.yml`, re-render the topology (`scripts/render-ci-topology.py`), then:
 
-Generate a new registration token (if needed):
+```bash
+cd ansible && ansible-playbook playbooks/site.yml --limit <host> --tags forgejo-ci
+```
+
+Re-register a slot (a new instance, or its runner was deleted in the admin UI): remove `~linux-ci/forgejo-<n>/.runner` on the host and re-run the play. A new registration token, if needed:
 
 ```bash
 ssh forge-hel1 docker compose -f /etc/forgejo/compose.yaml exec -u git forgejo \
   forgejo actions generate-runner-token
 ```
 
-Check runner status:
+Check a slot: `systemctl status forgejo-runner-<host>-forgejo-<n>` and `journalctl -u forgejo-runner-<host>-forgejo-<n>` on the host. The exporter reads each slot's state from the admin runners API, so a slot that never registered shows as missing on the CI dashboard.
 
-```bash
-kubectl --context home-k3s logs -n forgejo deploy/forgejo-runner -c runner --tail=20
-```
-
-Each dind store is an emptyDir on its node's root disk, which on razer-laptop is also the Unity CI disk. The `dind-prune` sidecar removes unused images past a day and holds build cache at 20G every hour, and the volume has a 60Gi `sizeLimit`: past that the kubelet evicts the pod and it comes back empty.
-
-To use Actions in a repo, add `.forgejo/workflows/<name>.yaml` — same syntax as
-GitHub Actions.
+To use Actions in a repo, add `.forgejo/workflows/<name>.yaml`, same syntax as GitHub Actions.
 
 ## Container Registry
 
@@ -192,7 +178,7 @@ ssh forge-hel1 docker compose -f /etc/forgejo/compose.yaml logs forgejo --tail=5
 ssh forge-hel1 docker compose -f /etc/forgejo/compose.yaml logs mirror-exporter --tail=20
 
 # Runner status
-kubectl --context home-k3s logs -n forgejo deploy/forgejo-runner -c runner --tail=10
+ssh ms-a2 systemctl status 'forgejo-runner-*' --no-pager
 
 # Backup pull job
 kubectl --context home-k3s get cronjob -n forgejo
@@ -300,7 +286,7 @@ Roll back: `DB_TYPE = sqlite3` again and play the role; `gitea.db` is as it was 
 
 ## Lost Actions assignments
 
-Forgejo 15.0.11 LTS and runner 13.2.1 recover a task when its FetchTask reply is lost. Both sides are required; the host image is applied through Ansible and the runner through Flux. See [the diagnosis and upgrade procedure](../../docs/forgejo-actions-recovery.md) before activating the database migration.
+Forgejo 15.0.11 LTS and runner 13.2.1 recover a task when its FetchTask reply is lost. Both sides are required; both the host image and the runner slots are applied through Ansible. See [the diagnosis and upgrade procedure](../../docs/forgejo-actions-recovery.md) before activating the database migration.
 
 ## Related Docs
 

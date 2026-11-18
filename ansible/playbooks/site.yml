@@ -328,6 +328,32 @@
           ACTIONS_RUNNER_HOOK_JOB_COMPLETED: "{{ linux_ci_job_completed_hook }}"
           CI_SLOT_CPUS: "1"
       tags: [runner, ci, linux-ci]
+    # Forgejo Actions slots (forgejo_slots, inventory.yml): one forge per slot, run as
+    # linux-ci in the light and heavy slots' slice, after those slots create the user.
+    # They replaced the k3s runner pod (plan make-logical-possum phase 6). Lowering the
+    # count does not remove a slot: stop and disable forgejo-runner-<host>-forgejo-<n>,
+    # delete the runner in Forgejo's Site Administration, rm -rf its dir.
+    - name: Require light or heavy slots on a host with Forgejo slots
+      ansible.builtin.assert:
+        that: linux_ci_instances | length > 0
+        fail_msg: "{{ inventory_hostname }} has forgejo_slots but no light or heavy slot to create the linux-ci user."
+      when: forgejo_slots | default(0) > 0
+      tags: [runner, ci, forgejo-ci]
+
+    - name: Register the Forgejo slots
+      ansible.builtin.include_role:
+        name: forgejo-runner-linux
+        apply:
+          tags: [runner, ci, forgejo-ci]
+      loop: "{{ range(1, (forgejo_slots | default(0)) + 1) | list }}"
+      loop_control:
+        loop_var: forgejo_slot
+      vars:
+        forgejo_runner_name: "{{ inventory_hostname }}-forgejo-{{ forgejo_slot }}"
+        forgejo_runner_home: "{{ linux_ci_user_home }}/forgejo-{{ forgejo_slot }}"
+        forgejo_runner_slice: "{{ ci_linux_slice }}"
+      tags: [runner, ci, forgejo-ci]
+
     # After the slots, which create the linux-ci user. Playground jobs clone
     # their submodules over ssh (windows-media-ci's first light jobs failed
     # "Host key verification failed" without this).

@@ -50,6 +50,8 @@
       {"name": "ms-a2-light-1", "caps": ["light"]},
       {"name": "ms-a2-light-2", "caps": ["light"]},
       {"name": "ms-a2-heavy-1", "caps": ["heavy", "light"]},
+      {"name": "ms-a2-forgejo-1", "caps": ["forgejo"], "forge": "forgejo"},
+      {"name": "ms-a2-forgejo-2", "caps": ["forgejo"], "forge": "forgejo"},
       {"name": "ms-a2-unity-pool-1", "caps": ["unity", "light"]},
       {"name": "ms-a2-unity-pool-2", "caps": ["unity", "light"]},
       {"name": "ms-a2-unity-pool-3", "caps": ["unity", "light"]},

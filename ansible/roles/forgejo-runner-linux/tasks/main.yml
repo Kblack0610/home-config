@@ -1,0 +1,68 @@
+---
+- name: Download the forgejo-runner binary
+  ansible.builtin.get_url:
+    url: "{{ forgejo_runner_url }}"
+    dest: "{{ forgejo_runner_bin }}"
+    checksum: "sha256:{{ forgejo_runner_sha256 }}"
+    mode: "0755"
+
+- name: Create the slot's runner dirs
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: directory
+    owner: "{{ forgejo_runner_user }}"
+    group: "{{ forgejo_runner_group }}"
+    mode: "0750"
+  loop:
+    - "{{ forgejo_runner_home }}"
+    - "{{ forgejo_runner_home }}/work"
+    - "{{ forgejo_runner_home }}/cache"
+
+- name: Write the slot's runner config
+  ansible.builtin.template:
+    src: forgejo-runner.yaml.j2
+    dest: "{{ forgejo_runner_home }}/config.yaml"
+    owner: "{{ forgejo_runner_user }}"
+    group: "{{ forgejo_runner_group }}"
+    mode: "0640"
+  register: _forgejo_runner_config
+
+# Once per slot: .runner holds the runner's own credentials afterwards. To re-register
+# (a new instance, a deleted runner), remove it and re-apply.
+- name: Register the slot with Forgejo
+  ansible.builtin.command:
+    argv:
+      - "{{ forgejo_runner_bin }}"
+      - register
+      - --no-interactive
+      - --config
+      - "{{ forgejo_runner_home }}/config.yaml"
+      - --instance
+      - "{{ forgejo_runner_instance }}"
+      - --token
+      - "{{ forgejo_runner_token }}"
+      - --name
+      - "{{ forgejo_runner_name }}"
+      - --labels
+      - "{{ forgejo_runner_labels | join(',') }}"
+    chdir: "{{ forgejo_runner_home }}"
+    creates: "{{ forgejo_runner_home }}/.runner"
+  become: true
+  become_user: "{{ forgejo_runner_user }}"
+  no_log: true
+  # In --check the dirs above are simulated, so chdir has nothing to enter.
+  ignore_errors: "{{ ansible_check_mode }}"
+
+- name: Install the slot's runner unit
+  ansible.builtin.template:
+    src: forgejo-runner.service.j2
+    dest: "/etc/systemd/system/forgejo-runner-{{ forgejo_runner_name }}.service"
+    mode: "0644"
+  register: _forgejo_runner_unit
+
+- name: Start the slot's runner, restarted on a config or unit change
+  ansible.builtin.systemd:
+    name: "forgejo-runner-{{ forgejo_runner_name }}.service"
+    enabled: true
+    daemon_reload: "{{ _forgejo_runner_unit is changed }}"
+    state: "{{ 'restarted' if (_forgejo_runner_config is changed or _forgejo_runner_unit is changed) else 'started' }}"

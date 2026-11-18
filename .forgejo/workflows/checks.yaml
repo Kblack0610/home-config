@@ -35,7 +35,7 @@ jobs:
         run: python3 scripts/render-fleet-pulse.py --check
       - name: Negative control - the fleet-pulse check fails on a machine added to the inventory without a re-render
         run: |
-          python3 -c 's = open("ansible/inventory.yml").read(); t = s.replace("        pi5-master:\n        pi5-worker1:", "        pi5-master:\n        planted-node:\n          ansible_host: 192.0.2.1\n        pi5-worker1:", 1); assert t != s, "the plant did not apply"; open("planted-fleet.yml", "w").write(t)'
+          python3 -c 's = open("ansible/inventory.yml").read(); t = s.replace("        audio-bedroom:\n          fleet_pulse_group: audio", "        planted-node:\n          ansible_host: 192.0.2.1\n        audio-bedroom:\n          fleet_pulse_group: audio", 1); assert t != s, "the plant did not apply"; open("planted-fleet.yml", "w").write(t)'
           rc=0; python3 scripts/render-fleet-pulse.py --check --inventory planted-fleet.yml > planted-fleet.out 2>&1 || rc=$?
           rm planted-fleet.yml; cat planted-fleet.out
           [ "$rc" -ne 0 ] || { echo "the check passed a stale config.yaml"; exit 1; }

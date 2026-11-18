@@ -40,11 +40,11 @@ Rules the renderer enforces or the inventory states:
 
 ## Adding a machine
 
-Add it to the `fleet_pulse` group in `ansible/inventory.yml` (the group's comment documents each variable), run `python3 scripts/render-fleet-pulse.py`, and commit the inventory with both rendered files. A pushed machine then enrolls (`~/.local/src/fleet-pulse/README.md` in dotfiles). Flux rolls both pods because each ConfigMap name carries a content hash, and every bar picks the new roster up on its next fetch.
+Add it to the `fleet_pulse` group in `ansible/inventory.yml` (the group's comment documents each variable; a k3s node is already in it through `k3s_nodes`), run `python3 scripts/render-fleet-pulse.py`, and commit the inventory with both rendered files. A pushed machine then enrolls (`~/.local/src/fleet-pulse/README.md` in dotfiles). Flux rolls both pods because each ConfigMap name carries a content hash, and every bar picks the new roster up on its next fetch.
 
 ## Retiring a machine
 
-A machine that is gone but still declared goes **stale, not absent** - it pins the fleet glyph amber forever and there is no server-side expiry to save you. Retiring it is deleting its line from the `fleet_pulse` group and re-rendering: the endpoint, the roster entry and any display label go together. Gatus prunes the retired endpoint's stored statuses on startup (verified 2026-08-17).
+A machine that is gone but still declared goes **stale, not absent** - it pins the fleet glyph amber forever and there is no server-side expiry to save you. Retiring it is deleting its line from the `fleet_pulse` group, or from `k3s_nodes` for a k3s node, and re-rendering: the endpoint, the roster entry and any display label go together. Gatus prunes the retired endpoint's stored statuses on startup (verified 2026-08-17).
 
 The bar still renders a display token naming a host that is on no roster and unknown to gatus as an amber `?`, not a red `○`, and names it in the tooltip. Absence-of-machine and absence-of-config used to share a glyph, which is how a retired machine hid.
 

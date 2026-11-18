@@ -41,16 +41,26 @@ NODE_EXPORTER_PORT = 9100
 POLL_INTERVAL = "60s"
 
 
+def file_order(top, node, seen):
+    """A group's hosts in file order: its own, then each child group's, each host once."""
+    for host in node.get("hosts") or {}:
+        seen.setdefault(host, None)
+    for child, inline in (node.get("children") or {}).items():
+        file_order(top, inline or top.get(child) or {}, seen)
+    return list(seen)
+
+
 def members(path):
     """[{name, group, push, units, roster, display, addr}] for the group, in file order."""
     doc = yaml.safe_load(open(path, encoding="utf-8"))
-    node = ((doc.get("all") or {}).get("children") or {}).get(GROUP)
+    top = (doc.get("all") or {}).get("children") or {}
+    node = top.get(GROUP)
     if not node:
         raise SystemExit(f"FAIL: {os.path.relpath(path, REPO)} has no {GROUP} group")
     gvars = node.get("vars") or {}
     hosts, _ = load_inventory(path)
     out = []
-    for host in node.get("hosts") or {}:
+    for host in file_order(top, node, {}):
         v = hosts[host]
         out.append({
             "name": v.get("fleet_pulse_name", host),
@@ -83,6 +93,8 @@ def failures(ms, groups):
             fails.append(f"{m['host']}: polled, but has no ansible_host to poll")
         if m["units"] and m["push"]:
             fails.append(f"{m['host']}: fleet_pulse_units needs a polled host")
+        if "{{" in json.dumps([m["name"], m["addr"], m["display"]]):
+            fails.append(f"{m['host']}: a fleet_pulse value is templated; give it literally")
     for g in groups:
         if not any(m["group"] == g for m in ms if m["roster"]):
             fails.append(f"fleet_pulse_groups names {g!r}, which no rostered machine is in")
@@ -136,8 +148,6 @@ def main():
     base = open(BASE, encoding="utf-8").read()
     want = {GATUS_OUT: render_gatus(ms, base), ROSTER_OUT: render_roster(ms, groups)}
     yaml.safe_load(want[GATUS_OUT])  # what gatus will parse
-    counted = sum(m["roster"] for m in ms)
-    summary = f"{len(ms)} machines, {counted} rostered"
     stale = []
     for path, text in want.items():
         rel = os.path.relpath(path, REPO)
@@ -154,7 +164,7 @@ def main():
         for rel in stale:
             print(f"FAIL: {rel} is not what {inv} renders; run scripts/render-fleet-pulse.py and commit it")
         return 1
-    print(f"ok: {summary}" if args.check else summary)
+    print(("ok: " if args.check else "") + f"{len(ms)} machines, {sum(m['roster'] for m in ms)} rostered")
     return 0
 
 

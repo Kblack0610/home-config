@@ -73,6 +73,21 @@ endpoints:
     interval: 60s
     conditions:
       - "[STATUS] == 200"
+  - name: audio-living
+    group: audio
+    url: "http://192.168.1.120:9100/metrics"
+    interval: 60s
+    conditions:
+      - "[STATUS] == 200"
+      - '[BODY] == pat(*node_systemd_unit_state{name="snapclient.service",state="active",type="simple"} 1*)'
+      - '[BODY] == pat(*node_systemd_unit_state{name="audio-endpoint-capture.service",state="active",type="simple"} 1*)'
+  - name: audio-bedroom
+    group: audio
+    url: "http://192.168.1.122:9100/metrics"
+    interval: 60s
+    conditions:
+      - "[STATUS] == 200"
+      - '[BODY] == pat(*node_systemd_unit_state{name="snapclient.service",state="active",type="simple"} 1*)'
   - name: pi5-master
     group: k3s
     url: "http://192.168.1.20:9100/metrics"
@@ -109,12 +124,6 @@ endpoints:
     interval: 60s
     conditions:
       - "[STATUS] == 200"
-  - name: asus-laptop
-    group: k3s
-    url: "http://192.168.1.152:9100/metrics"
-    interval: 60s
-    conditions:
-      - "[STATUS] == 200"
   - name: hp-victus
     group: k3s
     url: "http://192.168.1.243:9100/metrics"
@@ -139,18 +148,9 @@ endpoints:
     interval: 60s
     conditions:
       - "[STATUS] == 200"
-  - name: audio-living
-    group: audio
-    url: "http://192.168.1.120:9100/metrics"
+  - name: asus-laptop
+    group: k3s
+    url: "http://192.168.1.152:9100/metrics"
     interval: 60s
     conditions:
       - "[STATUS] == 200"
-      - '[BODY] == pat(*node_systemd_unit_state{name="snapclient.service",state="active",type="simple"} 1*)'
-      - '[BODY] == pat(*node_systemd_unit_state{name="audio-endpoint-capture.service",state="active",type="simple"} 1*)'
-  - name: audio-bedroom
-    group: audio
-    url: "http://192.168.1.122:9100/metrics"
-    interval: 60s
-    conditions:
-      - "[STATUS] == 200"
-      - '[BODY] == pat(*node_systemd_unit_state{name="snapclient.service",state="active",type="simple"} 1*)'

@@ -57,6 +57,12 @@ class RenderTests(unittest.TestCase):
         self.assertEqual(polled["node-a"]["group"], "k3s")
         self.assertIn('state="active"', polled["room"]["conditions"][1])
 
+    def test_child_groups_join_in_file_order_once(self):
+        self.inventory["all"]["children"]["k3s"]["hosts"]["node-b"] = {"ansible_host": "192.0.2.3"}
+        self.inventory["all"]["children"]["fleet_pulse"]["children"] = {"k3s": None}
+        ms, _ = self.members()
+        self.assertEqual([m["name"] for m in ms][:4], ["node-a", "desk-key", "room", "node-b"])
+
     def test_refuses_names_the_bars_cannot_match(self):
         hosts = self.inventory["all"]["children"]["fleet_pulse"]["hosts"]
         hosts["desk"]["fleet_pulse_name"] = "Desk Key"
@@ -68,6 +74,11 @@ class RenderTests(unittest.TestCase):
         self.assertTrue(any("declared twice" in f for f in fails), fails)
         self.assertTrue(any("no ansible_host" in f for f in fails), fails)
         self.assertTrue(any("fleet_pulse_groups names 'iot'" in f for f in fails), fails)
+
+    def test_refuses_a_templated_value(self):
+        self.inventory["all"]["children"]["k3s"]["hosts"]["node-a"]["ansible_host"] = "{{ lan_ip }}"
+        fails = fleet_pulse.failures(*self.members())
+        self.assertTrue(any("templated" in f for f in fails), fails)
 
 
 if __name__ == "__main__":

@@ -26,7 +26,7 @@
       # k3s_cpus ({{ k3s_cpus }}); the other CPUs are CI's and the OS's.
       kubelet-arg+:
         - cpu-manager-policy=static
-        - reserved-cpus={{ range(ansible_facts.processor_nproc) | difference(_ci_cpu_sets.k3s) | join(',') }}
+        - reserved-cpus={{ range(ansible_facts.processor_vcpus) | difference(_ci_cpu_sets.k3s) | join(',') }}
         - cpu-manager-policy-options=strict-cpu-reservation=true
     mode: "0644"
   when: k3s_cpus | length > 0

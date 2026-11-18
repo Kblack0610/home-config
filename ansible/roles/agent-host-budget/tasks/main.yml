@@ -16,15 +16,17 @@
       %}{% for c in range(ab[0] | int, (ab[-1] | int) + 1) %}{% set _ = cpus.append(c)
       %}{% endfor %}{% endfor %}{% set _ = out.update({name: cpus}) %}{% endfor %}{{ out }}
 
+# processor_vcpus counts the host's CPUs; processor_nproc is the calling process's affinity,
+# which reads 28 of 32 when ansible runs from a pane already inside the cap (2026-11-18).
 - name: Require agent_cpus to hold CI, miss k3s and leave the reserve
   ansible.builtin.assert:
     that:
       - _agent_cpu_sets.ci | difference(_agent_cpu_sets.agent) | length == 0
       - _agent_cpu_sets.k3s | intersect(_agent_cpu_sets.agent) | length == 0
-      - _agent_cpu_sets.agent | max < ansible_facts.processor_nproc
-      - ansible_facts.processor_nproc - (_agent_cpu_sets.agent | union(_agent_cpu_sets.k3s) | length) >= agent_cpus_reserve_min
+      - _agent_cpu_sets.agent | max < ansible_facts.processor_vcpus
+      - ansible_facts.processor_vcpus - (_agent_cpu_sets.agent | union(_agent_cpu_sets.k3s) | length) >= agent_cpus_reserve_min
     fail_msg: >-
-      {{ inventory_hostname }} ({{ ansible_facts.processor_nproc }} CPUs): agent_cpus
+      {{ inventory_hostname }} ({{ ansible_facts.processor_vcpus }} CPUs): agent_cpus
       {{ agent_cpus }} must contain ci_cpus ({{ ci_cpus | default('none') }}), miss
       k3s_cpus ({{ k3s_cpus | default('none') }}), name only CPUs the host has, and
       leave at least {{ agent_cpus_reserve_min }} CPUs outside it and k3s_cpus.

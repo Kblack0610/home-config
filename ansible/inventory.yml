@@ -540,6 +540,12 @@ all:
     # One CPU and memory budget per CI host (roles/ci-host-budget): every runner
     # and container of every CI workload on the host shares it, and what is left
     # stays with k3s and the OS. Starting values, tuned against a full nightly.
+    # ci_caps: the job kinds the host can run (light, heavy, unity, unity-build).
+    # Every slot takes each of them its kind can hold (scripts/render-ci-topology.py
+    # HOST_CAPS says which), so a Unity test slot on a light host also takes light
+    # jobs. A host's own slots of a kind need that kind here; a cloud host takes no
+    # light or heavy, so a small job never powers a paid host. Drop a cap and
+    # re-apply to take it off every slot of the host.
     ci_hosts:
       hosts:
         # 8 cores / 16 threads, SMT siblings are n and n+8. Cores 0-1 (CPUs
@@ -555,6 +561,7 @@ all:
         # These caps hold until the RAM move to 32 GB (hc-328); #1038 has the 32 GB
         # layout (one light slot, 6G, no Unity slot) to re-apply with the swap.
         razer-laptop:
+          ci_caps: [light, heavy, unity]
           ci_cpus: 2-7,10-15
           ci_memory_max: 72G
           ci_unity_cpus: 2-4,10-12
@@ -571,6 +578,7 @@ all:
         # (linux_ci_runners), 6G between them (a light job is about 0.6G), which
         # leaves 21G for the host and k3s.
         ms-a2:
+          ci_caps: [light, unity]
           ci_cpus: 2-15,18-31
           ci_memory_max: 70G
           ci_linux_cpus: 14-15,30-31
@@ -585,6 +593,7 @@ all:
         # 2-10, which leaves core 11 and 18G for the host. A fourth slot would take
         # k3s's cores.
         deskslim-2:
+          ci_caps: [light, unity]
           ci_cpus: 2-10,14-22
           ci_memory_max: 42G
           ci_unity_cpus: 2-10,14-22
@@ -599,6 +608,7 @@ all:
         # (CPUs 14-15,30-31) also stay outside CI. Each Unity slot gets three
         # cores and 16G; the two together stop at 32G. No platform runners.
         cachyos-x8664-main:
+          ci_caps: [unity]
           ci_cpus: 8-13,24-29
           ci_memory_max: 32G
           ci_unity_cpus: 8-13,24-29
@@ -612,6 +622,7 @@ all:
         # No temperature: a VM has no k10temp, so the governor admits on
         # idle, PSI and memory alone.
         windows-media-ci:
+          ci_caps: [light, unity]
           ci_cpus: 6-23
           ci_memory_max: 42G
           ci_unity_cpus: 6-17
@@ -626,6 +637,7 @@ all:
         # slot's cores (unity_ci_slot_groups, so a group's 32G fits its build slot's 36G).
         # Core 0 stays with the OS and the SSM agent, core 31 is spare.
         aws-build-1:
+          ci_caps: [unity, unity-build]
           ci_cpus: 1-31
           ci_memory_max: 116G
           ci_unity_cpus: 1-30
@@ -635,6 +647,7 @@ all:
         # The Spot hosts: 16 cores with SMT (vCPU n and n+16 share core n), core 0 and its
         # twin left to the OS, five slots of three whole cores and 16G each.
         aws-spot-1:
+          ci_caps: [unity]
           ci_cpus: 1-15,17-31
           ci_memory_max: 112G
           ci_unity_cpus: 1-15,17-31
@@ -642,6 +655,7 @@ all:
           ci_unity_memory_max: 100G
           ci_unity_slot_memory_max: 16G
         aws-spot-2:
+          ci_caps: [unity]
           ci_cpus: 1-15,17-31
           ci_memory_max: 112G
           ci_unity_cpus: 1-15,17-31
@@ -649,6 +663,7 @@ all:
           ci_unity_memory_max: 100G
           ci_unity_slot_memory_max: 16G
         aws-spot-3:
+          ci_caps: [unity]
           ci_cpus: 1-15,17-31
           ci_memory_max: 112G
           ci_unity_cpus: 1-15,17-31

@@ -61,3 +61,41 @@ class RunnerTierTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class CapTests(unittest.TestCase):
+    def setUp(self):
+        self.hosts, self.groups = topology.load_inventory(ROOT / "ansible/inventory.yml")
+
+    def slots(self):
+        topo, fails = topology.render(self.hosts, self.groups)
+        return {s["name"]: s["caps"] for h in topo.get("hosts", {}).values() for s in h["slots"]}, fails
+
+    def test_unity_test_slot_takes_its_hosts_light(self):
+        slots, fails = self.slots()
+        self.assertEqual(fails, [])
+        self.assertEqual(slots["ms-a2-unity-pool-1"], ["unity", "light"])
+        self.assertEqual(slots["razer-laptop-heavy-1"], ["heavy", "light"])
+
+    def test_heavy_waits_for_ephemeral_ports(self):
+        slots, _ = self.slots()
+        self.assertNotIn("heavy", slots["razer-laptop-unity-pool-1"])
+
+    def test_build_slot_takes_builds_alone(self):
+        slots, _ = self.slots()
+        self.assertEqual(slots["aws-build-1-unity-pool-1"], ["unity-build"])
+
+    def test_cloud_host_never_takes_light(self):
+        self.hosts["aws-spot-1"]["ci_caps"] = ["unity", "light"]
+        _, fails = self.slots()
+        self.assertTrue(any("aws-spot-1: a cloud host" in f for f in fails))
+
+    def test_slot_kind_missing_from_caps(self):
+        self.hosts["ms-a2"]["ci_caps"] = ["unity"]
+        _, fails = self.slots()
+        self.assertIn("ms-a2: has light slots, but ci_caps leaves out light", fails)
+
+    def test_unknown_cap(self):
+        self.hosts["ms-a2"]["ci_caps"] = ["light", "unity", "gpu"]
+        _, fails = self.slots()
+        self.assertTrue(any("ci_caps names gpu" in f for f in fails))

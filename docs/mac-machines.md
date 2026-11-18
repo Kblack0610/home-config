@@ -59,7 +59,7 @@ No Mac is in the Unity pool: the Mac Studio (M3 Ultra) ran 6 slots from 2026-10-
 - The Studio ran six slots. Eight ran the box at load 115-157 on 32 cores with 0% idle (2026-10-31), and PlayMode throughput was no better than at 6 (about 20-28 jobs an hour against about 37, small sample), so slots 7-8 were withheld from 2026-11-02 and removed on 2026-11-03. The governor cannot judge a Mac's load (no CPU pressure or sensors), so the slot count is the limit.
 - Unity saves its license under `/Library/Application Support/Unity`, which needs sudo once: `ansible-playbook playbooks/site.yml --limit <mac> --tags unity-ci-sudo -K`.
 - The slots are LaunchAgents, so macOS Local Network privacy blocks their non-Apple binaries (Homebrew git, git-lfs) from the LAN: a fetch from `git.kblab.me` fails in a few ms with "Couldn't connect to server" while it works over ssh. Only Apple's binaries, root, and ssh sessions are exempt (Apple TN3179); a LaunchDaemon with `UserName` was blocked too, and `launchctl kickstart -k` did not clear it on the Studio (2026-10-29). The playground fetches through the public host instead (its `scripts/setup/forge-git-env.sh`), so do not move the slots to LaunchDaemons for this.
-- To retire a Mac: the retire steps in the play's header comment (`site.yml`), then take the host out of `unity_ci_mac_runners` and `RUNNER_ROSTER` and run `scripts/check-runner-roster.py`.
+- To retire a Mac: the retire steps in the play's header comment (`site.yml`), then take the host out of `unity_ci_mac_runners` and run `scripts/render-ci-topology.py`.
 
 ## Reprovision from bare metal
 

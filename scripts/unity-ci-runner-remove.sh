@@ -8,8 +8,8 @@
 #   bash scripts/unity-ci-runner-remove.sh --host asus-laptop --slot 2
 #   ... --force                                        # even a slot mid-job
 #
-# First take the slots out of unity_ci_runners in ansible/inventory.yml (and
-# RUNNER_ROSTER in apps/github-runner-exporter/deployment.yaml), or the next
+# First take the slots out of unity_ci_runners in ansible/inventory.yml (and re-run
+# scripts/render-ci-topology.py), or the next
 # playbook run puts them back. Run as yourself, not root: it asks for sudo once,
 # and deregisters with your gh (admin:org). Safe to run again. What it removes and
 # keeps: ansible/roles/github-actions-runner-linux/README.md, "Uninstall".

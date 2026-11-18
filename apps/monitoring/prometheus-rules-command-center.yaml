@@ -315,7 +315,7 @@ spec:
           expr: >-
             sum(mqtt_attention{topic=~"agents_.+_summary_sessions"})
         # Rostered slots only, so online/expected compare like with like: the exporter also
-        # reports online runners for a host/pool missing from RUNNER_ROSTER.
+        # reports online runners for a host/pool no topology slot (apps/ci-topology) names.
         - record: cc:ci_online
           expr: >-
             sum(max by (host, pool) (github_runner_pool_online) and on (host, pool) max by (host, pool) (github_runner_pool_expected))
@@ -454,7 +454,7 @@ spec:
               and on (instance) (time() - node_textfile_mtime_seconds{file=~".*fleet_local.prom"} < 180))
     # CI pools: how many runners each pool has, how many are busy, and how many jobs
     # wait for it. Read next to each other these show balance: a saturated pool
-    # beside idle ones. Pools come from the exporter's labels (pool_of), so a job
+    # beside idle ones. Pools are caps: a slot is counted once per cap it takes (github_runner_pool_slot), so a job
     # and the runners that could take it share one name. A queued run GitHub never
     # gave jobs (stuck="true") is left out, so its age cannot stand for the queue's.
     # Slots first: busy and waiting fall back to 0 for every pool that has runners.
@@ -468,34 +468,35 @@ spec:
         - record: cc:pool_slots
           expr: >-
             count by (pool) (max without (instance, pod, job, namespace, service, endpoint, container)
-              (github_runner_state{state="running"})
-              or (max without (instance, pod, job, namespace, service, endpoint, container) (github_runner_state{state="idle"})
+              (github_runner_pool_slot{state="running"})
+              or (max without (instance, pod, job, namespace, service, endpoint, container) (github_runner_pool_slot{state="idle"})
                 unless on (name) (max without (instance, pod, job, namespace, service, endpoint, container) (github_runner_withheld) == 1)))
         # Withheld splits in two: lent (a paired slot whose cores its pair uses, normal work,
         # ci_governor_lent) and withheld (held back for load, a pin, a drain or no work).
         - record: cc:pool_withheld
           expr: >-
             count by (pool) (max without (instance, pod, job, namespace, service, endpoint, container)
-              (github_runner_state{state="idle"})
+              (github_runner_pool_slot{state="idle"})
               and on (name) (max without (instance, pod, job, namespace, service, endpoint, container) (github_runner_withheld) == 1)
               unless on (name) (max without (instance, pod, job, namespace, service, endpoint, container) (ci_governor_lent) == 1))
             or cc:pool_slots * 0
         - record: cc:pool_lent
           expr: >-
             count by (pool) (max without (instance, pod, job, namespace, service, endpoint, container)
-              (github_runner_state{state="idle"})
+              (github_runner_pool_slot{state="idle"})
               and on (name) (max without (instance, pod, job, namespace, service, endpoint, container) (github_runner_withheld) == 1)
               and on (name) (max without (instance, pod, job, namespace, service, endpoint, container) (ci_governor_lent) == 1))
             or cc:pool_slots * 0
         - record: cc:pool_busy
           expr: >-
             count by (pool) (max without (instance, pod, job, namespace, service, endpoint, container)
-              (github_runner_state{state="running"}))
+              (github_runner_pool_slot{state="running"}))
             or cc:pool_slots * 0
         # The same slots and busy split by where the machine is: site="cloud" for the
-        # exporter's CLOUD_HOSTS (inventory unity_ci_lan: false), "local" otherwise. The
+        # topology's cloud hosts (inventory unity_ci_lan: false), "local" otherwise. The
         # workstation's always-open gate slots count as local, so readers never add
         # them again. The src label keeps the two halves apart under `or`.
+        # Counted from github_runner_state, one row per runner, so a slot with two caps counts once.
         - record: cc:site_slots
           expr: >-
             sum by (site) (

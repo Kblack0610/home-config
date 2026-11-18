@@ -17,6 +17,7 @@ import json
 import os
 import random
 import sys
+import tempfile
 import time
 import unittest
 import urllib.error
@@ -24,10 +25,11 @@ import urllib.parse
 from unittest import mock
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+os.environ.setdefault("TOPOLOGY", os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "ci-topology", "topology.json"))
 import governor  # noqa: E402
 
 # The live thresholds with a fixed host list and the pool floor that roster was written
-# for, so a change to the real roster (config.json "hosts", "standby", "pool_min_admitted")
+# for, so a change to the real roster (the topology, config.json "hosts", "pool_min_admitted")
 # does not change what these tests mean.
 CONFIG = os.path.join(os.path.dirname(os.path.abspath(__file__)), "config.json")
 LIVE = governor.load_config(CONFIG)
@@ -116,7 +118,7 @@ class FakeEc2:
 
 
 # aws-build-1's nine slots as the play registers them: 1-3 build slots (1-2 also unity-release),
-# 4-9 test slots, paired 1: 4-5, 2: 6-7, 3: 8-9 (config.json "pairs").
+# 4-9 test slots, paired 1: 4-5, 2: 6-7, 3: 8-9 (inventory unity_ci_slot_groups).
 BUILD_JOB = frozenset({"self-hosted", "linux", "unity-build"})
 PAIRS = {1: [4, 5], 2: [6, 7], 3: [8, 9]}
 PAIRED_BASE = frozenset({"self-hosted", "linux", "x64", "host-aws-build-1"})
@@ -1175,11 +1177,11 @@ class GovernorTest(unittest.TestCase):
             governor.host_labels(self.BUILD, "aws-build-1")
         self.assertIn('pool=~"unity|unity-build"', prom.call_args.args[0])
 
-    # A paired host (aws-build-1, "pairs" in config.json): build slots 1-3 each share their cores
+    # A paired host (aws-build-1, slot groups in the topology): build slots 1-3 each share their cores
     # and memory with two test slots, and a build and a test never run in one pair.
     PAIRED = {**CFG, "standby": {"aws-build-1": {
         "max_admitted": 9, "labels": ["unity-build"], "withheld_label": "unity-build-withheld",
-        "pairs": {"1": [4, 5], "2": [6, 7], "3": [8, 9]}, "power": {**POWER, "instance_id": "i-0bld"}}}}
+        "groups": {"1": [4, 5], "2": [6, 7], "3": [8, 9]}, "power": {**POWER, "instance_id": "i-0bld"}}}}
     RELEASE_JOB = BUILD_JOB | {"unity-release"}
 
     def paired(self, spec, waiting, cfg=None, pins=None, **inst):
@@ -1374,7 +1376,7 @@ class GovernorTest(unittest.TestCase):
 
 
 
-# Two powered standby hosts in config order, Spot first, as config.json lists them.
+# Two powered standby hosts in start order, Spot first, as load_config orders them by rate.
 SPOT = {**POWER, "instance_id": "i-0spot"}
 TWO = {**CFG, "standby": {"aws-burst-2": {"max_admitted": 6, "power": SPOT},
                           "aws-burst-1": {"max_admitted": 6, "power": POWER}}}
@@ -1388,17 +1390,34 @@ def two(spot="stopped", od="stopped", **spot_more):
             "aws-burst-1": {"state": od, "busy_at": 10_000, "labels": AWS_LABELS}}
 
 
+def live_config():
+    with open(CONFIG) as f:
+        return json.load(f)
+
+
+def load_files(conf, topo):
+    """load_config over a config.json and a topology.json written from these dicts."""
+    with tempfile.TemporaryDirectory() as d:
+        for name, body in (("c.json", conf), ("t.json", topo)):
+            with open(os.path.join(d, name), "w") as f:
+                json.dump(body, f)
+        return governor.load_config(os.path.join(d, "c.json"), os.path.join(d, "t.json"))
+
+
 class StandbyOrderTest(unittest.TestCase):
     def got(self, queue, inst, runners=HOME_BUSY):
         return {h: (a, why) for h, a, _, _, why in decide(STEADY, runners, queue=queue, cfg=TWO, instances=inst)}
 
-    def test_the_list_keeps_its_order(self):
-        with mock.patch("builtins.open", mock.mock_open(read_data=json.dumps(
-                {**{k: v for k, v in LIVE.items() if k != "standby"}, "hosts": {},
-                 "standby": [{"host": "b", "max_admitted": 1}, {"host": "a", "max_admitted": 2}]}))):
-            cfg = governor.load_config("config.json")
+    def test_standby_starts_cheapest_first_with_its_slot_count(self):
+        topo = {"hosts": {"b": {"site": "cloud", "slots": [{"name": "b-unity-pool-1", "caps": ["unity"]}]},
+                          "a": {"site": "cloud", "slots": [{"name": f"a-unity-pool-{i}", "caps": ["unity"]} for i in (1, 2)]},
+                          "lan": {"site": "local", "slots": [{"name": "lan-light-1", "caps": ["light"]}]}}}
+        cfg = load_files({**live_config(), "hosts": {}, "power": {}, "rates": {
+            "a": {"usd_per_hour": 0.9, "basis": "on-demand"}, "b": {"usd_per_hour": 0.1, "basis": "spot-estimate"}}}, topo)
         self.assertEqual(list(cfg["standby"]), ["b", "a"])
         self.assertEqual(cfg["standby"]["a"], {"max_admitted": 2})
+        self.assertEqual(cfg["hosts"], {})
+        self.assertEqual(cfg["rates"]["lan"], {"usd_per_hour": 0, "basis": "owned"})
 
     def test_spot_starts_first_and_on_demand_waits(self):
         got = self.got(6, two())
@@ -1841,16 +1860,15 @@ class WorkerTest(unittest.TestCase):
         return [(op, iid) for op, iid in ec2.calls if op != "state"]
 
     def test_load_config_reads_workers_and_defaults_to_none(self):
-        body = {**{k: v for k, v in LIVE.items() if k not in ("standby", "workers")}, "hosts": {}, "standby": []}
+        body = {**live_config(), "hosts": {}, "power": {}, "rates": {"w": {"usd_per_hour": 1, "basis": "on-demand"}}}
+        body.pop("workers")
         for extra, want in (({}, {}), ({"workers": [{"host": "w", "power": {"live": True}}]},
                                        {"w": {"power": {"live": True}}})):
-            with mock.patch("builtins.open", mock.mock_open(read_data=json.dumps({**body, **extra}))):
-                self.assertEqual(governor.load_config("config.json")["workers"], want)
+            self.assertEqual(load_files({**body, **extra}, {"hosts": {}})["workers"], want)
         # One host in both lists would be started and stopped by two rules in one cycle.
-        both = {**body, "standby": [{"host": "w"}], "workers": [{"host": "w"}]}
-        with mock.patch("builtins.open", mock.mock_open(read_data=json.dumps(both))), \
-                self.assertRaisesRegex(ValueError, "in both standby and workers: w"):
-            governor.load_config("config.json")
+        cloud = {"hosts": {"w": {"site": "cloud", "slots": [{"name": "w-unity-pool-1", "caps": ["unity"]}]}}}
+        with self.assertRaisesRegex(ValueError, "in both standby and workers: w"):
+            load_files({**body, "workers": [{"host": "w"}]}, cloud)
 
     def test_read_demand(self):
         import tempfile

@@ -91,6 +91,11 @@ spec:
             - name: override
               mountPath: /override
               readOnly: true
+            # The slot layout (apps/ci-topology, rendered from ansible/inventory.yml):
+            # which hosts carry Unity slots, how many, and the build-slot groups.
+            - name: topology
+              mountPath: /topology
+              readOnly: true
           resources:
             requests:
               memory: "24Mi"
@@ -112,6 +117,9 @@ spec:
           configMap:
             name: ci-runner-governor-override
             optional: true
+        - name: topology
+          configMap:
+            name: ci-topology
 ---
 apiVersion: v1
 kind: Service

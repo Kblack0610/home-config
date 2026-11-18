@@ -8,9 +8,9 @@ import unittest
 
 import yaml
 
-SPEC = importlib.util.spec_from_file_location("roster", Path(__file__).with_name("check-runner-roster.py"))
-roster = importlib.util.module_from_spec(SPEC)
-SPEC.loader.exec_module(roster)
+SPEC = importlib.util.spec_from_file_location("topology", Path(__file__).with_name("render-ci-topology.py"))
+topology = importlib.util.module_from_spec(SPEC)
+SPEC.loader.exec_module(topology)
 ROOT = Path(__file__).resolve().parents[1]
 
 
@@ -29,7 +29,7 @@ class RunnerTierTests(unittest.TestCase):
         runner = self.path / "runner.yml"
         inventory.write_text(yaml.safe_dump(self.inventory))
         runner.write_text(yaml.safe_dump(self.runner))
-        return roster.no_ci_failures(inventory, runner)
+        return topology.no_ci_failures(*topology.load_inventory(inventory), runner)
 
     def test_current_exclusions(self):
         self.assertEqual(self.failures(), [])

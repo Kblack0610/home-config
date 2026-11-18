@@ -8,7 +8,7 @@
 | `standard` | Ordinary apps, backed-up or rebuildable state, and CI |
 | `probation` | Scratch, load tests and eligible CI; no persistent volumes |
 
-`no_ci_hosts` remains an independent prohibition. hp-victus must never be core and must never run CI. Ask `vy3RRu`, answer `a`, preserves its explicit exclusion until another canonical eligibility rule replaces it. `check-runner-roster.py` checks both exclusions and requires the Forgejo runner to exclude core tiers.
+`no_ci_hosts` remains an independent prohibition. hp-victus must never be core and must never run CI. Ask `vy3RRu`, answer `a`, preserves its explicit exclusion until another canonical eligibility rule replaces it. `render-ci-topology.py` checks both exclusions and requires the Forgejo runner to exclude core tiers.
 
 ## Node labels
 

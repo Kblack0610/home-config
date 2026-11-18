@@ -15,6 +15,7 @@ resources:
   - binks-api
   - blackbox-exporter
   - ci-runner-governor
+  - ci-topology
   - cloudflared-public-sites
   - cluster-janitor
   - coredns

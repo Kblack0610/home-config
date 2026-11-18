@@ -225,6 +225,8 @@ kubectl -n offsite-backup create job offsite-seed --from=cronjob/offsite-backup
 kubectl -n offsite-backup logs -f job/offsite-seed
 ```
 
+Delete the seed job only after the first nightly after it succeeds. Until then the seed is the only successful run `HomelabBackupStale` can see. Done 2026-11-18: the 11-17 nightly added 86.6 GiB on parent `a0966fc7` in 7h44m (snapshot `9bf87b1f`), and the 11-18 one took 49s.
+
 The CronJob does not count a manual job as its own run, so the 1 AM runs during the seed start anyway, find the seed's lock and fail on purpose (after the wait below) rather than upload the same data twice. Expect those failures until the seed completes. restic keeps the data it has already uploaded, so a seed that is interrupted only needs to be started again. Keep the seed job until one nightly has succeeded: `create job --from` makes the CronJob its owner, so until then the seed is the only completed job `HomelabBackupStale` can see, and deleting it leaves the rule with no series at all.
 
 A run that finds a lock checks again every minute, for up to `LOCK_STALE_WAIT_S` in the script (restic's 30-minute stale window plus one). It goes on as soon as the lock is gone: a run that finished, or a dead run's lock that `restic unlock` removes once it is stale, such as the pod an asus-laptop reboot killed, whose Job retry starts seconds later. A lock still held at the end belongs to a live run, and the run aborts. So during a seed each nightly pod, and its one retry, logs "A lock is held; waiting" for about 31 minutes before it fails: that is the guard, not a hang.

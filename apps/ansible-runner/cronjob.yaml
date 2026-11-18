@@ -169,6 +169,9 @@ spec:
                   fi
                   exit "$rc"
               env:
+                # playbooks/runner-known-hosts.yml replaces ~/.ssh/known_hosts and runs only where this is set.
+                - name: HOME_CONFIG_ANSIBLE_RUNNER_POD
+                  value: "true"
                 - name: ANSIBLE_HOST_KEY_CHECKING
                   value: "False"
                 - name: ANSIBLE_STDOUT_CALLBACK

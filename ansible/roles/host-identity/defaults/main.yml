@@ -3,6 +3,9 @@
 # these groups gets the others' keys, and its own key is checked. A group the inventory lacks
 # adds no host.
 host_identity_roster_groups: [desktop_workstations, fleet_workers, fleet_controllers]
+# Machines roster machines dial that run no roster play (the Macs): their keys go in every roster
+# machine's block, but nothing is written on them and their own key is not checked there.
+host_identity_dial_target_groups: [macos_hosts]
 # Read by ssh for every user on top of ~/.ssh/known_hosts, so no login state is touched, and a
 # key here is accepted even when a stale one sits in a user's file.
 host_identity_known_hosts_path: /etc/ssh/ssh_known_hosts

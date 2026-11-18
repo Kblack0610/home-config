@@ -103,6 +103,9 @@ all:
           ansible_host: 192.168.1.7
           ansible_user: kennethblack
           ssh_aliases: [m1]
+          # /etc/ssh/ssh_host_ed25519_key.pub: roster machines trust it under every name it is dialed by
+          # (host_identity_dial_target_groups, roles/host-identity).
+          ssh_host_ed25519: ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIBSevnCCl7D8zA29C912Sa2isbGS9eTzhotSXl1TgUlh
           # The store-console skill drives this Chrome over ssh with the
           # Playwright Extension; the person signs in to the store consoles here.
           brew_extra_casks: [google-chrome]

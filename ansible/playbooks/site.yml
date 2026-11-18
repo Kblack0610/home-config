@@ -134,8 +134,9 @@
       tags: [image-gc, k3s]
 
 - name: CPU per CI runner (Linux runner hosts)
-  # The Infra tab's cores per runner: each runner unit's cgroup plus its job
-  # container's, every 15s, into node-exporter's textfile dir.
+  # The Infra tab's cores and memory per runner: each runner unit's cgroup plus its
+  # job containers', every 15s, and each runner home's disk hourly, into
+  # node-exporter's textfile dir.
   #   ansible-playbook playbooks/site.yml --limit ci_hosts --tags runner-cpu
   hosts: ci_hosts
   become: true

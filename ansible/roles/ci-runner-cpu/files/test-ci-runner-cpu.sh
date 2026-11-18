@@ -94,6 +94,64 @@ has "a Forgejo runner plus its task's container" '^ci_runner_cores_busy\{runner=
 has "a Forgejo runner whose task ended reads zero" '^ci_runner_cores_busy\{runner="h-forgejo-2"\} 0\.00$'
 [ "$(ls -A "$t/out" | wc -l)" = 1 ] && echo "ok   no temp file left" || { echo "FAIL temp file left"; fail=1; }
 
+# Memory: pool-1's slice u1 caps it alone at 14G; ci-linux.slice caps three runners together.
+echo 1000 > "$t/cg/ci.slice/u1/actions.runner.h-unity-pool-1.service/memory.current"
+# c1 holds 5000 of which 1000 is inactive page cache, so its working set is 4000.
+echo 5000 > "$t/cg/ci.slice/u1/docker-c1.scope/memory.current"
+printf 'active_file 200\ninactive_file 1000\n' > "$t/cg/ci.slice/u1/docker-c1.scope/memory.stat"
+echo 8000 > "$t/cg/ci.slice/u10/docker-c3.scope/memory.current"
+echo 300 > "$t/cg/ci.slice/ci-linux.slice/actions.runner.h-light-1.service/memory.current"
+echo max > "$t/cg/ci.slice/u1/actions.runner.h-unity-pool-1.service/memory.max"
+echo 15032385536 > "$t/cg/ci.slice/u1/memory.max"
+echo 21474836480 > "$t/cg/ci.slice/ci-linux.slice/memory.max"
+linux 110.00
+has "a runner's memory is its unit plus its job container" '^ci_runner_memory_bytes\{runner="h-unity-pool-1"\} 5000$'
+has "a runner with no container is its unit's memory" '^ci_runner_memory_bytes\{runner="h-light-1"\} 300$'
+has "the cap is the nearest cgroup above with one" '^ci_runner_memory_max_bytes\{runner="h-unity-pool-1"\} 15032385536$'
+hasnt "a cap three runners share is no one runner's" 'memory_max_bytes\{runner="h-light-1"\}'
+
+# A job container of pool-1 outside its slice u1: the cap does not bound the whole figure.
+sed -i 's|/c2 /elsewhere|/c2 /w/unity-pool-1/_work/other|' "$t/bin/docker"
+echo 100 > "$t/cg/ci.slice/docker-c2.scope/memory.current"
+linux 115.00
+has "a container outside the slice still counts" '^ci_runner_memory_bytes\{runner="h-unity-pool-1"\} 5100$'
+hasnt "a cap that misses one of its containers is not the runner's" 'memory_max_bytes\{runner="h-unity-pool-1"\}'
+
+# --disk: bytes under each runner's working directory.
+mkdir -p "$t/w/unity-pool-1/_work/Library" "$t/w/light-1"
+head -c 300000 /dev/zero > "$t/w/unity-pool-1/_work/Library/a"
+cat > "$t/bin/systemctl" <<EOF
+#!/bin/sh
+case "\$1" in
+list-units) printf '%s\n' 'actions.runner.h-unity-pool-1.service loaded active running GitHub runner' \
+                         'actions.runner.h-light-1.service loaded active running GitHub runner' \
+                         'actions.runner.h-gone-1.service loaded active running GitHub runner' \
+                         'actions.runner.h-root-1.service loaded active running GitHub runner' \
+                         'forgejo-runner-h-forgejo-9.service loaded active running Forgejo runner' ;;
+show) case "\$*" in
+      *forgejo-9*) printf '%s\n' 'ControlGroup=/f9' 'WorkingDirectory=$t/w/light-1' ;;
+      *root-1*) printf '%s\n' 'ControlGroup=/r1' 'WorkingDirectory=/' ;;
+      *unity-pool-1*) printf '%s\n' 'ControlGroup=/u1' 'WorkingDirectory=$t/w/unity-pool-1' ;;
+      *light-1*) printf '%s\n' 'ControlGroup=/l1' 'WorkingDirectory=$t/w/light-1' ;;
+      *gone-1*) printf '%s\n' 'ControlGroup=/g1' 'WorkingDirectory=$t/w/gone-1' ;;
+      esac ;;
+esac
+EOF
+printf '#!/bin/sh\necho journalctl >> "%s"\n' "$t/calls" > "$t/bin/journalctl"
+PATH="$t/bin:$PATH" CGROUP_ROOT="$t/cg" PROC_ROOT="$t/proc" CI_RUNNER_CPU_STATE="$t/state" \
+    sh "$here/ci-runner-cpu-linux.sh" --disk "$t/out" 2> "$t/err"; rc=$?
+[ "$rc" = 0 ] && echo "ok   disk exits 0" || { echo "FAIL disk exit $rc"; cat "$t/err"; fail=1; }
+d="$t/out/ci_runner_disk.prom"
+bytes=$(sed -n 's/^ci_runner_disk_bytes{runner="h-unity-pool-1"} //p' "$d")
+[ "${bytes:-0}" -ge 300000 ] && echo "ok   a slot's disk counts its Library" || { echo "FAIL pool-1 disk ${bytes:-none}"; cat "$d"; fail=1; }
+grep -q '^ci_runner_disk_bytes{runner="h-light-1"} ' "$d" && echo "ok   an empty home still reads" || { echo "FAIL light-1 missing"; fail=1; }
+grep -q 'runner="h-gone-1"' "$d" && { echo "FAIL a missing directory reads a figure"; fail=1; } || echo "ok   a missing directory reads no figure"
+grep -q 'runner="h-root-1"' "$d" && { echo "FAIL a home of / was walked"; fail=1; } || echo "ok   a home of / is never walked"
+# A journalctl that fails proves disk mode never asks the journal for Forgejo tasks.
+grep -q journalctl "$t/calls" 2>/dev/null && { echo "FAIL disk mode read the journal"; fail=1; } || echo "ok   disk mode reads no journal"
+grep -Eq '^ci_runner_disk_measured_seconds [0-9]+$' "$d" && echo "ok   the run says when it measured" || { echo "FAIL no measured time"; fail=1; }
+grep -q '^ci_runner_cores_busy' "$d" && { echo "FAIL disk mode wrote CPU"; fail=1; } || echo "ok   disk mode leaves the CPU file alone"
+
 # --- macOS -------------------------------------------------------------------------------
 rm -rf "${t:?}/out" "${t:?}/bin"
 mkdir -p "$t/out" "$t/bin" "$t/r/pool-1" "$t/r/pool-2"

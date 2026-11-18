@@ -552,6 +552,21 @@ class ExporterTest(unittest.TestCase):
         self.assertEqual(len([r for r in state if 'name="box-light-1"' in r and 'scope="acme/web"' in r]), 1, state)
         self.assertEqual(len([r for r in state if 'name="box-tools-1"' in r and 'scope="other/tools"' in r]), 1, state)
 
+    def test_a_hand_made_runner_does_not_hide_a_dead_repo_slot(self):
+        # box-light-2, a repo slot of acme/web, is offline. A runner registered by hand on
+        # the same host (no topology slot) is online: it is listed, but the pool stays one
+        # short, so CiHostRunnersOffline still sees the dead slot.
+        repo = "repos/acme/web/actions/runners?per_page=100&page=1"
+        saved = FAKE[repo]
+        FAKE[repo] = {"total_count": 3, "runners": saved["runners"] + [runner(4, "box-light-2-hand", ["self-hosted", "light"])]}
+        try:
+            out = self.render()
+        finally:
+            FAKE[repo] = saved
+        self.assertTrue(any('name="box-light-2-hand"' in r and 'state="idle"' in r for r in rows(out, "github_runner_state")))
+        self.assertIn('github_runner_pool_expected{host="box",pool="light"} 2', out)
+        self.assertIn('github_runner_pool_online{host="box",pool="light"} 1', out)
+
     def test_withheld_build_runner_stays_in_the_build_pool(self):
         org = "orgs/acme/actions/runners?per_page=100&page=1"
         saved = FAKE[org]

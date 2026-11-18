@@ -992,7 +992,11 @@ def render():
                 lab["repo"] = "(not watched)"
         else:
             lab["state"] = "idle"
-        if lab["state"] != "offline":
+        # Online counts only runners a topology slot names, as expected does: a runner
+        # registered by hand next to a dead slot (an org one, or a ci_repo_runners one
+        # whose repo has no other runner) would otherwise fill the gap and keep
+        # CiHostRunnersOffline quiet while that slot's jobs wait.
+        if lab["state"] != "offline" and r["name"] in SLOTS:
             for cap in caps:
                 online[(host, cap)] = online.get((host, cap), 0) + 1
         by_state[lab["state"]] = by_state.get(lab["state"], 0) + 1
@@ -1043,7 +1047,7 @@ def render():
     L += [
         "# HELP github_runner_pool_expected Topology slots on this host that take this cap (pool=<cap>)",
         "# TYPE github_runner_pool_expected gauge",
-        "# HELP github_runner_pool_online Online runners on this host that take this cap; absent while any runner source failed",
+        "# HELP github_runner_pool_online Online runners a topology slot names on this host that take this cap; absent while any runner source failed",
         "# TYPE github_runner_pool_online gauge",
     ]
     expected = Counter((s["host"], cap) for s in SLOTS.values() if s["forge"] == "github" for cap in s["caps"])

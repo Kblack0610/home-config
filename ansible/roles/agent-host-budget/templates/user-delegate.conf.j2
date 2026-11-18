@@ -1,0 +1,6 @@
+# Managed by ansible (agent-host-budget). Hands the cpuset controller to each
+# user manager, so the AllowedCPUs drop-ins under /etc/systemd/user hold: without
+# it systemd records AllowedCPUs and the kernel never applies it (razer-laptop,
+# 2026-11-18). CachyOS ships the same in cachyos-settings.
+[Service]
+Delegate=cpu cpuset io memory pids

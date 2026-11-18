@@ -50,31 +50,52 @@ printf '#!/bin/sh\ncase "$*" in *stuck*) exit 1;; esac\nexec %s "$@"\n' "$real_r
 PATH="$t/bin:$PATH" end "$plat"; ok "a job-end cleanup that fails never fails the job" '[ $? -eq 0 ]'
 PATH="$t/bin:$PATH" run "$plat"; ok "the same failure at job start fails the job" '[ $? -ne 0 ]'
 
-# A light job on a Unity slot: ci-fresh-workspace parks the warm tree, the job checks out into an
-# empty workspace, and the job-end hook puts the warm tree back. Run from inside the workspace,
-# as a job step is.
+# A light job on a Unity slot: ci-fresh-workspace moves the checkout's untracked state (Library and
+# the rest) aside, the job's clean checkout runs on the tracked tree, and the job-end hook puts the
+# state back. Run from inside the workspace, as a job step is.
 fresh() { (cd "$1" && HOME="$home" GITHUB_WORKSPACE="$1" ACTIONS_RUNNER_HOOK_JOB_COMPLETED="$t/job-completed.sh" "$t/fresh" >/dev/null 2>&1); }
-warm="$home/_warm/unity-core-playground/unity-core-playground"
-run "$game" 1; fresh "$game"
-ok "a light job's first step parks a Unity tree and leaves an empty workspace" '[ -d "$game" ] && [ -z "$(ls -A "$game")" ] && [ -e "$warm/Library/warm" ]'
-mkdir -p "$game/ProjectSettings"; touch "$game/ProjectSettings/ProjectVersion.txt" "$game/light-checkout"
+tree="$home/_warm/unity-core-playground/unity-core-playground"
+checkout() {
+  rm -rf "$game"; mkdir -p "$game/ProjectSettings" "$game/Assets" "$game/Packages"
+  touch "$game/ProjectSettings/ProjectVersion.txt" "$game/Assets/a.txt" "$game/Packages/manifest.json"
+  git -C "$game" init -q && git -C "$game" add -A && git -C "$game" -c user.email=t@t -c user.name=t commit -qm t
+  mkdir -p "$game/Library" "$game/Logs" "$game/Assets/StreamingAssets"
+  touch "$game/Library/warm" "$game/Logs/a b" "$game/Packages/packages-lock.json" "$game/Assets/x y.meta" "$game/Assets/StreamingAssets/s"
+}
+parked() { [ ! -e "$game/Library" ] && [ ! -e "$game/Logs" ] && [ ! -e "$game/Packages/packages-lock.json" ] && [ ! -e "$game/Assets/x y.meta" ] && [ -e "$tree/Library/warm" ]; }
+back() { [ -e "$game/Library/warm" ] && [ -e "$game/Logs/a b" ] && [ -e "$game/Packages/packages-lock.json" ] && [ -e "$game/Assets/x y.meta" ] && [ -e "$game/Assets/StreamingAssets/s" ] && [ ! -e "$tree" ] && [ ! -e "$tree.paths" ]; }
+checkout; run "$game" 1; fresh "$game"
+ok "a light job's first step parks every untracked path and keeps the tracked tree" 'parked && [ -e "$game/Assets/a.txt" ] && [ -d "$game/.git" ]'
+git -C "$game" clean -qffdx; mkdir -p "$game/Library"; touch "$game/Library/light" "$game/light-out"
 fresh "$game"
-ok "a second call in the job empties the light checkout and keeps the parked tree" '[ -z "$(ls -A "$game")" ] && [ -e "$warm/Library/warm" ]'
-touch "$game/light-checkout"
-end "$game"; ok "job end deletes the light checkout and moves the warm tree back" '[ -e "$game/Library/warm" ] && [ ! -e "$game/light-checkout" ] && [ ! -e "$warm" ]'
-fresh "$game"; touch "$game/light-checkout"
-run "$game" 1; ok "a job start after a job whose end never ran moves the warm tree back" '[ -e "$game/Library/warm" ] && [ ! -e "$game/light-checkout" ] && [ ! -e "$warm" ]'
-rm -rf "$game"; mkdir -p "$warm/ProjectSettings" "$warm/Library"; touch "$warm/ProjectSettings/ProjectVersion.txt" "$warm/Library/warm"
-run "$game" 1; ok "a parked tree goes back even when the workspace is gone" '[ -e "$game/Library/warm" ] && [ ! -e "$warm" ]'
-rm -rf "$game"; mkdir -p "$game/ProjectSettings" "$game/Library"; touch "$game/ProjectSettings/ProjectVersion.txt" "$game/Library/warm"
+ok "a second call in the job leaves the job's own files and the parked state" '[ -e "$game/light-out" ] && [ -e "$game/Library/light" ] && [ -e "$tree/Library/warm" ]'
+end "$game"; ok "job end moves every parked path back over the job's own" 'back && [ ! -e "$game/Library/light" ]'
+fresh "$game"; run "$game" 1; ok "a job start after a job whose end never ran moves it back" 'back'
+fresh "$game"; rm -rf "$game/Packages"
+end "$game"; ok "a parked path goes back when the job removed its tracked parent (a sparse checkout)" 'back'
+fresh "$game"; rm -rf "$game"
+run "$game" 1; ok "state parked for a checkout that is gone is dropped" '[ ! -e "$tree" ] && [ ! -e "$tree.paths" ] && [ ! -e "$game" ]'
+checkout; fresh "$game"; mkdir -p "$plat/node_modules"
+run "$plat"; ok "another repo's job start puts back what a dead light job parked" 'back && [ -z "$(ls -A "$plat")" ]'
 mkdir -p "$plat/node_modules"; fresh "$plat"
-ok "in a non-Unity workspace it only empties it" '[ -z "$(ls -A "$plat")" ] && [ ! -e "$home/_warm/platform" ]'
+ok "in a non-Unity workspace it does nothing (the job hook emptied it)" '[ -d "$plat/node_modules" ] && [ ! -e "$home/_warm/platform" ]'
+rm -rf "$game/.git"; fresh "$game"; ok "a Unity tree that is not a checkout is left alone" '[ -e "$game/Library/warm" ] && [ ! -e "$tree" ]'
 fresh "$t/elsewhere"; ok "a workspace outside the slot's HOME is not touched by it" '[ -d "$t/elsewhere/x" ]'
 HOME="$home" GITHUB_WORKSPACE="$home/_work/new/new" "$t/fresh" >/dev/null 2>&1
-ok "a missing workspace is created empty" '[ $? -eq 0 ] && [ -d "$home/_work/new/new" ]'
-end "$game"; ok "with nothing parked, job end keeps a Unity project as before" '[ -e "$game/Library/warm" ]'
-fresh "$game"; mkdir -p "$plat/node_modules"
-run "$plat"; ok "another repo's job start puts back a tree a dead light job parked" '[ -e "$game/Library/warm" ] && [ ! -e "$warm" ] && [ -z "$(ls -A "$plat")" ]'
+ok "a missing workspace is a no-op" '[ $? -eq 0 ] && [ ! -e "$home/_work/new" ]'
+checkout; end "$game"; ok "with nothing parked, job end keeps a Unity project as before" '[ -e "$game/Library/warm" ]'
 (cd "$game" && HOME="$home" GITHUB_WORKSPACE="$game" "$t/fresh" >/dev/null 2>&1)
-ok "a slot with no job-end hook fails the step and keeps the Unity tree in place" '[ $? -ne 0 ] && [ -e "$game/Library/warm" ] && [ ! -e "$warm" ]'
+ok "a slot with no job-end hook fails the step and parks nothing" '[ $? -ne 0 ] && [ -e "$game/Library/warm" ] && [ ! -e "$tree" ]'
+# An mv that fails on one path, standing in for a full disk or a file the slot cannot move.
+real_mv=$(command -v mv)
+printf '#!/bin/sh\ncase "$*" in *Logs*) exit 1;; esac\nexec %s "$@"\n' "$real_mv" > "$t/bin/mv"; chmod +x "$t/bin/mv"
+checkout; (cd "$game" && PATH="$t/bin:$PATH" HOME="$home" GITHUB_WORKSPACE="$game" ACTIONS_RUNNER_HOOK_JOB_COMPLETED="$t/job-completed.sh" "$t/fresh" >/dev/null 2>&1)
+ok "a park that fails part way fails the step" '[ $? -ne 0 ] && [ -e "$game/Logs/a b" ]'
+fresh "$game"; ok "the next call finishes it" 'parked'
+end "$game"; ok "and job end puts all of it back" 'back'
+game2="$home/_work/other-game/other-game"; tree2="$home/_warm/other-game/other-game"
+mkdir -p "$game2/ProjectSettings" "$game2/Library"; touch "$game2/ProjectSettings/ProjectVersion.txt" "$game2/Library/warm2"
+git -C "$game2" init -q && git -C "$game2" add ProjectSettings && git -C "$game2" -c user.email=t@t -c user.name=t commit -qm t
+fresh "$game2"; fresh "$game"
+run "$plat"; ok "one job start puts back two repos' parked state" 'back && [ -e "$game2/Library/warm2" ] && [ ! -e "$tree2" ]'
 exit $fail

@@ -32,7 +32,7 @@ fleet_worker_dotfiles_repo: https://github.com/Kblack0610/.dotfiles.git
 fleet_worker_forgejo_url: https://git.kblab.me
 fleet_worker_roster_repo: "{{ fleet_worker_forgejo_url }}/kblack0610/home-config.git"
 # The Forgejo bot a session on a worker pushes and opens home-config PRs as (tasks/main.yml):
-# write on kblack0610/home-config only, read on platform and personal-sites; its token is
+# write on kblack0610/home-config only, read on the feed's private Forgejo repos; its token is
 # vault_fleet_forgejo_token. docs/runbooks/fleet-worker.md, "Forgejo bot token".
 fleet_worker_forgejo_user: fleet-worker
 # The host every worker trusts for the store (tasks/store.yml): forge-primary is the

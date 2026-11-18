@@ -334,6 +334,7 @@ all:
           host_tier: standard
           ci_light_slots: 4
           ci_heavy_slots: 1
+          forgejo_slots: 2
           ci_repo_runners: *personal_repo_runners
         # Two light slots on cores 14-15 since 2026-11-17, the cores ci_hosts kept
         # outside its Unity slots for the platform runners. Not on the Unity slots
@@ -344,7 +345,8 @@ all:
         # Two, both on ms-a2, since 2026-11-18: they replaced the k3s runner pod
         # (capacity 2), which ran on ms-a2's k3s cores, so its jobs moved into the CI
         # budget instead of adding load; every CI host read FULL that day. The total
-        # is FORGEJO_SLOTS in scripts/render-ci-topology.py.
+        # is FORGEJO_SLOTS in scripts/render-ci-topology.py. Since 2026-11-18 windows-media-ci
+        # carries two more, in its ci-linux.slice (18-23, 20G), so Forgejo runs on two hosts.
         ms-a2:
           ci_light_slots: 2
           ci_heavy_slots: 1
@@ -609,7 +611,7 @@ all:
         # No temperature: a VM has no k10temp, so the governor admits on
         # idle, PSI and memory alone.
         windows-media-ci:
-          ci_caps: [light, heavy, unity]
+          ci_caps: [light, heavy, unity, forgejo]
           ci_cpus: 6-23
           ci_memory_max: 42G
           ci_unity_cpus: 6-17

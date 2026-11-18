@@ -3,7 +3,7 @@ log:
   level: info
 runner:
   file: {{ forgejo_runner_home }}/.runner
-  # One job at a time: the slot is the unit of budget, as for every GitHub slot.
+  # One job at a time: one-job takes one in any case, and the slot is the unit of budget.
   capacity: 1
   timeout: 3h
   labels:
@@ -19,7 +19,7 @@ container:
   privileged: false
   # The host's docker socket inside each job container (docker build and push jobs).
   docker_host: automount
-  # Job containers run in the slot's slice, inside its CPU set and memory cap.
+  # Job containers run in the borrowed slot's slice, inside its CPU set and memory cap.
   options: --cgroup-parent={{ forgejo_runner_slice }}
   valid_volumes: []
 host:

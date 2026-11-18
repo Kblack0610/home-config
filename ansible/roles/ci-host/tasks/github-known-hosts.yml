@@ -8,6 +8,10 @@
 # Authenticated with vault_github_pat: GitHub allows 60 anonymous API calls an
 # hour per IP, and every machine on the LAN shares one IP. The PAT, not the
 # control node's gh, so the in-cluster ansible-runner (no gh) can run it too.
+# Per host, not run_once: this file is imported under a `when` (tasks/unity.yml), and a
+# run_once task runs on the batch's first host only, so when that host skips it every host
+# reads the skip and the next task fails on `_github_meta.json` (razer-laptop plus
+# windows-media-ci, 2026-11-18). One authenticated call per host is well inside the PAT's limit.
 # Vars: github_known_hosts_user, github_known_hosts_group, github_known_hosts_home.
 - name: Read GitHub's SSH host keys
   ansible.builtin.uri:
@@ -18,7 +22,6 @@
   no_log: true
   delegate_to: localhost
   become: false
-  run_once: true
   check_mode: false
   register: _github_meta
 

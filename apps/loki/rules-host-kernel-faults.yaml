@@ -21,7 +21,8 @@ data:
   #
   # Backtest 2026-10-31..11-13, kernel transport, 6h windows: gpu fired only on hp-victus
   # (11 windows, from 10-31); lockup 1 (asus 11-04); nic 4 (asus 11-05, hp-victus 11-05,
-  # 11-13); mce 0. Rerun: scripts/host-postmortem.
+  # 11-13); mce 0. ups-usb (2026-11-04..11-17, 30m windows): 20 windows, all on raspberrypi on
+  # 11-17, none before. Rerun: scripts/host-postmortem.
   host-kernel-faults.yaml: |
     groups:
       - name: host-kernel-faults
@@ -63,3 +64,15 @@ data:
               category: node-health
             annotations:
               summary: "CPU or memory hardware error (MCE) on {{ $labels.host }}: {{ $value }} lines in 10m"
+          - alert: UpsUsbFlapping
+            # Each time the UPS re-enumerates, the kernel logs "Manufacturer: CPS" once; a boot logs it
+            # once, so more than 2 in 30m is the link dropping. NUT misses a drop it recovers from, and the
+            # UPS beeps while nothing pages (2026-11-17: 142 drops, about 10 beeps in a minute at 17:55).
+            expr: |
+              label_replace(sum by (host) (count_over_time({transport="kernel"} |= "Manufacturer: CPS" [30m])), "instance", "$1", "host", "(.*)") > 2
+            labels:
+              severity: warning
+              fleet: none  # the cable, the USB port or the UPS: the human checks it (docs/nut-ups.md#troubleshooting)
+              category: node-health
+            annotations:
+              summary: "CyberPower UPS USB link on {{ $labels.host }} re-enumerated {{ $value }} times in 30m: the UPS may be beeping and NUT may miss events. docs/nut-ups.md#troubleshooting"

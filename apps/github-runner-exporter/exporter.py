@@ -931,14 +931,15 @@ def render():
     ]
     seen, runners_ok = {}, True
     for src, fut in runner_futs.items():
-        # A runner id is unique within one owner only: a personal repo's runner can share
-        # an id with an org repo's, so the owner (case-insensitive, as GitHub logins are)
-        # is part of the key.
+        # A runner id is not unique: a repo runner's counts within its repo (deskslim-2's
+        # runner 23 in .dotfiles-private and in gungan-speak), and a personal repo's can match
+        # an org's. The owner (case-insensitive, as GitHub logins are) and the name make the
+        # key; the name is one slot's, so one runner seen through two sources counts once.
         scope = "org" if src.startswith("orgs/") else src.split("/", 1)[1]
         owner = src.split("/")[1].lower()
         try:
             for r in fut.result():
-                seen.setdefault((owner, r["id"]), (scope, r))
+                seen.setdefault((owner, r["id"], r["name"]), (scope, r))
             ok = 1
         except API_ERRORS:
             ok, runners_ok = 0, False

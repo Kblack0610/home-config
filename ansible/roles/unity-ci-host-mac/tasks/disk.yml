@@ -1,6 +1,6 @@
 ---
 # The hourly build-tree prune (files/ci-tree-prune.sh), the Mac's counterpart of
-# linux-ci-host's tasks/disk.yml. Bound in site.yml's mac-mini play; no sudo.
+# ci-host's tasks/disk.yml. Bound in site.yml's mac-mini play; no sudo.
 - name: Create the prune script's and LaunchAgents directories
   ansible.builtin.file:
     path: "{{ item }}"

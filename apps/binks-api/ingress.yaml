@@ -39,13 +39,17 @@ spec:
 # user published from a chat preview. It lives on its own site, away from binks.chat, so
 # a hostile page never shares an origin with the chat or its sign-in. Only /p/ is
 # routed, and binks-api answers that Host with /p/<id> and nothing else (PUBLISH_HOST
-# in deployment.yaml). external-dns makes the proxied CNAME from this route, and
-# Cloudflare terminates TLS as it does for binks.chat.
+# in deployment.yaml). external-dns makes the proxied CNAME from this route: the target
+# annotation only makes it build a record, whose target --default-targets replaces with
+# the tunnel (docs/public-sites.md, Traefik IngressRoute). Cloudflare terminates TLS as
+# it does for binks.chat.
 apiVersion: traefik.io/v1alpha1
 kind: IngressRoute
 metadata:
   name: binks-demos
   namespace: binks-api
+  annotations:
+    external-dns.alpha.kubernetes.io/target: default-targets
 spec:
   entryPoints:
     - websecure

@@ -290,7 +290,7 @@ all:
         cachyos-x8664-main:
 
     # Self-hosted GitHub Actions runners for BlackNBrownStudios/platform
-    # (see the "Linux CI runners" play in site.yml).
+    # (see the "CI runners (light, heavy and Unity slots)" play in site.yml).
     # GitHub has no runner priority - an idle runner with matching labels takes
     # the next job - so the slot counts ARE the priority. heavy jobs publish
     # fixed host ports (postgres 5432, mailpit 1025/8025, app ports), so never
@@ -318,7 +318,7 @@ all:
           ci_repo_runners: [{repo: Kblack0610/.dotfiles-private, slot: dotfiles-private-1}]
         # Four light slots, no heavy, on the cores of its third Unity slot since
         # 2026-11-13 (unity_ci_runners says why). Light jobs average 0.4 cores and
-        # 0.6G, so four fit in three cores and 14G. Ubuntu: linux-ci-host's apt list.
+        # 0.6G, so four fit in three cores and 14G. Ubuntu: ci-host's apt list.
         windows-media-ci:
           host_tier: standard
           ci_light_slots: 4
@@ -332,7 +332,7 @@ all:
           ci_light_slots: 2
           ci_heavy_slots: 0
 
-    # BNB Unity runner pool (added 2026-10-05; the "Unity CI runner pool" play in
+    # BNB Unity runner pool (added 2026-10-05; the "CI runners (light, heavy and Unity slots)" play in
     # site.yml). Org-scoped, label `unity`, for every game repo. Each slot runs
     # one Unity job at a time (a PlayMode shard, an EditMode run, a DodginBalls
     # build), about 4-6 GB each. CPU/memory caps are in ci_hosts below. Every

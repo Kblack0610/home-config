@@ -22,7 +22,7 @@ rules:
   - apiGroups: ["extensions", "networking.k8s.io"]
     resources: ["ingresses"]
     verbs: ["get", "watch", "list"]
-  # traefik-proxy source: read Traefik IngressRoute CRDs (binks.chat). external-dns
+  # traefik-proxy source: read Traefik IngressRoute CRDs (play.kblack.dev). external-dns
   # starts informers for ALL IngressRoute kinds (HTTP + TCP + UDP), so RBAC must
   # cover all three or the pod fatals ("failed to sync ...ingressroutetcps").
   - apiGroups: ["traefik.io"]

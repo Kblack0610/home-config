@@ -15,7 +15,7 @@
     mode: "0755"
   tags: [ci-disk]
 
-- name: Install ci-fresh-workspace (parks a warm Unity tree for a light job; the hook restores it)
+- name: Install ci-fresh-workspace (parks a Unity checkout's untracked state for a light job; the hook restores it)
   ansible.builtin.copy:
     src: ci-fresh-workspace.sh
     dest: "{{ linux_ci_fresh_workspace }}"

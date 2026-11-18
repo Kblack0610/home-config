@@ -420,6 +420,7 @@ all:
         # Setup and the VM itself: docs/windows-machines.md.
         windows-media-ci:
           ansible_host: 192.168.1.27   # windows-media-ci (DHCP reservation)
+          thermal_cap_exempt: a Hyper-V VM; its CPU clocks belong to the Windows host windows-media
           unity_ci_slots: 2
           unity_ci_full: true
           unity_ci_gate: true
@@ -434,6 +435,7 @@ all:
         # Default image list: desktop builds need the windows flavor.
         aws-build-1:
           host_tier: standard
+          thermal_cap_exempt: an EC2 VM; AWS owns its cooling
           ansible_host: i-0856b245ff7a81321
           ansible_user: ubuntu
           ansible_ssh_common_args: >-
@@ -462,6 +464,7 @@ all:
         # 16 cores with SMT, so five slots of three cores (ci_hosts below).
         aws-spot-1:
           host_tier: standard
+          thermal_cap_exempt: an EC2 VM; AWS owns its cooling
           ansible_host: i-0b4c89a54f8e25ad5
           ansible_user: ubuntu
           ansible_ssh_common_args: >-
@@ -477,6 +480,7 @@ all:
           unity_ci_library_s3: aws-burst-1-libraries-311141527647
         aws-spot-2:
           host_tier: standard
+          thermal_cap_exempt: an EC2 VM; AWS owns its cooling
           ansible_host: i-0c244a80e9cf430b1
           ansible_user: ubuntu
           ansible_ssh_common_args: >-
@@ -492,6 +496,7 @@ all:
           unity_ci_library_s3: aws-burst-1-libraries-311141527647
         aws-spot-3:
           host_tier: standard
+          thermal_cap_exempt: an EC2 VM; AWS owns its cooling
           ansible_host: i-04ca535b8876dff6f
           ansible_user: ubuntu
           ansible_ssh_common_args: >-
@@ -723,6 +728,7 @@ all:
           # check-placement needs a tier on every host; probation is the
           # narrowest, and this host is in no group any workload is placed on.
           host_tier: probation
+          thermal_cap_exempt: carries no load; it reads and starts sessions but runs none, and roams on battery
           # Tailnet IP: it roams off the LAN, and no DNS here resolves its name.
           ansible_host: 100.102.154.120
           ansible_user: kblack0610
@@ -739,32 +745,53 @@ all:
       hosts:
         hp-victus:
 
-    # Hosts whose CPU power is capped to hold them below their thermal limit
-    # (roles/thermal-cap). 2026-10-23: asus held 93-96C through the Unity
-    # nightly and dropped off the LAN; hp-victus peaked at 98C of 100C crit.
-    # Target: at most 85C sustained over a full nightly.
+    # The fleet's thermal standard (roles/thermal-cap): every x86 Linux machine
+    # that carries load has its CPU power capped from setup, so a long job holds it
+    # at most 85C sustained instead of at its limit (human, 2026-11-17: a machine
+    # hot or not set up to the standard is red). Membership comes from the child
+    # groups, so a host added to linux_bare_metal, watchdog_x86 (the x86 k3s nodes)
+    # or desktop_workstations is capped with no edit here. An x86 Linux host outside
+    # them sets thermal_cap_exempt: <why> (a cloud VM: the provider owns its
+    # cooling); scripts/check-thermal-standard.py fails CI on a host with neither.
+    # Out of scope: the Pis (no boost or power knob to cap), the Macs (no sysfs;
+    # the firmware owns fans and clocks), Windows (the role writes Linux sysfs)
+    # and the router.
+    # 2026-10-23: asus held 93-96C through the Unity nightly and dropped off the
+    # LAN; hp-victus peaked at 98C of 100C crit. 7 days to 2026-11-17, uncapped
+    # under Unity CI: ms-a2 peaked at 99.5C, deskslim-2 at 97.6C, and the
+    # workstation read a median 96.25C (p90 97C) and peaked at 106.25C.
     thermal_capped:
+      children:
+        linux_bare_metal:
+        watchdog_x86:
+        desktop_workstations:
+      vars:
+        # Boost off, the lever on AMD, which has no writable package power limit
+        # (ms-a2's and deskslim-2's RAPL zone has no constraint files, checked
+        # 2026-11-17). A host with a better lever overrides it below. Without
+        # boost a core runs at base clock: 2.5GHz on ms-a2's 9955HX, 4.4GHz on
+        # deskslim-2's 9900X, 4.3GHz on the workstation's 9950X3D.
+        thermal_cap_boost: false
       hosts:
-        # AMD: no writable package power limit, so boost goes off. Already on
-        # the balanced profile when it hit 94C. Charge limit: on the charger 24/7.
-        # 2026-11-02: still 94C peak over 12h with boost off on balanced, so quiet.
+        # AMD. Already on the balanced profile when it hit 94C. Charge limit: on
+        # the charger 24/7. 2026-11-02: still 94C peak over 12h with boost off on
+        # balanced, so quiet.
         asus-laptop:
           thermal_cap_platform_profile: quiet
-          thermal_cap_boost: false
           thermal_cap_charge_limit: 80
         # Intel: firmware PL1 is 55W (MSR; MMIO says 130W). Roughly 1.2C per
         # watt above ambient at 55W/98C, so ~40W should land near 85C. No
         # platform profile and no charge threshold in its firmware.
         # 2026-11-02: at 40/55W it still peaked at 100C over 12h (p90 85C, 4% of
         # the time above 90C); the 55W short-term limit made the peaks. 32/40W.
+        # Turbo stays on: RAPL is its cap.
         hp-victus:
           thermal_cap_rapl_long_watts: 32
           thermal_cap_rapl_short_watts: 40
-        # acpi-cpufreq with a global boost switch. No platform_profile, no
-        # writable RAPL limit, no charge threshold (the battery holds at ~97%,
-        # "Not charging", on AC).
-        razer-laptop:
-          thermal_cap_boost: false
+          thermal_cap_boost: true
+        # razer-laptop (acpi-cpufreq, a global boost switch), ms-a2 and deskslim-2
+        # (amd-pstate-epp) and the workstation have no platform_profile, no
+        # writable RAPL limit and no charge threshold: the group default alone.
 
     # Whole-house audio: one host per room, each a snapclient of the snapserver
     # in apps/snapcast. See ansible/roles/audio-endpoint/README.md.
@@ -815,6 +842,7 @@ all:
     hetzner:
       vars:
         ansible_user: root
+        thermal_cap_exempt: a Hetzner Cloud VM; Hetzner owns its cooling
         hcloud_location: hel1
         # Inbound SSH only from the home WAN IP, and only until the tailnet is
         # up; then this list goes empty and the firewall drops all inbound.

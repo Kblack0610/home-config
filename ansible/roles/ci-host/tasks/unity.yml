@@ -88,9 +88,11 @@
     label: "{{ library.name }}"
 
 # The asset-library LFS store the release trees share (ASSET_LIBRARY_LFS_STORE),
-# from the workstation's: tasks/lfs-store.yml.
+# from the workstation's: tasks/lfs-store.yml. Not on the workstation itself,
+# whose runners pull next to the source store.
 - name: Seed the asset-library LFS store
   ansible.builtin.include_tasks: lfs-store.yml
+  when: ansible_connection | default('ssh') != 'local'
 
 # Editor images: load a missing one from the workstation's docker, or pull it on
 # a host with unity_ci_images_pull (off the LAN, where the pull is sound). The host's own

@@ -155,6 +155,7 @@ unity_ci_packages_debian:
   - jq
   - curl
   - unzip
+  - rsync
 
 # Unity Accelerator (cache server), as host:port on the docker bridge, for example
 # 172.17.0.1:10080. Empty = none. Set per host in the inventory: the role runs it

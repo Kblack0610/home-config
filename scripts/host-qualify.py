@@ -32,7 +32,7 @@ import sys
 
 import yaml
 
-from host_inventory import (QUALIFICATION_KEY, TIER_ORDER, load_inventory, qualification_path)
+from host_inventory import (QUALIFICATION_KEY, TIER_ORDER, host_instance, load_inventory, qualification_path)
 
 HERE = Path(__file__).resolve().parent
 
@@ -255,15 +255,6 @@ def release(host, ip, record):
     print(f"{host}: released node {node} from quarantine")
 
 
-def host_instance(host, ip, known):
-    """(cc:host_instance host, scrape instance) for an inventory host, or None. cc:host_instance
-    keys k3s nodes by node name, so a Pi (inventory pi5-worker3, node raspberrypi-771be84c) is
-    found by its inventory IP. That name is also the Loki journal `host` (apps/alloy/config.alloy)."""
-    if host in known:
-        return host, known[host]
-    return next(((name, inst) for name, inst in known.items() if ip and inst.rsplit(":", 1)[0] == ip), None)
-
-
 def parse_minutes(s):
     return int(s[:-1]) * {"m": 60, "h": 3600}[s[-1]]
 
@@ -280,7 +271,7 @@ def main(argv=None):
     hosts, _ = load_inventory(a.inventory)
     if a.host not in hosts:
         sys.exit(f"FAIL: {a.host} is not in {a.inventory}")
-    found = host_instance(a.host, hosts[a.host].get("ansible_host"), headroom.hosts())
+    found = host_instance(a.host, hosts[a.host], headroom.hosts())
     if found is None:
         sys.exit(f"FAIL: {a.host} is not a cc:host_instance host, by name or inventory IP")
     node, inst = found

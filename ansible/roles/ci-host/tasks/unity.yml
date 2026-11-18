@@ -87,11 +87,10 @@
     loop_var: library
     label: "{{ library.name }}"
 
-# Off the LAN, the asset-library LFS store the release trees share
-# (ASSET_LIBRARY_LFS_STORE) comes through S3 too: tasks/lfs-store.yml.
-- name: Seed the asset-library LFS store from S3
+# The asset-library LFS store the release trees share (ASSET_LIBRARY_LFS_STORE),
+# from the workstation's: tasks/lfs-store.yml.
+- name: Seed the asset-library LFS store
   ansible.builtin.include_tasks: lfs-store.yml
-  when: unity_ci_library_s3 | length > 0
 
 # Editor images: load a missing one from the workstation's docker, or pull it on
 # a host with unity_ci_images_pull (off the LAN, where the pull is sound). The host's own

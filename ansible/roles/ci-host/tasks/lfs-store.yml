@@ -1,11 +1,16 @@
 ---
 # Seed the host's asset-library LFS store (unity_ci_lfs_store) from the
-# workstation's (unity_ci_lfs_store_source) through S3. The playground's
+# workstation's (unity_ci_lfs_store_source): through S3 off the LAN
+# (unity_ci_library_s3), with rsync over ssh on it. The playground's
 # scripts/setup/asset-library.sh points the release trees' submodule at this
 # store, and git lfs fetches only the objects it lacks, so a seeded host fetches
-# little or nothing through git.kblab.me. Objects are content-addressed, so
-# neither side deletes: an object the workstation pruned may still be one an
-# older pin needs. A pin newer than the workstation's store fetches only the delta.
+# little or nothing through Forgejo. A LAN host needs the seed too: Forgejo's LFS
+# batch answer points at its ROOT_URL, git.kennethblack.me, so even there the
+# objects come through the Cloudflare tunnel, and a cold store held deskslim-2's
+# and ms-a2's shards past their job timeout (playground run 44023002008, hc-474).
+# Objects are content-addressed, so neither side deletes: an object the
+# workstation pruned may still be one an older pin needs. A pin newer than the
+# workstation's store fetches only the delta.
 - name: Fingerprint the workstation's asset-library LFS store
   ansible.builtin.shell: >-
     set -o pipefail &&
@@ -27,7 +32,7 @@
   check_mode: false
   register: _unity_ci_lfs_copy
 
-- name: Sync the LFS store through S3 when it changed
+- name: Sync the LFS store when it changed
   when:
     - _unity_ci_lfs_source.rc == 0
     - _unity_ci_lfs_source.stdout != _unity_ci_lfs_copy.stdout
@@ -40,6 +45,7 @@
       delegate_to: localhost
       become: false
       changed_when: true
+      when: unity_ci_library_s3 | length > 0
 
     - name: Create the host's LFS store
       ansible.builtin.file:
@@ -59,6 +65,22 @@
         AWS_CONFIG_FILE: /etc/unity-ci-s3.config
       become: true
       changed_when: true
+      when: unity_ci_library_s3 | length > 0
+
+    # Push mode: rsync runs on the workstation and sudo rsync on the host. No
+    # owner or group from the workstation; the chown below sets them. No
+    # compression: the objects are mostly compressed media, and this is the LAN.
+    - name: Copy the LFS objects from the workstation over rsync
+      ansible.posix.synchronize:
+        src: "{{ unity_ci_lfs_store_source }}/objects/"
+        dest: "{{ unity_ci_lfs_store }}/objects/"
+        archive: false
+        recursive: true
+        times: true
+        compress: false
+        delete: false
+      become: true
+      when: unity_ci_library_s3 | length == 0
 
     # The jobs' git lfs writes new objects into the same objects/<xx>/<yy>
     # directories, so the store must be the runner's, not root's.

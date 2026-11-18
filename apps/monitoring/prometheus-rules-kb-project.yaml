@@ -265,10 +265,10 @@ spec:
 
         # mkt-metrics is up while any source read: Search Console has no credential until a
         # product property lists the service account, and Steam alone must not read as down.
-        # It runs once a day, so its last run counts for two days: a run a minute late does not
-        # flip it, and a missed day still pages after the alert's day.
+        # It runs once a day, so its last run counts for 26 hours: a run an hour late does not
+        # flip it, and a missed run pages a day after that, about two days after the last good run.
         - record: kb_project_source_up
-          expr: (max(mkt_metrics_up) * (time() - max(mkt_metrics_generated_seconds) < bool 172800)) or vector(0)
+          expr: (max(mkt_metrics_up) * (time() - max(mkt_metrics_generated_seconds) < bool 93600)) or vector(0)
           labels:
             source: mkt-metrics
 
@@ -287,4 +287,4 @@ spec:
             category: availability
           annotations:
             summary: "Department tabs: source {{ $labels.source }} has had no numbers for a day"
-            description: "The scrape behind {{ $labels.source }} has been down for 24 hours, so the Analytics, Support and Money tabs of the products it feeds read stale or empty."
+            description: "The scrape behind {{ $labels.source }} has been down for 24 hours, so the Analytics, Support, Money and Marketing tabs of the products it feeds read stale or empty."

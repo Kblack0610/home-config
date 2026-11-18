@@ -542,7 +542,7 @@
     {
       "id": 17,
       "type": "timeseries",
-      "title": "Steam wishlists, by day",
+      "title": "Steam wishlists, last day read",
       "description": "Wishlist adds, deletes, purchases and gifts per product on Steam, one series each, for the last day mkt-metrics read (Steam days are GMT). A product with no Steam app, or a day that did not read, shows no series, not zero: mkt_metrics_up{source=\"steam\"} says which.",
       "datasource": {
         "type": "prometheus",
@@ -589,7 +589,7 @@
     {
       "id": 18,
       "type": "timeseries",
-      "title": "Search clicks and impressions, by day",
+      "title": "Search clicks and impressions, last day counted",
       "description": "Google Search Console clicks and impressions per product site, on the last day Search Console had finished counting (about 2 days back). No series until the search_console credential is set up: mkt_metrics_up{source=\"search\"} says which.",
       "datasource": {
         "type": "prometheus",

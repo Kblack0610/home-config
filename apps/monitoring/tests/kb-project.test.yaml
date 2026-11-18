@@ -187,7 +187,7 @@ tests:
               source: game-registry
             exp_annotations:
               summary: "Department tabs: source game-registry has had no numbers for a day"
-              description: "The scrape behind game-registry has been down for 24 hours, so the Analytics, Support and Money tabs of the products it feeds read stale or empty."
+              description: "The scrape behind game-registry has been down for 24 hours, so the Analytics, Support, Money and Marketing tabs of the products it feeds read stale or empty."
       # binks-api went down for 100 steps (8h20m) and came back: it never pages. A source
       # whose scrape target is gone entirely reads 0 (the rule's `or vector(0)`) and pages.
       - eval_time: 30h
@@ -200,7 +200,7 @@ tests:
               source: game-registry
             exp_annotations:
               summary: "Department tabs: source game-registry has had no numbers for a day"
-              description: "The scrape behind game-registry has been down for 24 hours, so the Analytics, Support and Money tabs of the products it feeds read stale or empty."
+              description: "The scrape behind game-registry has been down for 24 hours, so the Analytics, Support, Money and Marketing tabs of the products it feeds read stale or empty."
 
   - name: a source whose scrape target has vanished reads 0 and pages after a day
     interval: 5m
@@ -251,7 +251,7 @@ tests:
               source: litellm
             exp_annotations:
               summary: "Department tabs: source litellm has had no numbers for a day"
-              description: "The scrape behind litellm has been down for 24 hours, so the Analytics, Support and Money tabs of the products it feeds read stale or empty."
+              description: "The scrape behind litellm has been down for 24 hours, so the Analytics, Support, Money and Marketing tabs of the products it feeds read stale or empty."
 
   - name: store reviews become one number per store and window, and the workstation's labels drop
     interval: 5m
@@ -460,7 +460,7 @@ tests:
           - labels: 'kb_project_number{dept="marketing", metric="search_clicks_1d", project="binks"}'
             value: 6
 
-  - name: the mkt-metrics source is up while any source read, and down once no source read or its last run is two days old
+  - name: the mkt-metrics source is up while any source read, and down once no source read or its last run is over 26 hours old
     interval: 5m
     input_series:
       # Search Console has no credential yet, Steam reads: the source stays up
@@ -483,7 +483,7 @@ tests:
           - labels: 'kb_project_source_up{source="mkt-metrics"}'
             value: 1
       - expr: kb_project_source_up{source="mkt-metrics"}
-        eval_time: 49h
+        eval_time: 27h
         exp_samples:
           - labels: 'kb_project_source_up{source="mkt-metrics"}'
             value: 0

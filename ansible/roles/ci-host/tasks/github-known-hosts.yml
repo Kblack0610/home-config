@@ -8,11 +8,7 @@
 # Authenticated with vault_github_pat: GitHub allows 60 anonymous API calls an
 # hour per IP, and every machine on the LAN shares one IP. The PAT, not the
 # control node's gh, so the in-cluster ansible-runner (no gh) can run it too.
-# One read per host, never run_once: both callers import this file under a `when`, and
-# run_once runs on the play's first host and hands its result to all, so a first host
-# that fails the `when` hands the rest a skipped result with no .json. That is two
-# calls per CI host per apply (about 10), against the PAT's 5,000 an hour (GitHub REST
-# rate limits doc, 2026-11-18); a GET, so a 429 or 5xx is retried, bounded.
+# Per host, not run_once: this file is imported under a `when` (tasks/unity.yml), and a run_once task that its batch's first host skips is skipped on every host, leaving `_github_meta` without `json`. One authenticated call per host is well inside the PAT's 5000/h; retries absorb a transient 5xx or 429.
 # Vars: github_known_hosts_user, github_known_hosts_group, github_known_hosts_home.
 - name: Read GitHub's SSH host keys
   ansible.builtin.uri:
@@ -25,9 +21,9 @@
   become: false
   check_mode: false
   register: _github_meta
-  until: _github_meta.status | default(0) == 200
   retries: 3
-  delay: 10
+  delay: 5
+  until: _github_meta.status == 200 and (_github_meta.json.ssh_keys | default([]) | length > 0)
 
 - name: Create the runner user's .ssh
   ansible.builtin.file:

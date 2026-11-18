@@ -69,6 +69,9 @@ all:
           host_tier: standard
           ansible_host: 192.168.1.28
           ssh_host_ed25519: ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIOc31JGsIsPvZ6UCygW2zQjb8t+KDKk8ZXjBlt+z7WrF
+          # The uncabled Realtek port: NetworkManager setting it up logged "Link is Down"
+          # every boot, a false HostNicDown (roles/nic-unused-down).
+          nic_unused_interfaces: [enp3s0]
           k3s_role: agent
           k3s_extra_args:
             - --node-label=node.kubernetes.io/friendly-name=ms-a2

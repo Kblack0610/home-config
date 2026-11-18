@@ -255,7 +255,7 @@ def main(argv=None):
     ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])
     ap.add_argument("--before", type=window, required=True, help="START..END, ISO UTC")
     ap.add_argument("--after", type=window, required=True, help="START..END, ISO UTC")
-    ap.add_argument("--hosts", default="razer-laptop,windows-media-ci")
+    ap.add_argument("--hosts", default="ms-a2,windows-media-ci")
     ap.add_argument("--repo", default="BlackNBrownStudios/platform")
     ap.add_argument("--workflow", default="ci.yml")
     args = ap.parse_args(argv)

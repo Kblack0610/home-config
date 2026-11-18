@@ -46,12 +46,12 @@ OUT = os.path.join(REPO, "apps/ci-topology/topology.json")
 # 2026-11-11 (ucp-1830); the wide slots that build green (razer-laptop, aws-burst-1 slot 1) have 20G.
 WIDE_SLOT_MIN_GB = 20
 RELEASE_LABEL = "unity-release"
-# Provisional, medium confidence: four Forgejo slots, two on ms-a2 (the capacity of the k3s runner
-# pod they replaced, plan make-logical-possum phase 6) and two on windows-media-ci since 2026-11-18,
+# Provisional, medium confidence: six Forgejo slots, two on ms-a2 (the capacity of the k3s runner
+# pod they replaced, plan make-logical-possum phase 6) and two each on windows-media-ci and deskslim-2 since 2026-11-18,
 # when the human asked for Forgejo on more than one host. Each slot serves one forge, so no lock or
 # dispatcher shares a slot between forges. Revisit when Forgejo queue wait is over budget for
 # 7 days while GitHub slots on the same host sit idle over 50%.
-FORGEJO_SLOTS = 4
+FORGEJO_SLOTS = 6
 NO_CI_GROUP = "no_ci_hosts"
 CI_GROUPS = ("linux_ci_runners", "unity_ci_runners", "unity_ci_mac_runners", "ci_hosts")
 UNITY_GROUPS = ("unity_ci_runners", "unity_ci_mac_runners")

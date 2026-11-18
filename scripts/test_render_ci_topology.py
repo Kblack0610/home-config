@@ -71,15 +71,22 @@ class CapTests(unittest.TestCase):
         topo, fails = topology.render(self.hosts, self.groups)
         return {s["name"]: s["caps"] for h in topo.get("hosts", {}).values() for s in h["slots"]}, fails
 
+    def plant_heavy(self):
+        # No host runs a heavy slot since razer-laptop's went (#1139), so plant one beside ms-a2's Unity slots.
+        self.hosts["ms-a2"]["ci_heavy_slots"] = 1
+        self.hosts["ms-a2"]["ci_caps"] = list(self.hosts["ms-a2"].get("ci_caps") or []) + ["heavy"]
+
     def test_unity_test_slot_takes_its_hosts_light(self):
+        self.plant_heavy()
         slots, fails = self.slots()
         self.assertEqual(fails, [])
         self.assertEqual(slots["ms-a2-unity-pool-1"], ["unity", "light"])
-        self.assertEqual(slots["razer-laptop-heavy-1"], ["heavy", "light"])
+        self.assertEqual(slots["ms-a2-heavy-1"], ["heavy", "light"])
 
     def test_heavy_waits_for_ephemeral_ports(self):
+        self.plant_heavy()
         slots, _ = self.slots()
-        self.assertNotIn("heavy", slots["razer-laptop-unity-pool-1"])
+        self.assertNotIn("heavy", slots["ms-a2-unity-pool-1"])
 
     def test_build_slot_takes_builds_alone(self):
         slots, _ = self.slots()

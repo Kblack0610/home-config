@@ -235,7 +235,7 @@ def load_config(path, topology_path=None):
     - "workers" by host (none when left out)
     - "rates": config.json's, plus {0, owned} for every LAN topology host
     - "shared": by runner, the caps its slot takes besides the governed ones (a LAN Unity test
-      slot's light), which a withhold drops and an admit gives back with the rest."""
+      slot's light and heavy), which a withhold drops and an admit gives back with the rest."""
     with open(path) as f:
         cfg = json.load(f)
     with open(topology_path or TOPOLOGY) as f:

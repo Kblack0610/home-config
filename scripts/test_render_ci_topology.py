@@ -58,11 +58,26 @@ class CapTests(unittest.TestCase):
         self.assertIn("light", slots["deskslim-2-unity-pool-1"])
         self.assertEqual(slots["ms-a2-heavy-1"], ["heavy", "light"])
 
-    def test_unity_slot_takes_light_not_heavy(self):
+    def test_unity_slot_takes_heavy_only_on_a_heavy_host(self):
+        self.hosts["deskslim-2"]["ci_caps"] = ["light", "unity"]
         slots, fails = self.slots()
         self.assertEqual(fails, [])
-        self.assertEqual(slots["ms-a2-unity-pool-1"], ["unity", "light"])
-        self.assertNotIn("heavy", slots["windows-media-ci-unity-pool-1"])
+        self.assertEqual(slots["deskslim-2-unity-pool-1"], ["unity", "light"])
+        self.hosts["deskslim-2"]["ci_caps"] = ["light", "heavy", "unity"]
+        slots, fails = self.slots()
+        self.assertEqual(fails, [])
+        self.assertEqual(slots["deskslim-2-unity-pool-1"], ["unity", "light", "heavy"])
+        self.assertEqual(slots["ms-a2-unity-pool-1"], ["unity", "light", "heavy"])
+
+    def test_unity_only_host_takes_no_heavy(self):
+        slots, fails = self.slots()
+        self.assertEqual(fails, [])
+        self.assertEqual(slots["cachyos-x8664-main-unity-pool-1"], ["unity"])
+
+    def test_cloud_host_never_takes_heavy(self):
+        self.hosts["aws-spot-1"]["ci_caps"] = ["unity", "heavy"]
+        _, fails = self.slots()
+        self.assertTrue(any("aws-spot-1: a cloud host" in f for f in fails))
 
     def test_build_slot_takes_builds_alone(self):
         slots, _ = self.slots()

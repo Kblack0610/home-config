@@ -43,7 +43,12 @@ PLA="Elegoo Generic PLA-OpenNept4une"; PETG="Elegoo Generic PETG-OpenNept4une"
 try "0.4 standard PLA" "$N4" "$S4" "$PLA"
 try "0.4 PETG PETG"   "$N4" "$P4" "$PETG"
 try "0.8 standard PLA" "$N8" "$S8" "$PLA"
-try "0.4 seashell silk" "$N4" "0.12mm Seashell @Elegoo Neptune4Pro (0.4 nozzle)-OpenNept4une" "Elegoo Silk PLA-OpenNept4une"
+for p in "0.08mm Extra Fine" "0.12mm Fine" "0.16mm Optimal" "0.24mm Draft" "0.28mm Extra Draft"; do
+  try "0.4 $p PLA" "$N4" "$p @Elegoo Neptune4Pro (0.4 nozzle)-OpenNept4une" "$PLA"
+done
+for p in "0.12mm Seashell" "0.16mm Seashell"; do
+  try "0.4 $p silk" "$N4" "$p @Elegoo Neptune4Pro (0.4 nozzle)-OpenNept4une" "Elegoo Silk PLA-OpenNept4une"
+done
 resolve() { # label machine [process]: the parents resolved when the export exists with printer_model filled
   # The CLI loads no BBL filament, so the A1 presets are proved by resolving, not slicing.
   n=$((n+1)); rm -f /tmp/m.json
@@ -52,7 +57,9 @@ resolve() { # label machine [process]: the parents resolved when the export exis
   echo "FAIL $1: $(tail -2 /tmp/log | head -1 | cut -c1-160)"; return 1
 }
 resolve "A1 machine" "Bambu Lab A1 (0.4 nozzle)-LAN" || fail=1
-resolve "A1 seashell process" "Bambu Lab A1 (0.4 nozzle)-LAN" "0.12mm Seashell @BBL A1-LAN" || fail=1
+for p in "0.12mm Seashell" "0.16mm Seashell"; do
+  resolve "A1 $p process" "Bambu Lab A1 (0.4 nozzle)-LAN" "$p @BBL A1-LAN" || fail=1
+done
 if resolve "negative control" ZZ-negative-control >/dev/null; then echo "FAIL negative control resolved: the check proves nothing"; fail=1; else echo "ok   negative control rejected"; fi
 exit $fail
 '

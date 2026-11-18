@@ -15,7 +15,7 @@ class GithubKnownHosts(unittest.TestCase):
         # skipped result goes to every host and the loop over its .json fails on the rest.
         with open(TASKS) as f:
             tasks = yaml.safe_load(f)
-        reads = [t for t in tasks if "ansible.builtin.uri" in t]
+        reads = [t for t in tasks if {"ansible.builtin.uri", "uri"} & set(t)]
         self.assertEqual(len(reads), 1)
         self.assertFalse(reads[0].get("run_once", False))
         loops = [t for t in tasks if "_github_meta" in str(t.get("loop", ""))]

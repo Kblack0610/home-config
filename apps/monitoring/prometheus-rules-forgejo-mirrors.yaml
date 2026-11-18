@@ -309,21 +309,3 @@ spec:
               against live time, so the numbers grow rather than freeze (it
               fails toward alerting) - but the data is stale. Reason is in
               forgejo_mirror_exporter_errors_total{source="{{ $labels.source }}"}.
-
-        # Up, running, and knowing nothing looks exactly like reporting perfect
-        # health.
-        - alert: ForgejoMirrorInventoryEmpty
-          expr: |
-            absent(forgejo_mirror_info)
-            and on() (forgejo_mirror_exporter_scrape_ok{source="db"} == 1)
-          for: 1h
-          labels:
-            severity: warning
-            fleet: fix
-            category: monitoring
-          annotations:
-            summary: "Forgejo reports zero mirrors"
-            description: >-
-              The exporter read the database successfully and found no mirror
-              rows at all. Either every mirror really was deleted, or it is
-              reading the wrong database.

@@ -3,11 +3,15 @@
 # the CI slices, and docker's default cgroup parent, without which every container
 # the host still runs stays capped by a CI budget meant for runners it no longer has
 # (razer-laptop, an agent host: 6G and twelve CPUs for all its docker, 2026-11-18).
+- name: Name the CI slices
+  ansible.builtin.set_fact:
+    _ci_retire_patterns: "{{ [ci_slice, ci_unity_slice, ci_linux_slice, ci_unity_slot_slice_prefix ~ '*.slice']
+                             + ci_retired_slices }}"
+
 - name: Find the CI slices
   ansible.builtin.find:
     paths: /etc/systemd/system
-    patterns: "{{ [ci_slice, ci_unity_slice, ci_linux_slice, ci_unity_slot_slice_prefix ~ '*.slice']
-                  + ci_retired_slices }}"
+    patterns: "{{ _ci_retire_patterns }}"
   register: _ci_retire_slices
 
 - name: Remove the CI slices
@@ -78,3 +82,16 @@
     name: docker.service
     state: restarted
   when: _ci_retire_docker_age.stdout == 'stale'
+
+# A slice that was active when its file went stays loaded until stopped, and a later run
+# finds no file to act on. Stop each one that holds no task: pids.current counts the
+# children, so a slice whose container still waits on the refused docker restart stays.
+- name: Stop the CI slices still loaded
+  ansible.builtin.shell: |
+    set -eu
+    for s in $(systemctl list-units --all --plain --no-legend --type=slice {{ _ci_retire_patterns | map('quote') | join(' ') }} | awk '{print $1}'); do
+      [ "$(systemctl show "$s" -p TasksCurrent --value)" = 0 ] || continue
+      systemctl stop "$s" && echo "$s"
+    done
+  register: _ci_retire_stopped
+  changed_when: _ci_retire_stopped.stdout | length > 0

@@ -49,6 +49,7 @@
     "ms-a2": {"site": "local", "full": true, "slots": [
       {"name": "ms-a2-light-1", "caps": ["light"]},
       {"name": "ms-a2-light-2", "caps": ["light"]},
+      {"name": "ms-a2-heavy-1", "caps": ["heavy", "light"]},
       {"name": "ms-a2-unity-pool-1", "caps": ["unity", "light"]},
       {"name": "ms-a2-unity-pool-2", "caps": ["unity", "light"]},
       {"name": "ms-a2-unity-pool-3", "caps": ["unity", "light"]},
@@ -69,6 +70,7 @@
       {"name": "windows-media-ci-light-2", "caps": ["light"]},
       {"name": "windows-media-ci-light-3", "caps": ["light"]},
       {"name": "windows-media-ci-light-4", "caps": ["light"]},
+      {"name": "windows-media-ci-heavy-1", "caps": ["heavy", "light"]},
       {"name": "windows-media-ci-dotfiles-private-1", "caps": ["light"], "repo": "Kblack0610/.dotfiles-private"},
       {"name": "windows-media-ci-unity-pool-1", "caps": ["unity", "light"]},
       {"name": "windows-media-ci-unity-pool-2", "caps": ["unity", "light"]}

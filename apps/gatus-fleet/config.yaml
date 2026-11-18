@@ -1,5 +1,9 @@
 # fleet.kblab.me - THE MACHINES. Every device that is a computer, not a service.
 #
+# The hand-kept half of config.yaml: scripts/render-fleet-pulse.py appends the machines,
+# rendered from the fleet_pulse group in ansible/inventory.yml, and writes config.yaml.
+# Edit this file or the inventory, never config.yaml.
+#
 # status.kblab.me answers "are my APPS up". This answers "are my MACHINES up",
 # and it is the only surface that covers the work laptop - nothing can poll into
 # a corporate-managed box, so it pushes outbound instead.
@@ -8,10 +12,10 @@
 #   poll  - machines we can reach: already-exporting, always-on, on-LAN.
 #   push  - machines we cannot reach: roaming, NAT'd, off-LAN, firewalled.
 #
-# NAMES MUST BE KEBAB-CASE. The status bars match $FLEET_ROSTER (a
-# space-separated list) against the `name` field, so a name containing a space
-# can never be rostered. Gatus itself derives key = <group>_<name>, lowercasing
-# and mapping / _ , . and whitespace to '-'.
+# Gatus only materializes an external-endpoint once it receives that host's FIRST
+# push. Until then it is absent from /api/v1/endpoints/statuses entirely - not
+# stale, MISSING. That is why the bars and fleet-exporter count against the roster
+# (fleet.kblab.me/roster) instead of against this list.
 storage:
   type: sqlite
   path: /data/gatus.db
@@ -31,185 +35,45 @@ ui:
   title: KB Fleet
   header: KB Fleet - every machine
 
-# --- PUSH: machines that report in, because nothing can reach them ---
-# Gatus only materializes an external-endpoint once it receives that host's
-# FIRST push. Until then it is absent from /api/v1/endpoints/statuses entirely -
-# not stale, MISSING. That is why the bars count against $FLEET_ROSTER instead
-# of against this list: a never-enrolled machine must show amber, not vanish.
-external-endpoints:
-  # The whole point of this instance. Corporate-managed, off-LAN, unpollable:
-  # nothing can reach INTO these, so an outbound heartbeat is the only option.
-  #
-  # One key per physical machine, deliberately. The tempting shortcut is a
-  # single `work` endpoint that whichever box is live pushes to - which is
-  # exactly the bug the old `mac` endpoint had (two Macs, one key, each
-  # masking the other's death). One employer today, but keep the per-machine
-  # key shape: the second one comes back the next time there are two.
-  #
-  # `lazer-machine` (Deloitte VDI) removed 2026-08-17 - that contract ended, the
-  # box is gone, and its last heartbeat was 2026-08-15. A retired machine left
-  # declared here is worse than absent: it goes stale and pins the fleet glyph
-  # amber forever, which is the same false-signal trap the iot Pi Zeros hit.
-  - name: gp-mac         # Gigantic Playground
-    group: workplace
-    token: "${FLEET_TOKEN}"
+# --- Rendered from the fleet_pulse group in ansible/inventory.yml by
+# scripts/render-fleet-pulse.py. Do not edit below this line.
 
-  # Personal computers that roam or firewall inbound.
+# PUSH: machines that report in, because nothing can reach them.
+external-endpoints:
   - name: linux-cachyos
     group: homelab
     token: "${FLEET_TOKEN}"
-  # windows-media: the living-room Windows and media box and the infra Windows
-  # test host (living-room-pc until 2026-10-26). Named per machine so a second
-  # Windows box can't share (and mask) its key. Enrolled with
-  # ~/.dotfiles/.local/src/fleet-pulse/enroll.ps1 -Name windows-media -Group homelab.
   - name: windows-media
     group: homelab
     token: "${FLEET_TOKEN}"
-
-  # Android tablets. They cannot run a cron curl, so apps/headwind-fleet-bridge
-  # polls Headwind's devices table and pushes on their behalf. Key is
-  # android_<device-number>; the bridge's FLEET_GROUP must match this group.
-  - name: h0001        # Lenovo Tab M11 (TB330)
+  - name: gp-mac
+    group: workplace
+    token: "${FLEET_TOKEN}"
+  - name: h0001
     group: android
     token: "${FLEET_TOKEN}"
-  - name: h0002        # Lenovo Tab M11 (TB336)
+  - name: h0002
     group: android
     token: "${FLEET_TOKEN}"
-  - name: h0003        # Lenovo Tab M9 (TB305)
+  - name: h0003
     group: android
     token: "${FLEET_TOKEN}"
-  # h0004 - a fourth device the bridge has been pushing for with nowhere to land it:
-  # 1130 rejected heartbeats in 48h ("External endpoint with key=android_h0004 not
-  # found"). The bridge enumerates Headwind's devices table, so a device enrolled
-  # THERE starts pushing here immediately whether or not anyone declared it - and the
-  # rejection is a log line nobody reads, not an error anyone sees.
-  #
-  # Declared so its data lands and it becomes visible on the board. Deliberately NOT
-  # added to FLEET_ROSTER until someone confirms what it is: rostering a device that
-  # turns out to be a stale enrolment pins the glyph amber forever (the reason the
-  # sleeping Pi Zeros and the carry phone are off the roster too).
   - name: h0004
     group: android
     token: "${FLEET_TOKEN}"
-
-  # Personal CARRY phones (Tier A - light touch, NOT Headwind). These push their
-  # OWN heartbeat from Termux (fleet-pulse push.sh under Termux:Boot + cron), so
-  # unlike h0001-h0003 they do NOT go through apps/headwind-fleet-bridge. A phone
-  # sleeps (Android Doze pauses cron), so it is declared here to show on the board
-  # with last-seen semantics but is deliberately kept OUT of FLEET_ROSTER on the
-  # desktop status bars - rostering a sleeping device pins the glyph amber forever
-  # (same reasoning as the removed iot Pi Zeros below). Onboard with
-  # `termux-fleet-onboard` (dotfiles). Key is android_<name>.
-  - name: ken-s25-main    # Galaxy S25 (daily driver) - Tier-A push heartbeat from Termux (not Headwind)
+  - name: ken-s25-main
     group: android
     token: "${FLEET_TOKEN}"
 
-# --- POLL: machines we can reach, already exporting, no agent to install ---
+# POLL: node_exporter on :9100 of machines we can reach.
 endpoints:
-  # Macs: node_exporter via the node-exporter-mac ansible role (site.yml).
-  # Polled, so the Mac needs no push agent.
   - name: mac-mini
     group: homelab
     url: "http://192.168.1.7:9100/metrics"
     interval: 60s
     conditions:
       - "[STATUS] == 200"
-
-  # k3s NODES. Nothing monitored these before: the `home-k3s` group on
-  # status.kblab.me is 11 cluster-DNS SERVICE checks and never touches a node,
-  # so "is pi5-worker2 alive" had no answer anywhere. node-exporter already
-  # runs on every node with hostNetwork:true (kube-prometheus-stack subchart),
-  # so this is pure config - no new agent, no ansible role.
-  #
-  # IPs come from `kubectl get nodes`, NOT infrastructure/dhcp/devices.yaml -
-  # that file omits the Pi Zeros and disagrees with
-  # ansible/inventory.yml about pi4-worker5 (.25 there vs .124 in reality).
-  # (pi3 was added to devices.yaml on 2026-09-01 and is no longer an exception.)
-  - name: pi5-master
-    group: k3s
-    url: "http://192.168.1.20:9100/metrics"
-    interval: 60s
-    conditions:
-      - "[STATUS] == 200"
-
-  - name: pi5-worker1
-    group: k3s
-    url: "http://192.168.1.21:9100/metrics"
-    interval: 60s
-    conditions:
-      - "[STATUS] == 200"
-
-  - name: pi5-worker2
-    group: k3s
-    url: "http://192.168.1.22:9100/metrics"
-    interval: 60s
-    conditions:
-      - "[STATUS] == 200"
-
-  - name: pi5-worker3
-    group: k3s
-    url: "http://192.168.1.23:9100/metrics"
-    interval: 60s
-    conditions:
-      - "[STATUS] == 200"
-
-  - name: pi4-worker4
-    group: k3s
-    url: "http://192.168.1.24:9100/metrics"
-    interval: 60s
-    conditions:
-      - "[STATUS] == 200"
-
-  - name: pi4-worker5
-    group: k3s
-    url: "http://192.168.1.124:9100/metrics"
-    interval: 60s
-    conditions:
-      - "[STATUS] == 200"
-
-  - name: asus-laptop
-    group: k3s
-    url: "http://192.168.1.152:9100/metrics"
-    interval: 60s
-    conditions:
-      - "[STATUS] == 200"
-
-  - name: hp-victus
-    group: k3s
-    url: "http://192.168.1.243:9100/metrics"
-    interval: 60s
-    conditions:
-      - "[STATUS] == 200"
-
-  # Was the push-only `cachy-laptop` until its 2026-10-24 reinstall; polled like
-  # the other workstations since it joined k3s on 2026-10-26.
-  - name: razer-laptop
-    group: k3s
-    url: "http://192.168.1.26:9100/metrics"
-    interval: 60s
-    conditions:
-      - "[STATUS] == 200"
-
-  # The Unity CI boxes, k3s agents since 2026-11-16.
-  - name: ms-a2
-    group: k3s
-    url: "http://192.168.1.28:9100/metrics"
-    interval: 60s
-    conditions:
-      - "[STATUS] == 200"
-
-  - name: deskslim-2
-    group: k3s
-    url: "http://192.168.1.29:9100/metrics"
-    interval: 60s
-    conditions:
-      - "[STATUS] == 200"
-
-  # Whole-house audio boxes (docs/whole-house-audio.md). node_exporter from the
-  # node-exporter-linux ansible role, which also exports snapclient's unit
-  # state: a room that is up but silent is the failure that matters here, so
-  # the check fails on either. IPs from ansible/inventory.yml (not k3s nodes).
-  - name: audio-living    # Giada DN24 (Pi CM4): living room + turntable capture
+  - name: audio-living
     group: audio
     url: "http://192.168.1.120:9100/metrics"
     interval: 60s
@@ -217,24 +81,76 @@ endpoints:
       - "[STATUS] == 200"
       - '[BODY] == pat(*node_systemd_unit_state{name="snapclient.service",state="active",type="simple"} 1*)'
       - '[BODY] == pat(*node_systemd_unit_state{name="audio-endpoint-capture.service",state="active",type="simple"} 1*)'
-
-  - name: audio-bedroom   # Pi 3B+ on Wi-Fi, speaker on the 3.5mm jack
+  - name: audio-bedroom
     group: audio
     url: "http://192.168.1.122:9100/metrics"
     interval: 60s
     conditions:
       - "[STATUS] == 200"
       - '[BODY] == pat(*node_systemd_unit_state{name="snapclient.service",state="active",type="simple"} 1*)'
-
-  # IoT (pi-zero-1/2/3, bespoke Rust pi-monitor on :9200) REMOVED for now: all
-  # three are physically down, so they only rendered as three permanent red bars.
-  # They were already excluded from $FLEET_ROSTER (they sleep by design, and
-  # counting them would pin the glyph amber forever - mirroring
-  # prometheus-rules-node-health.yaml, which excludes iot-pi-nodes from NodeDown
-  # "to avoid false pages"), so removing them changes no health signal.
-  #
-  # To re-add when the Pi Zeros come back: an `endpoints:` entry each, group `iot`,
-  # url http://192.168.1.8{0,1,2}:9200/metrics, interval 120s, [STATUS] == 200.
-  # Prometheus still scrapes them independently via
-  # apps/monitoring/external-iot-nodes.yaml - that is untouched.
-
+  - name: pi5-master
+    group: k3s
+    url: "http://192.168.1.20:9100/metrics"
+    interval: 60s
+    conditions:
+      - "[STATUS] == 200"
+  - name: pi5-worker1
+    group: k3s
+    url: "http://192.168.1.21:9100/metrics"
+    interval: 60s
+    conditions:
+      - "[STATUS] == 200"
+  - name: pi5-worker2
+    group: k3s
+    url: "http://192.168.1.22:9100/metrics"
+    interval: 60s
+    conditions:
+      - "[STATUS] == 200"
+  - name: pi5-worker3
+    group: k3s
+    url: "http://192.168.1.23:9100/metrics"
+    interval: 60s
+    conditions:
+      - "[STATUS] == 200"
+  - name: pi4-worker4
+    group: k3s
+    url: "http://192.168.1.24:9100/metrics"
+    interval: 60s
+    conditions:
+      - "[STATUS] == 200"
+  - name: pi4-worker5
+    group: k3s
+    url: "http://192.168.1.124:9100/metrics"
+    interval: 60s
+    conditions:
+      - "[STATUS] == 200"
+  - name: hp-victus
+    group: k3s
+    url: "http://192.168.1.243:9100/metrics"
+    interval: 60s
+    conditions:
+      - "[STATUS] == 200"
+  - name: razer-laptop
+    group: k3s
+    url: "http://192.168.1.26:9100/metrics"
+    interval: 60s
+    conditions:
+      - "[STATUS] == 200"
+  - name: ms-a2
+    group: k3s
+    url: "http://192.168.1.28:9100/metrics"
+    interval: 60s
+    conditions:
+      - "[STATUS] == 200"
+  - name: deskslim-2
+    group: k3s
+    url: "http://192.168.1.29:9100/metrics"
+    interval: 60s
+    conditions:
+      - "[STATUS] == 200"
+  - name: asus-laptop
+    group: k3s
+    url: "http://192.168.1.152:9100/metrics"
+    interval: 60s
+    conditions:
+      - "[STATUS] == 200"

@@ -1236,7 +1236,7 @@
         {
           "type": "table",
           "title": "Reporting but NOT rostered",
-          "description": "Machines gatus knows that the roster does not, so they are invisible to the health glyph and would never turn it amber if they died. This caught h0002/h0003 on its first run. Empty is the goal; anything here means the roster in apps/fleet-exporter/deployment.yaml and ~/.config/fleet-pulse/env have drifted.",
+          "description": "Machines gatus knows that the roster does not, so they are invisible to the health glyph and would never turn it amber if they died. This caught h0002/h0003 on its first run. Empty is the goal; anything here other than a machine declared with fleet_pulse_roster false (or roster: false) in ansible/inventory.yml is missing from the roster.",
           "datasource": {
             "type": "prometheus",
             "uid": "${datasource}"

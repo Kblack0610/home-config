@@ -227,21 +227,27 @@
 
 # The worker has no unlocked rbw (headless, rebooted with nobody to unlock it), so the
 # controller's claude-acct copies every account's token to it over ssh stdin and reads each back
-# through the worker's own claude-acct. Runs after the dotfiles are on the worker. A locked rbw
-# on the controller is reported, not fatal. Doc: dotfiles docs/operations/claude-acct-tokens.md.
+# through the worker's own claude-acct. Runs after the dotfiles are on the worker. A failure is
+# reported, not fatal; --check skips it, since it writes secrets.
+# Doc: dotfiles docs/operations/claude-acct-tokens.md.
 - name: Put the Claude account tokens on the worker
-  ansible.builtin.command: claude-acct token push {{ fleet_ssh_host | default(inventory_hostname) }}
+  ansible.builtin.command:
+    argv:
+      - "{{ lookup('env', 'HOME') }}/.local/bin/claude-acct"
+      - token
+      - push
+      - "{{ ((hostvars[inventory_hostname].ansible_user ~ '@') if hostvars[inventory_hostname].ansible_user is defined else '') ~ (fleet_ssh_host | default(inventory_hostname)) }}"
   delegate_to: localhost
   register: fleet_worker_tokens
-  changed_when: false
   failed_when: false
-  check_mode: false
 
 - name: Report what only the human can do
   vars:
     fleet_worker_left: >-
       {{ ([] if fleet_worker_gh.rc == 0 else ['gh auth login, then re-run this play for the private overlay'])
-         + ([] if fleet_worker_tokens.rc == 0 else ['Claude tokens not pushed (' ~ (fleet_worker_tokens.stderr_lines | last | default('rc ' ~ fleet_worker_tokens.rc)) ~ '): rbw unlock on this machine, re-run'])
+         + ([] if fleet_worker_tokens.rc | default(0) == 0 else
+            ['Claude tokens not pushed: ' ~ ('rbw unlock on this machine, then re-run' if fleet_worker_tokens.rc == 2
+              else (fleet_worker_tokens.stderr_lines | default([]) | join('; ') | default('rc ' ~ fleet_worker_tokens.rc, true)))])
          + (fleet_worker_clones.results | rejectattr('stat.exists') | map(attribute='item.dest')
             | map('regex_replace', '^', 'not cloned: ') | list)
          + fleet_store_left

@@ -1,6 +1,8 @@
 ---
 # What a session on a fleet worker runs: tmux and wt (from the dotfiles), the
-# three harnesses, gh for its PRs, python-yaml and jq for fleet-hosts.sh, and
+# three harnesses, gh for its PRs, python-yaml and jq for fleet-hosts.sh,
+# bubblewrap, socat and npm for srt, the lane sandbox a headless harness runs in
+# (tasks/harnesses.yml installs srt itself), and
 # rust and gcc to build agent-panel.
 fleet_worker_packages:
   - git
@@ -13,6 +15,10 @@ fleet_worker_packages:
   - gcc
   - openai-codex
   - opencode
+  - bubblewrap
+  - socat
+  - nodejs
+  - npm
 # Ubuntu, the cloud worker (platform infra/aws-ci-burst, fleet-worker-1). It takes
 # light claude items only, so it skips codex and opencode, which apt does not carry.
 fleet_worker_packages_apt:

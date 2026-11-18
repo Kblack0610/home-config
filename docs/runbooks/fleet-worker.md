@@ -6,7 +6,7 @@ A machine the human drives the fleet from, but that runs no session, goes in `fl
 
 ## What a worker takes
 
-- A light claude queue item with no plan and no `#cloud-ok` tag, in a repo listed in the host's `fleet_repos`, when the machine holding the fleet lease, which runs dispatch, is over its load or idle pace. Heavy (Unity) items, plan items and other harnesses stay on the holder.
+- A light claude queue item with no plan and no `#cloud-ok` tag, in a repo listed in the host's `fleet_repos`, when the machine holding the fleet lease, which runs dispatch, is over its load or idle pace. It runs on claude, or on a headless harness the host lists in `fleet_harnesses` while the host's probe reads that harness ready (see "Headless harnesses"). Heavy (Unity) items, plan items, a trainee batch review and any other harness stay on the holder.
 - At most `fleet_max_live` sessions at once, and none while its own 1-minute load per core is over the dispatch pace (`DISPATCH_MAX_LOAD`) or its MemAvailable is under `DISPATCH_HOST_MEM_MIN_PCT` (20%) of its memory.
 - With `fleet_first: [canary, night]` (either class alone works too), an item of that class goes to the worker before the holder, even while the holder has room; with no worker free it runs on the holder as usual. Any other item still fills the holder first.
 - A session there writes the queue and its asks into the worker's own store clone, which `store-sync` pushes at once, so every peer reads one store.
@@ -78,6 +78,18 @@ Every worker holds a peer clone of the agent store (`~/.agent`, the queue, the a
 4. Start it with the agent-web Infra page's "on" button and run the play. It joins the tailnet with the auth key from SOPS (role `tailscale-node`); then do the rest of "Add a worker", step 3.
 5. When the play prints `Ready`, set `fleet_place: true`.
 
+## Headless harnesses
+
+`fleet_harnesses: [nim, ocfree, opencode-go]` lets a worker take items on those free harnesses (the dotfiles-private harness map, `.config/agentctl/harnesses.json`), so canaries and trainee runs leave a hot workstation. Each is an opencode harness run inside its lane sandbox (srt). On each pass dispatch asks the worker's own `fleet-dispatch harness-ready <names>` over ssh and places an item on a harness only while the answer reads it ready; `fleet-dispatch hosts` prints `runs <names>` or `cannot run <name>: <why>`. A run's srt settings are written on the worker (`fleet-dispatch harness-prep`), and a trainee run's patch stays in the worker's `~/.local/state/agentctl/dispatch/trainee/` until the holder's batch review fetches it.
+
+What the worker needs, and where it comes from:
+- opencode, bubblewrap, socat and npm: `fleet_worker_packages`.
+- srt, at the pin in the worker's dotfiles `.local/src/installation_scripts/packages.conf`, installed by `tasks/harnesses.yml` into `~/.local` (on the PATH fleet-dispatch's ssh uses).
+- The harness map, each harness's eval config and its lane sandbox profile: the private overlay, so `gh auth login` and the overlay stow come first (step 3 of "Add a worker").
+- Each harness's gateway key file (`~/.local/state/agentctl/fleet-*.key`): `tasks/harnesses.yml` copies it from the controller at the same path, mode 0600, never logged. A key the controller lacks is named in the play's report and skipped.
+
+After a change to `fleet_harnesses` or a key rotation, re-run the play with `--tags fleet-worker`, then check `fleet-dispatch hosts`.
+
 ## Check a worker
 
 - `fleet-dispatch hosts` (or `--json`): each worker's free sessions, load, and why it takes nothing now.
@@ -112,3 +124,7 @@ The same play fails a host whose live host key is not its inventory `ssh_host_ed
 | The report says `store-sync join failed (...)` | Origin went away between the play's check and the join, or the clone or the move of the old dir failed (a `~/.agent.peer-new-*` or `~/.agent.pre-peer-*` in the way) | On the worker, `store-sync join` by hand shows the whole error, and `~/.agent/.sync/sync.log` has each JOIN and ERROR; fix it, re-run the play, then `agentctl reload`, since the join stopped the lanes |
 | The report says `store-sync join kept the old store at ~/.agent.pre-peer-<stamp>` | `~/.agent` was not a clone, was dirty, or held commits origin lacked, so the join took a fresh clone | `git -C ~/.agent.pre-peer-<stamp> log origin/master..` and `status` show what origin lacks; copy any queue or ask file still wanted into `~/.agent`, let `store-sync` push it, then delete the old dir |
 | The report says `the store did not take the sync key (Host key verification failed.)` | Forgejo's ssh host key changed, or store.env names a host other than `fleet_store_host` | Read the pod's `/data/ssh` ed25519 public key (apps/forgejo) and update `fleet_store_host_key` in the role defaults, or bring `fleet_store_host` and store.env back to the same host; never trust a scanned key |
+| `<host> ... cannot run nim: its key file ~/.local/state/agentctl/fleet-nim.key is not readable` | The play has not copied that harness's key, or the controller lacks it | Run the play from a controller that holds the key (`ls ~/.local/state/agentctl/` there); its report names a missing one |
+| `cannot run <harness>: no harness map at ...`, `its config ... is not readable` or `its lane sandbox ... is missing` | The private overlay is not stowed on the worker | `gh auth login` on the worker, then re-run the play |
+| `cannot run <harness>: lane sandbox '<name>' cannot hold <harness>: ...` | srt, bwrap or socat is missing on the worker | Re-run the play; its report says when the srt pin was not found in the worker's dotfiles |
+| `<harness>: no answer from its fleet-dispatch harness-ready (an older fleet-dispatch there)` | The worker's dotfiles are behind the dispatcher's | `git -C ~/.dotfiles pull` on the worker |

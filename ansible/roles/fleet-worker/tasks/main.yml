@@ -114,6 +114,10 @@
     executable: /bin/bash
     creates: "{{ ansible_env.HOME }}/.dotfiles-private"
 
+- name: Set up the headless harnesses it runs (fleet_harnesses)
+  when: fleet_harnesses | default([]) | length > 0
+  ansible.builtin.include_tasks: harnesses.yml
+
 # Same path as on the workstation: fleet-dispatch places an item only when its
 # repo's checkout is in this list, and opens the session at that path here.
 - name: Clone the repos sessions run in (fleet_repos)
@@ -291,7 +295,8 @@
          + (fleet_worker_clones.results | rejectattr('stat.exists') | map(attribute='item.dest')
             | map('regex_replace', '^', 'not cloned: ') | list)
          + fleet_store_left
-         + (fleet_home_left | default([])) }}
+         + (fleet_home_left | default([]))
+         + (fleet_harness_left | default([])) }}
   ansible.builtin.debug:
     msg: >-
       {{ ('Ready: ' ~ inventory_hostname ~ ' is a peer of the store; set fleet_place: true in inventory.yml to let fleet-dispatch place sessions here.')

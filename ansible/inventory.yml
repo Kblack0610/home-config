@@ -663,8 +663,9 @@ all:
     # game's tick runs on. Moving the server to another box (a mini PC, the
     # Razer) is this group, that host's ci_cpus, and the router's LAN answer and
     # UDP forward (apps/playground-server/README.md).
-    # Fleet workers: hosts fleet-dispatch places light claude sessions on, over
-    # ssh. dotfiles .local/lib/fleet-hosts.sh reads this group from this file
+    # Fleet workers: hosts fleet-dispatch places light sessions on over ssh, on
+    # claude or on a headless harness the host lists in fleet_harnesses. dotfiles
+    # .local/lib/fleet-hosts.sh reads this group from this file
     # alone, so its vars stay here and never move to group_vars/. Provisioned
     # by roles/fleet-worker; claude-acct token push gives it each Claude account's token. Runbook:
     # docs/runbooks/fleet-worker.md.
@@ -672,6 +673,9 @@ all:
     #   fleet_max_live   sessions at once on it (a light item is one run unit)
     #   fleet_repos      what it clones, and the repos whose items it takes;
     #                    dest is the same path as on the workstation
+    #   fleet_harnesses  the headless free harnesses it runs besides claude
+    #                    (names in the dotfiles-private harness map); placed only
+    #                    while its probe reads each ready (fleet-dispatch harness-ready)
     #   fleet_ssh_host  where fleet-dispatch ssh goes when ansible_host is not
     #                    it (a cloud worker: an instance id behind SSM)
     #   fleet_power      governor: the ci-runner-governor starts and stops it
@@ -704,6 +708,10 @@ all:
           fleet_place: true
           fleet_max_live: 5
           fleet_first: [canary, night]
+          # nim, ocfree and opencode-go canaries and trainee runs go here too, so a hot
+          # workstation no longer holds them (2026-11-18: three nim canaries waited behind
+          # a 96 C workstation while it sat idle; ar-3222).
+          fleet_harnesses: [nim, ocfree, opencode-go]
           fleet_repos:
             - dest: ~/.dotfiles
               repo: https://github.com/Kblack0610/.dotfiles.git

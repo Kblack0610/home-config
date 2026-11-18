@@ -84,7 +84,7 @@ NAMESPACE_GROUP = {
     "frigate": "Home",
     "freqtrade": "Finance",
     "gatus": "Ops",
-    "gatus-fleet": "Agents",
+    "gatus-fleet": "Ops",
     "headscale": "Ops",
     "headwind-mdm": "Home",
     "home-assistant": "Home",

@@ -28,7 +28,7 @@ The group sets `thermal_cap_boost: false`, the lever on AMD. A host with a bette
 | `thermal_cap_charge_limit` | `BAT*/charge_control_end_threshold` | Laptops on the charger 24/7 (asus has it; hp-victus does not) |
 | `thermal_cap_max_freq_khz` | every `cpufreq/policy*/scaling_max_freq`, in kHz | AMD, the step below boost off: a lower clock runs at a lower voltage (asus: 2.2GHz) |
 
-A knob that is set but whose file is missing, or that will not take the value (a BIOS-locked RAPL MSR, say), fails the unit and the play.
+A knob that is set but whose file is missing, or that will not take the value (a BIOS-locked RAPL MSR, say), fails the unit and the play. A knob set back to its default leaves the last value in sysfs until the next boot, since the script writes only set knobs: raise a clock ceiling to the base clock rather than dropping it, or reboot.
 
 Boost off costs speed: cores run at base clock, 2.5GHz on ms-a2's 9955HX (boost to 5.06GHz), 4.4GHz on deskslim-2's 9900X, 4.3GHz on the workstation's 9950X3D. Compare shard times against the previous nightly after a change.
 

@@ -7,7 +7,8 @@ thermal_capped, through its child groups, or says why not with
 (apps/ansible-runner/cronjob.yaml HOSTS) does not reach would never show
 ConvergenceDrift when its cap is missing, so each must be on that list too,
 except one Ansible manages over a local connection, which the runner cannot dial.
-Every thermal_cap_* variable a host or group sets must be one the role reads
+Every thermal_cap_* variable a host gets from inventory.yml, set on it or on one
+of its groups, must be one the role reads
 (roles/thermal-cap/defaults/main.yml): Ansible ignores a misspelled knob, so the
 cap would silently not apply. A clock ceiling must be in kHz.
 Exit 1 on a violation, 2 on an unreadable input.
@@ -42,7 +43,10 @@ def convergence_hosts(cronjob):
 
 
 def role_knobs(defaults):
-    return set(yaml.safe_load(defaults.read_text(encoding="utf-8")))
+    knobs = yaml.safe_load(defaults.read_text(encoding="utf-8"))
+    if not isinstance(knobs, dict) or not knobs:
+        raise ValueError(f"{defaults}: expected a mapping of the role's variables")
+    return set(knobs)
 
 
 def knob_errors(hosts, knobs):

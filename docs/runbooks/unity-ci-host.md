@@ -143,8 +143,8 @@ apps/ci-runner-governor powers it (config.json `power` -> `<host>`; every cloud 
 
 ## A LAN build slot (ms-a2 slot 5)
 
-- ms-a2 slot 5 is a build slot (`unity_ci_slot_groups: {5: [3, 4]}`) on test slots 3 and 4's cores (`8-13,24-29`, 32G). The governor pairs it as it pairs aws-build-1's, in the LAN loop: a waiting build steps 3 and 4 aside, and slot 5 comes in once both are idle. A build the LAN pair takes is out of aws-build-1's queue, so the paid host starts only for builds no LAN pair can take.
-- A HOT or FULL ms-a2 claims no build, so a build then waits for aws-build-1. Slot 5 has no `unity-release`, so releases stay on aws-build-1 slots 1 and 2.
+- ms-a2 slot 5 is a build slot (`unity_ci_slot_groups: {5: [3, 4]}`) on test slots 3 and 4's cores (`8-13,24-29`, 32G). The governor pairs it as it pairs aws-build-1's, in the LAN loop: a waiting build steps 3 and 4 aside, and slot 5 comes in once both are idle. A build the LAN pair claims with slots 3 and 4 idle is out of aws-build-1's queue, so the paid host does not start for it. While a test job still runs on 3 or 4, the build stays in aws-build-1's queue too, and whichever slot is up first takes it.
+- A HOT or FULL ms-a2, or one pinned to 0 (a release reservation), claims no build, so a build then waits for aws-build-1. Slot 5 has no `unity-release`, so releases stay on aws-build-1 slots 1 and 2.
 - Slot 1 keeps `slim-tour` and its warm trees (`.keep-warm-trees`): a cold Slim tour imports for 107-125 minutes, which is why the build slot is 5 and not 1.
 
 ## Secrets the playground workflows need

@@ -2056,9 +2056,10 @@ def lan_slots(spec):
 class LanPairTest(unittest.TestCase):
     BUILD = {"aws-build-1": {"state": "stopped", "busy_at": 0, "labels": PAIRED_LABELS}}
 
-    def run_lan(self, spec, waiting, lan=COOL, last=None):
+    def run_lan(self, spec, waiting, lan=COOL, last=None, pins=None):
         inst = copy.deepcopy(self.BUILD)
-        got = governor.decide(LIVE, readings(**{"ms-a2": lan}), lan_slots(spec), waiting, last or {}, 10_000, inst, {})
+        got = governor.decide(LIVE, readings(**{"ms-a2": lan}), lan_slots(spec), waiting, last or {}, 10_000, inst,
+                              pins or {})
         return sorted((a, int(r.rsplit("-", 1)[1])) for h, a, r, _, _ in got if h == "ms-a2" and a != "hold"), inst
 
     def test_the_topology_gives_ms_a2_its_pair(self):
@@ -2093,6 +2094,34 @@ class LanPairTest(unittest.TestCase):
         self.assertEqual(self.run_lan("iiiii", [UNITY_JOB])[0], [("withhold", 5)])
         # The test slots of a quiet pair are the pool's again.
         self.assertEqual(self.run_lan("ii...", [UNITY_JOB] * 3)[0], [("admit", 3)])
+
+    def test_a_claim_on_busy_tests_leaves_the_build_to_the_paid_host_too(self):
+        got, inst = self.run_lan("iiih.", [BUILD_JOB])
+        self.assertEqual(got, [("withhold", 3)])
+        self.assertEqual(inst["aws-build-1"]["want"], 1)
+
+    def test_a_host_pinned_to_0_claims_no_build(self):
+        got, inst = self.run_lan("iiii.", [BUILD_JOB], pins={"ms-a2": 0})
+        self.assertNotIn(("withhold", 3), got)
+        self.assertEqual(inst["aws-build-1"]["want"], 1)
+
+    def test_a_lent_or_idle_build_slot_is_not_held_for_disk(self):
+        def gauge(spec):
+            hosts = readings(**{"ms-a2": {**COOL, "disk": 0.23}})
+            return 'ci_governor_disk_held{host="ms-a2"} 1' in governor.render(LIVE, hosts, lan_slots(spec), 3, [], True)
+        self.assertFalse(gauge("iiii."))
+        self.assertFalse(gauge("ii..b"))
+        self.assertTrue(gauge("i...."))
+
+    def test_a_lan_build_slot_in_no_group_fails_the_config(self):
+        with open(CONFIG) as f:
+            conf = json.load(f)
+        with open(os.environ["TOPOLOGY"]) as f:
+            topo = json.load(f)
+        for slot in topo["hosts"]["ms-a2"]["slots"]:
+            slot.pop("group", None)
+        with self.assertRaisesRegex(ValueError, "LAN hosts with a build slot in no slot group: ms-a2"):
+            load_files(conf, topo)
 
     def test_a_busy_build_keeps_its_pair(self):
         self.assertEqual(self.run_lan("ii..b", [UNITY_JOB] * 3)[0], [])

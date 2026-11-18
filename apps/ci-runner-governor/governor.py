@@ -277,6 +277,10 @@ def load_config(path, topology_path=None):
         raise ValueError(f"hosts entries for no LAN Unity host: {', '.join(sorted(stray))}")
     cfg["hosts"] = {h: {**cfg["hosts"].get(h, {}), "full": bool(topo[h].get("full", True)), **build_slots(h)}
                     for h in local}
+    # A LAN build slot shares its tests' cores; ungrouped, serves_pool() would read every slot as dedicated.
+    ungrouped = [h for h, e in cfg["hosts"].items() if e.get("labels") and not e.get("groups")]
+    if ungrouped:
+        raise ValueError(f"LAN hosts with a build slot in no slot group: {', '.join(sorted(ungrouped))}")
     both = cfg["standby"].keys() & cfg["workers"].keys()
     if both:
         raise ValueError(f"in both standby and workers: {', '.join(sorted(both))}")
@@ -544,17 +548,17 @@ def decide(cfg, hosts, runners, waiting, last_action, now, instances=None, pins=
         off = sorted(n for n, r in mine.items() if r["withheld"])
         if pairs(cfg, host):
             # A LAN build slot uses its test slots' cores, so it adds no load, but a HOT or
-            # FULL host claims no build: a running one keeps its pair, an idle one steps
-            # aside, and a paid build host takes the rest. The pool rules below move only
-            # the test slots the pairs leave free.
-            mine_builds = [need for need in builds_left if need & own[host]] if v not in ("HOT", "FULL") else []
-            builds_in, aside, eligible, taken = pair_plan(cfg, host, mine, mine_builds)
-            for need in taken:
-                builds_left.remove(need)
-            stepping = {n for n, _ in aside}
-            on = [n for n in on if serves_pool(cfg, host, n) and n not in stepping]
-            off = [n for n in off if n in eligible]
-            stepped = sum(1 for n in stepping if serves_pool(cfg, host, n))
+            # FULL host, or one pinned to 0 (a release reservation), claims no build: a
+            # running one keeps its pair, an idle one steps aside, and a paid build host
+            # takes the rest. A claim whose tests are still busy stays in the paid host's
+            # queue too, so a build never waits on test jobs while aws-build-1 could take it.
+            # The pool rules below move only the test slots the pairs leave free.
+            claims = v not in ("HOT", "FULL") and (pins or {}).get(host) != 0
+            mine_builds = [need for need in builds_left if need & own[host]] if claims else []
+            builds_in, aside, on, off, stepped, taken = step_pairs(cfg, host, mine, mine_builds, on, off)
+            for need, clear in taken:
+                if clear:
+                    builds_left.remove(need)
             admitted -= stepped
             floor_held -= stepped
             pair_moves += [(host, "withhold", n, v, w) for n, w in aside]
@@ -601,8 +605,10 @@ def decide(cfg, hosts, runners, waiting, last_action, now, instances=None, pins=
     out += [m for m in pair_moves if m[1] == "admit"]
     # Slots the other hosts already have for the waiting jobs. Admitted slots can sit idle
     # for minutes with jobs queued, so one idle slot must not hold the overflow back.
-    covered = sum(1 for _, action, *_ in out if action == "admit")
-    covered += sum(1 for r in runners.values() if not r["withheld"] and not r["busy"] and r["host"] in cfg["hosts"])
+    # A LAN build slot takes no pool job, so it covers none.
+    covered = sum(1 for h, action, r, *_ in out if action == "admit" and serves_pool(cfg, h, r))
+    covered += sum(1 for n, r in runners.items() if not r["withheld"] and not r["busy"] and r["host"] in cfg["hosts"]
+                   and serves_pool(cfg, r["host"], n))
     flips = pack_plan(cfg, runners, waiting, instances or {}, covered, pins or {}, now)
     # A packed host withholds a slot below, maybe after a host ahead of it admits: count it
     # now, as a home host's withhold is counted before any admit.
@@ -635,11 +641,7 @@ def decide(cfg, hosts, runners, waiting, last_action, now, instances=None, pins=
             # Both kinds at once, a pair at a time: the pairs move by pair_plan() (every
             # step-aside in one cycle), and the pool's rules below move its test slots.
             builds = [need for need in builds_left if need & own[host]]
-            builds_in, aside, eligible, _ = pair_plan(cfg, host, mine, builds)
-            stepping = {n for n, _ in aside}
-            on = [n for n in on if serves_pool(cfg, host, n) and n not in stepping]
-            off = [n for n in off if n in eligible]
-            stepped = sum(1 for n in stepping if serves_pool(cfg, host, n))
+            builds_in, aside, on, off, stepped, _ = step_pairs(cfg, host, mine, builds, on, off)
             admitted -= stepped
             # Stopped, it starts for a waiting build on its own thresholds and for tests on
             # the pool's (a burst host's), since one waiting build is worth a start and one
@@ -885,9 +887,21 @@ def pack_plan(cfg, runners, waiting, instances, covered, pins, now):
     return flips
 
 
+def step_pairs(cfg, host, mine, builds, on, off):
+    """pair_plan() applied to a host's on and off lists: (build slots to admit, slots that step
+    aside, the pool slots still admitted, the withheld slots the pool may admit, how many pool
+    slots step aside, the claims)."""
+    builds_in, aside, eligible, taken = pair_plan(cfg, host, mine, builds)
+    stepping = {n for n, _ in aside}
+    on = [n for n in on if serves_pool(cfg, host, n) and n not in stepping]
+    off = [n for n in off if n in eligible]
+    return builds_in, aside, on, off, sum(1 for n in stepping if serves_pool(cfg, host, n)), taken
+
+
 def pair_plan(cfg, host, mine, builds):
     """A paired host's moves this cycle: (build slots to admit, slots that step aside, each
-    with its reason; the test slots the pool may admit; the waiting builds it claimed). mine
+    with its reason; the test slots the pool may admit; (build, its tests are clear) for each
+    waiting build it claimed). mine
     is its online runners, builds the waiting jobs that ask for its label. A runner not
     registered yet is quiet and takes no job."""
     P = pairs(cfg, host)
@@ -909,7 +923,7 @@ def pair_plan(cfg, host, mine, builds):
             b = min(free, key=lambda b: (not up(b), any(up(t) for t in P[b]), sum(busy(t) for t in P[b]), b))
             claimed.add(b)
             wanted.add(b)
-            taken.append(need)
+            taken.append((need, not any(busy(t) for t in P[b])))
     admit, aside, eligible = [], [], set()
     for b, tests in sorted(P.items()):
         if b in claimed:
@@ -1409,10 +1423,13 @@ def render(cfg, hosts, runners, queue, decisions, ok, instances=None, budget=Non
     # Between the withhold and admit lines the verdict is STEADY, so nothing else shows this.
     L += ["# HELP ci_governor_disk_held 1 when a host has withheld runners and too little disk to re-admit them",
           "# TYPE ci_governor_disk_held gauge"]
+    # A slot lent to its pair, or a build slot with no build, is not held for disk.
+    pair_held = lent(cfg, runners)
     for host in sorted(cfg["hosts"]):
         disk = hosts["disk"].get(host)
         held = (disk is not None and disk < cfg["hosts"][host]["admit"]["disk"]
-                and any(r["withheld"] for r in runners.values() if r["host"] == host))
+                and any(r["withheld"] and n not in pair_held and serves_pool(cfg, host, n)
+                        for n, r in runners.items() if r["host"] == host))
         L.append(f'ci_governor_disk_held{{host="{host}"}} {1 if held else 0}')
     # A paired slot held back while its pair uses the cores is normal work, not a hold for
     # load: the dashboards say "lent" for these and "withheld" for the rest.

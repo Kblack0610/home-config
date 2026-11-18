@@ -329,9 +329,16 @@ all:
         # outside its Unity slots for the platform runners. Not on the Unity slots
         # themselves: playground's light jobs clean and sparse-check-out the same repo
         # dir, which would wipe that slot's warm Library.
+        # forgejo_slots: Forgejo Actions runners, one forge per slot, in the same
+        # ci-linux.slice budget as the light and heavy slots (roles/forgejo-runner-linux).
+        # Two, both on ms-a2, since 2026-11-18: they replaced the k3s runner pod
+        # (capacity 2), which ran on ms-a2's k3s cores, so its jobs moved into the CI
+        # budget instead of adding load; every CI host read FULL that day. The total
+        # is FORGEJO_SLOTS in scripts/render-ci-topology.py.
         ms-a2:
           ci_light_slots: 2
           ci_heavy_slots: 1
+          forgejo_slots: 2
 
     # BNB Unity runner pool (added 2026-10-05; the "CI runners (light, heavy and Unity slots)" play in
     # site.yml). Org-scoped, label `unity`, for every game repo. Each slot runs
@@ -545,7 +552,7 @@ all:
     # One CPU and memory budget per CI host (roles/ci-host-budget): every runner
     # and container of every CI workload on the host shares it, and what is left
     # stays with k3s and the OS. Starting values, tuned against a full nightly.
-    # ci_caps: the job kinds the host can run (light, heavy, unity, unity-build).
+    # ci_caps: the job kinds the host can run (light, heavy, unity, unity-build, forgejo).
     # Every slot takes each of them its kind can hold (scripts/render-ci-topology.py
     # HOST_CAPS says which), so a Unity test slot also takes its host's light and heavy
     # jobs. A host's own slots of a kind need that kind here; a cloud host takes no
@@ -583,7 +590,7 @@ all:
         # heavy slot's (linux_ci_runners), 16G between them (a light job is about
         # 0.6G), which leaves 21G for the host and k3s.
         ms-a2:
-          ci_caps: [light, heavy, unity]
+          ci_caps: [light, heavy, unity, forgejo]
           ci_cpus: 2-15,18-31
           ci_memory_max: 70G
           ci_linux_cpus: 14-15,30-31

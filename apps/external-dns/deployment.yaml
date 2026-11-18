@@ -27,15 +27,17 @@ spec:
           image: registry.k8s.io/external-dns/external-dns:v0.15.0
           args:
             # Standard Ingresses AND Traefik IngressRoute CRDs (traefik-proxy).
-            # traefik-proxy is needed for binks.chat, which is an IngressRoute
-            # with edge TLS, not a standard Ingress. --traefik-disable-legacy
+            # An IngressRoute yields a record only with an
+            # external-dns.alpha.kubernetes.io/target annotation (play.kblack.dev,
+            # docs/public-sites.md); --default-targets below replaces its value. --traefik-disable-legacy
             # avoids watching the dead traefik.containo.us group (we use traefik.io).
             - --source=ingress
             - --source=traefik-proxy
             - --traefik-disable-legacy
             - --provider=cloudflare
             - --cloudflare-proxied
-            # Point every managed record at the public-sites tunnel (CNAME),
+            # Point every managed record at the public-sites tunnel (CNAME): this
+            # replaces the target of every record any source builds (multisource.go),
             # NOT the Ingress's LAN LoadBalancer IP (192.168.1.243 — which
             # Cloudflare rejects for a proxied record). All public hostnames on
             # this homelab egress through this one tunnel.

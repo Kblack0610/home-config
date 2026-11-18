@@ -17,6 +17,8 @@ token anywhere in this flow.
 Mirror an existing one: `apps/scratch/` (simple), `apps/mem0/ingress-public.yaml`
 (with middlewares).
 
+**A Traefik `IngressRoute` instead of an Ingress needs one annotation:** `external-dns.alpha.kubernetes.io/target: default-targets`. An IngressRoute has no status address, so without a target annotation the traefik-proxy source builds no record at all; with one, `--default-targets` replaces whatever the annotation says with the tunnel, so the value is a placeholder and the tunnel ID stays only in `apps/external-dns/deployment.yaml` (external-dns v0.15.0 `source/traefik_proxy.go` endpointsFromIngressRoute, `source/multisource.go` Endpoints). Pattern: binks-demos in `apps/binks-api/ingress.yaml`. binks.chat's record predates this and was made by hand.
+
 **The one exception: `git.kennethblack.me`.** The forge lives on the Hetzner VM forge-hel1, not in home-k3s, so its public name has its own tunnel, `forge-hel1`, whose connector is a `cloudflared` container in the VM's compose file (`ansible/roles/forgejo-host`). The tunnel and the CNAME are Terraform in `bnb/platform/infra/forge-tunnel`, not external-dns, so the name keeps working with home dark. Do not add an Ingress for that host: external-dns would upsert the CNAME back to the home tunnel within a minute.
 
 ## Why that's all it takes — the architecture
@@ -39,7 +41,7 @@ Two systems, each with **one** job and **one** source of truth:
 | Concern | Source of truth | Mechanism |
 |---|---|---|
 | **Routing** (which host → which service) | the Kubernetes **Ingress** (Git/Flux) | tunnel forwards *everything* to Traefik; Traefik routes by Host header |
-| **DNS** (the proxied CNAME → tunnel) | the same **Ingress** | `external-dns` derives it automatically, all public zones |
+| **DNS** (the proxied CNAME → tunnel) | the same **Ingress** | `external-dns` derives it automatically, all public zones (an IngressRoute needs the target annotation above) |
 | **TLS** | cert-manager `letsencrypt-dns` | per-host cert from the Ingress |
 | **The tunnel itself** | Terraform `bnb/platform/infra/public-sites-tunnel` | the connector + the single wildcard rule; rarely touched |
 | **git.kennethblack.me** (the exception above) | Terraform `bnb/platform/infra/forge-tunnel` | its own tunnel, rule and CNAME; connector on forge-hel1 |
@@ -70,7 +72,7 @@ make the change, then remove it again.
 `external-dns` (`apps/external-dns/`) owns DNS for every Cloudflare zone in the account (no
 `--domain-filter`, policy `upsert-only`, so it never deletes a record: removing an Ingress leaves its CNAME behind): **kennethblack.me**, **blacknbrownstudios.com**,
 **binks.chat**, **kblack.dev**, and **kblab.me**. It reads standard Ingresses **and** Traefik
-`IngressRoute`s (`--source=traefik-proxy`). An IngressRoute has no status address, so the traefik-proxy source builds no record from it unless it carries `external-dns.alpha.kubernetes.io/target: <the --default-targets tunnel>` (`--default-targets` only rewrites records a source already built; external-dns v0.15.0 `source/traefik_proxy.go` endpointsFromIngressRoute). `apps/binks-api/ingress.yaml` binks-demos is the pattern; binks.chat's own record predates this and was made by hand.
+`IngressRoute`s (`--source=traefik-proxy`).
 
 **`*.kblab.me` is not LAN-only by default.** AdGuard answers it on the LAN, but every
 `*.kblab.me` Ingress is also published through the wildcard Cloudflare tunnel (for example

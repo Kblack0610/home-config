@@ -53,7 +53,7 @@ PATH="$t/bin:$PATH" run "$plat"; ok "the same failure at job start fails the job
 # A light job on a Unity slot: ci-fresh-workspace parks the warm tree, the job checks out into an
 # empty workspace, and the job-end hook puts the warm tree back. Run from inside the workspace,
 # as a job step is.
-fresh() { (cd "$1" && HOME="$home" GITHUB_WORKSPACE="$1" "$t/fresh" >/dev/null 2>&1); }
+fresh() { (cd "$1" && HOME="$home" GITHUB_WORKSPACE="$1" ACTIONS_RUNNER_HOOK_JOB_COMPLETED="$t/job-completed.sh" "$t/fresh" >/dev/null 2>&1); }
 warm="$home/_warm/unity-core-playground/unity-core-playground"
 run "$game" 1; fresh "$game"
 ok "a light job's first step parks a Unity tree and leaves an empty workspace" '[ -d "$game" ] && [ -z "$(ls -A "$game")" ] && [ -e "$warm/Library/warm" ]'
@@ -73,4 +73,8 @@ fresh "$t/elsewhere"; ok "a workspace outside the slot's HOME is not touched by 
 HOME="$home" GITHUB_WORKSPACE="$home/_work/new/new" "$t/fresh" >/dev/null 2>&1
 ok "a missing workspace is created empty" '[ $? -eq 0 ] && [ -d "$home/_work/new/new" ]'
 end "$game"; ok "with nothing parked, job end keeps a Unity project as before" '[ -e "$game/Library/warm" ]'
+fresh "$game"; mkdir -p "$plat/node_modules"
+run "$plat"; ok "another repo's job start puts back a tree a dead light job parked" '[ -e "$game/Library/warm" ] && [ ! -e "$warm" ] && [ -z "$(ls -A "$plat")" ]'
+(cd "$game" && HOME="$home" GITHUB_WORKSPACE="$game" "$t/fresh" >/dev/null 2>&1)
+ok "a slot with no job-end hook fails the step and keeps the Unity tree in place" '[ $? -ne 0 ] && [ -e "$game/Library/warm" ] && [ ! -e "$warm" ]'
 exit $fail

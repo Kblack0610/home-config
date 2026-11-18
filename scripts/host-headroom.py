@@ -10,8 +10,9 @@ readings that failed. A host in no_ci_hosts (ansible/inventory.yml) takes no CI 
   scripts/host-headroom.py hp-victus
   scripts/host-headroom.py --all          # every host, one line each
 
-Hosts are the `host` names of the cc:host_instance series (apps/monitoring), the same names as
-the inventory. Stdlib only. PROMETHEUS_URL overrides https://prometheus.kblab.me.
+Hosts are the `host` names of the cc:host_instance series (apps/monitoring), the k8s node
+names (a Pi is raspberrypi-<id>, not its inventory name). Stdlib only.
+PROMETHEUS_URL overrides https://prometheus.kblab.me.
 
 Why: on 2026-11-13 hp-victus carried Forgejo, Frigate and six CI runners at load15 41.5 on 24
 threads and 90C and went NotReady. Its slots had been raised from two to five the day before on

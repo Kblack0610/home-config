@@ -130,7 +130,8 @@ def smart_check(name, tran, body):
                  f"{warning}, media_errors {media}", STANDARD)
 
 
-def passive_checks(host, inst):
+def passive_checks(host, node, inst):
+    """`host` is the inventory name (ssh), `node` its cc:host_instance name (the Loki journal host)."""
     checks = []
     r = headroom.readings(inst)
     state, why = headroom.verdict(r)
@@ -138,17 +139,17 @@ def passive_checks(host, inst):
 
     end = dt.datetime.now(dt.timezone.utc)
     shipped = postmortem.loki("/loki/api/v1/query", time=postmortem.ns(end),
-                              query=f'sum(count_over_time({{host="{host}",transport="kernel"}} [{FAULT_DAYS}d]))')
+                              query=f'sum(count_over_time({{host="{node}",transport="kernel"}} [{FAULT_DAYS}d]))')
     counts = {}
     for rule, regex in postmortem.fault_rules():
-        expr = (f'sum(count_over_time({{host="{host}",transport="kernel"}} |~ {json.dumps(regex)}'
+        expr = (f'sum(count_over_time({{host="{node}",transport="kernel"}} |~ {json.dumps(regex)}'
                 f' [{FAULT_DAYS}d]))')
         res = postmortem.loki("/loki/api/v1/query", query=expr, time=postmortem.ns(end))["result"]
         counts[rule] = int(float(res[0]["value"][1])) if res else 0
     hits = {k: v for k, v in counts.items() if v}
     if not shipped["result"]:
         # A host that ships no kernel log to Loki cannot show it had no fault.
-        checks.append(check(f"kernel faults {FAULT_DAYS}d", False, "no kernel log in Loki for this host", STANDARD))
+        checks.append(check(f"kernel faults {FAULT_DAYS}d", False, f"no kernel log in Loki for host {node}", STANDARD))
     else:
         checks.append(check(f"kernel faults {FAULT_DAYS}d", not hits,
                             ", ".join(f"{k} {v}" for k, v in hits.items()) or f"none of {', '.join(counts)}",
@@ -255,11 +256,12 @@ def release(host, ip, record):
 
 
 def host_instance(host, ip, known):
-    """The scrape instance for an inventory host. cc:host_instance keys k3s nodes by node name,
-    so a Pi (inventory pi5-master, node raspberrypi) is found by its inventory IP."""
+    """(cc:host_instance host, scrape instance) for an inventory host, or None. cc:host_instance
+    keys k3s nodes by node name, so a Pi (inventory pi5-worker3, node raspberrypi-771be84c) is
+    found by its inventory IP. That name is also the Loki journal `host` (apps/alloy/config.alloy)."""
     if host in known:
-        return known[host]
-    return next((inst for inst in known.values() if ip and inst.rsplit(":", 1)[0] == ip), None)
+        return host, known[host]
+    return next(((name, inst) for name, inst in known.items() if ip and inst.rsplit(":", 1)[0] == ip), None)
 
 
 def parse_minutes(s):
@@ -278,11 +280,12 @@ def main(argv=None):
     hosts, _ = load_inventory(a.inventory)
     if a.host not in hosts:
         sys.exit(f"FAIL: {a.host} is not in {a.inventory}")
-    inst = host_instance(a.host, hosts[a.host].get("ansible_host"), headroom.hosts())
-    if inst is None:
+    found = host_instance(a.host, hosts[a.host].get("ansible_host"), headroom.hosts())
+    if found is None:
         sys.exit(f"FAIL: {a.host} is not a cc:host_instance host, by name or inventory IP")
+    node, inst = found
 
-    checks = passive_checks(a.host, inst)
+    checks = passive_checks(a.host, node, inst)
     if a.no_burn_in:
         checks.append(check("burn-in", False, "not run (--no-burn-in)", STANDARD))
     elif qualified_for(checks) == "probation":

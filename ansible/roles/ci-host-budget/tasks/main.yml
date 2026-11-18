@@ -11,7 +11,7 @@
   ansible.builtin.set_fact:
     _ci_cpu_sets: >-
       {% set out = {} %}{% for name, spec in {'ci': ci_cpus, 'unity': ci_unity_cpus,
-      'linux': ci_linux_cpus, 'k3s': k3s_cpus,
+      'k3s': k3s_cpus,
       'slots': ci_unity_slot_cpus | join(',')}.items() %}{% set cpus = [] %}{%
       for part in (spec | string).split(',') if part | trim %}{% set ab = part | trim
       %}{% set ab = ab.split('-') %}{% for c in range(ab[0] | int, (ab[-1] | int) + 1)
@@ -22,16 +22,13 @@
   ansible.builtin.assert:
     that:
       - _ci_cpu_sets.unity | difference(_ci_cpu_sets.ci) | length == 0
-      - _ci_cpu_sets.linux | difference(_ci_cpu_sets.ci) | length == 0
-      - _ci_unity_eff | intersect(_ci_cpu_sets.linux) | length == 0
       - _ci_cpu_sets.slots | difference(_ci_unity_eff) | length == 0
       - _ci_cpu_sets.k3s | intersect(_ci_cpu_sets.ci) | length == 0
       - ci_unity_slot_memory_max is string or ci_unity_slot_memory_max | length == ci_unity_slot_cpus | length
     fail_msg: >-
-      {{ inventory_hostname }}: ci_unity_cpus (all of ci_cpus when empty) and
-      ci_linux_cpus must sit inside ci_cpus and not overlap, every
-      ci_unity_slot_cpus entry inside Unity's, k3s_cpus outside ci_cpus, and a
-      ci_unity_slot_memory_max list one entry per slot ({{ _ci_cpu_sets }}).
+      {{ inventory_hostname }}: ci_unity_cpus (all of ci_cpus when empty) must sit
+      inside ci_cpus, every ci_unity_slot_cpus entry inside Unity's, k3s_cpus outside
+      ci_cpus, and a ci_unity_slot_memory_max list one entry per slot ({{ _ci_cpu_sets }}).
     quiet: true
   vars:
     _ci_unity_eff: "{{ _ci_cpu_sets.unity or _ci_cpu_sets.ci }}"
@@ -44,7 +41,6 @@
   loop:
     - { src: ci.slice.j2, name: "{{ ci_slice }}" }
     - { src: ci-unity.slice.j2, name: "{{ ci_unity_slice }}" }
-    - { src: ci-linux.slice.j2, name: "{{ ci_linux_slice }}" }
   loop_control:
     label: "{{ item.name }}"
   register: _ci_slice_units
@@ -79,8 +75,8 @@
     > (ci_unity_slot_cpus | length)
   register: _ci_slot_removed
 
-# A unit still inside a retired slice keeps running there until the runner role
-# restarts it into the new one (its unit file changes, so it does).
+# A unit still inside a retired slice keeps running there until it restarts: the runner role
+# restarts a unit it still owns into the new one; a runner the play dropped is retired first.
 - name: Remove the retired per-workload slices
   ansible.builtin.file:
     path: "/etc/systemd/system/{{ item }}"

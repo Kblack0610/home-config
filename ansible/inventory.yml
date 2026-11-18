@@ -35,6 +35,7 @@ all:
         hp-victus:
           host_tier: probation
           ansible_host: 192.168.1.243
+          ssh_host_ed25519: ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIMSSeokhtpnD8t9LhxxPnQDsF6q0qE1rHNI37kYPGZX5
         # asus-laptop listens on 2222, not 22 (that part of the 2026-04-01 note
         # still holds). The `unreachable: true` flag was removed 2026-08-12:
         # it was stale, and it was load-bearing in the wrong direction. The host
@@ -47,6 +48,7 @@ all:
           host_tier: core
           ansible_host: 192.168.1.152
           ansible_port: 2222
+          ssh_host_ed25519: ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAICsWV1oEbjGp4NMxRE6W4wamxt8KJ3PIIuXaUO/1qsXS
         # Razer Blade 14 (Ryzen 9 8945HS, 32 GB since 2026-11-17, 96 GB before), reinstalled headless by PXE
         # kexec 2026-10-24 as a CI host, and a k3s agent since 2026-10-26. On the LAN through
         # a USB-C ethernet dongle; the DHCP reservation follows that dongle's MAC.
@@ -66,6 +68,7 @@ all:
         ms-a2:
           host_tier: standard
           ansible_host: 192.168.1.28
+          ssh_host_ed25519: ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIOc31JGsIsPvZ6UCygW2zQjb8t+KDKk8ZXjBlt+z7WrF
           k3s_role: agent
           k3s_extra_args:
             - --node-label=node.kubernetes.io/friendly-name=ms-a2
@@ -74,6 +77,7 @@ all:
         deskslim-2:
           host_tier: standard
           ansible_host: 192.168.1.29
+          ssh_host_ed25519: ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIN6Us7+Ypxlco5izmZf8Nu0m2Hq2GBvVpPtxh9tCKRGA
           k3s_role: agent
           k3s_extra_args:
             - --node-label=node.kubernetes.io/friendly-name=deskslim-2
@@ -89,6 +93,8 @@ all:
           # fleet-hosts.sh reads it to tell that fleet_state_host names this machine with no DNS
           # lookup, so a LAN DNS outage never makes the fleet home stand down.
           fleet_ssh_host: pc-home-cachy-main.lan
+          # /etc/ssh/ssh_host_ed25519_key.pub, which every roster machine trusts (roles/host-identity).
+          ssh_host_ed25519: ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIGaTLqfJOaCga5UzV+WsuxyRSRPcUY5GMUFloCREQ9aE
           ansible_python_interpreter: /usr/bin/python3
 
     macos_hosts:
@@ -101,6 +107,11 @@ all:
           # The store-console skill drives this Chrome over ssh with the
           # Playwright Extension; the person signs in to the store consoles here.
           brew_extra_casks: [google-chrome]
+          # Its two runners, for the CI topology (scripts/render-ci-topology.py): mac-mini-mac is
+          # the "macOS CI runner" play's, m1-playground-mac has no play (docs/mac-machines.md).
+          ci_pinned_runners:
+            - {name: mac-mini-mac, cap: macos, repo: BlackNBrownStudios/platform}
+            - {name: m1-playground-mac, cap: macos, repo: BlackNBrownStudios/unity-core-playground}
 
     # Windows PCs, managed over Windows OpenSSH (see docs/windows-machines.md
     # for the one-time paste that enables sshd and trusts the workstation key).
@@ -124,6 +135,9 @@ all:
           # Agents need a signed-in desktop; this brings it back after a reboot
           # or power cut with no one at the TV.
           windows_baseline_autologon: true
+          # The "Windows test runner" play's org runner, for the CI topology.
+          ci_pinned_runners:
+            - {name: windows-media, cap: windows}
 
     # Nodes whose tier labels Ansible owns. IP matching resolves Pi aliases
     # to their actual Kubernetes names; this group does not install k3s.
@@ -277,13 +291,13 @@ all:
         cachyos-x8664-main:
 
     # Self-hosted GitHub Actions runners for BlackNBrownStudios/platform
-    # (see the "Linux CI runners" play in site.yml).
+    # (see the "CI runners (light, heavy and Unity slots)" play in site.yml).
     # GitHub has no runner priority - an idle runner with matching labels takes
     # the next job - so the slot counts ARE the priority. heavy jobs publish
     # fixed host ports (postgres 5432, mailpit 1025/8025, app ports), so never
     # more than one heavy slot per host. CPU/memory caps are in ci_hosts below.
-    # Slot counts are mirrored in apps/github-runner-exporter
-    # RUNNER_ROSTER; scripts/check-runner-roster.py fails CI when they disagree.
+    # The exporter and governor read these slots from apps/ci-topology/topology.json,
+    # which scripts/render-ci-topology.py renders from here; CI fails when it is stale.
     # Never a host in no_ci_hosts (below); the same script fails CI on one.
     linux_ci_runners:
       hosts:
@@ -306,7 +320,7 @@ all:
           ci_repo_runners: [{repo: Kblack0610/.dotfiles-private, slot: dotfiles-private-1}]
         # Four light slots, no heavy, on the cores of its third Unity slot since
         # 2026-11-13 (unity_ci_runners says why). Light jobs average 0.4 cores and
-        # 0.6G, so four fit in three cores and 14G. Ubuntu: linux-ci-host's apt list.
+        # 0.6G, so four fit in three cores and 14G. Ubuntu: ci-host's apt list.
         windows-media-ci:
           host_tier: standard
           ci_light_slots: 4
@@ -320,12 +334,12 @@ all:
           ci_light_slots: 2
           ci_heavy_slots: 0
 
-    # BNB Unity runner pool (added 2026-10-05; the "Unity CI runner pool" play in
+    # BNB Unity runner pool (added 2026-10-05; the "CI runners (light, heavy and Unity slots)" play in
     # site.yml). Org-scoped, label `unity`, for every game repo. Each slot runs
     # one Unity job at a time (a PlayMode shard, an EditMode run, a DodginBalls
     # build), about 4-6 GB each. CPU/memory caps are in ci_hosts below. Every
     # host here is one activation on the shared Unity serial.
-    # Mirrored in RUNNER_ROSTER like linux_ci_runners above.
+    # Rendered into the CI topology like linux_ci_runners above.
     #
     # Never a host in no_ci_hosts (below).
     unity_ci_runners:
@@ -353,7 +367,7 @@ all:
           unity_ci_gate: true
         # The workstation, the human's work machine: merge gates only
         # (unity_ci_full false, so no nightly, release or Multi run lands here).
-        # apps/ci-runner-governor/config.json repeats this as "full": false for its admit.
+        # The governor reads it from the CI topology for its admit.
         # Each slot has its own three-core cpuset and a 16G cap (ci_hosts below).
         # Uncapped slots took 12 cores and 48G in October; the human asked for
         # these two again on 2026-11-03, once unity-core-playground stopped
@@ -386,7 +400,7 @@ all:
         # (unity_ci_build_slots), so playground release.yml's builds run there and no gate
         # or nightly can; slots 4-9 are pool test slots (unity, unity-full, unity-gate). Each
         # build slot shares its cores with two test slots, and the governor never runs a
-        # build and a test in one pair (apps/ci-runner-governor/config.json "pairs"). It
+        # build and a test in one group (unity_ci_slot_groups). It
         # starts the host when a build waits, and for tests as the last standby host.
         # Default image list: desktop builds need the windows flavor.
         aws-build-1:
@@ -398,6 +412,9 @@ all:
             --target %h --document-name AWS-StartSSHSession --parameters portNumber=%p"
           unity_ci_slots: 9
           unity_ci_build_slots: 3
+          # Build slot -> the test slots on its cores (ci_unity_slot_cpus below): the governor
+          # admits a build slot or its test slots, never both.
+          unity_ci_slot_groups: {1: [4, 5], 2: [6, 7], 3: [8, 9]}
           # Releases take slots 1-2 only (playground release.yml asks unity-release),
           # so a release, or one per game from ship.sh, never holds the slot players.yml
           # builds on; a release alone had all three for hours on 2026-11-11 (hc-263).
@@ -411,7 +428,7 @@ all:
           # Every cold release tree fetches the imports another tree made (playground ucp-1913).
           unity_ci_accelerator: 172.17.0.1:10080
         # Spot hosts (platform infra/aws-ci-burst, 2026-11-13), one instance type each, ahead
-        # of aws-build-1 in the governor standby (the on-demand burst hosts were retired 2026-11-16). No unity_ci_gate: a reclaim kills
+        # of aws-build-1 in the governor's start order, cheapest first (the on-demand burst hosts were retired 2026-11-16). No unity_ci_gate: a reclaim kills
         # what runs, so they take nightlies and bulk work, not merge gates (ucp-1778).
         # 16 cores with SMT, so five slots of three cores (ci_hosts below).
         aws-spot-1:
@@ -463,11 +480,11 @@ all:
 
     # macOS hosts in the same Unity pool (site.yml, "Unity CI runner pool
     # (macOS)"). Native editor, no container, so no ci_hosts budget: macOS has
-    # no cpusets. Mirrored in RUNNER_ROSTER like unity_ci_runners.
+    # no cpusets. Rendered into the CI topology like unity_ci_runners.
     unity_ci_mac_runners:
       # No Mac in the pool since 2026-11-10: the Mac Studio, its only host, was
       # sold. Add a Mac here to bring the
-      # pool back; RUNNER_ROSTER mirrors it.
+      # pool back.
       hosts: {}
 
     # Service hosts: no CI of any kind (GitHub runners, Unity slots, the
@@ -481,7 +498,7 @@ all:
     # 11-13, and Prometheus there had no liveness kill (two before): its three
     # restarts were two asus reboots and one clean exit shared with
     # victoria-metrics (asus-prometheus-48h-verify).
-    # scripts/check-runner-roster.py fails CI when a host here is in
+    # scripts/render-ci-topology.py fails CI when a host here is in
     # linux_ci_runners, unity_ci_runners or ci_hosts, and the "Retire CI on
     # no_ci_hosts" play in site.yml removes what a host still runs. Before
     # placing any work on any host, read scripts/host-headroom.py <host>.
@@ -493,6 +510,12 @@ all:
     # One CPU and memory budget per CI host (roles/ci-host-budget): every runner
     # and container of every CI workload on the host shares it, and what is left
     # stays with k3s and the OS. Starting values, tuned against a full nightly.
+    # ci_caps: the job kinds the host can run (light, heavy, unity, unity-build).
+    # Every slot takes each of them its kind can hold (scripts/render-ci-topology.py
+    # HOST_CAPS says which), so a Unity test slot on a light host also takes light
+    # jobs. A host's own slots of a kind need that kind here; a cloud host takes no
+    # light or heavy, so a small job never powers a paid host. Drop a cap and
+    # re-apply to take it off every slot of the host.
     ci_hosts:
       hosts:
         # 8 cores / 16 threads, SMT siblings are n and n+8. Cores 0-1 (CPUs
@@ -504,6 +527,7 @@ all:
         # 4-6 Claude sessions. ci_unity_cpus stays set because ci-host-budget asserts it
         # does not overlap ci_linux_cpus; the Unity slice holds no units.
         razer-laptop:
+          ci_caps: [light]
           ci_cpus: 2-7,10-15
           ci_memory_max: 6G
           ci_unity_cpus: 2-4,10-12
@@ -519,6 +543,7 @@ all:
         # (linux_ci_runners), 6G between them (a light job is about 0.6G), which
         # leaves 21G for the host and k3s.
         ms-a2:
+          ci_caps: [light, unity]
           ci_cpus: 2-15,18-31
           ci_memory_max: 70G
           ci_linux_cpus: 14-15,30-31
@@ -533,6 +558,7 @@ all:
         # 2-10, which leaves core 11 and 18G for the host. A fourth slot would take
         # k3s's cores.
         deskslim-2:
+          ci_caps: [light, unity]
           ci_cpus: 2-10,14-22
           ci_memory_max: 42G
           ci_unity_cpus: 2-10,14-22
@@ -547,6 +573,7 @@ all:
         # (CPUs 14-15,30-31) also stay outside CI. Each Unity slot gets three
         # cores and 16G; the two together stop at 32G. No platform runners.
         cachyos-x8664-main:
+          ci_caps: [unity]
           ci_cpus: 8-13,24-29
           ci_memory_max: 32G
           ci_unity_cpus: 8-13,24-29
@@ -560,6 +587,7 @@ all:
         # No temperature: a VM has no k10temp, so the governor admits on
         # idle, PSI and memory alone.
         windows-media-ci:
+          ci_caps: [light, unity]
           ci_cpus: 6-23
           ci_memory_max: 42G
           ci_unity_cpus: 6-17
@@ -571,9 +599,10 @@ all:
         # aws-build-1, the same m7a.8xlarge: build slots 1-3 of 10 cores for whole-game
         # player builds, 36G each (a build SIGKILLed at 14G on aws-burst-1, #1817;
         # razer builds in 20G), and test slots 4-9 of 5 cores and 16G, two on each build
-        # slot's cores (the governor's "pairs", so a pair's 32G fits its build slot's 36G).
+        # slot's cores (unity_ci_slot_groups, so a group's 32G fits its build slot's 36G).
         # Core 0 stays with the OS and the SSM agent, core 31 is spare.
         aws-build-1:
+          ci_caps: [unity, unity-build]
           ci_cpus: 1-31
           ci_memory_max: 116G
           ci_unity_cpus: 1-30
@@ -583,6 +612,7 @@ all:
         # The Spot hosts: 16 cores with SMT (vCPU n and n+16 share core n), core 0 and its
         # twin left to the OS, five slots of three whole cores and 16G each.
         aws-spot-1:
+          ci_caps: [unity]
           ci_cpus: 1-15,17-31
           ci_memory_max: 112G
           ci_unity_cpus: 1-15,17-31
@@ -590,6 +620,7 @@ all:
           ci_unity_memory_max: 100G
           ci_unity_slot_memory_max: 16G
         aws-spot-2:
+          ci_caps: [unity]
           ci_cpus: 1-15,17-31
           ci_memory_max: 112G
           ci_unity_cpus: 1-15,17-31
@@ -597,6 +628,7 @@ all:
           ci_unity_memory_max: 100G
           ci_unity_slot_memory_max: 16G
         aws-spot-3:
+          ci_caps: [unity]
           ci_cpus: 1-15,17-31
           ci_memory_max: 112G
           ci_unity_cpus: 1-15,17-31
@@ -631,6 +663,10 @@ all:
     #   fleet_power      governor: the ci-runner-governor starts and stops it
     #                    on fleet-dispatch's demand (its config.json "workers")
     #   fleet_tailscale  true joins the tailnet (role tailscale-node)
+    #   ssh_host_ed25519 its /etc/ssh/ssh_host_ed25519_key.pub. Every machine in
+    #                    fleet_workers, fleet_controllers and desktop_workstations
+    #                    has one, and each trusts the others' under every name
+    #                    it is dialed by (roles/host-identity)
     fleet_workers:
       vars:
         fleet_state_host: pc-home-cachy-main.lan
@@ -644,10 +680,11 @@ all:
         # 11-16 while the workstation was down; not placed yet.
         razer-laptop:
           fleet_place: false
+          ssh_host_ed25519: ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAINmhQxBIidZJ6HtH0d5CRf4sj0l1CPYymCrvN/dcypAa
 
     # Machines the human drives the fleet from: they read and start sessions
-    # but never run one, so they are not fleet_workers and no play targets this
-    # group. cachyos-rog (ROG Flow, 16 GB) is the mobile seat for when the human
+    # but never run one, so they are not fleet_workers and only the host-identity
+    # play targets this group. cachyos-rog (ROG Flow, 16 GB) is the mobile seat for when the human
     # is not on Moonlight to the workstation. It roams and sleeps, so it is not
     # on the fleet-pulse roster. Host-key trust between roster machines is built
     # from this inventory (fleet-home-resilience P4).
@@ -661,6 +698,7 @@ all:
           # Tailnet IP: it roams off the LAN, and no DNS here resolves its name.
           ansible_host: 100.102.154.120
           ansible_user: kblack0610
+          ssh_host_ed25519: ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIK39bl75NdWXxa1SKSpgnH1Vg2Jr+WYYHXmK+povqIes
 
     # No admitted game host until dedicated capacity is commissioned (ask OqbBvu).
     game_server_nodes:

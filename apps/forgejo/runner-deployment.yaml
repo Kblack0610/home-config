@@ -25,7 +25,7 @@ spec:
       affinity:
         # amd64 workstation nodes only: DinD needs amd64, privileged and 6Gi,
         # which the arm64 Pis cannot give. Never a no_ci_hosts host
-        # (ansible/inventory.yml; scripts/check-runner-roster.py checks this
+        # (ansible/inventory.yml; scripts/render-ci-topology.py checks this
         # list against it): hp-victus holds Forgejo's data, asus-laptop the
         # databases. That leaves razer-laptop, ms-a2 and deskslim-2.
         nodeAffinity:

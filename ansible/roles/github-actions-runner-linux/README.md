@@ -29,7 +29,7 @@ With `gh_runner_token_source: gh` no PAT is needed: the registration token is mi
 
 ## Several runners on one host
 
-Set `gh_runner_user_home` to a shared directory and `gh_runner_home` to a per-instance directory under it, and apply the role once per instance (the "Linux CI runners" play in `playbooks/site.yml` loops it with `include_role`). Each instance gets its own systemd unit, `.runner` marker and work dir. `gh_runner_env` writes extra `KEY=VALUE` lines into the instance's `.env`; the Linux CI runners play sets `HOME` per instance so parallel jobs never share a pnpm store or `~/setup-pnpm`. `gh_runner_slice` puts the unit in a systemd slice (the `ci-host-budget` role owns `ci.slice` and its `ci-unity.slice` / `ci-linux.slice` children, and their caps).
+Set `gh_runner_user_home` to a shared directory and `gh_runner_home` to a per-instance directory under it, and apply the role once per instance (the "CI runners (light, heavy and Unity slots)" play in `playbooks/site.yml` loops it with `include_role`). Each instance gets its own systemd unit, `.runner` marker and work dir. `gh_runner_env` writes extra `KEY=VALUE` lines into the instance's `.env`; the Linux CI runners play sets `HOME` per instance so parallel jobs never share a pnpm store or `~/setup-pnpm`. `gh_runner_slice` puts the unit in a systemd slice (the `ci-host-budget` role owns `ci.slice` and its `ci-unity.slice` / `ci-linux.slice` children, and their caps).
 
 A unit or `.env` change restarts the runner, and the apply never kills a job for it. Under a job (a `Runner.Worker` under its `bin*/`) it drains the runner: one PUT of an empty custom-label set to `<api_path>/actions/runners/<id>/labels`, so no queued job matches it, then a wait on the worker's exit (`files/wait_worker_exit.py` in github-actions-runner-linux: a pidfd on Linux, kqueue on macOS, tested by `tests/test_wait_worker_exit.py`), then the restart, then a PUT of its labels back (the plan of step 7, from its labels before the drain and after, so a governor withhold during the drain holds). The apply blocks until the job ends, up to `gh_runner_drain_timeout` (360 minutes, GitHub's default job timeout). Past it the labels go back, `.restart-pending` stays in the runner home and the task reports changed, so ConvergenceDrift shows the pending restart until a later apply finishes it. An interrupted apply (Ctrl-C mid-wait) can leave the runner drained; re-run the apply.
 
@@ -54,7 +54,7 @@ In GitHub: `https://github.com/BlackNBrownStudios/platform/settings/actions/runn
 
 ## Uninstall
 
-The playbooks only add runners. To remove Unity CI pool slots (the "Unity CI runner pool" play), first take them out of `unity_ci_runners` in `ansible/inventory.yml` and `RUNNER_ROSTER` in `apps/github-runner-exporter/deployment.yaml`, then run this on the host as yourself:
+The playbooks only add runners. To remove Unity CI pool slots (the "CI runners (light, heavy and Unity slots)" play), first take them out of `unity_ci_runners` in `ansible/inventory.yml` and re-run `scripts/render-ci-topology.py`, then run this on the host as yourself:
 
 ```bash
 bash scripts/unity-ci-runner-remove.sh            # every Unity slot on this host

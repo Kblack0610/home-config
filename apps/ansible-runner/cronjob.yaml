@@ -72,12 +72,6 @@ spec:
                   mkdir -p ~/.ssh
                   install -m 0600 /secrets/ssh-privkey ~/.ssh/id_ed25519
 
-                  # ssh-keyscan's stderr used to go to /dev/null. Combined with
-                  # `set -e` that made an unreachable target the QUIETEST possible
-                  # failure: the job exited 1 having printed nothing but the
-                  # revision banner, which is exactly how it failed from at least
-                  # 2026-08-06 without anyone being able to see why. Say what
-                  # happened instead.
                   # Every host this check should cover, as "alias=ip". thinkcentre
                   # (retired 2026-10-12) alone used to be the entire scope, which meant the no-suspend
                   # guard on the laptops was never verified by anything - and when
@@ -99,13 +93,14 @@ spec:
                     ip="${addr%%:*}"
                     port=22
                     case "$addr" in *:*) port="${addr##*:}" ;; esac
-                    if ssh-keyscan -T 5 -p "$port" -H "$ip" >> ~/.ssh/known_hosts 2>/dev/null; then
+                    # Reachability only: a TCP connect to sshd's port. No event API exists for
+                    # "is this box up", so one bounded 5 s probe per host (python3: no bash here).
+                    if python3 -c 'import socket,sys; socket.create_connection((sys.argv[1], int(sys.argv[2])), 5).close()' "$ip" "$port" 2>/dev/null; then
                       REACHABLE="${REACHABLE:+$REACHABLE,}$alias"
                     else
                       SKIPPED="${SKIPPED:+$SKIPPED }$alias($addr)"
                     fi
                   done
-                  chmod 644 ~/.ssh/known_hosts
 
                   # Never let a skipped host be silent - an unchecked host looks
                   # exactly like a clean one in the logs otherwise.
@@ -127,6 +122,9 @@ spec:
                   export PATH="/workspace/bin:$PATH"
                   cd /workspace/ansible
                   ansible-galaxy collection install -r requirements.yml --force
+                  # Trust comes from the inventory's ssh_host_ed25519, never a scan: a host
+                  # with no key there fails ssh instead of being trusted on first sight.
+                  ansible-playbook playbooks/runner-known-hosts.yml
                   set +e
                   ansible-playbook playbooks/site.yml \
                     --limit "$REACHABLE" \

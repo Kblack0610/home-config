@@ -21,9 +21,9 @@ ci_unity_memory_max: 16G
 # inside ci_unity_cpus. Slot n then runs in its own ci-unity-<n>.slice, a child of
 # ci-unity.slice, so two slots never take each other's cores: PlayMode tests run in
 # real time and failed when two jobs shared eight threads (2026-10-06). Two
-# slots overlap only where ci-runner-governor pairs them (config.json "pairs": a
+# slots overlap only where ci-runner-governor groups them (inventory unity_ci_slot_groups: a
 # build slot and the test slots it never runs beside, aws-build-1), which
-# scripts/check-runner-roster.py checks. Empty = every slot shares ci-unity.slice.
+# scripts/render-ci-topology.py checks. Empty = every slot shares ci-unity.slice.
 # Its length must equal unity_ci_slots.
 ci_unity_slot_cpus: []
 # Memory cap of each of those slot slices, so a runaway Unity dies at this size

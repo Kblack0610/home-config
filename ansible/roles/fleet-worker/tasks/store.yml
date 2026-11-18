@@ -1,0 +1,133 @@
+---
+# Every fleet machine is a peer clone of the agent store (~/.agent): store-sync
+# commits, merges and pushes it, the writes at once and store-sync.timer every
+# 15 minutes. Its remotes are in ~/.config/agentctl/store.env (the private
+# overlay), its key is ~/.ssh/id_agent_sync. Design: dotfiles-private
+# .config/agentctl/QUEUE.md, "The store: every machine a peer". Runbook:
+# docs/runbooks/fleet-worker.md, "The agent store".
+
+# Its public half is a write deploy key on Forgejo kblack0610/.agent; the
+# report prints it until the key reaches the store.
+- name: Make the key the store syncs with
+  ansible.builtin.command: ssh-keygen -q -t ed25519 -N '' -C "agent-store {{ inventory_hostname }}" -f {{ ansible_env.HOME }}/.ssh/id_agent_sync
+  args:
+    creates: "{{ ansible_env.HOME }}/.ssh/id_agent_sync"
+
+- name: Read whether the store is a peer, and what joining it needs
+  ansible.builtin.stat:
+    path: "{{ ansible_env.HOME }}/{{ item }}"
+  loop:
+    - .agent/.sync/peer
+    - .config/agentctl/store.env
+    - .local/bin/store-sync
+  register: _fleet_store_files
+
+- name: Name what the store has
+  ansible.builtin.set_fact:
+    _fleet_store_has: "{{ dict(_fleet_store_files.results | map(attribute='item') | zip(_fleet_store_files.results | map(attribute='stat.exists'))) }}"
+
+# The key is data (fleet_store_host_key), never a scan or a first-use accept, so
+# store-sync's accept-new finds it already trusted.
+- name: Trust Forgejo's host key
+  ansible.builtin.known_hosts:
+    name: "[{{ fleet_store_host }}]:{{ fleet_store_port }}"
+    key: "[{{ fleet_store_host }}]:{{ fleet_store_port }} {{ fleet_store_host_key }}"
+    state: present
+
+# The URL is store.env's, the one store-sync reads, and the key is the one it
+# uses for origin. The play joins only once origin takes the key, so no peer
+# starts on the backup.
+- name: Read whether the sync key reaches the store
+  when:
+    - not _fleet_store_has['.agent/.sync/peer']
+    - _fleet_store_has['.config/agentctl/store.env']
+  ansible.builtin.shell: |
+    set -a; . "$HOME/.config/agentctl/store.env"; set +a
+    [ -n "${STORE_PRIMARY_URL:-}" ] || { echo "store.env sets no STORE_PRIMARY_URL" >&2; exit 2; }
+    GIT_TERMINAL_PROMPT=0 git ls-remote "$STORE_PRIMARY_URL" HEAD >/dev/null
+  args:
+    executable: /bin/bash
+  environment:
+    GIT_SSH_COMMAND: ssh -T -i {{ ansible_env.HOME }}/.ssh/id_agent_sync -o IdentitiesOnly=yes -o BatchMode=yes -o ConnectTimeout=10 -o StrictHostKeyChecking=yes
+  register: _fleet_store_reach
+  changed_when: false
+  failed_when: false
+  check_mode: false
+
+# A clone that is clean and not ahead of origin joins in place; anything else
+# becomes a fresh clone, and the old dir is kept as ~/.agent.pre-peer-<stamp>.
+# The lanes and agent-web stop first so nothing writes into a dir being moved;
+# home.yml starts agent-web again, and `agentctl reload` re-arms the lanes (the
+# report says so on the home, and on a failed join). A session still running
+# here would write into the kept copy: the runbook says to join a machine with
+# none live.
+- name: Join the store as a peer (store-sync join)
+  when:
+    - not _fleet_store_has['.agent/.sync/peer']
+    - _fleet_store_has['.local/bin/store-sync']
+    - _fleet_store_reach.rc | default(1) == 0
+  ansible.builtin.shell: |
+    systemctl --user stop 'agentctl@*.timer' 'agentctl@*.service' agent-web.service || true
+    "$HOME/.local/bin/store-sync" join
+  args:
+    executable: /bin/bash
+    creates: "{{ ansible_env.HOME }}/.agent/.sync/peer"
+  register: _fleet_store_join
+  failed_when: false   # a failed join (origin gone since the check, a clone or a move that failed) is in the report
+
+- name: Read whether the store joined
+  ansible.builtin.stat:
+    path: "{{ ansible_env.HOME }}/.agent/.sync/peer"
+  register: _fleet_store_peer
+
+- name: Read whether store-sync.timer is stowed
+  ansible.builtin.stat:
+    path: "{{ ansible_env.HOME }}/.config/systemd/user/store-sync.timer"
+  register: _fleet_store_timer
+
+- name: Start the store-sync timer
+  when:
+    - _fleet_store_peer.stat.exists
+    - _fleet_store_timer.stat.exists
+  ansible.builtin.systemd_service:
+    name: store-sync.timer
+    scope: user
+    enabled: true
+    state: started
+    daemon_reload: true
+
+- name: Read the store key's public half
+  ansible.builtin.slurp:
+    src: "{{ ansible_env.HOME }}/.ssh/id_agent_sync.pub"
+  register: _fleet_store_pub
+  failed_when: false
+
+# One store line, from the first step that blocks the join, in play order; a
+# join that moved an old store aside also names where it is. Without store.env
+# and gh signed out, the gh line of the report already names the fix (the
+# overlay stows once gh is signed in), so it is not said twice.
+- name: Collect what the store needs from the human
+  vars:
+    _fleet_store_kept: "{{ _fleet_store_join.stdout | default('') | regex_search('\\S+[.]pre-peer-[0-9]+') | default('', true) }}"
+  ansible.builtin.set_fact:
+    fleet_store_left: >-
+      {{ (([] if _fleet_store_timer.stat.exists else
+            ['store-sync.timer is not stowed: bring ~/.dotfiles to main (dotfiles-autopull), then re-run'])
+          + ([] if not _fleet_store_kept else
+            ['store-sync join kept the old store at ' ~ _fleet_store_kept
+             ~ ': move any queue or ask write in it that origin lacks into ~/.agent, then delete it'])
+          if _fleet_store_peer.stat.exists else
+          ['~/.local/bin/store-sync is missing: bring ~/.dotfiles to main (dotfiles-autopull), then re-run']
+          if not _fleet_store_has['.local/bin/store-sync'] else
+          ([] if fleet_worker_gh.rc != 0 else
+            ['~/.config/agentctl/store.env is missing: bring ~/.dotfiles-private to main, then re-run'])
+          if not _fleet_store_has['.config/agentctl/store.env'] else
+          ['the store did not take the sync key ('
+           ~ (_fleet_store_reach.stderr_lines | default([]) | reject('match', 'Warning: ') | first | default('no answer', true))
+           ~ '): add it as a write deploy key on Forgejo kblack0610/.agent, then re-run: '
+           ~ (_fleet_store_pub.content | default('') | b64decode | trim)]
+          if _fleet_store_reach.rc | default(1) != 0 else
+          ['store-sync join failed ('
+           ~ (_fleet_store_join.stderr_lines | default([]) | last | default('no output', true))
+           ~ '): fix it, re-run, then agentctl reload (the join stopped the lanes and agent-web)']
+          if _fleet_store_join.rc | default(0) != 0 else []) }}

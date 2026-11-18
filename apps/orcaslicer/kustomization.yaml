@@ -46,3 +46,17 @@ configMapGenerator:
       - process-seashell.info=profiles/process/0.12mm Seashell @Elegoo Neptune4Pro (0.4 nozzle)-OpenNept4une.info
       - process-seashell-a1.json=profiles/process/0.12mm Seashell @BBL A1-LAN.json
       - process-seashell-a1.info=profiles/process/0.12mm Seashell @BBL A1-LAN.info
+      - process-extrafine.json=profiles/process/0.08mm Extra Fine @Elegoo Neptune4Pro (0.4 nozzle)-OpenNept4une.json
+      - process-extrafine.info=profiles/process/0.08mm Extra Fine @Elegoo Neptune4Pro (0.4 nozzle)-OpenNept4une.info
+      - process-fine.json=profiles/process/0.12mm Fine @Elegoo Neptune4Pro (0.4 nozzle)-OpenNept4une.json
+      - process-fine.info=profiles/process/0.12mm Fine @Elegoo Neptune4Pro (0.4 nozzle)-OpenNept4une.info
+      - process-optimal.json=profiles/process/0.16mm Optimal @Elegoo Neptune4Pro (0.4 nozzle)-OpenNept4une.json
+      - process-optimal.info=profiles/process/0.16mm Optimal @Elegoo Neptune4Pro (0.4 nozzle)-OpenNept4une.info
+      - process-draft.json=profiles/process/0.24mm Draft @Elegoo Neptune4Pro (0.4 nozzle)-OpenNept4une.json
+      - process-draft.info=profiles/process/0.24mm Draft @Elegoo Neptune4Pro (0.4 nozzle)-OpenNept4une.info
+      - process-extradraft.json=profiles/process/0.28mm Extra Draft @Elegoo Neptune4Pro (0.4 nozzle)-OpenNept4une.json
+      - process-extradraft.info=profiles/process/0.28mm Extra Draft @Elegoo Neptune4Pro (0.4 nozzle)-OpenNept4une.info
+      - process-seashell-16.json=profiles/process/0.16mm Seashell @Elegoo Neptune4Pro (0.4 nozzle)-OpenNept4une.json
+      - process-seashell-16.info=profiles/process/0.16mm Seashell @Elegoo Neptune4Pro (0.4 nozzle)-OpenNept4une.info
+      - process-seashell-16-a1.json=profiles/process/0.16mm Seashell @BBL A1-LAN.json
+      - process-seashell-16-a1.info=profiles/process/0.16mm Seashell @BBL A1-LAN.info

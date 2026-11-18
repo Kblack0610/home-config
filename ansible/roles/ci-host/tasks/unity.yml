@@ -1,0 +1,155 @@
+---
+- name: Install Unity CI packages (Arch)
+  community.general.pacman:
+    name: "{{ unity_ci_packages }}"
+    state: present
+  when: ansible_os_family == "Archlinux"
+
+# The AWS hosts (aws-spot-*, aws-build-1) run the Ubuntu AMI.
+- name: Install Unity CI packages (Ubuntu)
+  ansible.builtin.apt:
+    name: "{{ unity_ci_packages_debian }}"
+    state: present
+    update_cache: true
+  when: ansible_os_family == "Debian"
+
+# Ubuntu 24.04 has no awscli package. AWS's own installer, not the snap: the
+# on-demand aws-burst-2 (11-11) got a public IP that cannot reach the snap
+# store at all, while awscli.amazonaws.com answers from every AWS address.
+- name: Fetch the AWS CLI installer for the S3 library sync
+  ansible.builtin.unarchive:
+    src: https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip
+    dest: /tmp
+    remote_src: true
+    creates: /usr/local/bin/aws
+  when: unity_ci_library_s3 | length > 0
+
+- name: Install the AWS CLI for the S3 library sync
+  ansible.builtin.command: /tmp/aws/install
+  args:
+    creates: /usr/local/bin/aws
+  when: unity_ci_library_s3 | length > 0
+
+# aws s3 sync sends 10 requests at a time by default; over ~120k small
+# files that is 2 MB/s in-region. 64 measured 10x on the push side.
+- name: Write the host's S3 transfer settings
+  ansible.builtin.copy:
+    content: |
+      [default]
+      s3 =
+        max_concurrent_requests = 64
+        max_queue_size = 10000
+    dest: /etc/unity-ci-s3.config
+    mode: "0644"
+  when: unity_ci_library_s3 | length > 0
+
+# Same user the runner role creates; made here first so the files below can be
+# owned by it before any slot exists.
+- name: Create the runner group
+  ansible.builtin.group:
+    name: "{{ unity_ci_group }}"
+    system: true
+
+- name: Create the runner user
+  ansible.builtin.user:
+    name: "{{ unity_ci_user }}"
+    group: "{{ unity_ci_group }}"
+    groups: [docker]
+    append: true
+    home: "{{ unity_ci_user_home }}"
+    shell: /bin/bash
+    system: true
+    create_home: true
+
+# GitHub's host keys for the runner user (the shared task file says why).
+- name: Trust GitHub's host keys for the runner user
+  ansible.builtin.import_tasks: github-known-hosts.yml
+  vars:
+    github_known_hosts_user: "{{ unity_ci_user }}"
+    github_known_hosts_group: "{{ unity_ci_group }}"
+    github_known_hosts_home: "{{ unity_ci_user_home }}"
+
+# 32 hex digits, the /etc/machine-id format. Made once; replacing it makes the
+# host a new machine to Unity, which costs an activation.
+- name: Create the host's Unity machine id
+  ansible.builtin.shell: >-
+    umask 022 && od -An -tx1 -N16 /dev/urandom | tr -d ' \n' > {{ unity_ci_machine_id_file }}
+    && chown {{ unity_ci_user }}:{{ unity_ci_group }} {{ unity_ci_machine_id_file }}
+  args:
+    creates: "{{ unity_ci_machine_id_file }}"
+
+# Art library copies (asset-library, asset-library-hd), one folder each under the
+# runner's home: tasks/library.yml, once per entry of unity_ci_asset_libraries.
+- name: Copy the art libraries
+  ansible.builtin.include_tasks: library.yml
+  loop: "{{ unity_ci_asset_libraries }}"
+  loop_control:
+    loop_var: library
+    label: "{{ library.name }}"
+
+# Off the LAN, the asset-library LFS store the release trees share
+# (ASSET_LIBRARY_LFS_STORE) comes through S3 too: tasks/lfs-store.yml.
+- name: Seed the asset-library LFS store from S3
+  ansible.builtin.include_tasks: lfs-store.yml
+  when: unity_ci_library_s3 | length > 0
+
+# Editor images: load a missing one from the workstation's docker, or pull it on
+# a host with unity_ci_images_pull (off the LAN, where the pull is sound). The host's own
+# connection details are read here, before the copy is delegated to localhost,
+# where ansible_connection and ansible_host would name localhost instead.
+- name: Note how this host is reached
+  ansible.builtin.set_fact:
+    _unity_ci_local: "{{ ansible_connection | default('ssh') == 'local' }}"
+    _unity_ci_ssh: >-
+      -p {{ ansible_port | default(22) }} {{ ansible_user }}@{{ ansible_host | default(inventory_hostname) }}
+
+- name: Check which editor images the host has
+  ansible.builtin.command: docker image inspect --format ok {{ item }}
+  loop: "{{ unity_ci_images }}"
+  changed_when: false
+  failed_when: false
+  check_mode: false
+  register: _unity_ci_images
+
+- name: Pull missing editor images on the host
+  ansible.builtin.command: docker pull {{ item.item }}
+  loop: "{{ _unity_ci_images.results }}"
+  loop_control:
+    label: "{{ item.item }}"
+  when:
+    - item.rc != 0
+    - unity_ci_images_pull
+
+- name: Copy missing editor images from the workstation
+  ansible.builtin.shell: >-
+    set -o pipefail &&
+    docker image inspect {{ item.item }} >/dev/null &&
+    docker save {{ item.item }} |
+    ssh -o BatchMode=yes {{ _unity_ci_ssh }} sudo docker load
+  args:
+    executable: /bin/bash
+  loop: "{{ _unity_ci_images.results }}"
+  loop_control:
+    label: "{{ item.item }}"
+  when:
+    - item.rc != 0
+    - not _unity_ci_local
+    - not unity_ci_images_pull
+  delegate_to: localhost
+  become: false
+
+- name: Assert the workstation itself has the editor images
+  ansible.builtin.assert:
+    that: item.rc == 0
+    fail_msg: "{{ item.item }} is missing here; docker pull it (over IPv4) before applying"
+  loop: "{{ _unity_ci_images.results }}"
+  loop_control:
+    label: "{{ item.item }}"
+  when:
+    - _unity_ci_local
+    - not ansible_check_mode
+
+# The host's Unity Accelerator, when the inventory gives it an address: tasks/accelerator.yml.
+- name: Run the Unity Accelerator
+  ansible.builtin.include_tasks: accelerator.yml
+  when: unity_ci_accelerator | length > 0

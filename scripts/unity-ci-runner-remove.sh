@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Remove Unity CI pool slots from the host this runs on. The inverse of the
-# "Unity CI runner pool" play (roles unity-ci-host + github-actions-runner-linux),
+# "CI runners (light, heavy and Unity slots)" play (roles ci-host + github-actions-runner-linux),
 # which has no removal path of its own.
 #
 #   bash scripts/unity-ci-runner-remove.sh            # every slot on this host
@@ -8,8 +8,8 @@
 #   bash scripts/unity-ci-runner-remove.sh --host asus-laptop --slot 2
 #   ... --force                                        # even a slot mid-job
 #
-# First take the slots out of unity_ci_runners in ansible/inventory.yml (and
-# RUNNER_ROSTER in apps/github-runner-exporter/deployment.yaml), or the next
+# First take the slots out of unity_ci_runners in ansible/inventory.yml (and re-run
+# scripts/render-ci-topology.py), or the next
 # playbook run puts them back. Run as yourself, not root: it asks for sudo once,
 # and deregisters with your gh (admin:org). Safe to run again. What it removes and
 # keeps: ansible/roles/github-actions-runner-linux/README.md, "Uninstall".
@@ -73,7 +73,7 @@ for n in "${SLOTS[@]}"; do
   fi
 done
 
-# Only when no Unity slot is left: the host-wide pieces unity-ci-host installed.
+# Only when no Unity slot is left: the host-wide pieces ci-host installed.
 if ! ls /etc/systemd/system/actions.runner.*-unity-pool-*.service >/dev/null 2>&1; then
   echo "== no Unity slots left: removing the host-wide pieces"
   sudo docker ps -q --filter name=unity-test | xargs -r sudo docker stop

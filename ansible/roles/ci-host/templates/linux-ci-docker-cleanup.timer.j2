@@ -1,0 +1,12 @@
+# Managed by ansible (ci-host).
+[Unit]
+Description=Hourly prune of CI leftovers
+
+[Timer]
+# Hourly, since a host under the governor's re-admit line takes no Unity jobs until this runs.
+OnCalendar=hourly
+Persistent=true
+RandomizedDelaySec=10min
+
+[Install]
+WantedBy=timers.target

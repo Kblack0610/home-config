@@ -1,0 +1,27 @@
+---
+- name: Install light/heavy CI packages
+  community.general.pacman:
+    name: "{{ linux_ci_packages }}"
+    state: present
+    update_cache: true
+  register: _linux_ci_pkgs
+  # update_cache counts a refreshed sync db as a change, and --check always does,
+  # so ConvergenceDrift fired on every host nightly: only an installed package is one.
+  changed_when: _linux_ci_pkgs.packages | default([]) | length > 0
+  when: ansible_os_family != "Debian"
+
+- name: Install light/heavy CI packages (Ubuntu)
+  ansible.builtin.apt:
+    name: "{{ linux_ci_packages_apt }}"
+    state: present
+    update_cache: true
+    cache_valid_time: 86400
+  when: ansible_os_family == "Debian"
+
+- name: Install kubectl (Ubuntu has no package for it)
+  ansible.builtin.get_url:
+    url: "https://dl.k8s.io/release/{{ linux_ci_kubectl_version }}/bin/linux/amd64/kubectl"
+    checksum: "sha256:https://dl.k8s.io/release/{{ linux_ci_kubectl_version }}/bin/linux/amd64/kubectl.sha256"
+    dest: /usr/local/bin/kubectl
+    mode: "0755"
+  when: ansible_os_family == "Debian"

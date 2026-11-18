@@ -48,14 +48,14 @@ kustomize build clusters/home-k3s >/dev/null
 
 ```bash
 python3 scripts/check-fleet-roster.py
-python3 scripts/check-runner-roster.py
+python3 scripts/render-ci-topology.py --check
 python3 scripts/check-ha-packages.py
 python3 scripts/check-secret-store.py
 python3 apps/github-runner-exporter/test_exporter.py
 python3 apps/ci-runner-governor/test_governor.py
 python3 scripts/test_eeg_review.py
 apps/zomboid/tests/run.sh
-sh ansible/roles/linux-ci-host/files/test-ci-disk-prune.sh
+sh ansible/roles/ci-host/files/test-ci-disk-prune.sh
 scripts/test-prometheus-rules.sh   # needs promtool and yq
 ```
 

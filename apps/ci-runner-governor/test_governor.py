@@ -1538,11 +1538,23 @@ class StandbyOrderTest(unittest.TestCase):
 
     def test_a_budget_deny_starts_nothing(self):
         # Negative control: the deny policy covers every host, so it is no fallback.
+        self.addCleanup(setattr, governor.State, "denied", False)
         ec2 = FakeEc2("stopped", fail={"i-0spot": "UnauthorizedOperation"})
-        tracked, _ = self.cycles(ec2, n=3)
+        tracked, log = self.cycles(ec2, n=3)
         self.assertEqual(self.starts(ec2), ["i-0spot"] * 3)
         self.assertNotIn("fallback_until", tracked["aws-burst-2"])
         self.assertIn('ci_governor_fallback_total{host="aws-burst-2",reason="capacity"} 0', governor.State.metrics)
+        # hc-614: three tries log the first decision and one short line, not a decision and AWS's
+        # encoded message each cycle.
+        starts = [line for line in log if "i-0spot" in line]
+        self.assertEqual(len(starts), 2)
+        self.assertTrue(starts[0].startswith("start i-0spot on aws-burst-2: STANDBY"))
+        self.assertEqual(starts[1], "start i-0spot on aws-burst-2: the budget deny holds (UnauthorizedOperation), "
+                                    "quiet until a start goes through; queue 2")
+        ec2.fail = {}
+        _, log = self.cycles(ec2, tracked=tracked)
+        self.assertIn("start i-0spot on aws-burst-2: the budget deny lifted; queue 2", log)
+        self.assertFalse(governor.State.denied)
 
     def test_a_refused_spot_start_falls_back_too(self):
         # A Spot-only refusal (price, request state, vCPU limit) must not starve the next host.

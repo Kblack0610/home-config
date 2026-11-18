@@ -1400,6 +1400,9 @@ def decide_workers(cfg, instances, now):
 class State:
     lock = Lock()
     metrics = "ci_governor_up 0\n"
+    # The budget's deny policy is in force. The start is still tried each cycle (that is how
+    # the governor sees the deny lift), but it is logged once when it lands and once when it lifts.
+    denied = False
 
 
 def render(cfg, hosts, runners, queue, decisions, ok, instances=None, budget=None):
@@ -1539,7 +1542,8 @@ def cycle(cfg, last_action, tracked=None, budget=None):
         power = action in ("start", "stop")
         target = powered(cfg, host)["power"]["instance_id"] if power else runner
         dry = not live(cfg, host) and v not in ("PINNED", "RESTORE")
-        print(f"{'would ' if dry else ''}{action} {target} on {host}: {v}, {why}; queue {queue}", flush=True)
+        if dry or not (action == "start" and State.denied):
+            print(f"{'would ' if dry else ''}{action} {target} on {host}: {v}, {why}; queue {queue}", flush=True)
         if dry:
             last_action[host] = now
             continue
@@ -1547,12 +1551,22 @@ def cycle(cfg, last_action, tracked=None, budget=None):
             if power:
                 getattr(instances[host]["client"], action)(target)
                 instances[host].update(cause=instances[host].get("next_cause", ""), changed=action, changed_at=now)
+                if action == "start" and State.denied:
+                    State.denied = False
+                    print(f"start {target} on {host}: the budget deny lifted; queue {queue}", flush=True)
             else:
                 apply(cfg, action, runner, host)
             last_action[host] = now
         except POWER_ERRORS as e:
-            print(f"{action} {target} failed: {e}", flush=True)
             code = getattr(e, "code", "")
+            if action == "start" and code in DENY_CODES:
+                # AWS's message carries a kilobyte of encoded detail each time; the code says it all.
+                if not State.denied:
+                    State.denied = True
+                    print(f"start {target} on {host}: the budget deny holds ({code}), "
+                          f"quiet until a start goes through; queue {queue}", flush=True)
+            else:
+                print(f"{action} {target} failed: {e}", flush=True)
             if action == "start" and isinstance(e, Ec2Error) and code not in DENY_CODES:
                 why = "capacity" if code in CAPACITY_CODES else "refused"
                 fall_back(instances[host], power_of(cfg, host), why, now)

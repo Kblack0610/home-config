@@ -84,7 +84,7 @@ def replay(url, days, cfg):
                                    start, end).items():
         name = dict(key).get("name")
         if name in slots:
-            online[slots[name]].update(series)
+            online[slots[name]].update(t for t, v in series.items() if v > 0)
     waiting = defaultdict(list)
     q = f'github_actions_job_waiting{{pool=~"{"|".join(governor.pools(cfg))}",stuck!="true"}}'
     for key, series in query_range(url, q, start, end).items():
@@ -127,7 +127,7 @@ def replay(url, days, cfg):
             held = sum(1 for r in runners.values() if r["host"] == host and r["withheld"])
             st[host]["held_max"] = max(st[host]["held_max"], held)
             st[host]["slot_minutes_held"] += held
-            short = why.partition("short of admit on ")[2].split("+")
+            short = why.partition("short of admit on ")[2].rstrip(")").split("+")  # a cooldown wraps why in (...)
             # Free disk between the withhold and admit lines is FULL's hysteresis: held for a reason.
             if (queued and t in online[host] and v not in ("HOT", "FULL")
                     and not (v == "STEADY" and "disk" in short)):

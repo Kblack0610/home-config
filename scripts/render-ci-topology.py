@@ -64,10 +64,10 @@ KEYS = ("ci_light_slots", "ci_heavy_slots", "ci_repo_runners", "ci_pinned_runner
 # Unity slot their checkout would clean the warm Library.
 HOST_CAPS = ("light", "heavy", "unity", "unity-build", "forgejo")
 SLOT_CAPS = {"light": ["light"], "heavy": ["heavy", "light"]}
-# Provisional, medium confidence: heavy joins once platform's heavy jobs take ephemeral service
-# and app ports (plan make-logical-possum phase 4); two heavy jobs on one host clash on fixed
-# ports until then. Revisit when that platform PR merges.
-SHARED_CAPS = ("light",)
+# Heavy is shared since platform's heavy jobs, the only ones that ask for heavy, take ephemeral
+# service and app ports (BlackNBrownStudios/platform#1592 on main, #1599 on develop), so two heavy
+# jobs on one host no longer clash. Revisit if a heavy job fails on an address already in use.
+SHARED_CAPS = ("light", "heavy")
 
 
 def gigabytes(val):

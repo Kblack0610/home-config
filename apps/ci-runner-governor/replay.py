@@ -12,9 +12,13 @@ restore) and no pins: what turning DRY_RUN off would have done. Prometheus keeps
 
 Per host it prints the verdicts, withholds and admits, flaps (an admit within 30 minutes
 of a withhold), the most slots held at once, slot-minutes held, and slot-minutes held while
-pool jobs waited and the host was not HOT or FULL that minute (a slot held for nothing).
-A host with no CPU pressure series reads STEADY "no reading" and never acts; the
-coverage column says how many minutes had every reading. Stdlib only.
+pool jobs waited, a slot was online and the host was not HOT or FULL that minute (a slot held
+for nothing), with flaps and those per online day (the go-live bar's unit), split
+by what held it: the cooldown, or the admit lines a STEADY host was short of (psi, tctl).
+Free disk between the withhold and admit lines is FULL's own hysteresis and counts as held for
+a reason. A host with no CPU pressure series reads STEADY "no reading" and never acts; the
+coverage column says how many of the minutes the host had a pool slot online also had every
+reading. Stdlib only.
 """
 import argparse
 import json
@@ -73,6 +77,14 @@ def replay(url, days, cfg):
         name = dict(key).get("name")
         if name in slots:
             busy[name] = series
+    # Minutes a slot was registered and up (idle or running): coverage counts only those, since a
+    # host that is off has nothing for the governor to hold.
+    online = defaultdict(set)
+    for key, series in query_range(url, 'count by (name) (github_runner_state{state=~"idle|running"})',
+                                   start, end).items():
+        name = dict(key).get("name")
+        if name in slots:
+            online[slots[name]].update(series)
     waiting = defaultdict(list)
     q = f'github_actions_job_waiting{{pool=~"{"|".join(governor.pools(cfg))}",stuck!="true"}}'
     for key, series in query_range(url, q, start, end).items():
@@ -90,8 +102,10 @@ def replay(url, days, cfg):
         for n, r in runners.items():
             r["busy"] = busy[n].get(t, 0) > 0
         for h in lan:
-            if all(hosts[k].get(h) is not None for k in ("idle", "psi", "mem")):
-                st[h]["coverage"] += 1
+            if t in online[h]:
+                st[h]["online"] += 1
+                if all(hosts[k].get(h) is not None for k in ("idle", "psi", "mem")):
+                    st[h]["coverage"] += 1
         q = waiting.get(t, [])
         decisions = governor.decide(cfg, hosts, runners, q, last_action, t, {}, {}, ())
         queued = len(governor.pool_jobs(q, governor.build_marks(cfg))) > 0
@@ -113,8 +127,15 @@ def replay(url, days, cfg):
             held = sum(1 for r in runners.values() if r["host"] == host and r["withheld"])
             st[host]["held_max"] = max(st[host]["held_max"], held)
             st[host]["slot_minutes_held"] += held
-            if queued and v not in ("HOT", "FULL"):
+            short = why.partition("short of admit on ")[2].split("+")
+            # Free disk between the withhold and admit lines is FULL's hysteresis: held for a reason.
+            if (queued and t in online[host] and v not in ("HOT", "FULL")
+                    and not (v == "STEADY" and "disk" in short)):
                 st[host]["slot_minutes_held_for_nothing"] += held
+                # Which line held it: the cooldown, or the admit lines a STEADY host is short of.
+                cause = ("cooldown" if why.startswith("cooldown")
+                         else "+".join(short) or why if v == "STEADY" else v)
+                st[host][f"for nothing {cause}"] += held
     return st, (end - start) // STEP, slots
 
 
@@ -129,10 +150,13 @@ def main():
     print(f"replay: {a.days}d, {minutes} cycles, {len(slots)} LAN pool slots, cooldown {cfg['cooldown_seconds']}s")
     for h in sorted(st):
         c = st[h]
+        days = max(c["online"], 1) / 1440
         verdicts = ", ".join(f"{k[8:]} {v}" for k, v in sorted(c.items()) if k.startswith("verdict "))
-        print(f"{h}: coverage {c['coverage'] / minutes:.0%}; {verdicts}; withholds {c['withholds']}, admits {c['admits']}, "
+        print(f"{h}: coverage {c['coverage'] / max(c['online'], 1):.0%} of {c['online']} online minutes; {verdicts}; withholds {c['withholds']}, admits {c['admits']}, "
               f"flaps {c['flaps']}, held max {c['held_max']}, slot-min held {c['slot_minutes_held']}, "
-              f"held while jobs waited and not hot {c['slot_minutes_held_for_nothing']}")
+              f"held while jobs waited and not hot {c['slot_minutes_held_for_nothing']}"
+              f" (per online day: flaps {c['flaps'] / days:.1f}, held for nothing {c['slot_minutes_held_for_nothing'] / days:.0f})"
+              + "".join(f", {k[12:]} {v}" for k, v in sorted(c.items()) if k.startswith("for nothing ") and v))
 
 
 if __name__ == "__main__":

@@ -536,6 +536,21 @@ class ExporterTest(unittest.TestCase):
         self.assertFalse(any('state="missing"' in r and 'host="box"' in r and 'pool="unity"' in r
                              for r in rows(out, "github_runner_state")))
 
+    def test_same_runner_id_under_two_owners_counts_both(self):
+        # GitHub numbers runners per owner: a personal repo's runner 2 is not acme's runner 2.
+        repo = "repos/other/tools/actions/runners?per_page=100&page=1"
+        FAKE[repo] = {"total_count": 1, "runners": [runner(2, "box-tools-1", ["self-hosted", "light"])]}
+        saved = exporter.RUN_REPOS
+        exporter.RUN_REPOS = saved + ["other/tools"]
+        try:
+            out = self.render()
+        finally:
+            exporter.RUN_REPOS = saved
+            del FAKE[repo]
+        state = rows(out, "github_runner_state")
+        self.assertEqual(len([r for r in state if 'name="box-light-1"' in r and 'scope="acme/web"' in r]), 1, state)
+        self.assertEqual(len([r for r in state if 'name="box-tools-1"' in r and 'scope="other/tools"' in r]), 1, state)
+
     def test_withheld_build_runner_stays_in_the_build_pool(self):
         org = "orgs/acme/actions/runners?per_page=100&page=1"
         saved = FAKE[org]

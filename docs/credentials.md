@@ -1,13 +1,13 @@
 # Credentials for services we run
 
-An agent mints, rotates and stores the credential for every service in this table itself, through that service's admin path, into SOPS (or rbw where the row says so). It never asks the human to click through a UI for one. At a service we do not run (GitHub, Cloudflare, Steam, app stores, brokers, SaaS) the human's part is the account and its login, saved in rbw; an agent signs in with it on the agent machine and makes the API keys itself (the `agent-machine` skill, step 5 and Gates, which also define a `type:google` login). Why: a README that said "only the owner can mint it" kept Renovate off for three months.
+An agent mints, rotates and stores the credential for every service in this table itself, through that service's admin path, into SOPS (or rbw where the row says so). It never asks the human to click through a UI for one. At a service we do not run (GitHub, Cloudflare, Steam, app stores, brokers, SaaS) the human's part is the account and its login, saved in rbw; an agent signs in with it on the agent machine and makes the API keys itself (the `agent-machine` skill, step 5 and Gates, which also define a `type:google` login). Which vendor logins exist and still work, and who pays for each: `vendor-check`, over the registry `~/.config/agentctl/vendors` (the `cred-status` skill). Why: a README that said "only the owner can mint it" kept Renovate off for three months.
 
 Each row links the steps; it does not restate them. A service with no steps yet: do it through the admin path, write the steps into its README, and link them here in the same PR.
 
 | Service | Admin path | Steps | Where it lives |
 |---|---|---|---|
 | Forgejo: access tokens, bot users | admin CLI by `docker compose exec` on forge-hel1, then the REST API for scoped tokens | [forgejo README](../apps/forgejo/README.md#onboarding-a-repo-that-needs-forgejo-actions); bot users: the `forgejo-ops` skill, REST API | rbw (`forgejo_repo_admin`, `forgejo_deploy`, `forgejo_npm_*`) or the consumer's SOPS secret |
-| Forgejo: runner registration | `forgejo forgejo-cli actions generate-runner-token` | [forgejo README](../apps/forgejo/README.md#runner) | `apps/forgejo/runner-secret.yaml` |
+| Forgejo: runner registration | `forgejo forgejo-cli actions generate-runner-token` | [forgejo README](../apps/forgejo/README.md#runner) | `vault_forgejo_runner_registration_token` in `ansible/group_vars/ci_hosts/vault.sops.yaml` |
 | Forgejo: server secrets | `forgejo generate secret` | [forgejo README](../apps/forgejo/README.md#configuration) | `vault_forgejo_env` in `ansible/group_vars/hetzner/vault.sops.yaml` |
 | Forgejo: registry pull secrets | a token with `read:package` from the CLI above | not written yet | `apps/<app>/registry-secret.yaml` (dockerconfigjson) |
 | Forgejo: forge-hel1 tunnel token | platform `infra/forge-tunnel` apply, then `terraform output -raw tunnel_token` | [forge-tunnel README](https://github.com/BlackNBrownStudios/platform/blob/develop/infra/forge-tunnel/README.md) | `ansible/group_vars/hetzner/vault.sops.yaml` (`vault_forge_tunnel_token`) |
@@ -25,7 +25,7 @@ Each row links the steps; it does not restate them. A service with no steps yet:
 | Karakeep API keys | admin UI | [karakeep README](../apps/karakeep/README.md#first-run) | not stored in this repo |
 | Langfuse project keys | first-boot seed from the secret | not written yet | `apps/langfuse/secret.sops.yaml` |
 | gatus-fleet token | one shared token | not written yet | `apps/gatus-fleet/fleet-token-secret.sops.yaml` |
-| schedules-sync feed token (fleet home) | the `monitoring/schedules-sync-token` ServiceAccount token Secret | [fleet-worker runbook](./runbooks/fleet-worker.md#rotate-the-feed-token) | `ansible/group_vars/fleet_workers/vault.sops.yaml` |
+| schedules-sync feed token (every fleet worker; reads the exporter feed and moves the `agents/agents` Endpoints) | the `monitoring/schedules-sync-token` ServiceAccount token Secret | [fleet-worker runbook](./runbooks/fleet-worker.md#rotate-the-feed-token) | `ansible/group_vars/fleet_workers/vault.sops.yaml` |
 | ntfy-public publisher | htpasswd into the configmap | [ntfy-public README](../apps/ntfy-public/README.md) ("To rotate the publisher password") | `apps/ntfy-public/configmap.yaml`; the plaintext is a GitHub secret |
 | binks demo token (fleet `bk_pat_`) | `scripts/binks-mint-pat.sh`, by `kubectl exec` into binks Postgres | [binks-api README](../apps/binks-api/README.md#binks-demo-token) | `apps/binks-api/accounts.sops.yaml` (`BINKS_DEMO_TOKEN`) |
 

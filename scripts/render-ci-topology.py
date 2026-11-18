@@ -8,9 +8,9 @@ from the ci-topology ConfigMap instead of keeping copies of their own.
 
 Per host: site (cloud when unity_ci_lan is false, else local), full (unity_ci_full, Unity
 hosts only) and its slots. Per slot: the runner name the play registers, its caps (the job
-kinds it takes: light, heavy, unity, unity-build, macos, windows; HOST_CAPS says which of
-the host's ci_caps each slot gets), the repo of a repo-scoped
-runner, and for a build slot the test slots in its group (unity_ci_slot_groups: they share
+kinds it takes: light, heavy, unity, unity-build, forgejo, macos, windows; HOST_CAPS says
+which of the host's ci_caps each slot gets), the repo of a repo-scoped runner, the forge of a
+slot that serves Forgejo (github otherwise), and for a build slot the test slots in its group (unity_ci_slot_groups: they share
 its cores, so the governor never runs a build beside them).
 
 Rendering also checks what the inventory must hold for the slots to fit their host:
@@ -19,8 +19,8 @@ Rendering also checks what the inventory must hold for the slots to fit their ho
 - Two slots of a host share cores (ci_unity_slot_cpus) only inside one group.
 - A unity-wide slot has at least WIDE_SLOT_MIN_GB.
 - A build host gives RELEASE_LABEL to some of its build slots, never all (hc-263).
-- A core host or a host in no_ci_hosts carries no CI, and the Forgejo runner's affinity
-  excludes every one of them.
+- A core host or a host in no_ci_hosts carries no CI.
+- Forgejo slots sit on LAN hosts only, and there are FORGEJO_SLOTS of them.
 
     render-ci-topology.py           write topology.json
     render-ci-topology.py --check   fail when topology.json is not what the inventory renders (the CI gate)
@@ -33,39 +33,41 @@ import os
 import re
 import sys
 
-import yaml
-
 from host_inventory import cpu_set, load_inventory, tier_errors
 
 REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 INVENTORY = os.path.join(REPO, "ansible/inventory.yml")
 OUT = os.path.join(REPO, "apps/ci-topology/topology.json")
-FORGEJO_RUNNER = os.path.join(REPO, "apps/forgejo/runner-deployment.yaml")
 
 # Provisional, low confidence (one kill; revisit when the unity-wide jobs stop building players in the job, playground
 # ucp-1793): Soak's server build was killed at 16.96G anon in an aws-burst-2 16G slot on
 # 2026-11-11 (ucp-1830); the wide slots that build green (razer-laptop, aws-burst-1 slot 1) have 20G.
 WIDE_SLOT_MIN_GB = 20
 RELEASE_LABEL = "unity-release"
+# Provisional, medium confidence: two Forgejo slots, the capacity of the k3s runner pod they
+# replaced (plan make-logical-possum phase 6). Each slot serves one forge, so no lock or
+# dispatcher shares a slot between forges. Revisit when Forgejo queue wait is over budget for
+# 7 days while GitHub slots on the same host sit idle over 50%.
+FORGEJO_SLOTS = 2
 NO_CI_GROUP = "no_ci_hosts"
 CI_GROUPS = ("linux_ci_runners", "unity_ci_runners", "unity_ci_mac_runners", "ci_hosts")
 UNITY_GROUPS = ("unity_ci_runners", "unity_ci_mac_runners")
 # The inventory keys this reads; a Jinja value in one would render as its literal text.
 KEYS = ("ci_light_slots", "ci_heavy_slots", "ci_repo_runners", "ci_pinned_runners", "unity_ci_slots",
         "unity_ci_build_slots", "unity_ci_slot_groups", "unity_ci_lan", "unity_ci_full", "unity_ci_wide",
-        "unity_ci_slot_labels", "ci_unity_slot_cpus", "ci_unity_slot_memory_max", "ci_caps")
+        "unity_ci_slot_labels", "ci_unity_slot_cpus", "ci_unity_slot_memory_max", "ci_caps", "forgejo_slots")
 # What a host may be tagged for (ci_caps): each of its slots takes every job kind its host is
 # tagged for that the slot can hold. A light or heavy slot also takes light jobs; a Unity test
 # slot also takes SHARED_CAPS; a build slot takes builds alone, so a build never waits behind
-# a small job. Every light and heavy slot carries fresh-workspace (site.yml): its job-started
+# a small job. A forgejo slot serves Forgejo Actions alone (one forge per slot). Every light and heavy slot carries fresh-workspace (site.yml): its job-started
 # hook gives each job an empty workspace, which the Unity repos' light jobs ask for, since on a
 # Unity slot their checkout would clean the warm Library.
-HOST_CAPS = ("light", "heavy", "unity", "unity-build")
+HOST_CAPS = ("light", "heavy", "unity", "unity-build", "forgejo")
 SLOT_CAPS = {"light": ["light"], "heavy": ["heavy", "light"]}
-# Provisional, medium confidence: heavy joins once platform's heavy jobs take ephemeral service
-# and app ports (plan make-logical-possum phase 4); two heavy jobs on one host clash on fixed
-# ports until then. Revisit when that platform PR merges.
-SHARED_CAPS = ("light",)
+# Heavy is shared since platform's heavy jobs, the only ones that ask for heavy, take ephemeral
+# service and app ports (BlackNBrownStudios/platform#1592 on main, #1599 on develop), so two heavy
+# jobs on one host no longer clash. Revisit if a heavy job fails on an address already in use.
+SHARED_CAPS = ("light", "heavy")
 
 
 def gigabytes(val):
@@ -90,12 +92,14 @@ def render(hosts, groups):
         v, slots = hosts[host], []
         caps = list(v.get("ci_caps") or [])
         fails += [f"{host}: ci_caps names {c}, not one of {list(HOST_CAPS)}" for c in caps if c not in HOST_CAPS]
-        if v.get("unity_ci_lan", True) is False and set(caps) & set(SHARED_CAPS):
-            fails.append(f"{host}: a cloud host's ci_caps carry no light or heavy, so a small job never powers a paid host")
+        if v.get("unity_ci_lan", True) is False and set(caps) & {*SHARED_CAPS, "forgejo"}:
+            fails.append(f"{host}: a cloud host's ci_caps carry no light, heavy or forgejo, so a small job never powers a paid host")
         if host in groups.get("linux_ci_runners", ()):
             for kind in ("light", "heavy"):
                 slots += [{"name": f"{host}-{kind}-{n}", "caps": SLOT_CAPS[kind]} for n in range(1, int(v.get(f"ci_{kind}_slots", 0)) + 1)]
             slots += [{"name": f"{host}-{r['slot']}", "caps": SLOT_CAPS["light"], "repo": r["repo"]} for r in v.get("ci_repo_runners", [])]
+            slots += [{"name": f"{host}-forgejo-{n}", "caps": ["forgejo"], "forge": "forgejo"}
+                      for n in range(1, int(v.get("forgejo_slots", 0)) + 1)]
         unity = any(host in groups.get(g, ()) for g in UNITY_GROUPS)
         if unity:
             total, build, group = unity_layout(v)
@@ -127,6 +131,9 @@ def render(hosts, groups):
                           **({"full": v.get("unity_ci_full", True) is not False} if unity else {}),
                           "slots": slots}
     names = [s["name"] for h in topo.values() for s in h["slots"]]
+    forgejo = sum(1 for h in topo.values() for s in h["slots"] if s.get("forge") == "forgejo")
+    if forgejo != FORGEJO_SLOTS:
+        fails.append(f"{forgejo} forgejo slots (forgejo_slots), not FORGEJO_SLOTS={FORGEJO_SLOTS}; change both together")
     fails += [f"slot {n} is declared twice" for n in sorted({n for n in names if names.count(n) > 1})]
     return {"hosts": topo}, fails
 
@@ -183,7 +190,7 @@ def fit_failures(hosts, groups):
     return fails
 
 
-def no_ci_failures(hosts, groups, forgejo_runner):
+def no_ci_failures(hosts, groups):
     core = {host for host, variables in hosts.items() if variables.get("host_tier") == "core"}
     service = groups.get(NO_CI_GROUP, set())
     if not service:
@@ -195,23 +202,6 @@ def no_ci_failures(hosts, groups, forgejo_runner):
     fails += [f"{host} has core tier and is in {g}: core hosts carry no CI"
               for g in CI_GROUPS for host in sorted(groups.get(g, set()) & core)]
     fails += [f"{host} carries pinned CI but is core or in {NO_CI_GROUP}" for host in sorted(pinned & (core | service))]
-    with open(forgejo_runner, encoding="utf-8") as fh:
-        runner = yaml.safe_load(fh)
-    terms = runner["spec"]["template"]["spec"].get("affinity", {}).get("nodeAffinity", {}).get(
-        "requiredDuringSchedulingIgnoredDuringExecution", {}).get("nodeSelectorTerms", [])
-    if not terms:
-        fails.append("Forgejo runner needs required affinity excluding core and no_ci_hosts")
-    for term in terms:
-        expressions = term.get("matchExpressions", [])
-        if not any(e.get("key") == "kblab.me/tier" and e.get("operator") == "NotIn"
-                   and "core" in e.get("values", []) for e in expressions):
-            fails.append("Forgejo runner must exclude core tier in every required affinity term")
-        excluded = {host for e in expressions
-                    if e.get("key") == "kubernetes.io/hostname" and e.get("operator") == "NotIn"
-                    for host in e.get("values", [])}
-        fails += [f"{host} is in {NO_CI_GROUP}, but {os.path.relpath(forgejo_runner, REPO)} "
-                  "does not exclude it in every required affinity term"
-                  for host in sorted(service - excluded)]
     return fails
 
 
@@ -236,7 +226,7 @@ def main():
     args = ap.parse_args()
     hosts, groups = load_inventory(args.inventory)
     topo, fails = render(hosts, groups)
-    fails += fit_failures(hosts, groups) + no_ci_failures(hosts, groups, FORGEJO_RUNNER)
+    fails += fit_failures(hosts, groups) + no_ci_failures(hosts, groups)
     if not fails and not any(s.get("group") for h in topo["hosts"].values() for s in h["slots"]):
         fails.append("rendered no slot group; the parser is broken, not the inventory")
     for f in fails:

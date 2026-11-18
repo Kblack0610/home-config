@@ -1,5 +1,4 @@
-# Its own account so apps/forgejo/runner-reader-rbac.yaml can let it read the
-# Forgejo runner pods, their logs and the runner ConfigMap, and nothing else.
+# Its own account, bound to nothing: it reads only GitHub and Forgejo.
 apiVersion: v1
 kind: ServiceAccount
 metadata:
@@ -86,16 +85,15 @@ spec:
             # CI, read with GITHUB_TOKEN_KBLACK0610.
             - name: FEED_REPOS
               value: "Kblack0610/.dotfiles Kblack0610/freqtrade_trading_attempt Kblack0610/android-suite Kblack0610/zmk_config Kblack0610/openmptcsetup Kblack0610/.dotfiles-private Kblack0610/ebay-lister Kblack0610/gungan-speak Kblack0610/playtest-bot"
-            # Forgejo repos whose Actions jobs and tasks are read; the forgejo-runner
-            # pods are the runners (pool="forgejo", forge="forgejo").
+            # Forgejo repos whose Actions jobs and tasks are read; the topology's
+            # forgejo slots are the runners (pool="forgejo", forge="forgejo").
             - name: FORGEJO_REPOS
               value: "kblack0610/platform kblack0610/home-config kblack0610/bnb-game-servers kblack0610/personal-sites"
-            # Forgejo access token of kblack0610, scope read:repository only: the
-            # jobs list is owner-only (Forgejo v14 api.go: reqOwner) and needs a
-            # token even on a public repo. Minted by a human, then:
-            #   sops apps/github-runner-exporter/github-runner-exporter-secret.yaml
-            # and add a data key forgejo-token (base64). Optional: without it every
-            # forgejo:repos/* source reads api_ok=0, and the runner rows still show.
+            # Forgejo access token of kblack0610 (the admin), scopes read:repository
+            # and read:admin: the jobs list is owner-only and the runner list is
+            # admin-only. Minted with the admin CLI (docs/credentials.md), stored as
+            # data key forgejo-token. Optional: without it every forgejo:* source
+            # reads api_ok=0 and no Forgejo runner rows show.
             - name: FORGEJO_TOKEN
               valueFrom:
                 secretKeyRef:

@@ -1,5 +1,5 @@
 ---
-# What keeps a CI host from filling its disk, and every slot's job-started hook. Every CI
+# What keeps a CI host from filling its disk, and every slot's job hook. Every CI
 # host gets it (tasks/main.yml), a Unity-only one such as aws-spot-1 too.
 - name: Create the disk prune script's and hook's directory
   ansible.builtin.file:
@@ -15,11 +15,18 @@
     mode: "0755"
   tags: [ci-disk]
 
-- name: Install every slot's job-started hook (prunes on a Unity slot, empties a non-Unity workspace)
+- name: Install every slot's job hook (prunes on a Unity slot, empties a non-Unity workspace)
   ansible.builtin.template:
     src: job-started.sh.j2
     dest: "{{ linux_ci_job_started_hook }}"
     mode: "0755"
+  tags: [ci-disk]
+
+- name: Link the job hook's job-end name (its file name picks the event)
+  ansible.builtin.file:
+    src: "{{ linux_ci_job_started_hook | basename }}"
+    dest: "{{ linux_ci_job_completed_hook }}"
+    state: link
   tags: [ci-disk]
 
 - name: Create the coredump drop-in directory

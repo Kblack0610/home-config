@@ -8,6 +8,8 @@
 set -u
 
 RUNNER_HOME=${RUNNER_HOME:-/var/lib/actions-runner}
+# Where Ansible's remote temp dirs land: root's, and the connecting user's.
+ANSIBLE_TMP_ROOTS=${ANSIBLE_TMP_ROOTS:-"/root/.ansible/tmp /home/*/.ansible/tmp"}
 GALLERY_DAYS=${GALLERY_DAYS:-1}
 IMAGE_DAYS=${IMAGE_DAYS:-7}
 PERF_TREE_DAYS=${PERF_TREE_DAYS:-1}
@@ -92,6 +94,18 @@ docker images --format '{{.Repository}}:{{.Tag}}|{{.CreatedAt}}' | while IFS='|'
         echo "image $ref"
         docker image rm "$ref" >/dev/null || echo "kept $ref: in use"
     fi
+done
+
+# An upload a cut-off Ansible run left behind: the library copy's unarchive sends a 15G tarball
+# to the connecting user's ~/.ansible/tmp, and one interrupted on 2026-11-13 held 15G of
+# windows-media-ci for five days. A task here runs minutes, so a temp dir untouched for 24h or
+# more is orphaned.
+for root in $ANSIBLE_TMP_ROOTS; do
+    [ -d "$root" ] || continue
+    find "$root" -mindepth 1 -maxdepth 1 -type d -name 'ansible-tmp-*' -mtime +0 | while read -r dir; do
+        echo "ansible leftover $dir"
+        rm -rf -- "$dir" || echo "kept $dir: rm failed"
+    done
 done
 
 # A release, HD or perf tree holds a whole checkout and Library, 25G to 60G. perf-round.yml

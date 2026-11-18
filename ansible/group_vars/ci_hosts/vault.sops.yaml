@@ -1,4 +1,5 @@
 vault_github_pat: ENC[AES256_GCM,data:RlVDl/FFkQTHuq5Sk8o3AjW89NoOOIUECb8qbMvdDQe2qJHeYHbFuw==,iv:qg76QJCfMzVnpdgglrHYk/Y9kZM4FxCswtZGgmbGbvk=,tag:6TxruMXXdIhh4y7TEw1bSg==,type:str]
+vault_forgejo_runner_registration_token: ENC[AES256_GCM,data:kgqcCr0ANQ+ImUkuld42enjpzWtM12InkFWpRJy38MyMUjV8T+RUhxzfaQ==,iv:M+Xh79h3oFs/ASH70cezEifddiQYn5M4JzWmBWAmzUk=,tag:EBLEJT/cYlVqmmH8ejqsoA==,type:str]
 sops:
     age:
         - enc: |
@@ -19,7 +20,7 @@ sops:
             aK5Dy5EFsisEJlIuJL0s2tCF3DLTNU2nD1RLgXciFiMrQ2De/YMIkg==
             -----END AGE ENCRYPTED FILE-----
           recipient: age1q694uddq28kzxyteemaa4x5zxrnqlmhj0z336zmf6wpptq6ema5qcez399
-    lastmodified: "2026-11-03T17:27:52Z"
-    mac: ENC[AES256_GCM,data:IQtVpp91ML1c09P5dx06pgph05I+hpqv6gMPy8B/JN9YEOs0iFUT8TsZ7ElhzWl5Zmty8aGgjTkjPMzMOHrqB6F1QT/tm/PlJK0oLMeJEuWDTILhNoQUAE2ty5/RkIFTWfW+k+CLedazoYspSGO+7zV3WGjEbm2yzo4KxPMu5FI=,iv:qJMrRyMzB1xQA8gIKuzt3oPGPMNqwUI4+zdz7jn8KTs=,tag:OFVy8xdBB7ktV3EqmafUKQ==,type:str]
+    lastmodified: "2026-11-18T05:32:49Z"
+    mac: ENC[AES256_GCM,data:QBB4knudVZaaRFmnZW1HVu827mTqNt8Dgu0XR5TOMDxkNfEW/bERCZTmCB7i9Xio3v1nap4MpHmENARj9lsG2o5UE8y1JqZ+oNxreSDPbvE7Cd2IZtYOCEWxtXFFjxhBH8VmAeiz80JlZN3eh4xLTnbScWoHQYEKNAToVhZ3pKY=,iv:eBb8ptmM0TyKHH0c2JfGSf3VfrW4SheKMCiLcyhZRkY=,tag:kRxWljv+bBbxs2R0/YJY9w==,type:str]
     unencrypted_suffix: _unencrypted
     version: 3.13.3

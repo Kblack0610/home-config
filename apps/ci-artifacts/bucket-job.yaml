@@ -1,0 +1,78 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  # Creates the ci-artifacts bucket, its retention rules and quota, and the
+  # scoped CI user. Retention is by top-level prefix: an object under 7d/ is
+  # deleted 7 days after it was written, so a writer picks the prefix its class
+  # needs (playground docs/operations/ci-artifacts.md) and a reader knows the
+  # expiry from the key and LastModified. The import replaces the whole rule
+  # set, so this file is the one list. Idempotent. To re-run, bump the name.
+  name: ci-artifacts-bucket-2
+  labels:
+    app.kubernetes.io/name: ci-artifacts
+    app.kubernetes.io/component: bucket-bootstrap
+spec:
+  backoffLimit: 3
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: ci-artifacts
+        app.kubernetes.io/component: bucket-bootstrap
+    spec:
+      restartPolicy: OnFailure
+      nodeSelector:
+        kubernetes.io/arch: amd64
+      containers:
+        - name: mc
+          image: bitnamilegacy/minio-client:2025.4.16
+          imagePullPolicy: IfNotPresent
+          envFrom:
+            - secretRef:
+                name: ci-artifacts-secret
+          command:
+            - /bin/bash
+            - -c
+            - |
+              set -euo pipefail
+              export HOME=/tmp
+              BUCKET=ci-artifacts
+              # MC_HOST needs no connection, and mc ready blocks until the server
+              # answers: on a fresh data directory MinIO is not ready for a while
+              # after its container starts, and that race failed bucket-1.
+              export MC_HOST_m="http://${MINIO_ROOT_USER}:${MINIO_ROOT_PASSWORD}@ci-artifacts.ci-artifacts.svc.cluster.local:9000"
+              timeout 300 mc ready m
+
+              mc mb --ignore-existing "m/${BUCKET}"
+              # Hard cap well under the NAS disk's free space (about 1 TB on
+              # 2026-11-17), so a runaway writer fails its upload instead of
+              # filling the disk the rest of the NAS lives on.
+              mc quota set "m/${BUCKET}" --size 500GiB
+
+              rules=""
+              for d in 1 3 7 14 30 90; do
+                rules="${rules}${rules:+,}{\"ID\":\"expire-${d}d\",\"Status\":\"Enabled\",\"Filter\":{\"Prefix\":\"${d}d/\"},\"Expiration\":{\"Days\":${d}}}"
+              done
+              echo "{\"Rules\":[${rules}]}" | mc ilm import "m/${BUCKET}"
+
+              cat > /tmp/policy.json <<POLICY
+              {
+                "Version": "2012-10-17",
+                "Statement": [
+                  {"Effect": "Allow", "Action": ["s3:GetBucketLocation", "s3:ListBucket", "s3:ListBucketMultipartUploads"], "Resource": ["arn:aws:s3:::${BUCKET}"]},
+                  {"Effect": "Allow", "Action": ["s3:GetObject", "s3:PutObject", "s3:DeleteObject", "s3:AbortMultipartUpload", "s3:ListMultipartUploadParts"], "Resource": ["arn:aws:s3:::${BUCKET}/*"]}
+                ]
+              }
+              POLICY
+              mc admin policy create m ci-artifacts-rw /tmp/policy.json
+              mc admin user add m "$CI_ACCESS_KEY" "$CI_SECRET_KEY" >/dev/null
+              if ! mc admin user info m "$CI_ACCESS_KEY" | grep -q 'ci-artifacts-rw'; then
+                mc admin policy attach m ci-artifacts-rw --user "$CI_ACCESS_KEY"
+              fi
+
+              mc quota info "m/${BUCKET}"
+              mc ilm rule ls "m/${BUCKET}"
+              echo "ci-artifacts bucket, rules and user ready."
+          resources:
+            requests:
+              memory: "32Mi"
+              cpu: "20m"

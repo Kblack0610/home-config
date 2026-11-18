@@ -1,9 +1,10 @@
 # schedules-sync (dotfiles .local/bin/schedules-sync) reads this exporter's
-# changes feed through the API server's Service proxy. The fleet home has no
+# changes feed through the API server's Service proxy. A fleet worker has no
 # admin kubeconfig, so it reads with this account, which may get that one proxy
 # and nothing else. Its token and the cluster CA are in
 # ansible/group_vars/fleet_workers/vault.sops.yaml; the fleet-worker role
-# writes the kubeconfig (tasks/home.yml). Rotate: docs/credentials.md.
+# writes the kubeconfig (tasks/peer.yml). agent-web-record moves agents.kblab.me with the same
+# account (apps/agents/record-rbac.yaml). Rotate: docs/credentials.md.
 apiVersion: v1
 kind: ServiceAccount
 metadata:

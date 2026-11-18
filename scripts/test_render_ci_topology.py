@@ -1,4 +1,4 @@
-"""Core tiers and explicit CI prohibitions must survive every affinity branch."""
+"""Core tiers and explicit CI prohibitions hold, and every slot takes the caps its host allows."""
 
 import copy
 import importlib.util
@@ -20,16 +20,11 @@ class RunnerTierTests(unittest.TestCase):
         self.addCleanup(temporary.cleanup)
         self.path = Path(temporary.name)
         self.inventory = yaml.safe_load((ROOT / "ansible/inventory.yml").read_text())
-        self.runner = yaml.safe_load((ROOT / "apps/forgejo/runner-deployment.yaml").read_text())
-        self.terms = self.runner["spec"]["template"]["spec"]["affinity"]["nodeAffinity"][
-            "requiredDuringSchedulingIgnoredDuringExecution"]["nodeSelectorTerms"]
 
     def failures(self):
         inventory = self.path / "inventory.yml"
-        runner = self.path / "runner.yml"
         inventory.write_text(yaml.safe_dump(self.inventory))
-        runner.write_text(yaml.safe_dump(self.runner))
-        return topology.no_ci_failures(*topology.load_inventory(inventory), runner)
+        return topology.no_ci_failures(*topology.load_inventory(inventory))
 
     def test_current_exclusions(self):
         self.assertEqual(self.failures(), [])
@@ -42,25 +37,11 @@ class RunnerTierTests(unittest.TestCase):
         self.inventory["all"]["children"]["ci_hosts"]["hosts"]["hp-victus"] = {}
         self.assertTrue(any("hp-victus is in no_ci_hosts and in ci_hosts" in error for error in self.failures()))
 
-    def test_no_ci_or_bypass(self):
-        unsafe = copy.deepcopy(self.terms[0])
-        unsafe["matchExpressions"] = [e for e in unsafe["matchExpressions"] if e["key"] != "kubernetes.io/hostname"]
-        self.terms.append(unsafe)
-        self.assertTrue(any("hp-victus" in error and "every required affinity term" in error for error in self.failures()))
-
-    def test_core_or_bypass(self):
-        unsafe = copy.deepcopy(self.terms[0])
-        unsafe["matchExpressions"] = [e for e in unsafe["matchExpressions"] if e["key"] != "kblab.me/tier"]
-        self.terms.append(unsafe)
-        self.assertTrue(any("exclude core tier" in error for error in self.failures()))
-
     def test_pinned_ci_host_cannot_be_core(self):
         self.inventory["all"]["children"]["macos_hosts"]["hosts"]["mac-mini"]["host_tier"] = "core"
         self.assertTrue(any("mac-mini carries pinned CI" in error for error in self.failures()))
 
 
-if __name__ == "__main__":
-    unittest.main()
 
 
 class CapTests(unittest.TestCase):
@@ -71,21 +52,22 @@ class CapTests(unittest.TestCase):
         topo, fails = topology.render(self.hosts, self.groups)
         return {s["name"]: s["caps"] for h in topo.get("hosts", {}).values() for s in h["slots"]}, fails
 
-    def with_heavy(self):
-        """No host has a heavy slot beside Unity slots since razer-laptop left the pool; give ms-a2 one."""
-        self.hosts["ms-a2"]["ci_heavy_slots"] = 1
-        self.hosts["ms-a2"]["ci_caps"] = ["light", "heavy", "unity"]
-        return self.slots()
-
     def test_unity_test_slot_takes_its_hosts_light(self):
-        slots, fails = self.with_heavy()
+        slots, fails = self.slots()
         self.assertEqual(fails, [])
-        self.assertEqual(slots["ms-a2-unity-pool-1"], ["unity", "light"])
+        self.assertIn("light", slots["deskslim-2-unity-pool-1"])
         self.assertEqual(slots["ms-a2-heavy-1"], ["heavy", "light"])
 
-    def test_heavy_waits_for_ephemeral_ports(self):
-        slots, _ = self.with_heavy()
-        self.assertNotIn("heavy", slots["ms-a2-unity-pool-1"])
+    def test_unity_slot_takes_heavy_only_on_a_heavy_host(self):
+        self.hosts["deskslim-2"]["ci_caps"] = ["light", "unity"]
+        slots, fails = self.slots()
+        self.assertEqual(fails, [])
+        self.assertEqual(slots["deskslim-2-unity-pool-1"], ["unity", "light"])
+        self.hosts["deskslim-2"]["ci_caps"] = ["light", "heavy", "unity"]
+        slots, fails = self.slots()
+        self.assertEqual(fails, [])
+        self.assertEqual(slots["deskslim-2-unity-pool-1"], ["unity", "light", "heavy"])
+        self.assertEqual(slots["ms-a2-unity-pool-1"], ["unity", "light", "heavy"])
 
     def test_build_slot_takes_builds_alone(self):
         slots, _ = self.slots()
@@ -105,3 +87,24 @@ class CapTests(unittest.TestCase):
         self.hosts["ms-a2"]["ci_caps"] = ["light", "unity", "gpu"]
         _, fails = self.slots()
         self.assertTrue(any("ci_caps names gpu" in f for f in fails))
+
+    def test_forgejo_slots_serve_forgejo_alone(self):
+        topo, fails = topology.render(self.hosts, self.groups)
+        self.assertEqual(fails, [])
+        fj = [s for h in topo["hosts"].values() for s in h["slots"] if s.get("forge") == "forgejo"]
+        self.assertEqual(len(fj), topology.FORGEJO_SLOTS)
+        self.assertTrue(all(s["caps"] == ["forgejo"] for s in fj))
+
+    def test_forgejo_slot_count_is_the_rule(self):
+        self.hosts["ms-a2"]["forgejo_slots"] = topology.FORGEJO_SLOTS + 1
+        _, fails = self.slots()
+        self.assertTrue(any("not FORGEJO_SLOTS" in f for f in fails))
+
+    def test_cloud_host_never_takes_forgejo(self):
+        self.hosts["aws-spot-1"]["ci_caps"] = ["unity", "forgejo"]
+        _, fails = self.slots()
+        self.assertTrue(any("aws-spot-1: a cloud host" in f for f in fails))
+
+
+if __name__ == "__main__":
+    unittest.main()

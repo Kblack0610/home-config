@@ -53,7 +53,7 @@
 | namespace | purpose | status |
 |-----------|---------|--------|
 | actual-budget | Personal finance (Actual Budget) | active |
-| agents | Ingress + endpoints for agent-web on the fleet home (the workstation) | active |
+| agents | Ingress + endpoints for agent-web on the fleet lease holder | active |
 | apps | PlaceMyParents (API + Web + DB) | active |
 | front-door | kblab.me, the list of every system (nginx) | active |
 | forgejo | Git hosting (Forgejo) | active |
@@ -160,7 +160,7 @@ Traefik on the local network path behind `192.168.1.124`. All `*.kblab.me` local
 
 | hostname | service | cluster | notes |
 |----------|---------|---------|-------|
-| agents.kblab.me | agent-web (Claude sessions, runs on the workstation, the fleet home) | home-k3s | Traefik Ingress -> 192.168.1.2:8790; public through the tunnel, crowdsec plus Sign in with Forgejo |
+| agents.kblab.me | agent-web (Claude sessions, runs on the machine holding the fleet lease) | home-k3s | Traefik Ingress -> the holder's LAN IP:8790 (it patches the Endpoints); public through the tunnel, crowdsec plus Sign in with Forgejo |
 | kblab.me | front door: a list of every system | home-k3s | Traefik Ingress; public through the tunnel, crowdsec |
 | hass.kblab.me | Home Assistant | home-k3s | Traefik Ingress |
 | grafana.kblab.me | Grafana | home-k3s | Traefik Ingress |

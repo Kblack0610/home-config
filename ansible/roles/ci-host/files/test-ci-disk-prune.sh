@@ -6,6 +6,8 @@ here=$(cd "$(dirname "$0")" && pwd)
 t=$(mktemp -d); trap 'rm -rf "$t"' EXIT
 mkdir "$t/bin"
 fail=0
+# Never the Ansible temp dirs of the host running this test.
+export ANSIBLE_TMP_ROOTS="$t/no-ansible"
 check() { # description, pattern, file, expected count
     n=$(grep -c -- "$2" "$3"); n=${n:-0}
     if [ "$n" = "$4" ]; then echo "ok   $1"; else echo "FAIL $1: $n of '$2', wanted $4"; fail=1; fi
@@ -224,6 +226,19 @@ for slot in unity-pool-1 unity-pool-2; do
     [ -e "$C/$slot/.cache/unity-core-playground-test/home/license" ] || { echo "FAIL activation removed"; fail=1; }
 done
 check "busy slot's build caches stay" '^low disk .*unity-pool-2/' "$t/log" 0
+
+# An Ansible temp dir untouched for a day is an interrupted run's upload; a fresh one is a live
+# task's, and other dirs beside them are not Ansible's to lose.
+A="$t/ansible"
+mkdir -p "$A/root/ansible-tmp-old" "$A/user/ansible-tmp-new" "$A/user/other"
+touch "$A/root/ansible-tmp-old/source" "$A/user/ansible-tmp-new/source" "$A/user/other/file"
+touch -d '2 days ago' "$A/root/ansible-tmp-old" "$A/user/other"
+ANSIBLE_TMP_ROOTS="$A/root $A/use*" RUNNER_HOME="$t/none" PATH="$t/bin:$PATH" sh "$here/ci-disk-prune.sh" > "$t/log" 2>&1
+check "an Ansible temp dir past a day goes" '^ansible leftover .*/ansible-tmp-old$' "$t/log" 1
+[ ! -e "$A/root/ansible-tmp-old" ] && echo "ok   old Ansible temp dir removed" || { echo "FAIL old Ansible temp dir survived"; fail=1; }
+for kept in user/ansible-tmp-new/source user/other/file; do
+    [ -e "$A/$kept" ] && echo "ok   kept $kept" || { echo "FAIL $kept removed"; fail=1; }
+done
 
 # A host with no Unity slots has nothing to measure and exits clean.
 RUNNER_HOME="$t/none" DF_PER_TREE=20 PATH="$t/bin:$PATH" sh "$here/ci-disk-prune.sh" > "$t/log" 2>&1

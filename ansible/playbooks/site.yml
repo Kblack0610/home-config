@@ -217,17 +217,14 @@
 #     to ["self-hosted","linux","light","fresh-workspace"], so their light jobs
 #     take only slots whose workspace starts empty, never a Unity slot, where the
 #     checkout's clean would delete the warm Library. Every other repo uses the
-#     org ones, and its light jobs take any slot of a light host, Unity slots too
-#     (ci_caps in inventory.yml).
-#
-# Heavy jobs publish fixed host ports (postgres 5432, mailpit 1025/8025, app
-# ports), so never more than one heavy slot per host.
+#     org ones, and its light and heavy jobs take any slot of a host tagged for them,
+#     Unity slots too (ci_caps in inventory.yml).
 #
 # Slots per host live in inventory.yml (linux_ci_runners); the host's CI
 # CPU and memory budget in ci_hosts (roles/ci-host-budget). Each slot is its own
 # runner under one `linux-ci` user, with HOME set to the slot's own dir so
 # parallel jobs never share a pnpm store, Playwright cache or ~/setup-pnpm, and
-# a job-started hook empties the workspace before every job
+# a job hook empties the workspace before and after every job
 # (roles/ci-host/templates/job-started.sh.j2). Registration tokens come
 # from the control node's `gh` CLI, which needs admin:org for an org runner
 # (roles/github-actions-runner-linux/README.md), so there is no standing PAT.
@@ -288,6 +285,7 @@
         gh_runner_env:
           HOME: "{{ linux_ci_user_home }}/{{ ci_slot }}"
           ACTIONS_RUNNER_HOOK_JOB_STARTED: "{{ linux_ci_job_started_hook }}"
+          ACTIONS_RUNNER_HOOK_JOB_COMPLETED: "{{ linux_ci_job_completed_hook }}"
           CI_SLOT_CPUS: "{{ linux_ci_slot_cpus }}"
       tags: [runner, ci, linux-ci]
     # A personal repo cannot see org runners, so each ci_repo_runners entry
@@ -324,9 +322,35 @@
         gh_runner_env:
           HOME: "{{ linux_ci_user_home }}/{{ ci_repo.slot }}"
           ACTIONS_RUNNER_HOOK_JOB_STARTED: "{{ linux_ci_job_started_hook }}"
-          ACTIONS_RUNNER_HOOK_JOB_COMPLETED: "{{ linux_ci_job_started_hook }}"
+          ACTIONS_RUNNER_HOOK_JOB_COMPLETED: "{{ linux_ci_job_completed_hook }}"
           CI_SLOT_CPUS: "1"
       tags: [runner, ci, linux-ci]
+    # Forgejo Actions slots (forgejo_slots, inventory.yml): one forge per slot, run as
+    # linux-ci in the light and heavy slots' slice, after those slots create the user.
+    # They replaced the k3s runner pod (plan make-logical-possum phase 6). Lowering the
+    # count does not remove a slot: stop and disable forgejo-runner-<host>-forgejo-<n>,
+    # delete the runner in Forgejo's Site Administration, rm -rf its dir.
+    - name: Require light or heavy slots on a host with Forgejo slots
+      ansible.builtin.assert:
+        that: linux_ci_instances | length > 0
+        fail_msg: "{{ inventory_hostname }} has forgejo_slots but no light or heavy slot to create the linux-ci user."
+      when: forgejo_slots | default(0) > 0
+      tags: [runner, ci, forgejo-ci]
+
+    - name: Register the Forgejo slots
+      ansible.builtin.include_role:
+        name: forgejo-runner-linux
+        apply:
+          tags: [runner, ci, forgejo-ci]
+      loop: "{{ range(1, (forgejo_slots | default(0)) + 1) | list }}"
+      loop_control:
+        loop_var: forgejo_slot
+      vars:
+        forgejo_runner_name: "{{ inventory_hostname }}-forgejo-{{ forgejo_slot }}"
+        forgejo_runner_home: "{{ linux_ci_user_home }}/forgejo-{{ forgejo_slot }}"
+        forgejo_runner_slice: "{{ ci_linux_slice }}"
+      tags: [runner, ci, forgejo-ci]
+
     # After the slots, which create the linux-ci user. Playground jobs clone
     # their submodules over ssh (windows-media-ci's first light jobs failed
     # "Host key verification failed" without this).
@@ -411,7 +435,7 @@
         # unity-gate: the non-preemptible hosts merge gates may take (unity_ci_gate, default false);
         # a Spot host leaves it off, so a reclaim never kills a gate (playground ucp-1778).
         # The slot's caps come from topology.json (ci_slot_caps): unity-build on a build slot,
-        # unity plus the host's light on a test slot (scripts/render-ci-topology.py HOST_CAPS).
+        # unity plus the host's light and heavy on a test slot (scripts/render-ci-topology.py HOST_CAPS).
         # No Unity slot carries fresh-workspace, so a Unity repo's light job never lands in its
         # warm tree.
         gh_runner_labels: "{{ [ 'self-hosted', 'linux', 'x64', 'host-' ~ inventory_hostname ] + ci_slot_caps[gh_runner_name] + ([] if unity_slot <= unity_ci_build_slots | default(0) else ([ 'unity-full' ] if unity_ci_full | default(true) else []) + ([ 'unity-wide' ] if unity_ci_wide | default(false) else []) + ([ 'unity-gate' ] if unity_ci_gate | default(false) else [])) + ([ 'lan' ] if unity_ci_lan | default(true) else []) + ([ 'hd-library' ] if unity_ci_hd_library | default(unity_ci_lan | default(true)) else []) + (unity_ci_slot_labels | default({})).get(unity_slot, []) }}"
@@ -441,9 +465,11 @@
           ASSET_LIBRARY_LFS_STORE: "{{ unity_ci_lfs_store }}"
           # Every slot's hook (roles/ci-host job-started.sh): with CI_SLOT_UNITY it prunes
           # idle slots' warm trees before the job when the disk is under the floor, and it never
-          # empties a workspace holding a Unity project. Changing this env restarts every slot
-          # and kills its job: apply it with the host's slots idle.
+          # empties a workspace holding a Unity project. At job end it frees what a light job
+          # left. Changing this env restarts every slot and kills its job: apply it with the
+          # host's slots idle.
           ACTIONS_RUNNER_HOOK_JOB_STARTED: "{{ linux_ci_job_started_hook }}"
+          ACTIONS_RUNNER_HOOK_JOB_COMPLETED: "{{ linux_ci_job_completed_hook }}"
           CI_SLOT_UNITY: "1"
           # The slot's CPU count, which platform's turbo runs take as --concurrency when a
           # light job lands here (the Linux play's linux_ci_slot_cpus says why).
@@ -811,12 +837,13 @@
     - role: hw-watchdog
       tags: [watchdog]
 
-# Cap CPU power on the laptops that run CI, so a long job holds them below their
-# thermal limit (2026-10-23: asus at 93-96C for hours before it dropped off the
-# LAN; hp-victus peaked at 98C of 100C). Knobs per host in inventory.yml
-# (thermal_capped). See ansible/roles/thermal-cap/README.md.
-#   ansible-playbook playbooks/site.yml --limit thermal_capped --tags thermal --check --diff
-- name: Thermal cap (x86 laptops)
+# The fleet's thermal standard: cap CPU power on every x86 Linux machine that
+# carries load, so a long job holds it at most 85C (2026-10-23: asus at 93-96C for
+# hours before it dropped off the LAN; hp-victus peaked at 98C of 100C). Hosts and
+# knobs: inventory.yml thermal_capped. See ansible/roles/thermal-cap/README.md.
+# The workstation's sudo asks for a password, so it is left out here (README).
+#   ansible-playbook playbooks/site.yml --limit 'thermal_capped:!desktop_workstations' --tags thermal --check --diff
+- name: Thermal cap (the fleet's thermal standard)
   hosts: thermal_capped
   become: true
   gather_facts: false

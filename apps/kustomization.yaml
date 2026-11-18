@@ -14,6 +14,7 @@ resources:
   - ansible-runner
   - binks-api
   - blackbox-exporter
+  - ci-artifacts
   - ci-runner-governor
   - ci-topology
   - cloudflared-public-sites

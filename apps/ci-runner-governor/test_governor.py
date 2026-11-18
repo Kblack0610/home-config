@@ -1336,6 +1336,34 @@ class GovernorTest(unittest.TestCase):
         governor.apply(cfg, "admit", "ws-1", "ws")
         self.assertEqual(calls[1][2], {"labels": ["unity"]})
 
+    def test_the_live_shared_caps_are_lan_light_only(self):
+        shared = governor.load_config(CONFIG)["shared"]
+        self.assertEqual(shared["ms-a2-unity-pool-1"], ["light"])
+        self.assertFalse([n for n in shared if n.startswith("aws-")])
+        self.assertNotIn("cachyos-x8664-main-unity-pool-1", shared)
+
+    def every_cap(self, action, have):
+        calls = []
+
+        def gh(method, path, body=None):
+            calls.append((method, path, body))
+            if method == "GET":
+                return {"runners": [{"id": 7, "name": "ms-a2-unity-pool-1", "labels": [{"name": l} for l in have]}]}
+            return None
+        governor.gh = gh
+        governor.apply(LIVE, action, "ms-a2-unity-pool-1", "ms-a2")
+        return calls
+
+    def test_withhold_drops_every_cap_the_slot_takes(self):
+        calls = self.every_cap("withhold", ["self-hosted", "unity", "unity-full", "light", "lan"])
+        self.assertEqual(calls[1][2], {"labels": ["unity-withheld"]})
+        self.assertEqual(sorted(c[1].rsplit("/", 1)[1] for c in calls if c[0] == "DELETE"), ["light", "unity", "unity-full"])
+
+    def test_admit_gives_every_cap_back(self):
+        calls = self.every_cap("admit", ["self-hosted", "unity-withheld", "lan"])
+        self.assertEqual(calls[1][2], {"labels": ["light", "unity", "unity-full"]})
+        self.assertTrue(calls[2][1].endswith("/7/labels/unity-withheld"))
+
     def test_the_live_config_keeps_full_runs_off_the_workstation(self):
         cfg = governor.load_config(CONFIG)
         self.assertEqual(governor.admit_labels(cfg, "cachyos-x8664-main"), ["unity"])

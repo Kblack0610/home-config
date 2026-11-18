@@ -394,9 +394,11 @@
           - ci_unity_slot_cpus | length in [0, unity_ci_slots | default(0)]
           - unity_ci_build_slots | default(0) <= unity_ci_slots | default(0)
         fail_msg: >-
-          {{ inventory_hostname }} has unity_ci_slots {{ unity_ci_slots | default(0) }} but
+          {{ inventory_hostname }} has unity_ci_slots {{ unity_ci_slots }} but
           {{ ci_unity_slot_cpus | length }} entries in ci_unity_slot_cpus, or
           unity_ci_build_slots {{ unity_ci_build_slots | default(0) }} over it.
+      # The play also runs on light-only hosts (razer-laptop), which define no unity_ci_slots.
+      when: "'unity_ci_runners' in group_names"
       tags: [runner, ci, unity-ci]
 
     - name: Register the Unity pool slots
@@ -404,7 +406,7 @@
         name: github-actions-runner-linux
         apply:
           tags: [runner, ci, unity-ci]
-      loop: "{{ range(1, (unity_ci_slots | default(0)) + 1) | list }}"
+      loop: "{{ range(1, unity_ci_slots + 1) | list }}"
       loop_control:
         loop_var: unity_slot
       vars:
@@ -479,6 +481,8 @@
             if part | trim %}{% set ab = (part | trim).split('-') %}{% set n.c = n.c + (ab[-1] | int)
             - (ab[0] | int) + 1 %}{% endfor %}{{ [1, (n.c / (1 if ci_unity_slot_cpus | length
             else unity_ci_slots)) | int] | max }}
+      # The play also runs on light-only hosts (razer-laptop), which define no unity_ci_slots.
+      when: "'unity_ci_runners' in group_names"
       tags: [runner, ci, unity-ci]
 
     # The Unity slots' old hook, replaced by job-started.sh above once the slots run with it.
@@ -496,9 +500,11 @@
         state: "{{ 'touch' if 'slim-tour' in (unity_ci_slot_labels | default({})).get(item, []) else 'absent' }}"
         modification_time: preserve
         access_time: preserve
-      loop: "{{ range(1, (unity_ci_slots | default(0)) + 1) | list }}"
+      loop: "{{ range(1, unity_ci_slots + 1) | list }}"
       # A --check of a slot not yet registered has no slot directory to touch.
       ignore_errors: "{{ ansible_check_mode }}"
+      # The play also runs on light-only hosts (razer-laptop), which define no unity_ci_slots.
+      when: "'unity_ci_runners' in group_names"
       tags: [runner, ci, unity-ci, ci-disk]
 
 # Service hosts carry no CI (no_ci_hosts in inventory.yml says why). The CI

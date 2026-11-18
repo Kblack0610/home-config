@@ -693,9 +693,22 @@ all:
       hosts:
         # The first worker (2026-11-07): wired and always on, 16 threads and
         # 32 GB since the RAM move (hc-328), 96 GB before. It ran the singleton lanes 2026-11-15 to
-        # 11-16 while the workstation was down; not placed yet.
+        # 11-16 while the workstation was down. Placed 2026-11-18 at 3: 52 freqtrade pods hold
+        # about 10.7 GB, so 3 sessions at 2-3 GB each leave it over fleet-dispatch's 20% free-memory
+        # floor (DISPATCH_HOST_MEM_MIN_PCT). Provisional, medium confidence; revisit when
+        # host-headroom razer-laptop reads ROOM over a week, or freqtrade moves off it.
+        # Its repos are the ones the night canaries run in (agent-runtime is ~/.dotfiles).
         razer-laptop:
-          fleet_place: false
+          fleet_place: true
+          fleet_max_live: 3
+          fleet_repos:
+            - dest: ~/.dotfiles
+              repo: https://github.com/Kblack0610/.dotfiles.git
+            - dest: ~/dev/home/home-config
+              repo: https://git.kblab.me/kblack0610/home-config.git
+              remote: forgejo   # the name fleet-hosts.sh and fleet-roster-fetch.timer read
+            - dest: ~/dev/crypto/freqtrade_trading_attempt
+              repo: https://github.com/Kblack0610/freqtrade_trading_attempt.git
           ssh_host_ed25519: ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAINmhQxBIidZJ6HtH0d5CRf4sj0l1CPYymCrvN/dcypAa
 
     # Machines the human drives the fleet from: they read and start sessions

@@ -1,10 +1,11 @@
 ---
-# The headless harnesses a worker runs besides claude (fleet_harnesses in inventory.yml). Each is a
-# sandboxed opencode harness, so `fleet-dispatch harness-ready` on the worker wants opencode (the
-# toolchain), the harness map, its eval config and its lane sandbox profile (all three from the
-# private overlay), srt with bwrap and socat, and its gateway key file. fleet-dispatch places an item
-# on one only while that probe says it is ready. bwrap, socat and npm come with fleet_worker_packages.
-# Runbook: docs/runbooks/fleet-worker.md, "Headless harnesses".
+# The headless harnesses a worker runs besides claude (fleet_harnesses in inventory.yml), each
+# placed only while `fleet-dispatch harness-ready` on the worker reads it ready. An opencode
+# harness (nim, ocfree, opencode-go) runs in its lane sandbox, so it wants opencode, the harness
+# map, its eval config and its lane sandbox profile (all three from the private overlay), srt with
+# bwrap and socat, and its gateway key file. codex runs on the worker's own ChatGPT login, which is
+# the human's to make (`codex login`), so the play only reports it. bwrap, socat, npm and codex
+# come with fleet_worker_packages. Runbook: docs/runbooks/fleet-worker.md, "Headless harnesses".
 
 # One pin, the workstation's: dotfiles packages.conf NPM_PACKAGES.
 - name: Read the srt pin from the dotfiles
@@ -23,12 +24,13 @@
   register: _fleet_harness_srt
   changed_when: "'added' in _fleet_harness_srt.stdout or 'changed' in _fleet_harness_srt.stdout"
 
-# The controller's map names each harness's key file (its key_file, else the gateway's), at the
+# The controller's map names each opencode harness's key file (its key_file, else the gateway's), at the
 # same path under $HOME on both machines, as fleet_repos dests are.
 - name: Read each harness's key file from the controller's harness map
   ansible.builtin.set_fact:
     fleet_harness_keys: >-
-      {{ fleet_harnesses | map('extract', _map.harnesses) | map(attribute='key_file', default=_map.gateway.key_file)
+      {{ fleet_harnesses | map('extract', _map.harnesses) | selectattr('launcher', 'defined')
+         | selectattr('launcher', 'eq', 'opencode') | map(attribute='key_file', default=_map.gateway.key_file)
          | map('regex_replace', '^~/', '') | unique | list }}
   vars:
     _map: "{{ lookup('ansible.builtin.file', lookup('env', 'HOME') ~ '/.config/agentctl/harnesses.json') | from_json }}"
@@ -49,9 +51,21 @@
   loop: "{{ fleet_harness_keys }}"
   no_log: true
 
+# Read only: the login itself is the human's (Auth-State Safety).
+- name: Read whether codex is logged in
+  when: "'codex' in fleet_harnesses"
+  ansible.builtin.command:
+    argv: [codex, login, status]
+  register: fleet_harness_codex_login
+  changed_when: false
+  failed_when: false
+  check_mode: false
+
 - name: Say what the harnesses still lack
   ansible.builtin.set_fact:
     fleet_harness_left: >-
       {{ ([] if fleet_harness_srt_pin.rc == 0 else ['no sandbox-runtime pin in ~/.dotfiles packages.conf, so no srt'])
+         + ([] if (fleet_harness_codex_login.rc | default(0)) == 0
+            else ['codex is not logged in: `codex login` on the worker, as the human'])
          + (fleet_harness_keys | map('regex_replace', '^', lookup('env', 'HOME') ~ '/') | reject('file')
             | map('regex_replace', '^', 'gateway key not on this controller: ') | list) }}

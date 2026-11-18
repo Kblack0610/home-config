@@ -80,13 +80,14 @@ Every worker holds a peer clone of the agent store (`~/.agent`, the queue, the a
 
 ## Headless harnesses
 
-`fleet_harnesses: [nim, ocfree, opencode-go]` lets a worker take items on those free harnesses (the dotfiles-private harness map, `.config/agentctl/harnesses.json`), so canaries and trainee runs leave a hot workstation. Each is an opencode harness run inside its lane sandbox (srt). On each pass dispatch asks the worker's own `fleet-dispatch harness-ready <names>` over ssh and places an item on a harness only while the answer reads it ready; `fleet-dispatch hosts` prints `runs <names>` or `cannot run <name>: <why>`. A run's srt settings are written on the worker (`fleet-dispatch harness-prep`), and a trainee run's patch stays in the worker's `~/.local/state/agentctl/dispatch/trainee/` until the holder's batch review fetches it.
+`fleet_harnesses: [nim, ocfree, opencode-go, codex]` lets a worker take items on those harnesses (the dotfiles-private harness map, `.config/agentctl/harnesses.json`), so canaries and trainee runs leave a hot workstation. nim, ocfree and opencode-go are opencode harnesses run inside their lane sandbox (srt); codex runs on the worker's own ChatGPT login. A codex item that resumes an earlier thread stays on the holder, whose `~/.codex` has that thread. On each pass dispatch asks the worker's own `fleet-dispatch harness-ready <names>` over ssh and places an item on a harness only while the answer reads it ready; `fleet-dispatch hosts` prints `runs <names>` or `cannot run <name>: <why>`. A run's srt settings are written on the worker (`fleet-dispatch harness-prep`), and a trainee run's patch stays in the worker's `~/.local/state/agentctl/dispatch/trainee/` until the holder's batch review fetches it.
 
 What the worker needs, and where it comes from:
-- opencode, bubblewrap, socat and npm: `fleet_worker_packages`.
+- opencode, codex, bubblewrap, socat and npm: `fleet_worker_packages`.
 - srt, at the pin in the worker's dotfiles `.local/src/installation_scripts/packages.conf`, installed by `tasks/harnesses.yml` into `~/.local` (on the PATH fleet-dispatch's ssh uses).
 - The harness map, each harness's eval config and its lane sandbox profile: the private overlay, so `gh auth login` and the overlay stow come first (step 3 of "Add a worker").
-- Each harness's gateway key file (`~/.local/state/agentctl/fleet-*.key`): `tasks/harnesses.yml` copies it from the controller at the same path, mode 0600, never logged. A key the controller lacks is named in the play's report and skipped.
+- Each opencode harness's gateway key file (`~/.local/state/agentctl/fleet-*.key`): `tasks/harnesses.yml` copies it from the controller at the same path, mode 0600, never logged. A key the controller lacks is named in the play's report and skipped.
+- codex's login: `codex login` on the worker, by the human. The play only reads `codex login status` and names a missing login in its report.
 
 After a change to `fleet_harnesses` or a key rotation, re-run the play with `--tags fleet-worker`, then check `fleet-dispatch hosts`.
 
@@ -128,3 +129,4 @@ The same play fails a host whose live host key is not its inventory `ssh_host_ed
 | `cannot run <harness>: no harness map at ...`, `its config ... is not readable` or `its lane sandbox ... is missing` | The private overlay is not stowed on the worker | `gh auth login` on the worker, then re-run the play |
 | `cannot run <harness>: lane sandbox '<name>' cannot hold <harness>: ...` | srt, bwrap or socat is missing on the worker | Re-run the play; its report says when the srt pin was not found in the worker's dotfiles |
 | `<harness>: no answer from its fleet-dispatch harness-ready (an older fleet-dispatch there)` | The worker's dotfiles are behind the dispatcher's | `git -C ~/.dotfiles pull` on the worker |
+| `<host> ... cannot run codex: codex is not logged in here` | No ChatGPT login on the worker | `codex login` on the worker (yours to do), then `fleet-dispatch hosts` |

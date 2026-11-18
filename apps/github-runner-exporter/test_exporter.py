@@ -547,8 +547,9 @@ class ExporterTest(unittest.TestCase):
         finally:
             exporter.RUN_REPOS = saved
             del FAKE[repo]
-        names = [r for r in rows(out, "github_runner_state") if 'name="box-light-1"' in r or 'name="box-tools-1"' in r]
-        self.assertEqual(len(names), 2, names)
+        state = rows(out, "github_runner_state")
+        self.assertEqual(len([r for r in state if 'name="box-light-1"' in r and 'scope="acme/web"' in r]), 1, state)
+        self.assertEqual(len([r for r in state if 'name="box-tools-1"' in r and 'scope="other/tools"' in r]), 1, state)
 
     def test_withheld_build_runner_stays_in_the_build_pool(self):
         org = "orgs/acme/actions/runners?per_page=100&page=1"

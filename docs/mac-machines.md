@@ -29,7 +29,7 @@ The sole self-hosted runner for `BlackNBrownStudios/platform` mobile CI. Native 
 
 ### Build-tree prune
 
-`m1-playground-mac` builds each game in a git worktree beside its checkout (unity-core-playground `scripts/build.sh`: `<checkout>-<game>`, `<checkout>-<game>-ios`) and keeps it, so that game's next build starts with its Library imported. Nothing removed them: on 2026-11-10 seven held 137G and NodeDiskLow tripped at 16% free. `unity-ci-host-mac` `tasks/disk.yml` (tag `ci-disk`) installs `files/ci-tree-prune.sh` as the hourly LaunchAgent `com.kblab.ci-tree-prune`, the Mac's counterpart of linux-ci-host's `ci-disk-prune.sh`. Each run:
+`m1-playground-mac` builds each game in a git worktree beside its checkout (unity-core-playground `scripts/build.sh`: `<checkout>-<game>`, `<checkout>-<game>-ios`) and keeps it, so that game's next build starts with its Library imported. Nothing removed them: on 2026-11-10 seven held 137G and NodeDiskLow tripped at 16% free. `unity-ci-host-mac` `tasks/disk.yml` (tag `ci-disk`) installs `files/ci-tree-prune.sh` as the hourly LaunchAgent `com.kblab.ci-tree-prune`, the Mac's counterpart of ci-host's `ci-disk-prune.sh`. Each run:
 
 - skips a tree in use: a process names it in its arguments (Unity's `-projectPath`, `git -C`, xcodebuild) or works inside it, or the runner has a job and the tree was written in the last hour;
 - removes a tree idle for `unity_ci_mac_prune_tree_days` (7);

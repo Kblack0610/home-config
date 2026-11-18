@@ -43,13 +43,6 @@
     mode: "0644"
   when: unity_ci_library_s3 | length > 0
 
-- name: Ensure docker is enabled and running
-  ansible.builtin.systemd:
-    name: docker.service
-    enabled: true
-    state: started
-  ignore_errors: "{{ ansible_check_mode }}"
-
 # Same user the runner role creates; made here first so the files below can be
 # owned by it before any slot exists.
 - name: Create the runner group
@@ -70,9 +63,7 @@
 
 # GitHub's host keys for the runner user (the shared task file says why).
 - name: Trust GitHub's host keys for the runner user
-  ansible.builtin.import_role:
-    name: linux-ci-host
-    tasks_from: github-known-hosts
+  ansible.builtin.import_tasks: github-known-hosts.yml
   vars:
     github_known_hosts_user: "{{ unity_ci_user }}"
     github_known_hosts_group: "{{ unity_ci_group }}"

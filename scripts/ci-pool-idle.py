@@ -92,7 +92,7 @@ def main(argv=None):
     jobs = f'max without ({STRIP}) (github_actions_job_waiting{{stuck!="true"}})'
     waiting = by(query_range(url, f"count by (pool) ({jobs})", start, end), "pool")
     oldest = by(query_range(url, f"max by (pool) ({jobs})", start, end), "pool")
-    times = range(start, end, STEP)
+    times = range(start, end + STEP, STEP)  # query_range includes end
     seen = {t for s in waiting.values() for t in s} | {t for s in idle.values() for t in s}
     lost, waits = tally(idle, waiting, oldest, times)
     print(f"window {time.strftime('%Y-%m-%dT%H:%MZ', time.gmtime(start))}..{time.strftime('%Y-%m-%dT%H:%MZ', time.gmtime(end))}"

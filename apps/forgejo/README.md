@@ -149,15 +149,13 @@ ssh forge-hel1 docker compose -f /etc/forgejo/compose.yaml exec -u git forgejo \
 
 ## Mirroring
 
-Reach for a mirror only when the canonical copy lives somewhere this account does not control. **`platform` is the only mirror on the instance** (`is_mirror=1`), because it is a `BlackNBrownStudios` org repo that is GitHub-first; a pull mirror from a private GitHub repo needs a credential inside Forgejo, and platform's is a read-only SSH deploy key (`forgejo-mirror-readonly`) scoped to that one repo. **That key cannot be reused for another repo** -- a second mirror means a second credential, which is the reason not to reach for one by default.
-
-Tags do propagate through a pull mirror, which is what makes tag-triggered deploys work on `platform`. The cost is the 5-minute sync lag between a GitHub push and Forgejo seeing it.
+**The instance has no mirrors.** `platform` was the last one, a pull mirror of the GitHub-first `BlackNBrownStudios/platform`. Since 2026-11-18 it is a normal repo that GitHub pushes to: platform `.github/workflows/forgejo-sync.yml` pushes develop, main and every tag, fast-forward only, so its develop and tag workflows still run here. Never push or merge to `kblack0610/platform` on Forgejo. How it works and why a pull mirror could not stay: `docs/gitops.md` "GitHub-first repos pushed INTO Forgejo".
 
 Configure per-repo in the Forgejo UI under repo Settings -> Mirror Settings:
 
 - **Push mirror to gitlab.com**: offsite DR for personal repos
 - **Push mirror to github.com**: public-facing repos only, and never on a repo that takes merges unless its remote has no fetch refspec: a push mirror with `fetch = +refs/*:refs/*` resets master after a concurrent merge (home-config lost #440, #498 and others this way; `docs/gitops.md` "Lost merges"). home-config mirrors to GitHub through `.forgejo/workflows/mirror-to-github.yaml` instead.
-- **Pull mirror from github.com**: only where GitHub is genuinely canonical and outside this account (`platform`)
+- **Pull mirror from github.com**: none; a GitHub-first repo is pushed here by its own GitHub Actions, as `platform` is
 
 > `home-config` is **not** a pull mirror, despite what this section used to claim. It is Forgejo-first with GitHub downstream: Flux reads `git.kblab.me/kblack0610/home-config`, so a push to GitHub alone gets overwritten. Always `git push forgejo master`.
 

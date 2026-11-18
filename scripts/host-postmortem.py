@@ -30,6 +30,7 @@ import argparse
 import datetime as dt
 import json
 import os
+import re
 import subprocess
 import sys
 import urllib.parse
@@ -139,12 +140,19 @@ def fault_rules():
     rules = [r for g in groups if g["name"] == RULE_GROUP for r in g["rules"]]
     if not rules:
         sys.exit(f"FAIL: Loki has no rule group {RULE_GROUP}")
-    out = []
-    for r in rules:
-        q = r["query"]
-        regex = q[q.index('|~ "') + 4:q.index('"[')]
-        out.append((r["name"], regex.encode().decode("unicode_escape")))
-    return out
+    return [(r["name"], line_filter_regex(r["name"], r["query"])) for r in rules]
+
+
+def line_filter_regex(name, query):
+    """The regex a rule's first line filter matches: `|~ "re"` as written, `|= "text"` escaped.
+
+    A double-quoted LogQL string takes Go escapes, read here as JSON's; a backtick one is raw.
+    """
+    m = re.search(r'\|([~=])\s*(?:"((?:[^"\\]|\\.)*)"|`([^`]*)`)', query)
+    if not m:
+        sys.exit(f"FAIL: rule {name} in {RULE_GROUP} has no |~ or |= line filter: {query}")
+    text = json.loads(f'"{m.group(2)}"') if m.group(3) is None else m.group(3)
+    return text if m.group(1) == "~" else re.escape(text)
 
 
 def kernel_faults(host, start, end):

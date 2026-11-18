@@ -399,6 +399,9 @@ class ExporterTest(unittest.TestCase):
         self.assertTrue(exporter.github_hosted({"labels": ["ubuntu-latest"]}))
         self.assertFalse(exporter.github_hosted({"runner_group_name": "Default", "labels": ["self-hosted"]}))
         self.assertFalse(exporter.github_hosted({"labels": ["self-hosted", "unity"]}))
+        self.assertFalse(exporter.github_hosted({"labels": ["unity", "unity-gate"]}))
+        self.assertFalse(exporter.github_hosted({"labels": ["light"]}))
+        self.assertTrue(exporter.github_hosted({"labels": ["windows-latest"]}))
         self.assertFalse(exporter.github_hosted({}))
 
     def test_history_stops_at_the_deadline_and_live_state_does_not(self):

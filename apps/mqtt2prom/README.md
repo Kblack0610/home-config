@@ -13,8 +13,8 @@ swap to `ghcr.io/hikhvar/mqtt2prometheus` and add a config.yaml ConfigMap.
 ## What you get
 
 - `mqtt_message_received_total{topic="..."}` — message counters per topic
-- `mqtt_<topic>_<key>` — gauges for any JSON `{"key": <number>}` payloads (Tasmota / Home Assistant patterns)
-- `mqtt_<key>{topic="agents_<host>_watch_<name>"}`: the agent fleet's watch payloads (dotfiles `agent-mqtt-publish`). Text is dropped, so the publisher sends numbers and booleans: `tripped`, `stale`, `paused`, `since_epoch`, and `severity_rank` (the manifest severity, 1 low to 4 urgent), which the command-center `other` catch-all reads to warn on a low watch.
+- `mqtt_<key>{topic="<topic with / as _>"}`: a gauge for each number or boolean in a JSON payload; text values are dropped (Tasmota / Home Assistant patterns)
+- The agent fleet's watch payloads (dotfiles `agent-mqtt-publish`, topic `agents_<host>_watch_<name>`) therefore carry numbers and booleans: `tripped`, `stale`, `paused`, `since_epoch`, and `severity_rank` (the manifest severity, 1 low to 4 urgent), which the command-center `other` catch-all reads to warn on a low watch.
 
 ## Verification
 
@@ -29,7 +29,7 @@ To force traffic and watch the counter increment:
 ```bash
 # any device with mosquitto-clients on it
 mosquitto_pub -h mosquitto.kblab.me -p 31883 -t test/hello -m '{"value":42}'
-# then re-curl /metrics — mqtt_test_hello_value{...} 42 should appear
+# then re-curl /metrics — mqtt_value{topic="test_hello"} 42 should appear
 ```
 
 The notes-sync fan-out fires `notes/sync/needed` automatically on every git

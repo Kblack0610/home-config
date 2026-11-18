@@ -1,6 +1,9 @@
 """Offline tests for the host-identity filters: python3 ansible/roles/host-identity/tests/test_host_identity.py"""
 import os
+import shutil
+import subprocess
 import sys
+import tempfile
 import unittest
 
 import yaml
@@ -18,8 +21,10 @@ from host_identity import host_device, host_names, identity_problems, roster_hos
 from host_inventory import load_inventory  # noqa: E402  the inventory reader every offline check shares
 
 ROSTER = ["desktop_workstations", "fleet_workers", "fleet_controllers"]
+DIAL_TARGETS = ["macos_hosts"]
 KEY_A = "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIGaTLqfJOaCga5UzV+WsuxyRSRPcUY5GMUFloCREQ9aE"
 KEY_B = "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAINmhQxBIidZJ6HtH0d5CRf4sj0l1CPYymCrvN/dcypAa"
+MINI_KEY = "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIBSevnCCl7D8zA29C912Sa2isbGS9eTzhotSXl1TgUlh"
 DEVICES = [
     {"hostname": "pc-home-cachy-main", "mac": "9C:6B:00:AC:91:20", "ip": "192.168.1.2"},
     {"hostname": "razer-laptop", "mac": "A0:CE:C8:BA:3E:21", "ip": "192.168.1.26"},
@@ -58,6 +63,10 @@ class KnownHosts(unittest.TestCase):
     def test_port_other_than_22(self):
         self.assertEqual(host_names("asus-laptop", {"ansible_host": "192.168.1.152", "ansible_port": 2222}),
                          ["[asus-laptop]:2222", "[asus-laptop.lan]:2222", "[192.168.1.152]:2222"])
+
+    def test_ssh_aliases_are_dialed_names(self):
+        self.assertEqual(host_names("mac-mini", {"ansible_host": "192.168.1.7", "ssh_aliases": ["m1"]}),
+                         ["mac-mini", "mac-mini.lan", "192.168.1.7", "m1"])
 
     def test_missing_group_adds_no_host(self):
         self.assertEqual(roster_hosts(GROUPS, ROSTER), ["cachyos-x8664-main", "razer-laptop"])
@@ -113,6 +122,31 @@ class RealInventory(unittest.TestCase):
         home = next(l for l in lines if l.startswith("cachyos-x8664-main,"))
         self.assertIn(hv["cachyos-x8664-main"]["fleet_ssh_host"], home.split()[0].split(","))
 
+    def test_mac_mini_is_trusted_under_every_name_it_is_dialed_by(self):
+        # 2026-11-17: the mini was trusted only by a hand-accepted line in ~/.ssh/known_hosts, which a wipe dropped.
+        hv, groups = load_inventory(os.path.join(REPO, "ansible", "inventory.yml"))
+        devices = load(os.path.join(REPO, "infrastructure", "dhcp", "devices.yaml"))["devices"]
+        mini = [l for l in roster_known_hosts(hv, groups, ROSTER + DIAL_TARGETS, devices) if l.startswith("mac-mini,")]
+        self.assertEqual(len(mini), 1)
+        names = mini[0].split()[0].split(",")
+        for name in ("mac-mini", "m1", "192.168.1.7", "pc-home-m1-mini.lan"):
+            self.assertIn(name, names)
+        self.assertEqual(mini[0].split(" ", 1)[1], MINI_KEY)
+        # Negative control: the roster groups alone give it no line.
+        self.assertFalse(any(l.startswith("mac-mini,") for l in roster_known_hosts(hv, groups, ROSTER, devices)))
+
+    def test_every_dial_target_has_a_key_and_is_not_a_roster_member(self):
+        hv, groups = load_inventory(os.path.join(REPO, "ansible", "inventory.yml"))
+        defaults = load(os.path.join(HERE, "..", "defaults", "main.yml"))
+        self.assertEqual(defaults["host_identity_roster_groups"], ROSTER)
+        self.assertEqual(defaults["host_identity_dial_target_groups"], DIAL_TARGETS)
+        targets = roster_hosts(groups, DIAL_TARGETS)
+        self.assertIn("mac-mini", targets)
+        # known_hosts.yml writes the block root:root on roster members only; a Mac's root group is wheel.
+        self.assertEqual(set(targets) & set(roster_hosts(groups, ROSTER)), set())
+        keyless = [h for h in targets if not hv[h].get("ssh_host_ed25519")]
+        self.assertEqual(keyless, [], "set ssh_host_ed25519 for these dial targets in ansible/inventory.yml")
+
     def test_every_host_the_runner_checks_has_a_key(self):
         hv, groups = load_inventory(os.path.join(REPO, "ansible", "inventory.yml"))
         devices = load(os.path.join(REPO, "infrastructure", "dhcp", "devices.yaml"))["devices"]
@@ -122,6 +156,40 @@ class RealInventory(unittest.TestCase):
         lines = roster_known_hosts(hv, groups, ["linux_bare_metal"], devices)
         keyless = [h for h in checked if not any(l.startswith((h + ",", "[" + h + "]:")) for l in lines)]
         self.assertEqual(keyless, [], "set ssh_host_ed25519 for these hosts in ansible/inventory.yml")
+
+
+class RunnerGuard(unittest.TestCase):
+    """runner_known_hosts replaces known_hosts, so it must refuse to run outside the ansible-runner pod."""
+    MARKER = "HOME_CONFIG_ANSIBLE_RUNNER_POD"
+
+    def test_cronjob_sets_the_marker_the_task_checks(self):
+        with open(os.path.join(HERE, "..", "tasks", "runner_known_hosts.yml")) as f:
+            task = f.read()
+        self.assertIn(f"lookup('ansible.builtin.env', '{self.MARKER}') == 'true'", task)
+        self.assertLess(task.index(self.MARKER), task.index("ansible.builtin.copy"))
+        job = load(os.path.join(REPO, "apps", "ansible-runner", "cronjob.yaml"))
+        container = job["spec"]["jobTemplate"]["spec"]["template"]["spec"]["containers"][0]
+        self.assertIn({"name": self.MARKER, "value": "true"}, container["env"])
+        self.assertIn("playbooks/runner-known-hosts.yml", " ".join(container["command"]))
+
+    @unittest.skipUnless(shutil.which("ansible-playbook"), "ansible-playbook is not installed (the CI container)")
+    def test_play_fails_without_the_marker_and_writes_with_it(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            dest = os.path.join(tmp, "known_hosts")
+            with open(dest, "w") as f:
+                f.write("github.com ssh-ed25519 AAAAplanted\n")
+            cmd = ["ansible-playbook", "playbooks/runner-known-hosts.yml", "-e", "host_identity_runner_known_hosts_path=" + dest]
+            env = {k: v for k, v in os.environ.items() if k != self.MARKER}
+            run = subprocess.run(cmd, cwd=os.path.join(REPO, "ansible"), env=env, capture_output=True, text=True)
+            self.assertNotEqual(run.returncode, 0, run.stdout)
+            self.assertIn("runs only in the", run.stdout)
+            with open(dest) as f:
+                self.assertEqual(f.read(), "github.com ssh-ed25519 AAAAplanted\n")
+            env[self.MARKER] = "true"
+            run = subprocess.run(cmd, cwd=os.path.join(REPO, "ansible"), env=env, capture_output=True, text=True)
+            self.assertEqual(run.returncode, 0, run.stdout + run.stderr)
+            with open(dest) as f:
+                self.assertIn("razer-laptop,", f.read())
 
 
 if __name__ == "__main__":

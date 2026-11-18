@@ -8,7 +8,7 @@
     host_identity_devices: "{{ (lookup('ansible.builtin.file', host_identity_devices_file) | from_yaml).devices }}"
     host_identity_roster: "{{ groups | roster_hosts(host_identity_roster_groups) }}"
 
-- name: Trust every roster machine's host key under each name it is dialed by
+- name: Trust every roster machine's and dial target's host key under each name it is dialed by
   when: inventory_hostname in host_identity_roster
   become: true
   ansible.builtin.blockinfile:
@@ -18,4 +18,4 @@
     group: root
     mode: "0644"
     marker: "# {mark} roster host keys (home-config ansible/roles/host-identity)"
-    block: "{{ hostvars | roster_known_hosts(groups, host_identity_roster_groups, host_identity_devices) | join('\n') }}"
+    block: "{{ hostvars | roster_known_hosts(groups, host_identity_roster_groups + host_identity_dial_target_groups, host_identity_devices) | join('\n') }}"

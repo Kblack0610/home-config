@@ -31,8 +31,18 @@ jobs:
         uses: actions/checkout@v4
 
       # Roster and placement checks compare inventory with app declarations.
-      - name: Fleet roster agrees with the gatus declarations
-        run: python3 scripts/check-fleet-roster.py
+      - name: apps/gatus-fleet/config.yaml and apps/fleet-exporter/roster.json are what the ansible inventory renders
+        run: python3 scripts/render-fleet-pulse.py --check
+      - name: Negative control - the fleet-pulse check fails on a machine added to the inventory without a re-render
+        run: |
+          python3 -c 's = open("ansible/inventory.yml").read(); t = s.replace("        pi5-master:\n        pi5-worker1:", "        pi5-master:\n        planted-node:\n          ansible_host: 192.0.2.1\n        pi5-worker1:", 1); assert t != s, "the plant did not apply"; open("planted-fleet.yml", "w").write(t)'
+          rc=0; python3 scripts/render-fleet-pulse.py --check --inventory planted-fleet.yml > planted-fleet.out 2>&1 || rc=$?
+          rm planted-fleet.yml; cat planted-fleet.out
+          [ "$rc" -ne 0 ] || { echo "the check passed a stale config.yaml"; exit 1; }
+          grep -q "is not what" planted-fleet.out || { echo "the check failed, but not on the stale files"; exit 1; }
+          rm planted-fleet.out
+      - name: Fleet-pulse renderer tests, roster, display tokens and refused names
+        run: cd scripts && python3 -m unittest test_render_fleet_pulse
       - name: apps/ci-topology/topology.json is what the ansible inventory renders
         run: python3 scripts/render-ci-topology.py --check
       - name: Negative control - the topology check fails on a slot count edited without a re-render

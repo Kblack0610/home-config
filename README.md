@@ -47,7 +47,7 @@ kustomize build clusters/home-k3s >/dev/null
 **Test.** CI is [`.forgejo/workflows/checks.yaml`](./.forgejo/workflows/checks.yaml). The Python checks need only the standard library:
 
 ```bash
-python3 scripts/check-fleet-roster.py
+python3 scripts/render-fleet-pulse.py --check
 python3 scripts/render-ci-topology.py --check
 python3 scripts/check-ha-packages.py
 python3 scripts/check-secret-store.py

@@ -747,6 +747,71 @@ all:
           ansible_user: kblack0610
           ssh_host_ed25519: ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIK39bl75NdWXxa1SKSpgnH1Vg2Jr+WYYHXmK+povqIes
 
+    # fleet.kblab.me, the machines board, and its roster: the one place a machine joins or
+    # leaves it. scripts/render-fleet-pulse.py renders apps/gatus-fleet/config.yaml and
+    # apps/fleet-exporter/roster.json from this group; fleet-exporter serves roster.json at
+    # fleet.kblab.me/roster, which the status bars (dotfiles fleet_pulse.sh, sketchybar fleet.sh)
+    # count against. CI fails when either file is not what this group renders.
+    # Rostered means counted: a rostered machine that is not reporting turns the fleet glyph
+    # amber. A machine that sleeps by design (a phone, the Pi Zeros) is declared with
+    # roster false, so it shows on the board and never pins the glyph.
+    #   fleet_pulse_name     the gatus name (default: the inventory name), kebab-case
+    #   fleet_pulse_group    the gatus group (default k3s)
+    #   fleet_pulse_push     true: it pushes a heartbeat (dotfiles fleet-pulse push.sh) because
+    #                        nothing can reach it; otherwise gatus polls node_exporter on
+    #                        ansible_host:9100
+    #   fleet_pulse_units    systemd units the poll also needs active (node-exporter-linux exports them)
+    #   fleet_pulse_roster   false: on the board, not counted (default true)
+    #   fleet_pulse_display  the label of its own dot on the waybar; an unrostered machine never
+    #                        gets a dot, it is listed in the tooltip while it reports
+    #   fleet_pulse_devices  push-only devices Ansible does not manage: {name, group, roster, display}
+    #   fleet_pulse_groups   {gatus group: label}, each drawn as one dot
+    # Retiring a machine is deleting its line: gatus prunes the endpoint's stored statuses
+    # when the pod rolls on the new config (apps/gatus-fleet/README.md).
+    fleet_pulse:
+      vars:
+        fleet_pulse_groups: {k3s: k3s}
+        fleet_pulse_devices:
+          # Gigantic Playground's corporate Mac: off-LAN and unpollable, so it pushes.
+          - {name: gp-mac, group: workplace, display: gp}
+          # Android tablets: apps/headwind-fleet-bridge pushes for each device in Headwind.
+          - {name: h0001, group: android}   # Lenovo Tab M11 (TB330)
+          - {name: h0002, group: android}   # Lenovo Tab M11 (TB336)
+          - {name: h0003, group: android}   # Lenovo Tab M9 (TB305)
+          # Enrolled in Headwind but unconfirmed: not counted until someone confirms what it is.
+          - {name: h0004, group: android, roster: false}
+          # The carry phone pushes from Termux and sleeps under Doze (docs/mobile-fleet.md).
+          - {name: ken-s25-main, group: android, roster: false}
+      hosts:
+        cachyos-x8664-main:
+          fleet_pulse_name: linux-cachyos   # its gatus key predates hostname naming
+          fleet_pulse_group: homelab
+          fleet_pulse_push: true
+          fleet_pulse_display: main
+        windows-media:
+          fleet_pulse_group: homelab
+          fleet_pulse_push: true
+          fleet_pulse_display: win
+        mac-mini:
+          fleet_pulse_group: homelab   # node_exporter from the node-exporter-mac role
+        pi5-master:
+        pi5-worker1:
+        pi5-worker2:
+        pi5-worker3:
+        pi4-worker4:
+        pi4-worker5:
+        asus-laptop:
+        hp-victus:
+        razer-laptop:
+        ms-a2:
+        deskslim-2:
+        audio-living:   # a room that is up but silent is the failure that matters here
+          fleet_pulse_group: audio
+          fleet_pulse_units: [snapclient.service, audio-endpoint-capture.service]
+        audio-bedroom:
+          fleet_pulse_group: audio
+          fleet_pulse_units: [snapclient.service]
+
     # No admitted game host until dedicated capacity is commissioned (ask OqbBvu).
     game_server_nodes:
       hosts: {}

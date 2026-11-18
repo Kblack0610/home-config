@@ -31,6 +31,16 @@ spec:
     - host: fleet.kblab.me
       http:
         paths:
+          # The roster the status bars count against, served by fleet-exporter
+          # (scripts/render-fleet-pulse.py renders it from the inventory). Every
+          # machine that renders the glyph reaches this host, home-config or not.
+          - path: /roster
+            pathType: Exact
+            backend:
+              service:
+                name: fleet-exporter
+                port:
+                  number: 9300
           - path: /
             pathType: Prefix
             backend:

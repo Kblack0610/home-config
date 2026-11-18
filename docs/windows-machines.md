@@ -14,17 +14,10 @@ What "on the fleet" means today: the PC pushes a liveness heartbeat every 60s to
 
 ### 1. Declare the name (workstation, one PR per repo)
 
-Pick a kebab-case name for the machine, never a generic one like `windows`: one key per physical box, so a second Windows PC can never share (and mask) the first one's heartbeat. The name goes in four places:
-
-1. `apps/gatus-fleet/config.yaml` - an `external-endpoints` entry, `group: homelab`.
-2. `FLEET_ROSTER` in `apps/fleet-exporter/deployment.yaml`.
-3. `FLEET_ROSTER` in `~/.config/fleet-pulse/env` (the `~/.dotfiles-private` repo, separate PR).
-4. Optionally `FLEET_DISPLAY` in `~/.dotfiles/.config/waybar/fleet_pulse.sh`, if it should get its own labelled dot.
-
-Check all four agree before merging:
+Pick a kebab-case name for the machine, never a generic one like `windows`: one key per physical box, so a second Windows PC can never share (and mask) the first one's heartbeat. The name goes in one place, the `fleet_pulse` group in `ansible/inventory.yml`: the host with `fleet_pulse_group: homelab` and `fleet_pulse_push: true` (and `fleet_pulse_display: <label>` if it should get its own labelled dot on the waybar). Then render and commit:
 
 ```bash
-python3 scripts/check-fleet-roster.py --roster-env ~/.config/fleet-pulse/env --display ~/.dotfiles/.config/waybar/fleet_pulse.sh
+python3 scripts/render-fleet-pulse.py
 ```
 
 Merge the home-config PR on Forgejo and let Flux roll `gatus-fleet`. Until the PC enrolls, the exporter reports it as `fleet_machine_enrolled 0` and the glyph is amber. That is correct.

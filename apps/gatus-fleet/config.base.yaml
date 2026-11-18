@@ -1,0 +1,36 @@
+# fleet.kblab.me - THE MACHINES. Every device that is a computer, not a service.
+#
+# The hand-kept half of config.yaml: scripts/render-fleet-pulse.py appends the machines,
+# rendered from the fleet_pulse group in ansible/inventory.yml, and writes config.yaml.
+# Edit this file or the inventory, never config.yaml.
+#
+# status.kblab.me answers "are my APPS up". This answers "are my MACHINES up",
+# and it is the only surface that covers the work laptop - nothing can poll into
+# a corporate-managed box, so it pushes outbound instead.
+#
+# TWO MECHANISMS, chosen by reachability, not by taste:
+#   poll  - machines we can reach: already-exporting, always-on, on-LAN.
+#   push  - machines we cannot reach: roaming, NAT'd, off-LAN, firewalled.
+#
+# Gatus only materializes an external-endpoint once it receives that host's FIRST
+# push. Until then it is absent from /api/v1/endpoints/statuses entirely - not
+# stale, MISSING. That is why the bars and fleet-exporter count against the roster
+# (fleet.kblab.me/roster) instead of against this list.
+storage:
+  type: sqlite
+  path: /data/gatus.db
+
+# Expose /metrics so Prometheus can scrape this and Grafana can render the real
+# fleet view. This is the ONLY source that covers PUSHED machines - node_exporter
+# gives depth for the polled ones (k3s nodes, Macs), but nothing scrapes the work
+# laptop, because nothing can reach into it. Gatus is where its liveness exists
+# at all.
+#
+# It also buys ordering: gatus sorts its own groups ALPHABETICALLY (android,
+# homelab, iot, k3s, workplace) with no way to reorder, so "work at the top" is
+# not expressible on this page. In Grafana, panel order is ours.
+metrics: true
+
+ui:
+  title: KB Fleet
+  header: KB Fleet - every machine

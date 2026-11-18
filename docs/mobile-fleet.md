@@ -21,9 +21,9 @@ Headwind Community enrollment is device-owner: it requires a factory reset and t
 
 ## The roster rule (do not skip this)
 
-A carry phone is declared as a gatus `external-endpoints` entry (so it shows on the web board with a last-seen timestamp) but is deliberately kept OUT of `FLEET_ROSTER` on the desktop status bars.
+A carry phone is declared as a gatus `external-endpoints` entry (so it shows on the web board with a last-seen timestamp) but is deliberately kept OUT of the roster the status bars count: a `fleet_pulse_devices` entry with `roster: false` in `ansible/inventory.yml`.
 
-Reason: a phone sleeps. Android Doze pauses cron, so the heartbeat stops whenever the screen is off for a while. If the phone were in `FLEET_ROSTER`, the desktop "is my whole fleet alive" glyph would read amber every time your phone slept - which is always. This is the same reasoning `apps/gatus-fleet/config.yaml` already applies to the sleeping iot Pi Zeros. Phones get last-seen semantics on the board, not glyph-gating on your desktop.
+Reason: a phone sleeps. Android Doze pauses cron, so the heartbeat stops whenever the screen is off for a while. If the phone were on the roster, the desktop "is my whole fleet alive" glyph would read amber every time your phone slept - which is always. This is the same reasoning that keeps the sleeping iot Pi Zeros off it. Phones get last-seen semantics on the board, not glyph-gating on your desktop.
 
 ## Lane A - onboard a carry phone
 
@@ -60,17 +60,15 @@ Key auth is preferred; if you skip pasting a key, set a password on the phone wi
 
 ### Declare the device (one-time, done on the desktop before the phone enrolls)
 
-Add one `external-endpoints` entry under the `android` group in `apps/gatus-fleet/config.yaml`:
+Add one entry to `fleet_pulse_devices` in the `fleet_pulse` group of `ansible/inventory.yml`, then run `python3 scripts/render-fleet-pulse.py`, which writes its `external-endpoints` entry into `apps/gatus-fleet/config.yaml`:
 
 ```yaml
-- name: <kebab-handle>   # e.g. ken-s25-main - Tier-A push heartbeat (not Headwind)
-  group: android
-  token: "${FLEET_TOKEN}"
+- {name: <kebab-handle>, group: android, roster: false}   # e.g. ken-s25-main, pushed from Termux (not Headwind)
 ```
 
 Commit -> push to forgejo -> Flux reconciles gatus-fleet. Until the key exists, the phone's first push 404s (fleet-pulse probe-first will refuse to install), so declare it first.
 
-Do NOT add the phone's name to `FLEET_ROSTER` (see the roster rule above).
+Keep `roster: false` (see the roster rule above).
 
 ## Lane B - onboard a dedicated/kiosk device
 

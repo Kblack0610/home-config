@@ -26,7 +26,7 @@
 # Status comes from sentinel watches where one exists (they are the curated alarms that
 # already page), and from metrics where none does (nodes, heartbeats, runner pools).
 # Watch and runner state arrive via agent-mqtt-publish -> mosquitto -> mqtt2prom as
-# mqtt_tripped / mqtt_stale / mqtt_failed / (mqtt_running{topic="agents_<host>_<kind>_<name>"} and on (topic) cc:agents_topic_live).
+# mqtt_tripped / mqtt_stale / mqtt_failed / mqtt_severity_rank (a watch manifest severity, 1 low to 4 urgent) / (mqtt_running{topic="agents_<host>_<kind>_<name>"} and on (topic) cc:agents_topic_live).
 #
 # Each component is `(red-case > 0) or (warn-case > 0) or vector(0)`: the comparison
 # drops a zero-valued series so `or` falls through to the next case, and vector(0)
@@ -62,7 +62,7 @@ spec:
         # alert path (pager_undelivered: with it down, no other page arrives; alertmanager_fleet after 2h); every
         # other watch warns in its domain. A runner offline includes m1_playground_mac_online. Work posture
         # (playground_nightly and the release, train and gate-budget watches, release_drift, release_links,
-        # runner_score, fleet_budget_pace, infra_trickle) warns: it is work to pick up, not an outage. A watch no domain names falls to `other`, where it is down.
+        # runner_score, fleet_budget_pace, infra_trickle) warns: it is work to pick up, not an outage. A watch no domain names falls to `other`, where it is down, or warns when its manifest says severity: low.
         # queue_starved warns: dispatch held for account room is load, not an outage, and source_pace
         # already reports it; promote it back to 2 once source_pace has read ok for 7 days (human,
         # 2026-11-12). playground_server_behind is a release lag, not an outage: it warns in ci.
@@ -122,10 +122,13 @@ spec:
             max by (item) (label_replace(((mqtt_tripped{topic=~"agents_hass_conn_neptune_.+"} and on (topic) cc:agents_topic_live) > 0), "item", "$1", "topic", "agents_hass_conn_(.+)") or label_replace(((mqtt_tripped{topic=~"agents_.+_watch_neptune_.+"} and on (topic) cc:agents_topic_live) > 0) or ((mqtt_stale{topic=~"agents_.+_watch_neptune_.+"} and on (topic) cc:agents_topic_live) > 0), "item", "$1", "topic", "agents_.+_watch_(.+)")) * 0 + 1
         # a watch no domain above claims still counts, so a new manifest is never invisible here.
         # aws_burst_power trips whenever the burst runner runs: it pages on start and stop, and is no fault.
+        # A tripped watch here is down unless its manifest says severity: low (severity_rank 1, from
+        # agent-mqtt-publish), which warns: a low fyi watch held cc:overall_status red for months (ar-2795).
+        # A watch with no rank published is down, as before.
         - record: cc:watch_state
           labels: {domain: other}
           expr: >-
-            max by (item) (label_replace(((mqtt_tripped{topic=~"agents_.+_watch_.+",topic!~"agents_.+_watch_(aws_burst_power|neptune_.+)"} and on (topic) cc:agents_topic_live) * 2 > 0) or ((mqtt_stale{topic=~"agents_.+_watch_.+",topic!~"agents_.+_watch_(aws_burst_power|neptune_.+)"} and on (topic) cc:agents_topic_live) > 0), "item", "$1", "topic", "agents_.+_watch_(.+)")) unless on (item) cc:watch_state{domain!="other"}
+            max by (item) (label_replace((((mqtt_tripped{topic=~"agents_.+_watch_.+",topic!~"agents_.+_watch_(aws_burst_power|neptune_.+)"} and on (topic) cc:agents_topic_live) * 2 > 0) unless on (topic) (mqtt_severity_rank == 1)) or ((mqtt_tripped{topic=~"agents_.+_watch_.+",topic!~"agents_.+_watch_(aws_burst_power|neptune_.+)"} and on (topic) cc:agents_topic_live) * 1 > 0) or ((mqtt_stale{topic=~"agents_.+_watch_.+",topic!~"agents_.+_watch_(aws_burst_power|neptune_.+)"} and on (topic) cc:agents_topic_live) > 0), "item", "$1", "topic", "agents_.+_watch_(.+)")) unless on (item) cc:watch_state{domain!="other"}
         # Home Assistant's connectivity sensors, the wall pill's "N down": fleet_alerts.yaml publishes each one
         - record: cc:watch_state
           labels: {domain: home}

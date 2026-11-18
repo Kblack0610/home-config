@@ -490,10 +490,13 @@ def verdict(h, t):
         return "HOT", f"tctl {tctl:.0f} >= {w['tctl']}"
     if mem < w["mem"]:
         return "HOT", f"free memory {mem:.2f} < {w['mem']}"
-    if (idle >= a["idle"] and psi <= a["psi"] and mem >= a["mem"] and (tctl is None or tctl < a["tctl"])
-            and disk is not None and disk >= a["disk"]):
+    short = [k for k, miss in (("idle", idle < a["idle"]), ("psi", psi > a["psi"]), ("mem", mem < a["mem"]),
+                               ("tctl", tctl is not None and tctl >= a["tctl"]),
+                               ("disk", disk is not None and disk < a["disk"]), ("disk reading", disk is None))
+             if miss]
+    if not short:
         return "ROOM", f"idle {idle:.2f}, cpu pressure {psi:.2f}"
-    return "STEADY", f"idle {idle:.2f}, cpu pressure {psi:.2f}"
+    return "STEADY", f"idle {idle:.2f}, cpu pressure {psi:.2f}; short of admit on {'+'.join(short)}"
 
 
 def decide(cfg, hosts, runners, waiting, last_action, now, instances=None, pins=None, restore=(), shared_waiting=()):

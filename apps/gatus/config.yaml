@@ -77,6 +77,13 @@ endpoints:
     conditions:
       - "[STATUS] < 500"
 
+  - name: CI artifacts (S3)
+    group: home-k3s
+    url: "http://ci-artifacts.ci-artifacts.svc:9000/minio/health/live"
+    interval: 60s
+    conditions:
+      - "[STATUS] == 200"
+
   - name: Mosquitto
     group: home-k3s
     url: "tcp://mosquitto.mosquitto.svc:1883"

@@ -1,0 +1,21 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: ci-artifacts
+  namespace: ci-artifacts
+  labels:
+    app.kubernetes.io/name: ci-artifacts
+spec:
+  # NodePort so the pool reaches it without an ingress: LAN hosts at
+  # asus-laptop's LAN address, the AWS hosts (unity_ci_lan false, on the tailnet
+  # through roles/tailscale-node) at its tailnet address. Local keeps the bytes
+  # on asus-laptop instead of hopping through whichever node took the packet.
+  type: NodePort
+  externalTrafficPolicy: Local
+  selector:
+    app.kubernetes.io/name: ci-artifacts
+  ports:
+    - name: s3
+      port: 9000
+      targetPort: 9000
+      nodePort: 30900

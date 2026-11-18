@@ -7,8 +7,9 @@ governor (which hosts it powers, their slot counts and slot groups) read the ren
 from the ci-topology ConfigMap instead of keeping copies of their own.
 
 Per host: site (cloud when unity_ci_lan is false, else local), full (unity_ci_full, Unity
-hosts only) and its slots. Per slot: the runner name the play registers, its caps (the pools
-it serves: light, heavy, unity, unity-build, macos, windows), the repo of a repo-scoped
+hosts only) and its slots. Per slot: the runner name the play registers, its caps (the job
+kinds it takes: light, heavy, unity, unity-build, macos, windows; HOST_CAPS says which of
+the host's ci_caps each slot gets), the repo of a repo-scoped
 runner, and for a build slot the test slots in its group (unity_ci_slot_groups: they share
 its cores, so the governor never runs a build beside them).
 
@@ -52,7 +53,19 @@ UNITY_GROUPS = ("unity_ci_runners", "unity_ci_mac_runners")
 # The inventory keys this reads; a Jinja value in one would render as its literal text.
 KEYS = ("ci_light_slots", "ci_heavy_slots", "ci_repo_runners", "ci_pinned_runners", "unity_ci_slots",
         "unity_ci_build_slots", "unity_ci_slot_groups", "unity_ci_lan", "unity_ci_full", "unity_ci_wide",
-        "unity_ci_slot_labels", "ci_unity_slot_cpus", "ci_unity_slot_memory_max")
+        "unity_ci_slot_labels", "ci_unity_slot_cpus", "ci_unity_slot_memory_max", "ci_caps")
+# What a host may be tagged for (ci_caps): each of its slots takes every job kind its host is
+# tagged for that the slot can hold. A light or heavy slot also takes light jobs; a Unity test
+# slot also takes SHARED_CAPS; a build slot takes builds alone, so a build never waits behind
+# a small job. Every light and heavy slot carries fresh-workspace (site.yml): its job-started
+# hook gives each job an empty workspace, which the Unity repos' light jobs ask for, since on a
+# Unity slot their checkout would clean the warm Library.
+HOST_CAPS = ("light", "heavy", "unity", "unity-build")
+SLOT_CAPS = {"light": ["light"], "heavy": ["heavy", "light"]}
+# Provisional, medium confidence: heavy joins once platform's heavy jobs take ephemeral service
+# and app ports (plan make-logical-possum phase 4); two heavy jobs on one host clash on fixed
+# ports until then. Revisit when that platform PR merges.
+SHARED_CAPS = ("light",)
 
 
 def gigabytes(val):
@@ -75,10 +88,14 @@ def render(hosts, groups):
         return {}, fails
     for host in sorted(hosts):
         v, slots = hosts[host], []
+        caps = list(v.get("ci_caps") or [])
+        fails += [f"{host}: ci_caps names {c}, not one of {list(HOST_CAPS)}" for c in caps if c not in HOST_CAPS]
+        if v.get("unity_ci_lan", True) is False and set(caps) & set(SHARED_CAPS):
+            fails.append(f"{host}: a cloud host's ci_caps carry no light or heavy, so a small job never powers a paid host")
         if host in groups.get("linux_ci_runners", ()):
             for kind in ("light", "heavy"):
-                slots += [{"name": f"{host}-{kind}-{n}", "caps": [kind]} for n in range(1, int(v.get(f"ci_{kind}_slots", 0)) + 1)]
-            slots += [{"name": f"{host}-{r['slot']}", "caps": ["light"], "repo": r["repo"]} for r in v.get("ci_repo_runners", [])]
+                slots += [{"name": f"{host}-{kind}-{n}", "caps": SLOT_CAPS[kind]} for n in range(1, int(v.get(f"ci_{kind}_slots", 0)) + 1)]
+            slots += [{"name": f"{host}-{r['slot']}", "caps": SLOT_CAPS["light"], "repo": r["repo"]} for r in v.get("ci_repo_runners", [])]
         unity = any(host in groups.get(g, ()) for g in UNITY_GROUPS)
         if unity:
             total, build, group = unity_layout(v)
@@ -95,12 +112,16 @@ def render(hosts, groups):
                         fails.append(f"{host}: test slot {t} is in two groups")
                     seen.add(t)
             for n in range(1, total + 1):
-                slot = {"name": unity_slot(host, n), "caps": ["unity-build" if n <= build else "unity"]}
+                slot = {"name": unity_slot(host, n),
+                        "caps": ["unity-build"] if n <= build else ["unity"] + [c for c in SHARED_CAPS if c in caps]}
                 if group.get(n):
                     slot["group"] = [unity_slot(host, t) for t in group[n]]
                 slots.append(slot)
         slots += [{"name": p["name"], "caps": [p["cap"]], **({"repo": p["repo"]} if p.get("repo") else {})}
                   for p in v.get("ci_pinned_runners", [])]
+        kinds = {c for s in slots for c in s["caps"] if c in HOST_CAPS}
+        fails += [f"{host}: has {c} slots, but ci_caps leaves out {c}" for c in sorted(kinds - set(caps))
+                  if not v.get("ci_pinned_runners")]
         if slots:
             topo[host] = {"site": "cloud" if v.get("unity_ci_lan", True) is False else "local",
                           **({"full": v.get("unity_ci_full", True) is not False} if unity else {}),

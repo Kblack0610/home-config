@@ -1,9 +1,8 @@
 ---
-# What keeps a CI host from filling its disk. Also run by the Unity pool play
-# (playbooks/site.yml), so a Unity-only host such as aws-spot-1 gets it without the
-# light/heavy packages and job hook.
-# main.yml's hook task made this directory, which a Unity-only host never runs.
-- name: Create the disk prune script's directory
+# What keeps a CI host from filling its disk, and every slot's job-started hook. Also run by
+# the Unity pool play (playbooks/site.yml), so a Unity-only host such as aws-spot-1 gets it
+# without the light/heavy packages.
+- name: Create the disk prune script's and hook's directory
   ansible.builtin.file:
     path: "{{ linux_ci_disk_prune | dirname }}"
     state: directory
@@ -17,10 +16,10 @@
     mode: "0755"
   tags: [ci-disk]
 
-- name: Install the Unity slots' job-started hook (prunes under the disk floor)
+- name: Install every slot's job-started hook (prunes on a Unity slot, empties a non-Unity workspace)
   ansible.builtin.template:
-    src: unity-job-started.sh.j2
-    dest: "{{ linux_ci_unity_job_started_hook }}"
+    src: job-started.sh.j2
+    dest: "{{ linux_ci_job_started_hook }}"
     mode: "0755"
   tags: [ci-disk]
 

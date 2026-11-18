@@ -34,18 +34,6 @@
   # In --check the package step above is simulated, so a fresh host has no unit yet.
   ignore_errors: "{{ ansible_check_mode }}"
 
-- name: Create the hook directory
-  ansible.builtin.file:
-    path: "{{ linux_ci_job_started_hook | dirname }}"
-    state: directory
-    mode: "0755"
-
-- name: Install the job-started hook (empties the workspace before each job)
-  ansible.builtin.template:
-    src: job-started.sh.j2
-    dest: "{{ linux_ci_job_started_hook }}"
-    mode: "0755"
-
 - name: Keep the disk from filling
   ansible.builtin.import_tasks: disk.yml
   tags: [ci-disk]

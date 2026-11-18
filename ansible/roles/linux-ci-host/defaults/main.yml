@@ -6,13 +6,10 @@
 # CPU and memory caps for the runners live in roles/ci-host-budget
 # (ci-linux.slice), a dependency of this role.
 
-# Runner user home; each slot lives under it. The job-started hook refuses to
-# clean a workspace outside this tree.
+# Runner user home; each light and heavy slot lives under it.
 linux_ci_user_home: /var/lib/linux-ci
 linux_ci_job_started_hook: /usr/local/lib/linux-ci/job-started.sh
 linux_ci_disk_prune: /usr/local/lib/linux-ci/ci-disk-prune.sh
-# Every Unity slot's job-started hook: prunes before the job when the disk is under the floor.
-linux_ci_unity_job_started_hook: /usr/local/lib/linux-ci/unity-job-started.sh
 linux_ci_coredump_max_use: 5G
 
 # What a light/heavy CI job expects (platform's pnpm and Playwright jobs set the bar) beyond the runner itself. No node/pnpm: the

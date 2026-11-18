@@ -60,11 +60,15 @@
   # not a k3s node, so the DaemonSet does not scrape it; Prometheus reaches it
   # through standalone-nodes (apps/monitoring/external-standalone-nodes.yaml).
   #   ansible-playbook playbooks/site.yml --limit windows-media-ci --tags monitoring
+  # The textfile directory is the one roles/ci-runner-cpu writes ci_runner.prom to,
+  # which on the k3s CI hosts the DaemonSet's node-exporter reads.
   hosts: windows-media-ci
   become: true
   gather_facts: true
   roles:
     - role: node-exporter-linux
+      node_exporter_linux_textfile_dir: /var/lib/node-exporter-textfile
+      node_exporter_linux_textfile_owner: "{{ k3s_textfile_owner }}"
       tags: [monitoring, unity-ci]
 
 - name: Cloud Unity CI host monitoring over the tailnet

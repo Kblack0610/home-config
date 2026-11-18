@@ -811,12 +811,13 @@
     - role: hw-watchdog
       tags: [watchdog]
 
-# Cap CPU power on the laptops that run CI, so a long job holds them below their
-# thermal limit (2026-10-23: asus at 93-96C for hours before it dropped off the
-# LAN; hp-victus peaked at 98C of 100C). Knobs per host in inventory.yml
-# (thermal_capped). See ansible/roles/thermal-cap/README.md.
-#   ansible-playbook playbooks/site.yml --limit thermal_capped --tags thermal --check --diff
-- name: Thermal cap (x86 laptops)
+# The fleet's thermal standard: cap CPU power on every x86 Linux machine that
+# carries load, so a long job holds it at most 85C (2026-10-23: asus at 93-96C for
+# hours before it dropped off the LAN; hp-victus peaked at 98C of 100C). Hosts and
+# knobs: inventory.yml thermal_capped. See ansible/roles/thermal-cap/README.md.
+# The workstation's sudo asks for a password, so it is left out here (README).
+#   ansible-playbook playbooks/site.yml --limit 'thermal_capped:!desktop_workstations' --tags thermal --check --diff
+- name: Thermal cap (the fleet's thermal standard)
   hosts: thermal_capped
   become: true
   gather_facts: false

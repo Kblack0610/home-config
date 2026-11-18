@@ -1228,7 +1228,7 @@
     {
       "type": "table",
       "title": "Runners: what is running where",
-      "description": "One row per runner. RUNNING rows show the job and how long it has been going; the 'last' columns show the last job it finished, which is what that runner is actually used for. cores, mem and disk are what the runner and its job containers take of its machine now: cores busy of the CPUs its cgroup allows, memory of the cap of a cgroup it holds alone, and the bytes under its home (the checkout, warm Unity Library and _work), measured hourly. '-' = no reading (macOS runners have no cgroups). Click a job to open it on GitHub. MISSING = a slot the roster expects that never registered.",
+      "description": "One row per runner. RUNNING rows show the job and how long it has been going; the 'last' columns show the last job it finished, which is what that runner is actually used for. cores, mem and disk are what the runner and its job containers take of its machine now: cores busy of the CPUs its cgroup allows, memory of the cap of a cgroup it holds alone, and the bytes under its home (the checkout, warm Unity Library and _work), measured hourly (disk measured says how long ago). '-' = no reading (macOS runners have no cgroups). Click a job to open it on GitHub. MISSING = a slot the roster expects that never registered.",
       "gridPos": {
         "h": 13,
         "w": 24,
@@ -1326,6 +1326,19 @@
           "range": false,
           "legendFormat": "__auto",
           "refId": "G"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "editorMode": "code",
+          "expr": "max by (name) (label_replace(cc:runner_disk_age_seconds, \"name\", \"$1\", \"runner\", \"(.+)\"))",
+          "format": "table",
+          "instant": true,
+          "range": false,
+          "legendFormat": "__auto",
+          "refId": "H"
         }
       ],
       "transformations": [
@@ -1348,6 +1361,7 @@
               "Time 5": true,
               "Time 6": true,
               "Time 7": true,
+              "Time 8": true,
               "__name__": true,
               "scope": true,
               "event": true,
@@ -1370,13 +1384,14 @@
               "Value #E": 13,
               "Value #F": 14,
               "Value #G": 15,
-              "last_conclusion": 16,
-              "last_repo": 17,
-              "last_workflow": 18,
-              "last_job": 19,
-              "Value #B": 20,
-              "url": 21,
-              "last_url": 22
+              "Value #H": 16,
+              "last_conclusion": 17,
+              "last_repo": 18,
+              "last_workflow": 19,
+              "last_job": 20,
+              "Value #B": 21,
+              "url": 22,
+              "last_url": 23
             },
             "renameByName": {
               "name": "runner",
@@ -1391,7 +1406,8 @@
               "Value #D": "cores allowed",
               "Value #E": "mem",
               "Value #F": "mem cap",
-              "Value #G": "disk"
+              "Value #G": "disk",
+              "Value #H": "disk measured"
             }
           }
         }
@@ -1684,6 +1700,22 @@
               {
                 "id": "unit",
                 "value": "bytes"
+              },
+              {
+                "id": "decimals",
+                "value": 1
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "disk measured"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "dtdurations"
               },
               {
                 "id": "decimals",

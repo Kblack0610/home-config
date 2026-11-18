@@ -14,6 +14,10 @@
 #   cc:host_<metric>{host}                  per-machine load for the board's MACHINES rows
 #   cc:host_core_busy_ratio{host,cpu}       each core's busy share, the Infra tab's core strip
 #   cc:runner_cores_busy / _allowed{host,runner}  cores a CI runner's job uses, and its pinned CPUs
+#   cc:runner_mem_bytes / _mem_max_bytes{host,runner}  its working set, and the cap of a cgroup it holds alone
+#   cc:runner_disk_bytes / _disk_age_seconds{host,runner}  disk under its home (hourly du), and that reading's age
+#   cc:host_mem_used_bytes / _total_bytes{host}      memory in bytes, the same measure as cc:host_mem_used_ratio
+#   cc:host_disk_avail_bytes / _size_bytes{host}     the emptiest real filesystem, the one the disk ratio reads
 #   cc:host_local_gate{host,worktree,...}  the workstation's local Unity gates (fleet-assess)
 #   cc:host_local_slots / _busy / _queued{host}          its gate slots, slots held, runs waiting
 #   cc:host_local_open_slots{host}                       the always-open part of its gate slots

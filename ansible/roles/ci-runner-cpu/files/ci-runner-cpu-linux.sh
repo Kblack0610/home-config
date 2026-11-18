@@ -6,11 +6,11 @@
 # containers mount only docker volumes, and it takes one task at a time, so that is the one
 # running). Containers come and go, so this reports the cores used since the
 # previous sample, a gauge: a counter summed over them would fall each time one exits.
-# Memory is the same cgroups' memory.current, summed. A runner's memory cap is the nearest
-# cgroup above it with a memory.max, reported only when no other runner sits under that
+# Memory is the same cgroups' working set (memory.current less inactive_file), summed. A runner's memory cap is the nearest
+# cgroup above it with a memory.max, reported only when no other runner, and no job container outside it, shares that
 # cgroup: a cap shared by several runners is not any one runner's.
 #
-# --disk: the bytes under each runner's working directory (its home: the checkout, the warm
+# --disk: the disk blocks under each runner's working directory (its home: the checkout, the warm
 # Unity Library and _work) into ci_runner_disk.prom, run hourly by ci-runner-disk.timer.
 # Disk use has no event to wait on, and a du of a 60G Library is too slow for the 15s CPU timer.
 # Tests: test-ci-runner-cpu.sh beside this file.
@@ -37,7 +37,7 @@ for unit in $(systemctl list-units 'actions.runner.*' 'forgejo-runner-*' --no-le
     name=${unit#actions.runner.}
     name=${name#forgejo-runner-}
     name=${name%.service}
-    case $unit in forgejo-runner-*)
+    case $mode:$unit in cpu:forgejo-runner-*)
         # The task id of the runner's last "task <id> repo is" line, the one it runs.
         task=$(journalctl -u "$unit" -g ' msg="task [0-9]+ repo is ' -n 1 -o cat --no-pager 2>/dev/null |
             sed -n 's/.* msg="task \([0-9]*\) repo is .*/\1/p')
@@ -56,10 +56,13 @@ if [ "$mode" = disk ]; then
     tmp="$out_dir/.ci_runner_disk.prom.$$"
     trap 'rm -rf "$work" "$tmp"' EXIT
     {
-        echo '# HELP ci_runner_disk_bytes Bytes under a CI runner'"'"'s working directory, on its filesystem only'
+        echo '# HELP ci_runner_disk_bytes Bytes of disk a CI runner'"'"'s working directory takes, on its filesystem only'
         echo '# TYPE ci_runner_disk_bytes gauge'
+        # Blocks allocated, as df counts them, not apparent size; ci-runner-disk.service sets
+        # the idle IO priority. / is never a runner's home: a du of it would walk the host.
         while IFS=$tab read -r dir name; do
-            bytes=$(nice -n 19 ionice -c3 du -sxb "$dir" 2>/dev/null | cut -f1 || true)
+            [ "$dir" != / ] || continue
+            bytes=$(du -sx --block-size=1 "$dir" 2>/dev/null | cut -f1 || true)
             if [ -n "$bytes" ]; then printf 'ci_runner_disk_bytes{runner="%s"} %s\n' "$name" "$bytes"; fi
         done < "$work/dirs" | sort
         echo '# HELP ci_runner_disk_measured_seconds Unix time the runner'"'"'s directory was measured'
@@ -95,8 +98,13 @@ now=$(cut -d' ' -f1 "$proc/uptime")
 while IFS=$tab read -r name path; do
     usage=$(awk '$1 == "usage_usec" { print $2 }' "$cg$path/cpu.stat" 2>/dev/null || true)
     if [ -n "$usage" ]; then printf '%s\t%s\t%s\n' "$name" "$path" "$usage" >> "$work/sample"; fi
+    # The working set: memory.current less the inactive page cache the kernel reclaims
+    # first, the measure MemTotal - MemAvailable makes for the host.
     mem=$(cat "$cg$path/memory.current" 2>/dev/null || true)
-    if [ -n "$mem" ]; then printf '%s\t%s\n' "$name" "$mem" >> "$work/mem"; fi
+    if [ -n "$mem" ]; then
+        idle=$(awk '$1 == "inactive_file" { print $2 }' "$cg$path/memory.stat" 2>/dev/null || true)
+        printf '%s\t%s\n' "$name" "$((mem - ${idle:-0}))" >> "$work/mem"
+    fi
 done < "$work/cgroups"
 
 # runner name <tab> the cap of the nearest cgroup above its unit that has one.
@@ -108,8 +116,11 @@ while IFS=$tab read -r name path; do
         case $max in ''|max) p=${p%/*} ;; *) break ;; esac
     done
     [ -n "$p" ] && [ "$p" != / ] || continue
+    # The cap is this runner's only when no other runner sits under it and every job
+    # container it counts does: a container outside the cap is not bounded by it.
     shared=$(awk -F'\t' -v p="$p/" 'index($2 "/", p) == 1' "$work/units" | wc -l)
-    if [ "$shared" -eq 1 ]; then printf '%s\t%s\n' "$name" "$max" >> "$work/caps"; fi
+    outside=$(awk -F'\t' -v n="$name" -v p="$p/" '$1 == n && index($2 "/", p) != 1' "$work/cgroups" | wc -l)
+    if [ "$shared" -eq 1 ] && [ "$outside" -eq 0 ]; then printf '%s\t%s\n' "$name" "$max" >> "$work/caps"; fi
 done < "$work/units"
 
 tmp="$out_dir/.ci_runner.prom.$$"

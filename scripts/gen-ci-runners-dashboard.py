@@ -76,7 +76,7 @@ MACHINE_COLS = [("cc:host_cpu_busy_ratio", "cpu", "percentunit"), ("cc:host_cpu_
 # cores and memory from the 15s textfile, disk from the hourly du. ref, rule, column, unit.
 SLOT_SPACE = [("C", "cc:runner_cores_busy", "cores", "none"), ("D", "cc:runner_cores_allowed", "cores allowed", "none"),
               ("E", "cc:runner_mem_bytes", "mem", "bytes"), ("F", "cc:runner_mem_max_bytes", "mem cap", "bytes"),
-              ("G", "cc:runner_disk_bytes", "disk", "bytes")]
+              ("G", "cc:runner_disk_bytes", "disk", "bytes"), ("H", "cc:runner_disk_age_seconds", "disk measured", "dtdurations")]
 
 
 def machines(y):
@@ -180,7 +180,7 @@ panels = [
     pools(12),
 
     P({"type": "table", "title": "Runners: what is running where",
-       "description": "One row per runner. RUNNING rows show the job and how long it has been going; the 'last' columns show the last job it finished, which is what that runner is actually used for. cores, mem and disk are what the runner and its job containers take of its machine now: cores busy of the CPUs its cgroup allows, memory of the cap of a cgroup it holds alone, and the bytes under its home (the checkout, warm Unity Library and _work), measured hourly. '-' = no reading (macOS runners have no cgroups). Click a job to open it on GitHub. MISSING = a slot the roster expects that never registered.",
+       "description": "One row per runner. RUNNING rows show the job and how long it has been going; the 'last' columns show the last job it finished, which is what that runner is actually used for. cores, mem and disk are what the runner and its job containers take of its machine now: cores busy of the CPUs its cgroup allows, memory of the cap of a cgroup it holds alone, and the bytes under its home (the checkout, warm Unity Library and _work), measured hourly (disk measured says how long ago). '-' = no reading (macOS runners have no cgroups). Click a job to open it on GitHub. MISSING = a slot the roster expects that never registered.",
        "gridPos": {"h": 13, "w": 24, "x": 0, "y": 20},
        "targets": [tgt(W + "(github_runner_state)", "A"), tgt(W + "(github_runner_last_job) * 1000", "B")]
                   + [tgt(f'max by (name) (label_replace({m}, "name", "$1", "runner", "(.+)"))', ref) for ref, m, _, _ in SLOT_SPACE],
@@ -190,8 +190,7 @@ panels = [
                              "__name__": True, "scope": True, "event": True, "labels": True},
            "indexByName": {"state": 0, "name": 1, "host": 2, "pool": 3, "repo": 4, "pr": 5, "branch": 6, "title": 7, "workflow": 8,
                            "job_name": 9, "Value #A": 10, **{f"Value #{ref}": 11 + i for i, (ref, _, _, _) in enumerate(SLOT_SPACE)},
-                           "last_conclusion": 16, "last_repo": 17, "last_workflow": 18, "last_job": 19,
-                           "Value #B": 20, "url": 21, "last_url": 22},
+                           **{k: 11 + len(SLOT_SPACE) + i for i, k in enumerate(("last_conclusion", "last_repo", "last_workflow", "last_job", "Value #B", "url", "last_url"))}},
            "renameByName": {"name": "runner", "job_name": "job", "Value #A": "running for", "last_conclusion": "last result",
                             "last_repo": "last repo", "last_workflow": "last workflow", "last_job": "last job", "Value #B": "last finished",
                             **{f"Value #{ref}": col for ref, _, col, _ in SLOT_SPACE}}}}],

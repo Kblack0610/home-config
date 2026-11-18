@@ -87,10 +87,17 @@
   loop: [ci-runner-cpu.timer, ci-runner-disk.timer]
   ignore_errors: "{{ ansible_check_mode }}"
 
+- name: Look for a disk reading
+  ansible.builtin.stat:
+    path: "{{ ci_runner_cpu_linux_textfile_dir }}/ci_runner_disk.prom"
+  register: ci_runner_disk_prom
+
+# The disk run is a du of every runner home, so an apply starts it only on a host
+# that has no reading yet; after that the timer keeps it.
 - name: Write the first readings now
   ansible.builtin.systemd:
     name: "{{ item }}"
     state: started
     no_block: "{{ item == 'ci-runner-disk.service' }}"
-  loop: [ci-runner-cpu.service, ci-runner-disk.service]
+  loop: "{{ ['ci-runner-cpu.service'] + ([] if ci_runner_disk_prom.stat.exists else ['ci-runner-disk.service']) }}"
   when: not ansible_check_mode

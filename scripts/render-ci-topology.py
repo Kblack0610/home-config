@@ -64,10 +64,12 @@ KEYS = ("ci_light_slots", "ci_heavy_slots", "ci_repo_runners", "ci_pinned_runner
 # Unity slot their checkout would clean the warm Library.
 HOST_CAPS = ("light", "heavy", "unity", "unity-build", "forgejo")
 SLOT_CAPS = {"light": ["light"], "heavy": ["heavy", "light"]}
-# Heavy is shared since platform's heavy jobs, the only ones that ask for heavy, take ephemeral
-# service and app ports (BlackNBrownStudios/platform#1592 on main, #1599 on develop), so two heavy
-# jobs on one host no longer clash. Revisit if a heavy job fails on an address already in use.
-SHARED_CAPS = ("light", "heavy")
+# Heavy is safe to share since platform's heavy jobs, the only ones that ask for heavy, take
+# ephemeral service and app ports (BlackNBrownStudios/platform#1592 on main, #1599 on develop).
+# It stays out of SHARED_CAPS until make-logical-possum-p4-apply gives the Unity runners the heavy
+# label: counted earlier, linux-ci-runners-online reads heavy 2/8. The apply and the re-add land
+# in one change. Revisit if a heavy job fails on an address already in use.
+SHARED_CAPS = ("light",)
 
 
 def gigabytes(val):

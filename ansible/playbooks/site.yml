@@ -561,6 +561,17 @@
     - role: fleet-worker
       tags: [fleet-worker, agents]
 
+- name: Agent CPU budget (every host agent sessions run on)
+  # One hard cpuset over all agent work on the host, CI inside it, so the
+  # desktop and the OS keep the rest (roles/agent-host-budget). Root writes the
+  # drop-ins under /etc/systemd/user; each user manager reloads onto them.
+  hosts: fleet_workers:desktop_workstations
+  gather_facts: true
+  become: true
+  roles:
+    - role: agent-host-budget
+      tags: [agent-host-budget, agents]
+
 # macOS hosts (macos_hosts). Shared baseline: brew essentials, node_exporter,
 # and macos-baseline (power policy + SSH key sync + auto-login/FileVault
 # assert). macos-baseline's pmset tasks self-elevate (become: true), so applying

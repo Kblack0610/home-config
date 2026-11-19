@@ -148,6 +148,12 @@ endpoints:
     interval: 60s
     conditions:
       - "[STATUS] == 200"
+  - name: deskslim-1
+    group: k3s
+    url: "http://192.168.1.19:9100/metrics"
+    interval: 60s
+    conditions:
+      - "[STATUS] == 200"
   - name: asus-laptop
     group: k3s
     url: "http://192.168.1.152:9100/metrics"

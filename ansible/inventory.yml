@@ -75,8 +75,7 @@ all:
           k3s_role: agent
           k3s_extra_args:
             - --node-label=node.kubernetes.io/friendly-name=ms-a2
-        # ASRock DeskSlim X600, Ryzen 9 9900X (12 cores), 60G. Its twin deskslim-1
-        # (7900X, DHCP .19) joins once its replacement RAM is in.
+        # ASRock DeskSlim X600, Ryzen 9 9900X (12 cores), 60G.
         deskslim-2:
           host_tier: standard
           ansible_host: 192.168.1.29
@@ -84,6 +83,15 @@ all:
           k3s_role: agent
           k3s_extra_args:
             - --node-label=node.kubernetes.io/friendly-name=deskslim-2
+        # Its twin: ASRock DeskSlim X600, Ryzen 9 7900X (12 cores), 61G. PXE 2026-11-16,
+        # off with bad RAM until the replacement kit, joined 2026-11-18.
+        deskslim-1:
+          host_tier: standard
+          ansible_host: 192.168.1.19
+          ssh_host_ed25519: ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIG7qDamILuEsji8FIwIVgEzF/cZpu29tcNhuA6nP3bQG
+          k3s_role: agent
+          k3s_extra_args:
+            - --node-label=node.kubernetes.io/friendly-name=deskslim-1
 
     # This workstation, managed over a local connection (no SSH). Hosts the
     # gungan dictation ASR daemons (see roles/asr-servers).
@@ -251,6 +259,7 @@ all:
         # sp5100_tco autoloads on both (/dev/watchdog0, checked 2026-11-16).
         ms-a2:
         deskslim-2:
+        deskslim-1:
         asus-laptop:
           # Present but not autoloaded on this board (checked 2026-11-13).
           hw_watchdog_module: sp5100_tco
@@ -271,6 +280,7 @@ all:
         razer-laptop:
         ms-a2:
         deskslim-2:
+        deskslim-1:
         asus-laptop:
 
     # NUT (Network UPS Tools) groups. The single CyberPower CP1500PFCLCDa plugs
@@ -296,8 +306,9 @@ all:
         pi3-adguard:
         ms-a2:
         deskslim-2:
+        deskslim-1:
         mac-mini:
-        # Local connection: apply with -K (sudo password).
+        # Local connection: sudo needs the become password (ansible/README.md, Secrets).
         cachyos-x8664-main:
 
     # BNB CI runner pool (added 2026-10-05; the "CI runners" play in site.yml), org-scoped
@@ -351,6 +362,10 @@ all:
           ci_repo_runners: &personal_repo_runners
             - {repo: Kblack0610/.dotfiles-private, slot: dotfiles-private-1, borrows: 1}
             - {repo: Kblack0610/gungan-speak, slot: gungan-speak-1, borrows: 2}
+        deskslim-1:
+          unity_ci_slots: 3
+          unity_ci_full: true
+          unity_ci_gate: true
         # The workstation, the human's work machine: merge gates only
         # (unity_ci_full false, so no nightly, release or Multi run lands here).
         # The governor reads it from the CI topology for its admit.
@@ -501,6 +516,14 @@ all:
     # jobs. A host's own slots of a kind need that kind here; a cloud host takes no
     # light or heavy, so a small job never powers a paid host. Drop a cap and
     # re-apply to take it off every slot of the host.
+    # ci_units: the Forgejo seats on each lendable slot, so that many small jobs share one
+    # slot the governor lends to Forgejo (render-ci-topology.py). Provisional, from
+    # ci_runner_cores_busy over 2026-11-11..18 while a job ran: a Forgejo job's p90 is
+    # 1.4-2.9 cores (median seat 1.7), so two fit a 3-core slot. Revisit when that p90
+    # passes 2 cores or Forgejo wait p90 rises (scripts/ci-pool-idle.py). Repo seats stay
+    # one per slot: no personal-repo job waited in those 7 days. On windows-media-ci only: the
+    # plan named ms-a2, deskslim-2 and windows-media-ci, host-headroom.py read all three
+    # FULL on 2026-11-18, and the human chose the one with no OOMs (ask t1kigm).
     ci_hosts:
       hosts:
         # ms-a2: 16 cores / 32 threads, SMT siblings n and n+16 (sysfs,
@@ -524,6 +547,17 @@ all:
         # and heavy jobs (ci_caps), and the governor lends them to Forgejo and the
         # personal repo runners.
         deskslim-2:
+          ci_caps: [light, heavy, unity, forgejo]
+          ci_cpus: 2-11,14-23
+          ci_memory_max: 48G
+          ci_unity_cpus: 2-11,14-23
+          ci_unity_slot_cpus: ["2-4,14-16", "5-7,17-19", "8-11,20-23"]
+          ci_unity_memory_max: 48G
+          ci_unity_slot_memory_max: 14G
+          k3s_cpus: 0-1,12-13
+        # deskslim-1: deskslim-2's twin layout (12 cores / 24 threads, SMT siblings n
+        # and n+12, lscpu 2026-11-18, 61G), so the same slots and caps.
+        deskslim-1:
           ci_caps: [light, heavy, unity, forgejo]
           ci_cpus: 2-11,14-23
           ci_memory_max: 48G
@@ -562,6 +596,7 @@ all:
           ci_unity_slot_cpus: ["6-11", "12-17", "18-23"]
           ci_unity_memory_max: 42G
           ci_unity_slot_memory_max: 14G
+          ci_units: {forgejo: 2}
         # aws-build-1, the same m7a.8xlarge: build slots 1-3 of 10 cores for whole-game
         # player builds, 36G each (a build SIGKILLed at 14G on aws-burst-1, #1817;
         # razer builds in 20G), and test slots 4-9 of 5 cores and 16G, two on each build
@@ -608,8 +643,9 @@ all:
     # game's tick runs on. Moving the server to another box (a mini PC, the
     # Razer) is this group, that host's ci_cpus, and the router's LAN answer and
     # UDP forward (apps/playground-server/README.md).
-    # Fleet workers: hosts fleet-dispatch places light claude sessions on, over
-    # ssh. dotfiles .local/lib/fleet-hosts.sh reads this group from this file
+    # Fleet workers: hosts fleet-dispatch places light sessions on over ssh, on
+    # claude or on a headless harness the host lists in fleet_harnesses. dotfiles
+    # .local/lib/fleet-hosts.sh reads this group from this file
     # alone, so its vars stay here and never move to group_vars/. Provisioned
     # by roles/fleet-worker; claude-acct token push gives it each Claude account's token. Runbook:
     # docs/runbooks/fleet-worker.md.
@@ -617,6 +653,9 @@ all:
     #   fleet_max_live   sessions at once on it (a light item is one run unit)
     #   fleet_repos      what it clones, and the repos whose items it takes;
     #                    dest is the same path as on the workstation
+    #   fleet_harnesses  the headless harnesses it runs besides claude
+    #                    (names in the dotfiles-private harness map); placed only
+    #                    while its probe reads each ready (fleet-dispatch harness-ready)
     #   fleet_ssh_host  where fleet-dispatch ssh goes when ansible_host is not
     #                    it (a cloud worker: an instance id behind SSM)
     #   fleet_power      governor: the ci-runner-governor starts and stops it
@@ -653,6 +692,10 @@ all:
           fleet_place: true
           fleet_max_live: 5
           fleet_first: [canary, night]
+          # nim, ocfree, opencode-go and codex canaries and trainee runs go here too, so a hot
+          # workstation no longer holds them (2026-11-18: three nim canaries waited behind
+          # a 96 C workstation while it sat idle; ar-3222).
+          fleet_harnesses: [nim, ocfree, opencode-go, codex]
           fleet_repos:
             - dest: ~/.dotfiles
               repo: https://github.com/Kblack0610/.dotfiles.git

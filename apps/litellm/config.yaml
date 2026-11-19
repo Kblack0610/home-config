@@ -182,7 +182,8 @@ model_list:
         reasoning: false
         json_mode: true
 
-  # stt paid — whisper-turbo via groq. Free ($0/$0). No active consumer
+  # stt paid: whisper-turbo via groq, priced $0/$0 by Lazer but a Lazer
+  # route, so not tagged free. No active consumer
   # but exposed for future voice-input use cases.
   - model_name: "stt (whisper-turbo)"
     litellm_params:
@@ -193,7 +194,7 @@ model_list:
       rpm: 600
     model_info:
       mode: audio_transcription
-      tags: ["paid", "lazer", "free"]
+      tags: ["paid", "lazer"]
       capabilities:
         audio: true
 
@@ -630,30 +631,13 @@ model_list:
   # NIM's free tier: about 40 requests/min shared by every model on one key,
   # no card, framed by NVIDIA as evaluation, not production: personal fleet
   # trial work only, never client work. Priced at 0, so spend reads $0 and only
-  # rpm limits it: the routes on this key sum to 35, under NIM's 40 (free-deepseek 20, free-glm 15; limit read 2026-11-16 from the freellmapi catalog). Key NVIDIA_NIM_API_KEY in
+  # rpm limits it: the rpm of every route on this key must sum under the limit
+  # below (test_go_routes.py). Key NVIDIA_NIM_API_KEY in
   # secret.sops.yaml (rbw `nvidia-nim-api-key`); gateway key `fleet-nim`.
+  # key-limit NVIDIA_NIM_API_KEY: rpm 40 (freellmapi catalog, read 2026-11-16)
   #
   # NO fallback edge (router_settings.fallbacks): a NIM 429 must fail the call,
   # not spill free-tier work onto paid Lazer.
-  - model_name: "free-deepseek (deepseek-v4.1-flash)"
-    litellm_params:
-      model: "openai/deepseek-ai/deepseek-v4.1-flash"
-      api_base: https://integrate.api.nvidia.com/v1
-      api_key: os.environ/NVIDIA_NIM_API_KEY
-      input_cost_per_token: 0
-      output_cost_per_token: 0
-      rpm: 20
-    model_info:
-      mode: chat
-      tags: ["free", "nvidia-nim"]
-      capabilities:
-        tools: true
-        code: true
-        vision: false
-        reasoning: true
-        json_mode: true
-      supports_function_calling: true
-
   - model_name: "free-glm (glm-5.3-flash)"
     litellm_params:
       model: "openai/z-ai/glm-5.3-flash"
@@ -664,7 +648,7 @@ model_list:
       rpm: 15
     model_info:
       mode: chat
-      tags: ["free", "nvidia-nim"]
+      tags: ["free", "nvidia-nim", "fleet-trial"]
       capabilities:
         tools: true
         code: true
@@ -682,6 +666,7 @@ model_list:
   # harness only for an allowlisted public project (README, OpenCode free key).
   # The list rotates: a model OpenCode drops answers 400 "Model is unavailable".
   # No fallback edge: a refusal fails the call, never reaches a paid route.
+  # key-limit OPENCODE_GO_API_KEY: none published (opencode.ai/docs/go gives 5h and weekly allowances only, read 2026-11-18)
   - model_name: "opencode-free (beam-free)"
     litellm_params:
       model: "openai/beam-free"
@@ -825,6 +810,7 @@ model_list:
   # The one self-hosted model: Qwen3.5-9B under llama-server on the
   # workstation's RTX 4060 Ti (dotfiles llama-server.service). Nothing leaves
   # the LAN, so personal data may use it; it is down when the workstation is.
+  # Priced 0 but not tagged free: free marks a third-party free tier.
   # NO fallback edge (router_settings.fallbacks): a down model fails the call
   # instead of spilling personal work onto a paid route. llama-server checks
   # no key (UFW opens 8780 to the LAN only); api_key is the client's placeholder.
@@ -838,7 +824,7 @@ model_list:
       timeout: 120
     model_info:
       mode: chat
-      tags: ["free", "local"]
+      tags: ["local"]
       capabilities:
         tools: false
         code: false

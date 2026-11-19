@@ -9,6 +9,7 @@
 #   cc:overall_status                       2 when any domain is 2, else 0 (warns never colour it), printer left out
 #   cc:agents_topic_live{topic}             1 per agents topic published in 20 min; readers join on it
 #   cc:watch_state{domain,item}             what is not ok inside a domain: 2 down, 1 warn, one row per item
+#   cc:watch_state_raw{domain,item}         the same before a quarantine (cc:watch_quarantined{item}) demotes a down item to warn
 #   cc:red_now{item}                        what is red right now, one row per item (dashboard table, hub board, waybar day and health chips)
 #   cc:<name>                               the numbers the tiles print
 #   cc:host_<metric>{host}                  per-machine load for the board's MACHINES rows
@@ -65,7 +66,7 @@ spec:
         # Weight 2 is for a user-facing outage (prod, the k3s cluster, CI runners offline) or a dead
         # alert path (pager_undelivered: with it down, no other page arrives; alertmanager_fleet after 2h); every
         # other watch warns in its domain. A runner offline includes m1_playground_mac_online. Work posture
-        # (playground_nightly and the release, train and gate-budget watches, release_drift, release_links,
+        # (playground_nightly and the release, train and gate-budget watches, release_drift, release_links, release_late,
         # runner_score, fleet_budget_pace, infra_trickle) warns: it is work to pick up, not an outage. A watch no domain names falls to `other`, where it is down, or warns when its manifest says severity: low.
         # queue_starved warns: dispatch held for account room is load, not an outage, and source_pace
         # already reports it; promote it back to 2 once source_pace has read ok for 7 days (human,
@@ -78,49 +79,49 @@ spec:
         # exit 2) trips the same series and also waits 2h: Sentinel still pages that trip straight to
         # ntfy, so the human hears of it before the chip turns red.
         # Provisional: revisit if a fix lands in under 1h or a red ran past 2h unseen.
-        - record: cc:watch_state
+        - record: cc:watch_state_raw
           labels: {domain: k3s}
           expr: >-
             max by (item) (label_replace(((mqtt_tripped{topic=~"agents_.+_watch_(home_k3s_.+|cluster_janitor_alive)",topic!~"agents_.+_watch_home_k3s_(trivy_criticals|kubeconfig_cert)"} and on (topic) cc:agents_topic_live) * 2 > 0) or ((mqtt_tripped{topic=~"agents_.+_watch_(home_k3s_trivy_criticals|home_k3s_kubeconfig_cert|forgejo_restore_drill)"} and on (topic) cc:agents_topic_live) * 1 > 0) or ((mqtt_stale{topic=~"agents_.+_watch_(home_k3s_.+|cluster_janitor_alive|forgejo_restore_drill)"} and on (topic) cc:agents_topic_live) > 0), "item", "$1", "topic", "agents_.+_watch_(.+)"))
-        - record: cc:watch_state
+        - record: cc:watch_state_raw
           labels: {domain: prod}
           expr: >-
             max by (item) (label_replace(((mqtt_tripped{topic=~"agents_.+_watch_(pmp_.+|prod_mercury_payouts|posthog_prod_guard|binks_key_issue_failed)"} and on (topic) cc:agents_topic_live) * 2 > 0) or ((mqtt_stale{topic=~"agents_.+_watch_(pmp_.+|prod_mercury_payouts|posthog_prod_guard|binks_key_issue_failed)"} and on (topic) cc:agents_topic_live) > 0), "item", "$1", "topic", "agents_.+_watch_(.+)"))
         # ci is the runner fleet: runners online, the Unity queue wait and each host's job pass. A project's own CI
         # (nightly, gates, release train) is the projects domain below, so a red nightly no longer
         # paints the CI chip amber for days (2026-11-17: ci never green in 7 days).
-        - record: cc:watch_state
+        - record: cc:watch_state_raw
           labels: {domain: ci}
           expr: >-
             max by (item) (label_replace(((mqtt_tripped{topic=~"agents_.+_watch_(.+_runners?_online|m1_playground_mac_online)"} and on (topic) cc:agents_topic_live) * 2 > 0) or ((mqtt_tripped{topic=~"agents_.+_watch_(unity_queue_wait|ci_host_pass)"} and on (topic) cc:agents_topic_live) * 1 > 0) or ((mqtt_stale{topic=~"agents_.+_watch_(.+_runners?_online|unity_queue_wait|ci_host_pass|m1_playground_mac_online)"} and on (topic) cc:agents_topic_live) > 0), "item", "$1", "topic", "agents_.+_watch_(.+)"))
-        - record: cc:watch_state
+        - record: cc:watch_state_raw
           labels: {domain: projects}
           expr: >-
-            max by (item) (label_replace(((mqtt_tripped{topic=~"agents_.+_watch_(playground_nightly|playground_main_checks|playground_gate_spread|playground_release_ready|playground_release_runs|playground_train_stuck|playground_server_behind|playground_gate_budget|playloop|dotfiles_gate_budget)"} and on (topic) cc:agents_topic_live) * 1 > 0) or ((mqtt_stale{topic=~"agents_.+_watch_(playground_nightly|playground_main_checks|playground_gate_spread|playground_release_ready|playground_release_runs|playground_train_stuck|playground_server_behind|playground_gate_budget|playloop|dotfiles_gate_budget)"} and on (topic) cc:agents_topic_live) > 0), "item", "$1", "topic", "agents_.+_watch_(.+)"))
-        - record: cc:watch_state
+            max by (item) (label_replace(((mqtt_tripped{topic=~"agents_.+_watch_(playground_nightly|playground_main_checks|playground_gate_spread|playground_release_ready|playground_release_runs|playground_train_stuck|playground_server_behind|playground_gate_budget|playloop|dotfiles_gate_budget|release_late)"} and on (topic) cc:agents_topic_live) * 1 > 0) or ((mqtt_stale{topic=~"agents_.+_watch_(playground_nightly|playground_main_checks|playground_gate_spread|playground_release_ready|playground_release_runs|playground_train_stuck|playground_server_behind|playground_gate_budget|playloop|dotfiles_gate_budget|release_late)"} and on (topic) cc:agents_topic_live) > 0), "item", "$1", "topic", "agents_.+_watch_(.+)"))
+        - record: cc:watch_state_raw
           labels: {domain: queue}
           expr: >-
             max by (item) (label_replace(((mqtt_tripped{topic=~"agents_.+_watch_(shepherd_stuck)"} and on (topic) cc:agents_topic_live) * 2 > 0) or ((mqtt_tripped{topic=~"agents_.+_watch_(queue_starved|heal_flapping|board_chain|board_open|intake_stuck|queue_limit_ends|infra_trickle)"} and on (topic) cc:agents_topic_live) * 1 > 0) or ((mqtt_stale{topic=~"agents_.+_watch_(queue_starved|shepherd_stuck|heal_flapping|board_chain|board_open|intake_stuck|queue_limit_ends|infra_trickle)"} and on (topic) cc:agents_topic_live) > 0), "item", "$1", "topic", "agents_.+_watch_(.+)"))
-        - record: cc:watch_state
+        - record: cc:watch_state_raw
           labels: {domain: machines}
           expr: >-
             max by (item) (label_replace(((mqtt_tripped{topic=~"agents_.+_watch_(fleet_thermal|emotiv_bridge|mac_mini_desktop_grants)"} and on (topic) cc:agents_topic_live) * 1 > 0) or ((mqtt_stale{topic=~"agents_.+_watch_(fleet_thermal|emotiv_bridge|mac_mini_desktop_grants)"} and on (topic) cc:agents_topic_live) > 0), "item", "$1", "topic", "agents_.+_watch_(.+)"))
-        - record: cc:watch_state
+        - record: cc:watch_state_raw
           labels: {domain: spend}
           expr: >-
             max by (item) (label_replace(((mqtt_tripped{topic=~"agents_.+_watch_(source_pace|gh_actions_budget_pace|fleet_budget_pace|claude_spend_(?:hourly|daily)|claude_account_pace|claude_acct_usage|binks_chat_spend|binks_spend_ceiling|binks_waitlist_on|binks_search_quota|meshy_credits|codex_underuse|queue_cost_export|token_usage_drift)"} and on (topic) cc:agents_topic_live) * 1 > 0) or ((mqtt_stale{topic=~"agents_.+_watch_(source_pace|gh_actions_budget_pace|fleet_budget_pace|claude_spend_(?:hourly|daily)|claude_account_pace|claude_acct_usage|binks_chat_spend|binks_spend_ceiling|binks_waitlist_on|binks_search_quota|meshy_credits|codex_underuse|queue_cost_export|token_usage_drift)"} and on (topic) cc:agents_topic_live) > 0), "item", "$1", "topic", "agents_.+_watch_(.+)"))
-        - record: cc:watch_state
+        - record: cc:watch_state_raw
           labels: {domain: platform}
           expr: >-
             max by (item) (label_replace(((mqtt_tripped{topic=~"agents_.+_watch_(pager_undelivered)"} and on (topic) cc:agents_topic_live) * 2 > 0) or ((min_over_time(mqtt_tripped{topic=~"agents_.+_watch_(alertmanager_fleet)"}[2h]) and on (topic) (mqtt_tripped{topic=~"agents_.+_watch_(alertmanager_fleet)"} offset 2h > 0) and on (topic) cc:agents_topic_live) * 2 > 0) or ((mqtt_tripped{topic=~"agents_.+_watch_(alertmanager_fleet|skill_drift|mem0_search_path|deploy_drift|fleet_liveness|release_drift|release_links|provider_status|agent_web_liveness|agent_web_slow|systemd_user_failed|main_checkout_branch|schedules_fresh|runner_score|lane_sandbox_refusals|claude_startup|pts_bands|platform_dependabot_runtime)"} and on (topic) cc:agents_topic_live) * 1 > 0) or ((mqtt_stale{topic=~"agents_.+_watch_(skill_drift|mem0_search_path|deploy_drift|fleet_liveness|release_drift|release_links|provider_status|pager_undelivered|alertmanager_fleet|agent_web_liveness|agent_web_slow|systemd_user_failed|main_checkout_branch|schedules_fresh|runner_score|lane_sandbox_refusals|claude_startup|pts_bands|platform_dependabot_runtime)"} and on (topic) cc:agents_topic_live) > 0), "item", "$1", "topic", "agents_.+_watch_(.+)"))
-        - record: cc:watch_state
+        - record: cc:watch_state_raw
           labels: {domain: llm}
           expr: >-
             max by (item) (label_replace(((mqtt_tripped{topic=~"agents_.+_watch_(gateway_errors|langfuse_read)"} and on (topic) cc:agents_topic_live) * 1 > 0) or ((mqtt_stale{topic=~"agents_.+_watch_(gateway_errors|langfuse_read)"} and on (topic) cc:agents_topic_live) > 0), "item", "$1", "topic", "agents_.+_watch_(.+)"))
         # Neptune, the 3D printer: its Home Assistant sensor and its watches (down, stale or tripped) warn in
         # their own domain, which cc:overall_status leaves out. It is off most days and rarely used, so it
         # shows on the health hover and the board but never colours the heart (human, 2026-11-12).
-        - record: cc:watch_state
+        - record: cc:watch_state_raw
           labels: {domain: printer}
           expr: >-
             max by (item) (label_replace(((mqtt_tripped{topic=~"agents_hass_conn_neptune_.+"} and on (topic) cc:agents_topic_live) > 0), "item", "$1", "topic", "agents_hass_conn_(.+)") or label_replace(((mqtt_tripped{topic=~"agents_.+_watch_neptune_.+"} and on (topic) cc:agents_topic_live) > 0) or ((mqtt_stale{topic=~"agents_.+_watch_neptune_.+"} and on (topic) cc:agents_topic_live) > 0), "item", "$1", "topic", "agents_.+_watch_(.+)")) * 0 + 1
@@ -129,15 +130,25 @@ spec:
         # A tripped watch here is down unless its manifest says severity: low (severity_rank 1, from
         # agent-mqtt-publish), which warns: a low fyi watch held cc:overall_status red for months (ar-2795).
         # A watch with no rank published is down, as before.
-        - record: cc:watch_state
+        - record: cc:watch_state_raw
           labels: {domain: other}
           expr: >-
-            max by (item) (label_replace((((mqtt_tripped{topic=~"agents_.+_watch_.+",topic!~"agents_.+_watch_(aws_burst_power|neptune_.+)"} and on (topic) cc:agents_topic_live) * 2 > 0) unless on (topic) (mqtt_severity_rank == 1)) or ((mqtt_tripped{topic=~"agents_.+_watch_.+",topic!~"agents_.+_watch_(aws_burst_power|neptune_.+)"} and on (topic) cc:agents_topic_live) * 1 > 0) or ((mqtt_stale{topic=~"agents_.+_watch_.+",topic!~"agents_.+_watch_(aws_burst_power|neptune_.+)"} and on (topic) cc:agents_topic_live) > 0), "item", "$1", "topic", "agents_.+_watch_(.+)")) unless on (item) cc:watch_state{domain!="other"}
+            max by (item) (label_replace((((mqtt_tripped{topic=~"agents_.+_watch_.+",topic!~"agents_.+_watch_(aws_burst_power|neptune_.+)"} and on (topic) cc:agents_topic_live) * 2 > 0) unless on (topic) (mqtt_severity_rank == 1)) or ((mqtt_tripped{topic=~"agents_.+_watch_.+",topic!~"agents_.+_watch_(aws_burst_power|neptune_.+)"} and on (topic) cc:agents_topic_live) * 1 > 0) or ((mqtt_stale{topic=~"agents_.+_watch_.+",topic!~"agents_.+_watch_(aws_burst_power|neptune_.+)"} and on (topic) cc:agents_topic_live) > 0), "item", "$1", "topic", "agents_.+_watch_(.+)")) unless on (item) cc:watch_state_raw{domain!="other"}
         # Home Assistant's connectivity sensors, the wall pill's "N down": fleet_alerts.yaml publishes each one
-        - record: cc:watch_state
+        - record: cc:watch_state_raw
           labels: {domain: home}
           expr: >-
             max by (item) (label_replace((mqtt_tripped{topic=~"agents_hass_conn_.+",topic!~"agents_hass_conn_neptune_.+"} and on (topic) cc:agents_topic_live) * 2 > 0, "item", "$1", "topic", "agents_hass_conn_(.+)"))
+        # A quarantined watch (dotfiles-private watch-companion-loop quarantine: an owner and an expiry of
+        # at most 7d) is a red that waits outside the fleet. agent-mqtt-publish sends quarantined=true only
+        # while it is in force and the watch is still red, so it warns instead of holding the rollup down;
+        # it never reads ok, and it is down again the minute the quarantine ends.
+        - record: cc:watch_quarantined
+          expr: >-
+            max by (item) (label_replace((mqtt_quarantined{topic=~"agents_.+_watch_.+"} and on (topic) cc:agents_topic_live) > 0, "item", "$1", "topic", "agents_.+_watch_(.+)"))
+        - record: cc:watch_state
+          expr: >-
+            (clamp_max(cc:watch_state_raw, 1) and on (item) cc:watch_quarantined) or cc:watch_state_raw
         - record: cc:component_status
           labels: {domain: k3s, component: watches}
           expr: >-

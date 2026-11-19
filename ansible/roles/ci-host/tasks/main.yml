@@ -12,13 +12,8 @@
   when: ci_caps | default([]) | intersect(['light', 'heavy']) | length > 0
   tags: [linux-ci, unity-ci]
 
-- name: Ensure docker is enabled and running
-  ansible.builtin.systemd:
-    name: docker.service
-    enabled: true
-    state: started
-  # In --check the package step is simulated, so a fresh host has no unit yet.
-  ignore_errors: "{{ ansible_check_mode }}"
+- name: Start docker for light and heavy jobs
+  ansible.builtin.import_tasks: docker.yml
   tags: [linux-ci, unity-ci, unity-ci-host]
 
 # Every host, Unity-only ones too: without it aws-burst-1 filled its 400G CI volume on

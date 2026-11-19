@@ -5,14 +5,22 @@ tests:
   - name: a healthy machine raises nothing
     interval: 1m
     input_series:
-      - series: 'smartctl_device_smart_status{device="nvme0",instance="nas:9633"}'
+      - series: 'up{job="smartctl-exporter",host="asus-laptop",instance="nas:9633"}'
         values: '1x60'
-      - series: 'smartctl_device_smart_status{device="nvme1",instance="nas:9633"}'
+      - series: 'smartctl_device_smart_status{device="nvme0",host="asus-laptop",instance="nas:9633"}'
         values: '1x60'
-      - series: 'smartctl_device_critical_warning{device="nvme0",instance="nas:9633"}'
+      - series: 'smartctl_device_smart_status{device="nvme1",host="asus-laptop",instance="nas:9633"}'
+        values: '1x60'
+      - series: 'smartctl_device_critical_warning{device="nvme0",host="asus-laptop",instance="nas:9633"}'
         values: '0x60'
-      - series: 'smartctl_device_media_errors{device="nvme0",instance="nas:9633"}'
+      - series: 'smartctl_device_media_errors{device="nvme0",host="asus-laptop",instance="nas:9633"}'
         values: '0x60'
+      - series: 'smartctl_device_percentage_used{device="nvme0",host="asus-laptop",instance="nas:9633"}'
+        values: '11x60'
+      - series: 'smartctl_device_available_spare{device="nvme0",host="asus-laptop",instance="nas:9633"}'
+        values: '100x60'
+      - series: 'smartctl_device_available_spare_threshold{device="nvme0",host="asus-laptop",instance="nas:9633"}'
+        values: '10x60'
       # Six old read errors, as on the root disk: history, and not growing.
       - series: 'node_btrfs_device_errors_total{device="nvme1n1p2",instance="nas:9100",type="read"}'
         values: '6x60'
@@ -22,43 +30,46 @@ tests:
       - {eval_time: 50m, alertname: DiskSmartFailing, exp_alerts: []}
       - {eval_time: 50m, alertname: DiskCriticalWarning, exp_alerts: []}
       - {eval_time: 50m, alertname: DiskMediaErrors, exp_alerts: []}
+      - {eval_time: 50m, alertname: DiskWearHigh, exp_alerts: []}
+      - {eval_time: 50m, alertname: DiskSpareLow, exp_alerts: []}
       - {eval_time: 50m, alertname: BtrfsCorruption, exp_alerts: []}
       - {eval_time: 50m, alertname: BtrfsIOErrors, exp_alerts: []}
-      - {eval_time: 50m, alertname: SmartMetricsMissing, exp_alerts: []}
+      - {eval_time: 50m, alertname: SmartExporterDown, exp_alerts: []}
+      - {eval_time: 50m, alertname: SmartDriveMissing, exp_alerts: []}
 
   - name: SMART trouble raises each alert
     interval: 1m
     input_series:
-      - series: 'smartctl_device_smart_status{device="nvme0",instance="nas:9633"}'
+      - series: 'smartctl_device_smart_status{device="nvme0",host="asus-laptop",instance="nas:9633"}'
         values: '0x30'
-      - series: 'smartctl_device_smart_status{device="nvme1",instance="nas:9633"}'
+      - series: 'smartctl_device_smart_status{device="nvme1",host="asus-laptop",instance="nas:9633"}'
         values: '1x30'
-      - series: 'smartctl_device_critical_warning{device="nvme0",instance="nas:9633"}'
+      - series: 'smartctl_device_critical_warning{device="nvme0",host="asus-laptop",instance="nas:9633"}'
         values: '1x30'
-      - series: 'smartctl_device_media_errors{device="nvme0",instance="nas:9633"}'
+      - series: 'smartctl_device_media_errors{device="nvme0",host="asus-laptop",instance="nas:9633"}'
         values: '3x30'
     alert_rule_test:
       - eval_time: 10m
         alertname: DiskSmartFailing
         exp_alerts:
-          - exp_labels: {severity: critical, fleet: none, category: disk-health, device: nvme0, instance: "nas:9633"}
+          - exp_labels: {severity: critical, fleet: none, category: disk-health, device: nvme0, host: asus-laptop, instance: "nas:9633"}
             exp_annotations:
               summary: "SMART says nvme0 is failing"
-              description: 'nvme0 on nas:9633 failed its SMART health check. Check that its data has a current copy, then plan a replacement. See docs/backup-runbook.md, "If a drive fails".'
+              description: 'nvme0 on asus-laptop failed its SMART health check. Check that its data has a current copy, then plan a replacement. See docs/backup-runbook.md, "If a drive fails".'
       - eval_time: 10m
         alertname: DiskCriticalWarning
         exp_alerts:
-          - exp_labels: {severity: critical, fleet: none, category: disk-health, device: nvme0, instance: "nas:9633"}
+          - exp_labels: {severity: critical, fleet: none, category: disk-health, device: nvme0, host: asus-laptop, instance: "nas:9633"}
             exp_annotations:
               summary: "NVMe critical warning on nvme0"
-              description: "nvme0 on nas:9633 reports critical warning 1. It covers spare capacity, temperature and media going read-only."
+              description: "nvme0 on asus-laptop reports critical warning 1. It covers spare capacity, temperature and media going read-only."
       - eval_time: 10m
         alertname: DiskMediaErrors
         exp_alerts:
-          - exp_labels: {severity: critical, fleet: none, category: disk-health, device: nvme0, instance: "nas:9633"}
+          - exp_labels: {severity: critical, fleet: none, category: disk-health, device: nvme0, host: asus-laptop, instance: "nas:9633"}
             exp_annotations:
               summary: "3 media errors on nvme0"
-              description: "nvme0 on nas:9633 could not read or write some of its media. Run a scrub to find which files are affected."
+              description: "nvme0 on asus-laptop could not read or write some of its media. Run a scrub to find which files are affected."
 
   - name: new btrfs errors raise by type, on the USB drive too
     interval: 1m
@@ -84,30 +95,78 @@ tests:
               summary: "btrfs write errors on sda1"
               description: "sda1 on nas:9100 had IO errors in the last hour. Check the kernel log for controller resets or a USB disconnect, and the drive's SMART data if it has any."
 
-  - name: one NVMe gone from the metrics is reported
+  - name: a worn drive warns at 80% used and twice its spare threshold, not before
     interval: 1m
     input_series:
-      - series: 'smartctl_device_smart_status{device="nvme0",instance="nas:9633"}'
+      - series: 'smartctl_device_percentage_used{device="nvme0",host="hp-victus",instance="10.0.0.1:9633"}'
+        values: '79x90 80x90'
+      - series: 'smartctl_device_available_spare{device="nvme0",host="hp-victus",instance="10.0.0.1:9633"}'
+        values: '21x90 20x90'
+      - series: 'smartctl_device_available_spare_threshold{device="nvme0",host="hp-victus",instance="10.0.0.1:9633"}'
+        values: '10x180'
+    alert_rule_test:
+      - {eval_time: 85m, alertname: DiskWearHigh, exp_alerts: []}
+      - {eval_time: 85m, alertname: DiskSpareLow, exp_alerts: []}
+      - eval_time: 160m
+        alertname: DiskWearHigh
+        exp_alerts:
+          - exp_labels: {severity: warning, fleet: none, category: disk-health, device: nvme0, host: hp-victus, instance: "10.0.0.1:9633"}
+            exp_annotations:
+              summary: "nvme0 on hp-victus has used 80% of its rated life"
+              description: "nvme0 on hp-victus reports 80% of its rated write life used. Plan a replacement before it reaches 100."
+      - eval_time: 160m
+        alertname: DiskSpareLow
+        exp_alerts:
+          - exp_labels: {severity: warning, fleet: none, category: disk-health, device: nvme0, host: hp-victus, instance: "10.0.0.1:9633"}
+            exp_annotations:
+              summary: "nvme0 on hp-victus is down to 20% spare"
+              description: "nvme0 on hp-victus has 20% spare blocks left, within twice the drive's threshold. Its data needs a current copy and the drive a replacement."
+
+  - name: one host's exporter down is reported by name, the others stay quiet
+    interval: 1m
+    input_series:
+      - series: 'up{job="smartctl-exporter",host="asus-laptop",instance="192.168.1.152:9633"}'
         values: '1x60'
+      - series: 'up{job="smartctl-exporter",host="ms-a2",instance="192.168.1.28:9633"}'
+        values: '0x60'
     alert_rule_test:
       - eval_time: 40m
-        alertname: SmartMetricsMissing
+        alertname: SmartExporterDown
         exp_alerts:
-          - exp_labels: {severity: warning, fleet: fix, category: disk-health}
+          - exp_labels: {severity: warning, fleet: fix, category: disk-health, job: smartctl-exporter, host: ms-a2, instance: "192.168.1.28:9633"}
             exp_annotations:
-              summary: "SMART metrics missing for an NVMe drive on asus-laptop"
-              description: "smartctl-exporter should report both NVMe drives. A drive that has dropped off the bus disappears here first. Otherwise check prometheus-smartctl-exporter on the host."
+              summary: "No SMART metrics from ms-a2"
+              description: "Prometheus cannot scrape prometheus-smartctl-exporter on ms-a2 (192.168.1.28:9633). Check the unit there; ansible role disk-health installs and starts it."
 
-  - name: no SMART metrics at all is reported
+  - name: no smartctl target at all is reported
     interval: 1m
     input_series:
       - series: 'up{job="other"}'
         values: '1x60'
     alert_rule_test:
       - eval_time: 40m
-        alertname: SmartMetricsMissing
+        alertname: SmartExporterDown
         exp_alerts:
-          - exp_labels: {severity: warning, fleet: fix, category: disk-health}
+          - exp_labels: {severity: warning, fleet: fix, category: disk-health, job: smartctl-exporter}
             exp_annotations:
-              summary: "SMART metrics missing for an NVMe drive on asus-laptop"
-              description: "smartctl-exporter should report both NVMe drives. A drive that has dropped off the bus disappears here first. Otherwise check prometheus-smartctl-exporter on the host."
+              summary: "No SMART metrics from "
+              description: "Prometheus cannot scrape prometheus-smartctl-exporter on  (). Check the unit there; ansible role disk-health installs and starts it."
+
+  - name: a drive that drops off one host is reported for that host only
+    interval: 1m
+    input_series:
+      - series: 'smartctl_device_smart_status{device="nvme0",host="asus-laptop",instance="nas:9633"}'
+        values: '1x2880'
+      - series: 'smartctl_device_smart_status{device="nvme1",host="asus-laptop",instance="nas:9633"}'
+        values: '1x1440'
+      - series: 'smartctl_device_smart_status{device="nvme0",host="ms-a2",instance="10.0.0.2:9633"}'
+        values: '1x2880'
+    alert_rule_test:
+      - {eval_time: 20h, alertname: SmartDriveMissing, exp_alerts: []}
+      - eval_time: 25h
+        alertname: SmartDriveMissing
+        exp_alerts:
+          - exp_labels: {severity: warning, fleet: none, category: disk-health, host: asus-laptop}
+            exp_annotations:
+              summary: "asus-laptop reports fewer drives than it did this week"
+              description: "smartctl-exporter on asus-laptop reported 2 drives at most this week and fewer now. A drive dropped off the bus or stopped answering SMART. Check `lsblk` and the kernel log there."

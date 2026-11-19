@@ -101,6 +101,16 @@ jobs:
           [ "$rc" -eq 1 ] || { echo "the check passed a ceiling in MHz"; exit 1; }
           grep -q "sets thermal_cap_max_freq_khz: 2200; it is a clock in kHz" planted-knob.out || { echo "the check failed, but not on the planted unit slip"; exit 1; }
           rm planted-knob.out
+      - name: The convergence check clones the remote Flux deploys, with a negative control on the GitHub mirror
+        run: |
+          url=$(sed -n 's/^  url: //p' clusters/home-k3s/flux-system/gotk-sync.yaml)
+          [ "$(printf '%s\n' "$url" | grep -c '^https://')" -eq 1 ] || { echo "gotk-sync.yaml has no single spec.url: '$url'"; exit 1; }
+          clones() { grep -qF " $url /workspace" "$1"; }
+          clones apps/ansible-runner/cronjob.yaml || { echo "apps/ansible-runner/cronjob.yaml does not clone $url, the remote Flux deploys"; exit 1; }
+          sed "s#$url#https://github.com/Kblack0610/home-config#" apps/ansible-runner/cronjob.yaml > planted-clone.yaml
+          if cmp -s planted-clone.yaml apps/ansible-runner/cronjob.yaml; then echo "the plant did not apply"; exit 1; fi
+          if clones planted-clone.yaml; then echo "the check passed a clone of the GitHub mirror"; exit 1; fi
+          rm planted-clone.yaml
       - name: Host qualification verdict and parser tests
         run: python3 scripts/test_host_qualify.py
       - name: ci-pool-idle tally tests
@@ -148,7 +158,7 @@ jobs:
         run: python3 apps/feed-ingest/test_ingest.py
       - name: litellm tool_compat offline tests
         run: python3 apps/litellm/test_tool_compat.py
-      - name: litellm go routes forward the session header
+      - name: litellm route checks (go session header, NIM rpm budget)
         run: python3 apps/litellm/test_go_routes.py
       - name: eeg-review offline tests
         run: python3 scripts/test_eeg_review.py

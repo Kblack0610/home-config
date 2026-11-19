@@ -49,6 +49,15 @@ sops ansible/group_vars/linux_bare_metal/vault.sops.yaml     # decrypts into $ED
 rbw get some_item | jq -R . | sops set --value-stdin ansible/group_vars/all/vault.sops.yaml '["vault_some_secret"]'
 ```
 
+The workstation (`cachyos-x8664-main`, local connection) asks for a sudo password, and agents have it: rbw `ansible_password`. Ansible cannot read a pipe or `<(...)` as `--become-password-file`, so point it at a throwaway executable that fetches the value, which keeps the password off disk:
+
+```bash
+p=$(mktemp "$XDG_RUNTIME_DIR/bp.XXXX") && printf '#!/bin/sh\nexec rbw get ansible_password\n' >"$p" && chmod 700 "$p"
+ansible-playbook playbooks/site.yml --limit cachyos-x8664-main --tags <tag> --become-password-file "$p"; rm -f "$p"
+```
+
+Macs use `mac_fleet_password` (`docs/mac-machines.md`), Linux bare-metal logins `linux_fleet_password` (`roles/login-passwords/README.md`).
+
 A new group gets its file the same way (`sops ansible/group_vars/<group>/vault.sops.yaml`); the `.sops.yaml` rule picks the recipients.
 
 ## Common commands

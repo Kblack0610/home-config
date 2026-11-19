@@ -37,7 +37,7 @@ class Replay(unittest.TestCase):
     def test_a_hot_host_withholds_per_cooldown_and_admits_when_cool(self):
         cfg = governor.load_config(os.path.join(os.path.dirname(os.path.abspath(__file__)), "config.json"))
         with mock.patch.object(replay, "query_range", fake_range), mock.patch.object(replay.time, "time", lambda: END):
-            st, minutes, slots = replay.replay("http://x", 1, cfg)
+            st, minutes, slots, _ = replay.replay("http://x", 1, cfg)
         c = st["ms-a2"]
         self.assertEqual(minutes, 1440)
         self.assertEqual(c["withholds"], 3)  # 30 hot minutes at one withhold per 600 s
@@ -61,11 +61,18 @@ class Replay(unittest.TestCase):
         def fake(url, expr, start, end):
             return fake_range(url, expr, start, end, cool=band)
         with mock.patch.object(replay, "query_range", fake), mock.patch.object(replay.time, "time", lambda: END):
-            st, _, _ = replay.replay("http://x", 1, cfg)
+            st, _, _, _ = replay.replay("http://x", 1, cfg)
         c = st["ms-a2"]
         self.assertEqual(c["admits"], 0)  # never ROOM again
         self.assertGreater(c["slot_minutes_held"], 3 * 80)  # 3 slots held for the last 90 minutes
         self.assertEqual(c["slot_minutes_held_for_nothing"], 0)
+
+    def test_baseline_finds_no_difference_in_itself_and_one_in_a_broken_copy(self):
+        cfg = governor.load_config(os.path.join(os.path.dirname(os.path.abspath(__file__)), "config.json"))
+        self.assertEqual(replay.synthetic(cfg, replay.load_baseline(governor.__file__), 300), [])
+        broken = replay.load_baseline(governor.__file__)
+        broken.pin_rule = lambda *a: None  # the pins pass removed
+        self.assertTrue(replay.synthetic(cfg, broken, 300))
 
 
 if __name__ == "__main__":

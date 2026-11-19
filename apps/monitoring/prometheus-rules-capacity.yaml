@@ -22,7 +22,9 @@ spec:
           expr: node_load15 / on (instance) count by (instance) (node_cpu_seconds_total{mode="idle"})
         # One series per real device. Excluded: pseudo filesystems, network shares
         # (the server reports them), and Mac simulator and system volumes, which are
-        # always full by design. `min by device` folds btrfs subvolumes into one.
+        # always full by design: CoreSimulator's own mounts and the sealed read-only
+        # simulator runtimes newer Xcode mounts through cryptexd under /private/var/run.
+        # `min by device` folds btrfs subvolumes into one.
         - record: device:node_filesystem_avail:ratio
           expr: >-
             min by (instance, device, job) (

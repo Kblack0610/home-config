@@ -50,9 +50,9 @@ patches:
 
 images:
   - name: git.kblab.me/kblack0610/placemyparents-api
-    newTag: pre-2996e45
+    newTag: pre-51bf822
   - name: git.kblab.me/kblack0610/placemyparents-web
-    newTag: pre-2996e45
+    newTag: pre-51bf822
   # No image exists under this name until the first preview run after the
   # platform PR lands, so this pod ImagePullBackOffs until then and that is the
   # expected bootstrap state. The entry has to exist NOW regardless: the

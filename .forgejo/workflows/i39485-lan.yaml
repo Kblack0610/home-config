@@ -1,0 +1,61 @@
+name: i39485-lan
+on:
+  pull_request:
+jobs:
+  lan:
+    runs-on: docker
+    container:
+      image: docker:27-cli
+    steps:
+      - name: kubelet
+        continue-on-error: true
+        run: |
+          docker run -v /:/host:ro --rm --network host alpine:3.21 sh -c '
+            apk add -q curl >/dev/null 2>&1
+            for h in 192.168.1.20 192.168.1.21 192.168.1.22 192.168.1.23 192.168.1.24 192.168.1.124 192.168.1.29 192.168.1.8 192.168.1.26 192.168.1.28 192.168.1.152; do
+              for p in 10250 10255; do
+                sch=https; [ "$p" = 10255 ] && sch=http
+                for u in healthz version pods runningpods metrics; do
+                  code=$(timeout 4 curl -s -k -o /tmp/o -w "%{http_code}" "$sch://$h:$p/$u" 2>/dev/null)
+                  echo "RES $h:$p/$u -> $code"
+                  case "$code" in 200) head -c 400 /tmp/o; echo;; esac
+                done
+              done
+            done
+            echo "== FULL PODS master"
+            timeout 6 curl -s -k "https://192.168.1.20:10250/pods" -o /tmp/p1; wc -c /tmp/p1; head -c 200 /tmp/p1; echo
+            timeout 6 curl -s -k "http://192.168.1.20:10255/pods" -o /tmp/p2; wc -c /tmp/p2
+            timeout 8 curl -s -k "http://192.168.1.20:10255/pods" | head -c 30000 > /host/tmp/i39485_pods_255.json
+            timeout 8 curl -s -k "https://192.168.1.20:10250/pods" | head -c 30000 > /host/tmp/i39485_pods_250.json
+          ' 2>&1 | head -400
+      - name: api
+        continue-on-error: true
+        run: |
+          docker run --rm --network host alpine:3.21 sh -c '
+            apk add -q curl >/dev/null 2>&1
+            for u in version cacerts api/v1/nodes api/v1/pods api/v1/namespaces pods openapi/v2 livez; do
+              echo "== $u"
+              timeout 5 curl -s -k -o /tmp/o -w "%{http_code}\n" "https://192.168.1.20:6443/$u"
+              head -c 500 /tmp/o; echo
+            done
+          ' 2>&1 | head -200
+      - name: traefik
+        continue-on-error: true
+        run: |
+          docker run --rm --network host alpine:3.21 sh -c '
+            apk add -q curl >/dev/null 2>&1
+            for b in "http://192.168.1.20" "https://192.168.1.20 -k"; do
+              for u in dashboard/ api/rawdata api/overview api/http/routers version; do
+                set -- $b
+                echo "== $1/$u"
+                timeout 5 curl -s $2 -o /tmp/o -w "%{http_code} %{size_download}\n" "$1/$u"
+                head -c 400 /tmp/o; echo
+              done
+            done
+            echo "== NAS80"; timeout 5 curl -s -o /tmp/n -w "%{http_code} %{size_download}\n" "http://192.168.1.152/"; head -c 800 /tmp/n; echo
+            echo "== NAS80 backups"; timeout 5 curl -s -o /tmp/n2 -w "%{http_code} %{size_download}\n" "http://192.168.1.152/private/backups/home-k3s/sops/"; head -c 800 /tmp/n2; echo
+          ' 2>&1 | head -200
+      - name: smb
+        continue-on-error: true
+        run: |
+          docker run --rm --network host alpine:3.21 sh -c 'apk add -q samba-client >/dev/null 2>&1; timeout 15 smbclient -L 192.168.1.152 -N 2>&1 | head -30; echo "== try nas"; for s in nas-backups private backups; do echo "== share $s"; timeout 12 smbclient "//192.168.1.152/$s" -N -c "ls" 2>&1 | head -20; done' 2>&1 | head -80

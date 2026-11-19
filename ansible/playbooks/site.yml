@@ -686,6 +686,14 @@
         tasks_from: disk
       tags: [mac, ci-disk]
 
+    # The Unity Accelerator for m1-playground-mac's build trees, on localhost
+    # (docs/mac-machines.md#unity-accelerator). Sudo, for Unity's installer.
+    - name: Unity Accelerator
+      ansible.builtin.import_role:
+        name: unity-ci-host-mac
+        tasks_from: accelerator
+      tags: [mac, unity-accelerator]
+
 # Every k3s node runs k3s_install_version (group_vars/all/k3s.yml). The server
 # goes first: a kubelet may never be newer than the apiserver. Then the agents,
 # one at a time, stopping at the first failure. After a new node joins, label it

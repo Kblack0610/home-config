@@ -360,6 +360,8 @@ all:
             5: [unity-release]
           unity_ci_full: true
           unity_ci_gate: true
+          # Every release host runs an Accelerator, as aws-build-1 does (playground ucp-2715).
+          unity_ci_accelerator: 172.17.0.1:10080
         deskslim-2:
           unity_ci_slots: 3
           unity_ci_full: true

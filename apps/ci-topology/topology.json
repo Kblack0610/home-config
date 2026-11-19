@@ -74,9 +74,9 @@
     "windows-media-ci": {"site": "local", "full": true, "slots": [
       {"name": "windows-media-ci-dotfiles-private-1", "caps": ["light"], "repo": "Kblack0610/.dotfiles-private", "borrows": "windows-media-ci-unity-pool-1"},
       {"name": "windows-media-ci-gungan-speak-1", "caps": ["light"], "repo": "Kblack0610/gungan-speak", "borrows": "windows-media-ci-unity-pool-2"},
-      {"name": "windows-media-ci-unity-pool-1", "caps": ["unity", "light", "heavy"]},
-      {"name": "windows-media-ci-unity-pool-2", "caps": ["unity", "light", "heavy"]},
-      {"name": "windows-media-ci-unity-pool-3", "caps": ["unity", "light", "heavy"]},
+      {"name": "windows-media-ci-unity-pool-1", "caps": ["unity", "light"]},
+      {"name": "windows-media-ci-unity-pool-2", "caps": ["unity", "light"]},
+      {"name": "windows-media-ci-unity-pool-3", "caps": ["unity", "light"]},
       {"name": "windows-media-ci-unity-pool-1-forgejo", "caps": ["forgejo"], "forge": "forgejo", "borrows": "windows-media-ci-unity-pool-1"},
       {"name": "windows-media-ci-unity-pool-1-forgejo-2", "caps": ["forgejo"], "forge": "forgejo", "borrows": "windows-media-ci-unity-pool-1"},
       {"name": "windows-media-ci-unity-pool-2-forgejo", "caps": ["forgejo"], "forge": "forgejo", "borrows": "windows-media-ci-unity-pool-2"},

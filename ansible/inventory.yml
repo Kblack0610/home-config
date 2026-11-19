@@ -587,7 +587,9 @@ all:
         # No temperature: a VM has no k10temp, so the governor admits on
         # idle, PSI and memory alone.
         windows-media-ci:
-          ci_caps: [light, heavy, unity, forgejo]
+          # No heavy: a Hyper-V VM on a Windows 10 host, which refuses nested virtualization
+          # ("this platform does not support nested virtualization", 2026-11-18), so it has no /dev/kvm.
+          ci_caps: [light, unity, forgejo]
           ci_cpus: 6-23
           ci_memory_max: 42G
           ci_unity_cpus: 6-23

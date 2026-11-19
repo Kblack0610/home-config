@@ -1089,23 +1089,23 @@ NO_CAPACITY = ("pin", "disk", "hot")
 
 def units(cfg, runners, seat_state, waits, waiting, shared_waiting, weights, withheld, durations):
     """CI in slot units (hc-668): (capacity {host: slots}, busy {host: units}, backlog {kind: units},
-    drain seconds or None). A slot is one unit. capacity counts every slot not withheld as pin,
-    disk or hot. A busy slot is 1; a lent one is its busy seats' summed weights, at most 1. backlog
+    drain seconds or None). A slot is one unit. capacity counts every slot that is busy or not
+    withheld as pin, disk or hot: the hold stops new jobs, not the running one, so busy never reads
+    past capacity. A busy slot is 1; a lent one is its busy seats' summed weights, at most 1. backlog
     sums each waiting job's weight by kind: a seat kind (forgejo, repo, light, heavy) at its
     kind_weights() weight, else "slot" at 1, since it takes a whole slot. drain is the backlog's
     work (units times its kind's p50 run time, the pool's when the kind has none) over capacity:
     every running job frees its units within about one run, so busy units count as soon free.
     None when there is backlog and no capacity or no run time to price it."""
-    capacity, used = {}, {}
-    for name, r in runners.items():
-        capacity.setdefault(r["host"], 0)
-        if (withheld or {}).get(name) not in NO_CAPACITY:
-            capacity[r["host"]] += 1
-        if r["busy"]:
-            used[name] = 1.0
+    used = {name: 1.0 for name, r in runners.items() if r["busy"]}
     for seat, s in cfg["seats"].items():
         if seat_state.get(seat, {}).get("busy") and s["slot"] in runners:
             used[s["slot"]] = used.get(s["slot"], 0) + (weights or {}).get(weight_kind(cfg, seat), 1.0)
+    capacity = {}
+    for name, r in runners.items():
+        capacity.setdefault(r["host"], 0)
+        if name in used or (withheld or {}).get(name) not in NO_CAPACITY:
+            capacity[r["host"]] += 1
     busy = dict.fromkeys(capacity, 0.0)
     for name, u in used.items():
         busy[runners[name]["host"]] += min(u, 1.0)
@@ -1849,7 +1849,7 @@ def render(cfg, hosts, runners, queue, decisions, ok, instances=None, budget=Non
         L.append(f'ci_governor_withheld{{runner="{name}",reason="{reason}"}} 1')
     if in_units:
         capacity, busy, backlog, drain = in_units
-        L += ["# HELP ci_governor_capacity_units Slots on a host that can take work (not withheld as pin, disk or hot)",
+        L += ["# HELP ci_governor_capacity_units Slots on a host that are busy or can take work (not withheld as pin, disk or hot)",
               "# TYPE ci_governor_capacity_units gauge",
               "# HELP ci_governor_busy_units Slot units in use: 1 per busy slot, a lent slot's busy seats by weight",
               "# TYPE ci_governor_busy_units gauge"]

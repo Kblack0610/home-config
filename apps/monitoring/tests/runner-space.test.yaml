@@ -36,6 +36,49 @@ tests:
           - labels: 'cc:runner_mem_max_bytes{host="lin",runner="lin-unity-pool-1"}'
             value: 15032385536
 
+  - name: a busy runner's cores and memory carry its job kind, and a runner with no kind has none
+    interval: 1m
+    input_series:
+      - series: 'node_uname_info{instance="lin:9100",host="lin",job="standalone-nodes"}'
+        values: '1x10'
+      - series: 'node_textfile_mtime_seconds{instance="lin:9100",file="/var/lib/node-exporter-textfile/ci_runner.prom"}'
+        values: '0+60x10'
+      - series: 'ci_runner_cores_busy{instance="lin:9100",runner="lin-unity-pool-1"}'
+        values: '0.4x10'
+      - series: 'ci_runner_memory_bytes{instance="lin:9100",runner="lin-unity-pool-1"}'
+        values: '2000x10'
+      - series: 'ci_runner_cores_busy{instance="lin:9100",runner="lin-unity-pool-1-forgejo"}'
+        values: '1.5x10'
+      - series: 'ci_runner_memory_bytes{instance="lin:9100",runner="lin-unity-pool-1-forgejo"}'
+        values: '3000x10'
+      # idle, or a kind the exporter could not tell: measured, but no ci_runner_job
+      - series: 'ci_runner_cores_busy{instance="lin:9100",runner="lin-unity-pool-2"}'
+        values: '0.1x10'
+      - series: 'ci_runner_memory_bytes{instance="lin:9100",runner="lin-unity-pool-2"}'
+        values: '500x10'
+      - series: 'ci_runner_job{namespace="monitoring",pod="exp-1",runner="lin-unity-pool-1",kind="light"}'
+        values: '1x10'
+      - series: 'ci_runner_job{namespace="monitoring",pod="exp-1",runner="lin-unity-pool-1-forgejo",kind="forgejo"}'
+        values: '1x10'
+    promql_expr_test:
+      - expr: cc:job_kind_cores
+        eval_time: 5m
+        exp_samples:
+          - labels: 'cc:job_kind_cores{host="lin",runner="lin-unity-pool-1",kind="light"}'
+            value: 0.4
+          - labels: 'cc:job_kind_cores{host="lin",runner="lin-unity-pool-1-forgejo",kind="forgejo"}'
+            value: 1.5
+      - expr: cc:job_kind_mem
+        eval_time: 5m
+        exp_samples:
+          - labels: 'cc:job_kind_mem{host="lin",runner="lin-unity-pool-1",kind="light"}'
+            value: 2000
+          - labels: 'cc:job_kind_mem{host="lin",runner="lin-unity-pool-1-forgejo",kind="forgejo"}'
+            value: 3000
+      - expr: cc:job_kind_cores{runner="lin-unity-pool-2"}
+        eval_time: 5m
+        exp_samples: []
+
   - name: per-runner disk keeps an hourly figure for two hours and says its age
     interval: 10m
     input_series:

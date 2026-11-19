@@ -16,6 +16,7 @@
 #   cc:host_core_busy_ratio{host,cpu}       each core's busy share, the Infra tab's core strip
 #   cc:runner_cores_busy / _allowed{host,runner}  cores a CI runner's job uses, and its pinned CPUs
 #   cc:runner_mem_bytes / _mem_max_bytes{host,runner}  its working set, and the cap of a cgroup it holds alone
+#   cc:job_kind_cores / _mem{host,runner,kind}  the same two for a busy runner, by the kind of job it runs
 #   cc:runner_disk_bytes / _disk_age_seconds{host,runner}  disk under its home (hourly du), and that reading's age
 #   cc:host_mem_used_bytes / _total_bytes{host}      memory in bytes, the same measure as cc:host_mem_used_ratio
 #   cc:host_disk_avail_bytes / _size_bytes{host}     the emptiest real filesystem, the one the disk ratio reads
@@ -414,6 +415,13 @@ spec:
           expr: >-
             max by (host, runner) (ci_runner_memory_max_bytes * on (instance) group_left (host) cc:host_instance
               and on (instance) (time() - node_textfile_mtime_seconds{file=~".*ci_runner.prom"} < 60))
+        # The same cores and memory labelled with the kind of job the runner runs
+        # (github-runner-exporter ci_runner_job, busy runners only), so each kind's share of
+        # a slot can be measured: scripts/ci-kind-weights.py. A runner with no kind has no row.
+        - record: cc:job_kind_cores
+          expr: cc:runner_cores_busy * on (runner) group_left (kind) max by (runner, kind) (ci_runner_job)
+        - record: cc:job_kind_mem
+          expr: cc:runner_mem_bytes * on (runner) group_left (kind) max by (runner, kind) (ci_runner_job)
         # Disk under each runner's home, measured hourly (ci-runner-disk.timer). Dropped
         # after 2h, so a stopped timer reads as no figure; the age says how old the figure is.
         - record: cc:runner_disk_bytes

@@ -12,11 +12,11 @@ github, so a restart runs nothing until the governor says so:
            FETCH_SECONDS.
 Asking with the lease it holds is how it acknowledges that lease: the governor gives the
 slot back to GitHub only once the seat has asked with github. Any lease error (the
-governor down, a 404 for a slot it does not lend) holds github: Forgejo CI stops and
+governor down, a 404 for a seat it does not know) holds github: Forgejo CI stops and
 GitHub CI goes on (fail closed).
 
-Env: FORGEJO_SEAT_LEASE_URL (the governor's lease NodePort), FORGEJO_SEAT_SLOT (the Unity
-slot it borrows), FORGEJO_SEAT_BIN and FORGEJO_SEAT_CONFIG (forgejo-runner and its config).
+Env: FORGEJO_SEAT_LEASE_URL (the governor's lease NodePort), FORGEJO_SEAT_NAME (this seat, as
+the topology names it), FORGEJO_SEAT_BIN and FORGEJO_SEAT_CONFIG (forgejo-runner and its config).
 Stdlib only; tests/test_forgejo_seat.py runs it in a container.
 """
 import os
@@ -37,9 +37,9 @@ BACKOFF = (float(os.environ.get("FORGEJO_SEAT_BACKOFF_MIN", "5")), 60.0)
 
 
 def ask(have, wait):
-    """The slot's lease: as soon as it differs from have, else have after wait seconds."""
+    """The lease of the slot this seat borrows: as soon as it differs from have, else have after wait seconds."""
     url = os.environ["FORGEJO_SEAT_LEASE_URL"].rstrip("/")
-    query = urllib.parse.urlencode({"slot": os.environ["FORGEJO_SEAT_SLOT"], "have": have, "wait": f"{wait:g}"})
+    query = urllib.parse.urlencode({"seat": os.environ["FORGEJO_SEAT_NAME"], "have": have, "wait": f"{wait:g}"})
     with urllib.request.urlopen(f"{url}/lease?{query}", timeout=wait + 30) as r:
         got = r.read().decode().strip()
     if got not in LEASES:
@@ -50,7 +50,7 @@ def ask(have, wait):
 def main():
     run = [os.environ["FORGEJO_SEAT_BIN"], "one-job", "--config", os.environ["FORGEJO_SEAT_CONFIG"]]
     lease, backoff = "github", BACKOFF[0]
-    print(f"forgejo-seat for {os.environ['FORGEJO_SEAT_SLOT']}: on github until the governor lends the slot",
+    print(f"forgejo-seat {os.environ['FORGEJO_SEAT_NAME']}: on github until the governor lends the slot",
           flush=True)
     while True:
         wait = LEASE_WAIT

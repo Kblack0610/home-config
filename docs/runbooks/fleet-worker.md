@@ -8,7 +8,7 @@ A machine the human drives the fleet from, but that runs no session, goes in `fl
 
 - A light claude queue item with no plan and no `#cloud-ok` tag, in a repo listed in the host's `fleet_repos`, when the machine holding the fleet lease, which runs dispatch, is over its load or idle pace. It runs on claude, or on a headless harness the host lists in `fleet_harnesses` while the host's probe reads that harness ready (see "Headless harnesses"). Heavy (Unity) items, plan items, a trainee batch review and any other harness stay on the holder.
 - At most `fleet_max_live` sessions at once, and none while its own 1-minute load per core is over the dispatch pace (`DISPATCH_MAX_LOAD`) or its MemAvailable is under `DISPATCH_HOST_MEM_MIN_PCT` (20%) of its memory.
-- With `fleet_first: [canary, night]` (either class alone works too), an item of that class goes to the worker before the holder, even while the holder has room; with no worker free it runs on the holder as usual. Any other item still fills the holder first.
+- With `fleet_first: [canary, night, trainee]` (any class alone works too; trainee is a trainee floor start, which must also be on a harness the worker runs), an item of that class goes to the worker before the holder, even while the holder has room; with no worker free it runs on the holder as usual. Any other item still fills the holder first.
 - A session there writes the queue and its asks into the worker's own store clone, which `store-sync` pushes at once, so every peer reads one store.
 
 ## Add a worker

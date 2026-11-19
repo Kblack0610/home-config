@@ -40,7 +40,7 @@ Reading model names: `i3/i5/i7/i9` and `Ryzen 3/5/7/9` are tiers and say nothing
 | OptiPlex 5060 SFF, i5-8500 / i5-8600 / i7-8700 (6 cores) | $80-100 plus RAM to 32-48 GB | About $6-8 per slot per month if two slots hold up, $10-14 if one (24 months, power included). 65 W, holds its clocks. Two slots on six cores leaves no core spare, so measure that before counting on it. Skip the i3-8100 (4 cores) |
 | HP EliteDesk mini, Ryzen 5 PRO 2400GE / 3400GE (4 cores) | ~$60 plus 32 GB | One slot, about $8-10 per slot per month. 35 W 2018-19 chip, roughly half the per-core speed of the newer laptops, so a shard may run 1.5-2x longer. Often sold without the power brick |
 
-Buy one of a cheap model first, add it as one slot, and time a pinned PlayMode shard against razer-laptop before buying more. Every home box is one more Unity activation (see [Unity license](#unity-license)).
+Buy one of a cheap model first, add it as one slot, and time a pinned PlayMode shard against an owned slot (ms-a2 or deskslim-2) before buying more. Every home box is one more Unity activation (see [Unity license](#unity-license)).
 
 ## Buying in the RAM shortage
 
@@ -99,7 +99,7 @@ Before ordering, settle the cap: the new box's slots plus the pool's registered 
 
 ## Laptops as runners
 
-razer-laptop left the Unity pool 2026-11-17 (RAM 96 GB -> 32 GB; one light slot only). asus-laptop and hp-victus are service hosts that carry no CI of any kind (`no_ci_hosts` in `ansible/inventory.yml` says why): as k3s nodes holding Forgejo, Frigate and the databases, CI load there took the cluster down with the jobs. Laptops work but throttle under sustained load and their batteries swell when held at 100%. Set a 60-80% charge limit in the BIOS (or `thinkpad_acpi` thresholds on Linux) and run with the lid open.
+razer-laptop left the Unity pool 2026-11-17 (RAM 96 GB -> 32 GB); it runs agents and no CI (`no_ci_hosts`, 2026-11-18). asus-laptop and hp-victus are service hosts that carry no CI of any kind (`no_ci_hosts` in `ansible/inventory.yml` says why): as k3s nodes holding Forgejo, Frigate and the databases, CI load there took the cluster down with the jobs. Laptops work but throttle under sustained load and their batteries swell when held at 100%. Set a 60-80% charge limit in the BIOS (or `thinkpad_acpi` thresholds on Linux) and run with the lid open.
 
 ## Renting
 
@@ -134,7 +134,7 @@ Checked 2026-11-11: moving Unity jobs from the AWS hosts to GitHub-hosted runner
 - 4-core is the smallest that fits a slot (3 cores, 14 GB; a PlayMode shard peaks at 13.9 GB), and only just. The 2-core standard runner does not fit.
 - On top of the rate, every hosted job imports a cold `Library/`, activates Unity again (see [Unity license](#unity-license)), and is billed in whole minutes. Jobs that need `lan` (Multi, player builds, git.kblab.me pushes) cannot run there at all.
 - At the pool's 150-260 runner-hours a day (playground `docs/operations/ci-cost.md`, 2026-11-06), GitHub 4-core would cost about $3,200-5,600 a month, against the `ci-burst-monthly` cap on AWS (platform `infra/aws-ci-burst/variables.tf` `budget_monthly_usd` on `develop`).
-- Non-Unity jobs already use hosted runners (`LINUX_RUNNER_LIGHT`, else `ubuntu-latest`), which is where hosted runners make sense.
+- Moved light and heavy jobs already run self-hosted: `LINUX_RUNNER_LIGHT` and `LINUX_RUNNER_HEAVY` (org variables, set in GitHub) point at the `light` and `heavy` labels, which the Unity test slots serve (see below); release and deploy jobs stay on `ubuntu-latest` (comment above the "CI runners" play in `ansible/playbooks/site.yml`), so hosted runners are the fallback there only.
 - To spend less, prefer Spot over on-demand and buy owned slots ([Options by value](#options-by-value)).
 
 Source: docs.github.com/en/billing/reference/actions-runner-pricing (Linux x64), `apps/ci-runner-governor/config.json` `rates`.

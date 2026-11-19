@@ -183,3 +183,39 @@ done | sort -t "$tab" -k1,1n -k2,2n | while IFS="$tab" read -r _ _ floor tree; d
     # btrfs reports freed space only after a commit; without this df lags and more trees go.
     sync -f "$RUNNER_HOME"
 done
+
+# Still under the floor with the trees and caches gone: a test image in-docker.sh built holds its
+# whole editor base, and the age rule keeps it 7 days. The android one is 29G unique, as it builds
+# from unityci/editor:*-android-3, not the base image the slots keep (windows-media-ci, 2026-11-19:
+# its first android job left the idle host at 22% free, under the governor's 25% re-admit line).
+# Only with every Unity slot idle, so no job sits between building one and running it, which makes
+# this hourly-only: on --before-job the starting slot is busy. Not while any tree or cache is left,
+# kept trees included (they hold to 30% on purpose), and not an image under a day old, so a host
+# that settles under the floor does not rebuild one every hour. The oldest goes first, with the
+# build cache unused for a day that pins its pulled base; the tagged unityci/editor images stay.
+# A removal that frees nothing here (another tag shares the image, or docker keeps its data on
+# another volume) ends the pass. The next job of that flavor rebuilds the image.
+IMAGE_MIN_HOURS=${IMAGE_MIN_HOURS:-24}
+[ "$(free_pct)" -lt "$RELEASE_TREE_MIN_FREE_PCT" ] || exit 0
+[ -z "$(warm_trees; rebuildables)" ] || exit 0
+for slot in "$RUNNER_HOME"/unity-pool-*; do
+    [ -d "$slot" ] || continue
+    if busy "$slot"; then exit 0; fi
+done
+avail_kb() { df -P "$RUNNER_HOME" | awk 'NR == 2 { print $4 }'; }
+docker images --format '{{.Repository}}:{{.Tag}}|{{.CreatedAt}}' | while IFS='|' read -r ref created; do
+    case "$ref" in unity-core-playground-test:*) ;; *) continue ;; esac
+    made=$(date -d "$(printf '%s' "$created" | cut -c1-19)" +%s) || continue
+    if [ $(( (now - made) / 3600 )) -ge "$IMAGE_MIN_HOURS" ]; then printf '%s|%s\n' "$made" "$ref"; fi
+done | sort -t '|' -k1,1n | while IFS='|' read -r _ ref; do
+    [ "$(free_pct)" -lt "$RELEASE_TREE_MIN_FREE_PCT" ] || break
+    before=$(avail_kb)
+    docker image rm "$ref" >/dev/null || { echo "kept $ref: docker image rm failed"; continue; }
+    docker builder prune --force --filter "until=${IMAGE_MIN_HOURS}h" >/dev/null || echo "builder prune failed"
+    sync -f "$RUNNER_HOME"
+    if [ "$(avail_kb)" -le "$before" ]; then
+        echo "untagged $ref but freed nothing: stopping"
+        break
+    fi
+    echo "low disk image $ref"
+done

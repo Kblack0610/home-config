@@ -40,6 +40,22 @@ scripts/test/fetch-image.py unityci/editor ubuntu-<version>-base-3 ~/.cache/unit
 - An apply (`--tags unity-ci`, not `--check`) resets every registered slot's labels to the inventory's, `unity_ci_slot_labels` included, with one PUT to the org labels endpoint (role `github-actions-runner-linux`, `tasks/labels.yml`). A slot the governor withholds stays withheld: it keeps its `unity-withheld` or `unity-build-withheld` in place of the pool or build labels. So a label change is an inventory change plus an apply; a label added on the live runner alone is gone after the next apply.
 - The workstation (cachyos-x8664-main) has two slots with `unity_ci_full: false`, so it takes merge gates and never a full run. The governor reads that from the topology (`"full": false`), since it re-labels a runner on admit. Each slot has three cores and 16G of its own. A third slot waits for a day of load and temperatures with two. No gate runs anything else here (unity-core-playground `docs/operations/ci.md` rule 2).
 
+## Slots take any kind
+
+On a host whose `ci_caps` carry light, heavy or forgejo, a lendable Unity slot is no kind's alone. It takes Unity, light and heavy jobs (`SHARED_CAPS` in `scripts/render-ci-topology.py`), one job at a time on its own cores and memory cap, and the governor also lends it to a seat. A seat is a runner with no cores of its own, so seats add jobs, never cores: a Forgejo seat `<host>-unity-pool-<n>-forgejo`, or a personal repo's runner `<host>-dotfiles-private-1` or `<host>-gungan-speak-1` (`ci_repo_runners`, topology `borrows`). Which slots lend, as rendered in `apps/ci-topology/topology.json`:
+
+- windows-media-ci: all three slots (three cores and 14G each) take light and heavy and have a Forgejo seat; the repo runners borrow slots 1 and 2.
+- deskslim-2: the same, three slots.
+- ms-a2: Forgejo seats on slots 1 and 2 only (slots 3 and 4 sit under build slot 5's group and do not lend), and no repo runners.
+- Not lent: the Spot hosts, aws-build-1 and cachyos-x8664-main (`ci_caps: [unity]`, plus aws-build-1's unity-build slots). The renderer fails a cloud host that carries light, heavy or forgejo.
+
+- The governor lends a slot to a seat (`apps/ci-runner-governor`, "Lending"): it withholds the slot's GitHub labels, waits for it to go idle, then turns the seat's lease to forgejo (or admits the repo runner). The kind whose job has waited longest goes first, and the slot goes back to GitHub when an older GitHub job wants it. A running job is never cut off: a busy slot is lent only after it drains. `ci_governor_lent` shows which slots are lent.
+- Lends are limited by the per-slot cooldown, one lend per host per cycle, the pool floor, and a HOT or FULL host, so a Forgejo job waits on those, and on the slot draining, not on the depth of the Unity queue.
+- A Forgejo seat runs `forgejo-runner one-job` only on a forgejo lease, read from the governor's `/lease` long-poll (NodePort 30321). With the governor down every seat holds github and every repo runner stays withheld: Forgejo CI and the personal repos' CI stop, and the org pool's GitHub CI goes on. Seat setup, re-registering and the break-glass merge for a governor fix: `apps/forgejo/README.md`, Runner.
+- Two jobs never run on the same cores at once: a Unity job and a small one never share a slot, which is the PlayMode timing failure of 2026-10-06 (`ansible/roles/ci-host-budget/defaults/main.yml`). Slots that share cores by design (ms-a2 slot 5 with slots 3 and 4) are kept apart by the governor's group rule (A LAN build slot, below).
+- Each slot keeps its own home and `_work`. A Unity repo's light job parks the warm Library first (`ci-fresh-workspace`, under Disk).
+- Forgejo wait has a p90 in the exporter (`github_job_queue_seconds{forge="forgejo",pool="forgejo"}`). `scripts/ci-pool-idle.py` reports idle slot-hours per kind while another kind waited, per host; for a 7-day window read VictoriaMetrics, not Prometheus (the port-forward and command are in the script's docstring).
+
 ## The Mac pool
 
 - The "Unity CI runner pool (macOS)" play (roles `unity-ci-host-mac` and `github-actions-runner-mac`, group `unity_ci_mac_runners`). Details: [mac-machines.md](../mac-machines.md#unity-ci-pool-on-a-mac-none-since-2026-11-10).

@@ -303,6 +303,43 @@
           CI_SLOT_CPUS: "{{ unity_slot_cpus }}"
       tags: [runner, ci, linux-ci]
 
+    # The light and heavy seats (ci_seat_kinds): org runners of one kind on a borrowed Unity slot,
+    # as the repo seats are on a personal repo. They register withheld and carry the kind's label
+    # only while the governor has lent them the slot, so a lent slot runs as many small jobs as
+    # the kind's measured weight fits (apps/ci-runner-governor, pack()).
+    - name: Register the light and heavy seats
+      ansible.builtin.include_role:
+        name: github-actions-runner-linux
+        apply:
+          tags: [runner, ci, linux-ci]
+      loop: "{{ ci_seats | rejectattr('forge', 'defined') | rejectattr('repo', 'defined') | list }}"
+      loop_control:
+        loop_var: ci_seat
+        label: "{{ ci_seat.name }}"
+      vars:
+        unity_slot: "{{ ci_seat_slot }}"
+        gh_runner_scope: org
+        gh_runner_token_source: gh
+        gh_runner_install_packages: false
+        gh_runner_user: linux-ci
+        gh_runner_group: linux-ci
+        gh_runner_user_home: "{{ linux_ci_user_home }}"
+        gh_runner_home: "{{ linux_ci_user_home }}/{{ ci_seat.name | regex_replace('^' ~ inventory_hostname ~ '-', '') }}"
+        gh_runner_name: "{{ ci_seat.name }}"
+        gh_runner_labels: "{{ ['self-hosted', 'linux', 'x64'] + ci_seat.caps }}"
+        # The governor's seat labels (config.json seat_withheld_label), one for every seat kind.
+        gh_runner_governed_labels: "{{ ci_seat.caps }}"
+        gh_runner_withheld_labels: [light-withheld]
+        gh_runner_withheld_label: light-withheld
+        gh_runner_register_withheld: true
+        gh_runner_slice: "{{ unity_slot_slice }}"
+        gh_runner_env:
+          HOME: "{{ linux_ci_user_home }}/{{ ci_seat.name | regex_replace('^' ~ inventory_hostname ~ '-', '') }}"
+          ACTIONS_RUNNER_HOOK_JOB_STARTED: "{{ linux_ci_job_started_hook }}"
+          ACTIONS_RUNNER_HOOK_JOB_COMPLETED: "{{ linux_ci_job_completed_hook }}"
+          CI_SLOT_CPUS: "{{ unity_slot_cpus }}"
+      tags: [runner, ci, linux-ci]
+
     # Every host in the play, so one that loses its seats loses their units too.
     - name: Retire the Forgejo units this host no longer runs
       ansible.builtin.include_role:

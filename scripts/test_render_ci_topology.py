@@ -126,6 +126,28 @@ class CapTests(unittest.TestCase):
         self.assertTrue(all(s["cpus"] == cores and s["memory_gb"] == 14 for s in seats))
         self.assertNotIn("ci_units", topology.KEYS)
 
+    def test_ci_seat_kinds_put_org_seats_of_that_kind_on_each_lendable_slot_and_only_there(self):
+        topo, fails = topology.render(self.hosts, self.groups)
+        self.assertEqual(fails, [])
+        light = {h: [s for s in e["slots"] if s["caps"] == ["light"] and s.get("borrows") and not s.get("repo")]
+                 for h, e in topo["hosts"].items()}
+        self.assertEqual({h for h, s in light.items() if s}, {"windows-media-ci"})
+        seats = light["windows-media-ci"]
+        self.assertEqual(len(seats), 9)
+        self.assertEqual(seats[0], {"name": "windows-media-ci-unity-pool-1-light-1", "caps": ["light"],
+                                    "borrows": "windows-media-ci-unity-pool-1", "cpus": 6, "memory_gb": 14})
+        self.assertTrue(all("forge" not in s for s in seats))
+
+    def test_ci_seat_kinds_must_be_small_kinds_the_host_takes_and_not_on_a_cloud_host(self):
+        for host, kinds, want in (("windows-media-ci", ["heavy"], "ci_seat_kinds names heavy"),
+                                  ("windows-media-ci", ["unity"], "ci_seat_kinds names unity"),
+                                  ("aws-spot-1", ["light"], "ci_seat_kinds on a cloud host")):
+            with self.subTest(host=host, kinds=kinds):
+                self.setUp()
+                self.hosts[host]["ci_seat_kinds"] = kinds
+                _, fails = topology.render(self.hosts, self.groups)
+                self.assertTrue(any(want in f for f in fails), fails)
+
     def test_every_repo_runner_borrows_a_unity_slot(self):
         topo, fails = topology.render(self.hosts, self.groups)
         self.assertEqual(fails, [])

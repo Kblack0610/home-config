@@ -173,10 +173,11 @@
     - role: emotiv-archive-target
       tags: [emotiv, storage]
 
-- name: Disk scrubs and SMART on asus-laptop
+- name: SMART exporter on every bare-metal Linux host, disk scrubs on asus-laptop
   # See roles/disk-health/README.md. Nothing scrubbed these filesystems before
-  # 2026-10-31, so rot in a file nobody reads would have gone unnoticed.
-  hosts: asus-laptop
+  # 2026-10-31, so rot in a file nobody reads would have gone unnoticed. The workstation's
+  # sudo asks for a password, so its run needs -K.
+  hosts: linux_bare_metal:desktop_workstations
   become: true
   gather_facts: true
   roles:

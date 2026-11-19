@@ -1,11 +1,18 @@
 ---
-# Scrub timers and the SMART exporter on asus-laptop. The alerts that read their results
-# are in apps/monitoring/prometheus-rules-disk-health.yaml.
+# The SMART exporter on every host in the play, and scrub timers where a host lists them.
+# The alerts that read their results are in apps/monitoring/prometheus-rules-disk-health.yaml.
+- name: Install smartctl and its exporter
+  community.general.pacman:
+    name: [smartmontools, prometheus-smartctl-exporter]
+    state: present
+
 - name: Keep the SMART exporter running
   ansible.builtin.systemd:
     name: prometheus-smartctl-exporter
     enabled: true
     state: started
+  # In --check mode on a new host the package is not installed, so the unit does not exist.
+  ignore_errors: "{{ ansible_check_mode }}"
 
 - name: Resolve each scrub's systemd instance name
   ansible.builtin.command: systemd-escape --path {{ item.path | quote }}

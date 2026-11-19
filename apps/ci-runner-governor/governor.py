@@ -24,8 +24,10 @@ Inputs besides Prometheus:
   config.json      thresholds, pool floor and cap, power knobs, rates, budget
   topology.json    hosts, slots, caps, slot groups, seats, label vocabulary and each powered host's
                    instance (rendered, never edited by hand)
-  ConfigMap ci-runner-governor-override (mounted at OVERRIDE_DIR, outside Flux):
-    <host>           {"action": "on"|"off", "until": epoch} (agent-web) or {"slots": N} (machine-mode)
+  ConfigMap ci-runner-governor-override (mounted at OVERRIDE_DIR, outside Flux), one key family
+  per writer, each merge-patched on its own key; override.schema.json is the contract:
+    <host>.power     {"action": "on"|"off", "until": epoch} (agent-web)
+    <host>.slots     {"slots": N, "by": who} (machine-mode), the one family with no end
     <host>.reserve   {"until": epoch}: pins the host to 0 until then (machine-mode release-lane)
   GET /lease?seat=&have=&wait=    a Forgejo seat's supervisor long-polls its slot's lease
 
@@ -39,7 +41,9 @@ The loop is a poll: neither host load nor the GitHub queue has an event this can
 import hashlib
 import hmac
 import json
+import math
 import os
+import re
 import sys
 import time
 import urllib.error
@@ -85,6 +89,9 @@ FALLBACK_REASONS = ("capacity", "refused", "reclaim")
 # The budget's numbers move a few times a day and the API has no event, so one read an hour.
 BUDGET_POLL_SECONDS = 3600
 OVERRIDE_DIR = os.environ.get("GOVERNOR_OVERRIDE_DIR", "/override")
+# The override ConfigMap's contract, beside this file in git and in the pod's /app.
+with open(os.path.join(os.path.dirname(os.path.abspath(__file__)), "override.schema.json")) as _f:
+    OVERRIDE_SCHEMA = json.load(_f)
 API_ERRORS = (urllib.error.URLError, OSError, ValueError, KeyError)
 POWER_ERRORS = API_ERRORS + (ET.ParseError,)
 BUDGET_ERRORS = API_ERRORS + (TypeError,)
@@ -1707,35 +1714,78 @@ def power_provider(power):
     return Ec2(power["region"], AWS_KEY, AWS_SECRET), ""
 
 
-def override_key(host):
-    """The ci-runner-governor-override ConfigMap's key for host, mounted optional at
-    OVERRIDE_DIR, as a dict. {} when there is none or it does not parse (logged)."""
+def conforms(v, s, root=None):
+    """Why v breaks JSON Schema s, or "" when it conforms. Only the subset override.schema.json
+    uses ($ref, type, enum, minimum, pattern, required, properties, additionalProperties,
+    patternProperties, propertyNames), since the pod's python has no jsonschema package."""
+    root = root or s
+    if "$ref" in s:
+        s = root["$defs"][s["$ref"].rsplit("/", 1)[1]]
+    kinds = {"object": dict, "string": str, "integer": int, "number": (int, float)}
+    want = s.get("type")
+    if want and (not isinstance(v, kinds[want]) or isinstance(v, bool)):
+        return f"{v!r} is not a {want}"
+    if want == "number" and not math.isfinite(v):
+        return f"{v!r} is not finite"
+    if "enum" in s and v not in s["enum"]:
+        return f"{v!r} is not one of {s['enum']}"
+    if "minimum" in s and v < s["minimum"]:
+        return f"{v!r} is under {s['minimum']}"
+    if "pattern" in s and not re.search(s["pattern"], v):
+        return f"{v!r} does not match {s['pattern']}"
+    if not isinstance(v, dict):
+        return ""
+    for k in s.get("required", []):
+        if k not in v:
+            return f"no {k}"
+    for k, x in v.items():
+        why = conforms(k, s["propertyNames"], root) if "propertyNames" in s else ""
+        subs = [sub for pat, sub in s.get("patternProperties", {}).items() if re.search(pat, k)]
+        if k in s.get("properties", {}):
+            subs.append(s["properties"][k])
+        elif not subs and s.get("additionalProperties") is False:
+            why = why or "not a field"
+        for sub in subs:
+            why = why or conforms(x, sub, root)
+        if why:
+            return f"{k}: {why}"
+    return ""
+
+
+def check_override(key, raw):
+    """Why a key and its raw value break override.schema.json, or "" when they conform: the
+    governor's read, and each writer's test through `governor.py check-override`."""
     try:
-        with open(os.path.join(OVERRIDE_DIR, host)) as f:
+        value = json.loads(raw)
+    except ValueError as e:
+        return f"{key}: not JSON: {e}"
+    return conforms({key: value}, OVERRIDE_SCHEMA)
+
+
+def override_key(host, family):
+    """host's <host>.<family> key in the ci-runner-governor-override ConfigMap (mounted
+    optional at OVERRIDE_DIR) as a dict: {} when there is none, or when it breaks
+    override.schema.json (logged), so a bad edit changes nothing."""
+    key = f"{host}.{family}"
+    try:
+        with open(os.path.join(OVERRIDE_DIR, key)) as f:
             raw = f.read().strip()
     except OSError:
         return {}
-    try:
-        o = json.loads(raw) if raw else {}
-        if not isinstance(o, dict):
-            raise ValueError(f"not an object: {raw}")
-    except ValueError as e:
-        print(f"{host}: override unreadable, ignored: {e}", flush=True)
+    if not raw:
         return {}
-    return o
+    why = check_override(key, raw)
+    if why:
+        print(f"{host}: override unreadable, ignored: {why}", flush=True)
+        return {}
+    return json.loads(raw)
 
 
 def read_override(host, now):
-    """(action, until) from host's override key: {"action": "on"|"off", "until": <epoch>}.
-    ("", 0) when there is none, it has run out, or it does not parse (logged), so a bad edit
-    never powers anything."""
-    o = override_key(host)
-    try:
-        action, until = o.get("action", ""), float(o.get("until", 0))
-    except (ValueError, TypeError) as e:
-        print(f"{host}: override unreadable, ignored: {e}", flush=True)
-        return "", 0
-    return (action, until) if action in ("on", "off") and until > now else ("", 0)
+    """(action, until) from host's power key. ("", 0) when there is none, it has run out, or
+    it is unreadable (logged), so a bad edit never powers anything."""
+    o = override_key(host, "power")
+    return (o["action"], float(o["until"])) if o and o["until"] > now else ("", 0)
 
 
 def cap_override(host, t, action, until, now, cap):
@@ -1757,25 +1807,17 @@ def cap_override(host, t, action, until, now, cap):
 
 
 def read_pins(cfg, now):
-    """{host: slots} for each host whose override key holds {"slots": N}, N a whole number
-    from 0. Anything else is no pin (logged), so a bad edit leaves the host as it is. A live
-    release reservation, "<host>.reserve" holding {"until": <epoch>}, pins the host to 0 over
-    any pin of its own; past its end, or unreadable (logged), it is no reservation."""
-    pins = {}
+    """({host: slots}, {host: source}) for each pinned host: its slots key, or a live release
+    reservation (its reserve key, until past now), which pins it to 0 over its own pin. The
+    source is the family that set the pin, for ci_governor_effective_slots."""
+    pins, sources = {}, {}
     for host in [*cfg["hosts"], *cfg["standby"]]:
-        slots = override_key(host).get("slots")
-        if type(slots) is int and slots >= 0:
-            pins[host] = slots
-        elif slots is not None:
-            print(f"{host}: pin unreadable, ignored: {slots!r}", flush=True)
-        reserve = override_key(f"{host}.reserve")
-        until = reserve.get("until")
-        if type(until) in (int, float):
-            if until > now:
-                pins[host] = 0
-        elif reserve:
-            print(f"{host}: reservation unreadable, ignored: {reserve!r}", flush=True)
-    return pins
+        o = override_key(host, "slots")
+        if o:
+            pins[host], sources[host] = o["slots"], "slots"
+        if override_key(host, "reserve").get("until", 0) > now:
+            pins[host], sources[host] = 0, "reserve"
+    return pins, sources
 
 
 def count_run_time(t, state, now, launched=0.0):
@@ -1939,16 +1981,40 @@ def withheld_reasons(cfg, hosts, runners, lends, pins, last_action, now):
     return out
 
 
+def effective_slots(cfg, host, decisions, pins, registered, admitted):
+    """(slots, source) where host's pool slots move: its pin, held to its registered slots, when
+    the rule that moves them obeys it (pin_rule's PINNED decision, standby_cap's pinned), or
+    else what it admits now, source governor. A pin a FULL host or a standby cap overrules is
+    the governor's."""
+    pinned, sources = pins
+    if host in cfg["standby"]:
+        obeyed = standby_cap(cfg, host, pinned)[1]
+    else:
+        obeyed = any(a.host == host and a.verdict == "PINNED" for a in decisions)
+    return (min(pinned[host], registered), sources[host]) if obeyed else (admitted, "governor")
+
+
 def render(cfg, hosts, runners, queue, decisions, ok, instances=None, budget=None, lends=None, withheld=None,
-           in_units=None):
+           in_units=None, pins=None):
     L = ["# HELP ci_governor_ok 1 when every source answered this cycle", "# TYPE ci_governor_ok gauge",
          f"ci_governor_ok {1 if ok else 0}", f"ci_governor_queue {queue}",
          "# HELP ci_governor_admitted Pool runners on a host that carry the pool label (may take jobs)",
-         "# TYPE ci_governor_admitted gauge"]
+         "# TYPE ci_governor_admitted gauge",
+         "# HELP ci_governor_effective_slots The slots a host moves to, one a cycle: its pin (source slots or "
+         "reserve, held to its registered slots) or, unpinned, what it admits now (source governor)",
+         "# TYPE ci_governor_effective_slots gauge",
+         "# HELP ci_governor_override_max_hours How long an override on runs, at most, from the cycle the governor "
+         "first sees it (config.json override_on_max_hours)",
+         "# TYPE ci_governor_override_max_hours gauge",
+         f'ci_governor_override_max_hours {cfg["override_on_max_hours"]}']
+    pinned, sources = pins or ({}, {})
     for host in sorted({*cfg["hosts"], *cfg["standby"]}):
         mine = [r for r in runners.values() if r["host"] == host]
-        L.append(f'ci_governor_admitted{{host="{host}"}} {sum(1 for r in mine if not r["withheld"])}')
+        admitted = sum(1 for r in mine if not r["withheld"])
+        L.append(f'ci_governor_admitted{{host="{host}"}} {admitted}')
         L.append(f'ci_governor_registered{{host="{host}"}} {len(mine)}')
+        slots, source = effective_slots(cfg, host, decisions, (pinned, sources), len(mine), admitted)
+        L.append(f'ci_governor_effective_slots{{host="{host}",source="{source}"}} {slots}')
     L += ["# HELP ci_governor_rate_usd_per_hour What a runner host costs an hour, and on what basis (config.json rates)",
           "# TYPE ci_governor_rate_usd_per_hour gauge"]
     for host, r in sorted(cfg["rates"].items()):
@@ -2083,7 +2149,7 @@ def cycle(cfg, last_action, tracked=None, budget=None, lending=None):
     # a disk-held pool slot could take (CiHostHeldOutByDisk).
     queue = len(pool_jobs(waiting, build_marks(cfg)))
     instances = power_readings(cfg, runners, {} if tracked is None else tracked, now)
-    pins = read_pins(cfg, now)
+    pins, pin_sources = read_pins(cfg, now)
     leases, lends = lending or (None, {})
     # A slot that carries the lent mark from before a restart stays lent to its seat (hc-643).
     for name, r in sorted(runners.items()):
@@ -2143,7 +2209,8 @@ def cycle(cfg, last_action, tracked=None, budget=None, lending=None):
     in_units = units(cfg, runners, seat_state, seat_waits, waiting, shared_waiting, weights, withheld, job_durations())
     with State.lock:
         State.metrics = "ci_governor_up 1\n" + render(
-            cfg, hosts, runners, queue, decisions, True, instances, budget, lends, withheld, in_units)
+            cfg, hosts, runners, queue, decisions, True, instances, budget, lends, withheld, in_units,
+            (pins, pin_sources))
 
 
 class Handler(BaseHTTPRequestHandler):
@@ -2204,4 +2271,8 @@ def main():
 
 
 if __name__ == "__main__":
+    if sys.argv[1:2] == ["check-override"] and len(sys.argv) == 4:
+        # A writer's test: governor.py check-override <key> <value>, exit 1 with why it breaks the schema.
+        why = check_override(sys.argv[2], sys.argv[3])
+        sys.exit(f"override {why}" if why else 0)
     main()

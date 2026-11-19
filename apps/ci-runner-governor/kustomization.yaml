@@ -11,6 +11,7 @@ configMapGenerator:
     files:
       - governor.py
       - config.json
+      - override.schema.json
 
 resources:
   - deployment.yaml

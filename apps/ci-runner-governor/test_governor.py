@@ -17,6 +17,7 @@ import json
 import os
 import random
 import re
+import subprocess
 import sys
 import tempfile
 import time
@@ -594,16 +595,69 @@ class GovernorTest(unittest.TestCase):
         with tempfile.TemporaryDirectory() as d, mock.patch.object(governor, "OVERRIDE_DIR", d), \
                 mock.patch("builtins.print") as out:
             self.assertEqual(governor.read_override("aws-spot-1", 100), ("", 0))  # no ConfigMap
-            path = os.path.join(d, "aws-spot-1")
+            path = os.path.join(d, "aws-spot-1.power")
             for body, want in (('{"action": "on", "until": 200}', ("on", 200)),
                                ('{"action": "off", "until": 200}', ("off", 200)),
                                ('{"action": "on", "until": 50}', ("", 0)),     # ran out
                                ('{"action": "start", "until": 200}', ("", 0)),  # not an action
+                               ('{"action": "on", "until": "200"}', ("", 0)),
+                               ('{"action": "on", "until": 200, "slots": 0}', ("", 0)),  # another family's field
                                ("", ("", 0)), ("{}", ("", 0)), ("not json", ("", 0)), ("[1]", ("", 0))):
                 with open(path, "w") as f:
                     f.write(body)
                 self.assertEqual(governor.read_override("aws-spot-1", 100), want, body)
-        self.assertEqual(len([c for c in out.call_args_list if "unreadable" in c.args[0]]), 2)
+        self.assertEqual(len([c for c in out.call_args_list if "unreadable" in c.args[0]]), 6)
+
+    def test_only_the_family_key_counts_so_a_null_patch_lifts_it(self):
+        # The bare <host> key the writers used before hc-651 is never read: a family key that
+        # a merge-patch nulls away leaves nothing behind it.
+        import tempfile
+        with tempfile.TemporaryDirectory() as d, mock.patch.object(governor, "OVERRIDE_DIR", d), \
+                mock.patch("builtins.print") as out:
+            with open(os.path.join(d, "aws-spot-1"), "w") as f:
+                f.write('{"action": "off", "until": 5000, "slots": 0}')
+            self.assertEqual(governor.read_override("aws-spot-1", 1000), ("", 0))
+            self.assertEqual(governor.read_pins(AWS, 1000), ({}, {}))
+            out.assert_not_called()
+
+    def test_effective_slots_follows_the_rule_that_moves_the_slots(self):
+        held = lambda h: [governor.Action(h, "hold", "", "PINNED", "pinned")]
+        pins = ({"deskslim-1": 1}, {"deskslim-1": "slots"})
+        self.assertEqual(governor.effective_slots(CFG, "deskslim-1", held("deskslim-1"), pins, 3, 2), (1, "slots"))
+        # A FULL host keeps its own verdict under a pin it is already within.
+        full = [governor.Action("deskslim-1", "hold", "", "FULL", "full")]
+        self.assertEqual(governor.effective_slots(CFG, "deskslim-1", full, pins, 3, 0), (0, "governor"))
+        # A pin above what is registered is held to it.
+        self.assertEqual(governor.effective_slots(CFG, "deskslim-1", held("deskslim-1"), ({"deskslim-1": 5}, {"deskslim-1": "slots"}), 3, 3), (3, "slots"))
+        # A standby pin at or over its cap is no pin; under it, it is, and a reservation names itself.
+        self.assertEqual(governor.effective_slots(AWS, "aws-spot-1", [], ({"aws-spot-1": 8}, {"aws-spot-1": "slots"}), 8, 6), (6, "governor"))
+        self.assertEqual(governor.effective_slots(AWS, "aws-spot-1", [], ({"aws-spot-1": 0}, {"aws-spot-1": "reserve"}), 8, 6), (0, "reserve"))
+        self.assertEqual(governor.effective_slots(AWS, "aws-spot-1", [], ({}, {}), 8, 6), (6, "governor"))
+
+    def test_check_override_holds_each_key_to_the_schema(self):
+        ok = [("aws-spot-1.power", '{"action": "off", "until": 1796112000}'),
+              ("cachyos-x8664-main.slots", '{"slots": 0, "by": "machine-mode work"}'),
+              ("ms-a2.reserve", '{"until": 1796112000.5}'), ("Ms_A2.reserve", '{"until": 1}')]
+        bad = [("aws-spot-1", '{"action": "off", "until": 1}'),          # the old bare key
+               ("aws-spot-1.demand", '{"n": 1}'),                         # no such family
+               ("aws.spot.power", '{"action": "on", "until": 1}'),          # one dot, before the family
+               ("aws-spot-1.power", '{"action": "on", "until": Infinity}'),
+               ("h.reserve", '{"until": NaN}'),
+               ("aws-spot-1.power", '{"action": "on"}'),
+               ("aws-spot-1.power", '{"action": "on", "until": 1, "by": "x"}'),
+               ("h.slots", '{"slots": 2}'), ("h.slots", '{"slots": -1, "by": "x"}'),
+               ("h.slots", '{"slots": true, "by": "x"}'), ("h.slots", '{"slots": 1.5, "by": "x"}'),
+               ("h.reserve", '{"until": "2000"}'), ("h.reserve", "[1]"), ("h.reserve", "not json")]
+        for key, raw in ok:
+            self.assertEqual(governor.check_override(key, raw), "", (key, raw))
+        for key, raw in bad:
+            self.assertNotEqual(governor.check_override(key, raw), "", (key, raw))
+        # The writers' tests call it as a command.
+        run = lambda *a: subprocess.run([sys.executable, governor.__file__, "check-override", *a],
+                                        capture_output=True, text=True)
+        self.assertEqual(run(*ok[1]).returncode, 0)
+        got = run("h.slots", '{"slots": 2}')
+        self.assertEqual((got.returncode, got.stderr.strip()), (1, "override h.slots: no by"))
 
     def test_cap_override_holds_on_to_the_cap_from_first_sight(self):
         cap = 12 * 3600
@@ -676,34 +730,36 @@ class GovernorTest(unittest.TestCase):
         import tempfile
         with tempfile.TemporaryDirectory() as d, mock.patch.object(governor, "OVERRIDE_DIR", d), \
                 mock.patch("builtins.print") as out:
-            self.assertEqual(governor.read_pins(CFG, 1000), {})  # no ConfigMap
-            path = os.path.join(d, "deskslim-1")
-            for body, want in (('{"slots": 1}', {"deskslim-1": 1}), ('{"slots": 0}', {"deskslim-1": 0}),
-                               ('{"slots": -1}', {}), ('{"slots": "2"}', {}), ('{"slots": true}', {}),
-                               ('{"slots": 1.5}', {}), ("{}", {}), ("", {}), ("not json", {}), ("[1]", {})):
+            self.assertEqual(governor.read_pins(CFG, 1000), ({}, {}))  # no ConfigMap
+            path = os.path.join(d, "deskslim-1.slots")
+            for body, want in (('{"slots": 1, "by": "m"}', {"deskslim-1": 1}), ('{"slots": 0, "by": "m"}', {"deskslim-1": 0}),
+                               ('{"slots": -1, "by": "m"}', {}), ('{"slots": "2", "by": "m"}', {}),
+                               ('{"slots": true, "by": "m"}', {}), ('{"slots": 1.5, "by": "m"}', {}),
+                               ('{"slots": 1}', {}), ("{}", {}), ("", {}), ("not json", {}), ("[1]", {})):
                 with open(path, "w") as f:
                     f.write(body)
-                self.assertEqual(governor.read_pins(CFG, 1000), want, body)
+                self.assertEqual(governor.read_pins(CFG, 1000)[0], want, body)
             # A release reservation: its own key, a pin to 0 until its end, over the host's own pin.
             with open(path, "w") as f:
-                f.write('{"slots": 2, "action": "off", "until": 5}')
-            for body, want in (('{"until": 2000}', 0), ('{"until": 1000.5}', 0), ('{"until": 1000}', 2),
-                               ('{"until": 500}', 2), ('{"until": "2000"}', 2), ('{"until": true}', 2),
-                               ("{}", 2), ("", 2)):
-                with open(path + ".reserve", "w") as f:
+                f.write('{"slots": 2, "by": "m"}')
+            for body, want, source in (('{"until": 2000}', 0, "reserve"), ('{"until": 1000.5}', 0, "reserve"),
+                                       ('{"until": 1000}', 2, "slots"), ('{"until": 500}', 2, "slots"),
+                                       ('{"until": "2000"}', 2, "slots"), ('{"until": true}', 2, "slots"),
+                                       ("{}", 2, "slots"), ("", 2, "slots")):
+                with open(os.path.join(d, "deskslim-1.reserve"), "w") as f:
                     f.write(body)
-                self.assertEqual(governor.read_pins(CFG, 1000), {"deskslim-1": want}, body)
+                self.assertEqual(governor.read_pins(CFG, 1000), ({"deskslim-1": want}, {"deskslim-1": source}), body)
         lines = [c.args[0] for c in out.call_args_list]
-        self.assertEqual(len([l for l in lines if "pin unreadable" in l]), 4)
-        self.assertEqual(len([l for l in lines if "reservation unreadable" in l]), 2)
-        self.assertEqual(len([l for l in lines if "override unreadable" in l]), 2)
+        self.assertEqual(len([l for l in lines if "override unreadable" in l]), 11)
 
     def test_read_pins_covers_standby_hosts(self):
         import tempfile
         with tempfile.TemporaryDirectory() as d, mock.patch.object(governor, "OVERRIDE_DIR", d):
-            with open(os.path.join(d, "aws-spot-1"), "w") as f:
-                f.write('{"action": "on", "until": 5000, "slots": 0}')
-            self.assertEqual(governor.read_pins(AWS, 1000), {"aws-spot-1": 0})
+            with open(os.path.join(d, "aws-spot-1.slots"), "w") as f:
+                f.write('{"slots": 0, "by": "m"}')
+            with open(os.path.join(d, "aws-spot-1.power"), "w") as f:
+                f.write('{"action": "on", "until": 5000}')
+            self.assertEqual(governor.read_pins(AWS, 1000), ({"aws-spot-1": 0}, {"aws-spot-1": "slots"}))
             self.assertEqual(governor.read_override("aws-spot-1", 1000), ("on", 5000.0))
 
     def test_run_time_counts_per_utc_day(self):
@@ -868,13 +924,18 @@ class GovernorTest(unittest.TestCase):
         hosts = readings(**{"deskslim-2": HOT, "cachyos-x8664-main": COOL, "deskslim-1": COOL})
         observed = (hosts, self.PINNED, [UNITY_JOB] * 2)
         with mock.patch.object(governor, "observe", return_value=observed), \
-                mock.patch.object(governor, "read_pins", return_value={"deskslim-1": 1}), \
+                mock.patch.object(governor, "read_pins", return_value=({"deskslim-1": 1}, {"deskslim-1": "slots"})), \
                 mock.patch.object(governor, "apply") as apply, mock.patch("builtins.print") as out:
             governor.cycle(CFG, {})
         self.assertEqual(sorted(c.args[1:] for c in apply.call_args_list),
                          [("withhold", "deskslim-1-2", "deskslim-1"), ("withhold", "deskslim-2-1", "deskslim-2")])
         log = [c.args[0] for c in out.call_args_list]
         self.assertTrue(any(line.startswith("withhold deskslim-1-2 on deskslim-1: PINNED") for line in log), log)
+        # What machine-mode reads instead of re-deriving the target, and agent-web's button limit.
+        m = governor.State.metrics
+        self.assertIn('ci_governor_effective_slots{host="deskslim-1",source="slots"} 1', m)
+        self.assertIn('ci_governor_effective_slots{host="deskslim-2",source="governor"} 2', m)
+        self.assertIn(f'ci_governor_override_max_hours {CFG["override_on_max_hours"]}', m)
 
     def test_a_failed_start_is_logged_and_retried_never_counted(self):
         ec2 = FakeEc2("stopped", fail=True)
@@ -2427,7 +2488,7 @@ class LendTest(unittest.TestCase):
     def cycle(self, box, waiting, seat_waits):
         with mock.patch.object(governor, "observe", return_value=(readings(box=COOL), box.runners(), waiting)), \
                 mock.patch.object(governor, "observe_seats", return_value=(box.seat_state(), seat_waits)), \
-                mock.patch.object(governor, "read_pins", return_value={}), \
+                mock.patch.object(governor, "read_pins", return_value=({}, {})), \
                 mock.patch.object(governor, "gh", box.gh), \
                 mock.patch.object(governor.time, "time", return_value=10_000), mock.patch("builtins.print"):
             governor.cycle(LCFG, box.last, {}, None, (box.leases, box.lends))

@@ -297,7 +297,7 @@ all:
         ms-a2:
         deskslim-2:
         mac-mini:
-        # Local connection: apply with -K (sudo password).
+        # Local connection: sudo needs the become password (ansible/README.md, Secrets).
         cachyos-x8664-main:
 
     # BNB CI runner pool (added 2026-10-05; the "CI runners" play in site.yml), org-scoped

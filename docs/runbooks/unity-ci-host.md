@@ -42,7 +42,7 @@ scripts/test/fetch-image.py unityci/editor ubuntu-<version>-base-3 ~/.cache/unit
 
 ## The governor
 
-apps/ci-runner-governor decides which registered slots take jobs and when the cloud hosts run. Its docstring says what it reads and in what order; this section is the rule. The knobs are config.json, the slot layout is the topology, and `replay.py` replays recorded cycles against a change.
+apps/ci-runner-governor decides which registered slots take jobs and when the cloud hosts run. Its docstring says what it reads and in what order; this section is the rule. The knobs are config.json, the slot layout is the topology, and `replay.py` replays recorded cycles against a change; a refactor of `decide()` runs `replay.py --baseline <master governor.py> --synthetic 20000` and ships with zero differences (its docstring has the command).
 
 - Admitted and withheld: every slot stays registered and warm. An admitted slot carries the labels jobs ask for; a withheld one has them swapped for `unity-withheld` (or `unity-build-withheld`), so it finishes its job and takes no other. A host with `"full": false` gets only `unity` back on admit, never `unity-full`.
 - LAN verdicts, per host and cycle: HOT withholds one slot (the idle one first, then the busy one nearest its end), ROOM admits one while pool jobs wait (or a job on one of the slot's shared caps, light or heavy), STEADY does nothing. After an action the host is left alone for `cooldown_seconds`, since a job takes minutes to show in the 5-minute rates. A missing reading is never room.

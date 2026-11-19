@@ -27,6 +27,9 @@ TOPOLOGY = {"hosts": {
         *({"name": f"box-forgejo-{n}", "caps": ["forgejo"], "forge": "forgejo"} for n in (1, 2, 3))]},
     "gone": {"site": "cloud", "full": True, "slots": [{"name": "gone-unity-pool-1", "caps": ["unity"]}]},
 }}
+# The label vocabulary is the rendered one's (ansible/inventory.yml ci_labels).
+with open(os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "ci-topology", "topology.json")) as _f:
+    TOPOLOGY["labels"] = json.load(_f)["labels"]
 _topology = tempfile.NamedTemporaryFile("w", suffix=".json", delete=False)
 json.dump(TOPOLOGY, _topology)
 _topology.close()

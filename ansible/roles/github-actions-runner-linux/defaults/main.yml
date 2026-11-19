@@ -70,7 +70,7 @@ gh_runner_labels:
   - x64
   - docker
 
-# The labels ci-runner-governor swaps for a withheld one (apps/ci-runner-governor/config.json):
+# The labels ci-runner-governor swaps for a withheld one (inventory ci_labels, rendered into topology.json):
 # a runner carrying any of gh_runner_withheld_labels keeps gh_runner_withheld_label, this
 # slot's kind, in their place when an apply resets its labels. Empty: no governor.
 gh_runner_governed_labels: []

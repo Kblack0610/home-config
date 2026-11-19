@@ -10,6 +10,15 @@ spec.loader.exec_module(m)
 S = m.STEP
 
 
+class Roster(unittest.TestCase):
+    def test_hosts_and_kinds_come_from_the_topology(self):
+        # The LAN hosts that share slots between kinds; the one-kind workstation and the cloud hosts stay out.
+        self.assertIn("ms-a2", m.HOSTS.split("|"))
+        self.assertNotIn("cachyos-x8664-main", m.HOSTS.split("|"))
+        self.assertFalse([h for h in m.HOSTS.split("|") if h.startswith("aws-")])
+        self.assertTrue({"unity", "light", "forgejo"} <= set(m.KINDS))
+
+
 class Tally(unittest.TestCase):
     def test_idle_counts_only_while_another_kind_waits(self):
         idle = {("ms-a2", "light"): {0: 2, S: 2, 2 * S: 2}}

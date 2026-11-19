@@ -24,8 +24,21 @@ import urllib.request
 from collections import defaultdict
 
 STEP = 300  # seconds per sample: a job waits minutes, and 7 days stays under the point limits
-KINDS = ("unity", "unity-build", "heavy", "light", "forgejo")  # pools our own hosts serve
-HOSTS = "ms-a2|deskslim-2|deskslim-1|windows-media-ci"
+TOPOLOGY = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "apps/ci-topology/topology.json")
+
+
+def shared_hosts(path=TOPOLOGY):
+    """(kinds, hosts) from topology.json: the LAN hosts whose slots take more than one kind, the
+    ones lending shares between kinds, and every kind they take."""
+    with open(path, encoding="utf-8") as f:
+        topo = json.load(f)["hosts"]
+    caps = {h: {c for s in e["slots"] for c in s["caps"]} for h, e in topo.items() if e["site"] != "cloud"}
+    hosts = sorted(h for h, c in caps.items() if len(c) > 1)
+    return tuple(sorted(set().union(*(caps[h] for h in hosts)))), hosts
+
+
+KINDS, _HOSTS = shared_hosts()  # pools our own hosts serve
+HOSTS = "|".join(_HOSTS)
 STRIP = "instance, pod, job, namespace, service, endpoint, container"
 
 

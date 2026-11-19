@@ -37,14 +37,20 @@ tests:
         alertname: CiHostHeldOutByDisk
         exp_alerts: []
 
-  - name: a Spot host reclaimed 4 times in a day warns, 3 times stays quiet
+  - name: a Spot host reclaimed 4 times in a day warns, 3 times stays quiet, an on-demand host never does
     interval: 1h
     input_series:
+      - series: 'ci_governor_rate_usd_per_hour{host="aws-spot-1",basis="spot-estimate"}'
+        values: '0.28x6'
+      - series: 'ci_governor_rate_usd_per_hour{host="aws-spot-2",basis="spot-estimate"}'
+        values: '0.66x6'
+      - series: 'ci_governor_rate_usd_per_hour{host="aws-build-1",basis="on-demand"}'
+        values: '1.855x6'
       - series: 'ci_governor_fallback_total{host="aws-spot-1",reason="reclaim"}'
         values: '0 1 2 3 4 4 4'
       - series: 'ci_governor_fallback_total{host="aws-spot-2",reason="reclaim"}'
         values: '0 1 2 3 3 3 3'
-      - series: 'ci_governor_fallback_total{host="aws-burst-1",reason="reclaim"}'
+      - series: 'ci_governor_fallback_total{host="aws-build-1",reason="reclaim"}'
         values: '0 2 4 6 8 8 8'
     alert_rule_test:
       - eval_time: 3h

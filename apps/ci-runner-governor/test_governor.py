@@ -910,7 +910,7 @@ class GovernorTest(unittest.TestCase):
     def test_sigv4_matches_botocore(self):
         # The Authorization botocore's SigV4Auth gives for the same request and time.
         t = time.strptime("20261103T120000Z", "%Y%m%dT%H%M%SZ")
-        body = "Action=DescribeInstances&Version=2016-11-15&InstanceId.1=i-049219a501808a9cf"
+        body = "Action=DescribeInstances&Version=2016-11-15&InstanceId.1=i-049219a501808a9cf"  # copy-guard: a SigV4 test vector, no host's instance
         got = governor.Ec2("us-east-2", "AKIDEXAMPLE", "wJalrXUtnFEMI/K7MDENG+bPxRfiCYEXAMPLEKEY").sign(
             "ec2.us-east-2.amazonaws.com", body, t)
         self.assertTrue(got["authorization"].endswith(
@@ -1383,8 +1383,15 @@ def live_config():
         return json.load(f)
 
 
+def live_topology():
+    with open(os.environ["TOPOLOGY"]) as f:
+        return json.load(f)
+
+
 def load_files(conf, topo):
-    """load_config over a config.json and a topology.json written from these dicts."""
+    """load_config over a config.json and a topology.json written from these dicts; a topology
+    with no "labels" gets the rendered one's."""
+    topo = {"labels": live_topology()["labels"], **topo}
     with tempfile.TemporaryDirectory() as d:
         for name, body in (("c.json", conf), ("t.json", topo)):
             with open(os.path.join(d, name), "w") as f:
@@ -2552,6 +2559,27 @@ class SeatConfigTest(unittest.TestCase):
         slots = {n for h in LIVE["hosts"] for n in governor.load_config(CONFIG).get("shared", {}) if n.startswith(h)}
         self.assertTrue(all(s["slot"] in slots for s in seats.values()))
         self.assertNotIn("hp-victus", {s["host"] for s in seats.values()})
+
+    def test_labels_and_instances_come_from_the_topology(self):
+        rendered = live_topology()
+        self.assertEqual(LIVE["withheld_label"], rendered["labels"]["withheld"])
+        self.assertEqual(LIVE["lent_label"], rendered["labels"]["lent"])
+        for host, entry in LIVE["standby"].items():
+            self.assertEqual({k: entry["power"][k] for k in governor.INSTANCE_KEYS}, rendered["hosts"][host]["power"])
+        self.assertEqual(LIVE["standby"]["aws-build-1"]["power"]["start_after_seconds"], 60)
+
+    def test_a_copied_label_or_instance_id_in_config_fails(self):
+        topo = {"hosts": {"c": {"site": "cloud", "power": {"provider": "aws", "instance_id": "i-0c", "region": "r"},
+                                "slots": [{"name": "c-unity-pool-1", "caps": ["unity"]}]}}}
+        base = {**live_config(), "hosts": {}, "rates": {"c": {"usd_per_hour": 1, "basis": "on-demand"}}}
+        self.assertEqual(load_files({**base, "power": {}}, topo)["standby"]["c"]["power"]["instance_id"], "i-0c")
+        with self.assertRaisesRegex(ValueError, "label keys belong in the topology"):
+            load_files({**base, "power": {}, "pool_label": "unity"}, topo)
+        with self.assertRaisesRegex(ValueError, "instance keys belong in the topology.s power .inventory ci_power.: c.instance_id"):
+            load_files({**base, "power": {"c": {"instance_id": "i-0d"}}}, topo)
+        del topo["hosts"]["c"]["power"]
+        with self.assertRaisesRegex(ValueError, "power blocks for no powered cloud Unity host: c"):
+            load_files({**base, "power": {"c": {"max_hours_day": 1}}}, topo)
 
     def test_a_seat_that_borrows_no_lan_unity_slot_fails(self):
         topo = {"hosts": {"box": {"site": "lan", "slots": [

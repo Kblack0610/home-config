@@ -1,0 +1,70 @@
+# promtool test rules. Run with scripts/test-prometheus-rules.sh.
+rule_files:
+  - litellm.rules.yaml
+evaluation_interval: 1m
+
+tests:
+  - name: a Go route refused by its 5h deployment budget fires neither failure ratio (ar-3488)
+    interval: 1m
+    input_series:
+      - series: 'litellm_proxy_failed_requests_metric_total{exception_class="ValueError",exception_status="None",requested_model="go (glm-5.3)"}'
+        values: '0+2x40'
+      - series: 'litellm_proxy_total_requests_metric_total{requested_model="go (glm-5.3)"}'
+        values: '0+2x40'
+    alert_rule_test:
+      - eval_time: 30m
+        alertname: LiteLLMRouteHighFailureRate
+        exp_alerts: []
+      - eval_time: 30m
+        alertname: LiteLLMHighFailureRate
+        exp_alerts: []
+
+  - name: a ValueError on a route with no deployment budget still fires both ratios
+    interval: 1m
+    input_series:
+      - series: 'litellm_proxy_failed_requests_metric_total{exception_class="ValueError",exception_status="None",requested_model="fast"}'
+        values: '0+2x40'
+      - series: 'litellm_proxy_total_requests_metric_total{requested_model="fast"}'
+        values: '0+2x40'
+    alert_rule_test:
+      - eval_time: 30m
+        alertname: LiteLLMRouteHighFailureRate
+        exp_alerts:
+          - exp_labels:
+              severity: warning
+              fleet: fix
+              category: availability
+              requested_model: fast
+            exp_annotations:
+              summary: "LiteLLM route fast failure rate > 10% for 10m"
+              description: "100% of requests to 'fast' are failing. Check `kubectl -n ai-gateway logs deploy/litellm` for auth, DB, budget or upstream errors."
+      - eval_time: 30m
+        alertname: LiteLLMHighFailureRate
+        exp_alerts:
+          - exp_labels:
+              severity: warning
+              fleet: fix
+              category: availability
+            exp_annotations:
+              summary: "LiteLLM proxy failure rate > 10% for 10m"
+              description: "Across all virtual keys and models, 100% of requests are failing. Check `kubectl -n ai-gateway logs deploy/litellm` for auth, DB, or upstream errors."
+
+  - name: an upstream 429 on a Go route still fires the route ratio
+    interval: 1m
+    input_series:
+      - series: 'litellm_proxy_failed_requests_metric_total{exception_class="Openai.RateLimitError",exception_status="429",requested_model="go (glm-5.3)"}'
+        values: '0+2x40'
+      - series: 'litellm_proxy_total_requests_metric_total{requested_model="go (glm-5.3)"}'
+        values: '0+2x40'
+    alert_rule_test:
+      - eval_time: 30m
+        alertname: LiteLLMRouteHighFailureRate
+        exp_alerts:
+          - exp_labels:
+              severity: warning
+              fleet: fix
+              category: availability
+              requested_model: go (glm-5.3)
+            exp_annotations:
+              summary: "LiteLLM route go (glm-5.3) failure rate > 10% for 10m"
+              description: "100% of requests to 'go (glm-5.3)' are failing. Check `kubectl -n ai-gateway logs deploy/litellm` for auth, DB, budget or upstream errors."

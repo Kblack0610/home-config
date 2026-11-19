@@ -516,6 +516,14 @@ all:
     # jobs. A host's own slots of a kind need that kind here; a cloud host takes no
     # light or heavy, so a small job never powers a paid host. Drop a cap and
     # re-apply to take it off every slot of the host.
+    # ci_units: the Forgejo seats on each lendable slot, so that many small jobs share one
+    # slot the governor lends to Forgejo (render-ci-topology.py). Provisional, from
+    # ci_runner_cores_busy over 2026-11-11..18 while a job ran: a Forgejo job's p90 is
+    # 1.4-2.9 cores (median seat 1.7), so two fit a 3-core slot. Revisit when that p90
+    # passes 2 cores or Forgejo wait p90 rises (scripts/ci-pool-idle.py). Repo seats stay
+    # one per slot: no personal-repo job waited in those 7 days. On windows-media-ci only: the
+    # plan named ms-a2, deskslim-2 and windows-media-ci, host-headroom.py read all three
+    # FULL on 2026-11-18, and the human chose the one with no OOMs (ask t1kigm).
     ci_hosts:
       hosts:
         # ms-a2: 16 cores / 32 threads, SMT siblings n and n+16 (sysfs,
@@ -586,6 +594,7 @@ all:
           ci_unity_slot_cpus: ["6-11", "12-17", "18-23"]
           ci_unity_memory_max: 42G
           ci_unity_slot_memory_max: 14G
+          ci_units: {forgejo: 2}
         # aws-build-1, the same m7a.8xlarge: build slots 1-3 of 10 cores for whole-game
         # player builds, 36G each (a build SIGKILLed at 14G on aws-burst-1, #1817;
         # razer builds in 20G), and test slots 4-9 of 5 cores and 16G, two on each build

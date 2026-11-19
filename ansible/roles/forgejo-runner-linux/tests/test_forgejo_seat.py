@@ -24,7 +24,7 @@ SEAT = os.path.join(HERE, "..", "files", "forgejo-seat.py")
 sys.path.insert(0, os.path.join(ROOT, "apps", "ci-runner-governor"))
 import governor  # noqa: E402
 
-SLOT = "box-unity-pool-1"
+SLOT, SEAT_NAME = "box-unity-pool-1", "box-unity-pool-1-forgejo"
 GUARD = 20  # seconds: only a hung supervisor reaches it
 STUB = """#!/usr/bin/env python3
 import os, sys, urllib.request
@@ -37,13 +37,13 @@ with urllib.request.urlopen(os.environ["STUB_URL"] + "/stub-run", timeout=60) as
 class Leases(governor.Leases):
     """The governor's leases, telling the test each time the seat asks."""
 
-    def __init__(self, slots, asked):
-        super().__init__(slots)
+    def __init__(self, seats, asked):
+        super().__init__(seats)
         self.asked = asked
 
-    def wait(self, slot, have, timeout):
+    def wait(self, seat, have, timeout):
         self.asked.put((have, timeout))
-        return super().wait(slot, have, timeout)
+        return super().wait(seat, have, timeout)
 
 
 class Handler(governor.Handler):
@@ -63,7 +63,7 @@ class Handler(governor.Handler):
 class SeatTest(unittest.TestCase):
     def setUp(self):
         self.asked, self.runs, self.codes = queue.Queue(), queue.Queue(), queue.Queue()
-        self.leases = Leases([SLOT], self.asked)
+        self.leases = Leases({SEAT_NAME: SLOT}, self.asked)
         handler = type("H", (Handler,), {"leases": self.leases, "runs": self.runs, "codes": self.codes})
         self.server = ThreadingHTTPServer(("127.0.0.1", 0), handler)
         self.server.daemon_threads = True
@@ -77,7 +77,7 @@ class SeatTest(unittest.TestCase):
             f.write(STUB)
         os.chmod(stub, 0o755)
         url = f"http://127.0.0.1:{self.server.server_address[1]}"
-        env = {**os.environ, "FORGEJO_SEAT_LEASE_URL": url, "FORGEJO_SEAT_SLOT": SLOT, "FORGEJO_SEAT_BIN": stub,
+        env = {**os.environ, "FORGEJO_SEAT_LEASE_URL": url, "FORGEJO_SEAT_NAME": SEAT_NAME, "FORGEJO_SEAT_BIN": stub,
                "FORGEJO_SEAT_CONFIG": os.path.join(d, "config.yaml"), "STUB_URL": url,
                "FORGEJO_SEAT_FETCH_SECONDS": "0", "FORGEJO_SEAT_BACKOFF_MIN": "0"}
         self.seat = subprocess.Popen([sys.executable, SEAT], env=env, stdout=subprocess.DEVNULL)
@@ -134,7 +134,7 @@ class SeatTest(unittest.TestCase):
         self.assertEqual(self.runs.get(timeout=GUARD), "forgejo")
         self.codes.put(0)
 
-    def test_a_slot_the_governor_does_not_lend_never_runs(self):
+    def test_a_seat_the_governor_does_not_know_never_runs(self):
         self.assertEqual(self.next_ask(), ("github", 300))
         # A 404 never reaches Leases.wait, so count the asks at the server.
         seen = queue.Queue()
@@ -145,12 +145,12 @@ class SeatTest(unittest.TestCase):
                 return super().do_GET()
         self.server.RequestHandlerClass = Counting
         env = {**os.environ, "FORGEJO_SEAT_LEASE_URL": f"http://127.0.0.1:{self.server.server_address[1]}",
-               "FORGEJO_SEAT_SLOT": "box-unity-pool-9", "FORGEJO_SEAT_BIN": "/bin/false",
+               "FORGEJO_SEAT_NAME": "box-unity-pool-9-forgejo", "FORGEJO_SEAT_BIN": "/bin/false",
                "FORGEJO_SEAT_CONFIG": "/nonexistent", "FORGEJO_SEAT_BACKOFF_MIN": "0"}
         seat = subprocess.Popen([sys.executable, SEAT], env=env, stdout=subprocess.DEVNULL)
         try:
             for _ in range(3):
-                self.assertIn("slot=box-unity-pool-9", seen.get(timeout=GUARD))
+                self.assertIn("seat=box-unity-pool-9-forgejo", seen.get(timeout=GUARD))
             self.assertTrue(self.runs.empty())
         finally:
             seat.kill()

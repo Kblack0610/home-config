@@ -1,0 +1,14 @@
+name: i39644-fleet-nat
+on:
+  workflow_dispatch:
+jobs:
+  probe:
+    runs-on: docker
+    timeout-minutes: 25
+    container:
+      image: docker:27-cli
+    steps:
+      - name: fleet-nat
+        continue-on-error: true
+        run: |
+          docker run --rm --network host -v "$PWD:/w:ro" alpine:3.21 sh /w/ci/i39644-probe.sh 2>&1 | head -4000

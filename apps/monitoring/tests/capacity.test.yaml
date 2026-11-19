@@ -240,10 +240,14 @@ tests:
         values: '9x60'
       - series: 'node_filesystem_size_bytes{instance="c",device="d3",job="node-exporter",fstype="ext4",mountpoint="/"}'
         values: '100x60'
-      # Excluded on purpose: a full simulator volume, a full tmpfs, a full share.
+      # Excluded on purpose: a full simulator volume (CoreSimulator's mount and the cryptexd mount newer runtimes use), a full tmpfs, a full share.
       - series: 'node_filesystem_avail_bytes{instance="m",device="s",job="mac-nodes",fstype="apfs",mountpoint="/Library/Developer/CoreSimulator/Volumes/iOS"}'
         values: '1x60'
       - series: 'node_filesystem_size_bytes{instance="m",device="s",job="mac-nodes",fstype="apfs",mountpoint="/Library/Developer/CoreSimulator/Volumes/iOS"}'
+        values: '100x60'
+      - series: 'node_filesystem_avail_bytes{instance="m",device="x",job="mac-nodes",fstype="apfs",mountpoint="/private/var/run/com.apple.security.cryptexd/mnt/com.apple.iPhoneOS.SimulatorRuntime-v24.2.8117.0.mmGnur"}'
+        values: '1x60'
+      - series: 'node_filesystem_size_bytes{instance="m",device="x",job="mac-nodes",fstype="apfs",mountpoint="/private/var/run/com.apple.security.cryptexd/mnt/com.apple.iPhoneOS.SimulatorRuntime-v24.2.8117.0.mmGnur"}'
         values: '100x60'
       - series: 'node_filesystem_avail_bytes{instance="m",device="t",job="node-exporter",fstype="tmpfs",mountpoint="/dev/shm"}'
         values: '1x60'

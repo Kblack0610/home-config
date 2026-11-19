@@ -26,21 +26,21 @@ spec:
         - record: device:node_filesystem_avail:ratio
           expr: >-
             min by (instance, device, job) (
-              node_filesystem_avail_bytes{fstype!~"tmpfs|ramfs|overlay|squashfs|autofs|vfat|nsfs|devtmpfs|cifs|nfs.*|fuse.*",mountpoint!~"/System/Volumes/(Preboot|VM|Update|xarts|iSCPreboot|Hardware).*|/Library/Developer/.*|/run.*|/boot.*|/var/lib/kubelet.*|/snap.*|/tmp"}
+              node_filesystem_avail_bytes{fstype!~"tmpfs|ramfs|overlay|squashfs|autofs|vfat|nsfs|devtmpfs|cifs|nfs.*|fuse.*",mountpoint!~"/System/Volumes/(Preboot|VM|Update|xarts|iSCPreboot|Hardware).*|/Library/Developer/.*|/private/var/run/com.apple.security.cryptexd/.*|/run.*|/boot.*|/var/lib/kubelet.*|/snap.*|/tmp"}
               /
-              node_filesystem_size_bytes{fstype!~"tmpfs|ramfs|overlay|squashfs|autofs|vfat|nsfs|devtmpfs|cifs|nfs.*|fuse.*",mountpoint!~"/System/Volumes/(Preboot|VM|Update|xarts|iSCPreboot|Hardware).*|/Library/Developer/.*|/run.*|/boot.*|/var/lib/kubelet.*|/snap.*|/tmp"}
+              node_filesystem_size_bytes{fstype!~"tmpfs|ramfs|overlay|squashfs|autofs|vfat|nsfs|devtmpfs|cifs|nfs.*|fuse.*",mountpoint!~"/System/Volumes/(Preboot|VM|Update|xarts|iSCPreboot|Hardware).*|/Library/Developer/.*|/private/var/run/com.apple.security.cryptexd/.*|/run.*|/boot.*|/var/lib/kubelet.*|/snap.*|/tmp"}
             )
         - record: device:node_filesystem_avail_predict4h:bytes
           expr: >-
             min by (instance, device, job) (
-              predict_linear(node_filesystem_avail_bytes{fstype!~"tmpfs|ramfs|overlay|squashfs|autofs|vfat|nsfs|devtmpfs|cifs|nfs.*|fuse.*",mountpoint!~"/System/Volumes/(Preboot|VM|Update|xarts|iSCPreboot|Hardware).*|/Library/Developer/.*|/run.*|/boot.*|/var/lib/kubelet.*|/snap.*|/tmp"}[2h], 4 * 3600)
+              predict_linear(node_filesystem_avail_bytes{fstype!~"tmpfs|ramfs|overlay|squashfs|autofs|vfat|nsfs|devtmpfs|cifs|nfs.*|fuse.*",mountpoint!~"/System/Volumes/(Preboot|VM|Update|xarts|iSCPreboot|Hardware).*|/Library/Developer/.*|/private/var/run/com.apple.security.cryptexd/.*|/run.*|/boot.*|/var/lib/kubelet.*|/snap.*|/tmp"}[2h], 4 * 3600)
             )
         - record: device:node_filesystem_files_free:ratio
           expr: >-
             min by (instance, device, job) (
-              node_filesystem_files_free{fstype!~"tmpfs|ramfs|overlay|squashfs|autofs|vfat|nsfs|devtmpfs|cifs|nfs.*|fuse.*",mountpoint!~"/System/Volumes/(Preboot|VM|Update|xarts|iSCPreboot|Hardware).*|/Library/Developer/.*|/run.*|/boot.*|/var/lib/kubelet.*|/snap.*|/tmp"}
+              node_filesystem_files_free{fstype!~"tmpfs|ramfs|overlay|squashfs|autofs|vfat|nsfs|devtmpfs|cifs|nfs.*|fuse.*",mountpoint!~"/System/Volumes/(Preboot|VM|Update|xarts|iSCPreboot|Hardware).*|/Library/Developer/.*|/private/var/run/com.apple.security.cryptexd/.*|/run.*|/boot.*|/var/lib/kubelet.*|/snap.*|/tmp"}
               /
-              node_filesystem_files{fstype!~"tmpfs|ramfs|overlay|squashfs|autofs|vfat|nsfs|devtmpfs|cifs|nfs.*|fuse.*",mountpoint!~"/System/Volumes/(Preboot|VM|Update|xarts|iSCPreboot|Hardware).*|/Library/Developer/.*|/run.*|/boot.*|/var/lib/kubelet.*|/snap.*|/tmp"}
+              node_filesystem_files{fstype!~"tmpfs|ramfs|overlay|squashfs|autofs|vfat|nsfs|devtmpfs|cifs|nfs.*|fuse.*",mountpoint!~"/System/Volumes/(Preboot|VM|Update|xarts|iSCPreboot|Hardware).*|/Library/Developer/.*|/private/var/run/com.apple.security.cryptexd/.*|/run.*|/boot.*|/var/lib/kubelet.*|/snap.*|/tmp"}
             )
 
     - name: homelab-capacity.pv

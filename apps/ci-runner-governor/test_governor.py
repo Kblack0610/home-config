@@ -2299,6 +2299,12 @@ class LendTest(unittest.TestCase):
         self.assertNotIn("ci_governor_drain_seconds", governor.render(LCFG, {"disk": {}}, runners, 0, [], True, in_units=out))
         # Nothing waiting drains in 0, whatever the run times.
         self.assertEqual(governor.units(LCFG, runners, {}, [], [], [], {}, {}, {})[3], 0.0)
+        # A hot slot still running its job is capacity: the hold stops the next job, so busy
+        # never reads past capacity (ms-a2 read 4/2 live, 2026-11-19).
+        runners[S3]["busy"] = True
+        capacity, busy, _, _ = governor.units(LCFG, runners, box.seat_state(), [], [], [], weights, withheld, {})
+        self.assertEqual(capacity, {"box": 3})
+        self.assertAlmostEqual(busy["box"], 2.3)
 
     def test_an_ack_while_its_seat_is_busy_does_not_unlend(self):
         box = Box(s1=DRAINED | {"unity-lent"})

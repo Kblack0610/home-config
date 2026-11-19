@@ -1470,12 +1470,455 @@
       "id": 21
     },
     {
+      "type": "row",
+      "title": "Release windows",
+      "collapsed": false,
+      "gridPos": {
+        "x": 0,
+        "y": 36,
+        "w": 24,
+        "h": 1
+      },
+      "panels": [],
+      "id": 22
+    },
+    {
+      "type": "timeseries",
+      "title": "Burndown, open windows",
+      "description": "Committed rows each project's window still holds open (agent_project_window_rows kind=carried), one line per project and version. It falls as committed rows close; an interrupt is counted apart and never raises it. Rules: stages.md, Release windows.",
+      "gridPos": {
+        "x": 0,
+        "y": 37,
+        "w": 12,
+        "h": 8
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${datasource}"
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "editorMode": "code",
+          "expr": "max by (project, version) (max without (instance, job, host) (agent_project_window_rows{kind=\"carried\"}))",
+          "format": "time_series",
+          "instant": false,
+          "range": true,
+          "legendFormat": "{{project}} {{version}}",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "none",
+          "custom": {
+            "drawStyle": "line",
+            "lineInterpolation": "smooth",
+            "lineWidth": 2,
+            "fillOpacity": 0,
+            "barAlignment": -1,
+            "stacking": {
+              "mode": "none"
+            },
+            "spanNulls": false,
+            "showPoints": "never"
+          },
+          "color": {
+            "mode": "palette-classic"
+          },
+          "decimals": 0
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom"
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "id": 23
+    },
+    {
+      "type": "bargauge",
+      "title": "Say/do per window",
+      "description": "Delivered over committed for every window seen in the range, open or cut, from the last sample of its version. Widen the range to see older windows.",
+      "gridPos": {
+        "x": 12,
+        "y": 37,
+        "w": 6,
+        "h": 8
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${datasource}"
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "editorMode": "code",
+          "expr": "sort_desc(max by (project, version) (last_over_time(agent_project_window_rows{kind=\"delivered\"}[$__range])) / (max by (project, version) (last_over_time(agent_project_window_rows{kind=\"committed\"}[$__range])) > 0))",
+          "format": "time_series",
+          "instant": true,
+          "range": false,
+          "legendFormat": "{{project}} {{version}}",
+          "refId": "A"
+        }
+      ],
+      "options": {
+        "orientation": "horizontal",
+        "displayMode": "basic",
+        "showUnfilled": true,
+        "valueMode": "text",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "minVizHeight": 16,
+        "maxVizHeight": 22,
+        "namePlacement": "left",
+        "sizing": "manual"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percentunit",
+          "color": {
+            "mode": "thresholds"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "orange",
+                "value": null
+              },
+              {
+                "color": "green",
+                "value": 0.8
+              }
+            ]
+          },
+          "min": 0
+        },
+        "overrides": []
+      },
+      "id": 24
+    },
+    {
+      "type": "bargauge",
+      "title": "Delivered per window",
+      "description": "Committed rows each window delivered, open or cut, from the last sample of its version: throughput per window.",
+      "gridPos": {
+        "x": 18,
+        "y": 37,
+        "w": 6,
+        "h": 8
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${datasource}"
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "editorMode": "code",
+          "expr": "sort_desc(max by (project, version) (last_over_time(agent_project_window_rows{kind=\"delivered\"}[$__range])))",
+          "format": "time_series",
+          "instant": true,
+          "range": false,
+          "legendFormat": "{{project}} {{version}}",
+          "refId": "A"
+        }
+      ],
+      "options": {
+        "orientation": "horizontal",
+        "displayMode": "basic",
+        "showUnfilled": true,
+        "valueMode": "text",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "minVizHeight": 16,
+        "maxVizHeight": 22,
+        "namePlacement": "left",
+        "sizing": "manual"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "none",
+          "color": {
+            "mode": "thresholds"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "blue",
+                "value": null
+              }
+            ]
+          },
+          "min": 0
+        },
+        "overrides": []
+      },
+      "id": 25
+    },
+    {
+      "type": "timeseries",
+      "title": "Projects per state",
+      "description": "How many projects sit in each state (agent_project_state, from hub_core::projects::state; rules: stages.md, Project state).",
+      "gridPos": {
+        "x": 0,
+        "y": 45,
+        "w": 16,
+        "h": 7
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${datasource}"
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "editorMode": "code",
+          "expr": "count by (state) (max without (instance, job, host) (agent_project_state))",
+          "format": "time_series",
+          "instant": false,
+          "range": true,
+          "legendFormat": "{{state}}",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "none",
+          "custom": {
+            "drawStyle": "line",
+            "lineInterpolation": "smooth",
+            "lineWidth": 2,
+            "fillOpacity": 30,
+            "barAlignment": -1,
+            "stacking": {
+              "mode": "normal"
+            },
+            "spanNulls": false,
+            "showPoints": "never"
+          },
+          "color": {
+            "mode": "palette-classic"
+          },
+          "decimals": 0
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "late"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "red"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "at risk"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "orange"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "on track"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "green"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "no window"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "#c98500"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "idle"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "#e8b85c"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "parked"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "#9e9c95"
+                }
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom"
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "id": 26
+    },
+    {
+      "type": "bargauge",
+      "title": "Days left",
+      "description": "Days until each open window's due day (agent_project_window_days_left); below 0 it is late.",
+      "gridPos": {
+        "x": 16,
+        "y": 45,
+        "w": 8,
+        "h": 7
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${datasource}"
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "editorMode": "code",
+          "expr": "sort(max by (project) (max without (instance, job, host) (agent_project_window_days_left)))",
+          "format": "time_series",
+          "instant": true,
+          "range": false,
+          "legendFormat": "{{project}}",
+          "refId": "A"
+        }
+      ],
+      "options": {
+        "orientation": "horizontal",
+        "displayMode": "basic",
+        "showUnfilled": true,
+        "valueMode": "text",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "minVizHeight": 16,
+        "maxVizHeight": 22,
+        "namePlacement": "left",
+        "sizing": "manual"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "d",
+          "color": {
+            "mode": "thresholds"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "red",
+                "value": null
+              },
+              {
+                "color": "orange",
+                "value": 0
+              },
+              {
+                "color": "blue",
+                "value": 2
+              }
+            ]
+          },
+          "min": 0
+        },
+        "overrides": []
+      },
+      "id": 27
+    },
+    {
       "type": "timeseries",
       "title": "Cost per hour by project",
       "description": "Spend per hour, one series per canonical project (claude-telemetry.sh sets it). Sessions started outside the claude wrappers carry no project and show as the empty series.",
       "gridPos": {
         "x": 0,
-        "y": 36,
+        "y": 52,
         "w": 12,
         "h": 8
       },
@@ -1530,7 +1973,7 @@
         }
       },
       "interval": "1h",
-      "id": 22
+      "id": 28
     },
     {
       "type": "timeseries",
@@ -1538,7 +1981,7 @@
       "description": "Spend per hour, one series per model.",
       "gridPos": {
         "x": 12,
-        "y": 36,
+        "y": 52,
         "w": 12,
         "h": 8
       },
@@ -1593,7 +2036,7 @@
         }
       },
       "interval": "1h",
-      "id": 23
+      "id": 29
     },
     {
       "type": "timeseries",
@@ -1601,7 +2044,7 @@
       "description": "Cache read dominates when caching works; a jump in cacheCreation means prompts are being rebuilt.",
       "gridPos": {
         "x": 0,
-        "y": 44,
+        "y": 60,
         "w": 12,
         "h": 8
       },
@@ -1717,7 +2160,7 @@
         }
       },
       "interval": "1h",
-      "id": 24
+      "id": 30
     },
     {
       "type": "timeseries",
@@ -1725,7 +2168,7 @@
       "description": "Lines added and removed by Claude Code edits.",
       "gridPos": {
         "x": 12,
-        "y": 44,
+        "y": 60,
         "w": 6,
         "h": 8
       },
@@ -1811,7 +2254,7 @@
         }
       },
       "interval": "1h",
-      "id": 25
+      "id": 31
     },
     {
       "type": "timeseries",
@@ -1819,7 +2262,7 @@
       "description": "Commits and pull requests Claude Code created.",
       "gridPos": {
         "x": 18,
-        "y": 44,
+        "y": 60,
         "w": 6,
         "h": 8
       },
@@ -1919,7 +2362,7 @@
         }
       },
       "interval": "1h",
-      "id": 26
+      "id": 32
     },
     {
       "type": "state-timeline",
@@ -1927,7 +2370,7 @@
       "description": "Context tokens each session holds, one row per tmux target (agent_session_context_tokens). Amber from 150k, red from 200k: auto-compaction fires around 240k.",
       "gridPos": {
         "x": 0,
-        "y": 52,
+        "y": 68,
         "w": 24,
         "h": 10
       },
@@ -1993,7 +2436,7 @@
         },
         "overrides": []
       },
-      "id": 27
+      "id": 33
     },
     {
       "type": "bargauge",
@@ -2001,7 +2444,7 @@
       "description": "Hours sessions spent waiting on the human, per project (fleet-bench).",
       "gridPos": {
         "x": 0,
-        "y": 62,
+        "y": 78,
         "w": 8,
         "h": 8
       },
@@ -2060,7 +2503,7 @@
         },
         "overrides": []
       },
-      "id": 28
+      "id": 34
     },
     {
       "type": "bargauge",
@@ -2068,7 +2511,7 @@
       "description": "Hours sessions sat STALLED, per project (fleet-bench).",
       "gridPos": {
         "x": 8,
-        "y": 62,
+        "y": 78,
         "w": 8,
         "h": 8
       },
@@ -2127,7 +2570,7 @@
         },
         "overrides": []
       },
-      "id": 29
+      "id": 35
     },
     {
       "type": "bargauge",
@@ -2135,7 +2578,7 @@
       "description": "Whole-session spend of the sessions the agent-usage registry updated today, per project (day-log, agent_day_cost_usd). A session started yesterday brings its earlier spend, so this differs from the Cost tile, which counts only spend inside the range.",
       "gridPos": {
         "x": 16,
-        "y": 62,
+        "y": 78,
         "w": 8,
         "h": 8
       },
@@ -2194,7 +2637,7 @@
         },
         "overrides": []
       },
-      "id": 30
+      "id": 36
     }
   ],
   "editable": true,

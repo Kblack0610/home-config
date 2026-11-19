@@ -31,8 +31,8 @@ cat > "$t/bin/docker" <<STUB
 #!/bin/sh
 case "\$1 \$2" in
     "images --format") cat "\${IMAGES:-$t/images}" ;;
-    "image rm") case "\$3" in *inuse) exit 1 ;; esac; echo "\$3" >> "$t/removed" ;;
-    "builder prune") echo pruned >> "$t/removed" ;;
+    "image rm") case "\$3" in *inuse) exit 1 ;; *shared) exit 0 ;; esac; echo "\$3" >> "$t/removed" ;;
+    "builder prune") echo "pruned \$*" >> "$t/removed" ;;
 esac
 STUB
 # Matches the way pgrep -f does, against the command line a live runner has.
@@ -251,7 +251,7 @@ I="$t/images-low"; mkdir -p "$I/unity-pool-1" "$I/unity-pool-2"; rm -f "$t/remov
     echo "unity-core-playground-test:inuse|$(old 5)"
     echo "unity-core-playground-test:a|$(old 3)"
     echo "unity-core-playground-test:b|$(old 2)"
-    echo "unity-core-playground-test:c|$(old 1)"
+    echo "unity-core-playground-test:c|$(old 0)"
     echo "unityci/editor:ubuntu-6000.3.27f1-base-3|$(old 6)"
 } > "$t/images-list"
 RUNNER_HOME=$I IMAGES="$t/images-list" REMOVED="$t/removed" DF_PER_IMAGE=20 PATH="$t/bin:$PATH" sh "$here/ci-disk-prune.sh" > "$t/log" 2>&1
@@ -259,14 +259,33 @@ rc=$?
 [ "$rc" = 0 ] && echo "ok   low disk images exits 0" || { echo "FAIL low disk images exit $rc"; fail=1; }
 check "low disk removes the oldest idle test image" '^low disk image unity-core-playground-test:a$' "$t/log" 1
 check "and only until the floor"                    '^low disk image ' "$t/log" 1
-check "an in-use test image is kept"                'kept unity-core-playground-test:inuse' "$t/log" 1
-check "its build cache goes with it"                '^pruned$' "$t/removed" 1
+check "an in-use test image is kept"                'kept unity-core-playground-test:inuse: docker image rm failed' "$t/log" 1
+check "its day-old build cache goes with it"        '^pruned builder prune --force --filter until=24h$' "$t/removed" 1
 check "editor image stays under low disk"           'unityci/editor' "$t/removed" 0
 # Negative control: one Unity slot busy, so no image goes, however low the disk.
 rm -f "$t/removed"; touch "$t/removed"
 RUNNER_HOME=$I BUSY_HOME=$I IMAGES="$t/images-list" REMOVED="$t/removed" DF_PER_IMAGE=20 PATH="$t/bin:$PATH" sh "$here/ci-disk-prune.sh" > "$t/log" 2>&1
 check "a busy slot keeps every test image"          '^low disk image ' "$t/log" 0
-check "and the build cache"                         '^pruned$' "$t/removed" 0
+check "and the build cache"                         '^pruned' "$t/removed" 0
+# An image under a day old stays, even at 20% free.
+echo "unity-core-playground-test:c|$(old 0)" > "$t/images-fresh"; rm -f "$t/removed"; touch "$t/removed"
+RUNNER_HOME=$I IMAGES="$t/images-fresh" REMOVED="$t/removed" DF_PER_IMAGE=80 PATH="$t/bin:$PATH" sh "$here/ci-disk-prune.sh" > "$t/log" 2>&1
+check "an image under a day old stays"              '^low disk image ' "$t/log" 0
+# A kept warm tree at 32% free stays above its 30% hold, so no image goes while it is on disk.
+K="$t/images-kept"; mkdir -p "$K/unity-pool-1/$repo/release-tree/tour" "$K/unity-pool-2"
+touch "$K/unity-pool-1/.keep-warm-trees" "$K/unity-pool-1/$repo/release-tree/tour/file"
+grep -v ':c|' "$t/images-list" > "$t/images-three"; rm -f "$t/removed"; touch "$t/removed"
+RUNNER_HOME=$K IMAGES="$t/images-three" REMOVED="$t/removed" DF_PER_TREE=8 DF_PER_IMAGE=20 PATH="$t/bin:$PATH" sh "$here/ci-disk-prune.sh" > "$t/log" 2>&1
+check "a kept tree at 32% keeps every test image"   '^low disk image ' "$t/log" 0
+[ -e "$K/unity-pool-1/$repo/release-tree/tour/file" ] && echo "ok   and the kept tree" || { echo "FAIL kept tree removed"; fail=1; }
+# A removal that frees nothing (another tag shares the image) ends the pass.
+{
+    echo "unity-core-playground-test:shared|$(old 3)"
+    echo "unity-core-playground-test:a|$(old 2)"
+} > "$t/images-shared"; rm -f "$t/removed"; touch "$t/removed"
+RUNNER_HOME=$I IMAGES="$t/images-shared" REMOVED="$t/removed" DF_PER_IMAGE=40 PATH="$t/bin:$PATH" sh "$here/ci-disk-prune.sh" > "$t/log" 2>&1
+check "an untag that frees nothing is reported"     '^untagged unity-core-playground-test:shared but freed nothing' "$t/log" 1
+check "and stops the pass"                          'playground-test:a$' "$t/removed" 0
 
 # A host with no Unity slots has nothing to measure and exits clean.
 RUNNER_HOME="$t/none" DF_PER_TREE=20 PATH="$t/bin:$PATH" sh "$here/ci-disk-prune.sh" > "$t/log" 2>&1

@@ -5,7 +5,7 @@ ansible/inventory.yml writes the CI hosts and their EC2 instances, and
 scripts/render-ci-topology.py renders them into apps/ci-topology/topology.json, which every
 reader loads. Two kinds of copy have drifted before and are refused anywhere else in the repo:
 - an EC2 instance id (i- and 17 hex digits); config.json carried all four until hc-652
-- a regex alternation of two topology hosts (deskslim-1|ms-a2); ci-pool-idle.py hard-coded its
+- a regex alternation of two topology hosts (deskslim-1|ms-a2, copy-guard: this example); ci-pool-idle.py hard-coded its
   hosts that way, and stopped seeing a host the inventory added
 
 A line that must hold one anyway (a signing test vector) carries "copy-guard:" and the reason.

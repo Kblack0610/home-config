@@ -29,13 +29,13 @@ HOSTS = "ms-a2|deskslim-2|deskslim-1|windows-media-ci"
 STRIP = "instance, pod, job, namespace, service, endpoint, container"
 
 
-def query_range(url, expr, start, end):
+def query_range(url, expr, start, end, step=STEP):
     """{labels dict as tuple: {t: value}}, a day per request."""
     out = defaultdict(dict)
     t = start
     while t < end:
         stop = min(t + 86400, end)
-        q = urllib.parse.urlencode({"query": expr, "start": t, "end": stop, "step": STEP})
+        q = urllib.parse.urlencode({"query": expr, "start": t, "end": stop, "step": step})
         with urllib.request.urlopen(f"{url}/api/v1/query_range?{q}", timeout=120) as r:
             body = json.load(r)
         if body.get("status") != "success":
@@ -43,8 +43,8 @@ def query_range(url, expr, start, end):
         for s in body["data"]["result"]:
             key = tuple(sorted(s["metric"].items()))
             for ts, v in s["values"]:
-                out[key][int(float(ts)) // STEP * STEP] = float(v)
-        t = stop + STEP
+                out[key][int(float(ts)) // step * step] = float(v)
+        t = stop + step
     return out
 
 

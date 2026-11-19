@@ -10,7 +10,7 @@ GitHub matches labels when it assigns a job, so nothing is killed or restarted.
 
 Once per CYCLE_SECONDS it reads Prometheus (each host's CPU idle and pressure, temperature,
 free memory and disk; github-runner-exporter's runner states and waiting jobs) and, in order:
-  lend     lend_plan() and lend_apply(): lend idle LAN slots to Forgejo and repo seats, and
+  lend     lend_plan() and lend_apply(): lend idle LAN slots to Forgejo, repo and light or heavy seats, and
            take them back
   decide   decide(): each LAN host's verdict (FULL, HOT, ROOM, STEADY) or pin moves one slot,
            a paired host steps test slots aside for a waiting build or wide job, then each
@@ -352,6 +352,8 @@ def shared_demand(cfg, host, runners, shared_waiting):
     """How many waiting jobs on a shared cap a slot of host takes: demand a withheld LAN
     Unity slot would serve once admitted, though no unity job waits."""
     caps = {c for n, r in runners.items() if r["host"] == host for c in cfg["shared"].get(n, [])}
+    # A kind the host's seats serve waits for a lend, not for a whole slot (lend_plan).
+    caps -= small_kinds(cfg, host)
     return sum(1 for need in shared_waiting if need & caps)
 
 
@@ -972,7 +974,8 @@ class Leases:
 def observe_seats(cfg):
     """({seat: {busy, online, withheld}}, [(kind, labels, age)]) from github-runner-exporter.
     A seat with no runner registered has no entry. kind is "forgejo", a personal repo (its
-    seats' repo) or "github": any other job waiting on a cap a Unity slot takes."""
+    seats' repo), "light" or "heavy" (a job on a cap some seat of it serves), or "github": any
+    other job waiting on a cap a Unity slot takes."""
     seats = cfg["seats"]
     if not seats:
         return {}, []
@@ -988,6 +991,7 @@ def observe_seats(cfg):
             state[r["metric"]["name"]]["withheld"] = True
     repos = seat_repos(cfg)
     rivals = {cfg["pool_label"], *(c for caps in cfg["shared"].values() for c in caps)}
+    small = small_kinds(cfg)
     waits = []
     for r in prom('github_actions_job_waiting{stuck!="true"}'):
         m, age = r["metric"], float(r["value"][1])
@@ -996,6 +1000,8 @@ def observe_seats(cfg):
             waits.append(("forgejo", need, age))
         elif m.get("repo") in repos:
             waits.append((repos[m["repo"]], need, age))
+        elif m.get("pool") in small:
+            waits.append((m["pool"], need, age))
         elif m.get("pool") in rivals:
             waits.append(("github", need, age))
     return state, waits
@@ -1007,14 +1013,23 @@ def seat_repos(cfg):
     return {s["repo"].split("/", 1)[1]: s["repo"] for s in cfg["seats"].values() if s.get("repo")}
 
 
+def small_kinds(cfg, host=None):
+    """The GitHub kinds (light, heavy) some seat serves, of host's seats when given: org runners that
+    borrow a slot, as a Forgejo seat does (ci_seat_kinds in the inventory)."""
+    return {s["caps"][0] for s in cfg["seats"].values()
+            if s["forge"] != "forgejo" and not s.get("repo") and host in (None, s["host"])}
+
+
 def seat_kind(cfg, seat):
+    """What a lend serves: "forgejo", a personal repo, or the small kind (light, heavy) of an org seat."""
     s = cfg["seats"][seat]
-    return "forgejo" if s["forge"] == "forgejo" else s["repo"]
+    return "forgejo" if s["forge"] == "forgejo" else s.get("repo") or s["caps"][0]
 
 
 def weight_kind(cfg, seat):
-    """The kind a seat's weight is measured under: ci_runner_job's "forgejo" or "repo"."""
-    return "forgejo" if cfg["seats"][seat]["forge"] == "forgejo" else "repo"
+    """The kind a seat's weight is measured under: ci_runner_job's "forgejo", "repo", "light" or "heavy"."""
+    s = cfg["seats"][seat]
+    return "forgejo" if s["forge"] == "forgejo" else "repo" if s.get("repo") else s["caps"][0]
 
 
 WEIGHTS = {"at": None, "by_kind": {}}
@@ -1111,7 +1126,7 @@ def lend_plan(cfg, hosts, runners, seat_state, waits, lends, leases, pins, last_
                 return (lease == "github" and ack == "github") or now - max(seen, at) >= LEASE_STALE_SECONDS
             # An ack while its job runs is not the seat's.
             return not busy(slot, seat) and all(acked(m) for m in mates(slot, seat))
-        return not st(seat) or (st(seat)["withheld"] and not st(seat)["busy"])
+        return all(st(m)["withheld"] and not st(m)["busy"] for m in registered(cfg, by_slot.get(slot, [seat]), seat_state, seat))
 
     jobs = {}
     for kind, need, age in waits:
@@ -1218,11 +1233,30 @@ def lend_plan(cfg, hosts, runners, seat_state, waits, lends, leases, pins, last_
             need -= len(mates(slot, seat))
             steps.append(("lend", slot, seat, f"a {kind} job has waited {int(oldest[kind])}s"))
 
-    granted = {l["seat"] for l in lends.values() if l["phase"] == "granted"}
+    granted = {(s, seat_kind(cfg, l["seat"])) for s, l in lends.items() if l["phase"] == "granted" and l["seat"]}
     steps += [("withhold", "", seat, "admitted with no slot lent to it") for seat, s in sorted(seats.items())
               if s["forge"] != "forgejo" and seat in seat_state and not seat_state[seat]["withheld"]
-              and seat not in granted]
-    return steps
+              and (s["slot"], seat_kind(cfg, seat)) not in granted]
+    return per_seat(cfg, steps, mates, by_slot, seat_state)
+
+
+def registered(cfg, on_slot, seat_state, seat):
+    """The seats of on_slot of seat's kind the exporter sees: every one a return must withhold and a unlend
+    waits for, since one past pack()'s limit may still be admitted."""
+    return [m for m in on_slot if m in seat_state and seat_kind(cfg, m) == seat_kind(cfg, seat)]
+
+
+def per_seat(cfg, steps, mates, by_slot, seat_state):
+    """steps with each GitHub lend's grant and return split per seat: a lend serves several seats of one
+    kind, each relabelled in its own step. mates(slot, seat) are the seats a grant admits."""
+    out = []
+    for name, slot, seat, why in steps:
+        if name in ("grant", "return") and cfg["seats"][seat]["forge"] != "forgejo":
+            group = mates(slot, seat) if name == "grant" else registered(cfg, by_slot[slot], seat_state, seat)
+            out += [(name, slot, m, why) for m in dict.fromkeys([seat, *group])]
+        else:
+            out.append((name, slot, seat, why))
+    return out
 
 
 def adopt(cfg, slot, seat_state, leases, now):
@@ -1245,10 +1279,16 @@ def adopt(cfg, slot, seat_state, leases, now):
     return {"seat": None, "phase": "returning", "at": now}
 
 
-def seat_labels(cfg, seat, action):
-    """Admit or withhold a repo seat: its caps, or the seat withheld label."""
+def seat_scope(cfg, seat):
+    """Where GitHub lists a GitHub seat's runner: its personal repo, or the org for a light or heavy seat."""
     s = cfg["seats"][seat]
-    scope = f"repos/{s['repo']}"
+    return f"repos/{s['repo']}" if s.get("repo") else f"orgs/{cfg['org']}"
+
+
+def seat_labels(cfg, seat, action):
+    """Admit or withhold a GitHub seat: its caps, or the seat withheld label."""
+    scope = seat_scope(cfg, seat)
+    s = cfg["seats"][seat]
     rid, have, _ = find_runner(scope, seat)
     held = cfg["seat_withheld_label"]
     relabel(scope, rid, have, *((s["caps"], [held]) if action == "admit" else ([held], s["caps"])))
@@ -1271,8 +1311,9 @@ def lend_apply(cfg, steps, lends, leases, now, last_action):
                 seat_labels(cfg, seat, "withhold")
                 continue
             if step in ("unlend", "readmit"):
-                mine = [seat] if seat else [n for n, s in seats.items() if s["slot"] == slot]
-                if any(seats[s]["forge"] != "forgejo" and seat_busy(s, seats[s]) for s in mine):
+                mine = [n for n, s in seats.items() if s["slot"] == slot
+                        and (not seat or seat_kind(cfg, n) == seat_kind(cfg, seat))]
+                if any(seats[s]["forge"] != "forgejo" and seat_busy(cfg, s) for s in mine):
                     print(f"{step} {slot}: a seat of it is busy, next cycle", flush=True)
                     continue
                 rid, have, _ = find_runner(org, slot)
@@ -1312,10 +1353,10 @@ def lend_apply(cfg, steps, lends, leases, now, last_action):
             print(f"{step} {slot or seat} failed: {e}", flush=True)
 
 
-def seat_busy(name, seat):
-    """Whether a repo seat runs a job, read live; a runner GitHub no longer lists runs none."""
+def seat_busy(cfg, name):
+    """Whether a GitHub seat runs a job, read live; a runner GitHub no longer lists runs none."""
     try:
-        return find_runner(f"repos/{seat['repo']}", name)[2]
+        return find_runner(seat_scope(cfg, name), name)[2]
     except KeyError:
         return False
 
@@ -1733,14 +1774,15 @@ def render(cfg, hosts, runners, queue, decisions, ok, instances=None, budget=Non
     # A paired slot held back while its pair uses the cores is normal work, not a hold for
     # load: the dashboards say "lent" for these and "withheld" for the rest.
     L += ["# HELP ci_governor_lent 1 for a withheld slot whose cores another runner uses: its pair (to: tests or build) "
-          "or a seat it is lent to (to: forgejo or repo, seat: the seat)",
+          "or a seat it is lent to (to: forgejo, repo, light or heavy, seat: the seat)",
           "# TYPE ci_governor_lent gauge"]
     for name, (host, to) in sorted(lent(cfg, runners).items()):
         L.append(f'ci_governor_lent{{host="{host}",name="{name}",to="{to}"}} 1')
     for name, lend in sorted((lends or {}).items()):
         seat = cfg["seats"].get(lend["seat"] or "", {})
         host = runners.get(name, {}).get("host") or seat.get("host", "")
-        to = "forgejo" if seat.get("forge") == "forgejo" else "repo" if seat else "seat"
+        to = ("forgejo" if seat.get("forge") == "forgejo" else "repo" if seat.get("repo")
+              else seat["caps"][0] if seat else "seat")
         L.append(f'ci_governor_lent{{host="{host}",name="{name}",to="{to}",seat="{lend["seat"] or ""}"}} 1')
     # Why each withheld slot is held, for the CI chip's "N held: <reason>" (withheld_reasons()).
     L += ["# HELP ci_governor_withheld 1 for each withheld pool slot, by why: " + ", ".join(WITHHELD_REASONS),

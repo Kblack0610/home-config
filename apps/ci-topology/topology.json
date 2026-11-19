@@ -78,8 +78,11 @@
       {"name": "windows-media-ci-unity-pool-2", "caps": ["unity", "light", "heavy"]},
       {"name": "windows-media-ci-unity-pool-3", "caps": ["unity", "light", "heavy"]},
       {"name": "windows-media-ci-unity-pool-1-forgejo", "caps": ["forgejo"], "forge": "forgejo", "borrows": "windows-media-ci-unity-pool-1"},
+      {"name": "windows-media-ci-unity-pool-1-forgejo-2", "caps": ["forgejo"], "forge": "forgejo", "borrows": "windows-media-ci-unity-pool-1"},
       {"name": "windows-media-ci-unity-pool-2-forgejo", "caps": ["forgejo"], "forge": "forgejo", "borrows": "windows-media-ci-unity-pool-2"},
-      {"name": "windows-media-ci-unity-pool-3-forgejo", "caps": ["forgejo"], "forge": "forgejo", "borrows": "windows-media-ci-unity-pool-3"}
+      {"name": "windows-media-ci-unity-pool-2-forgejo-2", "caps": ["forgejo"], "forge": "forgejo", "borrows": "windows-media-ci-unity-pool-2"},
+      {"name": "windows-media-ci-unity-pool-3-forgejo", "caps": ["forgejo"], "forge": "forgejo", "borrows": "windows-media-ci-unity-pool-3"},
+      {"name": "windows-media-ci-unity-pool-3-forgejo-2", "caps": ["forgejo"], "forge": "forgejo", "borrows": "windows-media-ci-unity-pool-3"}
     ]}
   }
 }

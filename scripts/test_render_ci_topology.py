@@ -108,12 +108,14 @@ class CapTests(unittest.TestCase):
         topo, fails = topology.render(self.hosts, self.groups)
         self.assertEqual(fails, [])
         fj = {s["name"]: s for h in topo["hosts"].values() for s in h["slots"] if s.get("forge") == "forgejo"}
-        # ms-a2's slots 3-4 are build slot 5's group, so only 1-2 lend.
+        # ms-a2's slots 3-4 are build slot 5's group, so only 1-2 lend. windows-media-ci's
+        # ci_units {forgejo: 2} gives each of its slots a second seat.
         self.assertEqual(sorted(s["borrows"] for s in fj.values()), sorted(
             [f"ms-a2-unity-pool-{n}" for n in (1, 2)] + [f"deskslim-2-unity-pool-{n}" for n in (1, 2, 3)]
             + [f"deskslim-1-unity-pool-{n}" for n in (1, 2, 3)]
-            + [f"windows-media-ci-unity-pool-{n}" for n in (1, 2, 3)]))
-        self.assertTrue(all(s["caps"] == ["forgejo"] and n == s["borrows"] + "-forgejo" for n, s in fj.items()))
+            + [f"windows-media-ci-unity-pool-{n}" for n in (1, 2, 3)] * 2))
+        self.assertTrue(all(s["caps"] == ["forgejo"] and n in (s["borrows"] + "-forgejo", s["borrows"] + "-forgejo-2")
+                            for n, s in fj.items()))
 
     def test_ci_units_names_the_seats_of_a_slot_and_fails_outside_its_bounds(self):
         self.hosts["deskslim-1"]["ci_units"] = {"forgejo": 3}

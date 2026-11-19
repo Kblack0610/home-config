@@ -2005,7 +2005,7 @@ ORG = f"orgs/{LIVE['org']}"
 REPO = "Kblack0610/game"
 FJ_SEAT, REPO_SEAT = "box-unity-pool-1-forgejo", "box-game-1"
 S1, S2, S3 = (f"box-unity-pool-{n}" for n in (1, 2, 3))
-LCFG = governor.with_defaults({**LIVE, "standby": {}, "workers": {}, "hosts": {"box": {}}, "pool_min_admitted": 1,
+LCFG = governor.with_defaults({**LIVE, "standby": {}, "hosts": {"box": {}}, "pool_min_admitted": 1,
                                "shared": {s: ["light"] for s in (S1, S2, S3)},
                                "seats": {FJ_SEAT: {"host": "box", "slot": S1, "forge": "forgejo", "repo": None,
                                                    "caps": ["forgejo"]},
@@ -2051,7 +2051,7 @@ class Box:
                                     S3: {"labels": set(ADMITTED), "busy": False}},
                               f"repos/{REPO}": {REPO_SEAT: {"labels": set(seat), "busy": False}}})
         self.fj = {"busy": False, "online": True}
-        self.leases, self.lends, self.last = governor.Leases([S1]), {}, {}
+        self.leases, self.lends, self.last = governor.Leases({FJ_SEAT: S1}), {}, {}
 
     def runners(self):
         return {n: {"host": "box", "busy": r["busy"], "elapsed": 0, "labels": frozenset(r["labels"]),
@@ -2100,7 +2100,7 @@ class LendTest(unittest.TestCase):
         self.assertEqual(box.step(job, 10_060), [("grant", S1)])
         self.assertEqual(box.leases.get(S1)[0], "forgejo")
         self.assertNotIn("unity", box.labels())
-        self.assertEqual(box.leases.wait(S1, "forgejo", 0), "forgejo")
+        self.assertEqual(box.leases.wait(FJ_SEAT, "forgejo", 0), "forgejo")
         box.fj["busy"] = True
         self.assertEqual(box.step([], 10_120), [])  # its job runs, so nothing is left to give back
         box.fj["busy"] = False
@@ -2109,9 +2109,9 @@ class LendTest(unittest.TestCase):
         # The mark stays until the supervisor, between jobs, says it holds github.
         self.assertEqual(box.step([], 10_240), [])
         self.assertIn("unity-lent", box.labels())
-        self.assertEqual(box.leases.wait(S1, "forgejo", 0), "github")
+        self.assertEqual(box.leases.wait(FJ_SEAT, "forgejo", 0), "github")
         self.assertEqual(box.step([], 10_300), [])
-        self.assertEqual(box.leases.wait(S1, "github", 0), "github")
+        self.assertEqual(box.leases.wait(FJ_SEAT, "github", 0), "github")
         # box has room, so the slot comes back admitted, not withheld for decide()'s cooldown.
         self.assertEqual(box.step([], 10_360), [("readmit", S1)])
         self.assertEqual(box.labels(), ADMITTED)
@@ -2130,7 +2130,7 @@ class LendTest(unittest.TestCase):
         self.assertEqual(box.leases.get(S1)[0], "forgejo")
         # An idle slot goes before a busy one.
         box = Box(s1=ADMITTED, s1_busy=True)
-        box.leases = governor.Leases([S1, S2])
+        box.leases = governor.Leases({FJ_SEAT: S1, "box-unity-pool-2-forgejo": S2})
         seat2 = "box-unity-pool-2-forgejo"
         state = {**box.seat_state(), seat2: {"busy": False, "online": True, "withheld": False}}
         with mock.patch.dict(LCFG["seats"], {seat2: {"host": "box", "slot": S2, "forge": "forgejo"}}), \
@@ -2187,11 +2187,45 @@ class LendTest(unittest.TestCase):
         self.assertEqual(box.step([], back), [("readmit", S1)])
         self.assertEqual(box.labels(), ADMITTED)
 
+    def test_a_slot_of_two_forgejo_seats_serves_two_jobs_on_one_lend_and_goes_back_when_both_are_done(self):
+        # hc-626: ci_units {forgejo: 2} gives slot 1 two seats, so two waiting jobs take one lend, not
+        # slot 1 and slot 3 (which they took when a lend counted as one seat).
+        fj2, fj3 = f"{FJ_SEAT}-2", "box-unity-pool-3-forgejo"
+        box, jobs = Box(), [("forgejo", frozenset({"docker"}), 60)] * 2
+        box.leases = governor.Leases({FJ_SEAT: S1, fj2: S1, fj3: S3})
+        seats = {**LCFG["seats"], fj2: {**LCFG["seats"][FJ_SEAT]}, fj3: {**LCFG["seats"][FJ_SEAT], "slot": S3}}
+        idle = {s: {"busy": False, "online": True, "withheld": False} for s in (fj2, fj3)}
+        with mock.patch.dict(LCFG, {"seats": seats}), \
+                mock.patch.object(box, "seat_state", side_effect=lambda: {**Box.seat_state(box), **idle}):
+            self.assertEqual(box.step(jobs), [("lend", S1)])
+            self.assertEqual(box.step(jobs, 10_060), [("grant", S1)])
+            box.fj["busy"] = True  # one seat runs a job, its mate is idle and nothing waits
+            self.assertEqual(box.step([], 10_120), [])
+            box.fj["busy"] = False
+            self.assertEqual(box.step([], 10_180), [("return", S1)])
+            box.leases.wait(FJ_SEAT, "github", 0)  # one mate holds github, the other has not said
+            self.assertEqual(box.step([], 10_240), [])
+            box.leases.wait(fj2, "github", 0)
+            self.assertEqual(box.step([], 10_300), [("readmit", S1)])
+            # A mate that never asks for LEASE_STALE_SECONDS does not hold the slot forever.
+            box.leases = governor.Leases({FJ_SEAT: S1, fj2: S1, fj3: S3})
+            box.lends[S1] = {"seat": FJ_SEAT, "phase": "returning", "at": 10_000}
+            box.gh.scopes[ORG][S1]["labels"] = DRAINED | {"unity-lent"}
+            box.leases.wait(FJ_SEAT, "github", 0)
+            self.assertEqual(box.plan([], 10_060), [])
+            self.assertEqual(box.plan([], 10_000 + governor.LEASE_STALE_SECONDS)[0][0], "readmit")
+            # A seat the topology names but the exporter does not see (no host registered it
+            # yet) is no mate: it holds no return and adds no capacity.
+            del idle[fj2]
+            self.assertEqual(box.plan([], 10_060)[0][0], "readmit")
+            box.lends.clear()
+            self.assertEqual([s[:2] for s in box.plan(jobs, 10_060)], [("lend", S1), ("lend", S3)])
+
     def test_an_ack_while_its_seat_is_busy_does_not_unlend(self):
         box = Box(s1=DRAINED | {"unity-lent"})
         box.lends[S1] = {"seat": FJ_SEAT, "phase": "returning", "at": 10_000}
         box.fj["busy"] = True
-        box.leases.wait(S1, "github", 0)  # any LAN client can ask, the seat or not
+        box.leases.wait(FJ_SEAT, "github", 0)  # any LAN client can ask, the seat or not
         self.assertEqual(box.plan([], 10_060), [])
         box.fj["busy"] = False
         self.assertEqual(box.plan([], 10_060)[0][0], "readmit")
@@ -2273,7 +2307,7 @@ class LendTest(unittest.TestCase):
         box = Box(s2=DRAINED)
         box.gh.scopes[ORG][S3]["labels"] = set(DRAINED)
         box.gh.scopes[ORG]["box-unity-pool-4"] = {"labels": set(ADMITTED), "busy": False}
-        box.leases = governor.Leases([S1, S2, S3])
+        box.leases = governor.Leases({n: s["slot"] for n, s in seats.items()})
         state = {s: {"busy": False, "online": False, "withheld": False} for s in seats}
         burst = [("forgejo", frozenset({"docker"}), 900)] * 7
         with mock.patch.dict(LCFG, {"seats": seats}), mock.patch.object(box, "seat_state", return_value=state):
@@ -2306,7 +2340,7 @@ class LendTest(unittest.TestCase):
 
 class LeaseTest(unittest.TestCase):
     def test_wait_answers_at_once_on_a_change_and_have_on_its_timeout(self):
-        leases = governor.Leases(["s"])
+        leases = governor.Leases({"s": "s"})
         self.assertEqual(leases.wait("s", "github", 0), "github")
         self.assertEqual(leases.get("s")[1], "github")
         self.assertEqual(leases.wait("s", "forgejo", 0), "github")  # asked with a lease it does not hold
@@ -2325,7 +2359,7 @@ class LeaseTest(unittest.TestCase):
     def test_the_lease_endpoint(self):
         from http.server import ThreadingHTTPServer
         import threading
-        leases = governor.Leases(["box-unity-pool-1"])
+        leases = governor.Leases({FJ_SEAT: S1})
         server = ThreadingHTTPServer(("127.0.0.1", 0), governor.Handler)
         server.daemon_threads = True
         threading.Thread(target=server.serve_forever, daemon=True).start()
@@ -2340,14 +2374,14 @@ class LeaseTest(unittest.TestCase):
             except urllib.error.HTTPError as e:
                 e.close()
                 return e.code, ""
-        self.assertEqual(ask("slot=box-unity-pool-1&have=github&wait=0")[0], 404)  # no leases yet
+        self.assertEqual(ask("seat=box-unity-pool-1-forgejo&have=github&wait=0")[0], 404)  # no leases yet
         with mock.patch.object(governor.Handler, "leases", leases):
-            self.assertEqual(ask("slot=box-unity-pool-9&have=github&wait=0")[0], 404)
-            self.assertEqual(ask("slot=box-unity-pool-1&have=docker&wait=0")[0], 400)
-            self.assertEqual(ask("slot=box-unity-pool-1&have=github&wait=soon")[0], 400)
-            self.assertEqual(ask("slot=box-unity-pool-1&have=github&wait=0"), (200, "github\n"))
+            self.assertEqual(ask("seat=box-unity-pool-9-forgejo&have=github&wait=0")[0], 404)
+            self.assertEqual(ask("seat=box-unity-pool-1-forgejo&have=docker&wait=0")[0], 400)
+            self.assertEqual(ask("seat=box-unity-pool-1-forgejo&have=github&wait=soon")[0], 400)
+            self.assertEqual(ask("seat=box-unity-pool-1-forgejo&have=github&wait=0"), (200, "github\n"))
             got = []
-            t = threading.Thread(target=lambda: got.append(ask("slot=box-unity-pool-1&have=github&wait=120")))
+            t = threading.Thread(target=lambda: got.append(ask("seat=box-unity-pool-1-forgejo&have=github&wait=120")))
             t.start()
             leases.set("box-unity-pool-1", "forgejo")
             t.join(10)

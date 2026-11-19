@@ -519,6 +519,9 @@ all:
     # Forgejo seats per lendable slot are not set here: render-ci-topology.py registers
     # floor(slot CPUs / MIN_JOB_CORES) and the governor admits as many as a measured weight
     # fits (ci-runner-governor config.json "weights"). Repo seats stay one per slot.
+    # ci_seat_kinds: the GitHub kinds (light, heavy; each in ci_caps) that also get seats on
+    # the host's lendable slots, so several small jobs share one lent slot. The rollout switch:
+    # windows-media-ci first (hc-667), the other ROOM hosts a day after it runs clean.
     ci_hosts:
       hosts:
         # ms-a2: 16 cores / 32 threads, SMT siblings n and n+16 (sysfs,
@@ -585,6 +588,7 @@ all:
           # No heavy: a Hyper-V VM on a Windows 10 host, which refuses nested virtualization
           # ("this platform does not support nested virtualization", 2026-11-18), so it has no /dev/kvm.
           ci_caps: [light, unity, forgejo]
+          ci_seat_kinds: [light]
           ci_cpus: 6-23
           ci_memory_max: 42G
           ci_unity_cpus: 6-23

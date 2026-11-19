@@ -2313,6 +2313,77 @@ class LendTest(unittest.TestCase):
         self.assertEqual(box.step([]), [("withhold", REPO_SEAT)])
         self.assertEqual(box.gh.scopes[f"repos/{REPO}"][REPO_SEAT]["labels"], {"self-hosted", "light-withheld"})
 
+    def light_box(self, weight, n=3):
+        """box with n org light seats on slot 1, all withheld, and the box that sees them (hc-667)."""
+        lights = [f"{S1}-light-{i}" for i in range(1, n + 1)]
+        seats = {**LCFG["seats"], **{m: {"host": "box", "slot": S1, "forge": "github", "repo": None, "caps": ["light"]}
+                                     for m in lights}}
+        box = Box()
+        box.weights = {"light": weight}
+        for m in lights:
+            box.gh.scopes[ORG][m] = {"labels": {"self-hosted", "light-withheld"}, "busy": False}
+        slots = {S1, S2, S3}
+        box.runners = lambda: {k: v for k, v in Box.runners(box).items() if k in slots}
+        box.seat_state = lambda: {
+            **Box.seat_state(box),
+            **{m: {"busy": box.gh.scopes[ORG][m]["busy"], "online": True,
+                   "withheld": "light-withheld" in box.gh.scopes[ORG][m]["labels"]} for m in lights}}
+        return box, lights, mock.patch.dict(LCFG, {"seats": seats})
+
+    def test_light_seats_of_one_lend_are_admitted_together_as_far_as_their_weights_fit(self):
+        jobs = [("light", REPO_JOB, 60)] * 3
+        for weight, admitted in ((0.3, 3), (0.5, 2), (None, 1)):
+            with self.subTest(weight=weight):
+                box, lights, seats = self.light_box(weight)
+                if weight is None:
+                    box.weights = None
+                with seats:
+                    self.assertEqual(box.step(jobs), [("lend", S1)])
+                    self.assertEqual(box.step(jobs, 10_060), [("grant", S1)] * admitted)
+                    got = [box.gh.scopes[ORG][m]["labels"] for m in lights]
+                    self.assertEqual(got[:admitted], [{"self-hosted", "light"}] * admitted)
+                    self.assertEqual(got[admitted:], [{"self-hosted", "light-withheld"}] * (3 - admitted))
+                    # An admitted seat in a granted lend is not withheld as one with no lend.
+                    self.assertEqual(box.step(jobs, 10_120), [])
+
+    def test_light_seats_go_back_together_and_the_slot_is_readmitted_once_none_runs(self):
+        box, lights, seats = self.light_box(0.3)
+        jobs = [("light", REPO_JOB, 60)] * 3
+        with seats:
+            box.step(jobs), box.step(jobs, 10_060)
+            box.gh.scopes[ORG][lights[1]]["busy"] = True
+            self.assertEqual(box.step([], 10_120), [])  # a busy seat keeps the lend
+            box.gh.scopes[ORG][lights[1]]["busy"] = False
+            self.assertEqual(box.step([], 10_180), [("return", S1)] * 3)
+            self.assertTrue(all("light-withheld" in box.gh.scopes[ORG][m]["labels"] for m in lights))
+            box.gh.scopes[ORG][lights[1]]["busy"] = True  # it finishes the job it took before it was withheld
+            self.assertEqual(box.step([], 10_240), [])
+            box.gh.scopes[ORG][lights[1]]["busy"] = False
+            self.assertEqual(box.step([], 10_300), [("readmit", S1)])
+            self.assertEqual(box.labels(), ADMITTED)
+
+    def test_a_light_seat_admitted_with_no_lend_is_withheld(self):
+        box, lights, seats = self.light_box(0.3)
+        box.gh.scopes[ORG][lights[0]]["labels"] = {"self-hosted", "light"}
+        with seats:
+            self.assertEqual(box.step([]), [("withhold", lights[0])])
+        self.assertEqual(box.gh.scopes[ORG][lights[0]]["labels"], {"self-hosted", "light-withheld"})
+
+    def test_a_job_on_a_kind_seats_serve_waits_for_a_lend_and_asks_the_host_for_no_slot(self):
+        box, _, seats = self.light_box(0.3)
+        light = {"labels": "self-hosted,light", "pool": "light", "repo": "platform"}
+        gh_job = {"labels": "self-hosted,unity", "pool": "unity", "repo": "platform"}
+
+        def prom(q):
+            rows = {"github_actions_job_waiting": [{"metric": m, "value": [0, "60"]} for m in (light, gh_job)]}
+            return next((v for k, v in rows.items() if q.startswith(k)), [])
+        with seats, mock.patch.object(governor, "prom", side_effect=prom):
+            _, waits = governor.observe_seats(LCFG)
+            self.assertEqual([(k, a) for k, _, a in waits], [("light", 60.0), ("github", 60.0)])
+            need = governor.label_set(light["labels"])
+            self.assertEqual(governor.shared_demand(LCFG, "box", box.runners(), [need]), 0)
+        self.assertEqual(governor.shared_demand(LCFG, "box", box.runners(), [need]), 1)
+
     def cycle(self, box, waiting, seat_waits):
         with mock.patch.object(governor, "observe", return_value=(readings(box=COOL), box.runners(), waiting)), \
                 mock.patch.object(governor, "observe_seats", return_value=(box.seat_state(), seat_waits)), \

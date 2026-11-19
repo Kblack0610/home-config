@@ -31,6 +31,9 @@ Rendering also checks what the inventory must hold for the slots to fit their ho
   Each such slot registers floor(its CPUs / MIN_JOB_CORES) Forgejo seats (<slot>-forgejo, then
   <slot>-forgejo-2 and on), each entry carrying the slot's "cpus" and "memory_gb"; the governor lends
   one slot to as many of them as their measured weights fit (apps/ci-runner-governor, pack()).
+  A host's ci_seat_kinds (light, heavy; each also in its ci_caps) puts the same seats of that GitHub
+  kind on each such slot (<slot>-light-1 and on): org runners a lend serves, so small GitHub jobs pack
+  onto one slot too. It is the rollout switch: a host without it runs those jobs on whole slots.
 
     render-ci-topology.py           write topology.json
     render-ci-topology.py --check   fail when topology.json is not what the inventory renders (the CI gate)
@@ -60,7 +63,7 @@ UNITY_GROUPS = ("unity_ci_runners", "unity_ci_mac_runners")
 # The inventory keys this reads; a Jinja value in one would render as its literal text.
 KEYS = ("ci_repo_runners", "ci_pinned_runners", "unity_ci_slots",
         "unity_ci_slot_groups", "unity_ci_wide_slots", "unity_ci_lan", "unity_ci_full", "unity_ci_wide",
-        "unity_ci_slot_labels", "ci_unity_slot_cpus", "ci_unity_slot_memory_max", "ci_caps")
+        "unity_ci_slot_labels", "ci_unity_slot_cpus", "ci_unity_slot_memory_max", "ci_caps", "ci_seat_kinds")
 # A slot registers one Forgejo seat per MIN_JOB_CORES of its CPUs, the most small jobs it could hold at once.
 # Provisional, medium confidence: a Forgejo job's p90 was 1.4-2.9 cores, median seat 1.7 (ci_runner_cores_busy,
 # 2026-11-11..18), so a slot of 6 cores registers 3 seats; the measured weight, not this, holds any of them
@@ -158,7 +161,12 @@ def seats(host, v, caps, total, group, slots, fails):
     lan = v.get("unity_ci_lan", True) is not False
     fails += [f"{host}: {s['name']} borrows {s['borrows']}, not one of its lendable LAN slots {lendable}"
               for s in slots if s.get("borrows") and not (lan and s["borrows"] in lendable)]
-    if "forgejo" not in caps or not lan:
+    kinds = list(v.get("ci_seat_kinds") or [])
+    fails += [f"{host}: ci_seat_kinds names {k}, not one of {list(SHARED_CAPS)} in its ci_caps"
+              for k in kinds if k not in SHARED_CAPS or k not in caps]
+    if kinds and not lan:
+        fails.append(f"{host}: ci_seat_kinds on a cloud host, so a small job would power a paid host")
+    if not lan:
         return []
     cpus, mem = slot_budget(v, total)
 
@@ -173,8 +181,10 @@ def seats(host, v, caps, total, group, slots, fails):
         The governor's weights decide how many of them run at once."""
         return max(1, int(size(n).get("cpus", 0) // MIN_JOB_CORES))
 
-    return [{"name": f"{n}-forgejo" + (f"-{i}" if i > 1 else ""), "caps": ["forgejo"], "forge": "forgejo",
-             "borrows": n, **size(n)} for n in lendable for i in range(1, count(n) + 1)]
+    forgejo = [{"name": f"{n}-forgejo" + (f"-{i}" if i > 1 else ""), "caps": ["forgejo"], "forge": "forgejo",
+                "borrows": n, **size(n)} for n in lendable if "forgejo" in caps for i in range(1, count(n) + 1)]
+    return forgejo + [{"name": f"{n}-{k}-{i}", "caps": [k], "borrows": n, **size(n)}
+                      for k in kinds if k in SHARED_CAPS and k in caps for n in lendable for i in range(1, count(n) + 1)]
 
 
 def unity_layout(v):

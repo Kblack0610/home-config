@@ -1110,3 +1110,73 @@ tests:
         exp_samples:
           - labels: 'cc:domain_status{domain="other"}'
             value: 1
+
+  # A quarantine (watch-companion-loop quarantine: owner and expiry) demotes a down watch to warn,
+  # so the rollup can leave red while the red waits outside the fleet. It never reads ok.
+  - name: a quarantined down watch warns, and so does its domain
+    interval: 1m
+    input_series:
+      - series: 'mqtt_tripped{topic="agents_h_watch_waits_upstream"}'
+        values: '1x10'
+      - series: 'mqtt_quarantined{topic="agents_h_watch_waits_upstream"}'
+        values: '1x10'
+      - series: 'mqtt_message_total{topic="agents_h_watch_waits_upstream"}'
+        values: '0+1x10'
+      - series: 'mqtt_tripped{topic="agents_h_watch_linux_ci_runners_online"}'
+        values: '1x10'
+      - series: 'mqtt_quarantined{topic="agents_h_watch_linux_ci_runners_online"}'
+        values: '1x10'
+      - series: 'mqtt_message_total{topic="agents_h_watch_linux_ci_runners_online"}'
+        values: '0+1x10'
+    promql_expr_test:
+      - expr: cc:watch_state
+        eval_time: 5m
+        exp_samples:
+          - labels: 'cc:watch_state{domain="other",item="waits_upstream"}'
+            value: 1
+          - labels: 'cc:watch_state{domain="ci",item="linux_ci_runners_online"}'
+            value: 1
+      - expr: cc:watch_state_raw{domain="ci"}
+        eval_time: 5m
+        exp_samples:
+          - labels: 'cc:watch_state_raw{domain="ci",item="linux_ci_runners_online"}'
+            value: 2
+      - expr: cc:domain_status{domain=~"ci|other"}
+        eval_time: 5m
+        exp_samples:
+          - labels: 'cc:domain_status{domain="ci"}'
+            value: 1
+          - labels: 'cc:domain_status{domain="other"}'
+            value: 1
+
+  # agent-mqtt-publish sends quarantined 0 once the quarantine ends: down again.
+  - name: a watch whose quarantine ended is down again
+    interval: 1m
+    input_series:
+      - series: 'mqtt_tripped{topic="agents_h_watch_waits_upstream"}'
+        values: '1x10'
+      - series: 'mqtt_quarantined{topic="agents_h_watch_waits_upstream"}'
+        values: '1 1 1 0 0 0 0 0 0 0 0'
+      - series: 'mqtt_message_total{topic="agents_h_watch_waits_upstream"}'
+        values: '0+1x10'
+    promql_expr_test:
+      - expr: cc:watch_state
+        eval_time: 6m
+        exp_samples:
+          - labels: 'cc:watch_state{domain="other",item="waits_upstream"}'
+            value: 2
+
+  # chain_after_stuck trips while the admission cap holds board rows: load, not an outage.
+  - name: chain_after_stuck warns in the queue domain
+    interval: 1m
+    input_series:
+      - series: 'mqtt_tripped{topic="agents_h_watch_chain_after_stuck"}'
+        values: '1x10'
+      - series: 'mqtt_message_total{topic="agents_h_watch_chain_after_stuck"}'
+        values: '0+1x10'
+    promql_expr_test:
+      - expr: cc:watch_state
+        eval_time: 5m
+        exp_samples:
+          - labels: 'cc:watch_state{domain="queue",item="chain_after_stuck"}'
+            value: 1

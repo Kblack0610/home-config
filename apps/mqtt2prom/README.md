@@ -14,7 +14,7 @@ swap to `ghcr.io/hikhvar/mqtt2prometheus` and add a config.yaml ConfigMap.
 
 - `mqtt_message_received_total{topic="..."}` — message counters per topic
 - `mqtt_<key>{topic="<topic with / as _>"}`: a gauge for each number or boolean in a JSON payload; text values are dropped (Tasmota / Home Assistant patterns)
-- The agent fleet's watch payloads (dotfiles `agent-mqtt-publish`, topic `agents_<host>_watch_<name>`) therefore carry numbers and booleans: `tripped`, `stale`, `paused`, `since_epoch`, and `severity_rank` (the manifest severity, 1 low to 4 urgent), which the command-center `other` catch-all reads to warn on a low watch.
+- The agent fleet's watch payloads (dotfiles `agent-mqtt-publish`, topic `agents_<host>_watch_<name>`) therefore carry numbers and booleans: `tripped`, `stale`, `paused`, `since_epoch`, and `severity_rank` (the manifest severity, 1 low to 4 urgent), which the command-center `other` catch-all reads to warn on a low watch, and `quarantined` (true while a quarantine with an owner and an expiry is in force on a red watch), which demotes that watch from down to warn.
 
 ## Verification
 

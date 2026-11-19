@@ -93,30 +93,7 @@ hp-victus (192.168.1.243) → SSH-reachable from workstation
 
 ## Worked example 3: a new bare-metal node joins
 
-Goal: a fresh Intel NUC becomes a working k3s agent.
-
-```
-1. PXE (day 0)
-   - Plug NUC into switch, power on, PXE-boot from pc-home-cachy-main workstation
-   - infrastructure/pxe-server/install.sh serves an Arch kickstart
-   - kickstart installs CachyOS, enables sshd, seeds kblack0610's authorized_keys
-   - node reboots into CachyOS, reachable over SSH; PXE installs no k3s
-
-2. Ansible (day 1+)
-   - Add a host entry to ansible/inventory.yml under linux_bare_metal
-   - Seed ansible/group_vars/linux_bare_metal/vault.sops.yaml if any secret is needed
-   - k3s nodes: site.yml --tags k3s joins it at k3s_install_version (roles/k3s-agent)
-   - Optionally bind roles: github-actions-runner-linux, etc.
-   - Run: ansible-playbook playbooks/site.yml --limit <host> --check --diff
-   - Apply, then verify via systemctl / kubectl get nodes
-
-3. Flux (if it's a k3s node)
-   - Kubernetes sees the node via kubelet registration
-   - Flux scheduler places pods that match the node's labels / capacity
-   - New labels (e.g., kblab.me/game-server) let pods with a matching nodeSelector land there
-```
-
-`roles/k3s-agent` owns every k3s install and upgrade; PXE only installs the OS.
+PXE installs the OS (day 0), Ansible configures the host and joins it to k3s (day 1+; `roles/k3s-agent` owns every k3s install and upgrade), and Flux schedules pods onto it by its labels. The steps, BIOS to the first CI job, and their troubleshooting: [runbooks/bare-metal-host.md](runbooks/bare-metal-host.md).
 
 ## GPU wiring
 

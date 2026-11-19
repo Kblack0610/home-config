@@ -75,8 +75,7 @@ all:
           k3s_role: agent
           k3s_extra_args:
             - --node-label=node.kubernetes.io/friendly-name=ms-a2
-        # ASRock DeskSlim X600, Ryzen 9 9900X (12 cores), 60G. Its twin deskslim-1
-        # (7900X, DHCP .19) joins once its replacement RAM is in.
+        # ASRock DeskSlim X600, Ryzen 9 9900X (12 cores), 60G.
         deskslim-2:
           host_tier: standard
           ansible_host: 192.168.1.29
@@ -84,6 +83,15 @@ all:
           k3s_role: agent
           k3s_extra_args:
             - --node-label=node.kubernetes.io/friendly-name=deskslim-2
+        # Its twin: ASRock DeskSlim X600, Ryzen 9 7900X (12 cores), 61G. PXE 2026-11-16,
+        # off with bad RAM until the replacement kit, joined 2026-11-18.
+        deskslim-1:
+          host_tier: standard
+          ansible_host: 192.168.1.19
+          ssh_host_ed25519: ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIG7qDamILuEsji8FIwIVgEzF/cZpu29tcNhuA6nP3bQG
+          k3s_role: agent
+          k3s_extra_args:
+            - --node-label=node.kubernetes.io/friendly-name=deskslim-1
 
     # This workstation, managed over a local connection (no SSH). Hosts the
     # gungan dictation ASR daemons (see roles/asr-servers).
@@ -251,6 +259,7 @@ all:
         # sp5100_tco autoloads on both (/dev/watchdog0, checked 2026-11-16).
         ms-a2:
         deskslim-2:
+        deskslim-1:
         asus-laptop:
           # Present but not autoloaded on this board (checked 2026-11-13).
           hw_watchdog_module: sp5100_tco
@@ -271,6 +280,7 @@ all:
         razer-laptop:
         ms-a2:
         deskslim-2:
+        deskslim-1:
         asus-laptop:
 
     # NUT (Network UPS Tools) groups. The single CyberPower CP1500PFCLCDa plugs
@@ -296,6 +306,7 @@ all:
         pi3-adguard:
         ms-a2:
         deskslim-2:
+        deskslim-1:
         mac-mini:
         # Local connection: sudo needs the become password (ansible/README.md, Secrets).
         cachyos-x8664-main:
@@ -351,6 +362,10 @@ all:
           ci_repo_runners: &personal_repo_runners
             - {repo: Kblack0610/.dotfiles-private, slot: dotfiles-private-1, borrows: 1}
             - {repo: Kblack0610/gungan-speak, slot: gungan-speak-1, borrows: 2}
+        deskslim-1:
+          unity_ci_slots: 3
+          unity_ci_full: true
+          unity_ci_gate: true
         # The workstation, the human's work machine: merge gates only
         # (unity_ci_full false, so no nightly, release or Multi run lands here).
         # The governor reads it from the CI topology for its admit.
@@ -524,6 +539,17 @@ all:
         # and heavy jobs (ci_caps), and the governor lends them to Forgejo and the
         # personal repo runners.
         deskslim-2:
+          ci_caps: [light, heavy, unity, forgejo]
+          ci_cpus: 2-11,14-23
+          ci_memory_max: 48G
+          ci_unity_cpus: 2-11,14-23
+          ci_unity_slot_cpus: ["2-4,14-16", "5-7,17-19", "8-11,20-23"]
+          ci_unity_memory_max: 48G
+          ci_unity_slot_memory_max: 14G
+          k3s_cpus: 0-1,12-13
+        # deskslim-1: deskslim-2's twin layout (12 cores / 24 threads, SMT siblings n
+        # and n+12, lscpu 2026-11-18, 61G), so the same slots and caps.
+        deskslim-1:
           ci_caps: [light, heavy, unity, forgejo]
           ci_cpus: 2-11,14-23
           ci_memory_max: 48G

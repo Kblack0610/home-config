@@ -25,7 +25,7 @@ from collections import defaultdict
 
 STEP = 300  # seconds per sample: a job waits minutes, and 7 days stays under the point limits
 KINDS = ("unity", "unity-build", "heavy", "light", "forgejo")  # pools our own hosts serve
-HOSTS = "ms-a2|deskslim-2|windows-media-ci"
+HOSTS = "ms-a2|deskslim-2|deskslim-1|windows-media-ci"
 STRIP = "instance, pod, job, namespace, service, endpoint, container"
 
 

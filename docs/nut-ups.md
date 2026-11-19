@@ -17,6 +17,7 @@ From the 2026-11-17 outage: Prometheus scrapes show which hosts dropped the inst
 | mac-mini | .7 | battery | secondary (Homebrew `nut`, LaunchDaemon `me.kblab.nut-upsmon`) |
 | ms-a2 | .28 | battery | secondary |
 | deskslim-2 | .29 | battery | secondary |
+| deskslim-1 | .19 | not confirmed (2026-11-18) | secondary |
 | pi3-adguard | .193 | battery | secondary |
 | pi5-worker1, pi5-worker2, pi5-worker3, pi4-worker4, pi4-worker5 | .21 to .24, .124 | not on battery: dropped at power loss | secondary, ready for when they move to battery outlets |
 

@@ -710,6 +710,9 @@ all:
           # workstation no longer holds them (2026-11-18: three nim canaries waited behind
           # a 96 C workstation while it sat idle; ar-3222).
           fleet_harnesses: [nim, ocfree, opencode-go, codex]
+          # No ~/.notes clone, so fleet-dispatch fails here ("no current project"): it
+          # took the lease in the 2026-11-19 workstation reboot and dispatch stopped.
+          fleet_lease: false
           fleet_repos:
             - dest: ~/.dotfiles
               repo: https://github.com/Kblack0610/.dotfiles.git

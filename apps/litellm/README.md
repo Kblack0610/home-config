@@ -178,6 +178,7 @@ A new free or cheap upstream enters in this order, and each step must pass befor
 5. **Gateway key.** Add the route to the narrowest key that matches its data class: `fleet-ocfree` for `public-input-only`, `fleet-nim` style for `fleet-trial` (`/key/update`, `models`), so any other key gets a 403. Add a row for it under the key's section above.
 6. **Live gate.** After Flux reconciles, `llm-probe admit <key-file> <route>` (dotfiles-private `.local/bin/llm-probe`; with no route it admits every route the key sees) must print `PASS <route>`: the model listed at the provider, a 200 through the gateway with no attempted fallbacks, cost 0, a tool call when the route claims function calling, and a 403 for the same key on a paid route.
 7. **Quality.** Add a `harnesses.json` model line and a `canary-lanes` line, so `fleet-bench canary` grades it. A new source enters as a canary, never as a lane's first pick.
+8. **Ongoing.** Add the route's gateway key file to the `free-routes` Sentinel watch (`~/.agent/watches/free-routes.yaml`, `expect_cmd`), which runs `llm-probe admit` on every free key once a day. When the provider has a Statuspage feed (`/api/v2/incidents/unresolved.json`), add a row to `PROVIDERS` in `provider-status` (dotfiles `.local/bin`); Groq, OpenRouter, Hugging Face and Together have none. Next to the alerts `LiteLLMUpstreamUnhealthy` and `LiteLLMRouteHighFailureRate`, which only see routes that carry traffic.
 
 ## Deploy
 

@@ -1081,6 +1081,17 @@ class ForgejoTest(unittest.TestCase):
         self.render(jobs=[])
         self.assertEqual(list(exporter.FJ_SEEN), [])
 
+    def test_the_same_job_of_two_queued_runs_is_two_series(self):
+        # Two pushes queue the same workflow: two waiting "test" jobs with the same labels.
+        # Without a per-job label Prometheus keeps one and drops its twin.
+        jobs = [{"id": 2, "name": "test", "status": "waiting", "task_id": 0, "runs_on": ["docker"]},
+                {"id": 7, "name": "test", "status": "waiting", "task_id": 0, "runs_on": ["docker"]}]
+        exporter.FJ_SEEN[2] = time.time() - 900
+        wait = [r for r in rows(self.render(jobs=jobs), "github_actions_job_waiting") if 'forge="forgejo"' in r]
+        series = {r.rsplit(" ", 1)[0] for r in wait}
+        self.assertEqual(len(series), 2, wait)
+        self.assertEqual(sorted(int(r.rsplit(" ", 1)[1]) // 100 for r in wait), [0, 9])
+
     def test_a_seat_that_never_ran_has_no_labels_yet_so_no_wait_is_stuck(self):
         # A one-job seat declares its labels only when it starts a job; Forgejo answers
         # labels: null until then. The arm wait (no live runner takes it) stays unjudged.

@@ -84,10 +84,10 @@ Every worker holds a peer clone of the agent store (`~/.agent`, the queue, the a
 
 What the worker needs, and where it comes from:
 - opencode, codex, bubblewrap, socat and npm: `fleet_worker_packages`.
-- srt, at the pin in the worker's dotfiles `.local/src/installation_scripts/packages.conf`, installed by `tasks/harnesses.yml` into `~/.local` (on the PATH fleet-dispatch's ssh uses).
+- srt, at the pin in the controller's dotfiles `.local/src/installation_scripts/packages.conf` (a fresh worker's checkout can predate it), installed only when the worker's version differs, by `tasks/harnesses.yml` into `~/.local` (on the PATH fleet-dispatch's ssh uses).
 - The harness map, each harness's eval config and its lane sandbox profile: the private overlay, so `gh auth login` and the overlay stow come first (step 3 of "Add a worker").
 - Each opencode harness's gateway key file (`~/.local/state/agentctl/fleet-*.key`): `tasks/harnesses.yml` copies it from the controller at the same path, mode 0600, never logged. A key the controller lacks is named in the play's report and skipped.
-- codex's login: `codex login` on the worker, by the human. The play only reads `codex login status` and names a missing login in its report.
+- codex's login: `codex login` on the worker, by the human. The play only reads `codex login status` and names a missing login in its report. A worker with no codex binary is reported as such, not as logged out.
 
 After a change to `fleet_harnesses` or a key rotation, re-run the play with `--tags fleet-worker`, then check `fleet-dispatch hosts`.
 
@@ -127,6 +127,6 @@ The same play fails a host whose live host key is not its inventory `ssh_host_ed
 | The report says `the store did not take the sync key (Host key verification failed.)` | Forgejo's ssh host key changed, or store.env names a host other than `fleet_store_host` | Read the pod's `/data/ssh` ed25519 public key (apps/forgejo) and update `fleet_store_host_key` in the role defaults, or bring `fleet_store_host` and store.env back to the same host; never trust a scanned key |
 | `<host> ... cannot run nim: its key file ~/.local/state/agentctl/fleet-nim.key is not readable` | The play has not copied that harness's key, or the controller lacks it | Run the play from a controller that holds the key (`ls ~/.local/state/agentctl/` there); its report names a missing one |
 | `cannot run <harness>: no harness map at ...`, `its config ... is not readable` or `its lane sandbox ... is missing` | The private overlay is not stowed on the worker | `gh auth login` on the worker, then re-run the play |
-| `cannot run <harness>: lane sandbox '<name>' cannot hold <harness>: ...` | srt, bwrap or socat is missing on the worker | Re-run the play; its report says when the srt pin was not found in the worker's dotfiles |
+| `cannot run <harness>: lane sandbox '<name>' cannot hold <harness>: ...` | srt, bwrap or socat is missing on the worker | Re-run the play; its report says when the srt pin was not found in the controller's dotfiles |
 | `<harness>: no answer from its fleet-dispatch harness-ready (an older fleet-dispatch there)` | The worker's dotfiles are behind the dispatcher's | `git -C ~/.dotfiles pull` on the worker |
 | `<host> ... cannot run codex: codex is not logged in here` | No ChatGPT login on the worker | `codex login` on the worker (yours to do), then `fleet-dispatch hosts` |

@@ -83,6 +83,22 @@ physical link problem, not the OS.
 
 ---
 
+## 4. Raspberry Pi 5: the official 27W supply only
+
+A Pi 5 runs on 5V only and wants 5A (25W). Power is volts times amps, so the only way to give it 25W is 5A at 5V. Use the official Raspberry Pi 27W USB-C supply (5.1V 5A, cord built in) on every Pi 5; it is also fine on a Pi 4.
+
+Why nothing else works:
+
+- USB-C chargers reach high wattage by raising the voltage (100W is 20V at 5A), and the USB-C power standard caps the 5V option at 3A (15W). A Pi 5 has no circuit to step 20V down, so it ignores the higher voltages: on any ordinary charger it gets 15W at most, however big the label.
+- The official supply adds a nonstandard 5.1V 5A option that the Pi 5 asks for. The extra 0.1V covers the drop along the cord, and the cord is thick and built in so a thin one cannot be swapped in.
+- Current is what costs: the voltage a cord loses is current times resistance, and its heat is current squared times resistance. 25W at 5A through a typical 1 m cord (about 0.1 ohm round trip) loses about 0.5V, 10% of the supply, enough to cross the Pi's undervoltage line (about 4.63V). At 20V the same power is 1.25A and the loss is under 1%. That is why 5V 5A needs thick copper and high-current parts, and why only Pi supplies offer it.
+- Multi-port desk stations (for example the Ediliow M1S 380W) rebalance power between ports when a device is plugged in or out and briefly cut or renegotiate every port. A Pi reboots or sits at a solid red LED. Never power a Pi from one.
+- A USB-A block runs a Pi 5 as a stopgap but sags under load (on 2026-11-19 pi5-master on one was under-volted in 5 of its first 7 minutes).
+
+While a Pi sags, unplug the UPS USB cable if it is pi5-master: a sag drops that link, and a bad reading after a drop shut down every host on the UPS on 2026-11-17 ([`nut-ups.md`](./nut-ups.md)). Check a Pi with `rpi_throttled{flag="undervoltage",when="since_boot"}` in Prometheus (`roles/rpi-throttle-metric`); 0 after a reboot on the new supply means it is fixed.
+
+---
+
 ## Quick verification after the outage is fully resolved
 
 ```bash

@@ -113,6 +113,10 @@ spec:
         # deployments available - crossed budget" with no status. Only the
         # go (...) routes carry a deployment budget; in the 30 days to
         # 2026-11-19 every ValueError was that refusal on go (glm-5.3) (ar-3488).
+        # The metric carries no message, so any other ValueError on a Go route
+        # is skipped too: a Go upstream fault raises its own class
+        # (RateLimitError, APIError) and still counts, and a refused request
+        # stays in the denominator, as a BudgetExceededError does.
         - alert: LiteLLMHighFailureRate
           expr: |
             sum(

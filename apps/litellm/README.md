@@ -102,7 +102,7 @@ The two `opencode-free (...)` routes are OpenCode's free models (beam-free, long
 
 | Key | Models | Budgets | Consumer | Key file |
 |---|---|---|---|---|
-| `fleet-ocfree` | the three `opencode-free (...)` routes | $1 / 7d, a tripwire only (the routes are priced 0; rpm 20 each) | fleet-dispatch harness `ocfree` (priority low) | `~/.local/state/agentctl/fleet-ocfree.key` |
+| `fleet-ocfree` | the two `opencode-free (...)` routes | $1 / 7d, a tripwire only (the routes are priced 0; rpm 20 each) | fleet-dispatch harness `ocfree` (priority low) | `~/.local/state/agentctl/fleet-ocfree.key` |
 
 ### Local model key
 

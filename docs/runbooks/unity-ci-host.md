@@ -59,7 +59,7 @@ apps/ci-runner-governor decides which registered slots take jobs and when the cl
 
 On a host whose `ci_caps` carry light, heavy or forgejo, a lendable Unity slot is no kind's alone. It takes Unity, light and heavy jobs (`SHARED_CAPS` in `scripts/render-ci-topology.py`), one job at a time on its own cores and memory cap, and the governor also lends it to a seat. A seat is a runner with no cores of its own, so seats add jobs, never cores: a Forgejo seat `<host>-unity-pool-<n>-forgejo` (and `-forgejo-2` and on, one per `MIN_JOB_CORES` of the slot, below), or a personal repo's runner `<host>-dotfiles-private-1` or `<host>-gungan-speak-1` (`ci_repo_runners`, topology `borrows`). Which slots lend, as rendered in `apps/ci-topology/topology.json`:
 
-- windows-media-ci: all three slots (three cores and 14G each) take light and heavy and register three Forgejo seats each; the repo runners borrow slots 1 and 2.
+- windows-media-ci: all three slots (three cores and 14G each) take light (no heavy: the Hyper-V VM has no /dev/kvm, inventory.yml) and register three Forgejo seats each; the repo runners borrow slots 1 and 2.
 - deskslim-2: the same, three slots, one Forgejo seat each.
 - deskslim-1: the same as deskslim-2, without the repo runners.
 - ms-a2: Forgejo seats on slots 1 and 2 only (slots 3 and 4 sit under build slot 5's group and do not lend), and no repo runners.

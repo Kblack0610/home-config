@@ -2308,6 +2308,9 @@ class LendTest(unittest.TestCase):
         self.assertEqual(box.step(job), [("lend", S1)])
         self.assertEqual(box.labels(), DRAINED | {"unity-lent"})
         box.gh.scopes[ORG][S1]["busy"] = False
+        box.labels().add("heavy")  # a lend whose drop failed half-way is not granted
+        self.assertEqual(box.plan(job, 10_060), [])
+        box.labels().discard("heavy")
         box.step(job, 10_060)
         box.step(job, 10_060 + governor.LEASE_STALE_SECONDS)
         box.labels().add("heavy")

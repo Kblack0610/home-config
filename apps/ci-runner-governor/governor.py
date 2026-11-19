@@ -126,8 +126,8 @@ def load_config(path, topology_path=None):
     - "rates": config.json's, plus {0, owned} for every LAN topology host
     - "shared": by runner, the caps its slot takes besides the governed ones (a LAN Unity test
       slot's light and heavy), which a withhold drops and an admit gives back with the rest
-    - "moved": every label a swap moves on a Unity slot (stale()): each cap a topology slot
-      takes, and the pool, full, build, wide and withheld labels, but not the lend mark."""
+    - "moved": every label a swap moves on a Unity slot (stale()): each cap a Unity slot of the
+      topology takes, and the pool, full, build, wide and withheld labels, but not the lend mark."""
     with open(path) as f:
         cfg = json.load(f)
     with open(topology_path or TOPOLOGY) as f:
@@ -145,7 +145,7 @@ def load_config(path, topology_path=None):
     unity = {h: slots for h, slots in unity.items() if slots}
     cfg["shared"] = {s["name"]: [c for c in s["caps"] if c not in governed]
                      for slots in unity.values() for s in slots if set(s["caps"]) - governed}
-    cfg["moved"] = sorted({c for e in topo.values() for s in e["slots"] for c in s["caps"]}
+    cfg["moved"] = sorted({c for slots in unity.values() for s in slots for c in s["caps"]}
                           | {cfg[f"{r}_label"] for r in ("pool", "full", "build", "wide", "withheld", "build_withheld")})
     lan = sorted(h for h, e in topo.items() if e["site"] != "cloud")
     cfg["rates"] = {**{h: {"usd_per_hour": 0, "basis": "owned"} for h in lan}, **cfg.get("rates", {})}
@@ -1063,12 +1063,6 @@ def apply(cfg, action, name, host):
     relabel(f"orgs/{org}", rid, have, add, stale(cfg, have, add))
 
 
-def own_labels(cfg, host, name):
-    """The labels a slot takes jobs by while admitted: its kind's and its shared caps."""
-    return ([cfg["pool_label"], cfg["full_label"]] if serves_pool(cfg, host, name) else lead_labels(cfg, host, name)) \
-        + list(cfg["shared"].get(name, []))
-
-
 # LENDING (the module docstring says why). A seat borrows one Unity slot (topology "borrows")
 # and runs only while that slot is lent to it.
 
@@ -1426,9 +1420,9 @@ def lend_plan(cfg, hosts, runners, seat_state, waits, lends, leases, pins, last_
             mine = [seat] if seat else by_slot.get(slot, [])
             if all(given_back(slot, s, lend["at"]) for s in mine):
                 steps.append(unlend(slot, seat, "its seat gave it back"))
-        # None of its own labels left either: a lend whose relabel failed half-way is not granted.
+        # Nothing left for the lend to drop either: a lend whose relabel failed half-way is not granted.
         elif lend["phase"] == "held" and r and r["withheld"] and mark in r["labels"] and not r["busy"] \
-                and not set(own_labels(cfg, host_of[slot], slot)) & r["labels"]:
+                and not stale(cfg, r["labels"], [withheld_label(cfg, host_of[slot], slot), mark]):
             steps.append(("grant", slot, seat, "the slot shows withheld, lent and idle"))
 
     floor = sum(1 for n, r in runners.items() if not r["withheld"] and r["host"] in cfg["hosts"]

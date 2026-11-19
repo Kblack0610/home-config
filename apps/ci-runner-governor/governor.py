@@ -1073,6 +1073,63 @@ def pack(cfg, weights, slot, seat):
     return max(1, min(len(mine), int(1 / w + 1e-9)))
 
 
+def job_durations():
+    """{pool: seconds}: the p50 run time of a finished job (last 24h), the slowest workflow's
+    per pool, so a drain estimate errs long. {} when Prometheus does not answer."""
+    try:
+        return {r["metric"]["pool"]: float(r["value"][1])
+                for r in prom('max by (pool) (github_job_duration_seconds{quantile="0.5"})') if r["metric"].get("pool")}
+    except API_ERRORS:
+        return {}
+
+
+# A withheld slot that can take no work whatever waits adds no capacity (withheld_reasons()).
+NO_CAPACITY = ("pin", "disk", "hot")
+
+
+def units(cfg, runners, seat_state, waits, waiting, shared_waiting, weights, withheld, durations):
+    """CI in slot units (hc-668): (capacity {host: slots}, busy {host: units}, backlog {kind: units},
+    drain seconds or None). A slot is one unit. capacity counts every slot not withheld as pin,
+    disk or hot. A busy slot is 1; a lent one is its busy seats' summed weights, at most 1. backlog
+    sums each waiting job's weight by kind: a seat kind (forgejo, repo, light, heavy) at its
+    kind_weights() weight, else "slot" at 1, since it takes a whole slot. drain is the backlog's
+    work (units times its kind's p50 run time, the pool's when the kind has none) over capacity:
+    every running job frees its units within about one run, so busy units count as soon free.
+    None when there is backlog and no capacity or no run time to price it."""
+    capacity, used = {}, {}
+    for name, r in runners.items():
+        capacity.setdefault(r["host"], 0)
+        if (withheld or {}).get(name) not in NO_CAPACITY:
+            capacity[r["host"]] += 1
+        if r["busy"]:
+            used[name] = 1.0
+    for seat, s in cfg["seats"].items():
+        if seat_state.get(seat, {}).get("busy") and s["slot"] in runners:
+            used[s["slot"]] = used.get(s["slot"], 0) + (weights or {}).get(weight_kind(cfg, seat), 1.0)
+    busy = dict.fromkeys(capacity, 0.0)
+    for name, u in used.items():
+        busy[runners[name]["host"]] += min(u, 1.0)
+    backlog = {}
+    for kind, _, _ in waits:
+        if kind != "github":  # a rival GitHub job is in waiting or shared_waiting
+            label = "repo" if "/" in kind else kind
+            backlog[label] = backlog.get(label, 0) + (weights or {}).get(label, 1.0)
+    small = small_kinds(cfg)
+    whole = len(waiting) + sum(1 for need in shared_waiting if not need & small)
+    if whole:
+        backlog["slot"] = backlog.get("slot", 0) + whole
+    pool = {"slot": cfg["pool_label"], "repo": cfg["pool_label"]}
+    took = [durations.get(pool.get(k, k)) or durations.get(cfg["pool_label"]) for k in backlog]
+    total = sum(capacity.values())
+    if not backlog:
+        drain = 0.0
+    elif not total or not all(took):
+        drain = None
+    else:
+        drain = sum(u * t for u, t in zip(backlog.values(), took)) / total
+    return capacity, busy, backlog, drain
+
+
 def slot_takes(cfg, runner, name, need):
     """Whether a Unity slot, admitted, could take a job that asks for need."""
     have = {l for l in runner.get("labels", ()) if not l.endswith("-withheld") and l != cfg["lent_label"]}
@@ -1747,7 +1804,8 @@ def withheld_reasons(cfg, hosts, runners, lends, pins, last_action, now):
     return out
 
 
-def render(cfg, hosts, runners, queue, decisions, ok, instances=None, budget=None, lends=None, withheld=None):
+def render(cfg, hosts, runners, queue, decisions, ok, instances=None, budget=None, lends=None, withheld=None,
+           in_units=None):
     L = ["# HELP ci_governor_ok 1 when every source answered this cycle", "# TYPE ci_governor_ok gauge",
          f"ci_governor_ok {1 if ok else 0}", f"ci_governor_queue {queue}",
          "# HELP ci_governor_admitted Pool runners on a host that carry the pool label (may take jobs)",
@@ -1789,6 +1847,22 @@ def render(cfg, hosts, runners, queue, decisions, ok, instances=None, budget=Non
           "# TYPE ci_governor_withheld gauge"]
     for name, reason in sorted((withheld or {}).items()):
         L.append(f'ci_governor_withheld{{runner="{name}",reason="{reason}"}} 1')
+    if in_units:
+        capacity, busy, backlog, drain = in_units
+        L += ["# HELP ci_governor_capacity_units Slots on a host that can take work (not withheld as pin, disk or hot)",
+              "# TYPE ci_governor_capacity_units gauge",
+              "# HELP ci_governor_busy_units Slot units in use: 1 per busy slot, a lent slot's busy seats by weight",
+              "# TYPE ci_governor_busy_units gauge"]
+        for host in sorted(capacity):
+            L.append(f'ci_governor_capacity_units{{host="{host}"}} {capacity[host]}')
+            L.append(f'ci_governor_busy_units{{host="{host}"}} {busy[host]:.3f}')
+        L += ["# HELP ci_governor_backlog_units Summed weight of the waiting jobs, by kind (slot: takes a whole slot)",
+              "# TYPE ci_governor_backlog_units gauge"]
+        for kind, u in sorted(backlog.items()):
+            L.append(f'ci_governor_backlog_units{{kind="{kind}"}} {u:.3f}')
+        if drain is not None:
+            L += ["# HELP ci_governor_drain_seconds How long the backlog takes to run on today's capacity",
+                  "# TYPE ci_governor_drain_seconds gauge", f"ci_governor_drain_seconds {int(drain)}"]
     # The reason is in the log, not a label: it changes every cycle.
     L += ["# HELP ci_governor_decision This cycle's verdict and actions per host (a paired host can show several)", "# TYPE ci_governor_decision gauge"]
     # A paired host moves several slots in one cycle: one row per host, verdict and action.
@@ -1881,6 +1955,7 @@ def cycle(cfg, last_action, tracked=None, budget=None, lending=None):
         if lending and cfg["lent_label"] in r["labels"] and name not in lends:
             lends[name] = adopt(cfg, name, seat_state, leases, now)
             print(f"{name} was lent before this start; {lends[name]['phase']} for {lends[name]['seat']}", flush=True)
+    weights = {}
     if lending:
         # First, so the oldest wait wins a slot: a host a lend moved is in its cooldown for decide().
         weights = kind_weights(cfg, now)
@@ -1928,10 +2003,11 @@ def cycle(cfg, last_action, tracked=None, budget=None, lending=None):
                 print(f"{host}: start {why} ({code}), passed over for the next standby host", flush=True)
     if budget is not None:
         read_budget(cfg, budget, now)
+    withheld = withheld_reasons(cfg, hosts, runners, lends, pins, last_action, now)
+    in_units = units(cfg, runners, seat_state, seat_waits, waiting, shared_waiting, weights, withheld, job_durations())
     with State.lock:
         State.metrics = "ci_governor_up 1\n" + render(
-            cfg, hosts, runners, queue, decisions, True, instances, budget, lends,
-            withheld_reasons(cfg, hosts, runners, lends, pins, last_action, now))
+            cfg, hosts, runners, queue, decisions, True, instances, budget, lends, withheld, in_units)
 
 
 class Handler(BaseHTTPRequestHandler):

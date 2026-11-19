@@ -851,6 +851,7 @@ class GovernorTest(unittest.TestCase):
         with mock.patch.object(governor, "observe", return_value=observed), \
                 mock.patch.object(governor, "power_provider", return_value=(ec2, "")), \
                 mock.patch.object(governor, "host_labels", return_value=labels), \
+                mock.patch.object(governor, "job_durations", return_value={}), \
                 mock.patch.object(governor, "apply") as apply, mock.patch("builtins.print") as out:
             for _ in range(cycles):
                 governor.cycle(cfg, last, tracked, budget)
@@ -895,6 +896,7 @@ class GovernorTest(unittest.TestCase):
         hosts = readings(**{"deskslim-2": BUSY, "cachyos-x8664-main": BUSY, "deskslim-1": BUSY})
         with mock.patch.object(governor, "AWS_KEY", ""), mock.patch.object(governor, "AWS_SECRET", ""), \
                 mock.patch.object(governor, "observe", return_value=(hosts, self.FULL, [UNITY_JOB] * 9)), \
+                mock.patch.object(governor, "job_durations", return_value={}), \
                 mock.patch.object(governor.urllib.request, "urlopen") as urlopen, \
                 mock.patch.object(governor, "apply"), mock.patch("builtins.print") as out:
             tracked = {}
@@ -2272,6 +2274,31 @@ class LendTest(unittest.TestCase):
             self.assertEqual(governor.kind_weights(cfg, 1100), {"forgejo": 0.3})  # held until the refresh is due
             self.assertEqual(governor.kind_weights(cfg, 1000 + 3600), {"forgejo": 0.1})  # floor
         governor.WEIGHTS.update(at=None, by_kind={})
+
+    def test_units_weigh_seats_and_waits_and_price_the_backlog_in_run_time(self):
+        box = Box(s1=DRAINED | {"unity-lent"})
+        runners = box.runners()
+        runners[S2]["busy"] = True
+        box.fj["busy"] = True
+        weights, withheld = {"forgejo": 0.3}, {S1: "lent", S3: "hot"}
+        waits = [("forgejo", frozenset(), 60), ("forgejo", frozenset(), 30), (REPO, REPO_JOB, 10), ("github", UNITY_JOB, 5)]
+        out = governor.units(LCFG, runners, box.seat_state(), waits, [UNITY_JOB], [frozenset({"light"})],
+                             weights, withheld, {"unity": 600, "forgejo": 120})
+        capacity, busy, backlog, drain = out
+        self.assertEqual(capacity, {"box": 2})  # S3 is hot: no capacity; lent S1 still is
+        self.assertAlmostEqual(busy["box"], 1.3)  # S2 whole, S1's busy Forgejo seat at 0.3
+        self.assertEqual({k: round(v, 3) for k, v in backlog.items()}, {"forgejo": 0.6, "repo": 1.0, "slot": 2.0})
+        self.assertAlmostEqual(drain, (0.6 * 120 + 1 * 600 + 2 * 600) / 2)  # repo and slot priced at the pool's p50
+        text = governor.render(LCFG, {"disk": {}}, runners, 0, [], True, in_units=out)
+        for line in ('ci_governor_capacity_units{host="box"} 2', 'ci_governor_busy_units{host="box"} 1.300',
+                     'ci_governor_backlog_units{kind="slot"} 2.000', "ci_governor_drain_seconds 936"):
+            self.assertIn(line, text)
+        # No run time to price it: no drain series, so a reader shows "-", never a made-up 0.
+        out = governor.units(LCFG, runners, box.seat_state(), waits, [], [], weights, withheld, {})
+        self.assertIsNone(out[3])
+        self.assertNotIn("ci_governor_drain_seconds", governor.render(LCFG, {"disk": {}}, runners, 0, [], True, in_units=out))
+        # Nothing waiting drains in 0, whatever the run times.
+        self.assertEqual(governor.units(LCFG, runners, {}, [], [], [], {}, {}, {})[3], 0.0)
 
     def test_an_ack_while_its_seat_is_busy_does_not_unlend(self):
         box = Box(s1=DRAINED | {"unity-lent"})

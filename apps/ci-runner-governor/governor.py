@@ -1126,9 +1126,7 @@ def lend_plan(cfg, hosts, runners, seat_state, waits, lends, leases, pins, last_
                 return (lease == "github" and ack == "github") or now - max(seen, at) >= LEASE_STALE_SECONDS
             # An ack while its job runs is not the seat's.
             return not busy(slot, seat) and all(acked(m) for m in mates(slot, seat))
-        # Every registered seat of the lend's kind on the slot: a seat past pack()'s limit may still be admitted.
-        return all(not st(m) or (st(m)["withheld"] and not st(m)["busy"]) for m in by_slot.get(slot, [seat])
-                   if seat_kind(cfg, m) == seat_kind(cfg, seat))
+        return all(st(m)["withheld"] and not st(m)["busy"] for m in registered(cfg, by_slot.get(slot, [seat]), seat_state, seat))
 
     jobs = {}
     for kind, need, age in waits:
@@ -1239,16 +1237,25 @@ def lend_plan(cfg, hosts, runners, seat_state, waits, lends, leases, pins, last_
     steps += [("withhold", "", seat, "admitted with no slot lent to it") for seat, s in sorted(seats.items())
               if s["forge"] != "forgejo" and seat in seat_state and not seat_state[seat]["withheld"]
               and (s["slot"], seat_kind(cfg, seat)) not in granted]
-    # A GitHub lend serves several seats of one kind: each is relabelled in its own step.
+    return per_seat(cfg, steps, mates, by_slot, seat_state)
+
+
+def registered(cfg, on_slot, seat_state, seat):
+    """The seats of on_slot of seat's kind the exporter sees: every one a return must withhold and a unlend
+    waits for, since one past pack()'s limit may still be admitted."""
+    return [m for m in on_slot if m in seat_state and seat_kind(cfg, m) == seat_kind(cfg, seat)]
+
+
+def per_seat(cfg, steps, mates, by_slot, seat_state):
+    """steps with each GitHub lend's grant and return split per seat: a lend serves several seats of one
+    kind, each relabelled in its own step. mates(slot, seat) are the seats a grant admits."""
     out = []
-    for step in steps:
-        name, slot, seat, why = step
-        if name in ("grant", "return") and seats[seat]["forge"] != "forgejo":
-            group = mates(slot, seat) if name == "grant" else [
-                m for m in by_slot[slot] if m in seat_state and seat_kind(cfg, m) == seat_kind(cfg, seat)]
+    for name, slot, seat, why in steps:
+        if name in ("grant", "return") and cfg["seats"][seat]["forge"] != "forgejo":
+            group = mates(slot, seat) if name == "grant" else registered(cfg, by_slot[slot], seat_state, seat)
             out += [(name, slot, m, why) for m in dict.fromkeys([seat, *group])]
         else:
-            out.append(step)
+            out.append((name, slot, seat, why))
     return out
 
 

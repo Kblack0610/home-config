@@ -679,7 +679,7 @@ all:
         # reads that floor and the load pace again. Provisional, medium confidence; revisit when
         # host-headroom razer-laptop reads ROOM over a week at 5 live, or freqtrade moves off it.
         # Its repos are the ones the night canaries run in (agent-runtime is ~/.dotfiles).
-        # Canary and night items go here before the workstation (fleet_first, dotfiles #2418).
+        # Canary, night and trainee items go here before the workstation (fleet_first, dotfiles #2418, #2635).
         razer-laptop:
           # 8945HS, 8 cores / 16 threads, siblings n and n+8 (lscpu -e, 2026-11-18). Agent
           # work gets 14 of 16 (87.5%); core 0 (CPUs 0,8) stays with the OS. Its k3s pods
@@ -687,7 +687,7 @@ all:
           agent_cpus: 1-7,9-15
           fleet_place: true
           fleet_max_live: 5
-          fleet_first: [canary, night]
+          fleet_first: [canary, night, trainee]
           # nim, ocfree, opencode-go and codex canaries and trainee runs go here too, so a hot
           # workstation no longer holds them (2026-11-18: three nim canaries waited behind
           # a 96 C workstation while it sat idle; ar-3222).

@@ -30,8 +30,9 @@ old() { date -d "@$(( $(date +%s) - $1 * 86400 ))" '+%Y-%m-%d %H:%M:%S -0700 PDT
 cat > "$t/bin/docker" <<STUB
 #!/bin/sh
 case "\$1 \$2" in
-    "images --format") cat "$t/images" ;;
-    "image rm") echo "\$3" >> "$t/removed"; case "\$3" in *inuse) exit 1 ;; esac ;;
+    "images --format") cat "\${IMAGES:-$t/images}" ;;
+    "image rm") case "\$3" in *inuse) exit 1 ;; esac; echo "\$3" >> "$t/removed" ;;
+    "builder prune") echo pruned >> "$t/removed" ;;
 esac
 STUB
 # Matches the way pgrep -f does, against the command line a live runner has.
@@ -45,7 +46,9 @@ cat > "$t/bin/df" <<'STUB'
 n=$(ls -d "$RUNNER_HOME"/*/_work/*/*/Builds/release-tree/* "$RUNNER_HOME"/*/_work/*/*/Builds/players-tree/* "$RUNNER_HOME"/*/_work/*/*/Builds/hd-tree 2>/dev/null | wc -l)
 echo "Filesystem 1024-blocks Used Available Capacity Mounted"
 c=$(find "$RUNNER_HOME" -type d \( -name players -o -name server -o -name two-process -o -name Bee -o -name BuildCache -o -name PlayerDataCache \) 2>/dev/null | wc -l)
-echo "fake 100 0 $(( 100 - ${DF_PER_TREE:-0} * n - ${DF_PER_CACHE:-0} * c )) 0% /"
+# And DF_PER_IMAGE with each test image in $IMAGES not yet in $REMOVED.
+i=0; [ -n "${IMAGES:-}" ] && i=$(( $(grep -c '^unity-core-playground-test:' "$IMAGES") - $(grep -c '^unity-core-playground-test:' "$REMOVED") ))
+echo "fake 100 0 $(( 100 - ${DF_PER_TREE:-0} * n - ${DF_PER_CACHE:-0} * c - ${DF_PER_IMAGE:-0} * i )) 0% /"
 STUB
 chmod +x "$t/bin/docker" "$t/bin/pgrep" "$t/bin/df"
 touch "$t/removed"
@@ -239,6 +242,31 @@ check "an Ansible temp dir past a day goes" '^ansible leftover .*/ansible-tmp-ol
 for kept in user/ansible-tmp-new/source user/other/file; do
     [ -e "$A/$kept" ] && echo "ok   kept $kept" || { echo "FAIL $kept removed"; fail=1; }
 done
+
+# Under the floor with no tree or cache left, the oldest idle test image goes with the build
+# cache that pins its base, until the floor: four at 20 points each leave 20% free and the
+# in-use one is kept, so one more (a) reaches 40%. Editor images never go.
+I="$t/images-low"; mkdir -p "$I/unity-pool-1" "$I/unity-pool-2"; rm -f "$t/removed"; touch "$t/removed"
+{
+    echo "unity-core-playground-test:inuse|$(old 5)"
+    echo "unity-core-playground-test:a|$(old 3)"
+    echo "unity-core-playground-test:b|$(old 2)"
+    echo "unity-core-playground-test:c|$(old 1)"
+    echo "unityci/editor:ubuntu-6000.3.27f1-base-3|$(old 6)"
+} > "$t/images-list"
+RUNNER_HOME=$I IMAGES="$t/images-list" REMOVED="$t/removed" DF_PER_IMAGE=20 PATH="$t/bin:$PATH" sh "$here/ci-disk-prune.sh" > "$t/log" 2>&1
+rc=$?
+[ "$rc" = 0 ] && echo "ok   low disk images exits 0" || { echo "FAIL low disk images exit $rc"; fail=1; }
+check "low disk removes the oldest idle test image" '^low disk image unity-core-playground-test:a$' "$t/log" 1
+check "and only until the floor"                    '^low disk image ' "$t/log" 1
+check "an in-use test image is kept"                'kept unity-core-playground-test:inuse' "$t/log" 1
+check "its build cache goes with it"                '^pruned$' "$t/removed" 1
+check "editor image stays under low disk"           'unityci/editor' "$t/removed" 0
+# Negative control: one Unity slot busy, so no image goes, however low the disk.
+rm -f "$t/removed"; touch "$t/removed"
+RUNNER_HOME=$I BUSY_HOME=$I IMAGES="$t/images-list" REMOVED="$t/removed" DF_PER_IMAGE=20 PATH="$t/bin:$PATH" sh "$here/ci-disk-prune.sh" > "$t/log" 2>&1
+check "a busy slot keeps every test image"          '^low disk image ' "$t/log" 0
+check "and the build cache"                         '^pruned$' "$t/removed" 0
 
 # A host with no Unity slots has nothing to measure and exits clean.
 RUNNER_HOME="$t/none" DF_PER_TREE=20 PATH="$t/bin:$PATH" sh "$here/ci-disk-prune.sh" > "$t/log" 2>&1

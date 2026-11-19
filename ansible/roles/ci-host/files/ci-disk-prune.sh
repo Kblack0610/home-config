@@ -183,3 +183,22 @@ done | sort -t "$tab" -k1,1n -k2,2n | while IFS="$tab" read -r _ _ floor tree; d
     # btrfs reports freed space only after a commit; without this df lags and more trees go.
     sync -f "$RUNNER_HOME"
 done
+
+# Still under the floor with the trees and caches gone: a test image in-docker.sh built holds its
+# whole editor base, and the age rule keeps it 7 days. The android one is 29G unique, as it builds
+# from unityci/editor:*-android-3, not the base image the slots keep (windows-media-ci, 2026-11-19:
+# its first android job left the idle host at 22% free, under the governor's 25% re-admit line).
+# Only with every Unity slot idle, so no job sits between building one and running it. The oldest
+# goes first, with the build cache that pins its pulled base; the next job of that flavor rebuilds it.
+[ "$(free_pct)" -lt "$RELEASE_TREE_MIN_FREE_PCT" ] || exit 0
+for slot in "$RUNNER_HOME"/unity-pool-*; do
+    [ -d "$slot" ] || continue
+    if busy "$slot"; then exit 0; fi
+done
+docker images --format '{{.Repository}}:{{.Tag}}|{{.CreatedAt}}' | grep '^unity-core-playground-test:' | sort -t '|' -k2,2 |
+    while IFS='|' read -r ref _; do
+        [ "$(free_pct)" -lt "$RELEASE_TREE_MIN_FREE_PCT" ] || break
+        docker image rm "$ref" >/dev/null || { echo "kept $ref: in use"; continue; }
+        echo "low disk image $ref"
+        docker builder prune --force >/dev/null || echo "builder prune failed"
+    done

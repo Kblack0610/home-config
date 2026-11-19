@@ -205,11 +205,12 @@ class CapTests(unittest.TestCase):
         self.assertTrue(any("4 of the pool's 4 build slots" in f for f in topology.fit_failures(self.hosts, self.groups)))
 
     def wide_ms_a2(self):
-        """ms-a2 with a wide slot 6 over test slots 1 and 2's cores (cores 2-7), beside build slot 5."""
+        """ms-a2 with a wide slot 6 over test slots 1 and 2's cores (cores 2-7) and their memory, beside build slot 5."""
         v = self.hosts["ms-a2"]
+        wide_gb = sum(int(m.rstrip("G")) for m in v["ci_unity_slot_memory_max"][:2])
         v.update(unity_ci_slots=6, unity_ci_slot_groups={5: [3, 4], 6: [1, 2]}, unity_ci_wide_slots=[6],
                  ci_unity_slot_cpus=[*v["ci_unity_slot_cpus"], "2-7,18-23"],
-                 ci_unity_slot_memory_max=[*v["ci_unity_slot_memory_max"], "32G"],
+                 ci_unity_slot_memory_max=[*v["ci_unity_slot_memory_max"], f"{wide_gb}G"],
                  ci_caps=[*v["ci_caps"], "unity-wide"])
 
     def test_a_wide_lead_is_a_unity_wide_slot_with_its_group(self):

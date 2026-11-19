@@ -318,6 +318,19 @@ class GovernorTest(unittest.TestCase):
         self.assertEqual(governor.verdict({k: v for k, v in COOL.items() if k != "disk"},
                                           CFG["hosts"]["deskslim-1"])[0], "STEADY")
 
+    def test_cpu_pressure_on_a_half_idle_host_is_not_hot(self):
+        # deskslim-2 2026-11-19 14:45: three Unity jobs, psi 0.61, idle 0.67, 65 C.
+        bursty = {**COOL, "idle": 0.55, "psi": 0.6}
+        self.assertEqual(governor.verdict(bursty, CFG["hosts"]["deskslim-2"])[0], "ROOM")
+        self.assertEqual(governor.verdict({**bursty, "psi": 0.3}, CFG["hosts"]["deskslim-2"])[0], "ROOM")
+
+    def test_cpu_pressure_on_a_busy_host_is_still_hot(self):
+        v, why = governor.verdict({**COOL, "idle": 0.2, "psi": 0.5}, CFG["hosts"]["deskslim-2"])
+        self.assertEqual((v, why), ("HOT", "cpu pressure 0.50 > 0.4"))
+        v, why = governor.verdict({**COOL, "idle": 0.3, "psi": 0.3}, CFG["hosts"]["deskslim-2"])
+        self.assertEqual(v, "STEADY")
+        self.assertTrue(why.endswith("short of admit on idle+psi"), why)
+
     def test_cachyos_runs_hot_sooner(self):
         warm = {**COOL, "tctl": 91}
         self.assertEqual(governor.verdict(warm, CFG["hosts"]["cachyos-x8664-main"])[0], "HOT")

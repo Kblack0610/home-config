@@ -551,10 +551,12 @@ all:
         # IL2CPP player, and at 16G the dodginballs smoke build thrashed 98 min and was
         # OOM-killed (2026-11-19, failcnt 680626). Either worst case, slots 1+2+5 or 1+2+3+4,
         # is 70G = ci_unity_memory_max, leaving 21G for the host and k3s; raise that budget
-        # in step with any slot.
+        # in step with any slot. The slots share all 28 CI threads (ci_unity_slot_share, on
+        # trial since 2026-11-19); the lists below size them rather than fence them.
         ms-a2:
           ci_caps: [light, heavy, unity, unity-build, forgejo]
           ci_cpus: 2-15,18-31
+          ci_unity_slot_share: true
           ci_memory_max: 70G
           ci_unity_cpus: 2-15,18-31
           ci_unity_slot_cpus: ["2-4,18-20", "5-7,21-23", "8-11,24-27", "12-15,28-31", "8-15,24-31"]
@@ -865,7 +867,18 @@ all:
           thermal_cap_rapl_long_watts: 32
           thermal_cap_rapl_short_watts: 40
           thermal_cap_boost: true
-        # razer-laptop (acpi-cpufreq, a global boost switch), ms-a2 and deskslim-2
+        # AMD 9955HX, amd-pstate-epp: base clock 2.5GHz, boost 5.06GHz, so boost off
+        # halved it. 48h to 2026-11-19 with boost off it ran the same jobs slower than
+        # deskslim-2 (PlayMode median 644s vs 486s, Build 209s vs 109s). Peaks: 96-97C
+        # at 5.1GHz and about 15 busy cores (to 2026-11-18 04:00 UTC), 82C at 2.5GHz and
+        # 23. Boost on under a clock ceiling instead, raised a step at a time while the
+        # 15m max stays under 85C under load. Provisional, low confidence: first step
+        # 3.2GHz on 2026-11-19 with the slots sharing their cores (more of them busy);
+        # revisit after 48h of temperature and job times (hc-720).
+        ms-a2:
+          thermal_cap_boost: true
+          thermal_cap_max_freq_khz: 3200000
+        # razer-laptop (acpi-cpufreq, a global boost switch), deskslim-2
         # (amd-pstate-epp) and the workstation have no platform_profile, no
         # writable RAPL limit and no charge threshold: the group default alone.
 

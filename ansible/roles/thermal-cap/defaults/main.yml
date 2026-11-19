@@ -10,8 +10,10 @@
 # and power-limit preset. /sys/firmware/acpi/platform_profile.
 thermal_cap_platform_profile: ""
 # false turns CPU boost off: amd-pstate cpufreq/boost=0 or intel_pstate
-# no_turbo=1. Big single-thread cost; use on AMD, where there is no writable
-# package power limit.
+# no_turbo=1; true writes it back on. Big single-thread cost; use on AMD, where
+# there is no writable package power limit, unless the base clock is far under
+# the boost clock (ms-a2: 2.5 of 5.06GHz), where boost on under a
+# thermal_cap_max_freq_khz ceiling keeps more speed for the same heat.
 thermal_cap_boost: true
 # Intel package power limits in watts (PL1 long-term, PL2 short-term), written
 # to both the MSR and the MMIO RAPL zones, since the lower of the two wins.

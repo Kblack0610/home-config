@@ -26,6 +26,16 @@ ci_unity_memory_max: 16G
 # scripts/render-ci-topology.py checks. Empty = every slot shares ci-unity.slice.
 # Its length must equal unity_ci_slots.
 ci_unity_slot_cpus: []
+# true: each slot slice keeps its memory cap but may run on all of Unity's CPUs
+# (ci_unity_cpus, else ci_cpus), so a busy job spills onto cores its neighbours leave
+# idle; when every slot is busy they share at systemd's default equal CPUWeight.
+# ci_unity_slot_cpus then sizes each slot (CI_SLOT_CPUS, its Forgejo seats, the
+# governor's weights) instead of fencing it. Why: on ms-a2 slot 2 waited on its six
+# threads 46% of the time while slots 1, 3 and 4 sat idle and the host had 15.6 of
+# 32 threads busy (2026-11-19). Provisional, low confidence: on trial on ms-a2 only,
+# against the PlayMode failure above; revisit after 48 h of PlayMode pass rate and job
+# durations against deskslim-2 (hc-720).
+ci_unity_slot_share: false
 # Memory cap of each of those slot slices, so a runaway Unity dies at this size
 # instead of growing to fill ci_unity_memory_max. The slots may add up to more
 # than the Unity cap. Peaks count page cache, which a cap reclaims first, so a

@@ -16,13 +16,13 @@ put() { # file value
 {% if thermal_cap_platform_profile %}
 put /sys/firmware/acpi/platform_profile {{ thermal_cap_platform_profile }}
 {% endif %}
-{% if not thermal_cap_boost %}
+# Boost is written both ways, so a host moved from boost off to on (with a clock
+# ceiling instead) gets it back on the next apply, not the next reboot.
 if [ -e /sys/devices/system/cpu/intel_pstate/no_turbo ]; then
-  put /sys/devices/system/cpu/intel_pstate/no_turbo 1
+  put /sys/devices/system/cpu/intel_pstate/no_turbo {{ 0 if thermal_cap_boost else 1 }}
 else
-  put /sys/devices/system/cpu/cpufreq/boost 0
+  put /sys/devices/system/cpu/cpufreq/boost {{ 1 if thermal_cap_boost else 0 }}
 fi
-{% endif %}
 {% if thermal_cap_max_freq_khz %}
 # After boost, since the boost switch moves each policy's top clock.
 for policy in /sys/devices/system/cpu/cpufreq/policy*; do

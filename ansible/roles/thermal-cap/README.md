@@ -28,9 +28,9 @@ The group sets `thermal_cap_boost: false`, the lever on AMD. A host with a bette
 | `thermal_cap_charge_limit` | `BAT*/charge_control_end_threshold` | Laptops on the charger 24/7 (asus has it; hp-victus does not) |
 | `thermal_cap_max_freq_khz` | every `cpufreq/policy*/scaling_max_freq`, in kHz | AMD, the step below boost off: a lower clock runs at a lower voltage (asus: 2.2GHz) |
 
-A knob that is set but whose file is missing, or that will not take the value (a BIOS-locked RAPL MSR, say), fails the unit and the play. A knob set back to its default leaves the last value in sysfs until the next boot, since the script writes only set knobs: raise a clock ceiling to the base clock rather than dropping it, or reboot.
+A knob that is set but whose file is missing, or that will not take the value (a BIOS-locked RAPL MSR, say), fails the unit and the play. Boost is written on every apply, on or off. Any other knob set back to its default leaves the last value in sysfs until the next boot, since the script writes only set knobs: raise a clock ceiling to the base clock rather than dropping it, or reboot.
 
-Boost off costs speed: cores run at base clock, 2.5GHz on ms-a2's 9955HX (boost to 5.06GHz), 4.4GHz on deskslim-2's 9900X, 4.3GHz on the workstation's 9950X3D. Compare shard times against the previous nightly after a change.
+Boost off costs speed: cores run at base clock, 2.5GHz on ms-a2's 9955HX (boost to 5.06GHz), 4.4GHz on deskslim-2's 9900X, 4.3GHz on the workstation's 9950X3D. Where the base clock is far under boost, boost on under a `thermal_cap_max_freq_khz` ceiling is the better lever: ms-a2 at base clock ran shared jobs about twice as slow as deskslim-2 (2026-11-19), so it keeps boost on and caps the clock instead. Compare shard times against the previous nightly after a change.
 
 ## Run it
 

@@ -159,7 +159,8 @@ def load_config(path, topology_path=None):
                     for h in local}
     # A seat borrows one LAN Unity slot and runs only while the governor lends it (LENDING).
     cfg["seats"] = {s["name"]: {"host": h, "slot": s["borrows"], "forge": s.get("forge", "github"),
-                                "repo": s.get("repo"), "caps": s["caps"]}
+                                "repo": s.get("repo"), "caps": s["caps"],
+                                "cpus": s.get("cpus"), "memory_gb": s.get("memory_gb")}
                     for h, e in topo.items() for s in e["slots"] if s.get("borrows")}
     slots = {s["name"] for h in local for s in unity[h]}
     stray = sorted(n for n, s in cfg["seats"].items() if s["slot"] not in slots)
@@ -902,7 +903,7 @@ LEASES = ("github", "forgejo")
 
 class Leases:
     """Each slot's Forgejo lease: "github" (the default, so a restart starts there) or
-    "forgejo", one for every Forgejo seat that borrows the slot (ci_units). Each seat's
+    "forgejo", one for every Forgejo seat that borrows the slot (up to limit()). Each seat's
     supervisor long-polls wait() by its seat name; set() wakes them all."""
 
     def __init__(self, seats):
@@ -915,6 +916,7 @@ class Leases:
         self.ack = dict.fromkeys(seats)
         # When each supervisor last asked.
         self.seen = dict.fromkeys(seats, 0.0)
+        self.cap = {}
 
     def seats(self, slot):
         return sorted(s for s, n in self.slot_of.items() if n == slot)
@@ -933,25 +935,38 @@ class Leases:
             return self.lease[slot], (acks.pop() if len(acks) == 1 else None), \
                 max((self.seen[s] for s in self.seats(slot)), default=0.0)
 
+    def limit(self, slots):
+        """slots: {slot: how many of its seats may run Forgejo jobs} (pack()): the first that many
+        by name hold the slot's lease, the rest read github, so weights cap the jobs a lent slot
+        runs, not only how many lends are asked for. A slot not named is not capped."""
+        with self.cond:
+            if slots != self.cap:
+                self.cap = dict(slots)
+                self.cond.notify_all()
+
+    def of(self, seat):
+        """The lease a seat is handed: its slot's, or github past the slot's limit()."""
+        slot = self.slot_of[seat]
+        return self.lease[slot] if self.seats(slot).index(seat) < self.cap.get(slot, len(self.slot_of)) else "github"
+
     def of_seat(self, seat):
         """(lease, ack, seen) of one seat."""
         with self.cond:
-            return self.lease[self.slot_of[seat]], self.ack[seat], self.seen[seat]
+            return self.of(seat), self.ack[seat], self.seen[seat]
 
     def wait(self, seat, have, timeout):
-        """The seat's slot's lease as soon as it differs from have, else have after timeout. A
+        """The seat's lease as soon as it differs from have, else have after timeout. A
         supervisor asks with the lease it holds and acts on what it gets back, so asking
         with the current lease acknowledges it."""
-        slot = self.slot_of[seat]
         with self.cond:
             self.seen[seat] = time.time()
-            if self.lease[slot] == have:
+            if self.of(seat) == have:
                 self.ack[seat] = have
-            self.cond.wait_for(lambda: self.lease[slot] != have, timeout)
-            if self.lease[slot] == have:
+            self.cond.wait_for(lambda: self.of(seat) != have, timeout)
+            if self.of(seat) == have:
                 self.ack[seat] = have
             self.seen[seat] = time.time()
-            return self.lease[slot]
+            return self.of(seat)
 
 
 def observe_seats(cfg):
@@ -997,13 +1012,59 @@ def seat_kind(cfg, seat):
     return "forgejo" if s["forge"] == "forgejo" else s["repo"]
 
 
+def weight_kind(cfg, seat):
+    """The kind a seat's weight is measured under: ci_runner_job's "forgejo" or "repo"."""
+    return "forgejo" if cfg["seats"][seat]["forge"] == "forgejo" else "repo"
+
+
+WEIGHTS = {"at": None, "by_kind": {}}
+
+
+def kind_weights(cfg, now):
+    """{kind: weight}: each kind's measured share of the slot its seats borrow (hc-666), the larger
+    of its p90 cores over the slot's CPUs and its p90 memory over the slot's MemoryMax, clamped to
+    [floor, 1]. From the cc:job_kind_* rules (command-center), refreshed every refresh_seconds. The
+    smallest slot of the kind's seats sizes it and the busiest runner's p90 is the figure, so a wrong
+    weight errs toward fewer seats. A kind with fewer than min_samples samples, or no slot size,
+    has none: pack() reads weight 1, one job per slot. A failed refresh keeps the last."""
+    w = cfg["weights"]
+    if WEIGHTS["at"] is not None and now - WEIGHTS["at"] < w["refresh_seconds"]:
+        return WEIGHTS["by_kind"]
+    out = {}
+    try:
+        for series, size in (("cores", "cpus"), ("mem", "memory_gb")):
+            rule = f"cc:job_kind_{series}"
+            rows = prom(f'max by (kind) (quantile_over_time({w["percentile"]}, {rule}[{w["window"]}]) '
+                        f'and count_over_time({rule}[{w["window"]}]) >= {w["min_samples"]})')
+            for r in rows:
+                kind = r["metric"].get("kind")
+                sizes = [s[size] for n, s in cfg["seats"].items() if weight_kind(cfg, n) == kind and s.get(size)]
+                if sizes:
+                    cap = min(sizes) * (2 ** 30 if size == "memory_gb" else 1)
+                    out[kind] = max(out.get(kind, 0), float(r["value"][1]) / cap)
+    except API_ERRORS as e:
+        print(f"weights not refreshed, keeping {WEIGHTS['by_kind']}: {e}", flush=True)
+        return WEIGHTS["by_kind"]
+    WEIGHTS.update(at=now, by_kind={k: round(min(max(v, w["floor"]), 1.0), 3) for k, v in sorted(out.items())})
+    print(f"seat weights {WEIGHTS['by_kind']}", flush=True)
+    return WEIGHTS["by_kind"]
+
+
+def pack(cfg, weights, slot, seat):
+    """How many seats of seat's kind on slot one lend serves: as many as fit while their weights
+    sum to at most 1, at least one, at most those registered. weights is kind_weights()."""
+    mine = [n for n, s in cfg["seats"].items() if s["slot"] == slot and seat_kind(cfg, n) == seat_kind(cfg, seat)]
+    w = (weights or {}).get(weight_kind(cfg, seat), 1.0)
+    return max(1, min(len(mine), int(1 / w + 1e-9)))
+
+
 def slot_takes(cfg, runner, name, need):
     """Whether a Unity slot, admitted, could take a job that asks for need."""
     have = {l for l in runner.get("labels", ()) if not l.endswith("-withheld") and l != cfg["lent_label"]}
     return need <= have | label_set(",".join(admit_labels(cfg, runner["host"], name)))
 
 
-def lend_plan(cfg, hosts, runners, seat_state, waits, lends, leases, pins, last_action, now):
+def lend_plan(cfg, hosts, runners, seat_state, waits, lends, leases, pins, last_action, now, weights=None):
     """This cycle's steps toward lending the Unity slots their seats borrow: [(step, slot,
     seat, why)], step one of
       lend      withhold the slot and mark it lent, so it takes no GitHub job from now on
@@ -1014,7 +1075,8 @@ def lend_plan(cfg, hosts, runners, seat_state, waits, lends, leases, pins, last_
       withhold  a repo seat admitted with no slot lent to it (slot "")
     lends: {slot: {"seat": seat, or None for a lend found by its label after a restart,
     "phase": "held", "granted" or "returning", "at": when}}; pins: read_pins(). It runs before decide(),
-    which leaves a host a lend moved to its cooldown and never sees a lent slot."""
+    which leaves a host a lend moved to its cooldown and never sees a lent slot. weights is
+    kind_weights(): a lend serves as many seats as fit while their weights sum to 1 (pack())."""
     seats, mark = cfg["seats"], cfg["lent_label"]
     if not seats:
         return []
@@ -1032,11 +1094,15 @@ def lend_plan(cfg, hosts, runners, seat_state, waits, lends, leases, pins, last_
         return f"{host} is {verdicts[host]}" if verdicts[host] in ("HOT", "FULL") else ""
 
     def mates(slot, seat):
-        """The seats a lend of slot to seat serves: every seat of its kind on the slot (ci_units)
+        """The seats a lend of slot to seat serves: every seat of its kind on the slot (as many as pack() admits)
         that the exporter sees, so a seat the topology names but no host has registered yet
         adds no capacity and holds no return."""
         return [m for m in by_slot.get(slot, [seat])
                 if m == seat or (m in seat_state and seat_kind(cfg, m) == seat_kind(cfg, seat))]
+
+    def room(slot, seat):
+        """How many jobs a lend of slot to seat holds: its mates, as many as pack() lets in."""
+        return min(len(mates(slot, seat)), pack(cfg, weights, slot, seat))
 
     def busy(slot, seat):
         """How many of the lend's seats run a job."""
@@ -1086,10 +1152,10 @@ def lend_plan(cfg, hosts, runners, seat_state, waits, lends, leases, pins, last_
         keep = [s for s in slots if s not in back]
         # A lend holds as many jobs as it has seats, and want counts every busy seat, so the
         # lends past want go back, the least busy first; a held lend gave nothing yet.
-        room = sum(len(mates(s, lends[s]["seat"])) for s in keep)
+        held = sum(room(s, lends[s]["seat"]) for s in keep)
         for s in sorted(keep, key=lambda s: (busy(s, lends[s]["seat"]), lends[s]["phase"] == "granted", s)):
-            if room - len(mates(s, lends[s]["seat"])) >= want.get(kind, 0):
-                room -= len(mates(s, lends[s]["seat"]))
+            if held - room(s, lends[s]["seat"]) >= want.get(kind, 0):
+                held -= room(s, lends[s]["seat"])
                 back[s] = f"no {kind} job needs it"
 
     admitted = sum(1 for n, r in runners.items() if not r["withheld"] and serves_pool(cfg, r["host"], n))
@@ -1124,7 +1190,7 @@ def lend_plan(cfg, hosts, runners, seat_state, waits, lends, leases, pins, last_
                 and serves_pool(cfg, r["host"], n))
     moved, paired = set(), lent(cfg, runners)
     for kind in sorted(oldest, key=lambda k: (-oldest[k], k)):
-        need = want[kind] - sum(len(mates(s, lends[s]["seat"])) for s in have.get(kind, []) if s not in back)
+        need = want[kind] - sum(room(s, lends[s]["seat"]) for s in have.get(kind, []) if s not in back)
         # One per slot: its first seat the exporter sees, which names the lend for all its seats.
         mine = sorted({s["slot"]: seat for seat, s in sorted(seats.items(), reverse=True)
                        if seat_kind(cfg, seat) == kind and seat in seat_state}.items())
@@ -1154,7 +1220,7 @@ def lend_plan(cfg, hosts, runners, seat_state, waits, lends, leases, pins, last_
             floor -= 0 if r["withheld"] else 1
             if not spare:
                 moved.add(host)
-            need -= len(mates(slot, seat))
+            need -= room(slot, seat)
             steps.append(("lend", slot, seat, f"a {kind} job has waited {int(oldest[kind])}s"))
 
     granted = {l["seat"] for l in lends.values() if l["phase"] == "granted"}
@@ -1780,7 +1846,10 @@ def cycle(cfg, last_action, tracked=None, budget=None, lending=None):
             print(f"{name} was lent before this start; {lends[name]['phase']} for {lends[name]['seat']}", flush=True)
     if lending:
         # First, so the oldest wait wins a slot: a host a lend moved is in its cooldown for decide().
-        steps = lend_plan(cfg, hosts, runners, seat_state, seat_waits, lends, leases, pins, last_action, now)
+        weights = kind_weights(cfg, now)
+        leases.limit({s["slot"]: pack(cfg, weights, s["slot"], n) for n, s in cfg["seats"].items()
+                      if s["forge"] == "forgejo"})
+        steps = lend_plan(cfg, hosts, runners, seat_state, seat_waits, lends, leases, pins, last_action, now, weights)
         lend_apply(cfg, steps, lends, leases, now, last_action)
     # A lent slot is the lending's alone: decide() never admits or counts it.
     governed = {n: r for n, r in runners.items() if n not in lends}

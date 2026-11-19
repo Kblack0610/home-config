@@ -41,9 +41,16 @@
       {"name": "deskslim-1-unity-pool-1", "caps": ["unity", "light", "heavy"]},
       {"name": "deskslim-1-unity-pool-2", "caps": ["unity", "light", "heavy"]},
       {"name": "deskslim-1-unity-pool-3", "caps": ["unity", "light", "heavy"]},
-      {"name": "deskslim-1-unity-pool-1-forgejo", "caps": ["forgejo"], "forge": "forgejo", "borrows": "deskslim-1-unity-pool-1"},
-      {"name": "deskslim-1-unity-pool-2-forgejo", "caps": ["forgejo"], "forge": "forgejo", "borrows": "deskslim-1-unity-pool-2"},
-      {"name": "deskslim-1-unity-pool-3-forgejo", "caps": ["forgejo"], "forge": "forgejo", "borrows": "deskslim-1-unity-pool-3"}
+      {"name": "deskslim-1-unity-pool-1-forgejo", "caps": ["forgejo"], "forge": "forgejo", "borrows": "deskslim-1-unity-pool-1", "cpus": 6, "memory_gb": 14},
+      {"name": "deskslim-1-unity-pool-1-forgejo-2", "caps": ["forgejo"], "forge": "forgejo", "borrows": "deskslim-1-unity-pool-1", "cpus": 6, "memory_gb": 14},
+      {"name": "deskslim-1-unity-pool-1-forgejo-3", "caps": ["forgejo"], "forge": "forgejo", "borrows": "deskslim-1-unity-pool-1", "cpus": 6, "memory_gb": 14},
+      {"name": "deskslim-1-unity-pool-2-forgejo", "caps": ["forgejo"], "forge": "forgejo", "borrows": "deskslim-1-unity-pool-2", "cpus": 6, "memory_gb": 14},
+      {"name": "deskslim-1-unity-pool-2-forgejo-2", "caps": ["forgejo"], "forge": "forgejo", "borrows": "deskslim-1-unity-pool-2", "cpus": 6, "memory_gb": 14},
+      {"name": "deskslim-1-unity-pool-2-forgejo-3", "caps": ["forgejo"], "forge": "forgejo", "borrows": "deskslim-1-unity-pool-2", "cpus": 6, "memory_gb": 14},
+      {"name": "deskslim-1-unity-pool-3-forgejo", "caps": ["forgejo"], "forge": "forgejo", "borrows": "deskslim-1-unity-pool-3", "cpus": 8, "memory_gb": 14},
+      {"name": "deskslim-1-unity-pool-3-forgejo-2", "caps": ["forgejo"], "forge": "forgejo", "borrows": "deskslim-1-unity-pool-3", "cpus": 8, "memory_gb": 14},
+      {"name": "deskslim-1-unity-pool-3-forgejo-3", "caps": ["forgejo"], "forge": "forgejo", "borrows": "deskslim-1-unity-pool-3", "cpus": 8, "memory_gb": 14},
+      {"name": "deskslim-1-unity-pool-3-forgejo-4", "caps": ["forgejo"], "forge": "forgejo", "borrows": "deskslim-1-unity-pool-3", "cpus": 8, "memory_gb": 14}
     ]},
     "deskslim-2": {"site": "local", "full": true, "slots": [
       {"name": "deskslim-2-dotfiles-private-1", "caps": ["light"], "repo": "Kblack0610/.dotfiles-private", "borrows": "deskslim-2-unity-pool-1"},
@@ -51,9 +58,16 @@
       {"name": "deskslim-2-unity-pool-1", "caps": ["unity", "light", "heavy"]},
       {"name": "deskslim-2-unity-pool-2", "caps": ["unity", "light", "heavy"]},
       {"name": "deskslim-2-unity-pool-3", "caps": ["unity", "light", "heavy"]},
-      {"name": "deskslim-2-unity-pool-1-forgejo", "caps": ["forgejo"], "forge": "forgejo", "borrows": "deskslim-2-unity-pool-1"},
-      {"name": "deskslim-2-unity-pool-2-forgejo", "caps": ["forgejo"], "forge": "forgejo", "borrows": "deskslim-2-unity-pool-2"},
-      {"name": "deskslim-2-unity-pool-3-forgejo", "caps": ["forgejo"], "forge": "forgejo", "borrows": "deskslim-2-unity-pool-3"}
+      {"name": "deskslim-2-unity-pool-1-forgejo", "caps": ["forgejo"], "forge": "forgejo", "borrows": "deskslim-2-unity-pool-1", "cpus": 6, "memory_gb": 14},
+      {"name": "deskslim-2-unity-pool-1-forgejo-2", "caps": ["forgejo"], "forge": "forgejo", "borrows": "deskslim-2-unity-pool-1", "cpus": 6, "memory_gb": 14},
+      {"name": "deskslim-2-unity-pool-1-forgejo-3", "caps": ["forgejo"], "forge": "forgejo", "borrows": "deskslim-2-unity-pool-1", "cpus": 6, "memory_gb": 14},
+      {"name": "deskslim-2-unity-pool-2-forgejo", "caps": ["forgejo"], "forge": "forgejo", "borrows": "deskslim-2-unity-pool-2", "cpus": 6, "memory_gb": 14},
+      {"name": "deskslim-2-unity-pool-2-forgejo-2", "caps": ["forgejo"], "forge": "forgejo", "borrows": "deskslim-2-unity-pool-2", "cpus": 6, "memory_gb": 14},
+      {"name": "deskslim-2-unity-pool-2-forgejo-3", "caps": ["forgejo"], "forge": "forgejo", "borrows": "deskslim-2-unity-pool-2", "cpus": 6, "memory_gb": 14},
+      {"name": "deskslim-2-unity-pool-3-forgejo", "caps": ["forgejo"], "forge": "forgejo", "borrows": "deskslim-2-unity-pool-3", "cpus": 8, "memory_gb": 14},
+      {"name": "deskslim-2-unity-pool-3-forgejo-2", "caps": ["forgejo"], "forge": "forgejo", "borrows": "deskslim-2-unity-pool-3", "cpus": 8, "memory_gb": 14},
+      {"name": "deskslim-2-unity-pool-3-forgejo-3", "caps": ["forgejo"], "forge": "forgejo", "borrows": "deskslim-2-unity-pool-3", "cpus": 8, "memory_gb": 14},
+      {"name": "deskslim-2-unity-pool-3-forgejo-4", "caps": ["forgejo"], "forge": "forgejo", "borrows": "deskslim-2-unity-pool-3", "cpus": 8, "memory_gb": 14}
     ]},
     "mac-mini": {"site": "local", "slots": [
       {"name": "mac-mini-mac", "caps": ["macos"], "repo": "BlackNBrownStudios/platform"},
@@ -65,8 +79,12 @@
       {"name": "ms-a2-unity-pool-3", "caps": ["unity", "light", "heavy"]},
       {"name": "ms-a2-unity-pool-4", "caps": ["unity", "light", "heavy"]},
       {"name": "ms-a2-unity-pool-5", "caps": ["unity-build"], "group": ["ms-a2-unity-pool-3", "ms-a2-unity-pool-4"]},
-      {"name": "ms-a2-unity-pool-1-forgejo", "caps": ["forgejo"], "forge": "forgejo", "borrows": "ms-a2-unity-pool-1"},
-      {"name": "ms-a2-unity-pool-2-forgejo", "caps": ["forgejo"], "forge": "forgejo", "borrows": "ms-a2-unity-pool-2"}
+      {"name": "ms-a2-unity-pool-1-forgejo", "caps": ["forgejo"], "forge": "forgejo", "borrows": "ms-a2-unity-pool-1", "cpus": 6, "memory_gb": 16},
+      {"name": "ms-a2-unity-pool-1-forgejo-2", "caps": ["forgejo"], "forge": "forgejo", "borrows": "ms-a2-unity-pool-1", "cpus": 6, "memory_gb": 16},
+      {"name": "ms-a2-unity-pool-1-forgejo-3", "caps": ["forgejo"], "forge": "forgejo", "borrows": "ms-a2-unity-pool-1", "cpus": 6, "memory_gb": 16},
+      {"name": "ms-a2-unity-pool-2-forgejo", "caps": ["forgejo"], "forge": "forgejo", "borrows": "ms-a2-unity-pool-2", "cpus": 6, "memory_gb": 16},
+      {"name": "ms-a2-unity-pool-2-forgejo-2", "caps": ["forgejo"], "forge": "forgejo", "borrows": "ms-a2-unity-pool-2", "cpus": 6, "memory_gb": 16},
+      {"name": "ms-a2-unity-pool-2-forgejo-3", "caps": ["forgejo"], "forge": "forgejo", "borrows": "ms-a2-unity-pool-2", "cpus": 6, "memory_gb": 16}
     ]},
     "windows-media": {"site": "local", "slots": [
       {"name": "windows-media", "caps": ["windows"]}
@@ -77,12 +95,15 @@
       {"name": "windows-media-ci-unity-pool-1", "caps": ["unity", "light"]},
       {"name": "windows-media-ci-unity-pool-2", "caps": ["unity", "light"]},
       {"name": "windows-media-ci-unity-pool-3", "caps": ["unity", "light"]},
-      {"name": "windows-media-ci-unity-pool-1-forgejo", "caps": ["forgejo"], "forge": "forgejo", "borrows": "windows-media-ci-unity-pool-1"},
-      {"name": "windows-media-ci-unity-pool-1-forgejo-2", "caps": ["forgejo"], "forge": "forgejo", "borrows": "windows-media-ci-unity-pool-1"},
-      {"name": "windows-media-ci-unity-pool-2-forgejo", "caps": ["forgejo"], "forge": "forgejo", "borrows": "windows-media-ci-unity-pool-2"},
-      {"name": "windows-media-ci-unity-pool-2-forgejo-2", "caps": ["forgejo"], "forge": "forgejo", "borrows": "windows-media-ci-unity-pool-2"},
-      {"name": "windows-media-ci-unity-pool-3-forgejo", "caps": ["forgejo"], "forge": "forgejo", "borrows": "windows-media-ci-unity-pool-3"},
-      {"name": "windows-media-ci-unity-pool-3-forgejo-2", "caps": ["forgejo"], "forge": "forgejo", "borrows": "windows-media-ci-unity-pool-3"}
+      {"name": "windows-media-ci-unity-pool-1-forgejo", "caps": ["forgejo"], "forge": "forgejo", "borrows": "windows-media-ci-unity-pool-1", "cpus": 6, "memory_gb": 14},
+      {"name": "windows-media-ci-unity-pool-1-forgejo-2", "caps": ["forgejo"], "forge": "forgejo", "borrows": "windows-media-ci-unity-pool-1", "cpus": 6, "memory_gb": 14},
+      {"name": "windows-media-ci-unity-pool-1-forgejo-3", "caps": ["forgejo"], "forge": "forgejo", "borrows": "windows-media-ci-unity-pool-1", "cpus": 6, "memory_gb": 14},
+      {"name": "windows-media-ci-unity-pool-2-forgejo", "caps": ["forgejo"], "forge": "forgejo", "borrows": "windows-media-ci-unity-pool-2", "cpus": 6, "memory_gb": 14},
+      {"name": "windows-media-ci-unity-pool-2-forgejo-2", "caps": ["forgejo"], "forge": "forgejo", "borrows": "windows-media-ci-unity-pool-2", "cpus": 6, "memory_gb": 14},
+      {"name": "windows-media-ci-unity-pool-2-forgejo-3", "caps": ["forgejo"], "forge": "forgejo", "borrows": "windows-media-ci-unity-pool-2", "cpus": 6, "memory_gb": 14},
+      {"name": "windows-media-ci-unity-pool-3-forgejo", "caps": ["forgejo"], "forge": "forgejo", "borrows": "windows-media-ci-unity-pool-3", "cpus": 6, "memory_gb": 14},
+      {"name": "windows-media-ci-unity-pool-3-forgejo-2", "caps": ["forgejo"], "forge": "forgejo", "borrows": "windows-media-ci-unity-pool-3", "cpus": 6, "memory_gb": 14},
+      {"name": "windows-media-ci-unity-pool-3-forgejo-3", "caps": ["forgejo"], "forge": "forgejo", "borrows": "windows-media-ci-unity-pool-3", "cpus": 6, "memory_gb": 14}
     ]}
   }
 }

@@ -63,6 +63,16 @@ jobs:
           rm planted-borrow.out
       - name: Topology renderer tests, tier exclusions and slot caps
         run: cd scripts && python3 -m unittest test_render_ci_topology
+      - name: No EC2 instance id or topology host alternation outside the inventory and topology.json
+        run: python3 scripts/check-topology-copies.py
+      - name: Negative control - the copy check fails on an instance id and a host alternation planted in scripts/
+        run: |
+          printf 'HOSTS = "ms-a2|deskslim-1"\nID = "i-0123456789abcdef0"\n' > scripts/planted-copy.py  # copy-guard: the negative control's plant
+          rc=0; python3 scripts/check-topology-copies.py scripts/planted-copy.py > planted-copy.out 2>&1 || rc=$?
+          rm scripts/planted-copy.py; cat planted-copy.out
+          [ "$rc" -ne 0 ] || { echo "the check passed a planted copy"; exit 1; }
+          grep -q "instance id i-0123456789abcdef0" planted-copy.out && grep -q "host alternation ms-a2|deskslim-1" planted-copy.out || { echo "the check failed, but not on both plants"; exit 1; }  # copy-guard: the plant it looks for
+          rm planted-copy.out
       - name: Freqtrade roster has no bot that repeats another's exchange, strategy and overlay
         run: python3 scripts/check-freqtrade-roster.py
       - name: Negative control - the freqtrade roster check fails on a planted duplicate row

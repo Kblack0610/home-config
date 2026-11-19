@@ -23,6 +23,19 @@ all:
     # Default SSH user on Linux hosts provisioned via PXE (matches the
     # workstation account that PXE kickstart seeds with the key).
     ansible_user: kblack0610
+    # The CI runner label vocabulary, one home: scripts/render-ci-topology.py copies it into
+    # apps/ci-topology/topology.json ("labels"), which ci-runner-governor and
+    # github-runner-exporter read; site.yml's runner plays read it here. pool, build and wide
+    # are also topology cap names, so they stay unity, unity-build and unity-wide.
+    ci_labels:
+      pool: unity
+      full: unity-full
+      build: unity-build
+      wide: unity-wide
+      withheld: unity-withheld
+      build_withheld: unity-build-withheld
+      seat_withheld: light-withheld
+      lent: unity-lent
 
   children:
     # Provisional tiers for placement records; P2 qualification and P5 review
@@ -410,6 +423,8 @@ all:
           host_tier: standard
           thermal_cap_exempt: an EC2 VM; AWS owns its cooling
           ansible_host: i-0856b245ff7a81321
+          # What ci-runner-governor powers: the instance (ansible_host) in this region (topology.json "power").
+          ci_power: {provider: aws, region: us-east-2}
           ansible_user: ubuntu
           ansible_ssh_common_args: >-
             -o ProxyCommand="aws ssm start-session --profile bnb --region us-east-2
@@ -438,6 +453,7 @@ all:
           host_tier: standard
           thermal_cap_exempt: an EC2 VM; AWS owns its cooling
           ansible_host: i-0b4c89a54f8e25ad5
+          ci_power: {provider: aws, region: us-east-2}
           ansible_user: ubuntu
           ansible_ssh_common_args: >-
             -o ProxyCommand="aws ssm start-session --profile bnb --region us-east-2
@@ -451,6 +467,7 @@ all:
           host_tier: standard
           thermal_cap_exempt: an EC2 VM; AWS owns its cooling
           ansible_host: i-0c244a80e9cf430b1
+          ci_power: {provider: aws, region: us-east-2}
           ansible_user: ubuntu
           ansible_ssh_common_args: >-
             -o ProxyCommand="aws ssm start-session --profile bnb --region us-east-2
@@ -464,6 +481,7 @@ all:
           host_tier: standard
           thermal_cap_exempt: an EC2 VM; AWS owns its cooling
           ansible_host: i-04ca535b8876dff6f
+          ci_power: {provider: aws, region: us-east-2}
           ansible_user: ubuntu
           ansible_ssh_common_args: >-
             -o ProxyCommand="aws ssm start-session --profile bnb --region us-east-2

@@ -290,10 +290,10 @@
         gh_runner_home: "{{ linux_ci_user_home }}/{{ ci_repo.slot }}"
         gh_runner_name: "{{ inventory_hostname }}-{{ ci_repo.slot }}"
         gh_runner_labels: "{{ ['self-hosted', 'linux', 'x64'] + ci_slot_caps[gh_runner_name] }}"
-        # The governor's seat labels (config.json seat_withheld_label).
+        # The governor's seat labels (inventory ci_labels.seat_withheld).
         gh_runner_governed_labels: [light]
-        gh_runner_withheld_labels: [light-withheld]
-        gh_runner_withheld_label: light-withheld
+        gh_runner_withheld_labels: ["{{ ci_labels.seat_withheld }}"]
+        gh_runner_withheld_label: "{{ ci_labels.seat_withheld }}"
         gh_runner_register_withheld: true
         gh_runner_slice: "{{ unity_slot_slice }}"
         gh_runner_env:
@@ -327,10 +327,10 @@
         gh_runner_home: "{{ linux_ci_user_home }}/{{ ci_seat.name | regex_replace('^' ~ inventory_hostname ~ '-', '') }}"
         gh_runner_name: "{{ ci_seat.name }}"
         gh_runner_labels: "{{ ['self-hosted', 'linux', 'x64'] + ci_seat.caps }}"
-        # The governor's seat labels (config.json seat_withheld_label), one for every seat kind.
+        # The governor's seat labels (inventory ci_labels.seat_withheld), one for every seat kind.
         gh_runner_governed_labels: "{{ ci_seat.caps }}"
-        gh_runner_withheld_labels: [light-withheld]
-        gh_runner_withheld_label: light-withheld
+        gh_runner_withheld_labels: ["{{ ci_labels.seat_withheld }}"]
+        gh_runner_withheld_label: "{{ ci_labels.seat_withheld }}"
         gh_runner_register_withheld: true
         gh_runner_slice: "{{ unity_slot_slice }}"
         gh_runner_env:
@@ -459,15 +459,14 @@
         # The slot's caps come from topology.json (ci_slot_caps): unity-build on a build slot,
         # unity plus the host's light and heavy on a test slot (scripts/render-ci-topology.py HOST_CAPS).
         gh_runner_labels: "{{ [ 'self-hosted', 'linux', 'x64', 'host-' ~ inventory_hostname ] + ci_slot_caps[gh_runner_name] + ([] if unity_slot in unity_ci_slot_groups | default({}) else ([ 'unity-full' ] if unity_ci_full | default(true) else []) + ([ 'unity-wide' ] if unity_ci_wide | default(false) else []) + ([ 'unity-gate' ] if unity_ci_gate | default(false) else [])) + ([ 'unity' ] + ([ 'unity-full' ] if unity_ci_full | default(true) else []) if 'unity-wide' in ci_slot_caps[gh_runner_name] else []) + ([ 'lan' ] if unity_ci_lan | default(true) else []) + ([ 'hd-library' ] if unity_ci_hd_library | default(unity_ci_lan | default(true)) else []) + (unity_ci_slot_labels | default({})).get(unity_slot, []) }}"
-        # ci-runner-governor's admit labels and withheld labels (apps/ci-runner-governor/config.json
-        # pool_label, full_label, withheld_label, and aws-build-1's "labels" and "withheld_label"),
-        # plus the shared caps a slot takes (governor.py "shared"): an apply leaves a withheld slot
-        # withheld for every kind.
-        gh_runner_governed_labels: "{{ [ 'unity', 'unity-full', 'unity-build', 'light', 'heavy' ] + ([ 'unity-wide' ] if 'unity-wide' in ci_slot_caps[gh_runner_name] else []) }}"
-        gh_runner_withheld_labels: [unity-withheld, unity-build-withheld]
-        gh_runner_withheld_label: "{{ 'unity-build-withheld' if unity_slot in unity_ci_slot_groups | default({}) else 'unity-withheld' }}"
+        # ci-runner-governor's admit labels and withheld labels (inventory ci_labels, the
+        # vocabulary the governor reads from topology.json), plus the shared caps a slot takes
+        # (governor.py "shared"): an apply leaves a withheld slot withheld for every kind.
+        gh_runner_governed_labels: "{{ [ ci_labels.pool, ci_labels.full, ci_labels.build, 'light', 'heavy' ] + ([ ci_labels.wide ] if ci_labels.wide in ci_slot_caps[gh_runner_name] else []) }}"
+        gh_runner_withheld_labels: ["{{ ci_labels.withheld }}", "{{ ci_labels.build_withheld }}"]
+        gh_runner_withheld_label: "{{ ci_labels.build_withheld if unity_slot in unity_ci_slot_groups | default({}) else ci_labels.withheld }}"
         # The governor's lend mark: an apply never takes back a slot it lent to a seat.
-        gh_runner_kept_labels: [unity-lent]
+        gh_runner_kept_labels: ["{{ ci_labels.lent }}"]
         gh_runner_slice: "{{ unity_slot_slice }}"
         # UNITY_CACHE_SERVER only where the host runs an Accelerator (unity_ci_accelerator,
         # roles/ci-host), so the other hosts' env, and their slots, are unchanged.

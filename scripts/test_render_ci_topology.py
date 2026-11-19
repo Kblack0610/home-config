@@ -235,5 +235,35 @@ class CapTests(unittest.TestCase):
         self.assertTrue(any("ms-a2 carries unity-wide" in f for f in topology.fit_failures(self.hosts, self.groups)))
 
 
+class PowerAndLabelTests(unittest.TestCase):
+    def setUp(self):
+        self.hosts, self.groups = topology.load_inventory(ROOT / "ansible/inventory.yml")
+        self.labels = yaml.safe_load((ROOT / "ansible/inventory.yml").read_text())["all"]["vars"]["ci_labels"]
+
+    def test_a_powered_host_carries_its_instance_from_ansible_host(self):
+        topo, fails = topology.render(self.hosts, self.groups)
+        self.assertEqual(fails, [])
+        power = topo["hosts"]["aws-spot-1"]["power"]
+        self.assertEqual(power["instance_id"], self.hosts["aws-spot-1"]["ansible_host"])
+        self.assertEqual(power["provider"], "aws")
+        self.assertNotIn("power", topo["hosts"]["ms-a2"])
+
+    def test_ci_power_needs_an_instance_id_and_a_cloud_host(self):
+        self.hosts["aws-spot-1"]["ansible_host"] = "10.0.0.1"
+        self.hosts["ms-a2"]["ci_power"] = {"provider": "aws", "region": "us-east-2"}
+        _, fails = topology.render(self.hosts, self.groups)
+        self.assertTrue(any("aws-spot-1: ci_power needs an EC2 instance id" in f for f in fails))
+        self.assertTrue(any("ms-a2: ci_power on a host that is not a cloud Unity host" in f for f in fails))
+
+    def test_the_label_vocabulary_is_whole_and_its_cap_roles_match_caps(self):
+        self.assertEqual(topology.label_failures(self.labels), [])
+        bad = {**self.labels, "pool": "gpu", "lent": self.labels["withheld"]}
+        del bad["full"]
+        fails = topology.label_failures(bad)
+        self.assertIn("ci_labels has no full", fails)
+        self.assertTrue(any("ci_labels pool is gpu" in f for f in fails))
+        self.assertIn(f"ci_labels gives {self.labels['withheld']} to two roles", fails)
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -122,12 +122,14 @@ ORGS = os.environ.get("RUNNER_ORGS", "BlackNBrownStudios").split()
 
 def load_topology(path):
     """apps/ci-topology/topology.json, rendered from ansible/inventory.yml: every CI host's
-    site and the slots it gives CI, each with its caps (the job kinds it takes)."""
+    site and the slots it gives CI, each with its caps (the job kinds it takes), and the
+    runner label vocabulary."""
     with open(path) as f:
-        return json.load(f)["hosts"]
+        return json.load(f)
 
 
-TOPOLOGY = load_topology(os.environ.get("TOPOLOGY", "/topology/topology.json"))
+RENDERED = load_topology(os.environ.get("TOPOLOGY", "/topology/topology.json"))
+TOPOLOGY = RENDERED["hosts"]
 # slot name -> {host, caps, repo, forge, borrows}
 SLOTS = {s["name"]: {"host": h, "caps": s["caps"], "repo": s.get("repo"), "forge": s.get("forge", "github"),
                      "borrows": s.get("borrows")}
@@ -239,7 +241,9 @@ def site_of(host):
 POOL_LABELS = ("light", "heavy", "unity-wide", "unity", "unity-build")
 # The labels apps/ci-runner-governor swaps a runner's pool labels for while it holds it back.
 # light-withheld: a repo runner while the governor has not lent it the Unity slot it borrows.
-WITHHELD_LABELS = {"unity-withheld": "unity", "unity-build-withheld": "unity-build", "light-withheld": "light"}
+LABELS = RENDERED["labels"]
+WITHHELD_LABELS = {LABELS["withheld"]: LABELS["pool"], LABELS["build_withheld"]: LABELS["build"],
+                   LABELS["seat_withheld"]: "light"}
 # A queued run with no jobs this old never gets a runner (GitHub creates a run's
 # jobs within seconds). It is labelled stuck="true" so boards can list it apart
 # instead of letting its age stand for the queue's.

@@ -21,8 +21,9 @@ A blind cycle (any source failing) decides nothing. The full rule, with its numb
 each part holds, is docs/runbooks/unity-ci-host.md, "The governor"; config.json holds the knobs.
 
 Inputs besides Prometheus:
-  config.json      thresholds, pool floor and cap, power blocks, rates, budget
-  topology.json    hosts, slots, caps, slot groups and seats (rendered, never edited by hand)
+  config.json      thresholds, pool floor and cap, power knobs, rates, budget
+  topology.json    hosts, slots, caps, slot groups, seats, label vocabulary and each powered host's
+                   instance (rendered, never edited by hand)
   ConfigMap ci-runner-governor-override (mounted at OVERRIDE_DIR, outside Flux):
     <host>           {"action": "on"|"off", "until": epoch} (agent-web) or {"slots": N} (machine-mode)
     <host>.reserve   {"until": epoch}: pins the host to 0 until then (machine-mode release-lane)
@@ -99,12 +100,17 @@ QUERIES = {
 }
 
 
+# What the topology's "power" carries for a host; config.json's power blocks hold only knobs.
+INSTANCE_KEYS = ("provider", "instance_id", "region")
+
+
 def load_config(path, topology_path=None):
     """config.json plus the slot layout from topology.json (apps/ci-topology, rendered from
     ansible/inventory.yml), in the shape decide() and the tests use:
+    - "<role>_label" for each role of the topology's "labels" (pool_label, withheld_label, ...)
     - "standby": every cloud host with a Unity slot, by host in start order (cheapest
-      usd_per_hour first), each {max_admitted: its Unity slot count, power: its config.json
-      "power" block}
+      usd_per_hour first), each {max_admitted: its Unity slot count, power: the topology's
+      "power" (provider, instance_id, region) with config.json's knobs for it on top}
     - "hosts": every LAN host with a Unity slot, config.json "hosts" thresholds on top of
       the defaults, "full" from the topology
     - on a host of either list with build_label slots: labels, withheld_label and "groups"
@@ -115,7 +121,15 @@ def load_config(path, topology_path=None):
     with open(path) as f:
         cfg = json.load(f)
     with open(topology_path or TOPOLOGY) as f:
-        topo = json.load(f)["hosts"]
+        rendered = json.load(f)
+    topo = rendered["hosts"]
+    copied = sorted(k for k in cfg if k.endswith("_label"))
+    if copied:
+        raise ValueError(f"label keys belong in the topology's labels (inventory ci_labels): {', '.join(copied)}")
+    cfg.update({f"{role}_label": label for role, label in rendered["labels"].items()})
+    placed = sorted(f"{h}.{k}" for h, p in cfg.get("power", {}).items() for k in p if k in INSTANCE_KEYS)
+    if placed:
+        raise ValueError(f"instance keys belong in the topology's power (inventory ci_power): {', '.join(placed)}")
     governed = {cfg["pool_label"], cfg["build_label"], cfg["wide_label"]}
     unity = {h: [s for s in e["slots"] if governed & set(s["caps"])] for h, e in topo.items()}
     unity = {h: slots for h, slots in unity.items() if slots}
@@ -145,12 +159,12 @@ def load_config(path, topology_path=None):
     cfg["standby"] = {}
     for host in sorted(cloud, key=lambda h: (cfg["rates"][h]["usd_per_hour"], h)):
         entry = {"max_admitted": len(unity[host])}
-        if host in cfg.get("power", {}):
-            entry["power"] = cfg["power"][host]
+        if topo[host].get("power"):
+            entry["power"] = {**topo[host]["power"], **cfg.get("power", {}).get(host, {})}
         cfg["standby"][host] = {**entry, **build_slots(host)}
-    stray = set(cfg.get("power", {})) - set(cfg["standby"])
+    stray = set(cfg.get("power", {})) - {h for h, e in cfg["standby"].items() if e.get("power")}
     if stray:
-        raise ValueError(f"power blocks for no cloud Unity host: {', '.join(sorted(stray))}")
+        raise ValueError(f"power blocks for no powered cloud Unity host: {', '.join(sorted(stray))}")
     local = sorted(h for h in unity if topo[h]["site"] != "cloud")
     stray = set(cfg["hosts"]) - set(local)
     if stray:

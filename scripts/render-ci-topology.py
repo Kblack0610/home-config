@@ -6,8 +6,10 @@ expected row, so a slot whose runner never registered still shows as missing) an
 governor (which hosts it powers, their slot counts and slot groups) read the rendered file
 from the ci-topology ConfigMap instead of keeping copies of their own.
 
-Per host: site (cloud when unity_ci_lan is false, else local), full (unity_ci_full, Unity
-hosts only) and its slots. Per slot: the runner name the play registers, its caps (the job
+Top level: "labels", the runner label vocabulary (inventory all.vars ci_labels), which the
+governor, the exporter and site.yml read instead of keeping their own. Per host: site (cloud
+when unity_ci_lan is false, else local), full (unity_ci_full, Unity hosts only), "power" for a
+host the governor powers (ci_power plus its ansible_host as instance_id) and its slots. Per slot: the runner name the play registers, its caps (the job
 kinds it takes: light, heavy, unity, unity-build, unity-wide, forgejo, macos, windows; HOST_CAPS says
 which of the host's ci_caps each slot gets), the repo of a repo-scoped runner, the forge of a
 seat that serves Forgejo (github otherwise), the Unity slot a seat borrows ("borrows"), and for a
@@ -46,6 +48,8 @@ import os
 import re
 import sys
 
+import yaml
+
 from host_inventory import cpu_set, load_inventory, tier_errors
 
 REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -63,7 +67,13 @@ UNITY_GROUPS = ("unity_ci_runners", "unity_ci_mac_runners")
 # The inventory keys this reads; a Jinja value in one would render as its literal text.
 KEYS = ("ci_repo_runners", "ci_pinned_runners", "unity_ci_slots",
         "unity_ci_slot_groups", "unity_ci_wide_slots", "unity_ci_lan", "unity_ci_full", "unity_ci_wide",
-        "unity_ci_slot_labels", "ci_unity_slot_cpus", "ci_unity_slot_memory_max", "ci_caps", "ci_seat_kinds")
+        "unity_ci_slot_labels", "ci_unity_slot_cpus", "ci_unity_slot_memory_max", "ci_caps", "ci_seat_kinds",
+        "ci_power", "ci_labels")
+# The keys of ci_labels, each the label the governor sets or reads for that role.
+LABEL_ROLES = ("pool", "full", "build", "wide", "withheld", "build_withheld", "seat_withheld", "lent")
+# The roles whose label is also a topology cap name, which the governor matches against slot caps.
+CAP_ROLES = {"pool": "unity", "build": "unity-build", "wide": "unity-wide"}
+INSTANCE_ID = re.compile(r"i-[0-9a-f]{8,17}")
 # A slot registers one Forgejo seat per MIN_JOB_CORES of its CPUs, the most small jobs it could hold at once.
 # Provisional, medium confidence: a Forgejo job's p90 was 1.4-2.9 cores, median seat 1.7 (ci_runner_cores_busy,
 # 2026-11-11..18), so a slot of 6 cores registers 3 seats; the measured weight, not this, holds any of them
@@ -143,13 +153,43 @@ def render(hosts, groups):
         kinds = {c for s in slots for c in s["caps"] if c in HOST_CAPS}
         fails += [f"{host}: has {c} slots, but ci_caps leaves out {c}" for c in sorted(kinds - set(caps))
                   if not v.get("ci_pinned_runners")]
+        power = v.get("ci_power")
+        if power:
+            fails += power_failures(host, v, power, unity)
+            power = {"provider": power.get("provider"), "instance_id": v.get("ansible_host"), "region": power.get("region")}
         if slots:
             topo[host] = {"site": "cloud" if v.get("unity_ci_lan", True) is False else "local",
                           **({"full": v.get("unity_ci_full", True) is not False} if unity else {}),
+                          **({"power": power} if power else {}),
                           "slots": slots}
     names = [s["name"] for h in topo.values() for s in h["slots"]]
     fails += [f"slot {n} is declared twice" for n in sorted({n for n in names if names.count(n) > 1})]
     return {"hosts": topo}, fails
+
+
+def power_failures(host, v, power, unity):
+    """What a ci_power host must hold: an aws instance id as ansible_host, a region, and Unity slots off the LAN."""
+    fails = []
+    if power.get("provider") != "aws" or not power.get("region") or set(power) - {"provider", "region"}:
+        fails.append(f"{host}: ci_power is {{provider: aws, region: <region>}}, not {power}")
+    if not INSTANCE_ID.fullmatch(str(v.get("ansible_host", ""))):
+        fails.append(f"{host}: ci_power needs an EC2 instance id as ansible_host, not {v.get('ansible_host')}")
+    if not unity or v.get("unity_ci_lan", True) is not False:
+        fails.append(f"{host}: ci_power on a host that is not a cloud Unity host")
+    return fails
+
+
+def label_failures(labels):
+    """The vocabulary has every role, a distinct label for each, and the cap roles their cap names."""
+    if not isinstance(labels, dict):
+        return ["all.vars has no ci_labels map"]
+    fails = [f"ci_labels has no {r}" for r in LABEL_ROLES if not labels.get(r)]
+    fails += [f"ci_labels names {r}, not one of {list(LABEL_ROLES)}" for r in labels if r not in LABEL_ROLES]
+    fails += [f"ci_labels {r} is {labels.get(r)}, but it is also a topology cap, {c}"
+              for r, c in CAP_ROLES.items() if labels.get(r) and labels[r] != c]
+    vals = [str(x) for x in labels.values()]
+    fails += [f"ci_labels gives {x} to two roles" for x in sorted({x for x in vals if vals.count(x) > 1})]
+    return fails
 
 
 def seats(host, v, caps, total, group, slots, fails):
@@ -268,6 +308,7 @@ def dump(topo):
     """One slot per line, so a diff shows the slot that changed."""
     out = ['{',
            '  "generated_by": "scripts/render-ci-topology.py from ansible/inventory.yml: edit the inventory and re-run it",',
+           f'  "labels": {json.dumps(topo["labels"])},',
            '  "hosts": {']
     hosts = list(topo["hosts"].items())
     for i, (host, h) in enumerate(hosts):
@@ -285,6 +326,9 @@ def main():
     args = ap.parse_args()
     hosts, groups = load_inventory(args.inventory)
     topo, fails = render(hosts, groups)
+    labels = (yaml.safe_load(open(args.inventory, encoding="utf-8"))["all"].get("vars") or {}).get("ci_labels")
+    fails += label_failures(labels)
+    topo = {"labels": labels if isinstance(labels, dict) else {}, **topo}
     fails += fit_failures(hosts, groups) + no_ci_failures(hosts, groups)
     if not fails and not any(s.get("group") for h in topo["hosts"].values() for s in h["slots"]):
         fails.append("rendered no slot group; the parser is broken, not the inventory")
@@ -293,7 +337,7 @@ def main():
     if fails:
         return 1
     text = dump(topo)
-    assert json.loads(text)["hosts"] == topo["hosts"]
+    assert json.loads(text) == {"generated_by": json.loads(text)["generated_by"], **topo}
     rel = os.path.relpath(OUT, REPO)
     slots = sum(len(h["slots"]) for h in topo["hosts"].values())
     if args.check:

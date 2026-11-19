@@ -1,13 +1,5 @@
 {
   "org": "BlackNBrownStudios",
-  "pool_label": "unity",
-  "full_label": "unity-full",
-  "withheld_label": "unity-withheld",
-  "build_label": "unity-build",
-  "build_withheld_label": "unity-build-withheld",
-  "wide_label": "unity-wide",
-  "lent_label": "unity-lent",
-  "seat_withheld_label": "light-withheld",
   "pool_min_admitted": 1,
   "pool_max_admitted": 24,
   "cooldown_seconds": 600,
@@ -22,10 +14,10 @@
     "withhold": {"idle": 0.15, "psi": 0.4, "tctl": 92, "mem": 0.1, "disk": 0.2}
   },
   "power": {
-    "aws-spot-1": {"provider": "aws", "instance_id": "i-0b4c89a54f8e25ad5", "region": "us-east-2", "max_hours_day": 24},
-    "aws-spot-2": {"provider": "aws", "instance_id": "i-0c244a80e9cf430b1", "region": "us-east-2", "max_hours_day": 24},
-    "aws-spot-3": {"provider": "aws", "instance_id": "i-04ca535b8876dff6f", "region": "us-east-2", "max_hours_day": 24},
-    "aws-build-1": {"provider": "aws", "instance_id": "i-0856b245ff7a81321", "region": "us-east-2", "max_hours_day": 24,
+    "aws-spot-1": {"max_hours_day": 24},
+    "aws-spot-2": {"max_hours_day": 24},
+    "aws-spot-3": {"max_hours_day": 24},
+    "aws-build-1": {"max_hours_day": 24,
                     "start_min_excess": 1, "start_after_seconds": 60}
   },
   "budget": {"name": "ci-burst-monthly", "account_id": "311141527647"},

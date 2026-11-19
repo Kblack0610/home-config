@@ -5,7 +5,7 @@
 # (razer-laptop, an agent host: 6G and twelve CPUs for all its docker, 2026-11-18).
 - name: Name the CI slices
   ansible.builtin.set_fact:
-    _ci_retire_patterns: "{{ [ci_slice, ci_unity_slice, ci_linux_slice, ci_unity_slot_slice_prefix ~ '*.slice']
+    _ci_retire_patterns: "{{ [ci_slice, ci_unity_slice, ci_unity_slot_slice_prefix ~ '*.slice']
                              + ci_retired_slices }}"
 
 - name: Find the CI slices
@@ -44,7 +44,7 @@
   vars:
     _ci_retire_docker: "{{ (_ci_retire_docker_json.content | b64decode | from_json)
                            if _ci_retire_docker_json.content is defined else {} }}"
-  when: _ci_retire_docker.get('cgroup-parent') in [ci_slice, ci_unity_slice, ci_linux_slice]
+  when: _ci_retire_docker.get('cgroup-parent') in [ci_slice, ci_unity_slice]
 
 # State, not the copy's changed: a refused restart must still be pending on the next run.
 # A docker that is not running starts with the new config, so it is never stale.

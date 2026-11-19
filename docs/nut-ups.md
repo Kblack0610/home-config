@@ -13,7 +13,7 @@ From the 2026-11-17 outage: Prometheus scrapes show which hosts dropped the inst
 | Host | IP | Outlet | NUT |
 |---|---|---|---|
 | pi5-master | .20 | battery | primary (USB to the UPS) |
-| cachyos-x8664-main (the workstation) | .2 | battery | secondary, local: apply with `-K` |
+| cachyos-x8664-main (the workstation) | .2 | battery | secondary, local (become password: `ansible/README.md`, Secrets) |
 | mac-mini | .7 | battery | secondary (Homebrew `nut`, LaunchDaemon `me.kblab.nut-upsmon`) |
 | ms-a2 | .28 | battery | secondary |
 | deskslim-2 | .29 | battery | secondary |
@@ -133,8 +133,8 @@ ssh pi5-master-lan 'journalctl -b -1 -t nut-notifycmd -t nut-upssched-cmd -t nut
 # Edit defaults/main.yml or group_vars/nut_server/main.yml: nut_onbatt_settle_seconds
 ansible-playbook playbooks/site.yml --tags nut --limit pi5-master
 
-# Apply to the workstation (local connection, needs the sudo password)
-ansible-playbook playbooks/site.yml --tags nut --limit cachyos-x8664-main -K
+# Apply to the workstation (local connection; the sudo password is rbw `ansible_password`, see ansible/README.md Secrets)
+ansible-playbook playbooks/site.yml --tags nut --limit cachyos-x8664-main --become-password-file "$p"
 ```
 
 ## Recovery

@@ -36,8 +36,8 @@ spec:
                 - -c
                 - |
                   set -eu
-                  git clone --depth=1 --branch=master \
-                    https://github.com/Kblack0610/home-config /workspace
+                  # The remote Flux deploys, never the GitHub mirror (README.md, "What runs, when").
+                  git clone --depth=1 --branch=master https://git.kblab.me/kblack0610/home-config /workspace
                   git -C /workspace rev-parse HEAD > /workspace/.revision
                   cat /workspace/.revision
               volumeMounts:

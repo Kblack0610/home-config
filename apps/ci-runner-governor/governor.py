@@ -90,6 +90,11 @@ in one cycle, and the build slot is admitted once none is busy or admitted. In e
 pair the build slot is withheld, and once it is its test slots are the pool's, the last
 standby pool host's, under its max_admitted and any pin. A stopped paired host starts on
 its own thresholds for a waiting build and on the default pool ones for tests.
+A group's lead is a build slot (unity-build) or a wide slot (config "wide_label", unity-wide:
+Multi, Soak, Playloop); the topology says which, and lead_labels() is what it carries admitted
+(a wide slot: unity-wide, unity and, on a full host, unity-full). A wide job claims a free
+group with a wide lead, a build one with a build lead, the same way, so a wide slot is
+admitted only while a wide job waits, and otherwise its test slots serve the pool.
 A slot withheld while its pair uses the cores is exported as ci_governor_lent (to tests, or
 to a build), so the dashboards can tell it from a slot held back for load.
 
@@ -160,7 +165,8 @@ join the org pool (GitHub lists a repo runner only to its repo), which is why it
 A seat's demand is its waiting jobs (github-runner-exporter: forge="forgejo", or the repo).
 The kind whose job has waited longest goes first, and a slot is lent only while no GitHub
 job it could take has waited longer, only on a live, unpinned host that is not HOT or FULL,
-one per host per cycle past its cooldown, and never past the pool floor. A lend has three
+one per host per cycle past its cooldown, and never past the pool floor. An idle slot goes
+first; with none, the busy one nearest its end is lent and drains into the seat. A lend has three
 steps, each read back from GitHub before the next, so a slot never runs two jobs:
   lend    the slot's own labels go (withheld, as a withhold does) and it is marked lent
           (lent_label), so it takes no new GitHub job;
@@ -270,7 +276,7 @@ def load_config(path, topology_path=None):
     with open(topology_path or TOPOLOGY) as f:
         topo = json.load(f)["hosts"]
     cfg["workers"] = {s["host"]: {k: v for k, v in s.items() if k != "host"} for s in cfg.get("workers", [])}
-    governed = {cfg["pool_label"], cfg["build_label"]}
+    governed = {cfg["pool_label"], cfg["build_label"], cfg["wide_label"]}
     unity = {h: [s for s in e["slots"] if governed & set(s["caps"])] for h, e in topo.items()}
     unity = {h: slots for h, slots in unity.items() if slots}
     cfg["shared"] = {s["name"]: [c for c in s["caps"] if c not in governed]
@@ -283,11 +289,17 @@ def load_config(path, topology_path=None):
         raise ValueError(f"cloud CI hosts with no rates entry: {', '.join(sorted(unrated))}")
     def build_slots(host):
         """A host with build slots: their label, withheld label and slot groups, on LAN and cloud alike."""
-        builds = [s for s in unity[host] if cfg["build_label"] in s["caps"]]
+        builds = [s for s in unity[host] if {cfg["build_label"], cfg["wide_label"]} & set(s["caps"])]
         if not builds:
             return {}
         groups = {slot_of(s["name"]): [slot_of(t) for t in s["group"]] for s in builds if s.get("group")}
-        return {"labels": [cfg["build_label"]], "withheld_label": cfg["build_withheld_label"],
+        # What a lead slot carries once admitted: a build slot its one label, a wide slot the
+        # label and the pool's (a wide job asks for unity too), unity-full on a full host.
+        full = topo[host].get("full", True) is not False
+        leads = {slot_of(s["name"]): [cfg["build_label"]] if cfg["build_label"] in s["caps"]
+                 else [cfg["wide_label"], cfg["pool_label"]] + ([cfg["full_label"]] if full else []) for s in builds}
+        return {"labels": sorted({cfg["build_label"], cfg["wide_label"]} & {c for s in builds for c in s["caps"]}),
+                "leads": leads, "withheld_label": cfg["build_withheld_label"],
                 **({"groups": groups} if groups else {})}
 
     cfg["standby"] = {}
@@ -377,8 +389,8 @@ def by_host(result):
 
 def pools(cfg):
     """The exporter pools the governor runs: the shared pool and each dedicated host's own."""
-    return [cfg["pool_label"]] + sorted({l for s in (*cfg["standby"].values(), *cfg["hosts"].values())
-                                         for l in s.get("labels", [])})
+    return [cfg["pool_label"]] + sorted({cfg["wide_label"]} | {l for s in (*cfg["standby"].values(), *cfg["hosts"].values())
+                                                                for l in s.get("labels", [])})
 
 
 def entry_of(cfg, host):
@@ -391,6 +403,12 @@ def dedicated(cfg, host):
     carry these instead of the pool's and take only the jobs that ask for one; an unpaired
     one stays out of the shared pool's queue, floor, cap and standby order."""
     return entry_of(cfg, host).get("labels")
+
+
+def lead_labels(cfg, host, name):
+    """The labels a group's lead slot carries while admitted, bar its shared caps: a build
+    slot's unity-build, a wide slot's unity-wide, unity and unity-full on a full host."""
+    return list(entry_of(cfg, host).get("leads", {}).get(slot_of(name)) or dedicated(cfg, host))
 
 
 def build_marks(cfg):
@@ -510,7 +528,7 @@ def admit_labels(cfg, host, name=""):
     false in inventory.yml, so no full run lands there."""
     shared = list(cfg.get("shared", {}).get(name, []))
     if not serves_pool(cfg, host, name):
-        return list(dedicated(cfg, host)) + shared
+        return lead_labels(cfg, host, name) + shared
     full = cfg["hosts"].get(host, {}).get("full", True)
     return [cfg["pool_label"]] + ([cfg["full_label"]] if full else []) + shared
 
@@ -949,9 +967,9 @@ def pair_plan(cfg, host, mine, builds):
     up = lambda s: s in by and not mine[by[s]]["withheld"]
     quiet = lambda s: not busy(s) and not up(s)
     held = {withheld_label(cfg, host).lower(), cfg["withheld_label"].lower()}
-    own = frozenset(l.lower() for l in dedicated(cfg, host))
-    # A withheld build slot can take what its labels ask once admitted.
-    can = lambda b, need: b in by and need <= (frozenset(mine[by[b]].get("labels", ())) - held) | own
+    # A withheld lead slot can take what its labels ask once admitted.
+    can = lambda b, need: b in by and need <= (frozenset(mine[by[b]].get("labels", ())) - held) | frozenset(
+        l.lower() for l in lead_labels(cfg, host, by[b]))
     # A busy build slot keeps its pair. Each waiting build claims a free pair whose slot can
     # take it, the most constrained first; an admitted build slot, then one whose test slots
     # already stepped aside, then the fewest busy tests, so a claim holds across cycles.
@@ -1034,7 +1052,7 @@ def apply(cfg, action, name, host):
 
 def own_labels(cfg, host, name):
     """Every label a withhold drops from a slot: its kind's and its shared caps."""
-    return ([cfg["pool_label"], cfg["full_label"]] if serves_pool(cfg, host, name) else list(dedicated(cfg, host))) \
+    return ([cfg["pool_label"], cfg["full_label"]] if serves_pool(cfg, host, name) else lead_labels(cfg, host, name)) \
         + list(cfg.get("shared", {}).get(name, []))
 
 
@@ -1231,13 +1249,16 @@ def lend_plan(cfg, hosts, runners, seat_state, waits, lends, leases, pins, last_
     for kind in sorted(oldest, key=lambda k: (-oldest[k], k)):
         need = want[kind] - len([s for s in have.get(kind, []) if s not in back])
         mine = sorted((s["slot"], seat) for seat, s in seats.items() if seat_kind(cfg, seat) == kind)
-        # A slot that is idle capacity already (withheld, with room) before one serving GitHub.
-        mine.sort(key=lambda p: (not runners.get(p[0], {}).get("withheld"), p[0]))
+        # Idle capacity already (withheld, with room) first, then an idle slot serving GitHub,
+        # then a busy one nearest its end: the lend withholds it, so it drains into the seat's
+        # job. Lending only idle slots starved Forgejo while GitHub kept every slot busy.
+        rank = lambda r: (r.get("busy", False), not r.get("withheld"), -r.get("elapsed", 0))
+        mine.sort(key=lambda p: (*rank(runners.get(p[0], {})), p[0]))
         for slot, seat in mine:
             r, host = runners.get(slot), host_of[slot]
             if need <= 0:
                 break
-            if slot in lends or slot in paired or host in moved or unfit(host) or not r or r["busy"]:
+            if slot in lends or slot in paired or host in moved or unfit(host) or not r:
                 continue
             if seat not in seat_state or (seats[seat]["forge"] != "forgejo" and not seat_state[seat]["online"]):
                 continue
@@ -1271,7 +1292,8 @@ def seat_labels(cfg, seat, action):
 
 def lend_apply(cfg, steps, lends, leases, now, last_action):
     """Carry out lend_plan()'s steps. Each re-reads the slot from GitHub first: a lend or a
-    grant waits while it is busy, an unlend while a repo seat of it is."""
+    grant waits while it is busy, an unlend while a repo seat of it is; a busy slot's lend
+    withholds it, so it drains."""
     org, seats = f"orgs/{cfg['org']}", cfg["seats"]
     for step, slot, seat, why in steps:
         # A lend found by its mark may be on a slot no seat borrows any more: its host by name.
@@ -1305,8 +1327,8 @@ def lend_apply(cfg, steps, lends, leases, now, last_action):
                 lends[slot].update(phase="returning", at=now)
                 continue
             rid, have, busy = find_runner(org, slot)
-            if busy:
-                print(f"{step} {slot}: it is busy, next cycle", flush=True)
+            if busy and step == "grant":
+                print(f"grant {slot}: it is busy, next cycle", flush=True)
                 continue
             if step == "lend":
                 # Recorded first, so a relabel that fails half-way is a held lend that goes back

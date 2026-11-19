@@ -40,7 +40,7 @@ ansible-playbook playbooks/site.yml --limit 'thermal_capped:!desktop_workstation
 ansible-playbook playbooks/site.yml --limit 'thermal_capped:!desktop_workstations' --tags thermal
 ```
 
-The workstation is managed over a local connection and its sudo asks for a password, so the human applies it: `ansible-playbook playbooks/site.yml --limit cachyos-x8664-main --tags thermal --ask-become-pass`. An agent with a `NodeCpuHot` red on the workstation files that command as an ask.
+The workstation is managed over a local connection and its sudo asks for a password, which agents hold (rbw `ansible_password`, `ansible/README.md` Secrets). An agent with a `NodeCpuHot` red on the workstation applies it itself: `ansible-playbook playbooks/site.yml --limit cachyos-x8664-main --tags thermal --become-password-file "$p"`.
 
 ## Verify
 

@@ -233,9 +233,9 @@ def site_of(host):
     return TOPOLOGY.get(host, {}).get("site", "local")
 
 
-# unity-build: the player-build host (aws-build-1), a pool of its own so build waits stay
-# out of the gate pool's numbers.
-POOL_LABELS = ("light", "heavy", "unity", "unity-build")
+# unity-build and unity-wide (a group's lead slot: aws-build-1, ms-a2), pools of their own so build and wide waits stay
+# out of the gate pool's numbers. unity-wide is before unity: a wide job asks for both.
+POOL_LABELS = ("light", "heavy", "unity-wide", "unity", "unity-build")
 # The labels apps/ci-runner-governor swaps a runner's pool labels for while it holds it back.
 # light-withheld: a repo runner while the governor has not lent it the Unity slot it borrows.
 WITHHELD_LABELS = {"unity-withheld": "unity", "unity-build-withheld": "unity-build", "light-withheld": "light"}
@@ -420,7 +420,10 @@ def runner_label_sets(seen):
         have = {l.lower() for l in names}
         if WITHHELD_LABELS.keys() & have:
             have |= set(caps)
-            if "unity" in caps and TOPOLOGY.get(host_of(r["name"], names), {}).get("full"):
+            # A wide lead asks for unity too when admitted (governor lead_labels()).
+            if "unity-wide" in caps:
+                have.add("unity")
+            if {"unity", "unity-wide"} & set(caps) and TOPOLOGY.get(host_of(r["name"], names), {}).get("full"):
                 have.add("unity-full")
         out.append((scope, caps, have))
     return out
@@ -813,7 +816,10 @@ def forgejo_runners():
         r = newest.get(name)
         out.append({"name": name, "host": SLOTS[name]["host"],
                     "state": FJ_STATE.get(r["status"], "offline") if r else "missing",
-                    "labels": sorted(r.get("labels") or []) if r else []})
+                    "labels": sorted(r.get("labels") or []) if r else [],
+                    # None until the runner first runs: Forgejo learns labels from its Declare call,
+                    # which a one-job seat makes only when it starts a job (register sends none).
+                    "declared": bool(r) and r.get("labels") is not None})
     return out
 
 
@@ -861,8 +867,13 @@ def forgejo_rows(runners_fut, repo_futs, now):
     except API_ERRORS:
         fr = None
         ok.append(("forgejo:admin/actions/runners", "runners", 0))
-    # The labels some live runner takes: a waiting job asking for any other is stuck.
-    taken = {lab for r in fr or [] if r["state"] != "missing" for lab in r["labels"]}
+    # The labels some live runner takes: a waiting job asking for any other is stuck. A
+    # registered runner that has not declared its labels yet may take any, so while one
+    # exists nothing is called stuck (the governor skips a stuck wait, and a seat it never
+    # lends never declares).
+    live = [r for r in fr or [] if r["state"] != "missing"]
+    taken = {lab for r in live for lab in r["labels"]}
+    judged = fr is not None and all(r["declared"] for r in live)
     facts = [f.result() for f in repo_futs]
     waiting_ids = set()
     for f in facts:
@@ -873,7 +884,7 @@ def forgejo_rows(runners_fut, repo_futs, now):
                 waiting_ids.add(j["id"])
                 age = int(now - FJ_SEEN.setdefault(j["id"], now))
                 runs_on = j.get("runs_on") or []
-                stuck = fr is not None and not set(runs_on) <= taken
+                stuck = judged and not set(runs_on) <= taken
                 add("github_actions_job_waiting",
                     {"repo": short, "workflow": "", "job_name": j.get("name", ""), "branch": "", "status": "waiting",
                      "labels": ",".join(runs_on), "pool": "forgejo", "stuck": "true" if stuck else "false",

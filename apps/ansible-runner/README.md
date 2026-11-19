@@ -6,7 +6,7 @@ Flux-managed in-cluster runner for Ansible playbooks. Replaces Semaphore UI with
 
 | Job | Schedule | Behavior |
 |-----|----------|----------|
-| `convergence-check` CronJob | 04:00 daily, America/Los_Angeles | Clones `home-config` at master, runs `ansible-playbook playbooks/site.yml --check --diff`, limited to the hosts in `HOSTS` (in `cronjob.yaml`) that answer SSH. Logs drift and writes the PLAY RECAP as metrics for the `ConvergenceDrift` alert. Does NOT change state. |
+| `convergence-check` CronJob | 04:00 daily, America/Los_Angeles | Clones `home-config` at master from Forgejo (the remote Flux deploys, never the GitHub mirror, which can trail it by an hour), runs `ansible-playbook playbooks/site.yml --check --diff`, limited to the hosts in `HOSTS` (in `cronjob.yaml`) that answer SSH. Logs drift and writes the PLAY RECAP as metrics for the `ConvergenceDrift` alert. Does NOT change state. |
 
 The playbook comes straight from git master on every execution — there is no baked-in version. Edit `ansible/` in git, push, next scheduled run picks it up.
 

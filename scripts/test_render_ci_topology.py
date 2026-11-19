@@ -56,7 +56,13 @@ class CapTests(unittest.TestCase):
         slots, fails = self.slots()
         self.assertEqual(fails, [])
         self.assertIn("light", slots["deskslim-2-unity-pool-1"])
-        self.assertEqual(slots["ms-a2-heavy-1"], ["heavy", "light"])
+
+    def test_no_slot_has_cores_for_small_jobs_alone(self):
+        topo, fails = topology.render(self.hosts, self.groups)
+        self.assertEqual(fails, [])
+        small = [s["name"] for h in topo["hosts"].values() for s in h["slots"]
+                 if set(s["caps"]) <= {"light", "heavy", "forgejo"} and not s.get("borrows")]
+        self.assertEqual(small, [])
 
     def test_unity_slot_takes_heavy_only_on_a_heavy_host(self):
         self.hosts["deskslim-2"]["ci_caps"] = ["light", "unity", "forgejo"]
@@ -89,9 +95,9 @@ class CapTests(unittest.TestCase):
         self.assertTrue(any("aws-spot-1: a cloud host" in f for f in fails))
 
     def test_slot_kind_missing_from_caps(self):
-        self.hosts["ms-a2"]["ci_caps"] = ["unity"]
+        self.hosts["deskslim-2"]["ci_caps"] = ["unity", "forgejo"]
         _, fails = self.slots()
-        self.assertIn("ms-a2: has light slots, but ci_caps leaves out light", fails)
+        self.assertIn("deskslim-2: has light slots, but ci_caps leaves out light", fails)
 
     def test_unknown_cap(self):
         self.hosts["ms-a2"]["ci_caps"] = ["light", "unity", "gpu"]
@@ -105,7 +111,7 @@ class CapTests(unittest.TestCase):
         # ms-a2's slots 3-4 are build slot 5's group, so only 1-2 lend.
         self.assertEqual(sorted(s["borrows"] for s in fj.values()), sorted(
             [f"ms-a2-unity-pool-{n}" for n in (1, 2)] + [f"deskslim-2-unity-pool-{n}" for n in (1, 2, 3)]
-            + [f"windows-media-ci-unity-pool-{n}" for n in (1, 2)]))
+            + [f"windows-media-ci-unity-pool-{n}" for n in (1, 2, 3)]))
         self.assertTrue(all(s["caps"] == ["forgejo"] and n == s["borrows"] + "-forgejo" for n, s in fj.items()))
 
     def test_every_repo_runner_borrows_a_unity_slot(self):
@@ -163,6 +169,36 @@ class CapTests(unittest.TestCase):
         self.hosts["aws-build-1"]["unity_ci_slot_labels"] = {n: ["unity-release"] for n in (1, 2, 3)}
         self.hosts["ms-a2"]["unity_ci_slot_labels"] = {5: ["unity-release"]}
         self.assertTrue(any("4 of the pool's 4 build slots" in f for f in topology.fit_failures(self.hosts, self.groups)))
+
+    def wide_ms_a2(self):
+        """ms-a2 with a wide slot 6 over test slots 1 and 2's cores (cores 2-7), beside build slot 5."""
+        v = self.hosts["ms-a2"]
+        v.update(unity_ci_slots=6, unity_ci_slot_groups={5: [3, 4], 6: [1, 2]}, unity_ci_wide_slots=[6],
+                 ci_unity_slot_cpus=[*v["ci_unity_slot_cpus"], "2-7,18-23"],
+                 ci_unity_slot_memory_max=[*v["ci_unity_slot_memory_max"], "32G"],
+                 ci_caps=[*v["ci_caps"], "unity-wide"])
+
+    def test_a_wide_lead_is_a_unity_wide_slot_with_its_group(self):
+        self.wide_ms_a2()
+        topo, fails = topology.render(self.hosts, self.groups)
+        self.assertEqual(fails + topology.fit_failures(self.hosts, self.groups), [])
+        slots = {s["name"]: s for s in topo["hosts"]["ms-a2"]["slots"]}
+        self.assertEqual(slots["ms-a2-unity-pool-6"]["caps"], ["unity-wide"])
+        self.assertEqual(slots["ms-a2-unity-pool-6"]["group"], ["ms-a2-unity-pool-1", "ms-a2-unity-pool-2"])
+        self.assertEqual(slots["ms-a2-unity-pool-5"]["caps"], ["unity-build"])
+
+    def test_a_wide_lead_does_not_count_as_a_build_slot_for_the_release_rule(self):
+        self.wide_ms_a2()
+        self.assertEqual(topology.fit_failures(self.hosts, self.groups), [])
+
+    def test_a_wide_slot_outside_a_group_or_under_the_memory_bar_fails(self):
+        self.wide_ms_a2()
+        self.hosts["ms-a2"]["unity_ci_wide_slots"] = [6, 2]
+        _, fails = topology.render(self.hosts, self.groups)
+        self.assertIn("ms-a2: wide slot 2 (unity_ci_wide_slots) is not a unity_ci_slot_groups key", fails)
+        self.hosts["ms-a2"]["unity_ci_wide_slots"] = [6]
+        self.hosts["ms-a2"]["ci_unity_slot_memory_max"][5] = "16G"
+        self.assertTrue(any("ms-a2 carries unity-wide" in f for f in topology.fit_failures(self.hosts, self.groups)))
 
 
 if __name__ == "__main__":

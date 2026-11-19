@@ -486,6 +486,7 @@ class ExporterTest(unittest.TestCase):
         self.assertEqual(exporter.pool_of(["self-hosted", "Windows", "X64", "host-windows-media"]), "windows")
         self.assertEqual(exporter.pool_of(["self-hosted", "Linux", "X64"]), "other")
         self.assertEqual(exporter.pool_of(["self-hosted", "linux", "unity-full"]), "unity")
+        self.assertEqual(exporter.pool_of(["self-hosted", "linux", "unity", "unity-wide"]), "unity-wide")
         self.assertEqual(exporter.pool_of(["self-hosted", "linux", "unity-withheld", "host-box"]), "unity")
         self.assertEqual(exporter.pool_of(["self-hosted", "linux", "unity-build", "host-aws-build-1"]), "unity-build")
         self.assertEqual(exporter.pool_of(["self-hosted", "linux", "unity-build-withheld", "host-aws-build-1"]), "unity-build")
@@ -525,6 +526,17 @@ class ExporterTest(unittest.TestCase):
         # gone is a full host: its unity slot gets unity and unity-full back on admit.
         self.assertEqual(exporter.wait_kind("acme/game", {"labels": ["self-hosted", "unity", "unity-full"]}, t), "unity")
         self.assertEqual(exporter.wait_kind("acme/game", {"labels": ["self-hosted", "unity-build"]}, t), "unserved")
+
+    def test_a_withheld_wide_lead_still_serves_a_wide_job(self):
+        # The governor admits a wide lead only for a wide job it sees waiting; the job asks for unity too.
+        held = ("org", {"name": "gone-unity-pool-6",
+                        "labels": [{"name": l} for l in ("self-hosted", "unity-build-withheld", "host-gone")]})
+        slot = {"host": "gone", "caps": ["unity-wide"], "repo": None, "forge": "github"}
+        with mock.patch.dict(exporter.SLOTS, {"gone-unity-pool-6": slot}), \
+                mock.patch.dict(exporter.TOPOLOGY, {"gone": {"site": "local", "full": True}}):
+            t = self.takers(held)
+            job = {"labels": ["self-hosted", "unity", "unity-wide"]}
+            self.assertEqual(exporter.wait_kind("acme/game", job, t), "unity-wide")
 
     def test_a_repo_runner_waiting_for_its_lend_still_serves_its_repo(self):
         # The governor admits a repo runner only while it lends it a Unity slot, so a wait is light, not unserved.
@@ -1068,6 +1080,17 @@ class ForgejoTest(unittest.TestCase):
         # Gone from the list (picked up): forgotten, so a later wait starts at 0.
         self.render(jobs=[])
         self.assertEqual(list(exporter.FJ_SEEN), [])
+
+    def test_a_seat_that_never_ran_has_no_labels_yet_so_no_wait_is_stuck(self):
+        # A one-job seat declares its labels only when it starts a job; Forgejo answers
+        # labels: null until then. The arm wait (no live runner takes it) stays unjudged.
+        undeclared = {**fj_runner(5, "box-forgejo-1", "offline"), "labels": None}
+        page = "admin/actions/runners?limit=50&page=1"
+        with mock.patch.dict(FJ, {page: [undeclared, *FJ[page][1:]]}):
+            out = self.render()
+        wait = [r for r in rows(out, "github_actions_job_waiting") if 'forge="forgejo"' in r]
+        self.assertTrue(wait)
+        self.assertTrue(all('stuck="false"' in r for r in wait), wait)
 
     def queue(self, out):
         return {re.search(r'quantile="([^"]+)"', r).group(1): int(r.rsplit(" ", 1)[1])

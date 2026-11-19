@@ -1,0 +1,11 @@
+---
+galaxy_info:
+  role_name: openwrt-base
+  author: kblack0610
+  description: OpenWrt router baseline - hardware TSO off on mtk_soc_eth, logd sent off-box.
+  license: MIT
+  min_ansible_version: "2.18"
+  platforms:
+    - name: OpenWrt
+      versions: [any]
+dependencies: []

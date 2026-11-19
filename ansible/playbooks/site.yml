@@ -797,6 +797,10 @@
   roles:
     - role: community.openwrt.init
       tags: always
+    # Hardware TSO off (it corrupts forwarded TCP, hc-647) and logd sent to pi5-master.
+    #   ansible-playbook playbooks/site.yml --limit openwrt --tags openwrt-base
+    - role: openwrt-base
+      tags: [openwrt, openwrt-base]
     - role: openwrt-iot-vlan
       tags: [openwrt, iot-vlan]
     # The same key list as every Linux node, in dropbear's file.

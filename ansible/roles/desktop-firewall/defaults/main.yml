@@ -14,6 +14,12 @@ desktop_firewall_rules:
     proto: tcp
     from: 192.168.1.0/24
     comment: node-exporter
+  # SMART exporter (roles/disk-health), scraped the same way
+  # (apps/monitoring/external-smartctl-exporter.yaml).
+  - port: "9633"
+    proto: tcp
+    from: 192.168.1.0/24
+    comment: smartctl-exporter
   # PXE install server (infrastructure/pxe-server), only listening while
   # `pxe-server start` runs. A booting client's first DHCP discover comes from
   # 0.0.0.0, so the proxy-DHCP ports cannot be limited to the LAN range.

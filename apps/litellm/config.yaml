@@ -705,25 +705,6 @@ model_list:
         reasoning: true
         json_mode: true
       supports_function_calling: true
-  - model_name: "opencode-free (iceman-contributor-free)"
-    litellm_params:
-      model: "openai/iceman-contributor-free"
-      api_base: https://opencode.ai/inference/go/openai/v1
-      api_key: os.environ/OPENCODE_GO_API_KEY
-      extra_headers: {"User-Agent": "kblab-litellm-gateway/1.0"}
-      input_cost_per_token: 0
-      output_cost_per_token: 0
-      rpm: 20
-    model_info:
-      mode: chat
-      tags: ["free", "opencode-free", "public-input-only"]
-      capabilities:
-        tools: true
-        code: true
-        vision: false
-        reasoning: true
-        json_mode: true
-      supports_function_calling: true
 
   # binks.chat product routes (binks brief, "Model and unit economics"), on the
   # winners of the 2026-11-12 eval: 20 prompts through binks-api, judged blind
@@ -918,7 +899,6 @@ litellm_settings:
       - "go (longcat-2.0)"
       - "opencode-free (beam-free)"
       - "opencode-free (longcat-2.5-free)"
-      - "opencode-free (iceman-contributor-free)"
 
 general_settings:
   master_key: os.environ/LITELLM_MASTER_KEY

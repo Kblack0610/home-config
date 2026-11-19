@@ -1165,18 +1165,3 @@ tests:
         exp_samples:
           - labels: 'cc:watch_state{domain="other",item="waits_upstream"}'
             value: 2
-
-  # chain_after_stuck trips while the admission cap holds board rows: load, not an outage.
-  - name: chain_after_stuck warns in the queue domain
-    interval: 1m
-    input_series:
-      - series: 'mqtt_tripped{topic="agents_h_watch_chain_after_stuck"}'
-        values: '1x10'
-      - series: 'mqtt_message_total{topic="agents_h_watch_chain_after_stuck"}'
-        values: '0+1x10'
-    promql_expr_test:
-      - expr: cc:watch_state
-        eval_time: 5m
-        exp_samples:
-          - labels: 'cc:watch_state{domain="queue",item="chain_after_stuck"}'
-            value: 1

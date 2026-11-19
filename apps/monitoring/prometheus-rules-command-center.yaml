@@ -68,7 +68,6 @@ spec:
         # other watch warns in its domain. A runner offline includes m1_playground_mac_online. Work posture
         # (playground_nightly and the release, train and gate-budget watches, release_drift, release_links,
         # runner_score, fleet_budget_pace, infra_trickle) warns: it is work to pick up, not an outage. A watch no domain names falls to `other`, where it is down, or warns when its manifest says severity: low.
-        # chain_after_stuck warns: rows held by the admission cap are load, not an outage (2026-11-18).
         # queue_starved warns: dispatch held for account room is load, not an outage, and source_pace
         # already reports it; promote it back to 2 once source_pace has read ok for 7 days (human,
         # 2026-11-12). playground_server_behind is a release lag, not an outage: it warns in ci.
@@ -102,7 +101,7 @@ spec:
         - record: cc:watch_state_raw
           labels: {domain: queue}
           expr: >-
-            max by (item) (label_replace(((mqtt_tripped{topic=~"agents_.+_watch_(shepherd_stuck)"} and on (topic) cc:agents_topic_live) * 2 > 0) or ((mqtt_tripped{topic=~"agents_.+_watch_(queue_starved|heal_flapping|board_chain|board_open|intake_stuck|queue_limit_ends|infra_trickle|chain_after_stuck)"} and on (topic) cc:agents_topic_live) * 1 > 0) or ((mqtt_stale{topic=~"agents_.+_watch_(queue_starved|shepherd_stuck|heal_flapping|board_chain|board_open|intake_stuck|queue_limit_ends|infra_trickle|chain_after_stuck)"} and on (topic) cc:agents_topic_live) > 0), "item", "$1", "topic", "agents_.+_watch_(.+)"))
+            max by (item) (label_replace(((mqtt_tripped{topic=~"agents_.+_watch_(shepherd_stuck)"} and on (topic) cc:agents_topic_live) * 2 > 0) or ((mqtt_tripped{topic=~"agents_.+_watch_(queue_starved|heal_flapping|board_chain|board_open|intake_stuck|queue_limit_ends|infra_trickle)"} and on (topic) cc:agents_topic_live) * 1 > 0) or ((mqtt_stale{topic=~"agents_.+_watch_(queue_starved|shepherd_stuck|heal_flapping|board_chain|board_open|intake_stuck|queue_limit_ends|infra_trickle)"} and on (topic) cc:agents_topic_live) > 0), "item", "$1", "topic", "agents_.+_watch_(.+)"))
         - record: cc:watch_state_raw
           labels: {domain: machines}
           expr: >-

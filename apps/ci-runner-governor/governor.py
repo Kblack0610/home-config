@@ -1093,9 +1093,8 @@ def lend_plan(cfg, hosts, runners, seat_state, waits, lends, leases, pins, last_
         return f"{host} is {verdicts[host]}" if verdicts[host] in ("HOT", "FULL") else ""
 
     def mates(slot, seat):
-        """The seats a lend of slot to seat serves: the seats of its kind on the slot that the exporter sees,
-        as many as pack() lets in, so a seat the topology names but no host has registered yet
-        adds no capacity and holds no return."""
+        """The seats a lend of slot to seat serves: those of its kind the exporter sees, as many as pack() lets in,
+        so a seat no host has registered yet adds no capacity and holds no return."""
         return [m for m in by_slot.get(slot, [seat])
                 if m == seat or (m in seat_state and seat_kind(cfg, m) == seat_kind(cfg, seat))
                 ][:pack(cfg, weights, slot, seat)]

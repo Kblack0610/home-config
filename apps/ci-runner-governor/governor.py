@@ -1075,8 +1075,7 @@ def lend_plan(cfg, hosts, runners, seat_state, waits, lends, leases, pins, last_
       withhold  a repo seat admitted with no slot lent to it (slot "")
     lends: {slot: {"seat": seat, or None for a lend found by its label after a restart,
     "phase": "held", "granted" or "returning", "at": when}}; pins: read_pins(). It runs before decide(),
-    which leaves a host a lend moved to its cooldown and never sees a lent slot. weights is
-    kind_weights(): a lend serves as many seats as fit while their weights sum to 1 (pack())."""
+    which leaves a host a lend moved to its cooldown and never sees a lent slot."""
     seats, mark = cfg["seats"], cfg["lent_label"]
     if not seats:
         return []
@@ -1094,15 +1093,12 @@ def lend_plan(cfg, hosts, runners, seat_state, waits, lends, leases, pins, last_
         return f"{host} is {verdicts[host]}" if verdicts[host] in ("HOT", "FULL") else ""
 
     def mates(slot, seat):
-        """The seats a lend of slot to seat serves: every seat of its kind on the slot (as many as pack() admits)
-        that the exporter sees, so a seat the topology names but no host has registered yet
+        """The seats a lend of slot to seat serves: the seats of its kind on the slot that the exporter sees,
+        as many as pack() lets in, so a seat the topology names but no host has registered yet
         adds no capacity and holds no return."""
         return [m for m in by_slot.get(slot, [seat])
-                if m == seat or (m in seat_state and seat_kind(cfg, m) == seat_kind(cfg, seat))]
-
-    def room(slot, seat):
-        """How many jobs a lend of slot to seat holds: its mates, as many as pack() lets in."""
-        return min(len(mates(slot, seat)), pack(cfg, weights, slot, seat))
+                if m == seat or (m in seat_state and seat_kind(cfg, m) == seat_kind(cfg, seat))
+                ][:pack(cfg, weights, slot, seat)]
 
     def busy(slot, seat):
         """How many of the lend's seats run a job."""
@@ -1152,10 +1148,10 @@ def lend_plan(cfg, hosts, runners, seat_state, waits, lends, leases, pins, last_
         keep = [s for s in slots if s not in back]
         # A lend holds as many jobs as it has seats, and want counts every busy seat, so the
         # lends past want go back, the least busy first; a held lend gave nothing yet.
-        held = sum(room(s, lends[s]["seat"]) for s in keep)
+        room = sum(len(mates(s, lends[s]["seat"])) for s in keep)
         for s in sorted(keep, key=lambda s: (busy(s, lends[s]["seat"]), lends[s]["phase"] == "granted", s)):
-            if held - room(s, lends[s]["seat"]) >= want.get(kind, 0):
-                held -= room(s, lends[s]["seat"])
+            if room - len(mates(s, lends[s]["seat"])) >= want.get(kind, 0):
+                room -= len(mates(s, lends[s]["seat"]))
                 back[s] = f"no {kind} job needs it"
 
     admitted = sum(1 for n, r in runners.items() if not r["withheld"] and serves_pool(cfg, r["host"], n))
@@ -1190,7 +1186,7 @@ def lend_plan(cfg, hosts, runners, seat_state, waits, lends, leases, pins, last_
                 and serves_pool(cfg, r["host"], n))
     moved, paired = set(), lent(cfg, runners)
     for kind in sorted(oldest, key=lambda k: (-oldest[k], k)):
-        need = want[kind] - sum(room(s, lends[s]["seat"]) for s in have.get(kind, []) if s not in back)
+        need = want[kind] - sum(len(mates(s, lends[s]["seat"])) for s in have.get(kind, []) if s not in back)
         # One per slot: its first seat the exporter sees, which names the lend for all its seats.
         mine = sorted({s["slot"]: seat for seat, s in sorted(seats.items(), reverse=True)
                        if seat_kind(cfg, seat) == kind and seat in seat_state}.items())
@@ -1220,7 +1216,7 @@ def lend_plan(cfg, hosts, runners, seat_state, waits, lends, leases, pins, last_
             floor -= 0 if r["withheld"] else 1
             if not spare:
                 moved.add(host)
-            need -= room(slot, seat)
+            need -= len(mates(slot, seat))
             steps.append(("lend", slot, seat, f"a {kind} job has waited {int(oldest[kind])}s"))
 
     granted = {l["seat"] for l in lends.values() if l["phase"] == "granted"}

@@ -410,7 +410,10 @@ def verdict(h, t):
     """FULL, HOT, ROOM or STEADY for one host's readings h against its thresholds t. A
     missing reading never counts as room, and only temperature may be absent (hp-victus's
     coretemp is the only sensor some kernels expose). Disk comes first so a host that is
-    full is treated as full whatever else is missing."""
+    full is treated as full whatever else is missing.
+    CPU pressure counts only while idle is under the admit line: it is the "some" series (any
+    one task waited), which bursty Unity imports push past 0.4 on a 24-thread host that is
+    half idle (deskslim-1/-2 and ms-a2, 2026-11-19), so alone it reads load that is not there."""
     idle, psi, mem, tctl, disk = (h.get(k) for k in ("idle", "psi", "mem", "tctl", "disk"))
     w, a = t["withhold"], t["admit"]
     if disk is not None and disk < w["disk"]:
@@ -419,13 +422,14 @@ def verdict(h, t):
         return "STEADY", "no reading"
     if idle < w["idle"]:
         return "HOT", f"idle {idle:.2f} < {w['idle']}"
-    if psi > w["psi"]:
+    busy = idle < a["idle"]
+    if psi > w["psi"] and busy:
         return "HOT", f"cpu pressure {psi:.2f} > {w['psi']}"
     if tctl is not None and tctl >= w["tctl"]:
         return "HOT", f"tctl {tctl:.0f} >= {w['tctl']}"
     if mem < w["mem"]:
         return "HOT", f"free memory {mem:.2f} < {w['mem']}"
-    short = [k for k, miss in (("idle", idle < a["idle"]), ("psi", psi > a["psi"]), ("mem", mem < a["mem"]),
+    short = [k for k, miss in (("idle", busy), ("psi", psi > a["psi"] and busy), ("mem", mem < a["mem"]),
                                ("tctl", tctl is not None and tctl >= a["tctl"]),
                                ("disk", disk is not None and disk < a["disk"]), ("disk reading", disk is None))
              if miss]

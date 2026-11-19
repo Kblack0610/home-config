@@ -548,6 +548,9 @@ all:
         # each on cores 2-7, slots 3-4 four each on cores 8-15, and build slot 5 takes
         # test slots 3 and 4's eight cores and their 32G (a build was killed at 14G,
         # razer built in 20G). That leaves 21G for the host and k3s.
+        # Slot 1 gets 22G: it carries slim-tour, which builds a full IL2CPP player, and at
+        # 16G the dodginballs smoke build thrashed 98 min and was OOM-killed (2026-11-19,
+        # failcnt 680626). Slots 1, 2 and 5 at once is 22+16+32 = 70G, the budget.
         ms-a2:
           ci_caps: [light, heavy, unity, unity-build, forgejo]
           ci_cpus: 2-15,18-31
@@ -555,7 +558,7 @@ all:
           ci_unity_cpus: 2-15,18-31
           ci_unity_slot_cpus: ["2-4,18-20", "5-7,21-23", "8-11,24-27", "12-15,28-31", "8-15,24-31"]
           ci_unity_memory_max: 70G
-          ci_unity_slot_memory_max: [16G, 16G, 16G, 16G, 32G]
+          ci_unity_slot_memory_max: [22G, 16G, 16G, 16G, 32G]
           k3s_cpus: 0-1,16-17
         # deskslim-2: 12 cores / 24 threads, SMT siblings n and n+12, 60G. Cores
         # 0-1 are k3s and the OS; three Unity slots of 14G on cores 2-11, slot 3 with

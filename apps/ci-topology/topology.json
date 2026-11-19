@@ -80,9 +80,9 @@
       {"name": "ms-a2-unity-pool-3", "caps": ["unity", "light", "heavy"]},
       {"name": "ms-a2-unity-pool-4", "caps": ["unity", "light", "heavy"]},
       {"name": "ms-a2-unity-pool-5", "caps": ["unity-build"], "group": ["ms-a2-unity-pool-3", "ms-a2-unity-pool-4"]},
-      {"name": "ms-a2-unity-pool-1-forgejo", "caps": ["forgejo"], "forge": "forgejo", "borrows": "ms-a2-unity-pool-1", "cpus": 6, "memory_gb": 16},
-      {"name": "ms-a2-unity-pool-1-forgejo-2", "caps": ["forgejo"], "forge": "forgejo", "borrows": "ms-a2-unity-pool-1", "cpus": 6, "memory_gb": 16},
-      {"name": "ms-a2-unity-pool-1-forgejo-3", "caps": ["forgejo"], "forge": "forgejo", "borrows": "ms-a2-unity-pool-1", "cpus": 6, "memory_gb": 16},
+      {"name": "ms-a2-unity-pool-1-forgejo", "caps": ["forgejo"], "forge": "forgejo", "borrows": "ms-a2-unity-pool-1", "cpus": 6, "memory_gb": 22},
+      {"name": "ms-a2-unity-pool-1-forgejo-2", "caps": ["forgejo"], "forge": "forgejo", "borrows": "ms-a2-unity-pool-1", "cpus": 6, "memory_gb": 22},
+      {"name": "ms-a2-unity-pool-1-forgejo-3", "caps": ["forgejo"], "forge": "forgejo", "borrows": "ms-a2-unity-pool-1", "cpus": 6, "memory_gb": 22},
       {"name": "ms-a2-unity-pool-2-forgejo", "caps": ["forgejo"], "forge": "forgejo", "borrows": "ms-a2-unity-pool-2", "cpus": 6, "memory_gb": 16},
       {"name": "ms-a2-unity-pool-2-forgejo-2", "caps": ["forgejo"], "forge": "forgejo", "borrows": "ms-a2-unity-pool-2", "cpus": 6, "memory_gb": 16},
       {"name": "ms-a2-unity-pool-2-forgejo-3", "caps": ["forgejo"], "forge": "forgejo", "borrows": "ms-a2-unity-pool-2", "cpus": 6, "memory_gb": 16}

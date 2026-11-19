@@ -89,11 +89,11 @@ Revoke one user's key with `/key/delete` on its alias; binks-api mints a new one
 
 ### NVIDIA NIM key
 
-`free-deepseek (deepseek-v4.1-flash)` and `free-glm (glm-5.3-flash)` are NVIDIA's free API catalog tier (key `NVIDIA_NIM_API_KEY`, from rbw `nvidia-nim-api-key`): about 40 requests/min shared across the key, $0, evaluation terms, so fleet trial work only and never client work. Its key sits in no team, like `fleet-go`. The routes are priced at 0 and capped at rpm 20 and 15 (sum 35, under the 40 shared by the key), so a refusal is a 429 that fails the call: no fallback edge.
+`free-glm (glm-5.3-flash)` is NVIDIA's free API catalog tier (key `NVIDIA_NIM_API_KEY`, from rbw `nvidia-nim-api-key`): about 40 requests/min shared across the key, $0, evaluation terms, so fleet trial work only and never client work. Its key sits in no team, like `fleet-go`. The route is priced at 0 and capped at rpm 15 (the NIM routes' rpm must sum under the 40 shared by the key, `test_go_routes.py`), so a refusal is a 429 that fails the call: no fallback edge. NVIDIA retires catalog models: a retired one answers 410 Gone and `LiteLLMUpstreamUnhealthy` fires for its route. List what the key can still reach with `GET https://integrate.api.nvidia.com/v1/models`, then repoint the route or remove it.
 
 | Key | Models | Budgets | Consumer | Key file |
 |---|---|---|---|---|
-| `fleet-nim` | `free-deepseek (deepseek-v4.1-flash)`, `free-glm (glm-5.3-flash)` | none (free; rpm 20 and 15 on the routes) | fleet-dispatch harness `nim` (priority low) | `~/.local/state/agentctl/fleet-nim.key` |
+| `fleet-nim` | `free-glm (glm-5.3-flash)` | none (free; rpm 15 on the route) | fleet-dispatch harness `nim` (priority low) | `~/.local/state/agentctl/fleet-nim.key` |
 
 ### OpenCode free key
 

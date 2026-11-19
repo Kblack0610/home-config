@@ -7,6 +7,9 @@ one only on them, so a go route left off it fails every call (seven binks eval
 routes shipped that way, #830). The
 opencode-free routes use the same base and key, and carry public input only,
 so none may sit on a fallback edge or an alias either way.
+The NVIDIA NIM routes share one key's 40 requests/min, so their rpm must sum
+under it, the NIM comment's sum must match, and no fallback edge may spill a
+NIM 429 onto a paid route.
 Parsed with a regex so CI needs no PyYAML.
 """
 import os
@@ -32,6 +35,26 @@ def fallback_routes(text):
     return {r for b in blocks for r in re.findall(r'"([^"]+)"', b)}
 
 
+NIM_LIMIT = 40  # requests/min shared by every model on one NIM key (config.yaml NIM comment)
+
+
+def nim_routes(text):
+    """{model_name: rpm} for every route on the NIM catalog (its api_base or the nvidia_nim/ provider).
+    A block ends at the next route or the next top-level key, so the last route reads no later settings."""
+    routes = {}
+    for block in re.split(r'^(?=  - model_name: |\S)', text, flags=re.M):
+        name = re.match(r'  - model_name: "([^"]+)"', block)
+        if name and re.search(r'api_base: https://integrate\.api\.nvidia\.com/|model: "?nvidia_nim/', block):
+            rpm = re.search(r"^\s+rpm: (\d+)", block, re.M)
+            routes[name.group(1)] = int(rpm.group(1)) if rpm else None
+    return routes
+
+
+def nim_comment_sum(text):
+    m = re.search(r"the routes on this key sum to (\d+), under NIM's (\d+)", text)
+    return (int(m.group(1)), int(m.group(2))) if m else None
+
+
 class GoRoutesForwardHeaders(unittest.TestCase):
     def test_every_go_route_is_forwarded(self):
         text = open(CONFIG).read()
@@ -55,6 +78,34 @@ class GoRoutesForwardHeaders(unittest.TestCase):
                      '  context_window_fallbacks:\n    - {"fast (y)": ["opencode-free (x)"]}\n',
                      '  model_group_alias:\n    free: "opencode-free (x)"\n'):
             self.assertEqual(fallback_routes(text) & {"opencode-free (x)"}, {"opencode-free (x)"}, text)
+
+
+class NimRoutes(unittest.TestCase):
+    def setUp(self):
+        with open(CONFIG) as f:
+            self.text = f.read()
+        self.routes = nim_routes(self.text)
+
+    def test_every_nim_route_has_an_rpm_and_they_sum_under_the_key_limit(self):
+        self.assertTrue(self.routes)
+        self.assertNotIn(None, self.routes.values(), self.routes)
+        self.assertLess(sum(self.routes.values()), NIM_LIMIT, self.routes)
+
+    def test_nim_comment_states_the_real_sum(self):
+        self.assertEqual(nim_comment_sum(self.text), (sum(self.routes.values()), NIM_LIMIT))
+
+    def test_no_nim_route_on_a_fallback_edge(self):
+        self.assertEqual(set(self.routes) & fallback_routes(self.text), set())
+
+    def test_nim_check_reads_a_planted_route(self):
+        text = ('  - model_name: "free-x (x)"\n    litellm_params:\n'
+                '      api_base: https://integrate.api.nvidia.com/v1\n      rpm: 30\n'
+                '  - model_name: "fast (y)"\n    litellm_params:\n      rpm: 99\n'
+                '  - model_name: "free-z (z)"\n    litellm_params:\n'
+                '      api_base: https://integrate.api.nvidia.com/v1\n'
+                '  - model_name: "free-n (n)"\n    litellm_params:\n      model: "nvidia_nim/n"\n      rpm: 5\n'
+                'router_settings:\n  model_group_alias:\n    rpm: 7\n')
+        self.assertEqual(nim_routes(text), {"free-x (x)": 30, "free-z (z)": None, "free-n (n)": 5})
 
 
 if __name__ == "__main__":

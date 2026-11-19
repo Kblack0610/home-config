@@ -111,6 +111,7 @@ class CapTests(unittest.TestCase):
         # ms-a2's slots 3-4 are build slot 5's group, so only 1-2 lend.
         self.assertEqual(sorted(s["borrows"] for s in fj.values()), sorted(
             [f"ms-a2-unity-pool-{n}" for n in (1, 2)] + [f"deskslim-2-unity-pool-{n}" for n in (1, 2, 3)]
+            + [f"deskslim-1-unity-pool-{n}" for n in (1, 2, 3)]
             + [f"windows-media-ci-unity-pool-{n}" for n in (1, 2, 3)]))
         self.assertTrue(all(s["caps"] == ["forgejo"] and n == s["borrows"] + "-forgejo" for n, s in fj.items()))
 

@@ -1,0 +1,12 @@
+---
+# Imported by unity.yml after its packages (the editor images and the accelerator need
+# dockerd) and by main.yml after light.yml. A fresh host has docker installed but
+# stopped, so without the first import its image copy found no socket (deskslim-1,
+# 2026-11-18).
+- name: Ensure docker is enabled and running
+  ansible.builtin.systemd:
+    name: docker.service
+    enabled: true
+    state: started
+  # In --check the package step is simulated, so a fresh host has no unit yet.
+  ignore_errors: "{{ ansible_check_mode }}"

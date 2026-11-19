@@ -2052,6 +2052,7 @@ class Box:
                               f"repos/{REPO}": {REPO_SEAT: {"labels": set(seat), "busy": False}}})
         self.fj = {"busy": False, "online": True}
         self.leases, self.lends, self.last = governor.Leases({FJ_SEAT: S1}), {}, {}
+        self.weights = None  # kind_weights(): none measured, so a lend serves one seat
 
     def runners(self):
         return {n: {"host": "box", "busy": r["busy"], "elapsed": 0, "labels": frozenset(r["labels"]),
@@ -2065,7 +2066,7 @@ class Box:
 
     def plan(self, waits, now=10_000, hosts=None, pins=None):
         return governor.lend_plan(LCFG, hosts or readings(box=COOL), self.runners(), self.seat_state(), waits,
-                                  self.lends, self.leases, pins, self.last, now)
+                                  self.lends, self.leases, pins, self.last, now, self.weights)
 
     def step(self, waits, now=10_000, hosts=None):
         steps = self.plan(waits, now, hosts)
@@ -2188,10 +2189,11 @@ class LendTest(unittest.TestCase):
         self.assertEqual(box.labels(), ADMITTED)
 
     def test_a_slot_of_two_forgejo_seats_serves_two_jobs_on_one_lend_and_goes_back_when_both_are_done(self):
-        # hc-626: ci_units {forgejo: 2} gives slot 1 two seats, so two waiting jobs take one lend, not
+        # hc-626: two seats of weight 0.5 fill slot 1, so two waiting jobs take one lend, not
         # slot 1 and slot 3 (which they took when a lend counted as one seat).
         fj2, fj3 = f"{FJ_SEAT}-2", "box-unity-pool-3-forgejo"
         box, jobs = Box(), [("forgejo", frozenset({"docker"}), 60)] * 2
+        box.weights = {"forgejo": 0.5}
         box.leases = governor.Leases({FJ_SEAT: S1, fj2: S1, fj3: S3})
         seats = {**LCFG["seats"], fj2: {**LCFG["seats"][FJ_SEAT]}, fj3: {**LCFG["seats"][FJ_SEAT], "slot": S3}}
         idle = {s: {"busy": False, "online": True, "withheld": False} for s in (fj2, fj3)}
@@ -2220,6 +2222,56 @@ class LendTest(unittest.TestCase):
             self.assertEqual(box.plan([], 10_060)[0][0], "readmit")
             box.lends.clear()
             self.assertEqual([s[:2] for s in box.plan(jobs, 10_060)], [("lend", S1), ("lend", S3)])
+
+    def test_seats_pack_onto_a_lend_while_their_weights_sum_to_one(self):
+        # hc-666: three registered seats; 0.3 fits three, 0.4 two, none measured (weight 1) one, and a kind
+        # measured heavier than a slot still gets one.
+        fj = [FJ_SEAT, f"{FJ_SEAT}-2", f"{FJ_SEAT}-3"]
+        seats = {n: {**LCFG["seats"][FJ_SEAT]} for n in fj}
+        with mock.patch.dict(LCFG, {"seats": seats}):
+            got = [governor.pack(LCFG, w, S1, FJ_SEAT) for w in
+                   (None, {}, {"forgejo": 0.3}, {"forgejo": 0.4}, {"forgejo": 0.5}, {"forgejo": 1.0})]
+        self.assertEqual(got, [1, 1, 3, 2, 2, 1])
+
+    def test_a_third_job_that_would_push_the_weights_past_one_takes_another_lend(self):
+        fj = [FJ_SEAT, f"{FJ_SEAT}-2", f"{FJ_SEAT}-3"]
+        fj3 = "box-unity-pool-3-forgejo"
+        seats = {**LCFG["seats"], **{n: {**LCFG["seats"][FJ_SEAT]} for n in fj[1:]}, fj3: {**LCFG["seats"][FJ_SEAT], "slot": S3}}
+        box, jobs = Box(), [("forgejo", frozenset({"docker"}), 60)] * 3
+        box.weights = {"forgejo": 0.4}
+        box.leases = governor.Leases({**{n: S1 for n in fj}, fj3: S3})
+        idle = {n: {"busy": False, "online": True, "withheld": False} for n in (*fj[1:], fj3)}
+        with mock.patch.dict(LCFG, {"seats": seats}), \
+                mock.patch.object(box, "seat_state", side_effect=lambda: {**Box.seat_state(box), **idle}):
+            self.assertEqual(box.step(jobs[:2]), [("lend", S1)])
+            self.assertEqual([s[:2] for s in box.plan(jobs, 10_060)], [("grant", S1), ("lend", S3)])
+
+    def test_a_seat_past_the_limit_is_handed_github_while_its_slot_is_lent(self):
+        leases = governor.Leases({"a": S1, "b": S1, "c": S1})
+        leases.set(S1, "forgejo")
+        self.assertEqual([leases.wait(n, "github", 0) for n in "abc"], ["forgejo"] * 3)
+        leases.limit({S1: 2})
+        self.assertEqual([leases.of_seat(n)[0] for n in "abc"], ["forgejo", "forgejo", "github"])
+        self.assertEqual(leases.wait("c", "forgejo", 0), "github")
+
+    def test_weights_come_from_the_p90_share_of_the_smallest_slot_and_a_thin_kind_has_none(self):
+        governor.WEIGHTS.update(at=None, by_kind={})
+        cfg = {**LCFG, "weights": {"percentile": 0.9, "window": "3d", "min_samples": 60, "floor": 0.1,
+                                   "refresh_seconds": 3600},
+               "seats": {FJ_SEAT: {**LCFG["seats"][FJ_SEAT], "cpus": 6, "memory_gb": 14},
+                         REPO_SEAT: {**LCFG["seats"][REPO_SEAT], "cpus": 6, "memory_gb": 14}}}
+        rows = {"cc:job_kind_cores": [("forgejo", 1.8)], "cc:job_kind_mem": [("forgejo", 2 * 2 ** 30)]}
+
+        def prom(q):  # a kind under min_samples is filtered out by the query itself: repo has no row
+            rule = next(r for r in rows if r in q)
+            return [{"metric": {"kind": k}, "value": [0, str(v)]} for k, v in rows[rule]]
+        with mock.patch.object(governor, "prom", prom), mock.patch("builtins.print"):
+            self.assertEqual(governor.kind_weights(cfg, 1000), {"forgejo": 0.3})  # cores 1.8/6 beats mem 2/14
+            rows["cc:job_kind_cores"] = [("forgejo", 0.1)]
+            rows["cc:job_kind_mem"] = []
+            self.assertEqual(governor.kind_weights(cfg, 1100), {"forgejo": 0.3})  # held until the refresh is due
+            self.assertEqual(governor.kind_weights(cfg, 1000 + 3600), {"forgejo": 0.1})  # floor
+        governor.WEIGHTS.update(at=None, by_kind={})
 
     def test_an_ack_while_its_seat_is_busy_does_not_unlend(self):
         box = Box(s1=DRAINED | {"unity-lent"})

@@ -15,6 +15,7 @@
   "warm_idle_off_seconds": 2700,
   "override_on_max_hours": 12,
   "pack_keep_labels": ["unity-wide"],
+  "weights": {"percentile": 0.9, "window": "3d", "min_samples": 60, "floor": 0.1, "refresh_seconds": 3600},
   "defaults": {
     "min_admitted": 1,
     "admit": {"idle": 0.35, "psi": 0.2, "tctl": 85, "mem": 0.25, "disk": 0.25},

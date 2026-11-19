@@ -732,32 +732,13 @@ def standby_host(snap, host, tally, inst, ahead, warm, flip):
     elif inst and inst["state"] == "stopped" and over == "on":
         action, why, cause = "start", "override on", "override"
     elif inst and inst["state"] == "stopped" and q > cov:
-        # Not room yet: its slots count once their runners are online and admitted. A start
-        # costs money, so only a queue this much deeper than the other hosts can take, for
-        # start_after_seconds in a row, starts it: a short burst waits instead. The standby
-        # hosts ahead in the list take theirs first.
         coming = 0 if ded else sum(ahead.values())
         want = max(0, min(takes, q - cov - coming))
-        if not inst["labels"]:
-            why = "no runner labels read"
-        elif not takes:
-            why = f"{q} jobs wait, none it can take"
-        elif inst.get("hours_today", 0) >= p["max_hours_day"]:
-            why = f"ran {inst['hours_today']:.1f}h today, its {p['max_hours_day']}h cap"
-        elif want < p["start_min_excess"]:
-            why = f"{want} jobs it can take past the other hosts' {cov}, starts at {p['start_min_excess']}"
-            if coming:
-                why += f"; {', '.join(ahead)} ahead of it take {coming}"
-        elif not ded and admitted >= cfg["pool_max_admitted"]:
-            why = f"pool at its {cfg['pool_max_admitted']} cap"
-        else:
-            wanting = True
-            since = inst["want_since"] = inst.get("want_since") or now
-            why = f"{q} jobs wait, {takes} it can take, the other hosts cover {cov}"
-            if now - since >= p["start_after_seconds"] or want >= p["start_now_excess"]:
-                action, cause = "start", "queue"
-            else:
-                why += f"; held {int(now - since)}s of {p['start_after_seconds']}s"
+        pool_full = not ded and admitted >= cfg["pool_max_admitted"]
+        action, why, cause, since = start_rule(inst, p, q, cov, takes, want, coming, ahead, pool_full,
+                                               cfg["pool_max_admitted"], now)
+        if since is not None:
+            wanting, inst["want_since"] = True, since
     elif inst and inst["state"] != "running":
         why = f"instance {inst['state']}"
     kept = take = None
@@ -790,6 +771,32 @@ def standby_host(snap, host, tally, inst, ahead, warm, flip):
         out.append(Action(host, action, runner, v, why))
     out += [Action(host, "admit", n, v, w) for n, w in builds_in]
     return out, tally._replace(admitted=admitted, covered=covered), kept, take
+
+
+def start_rule(inst, p, q, cov, takes, want, coming, ahead, pool_full, pool_max, now):
+    """A stopped standby host's (action, why, cause, want_since or None) while jobs wait past
+    what the other hosts cover. Not room yet: its slots count once their runners are online and
+    admitted. A start costs money, so only a queue this much deeper than the other hosts can
+    take, for start_after_seconds in a row, starts it: a short burst waits instead. The standby
+    hosts ahead in the list take theirs first."""
+    if not inst["labels"]:
+        return "hold", "no runner labels read", "", None
+    if not takes:
+        return "hold", f"{q} jobs wait, none it can take", "", None
+    if inst.get("hours_today", 0) >= p["max_hours_day"]:
+        return "hold", f"ran {inst['hours_today']:.1f}h today, its {p['max_hours_day']}h cap", "", None
+    if want < p["start_min_excess"]:
+        why = f"{want} jobs it can take past the other hosts' {cov}, starts at {p['start_min_excess']}"
+        if coming:
+            why += f"; {', '.join(ahead)} ahead of it take {coming}"
+        return "hold", why, "", None
+    if pool_full:
+        return "hold", f"pool at its {pool_max} cap", "", None
+    since = inst.get("want_since") or now
+    why = f"{q} jobs wait, {takes} it can take, the other hosts cover {cov}"
+    if now - since >= p["start_after_seconds"] or want >= p["start_now_excess"]:
+        return "start", why, "queue", since
+    return "hold", f"{why}; held {int(now - since)}s of {p['start_after_seconds']}s", "", since
 
 
 def standby_cap(cfg, host, pins):

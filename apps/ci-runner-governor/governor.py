@@ -585,16 +585,25 @@ def lan_host(snap, host, tally):
 
 
 def paid_build_open(snap, need):
-    """Whether a paid build host could take this build: one whose label it asks for with a
-    slot online now, or a powered one whose state was read, whose runners carry every label
-    the build asks for, and that no override holds off."""
+    """Whether a paid build host could take this build. A powered one: its state was read,
+    its runners carry every label the build asks for, no override holds it off, it is under
+    its hours cap (unless an override holds it on), and it is up, or stopped and not passed
+    over (standby_host's start refusals). One with no power block: a slot of it is online."""
     for h in snap.cfg["standby"]:
         if not need & snap.own.get(h, frozenset()):
             continue
-        if any(r["host"] == h for r in snap.runners.values()):
-            return True
+        if not entry_of(snap.cfg, h).get("power"):
+            if any(r["host"] == h for r in snap.runners.values()):
+                return True
+            continue
         inst = snap.instances.get(h)
-        if inst and inst.get("override") != "off" and need <= inst.get("labels", frozenset()):
+        if not inst or not need <= inst.get("labels", frozenset()):
+            continue
+        over, cap = inst.get("override"), power_of(snap.cfg, h)["max_hours_day"]
+        if over == "off" or (over != "on" and inst.get("hours_today", 0) >= cap):
+            continue
+        if inst.get("state") in ("pending", "running") or (
+                inst.get("state") == "stopped" and inst.get("fallback_until", 0) <= snap.now):
             return True
     return False
 

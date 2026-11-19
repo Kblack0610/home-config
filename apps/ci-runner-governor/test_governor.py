@@ -1977,6 +1977,16 @@ class LanPairTest(unittest.TestCase):
         # One whose runners lack a label the build asks for cannot take it.
         short = {"aws-build-1": {**self.BUILD["aws-build-1"], "labels": PAIRED_LABELS - {"unity-build"}}}
         self.assertEqual(pair(self.run_lan("iiii.", [BUILD_JOB], lan=HOT, build=short)[0]), [("withhold", 3), ("withhold", 4)])
+        # Passed over after a reclaim, at its hours cap, or draining up under override off:
+        # none of them starts for it, so none is open.
+        for paid in ({"fallback_until": 20_000, "fallback_why": "reclaim"}, {"hours_today": 24.0}, {"state": "running", "override": "off"}):
+            closed = {"aws-build-1": {**self.BUILD["aws-build-1"], **paid}}
+            self.assertEqual(pair(self.run_lan("iiii.", [BUILD_JOB], lan=HOT, build=closed)[0]),
+                             [("withhold", 3), ("withhold", 4)], paid)
+        # Up, or held on past its cap, it is open: a HOT ms-a2 leaves the build to it.
+        for paid in ({"state": "running"}, {"hours_today": 24.0, "override": "on"}):
+            open_ = {"aws-build-1": {**self.BUILD["aws-build-1"], **paid}}
+            self.assertEqual(pair(self.run_lan("iiii.", [BUILD_JOB], lan=HOT, build=open_)[0]), [], paid)
 
     def test_a_full_or_pinned_host_claims_no_build_even_with_no_paid_host(self):
         off = {"aws-build-1": {**self.BUILD["aws-build-1"], "override": "off"}}

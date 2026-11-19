@@ -32,7 +32,7 @@ The same play sets up every worker; the workstation is set up by its own play an
 - builds `notes` with `notes-bootstrap --build-only` (the private overlay's installer: it builds the notes-cli crate, publishes it to `~/.local/lib/notes` and links `~/.local/bin/notes`), which `agent-queue` runs to file a board row on add and close it on done. Arch only, and skipped until the overlay is stowed; it also links `notes-sync`, `notes-watch` and `~/.config/notes`, and exits 0 when its build fails, so the play reads `~/.local/bin/notes` back and the report names a missing one. Without it `agent-queue add` says "no story row filed: no notes on PATH" and `agent-queue done` says "notes: command not found", and no item files or closes its row (razer-laptop, 2026-11-15 to 11-16). The binary alone files nothing: the rows live in the `~/.notes` store, which the play does not clone, so a worker with no `~/.notes` still files no rows;
 - writes `~/.config/schedules-sync/kubeconfig` for the `monitoring/schedules-sync` account, which may only read the github-runner-exporter feed (`apps/github-runner-exporter/feed-reader-rbac.yaml`) and move the `agents/agents` Endpoints (`apps/agents/record-rbac.yaml`), and a `schedules-sync.service` drop-in that sets `KUBECONFIG` to it. Without it the feed never answers, no `~/.local/state/schedules/state.json` is written, and every `nightly:` queue hold waits on "no schedules state". `~/.kube/config` is not touched;
 - enables `agent-web.service` once `~/.config/agent-web/oauth.json` exists. `fleet-lease renew` starts it on the holder only, and its `agent-web-record` step points `agents.kblab.me` at that machine's LAN IP.
-- writes `~/.agent/.sync/no-lease` on a peer whose `fleet_lease` is false (default: not Arch, or governor-powered), so it never holds the lease: its gate skips every singleton and `fleet-lease status` shows `candidate: false`.
+- writes `~/.agent/.sync/no-lease` on a peer whose `fleet_lease` is false (default: not Arch), so it never holds the lease: its gate skips every singleton and `fleet-lease status` shows `candidate: false`.
 
 Left for the human, printed by the play: the deploy key, `oauth.json` from rbw item `agent-web-oauth-client` (`{"client_id": ..., "client_secret": ...}`, mode 0600), the sign-ins, then `agentctl reload` on the worker to arm the lanes. A worker that is not placed (`fleet_place: false`) can still hold the lease.
 
@@ -64,17 +64,10 @@ Every worker holds a peer clone of the agent store (`~/.agent`, the queue, the a
 
 ## Cloud worker
 
-`fleet-worker-1` is an Ubuntu Spot box in AWS (platform `infra/aws-ci-burst`, its `hosts` map) with no CI runners. The governor powers it: fleet-dispatch writes the key `fleet-worker-1.demand` into the `ci-runner-governor-override` ConfigMap on each pass (its live sessions plus the items waiting while every home host is at its gate), the governor starts it on demand and stops it after `idle_off_seconds` without any (`apps/ci-runner-governor/governor.py`, the "workers" paragraph). It takes only items in a repo in its `fleet_repos`, so leave every Unity repo out. A stop keeps its root disk and the sign-ins on it; a Terraform replace drops them.
+`fleet-worker-1` is an Ubuntu Spot box in AWS (platform `infra/aws-ci-burst`, its `hosts` map) with no CI runners. Nothing starts or stops it on its own: it runs while the human keeps the instance up (`aws ec2 start-instances` / `stop-instances --instance-ids <id> --region us-east-2`, which costs money, so the human runs them). It takes only items in a repo in its `fleet_repos`, so leave every Unity repo out. A stop keeps its root disk and the sign-ins on it; a Terraform replace drops them.
 
-1. Apply the platform module (it costs money, so the human runs it) and take the instance id from `terraform output -json instance_ids`.
-2. Add the governor entry to `apps/ci-runner-governor/config.json`, `workers`. Keep `idle_off_seconds` at 1800 or more: fleet-dispatch writes demand every 15 minutes, with a 40-minute end, and only for a worker with `fleet_place: true`, so the entry starts nothing before step 5.
-   ```json
-   {"host": "fleet-worker-1", "power": {"provider": "aws", "instance_id": "<instance id>", "region": "us-east-2",
-    "idle_off_seconds": 1800, "start_min_excess": 1, "max_hours_day": 12, "fallback_seconds": 3600,
-    "live": true}}
-   ```
-   Its price goes in `rates`, the one home of every host's $/h: `"fleet-worker-1": {"usd_per_hour": 0.076, "basis": "spot-estimate"}`.
-3. Add it under `fleet_workers`:
+1. Apply the platform module (the human runs it) and take the instance id from `terraform output -json instance_ids`.
+2. Add it under `fleet_workers`:
    ```yaml
    fleet-worker-1:
      ansible_host: <instance id>
@@ -82,11 +75,10 @@ Every worker holds a peer clone of the agent store (`~/.agent`, the queue, the a
      ansible_ssh_common_args: <the SSM ProxyCommand aws-spot-1 has>
      fleet_tailscale: true
      fleet_ssh_host: fleet-worker-1         # its tailnet name: fleet-dispatch ssh goes there
-     fleet_power: governor
      fleet_place: false                     # no fleet_repos: the group's list (no Unity repo) is its own
    ```
-4. Start it with the agent-web Infra page's "on" button and run the play. It joins the tailnet with the auth key from SOPS (role `tailscale-node`); then do the rest of "Add a worker", step 3.
-5. When the play prints `Ready`, set `fleet_place: true`.
+3. Start the instance and run the play. It joins the tailnet with the auth key from SOPS (role `tailscale-node`); then do the rest of "Add a worker", step 3.
+4. When the play prints `Ready`, set `fleet_place: true`.
 
 ## Headless harnesses
 
@@ -126,8 +118,6 @@ The same play fails a host whose live host key is not its inventory `ssh_host_ed
 | `<host>: N% memory free is under the 20% floor` | Something else on the host holds its memory (on razer-laptop, the freqtrade pods) | `free -m` and the top RSS on the host; move or shrink what holds it, or lower its `fleet_max_live`. Never lower the floor to get a session placed |
 | A session on a worker finishes its home-config item but cannot push, or `agent-land` there dies with `no token: FORGEJO_TOKEN unset, ...` | `~/.config/forgejo/token` is missing (the play has not run since the bot was added) or the token was revoked | Re-run the play: its last task says whether the token can push. A failing push check means rotate it ("Forgejo bot token") |
 | schedules-sync on a worker exits 1 with `curl: (22) ... 404` on a Forgejo repo | A private repo joined the feed's `forgejo_repos` and the bot `fleet-worker` has no read on it | Grant it read ("Forgejo bot token") and re-run `systemctl --user start schedules-sync` on that worker |
-| The cloud worker never starts with items waiting | No demand key: fleet-dispatch has no `CC_KUBE_CONTEXT`, a global gate holds, the lease holder is under its gate, or no waiting item is in its `fleet_repos` | `ci_governor_power_demand{host="fleet-worker-1"}`; the dispatch log's demand line says what it wrote and why |
-| The cloud worker stops with a session on it | fleet-dispatch stopped writing demand (the key ran out), or its `max_hours_day` | `systemctl --user status fleet-dispatch.timer` on the workstation; the governor log's stop line names the cause |
 | `fleet-lease status` on a worker says it cannot tell who holds the lease | Neither store remote answers from it: the sync key is not a deploy key on `kblack0610/.agent`, or Forgejo is down and `store.env` names no backup | `git -C ~/.agent ls-remote origin lease/fleet` on the worker; re-run the play for the key it prints |
 | The host-identity play fails `<host>'s ssh host key is not the inventory's` | The host was rebuilt and sshd made a new key | Set the `ssh_host_ed25519` it prints after checking it on the host's console or over ssh you already trust, merge, then re-run `--tags host-identity` on every roster machine |
 | The host-identity play fails `devices.yaml reserves ... which no NIC on <host> has` | Its NIC changed (motherboard swap, new dongle), so the next lease renewal moves it off its IP | Set the `mac` it lists in `infrastructure/dhcp/devices.yaml`, merge, then `dhcp sync` |

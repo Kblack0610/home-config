@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
-"""Replay the governor's home-host decisions, live, over a window of recorded readings.
+"""Replay the governor's home-host decisions over a window of recorded readings.
 
 Runs governor.decide() once a minute over the last --days of the same series the governor
 reads (its QUERIES, the pool runners' busy state, the waiting pool jobs), with the slot
-layout from config.json and apps/ci-topology/topology.json, every LAN host live (no
-restore) and no pins: what turning DRY_RUN off would have done. Prometheus keeps about
+layout from config.json and apps/ci-topology/topology.json and no pins: what a change to
+decide() or its thresholds would have done. Prometheus keeps about
 3.5 days at its 5GB cap, so point --url at VictoriaMetrics (apps/victoria-metrics, 2y):
 
     kubectl --context home-k3s -n monitoring port-forward svc/victoria-metrics 18428:8428
@@ -107,7 +107,7 @@ def replay(url, days, cfg):
                 if all(hosts[k].get(h) is not None for k in ("idle", "psi", "mem")):
                     st[h]["coverage"] += 1
         q = waiting.get(t, [])
-        decisions = governor.decide(cfg, hosts, runners, q, last_action, t, {}, {}, ())
+        decisions = governor.decide(cfg, hosts, runners, q, last_action, t, {}, {})
         queued = len(governor.pool_jobs(q, governor.build_marks(cfg))) > 0
         for host, action, runner, v, why in decisions:
             if host not in lan:

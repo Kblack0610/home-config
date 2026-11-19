@@ -176,7 +176,7 @@ A new free or cheap upstream enters in this order, and each step must pass befor
 
    `python3 apps/litellm/test_go_routes.py` checks all four, and the PR's CI runs it. `free` means a third-party free tier: a paid route priced 0 (`stt (whisper-turbo)`) or the self-hosted `local (qwen3.5-9b)` does not carry it. A free route that predates the gate and fails it sits in `KNOWN_VIOLATIONS` with its board row, until it is fixed.
 5. **Gateway key.** Add the route to the narrowest key that matches its data class: `fleet-ocfree` for `public-input-only`, `fleet-nim` style for `fleet-trial` (`/key/update`, `models`), so any other key gets a 403. Add a row for it under the key's section above.
-6. **Live gate.** After Flux reconciles, `llm-probe admit <route>` (dotfiles-private; the plan's P3 builds `admit`, until then probe by hand with `llm-probe`) must pass: the model listed, a 200 through the gateway with no attempted fallbacks, cost 0, and a 403 for the same key on a paid route.
+6. **Live gate.** After Flux reconciles, `llm-probe admit <key-file> <route>` (dotfiles-private `.local/bin/llm-probe`; with no route it admits every route the key sees) must print `PASS <route>`: the model listed at the provider, a 200 through the gateway with no attempted fallbacks, cost 0, a tool call when the route claims function calling, and a 403 for the same key on a paid route.
 7. **Quality.** Add a `harnesses.json` model line and a `canary-lanes` line, so `fleet-bench canary` grades it. A new source enters as a canary, never as a lane's first pick.
 
 ## Deploy

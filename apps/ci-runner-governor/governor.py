@@ -48,6 +48,7 @@ import xml.etree.ElementTree as ET
 from datetime import datetime
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from threading import Condition, Lock, Thread
+from typing import NamedTuple
 
 PROM = os.environ.get("PROMETHEUS_URL", "http://kube-prometheus-stack-prometheus.monitoring:9090").rstrip("/")
 API = os.environ.get("GITHUB_API", "https://api.github.com").rstrip("/")
@@ -412,270 +413,383 @@ def verdict(h, t):
     return "STEADY", f"idle {idle:.2f}, cpu pressure {psi:.2f}; short of admit on {'+'.join(short)}"
 
 
+class Action(NamedTuple):
+    """One decision: a label move (admit, withhold) of runner, a power call (start, stop) or a
+    pack flip (pack, unpack) of host, or a hold that only says why."""
+    host: str
+    action: str
+    runner: str
+    verdict: str
+    why: str
+
+    @property
+    def power(self):
+        return self.action in ("start", "stop")
+
+    @property
+    def flip(self):
+        return self.action in ("pack", "unpack")
+
+
+class Snapshot(NamedTuple):
+    """One cycle's readings, built once by decide() and changed by none of its passes."""
+    cfg: dict
+    now: float
+    runners: dict
+    own: dict            # build_marks()
+    waiting: list        # the shared pool's jobs (pool_jobs())
+    waiting_all: list    # every waiting job, the dedicated hosts' too
+    shared_waiting: tuple
+    pins: dict
+    instances: dict      # power_readings(); a pass writes to it only through its memo
+    last_action: dict
+    verdicts: dict       # LAN host -> (verdict, why)
+    slots: dict          # host -> (its runners, admitted ones in withhold order, withheld ones)
+
+
+class Tally(NamedTuple):
+    """The counts each pass hands the next."""
+    admitted: int        # pool slots admitted: the pool cap's count
+    floor: int           # LAN pool slots admitted: the pool floor's count
+    covered: int         # free pool slots the waiting jobs have before a standby host
+    builds: tuple        # waiting builds no pair has claimed yet
+
+
+def withhold_order(mine):
+    """A host's admitted runners, the next to withhold first: idle ones, then the busy one
+    nearest its end (longest running)."""
+    return sorted((n for n, r in mine.items() if not r["withheld"]),
+                  key=lambda n: (mine[n]["busy"], -mine[n]["elapsed"], n))
+
+
+def host_verdicts(cfg, hosts):
+    """{LAN host: (verdict, why)} for this cycle's readings."""
+    return {h: verdict({k: hosts[k].get(h) for k in QUERIES}, cfg["hosts"][h]) for h in cfg["hosts"]}
+
+
 def decide(cfg, hosts, runners, waiting, last_action, now, instances=None, pins=None, shared_waiting=()):
-    """[(host, action, runner, verdict, why)]: at most one action per host, except that a
-    paired host also withholds every slot stepping aside and admits each build slot whose
-    pair is clear in the same cycle; withholds first so a re-admit elsewhere can use the room the pool keeps. waiting is one label
-    set per waiting job, the pool's and the dedicated hosts'; instances is power_readings() for the standby hosts with a
-    power block; pins is read_pins(). shared_waiting is observe_shared(): a LAN host admits for the jobs on its shared caps
-    too, not only the unity queue."""
-    # Jobs that ask for a dedicated host's label are that host's alone; the rest are the pool's.
+    """[Action]: at most one per host, except that a paired host also withholds every slot
+    stepping aside and admits each build slot whose pair is clear in the same cycle. waiting is
+    one label set per waiting job, the pool's and the dedicated hosts'; instances is
+    power_readings() for the standby hosts with a power block; pins is read_pins().
+    shared_waiting is observe_shared(): a LAN host admits for the jobs on its shared caps too,
+    not only the unity queue.
+
+    One Snapshot, then three passes in a fixed order, each handing the next its Tally:
+    lan_pass (pairs, pins, load, the pool cap), pack_plan, standby_pass (drain, pack, cap,
+    admit, start). No pass writes to instances; each returns what it keeps there across cycles,
+    applied here at the end, so pack_plan reads the waited_at and draining of the cycle before."""
     own = build_marks(cfg)
-    waiting_all, waiting = waiting, pool_jobs(waiting, own)
-    queue = len(waiting)
-    # A paired host's test slots are pool slots like any other.
-    admitted = sum(1 for n, r in runners.items() if not r["withheld"] and serves_pool(cfg, r["host"], n))
-    # A standby host can go to zero, so only the other hosts hold the pool's floor.
-    floor_held = sum(1 for n, r in runners.items() if not r["withheld"] and r["host"] in cfg["hosts"]
-                     and serves_pool(cfg, r["host"], n))
-    # The waiting builds no pair has claimed yet: a LAN pair claims first, so a paid build
-    # host starts only for the builds the LAN build slots cannot take.
-    builds_left = [need for need in waiting_all if any(need & m for m in own.values())]
-    plans, pair_moves = [], []
-    for host in sorted(cfg["hosts"]):
-        t = cfg["hosts"][host]
+    pool = pool_jobs(waiting, own)
+    slots = {}
+    for host in (*cfg["hosts"], *cfg["standby"]):
         mine = {n: r for n, r in runners.items() if r["host"] == host}
-        v, why = verdict({k: hosts[k].get(host) for k in QUERIES}, t)
-        cooling = v != "FULL" and now - last_action.get(host, 0) < cfg["cooldown_seconds"]
-        on = sorted((n for n, r in mine.items() if not r["withheld"]),
-                    # Idle first, then the busy one nearest its end (longest running).
-                    key=lambda n: (mine[n]["busy"], -mine[n]["elapsed"], n))
-        off = sorted(n for n, r in mine.items() if r["withheld"])
-        if pairs(cfg, host):
-            # A LAN build slot uses its test slots' cores, so it adds no load, but a HOT or
-            # FULL host, or one pinned to 0 (a release reservation), claims no build: a
-            # running one keeps its pair, an idle one steps aside, and a paid build host
-            # takes the rest. A claim whose tests are still busy stays in the paid host's
-            # queue too, so a build never waits on test jobs while aws-build-1 could take it.
-            # The pool rules below move only the test slots the pairs leave free.
-            claims = v not in ("HOT", "FULL") and (pins or {}).get(host) != 0
-            mine_builds = [need for need in builds_left if need & own[host]] if claims else []
-            builds_in, aside, on, off, stepped, taken = step_pairs(cfg, host, mine, mine_builds, on, off)
-            for need, clear in taken:
-                if clear:
-                    builds_left.remove(need)
-            admitted -= stepped
-            floor_held -= stepped
-            pair_moves += [(host, "withhold", n, v, w) for n, w in aside]
-            pair_moves += [(host, "admit", n, v, w) for n, w in builds_in]
-        action, runner = "hold", ""
-        pin = (pins or {}).get(host)
-        # A full host gets no admit from a pin, but a pin's withhold still applies: FULL asks
-        # for the same, and on a host that is not live only the pin's move happens.
-        if pin is not None and (v != "FULL" or len(on) > pin):
-            v, why = "PINNED", f"pinned to {pin}, {len(on)} admitted"
-            if len(on) > pin and floor_held > cfg["pool_min_admitted"]:
-                action, runner = "withhold", on[0]
-                admitted -= 1
-                floor_held -= 1
-            elif len(on) > pin:
-                why += "; at the pool floor"
-            elif len(on) < pin and off:
-                action, runner = "admit", off[0]
-        elif cooling:
-            why = f"cooldown ({why})"
-        elif ((v == "FULL" and on) or (v == "HOT" and len(on) > t["min_admitted"])) \
-                and floor_held > cfg["pool_min_admitted"]:
-            action, runner = "withhold", on[0]
-            admitted -= 1
-            floor_held -= 1
-        elif v == "ROOM" and off and queue + shared_demand(cfg, host, runners, shared_waiting) > 0:
-            action, runner = "admit", off[0]
-        elif v in ("HOT", "FULL") and on:
-            why += "; at the floor"
-        plans.append((host, action, runner, v, why))
-    out = [m for m in pair_moves if m[1] == "withhold"]
-    for host, action, runner, v, why in sorted(plans, key=lambda p: p[1] != "withhold"):
-        if action == "admit":
+        slots[host] = (mine, withhold_order(mine), sorted(n for n, r in mine.items() if r["withheld"]))
+    snap = Snapshot(cfg, now, runners, own, pool, waiting, shared_waiting, pins or {}, instances or {},
+                    last_action, host_verdicts(cfg, hosts), slots)
+    pooled = [(n, r) for n, r in runners.items() if not r["withheld"] and serves_pool(cfg, r["host"], n)]
+    tally = Tally(admitted=len(pooled),
+                  # A standby host can go to zero, so only the other hosts hold the pool's floor.
+                  floor=sum(1 for _, r in pooled if r["host"] in cfg["hosts"]), covered=0,
+                  # A LAN pair claims first, so a paid build host starts only for the rest.
+                  builds=tuple(need for need in waiting if any(need & m for m in own.values())))
+    lan, tally = lan_pass(snap, tally)
+    flips, memo = pack_plan(snap, tally.covered)
+    standby, tally, more = standby_pass(snap, tally, flips, memo)
+    for host, m in more.items():
+        snap.instances[host].update(m)
+    return lan + standby
+
+
+def lan_pass(snap, tally):
+    """The LAN hosts in name order, each in turn: its pairs step aside or admit a build slot,
+    then a pin or its load moves one pool slot. Then every withhold goes first and the pool's
+    cap holds each admit, so a re-admit can use the room a withhold made."""
+    cfg, plans, pair_moves = snap.cfg, [], []
+    for host in sorted(cfg["hosts"]):
+        moves, plan, tally = lan_host(snap, host, tally)
+        pair_moves += moves
+        plans.append(plan)
+    out, admitted = [m for m in pair_moves if m.action == "withhold"], tally.admitted
+    for a in sorted(plans, key=lambda a: a.action != "withhold"):
+        if a.action == "admit":
             if admitted >= cfg["pool_max_admitted"]:
-                action, runner, why = "hold", "", why + f"; pool at its {cfg['pool_max_admitted']} cap"
+                a = a._replace(action="hold", runner="", why=a.why + f"; pool at its {cfg['pool_max_admitted']} cap")
             else:
                 admitted += 1
-        if action != "hold" or not any(m[0] == host for m in pair_moves):
-            out.append((host, action, runner, v, why))
+        if a.action != "hold" or not any(m.host == a.host for m in pair_moves):
+            out.append(a)
     # A build slot's admit is no pool slot, so the pool's cap does not hold it.
-    out += [m for m in pair_moves if m[1] == "admit"]
-    # Slots the other hosts already have for the waiting jobs. Admitted slots can sit idle
-    # for minutes with jobs queued, so one idle slot must not hold the overflow back.
-    # A LAN build slot takes no pool job, so it covers none.
-    covered = sum(1 for h, action, r, *_ in out if action == "admit" and serves_pool(cfg, h, r))
-    covered += sum(1 for n, r in runners.items() if not r["withheld"] and not r["busy"] and r["host"] in cfg["hosts"]
-                   and serves_pool(cfg, r["host"], n))
-    flips = pack_plan(cfg, runners, waiting, instances or {}, covered, pins or {}, now)
+    out += [m for m in pair_moves if m.action == "admit"]
+    # Slots the LAN hosts already have for the waiting jobs. Admitted slots can sit idle for
+    # minutes with jobs queued, so one idle slot must not hold the overflow back. A LAN build
+    # slot takes no pool job, so it covers none.
+    covered = sum(1 for a in out if a.action == "admit" and serves_pool(cfg, a.host, a.runner))
+    covered += sum(1 for n, r in snap.runners.items() if not r["withheld"] and not r["busy"]
+                   and r["host"] in cfg["hosts"] and serves_pool(cfg, r["host"], n))
+    return out, tally._replace(admitted=admitted, covered=covered)
+
+
+def lan_host(snap, host, tally):
+    """One LAN host's (pair moves, its one Action, tally)."""
+    cfg = snap.cfg
+    mine, on, off = snap.slots[host]
+    v, why = snap.verdicts[host]
+    moves = []
+    if pairs(cfg, host):
+        # A LAN build slot uses its test slots' cores, so it adds no load, but a HOT or FULL
+        # host, or one pinned to 0 (a release reservation), claims no build: a running one
+        # keeps its pair, an idle one steps aside, and a paid build host takes the rest. A
+        # claim whose tests are still busy stays in the paid host's queue too, so a build never
+        # waits on test jobs while aws-build-1 could take it. The pin and load rules move only
+        # the test slots the pairs leave free.
+        claims = v not in ("HOT", "FULL") and snap.pins.get(host) != 0
+        mine_builds = [need for need in tally.builds if need & snap.own[host]] if claims else []
+        builds_in, aside, on, off, stepped, taken = step_pairs(cfg, host, mine, mine_builds, on, off)
+        builds = list(tally.builds)
+        for need, clear in taken:
+            if clear:
+                builds.remove(need)
+        tally = tally._replace(admitted=tally.admitted - stepped, floor=tally.floor - stepped, builds=tuple(builds))
+        moves = [Action(host, "withhold", n, v, w) for n, w in aside] + \
+                [Action(host, "admit", n, v, w) for n, w in builds_in]
+    plan = pin_rule(snap, host, v, on, off, tally.floor) or load_rule(snap, host, v, why, on, off, tally.floor)
+    if plan.action == "withhold":
+        tally = tally._replace(admitted=tally.admitted - 1, floor=tally.floor - 1)
+    return moves, plan, tally
+
+
+def pin_rule(snap, host, v, on, off, floor):
+    """A pinned LAN host's Action: one slot a cycle toward its pin, cooldown or not, or None
+    when it has no pin. A full host gets no admit from a pin, but a pin's withhold still
+    applies: FULL asks for the same."""
+    pin = snap.pins.get(host)
+    if pin is None or (v == "FULL" and len(on) <= pin):
+        return None
+    why = f"pinned to {pin}, {len(on)} admitted"
+    if len(on) > pin and floor > snap.cfg["pool_min_admitted"]:
+        return Action(host, "withhold", on[0], "PINNED", why)
+    if len(on) > pin:
+        return Action(host, "hold", "", "PINNED", why + "; at the pool floor")
+    if len(on) < pin and off:
+        return Action(host, "admit", off[0], "PINNED", why)
+    return Action(host, "hold", "", "PINNED", why)
+
+
+def load_rule(snap, host, v, why, on, off, floor):
+    """A LAN host's Action by its verdict: FULL, or HOT above its min_admitted, withholds one
+    slot past the pool floor; ROOM admits one for a waiting job; nothing within cooldown_seconds
+    of its last move but a FULL withhold."""
+    cfg, t = snap.cfg, snap.cfg["hosts"][host]
+    if v != "FULL" and snap.now - snap.last_action.get(host, 0) < cfg["cooldown_seconds"]:
+        return Action(host, "hold", "", v, f"cooldown ({why})")
+    if ((v == "FULL" and on) or (v == "HOT" and len(on) > t["min_admitted"])) and floor > cfg["pool_min_admitted"]:
+        return Action(host, "withhold", on[0], v, why)
+    if v == "ROOM" and off and len(snap.waiting) + shared_demand(cfg, host, snap.runners, snap.shared_waiting) > 0:
+        return Action(host, "admit", off[0], v, why)
+    if v in ("HOT", "FULL") and on:
+        why += "; at the floor"
+    return Action(host, "hold", "", v, why)
+
+
+def power_rule(inst, p, over, now):
+    """(why, cause) a running powered host drains for, or ("", ""): told off, past its day, or
+    idle for its idle_off_seconds. Before the job queue, since a host that is any of these
+    cannot take what waits (an idle one: a LAN job)."""
+    if over == "off":
+        return "override off", "override"
+    if over != "on" and inst.get("hours_today", 0) >= p["max_hours_day"]:
+        return f"ran {inst['hours_today']:.1f}h today, its {p['max_hours_day']}h cap", "cap"
+    if over != "on" and now - inst["busy_at"] >= inst["idle_off_seconds"]:
+        return f"no slot busy for {int(now - inst['busy_at'])}s", "idle"
+    return "", ""
+
+
+STANDBY_KEEPS = ("waited_at", "idle_off_seconds", "want_since", "draining", "idle_seconds", "want",
+                 "held_seconds", "next_cause")
+
+
+def standby_pass(snap, tally, flips, memo):
+    """The standby hosts in start order, each in turn: (Actions, tally, {host: what it keeps in
+    instances}). ahead counts the jobs the hosts before it will take once up, so a host further
+    down starts only for what is left past these."""
+    cfg, out, ahead = snap.cfg, [], {}
+    view = {h: {**i, **memo.get(h, {})} for h, i in snap.instances.items()}
     # A packed host withholds a slot below, maybe after a host ahead of it admits: count it
-    # now, as a home host's withhold is counted before any admit.
-    admitted -= sum(1 for h, i in (instances or {}).items() if i.get("packed")
-                    and any(r["host"] == h and not r["withheld"] for r in runners.values()))
-    warm = warm_host(cfg, instances or {})
-    # Jobs the standby hosts ahead in the list will take once they are up: a host further
-    # down starts only for what is left past these: host -> jobs.
-    ahead = {}
+    # now, as a LAN host's withhold is counted before any admit.
+    tally = tally._replace(admitted=tally.admitted - sum(
+        1 for h, i in view.items() if i.get("packed")
+        and any(r["host"] == h and not r["withheld"] for r in snap.runners.values())))
+    warm = warm_host(cfg, view)
     for host in cfg["standby"]:
-        mine = {n: r for n, r in runners.items() if r["host"] == host}
-        on = sorted((n for n, r in mine.items() if not r["withheld"]),
-                    key=lambda n: (mine[n]["busy"], -mine[n]["elapsed"], n))
-        off = sorted(n for n, r in mine.items() if r["withheld"])
-        # A pin is a lower cap: the cap branch below withholds one slot per cycle (a busy one
-        # finishes its job) and no admit passes it.
-        cap, pinned = standby_cap(cfg, host, pins)
-        inst = (instances or {}).get(host)
-        p = power_of(cfg, host)
-        action, runner, why = "hold", "", "overflow"
-        over = inst.get("override") if inst else None
-        drain, cause, wanting, want = "", "", False, 0
-        # A dedicated host answers only its own jobs: no other host covers them, none is
-        # ahead of it, and the shared pool's cap does not count it.
-        ded = host in own
-        # Every slot not withheld, whatever kind it serves: what a drain takes back.
-        up = on
-        aside, builds_in, stepped = [], [], 0
-        if pairs(cfg, host):
-            # Both kinds at once, a pair at a time: the pairs move by pair_plan() (every
-            # step-aside in one cycle), and the pool's rules below move its test slots.
-            builds = [need for need in builds_left if need & own[host]]
-            builds_in, aside, on, off, stepped, _ = step_pairs(cfg, host, mine, builds, on, off)
-            admitted -= stepped
-            # Stopped, it starts for a waiting build on its own thresholds and for tests on
-            # the pool's (a burst host's), since one waiting build is worth a start and one
-            # test is not.
-            ded = bool(builds) and bool(inst) and inst["state"] == "stopped"
+        acts, tally, kept, take = standby_host(snap, host, tally, view.get(host), ahead, warm, flips.get(host))
+        out += acts
+        if kept is not None:
+            memo[host] = {**memo.get(host, {}), **kept}
+        if take is not None:
+            ahead[host] = take
+    return out, tally, memo
+
+
+def standby_host(snap, host, tally, inst, ahead, warm, flip):
+    """One standby host's (Actions, tally, what it keeps in instances or None, the jobs it will
+    take for the hosts behind it or None)."""
+    cfg, now = snap.cfg, snap.now
+    mine, on, off = snap.slots[host]
+    admitted, covered = tally.admitted, tally.covered
+    inst = dict(inst) if inst is not None else None
+    # A pin is a lower cap: the cap branch below withholds one slot per cycle (a busy one
+    # finishes its job) and no admit passes it.
+    cap, pinned = standby_cap(cfg, host, snap.pins)
+    p = power_of(cfg, host)
+    action, runner, why = "hold", "", "overflow"
+    over = inst.get("override") if inst else None
+    drain, cause, wanting, want = "", "", False, 0
+    # A dedicated host answers only its own jobs: no other host covers them, none is ahead of
+    # it, and the shared pool's cap does not count it.
+    ded = host in snap.own
+    # Every slot not withheld, whatever kind it serves: what a drain takes back.
+    up = on
+    aside, builds_in, stepped = [], [], 0
+    if pairs(cfg, host):
+        # Both kinds at once, a pair at a time: the pairs move by pair_plan() (every step-aside
+        # in one cycle), and the pool's rules below move its test slots.
+        builds = [need for need in tally.builds if need & snap.own[host]]
+        builds_in, aside, on, off, stepped, _ = step_pairs(cfg, host, mine, builds, on, off)
+        admitted -= stepped
+        # Stopped, it starts for a waiting build on its own thresholds and for tests on the
+        # pool's (a burst host's), since one waiting build is worth a start and one test is not.
+        ded = bool(builds) and bool(inst) and inst["state"] == "stopped"
+        if not ded:
+            p = {**p, "start_min_excess": POWER_DEFAULTS["start_min_excess"],
+                 "start_after_seconds": POWER_DEFAULTS["start_after_seconds"]}
+    jobs = [need for need in tally.builds if need & snap.own[host]] if ded else snap.waiting
+    q, cov = (len(jobs), 0) if ded else (len(snap.waiting), covered)
+    packed = bool(inst and inst.get("packed"))
+    takes = sum(1 for need in jobs if need <= inst["labels"]) if inst else 0
+    # When a job it could take last waited (pack_plan()'s test); first seen, now, so a restart
+    # starts a full dwell.
+    if inst is not None and (takes or "waited_at" not in inst):
+        inst["waited_at"] = now
+    # Only a stopped host is passed over: AWS restarts a persistent Spot one by itself when
+    # capacity returns, and then it counts like any running host.
+    passed = bool(inst) and inst["state"] == "stopped" and inst.get("fallback_until", 0) > now
+    if inst is not None:
+        inst["idle_off_seconds"] = (max(p["idle_off_seconds"], cfg["warm_idle_off_seconds"])
+                                    if host == warm else p["idle_off_seconds"])
+    if inst and inst["state"] == "running":
+        drain, cause = power_rule(inst, p, over, now)
+    if drain:
+        # One slot per cycle, busy ones too (a withheld slot finishes its job), and the stop
+        # only once no slot is busy, so a stop never kills a job.
+        busy = sum(1 for r in mine.values() if r["busy"])
+        if up:
+            action, runner, why = "withhold", up[0], drain
+        elif busy:
+            why = f"{drain}; {busy} jobs finishing"
+        else:
+            action, why = "stop", drain
+    elif packed:
+        # Its slots go one per cycle, busy ones too (a withheld slot finishes its job), and none
+        # comes back, so new jobs go to the other hosts and the idle rule stops it.
+        if up:
+            action, runner, why = "withhold", up[0], "packed"
+        else:
+            why = f"packed, {sum(1 for r in mine.values() if r['busy'])} jobs finishing"
+    elif len(on) > cap:
+        action, runner, why = "withhold", on[0], f"pinned to {cap}" if pinned else f"over its {cap} cap"
+    elif over == "on" and inst and inst["state"] == "running" and off and len(on) < cap:
+        if ded or admitted < cfg["pool_max_admitted"]:
+            action, runner, why = "admit", off[0], "override on"
             if not ded:
-                p = {**p, "start_min_excess": POWER_DEFAULTS["start_min_excess"],
-                     "start_after_seconds": POWER_DEFAULTS["start_after_seconds"]}
-        jobs = [need for need in builds_left if need & own[host]] if ded else waiting
-        q, cov = (len(jobs), 0) if ded else (queue, covered)
-        packed = bool(inst and inst.get("packed"))
-        takes = sum(1 for need in jobs if need <= inst["labels"]) if inst else 0
-        # When a job it could take last waited (pack_plan()'s test); first seen, now, so a
-        # restart starts a full dwell.
-        if inst is not None and (takes or "waited_at" not in inst):
-            inst["waited_at"] = now
-        # Only a stopped host is passed over: AWS restarts a persistent Spot one by itself
-        # when capacity returns, and then it counts like any running host.
-        passed = bool(inst) and inst["state"] == "stopped" and inst.get("fallback_until", 0) > now
-        if inst is not None:
-            inst["idle_off_seconds"] = (max(p["idle_off_seconds"], cfg["warm_idle_off_seconds"])
-                                        if host == warm else p["idle_off_seconds"])
-        if inst and inst["state"] == "running":
-            # Before the job queue: a host told off, past its day, or idle this long cannot
-            # take what waits (an idle one: a lan job).
-            if over == "off":
-                drain, cause = "override off", "override"
-            elif over != "on" and inst.get("hours_today", 0) >= p["max_hours_day"]:
-                drain, cause = f"ran {inst['hours_today']:.1f}h today, its {p['max_hours_day']}h cap", "cap"
-            elif over != "on" and now - inst["busy_at"] >= inst["idle_off_seconds"]:
-                drain, cause = f"no slot busy for {int(now - inst['busy_at'])}s", "idle"
-        if drain:
-            # One slot per cycle, busy ones too (a withheld slot finishes its job), and the
-            # stop only once no slot is busy, so a stop never kills a job.
-            busy = sum(1 for r in mine.values() if r["busy"])
-            if up:
-                action, runner, why = "withhold", up[0], drain
-            elif busy:
-                why = f"{drain}; {busy} jobs finishing"
+                admitted += 1
+                covered += 1
+        else:
+            why = f"override on; pool at its {cfg['pool_max_admitted']} cap"
+    elif q == 0 and on and not mine[on[0]]["busy"] and over != "on":
+        # Only once no job it could take has waited for dwell_seconds: the queue reads 0 for a
+        # minute between bursts, and a slot withheld then comes back minutes later. An admit
+        # needs jobs waiting past what the other hosts cover, so it is never early.
+        quiet = now - inst["waited_at"] if inst is not None else cfg["dwell_seconds"]
+        if quiet >= cfg["dwell_seconds"]:
+            action, runner, why = "withhold", on[0], "nothing waits"
+        else:
+            why = f"nothing waits for {int(quiet)}s of {cfg['dwell_seconds']}s"
+    elif q > cov and off and len(on) < cap:
+        if ded or admitted < cfg["pool_max_admitted"]:
+            action, runner, why = "admit", off[0], f"{q} jobs wait, the other hosts cover {cov}"
+            if not ded:
+                admitted += 1
+                covered += 1
+        else:
+            why = f"pool at its {cfg['pool_max_admitted']} cap"
+    elif inst and inst["state"] == "stopped" and over == "off":
+        why = "override off"
+    elif inst and inst["state"] == "stopped" and passed:
+        # Before an override on: EC2 just refused it or AWS just stopped it, so a start every
+        # cycle would only fail or be reclaimed again.
+        why = f"passed over after a {inst['fallback_why']} for {int(inst['fallback_until'] - now)}s more"
+    elif inst and inst["state"] == "stopped" and over == "on":
+        action, why, cause = "start", "override on", "override"
+    elif inst and inst["state"] == "stopped" and q > cov:
+        # Not room yet: its slots count once their runners are online and admitted. A start
+        # costs money, so only a queue this much deeper than the other hosts can take, for
+        # start_after_seconds in a row, starts it: a short burst waits instead. The standby
+        # hosts ahead in the list take theirs first.
+        coming = 0 if ded else sum(ahead.values())
+        want = max(0, min(takes, q - cov - coming))
+        if not inst["labels"]:
+            why = "no runner labels read"
+        elif not takes:
+            why = f"{q} jobs wait, none it can take"
+        elif inst.get("hours_today", 0) >= p["max_hours_day"]:
+            why = f"ran {inst['hours_today']:.1f}h today, its {p['max_hours_day']}h cap"
+        elif want < p["start_min_excess"]:
+            why = f"{want} jobs it can take past the other hosts' {cov}, starts at {p['start_min_excess']}"
+            if coming:
+                why += f"; {', '.join(ahead)} ahead of it take {coming}"
+        elif not ded and admitted >= cfg["pool_max_admitted"]:
+            why = f"pool at its {cfg['pool_max_admitted']} cap"
+        else:
+            wanting = True
+            since = inst["want_since"] = inst.get("want_since") or now
+            why = f"{q} jobs wait, {takes} it can take, the other hosts cover {cov}"
+            if now - since >= p["start_after_seconds"] or want >= p["start_now_excess"]:
+                action, cause = "start", "queue"
             else:
-                action, why = "stop", drain
-        elif packed:
-            # Its slots go one per cycle, busy ones too (a withheld slot finishes its job), and
-            # none comes back, so new jobs go to the other hosts and the idle rule stops it.
-            if up:
-                action, runner, why = "withhold", up[0], "packed"
-            else:
-                why = f"packed, {sum(1 for r in mine.values() if r['busy'])} jobs finishing"
-        elif len(on) > cap:
-            action, runner, why = "withhold", on[0], f"pinned to {cap}" if pinned else f"over its {cap} cap"
-        elif over == "on" and inst and inst["state"] == "running" and off and len(on) < cap:
-            if ded or admitted < cfg["pool_max_admitted"]:
-                action, runner, why = "admit", off[0], "override on"
-                if not ded:
-                    admitted += 1
-                    covered += 1
-            else:
-                why = f"override on; pool at its {cfg['pool_max_admitted']} cap"
-        elif q == 0 and on and not mine[on[0]]["busy"] and over != "on":
-            # Only once no job it could take has waited for dwell_seconds: the queue reads 0
-            # for a minute between bursts, and a slot withheld then comes back minutes later.
-            # An admit needs jobs waiting past what the other hosts cover, so it is never early.
-            quiet = now - inst["waited_at"] if inst is not None else cfg["dwell_seconds"]
-            if quiet >= cfg["dwell_seconds"]:
-                action, runner, why = "withhold", on[0], "nothing waits"
-            else:
-                why = f"nothing waits for {int(quiet)}s of {cfg['dwell_seconds']}s"
-        elif q > cov and off and len(on) < cap:
-            if ded or admitted < cfg["pool_max_admitted"]:
-                action, runner, why = "admit", off[0], f"{q} jobs wait, the other hosts cover {cov}"
-                if not ded:
-                    admitted += 1
-                    covered += 1
-            else:
-                why = f"pool at its {cfg['pool_max_admitted']} cap"
-        elif inst and inst["state"] == "stopped" and over == "off":
-            why = "override off"
-        elif inst and inst["state"] == "stopped" and passed:
-            # Before an override on: EC2 just refused it or AWS just stopped it, so a start
-            # every cycle would only fail or be reclaimed again.
-            why = (f"passed over after a {inst['fallback_why']} for "
-                   f"{int(inst['fallback_until'] - now)}s more")
-        elif inst and inst["state"] == "stopped" and over == "on":
-            action, why, cause = "start", "override on", "override"
-        elif inst and inst["state"] == "stopped" and q > cov:
-            # Not room yet: its slots count once their runners are online and admitted. A
-            # start costs money, so only a queue this much deeper than the other hosts can
-            # take, for start_after_seconds in a row, starts it: a short burst waits instead.
-            # The standby hosts ahead in the list take theirs first.
-            coming = 0 if ded else sum(ahead.values())
-            want = max(0, min(takes, q - cov - coming))
-            if not inst["labels"]:
-                why = "no runner labels read"
-            elif not takes:
-                why = f"{q} jobs wait, none it can take"
-            elif inst.get("hours_today", 0) >= p["max_hours_day"]:
-                why = f"ran {inst['hours_today']:.1f}h today, its {p['max_hours_day']}h cap"
-            elif want < p["start_min_excess"]:
-                why = f"{want} jobs it can take past the other hosts' {cov}, starts at {p['start_min_excess']}"
-                if coming:
-                    why += f"; {', '.join(ahead)} ahead of it take {coming}"
-            elif not ded and admitted >= cfg["pool_max_admitted"]:
-                why = f"pool at its {cfg['pool_max_admitted']} cap"
-            else:
-                wanting = True
-                since = inst["want_since"] = inst.get("want_since") or now
-                why = f"{q} jobs wait, {takes} it can take, the other hosts cover {cov}"
-                if now - since >= p["start_after_seconds"] or want >= p["start_now_excess"]:
-                    action, cause = "start", "queue"
-                else:
-                    why += f"; held {int(now - since)}s of {p['start_after_seconds']}s"
-        elif inst and inst["state"] != "running":
-            why = f"instance {inst['state']}"
-        if inst is not None:
-            inst["draining"] = bool(drain)
-            if not wanting:
-                inst["want_since"] = None
-            # How far along each rule is, for the Infra page: the reasons above are free text.
-            inst["idle_seconds"] = now - inst["busy_at"] if inst["state"] == "running" else 0
-            inst["want"] = want if inst["state"] == "stopped" else 0
-            inst["held_seconds"] = now - inst["want_since"] if wanting else 0
-            # cycle() keeps it as the power state's reason once the call succeeds.
-            inst["next_cause"] = cause if action in ("start", "stop") else ""
-            # What it will take, for the hosts behind it: nothing while draining, packed,
-            # passed over, told off, past its day or unable to take what waits.
-            if not (ded or drain or packed or passed or over == "off" or not takes):
-                if inst["state"] == "stopped" and inst.get("hours_today", 0) < p["max_hours_day"]:
-                    ahead[host] = cap
-                elif inst["state"] in ("pending", "running"):
-                    ahead[host] = (max(0, cap - len(on) - (action == "admit"))
-                                   + sum(1 for n in on if not mine[n]["busy"]))
-        v = "PINNED" if pinned else "PACKED" if packed else "STANDBY"
-        if host in flips:
-            out.append((host, flips[host][0], "", v, flips[host][1]))
-        if drain:
-            aside, builds_in, admitted = [], [], admitted + stepped
-        # A pair's moves all go in this cycle, step-asides first; a hold beside them says nothing.
-        out += [(host, "withhold", n, v, w) for n, w in aside]
-        if action != "hold" or not (aside or builds_in):
-            out.append((host, action, runner, v, why))
-        out += [(host, "admit", n, v, w) for n, w in builds_in]
-    return out
+                why += f"; held {int(now - since)}s of {p['start_after_seconds']}s"
+    elif inst and inst["state"] != "running":
+        why = f"instance {inst['state']}"
+    kept = take = None
+    if inst is not None:
+        inst["draining"] = bool(drain)
+        if not wanting:
+            inst["want_since"] = None
+        # How far along each rule is, for the Infra page: the reasons above are free text.
+        inst["idle_seconds"] = now - inst["busy_at"] if inst["state"] == "running" else 0
+        inst["want"] = want if inst["state"] == "stopped" else 0
+        inst["held_seconds"] = now - inst["want_since"] if wanting else 0
+        # cycle() keeps it as the power state's reason once the call succeeds.
+        inst["next_cause"] = cause if action in ("start", "stop") else ""
+        kept = {k: inst[k] for k in STANDBY_KEEPS if k in inst}
+        # What it will take, for the hosts behind it: nothing while draining, packed, passed
+        # over, told off, past its day or unable to take what waits.
+        if not (ded or drain or packed or passed or over == "off" or not takes):
+            if inst["state"] == "stopped" and inst.get("hours_today", 0) < p["max_hours_day"]:
+                take = cap
+            elif inst["state"] in ("pending", "running"):
+                take = (max(0, cap - len(on) - (action == "admit"))
+                        + sum(1 for n in on if not mine[n]["busy"]))
+    v = "PINNED" if pinned else "PACKED" if packed else "STANDBY"
+    out = [Action(host, flip[0], "", v, flip[1])] if flip else []
+    if drain:
+        aside, builds_in, admitted = [], [], admitted + stepped
+    # A pair's moves all go in this cycle, step-asides first; a hold beside them says nothing.
+    out += [Action(host, "withhold", n, v, w) for n, w in aside]
+    if action != "hold" or not (aside or builds_in):
+        out.append(Action(host, action, runner, v, why))
+    out += [Action(host, "admit", n, v, w) for n, w in builds_in]
+    return out, tally._replace(admitted=admitted, covered=covered), kept, take
 
 
 def standby_cap(cfg, host, pins):
@@ -696,9 +810,9 @@ def warm_host(cfg, instances):
     return max(up, key=lambda h: (instances[h].get("busy_at", 0), -order.index(h)), default=None)
 
 
-def pack_plan(cfg, runners, waiting, instances, covered, pins, now):
-    """{host: ("pack" or "unpack", why)} this cycle, keeping "packed" and "pack_at" in each
-    burst host's instances entry (a powered standby host serving the pool, not paired).
+def pack_plan(snap, covered):
+    """({host: ("pack" or "unpack", why)} this cycle, {host: its "packed" and "pack_at"}) for
+    each burst host (a powered standby host serving the pool, not paired) in instances.
 
     A running burst host bills by the hour however few of its slots are busy, and a job lands
     on any admitted slot, so with a trickle every host stays half busy and none goes idle. So
@@ -713,23 +827,24 @@ def pack_plan(cfg, runners, waiting, instances, covered, pins, now):
     A pack or unpack holds for dwell_seconds, so a queue that flickers between empty and not
     moves nothing, except that a packed host is unpacked at once when a waiting job has no
     unpacked host that could take it or more of its jobs wait than the unpacked hosts have free
-    slots (covered: the home hosts' idle slots and this cycle's admits)."""
+    slots (covered: the LAN hosts' idle slots and this cycle's admits)."""
+    cfg, runners, waiting, now = snap.cfg, snap.runners, snap.waiting, snap.now
     dwell, keep = cfg["dwell_seconds"], frozenset(l.lower() for l in cfg["pack_keep_labels"])
-    burst = {h: i for h, i in instances.items() if h in cfg["standby"] and not dedicated(cfg, h) and not pairs(cfg, h)}
-    for i in burst.values():
-        if i["state"] != "running":
-            i["packed"] = False
+    burst = {h: i for h, i in snap.instances.items()
+             if h in cfg["standby"] and not dedicated(cfg, h) and not pairs(cfg, h)}
+    memo = {h: {"packed": False} for h, i in burst.items() if i["state"] != "running"}
+    pack_at = {h: i.get("pack_at", 0) for h, i in burst.items()}
     up = {h: i for h, i in burst.items() if i["state"] == "running" and not i.get("draining")}
     mine = {h: [r for r in runners.values() if r["host"] == h] for h in [*cfg["hosts"], *up]}
     busy = {h: sum(1 for r in rs if r["busy"]) for h, rs in mine.items()}
-    # What each other host could take: a home host's online runners' labels, a burst host's
+    # What each other host could take: a LAN host's online runners' labels, a burst host's
     # labels with the pool's put back (host_labels()).
     offers = {h: frozenset().union(*(r.get("labels", ()) for r in mine[h])) for h in cfg["hosts"]}
     offers |= {h: i["labels"] for h, i in up.items()}
 
     def room(h):
         on = [r for r in mine[h] if not r["withheld"]]
-        cap = min(standby_cap(cfg, h, pins)[0], len(mine[h]))
+        cap = min(standby_cap(cfg, h, snap.pins)[0], len(mine[h]))
         return max(0, cap - len(on)) + sum(1 for r in on if not r["busy"])
 
     serving = {h for h, i in up.items() if not i.get("packed")}
@@ -754,16 +869,15 @@ def pack_plan(cfg, runners, waiting, instances, covered, pins, now):
             why = f"{len(alone)} waiting jobs no other host can take"
         elif len(jobs) > free:
             why = f"{len(jobs)} jobs it can take wait, the other hosts have {free} free slots"
-        elif jobs and now - i.get("pack_at", 0) >= dwell:
+        elif jobs and now - pack_at[h] >= dwell:
             why = f"{len(jobs)} jobs it can take wait"
         else:
             continue
-        i["packed"], i["pack_at"] = False, now
+        memo[h], pack_at[h] = {"packed": False, "pack_at": now}, now
         serving.add(h)
         flips[h] = ("unpack", why)
-    last = max((i.get("pack_at", 0) for i in burst.values()), default=0)
-    if now - last < dwell:
-        return flips
+    if now - max(pack_at.values(), default=0) < dwell:
+        return flips, memo
     # Quiet for a dwell (waited_at, kept by decide()), not just this cycle: the queue reads 0
     # for a minute between bursts, and a batch pack on that would drain the pool.
     fit = [h for h in serving if not up[h].get("override")
@@ -773,10 +887,10 @@ def pack_plan(cfg, runners, waiting, instances, covered, pins, now):
         if len(serving) < 2 or scarce(h):
             continue
         serving.discard(h)
-        up[h]["packed"], up[h]["pack_at"] = True, now
+        memo[h] = {"packed": True, "pack_at": now}
         flips[h] = ("pack", f"no job it can take waited for {dwell}s, {busy[h]} busy slots, "
                             f"{len(serving)} burst hosts left unpacked; its slots go and its idle rule stops it")
-    return flips
+    return flips, memo
 
 
 def step_pairs(cfg, host, mine, builds, on, off):
@@ -1156,7 +1270,7 @@ def lend_plan(cfg, hosts, runners, seat_state, waits, lends, leases, pins, last_
         by_slot.setdefault(s["slot"], []).append(seat)
     host_of = {slot: seats[mine[0]]["host"] for slot, mine in by_slot.items()}
     st = lambda seat: seat_state.get(seat, {})
-    verdicts = {h: verdict({k: hosts[k].get(h) for k in QUERIES}, cfg["hosts"][h])[0] for h in cfg["hosts"]}
+    verdicts = {h: v for h, (v, _) in host_verdicts(cfg, hosts).items()}
 
     def unfit(host):
         """Why host may not hold a lend, or ""."""
@@ -1782,7 +1896,7 @@ def withheld_reasons(cfg, hosts, runners, lends, pins, last_action, now):
     of admit on load, pressure, memory or heat), cooldown (a ROOM host that acted within
     cooldown_seconds), no-work (room, and nothing waiting it could take)."""
     paired, out = lent(cfg, runners), {}
-    verdicts = {h: verdict({k: hosts[k].get(h) for k in QUERIES}, cfg["hosts"][h]) for h in cfg["hosts"]}
+    verdicts = host_verdicts(cfg, hosts)
     for name, r in sorted(runners.items()):
         if not r["withheld"]:
             continue
@@ -1966,16 +2080,17 @@ def cycle(cfg, last_action, tracked=None, budget=None, lending=None):
     # A lent slot is the lending's alone: decide() never admits or counts it.
     governed = {n: r for n, r in runners.items() if n not in lends}
     decisions = decide(cfg, hosts, governed, waiting, last_action, now, instances, pins, shared_waiting)
-    for host, action, runner, v, why in decisions:
+    for a in decisions:
+        host, action, runner, v, why = a
         if action != "start" and host in instances:
             instances[host].pop("denied", None)  # a deny is logged again once the host asks anew
         if action == "hold":
             continue
-        if action in ("pack", "unpack"):
+        if a.flip:
             # A decision of the governor's own (pack_plan()); the withholds it brings log apart.
             print(f"{action} {host}: {why}; queue {queue}", flush=True)
             continue
-        power = action in ("start", "stop")
+        power = a.power
         target = powered(cfg, host)["power"]["instance_id"] if power else runner
         # The deny is retried each cycle (that is how the governor sees it lift), but logged once.
         denied = power and instances[host].get("denied")

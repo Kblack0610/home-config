@@ -57,6 +57,7 @@ On a host whose `ci_caps` carry light, heavy or forgejo, a lendable Unity slot i
 - `ci_units: {forgejo: N}` on a host in `ansible/inventory.yml` gives each lendable slot N Forgejo seats, which run up to N Forgejo jobs at once inside the slot's one slice and memory cap. One lend then serves N waiting jobs, and the slot goes back only when every seat on it is idle and holds github. The number and the measurement behind it sit beside `ci_units` in the inventory; only windows-media-ci sets it. To roll back, drop `ci_units` and re-render, or restore the previous `apps/ci-topology/topology.json`. Repo seats stay one per slot.
 - Each slot keeps its own home and `_work`. A Unity repo's light job parks the warm Library first (`ci-fresh-workspace`, under Disk).
 - Forgejo wait has a p90 in the exporter (`github_job_queue_seconds{forge="forgejo",pool="forgejo"}`). `scripts/ci-pool-idle.py` reports idle slot-hours per kind while another kind waited, per host; for a 7-day window read VictoriaMetrics, not Prometheus (the port-forward and command are in the script's docstring).
+- `scripts/ci-kind-weights.py` reports each job kind's measured share of a slot: cores and memory p50 and p90, each over the slot it ran on (from `ci_unity_slot_cpus` and `ci_unity_slot_memory_max`), and a weight, the larger p90 share. It reads `cc:job_kind_cores` and `cc:job_kind_mem`, a runner's measured use labelled by the exporter's `ci_runner_job{runner,kind}`; a kind with no samples prints `-`.
 
 ## The Mac pool
 

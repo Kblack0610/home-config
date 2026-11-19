@@ -200,6 +200,26 @@ class ExporterTest(unittest.TestCase):
         self.assertEqual(slot, ['github_runner_pool_slot{name="gone-unity-pool-1",host="gone",site="cloud",'
                                 'state="missing",scope="topology",forge="github",pool="unity"} 0'])
 
+    def test_ci_runner_job_names_the_busy_runners_kind(self):
+        # PlayMode 1 lists no labels, so box-unity-pool-1's one cap says it; idle box-light-1 has no row.
+        self.assertEqual(rows(self.render(), "ci_runner_job"), ['ci_runner_job{runner="box-unity-pool-1",kind="unity"} 1'])
+
+    def test_ci_runner_job_kind_comes_from_the_jobs_labels_on_a_many_cap_slot(self):
+        flex = {"host": "box", "caps": ["unity", "light", "heavy"], "repo": None, "forge": "github", "borrows": None}
+        job = FAKE["repos/acme/game/actions/runs/10/jobs?per_page=100"]["jobs"][0]
+        with mock.patch.dict(exporter.SLOTS, {"box-unity-pool-1": flex}):
+            with mock.patch.dict(job, {"labels": ["self-hosted", "light"]}):
+                self.assertEqual(rows(self.render(), "ci_runner_job"),
+                                 ['ci_runner_job{runner="box-unity-pool-1",kind="light"} 1'])
+            # No labels and several caps: the kind is open, so no row rather than a guess.
+            self.assertEqual(rows(self.render(), "ci_runner_job"), [])
+
+    def test_a_repo_runner_on_a_borrowed_slot_is_kind_repo(self):
+        self.assertEqual(exporter.job_kind("box-light-1", ["self-hosted", "light"], ["self-hosted", "light"]), "light")
+        seat = {"host": "box", "caps": ["light"], "repo": "acme/web", "forge": "github", "borrows": "box-unity-pool-1"}
+        with mock.patch.dict(exporter.SLOTS, {"box-light-1": seat}):
+            self.assertEqual(exporter.job_kind("box-light-1", ["self-hosted", "light"], ["self-hosted", "light"]), "repo")
+
     def test_runner_rows_carry_their_labels_offline_too(self):
         # ci-runner-governor reads these to tell which waiting jobs a stopped host could take.
         state = rows(self.render(), "github_runner_state")
@@ -1052,6 +1072,11 @@ class ForgejoTest(unittest.TestCase):
         out = self.render()
         self.assertFalse([r for r in rows(out, "github_runner_state") if 'forgejo' in r and 'forge="github"' in r])
         self.assertNotIn('pool="forgejo"', "".join(rows(out, "github_runner_pool_expected")))
+
+    def test_a_busy_forgejo_seat_runs_a_forgejo_job(self):
+        self.assertEqual(rows(self.render(), "ci_runner_job"),
+                         ['ci_runner_job{runner="box-forgejo-1",kind="forgejo"} 1',
+                          'ci_runner_job{runner="box-unity-pool-1",kind="unity"} 1'])
 
     def test_forge_label_keeps_the_counts_apart(self):
         out = self.render()

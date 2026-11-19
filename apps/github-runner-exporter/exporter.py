@@ -128,8 +128,9 @@ def load_topology(path):
 
 
 TOPOLOGY = load_topology(os.environ.get("TOPOLOGY", "/topology/topology.json"))
-# slot name -> {host, caps, repo, forge}
-SLOTS = {s["name"]: {"host": h, "caps": s["caps"], "repo": s.get("repo"), "forge": s.get("forge", "github")}
+# slot name -> {host, caps, repo, forge, borrows}
+SLOTS = {s["name"]: {"host": h, "caps": s["caps"], "repo": s.get("repo"), "forge": s.get("forge", "github"),
+                     "borrows": s.get("borrows")}
          for h, e in TOPOLOGY.items() for s in e["slots"]}
 TOPOLOGY_HOSTS = sorted(TOPOLOGY, key=len, reverse=True)
 # Repos whose repo-scoped runners, active runs and recent runs are read: RUN_REPOS, plus
@@ -390,6 +391,22 @@ def host_of(name, labels):
             return h
     m = re.match(r"(.+?)-(light|heavy|unity|playground|mac)\b", name)
     return m.group(1) if m else "unknown"
+
+
+def job_kind(name, runner_labels, job_labels):
+    """The kind of job a busy runner runs, for ci_runner_job: forgejo for a Forgejo seat, repo for
+    a repo runner on a borrowed slot, else the pool the job asks for, else the runner's one cap.
+    None when that leaves it open (a slot of several caps on a job whose labels name none)."""
+    slot = SLOTS.get(name, {})
+    if slot.get("forge") == "forgejo":
+        return "forgejo"
+    if slot.get("repo") and slot.get("borrows"):
+        return "repo"
+    kind = pool_of(job_labels)
+    if kind != "other":
+        return kind
+    caps = caps_of(name, runner_labels)
+    return caps[0] if len(caps) == 1 else None
 
 
 def github_hosted(job):
@@ -999,7 +1016,7 @@ def render():
         "# HELP github_runner_state One row per runner: state is running|idle|offline|missing; value is seconds the current job has run (0 otherwise)",
         "# TYPE github_runner_state gauge",
     ]
-    by_state, online, slot_rows = {}, {}, []
+    by_state, online, slot_rows, kinds = {}, {}, [], {}
     for scope, r in sorted(seen.values(), key=lambda s: s[1]["name"]):
         names = [l["name"] for l in r.get("labels", [])]
         host, caps = host_of(r["name"], names), caps_of(r["name"], names)
@@ -1014,6 +1031,7 @@ def render():
             lab["state"] = "offline"
         elif r.get("busy"):
             lab["state"] = "running"
+            kinds[r["name"]] = job_kind(r["name"], names, running.get(r["name"], (None, {}))[1].get("labels") or [])
             if r["name"] in running:
                 repo, j = running[r["name"]]
                 lab.update(repo=repo.split("/", 1)[1], workflow=j["_workflow"], job_name=j.get("name", ""),
@@ -1078,6 +1096,15 @@ def render():
             continue
         L.append(f'github_runners_by_state{{state="{state}",forge="github"}} {by_state.get(state, 0)}')
     L += forgejo("github_runners_by_state")
+
+    # The kind of job each busy runner runs, so ci-runner-cpu's cores and memory (keyed by the same
+    # runner name) group by kind: cc:job_kind_cores and cc:job_kind_mem, read by
+    # scripts/ci-kind-weights.py. No row for an idle runner or a kind left open.
+    kinds.update({lab["name"]: "forgejo" for lab, _ in fj.get("github_runner_state", []) if lab["state"] == "running"})
+    L += [
+        "# HELP ci_runner_job 1 per busy runner, labelled with the kind of job it runs (unity, light, heavy, forgejo, repo, ...)",
+        "# TYPE ci_runner_job gauge",
+    ] + [f"ci_runner_job{{{labels_str({'runner': n, 'kind': k})}}} 1" for n, k in sorted(kinds.items()) if k]
 
     L += [
         "# HELP github_runner_pool_expected Topology slots on this host that take this cap (pool=<cap>)",

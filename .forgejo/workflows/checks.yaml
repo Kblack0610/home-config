@@ -148,7 +148,7 @@ jobs:
         run: python3 apps/feed-ingest/test_ingest.py
       - name: litellm tool_compat offline tests
         run: python3 apps/litellm/test_tool_compat.py
-      - name: litellm go routes forward the session header
+      - name: litellm route checks (go session header, NIM rpm budget)
         run: python3 apps/litellm/test_go_routes.py
       - name: eeg-review offline tests
         run: python3 scripts/test_eeg_review.py

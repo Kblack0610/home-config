@@ -28,6 +28,8 @@ Rendering also checks what the inventory must hold for the slots to fit their ho
 - A seat borrows one Unity test slot of its own LAN host, outside every slot group: the governor
   lends that slot to a Forgejo seat (one on each such slot of a host tagged forgejo) or to a
   repo runner (ci_repo_runners "borrows") while no GitHub job holds it, so no seat has cores of its own.
+  ci_units {forgejo: k} puts k Forgejo seats on each such slot (<slot>-forgejo, then <slot>-forgejo-2
+  to -k), so k small jobs share one lent slot; k is a whole number from 1 to the slot's CPU count.
 
     render-ci-topology.py           write topology.json
     render-ci-topology.py --check   fail when topology.json is not what the inventory renders (the CI gate)
@@ -57,7 +59,9 @@ UNITY_GROUPS = ("unity_ci_runners", "unity_ci_mac_runners")
 # The inventory keys this reads; a Jinja value in one would render as its literal text.
 KEYS = ("ci_repo_runners", "ci_pinned_runners", "unity_ci_slots",
         "unity_ci_slot_groups", "unity_ci_wide_slots", "unity_ci_lan", "unity_ci_full", "unity_ci_wide",
-        "unity_ci_slot_labels", "ci_unity_slot_cpus", "ci_unity_slot_memory_max", "ci_caps")
+        "unity_ci_slot_labels", "ci_unity_slot_cpus", "ci_unity_slot_memory_max", "ci_caps", "ci_units")
+# The seat kinds ci_units sizes: how many seats of the kind one lent slot runs at once.
+UNIT_KINDS = ("forgejo",)
 # What a host may be tagged for (ci_caps): each of its slots takes every job kind its host is
 # tagged for that the slot can hold. A Unity test slot takes unity and SHARED_CAPS; a build slot
 # takes builds alone, so a build never waits behind a small job; a wide slot takes unity-wide alone.
@@ -147,9 +151,17 @@ def seats(host, v, caps, total, group, slots, fails):
     lan = v.get("unity_ci_lan", True) is not False
     fails += [f"{host}: {s['name']} borrows {s['borrows']}, not one of its lendable LAN slots {lendable}"
               for s in slots if s.get("borrows") and not (lan and s["borrows"] in lendable)]
+    units = v.get("ci_units") or {}
+    fails += [f"{host}: ci_units names {k}, not one of {list(UNIT_KINDS)}" for k in sorted(units) if k not in UNIT_KINDS]
+    k, (cpus, _) = units.get("forgejo", 1), slot_budget(v, total)
+    most = min((len(cpus[n - 1]) for n in range(1, total + 1) if n not in grouped and n <= len(cpus)), default=None)
+    if not isinstance(k, int) or isinstance(k, bool) or k < 1 or (most and k > most):
+        fails.append(f"{host}: ci_units forgejo is {k!r}, not a whole number from 1 to {most or 'its slots'} CPUs")
+        k = 1
     if "forgejo" not in caps or not lan:
         return []
-    return [{"name": f"{n}-forgejo", "caps": ["forgejo"], "forge": "forgejo", "borrows": n} for n in lendable]
+    return [{"name": f"{n}-forgejo" + (f"-{i}" if i > 1 else ""), "caps": ["forgejo"], "forge": "forgejo", "borrows": n}
+            for n in lendable for i in range(1, k + 1)]
 
 
 def unity_layout(v):

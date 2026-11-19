@@ -163,6 +163,9 @@ gungan-speak) have no slots of their own: each is a seat that borrows one LAN Un
 that slot, so one authority admits every job a slot runs. A personal repo's runner cannot
 join the org pool (GitHub lists a repo runner only to its repo), which is why it is a seat.
 A seat's demand is its waiting jobs (github-runner-exporter: forge="forgejo", or the repo).
+A slot may carry several seats of one kind (topology ci_units: <slot>-forgejo, -forgejo-2, ...);
+a lend to one serves them all, so it holds that many jobs at once, they share one lease, and
+the slot goes back only once every one of them has given it back.
 The kind whose job has waited longest goes first, and a slot is lent only while no GitHub
 job it could take has waited longer, only on a live, unpinned host that is not HOT or FULL,
 one per host per cycle past its cooldown, and never past the pool floor; on a ROOM host every
@@ -185,7 +188,7 @@ seat otherwise, and returning only when no seat borrows it. Every other lease st
 A repo seat admitted with no lend is withheld. ci_governor_withheld{runner,reason} says why
 each withheld slot is withheld.
 A Forgejo seat's supervisor (ansible role forgejo-runner-linux) long-polls
-/lease?slot=<slot>&have=<lease>&wait=<seconds> on the lease NodePort, which answers as soon as
+/lease?seat=<seat>&have=<lease>&wait=<seconds> on the lease NodePort, which answers as soon as
 the lease differs from have, and runs `forgejo-runner one-job` only on a forgejo lease.
 A governor that is down lends nothing: Forgejo CI stops (fail closed), GitHub CI does not.
 
@@ -1074,40 +1077,56 @@ LEASES = ("github", "forgejo")
 
 
 class Leases:
-    """Each Forgejo seat's lease, by the slot it borrows: "github" (the default, so a restart
-    starts there) or "forgejo". The slot's supervisor long-polls wait(); set() wakes it."""
+    """Each slot's Forgejo lease: "github" (the default, so a restart starts there) or
+    "forgejo", one for every Forgejo seat that borrows the slot (ci_units). Each seat's
+    supervisor long-polls wait() by its seat name; set() wakes them all."""
 
-    def __init__(self, slots):
+    def __init__(self, seats):
+        """seats: {seat: the slot it borrows}."""
         self.cond = Condition()
-        self.lease = dict.fromkeys(slots, "github")
-        # The lease the supervisor last said it holds since the lease last changed; None
+        self.slot_of = dict(seats)
+        self.lease = dict.fromkeys(seats.values(), "github")
+        # The lease each supervisor last said it holds since the lease last changed; None
         # until it says. "github" means no Forgejo job of its runs.
-        self.ack = dict.fromkeys(slots)
-        # When the supervisor last asked.
-        self.seen = dict.fromkeys(slots, 0.0)
+        self.ack = dict.fromkeys(seats)
+        # When each supervisor last asked.
+        self.seen = dict.fromkeys(seats, 0.0)
+
+    def seats(self, slot):
+        return sorted(s for s, n in self.slot_of.items() if n == slot)
 
     def set(self, slot, lease):
         with self.cond:
             if self.lease[slot] != lease:
-                self.lease[slot], self.ack[slot] = lease, None
+                self.lease[slot] = lease
+                self.ack.update(dict.fromkeys(self.seats(slot)))
                 self.cond.notify_all()
 
     def get(self, slot):
+        """(lease, the ack every seat of the slot gave or None, when a seat of it last asked)."""
         with self.cond:
-            return self.lease[slot], self.ack[slot], self.seen[slot]
+            acks = {self.ack[s] for s in self.seats(slot)}
+            return self.lease[slot], (acks.pop() if len(acks) == 1 else None), \
+                max((self.seen[s] for s in self.seats(slot)), default=0.0)
 
-    def wait(self, slot, have, timeout):
-        """The slot's lease as soon as it differs from have, else have after timeout. A
+    def of_seat(self, seat):
+        """(lease, ack, seen) of one seat."""
+        with self.cond:
+            return self.lease[self.slot_of[seat]], self.ack[seat], self.seen[seat]
+
+    def wait(self, seat, have, timeout):
+        """The seat's slot's lease as soon as it differs from have, else have after timeout. A
         supervisor asks with the lease it holds and acts on what it gets back, so asking
         with the current lease acknowledges it."""
+        slot = self.slot_of[seat]
         with self.cond:
-            self.seen[slot] = time.time()
+            self.seen[seat] = time.time()
             if self.lease[slot] == have:
-                self.ack[slot] = have
+                self.ack[seat] = have
             self.cond.wait_for(lambda: self.lease[slot] != have, timeout)
             if self.lease[slot] == have:
-                self.ack[slot] = have
-            self.seen[slot] = time.time()
+                self.ack[seat] = have
+            self.seen[seat] = time.time()
             return self.lease[slot]
 
 
@@ -1190,13 +1209,25 @@ def lend_plan(cfg, hosts, runners, seat_state, waits, lends, leases, pins, last_
             return f"{host} is pinned"
         return f"{host} is {verdicts[host]}" if verdicts[host] in ("HOT", "FULL") else ""
 
+    def mates(slot, seat):
+        """The seats a lend of slot to seat serves: every seat of its kind on the slot (ci_units)
+        that the exporter sees, so a seat the topology names but no host has registered yet
+        adds no capacity and holds no return."""
+        return [m for m in by_slot.get(slot, [seat])
+                if m == seat or (m in seat_state and seat_kind(cfg, m) == seat_kind(cfg, seat))]
+
+    def busy(slot, seat):
+        """How many of the lend's seats run a job."""
+        return sum(1 for m in mates(slot, seat) if st(m).get("busy"))
+
     def given_back(slot, seat, at):
         if seats[seat]["forge"] == "forgejo":
-            lease, ack, seen = leases.get(slot)
-            if st(seat).get("busy"):
-                return False  # an ack while its job runs is not the seat's
-            # A supervisor that died before it acked never will.
-            return (lease == "github" and ack == "github") or now - max(seen, at) >= LEASE_STALE_SECONDS
+            def acked(m):
+                lease, ack, seen = leases.of_seat(m)
+                # A supervisor that died before it acked never will.
+                return (lease == "github" and ack == "github") or now - max(seen, at) >= LEASE_STALE_SECONDS
+            # An ack while its job runs is not the seat's.
+            return not busy(slot, seat) and all(acked(m) for m in mates(slot, seat))
         return not st(seat) or (st(seat)["withheld"] and not st(seat)["busy"])
 
     jobs = {}
@@ -1214,14 +1245,14 @@ def lend_plan(cfg, hosts, runners, seat_state, waits, lends, leases, pins, last_
         if lend["seat"] and lend["phase"] != "returning":
             kind = seat_kind(cfg, lend["seat"])
             have.setdefault(kind, []).append(slot)
-            if lend["phase"] == "granted" and st(lend["seat"]).get("busy"):
-                want[kind] = want.get(kind, 0) + 1
+            if lend["phase"] == "granted" and busy(slot, lend["seat"]):
+                want[kind] = want.get(kind, 0) + busy(slot, lend["seat"])
     back = {}
     for slot, lend in sorted(lends.items()):
         seat = lend["seat"]
         if not seat or lend["phase"] == "returning":
             continue
-        idle, kind = not st(seat).get("busy"), seat_kind(cfg, seat)
+        idle, kind = not busy(slot, seat), seat_kind(cfg, seat)
         _, _, seen = leases.get(slot) if seats[seat]["forge"] == "forgejo" else (None, None, now)
         if unfit(host_of[slot]):
             back[slot] = unfit(host_of[slot])
@@ -1231,9 +1262,13 @@ def lend_plan(cfg, hosts, runners, seat_state, waits, lends, leases, pins, last_
             back[slot] = f"its supervisor has not asked for its lease for {int(now - max(seen, lend['at']))}s"
     for kind, slots in have.items():
         keep = [s for s in slots if s not in back]
-        # want counts every busy seat, so the extra ones are idle; a held lend gave nothing yet.
-        extra = sorted(keep, key=lambda s: (lends[s]["phase"] == "granted", s))[:max(0, len(keep) - want.get(kind, 0))]
-        back |= {s: f"no {kind} job needs it" for s in extra}
+        # A lend holds as many jobs as it has seats, and want counts every busy seat, so the
+        # lends past want go back, the least busy first; a held lend gave nothing yet.
+        room = sum(len(mates(s, lends[s]["seat"])) for s in keep)
+        for s in sorted(keep, key=lambda s: (busy(s, lends[s]["seat"]), lends[s]["phase"] == "granted", s)):
+            if room - len(mates(s, lends[s]["seat"])) >= want.get(kind, 0):
+                room -= len(mates(s, lends[s]["seat"]))
+                back[s] = f"no {kind} job needs it"
 
     admitted = sum(1 for n, r in runners.items() if not r["withheld"] and serves_pool(cfg, r["host"], n))
 
@@ -1267,8 +1302,10 @@ def lend_plan(cfg, hosts, runners, seat_state, waits, lends, leases, pins, last_
                 and serves_pool(cfg, r["host"], n))
     moved, paired = set(), lent(cfg, runners)
     for kind in sorted(oldest, key=lambda k: (-oldest[k], k)):
-        need = want[kind] - len([s for s in have.get(kind, []) if s not in back])
-        mine = sorted((s["slot"], seat) for seat, s in seats.items() if seat_kind(cfg, seat) == kind)
+        need = want[kind] - sum(len(mates(s, lends[s]["seat"])) for s in have.get(kind, []) if s not in back)
+        # One per slot: its first seat the exporter sees, which names the lend for all its seats.
+        mine = sorted({s["slot"]: seat for seat, s in sorted(seats.items(), reverse=True)
+                       if seat_kind(cfg, seat) == kind and seat in seat_state}.items())
         # Idle capacity already (withheld, with room) first, then an idle slot serving GitHub,
         # then a busy one nearest its end: the lend withholds it, so it drains into the seat's
         # job. Lending only idle slots starved Forgejo while GitHub kept every slot busy.
@@ -1295,7 +1332,7 @@ def lend_plan(cfg, hosts, runners, seat_state, waits, lends, leases, pins, last_
             floor -= 0 if r["withheld"] else 1
             if not spare:
                 moved.add(host)
-            need -= 1
+            need -= len(mates(slot, seat))
             steps.append(("lend", slot, seat, f"a {kind} job has waited {int(oldest[kind])}s"))
 
     granted = {l["seat"] for l in lends.values() if l["phase"] == "granted"}
@@ -2070,19 +2107,19 @@ class Handler(BaseHTTPRequestHandler):
             with State.lock:
                 body = State.metrics.encode()
         elif url.path == "/lease":
-            # /lease?slot=<unity slot>&have=<github|forgejo>[&wait=<s>]: the slot's lease once
+            # /lease?seat=<forgejo seat>&have=<github|forgejo>[&wait=<s>]: its slot's lease once
             # it differs from have, or have after wait (at most LEASE_WAIT_MAX).
             q = urllib.parse.parse_qs(url.query)
-            slot, have = q.get("slot", [""])[0], q.get("have", ["github"])[0]
-            if self.leases is None or slot not in self.leases.lease:
-                return self.answer(404, b"no such slot\n")
+            seat, have = q.get("seat", [""])[0], q.get("have", ["github"])[0]
+            if self.leases is None or seat not in self.leases.slot_of:
+                return self.answer(404, b"no such seat\n")
             try:
                 wait = min(max(float(q.get("wait", [LEASE_WAIT_MAX])[0]), 0), LEASE_WAIT_MAX)
             except ValueError:
                 wait = -1
             if have not in LEASES or wait < 0:
                 return self.answer(400, b"have is github or forgejo, wait a number of seconds\n")
-            body = (self.leases.wait(slot, have, wait) + "\n").encode()
+            body = (self.leases.wait(seat, have, wait) + "\n").encode()
         else:
             return self.answer(404, b"")
         self.answer(200, body)
@@ -2102,7 +2139,7 @@ def main():
     if not DRY_RUN and not TOKEN:
         sys.exit("live mode needs GITHUB_TOKEN (Organization > Self-hosted runners: write)")
     # Before the server: a /lease asked before this answers 404, which a supervisor reads as github.
-    leases = Leases(sorted({s["slot"] for s in cfg["seats"].values() if s["forge"] == "forgejo"}))
+    leases = Leases({n: s["slot"] for n, s in cfg["seats"].items() if s["forge"] == "forgejo"})
     Handler.leases = leases
     # A thread per request: every Forgejo seat holds a /lease long-poll open.
     server = ThreadingHTTPServer(("", PORT), Handler)

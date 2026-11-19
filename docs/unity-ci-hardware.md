@@ -99,7 +99,7 @@ Before ordering, settle the cap: the new box's slots plus the pool's registered 
 
 ## Laptops as runners
 
-razer-laptop left the Unity pool 2026-11-17 (RAM 96 GB -> 32 GB; one light slot only). asus-laptop and hp-victus are service hosts that carry no CI of any kind (`no_ci_hosts` in `ansible/inventory.yml` says why): as k3s nodes holding Forgejo, Frigate and the databases, CI load there took the cluster down with the jobs. Laptops work but throttle under sustained load and their batteries swell when held at 100%. Set a 60-80% charge limit in the BIOS (or `thinkpad_acpi` thresholds on Linux) and run with the lid open.
+razer-laptop left the Unity pool 2026-11-17 (RAM 96 GB -> 32 GB); it runs agents and no CI (`no_ci_hosts`, 2026-11-18). asus-laptop and hp-victus are service hosts that carry no CI of any kind (`no_ci_hosts` in `ansible/inventory.yml` says why): as k3s nodes holding Forgejo, Frigate and the databases, CI load there took the cluster down with the jobs. Laptops work but throttle under sustained load and their batteries swell when held at 100%. Set a 60-80% charge limit in the BIOS (or `thinkpad_acpi` thresholds on Linux) and run with the lid open.
 
 ## Renting
 
@@ -134,7 +134,7 @@ Checked 2026-11-11: moving Unity jobs from the AWS hosts to GitHub-hosted runner
 - 4-core is the smallest that fits a slot (3 cores, 14 GB; a PlayMode shard peaks at 13.9 GB), and only just. The 2-core standard runner does not fit.
 - On top of the rate, every hosted job imports a cold `Library/`, activates Unity again (see [Unity license](#unity-license)), and is billed in whole minutes. Jobs that need `lan` (Multi, player builds, git.kblab.me pushes) cannot run there at all.
 - At the pool's 150-260 runner-hours a day (playground `docs/operations/ci-cost.md`, 2026-11-06), GitHub 4-core would cost about $3,200-5,600 a month, against the `ci-burst-monthly` cap on AWS (platform `infra/aws-ci-burst/variables.tf` `budget_monthly_usd` on `develop`).
-- Non-Unity jobs already use hosted runners (`LINUX_RUNNER_LIGHT`, else `ubuntu-latest`), which is where hosted runners make sense.
+- Non-Unity jobs already run self-hosted: `LINUX_RUNNER_LIGHT` and `LINUX_RUNNER_HEAVY` (org variables) point at the `light` and `heavy` labels, which the Unity test slots serve (see below), so hosted runners buy nothing there either.
 - To spend less, prefer Spot over on-demand and buy owned slots ([Options by value](#options-by-value)).
 
 Source: docs.github.com/en/billing/reference/actions-runner-pricing (Linux x64), `apps/ci-runner-governor/config.json` `rates`.

@@ -1,0 +1,11 @@
+---
+- name: commit system
+  community.openwrt.uci:
+    command: commit
+    config: system
+
+- name: restart log
+  community.openwrt.service:
+    name: log
+    state: restarted
+  when: not ansible_check_mode

@@ -1,0 +1,56 @@
+---
+# Router baseline that is not a phased migration: hardware TSO off, and logs off-box.
+# The play runs community.openwrt.init first (playbooks/site.yml).
+
+- name: ethtool, to set the offload features
+  community.openwrt.opkg:
+    name: ethtool
+    state: present
+  tags: [tso]
+
+- name: The devices whose TSO stays off
+  community.openwrt.copy:
+    content: "{{ openwrt_tso_off_devices | join('\n') }}\n"
+    dest: /etc/tso-off-devices
+    mode: "0644"
+  tags: [tso]
+
+- name: Turn TSO off again on every ifup (features reset at boot)
+  community.openwrt.copy:
+    src: 90-tso-off
+    dest: /etc/hotplug.d/iface/90-tso-off
+    mode: "0644"
+  tags: [tso]
+
+- name: Turn TSO off now
+  community.openwrt.command:
+    cmd: "ethtool -K {{ item }} tso off"
+  loop: "{{ openwrt_tso_off_devices }}"
+  changed_when: false
+  when: not ansible_check_mode
+  tags: [tso]
+
+- name: Read back that TSO is off
+  community.openwrt.command:
+    cmd: "ethtool -k {{ item }}"
+  loop: "{{ openwrt_tso_off_devices }}"
+  register: openwrt_tso_state
+  changed_when: false
+  check_mode: false
+  failed_when: "'tcp-segmentation-offload: off' not in openwrt_tso_state.stdout"
+  when: not ansible_check_mode
+  tags: [tso]
+
+- name: Send logd to the netconsole receiver
+  community.openwrt.uci:
+    command: set
+    key: "system.@system[0].{{ item.key }}"
+    value: "{{ item.value }}"
+  loop:
+    - { key: log_ip, value: "{{ openwrt_log_ip }}" }
+    - { key: log_port, value: "{{ openwrt_log_port }}" }
+    - { key: log_proto, value: udp }
+  notify:
+    - commit system
+    - restart log
+  tags: [remote-log]

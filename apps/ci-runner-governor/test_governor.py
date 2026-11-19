@@ -1931,8 +1931,8 @@ def lan_slots(spec):
 class LanPairTest(unittest.TestCase):
     BUILD = {"aws-build-1": {"state": "stopped", "busy_at": 0, "labels": PAIRED_LABELS}}
 
-    def run_lan(self, spec, waiting, lan=COOL, last=None, pins=None):
-        inst = copy.deepcopy(self.BUILD)
+    def run_lan(self, spec, waiting, lan=COOL, last=None, pins=None, build=None):
+        inst = copy.deepcopy(self.BUILD if build is None else build)
         got = governor.decide(LIVE, readings(**{"ms-a2": lan}), lan_slots(spec), waiting, last or {}, 10_000, inst,
                               pins or {})
         return sorted((a, int(r.rsplit("-", 1)[1])) for h, a, r, _, _ in got if h == "ms-a2" and a != "hold"), inst
@@ -1964,6 +1964,24 @@ class LanPairTest(unittest.TestCase):
         got, inst = self.run_lan("iiii.", [BUILD_JOB], lan=HOT)
         self.assertNotIn(("withhold", 3), got)
         self.assertEqual(inst["aws-build-1"]["want"], 1)
+
+    def test_a_hot_host_claims_the_build_no_paid_host_can_take(self):
+        # 2026-11-19: aws-build-1 off by override, ms-a2 HOT for 2h20m with the Steam cut queued.
+        # The load rule still withholds slot 1 for HOT; the pair's moves are what changed.
+        pair = lambda got: [m for m in got if m[1] in (3, 4, 5)]
+        off = {"aws-build-1": {**self.BUILD["aws-build-1"], "override": "off"}}
+        self.assertEqual(pair(self.run_lan("iiii.", [BUILD_JOB], lan=HOT, build=off)[0]), [("withhold", 3), ("withhold", 4)])
+        self.assertEqual(pair(self.run_lan("ii...", [BUILD_JOB], lan=HOT, build=off)[0]), [("admit", 5)])
+        # Its state unread (the instance is gone): no paid host either.
+        self.assertEqual(pair(self.run_lan("iiii.", [BUILD_JOB], lan=HOT, build={})[0]), [("withhold", 3), ("withhold", 4)])
+        # One whose runners lack a label the build asks for cannot take it.
+        short = {"aws-build-1": {**self.BUILD["aws-build-1"], "labels": PAIRED_LABELS - {"unity-build"}}}
+        self.assertEqual(pair(self.run_lan("iiii.", [BUILD_JOB], lan=HOT, build=short)[0]), [("withhold", 3), ("withhold", 4)])
+
+    def test_a_full_or_pinned_host_claims_no_build_even_with_no_paid_host(self):
+        off = {"aws-build-1": {**self.BUILD["aws-build-1"], "override": "off"}}
+        self.assertNotIn(("withhold", 3), self.run_lan("iiii.", [BUILD_JOB], lan=FULL, build=off)[0])
+        self.assertNotIn(("withhold", 3), self.run_lan("iiii.", [BUILD_JOB], pins={"ms-a2": 0}, build=off)[0])
 
     def test_no_build_waits_the_build_slot_steps_aside_and_its_tests_come_back(self):
         # As the play registers them, every slot admitted: the build slot steps aside.

@@ -558,14 +558,18 @@ def lan_host(snap, host, tally):
     v, why = snap.verdicts[host]
     moves = []
     if pairs(cfg, host):
-        # A LAN build slot uses its test slots' cores, so it adds no load, but a HOT or FULL
-        # host, or one pinned to 0 (a release reservation), claims no build: a running one
-        # keeps its pair, an idle one steps aside, and a paid build host takes the rest. A
-        # claim whose tests are still busy stays in the paid host's queue too, so a build never
-        # waits on test jobs while aws-build-1 could take it. The pin and load rules move only
-        # the test slots the pairs leave free.
-        claims = v not in ("HOT", "FULL") and snap.pins.get(host) != 0
-        mine_builds = [need for need in tally.builds if need & snap.own[host]] if claims else []
+        # A LAN build slot uses its test slots' cores, so it adds no load, but a FULL host, or
+        # one pinned to 0 (a release reservation), claims no build: a running one keeps its
+        # pair, an idle one steps aside, and a paid build host takes the rest. A HOT host
+        # leaves a build to a paid host only while one could take it: with none (powered off,
+        # unread), the claim stands, or the build waits for as long as test jobs keep the host
+        # hot (2026-11-19: the Steam cut waited 2h20m on ms-a2). A claim whose tests are still
+        # busy stays in the paid host's queue too, so a build never waits on test jobs while
+        # aws-build-1 could take it. The pin and load rules move only the test slots the
+        # pairs leave free.
+        claims = v != "FULL" and snap.pins.get(host) != 0
+        mine_builds = [need for need in tally.builds if need & snap.own[host]
+                       and (v != "HOT" or not paid_build_open(snap, need))] if claims else []
         builds_in, aside, on, off, stepped, taken = step_pairs(cfg, host, mine, mine_builds, on, off)
         builds = list(tally.builds)
         for need, clear in taken:
@@ -578,6 +582,21 @@ def lan_host(snap, host, tally):
     if plan.action == "withhold":
         tally = tally._replace(admitted=tally.admitted - 1, floor=tally.floor - 1)
     return moves, plan, tally
+
+
+def paid_build_open(snap, need):
+    """Whether a paid build host could take this build: one whose label it asks for with a
+    slot online now, or a powered one whose state was read, whose runners carry every label
+    the build asks for, and that no override holds off."""
+    for h in snap.cfg["standby"]:
+        if not need & snap.own.get(h, frozenset()):
+            continue
+        if any(r["host"] == h for r in snap.runners.values()):
+            return True
+        inst = snap.instances.get(h)
+        if inst and inst.get("override") != "off" and need <= inst.get("labels", frozenset()):
+            return True
+    return False
 
 
 def pin_rule(snap, host, v, on, off, floor):

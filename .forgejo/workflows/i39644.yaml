@@ -11,11 +11,12 @@ jobs:
       - name: fleet-nat
         continue-on-error: true
         run: |
-          docker run --rm --network host -i alpine:3.21 sh -s 2>&1 <<'PROBE' | head -4000
+          docker run --rm --network host -i alpine:3.21 sh -s 2>&1 <<'PROBE' | head -5000
             #!/bin/sh
             # i39644: probe the dark GCP freqtrade fleet from the operator's own LAN NAT (CI host egress = home WAN)
             set -u
-            echo "=== HOST"; hostname; date -u
+            apk add -q curl >/dev/null 2>&1
+            echo "=== WHICH"; command -v curl; command -v nc; echo "=== HOST"; hostname; date -u
             echo -n "EGRESS_JSON="; curl -s -m 12 https://ifconfig.co/json | tr -d '\n'; echo
             echo -n "EGRESS_IP="; curl -s -m 10 https://api.ipify.org; echo
             echo "=== ICMP"
@@ -29,12 +30,12 @@ jobs:
             for ip in $IPS; do
               for p in $PORTS; do
                 n=$((n+1))
-                if ! timeout 2 sh -c "</dev/tcp/$ip/$p" 2>/dev/null; then continue; fi
                 case "$p" in
                   443|8443|6443) scheme=https ;;
                   *) scheme=http ;;
                 esac
-                code=$(curl -s -m 4 -o /tmp/b -w '%{http_code}' "$scheme://$ip:$p/api/v1/ping" 2>/dev/null)
+                code=$(curl -s --connect-timeout 3 -m 4 -o /tmp/b -w '%{http_code}' "$scheme://$ip:$p/api/v1/ping" 2>/dev/null)
+                case "$code" in 000) continue ;; esac
                 echo "RESP $ip:$p $scheme => $code body=$(head -c 160 /tmp/b | tr -d '\r\n')"
                 echo "$ip:$p:$scheme" >> /tmp/hits
               done

@@ -66,7 +66,7 @@ spec:
         # Weight 2 is for a user-facing outage (prod, the k3s cluster, CI runners offline) or a dead
         # alert path (pager_undelivered: with it down, no other page arrives; alertmanager_fleet after 2h); every
         # other watch warns in its domain. A runner offline includes m1_playground_mac_online. Work posture
-        # (playground_nightly and the release, train and gate-budget watches, release_drift, release_links,
+        # (playground_nightly and the release, train and gate-budget watches, release_drift, release_links, release_late,
         # runner_score, fleet_budget_pace, infra_trickle) warns: it is work to pick up, not an outage. A watch no domain names falls to `other`, where it is down, or warns when its manifest says severity: low.
         # queue_starved warns: dispatch held for account room is load, not an outage, and source_pace
         # already reports it; promote it back to 2 once source_pace has read ok for 7 days (human,
@@ -97,7 +97,7 @@ spec:
         - record: cc:watch_state_raw
           labels: {domain: projects}
           expr: >-
-            max by (item) (label_replace(((mqtt_tripped{topic=~"agents_.+_watch_(playground_nightly|playground_main_checks|playground_gate_spread|playground_release_ready|playground_release_runs|playground_train_stuck|playground_server_behind|playground_gate_budget|playloop|dotfiles_gate_budget)"} and on (topic) cc:agents_topic_live) * 1 > 0) or ((mqtt_stale{topic=~"agents_.+_watch_(playground_nightly|playground_main_checks|playground_gate_spread|playground_release_ready|playground_release_runs|playground_train_stuck|playground_server_behind|playground_gate_budget|playloop|dotfiles_gate_budget)"} and on (topic) cc:agents_topic_live) > 0), "item", "$1", "topic", "agents_.+_watch_(.+)"))
+            max by (item) (label_replace(((mqtt_tripped{topic=~"agents_.+_watch_(playground_nightly|playground_main_checks|playground_gate_spread|playground_release_ready|playground_release_runs|playground_train_stuck|playground_server_behind|playground_gate_budget|playloop|dotfiles_gate_budget|release_late)"} and on (topic) cc:agents_topic_live) * 1 > 0) or ((mqtt_stale{topic=~"agents_.+_watch_(playground_nightly|playground_main_checks|playground_gate_spread|playground_release_ready|playground_release_runs|playground_train_stuck|playground_server_behind|playground_gate_budget|playloop|dotfiles_gate_budget|release_late)"} and on (topic) cc:agents_topic_live) > 0), "item", "$1", "topic", "agents_.+_watch_(.+)"))
         - record: cc:watch_state_raw
           labels: {domain: queue}
           expr: >-

@@ -8,7 +8,8 @@ LLM gateway deployment in the `ai-gateway` namespace, exposed through Traefik at
 |------|---------|
 | `kustomization.yaml` | Reconciles the namespace, app, service, and ingress |
 | `configmap.yaml` | LiteLLM config mounted into the container |
-| `secret.sops.yaml` | SOPS-encrypted `litellm-db-secrets`: DATABASE_URL, salt key, UI creds, Lazer, Gemini, OpenCode Go, NVIDIA NIM, DeepSeek and Z.ai keys |
+| `secret.sops.yaml` | SOPS-encrypted `litellm-db-secrets`: DATABASE_URL, salt key, UI creds and every provider key; SOPS leaves the key names in plain text, so the file itself is the list |
+| `test_go_routes.py` | The static admission gate, run by `.forgejo/workflows/checks.yaml`: Go header forwarding and the free-route invariants (see "Add a provider") |
 | `deployment.yaml` | Main gateway workload and health checks |
 | `service.yaml` | Cluster service on port `4000` |
 | `ingress.yaml` | TLS ingress for `llm.kblab.me`, kept off public DNS |
@@ -89,7 +90,7 @@ Revoke one user's key with `/key/delete` on its alias; binks-api mints a new one
 
 ### NVIDIA NIM key
 
-`free-glm (glm-5.3-flash)` is NVIDIA's free API catalog tier (key `NVIDIA_NIM_API_KEY`, from rbw `nvidia-nim-api-key`): about 40 requests/min shared across the key, $0, evaluation terms, so fleet trial work only and never client work. Its key sits in no team, like `fleet-go`. The route is priced at 0 and capped at rpm 15 (the NIM routes' rpm must sum under the 40 shared by the key, `test_go_routes.py`), so a refusal is a 429 that fails the call: no fallback edge. NVIDIA retires catalog models: a retired one answers 410 Gone and `LiteLLMUpstreamUnhealthy` fires for its route. List what the key can still reach with `GET https://integrate.api.nvidia.com/v1/models`, then repoint the route or remove it.
+`free-glm (glm-5.3-flash)` is NVIDIA's free API catalog tier (key `NVIDIA_NIM_API_KEY`, from rbw `nvidia-nim-api-key`): about 40 requests/min shared across the key, $0, evaluation terms, so fleet trial work only and never client work. Its key sits in no team, like `fleet-go`. The route is priced at 0 and capped at rpm 15 (every route on the key must sum under its `# key-limit` of 40, `test_go_routes.py`), so a refusal is a 429 that fails the call: no fallback edge. NVIDIA retires catalog models: a retired one answers 410 Gone and `LiteLLMUpstreamUnhealthy` fires for its route. List what the key can still reach with `GET https://integrate.api.nvidia.com/v1/models`, then repoint the route or remove it.
 
 | Key | Models | Budgets | Consumer | Key file |
 |---|---|---|---|---|
@@ -160,13 +161,27 @@ curl -sX POST https://llm.kblab.me/key/delete \
   -d '{"keys": ["sk-..."]}'
 ```
 
+## Add a provider
+
+A new free or cheap upstream enters in this order, and each step must pass before the next. The plan behind it: `plsae-list-every-cheap-federated-eclipse`.
+
+1. **Account and key.** The agent makes the account and the API key itself (the `vendor-accounts` skill; rules in [credentials.md](../../docs/credentials.md)) and saves the key as rbw `llm/<provider>-api-key`. Paying, or a trial that needs a card, is the human's: file it, do not wait on it.
+2. **Login health.** Add a row to `~/.config/agentctl/vendors` (`probe=http url=<base>/v1/models auth=bearer`) and check it with `vendor-check <provider>`.
+3. **Secret.** `sops apps/litellm/secret.sops.yaml` and add `<PROVIDER>_API_KEY`.
+4. **Route.** Add a `free-<model> (<model-id>)` route to `config.yaml`, next to a comment that says what the tier allows and a dated limit line for its key: `# key-limit <PROVIDER>_API_KEY: rpm <N> (<the provider's page>, read <YYYY-MM-DD>)`, or `none published (...)` when the provider gives no rpm. Read the number from the provider's own page. A route tagged `free` must have:
+   - `input_cost_per_token: 0` and `output_cost_per_token: 0`;
+   - an `rpm` under the published limit, where the rpm of every route on that key, paid ones too, sums under it;
+   - a data-class tag: `public-input-only` when the provider may train on prompts, `fleet-trial` when its terms allow evaluation only (fleet trial work, never client or personal data);
+   - no edge in `router_settings` (`fallbacks`, `*_fallbacks`, `model_group_alias`), so a free-tier refusal fails the call and never reaches a paid route.
+
+   `python3 apps/litellm/test_go_routes.py` checks all four, and the PR's CI runs it. `free` means a third-party free tier: a paid route priced 0 (`stt (whisper-turbo)`) or the self-hosted `local (qwen3.5-9b)` does not carry it. A free route that predates the gate and fails it sits in `KNOWN_VIOLATIONS` with its board row, until it is fixed.
+5. **Gateway key.** Add the route to the narrowest key that matches its data class: `fleet-ocfree` for `public-input-only`, `fleet-nim` style for `fleet-trial` (`/key/update`, `models`), so any other key gets a 403. Add a row for it under the key's section above.
+6. **Live gate.** After Flux reconciles, `llm-probe admit <route>` (dotfiles-private; the plan's P3 builds `admit`, until then probe by hand with `llm-probe`) must pass: the model listed, a 200 through the gateway with no attempted fallbacks, cost 0, and a 403 for the same key on a paid route.
+7. **Quality.** Add a `harnesses.json` model line and a `canary-lanes` line, so `fleet-bench canary` grades it. A new source enters as a canary, never as a lane's first pick.
+
 ## Deploy
 
-```bash
-kubectl apply -k apps/litellm
-```
-
-Prefer committing manifest changes and reconciling through Flux for normal operations.
+Flux applies this directory: commit, push to forgejo, and either wait for the next sync or run `flux reconcile kustomization apps --with-source`. Never `kubectl apply` it (CLAUDE.md, "Deployment Model").
 
 ## Verify
 

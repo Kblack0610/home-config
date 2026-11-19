@@ -72,6 +72,6 @@ fleet_home_feed_kubeconfig:
         namespace: monitoring
   current-context: home-k3s-feed
 # Whether this peer may hold the fleet lease and so run the singleton lanes and agent-web
-# (tasks/peer.yml writes the no-lease marker when false). A governor-powered worker sleeps
-# between demands, and a non-Arch one builds no agent-web, so neither holds it by default.
-fleet_lease: "{{ ansible_facts.os_family == 'Archlinux' and (fleet_power | default('')) != 'governor' }}"
+# (tasks/peer.yml writes the no-lease marker when false). A non-Arch one builds no
+# agent-web, so it does not hold it by default.
+fleet_lease: "{{ ansible_facts.os_family == 'Archlinux' }}"

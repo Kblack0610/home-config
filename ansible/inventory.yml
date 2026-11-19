@@ -647,11 +647,9 @@ all:
     #                    while its probe reads each ready (fleet-dispatch harness-ready)
     #   fleet_ssh_host  where fleet-dispatch ssh goes when ansible_host is not
     #                    it (a cloud worker: an instance id behind SSM)
-    #   fleet_power      governor: the ci-runner-governor starts and stops it
-    #                    on fleet-dispatch's demand (its config.json "workers")
     #   fleet_tailscale  true joins the tailnet (role tailscale-node)
-    #   fleet_lease      false: a peer that never holds the fleet lease (default: Arch and
-    #                    not governor-powered, so a machine that sleeps or lacks agent-web never does)
+    #   fleet_lease      false: a peer that never holds the fleet lease (default: Arch,
+    #                    so a machine that lacks agent-web never does)
     #   ssh_host_ed25519 its /etc/ssh/ssh_host_ed25519_key.pub. Every machine in
     #                    fleet_workers, fleet_controllers and desktop_workstations
     #                    has one, and each trusts the others' under every name

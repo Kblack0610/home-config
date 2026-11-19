@@ -13,7 +13,7 @@ Operating the hosts of the org-wide Unity runner pool (label `unity`). Which job
 
 - A host is one activation whatever its slot count: every slot mounts one machine id, `/var/lib/actions-runner/unity-machine-id`. Deleting it makes the host a new machine.
 - Every host activates on the shared Unity Personal serial. No per-machine cap has shown up; the limit hit is many activations at once (about 15 in 90 minutes got "Found 0 entitlement groups"), so add hosts one at a time.
-- The first job on a new host proves it. If it says "Unity activation failed", in order: return stale activations on the Unity ID portal and rerun, run the host for light/heavy CI only, or buy a paid seat or Build Server licenses. Licensing: [unity-ci-hardware.md](../unity-ci-hardware.md#unity-license).
+- The first job on a new host proves it. If it says "Unity activation failed", in order: return stale activations on the Unity ID portal and rerun, or buy a paid seat or Build Server licenses. Licensing: [unity-ci-hardware.md](../unity-ci-hardware.md#unity-license).
 
 ## Keep the host's copies current
 
@@ -57,13 +57,13 @@ apps/ci-runner-governor decides which registered slots take jobs and when the cl
 
 ## Slots take any kind
 
-On a host whose `ci_caps` carry light, heavy or forgejo, a lendable Unity slot is no kind's alone. It takes Unity, light and heavy jobs (`SHARED_CAPS` in `scripts/render-ci-topology.py`), one job at a time on its own cores and memory cap, and the governor also lends it to a seat. A seat is a runner with no cores of its own, so seats add jobs, never cores: a Forgejo seat `<host>-unity-pool-<n>-forgejo` (and `-forgejo-2` and on, one per `MIN_JOB_CORES` of the slot, below), or a personal repo's runner `<host>-dotfiles-private-1` or `<host>-gungan-speak-1` (`ci_repo_runners`, topology `borrows`). Which slots lend, as rendered in `apps/ci-topology/topology.json`:
+On a host whose `ci_caps` carry light, heavy or forgejo, a lendable Unity slot is no kind's alone. It takes Unity, light and heavy jobs (`SHARED_CAPS` in `scripts/render-ci-topology.py`), one job at a time on its own cores and memory cap, and the governor also lends it to a seat. No runner is kept free for light or heavy work, so a light or heavy job can wait behind Unity jobs for a slot. A seat is a runner with no cores of its own, so seats add jobs, never cores: a Forgejo seat `<host>-unity-pool-<n>-forgejo` (and `-forgejo-2` and on, one per `MIN_JOB_CORES` of the slot, below), or a personal repo's runner `<host>-dotfiles-private-1` or `<host>-gungan-speak-1` (`ci_repo_runners`, topology `borrows`). Which slots lend, as rendered in `apps/ci-topology/topology.json`:
 
-- windows-media-ci: all three slots (three cores and 14G each) take light and heavy and register three Forgejo seats each; the repo runners borrow slots 1 and 2.
-- deskslim-2: the same, three slots, one Forgejo seat each.
+- windows-media-ci: all three slots (three cores and 14G each) take unity and light, never heavy (a Hyper-V VM has no `/dev/kvm`, and the windows-media host refuses nested virtualization). Each slot registers three Forgejo seats and three light seats (`ci_seat_kinds: [light]`); the repo runners borrow slots 1 and 2.
+- deskslim-2: three slots that take unity, light and heavy, with Forgejo seats by slot size: three each on slots 1 and 2 (six CPUs), four on slot 3 (eight). The repo runners borrow slots 1 and 2.
 - deskslim-1: the same as deskslim-2, without the repo runners.
-- ms-a2: Forgejo seats on slots 1 and 2 only (slots 3 and 4 sit under build slot 5's group and do not lend), and no repo runners.
-- Not lent: the Spot hosts, aws-build-1 and cachyos-x8664-main (`ci_caps: [unity]`, plus aws-build-1's unity-build slots). The renderer fails a cloud host that carries light, heavy or forgejo.
+- ms-a2: slots 1-4 take unity, light and heavy, but Forgejo seats sit on slots 1 and 2 only, three each (slots 3 and 4 sit under build slot 5's group and do not lend), and there are no repo runners. Slot 5 is unity-build only.
+- Not lent: the Spot hosts, aws-build-1 and cachyos-x8664-main (`ci_caps: [unity]`, plus aws-build-1's unity-build slots). They take Unity work only, so light and heavy jobs never run there; the renderer fails a cloud host that carries light, heavy or forgejo.
 
 - The governor lends a slot to a seat ("The governor", Lending): it withholds the slot's GitHub labels, waits for it to go idle, then turns the seat's lease to forgejo (or admits the repo runner). The kind whose job has waited longest goes first, and the slot goes back to GitHub when an older GitHub job wants it. A running job is never cut off: a busy slot is lent only after it drains. `ci_governor_lent` shows which slots are lent.
 - An idle withheld slot on a ROOM host is lent at once, every such slot in one cycle, cooldown or not. Taking a slot from the pool is limited by the per-slot cooldown, one per host per cycle, the pool floor, and a HOT or FULL host, so a Forgejo job waits on those, and on the slot draining, not on the depth of the Unity queue. A returned slot is readmitted to the pool when its host is ROOM and the pool is under its cap. `ci_governor_withheld{runner,reason}` says why each withheld slot is held (lent, pin, disk, hot, cooldown, no-work).
@@ -232,6 +232,6 @@ Ubuntu CI hosts (windows-media-ci, the AWS hosts) keep Ubuntu's daily unattended
 
 `CiJobUnserved` (prometheus-rules-capacity.yaml, `fleet: fix`) fires when a job has waited 30 minutes for a label set that no registered runner its repo may use carries (the exporter's `github_actions_job_waiting{pool="unserved"}`; offline runners count, so a stopped host is not this). The alert names the repo, the job and the labels it asked for. Either the workflow asks for a label no slot has (fix the `runs-on`), or the slot that should take it is not in the inventory (add it there and re-render the topology). A repo-scoped runner is read only for a repo a topology slot names (`repo:` in `ci_pinned_runners`) or `RUN_REPOS`. The other wait classes: a cap name (a slot can take it), `github-hosted`, and `jobless` (GitHub gave the run no jobs).
 
-## Not CI hosts: asus-laptop and hp-victus
+## Not CI hosts: asus-laptop, hp-victus and razer-laptop
 
-Both are service hosts in `no_ci_hosts` (`ansible/inventory.yml`, which says why) and carry no CI of any kind: no Unity slots, no light/heavy runners, no Forgejo runner replica. `scripts/render-ci-topology.py` fails if either appears in a CI group. Before placing any work on a host, run `scripts/host-headroom.py <host>` and quote its load per CPU, temperature and memory. Do not add either back.
+asus-laptop and hp-victus are service hosts, and razer-laptop (2026-11-18) is an agent host; all three are in `no_ci_hosts` (`ansible/inventory.yml`, which says why) and carry no CI of any kind: no Unity slots, no light/heavy runners, no Forgejo runner replica. `scripts/render-ci-topology.py` fails if one appears in a CI group. Before placing any work on a host, run `scripts/host-headroom.py <host>` and quote its load per CPU, temperature and memory. Do not add any of them back.

@@ -314,7 +314,7 @@
         forgejo_runner_user_home: "{{ linux_ci_user_home }}"
       tags: [runner, ci, forgejo-ci]
 
-    # The Forgejo seats: one on each lendable Unity slot of a host whose ci_caps carry
+    # The Forgejo seats: one on each lendable Unity slot (ci_units forgejo: N makes N) of a host whose ci_caps carry
     # forgejo (scripts/render-ci-topology.py). A seat's supervisor runs a job only while the governor lends
     # it the slot, so a down governor stops Forgejo CI and leaves GitHub CI running.
     - name: Register the Forgejo seats

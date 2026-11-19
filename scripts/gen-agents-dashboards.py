@@ -221,6 +221,36 @@ def dash(uid, title, desc, panels, variables, time_from="now-24h", refresh="1m",
 
 
 
+def release_windows(y):
+    """The Release windows row at y, 16 rows tall."""
+    # Release windows: each project's open window and state (fleet-bench, fleet_projects.prom). A closed
+    # window has no series of its own, so its say/do and delivered are the last sample of its version.
+    win = lambda kind: f'max by (project, version) (last_over_time(agent_project_window_rows{{kind="{kind}"}}[$__range]))'
+    return [
+        row("Release windows", y),
+        ts("Burndown, open windows", "Committed rows each project's window still holds open (agent_project_window_rows "
+           "kind=carried), one line per project and version. It falls as committed rows close; an interrupt is counted "
+           "apart and never raises it. Rules: stages.md, Release windows.",
+           [prom(f'max by (project, version) ({WS}(agent_project_window_rows{{kind="carried"}}))', legend="{{project}} {{version}}")],
+           pos(0, y + 1, 12, 8), decimals=0),
+        bars("Say/do per window", "Delivered over committed for every window seen in the range, open or cut, from the "
+             "last sample of its version. Widen the range to see older windows.",
+             prom(f'sort_desc({win("delivered")} / ({win("committed")} > 0))', legend="{{project}} {{version}}", instant=True),
+             pos(12, y + 1, 6, 8), unit="percentunit", steps=(("orange", None), ("green", 0.8))),
+        bars("Delivered per window", "Committed rows each window delivered, open or cut, from the last sample of its "
+             "version: throughput per window.",
+             prom(f'sort_desc({win("delivered")})', legend="{{project}} {{version}}", instant=True), pos(18, y + 1, 6, 8)),
+        ts("Projects per state", "How many projects sit in each state (agent_project_state, from hub_core::projects::state; "
+           "rules: stages.md, Project state).",
+           [prom(f"count by (state) ({WS}(agent_project_state))", legend="{{state}}")], pos(0, y + 9, 16, 7), stack=True,
+           decimals=0, overrides=color_by_name(STATE_COLORS)),
+        bars("Days left", "Days until each open window's due day (agent_project_window_days_left); below 0 it is late.",
+             prom(f"sort(max by (project) ({WS}(agent_project_window_days_left)))", legend="{{project}}", instant=True),
+             pos(16, y + 9, 8, 7), unit="d", steps=(("red", None), ("orange", 0), ("blue", 2))),
+    ]
+
+
+
 def overview():
     pid[0] = 0
     cf = '{project=~"$project", model=~"$model"}'
@@ -303,31 +333,7 @@ def overview():
                                legend="{{kpi}}")],
                          pos(i % across * (24 // across), y + i // across * tall, 24 // across, tall), unit=unit, decimals=2))
     y += math.ceil(len(VITALS) / across) * tall
-    # Release windows: each project's open window and state (fleet-bench, fleet_projects.prom). A closed
-    # window has no series of its own, so its say/do and delivered are the last sample of its version.
-    win = lambda kind: f'max by (project, version) (last_over_time(agent_project_window_rows{{kind="{kind}"}}[$__range]))'
-    panels += [
-        row("Release windows", y),
-        ts("Burndown, open windows", "Committed rows each project's window still holds open (agent_project_window_rows "
-           "kind=carried), one line per project and version. It falls as committed rows close; an interrupt is counted "
-           "apart and never raises it. Rules: stages.md, Release windows.",
-           [prom(f'max by (project, version) ({WS}(agent_project_window_rows{{kind="carried"}}))', legend="{{project}} {{version}}")],
-           pos(0, y + 1, 12, 8), decimals=0),
-        bars("Say/do per window", "Delivered over committed for every window seen in the range, open or cut, from the "
-             "last sample of its version. Widen the range to see older windows.",
-             prom(f'sort_desc({win("delivered")} / ({win("committed")} > 0))', legend="{{project}} {{version}}", instant=True),
-             pos(12, y + 1, 6, 8), unit="percentunit", steps=(("orange", None), ("green", 0.8))),
-        bars("Delivered per window", "Committed rows each window delivered, open or cut, from the last sample of its "
-             "version: throughput per window.",
-             prom(f'sort_desc({win("delivered")})', legend="{{project}} {{version}}", instant=True), pos(18, y + 1, 6, 8)),
-        ts("Projects per state", "How many projects sit in each state (agent_project_state, from hub_core::projects::state; "
-           "rules: stages.md, Project state).",
-           [prom(f"count by (state) ({WS}(agent_project_state))", legend="{{state}}")], pos(0, y + 9, 16, 7), stack=True,
-           decimals=0, overrides=color_by_name(STATE_COLORS)),
-        bars("Days left", "Days until each open window's due day (agent_project_window_days_left); below 0 it is late.",
-             prom(f"sort(max by (project) ({WS}(agent_project_window_days_left)))", legend="{{project}}", instant=True),
-             pos(16, y + 9, 8, 7), unit="d", steps=(("red", None), ("orange", 0), ("blue", 2))),
-    ]
+    panels += release_windows(y)
     y += 16
     panels += [
         ts("Cost per hour by project", "Spend per hour, one series per canonical project (claude-telemetry.sh sets it). "

@@ -118,8 +118,6 @@ devices:
     ip: "192.168.1.29"
     category: servers
 
-  # deskslim-1 (7900X) is off until its replacement RAM arrives; reserved now so
-  # it comes up here.
   - hostname: deskslim-1
     mac: "9C:6B:00:DB:92:C2"
     ip: "192.168.1.19"

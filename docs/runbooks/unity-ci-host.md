@@ -36,7 +36,7 @@ scripts/test/fetch-image.py unityci/editor ubuntu-<version>-base-3 ~/.cache/unit
 ## Labels
 
 - Every slot carries `unity`, plus `unity-full` while the host's `unity_ci_full` is true (the default). Full runs (nightly, release, Multi) ask for `unity-full`, merge gates for `unity` and `unity-gate`. GitHub has no queue priority, so to reserve a runner for gates, set `unity_ci_full: false` on one host.
-- `unity-gate` (`unity_ci_gate`, default false) is on the hosts a merge gate may land on: ms-a2, deskslim-2, cachyos-x8664-main, windows-media-ci and aws-build-1's test slots. A Spot host leaves it off, since a reclaim would kill a gate (playground ucp-1778). The governor's withhold swap leaves it alone: a gate also asks for `unity`, which a withheld slot has lost.
+- `unity-gate` (`unity_ci_gate`, default false) is on the hosts a merge gate may land on: ms-a2, deskslim-2, deskslim-1, cachyos-x8664-main, windows-media-ci and aws-build-1's test slots. A Spot host leaves it off, since a reclaim would kill a gate (playground ucp-1778). The governor's withhold swap leaves it alone: a gate also asks for `unity`, which a withheld slot has lost.
 - An apply (`--tags unity-ci`, not `--check`) resets every registered slot's labels to the inventory's, `unity_ci_slot_labels` included, with one PUT to the org labels endpoint (role `github-actions-runner-linux`, `tasks/labels.yml`). A slot the governor withholds stays withheld: it keeps its `unity-withheld` or `unity-build-withheld` in place of the pool or build labels. So a label change is an inventory change plus an apply; a label added on the live runner alone is gone after the next apply.
 - The workstation (cachyos-x8664-main) has two slots with `unity_ci_full: false`, so it takes merge gates and never a full run. The governor reads that from the topology (`"full": false`), since it re-labels a runner on admit. Each slot has three cores and 16G of its own. A third slot waits for a day of load and temperatures with two. No gate runs anything else here (unity-core-playground `docs/operations/ci.md` rule 2).
 
@@ -46,6 +46,7 @@ On a host whose `ci_caps` carry light, heavy or forgejo, a lendable Unity slot i
 
 - windows-media-ci: all three slots (three cores and 14G each) take light and heavy and have a Forgejo seat; the repo runners borrow slots 1 and 2.
 - deskslim-2: the same, three slots.
+- deskslim-1: the same as deskslim-2, without the repo runners.
 - ms-a2: Forgejo seats on slots 1 and 2 only (slots 3 and 4 sit under build slot 5's group and do not lend), and no repo runners.
 - Not lent: the Spot hosts, aws-build-1 and cachyos-x8664-main (`ci_caps: [unity]`, plus aws-build-1's unity-build slots). The renderer fails a cloud host that carries light, heavy or forgejo.
 

@@ -13,6 +13,9 @@
     update_cache: true
   when: ansible_os_family == "Debian"
 
+- name: Start docker before the images and the accelerator need it
+  ansible.builtin.import_tasks: docker.yml
+
 # Ubuntu 24.04 has no awscli package. AWS's own installer, not the snap: the
 # on-demand aws-burst-2 (11-11) got a public IP that cannot reach the snap
 # store at all, while awscli.amazonaws.com answers from every AWS address.

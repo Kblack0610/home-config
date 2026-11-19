@@ -14,8 +14,8 @@ doc covers the **hands-on steps only you can do at the machine**.
 
 > Host name/IP cheatsheet for the boxes below — see
 > [`host-access.md`](./host-access.md). Bare-metal x86 nodes:
-> `hp-victus` 192.168.1.243, `asus-laptop` 192.168.1.152, `razer-laptop` 192.168.1.26; desktops `ms-a2` 192.168.1.28 and `deskslim-2`
-> 192.168.1.29 (2026-11-16), which need the desktop BIOS steps below.
+> `hp-victus` 192.168.1.243, `asus-laptop` 192.168.1.152, `razer-laptop` 192.168.1.26; desktops `ms-a2` 192.168.1.28, `deskslim-2`
+> 192.168.1.29 (2026-11-16) and `deskslim-1` 192.168.1.19 (2026-11-18), which need the desktop BIOS steps below.
 
 ---
 

@@ -226,6 +226,22 @@ class CapTests(unittest.TestCase):
         self.assertEqual(fails, [])
         self.assertFalse([n for n, caps in slots.items() if n.startswith("ms-a2-") and "forgejo" in caps])
 
+    def test_ci_local_seats_is_a_host_count_and_never_a_slot(self):
+        topo, fails = topology.render(self.hosts, self.groups)
+        self.assertEqual(fails, [])
+        self.assertEqual(topo["hosts"]["cachyos-x8664-main"]["local_seats"], 3)
+        self.assertEqual([h for h, e in topo["hosts"].items() if "local_seats" in e], ["cachyos-x8664-main"])
+        self.assertFalse([s for e in topo["hosts"].values() for s in e["slots"] if "local" in s["name"]])
+
+    def test_ci_local_seats_off_a_lan_unity_host_or_not_a_count_fails(self):
+        for host, val in (("cloud-1", 2), ("mac-mini", 1), ("cachyos-x8664-main", 0), ("cachyos-x8664-main", "3")):
+            with self.subTest(host=host, val=val):
+                hosts = copy.deepcopy(self.hosts)
+                hosts[host]["ci_local_seats"] = val
+                topo, fails = topology.render(hosts, self.groups)
+                self.assertTrue(any(f.startswith(f"{host}: ci_local_seats") for f in fails), fails)
+                self.assertNotIn("local_seats", topo["hosts"].get(host, {}))
+
     def test_cloud_host_never_takes_forgejo(self):
         self.hosts["cloud-1"]["ci_caps"] = ["unity", "forgejo"]
         _, fails = self.slots()

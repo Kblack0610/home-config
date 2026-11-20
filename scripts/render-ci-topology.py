@@ -37,6 +37,9 @@ Rendering also checks what the inventory must hold for the slots to fit their ho
   A host's ci_seat_kinds (light, heavy; each also in its ci_caps) puts the same seats of that GitHub
   kind on each such slot (<slot>-light-1 and on): org runners a lend serves, so small GitHub jobs pack
   onto one slot too. It is the rollout switch: a host without it runs those jobs on whole slots.
+- A LAN Unity host's ci_local_seats (a count) is its "local_seats": the local test runs the governor
+  leases at once on that host (apps/ci-runner-governor, "Local seats"). They have no runner and no
+  forge, so they are a host count, never slots, which every slot reader takes for a runner.
 
     render-ci-topology.py           write topology.json
     render-ci-topology.py --check   fail when topology.json is not what the inventory renders (the CI gate)
@@ -69,7 +72,7 @@ UNITY_GROUPS = ("unity_ci_runners", "unity_ci_mac_runners")
 KEYS = ("ci_repo_runners", "ci_pinned_runners", "unity_ci_slots",
         "unity_ci_slot_groups", "unity_ci_wide_slots", "unity_ci_lan", "unity_ci_full", "unity_ci_wide",
         "unity_ci_slot_labels", "ci_unity_slot_cpus", "ci_unity_slot_memory_max", "ci_caps", "ci_seat_kinds",
-        "ci_power", "ci_labels")
+        "ci_power", "ci_labels", "ci_local_seats")
 # The keys of ci_labels, each the label the governor sets or reads for that role.
 LABEL_ROLES = ("pool", "full", "build", "wide", "withheld", "build_withheld", "seat_withheld", "lent")
 # The roles whose label is also a topology cap name, which the governor matches against slot caps.
@@ -125,6 +128,10 @@ def render(hosts, groups):
         fails += [f"{host}: ci_repo_runners {r['slot']} has no borrows (the Unity slot it runs on)"
                   for r in v.get("ci_repo_runners", []) if "borrows" not in r]
         unity = any(host in groups.get(g, ()) for g in UNITY_GROUPS)
+        local = v.get("ci_local_seats")
+        if local is not None and (type(local) is not int or local < 1 or not unity or v.get("unity_ci_lan", True) is False):
+            fails.append(f"{host}: ci_local_seats is a count of 1 or more on a LAN Unity host, not {local!r}")
+            local = None
         if unity:
             total, group = unity_layout(v)
             fails += [f"{host}: build slot {b} (a unity_ci_slot_groups key) is not one of its slots 1-{total}"
@@ -162,6 +169,7 @@ def render(hosts, groups):
             topo[host] = {"site": "cloud" if v.get("unity_ci_lan", True) is False else "local",
                           **({"full": v.get("unity_ci_full", True) is not False} if unity else {}),
                           **({"power": power} if power else {}),
+                          **({"local_seats": local} if local else {}),
                           "slots": slots}
     names = [s["name"] for h in topo.values() for s in h["slots"]]
     fails += [f"slot {n} is declared twice" for n in sorted({n for n in names if names.count(n) > 1})]

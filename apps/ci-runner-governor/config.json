@@ -2,6 +2,7 @@
   "org": "BlackNBrownStudios",
   "pool_min_admitted": 1,
   "pool_max_admitted": 24,
+  "local_min_admitted": 2,
   "cooldown_seconds": 600,
   "dwell_seconds": 600,
   "warm_idle_off_seconds": 2700,

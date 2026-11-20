@@ -209,7 +209,7 @@ jobs:
         run: python3 scripts/check-prepush-steps.py
       - name: Negative control - the pairing check fails on a CI step with no row and on a row with no CI step
         run: |
-          sed '$d' .githooks/pre-push-steps.tsv > planted-steps.tsv
+          grep -v 'test-prepush-hook' .githooks/pre-push-steps.tsv > planted-steps.tsv
           printf '.\t-\tpython3 scripts/planted-step.py\n' >> planted-steps.tsv
           rc=0; python3 scripts/check-prepush-steps.py .forgejo/workflows/checks.yaml planted-steps.tsv > planted-steps.out 2>&1 || rc=$?
           rm planted-steps.tsv; cat planted-steps.out

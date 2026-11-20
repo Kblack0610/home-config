@@ -46,6 +46,6 @@
 -	-	bash ansible/roles/nut/tests/run-tests.sh
 ^(apps/monitoring/(helm-values\.yaml|tests/)|scripts/test-alertmanager-routes\.py)	alertmanager	python3 scripts/test-alertmanager-routes.py
 ^(apps/[^/]+/prometheus-rules[^/]*\.yaml|apps/monitoring/tests/|scripts/test-prometheus-rules\.sh)	promtool	scripts/test-prometheus-rules.sh
-^(apps|clusters)/|^scripts/check-kustomize-builds\.sh$	-	scripts/check-kustomize-builds.sh rendered.yaml
+^(apps|clusters)/|^scripts/check-kustomize-builds\.sh$	kustomize	scripts/check-kustomize-builds.sh rendered.yaml
 ^(\.forgejo/workflows/checks\.yaml|\.githooks/|scripts/check-prepush-steps\.py)	-	python3 scripts/check-prepush-steps.py
 -	-	sh scripts/test-prepush-hook.sh

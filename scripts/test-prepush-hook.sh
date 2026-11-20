@@ -24,7 +24,8 @@ echo "planted-dup binanceus BinHV27 aggressive base" >> apps/freqtrade/roster.ts
 g commit -q -am planted
 head="$(git rev-parse HEAD)"
 if push "$head" "$base"; then fail "the hook passed a planted duplicate roster row"; fi
-grep -q "push refused" "$out" && grep -q "check-freqtrade-roster.py" "$out" || fail "the hook refused, but not on the roster check"
+red_list() { sed -n '/push refused/,$p' "$out"; }
+red_list | grep -q "check-freqtrade-roster.py" || fail "the hook refused, but not on the roster check"
 
 # The fixed push goes through.
 g revert --no-edit HEAD >/dev/null
@@ -45,6 +46,7 @@ echo "planted-dup binanceus BinHV27 aggressive base" >> apps/freqtrade/roster.ts
 g commit -q -am planted-again
 head="$(git rev-parse HEAD)"
 if push "$head" "$zero"; then fail "the hook passed a planted red on a new branch"; fi
+red_list | grep -q "check-freqtrade-roster.py" || fail "the new-branch push was refused, but not on the roster check"
 
 # A push of a commit other than HEAD runs no step.
 if ! printf 'refs/heads/x %s refs/heads/x %s\n' "$base" "$zero" | .githooks/pre-push origin >"$out" 2>&1; then fail "a non-HEAD push was refused"; fi

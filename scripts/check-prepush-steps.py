@@ -8,7 +8,7 @@ check it plants against, not the plant. Exits 1 naming each step with no row and
 
   scripts/check-prepush-steps.py [workflow.yaml] [steps.tsv]
 """
-import re
+import subprocess
 import sys
 from pathlib import Path
 
@@ -32,8 +32,9 @@ def rows(tsv):
         cols = line.split("\t")
         if len(cols) != 3 or not all(cols):
             raise SystemExit(f"{tsv.name}:{n}: want 3 tab-separated columns, got {len(cols)}")
-        if cols[0] != "-":
-            re.compile(cols[0])
+        # The hook matches with grep -E, so that is the dialect a pattern must be valid in (exit 2 = bad).
+        if cols[0] != "-" and subprocess.run(["grep", "-E", cols[0]], input=b"", capture_output=True).returncode == 2:
+            raise SystemExit(f"{tsv.name}:{n}: not a valid grep -E pattern: {cols[0]}")
         out.append(cols[2])
     return out
 

@@ -40,6 +40,7 @@ done <<EOF
 $refs
 EOF
 [ "$pushed" = 1 ] || exit 0
+[ -z "$(git status --porcelain)" ] || echo "pre-push: the working tree has uncommitted changes; the steps read them, not the pushed commit" >&2
 
 ran=0
 red=""

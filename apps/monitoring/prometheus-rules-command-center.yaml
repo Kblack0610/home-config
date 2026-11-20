@@ -26,12 +26,10 @@
 #   cc:host_run_units / _run_units_max{host}  run units its agent sessions hold, and the units it takes (fleet-assess)
 #   cc:host_inventory{host}                 1 for a host with a fresh node inventory: the hosts that have a split
 #   cc:host_local_gate{host,worktree,...}  the workstation's local Unity gates (fleet-assess)
-#   cc:host_local_slots / _busy / _queued{host}          its gate slots, slots held, runs waiting
-#   cc:host_local_open_slots{host}                       the always-open part of its gate slots
 #   cc:host_local_done_24h / _pass_ratio_24h{host}       its gates finished in 24h, and pass / finished
 #   cc:pool_done_24h / _cancelled_24h / _pass_ratio_24h{pool}  jobs of each kind finished in 24h (pool=<kind>, as ci_runner_job names it)
 #   cc:pool_slots / _busy / _free / _withheld{pool}  runners that can take a job of the kind, runners running a job of it (ci_runner_job), idle ones that could start one now, and idle ones the governor withheld
-#   cc:site_slots / _busy{site}             the same slots and busy, local (home LAN, workstation gates included) vs cloud
+#   cc:site_slots / _busy{site}             the same slots and busy, local (home LAN) vs cloud
 #   cc:github_hosted_running                jobs running now on GitHub's own runners
 #
 # Status comes from sentinel watches where one exists (they are the curated alarms that
@@ -500,25 +498,6 @@ spec:
           expr: >-
             max without (instance, job, namespace, service, endpoint, pod, container) (fleet_local_gate{host!=""}
               and on (instance) (time() - node_textfile_mtime_seconds{file=~".*fleet_local.prom"} < 180))
-        # The workstation's gate slots, from the same textfile. slots.sh owns the slot
-        # count (open + burst); fleet-assess only reports it, never re-derives it.
-        - record: cc:host_local_slots
-          expr: >-
-            sum by (host) (fleet_local_slots{host!=""}
-              and on (instance) (time() - node_textfile_mtime_seconds{file=~".*fleet_local.prom"} < 180))
-        # The rest are room slots, taken only while the machine has room: a ceiling, not capacity.
-        - record: cc:host_local_open_slots
-          expr: >-
-            sum by (host) (fleet_local_slots{host!="", kind="open"}
-              and on (instance) (time() - node_textfile_mtime_seconds{file=~".*fleet_local.prom"} < 180))
-        - record: cc:host_local_busy
-          expr: >-
-            max by (host) (fleet_local_slots_busy{host!=""}
-              and on (instance) (time() - node_textfile_mtime_seconds{file=~".*fleet_local.prom"} < 180))
-        - record: cc:host_local_queued
-          expr: >-
-            max by (host) (fleet_local_queued{host!=""}
-              and on (instance) (time() - node_textfile_mtime_seconds{file=~".*fleet_local.prom"} < 180))
         # Gates finished in the last 24h (run.sh's ledger). pass / all results: absent
         # when nothing finished, so an idle day reads "-" and not 0%, and 0 (not absent)
         # when every gate failed.
@@ -708,25 +687,19 @@ spec:
               (ci_runner_job), "pool", "$1", "kind", "(.+)"))
             or cc:pool_slots * 0
         # The same slots and busy split by where the machine is: site="cloud" for the
-        # topology's cloud hosts (inventory unity_ci_lan: false), "local" otherwise. The
-        # workstation's always-open gate slots count as local, so readers never add
-        # them again. The src label keeps the two halves apart under `or`.
+        # topology's cloud hosts (inventory unity_ci_lan: false), "local" otherwise.
         # Counted from github_runner_state, one row per runner, so a slot with two caps counts once.
+        # A local Unity gate is no slot here: the governor's seats count it, in units.
         - record: cc:site_slots
           expr: >-
-            sum by (site) (
-              label_replace(count by (site) (max without (instance, pod, job, namespace, service, endpoint, container)
-                (github_runner_state{state="running"})
-                or (max without (instance, pod, job, namespace, service, endpoint, container) (github_runner_state{state="idle"})
-                  unless on (name) (max without (instance, pod, job, namespace, service, endpoint, container) (github_runner_withheld) == 1))),
-                "src", "runners", "", "")
-              or label_replace(label_replace(sum(cc:host_local_open_slots), "site", "local", "", ""), "src", "gates", "", ""))
+            count by (site) (max without (instance, pod, job, namespace, service, endpoint, container)
+              (github_runner_state{state="running"})
+              or (max without (instance, pod, job, namespace, service, endpoint, container) (github_runner_state{state="idle"})
+                unless on (name) (max without (instance, pod, job, namespace, service, endpoint, container) (github_runner_withheld) == 1)))
         - record: cc:site_busy
           expr: >-
-            sum by (site) (
-              label_replace(count by (site) (max without (instance, pod, job, namespace, service, endpoint, container)
-                (github_runner_state{state="running"})), "src", "runners", "", "")
-              or label_replace(label_replace(sum(cc:host_local_busy), "site", "local", "", ""), "src", "gates", "", ""))
+            count by (site) (max without (instance, pod, job, namespace, service, endpoint, container)
+              (github_runner_state{state="running"}))
             or cc:site_slots * 0
         - record: cc:github_hosted_running
           expr: >-

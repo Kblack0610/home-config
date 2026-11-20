@@ -153,7 +153,7 @@ tests:
           - labels: 'cc:pool_busy{pool="unity"}'
             value: 1
 
-  - name: site slots and busy split local from cloud, withheld idle left out, local gates added to local
+  - name: site slots and busy split local from cloud, withheld idle left out
     interval: 1m
     input_series:
       - series: 'github_runner_state{name="m1",site="local",state="running",instance="x"}'
@@ -168,14 +168,6 @@ tests:
         values: '1x5'
       - series: 'github_runner_state{name="a2",site="cloud",state="running",instance="x"}'
         values: '1x5'
-      - series: 'fleet_local_slots{host="ws",kind="open",instance="ws"}'
-        values: '2x5'
-      - series: 'fleet_local_slots{host="ws",kind="room",instance="ws"}'
-        values: '2x5'
-      - series: 'fleet_local_slots_busy{host="ws",instance="ws"}'
-        values: '1x5'
-      - series: 'node_textfile_mtime_seconds{file="/x/fleet_local.prom",instance="ws"}'
-        values: '0+60x5'
       - series: 'github_hosted_jobs_running{repo="game",instance="x"}'
         values: '2x5'
       - series: 'github_hosted_jobs_running{repo="web",instance="x"}'
@@ -185,14 +177,14 @@ tests:
         eval_time: 3m
         exp_samples:
           - labels: 'cc:site_slots{site="local"}'
-            value: 4
+            value: 2
           - labels: 'cc:site_slots{site="cloud"}'
             value: 2
       - expr: cc:site_busy
         eval_time: 3m
         exp_samples:
           - labels: 'cc:site_busy{site="local"}'
-            value: 2
+            value: 1
           - labels: 'cc:site_busy{site="cloud"}'
             value: 2
       - expr: cc:github_hosted_running
@@ -1548,3 +1540,24 @@ tests:
         exp_samples:
           - labels: 'cc:host_class_reserved_cores{host="clp",class="ci"}'
             value: 2
+
+  - name: the workstation's busy cell reads 0 when idle and its gate count while a gate runs
+    interval: 1m
+    input_series:
+      - series: 'fleet_local_gate_finished{host="ws",result="pass",instance="ws"}'
+        values: '0x5'
+      - series: 'fleet_local_gate{host="ws",worktree="a",instance="ws"}'
+        values: '_ _ 1 1 1 1'
+      - series: 'node_textfile_mtime_seconds{file="/x/fleet_local.prom",instance="ws"}'
+        values: '0+60x5'
+    promql_expr_test:
+      - expr: count by (host) (cc:host_local_gate) or (cc:host_local_done_24h * 0)
+        eval_time: 1m
+        exp_samples:
+          - labels: '{host="ws"}'
+            value: 0
+      - expr: count by (host) (cc:host_local_gate) or (cc:host_local_done_24h * 0)
+        eval_time: 3m
+        exp_samples:
+          - labels: '{host="ws"}'
+            value: 1

@@ -73,6 +73,9 @@ unity_ci_mac_prune_runners:
   - "{{ ansible_env.HOME }}/actions-runner-playground"
 unity_ci_mac_prune_script: "{{ ansible_env.HOME }}/.local/bin/ci-tree-prune.sh"
 unity_ci_mac_prune_label: com.kblab.ci-tree-prune
+
+# The build keychain script (tasks/signing-keychain.yml).
+unity_ci_mac_keychain_script: "{{ ansible_env.HOME }}/.local/bin/ensure-build-keychain.sh"
 unity_ci_mac_prune_interval_seconds: 3600
 # A tree unused this long goes; under this much free disk, idle trees go oldest first.
 # NodeDiskLow trips at 20% free.

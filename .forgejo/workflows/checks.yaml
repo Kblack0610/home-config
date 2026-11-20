@@ -257,6 +257,8 @@ jobs:
         run: sh ansible/roles/ci-host/files/test-job-started.sh
       - name: ci-tree-prune offline test
         run: sh ansible/roles/unity-ci-host-mac/files/test-ci-tree-prune.sh
+      - name: ensure-build-keychain offline test
+        run: sh ansible/roles/unity-ci-host-mac/files/test-ensure-build-keychain.sh
       - name: node-disk-metrics offline test
         run: sh ansible/roles/node-disk-metrics/files/test-node-disk-metrics.sh
       - name: node-inventory-metrics offline test

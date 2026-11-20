@@ -37,6 +37,7 @@
 ^ansible/roles/ci-host/	-	sh ansible/roles/ci-host/files/test-ci-disk-prune.sh
 ^ansible/roles/ci-host/	-	sh ansible/roles/ci-host/files/test-job-started.sh
 ^ansible/roles/unity-ci-host-mac/	-	sh ansible/roles/unity-ci-host-mac/files/test-ci-tree-prune.sh
+^ansible/roles/unity-ci-host-mac/	-	sh ansible/roles/unity-ci-host-mac/files/test-ensure-build-keychain.sh
 ^ansible/roles/node-disk-metrics/	-	sh ansible/roles/node-disk-metrics/files/test-node-disk-metrics.sh
 ^ansible/roles/node-inventory-metrics/	-	sh ansible/roles/node-inventory-metrics/files/test-node-inventory-metrics.sh
 ^ansible/roles/forgejo-restore-drill/	-	sh ansible/roles/forgejo-restore-drill/files/test-forgejo-restore-drill-run.sh

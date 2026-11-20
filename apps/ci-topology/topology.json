@@ -44,6 +44,7 @@
     "deskslim-2": {"site": "local", "full": true, "slots": [
       {"name": "deskslim-2-dotfiles-private-1", "caps": ["light"], "repo": "Kblack0610/.dotfiles-private", "borrows": "deskslim-2-unity-pool-1"},
       {"name": "deskslim-2-gungan-speak-1", "caps": ["light"], "repo": "Kblack0610/gungan-speak", "borrows": "deskslim-2-unity-pool-2"},
+      {"name": "deskslim-2-personal-sites-1", "caps": ["light"], "repo": "Kblack0610/personal-sites", "borrows": "deskslim-2-unity-pool-3"},
       {"name": "deskslim-2-unity-pool-1", "caps": ["unity"]},
       {"name": "deskslim-2-unity-pool-2", "caps": ["unity"]},
       {"name": "deskslim-2-unity-pool-3", "caps": ["unity"]},
@@ -113,6 +114,7 @@
     "windows-media-ci": {"site": "local", "full": true, "slots": [
       {"name": "windows-media-ci-dotfiles-private-1", "caps": ["light"], "repo": "Kblack0610/.dotfiles-private", "borrows": "windows-media-ci-unity-pool-1"},
       {"name": "windows-media-ci-gungan-speak-1", "caps": ["light"], "repo": "Kblack0610/gungan-speak", "borrows": "windows-media-ci-unity-pool-2"},
+      {"name": "windows-media-ci-personal-sites-1", "caps": ["light"], "repo": "Kblack0610/personal-sites", "borrows": "windows-media-ci-unity-pool-3"},
       {"name": "windows-media-ci-unity-pool-1", "caps": ["unity"]},
       {"name": "windows-media-ci-unity-pool-2", "caps": ["unity"]},
       {"name": "windows-media-ci-unity-pool-3", "caps": ["unity"]},

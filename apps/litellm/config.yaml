@@ -634,13 +634,16 @@ model_list:
   # rpm limits it: the rpm of every route on this key must sum under the limit
   # below (test_go_routes.py). Key NVIDIA_NIM_API_KEY in
   # secret.sops.yaml (rbw `nvidia-nim-api-key`); gateway key `fleet-nim`.
+  # minimax-m3.1-flash replaced z-ai/glm-5.3-flash on 2026-11-19: glm hung at
+  # NVIDIA itself (90s, no bytes, three tries), minimax answers in about 1s and
+  # returns tool calls (direct curl, 2026-11-19).
   # key-limit NVIDIA_NIM_API_KEY: rpm 40 (freellmapi catalog, read 2026-11-16)
   #
   # NO fallback edge (router_settings.fallbacks): a NIM 429 must fail the call,
   # not spill free-tier work onto paid Lazer.
-  - model_name: "free-glm (glm-5.3-flash)"
+  - model_name: "free-minimax (minimax-m3.1-flash)"
     litellm_params:
-      model: "openai/z-ai/glm-5.3-flash"
+      model: "openai/minimaxai/minimax-m3.1-flash"
       api_base: https://integrate.api.nvidia.com/v1
       api_key: os.environ/NVIDIA_NIM_API_KEY
       input_cost_per_token: 0

@@ -356,8 +356,13 @@ def observe(pool_labels):
     for r in prom("github_runner_withheld"):
         if r["metric"]["name"] in runners:
             runners[r["metric"]["name"]]["withheld"] = True
-    waiting = [label_set(r["metric"].get("labels", ""))
-               for r in prom(f'github_actions_job_waiting{{pool=~"{pool_label}",stuck!="true"}}')]
+    # A job that names no kind (runs-on: self-hosted, or a host label) waits as pool="other": it
+    # is this pool's when one of its runners carries every label it asks for.
+    waiting = []
+    for r in prom(f'github_actions_job_waiting{{pool=~"{pool_label}|other",stuck!="true"}}'):
+        need = label_set(r["metric"].get("labels", ""))
+        if r["metric"].get("pool") != "other" or (need and any(need <= x["labels"] for x in runners.values())):
+            waiting.append(need)
     return hosts, runners, waiting
 
 
@@ -1151,7 +1156,8 @@ def observe_seats(cfg):
     """({seat: {busy, online, withheld}}, [(kind, labels, age)]) from github-runner-exporter.
     A seat with no runner registered has no entry. kind is "forgejo", a personal repo (its
     seats' repo), "light" or "heavy" (a job on a cap some seat of it serves), or "github": any
-    other job waiting on a cap a Unity slot takes."""
+    other job waiting on a cap a Unity slot takes, or naming no kind (pool="other"; slot_takes
+    decides which slot it could take)."""
     seats = cfg["seats"]
     if not seats:
         return {}, []
@@ -1178,7 +1184,7 @@ def observe_seats(cfg):
             waits.append((repos[m["repo"]], need, age))
         elif m.get("pool") in small:
             waits.append((m["pool"], need, age))
-        elif m.get("pool") in rivals:
+        elif m.get("pool") in rivals or (m.get("pool") == "other" and need):
             waits.append(("github", need, age))
     return state, waits
 

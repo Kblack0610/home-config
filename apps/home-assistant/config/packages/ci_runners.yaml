@@ -34,7 +34,7 @@ rest:
   - resource: http://kube-prometheus-stack-prometheus.monitoring.svc:9090/api/v1/query
     params:
       query: max by (name, pool) (github_runner_pool_slot)
-    scan_interval: 300
+    scan_interval: 60  # the runner rows' interval, so a new runner's caps never lag its row
     sensor:
       - name: CI runner caps
         unique_id: ci_runner_caps

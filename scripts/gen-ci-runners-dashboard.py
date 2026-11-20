@@ -62,10 +62,10 @@ PR_LINK = {"matcher": {"id": "byName", "options": "pr"}, "properties": [
     {"id": "links", "value": [{"title": "Open PR on GitHub", "targetBlank": True,
                                "url": "https://github.com/BlackNBrownStudios/${__data.fields.repo}/pull/${__data.fields.pr}"}]},
     {"id": "custom.width", "value": 70}]}
-# Machines that run CI: every host with roster slots, plus the workstation, whose
-# local Unity gate slots (cc:host_local_slots) are CI without being runners. cc:host_*
+# Machines that run CI: every host with roster slots, plus
+# the workstation, which runs local Unity gates (cc:host_local_done_24h) without being a runner. cc:host_*
 # come from apps/monitoring/prometheus-rules-command-center.yaml (group command-center.hosts).
-CI_HOSTS = " and on (host) (max by (host) (github_runner_pool_expected) or cc:host_local_slots)"
+CI_HOSTS = " and on (host) (max by (host) (github_runner_pool_expected) or cc:host_local_done_24h)"
 MACHINE_COLS = [("cc:host_cpu_busy_ratio", "cpu", "percentunit"), ("cc:host_cpu_busy_ratio:avg6h", "cpu 6h", "percentunit"),
                 ("cc:host_load1", "load", "none"),
                 ("cc:host_cores", "cores", "none"), ("cc:host_mem_used_ratio", "mem", "percentunit"),
@@ -82,8 +82,8 @@ SLOT_SPACE = [("C", "cc:runner_cores_busy", "cores", "none"), ("D", "cc:runner_c
 def machines(y):
     refs = "ABCDEFGHIJK"
     targets = [tgt(f"{m}{CI_HOSTS}", refs[i]) for i, (m, _, _) in enumerate(MACHINE_COLS)]
-    # Runners busy, or for the workstation its local gate slots held.
-    targets.append(tgt('count by (host) (' + W + '(github_runner_state{state="running"})) or cc:host_local_busy', refs[len(MACHINE_COLS)]))
+    # Runners busy, or for the workstation its local gates running.
+    targets.append(tgt('count by (host) (' + W + '(github_runner_state{state="running"})) or count by (host) (cc:host_local_gate)', refs[len(MACHINE_COLS)]))
     rename = {f"Value #{refs[i]}": col for i, (_, col, _) in enumerate(MACHINE_COLS)}
     rename[f"Value #{refs[len(MACHINE_COLS)]}"] = "busy runners"
     units = [{"matcher": {"id": "byName", "options": col}, "properties": [{"id": "unit", "value": u}, {"id": "decimals", "value": 1 if u in ("none", "bytes") else 0}]}
@@ -94,7 +94,7 @@ def machines(y):
         (("cpu", (("text", None), ("orange", 0.7), ("red", 0.9))), ("cpu 6h", (("text", None), ("orange", 0.7), ("red", 0.9))), ("mem", (("text", None), ("orange", 0.8), ("red", 0.92))),
          ("temp", (("text", None), ("orange", 85), ("red", 95))))]
     return P({"type": "table", "title": "Machines: load on every host that runs CI",
-              "description": "One row per CI host: CPU busy now and averaged over 6h (the headroom a rebalance is judged on), 1-minute load against its cores, memory used (as a share and in bytes of its total), disk free on its emptiest real filesystem against that filesystem's size, CPU package temperature, and how many of its runners are busy (for the workstation, how many of its local Unity gate slots are held). '-' = that host exports no such series (macOS has no temperature sensor in node_exporter).",
+              "description": "One row per CI host: CPU busy now and averaged over 6h (the headroom a rebalance is judged on), 1-minute load against its cores, memory used (as a share and in bytes of its total), disk free on its emptiest real filesystem against that filesystem's size, CPU package temperature, and how many of its runners are busy (for the workstation, how many local Unity gates are running). '-' = that host exports no such series (macOS has no temperature sensor in node_exporter).",
               "gridPos": {"h": 8, "w": 24, "x": 0, "y": y}, "targets": targets,
               "transformations": [{"id": "joinByField", "options": {"byField": "host", "mode": "outer"}},
                                   {"id": "organize", "options": {"excludeByName": {"Time": True, **{f"Time {i}": True for i in range(1, len(MACHINE_COLS) + 2)}},

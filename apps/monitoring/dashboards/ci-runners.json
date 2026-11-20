@@ -392,7 +392,7 @@
     {
       "type": "table",
       "title": "Machines: load on every host that runs CI",
-      "description": "One row per CI host: CPU busy now and averaged over 6h (the headroom a rebalance is judged on), 1-minute load against its cores, memory used (as a share and in bytes of its total), disk free on its emptiest real filesystem against that filesystem's size, CPU package temperature, and how many of its runners are busy (for the workstation, how many of its local Unity gate slots are held). '-' = that host exports no such series (macOS has no temperature sensor in node_exporter).",
+      "description": "One row per CI host: CPU busy now and averaged over 6h (the headroom a rebalance is judged on), 1-minute load against its cores, memory used (as a share and in bytes of its total), disk free on its emptiest real filesystem against that filesystem's size, CPU package temperature, and how many of its runners are busy (for the workstation, how many local Unity gates are running). '-' = that host exports no such series (macOS has no temperature sensor in node_exporter).",
       "gridPos": {
         "h": 8,
         "w": 24,
@@ -406,7 +406,7 @@
             "uid": "${datasource}"
           },
           "editorMode": "code",
-          "expr": "cc:host_cpu_busy_ratio and on (host) (max by (host) (github_runner_pool_expected) or cc:host_local_slots)",
+          "expr": "cc:host_cpu_busy_ratio and on (host) (max by (host) (github_runner_pool_expected) or cc:host_local_done_24h)",
           "format": "table",
           "instant": true,
           "range": false,
@@ -419,7 +419,7 @@
             "uid": "${datasource}"
           },
           "editorMode": "code",
-          "expr": "cc:host_cpu_busy_ratio:avg6h and on (host) (max by (host) (github_runner_pool_expected) or cc:host_local_slots)",
+          "expr": "cc:host_cpu_busy_ratio:avg6h and on (host) (max by (host) (github_runner_pool_expected) or cc:host_local_done_24h)",
           "format": "table",
           "instant": true,
           "range": false,
@@ -432,7 +432,7 @@
             "uid": "${datasource}"
           },
           "editorMode": "code",
-          "expr": "cc:host_load1 and on (host) (max by (host) (github_runner_pool_expected) or cc:host_local_slots)",
+          "expr": "cc:host_load1 and on (host) (max by (host) (github_runner_pool_expected) or cc:host_local_done_24h)",
           "format": "table",
           "instant": true,
           "range": false,
@@ -445,7 +445,7 @@
             "uid": "${datasource}"
           },
           "editorMode": "code",
-          "expr": "cc:host_cores and on (host) (max by (host) (github_runner_pool_expected) or cc:host_local_slots)",
+          "expr": "cc:host_cores and on (host) (max by (host) (github_runner_pool_expected) or cc:host_local_done_24h)",
           "format": "table",
           "instant": true,
           "range": false,
@@ -458,7 +458,7 @@
             "uid": "${datasource}"
           },
           "editorMode": "code",
-          "expr": "cc:host_mem_used_ratio and on (host) (max by (host) (github_runner_pool_expected) or cc:host_local_slots)",
+          "expr": "cc:host_mem_used_ratio and on (host) (max by (host) (github_runner_pool_expected) or cc:host_local_done_24h)",
           "format": "table",
           "instant": true,
           "range": false,
@@ -471,7 +471,7 @@
             "uid": "${datasource}"
           },
           "editorMode": "code",
-          "expr": "cc:host_mem_used_bytes and on (host) (max by (host) (github_runner_pool_expected) or cc:host_local_slots)",
+          "expr": "cc:host_mem_used_bytes and on (host) (max by (host) (github_runner_pool_expected) or cc:host_local_done_24h)",
           "format": "table",
           "instant": true,
           "range": false,
@@ -484,7 +484,7 @@
             "uid": "${datasource}"
           },
           "editorMode": "code",
-          "expr": "cc:host_mem_total_bytes and on (host) (max by (host) (github_runner_pool_expected) or cc:host_local_slots)",
+          "expr": "cc:host_mem_total_bytes and on (host) (max by (host) (github_runner_pool_expected) or cc:host_local_done_24h)",
           "format": "table",
           "instant": true,
           "range": false,
@@ -497,7 +497,7 @@
             "uid": "${datasource}"
           },
           "editorMode": "code",
-          "expr": "cc:host_disk_avail_bytes and on (host) (max by (host) (github_runner_pool_expected) or cc:host_local_slots)",
+          "expr": "cc:host_disk_avail_bytes and on (host) (max by (host) (github_runner_pool_expected) or cc:host_local_done_24h)",
           "format": "table",
           "instant": true,
           "range": false,
@@ -510,7 +510,7 @@
             "uid": "${datasource}"
           },
           "editorMode": "code",
-          "expr": "cc:host_disk_size_bytes and on (host) (max by (host) (github_runner_pool_expected) or cc:host_local_slots)",
+          "expr": "cc:host_disk_size_bytes and on (host) (max by (host) (github_runner_pool_expected) or cc:host_local_done_24h)",
           "format": "table",
           "instant": true,
           "range": false,
@@ -523,7 +523,7 @@
             "uid": "${datasource}"
           },
           "editorMode": "code",
-          "expr": "cc:host_temp_c and on (host) (max by (host) (github_runner_pool_expected) or cc:host_local_slots)",
+          "expr": "cc:host_temp_c and on (host) (max by (host) (github_runner_pool_expected) or cc:host_local_done_24h)",
           "format": "table",
           "instant": true,
           "range": false,
@@ -536,7 +536,7 @@
             "uid": "${datasource}"
           },
           "editorMode": "code",
-          "expr": "count by (host) (max without (instance, pod, job, namespace, service, endpoint, container) (github_runner_state{state=\"running\"})) or cc:host_local_busy",
+          "expr": "count by (host) (max without (instance, pod, job, namespace, service, endpoint, container) (github_runner_state{state=\"running\"})) or count by (host) (cc:host_local_gate)",
           "format": "table",
           "instant": true,
           "range": false,

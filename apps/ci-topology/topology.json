@@ -2,38 +2,6 @@
   "generated_by": "scripts/render-ci-topology.py from ansible/inventory.yml: edit the inventory and re-run it",
   "labels": {"pool": "unity", "full": "unity-full", "build": "unity-build", "wide": "unity-wide", "withheld": "unity-withheld", "build_withheld": "unity-build-withheld", "seat_withheld": "light-withheld", "lent": "unity-lent"},
   "hosts": {
-    "aws-build-1": {"site": "cloud", "full": true, "power": {"provider": "aws", "instance_id": "i-0856b245ff7a81321", "region": "us-east-2"}, "slots": [
-      {"name": "aws-build-1-unity-pool-1", "caps": ["unity-build"], "group": ["aws-build-1-unity-pool-4", "aws-build-1-unity-pool-5"]},
-      {"name": "aws-build-1-unity-pool-2", "caps": ["unity-build"], "group": ["aws-build-1-unity-pool-6", "aws-build-1-unity-pool-7"]},
-      {"name": "aws-build-1-unity-pool-3", "caps": ["unity-build"], "group": ["aws-build-1-unity-pool-8", "aws-build-1-unity-pool-9"]},
-      {"name": "aws-build-1-unity-pool-4", "caps": ["unity"]},
-      {"name": "aws-build-1-unity-pool-5", "caps": ["unity"]},
-      {"name": "aws-build-1-unity-pool-6", "caps": ["unity"]},
-      {"name": "aws-build-1-unity-pool-7", "caps": ["unity"]},
-      {"name": "aws-build-1-unity-pool-8", "caps": ["unity"]},
-      {"name": "aws-build-1-unity-pool-9", "caps": ["unity"]}
-    ]},
-    "aws-spot-1": {"site": "cloud", "full": true, "power": {"provider": "aws", "instance_id": "i-0b4c89a54f8e25ad5", "region": "us-east-2"}, "slots": [
-      {"name": "aws-spot-1-unity-pool-1", "caps": ["unity"]},
-      {"name": "aws-spot-1-unity-pool-2", "caps": ["unity"]},
-      {"name": "aws-spot-1-unity-pool-3", "caps": ["unity"]},
-      {"name": "aws-spot-1-unity-pool-4", "caps": ["unity"]},
-      {"name": "aws-spot-1-unity-pool-5", "caps": ["unity"]}
-    ]},
-    "aws-spot-2": {"site": "cloud", "full": true, "power": {"provider": "aws", "instance_id": "i-0c244a80e9cf430b1", "region": "us-east-2"}, "slots": [
-      {"name": "aws-spot-2-unity-pool-1", "caps": ["unity"]},
-      {"name": "aws-spot-2-unity-pool-2", "caps": ["unity"]},
-      {"name": "aws-spot-2-unity-pool-3", "caps": ["unity"]},
-      {"name": "aws-spot-2-unity-pool-4", "caps": ["unity"]},
-      {"name": "aws-spot-2-unity-pool-5", "caps": ["unity"]}
-    ]},
-    "aws-spot-3": {"site": "cloud", "full": true, "power": {"provider": "aws", "instance_id": "i-04ca535b8876dff6f", "region": "us-east-2"}, "slots": [
-      {"name": "aws-spot-3-unity-pool-1", "caps": ["unity"]},
-      {"name": "aws-spot-3-unity-pool-2", "caps": ["unity"]},
-      {"name": "aws-spot-3-unity-pool-3", "caps": ["unity"]},
-      {"name": "aws-spot-3-unity-pool-4", "caps": ["unity"]},
-      {"name": "aws-spot-3-unity-pool-5", "caps": ["unity"]}
-    ]},
     "cachyos-x8664-main": {"site": "local", "full": false, "slots": [
       {"name": "cachyos-x8664-main-unity-pool-1", "caps": ["unity"]},
       {"name": "cachyos-x8664-main-unity-pool-2", "caps": ["unity"]}

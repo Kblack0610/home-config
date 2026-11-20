@@ -24,8 +24,9 @@ Rendering also checks what the inventory must hold for the slots to fit their ho
   more than the build slot's, so a group never asks more of the host than its build slot alone.
 - Two slots of a host share cores (ci_unity_slot_cpus) only inside one group.
 - A unity-wide slot, wide lead included, has at least WIDE_SLOT_MIN_GB; a wide slot is a group's lead.
-- The pool's build slots carry RELEASE_LABEL on at least one and leave it off at least one,
-  so a release always has a slot and never holds every slot players.yml builds on (hc-263).
+- The pool's build slots carry RELEASE_LABEL on at least one and, when there are two or more, leave
+  it off at least one, so a release always has a slot and never holds every slot players.yml builds
+  on (hc-263). A lone build slot carries it and players.yml shares it.
 - A core host or a host in no_ci_hosts carries no CI.
 - A seat borrows one Unity test slot of its own LAN host, outside every slot group: the governor
   lends that slot to a Forgejo seat (one on each such slot of a host tagged forgejo) or to a
@@ -283,9 +284,10 @@ def fit_failures(hosts, groups):
         builds_here = [n for n in group if n not in wide_slots(v)]
         release += sum(1 for n in builds_here if RELEASE_LABEL in labels.get(n, []))
         builds += len(builds_here)
-    if builds and not 0 < release < builds:
+    if builds and not (0 < release < builds or release == builds == 1):
         fails.append(f"{release} of the pool's {builds} build slots (unity_ci_slot_groups keys) carry {RELEASE_LABEL} "
-                     f"in unity_ci_slot_labels; a release must have at least one and leave players.yml at least one")
+                     f"in unity_ci_slot_labels; a release must have at least one and, with two or more, "
+                     f"leave players.yml at least one")
     return fails
 
 

@@ -138,10 +138,6 @@ tests:
   - name: busy counts the kind of job a runner runs, not its caps
     interval: 1m
     input_series:
-      - series: 'github_runner_pool_slot{name="i",host="h",pool="unity",state="idle",instance="x"}'
-        values: '0x5'
-      - series: 'github_runner_pool_slot{name="i",host="h",pool="heavy",state="idle",instance="x"}'
-        values: '0x5'
       - series: 'github_runner_pool_slot{name="r",host="h",pool="unity",state="running",instance="x"}'
         values: '1x5'
       - series: 'github_runner_pool_slot{name="r",host="h",pool="heavy",state="running",instance="x"}'

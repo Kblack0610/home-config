@@ -697,8 +697,7 @@ spec:
             or cc:pool_slots * 0
         # Busy is by the kind of job a runner runs (ci_runner_job, what a machine row's DOING
         # names), never by its caps: a runner can take several kinds (a unity-pool runner took light and heavy until hc-693), so counting
-        # caps read heavy 7/9 busy with no heavy job running (2026-11-19). Slots stay by caps,
-        # so a kind's free slots are never slots minus busy.
+        # caps read heavy 7/9 busy with no heavy job running (2026-11-19). Slots stay by caps.
         - record: cc:pool_busy
           expr: >-
             count by (pool) (label_replace(max without (instance, pod, job, namespace, service, endpoint, container)

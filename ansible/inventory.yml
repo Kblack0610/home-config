@@ -782,9 +782,18 @@ all:
         ms-a2:
           thermal_cap_boost: true
           thermal_cap_max_freq_khz: 3200000
-        # razer-laptop (acpi-cpufreq, a global boost switch), deskslim-2 and tuf-b550
-        # (amd-pstate-epp) and the workstation have no platform_profile, no
-        # writable RAPL limit and no charge threshold: the group default alone.
+        # AMD 5900XT, amd-pstate-epp on kernel 7.3: writing 0 to cpufreq/boost fails
+        # ("Cannot disable BOOST", checked 2026-11-20), so the group default cannot
+        # apply. Boost on under a ceiling at its 3.3GHz base clock instead, which is
+        # what boost off would give. Provisional, medium confidence: revisit (raise a
+        # step, as on ms-a2) after 48h of temperatures under load while the 15m max
+        # stays under 85C.
+        tuf-b550:
+          thermal_cap_boost: true
+          thermal_cap_max_freq_khz: 3300000
+        # razer-laptop (acpi-cpufreq, a global boost switch), deskslim-2 (amd-pstate-epp)
+        # and the workstation have no platform_profile, no writable RAPL limit and no
+        # charge threshold: the group default alone.
 
     # Whole-house audio: one host per room, each a snapclient of the snapserver
     # in apps/snapcast. See ansible/roles/audio-endpoint/README.md.

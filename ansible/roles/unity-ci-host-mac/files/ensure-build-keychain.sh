@@ -15,6 +15,8 @@ ENV_FILE=${MAC_SIGNING_ENV:-"$HOME/.config/unity-core-playground/mac-signing.env
 : "${MAC_SIGN_KEYCHAIN:?not set in $ENV_FILE}"
 : "${MAC_SIGN_KEYCHAIN_PASSWORD:?not set in $ENV_FILE}"
 kc=$MAC_SIGN_KEYCHAIN
+# create-keychain appends -db to a path without it, so only the full name can be tested for.
+case "$kc" in *.keychain-db) ;; *) echo "error: MAC_SIGN_KEYCHAIN must end in .keychain-db: $kc" >&2; exit 1 ;; esac
 changed=0
 did() { echo "CHANGED $1"; changed=1; }
 
@@ -34,10 +36,14 @@ security unlock-keychain -p "$MAC_SIGN_KEYCHAIN_PASSWORD" "$kc"
 # every entry already there.
 listed=$(security list-keychains -d user | sed 's/^[[:space:]]*"//; s/"[[:space:]]*$//')
 if ! printf '%s\n' "$listed" | grep -qxF -- "$kc"; then
+    # An empty list would be rewritten to this keychain alone, dropping the login keychain.
+    [ -n "$listed" ] || { echo "error: the user keychain search list is empty; not rewriting it" >&2; exit 1; }
     oldifs=$IFS; IFS='
 '
+    set -f
     # shellcheck disable=SC2086
     set -- $listed
+    set +f
     IFS=$oldifs
     security list-keychains -d user -s "$@" "$kc"
     did "added $kc to the search list"

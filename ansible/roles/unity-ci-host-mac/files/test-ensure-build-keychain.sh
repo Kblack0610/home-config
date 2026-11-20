@@ -61,5 +61,21 @@ case "$out" in *created*) bad "recreated an existing keychain" ;; *) ok "existin
 out=$(ENVF="$t/none" run); rc=$?
 [ "$rc" -ne 0 ] && ok "missing env file fails" || bad "missing env file passed"
 
+# 5. A password with shell characters in single quotes reaches unlock unchanged.
+printf "MAC_SIGN_KEYCHAIN='%s'\nMAC_SIGN_KEYCHAIN_PASSWORD='a\$b\`c\"d'\n" "$KC" > "$t/env2"
+ENVF="$t/env2" run >/dev/null
+[ "$(cat "$S/unlocked")" = 'a$b`c"d' ] && ok "special-character password intact" || bad "password mangled: $(cat "$S/unlocked")"
+
+# 6. A path without .keychain-db, a missing password and an empty list each fail and change nothing.
+printf 'MAC_SIGN_KEYCHAIN="%s/x.keychain"\nMAC_SIGN_KEYCHAIN_PASSWORD=p\n' "$t" > "$t/env3"
+out=$(ENVF="$t/env3" run); rc=$?
+[ "$rc" -ne 0 ] && ok "path without -db refused" || bad "path without -db passed"
+printf 'MAC_SIGN_KEYCHAIN="%s"\n' "$KC" > "$t/env4"
+out=$(ENVF="$t/env4" run); rc=$?
+[ "$rc" -ne 0 ] && ok "missing password refused" || bad "missing password passed"
+: > "$S/list"
+out=$(run); rc=$?
+[ "$rc" -ne 0 ] && [ ! -s "$S/list" ] && ok "empty list not rewritten" || bad "empty list: rc=$rc list=$(cat "$S/list")"
+
 [ "$fail" -eq 0 ] && echo "all passed"
 exit "$fail"

@@ -2662,6 +2662,57 @@ class LendTest(unittest.TestCase):
         self.assertEqual(box.lends, {})
         self.assertEqual(box.labels(), ADMITTED)
 
+    def test_a_mark_the_exporter_still_shows_after_github_dropped_it_is_no_lend(self):
+        # ar-2781: the exporter lags a cycle, so the one after a readmit still read the mark;
+        # adopted as held for the Forgejo seat, the slot GitHub had back counted as Forgejo
+        # capacity for 40 minutes while 7 jobs waited, and an idle one was granted a second job.
+        box, wait = Box(), [("forgejo", frozenset({"docker"}), 600)]
+        stale = Box(s1=DRAINED | {"unity-lent"}).runners()
+        with mock.patch.object(box, "runners", return_value=stale):
+            self.cycle(box, [], [])
+        self.assertNotIn(S1, box.lends)
+        self.assertEqual(box.leases.get(S1)[0], "github")
+        self.assertEqual(box.labels(), DRAINED)
+        # Nothing holds it out: the next Forgejo wait lends it for real.
+        self.cycle(box, [], wait)
+        self.assertEqual(box.lends[S1]["seat"], FJ_SEAT)
+        self.assertEqual(box.labels(), DRAINED | {"unity-lent"})
+
+    def test_a_lent_mark_the_exporter_shows_only_after_the_first_cycle_is_still_adopted(self):
+        # A slot lent before the restart that the first reading missed keeps its lend once it shows.
+        box = Box(s1=DRAINED | {"unity-lent"})
+        box.fj["busy"] = True
+        with mock.patch.object(box, "runners", return_value=Box().runners()):
+            self.cycle(box, [], [])
+        self.cycle(box, [], [])
+        self.assertEqual(box.lends[S1], {"seat": FJ_SEAT, "phase": "granted", "at": 10_000})
+        self.assertEqual(box.leases.get(S1)[0], "forgejo")
+
+    def test_a_lent_mark_whose_live_read_fails_is_adopted_from_the_reading(self):
+        box = Box(s1=DRAINED | {"unity-lent"})
+        box.fj["busy"] = True
+        real = governor.find_runner
+        reads = []
+
+        def first_read_fails(scope, name):
+            reads.append(name)
+            if len(reads) == 1:
+                raise OSError("down")
+            return real(scope, name)
+        with mock.patch.object(governor, "find_runner", side_effect=first_read_fails):
+            self.cycle(box, list(GITHUB_JOB) * 3, [])
+        self.assertEqual(box.lends[S1], {"seat": FJ_SEAT, "phase": "granted", "at": 10_000})
+        self.assertIn("unity-lent", box.labels())
+
+    def test_a_lent_mark_on_a_runner_github_does_not_list_is_left_out(self):
+        box = Box()
+        stale = Box(s1=DRAINED | {"unity-lent"}).runners()
+        del box.gh.scopes[ORG][S1]
+        with mock.patch.object(box, "runners", return_value=stale):
+            self.cycle(box, [], [("forgejo", frozenset({"docker"}), 600)])
+        self.assertNotIn(S1, box.lends)
+        self.assertEqual(box.leases.get(S1)[0], "github")
+
     def test_a_burst_takes_every_idle_withheld_slot_of_a_room_host_in_one_cycle(self):
         # hc-643: two pool-1 lends and nothing for pool-2 and 3 while 7 Forgejo jobs waited.
         seats = {f"box-unity-pool-{n}-forgejo": {"host": "box", "slot": f"box-unity-pool-{n}", "forge": "forgejo",

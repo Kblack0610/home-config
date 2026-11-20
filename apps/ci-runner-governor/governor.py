@@ -2446,8 +2446,26 @@ def cycle(cfg, last_action, tracked=None, budget=None, lending=None, local=None)
     pins, pin_sources = read_pins(cfg, now)
     leases, lends = lending or (None, {})
     # A slot that carries the lent mark from before a restart stays lent to its seat (hc-643).
+    # The exporter lags a cycle, so the mark is confirmed live before it is adopted: a slot whose
+    # live labels lack it is read with those labels, and one GitHub does not list is no runner.
+    # A read that fails adopts from the exporter's reading, as a lent slot is never one to admit.
     for name, r in sorted(runners.items()):
         if lending and cfg["lent_label"] in r["labels"] and name not in lends:
+            try:
+                _, live, busy = find_runner(f"orgs/{cfg['org']}", name)
+            except KeyError:
+                print(f"{name}: the exporter lists a runner GitHub does not; leaving it out", flush=True)
+                del runners[name]
+                continue
+            except API_ERRORS as e:
+                print(f"{name}: reading its labels live failed, adopting its lent mark: {e}", flush=True)
+                live, busy = r["labels"], r["busy"]
+            live = frozenset(l.lower() for l in live)
+            if cfg["lent_label"] not in live:
+                print(f"{name}: the exporter still shows a lent mark GitHub no longer has; not a lend", flush=True)
+                runners[name] = {**r, "labels": live, "busy": busy,
+                                 "withheld": any(l.endswith("-withheld") for l in live)}
+                continue
             lends[name] = adopt(cfg, name, seat_state, leases, now)
             print(f"{name} was lent before this start; {lends[name]['phase']} for {lends[name]['seat']}", flush=True)
     weights = {}

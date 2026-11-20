@@ -778,6 +778,33 @@ model_list:
         json_mode: true
       supports_function_calling: true
 
+  # OpenRouter free models (the `:free` suffix), on an account with no credits
+  # bought: 20 rpm and 50 requests/day per key, then 429 until the day resets.
+  # The providers behind `:free` models may train on prompts, so PUBLIC input
+  # only: gateway key fleet-ocfree (README, OpenCode free key), never fleet-nim.
+  # rpm 2 so one burst cannot spend the 50/day. OpenRouter rotates the free
+  # list: a dropped model answers 404, delete the route then. No fallback
+  # edge: a refusal fails the call, never reaches a paid route.
+  # key-limit OPENROUTER_API_KEY: rpm 20 (openrouter.ai/docs/api-reference/limits, free models, read 2026-11-19)
+  - model_name: "free-particle (particle-1)"
+    litellm_params:
+      model: "openai/particle-ai/particle-1:free"
+      api_base: https://openrouter.ai/api/v1
+      api_key: os.environ/OPENROUTER_API_KEY
+      input_cost_per_token: 0
+      output_cost_per_token: 0
+      rpm: 2
+    model_info:
+      mode: chat
+      tags: ["free", "openrouter", "public-input-only"]
+      capabilities:
+        tools: true
+        code: true
+        vision: false
+        reasoning: true
+        json_mode: true
+      supports_function_calling: true
+
   # binks.chat product routes (binks brief, "Model and unit economics"), on the
   # winners of the 2026-11-12 eval: 20 prompts through binks-api, judged blind
   # against the Gemini app (lab binks docs/eval/2026-11-12-binks-model-eval.md).

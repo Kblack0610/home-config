@@ -173,6 +173,24 @@ spec:
               and any preview environment silently keeps serving its last image.
               Check forgejo_mirror:overdue_budget_ratio for this repo first.
 
+        # A Forgejo job no seat has taken in 10 minutes. Covers both a busy pool and a job
+        # asking for a label no seat declares (stuck="true"), which would wait forever.
+        # Light jobs (runs-on [self-hosted, light]) normally start inside a minute.
+        - alert: ForgejoJobQueuedTooLong
+          expr: max by (repo, job_name, labels) (github_actions_job_waiting{pool="forgejo"}) > 600
+          for: 5m
+          labels:
+            severity: warning
+            fleet: fix
+            category: ci
+          annotations:
+            summary: "{{ $labels.repo }} {{ $labels.job_name }} has waited {{ $value | humanizeDuration }} on Forgejo for labels {{ $labels.labels }}"
+            description: >-
+              A Forgejo Actions job has waited over 10 minutes for a seat. Check
+              github_runner_pool_slot{forge="forgejo"} for online seats, and whether a
+              seat declares every label the job asks for (labels arrive with the
+              one-job Declare call, so a seat that never ran one declares none).
+
         # The precondition that made the incident self-sustaining, and the
         # trade-off guard for gc.auto=0 in the forgejo-host role's files/app.ini: with
         # auto-gc off, this is what proves the scheduled cron is keeping up.

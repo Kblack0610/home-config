@@ -1632,6 +1632,10 @@ def lend_plan(cfg, hosts, runners, seat_state, waits, lends, leases, pins, last_
     open_lends = {s: (seat_kind(cfg, l["seat"]), busy(s, l["seat"])) for s, l in lends.items()
                   if l["seat"] and l["phase"] != "returning" and s not in back}
     back.update(reclaimed(cfg, runners, open_lends, lends, jobs.get("github", []), oldest))
+    # config.json jump_lends {kind: N}: that many lends of a short kind skip the age rule, here and in
+    # reclaimed(), so a fan-in job created after the Unity queue formed does not wait it out.
+    jumps = {k: n - sum(1 for s, (kind, _) in open_lends.items() if kind == k and s not in back)
+             for k, n in cfg.get("jump_lends", {}).items()}
     for kind, slots in have.items():
         keep = [s for s in slots if s not in back]
         # A lend holds as many jobs as it has seats, and want counts every busy seat, so the
@@ -1699,8 +1703,10 @@ def lend_plan(cfg, hosts, runners, seat_state, waits, lends, leases, pins, last_
                 continue
             if not r["withheld"] and floor - 1 < cfg["pool_min_admitted"]:
                 continue
-            if rival(slot) >= oldest[kind]:
+            jump = jumps.get(kind, 0) > 0
+            if rival(slot) >= oldest[kind] and not jump:
                 continue
+            jumps[kind] = jumps.get(kind, 0) - jump
             floor -= 0 if r["withheld"] else 1
             if not spare:
                 moved.add(host)
@@ -1720,8 +1726,13 @@ def reclaimed(cfg, runners, open_lends, lends, github_jobs, oldest):
     Each GitHub job that has waited longer than any job of a lend's kind takes one lent slot back, busy or
     not: a stream of short light jobs keeps a lent slot busy for good, so waiting for it to go idle left 13
     Unity slots lent while playground Tests waited 30 minutes (hc-766). Idle lends go first, and a returning
-    lend is that job's slot already, so one job does not pull back every lend while the first drains."""
+    lend is that job's slot already, so one job does not pull back every lend while the first drains.
+    A jump_lends kind keeps its busiest N lends; past those the age rule holds."""
     rivals, claimed = sorted(github_jobs, key=lambda j: -j[0]), set()
+    keep = set()
+    for k, n in cfg.get("jump_lends", {}).items():
+        keep.update(sorted((s for s, (kind, _) in open_lends.items() if kind == k),
+                           key=lambda s: (-open_lends[s][1], s))[:n])
 
     def claim(slot, older_than):
         r = runners.get(slot)
@@ -1735,6 +1746,8 @@ def reclaimed(cfg, runners, open_lends, lends, github_jobs, oldest):
         claim(slot, -1)
     out = {}
     for slot, (kind, _) in sorted(open_lends.items(), key=lambda p: (p[1][1], p[0])):
+        if slot in keep:
+            continue
         age = claim(slot, oldest.get(kind, -1))
         if age is not None:
             out[slot] = f"a GitHub job it takes has waited {int(age)}s, longer than any {kind} job"

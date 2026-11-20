@@ -2596,7 +2596,8 @@ class LendTest(unittest.TestCase):
         box, lights, seats = self.light_box(0.3)
         light = [("light", REPO_JOB, 60)] * 3
         repo = [(REPO, REPO_JOB, 60)]
-        with seats:
+        # The age rule past any jump lend (the next test).
+        with seats, mock.patch.dict(LCFG, {"jump_lends": {}}):
             box.step(light + repo), box.step(light + repo, 10_060)
             self.assertEqual({s: l["phase"] for s, l in box.lends.items()}, {S1: "granted", S2: "granted"})
             box.gh.scopes[ORG][lights[0]]["busy"] = True
@@ -2610,6 +2611,24 @@ class LendTest(unittest.TestCase):
             self.assertEqual(box.plan(older, 10_180), [])
             self.assertEqual([s[:2] for s in box.plan(older + [("github", GITHUB_JOB[0], 800)], 10_180)],
                              [("return", S2)])
+
+    def test_a_jump_kind_lends_past_an_older_github_job_and_keeps_that_lend_while_busy(self):
+        # ucp-2881: a gate's report job is created when its last shard ends, so it is younger than
+        # every queued shard and waited out the whole Unity queue for a lend (p90 9-11 min).
+        light = [("light", REPO_JOB, 60)]
+        older = [("github", GITHUB_JOB[0], 900)]
+        for jump, want in (({}, []), ({"light": 1}, [("lend", S1)])):
+            with self.subTest(jump=jump):
+                box, lights, seats = self.light_box(0.3)
+                with seats, mock.patch.dict(LCFG, {"jump_lends": jump}):
+                    self.assertEqual(box.step(light + older), want)
+        box, lights, seats = self.light_box(0.3)
+        with seats, mock.patch.dict(LCFG, {"jump_lends": {"light": 1}}):
+            box.step(light + older), box.step(light + older, 10_060)
+            box.gh.scopes[ORG][lights[0]]["busy"] = True
+            self.assertEqual(box.plan(light + older, 10_120), [])  # busy, not taken back
+            # One jump lend only: a second light lend waits on the age rule.
+            self.assertEqual(box.plan(light * 4 + older, 10_120), [])
 
     def test_a_light_seat_admitted_with_no_lend_is_withheld(self):
         box, lights, seats = self.light_box(0.3)

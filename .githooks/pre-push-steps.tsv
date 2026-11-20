@@ -1,7 +1,7 @@
 # The offline steps of .forgejo/workflows/checks.yaml that .githooks/pre-push runs, picked by changed path.
 # Columns, tab separated: <changed-path regex (ERE)> <tool the step needs, or -> <command, verbatim from checks.yaml>
 # "." runs on every push. A step whose tool is missing on this machine is skipped with a line saying so; CI still runs it.
-# A row whose regex is "-" never runs here: its CI step needs a container this machine lacks (nut-replay: Debian's nut packages).
+# A row whose regex is "-" never runs here, and names a CI step the hook leaves to CI: nut-replay needs Debian's nut packages, and the hook test takes about 10s, over the hook's budget.
 # scripts/check-prepush-steps.py fails CI when a single-line step of checks.yaml has no row here, or a row has no step there.
 ^(ansible/inventory\.yml|apps/gatus-fleet/|apps/fleet-exporter/|scripts/render-fleet-pulse\.py)	-	python3 scripts/render-fleet-pulse.py --check
 ^(ansible/inventory\.yml|scripts/(render-fleet-pulse|test_render_fleet_pulse)\.py)	-	cd scripts && python3 -m unittest test_render_fleet_pulse
@@ -48,4 +48,4 @@
 ^(apps/[^/]+/prometheus-rules[^/]*\.yaml|apps/monitoring/tests/|scripts/test-prometheus-rules\.sh)	promtool	scripts/test-prometheus-rules.sh
 ^(apps|clusters)/|^scripts/check-kustomize-builds\.sh$	-	scripts/check-kustomize-builds.sh rendered.yaml
 ^(\.forgejo/workflows/checks\.yaml|\.githooks/|scripts/check-prepush-steps\.py)	-	python3 scripts/check-prepush-steps.py
-^(\.githooks/|scripts/test-prepush-hook\.sh)	-	sh scripts/test-prepush-hook.sh
+-	-	sh scripts/test-prepush-hook.sh

@@ -1,5 +1,5 @@
 {
-    "before_layer_change_gcode": "",
+    "before_layer_change_gcode": "_PLR_SAVE LAYER_Z=[layer_z]",
     "deretraction_speed": [
         "30"
     ],

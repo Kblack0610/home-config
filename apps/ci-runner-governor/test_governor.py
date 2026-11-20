@@ -2749,6 +2749,19 @@ class LendTest(unittest.TestCase):
             self.assertEqual(box.step(burst), [("lend", S1), ("lend", S2), ("lend", S3)])
             self.assertEqual([s for s, *_ in box.plan(burst, hosts=readings(box=HOT))], ["unlend"] * 3)
 
+    def test_an_idle_slot_two_kinds_want_is_lent_once_to_the_older_wait(self):
+        # hc-789: deskslim-1's idle withheld slots were lent to a light seat (3783s) and then, in the
+        # same cycle, to its Forgejo seat (3359s); the second lend overwrote the first, so the light
+        # jobs kept waiting while the slot served Forgejo.
+        seats = {**LCFG["seats"], REPO_SEAT: {**LCFG["seats"][REPO_SEAT], "slot": S1}}
+        box = Box()
+        waits = [(REPO, REPO_JOB, 3783), ("forgejo", frozenset({"docker"}), 3359)]
+        with mock.patch.dict(LCFG, {"seats": seats}):
+            self.assertEqual(box.step(waits), [("lend", S1)])
+            self.assertEqual(box.lends[S1]["seat"], REPO_SEAT)
+            older_forgejo = [(REPO, REPO_JOB, 300), ("forgejo", frozenset({"docker"}), 900)]
+            self.assertEqual([(s, seat) for s, _, seat, _ in Box().plan(older_forgejo)], [("lend", FJ_SEAT)])
+
 
     def test_each_withheld_slot_says_why(self):
         box = Box(s2=DRAINED)

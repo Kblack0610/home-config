@@ -1672,7 +1672,7 @@ def lend_plan(cfg, hosts, runners, seat_state, waits, lends, leases, pins, last_
 
     floor = sum(1 for n, r in runners.items() if not r["withheld"] and r["host"] in cfg["hosts"]
                 and serves_pool(cfg, r["host"], n))
-    moved, paired = set(), lent(cfg, runners)
+    moved, taken, paired = set(), set(), lent(cfg, runners)
     for kind in sorted(oldest, key=lambda k: (-oldest[k], k)):
         need = want[kind] - sum(len(mates(s, lends[s]["seat"])) for s in have.get(kind, []) if s not in back)
         # One per slot: its first seat the exporter sees, which names the lend for all its seats.
@@ -1691,7 +1691,8 @@ def lend_plan(cfg, hosts, runners, seat_state, waits, lends, leases, pins, last_
             # burst gets every such slot in one cycle, cooldown or not (hc-643). A slot that is
             # admitted or busy moves one per host per cycle, as a withhold does.
             spare = bool(r) and r["withheld"] and not r["busy"] and verdicts.get(host) == "ROOM"
-            if slot in lends or slot in paired or (host in moved and not spare) or unfit(host) or not r:
+            # One lend a slot a cycle: a later kind's would overwrite the older wait's (hc-789).
+            if slot in lends or slot in taken or slot in paired or (host in moved and not spare) or unfit(host) or not r:
                 continue
             if seat not in seat_state or (seats[seat]["forge"] != "forgejo" and not seat_state[seat]["online"]):
                 continue
@@ -1705,6 +1706,7 @@ def lend_plan(cfg, hosts, runners, seat_state, waits, lends, leases, pins, last_
             if not spare:
                 moved.add(host)
             need -= len(mates(slot, seat))
+            taken.add(slot)
             steps.append(("lend", slot, seat, f"a {kind} job has waited {int(oldest[kind])}s"))
 
     granted = {(s, seat_kind(cfg, l["seat"])) for s, l in lends.items() if l["phase"] == "granted" and l["seat"]}

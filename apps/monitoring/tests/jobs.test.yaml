@@ -35,8 +35,9 @@ tests:
       - eval_time: 20m
         alertname: HomelabCronJobFailed
         exp_alerts:
-          - exp_labels: {alertname: HomelabCronJobFailed, severity: warning, fleet: fix, category: scheduled-jobs, namespace: nas, owner_name: v}
+          - exp_labels: {alertname: HomelabCronJobFailed, severity: warning, fleet: fix, system: deploy, category: scheduled-jobs, namespace: nas, owner_name: v}
             exp_annotations:
+              runbook_url: https://git.kennethblack.me/kblack0610/home-config/src/branch/master/apps/monitoring/README.md
               summary: "CronJob failing: nas/v"
               description: "The newest run of nas/v failed and no run has succeeded since. Logs: kubectl -n nas get jobs, then logs of the newest failed one. Resolves on the next successful run."
 
@@ -69,8 +70,9 @@ tests:
       - eval_time: 20m
         alertname: HomelabCronJobFailed
         exp_alerts:
-          - exp_labels: {alertname: HomelabCronJobFailed, severity: warning, fleet: fix, category: scheduled-jobs, namespace: actual-budget, owner_name: t}
+          - exp_labels: {alertname: HomelabCronJobFailed, severity: warning, fleet: fix, system: deploy, category: scheduled-jobs, namespace: actual-budget, owner_name: t}
             exp_annotations:
+              runbook_url: https://git.kennethblack.me/kblack0610/home-config/src/branch/master/apps/monitoring/README.md
               summary: "CronJob failing: actual-budget/t"
               description: "The newest run of actual-budget/t failed and no run has succeeded since. Logs: kubectl -n actual-budget get jobs, then logs of the newest failed one. Resolves on the next successful run."
 
@@ -89,8 +91,9 @@ tests:
       - eval_time: 20m
         alertname: HomelabJobFailed
         exp_alerts:
-          - exp_labels: {alertname: HomelabJobFailed, severity: warning, fleet: fix, category: scheduled-jobs, namespace: databases, job_name: db-bootstrap}
+          - exp_labels: {alertname: HomelabJobFailed, severity: warning, fleet: fix, system: deploy, category: scheduled-jobs, namespace: databases, job_name: db-bootstrap}
             exp_annotations:
+              runbook_url: https://git.kennethblack.me/kblack0610/home-config/src/branch/master/apps/monitoring/README.md
               summary: "Job failed: databases/db-bootstrap"
               description: "databases/db-bootstrap failed and no CronJob will re-run it. Fix and re-run it, or delete the Job once read."
 
@@ -117,8 +120,9 @@ tests:
       - eval_time: 20m
         alertname: ConvergenceDrift
         exp_alerts:
-          - exp_labels: {alertname: ConvergenceDrift, severity: warning, category: scheduled-jobs, fleet: fix, host: razer-laptop}
+          - exp_labels: {alertname: ConvergenceDrift, severity: warning, category: scheduled-jobs, fleet: fix, system: deploy, host: razer-laptop}
             exp_annotations:
+              runbook_url: https://git.kennethblack.me/kblack0610/home-config/src/branch/master/apps/ansible-runner/README.md#convergencedrift
               summary: "razer-laptop: ansible --check would change 11 tasks: apps/ansible-runner/README.md#convergencedrift"
 
   - name: a run older than 2 days does not fire
@@ -132,8 +136,9 @@ tests:
       - eval_time: 47h
         alertname: ConvergenceDrift
         exp_alerts:
-          - exp_labels: {alertname: ConvergenceDrift, severity: warning, category: scheduled-jobs, fleet: fix, host: asus-laptop}
+          - exp_labels: {alertname: ConvergenceDrift, severity: warning, category: scheduled-jobs, fleet: fix, system: deploy, host: asus-laptop}
             exp_annotations:
+              runbook_url: https://git.kennethblack.me/kblack0610/home-config/src/branch/master/apps/ansible-runner/README.md#convergencedrift
               summary: "asus-laptop: ansible --check would change 5 tasks: apps/ansible-runner/README.md#convergencedrift"
       - eval_time: 49h
         alertname: ConvergenceDrift

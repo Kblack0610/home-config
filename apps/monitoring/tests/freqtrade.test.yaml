@@ -36,8 +36,8 @@ tests:
       - eval_time: 30m
         alertname: TraderMetricsMissing
         exp_alerts:
-          - exp_labels: {alertname: TraderMetricsMissing, severity: warning, fleet: fix, category: trading}
-            exp_annotations: {summary: "trader-web metrics are missing or cannot read the trader database: the not-dry-run page is blind"}
+          - exp_labels: {alertname: TraderMetricsMissing, severity: warning, fleet: fix, system: telemetry, category: trading}
+            exp_annotations: {runbook_url: https://git.kennethblack.me/kblack0610/home-config/src/branch/master/apps/freqtrade/README.md, summary: "trader-web metrics are missing or cannot read the trader database: the not-dry-run page is blind"}
 
   - name: a bot is blind past its own limit, and one with no limit series past 300 s
     interval: 1m
@@ -59,19 +59,19 @@ tests:
       - eval_time: 6m
         alertname: TraderWatchBotBlind
         exp_alerts:
-          - exp_labels: {alertname: TraderWatchBotBlind, severity: warning, fleet: fix, category: trading, bot: kraken-s001, job: trader-web}
-            exp_annotations: {summary: "The watcher has not read bot kraken-s001 within its limit"}
-          - exp_labels: {alertname: TraderWatchBotBlind, severity: warning, fleet: fix, category: trading, bot: no-limit, job: trader-web}
-            exp_annotations: {summary: "The watcher has not read bot no-limit within its limit"}
+          - exp_labels: {alertname: TraderWatchBotBlind, severity: warning, fleet: fix, system: deploy, category: trading, bot: kraken-s001, job: trader-web}
+            exp_annotations: {runbook_url: https://git.kennethblack.me/kblack0610/home-config/src/branch/master/apps/freqtrade/README.md, summary: "The watcher has not read bot kraken-s001 within its limit"}
+          - exp_labels: {alertname: TraderWatchBotBlind, severity: warning, fleet: fix, system: deploy, category: trading, bot: no-limit, job: trader-web}
+            exp_annotations: {runbook_url: https://git.kennethblack.me/kblack0610/home-config/src/branch/master/apps/freqtrade/README.md, summary: "The watcher has not read bot no-limit within its limit"}
       - eval_time: 11m
         alertname: TraderWatchBotBlind
         exp_alerts:
-          - exp_labels: {alertname: TraderWatchBotBlind, severity: warning, fleet: fix, category: trading, bot: kraken-s001, job: trader-web}
-            exp_annotations: {summary: "The watcher has not read bot kraken-s001 within its limit"}
-          - exp_labels: {alertname: TraderWatchBotBlind, severity: warning, fleet: fix, category: trading, bot: no-limit, job: trader-web}
-            exp_annotations: {summary: "The watcher has not read bot no-limit within its limit"}
-          - exp_labels: {alertname: TraderWatchBotBlind, severity: warning, fleet: fix, category: trading, bot: paper-tt_totals-08903f77, job: trader-web}
-            exp_annotations: {summary: "The watcher has not read bot paper-tt_totals-08903f77 within its limit"}
+          - exp_labels: {alertname: TraderWatchBotBlind, severity: warning, fleet: fix, system: deploy, category: trading, bot: kraken-s001, job: trader-web}
+            exp_annotations: {runbook_url: https://git.kennethblack.me/kblack0610/home-config/src/branch/master/apps/freqtrade/README.md, summary: "The watcher has not read bot kraken-s001 within its limit"}
+          - exp_labels: {alertname: TraderWatchBotBlind, severity: warning, fleet: fix, system: deploy, category: trading, bot: no-limit, job: trader-web}
+            exp_annotations: {runbook_url: https://git.kennethblack.me/kblack0610/home-config/src/branch/master/apps/freqtrade/README.md, summary: "The watcher has not read bot no-limit within its limit"}
+          - exp_labels: {alertname: TraderWatchBotBlind, severity: warning, fleet: fix, system: deploy, category: trading, bot: paper-tt_totals-08903f77, job: trader-web}
+            exp_annotations: {runbook_url: https://git.kennethblack.me/kblack0610/home-config/src/branch/master/apps/freqtrade/README.md, summary: "The watcher has not read bot paper-tt_totals-08903f77 within its limit"}
 
   - name: a bot API error alerts after two ingest runs, and not for a bot the not-dry-run page owns
     interval: 1m
@@ -91,8 +91,8 @@ tests:
       - eval_time: 90m
         alertname: TraderBotApiDown
         exp_alerts:
-          - exp_labels: {alertname: TraderBotApiDown, severity: warning, fleet: fix, category: trading, bot: down, job: trader-web}
-            exp_annotations: {summary: "Freqtrade bot down did not answer two ingest runs in a row: kubectl -n freqtrade logs freqtrade-league-<row>"}
+          - exp_labels: {alertname: TraderBotApiDown, severity: warning, fleet: fix, system: deploy, category: trading, bot: down, job: trader-web}
+            exp_annotations: {runbook_url: https://git.kennethblack.me/kblack0610/home-config/src/branch/master/apps/freqtrade/README.md, summary: "Freqtrade bot down did not answer two ingest runs in a row: kubectl -n freqtrade logs freqtrade-league-<row>"}
 
   - name: a failed run alerts, a later good run clears it
     interval: 1m
@@ -103,8 +103,8 @@ tests:
       - eval_time: 3m
         alertname: TraderRunFailed
         exp_alerts:
-          - exp_labels: {alertname: TraderRunFailed, severity: warning, category: trading, fleet: fix, kind: analysis, job: trader-web}
-            exp_annotations: {summary: "The newest analysis run failed: its runs row on trader.kblab.me/runs says why"}
+          - exp_labels: {alertname: TraderRunFailed, severity: warning, category: trading, fleet: fix, system: deploy, kind: analysis, job: trader-web}
+            exp_annotations: {runbook_url: https://git.kennethblack.me/kblack0610/home-config/src/branch/master/apps/freqtrade/README.md, summary: "The newest analysis run failed: its runs row on trader.kblab.me/runs says why"}
       - eval_time: 8m
         alertname: TraderRunFailed
         exp_alerts: []
@@ -121,8 +121,8 @@ tests:
       - eval_time: 4m
         alertname: TraderReproMismatch
         exp_alerts:
-          - exp_labels: {alertname: TraderReproMismatch, severity: critical, fleet: fix, category: trading, job: trader-web}
-            exp_annotations: {summary: "2 cached result(s) did not reproduce: see the newest reproduce run on trader.kblab.me/runs"}
+          - exp_labels: {alertname: TraderReproMismatch, severity: critical, fleet: fix, system: deploy, category: trading, job: trader-web}
+            exp_annotations: {runbook_url: https://git.kennethblack.me/kblack0610/home-config/src/branch/master/apps/freqtrade/README.md, summary: "2 cached result(s) did not reproduce: see the newest reproduce run on trader.kblab.me/runs"}
       - eval_time: 8m
         alertname: TraderReproMismatch
         exp_alerts: []
@@ -142,10 +142,10 @@ tests:
       - eval_time: 72h
         alertname: TraderRunStale
         exp_alerts:
-          - exp_labels: {alertname: TraderRunStale, severity: warning, category: trading, fleet: fix, kind: analysis, job: trader-web}
-            exp_annotations: {summary: "No successful analysis run for 3d 0h 0m 0s"}
-          - exp_labels: {alertname: TraderRunStale, severity: warning, category: trading, fleet: fix, kind: walkforward, job: trader-web}
-            exp_annotations: {summary: "No successful walkforward run for 3d 0h 0m 0s"}
+          - exp_labels: {alertname: TraderRunStale, severity: warning, category: trading, fleet: fix, system: deploy, kind: analysis, job: trader-web}
+            exp_annotations: {runbook_url: https://git.kennethblack.me/kblack0610/home-config/src/branch/master/apps/freqtrade/README.md, summary: "No successful analysis run for 3d 0h 0m 0s"}
+          - exp_labels: {alertname: TraderRunStale, severity: warning, category: trading, fleet: fix, system: deploy, kind: walkforward, job: trader-web}
+            exp_annotations: {runbook_url: https://git.kennethblack.me/kblack0610/home-config/src/branch/master/apps/freqtrade/README.md, summary: "No successful walkforward run for 3d 0h 0m 0s"}
 
   - name: weekly calibration with no success for 8 days is stale, one 7 days old is not
     interval: 5m  # sampled within the 5m lookback, so the series never goes stale between samples
@@ -159,8 +159,8 @@ tests:
       - eval_time: 9d
         alertname: TraderRunStale
         exp_alerts:
-          - exp_labels: {alertname: TraderRunStale, severity: warning, category: trading, fleet: fix, kind: calibration, job: trader-web}
-            exp_annotations: {summary: "No successful calibration run for 9d 0h 0m 0s"}
+          - exp_labels: {alertname: TraderRunStale, severity: warning, category: trading, fleet: fix, system: deploy, kind: calibration, job: trader-web}
+            exp_annotations: {runbook_url: https://git.kennethblack.me/kblack0610/home-config/src/branch/master/apps/freqtrade/README.md, summary: "No successful calibration run for 9d 0h 0m 0s"}
 
   - name: a lab pod unschedulable for 30 minutes warns, a scheduled one does not
     interval: 1m
@@ -176,8 +176,8 @@ tests:
       - eval_time: 45m
         alertname: TraderLabPodUnschedulable
         exp_alerts:
-          - exp_labels: {alertname: TraderLabPodUnschedulable, severity: warning, category: trading, fleet: fix, pod: freqtrade-walkforward-1-abcde}
-            exp_annotations: {summary: "freqtrade-walkforward-1-abcde cannot be scheduled: compare its requests with the nodes' allocatable (kubectl describe pod)"}
+          - exp_labels: {alertname: TraderLabPodUnschedulable, severity: warning, category: trading, fleet: fix, system: deploy, pod: freqtrade-walkforward-1-abcde}
+            exp_annotations: {runbook_url: https://git.kennethblack.me/kblack0610/home-config/src/branch/master/apps/freqtrade/README.md, summary: "freqtrade-walkforward-1-abcde cannot be scheduled: compare its requests with the nodes' allocatable (kubectl describe pod)"}
 
   - name: futures data older than 32 hours warns, a fresh series does not
     interval: 5m
@@ -193,8 +193,9 @@ tests:
       - eval_time: 4h
         alertname: TraderFuturesStale
         exp_alerts:
-          - exp_labels: {alertname: TraderFuturesStale, severity: warning, fleet: fix, category: trading, kind: funding, exchange: okx, job: trader-web}
+          - exp_labels: {alertname: TraderFuturesStale, severity: warning, fleet: fix, system: deploy, category: trading, kind: funding, exchange: okx, job: trader-web}
             exp_annotations:
+              runbook_url: https://git.kennethblack.me/kblack0610/home-config/src/branch/master/apps/freqtrade/README.md
               summary: "Newest okx funding row is 1d 9h 0m 0s old: check the freqtrade-futures CronJob"
 
   - name: a sweep that ran past 5 minutes alerts after 10 minutes, a shorter one does not
@@ -213,8 +214,9 @@ tests:
       - eval_time: 10m
         alertname: TraderMarketsSweepSlow
         exp_alerts:
-          - exp_labels: {alertname: TraderMarketsSweepSlow, severity: warning, fleet: fix, category: trading, venue: kalshi, job: trader-web}
+          - exp_labels: {alertname: TraderMarketsSweepSlow, severity: warning, fleet: fix, system: deploy, category: trading, venue: kalshi, job: trader-web}
             exp_annotations:
+              runbook_url: https://git.kennethblack.me/kblack0610/home-config/src/branch/master/apps/freqtrade/README.md
               summary: "kalshi recorder sweep took 5m 30s, past the 5 minute schedule: the next tick is skipped"
 
   - name: a venue whose last good sweep is over 15 minutes old alerts, a fresh one does not
@@ -239,8 +241,9 @@ tests:
       - eval_time: 15m
         alertname: TraderMarketsRecorderStale
         exp_alerts:
-          - exp_labels: {alertname: TraderMarketsRecorderStale, severity: warning, fleet: fix, category: trading, venue: kalshi, job: trader-web}
+          - exp_labels: {alertname: TraderMarketsRecorderStale, severity: warning, fleet: fix, system: deploy, category: trading, venue: kalshi, job: trader-web}
             exp_annotations:
+              runbook_url: https://git.kennethblack.me/kblack0610/home-config/src/branch/master/apps/freqtrade/README.md
               summary: "No good kalshi recorder sweep for 16m 0s: the paper league takes no entries there; failed sweeps and their errors are on trader.kblab.me/markets"
 
   - name: three failed sweeps of a venue in an hour alert, two do not
@@ -257,8 +260,9 @@ tests:
       - eval_time: 15m
         alertname: TraderMarketsAdapterErrors
         exp_alerts:
-          - exp_labels: {alertname: TraderMarketsAdapterErrors, severity: warning, fleet: fix, category: trading, venue: kalshi, job: trader-web}
+          - exp_labels: {alertname: TraderMarketsAdapterErrors, severity: warning, fleet: fix, system: deploy, category: trading, venue: kalshi, job: trader-web}
             exp_annotations:
+              runbook_url: https://git.kennethblack.me/kblack0610/home-config/src/branch/master/apps/freqtrade/README.md
               summary: "3 kalshi recorder sweeps failed in the last hour: market_sweeps.error on trader.kblab.me/markets"
 
   - name: a paper account 15% of capital below its peak alerts after 15 minutes, a shallower one does not
@@ -301,8 +305,9 @@ tests:
       - eval_time: 50m
         alertname: TraderMarketsRecorderStale
         exp_alerts:
-          - exp_labels: {alertname: TraderMarketsRecorderStale, severity: warning, fleet: fix, category: trading, venue: polymarket, job: trader-web}
+          - exp_labels: {alertname: TraderMarketsRecorderStale, severity: warning, fleet: fix, system: deploy, category: trading, venue: polymarket, job: trader-web}
             exp_annotations:
+              runbook_url: https://git.kennethblack.me/kblack0610/home-config/src/branch/master/apps/freqtrade/README.md
               summary: "No good polymarket recorder sweep for 50m 0s: the paper league takes no entries there; failed sweeps and their errors are on trader.kblab.me/markets"
       - eval_time: 25m
         alertname: TraderMarketsSweepSlow
@@ -313,8 +318,9 @@ tests:
       - eval_time: 65m
         alertname: TraderMarketsGlobalSweepSlow
         exp_alerts:
-          - exp_labels: {alertname: TraderMarketsGlobalSweepSlow, severity: warning, fleet: fix, category: trading, venue: polymarket, job: trader-web}
+          - exp_labels: {alertname: TraderMarketsGlobalSweepSlow, severity: warning, fleet: fix, system: deploy, category: trading, venue: polymarket, job: trader-web}
             exp_annotations:
+              runbook_url: https://git.kennethblack.me/kblack0610/home-config/src/branch/master/apps/freqtrade/README.md
               summary: "polymarket recorder sweep took 13m 0s, close to the 15 minute deadline that kills the job"
 
   - name: shadow marks older than 50 hours warn while an account is open
@@ -333,8 +339,9 @@ tests:
       - eval_time: 90m
         alertname: TraderShadowMarksStale
         exp_alerts:
-          - exp_labels: {alertname: TraderShadowMarksStale, severity: warning, fleet: fix, category: trading, job: trader-web}
+          - exp_labels: {alertname: TraderShadowMarksStale, severity: warning, fleet: fix, system: deploy, category: trading, job: trader-web}
             exp_annotations:
+              runbook_url: https://git.kennethblack.me/kblack0610/home-config/src/branch/master/apps/freqtrade/README.md
               summary: "The newest shadow account mark is 2d 2h 30m 0s old: the analysis shadow step marked nothing; see the shadow_* keys in the newest analysis run and trader.kblab.me/accounts"
 
   - name: old shadow marks do not warn once every account has retired
@@ -362,17 +369,20 @@ tests:
       - eval_time: 25m
         alertname: TraderInputStale
         exp_alerts:
-          - exp_labels: {alertname: TraderInputStale, severity: warning, fleet: fix, category: trading, input: other, job: trader-web}
+          - exp_labels: {alertname: TraderInputStale, severity: warning, fleet: fix, system: deploy, category: trading, input: other, job: trader-web}
             exp_annotations:
+              runbook_url: https://git.kennethblack.me/kblack0610/home-config/src/branch/master/apps/freqtrade/README.md
               summary: "other has no reading inside its fresh_min: weather takes no entries on it; check CronJob trader-inputs-nws in freqtrade"
       - eval_time: 45m
         alertname: TraderInputStale
         exp_alerts:
-          - exp_labels: {alertname: TraderInputStale, severity: warning, fleet: fix, category: trading, input: nws_high, job: trader-web}
+          - exp_labels: {alertname: TraderInputStale, severity: warning, fleet: fix, system: deploy, category: trading, input: nws_high, job: trader-web}
             exp_annotations:
+              runbook_url: https://git.kennethblack.me/kblack0610/home-config/src/branch/master/apps/freqtrade/README.md
               summary: "nws_high has no reading inside its fresh_min: weather takes no entries on it; check CronJob trader-inputs-nws in freqtrade"
-          - exp_labels: {alertname: TraderInputStale, severity: warning, fleet: fix, category: trading, input: other, job: trader-web}
+          - exp_labels: {alertname: TraderInputStale, severity: warning, fleet: fix, system: deploy, category: trading, input: other, job: trader-web}
             exp_annotations:
+              runbook_url: https://git.kennethblack.me/kblack0610/home-config/src/branch/master/apps/freqtrade/README.md
               summary: "other has no reading inside its fresh_min: weather takes no entries on it; check CronJob trader-inputs-nws in freqtrade"
 
   - name: odds_api stays fresh through its six hour cadence and 390 minute boundary
@@ -395,8 +405,9 @@ tests:
       - eval_time: 391m
         alertname: TraderMarketsRecorderStale
         exp_alerts:
-          - exp_labels: {alertname: TraderMarketsRecorderStale, severity: warning, fleet: fix, category: trading, venue: odds_api, job: trader-web}
+          - exp_labels: {alertname: TraderMarketsRecorderStale, severity: warning, fleet: fix, system: deploy, category: trading, venue: odds_api, job: trader-web}
             exp_annotations:
+              runbook_url: https://git.kennethblack.me/kblack0610/home-config/src/branch/master/apps/freqtrade/README.md
               summary: "No good odds_api recorder sweep for 6h 31m 0s: the paper league takes no entries there; failed sweeps and their errors are on trader.kblab.me/markets"
 
   - name: recorder freshness follows the exported threshold
@@ -413,8 +424,9 @@ tests:
       - eval_time: 1m
         alertname: TraderMarketsRecorderStale
         exp_alerts:
-          - exp_labels: {alertname: TraderMarketsRecorderStale, severity: warning, fleet: fix, category: trading, venue: odds_api, job: trader-web}
+          - exp_labels: {alertname: TraderMarketsRecorderStale, severity: warning, fleet: fix, system: deploy, category: trading, venue: odds_api, job: trader-web}
             exp_annotations:
+              runbook_url: https://git.kennethblack.me/kblack0610/home-config/src/branch/master/apps/freqtrade/README.md
               summary: "No good odds_api recorder sweep for 30m 0s: the paper league takes no entries there; failed sweeps and their errors are on trader.kblab.me/markets"
       - eval_time: 2m
         alertname: TraderMarketsRecorderStale

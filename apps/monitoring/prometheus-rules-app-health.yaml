@@ -163,8 +163,10 @@ spec:
           labels:
             severity: warning
             fleet: fix
+            system: deploy
             category: app-health
           annotations:
+            runbook_url: https://git.kennethblack.me/kblack0610/home-config/src/branch/master/apps/monitoring/README.md
             summary: "App down: {{ $labels.namespace }}/{{ $labels.workload }}"
             description: "{{ $labels.workload_type }} {{ $labels.namespace }}/{{ $labels.workload }} has had zero ready capacity for at least 10 minutes."
         - alert: HomelabAppDegraded
@@ -173,8 +175,10 @@ spec:
           labels:
             severity: warning
             fleet: fix
+            system: deploy
             category: app-health
           annotations:
+            runbook_url: https://git.kennethblack.me/kblack0610/home-config/src/branch/master/apps/monitoring/README.md
             summary: "App degraded: {{ $labels.namespace }}/{{ $labels.workload }}"
             description: "{{ $labels.workload_type }} {{ $labels.namespace }}/{{ $labels.workload }} is partially ready or restarting too often."
         - alert: HomelabAppRestartSpike

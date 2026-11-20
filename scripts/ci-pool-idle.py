@@ -2,10 +2,12 @@
 """Idle CI slots while another kind waited, and queue wait per pool, over a window.
 
 The before and after reading of plan ci-one-pool-per-host (each host's cores are units lent
-to whichever kind waits). Per host and pool: slot-hours a slot sat idle while a job of another
-pool waited, which is what lending would recover. Per pool: hours with a job waiting, and the
-p50 and p90 of the oldest wait over those minutes. Waiting is fleet-wide (a waiting Unity job
-could run on any Unity host), so the idle column is an upper bound per host.
+to whichever kind waits). Per host: slot-hours a slot sat idle while a job of a kind it cannot
+take waited, which is what lending would recover; a slot's kinds are its caps, read from
+github_runner_pool_slot (one row per cap), so a slot that takes every kind never counts. Per
+pool: hours with a job waiting, and the p50 and p90 of the oldest wait over those minutes.
+Waiting is fleet-wide (a waiting Unity job could run on any Unity host), so the idle column is
+an upper bound per host.
 
 Prometheus keeps about 3.5 days; for 7, read VictoriaMetrics:
 
@@ -70,14 +72,24 @@ def pct(xs, p):
     return xs[lo] + (xs[min(lo + 1, len(xs) - 1)] - xs[lo]) * (k - lo)
 
 
+def idle_slots(pool_slot):
+    """{(host, name, cap): {t: v}} from github_runner_pool_slot -> {(host, name): {t: {caps}}}:
+    each idle slot at each sample, with every kind it takes."""
+    idle = defaultdict(lambda: defaultdict(set))
+    for (host, name, cap), series in pool_slot.items():
+        for t in series:
+            idle[(host, name)][t].add(cap)
+    return idle
+
+
 def tally(idle, waiting, oldest, times):
-    """idle {(host, pool): {t: n}}, waiting {pool: {t: n}}, oldest {pool: {t: s}} ->
-    ({(host, pool): idle slot-hours while another kind waited}, {pool: (hours waiting, p50, p90)})."""
+    """idle {(host, name): {t: {caps}}}, waiting {pool: {t: n}}, oldest {pool: {t: s}} ->
+    ({host: idle slot-hours while a kind the slot cannot take waited}, {pool: (hours waiting, p50, p90)})."""
     lost = defaultdict(float)
-    for (host, pool), series in idle.items():
-        for t, n in series.items():
-            if any(waiting.get(p, {}).get(t, 0) > 0 for p in KINDS if p != pool):
-                lost[(host, pool)] += n * STEP / 3600
+    for (host, _), series in idle.items():
+        for t, caps in series.items():
+            if any(waiting.get(p, {}).get(t, 0) > 0 for p in KINDS if p not in caps):
+                lost[host] += STEP / 3600
     waits = {}
     for pool in KINDS:
         at = [t for t in times if waiting.get(pool, {}).get(t, 0) > 0]
@@ -100,8 +112,9 @@ def main(argv=None):
     end = int(time.time()) // STEP * STEP
     start = end - int(args.days * 86400) // STEP * STEP
     url = args.url.rstrip("/")
-    idle = by(query_range(url, f'count by (host, pool) (max without ({STRIP}) '
-                               f'(github_runner_state{{state="idle",host=~"{args.hosts}"}}))', start, end), "host", "pool")
+    idle = idle_slots(by(query_range(url, f'max by (host, name, pool) '
+                                          f'(github_runner_pool_slot{{state="idle",host=~"{args.hosts}"}})', start, end),
+                         "host", "name", "pool"))
     jobs = f'max without ({STRIP}) (github_actions_job_waiting{{stuck!="true"}})'
     waiting = by(query_range(url, f"count by (pool) ({jobs})", start, end), "pool")
     oldest = by(query_range(url, f"max by (pool) ({jobs})", start, end), "pool")
@@ -110,10 +123,10 @@ def main(argv=None):
     lost, waits = tally(idle, waiting, oldest, times)
     print(f"window {time.strftime('%Y-%m-%dT%H:%MZ', time.gmtime(start))}..{time.strftime('%Y-%m-%dT%H:%MZ', time.gmtime(end))}"
           f" ({args.days:g} days, samples {len(seen) / len(times):.0%} of {STEP}s steps)")
-    print("\nIdle slot-hours while another kind waited")
-    print(f"{'host':<18}" + "".join(f"{p:>13}" for p in KINDS))
+    print("\nIdle slot-hours while a kind the slot cannot take waited")
+    print(f"{'host':<18}{'slot-hours':>13}")
     for host in sorted({h for h, _ in idle}):
-        print(f"{host:<18}" + "".join(f"{lost.get((host, p), 0):>13.1f}" for p in KINDS))
+        print(f"{host:<18}{lost.get(host, 0):>13.1f}")
     print("\nQueue wait per pool (oldest waiting job, minutes, over the minutes a job waited)")
     print(f"{'pool':<14}{'hours waiting':>14}{'p50':>8}{'p90':>8}")
     for pool, (hours, p50, p90) in waits.items():

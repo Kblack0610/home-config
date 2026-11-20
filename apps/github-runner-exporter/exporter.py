@@ -39,7 +39,8 @@ github_runner_exporter_api_ok{source} says why. Missing-slot rows and pool
 counts are only emitted when every runner source answered.
 
 FINISHED WORK is read over a 24h window: every completed run CREATED in the
-last day, and each one's jobs. That is what pass % per pool and per workflow,
+last day, and each one's jobs, keyed by job kind (pool=<kind>, as ci_runner_job
+names a running job's). That is what pass % per kind and per workflow,
 queue time and job duration are computed from (github_runs_finished,
 github_jobs_finished, github_job_queue_seconds, github_job_duration_seconds),
 here rather than in PromQL because 24h of per-job samples is not in
@@ -66,7 +67,7 @@ no PromQL over them can say when anything happened. github_runs_by_hour and
 github_run_failed say that instead, from the same list and with no extra calls.
 
 FORGEJO ACTIONS (git.kblab.me) are rows in the same series with forge="forgejo"
-and pool="forgejo"; every GitHub row says forge="github". The runners are the
+and, where a series has a pool, pool="forgejo"; every GitHub row says forge="github". The runners are the
 topology's slots with forge "forgejo" (one task each, ci-host's forgejo-runner-linux
 role), and their state is the admin runners API (`admin/actions/runners`, so
 FORGEJO_TOKEN needs read:admin): `active` reads running, `idle` idle, `offline`
@@ -413,6 +414,19 @@ def job_kind(name, runner_labels, job_labels):
     return caps[0] if len(caps) == 1 else None
 
 
+def done_kind(job, runner_labels):
+    """The kind a finished job keys the history series by, as job_kind names a running one's for
+    ci_runner_job, never a runner's first cap; open (its labels name no kind on a slot of several
+    caps) is other. runner_labels is {name: [label]} of the runners listed this scrape. A
+    self-hosted job on a runner not listed (removed since, or its source failed) still has the kind
+    it asked for; everything else (GitHub's runners, or no runner at all, as for a skipped job) is
+    github-hosted."""
+    rn, labels = job.get("runner_name"), job.get("labels") or []
+    if rn not in runner_labels and "self-hosted" not in labels:
+        return "github-hosted"
+    return job_kind(rn, runner_labels.get(rn, []), labels) or "other"
+
+
 def github_hosted(job):
     """A job on GitHub's own runners: its runner group says so, or it asks for neither
     self-hosted nor a pool of ours (runs-on: [unity, unity-gate] is ours)."""
@@ -451,9 +465,9 @@ def runner_label_sets(seen):
 
 
 def wait_kind(repo, job, takers):
-    """The pool label of a waiting job: the cap it asks for, or the first cap of a runner
-    that can take it when it names none (runs-on: self-hosted; the lowest by name, so it holds
-    between scrapes). "github-hosted" for GitHub's own runners, "jobless" for a run with no jobs yet, and "unserved" when no
+    """The pool label of a waiting job: the cap it asks for; when it names none (runs-on:
+    self-hosted), the one kind the runners that can take it leave, else other, as job_kind
+    names it once it runs. "github-hosted" for GitHub's own runners, "jobless" for a run with no jobs yet, and "unserved" when no
     registered runner this repo may use carries every label it asks for, so it waits
     forever (ar-1872). takers is runner_label_sets(), or None while a runner source
     failed, when nothing is called unserved."""
@@ -471,7 +485,8 @@ def wait_kind(repo, job, takers):
             if (scope == repo or (scope == "org" and org_ok)) and want <= have]
     if not fits:
         return "unserved"
-    return cap if cap != "other" else min(caps[0] for caps in fits)
+    kinds = {c for caps in fits for c in caps}
+    return cap if cap != "other" or len(kinds) != 1 else kinds.pop()
 
 
 def quantile(xs, q):
@@ -931,7 +946,7 @@ def forgejo_rows(runners_fut, repo_futs, now):
     if fr is not None:
         by_state = dict.fromkeys(("running", "idle", "offline", "missing"), 0)
         for r in fr:
-            lab = {"name": r["name"], "host": r["host"], "pool": "forgejo", "site": site_of(r["host"]),
+            lab = {"name": r["name"], "host": r["host"], "site": site_of(r["host"]),
                    "scope": "topology" if r["state"] == "missing" else "instance", "labels": ",".join(r["labels"]),
                    "state": r["state"], "repo": "", "workflow": "", "job_name": "", "branch": "", "url": "", **NO_RUN}
             add("github_runner_state", lab, 0)
@@ -1025,8 +1040,9 @@ def render():
         names = [l["name"] for l in r.get("labels", [])]
         host, caps = host_of(r["name"], names), caps_of(r["name"], names)
         # labels: what ci-runner-governor matches waiting jobs against, offline runners too.
-        # pool: the runner's first cap; github_runner_pool_slot has a row for each.
-        lab = {"name": r["name"], "host": host, "pool": caps[0], "site": site_of(host), "scope": scope,
+        # No pool: a runner takes each of its caps (github_runner_pool_slot has a row per cap),
+        # and what a busy one runs is its job's kind (ci_runner_job).
+        lab = {"name": r["name"], "host": host, "site": site_of(host), "scope": scope,
                "labels": ",".join(sorted(names)),
                "state": "", "repo": "", "workflow": "", "job_name": "", "branch": "", "url": "", **NO_RUN,
                "forge": "github"}
@@ -1068,7 +1084,7 @@ def render():
                 continue  # forgejo_rows says which Forgejo seats are missing
             if name in registered:
                 continue
-            lab = {"name": name, "host": slot["host"], "pool": slot["caps"][0], "site": site_of(slot["host"]),
+            lab = {"name": name, "host": slot["host"], "site": site_of(slot["host"]),
                    "scope": "topology", "labels": "",
                    "state": "missing", "repo": "", "workflow": "", "job_name": "", "branch": "", "url": "", **NO_RUN,
                    "forge": "github"}
@@ -1172,22 +1188,20 @@ def render():
             L.append(f"github_actions_run_recent{{{lab}}} {int(done)}")
             if started:
                 L.append(f"github_actions_run_recent_duration_seconds{{{lab}}} {int(done - started)}")
-    # What each runner actually did last, and which workflows each pool handles:
+    runner_labels = {r["name"]: [l["name"] for l in r.get("labels", [])] for _, r in seen.values()}
+    # What each runner actually did last, and which workflows each kind of job comes from:
     # the answer to "what is this runner for", read from history instead of a
     # hand-written description that drifts from the workflow files.
-    pool_of_runner = {}
-    for scope, r in seen.values():
-        pool_of_runner[r["name"]] = caps_of(r["name"], [l["name"] for l in r.get("labels", [])])[0]
     last, pool_wf = {}, {}
     for a in acts:
         for run in a["history"]:
             for j in DONE_JOBS.get(run["id"], []):
                 rn, done = j.get("runner_name"), ts(j.get("completed_at"))
-                if not rn or not done or rn not in pool_of_runner:
+                if not rn or not done or rn not in runner_labels:
                     continue  # GitHub-hosted, or a runner since removed
                 if done > last.get(rn, (0,))[0]:
                     last[rn] = (done, a["repo"], run.get("name", ""), j)
-                k = (pool_of_runner[rn], a["repo"].split("/", 1)[1], run.get("name", ""))
+                k = (done_kind(j, runner_labels), a["repo"].split("/", 1)[1], run.get("name", ""))
                 pool_wf[k] = max(pool_wf.get(k, 0), done)
     L += [
         "# HELP github_runner_last_job The last job this runner finished (within the 24h window); value is when",
@@ -1200,7 +1214,7 @@ def render():
         L.append(f"github_runner_last_job{{{lab}}} {int(done)}")
     L += forgejo("github_runner_last_job")
     L += [
-        "# HELP github_pool_workflow A workflow this pool ran in the last 24h; value is when it last did",
+        "# HELP github_pool_workflow A workflow whose jobs of this kind (pool=<kind>) ran on our runners in the last 24h; value is when it last did",
         "# TYPE github_pool_workflow gauge",
     ]
     for (pool_, repo, wf), done in sorted(pool_wf.items()):
@@ -1226,13 +1240,7 @@ def render():
                 if run.get("conclusion") in FAILED_CONCLUSIONS:
                     failed.append((repo, run, int(finished)))
             for j in DONE_JOBS.get(run["id"], []):
-                rn, labels = j.get("runner_name"), j.get("labels") or []
-                # A self-hosted job on a runner not listed this scrape (removed
-                # since, or its source failed) still belongs to the pool it asked
-                # for; everything else (GitHub's runners, or no runner at all,
-                # as for a skipped job) is github-hosted.
-                pool_ = (pool_of_runner.get(rn) or (pool_of(labels) if "self-hosted" in labels else None)
-                         or "github-hosted")
+                rn, pool_ = j.get("runner_name"), done_kind(j, runner_labels)
                 k = (pool_, repo, wf, j.get("conclusion") or "")
                 jobs_done[k] = jobs_done.get(k, 0) + 1
                 created, started, done = ts(j.get("created_at")), ts(j.get("started_at")), ts(j.get("completed_at"))
@@ -1264,14 +1272,14 @@ def render():
                           "pr": run.get("pr") or "", "title": run.get("title") or "", "url": run.get("html_url") or ""})
         L.append(f"github_run_failed{{{lab}}} {finished}")
     L += [
-        "# HELP github_jobs_finished Completed jobs of runs created in the last 24h, by the pool that ran them (github-hosted = not our runners)",
+        "# HELP github_jobs_finished Completed jobs of runs created in the last 24h, by job kind as ci_runner_job names it (pool=<kind>; github-hosted = not our runners)",
         "# TYPE github_jobs_finished gauge",
     ]
     for (pool_, repo, wf, c), n in sorted(jobs_done.items()):
         L.append(f"github_jobs_finished{{{labels_str({'pool': pool_, 'repo': repo, 'workflow': wf, 'conclusion': c, 'forge': 'github'})}}} {n}")
     L += forgejo("github_jobs_finished")
     L += [
-        "# HELP github_job_queue_seconds Time a finished job (last 24h) waited for a runner, started_at - created_at",
+        "# HELP github_job_queue_seconds Time a finished job (last 24h) waited for a runner, started_at - created_at, by job kind (pool=<kind>)",
         "# TYPE github_job_queue_seconds gauge",
     ]
     for pool_, xs in sorted(queue.items()):
@@ -1280,7 +1288,7 @@ def render():
             L.append(f'github_job_queue_seconds{{{labels_str({"pool": pool_, "quantile": q})}}} {int(quantile(xs, float(q)))}')
     L += forgejo("github_job_queue_seconds")
     L += [
-        "# HELP github_job_duration_seconds How long a finished job (last 24h) ran, completed_at - started_at",
+        "# HELP github_job_duration_seconds How long a finished job (last 24h) ran, completed_at - started_at, by job kind (pool=<kind>)",
         "# TYPE github_job_duration_seconds gauge",
     ]
     for (pool_, wf), xs in sorted(took.items()):

@@ -449,7 +449,7 @@ class GovernorTest(unittest.TestCase):
 
     def test_a_withheld_only_host_still_takes_a_unity_job(self):
         # Stopped, so every runner is offline, and the governor withheld all of them.
-        rows = [{"metric": {"name": f"aws-{i}", "host": "aws-spot-1", "pool": "unity", "state": "offline",
+        rows = [{"metric": {"name": f"aws-{i}", "host": "aws-spot-1", "state": "offline",
                             "labels": "host-aws-spot-1,Linux,self-hosted,unity-withheld,X64"}, "value": [0, "0"]}
                 for i in range(2)]
         with mock.patch.object(governor, "prom", return_value=rows) as prom:
@@ -1451,6 +1451,24 @@ class GovernorTest(unittest.TestCase):
         with mock.patch.object(governor, "prom", side_effect=fake):
             _, _, waiting = governor.observe("unity")
         self.assertEqual(waiting, [UNITY_JOB])
+
+    def test_a_job_naming_no_kind_is_demand_when_a_pool_runner_carries_its_labels(self):
+        # runs-on: [self-hosted, linux, host-ms-a2] names no kind, so the exporter waits it as
+        # pool="other" (a slot that takes unity, light and heavy is no one kind's). It is this
+        # pool's job because a pool runner carries every label; one only another runner carries,
+        # and an unread run's empty labels, are not.
+        def fake(query):
+            if query.startswith("github_runner_state"):
+                return [{"metric": {"scope": "org", "name": "ms-a2-unity-pool-1", "host": "ms-a2", "state": "idle",
+                                    "labels": "self-hosted,Linux,host-ms-a2,unity,light,heavy"}, "value": [0, "0"]}]
+            if query.startswith("github_actions_job_waiting"):
+                self.assertIn('pool=~"unity|other"', query)
+                return [{"metric": {"pool": "other", "labels": ls}, "value": [0, "60"]}
+                        for ls in ("self-hosted,linux,host-ms-a2", "self-hosted,gpu", "")]
+            return []
+        with mock.patch.object(governor, "prom", side_effect=fake):
+            _, _, waiting = governor.observe(["unity"])
+        self.assertEqual(waiting, [frozenset({"self-hosted", "linux", "host-ms-a2"})])
 
 
 
@@ -2571,6 +2589,17 @@ class LendTest(unittest.TestCase):
             need = governor.label_set(light["labels"])
             self.assertEqual(governor.shared_demand(LCFG, "box", box.runners(), [need]), 0)
         self.assertEqual(governor.shared_demand(LCFG, "box", box.runners(), [need]), 1)
+
+    def test_a_job_naming_no_kind_is_a_rival_github_job_and_an_unread_one_is_nothing(self):
+        # pool="other": runs-on names no kind. slot_takes, on its labels, says which slot it
+        # could take; a run whose jobs were unreadable has no labels and holds back no lend.
+        _, _, seats = self.light_box(0.3)
+        rows = [{"metric": {"labels": ls, "pool": "other", "repo": "platform"}, "value": [0, "60"]}
+                for ls in ("self-hosted,linux,host-box", "")]
+        with seats, mock.patch.object(governor, "prom",
+                                      side_effect=lambda q: rows if q.startswith("github_actions_job_waiting") else []):
+            _, waits = governor.observe_seats(LCFG)
+        self.assertEqual(waits, [("github", frozenset({"self-hosted", "linux", "host-box"}), 60.0)])
 
     def cycle(self, box, waiting, seat_waits):
         with mock.patch.object(governor, "observe", return_value=(readings(box=COOL), box.runners(), waiting)), \

@@ -1373,11 +1373,13 @@ class GovernorTest(unittest.TestCase):
         governor.apply(cfg, "admit", "ws-1", "ws")
         self.assertEqual(calls[1][2], {"labels": ["unity"]})
 
-    def test_the_live_shared_caps_are_lan_only(self):
-        shared = governor.load_config(CONFIG)["shared"]
-        self.assertEqual(shared["ms-a2-unity-pool-1"], ["light", "heavy"])
-        self.assertFalse([n for n in shared if n.startswith("aws-")])
-        self.assertNotIn("cachyos-x8664-main-unity-pool-1", shared)
+    def test_no_live_slot_takes_a_small_kind_its_hosts_seats_serve(self):
+        # One path for a small job (hc-693): every host that takes light or heavy has seats for them,
+        # so no Unity slot shares a kind, and a swap still drops one a slot registered with ("moved").
+        cfg = governor.load_config(CONFIG)
+        self.assertIn("ms-a2-unity-pool-1-heavy-1", cfg["seats"])
+        self.assertFalse({c for caps in cfg["shared"].values() for c in caps} & {"light", "heavy"})
+        self.assertTrue({"light", "heavy"} <= set(cfg["moved"]))
 
     def every_cap(self, action, have, name="ms-a2-unity-pool-1", host="ms-a2"):
         calls = []
@@ -1396,19 +1398,21 @@ class GovernorTest(unittest.TestCase):
         self.assertEqual(calls[1][2], {"labels": ["unity-withheld"]})
         self.assertEqual(sorted(c[1].rsplit("/", 1)[1] for c in calls if c[0] == "DELETE"), ["light", "unity", "unity-full"])
 
-    def test_admit_gives_every_cap_back(self):
-        calls = self.every_cap("admit", ["self-hosted", "unity-withheld", "lan"])
-        self.assertEqual(calls[1][2], {"labels": ["heavy", "light", "unity", "unity-full"]})
-        self.assertTrue(calls[2][1].endswith("/7/labels/unity-withheld"))
+    def test_admit_gives_every_cap_back_but_the_kinds_its_seats_serve(self):
+        # ms-a2's light and heavy run on its seats, so a slot that registered with them sheds them.
+        calls = self.every_cap("admit", ["self-hosted", "unity-withheld", "light", "heavy", "lan"])
+        self.assertEqual(calls[1][2], {"labels": ["unity", "unity-full"]})
+        self.assertEqual(sorted(c[1].rsplit("/", 1)[1] for c in calls if c[0] == "DELETE"),
+                         ["heavy", "light", "unity-withheld"])
 
     # windows-media-ci lost heavy in the topology (no /dev/kvm, #1269), but pool-2 kept the label
     # it registered with (live 2026-11-19): admit and withhold both drop a cap the slot no longer takes.
     STALE = {"name": "windows-media-ci-unity-pool-2", "host": "windows-media-ci"}
 
     def test_admit_drops_a_cap_the_topology_took_away(self):
-        self.assertNotIn("heavy", LIVE["shared"][self.STALE["name"]])
+        self.assertNotIn(self.STALE["name"], LIVE["shared"])
         calls = self.every_cap("admit", ["self-hosted", "heavy", "unity-withheld", "lan"], **self.STALE)
-        self.assertEqual(calls[1][2], {"labels": ["light", "unity", "unity-full"]})
+        self.assertEqual(calls[1][2], {"labels": ["unity", "unity-full"]})
         self.assertEqual(sorted(c[1].rsplit("/", 1)[1] for c in calls if c[0] == "DELETE"), ["heavy", "unity-withheld"])
 
     def test_withhold_drops_a_cap_the_topology_took_away(self):
@@ -2011,8 +2015,7 @@ class LanPairTest(unittest.TestCase):
         self.assertEqual(governor.pairs(LIVE, "ms-a2"), {5: [3, 4]})
         self.assertEqual(governor.admit_labels(LIVE, "ms-a2", "ms-a2-unity-pool-5"), ["unity-build"])
         self.assertEqual(governor.withheld_label(LIVE, "ms-a2", "ms-a2-unity-pool-5"), "unity-build-withheld")
-        self.assertEqual(governor.admit_labels(LIVE, "ms-a2", "ms-a2-unity-pool-3"),
-                         ["unity", "unity-full", "light", "heavy"])
+        self.assertEqual(governor.admit_labels(LIVE, "ms-a2", "ms-a2-unity-pool-3"), ["unity", "unity-full"])
         self.assertEqual(governor.withheld_label(LIVE, "ms-a2", "ms-a2-unity-pool-3"), "unity-withheld")
         self.assertIn("unity-build", governor.pools(LIVE))
 
@@ -2523,7 +2526,8 @@ class LendTest(unittest.TestCase):
         self.assertEqual(box.gh.scopes[f"repos/{REPO}"][REPO_SEAT]["labels"], {"self-hosted", "light-withheld"})
 
     def light_box(self, weight, n=3):
-        """box with n org light seats on slot 1, all withheld, and the box that sees them (hc-667)."""
+        """box with n org light seats on slot 1, all withheld, and the box that sees them (hc-667). Its slots
+        take no light, as the topology renders a host whose seats serve light."""
         lights = [f"{S1}-light-{i}" for i in range(1, n + 1)]
         seats = {**LCFG["seats"], **{m: {"host": "box", "slot": S1, "forge": "github", "repo": None, "caps": ["light"]}
                                      for m in lights}}
@@ -2537,7 +2541,7 @@ class LendTest(unittest.TestCase):
             **Box.seat_state(box),
             **{m: {"busy": box.gh.scopes[ORG][m]["busy"], "online": True,
                    "withheld": "light-withheld" in box.gh.scopes[ORG][m]["labels"]} for m in lights}}
-        return box, lights, mock.patch.dict(LCFG, {"seats": seats})
+        return box, lights, mock.patch.dict(LCFG, {"seats": seats, "shared": {}})
 
     def test_light_seats_of_one_lend_are_admitted_together_as_far_as_their_weights_fit(self):
         jobs = [("light", REPO_JOB, 60)] * 3
@@ -2569,7 +2573,8 @@ class LendTest(unittest.TestCase):
             self.assertEqual(box.step([], 10_240), [])
             box.gh.scopes[ORG][lights[1]]["busy"] = False
             self.assertEqual(box.step([], 10_300), [("readmit", S1)])
-            self.assertEqual(box.labels(), ADMITTED)
+            # Readmitted, the slot takes no light: its seats serve that kind.
+            self.assertEqual(box.labels(), ADMITTED - {"light"})
 
     def test_a_light_seat_admitted_with_no_lend_is_withheld(self):
         box, lights, seats = self.light_box(0.3)
@@ -2736,7 +2741,8 @@ class SeatConfigTest(unittest.TestCase):
         seats = LIVE["seats"]
         self.assertTrue(any(s["forge"] == "forgejo" for s in seats.values()))
         self.assertTrue(any(s["repo"] for s in seats.values()))
-        slots = {n for h in LIVE["hosts"] for n in governor.load_config(CONFIG).get("shared", {}) if n.startswith(h)}
+        slots = {s["name"] for h, e in live_topology()["hosts"].items() if h in LIVE["hosts"]
+                 for s in e["slots"] if "unity" in s["caps"]}
         self.assertTrue(all(s["slot"] in slots for s in seats.values()))
         self.assertNotIn("hp-victus", {s["host"] for s in seats.values()})
 

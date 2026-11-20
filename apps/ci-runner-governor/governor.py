@@ -133,9 +133,11 @@ def load_config(path, topology_path=None):
       (build slot -> the test slots sharing its cores, from the slot groups)
     - "rates": config.json's, plus {0, owned} for every LAN topology host
     - "shared": by runner, the caps its slot takes besides the governed ones (a LAN Unity test
-      slot's light and heavy), which a withhold drops and an admit gives back with the rest
+      slot's light and heavy, unless its host's seats serve them), which a withhold drops and an
+      admit gives back with the rest
     - "moved": every label a swap moves on a Unity slot (stale()): each cap a Unity slot of the
-      topology takes, and the pool, full, build, wide and withheld labels, but not the lend mark."""
+      topology takes, each small kind a seat serves (so a slot sheds one its seats took over),
+      and the pool, full, build, wide and withheld labels, but not the lend mark."""
     with open(path) as f:
         cfg = json.load(f)
     with open(topology_path or TOPOLOGY) as f:
@@ -153,8 +155,6 @@ def load_config(path, topology_path=None):
     unity = {h: slots for h, slots in unity.items() if slots}
     cfg["shared"] = {s["name"]: [c for c in s["caps"] if c not in governed]
                      for slots in unity.values() for s in slots if set(s["caps"]) - governed}
-    cfg["moved"] = sorted({c for slots in unity.values() for s in slots for c in s["caps"]}
-                          | {cfg[f"{r}_label"] for r in ("pool", "full", "build", "wide", "withheld", "build_withheld")})
     lan = sorted(h for h, e in topo.items() if e["site"] != "cloud")
     cfg["rates"] = {**{h: {"usd_per_hour": 0, "basis": "owned"} for h in lan}, **cfg.get("rates", {})}
     cloud = [h for h in unity if topo[h]["site"] == "cloud"]
@@ -196,6 +196,8 @@ def load_config(path, topology_path=None):
                                 "repo": s.get("repo"), "caps": s["caps"],
                                 "cpus": s.get("cpus"), "memory_gb": s.get("memory_gb")}
                     for h, e in topo.items() for s in e["slots"] if s.get("borrows")}
+    cfg["moved"] = sorted({c for slots in unity.values() for s in slots for c in s["caps"]} | small_kinds(cfg)
+                          | {cfg[f"{r}_label"] for r in ("pool", "full", "build", "wide", "withheld", "build_withheld")})
     # A LAN Unity host's local test runs, leased one seat each (LocalSeats).
     cfg["local"] = {h: topo[h]["local_seats"] for h in local if topo[h].get("local_seats")}
     stray = sorted(h for h, e in topo.items() if e.get("local_seats") and h not in cfg["local"])
@@ -398,8 +400,6 @@ def shared_demand(cfg, host, runners, shared_waiting):
     """How many waiting jobs on a shared cap a slot of host takes: demand a withheld LAN
     Unity slot would serve once admitted, though no unity job waits."""
     caps = {c for n, r in runners.items() if r["host"] == host for c in cfg["shared"].get(n, [])}
-    # A kind the host's seats serve waits for a lend, not for a whole slot (lend_plan).
-    caps -= small_kinds(cfg, host)
     return sum(1 for need in shared_waiting if need & caps)
 
 
@@ -1354,11 +1354,10 @@ def seat_repos(cfg):
     return {s["repo"].split("/", 1)[1]: s["repo"] for s in cfg["seats"].values() if s.get("repo")}
 
 
-def small_kinds(cfg, host=None):
-    """The GitHub kinds (light, heavy) some seat serves, of host's seats when given: org runners that
-    borrow a slot, as a Forgejo seat does (ci_seat_kinds in the inventory)."""
-    return {s["caps"][0] for s in cfg["seats"].values()
-            if s["forge"] != "forgejo" and not s.get("repo") and host in (None, s["host"])}
+def small_kinds(cfg):
+    """The GitHub kinds (light, heavy) some seat serves: org runners that borrow a slot, as a
+    Forgejo seat does (ci_seat_kinds in the inventory)."""
+    return {s["caps"][0] for s in cfg["seats"].values() if s["forge"] != "forgejo" and not s.get("repo")}
 
 
 def seat_kind(cfg, seat):

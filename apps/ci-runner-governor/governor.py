@@ -2490,7 +2490,7 @@ def cycle(cfg, last_action, tracked=None, budget=None, lending=None, local=None)
     with State.lock:
         State.metrics = "ci_governor_up 1\n" + render(
             cfg, hosts, runners, queue, decisions, True, instances, budget, lends, withheld, in_units,
-            (pins, pin_sources), weights if lending else None)
+            (pins, pin_sources), weights if lending and WEIGHTS["at"] is not None else None)
 
 
 class Handler(BaseHTTPRequestHandler):

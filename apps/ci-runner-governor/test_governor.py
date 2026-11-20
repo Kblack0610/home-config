@@ -2463,7 +2463,7 @@ class LendTest(unittest.TestCase):
         # A kind under min_samples (heavy, repo) or a whole-slot one (unity) is a row at 1, never a missing one.
         self.assertIn('ci_governor_kind_weight{kind="unity",measured="false"} 1', text)
         self.assertEqual(text.count("ci_governor_kind_weight{"), len(kinds))
-        # No weights read (lending off): no series, so a reader shows "-", not a made-up 1.
+        # No weights read (lending off, or no refresh has answered yet): no series, so a reader shows "-", not a made-up 1.
         self.assertNotIn("ci_governor_kind_weight", governor.render(LCFG, {"disk": {}}, {}, 0, [], True))
 
     def test_units_weigh_seats_and_waits_and_price_the_backlog_in_run_time(self):

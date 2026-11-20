@@ -362,27 +362,17 @@ all:
           unity_ci_gate: true
           # Every release host runs an Accelerator, as aws-build-1 does (playground ucp-2715).
           unity_ci_accelerator: 172.17.0.1:10080
-          # Runners for one personal repo, which cannot use the org's slots: GitHub refused
-          # every .dotfiles-private job from 2026-11-15 once the month's hosted allowance ran
-          # out, and every personal-sites job from 2026-11-19. Lint and unit runs of seconds and
-          # under 1G (gungan-speak: a uv pytest run of about 11 s, hc-496), plus personal-sites'
-          # pnpm install, lint, typecheck and Next.js build (ar-3971, not yet measured), so one
-          # runner on every Linux Unity host but the workstation: with two hosts, one down and
-          # the other's slot in a cooldown left 15 .dotfiles-private jobs waiting (2026-11-20).
-          # borrows: the Unity test
-          # slot it runs on; it registers withheld and the governor admits it only while it
-          # lends it that slot, so it adds jobs, never cores (apps/ci-runner-governor,
-          # "Lending"). Forgejo seats need no entry: the renderer puts one on every lendable
-          # slot of a host whose ci_caps carry forgejo. On ms-a2 only slots 1 and 2 are
-          # lendable (3 and 4 share their cores with build slot 5).
-          ci_repo_runners:
-            - {repo: Kblack0610/.dotfiles-private, slot: dotfiles-private-1, borrows: 1}
-            - {repo: Kblack0610/gungan-speak, slot: gungan-speak-1, borrows: 2}
-            - {repo: Kblack0610/personal-sites, slot: personal-sites-1, borrows: 2}
         deskslim-2:
           unity_ci_slots: 3
           unity_ci_full: true
           unity_ci_gate: true
+          # Runners for personal repos, which cannot use the org's slots and have no hosted
+          # minutes left: short lint, unit and Next.js build runs. One set on each of deskslim-2,
+          # deskslim-1 and tuf-b550, so one host down or cooling does not stall them; not on
+          # ms-a2 while host-headroom.py rates it FULL. borrows: the Unity test slot it runs on;
+          # it registers withheld and the governor admits it only while it lends it that slot,
+          # so it adds jobs, never cores (apps/ci-runner-governor, "Lending"). Forgejo seats
+          # need no entry: the renderer puts one on every lendable slot whose host carries forgejo.
           ci_repo_runners: &personal_repo_runners
             - {repo: Kblack0610/.dotfiles-private, slot: dotfiles-private-1, borrows: 1}
             - {repo: Kblack0610/gungan-speak, slot: gungan-speak-1, borrows: 2}

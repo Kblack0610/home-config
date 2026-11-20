@@ -177,6 +177,67 @@ tests:
           - labels: 'cc:github_hosted_running'
             value: 3
 
+  - name: run units reach a k3s node (no host label, joined by its pod's node) and a standalone box, 0 of 5 stays 0, and a stale file or a machine with none has no series
+    interval: 1m
+    input_series:
+      # k3s node: the node-exporter pod stamps no host, cc:host_instance names it from kube_pod_info
+      - series: 'node_uname_info{job="node-exporter",instance="rz:9100",pod="ne-rz"}'
+        values: '1x10'
+      - series: 'kube_pod_info{namespace="monitoring",pod="ne-rz",node="razer-laptop"}'
+        values: '1x10'
+      - series: 'fleet_run_units{instance="rz:9100",pod="ne-rz"}'
+        values: '0x10'
+      - series: 'fleet_run_units_max{instance="rz:9100",pod="ne-rz"}'
+        values: '5x10'
+      - series: 'node_textfile_mtime_seconds{file="/x/fleet_local.prom",instance="rz:9100"}'
+        values: '0+60x10'
+      # standalone box: its ServiceMonitor stamps host
+      - series: 'node_uname_info{job="standalone-nodes",instance="ws:9100",host="workstation"}'
+        values: '1x10'
+      - series: 'fleet_run_units{host="workstation",instance="ws:9100"}'
+        values: '7x10'
+      - series: 'fleet_run_units_max{host="workstation",instance="ws:9100"}'
+        values: '23x10'
+      - series: 'node_textfile_mtime_seconds{file="/x/fleet_local.prom",instance="ws:9100"}'
+        values: '0+60x10'
+      # a stale file
+      - series: 'node_uname_info{job="standalone-nodes",instance="od:9100",host="old"}'
+        values: '1x10'
+      - series: 'fleet_run_units{host="old",instance="od:9100"}'
+        values: '3x10'
+      - series: 'fleet_run_units_max{host="old",instance="od:9100"}'
+        values: '5x10'
+      - series: 'node_textfile_mtime_seconds{file="/x/fleet_local.prom",instance="od:9100"}'
+        values: '0x10'
+      # sessions but no units: it never ran the new fleet-assess
+      - series: 'node_uname_info{job="standalone-nodes",instance="pl:9100",host="plain"}'
+        values: '1x10'
+      - series: 'fleet_agent_sessions{host="plain",instance="pl:9100"}'
+        values: '2x10'
+      - series: 'node_textfile_mtime_seconds{file="/x/fleet_local.prom",instance="pl:9100"}'
+        values: '0+60x10'
+    promql_expr_test:
+      - expr: cc:host_run_units
+        eval_time: 5m
+        exp_samples:
+          - labels: 'cc:host_run_units{host="razer-laptop"}'
+            value: 0
+          - labels: 'cc:host_run_units{host="workstation"}'
+            value: 7
+      - expr: cc:host_run_units_max
+        eval_time: 5m
+        exp_samples:
+          - labels: 'cc:host_run_units_max{host="razer-laptop"}'
+            value: 5
+          - labels: 'cc:host_run_units_max{host="workstation"}'
+            value: 23
+      - expr: cc:host_run_units{host=~"old|plain"}
+        eval_time: 5m
+        exp_samples: []
+      - expr: cc:host_run_units_max{host=~"old|plain"}
+        eval_time: 5m
+        exp_samples: []
+
   - name: a site with runners but none busy reads 0 busy, and no GitHub-hosted jobs reads 0
     interval: 1m
     input_series:

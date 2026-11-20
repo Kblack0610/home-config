@@ -23,6 +23,7 @@
 #   cc:host_class_cores / _mem_bytes{host,class}  what each machine's cores and memory are used by: ci, apps, agents, docker, other, free
 #   cc:host_class_reserved_cores / _reserved_mem_bytes{host,class}  what a class holds back (ci cpusets and caps, pod requests, agent_cpus)
 #   cc:host_ns_cores{host,namespace}        the apps class by k3s namespace
+#   cc:host_run_units / _run_units_max{host}  run units its agent sessions hold, and the units it takes (fleet-assess)
 #   cc:host_inventory{host}                 1 for a host with a fresh node inventory: the hosts that have a split
 #   cc:host_local_gate{host,worktree,...}  the workstation's local Unity gates (fleet-assess)
 #   cc:host_local_slots / _busy / _queued{host}          its gate slots, slots held, runs waiting
@@ -530,6 +531,20 @@ spec:
         - record: cc:agent_sessions_running
           expr: >-
             sum(fleet_agent_sessions{host!=""}
+              and on (instance) (time() - node_textfile_mtime_seconds{file=~".*fleet_local.prom"} < 180))
+        # Agent sessions sized like CI units (fleet-assess --textfile; heavy 2, light 1): the units
+        # a machine's sessions hold, and the units it takes (a worker's fleet_max_live, the
+        # dispatching machine's pace target, which is the last dispatch pass's reading and so
+        # lags cc:agent_sessions_running by up to a pass). A machine that publishes neither has
+        # no series. Host comes from cc:host_instance: a k3s node's node-exporter pod carries
+        # no `host` label of its own.
+        - record: cc:host_run_units
+          expr: >-
+            max by (host) (fleet_run_units * on (instance) group_left (host) cc:host_instance
+              and on (instance) (time() - node_textfile_mtime_seconds{file=~".*fleet_local.prom"} < 180))
+        - record: cc:host_run_units_max
+          expr: >-
+            max by (host) (fleet_run_units_max * on (instance) group_left (host) cc:host_instance
               and on (instance) (time() - node_textfile_mtime_seconds{file=~".*fleet_local.prom"} < 180))
         # Where each machine's cores and memory go, by class, for the hub and agent-web Space
         # section (plan curried-squishing-mountain). `used` is measured, `reserved` is what a

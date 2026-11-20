@@ -78,3 +78,6 @@ unity_ci_mac_prune_interval_seconds: 3600
 # NodeDiskLow trips at 20% free.
 unity_ci_mac_prune_tree_days: 7
 unity_ci_mac_prune_free_pct: 25
+
+# The build keychain script (tasks/signing-keychain.yml).
+unity_ci_mac_keychain_script: "{{ ansible_env.HOME }}/.local/bin/ensure-build-keychain.sh"

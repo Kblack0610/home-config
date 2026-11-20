@@ -37,6 +37,10 @@ The sole self-hosted runner for `BlackNBrownStudios/platform` mobile CI. Native 
 
 The runner's checkout is never touched, and neither is a tree's `Builds/` alone: on APFS the player there is mostly clones of `Library/` data, so only the whole tree frees space. build.sh makes a removed tree again, so a prune costs that game's next build a Library import (up to an hour for DodginBalls). Log: `~/Library/Logs/kblab-ci-tree-prune.log`. Apply: `ansible-playbook playbooks/site.yml --limit mac-mini --tags ci-disk`.
 
+### Mac build keychain
+
+`mac-sign.sh` in unity-core-playground signs the Mac player from its own keychain, `~/Library/Keychains/bnb-mac-build.keychain-db` (identity and password: the playground's `docs/operations/platform-builds.md`, Mac signing). The mac-mini play (`--tags mac-keychain`, no sudo) runs `ensure-build-keychain.sh` from the `unity-ci-host-mac` role on every apply. It reads `~/.config/unity-core-playground/mac-signing.env`, creates the keychain if it is missing, unlocks it, clears its lock timeout and adds it to the user's search list after the entries already there, so a reboot, a keychain reset or a hand edit of the list cannot drop it. It prints `CHANGED <what>` per fix and `OK` when nothing moved. The signing identity is not imported: its key is backed up by hand, and `mac-sign.sh --check` proves it. A host with no `mac-signing.env` fails the task; the password comes from rbw by hand. `MAC_SIGN_KEYCHAIN` must end in `.keychain-db`, and the env file is read as shell, so quote the password in single quotes. Test: `files/test-ensure-build-keychain.sh`.
+
 ### Workflows
 
 | Workflow | File | Trigger | Runner |

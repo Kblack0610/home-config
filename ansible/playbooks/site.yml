@@ -685,6 +685,14 @@
         tasks_from: disk
       tags: [mac, ci-disk]
 
+    # The keychain mac-sign.sh signs the Mac player from: created, unlocked and in the
+    # search list, so a reboot or reset cannot drop it (docs/mac-machines.md#mac-build-keychain).
+    - name: Keep the Mac build keychain created, unlocked and listed
+      ansible.builtin.import_role:
+        name: unity-ci-host-mac
+        tasks_from: signing-keychain
+      tags: [mac, mac-keychain]
+
 # Every k3s node runs k3s_install_version (group_vars/all/k3s.yml). The server
 # goes first: a kubelet may never be newer than the apiserver. Then the agents,
 # one at a time, stopping at the first failure. After a new node joins, label it

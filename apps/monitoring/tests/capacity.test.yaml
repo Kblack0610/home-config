@@ -204,9 +204,10 @@ tests:
   - name: a small job on a whole slot of a host with seats warns after 10 minutes, and nowhere else
     interval: 1m
     input_series:
-      # ms-a2 has seats: its slot 1 runs a light job (fires); its seat runs one (quiet).
+      # ms-a2 has seats: its slot 1 runs short light jobs, 3 minutes on and 2 off, each end a scrape staleness marker (fires);
+      # its seat runs one (quiet).
       - series: 'ci_runner_job{runner="ms-a2-unity-pool-1",kind="light"}'
-        values: '1x20'
+        values: '1 1 1 stale _ 1 1 1 stale _ 1 1 1 stale _ 1 1 1 stale _ 1'
       - series: 'ci_runner_job{runner="ms-a2-unity-pool-1-light-1",kind="light"}'
         values: '1x20'
       - series: 'ci_runner_job{runner="ms-a2-unity-pool-2",kind="unity"}'
@@ -220,6 +221,11 @@ tests:
         values: '1x20'
       - series: 'github_runner_state{host="box",name="box-unity-pool-1",state="running"}'
         values: '1x20'
+      # new's seat is in the topology but not registered yet, so its slot is still the path (quiet).
+      - series: 'ci_runner_job{runner="new-unity-pool-1",kind="light"}'
+        values: '1x20'
+      - series: 'github_runner_state{host="new",name="new-unity-pool-1-light-1",state="missing"}'
+        values: '0x20'
     alert_rule_test:
       - eval_time: 9m
         alertname: CiSmallJobOnWholeSlot
@@ -228,7 +234,7 @@ tests:
         alertname: CiSmallJobOnWholeSlot
         exp_alerts:
           - exp_labels: {alertname: CiSmallJobOnWholeSlot, severity: warning, category: capacity, fleet: fix, host: ms-a2, runner: ms-a2-unity-pool-1, kind: light}
-            exp_annotations: {summary: "ms-a2-unity-pool-1 has run a light job on a whole Unity slot for 10 minutes, though ms-a2 has seats for small jobs: docs/runbooks/unity-ci-host.md#a-small-job-on-a-whole-slot"}
+            exp_annotations: {summary: "ms-a2-unity-pool-1 has kept taking light jobs on a whole Unity slot for 10 minutes, though ms-a2 has seats for small jobs: docs/runbooks/unity-ci-host.md#a-small-job-on-a-whole-slot"}
 
   - name: a low GitHub API bucket warns after 10 minutes, per scope, across a pod restart
     interval: 1m

@@ -30,7 +30,7 @@ rest:
         value_template: "{{ value_json.data.result | selectattr('metric.state', 'in', ['offline', 'missing']) | list | count }}"
 
   # The job kinds each runner takes: one row per runner per cap (pool=<cap>). A runner row
-  # names no kind of its own; a slot can take unity, light and heavy alike.
+  # names no kind of its own; a runner can take several (light and heavy run on seats, hc-693).
   - resource: http://kube-prometheus-stack-prometheus.monitoring.svc:9090/api/v1/query
     params:
       query: max by (name, pool) (github_runner_pool_slot)

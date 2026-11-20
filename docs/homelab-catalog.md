@@ -52,7 +52,7 @@ See `docs/gitops.md` for the layer boundaries and `docs/architecture.md` for wor
 
 ## Roles authored vs applied
 
-Every Ansible role listed above that shows "role authored, unbound" exists as code under `ansible/roles/<name>/` but is **not** yet bound in `ansible/playbooks/site.yml`. `github-actions-runner-linux` is live-applied (the org Unity pool, which also takes light and heavy jobs, and the repo runners, on `unity_ci_runners`). Enabling a role means:
+Every Ansible role listed above that shows "role authored, unbound" exists as code under `ansible/roles/<name>/` but is **not** yet bound in `ansible/playbooks/site.yml`. `github-actions-runner-linux` is live-applied (the org Unity pool, the light and heavy seats that borrow its slots, and the repo runners, on `unity_ci_runners`). Enabling a role means:
 
 1. Seed the per-group vault (`vault_k3s_token` in `linux_bare_metal`, `vault_github_pat` in `ci_hosts`).
 2. Uncomment the role block in `ansible/playbooks/site.yml`.

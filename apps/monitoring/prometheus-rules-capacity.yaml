@@ -135,23 +135,25 @@ spec:
         # A light or heavy job on a whole Unity slot (<host>-unity-pool-N) of a host with light or
         # heavy seats: a second path for a small job is back, so it takes a slot a Unity job
         # needed (hc-693). The host comes from the runner name, since ci_runner_job carries none.
+        # ci_runner_job exists only while a runner is busy, so max_over_time bridges the gaps
+        # between short jobs; a seat counts once it registered (not state missing).
         # A 24h look on 2026-11-19, before the seats reached every host: light or heavy took a
         # whole slot on every pool host, windows-media-ci (light seats only) included.
         - alert: CiSmallJobOnWholeSlot
           expr: |
             max by (host, runner, kind) (
-              label_replace(ci_runner_job{kind=~"light|heavy",runner=~".+-unity-pool-[0-9]+"},
+              label_replace(max_over_time(ci_runner_job{kind=~"light|heavy",runner=~".+-unity-pool-[0-9]+"}[10m]),
                             "host", "$1", "runner", "(.+)-unity-pool-[0-9]+")
             )
             and on (host)
-            github_runner_state{name=~".+-unity-pool-[0-9]+-(light|heavy)-[0-9]+"}
+            github_runner_state{name=~".+-unity-pool-[0-9]+-(light|heavy)-[0-9]+",state!="missing"}
           for: 10m
           labels:
             severity: warning
             category: capacity
             fleet: fix
           annotations:
-            summary: "{{ $labels.runner }} has run a {{ $labels.kind }} job on a whole Unity slot for 10 minutes, though {{ $labels.host }} has seats for small jobs: docs/runbooks/unity-ci-host.md#a-small-job-on-a-whole-slot"
+            summary: "{{ $labels.runner }} has kept taking {{ $labels.kind }} jobs on a whole Unity slot for 10 minutes, though {{ $labels.host }} has seats for small jobs: docs/runbooks/unity-ci-host.md#a-small-job-on-a-whole-slot"
         # A reclaim kills every job on the Spot host. More than 3 in a day means that type is
         # scarce: set its entry spot = false in platform infra/aws-ci-burst (2026-11-13 plan).
         - alert: CiSpotHostReclaimedOften

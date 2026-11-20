@@ -1135,6 +1135,16 @@ class ForgejoTest(unittest.TestCase):
             row = self.state(self.render())["box-forgejo-1"]
         self.assertIn('repo="(not watched)"', row)
         self.assertIn('workflow=""', row)
+        # A task not yet in the task cache: this scrape's running job of it names repo and job.
+        with mock.patch.object(exporter, "governor_tasks", return_value={"box-forgejo-1": 999}):
+            row = self.state(self.render(jobs=[{"id": 7, "name": "deploy", "status": "running", "task_id": 999}]))[
+                "box-forgejo-1"]
+        for want in ('repo="ci"', 'job_name="deploy"', f'url="{exporter.FORGEJO_WEB}/kb/ci/actions"'):
+            self.assertIn(want, row)
+        # With a watched repo unread, the task may be its own: the repo stays blank, never "(not watched)".
+        exporter.FJ_TASKS.clear()
+        with mock.patch.object(exporter, "governor_tasks", return_value={"box-forgejo-1": 999}):
+            self.assertIn('repo=""', self.state(self.render(broken=("repos/kb/site",)))["box-forgejo-1"])
 
     def test_no_governor_answer_leaves_a_running_seat_unnamed(self):
         with mock.patch.object(exporter, "governor_tasks", return_value={}):

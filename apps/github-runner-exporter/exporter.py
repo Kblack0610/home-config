@@ -972,9 +972,13 @@ def forgejo_rows(runners_fut, repo_futs, now, seat_tasks=None):
                    "state": r["state"], "repo": "", "workflow": "", "job_name": "", "branch": "", "url": "", **NO_RUN}
             tid = (seat_tasks or {}).get(r["name"]) if r["state"] == "running" else None
             if tid is not None:
-                # A task in no watched repo's window still says the seat is busy on something.
-                repo, t = next(((rp, tasks[tid]) for rp, tasks in FJ_TASKS.items() if tid in tasks), ("", {}))
-                lab.update(repo=repo.split("/", 1)[1] if repo else NOT_WATCHED,
+                # The task, else this scrape's running job of it (its name only). A task found in
+                # neither, with every watched repo read, still says the seat is busy on something.
+                repo, t = next(((rp, tasks[tid]) for rp, tasks in FJ_TASKS.items() if tid in tasks),
+                               next(((f["repo"], j) for f in facts for j in f["jobs"] if j.get("task_id") == tid),
+                                    ("", {})))
+                unseen = NOT_WATCHED if all(f["ok"] for f in facts) else ""
+                lab.update(repo=repo.split("/", 1)[1] if repo else unseen,
                            workflow=t.get("workflow_id") or "", job_name=t.get("name") or "",
                            branch=t.get("head_branch") or "",
                            url=t.get("url") or (f"{FORGEJO_WEB}/{repo}/actions" if repo else ""))

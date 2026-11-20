@@ -27,6 +27,10 @@ The sole self-hosted runner for `BlackNBrownStudios/platform` mobile CI. Native 
 
 **Capacity note:** 16 GB RAM is the ceiling. Fine for single-stream iOS builds but tight — Xcode + a booted Simulator + Metal/UI tests push 16 GB into swap. Keep runner concurrency at 1 (a single runner process already = 1 concurrent job) and periodically clear DerivedData / simulator runtimes / npm+CocoaPods caches. If mobile CI volume grows, 16 GB is the first bottleneck.
 
+### Unity Accelerator
+
+`m1-playground-mac`'s trees share a Unity Accelerator (cache server) on `127.0.0.1:10080`, so a pruned or new tree fetches the imports another tree made instead of importing them again (playground ucp-2715). `unity-ci-host-mac` `tasks/accelerator.yml` (tag `unity-accelerator`, sudo) runs Unity's macOS installer at `unity_ci_mac_accelerator_version` as the system daemon `com.unity3d.accelerator`, binds it to localhost (the installer leaves the cache port and the dashboard open to the LAN), caps the store in `/Library/Application Support/Unity/accelerator` at 40 GiB, and writes `UNITY_CACHE_SERVER` into the runner's `.env`, which the playground's build scripts pass to Unity. A new `.env` value restarts the runner, so the task refuses while a job runs: `ansible-playbook playbooks/site.yml --limit mac-mini --tags unity-accelerator`. An upgrade is a new version and sha256 in the role defaults.
+
 ### Build-tree prune
 
 `m1-playground-mac` builds each game in a git worktree beside its checkout (unity-core-playground `scripts/build.sh`: `<checkout>-<game>`, `<checkout>-<game>-ios`) and keeps it, so that game's next build starts with its Library imported. Nothing removed them: on 2026-11-10 seven held 137G and NodeDiskLow tripped at 16% free. `unity-ci-host-mac` `tasks/disk.yml` (tag `ci-disk`) installs `files/ci-tree-prune.sh` as the hourly LaunchAgent `com.kblab.ci-tree-prune`, the Mac's counterpart of ci-host's `ci-disk-prune.sh`. Each run:

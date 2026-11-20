@@ -1,0 +1,126 @@
+---
+# The Unity Accelerator on the Mac that builds the playground's Mac and iOS players
+# (unity_ci_mac_accelerator_*, defaults/main.yml). Bound in site.yml's mac-mini play.
+# Unity's own installer sets it up as a system service; sudo for that and its config.
+- name: Read the installed Unity Accelerator version
+  ansible.builtin.command: "{{ unity_ci_mac_accelerator_install_dir }}/unity-accelerator --version"
+  register: _unity_mac_accel_version
+  changed_when: false
+  failed_when: false
+  check_mode: false
+  tags: [unity-accelerator]
+
+- name: Install the Unity Accelerator
+  when: unity_ci_mac_accelerator_version not in _unity_mac_accel_version.stdout | default('')
+  tags: [unity-accelerator]
+  block:
+    - name: Create the installer scratch
+      ansible.builtin.file:
+        path: "{{ unity_ci_mac_accelerator_scratch }}"
+        state: directory
+        mode: "0755"
+
+    - name: Download the installer
+      ansible.builtin.get_url:
+        url: "https://download-accelerator.unity3d.com/{{ unity_ci_mac_accelerator_version }}/osx/unity-accelerator-{{ unity_ci_mac_accelerator_version }}-osx-installer.dmg"
+        dest: "{{ unity_ci_mac_accelerator_scratch }}/installer.dmg"
+        checksum: "sha256:{{ unity_ci_mac_accelerator_sha256 }}"
+        mode: "0644"
+
+    # Unattended, no TLS (localhost only, set below). replace swaps an older install's binaries
+    # in place; reconfigure would need dashboard admin credentials.
+    - name: Run the installer unattended
+      ansible.builtin.shell:
+        cmd: |
+          set -euo pipefail
+          mnt="{{ unity_ci_mac_accelerator_scratch }}/mnt"
+          trap 'hdiutil detach -quiet "$mnt" || true' EXIT
+          hdiutil attach -nobrowse -readonly -quiet -mountpoint "$mnt" "{{ unity_ci_mac_accelerator_scratch }}/installer.dmg"
+          "$mnt/unity-accelerator-{{ unity_ci_mac_accelerator_version }}-osx-installer.app/Contents/MacOS/installbuilder.sh" \
+            --mode unattended --unattendedmodeui none --tls-config none \
+            --action-on-existing-install-found replace \
+            --install-dir "{{ unity_ci_mac_accelerator_install_dir }}" \
+            --storage-dir "{{ unity_ci_mac_accelerator_storage_dir }}"
+        executable: /bin/bash
+      become: true
+  always:
+    - name: Remove the installer scratch
+      ansible.builtin.file:
+        path: "{{ unity_ci_mac_accelerator_scratch }}"
+        state: absent
+
+# IP binds the cache port and the dashboard to localhost, where the runner reaches it: the
+# installer leaves both open to the LAN with no auth. Each key is set only when it differs.
+- name: Configure the Unity Accelerator
+  ansible.builtin.shell:
+    cmd: |
+      set -euo pipefail
+      bin="{{ unity_ci_mac_accelerator_install_dir }}/unity-accelerator"
+      dir="{{ unity_ci_mac_accelerator_storage_dir }}"
+      while read -r key value; do
+        [ "$("$bin" config get --persist "$dir" "$key")" = "$value" ] && continue
+        "$bin" config set --persist "$dir" "$key" "$value" >/dev/null
+        echo "set $key $value"
+      done <<'KEYS'
+      IP {{ unity_ci_mac_accelerator_endpoint.split(':')[0] }}
+      ProtobufPort {{ unity_ci_mac_accelerator_endpoint.split(':')[1] }}
+      CacheMaxUsedBytes {{ unity_ci_mac_accelerator_max_bytes }}
+      CacheMinFreePercent {{ unity_ci_mac_accelerator_min_free_percent }}
+      CacheEvictUntilFreePercent {{ unity_ci_mac_accelerator_evict_until_free_percent }}
+      KEYS
+    executable: /bin/bash
+  become: true
+  register: _unity_mac_accel_config
+  changed_when: _unity_mac_accel_config.stdout | length > 0
+  tags: [unity-accelerator]
+
+- name: Restart the Unity Accelerator on a new config
+  ansible.builtin.command: launchctl kickstart -k system/com.unity3d.accelerator
+  become: true
+  when: _unity_mac_accel_config.changed
+  tags: [unity-accelerator]
+
+- name: Wait for the Unity Accelerator on its endpoint
+  ansible.builtin.wait_for:
+    host: "{{ unity_ci_mac_accelerator_endpoint.split(':')[0] }}"
+    port: "{{ unity_ci_mac_accelerator_endpoint.split(':')[1] | int }}"
+    timeout: 60
+  tags: [unity-accelerator]
+
+# The runner reads .env only when its listener starts, so a new value restarts it, and a
+# restart kills a running job: refuse while one runs, before anything is written.
+- name: Check whether the runner's .env needs UNITY_CACHE_SERVER
+  ansible.builtin.lineinfile:
+    path: "{{ unity_ci_mac_accelerator_runner }}/.env"
+    regexp: "^UNITY_CACHE_SERVER="
+    line: "UNITY_CACHE_SERVER={{ unity_ci_mac_accelerator_endpoint }}"
+    create: true
+    mode: "0644"
+  check_mode: true
+  register: _unity_mac_accel_env_check
+  tags: [unity-accelerator]
+
+# The worker runs from the versioned bin.<version>/ that bin links to, so the pattern takes
+# both: a check on bin/ alone missed one and killed an iOS release job (2026-11-19).
+- name: Refuse to restart the runner under a job
+  ansible.builtin.command: pgrep -f "{{ unity_ci_mac_accelerator_runner }}/bin[^/]*/Runner.Worker"
+  register: _unity_mac_accel_worker
+  changed_when: false
+  failed_when: _unity_mac_accel_worker.rc == 0
+  when: _unity_mac_accel_env_check.changed
+  tags: [unity-accelerator]
+
+- name: Point the runner at the Accelerator
+  ansible.builtin.lineinfile:
+    path: "{{ unity_ci_mac_accelerator_runner }}/.env"
+    regexp: "^UNITY_CACHE_SERVER="
+    line: "UNITY_CACHE_SERVER={{ unity_ci_mac_accelerator_endpoint }}"
+    create: true
+    mode: "0644"
+  register: _unity_mac_accel_env
+  tags: [unity-accelerator]
+
+- name: Restart the runner so it reads its .env
+  ansible.builtin.command: "launchctl kickstart -k gui/{{ ansible_user_uid }}/{{ unity_ci_mac_accelerator_runner_label }}"
+  when: _unity_mac_accel_env.changed
+  tags: [unity-accelerator]

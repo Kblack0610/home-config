@@ -26,6 +26,7 @@ import os
 import re
 import subprocess
 import sys
+import threading
 import time
 import urllib.parse
 import urllib.request
@@ -40,6 +41,10 @@ FETCH_SECONDS = float(os.environ.get("FORGEJO_SEAT_FETCH_SECONDS", "10"))
 BACKOFF = (float(os.environ.get("FORGEJO_SEAT_BACKOFF_MIN", "5")), 60.0)
 # forgejo-runner's log line when it takes a task: msg="task 19311 repo is kblack0610/home-config ...".
 TASK = re.compile(r"\btask (\d+) repo is ")
+# After one-job exits, the longest its output may take to drain. A guard: the pipe's EOF is the
+# event, and a process the job left behind still holding the pipe never sends it, so the seat
+# asks for its lease without waiting on that process (its output still reaches the journal).
+RELAY_DRAIN_SECONDS = 5
 
 
 def ask(have, wait, task=None):
@@ -54,21 +59,30 @@ def ask(have, wait, task=None):
     return got
 
 
-def one_job(run):
-    """forgejo-runner one-job's exit code. Its output goes on to the journal as before; the task
-    it takes is named to the governor, and a failed ask only leaves the job unnamed."""
-    p = subprocess.Popen(run, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, errors="replace")
-    named = False  # one-job takes one task, so its first task line is the only one
-    for line in p.stdout:
+def relay(out):
+    """Copy one-job's output on to the journal and name the task it takes to the governor (one-job
+    takes one task, so its first task line is the only one). A failed ask only leaves the job
+    unnamed: any error is caught, since a relay that stopped would fill the pipe and block one-job."""
+    named = False
+    for line in out:
         print(line, end="", flush=True)
         m = not named and TASK.search(line)
         if m:
             named = True
             try:
                 ask("forgejo", 0, m.group(1))
-            except (OSError, ValueError) as e:
+            except Exception as e:
                 print(f"lease: {e}; task {m.group(1)} runs unnamed", flush=True)
-    return p.wait()
+
+
+def one_job(run):
+    """forgejo-runner one-job's exit code, once it exits; its output goes through relay()."""
+    p = subprocess.Popen(run, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, errors="replace")
+    reader = threading.Thread(target=relay, args=(p.stdout,), daemon=True)
+    reader.start()
+    code = p.wait()
+    reader.join(RELAY_DRAIN_SECONDS)
+    return code
 
 
 def main():

@@ -57,7 +57,7 @@ tests:
           - labels: 'cc:runner_cores_allowed{host="lin",runner="lin-unity-pool-1"}'
             value: 6
 
-  - name: a withheld idle runner is not a pool slot, a withheld runner still draining a job is, a lent one counts apart
+  - name: a withheld idle runner is not a pool slot or free, a withheld runner still draining a job is a slot, a lent one counts apart
     interval: 1m
     input_series:
       - series: 'github_runner_pool_slot{name="a",pool="unity",state="running",instance="x"}'
@@ -82,6 +82,10 @@ tests:
         values: '1x5'
       - series: 'ci_governor_lent{name="b",host="h",to="build",instance="y"}'
         values: '1x5'
+      - series: 'ci_runner_job{runner="a",kind="unity",instance="x"}'
+        values: '1x5'
+      - series: 'ci_runner_job{runner="d",kind="unity",instance="x"}'
+        values: '1x5'
     promql_expr_test:
       - expr: cc:pool_slots
         eval_time: 2m
@@ -98,13 +102,18 @@ tests:
         exp_samples:
           - labels: 'cc:pool_lent{pool="unity"}'
             value: 1
+      - expr: cc:pool_free
+        eval_time: 2m
+        exp_samples:
+          - labels: 'cc:pool_free{pool="unity"}'
+            value: 1
       - expr: cc:pool_busy
         eval_time: 2m
         exp_samples:
           - labels: 'cc:pool_busy{pool="unity"}'
             value: 2
 
-  - name: a slot with two caps is a slot of each pool, and a missing slot is in none
+  - name: a slot with two caps is a slot of each pool but busy only in the kind of job it runs, and a missing slot is in none
     interval: 1m
     input_series:
       - series: 'github_runner_pool_slot{name="m",host="h",pool="light",state="running",instance="x"}'
@@ -113,6 +122,8 @@ tests:
         values: '1x5'
       - series: 'github_runner_pool_slot{name="n",host="h",pool="unity",state="missing",instance="x"}'
         values: '0x5'
+      - series: 'ci_runner_job{runner="m",kind="unity",instance="x"}'
+        values: '1x5'
     promql_expr_test:
       - expr: cc:pool_slots
         eval_time: 2m
@@ -125,7 +136,36 @@ tests:
         eval_time: 2m
         exp_samples:
           - labels: 'cc:pool_busy{pool="light"}'
+            value: 0
+          - labels: 'cc:pool_busy{pool="unity"}'
             value: 1
+
+  - name: an idle slot with two caps is free in each kind, a busy one in neither
+    interval: 1m
+    input_series:
+      - series: 'github_runner_pool_slot{name="i",host="h",pool="unity",state="idle",instance="x"}'
+        values: '0x5'
+      - series: 'github_runner_pool_slot{name="i",host="h",pool="heavy",state="idle",instance="x"}'
+        values: '0x5'
+      - series: 'github_runner_pool_slot{name="r",host="h",pool="unity",state="running",instance="x"}'
+        values: '1x5'
+      - series: 'github_runner_pool_slot{name="r",host="h",pool="heavy",state="running",instance="x"}'
+        values: '1x5'
+      - series: 'ci_runner_job{runner="r",kind="unity",instance="x"}'
+        values: '1x5'
+    promql_expr_test:
+      - expr: cc:pool_free
+        eval_time: 2m
+        exp_samples:
+          - labels: 'cc:pool_free{pool="heavy"}'
+            value: 1
+          - labels: 'cc:pool_free{pool="unity"}'
+            value: 1
+      - expr: cc:pool_busy
+        eval_time: 2m
+        exp_samples:
+          - labels: 'cc:pool_busy{pool="heavy"}'
+            value: 0
           - labels: 'cc:pool_busy{pool="unity"}'
             value: 1
 

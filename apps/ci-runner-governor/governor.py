@@ -16,8 +16,8 @@ free memory and disk; github-runner-exporter's runner states and waiting jobs) a
            a paired host steps test slots aside for a waiting build or wide job, then each
            standby (cloud) host admits, withholds, packs, starts or stops
   apply    relabel each runner, and call EC2 for each start or stop
-  local    local_pass(): the same verdict moves how many local test runs a host's local seats
-           grant at once (LOCAL SEATS), under the host's cooldown
+  local    local_pass(): the same verdict, or the host's local pin, moves how many local test
+           runs a host's local seats grant at once (LOCAL SEATS), under the host's cooldown
   export   /metrics, for the cc:* rules, hub-core and agent-web
 A blind cycle (any source failing) decides nothing. The full rule, with its numbers and why
 each part holds, is docs/runbooks/unity-ci-host.md, "The governor"; config.json holds the knobs.
@@ -29,7 +29,8 @@ Inputs besides Prometheus:
   ConfigMap ci-runner-governor-override (mounted at OVERRIDE_DIR, outside Flux), one key family
   per writer, each merge-patched on its own key; override.schema.json is the contract:
     <host>.power     {"action": "on"|"off", "until": epoch} (agent-web)
-    <host>.slots     {"slots": N, "by": who} (machine-mode), the one family with no end
+    <host>.slots     {"slots": N, "local": M, "by": who} (machine-mode), the one family with no end;
+                     local, when set, pins the host's local seats (LOCAL SEATS)
     <host>.reserve   {"until": epoch}: pins the host to 0 until then (machine-mode release-lane)
   GET /lease?seat=&have=&wait=    a Forgejo seat's supervisor long-polls its slot's lease (and names
                                   the task it runs, &task=); a local run asks for, holds and gives back
@@ -1200,7 +1201,8 @@ class Leases:
 # scripts/test/slots.sh on the workstation) have no runner and no forge, so no label can hold
 # them back: each run asks /lease for a seat of its host before it starts and gives it back when
 # it ends. The governor grants up to the host's admitted count, which local_rule() moves one seat
-# a cycle by the host's verdict, as load_rule() moves a slot, under the same cooldown.
+# a cycle by the host's verdict, as load_rule() moves a slot, under the same cooldown, or sets to
+# the host's local pin (read_local_pins(), machine-mode's unity_slots).
 LOCAL_LEASES = ("github", "local", "done")
 
 
@@ -1294,27 +1296,37 @@ class LocalSeats:
             return "local" if seat in self.held else "github"
 
 
-def local_rule(cfg, host, v, have, waiting, last_action, now):
+def local_rule(cfg, host, v, have, waiting, last_action, now, pin=None):
     """A host's local seats admitted next, one seat a cycle by its verdict, as load_rule moves a
     slot: FULL, or HOT, takes one off down to local_min_admitted; ROOM adds one while a run waits
     and a seat is left; nothing within the host's cooldown but a FULL step, so a local move and a
-    slot move share the one cooldown."""
+    slot move share the one cooldown. A pin (the human's machine-mode) sets the count to it, at
+    most the seat count and below the floor too, whatever the verdict or cooldown, as a slot pin
+    admits on a hot host; only FULL still steps down under it. Lowering it stops the next run,
+    never a held one."""
+    cap = cfg["local"][host] if pin is None else min(pin, cfg["local"][host])
+    if have > cap or (pin is not None and v != "FULL"):
+        return cap
     if v != "FULL" and cooling(cfg, host, last_action, now):
         return have
     if v in ("FULL", "HOT") and have > local_floor(cfg, host):
         return have - 1
-    if v == "ROOM" and waiting and have < cfg["local"][host]:
+    if v == "ROOM" and waiting and have < cap:
         return have + 1
     return have
 
 
-def local_pass(cfg, local, verdicts, last_action, now):
-    """Move each host's local admitted count by local_rule() and log each move."""
+def local_pass(cfg, local, verdicts, last_action, now, pins=None):
+    """Move each host's local admitted count by local_rule() and log each move. pins is
+    read_local_pins()."""
     local.tick(now)
     for host in sorted(cfg["local"]):
         held, waiting, have = local.state(host)
         v, why = verdicts[host]
-        n = local_rule(cfg, host, v, have, waiting, last_action, now)
+        pin = (pins or {}).get(host)
+        n = local_rule(cfg, host, v, have, waiting, last_action, now, pin)
+        if pin is not None and v != "FULL":
+            v, why = "PINNED", f"pinned to {pin}"
         if n != have:
             local.admit(host, n)
             last_action[host] = now
@@ -1502,16 +1514,18 @@ def machine_units(cfg, states):
     return capacity, busy
 
 
-def local_units(cfg, local, verdicts):
+def local_units(cfg, local, verdicts, pins=None):
     """({host: capacity}, {host: busy}, waiting runs) of the local seats. A held seat is one busy
     unit. Capacity counts every seat, as units() counts a withheld slot, except on a host that is
-    FULL, HOT or short of admit (a slot's disk or hot hold): then only the admitted seats, or the
-    held ones when more run, since the hold stops the next run, not the running one."""
+    pinned (read_local_pins()), FULL, HOT or short of admit (a slot's disk or hot hold): then only
+    the admitted seats, or the held ones when more run, since the hold stops the next run, not
+    the running one."""
     capacity, busy, waiting = {}, {}, 0
     for host, seats in cfg["local"].items():
         held, asked, admitted = local.state(host)
         v, why = verdicts[host]
-        capacity[host] = max(held, admitted) if v in ("FULL", "HOT") or short_of_admit(why) else seats
+        held_back = host in (pins or {}) or v in ("FULL", "HOT") or short_of_admit(why)
+        capacity[host] = max(held, admitted) if held_back else seats
         busy[host] = float(held)
         waiting += asked
     return capacity, busy, waiting
@@ -2081,6 +2095,12 @@ def read_pins(cfg, now):
     return pins, sources
 
 
+def read_local_pins(cfg):
+    """{host: seats} for each local-seat host whose slots key sets local (machine-mode's
+    unity_slots). A release reservation pins no local seat: it holds pool slots for release jobs."""
+    return {h: o["local"] for h in cfg["local"] if "local" in (o := override_key(h, "slots"))}
+
+
 def count_run_time(t, state, now, launched=0.0):
     """Seconds the instance has run this UTC day, in t. A cycle counts at most two cycles'
     worth, so a blind spell never books hours nobody saw. On the first sight of a running
@@ -2482,11 +2502,12 @@ def cycle(cfg, last_action, tracked=None, budget=None, lending=None, local=None)
     verdicts = host_verdicts(cfg, hosts)
     if local is not None:
         # After decide(): a slot it moved this cycle puts the host in its cooldown for local runs too.
-        local_pass(cfg, local, verdicts, last_action, now)
+        local_pins = read_local_pins(cfg)
+        local_pass(cfg, local, verdicts, last_action, now, local_pins)
     withheld = withheld_reasons(cfg, hosts, runners, lends, pins, last_action, now)
     in_units = every_machine(
         cfg, units(cfg, runners, seat_state, seat_waits, waiting, shared_waiting, weights, withheld, job_durations()),
-        machine_units(cfg, machine_state), local_units(cfg, local, verdicts) if local is not None else ({}, {}, 0))
+        machine_units(cfg, machine_state), local_units(cfg, local, verdicts, local_pins) if local is not None else ({}, {}, 0))
     with State.lock:
         State.metrics = "ci_governor_up 1\n" + render(
             cfg, hosts, runners, queue, decisions, True, instances, budget, lends, withheld, in_units,

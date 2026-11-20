@@ -373,11 +373,13 @@ tests:
         alertname: AgentFeedFrozen
         exp_alerts: []
 
-  - name: a frozen feed pages once it has held 10 min, and sentinel stays quiet under it
+  - name: a feed frozen on every host pages once it has held 10 min, and sentinel stays quiet under it
     interval: 1m
     input_series:
       - series: 'mqtt_message_total{topic="agents_h_summary_asks_open"}'
         values: '5x60'
+      - series: 'mqtt_message_total{topic="agents_peer_summary_asks_open"}'
+        values: '3x60'
       - series: 'mqtt_updated_epoch{topic="agents_h_runner_sentinel"}'
         values: '0x60'
     alert_rule_test:
@@ -386,7 +388,7 @@ tests:
         exp_alerts:
           - exp_labels: {severity: critical, fleet: fix, domain: agents, component: feed}
             exp_annotations:
-              summary: The agent feed has published nothing in 30 minutes, so every watch, runner and queue number is frozen
+              summary: No host has published the agent feed in 30 minutes, so every watch, runner and queue number is frozen
               runbook: ~/.config/agentctl/SENTINEL.md (dotfiles-private), "Operate"
       - eval_time: 50m
         alertname: SentinelSilent

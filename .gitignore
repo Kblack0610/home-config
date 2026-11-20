@@ -69,3 +69,6 @@ apps/pi3-adguard-home/.cache/
 /*.jpeg
 /*.gif
 /*.webp
+
+# Written by scripts/check-kustomize-builds.sh rendered.yaml (CI and the pre-push hook)
+/rendered.yaml

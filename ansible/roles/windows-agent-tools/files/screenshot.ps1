@@ -5,8 +5,8 @@ print the PNG's path, ready to scp back. -Display n captures only \\.\DISPLAYn,
 e.g. the virtual test monitor (virtual-display.ps1 prints its n).
 
 .EXAMPLE
-ssh hughl@windows-media-lan 'C:\tools\screenshot.ps1'
-scp 'hughl@windows-media-lan:C:/tools/runs/screen-20261026-221500.png' .
+ssh <user>@<name>-lan 'C:\tools\screenshot.ps1'
+scp '<user>@<name>-lan:C:/tools/runs/screen-20261026-221500.png' .
 #>
 param(
     [string]$Out = (Join-Path (Join-Path $PSScriptRoot 'runs') ("screen-{0:yyyyMMdd-HHmmss}.png" -f (Get-Date))),

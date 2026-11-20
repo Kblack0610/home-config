@@ -37,7 +37,7 @@ Inputs besides Prometheus:
                                   its seat (have=github, local, done)
 Served too: GET /tasks, {seat: task id} of the Forgejo seats running a job, which the exporter
 puts on their runner rows. Units (units(), ci_governor_capacity_units) count every topology host:
-the pool slots, the whole-slot hosts (mac-mini, windows-media: one unit per online runner) and
+the pool slots, the whole-slot hosts (mac-mini: one unit per online runner) and
 the local seats.
 
 It needs GITHUB_TOKEN (Organization > Self-hosted runners: write, and Administration: write
@@ -209,7 +209,7 @@ def load_config(path, topology_path=None):
     stray = sorted(h for h, e in topo.items() if e.get("local_seats") and h not in cfg["local"])
     if stray:
         raise ValueError(f"local seats on no LAN Unity host: {', '.join(stray)}")
-    # A whole-slot host: runners and no governed slot (mac-mini, windows-media), one unit each (machine_units()).
+    # A whole-slot host: runners and no governed slot (mac-mini), one unit each (machine_units()).
     cfg["machines"] = {h: sorted(s["name"] for s in e["slots"]) for h, e in topo.items() if h not in unity and e["slots"]}
     slots = {s["name"] for h in local for s in unity[h]}
     stray = sorted(n for n, s in cfg["seats"].items() if s["slot"] not in slots)

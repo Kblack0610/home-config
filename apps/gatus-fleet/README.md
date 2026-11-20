@@ -18,9 +18,9 @@ The machines and their roster live in one place, the `fleet_pulse` group of `ans
 | Group | Members | Mechanism |
 |---|---|---|
 | `workplace` | gp-mac | push |
-| `homelab` | linux-cachyos, windows-media | push |
+| `homelab` | linux-cachyos | push |
 | `homelab` | mac-mini | poll `:9100` |
-| `k3s` | pi5-master, pi5-worker1-3, pi4-worker4-5, asus-laptop, hp-victus, razer-laptop, ms-a2, deskslim-2 | poll `:9100` |
+| `k3s` | pi5-master, pi5-worker1-3, pi4-worker4-5, asus-laptop, hp-victus, razer-laptop, ms-a2, deskslim-2, tuf-b550 | poll `:9100` |
 | `android` | h0001-h0004, ken-s25-main | push (tablets via `apps/headwind-fleet-bridge`, the phone from Termux) |
 | `audio` | audio-living, audio-bedroom | poll `:9100`, plus snapclient's unit state (`node-exporter-linux` role) |
 

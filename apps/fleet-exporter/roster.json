@@ -1,7 +1,6 @@
 {
   "roster": [
     "linux-cachyos",
-    "windows-media",
     "mac-mini",
     "audio-living",
     "audio-bedroom",
@@ -16,6 +15,7 @@
     "ms-a2",
     "deskslim-2",
     "deskslim-1",
+    "tuf-b550",
     "asus-laptop",
     "gp-mac",
     "h0001",
@@ -24,7 +24,6 @@
   ],
   "display": [
     "linux-cachyos=main",
-    "windows-media=win",
     "gp-mac=gp",
     "@k3s=k3s"
   ]

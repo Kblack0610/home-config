@@ -178,17 +178,17 @@ class CapTests(unittest.TestCase):
         self.assertEqual(sorted({s["borrows"] for s in fj.values()}), sorted(
             [f"ms-a2-unity-pool-{n}" for n in (1, 2)] + [f"deskslim-2-unity-pool-{n}" for n in (1, 2, 3)]
             + [f"deskslim-1-unity-pool-{n}" for n in (1, 2, 3)]
-            + [f"windows-media-ci-unity-pool-{n}" for n in (1, 2, 3)]))
+            + [f"tuf-b550-unity-pool-{n}" for n in (1, 2, 3, 4)]))
         self.assertTrue(all(s["caps"] == ["forgejo"] and n.startswith(s["borrows"] + "-forgejo") for n, s in fj.items()))
 
     def test_a_slot_registers_one_seat_per_min_job_cores_and_names_its_size(self):
         topo, fails = topology.render(self.hosts, self.groups)
         self.assertEqual(fails, [])
-        slots = {s["name"]: s for s in topo["hosts"]["windows-media-ci"]["slots"]}
-        seats = [s for s in slots.values() if s.get("borrows") == "windows-media-ci-unity-pool-1" and s.get("forge") == "forgejo"]
-        cores = len(topology.cpu_set(self.hosts["windows-media-ci"]["ci_unity_slot_cpus"][0]))
-        self.assertEqual([s["name"] for s in seats], ["windows-media-ci-unity-pool-1-forgejo"]
-                         + [f"windows-media-ci-unity-pool-1-forgejo-{i}" for i in range(2, cores // topology.MIN_JOB_CORES + 1)])
+        slots = {s["name"]: s for s in topo["hosts"]["tuf-b550"]["slots"]}
+        seats = [s for s in slots.values() if s.get("borrows") == "tuf-b550-unity-pool-1" and s.get("forge") == "forgejo"]
+        cores = len(topology.cpu_set(self.hosts["tuf-b550"]["ci_unity_slot_cpus"][0]))
+        self.assertEqual([s["name"] for s in seats], ["tuf-b550-unity-pool-1-forgejo"]
+                         + [f"tuf-b550-unity-pool-1-forgejo-{i}" for i in range(2, cores // topology.MIN_JOB_CORES + 1)])
         self.assertTrue(all(s["cpus"] == cores and s["memory_gb"] == 14 for s in seats))
         self.assertNotIn("ci_units", topology.KEYS)
 
@@ -197,18 +197,18 @@ class CapTests(unittest.TestCase):
         self.assertEqual(fails, [])
         light = {h: [s for s in e["slots"] if s["caps"] == ["light"] and s.get("borrows") and not s.get("repo")]
                  for h, e in topo["hosts"].items()}
-        self.assertEqual({h for h, s in light.items() if s}, {"windows-media-ci", "deskslim-1", "deskslim-2", "ms-a2"})
+        self.assertEqual({h for h, s in light.items() if s}, {"tuf-b550", "deskslim-1", "deskslim-2", "ms-a2"})
         # ms-a2's slots 3 and 4 lend their cores to build slot 5, so only slots 1 and 2 get seats.
         self.assertEqual({s["borrows"] for s in light["ms-a2"]}, {"ms-a2-unity-pool-1", "ms-a2-unity-pool-2"})
-        seats = light["windows-media-ci"]
-        self.assertEqual(len(seats), 9)
-        self.assertEqual(seats[0], {"name": "windows-media-ci-unity-pool-1-light-1", "caps": ["light"],
-                                    "borrows": "windows-media-ci-unity-pool-1", "cpus": 6, "memory_gb": 14})
+        seats = light["tuf-b550"]
+        self.assertEqual(len(seats), 14)
+        self.assertEqual(seats[0], {"name": "tuf-b550-unity-pool-1-light-1", "caps": ["light"],
+                                    "borrows": "tuf-b550-unity-pool-1", "cpus": 6, "memory_gb": 14})
         self.assertTrue(all("forge" not in s for s in seats))
 
     def test_ci_seat_kinds_must_be_small_kinds_the_host_takes_and_not_on_a_cloud_host(self):
-        for host, kinds, want in (("windows-media-ci", ["heavy"], "ci_seat_kinds names heavy"),
-                                  ("windows-media-ci", ["unity"], "ci_seat_kinds names unity"),
+        for host, kinds, want in (("cachyos-x8664-main", ["heavy"], "ci_seat_kinds names heavy"),
+                                  ("tuf-b550", ["unity"], "ci_seat_kinds names unity"),
                                   ("cloud-1", ["light"], "ci_seat_kinds on a cloud host")):
             with self.subTest(host=host, kinds=kinds):
                 self.setUp()

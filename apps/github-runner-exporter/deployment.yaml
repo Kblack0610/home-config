@@ -88,7 +88,7 @@ spec:
             # Forgejo repos whose Actions jobs and tasks are read; the topology's
             # Forgejo seats are the runners (pool="forgejo", forge="forgejo").
             - name: FORGEJO_REPOS
-              value: "kblack0610/platform kblack0610/home-config kblack0610/bnb-game-servers kblack0610/personal-sites kblack0610/tilecast kblack0610/audio kblack0610/asset-library kblack0610/.notes kblack0610/.dotfiles-private kblack0610/gungan-speak"
+              value: "kblack0610/platform kblack0610/home-config kblack0610/bnb-game-servers kblack0610/personal-sites kblack0610/tilecast kblack0610/audio kblack0610/asset-library kblack0610/.notes kblack0610/gungan-speak"
             # Forgejo access token of kblack0610 (the admin), scopes read:repository
             # and read:admin: the jobs list is owner-only and the runner list is
             # admin-only. Minted with the admin CLI (docs/credentials.md), stored as

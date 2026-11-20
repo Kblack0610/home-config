@@ -558,6 +558,8 @@ all:
     #   fleet_harnesses  the headless harnesses it runs besides claude
     #                    (names in the dotfiles-private harness map); placed only
     #                    while its probe reads each ready (fleet-dispatch harness-ready)
+    #                    never codex: it runs on the workstation only (the human,
+    #                    2026-11-19), so no worker lists it and the role installs none
     #   fleet_ssh_host  where fleet-dispatch ssh goes when ansible_host is not
     #                    it (a cloud worker: an instance id behind SSM)
     #   fleet_tailscale  true joins the tailnet (role tailscale-node)
@@ -615,10 +617,10 @@ all:
           fleet_place: true
           fleet_max_live: 5
           fleet_first: [canary, night, trainee]
-          # nim, ocfree, opencode-go and codex canaries and trainee runs go here too, so a hot
+          # nim, ocfree and opencode-go canaries and trainee runs go here too, so a hot
           # workstation no longer holds them (2026-11-18: three nim canaries waited behind
           # a 96 C workstation while it sat idle; ar-3222).
-          fleet_harnesses: [nim, ocfree, opencode-go, codex]
+          fleet_harnesses: [nim, ocfree, opencode-go]
           # No ~/.notes clone, so fleet-dispatch fails here ("no current project"): it
           # took the lease in the 2026-11-19 workstation reboot and dispatch stopped.
           fleet_lease: false

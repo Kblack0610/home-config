@@ -144,7 +144,7 @@ spec:
                             "host", "$1", "runner", "(.+)-unity-pool-[0-9]+")
             )
             and on (host)
-            count by (host) (github_runner_state{name=~".+-unity-pool-[0-9]+-(light|heavy)-[0-9]+"})
+            github_runner_state{name=~".+-unity-pool-[0-9]+-(light|heavy)-[0-9]+"}
           for: 10m
           labels:
             severity: warning

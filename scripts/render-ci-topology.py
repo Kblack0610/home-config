@@ -211,10 +211,10 @@ def seats(host, v, caps, total, group, slots, fails):
               for k in kinds if k not in SHARED_CAPS or k not in caps]
     if kinds and not lan:
         fails.append(f"{host}: ci_seat_kinds on a cloud host, so a small job would power a paid host")
-    if kinds and lan and not lendable:
-        fails.append(f"{host}: ci_seat_kinds with no lendable slot (each is in a slot group), so {kinds} would have no runner")
     if not lan:
         return []
+    if kinds and not lendable:
+        fails.append(f"{host}: ci_seat_kinds with no lendable slot (each is in a slot group), so {kinds} would have no runner")
     cpus, mem = slot_budget(v, total)
 
     def size(n):

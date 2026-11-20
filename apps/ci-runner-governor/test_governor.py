@@ -1374,10 +1374,8 @@ class GovernorTest(unittest.TestCase):
         # One path for a small job (hc-693): every host that takes light or heavy has seats for them,
         # so no Unity slot shares a kind, and a swap still drops one a slot registered with ("moved").
         cfg = governor.load_config(CONFIG)
-        seated = {(s["host"], s["caps"][0]) for s in cfg["seats"].values() if s["forge"] != "forgejo" and not s["repo"]}
-        self.assertIn(("ms-a2", "heavy"), seated)
-        self.assertFalse([(n, c) for n, caps in cfg["shared"].items() for c in caps
-                          if (n.rsplit("-unity-pool-", 1)[0], c) in seated])
+        self.assertIn("ms-a2-unity-pool-1-heavy-1", cfg["seats"])
+        self.assertFalse({c for caps in cfg["shared"].values() for c in caps} & {"light", "heavy"})
         self.assertTrue({"light", "heavy"} <= set(cfg["moved"]))
 
     def every_cap(self, action, have, name="ms-a2-unity-pool-1", host="ms-a2"):

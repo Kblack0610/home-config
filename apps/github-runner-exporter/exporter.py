@@ -414,6 +414,19 @@ def job_kind(name, runner_labels, job_labels):
     return caps[0] if len(caps) == 1 else None
 
 
+def done_kind(job, runner_labels):
+    """The kind a finished job keys the history series by, as job_kind names a running one's for
+    ci_runner_job, never a runner's first cap; open (its labels name no kind on a slot of several
+    caps) is other. runner_labels is {name: [label]} of the runners listed this scrape. A
+    self-hosted job on a runner not listed (removed since, or its source failed) still has the kind
+    it asked for; everything else (GitHub's runners, or no runner at all, as for a skipped job) is
+    github-hosted."""
+    rn, labels = job.get("runner_name"), job.get("labels") or []
+    if rn not in runner_labels and "self-hosted" not in labels:
+        return "github-hosted"
+    return job_kind(rn, runner_labels.get(rn, []), labels) or "other"
+
+
 def github_hosted(job):
     """A job on GitHub's own runners: its runner group says so, or it asks for neither
     self-hosted nor a pool of ours (runs-on: [unity, unity-gate] is ours)."""
@@ -1175,20 +1188,7 @@ def render():
             L.append(f"github_actions_run_recent{{{lab}}} {int(done)}")
             if started:
                 L.append(f"github_actions_run_recent_duration_seconds{{{lab}}} {int(done - started)}")
-    # History is keyed by the kind of job, never by a runner's first cap: a slot of several caps
-    # runs light and unity jobs alike. done_kind names a finished job's kind as job_kind names
-    # a running one's for ci_runner_job; open (job labels name no kind) is other.
     runner_labels = {r["name"]: [l["name"] for l in r.get("labels", [])] for _, r in seen.values()}
-
-    def done_kind(j):
-        rn, labels = j.get("runner_name"), j.get("labels") or []
-        # A self-hosted job on a runner not listed this scrape (removed since, or its source
-        # failed) still has the kind it asked for; everything else (GitHub's runners, or no
-        # runner at all, as for a skipped job) is github-hosted.
-        if rn not in runner_labels and "self-hosted" not in labels:
-            return "github-hosted"
-        return job_kind(rn, runner_labels.get(rn, []), labels) or "other"
-
     # What each runner actually did last, and which workflows each kind of job comes from:
     # the answer to "what is this runner for", read from history instead of a
     # hand-written description that drifts from the workflow files.
@@ -1201,7 +1201,7 @@ def render():
                     continue  # GitHub-hosted, or a runner since removed
                 if done > last.get(rn, (0,))[0]:
                     last[rn] = (done, a["repo"], run.get("name", ""), j)
-                k = (done_kind(j), a["repo"].split("/", 1)[1], run.get("name", ""))
+                k = (done_kind(j, runner_labels), a["repo"].split("/", 1)[1], run.get("name", ""))
                 pool_wf[k] = max(pool_wf.get(k, 0), done)
     L += [
         "# HELP github_runner_last_job The last job this runner finished (within the 24h window); value is when",
@@ -1240,7 +1240,7 @@ def render():
                 if run.get("conclusion") in FAILED_CONCLUSIONS:
                     failed.append((repo, run, int(finished)))
             for j in DONE_JOBS.get(run["id"], []):
-                rn, pool_ = j.get("runner_name"), done_kind(j)
+                rn, pool_ = j.get("runner_name"), done_kind(j, runner_labels)
                 k = (pool_, repo, wf, j.get("conclusion") or "")
                 jobs_done[k] = jobs_done.get(k, 0) + 1
                 created, started, done = ts(j.get("created_at")), ts(j.get("started_at")), ts(j.get("completed_at"))

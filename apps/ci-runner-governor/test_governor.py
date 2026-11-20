@@ -2821,9 +2821,24 @@ class LocalSeatTest(unittest.TestCase):
         self.assertEqual(local.state("ws"), (0, 0, 1))
         # A waiter that stopped asking leaves the queue before a grant strands a seat on it.
         self.assertEqual(self.ask(local, "ws-local-1", "github"), "local")
+        self.assertEqual(self.ask(local, "ws-local-1", "local"), "local")  # the granted run confirms
         self.assertEqual(self.ask(local, "ws-local-2", "github"), "github")
         local.tick(time.time() + governor.LOCAL_WAIT_GRACE + 1)
         self.assertEqual(local.state("ws"), (1, 0, 1))  # the holder stays until it is stale
+
+    def test_a_grant_no_run_confirms_goes_back_after_the_grace(self):
+        # A run killed while it waited: its long-poll took the grant, and nothing confirms it.
+        local = governor.LocalSeats(LOCAL)
+        self.assertEqual(self.ask(local, "ws-local-1", "github"), "local")
+        now = time.time()
+        local.tick(now + governor.LOCAL_WAIT_GRACE - 1)
+        self.assertEqual(local.state("ws"), (1, 0, 1))
+        local.tick(now + governor.LOCAL_WAIT_GRACE + 1)
+        self.assertEqual(local.state("ws"), (0, 0, 1))  # free for the next run
+        self.assertEqual(self.ask(local, "ws-local-2", "github"), "local")
+        # A re-ask with github before it confirms (a lost answer) still holds it, unconfirmed.
+        self.assertEqual(self.ask(local, "ws-local-2", "github"), "local")
+        self.assertIn("ws-local-2", local.fresh)
 
     def test_local_rule_moves_one_seat_by_the_verdict_and_shares_the_hosts_cooldown(self):
         rule = governor.local_rule

@@ -1204,7 +1204,8 @@ def local_floor(cfg, host):
     return min(cfg["local_min_admitted"], cfg["local"][host])
 
 # A run waiting for a seat that has not asked again for this long has gone: it leaves the queue
-# before a grant strands a seat on it. A guard: a client gone between two long-polls sends no event.
+# before a grant strands a seat on it; a granted run that has not confirmed with have=local in
+# this long gives the seat back. A guard: a client gone between two long-polls sends no event.
 LOCAL_WAIT_GRACE = 30
 
 
@@ -1213,8 +1214,11 @@ class LocalSeats:
     seat name: have=github asks for it (answered local once granted, the oldest waiter of the
     host first, else github after the wait), have=local holds it (a keepalive, answered local
     after the wait; a held seat is never taken back, since a hold stops the next run, not the
-    running one) and have=done gives it back. A holder that has not asked for LEASE_STALE_SECONDS
-    loses it, and a run that holds a seat the governor lost (a restart) keeps it on its next ask."""
+    running one) and have=done gives it back. A granted run confirms with have=local; one that
+    has not within LOCAL_WAIT_GRACE of its grant loses the seat (a run killed while it waited is
+    still granted, as its long-poll is open until it times out), as does a holder that has not
+    asked for LEASE_STALE_SECONDS. A run that holds a seat the governor lost (a restart) keeps it
+    on its next ask."""
 
     def __init__(self, cfg):
         self.cond = Condition()
@@ -1223,6 +1227,7 @@ class LocalSeats:
         # Waiting and held seats -> when each last asked. A dict keeps its first insertion's
         # order, so asked lists the waiters oldest first.
         self.asked, self.held = {}, {}
+        self.fresh = set()  # granted seats whose run has not yet confirmed with have=local
         self.open = {}  # seat -> its long-polls in progress, which keep it from going stale
 
     def mine(self, seats, host):
@@ -1245,17 +1250,23 @@ class LocalSeats:
     def grant(self, now):
         """Under the lock: drop the gone waiters and stale holders, then give each host's free
         seats to its oldest waiters, and wake every long-poll to read its seat again."""
-        for seats, stale in ((self.asked, LOCAL_WAIT_GRACE), (self.held, LEASE_STALE_SECONDS)):
-            for s in [s for s, t in seats.items() if not self.open.get(s) and now - t > stale]:
+        def stale(s):
+            return LEASE_STALE_SECONDS if s in self.held and s not in self.fresh else LOCAL_WAIT_GRACE
+        for seats in (self.asked, self.held):
+            for s in [s for s, t in seats.items() if not self.open.get(s) and now - t > stale(s)]:
                 del seats[s]
+                self.fresh.discard(s)
         for host, n in self.admitted.items():
             for s in self.mine(self.asked, host)[:max(n - len(self.mine(self.held, host)), 0)]:
                 self.held[s] = self.asked.pop(s)
+                self.fresh.add(s)
         self.cond.notify_all()
 
     def wait(self, seat, have, timeout):
         with self.cond:
             now = time.time()
+            if have != "github":
+                self.fresh.discard(seat)
             if have == "done":
                 self.held.pop(seat, None)
                 self.asked.pop(seat, None)

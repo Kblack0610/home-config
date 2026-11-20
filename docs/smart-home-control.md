@@ -309,15 +309,15 @@ device code. The wall/Devices Climate sections auto-populate once a `climate` en
 
 ## Athom Smart Plug V3 — native ESPHome (+ MQTT integration in the library)
 
-**Device:** `athom-smart-plug-v3-613888` (ESP32-C3), MAC `fc:01:2c:61:38:88`, DHCP-pinned `.142`.
-Onboarded via its captive-portal AP (no app) → `BrownDooDoo`. First of 6.
+**Device:** the first plug, `athom-smart-plug-v3-613888` (ESP32-C3, MAC `fc:01:2c:61:38:88`), was retired 2026-11-20: it is out of the seeds, the room layout and DHCP. The other 5 plugs follow the same pattern.
+Each plug onboards via its captive-portal AP (no app) -> `BrownDooDoo`.
 
 **Native ESPHome integration** (core; no custom component). Athom V3 ships with the ESPHome
 **native API OPEN** (no encryption), so the entry needs only host/port. Added live via HA's
 config-flow API, then baked into git as `seed-esphome` (`apps/home-assistant/deployment.yaml`) so
 it reproduces on a fresh PVC. Schema @ HA 2026.7: `data={device_name, host, port:6053,
 password:"", noise_psk:""}`, `unique_id = MAC`, `VERSION=1 MINOR_VERSION=1`, `subentries: []`
-(newer list form). Idempotent on `domain+data.host`; extend the `PLUGS` list for the other 5.
+(newer list form). Idempotent on `domain+data.host`; extend the `PLUGS` list for a new plug.
 Exposes `switch.*_switch` (relay) + power/voltage/current/energy/power-factor sensors + WiFi/uptime.
 **✅ Live-verified 2026-07-06:** toggled the relay from HA, lamp responded, 4.8 W draw.
 

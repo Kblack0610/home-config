@@ -105,7 +105,7 @@ printf '%s\n' "$proc"/[0-9]* |
         print "# TYPE node_process_count gauge"
         for (k = 1; k <= n; k++) printf "node_process_count{comm=\"%s\"} %d\n", esc(order[k]), count[order[k]]
         if (nk > 0) {
-            for (k = 1; k <= nk; k++) { acpu += cpu[kept[k]]; amem += mem[kept[k]] }
+            for (k = 1; k <= nk; k++) if (!(kept[k] in summed)) { summed[kept[k]] = 1; acpu += cpu[kept[k]]; amem += mem[kept[k]] }
             print "# HELP node_agent_cpu_cores CPU cores the always-listed agent comms used since the previous run"
             print "# TYPE node_agent_cpu_cores gauge"
             if (elapsed > 0) printf "node_agent_cpu_cores %.3f\n", acpu

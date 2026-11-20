@@ -35,9 +35,9 @@ agent_cpu_units:
 
 # Where node-exporter reads textfile metrics, to publish how many CPUs agent_cpus holds as
 # agent_host_cpus (the agents class's reserved cores in cc:host_class_reserved_cores). The
-# workstation's distro node_exporter reads its own directory (site.yml, its monitoring play);
+# workstation's distro node_exporter reads its own, set in group_vars/desktop_workstations.yml;
 # every other agent host is a k3s node, whose DaemonSet node-exporter reads the shared one.
-agent_host_budget_textfile_dir: "{{ '/var/lib/node_exporter/textfile' if inventory_hostname in groups['desktop_workstations'] else '/var/lib/node-exporter-textfile' }}"
+agent_host_budget_textfile_dir: "{{ node_exporter_linux_textfile_dir | default('/var/lib/node-exporter-textfile') }}"
 
 # The drop-in's file name in each unit's .d directory. A unit that leaves
 # agent_cpu_units loses it on the next apply; one already running keeps its

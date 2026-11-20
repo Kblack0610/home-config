@@ -124,14 +124,15 @@ while [ $i -le 20 ]; do
 done
 proc "$a" 3001 claude 0 0 100 2
 proc "$a" 3002 claude 0 0 100 3
-keep="claude codex"
+keep="claude codex claude"    # a repeated name is counted once
 run "$a" "$t/nowhere"
+has "an idle kept comm outside both top 15s is listed" 'node_process_count{comm="claude"} 2'
 has "the first run has an agent memory total" "node_agent_resident_bytes $((5 * page))"
 if grep -q '^node_agent_cpu_cores ' "$t/out/node_inventory.prom"; then echo "FAIL the first run has an agent cpu total"; fail=1; else echo "ok   the first run has no agent cpu total"; fi
 echo '3010.00 1.00' > "$a/uptime"
 proc "$a" 3001 claude 60 40 100 2
 run "$a" "$t/nowhere"
-has "a keep-listed comm below both top 15s is listed" 'node_process_count{comm="claude"} 2'
+has "it stays listed when it ranks first by cpu" 'node_process_count{comm="claude"} 2'
 has "its memory is listed" "node_process_resident_bytes{comm=\"claude\"} $((5 * page))"
 has "the agent cpu total is the kept comms' cores" "node_agent_cpu_cores $(cores 100)"
 has "the agent memory total is the kept comms' memory" "node_agent_resident_bytes $((5 * page))"

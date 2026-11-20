@@ -2454,6 +2454,18 @@ class LendTest(unittest.TestCase):
             self.assertEqual(governor.kind_weights(cfg, 1000 + 3600), {"forgejo": 0.1})  # floor
         governor.WEIGHTS.update(at=None, by_kind={})
 
+    def test_every_kind_exports_its_weight_and_an_unmeasured_one_reads_one(self):
+        kinds = set(LCFG["kinds"])
+        self.assertTrue({"forgejo", "light", "unity"} <= kinds)
+        text = governor.render(LCFG, {"disk": {}}, {}, 0, [], True, weights={"forgejo": 0.283, "light": 0.658})
+        self.assertIn('ci_governor_kind_weight{kind="forgejo",measured="true"} 0.283', text)
+        self.assertIn('ci_governor_kind_weight{kind="light",measured="true"} 0.658', text)
+        # A kind under min_samples (heavy, repo) or a whole-slot one (unity) is a row at 1, never a missing one.
+        self.assertIn('ci_governor_kind_weight{kind="unity",measured="false"} 1', text)
+        self.assertEqual(text.count("ci_governor_kind_weight{"), len(kinds))
+        # No weights read (lending off, or no refresh has answered yet): no series, so a reader shows "-", not a made-up 1.
+        self.assertNotIn("ci_governor_kind_weight", governor.render(LCFG, {"disk": {}}, {}, 0, [], True))
+
     def test_units_weigh_seats_and_waits_and_price_the_backlog_in_run_time(self):
         box = Box(s1=DRAINED | {"unity-lent"})
         runners = box.runners()

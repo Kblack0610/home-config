@@ -27,3 +27,11 @@ forgejo_runner_user_home: /var/lib/linux-ci
 forgejo_runner_labels:
   - "docker:docker://docker:27"
   - "linux-amd64:host"
+  # Host-mode labels for the personal repos' `runs-on: [self-hosted, light]` and
+  # `[self-hosted, linux, x64, light]` jobs (glowing-seeking-lemur P1): a seat serves them as it
+  # served GitHub's, in the borrowed slot, so they never wait out the Unity queue. Forgejo
+  # matches a job when the seat carries every label it asks for.
+  - "self-hosted:host"
+  - "linux:host"
+  - "x64:host"
+  - "light:host"

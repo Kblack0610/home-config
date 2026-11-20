@@ -111,7 +111,7 @@ spec:
         - record: cc:watch_state_raw
           labels: {domain: machines}
           expr: >-
-            max by (item) (label_replace(((mqtt_tripped{topic=~"agents_.+_watch_(fleet_thermal|emotiv_bridge|mac_mini_desktop_grants)"} and on (topic) cc:agents_topic_live) * 1 > 0) or ((mqtt_stale{topic=~"agents_.+_watch_(fleet_thermal|emotiv_bridge|mac_mini_desktop_grants)"} and on (topic) cc:agents_topic_live) > 0), "item", "$1", "topic", "agents_.+_watch_(.+)"))
+            max by (item) (label_replace(((mqtt_tripped{topic=~"agents_.+_watch_(fleet_thermal|emotiv_bridge|mac_mini_desktop_grants|mac_mini_signing)"} and on (topic) cc:agents_topic_live) * 1 > 0) or ((mqtt_stale{topic=~"agents_.+_watch_(fleet_thermal|emotiv_bridge|mac_mini_desktop_grants|mac_mini_signing)"} and on (topic) cc:agents_topic_live) > 0), "item", "$1", "topic", "agents_.+_watch_(.+)"))
         - record: cc:watch_state_raw
           labels: {domain: spend}
           expr: >-

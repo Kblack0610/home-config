@@ -123,7 +123,7 @@ Partial graph — focuses on the dependencies an agent is most likely to hit dur
 
 ```
 litellm (in-cluster, hp-victus)
-  -> cloud upstreams only: Gemini, Lazer, OpenCode Go and the free tiers: NVIDIA NIM, Groq, Cloudflare Workers AI (no LAN model hosts)
+  -> cloud upstreams only: Gemini, Lazer, OpenCode Go and the free tiers: NVIDIA NIM, Groq, Cloudflare Workers AI, OpenRouter (no LAN model hosts)
 
 home-assistant → mosquitto (MQTT broker, in-cluster)
                 → mqtt2prom → monitoring (Prometheus)

@@ -302,10 +302,11 @@ class CapTests(unittest.TestCase):
 
     def wide_ms_a2(self, seats=False):
         """ms-a2 with a wide slot 6 over test slots 1 and 2's cores (cores 2-7) and their memory, beside build slot 5.
-        Every slot is then in a group, so none is lendable and its ci_seat_kinds go unless seats is set."""
+        Every slot is then in a group, so none is lendable and its ci_seat_kinds and repo runners go unless seats is set."""
         v = self.hosts["ms-a2"]
         if not seats:
             v.pop("ci_seat_kinds", None)
+            v.pop("ci_repo_runners", None)
         wide_gb = sum(int(m.rstrip("G")) for m in v["ci_unity_slot_memory_max"][:2])
         v.update(unity_ci_slots=6, unity_ci_slot_groups={5: [3, 4], 6: [1, 2]}, unity_ci_wide_slots=[6],
                  ci_unity_slot_cpus=[*v["ci_unity_slot_cpus"], "2-7,18-23"],

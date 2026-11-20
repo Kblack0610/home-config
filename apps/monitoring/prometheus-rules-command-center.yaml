@@ -695,19 +695,9 @@ spec:
               and on (name) (max without (instance, pod, job, namespace, service, endpoint, container) (github_runner_withheld) == 1)
               and on (name) (max without (instance, pod, job, namespace, service, endpoint, container) (ci_governor_lent) == 1))
             or cc:pool_slots * 0
-        # Free is the idle slots of the kind, the ones that could start one of its jobs now.
-        # Slots overlap by caps, so this is never slots minus busy: an idle runner is free in
-        # each kind it takes (a seat's light and heavy only while it is lent).
-        - record: cc:pool_free
-          expr: >-
-            count by (pool) (max without (instance, pod, job, namespace, service, endpoint, container)
-              (github_runner_pool_slot{state="idle"})
-              unless on (name) (max without (instance, pod, job, namespace, service, endpoint, container) (github_runner_withheld) == 1))
-            or cc:pool_slots * 0
         # Busy is by the kind of job a runner runs (ci_runner_job, what a machine row's DOING
         # names), never by its caps: a runner can take several kinds (a unity-pool runner took light and heavy until hc-693), so counting
-        # caps read heavy 7/9 busy with no heavy job running (2026-11-19). Slots stay by caps,
-        # so a kind's free slots are cc:pool_free, never slots minus busy.
+        # caps read heavy 7/9 busy with no heavy job running (2026-11-19). Slots stay by caps.
         - record: cc:pool_busy
           expr: >-
             count by (pool) (label_replace(max without (instance, pod, job, namespace, service, endpoint, container)

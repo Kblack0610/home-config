@@ -102,11 +102,6 @@ tests:
         exp_samples:
           - labels: 'cc:pool_lent{pool="unity"}'
             value: 1
-      - expr: cc:pool_free
-        eval_time: 2m
-        exp_samples:
-          - labels: 'cc:pool_free{pool="unity"}'
-            value: 1
       - expr: cc:pool_busy
         eval_time: 2m
         exp_samples:
@@ -140,13 +135,9 @@ tests:
           - labels: 'cc:pool_busy{pool="unity"}'
             value: 1
 
-  - name: an idle slot with two caps is free in each kind, a busy one in neither
+  - name: busy counts the kind of job a runner runs, not its caps
     interval: 1m
     input_series:
-      - series: 'github_runner_pool_slot{name="i",host="h",pool="unity",state="idle",instance="x"}'
-        values: '0x5'
-      - series: 'github_runner_pool_slot{name="i",host="h",pool="heavy",state="idle",instance="x"}'
-        values: '0x5'
       - series: 'github_runner_pool_slot{name="r",host="h",pool="unity",state="running",instance="x"}'
         values: '1x5'
       - series: 'github_runner_pool_slot{name="r",host="h",pool="heavy",state="running",instance="x"}'
@@ -154,13 +145,6 @@ tests:
       - series: 'ci_runner_job{runner="r",kind="unity",instance="x"}'
         values: '1x5'
     promql_expr_test:
-      - expr: cc:pool_free
-        eval_time: 2m
-        exp_samples:
-          - labels: 'cc:pool_free{pool="heavy"}'
-            value: 1
-          - labels: 'cc:pool_free{pool="unity"}'
-            value: 1
       - expr: cc:pool_busy
         eval_time: 2m
         exp_samples:

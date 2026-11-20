@@ -182,13 +182,15 @@ panels = [
     P({"type": "table", "title": "Runners: what is running where",
        "description": "One row per runner. RUNNING rows show the job and how long it has been going; the 'last' columns show the last job it finished, which is what that runner is actually used for. cores, mem and disk are what the runner and its job containers take of its machine now: cores busy of the CPUs its cgroup allows, memory of the cap of a cgroup it holds alone, and the bytes under its home (the checkout, warm Unity Library and _work), measured hourly (disk measured says how long ago). '-' = no reading (macOS runners have no cgroups). Click a job to open it on GitHub. MISSING = a slot the roster expects that never registered.",
        "gridPos": {"h": 13, "w": 24, "x": 0, "y": 20},
-       "targets": [tgt(W + "(github_runner_state)", "A"), tgt(W + "(github_runner_last_job) * 1000", "B")]
+       "targets": [tgt(W + "(github_runner_state)", "A"), tgt(W + "(github_runner_last_job) * 1000", "B"),
+                   # kind: the kind of job a busy runner runs, as ci_runner_job names it (blank when idle).
+                   tgt('max by (name, kind) (label_replace(ci_runner_job, "name", "$1", "runner", "(.+)"))', "K")]
                   + [tgt(f'max by (name) (label_replace({m}, "name", "$1", "runner", "(.+)"))', ref) for ref, m, _, _ in SLOT_SPACE],
        "transformations": [{"id": "joinByField", "options": {"byField": "name", "mode": "outer"}},
                            {"id": "organize", "options": {
-           "excludeByName": {"Time": True, **{f"Time {i}": True for i in range(1, len(SLOT_SPACE) + 3)},
-                             "__name__": True, "scope": True, "event": True, "labels": True},
-           "indexByName": {"state": 0, "name": 1, "host": 2, "pool": 3, "repo": 4, "pr": 5, "branch": 6, "title": 7, "workflow": 8,
+           "excludeByName": {"Time": True, **{f"Time {i}": True for i in range(1, len(SLOT_SPACE) + 4)},
+                             "__name__": True, "scope": True, "event": True, "labels": True, "Value #K": True},
+           "indexByName": {"state": 0, "name": 1, "host": 2, "kind": 3, "repo": 4, "pr": 5, "branch": 6, "title": 7, "workflow": 8,
                            "job_name": 9, "Value #A": 10, **{f"Value #{ref}": 11 + i for i, (ref, _, _, _) in enumerate(SLOT_SPACE)},
                            **{k: 11 + len(SLOT_SPACE) + i for i, k in enumerate(("last_conclusion", "last_repo", "last_workflow", "last_job", "Value #B", "url", "last_url"))}},
            "renameByName": {"name": "runner", "job_name": "job", "Value #A": "running for", "last_conclusion": "last result",
@@ -216,15 +218,15 @@ panels = [
                        ] + [{"matcher": {"id": "byName", "options": col}, "properties": [{"id": "unit", "value": u}, {"id": "decimals", "value": 1}]}
                             for _, _, col, u in SLOT_SPACE] + hide("url", "last_url")}}),
 
-    P({"type": "table", "title": "What each pool runs",
-       "description": "Workflows each runner pool finished in the last 24h, newest first. Read from job history, so it stays true when the workflow files change.",
+    P({"type": "table", "title": "What each kind of job runs",
+       "description": "Workflows whose jobs of each kind our runners finished in the last 24h (kind as ci_runner_job names it). Read from job history, so it stays true when the workflow files change.",
        "gridPos": {"h": 10, "w": 24, "x": 0, "y": 33},
        "targets": [tgt(W + "(github_pool_workflow) * 1000")],
        "transformations": [{"id": "organize", "options": {
            "excludeByName": {"Time": True},
            "indexByName": {"pool": 0, "repo": 1, "workflow": 2, "Value": 3},
-           "renameByName": {"Value": "last ran"}}}],
-       "options": {"showHeader": True, "cellHeight": "sm", "sortBy": [{"displayName": "pool", "desc": False}]},
+           "renameByName": {"pool": "kind", "Value": "last ran"}}}],
+       "options": {"showHeader": True, "cellHeight": "sm", "sortBy": [{"displayName": "kind", "desc": False}]},
        "fieldConfig": {"defaults": {"noValue": "-", "custom": {"align": "left"}},
                        "overrides": [{"matcher": {"id": "byName", "options": "last ran"}, "properties": [{"id": "unit", "value": "dateTimeFromNow"}]}]}}),
 
@@ -272,8 +274,8 @@ panels = [
     finished(59),
 
     P({"type": "row", "title": "Trends", "collapsed": True, "gridPos": {"h": 1, "w": 24, "x": 0, "y": 69}, "panels": [
-        P({"type": "timeseries", "title": "Busy runners by pool", "gridPos": {"h": 8, "w": 12, "x": 0, "y": 70},
-           "targets": [tgt('count by (pool) (' + W + '(github_runner_state{state="running"}))', instant=False, legend="{{pool}}", fmt="time_series")],
+        P({"type": "timeseries", "title": "Busy runners by kind of job", "gridPos": {"h": 8, "w": 12, "x": 0, "y": 70},
+           "targets": [tgt('count by (kind) (' + W + '(ci_runner_job))', instant=False, legend="{{kind}}", fmt="time_series")],
            "fieldConfig": {"defaults": {"unit": "none", "decimals": 0, "noValue": "0",
                                         "custom": {"drawStyle": "line", "lineInterpolation": "stepAfter", "fillOpacity": 10}}, "overrides": []},
            "options": {"legend": {"displayMode": "list", "placement": "bottom"}, "tooltip": {"mode": "multi"}}}),

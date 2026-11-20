@@ -29,6 +29,21 @@ rest:
         unit_of_measurement: runners
         value_template: "{{ value_json.data.result | selectattr('metric.state', 'in', ['offline', 'missing']) | list | count }}"
 
+  # The job kinds each runner takes: one row per runner per cap (pool=<cap>). A runner row
+  # names no kind of its own; a slot can take unity, light and heavy alike.
+  - resource: http://kube-prometheus-stack-prometheus.monitoring.svc:9090/api/v1/query
+    params:
+      query: max by (name, pool) (github_runner_pool_slot)
+    scan_interval: 300
+    sensor:
+      - name: CI runner caps
+        unique_id: ci_runner_caps
+        icon: mdi:tag-multiple
+        value_template: "{{ value_json.data.result | count }}"
+        json_attributes_path: "$.data"
+        json_attributes:
+          - result
+
   - resource: http://kube-prometheus-stack-prometheus.monitoring.svc:9090/api/v1/query
     params:
       # sort_desc: oldest first. Values are strings in the JSON, so a Jinja
@@ -45,7 +60,7 @@ rest:
         json_attributes:
           - result
 
-  # What each runner last finished, and which workflows each pool ran recently:
+  # What each runner last finished, and which workflows each kind of job came from recently:
   # the "what is this runner for" answer, from history.
   - resource: http://kube-prometheus-stack-prometheus.monitoring.svc:9090/api/v1/query
     params:

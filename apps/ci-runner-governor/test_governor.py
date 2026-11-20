@@ -449,7 +449,7 @@ class GovernorTest(unittest.TestCase):
 
     def test_a_withheld_only_host_still_takes_a_unity_job(self):
         # Stopped, so every runner is offline, and the governor withheld all of them.
-        rows = [{"metric": {"name": f"aws-{i}", "host": "aws-spot-1", "pool": "unity", "state": "offline",
+        rows = [{"metric": {"name": f"aws-{i}", "host": "aws-spot-1", "state": "offline",
                             "labels": "host-aws-spot-1,Linux,self-hosted,unity-withheld,X64"}, "value": [0, "0"]}
                 for i in range(2)]
         with mock.patch.object(governor, "prom", return_value=rows) as prom:

@@ -1250,8 +1250,8 @@ def pack(cfg, weights, slot, seat):
 
 
 def job_durations():
-    """{pool: seconds}: the p50 run time of a finished job (last 24h), the slowest workflow's
-    per pool, so a drain estimate errs long. {} when Prometheus does not answer."""
+    """{kind: seconds}: the p50 run time of a finished job (last 24h), the slowest workflow's
+    per job kind (the exporter's pool label is the kind ci_runner_job names), so a drain estimate errs long. {} when Prometheus does not answer."""
     try:
         return {r["metric"]["pool"]: float(r["value"][1])
                 for r in prom('max by (pool) (github_job_duration_seconds{quantile="0.5"})') if r["metric"].get("pool")}

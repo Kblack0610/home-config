@@ -29,7 +29,7 @@
 #   cc:host_local_slots / _busy / _queued{host}          its gate slots, slots held, runs waiting
 #   cc:host_local_open_slots{host}                       the always-open part of its gate slots
 #   cc:host_local_done_24h / _pass_ratio_24h{host}       its gates finished in 24h, and pass / finished
-#   cc:pool_done_24h / _cancelled_24h / _pass_ratio_24h{pool}  jobs each runner pool finished in 24h
+#   cc:pool_done_24h / _cancelled_24h / _pass_ratio_24h{pool}  jobs of each kind finished in 24h (pool=<kind>, as ci_runner_job names it)
 #   cc:pool_slots / _busy / _withheld{pool}  runners that can take a job, those running one, and idle ones the governor withheld
 #   cc:site_slots / _busy{site}             the same slots and busy, local (home LAN, workstation gates included) vs cloud
 #   cc:github_hosted_running                jobs running now on GitHub's own runners
@@ -733,7 +733,7 @@ spec:
         - record: cc:pool_oldest_wait_seconds
           expr: >-
             max by (pool) (github_actions_job_waiting{stuck!="true"})
-        # Jobs each pool finished in the last 24h (runs created in the window). Jobs on
+        # Jobs of each kind finished in the last 24h (runs created in the window), pool=<kind>. Jobs on
         # runners that are not ours read pool="github-hosted".
         - record: cc:pool_done_24h
           expr: >-

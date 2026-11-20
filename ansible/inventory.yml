@@ -782,15 +782,11 @@ all:
         ms-a2:
           thermal_cap_boost: true
           thermal_cap_max_freq_khz: 3200000
-        # AMD 5900XT, amd-pstate-epp on kernel 7.3: writing 0 to cpufreq/boost fails
-        # ("Cannot disable BOOST", checked 2026-11-20), so the group default cannot
-        # apply. Boost on under a ceiling at its 3.3GHz base clock instead, which is
-        # what boost off would give. Provisional, medium confidence: revisit (raise a
-        # step, as on ms-a2) after 48h of temperatures under load while the 15m max
-        # stays under 85C.
+        # AMD 5900XT, amd-pstate-epp on kernel 7.3: the group default, boost off.
+        # Boost reads 0 from boot since the first apply and cannot be turned back on
+        # ("Cannot enable BOOST" on the global and per-policy switch, checked
+        # 2026-11-20), so boost on under a ceiling, as on ms-a2, is not available.
         tuf-b550:
-          thermal_cap_boost: true
-          thermal_cap_max_freq_khz: 3300000
         # razer-laptop (acpi-cpufreq, a global boost switch), deskslim-2 (amd-pstate-epp)
         # and the workstation have no platform_profile, no writable RAPL limit and no
         # charge threshold: the group default alone.

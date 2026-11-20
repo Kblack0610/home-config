@@ -1,8 +1,9 @@
 ---
 # What a session on a fleet worker runs: tmux and wt (from the dotfiles), the
-# three harnesses, gh for its PRs, python-yaml and jq for fleet-hosts.sh,
-# bubblewrap, socat and npm for srt, the lane sandbox a headless harness runs in
-# (tasks/harnesses.yml installs srt itself), and
+# harnesses (claude and opencode; codex runs on the workstation only), gh for
+# its PRs, python-yaml and jq for fleet-hosts.sh, bubblewrap, socat and npm for
+# srt, the lane sandbox a headless harness runs in (tasks/harnesses.yml installs
+# srt itself), and
 # rust and gcc to build agent-panel, and mosquitto for agent-mqtt-publish, a
 # singleton lane that runs on whichever peer holds the fleet lease. pnpm and uv
 # build the standard repos (inventory fleet_workers fleet_repos): personal-sites
@@ -16,7 +17,6 @@ fleet_worker_packages:
   - github-cli
   - rust
   - gcc
-  - openai-codex
   - opencode
   - bubblewrap
   - socat
@@ -26,7 +26,7 @@ fleet_worker_packages:
   - pnpm
   - uv
 # Ubuntu, the cloud worker (platform infra/aws-ci-burst, fleet-worker-1). It takes
-# light claude items only, so it skips codex and opencode, which apt does not carry.
+# light claude items only, so it skips opencode, which apt does not carry.
 fleet_worker_packages_apt:
   - curl
   - git

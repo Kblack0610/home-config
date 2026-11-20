@@ -29,7 +29,7 @@ proc() {
     printf '1000 %s 10 1 0 100 0\n' "$7" > "$1/$2/statm"
 }
 fail=0
-run() { PATH="$2:$t/bin" PROC_ROOT=$1 NODE_INVENTORY_STATE="$t/state" "$sh" "$here/node-inventory-metrics.sh" "$t/out" 2>"$t/err"; }
+run() { PATH="$2:$t/bin" PROC_ROOT=$1 NODE_INVENTORY_STATE="$t/state" NODE_INVENTORY_KEEP="${keep:-}" "$sh" "$here/node-inventory-metrics.sh" "$t/out" 2>"$t/err"; }
 has() { if grep -Fq -- "$2" "$t/out/node_inventory.prom"; then echo "ok   $1"; else echo "FAIL $1: no line $2"; fail=1; fi; }
 hasnt() { if [ ! -f "$t/out/node_inventory.prom" ] || grep -Fq -- "$2" "$t/out/node_inventory.prom"; then echo "FAIL $1: has $2"; fail=1; else echo "ok   $1"; fi; }
 cores() { awk -v t="$1" -v hz="$hz" 'BEGIN { printf "%.3f", t / hz / 10 }'; }
@@ -109,4 +109,33 @@ has "the 15th busiest is in" 'node_process_count{comm="busy15"}'
 hasnt "the 16th busiest is out" 'comm="busy16"'
 has "the 14th largest fat is in" 'node_process_count{comm="fat14"}'
 hasnt "the 16th largest is out" 'comm="fat15"'
+hasnt "with no keep list there are no agent totals" 'node_agent_'
+
+# Always-listed comms: the same 40 processes plus two claude sessions that are idle and small, so
+# they rank in neither top 15, and a keep list of claude and codex (not running). claude is listed
+# and its totals sum the running ones; codex, absent from /proc, has no line and adds nothing.
+a=$t/proc3; rm -f "$t/state"; mkdir -p "$a"; echo '3000.00 1.00' > "$a/uptime"
+i=1
+while [ $i -le 20 ]; do
+    n=$(printf '%02d' $i)
+    proc "$a" $((1000 + i)) "busy$n" 0 0 100 1
+    proc "$a" $((2000 + i)) "fat$n" 0 0 100 $(( (21 - i) * 1000 ))
+    i=$((i + 1))
+done
+proc "$a" 3001 claude 0 0 100 2
+proc "$a" 3002 claude 0 0 100 3
+keep="claude codex claude"    # a repeated name is counted once
+run "$a" "$t/nowhere"
+has "an idle kept comm outside both top 15s is listed" 'node_process_count{comm="claude"} 2'
+has "the first run has an agent memory total" "node_agent_resident_bytes $((5 * page))"
+if grep -q '^node_agent_cpu_cores ' "$t/out/node_inventory.prom"; then echo "FAIL the first run has an agent cpu total"; fail=1; else echo "ok   the first run has no agent cpu total"; fi
+echo '3010.00 1.00' > "$a/uptime"
+proc "$a" 3001 claude 60 40 100 2
+run "$a" "$t/nowhere"
+has "it stays listed when it ranks first by cpu" 'node_process_count{comm="claude"} 2'
+has "its memory is listed" "node_process_resident_bytes{comm=\"claude\"} $((5 * page))"
+has "the agent cpu total is the kept comms' cores" "node_agent_cpu_cores $(cores 100)"
+has "the agent memory total is the kept comms' memory" "node_agent_resident_bytes $((5 * page))"
+hasnt "a kept comm that is not running has no line" 'comm="codex"'
+[ "$(grep -c '^node_process_count{' "$t/out/node_inventory.prom")" = 16 ] && echo "ok   top 15 by memory and claude reported" || { echo "FAIL comms: $(grep -c '^node_process_count{' "$t/out/node_inventory.prom")"; fail=1; }
 exit $fail

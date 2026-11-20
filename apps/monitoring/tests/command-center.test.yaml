@@ -1190,3 +1190,229 @@ tests:
         exp_samples:
           - labels: 'cc:watch_state{domain="projects",item="release_late"}'
             value: 1
+
+  # Two machines. lin has a node inventory, runners, k3s pods, agents and Docker; nin is the same
+  # without an inventory (a Mac or Windows box in the real cluster). lin has 4 cores, 2 of them
+  # busy: ci 0.5, apps 0.5 + 0.125, agents 0.25, docker 0.125, so other is 0.5 and free is 2.
+  - name: the host class split adds up to the host, and a host with no inventory has no split
+    interval: 1m
+    input_series:
+      - series: 'node_uname_info{instance="lin:9100",host="lin",job="standalone-nodes"}'
+        values: '1x15'
+      - series: 'node_uname_info{instance="nin:9100",host="nin",job="standalone-nodes"}'
+        values: '1x15'
+      # lin: cores 0 and 1 busy all minute, 2 and 3 idle all minute
+      - series: 'node_cpu_seconds_total{instance="lin:9100",cpu="0",mode="idle"}'
+        values: '0x15'
+      - series: 'node_cpu_seconds_total{instance="lin:9100",cpu="1",mode="idle"}'
+        values: '0x15'
+      - series: 'node_cpu_seconds_total{instance="lin:9100",cpu="2",mode="idle"}'
+        values: '0+60x15'
+      - series: 'node_cpu_seconds_total{instance="lin:9100",cpu="3",mode="idle"}'
+        values: '0+60x15'
+      - series: 'node_memory_MemTotal_bytes{instance="lin:9100"}'
+        values: '8e9x15'
+      - series: 'node_memory_MemAvailable_bytes{instance="lin:9100"}'
+        values: '2e9x15'
+      # nin: one core, half busy
+      - series: 'node_cpu_seconds_total{instance="nin:9100",cpu="0",mode="idle"}'
+        values: '0+30x15'
+      - series: 'node_memory_MemTotal_bytes{instance="nin:9100"}'
+        values: '8e9x15'
+      - series: 'node_memory_MemAvailable_bytes{instance="nin:9100"}'
+        values: '4e9x15'
+      # node inventory: only lin has one, and its file is fresh
+      - series: 'node_processes_total{instance="lin:9100"}'
+        values: '100x15'
+      - series: 'node_textfile_mtime_seconds{instance="lin:9100",file="/var/lib/node-exporter-textfile/node_inventory.prom"}'
+        values: '0+60x15'
+      - series: 'node_agent_cpu_cores{instance="lin:9100"}'
+        values: '0.25x15'
+      - series: 'node_agent_resident_bytes{instance="lin:9100"}'
+        values: '5e8x15'
+      - series: 'node_docker_container_cpu_cores{instance="lin:9100",name="m",image="i"}'
+        values: '0.125x15'
+      - series: 'node_docker_container_memory_bytes{instance="lin:9100",name="m",image="i"}'
+        values: '1e8x15'
+      - series: 'agent_host_cpus{instance="lin:9100"}'
+        values: '3x15'
+      # CI runners on both hosts, with a fresh file
+      - series: 'ci_runner_cores_busy{instance="lin:9100",runner="lin-r1"}'
+        values: '0.5x15'
+      - series: 'ci_runner_cpus_allowed{instance="lin:9100",runner="lin-r1"}'
+        values: '2x15'
+      - series: 'ci_runner_memory_bytes{instance="lin:9100",runner="lin-r1"}'
+        values: '1e9x15'
+      - series: 'ci_runner_memory_max_bytes{instance="lin:9100",runner="lin-r1"}'
+        values: '4e9x15'
+      - series: 'node_textfile_mtime_seconds{instance="lin:9100",file="/var/lib/node-exporter-textfile/ci_runner.prom"}'
+        values: '0+60x15'
+      - series: 'ci_runner_cores_busy{instance="nin:9100",runner="nin-r1"}'
+        values: '0.25x15'
+      - series: 'node_textfile_mtime_seconds{instance="nin:9100",file="/var/lib/node-exporter-textfile/ci_runner.prom"}'
+        values: '0+60x15'
+      # k3s pods on lin. The container="" series is the pod's own cgroup and must not count twice.
+      - series: 'container_cpu_usage_seconds_total{node="lin",namespace="media",pod="p1",container="a",cpu="total"}'
+        values: '0+30x15'
+      - series: 'container_cpu_usage_seconds_total{node="lin",namespace="media",pod="p1",container="",cpu="total"}'
+        values: '0+600x15'
+      - series: 'container_cpu_usage_seconds_total{node="lin",namespace="ai",pod="p3",container="b",cpu="total"}'
+        values: '0+7.5x15'
+      - series: 'container_memory_working_set_bytes{node="lin",namespace="media",pod="p1",container="a"}'
+        values: '2e9x15'
+      - series: 'container_memory_working_set_bytes{node="lin",namespace="ai",pod="p3",container="b"}'
+        values: '1e9x15'
+      - series: 'container_memory_working_set_bytes{node="lin",namespace="ai",pod="p3",container=""}'
+        values: '9e9x15'
+      # requests: p1 runs, p2 is pending and holds nothing yet
+      - series: 'kube_pod_container_resource_requests{node="lin",namespace="media",pod="p1",container="a",resource="cpu"}'
+        values: '1x15'
+      - series: 'kube_pod_container_resource_requests{node="lin",namespace="media",pod="p1",container="a",resource="memory"}'
+        values: '1e9x15'
+      - series: 'kube_pod_container_resource_requests{node="lin",namespace="media",pod="p2",container="a",resource="cpu"}'
+        values: '8x15'
+      - series: 'kube_pod_status_phase{namespace="media",pod="p1",phase="Running"}'
+        values: '1x15'
+      - series: 'kube_pod_status_phase{namespace="media",pod="p2",phase="Running"}'
+        values: '0x15'
+      - series: 'kube_pod_status_phase{namespace="media",pod="p2",phase="Pending"}'
+        values: '1x15'
+    promql_expr_test:
+      - expr: cc:host_inventory
+        eval_time: 10m
+        exp_samples:
+          - labels: 'cc:host_inventory{host="lin"}'
+            value: 1
+      - expr: cc:host_ns_cores
+        eval_time: 10m
+        exp_samples:
+          - labels: 'cc:host_ns_cores{host="lin",namespace="media"}'
+            value: 0.5
+          - labels: 'cc:host_ns_cores{host="lin",namespace="ai"}'
+            value: 0.125
+      - expr: cc:host_class_cores{host="lin"}
+        eval_time: 10m
+        exp_samples:
+          - labels: 'cc:host_class_cores{host="lin",class="ci"}'
+            value: 0.5
+          - labels: 'cc:host_class_cores{host="lin",class="apps"}'
+            value: 0.625
+          - labels: 'cc:host_class_cores{host="lin",class="agents"}'
+            value: 0.25
+          - labels: 'cc:host_class_cores{host="lin",class="docker"}'
+            value: 0.125
+          - labels: 'cc:host_class_cores{host="lin",class="other"}'
+            value: 0.5
+          - labels: 'cc:host_class_cores{host="lin",class="free"}'
+            value: 2
+      # the six classes sum to the host's cores
+      - expr: sum by (host) (cc:host_class_cores{host="lin"})
+        eval_time: 10m
+        exp_samples:
+          - labels: '{host="lin"}'
+            value: 4
+      - expr: cc:host_class_mem_bytes{host="lin"}
+        eval_time: 10m
+        exp_samples:
+          - labels: 'cc:host_class_mem_bytes{host="lin",class="ci"}'
+            value: 1e9
+          - labels: 'cc:host_class_mem_bytes{host="lin",class="apps"}'
+            value: 3e9
+          - labels: 'cc:host_class_mem_bytes{host="lin",class="agents"}'
+            value: 5e8
+          - labels: 'cc:host_class_mem_bytes{host="lin",class="docker"}'
+            value: 1e8
+          - labels: 'cc:host_class_mem_bytes{host="lin",class="other"}'
+            value: 1.4e9
+          - labels: 'cc:host_class_mem_bytes{host="lin",class="free"}'
+            value: 2e9
+      - expr: cc:host_class_reserved_cores{host="lin"}
+        eval_time: 10m
+        exp_samples:
+          - labels: 'cc:host_class_reserved_cores{host="lin",class="ci"}'
+            value: 2
+          - labels: 'cc:host_class_reserved_cores{host="lin",class="apps"}'
+            value: 1
+          - labels: 'cc:host_class_reserved_cores{host="lin",class="agents"}'
+            value: 3
+      - expr: cc:host_class_reserved_mem_bytes{host="lin"}
+        eval_time: 10m
+        exp_samples:
+          - labels: 'cc:host_class_reserved_mem_bytes{host="lin",class="ci"}'
+            value: 4e9
+          - labels: 'cc:host_class_reserved_mem_bytes{host="lin",class="apps"}'
+            value: 1e9
+      # Negative control: nin has runners but no inventory. Its CI is a direct reading and shows;
+      # agents, docker, other and free are absent, not 0.
+      - expr: cc:host_class_cores{host="nin"}
+        eval_time: 10m
+        exp_samples:
+          - labels: 'cc:host_class_cores{host="nin",class="ci"}'
+            value: 0.25
+      - expr: cc:host_class_mem_bytes{host="nin"}
+        eval_time: 10m
+        exp_samples: []
+      - expr: cc:host_class_reserved_cores{host="nin"}
+        eval_time: 10m
+        exp_samples: []
+
+  - name: the host class split clamps other at 0, shows no agents without agent series, and takes the widest shared cpuset
+    interval: 1m
+    input_series:
+      - series: 'node_uname_info{instance="clp:9100",host="clp",job="standalone-nodes"}'
+        values: '1x15'
+      # clp: two cores, one busy all minute
+      - series: 'node_cpu_seconds_total{instance="clp:9100",cpu="0",mode="idle"}'
+        values: '0x15'
+      - series: 'node_cpu_seconds_total{instance="clp:9100",cpu="1",mode="idle"}'
+        values: '0+60x15'
+      - series: 'node_memory_MemTotal_bytes{instance="clp:9100"}'
+        values: '8e9x15'
+      - series: 'node_memory_MemAvailable_bytes{instance="clp:9100"}'
+        values: '6e9x15'
+      # a fresh inventory with Docker alone above the host's busy cores and used memory, and no node_agent_*
+      - series: 'node_processes_total{instance="clp:9100"}'
+        values: '100x15'
+      - series: 'node_textfile_mtime_seconds{instance="clp:9100",file="/var/lib/node-exporter-textfile/node_inventory.prom"}'
+        values: '0+60x15'
+      - series: 'node_docker_container_cpu_cores{instance="clp:9100",name="m",image="i"}'
+        values: '3x15'
+      - series: 'node_docker_container_memory_bytes{instance="clp:9100",name="m",image="i"}'
+        values: '5e9x15'
+      # two runners on one cpuset of 2 CPUs: the host's reservation is 2, not 4
+      - series: 'ci_runner_cores_busy{instance="clp:9100",runner="r1"}'
+        values: '0x15'
+      - series: 'ci_runner_cores_busy{instance="clp:9100",runner="r2"}'
+        values: '0x15'
+      - series: 'ci_runner_cpus_allowed{instance="clp:9100",runner="r1"}'
+        values: '2x15'
+      - series: 'ci_runner_cpus_allowed{instance="clp:9100",runner="r2"}'
+        values: '2x15'
+      - series: 'ci_runner_memory_max_bytes{instance="clp:9100",runner="r1"}'
+        values: '4e9x15'
+      - series: 'ci_runner_memory_max_bytes{instance="clp:9100",runner="r2"}'
+        values: '4e9x15'
+      - series: 'node_textfile_mtime_seconds{instance="clp:9100",file="/var/lib/node-exporter-textfile/ci_runner.prom"}'
+        values: '0+60x15'
+    promql_expr_test:
+      - expr: cc:host_class_cores{host="clp"}
+        eval_time: 10m
+        exp_samples:
+          - labels: 'cc:host_class_cores{host="clp",class="ci"}'
+            value: 0
+          - labels: 'cc:host_class_cores{host="clp",class="docker"}'
+            value: 3
+          - labels: 'cc:host_class_cores{host="clp",class="other"}'
+            value: 0
+          - labels: 'cc:host_class_cores{host="clp",class="free"}'
+            value: 1
+      - expr: cc:host_class_mem_bytes{host="clp",class="other"}
+        eval_time: 10m
+        exp_samples:
+          - labels: 'cc:host_class_mem_bytes{host="clp",class="other"}'
+            value: 0
+      - expr: cc:host_class_reserved_cores{host="clp"}
+        eval_time: 10m
+        exp_samples:
+          - labels: 'cc:host_class_reserved_cores{host="clp",class="ci"}'
+            value: 2

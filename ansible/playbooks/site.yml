@@ -35,8 +35,6 @@
   hosts: cachyos-x8664-main
   become: true
   gather_facts: true
-  vars:
-    node_exporter_linux_textfile_dir: /var/lib/node_exporter/textfile
   roles:
     - role: node-exporter-linux
       tags: [monitoring]

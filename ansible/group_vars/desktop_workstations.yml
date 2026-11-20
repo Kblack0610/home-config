@@ -1,0 +1,5 @@
+---
+# The workstation's distro node_exporter reads this textfile directory (every k3s node reads
+# /var/lib/node-exporter-textfile). One home for it: node-exporter-linux creates it,
+# node-inventory-metrics and agent-host-budget write their .prom files into it.
+node_exporter_linux_textfile_dir: /var/lib/node_exporter/textfile

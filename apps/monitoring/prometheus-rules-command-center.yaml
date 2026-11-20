@@ -20,6 +20,10 @@
 #   cc:runner_disk_bytes / _disk_age_seconds{host,runner}  disk under its home (hourly du), and that reading's age
 #   cc:host_mem_used_bytes / _total_bytes{host}      memory in bytes, the same measure as cc:host_mem_used_ratio
 #   cc:host_disk_avail_bytes / _size_bytes{host}     the emptiest real filesystem, the one the disk ratio reads
+#   cc:host_class_cores / _mem_bytes{host,class}  what each machine's cores and memory are used by: ci, apps, agents, docker, other, free
+#   cc:host_class_reserved_cores / _reserved_mem_bytes{host,class}  what a class holds back (ci cpusets and caps, pod requests, agent_cpus)
+#   cc:host_ns_cores{host,namespace}        the apps class by k3s namespace
+#   cc:host_inventory{host}                 1 for a host with a fresh node inventory: the hosts that have a split
 #   cc:host_local_gate{host,worktree,...}  the workstation's local Unity gates (fleet-assess)
 #   cc:host_local_slots / _busy / _queued{host}          its gate slots, slots held, runs waiting
 #   cc:host_local_open_slots{host}                       the always-open part of its gate slots
@@ -527,6 +531,120 @@ spec:
           expr: >-
             sum(fleet_agent_sessions{host!=""}
               and on (instance) (time() - node_textfile_mtime_seconds{file=~".*fleet_local.prom"} < 180))
+        # Where each machine's cores and memory go, by class, for the hub and agent-web Space
+        # section (plan curried-squishing-mountain). `used` is measured, `reserved` is what a
+        # class holds back, and room is the reader's reserved minus used, so a class with no
+        # reservation shows a dash, never a made-up cap. Order matters: other and free read the
+        # classes recorded above them in this group.
+        #   ci      the runners' working cores and memory (cc:runner_*); reserved is the CPUs their cgroups may use and their memory cap
+        #   apps    k3s pods (cAdvisor); reserved is the Running pods' requests
+        #   agents  the agent harnesses' processes (node-inventory-metrics node_agent_*); reserved is agent_cpus
+        #   docker  Docker containers (node_docker_container_*)
+        #   other   the host's busy total less the four above; free is what is left
+        # ci and apps are direct readings, so they appear wherever they are measured. agents,
+        # docker, other and free are published only for a host with a fresh node inventory
+        # (cc:host_inventory): a host with no inventory (Macs, Windows, AWS) has no split, never
+        # zero. Docker reads 0 when no container runs. Agents reads 0 only where the host's
+        # inventory carries node_agent_* (the keep list is applied), and is absent where it does
+        # not, so an unapplied inventory role never passes for "no agents".
+        # The classes are measured differently (cAdvisor working set, process RSS, MemAvailable)
+        # and can overlap (a harness inside a container counts under agents and under docker or
+        # apps), so other is clamped at 0 and the classes can sum to more than the host.
+        - record: cc:host_inventory
+          expr: >-
+            group by (host) (node_processes_total * on (instance) group_left (host) cc:host_instance
+              and on (instance) (time() - node_textfile_mtime_seconds{file=~".*node_inventory.prom"} < 180))
+        # Cores by namespace: the drilldown under the apps class, and the apps class itself.
+        # Summed by node before the label rename, so the rename runs on a few series.
+        - record: cc:host_ns_cores
+          expr: >-
+            sum by (host, namespace) (label_replace(
+              sum by (node, namespace) (rate(container_cpu_usage_seconds_total{container!="", node!=""}[2m])),
+              "host", "$1", "node", "(.+)"))
+        - record: cc:host_class_cores
+          labels: {class: ci}
+          expr: sum by (host) (cc:runner_cores_busy)
+        - record: cc:host_class_cores
+          labels: {class: apps}
+          expr: sum by (host) (cc:host_ns_cores)
+        - record: cc:host_class_cores
+          labels: {class: agents}
+          expr: >-
+            (max by (host) (node_agent_cpu_cores * on (instance) group_left (host) cc:host_instance) and on (host) cc:host_inventory)
+            or ((max by (host) (node_agent_resident_bytes * on (instance) group_left (host) cc:host_instance) and on (host) cc:host_inventory) * 0)
+        - record: cc:host_class_cores
+          labels: {class: docker}
+          expr: >-
+            (sum by (host) (node_docker_container_cpu_cores * on (instance) group_left (host) cc:host_instance) and on (host) cc:host_inventory)
+            or (cc:host_inventory * 0)
+        - record: cc:host_class_cores
+          labels: {class: other}
+          expr: >-
+            clamp_min(
+              ((cc:host_cpu_busy_ratio * on (host) cc:host_cores) and on (host) cc:host_inventory)
+                - on (host) sum by (host) (cc:host_class_cores{class=~"ci|apps|agents|docker"}),
+              0)
+        - record: cc:host_class_cores
+          labels: {class: free}
+          expr: (cc:host_cores * (1 - cc:host_cpu_busy_ratio)) and on (host) cc:host_inventory
+        - record: cc:host_class_mem_bytes
+          labels: {class: ci}
+          expr: sum by (host) (cc:runner_mem_bytes)
+        - record: cc:host_class_mem_bytes
+          labels: {class: apps}
+          expr: >-
+            sum by (host) (label_replace(
+              sum by (node) (container_memory_working_set_bytes{container!="", node!=""}),
+              "host", "$1", "node", "(.+)"))
+        - record: cc:host_class_mem_bytes
+          labels: {class: agents}
+          expr: >-
+            (max by (host) (node_agent_resident_bytes * on (instance) group_left (host) cc:host_instance) and on (host) cc:host_inventory)
+        - record: cc:host_class_mem_bytes
+          labels: {class: docker}
+          expr: >-
+            (sum by (host) (node_docker_container_memory_bytes * on (instance) group_left (host) cc:host_instance) and on (host) cc:host_inventory)
+            or (cc:host_inventory * 0)
+        - record: cc:host_class_mem_bytes
+          labels: {class: other}
+          expr: >-
+            clamp_min(
+              (cc:host_mem_used_bytes and on (host) cc:host_inventory)
+                - on (host) sum by (host) (cc:host_class_mem_bytes{class=~"ci|apps|agents|docker"}),
+              0)
+        - record: cc:host_class_mem_bytes
+          labels: {class: free}
+          expr: clamp_min(cc:host_mem_total_bytes - cc:host_mem_used_bytes, 0) and on (host) cc:host_inventory
+        # Reserved. CI: the CPUs the runners' cgroups may use. Each runner reports its whole
+        # cpuset, and runners sharing a pin (or inheriting the host's) report the same set, so the
+        # host's figure is the widest one, not a sum. Memory: the cgroup cap of a runner that holds
+        # one alone, which is its own, so it sums.
+        - record: cc:host_class_reserved_cores
+          labels: {class: ci}
+          expr: max by (host) (cc:runner_cores_allowed)
+        - record: cc:host_class_reserved_mem_bytes
+          labels: {class: ci}
+          expr: sum by (host) (cc:runner_mem_max_bytes)
+        # k3s: what Running pods request. Most pods set none, so used and reserved are shown side by side.
+        - record: cc:host_class_reserved_cores
+          labels: {class: apps}
+          expr: >-
+            sum by (host) (label_replace(
+              sum by (node) (kube_pod_container_resource_requests{resource="cpu", node!=""}
+                and on (namespace, pod) (kube_pod_status_phase{phase="Running"} == 1)),
+              "host", "$1", "node", "(.+)"))
+        - record: cc:host_class_reserved_mem_bytes
+          labels: {class: apps}
+          expr: >-
+            sum by (host) (label_replace(
+              sum by (node) (kube_pod_container_resource_requests{resource="memory", node!=""}
+                and on (namespace, pod) (kube_pod_status_phase{phase="Running"} == 1)),
+              "host", "$1", "node", "(.+)"))
+        # Agents: the cpuset the agent-host-budget role pins all agent work to. A declared size,
+        # not a measurement, so it has no freshness gate: it stays until the role removes it.
+        - record: cc:host_class_reserved_cores
+          labels: {class: agents}
+          expr: max by (host) (agent_host_cpus * on (instance) group_left (host) cc:host_instance)
     # CI pools: how many runners each pool has, how many are busy, and how many jobs
     # wait for it. Read next to each other these show balance: a saturated pool
     # beside idle ones. Pools are caps: a slot is counted once per cap it takes (github_runner_pool_slot), so a job

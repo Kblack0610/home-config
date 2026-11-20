@@ -653,6 +653,7 @@ class GovernorTest(unittest.TestCase):
     def test_check_override_holds_each_key_to_the_schema(self):
         ok = [("aws-spot-1.power", '{"action": "off", "until": 1796112000}'),
               ("cachyos-x8664-main.slots", '{"slots": 0, "by": "machine-mode work"}'),
+              ("cachyos-x8664-main.slots", '{"slots": 0, "local": 1, "by": "machine-mode reserved"}'),
               ("ms-a2.reserve", '{"until": 1796112000.5}'), ("Ms_A2.reserve", '{"until": 1}')]
         bad = [("aws-spot-1", '{"action": "off", "until": 1}'),          # the old bare key
                ("aws-spot-1.demand", '{"n": 1}'),                         # no such family
@@ -663,6 +664,7 @@ class GovernorTest(unittest.TestCase):
                ("aws-spot-1.power", '{"action": "on", "until": 1, "by": "x"}'),
                ("h.slots", '{"slots": 2}'), ("h.slots", '{"slots": -1, "by": "x"}'),
                ("h.slots", '{"slots": true, "by": "x"}'), ("h.slots", '{"slots": 1.5, "by": "x"}'),
+               ("h.slots", '{"slots": 0, "local": -1, "by": "x"}'), ("h.slots", '{"slots": 0, "local": "1", "by": "x"}'),
                ("h.reserve", '{"until": "2000"}'), ("h.reserve", "[1]"), ("h.reserve", "not json")]
         for key, raw in ok:
             self.assertEqual(governor.check_override(key, raw), "", (key, raw))
@@ -2897,6 +2899,62 @@ class LocalSeatTest(unittest.TestCase):
         self.assertEqual(governor.local_units(LOCAL, local, {"ws": ("STEADY", "short of admit on idle")})[0], {"ws": 1})
         self.ask(local, "ws-local-2", "local")  # held past admitted: capacity never reads under busy
         self.assertEqual(governor.local_units(LOCAL, local, {"ws": ("HOT", "")})[:2], ({"ws": 2}, {"ws": 2.0}))
+
+    # machine-mode's unity_slots: the <host>.slots key's local field pins the host's local seats.
+    PINNED_LOCAL = {**LOCAL, "local": {"ws": 3}, "local_min_admitted": 2}
+
+    def test_a_local_pin_sets_the_count_below_the_floor_whatever_the_verdict_but_full(self):
+        rule, cfg = governor.local_rule, self.PINNED_LOCAL
+        self.assertEqual(rule(cfg, "ws", "ROOM", 3, 1, {}, 1000, 1), 1)  # under the floor of 2
+        self.assertEqual(rule(cfg, "ws", "ROOM", 2, 0, {"ws": 900}, 1000, 1), 1)  # in the cooldown too
+        self.assertEqual(rule(cfg, "ws", "HOT", 1, 0, {"ws": 900}, 1000, 2), 2)  # up, with no run waiting
+        self.assertEqual(rule(cfg, "ws", "STEADY", 2, 0, {}, 1000, 9), 3)  # at most the seats
+        self.assertEqual(rule(cfg, "ws", "ROOM", 2, 5, {}, 1000, 2), 2)  # never past the pin
+        self.assertEqual(rule(cfg, "ws", "FULL", 3, 0, {}, 1000, 3), 2)  # FULL still steps down...
+        self.assertEqual(rule(cfg, "ws", "FULL", 3, 0, {}, 1000, 2), 2)  # ...and never above the pin
+        # Negative control: unpinned, the verdict and the floor rule as before.
+        self.assertEqual(rule(cfg, "ws", "ROOM", 3, 1, {}, 1000), 3)
+        self.assertEqual(rule(cfg, "ws", "HOT", 2, 0, {}, 1000), 2)
+
+    def test_local_pass_obeys_the_pin_and_logs_it(self):
+        cfg = self.PINNED_LOCAL
+        local = governor.LocalSeats(cfg)
+        for s in ("ws-local-1", "ws-local-2"):
+            self.ask(local, s, "github")
+        self.assertEqual(local.state("ws"), (2, 0, 2))
+        with mock.patch("builtins.print") as out:
+            governor.local_pass(cfg, local, {"ws": ("ROOM", "idle 0.60")}, {}, time.time(), {"ws": 1})
+        self.assertEqual(local.state("ws"), (2, 0, 1))  # the running runs keep their seats
+        self.assertIn("local ws: 2 -> 1 seats (2 held, 0 waiting): PINNED, pinned to 1", out.call_args.args[0])
+        self.ask(local, "ws-local-3", "github")
+        self.assertEqual(local.state("ws"), (2, 1, 1))  # the next run waits
+        self.assertEqual(governor.local_units(cfg, local, {"ws": ("ROOM", "")}, {"ws": 1})[0], {"ws": 2})
+        self.ask(local, "ws-local-1", "done")
+        self.ask(local, "ws-local-2", "done")
+        self.assertEqual(governor.local_units(cfg, local, {"ws": ("ROOM", "")}, {"ws": 1})[0], {"ws": 1})
+        # Negative control: no pin, a ROOM host counts every seat.
+        self.assertEqual(governor.local_units(cfg, local, {"ws": ("ROOM", "")})[0], {"ws": 3})
+
+    def test_read_local_pins(self):
+        import tempfile
+        cfg = self.PINNED_LOCAL
+        with tempfile.TemporaryDirectory() as d, mock.patch.object(governor, "OVERRIDE_DIR", d), \
+                mock.patch("builtins.print"):
+            self.assertEqual(governor.read_local_pins(cfg), {})  # no ConfigMap
+            path = os.path.join(d, "ws.slots")
+            for body, want in (('{"slots": 0, "local": 1, "by": "m"}', {"ws": 1}),
+                               ('{"slots": 0, "local": 0, "by": "m"}', {"ws": 0}),
+                               ('{"slots": 0, "by": "m"}', {}),  # a runner pin alone pins no local seat
+                               ('{"slots": 0, "local": -1, "by": "m"}', {}), ('{"slots": 0, "local": 1}', {})):
+                with open(path, "w") as f:
+                    f.write(body)
+                self.assertEqual(governor.read_local_pins(cfg), want, body)
+            # A release reservation holds pool slots, not local seats.
+            with open(os.path.join(d, "ws.reserve"), "w") as f:
+                f.write('{"until": 99999999999}')
+            with open(path, "w") as f:
+                f.write('{"slots": 0, "local": 2, "by": "m"}')
+            self.assertEqual(governor.read_local_pins(cfg), {"ws": 2})
 
 
 class EveryMachineTest(unittest.TestCase):

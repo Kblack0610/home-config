@@ -30,7 +30,7 @@
 #   cc:host_local_open_slots{host}                       the always-open part of its gate slots
 #   cc:host_local_done_24h / _pass_ratio_24h{host}       its gates finished in 24h, and pass / finished
 #   cc:pool_done_24h / _cancelled_24h / _pass_ratio_24h{pool}  jobs of each kind finished in 24h (pool=<kind>, as ci_runner_job names it)
-#   cc:pool_slots / _busy / _withheld{pool}  runners that can take a job, those running one, and idle ones the governor withheld
+#   cc:pool_slots / _busy / _withheld{pool}  runners that can take a job of the kind, runners running a job of it (ci_runner_job), and idle ones the governor withheld
 #   cc:site_slots / _busy{site}             the same slots and busy, local (home LAN, workstation gates included) vs cloud
 #   cc:github_hosted_running                jobs running now on GitHub's own runners
 #
@@ -695,10 +695,14 @@ spec:
               and on (name) (max without (instance, pod, job, namespace, service, endpoint, container) (github_runner_withheld) == 1)
               and on (name) (max without (instance, pod, job, namespace, service, endpoint, container) (ci_governor_lent) == 1))
             or cc:pool_slots * 0
+        # Busy is by the kind of job a runner runs (ci_runner_job, what a machine row's DOING
+        # names), never by its caps: a unity-pool runner also takes light and heavy, so counting
+        # caps read heavy 7/9 busy with no heavy job running (2026-11-19). Slots stay by caps,
+        # so a kind's free slots are not slots minus busy; WAITING says whether its jobs start.
         - record: cc:pool_busy
           expr: >-
-            count by (pool) (max without (instance, pod, job, namespace, service, endpoint, container)
-              (github_runner_pool_slot{state="running"}))
+            count by (pool) (label_replace(max without (instance, pod, job, namespace, service, endpoint, container)
+              (ci_runner_job), "pool", "$1", "kind", "(.+)"))
             or cc:pool_slots * 0
         # The same slots and busy split by where the machine is: site="cloud" for the
         # topology's cloud hosts (inventory unity_ci_lan: false), "local" otherwise. The

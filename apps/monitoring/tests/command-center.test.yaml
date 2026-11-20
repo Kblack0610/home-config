@@ -82,6 +82,10 @@ tests:
         values: '1x5'
       - series: 'ci_governor_lent{name="b",host="h",to="build",instance="y"}'
         values: '1x5'
+      - series: 'ci_runner_job{runner="a",kind="unity",instance="x"}'
+        values: '1x5'
+      - series: 'ci_runner_job{runner="d",kind="unity",instance="x"}'
+        values: '1x5'
     promql_expr_test:
       - expr: cc:pool_slots
         eval_time: 2m
@@ -104,7 +108,7 @@ tests:
           - labels: 'cc:pool_busy{pool="unity"}'
             value: 2
 
-  - name: a slot with two caps is a slot of each pool, and a missing slot is in none
+  - name: a slot with two caps is a slot of each pool but busy only in the kind of job it runs, and a missing slot is in none
     interval: 1m
     input_series:
       - series: 'github_runner_pool_slot{name="m",host="h",pool="light",state="running",instance="x"}'
@@ -113,6 +117,8 @@ tests:
         values: '1x5'
       - series: 'github_runner_pool_slot{name="n",host="h",pool="unity",state="missing",instance="x"}'
         values: '0x5'
+      - series: 'ci_runner_job{runner="m",kind="unity",instance="x"}'
+        values: '1x5'
     promql_expr_test:
       - expr: cc:pool_slots
         eval_time: 2m
@@ -125,7 +131,7 @@ tests:
         eval_time: 2m
         exp_samples:
           - labels: 'cc:pool_busy{pool="light"}'
-            value: 1
+            value: 0
           - labels: 'cc:pool_busy{pool="unity"}'
             value: 1
 

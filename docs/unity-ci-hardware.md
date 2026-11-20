@@ -70,7 +70,7 @@ Decided 2026-11-10 (ask QfY0Fp), 12-13 slots: an MS-A2 9955HX barebone with raze
 
 Measured without the Mac Studio, 2026-11-13 to 11-14: the 24h rolling Unity wait p90 (the exporter's `github_job_queue_seconds{pool="unity",quantile="0.9"}`, recorded from 11-13 06:00 UTC) stayed over 30 min from then to 11-14 14:00 UTC, peaking at 92 min. That was with aws-burst-1, aws-burst-2, aws-burst-3 and aws-build-1 (about 23 slots) each on 14-24 h a day, so the Studio's load is larger than the 5 round-the-clock slots estimated above. aws-burst-2 alone does not replace it, and the 11-10 hardware stays the replacement.
 
-Retired 2026-11-16 at the human's request: the on-demand aws-burst-1, -2 and -3 (17 slots at $1.855/h a host), once ms-a2 (4 slots) and deskslim-2 (3) were in the pool. Overflow past the home hosts is now the Spot hosts (15 slots, when AWS has Spot room) and aws-build-1's six test slots, so a night queue that finds no Spot room waits longer than the p90 above.
+Retired 2026-11-16 at the human's request: the on-demand aws-burst-1, -2 and -3 (17 slots at $1.855/h a host), once ms-a2 (4 slots) and deskslim-2 (3) were in the pool. The Spot hosts and aws-build-1 left the pool on 2026-11-19 (their instances were gone), so nothing overflows past the home hosts.
 
 ## 6-8 slots in one box
 
@@ -95,7 +95,7 @@ Ruled out:
 - Threadripper 9960X: $6,400-8,600 for 7 slots, because the DDR5 RDIMM costs more than the CPU and board.
 - Dell R7525 and other 2U servers: 50-70 dBA under load, closet or garage only.
 
-Before ordering, settle the cap: the new box's slots plus the pool's registered slots must fit under `pool_max_admitted` (24 in `apps/ci-runner-governor/config.json`); if they do not, the new box replaces AWS slots, or the cap and the license question move. Then buy one box, run it at 4 slots, time a pinned PlayMode shard against razer-laptop, and ramp to 8.
+Before ordering, settle the cap: the new box's slots plus the pool's registered slots must fit under `pool_max_admitted` (24 in `apps/ci-runner-governor/config.json`); if they do not, the cap and the license question move. Then buy one box, run it at 4 slots, time a pinned PlayMode shard against razer-laptop, and ramp to 8.
 
 ## Laptops as runners
 

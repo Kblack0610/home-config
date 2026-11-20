@@ -56,9 +56,6 @@ alertmanager:
         # iot-pi-nodes sleep by design.
         - matchers: [alertname = "TargetDown", job = "iot-pi-nodes"]
           receiver: "null"
-        # NodeDown covers AWS targets individually and excludes expected power stops.
-        - matchers: [alertname = "TargetDown", job = "aws-ci-nodes"]
-          receiver: "null"
         # CVEs use a separate topic so the human alert feed stays readable.
         # Up to 10 images, at most once a day while the list changes,
         # else weekly. The full list: alertmanager.kblab.me, filter

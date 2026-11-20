@@ -130,9 +130,10 @@ jobs:
       - name: cluster-janitor quarantine trigger and cap tests
         run: python3 apps/cluster-janitor/test_quarantine.py
       # An if, not "! cmd": sh -e ignores a "!" pipeline's status, so a "!" step passes either way.
-      - name: Negative control - the topology check fails on aws-build-1 slot groups swapped off their build slots' cores
+      - name: Negative control - the topology check fails on ms-a2's slot group swapped off its build slot's cores
         run: |
-          sed 's/unity_ci_slot_groups: {1: \[4, 5\], 2: \[6, 7\]/unity_ci_slot_groups: {1: [4, 6], 2: [5, 7]/' ansible/inventory.yml > planted-groups.yml
+          sed 's/unity_ci_slot_groups: {5: \[3, 4\]}/unity_ci_slot_groups: {5: [2, 4]}/' ansible/inventory.yml > planted-groups.yml
+          ! cmp -s planted-groups.yml ansible/inventory.yml || { echo "the plant did not apply"; exit 1; }
           rc=0; python3 scripts/render-ci-topology.py --check --inventory planted-groups.yml > planted-groups.out 2>&1 || rc=$?
           rm planted-groups.yml; cat planted-groups.out
           [ "$rc" -ne 0 ] || { echo "the check passed a planted bad group"; exit 1; }

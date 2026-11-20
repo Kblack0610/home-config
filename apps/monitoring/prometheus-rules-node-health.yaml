@@ -22,11 +22,8 @@ spec:
         # paged on the thinkcentre power outage. iot-pi-nodes (sleepy Pi Zeros)
         # are intentionally excluded to avoid false pages.
         - alert: NodeDown
-          # AWS hosts stop between jobs. Unknown power state remains a failure.
           expr: >-
-            (up{job=~"node-exporter|mac-nodes|standalone-nodes"} == 0)
-            or ((up{job="aws-ci-nodes"} == 0)
-              unless on (host) max by (host) (ci_governor_power_state{state=~"stopped|starting|stopping"} == 1))
+            up{job=~"node-exporter|mac-nodes|standalone-nodes"} == 0
           for: 2m
           labels:
             severity: critical
@@ -57,9 +54,8 @@ spec:
         # not: if the pi3 target disappeared from Prometheus entirely, NodeDown
         # would stop matching and nothing would say so. That box runs the LAN's
         # only DNS resolver, so it is the worst one to go quietly unmonitored.
-        # AWS targets have their own job, so losing that job needs the same check.
         - alert: StandaloneNodeExporterAbsent
-          expr: absent(up{job="standalone-nodes"}) or absent(up{job="aws-ci-nodes"})
+          expr: absent(up{job="standalone-nodes"})
           for: 15m
           labels:
             severity: warning
@@ -346,8 +342,8 @@ spec:
               (the server first if the pin moved; roles/k3s-agent README). A Pi's node
               name is not its inventory name; match it by IP in inventory.yml.
         # A house power cut reboots many hosts at once, and each host alone looks like a
-        # restart. 2026-11-04 19:35 and 2026-11-17 01:40 both went unpaged. AWS CI hosts
-        # stop and start by design, so they are left out.
+        # restart. 2026-11-04 19:35 and 2026-11-17 01:40 both went unpaged. Sleepy Pi Zeros
+        # (iot-pi-nodes) wake and sleep by design, so they are left out.
         - alert: HostPowerEvent
           expr: >-
             count(changes(node_boot_time_seconds{job=~"node-exporter|mac-nodes|standalone-nodes"}[5m]) > 0) >= 3

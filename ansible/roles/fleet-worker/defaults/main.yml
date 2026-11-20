@@ -4,7 +4,9 @@
 # bubblewrap, socat and npm for srt, the lane sandbox a headless harness runs in
 # (tasks/harnesses.yml installs srt itself), and
 # rust and gcc to build agent-panel, and mosquitto for agent-mqtt-publish, a
-# singleton lane that runs on whichever peer holds the fleet lease.
+# singleton lane that runs on whichever peer holds the fleet lease. pnpm and uv
+# build the standard repos (inventory fleet_workers fleet_repos): personal-sites
+# is a pnpm workspace, and trader's checks install their pins with uv.
 fleet_worker_packages:
   - git
   - tmux
@@ -21,6 +23,8 @@ fleet_worker_packages:
   - nodejs
   - npm
   - mosquitto
+  - pnpm
+  - uv
 # Ubuntu, the cloud worker (platform infra/aws-ci-burst, fleet-worker-1). It takes
 # light claude items only, so it skips codex and opencode, which apt does not carry.
 fleet_worker_packages_apt:

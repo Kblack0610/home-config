@@ -98,34 +98,10 @@ tests:
               summary: "victus:9100 battery at 15% off mains"
               description: "BAT1 on victus:9100 is at 15% with the charger offline. The host goes down within minutes; plug the charger in now."
 
-  - name: AWS expected power transitions stay quiet while running and unknown failures page
+  - name: a down target pages on each static job
     interval: 1m
     input_series:
-    - series: up{job="aws-ci-nodes",host="aws-stopped",instance="stopped:9100"}
-      values: '0x10'
-    - series: ci_governor_power_state{host="aws-stopped",state="stopped"}
-      values: 1x10
-    - series: up{job="aws-ci-nodes",host="aws-starting",instance="starting:9100"}
-      values: '0x10'
-    - series: ci_governor_power_state{host="aws-starting",state="starting"}
-      values: 1x10
-    - series: up{job="aws-ci-nodes",host="aws-stopping",instance="stopping:9100"}
-      values: '0x10'
-    - series: ci_governor_power_state{host="aws-stopping",state="stopping"}
-      values: 1x10
-    - series: up{job="aws-ci-nodes",host="aws-running",instance="running:9100"}
-      values: '0x10'
-    - series: ci_governor_power_state{host="aws-running",state="running"}
-      values: 1x10
-    - series: up{job="aws-ci-nodes",host="aws-unknown",instance="unknown:9100"}
-      values: '0x10'
-    - series: up{job="aws-ci-nodes",host="aws-zero",instance="zero:9100"}
-      values: '0x10'
-    - series: ci_governor_power_state{host="aws-zero",state="running"}
-      values: '0x10'
-    - series: up{job="aws-ci-nodes",host="aws-healthy",instance="healthy:9100"}
-      values: 1x10
-    - series: up{job="standalone-nodes",host="aws-stopped",instance="standalone:9100"}
+    - series: up{job="standalone-nodes",host="pi3",instance="standalone:9100"}
       values: '0x10'
     - series: up{job="node-exporter",instance="k3s:9100"}
       values: '0x10'
@@ -136,42 +112,12 @@ tests:
       alertname: NodeDown
       exp_alerts:
       - exp_labels:
-          job: aws-ci-nodes
-          host: aws-running
-          instance: running:9100
-          severity: critical
-          fleet: fix
-          category: node-health
-        exp_annotations:
-          summary: 'Node down: running:9100 (aws-ci-nodes)'
-          description: node-exporter target running:9100 (job aws-ci-nodes) has been unreachable for 2m; the host may be powered off, crashed, or off the network.
-      - exp_labels:
-          job: aws-ci-nodes
-          host: aws-unknown
-          instance: unknown:9100
-          severity: critical
-          fleet: fix
-          category: node-health
-        exp_annotations:
-          summary: 'Node down: unknown:9100 (aws-ci-nodes)'
-          description: node-exporter target unknown:9100 (job aws-ci-nodes) has been unreachable for 2m; the host may be powered off, crashed, or off the network.
-      - exp_labels:
-          job: aws-ci-nodes
-          host: aws-zero
-          instance: zero:9100
-          severity: critical
-          fleet: fix
-          category: node-health
-        exp_annotations:
-          summary: 'Node down: zero:9100 (aws-ci-nodes)'
-          description: node-exporter target zero:9100 (job aws-ci-nodes) has been unreachable for 2m; the host may be powered off, crashed, or off the network.
-      - exp_labels:
           job: standalone-nodes
           instance: standalone:9100
           severity: critical
           fleet: fix
           category: node-health
-          host: aws-stopped
+          host: pi3
         exp_annotations:
           summary: 'Node down: standalone:9100 (standalone-nodes)'
           description: node-exporter target standalone:9100 (job standalone-nodes) has been unreachable for 2m; the host may be powered off, crashed, or off the network.
@@ -194,40 +140,10 @@ tests:
           summary: 'Node down: mac:9100 (mac-nodes)'
           description: node-exporter target mac:9100 (job mac-nodes) has been unreachable for 2m; the host may be powered off, crashed, or off the network.
 
-  - name: standalone targets remain while the AWS scrape job disappears
+  - name: the standalone scrape job disappearing warns
     interval: 1m
     input_series:
-    - series: up{job="standalone-nodes",instance="standalone:9100"}
-      values: 1x20
-    alert_rule_test:
-    - eval_time: 16m
-      alertname: StandaloneNodeExporterAbsent
-      exp_alerts:
-      - exp_labels:
-          job: aws-ci-nodes
-          severity: warning
-          fleet: fix
-          category: node-health
-        exp_annotations:
-          summary: aws-ci-nodes scrape job is absent
-          description: No aws-ci-nodes targets are being scraped, so NodeDown is blind to this job's hosts. Check apps/monitoring/external-standalone-nodes.yaml and that prometheus-node-exporter is running on each host.
-  - name: configured stopped AWS targets prevent the absent-job alert
-    interval: 1m
-    input_series:
-    - series: up{job="standalone-nodes",instance="standalone:9100"}
-      values: 1x20
-    - series: up{job="aws-ci-nodes",host="aws-burst-1",instance="aws:9100"}
-      values: '0x20'
-    - series: ci_governor_power_state{host="aws-burst-1",state="stopped"}
-      values: 1x20
-    alert_rule_test:
-    - eval_time: 16m
-      alertname: StandaloneNodeExporterAbsent
-      exp_alerts: []
-  - name: AWS targets remain while the standalone scrape job disappears
-    interval: 1m
-    input_series:
-    - series: up{job="aws-ci-nodes",host="aws-build-1",instance="aws:9100"}
+    - series: up{job="node-exporter",instance="k3s:9100"}
       values: 1x20
     alert_rule_test:
     - eval_time: 16m
@@ -241,6 +157,15 @@ tests:
         exp_annotations:
           summary: standalone-nodes scrape job is absent
           description: No standalone-nodes targets are being scraped, so NodeDown is blind to this job's hosts. Check apps/monitoring/external-standalone-nodes.yaml and that prometheus-node-exporter is running on each host.
+  - name: a scraped standalone job stays quiet
+    interval: 1m
+    input_series:
+    - series: up{job="standalone-nodes",host="pi3",instance="standalone:9100"}
+      values: 1x20
+    alert_rule_test:
+    - eval_time: 16m
+      alertname: StandaloneNodeExporterAbsent
+      exp_alerts: []
   - name: a quarantine taint pages critical once per node, other taints do not
     interval: 1m
     input_series:
@@ -297,7 +222,7 @@ tests:
         alertname: KubeletVersionSkew
         exp_alerts: []
 
-  # Three hosts' boot times move together (a power cut); one alone, and an AWS host, do not.
+  # Three hosts' boot times move together (a power cut); one alone, and an iot-pi-nodes host, do not.
   - name: three hosts rebooting at once fire HostPowerEvent, one host does not
     interval: 1m
     input_series:
@@ -307,7 +232,7 @@ tests:
         values: '100x5 200x10'
       - series: 'node_boot_time_seconds{instance="c:9100",job="mac-nodes"}'
         values: '100x5 200x10'
-      - series: 'node_boot_time_seconds{instance="d:9100",job="aws-ci-nodes"}'
+      - series: 'node_boot_time_seconds{instance="d:9100",job="iot-pi-nodes"}'
         values: '100x5 200x10'
     alert_rule_test:
       - eval_time: 4m

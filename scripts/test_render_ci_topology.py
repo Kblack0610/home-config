@@ -13,6 +13,57 @@ topology = importlib.util.module_from_spec(SPEC)
 SPEC.loader.exec_module(topology)
 ROOT = Path(__file__).resolve().parents[1]
 
+# Two cloud hosts as the inventory carried the AWS ones until they were retired (2026-11-19), so the
+# cloud rules (power, no small jobs, build slot groups) stay tested while no cloud host is live.
+CLOUD = yaml.safe_load("""
+unity_ci_runners:
+  cloud-build-1:
+    host_tier: standard
+    ansible_host: i-0123456789abcdef0  # copy-guard: a fixture id, no such instance
+    ci_power: {provider: aws, region: us-east-2}
+    unity_ci_slots: 9
+    unity_ci_slot_groups: {1: [4, 5], 2: [6, 7], 3: [8, 9]}
+    unity_ci_slot_labels: {1: [unity-release], 2: [unity-release]}
+    unity_ci_gate: true
+    unity_ci_lan: false
+  cloud-1:
+    host_tier: standard
+    ansible_host: i-0fedcba9876543210  # copy-guard: a fixture id, no such instance
+    ci_power: {provider: aws, region: us-east-2}
+    unity_ci_slots: 5
+    unity_ci_full: true
+    unity_ci_lan: false
+ci_hosts:
+  cloud-build-1:
+    ci_caps: [unity, unity-build]
+    ci_cpus: 1-31
+    ci_memory_max: 116G
+    ci_unity_cpus: 1-30
+    ci_unity_slot_cpus: ["1-10", "11-20", "21-30", "1-5", "6-10", "11-15", "16-20", "21-25", "26-30"]
+    ci_unity_memory_max: 108G
+    ci_unity_slot_memory_max: [36G, 36G, 36G, 16G, 16G, 16G, 16G, 16G, 16G]
+  cloud-1:
+    ci_caps: [unity]
+    ci_cpus: 1-15,17-31
+    ci_memory_max: 112G
+    ci_unity_cpus: 1-15,17-31
+    ci_unity_slot_cpus: ["1-3,17-19", "4-6,20-22", "7-9,23-25", "10-12,26-28", "13-15,29-31"]
+    ci_unity_memory_max: 100G
+    ci_unity_slot_memory_max: 16G
+""")
+
+
+def with_cloud(case):
+    """The live inventory plus CLOUD, loaded as (hosts, groups)."""
+    inventory = yaml.safe_load((ROOT / "ansible/inventory.yml").read_text())
+    for group, hosts in CLOUD.items():
+        inventory["all"]["children"][group]["hosts"].update(hosts)
+    temporary = tempfile.TemporaryDirectory()
+    case.addCleanup(temporary.cleanup)
+    path = Path(temporary.name) / "inventory.yml"
+    path.write_text(yaml.safe_dump(inventory))
+    return topology.load_inventory(path)
+
 
 class RunnerTierTests(unittest.TestCase):
     def setUp(self):
@@ -46,7 +97,7 @@ class RunnerTierTests(unittest.TestCase):
 
 class CapTests(unittest.TestCase):
     def setUp(self):
-        self.hosts, self.groups = topology.load_inventory(ROOT / "ansible/inventory.yml")
+        self.hosts, self.groups = with_cloud(self)
 
     def slots(self):
         topo, fails = topology.render(self.hosts, self.groups)
@@ -81,18 +132,18 @@ class CapTests(unittest.TestCase):
         self.assertEqual(slots["cachyos-x8664-main-unity-pool-1"], ["unity"])
 
     def test_cloud_host_never_takes_heavy(self):
-        self.hosts["aws-spot-1"]["ci_caps"] = ["unity", "heavy"]
+        self.hosts["cloud-1"]["ci_caps"] = ["unity", "heavy"]
         _, fails = self.slots()
-        self.assertTrue(any("aws-spot-1: a cloud host" in f for f in fails))
+        self.assertTrue(any("cloud-1: a cloud host" in f for f in fails))
 
     def test_build_slot_takes_builds_alone(self):
         slots, _ = self.slots()
-        self.assertEqual(slots["aws-build-1-unity-pool-1"], ["unity-build"])
+        self.assertEqual(slots["cloud-build-1-unity-pool-1"], ["unity-build"])
 
     def test_cloud_host_never_takes_light(self):
-        self.hosts["aws-spot-1"]["ci_caps"] = ["unity", "light"]
+        self.hosts["cloud-1"]["ci_caps"] = ["unity", "light"]
         _, fails = self.slots()
-        self.assertTrue(any("aws-spot-1: a cloud host" in f for f in fails))
+        self.assertTrue(any("cloud-1: a cloud host" in f for f in fails))
 
     def test_slot_kind_missing_from_caps(self):
         self.hosts["deskslim-2"]["ci_caps"] = ["unity", "forgejo"]
@@ -141,7 +192,7 @@ class CapTests(unittest.TestCase):
     def test_ci_seat_kinds_must_be_small_kinds_the_host_takes_and_not_on_a_cloud_host(self):
         for host, kinds, want in (("windows-media-ci", ["heavy"], "ci_seat_kinds names heavy"),
                                   ("windows-media-ci", ["unity"], "ci_seat_kinds names unity"),
-                                  ("aws-spot-1", ["light"], "ci_seat_kinds on a cloud host")):
+                                  ("cloud-1", ["light"], "ci_seat_kinds on a cloud host")):
             with self.subTest(host=host, kinds=kinds):
                 self.setUp()
                 self.hosts[host]["ci_seat_kinds"] = kinds
@@ -176,9 +227,9 @@ class CapTests(unittest.TestCase):
         self.assertFalse([n for n, caps in slots.items() if n.startswith("ms-a2-") and "forgejo" in caps])
 
     def test_cloud_host_never_takes_forgejo(self):
-        self.hosts["aws-spot-1"]["ci_caps"] = ["unity", "forgejo"]
+        self.hosts["cloud-1"]["ci_caps"] = ["unity", "forgejo"]
         _, fails = self.slots()
-        self.assertTrue(any("aws-spot-1: a cloud host" in f for f in fails))
+        self.assertTrue(any("cloud-1: a cloud host" in f for f in fails))
 
     def test_a_lan_build_slot_is_its_group_key_on_its_tests_cores(self):
         topo, fails = topology.render(self.hosts, self.groups)
@@ -195,14 +246,21 @@ class CapTests(unittest.TestCase):
         self.assertIn("ms-a2: slots 3 and 5 share cores and are not one slot group", fails)
 
     def test_the_release_rule_is_pool_wide(self):
-        # ms-a2's build slot 5 and aws-build-1's slots 1-2 carry unity-release; aws-build-1 slot 3 does not.
+        # ms-a2's build slot 5 and cloud-build-1's slots 1-2 carry unity-release; cloud-build-1 slot 3 does not.
         self.assertEqual(topology.fit_failures(self.hosts, self.groups), [])
-        self.hosts["aws-build-1"]["unity_ci_slot_labels"] = {}
+        self.hosts["cloud-build-1"]["unity_ci_slot_labels"] = {}
         self.hosts["ms-a2"]["unity_ci_slot_labels"] = {1: ["slim-tour"]}
         self.assertTrue(any("0 of the pool's 4 build slots" in f for f in topology.fit_failures(self.hosts, self.groups)))
-        self.hosts["aws-build-1"]["unity_ci_slot_labels"] = {n: ["unity-release"] for n in (1, 2, 3)}
+        self.hosts["cloud-build-1"]["unity_ci_slot_labels"] = {n: ["unity-release"] for n in (1, 2, 3)}
         self.hosts["ms-a2"]["unity_ci_slot_labels"] = {5: ["unity-release"]}
         self.assertTrue(any("4 of the pool's 4 build slots" in f for f in topology.fit_failures(self.hosts, self.groups)))
+
+    def test_a_lone_build_slot_takes_releases_and_players_both(self):
+        # The live pool has ms-a2 slot 5 alone, so it must carry unity-release, and players.yml shares it.
+        self.hosts, self.groups = topology.load_inventory(ROOT / "ansible/inventory.yml")
+        self.assertEqual(topology.fit_failures(self.hosts, self.groups), [])
+        self.hosts["ms-a2"]["unity_ci_slot_labels"] = {1: ["slim-tour"]}
+        self.assertTrue(any("0 of the pool's 1 build slots" in f for f in topology.fit_failures(self.hosts, self.groups)))
 
     def wide_ms_a2(self):
         """ms-a2 with a wide slot 6 over test slots 1 and 2's cores (cores 2-7) and their memory, beside build slot 5."""
@@ -238,22 +296,22 @@ class CapTests(unittest.TestCase):
 
 class PowerAndLabelTests(unittest.TestCase):
     def setUp(self):
-        self.hosts, self.groups = topology.load_inventory(ROOT / "ansible/inventory.yml")
+        self.hosts, self.groups = with_cloud(self)
         self.labels = yaml.safe_load((ROOT / "ansible/inventory.yml").read_text())["all"]["vars"]["ci_labels"]
 
     def test_a_powered_host_carries_its_instance_from_ansible_host(self):
         topo, fails = topology.render(self.hosts, self.groups)
         self.assertEqual(fails, [])
-        power = topo["hosts"]["aws-spot-1"]["power"]
-        self.assertEqual(power["instance_id"], self.hosts["aws-spot-1"]["ansible_host"])
+        power = topo["hosts"]["cloud-1"]["power"]
+        self.assertEqual(power["instance_id"], self.hosts["cloud-1"]["ansible_host"])
         self.assertEqual(power["provider"], "aws")
         self.assertNotIn("power", topo["hosts"]["ms-a2"])
 
     def test_ci_power_needs_an_instance_id_and_a_cloud_host(self):
-        self.hosts["aws-spot-1"]["ansible_host"] = "10.0.0.1"
+        self.hosts["cloud-1"]["ansible_host"] = "10.0.0.1"
         self.hosts["ms-a2"]["ci_power"] = {"provider": "aws", "region": "us-east-2"}
         _, fails = topology.render(self.hosts, self.groups)
-        self.assertTrue(any("aws-spot-1: ci_power needs an EC2 instance id" in f for f in fails))
+        self.assertTrue(any("cloud-1: ci_power needs an EC2 instance id" in f for f in fails))
         self.assertTrue(any("ms-a2: ci_power on a host that is not a cloud Unity host" in f for f in fails))
 
     def test_the_label_vocabulary_is_whole_and_its_cap_roles_match_caps(self):

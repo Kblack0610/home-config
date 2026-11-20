@@ -16,6 +16,8 @@ free memory and disk; github-runner-exporter's runner states and waiting jobs) a
            a paired host steps test slots aside for a waiting build or wide job, then each
            standby (cloud) host admits, withholds, packs, starts or stops
   apply    relabel each runner, and call EC2 for each start or stop
+  local    local_pass(): the same verdict moves how many local test runs a host's local seats
+           grant at once (LOCAL SEATS), under the host's cooldown
   export   /metrics, for the cc:* rules, hub-core and agent-web
 A blind cycle (any source failing) decides nothing. The full rule, with its numbers and why
 each part holds, is docs/runbooks/unity-ci-host.md, "The governor"; config.json holds the knobs.
@@ -29,7 +31,13 @@ Inputs besides Prometheus:
     <host>.power     {"action": "on"|"off", "until": epoch} (agent-web)
     <host>.slots     {"slots": N, "by": who} (machine-mode), the one family with no end
     <host>.reserve   {"until": epoch}: pins the host to 0 until then (machine-mode release-lane)
-  GET /lease?seat=&have=&wait=    a Forgejo seat's supervisor long-polls its slot's lease
+  GET /lease?seat=&have=&wait=    a Forgejo seat's supervisor long-polls its slot's lease (and names
+                                  the task it runs, &task=); a local run asks for, holds and gives back
+                                  its seat (have=github, local, done)
+Served too: GET /tasks, {seat: task id} of the Forgejo seats running a job, which the exporter
+puts on their runner rows. Units (units(), ci_governor_capacity_units) count every topology host:
+the pool slots, the whole-slot hosts (mac-mini, windows-media: one unit per online runner) and
+the local seats.
 
 It needs GITHUB_TOKEN (Organization > Self-hosted runners: write, and Administration: write
 on each seat's personal repo) and the ci-governor IAM key for the power hook; without the
@@ -188,6 +196,13 @@ def load_config(path, topology_path=None):
                                 "repo": s.get("repo"), "caps": s["caps"],
                                 "cpus": s.get("cpus"), "memory_gb": s.get("memory_gb")}
                     for h, e in topo.items() for s in e["slots"] if s.get("borrows")}
+    # A LAN Unity host's local test runs, leased one seat each (LocalSeats).
+    cfg["local"] = {h: topo[h]["local_seats"] for h in local if topo[h].get("local_seats")}
+    stray = sorted(h for h, e in topo.items() if e.get("local_seats") and h not in cfg["local"])
+    if stray:
+        raise ValueError(f"local seats on no LAN Unity host: {', '.join(stray)}")
+    # A whole-slot host: runners and no governed slot (mac-mini, windows-media), one unit each (machine_units()).
+    cfg["machines"] = {h: sorted(s["name"] for s in e["slots"]) for h, e in topo.items() if h not in unity and e["slots"]}
     slots = {s["name"] for h in local for s in unity[h]}
     stray = sorted(n for n, s in cfg["seats"].items() if s["slot"] not in slots)
     if stray:
@@ -1100,6 +1115,9 @@ class Leases:
         # When each supervisor last asked.
         self.seen = dict.fromkeys(seats, 0.0)
         self.cap = {}
+        # The Forgejo task each seat said it runs (forgejo-seat.py, from its runner's log), for
+        # /tasks: the Forgejo API names no runner on a task (hc-571).
+        self.task = {}
 
     def seats(self, slot):
         return sorted(s for s, n in self.slot_of.items() if n == slot)
@@ -1137,11 +1155,22 @@ class Leases:
         with self.cond:
             return self.of(seat), self.ack[seat], self.seen[seat]
 
-    def wait(self, seat, have, timeout):
+    def tasks(self):
+        """{seat: the Forgejo task id it runs}."""
+        with self.cond:
+            return dict(self.task)
+
+    def wait(self, seat, have, timeout, task=None):
         """The seat's lease as soon as it differs from have, else have after timeout. A
         supervisor asks with the lease it holds and acts on what it gets back, so asking
-        with the current lease acknowledges it."""
+        with the current lease acknowledges it. task is the Forgejo task it runs: an ask
+        holding forgejo records it, and any ask without one clears it, as the next ask comes
+        once that job ends."""
         with self.cond:
+            if have == "forgejo" and task:
+                self.task[seat] = task
+            else:
+                self.task.pop(seat, None)
             self.seen[seat] = time.time()
             if self.of(seat) == have:
                 self.ack[seat] = have
@@ -1150,6 +1179,119 @@ class Leases:
                 self.ack[seat] = have
             self.seen[seat] = time.time()
             return self.of(seat)
+
+
+# LOCAL SEATS. A LAN Unity host's local test runs (topology "local_seats"; unity-core-playground
+# scripts/test/slots.sh on the workstation) have no runner and no forge, so no label can hold
+# them back: each run asks /lease for a seat of its host before it starts and gives it back when
+# it ends. The governor grants up to the host's admitted count, which local_rule() moves one seat
+# a cycle by the host's verdict, as load_rule() moves a slot, under the same cooldown.
+LOCAL_LEASES = ("github", "local", "done")
+# A run waiting for a seat that has not asked again for this long has gone: it leaves the queue
+# before a grant strands a seat on it. A guard: a client gone between two long-polls sends no event.
+LOCAL_WAIT_GRACE = 30
+
+
+class LocalSeats:
+    """Each local seat (<host>-local-<n>) is free, waiting or held. A run long-polls wait() by
+    seat name: have=github asks for it (answered local once granted, the oldest waiter of the
+    host first, else github after the wait), have=local holds it (a keepalive, answered local
+    after the wait; a held seat is never taken back, since a hold stops the next run, not the
+    running one) and have=done gives it back. A holder that has not asked for LEASE_STALE_SECONDS
+    loses it, and a run that holds a seat the governor lost (a restart) keeps it on its next ask."""
+
+    def __init__(self, cfg):
+        self.cond = Condition()
+        self.host_of = {f"{h}-local-{i}": h for h, n in cfg["local"].items() for i in range(1, n + 1)}
+        self.admitted = {h: min(n, cfg["local_min_admitted"]) for h, n in cfg["local"].items()}
+        self.asked = {}  # waiting seat -> when it first asked, so the oldest is granted first
+        self.seen = {}   # waiting or held seat -> when it last asked
+        self.held = set()
+        self.open = {}   # seat -> its long-polls in progress, which keep it from going stale
+
+    def state(self, host):
+        """(held, waiting, admitted) seats of host."""
+        with self.cond:
+            return (sum(1 for s in self.held if self.host_of[s] == host),
+                    sum(1 for s in self.asked if self.host_of[s] == host), self.admitted[host])
+
+    def admit(self, host, n):
+        with self.cond:
+            self.admitted[host] = n
+            self.grant(time.time())
+
+    def tick(self, now):
+        with self.cond:
+            self.grant(now)
+
+    def grant(self, now):
+        """Under the lock: drop the gone waiters and stale holders, then give each host's free
+        seats to its oldest waiters, and wake every long-poll to read its seat again."""
+        gone = [s for s, t in self.seen.items() if not self.open.get(s)
+                and now - t > (LEASE_STALE_SECONDS if s in self.held else LOCAL_WAIT_GRACE)]
+        for s in gone:
+            self.seen.pop(s)
+            self.asked.pop(s, None)
+            self.held.discard(s)
+        for host, n in self.admitted.items():
+            room = n - sum(1 for s in self.held if self.host_of[s] == host)
+            for s in sorted((s for s in self.asked if self.host_of[s] == host), key=self.asked.get)[:max(room, 0)]:
+                del self.asked[s]
+                self.held.add(s)
+        self.cond.notify_all()
+
+    def wait(self, seat, have, timeout):
+        with self.cond:
+            now = time.time()
+            if have == "done":
+                self.held.discard(seat)
+                self.asked.pop(seat, None)
+                self.seen.pop(seat, None)
+                self.grant(now)
+                return "github"
+            self.seen[seat] = now
+            if have == "local" and seat not in self.held:
+                self.asked.pop(seat, None)
+                self.held.add(seat)
+            elif seat not in self.held:
+                self.asked.setdefault(seat, now)
+                self.grant(now)
+            self.open[seat] = self.open.get(seat, 0) + 1
+            try:
+                self.cond.wait_for(lambda: (seat in self.held) != (have == "local"), timeout)
+            finally:
+                self.open[seat] -= 1
+            if seat in self.held or seat in self.asked:
+                self.seen[seat] = time.time()
+            return "local" if seat in self.held else "github"
+
+
+def local_rule(cfg, host, v, have, waiting, last_action, now):
+    """A host's local seats admitted next, one seat a cycle by its verdict, as load_rule moves a
+    slot: FULL, or HOT, takes one off down to local_min_admitted; ROOM adds one while a run waits
+    and a seat is left; nothing within the host's cooldown but a FULL step, so a local move and a
+    slot move share the one cooldown."""
+    floor = min(cfg["local_min_admitted"], cfg["local"][host])
+    if v != "FULL" and now - last_action.get(host, 0) < cfg["cooldown_seconds"]:
+        return have
+    if v in ("FULL", "HOT") and have > floor:
+        return have - 1
+    if v == "ROOM" and waiting and have < cfg["local"][host]:
+        return have + 1
+    return have
+
+
+def local_pass(cfg, local, verdicts, last_action, now):
+    """Move each host's local admitted count by local_rule() and log each move."""
+    local.tick(now)
+    for host in sorted(cfg["local"]):
+        held, waiting, have = local.state(host)
+        v, why = verdicts[host]
+        n = local_rule(cfg, host, v, have, waiting, last_action, now)
+        if n != have:
+            local.admit(host, n)
+            last_action[host] = now
+            print(f"local {host}: {have} -> {n} seats ({held} held, {waiting} waiting): {v}, {why}", flush=True)
 
 
 def observe_seats(cfg):
@@ -1309,6 +1451,54 @@ def units(cfg, runners, seat_state, waits, waiting, shared_waiting, weights, wit
         drain = None
     else:
         drain = sum(u * t for u, t in zip(backlog.values(), took)) / total
+    return capacity, busy, backlog, drain
+
+
+def observe_machines(cfg):
+    """{runner: state} of each whole-slot host's runners (github-runner-exporter)."""
+    names = "|".join(n for ns in cfg["machines"].values() for n in ns)
+    if not names:
+        return {}
+    return {r["metric"]["name"]: r["metric"].get("state", "") for r in prom(f'github_runner_state{{name=~"{names}"}}')}
+
+
+def machine_units(cfg, states):
+    """({host: capacity}, {host: busy}) of the whole-slot hosts: a runner that is online is one
+    unit of capacity, and busy while it runs a job. Nothing moves their labels: they take every
+    job their labels match, so online is what they can take."""
+    capacity = {h: sum(1 for n in ns if states.get(n) in ("running", "idle")) for h, ns in cfg["machines"].items()}
+    busy = {h: float(sum(1 for n in ns if states.get(n) == "running")) for h, ns in cfg["machines"].items()}
+    return capacity, busy
+
+
+def local_units(cfg, local, verdicts):
+    """({host: capacity}, {host: busy}, waiting runs) of the local seats. A held seat is one busy
+    unit. Capacity counts every seat, as units() counts a withheld slot, except on a host that is
+    FULL, HOT or short of admit (a slot's disk or hot hold): then only the admitted seats, or the
+    held ones when more run, since the hold stops the next run, not the running one."""
+    capacity, busy, waiting = {}, {}, 0
+    for host, seats in cfg["local"].items():
+        held, asked, admitted = local.state(host)
+        v, why = verdicts[host]
+        capacity[host] = max(held, admitted) if v in ("FULL", "HOT") or "short of admit on " in why else seats
+        busy[host] = float(held)
+        waiting += asked
+    return capacity, busy, waiting
+
+
+def every_machine(cfg, in_units, machines, local):
+    """units() with the whole-slot hosts (machine_units()) and the local seats (local_units())
+    added, and a row for every host of the topology, 0 when none of its slots is online.
+    The drain stays the pool's: a local run or a Mac job does not wait on pool capacity."""
+    capacity, busy, backlog, drain = in_units
+    capacity = {h: capacity.get(h, 0) for h in {*cfg["hosts"], *cfg["standby"], *cfg["machines"], *capacity}}
+    busy = {h: busy.get(h, 0.0) for h in capacity}
+    for cap, used in (machines, local[:2]):
+        for h, n in cap.items():
+            capacity[h] += n
+            busy[h] += used[h]
+    if local[2]:
+        backlog = {**backlog, "local": float(local[2])}
     return capacity, busy, backlog, drain
 
 
@@ -2090,14 +2280,17 @@ def render(cfg, hosts, runners, queue, decisions, ok, instances=None, budget=Non
         L.append(f'ci_governor_withheld{{runner="{name}",reason="{reason}"}} 1')
     if in_units:
         capacity, busy, backlog, drain = in_units
-        L += ["# HELP ci_governor_capacity_units Slots on a host that are busy or can take work (not withheld as pin, disk or hot)",
+        L += ["# HELP ci_governor_capacity_units Slots on a host that are busy or can take work (not withheld as pin, disk "
+              "or hot), each online runner of a whole-slot host and each local seat it may grant; a row per topology host",
               "# TYPE ci_governor_capacity_units gauge",
-              "# HELP ci_governor_busy_units Slot units in use: 1 per busy slot, a lent slot's busy seats by weight",
+              "# HELP ci_governor_busy_units Slot units in use: 1 per busy slot, a lent slot's busy seats by weight, "
+              "1 per running whole-slot runner and per held local seat",
               "# TYPE ci_governor_busy_units gauge"]
         for host in sorted(capacity):
             L.append(f'ci_governor_capacity_units{{host="{host}"}} {capacity[host]}')
             L.append(f'ci_governor_busy_units{{host="{host}"}} {busy[host]:.3f}')
-        L += ["# HELP ci_governor_backlog_units Summed weight of the waiting jobs, by kind (slot: takes a whole slot)",
+        L += ["# HELP ci_governor_backlog_units Summed weight of the waiting jobs, by kind (slot: takes a whole slot; "
+              "local: a local run waiting for a seat)",
               "# TYPE ci_governor_backlog_units gauge"]
         for kind, u in sorted(backlog.items()):
             L.append(f'ci_governor_backlog_units{{kind="{kind}"}} {u:.3f}')
@@ -2173,13 +2366,15 @@ def render_budget(b):
     return L
 
 
-def cycle(cfg, last_action, tracked=None, budget=None, lending=None):
-    """One reading and its actions. lending is (Leases, lends) to lend slots to seats, None not to."""
+def cycle(cfg, last_action, tracked=None, budget=None, lending=None, local=None):
+    """One reading and its actions. lending is (Leases, lends) to lend slots to seats, None not to;
+    local is the LocalSeats to admit local runs to, None not to."""
     now = time.time()
     try:
         hosts, runners, waiting = observe(pools(cfg))
         shared_waiting = observe_shared(cfg)
         seat_state, seat_waits = observe_seats(cfg) if lending else ({}, [])
+        machine_state = observe_machines(cfg)
     except API_ERRORS as e:
         print(f"blind cycle, deciding nothing: {e}", flush=True)
         with State.lock:
@@ -2245,8 +2440,14 @@ def cycle(cfg, last_action, tracked=None, budget=None, lending=None):
                 print(f"{host}: start {why} ({code}), passed over for the next standby host", flush=True)
     if budget is not None:
         read_budget(cfg, budget, now)
+    verdicts = host_verdicts(cfg, hosts)
+    if local is not None:
+        # After decide(): a slot it moved this cycle puts the host in its cooldown for local runs too.
+        local_pass(cfg, local, verdicts, last_action, now)
     withheld = withheld_reasons(cfg, hosts, runners, lends, pins, last_action, now)
-    in_units = units(cfg, runners, seat_state, seat_waits, waiting, shared_waiting, weights, withheld, job_durations())
+    in_units = every_machine(
+        cfg, units(cfg, runners, seat_state, seat_waits, waiting, shared_waiting, weights, withheld, job_durations()),
+        machine_units(cfg, machine_state), local_units(cfg, local, verdicts) if local is not None else ({}, {}, 0))
     with State.lock:
         State.metrics = "ci_governor_up 1\n" + render(
             cfg, hosts, runners, queue, decisions, True, instances, budget, lends, withheld, in_units,
@@ -2254,8 +2455,10 @@ def cycle(cfg, last_action, tracked=None, budget=None, lending=None):
 
 
 class Handler(BaseHTTPRequestHandler):
-    # main() sets it; None answers every /lease 404, so a supervisor stays on github.
+    # main() sets them; None answers every /lease 404, so a supervisor stays on github and a
+    # local run waits.
     leases = None
+    local = None
 
     def do_GET(self):
         url = urllib.parse.urlsplit(self.path)
@@ -2264,20 +2467,29 @@ class Handler(BaseHTTPRequestHandler):
         elif url.path == "/metrics":
             with State.lock:
                 body = State.metrics.encode()
+        elif url.path == "/tasks":
+            # {seat: Forgejo task id} of every Forgejo seat that said which job it runs (hc-571).
+            body = json.dumps(self.leases.tasks() if self.leases else {}).encode()
         elif url.path == "/lease":
-            # /lease?seat=<forgejo seat>&have=<github|forgejo>[&wait=<s>]: its slot's lease once
-            # it differs from have, or have after wait (at most LEASE_WAIT_MAX).
+            # /lease?seat=<forgejo seat>&have=<github|forgejo>[&wait=<s>][&task=<id>]: its slot's
+            # lease once it differs from have, or have after wait (at most LEASE_WAIT_MAX).
+            # /lease?seat=<local seat>&have=<github|local|done>[&wait=<s>]: LocalSeats.
             q = urllib.parse.parse_qs(url.query)
             seat, have = q.get("seat", [""])[0], q.get("have", ["github"])[0]
-            if self.leases is None or seat not in self.leases.slot_of:
+            task = q.get("task", [""])[0]
+            forgejo = self.leases is not None and seat in self.leases.slot_of
+            if not forgejo and (self.local is None or seat not in self.local.host_of):
                 return self.answer(404, b"no such seat\n")
             try:
                 wait = min(max(float(q.get("wait", [LEASE_WAIT_MAX])[0]), 0), LEASE_WAIT_MAX)
             except ValueError:
                 wait = -1
-            if have not in LEASES or wait < 0:
-                return self.answer(400, b"have is github or forgejo, wait a number of seconds\n")
-            body = (self.leases.wait(seat, have, wait) + "\n").encode()
+            if forgejo and (have not in LEASES or wait < 0 or (task and not task.isdigit())):
+                return self.answer(400, b"have is github or forgejo, wait a number of seconds, task a task id\n")
+            if not forgejo and (have not in LOCAL_LEASES or wait < 0 or task):
+                return self.answer(400, b"have is github, local or done, wait a number of seconds\n")
+            got = self.leases.wait(seat, have, wait, task or None) if forgejo else self.local.wait(seat, have, wait)
+            body = (got + "\n").encode()
         else:
             return self.answer(404, b"")
         self.answer(200, body)
@@ -2298,15 +2510,18 @@ def main():
         sys.exit("needs GITHUB_TOKEN (Organization > Self-hosted runners: write)")
     # Before the server: a /lease asked before this answers 404, which a supervisor reads as github.
     leases = Leases({n: s["slot"] for n, s in cfg["seats"].items() if s["forge"] == "forgejo"})
-    Handler.leases = leases
+    local = LocalSeats(cfg)
+    Handler.leases, Handler.local = leases, local
     # A thread per request: every Forgejo seat holds a /lease long-poll open.
     server = ThreadingHTTPServer(("", PORT), Handler)
     server.daemon_threads = True
     Thread(target=server.serve_forever, daemon=True).start()
-    print(f"ci-runner-governor: hosts {', '.join(sorted(cfg['hosts']))}, seats {', '.join(sorted(cfg['seats']))}", flush=True)
+    print(f"ci-runner-governor: hosts {', '.join(sorted(cfg['hosts']))}, seats {', '.join(sorted(cfg['seats']))}, "
+          f"local seats {', '.join(sorted(local.host_of)) or 'none'}, whole-slot hosts {', '.join(sorted(cfg['machines']))}",
+          flush=True)
     last_action, tracked, budget, lends = {}, {}, {}, {}
     while True:
-        cycle(cfg, last_action, tracked, budget, (leases, lends))
+        cycle(cfg, last_action, tracked, budget, (leases, lends), local)
         time.sleep(CYCLE_SECONDS)
 
 

@@ -835,6 +835,24 @@ def fget(path):
         return json.loads(r.read())
 
 
+# The governor's /tasks: {seat: Forgejo task id} for each seat running a job. A seat names
+# its task from the one-job log line; Forgejo's API has no runner-to-task field, so without
+# it a running seat's row carries no repo or workflow (hc-571).
+GOVERNOR_URL = os.environ.get("GOVERNOR_URL", "").rstrip("/")
+
+
+def governor_tasks():
+    """{seat: task id} from the governor, or {} when it is unset or does not answer."""
+    if not GOVERNOR_URL:
+        return {}
+    try:
+        with urllib.request.urlopen(f"{GOVERNOR_URL}/tasks", timeout=5) as r:
+            got = json.loads(r.read())
+        return {k: int(v) for k, v in got.items()} if isinstance(got, dict) else {}
+    except (*API_ERRORS, TypeError):
+        return {}
+
+
 def forgejo_runners():
     """Each topology Forgejo slot with its runner's state and labels. A name registered
     more than once (a slot re-registered) is its newest runner, the highest id."""
@@ -890,8 +908,9 @@ def forgejo_repo(repo, now):
     return out
 
 
-def forgejo_rows(runners_fut, repo_futs, now):
-    """Forgejo's rows for each series, as {metric: [(labels, value)]}, and its api_ok lines."""
+def forgejo_rows(runners_fut, repo_futs, now, seat_tasks=None):
+    """Forgejo's rows for each series, as {metric: [(labels, value)]}, and its api_ok lines.
+    seat_tasks ({seat: task id}, from the governor) names the job on a running seat's row."""
     rows, ok = {}, []
 
     def add(metric, lab, v):
@@ -944,11 +963,20 @@ def forgejo_rows(runners_fut, repo_futs, now):
     for q in QUANTILES if waits else ():
         add("github_job_queue_seconds", {"pool": "forgejo", "quantile": q}, int(quantile(waits, float(q))))
     if fr is not None:
+        by_task = {tid: (repo, t) for repo, tasks in FJ_TASKS.items() for tid, t in tasks.items()}
         by_state = dict.fromkeys(("running", "idle", "offline", "missing"), 0)
         for r in fr:
             lab = {"name": r["name"], "host": r["host"], "site": site_of(r["host"]),
                    "scope": "topology" if r["state"] == "missing" else "instance", "labels": ",".join(r["labels"]),
                    "state": r["state"], "repo": "", "workflow": "", "job_name": "", "branch": "", "url": "", **NO_RUN}
+            tid = (seat_tasks or {}).get(r["name"]) if r["state"] == "running" else None
+            if tid is not None:
+                # A task in no watched repo's window still says the seat is busy on something.
+                repo, t = by_task.get(tid, ("", {}))
+                lab.update(repo=repo.split("/", 1)[1] if repo else "(not watched)",
+                           workflow=t.get("workflow_id") or "", job_name=t.get("name") or "",
+                           branch=t.get("head_branch") or "",
+                           url=t.get("url") or (f"{FORGEJO_WEB}/{repo}/actions" if repo else ""))
             add("github_runner_state", lab, 0)
             add("github_runner_pool_slot", {**{k: lab[k] for k in SLOT_KEYS if k != "forge"}, "pool": "forgejo"}, 0)
             by_state[r["state"]] += 1
@@ -986,9 +1014,10 @@ def render():
         repo_futs = [pool.submit(repo_activity, r, now) for r in RUN_REPOS + FEED_REPOS]
         fj_runners = pool.submit(forgejo_runners) if FORGEJO_REPOS else None
         fj_repos = [pool.submit(forgejo_repo, r, now) for r in FORGEJO_REPOS]
+        fj_tasks = pool.submit(governor_tasks) if FORGEJO_REPOS else None
         acts = [f.result() for f in repo_futs]
         fetch_details(acts)
-    fj, fj_ok = forgejo_rows(fj_runners, fj_repos, now) if FORGEJO_REPOS else ({}, [])
+    fj, fj_ok = forgejo_rows(fj_runners, fj_repos, now, fj_tasks.result()) if FORGEJO_REPOS else ({}, [])
 
     def forgejo(metric):
         return [f"{metric}{{{labels_str(lab)}}} {v}" for lab, v in fj.get(metric, [])]

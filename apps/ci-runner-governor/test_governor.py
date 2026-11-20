@@ -240,6 +240,9 @@ def setUpModule():
     p = mock.patch.object(governor, "observe_shared", return_value=[])
     p.start()
     unittest.addModuleCleanup(p.stop)
+    p = mock.patch.object(governor, "observe_machines", return_value={})
+    p.start()
+    unittest.addModuleCleanup(p.stop)
 
 
 D1, D2, CX = "deskslim-1", "deskslim-2", "cachyos-x8664-main"
@@ -2766,6 +2769,184 @@ class SeatConfigTest(unittest.TestCase):
             load_files(conf, topo)
         topo["hosts"]["box"]["slots"][1]["borrows"] = S1
         self.assertEqual(load_files(conf, topo)["seats"][FJ_SEAT]["slot"], S1)
+
+
+# A host with two local seats and a floor of one, so a step up and a step down both show.
+LOCAL = {**LIVE, "local": {"ws": 2}, "local_min_admitted": 1, "cooldown_seconds": 600}
+
+
+class LocalSeatTest(unittest.TestCase):
+    def ask(self, local, seat, have, wait=0):
+        return local.wait(seat, have, wait)
+
+    def test_grants_go_to_the_oldest_waiter_up_to_admitted_and_done_hands_the_seat_on(self):
+        local = governor.LocalSeats(LOCAL)
+        self.assertEqual(sorted(local.host_of), ["ws-local-1", "ws-local-2"])
+        self.assertEqual(self.ask(local, "ws-local-2", "github"), "local")  # floor 1: one granted
+        self.assertEqual(self.ask(local, "ws-local-1", "github"), "github")  # waits
+        self.assertEqual(local.state("ws"), (1, 1, 1))
+        got = []
+        t = __import__("threading").Thread(target=lambda: got.append(self.ask(local, "ws-local-1", "github", 120)))
+        start = time.monotonic()
+        t.start()
+        self.assertEqual(self.ask(local, "ws-local-2", "done"), "github")  # gives it back: the waiter gets it
+        t.join(10)  # a guard only: the done wakes it
+        self.assertEqual(got, ["local"])
+        self.assertLess(time.monotonic() - start, 10)
+        self.assertEqual(local.state("ws"), (1, 0, 1))
+        self.assertEqual(self.ask(local, "ws-local-1", "local"), "local")  # a keepalive keeps it
+
+    def test_an_admit_grants_a_waiter_and_a_lower_count_never_takes_a_held_seat(self):
+        local = governor.LocalSeats(LOCAL)
+        self.ask(local, "ws-local-1", "github")
+        self.assertEqual(self.ask(local, "ws-local-2", "github"), "github")
+        local.admit("ws", 2)
+        self.assertEqual(self.ask(local, "ws-local-2", "github"), "local")
+        local.admit("ws", 1)  # HOT: the next run waits, both running ones go on
+        self.assertEqual(local.state("ws"), (2, 0, 1))
+        self.assertEqual(self.ask(local, "ws-local-2", "local"), "local")
+        self.ask(local, "ws-local-2", "done")
+        self.assertEqual(self.ask(local, "ws-local-2", "github"), "github")  # one held, one admitted
+
+    def test_a_run_the_governor_lost_keeps_its_seat_and_a_gone_one_loses_it(self):
+        local = governor.LocalSeats(LOCAL)
+        # A restart: the running run's keepalive holds the seat, past admitted.
+        self.assertEqual(self.ask(local, "ws-local-1", "local"), "local")
+        self.assertEqual(self.ask(local, "ws-local-2", "local"), "local")
+        self.assertEqual(local.state("ws"), (2, 0, 1))
+        now = time.time()
+        local.tick(now + governor.LEASE_STALE_SECONDS - 1)
+        self.assertEqual(local.state("ws")[0], 2)
+        local.tick(now + governor.LEASE_STALE_SECONDS + 1)  # neither asked again: both gone
+        self.assertEqual(local.state("ws"), (0, 0, 1))
+        # A waiter that stopped asking leaves the queue before a grant strands a seat on it.
+        self.assertEqual(self.ask(local, "ws-local-1", "github"), "local")
+        self.assertEqual(self.ask(local, "ws-local-2", "github"), "github")
+        local.tick(time.time() + governor.LOCAL_WAIT_GRACE + 1)
+        self.assertEqual(local.state("ws"), (1, 0, 1))  # the holder stays until it is stale
+
+    def test_local_rule_moves_one_seat_by_the_verdict_and_shares_the_hosts_cooldown(self):
+        rule = governor.local_rule
+        self.assertEqual(rule(LOCAL, "ws", "ROOM", 1, 1, {}, 1000), 2)
+        self.assertEqual(rule(LOCAL, "ws", "ROOM", 2, 1, {}, 1000), 2)  # every seat admitted
+        self.assertEqual(rule(LOCAL, "ws", "ROOM", 1, 0, {}, 1000), 1)  # no run waits
+        self.assertEqual(rule(LOCAL, "ws", "STEADY", 1, 3, {}, 1000), 1)
+        self.assertEqual(rule(LOCAL, "ws", "HOT", 2, 0, {}, 1000), 1)
+        self.assertEqual(rule(LOCAL, "ws", "HOT", 1, 0, {}, 1000), 1)  # the floor
+        self.assertEqual(rule(LOCAL, "ws", "ROOM", 1, 1, {"ws": 900}, 1000), 1)  # cooldown
+        self.assertEqual(rule(LOCAL, "ws", "HOT", 2, 0, {"ws": 900}, 1000), 2)
+        self.assertEqual(rule(LOCAL, "ws", "FULL", 2, 0, {"ws": 900}, 1000), 1)  # FULL past it
+
+    def test_local_pass_moves_the_count_and_starts_the_hosts_cooldown(self):
+        local = governor.LocalSeats(LOCAL)
+        self.ask(local, "ws-local-1", "github")
+        self.ask(local, "ws-local-2", "github")
+        last = {}
+        with mock.patch("builtins.print") as out:
+            governor.local_pass(LOCAL, local, {"ws": ("ROOM", "idle 0.60")}, last, time.time())
+        self.assertEqual(local.state("ws"), (2, 0, 2))
+        self.assertIn("local ws: 1 -> 2 seats", out.call_args.args[0])
+        self.assertIn("ws", last)  # a GitHub admit on ws now waits out the cooldown, and so does the next local move
+        # Negative control: a slot move this cycle (decide() set the host's last action) holds the local step.
+        local, last = governor.LocalSeats(LOCAL), {"ws": time.time()}
+        self.ask(local, "ws-local-1", "github")
+        self.ask(local, "ws-local-2", "github")
+        with mock.patch("builtins.print"):
+            governor.local_pass(LOCAL, local, {"ws": ("ROOM", "idle 0.60")}, last, time.time())
+        self.assertEqual(local.state("ws"), (1, 1, 1))
+
+    def test_local_units_count_every_seat_but_on_a_hot_host_only_the_admitted_or_held(self):
+        local = governor.LocalSeats(LOCAL)
+        self.ask(local, "ws-local-1", "github")
+        self.ask(local, "ws-local-2", "github")
+        self.assertEqual(governor.local_units(LOCAL, local, {"ws": ("ROOM", "")}), ({"ws": 2}, {"ws": 1.0}, 1))
+        self.assertEqual(governor.local_units(LOCAL, local, {"ws": ("HOT", "")}), ({"ws": 1}, {"ws": 1.0}, 1))
+        self.assertEqual(governor.local_units(LOCAL, local, {"ws": ("STEADY", "short of admit on idle")})[0], {"ws": 1})
+        self.ask(local, "ws-local-2", "local")  # held past admitted: capacity never reads under busy
+        self.assertEqual(governor.local_units(LOCAL, local, {"ws": ("HOT", "")})[:2], ({"ws": 2}, {"ws": 2.0}))
+
+
+class EveryMachineTest(unittest.TestCase):
+    def test_the_live_topology_has_whole_slot_hosts_and_the_workstations_local_seats(self):
+        self.assertEqual(sorted(LIVE["machines"]), ["mac-mini", "windows-media"])
+        self.assertEqual(LIVE["local"], {CX: 3})
+        self.assertEqual(LIVE["local_min_admitted"], 2)
+
+    def test_every_topology_host_has_a_units_row(self):
+        names = {"mac-mini-mac": "running", "m1-playground-mac": "idle", "windows-media": "offline"}
+        machines = governor.machine_units(LIVE, names)
+        self.assertEqual(machines, ({"mac-mini": 2, "windows-media": 0}, {"mac-mini": 1.0, "windows-media": 0.0}))
+        local = governor.LocalSeats(LIVE)
+        local.wait(f"{CX}-local-1", "github", 0)
+        verdicts = {h: ("ROOM", "") for h in LIVE["hosts"]}
+        pool = ({CX: 1, "ms-a2": 5}, {CX: 1.0, "ms-a2": 2.0}, {"slot": 2.0}, 300.0)
+        capacity, busy, backlog, drain = governor.every_machine(LIVE, pool, machines,
+                                                                governor.local_units(LIVE, local, verdicts))
+        self.assertEqual(sorted(capacity), sorted(live_topology()["hosts"]))
+        self.assertEqual(len(capacity), 7)
+        self.assertEqual((capacity[CX], busy[CX]), (4, 2.0))  # one pool slot plus three local seats, one held
+        self.assertEqual((capacity["mac-mini"], busy["mac-mini"]), (2, 1.0))
+        self.assertEqual((capacity["deskslim-1"], busy["deskslim-1"]), (0, 0.0))  # unread: a 0 row, not none
+        self.assertEqual((backlog, drain), ({"slot": 2.0}, 300.0))  # nothing waits for a local seat; drain the pool's
+        text = governor.render(LIVE, {"disk": {}}, {}, 0, [], True, in_units=(capacity, busy, backlog, drain))
+        self.assertIn('ci_governor_capacity_units{host="mac-mini"} 2', text)
+        self.assertIn('ci_governor_busy_units{host="windows-media"} 0.000', text)
+
+    def test_a_waiting_local_run_is_local_backlog(self):
+        out = governor.every_machine(LIVE, ({}, {}, {}, 0.0), ({}, {}), ({CX: 3}, {CX: 3.0}, 2))
+        self.assertEqual(out[2], {"local": 2.0})
+        self.assertEqual(out[3], 0.0)
+
+    def test_local_seats_on_a_host_with_no_lan_unity_slot_fail(self):
+        topo = {"hosts": {"m": {"site": "local", "local_seats": 2, "slots": [{"name": "m-mac", "caps": ["macos"]}]}}}
+        with self.assertRaisesRegex(ValueError, "local seats on no LAN Unity host: m"):
+            load_files({**live_config(), "hosts": {}}, topo)
+
+
+class LeaseEndpointTest(unittest.TestCase):
+    def setUp(self):
+        from http.server import ThreadingHTTPServer
+        import threading
+        server = ThreadingHTTPServer(("127.0.0.1", 0), governor.Handler)
+        server.daemon_threads = True
+        threading.Thread(target=server.serve_forever, daemon=True).start()
+        self.addCleanup(server.server_close)
+        self.addCleanup(server.shutdown)
+        self.base = f"http://127.0.0.1:{server.server_address[1]}"
+
+    def get(self, path):
+        try:
+            with urllib.request.urlopen(f"{self.base}{path}", timeout=10) as r:
+                return r.status, r.read().decode()
+        except urllib.error.HTTPError as e:
+            e.close()
+            return e.code, ""
+
+    def test_a_local_seat_asks_holds_and_gives_back_over_lease(self):
+        local = governor.LocalSeats(LOCAL)
+        with mock.patch.object(governor.Handler, "local", local):
+            self.assertEqual(self.get("/lease?seat=ws-local-9&have=github&wait=0")[0], 404)
+            self.assertEqual(self.get("/lease?seat=ws-local-1&have=forgejo&wait=0")[0], 400)
+            self.assertEqual(self.get("/lease?seat=ws-local-1&have=github&wait=0&task=5")[0], 400)
+            self.assertEqual(self.get("/lease?seat=ws-local-1&have=github&wait=0"), (200, "local\n"))
+            self.assertEqual(self.get("/lease?seat=ws-local-2&have=github&wait=0"), (200, "github\n"))
+            self.assertEqual(self.get("/lease?seat=ws-local-1&have=local&wait=0"), (200, "local\n"))
+            self.assertEqual(self.get("/lease?seat=ws-local-1&have=done&wait=0"), (200, "github\n"))
+            self.assertEqual(self.get("/lease?seat=ws-local-2&have=github&wait=0"), (200, "local\n"))
+
+    def test_a_forgejo_seat_names_its_task_and_tasks_serves_it_until_the_next_ask(self):
+        leases = governor.Leases({FJ_SEAT: S1})
+        leases.set(S1, "forgejo")
+        self.assertEqual(self.get("/tasks"), (200, "{}"))  # no leases: nothing runs
+        with mock.patch.object(governor.Handler, "leases", leases):
+            self.assertEqual(self.get(f"/lease?seat={FJ_SEAT}&have=forgejo&wait=0&task=x1")[0], 400)
+            self.assertEqual(self.get(f"/lease?seat={FJ_SEAT}&have=forgejo&wait=0&task=19311"), (200, "forgejo\n"))
+            self.assertEqual(json.loads(self.get("/tasks")[1]), {FJ_SEAT: "19311"})
+            self.get(f"/lease?seat={FJ_SEAT}&have=forgejo&wait=0")  # the job ended: its next ask names none
+            self.assertEqual(json.loads(self.get("/tasks")[1]), {})
+            # A task named while holding github is no job of its: it is not recorded.
+            self.get(f"/lease?seat={FJ_SEAT}&have=github&wait=0&task=19312")
+            self.assertEqual(json.loads(self.get("/tasks")[1]), {})
 
 
 if __name__ == "__main__":

@@ -1119,6 +1119,43 @@ class ForgejoTest(unittest.TestCase):
         self.assertFalse([r for r in rows(out, "github_runner_state") if 'forgejo' in r and 'forge="github"' in r])
         self.assertNotIn('pool="forgejo"', "".join(rows(out, "github_runner_pool_expected")))
 
+    def test_a_running_seat_names_the_job_the_governor_says_it_runs(self):
+        # hc-571: the seat logs its task id, the governor serves it on /tasks, and the
+        # row takes the task's repo, workflow, job, branch and run url.
+        with mock.patch.object(exporter, "governor_tasks", return_value={"box-forgejo-1": 101}):
+            st = self.state(self.render())
+        for want in ('repo="ci"', 'workflow="build.yaml"', 'job_name="build"', 'branch="master"',
+                     'url="https://forge/kb/ci/actions/runs/101"'):
+            self.assertIn(want, st["box-forgejo-1"])
+        # An idle seat is never named, even if the governor still holds a task for it.
+        with mock.patch.object(exporter, "governor_tasks", return_value={"box-forgejo-2": 101}):
+            self.assertIn('repo=""', self.state(self.render())["box-forgejo-2"])
+        # A task in no watched repo still marks the seat busy on something.
+        with mock.patch.object(exporter, "governor_tasks", return_value={"box-forgejo-1": 999}):
+            row = self.state(self.render())["box-forgejo-1"]
+        self.assertIn('repo="(not watched)"', row)
+        self.assertIn('workflow=""', row)
+
+    def test_no_governor_answer_leaves_a_running_seat_unnamed(self):
+        with mock.patch.object(exporter, "governor_tasks", return_value={}):
+            self.assertIn('repo=""', self.state(self.render())["box-forgejo-1"])
+        with mock.patch.object(exporter, "GOVERNOR_URL", ""):
+            self.assertEqual(exporter.governor_tasks(), {})
+        with mock.patch.object(exporter, "GOVERNOR_URL", "http://gov"), \
+                mock.patch.object(exporter.urllib.request, "urlopen", side_effect=urllib.error.URLError("down")):
+            self.assertEqual(exporter.governor_tasks(), {})
+        answer = mock.MagicMock()
+        answer.__enter__.return_value.read.return_value = b'{"box-forgejo-1": "101", "box-forgejo-2": "x"}'
+        with mock.patch.object(exporter, "GOVERNOR_URL", "http://gov"), \
+                mock.patch.object(exporter.urllib.request, "urlopen", return_value=answer):
+            # One bad id spoils the answer, never a crash.
+            self.assertEqual(exporter.governor_tasks(), {})
+        answer.__enter__.return_value.read.return_value = b'{"box-forgejo-1": "101"}'
+        with mock.patch.object(exporter, "GOVERNOR_URL", "http://gov"), \
+                mock.patch.object(exporter.urllib.request, "urlopen", return_value=answer) as op:
+            self.assertEqual(exporter.governor_tasks(), {"box-forgejo-1": 101})
+        self.assertEqual(op.call_args.args[0], "http://gov/tasks")
+
     def test_a_busy_forgejo_seat_runs_a_forgejo_job(self):
         self.assertEqual(rows(self.render(), "ci_runner_job"),
                          ['ci_runner_job{runner="box-forgejo-1",kind="forgejo"} 1',

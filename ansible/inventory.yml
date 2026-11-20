@@ -455,6 +455,8 @@ all:
     # Forgejo seats per lendable slot are not set here: render-ci-topology.py registers
     # floor(slot CPUs / MIN_JOB_CORES) and the governor admits as many as a measured weight
     # fits (ci-runner-governor config.json "weights"). Repo seats stay one per slot.
+    # ci_local_seats: how many local test runs (no forge, no runner) the governor leases at once
+    # on a LAN Unity host; rendered as the host's "local_seats", never as slots.
     # ci_seat_kinds: the GitHub kinds (light, heavy; each in ci_caps) that also get seats on
     # the host's lendable slots, so several small jobs share one lent slot. The rollout switch:
     # windows-media-ci first (hc-667), the other ROOM hosts a day after it runs clean.
@@ -520,6 +522,11 @@ all:
           ci_unity_slot_cpus: ["8-10,24-26", "11-13,27-29"]
           ci_unity_memory_max: 32G
           ci_unity_slot_memory_max: 16G
+          # Local test runs (unity-core-playground scripts/test/slots.sh) run outside the CI
+          # cpusets, on the agent CPUs; the governor leases each run a seat over /lease under
+          # this host's hot and idle checks (apps/ci-runner-governor, "Local seats"). 3 is
+          # today's 2 open slots plus the room slot slots.sh opens on an idle host.
+          ci_local_seats: 3
         # windows-media-ci, the Hyper-V VM: 12 vcores / 24 threads, SMT siblings
         # are n and n+1 (lscpu), 49G. Cores 0-2 (CPUs 0-5) stay with the guest OS,
         # docker and the runner agents; each of the three Unity slots gets three

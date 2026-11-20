@@ -14,7 +14,7 @@ A machine the human drives the fleet from, but that runs no session, goes in `fl
 ## Add a worker
 
 1. Add the host under `fleet_workers` with `fleet_place: false`, its `agent_cpus` (about 87.5% of its CPUs, see "CPU cap"), and its `ssh_host_ed25519` (its `/etc/ssh/ssh_host_ed25519_key.pub`, read over ssh you already trust). Its `ansible_host` can come from another group.
-2. From `ansible/`: `ansible-playbook playbooks/site.yml --limit <host> --tags fleet-worker,agent-host-budget`. Role `fleet-worker` installs tmux, stow, gh, codex, opencode, a Rust toolchain and Claude Code, stows the dotfiles (a plain `~/.zshrc` or `~/.bashrc` is kept as `*.pre-dotfiles`), clones `fleet_repos`, clones home-config to `~/dev/home/home-config` (HTTPS, remote `forgejo`; sessions push and open PRs there as the Forgejo bot `fleet-worker`, see "Forgejo bot token") with `fleet-roster-fetch.timer` fetching it every 10 minutes, so the worker reads the roster too (without it fleet-dispatch there, when it holds the lease, sees no other worker), creates the account dirs `claude-acct` knows, builds `agent-panel` from the dotfiles (`cargo build --release`, as the user, on Arch only) and links it to `~/.local/bin/agent-panel` for the workstation's `fleet-sessions`, writes every roster machine's host key into `/etc/ssh/ssh_known_hosts` (see "Host keys" below), enables lingering so its user timers run with nobody logged in, joins the agent store as a peer (see "The agent store") and sets up what the fleet lease holder runs ("Every worker a peer" below).
+2. From `ansible/`: `ansible-playbook playbooks/site.yml --limit <host> --tags fleet-worker,agent-host-budget`. Role `fleet-worker` installs tmux, stow, gh, codex, opencode, a Rust toolchain, pnpm, uv and Claude Code, clones the standard `fleet_repos` set, stows the dotfiles (a plain `~/.zshrc` or `~/.bashrc` is kept as `*.pre-dotfiles`), clones `fleet_repos`, clones home-config to `~/dev/home/home-config` (HTTPS, remote `forgejo`; sessions push and open PRs there as the Forgejo bot `fleet-worker`, see "Forgejo bot token") with `fleet-roster-fetch.timer` fetching it every 10 minutes, so the worker reads the roster too (without it fleet-dispatch there, when it holds the lease, sees no other worker), creates the account dirs `claude-acct` knows, builds `agent-panel` from the dotfiles (`cargo build --release`, as the user, on Arch only) and links it to `~/.local/bin/agent-panel` for the workstation's `fleet-sessions`, writes every roster machine's host key into `/etc/ssh/ssh_known_hosts` (see "Host keys" below), enables lingering so its user timers run with nobody logged in, joins the agent store as a peer (see "The agent store") and sets up what the fleet lease holder runs ("Every worker a peer" below).
 3. The play puts each Claude account's long-lived token on the worker (`claude-acct token push <host>`, from this machine's rbw, so unlock rbw here before the play; see dotfiles `docs/operations/claude-acct-tokens.md`). Its last task prints what is left for the human:
    - `gh auth login` on the worker, then re-run the play: that stows the private overlay and clones a private repo.
    - Add its store key, which the task prints, as a write deploy key on Forgejo `kblack0610/.agent`, then re-run the play: it joins the store (see "The agent store").
@@ -75,10 +75,10 @@ Every worker holds a peer clone of the agent store (`~/.agent`, the queue, the a
      ansible_ssh_common_args: <the SSM ProxyCommand aws-spot-1 has>
      fleet_tailscale: true
      fleet_ssh_host: fleet-worker-1         # its tailnet name: fleet-dispatch ssh goes there
-     fleet_place: false                     # no fleet_repos: the group's list (no Unity repo) is its own
+     fleet_place: false                     # no fleet_repos: it takes the group's standard list
    ```
 3. Start the instance and run the play. It joins the tailnet with the auth key from SOPS (role `tailscale-node`); then do the rest of "Add a worker", step 3.
-4. When the play prints `Ready`, set `fleet_place: true`.
+4. When the play prints `Ready`, set `fleet_place: true`. Not before pnpm and uv are on it: Ubuntu's apt carries neither, and `fleet_worker_packages_apt` has no installer for them yet, so the standard repo set's personal-sites and trader checks would fail there.
 
 ## Headless harnesses
 

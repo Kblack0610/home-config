@@ -58,11 +58,12 @@ def one_job(run):
     """forgejo-runner one-job's exit code. Its output goes on to the journal as before; the task
     it takes is named to the governor, and a failed ask only leaves the job unnamed."""
     p = subprocess.Popen(run, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, errors="replace")
+    named = False  # one-job takes one task, so its first task line is the only one
     for line in p.stdout:
-        sys.stdout.write(line)
-        sys.stdout.flush()
-        m = TASK.search(line)
+        print(line, end="", flush=True)
+        m = not named and TASK.search(line)
         if m:
+            named = True
             try:
                 ask("forgejo", 0, m.group(1))
             except (OSError, ValueError) as e:

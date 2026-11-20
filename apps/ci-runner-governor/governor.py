@@ -653,12 +653,22 @@ def pin_rule(snap, host, v, on, off, floor):
     return Action(host, "hold", "", "PINNED", why)
 
 
+def cooling(cfg, host, last_action, now):
+    """Whether host moved a slot or a local seat within cooldown_seconds."""
+    return now - last_action.get(host, 0) < cfg["cooldown_seconds"]
+
+
+def short_of_admit(why):
+    """The admit checks a STEADY verdict's why names as short (verdict()), [] for none."""
+    return why.rsplit("short of admit on ", 1)[1].split("+") if "short of admit on " in why else []
+
+
 def load_rule(snap, host, v, why, on, off, floor):
     """A LAN host's Action by its verdict: FULL, or HOT above its min_admitted, withholds one
     slot past the pool floor; ROOM admits one for a waiting job; nothing within cooldown_seconds
     of its last move but a FULL withhold."""
     cfg, t = snap.cfg, snap.cfg["hosts"][host]
-    if v != "FULL" and snap.now - snap.last_action.get(host, 0) < cfg["cooldown_seconds"]:
+    if v != "FULL" and cooling(cfg, host, snap.last_action, snap.now):
         return Action(host, "hold", "", v, f"cooldown ({why})")
     if ((v == "FULL" and on) or (v == "HOT" and len(on) > t["min_admitted"])) and floor > cfg["pool_min_admitted"]:
         return Action(host, "withhold", on[0], v, why)
@@ -1187,6 +1197,12 @@ class Leases:
 # it ends. The governor grants up to the host's admitted count, which local_rule() moves one seat
 # a cycle by the host's verdict, as load_rule() moves a slot, under the same cooldown.
 LOCAL_LEASES = ("github", "local", "done")
+
+
+def local_floor(cfg, host):
+    """The local seats host keeps admitted: local_min_admitted, or every seat when it has fewer."""
+    return min(cfg["local_min_admitted"], cfg["local"][host])
+
 # A run waiting for a seat that has not asked again for this long has gone: it leaves the queue
 # before a grant strands a seat on it. A guard: a client gone between two long-polls sends no event.
 LOCAL_WAIT_GRACE = 30
@@ -1203,17 +1219,19 @@ class LocalSeats:
     def __init__(self, cfg):
         self.cond = Condition()
         self.host_of = {f"{h}-local-{i}": h for h, n in cfg["local"].items() for i in range(1, n + 1)}
-        self.admitted = {h: min(n, cfg["local_min_admitted"]) for h, n in cfg["local"].items()}
-        self.asked = {}  # waiting seat -> when it first asked, so the oldest is granted first
-        self.seen = {}   # waiting or held seat -> when it last asked
-        self.held = set()
-        self.open = {}   # seat -> its long-polls in progress, which keep it from going stale
+        self.admitted = {h: local_floor(cfg, h) for h in cfg["local"]}
+        # Waiting and held seats -> when each last asked. A dict keeps its first insertion's
+        # order, so asked lists the waiters oldest first.
+        self.asked, self.held = {}, {}
+        self.open = {}  # seat -> its long-polls in progress, which keep it from going stale
+
+    def mine(self, seats, host):
+        return [s for s in seats if self.host_of[s] == host]
 
     def state(self, host):
         """(held, waiting, admitted) seats of host."""
         with self.cond:
-            return (sum(1 for s in self.held if self.host_of[s] == host),
-                    sum(1 for s in self.asked if self.host_of[s] == host), self.admitted[host])
+            return len(self.mine(self.held, host)), len(self.mine(self.asked, host)), self.admitted[host]
 
     def admit(self, host, n):
         with self.cond:
@@ -1227,42 +1245,36 @@ class LocalSeats:
     def grant(self, now):
         """Under the lock: drop the gone waiters and stale holders, then give each host's free
         seats to its oldest waiters, and wake every long-poll to read its seat again."""
-        gone = [s for s, t in self.seen.items() if not self.open.get(s)
-                and now - t > (LEASE_STALE_SECONDS if s in self.held else LOCAL_WAIT_GRACE)]
-        for s in gone:
-            self.seen.pop(s)
-            self.asked.pop(s, None)
-            self.held.discard(s)
+        for seats, stale in ((self.asked, LOCAL_WAIT_GRACE), (self.held, LEASE_STALE_SECONDS)):
+            for s in [s for s, t in seats.items() if not self.open.get(s) and now - t > stale]:
+                del seats[s]
         for host, n in self.admitted.items():
-            room = n - sum(1 for s in self.held if self.host_of[s] == host)
-            for s in sorted((s for s in self.asked if self.host_of[s] == host), key=self.asked.get)[:max(room, 0)]:
-                del self.asked[s]
-                self.held.add(s)
+            for s in self.mine(self.asked, host)[:max(n - len(self.mine(self.held, host)), 0)]:
+                self.held[s] = self.asked.pop(s)
         self.cond.notify_all()
 
     def wait(self, seat, have, timeout):
         with self.cond:
             now = time.time()
             if have == "done":
-                self.held.discard(seat)
+                self.held.pop(seat, None)
                 self.asked.pop(seat, None)
-                self.seen.pop(seat, None)
                 self.grant(now)
                 return "github"
-            self.seen[seat] = now
-            if have == "local" and seat not in self.held:
+            if seat in self.held or have == "local":
                 self.asked.pop(seat, None)
-                self.held.add(seat)
-            elif seat not in self.held:
-                self.asked.setdefault(seat, now)
+                self.held[seat] = now
+            else:
+                self.asked[seat] = now
                 self.grant(now)
             self.open[seat] = self.open.get(seat, 0) + 1
             try:
                 self.cond.wait_for(lambda: (seat in self.held) != (have == "local"), timeout)
             finally:
                 self.open[seat] -= 1
-            if seat in self.held or seat in self.asked:
-                self.seen[seat] = time.time()
+            for seats in (self.held, self.asked):
+                if seat in seats:
+                    seats[seat] = time.time()
             return "local" if seat in self.held else "github"
 
 
@@ -1271,10 +1283,9 @@ def local_rule(cfg, host, v, have, waiting, last_action, now):
     slot: FULL, or HOT, takes one off down to local_min_admitted; ROOM adds one while a run waits
     and a seat is left; nothing within the host's cooldown but a FULL step, so a local move and a
     slot move share the one cooldown."""
-    floor = min(cfg["local_min_admitted"], cfg["local"][host])
-    if v != "FULL" and now - last_action.get(host, 0) < cfg["cooldown_seconds"]:
+    if v != "FULL" and cooling(cfg, host, last_action, now):
         return have
-    if v in ("FULL", "HOT") and have > floor:
+    if v in ("FULL", "HOT") and have > local_floor(cfg, host):
         return have - 1
     if v == "ROOM" and waiting and have < cfg["local"][host]:
         return have + 1
@@ -1304,12 +1315,7 @@ def observe_seats(cfg):
     if not seats:
         return {}, []
     names = "|".join(sorted(seats))
-    state = {}
-    for r in prom(f'github_runner_state{{name=~"{names}"}}'):
-        m = r["metric"]
-        if m.get("state") != "missing":
-            state[m["name"]] = {"busy": m.get("state") == "running", "online": m.get("state") in ("running", "idle"),
-                                "withheld": False}
+    state = {n: {**s, "withheld": False} for n, s in runner_states(seats).items()}
     for r in prom(f'github_runner_withheld{{name=~"{names}"}}'):
         if r["metric"]["name"] in state:
             state[r["metric"]["name"]]["withheld"] = True
@@ -1454,20 +1460,30 @@ def units(cfg, runners, seat_state, waits, waiting, shared_waiting, weights, wit
     return capacity, busy, backlog, drain
 
 
+def runner_states(names):
+    """{runner: {busy, online}} of each named runner that is registered (github-runner-exporter)."""
+    out = {}
+    for r in prom(f'github_runner_state{{name=~"{"|".join(sorted(names))}"}}') if names else ():
+        m = r["metric"]
+        if m.get("state") != "missing":
+            out[m["name"]] = {"busy": m.get("state") == "running", "online": m.get("state") in ("running", "idle")}
+    return out
+
+
 def observe_machines(cfg):
-    """{runner: state} of each whole-slot host's runners (github-runner-exporter)."""
-    names = "|".join(n for ns in cfg["machines"].values() for n in ns)
-    if not names:
-        return {}
-    return {r["metric"]["name"]: r["metric"].get("state", "") for r in prom(f'github_runner_state{{name=~"{names}"}}')}
+    """runner_states() of each whole-slot host's runners."""
+    return runner_states([n for ns in cfg["machines"].values() for n in ns])
 
 
 def machine_units(cfg, states):
     """({host: capacity}, {host: busy}) of the whole-slot hosts: a runner that is online is one
     unit of capacity, and busy while it runs a job. Nothing moves their labels: they take every
     job their labels match, so online is what they can take."""
-    capacity = {h: sum(1 for n in ns if states.get(n) in ("running", "idle")) for h, ns in cfg["machines"].items()}
-    busy = {h: float(sum(1 for n in ns if states.get(n) == "running")) for h, ns in cfg["machines"].items()}
+    capacity, busy = {}, {}
+    for h, ns in cfg["machines"].items():
+        got = [states[n] for n in ns if n in states]
+        capacity[h] = sum(s["online"] for s in got)
+        busy[h] = float(sum(s["busy"] for s in got))
     return capacity, busy
 
 
@@ -1480,7 +1496,7 @@ def local_units(cfg, local, verdicts):
     for host, seats in cfg["local"].items():
         held, asked, admitted = local.state(host)
         v, why = verdicts[host]
-        capacity[host] = max(held, admitted) if v in ("FULL", "HOT") or "short of admit on " in why else seats
+        capacity[host] = max(held, admitted) if v in ("FULL", "HOT") or short_of_admit(why) else seats
         busy[host] = float(held)
         waiting += asked
     return capacity, busy, waiting
@@ -2195,7 +2211,7 @@ def withheld_reasons(cfg, hosts, runners, lends, pins, last_action, now):
             continue
         host = r["host"]
         v, why = verdicts.get(host, ("STANDBY", ""))
-        short = why.rsplit("short of admit on ", 1)[1].split("+") if "short of admit on " in why else []
+        short = short_of_admit(why)
         if name in (lends or {}) or name in paired:
             out[name] = "lent"
         elif host in (pins or {}):
@@ -2204,7 +2220,7 @@ def withheld_reasons(cfg, hosts, runners, lends, pins, last_action, now):
             out[name] = "disk"
         elif v == "HOT" or short:
             out[name] = "hot"
-        elif host in cfg["hosts"] and now - last_action.get(host, 0) < cfg["cooldown_seconds"]:
+        elif host in cfg["hosts"] and cooling(cfg, host, last_action, now):
             out[name] = "cooldown"
         else:
             out[name] = "no-work"

@@ -2873,7 +2873,8 @@ class EveryMachineTest(unittest.TestCase):
         self.assertEqual(LIVE["local_min_admitted"], 2)
 
     def test_every_topology_host_has_a_units_row(self):
-        names = {"mac-mini-mac": "running", "m1-playground-mac": "idle", "windows-media": "offline"}
+        names = {"mac-mini-mac": {"busy": True, "online": True}, "m1-playground-mac": {"busy": False, "online": True},
+                 "windows-media": {"busy": False, "online": False}}
         machines = governor.machine_units(LIVE, names)
         self.assertEqual(machines, ({"mac-mini": 2, "windows-media": 0}, {"mac-mini": 1.0, "windows-media": 0.0}))
         local = governor.LocalSeats(LIVE)

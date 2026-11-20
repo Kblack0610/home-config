@@ -839,6 +839,8 @@ def fget(path):
 # its task from the one-job log line; Forgejo's API has no runner-to-task field, so without
 # it a running seat's row carries no repo or workflow (hc-571).
 GOVERNOR_URL = os.environ.get("GOVERNOR_URL", "").rstrip("/")
+# The repo a busy runner's row names when its job is in no repo this exporter reads.
+NOT_WATCHED = "(not watched)"
 
 
 def governor_tasks():
@@ -963,7 +965,6 @@ def forgejo_rows(runners_fut, repo_futs, now, seat_tasks=None):
     for q in QUANTILES if waits else ():
         add("github_job_queue_seconds", {"pool": "forgejo", "quantile": q}, int(quantile(waits, float(q))))
     if fr is not None:
-        by_task = {tid: (repo, t) for repo, tasks in FJ_TASKS.items() for tid, t in tasks.items()}
         by_state = dict.fromkeys(("running", "idle", "offline", "missing"), 0)
         for r in fr:
             lab = {"name": r["name"], "host": r["host"], "site": site_of(r["host"]),
@@ -972,8 +973,8 @@ def forgejo_rows(runners_fut, repo_futs, now, seat_tasks=None):
             tid = (seat_tasks or {}).get(r["name"]) if r["state"] == "running" else None
             if tid is not None:
                 # A task in no watched repo's window still says the seat is busy on something.
-                repo, t = by_task.get(tid, ("", {}))
-                lab.update(repo=repo.split("/", 1)[1] if repo else "(not watched)",
+                repo, t = next(((rp, tasks[tid]) for rp, tasks in FJ_TASKS.items() if tid in tasks), ("", {}))
+                lab.update(repo=repo.split("/", 1)[1] if repo else NOT_WATCHED,
                            workflow=t.get("workflow_id") or "", job_name=t.get("name") or "",
                            branch=t.get("head_branch") or "",
                            url=t.get("url") or (f"{FORGEJO_WEB}/{repo}/actions" if repo else ""))
@@ -1012,9 +1013,8 @@ def render():
     with ThreadPoolExecutor(max_workers=8) as pool:
         runner_futs = {s: pool.submit(runners, s) for s in sources}
         repo_futs = [pool.submit(repo_activity, r, now) for r in RUN_REPOS + FEED_REPOS]
-        fj_runners = pool.submit(forgejo_runners) if FORGEJO_REPOS else None
+        fj_runners, fj_tasks = (pool.submit(forgejo_runners), pool.submit(governor_tasks)) if FORGEJO_REPOS else (None, None)
         fj_repos = [pool.submit(forgejo_repo, r, now) for r in FORGEJO_REPOS]
-        fj_tasks = pool.submit(governor_tasks) if FORGEJO_REPOS else None
         acts = [f.result() for f in repo_futs]
         fetch_details(acts)
     fj, fj_ok = forgejo_rows(fj_runners, fj_repos, now, fj_tasks.result()) if FORGEJO_REPOS else ({}, [])
@@ -1090,7 +1090,7 @@ def render():
             else:
                 # Busy on a job in a repo outside $RUN_REPOS, or one that started
                 # between the two API reads. Say so instead of a blank row.
-                lab["repo"] = "(not watched)"
+                lab["repo"] = NOT_WATCHED
         else:
             lab["state"] = "idle"
         # Online counts each GitHub topology slot once, as expected does: a runner

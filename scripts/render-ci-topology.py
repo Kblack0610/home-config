@@ -128,6 +128,10 @@ def render(hosts, groups):
         fails += [f"{host}: ci_repo_runners {r['slot']} has no borrows (the Unity slot it runs on)"
                   for r in v.get("ci_repo_runners", []) if "borrows" not in r]
         unity = any(host in groups.get(g, ()) for g in UNITY_GROUPS)
+        local = v.get("ci_local_seats")
+        if local is not None and (type(local) is not int or local < 1 or not unity or v.get("unity_ci_lan", True) is False):
+            fails.append(f"{host}: ci_local_seats is a count of 1 or more on a LAN Unity host, not {local!r}")
+            local = None
         if unity:
             total, group = unity_layout(v)
             fails += [f"{host}: build slot {b} (a unity_ci_slot_groups key) is not one of its slots 1-{total}"
@@ -150,11 +154,7 @@ def render(hosts, groups):
                     slot["group"] = [unity_slot(host, t) for t in group[n]]
                 slots.append(slot)
             slots += seats(host, v, caps, total, group, slots, fails)
-        local = v.get("ci_local_seats")
-        if local is not None and (type(local) is not int or local < 1 or not unity or v.get("unity_ci_lan", True) is False):
-            fails.append(f"{host}: ci_local_seats is a count of 1 or more on a LAN Unity host, not {local!r}")
-            local = None
-        if any(s.get("borrows") for s in slots) and not unity:
+        elif any(s.get("borrows") for s in slots):
             fails.append(f"{host}: a repo runner borrows a Unity slot, but the host has none")
         slots += [{"name": p["name"], "caps": [p["cap"]], **({"repo": p["repo"]} if p.get("repo") else {})}
                   for p in v.get("ci_pinned_runners", [])]

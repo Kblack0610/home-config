@@ -334,7 +334,14 @@ tests:
         values: '100x60'
       - series: 'node_filesystem_readonly{instance="m",device="disk3s5",job="mac-nodes",fstype="apfs",mountpoint="/System/Volumes/Data"}'
         values: '0x60'
+      - series: 'node_filesystem_files_free{instance="m",device="disk18s1",job="mac-nodes",fstype="hfs",mountpoint="/private/var/folders/x/T/tmp.a/m"}'
+        values: '0x60'
+      - series: 'node_filesystem_files{instance="m",device="disk18s1",job="mac-nodes",fstype="hfs",mountpoint="/private/var/folders/x/T/tmp.a/m"}'
+        values: '100x60'
     alert_rule_test:
+      - eval_time: 40m
+        alertname: NodeInodesCritical
+        exp_alerts: []
       - eval_time: 40m
         alertname: NodeDiskLow
         exp_alerts:

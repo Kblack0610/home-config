@@ -2590,6 +2590,27 @@ class LendTest(unittest.TestCase):
             # Readmitted, the slot takes no light: its seats serve that kind.
             self.assertEqual(box.labels(), ADMITTED - {"light"})
 
+    def test_an_older_github_job_takes_a_busy_light_lend_back_one_slot_per_job(self):
+        # hc-766: light jobs kept every lent slot busy, so a Unity job older than any light one
+        # never got a slot back while the lends waited to go idle.
+        box, lights, seats = self.light_box(0.3)
+        light = [("light", REPO_JOB, 60)] * 3
+        repo = [(REPO, REPO_JOB, 60)]
+        with seats:
+            box.step(light + repo), box.step(light + repo, 10_060)
+            self.assertEqual({s: l["phase"] for s, l in box.lends.items()}, {S1: "granted", S2: "granted"})
+            box.gh.scopes[ORG][lights[0]]["busy"] = True
+            box.gh.scopes[f"repos/{REPO}"][REPO_SEAT]["busy"] = True
+            younger = [("github", GITHUB_JOB[0], 30), ("light", REPO_JOB, 120), (REPO, REPO_JOB, 120)]
+            self.assertEqual(box.plan(younger, 10_120), [])
+            # One older job takes one slot back, busy or not; the other lend keeps serving.
+            older = [("github", GITHUB_JOB[0], 900), ("light", REPO_JOB, 120), (REPO, REPO_JOB, 120)]
+            self.assertEqual(box.step(older, 10_120), [("return", S1)] * 3)
+            # Its slot is still draining: the same job does not pull the repo lend back too.
+            self.assertEqual(box.plan(older, 10_180), [])
+            self.assertEqual([s[:2] for s in box.plan(older + [("github", GITHUB_JOB[0], 800)], 10_180)],
+                             [("return", S2)])
+
     def test_a_light_seat_admitted_with_no_lend_is_withheld(self):
         box, lights, seats = self.light_box(0.3)
         box.gh.scopes[ORG][lights[0]]["labels"] = {"self-hosted", "light"}

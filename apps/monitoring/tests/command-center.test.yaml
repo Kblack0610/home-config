@@ -1525,3 +1525,24 @@ tests:
         exp_samples:
           - labels: 'cc:host_class_reserved_cores{host="clp",class="ci"}'
             value: 2
+
+  - name: the workstation's busy cell reads 0 when idle and its gate count while a gate runs
+    interval: 1m
+    input_series:
+      - series: 'fleet_local_gate_finished{host="ws",result="pass",instance="ws"}'
+        values: '0x5'
+      - series: 'fleet_local_gate{host="ws",worktree="a",instance="ws"}'
+        values: '_ _ 1 1 1 1'
+      - series: 'node_textfile_mtime_seconds{file="/x/fleet_local.prom",instance="ws"}'
+        values: '0+60x5'
+    promql_expr_test:
+      - expr: count by (host) (cc:host_local_gate) or (cc:host_local_done_24h * 0)
+        eval_time: 1m
+        exp_samples:
+          - labels: '{host="ws"}'
+            value: 0
+      - expr: count by (host) (cc:host_local_gate) or (cc:host_local_done_24h * 0)
+        eval_time: 3m
+        exp_samples:
+          - labels: '{host="ws"}'
+            value: 1

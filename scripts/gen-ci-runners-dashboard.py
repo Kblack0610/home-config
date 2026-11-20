@@ -62,8 +62,9 @@ PR_LINK = {"matcher": {"id": "byName", "options": "pr"}, "properties": [
     {"id": "links", "value": [{"title": "Open PR on GitHub", "targetBlank": True,
                                "url": "https://github.com/BlackNBrownStudios/${__data.fields.repo}/pull/${__data.fields.pr}"}]},
     {"id": "custom.width", "value": 70}]}
-# Machines that run CI: every host with roster slots, plus
-# the workstation, which runs local Unity gates (cc:host_local_done_24h) without being a runner. cc:host_*
+# Machines that run CI: every host with roster slots, plus the workstation, which runs
+# local Unity gates without being a runner (cc:host_local_done_24h, which fleet-assess always publishes,
+# 0 when the ledger is empty; cc:host_local_gate is absent when idle). cc:host_*
 # come from apps/monitoring/prometheus-rules-command-center.yaml (group command-center.hosts).
 CI_HOSTS = " and on (host) (max by (host) (github_runner_pool_expected) or cc:host_local_done_24h)"
 MACHINE_COLS = [("cc:host_cpu_busy_ratio", "cpu", "percentunit"), ("cc:host_cpu_busy_ratio:avg6h", "cpu 6h", "percentunit"),
@@ -83,7 +84,7 @@ def machines(y):
     refs = "ABCDEFGHIJK"
     targets = [tgt(f"{m}{CI_HOSTS}", refs[i]) for i, (m, _, _) in enumerate(MACHINE_COLS)]
     # Runners busy, or for the workstation its local gates running.
-    targets.append(tgt('count by (host) (' + W + '(github_runner_state{state="running"})) or count by (host) (cc:host_local_gate)', refs[len(MACHINE_COLS)]))
+    targets.append(tgt('count by (host) (' + W + '(github_runner_state{state="running"})) or count by (host) (cc:host_local_gate) or (cc:host_local_done_24h * 0)', refs[len(MACHINE_COLS)]))
     rename = {f"Value #{refs[i]}": col for i, (_, col, _) in enumerate(MACHINE_COLS)}
     rename[f"Value #{refs[len(MACHINE_COLS)]}"] = "busy runners"
     units = [{"matcher": {"id": "byName", "options": col}, "properties": [{"id": "unit", "value": u}, {"id": "decimals", "value": 1 if u in ("none", "bytes") else 0}]}

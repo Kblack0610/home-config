@@ -536,7 +536,7 @@
             "uid": "${datasource}"
           },
           "editorMode": "code",
-          "expr": "count by (host) (max without (instance, pod, job, namespace, service, endpoint, container) (github_runner_state{state=\"running\"})) or count by (host) (cc:host_local_gate)",
+          "expr": "count by (host) (max without (instance, pod, job, namespace, service, endpoint, container) (github_runner_state{state=\"running\"})) or count by (host) (cc:host_local_gate) or (cc:host_local_done_24h * 0)",
           "format": "table",
           "instant": true,
           "range": false,

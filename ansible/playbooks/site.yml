@@ -260,7 +260,8 @@
     # workstation's gh as the repo owner. It runs as linux-ci like the Forgejo
     # seats: the role puts every runner user in the docker group, which is
     # root on the host, so a second user would isolate nothing. Its jobs use
-    # no secrets and read-only tokens, and the job-completed hook empties the
+    # read-only tokens and no secret but personal-sites' read-scoped Forgejo npm
+    # registry token, and the job-completed hook empties the
     # workspace as soon as a job ends, so no private checkout stays on disk.
     # A seat (ci_seats): it has no slot of its own and runs on the Unity test slot it
     # borrows, in that slot's slice and with its CPU count, so it adds jobs, never cores. It

@@ -367,8 +367,10 @@ all:
           unity_ci_gate: true
           # Runners for one personal repo, which cannot use the org's slots: GitHub refused
           # every .dotfiles-private job from 2026-11-15 once the month's hosted allowance ran
-          # out. Lint and unit runs of seconds and under 1G (gungan-speak: a uv pytest run of
-          # about 11 s, hc-496), so one runner on each of two hosts. borrows: the Unity test
+          # out, and every personal-sites job from 2026-11-19. Lint and unit runs of seconds and
+          # under 1G (gungan-speak: a uv pytest run of about 11 s, hc-496), plus personal-sites'
+          # pnpm install, lint, typecheck and Next.js build (ar-3971, not yet measured), so one
+          # runner on each of two hosts. borrows: the Unity test
           # slot it runs on; it registers withheld and the governor admits it only while it
           # lends it that slot, so it adds jobs, never cores (apps/ci-runner-governor,
           # "Lending"). Forgejo seats need no entry: the renderer puts one on every lendable
@@ -376,6 +378,7 @@ all:
           ci_repo_runners: &personal_repo_runners
             - {repo: Kblack0610/.dotfiles-private, slot: dotfiles-private-1, borrows: 1}
             - {repo: Kblack0610/gungan-speak, slot: gungan-speak-1, borrows: 2}
+            - {repo: Kblack0610/personal-sites, slot: personal-sites-1, borrows: 3}
         deskslim-1:
           unity_ci_slots: 3
           unity_ci_full: true

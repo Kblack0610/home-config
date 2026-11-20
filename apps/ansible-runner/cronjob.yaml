@@ -184,13 +184,18 @@ spec:
                   readOnly: true
                 - name: textfile
                   mountPath: /textfile
+              # Sized from the measured peak: the controller holds every host's
+              # results, so it grows with the inventory (179 MiB 2026-11-18,
+              # 366 MiB 2026-11-20 04:00, OOMKilled at 512Mi 2026-11-20 22:27Z).
+              # Re-measure with max_over_time(container_memory_working_set_bytes
+              # {namespace="ansible-runner",container="ansible"}[7d]) before changing it.
               resources:
                 requests:
                   cpu: "50m"
-                  memory: "128Mi"
+                  memory: "384Mi"
                 limits:
                   cpu: "500m"
-                  memory: "512Mi"
+                  memory: "1Gi"
           volumes:
             - name: workspace
               emptyDir: {}

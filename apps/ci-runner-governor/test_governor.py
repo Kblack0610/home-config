@@ -74,11 +74,11 @@ def actions(*args, **kw):
 
 
 # Starts on the first job past the others, at once: what these tests check is which jobs
-# and slots count, not the cost gate. HEAVY below is the live gate (config.json).
+# and slots count, not the cost gate. HEAVY below is the default gate (POWER_DEFAULTS).
 POWER = {"provider": "aws", "instance_id": "i-0abc", "region": "us-east-2", "idle_off_seconds": 1200,
          "start_min_excess": 1, "start_after_seconds": 0}
 AWS = {**CFG, "standby": {"aws-spot-1": {"max_admitted": 8, "power": POWER}}}
-LIVE_POWER = {**governor.POWER_DEFAULTS, **LIVE["standby"]["aws-spot-1"]["power"]}
+LIVE_POWER = {**governor.POWER_DEFAULTS, "max_hours_day": 24}
 # A 12h day cap of its own: the live hosts run uncapped (24h), and the cap tests need one.
 HEAVY = {**CFG, "standby": {"aws-spot-1": {"max_admitted": 6, "power": {**LIVE_POWER, "instance_id": "i-0abc",
                                                                        "max_hours_day": 12}}}}
@@ -1286,7 +1286,7 @@ class GovernorTest(unittest.TestCase):
     def test_a_build_and_a_test_never_share_a_pair(self):
         # Random arrivals and finishes against the live config. Run against #823's lend mode it
         # failed at once: it lent build slot 1 to the pool beside busy test slots 4 and 5.
-        cfg = {**CFG, "standby": {"aws-build-1": LIVE["standby"]["aws-build-1"]}}
+        cfg = self.PAIRED
         total = {}
         for seed in range(20):
             clash, stats = simulate(cfg, seed)
@@ -1353,8 +1353,8 @@ class GovernorTest(unittest.TestCase):
         self.assertEqual(start(120, queue=6), "hold")
         self.assertEqual(start(120, waiting=[BUILD_JOB]), "start")
 
-    def test_the_live_build_host_pairs(self):
-        self.assertEqual(governor.pairs(LIVE, "aws-build-1"), PAIRS)
+    def test_a_cloud_build_host_takes_its_pairs_from_the_topology(self):
+        self.assertEqual(governor.pairs(PAID, "aws-build-1"), PAIRS)
 
     def test_admit_leaves_full_off_a_host_that_takes_no_full_runs(self):
         calls = []
@@ -1487,6 +1487,26 @@ def load_files(conf, topo):
             with open(os.path.join(d, name), "w") as f:
                 json.dump(body, f)
         return governor.load_config(os.path.join(d, "c.json"), os.path.join(d, "t.json"))
+
+
+# The live roster plus a paid build host as aws-build-1 rendered until the AWS hosts were retired
+# (2026-11-19), so the LAN build slot's tests still check what it leaves to a paid host.
+PAID_BUILD = {"site": "cloud", "full": True, "power": {"provider": "aws", "instance_id": "i-0bld", "region": "us-east-2"},
+              "slots": [{"name": slot_name(b), "caps": ["unity-build"], "group": [slot_name(t) for t in tests]}
+                        for b, tests in PAIRS.items()] + [{"name": slot_name(t), "caps": ["unity"]} for t in range(4, 10)]}
+
+
+def with_paid_build(edit=None):
+    conf, topo = live_config(), live_topology()
+    conf["power"] = {"aws-build-1": {"max_hours_day": 24, "start_min_excess": 1, "start_after_seconds": 60}}
+    conf["rates"] = {"aws-build-1": {"usd_per_hour": 1.855, "basis": "on-demand"}}
+    topo["hosts"]["aws-build-1"] = PAID_BUILD
+    if edit:
+        edit(topo)
+    return load_files(conf, topo)
+
+
+PAID = with_paid_build()
 
 
 class StandbyOrderTest(unittest.TestCase):
@@ -1962,7 +1982,7 @@ class LanPairTest(unittest.TestCase):
 
     def run_lan(self, spec, waiting, lan=COOL, last=None, pins=None, build=None):
         inst = copy.deepcopy(self.BUILD if build is None else build)
-        got = governor.decide(LIVE, readings(**{"ms-a2": lan}), lan_slots(spec), waiting, last or {}, 10_000, inst,
+        got = governor.decide(PAID, readings(**{"ms-a2": lan}), lan_slots(spec), waiting, last or {}, 10_000, inst,
                               pins or {})
         return sorted((a, int(r.rsplit("-", 1)[1])) for h, a, r, _, _ in got if h == "ms-a2" and a != "hold"), inst
 
@@ -2066,13 +2086,8 @@ class WideLeadTest(unittest.TestCase):
     WIDE_JOB = frozenset({"self-hosted", "unity", "unity-wide"})
 
     def setUp(self):
-        with open(CONFIG) as f:
-            conf = json.load(f)
-        with open(os.environ["TOPOLOGY"]) as f:
-            topo = json.load(f)
-        topo["hosts"]["ms-a2"]["slots"].append({"name": "ms-a2-unity-pool-6", "caps": ["unity-wide"],
-                                                "group": ["ms-a2-unity-pool-1", "ms-a2-unity-pool-2"]})
-        self.cfg = load_files(conf, topo)
+        self.cfg = with_paid_build(lambda topo: topo["hosts"]["ms-a2"]["slots"].append(
+            {"name": "ms-a2-unity-pool-6", "caps": ["unity-wide"], "group": ["ms-a2-unity-pool-1", "ms-a2-unity-pool-2"]}))
 
     def slots(self, spec):
         """spec: one character per slot 1-6: i idle admitted, b busy admitted, . idle withheld."""
@@ -2699,7 +2714,6 @@ class SeatConfigTest(unittest.TestCase):
         self.assertEqual(LIVE["lent_label"], rendered["labels"]["lent"])
         for host, entry in LIVE["standby"].items():
             self.assertEqual({k: entry["power"][k] for k in governor.INSTANCE_KEYS}, rendered["hosts"][host]["power"])
-        self.assertEqual(LIVE["standby"]["aws-build-1"]["power"]["start_after_seconds"], 60)
 
     def test_a_copied_label_or_instance_id_in_config_fails(self):
         topo = {"hosts": {"c": {"site": "cloud", "power": {"provider": "aws", "instance_id": "i-0c", "region": "r"},

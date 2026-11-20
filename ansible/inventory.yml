@@ -348,10 +348,9 @@ all:
         # ucp-1521 probes.
         # Slot 5 of ms-a2 is a player-build slot (make-logical-possum phase 5, 2026-11-18) on
         # test slots 3 and 4's cores, so it adds no load: the governor runs the build or those
-        # two tests, never both, and claims a waiting build here before it starts aws-build-1.
-        # Picked by heat: 68C max since the thermal cap (hc-553), deskslim-2 71C. It takes
-        # releases too (unity-release, 2026-11-18): any build slot with room takes any build,
-        # and aws-build-1 slot 3 keeps players.yml a slot of its own.
+        # two tests, never both. Picked by heat: 68C max since the thermal cap (hc-553),
+        # deskslim-2 71C. It takes releases too (unity-release, 2026-11-18): any build slot
+        # with room takes any build.
         ms-a2:
           unity_ci_slots: 5
           unity_ci_slot_groups: {5: [3, 4]}
@@ -410,87 +409,6 @@ all:
           unity_ci_gate: true
           forgejo_runner_instance: https://git.kblab.me
           ci_repo_runners: *personal_repo_runners
-        # The player-build host (platform infra/aws-ci-burst, added 2026-11-10): an
-        # on-demand m7a.8xlarge with a 900G volume, reached through SSM with the
-        # same instance profile and library bucket as the Spot hosts. Slots 1-3 carry unity-build
-        # (the unity_ci_slot_groups keys), so playground release.yml's builds run there and no gate
-        # or nightly can; slots 4-9 are pool test slots (unity, unity-full, unity-gate). Each
-        # build slot shares its cores with two test slots, and the governor never runs a
-        # build and a test in one group (unity_ci_slot_groups). It
-        # starts the host when a build waits, and for tests as the last standby host.
-        # Default image list: desktop builds need the windows flavor.
-        aws-build-1:
-          host_tier: standard
-          thermal_cap_exempt: an EC2 VM; AWS owns its cooling
-          ansible_host: i-0856b245ff7a81321
-          # What ci-runner-governor powers: the instance (ansible_host) in this region (topology.json "power").
-          ci_power: {provider: aws, region: us-east-2}
-          ansible_user: ubuntu
-          ansible_ssh_common_args: >-
-            -o ProxyCommand="aws ssm start-session --profile bnb --region us-east-2
-            --target %h --document-name AWS-StartSSHSession --parameters portNumber=%p"
-          unity_ci_slots: 9
-          # Build slot -> the test slots on its cores (ci_unity_slot_cpus below): the governor
-          # admits a build slot or its test slots, never both.
-          unity_ci_slot_groups: {1: [4, 5], 2: [6, 7], 3: [8, 9]}
-          # Releases take slots 1-2 only (playground release.yml asks unity-release),
-          # so a release, or one per game from ship.sh, never holds the slot players.yml
-          # builds on; a release alone had all three for hours on 2026-11-11 (hc-263).
-          unity_ci_slot_labels:
-            1: [unity-release]
-            2: [unity-release]
-          unity_ci_gate: true
-          unity_ci_images_pull: true
-          unity_ci_lan: false
-          unity_ci_library_s3: aws-burst-1-libraries-311141527647
-          # Every cold release tree fetches the imports another tree made (playground ucp-1913).
-          unity_ci_accelerator: 172.17.0.1:10080
-        # Spot hosts (platform infra/aws-ci-burst, 2026-11-13), one instance type each, ahead
-        # of aws-build-1 in the governor's start order, cheapest first (the on-demand burst hosts were retired 2026-11-16). No unity_ci_gate: a reclaim kills
-        # what runs, so they take nightlies and bulk work, not merge gates (ucp-1778).
-        # 16 cores with SMT, so five slots of three cores (ci_hosts below).
-        aws-spot-1:
-          host_tier: standard
-          thermal_cap_exempt: an EC2 VM; AWS owns its cooling
-          ansible_host: i-0b4c89a54f8e25ad5
-          ci_power: {provider: aws, region: us-east-2}
-          ansible_user: ubuntu
-          ansible_ssh_common_args: >-
-            -o ProxyCommand="aws ssm start-session --profile bnb --region us-east-2
-            --target %h --document-name AWS-StartSSHSession --parameters portNumber=%p"
-          unity_ci_slots: 5
-          unity_ci_full: true
-          unity_ci_images_pull: true
-          unity_ci_lan: false
-          unity_ci_library_s3: aws-burst-1-libraries-311141527647
-        aws-spot-2:
-          host_tier: standard
-          thermal_cap_exempt: an EC2 VM; AWS owns its cooling
-          ansible_host: i-0c244a80e9cf430b1
-          ci_power: {provider: aws, region: us-east-2}
-          ansible_user: ubuntu
-          ansible_ssh_common_args: >-
-            -o ProxyCommand="aws ssm start-session --profile bnb --region us-east-2
-            --target %h --document-name AWS-StartSSHSession --parameters portNumber=%p"
-          unity_ci_slots: 5
-          unity_ci_full: true
-          unity_ci_images_pull: true
-          unity_ci_lan: false
-          unity_ci_library_s3: aws-burst-1-libraries-311141527647
-        aws-spot-3:
-          host_tier: standard
-          thermal_cap_exempt: an EC2 VM; AWS owns its cooling
-          ansible_host: i-04ca535b8876dff6f
-          ci_power: {provider: aws, region: us-east-2}
-          ansible_user: ubuntu
-          ansible_ssh_common_args: >-
-            -o ProxyCommand="aws ssm start-session --profile bnb --region us-east-2
-            --target %h --document-name AWS-StartSSHSession --parameters portNumber=%p"
-          unity_ci_slots: 5
-          unity_ci_full: true
-          unity_ci_images_pull: true
-          unity_ci_lan: false
-          unity_ci_library_s3: aws-burst-1-libraries-311141527647
 
 
     # macOS hosts in the same Unity pool (site.yml, "Unity CI runner pool
@@ -619,45 +537,6 @@ all:
           ci_unity_slot_cpus: ["6-11", "12-17", "18-23"]
           ci_unity_memory_max: 42G
           ci_unity_slot_memory_max: 14G
-        # aws-build-1, the same m7a.8xlarge: build slots 1-3 of 10 cores for whole-game
-        # player builds, 36G each (a build SIGKILLed at 14G on aws-burst-1, #1817;
-        # razer builds in 20G), and test slots 4-9 of 5 cores and 16G, two on each build
-        # slot's cores (unity_ci_slot_groups, so a group's 32G fits its build slot's 36G).
-        # Core 0 stays with the OS and the SSM agent, core 31 is spare.
-        aws-build-1:
-          ci_caps: [unity, unity-build]
-          ci_cpus: 1-31
-          ci_memory_max: 116G
-          ci_unity_cpus: 1-30
-          ci_unity_slot_cpus: ["1-10", "11-20", "21-30", "1-5", "6-10", "11-15", "16-20", "21-25", "26-30"]
-          ci_unity_memory_max: 108G
-          ci_unity_slot_memory_max: [36G, 36G, 36G, 16G, 16G, 16G, 16G, 16G, 16G]
-        # The Spot hosts: 16 cores with SMT (vCPU n and n+16 share core n), core 0 and its
-        # twin left to the OS, five slots of three whole cores and 16G each.
-        aws-spot-1:
-          ci_caps: [unity]
-          ci_cpus: 1-15,17-31
-          ci_memory_max: 112G
-          ci_unity_cpus: 1-15,17-31
-          ci_unity_slot_cpus: ["1-3,17-19", "4-6,20-22", "7-9,23-25", "10-12,26-28", "13-15,29-31"]
-          ci_unity_memory_max: 100G
-          ci_unity_slot_memory_max: 16G
-        aws-spot-2:
-          ci_caps: [unity]
-          ci_cpus: 1-15,17-31
-          ci_memory_max: 112G
-          ci_unity_cpus: 1-15,17-31
-          ci_unity_slot_cpus: ["1-3,17-19", "4-6,20-22", "7-9,23-25", "10-12,26-28", "13-15,29-31"]
-          ci_unity_memory_max: 100G
-          ci_unity_slot_memory_max: 16G
-        aws-spot-3:
-          ci_caps: [unity]
-          ci_cpus: 1-15,17-31
-          ci_memory_max: 112G
-          ci_unity_cpus: 1-15,17-31
-          ci_unity_slot_cpus: ["1-3,17-19", "4-6,20-22", "7-9,23-25", "10-12,26-28", "13-15,29-31"]
-          ci_unity_memory_max: 100G
-          ci_unity_slot_memory_max: 16G
 
     # Nodes that run the game servers (apps/playground-server pins to the
     # kblab.me/game-server label, roles/node-labels sets it). Each host keeps

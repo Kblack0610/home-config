@@ -2,7 +2,7 @@ version: "3.8"
 
 services:
   adguard-home:
-    image: adguard/adguardhome:latest
+    image: adguard/adguardhome:latest@sha256:f00a586f0d1caa74f149340bfb225014960310488ffa838406b89256900a96c2
     container_name: adguard-home
     restart: unless-stopped
     ports:

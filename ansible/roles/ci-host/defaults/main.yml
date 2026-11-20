@@ -51,7 +51,7 @@ linux_ci_packages:
   - ttf-liberation
   - noto-fonts
 
-# The same set on Ubuntu (windows-media-ci, the AWS hosts). Docker comes from
+# The same set on Ubuntu (the AWS hosts). Docker comes from
 # unity_ci_packages_debian there (docker.io and docker-buildx are already on an Ubuntu Unity host),
 # and kubectl is not in Ubuntu's archive, so it comes from dl.k8s.io below.
 linux_ci_packages_apt:

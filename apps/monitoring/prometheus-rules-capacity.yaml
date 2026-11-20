@@ -107,14 +107,13 @@ spec:
         # unity-runners-online (zero online org-wide) cannot see. Only hosts that should
         # be up: owned ones (config.json rates, basis owned) and powered ones the governor
         # reads as running; a stopped standby host, or every powered host while the governor
-        # cannot read EC2, stays quiet. Not the opt-in windows pool (windows-media:windows,
-        # offline unless asked for). A 7-day replay to 2026-11-14: fires on windows-media-ci
+        # cannot read EC2, stays quiet. A 7-day replay to 2026-11-14: fires on windows-media-ci
         # (unity-pool-3 down 15h, 11-14) and cachyos-x8664-main (7.5h, 11-13); the roster lag
         # after a host leaves (under 1h) stays quiet.
         - alert: CiHostRunnersOffline
           expr: |
             (
-              max by (host, pool) (github_runner_pool_expected{pool!="windows"})
+              max by (host, pool) (github_runner_pool_expected)
               - max by (host, pool) (github_runner_pool_online)
             ) > 0
             and on (host)

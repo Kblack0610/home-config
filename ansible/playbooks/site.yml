@@ -56,22 +56,6 @@
     - role: ssh-client-inventory
       tags: [ssh-aliases]
 
-- name: Unity CI host monitoring (node_exporter, windows-media-ci)
-  # So ci-runner-governor and cc:host_* read the VM's idle, PSI and memory: it is
-  # not a k3s node, so the DaemonSet does not scrape it; Prometheus reaches it
-  # through standalone-nodes (apps/monitoring/external-standalone-nodes.yaml).
-  #   ansible-playbook playbooks/site.yml --limit windows-media-ci --tags monitoring
-  # The textfile directory is the one roles/ci-runner-cpu writes ci_runner.prom to,
-  # which on the k3s CI hosts the DaemonSet's node-exporter reads.
-  hosts: windows-media-ci
-  become: true
-  gather_facts: true
-  roles:
-    - role: node-exporter-linux
-      node_exporter_linux_textfile_dir: /var/lib/node-exporter-textfile
-      node_exporter_linux_textfile_owner: "{{ k3s_textfile_owner }}"
-      tags: [monitoring, unity-ci]
-
 - name: Cloud Unity CI host monitoring over the tailnet
   hosts: unity_ci_runners
   become: true
@@ -373,8 +357,8 @@
       tags: [runner, ci, forgejo-ci]
 
     # After the seats, whose roles create the linux-ci user. Playground jobs clone
-    # their submodules over ssh (windows-media-ci's first light jobs failed
-    # "Host key verification failed" without this).
+    # their submodules over ssh (the first light jobs on a new host failed
+    # "Host key verification failed" without this, 2026-11-13).
     - name: Trust GitHub's host keys for the linux-ci user
       ansible.builtin.import_role:
         name: ci-host
@@ -1025,19 +1009,6 @@
   roles:
     - role: windows-exporter
       tags: [windows, monitoring]
-
-# The opt-in Windows test runner (org-scoped, labels self-hosted/Windows/X64/
-# host-windows-media). Not a CI gate and not the Unity pool: a job lands here
-# only with `runs-on: [self-hosted, windows]`. It runs at logon in the desktop
-# session, so it is offline while nobody is logged on. Registration needs
-# `gh` with admin:org on the control node, like the Unity pool.
-- name: Windows test runner (windows-media only)
-  hosts: windows-media
-  gather_facts: false
-  roles:
-    - role: github-actions-runner-windows
-      tags: [windows, runner]
-
 # The ssh keys that may log in, from roles/authorized-keys (additive). Every
 # Linux node, the Pis included, so cluster admin never hangs on one machine.
 #   ansible-playbook playbooks/site.yml --limit linux_bare_metal:pi_k3s:adguard --tags authorized-keys

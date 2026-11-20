@@ -538,7 +538,7 @@ class ExporterTest(unittest.TestCase):
 
     def test_pool_of_pinned_runners(self):
         self.assertEqual(exporter.pool_of(["self-hosted", "macOS", "arm64"]), "macos")
-        self.assertEqual(exporter.pool_of(["self-hosted", "Windows", "X64", "host-windows-media"]), "windows")
+        self.assertEqual(exporter.pool_of(["self-hosted", "Windows", "X64", "host-box"]), "windows")
         self.assertEqual(exporter.pool_of(["self-hosted", "Linux", "X64"]), "other")
         self.assertEqual(exporter.pool_of(["self-hosted", "linux", "unity-full"]), "unity")
         self.assertEqual(exporter.pool_of(["self-hosted", "linux", "unity", "unity-wide"]), "unity-wide")

@@ -18,8 +18,14 @@ put /sys/firmware/acpi/platform_profile {{ thermal_cap_platform_profile }}
 {% endif %}
 # Boost is written both ways, so a host moved from boost off to on (with a clock
 # ceiling instead) gets it back on the next apply, not the next reboot.
+# Each policy's own switch where the kernel has one, since that is what the driver
+# applies: on tuf-b550 (amd-pstate-epp, kernel 7.3.3) the global file read 1 and
+# refused writes while every policy was 0 (2026-11-20).
+boost_files=(/sys/devices/system/cpu/cpufreq/policy*/boost)
 if [ -e /sys/devices/system/cpu/intel_pstate/no_turbo ]; then
   put /sys/devices/system/cpu/intel_pstate/no_turbo {{ 0 if thermal_cap_boost else 1 }}
+elif [ -e "${boost_files[0]}" ]; then
+  for f in "${boost_files[@]}"; do put "$f" {{ 1 if thermal_cap_boost else 0 }}; done
 else
   put /sys/devices/system/cpu/cpufreq/boost {{ 1 if thermal_cap_boost else 0 }}
 fi

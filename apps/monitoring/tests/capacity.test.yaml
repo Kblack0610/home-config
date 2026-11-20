@@ -108,21 +108,14 @@ tests:
           - exp_labels: {alertname: CiGovernorBlind, severity: critical, category: capacity, fleet: fix}
             exp_annotations: {summary: "ci-runner-governor has had no reading for 30 minutes, so no Unity slot is being pulled or returned. Check github_runner_exporter_api_ok and GitHub's API limit"}
 
-  - name: a host short of its runners for an hour wakes an agent; opt-in and powered hosts stay quiet
+  - name: a host short of its runners for an hour wakes an agent; stopped and unread hosts stay quiet
     interval: 1m
     input_series:
-      - series: 'github_runner_pool_expected{host="windows-media-ci",pool="unity"}'
+      - series: 'github_runner_pool_expected{host="tuf-b550",pool="unity"}'
         values: '3x90'
-      - series: 'github_runner_pool_online{host="windows-media-ci",pool="unity"}'
+      - series: 'github_runner_pool_online{host="tuf-b550",pool="unity"}'
         values: '2x90'
-      # Opt-in: offline unless asked for.
-      - series: 'github_runner_pool_expected{host="windows-media",pool="windows"}'
-        values: '1x90'
-      - series: 'github_runner_pool_online{host="windows-media",pool="windows"}'
-        values: '0x90'
-      - series: 'ci_governor_rate_usd_per_hour{host="windows-media-ci",basis="owned"}'
-        values: '0x90'
-      - series: 'ci_governor_rate_usd_per_hour{host="windows-media",basis="owned"}'
+      - series: 'ci_governor_rate_usd_per_hour{host="tuf-b550",basis="owned"}'
         values: '0x90'
       # Powered off by the governor: quiet.
       - series: 'github_runner_pool_expected{host="aws-burst-2",pool="unity"}'
@@ -165,8 +158,8 @@ tests:
         exp_alerts:
           - exp_labels: {alertname: CiHostRunnersOffline, severity: warning, category: capacity, fleet: fix, host: aws-burst-3, pool: unity}
             exp_annotations: {summary: "aws-burst-3 has had 1 unity runner(s) offline for an hour: docs/runbooks/unity-ci-host.md#a-host-short-of-its-runners"}
-          - exp_labels: {alertname: CiHostRunnersOffline, severity: warning, category: capacity, fleet: fix, host: windows-media-ci, pool: unity}
-            exp_annotations: {summary: "windows-media-ci has had 1 unity runner(s) offline for an hour: docs/runbooks/unity-ci-host.md#a-host-short-of-its-runners"}
+          - exp_labels: {alertname: CiHostRunnersOffline, severity: warning, category: capacity, fleet: fix, host: tuf-b550, pool: unity}
+            exp_annotations: {summary: "tuf-b550 has had 1 unity runner(s) offline for an hour: docs/runbooks/unity-ci-host.md#a-host-short-of-its-runners"}
 
   - name: a runner gap shorter than an hour stays quiet
     interval: 1m

@@ -93,8 +93,8 @@ MIN_JOB_CORES = 2
 # ci-fresh-workspace). A seat runs on a Unity test slot the governor lends it (seats()).
 HOST_CAPS = ("light", "heavy", "unity", "unity-build", "unity-wide", "forgejo")
 # Heavy needs /dev/kvm: platform's Mobile Smoke Android runs the emulator with hardware acceleration
-# and times out under -accel off. Tag a host heavy only when it has /dev/kvm (ms-a2, deskslim-2 do;
-# the windows-media-ci Hyper-V VM cannot get it, so it is not heavy).
+# and times out under -accel off. Tag a host heavy only when it has /dev/kvm (ms-a2, the deskslims and tuf-b550 do;
+# a VM without nested virtualization cannot get it, so it is not heavy).
 # Heavy is shared since platform's heavy jobs, the only ones that ask for heavy, take ephemeral
 # service and app ports (BlackNBrownStudios/platform#1592 on main, #1599 on develop), so two heavy
 # jobs on one host no longer clash. Revisit if a heavy job fails on an address already in use.

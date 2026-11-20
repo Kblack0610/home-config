@@ -1407,7 +1407,7 @@ class GovernorTest(unittest.TestCase):
         self.assertEqual(sorted(c[1].rsplit("/", 1)[1] for c in calls if c[0] == "DELETE"),
                          ["heavy", "light", "unity-withheld"])
 
-    # windows-media-ci lost heavy in the topology (no /dev/kvm, #1269), but pool-2 kept the label
+    # windows-media-ci (retired since) lost heavy in the topology (no /dev/kvm, #1269), but pool-2 kept the label
     # it registered with (live 2026-11-19): admit and withhold both drop a cap the slot no longer takes.
     STALE = {"name": "windows-media-ci-unity-pool-2", "host": "windows-media-ci"}
 
@@ -3044,15 +3044,14 @@ class LocalSeatTest(unittest.TestCase):
 
 class EveryMachineTest(unittest.TestCase):
     def test_the_live_topology_has_whole_slot_hosts_and_the_workstations_local_seats(self):
-        self.assertEqual(sorted(LIVE["machines"]), ["mac-mini", "windows-media"])
+        self.assertEqual(sorted(LIVE["machines"]), ["mac-mini"])
         self.assertEqual(LIVE["local"], {CX: 3})
         self.assertEqual(LIVE["local_min_admitted"], 2)
 
     def test_every_topology_host_has_a_units_row(self):
-        names = {"mac-mini-mac": {"busy": True, "online": True}, "m1-playground-mac": {"busy": False, "online": True},
-                 "windows-media": {"busy": False, "online": False}}
+        names = {"mac-mini-mac": {"busy": True, "online": True}, "m1-playground-mac": {"busy": False, "online": True}}
         machines = governor.machine_units(LIVE, names)
-        self.assertEqual(machines, ({"mac-mini": 2, "windows-media": 0}, {"mac-mini": 1.0, "windows-media": 0.0}))
+        self.assertEqual(machines, ({"mac-mini": 2}, {"mac-mini": 1.0}))
         local = governor.LocalSeats(LIVE)
         local.wait(f"{CX}-local-1", "github", 0)
         verdicts = {h: ("ROOM", "") for h in LIVE["hosts"]}
@@ -3060,14 +3059,14 @@ class EveryMachineTest(unittest.TestCase):
         capacity, busy, backlog, drain = governor.every_machine(LIVE, pool, machines,
                                                                 governor.local_units(LIVE, local, verdicts))
         self.assertEqual(sorted(capacity), sorted(live_topology()["hosts"]))
-        self.assertEqual(len(capacity), 7)
+        self.assertEqual(len(capacity), 6)
         self.assertEqual((capacity[CX], busy[CX]), (4, 2.0))  # one pool slot plus three local seats, one held
         self.assertEqual((capacity["mac-mini"], busy["mac-mini"]), (2, 1.0))
         self.assertEqual((capacity["deskslim-1"], busy["deskslim-1"]), (0, 0.0))  # unread: a 0 row, not none
         self.assertEqual((backlog, drain), ({"slot": 2.0}, 300.0))  # nothing waits for a local seat; drain the pool's
         text = governor.render(LIVE, {"disk": {}}, {}, 0, [], True, in_units=(capacity, busy, backlog, drain))
         self.assertIn('ci_governor_capacity_units{host="mac-mini"} 2', text)
-        self.assertIn('ci_governor_busy_units{host="windows-media"} 0.000', text)
+        self.assertIn('ci_governor_busy_units{host="mac-mini"} 1.000', text)
 
     def test_a_waiting_local_run_is_local_backlog(self):
         out = governor.every_machine(LIVE, ({}, {}, {}, 0.0), ({}, {}), ({CX: 3}, {CX: 3.0}, 2))

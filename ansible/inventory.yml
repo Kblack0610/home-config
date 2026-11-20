@@ -92,7 +92,7 @@ all:
         deskslim-2:
           host_tier: standard
           ansible_host: 192.168.1.29
-          ssh_host_ed25519: ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIN6Us7+Ypxlco5izmZf8Nu0m2Hq2GBvVpPtxh9tCKRGA
+          ssh_host_ed25519: ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIHGA5wGSM5aQxkAdI33S+gPcftmo3mn7/oj9OWmPR/sv
           k3s_role: agent
           k3s_extra_args:
             - --node-label=node.kubernetes.io/friendly-name=deskslim-2
@@ -101,7 +101,7 @@ all:
         deskslim-1:
           host_tier: standard
           ansible_host: 192.168.1.19
-          ssh_host_ed25519: ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIG7qDamILuEsji8FIwIVgEzF/cZpu29tcNhuA6nP3bQG
+          ssh_host_ed25519: ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAILqCoF90nG/OlyHlKtYispdhQrgVzuToqTM369Ub9jTe
           k3s_role: agent
           k3s_extra_args:
             - --node-label=node.kubernetes.io/friendly-name=deskslim-1

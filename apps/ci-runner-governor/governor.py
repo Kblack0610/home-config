@@ -1624,37 +1624,14 @@ def lend_plan(cfg, hosts, runners, seat_state, waits, lends, leases, pins, last_
         seat = lend["seat"]
         if not seat or lend["phase"] == "returning":
             continue
-        idle = not busy(slot, seat)
         _, _, seen = leases.get(slot) if seats[seat]["forge"] == "forgejo" else (None, None, now)
         if unfit(host_of[slot]):
             back[slot] = unfit(host_of[slot])
-        elif lend["phase"] == "granted" and idle and now - max(seen, lend["at"]) >= LEASE_STALE_SECONDS:
+        elif lend["phase"] == "granted" and not busy(slot, seat) and now - max(seen, lend["at"]) >= LEASE_STALE_SECONDS:
             back[slot] = f"its supervisor has not asked for its lease for {int(now - max(seen, lend['at']))}s"
-    # Each GitHub job that has waited longer than any job of a lend's kind takes one lent slot
-    # back, busy or not: a stream of short light jobs keeps a lent slot busy for good, so waiting
-    # for it to go idle left 13 Unity slots lent while playground Tests waited 30 minutes (hc-766).
-    # Idle lends go first, and a lend already going back is that job's slot, so one job does not
-    # pull back every lend while the first drains.
-    rivals, claimed = sorted(jobs.get("github", []), key=lambda j: -j[0]), set()
-
-    def claim(slot, older_than):
-        """The age of the oldest unclaimed GitHub job slot takes that waited past older_than, now claimed, or None."""
-        r = runners.get(slot)
-        for i, (age, need) in enumerate(rivals):
-            if i not in claimed and age > older_than and r and slot_takes(cfg, r, slot, need):
-                claimed.add(i)
-                return age
-        return None
-
-    for slot, lend in sorted(lends.items()):
-        if lend["phase"] == "returning":
-            claim(slot, -1)
-    for slot in sorted((s for s, l in lends.items() if l["seat"] and l["phase"] != "returning" and s not in back),
-                       key=lambda s: (busy(s, lends[s]["seat"]), s)):
-        kind = seat_kind(cfg, lends[slot]["seat"])
-        age = claim(slot, oldest.get(kind, -1))
-        if age is not None:
-            back[slot] = f"a GitHub job it takes has waited {int(age)}s, longer than any {kind} job"
+    open_lends = {s: (seat_kind(cfg, l["seat"]), busy(s, l["seat"])) for s, l in lends.items()
+                  if l["seat"] and l["phase"] != "returning" and s not in back}
+    back.update(reclaimed(cfg, runners, open_lends, lends, jobs.get("github", []), oldest))
     for kind, slots in have.items():
         keep = [s for s in slots if s not in back]
         # A lend holds as many jobs as it has seats, and want counts every busy seat, so the
@@ -1735,6 +1712,33 @@ def lend_plan(cfg, hosts, runners, seat_state, waits, lends, leases, pins, last_
               if s["forge"] != "forgejo" and seat in seat_state and not seat_state[seat]["withheld"]
               and (s["slot"], seat_kind(cfg, seat)) not in granted]
     return per_seat(cfg, steps, mates, by_slot, seat_state)
+
+
+def reclaimed(cfg, runners, open_lends, lends, github_jobs, oldest):
+    """{slot: why} of the lends GitHub jobs take back. open_lends: {slot: (kind, busy seats)} of the lends
+    not already going back; lends: lend_plan()'s, for those that are; github_jobs: [(age, labels)]; oldest: {kind: age}.
+    Each GitHub job that has waited longer than any job of a lend's kind takes one lent slot back, busy or
+    not: a stream of short light jobs keeps a lent slot busy for good, so waiting for it to go idle left 13
+    Unity slots lent while playground Tests waited 30 minutes (hc-766). Idle lends go first, and a returning
+    lend is that job's slot already, so one job does not pull back every lend while the first drains."""
+    rivals, claimed = sorted(github_jobs, key=lambda j: -j[0]), set()
+
+    def claim(slot, older_than):
+        r = runners.get(slot)
+        for i, (age, need) in enumerate(rivals):
+            if i not in claimed and age > older_than and r and slot_takes(cfg, r, slot, need):
+                claimed.add(i)
+                return age
+        return None
+
+    for slot in sorted(s for s, l in lends.items() if l["phase"] == "returning"):
+        claim(slot, -1)
+    out = {}
+    for slot, (kind, _) in sorted(open_lends.items(), key=lambda p: (p[1][1], p[0])):
+        age = claim(slot, oldest.get(kind, -1))
+        if age is not None:
+            out[slot] = f"a GitHub job it takes has waited {int(age)}s, longer than any {kind} job"
+    return out
 
 
 def registered(cfg, on_slot, seat_state, seat):

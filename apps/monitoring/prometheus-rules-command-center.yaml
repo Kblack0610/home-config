@@ -238,11 +238,15 @@ spec:
           labels: {domain: agents, component: runners}
           expr: >-
             clamp_max(count((mqtt_failed{topic=~"agents_.+_runner_.+"} and on (topic) cc:agents_topic_live) == 1), 1) or vector(0)
-        # agent-mqtt-publish republishes every 5 min; nothing in 20 min means every agent and watch number is frozen -> 1
+        # The fleet lease holder's agent-mqtt-publish.timer republishes every 5 min; a no-lease peer
+        # (razer-laptop) publishes only on events, so its topic sits still for hours. No host's summary
+        # changing in 20 min means every agent and watch number is frozen -> 1. Known gap: a peer's event
+        # publish can hide a dead holder here. SentinelSilent pages that case about 40 min in, because
+        # only the holder stamps runner_sentinel. Prometheus has no lease-holder metric to scope this to.
         - record: cc:component_status
           labels: {domain: agents, component: feed}
           expr: >-
-            clamp_max(count(changes(mqtt_message_total{topic=~"agents_.+_summary_asks_open"}[20m]) == 0), 1) or (absent(mqtt_message_total{topic=~"agents_.+_summary_asks_open"})) or vector(0)
+            absent(changes(mqtt_message_total{topic=~"agents_.+_summary_asks_open"}[20m]) > 0) or vector(0)
         # sentinel stamps its runner state every sweep; nothing in 30 min means no watch is being checked -> 2.
         # A frozen feed freezes this stamp too, so the feed row answers for that case instead.
         - record: cc:component_status
@@ -282,7 +286,7 @@ spec:
             severity: critical
             fleet: fix
           annotations:
-            summary: The agent feed has published nothing in 30 minutes, so every watch, runner and queue number is frozen
+            summary: No host has published the agent feed in 30 minutes, so every watch, runner and queue number is frozen
             runbook: ~/.config/agentctl/SENTINEL.md (dotfiles-private), "Operate"
         - alert: SentinelSilent
           expr: cc:component_status{domain="agents",component="sentinel"} > 0

@@ -206,7 +206,7 @@ There is no custom grammar for device control. What makes it work is registry hy
 | "bedroom light off", "turn off the bedroom light" | HassTurnOff | the light named or in Bedroom |
 | "living room lights on" | HassTurnOn | every light in Living Room |
 | "light off", "turn on the light" (to a satellite) | HassTurnOn/Off | lights in the satellite's own room |
-| "UFO light on", "light strips off", "monkey light on", "printer light on" | HassTurnOn/Off | that light, by name or alias |
+| "UFO light on", "light strips off", "printer light on" | HassTurnOn/Off | that light, by name or alias |
 | "turn off the office AC" | HassTurnOff | `switch.shellyplugusg4_acebe6f28334` |
 | "never mind", "cancel", "forget it" | HassNevermind | ends the turn silently |
 | anything else ("what's the weather", "dim it a bit and play jazz") | none | Binks |
@@ -235,8 +235,6 @@ Made live through the websocket/REST API and mirrored into git (`room_layout.yam
 | Wall Office / Living Room / Bedroom / Kitchen satellite devices | no area | office / living_room / bedroom / kitchen |
 | Lamp plugs 600fec, 6027f0, 6043c8, 6058b8, 60a188 | `switch` only | wrapped as `light.athom_plug_v3_<id>_switch` via the switch_as_x config flow (source switch hidden + unexposed, name copied) |
 | Those five wrapper lights | no area | bedroom, office, office, living_room, living_room |
-| `light.athom_plug_v3_613888_switch` | name "Athom Plug V3 613888 Switch", no area | "Monkey Light", living_room |
-| `switch.athom_smart_plug_v3_613888_switch` | visible | hidden (user), unexposed |
 | `light.athom_plug_v3_6043c8_switch` aliases | none | "UFO Light" |
 | `light.athom_plug_v3_6027f0_switch` aliases | none | "Light Strips" |
 | `light.shelly_plug_1`, `light.shelly_plug_2_lamp` (switch_as_x on the Office/Bedroom AC plugs) | exposed lights, so "lights off" could cut an AC | config entries removed |

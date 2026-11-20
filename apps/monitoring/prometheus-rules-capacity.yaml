@@ -24,13 +24,18 @@ spec:
         # (the server reports them), and Mac simulator and system volumes, which are
         # always full by design: CoreSimulator's own mounts and the sealed read-only
         # simulator runtimes newer Xcode mounts through cryptexd under /private/var/run.
+        # A read-only mount cannot fill, so it is dropped too: a mounted installer image
+        # (mac-mini, 2026-11-19: a 22 MB Unity Accelerator .dmg at 14% free) is not low disk.
         # `min by device` folds btrfs subvolumes into one.
         - record: device:node_filesystem_avail:ratio
           expr: >-
             min by (instance, device, job) (
-              node_filesystem_avail_bytes{fstype!~"tmpfs|ramfs|overlay|squashfs|autofs|vfat|nsfs|devtmpfs|cifs|nfs.*|fuse.*",mountpoint!~"/System/Volumes/(Preboot|VM|Update|xarts|iSCPreboot|Hardware).*|/Library/Developer/.*|/private/var/run/com.apple.security.cryptexd/.*|/run.*|/boot.*|/var/lib/kubelet.*|/snap.*|/tmp"}
-              /
-              node_filesystem_size_bytes{fstype!~"tmpfs|ramfs|overlay|squashfs|autofs|vfat|nsfs|devtmpfs|cifs|nfs.*|fuse.*",mountpoint!~"/System/Volumes/(Preboot|VM|Update|xarts|iSCPreboot|Hardware).*|/Library/Developer/.*|/private/var/run/com.apple.security.cryptexd/.*|/run.*|/boot.*|/var/lib/kubelet.*|/snap.*|/tmp"}
+              (
+                node_filesystem_avail_bytes{fstype!~"tmpfs|ramfs|overlay|squashfs|autofs|vfat|nsfs|devtmpfs|cifs|nfs.*|fuse.*",mountpoint!~"/System/Volumes/(Preboot|VM|Update|xarts|iSCPreboot|Hardware).*|/Library/Developer/.*|/private/var/run/com.apple.security.cryptexd/.*|/run.*|/boot.*|/var/lib/kubelet.*|/snap.*|/tmp"}
+                /
+                node_filesystem_size_bytes{fstype!~"tmpfs|ramfs|overlay|squashfs|autofs|vfat|nsfs|devtmpfs|cifs|nfs.*|fuse.*",mountpoint!~"/System/Volumes/(Preboot|VM|Update|xarts|iSCPreboot|Hardware).*|/Library/Developer/.*|/private/var/run/com.apple.security.cryptexd/.*|/run.*|/boot.*|/var/lib/kubelet.*|/snap.*|/tmp"}
+              )
+              unless node_filesystem_readonly == 1
             )
         - record: device:node_filesystem_avail_predict4h:bytes
           expr: >-

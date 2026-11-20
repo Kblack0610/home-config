@@ -6,7 +6,7 @@ A machine the human drives the fleet from, but that runs no session, goes in `fl
 
 ## What a worker takes
 
-- A light claude queue item with no plan and no `#cloud-ok` tag, in a repo listed in the host's `fleet_repos`, when the machine holding the fleet lease, which runs dispatch, is over its load or idle pace. It runs on claude, or on a headless harness the host lists in `fleet_harnesses` while the host's probe reads that harness ready (see "Headless harnesses"). Heavy (Unity) items, plan items, a trainee batch review and any other harness stay on the holder.
+- A light claude queue item with no plan and no `#cloud-ok` tag, in a repo in `fleet_repos` (one standard list on the `fleet_workers` group that every worker clones; a host never sets its own, since a host var replaces the list), when the machine holding the fleet lease, which runs dispatch, is over its load or idle pace. It runs on claude, or on a headless harness the host lists in `fleet_harnesses` while the host's probe reads that harness ready (see "Headless harnesses"). Heavy (Unity) items, plan items, a trainee batch review and any other harness stay on the holder.
 - At most `fleet_max_live` sessions at once, and none while its own 1-minute load per core is over the dispatch pace (`DISPATCH_MAX_LOAD`) or its MemAvailable is under `DISPATCH_HOST_MEM_MIN_PCT` (20%) of its memory.
 - With `fleet_first: [canary, night, trainee]` (any class alone works too; trainee is a trainee floor start, which must also be on a harness the worker runs), an item of that class goes to the worker before the holder, even while the holder has room; with no worker free it runs on the holder as usual. Any other item still fills the holder first.
 - A session there writes the queue and its asks into the worker's own store clone, which `store-sync` pushes at once, so every peer reads one store.
@@ -89,7 +89,7 @@ What the worker needs, and where it comes from:
 - srt, at the pin in the controller's dotfiles `.local/src/installation_scripts/packages.conf` (a fresh worker's checkout can predate it), installed only when the worker's version differs, by `tasks/harnesses.yml` into `~/.local` (on the PATH fleet-dispatch's ssh uses).
 - The harness map, each harness's eval config and its lane sandbox profile: the private overlay, so `gh auth login` and the overlay stow come first (step 3 of "Add a worker").
 - Each opencode harness's gateway key file (`~/.local/state/agentctl/fleet-*.key`): `tasks/harnesses.yml` copies it from the controller at the same path, mode 0600, never logged. A key the controller lacks is named in the play's report and skipped.
-- codex's login: `codex login` on the worker, by the human. The play only reads `codex login status` and names a missing login in its report. A worker with no codex binary is reported as such, not as logged out.
+- codex's login: `codex login --device-auth` on the worker over ssh, by the human, once per worker: a ChatGPT login refreshes itself, and it cannot be copied from another machine, since a refresh on one logs the other out. The play only reads `codex login status` and names a missing login in its report. A worker with no codex binary is reported as such, not as logged out.
 
 After a change to `fleet_harnesses` or a key rotation, re-run the play with `--tags fleet-worker`, then check `fleet-dispatch hosts`.
 
@@ -135,5 +135,5 @@ The same play fails a host whose live host key is not its inventory `ssh_host_ed
 | `cannot run <harness>: no harness map at ...`, `its config ... is not readable` or `its lane sandbox ... is missing` | The private overlay is not stowed on the worker | `gh auth login` on the worker, then re-run the play |
 | `cannot run <harness>: lane sandbox '<name>' cannot hold <harness>: ...` | srt, bwrap or socat is missing on the worker | Re-run the play; its report says when the srt pin was not found in the controller's dotfiles |
 | `<harness>: no answer from its fleet-dispatch harness-ready (an older fleet-dispatch there)` | The worker's dotfiles are behind the dispatcher's | `git -C ~/.dotfiles pull` on the worker |
-| `<host> ... cannot run codex: codex is not logged in here` | No ChatGPT login on the worker | `codex login` on the worker (yours to do), then `fleet-dispatch hosts` |
+| `<host> ... cannot run codex: codex is not logged in here` | No ChatGPT login on the worker | `codex login --device-auth` on the worker over ssh (yours to do, once), then `fleet-dispatch hosts` |
 | A pane runs on CPUs outside `agent_cpus` though `systemctl --user show <scope> -p AllowedCPUs` names them | The user manager has no `cpuset` controller (`cat /sys/fs/cgroup/user.slice/user-<uid>.slice/user@<uid>.service/cgroup.controllers` lacks it), so systemd records AllowedCPUs and nothing applies it; razer-laptop on 2026-11-18 | Re-run `--tags agent-host-budget`: it delegates cpuset and re-execs the user manager, which keeps every unit running |

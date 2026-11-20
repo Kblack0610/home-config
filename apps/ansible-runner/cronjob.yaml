@@ -131,6 +131,8 @@ spec:
                     --check --diff 2>&1 | tee /tmp/run.log
                   rc=$?
                   set -e
+                  # The pod's true high-water mark, for sizing its memory limit below.
+                  echo "memory.peak $(cat /sys/fs/cgroup/memory.peak 2>/dev/null || echo unknown)"
 
                   # The PLAY RECAP becomes metrics for the ConvergenceDrift alert
                   # (apps/monitoring/prometheus-rules-jobs.yaml). Written to the
@@ -184,15 +186,15 @@ spec:
                   readOnly: true
                 - name: textfile
                   mountPath: /textfile
-              # Sized from the measured peak: the controller holds every host's
-              # results, so it grows with the inventory (179 MiB 2026-11-18,
-              # 366 MiB 2026-11-20 04:00, OOMKilled at 512Mi 2026-11-20 22:27Z).
-              # Re-measure with max_over_time(container_memory_working_set_bytes
-              # {namespace="ansible-runner",container="ansible"}[7d]) before changing it.
+              # The controller holds every host's results, so it grows with the
+              # inventory: scraped peaks of 179 MiB (2026-11-18) and 366 MiB
+              # (2026-11-20 04:00), then OOMKilled at the old 512Mi limit
+              # (2026-11-20 22:27Z). The scrape misses spikes; the true peak is the
+              # "memory.peak" line each run logs above. Size the limit from that.
               resources:
                 requests:
                   cpu: "50m"
-                  memory: "384Mi"
+                  memory: "512Mi"
                 limits:
                   cpu: "500m"
                   memory: "1Gi"

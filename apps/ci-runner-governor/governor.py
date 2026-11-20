@@ -137,7 +137,8 @@ def load_config(path, topology_path=None):
       admit gives back with the rest
     - "moved": every label a swap moves on a Unity slot (stale()): each cap a Unity slot of the
       topology takes, each small kind a seat serves (so a slot sheds one its seats took over),
-      and the pool, full, build, wide and withheld labels, but not the lend mark."""
+      and the pool, full, build, wide and withheld labels, but not the lend mark.
+    - "kinds": every kind of job a slot may run: each seat's weight kind, each cap of the topology"""
     with open(path) as f:
         cfg = json.load(f)
     with open(topology_path or TOPOLOGY) as f:
@@ -196,6 +197,10 @@ def load_config(path, topology_path=None):
                                 "repo": s.get("repo"), "caps": s["caps"],
                                 "cpus": s.get("cpus"), "memory_gb": s.get("memory_gb")}
                     for h, e in topo.items() for s in e["slots"] if s.get("borrows")}
+    # Every kind of job a slot may run, for ci_governor_kind_weight: a seat kind weighs what it
+    # measures, the rest take a whole slot (render()).
+    cfg["kinds"] = sorted({weight_kind(cfg, n) for n in cfg["seats"]}
+                          | {c for e in topo.values() for s in e["slots"] for c in s["caps"]})
     cfg["moved"] = sorted({c for slots in unity.values() for s in slots for c in s["caps"]} | small_kinds(cfg)
                           | {cfg[f"{r}_label"] for r in ("pool", "full", "build", "wide", "withheld", "build_withheld")})
     # A LAN Unity host's local test runs, leased one seat each (LocalSeats).
@@ -2251,7 +2256,7 @@ def effective_slots(cfg, host, decisions, pins, registered, admitted):
 
 
 def render(cfg, hosts, runners, queue, decisions, ok, instances=None, budget=None, lends=None, withheld=None,
-           in_units=None, pins=None):
+           in_units=None, pins=None, weights=None):
     L = ["# HELP ci_governor_ok 1 when every source answered this cycle", "# TYPE ci_governor_ok gauge",
          f"ci_governor_ok {1 if ok else 0}", f"ci_governor_queue {queue}",
          "# HELP ci_governor_admitted Pool runners on a host that carry the pool label (may take jobs)",
@@ -2323,6 +2328,14 @@ def render(cfg, hosts, runners, queue, decisions, ok, instances=None, budget=Non
         if drain is not None:
             L += ["# HELP ci_governor_drain_seconds How long the backlog takes to run on today's capacity",
                   "# TYPE ci_governor_drain_seconds gauge", f"ci_governor_drain_seconds {int(drain)}"]
+    if weights is not None:
+        # One row per kind, so a reader never finds a kind missing: a kind with no measurement (too
+        # few samples, or a whole-slot kind) is 1, the weight pack() and units() give it.
+        L += ["# HELP ci_governor_kind_weight A job kind's share of a slot: its measured p90 (measured=true), "
+              "else 1 (measured=false)", "# TYPE ci_governor_kind_weight gauge"]
+        for kind in cfg["kinds"]:
+            L.append(f'ci_governor_kind_weight{{kind="{kind}",measured="{str(kind in weights).lower()}"}} '
+                     f'{weights.get(kind, 1.0):g}')
     # The reason is in the log, not a label: it changes every cycle.
     L += ["# HELP ci_governor_decision This cycle's verdict and actions per host (a paired host can show several)", "# TYPE ci_governor_decision gauge"]
     # A paired host moves several slots in one cycle: one row per host, verdict and action.
@@ -2477,7 +2490,7 @@ def cycle(cfg, last_action, tracked=None, budget=None, lending=None, local=None)
     with State.lock:
         State.metrics = "ci_governor_up 1\n" + render(
             cfg, hosts, runners, queue, decisions, True, instances, budget, lends, withheld, in_units,
-            (pins, pin_sources))
+            (pins, pin_sources), weights if lending and WEIGHTS["at"] is not None else None)
 
 
 class Handler(BaseHTTPRequestHandler):

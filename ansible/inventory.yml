@@ -673,8 +673,9 @@ all:
     # docs/runbooks/fleet-worker.md.
     #   fleet_place      false keeps a provisioned host out of placement
     #   fleet_max_live   sessions at once on it (a light item is one run unit)
-    #   fleet_repos      what it clones, and the repos whose items it takes;
-    #                    dest is the same path as on the workstation
+    #   fleet_repos      what it clones, and the repos whose items it takes: set once on
+    #                    the group (a host var replaces it outright); dest is the
+    #                    same path as on the workstation
     #   fleet_harnesses  the headless harnesses it runs besides claude
     #                    (names in the dotfiles-private harness map); placed only
     #                    while its probe reads each ready (fleet-dispatch harness-ready)
@@ -690,9 +691,33 @@ all:
     fleet_workers:
       vars:
         fleet_max_live: 1
+        # The standard set every worker clones: each light repo in the dotfiles
+        # project-map whose sessions run headless with what a worker has. A host
+        # var replaces this list outright, so a host does not set its own.
+        # Left off, and why (each one is a row to make it runnable, not a host
+        # list): bnb-platform needs its SOPS-decrypted .env and a per-app
+        # Postgres; tilecast's app tests need the Android SDK; audio's tests
+        # need the PipeWire rig; ebay-lister runs only through its vault wrapper;
+        # unity-core's tests run in a Unity editor; client repos stay on the
+        # workstation.
         fleet_repos:
           - dest: ~/.dotfiles
             repo: https://github.com/Kblack0610/.dotfiles.git
+          - dest: ~/dev/home/home-config
+            repo: https://git.kblab.me/kblack0610/home-config.git
+            remote: forgejo   # the name fleet-hosts.sh and fleet-roster-fetch.timer read
+          - dest: ~/dev/crypto/freqtrade_trading_attempt
+            repo: https://github.com/Kblack0610/freqtrade_trading_attempt.git
+          - dest: ~/dev/bnb/playtest-bot
+            repo: https://github.com/Kblack0610/playtest-bot.git
+          - dest: ~/dev/personal/personal-sites
+            repo: https://github.com/Kblack0610/personal-sites.git
+          - dest: ~/dev/bnb/games/bnb-game-servers
+            repo: https://git.kblab.me/kblack0610/bnb-game-servers.git
+          - dest: ~/dev/openmptcsetup
+            repo: https://github.com/kblack0610/openmptcsetup.git
+          - dest: ~/src/zmk_config
+            repo: https://github.com/Kblack0610/zmk_config.git
       hosts:
         # The first worker (2026-11-07): wired and always on, 16 threads and
         # 32 GB since the RAM move (hc-328), 96 GB before. It ran the singleton lanes 2026-11-15 to
@@ -702,7 +727,6 @@ all:
         # free-memory floor (DISPATCH_HOST_MEM_MIN_PCT); 4 more would leave 18%. Each start also
         # reads that floor and the load pace again. Provisional, medium confidence; revisit when
         # host-headroom razer-laptop reads ROOM over a week at 5 live, or freqtrade moves off it.
-        # Its repos are the ones the night canaries run in (agent-runtime is ~/.dotfiles).
         # Canary, night and trainee items go here before the workstation (fleet_first, dotfiles #2418, #2635).
         razer-laptop:
           # 8945HS, 8 cores / 16 threads, siblings n and n+8 (lscpu -e, 2026-11-18). Agent
@@ -719,14 +743,6 @@ all:
           # No ~/.notes clone, so fleet-dispatch fails here ("no current project"): it
           # took the lease in the 2026-11-19 workstation reboot and dispatch stopped.
           fleet_lease: false
-          fleet_repos:
-            - dest: ~/.dotfiles
-              repo: https://github.com/Kblack0610/.dotfiles.git
-            - dest: ~/dev/home/home-config
-              repo: https://git.kblab.me/kblack0610/home-config.git
-              remote: forgejo   # the name fleet-hosts.sh and fleet-roster-fetch.timer read
-            - dest: ~/dev/crypto/freqtrade_trading_attempt
-              repo: https://github.com/Kblack0610/freqtrade_trading_attempt.git
           ssh_host_ed25519: ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAINmhQxBIidZJ6HtH0d5CRf4sj0l1CPYymCrvN/dcypAa
 
     # Machines the human drives the fleet from: they read and start sessions

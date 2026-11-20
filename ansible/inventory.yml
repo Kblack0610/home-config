@@ -559,7 +559,7 @@ all:
     #                    (names in the dotfiles-private harness map); placed only
     #                    while its probe reads each ready (fleet-dispatch harness-ready)
     #                    never codex: it runs on the workstation only (the human,
-    #                    2026-11-19), so no worker lists it or holds a Codex login
+    #                    2026-11-19), so no worker lists it and the role installs none
     #   fleet_ssh_host  where fleet-dispatch ssh goes when ansible_host is not
     #                    it (a cloud worker: an instance id behind SSM)
     #   fleet_tailscale  true joins the tailnet (role tailscale-node)

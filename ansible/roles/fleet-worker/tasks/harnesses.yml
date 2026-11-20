@@ -4,7 +4,8 @@
 # harness (nim, ocfree, opencode-go) runs in its lane sandbox, so it wants opencode, the harness
 # map, its eval config and its lane sandbox profile (all three from the private overlay), srt with
 # bwrap and socat, and its gateway key file. codex runs on the workstation only, never on a worker
-# (inventory fleet_harnesses). bwrap, socat and npm come with fleet_worker_packages. Runbook: docs/runbooks/fleet-worker.md, "Headless harnesses".
+# (inventory fleet_harnesses). bwrap, socat and npm come with fleet_worker_packages.
+# Runbook: docs/runbooks/fleet-worker.md, "Headless harnesses".
 # Everything read from the controller is optional: what is missing is reported, never fatal.
 
 # One pin, the controller's own (dotfiles packages.conf NPM_PACKAGES), not the worker's checkout,

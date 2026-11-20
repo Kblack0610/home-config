@@ -1,7 +1,7 @@
 ---
 # What a session on a fleet worker runs: tmux and wt (from the dotfiles), the
-# harnesses (claude and opencode; codex runs on the workstation only), gh for its PRs, python-yaml and jq for fleet-hosts.sh,
-# bubblewrap, socat and npm for srt, the lane sandbox a headless harness runs in
+# harnesses (claude and opencode; codex runs on the workstation only), gh for
+# its PRs, python-yaml and jq for fleet-hosts.sh, bubblewrap, socat and npm for srt, the lane sandbox a headless harness runs in
 # (tasks/harnesses.yml installs srt itself), and
 # rust and gcc to build agent-panel, and mosquitto for agent-mqtt-publish, a
 # singleton lane that runs on whichever peer holds the fleet lease. pnpm and uv

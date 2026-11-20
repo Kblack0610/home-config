@@ -130,9 +130,10 @@ jobs:
       - name: cluster-janitor quarantine trigger and cap tests
         run: python3 apps/cluster-janitor/test_quarantine.py
       # An if, not "! cmd": sh -e ignores a "!" pipeline's status, so a "!" step passes either way.
-      - name: Negative control - the topology check fails on aws-build-1 slot groups swapped off their build slots' cores
+      - name: Negative control - the topology check fails on ms-a2's slot group swapped off its build slot's cores
         run: |
-          sed 's/unity_ci_slot_groups: {1: \[4, 5\], 2: \[6, 7\]/unity_ci_slot_groups: {1: [4, 6], 2: [5, 7]/' ansible/inventory.yml > planted-groups.yml
+          sed 's/unity_ci_slot_groups: {5: \[3, 4\]}/unity_ci_slot_groups: {5: [2, 4]}/' ansible/inventory.yml > planted-groups.yml
+          ! cmp -s planted-groups.yml ansible/inventory.yml || { echo "the plant did not apply"; exit 1; }
           rc=0; python3 scripts/render-ci-topology.py --check --inventory planted-groups.yml > planted-groups.out 2>&1 || rc=$?
           rm planted-groups.yml; cat planted-groups.out
           [ "$rc" -ne 0 ] || { echo "the check passed a planted bad group"; exit 1; }
@@ -203,6 +204,21 @@ jobs:
           ! python3 scripts/check-secret-store.py apps/searxng/planted-control.yml
           rm apps/searxng/planted-control.yml
 
+      # .githooks/pre-push runs these same steps before the push; its table is checked against this file.
+      - name: The pre-push hook's step table has a row for every step here and no row for a step that is not
+        run: python3 scripts/check-prepush-steps.py
+      - name: Negative control - the pairing check fails on a CI step with no row and on a row with no CI step
+        run: |
+          grep -v 'test-prepush-hook' .githooks/pre-push-steps.tsv > planted-steps.tsv
+          printf '.\t-\tpython3 scripts/planted-step.py\n' >> planted-steps.tsv
+          rc=0; python3 scripts/check-prepush-steps.py .forgejo/workflows/checks.yaml planted-steps.tsv > planted-steps.out 2>&1 || rc=$?
+          rm planted-steps.tsv; cat planted-steps.out
+          [ "$rc" -ne 0 ] || { echo "the check passed a table that drifted from CI"; exit 1; }
+          grep -q "CI step with no row" planted-steps.out && grep -q "row in planted-steps.tsv with no CI step: python3 scripts/planted-step.py" planted-steps.out || { echo "the check failed, but not on both plants"; exit 1; }
+          rm planted-steps.out
+      - name: The pre-push hook refuses a planted red, passes the fix and skips a push that is not HEAD
+        run: sh scripts/test-prepush-hook.sh
+
   zomboid-scripts:
     # The control and sleeper suites have existed since those scripts were written
     # and have only ever run when someone remembered to. They are stdlib-only and
@@ -241,6 +257,8 @@ jobs:
         run: sh ansible/roles/ci-host/files/test-job-started.sh
       - name: ci-tree-prune offline test
         run: sh ansible/roles/unity-ci-host-mac/files/test-ci-tree-prune.sh
+      - name: ensure-build-keychain offline test
+        run: sh ansible/roles/unity-ci-host-mac/files/test-ensure-build-keychain.sh
       - name: node-disk-metrics offline test
         run: sh ansible/roles/node-disk-metrics/files/test-node-disk-metrics.sh
       - name: node-inventory-metrics offline test
@@ -324,24 +342,7 @@ jobs:
       # A gate that fails on something production does not build teaches people to
       # ignore the gate.
       - name: Flux entry points build
-        run: |
-          set -eu
-          rc=0
-          : > rendered.yaml  # read by the timeZone step below, so it checks exactly this render
-          targets="apps $(ls -d clusters/*/ 2>/dev/null || true)"
-          # An empty target list must FAIL, not pass vacuously.
-          [ -n "$(echo "$targets" | tr -d ' ')" ] || { echo "FAIL: no build targets found"; exit 1; }
-          for d in $targets; do
-            if kustomize build "$d" >build.out 2>build.err; then
-              { cat build.out; echo ---; } >> rendered.yaml
-              echo "ok: $d"
-            else
-              echo "FAIL: kustomize build $d"
-              sed 's/^/    /' build.err
-              rc=1
-            fi
-          done
-          exit $rc
+        run: scripts/check-kustomize-builds.sh rendered.yaml  # rendered.yaml is read by the timeZone step below, so it checks exactly this render
 
       # The controller and kube-state-metrics must agree on a CronJob's zone. With no
       # spec.timeZone the k3s controller schedules in its host's zone (Pacific) while KSM

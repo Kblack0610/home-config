@@ -20,12 +20,23 @@ class Roster(unittest.TestCase):
 
 
 class Tally(unittest.TestCase):
-    def test_idle_counts_only_while_another_kind_waits(self):
-        idle = {("ms-a2", "light"): {0: 2, S: 2, 2 * S: 2}}
+    def test_idle_counts_only_while_a_kind_the_slot_cannot_take_waits(self):
+        idle = {("ms-a2", "ms-a2-light-1"): {0: {"light"}, S: {"light"}, 2 * S: {"light"}},
+                ("ms-a2", "ms-a2-light-2"): {0: {"light"}, S: {"light"}, 2 * S: {"light"}}}
         waiting = {"unity": {S: 3}, "light": {2 * S: 1}}
         lost, _ = m.tally(idle, waiting, {}, range(0, 3 * S, S))
-        # t=0 nothing waits; t=S unity waits (counts); t=2S only light itself waits (does not).
-        self.assertAlmostEqual(lost[("ms-a2", "light")], 2 * S / 3600)
+        # t=0 nothing waits; t=S unity waits (both count); t=2S only light, which they take, waits (does not).
+        self.assertAlmostEqual(lost["ms-a2"], 2 * S / 3600)
+
+    def test_a_slot_that_takes_the_waiting_kind_is_not_lost(self):
+        # The agnostic slot is unity first, but takes light too: a light wait does not strand it.
+        pool_slot = {("ms-a2", "ms-a2-unity-pool-1", c): {0: 0, S: 0} for c in ("unity", "light", "heavy")}
+        pool_slot[("ms-a2", "ms-a2-forgejo-1", "forgejo")] = {S: 0}
+        idle = m.idle_slots(pool_slot)
+        self.assertEqual(idle[("ms-a2", "ms-a2-unity-pool-1")][0], {"unity", "light", "heavy"})
+        lost, _ = m.tally(idle, {"light": {0: 1, S: 1}}, {}, range(0, 2 * S, S))
+        # Only the Forgejo seat, idle at t=S while a light job waited, counts.
+        self.assertAlmostEqual(lost["ms-a2"], S / 3600)
 
     def test_wait_quantiles_only_over_minutes_a_job_waited(self):
         waiting = {"forgejo": {0: 1, S: 1, 2 * S: 0}}

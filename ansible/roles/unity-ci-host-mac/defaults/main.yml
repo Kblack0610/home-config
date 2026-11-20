@@ -99,3 +99,6 @@ unity_ci_mac_accelerator_evict_until_free_percent: 24
 # The hand-registered runner whose .env gets UNITY_CACHE_SERVER, and its LaunchAgent.
 unity_ci_mac_accelerator_runner: "{{ ansible_env.HOME }}/actions-runner-playground"
 unity_ci_mac_accelerator_runner_label: actions.runner.BlackNBrownStudios-unity-core-playground.m1-playground-mac
+
+# The build keychain script (tasks/signing-keychain.yml).
+unity_ci_mac_keychain_script: "{{ ansible_env.HOME }}/.local/bin/ensure-build-keychain.sh"

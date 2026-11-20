@@ -88,8 +88,8 @@ devices:
     ip: "192.168.1.20"
     category: servers
 
-  # razer-laptop: Razer Blade 14, headless CI host (Unity + light/heavy runners),
-  # not a k3s node. This MAC is its USB-C ethernet dongle (cdc_ncm), so the
+  # razer-laptop: Razer Blade 14, headless agent host (in no_ci_hosts, so no CI; a k3s
+  # agent since 2026-10-26). This MAC is its USB-C ethernet dongle (cdc_ncm), so the
   # reservation moves with the dongle.
   - hostname: razer-laptop
     mac: "A0:CE:C8:BA:3E:21"

@@ -40,7 +40,7 @@ Reading model names: `i3/i5/i7/i9` and `Ryzen 3/5/7/9` are tiers and say nothing
 | OptiPlex 5060 SFF, i5-8500 / i5-8600 / i7-8700 (6 cores) | $80-100 plus RAM to 32-48 GB | About $6-8 per slot per month if two slots hold up, $10-14 if one (24 months, power included). 65 W, holds its clocks. Two slots on six cores leaves no core spare, so measure that before counting on it. Skip the i3-8100 (4 cores) |
 | HP EliteDesk mini, Ryzen 5 PRO 2400GE / 3400GE (4 cores) | ~$60 plus 32 GB | One slot, about $8-10 per slot per month. 35 W 2018-19 chip, roughly half the per-core speed of the newer laptops, so a shard may run 1.5-2x longer. Often sold without the power brick |
 
-Buy one of a cheap model first, add it as one slot, and time a pinned PlayMode shard against razer-laptop before buying more. Every home box is one more Unity activation (see [Unity license](#unity-license)).
+Buy one of a cheap model first, add it as one slot, and time a pinned PlayMode shard against an owned slot (ms-a2 or deskslim-2) before buying more. Every home box is one more Unity activation (see [Unity license](#unity-license)).
 
 ## Buying in the RAM shortage
 
@@ -70,7 +70,7 @@ Decided 2026-11-10 (ask QfY0Fp), 12-13 slots: an MS-A2 9955HX barebone with raze
 
 Measured without the Mac Studio, 2026-11-13 to 11-14: the 24h rolling Unity wait p90 (the exporter's `github_job_queue_seconds{pool="unity",quantile="0.9"}`, recorded from 11-13 06:00 UTC) stayed over 30 min from then to 11-14 14:00 UTC, peaking at 92 min. That was with aws-burst-1, aws-burst-2, aws-burst-3 and aws-build-1 (about 23 slots) each on 14-24 h a day, so the Studio's load is larger than the 5 round-the-clock slots estimated above. aws-burst-2 alone does not replace it, and the 11-10 hardware stays the replacement.
 
-Retired 2026-11-16 at the human's request: the on-demand aws-burst-1, -2 and -3 (17 slots at $1.855/h a host), once ms-a2 (4 slots) and deskslim-2 (3) were in the pool. Overflow past the home hosts is now the Spot hosts (15 slots, when AWS has Spot room) and aws-build-1's six test slots, so a night queue that finds no Spot room waits longer than the p90 above.
+Retired 2026-11-16 at the human's request: the on-demand aws-burst-1, -2 and -3 (17 slots at $1.855/h a host), once ms-a2 (4 slots) and deskslim-2 (3) were in the pool. The Spot hosts and aws-build-1 left the pool on 2026-11-19 (their instances were gone), so nothing overflows past the home hosts.
 
 ## 6-8 slots in one box
 
@@ -95,11 +95,11 @@ Ruled out:
 - Threadripper 9960X: $6,400-8,600 for 7 slots, because the DDR5 RDIMM costs more than the CPU and board.
 - Dell R7525 and other 2U servers: 50-70 dBA under load, closet or garage only.
 
-Before ordering, settle the cap: the new box's slots plus the pool's registered slots must fit under `pool_max_admitted` (24 in `apps/ci-runner-governor/config.json`); if they do not, the new box replaces AWS slots, or the cap and the license question move. Then buy one box, run it at 4 slots, time a pinned PlayMode shard against razer-laptop, and ramp to 8.
+Before ordering, settle the cap: the new box's slots plus the pool's registered slots must fit under `pool_max_admitted` (24 in `apps/ci-runner-governor/config.json`); if they do not, the cap and the license question move. Then buy one box, run it at 4 slots, time a pinned PlayMode shard against razer-laptop, and ramp to 8.
 
 ## Laptops as runners
 
-razer-laptop left the Unity pool 2026-11-17 (RAM 96 GB -> 32 GB; one light slot only). asus-laptop and hp-victus are service hosts that carry no CI of any kind (`no_ci_hosts` in `ansible/inventory.yml` says why): as k3s nodes holding Forgejo, Frigate and the databases, CI load there took the cluster down with the jobs. Laptops work but throttle under sustained load and their batteries swell when held at 100%. Set a 60-80% charge limit in the BIOS (or `thinkpad_acpi` thresholds on Linux) and run with the lid open.
+razer-laptop left the Unity pool 2026-11-17 (RAM 96 GB -> 32 GB); it runs agents and no CI (`no_ci_hosts`, 2026-11-18). asus-laptop and hp-victus are service hosts that carry no CI of any kind (`no_ci_hosts` in `ansible/inventory.yml` says why): as k3s nodes holding Forgejo, Frigate and the databases, CI load there took the cluster down with the jobs. Laptops work but throttle under sustained load and their batteries swell when held at 100%. Set a 60-80% charge limit in the BIOS (or `thinkpad_acpi` thresholds on Linux) and run with the lid open.
 
 ## Renting
 
@@ -134,7 +134,7 @@ Checked 2026-11-11: moving Unity jobs from the AWS hosts to GitHub-hosted runner
 - 4-core is the smallest that fits a slot (3 cores, 14 GB; a PlayMode shard peaks at 13.9 GB), and only just. The 2-core standard runner does not fit.
 - On top of the rate, every hosted job imports a cold `Library/`, activates Unity again (see [Unity license](#unity-license)), and is billed in whole minutes. Jobs that need `lan` (Multi, player builds, git.kblab.me pushes) cannot run there at all.
 - At the pool's 150-260 runner-hours a day (playground `docs/operations/ci-cost.md`, 2026-11-06), GitHub 4-core would cost about $3,200-5,600 a month, against the `ci-burst-monthly` cap on AWS (platform `infra/aws-ci-burst/variables.tf` `budget_monthly_usd` on `develop`).
-- Non-Unity jobs already use hosted runners (`LINUX_RUNNER_LIGHT`, else `ubuntu-latest`), which is where hosted runners make sense.
+- Moved light and heavy jobs already run self-hosted: `LINUX_RUNNER_LIGHT` and `LINUX_RUNNER_HEAVY` (org variables, set in GitHub) point at the `light` and `heavy` labels, which the seats on the Unity test slots serve (see below); release and deploy jobs stay on `ubuntu-latest` (comment above the "CI runners" play in `ansible/playbooks/site.yml`), so hosted runners are the fallback there only.
 - To spend less, prefer Spot over on-demand and buy owned slots ([Options by value](#options-by-value)).
 
 Source: docs.github.com/en/billing/reference/actions-runner-pricing (Linux x64), `apps/ci-runner-governor/config.json` `rates`.
@@ -154,7 +154,7 @@ Target from #940: AWS $ per busy slot-hour under $0.25, from a baseline of $0.74
 - Cause: the on-demand hosts were held up by a standing governor override "on" from 11-13 to 11-16 (lesson 2026-11-16), so the queue was always covered and the Spot hosts, first in `standby`, never started. aws-spot-2 and aws-spot-3 did not run after the 11-13 probes; aws-spot-1 ran 2 h on 11-15. This measures the override, not Spot. Re-measure on a window with no override.
 - Reclaims (`ci_governor_fallback_total`, 3 d): aws-spot-1 1 (the 11-13 23:16 UTC probe reclaim), aws-spot-2 0, aws-spot-3 0; `capacity` and `refused` 0 on every host. No host is past 3 reclaims a day, so none flips to `spot = false`.
 - aws-spot-1 probe, unity-core-playground run 43529344154 (`Tests (affected, spike SPOT_PROBE=1b)`): completed success, last update 2026-11-14 01:07 UTC. Its 23:46 UTC failure was Forgejo down with hp-victus (asset-library clone), not the host.
-- No slot runs one job kind alone: every Unity test slot on a host whose ci_caps carry light or heavy also takes those (SHARED_CAPS in scripts/render-ci-topology.py): ms-a2's four, deskslim-2's three, deskslim-1's three and windows-media-ci's three take light, and all but windows-media-ci's take heavy, and light and heavy CI run nowhere else. Heavy means the host has `/dev/kvm` (platform's Mobile Smoke Android emulator times out without it), so a Hyper-V VM is never heavy: the windows-media host refuses nested virtualization. Forgejo and the personal repos' runners are seats that borrow those slots when the governor lends one, so they add jobs, not cores (docs/runbooks/unity-ci-host.md, Slots take any kind). A Unity repo's light job parks the warm tree first (ci-fresh-workspace, docs/runbooks/unity-ci-host.md). razer-laptop runs no CI: it is an agent host in no_ci_hosts. The Spot slots are Unity only (dotfiles-d6, #953).
+- No slot runs one job kind alone: every Unity test slot takes Unity jobs, and on ms-a2, deskslim-2, deskslim-1 and windows-media-ci the governor lends the lendable ones to seats, which run the light and heavy jobs (ci_seat_kinds, hc-693); all but windows-media-ci have heavy seats, and light and heavy CI run nowhere else. Heavy means the host has `/dev/kvm` (platform's Mobile Smoke Android emulator times out without it), so a Hyper-V VM is never heavy: the windows-media host refuses nested virtualization. Forgejo and the personal repos' runners are seats that borrow those slots when the governor lends one, so they add jobs, not cores (docs/runbooks/unity-ci-host.md, Slots and seats). A Unity repo's light job parks the warm tree first (ci-fresh-workspace, docs/runbooks/unity-ci-host.md). razer-laptop runs no CI: it is an agent host in no_ci_hosts. The Spot slots are Unity only (dotfiles-d6, #953).
 
 A rented box joins like a home one: tailnet first (`docs/headscale-setup.md`, so it reaches `git.kblab.me`), then `unity_ci_runners` and `ci_hosts` in `ansible/inventory.yml`, the "CI runners (Unity slots and the seats that borrow them)" play (`ci-host` and `github-actions-runner-linux`), and `scripts/render-ci-topology.py` to re-render `apps/ci-topology/topology.json`, which the exporter and governor read (CI fails when it is stale). Start it at about half its slots, prove it with one pinned PlayMode shard timed against razer-laptop, then ramp. Add one host at a time, so the new activations do not all start together.
 

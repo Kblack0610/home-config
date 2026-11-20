@@ -147,8 +147,9 @@ class ExporterTest(unittest.TestCase):
     def test_busy_runner_carries_its_job(self):
         (row,) = [r for r in rows(self.render(), "github_runner_state") if 'name="box-unity-pool-1"' in r]
         for want in ('state="running"', 'repo="game"', 'workflow="Tests"', 'job_name="PlayMode 1"',
-                     'branch="main"', 'url="https://x/job/1"', 'host="box"', 'pool="unity"'):
+                     'branch="main"', 'url="https://x/job/1"', 'host="box"'):
             self.assertIn(want, row)
+        self.assertNotIn("pool=", row)  # the kind it runs is ci_runner_job's, its caps pool_slot's
         self.assertGreaterEqual(int(row.rsplit(" ", 1)[1]), 590)
 
     def test_busy_runner_and_its_queued_sibling_carry_the_pr(self):
@@ -178,8 +179,10 @@ class ExporterTest(unittest.TestCase):
         # gone-unity-pool-1 never registered -> one missing row, named for its slot.
         missing = [r for r in state if 'state="missing"' in r]
         self.assertEqual(len(missing), 1)
-        for want in ('name="gone-unity-pool-1"', 'host="gone"', 'pool="unity"', 'scope="topology"'):
+        for want in ('name="gone-unity-pool-1"', 'host="gone"', 'scope="topology"'):
             self.assertIn(want, missing[0])
+        self.assertIn('github_runner_pool_slot{name="gone-unity-pool-1",host="gone",site="cloud",state="missing",'
+                      'scope="topology",forge="github",pool="unity"} 0', out)
         self.assertIn('github_runners_by_state{state="missing",forge="github"} 1', out)
 
     def test_a_slot_with_several_caps_counts_once_per_cap(self):
@@ -191,7 +194,7 @@ class ExporterTest(unittest.TestCase):
         self.assertTrue(any('pool="light"' in r and 'state="running"' in r for r in slot))
         self.assertTrue(any('pool="unity"' in r and 'state="running"' in r for r in slot))
         (st,) = [r for r in rows(out, "github_runner_state") if 'name="box-unity-pool-1"' in r]
-        self.assertIn('pool="light"', st)  # its first cap
+        self.assertNotIn("pool=", st)  # no first cap: pool_slot has one row per cap
         self.assertIn('github_runner_pool_expected{host="box",pool="light"} 3', out)
         self.assertIn('github_runner_pool_expected{host="box",pool="unity"} 1', out)
         # box-light-1 and the busy flex slot are online in light; box-light-2 is offline.
@@ -334,6 +337,35 @@ class ExporterTest(unittest.TestCase):
         self.assertEqual(d['github_job_duration_seconds{pool="light",workflow="CI",quantile="0.5",forge="github"}'], 0)
         self.assertEqual(d['github_job_duration_seconds{pool="light",workflow="CI",quantile="0.9",forge="github"}'], 240)
         self.assertEqual(d['github_job_duration_seconds{pool="github-hosted",workflow="CI",quantile="0.5",forge="github"}'], 60)
+
+    def test_a_light_job_on_a_unity_first_slot_is_light_history(self):
+        # An agnostic slot takes unity, light and heavy, unity first. Its runner row names no
+        # pool (github_runner_pool_slot has its caps), and a light job it finished is light
+        # history: duration, queue, jobs and workflows are keyed as ci_runner_job keys it.
+        flex = {"host": "box", "caps": ["unity", "light", "heavy"], "repo": None, "forge": "github", "borrows": None}
+        lint = FAKE["repos/acme/web/actions/runs/9/jobs?per_page=100"]["jobs"][0]
+        with mock.patch.dict(exporter.SLOTS, {"box-unity-pool-1": flex}), \
+                mock.patch.dict(lint, {"runner_name": "box-unity-pool-1"}):
+            out = self.render()
+        self.assertEqual([r for r in rows(out, "github_runner_state") if "pool=" in r], [])
+        d = {r.rsplit(" ", 1)[0]: int(r.rsplit(" ", 1)[1]) for r in rows(out, "github_job_duration_seconds")}
+        # light: lint 240s on the flex slot, e2e 0s on a runner since removed.
+        self.assertEqual(d['github_job_duration_seconds{pool="light",workflow="CI",quantile="0.9",forge="github"}'], 240)
+        for metric in ("github_job_duration_seconds", "github_job_queue_seconds", "github_jobs_finished",
+                       "github_pool_workflow"):
+            self.assertFalse([r for r in rows(out, metric) if 'pool="unity"' in r], metric)
+        self.assertIn('github_jobs_finished{pool="light",repo="web",workflow="CI",conclusion="failure",forge="github"} 1', out)
+
+    def test_a_finished_job_naming_no_kind_on_a_many_cap_slot_is_other(self):
+        # The kind is open (ci_runner_job leaves such a runner out): the job counts, as other, never
+        # as the slot's first cap.
+        flex = {"host": "box", "caps": ["unity", "light", "heavy"], "repo": None, "forge": "github", "borrows": None}
+        lint = FAKE["repos/acme/web/actions/runs/9/jobs?per_page=100"]["jobs"][0]
+        with mock.patch.dict(exporter.SLOTS, {"box-unity-pool-1": flex}), \
+                mock.patch.dict(lint, {"runner_name": "box-unity-pool-1", "labels": ["self-hosted"]}):
+            out = self.render()
+        self.assertIn('github_jobs_finished{pool="other",repo="web",workflow="CI",conclusion="failure",forge="github"} 1', out)
+        self.assertFalse([r for r in rows(out, "github_jobs_finished") if 'pool="unity"' in r])
 
     def test_quantile_nearest_rank(self):
         xs = list(range(1, 11))
@@ -542,6 +574,16 @@ class ExporterTest(unittest.TestCase):
         # While a runner source failed nothing is called unserved.
         self.assertEqual(kind("acme/game", {"labels": ["self-hosted", "unity", "host-gone"]}, None), "unity")
 
+    def test_a_wait_naming_no_kind_is_other_unless_its_runners_leave_one(self):
+        # runs-on: self-hosted on a slot that takes unity, light and heavy: the kind is open until it
+        # runs, as ci_runner_job and the history say, never the slot's first cap.
+        flex = {"host": "box", "caps": ["unity", "light", "heavy"], "repo": None, "forge": "github", "borrows": None}
+        org = ("org", {"name": "box-unity-pool-1", "labels": [{"name": l} for l in ("self-hosted", "unity", "host-box")]})
+        with mock.patch.dict(exporter.SLOTS, {"box-unity-pool-1": flex}):
+            t = self.takers(org)
+            self.assertEqual(exporter.wait_kind("acme/game", {"labels": ["self-hosted"]}, t), "other")
+            self.assertEqual(exporter.wait_kind("acme/game", {"labels": ["self-hosted", "unity"]}, t), "unity")
+
     def test_a_withheld_runner_still_serves_what_it_gets_back(self):
         held = ("org", {"name": "gone-unity-pool-1",
                         "labels": [{"name": l} for l in ("self-hosted", "unity-withheld", "host-gone")]})
@@ -580,9 +622,9 @@ class ExporterTest(unittest.TestCase):
         finally:
             FAKE[org] = saved
         self.assertEqual(rows(out, "github_runner_withheld"), ['github_runner_withheld{name="box-unity-pool-1",host="box"} 1'])
-        self.assertTrue(any('pool="unity"' in r and 'state="running"' in r for r in rows(out, "github_runner_state")))
+        self.assertTrue(any('pool="unity"' in r and 'state="running"' in r for r in rows(out, "github_runner_pool_slot")))
         self.assertFalse(any('state="missing"' in r and 'host="box"' in r and 'pool="unity"' in r
-                             for r in rows(out, "github_runner_state")))
+                             for r in rows(out, "github_runner_pool_slot")))
 
     def test_same_runner_id_under_two_owners_counts_both(self):
         # GitHub numbers runners per owner: a personal repo's runner 2 is not acme's runner 2.
@@ -645,8 +687,8 @@ class ExporterTest(unittest.TestCase):
         finally:
             FAKE[org] = saved
         self.assertEqual(rows(out, "github_runner_withheld"), ['github_runner_withheld{name="bld-unity-pool-1",host="bld"} 1'])
-        self.assertTrue(any('pool="unity-build"' in r and 'host="bld"' in r for r in rows(out, "github_runner_state")))
-        self.assertFalse(any('pool="unity"' in r and 'host="bld"' in r for r in rows(out, "github_runner_state")))
+        self.assertTrue(any('pool="unity-build"' in r and 'host="bld"' in r for r in rows(out, "github_runner_pool_slot")))
+        self.assertFalse(any('pool="unity"' in r and 'host="bld"' in r for r in rows(out, "github_runner_pool_slot")))
 
     def test_a_paired_host_runs_two_pools_by_each_runners_labels(self):
         # aws-build-1: build slots in unity-build, test slots in unity, withheld or not.
@@ -1065,9 +1107,10 @@ class ForgejoTest(unittest.TestCase):
     def test_a_topology_slot_is_one_row_in_its_newest_runners_state(self):
         st = self.state(self.render())
         self.assertEqual(sorted(st), ["box-forgejo-1", "box-forgejo-2", "box-forgejo-3"])
-        for want in ('host="box"', 'pool="forgejo"', 'site="local"', 'scope="instance"',
+        for want in ('host="box"', 'site="local"', 'scope="instance"',
                      'labels="docker,linux-amd64"', 'state="running"', 'repo=""'):
             self.assertIn(want, st["box-forgejo-1"])
+        self.assertNotIn("pool=", st["box-forgejo-1"])
         self.assertIn('state="idle"', st["box-forgejo-2"])
         self.assertIn('state="missing"', st["box-forgejo-3"])
         self.assertIn('scope="topology"', st["box-forgejo-3"])
@@ -1075,6 +1118,53 @@ class ForgejoTest(unittest.TestCase):
         out = self.render()
         self.assertFalse([r for r in rows(out, "github_runner_state") if 'forgejo' in r and 'forge="github"' in r])
         self.assertNotIn('pool="forgejo"', "".join(rows(out, "github_runner_pool_expected")))
+
+    def test_a_running_seat_names_the_job_the_governor_says_it_runs(self):
+        # hc-571: the seat logs its task id, the governor serves it on /tasks, and the
+        # row takes the task's repo, workflow, job, branch and run url.
+        with mock.patch.object(exporter, "governor_tasks", return_value={"box-forgejo-1": 101}):
+            st = self.state(self.render())
+        for want in ('repo="ci"', 'workflow="build.yaml"', 'job_name="build"', 'branch="master"',
+                     'url="https://forge/kb/ci/actions/runs/101"'):
+            self.assertIn(want, st["box-forgejo-1"])
+        # An idle seat is never named, even if the governor still holds a task for it.
+        with mock.patch.object(exporter, "governor_tasks", return_value={"box-forgejo-2": 101}):
+            self.assertIn('repo=""', self.state(self.render())["box-forgejo-2"])
+        # A task in no watched repo still marks the seat busy on something.
+        with mock.patch.object(exporter, "governor_tasks", return_value={"box-forgejo-1": 999}):
+            row = self.state(self.render())["box-forgejo-1"]
+        self.assertIn('repo="(not watched)"', row)
+        self.assertIn('workflow=""', row)
+        # A task not yet in the task cache: this scrape's running job of it names repo and job.
+        with mock.patch.object(exporter, "governor_tasks", return_value={"box-forgejo-1": 999}):
+            row = self.state(self.render(jobs=[{"id": 7, "name": "deploy", "status": "running", "task_id": 999}]))[
+                "box-forgejo-1"]
+        for want in ('repo="ci"', 'job_name="deploy"', f'url="{exporter.FORGEJO_WEB}/kb/ci/actions"'):
+            self.assertIn(want, row)
+        # With a watched repo unread, the task may be its own: the repo stays blank, never "(not watched)".
+        exporter.FJ_TASKS.clear()
+        with mock.patch.object(exporter, "governor_tasks", return_value={"box-forgejo-1": 999}):
+            self.assertIn('repo=""', self.state(self.render(broken=("repos/kb/site",)))["box-forgejo-1"])
+
+    def test_no_governor_answer_leaves_a_running_seat_unnamed(self):
+        with mock.patch.object(exporter, "governor_tasks", return_value={}):
+            self.assertIn('repo=""', self.state(self.render())["box-forgejo-1"])
+        with mock.patch.object(exporter, "GOVERNOR_URL", ""):
+            self.assertEqual(exporter.governor_tasks(), {})
+        with mock.patch.object(exporter, "GOVERNOR_URL", "http://gov"), \
+                mock.patch.object(exporter.urllib.request, "urlopen", side_effect=urllib.error.URLError("down")):
+            self.assertEqual(exporter.governor_tasks(), {})
+        answer = mock.MagicMock()
+        answer.__enter__.return_value.read.return_value = b'{"box-forgejo-1": "101", "box-forgejo-2": "x"}'
+        with mock.patch.object(exporter, "GOVERNOR_URL", "http://gov"), \
+                mock.patch.object(exporter.urllib.request, "urlopen", return_value=answer):
+            # One bad id spoils the answer, never a crash.
+            self.assertEqual(exporter.governor_tasks(), {})
+        answer.__enter__.return_value.read.return_value = b'{"box-forgejo-1": "101"}'
+        with mock.patch.object(exporter, "GOVERNOR_URL", "http://gov"), \
+                mock.patch.object(exporter.urllib.request, "urlopen", return_value=answer) as op:
+            self.assertEqual(exporter.governor_tasks(), {"box-forgejo-1": 101})
+        self.assertEqual(op.call_args.args[0], "http://gov/tasks")
 
     def test_a_busy_forgejo_seat_runs_a_forgejo_job(self):
         self.assertEqual(rows(self.render(), "ci_runner_job"),

@@ -3,9 +3,9 @@
 # placed only while `fleet-dispatch harness-ready` on the worker reads it ready. An opencode
 # harness (nim, ocfree, opencode-go) runs in its lane sandbox, so it wants opencode, the harness
 # map, its eval config and its lane sandbox profile (all three from the private overlay), srt with
-# bwrap and socat, and its gateway key file. codex runs on the worker's own ChatGPT login, which is
-# the human's to make (`codex login`), so the play only reports it. bwrap, socat, npm and codex
-# come with fleet_worker_packages. Runbook: docs/runbooks/fleet-worker.md, "Headless harnesses".
+# bwrap and socat, and its gateway key file. codex runs on the workstation only, never on a worker
+# (inventory fleet_harnesses). bwrap, socat and npm come with fleet_worker_packages.
+# Runbook: docs/runbooks/fleet-worker.md, "Headless harnesses".
 # Everything read from the controller is optional: what is missing is reported, never fatal.
 
 # One pin, the controller's own (dotfiles packages.conf NPM_PACKAGES), not the worker's checkout,
@@ -66,16 +66,6 @@
   loop: "{{ fleet_harness_keys }}"
   no_log: true
 
-# Read only: the login itself is the human's (Auth-State Safety). 127 is a missing codex.
-- name: Read whether codex is logged in
-  when: "'codex' in fleet_harnesses"
-  ansible.builtin.command:
-    argv: [sh, -c, 'command -v codex >/dev/null || exit 127; exec codex login status']
-  register: fleet_harness_codex_login
-  changed_when: false
-  failed_when: false
-  check_mode: false
-
 - name: Say what the harnesses still lack
   ansible.builtin.set_fact:
     fleet_harness_left: >-
@@ -83,9 +73,5 @@
          + ([] if fleet_harness_map.harnesses is defined else ['no harness map (~/.config/agentctl/harnesses.json) on the controller, so no key files'])
          + (fleet_harnesses | reject('in', fleet_harness_map.harnesses | default({}))
             | map('regex_replace', '^', 'not in the controller harness map: ') | list)
-         + ([] if (fleet_harness_codex_login.rc | default(0)) in [0, 127]
-            else ['codex is not logged in: `codex login` on the worker, as the human'])
-         + ([] if (fleet_harness_codex_login.rc | default(0)) != 127
-            else ['codex is not installed (openai-codex in fleet_worker_packages)'])
          + (fleet_harness_keys | map('regex_replace', '^', lookup('env', 'HOME') ~ '/') | reject('file')
             | map('regex_replace', '^', 'gateway key not on this controller: ') | list) }}

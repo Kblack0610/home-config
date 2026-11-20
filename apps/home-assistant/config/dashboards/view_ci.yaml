@@ -1,6 +1,6 @@
 # Shared view: included by ui-lovelace.yaml (Homelab) and dashboards/phone.yaml.
 # What every self-hosted CI runner is doing right now, what it last did, what
-# each pool is for, and what is waiting - from packages/ci_runners.yaml. The
+# each kind of job runs, and what is waiting - from packages/ci_runners.yaml. The
 # deep view (recent runs, trends) is Grafana's "CI / Runners" dashboard.
 #
 # STRICT MODE: the markdown card renders templates strictly, so an undefined
@@ -45,6 +45,7 @@ sections:
           {%- macro ago(s) -%}{{ (s // 86400) ~ 'd' if s >= 86400 else ((s // 3600) ~ 'h ' ~ ((s % 3600) // 60) ~ 'm' if s >= 3600 else (s // 60) ~ 'm') }}{%- endmacro -%}
           {%- set rows = state_attr('sensor.ci_runners_running', 'result') or [] -%}
           {%- set hist = state_attr('sensor.ci_runner_history', 'result') or [] -%}
+          {%- set slots = state_attr('sensor.ci_runner_caps', 'result') or [] -%}
           {%- set now_s = as_timestamp(now()) | int(0) -%}
           {%- set icons = {'running': 'mdi:play-circle', 'idle': 'mdi:sleep', 'offline': 'mdi:lan-disconnect', 'missing': 'mdi:help-circle-outline'} -%}
           {%- if not rows -%}
@@ -54,7 +55,8 @@ sections:
           {%- for r in rows | selectattr('metric.state', 'eq', st) | sort(attribute='metric.name') -%}
           {%- set m = r.metric -%}
           {%- set s = r.value[1] | int(0) -%}
-          <ha-icon icon="{{ icons[st] }}"></ha-icon> **{{ m.get('name', '?') }}** ({{ m.get('pool', '?') }})
+          {%- set caps = slots | selectattr('metric.name', 'eq', m.get('name')) | map(attribute='metric') | map(attribute='pool') | sort | join(', ') -%}
+          <ha-icon icon="{{ icons[st] }}"></ha-icon> **{{ m.get('name', '?') }}** ({{ caps or '?' }})
           {%- if st == 'running' and m.get('url') %} {{ ago(s) }}: {{ m.get('repo', '') }} / {{ m.get('workflow', '') }} / [{{ m.get('job_name', 'job') | replace('|', '/') }}]({{ m.get('url') }}){% if m.get('branch') %} on `{{ m.get('branch') }}`{% endif %}
           {%- elif st == 'running' %} busy on {{ m.get('repo', 'an unwatched repo') }}
           {%- else %} {{ st }}{%- endif %}
@@ -86,7 +88,7 @@ sections:
           {% endfor -%}
           {%- endif -%}
       - type: heading
-        heading: What each pool runs
+        heading: What each kind of job runs
         heading_style: title
       - type: markdown
         content: |

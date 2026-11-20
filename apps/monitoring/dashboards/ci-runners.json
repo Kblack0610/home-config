@@ -1268,6 +1268,19 @@
             "uid": "${datasource}"
           },
           "editorMode": "code",
+          "expr": "max by (name, kind) (label_replace(ci_runner_job, \"name\", \"$1\", \"runner\", \"(.+)\"))",
+          "format": "table",
+          "instant": true,
+          "range": false,
+          "legendFormat": "__auto",
+          "refId": "K"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "editorMode": "code",
           "expr": "max by (name) (label_replace(cc:runner_cores_busy, \"name\", \"$1\", \"runner\", \"(.+)\"))",
           "format": "table",
           "instant": true,
@@ -1362,16 +1375,18 @@
               "Time 6": true,
               "Time 7": true,
               "Time 8": true,
+              "Time 9": true,
               "__name__": true,
               "scope": true,
               "event": true,
-              "labels": true
+              "labels": true,
+              "Value #K": true
             },
             "indexByName": {
               "state": 0,
               "name": 1,
               "host": 2,
-              "pool": 3,
+              "kind": 3,
               "repo": 4,
               "pr": 5,
               "branch": 6,
@@ -1757,8 +1772,8 @@
     },
     {
       "type": "table",
-      "title": "What each pool runs",
-      "description": "Workflows each runner pool finished in the last 24h, newest first. Read from job history, so it stays true when the workflow files change.",
+      "title": "What each kind of job runs",
+      "description": "Workflows whose jobs of each kind our runners finished in the last 24h (kind as ci_runner_job names it). Read from job history, so it stays true when the workflow files change.",
       "gridPos": {
         "h": 10,
         "w": 24,
@@ -1794,6 +1809,7 @@
               "Value": 3
             },
             "renameByName": {
+              "pool": "kind",
               "Value": "last ran"
             }
           }
@@ -1804,7 +1820,7 @@
         "cellHeight": "sm",
         "sortBy": [
           {
-            "displayName": "pool",
+            "displayName": "kind",
             "desc": false
           }
         ]
@@ -2428,7 +2444,7 @@
       "panels": [
         {
           "type": "timeseries",
-          "title": "Busy runners by pool",
+          "title": "Busy runners by kind of job",
           "gridPos": {
             "h": 8,
             "w": 12,
@@ -2442,11 +2458,11 @@
                 "uid": "${datasource}"
               },
               "editorMode": "code",
-              "expr": "count by (pool) (max without (instance, pod, job, namespace, service, endpoint, container) (github_runner_state{state=\"running\"}))",
+              "expr": "count by (kind) (max without (instance, pod, job, namespace, service, endpoint, container) (ci_runner_job))",
               "format": "time_series",
               "instant": false,
               "range": true,
-              "legendFormat": "{{pool}}",
+              "legendFormat": "{{kind}}",
               "refId": "A"
             }
           ],

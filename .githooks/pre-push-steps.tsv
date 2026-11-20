@@ -1,0 +1,52 @@
+# The offline steps of .forgejo/workflows/checks.yaml that .githooks/pre-push runs, picked by changed path.
+# Columns, tab separated: <changed-path regex (ERE)> <tool the step needs, or -> <command, verbatim from checks.yaml>
+# "." runs on every push. A step whose tool is missing on this machine is skipped with a line saying so; CI still runs it.
+# A row whose regex is "-" never runs here, and names a CI step the hook leaves to CI: nut-replay needs Debian's nut packages, and the hook test takes about 10s, over the hook's budget.
+# scripts/check-prepush-steps.py fails CI when a single-line step of checks.yaml has no row here, or a row has no step there.
+^(ansible/inventory\.yml|apps/gatus-fleet/|apps/fleet-exporter/|scripts/render-fleet-pulse\.py)	-	python3 scripts/render-fleet-pulse.py --check
+^(ansible/inventory\.yml|scripts/(render-fleet-pulse|test_render_fleet_pulse)\.py)	-	cd scripts && python3 -m unittest test_render_fleet_pulse
+^(ansible/inventory\.yml|apps/ci-topology/|scripts/render-ci-topology\.py)	-	python3 scripts/render-ci-topology.py --check
+^(ansible/inventory\.yml|scripts/(render-ci-topology|test_render_ci_topology)\.py)	-	cd scripts && python3 -m unittest test_render_ci_topology
+.	-	python3 scripts/check-topology-copies.py
+^(apps/freqtrade/|scripts/check-freqtrade-roster\.py)	-	python3 scripts/check-freqtrade-roster.py
+^(ansible/|apps/|scripts/(check-placement|host_inventory)\.py)	-	python3 scripts/check-placement.py --report
+^(ansible/inventory\.yml|scripts/(check-placement|test_check_placement|host_inventory)\.py)	-	python3 scripts/test_check_placement.py
+^(ansible/inventory\.yml|ansible/roles/thermal-cap/|scripts/check-thermal-standard\.py)	-	python3 scripts/check-thermal-standard.py
+^(ansible/inventory\.yml|scripts/(host-qualify|test_host_qualify|host_inventory)\.py)	-	python3 scripts/test_host_qualify.py
+^scripts/(ci-pool-idle|test_ci_pool_idle)\.py	-	python3 scripts/test_ci_pool_idle.py
+^scripts/(ci-kind-weights|test_ci_kind_weights)\.py	-	python3 scripts/test_ci_kind_weights.py
+^apps/cluster-janitor/	-	python3 apps/cluster-janitor/test_quarantine.py
+^apps/github-runner-exporter/	-	python3 apps/github-runner-exporter/test_exporter.py
+^ansible/roles/forgejo-host/files/mirror-exporter/	-	python3 ansible/roles/forgejo-host/files/mirror-exporter/test_exporter.py
+^apps/ci-runner-governor/	-	python3 apps/ci-runner-governor/test_governor.py
+^apps/ci-runner-governor/	-	python3 apps/ci-runner-governor/test_replay.py
+^ansible/roles/github-actions-runner-linux/	-	python3 ansible/roles/github-actions-runner-linux/tests/test_runner_labels.py
+^ansible/roles/forgejo-runner-linux/	-	python3 ansible/roles/forgejo-runner-linux/tests/test_forgejo_seat.py
+^ansible/roles/ci-host/	-	python3 ansible/roles/ci-host/tests/test_github_known_hosts.py
+^(ansible/inventory\.yml|ansible/roles/host-identity/)	-	python3 ansible/roles/host-identity/tests/test_host_identity.py
+^ansible/roles/github-actions-runner-linux/	-	python3 ansible/roles/github-actions-runner-linux/tests/test_wait_worker_exit.py
+^apps/feed-ingest/	-	python3 apps/feed-ingest/test_ingest.py
+^apps/litellm/	-	python3 apps/litellm/test_tool_compat.py
+^apps/litellm/	-	python3 apps/litellm/test_go_routes.py
+^scripts/(eeg-review|test_eeg_review)\.py	-	python3 scripts/test_eeg_review.py
+^scripts/(forgejo-secret-key-rotate|test_forgejo_secret_key_rotate)\.py	-	python3 scripts/test_forgejo_secret_key_rotate.py
+^scripts/(forgejo-issue-index-raise|test_forgejo_issue_index_raise)\.py	-	python3 scripts/test_forgejo_issue_index_raise.py
+^(apps/home-assistant/|scripts/check-ha-packages\.py)	-	python3 scripts/check-ha-packages.py
+.	-	python3 scripts/check-secret-store.py
+^apps/zomboid/	bash	apps/zomboid/tests/run.sh
+^ansible/roles/ci-host/	-	sh ansible/roles/ci-host/files/test-ci-disk-prune.sh
+^ansible/roles/ci-host/	-	sh ansible/roles/ci-host/files/test-job-started.sh
+^ansible/roles/unity-ci-host-mac/	-	sh ansible/roles/unity-ci-host-mac/files/test-ci-tree-prune.sh
+^ansible/roles/unity-ci-host-mac/	-	sh ansible/roles/unity-ci-host-mac/files/test-ensure-build-keychain.sh
+^ansible/roles/node-disk-metrics/	-	sh ansible/roles/node-disk-metrics/files/test-node-disk-metrics.sh
+^ansible/roles/node-inventory-metrics/	-	sh ansible/roles/node-inventory-metrics/files/test-node-inventory-metrics.sh
+^ansible/roles/forgejo-restore-drill/	-	sh ansible/roles/forgejo-restore-drill/files/test-forgejo-restore-drill-run.sh
+^ansible/roles/ci-runner-cpu/	-	sh ansible/roles/ci-runner-cpu/files/test-ci-runner-cpu.sh
+^ansible/roles/emotiv-bridge/	node	node --test ansible/roles/emotiv-bridge/files/test-emotiv-bridge.mjs
+^infrastructure/dhcp/	jq	infrastructure/dhcp/tests/test-sync.sh
+-	-	bash ansible/roles/nut/tests/run-tests.sh
+^(apps/monitoring/(helm-values\.yaml|tests/)|scripts/test-alertmanager-routes\.py)	alertmanager	python3 scripts/test-alertmanager-routes.py
+^(apps/[^/]+/prometheus-rules[^/]*\.yaml|apps/monitoring/tests/|scripts/test-prometheus-rules\.sh)	promtool	scripts/test-prometheus-rules.sh
+^(apps|clusters)/|^scripts/check-kustomize-builds\.sh$	kustomize	scripts/check-kustomize-builds.sh rendered.yaml
+^(\.forgejo/workflows/checks\.yaml|\.githooks/|scripts/check-prepush-steps\.py)	-	python3 scripts/check-prepush-steps.py
+-	-	sh scripts/test-prepush-hook.sh

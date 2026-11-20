@@ -35,8 +35,6 @@
   hosts: cachyos-x8664-main
   become: true
   gather_facts: true
-  vars:
-    node_exporter_linux_textfile_dir: /var/lib/node_exporter/textfile
   roles:
     - role: node-exporter-linux
       tags: [monitoring]
@@ -217,8 +215,8 @@
       tags: [nic-unused]
 
 # CI runners, org-scoped for every BlackNBrownStudios repo: the slots of inventory.yml
-# unity_ci_runners, each taking Unity, light and heavy jobs as its host's ci_caps allow,
-# and the seats that borrow them (Forgejo, the personal repo runners). Self-hosted
+# unity_ci_runners, each taking Unity jobs (and light and heavy where its host has no seats
+# for them), and the seats that borrow them (Forgejo, light, heavy, the personal repo runners). Self-hosted
 # minutes cost $0; hosted ones hit the org's $200 Actions budget in September 2026. A
 # local outage froze a release gate on the thinkcentre runner (2026-06-18, #833), so
 # release and deploy jobs stay on ubuntu-latest, and every moved job reads runs-on from
@@ -457,7 +455,8 @@
         # unity-gate: the non-preemptible hosts merge gates may take (unity_ci_gate, default false);
         # a Spot host leaves it off, so a reclaim never kills a gate (playground ucp-1778).
         # The slot's caps come from topology.json (ci_slot_caps): unity-build on a build slot,
-        # unity plus the host's light and heavy on a test slot (scripts/render-ci-topology.py HOST_CAPS).
+        # unity plus the host's light and heavy on a test slot, less the kinds its seats serve
+        # (ci_seat_kinds; scripts/render-ci-topology.py HOST_CAPS).
         gh_runner_labels: "{{ [ 'self-hosted', 'linux', 'x64', 'host-' ~ inventory_hostname ] + ci_slot_caps[gh_runner_name] + ([] if unity_slot in unity_ci_slot_groups | default({}) else ([ 'unity-full' ] if unity_ci_full | default(true) else []) + ([ 'unity-wide' ] if unity_ci_wide | default(false) else []) + ([ 'unity-gate' ] if unity_ci_gate | default(false) else [])) + ([ 'unity' ] + ([ 'unity-full' ] if unity_ci_full | default(true) else []) if 'unity-wide' in ci_slot_caps[gh_runner_name] else []) + ([ 'lan' ] if unity_ci_lan | default(true) else []) + ([ 'hd-library' ] if unity_ci_hd_library | default(unity_ci_lan | default(true)) else []) + (unity_ci_slot_labels | default({})).get(unity_slot, []) }}"
         # ci-runner-governor's admit labels and withheld labels (inventory ci_labels, the
         # vocabulary the governor reads from topology.json), plus the shared caps a slot takes
@@ -693,6 +692,14 @@
         name: unity-ci-host-mac
         tasks_from: accelerator
       tags: [mac, unity-accelerator]
+
+    # The keychain mac-sign.sh signs the Mac player from: created, unlocked and in the
+    # search list, so a reboot or reset cannot drop it (docs/mac-machines.md#mac-build-keychain).
+    - name: Keep the Mac build keychain created, unlocked and listed
+      ansible.builtin.import_role:
+        name: unity-ci-host-mac
+        tasks_from: signing-keychain
+      tags: [mac, mac-keychain]
 
 # Every k3s node runs k3s_install_version (group_vars/all/k3s.yml). The server
 # goes first: a kubelet may never be newer than the apiserver. Then the agents,

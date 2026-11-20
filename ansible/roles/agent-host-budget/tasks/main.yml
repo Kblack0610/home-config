@@ -177,3 +177,21 @@
       {{ _agent_cpu_live.results | default([]) | selectattr('stdout_lines', 'defined')
          | map(attribute='stdout_lines') | flatten | list }}
   when: not ansible_check_mode
+
+# The size of the cap as a metric, so the hub and agent-web can show agent room next to CI's
+# (cc:host_class_reserved_cores{class="agents"}). Declared config, not a reading: written on
+# apply, with no freshness gate, and rewritten whenever agent_cpus changes.
+- name: Create the textfile directory
+  ansible.builtin.file:
+    path: "{{ agent_host_budget_textfile_dir }}"
+    state: directory
+    mode: "0755"
+
+- name: Publish the CPU count of agent_cpus
+  ansible.builtin.copy:
+    dest: "{{ agent_host_budget_textfile_dir }}/agent_host_budget.prom"
+    mode: "0644"
+    content: |
+      # HELP agent_host_cpus CPUs the host's agent work may use (agent_cpus, roles/agent-host-budget)
+      # TYPE agent_host_cpus gauge
+      agent_host_cpus {{ _agent_cpu_sets.agent | length }}

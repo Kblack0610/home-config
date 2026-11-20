@@ -74,11 +74,11 @@ def actions(*args, **kw):
 
 
 # Starts on the first job past the others, at once: what these tests check is which jobs
-# and slots count, not the cost gate. HEAVY below is the live gate (config.json).
+# and slots count, not the cost gate. HEAVY below is the default gate (POWER_DEFAULTS).
 POWER = {"provider": "aws", "instance_id": "i-0abc", "region": "us-east-2", "idle_off_seconds": 1200,
          "start_min_excess": 1, "start_after_seconds": 0}
 AWS = {**CFG, "standby": {"aws-spot-1": {"max_admitted": 8, "power": POWER}}}
-LIVE_POWER = {**governor.POWER_DEFAULTS, **LIVE["standby"]["aws-spot-1"]["power"]}
+LIVE_POWER = {**governor.POWER_DEFAULTS, "max_hours_day": 24}
 # A 12h day cap of its own: the live hosts run uncapped (24h), and the cap tests need one.
 HEAVY = {**CFG, "standby": {"aws-spot-1": {"max_admitted": 6, "power": {**LIVE_POWER, "instance_id": "i-0abc",
                                                                        "max_hours_day": 12}}}}
@@ -240,6 +240,9 @@ def setUpModule():
     p = mock.patch.object(governor, "observe_shared", return_value=[])
     p.start()
     unittest.addModuleCleanup(p.stop)
+    p = mock.patch.object(governor, "observe_machines", return_value={})
+    p.start()
+    unittest.addModuleCleanup(p.stop)
 
 
 D1, D2, CX = "deskslim-1", "deskslim-2", "cachyos-x8664-main"
@@ -317,6 +320,19 @@ class GovernorTest(unittest.TestCase):
     def test_a_missing_disk_reading_is_never_room(self):
         self.assertEqual(governor.verdict({k: v for k, v in COOL.items() if k != "disk"},
                                           CFG["hosts"]["deskslim-1"])[0], "STEADY")
+
+    def test_cpu_pressure_on_a_half_idle_host_is_not_hot(self):
+        # deskslim-2 2026-11-19 14:45: three Unity jobs, psi 0.61, idle 0.67, 65 C.
+        bursty = {**COOL, "idle": 0.55, "psi": 0.6}
+        self.assertEqual(governor.verdict(bursty, CFG["hosts"]["deskslim-2"])[0], "ROOM")
+        self.assertEqual(governor.verdict({**bursty, "psi": 0.3}, CFG["hosts"]["deskslim-2"])[0], "ROOM")
+
+    def test_cpu_pressure_on_a_busy_host_is_still_hot(self):
+        v, why = governor.verdict({**COOL, "idle": 0.2, "psi": 0.5}, CFG["hosts"]["deskslim-2"])
+        self.assertEqual((v, why), ("HOT", "cpu pressure 0.50 > 0.4"))
+        v, why = governor.verdict({**COOL, "idle": 0.3, "psi": 0.3}, CFG["hosts"]["deskslim-2"])
+        self.assertEqual(v, "STEADY")
+        self.assertTrue(why.endswith("short of admit on idle+psi"), why)
 
     def test_cachyos_runs_hot_sooner(self):
         warm = {**COOL, "tctl": 91}
@@ -436,7 +452,7 @@ class GovernorTest(unittest.TestCase):
 
     def test_a_withheld_only_host_still_takes_a_unity_job(self):
         # Stopped, so every runner is offline, and the governor withheld all of them.
-        rows = [{"metric": {"name": f"aws-{i}", "host": "aws-spot-1", "pool": "unity", "state": "offline",
+        rows = [{"metric": {"name": f"aws-{i}", "host": "aws-spot-1", "state": "offline",
                             "labels": "host-aws-spot-1,Linux,self-hosted,unity-withheld,X64"}, "value": [0, "0"]}
                 for i in range(2)]
         with mock.patch.object(governor, "prom", return_value=rows) as prom:
@@ -1273,7 +1289,7 @@ class GovernorTest(unittest.TestCase):
     def test_a_build_and_a_test_never_share_a_pair(self):
         # Random arrivals and finishes against the live config. Run against #823's lend mode it
         # failed at once: it lent build slot 1 to the pool beside busy test slots 4 and 5.
-        cfg = {**CFG, "standby": {"aws-build-1": LIVE["standby"]["aws-build-1"]}}
+        cfg = self.PAIRED
         total = {}
         for seed in range(20):
             clash, stats = simulate(cfg, seed)
@@ -1340,8 +1356,8 @@ class GovernorTest(unittest.TestCase):
         self.assertEqual(start(120, queue=6), "hold")
         self.assertEqual(start(120, waiting=[BUILD_JOB]), "start")
 
-    def test_the_live_build_host_pairs(self):
-        self.assertEqual(governor.pairs(LIVE, "aws-build-1"), PAIRS)
+    def test_a_cloud_build_host_takes_its_pairs_from_the_topology(self):
+        self.assertEqual(governor.pairs(PAID, "aws-build-1"), PAIRS)
 
     def test_admit_leaves_full_off_a_host_that_takes_no_full_runs(self):
         calls = []
@@ -1357,22 +1373,24 @@ class GovernorTest(unittest.TestCase):
         governor.apply(cfg, "admit", "ws-1", "ws")
         self.assertEqual(calls[1][2], {"labels": ["unity"]})
 
-    def test_the_live_shared_caps_are_lan_only(self):
-        shared = governor.load_config(CONFIG)["shared"]
-        self.assertEqual(shared["ms-a2-unity-pool-1"], ["light", "heavy"])
-        self.assertFalse([n for n in shared if n.startswith("aws-")])
-        self.assertNotIn("cachyos-x8664-main-unity-pool-1", shared)
+    def test_no_live_slot_takes_a_small_kind_its_hosts_seats_serve(self):
+        # One path for a small job (hc-693): every host that takes light or heavy has seats for them,
+        # so no Unity slot shares a kind, and a swap still drops one a slot registered with ("moved").
+        cfg = governor.load_config(CONFIG)
+        self.assertIn("ms-a2-unity-pool-1-heavy-1", cfg["seats"])
+        self.assertFalse({c for caps in cfg["shared"].values() for c in caps} & {"light", "heavy"})
+        self.assertTrue({"light", "heavy"} <= set(cfg["moved"]))
 
-    def every_cap(self, action, have):
+    def every_cap(self, action, have, name="ms-a2-unity-pool-1", host="ms-a2"):
         calls = []
 
         def gh(method, path, body=None):
             calls.append((method, path, body))
             if method == "GET":
-                return {"runners": [{"id": 7, "name": "ms-a2-unity-pool-1", "labels": [{"name": l} for l in have]}]}
+                return {"runners": [{"id": 7, "name": name, "labels": [{"name": l} for l in have]}]}
             return None
         governor.gh = gh
-        governor.apply(LIVE, action, "ms-a2-unity-pool-1", "ms-a2")
+        governor.apply(LIVE, action, name, host)
         return calls
 
     def test_withhold_drops_every_cap_the_slot_takes(self):
@@ -1380,10 +1398,28 @@ class GovernorTest(unittest.TestCase):
         self.assertEqual(calls[1][2], {"labels": ["unity-withheld"]})
         self.assertEqual(sorted(c[1].rsplit("/", 1)[1] for c in calls if c[0] == "DELETE"), ["light", "unity", "unity-full"])
 
-    def test_admit_gives_every_cap_back(self):
-        calls = self.every_cap("admit", ["self-hosted", "unity-withheld", "lan"])
-        self.assertEqual(calls[1][2], {"labels": ["heavy", "light", "unity", "unity-full"]})
-        self.assertTrue(calls[2][1].endswith("/7/labels/unity-withheld"))
+    def test_admit_gives_every_cap_back_but_the_kinds_its_seats_serve(self):
+        # ms-a2's light and heavy run on its seats, so a slot that registered with them sheds them.
+        calls = self.every_cap("admit", ["self-hosted", "unity-withheld", "light", "heavy", "lan"])
+        self.assertEqual(calls[1][2], {"labels": ["unity", "unity-full"]})
+        self.assertEqual(sorted(c[1].rsplit("/", 1)[1] for c in calls if c[0] == "DELETE"),
+                         ["heavy", "light", "unity-withheld"])
+
+    # windows-media-ci lost heavy in the topology (no /dev/kvm, #1269), but pool-2 kept the label
+    # it registered with (live 2026-11-19): admit and withhold both drop a cap the slot no longer takes.
+    STALE = {"name": "windows-media-ci-unity-pool-2", "host": "windows-media-ci"}
+
+    def test_admit_drops_a_cap_the_topology_took_away(self):
+        self.assertNotIn(self.STALE["name"], LIVE["shared"])
+        calls = self.every_cap("admit", ["self-hosted", "heavy", "unity-withheld", "lan"], **self.STALE)
+        self.assertEqual(calls[1][2], {"labels": ["unity", "unity-full"]})
+        self.assertEqual(sorted(c[1].rsplit("/", 1)[1] for c in calls if c[0] == "DELETE"), ["heavy", "unity-withheld"])
+
+    def test_withhold_drops_a_cap_the_topology_took_away(self):
+        calls = self.every_cap("withhold", ["self-hosted", "heavy", "unity", "unity-full", "light", "lan"], **self.STALE)
+        self.assertEqual(calls[1][2], {"labels": ["unity-withheld"]})
+        self.assertEqual(sorted(c[1].rsplit("/", 1)[1] for c in calls if c[0] == "DELETE"),
+                         ["heavy", "light", "unity", "unity-full"])
 
     def test_the_live_config_keeps_full_runs_off_the_workstation(self):
         cfg = governor.load_config(CONFIG)
@@ -1423,6 +1459,24 @@ class GovernorTest(unittest.TestCase):
             _, _, waiting = governor.observe("unity")
         self.assertEqual(waiting, [UNITY_JOB])
 
+    def test_a_job_naming_no_kind_is_demand_when_a_pool_runner_carries_its_labels(self):
+        # runs-on: [self-hosted, linux, host-ms-a2] names no kind, so the exporter waits it as
+        # pool="other" (a slot that takes unity, light and heavy is no one kind's). It is this
+        # pool's job because a pool runner carries every label; one only another runner carries,
+        # and an unread run's empty labels, are not.
+        def fake(query):
+            if query.startswith("github_runner_state"):
+                return [{"metric": {"scope": "org", "name": "ms-a2-unity-pool-1", "host": "ms-a2", "state": "idle",
+                                    "labels": "self-hosted,Linux,host-ms-a2,unity,light,heavy"}, "value": [0, "0"]}]
+            if query.startswith("github_actions_job_waiting"):
+                self.assertIn('pool=~"unity|other"', query)
+                return [{"metric": {"pool": "other", "labels": ls}, "value": [0, "60"]}
+                        for ls in ("self-hosted,linux,host-ms-a2", "self-hosted,gpu", "")]
+            return []
+        with mock.patch.object(governor, "prom", side_effect=fake):
+            _, _, waiting = governor.observe(["unity"])
+        self.assertEqual(waiting, [frozenset({"self-hosted", "linux", "host-ms-a2"})])
+
 
 
 # Two powered standby hosts in start order, Spot first, as load_config orders them by rate.
@@ -1458,6 +1512,26 @@ def load_files(conf, topo):
             with open(os.path.join(d, name), "w") as f:
                 json.dump(body, f)
         return governor.load_config(os.path.join(d, "c.json"), os.path.join(d, "t.json"))
+
+
+# The live roster plus a paid build host as aws-build-1 rendered until the AWS hosts were retired
+# (2026-11-19), so the LAN build slot's tests still check what it leaves to a paid host.
+PAID_BUILD = {"site": "cloud", "full": True, "power": {"provider": "aws", "instance_id": "i-0bld", "region": "us-east-2"},
+              "slots": [{"name": slot_name(b), "caps": ["unity-build"], "group": [slot_name(t) for t in tests]}
+                        for b, tests in PAIRS.items()] + [{"name": slot_name(t), "caps": ["unity"]} for t in range(4, 10)]}
+
+
+def with_paid_build(edit=None):
+    conf, topo = live_config(), live_topology()
+    conf["power"] = {"aws-build-1": {"max_hours_day": 24, "start_min_excess": 1, "start_after_seconds": 60}}
+    conf["rates"] = {"aws-build-1": {"usd_per_hour": 1.855, "basis": "on-demand"}}
+    topo["hosts"]["aws-build-1"] = PAID_BUILD
+    if edit:
+        edit(topo)
+    return load_files(conf, topo)
+
+
+PAID = with_paid_build()
 
 
 class StandbyOrderTest(unittest.TestCase):
@@ -1933,7 +2007,7 @@ class LanPairTest(unittest.TestCase):
 
     def run_lan(self, spec, waiting, lan=COOL, last=None, pins=None, build=None):
         inst = copy.deepcopy(self.BUILD if build is None else build)
-        got = governor.decide(LIVE, readings(**{"ms-a2": lan}), lan_slots(spec), waiting, last or {}, 10_000, inst,
+        got = governor.decide(PAID, readings(**{"ms-a2": lan}), lan_slots(spec), waiting, last or {}, 10_000, inst,
                               pins or {})
         return sorted((a, int(r.rsplit("-", 1)[1])) for h, a, r, _, _ in got if h == "ms-a2" and a != "hold"), inst
 
@@ -1941,8 +2015,7 @@ class LanPairTest(unittest.TestCase):
         self.assertEqual(governor.pairs(LIVE, "ms-a2"), {5: [3, 4]})
         self.assertEqual(governor.admit_labels(LIVE, "ms-a2", "ms-a2-unity-pool-5"), ["unity-build"])
         self.assertEqual(governor.withheld_label(LIVE, "ms-a2", "ms-a2-unity-pool-5"), "unity-build-withheld")
-        self.assertEqual(governor.admit_labels(LIVE, "ms-a2", "ms-a2-unity-pool-3"),
-                         ["unity", "unity-full", "light", "heavy"])
+        self.assertEqual(governor.admit_labels(LIVE, "ms-a2", "ms-a2-unity-pool-3"), ["unity", "unity-full"])
         self.assertEqual(governor.withheld_label(LIVE, "ms-a2", "ms-a2-unity-pool-3"), "unity-withheld")
         self.assertIn("unity-build", governor.pools(LIVE))
 
@@ -2037,13 +2110,8 @@ class WideLeadTest(unittest.TestCase):
     WIDE_JOB = frozenset({"self-hosted", "unity", "unity-wide"})
 
     def setUp(self):
-        with open(CONFIG) as f:
-            conf = json.load(f)
-        with open(os.environ["TOPOLOGY"]) as f:
-            topo = json.load(f)
-        topo["hosts"]["ms-a2"]["slots"].append({"name": "ms-a2-unity-pool-6", "caps": ["unity-wide"],
-                                                "group": ["ms-a2-unity-pool-1", "ms-a2-unity-pool-2"]})
-        self.cfg = load_files(conf, topo)
+        self.cfg = with_paid_build(lambda topo: topo["hosts"]["ms-a2"]["slots"].append(
+            {"name": "ms-a2-unity-pool-6", "caps": ["unity-wide"], "group": ["ms-a2-unity-pool-1", "ms-a2-unity-pool-2"]}))
 
     def slots(self, spec):
         """spec: one character per slot 1-6: i idle admitted, b busy admitted, . idle withheld."""
@@ -2286,6 +2354,21 @@ class LendTest(unittest.TestCase):
         self.assertEqual(box.step([], back), [("readmit", S1)])
         self.assertEqual(box.labels(), ADMITTED)
 
+    def test_a_lend_and_a_readmit_drop_a_cap_the_topology_took_away(self):
+        # LCFG gives box's slots light alone, so heavy is a cap the topology no longer lists for them.
+        box, job = Box(s1=ADMITTED | {"heavy"}, s1_busy=True), [("forgejo", frozenset({"docker"}), 60)]
+        self.assertEqual(box.step(job), [("lend", S1)])
+        self.assertEqual(box.labels(), DRAINED | {"unity-lent"})
+        box.gh.scopes[ORG][S1]["busy"] = False
+        box.labels().add("heavy")  # a lend whose drop failed half-way is not granted
+        self.assertEqual(box.plan(job, 10_060), [])
+        box.labels().discard("heavy")
+        box.step(job, 10_060)
+        box.step(job, 10_060 + governor.LEASE_STALE_SECONDS)
+        box.labels().add("heavy")
+        self.assertEqual(box.step([], 10_060 + 2 * governor.LEASE_STALE_SECONDS), [("readmit", S1)])
+        self.assertEqual(box.labels(), ADMITTED)
+
     def test_a_slot_of_two_forgejo_seats_serves_two_jobs_on_one_lend_and_goes_back_when_both_are_done(self):
         # hc-626: two seats of weight 0.5 fill slot 1, so two waiting jobs take one lend, not
         # slot 1 and slot 3 (which they took when a lend counted as one seat).
@@ -2443,7 +2526,8 @@ class LendTest(unittest.TestCase):
         self.assertEqual(box.gh.scopes[f"repos/{REPO}"][REPO_SEAT]["labels"], {"self-hosted", "light-withheld"})
 
     def light_box(self, weight, n=3):
-        """box with n org light seats on slot 1, all withheld, and the box that sees them (hc-667)."""
+        """box with n org light seats on slot 1, all withheld, and the box that sees them (hc-667). Its slots
+        take no light, as the topology renders a host whose seats serve light."""
         lights = [f"{S1}-light-{i}" for i in range(1, n + 1)]
         seats = {**LCFG["seats"], **{m: {"host": "box", "slot": S1, "forge": "github", "repo": None, "caps": ["light"]}
                                      for m in lights}}
@@ -2457,7 +2541,7 @@ class LendTest(unittest.TestCase):
             **Box.seat_state(box),
             **{m: {"busy": box.gh.scopes[ORG][m]["busy"], "online": True,
                    "withheld": "light-withheld" in box.gh.scopes[ORG][m]["labels"]} for m in lights}}
-        return box, lights, mock.patch.dict(LCFG, {"seats": seats})
+        return box, lights, mock.patch.dict(LCFG, {"seats": seats, "shared": {}})
 
     def test_light_seats_of_one_lend_are_admitted_together_as_far_as_their_weights_fit(self):
         jobs = [("light", REPO_JOB, 60)] * 3
@@ -2489,7 +2573,8 @@ class LendTest(unittest.TestCase):
             self.assertEqual(box.step([], 10_240), [])
             box.gh.scopes[ORG][lights[1]]["busy"] = False
             self.assertEqual(box.step([], 10_300), [("readmit", S1)])
-            self.assertEqual(box.labels(), ADMITTED)
+            # Readmitted, the slot takes no light: its seats serve that kind.
+            self.assertEqual(box.labels(), ADMITTED - {"light"})
 
     def test_a_light_seat_admitted_with_no_lend_is_withheld(self):
         box, lights, seats = self.light_box(0.3)
@@ -2512,6 +2597,17 @@ class LendTest(unittest.TestCase):
             need = governor.label_set(light["labels"])
             self.assertEqual(governor.shared_demand(LCFG, "box", box.runners(), [need]), 0)
         self.assertEqual(governor.shared_demand(LCFG, "box", box.runners(), [need]), 1)
+
+    def test_a_job_naming_no_kind_is_a_rival_github_job_and_an_unread_one_is_nothing(self):
+        # pool="other": runs-on names no kind. slot_takes, on its labels, says which slot it
+        # could take; a run whose jobs were unreadable has no labels and holds back no lend.
+        _, _, seats = self.light_box(0.3)
+        rows = [{"metric": {"labels": ls, "pool": "other", "repo": "platform"}, "value": [0, "60"]}
+                for ls in ("self-hosted,linux,host-box", "")]
+        with seats, mock.patch.object(governor, "prom",
+                                      side_effect=lambda q: rows if q.startswith("github_actions_job_waiting") else []):
+            _, waits = governor.observe_seats(LCFG)
+        self.assertEqual(waits, [("github", frozenset({"self-hosted", "linux", "host-box"}), 60.0)])
 
     def cycle(self, box, waiting, seat_waits):
         with mock.patch.object(governor, "observe", return_value=(readings(box=COOL), box.runners(), waiting)), \
@@ -2645,7 +2741,8 @@ class SeatConfigTest(unittest.TestCase):
         seats = LIVE["seats"]
         self.assertTrue(any(s["forge"] == "forgejo" for s in seats.values()))
         self.assertTrue(any(s["repo"] for s in seats.values()))
-        slots = {n for h in LIVE["hosts"] for n in governor.load_config(CONFIG).get("shared", {}) if n.startswith(h)}
+        slots = {s["name"] for h, e in live_topology()["hosts"].items() if h in LIVE["hosts"]
+                 for s in e["slots"] if "unity" in s["caps"]}
         self.assertTrue(all(s["slot"] in slots for s in seats.values()))
         self.assertNotIn("hp-victus", {s["host"] for s in seats.values()})
 
@@ -2655,7 +2752,6 @@ class SeatConfigTest(unittest.TestCase):
         self.assertEqual(LIVE["lent_label"], rendered["labels"]["lent"])
         for host, entry in LIVE["standby"].items():
             self.assertEqual({k: entry["power"][k] for k in governor.INSTANCE_KEYS}, rendered["hosts"][host]["power"])
-        self.assertEqual(LIVE["standby"]["aws-build-1"]["power"]["start_after_seconds"], 60)
 
     def test_a_copied_label_or_instance_id_in_config_fails(self):
         topo = {"hosts": {"c": {"site": "cloud", "power": {"provider": "aws", "instance_id": "i-0c", "region": "r"},
@@ -2679,6 +2775,200 @@ class SeatConfigTest(unittest.TestCase):
             load_files(conf, topo)
         topo["hosts"]["box"]["slots"][1]["borrows"] = S1
         self.assertEqual(load_files(conf, topo)["seats"][FJ_SEAT]["slot"], S1)
+
+
+# A host with two local seats and a floor of one, so a step up and a step down both show.
+LOCAL = {**LIVE, "local": {"ws": 2}, "local_min_admitted": 1, "cooldown_seconds": 600}
+
+
+class LocalSeatTest(unittest.TestCase):
+    def ask(self, local, seat, have, wait=0):
+        return local.wait(seat, have, wait)
+
+    def test_grants_go_to_the_oldest_waiter_up_to_admitted_and_done_hands_the_seat_on(self):
+        local = governor.LocalSeats(LOCAL)
+        self.assertEqual(sorted(local.host_of), ["ws-local-1", "ws-local-2"])
+        self.assertEqual(self.ask(local, "ws-local-2", "github"), "local")  # floor 1: one granted
+        self.assertEqual(self.ask(local, "ws-local-1", "github"), "github")  # waits
+        self.assertEqual(local.state("ws"), (1, 1, 1))
+        got = []
+        t = __import__("threading").Thread(target=lambda: got.append(self.ask(local, "ws-local-1", "github", 120)))
+        start = time.monotonic()
+        t.start()
+        self.assertEqual(self.ask(local, "ws-local-2", "done"), "github")  # gives it back: the waiter gets it
+        t.join(10)  # a guard only: the done wakes it
+        self.assertEqual(got, ["local"])
+        self.assertLess(time.monotonic() - start, 10)
+        self.assertEqual(local.state("ws"), (1, 0, 1))
+        self.assertEqual(self.ask(local, "ws-local-1", "local"), "local")  # a keepalive keeps it
+
+    def test_an_admit_grants_a_waiter_and_a_lower_count_never_takes_a_held_seat(self):
+        local = governor.LocalSeats(LOCAL)
+        self.ask(local, "ws-local-1", "github")
+        self.assertEqual(self.ask(local, "ws-local-2", "github"), "github")
+        local.admit("ws", 2)
+        self.assertEqual(self.ask(local, "ws-local-2", "github"), "local")
+        local.admit("ws", 1)  # HOT: the next run waits, both running ones go on
+        self.assertEqual(local.state("ws"), (2, 0, 1))
+        self.assertEqual(self.ask(local, "ws-local-2", "local"), "local")
+        self.ask(local, "ws-local-2", "done")
+        self.assertEqual(self.ask(local, "ws-local-2", "github"), "github")  # one held, one admitted
+
+    def test_a_run_the_governor_lost_keeps_its_seat_and_a_gone_one_loses_it(self):
+        local = governor.LocalSeats(LOCAL)
+        # A restart: the running run's keepalive holds the seat, past admitted.
+        self.assertEqual(self.ask(local, "ws-local-1", "local"), "local")
+        self.assertEqual(self.ask(local, "ws-local-2", "local"), "local")
+        self.assertEqual(local.state("ws"), (2, 0, 1))
+        now = time.time()
+        local.tick(now + governor.LEASE_STALE_SECONDS - 1)
+        self.assertEqual(local.state("ws")[0], 2)
+        local.tick(now + governor.LEASE_STALE_SECONDS + 1)  # neither asked again: both gone
+        self.assertEqual(local.state("ws"), (0, 0, 1))
+        # A waiter that stopped asking leaves the queue before a grant strands a seat on it.
+        self.assertEqual(self.ask(local, "ws-local-1", "github"), "local")
+        self.assertEqual(self.ask(local, "ws-local-1", "local"), "local")  # the granted run confirms
+        self.assertEqual(self.ask(local, "ws-local-2", "github"), "github")
+        local.tick(time.time() + governor.LOCAL_WAIT_GRACE + 1)
+        self.assertEqual(local.state("ws"), (1, 0, 1))  # the holder stays until it is stale
+
+    def test_a_grant_no_run_confirms_goes_back_after_the_grace(self):
+        # A run killed while it waited: its long-poll took the grant, and nothing confirms it.
+        local = governor.LocalSeats(LOCAL)
+        self.assertEqual(self.ask(local, "ws-local-1", "github"), "local")
+        now = time.time()
+        local.tick(now + governor.LOCAL_WAIT_GRACE - 1)
+        self.assertEqual(local.state("ws"), (1, 0, 1))
+        local.tick(now + governor.LOCAL_WAIT_GRACE + 1)
+        self.assertEqual(local.state("ws"), (0, 0, 1))  # free for the next run
+        self.assertEqual(self.ask(local, "ws-local-2", "github"), "local")
+        # A re-ask with github before it confirms (a lost answer) still holds it, unconfirmed.
+        self.assertEqual(self.ask(local, "ws-local-2", "github"), "local")
+        self.assertIn("ws-local-2", local.fresh)
+
+    def test_local_rule_moves_one_seat_by_the_verdict_and_shares_the_hosts_cooldown(self):
+        rule = governor.local_rule
+        self.assertEqual(rule(LOCAL, "ws", "ROOM", 1, 1, {}, 1000), 2)
+        self.assertEqual(rule(LOCAL, "ws", "ROOM", 2, 1, {}, 1000), 2)  # every seat admitted
+        self.assertEqual(rule(LOCAL, "ws", "ROOM", 1, 0, {}, 1000), 1)  # no run waits
+        self.assertEqual(rule(LOCAL, "ws", "STEADY", 1, 3, {}, 1000), 1)
+        self.assertEqual(rule(LOCAL, "ws", "HOT", 2, 0, {}, 1000), 1)
+        self.assertEqual(rule(LOCAL, "ws", "HOT", 1, 0, {}, 1000), 1)  # the floor
+        self.assertEqual(rule(LOCAL, "ws", "ROOM", 1, 1, {"ws": 900}, 1000), 1)  # cooldown
+        self.assertEqual(rule(LOCAL, "ws", "HOT", 2, 0, {"ws": 900}, 1000), 2)
+        self.assertEqual(rule(LOCAL, "ws", "FULL", 2, 0, {"ws": 900}, 1000), 1)  # FULL past it
+
+    def test_local_pass_moves_the_count_and_starts_the_hosts_cooldown(self):
+        local = governor.LocalSeats(LOCAL)
+        self.ask(local, "ws-local-1", "github")
+        self.ask(local, "ws-local-2", "github")
+        last = {}
+        with mock.patch("builtins.print") as out:
+            governor.local_pass(LOCAL, local, {"ws": ("ROOM", "idle 0.60")}, last, time.time())
+        self.assertEqual(local.state("ws"), (2, 0, 2))
+        self.assertIn("local ws: 1 -> 2 seats", out.call_args.args[0])
+        self.assertIn("ws", last)  # a GitHub admit on ws now waits out the cooldown, and so does the next local move
+        # Negative control: a slot move this cycle (decide() set the host's last action) holds the local step.
+        local, last = governor.LocalSeats(LOCAL), {"ws": time.time()}
+        self.ask(local, "ws-local-1", "github")
+        self.ask(local, "ws-local-2", "github")
+        with mock.patch("builtins.print"):
+            governor.local_pass(LOCAL, local, {"ws": ("ROOM", "idle 0.60")}, last, time.time())
+        self.assertEqual(local.state("ws"), (1, 1, 1))
+
+    def test_local_units_count_every_seat_but_on_a_hot_host_only_the_admitted_or_held(self):
+        local = governor.LocalSeats(LOCAL)
+        self.ask(local, "ws-local-1", "github")
+        self.ask(local, "ws-local-2", "github")
+        self.assertEqual(governor.local_units(LOCAL, local, {"ws": ("ROOM", "")}), ({"ws": 2}, {"ws": 1.0}, 1))
+        self.assertEqual(governor.local_units(LOCAL, local, {"ws": ("HOT", "")}), ({"ws": 1}, {"ws": 1.0}, 1))
+        self.assertEqual(governor.local_units(LOCAL, local, {"ws": ("STEADY", "short of admit on idle")})[0], {"ws": 1})
+        self.ask(local, "ws-local-2", "local")  # held past admitted: capacity never reads under busy
+        self.assertEqual(governor.local_units(LOCAL, local, {"ws": ("HOT", "")})[:2], ({"ws": 2}, {"ws": 2.0}))
+
+
+class EveryMachineTest(unittest.TestCase):
+    def test_the_live_topology_has_whole_slot_hosts_and_the_workstations_local_seats(self):
+        self.assertEqual(sorted(LIVE["machines"]), ["mac-mini", "windows-media"])
+        self.assertEqual(LIVE["local"], {CX: 3})
+        self.assertEqual(LIVE["local_min_admitted"], 2)
+
+    def test_every_topology_host_has_a_units_row(self):
+        names = {"mac-mini-mac": {"busy": True, "online": True}, "m1-playground-mac": {"busy": False, "online": True},
+                 "windows-media": {"busy": False, "online": False}}
+        machines = governor.machine_units(LIVE, names)
+        self.assertEqual(machines, ({"mac-mini": 2, "windows-media": 0}, {"mac-mini": 1.0, "windows-media": 0.0}))
+        local = governor.LocalSeats(LIVE)
+        local.wait(f"{CX}-local-1", "github", 0)
+        verdicts = {h: ("ROOM", "") for h in LIVE["hosts"]}
+        pool = ({CX: 1, "ms-a2": 5}, {CX: 1.0, "ms-a2": 2.0}, {"slot": 2.0}, 300.0)
+        capacity, busy, backlog, drain = governor.every_machine(LIVE, pool, machines,
+                                                                governor.local_units(LIVE, local, verdicts))
+        self.assertEqual(sorted(capacity), sorted(live_topology()["hosts"]))
+        self.assertEqual(len(capacity), 7)
+        self.assertEqual((capacity[CX], busy[CX]), (4, 2.0))  # one pool slot plus three local seats, one held
+        self.assertEqual((capacity["mac-mini"], busy["mac-mini"]), (2, 1.0))
+        self.assertEqual((capacity["deskslim-1"], busy["deskslim-1"]), (0, 0.0))  # unread: a 0 row, not none
+        self.assertEqual((backlog, drain), ({"slot": 2.0}, 300.0))  # nothing waits for a local seat; drain the pool's
+        text = governor.render(LIVE, {"disk": {}}, {}, 0, [], True, in_units=(capacity, busy, backlog, drain))
+        self.assertIn('ci_governor_capacity_units{host="mac-mini"} 2', text)
+        self.assertIn('ci_governor_busy_units{host="windows-media"} 0.000', text)
+
+    def test_a_waiting_local_run_is_local_backlog(self):
+        out = governor.every_machine(LIVE, ({}, {}, {}, 0.0), ({}, {}), ({CX: 3}, {CX: 3.0}, 2))
+        self.assertEqual(out[2], {"local": 2.0})
+        self.assertEqual(out[3], 0.0)
+
+    def test_local_seats_on_a_host_with_no_lan_unity_slot_fail(self):
+        topo = {"hosts": {"m": {"site": "local", "local_seats": 2, "slots": [{"name": "m-mac", "caps": ["macos"]}]}}}
+        with self.assertRaisesRegex(ValueError, "local seats on no LAN Unity host: m"):
+            load_files({**live_config(), "hosts": {}}, topo)
+
+
+class LeaseEndpointTest(unittest.TestCase):
+    def setUp(self):
+        from http.server import ThreadingHTTPServer
+        import threading
+        server = ThreadingHTTPServer(("127.0.0.1", 0), governor.Handler)
+        server.daemon_threads = True
+        threading.Thread(target=server.serve_forever, daemon=True).start()
+        self.addCleanup(server.server_close)
+        self.addCleanup(server.shutdown)
+        self.base = f"http://127.0.0.1:{server.server_address[1]}"
+
+    def get(self, path):
+        try:
+            with urllib.request.urlopen(f"{self.base}{path}", timeout=10) as r:
+                return r.status, r.read().decode()
+        except urllib.error.HTTPError as e:
+            e.close()
+            return e.code, ""
+
+    def test_a_local_seat_asks_holds_and_gives_back_over_lease(self):
+        local = governor.LocalSeats(LOCAL)
+        with mock.patch.object(governor.Handler, "local", local):
+            self.assertEqual(self.get("/lease?seat=ws-local-9&have=github&wait=0")[0], 404)
+            self.assertEqual(self.get("/lease?seat=ws-local-1&have=forgejo&wait=0")[0], 400)
+            self.assertEqual(self.get("/lease?seat=ws-local-1&have=github&wait=0&task=5")[0], 400)
+            self.assertEqual(self.get("/lease?seat=ws-local-1&have=github&wait=0"), (200, "local\n"))
+            self.assertEqual(self.get("/lease?seat=ws-local-2&have=github&wait=0"), (200, "github\n"))
+            self.assertEqual(self.get("/lease?seat=ws-local-1&have=local&wait=0"), (200, "local\n"))
+            self.assertEqual(self.get("/lease?seat=ws-local-1&have=done&wait=0"), (200, "github\n"))
+            self.assertEqual(self.get("/lease?seat=ws-local-2&have=github&wait=0"), (200, "local\n"))
+
+    def test_a_forgejo_seat_names_its_task_and_tasks_serves_it_until_the_next_ask(self):
+        leases = governor.Leases({FJ_SEAT: S1})
+        leases.set(S1, "forgejo")
+        self.assertEqual(self.get("/tasks"), (200, "{}"))  # no leases: nothing runs
+        with mock.patch.object(governor.Handler, "leases", leases):
+            self.assertEqual(self.get(f"/lease?seat={FJ_SEAT}&have=forgejo&wait=0&task=x1")[0], 400)
+            self.assertEqual(self.get(f"/lease?seat={FJ_SEAT}&have=forgejo&wait=0&task=19311"), (200, "forgejo\n"))
+            self.assertEqual(json.loads(self.get("/tasks")[1]), {FJ_SEAT: "19311"})
+            self.get(f"/lease?seat={FJ_SEAT}&have=forgejo&wait=0")  # the job ended: its next ask names none
+            self.assertEqual(json.loads(self.get("/tasks")[1]), {})
+            # A task named while holding github is no job of its: it is not recorded.
+            self.get(f"/lease?seat={FJ_SEAT}&have=github&wait=0&task=19312")
+            self.assertEqual(json.loads(self.get("/tasks")[1]), {})
 
 
 if __name__ == "__main__":

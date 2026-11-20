@@ -24,8 +24,9 @@ Rendering also checks what the inventory must hold for the slots to fit their ho
   more than the build slot's, so a group never asks more of the host than its build slot alone.
 - Two slots of a host share cores (ci_unity_slot_cpus) only inside one group.
 - A unity-wide slot, wide lead included, has at least WIDE_SLOT_MIN_GB; a wide slot is a group's lead.
-- The pool's build slots carry RELEASE_LABEL on at least one and leave it off at least one,
-  so a release always has a slot and never holds every slot players.yml builds on (hc-263).
+- The pool's build slots carry RELEASE_LABEL on at least one and, when there are two or more, leave
+  it off at least one, so a release always has a slot and never holds every slot players.yml builds
+  on (hc-263). A lone build slot carries it and players.yml shares it.
 - A core host or a host in no_ci_hosts carries no CI.
 - A seat borrows one Unity test slot of its own LAN host, outside every slot group: the governor
   lends that slot to a Forgejo seat (one on each such slot of a host tagged forgejo) or to a
@@ -35,7 +36,12 @@ Rendering also checks what the inventory must hold for the slots to fit their ho
   one slot to as many of them as their measured weights fit (apps/ci-runner-governor, pack()).
   A host's ci_seat_kinds (light, heavy; each also in its ci_caps) puts the same seats of that GitHub
   kind on each such slot (<slot>-light-1 and on): org runners a lend serves, so small GitHub jobs pack
-  onto one slot too. It is the rollout switch: a host without it runs those jobs on whole slots.
+  onto one slot too, and every Unity slot of that host drops the kind from its caps, so a seat is the
+  one path a small job has there. A host without it runs those jobs on whole slots.
+- A host's ci_seat_kinds needs a lendable slot, or the kinds would have no runner on it.
+- A LAN Unity host's ci_local_seats (a count) is its "local_seats": the local test runs the governor
+  leases at once on that host (apps/ci-runner-governor, "Local seats"). They have no runner and no
+  forge, so they are a host count, never slots, which every slot reader takes for a runner.
 
     render-ci-topology.py           write topology.json
     render-ci-topology.py --check   fail when topology.json is not what the inventory renders (the CI gate)
@@ -68,7 +74,7 @@ UNITY_GROUPS = ("unity_ci_runners", "unity_ci_mac_runners")
 KEYS = ("ci_repo_runners", "ci_pinned_runners", "unity_ci_slots",
         "unity_ci_slot_groups", "unity_ci_wide_slots", "unity_ci_lan", "unity_ci_full", "unity_ci_wide",
         "unity_ci_slot_labels", "ci_unity_slot_cpus", "ci_unity_slot_memory_max", "ci_caps", "ci_seat_kinds",
-        "ci_power", "ci_labels")
+        "ci_power", "ci_labels", "ci_local_seats")
 # The keys of ci_labels, each the label the governor sets or reads for that role.
 LABEL_ROLES = ("pool", "full", "build", "wide", "withheld", "build_withheld", "seat_withheld", "lent")
 # The roles whose label is also a topology cap name, which the governor matches against slot caps.
@@ -124,6 +130,10 @@ def render(hosts, groups):
         fails += [f"{host}: ci_repo_runners {r['slot']} has no borrows (the Unity slot it runs on)"
                   for r in v.get("ci_repo_runners", []) if "borrows" not in r]
         unity = any(host in groups.get(g, ()) for g in UNITY_GROUPS)
+        local = v.get("ci_local_seats")
+        if local is not None and (type(local) is not int or local < 1 or not unity or v.get("unity_ci_lan", True) is False):
+            fails.append(f"{host}: ci_local_seats is a count of 1 or more on a LAN Unity host, not {local!r}")
+            local = None
         if unity:
             total, group = unity_layout(v)
             fails += [f"{host}: build slot {b} (a unity_ci_slot_groups key) is not one of its slots 1-{total}"
@@ -138,10 +148,12 @@ def render(hosts, groups):
                     elif t in seen:
                         fails.append(f"{host}: test slot {t} is in two groups")
                     seen.add(t)
+            # A kind the host's seats serve runs on a seat only, never on a whole slot.
+            seated = set(v.get("ci_seat_kinds") or [])
             for n in range(1, total + 1):
                 slot = {"name": unity_slot(host, n),
                         "caps": [("unity-wide" if n in wide_slots(v) else "unity-build")] if n in group
-                        else ["unity"] + [c for c in SHARED_CAPS if c in caps]}
+                        else ["unity"] + [c for c in SHARED_CAPS if c in caps and c not in seated]}
                 if group.get(n):
                     slot["group"] = [unity_slot(host, t) for t in group[n]]
                 slots.append(slot)
@@ -161,6 +173,7 @@ def render(hosts, groups):
             topo[host] = {"site": "cloud" if v.get("unity_ci_lan", True) is False else "local",
                           **({"full": v.get("unity_ci_full", True) is not False} if unity else {}),
                           **({"power": power} if power else {}),
+                          **({"local_seats": local} if local else {}),
                           "slots": slots}
     names = [s["name"] for h in topo.values() for s in h["slots"]]
     fails += [f"slot {n} is declared twice" for n in sorted({n for n in names if names.count(n) > 1})]
@@ -208,6 +221,8 @@ def seats(host, v, caps, total, group, slots, fails):
         fails.append(f"{host}: ci_seat_kinds on a cloud host, so a small job would power a paid host")
     if not lan:
         return []
+    if kinds and not lendable:
+        fails.append(f"{host}: ci_seat_kinds with no lendable slot (each is in a slot group), so {kinds} would have no runner")
     cpus, mem = slot_budget(v, total)
 
     def size(n):
@@ -283,9 +298,10 @@ def fit_failures(hosts, groups):
         builds_here = [n for n in group if n not in wide_slots(v)]
         release += sum(1 for n in builds_here if RELEASE_LABEL in labels.get(n, []))
         builds += len(builds_here)
-    if builds and not 0 < release < builds:
+    if builds and not (0 < release < builds or release == builds == 1):
         fails.append(f"{release} of the pool's {builds} build slots (unity_ci_slot_groups keys) carry {RELEASE_LABEL} "
-                     f"in unity_ci_slot_labels; a release must have at least one and leave players.yml at least one")
+                     f"in unity_ci_slot_labels; a release must have at least one and, with two or more, "
+                     f"leave players.yml at least one")
     return fails
 
 

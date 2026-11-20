@@ -2616,7 +2616,7 @@ class LendTest(unittest.TestCase):
         # ucp-2881: a gate's report job is created when its last shard ends, so it is younger than
         # every queued shard and waited out the whole Unity queue for a lend (p90 9-11 min).
         light = [("light", REPO_JOB, 60)]
-        older = [("github", GITHUB_JOB[0], 900)]
+        older = [("github", GITHUB_JOB[0], 600)]
         for jump, want in (({}, []), ({"light": 1}, [("lend", S1)])):
             with self.subTest(jump=jump):
                 box, lights, seats = self.light_box(0.3)
@@ -2629,6 +2629,32 @@ class LendTest(unittest.TestCase):
             self.assertEqual(box.plan(light + older, 10_120), [])  # busy, not taken back
             # One jump lend only: a second light lend waits on the age rule.
             self.assertEqual(box.plan(light * 4 + older, 10_120), [])
+            # Past jump_max_seconds the age rule holds again, so a light stream cannot starve a Unity job.
+            self.assertEqual(box.step(light + [("github", GITHUB_JOB[0], 1000)], 10_120), [("return", S1)] * 3)
+
+    def test_a_jump_lend_never_starts_against_a_job_past_jump_max_and_a_negative_n_jumps_nothing(self):
+        light = [("light", REPO_JOB, 60)]
+        for jump, age in (({"light": 1}, 1000), ({"light": -1}, 900)):
+            with self.subTest(jump=jump, age=age):
+                box, _, seats = self.light_box(0.3)
+                with seats, mock.patch.dict(LCFG, {"jump_lends": jump}):
+                    self.assertEqual(box.step(light + [("github", GITHUB_JOB[0], age)]), [])
+
+    def test_reclaim_keeps_the_busiest_jump_lend_and_takes_the_other_back(self):
+        box, lights, seats = self.light_box(0.3)
+        light = [("light", REPO_JOB, 60)] * 3
+        repo = [(REPO, REPO_JOB, 60)]
+        with seats, mock.patch.dict(LCFG, {"jump_lends": {"light": 1, REPO: 1}}):
+            box.step(light + repo), box.step(light + repo, 10_060)
+            self.assertEqual({s: l["phase"] for s, l in box.lends.items()}, {S1: "granted", S2: "granted"})
+            box.gh.scopes[ORG][lights[0]]["busy"] = True
+            box.gh.scopes[ORG][lights[1]]["busy"] = True
+            older = [("github", GITHUB_JOB[0], 600), ("light", REPO_JOB, 120), (REPO, REPO_JOB, 120)]
+            # Both are kept under jump_max: each is its kind's one jump lend.
+            self.assertEqual(box.plan(older, 10_120), [])
+        with seats, mock.patch.dict(LCFG, {"jump_lends": {"light": 1}}):
+            # The repo kind no longer jumps, so its lend goes back and the busy light lend stays.
+            self.assertEqual([s[:2] for s in box.plan(older, 10_120)], [("return", S2)])
 
     def test_a_light_seat_admitted_with_no_lend_is_withheld(self):
         box, lights, seats = self.light_box(0.3)

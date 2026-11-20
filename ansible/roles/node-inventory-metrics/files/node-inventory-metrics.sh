@@ -8,6 +8,10 @@ out_dir=${1:-/var/lib/node-exporter-textfile}
 state=${NODE_INVENTORY_STATE:-/run/node-inventory-metrics.state}
 proc=${PROC_ROOT:-/proc}
 top=15
+# Comms listed whatever their rank (space-separated, set by the role from its one list): the
+# agent harnesses, so an idle claude cannot fall below the top 15 and leave the agents class
+# partial. Their totals are node_agent_*; with none named the file has no such lines.
+keep=${NODE_INVENTORY_KEEP:-}
 
 work=$(mktemp -d)
 tmp="$out_dir/.node_inventory.prom.$$"
@@ -30,7 +34,7 @@ fi
 # run there are no cpu lines, rather than a lifetime average.
 printf '%s\n' "$proc"/[0-9]* |
     LC_ALL=C awk -v now="$(cut -d' ' -f1 "$proc/uptime")" -v hz="$(getconf CLK_TCK)" -v page="$(getconf PAGESIZE)" \
-        -v prev="$state" -v next_="$state.$$" -v top="$top" -v units="$work/units" \
+        -v prev="$state" -v next_="$state.$$" -v top="$top" -v keep="$keep" -v units="$work/units" \
         -v stats="$work/stats" -v images="$work/images" '
     # Prometheus label value escaping, a byte at a time (awks disagree on backslashes in gsub).
     # A byte outside printable ASCII becomes "?": a comm can be any bytes, and one invalid
@@ -86,6 +90,8 @@ printf '%s\n' "$proc"/[0-9]* |
     END {
         for (c in busy) cpu[c] = busy[c] / hz / elapsed
         n = 0; pick(cpu); pick(mem)
+        nk = split(keep, kept, " ")
+        for (k = 1; k <= nk; k++) if ((kept[k] in count) && !(kept[k] in picked)) { picked[kept[k]] = 1; order[++n] = kept[k] }
         print "# HELP node_processes_total Processes on the host"
         print "# TYPE node_processes_total gauge"
         printf "node_processes_total %d\n", total
@@ -98,6 +104,15 @@ printf '%s\n' "$proc"/[0-9]* |
         print "# HELP node_process_count Processes with this comm"
         print "# TYPE node_process_count gauge"
         for (k = 1; k <= n; k++) printf "node_process_count{comm=\"%s\"} %d\n", esc(order[k]), count[order[k]]
+        if (nk > 0) {
+            for (k = 1; k <= nk; k++) { acpu += cpu[kept[k]]; amem += mem[kept[k]] }
+            print "# HELP node_agent_cpu_cores CPU cores the always-listed agent comms used since the previous run"
+            print "# TYPE node_agent_cpu_cores gauge"
+            if (elapsed > 0) printf "node_agent_cpu_cores %.3f\n", acpu
+            print "# HELP node_agent_resident_bytes Resident memory of the always-listed agent comms"
+            print "# TYPE node_agent_resident_bytes gauge"
+            printf "node_agent_resident_bytes %.0f\n", amem
+        }
         print "# HELP node_service_running A systemd service unit that is running"
         print "# TYPE node_service_running gauge"
         while ((getline l < units) > 0) if (l != "") printf "node_service_running{unit=\"%s\"} 1\n", esc(l)

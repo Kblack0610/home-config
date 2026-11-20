@@ -3,3 +3,10 @@
 # apps/monitoring/helm-values.yaml, which mounts it from the host). The workstation's
 # distro node_exporter reads its own (site.yml passes it).
 node_inventory_metrics_dir: /var/lib/node-exporter-textfile
+
+# The agent harnesses' process names (comm), always listed whatever their rank and summed into
+# node_agent_*, which is the agents class of the cluster Space split (cc:host_class_*). One list:
+# the rules read the sum, not these names. claude, codex and opencode run as their own binary;
+# a CLI that runs under node (gemini) shows as comm "node", which is not listed, so it lands in
+# the other class.
+node_inventory_metrics_agent_comms: [claude, codex, opencode]

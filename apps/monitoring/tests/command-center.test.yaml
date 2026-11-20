@@ -177,6 +177,37 @@ tests:
           - labels: 'cc:github_hosted_running'
             value: 3
 
+  - name: run units carry each machine's held units and size, 0 of 5 stays 0, and a stale file or a machine with none has no series
+    interval: 1m
+    input_series:
+      - series: 'fleet_run_units{host="razer-laptop",instance="rz"}'
+        values: '0x10'
+      - series: 'fleet_run_units_max{host="razer-laptop",instance="rz"}'
+        values: '5x10'
+      - series: 'node_textfile_mtime_seconds{file="/x/fleet_local.prom",instance="rz"}'
+        values: '0+60x10'
+      - series: 'fleet_run_units{host="old",instance="od"}'
+        values: '3x10'
+      - series: 'fleet_run_units_max{host="old",instance="od"}'
+        values: '5x10'
+      - series: 'node_textfile_mtime_seconds{file="/x/fleet_local.prom",instance="od"}'
+        values: '0x10'
+      - series: 'fleet_agent_sessions{host="plain",instance="pl"}'
+        values: '2x10'
+      - series: 'node_textfile_mtime_seconds{file="/x/fleet_local.prom",instance="pl"}'
+        values: '0+60x10'
+    promql_expr_test:
+      - expr: cc:host_run_units
+        eval_time: 5m
+        exp_samples:
+          - labels: 'cc:host_run_units{host="razer-laptop"}'
+            value: 0
+      - expr: cc:host_run_units_max
+        eval_time: 5m
+        exp_samples:
+          - labels: 'cc:host_run_units_max{host="razer-laptop"}'
+            value: 5
+
   - name: a site with runners but none busy reads 0 busy, and no GitHub-hosted jobs reads 0
     interval: 1m
     input_series:

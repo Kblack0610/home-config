@@ -203,7 +203,7 @@ jobs:
 - GPU: ASUS GeForce RTX 3050 6 GB (`PCI\VEN_10DE&DEV_2584`), the only video out: neither the 5500 nor the 5900XT has an iGPU, so the BIOS shows only on the TV through the card, never the board's HDMI. The TV (Samsung) ran 3840x2160 at 30 Hz on 2026-11-12 (`Win32_VideoController`); 60 Hz needs a Premium or Ultra High Speed HDMI cable and the TV input's enhanced HDMI setting on.
 - BIOS input: the Logitech USB receiver (`VID_046D&PID_C52B`) works before boot; the Bluetooth keyboards and the MX Master 3S do not.
 - The 64 GB (Corsair CMG64GX4M2D3600C18, 2x32 GB DDR4-3600) runs at 3600 with D.O.C.P. on since 2026-11-12 (`Win32_PhysicalMemory` `ConfiguredClockSpeed`); it ran at 2133 before. Two of the four DIMM slots are free.
-- Disk: one Crucial P3 1 TB (`CT1000P3SSD8`, QLC) holds Windows and the VM. The Crucial E100 2 TB bought for CI is not installed yet ([Unity CI VM](#unity-ci-vm-windows-media-ci)).
+- Disk: one Crucial P3 1 TB (`CT1000P3SSD8`, QLC), the only drive (`Get-PhysicalDisk`, 2026-11-20), holding Windows and the VM. No E100 is in this PC or any other fleet host; 1 TB is enough for its test slots ([unity-ci-hardware.md](unity-ci-hardware.md#checklist)).
 - Why it gets a 16-core CPU: [unity-ci-hardware.md](unity-ci-hardware.md#buying-in-the-ram-shortage).
 
 ## CPU upgrade to the Ryzen 9 5900XT
@@ -230,10 +230,6 @@ A flash that fails partway is recoverable: rename the `.CAP` with the `BIOSRenam
 Slots: three of three cores and 14 GB each, with three cores and 8 GB for the guest (`ci_unity_slot_cpus` in `ci_hosts`). Two more 32 GB DDR4-3600 sticks (the same Corsair kit, in the two free slots) give the memory for 5, but 5 slots of three cores plus the guest's is 18 of the PC's 16 cores, so a fourth slot is the most the CPU carries; decide it after a day of load with the TV in use.
 
 Day to day, in an Administrator PowerShell over SSH: `Get-VM windows-media-ci`, `Start-VM`, `Stop-VM` (a clean shutdown), `Restart-VM`. A Windows update reboot shuts the VM down and starts it again, so slots go offline for that time.
-
-### Moving to the E100
-
-The P3 is QLC, which wears out under CI writes. Once the E100 2 TB is in: format it NTFS (say `D:`), then with the VM running, `Move-VMStorage -VMName windows-media-ci -DestinationStoragePath D:\Hyper-V\windows-media-ci`, then grow the disk with `Resize-VHD` while the VM is off and `growpart /dev/sda 1 && resize2fs /dev/sda1` inside it.
 
 ### Rebuilding it
 

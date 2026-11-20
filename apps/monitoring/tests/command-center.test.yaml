@@ -352,6 +352,27 @@ tests:
         alertname: AgentFeedFrozen
         exp_alerts: []
 
+  - name: a no-lease peer's still topic is not a frozen feed while the holder republishes
+    interval: 1m
+    input_series:
+      # the holder republishes every minute; a no-lease peer published once and went quiet
+      - series: 'mqtt_message_total{topic="agents_holder_summary_asks_open"}'
+        values: '0+1x60'
+      - series: 'mqtt_message_total{topic="agents_peer_summary_asks_open"}'
+        values: '3x60'
+      - series: 'mqtt_updated_epoch{topic="agents_holder_runner_sentinel"}'
+        values: '0+60x60'
+    promql_expr_test:
+      - expr: cc:component_status{domain="agents",component="feed"}
+        eval_time: 45m
+        exp_samples:
+          - labels: 'cc:component_status{domain="agents",component="feed"}'
+            value: 0
+    alert_rule_test:
+      - eval_time: 50m
+        alertname: AgentFeedFrozen
+        exp_alerts: []
+
   - name: a frozen feed pages once it has held 10 min, and sentinel stays quiet under it
     interval: 1m
     input_series:

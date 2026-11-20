@@ -1687,11 +1687,11 @@ def lend_plan(cfg, hosts, runners, seat_state, waits, lends, leases, pins, last_
             r, host = runners.get(slot), host_of[slot]
             if need <= 0:
                 break
-            # An idle withheld slot on a ROOM host adds only the load ROOM has room for, so a
-            # burst gets every such slot in one cycle, cooldown or not (hc-643). A slot that is
-            # admitted or busy moves one per host per cycle, as a withhold does.
+            # An idle withheld slot on a ROOM host adds only the load ROOM has room for, so a burst gets
+            # every such slot in one cycle, cooldown or not (hc-643); an admitted or busy one moves one per
+            # host per cycle. Each slot is lent once a cycle, to the older wait (hc-789).
             spare = bool(r) and r["withheld"] and not r["busy"] and verdicts.get(host) == "ROOM"
-            if slot in lends or slot in paired or (host in moved and not spare) or unfit(host) or not r:
+            if slot in lends or slot in [s for _, s, *_ in steps] or slot in paired or (host in moved and not spare) or unfit(host) or not r:
                 continue
             if seat not in seat_state or (seats[seat]["forge"] != "forgejo" and not seat_state[seat]["online"]):
                 continue

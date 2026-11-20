@@ -529,7 +529,8 @@ all:
           # today's 2 open slots plus the room slot slots.sh opens on an idle host.
           ci_local_seats: 3
         # tuf-b550: Ryzen 9 5900XT, 16 cores / 32 threads, SMT siblings n and n+16
-        # (lscpu -e, 2026-11-20), 62G. Cores 0-1 are k3s and the OS; ms-a2's slot layout
+        # (lscpu -e, 2026-11-20), 62G, /dev/kvm from kvm_amd (checked 2026-11-20,
+        # so heavy seats). Cores 0-1 are k3s and the OS; ms-a2's slot layout
         # on cores 2-15 (slots 1-2 three cores, 3-4 four). Each slot stops at 14G, the
         # deskslims' cap: 7-day peaks to 2026-11-20 are 13.9G at a 14G cap (deskslim-1) and
         # p99 10.1-10.5G per slot. Four caps add up to 56G, over the 50G shared Unity cap,

@@ -660,6 +660,75 @@ model_list:
         json_mode: true
       supports_function_calling: true
 
+  # Groq free plan, no card: per model 30 rpm, 1K requests/day, 8K tokens/min,
+  # 200K tokens/day; no training on prompts. Fleet trial work only, gateway key
+  # fleet-nim (README, NVIDIA NIM key). 8K TPM fits one-shot calls, not an agent
+  # harness turn. The gate sums every route on a key, so the two routes stay
+  # under one model's 30 together. No fallback edge: a 429 fails the call.
+  # key-limit GROQ_API_KEY: rpm 30 per model (console.groq.com/docs/rate-limits, read 2026-11-19)
+  - model_name: "free-gpt-oss (gpt-oss-120b)"
+    litellm_params:
+      model: "openai/openai/gpt-oss-120b"
+      api_base: https://api.groq.com/openai/v1
+      api_key: os.environ/GROQ_API_KEY
+      input_cost_per_token: 0
+      output_cost_per_token: 0
+      rpm: 14
+      tpm: 8000
+    model_info:
+      mode: chat
+      tags: ["free", "groq", "fleet-trial"]
+      capabilities:
+        tools: true
+        code: true
+        vision: false
+        reasoning: true
+        json_mode: true
+      supports_function_calling: true
+  - model_name: "free-qwen (qwen3.8-27b)"
+    litellm_params:
+      model: "openai/qwen/qwen3.8-27b"
+      api_base: https://api.groq.com/openai/v1
+      api_key: os.environ/GROQ_API_KEY
+      input_cost_per_token: 0
+      output_cost_per_token: 0
+      rpm: 14
+      tpm: 8000
+    model_info:
+      mode: chat
+      tags: ["free", "groq", "fleet-trial"]
+      capabilities:
+        tools: true
+        code: true
+        vision: false
+        reasoning: true
+        json_mode: true
+      supports_function_calling: true
+
+  # Cloudflare Workers AI on Workers Free: 10,000 Neurons/day, then calls fail,
+  # never bill (a short chat costs about 8). No training on prompts; fleet trial
+  # work only, gateway key fleet-nim. The base carries the account id, an
+  # identifier, not a credential. No fallback edge: a refusal fails the call.
+  # key-limit CLOUDFLARE_WORKERS_AI_API_KEY: rpm 300 (developers.cloudflare.com/workers-ai/platform/limits, text generation, read 2026-11-19)
+  - model_name: "free-llama (llama-3.3-70b)"
+    litellm_params:
+      model: "openai/@cf/meta/llama-3.3-70b-instruct-fp8-fast"
+      api_base: https://api.cloudflare.com/client/v4/accounts/7be6c376cd2df8fa6fdc899a43b465a6/ai/v1
+      api_key: os.environ/CLOUDFLARE_WORKERS_AI_API_KEY
+      input_cost_per_token: 0
+      output_cost_per_token: 0
+      rpm: 20
+    model_info:
+      mode: chat
+      tags: ["free", "cloudflare-workers-ai", "fleet-trial"]
+      capabilities:
+        tools: true
+        code: true
+        vision: false
+        reasoning: false
+        json_mode: true
+      supports_function_calling: true
+
   # OpenCode free models, served on the Go base with the Go key at cost 0 (Go
   # /v1/models lists these three at price 0, read 2026-11-11; a probe of
   # beam-free returned usage.cost 0). The anonymous Zen endpoint refuses them

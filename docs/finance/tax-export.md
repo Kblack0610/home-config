@@ -36,7 +36,7 @@ kubectl --context home-k3s create job --from=cronjob/actual-budget-tax-export \
 kubectl --context home-k3s -n actual-budget logs -l job-name --tail=40
 ```
 
-Export a specific past year by setting `TAX_YEAR` on the job (edit the env, or `kubectl create job` then patch). Default is the current calendar year.
+Export a specific past year by setting `TAX_YEAR` on the job (edit the env, or `kubectl create job` then patch). The default is the year of the day before the run, so the Jan 1 run exports the year that just closed and the Apr, Jul and Oct runs export the current year to date. An on-demand run on Jan 1 also gets the prior year; any other day it gets the current year.
 
 ## Validate the first run
 

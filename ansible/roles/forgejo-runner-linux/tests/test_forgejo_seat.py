@@ -27,8 +27,16 @@ import governor  # noqa: E402
 SLOT, SEAT_NAME = "box-unity-pool-1", "box-unity-pool-1-forgejo"
 GUARD = 20  # seconds: only a hung supervisor reaches it
 STUB = """#!/usr/bin/env python3
-import os, sys, urllib.request
+import os, subprocess, sys, urllib.request
 assert sys.argv[1:3] == ["one-job", "--config"], sys.argv
+task = os.path.join(os.path.dirname(sys.argv[3]), "task")
+if os.path.exists(os.path.join(os.path.dirname(sys.argv[3]), "linger")):
+    # A process the job leaves behind, holding the job's stdout until the test lets it go.
+    subprocess.Popen([sys.executable, "-c", "import os, urllib.request; "
+                      "urllib.request.urlopen(os.environ['STUB_URL'] + '/stub-linger', timeout=60).read()"])
+if os.path.exists(task):  # the runner's own line on taking a task, on stderr as forgejo-runner logs
+    print(f'level=info msg="task {open(task).read()} repo is kblack0610/box https://data.forgejo.org"',
+          file=sys.stderr, flush=True)
 with urllib.request.urlopen(os.environ["STUB_URL"] + "/stub-run", timeout=60) as r:
     sys.exit(int(r.read()))
 """
@@ -41,16 +49,19 @@ class Leases(governor.Leases):
         super().__init__(seats)
         self.asked = asked
 
-    def wait(self, seat, have, timeout):
-        self.asked.put((have, timeout))
-        return super().wait(seat, have, timeout)
+    def wait(self, seat, have, timeout, task=None):
+        self.asked.put((have, timeout) if task is None else (have, timeout, task))
+        return super().wait(seat, have, timeout, task)
 
 
 class Handler(governor.Handler):
-    runs = codes = None
+    runs = codes = lingers = None
     fail = False
 
     def do_GET(self):
+        if self.path == "/stub-linger":
+            self.lingers.put("holding")
+            return self.answer(200, self.lingers_end.get(timeout=GUARD * 2).encode())
         if self.path == "/stub-run":
             self.runs.put(self.leases.get(SLOT)[0])
             return self.answer(200, str(self.codes.get(timeout=GUARD)).encode())
@@ -63,15 +74,17 @@ class Handler(governor.Handler):
 class SeatTest(unittest.TestCase):
     def setUp(self):
         self.asked, self.runs, self.codes = queue.Queue(), queue.Queue(), queue.Queue()
+        self.lingers, self.lingers_end = queue.Queue(), queue.Queue()
         self.leases = Leases({SEAT_NAME: SLOT}, self.asked)
-        handler = type("H", (Handler,), {"leases": self.leases, "runs": self.runs, "codes": self.codes})
+        handler = type("H", (Handler,), {"leases": self.leases, "runs": self.runs, "codes": self.codes,
+                                         "lingers": self.lingers, "lingers_end": self.lingers_end})
         self.server = ThreadingHTTPServer(("127.0.0.1", 0), handler)
         self.server.daemon_threads = True
         threading.Thread(target=self.server.serve_forever, daemon=True).start()
         self.addCleanup(self.server.server_close)
         self.addCleanup(self.server.shutdown)
         self.handler = handler
-        d = tempfile.mkdtemp()
+        d = self.dir = tempfile.mkdtemp()
         stub = os.path.join(d, "forgejo-runner")
         with open(stub, "w") as f:
             f.write(STUB)
@@ -103,6 +116,38 @@ class SeatTest(unittest.TestCase):
         self.assertEqual(self.next_ask(), ("github", 300))
         self.assertEqual(self.leases.get(SLOT)[:2], ("github", "github"))
         self.assertTrue(self.runs.empty())
+
+    def test_it_names_the_task_it_runs_and_its_ask_after_the_job_clears_it(self):
+        self.assertEqual(self.next_ask(), ("github", 300))
+        task = os.path.join(self.dir, "task")
+        with open(task, "w") as f:
+            f.write("19311")
+        self.leases.set(SLOT, "forgejo")
+        self.assertEqual(self.next_ask(), ("forgejo", 0, "19311"))
+        self.assertEqual(self.runs.get(timeout=GUARD), "forgejo")
+        self.assertEqual(self.leases.tasks(), {SEAT_NAME: "19311"})
+        os.remove(task)
+        self.codes.put(0)
+        self.assertEqual(self.next_ask(), ("forgejo", 0))
+        self.assertEqual(self.runs.get(timeout=GUARD), "forgejo")  # the next job: that ask has returned
+        self.assertEqual(self.leases.tasks(), {})
+        self.codes.put(1)
+
+    def test_a_process_the_job_leaves_holding_its_output_does_not_hold_the_seat(self):
+        self.assertEqual(self.next_ask(), ("github", 300))
+        linger = os.path.join(self.dir, "linger")
+        open(linger, "w").close()
+        self.leases.set(SLOT, "forgejo")
+        self.assertEqual(self.runs.get(timeout=GUARD), "forgejo")
+        self.assertEqual(self.lingers.get(timeout=GUARD), "holding")
+        os.remove(linger)
+        self.codes.put(0)
+        # The seat asks once one-job exits, while the stray still holds the pipe: it lets go
+        # only on the put below.
+        self.assertEqual(self.next_ask(), ("forgejo", 0))
+        self.lingers_end.put("")
+        self.assertEqual(self.runs.get(timeout=GUARD), "forgejo")
+        self.codes.put(1)
 
     def test_with_no_task_it_fetches_again_on_its_cadence(self):
         self.assertEqual(self.next_ask(), ("github", 300))

@@ -2,7 +2,7 @@
   "generated_by": "scripts/render-ci-topology.py from ansible/inventory.yml: edit the inventory and re-run it",
   "labels": {"pool": "unity", "full": "unity-full", "build": "unity-build", "wide": "unity-wide", "withheld": "unity-withheld", "build_withheld": "unity-build-withheld", "seat_withheld": "light-withheld", "lent": "unity-lent"},
   "hosts": {
-    "cachyos-x8664-main": {"site": "local", "full": false, "slots": [
+    "cachyos-x8664-main": {"site": "local", "full": false, "local_seats": 3, "slots": [
       {"name": "cachyos-x8664-main-unity-pool-1", "caps": ["unity"]},
       {"name": "cachyos-x8664-main-unity-pool-2", "caps": ["unity"]}
     ]},

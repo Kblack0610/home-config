@@ -100,6 +100,10 @@ spec:
                   name: github-runner-exporter
                   key: forgejo-token
                   optional: true
+            # The governor's /tasks names the job each Forgejo seat runs, which the
+            # Forgejo API does not; unset or down, a running seat's row has no repo.
+            - name: GOVERNOR_URL
+              value: "http://ci-runner-governor.monitoring:9321"
           ports:
             - name: metrics
               containerPort: 9320

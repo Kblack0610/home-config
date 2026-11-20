@@ -201,6 +201,35 @@ tests:
           - exp_labels: {alertname: CiJobUnserved, severity: warning, category: capacity, fleet: fix, repo: .dotfiles-private, workflow: ci, job_name: shell tests, labels: "self-hosted,linux"}
             exp_annotations: {summary: ".dotfiles-private shell tests has waited 35m 0s for labels self-hosted,linux that no runner it may use carries: docs/runbooks/unity-ci-host.md#a-job-no-runner-serves"}
 
+  - name: a small job on a whole slot of a host with seats warns after 10 minutes, and nowhere else
+    interval: 1m
+    input_series:
+      # ms-a2 has seats: its slot 1 runs a light job (fires); its seat runs one (quiet).
+      - series: 'ci_runner_job{runner="ms-a2-unity-pool-1",kind="light"}'
+        values: '1x20'
+      - series: 'ci_runner_job{runner="ms-a2-unity-pool-1-light-1",kind="light"}'
+        values: '1x20'
+      - series: 'ci_runner_job{runner="ms-a2-unity-pool-2",kind="unity"}'
+        values: '1x20'
+      - series: 'github_runner_state{host="ms-a2",name="ms-a2-unity-pool-1-light-1",state="running"}'
+        values: '1x20'
+      - series: 'github_runner_state{host="ms-a2",name="ms-a2-unity-pool-1-heavy-1",state="idle"}'
+        values: '0x20'
+      # box has no seats, so a light job on its slot is its one path (quiet).
+      - series: 'ci_runner_job{runner="box-unity-pool-1",kind="light"}'
+        values: '1x20'
+      - series: 'github_runner_state{host="box",name="box-unity-pool-1",state="running"}'
+        values: '1x20'
+    alert_rule_test:
+      - eval_time: 9m
+        alertname: CiSmallJobOnWholeSlot
+        exp_alerts: []
+      - eval_time: 12m
+        alertname: CiSmallJobOnWholeSlot
+        exp_alerts:
+          - exp_labels: {alertname: CiSmallJobOnWholeSlot, severity: warning, category: capacity, fleet: fix, host: ms-a2, runner: ms-a2-unity-pool-1, kind: light}
+            exp_annotations: {summary: "ms-a2-unity-pool-1 has run a light job on a whole Unity slot for 10 minutes, though ms-a2 has seats for small jobs: docs/runbooks/unity-ci-host.md#a-small-job-on-a-whole-slot"}
+
   - name: a low GitHub API bucket warns after 10 minutes, per scope, across a pod restart
     interval: 1m
     input_series:

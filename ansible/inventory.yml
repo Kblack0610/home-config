@@ -456,8 +456,11 @@ all:
     # floor(slot CPUs / MIN_JOB_CORES) and the governor admits as many as a measured weight
     # fits (ci-runner-governor config.json "weights"). Repo seats stay one per slot.
     # ci_seat_kinds: the GitHub kinds (light, heavy; each in ci_caps) that also get seats on
-    # the host's lendable slots, so several small jobs share one lent slot. The rollout switch:
-    # windows-media-ci first (hc-667), the other ROOM hosts a day after it runs clean.
+    # the host's lendable slots, so several small jobs share one lent slot; the host's Unity slots
+    # then drop those kinds from their caps, so a seat is a small job's one path there. Every LAN
+    # host that takes light or heavy sets it (hc-693): seats were not the OOM source (24h to
+    # 2026-11-19: 6, 5 and 5 kills on deskslim-2, ms-a2 and deskslim-1 with none, 3 on
+    # windows-media-ci with seats). Roll back one host: drop its key, re-render, apply.
     ci_hosts:
       hosts:
         # ms-a2: 16 cores / 32 threads, SMT siblings n and n+16 (sysfs,
@@ -473,6 +476,7 @@ all:
         # trial since 2026-11-19); the lists below size them rather than fence them.
         ms-a2:
           ci_caps: [light, heavy, unity, unity-build, forgejo]
+          ci_seat_kinds: [light, heavy]
           ci_cpus: 2-15,18-31
           ci_unity_slot_share: true
           ci_memory_max: 70G
@@ -483,11 +487,12 @@ all:
           k3s_cpus: 0-1,16-17
         # deskslim-2: 12 cores / 24 threads, SMT siblings n and n+12, 60G. Cores
         # 0-1 are k3s and the OS; three Unity slots of 14G on cores 2-11, slot 3 with
-        # four cores, which leaves 12G for the host and k3s. Its Unity slots take light
-        # and heavy jobs (ci_caps), and the governor lends them to Forgejo and the
-        # personal repo runners.
+        # four cores, which leaves 12G for the host and k3s. Its light and heavy jobs run
+        # on seats (ci_seat_kinds), and the governor lends its Unity slots to those, to
+        # Forgejo and to the personal repo runners.
         deskslim-2:
           ci_caps: [light, heavy, unity, forgejo]
+          ci_seat_kinds: [light, heavy]
           ci_cpus: 2-11,14-23
           ci_memory_max: 48G
           ci_unity_cpus: 2-11,14-23
@@ -499,6 +504,7 @@ all:
         # and n+12, lscpu 2026-11-18, 61G), so the same slots and caps.
         deskslim-1:
           ci_caps: [light, heavy, unity, forgejo]
+          ci_seat_kinds: [light, heavy]
           ci_cpus: 2-11,14-23
           ci_memory_max: 48G
           ci_unity_cpus: 2-11,14-23

@@ -36,7 +36,9 @@ Rendering also checks what the inventory must hold for the slots to fit their ho
   one slot to as many of them as their measured weights fit (apps/ci-runner-governor, pack()).
   A host's ci_seat_kinds (light, heavy; each also in its ci_caps) puts the same seats of that GitHub
   kind on each such slot (<slot>-light-1 and on): org runners a lend serves, so small GitHub jobs pack
-  onto one slot too. It is the rollout switch: a host without it runs those jobs on whole slots.
+  onto one slot too, and every Unity slot of that host drops the kind from its caps, so a seat is the
+  one path a small job has there. A host without it runs those jobs on whole slots.
+- A host's ci_seat_kinds needs a lendable slot, or the kinds would have no runner on it.
 
     render-ci-topology.py           write topology.json
     render-ci-topology.py --check   fail when topology.json is not what the inventory renders (the CI gate)
@@ -139,10 +141,12 @@ def render(hosts, groups):
                     elif t in seen:
                         fails.append(f"{host}: test slot {t} is in two groups")
                     seen.add(t)
+            # A kind the host's seats serve runs on a seat only, never on a whole slot.
+            seated = set(v.get("ci_seat_kinds") or [])
             for n in range(1, total + 1):
                 slot = {"name": unity_slot(host, n),
                         "caps": [("unity-wide" if n in wide_slots(v) else "unity-build")] if n in group
-                        else ["unity"] + [c for c in SHARED_CAPS if c in caps]}
+                        else ["unity"] + [c for c in SHARED_CAPS if c in caps and c not in seated]}
                 if group.get(n):
                     slot["group"] = [unity_slot(host, t) for t in group[n]]
                 slots.append(slot)
@@ -207,6 +211,8 @@ def seats(host, v, caps, total, group, slots, fails):
               for k in kinds if k not in SHARED_CAPS or k not in caps]
     if kinds and not lan:
         fails.append(f"{host}: ci_seat_kinds on a cloud host, so a small job would power a paid host")
+    if kinds and lan and not lendable:
+        fails.append(f"{host}: ci_seat_kinds with no lendable slot (each is in a slot group), so {kinds} would have no runner")
     if not lan:
         return []
     cpus, mem = slot_budget(v, total)

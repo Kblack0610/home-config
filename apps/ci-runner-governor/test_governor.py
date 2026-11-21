@@ -2080,6 +2080,32 @@ class LanPairTest(unittest.TestCase):
         # The test slots of a quiet pair are the pool's again.
         self.assertEqual(self.run_lan("ii...", [UNITY_JOB] * 3)[0], [("admit", 3)])
 
+    def test_a_build_slot_that_stepped_aside_returns_both_its_tests_past_the_cooldown(self):
+        # 2026-11-21 05:54: slot 5 stepped aside with 16 jobs queued, and its tests came back
+        # one per cooldown, slot 3 at 06:04 and slot 4 at 06:14.
+        last = {"ms-a2": 10_000 - 60, "ms-a2-unity-pool-5": 10_000 - 60}
+        self.assertEqual(self.run_lan("ii...", [UNITY_JOB] * 16, last=last)[0], [("admit", 3), ("admit", 4)])
+        # A build slot withheld long ago returns nothing: the load rule and its cooldown move them.
+        old = {"ms-a2": 10_000 - 60, "ms-a2-unity-pool-5": 10_000 - 3600}
+        self.assertEqual(self.run_lan("ii...", [UNITY_JOB] * 16, last=old)[0], [])
+        # A hot or full host, or a pinned one, takes nothing back.
+        self.assertEqual(self.run_lan("ii...", [UNITY_JOB] * 16, lan=HOT, last=last)[0], [])
+        self.assertEqual(self.run_lan("ii...", [UNITY_JOB] * 16, lan=FULL, last=last)[0], [("withhold", 1)])
+        self.assertEqual(self.run_lan("ii...", [UNITY_JOB] * 16, last=last, pins={"ms-a2": 2})[0], [])
+        # Nothing waiting returns nothing; one job returns one slot.
+        self.assertEqual(self.run_lan("ii...", [], last=last)[0], [])
+        self.assertEqual(self.run_lan("ii...", [UNITY_JOB], last=last)[0], [("admit", 3)])
+        # No readings: no admit on a guess.
+        blind = {k: v for k, v in COOL.items() if k != "idle"}
+        self.assertEqual(self.run_lan("ii...", [UNITY_JOB] * 16, lan=blind, last=last)[0], [])
+        # A waiting build claims the pair instead.
+        self.assertEqual(self.run_lan("ii...", [BUILD_JOB], last=last)[0], [("admit", 5)])
+        # The pool's cap holds the returns.
+        capped = {**PAID, "pool_max_admitted": 3}
+        got = governor.decide(capped, readings(**{"ms-a2": COOL}), lan_slots("ii..."), [UNITY_JOB] * 16, last, 10_000,
+                              copy.deepcopy(self.BUILD), {})
+        self.assertEqual([(a, r) for h, a, r, _, _ in got if h == "ms-a2" and a == "admit"], [("admit", "ms-a2-unity-pool-3")])
+
     def test_a_claim_on_busy_tests_leaves_the_build_to_the_paid_host_too(self):
         got, inst = self.run_lan("iiih.", [BUILD_JOB])
         self.assertEqual(got, [("withhold", 3)])

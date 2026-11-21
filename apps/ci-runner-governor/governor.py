@@ -490,7 +490,7 @@ class Snapshot(NamedTuple):
     shared_waiting: tuple
     pins: dict
     instances: dict      # power_readings(); a pass writes to it only through its memo
-    last_action: dict
+    last_action: dict    # host or runner -> when it last moved
     verdicts: dict       # LAN host -> (verdict, why)
     slots: dict          # host -> (its runners, admitted ones in withhold order, withheld ones)
 
@@ -567,8 +567,17 @@ def lan_pass(snap, tally):
                 admitted += 1
         if a.action != "hold" or not any(m.host == a.host for m in pair_moves):
             out.append(a)
-    # A build slot's admit is no pool slot, so the pool's cap does not hold it.
-    out += [m for m in pair_moves if m.action == "admit"]
+    # A build slot's admit is no pool slot, so the pool's cap does not hold it; a returning
+    # test slot's is, after the load rule's.
+    for m in pair_moves:
+        if m.action != "admit":
+            continue
+        if serves_pool(cfg, m.host, m.runner):
+            if admitted >= cfg["pool_max_admitted"]:
+                out.append(m._replace(action="hold", runner="", why=m.why + f"; pool at its {cfg['pool_max_admitted']} cap"))
+                continue
+            admitted += 1
+        out.append(m)
     # Slots the LAN hosts already have for the waiting jobs. Admitted slots can sit idle for
     # minutes with jobs queued, so one idle slot must not hold the overflow back. A LAN build
     # slot takes no pool job, so it covers none.
@@ -603,12 +612,38 @@ def lan_host(snap, host, tally):
             if clear:
                 builds.remove(need)
         tally = tally._replace(admitted=tally.admitted - stepped, floor=tally.floor - stepped, builds=tuple(builds))
+        back = returning(snap, host, mine, off, v, why)
+        off = [n for n in off if n not in dict(back)]
         moves = [Action(host, "withhold", n, v, w) for n, w in aside] + \
-                [Action(host, "admit", n, v, w) for n, w in builds_in]
+                [Action(host, "admit", n, v, w) for n, w in builds_in + back]
     plan = pin_rule(snap, host, v, on, off, tally.floor) or load_rule(snap, host, v, why, on, off, tally.floor)
     if plan.action == "withhold":
         tally = tally._replace(admitted=tally.admitted - 1, floor=tally.floor - 1)
     return moves, plan, tally
+
+
+def returning(snap, host, mine, off, v, why):
+    """[(test slot, why)]: the withheld test slots in off of each pair whose build slot stepped
+    aside within cooldown_seconds and now reads quiet, at most one per waiting job. They come
+    back together, regardless of the host's cooldown, as they stepped aside: the cores are the
+    ones the build just gave up, so they add no load the readings have not seen (2026-11-21:
+    one per cooldown left slot 4 idle 20 min with 16 jobs queued). Only on readings that show
+    it (ROOM, or a STEADY that has them), on no pinned host, and only while a job waits, as the
+    load rule admits. A build slot withheld longer ago, or before a restart (last_action is in
+    memory), returns nothing; the load rule moves its tests."""
+    cfg = snap.cfg
+    if v not in ("ROOM", "STEADY") or why == "no reading" or host in snap.pins:
+        return []
+    demand = len(snap.waiting) + shared_demand(cfg, host, snap.runners, snap.shared_waiting)
+    by = {slot_of(n): n for n in mine}
+    out = []
+    for b, tests in sorted(pairs(snap.cfg, host).items()):
+        n = by.get(b)
+        if n and mine[n]["withheld"] and not mine[n]["busy"] and \
+                snap.now - snap.last_action.get(n, 0) < cfg["cooldown_seconds"]:
+            out += [(by[t], f"pair {b}'s build slot stepped aside, its test slots return")
+                    for t in tests if by.get(t) in off]
+    return out[:demand]
 
 
 def paid_build_open(snap, need):
@@ -2058,7 +2093,9 @@ def render_budget(b):
 
 
 def cycle(cfg, last_action, tracked=None, budget=None, local=None):
-    """One reading and its actions. local is the LocalSeats to admit local runs to, None not to."""
+    """One reading and its actions. local is the LocalSeats to admit local runs to, None not to.
+    last_action is {host or runner: when it last moved}: hosts for the cooldown, runners for
+    returning(); it lives in memory only."""
     now = time.time()
     try:
         hosts, runners, waiting = observe(pools(cfg))
@@ -2100,6 +2137,8 @@ def cycle(cfg, last_action, tracked=None, budget=None, local=None):
                     print(f"start {target} on {host}: the deny lifted; queue {queue}", flush=True)
             else:
                 apply(cfg, action, runner, host)
+                # Per runner too: returning() reads when a build slot stepped aside.
+                last_action[runner] = now
             last_action[host] = now
         except POWER_ERRORS as e:
             code = getattr(e, "code", "")

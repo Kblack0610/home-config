@@ -39,6 +39,7 @@ Turntable (LINE) -> UFO202 in -> Giada --> Snapcast server (k3s, hp-victus) --> 
 - Wall tablets: Home -> Music shows every room with play/pause, volume, browse (Spotify, radio) and Source. The Dashboard button on the photo screen always returns to the full Home view (PR #320).
 - Wall and phone Home: the Music section has one tile per room. Tap to add a room to what is playing or drop it out; details in `docs/wall-panels.md` (Cameras and Music on Home).
 - Music Assistant: https://music.kblab.me. Snapcast provider points at the external server (`snapserver-direct.snapcast.svc.cluster.local:1705`); Radio Browser and Spotify are added. Jellyfin has no music files, so it is not added.
+- Spotify app: with MA's Spotify Connect plugin enabled (First run step 5 in the MA README), each Snapcast room is a device in the Spotify app's device list; playback goes through MA, so room grouping and volume stay in MA and HA. Desktop Spotify itself does not reach Snapcast without it.
 - Snapweb: https://snapcast.kblab.me for per-room stream and volume.
 
 ## Gotchas

@@ -55,11 +55,11 @@ jobs:
           rm planted-count.out
       - name: Negative control - the topology check fails on a repo runner that borrows a slot its host does not have
         run: |
-          python3 -c 's = open("ansible/inventory.yml").read(); t = s.replace("slot: gungan-speak-1, borrows: 2}", "slot: gungan-speak-1, borrows: 9}", 1); assert t != s, "the plant did not apply"; open("planted-borrow.yml", "w").write(t)'
+          python3 -c 's = open("ansible/inventory.yml").read(); t = s.replace("name: gungan-speak, borrows: 2}", "name: gungan-speak, borrows: 9}", 1); assert t != s, "the plant did not apply"; open("planted-borrow.yml", "w").write(t)'
           rc=0; python3 scripts/render-ci-topology.py --check --inventory planted-borrow.yml > planted-borrow.out 2>&1 || rc=$?
           rm planted-borrow.yml; cat planted-borrow.out
           [ "$rc" -ne 0 ] || { echo "the check passed a repo runner on no lendable slot"; exit 1; }
-          grep -q "gungan-speak-1 borrows deskslim-2-unity-pool-9, not one of its lendable" planted-borrow.out || { echo "the check failed, but not on the planted slot"; exit 1; }
+          grep -q "deskslim-2-gungan-speak borrows deskslim-2-unity-pool-9, not one of its lendable" planted-borrow.out || { echo "the check failed, but not on the planted slot"; exit 1; }
           rm planted-borrow.out
       - name: Topology renderer tests, tier exclusions and slot caps
         run: cd scripts && python3 -m unittest test_render_ci_topology

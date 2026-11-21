@@ -344,6 +344,11 @@ all:
     # read these slots from apps/ci-topology/topology.json, which scripts/render-ci-topology.py
     # renders from here; CI fails when it is stale. Never a host in no_ci_hosts (below).
     unity_ci_runners:
+      vars:
+        # Every pool host runs a Unity Accelerator (roles/ci-host/tasks/accelerator.yml), so a
+        # cold test or release tree fetches the imports another slot on the host already made
+        # (playground ucp-2715 for releases, ucp-2854 for test slots).
+        unity_ci_accelerator: 172.17.0.1:10080
       hosts:
         # razer-laptop has no Unity slot since 2026-11-17: its RAM dropped from 96 GB to
         # 32 GB (the 96 GB kit went to the MS-A2) and it runs agents, never CI (no_ci_hosts, 2026-11-18).
@@ -369,8 +374,6 @@ all:
             5: [unity-release]
           unity_ci_full: true
           unity_ci_gate: true
-          # Every release host runs an Accelerator, as aws-build-1 does (playground ucp-2715).
-          unity_ci_accelerator: 172.17.0.1:10080
         deskslim-2:
           unity_ci_slots: 3
           unity_ci_full: true

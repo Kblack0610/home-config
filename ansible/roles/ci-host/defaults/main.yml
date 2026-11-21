@@ -166,9 +166,9 @@ unity_ci_packages_debian:
   - rsync
 
 # Unity Accelerator (cache server), as host:port on the docker bridge, for example
-# 172.17.0.1:10080. Empty = none. Set per host in the inventory: the role runs it
-# (tasks/accelerator.yml) and site.yml puts the same value in every slot's
-# UNITY_CACHE_SERVER, which the playground's build scripts pass to Unity. A cold
+# 172.17.0.1:10080. Empty = none. Set for the unity_ci_runners group in the inventory: the role
+# runs it (tasks/accelerator.yml) and site.yml puts the same value in every slot's
+# UNITY_CACHE_SERVER, which the playground's build and test scripts pass to Unity. A cold
 # release tree imported about 40,000 assets in 21 to 32 min before (playground
 # docs/operations/ci-cost.md log, ucp-1913). Runbook: docs/runbooks/unity-ci-host.md.
 unity_ci_accelerator: ""
